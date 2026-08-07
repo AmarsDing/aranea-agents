@@ -26,6 +26,7 @@ export function useCollapseState(
   collapsed: Ref<boolean>;
   toggle: () => void;
   setCollapsed: (value: boolean) => void;
+  hasUserPreference: Ref<boolean>;
 } {
   const storageKey = `${STORAGE_PREFIX}${key}`;
 
@@ -51,11 +52,16 @@ export function useCollapseState(
 
   const stored = readFromStorage();
   const collapsed = ref(stored !== null ? stored : defaultCollapsed);
+  // Whether the user has explicitly toggled this key in the current session.
+  // System-driven auto behaviors (e.g., expand-on-streaming at mount) must
+  // yield to an explicit user preference.
+  const hasUserPreference = ref(stored !== null);
 
   function toggle(): void {
     // User-initiated: persist the new state so it survives re-mounts/refreshes.
     collapsed.value = !collapsed.value;
     writeToStorage(collapsed.value);
+    hasUserPreference.value = true;
   }
 
   function setCollapsed(value: boolean): void {
@@ -69,5 +75,6 @@ export function useCollapseState(
     collapsed,
     toggle,
     setCollapsed,
+    hasUserPreference,
   };
 }

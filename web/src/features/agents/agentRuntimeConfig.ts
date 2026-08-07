@@ -128,6 +128,14 @@ export function defaultAgentRuntimeConfig() {
       enabled: false,
       interval_minutes: 30,
     },
+    /** After-Turn 自动评估（US-5）：写入 config_json.evaluation，由后端 AfterTurnTrigger 消费。 */
+    evaluation: {
+      auto_after_turn: false,
+      dataset_id: '',
+      metrics: '',
+      num_runs: 1,
+      min_interval_sec: 300,
+    },
     evolution: {
       self_evolve: true,
       skill_evolve: true,

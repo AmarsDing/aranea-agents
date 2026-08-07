@@ -26,6 +26,10 @@ type CaseMetadata struct {
 	ExpectedToolCalls []ExpectedTool   `json:"expected_tool_calls"`
 	Turns             []EvalTurn       `json:"turns"`
 	UserSimulation    *UserSimMetadata `json:"user_simulation"`
+	// SessionUserID overrides the default SessionInput.UserID ("eval").
+	SessionUserID string `json:"session_user_id"`
+	// SessionState seeds SessionInput.State (initial session state).
+	SessionState map[string]any `json:"session_state"`
 }
 
 // UserSimMetadata configures user simulation (scripted or LLM-driven).

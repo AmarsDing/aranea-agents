@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -380,5 +382,189 @@ func TestBuildCacheKey_CustomToolsAffectKey(t *testing.T) {
 	b := BuildCacheKey(ag, depsWithTools(stubDeclTool{"get_deliverable"}, stubDeclTool{"set_deliverable"}), "toolhash", "", "")
 	if a != b {
 		t.Fatal("cache key must be order-insensitive over CustomTools declaration names")
+	}
+}
+
+// stubBehaviorTool is a tool whose behavior varies beyond its declaration
+// name, surfaced via the cache-key discriminator interface.
+type stubBehaviorTool struct {
+	name          string
+	discriminator string
+}
+
+func (s stubBehaviorTool) Declaration() *trpctool.Declaration {
+	return &trpctool.Declaration{Name: s.name}
+}
+
+func (s stubBehaviorTool) CacheKeyDiscriminator() string { return s.discriminator }
+
+// TestBuildCacheKey_ToolBehaviorDiscriminated guards against cache collisions
+// between behaviorally different tool variants sharing one declaration name.
+// Regression: the team compile path installs the MDC contract on
+// set_deliverable while the graph resolver path builds it contract-free;
+// after dialog-mode normalization both paths produce identical key components,
+// so without the discriminator whichever path builds first would silently
+// serve its variant to the other (contract validation lost or phantom
+// violations, depending on build order).
+func TestBuildCacheKey_ToolBehaviorDiscriminated(t *testing.T) {
+	ag := biz.Agent{ID: "agent-behavior-key-test"}
+	depsWith := func(tools ...trpctool.Tool) TRPCBuilderDeps {
+		return TRPCBuilderDeps{TRPCToolAssemblyDeps: TRPCToolAssemblyDeps{CustomTools: tools}}
+	}
+
+	free := BuildCacheKey(ag, depsWith(stubDeclTool{"set_deliverable"}), "toolhash", "", "")
+	contracted := BuildCacheKey(ag, depsWith(stubBehaviorTool{name: "set_deliverable", discriminator: "contract:abc123"}), "toolhash", "", "")
+	if free == contracted {
+		t.Fatal("behavior-variant tools sharing a declaration name must not share a cache key")
+	}
+
+	// Same name + same discriminator → same key (cache shareable).
+	a := BuildCacheKey(ag, depsWith(stubBehaviorTool{name: "set_deliverable", discriminator: "contract:abc123"}), "toolhash", "", "")
+	b := BuildCacheKey(ag, depsWith(stubBehaviorTool{name: "set_deliverable", discriminator: "contract:abc123"}), "toolhash", "", "")
+	if a != b {
+		t.Fatal("identical behavior variants must share a cache key")
+	}
+}
+
+// TestBuildCacheKey_DialogModeNormalized guards the cache key against
+// dialog-mode flapping. Regression: the team runner path passes the turn's
+// dialog mode (e.g. "default") while the graph node resolver path passes "",
+// so the same member agent was built twice per team run under two keys.
+// The key must reduce DialogMode to its build-time effect (planner.Select):
+//   - explicit planner_kind → dialog mode has no build effect;
+//   - otherwise only "plan" activates the builtin planner.
+func TestBuildCacheKey_DialogModeNormalized(t *testing.T) {
+	ag := biz.Agent{ID: "agent-dialog-key-test"}
+	depsWithMode := func(mode string) TRPCBuilderDeps {
+		return TRPCBuilderDeps{TRPCModelRouteDeps: TRPCModelRouteDeps{DialogMode: mode}}
+	}
+
+	// planner_kind unset: ""/"default"/"chat" are build-equivalent → same key.
+	empty := BuildCacheKey(ag, depsWithMode(""), "toolhash", "", "")
+	def := BuildCacheKey(ag, depsWithMode("default"), "toolhash", "", "")
+	chat := BuildCacheKey(ag, depsWithMode("chat"), "toolhash", "", "")
+	if empty != def || empty != chat {
+		t.Fatal("dialog modes without build effect must share one cache key")
+	}
+
+	// "plan" activates the builtin planner → distinct key.
+	plan := BuildCacheKey(ag, depsWithMode("plan"), "toolhash", "", "")
+	if plan == empty {
+		t.Fatal("plan mode activates the builtin planner and must have a distinct key")
+	}
+	// Case/space-insensitive, matching planner.Select.
+	if spaced := BuildCacheKey(ag, depsWithMode("  PLAN "), "toolhash", "", ""); spaced != plan {
+		t.Fatal("plan mode key must be case/space-insensitive, matching planner.Select")
+	}
+
+	// Explicit planner_kind: dialog mode (incl. "plan") has no build effect.
+	reactAg := biz.Agent{ID: "agent-dialog-key-test", Settings: &biz.AgentRuntimeSettings{PlannerKind: "react"}}
+	reactPlan := BuildCacheKey(reactAg, depsWithMode("plan"), "toolhash", "", "")
+	reactDefault := BuildCacheKey(reactAg, depsWithMode("default"), "toolhash", "", "")
+	if reactPlan != reactDefault {
+		t.Fatal("explicit planner_kind must make the key dialog-mode-independent")
+	}
+
+	// Unknown planner_kind: Select falls back to dialog-mode checks,
+	// so "plan" must stay distinct.
+	unknownAg := biz.Agent{ID: "agent-dialog-key-test", Settings: &biz.AgentRuntimeSettings{PlannerKind: "unknown-kind"}}
+	unkPlan := BuildCacheKey(unknownAg, depsWithMode("plan"), "toolhash", "", "")
+	unkDefault := BuildCacheKey(unknownAg, depsWithMode("default"), "toolhash", "", "")
+	if unkPlan == unkDefault {
+		t.Fatal("unknown planner_kind falls back to dialog-mode selection; plan must stay distinct")
+	}
+}
+
+// stubMonitorBus captures MonitorEvents for flow-log assertions.
+type stubMonitorBus struct {
+	mu  sync.Mutex
+	evs []contract.MonitorEvent
+}
+
+func (b *stubMonitorBus) Publish(_ context.Context, ev contract.MonitorEvent) {
+	b.mu.Lock()
+	b.evs = append(b.evs, ev)
+	b.mu.Unlock()
+}
+
+func (b *stubMonitorBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	return nil, func() {}
+}
+
+func (b *stubMonitorBus) DropCount() uint64 { return 0 }
+
+// buildFlowPhases collects the flow_phase values of all captured
+// system.agent.build flow-log events, in publication order.
+func (b *stubMonitorBus) buildFlowPhases() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var phases []string
+	for _, ev := range b.evs {
+		if ev.Type != contract.MonitorEventTypeFlowLog {
+			continue
+		}
+		if ev.Metadata["step_id"] != "system.agent.build" {
+			continue
+		}
+		phase, _ := ev.Metadata["flow_phase"].(string)
+		phases = append(phases, phase)
+	}
+	return phases
+}
+
+// withStubbedBuilder swaps the package-level agentBuildFn for the duration of
+// the test so BuildTRPCLLMAgentCached can run without real model/skill deps.
+func withStubbedBuilder(t *testing.T, fn func(context.Context, biz.Agent, TRPCBuilderDeps, loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error)) {
+	t.Helper()
+	orig := agentBuildFn
+	agentBuildFn = fn
+	t.Cleanup(func() { agentBuildFn = orig })
+}
+
+// TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnMiss verifies the build-process
+// visibility contract: a cache-miss build emits start + done flow logs so the
+// (potentially multi-second) build is visible in the 流程日志 tab instead of
+// looking like a hung request.
+func TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnMiss(t *testing.T) {
+	bus := &stubMonitorBus{}
+	globalBuildCache.SetMonitorBus(bus)
+	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
+		return makeAgent("flow-miss"), nil, nil
+	})
+
+	ag := biz.Agent{ID: "agent-flow-miss-test", AgentKey: "flow-miss-test"}
+	got, err := BuildTRPCLLMAgentCached(context.Background(), ag, TRPCBuilderDeps{}, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("expected successful build, got %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil agent")
+	}
+
+	phases := bus.buildFlowPhases()
+	if len(phases) != 2 || phases[0] != "start" || phases[1] != "done" {
+		t.Fatalf("expected [start done] build flow phases, got %v", phases)
+	}
+}
+
+// TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnFailure verifies that a failed
+// cold build emits an error-phase flow log (K2: 错误路径必须发流程日志).
+func TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnFailure(t *testing.T) {
+	bus := &stubMonitorBus{}
+	globalBuildCache.SetMonitorBus(bus)
+	sentinel := errors.New("build boom")
+	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
+		return nil, nil, sentinel
+	})
+
+	ag := biz.Agent{ID: "agent-flow-fail-test", AgentKey: "flow-fail-test"}
+	_, err := BuildTRPCLLMAgentCached(context.Background(), ag, TRPCBuilderDeps{}, loggateway.NewNoop())
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected sentinel error, got %v", err)
+	}
+
+	phases := bus.buildFlowPhases()
+	if len(phases) != 2 || phases[0] != "start" || phases[1] != "error" {
+		t.Fatalf("expected [start error] build flow phases, got %v", phases)
 	}
 }

@@ -1,5 +1,5 @@
 // web/src/components/chat/__tests__/StepBlocks.spec.ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
 import ThinkingBlock from '../ThinkingBlock.vue';
@@ -50,6 +50,47 @@ describe('ThinkingBlock v2', () => {
       global: { plugins: [i18n] },
     });
     expect(wrapper.text()).toContain('test reasoning');
+  });
+});
+
+describe('ThinkingBlock 流式自动展开', () => {
+  beforeEach(() => sessionStorage.clear());
+
+  it('挂载时已处于流式：自动展开显示实时推理内容（而非静止的折叠指示器）', async () => {
+    // 场景：step.created 事件以 Status=running 落库，组件挂载时 streaming 已为 true，
+    // watch(streaming) 不会触发 false→true 跳变 —— 必须在挂载时主动展开。
+    const wrapper = mount(ThinkingBlock, {
+      props: {
+        step: mkStep({ ID: 'st-stream-1', Status: 'running', Reasoning: '正在实时推理的内容，逐字流入' }),
+      },
+      global: { plugins: [i18n] },
+    });
+    await wrapper.vm.$nextTick(); // onMounted 中的 setCollapsed 需一个 tick 重渲染
+    expect(wrapper.find('.thinking-block__body').exists()).toBe(true);
+    expect(wrapper.text()).toContain('正在实时推理的内容');
+  });
+
+  it('挂载时已处于流式但用户本会话显式收起过：尊重用户选择保持收起', () => {
+    sessionStorage.setItem('chat:collapse:thinking:st-stream-2', 'true');
+    const wrapper = mount(ThinkingBlock, {
+      props: {
+        step: mkStep({ ID: 'st-stream-2', Status: 'running', Reasoning: '推理内容超过三十个字符的阈值限制' }),
+      },
+      global: { plugins: [i18n] },
+    });
+    expect(wrapper.find('.thinking-block__body').exists()).toBe(false);
+    expect(wrapper.find('.thinking-block__streaming-indicator').exists()).toBe(true);
+  });
+
+  it('挂载时为完成态：保持默认收起，不受流式自动展开影响', () => {
+    const wrapper = mount(ThinkingBlock, {
+      props: {
+        step: mkStep({ ID: 'st-done-1', Status: 'completed', Reasoning: '已完成的较长推理内容，需要超过三十个字符才会进入折叠态而非内联短文本' }),
+      },
+      global: { plugins: [i18n] },
+    });
+    expect(wrapper.find('.thinking-block__body').exists()).toBe(false);
+    expect(wrapper.find('.thinking-block__collapsed').exists()).toBe(true);
   });
 });
 

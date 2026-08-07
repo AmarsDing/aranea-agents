@@ -100,6 +100,14 @@ func (m *mockRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string,
 	return m.skillKeys, nil
 }
 
+func (m *mockRepo) ListEnabledPublishedSkillRefs(ctx context.Context) ([]EnabledRef, error) {
+	refs := make([]EnabledRef, 0, len(m.skillKeys))
+	for _, k := range m.skillKeys {
+		refs = append(refs, EnabledRef{Slug: k})
+	}
+	return refs, nil
+}
+
 func (m *mockRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error) {
 	return m.candidates, nil
 }

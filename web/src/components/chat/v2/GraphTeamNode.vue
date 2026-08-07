@@ -36,7 +36,10 @@
           v-for="ms in members"
           :key="ms.ID"
           class="gtn-member"
-          :class="{ 'gtn-member--active': ms.Status === 'running' }"
+          :class="{
+            'gtn-member--active': ms.Status === 'running',
+            'gtn-member--confirm-pending': isConfirmPending(ms),
+          }"
           :data-member-id="ms.ID"
           @click.stop="onMemberClick(ms)"
         >
@@ -44,7 +47,10 @@
             class="gtn-member__dot"
             :class="[
               `gtn-member__dot--${memberToneOf(ms)}`,
-              { 'gtn-member__dot--ripple': ms.Status === 'running' },
+              {
+                'gtn-member__dot--ripple': ms.Status === 'running' && !isConfirmPending(ms),
+                'gtn-member__dot--confirm-blink': isConfirmPending(ms),
+              },
             ]"
           />
           <span class="gtn-member__name" :title="memberName(ms)">{{ memberName(ms) }}</span>
@@ -64,11 +70,7 @@
         <span class="gtn-status-row__text">{{ statusRow.text }}</span>
       </div>
       <div v-else-if="statusRow" class="gtn-action" :title="statusRow.text">
-        <q-icon
-          :name="statusRow.icon"
-          size="12px"
-          class="gtn-status-row__icon gtn-status-row__icon--active"
-        />
+        <q-icon :name="statusRow.icon" size="12px" class="gtn-status-row__icon gtn-status-row__icon--active" />
         <span class="gtn-status-row__text">{{ statusRow.text }}</span>
       </div>
     </div>
@@ -148,6 +150,21 @@ const statusRow = computed(() =>
     },
   ),
 );
+
+// ── 待确认成员（2026-08-07）：成员存在 kind=confirm + status=tool_blocked 的 step 时，
+// 成员行黄色慢闪，引导用户点击打开成员面板处理工具确认。一次 computed 归集，模板 O(1) 查询。
+const confirmPendingMemberIDs = computed<Set<string>>(() => {
+  const ids = new Set<string>();
+  for (const ms of members.value) {
+    const pending = queries.getMemberSessionSteps(ms).some((s) => s.Kind === 'confirm' && s.Status === 'tool_blocked');
+    if (pending) ids.add(ms.ID);
+  }
+  return ids;
+});
+
+function isConfirmPending(ms: MemberSession): boolean {
+  return confirmPendingMemberIDs.value.has(ms.ID);
+}
 
 // ── 布局：高度与 graphTeamNodeHeight 保持一致（DAG heightOf 的单一事实源） ──
 const nodeStyle = computed(() => {
@@ -231,6 +248,8 @@ const nodeStatusLabel = computed(() => {
 });
 
 function memberToneOf(ms: MemberSession): GraphTeamNodeTone {
+  // 待确认优先：成员色调强制 warning（黄色），与确认卡片色系一致
+  if (isConfirmPending(ms)) return 'warning';
   return graphTeamNodeTone(ms.Status);
 }
 
@@ -241,6 +260,7 @@ function memberName(ms: MemberSession): string {
 function memberMeta(ms: MemberSession): string {
   const startMs = Date.parse(ms.StartedAt);
   const durationFrom = Number.isNaN(startMs) ? null : startMs;
+  if (isConfirmPending(ms)) return t('chat.v2.latestWaitingConfirm');
   switch (ms.Status) {
     case 'completed': {
       const endMs = ms.FinishedAt ? Date.parse(ms.FinishedAt) : NaN;
@@ -536,6 +556,30 @@ function onMemberClick(ms: MemberSession) {
     transform: scale(1.9)
     opacity: 0
 
+// 待确认成员（2026-08-07）：整行黄色慢闪——行背景呼吸 + 状态点明暗交替
+.gtn-member--confirm-pending
+  animation: gtn-confirm-row-blink 2s ease-in-out infinite
+
+  &:hover
+    background: color-mix(in srgb, var(--color-warning) 16%, transparent)
+
+.gtn-member__dot--confirm-blink
+  animation: gtn-confirm-blink 2s ease-in-out infinite
+
+@keyframes gtn-confirm-row-blink
+  0%, 100%
+    background: color-mix(in srgb, var(--color-warning) 13%, transparent)
+  50%
+    background: color-mix(in srgb, var(--color-warning) 3%, transparent)
+
+@keyframes gtn-confirm-blink
+  0%, 100%
+    opacity: 1
+    box-shadow: 0 0 7px color-mix(in srgb, var(--color-warning) 75%, transparent)
+  50%
+    opacity: 0.25
+    box-shadow: 0 0 2px color-mix(in srgb, var(--color-warning) 30%, transparent)
+
 .gtn-member__meta--danger
   color: var(--color-danger)
 
@@ -647,6 +691,8 @@ function onMemberClick(ms: MemberSession) {
   .graph-team-node--running .gtn-progress__fill,
   .graph-team-node--running .gtn-progress__fill::after,
   .gtn-member__dot--ripple::after,
+  .gtn-member--confirm-pending,
+  .gtn-member__dot--confirm-blink,
   .gtn-status-row__icon--active
     animation: none
 

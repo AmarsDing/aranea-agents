@@ -169,6 +169,46 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 	if err != nil {
 		return nil, err
 	}
+	out := filterEnabledMCPServerRows(rows)
+	out = FilterEffectiveMCPServers(out, MCPPolicyFromAgentEffectiveTools(eff))
+	// C-05: decrypt at-rest secrets before runtime tool assembly.
+	for i := range out {
+		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
+		if err != nil {
+			return nil, err
+		}
+		out[i].ConfigJSON = dec
+	}
+	return out, nil
+}
+
+// AllEnabledServers returns every enabled, non-deleted, active MCP server row
+// with secrets decrypted — independent of any single agent's tool policy.
+// Used by the startup MCP connection pre-warm, which must see servers even
+// before any agent turn resolves them.
+func (t *AgentMCPTooling) AllEnabledServers(ctx context.Context) ([]EffectiveMCPServer, error) {
+	if t == nil || t.mcp == nil {
+		return nil, nil
+	}
+	rows, err := t.mcp.List(ctx, MCPListQuery{})
+	if err != nil {
+		return nil, err
+	}
+	out := filterEnabledMCPServerRows(rows)
+	// C-05: decrypt at-rest secrets before runtime tool assembly.
+	for i := range out {
+		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
+		if err != nil {
+			return nil, err
+		}
+		out[i].ConfigJSON = dec
+	}
+	return out, nil
+}
+
+// filterEnabledMCPServerRows drops disabled, soft-deleted, and non-active
+// rows. Pure function shared by EffectiveServersForAgent and AllEnabledServers.
+func filterEnabledMCPServerRows(rows []MCPServer) []EffectiveMCPServer {
 	out := make([]EffectiveMCPServer, 0, len(rows))
 	for _, row := range rows {
 		if !row.Enabled || strings.TrimSpace(row.DeletedAt) != "" {
@@ -183,14 +223,5 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 			ConfigJSON: row.ConfigJSON,
 		})
 	}
-	out = FilterEffectiveMCPServers(out, MCPPolicyFromAgentEffectiveTools(eff))
-	// C-05: decrypt at-rest secrets before runtime tool assembly.
-	for i := range out {
-		dec, err := t.mcp.PrepareConfigJSONForRuntime(ctx, out[i].ConfigJSON)
-		if err != nil {
-			return nil, err
-		}
-		out[i].ConfigJSON = dec
-	}
-	return out, nil
+	return out
 }

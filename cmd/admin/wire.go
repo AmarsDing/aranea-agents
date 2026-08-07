@@ -68,6 +68,7 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/clientbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -253,14 +254,23 @@ func provideGlobalBuildCache() *agent.BuildCache {
 	return agent.GetGlobalBuildCache()
 }
 
+// provideMCPToolSetPool exposes the process-level MCP ToolSet pool singleton
+// so it can be registered with the LifecycleManager for orderly shutdown.
+func provideMCPToolSetPool() *tools.MCPToolSetPool {
+	return tools.GetGlobalMCPToolSetPool()
+}
+
 // provideLifecycleManager builds the process-level LifecycleManager and
 // registers the global build cache for LIFO shutdown (A3). Additional
 // process-level resources can be registered here as they are migrated to
 // the lifecycle abstraction.
-func provideLifecycleManager(cache *agent.BuildCache, lg loggateway.Logger) *lifecycle.LifecycleManager {
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
+	cache.SetMonitorBus(monitorBus)
+	mcpPool.SetLogger(lg)
 	mgr := lifecycle.NewLifecycleManager(lg)
 	mgr.Register("global-build-cache", cache)
+	mgr.Register("mcp-toolset-pool", mcpPool)
 	return mgr
 }
 
@@ -1035,6 +1045,7 @@ func provideGraphBuildDeps(
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1083,6 +1094,7 @@ func provideGraphBuildDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
+			ClientBridge:    clientBridge,
 			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
 			LG: lg,
 		},
@@ -1116,6 +1128,7 @@ func provideTRPCBuilderDeps(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	a2aUC *biz.A2AUsecase,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) *chatagent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1161,6 +1174,7 @@ func provideTRPCBuilderDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
+			ClientBridge:    clientBridge,
 			// TeamCompletionChecker 将在运行时通过 SetTeamCompletionChecker 注入，避免循环依赖
 			LG: lg,
 		},
@@ -2317,6 +2331,21 @@ func provideLearningLoopUsecase(
 	return uc
 }
 
+// provideEvolutionDrafter wires the EVO-20 LLM draft generator: a post-pass of
+// EvolutionOrchestratorWorker that turns notification-only L3 persona/prompt
+// suggestions into applicable drafts (apply_payload + diff_preview).
+// biz.AgentRepository satisfies both EvolutionDraftAgentReader and
+// AgentEvolutionSettingsReader via its composite interfaces.
+func provideEvolutionDrafter(
+	unifiedRepo *data.UnifiedEvolutionRepo,
+	agents biz.AgentRepository,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	lg loggateway.Logger,
+) *biz.EvolutionDrafter {
+	return biz.NewEvolutionDrafter(unifiedRepo, agents, agents, caller, sys, lg)
+}
+
 // provideEvolutionOrchestratorWorker provides the single unified entry point
 // for automatic evolution triggering (A1), superseding the trigger half of
 // the legacy per-pipeline scanners and CuratorWorker.
@@ -2324,12 +2353,13 @@ func provideEvolutionOrchestratorWorker(
 	orch *biz.SkillEvolutionOrchestrator,
 	agents biz.AgentRepository,
 	skills biz.SkillQueryReader,
+	drafter *biz.EvolutionDrafter,
 	lg loggateway.Logger,
 ) *jobs.EvolutionOrchestratorWorker {
 	if strings.TrimSpace(os.Getenv("EVOLUTION_ORCHESTRATOR_DISABLED")) == "1" {
 		return nil
 	}
-	return jobs.NewEvolutionOrchestratorWorker(0, orch, agents, skills, lg)
+	return jobs.NewEvolutionOrchestratorWorker(0, orch, agents, skills, drafter, lg)
 }
 
 func provideSelfCheckScheduler(
@@ -2765,11 +2795,13 @@ func provideWSServer(
 	sessionAuth server.SessionAuthorizer,
 	outbox biz.EventDeliveryOutboxRepo,
 	resumer server.TaskResumer,
+	clientBridge *clientbridge.Bridge,
 ) *server.WSServer {
 	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
 	if srv != nil {
 		srv.SetEventOutbox(outbox)
 		srv.SetTaskResumer(resumer)
+		srv.SetClientToolBridge(clientBridge)
 	}
 	return srv
 }
@@ -3081,6 +3113,7 @@ func provideTaskOrchestrator(
 	evolutionUC *biz.EvolutionUsecase,
 	eventBus biz.EventBus,
 	nl2graph graph.NL2GraphConverter,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -3098,7 +3131,8 @@ func provideTaskOrchestrator(
 			ToolUC: toolUC,
 		},
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
-			LG: lg,
+			ClientBridge: clientBridge,
+			LG:           lg,
 		},
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
@@ -3251,6 +3285,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSessionTitleGenerator,
 		provideRunRegistry,
 		provideGlobalBuildCache,
+		provideMCPToolSetPool,
 		provideLifecycleManager,
 		provideDeadLetterQueue,
 		provideRunHeartbeatEmitter,
@@ -3373,6 +3408,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideEvolutionUsecase,
 		provideSkillEvolutionUsecase,
 		provideLearningLoopUsecase,
+		provideEvolutionDrafter,
 		provideEvolutionOrchestratorWorker,
 		provideSelfImprovementTestRunReader,
 		provideSelfImprovementObserveUsecase,

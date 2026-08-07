@@ -26,6 +26,7 @@ import (
 	trpcduckduckgo "trpc.group/trpc-go/trpc-agent-go/tool/duckduckgo"
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 
+	"aranea-agents/internal/tools/clientbridge"
 	deliverabletools "aranea-agents/internal/tools/deliverable"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
@@ -387,6 +388,20 @@ func Registry() []*ToolRegistration {
 				RiskLevel:        "low",
 			},
 			{
+				Name:        "client",
+				Description: "Client tool bridge ToolSet (open_app, open_url) — executes on the user's desktop companion, not the server",
+				Category:    "interaction",
+				Tags:        []string{"client", "desktop", "companion"},
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					// Placeholder: actual assembly happens in assembleSessionTools()
+					// which injects the process-wide clientbridge.Bridge singleton.
+					return nil, nil
+				},
+				EnabledByDefault:     false,
+				RiskLevel:            "medium",
+				RequiresConfirmation: true,
+			},
+			{
 				Name:        "datetime",
 				Description: "Returns current date, time and timezone information",
 				Category:    "system",
@@ -519,6 +534,9 @@ type SessionConfig struct {
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
 	BlobReader      biz.ToolResultBlobReader
+	// ClientBridge is the process-wide client tool bridge singleton. Optional:
+	// when nil, the "client" ToolSet is skipped even if enabled.
+	ClientBridge *clientbridge.Bridge
 }
 
 // AssemblyConfig holds all configuration for tool assembly.

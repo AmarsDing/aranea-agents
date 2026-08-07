@@ -91,6 +91,69 @@
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
+            <span class="section-title__text">{{ $t('agentSettings.evalAutoTitle') }}</span>
+          </div>
+          <p class="settings-section__hint">
+            {{ $t('agentSettings.evalAutoHint') }}
+          </p>
+        </div>
+      </div>
+      <div class="app-form-field-grid app-form-field-grid--2col">
+        <q-toggle v-model="evalAuto.auto_after_turn" :label="$t('agentSettings.evalAutoEnable')" />
+        <q-select
+          v-model="evalAuto.dataset_id"
+          dense
+          outlined
+          emit-value
+          map-options
+          clearable
+          :label="$t('agentSettings.evalAutoDataset')"
+          :options="evalDatasetOptions"
+          :loading="loadingEvalDatasets"
+          :disable="!evalAuto.auto_after_turn"
+          @popup-show="$emit('load-eval-datasets')"
+        />
+        <q-input
+          v-model="evalAuto.metrics"
+          dense
+          outlined
+          :label="$t('agentSettings.evalAutoMetrics')"
+          :disable="!evalAuto.auto_after_turn"
+        />
+        <q-input
+          v-model.number="evalAuto.num_runs"
+          dense
+          outlined
+          type="number"
+          :min="1"
+          :max="10"
+          :label="$t('agentSettings.evalAutoNumRuns')"
+          :disable="!evalAuto.auto_after_turn"
+        />
+        <q-input
+          v-model.number="evalAuto.min_interval_sec"
+          dense
+          outlined
+          type="number"
+          :min="0"
+          :label="$t('agentSettings.evalAutoMinInterval')"
+          :hint="$t('agentSettings.evalAutoMinIntervalHint')"
+          :disable="!evalAuto.auto_after_turn"
+        />
+      </div>
+      <q-banner
+        v-if="evalAuto.auto_after_turn && !evalAuto.dataset_id"
+        rounded
+        class="settings-info-banner settings-info-banner--bordered q-mt-md"
+      >
+        {{ $t('agentSettings.evalAutoNoDatasetWarning') }}
+      </q-banner>
+    </section>
+
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
             <span class="section-title__text">指标与建议</span>
           </div>
           <p class="settings-section__hint">时间范围只影响看板读取，不写入 Agent 配置。</p>
@@ -115,8 +178,13 @@
               <q-icon name="travel_explore" color="primary" size="26px" />
               <div class="overview-metric-card__label">检索质量</div>
             </div>
-            <div class="overview-metric-card__value">{{ formatPercent(metrics?.retrieval_quality) }}</div>
-            <div class="overview-metric-card__caption">记忆工具调用成功率</div>
+            <div v-if="hasRetrievalData" class="overview-metric-card__value">
+              {{ formatPercent(metrics?.retrieval_quality) }}
+            </div>
+            <div v-else class="overview-metric-card__value text-grey-6">暂无数据</div>
+            <div class="overview-metric-card__caption">
+              {{ hasRetrievalData ? '记忆工具调用成功率' : '时间范围内无记忆工具调用' }}
+            </div>
           </q-card-section>
         </q-card>
         <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
@@ -157,19 +225,16 @@
         <q-item v-for="s in suggestions" :key="s.id" class="app-glass-list__item--lg">
           <q-item-section>
             <q-item-label class="text-weight-medium">
-              <q-badge
-                :color="evoActionTypeColor(s.actionType)"
-                class="q-mr-sm"
-                :label="evoActionTypeLabel(s.actionType)"
-              />
-              {{ s.targetName || s.targetId }}
+              <q-badge :color="suggestionTypeColor(s.type)" class="q-mr-sm" :label="suggestionTypeLabel(s.type)" />
+              {{ s.title }}
             </q-item-label>
-            <q-item-label caption class="q-mt-xs">{{ s.triggerReason || s.draftBody?.slice(0, 120) }}</q-item-label>
-            <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.createdAt) }}</q-item-label>
+            <q-item-label caption class="q-mt-xs">{{ s.content }}</q-item-label>
+            <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.created_at) }}</q-item-label>
           </q-item-section>
           <q-item-section side>
             <div v-if="s.status === 'pending'" class="row q-gutter-xs">
               <q-btn
+                v-if="s.applicable"
                 flat
                 round
                 dense
@@ -246,16 +311,19 @@ import { computed, ref } from 'vue';
 import type { EvolutionKey } from './agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
-import { evoActionTypeColor, evoActionTypeLabel } from '../skills/evolutionSuggestionTableUi';
 
 const guardrails = defineModel<{
   max_change_per_period: number;
   min_data_points: number;
   rollback_on_decline_percent: number;
 }>('guardrails', { required: true });
+const evalAuto = defineModel<AgentRuntimeConfigForm['evaluation']>('evalAuto', { required: true });
 const props = defineProps<{
   agentId: string;
+  evalDatasetOptions?: { label: string; value: string }[];
+  loadingEvalDatasets?: boolean;
 }>();
+defineEmits<{ 'load-eval-datasets': [] }>();
 
 const evolutionRange = ref('30d');
 
@@ -264,6 +332,9 @@ const { metricsLoading, metrics, suggestions, applyingId, rejectingId, pendingSu
     () => props.agentId,
     () => evolutionRange.value,
   );
+
+// 检索质量：series 为空 ⟺ 时间范围内无记忆工具调用，0.0% 会误导用户。
+const hasRetrievalData = computed(() => (metrics.value?.retrieval_quality_series?.length ?? 0) > 0);
 
 const rangeModel = computed({
   get: () => evolutionRange.value,
@@ -294,14 +365,48 @@ function formatDate(iso: string): string {
   }
 }
 
+function suggestionTypeLabel(type: string): string {
+  switch (type) {
+    case 'persona':
+      return '沟通风格';
+    case 'prompt':
+      return '系统提示';
+    case 'skill':
+      return '技能调整';
+    case 'orchestration_optimization':
+      return '编排优化';
+    default:
+      return type || '—';
+  }
+}
+
+function suggestionTypeColor(type: string): string {
+  switch (type) {
+    case 'persona':
+      return 'deep-purple';
+    case 'prompt':
+      return 'blue';
+    case 'skill':
+      return 'teal';
+    case 'orchestration_optimization':
+      return 'orange';
+    default:
+      return 'grey';
+  }
+}
+
 function suggestionStatusLabel(status: string): string {
   switch (status) {
     case 'applied':
       return '已应用';
     case 'rejected':
       return '已拒绝';
+    case 'rolled_back':
+      return '已回滚';
     case 'pending':
       return '待处理';
+    case 'expired':
+      return '已过期';
     default:
       return status;
   }

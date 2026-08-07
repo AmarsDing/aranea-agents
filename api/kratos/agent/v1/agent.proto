@@ -436,6 +436,9 @@ message EvolutionSuggestion {
   string diff_preview = 7;
   string created_at = 8;
   string applied_at = 9;
+  // applicable 为 true 时前端才显示「应用」按钮：仅 persona/prompt
+  // 且 metadata 携带 apply_payload 的建议可应用；通知类建议为 false。
+  bool applicable = 10;
 }
 
 message ListEvolutionSuggestionsResponse {

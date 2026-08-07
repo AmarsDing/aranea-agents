@@ -1,6 +1,6 @@
 <template>
-  <!-- G4 3D 知识图谱（V12.7）：左 3D 力导向图 + 右操作台。 -->
-  <div class="knowledge-graph">
+  <!-- G5 深空图谱（V12.8）：左自研 3D 画布 + 右 HUD 操作台（.kg-hud 作用域皮肤）。 -->
+  <div class="knowledge-graph kg-hud">
     <!-- 左：3D 画布区 -->
     <q-card flat class="app-pane-card knowledge-graph__stage">
       <div v-if="loading" class="knowledge-graph__overlay">
@@ -23,11 +23,37 @@
         :selected-node-id="selectedNodeId"
         :focus-signal="focusSignal"
         :generation="generation"
+        :auto-rotate="autoRotate"
+        :show-labels="showLabels"
         @node-click="$emit('select-node', $event)"
         @background-click="$emit('select-node', '')"
+        @node-dblclick="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
       />
-      <!-- 画布工具条（右上浮动）：适应视图 + 配色图例 -->
+      <!-- 画布工具条（右上浮动）：适应视图 + 图例 + HUD 开关 + 返回全局 -->
       <div v-if="nodes.length && !error" class="knowledge-graph__toolbar">
+        <button
+          v-if="neighborhoodHops > 0"
+          class="kg-hud__switch kg-hud__switch--accent"
+          @click="$emit('reset-global-view')"
+        >
+          {{ t('knowledgePage.graphBackToGlobal') }}
+        </button>
+        <button
+          class="kg-hud__switch"
+          :class="{ 'kg-hud__switch--on': autoRotate }"
+          @click="$emit('update:auto-rotate', !autoRotate)"
+        >
+          {{ t('knowledgePage.graphAutoRotate') }}
+          <span class="kg-hud__bracket">[ {{ autoRotate ? 'ON' : 'OFF' }} ]</span>
+        </button>
+        <button
+          class="kg-hud__switch"
+          :class="{ 'kg-hud__switch--on': showLabels }"
+          @click="$emit('update:show-labels', !showLabels)"
+        >
+          {{ t('knowledgePage.graphShowLabels') }}
+          <span class="kg-hud__bracket">[ {{ showLabels ? 'ON' : 'OFF' }} ]</span>
+        </button>
         <q-btn
           flat
           dense
@@ -45,7 +71,7 @@
             <div class="knowledge-graph__legend-section">
               <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendNodes') }}</div>
               <div v-for="item in nodeLegend" :key="item.type" class="knowledge-graph__legend-row">
-                <span class="knowledge-graph__chip-dot" :style="{ background: item.color }" />
+                <span class="knowledge-graph__chip-dot" :style="{ background: item.color, color: item.color }" />
                 <span class="ellipsis">{{ item.type }}</span>
                 <span class="knowledge-graph__legend-count">{{ item.count }}</span>
               </div>
@@ -53,7 +79,10 @@
             <div class="knowledge-graph__legend-section">
               <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendEdges') }}</div>
               <div v-for="lt in graphLinkTypes" :key="lt" class="knowledge-graph__legend-row">
-                <span class="knowledge-graph__chip-dot" :style="{ background: graphLinkColor(lt) }" />
+                <span
+                  class="knowledge-graph__chip-dot"
+                  :style="{ background: graphLinkColor(lt), color: graphLinkColor(lt) }"
+                />
                 <span>{{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}</span>
               </div>
             </div>
@@ -64,6 +93,9 @@
         {{ t('knowledgePage.graphStats', { nodes: totalNodes, edges: totalEdges }) }}
         <span v-if="hiddenIsolated" class="knowledge-graph__stats-hidden">
           · {{ t('knowledgePage.graphIsolatedHidden', { count: hiddenIsolated }) }}
+        </span>
+        <span v-if="neighborhoodHops > 0" class="knowledge-graph__stats-hood">
+          · {{ t('knowledgePage.graphNeighborhoodHint', { name: neighborhoodRootName, hops: neighborhoodHops }) }}
         </span>
       </div>
     </q-card>
@@ -96,7 +128,10 @@
               :class="{ 'knowledge-graph__chip--off': !linkTypes.includes(lt) }"
               @click="$emit('toggle-link-type', lt)"
             >
-              <span class="knowledge-graph__chip-dot" :style="{ background: graphLinkColor(lt) }" />
+              <span
+                class="knowledge-graph__chip-dot"
+                :style="{ background: graphLinkColor(lt), color: graphLinkColor(lt) }"
+              />
               {{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}
             </q-chip>
           </div>
@@ -117,6 +152,36 @@
             :label="t('knowledgePage.graphShowIsolated')"
             @update:model-value="(v: boolean) => $emit('update:show-isolated', v)"
           />
+        </div>
+
+        <!-- 局部图谱（G5-D D-5）：聚焦邻域跳数步进 + 返回全局 -->
+        <div class="knowledge-graph__section">
+          <div class="knowledge-graph__section-title">{{ t('knowledgePage.graphFocusNeighborhood') }}</div>
+          <div class="kg-hud__hood">
+            <div class="kg-hud__hops" role="group" :aria-label="t('knowledgePage.graphNeighborhoodHops')">
+              <button
+                v-for="h in [1, 2, 3, 4]"
+                :key="h"
+                class="kg-hud__hop"
+                :class="{ 'kg-hud__hop--active': hopsDraft === h }"
+                @click="setHops(h)"
+              >
+                {{ h }}
+              </button>
+            </div>
+            <button
+              v-if="neighborhoodHops === 0"
+              class="kg-hud__switch kg-hud__switch--accent"
+              :disabled="!selectedNode"
+              :title="selectedNode ? '' : t('knowledgePage.graphFocusNeedSelection')"
+              @click="$emit('focus-neighborhood', hopsDraft)"
+            >
+              {{ t('knowledgePage.graphFocusNeighborhood') }}
+            </button>
+            <button v-else class="kg-hud__switch" @click="$emit('reset-global-view')">
+              {{ t('knowledgePage.graphBackToGlobal') }}
+            </button>
+          </div>
         </div>
 
         <!-- 节点搜索定位 -->
@@ -193,9 +258,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import KnowledgeGraphCanvas from './KnowledgeGraphCanvas.vue';
+import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
@@ -209,7 +274,7 @@ const props = defineProps<{
   linkTypes: string[];
   /** 目录前缀过滤（'' = 全库）。 */
   pathPrefix: string;
-  /** 渲染节点/边（经孤立裁剪）。 */
+  /** 渲染节点/边（经孤立裁剪 + 邻域裁剪）。 */
   nodes: CollectionGraphNode[];
   edges: CollectionGraphEdge[];
   /** 全量计数（统计行）。 */
@@ -230,9 +295,17 @@ const props = defineProps<{
   focusSignal: number;
   /** 范围选择器迷你树根节点。 */
   scopeNodes: VaultQTreeNode[];
+  /** HUD：自动旋转开关。 */
+  autoRotate: boolean;
+  /** HUD：标签开关。 */
+  showLabels: boolean;
+  /** 局部图谱跳数（0 = 全局图）。 */
+  neighborhoodHops: number;
+  /** 局部图谱根节点名（统计行提示）。 */
+  neighborhoodRootName: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'select-collection': [id: string];
   'toggle-link-type': [type: string];
   'set-path-prefix': [prefix: string];
@@ -242,10 +315,31 @@ defineEmits<{
   'focus-node': [docId: string];
   'open-in-explorer': [payload: { docId: string; relPath: string }];
   'scope-lazy-load': [payload: VaultLazyLoadPayload];
+  'update:auto-rotate': [value: boolean];
+  'update:show-labels': [value: boolean];
+  /** 聚焦邻域：root 由页面决定（邻域模式下锁定原根）。 */
+  'focus-neighborhood': [hops: number];
+  'reset-global-view': [];
 }>();
 
 const { t } = useI18n();
 const graphLinkTypes = GRAPH_LINK_TYPES;
+
+/** 邻域跳数草稿（步进器）；进入邻域后与 prop 同步。 */
+const hopsDraft = ref(2);
+
+watch(
+  () => props.neighborhoodHops,
+  (h) => {
+    if (h > 0) hopsDraft.value = h;
+  },
+);
+
+/** 步进选跳数；邻域模式下即时重聚焦（根锁定）。 */
+function setHops(h: number) {
+  hopsDraft.value = h;
+  if (props.neighborhoodHops > 0) emit('focus-neighborhood', h);
+}
 
 const collectionOptions = computed(() => props.collections.map((c) => ({ label: c.name || c.id, value: c.id })));
 
@@ -473,6 +567,197 @@ const nodeLegend = computed(() => {
   &__selected-empty {
     font-size: 12px;
     color: var(--color-text-secondary);
+  }
+}
+
+// ---------------------------------------------------------------- G5-E HUD 皮肤
+// 作用域限定 .kg-hud（NFR-G5-4 不改全局 token；亮/暗主题下图谱 Tab 均为深空风）。
+.kg-hud {
+  --kg-cyan: #00d4ff;
+  --kg-edge: #1a3a4a;
+  --kg-panel: rgba(5, 8, 16, 0.88);
+  --kg-text: #cfe8f5;
+  --kg-text-dim: #7fa3b8;
+
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  letter-spacing: 0.08em;
+
+  // 面板：深空玻璃 + 青色描边发光
+  :deep(.app-pane-card) {
+    background: var(--kg-panel);
+    border: 1px solid var(--kg-edge);
+    box-shadow: 0 0 15px #00d4ff22;
+    color: var(--kg-text);
+  }
+
+  // 覆盖 G4 依赖全局 token 的颜色（深空底上保证可读）
+  .knowledge-graph__section-title {
+    color: var(--kg-cyan);
+    text-shadow: 0 0 6px #00d4ff55;
+  }
+
+  .knowledge-graph__stats {
+    background: rgba(5, 8, 16, 0.72);
+    border: 1px solid var(--kg-edge);
+    color: var(--kg-text-dim);
+  }
+
+  .knowledge-graph__toolbar {
+    background: rgba(5, 8, 16, 0.72);
+    border: 1px solid var(--kg-edge);
+    align-items: center;
+
+    :deep(.q-btn) {
+      color: var(--kg-cyan);
+    }
+  }
+
+  .knowledge-graph__overlay {
+    color: var(--kg-text-dim);
+
+    &--error {
+      color: #ff6b81;
+    }
+  }
+
+  .knowledge-graph__nodes-empty,
+  .knowledge-graph__selected-empty,
+  .knowledge-graph__selected-path,
+  .knowledge-graph__selected-degree,
+  .knowledge-graph__legend-count {
+    color: var(--kg-text-dim);
+  }
+
+  .knowledge-graph__selected {
+    border-top-color: var(--kg-edge);
+  }
+
+  .knowledge-graph__selected-name,
+  .knowledge-graph__legend-title {
+    color: var(--kg-text);
+  }
+
+  .knowledge-graph__legend {
+    background: var(--kg-panel);
+    border: 1px solid var(--kg-edge);
+    box-shadow: 0 0 15px #00d4ff22;
+    color: var(--kg-text);
+  }
+
+  .knowledge-graph__legend-section + .knowledge-graph__legend-section {
+    border-top-color: var(--kg-edge);
+  }
+
+  // 图例发光色块（currentColor = 色板色，见模板 style 绑定）
+  .knowledge-graph__chip-dot {
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  .knowledge-graph__chip--off {
+    opacity: 0.45;
+  }
+
+  .knowledge-graph__node--active {
+    background: rgba(0, 212, 255, 0.12);
+    color: var(--kg-cyan);
+  }
+
+  // Quasar 表单件深空适配（select/input/toggle/chip）
+  :deep(.q-field--outlined .q-field__control):before {
+    border-color: var(--kg-edge);
+  }
+
+  :deep(.q-field--outlined .q-field__control):hover:before {
+    border-color: var(--kg-cyan);
+  }
+
+  :deep(.q-field__native),
+  :deep(.q-field__input),
+  :deep(.q-field__label) {
+    color: var(--kg-text);
+  }
+
+  :deep(.q-chip) {
+    color: var(--kg-text);
+    border-color: var(--kg-edge);
+  }
+
+  :deep(.q-toggle__label) {
+    color: var(--kg-text-dim);
+  }
+
+  // HUD 括号式开关
+  &__switch {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    background: transparent;
+    border: 1px solid var(--kg-edge);
+    border-radius: 4px;
+    color: var(--kg-text-dim);
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+      border-color: var(--kg-cyan);
+      color: var(--kg-text);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &--on {
+      color: var(--kg-cyan);
+      text-shadow: 0 0 6px #00d4ff55;
+    }
+
+    &--accent {
+      color: var(--kg-cyan);
+      border-color: var(--kg-cyan);
+    }
+  }
+
+  &__bracket {
+    font-weight: 600;
+  }
+
+  // 邻域跳数步进
+  &__hood {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__hops {
+    display: flex;
+    gap: 2px;
+  }
+
+  &__hop {
+    font: inherit;
+    font-size: 11px;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: 1px solid var(--kg-edge);
+    border-radius: 4px;
+    color: var(--kg-text-dim);
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--kg-cyan);
+      color: var(--kg-text);
+    }
+
+    &--active {
+      color: #050810;
+      background: var(--kg-cyan);
+      border-color: var(--kg-cyan);
+      box-shadow: 0 0 8px #00d4ff66;
+    }
   }
 }
 

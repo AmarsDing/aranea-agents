@@ -464,6 +464,9 @@ export type EvolutionSuggestion = {
   diffPreview: string | undefined;
   createdAt: string | undefined;
   appliedAt: string | undefined;
+  // applicable 为 true 时前端才显示「应用」按钮：仅 persona/prompt
+  // 且 metadata 携带 apply_payload 的建议可应用；通知类建议为 false。
+  applicable: boolean | undefined;
 };
 
 export type ListEvolutionSuggestionsResponse = {

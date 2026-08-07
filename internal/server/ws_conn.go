@@ -33,9 +33,14 @@ type wsConn struct {
 	// ListActivities RPC on reconnect.
 	connCtx    context.Context
 	connCancel context.CancelFunc
-	// stateMu protects channels, logEnabled, and filterKey from concurrent
-	// read/write between readPump (writes via handleUpstream) and eventPump (reads).
+	// stateMu protects channels, logEnabled, filterKey, and capabilities from
+	// concurrent read/write between readPump (writes via handleUpstream) and
+	// eventPump (reads).
 	stateMu sync.RWMutex
+	// capabilities is the client-advertised capability set (register_capabilities
+	// uplink), e.g. desktop_companion for the Tauri desktop companion that can
+	// execute client tools (design 74 §6.2). Nil for plain web clients.
+	capabilities map[string]bool
 	// closeOnce ensures wc.send is closed at most once, preventing double-close panic
 	// when multiple eventPump goroutines might race on high-queue timeout.
 	closeOnce sync.Once
@@ -133,6 +138,23 @@ func (wc *wsConn) setLogEnabled(enabled bool) {
 	wc.stateMu.Lock()
 	defer wc.stateMu.Unlock()
 	wc.logEnabled = enabled
+}
+
+// setCapabilities replaces the connection's advertised capability set.
+func (wc *wsConn) setCapabilities(caps []string) {
+	wc.stateMu.Lock()
+	defer wc.stateMu.Unlock()
+	wc.capabilities = make(map[string]bool, len(caps))
+	for _, c := range caps {
+		wc.capabilities[c] = true
+	}
+}
+
+// hasCapability reports whether the connection advertised the given capability.
+func (wc *wsConn) hasCapability(cap string) bool {
+	wc.stateMu.RLock()
+	defer wc.stateMu.RUnlock()
+	return wc.capabilities[cap]
 }
 
 // getFilterKey returns the current filter key.

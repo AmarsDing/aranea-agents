@@ -223,6 +223,30 @@ func (l *orchStubAgentLister) GetAgentRuntimeSettings(_ context.Context, agentID
 	return l.settings[agentID], nil
 }
 
+// drafterSpy records DraftPending calls (EVO-20 post-pass wiring).
+type drafterSpy struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (s *drafterSpy) DraftPending(_ context.Context, agentID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, agentID)
+	return nil
+}
+
+func (s *drafterSpy) wasCalled(agentID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, id := range s.calls {
+		if id == agentID {
+			return true
+		}
+	}
+	return false
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func newTestOrchestrator(store *orchStubStore, triggers ...biz.EvolutionTrigger) *biz.SkillEvolutionOrchestrator {
@@ -236,18 +260,18 @@ func newTestOrchestrator(store *orchStubStore, triggers ...biz.EvolutionTrigger)
 // ── tests ────────────────────────────────────────────────────────────────────
 
 func TestNewEvolutionOrchestratorWorker_Defaults(t *testing.T) {
-	w := NewEvolutionOrchestratorWorker(0, nil, nil, nil, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(0, nil, nil, nil, nil, loggateway.NewNoop())
 	if w.interval != 2*time.Hour {
 		t.Errorf("expected default interval 2h, got %s", w.interval)
 	}
-	w2 := NewEvolutionOrchestratorWorker(5*time.Minute, nil, nil, nil, loggateway.NewNoop())
+	w2 := NewEvolutionOrchestratorWorker(5*time.Minute, nil, nil, nil, nil, loggateway.NewNoop())
 	if w2.interval != 5*time.Minute {
 		t.Errorf("expected interval 5m, got %s", w2.interval)
 	}
 }
 
 func TestEvolutionOrchestratorWorker_Start_NilOrch(t *testing.T) {
-	w := NewEvolutionOrchestratorWorker(time.Minute, nil, nil, nil, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, nil, nil, nil, nil, loggateway.NewNoop())
 	done := make(chan struct{})
 	go func() {
 		w.Start(context.Background())
@@ -280,7 +304,7 @@ func TestEvolutionOrchestratorWorker_ScanSkills(t *testing.T) {
 			{{ID: "sk-1"}, {ID: "sk-2"}},
 		},
 	}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, nil, loggateway.NewNoop())
 
 	if err := w.scanSkills(context.Background()); err != nil {
 		t.Fatalf("scanSkills: %v", err)
@@ -297,7 +321,7 @@ func TestEvolutionOrchestratorWorker_ScanSkills_ErrorPropagates(t *testing.T) {
 	store := newOrchStubStore()
 	orch := newTestOrchestrator(store)
 	reader := &orchStubSkillReader{err: errors.New("db down")}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, nil, loggateway.NewNoop())
 
 	if err := w.scanSkills(context.Background()); err == nil {
 		t.Fatal("expected search error to propagate")
@@ -317,7 +341,7 @@ func TestEvolutionOrchestratorWorker_ScanSkills_SkipsPending(t *testing.T) {
 	}
 	orch := newTestOrchestrator(store, trigger)
 	reader := &orchStubSkillReader{pages: [][]biz.Skill{{{ID: "sk-1"}, {ID: "sk-2"}}}}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, nil, reader, nil, loggateway.NewNoop())
 
 	if err := w.scanSkills(context.Background()); err != nil {
 		t.Fatalf("scanSkills: %v", err)
@@ -349,7 +373,7 @@ func TestEvolutionOrchestratorWorker_ScanAgents_OnlyOptedIn(t *testing.T) {
 			"ag-3": {EvolutionSkillEvolve: true},
 		},
 	}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, nil, loggateway.NewNoop())
 
 	if err := w.scanAgents(context.Background()); err != nil {
 		t.Fatalf("scanAgents: %v", err)
@@ -386,7 +410,7 @@ func TestEvolutionOrchestratorWorker_ScanAgents_SettingsErrorSkips(t *testing.T)
 		},
 		settingsErr: map[string]error{"ag-1": errors.New("not found")},
 	}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, nil, loggateway.NewNoop())
 
 	if err := w.scanAgents(context.Background()); err != nil {
 		t.Fatalf("scanAgents: %v", err)
@@ -403,7 +427,7 @@ func TestEvolutionOrchestratorWorker_ScanAgents_SearchErrorPropagates(t *testing
 	store := newOrchStubStore()
 	orch := newTestOrchestrator(store)
 	lister := &orchStubAgentLister{searchErr: errors.New("db down")}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, nil, loggateway.NewNoop())
 
 	if err := w.scanAgents(context.Background()); err == nil {
 		t.Fatal("expected search error to propagate")
@@ -428,7 +452,7 @@ func TestEvolutionOrchestratorWorker_RunOnce_ExpiresThenScans(t *testing.T) {
 			"ag-1": {EvolutionSkillEvolve: true},
 		},
 	}
-	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, reader, loggateway.NewNoop())
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, reader, nil, loggateway.NewNoop())
 
 	w.runOnce(context.Background())
 
@@ -445,5 +469,54 @@ func TestEvolutionOrchestratorWorker_RunOnce_ExpiresThenScans(t *testing.T) {
 	}
 	if !skillTrigger.wasChecked("sk-1") {
 		t.Error("skill scan should run during tick")
+	}
+}
+
+// EVO-20: the drafter post-pass runs once per L3-opted-in agent after the
+// trigger pass; L1-only agents are skipped (their pipelines never produce
+// evolve_agent suggestions, so drafting would be a wasted query).
+func TestEvolutionOrchestratorWorker_ScanAgents_RunsDrafterForL3OptedIn(t *testing.T) {
+	store := newOrchStubStore()
+	orch := newTestOrchestrator(store)
+	lister := &orchStubAgentLister{
+		agents: []biz.Agent{{ID: "ag-l1"}, {ID: "ag-l3"}, {ID: "ag-evo"}, {ID: "ag-off"}},
+		settings: map[string]biz.AgentRuntimeSettings{
+			"ag-l1":  {EvolutionSkillEvolve: true},
+			"ag-l3":  {EvolutionSuggestionsEnabled: true},
+			"ag-evo": {EvoEnabled: true},
+			"ag-off": {},
+		},
+	}
+	spy := &drafterSpy{}
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, spy, loggateway.NewNoop())
+
+	if err := w.scanAgents(context.Background()); err != nil {
+		t.Fatalf("scanAgents: %v", err)
+	}
+	if spy.wasCalled("ag-l1") {
+		t.Error("L1-only agent should not run the drafter")
+	}
+	if !spy.wasCalled("ag-l3") {
+		t.Error("L3 (EvolutionSuggestionsEnabled) agent should run the drafter")
+	}
+	if !spy.wasCalled("ag-evo") {
+		t.Error("L3 (EvoEnabled) agent should run the drafter")
+	}
+	if spy.wasCalled("ag-off") {
+		t.Error("opted-out agent should not run the drafter")
+	}
+}
+
+// EVO-20: nil drafter keeps the worker fully functional (feature disabled).
+func TestEvolutionOrchestratorWorker_ScanAgents_NilDrafterOK(t *testing.T) {
+	store := newOrchStubStore()
+	orch := newTestOrchestrator(store)
+	lister := &orchStubAgentLister{
+		agents:   []biz.Agent{{ID: "ag-1"}},
+		settings: map[string]biz.AgentRuntimeSettings{"ag-1": {EvoEnabled: true}},
+	}
+	w := NewEvolutionOrchestratorWorker(time.Minute, orch, lister, nil, nil, loggateway.NewNoop())
+	if err := w.scanAgents(context.Background()); err != nil {
+		t.Fatalf("scanAgents with nil drafter: %v", err)
 	}
 }

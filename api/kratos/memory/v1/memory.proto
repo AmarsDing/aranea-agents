@@ -155,6 +155,10 @@ message ListConflictingFactsRequest {
   string scope_id = 2;
   int32 limit = 3;
   int32 offset = 4;
+  // agent_id filters conflicts by the ORIGINATING agent across ALL scopes
+  // (session/user/agent). H2: facts live in session/user scopes (F1), so a
+  // scope-only query undercounts. When set, scope_type may be left empty.
+  string agent_id = 5;
 }
 
 message ListConflictingFactsResponse {

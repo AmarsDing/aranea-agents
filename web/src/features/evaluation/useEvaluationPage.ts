@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
+import { useEvalRunPolling, hasActiveRuns } from './useEvalRunPolling';
 import { EVAL_RESULTS_PAGE_SIZE_DEFAULT, EVAL_RUNS_PAGE_SIZE_DEFAULT } from '../constants/queryLimits';
 import { EVAL_RESULT_TABLE_COLUMNS, EVAL_RUN_TABLE_COLUMNS } from './evaluationTableUi';
 
@@ -43,7 +44,10 @@ export function useEvaluationPage() {
   const compareLoading = ref(false);
 
   const createForm = ref({ name: '', description: '' });
-  const runForm = ref({ agent_id: '', metrics: '', num_runs: 1 });
+  const runForm = ref({ agent_id: '', metrics: '', num_runs: 1, use_user_simulation: false });
+  const uploadOpen = ref(false);
+  const uploadLoading = ref(false);
+  const uploadText = ref('');
 
   const selectedDataset = computed(() => datasets.value.find((d) => d.id === selectedDatasetId.value));
 
@@ -74,6 +78,9 @@ export function useEvaluationPage() {
       const res = await evaluationStore.loadDatasets({ limit: 100 });
       if (!selectedDatasetId.value && res.items.length) {
         selectedDatasetId.value = res.items[0].id;
+      }
+      // ISSUE-003: refresh cascades to runs even when a dataset is already selected.
+      if (selectedDatasetId.value) {
         await loadRuns();
       }
     } catch (e) {
@@ -81,9 +88,9 @@ export function useEvaluationPage() {
     }
   }
 
-  async function loadRuns() {
+  async function loadRuns(silent = false) {
     if (!selectedDatasetId.value) return;
-    runsLoading.value = true;
+    if (!silent) runsLoading.value = true;
     try {
       const limit = runsPageSize.value;
       let page = runsPage.value;
@@ -105,15 +112,29 @@ export function useEvaluationPage() {
           });
         }
       }
-      if (trendAgentId.value) {
+      if (trendAgentId.value && !silent) {
         void loadTrend();
       }
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载运行记录失败' });
+      // Silent polls must not spam notifications on transient network errors.
+      if (!silent) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载运行记录失败' });
+      } else {
+        console.warn('[evaluation] silent runs poll failed:', e);
+      }
     } finally {
-      runsLoading.value = false;
+      if (!silent) runsLoading.value = false;
     }
   }
+
+  // ISSUE-003: poll run progress while any run is pending/running; when the
+  // last active run reaches a terminal status, refresh the trend panel once.
+  useEvalRunPolling(runs, async () => {
+    await loadRuns(true);
+    if (!hasActiveRuns(runs.value) && trendAgentId.value) {
+      void loadTrend();
+    }
+  });
 
   function selectDataset(id: string) {
     selectedDatasetId.value = id;
@@ -186,6 +207,7 @@ export function useEvaluationPage() {
         agent_id: runForm.value.agent_id,
         metrics: runForm.value.metrics.trim() || undefined,
         num_runs: runForm.value.num_runs > 1 ? runForm.value.num_runs : undefined,
+        use_user_simulation: runForm.value.use_user_simulation || undefined,
       });
       runOpen.value = false;
       await loadRuns();
@@ -194,6 +216,41 @@ export function useEvaluationPage() {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '启动失败' });
     } finally {
       runLoading.value = false;
+    }
+  }
+
+  // ISSUE-001: upload cases into the selected dataset (JSON array textarea).
+  async function submitUpload() {
+    const raw = uploadText.value.trim();
+    if (!selectedDatasetId.value) return;
+    if (!raw) {
+      $q.notify({ type: 'warning', message: t('evaluationPage.uploadEmpty') });
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error('not-array');
+      }
+    } catch {
+      $q.notify({ type: 'warning', message: t('evaluationPage.uploadInvalidJson') });
+      return;
+    }
+    uploadLoading.value = true;
+    try {
+      const n = await evaluationStore.importCases(selectedDatasetId.value, raw);
+      uploadOpen.value = false;
+      uploadText.value = '';
+      // Refresh datasets so the case_count column reflects the import.
+      await evaluationStore.loadDatasets({ limit: 100 });
+      $q.notify({ type: 'positive', message: t('evaluationPage.uploadImported', { n }) });
+    } catch (e) {
+      $q.notify({
+        type: 'negative',
+        message: e instanceof Error ? e.message : t('evaluationPage.uploadImportFailed'),
+      });
+    } finally {
+      uploadLoading.value = false;
     }
   }
 
@@ -366,6 +423,10 @@ export function useEvaluationPage() {
     submitCreate,
     confirmDeleteDataset,
     submitRun,
+    uploadOpen,
+    uploadLoading,
+    uploadText,
+    submitUpload,
     openResults,
     savingResultId,
     updateResultRow,

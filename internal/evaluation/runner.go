@@ -3,6 +3,10 @@ package evaluation
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -84,8 +88,13 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 			event.P("num_runs", numRuns))
 	}
 	evalRunsTotal.WithLabelValues("started").Inc()
+	// ISSUE-002: detach the async execution from the HTTP request ctx — Kratos
+	// cancels it as soon as the handler returns, which would otherwise abort
+	// all DB writes and leave the run stuck in "pending" forever. Values
+	// (trace IDs etc.) are preserved; cancellation follows appctx only.
+	execCtx := context.WithoutCancel(ctx)
 	safego.Go(appctx.Ctx(), "eval-runner", func() {
-		if err := r.execute(ctx, run, metrics, numRuns, useUserSimulation); err != nil {
+		if err := r.execute(execCtx, run, metrics, numRuns, useUserSimulation); err != nil {
 			evalRunsTotal.WithLabelValues("error").Inc()
 		} else {
 			evalRunsTotal.WithLabelValues("completed").Inc()
@@ -148,10 +157,18 @@ func (r *Runner) executeFramework(
 	if err != nil {
 		return r.failRun(ctx, run, err.Error())
 	}
+	caseErrs := make([]string, 0)
 	for i := range results {
 		results[i].RunID = run.ID
+		if msg := strings.TrimSpace(results[i].ErrorMessage); msg != "" {
+			caseErrs = append(caseErrs, fmt.Sprintf("case %s: %s", results[i].CaseID, msg))
+		}
 		if err := r.uc.InsertCaseResult(ctx, results[i]); err != nil {
 			r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+			// Persistence failure means the case row is silently missing from
+			// the database — count it as a case error so the run fails instead
+			// of reporting "completed" with dropped results.
+			caseErrs = append(caseErrs, fmt.Sprintf("case %s: persist result: %v", results[i].CaseID, err))
 		} else {
 			// Only count cases whose results were actually persisted; otherwise
 			// CompletedCases would diverge from the persisted CaseResult rows
@@ -168,6 +185,15 @@ func (r *Runner) executeFramework(
 	}
 	run.PassAtK = passAtK
 	run.PassHatK = passHatK
+	// ISSUE-006: partial case failure must fail the run — the framework returns
+	// no global error when individual cases fail, so a silent "completed" would
+	// report a broken evaluation as healthy.
+	if len(results) < len(cases) {
+		caseErrs = append(caseErrs, fmt.Sprintf("%d case(s) missing from framework result", len(cases)-len(results)))
+	}
+	if len(caseErrs) > 0 {
+		return r.failRun(ctx, run, fmt.Sprintf("%d case(s) failed: %s", len(caseErrs), strings.Join(caseErrs, "; ")))
+	}
 	run.Status = "completed"
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	if flow := r.flowEmitter(ctx, run.ID); flow != nil {
@@ -214,6 +240,14 @@ func meanScore(scores map[string]float32) float32 {
 }
 
 func newEvalResultID() string {
-	// reuse the biz ID generator via a simple time+rand approach
-	return "er-" + time.Now().UTC().Format("20060102150405.000000000")
+	// Time prefix for sortability + random suffix for uniqueness: a pure
+	// nanosecond timestamp collides within one clock tick (Windows timer
+	// granularity ~0.5ms), which dropped case rows on eval_case_results_pkey.
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand failure is vanishingly rare; fall back to a counter-free
+		// best effort that still differs from a pure timestamp across calls.
+		return fmt.Sprintf("er-%s-%d", time.Now().UTC().Format("20060102150405.000000000"), time.Now().UnixNano()%0xffffff)
+	}
+	return "er-" + time.Now().UTC().Format("20060102150405.000000000") + "-" + hex.EncodeToString(b[:])
 }

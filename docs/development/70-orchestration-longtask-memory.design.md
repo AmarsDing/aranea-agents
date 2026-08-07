@@ -1179,10 +1179,10 @@ ctx = emitMemoryRecalledNotice(ctx, result.RecallHits)
 |------|------|
 | `web/src/features/chat/memoryRecall.ts` | `parseMemoryRecallHits` 解析 notice Content（JSON → `MemoryRecallHit[]`，非法输入返回空） |
 | `activityV2Store.recallHitsByTurn` | `upsertStep` 时按 TurnID 索引 hits（created→completed 重放幂等覆盖） |
-| `MemoryRecallChips.vue` | turn 底部渲染 chips：层级 badge（L1-L4 配色）+ line + score%，tooltip 显示置信度/版本 |
+| `MemoryRecallChips.vue` | turn 顶部渲染 chips：层级 badge（L1-L4 配色）+ line + score%，tooltip 显示置信度/版本。**2026-08-08 修正**：从「turn 底部」移至「turn 顶部」——召回发生在 BeforeModel（turn 最开始），UI 顺序必须与实际执行顺序一致（召回 → 思考 → 行动 → 回复） |
 | `noticeFilter.ts` | `memory_recalled` 加入 `SYSTEM_NOTICE_TYPES`，原始 JSON 不作为 NoticeBlock 渲染 |
 
-**数据流**：BeforeModel 钩子 → `ActivityEmitter.EmitNotice` → steps_v2 落库 + WS 推送 → store 索引 → TurnContainer 底部 chips。
+**数据流**：BeforeModel 钩子 → `ActivityEmitter.EmitNotice` → steps_v2 落库 + WS 推送 → store 索引 → TurnContainer 顶部 chips（steps 之前）。
 
 ---
 

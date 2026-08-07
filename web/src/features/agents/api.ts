@@ -261,6 +261,7 @@ export async function getAgentEvolutionSuggestions(agentId: string, status?: str
     diff_preview: item.diffPreview ?? '',
     created_at: item.createdAt ?? '',
     applied_at: item.appliedAt ?? '',
+    applicable: Boolean(item.applicable),
   }));
 }
 
@@ -277,6 +278,7 @@ export async function applyEvolutionSuggestion(agentId: string, suggestionId: st
     diff_preview: res.diffPreview ?? '',
     created_at: res.createdAt ?? '',
     applied_at: res.appliedAt ?? '',
+    applicable: Boolean(res.applicable),
   };
 }
 
@@ -302,6 +304,7 @@ export async function rejectEvolutionSuggestion(agentId: string, suggestionId: s
     diff_preview: res.diffPreview ?? '',
     created_at: res.createdAt ?? '',
     applied_at: res.appliedAt ?? '',
+    applicable: Boolean(res.applicable),
   };
 }
 

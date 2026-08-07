@@ -138,6 +138,11 @@ type ActivityConfirmParams struct {
 	ToolName      string
 	ToolArguments string
 	Content       string
+	// AuthorAgentKey overrides the step attribution when the confirmation
+	// originates from an agent other than the projector's base meta agent —
+	// e.g. a team member agent's tool call in graph mode (the projector meta
+	// carries the anchor agent key). Empty keeps the meta default.
+	AuthorAgentKey string
 }
 
 // ActivityEmitter emits Activity events for runtime notifications.

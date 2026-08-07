@@ -1,0 +1,262 @@
+/**
+ * forces：G5 深空图谱物理引擎（主线程/Worker 共用同一代码）。
+ *
+ * 移植 fast-graph PhysicsEngine（设计 §V12.8-1）：
+ * - 5 力：BH 斥力(repulsion=30,theta=0.8) + 弹簧(0.05/30) + 簇凝聚(0.08)
+ *         + 簇分离(100·count/d²) + 向心力(0.011)
+ * - 显式 Euler damping=0.9；maxStep 位移钳制(≤linkDistance) 防 hub 发散
+ * - alphaDecay=0.0228，alphaMin=0.005
+ * - 扩展：可选 chargeScale（per-node 斥力倍率，tiering 分层 charge 注入点）
+ */
+import { Octree } from './octree';
+
+export interface ForceParams {
+  /** 斥力强度（>0）。 */
+  repulsion: number;
+  /** 弹簧强度。 */
+  linkStrength: number;
+  /** 弹簧理想距离（兼 maxStep 钳制值）。 */
+  linkDistance: number;
+  /** 向心力强度。 */
+  gravity: number;
+  /** 速度阻尼（0~1，每 tick 乘）。 */
+  damping: number;
+  /** Barnes-Hut 开张判据。 */
+  theta: number;
+  /** 簇凝聚强度（同组节点向组中心）。 */
+  groupCohesion: number;
+  /** 簇分离强度（组中心间 Coulomb 斥力）。 */
+  groupSeparation: number;
+}
+
+export const FORCE_DEFAULTS: ForceParams = {
+  repulsion: 30,
+  linkStrength: 0.05,
+  linkDistance: 30,
+  gravity: 0.011,
+  damping: 0.9,
+  theta: 0.8,
+  groupCohesion: 0.08,
+  groupSeparation: 100,
+};
+
+const ALPHA_DECAY = 0.0228;
+const ALPHA_TARGET = 0;
+
+export interface ForceEngineOpts {
+  count: number;
+  edges: Int32Array;
+  positions: Float32Array;
+  params: ForceParams;
+  groupId?: Uint16Array;
+  /** per-node 斥力倍率（分层 charge；缺省全 1）。 */
+  chargeScale?: Float32Array;
+}
+
+export class ForceEngine {
+  alpha = 1;
+  readonly alphaMin = 0.005;
+
+  private count: number;
+  private edges: Int32Array;
+  private pos: Float32Array;
+  private vel: Float32Array;
+  private params: ForceParams;
+  private force: Float32Array;
+  private pinned: Uint8Array;
+  private scratch = new Float32Array(3);
+  private tree: Octree;
+  private chargeScale: Float32Array | null;
+
+  private groupId: Uint16Array;
+  private numGroups: number;
+  private gSum: Float32Array;
+  private gCount: Float32Array;
+  private gCen: Float32Array;
+  private gSep: Float32Array;
+
+  constructor(opts: ForceEngineOpts) {
+    this.count = opts.count;
+    this.edges = opts.edges;
+    this.pos = opts.positions;
+    this.vel = new Float32Array(opts.count * 3);
+    this.params = { ...opts.params };
+    this.force = new Float32Array(opts.count * 3);
+    this.pinned = new Uint8Array(opts.count);
+    this.tree = new Octree(opts.count);
+    this.chargeScale = opts.chargeScale ?? null;
+
+    this.groupId = opts.groupId ?? new Uint16Array(opts.count);
+    let maxG = 0;
+    for (let i = 0; i < opts.count; i++) if (this.groupId[i] > maxG) maxG = this.groupId[i];
+    this.numGroups = maxG + 1;
+    this.gSum = new Float32Array(this.numGroups * 3);
+    this.gCount = new Float32Array(this.numGroups);
+    this.gCen = new Float32Array(this.numGroups * 3);
+    this.gSep = new Float32Array(this.numGroups * 3);
+  }
+
+  get positions(): Float32Array {
+    return this.pos;
+  }
+
+  /** alpha < alphaMin 即收敛（ Worker 据此自停）。 */
+  get settled(): boolean {
+    return this.alpha < this.alphaMin;
+  }
+
+  setParams(p: Partial<ForceParams>): void {
+    this.params = { ...this.params, ...p };
+  }
+
+  pin(i: number, x: number, y: number, z: number): void {
+    this.pinned[i] = 1;
+    this.pos[i * 3] = x;
+    this.pos[i * 3 + 1] = y;
+    this.pos[i * 3 + 2] = z;
+    this.vel[i * 3] = 0;
+    this.vel[i * 3 + 1] = 0;
+    this.vel[i * 3 + 2] = 0;
+    this.reheat();
+  }
+
+  unpin(i: number): void {
+    this.pinned[i] = 0;
+  }
+
+  reheat(): void {
+    this.alpha = 1;
+  }
+
+  tick(): void {
+    const { repulsion, linkStrength, linkDistance, gravity, damping, theta, groupCohesion, groupSeparation } =
+      this.params;
+    const f = this.force;
+    f.fill(0);
+
+    // 1) BH 斥力（可选 per-node chargeScale 倍率）
+    this.tree.rebuild(this.pos, this.count);
+    const s = this.scratch;
+    const cs = this.chargeScale;
+    for (let i = 0; i < this.count; i++) {
+      this.tree.computeForce(i, theta, repulsion, s);
+      const k = cs ? cs[i] : 1;
+      f[i * 3] += s[0] * k;
+      f[i * 3 + 1] += s[1] * k;
+      f[i * 3 + 2] += s[2] * k;
+    }
+
+    // 2) 弹簧（边）
+    for (let e = 0; e < this.edges.length; e += 2) {
+      const a = this.edges[e];
+      const b = this.edges[e + 1];
+      const dx = this.pos[b * 3] - this.pos[a * 3];
+      const dy = this.pos[b * 3 + 1] - this.pos[a * 3 + 1];
+      const dz = this.pos[b * 3 + 2] - this.pos[a * 3 + 2];
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-3;
+      const k = (linkStrength * (d - linkDistance)) / d;
+      const fx = dx * k;
+      const fy = dy * k;
+      const fz = dz * k;
+      f[a * 3] += fx;
+      f[a * 3 + 1] += fy;
+      f[a * 3 + 2] += fz;
+      f[b * 3] -= fx;
+      f[b * 3 + 1] -= fy;
+      f[b * 3 + 2] -= fz;
+    }
+
+    // 2.5) 簇力：同组凝聚，组间分离
+    const doCohesion = groupCohesion > 0;
+    const doSeparation = groupSeparation > 0 && this.numGroups > 1;
+    if (doCohesion || doSeparation) {
+      const G = this.numGroups;
+      this.gSum.fill(0);
+      this.gCount.fill(0);
+      for (let i = 0; i < this.count; i++) {
+        const g = this.groupId[i];
+        this.gSum[g * 3] += this.pos[i * 3];
+        this.gSum[g * 3 + 1] += this.pos[i * 3 + 1];
+        this.gSum[g * 3 + 2] += this.pos[i * 3 + 2];
+        this.gCount[g]++;
+      }
+      for (let g = 0; g < G; g++) {
+        const c = this.gCount[g] || 1;
+        this.gCen[g * 3] = this.gSum[g * 3] / c;
+        this.gCen[g * 3 + 1] = this.gSum[g * 3 + 1] / c;
+        this.gCen[g * 3 + 2] = this.gSum[g * 3 + 2] / c;
+      }
+      if (doSeparation) {
+        this.gSep.fill(0);
+        for (let g = 0; g < G; g++) {
+          if (this.gCount[g] === 0) continue;
+          for (let h = 0; h < G; h++) {
+            if (h === g || this.gCount[h] === 0) continue;
+            let dx = this.gCen[g * 3] - this.gCen[h * 3];
+            let dy = this.gCen[g * 3 + 1] - this.gCen[h * 3 + 1];
+            let dz = this.gCen[g * 3 + 2] - this.gCen[h * 3 + 2];
+            let d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < 1e-3) {
+              dx = g - h;
+              dy = 0;
+              dz = 0;
+              d2 = (g - h) * (g - h) || 1e-3;
+            }
+            const dd = Math.sqrt(d2);
+            const fmag = (groupSeparation * this.gCount[h]) / d2;
+            this.gSep[g * 3] += (dx / dd) * fmag;
+            this.gSep[g * 3 + 1] += (dy / dd) * fmag;
+            this.gSep[g * 3 + 2] += (dz / dd) * fmag;
+          }
+        }
+      }
+      for (let i = 0; i < this.count; i++) {
+        const g = this.groupId[i];
+        if (doCohesion) {
+          f[i * 3] += (this.gCen[g * 3] - this.pos[i * 3]) * groupCohesion;
+          f[i * 3 + 1] += (this.gCen[g * 3 + 1] - this.pos[i * 3 + 1]) * groupCohesion;
+          f[i * 3 + 2] += (this.gCen[g * 3 + 2] - this.pos[i * 3 + 2]) * groupCohesion;
+        }
+        if (doSeparation) {
+          f[i * 3] += this.gSep[g * 3];
+          f[i * 3 + 1] += this.gSep[g * 3 + 1];
+          f[i * 3 + 2] += this.gSep[g * 3 + 2];
+        }
+      }
+    }
+
+    // 3) 向心力 + 显式 Euler 积分（maxStep 位移钳制防 hub 发散）
+    const maxStep = linkDistance;
+    const maxStep2 = maxStep * maxStep;
+    for (let i = 0; i < this.count; i++) {
+      if (this.pinned[i]) continue;
+      const ix = i * 3;
+      const iy = ix + 1;
+      const iz = ix + 2;
+      f[ix] -= this.pos[ix] * gravity;
+      f[iy] -= this.pos[iy] * gravity;
+      f[iz] -= this.pos[iz] * gravity;
+
+      let vx = (this.vel[ix] + f[ix] * this.alpha) * damping;
+      let vy = (this.vel[iy] + f[iy] * this.alpha) * damping;
+      let vz = (this.vel[iz] + f[iz] * this.alpha) * damping;
+
+      const sp2 = vx * vx + vy * vy + vz * vz;
+      if (sp2 > maxStep2) {
+        const scale = maxStep / Math.sqrt(sp2);
+        vx *= scale;
+        vy *= scale;
+        vz *= scale;
+      }
+
+      this.vel[ix] = vx;
+      this.vel[iy] = vy;
+      this.vel[iz] = vz;
+      this.pos[ix] += vx;
+      this.pos[iy] += vy;
+      this.pos[iz] += vz;
+    }
+
+    this.alpha += (ALPHA_TARGET - this.alpha) * ALPHA_DECAY;
+  }
+}

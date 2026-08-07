@@ -149,6 +149,12 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'warning',
     color: 'orange',
   },
+  // P3（2026-08-08）：分解 LLM 瞬时故障重试中（meta.attempt 为即将开始的尝试序号）。
+  decompose_retry: {
+    messageKey: 'chat.orchestrationProgress.decomposeRetry',
+    icon: 'refresh',
+    color: 'orange',
+  },
   allocating: {
     messageKey: 'chat.orchestrationProgress.allocating',
     icon: 'people',

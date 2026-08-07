@@ -63,6 +63,7 @@ type TeamModelCatalog interface {
 // skillruntime.SkillResolver so it can be used directly in visibility filters.
 type TeamSkillLookup interface {
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
+	ListEnabledPublishedSkillRefs(ctx context.Context) ([]SkillEnabledRef, error)
 	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]SkillRuntimeCandidate, error)
 	ScoreByEmbedding(ctx context.Context, query string, candidates []SkillRuntimeCandidate) (map[string]float64, error)
 	BatchGetSkillGuidance(ctx context.Context, slugs []string) ([]SkillGuidanceEntry, error)

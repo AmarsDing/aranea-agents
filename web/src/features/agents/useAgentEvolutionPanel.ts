@@ -1,23 +1,17 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 
-import type { EvolutionMetrics } from './types';
+import type { EvolutionMetrics, EvolutionSuggestion } from './types';
 import { useAgentDetailStore } from '../../stores/agents/detail';
-import { useSkillEvolutionStore } from '../../stores/skillEvolution';
-import type { SkillEvolutionView } from '../skills/types';
 
 export function useAgentEvolutionPanel(agentId: () => string, range: () => string) {
   const $q = useQuasar();
   const agentDetailStore = useAgentDetailStore();
-  const evolutionStore = useSkillEvolutionStore();
   const metricsLoading = ref(false);
   const metrics = ref<EvolutionMetrics | null>(null);
+  const suggestions = ref<EvolutionSuggestion[]>([]);
   const applyingId = ref<string | null>(null);
   const rejectingId = ref<string | null>(null);
-
-  const suggestions = computed<SkillEvolutionView[]>(() =>
-    evolutionStore.suggestions.filter((s) => s.targetType === 'agent' && s.targetId === agentId()),
-  );
 
   const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === 'pending').length);
 
@@ -38,9 +32,9 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     const id = agentId();
     if (!id) return;
     try {
-      await evolutionStore.loadSuggestions({ targetType: 'agent', targetId: id, status: 'pending' });
+      suggestions.value = await agentDetailStore.fetchEvolutionSuggestions(id);
     } catch {
-      // error captured in store
+      suggestions.value = [];
     }
   }
 
@@ -55,9 +49,13 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     }).onOk(async () => {
       applyingId.value = id;
       try {
-        await evolutionStore.approveSuggestion(id, 'agent-panel');
+        await agentDetailStore.applyEvolution(aid, id);
         await fetchSuggestions();
         await fetchMetrics();
+      } catch (e: unknown) {
+        // 后端会拒绝通知类建议（无可应用内容）——把原因告知用户。
+        const msg = e instanceof Error ? e.message : String(e);
+        $q.notify({ type: 'warning', message: msg || '应用失败' });
       } finally {
         applyingId.value = null;
       }
@@ -69,8 +67,11 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     if (!aid) return;
     rejectingId.value = id;
     try {
-      await evolutionStore.rejectSuggestion(id, 'agent-panel', '');
+      await agentDetailStore.rejectEvolution(aid, id);
       await fetchSuggestions();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      $q.notify({ type: 'warning', message: msg || '操作失败' });
     } finally {
       rejectingId.value = null;
     }

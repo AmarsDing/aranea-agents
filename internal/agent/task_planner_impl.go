@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/agent/v2"
@@ -16,6 +18,7 @@ import (
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +35,14 @@ type taskPlannerImpl struct {
 	// seq is the v2 Sequencer (nil-safe) used to publish PlanBoard/PlanStep/
 	// GraphStage/GraphNode events. Nil = v2 publish skipped (backwards compat).
 	seq v2.SequencerPublisher
+
+	// P3 测试钩子——生产为 nil，注入默认实现；测试可替换。
+	retryBackoffFn func(attempt int) time.Duration
+	llmAttemptFn   decomposeAttemptFn
 }
+
+// decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
+type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, thinkingPub *planningThinkingPublisher, onSubTask func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error)
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
@@ -210,14 +220,51 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("topology_hint", string(topologyHint)),
 	)
 
-	// Step 3: Decompose task (only for complex, or when explicit team-forming mode forces it)
+	// Step 3: Build intent artifact JSON（提前——P2 draft 落库需要）。
+	intentArtifactJSON := "{}"
+	if input.IntentArtifact != nil {
+		b, err := json.Marshal(input.IntentArtifact)
+		if err == nil {
+			intentArtifactJSON = string(b)
+		}
+	}
+
+	// Step 4: Decompose task (only for complex, or when explicit team-forming mode forces it)
 	var subTasks []biz.SubTask
 	var dag *biz.PlanTaskDAG
 	var decomposeReason string
 	streamPublished := false
 	planID := "tp_" + uuid.NewString()
 	if effectiveLevel == biz.ComplexityComplex {
-		var err error
+		// P2：分解前先落库 draft——持久化与展示同时进行。崩溃后 draft
+		// 可恢复、可观测「正在规划」，不再「先分解 60s、最后一次性落库」。
+		draft := &biz.TaskPlan{
+			ID:                 planID,
+			SpiritSessionID:    input.SpiritSessionID,
+			TraceID:            traceID,
+			UserMessage:        input.UserMessage,
+			IntentArtifactJSON: intentArtifactJSON,
+			ComplexityLevel:    complexityLevel,
+			ComplexityScore:    complexityScore,
+			Dimensions:         dimensions,
+			Strategy:           strategy,
+			StrategyReason:     strategyReason,
+			TopologyHint:       topologyHint,
+			Status:             biz.TaskPlanStatusDraft,
+		}
+		saved, err := impl.repo.Create(ctx, draft)
+		if err != nil {
+			impl.lg.Warn("TaskPlan draft 持久化失败",
+				loggateway.StepID(biz.SpiritStepPlannerPersist),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Err(err),
+			)
+			return nil, apierror.Internal(apierror.DomainSpirit, "persist draft plan: "+err.Error())
+		}
+
+		// P2：分解期间周期性心跳进度（用户可见存活信号），分解结束即停。
+		stopHeartbeat := impl.startDecomposeHeartbeat(ctx, input.SpiritSessionID, 5*time.Second)
+
 		// P-ORCH: notify the user that decomposition (LLM call, up to 60s) started.
 		impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposing", nil)
 
@@ -228,13 +275,14 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			onSubTask := func(st biz.SubTask, index int) {
 				impl.publishV2PlanStep(ctx, st, planID, index, input)
 			}
-			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, onSubTask)
+			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, onSubTask)
 			if err == nil && len(subTasks) > 0 {
 				streamPublished = true
 			}
 		} else {
 			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
 		}
+		stopHeartbeat()
 		if err != nil {
 			impl.lg.Warn("任务分解失败，降级为 direct 策略",
 				loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -328,18 +376,32 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 				"reason": "empty",
 			})
 		}
-	}
 
-	// Step 4: Build intent artifact JSON
-	intentArtifactJSON := "{}"
-	if input.IntentArtifact != nil {
-		b, err := json.Marshal(input.IntentArtifact)
-		if err == nil {
-			intentArtifactJSON = string(b)
+		// P2：分解完成后增量 Update——填充 subtasks/dag 与最终策略（含降级结果），
+		// Status 保持 draft（ConfirmPlan 才推进到 confirmed，语义不变）。
+		saved.SubTasks = subTasks
+		saved.TaskDAG = dag
+		saved.DecomposeReason = decomposeReason
+		saved.Strategy = strategy
+		saved.StrategyReason = strategyReason
+		saved.DomainPath = PrimaryDomainPath(subTasks)
+		saved, err = impl.repo.Update(ctx, saved)
+		if err != nil {
+			impl.lg.Warn("TaskPlan 更新失败",
+				loggateway.StepID(biz.SpiritStepPlannerPersist),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Err(err),
+			)
+			return nil, apierror.Internal(apierror.DomainSpirit, "update plan: "+err.Error())
 		}
+		// repo.Update 经 GetByID 重读，内存字段 StreamPublished 不在 DB 列中会
+		// 丢失——重设，保证 PublishV2Board 走流式分支（不重复发 Created 事件）。
+		saved.StreamPublished = streamPublished
+		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
+		return saved, nil
 	}
 
-	// Step 6: Build and persist TaskPlan
+	// 非分解路径（direct 策略）：单次 Create，无 draft 中间态。
 	plan := &biz.TaskPlan{
 		ID:                 planID,
 		SpiritSessionID:    input.SpiritSessionID,
@@ -939,18 +1001,69 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 	return subTasks, dag, nil
 }
 
-// decomposeTaskStream 是 decomposeTask 的流式变体。使用 CallOpenAICompatChatStream
-// 接收 LLM 增量输出，通过 streamSubTaskParser 逐个提取完整 subtask JSON 对象，
-// 每解析出一个 subtask 立即调用 onSubTask 回调（用于渐进发布 PlanStep/GraphNode
-// 事件，配合前端级联动画）。
+// decomposeTaskStream 是 decomposeTask 的流式变体，带 P3 重试可靠性：
+//   - 单次尝试逻辑抽取为 llmDecomposeAttempt（由 llmAttemptFn 注入，生产默认指向该方法）
+//   - 瞬时故障（idle/网络抖动/EOF）按指数退避无限重试，每次重试对前端发 decompose_retry 进度
+//   - 永久性错误（配置缺失/鉴权/上下文溢出）立即熔断不重试
+//   - 父 ctx 取消立即穿透，不等待下一次退避
 //
-// ID 重映射在流式解析中即时完成：st_1 → st_<uuid>。depends_on 引用已解析的
-// subtask 时立即重写；前向引用（依赖尚未出现的 subtask）在最终清理中处理。
-func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
-	if impl.catalog == nil || impl.httpClient == nil {
-		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
+// 每次尝试的思考流独立发布——重试时旧 thinkingPub 已以 Fail() 闭合，新的 Attempt
+// 会创建新的 planningThinkingPublisher，前端能看到「思考块失败 → 新思考块」的连贯动画。
+func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	attemptFn := impl.llmAttemptFn
+	if attemptFn == nil {
+		attemptFn = impl.llmDecomposeAttempt
+	}
+	backoffFn := impl.retryBackoffFn
+	if backoffFn == nil {
+		backoffFn = defaultDecomposeBackoff
 	}
 
+	for attempt := 1; ; attempt++ {
+		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, nil, onSubTask)
+		if err == nil {
+			return subTasks, dag, nil
+		}
+		if !isRetriableDecomposeError(err) {
+			// 永久性错误（鉴权/配置/上下文溢出/父 ctx 取消）——熔断。
+			return nil, nil, err
+		}
+		// 父 ctx 取消（被包装为 Retriable 前先判）——立即穿透。
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+
+		// 发布重试进度（attempt 从 2 起——第 1 次就是首次尝试，不算「重试」）。
+		if impl.eventBus != nil {
+			impl.publishOrchestrationProgress(ctx, spiritSessionID, "decompose_retry", map[string]any{
+				"attempt": attempt + 1,
+				"reason":  "llm_stream_timeout_or_transient_failure",
+			})
+		}
+		impl.lg.Warn("任务分解瞬时故障，准备重试",
+			loggateway.StepID(biz.SpiritStepPlannerDecompose),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Int("attempt", attempt),
+			loggateway.Err(err),
+		)
+
+		// 指数退避——父 ctx 取消立即穿透。
+		delay := backoffFn(attempt)
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, nil, ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+}
+
+// llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
+// LLM 流式调用 + 解析。任何错误都会被上层重试循环分类处理。
+func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, _ *planningThinkingPublisher, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
 
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
@@ -962,7 +1075,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 	sessionProvider, sessionModel := biz.PlannerSessionModelFromCtx(ctx)
 	provider, model := ResolvePlannerModel(ctx, setting, sessionProvider, sessionModel, impl.catalog, impl.lg, biz.SpiritStepPlannerAssess, "TaskPlanner")
 	if provider == "" || model == "" {
-		return nil, nil, apierror.Internal(apierror.DomainSpirit, "no provider/model configured for task decomposition")
+		return nil, nil, &decomposeConfigError{err: errors.New("no provider/model configured for task decomposition")}
 	}
 
 	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
@@ -985,6 +1098,10 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 	var subTasks []biz.SubTask
 	idRemap := make(map[string]string)
 
+	// P1b：规划思考可见性——每次尝试独立发布一个 thinking step，保证前端可见
+	// 重试过程（旧 step 以 Failed 闭合、新 step 以 Created 新建）。
+	thinkingPub := newPlanningThinkingPublisher(impl.seq, ctx, spiritSessionID)
+
 	onDelta := func(piece string) error {
 		objects := parser.Feed(piece)
 		for _, objJSON := range objects {
@@ -1004,7 +1121,18 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 		return nil
 	}
 
-	text, _, _, _, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, onDelta)
+	callbacks := StreamCallbacks{OnContent: onDelta}
+	if thinkingPub != nil {
+		callbacks.OnReasoning = thinkingPub.OnReasoning
+	}
+	text, reasoning, _, _, callErr := CallOpenAICompatChatStream(callCtx, impl.httpClient, cfg, model, msgs, callbacks)
+	if thinkingPub != nil {
+		if callErr != nil {
+			thinkingPub.Fail()
+		} else {
+			thinkingPub.Complete(reasoning)
+		}
+	}
 	if callErr != nil {
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(callErr)
 	}
@@ -1024,8 +1152,6 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 		return nil, nil, nil
 	}
 
-	// 清理前向引用：流式解析时 depends_on 可能引用尚未出现的 subtask，
-	// 此处移除所有无效引用（与 decomposeTask 的 teamCount 截取逻辑一致）。
 	resolveForwardRefs(subTasks)
 
 	if err := validateSubTaskDAG(subTasks); err != nil {
@@ -1692,6 +1818,39 @@ func (impl *taskPlannerImpl) publishOrchestrationProgress(ctx context.Context, s
 	impl.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }
 
+// startDecomposeHeartbeat 在任务分解期间周期性发布 decomposing 进度事件
+// （P2：用户可见的存活信号，避免长分解期间界面静止）。返回的 stop 函数
+// 幂等且同步——返回后保证不再有心跳事件发出；ctx 取消时 goroutine 亦退出。
+func (impl *taskPlannerImpl) startDecomposeHeartbeat(ctx context.Context, spiritSessionID string, interval time.Duration) func() {
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	safego.Go(ctx, "planner-decompose-heartbeat", func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		start := time.Now()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				impl.publishOrchestrationProgress(ctx, spiritSessionID, "decomposing", map[string]any{
+					"elapsed_seconds": int(time.Since(start).Seconds()),
+				})
+			}
+		}
+	})
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(stop)
+			<-done
+		})
+	}
+}
+
 // publishPlanCreated is retained as a no-op hook after TaskPlan persist.
 // UI plan/graph boards are published exclusively via PublishV2Board (v2
 // PlanBoard/GraphStage events). The legacy ActivityEventBus plan activity
@@ -1881,4 +2040,91 @@ func mapV1StrategyToV2(s biz.OrchestrationStrategy) biz.PlanStrategy {
 	default:
 		return biz.PlanStrategySequential
 	}
+}
+
+// ---------------------------------------------------------------------------
+// P3：分解调用可靠性辅助——错误分类 + 重试退避。
+// ---------------------------------------------------------------------------
+
+// decomposeConfigError 表示分解前置条件不满足（catalog/http client 缺失、
+// provider/model 未配置等）——重试相同请求无意义，属永久性错误。
+type decomposeConfigError struct {
+	err error
+}
+
+func (e *decomposeConfigError) Error() string {
+	if e == nil || e.err == nil {
+		return "decompose config error"
+	}
+	return e.err.Error()
+}
+
+func (e *decomposeConfigError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+// decomposeFatalMarkers 标记 LLM 返回的永久性错误——重试相同请求不会成功。
+var decomposeFatalMarkers = []string{
+	"invalid_api_key",
+	"unauthorized",
+	"forbidden",
+	"context length exceeded",
+	"context_length_exceeded",
+	"content_filter",
+	"content filter",
+}
+
+// decomposeRetriableMarkers 标记瞬时故障——重试有意义。
+// *StreamIdleError 的 Error() 输出必含 "llm stream idle"。
+var decomposeRetriableMarkers = []string{
+	"llm stream idle",
+}
+
+// isRetriableDecomposeError 对分解调用错误做保险丝分类：
+//   - nil / 父 ctx 取消 / 永久性错误 → 不重试
+//   - 其他（含被包装的 *StreamIdleError、io.EOF、网络抖动、超时）→ 无限重试
+//
+// 调用方必须在返回 Retriable 前检查 ctx 是否已取消——退避期间的穿透由调用方负责。
+func isRetriableDecomposeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// 父 ctx 取消：用户停止 / 外层预算耗尽——永不重试。
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	// 配置级错误（catalog/http 缺失、provider/model 未配置）——重试无意义。
+	var cfgErr *decomposeConfigError
+	if errors.As(err, &cfgErr) {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// 鉴权/上下文溢出/内容过滤——永久性错误。
+	for _, m := range decomposeFatalMarkers {
+		if strings.Contains(msg, m) {
+			return false
+		}
+	}
+	// 显式标记的瞬时故障（如 idle 停滞）——即使被上层 apierror 包装也能识别。
+	for _, m := range decomposeRetriableMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	// 其他默认瞬时故障：重试有意义（网络抖动、EOF 等）。
+	return true
+}
+
+// defaultDecomposeBackoff 是生产默认的指数退避——attempt 从 1 起。
+// 100ms → 200ms → 400ms → 800ms → 1.6s → 3.2s → 6.4s → 10s（封顶）。
+func defaultDecomposeBackoff(attempt int) time.Duration {
+	const cap = 10 * time.Second
+	d := 100 * time.Millisecond * (1 << (attempt - 1))
+	if d > cap {
+		d = cap
+	}
+	return d
 }

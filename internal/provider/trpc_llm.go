@@ -27,6 +27,11 @@ import (
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
 
+// llmBaseURLValidator 缓存 LLM provider base_url 的 SSRF 校验结果（5min TTL）。
+// 同一 provider 在团队/graph 场景每次 agent 构建都会重复校验，实时 DNS 解析
+// 的瞬时抖动曾导致整队失败；缓存后稳态零 DNS，失败/阻断不缓存。
+var llmBaseURLValidator = outboundguard.NewCachedValidator(5 * time.Minute)
+
 // TRPCModelForProviderModel resolves a trpc-agent-go model.Model from the biz
 // catalog and wires it with the project's HTTP transport (rate-limit, retry,
 // circuit-breaker, metrics).
@@ -73,8 +78,13 @@ func trpcModelFromProviderModelConfig(ctx context.Context, cfg ProviderModelConf
 	// preflight has been removed — it added up to 10s latency on the
 	// critical path (Agent build → SetRunStatus). The LLM call itself
 	// validates connectivity; a preflight is redundant.
+	//
+	// 00:52 会话运行时取证：此处原每次构建都实时 DNS 解析 provider 域名，
+	// 一次瞬时解析失败即使整个 team graph build 失败（00:52 复测中两个
+	// 调研团队因此全员失败）。改用成功结果带 TTL 的缓存校验——稳态构建
+	// 不再触达 DNS；私网阻断与解析失败永不缓存，安全语义不变。
 	if baseURL := strings.TrimSpace(cfg.BaseURL); baseURL != "" {
-		if err := outboundguard.ValidateURL(baseURL); err != nil {
+		if err := llmBaseURLValidator.ValidateURL(baseURL); err != nil {
 			return nil, fmt.Errorf("LLM API URL blocked: %w", err)
 		}
 	}

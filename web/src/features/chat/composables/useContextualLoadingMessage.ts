@@ -151,12 +151,15 @@ export function useContextualLoadingMessage(isReplaying: Ref<boolean>) {
       const total = typeof meta.total === 'number' ? meta.total : 0;
       const subTask = typeof meta.sub_task === 'string' ? meta.sub_task : '';
       const agentName = typeof meta.agent_name === 'string' ? meta.agent_name : '';
+      // P3（2026-08-08）：decompose_retry 携带的即将开始的尝试序号。
+      const attempt = typeof meta.attempt === 'number' ? meta.attempt : 0;
       const text = t(config.messageKey, {
         subTaskCount,
         index,
         total,
         subTask,
         agentName,
+        attempt,
       }) as string;
 
       loadingMessage.value = {

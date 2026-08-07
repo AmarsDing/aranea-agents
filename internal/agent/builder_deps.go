@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -135,6 +136,10 @@ type TRPCExtensionDeps struct {
 	// SubAgentService enables subagent spawn/list/get/cancel tools.
 	// Optional: when nil, subagent tools are unavailable.
 	SubAgentService *subagenttool.Service
+	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
+	// client_open_url) executed on the user's desktop companion.
+	// Optional: when nil, client bridge tools are pruned from assembly.
+	ClientBridge *clientbridge.Bridge
 	// A2AEnabled indicates whether the A2A invoker will be injected at runtime.
 	// When false, the call_agent tool is pruned to avoid registering a tool that
 	// always fails with "invoker not configured".

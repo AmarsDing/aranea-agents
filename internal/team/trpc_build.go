@@ -59,7 +59,7 @@ func BuildTeamMemberAgents(
 			memberDeps.CachedEffectiveTools = eff
 			memberDeps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)
 		}
-		memberDeps.SkillVersionHash = chatagent.ComputeSkillVersionHash(fetchEnabledSkillSlugs(ctx, memberDeps))
+		memberDeps.SkillVersionHash = chatagent.ComputeSkillVersionHash(fetchEnabledSkillRefs(ctx, memberDeps))
 		memberDeps.MCPVersionHash = chatagent.ComputeMCPVersionHash(fetchEffectiveMCPServers(ctx, memberDeps, ag.ID))
 
 		var trpcAg trpcagent.Agent
@@ -113,15 +113,15 @@ func fetchEffectiveTools(ctx context.Context, deps chatagent.TRPCBuilderDeps, ag
 	return &eff, nil
 }
 
-func fetchEnabledSkillSlugs(ctx context.Context, deps chatagent.TRPCBuilderDeps) []string {
+func fetchEnabledSkillRefs(ctx context.Context, deps chatagent.TRPCBuilderDeps) []biz.SkillEnabledRef {
 	if deps.SkillUC == nil {
 		return nil
 	}
-	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
+	refs, err := deps.SkillUC.ListEnabledPublishedSkillRefs(ctx)
 	if err != nil {
 		return nil
 	}
-	return slugs
+	return refs
 }
 
 func fetchEffectiveMCPServers(ctx context.Context, deps chatagent.TRPCBuilderDeps, agentID string) []biz.EffectiveMCPServer {

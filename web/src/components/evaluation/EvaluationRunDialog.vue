@@ -34,6 +34,11 @@
           hint="AgentEvaluator 重复运行次数（1–10）"
           @update:model-value="$emit('update:numRuns', Number($event) || 1)"
         />
+        <q-toggle
+          :model-value="userSimulation"
+          :label="$t('evaluationPage.userSimulationLabel')"
+          @update:model-value="$emit('update:userSimulation', Boolean($event))"
+        />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
@@ -57,6 +62,7 @@ defineProps<{
   agentId: string;
   metrics: string;
   numRuns: number;
+  userSimulation: boolean;
   loading: boolean;
   agentOptions: { label: string; value: string }[];
 }>();
@@ -65,6 +71,7 @@ defineEmits<{
   'update:agentId': [value: string];
   'update:metrics': [value: string];
   'update:numRuns': [value: number];
+  'update:userSimulation': [value: boolean];
   submit: [];
 }>();
 </script>

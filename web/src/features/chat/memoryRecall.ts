@@ -8,7 +8,8 @@
  *
  * The notice step (Kind=notice, NoticeType=memory_recalled) is hidden from the
  * chat stream (see noticeFilter.ts); hits are indexed by turn ID in
- * activityV2Store and rendered by MemoryRecallChips below the turn.
+ * activityV2Store and rendered by MemoryRecallChips at the top of the turn
+ * (recall happens at BeforeModel — before thinking/reply steps).
  */
 
 /** NoticeType emitted by the backend memory inject hook. */

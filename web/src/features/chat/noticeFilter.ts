@@ -15,8 +15,8 @@ export const SYSTEM_NOTICE_TYPES: ReadonlySet<string> = new Set([
   'metrics_updated',
   'token_usage',
   // R4 recall transparency: the notice Content is a machine-readable JSON
-  // payload ({"hits":[...]}), rendered by MemoryRecallChips below the turn —
-  // never as a raw NoticeBlock.
+  // payload ({"hits":[...]}), rendered by MemoryRecallChips at the top of the
+  // turn — never as a raw NoticeBlock.
   'memory_recalled',
 ]);
 

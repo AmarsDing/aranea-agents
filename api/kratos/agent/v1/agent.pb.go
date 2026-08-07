@@ -3441,16 +3441,19 @@ func (x *GetAgentEvolutionSuggestionsRequest) GetStatus() string {
 }
 
 type EvolutionSuggestion struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	Title         string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	Content       string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
-	Status        string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
-	DiffPreview   string                 `protobuf:"bytes,7,opt,name=diff_preview,json=diffPreview,proto3" json:"diff_preview,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	AppliedAt     string                 `protobuf:"bytes,9,opt,name=applied_at,json=appliedAt,proto3" json:"applied_at,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	AgentId     string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Type        string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Title       string                 `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
+	Content     string                 `protobuf:"bytes,5,opt,name=content,proto3" json:"content,omitempty"`
+	Status      string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	DiffPreview string                 `protobuf:"bytes,7,opt,name=diff_preview,json=diffPreview,proto3" json:"diff_preview,omitempty"`
+	CreatedAt   string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	AppliedAt   string                 `protobuf:"bytes,9,opt,name=applied_at,json=appliedAt,proto3" json:"applied_at,omitempty"`
+	// applicable 为 true 时前端才显示「应用」按钮：仅 persona/prompt
+	// 且 metadata 携带 apply_payload 的建议可应用；通知类建议为 false。
+	Applicable    bool `protobuf:"varint,10,opt,name=applicable,proto3" json:"applicable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3546,6 +3549,13 @@ func (x *EvolutionSuggestion) GetAppliedAt() string {
 		return x.AppliedAt
 	}
 	return ""
+}
+
+func (x *EvolutionSuggestion) GetApplicable() bool {
+	if x != nil {
+		return x.Applicable
+	}
+	return false
 }
 
 type ListEvolutionSuggestionsResponse struct {
@@ -4331,7 +4341,7 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x18retrieval_quality_series\x18\b \x03(\v2 .kratos.agent.v1.MetricDataPointR\x16retrievalQualitySeries\"^\n" +
 	"#GetAgentEvolutionSuggestionsRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"\xfd\x01\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\x9d\x02\n" +
 	"\x13EvolutionSuggestion\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x12\n" +
@@ -4343,7 +4353,11 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"applied_at\x18\t \x01(\tR\tappliedAt\"^\n" +
+	"applied_at\x18\t \x01(\tR\tappliedAt\x12\x1e\n" +
+	"\n" +
+	"applicable\x18\n" +
+	" \x01(\bR\n" +
+	"applicable\"^\n" +
 	" ListEvolutionSuggestionsResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.kratos.agent.v1.EvolutionSuggestionR\x05items\"m\n" +
 	"\x1fApplyEvolutionSuggestionRequest\x12\x1f\n" +

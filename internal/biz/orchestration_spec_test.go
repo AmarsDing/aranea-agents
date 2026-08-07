@@ -232,3 +232,96 @@ func TestOrchestrationSpecGraphSourceDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestOrchestrationSpecDeliverableFieldsRoundTrip guards the deliverable
+// channel fields against silent drops by the v2 canonical serialization
+// (2026-08-07 根因：OrchestrationSpec 缺字段导致 materializeAndBind 重序列化
+// 时丢弃 enable_state_deliverable/deliverable_contract/verification_gates，
+// DAG 团队运行期无 set_deliverable 工具、闸门判失败、下游节点永不派发）。
+func TestOrchestrationSpecDeliverableFieldsRoundTrip(t *testing.T) {
+	raw := `{"version":2,"mode":"coordinator","runtime_engine":"graph","team_graph_runtime":true,` +
+		`"members":[{"agent_id":"a1","role":"synthesizer","enabled":true,"sort_order":1},{"agent_id":"a2","role":"worker","enabled":true,"sort_order":2}],` +
+		`"enable_state_deliverable":true,` +
+		`"deliverable_contract":{"entries":[{"topic":"root_cause","description":"根因","required":true,"required_keys":["cause"]}]},` +
+		`"verification_gates":[{"gate_type":"tool_assertion","description":"d","max_retries":3,"tool":"skill_list","assert_path":"enabled","assert_equals":"true"}]` +
+		`}`
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !spec.EnableStateDeliverable {
+		t.Fatal("EnableStateDeliverable not parsed from definition JSON")
+	}
+	if spec.DeliverableContract == nil || len(spec.DeliverableContract.Entries) != 1 {
+		t.Fatalf("DeliverableContract not parsed: %+v", spec.DeliverableContract)
+	}
+	if len(spec.VerificationGates) != 1 {
+		t.Fatalf("VerificationGates not parsed: %+v", spec.VerificationGates)
+	}
+	out, err := OrchestrationSpecToDefinitionJSON(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["enable_state_deliverable"] != true {
+		t.Fatalf("enable_state_deliverable lost on canonical serialize: %v", body["enable_state_deliverable"])
+	}
+	contract, ok := body["deliverable_contract"].(map[string]any)
+	if !ok {
+		t.Fatalf("deliverable_contract lost on canonical serialize: %v", body["deliverable_contract"])
+	}
+	entries, ok := contract["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("deliverable_contract.entries lost: %v", contract["entries"])
+	}
+	gates, ok := body["verification_gates"].([]any)
+	if !ok || len(gates) != 1 {
+		t.Fatalf("verification_gates lost on canonical serialize: %v", body["verification_gates"])
+	}
+}
+
+// TestOrchestrationSpecDeliverableFieldsOmitWhenEmpty ensures the new fields
+// stay absent (omitempty) when unset, so legacy JSON diffs stay clean.
+func TestOrchestrationSpecDeliverableFieldsOmitWhenEmpty(t *testing.T) {
+	out, err := OrchestrationSpecToDefinitionJSON(OrchestrationSpec{Mode: "sequential"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"enable_state_deliverable", "deliverable_contract", "verification_gates"} {
+		if _, ok := body[k]; ok {
+			t.Fatalf("key %q must be omitted when unset, got %v", k, body[k])
+		}
+	}
+}
+
+// TestOrchestrationSpecEmptyContractNormalizedNil mirrors ParseDefinition's
+// empty-entries → nil normalization so canonical JSON never carries
+// deliverable_contract:{"entries":[]}.
+func TestOrchestrationSpecEmptyContractNormalizedNil(t *testing.T) {
+	spec := OrchestrationSpec{
+		Mode:                   "sequential",
+		DeliverableContract:    &MemberDeliverableContract{Entries: []MemberDeliverableEntry{}},
+		EnableStateDeliverable: true,
+	}
+	out, err := OrchestrationSpecToDefinitionJSON(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal([]byte(out), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["deliverable_contract"]; ok {
+		t.Fatal("empty deliverable_contract must be normalized to nil (omitted)")
+	}
+	if body["enable_state_deliverable"] != true {
+		t.Fatal("enable_state_deliverable must survive normalization")
+	}
+}

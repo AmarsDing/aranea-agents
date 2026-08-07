@@ -56,14 +56,17 @@ func ComputeToolVersionHash(eff *biz.AgentEffectiveTools) string {
 	return ComputeVersionHash(entries)
 }
 
-// ComputeSkillVersionHash produces a content hash from a list of enabled skill slugs.
-func ComputeSkillVersionHash(slugs []string) string {
-	if len(slugs) == 0 {
+// ComputeSkillVersionHash produces a content hash from enabled skill refs.
+// The ref carries the skill's content version marker (platform_skill.updated_at),
+// so the hash changes exactly when skill content changes and stays stable
+// otherwise — no spurious rebuilds, no stale skill content.
+func ComputeSkillVersionHash(refs []biz.SkillEnabledRef) string {
+	if len(refs) == 0 {
 		return ""
 	}
-	entries := make([]VersionHashEntry, len(slugs))
-	for i, slug := range slugs {
-		entries[i] = VersionHashEntry{ID: slug}
+	entries := make([]VersionHashEntry, len(refs))
+	for i, ref := range refs {
+		entries[i] = VersionHashEntry{ID: ref.Slug, UpdatedAt: ref.UpdatedAt}
 	}
 	return ComputeVersionHash(entries)
 }

@@ -116,6 +116,11 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "subagents_list", displayName: "列出子 Agent", description: "列出从当前会话创建的后台子 Agent。", category: "orchestration", source: "builtin", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{}}`},
 	{key: "subagents_get", displayName: "获取子 Agent", description: "获取一个后台子 Agent 运行的最新状态和结果。", category: "orchestration", source: "builtin", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"id":{"type":"string","description":"Subagent run id returned by spawn."}},"required":["id"]}`},
 	{key: "subagents_cancel", displayName: "取消子 Agent", description: "取消一个后台子 Agent 运行。这是 best-effort 操作。", category: "orchestration", source: "builtin", riskLevel: "medium", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"id":{"type":"string","description":"Subagent run id returned by spawn."}},"required":["id"]}`},
+	// Client tool bridge (74-voice-companion §6): execution happens on the
+	// user's desktop companion via WS routing, never on the server. Opt-in;
+	// confirmation required (session/persisted grant 可免确认).
+	{key: "client_open_app", displayName: "打开桌面应用", description: "在用户的桌面客户端上打开应用（按客户端白名单解析目标）。需要桌面客户端在线。", category: "client", riskLevel: "medium", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"target":{"type":"string","description":"应用名或白名单别名，如 wechat、chrome"}},"required":["target"]}`, registryName: "client"},
+	{key: "client_open_url", displayName: "打开网址", description: "在用户的桌面客户端默认浏览器中打开 http/https 网址。需要桌面客户端在线。", category: "client", riskLevel: "low", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"url":{"type":"string","description":"要打开的 http/https URL"}},"required":["url"]}`, registryName: "client"},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {

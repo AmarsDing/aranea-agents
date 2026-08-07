@@ -121,6 +121,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 
 	cfg.OutboundRouter = deps.OutboundRouter
 	cfg.SubAgentService = deps.SubAgentService
+	cfg.ClientBridgeSvc = deps.ClientBridge
 
 	lg.Info("工具构建：SubAgentService 检查",
 		loggateway.StepID("agent.subagent_check"),
@@ -440,61 +441,75 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 	out := make([]tooltrpc.MCPServerConfig, 0, len(servers))
 	platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
 	for _, s := range servers {
-		key := strings.TrimSpace(s.ServerKey)
-		if key == "" {
-			key = strings.TrimSpace(s.ID)
-		}
-		cfgJSON := strings.TrimSpace(s.ConfigJSON)
-		if cfgJSON == "" {
+		cfg, ok := mcpToolServerConfig(ctx, deps, s, platformAllowAdHoc, lg)
+		if !ok {
 			continue
-		}
-		if deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
-			if dec, decErr := deps.MCPTooling.MCP().PrepareConfigJSONForRuntime(ctx, cfgJSON); decErr != nil {
-				lg.Warn("MCP server config decrypt failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(decErr))
-				continue
-			} else if strings.TrimSpace(dec) != "" {
-				cfgJSON = dec
-			}
-		}
-		sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
-		if err != nil {
-			lg.Warn("MCP server config parse failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
-			continue
-		}
-		cfg := tooltrpc.MCPServerConfig{
-			Name:                   key,
-			Transport:              string(sc.Transport),
-			ServerURL:              sc.URL,
-			Command:                sc.Command,
-			Args:                   sc.Args,
-			Env:                    sc.Env,
-			Headers:                applyMCPAuthHeaders(ctx, key, sc, deps),
-			TimeoutSec:             normalizeMCPServerTimeout(sc.TimeoutSec),
-			ToolPrefix:             sc.ToolPrefix,
-			SessionReconnectMax:    sc.SessionReconnectMax,
-			AllowAdHocHTTP:         tools.ProductionAllowAdHocHTTP(sc.AllowAdHocHTTP, platformAllowAdHoc),
-			AdHocTimeoutSec:        normalizeMCPServerTimeout(sc.AdHocTimeoutSec),
-			RequireUserCredentials: sc.RequireUserCredentials,
-		}
-		if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
-			mcpUC := deps.MCPTooling.MCP()
-			serverKey := key
-			staticHeaders := cfg.Headers
-			cfg.HeaderInjector = func(callCtx context.Context) (map[string]string, error) {
-				uid := sessionUserID(callCtx)
-				if uid == "" {
-					return nil, fmt.Errorf("MCP server %q requires user credentials but invocation has no user", serverKey)
-				}
-				bizSC := biz.MCPServerConfig{
-					Headers:                staticHeaders,
-					RequireUserCredentials: true,
-				}
-				return mcpUC.ResolveUserAuthHeaders(callCtx, serverKey, uid, bizSC)
-			}
 		}
 		out = append(out, cfg)
 	}
 	return out, nil
+}
+
+// mcpToolServerConfig converts one effective MCP server row into a runtime
+// toolset config. It is the single conversion path shared by agent builds
+// (resolveMCPServers) and the startup connection pre-warm
+// (PrewarmMCPToolSets) so both produce identical pool keys. Returns ok=false
+// when the row is unusable (empty config, decrypt failure, parse failure) —
+// the caller skips the row and keeps going.
+func mcpToolServerConfig(ctx context.Context, deps TRPCBuilderDeps, s biz.EffectiveMCPServer, platformAllowAdHoc bool, lg loggateway.Logger) (tooltrpc.MCPServerConfig, bool) {
+	key := strings.TrimSpace(s.ServerKey)
+	if key == "" {
+		key = strings.TrimSpace(s.ID)
+	}
+	cfgJSON := strings.TrimSpace(s.ConfigJSON)
+	if cfgJSON == "" {
+		return tooltrpc.MCPServerConfig{}, false
+	}
+	if deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
+		if dec, decErr := deps.MCPTooling.MCP().PrepareConfigJSONForRuntime(ctx, cfgJSON); decErr != nil {
+			lg.Warn("MCP server config decrypt failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(decErr))
+			return tooltrpc.MCPServerConfig{}, false
+		} else if strings.TrimSpace(dec) != "" {
+			cfgJSON = dec
+		}
+	}
+	sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
+	if err != nil {
+		lg.Warn("MCP server config parse failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
+		return tooltrpc.MCPServerConfig{}, false
+	}
+	cfg := tooltrpc.MCPServerConfig{
+		Name:                   key,
+		Transport:              string(sc.Transport),
+		ServerURL:              sc.URL,
+		Command:                sc.Command,
+		Args:                   sc.Args,
+		Env:                    sc.Env,
+		Headers:                applyMCPAuthHeaders(ctx, key, sc, deps),
+		TimeoutSec:             normalizeMCPServerTimeout(sc.TimeoutSec),
+		ToolPrefix:             sc.ToolPrefix,
+		SessionReconnectMax:    sc.SessionReconnectMax,
+		AllowAdHocHTTP:         tools.ProductionAllowAdHocHTTP(sc.AllowAdHocHTTP, platformAllowAdHoc),
+		AdHocTimeoutSec:        normalizeMCPServerTimeout(sc.AdHocTimeoutSec),
+		RequireUserCredentials: sc.RequireUserCredentials,
+	}
+	if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
+		mcpUC := deps.MCPTooling.MCP()
+		serverKey := key
+		staticHeaders := cfg.Headers
+		cfg.HeaderInjector = func(callCtx context.Context) (map[string]string, error) {
+			uid := sessionUserID(callCtx)
+			if uid == "" {
+				return nil, fmt.Errorf("MCP server %q requires user credentials but invocation has no user", serverKey)
+			}
+			bizSC := biz.MCPServerConfig{
+				Headers:                staticHeaders,
+				RequireUserCredentials: true,
+			}
+			return mcpUC.ResolveUserAuthHeaders(callCtx, serverKey, uid, bizSC)
+		}
+	}
+	return cfg, true
 }
 
 func resolveMCPBrokerConfig(ctx context.Context, deps TRPCBuilderDeps, agentID string) (*tooltrpc.MCPBrokerConfig, error) {

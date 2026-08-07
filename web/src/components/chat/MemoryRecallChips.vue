@@ -1,17 +1,20 @@
 <!-- web/src/components/chat/MemoryRecallChips.vue
-  R4 召回透明度：在 turn 底部展示本轮注入模型的记忆条目（L1-L4）。
+  R4 召回透明度：在 turn 顶部（steps 之前）展示本轮注入模型的记忆条目（L1-L4）。
   数据源：activityV2Store.recallHitsByTurn（memory_recalled notice step 解析索引）。
   原始 notice step 已被 noticeFilter 隐藏，本组件是其唯一的用户可见渲染。
+  2026-08-08 修正位置：从 turn 底部移至顶部——召回发生在 BeforeModel（turn 最
+  开始），UI 顺序必须与实际执行顺序一致（召回 → 思考 → 行动 → 回复）。
 -->
 <template>
   <div v-if="hits.length > 0" class="memory-recall-chips">
-    <div class="memory-recall-chips__header">
+    <div class="memory-recall-chips__header" role="button" tabindex="0" @click="onToggle" @keydown.enter="onToggle">
       <q-icon name="psychology" size="14px" class="memory-recall-chips__icon" />
       <span class="memory-recall-chips__title">
         {{ t('chat.memoryRecall.title', { n: hits.length }) }}
       </span>
+      <span class="memory-recall-chips__toggle" aria-hidden="true">{{ collapsed ? '▶' : '▼' }}</span>
     </div>
-    <div class="memory-recall-chips__list">
+    <div v-if="!collapsed" class="memory-recall-chips__list">
       <div v-for="(hit, i) in hits" :key="i" class="memory-recall-chips__chip">
         <span class="memory-recall-chips__layer" :class="`memory-recall-chips__layer--${layerKey(hit.layer)}`">
           {{ hit.layer }}
@@ -35,6 +38,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
+import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 
 // Safe i18n wrapper — falls back to key when the i18n plugin isn't installed
 // (e.g., during unit tests without app.use(i18n)). Project pattern: see
@@ -52,6 +56,14 @@ const { t } = useSafeI18n();
 const store = useActivityQueries();
 
 const hits = computed(() => store.getTurnRecallHits(props.turnId));
+
+// 默认收起：召回详情为辅助信息，只保留标题行（条数），点击展开。
+// 用户选择按 turn 持久化（sessionStorage），与 ThinkingBlock 同一套折叠机制。
+const { collapsed, toggle } = useCollapseState(`recall:${props.turnId}`, true);
+
+function onToggle() {
+  toggle();
+}
 
 function layerKey(layer: string): string {
   const k = (layer || '').trim().toLowerCase();

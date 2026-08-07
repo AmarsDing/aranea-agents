@@ -67,6 +67,7 @@ import (
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/pkg/loggateway"
@@ -272,7 +273,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	}
 	circuitBreakerStateRepo := data.NewCircuitBreakerStateRepo(dataData)
 	nodeCircuitBreakerRegistry := biz.ProvideNodeCircuitBreakerRegistry(circuitBreakerStateRepo, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, loggatewayLogger)
+	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, loggatewayLogger)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
 	topologyEvolver := provideTopologyEvolver(llmProviderModelUsecase, v2Bus, loggatewayLogger)
 	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, topologyEvolver, loggatewayLogger)
@@ -384,7 +386,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, monitorBus, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
 	agentMatcherPort := agent.NewAgentMatcher(agentRepository, loggatewayLogger)
-	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, loggatewayLogger)
+	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
 	skillEvolutionUsecase := provideSkillEvolutionUsecase(unifiedEvolutionRepo, patternReadWriter, agentRepository, skillAutoCreator, skillRegistrationPort, skillEvolutionOrchestrator, loggatewayLogger)
 	skillInvocationStatsReader := data.NewSkillInvocationStatsRepo(dataData)
 	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, skillRepo, teamRepo, teamRepo, usageRepo, memoryAdminUsecase, sessionRepo, toolRepo, loggatewayLogger)
@@ -457,7 +459,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsTurnExecutor := provideWSTurnExecutor(chatService, loggatewayLogger)
 	sessionAuthorizer := server.NewSessionAuthorizer(sessionRepo, loggatewayLogger)
 	taskResumer := provideTaskResumer(chatService)
-	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer)
+	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer, bridge)
 	wsConnectionCounter := provideWSConnectionCounter(wsServer)
 	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
 	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender, runnerCompletionRepo)
@@ -578,9 +580,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	v2RecoveryRepo := data.NewV2RecoveryRepo(dataData, loggatewayLogger)
 	sessionStatusGuard := service.NewSessionStatusGuard(sessionUsecase, teamUsecase, taskOrchestratorPort, v2Bus, v2RecoveryRepo, chatService, loggatewayLogger)
 	buildCache := provideGlobalBuildCache()
-	lifecycleManager := provideLifecycleManager(buildCache, loggatewayLogger)
+	mcpToolSetPool := provideMCPToolSetPool()
+	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, monitorBus, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, loggatewayLogger)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
@@ -635,7 +638,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	selfCheckJob := provideSelfCheckJob(selfCheckScheduler, loggatewayLogger)
 	skillIntelligenceWorker := provideSkillIntelligenceWorker(skillIntelligenceUsecase, loggatewayLogger)
 	curatorWorker := provideCuratorWorker(skillIntelligenceUsecase, skillGateVerifier, skillRepo, loggatewayLogger)
-	evolutionOrchestratorWorker := provideEvolutionOrchestratorWorker(skillEvolutionOrchestrator, agentRepository, skillRepo, loggatewayLogger)
+	evolutionDrafter := provideEvolutionDrafter(unifiedEvolutionRepo, agentRepository, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
+	evolutionOrchestratorWorker := provideEvolutionOrchestratorWorker(skillEvolutionOrchestrator, agentRepository, skillRepo, evolutionDrafter, loggatewayLogger)
 	selfImprovementObserveUsecase := provideSelfImprovementObserveUsecase(skillEvolutionOrchestrator, unifiedEvolutionRepo, selfImprovementRunRepo, selfImprovementRunRepo, loggatewayLogger)
 	selfImproveObserveWorker := provideSelfImprovementObserveWorker(selfImprovement, selfImprovementObserveUsecase, loggatewayLogger)
 	siAnalystStage := provideSIAnalystStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
@@ -848,14 +852,23 @@ func provideGlobalBuildCache() *agent.BuildCache {
 	return agent.GetGlobalBuildCache()
 }
 
+// provideMCPToolSetPool exposes the process-level MCP ToolSet pool singleton
+// so it can be registered with the LifecycleManager for orderly shutdown.
+func provideMCPToolSetPool() *tools.MCPToolSetPool {
+	return tools.GetGlobalMCPToolSetPool()
+}
+
 // provideLifecycleManager builds the process-level LifecycleManager and
 // registers the global build cache for LIFO shutdown (A3). Additional
 // process-level resources can be registered here as they are migrated to
 // the lifecycle abstraction.
-func provideLifecycleManager(cache *agent.BuildCache, lg loggateway.Logger) *lifecycle.LifecycleManager {
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
+	cache.SetMonitorBus(monitorBus)
+	mcpPool.SetLogger(lg)
 	mgr := lifecycle.NewLifecycleManager(lg)
 	mgr.Register("global-build-cache", cache)
+	mgr.Register("mcp-toolset-pool", mcpPool)
 	return mgr
 }
 
@@ -1598,6 +1611,7 @@ func provideGraphBuildDeps(
 	subAgentSvc *subagent.Service,
 	a2aUC *biz.A2AUsecase,
 	nodeBreakers *biz.NodeCircuitBreakerRegistry,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) graph.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
@@ -1646,6 +1660,7 @@ func provideGraphBuildDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
+			ClientBridge:    clientBridge,
 
 			LG: lg,
 		},
@@ -1679,6 +1694,7 @@ func provideTRPCBuilderDeps(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
 	a2aUC *biz.A2AUsecase,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) *agent.TRPCBuilderDeps {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -1724,6 +1740,7 @@ func provideTRPCBuilderDeps(
 			OutboundRouter:  outboundRouter,
 			SubAgentService: subAgentSvc,
 			A2AEnabled:      a2aUC != nil,
+			ClientBridge:    clientBridge,
 
 			LG: lg,
 		},
@@ -2821,6 +2838,21 @@ func provideLearningLoopUsecase(
 	return uc
 }
 
+// provideEvolutionDrafter wires the EVO-20 LLM draft generator: a post-pass of
+// EvolutionOrchestratorWorker that turns notification-only L3 persona/prompt
+// suggestions into applicable drafts (apply_payload + diff_preview).
+// biz.AgentRepository satisfies both EvolutionDraftAgentReader and
+// AgentEvolutionSettingsReader via its composite interfaces.
+func provideEvolutionDrafter(
+	unifiedRepo *data.UnifiedEvolutionRepo,
+	agents biz.AgentRepository,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	lg loggateway.Logger,
+) *biz.EvolutionDrafter {
+	return biz.NewEvolutionDrafter(unifiedRepo, agents, agents, caller, sys, lg)
+}
+
 // provideEvolutionOrchestratorWorker provides the single unified entry point
 // for automatic evolution triggering (A1), superseding the trigger half of
 // the legacy per-pipeline scanners and CuratorWorker.
@@ -2828,12 +2860,13 @@ func provideEvolutionOrchestratorWorker(
 	orch *biz.SkillEvolutionOrchestrator,
 	agents biz.AgentRepository,
 	skills biz.SkillQueryReader,
+	drafter *biz.EvolutionDrafter,
 	lg loggateway.Logger,
 ) *jobs.EvolutionOrchestratorWorker {
 	if strings.TrimSpace(os.Getenv("EVOLUTION_ORCHESTRATOR_DISABLED")) == "1" {
 		return nil
 	}
-	return jobs.NewEvolutionOrchestratorWorker(0, orch, agents, skills, lg)
+	return jobs.NewEvolutionOrchestratorWorker(0, orch, agents, skills, drafter, lg)
 }
 
 func provideSelfCheckScheduler(
@@ -3241,11 +3274,13 @@ func provideWSServer(
 	sessionAuth server.SessionAuthorizer,
 	outbox biz.EventDeliveryOutboxRepo,
 	resumer server.TaskResumer,
+	clientBridge *clientbridge.Bridge,
 ) *server.WSServer {
 	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
 	if srv != nil {
 		srv.SetEventOutbox(outbox)
 		srv.SetTaskResumer(resumer)
+		srv.SetClientToolBridge(clientBridge)
 	}
 	return srv
 }
@@ -3544,6 +3579,7 @@ func provideTaskOrchestrator(
 	evolutionUC *biz.EvolutionUsecase,
 	eventBus biz.EventBus,
 	nl2graph graph3.NL2GraphConverter,
+	clientBridge *clientbridge.Bridge,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
@@ -3561,7 +3597,8 @@ func provideTaskOrchestrator(
 			ToolUC: toolUC,
 		},
 		TRPCExtensionDeps: agent.TRPCExtensionDeps{
-			LG: lg,
+			ClientBridge: clientBridge,
+			LG:           lg,
 		},
 	}
 	compiler := agent.NewDAGToGraphCompiler(lg)

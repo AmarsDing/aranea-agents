@@ -130,7 +130,7 @@
         </div>
       </q-tab-panel>
 
-      <!-- G4 3D 知识图谱（V12.7）：左 3D 力导向图 + 右操作台 -->
+      <!-- G5 深空知识图谱（V12.8）：左自研 3D 画布 + 右 HUD 操作台 -->
       <q-tab-panel name="graph" class="q-pa-none">
         <knowledge-graph-3-d
           :collections="collections"
@@ -152,6 +152,10 @@
           :selected-node="graphSelectedNode"
           :focus-signal="graphFocusSignal"
           :scope-nodes="graphScopeNodes"
+          :auto-rotate="graphAutoRotate"
+          :show-labels="graphShowLabels"
+          :neighborhood-hops="graphNeighborhoodHops"
+          :neighborhood-root-name="graphNeighborhoodRootName"
           @select-collection="graph.selectCollection"
           @toggle-link-type="graph.toggleLinkType"
           @set-path-prefix="graph.setPathPrefix"
@@ -161,6 +165,10 @@
           @focus-node="graph.focusNode"
           @open-in-explorer="onGraphOpenInExplorer"
           @scope-lazy-load="graph.onScopeLazyLoad"
+          @update:auto-rotate="(v: boolean) => (graphAutoRotate = v)"
+          @update:show-labels="(v: boolean) => (graphShowLabels = v)"
+          @focus-neighborhood="onGraphFocusNeighborhood"
+          @reset-global-view="graph.resetGlobalView"
         />
       </q-tab-panel>
 
@@ -372,7 +380,7 @@ function onExplorerNavigate(payload: { docId: string; relPath: string }) {
   void navigateToDocument(payload.docId, payload.relPath);
 }
 
-// ---------- G4 3D 知识图谱（V12.7） ----------
+// ---------- G5 深空知识图谱（V12.8） ----------
 const graph = useKnowledgeGraph({ collections, friendlyError });
 
 const {
@@ -385,7 +393,9 @@ const {
   error: graphError,
   generation: graphGeneration,
   showIsolated: graphShowIsolated,
-  renderGraph: graphRenderGraph,
+  viewGraph: graphViewGraph,
+  neighborhoodHops: graphNeighborhoodHops,
+  neighborhoodRootId: graphNeighborhoodRootId,
   nodeQuery: graphNodeQuery,
   nodeList: graphNodeList,
   selectedNodeId: graphSelectedNodeId,
@@ -394,10 +404,29 @@ const {
   scopeNodes: graphScopeNodes,
 } = graph;
 
-// 渲染裁剪派生（renderGraph 为 computed，解构后模板自动解包）。
-const graphRenderNodes = computed(() => graphRenderGraph.value.nodes);
-const graphRenderEdges = computed(() => graphRenderGraph.value.edges);
-const graphHiddenIsolated = computed(() => graphRenderGraph.value.hiddenIsolated);
+// 渲染视图派生（viewGraph = 孤立裁剪 + 邻域裁剪；computed 解构后模板自动解包）。
+const graphRenderNodes = computed(() => graphViewGraph.value.nodes);
+const graphRenderEdges = computed(() => graphViewGraph.value.edges);
+const graphHiddenIsolated = computed(() => graphViewGraph.value.hiddenIsolated);
+
+// G5-E HUD 开关（纯 UI 状态，页面持有）。
+const graphAutoRotate = ref(false);
+const graphShowLabels = ref(true);
+
+/** 局部图谱根节点名（统计行提示；根已被删时回退 id）。 */
+const graphNeighborhoodRootName = computed(() => {
+  const id = graphNeighborhoodRootId.value;
+  return graphAllNodes.value.find((n) => n.doc_id === id)?.name ?? id;
+});
+
+/** 聚焦邻域：邻域模式下根锁定（改跳数不换根），否则以当前选中为根。 */
+function onGraphFocusNeighborhood(hops: number) {
+  const root =
+    graphNeighborhoodHops.value > 0 && graphNeighborhoodRootId.value
+      ? graphNeighborhoodRootId.value
+      : graphSelectedNodeId.value;
+  if (root) graph.focusNeighborhood(root, hops);
+}
 
 /** 「在浏览中打开」：切浏览 tab 并定位选中文档（跨库时先切库，explorer 内部 watch flush:'sync' 立即复位 prefix）。 */
 function onGraphOpenInExplorer(payload: { docId: string; relPath: string }) {

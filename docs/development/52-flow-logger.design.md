@@ -94,6 +94,8 @@ const (
     TraceDomainSystem    TraceDomain = "system"
     TraceDomainSkill     TraceDomain = "skill"
     TraceDomainA2A       TraceDomain = "a2a"
+    TraceDomainVoice      TraceDomain = "voice"
+    TraceDomainClientTool TraceDomain = "client_tool"
 )
 
 type TraceContext struct {
@@ -472,7 +474,7 @@ internal/cronrunner/jobs/
 | `system.ws.*` | warn | WebSocket 连接/读写/解析 |
 | `system.cron.*` | warn/error | 定时任务死信/重试/panic/跳过 |
 | `system.telemetry.*` | info/warn/error | OTel 初始化 |
-| `system.agent.*` | info/warn/error | Agent 构建/缓存/DB 解析 |
+| `system.agent.*` | info/warn/error | Agent 构建（`build`：start/done/error 冷构建可视）/缓存（`cache_hit`/`cache_miss`）/DB 解析 |
 | `system.provider.*` | info/error | 模型目录与预检 |
 | `system.plugin.*` / `system.hook.*` | warn | 插件种子与 Hook 重载 |
 | `system.auto_memory.*` | warn/info | 自动记忆提取 |
@@ -608,6 +610,14 @@ internal/cronrunner/jobs/
 | `voice.barge_in` | ok / — | 语音打断 |
 | `voice.provider.fallback` | warn | 语音服务降级 |
 | `voice.error` | error | 语音链路错误 |
+
+#### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `client_tool.invoke` | info / — | 调用客户端工具 |
+| `client_tool.result` | ok / error | 客户端工具执行完成 |
+| `client_tool.timeout` | error | 客户端工具执行超时 |
 
 #### 别名（v1 → v2，兼容 1 版本）
 

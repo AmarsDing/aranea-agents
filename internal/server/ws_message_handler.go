@@ -98,6 +98,12 @@ func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 
 	case "enqueue_message":
 		s.handleEnqueueMessage(wc, up)
+
+	case "register_capabilities":
+		s.handleRegisterCapabilities(wc, up)
+
+	case "client_tool.result":
+		s.handleClientToolResult(wc, up)
 	}
 }
 

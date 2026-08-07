@@ -318,6 +318,13 @@ func (p *ActivityProjector) EmitConfirmRequest(ctx context.Context, params biz.A
 		step.ToolArgs = sanitizeRawJSON([]byte(params.ToolArguments))
 		step.Content = params.Content
 		step.Status = biz.StepStatusToolBlocked
+		// Team mode: attribute the confirm step to the member agent that
+		// triggered it (hook passes its own agent key); otherwise the step
+		// would inherit the anchor key from the base meta and the frontend
+		// could not attach it to the member's activity panel.
+		if k := strings.TrimSpace(params.AuthorAgentKey); k != "" {
+			step.AuthorAgentKey = k
+		}
 		step.Version++
 	}
 	p.mu.Unlock()

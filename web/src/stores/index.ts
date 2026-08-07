@@ -49,3 +49,4 @@ export { useModelCatalogStore } from './model-catalog';
 export { useSkillIntelligenceStore } from './skillIntelligence';
 export { useSkillEvolutionStore } from './skillEvolution';
 export { useSelfImprovementStore } from './selfImprovement';
+export { useCompanionStore } from './companion';

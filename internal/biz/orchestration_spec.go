@@ -41,6 +41,15 @@ type OrchestrationSpec struct {
 	SynthesizerAgentID string          `json:"synthesizer_agent_id,omitempty"`
 	CriticLoop         *CriticLoopSpec `json:"critic_loop,omitempty"`
 	EnableCheckpoint   bool            `json:"enable_checkpoint,omitempty"`
+	// EnableStateDeliverable / DeliverableContract / VerificationGates 是
+	// Spirit 装配链路写入 definition_json 的交付物通道字段（C1/C3/F5/F9）。
+	// 2026-08-07 根因：本结构此前缺少这三个字段，materializeAndBind 经
+	// OrchestrationSpecToDefinitionJSON 重序列化时将其静默丢弃，导致 DAG
+	// 团队运行期无 set_deliverable 工具、真实交付物闸门判失败、下游节点
+	// 永不派发。字段必须随 spec 往返保留。
+	EnableStateDeliverable bool                       `json:"enable_state_deliverable,omitempty"`
+	DeliverableContract    *MemberDeliverableContract `json:"deliverable_contract,omitempty"`
+	VerificationGates      []VerificationGate         `json:"verification_gates,omitempty"`
 }
 
 // GraphSource returns the effective definition graph source (default preset).
@@ -181,6 +190,11 @@ func NormalizeOrchestrationSpec(spec *OrchestrationSpec) {
 	}
 	if spec.TimeoutSeconds <= 0 {
 		spec.TimeoutSeconds = spec.RunTimeoutSec
+	}
+	// 空 entries 契约等价于无契约（与 team.ParseDefinition 归一化口径一致），
+	// 避免 canonical JSON 携带 deliverable_contract:{"entries":[]}。
+	if spec.DeliverableContract != nil && len(spec.DeliverableContract.Entries) == 0 {
+		spec.DeliverableContract = nil
 	}
 	// Backfill members from graph.nodes when members is empty but graph has agent nodes.
 	// This fixes data inconsistency where some teams were created with graph.nodes

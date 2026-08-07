@@ -1,12 +1,14 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { copyToClipboard, useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import type { Agent } from './types';
 import { useAgentDetailStore, useAgentsPageStore } from '../../stores/agents';
 import { statusOptions, tokenEstimateFor } from '../../components/agents/agentUi';
 import { useAppStore } from '../../stores/app';
 import { useChannelsStore } from '../../stores/channels';
+import { useEvaluationStore } from '../../stores/evaluation';
 import { useAgentPlannerForm } from './useAgentPlannerForm';
 import { useAgentRalphLoopForm } from './useAgentRalphLoopForm';
 import { useAgentRuntimeConfig } from './useAgentRuntimeConfig';
@@ -24,6 +26,7 @@ import type { UseAgentSettingsPersistenceDeps } from './useAgentSettingsPersiste
 
 export function useAgentSettingsPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const route = useRoute();
   const router = useRouter();
   const store = useAppStore();
@@ -256,6 +259,26 @@ export function useAgentSettingsPage() {
   );
   const loadingAdvancedChannels = computed(() => channelsStore.loading);
 
+  // ── After-Turn 自动评估（US-5）：数据集选项懒加载，进化 Tab 的 q-select 首次展开时触发 ──
+  const evaluationStore = useEvaluationStore();
+  const evalDatasetOptions = ref<{ label: string; value: string }[]>([]);
+  const loadingEvalDatasets = ref(false);
+  async function loadEvalDatasetOptions() {
+    if (loadingEvalDatasets.value || evalDatasetOptions.value.length) return;
+    loadingEvalDatasets.value = true;
+    try {
+      const res = await evaluationStore.loadDatasets({ limit: 200 });
+      evalDatasetOptions.value = res.items.map((d) => ({
+        label: t('evaluationPage.datasetOptionLabel', { name: d.name, count: d.case_count }),
+        value: d.id,
+      }));
+    } catch {
+      evalDatasetOptions.value = [];
+    } finally {
+      loadingEvalDatasets.value = false;
+    }
+  }
+
   return {
     tab,
     form,
@@ -337,5 +360,8 @@ export function useAgentSettingsPage() {
     onAdvancedSave: persistence.handleAdvancedSave,
     advancedChannelOptions,
     loadingAdvancedChannels,
+    evalDatasetOptions,
+    loadingEvalDatasets,
+    loadEvalDatasetOptions,
   };
 }

@@ -71,7 +71,7 @@ func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string
 		deps.CachedEffectiveTools = eff
 		deps.ToolVersionHash = chatagent.ComputeToolVersionHash(eff)
 	}
-	deps.SkillVersionHash = chatagent.ComputeSkillVersionHash(r.fetchEnabledSkillSlugs(ctx))
+	deps.SkillVersionHash = chatagent.ComputeSkillVersionHash(r.fetchEnabledSkillRefs(ctx))
 	deps.MCPVersionHash = chatagent.ComputeMCPVersionHash(r.fetchEffectiveMCPServers(ctx, ag.ID))
 
 	return chatagent.BuildTRPCAgentCached(ctx, ag, deps, r.lg)
@@ -88,15 +88,15 @@ func (r *CatalogAgentResolver) fetchEffectiveTools(ctx context.Context, agentID 
 	return &eff, nil
 }
 
-func (r *CatalogAgentResolver) fetchEnabledSkillSlugs(ctx context.Context) []string {
+func (r *CatalogAgentResolver) fetchEnabledSkillRefs(ctx context.Context) []biz.SkillEnabledRef {
 	if r.Deps.SkillUC == nil {
 		return nil
 	}
-	slugs, err := r.Deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
+	refs, err := r.Deps.SkillUC.ListEnabledPublishedSkillRefs(ctx)
 	if err != nil {
 		return nil
 	}
-	return slugs
+	return refs
 }
 
 func (r *CatalogAgentResolver) fetchEffectiveMCPServers(ctx context.Context, agentID string) []biz.EffectiveMCPServer {

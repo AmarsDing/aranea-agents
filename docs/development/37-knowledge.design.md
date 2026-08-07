@@ -1785,3 +1785,96 @@ UI:        树+列表+详情+双区搜索 ──→ 局部图谱(二期) ──�
 - **交互**：左键旋转/右键平移/滚轮缩放；hover 高亮一跳邻居淡化其余；点击选中联动操作台。
 - **操作台**：库 select、边类型过滤 chips、目录前缀过滤（复用 V12.6 组件）、节点搜索定位、节点列表（连接度排序，点击聚焦）、选中节点卡（「在浏览中打开」→ 切浏览 tab 定位选中）。
 - **规模**：>2k 节点默认只渲染有连接节点 + 「显示孤立节点」开关。
+
+#### V12.8 图谱深空版渲染层 + 实体治理（G5，2026-08-07 评审通过）
+
+> 调研依据：`docs/reports/2026-08-07-research-knowledge-graph-oss.md`（三个 Obsidian 图谱开源仓库逐行精读）。**V12.7 选型条款作废**：`3d-force-graph` 每节点一个 Object3D，万级节点不可行，且辉光/粒子流/星河背景等视觉不可控；G5 起自研渲染层，`3d-force-graph` 依赖完全移除（`three` 保留）。数据契约 B8（`ListCollectionGraph`）不变——G5 是纯渲染层替换 + 实体轨增强，无图谱数据 API 破坏。
+
+##### V12.8-1 渲染层架构（前端）
+
+```
+web/src/features/knowledge/graph3d/        ← 纯 TS 引擎（零 Vue/three 依赖，全部可单测）
+  ├── model.ts         SoA 图模型：positions/velocities Float32Array(3N)、degree Uint16、
+  │                    groupId Uint16、edges Int32Array(2E)；docId↔index 双射；
+  │                    确定性播种 mulberry32 + 球内体采样 r=(cbrt(N)*20+1)*cbrt(rand)
+  ├── octree.ts        typed-array 八叉树池（Float32 8/cell + Int32 9/cell，容量 16N 倍增，
+  │                    显式栈迭代，质心除法延迟到查询）
+  ├── forces.ts        物理引擎（主线程/Worker 共用同一代码）：
+  │                    BH 斥力(repulsion=30,theta=0.8) + 弹簧(0.05/30) + 簇凝聚(0.08)
+  │                    + 簇分离(100·count/d²) + 向心力(0.011)；显式 Euler damping=0.9；
+  │                    maxStep 位移钳制(≤linkDistance)；alphaDecay=0.0228，alphaMin=0.005
+  ├── protocol.ts      Worker 消息协议：init(slice 后 transfer)/setParams/pin/unpin/reheat/
+  │                    stop ↔ tick{positions,alpha}/stopped/error
+  ├── tiering.ts       节点三层分级：supernode=degree≥15；ultranode=连接≥4 个不同 supernode；
+  │                    尺寸倍率 1.0/1.5/2.5；分层 charge(-120/-200/-350)
+  ├── palette.ts       分组调色板（doc_type 稳定哈希取色，沿用 G4 graphUi 调色板语义）
+  ├── particleMath.ts  粒子流纯数学：相位均布 prog[i]=i/n、easeInOutQuad、
+  │                    时变 HSL hue=0.5+0.32·sin((t·0.6+p·2.2+i·0.12)·π)
+  ├── engine.ts        纯 TS 装配（模型+Worker 客户端+交互状态机），被 Canvas 组件持有
+  └── physics.worker.ts  物理 Worker（16ms tick，alpha<alphaMin 自停发 stopped）
+
+web/src/components/knowledge/graph3d/      ← Vue/three.js 命令式壳
+  ├── KnowledgeGraph3DCanvas.vue   装配：Renderer+Worker 客户端+交互桥；IntersectionObserver
+  │                                离屏 pauseAnimation；Worker 失败主线程 RAF 兜底
+  └── render/
+      ├── NodeLayer.ts     InstancedMesh 低模球(6,4)+MeshBasicMaterial(加法混合)；
+      │                    instanceColor + baseColors 缓存 + lerp(white,0.5) 高亮；
+      │                    大小=base+sqrt(degree)·scale × 分级倍率
+      ├── EdgeLayer.ts     微弯 Bezier 边（QuadraticBezierCurve3，bow 0.3·len，垂直轴
+      │                    hash01("s->t")·2π 定向，6 段）；单 LineSegments + vertexColors
+      │                    （rest=边类型色×0.32，hover 关联边=×0.9 瞬时换色）
+      ├── ParticleLayer.ts 粒子流（MAX=80、SPEED=0.45/s、PointsMaterial size=8 +
+      │                    64px 径向渐变 glowTexture + vertexColors + depthWrite:false）
+      ├── BackdropLayer.ts FBM 星云反转球(3-octave，colA 紫(0.12,0.06,0.22)/colB 青
+      │                    (0.05,0.17,0.21)，bright=0.5，pow(fbm,2.2) 压在 bloom 阈值下)
+      │                    + 三档星空(dim 2400/med 4800/bright 800，球面均匀，
+      │                    sizeAttenuation:false，64px 柔光 dotTexture)
+      │                    + 核雾(520 颗加法 Points，布局收敛后锚定度数最大 hub)
+      ├── BloomPipeline.ts EffectComposer：RenderPass + UnrealBloomPass(strength≈1.2,
+      │                    radius=0.5, threshold=0.28，半分辨率 w/2×h/2，nMips=3)；
+      │                    ACESFilmicToneMapping exposure=1.2；不透明深空底 #050810
+      │                   （bloom 与透明背景不兼容）；strength=0 时整 pass enabled=false
+      ├── LabelLayer.ts    three-spritetext 标签（挂节点子对象，LABEL_HEIGHT/r 抵消父缩放）；
+      │                    显示阈值：相机距离/节点度数双阈值，密图不糊屏
+      └── Picker.ts        Raycaster 逐实例求交 + mousemove 去抖（同时防粒子相位重置）
+```
+
+**关键机制**：
+- **lazy-render**：`needsRender || particles.active || autoRotate` 才调 `composer.render()`；物理 tick 到达/交互/hover 各事件置 needsRender。收敛静置后 GPU 零占用。
+- **Worker 客户端**：init 时 slice 复制 buffer 再 transfer；tick 回传 positions 直接作 BufferAttribute 源；Worker 创建失败 → 主线程 RAF 跑同一 `forces.ts` 引擎（NFR-G5-5）。
+- **hover 一跳邻居**：全边表 O(E) 扫描 + 去抖（低频不建邻接表）；邻居集驱动 NodeLayer 提亮、其余节点 instanceColor 压暗（向底色 lerp 0.08）、EdgeLayer 关联边换色、ParticleLayer 发射。
+- **pin 拖拽**：自研 pin-and-move——拖拽平面（过节点、法线朝相机）+ grabOffset 防跳变；拖拽中挂起 controls/autoRotate；位置写 fx/fy/fz（Worker pin 消息）；只重写关联边顶点。
+- **zoom-to-cursor**：滚轮射线 ∩ 过 target 面向相机平面求 pivot，相机+target 同步缩放 `0.95^(-ΔY·0.01)`。
+- **局部图谱**：N 跳 BFS（1-4）→ 子图重建（新 GraphModel + 重播种），**groupId 沿原图复制保持跨视图颜色一致**；「返回全局」恢复。
+- **交互状态机**：`shown`(hover)/`selected`(单击锁定) 分离；位移 <5px 区分拖拽与点击；双击 =「在浏览中打开」（沿用 G4 跨 tab 定位链路）。
+
+**数据流合规**：组件不直接调 api/store——`useKnowledgeGraph.ts` 编排不变（B8 数据/三维过滤/选中/聚焦信号），新增 `graph3d/engine.ts` 纯 TS 装配被 Canvas 组件持有；Worker 文件经 Vite `?worker` 引入。
+
+##### V12.8-2 HUD 操作台（前端）
+
+- 保留 G4 全部控件与 `KnowledgeScopePicker` 复用；视觉换肤限定 `.kg-hud` 作用域类，**不改全局主题 token**（NFR-G5-4）：等宽字体（'JetBrains Mono', Consolas, monospace）、主青 `#00d4ff`、边色 `#1a3a4a`、`letter-spacing:0.08em`、面板 `rgba(5,8,16,0.88)` + `box-shadow:0 0 15px #00d4ff22` + 1px 青色描边、开关为 `[ ON ]/[ OFF ]` 括号式、边类型图例发光色块。
+- 新增「实体治理」分区（B10/B11 数据）：合并建议列表（保留名 ← 候选名、来源徽标 norm/embedding、相似度）、一键合并按钮、合并结果重写条数内联反馈。
+- 新增 HUD 控件：auto-rotate 开关、标签开关、「聚焦邻域」（跳数 1-4 步进）+「返回全局」。
+- i18n：全部文案入 locale 文件（check-i18n 红线）。
+
+##### V12.8-3 实体消歧（后端）
+
+现状：`knowledge_entities(collection_id, name, entity_type)` UNIQUE(collection_id, name)；`knowledge_doc_entities(doc_id, entity_id, mentions)`；抽取仅 TrimSpace + 停用词。G5 增强（遵循项目字典模式约定：字典表存规范值+治理元数据，改名/合并走事务重写引用并返回重写条数）：
+
+| # | 契约 | 说明 |
+|---|------|------|
+| B9 | 实体归一化 | `NormalizeEntityName`：Unicode NFC + case-fold（strings.ToLowerSpecial 用 unicode.CaseRanges 语义无损小写）+ 内部空白折叠为单空格 + 去首尾；DDL 迁移：`knowledge_entities` 加 `name_norm TEXT` + 回填 + `UNIQUE(collection_id, name_norm)`；`ReplaceDocEntities` 按 name_norm 查/建字典条目，name 保留首见写法作展示名 |
+| B10 | `rpc MergeKnowledgeEntities(collection_id, keeper_id, mergee_ids[])` | `Data.ExecInTx`：mergee 的 `knowledge_doc_entities` 重写指向 keeper（mentions 求和，(doc_id,entity_id) 冲突时合并）、`knowledge_links` entity 轨 context 中的实体名引用重写、mergee 条目删除；返回 `{rewritten_mentions, rewritten_links}`；写流程日志（step 登记 `knowledge.entity.merge`） |
+| B11 | `rpc ListEntityMergeSuggestions(collection_id)` | 归一化冲突组（name 不同 name_norm 相同——迁移期可能存在）+ 配置 embedding 时高相似对（实体名 embedding 余弦：≥0.90 标 auto 候选、0.80-0.90 标 suggest；embedding 未配置仅返回 norm 组，对齐 NFR-15）；orphan 语义不适用（实体全部来自字典表） |
+| B12 | `knowledge_entity_aliases` 表 | `(collection_id, alias_norm, entity_id)`：合并时 mergee 的 name/name_norm 落为 keeper 别名；后续抽取先精确 name_norm → 再别名命中 keeper——合并效果跨同步持久 |
+
+- **解析管线**（`vault_entity.go` 抽取落库路径）：归一化 → 精确 name_norm → 别名 → （embedding ≥0.90 自动合并入别名表）→ 新建条目。0.80-0.90 不自动动数据，仅入建议（B11 实时计算，不落队列表——YAGNI）。
+- **触点收窄**：归一化只在 `ReplaceDocEntities` 入口与 B10 合并写路径生效；`FindEntityCooccurrences` 查询改按 entity_id 关联（已无 name 字符串比对）。
+- **迁移幂等**：DDL 迁移 SQL 幂等（IF NOT EXISTS）；回填 `name_norm` 用 DB 侧 `lower(nfc)` 不可行（PG 无 NFC）——回填走 Go 数据迁移（L3 数据迁移体系），冲突组按 id 最小者为 keeper 自动合并并落别名。
+
+##### V12.8-4 移除清单
+
+- 依赖：`3d-force-graph` 从 `web/package.json` 移除；新增 `three-spritetext`（标签）。
+- 组件：`KnowledgeGraphCanvas.vue` 删除，由 `graph3d/KnowledgeGraph3DCanvas.vue` 取代；`KnowledgeGraph3D.vue` 面板改造（HUD 皮肤 + 新工具条 + 治理分区）。
+- 纯函数：`graphUi.ts` 中 `graphContainmentForce`（d3 协议专用）随旧画布删除；配色/排序/过滤/一跳邻居等纯函数保留复用。
+- G4 已知问题条款（containment 防飞散）由自研引擎的向心力 + maxStep 钳制原生覆盖。

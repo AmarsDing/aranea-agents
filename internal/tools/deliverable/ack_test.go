@@ -71,6 +71,37 @@ func TestSetDeliverableTool_NilContract_BackwardCompatible(t *testing.T) {
 	}
 }
 
+// TestSetDeliverableTool_CacheKeyDiscriminator guards the agent build cache:
+// a contract-installed set_deliverable validates topic writes (Call rejects
+// violations) while the contract-free variant accepts them — same declaration
+// name, different behavior. The build cache key must therefore discriminate
+// the contract variant, otherwise the team compile path (contract-installed)
+// and the graph resolver path (contract-free) collide on one cache entry and
+// whichever builds first silently serves the other.
+func TestSetDeliverableTool_CacheKeyDiscriminator(t *testing.T) {
+	free := NewSetDeliverableTool()
+	if d := free.CacheKeyDiscriminator(); d != "" {
+		t.Fatalf("contract-free tool must have empty discriminator, got %q", d)
+	}
+
+	c1 := NewSetDeliverableToolWithContract(contractForTest())
+	c2 := NewSetDeliverableToolWithContract(contractForTest())
+	d1, d2 := c1.CacheKeyDiscriminator(), c2.CacheKeyDiscriminator()
+	if d1 == "" {
+		t.Fatal("contract-installed tool must have a non-empty discriminator")
+	}
+	if d1 != d2 {
+		t.Fatalf("same contract must yield the same discriminator: %q vs %q", d1, d2)
+	}
+
+	other := NewSetDeliverableToolWithContract(&biz.MemberDeliverableContract{Entries: []biz.MemberDeliverableEntry{
+		{Topic: "research", Required: true, RequiredKeys: []string{"summary"}},
+	}})
+	if d3 := other.CacheKeyDiscriminator(); d3 == d1 {
+		t.Fatal("different contracts must yield different discriminators")
+	}
+}
+
 // --- ack_deliverable ---
 
 func TestAckDeliverableTool_WritesTopLevelAckKey(t *testing.T) {

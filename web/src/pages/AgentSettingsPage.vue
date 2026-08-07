@@ -126,7 +126,11 @@
               v-model:evolution="config.evolution"
               v-model:evolution-settings="config.evolutionSettings"
               v-model:guardrails="config.evolution_guardrails"
+              v-model:eval-auto="config.evaluation"
               :agent-id="agentId"
+              :eval-dataset-options="evalDatasetOptions"
+              :loading-eval-datasets="loadingEvalDatasets"
+              @load-eval-datasets="loadEvalDatasetOptions"
             />
           </q-tab-panel>
 
@@ -270,6 +274,9 @@ const {
   onAdvancedSave,
   advancedChannelOptions,
   loadingAdvancedChannels,
+  evalDatasetOptions,
+  loadingEvalDatasets,
+  loadEvalDatasetOptions,
 } = useAgentSettingsPage();
 
 /** Return to the previous page (e.g. chat); fall back to agents list. */

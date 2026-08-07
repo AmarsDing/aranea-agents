@@ -11,6 +11,19 @@ import (
 	trpcplanner "trpc.group/trpc-go/trpc-agent-go/planner"
 )
 
+// DialogModeSelects reports whether the dialog mode can influence planner
+// selection for the given planner kind. When kind explicitly selects a
+// planner (react/a2ui/builtin), the dialog mode has no build-time effect;
+// otherwise the "plan" dialog mode activates the builtin planner (see Select).
+// Used by the agent build cache key to reduce dialog mode to its build effect.
+func DialogModeSelects(plannerKind string) bool {
+	switch strings.ToLower(strings.TrimSpace(plannerKind)) {
+	case "react", "a2ui", "builtin":
+		return false
+	}
+	return true
+}
+
 // Select returns the appropriate Planner for the given dialog mode, planner kind,
 // and optional planner_config_json (see docs/需求/39 planner.design.md).
 //

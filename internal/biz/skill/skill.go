@@ -186,9 +186,19 @@ type SkillLookupReader interface {
 	GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error)
 }
 
+// EnabledRef identifies an enabled published skill together with its content
+// version marker (platform_skill.updated_at). Used for agent build cache-key
+// hashing: any data-layer skill mutation bumps UpdatedAt, so the hash changes
+// exactly when skill content changes and stays stable otherwise.
+type EnabledRef struct {
+	Slug      string
+	UpdatedAt string
+}
+
 type SkillRuntimeReader interface {
 	BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error)
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
+	ListEnabledPublishedSkillRefs(ctx context.Context) ([]EnabledRef, error)
 	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error)
 	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
 }
@@ -666,6 +676,10 @@ func (u *Usecase) ListSimilaritySources(ctx context.Context) ([]SimilaritySource
 
 func (u *Usecase) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
 	return u.repo.ListEnabledPublishedSkillKeys(ctx)
+}
+
+func (u *Usecase) ListEnabledPublishedSkillRefs(ctx context.Context) ([]EnabledRef, error) {
+	return u.repo.ListEnabledPublishedSkillRefs(ctx)
 }
 
 func (u *Usecase) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error) {

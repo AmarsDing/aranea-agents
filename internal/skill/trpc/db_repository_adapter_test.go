@@ -23,6 +23,10 @@ func (m *mockRuntimeReader) ListEnabledPublishedSkillKeys(_ context.Context) ([]
 	return nil, nil
 }
 
+func (m *mockRuntimeReader) ListEnabledPublishedSkillRefs(_ context.Context) ([]skill.EnabledRef, error) {
+	return nil, nil
+}
+
 func (m *mockRuntimeReader) ListEnabledPublishedSkillCandidates(_ context.Context) ([]skill.RuntimeCandidate, error) {
 	if m.err != nil {
 		return nil, m.err

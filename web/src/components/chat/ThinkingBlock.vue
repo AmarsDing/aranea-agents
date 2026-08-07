@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Step } from '../../features/chat/v2Types';
 import { renderChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
@@ -147,7 +147,10 @@ const displayLabel = computed(() => {
 
 // --- Collapse state (T8.4: persisted to sessionStorage) ---
 
-const { collapsed, toggle, setCollapsed } = useCollapseState(`thinking:${messageId.value}`, props.defaultCollapsed);
+const { collapsed, toggle, setCollapsed, hasUserPreference } = useCollapseState(
+  `thinking:${messageId.value}`,
+  props.defaultCollapsed,
+);
 // Sync with external defaultCollapsed changes (e.g., when Activity data updates from AF).
 // Only apply when not streaming — streaming state is managed by the streaming watch.
 // Note: only applies if the user hasn't explicitly toggled (sessionStorage has no stored value).
@@ -250,6 +253,20 @@ watch(streaming, (live) => {
 // streaming ends with short content, force-expand to trigger inline render.
 watch(inlineNoCollapse, (val) => {
   if (val && !userToggled.value) setCollapsed(false);
+});
+
+// Mount-time fix: step.created lands with Status=running, so the component is
+// often born mid-stream and watch(streaming) never sees a false→true flip.
+// Without this, the block stays collapsed behind a static "正在思考…" indicator
+// while reasoning streams invisibly — the UI looks frozen. Expand on mount when
+// already streaming, unless the user explicitly collapsed this block earlier
+// in the session (e.g., virtual-scroll remount must respect their choice).
+onMounted(() => {
+  if (streaming.value && !hasUserPreference.value) {
+    userScrolledUp.value = false;
+    setCollapsed(false);
+    void nextTick(scrollToBottom);
+  }
 });
 
 // --- Interaction ---

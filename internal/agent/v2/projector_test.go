@@ -123,6 +123,37 @@ func TestEmitConfirmRequest(t *testing.T) {
 	if string(updated.Step.ToolArgs) != `{"cmd":"rm -rf /"}` {
 		t.Errorf("expected toolArgs set, got %s", string(updated.Step.ToolArgs))
 	}
+	if updated.Step.AuthorAgentKey != "agent-1" {
+		t.Errorf("expected authorAgentKey from meta, got %s", updated.Step.AuthorAgentKey)
+	}
+}
+
+// Team mode: a member agent's tool confirmation must be attributed to the
+// member (AuthorAgentKey = member key), not the projector's base meta key
+// (anchor agent). Otherwise the frontend cannot match the confirm step to
+// the MemberSession panel / team-card member row.
+func TestEmitConfirmRequest_AuthorAgentKeyOverride(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	_, err := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName:       "shell",
+		Content:        "Allow shell execution?",
+		AuthorAgentKey: "spirit-worker-a",
+	})
+	if err != nil {
+		t.Fatalf("EmitConfirmRequest returned error: %v", err)
+	}
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(capture.events))
+	}
+	updated, ok := capture.events[1].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("expected StepUpdatedEvent, got %T", capture.events[1])
+	}
+	if updated.Step.AuthorAgentKey != "spirit-worker-a" {
+		t.Errorf("expected authorAgentKey=spirit-worker-a, got %s", updated.Step.AuthorAgentKey)
+	}
 }
 
 func TestEmitConfirmResult(t *testing.T) {

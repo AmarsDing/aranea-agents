@@ -225,6 +225,12 @@ var ddlMigrations = []ddlMigration{
 	// search (to_tsvector over statement+details_markdown). Postgres-only;
 	// gated by Func so SQLite CLI/tests skip it.
 	{Version: 20261128, Name: "memory_facts_fts_index", Func: ddlMemoryFactsFTSIndex},
+	// 20261129 knowledge_entity_governance: G5-F B9/B12 实体治理——
+	// knowledge_entities 加 name_norm 归一化列（Go 回填，PG 无 NFKC）+
+	// knowledge_entity_aliases 别名表 + 归一化冲突组自动合并（keeper=id 最小者）
+	// + (collection_id, name_norm) 唯一索引。Postgres-only（knowledge 依赖
+	// pgvector）；fresh 库由 EnsureKnowledgeSchema 以新形态建表，Func 整体跳过。
+	{Version: 20261129, Name: "knowledge_entity_governance", Func: ddlKnowledgeEntityGovernance},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

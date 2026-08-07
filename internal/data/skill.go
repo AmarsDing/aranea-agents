@@ -1142,6 +1142,7 @@ func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string
 			platformskill.EnabledEQ(true),
 			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
 		).
+		Select(platformskill.FieldSkillKey).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainSkill)
@@ -1149,6 +1150,30 @@ func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string
 	out := make([]string, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, row.SkillKey)
+	}
+	return out, nil
+}
+
+// ListEnabledPublishedSkillRefs returns slug + updated_at for every enabled
+// published skill. updated_at is bumped by every data-layer skill mutation,
+// so consumers can build a content-based cache-key hash that changes exactly
+// when skill content changes. Only two columns are selected: this runs on the
+// per-request agent-build hot path.
+func (r *skillRepo) ListEnabledPublishedSkillRefs(ctx context.Context) ([]biz.SkillEnabledRef, error) {
+	rows, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+		Where(
+			platformskill.DeletedAtEQ(""),
+			platformskill.EnabledEQ(true),
+			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
+		).
+		Select(platformskill.FieldSkillKey, platformskill.FieldUpdatedAt).
+		All(ctx)
+	if err != nil {
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	out := make([]biz.SkillEnabledRef, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, biz.SkillEnabledRef{Slug: row.SkillKey, UpdatedAt: row.UpdatedAt})
 	}
 	return out, nil
 }

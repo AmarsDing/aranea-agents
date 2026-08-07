@@ -142,6 +142,7 @@ var stepTitleRegistry = map[string]string{
 	"system.mcp.health_persist_fail":       "MCP 健康状态保存失败",
 	"system.agent.cache_hit":               "Agent 缓存命中",
 	"system.agent.cache_miss":              "Agent 缓存未命中",
+	"system.agent.build":                   "Agent 构建",
 	"system.agent.db_resolve":              "Agent 数据库解析",
 	"system.agent.skill_build":             "Agent 技能构建",
 	"system.agent.tool_build":              "Agent 工具构建",
@@ -277,6 +278,10 @@ var stepTitleRegistry = map[string]string{
 	"voice.barge_in":          "语音打断",
 	"voice.provider.fallback": "语音服务降级",
 	"voice.error":             "语音链路错误",
+	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
+	"client_tool.invoke":  "调用客户端工具",
+	"client_tool.result":  "客户端工具执行完成",
+	"client_tool.timeout": "客户端工具执行超时",
 }
 
 func stepTitle(stepID string) string {

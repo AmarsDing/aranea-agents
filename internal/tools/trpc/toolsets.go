@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
+	"aranea-agents/internal/tools/clientbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
@@ -69,8 +70,13 @@ type ToolsetConfig struct {
 	OutboundRouter   *outbound.Router
 	SubAgent         bool
 	SubAgentService  *subagenttool.Service
-	Browser          *browser.PlaywrightMCPConfig
-	BrowserEnabled   bool
+	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
+	// client_open_url). Requires ClientBridgeSvc; when nil the flag is pruned
+	// so agents never see a tool that would always fail offline.
+	ClientBridge    bool
+	ClientBridgeSvc *clientbridge.Bridge
+	Browser         *browser.PlaywrightMCPConfig
+	BrowserEnabled  bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -155,6 +161,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.BrowserEnabled && cfg.Browser != nil {
 		enabled = append(enabled, "browser")
+	}
+	if cfg.ClientBridge && cfg.ClientBridgeSvc != nil {
+		enabled = append(enabled, clientbridge.ToolSetName)
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))
@@ -252,6 +261,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 			OutboundRouter:  cfg.OutboundRouter,
 			SubAgentService: cfg.SubAgentService,
 			BlobReader:      cfg.BlobReader,
+			ClientBridge:    cfg.ClientBridgeSvc,
 		},
 		Browser: cfg.Browser,
 		Lg:      lg,

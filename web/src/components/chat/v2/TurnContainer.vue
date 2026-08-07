@@ -4,6 +4,10 @@
 -->
 <template>
   <div class="turn-container" :data-turn-id="turn.ID">
+    <!-- R4 召回透明度：本轮注入的记忆条目 chips（数据源 memory_recalled notice）。
+         渲染在 steps 之前——召回发生在 BeforeModel（turn 最开始），UI 顺序必须与
+         实际执行顺序一致：召回 → 思考 → 行动 → 回复。 -->
+    <MemoryRecallChips :turn-id="turn.ID" />
     <template v-for="step in visibleSteps" :key="step.ID">
       <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
       <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
@@ -12,8 +16,6 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
-    <!-- R4 召回透明度：本轮注入的记忆条目 chips（数据源 memory_recalled notice） -->
-    <MemoryRecallChips :turn-id="turn.ID" />
   </div>
 </template>
 

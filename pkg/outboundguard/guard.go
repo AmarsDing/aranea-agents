@@ -21,6 +21,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,6 +106,114 @@ func isBlockedAddr(addr netip.Addr) bool {
 		return true
 	}
 	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsUnspecified()
+}
+
+// ── Cached host validation ───────────────────────────────────────────────────
+
+// cachedValidator caches SUCCESSFUL host validations for a bounded TTL so
+// hot paths (e.g. LLM model builds validating the same provider base URL on
+// every agent construction) do not perform a live DNS lookup each time.
+//
+// 00:52 会话运行时取证：trpc_llm 每次构建 agent 都实时解析 provider 域名，
+// 一次瞬时 DNS 失败（lookup api.deepseek.com: no such host）即导致整个
+// team graph build 失败、团队运行终止。缓存成功结果后，稳态构建不再触达
+// DNS，瞬时解析抖动不再杀死运行。
+//
+// 安全语义（与包级 KNOWN LIMITATION 一致）：
+//   - 仅缓存成功结果；失败与私网阻断永不入缓存（无负缓存，故障恢复即时生效）。
+//   - 缓存把既有的 DNS TOCTOU 重绑定窗口从「校验→连接」拉长到 TTL 量级；
+//     包文档已声明该限制并以 connect-time 校验为后续强化方向，此处不降低
+//     现有安全水位。
+//   - 字面量 IP 不经过缓存与 DNS，每次直接校验（零成本）。
+type cachedValidator struct {
+	ttl      time.Duration
+	lookupIP func(string) ([]net.IP, error)
+
+	mu    sync.Mutex
+	valid map[string]time.Time // host(lower) → 缓存到期时刻
+}
+
+// newCachedValidator 创建缓存校验器。ttl ≤ 0 时使用 5 分钟默认值。
+// lookupIP 为 nil 时使用 net.LookupIP（测试可注入替身）。
+func newCachedValidator(ttl time.Duration, lookupIP func(string) ([]net.IP, error)) *cachedValidator {
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	if lookupIP == nil {
+		lookupIP = net.LookupIP
+	}
+	return &cachedValidator{ttl: ttl, lookupIP: lookupIP, valid: make(map[string]time.Time)}
+}
+
+// NewCachedValidator 导出构造函数，供 LLM provider 等热路径调用方使用。
+func NewCachedValidator(ttl time.Duration) *cachedValidator {
+	return newCachedValidator(ttl, nil)
+}
+
+// ValidateURL 与包级 ValidateURL 语义一致，但成功的主机校验在 TTL 内缓存。
+func (v *cachedValidator) ValidateURL(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return fmt.Errorf("outboundguard: URL is required")
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("outboundguard: malformed URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("outboundguard: scheme %q is not allowed (http/https only)", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("outboundguard: URL has no host")
+	}
+	return v.validateHost(parsed.Hostname())
+}
+
+func (v *cachedValidator) validateHost(host string) error {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return fmt.Errorf("outboundguard: host is required")
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return fmt.Errorf("outboundguard: localhost is not allowed")
+	}
+	if host == "metadata.google.internal" || strings.HasSuffix(host, ".internal") {
+		return fmt.Errorf("outboundguard: cloud metadata host %q is not allowed", host)
+	}
+	// 字面量 IP：无 DNS、无缓存，直接校验。
+	if addr, err := netip.ParseAddr(host); err == nil {
+		if isBlockedAddr(addr) {
+			return fmt.Errorf("outboundguard: private or local address %s is not allowed", addr)
+		}
+		return nil
+	}
+
+	now := time.Now()
+	v.mu.Lock()
+	if expiry, ok := v.valid[host]; ok && now.Before(expiry) {
+		v.mu.Unlock()
+		return nil
+	}
+	v.mu.Unlock()
+
+	ips, err := v.lookupIP(host)
+	if err != nil {
+		return fmt.Errorf("outboundguard: host lookup failed: %w", err)
+	}
+	for _, ip := range ips {
+		addr, ok := netip.AddrFromSlice(ip)
+		if !ok {
+			continue
+		}
+		if isBlockedAddr(addr) {
+			return fmt.Errorf("outboundguard: private or local address %s is not allowed", ip)
+		}
+	}
+
+	v.mu.Lock()
+	v.valid[host] = now.Add(v.ttl)
+	v.mu.Unlock()
+	return nil
 }
 
 // NewClient returns an *http.Client whose CheckRedirect validates every

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,7 +127,7 @@ func TestCallOpenAICompatChatStream_ContextDeadlineMidStream_ReturnsError(t *tes
 	var received string
 	_, _, _, _, err := CallOpenAICompatChatStream(ctx, srv.Client(), cfg, "test-model",
 		[]OpenAICompatMessage{{Role: "user", Content: "hi"}},
-		func(piece string) error { received += piece; return nil })
+		StreamCallbacks{OnContent: func(piece string) error { received += piece; return nil }})
 	if err == nil {
 		t.Fatal("expected error when ctx deadline exceeded mid-stream, got nil (silent timeout)")
 	}
@@ -135,5 +136,227 @@ func TestCallOpenAICompatChatStream_ContextDeadlineMidStream_ReturnsError(t *tes
 	}
 	if received != "par" {
 		t.Fatalf("expected partial delta %q delivered before timeout, got %q", "par", received)
+	}
+}
+
+// P3：idle 停滞守卫——流式调用超过 streamIdleTimeout 无任何响应（增量/聚合/
+// 错误帧）即判定停滞，中止本次尝试并返回 *StreamIdleError。取代旧的「60s
+// 总超时掐断健康慢流」：有数据流动的流不设总时长上限。
+func TestCallOpenAICompatChatStream_IdleStall_ReturnsStreamIdleError(t *testing.T) {
+	old := streamIdleTimeout
+	streamIdleTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { streamIdleTimeout = old })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		// 先吐一个 partial chunk，然后停滞（不再发送任何帧）直到客户端断开。
+		_, _ = io.WriteString(w, "data: {\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"par\"},\"finish_reason\":null}]}\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+
+	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
+	start := time.Now()
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err == nil {
+		t.Fatal("expected idle stall error, got nil")
+	}
+	var idleErr *StreamIdleError
+	if !errors.As(err, &idleErr) {
+		t.Fatalf("expected *StreamIdleError, got %T: %v", err, err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("idle guard fired too late: %v", elapsed)
+	}
+}
+
+// P3 对照组：帧间隔小于停滞窗口但总时长远超窗口的慢流必须正常完成——
+// 停滞守卫只掐「不流动」的流，不掐「慢但健康」的流。
+func TestCallOpenAICompatChatStream_SlowFlowingStream_Succeeds(t *testing.T) {
+	old := streamIdleTimeout
+	streamIdleTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { streamIdleTimeout = old })
+
+	chunk := func(text string) string {
+		return "{\"id\":\"c1\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"" + text + "\"},\"finish_reason\":null}]}"
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for _, s := range []string{"a", "b", "c", "d"} {
+			_, _ = io.WriteString(w, "data: "+chunk(s)+"\n\n")
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			// 帧间隔 100ms < 窗口 150ms；总时长 400ms > 窗口——健康慢流。
+			time.Sleep(100 * time.Millisecond)
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+
+	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
+	full, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("slow but flowing stream must not be killed by idle guard: %v", err)
+	}
+	if full != "abcd" {
+		t.Fatalf("full = %q, want %q", full, "abcd")
+	}
+}
+
+// sseServer 返回一个按给定 chunks 逐条发射 SSE 的测试服务器。
+// chunks 中每个元素是一帧 data: 载荷（不含前缀）。
+func sseServer(t *testing.T, chunks []string, captureBody *[]byte) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if captureBody != nil {
+			body, _ := io.ReadAll(r.Body)
+			*captureBody = body
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		for _, c := range chunks {
+			_, _ = io.WriteString(w, "data: "+c+"\n\n")
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	t.Cleanup(func() {
+		srv.CloseClientConnections()
+		srv.Close()
+	})
+	return srv
+}
+
+// P1a：推理段可见性——流式调用必须把 reasoning_content 增量通过
+// StreamCallbacks.OnReasoning 回调送出（而非仅静默累积），使 planner 能将
+// 分解思考过程实时发布给用户。同时验证 OnContent/OnReasoning 两路独立、
+// 顺序保持。
+func TestCallOpenAICompatChatStream_ReasoningCallback_ReceivesReasoningDeltas(t *testing.T) {
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"想一"},"finish_reason":null}]}`,
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"reasoning_content":"想二"},"finish_reason":null}]}`,
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"答一"},"finish_reason":null}]}`,
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"答二"},"finish_reason":null}]}`,
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, nil)
+
+	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
+	var reasoning, content []string
+	full, reason, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}},
+		StreamCallbacks{
+			OnContent:   func(p string) error { content = append(content, p); return nil },
+			OnReasoning: func(p string) error { reasoning = append(reasoning, p); return nil },
+		})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(reasoning) != 2 || reasoning[0] != "想一" || reasoning[1] != "想二" {
+		t.Fatalf("OnReasoning deltas = %v, want [想一 想二]", reasoning)
+	}
+	if len(content) != 2 || content[0] != "答一" || content[1] != "答二" {
+		t.Fatalf("OnContent deltas = %v, want [答一 答二]", content)
+	}
+	if full != "答一答二" {
+		t.Fatalf("fullText = %q, want 答一答二", full)
+	}
+	if reason != "想一想二" {
+		t.Fatalf("reasoningText = %q, want 想一想二", reason)
+	}
+}
+
+// P1a：nil 回调安全——调用方可以不关心推理流（如 allocator），
+// StreamCallbacks 零值不得 panic。
+func TestCallOpenAICompatChatStream_NilCallbacks_NoPanic(t *testing.T) {
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"r","content":"c"},"finish_reason":null}]}`,
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, nil)
+	cfg := ProviderAPIConfig{ProviderType: "openai", APIBaseURL: srv.URL, APIKey: "test-key"}
+	full, reason, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "test-model",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if full != "c" || reason != "r" {
+		t.Fatalf("full=%q reason=%q, want c/r", full, reason)
+	}
+}
+
+// P1a 治理项：config_json 的 thinking_disabled=true 时，deepseek 系请求体
+// 必须注入 "thinking":{"type":"disabled"}（框架 GenerationConfig.ThinkingEnabled
+// 的 DeepSeek variant 映射）。未配置时不得注入该字段（保持 provider 默认）。
+func TestCallOpenAICompatChatStream_ThinkingDisabled_InjectsThinkingObject(t *testing.T) {
+	var body []byte
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, &body)
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingDisabled: true}
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(body), `"thinking"`) || !strings.Contains(string(body), `"disabled"`) {
+		t.Fatalf("request body missing thinking.disabled injection: %s", string(body))
+	}
+}
+
+func TestCallOpenAICompatChatStream_ThinkingDefault_NoInjection(t *testing.T) {
+	var body []byte
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, &body)
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key"}
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(string(body), `"thinking"`) {
+		t.Fatalf("request body must not contain thinking field by default: %s", string(body))
+	}
+}
+
+// P1a：MergeProviderConfigJSON 必须透传 thinking_disabled。
+func TestMergeProviderConfigJSON_ThinkingDisabled(t *testing.T) {
+	var cfg ProviderAPIConfig
+	MergeProviderConfigJSON(`{"provider_type":"deepseek","thinking_disabled":true}`, &cfg)
+	if !cfg.ThinkingDisabled {
+		t.Fatal("thinking_disabled not merged from config_json")
+	}
+	if cfg.ProviderType != "deepseek" {
+		t.Fatalf("provider_type = %q, want deepseek", cfg.ProviderType)
 	}
 }

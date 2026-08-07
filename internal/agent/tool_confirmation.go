@@ -102,6 +102,10 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 				ToolName:      toolKey,
 				ToolArguments: string(args.Arguments),
 				Content:       confirmContent,
+				// Attribute the confirm step to the agent whose tool is
+				// gated (team member in graph mode); the projector's base
+				// meta carries the anchor agent key.
+				AuthorAgentKey: h.ag.AgentKey,
 			})
 			if emitErr != nil {
 				h.deps.Logger().Warn("EmitConfirmRequest failed",

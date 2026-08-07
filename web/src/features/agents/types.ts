@@ -251,6 +251,8 @@ export type EvolutionSuggestion = {
   diff_preview: string;
   created_at: string;
   applied_at: string;
+  // 仅 persona/prompt 且携带 apply_payload 的建议为 true；通知类建议隐藏应用按钮。
+  applicable: boolean;
 };
 
 export type AgentPromptSection = {

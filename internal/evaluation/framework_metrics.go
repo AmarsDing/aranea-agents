@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	evalfinalresponse "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/finalresponse"
+	evaltooltrajectory "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/tooltrajectory"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/finalresponse"
@@ -13,6 +15,15 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/text"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/tooltrajectory"
 	cxml "trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion/xml"
+)
+
+// Framework evaluator names, resolved from the evaluators themselves.
+// A metric whose EvaluatorName does not resolve in the framework registry is
+// SILENTLY SKIPPED (local.go treats os.ErrNotExist as "skip"), which used to
+// zero out every deterministic metric.
+var (
+	finalResponseEvaluatorName  = evalfinalresponse.New().Name()
+	toolTrajectoryEvaluatorName = evaltooltrajectory.New().Name()
 )
 
 const (
@@ -63,23 +74,23 @@ func buildMetricSpecs(want metricSet) []metricSpec {
 	}
 	add(MetricExactMatch, 1.0, criterion.New(criterion.WithFinalResponse(finalresponse.New(
 		finalresponse.WithTextCriterion(&text.TextCriterion{MatchStrategy: text.TextMatchStrategyExact}),
-	))), "")
+	))), finalResponseEvaluatorName)
 	add(MetricContainsMatch, 1.0, criterion.New(criterion.WithFinalResponse(finalresponse.New(
 		finalresponse.WithTextCriterion(&text.TextCriterion{MatchStrategy: text.TextMatchStrategyContains}),
-	))), "")
+	))), finalResponseEvaluatorName)
 	add(MetricJSONMatch, 1.0, criterion.New(criterion.WithFinalResponse(finalresponse.New(
 		finalresponse.WithJSONCriterion(cjson.New()),
-	))), "")
+	))), finalResponseEvaluatorName)
 	add(MetricXMLMatch, 1.0, criterion.New(criterion.WithFinalResponse(finalresponse.New(
 		finalresponse.WithXMLCriterion(cxml.New()),
-	))), "")
+	))), finalResponseEvaluatorName)
 	add(MetricRougeL, 0.5, criterion.New(criterion.WithFinalResponse(finalresponse.New(
 		finalresponse.WithRougeCriterion(crouge.New(crouge.WithRougeType("rougeL"))),
-	))), "")
+	))), finalResponseEvaluatorName)
 	add(MetricToolTrajectory, 1.0, criterion.New(criterion.WithToolTrajectory(
 		tooltrajectory.New(tooltrajectory.WithOrderSensitive(true)),
-	)), "")
-	add(MetricToolCallAccuracy, 1.0, criterion.New(criterion.WithToolTrajectory(tooltrajectory.New())), "")
+	)), toolTrajectoryEvaluatorName)
+	add(MetricToolCallAccuracy, 1.0, criterion.New(criterion.WithToolTrajectory(tooltrajectory.New())), toolTrajectoryEvaluatorName)
 	// P1-7: llm_as_judge uses the framework's llm_final_response evaluator with
 	// LLMCriterion. When WithJudgeRunner is configured, the framework automatically
 	// routes all LLM metrics through the judge runner for evaluation.

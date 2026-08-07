@@ -52,8 +52,24 @@ type EvolutionSuggestion struct {
 	Status           string
 	DiffPreview      string
 	PreApplySnapshot string // JSON-encoded map[filename]content of files before apply
-	CreatedAt        string
-	AppliedAt        string
+	// ApplyPayload is the substantive content written into prompt files on
+	// apply (EvoMetaApplyPayload). Notification-only suggestions leave it
+	// empty and are rejected by ApplySuggestion.
+	ApplyPayload string
+	CreatedAt    string
+	AppliedAt    string
+}
+
+// Applicable reports whether the suggestion can be applied: only persona/prompt
+// suggestions carrying a non-empty apply payload write into prompt files.
+// Notification-only suggestions (skill / orchestration_optimization / payload-less
+// persona/prompt) are not applicable; the frontend hides the apply button and
+// ApplySuggestion rejects them as a defense-in-depth guard.
+func (s EvolutionSuggestion) Applicable() bool {
+	if s.Type != "persona" && s.Type != "prompt" {
+		return false
+	}
+	return strings.TrimSpace(s.ApplyPayload) != ""
 }
 
 // evolutionViewFromUnified reconstructs the legacy L3 view from a unified row.
@@ -74,6 +90,7 @@ func evolutionViewFromUnified(s *UnifiedEvolutionSuggestion) EvolutionSuggestion
 		Status:           s.Status,
 		DiffPreview:      s.MetaString(EvoMetaDiffPreview),
 		PreApplySnapshot: s.MetaString(EvoMetaPreApplySnapshot),
+		ApplyPayload:     s.MetaString(EvoMetaApplyPayload),
 		CreatedAt:        s.CreatedAt.UTC().Format(time.RFC3339),
 		AppliedAt:        appliedAt,
 	}
@@ -88,6 +105,7 @@ func unifiedFromEvolutionView(s EvolutionSuggestion) UnifiedEvolutionSuggestion 
 		EvoMetaTitle:            s.Title,
 		EvoMetaDiffPreview:      s.DiffPreview,
 		EvoMetaPreApplySnapshot: s.PreApplySnapshot,
+		EvoMetaApplyPayload:     s.ApplyPayload,
 	})
 	createdAt, err := time.Parse(time.RFC3339, s.CreatedAt)
 	if err != nil {
@@ -309,8 +327,19 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 	if _, err := uc.evolutionSM.Transition(ParseEvolutionState(s.Status), EvolutionEventApply); err != nil {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "invalid status transition from "+s.Status+" to applied")
 	}
+	// P0-2 guard (2026-08-07): persona/prompt apply writes into prompt files,
+	// so it requires an explicit apply payload (EvolutionSuggestion.Applicable).
+	// All current producers (AgentConfigTrigger metric notifications,
+	// orchestration optimization notices) generate notification text as Content
+	// and carry no payload — applying them would corrupt IDENTITY.md /
+	// AGENTS*.md. Secure by default: legacy rows without the metadata key are
+	// rejected, no migration needed.
+	payload := strings.TrimSpace(s.ApplyPayload)
 	switch s.Type {
 	case "persona":
+		if !s.Applicable() {
+			return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "该建议为指标通知，不包含可应用的修改内容，无法应用")
+		}
 		files, err := uc.agents.ListAgentPromptFiles(ctx, agentID)
 		if err != nil {
 			return EvolutionSuggestion{}, err
@@ -325,7 +354,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		applied := false
 		for i, f := range files {
 			if f.Name == "IDENTITY.md" {
-				files[i].Body = replaceOrAppendPersona(f.Body, s.Content)
+				files[i].Body = replaceOrAppendPersona(f.Body, payload)
 				applied = true
 				break
 			}
@@ -333,7 +362,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		if !applied {
 			for i, f := range files {
 				if f.Name == "SOUL.md" {
-					files[i].Body = s.Content
+					files[i].Body = payload
 					applied = true
 					break
 				}
@@ -344,12 +373,15 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 			files = append(files, AgentPromptFile{
 				AgentID:   agentID,
 				Name:      "IDENTITY.md",
-				Body:      "# IDENTITY\n\n## Persona\n\n" + s.Content,
+				Body:      "# IDENTITY\n\n## Persona\n\n" + payload,
 				SortOrder: 30,
 			})
 		}
 		return uc.applyAndMark(ctx, agentID, suggestionID, files)
 	case "prompt":
+		if !s.Applicable() {
+			return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "该建议为指标通知，不包含可应用的修改内容，无法应用")
+		}
 		files, err := uc.agents.ListAgentPromptFiles(ctx, agentID)
 		if err != nil {
 			return EvolutionSuggestion{}, err
@@ -362,7 +394,7 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 		for i, f := range files {
 			name := strings.TrimSpace(f.Name)
 			if name == "AGENTS_CORE.md" || name == "AGENTS_TASK.md" || strings.HasPrefix(name, "AGENTS") {
-				files[i].Body = s.Content
+				files[i].Body = payload
 				applied = true
 				break
 			}

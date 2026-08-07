@@ -11,8 +11,10 @@ package llmcompat
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/provider"
 
@@ -23,11 +25,32 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// streamIdleTimeout 是流式调用的停滞窗口：任一响应帧（增量/聚合/错误）到达
+// 即重置看门狗；窗口内无任何帧判定为停滞。包级变量供测试覆盖。
+//
+// P3 设计：有数据流动的流不设总时长上限（取代旧的 60s 硬超时——它会掐断
+// DeepSeek 推理段等健康慢流）。45s 覆盖高负载下的 TTFT 与帧间隔抖动。
+var streamIdleTimeout = 45 * time.Second
+
+// StreamIdleError 表示流式调用停滞：超过 streamIdleTimeout 未收到任何帧。
+// 调用方应将其分类为瞬时故障（可重试）。
+type StreamIdleError struct {
+	Timeout time.Duration
+}
+
+func (e *StreamIdleError) Error() string {
+	return fmt.Sprintf("llm stream idle: no frame received for %s", e.Timeout)
+}
+
 // ProviderAPIConfig holds outbound HTTP credential hints deserialized from llm_provider_models.config_json.
 type ProviderAPIConfig struct {
 	ProviderType string `json:"provider_type"`
 	APIBaseURL   string `json:"api_base_url"`
 	APIKey       string `json:"api_key"`
+	// ThinkingDisabled 为 true 时对支持 thinking 开关的 provider（DeepSeek v4 等）
+	// 显式关闭推理段（注入 thinking.type=disabled）。默认 false = 不注入该字段，
+	// 保留 provider 服务端默认行为。
+	ThinkingDisabled bool `json:"thinking_disabled"`
 }
 
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
@@ -45,6 +68,17 @@ func MergeProviderConfigJSON(raw string, out *ProviderAPIConfig) {
 	if out.APIKey == "" {
 		out.APIKey = c.APIKey
 	}
+	if c.ThinkingDisabled {
+		out.ThinkingDisabled = true
+	}
+}
+
+// StreamCallbacks 拆分流式增量回调：内容段与推理段（reasoning_content）独立
+// 上送，使调用方（如 TaskPlanner）能将思考过程实时发布给用户。零值安全——
+// 不关心推理流的调用方传 StreamCallbacks{} 即可。
+type StreamCallbacks struct {
+	OnContent   func(piece string) error
+	OnReasoning func(piece string) error
 }
 
 type OpenAICompatMessage struct {
@@ -114,7 +148,8 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
-			Temperature: float64Ptr(0.7),
+			Temperature:     float64Ptr(0.7),
+			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
 		},
 	}
 	respCh, err := m.GenerateContent(ctx, req)
@@ -141,7 +176,7 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	return extractFromTRPCResponse(last, modelName)
 }
 
-func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, onDelta func(piece string) error) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
+func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, callbacks StreamCallbacks) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
 		return "", "", 0, 0, err
@@ -149,8 +184,9 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
-			Temperature: float64Ptr(0.7),
-			Stream:      true,
+			Temperature:     float64Ptr(0.7),
+			Stream:          true,
+			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
 		},
 	}
 	respCh, err := m.GenerateContent(ctx, req)
@@ -158,48 +194,93 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 		return "", "", 0, 0, err
 	}
 	var accText, accReason strings.Builder
-	for resp := range respCh {
-		if resp.Error != nil {
-			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
-			if err := contextError(ctx); err != nil {
-				return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+	// finalText/finalReason 来自流结束时框架发射的聚合响应（IsPartial=false，
+	// Message 为全量累积内容）。部分增量已计入 accText/accReason，聚合响应
+	// 必须作为权威结果整体替换，否则内容翻倍。
+	var finalText, finalReason string
+	var haveFinal bool
+
+	// P3 停滞看门狗：任一帧到达即重置；窗口内无任何帧判定停滞并返回
+	// *StreamIdleError（取代旧的固定总超时——有数据流动的慢流不设上限）。
+	idleTimer := time.NewTimer(streamIdleTimeout)
+	defer idleTimer.Stop()
+	resetIdleTimer := func() {
+		if !idleTimer.Stop() {
+			select {
+			case <-idleTimer.C:
+			default:
 			}
-			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, providerResponseError(resp.Error)
 		}
-		if len(resp.Choices) == 0 {
-			continue
-		}
-		ch := resp.Choices[0]
-		if resp.IsPartial {
-			if ch.Delta.Content != "" {
-				accText.WriteString(ch.Delta.Content)
-				if onDelta != nil {
-					if err = onDelta(ch.Delta.Content); err != nil {
-						return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+		idleTimer.Reset(streamIdleTimeout)
+	}
+
+loop:
+	for {
+		select {
+		case <-idleTimer.C:
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, &StreamIdleError{Timeout: streamIdleTimeout}
+		case <-ctx.Done():
+			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, contextError(ctx)
+		case resp, ok := <-respCh:
+			if !ok {
+				break loop
+			}
+			resetIdleTimer()
+			if resp.Error != nil {
+				// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
+				if err := contextError(ctx); err != nil {
+					return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+				}
+				return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, providerResponseError(resp.Error)
+			}
+			if len(resp.Choices) == 0 {
+				continue
+			}
+			ch := resp.Choices[0]
+			if resp.IsPartial {
+				if ch.Delta.Content != "" {
+					accText.WriteString(ch.Delta.Content)
+					if callbacks.OnContent != nil {
+						if err = callbacks.OnContent(ch.Delta.Content); err != nil {
+							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+						}
 					}
 				}
+				if ch.Delta.ReasoningContent != "" {
+					accReason.WriteString(ch.Delta.ReasoningContent)
+					if callbacks.OnReasoning != nil {
+						if err = callbacks.OnReasoning(ch.Delta.ReasoningContent); err != nil {
+							return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+						}
+					}
+				}
+				continue
 			}
-			if ch.Delta.ReasoningContent != "" {
-				accReason.WriteString(ch.Delta.ReasoningContent)
+			if ch.Message.Content != "" {
+				finalText = ch.Message.Content
+				haveFinal = true
 			}
-			continue
-		}
-		if ch.Message.Content != "" {
-			accText.WriteString(ch.Message.Content)
-		}
-		if ch.Message.ReasoningContent != "" {
-			accReason.WriteString(ch.Message.ReasoningContent)
-		}
-		if resp.Usage != nil {
-			promptTok = resp.Usage.PromptTokens
-			completionTok = resp.Usage.CompletionTokens
+			if ch.Message.ReasoningContent != "" {
+				finalReason = ch.Message.ReasoningContent
+			}
+			if resp.Usage != nil {
+				promptTok = resp.Usage.PromptTokens
+				completionTok = resp.Usage.CompletionTokens
+			}
 		}
 	}
 	// 流正常关闭但 ctx 已取消 = 超时截断：返回错误而非静默的部分结果。
 	if err := contextError(ctx); err != nil {
 		return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
 	}
-	return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, nil
+	full, reason := accText.String(), accReason.String()
+	if haveFinal {
+		full = finalText
+		if finalReason != "" {
+			reason = finalReason
+		}
+	}
+	return strings.TrimSpace(full), strings.TrimSpace(reason), promptTok, completionTok, nil
 }
 
 func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (trpcmodel.Model, error) {
@@ -211,6 +292,12 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 	if baseURL := strings.TrimSpace(cfg.APIBaseURL); baseURL != "" {
 		opts = append(opts, trpcprovider.WithBaseURL(baseURL))
 	}
+	// 显式传递 variant（如 deepseek），否则 openai 模型仅靠 baseURL 推断，
+	// 自定义网关/代理 URL 会退化为 OpenAI variant，导致 thinking 开关等
+	// variant 特有行为（{"thinking":{"type":"disabled"}}）丢失。
+	if v := provider.InferVariant(provider.ProviderModelConfig{ProviderType: cfg.ProviderType, BaseURL: cfg.APIBaseURL}); v != "" {
+		opts = append(opts, trpcprovider.WithVariant(v))
+	}
 	if hc != nil && hc.Transport != nil {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(hc.Transport))
 	}
@@ -219,6 +306,17 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 		return nil, err
 	}
 	return provider.WrapModelWithMetrics(m, providerName, modelName), nil
+}
+
+// thinkingEnabledFromConfig 将 cfg.ThinkingDisabled 映射为框架的
+// GenerationConfig.ThinkingEnabled：仅在显式禁用时返回 *false；默认返回 nil，
+// 请求体不携带 thinking 字段（保留 provider 服务端默认）。
+func thinkingEnabledFromConfig(cfg ProviderAPIConfig) *bool {
+	if !cfg.ThinkingDisabled {
+		return nil
+	}
+	disabled := false
+	return &disabled
 }
 
 func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {
@@ -279,7 +377,8 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
-			Temperature: float64Ptr(0.7),
+			Temperature:     float64Ptr(0.7),
+			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
 		},
 		Tools: toolDecls,
 	}

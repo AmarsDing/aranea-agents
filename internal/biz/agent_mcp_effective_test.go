@@ -38,3 +38,26 @@ func TestFilterEffectiveMCPServers_emptyAllowMeansAllExceptDeny(t *testing.T) {
 		t.Fatalf("got %#v", out)
 	}
 }
+
+func TestFilterEnabledMCPServerRows(t *testing.T) {
+	rows := []MCPServer{
+		{ID: "1", Key: "enabled-active", Enabled: true, Status: string(AgentStatusActive)},
+		{ID: "2", Key: "enabled-empty-status", Enabled: true, Status: ""},
+		{ID: "3", Key: "disabled", Enabled: false},
+		{ID: "4", Key: "deleted", Enabled: true, DeletedAt: "2026-08-07T00:00:00Z"},
+		{ID: "5", Key: "draft", Enabled: true, Status: "draft"},
+	}
+	out := filterEnabledMCPServerRows(rows)
+	if len(out) != 2 {
+		t.Fatalf("want 2 surviving rows, got %d: %#v", len(out), out)
+	}
+	if out[0].ServerKey != "enabled-active" || out[1].ServerKey != "enabled-empty-status" {
+		t.Fatalf("unexpected survivors: %#v", out)
+	}
+	// ConfigJSON must carry over for the runtime conversion path.
+	for _, s := range out {
+		if s.ID == "" {
+			t.Fatalf("ID must be preserved: %#v", s)
+		}
+	}
+}

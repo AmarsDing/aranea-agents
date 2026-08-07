@@ -8,7 +8,8 @@ import {
   sortedGraphNodes,
   filterGraphNodes,
   oneHopNeighborIds,
-  graphContainmentForce,
+  bfsNeighborhoodIds,
+  buildNeighborhoodGraph,
   GRAPH_LINK_TYPES,
   GRAPH_ISOLATED_HIDE_THRESHOLD,
 } from '../graphUi';
@@ -144,42 +145,37 @@ describe('GRAPH_LINK_TYPES', () => {
   });
 });
 
-describe('graphContainmentForce', () => {
-  it('按 距离×强度×alpha 将速度拉向原点（防无连边节点飞散）', () => {
-    const force = graphContainmentForce(0.05);
-    const nodes = [
-      { id: 'a', x: 100, y: 0, z: 0, vx: 0, vy: 0, vz: 0 },
-      { id: 'b', x: 0, y: -40, z: 20, vx: 2, vy: 1, vz: 0 },
-    ];
-    force.initialize?.(nodes);
-    force(1);
-    expect(nodes[0].vx).toBeCloseTo(-5); // 0 - 100*0.05*1
-    expect(nodes[0].vy).toBeCloseTo(0);
-    expect(nodes[1].vx).toBeCloseTo(2); // x=0 不受影响
-    expect(nodes[1].vy).toBeCloseTo(3); // 1 - (-40)*0.05*1
-    expect(nodes[1].vz).toBeCloseTo(-1); // 0 - 20*0.05*1
+// G5-D D-5：局部图谱 N 跳 BFS（设计 §V12.8-1「聚焦邻域」）。
+describe('bfsNeighborhoodIds / buildNeighborhoodGraph', () => {
+  // 链式图：a-b-c-d-e；另有孤立 x
+  const edges = [edge('a', 'b'), edge('b', 'c'), edge('c', 'd'), edge('d', 'e')];
+  const nodes = [node('a'), node('b'), node('c'), node('d'), node('e'), node('x')];
+
+  it('hops=0 仅根节点', () => {
+    expect([...bfsNeighborhoodIds('b', edges, 0)]).toEqual(['b']);
   });
 
-  it('alpha 缩放生效；原点节点不产生速度', () => {
-    const force = graphContainmentForce(0.05);
-    const nodes = [{ id: 'o', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }];
-    force.initialize?.(nodes);
-    force(0.5);
-    expect(nodes[0].vx).toBe(0);
-    expect(nodes[0].vy).toBe(0);
-    expect(nodes[0].vz).toBe(0);
+  it('hops=1 一跳邻域（含根）', () => {
+    expect([...bfsNeighborhoodIds('b', edges, 1)].sort()).toEqual(['a', 'b', 'c']);
   });
 
-  it('缺坐标/速度字段时安全跳过（不引入 NaN）', () => {
-    const force = graphContainmentForce(0.05);
-    const nodes: Array<{ id: string; x?: number; vx?: number }> = [
-      { id: 'no-coords' },
-      { id: 'no-vel', x: 10, y: 0, z: 0 },
-    ];
-    force.initialize?.(nodes);
-    expect(() => force(1)).not.toThrow();
-    expect(nodes[0].x).toBeUndefined();
-    expect(nodes[0].vx).toBeUndefined();
-    expect(nodes[1].vx).toBeCloseTo(-0.5); // vx 缺省按 0 起算
+  it('hops=2 二跳邻域；hops 超图径饱和', () => {
+    expect([...bfsNeighborhoodIds('b', edges, 2)].sort()).toEqual(['a', 'b', 'c', 'd']);
+    expect([...bfsNeighborhoodIds('b', edges, 99)].sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('孤立节点任何跳数都只有自身', () => {
+    expect([...bfsNeighborhoodIds('x', edges, 3)]).toEqual(['x']);
+  });
+
+  it('无向：从链尾反向可达', () => {
+    expect([...bfsNeighborhoodIds('e', edges, 2)].sort()).toEqual(['c', 'd', 'e']);
+  });
+
+  it('子图过滤：节点/边端点一致且 doc_type 保留（调色板哈希跨视图同色）', () => {
+    const sub = buildNeighborhoodGraph(nodes, edges, 'b', 1);
+    expect(sub.nodes.map((n) => n.doc_id).sort()).toEqual(['a', 'b', 'c']);
+    expect(sub.edges).toEqual([edge('a', 'b'), edge('b', 'c')]);
+    for (const n of sub.nodes) expect(n.doc_type).toBe('note');
   });
 });

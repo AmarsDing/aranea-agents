@@ -261,4 +261,52 @@ describe('GraphTeamNode', () => {
     const { GTN_ROW_H, GTN_STATUS_ROW_H } = await import('../graphTeamNodeUi');
     expect(GTN_STATUS_ROW_H).toBe(GTN_ROW_H);
   });
+
+  // ── 待确认成员黄色慢闪（2026-08-07） ──
+
+  function mkConfirmStep(memberId: string, status: 'tool_blocked' | 'completed') {
+    return {
+      ID: `step-confirm-${memberId}`,
+      TurnID: 'tn1',
+      TaskID: 'tk1',
+      SessionID: `sess-${memberId}`,
+      SpiritSessionID: 'sp1',
+      Kind: 'confirm' as const,
+      AuthorAgentKey: `agent-${memberId}`,
+      Seq: 1,
+      Version: 1,
+      Content: '工具 shell 需要确认后执行',
+      Reasoning: '',
+      ToolName: 'shell',
+      ToolCallID: 'call-1',
+      ToolArgs: null,
+      ToolResult: null,
+      ToolDurationMs: 0,
+      ToolErrorCode: '',
+      Status: status,
+      IsFinal: false,
+      StartedAt: new Date().toISOString(),
+      CompletedAt: null,
+    };
+  }
+
+  it('blinks member row in warning yellow while a confirm step is tool_blocked', async () => {
+    const store = useChatActivityStore();
+    seedTeam(store, [mkMember('m1', { AgentName: '阿尔法' }), mkMember('m2', { AgentName: '贝塔' })]);
+    store.upsertStep(mkConfirmStep('m1', 'tool_blocked'));
+    const wrapper = mountNode(mkNode());
+
+    const rows = wrapper.findAll('.gtn-member');
+    expect(rows[0]!.classes()).toContain('gtn-member--confirm-pending');
+    expect(rows[0]!.find('.gtn-member__dot--confirm-blink').exists()).toBe(true);
+    expect(rows[0]!.find('.gtn-member__dot--warning').exists()).toBe(true);
+    expect(rows[0]!.text()).toContain('待确认');
+    // 无待确认 step 的成员不闪烁
+    expect(rows[1]!.classes()).not.toContain('gtn-member--confirm-pending');
+
+    // 确认处理完毕（step 完成）后闪烁消失
+    store.upsertStep(mkConfirmStep('m1', 'completed'));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll('.gtn-member')[0]!.classes()).not.toContain('gtn-member--confirm-pending');
+  });
 });

@@ -99,6 +99,10 @@ func (m *memSkillRepo) ListEnabledPublishedSkillKeys(_ context.Context) ([]strin
 	return nil, nil
 }
 
+func (m *memSkillRepo) ListEnabledPublishedSkillRefs(_ context.Context) ([]biz.SkillEnabledRef, error) {
+	return nil, nil
+}
+
 func (m *memSkillRepo) ListEnabledPublishedSkillCandidates(_ context.Context) ([]biz.SkillRuntimeCandidate, error) {
 	return nil, nil
 }

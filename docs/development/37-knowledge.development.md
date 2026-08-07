@@ -2,6 +2,7 @@
 
 > **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
 > **2026-07-25 新增**：§子模块 Vault 重设计 Phase 计划（P1~P6，含 P4a/P4b 拆分）——Vault 重设计经评审有条件通过，R-1~R-6 已合入设计文档 §V6，待启动实施。
+> **2026-08-07 新增**：§子模块 图谱深空版与实体治理（G5）Phase 计划（G5-A~G5-G）——调研评审通过（`docs/reports/2026-08-07-research-knowledge-graph-oss.md`），V12.8 设计已合入，待启动实施。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -76,6 +77,12 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `web/src/components/knowledge/KnowledgeGraphCanvas.vue` — 3d-force-graph 画布封装
 - `web/src/components/knowledge/KnowledgeScopePicker.vue` — 搜索范围选择器（搜索框/图谱操作台复用）
 - `web/src/components/knowledge/KnowledgeSearchPanel.vue` — ⛔ 已删除（检索 Tab 由图谱 Tab 取代）
+
+**G5 计划新增（📋 待启动，设计 §V12.8）**：
+- `web/src/features/knowledge/graph3d/` — 纯 TS 引擎（零 Vue/three 依赖）：`model.ts`（SoA 图模型 + 确定性播种）、`octree.ts`（typed-array 八叉树）、`forces.ts`（5 力物理引擎）、`protocol.ts`（Worker 协议）、`tiering.ts`（节点三层分级）、`palette.ts`（分组调色板）、`particleMath.ts`（粒子流纯数学）、`physics.worker.ts`（物理 Worker）
+- `web/src/components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue` + `render/`（NodeLayer/EdgeLayer/ParticleLayer/BackdropLayer/BloomPipeline/LabelLayer/Picker）— Vue/three 命令式壳
+- 后端实体治理：DDL 迁移（`knowledge_entities.name_norm` + `knowledge_entity_aliases` 表）+ L3 Go 数据迁移（回填 + 冲突组合并）、`NormalizeEntityName`、`MergeKnowledgeEntities`/`ListEntityMergeSuggestions` RPC、`ReplaceDocEntities` 归一化接线、流程日志 step `knowledge.entity.merge`
+- **G5 移除**：`3d-force-graph` 依赖（`three` 保留）、`KnowledgeGraphCanvas.vue`、`graphUi.ts graphContainmentForce`（自研引擎向心力 + maxStep 钳制原生覆盖）
 
 ---
 
@@ -913,3 +920,117 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
                   └──→ P4a（L0 强 BM25，spike 前置）──→ P4b（L2 插件化）──→ P6（迁移）
                   └──→ P5（Agent 工具族，R-6 前置）可与 P3/P4 并行
 ```
+
+---
+
+## 子模块：图谱深空版与实体治理（G5）Phase 计划
+
+> **设计契约**：[37-knowledge.design.md §V12.8](./37-knowledge.design.md#v128-图谱深空版渲染层--实体治理g52026-08-07-评审通过)
+> **需求**：[37-knowledge.md §子模块：图谱深空版与实体治理（G5 需求）](./37-knowledge.md#子模块图谱深空版与实体治理g5-需求2026-08-07)（US-21~US-23、FR-G5-1~11、NFR-G5-1~5、验收 30~37）
+> **调研依据**：[2026-08-07-research-knowledge-graph-oss.md](../reports/2026-08-07-research-knowledge-graph-oss.md)（fast-graph 主蓝本 / orrery 视觉蓝本 / jarvis-ui HUD·分级蓝本 / Simple Graph Builder 消歧蓝本）
+> **状态**：📋 待启动 | 用户已裁决：自研渲染层；深空星河 + HUD 操作台；粒子流完整复刻（时变彩虹色保留）；`3d-force-graph` 依赖完全移除；实体消歧与前端一轮做完。
+
+### 总览
+
+| Phase | 内容 | 关联契约 | 状态 |
+|-------|------|---------|------|
+| **G5-A** | 引擎内核（纯 TS，零 Vue/three 依赖，TDD） | FR-G5-1/2/5、NFR-G5-2/3 | 📋 |
+| **G5-B** | 物理执行层（Worker 协议 + 主线程兜底） | FR-G5-1、NFR-G5-5 | 📋 |
+| **G5-C** | 渲染层（Node/Edge/Backdrop/Bloom/Label/Picker + Canvas 装配） | FR-G5-1/3/6 | 📋 |
+| **G5-D** | 交互全集 + 粒子流 | FR-G5-4/7 | 📋 |
+| **G5-E** | HUD 操作台换肤 + 新控件 | FR-G5-8、NFR-G5-4 | 📋 |
+| **G5-F** | 实体治理后端（B9~B12） | FR-G5-9/10/11 | 📋 |
+| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 📋 |
+
+### G5-A：引擎内核（纯 TS）
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| A-1 | SoA 图模型：positions/velocities Float32Array(3N)、degree Uint16、groupId Uint16、edges Int32Array(2E)；docId↔index 双射；确定性播种 mulberry32 + 球内体采样 `r=(cbrt(N)*20+1)*cbrt(rand)` | `web/src/features/knowledge/graph3d/model.ts`（新增） |
+| A-2 | typed-array 八叉树池（Float32 8/cell + Int32 9/cell，容量 16N 倍增，显式栈迭代，质心除法延迟到查询） | `graph3d/octree.ts`（新增） |
+| A-3 | 物理引擎：BH 斥力（repulsion=30,theta=0.8) + 弹簧（0.05/30) + 簇凝聚（0.08) + 簇分离（100·count/d²) + 向心力（0.011)；显式 Euler damping=0.9；**maxStep 位移钳制（≤linkDistance)**；alphaDecay=0.0228，alphaMin=0.005 | `graph3d/forces.ts`（新增） |
+| A-4 | 节点三层分级：supernode=degree≥15；ultranode=连接≥4 个不同 supernode；尺寸倍率 1.0/1.5/2.5；分层 charge(-120/-200/-350) | `graph3d/tiering.ts`（新增） |
+| A-5 | 分组调色板：doc_type 稳定哈希取色（沿用 G4 graphUi 调色板语义） | `graph3d/palette.ts`（新增） |
+| A-6 | 粒子流纯数学：相位均布 `prog[i]=i/n`、easeInOutQuad、时变 HSL `hue=0.5+0.32·sin((t·0.6+p·2.2+i·0.12)·π)` | `graph3d/particleMath.ts`（新增） |
+
+验收：全部纯函数单测覆盖（确定性播种同数据同布局；maxStep 钳制不发散；八叉树查询正确性；分级阈值；粒子相位均布）。
+
+### G5-B：物理执行层
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| B-1 | Worker 消息协议：init(slice 后 transfer)/setParams/pin/unpin/reheat/stop ↔ tick{positions,alpha}/stopped/error | `graph3d/protocol.ts`（新增） |
+| B-2 | 物理 Worker（16ms tick，alpha<alphaMin 自停发 stopped；Vite `?worker` 引入） | `graph3d/physics.worker.ts`（新增） |
+| B-3 | 主线程兜底客户端：Worker 创建失败 → RAF 跑同一 `forces.ts` 引擎（NFR-G5-5） | `graph3d/engine.ts`（新增，纯 TS 装配） |
+
+验收：协议消息单测；Worker/主线程两路径同一引擎行为一致（同输入同 positions 序列）。
+
+### G5-C：渲染层
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| C-1 | NodeLayer：InstancedMesh 低模球（6,4)+MeshBasicMaterial（加法混合）；instanceColor + baseColors 缓存 + lerp(white,0.5) 高亮；大小=base+sqrt(degree)·scale × 分级倍率 | `components/knowledge/graph3d/render/NodeLayer.ts`（新增） |
+| C-2 | EdgeLayer：微弯 Bezier 边（QuadraticBezierCurve3，bow 0.3·len，垂直轴 hash01("s->t")·2π 定向，6 段）；单 LineSegments + vertexColors（rest=边类型色×0.32，hover 关联边=×0.9 瞬时换色） | `render/EdgeLayer.ts`（新增） |
+| C-3 | BackdropLayer：FBM 星云反转球（3-octave，colA 紫（0.12,0.06,0.22)/colB 青（0.05,0.17,0.21)，bright=0.5，pow(fbm,2.2) 压在 bloom 阈值下）+ 三档星空（dim 2400/med 4800/bright 800，球面均匀，sizeAttenuation:false，64px 柔光 dotTexture）+ 核雾（520 颗加法 Points，布局收敛后锚定度数最大 hub） | `render/BackdropLayer.ts`（新增） |
+| C-4 | BloomPipeline：EffectComposer（RenderPass + UnrealBloomPass strength≈1.2/radius=0.5/threshold=0.28，半分辨率 w/2×h/2，nMips=3）；ACESFilmicToneMapping exposure=1.2；**不透明深空底 #050810**（bloom 与透明背景不兼容）；strength=0 时整 pass enabled=false | `render/BloomPipeline.ts`（新增） |
+| C-5 | LabelLayer：three-spritetext 标签（挂节点子对象，LABEL_HEIGHT/r 抵消父缩放）；相机距离/节点度数双阈值，密图不糊屏 | `render/LabelLayer.ts`（新增） |
+| C-6 | Picker：Raycaster 逐实例求交 + mousemove 去抖（同时防粒子相位重置） | `render/Picker.ts`（新增） |
+| C-7 | Canvas 装配：Renderer+Worker 客户端+交互桥；**lazy-render**（needsRender \|\| particles.active \|\| autoRotate 才 composer.render()）；IntersectionObserver 离屏 pauseAnimation | `components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue`（新增） |
+
+验收：渲染层组件级快照/像素断言可行部分单测；收敛静置后 RAF 不再过 GPU（lazy-render 计数断言）；WebGL 不可用友好占位。
+
+### G5-D：交互全集 + 粒子流
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| D-1 | hover 一跳邻居：全边表 O(E) 扫描 + 去抖；邻居集驱动 NodeLayer 提亮、其余压暗（lerp 0.08）、EdgeLayer 关联边换色、ParticleLayer 发射 | `graph3d/engine.ts`、render 各层 |
+| D-2 | pin 拖拽：pin-and-move（拖拽平面法线朝相机 + grabOffset 防跳变）；拖拽中挂起 controls/autoRotate；fx/fy/fz 写 Worker pin 消息；只重写关联边顶点 | `KnowledgeGraph3DCanvas.vue`、`protocol.ts` |
+| D-3 | zoom-to-cursor：滚轮射线 ∩ 过 target 面向相机平面求 pivot，相机+target 同步缩放 `0.95^(-ΔY·0.01)` | `KnowledgeGraph3DCanvas.vue` |
+| D-4 | 交互状态机：shown(hover)/selected（单击锁定） 分离；位移 <5px 区分拖拽与点击；双击 =「在浏览中打开」（沿用 G4 跨 tab 定位链路） | `graph3d/engine.ts`、`KnowledgeGraph3D.vue` |
+| D-5 | 局部图谱：N 跳 BFS（1-4）→ 子图重建（新 GraphModel + 重播种），**groupId 沿原图复制保持跨视图颜色一致**；「返回全局」恢复 | `graph3d/model.ts`、`useKnowledgeGraph.ts` |
+| D-6 | ParticleLayer：粒子流 1:1 复刻（MAX=80、SPEED=0.45/s、PointsMaterial size=8 + 64px 径向渐变 glowTexture + vertexColors + depthWrite:false；时变彩虹色） | `render/ParticleLayer.ts`（新增） |
+
+验收：交互状态机单测；局部图谱颜色与全局一致断言；pin 后位置持久；双击触发「在浏览中打开」。
+
+### G5-E：HUD 操作台换肤
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| E-1 | `.kg-hud` 作用域皮肤（**不改全局主题 token**，NFR-G5-4）：等宽字体（'JetBrains Mono', Consolas, monospace）、主青 #00d4ff、边色 #1a3a4a、letter-spacing:0.08em、面板 rgba(5,8,16,0.88) + box-shadow:0 0 15px #00d4ff22 + 1px 青色描边、`[ ON ]/[ OFF ]` 括号式开关、边类型图例发光色块 | `KnowledgeGraph3D.vue`（改造）、样式 |
+| E-2 | 新增 HUD 控件：auto-rotate 开关、标签开关、「聚焦邻域」（跳数 1-4 步进）+「返回全局」；画布左下统计（节点/边数）、右上浮动工具条（适应视图/图例/auto-rotate/标签/返回全局） | `KnowledgeGraph3D.vue`、`KnowledgeGraph3DCanvas.vue` |
+| E-3 | 保留 G4 全部控件与 `KnowledgeScopePicker` 复用，功能不回归；全部文案入 locale（check-i18n 红线） | `KnowledgeGraph3D.vue`、locales |
+
+验收：亮色/暗色主题下图谱 Tab 均为深空风；全局主题 token 零改动；G4 控件功能不回归。
+
+### G5-F：实体治理后端（B9~B12）
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| F-1 | `NormalizeEntityName` 纯函数：Unicode NFC + case-fold（unicode.CaseRanges 语义无损小写）+ 内部空白折叠单空格 + 去首尾 | `internal/biz/knowledge/`（新增，TDD） |
+| F-2 | DDL 迁移：`knowledge_entities` 加 `name_norm TEXT` + `UNIQUE(collection_id, name_norm)`；新建 `knowledge_entity_aliases(collection_id, alias_norm, entity_id)` 表；L3 Go 数据迁移回填 name_norm（PG 无 NFC，不可 DB 侧回填），冲突组按 id 最小者为 keeper 自动合并并落别名；迁移幂等（IF NOT EXISTS） | `internal/data/sql/migrations/`（新增）、`ddl_migration_registry.go`、L3 数据迁移 |
+| F-3 | `ReplaceDocEntities` 按 name_norm 查/建字典条目（name 保留首见写法作展示名）+ 别名命中 keeper；解析管线：归一化 → 精确 name_norm → 别名 → (embedding ≥0.90 自动合并入别名表） → 新建；`FindEntityCooccurrences` 改按 entity_id 关联 | `internal/data/knowledge_links.go`、`internal/knowledge/vault_entity.go` |
+| F-4 | Proto：`rpc MergeKnowledgeEntities(collection_id, keeper_id, mergee_ids[])` + `rpc ListEntityMergeSuggestions(collection_id)` + `make api` | `api/kratos/knowledge/v1/knowledge.proto` |
+| F-5 | MergeKnowledgeEntities：`Data.ExecInTx` 重写 mergee 的 `knowledge_doc_entities`（mentions 求和，冲突合并）+ `knowledge_links` entity 轨 context 引用重写 + mergee 条目删除 + name/name_norm 落 keeper 别名；返回 `{rewritten_mentions, rewritten_links}`；流程日志 step `knowledge.entity.merge`（登记 `internal/event/flow_log.go` stepTitleRegistry + 同步 `docs/development/52-flow-logger.design.md` §5.1 步骤注册表） | `internal/biz/knowledge/`、`internal/data/knowledge_links.go`、`internal/event/flow_log.go` |
+| F-6 | ListEntityMergeSuggestions：归一化冲突组（name 不同 name_norm 相同）+ 配置 embedding 时高相似对（余弦 ≥0.90 标 auto、0.80-0.90 标 suggest）；embedding 未配置仅返回 norm 组（对齐 NFR-15）；实时计算不落队列表（YAGNI） | `internal/biz/knowledge/`、`internal/service/knowledge.go` |
+
+验收："AI"/"ai"/"ＡＩ" 聚合为同一实体；合并事务重写条数正确返回；合并后别名命中跨同步持久；无 embedding 时归一化与手动合并全功能可用。
+
+### G5-G：治理前端 + 移除清单 + 全量验证
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| G-1 | HUD「实体治理」分区：合并建议列表（保留名 ← 候选名、来源徽标 norm/embedding、相似度）+ 一键合并 + 重写条数内联反馈；api.ts + store 接线 | `KnowledgeGraph3D.vue`、`api.ts`、`stores/knowledge/` |
+| G-2 | 移除清单执行：`3d-force-graph` 从 package.json 移除（新增 `three-spritetext`）；`KnowledgeGraphCanvas.vue` 删除；`graphUi.ts graphContainmentForce` 删除（配色/排序/过滤/一跳邻居纯函数保留复用）；Grep 全局搜索确认零残留引用 | `web/package.json`、`KnowledgeGraphCanvas.vue`、`graphUi.ts` |
+| G-3 | 性能基准：2 万节点/5 万边合成数据集交互帧率记录入测试文档；布局收敛静置 CPU/GPU 零占用断言 | `docs/testing/`（性能基准记录） |
+| G-4 | 全量验证：前端 `pnpm lint && pnpm test && pnpm build`；后端 `make api && make wire && make build && make test && make lint`（干净 GOCACHE）；浏览器运行时复验（深空视觉/hover 粒子流/pin/局部图谱/合并治理全链路，对照验收 30~37） | — |
+
+验收：验收标准 30~37 全部通过；移除清单零残留；性能基准落档。
+
+### 依赖关系
+
+```
+G5-A（引擎内核）──→ G5-B（Worker）──→ G5-C（渲染层）──→ G5-D（交互+粒子流）──→ G5-E（HUD）──→ G5-G（验证）
+G5-F（后端治理，独立可并行）──────────────────────────────────────────────────────↗
+```
+
+> **反模式红线**（调研 §8，实施时必须规避）：① bloom 必须不透明深空底 clear（alpha:false）；② 星云/核雾亮度压在 bloom threshold 下防糊屏；③ 力布局必须 maxStep 钳制防 hub 发散；④ Worker init 先 slice 再 transfer；⑤ 拖拽挂起 controls/autoRotate，恢复时 hoverId 指向刚放下节点；⑥ 子图重建 groupId 沿原图复制保色。

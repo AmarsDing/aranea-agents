@@ -12,16 +12,17 @@ import (
 type TraceDomain string
 
 const (
-	TraceDomainChat      TraceDomain = "chat"
-	TraceDomainTeam      TraceDomain = "team"
-	TraceDomainGraph     TraceDomain = "graph"
-	TraceDomainChannel   TraceDomain = "channel"
-	TraceDomainKnowledge TraceDomain = "knowledge"
-	TraceDomainPlugin    TraceDomain = "plugin"
-	TraceDomainSystem    TraceDomain = "system"
-	TraceDomainSkill     TraceDomain = "skill"
-	TraceDomainA2A       TraceDomain = "a2a"
-	TraceDomainVoice     TraceDomain = "voice"
+	TraceDomainChat       TraceDomain = "chat"
+	TraceDomainTeam       TraceDomain = "team"
+	TraceDomainGraph      TraceDomain = "graph"
+	TraceDomainChannel    TraceDomain = "channel"
+	TraceDomainKnowledge  TraceDomain = "knowledge"
+	TraceDomainPlugin     TraceDomain = "plugin"
+	TraceDomainSystem     TraceDomain = "system"
+	TraceDomainSkill      TraceDomain = "skill"
+	TraceDomainA2A        TraceDomain = "a2a"
+	TraceDomainVoice      TraceDomain = "voice"
+	TraceDomainClientTool TraceDomain = "client_tool"
 )
 
 // TraceContext correlates flow logs and spans for one request/run.

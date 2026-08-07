@@ -208,19 +208,20 @@ func (d *chatAgentBuildDirector) computeToolHashFromCached(eff *biz.AgentEffecti
 	return computeVersionHash(entries)
 }
 
-// computeSkillHash produces a content hash from the currently enabled published skill slugs.
-// When skills are added/removed/toggled, this hash changes and invalidates the agent cache.
+// computeSkillHash produces a content hash from enabled published skill refs
+// (slug + updated_at). Any skill add/remove/toggle/content mutation changes
+// this hash and invalidates the agent cache; unchanged skills keep it stable.
 func (d *chatAgentBuildDirector) computeSkillHash(ctx context.Context) string {
 	if d.td.ReadDeps.SkillUC == nil {
 		return ""
 	}
-	slugs, err := d.td.ReadDeps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
+	refs, err := d.td.ReadDeps.SkillUC.ListEnabledPublishedSkillRefs(ctx)
 	if err != nil {
 		return ""
 	}
-	entries := make([]versionHashEntry, len(slugs))
-	for i, slug := range slugs {
-		entries[i] = versionHashEntry{ID: slug}
+	entries := make([]versionHashEntry, len(refs))
+	for i, ref := range refs {
+		entries[i] = versionHashEntry{ID: ref.Slug, UpdatedAt: ref.UpdatedAt}
 	}
 	return computeVersionHash(entries)
 }

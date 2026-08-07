@@ -19,6 +19,14 @@ type EvolutionAgentLister interface {
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error)
 }
 
+// EvolutionDrafterPort is the narrow post-pass dependency (EVO-20): after the
+// trigger pass, notification-only L3 suggestions (persona/prompt without an
+// apply payload) get an LLM-generated actionable draft. nil = feature off.
+// *biz.EvolutionDrafter satisfies this interface.
+type EvolutionDrafterPort interface {
+	DraftPending(ctx context.Context, agentID string) error
+}
+
 // EvolutionOrchestratorWorker is the single unified entry point for automatic
 // evolution triggering (A1). It replaces the trigger half of the legacy
 // per-pipeline scanners:
@@ -32,6 +40,9 @@ type EvolutionAgentLister interface {
 //  3. Scans active agents (L1 EvolutionSkillEvolve or L3 EvolutionSuggestionsEnabled/
 //     EvoEnabled opt-in) → orchestrator.CheckAndCreate(agent) — PatternTrigger +
 //     AgentConfigTrigger; each trigger re-checks its own opt-in flag.
+//  4. Post-pass (EVO-20): for each L3-opted-in agent, drafter.DraftPending
+//     turns one pending notification-only persona/prompt suggestion into an
+//     applicable draft (LLM failure degrades silently to notification state).
 //
 // Verification of triggered suggestions remains with CuratorWorker
 // (ValidatePendingSuggestionsForSkill); the learning loop
@@ -42,6 +53,7 @@ type EvolutionOrchestratorWorker struct {
 	orch     *biz.SkillEvolutionOrchestrator
 	agents   EvolutionAgentLister
 	skills   biz.SkillQueryReader
+	drafter  EvolutionDrafterPort // nil = EVO-20 disabled
 	lg       loggateway.Logger
 }
 
@@ -51,6 +63,7 @@ func NewEvolutionOrchestratorWorker(
 	orch *biz.SkillEvolutionOrchestrator,
 	agents EvolutionAgentLister,
 	skills biz.SkillQueryReader,
+	drafter EvolutionDrafterPort,
 	lg loggateway.Logger,
 ) *EvolutionOrchestratorWorker {
 	if interval <= 0 {
@@ -61,6 +74,7 @@ func NewEvolutionOrchestratorWorker(
 		orch:     orch,
 		agents:   agents,
 		skills:   skills,
+		drafter:  drafter,
 		lg:       lg,
 	}
 }
@@ -182,6 +196,16 @@ func (w *EvolutionOrchestratorWorker) scanAgents(ctx context.Context) error {
 					loggateway.StepID("evo_orchestrator_worker.scan_agents"),
 					loggateway.Str("agent_id", a.ID),
 					loggateway.Err(err))
+			}
+			// EVO-20 post-pass: draft one notification-only L3 suggestion per
+			// cycle. Only L3-opted-in agents can hold evolve_agent suggestions.
+			if w.drafter != nil && (settings.EvolutionSuggestionsEnabled || settings.EvoEnabled) {
+				if err := w.drafter.DraftPending(ctx, a.ID); err != nil {
+					w.lg.Warn("orchestrator worker: draft pending failed",
+						loggateway.StepID("evo_orchestrator_worker.draft"),
+						loggateway.Str("agent_id", a.ID),
+						loggateway.Err(err))
+				}
 			}
 		}
 		if len(page.Items) < batchSize {

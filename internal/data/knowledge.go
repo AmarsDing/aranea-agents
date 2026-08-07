@@ -140,13 +140,26 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 		`CREATE INDEX IF NOT EXISTS knowledge_links_target_idx ON knowledge_links(target_doc_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
 			ON knowledge_links(doc_id, target_doc_id, link_type)`,
+		// --- 实体治理（G5-F B9/B12）：name_norm 承载唯一性（展示名 name 保留首见写法）；
+		// 存量库由迁移 20261129 回填/合并后建唯一索引，此处定义 fresh 库最终形态 ---
 		`CREATE TABLE IF NOT EXISTS knowledge_entities (
 			id            BIGSERIAL PRIMARY KEY,
 			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
 			name          TEXT NOT NULL,
 			entity_type   TEXT NOT NULL DEFAULT '',
-			UNIQUE (collection_id, name)
+			name_norm     TEXT NOT NULL DEFAULT '',
+			CONSTRAINT knowledge_entities_name_norm_key UNIQUE (collection_id, name_norm)
 		)`,
+		`CREATE TABLE IF NOT EXISTS knowledge_entity_aliases (
+			id            BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL REFERENCES knowledge_collections(id) ON DELETE CASCADE,
+			entity_id     BIGINT NOT NULL REFERENCES knowledge_entities(id) ON DELETE CASCADE,
+			alias_norm    TEXT NOT NULL,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			UNIQUE (collection_id, alias_norm)
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_entity_aliases_entity_idx
+			ON knowledge_entity_aliases(entity_id)`,
 		`CREATE TABLE IF NOT EXISTS knowledge_doc_entities (
 			collection_id TEXT NOT NULL,
 			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,

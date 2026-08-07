@@ -2,15 +2,7 @@
   <q-page class="app-standard-page app-registry-page skill-tags-page">
     <AppPageHero kicker="Skill registry" :title="$t('skillTags.title')" :subtitle="$t('skillTags.subtitle')">
       <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="add"
-          :label="$t('skillTags.create')"
-          @click="openCreate"
-        />
+        <q-btn outline rounded no-caps color="primary" icon="add" :label="$t('skillTags.create')" @click="openCreate" />
         <q-btn
           color="primary"
           unelevated
@@ -49,12 +41,14 @@
         :options="sourceOptions"
       />
       <template #actions>
-        <q-chip outline color="primary" text-color="primary" icon="sell" square>
+        <span class="skill-tags-stat">
+          <q-icon name="sell" size="13px" />
           {{ $t('skillTags.totalChip', { count: filteredTags.length }) }}
-        </q-chip>
-        <q-chip v-if="orphanCount > 0" outline color="warning" text-color="warning" icon="warning_amber" square>
+        </span>
+        <span v-if="orphanCount > 0" class="skill-tags-stat skill-tags-stat--warning">
+          <q-icon name="warning_amber" size="13px" />
           {{ $t('skillTags.orphanChip', { count: orphanCount }) }}
-        </q-chip>
+        </span>
       </template>
     </AppPageToolbar>
 
@@ -73,9 +67,9 @@
         <div class="skill-tags-group__header row items-center q-gutter-sm q-mb-sm">
           <q-icon :name="group.dimension ? 'folder_open' : 'label_important'" color="primary" size="20px" />
           <span class="text-subtitle1 text-weight-medium">{{ group.label }}</span>
-          <q-chip dense square color="grey-3" text-color="grey-8">{{ group.items.length }}</q-chip>
+          <span class="skill-tags-count">{{ group.items.length }}</span>
         </div>
-        <q-card flat bordered>
+        <q-card flat class="app-glass-panel">
           <q-list separator>
             <q-item
               v-for="tag in group.items"
@@ -84,22 +78,24 @@
             >
               <q-item-section>
                 <q-item-label class="row items-center q-gutter-xs">
-                  <q-chip dense square outline color="primary" text-color="primary" class="text-weight-medium">
+                  <span class="skill-tag-pill" :class="{ 'skill-tag-pill--system': tag.source === 'system' }">
                     {{ tag.name }}
-                  </q-chip>
-                  <q-badge v-if="tag.source === 'system'" color="blue-grey" outline>
+                  </span>
+                  <span v-if="tag.source === 'system'" class="skill-tag-badge">
                     {{ $t('skillTags.badgeSystem') }}
-                  </q-badge>
-                  <q-badge v-else-if="tag.source === 'orphan'" color="warning" outline>
+                  </span>
+                  <span v-else-if="tag.source === 'orphan'" class="skill-tag-badge skill-tag-badge--warning">
                     {{ $t('skillTags.badgeOrphan') }}
-                  </q-badge>
+                  </span>
                 </q-item-label>
-                <q-item-label v-if="tag.source === 'orphan'" caption class="text-warning q-mt-xs">
-                  {{ $t('skillTags.orphanHint') }}
+                <q-item-label v-if="tag.source === 'orphan'" caption class="q-mt-xs">
+                  <span class="skill-tag-row__orphan-hint">{{ $t('skillTags.orphanHint') }}</span>
                 </q-item-label>
               </q-item-section>
-              <q-item-section side class="text-body2 text-grey-7 skill-tag-row__usage">
-                {{ $t('skillTags.usageCount', { count: tag.used_count }) }}
+              <q-item-section side class="skill-tag-row__usage">
+                <span class="skill-tag-row__usage-text">
+                  {{ $t('skillTags.usageCount', { count: tag.used_count }) }}
+                </span>
               </q-item-section>
               <q-item-section side>
                 <div class="row q-gutter-xs">
@@ -130,7 +126,7 @@
 
     <!-- 新建标签 -->
     <q-dialog v-model="createOpen" persistent>
-      <q-card style="min-width: 420px">
+      <q-card class="skill-tags-dialog-card">
         <q-card-section class="text-h6">{{ $t('skillTags.createDialogTitle') }}</q-card-section>
         <q-card-section class="q-pt-none">
           <q-input
@@ -161,7 +157,7 @@
 
     <!-- 改名 -->
     <q-dialog v-model="renameOpen" persistent>
-      <q-card style="min-width: 420px">
+      <q-card class="skill-tags-dialog-card">
         <q-card-section class="text-h6">{{ $t('skillTags.renameDialogTitle') }}</q-card-section>
         <q-card-section class="q-pt-none">
           <div class="text-body2 text-grey-7 q-mb-sm">
@@ -357,14 +353,114 @@ function onDelete(tag: SkillTagInfo) {
 onMounted(reload);
 </script>
 
-<style scoped>
-.skill-tags-filter {
-  margin-bottom: 16px;
-}
-.skill-tag-row--orphan {
-  background: rgba(255, 193, 7, 0.06);
-}
-.skill-tag-row__usage {
-  min-width: 96px;
-}
+<style scoped lang="sass">
+.skill-tags-filter
+  margin-bottom: 16px
+
+.skill-tags-dialog-card
+  min-width: 420px
+
+// ── 工具栏统计 pill（中性玻璃 + 强调图标）──
+.skill-tags-stat
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  padding: 4px 12px
+  border-radius: 999px
+  font-size: var(--text-xs)
+  font-weight: 600
+  line-height: 1.4
+  color: var(--color-text-secondary)
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+  .q-icon
+    color: var(--color-accent)
+
+  &--warning
+    color: var(--color-warning)
+    border-color: color-mix(in srgb, var(--color-warning) 32%, transparent)
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent)
+
+    .q-icon
+      color: var(--color-warning)
+
+// ── 分组计数 pill ──
+.skill-tags-count
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  min-width: 22px
+  padding: 1px 8px
+  border-radius: 999px
+  font-size: 11px
+  font-weight: 700
+  line-height: 1.5
+  color: var(--color-text-secondary)
+  background: color-mix(in srgb, var(--color-text-secondary) 10%, transparent)
+
+// ── 标签主体 pill：背景锚定主题玻璃色（与卡片同族），强调色只用于文字/描边 ──
+// 注意：禁止 color-mix(accent, transparent) 作背景——透明薄纱叠加在玻璃上
+// 暗色下会渲染成灰绿浑浊色块，与主题脱节
+.skill-tag-pill
+  display: inline-flex
+  align-items: center
+  padding: 3px 10px
+  border-radius: 999px
+  font-size: var(--text-xs)
+  font-weight: 600
+  letter-spacing: 0.02em
+  line-height: 1.5
+  color: var(--color-accent-hover)
+  border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  background: var(--glass-elevated)
+
+  &--system
+    color: var(--color-text-secondary)
+    border-color: var(--glass-border)
+    background: transparent
+
+body.body--dark .skill-tag-pill
+  color: var(--color-accent)
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--glass-border))
+
+  &--system
+    color: var(--color-text-secondary)
+    border-color: var(--glass-border)
+    background: transparent
+
+// ── 来源角标 ──
+.skill-tag-badge
+  display: inline-flex
+  align-items: center
+  padding: 1px 7px
+  border-radius: 999px
+  font-size: 10px
+  font-weight: 700
+  line-height: 1.5
+  letter-spacing: 0.04em
+  color: var(--color-text-tertiary)
+  border: 1px solid var(--glass-border)
+
+  &--warning
+    color: var(--color-warning)
+    border-color: color-mix(in srgb, var(--color-warning) 30%, transparent)
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent)
+
+// ── 行 ──
+.skill-tag-row--orphan
+  background: var(--color-warning-soft)
+
+.skill-tag-row__orphan-hint
+  color: var(--color-warning)
+
+.skill-tag-row__usage
+  min-width: 96px
+
+// 注意：必须作用于内层 span——Quasar 对 .q-item__section--side 的颜色规则
+// 特异性高于本文件 scoped 类，直接挂在 section 上会被覆盖
+.skill-tag-row__usage-text
+  font-size: var(--text-sm)
+  color: var(--color-text-secondary)
+  font-variant-numeric: tabular-nums
 </style>

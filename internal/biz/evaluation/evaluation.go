@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -371,6 +372,10 @@ func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunCo
 	if len(runs) < 2 {
 		return nil, apierror.BadRequest("EVAL", "could not load at least two runs")
 	}
+	// ISSUE-004: baseline must be the earliest run by creation time, not
+	// whatever order the caller/store happened to return. CreatedAt is
+	// RFC3339, so lexicographic order matches chronological order.
+	sort.SliceStable(runs, func(i, j int) bool { return runs[i].CreatedAt < runs[j].CreatedAt })
 	base := runs[0]
 	out := make([]RunComparison, 0, len(runs))
 	for _, r := range runs {

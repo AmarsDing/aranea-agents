@@ -43,6 +43,14 @@
               <div class="text-caption text-grey-7">{{ selectedDataset.description || '无描述' }}</div>
             </div>
             <div class="app-actions-bar app-actions-bar--start">
+              <q-btn
+                outline
+                no-caps
+                color="primary"
+                icon="upload_file"
+                :label="$t('evaluationPage.uploadCases')"
+                @click="uploadOpen = true"
+              />
               <q-btn outline no-caps color="primary" icon="play_arrow" label="启动评估" @click="runOpen = true" />
               <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="confirmDeleteDataset" />
             </div>
@@ -135,9 +143,17 @@
       v-model:agent-id="runForm.agent_id"
       v-model:metrics="runForm.metrics"
       v-model:num-runs="runForm.num_runs"
+      v-model:user-simulation="runForm.use_user_simulation"
       :loading="runLoading"
       :agent-options="agentOptions"
       @submit="submitRun"
+    />
+    <evaluation-upload-cases-dialog
+      v-model:open="uploadOpen"
+      v-model:text="uploadText"
+      :loading="uploadLoading"
+      :dataset-name="selectedDataset?.name ?? ''"
+      @submit="submitUpload"
     />
     <evaluation-results-dialog
       v-model:open="resultsOpen"
@@ -170,6 +186,7 @@ import EvaluationDatasetList from '../components/evaluation/EvaluationDatasetLis
 import EvaluationCreateDialog from '../components/evaluation/EvaluationCreateDialog.vue';
 import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vue';
 import EvaluationResultsDialog from '../components/evaluation/EvaluationResultsDialog.vue';
+import EvaluationUploadCasesDialog from '../components/evaluation/EvaluationUploadCasesDialog.vue';
 import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
 
 const {
@@ -210,6 +227,10 @@ const {
   submitCreate,
   confirmDeleteDataset,
   submitRun,
+  uploadOpen,
+  uploadLoading,
+  uploadText,
+  submitUpload,
   openResults,
   savingResultId,
   updateResultRow,

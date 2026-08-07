@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -95,7 +96,11 @@ type WSServer struct {
 	turnExecutor WSTurnExecutor
 	// resumer handles "resume_task" upstream messages (L3). Optional: nil
 	// rejects resume requests with a ws_error notice.
-	resumer               TaskResumer
+	resumer TaskResumer
+	// clientBridge coordinates client tool invocations (client_open_app /
+	// client_open_url) routed to desktop-companion connections (design 74 §6).
+	// Optional: nil rejects client_tool.result uplinks as no-ops.
+	clientBridge          *clientbridge.Bridge
 	sessionAuth           SessionAuthorizer
 	serverConf            *conf.Server
 	runtimeConf           *conf.Runtime

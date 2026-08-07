@@ -888,6 +888,19 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if _, alreadyTriggered := s.synthesisTriggered.LoadOrStore(spiritSessionID, true); alreadyTriggered {
 		return
 	}
+	// 2026-08-07 重启幂等守卫：内存 CAS 进程重启即丢失，而 spirit session
+	// 常驻 Running，30s 轮询会持续命中 AllDone —— 重启后首 tick 会对「早已
+	// 完结」的编排重复触发 synthesis（用户看到总结报告重复回放）。此处以
+	// 持久化状态兜底：父 Task 已 Completed ⟺ synthesis 已产出 → 跳过。
+	// 置于 CAS 之后：跳过是永久事实，CAS 保持占用，后续 tick 由 CAS 吸收，
+	// 不会每 30s 重复查库。
+	if s.synthesisAlreadyProduced(ctx, spiritSessionID) {
+		s.lg.Info("父 Task 已完结（synthesis 已产出），跳过重启后的重复综合触发",
+			loggateway.StepID("spirit.synthesis_skip_already_done"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+		)
+		return
+	}
 
 	// Resolve the most recent user-input Task for this spirit session so the
 	// synthesis Turn attaches as a continuation Turn (ParentTaskID) instead of
@@ -1051,6 +1064,33 @@ func resolveLatestUserTaskID(ctx context.Context, reader biz.TaskV2Reader, lg lo
 
 func (s *TeamStarter) resolveLatestUserTaskID(ctx context.Context, spiritSessionID string) string {
 	return resolveLatestUserTaskID(ctx, s.taskV2Reader, s.lg, spiritSessionID)
+}
+
+// synthesisAlreadyProduced 是 checkAllTeamsCompleted 的重启幂等守卫
+// （2026-08-07）：内存 CAS（synthesisTriggered）进程重启即丢失，而 spirit
+// session 常驻 Running，30s 轮询会持续命中 AllDone。持久化真相：
+// synthesis continuation turn 结束时 projector 关闭父 Task（task.completed，
+// projector.go OnTurnEnd ParentTaskID 分支），故「最新 Task 已 Completed」
+// ⟺「synthesis 已产出」。
+//
+// fail-open 边界：reader 未接线 / 查询失败 / 无任务行 时返回 false，维持
+// 既有行为（内存 CAS 为唯一守卫）—— 读抖动不得丢失本轮总结。
+// 时序间隙：新一轮编排的 Task 可能尚未异步落库（v2 sequencer），若 ctx
+// 携带的根 Task ID 比 DB 最新行更新，说明列表滞后，不得据旧行拦截本轮
+// synthesis。
+func (s *TeamStarter) synthesisAlreadyProduced(ctx context.Context, spiritSessionID string) bool {
+	if s.taskV2Reader == nil {
+		return false
+	}
+	tasks, err := s.taskV2Reader.ListTasksBySession(ctx, spiritSessionID)
+	if err != nil || len(tasks) == 0 {
+		return false
+	}
+	latest := tasks[len(tasks)-1]
+	if rtID := string(agent.RootTaskActivityIDFromCtx(ctx)); rtID != "" && rtID != latest.ID {
+		return false
+	}
+	return latest.Status == biz.TaskStatusCompleted
 }
 
 // HandleTeamTimeout implements biz.TimeoutHandler. Called when a team times out

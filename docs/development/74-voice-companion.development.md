@@ -28,7 +28,7 @@
 | 资产底座 | 27-artifact（`internal/service/artifact.go` 等） | 语音留档/截图回传 |
 | 配置体系 | `configs/config.yaml`、System Settings | Speech Provider 配置注入 |
 
-### 2.2 新增锚点（V1 后端已落地 ✅；客户端工具桥/Tauri/前端待创建）
+### 2.2 新增锚点（V1 后端 + 前端已落地 ✅；客户端工具桥后端 ✅；Tauri 执行器待创建）
 
 | 锚点 | 路径 | 说明 |
 |------|------|------|
@@ -36,9 +36,9 @@
 | 语音会话包 | `internal/voice/`（session.go / session_state_machine.go / sentence_chunker.go / tts_scheduler.go） | 会话编排/状态机/分句/调度 ✅ |
 | Speech 端口 | `internal/biz/speech.go` | StreamingASR/TTSProvider 窄接口 + 配置模型 ✅ |
 | Speech 适配器 | `internal/data/speech/`（volcengine_asr.go / volcengine_tts.go / ws_conn.go / volc_frame.go / registry.go / env_config.go） | 火山首接 ✅ |
-| 客户端工具桥 | `internal/tools/clientbridge/` | 工具注册/invoke 路由/pending 超时（V2-T3） |
+| 客户端工具桥 | `internal/tools/clientbridge/`（bridge.go / toolset.go + 测试）、`internal/server/ws_client_tool.go`、`internal/service/client_tool_bridge.go` | 工具注册/确认门接入/invoke 路由/pending 超时/离线降级/审计+流程日志 ✅（V2-T3） |
 | Tauri 工具执行器 | `web/src-tauri/src/client_tools.rs`、`whitelist.rs` | open_app/open_url/screenshot（V2-T4） |
-| 前端伴侣模块 | `web/src/features/companion/`（stores/voice/hud/components）、`web/src/pages/CompanionPage.vue` | HUD/语音/聊天窗/确认卡（V1-T7/T8） |
+| 前端伴侣模块 | `web/src/features/companion/`（types/voice/hud）、`web/src/stores/companion.ts`、`web/src/components/companion/`（HudCanvas/CompanionChatPanel）、`web/src/pages/CompanionPage.vue` | HUD/语音/聊天窗 ✅（V1-T7/T8）；确认卡（V2-T5） |
 
 ## 3. 现状评估与差距
 
@@ -66,8 +66,8 @@
 | V1-T4 | `/v1/voice` 语音网关（`internal/server/voice_ws.go`：鉴权/单会话/帧路由/空闲回收） | ✅ | 二进制帧收发、鉴权拒绝、会话替换集成测试通过 |
 | V1-T5 | SentenceChunker + TTS 调度器（`internal/voice/`，含分句边界/背压/取消单测） | ✅ | 分句单测覆盖标点/硬切/flush/markdown 剥离 |
 | V1-T6 | 语音会话编排（`internal/voice/session.go`：ASR 终稿 → ChatSender；delta 订阅 → TTS） | ✅ | 端到端 mock 集成测试通过（文本进 → 音频出）；真机联调归 V1-T10 |
-| V1-T7 | 前端语音采集/播放（`features/companion/voice/`：AudioWorklet 采集 16k PCM、gapless 播放调度，含 vitest） | 📋 | 采集重采样正确性单测；播放队列调度单测 |
-| V1-T8 | `/companion` 路由 + 基础 HUD 三态 + 聊天面板滑出（HudCanvas/HudScene/CompanionChatPanel/companion store） | 📋 | 三态动画切换正确；聊天窗收发消息正常；`pnpm lint && pnpm test && pnpm build` 通过 |
+| V1-T7 | 前端语音采集/播放（`features/companion/voice/`：AudioWorklet 采集 16k PCM、gapless 播放调度，含 vitest） | ✅ | 采集重采样正确性单测；播放队列调度单测（pcm 11 + vad 9 + audioPlayback 8 + useVoiceSession 8 + audioCapture 覆盖于 useVoiceSession 用例；真机联调归 V1-T10） |
+| V1-T8 | `/companion` 路由 + 基础 HUD 三态 + 聊天面板滑出（HudCanvas/HudScene/CompanionChatPanel/companion store） | ✅ | hudParams 纯函数 11 单测 + companion store 7 单测通过；`pnpm lint && pnpm test && pnpm build` 全绿（1284 测试）；三态动画与聊天窗收发的真机验证归 V1-T10 |
 | V1-T9 | 流程日志 step 登记（`stepTitleRegistry` + 52-flow-logger §5.1 同步）+ 进程日志埋点（K1/K2/K3/K6） | ✅ | 10 条 voice.* step 已登记（含 idle_reclaim/enqueue_fail 两条进程日志 step）；Monitor Logs 可见 voice.* 步骤 |
 | V1-T10 | 集成验收（真机：延迟测量、字幕准确性、播报连续性、文字聊天回归） | 📋 | NFR1 < 2.5s 实测达标；`make build && make test` 通过 |
 
@@ -75,9 +75,9 @@
 
 | # | 任务 | 状态 | 验收 |
 |---|------|------|------|
-| V2-T1 | 语音状态机显式化 + barge-in 链路（前端 VAD → 本地停播 → voice.barge_in → CancelRun → TTS 终止 → 前端清队列） | 📋 | 状态机转换表单测；打断 ≤300ms 停播实测 |
+| V2-T1 | 语音状态机显式化 + barge-in 链路（前端 VAD → 本地停播 → voice.barge_in → CancelRun → TTS 终止 → 前端清队列） | 🟡 | 后端状态机/转换表单测 + Cancel 链路 V1 已落地；2026-08-07 前端 VAD 接线完成（decideVadAction 纯函数 14 单测 + onPcm16k 喂帧 → bargeIn/commit，本地 50ms 淡出停播）；打断 ≤300ms 停播实测待真机（同 V1-T10 凭据依赖） |
 | V2-T2 | AEC 验证与调优（echoCancellation 在扬声器场景实测，误打断率评估） | 📋 | 播报中无误触发打断 |
-| V2-T3 | 客户端工具桥后端（`internal/tools/clientbridge/`：注册/种子/确认门接入/invoke 路由/pending 超时/离线降级，含单测） | 📋 | 路由/超时/离线三路径单测通过 |
+| V2-T3 | 客户端工具桥后端（`internal/tools/clientbridge/`：注册/种子/确认门接入/invoke 路由/pending 超时/离线降级，含单测） | ✅ | 2026-08-08 完成：bridge.go（pending 30s 超时/离线 DESKTOP_CLIENT_OFFLINE/审计+流程日志）+ toolset.go（client 工具组 open_app/open_url，确认门 requiresConfirm）；WS 侧 ws_client_tool.go（register_capabilities/client_tool.result 上行 + RouteClientToolInvoke 按 desktop_companion 能力过滤扇出）；service 适配 client_tool_bridge.go（MonitorAuditRepo→AuditRecorder）+ wire 注入；流程日志 client_tool.invoke/result/timeout 三 step 登记。路由/超时/离线/回环单测全绿（clientbridge + server 包） |
 | V2-T4 | Tauri 工具执行器（`client_tools.rs`/`whitelist.rs`：open_app/open_url，白名单 Rust 侧强制） | 📋 | 白名单外目标拒绝执行 |
 | V2-T5 | 全息确认卡 + 科幻开启动画（HoloConfirmCard + 粒子发射；语音确认「好的」映射 confirm 通过） | 📋 | 确认/取消/始终允许三路径可用 |
 | V2-T6 | 语音留档（archive_user_audio 开关 + Artifact 附件 + 消息 metadata 标记） | 📋 | 开关开启时音频可回放；关闭时无文件 |

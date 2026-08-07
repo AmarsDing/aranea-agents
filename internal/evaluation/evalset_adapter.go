@@ -44,12 +44,32 @@ func bizCaseToEvalCase(c biz.EvalCase, lg loggateway.Logger) *trpcevalset.EvalCa
 	ec := &trpcevalset.EvalCase{
 		EvalID:       evalID,
 		Conversation: invocationsFromCase(c, meta),
+		// ISSUE-005: the framework hard-requires SessionInput on every case
+		// (local inference fails with "session input is nil" otherwise).
+		SessionInput: sessionInputFromMeta(meta),
 	}
 	if scenario := buildConversationScenario(meta, c.Input); scenario != nil {
 		ec.ConversationScenario = scenario
 	}
 	enrichEvalCase(c, ec, lg)
 	return ec
+}
+
+// sessionInputFromMeta builds the mandatory SessionInput, applying optional
+// metadata overrides (session_user_id / session_state) on top of defaults.
+func sessionInputFromMeta(meta CaseMetadata) *trpcevalset.SessionInput {
+	si := &trpcevalset.SessionInput{
+		AppName: AppName,
+		UserID:  "eval",
+		State:   map[string]any{},
+	}
+	if uid := strings.TrimSpace(meta.SessionUserID); uid != "" {
+		si.UserID = uid
+	}
+	for k, v := range meta.SessionState {
+		si.State[k] = v
+	}
+	return si
 }
 
 func invocationsFromCase(c biz.EvalCase, meta CaseMetadata) []*trpcevalset.Invocation {

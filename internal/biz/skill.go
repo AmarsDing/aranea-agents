@@ -51,6 +51,7 @@ type (
 	SkillEmbedder              = skill.SkillEmbedder
 	DedupCacheInvalidator      = skill.DedupCacheInvalidator
 	SkillGuidanceEntry         = skill.SkillGuidanceEntry
+	SkillEnabledRef            = skill.EnabledRef
 	SkillFilesystem            = skill.SkillFilesystem
 	SkillFileEntry             = skill.SkillFileEntry
 	SkillFileContent           = skill.SkillFileContent

@@ -50,6 +50,7 @@ import GraphExecutionsPage from '../pages/GraphExecutionsPage.vue';
 import TeamRunObservatoryPage from '../pages/TeamRunObservatoryPage.vue';
 import TeamOrchestratePage from '../pages/TeamOrchestratePage.vue';
 import ThemePreviewPage from '../pages/ThemePreviewPage.vue';
+import CompanionPage from '../pages/CompanionPage.vue';
 import ServerSetupPage from '../pages/mobile/ServerSetupPage.vue';
 import MobilePlaceholderPage from '../pages/mobile/MobilePlaceholderPage.vue';
 import MobileSessionsPage from '../pages/mobile/MobileSessionsPage.vue';
@@ -87,6 +88,14 @@ export const routes: RouteRecordRaw[] = [
       { path: 'tasks', name: 'mobile-tasks', component: MobileTasksPage },
       { path: 'me', name: 'mobile-me', component: MobilePlaceholderPage },
     ],
+  },
+  {
+    // 语音伴侣 HUD（M74）：独立全屏形态，无主导航侧栏；桌面端手动访问，
+    // Tauri 默认入口页可配置为此路由（设计 §7.1）。窄屏被断点守卫重定向到 /mobile。
+    path: '/companion',
+    component: BlankLayout,
+    meta: { requiresAuth: true },
+    children: [{ path: '', name: 'companion', component: CompanionPage }],
   },
   {
     path: '/',

@@ -76,6 +76,10 @@ const cacheHitFlowLogInterval = 5 * time.Minute
 
 var globalBuildCache = newBuildCache(buildCacheDefaultCap)
 
+// agentBuildFn is the agent builder invoked on cache misses. Package-level so
+// tests can substitute a lightweight stub; production wiring never overrides it.
+var agentBuildFn = buildTRPCLLMAgentWithToolSets
+
 func newBuildCache(cap int) *BuildCache {
 	if cap <= 0 {
 		cap = buildCacheDefaultCap
@@ -116,25 +120,35 @@ func (c *BuildCache) SetMonitorBus(bus contract.MonitorBus) {
 // emitCacheFlow publishes a cache hit/miss flow log via the shared monitor
 // bus. Nil-safe: no-op when the bus is not wired.
 func (c *BuildCache) emitCacheFlow(ctx context.Context, lg loggateway.Logger, stepID, message string, pairs ...event.Pair) {
-	if c == nil {
+	flow := c.cacheFlowEmitter(ctx, lg)
+	if flow == nil {
 		return
+	}
+	flow.LogDone(stepID, message, pairs...)
+}
+
+// cacheFlowEmitter builds a run-scoped flow emitter over the shared monitor
+// bus, or nil when the bus is not wired (tests). One emitter instance pairs
+// LogStart/LogDone timings, so multi-phase flows must share the instance.
+func (c *BuildCache) cacheFlowEmitter(ctx context.Context, lg loggateway.Logger) *event.TraceEmitter {
+	if c == nil {
+		return nil
 	}
 	c.mu.Lock()
 	bus := c.bus
 	c.mu.Unlock()
 	if bus == nil {
-		return
+		return nil
 	}
 	if lg == nil {
 		lg = c.lg
 	}
-	flow := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
+	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 		Ctx:    ctx,
 		Domain: event.TraceDomainSystem,
 		LG:     lg,
 		Infra:  event.NewInfraFromBus(bus),
 	})
-	flow.LogDone(stepID, message, pairs...)
 }
 
 // get returns the cached agent for the given key, or nil if not found.
@@ -268,10 +282,11 @@ func GetGlobalBuildCache() *BuildCache {
 
 // BuildCacheKey produces a sha256 fingerprint that uniquely identifies an agent build
 // configuration. The key encodes agent ID + UpdatedAt (covers all DB-level changes)
-// + DialogMode (affects Planner selection at build time) but NOT Provider/Model,
-// which are resolved per-request via RunOption (agent.WithModel) instead of being
-// baked into the cache key. This allows different provider/model combinations to
-// share the same cached agent, dramatically improving cache hit rates.
+// + the build-effective dialog mode (planner selection only, see cacheKeyDialogMode)
+// but NOT Provider/Model, which are resolved per-request via RunOption
+// (agent.WithModel) instead of being baked into the cache key. This allows
+// different provider/model combinations to share the same cached agent,
+// dramatically improving cache hit rates.
 func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) string {
 	type fingerprint struct {
 		AgentID      string
@@ -288,7 +303,7 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		AgentID:      ag.ID,
 		AgentUpdated: ag.UpdatedAt,
 		ConfigJSON:   strings.TrimSpace(ag.ConfigJSON),
-		DialogMode:   deps.DialogMode,
+		DialogMode:   cacheKeyDialogMode(ag, deps.DialogMode),
 		ToolHash:     toolHash,
 		SkillHash:    skillHash,
 		MCPHash:      mcpHash,
@@ -304,12 +319,40 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 	return fmt.Sprintf("%s:%x", ag.ID, sum)
 }
 
+// cacheKeyDialogMode reduces the dialog mode to its build-time effect on
+// planner selection (planner.Select): with an explicit planner_kind the mode
+// is irrelevant; otherwise only "plan" activates the builtin planner.
+// Normalizing prevents cache-key flapping between build paths that pass
+// per-request modes ("" / "default" / "chat") for the same agent — the team
+// runner path passes the turn's dialog mode while the graph node resolver
+// path passes "".
+func cacheKeyDialogMode(ag biz.Agent, dialogMode string) string {
+	if !planner.DialogModeSelects(plannerKind(ag)) {
+		return ""
+	}
+	if strings.EqualFold(strings.TrimSpace(dialogMode), "plan") {
+		return "plan"
+	}
+	return ""
+}
+
+// cacheKeyDiscriminated is implemented by tools whose behavior varies beyond
+// their declaration name (e.g. a contract-installed set_deliverable validates
+// writes while the contract-free variant accepts them). The discriminator is
+// folded into the build cache key so behavior variants never share a cache
+// entry. Satisfaction is implicit: tool packages implement the method without
+// importing this package.
+type cacheKeyDiscriminated interface {
+	CacheKeyDiscriminator() string
+}
+
 // customToolNames returns the sorted declaration names of the given tools.
 // CustomTools must participate in the cache key: an agent built with extra
 // tools (e.g. deliverable tools in EnableStateDeliverable team graphs) must
 // not share a cache entry with the same agent built without them, otherwise
 // the toolset leaks across builds depending on build order. Sorting makes the
-// key order-insensitive.
+// key order-insensitive. Tools implementing cacheKeyDiscriminated append
+// their discriminator to the name so behavior variants get distinct keys.
 func customToolNames(tools []trpctool.Tool) []string {
 	if len(tools) == 0 {
 		return nil
@@ -319,7 +362,13 @@ func customToolNames(tools []trpctool.Tool) []string {
 		if t == nil || t.Declaration() == nil {
 			continue
 		}
-		names = append(names, t.Declaration().Name)
+		name := t.Declaration().Name
+		if d, ok := t.(cacheKeyDiscriminated); ok {
+			if disc := d.CacheKeyDiscriminator(); disc != "" {
+				name += "|" + disc
+			}
+		}
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
@@ -388,7 +437,7 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 			safego.Go(context.Background(), "agent.cache.dirty_rebuild", func() {
 				globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 					buildCtx := context.WithoutCancel(ctx)
-					built, toolSets, buildErr := buildTRPCLLMAgentWithToolSets(buildCtx, ag, deps, lg)
+					built, toolSets, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
 					if buildErr != nil {
 						lg.Warn("Agent 后台重建失败", loggateway.StepID("agent.cache_rebuild_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(buildErr))
 						return nil, buildErr
@@ -421,11 +470,33 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	// abort the build shared by other callers.
 	v, err, _ := globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 		buildCtx := context.WithoutCancel(ctx)
-		built, toolSets, buildErr := buildTRPCLLMAgentWithToolSets(buildCtx, ag, deps, lg)
+		// K1: build start/done flow logs make the (potentially multi-second)
+		// cold build visible in the 流程日志 tab. One emitter instance pairs
+		// the start/done timing under step system.agent.build.
+		flow := globalBuildCache.cacheFlowEmitter(buildCtx, lg)
+		if flow != nil {
+			flow.LogStart("system.agent.build", "Agent 构建开始",
+				event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey))
+		}
+		built, toolSets, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
 		if buildErr != nil {
+			if flow != nil {
+				// K2: error path flow log carries the original error.
+				flow.LogError("system.agent.build", "Agent 构建失败",
+					event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("error", buildErr.Error()))
+			}
+			lg.Warn("Agent 构建失败",
+				loggateway.StepID("agent.cache_build_fail"),
+				loggateway.Str("agent_id", ag.ID),
+				loggateway.Str("cache_key", key),
+				loggateway.Err(buildErr))
 			return nil, buildErr
 		}
 		globalBuildCache.put(key, built, nil, toolSets)
+		if flow != nil {
+			flow.LogDone("system.agent.build", "Agent 构建完成",
+				event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey))
+		}
 		return built, nil
 	})
 	if err != nil {

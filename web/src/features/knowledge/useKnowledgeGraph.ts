@@ -10,7 +10,14 @@
 import { computed, ref, watch, type Ref } from 'vue';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { listCollectionGraph } from './api';
-import { buildRenderGraph, filterGraphNodes, sortedGraphNodes, GRAPH_LINK_TYPES, type RenderGraph } from './graphUi';
+import {
+  buildNeighborhoodGraph,
+  buildRenderGraph,
+  filterGraphNodes,
+  sortedGraphNodes,
+  GRAPH_LINK_TYPES,
+  type RenderGraph,
+} from './graphUi';
 import { parseVaultTreeKey } from './vaultTreeUi';
 import { dirToQNode, vaultToQNode, type VaultLazyLoadPayload, type VaultQTreeNode } from './useVaultExplorer';
 import type { CollectionGraphEdge, CollectionGraphNode, KnowledgeCollection } from './types';
@@ -59,6 +66,7 @@ export function useKnowledgeGraph(input: {
       edges.value = g.edges;
       error.value = '';
       generation.value++;
+      resetGlobalView(); // 数据重载后邻域根可能已不存在，回全局
     } catch (e) {
       nodes.value = [];
       edges.value = [];
@@ -103,6 +111,34 @@ export function useKnowledgeGraph(input: {
   /** 显示孤立节点开关（节点数 ≤2k 时无实际效果——全量渲染）。 */
   const showIsolated = ref(false);
   const renderGraph = computed<RenderGraph>(() => buildRenderGraph(nodes.value, edges.value, showIsolated.value));
+
+  // ---------- 局部图谱（G5-D D-5：聚焦邻域 + 返回全局） ----------
+
+  /** 聚焦邻域跳数：0 = 全局图（1-4 步进由 HUD 控件约束）。 */
+  const neighborhoodHops = ref(0);
+  /** 邻域根 doc_id（进入邻域模式时锁定，不随选中漂移——避免视图突然重建）。 */
+  const neighborhoodRootId = ref('');
+
+  /** 画布视图：hops>0 且有根时按 BFS 邻域裁剪；doc_type 不变 → 跨视图颜色一致（反模式⑥）。 */
+  const viewGraph = computed<RenderGraph>(() => {
+    const g = renderGraph.value;
+    if (neighborhoodHops.value <= 0 || !neighborhoodRootId.value) return g;
+    const sub = buildNeighborhoodGraph(g.nodes, g.edges, neighborhoodRootId.value, neighborhoodHops.value);
+    return { nodes: sub.nodes, edges: sub.edges, hiddenIsolated: g.hiddenIsolated };
+  });
+
+  /** 聚焦邻域：以 docId 为根、跳数 hops（钳制 1-4）。 */
+  function focusNeighborhood(docId: string, hops: number) {
+    if (!docId) return;
+    neighborhoodRootId.value = docId;
+    neighborhoodHops.value = Math.min(4, Math.max(1, Math.round(hops)));
+  }
+
+  /** 返回全局。 */
+  function resetGlobalView() {
+    neighborhoodHops.value = 0;
+    neighborhoodRootId.value = '';
+  }
 
   /** 节点搜索定位关键字。 */
   const nodeQuery = ref('');
@@ -172,6 +208,12 @@ export function useKnowledgeGraph(input: {
     renderGraph,
     nodeQuery,
     nodeList,
+    // 局部图谱（G5-D）
+    neighborhoodHops,
+    neighborhoodRootId,
+    viewGraph,
+    focusNeighborhood,
+    resetGlobalView,
     // 选中与聚焦
     selectedNodeId,
     selectedNode,

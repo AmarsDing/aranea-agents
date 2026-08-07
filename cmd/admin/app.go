@@ -125,7 +125,7 @@ func newApp(
 						teamUC.MigrateLegacyEmbeddedGraphs(consumerCtx)
 					})
 				}
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, lg)
 				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
 			}
 			if d != nil {
@@ -219,11 +219,19 @@ func startReadinessDependentServices(
 	loggingSinks []*conf.LoggingSink,
 	spiritUC *biz.SpiritTeamUsecase,
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
+	graphBuildDeps *chatagent.TRPCBuilderDeps,
 	lg loggateway.Logger,
 ) {
 	// P1-3：DB ready 后拉起全部存量 vault 的同步循环（root_path 非空）。
 	if vaultSyncSup != nil {
 		vaultSyncSup.StartAll(ctx)
+	}
+	// MCP 连接预热：后台建立全部启用服务器的池化连接（stdio 子进程/TCP
+	// 会话），首个用户请求不再承担冷连接成本。单服务器失败仅告警不阻塞。
+	if graphBuildDeps != nil {
+		safego.Go(ctx, "startup.mcp_prewarm", func() {
+			chatagent.PrewarmMCPToolSets(ctx, *graphBuildDeps, lg)
+		})
 	}
 	if err := guard.OnStartup(ctx); err != nil {
 		lg.Warn("session status guard startup failed", loggateway.StepID("startup.guard"), loggateway.Err(err))

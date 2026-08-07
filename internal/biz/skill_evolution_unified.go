@@ -82,6 +82,12 @@ const (
 	EvoMetaTitle            = "title"
 	EvoMetaDiffPreview      = "diff_preview"
 	EvoMetaPreApplySnapshot = "pre_apply_snapshot"
+	// EvoMetaApplyPayload 持有可被 ApplySuggestion 真正写入 prompt 文件的内容。
+	// 指标通知类建议（AgentConfigTrigger / 编排优化建议）不设置此键，apply
+	// 一律拒绝——防止把"近30d负反馈 N 次…"之类的通知文本写进 IDENTITY.md /
+	// AGENTS*.md（2026-08-07 P0-2 根因修复）。未来 LLM 草稿生成器产出实质
+	// 修改内容时设置此键即解锁 apply。
+	EvoMetaApplyPayload = "apply_payload"
 	// P1 delta 协议与计数归因（skill 路径）
 	// EvoMetaBaselineSuccessRate 记录触发时的基线成功率（7d 优先，无 7d 数据
 	// 时用 30d 值），JSON number，供下一周期 AttributeLastEvolution 裁决。
@@ -95,6 +101,9 @@ const (
 	// EvoMetaDraftOrigin 记录草稿来源（llm / rule_template），F8：让
 	// evolver=nil 的模板降级在 API 响应中可观测，不再静默。
 	EvoMetaDraftOrigin = "draft_origin"
+	// EvoMetaDraftAttemptAt 记录 L3 通知建议最近一次 LLM 草稿生成尝试时间
+	//（RFC3339，成功或失败都记），EvolutionDrafter 据此做 1h 节流。
+	EvoMetaDraftAttemptAt = "draft_attempt_at"
 )
 
 // MetadataMap decodes Metadata into a map. Returns an empty map when Metadata

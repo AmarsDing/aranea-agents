@@ -279,3 +279,34 @@ func TestToolConfirmationHook_TimeoutMessageIsSemantic(t *testing.T) {
 		t.Fatalf("timeout message not semantic: %q", msg)
 	}
 }
+
+// TestToolConfirmationHook_ConfirmRequestCarriesAgentKey verifies the confirm
+// Activity is attributed to the agent whose tool is gated (h.ag.AgentKey), so
+// that in team graph mode the member's confirm step attaches to the member's
+// activity panel instead of the anchor agent.
+func TestToolConfirmationHook_ConfirmRequestCarriesAgentKey(t *testing.T) {
+	gate := &toolConfirmGate{
+		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
+		sessionGrants: newToolGrantStore(time.Now),
+	}
+	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1", AgentKey: "spirit-worker-a"}, TRPCBuilderDeps{})
+	emitter := &fakeFactoryEmitter{}
+	ctx := grantTestCtx("sess-1", func(context.Context) (string, error) {
+		return "approved", nil
+	})
+	ctx = biz.WithActivityEmitter(ctx, emitter)
+
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err != nil {
+		t.Fatalf("HandleBeforeTool err = %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected allow result after approval, got nil")
+	}
+	if len(emitter.confirmParams) != 1 {
+		t.Fatalf("confirmRequests=%d want 1", len(emitter.confirmParams))
+	}
+	if got := emitter.confirmParams[0].AuthorAgentKey; got != "spirit-worker-a" {
+		t.Fatalf("AuthorAgentKey=%q want %q", got, "spirit-worker-a")
+	}
+}

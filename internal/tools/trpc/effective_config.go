@@ -36,6 +36,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		Message:          has("message"),
 		SubAgent:         has("subagents_spawn") || has("subagents_list") || has("subagents_get") || has("subagents_cancel"),
 		BrowserEnabled:   has("browser"),
+		ClientBridge:     has("client_open_app") || has("client_open_url"),
 	}
 	return cfg
 }
@@ -47,5 +48,6 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
 		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
 		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
+		cfg.ClientBridge ||
 		len(cfg.AgentTools) > 0 || len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

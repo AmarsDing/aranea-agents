@@ -129,6 +129,13 @@ export function buildAgentConfigJson(config: AgentRuntimeConfigForm, files: Prom
     memoryL4: config.memoryL4,
     evolutionSettings: config.evolutionSettings,
     heartbeat: config.heartbeat,
+    evaluation: {
+      auto_after_turn: config.evaluation.auto_after_turn,
+      dataset_id: config.evaluation.dataset_id.trim(),
+      metrics: config.evaluation.metrics.trim(),
+      num_runs: config.evaluation.num_runs,
+      min_interval_sec: config.evaluation.min_interval_sec,
+    },
     evolution: config.evolution,
     evolution_guardrails: config.evolution_guardrails,
     skillRuntime: config.skillRuntime,

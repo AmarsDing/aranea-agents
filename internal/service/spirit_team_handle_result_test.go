@@ -867,6 +867,116 @@ func TestCheckAllTeamsCompleted_TurnFails_ReleasesCASForRetry(t *testing.T) {
 	}
 }
 
+// ── 2026-08-07 重启幂等守卫 ────────────────────────────────────────────────
+// 根因：synthesisTriggered 是内存 sync.Map，进程重启即丢失。spirit session
+// 常驻 Running，30s 轮询每 tick 都对「上午已完结」的编排命中 AllDone ——
+// 重启后 CAS 为空，synthesis 被重复触发，用户看到失败总结报告重复回放。
+// 持久化真相：synthesis continuation turn 结束时 projector 关闭父 Task
+// （task.completed，projector.go OnTurnEnd ParentTaskID 分支）。
+// 父 Task 已 Completed ⟺ synthesis 已产出 → 跳过触发（重启后首 tick 生效，
+// 其后由重建的内存 CAS 吸收）。
+
+type stubSynthesisTaskReader struct {
+	tasks []biz.Task
+	err   error
+}
+
+func (s *stubSynthesisTaskReader) GetTask(_ context.Context, id string) (biz.Task, error) {
+	for _, t := range s.tasks {
+		if t.ID == id {
+			return t, nil
+		}
+	}
+	return biz.Task{}, errors.New("not found")
+}
+
+func (s *stubSynthesisTaskReader) ListTasksBySession(_ context.Context, _ string) ([]biz.Task, error) {
+	return s.tasks, s.err
+}
+
+// 重启后重放：父 Task 已 Completed（synthesis 已产出）→ 不得重复触发。
+func TestCheckAllTeamsCompleted_ParentTaskCompleted_SkipsDuplicateSynthesis(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+	s.taskV2Reader = &stubSynthesisTaskReader{tasks: []biz.Task{
+		{ID: "task-1", SessionID: "sp1", Status: biz.TaskStatusCompleted},
+	}}
+
+	// 新 TeamStarter = 空内存 CAS，模拟重启后首个轮询 tick。
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 0 {
+		t.Fatalf("parent task completed pre-restart (synthesis done): ExecuteTurn called %d times, want 0", got)
+	}
+}
+
+// 正常路径回归：父 Task 进行中（本轮 synthesis 尚未产出）→ 守卫不得拦截。
+func TestCheckAllTeamsCompleted_ParentTaskRunning_StillTriggers(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+	s.taskV2Reader = &stubSynthesisTaskReader{tasks: []biz.Task{
+		{ID: "task-1", SessionID: "sp1", Status: biz.TaskStatusRunning},
+	}}
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("parent task running: ExecuteTurn called %d times, want 1", got)
+	}
+}
+
+// 时序间隙回归：新一轮编排的 Task 尚未异步落库（DB 最新行仍是上一轮已
+// Completed 的 Task），但 ctx 携带的根 Task ID 更新 —— 列表滞后，不得据
+// 旧行拦截本轮 synthesis。
+func TestCheckAllTeamsCompleted_StaleTaskList_DoesNotBlockNewRound(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+	s.taskV2Reader = &stubSynthesisTaskReader{tasks: []biz.Task{
+		{ID: "task-1", SessionID: "sp1", Status: biz.TaskStatusCompleted}, // 上一轮
+	}}
+	ctx := agent.ContextWithRootTaskActivityID(context.Background(), "task-2") // 本轮根 Task
+
+	s.checkAllTeamsCompleted(ctx, "sp1")
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("stale task list with newer ctx root task: ExecuteTurn called %d times, want 1", got)
+	}
+}
+
+// DB 查询失败：无法判定，fail-open 维持既有行为（内存 CAS 为唯一守卫），
+// 不得因读抖动丢失本轮总结。
+func TestCheckAllTeamsCompleted_TaskReadError_FailsOpen(t *testing.T) {
+	controller := &stubSpiritTeamController{
+		completedResult: biz.AllTeamsCompletedResult{
+			AllDone: true, TeamIDs: []string{"t1"},
+			TotalTeams: 1, CompletedTeams: 1,
+		},
+	}
+	gw := &capturingTurnGateway{}
+	s := newSynthesisStarter(controller, gw, &capturingEventBus{})
+	s.taskV2Reader = &stubSynthesisTaskReader{err: errors.New("db down")}
+
+	s.checkAllTeamsCompleted(context.Background(), "sp1")
+	if got := len(gw.snapshot()); got != 1 {
+		t.Fatalf("task read error must fail open: ExecuteTurn called %d times, want 1", got)
+	}
+}
+
 // ── F10（Phase 11）结果导向成员状态 ────────────────────────────────────────
 // 12:33 根因链末环：成员状态按消息生命周期（团队回调 completed → 全员
 // completed）而非执行结果显示。修复后成员状态必须以执行结果为据：

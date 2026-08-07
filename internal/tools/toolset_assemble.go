@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools/browser"
+	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
 	documentpkg "aranea-agents/internal/tools/document"
@@ -253,15 +254,22 @@ func (ac *assembleContext) assembleAgentTools() {
 // assembleMCPTools creates MCP server and broker tools.
 func (ac *assembleContext) assembleMCPTools() error {
 	for _, mcpCfg := range ac.cfg.MCP.Servers {
-		ts, err := buildMCPToolSet(mcpCfg)
+		// Route through the process-level pool: identical connection configs
+		// share one live MCP session across agent builds, so a build-cache
+		// miss no longer pays a full reconnect (process spawn / TCP handshake
+		// + initialize + tools/list). Credential-injected configs bypass the
+		// pool automatically (see mcp_pool.go).
+		ts, err := acquireMCPToolSet(ac.ctx, mcpCfg)
 		if err != nil {
 			return apierror.Internal(apierror.DomainTool, fmt.Sprintf("mcp %s: %s", mcpCfg.Name, err.Error()))
 		}
 		if ts != nil {
-			// Eagerly initialize the MCP session so connection failures are
-			// visible via loggateway at build time. We do NOT fail the assembly
-			// — the ToolSet is still added and will retry on the next Tools()
-			// call, preserving the Always-Ready Agent resilience semantics.
+			// Probe the session so connection failures are visible via
+			// loggateway at build time. We do NOT fail the assembly — the
+			// ToolSet is still added and will retry on the next Tools() call,
+			// preserving the Always-Ready Agent resilience semantics. On a
+			// pooled, already-connected session this probe is a cheap no-op
+			// list refresh.
 			if init, ok := ts.(interface{ Init(context.Context) error }); ok {
 				if initErr := init.Init(ac.ctx); initErr != nil {
 					ac.lg.Warn("MCP ToolSet 初始化失败（降级运行，将在下次调用时重试）",
@@ -304,6 +312,12 @@ func (ac *assembleContext) assembleSessionTools() {
 	if ac.cfg.Session.SubAgentService != nil {
 		ac.assembleSubagentTools()
 	}
+
+	// Client tool bridge: the ToolSet delegates execution to the desktop
+	// companion via the process-wide bridge singleton (design 74 §6).
+	if ac.enabled["client"] && ac.cfg.Session.ClientBridge != nil {
+		ac.out.ToolSets = append(ac.out.ToolSets, clientbridge.NewToolSet(ac.cfg.Session.ClientBridge))
+	}
 }
 
 // assembleSubagentTools adds enabled subagent framework tools.
@@ -343,7 +357,7 @@ func (ac *assembleContext) assembleBrowserToolset() error {
 		Args:       bcfg.BuildArgs(),
 		TimeoutSec: bcfg.TimeoutSec,
 	}
-	ts, err := buildMCPToolSet(mcpCfg)
+	ts, err := acquireMCPToolSet(ac.ctx, mcpCfg)
 	if err != nil {
 		return apierror.Internal(apierror.DomainTool, "browser mcp: "+err.Error())
 	}

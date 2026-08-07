@@ -2,11 +2,16 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"aranea-agents/internal/agent/llmcompat"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -474,6 +479,359 @@ type fakeSeqPublisher struct {
 
 func (f *fakeSeqPublisher) Publish(_ context.Context, e biz.Event) {
 	f.events = append(f.events, e)
+}
+
+// ---------------------------------------------------------------------------
+// P1b：规划思考可见性——decompose LLM 调用的推理段（reasoning_content）增量
+// 必须实时发布为 v2 thinking step（created → streaming × N → completed），
+// 使用户在任务分解期间看到实时思考流，而不是 60s 静止等待。
+// ---------------------------------------------------------------------------
+
+func TestPlanningThinkingPublisher_PublishesThinkingStepLifecycle(t *testing.T) {
+	seq := &fakeSeqPublisher{}
+	pub := newPlanningThinkingPublisher(seq, context.Background(), "spirit-1")
+	if pub == nil {
+		t.Fatal("expected non-nil publisher when seq is available")
+	}
+	if err := pub.OnReasoning("想一"); err != nil {
+		t.Fatalf("OnReasoning: %v", err)
+	}
+	if err := pub.OnReasoning("想二"); err != nil {
+		t.Fatalf("OnReasoning: %v", err)
+	}
+	pub.Complete("想一想二")
+
+	if len(seq.events) != 4 {
+		t.Fatalf("events = %d, want 4 (created + 2 streaming + completed)", len(seq.events))
+	}
+	created, ok := seq.events[0].(*biz.StepCreatedEvent)
+	if !ok {
+		t.Fatalf("events[0] = %T, want *biz.StepCreatedEvent", seq.events[0])
+	}
+	if created.Step.Kind != biz.StepKindThinking {
+		t.Errorf("step.Kind = %q, want thinking", created.Step.Kind)
+	}
+	if created.Step.AuthorAgentKey != biz.SpiritAgentKey {
+		t.Errorf("step.AuthorAgentKey = %q, want %q", created.Step.AuthorAgentKey, biz.SpiritAgentKey)
+	}
+	if created.Step.Status != biz.StepStatusRunning {
+		t.Errorf("step.Status = %q, want running", created.Step.Status)
+	}
+	if created.Step.SpiritSessionID != "spirit-1" {
+		t.Errorf("step.SpiritSessionID = %q, want spirit-1", created.Step.SpiritSessionID)
+	}
+	for i, want := range []string{"想一", "想二"} {
+		s, ok := seq.events[1+i].(*biz.StepStreamingEvent)
+		if !ok {
+			t.Fatalf("events[%d] = %T, want *biz.StepStreamingEvent", 1+i, seq.events[1+i])
+		}
+		if s.StepID != created.Step.ID {
+			t.Errorf("streaming[%d].StepID = %q, want %q", i, s.StepID, created.Step.ID)
+		}
+		if s.DeltaField != "reasoning" {
+			t.Errorf("streaming[%d].DeltaField = %q, want reasoning", i, s.DeltaField)
+		}
+		if s.DeltaChunk != want {
+			t.Errorf("streaming[%d].DeltaChunk = %q, want %q", i, s.DeltaChunk, want)
+		}
+	}
+	done, ok := seq.events[3].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("events[3] = %T, want *biz.StepCompletedEvent", seq.events[3])
+	}
+	if done.Step.ID != created.Step.ID {
+		t.Errorf("completed.Step.ID = %q, want %q", done.Step.ID, created.Step.ID)
+	}
+	if done.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("completed.Step.Status = %q, want completed", done.Step.Status)
+	}
+	if done.Step.Reasoning != "想一想二" {
+		t.Errorf("completed.Step.Reasoning = %q, want 想一想二", done.Step.Reasoning)
+	}
+}
+
+// 分解失败时思考 step 必须以 failed 终态闭合，否则前端思考块永远转圈。
+func TestPlanningThinkingPublisher_Fail_MarksStepFailed(t *testing.T) {
+	seq := &fakeSeqPublisher{}
+	pub := newPlanningThinkingPublisher(seq, context.Background(), "spirit-1")
+	if pub == nil {
+		t.Fatal("expected non-nil publisher")
+	}
+	_ = pub.OnReasoning("想")
+	pub.Fail()
+
+	if len(seq.events) != 3 {
+		t.Fatalf("events = %d, want 3 (created + streaming + completed)", len(seq.events))
+	}
+	done, ok := seq.events[2].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("events[2] = %T, want *biz.StepCompletedEvent", seq.events[2])
+	}
+	if done.Step.Status != biz.StepStatusFailed {
+		t.Errorf("completed.Step.Status = %q, want failed", done.Step.Status)
+	}
+}
+
+// nil seq（v2 不可用）必须安全降级：返回 nil publisher，调用方无操作。
+func TestPlanningThinkingPublisher_NilSeq_ReturnsNil(t *testing.T) {
+	if pub := newPlanningThinkingPublisher(nil, context.Background(), "spirit-1"); pub != nil {
+		t.Fatal("expected nil publisher when seq is nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P2：TaskPlan 持久化与展示同时——分解 LLM 调用前先落库 draft（崩溃可恢复、
+// 可观测「正在规划」），分解完成后增量 Update 填充 subtasks；分解期间周期性
+// 心跳进度通知前端。不再「先分解 60s、最后一次性落库」。
+// ---------------------------------------------------------------------------
+
+// recordingPlanRepo 记录 Create/Update 调用顺序与快照。
+type recordingPlanRepo struct {
+	calls   []string
+	created *biz.TaskPlan
+	updated *biz.TaskPlan
+}
+
+func (r *recordingPlanRepo) Create(_ context.Context, p *biz.TaskPlan) (*biz.TaskPlan, error) {
+	r.calls = append(r.calls, "create")
+	snap := *p
+	r.created = &snap
+	return p, nil
+}
+func (r *recordingPlanRepo) GetByID(_ context.Context, id string) (*biz.TaskPlan, error) {
+	return nil, nil
+}
+func (r *recordingPlanRepo) Update(_ context.Context, p *biz.TaskPlan) (*biz.TaskPlan, error) {
+	r.calls = append(r.calls, "update")
+	snap := *p
+	r.updated = &snap
+	return p, nil
+}
+func (r *recordingPlanRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
+	return nil, nil
+}
+
+// 分解路径（effectiveLevel=Complex）必须先 Create draft 再 Update 终态。
+// catalog=nil 使 decompose 失败走降级路径，可在无 LLM 环境下验证落库时序。
+func TestPlan_PersistsDraftBeforeDecompose(t *testing.T) {
+	repo := &recordingPlanRepo{}
+	bus := &captureNoticeBus{}
+	impl := &taskPlannerImpl{
+		repo:     repo,
+		eventBus: bus,
+		lg:       loggateway.NewNoop(),
+		seq:      &fakeSeqPublisher{},
+	}
+	_, err := impl.Plan(context.Background(), biz.PlanInput{
+		UserMessage:     "请组建两个团队并行工作：团队一写诗，团队二写歌",
+		SpiritSessionID: "spirit-p2",
+		Mode:            "parallel", // 显式团队模式 → 强制 Complex → 触发分解
+	})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(repo.calls) != 2 || repo.calls[0] != "create" || repo.calls[1] != "update" {
+		t.Fatalf("repo calls = %v, want [create update]（先落 draft 再增量更新）", repo.calls)
+	}
+	if repo.created == nil {
+		t.Fatal("missing created snapshot")
+	}
+	if repo.created.Status != biz.TaskPlanStatusDraft {
+		t.Errorf("draft.Status = %q, want draft", repo.created.Status)
+	}
+	if len(repo.created.SubTasks) != 0 {
+		t.Errorf("draft.SubTasks = %d, want 0（分解前为空）", len(repo.created.SubTasks))
+	}
+	if repo.created.Strategy != biz.StrategyParallel {
+		t.Errorf("draft.Strategy = %q, want parallel（分解前已定策略）", repo.created.Strategy)
+	}
+	if repo.updated == nil {
+		t.Fatal("missing updated snapshot")
+	}
+	// catalog=nil → 分解失败降级 direct。
+	if repo.updated.Strategy != biz.StrategyDirect {
+		t.Errorf("updated.Strategy = %q, want direct（分解失败降级）", repo.updated.Strategy)
+	}
+	if repo.updated.DecomposeReason != "decompose_failed" {
+		t.Errorf("updated.DecomposeReason = %q, want decompose_failed", repo.updated.DecomposeReason)
+	}
+	if repo.updated.ID != repo.created.ID {
+		t.Errorf("updated.ID = %q, want same as draft %q", repo.updated.ID, repo.created.ID)
+	}
+}
+
+// 非分解路径（direct 策略）保持单次 Create，不多一次 Update。
+func TestPlan_DirectPath_SingleCreate(t *testing.T) {
+	repo := &recordingPlanRepo{}
+	impl := &taskPlannerImpl{
+		repo: repo,
+		lg:   loggateway.NewNoop(),
+	}
+	_, err := impl.Plan(context.Background(), biz.PlanInput{
+		UserMessage:     "你好",
+		SpiritSessionID: "spirit-p2-direct",
+	})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(repo.calls) != 1 || repo.calls[0] != "create" {
+		t.Fatalf("repo calls = %v, want [create]（direct 路径不落 draft）", repo.calls)
+	}
+}
+
+// 分解期间必须周期性发布 decomposing 心跳进度（用户可见的存活信号），
+// stop 后不再发布。
+func TestPlan_DecomposeHeartbeat(t *testing.T) {
+	bus := &captureNoticeBus{}
+	impl := &taskPlannerImpl{eventBus: bus, lg: loggateway.NewNoop()}
+	stop := impl.startDecomposeHeartbeat(context.Background(), "spirit-hb", 5*time.Millisecond)
+	time.Sleep(40 * time.Millisecond)
+	stop()
+	before := len(bus.events)
+	time.Sleep(20 * time.Millisecond)
+	if len(bus.events) != before {
+		t.Fatal("heartbeat continued after stop()")
+	}
+	if before < 2 {
+		t.Fatalf("heartbeat events = %d, want >=2 in 40ms with 5ms interval", before)
+	}
+	// 心跳必须是 decomposing 阶段且携带 elapsed 信息。
+	for _, e := range bus.events {
+		n, ok := e.(*biz.SystemNoticeEvent)
+		if !ok {
+			t.Fatalf("event = %T, want *biz.SystemNoticeEvent", e)
+		}
+		if n.NoticeType != "orchestration_progress" {
+			t.Fatalf("NoticeType = %q, want orchestration_progress", n.NoticeType)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3：分解调用可靠性——idle 停滞守卫 + 无限重试 + 保险丝语义。
+// 旧的 60s 硬超时会掐断健康慢流（DeepSeek 推理段可达 18-90s）；改为：有数据
+// 流动即健康（无总时长上限），停滞才中止单次尝试；瞬时故障无限重试（指数
+// 退避），仅父 ctx 取消（用户停止/外层预算）与永久性错误（鉴权/配置/上下文
+// 溢出/内容过滤）熔断。
+// ---------------------------------------------------------------------------
+
+func TestIsRetriableDecomposeError(t *testing.T) {
+	idle := &llmcompat.StreamIdleError{Timeout: time.Second}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"parent canceled", context.Canceled, false},
+		{"parent deadline", context.DeadlineExceeded, false},
+		{"wrapped deadline", apierror.Wrap(context.DeadlineExceeded, apierror.CodeUnavailable, apierror.DomainProvider), false},
+		{"idle stall", idle, true},
+		{"wrapped idle", apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(idle), true},
+		{"eof", io.EOF, true},
+		{"generic transient", errors.New("connection reset by peer"), true},
+		{"auth fuse", errors.New(`{"error":{"message":"invalid_api_key"}}`), false},
+		{"context overflow fuse", errors.New("context length exceeded"), false},
+		{"config fuse", &decomposeConfigError{err: errors.New("no provider/model configured")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRetriableDecomposeError(tt.err); got != tt.want {
+				t.Errorf("isRetriableDecomposeError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// 瞬时故障（停滞）必须无限重试直至成功；每次重试发布 decompose_retry 进度。
+func TestDecomposeTaskStream_TransientFailure_RetriesUntilSuccess(t *testing.T) {
+	bus := &captureNoticeBus{}
+	attempts := 0
+	impl := &taskPlannerImpl{
+		eventBus:       bus,
+		lg:             loggateway.NewNoop(),
+		retryBackoffFn: func(int) time.Duration { return time.Millisecond },
+	}
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		attempts++
+		if attempts < 3 {
+			return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(&llmcompat.StreamIdleError{Timeout: time.Second})
+		}
+		st := []biz.SubTask{{ID: "st_1", Name: "A"}, {ID: "st_2", Name: "B"}}
+		return st, buildDAGFromSubTasks(st), nil
+	}
+	tasks, dag, err := impl.decomposeTaskStream(context.Background(), "组建两个团队并行工作", nil, 0, "spirit-p3", nil)
+	if err != nil {
+		t.Fatalf("decomposeTaskStream: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if len(tasks) != 2 {
+		t.Fatalf("subtasks = %d, want 2", len(tasks))
+	}
+	if dag == nil {
+		t.Fatal("dag nil")
+	}
+	// 每次重试必须发布 decompose_retry 进度（用户可见「重试中」），attempt 从 2 起。
+	var retryAttempts []int
+	for _, e := range bus.events {
+		if sn, ok := e.(*biz.SystemNoticeEvent); ok && sn.NoticeType == "orchestration_progress" {
+			if ph, _ := sn.Meta["phase"].(string); ph == "decompose_retry" {
+				att, _ := sn.Meta["attempt"].(int)
+				retryAttempts = append(retryAttempts, att)
+			}
+		}
+	}
+	if len(retryAttempts) != 2 || retryAttempts[0] != 2 || retryAttempts[1] != 3 {
+		t.Fatalf("decompose_retry events = %v, want [2 3]", retryAttempts)
+	}
+}
+
+// 永久性错误（配置缺失/鉴权）必须立即熔断——重试相同请求无意义。
+func TestDecomposeTaskStream_PermanentFailure_FuseBlowsImmediately(t *testing.T) {
+	attempts := 0
+	impl := &taskPlannerImpl{
+		lg:             loggateway.NewNoop(),
+		retryBackoffFn: func(int) time.Duration { return time.Millisecond },
+	}
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		attempts++
+		return nil, nil, &decomposeConfigError{err: errors.New("LLM catalog or HTTP client not configured")}
+	}
+	_, _, err := impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p3", nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1（保险丝熔断不重试）", attempts)
+	}
+}
+
+// 父 ctx 取消（用户停止/外层预算）必须穿透重试退避，立即返回。
+func TestDecomposeTaskStream_ParentCancelDuringBackoff_StopsRetry(t *testing.T) {
+	attempts := 0
+	impl := &taskPlannerImpl{
+		lg:             loggateway.NewNoop(),
+		retryBackoffFn: func(int) time.Duration { return 30 * time.Second }, // 长退避，验证取消可穿透
+	}
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+		attempts++
+		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(&llmcompat.StreamIdleError{Timeout: time.Second})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+	start := time.Now()
+	_, _, err := impl.decomposeTaskStream(ctx, "msg", nil, 0, "spirit-p3", nil)
+	if err == nil {
+		t.Fatal("expected error after cancel")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("cancel did not interrupt backoff: %v", elapsed)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1（取消发生在首次退避期间）", attempts)
+	}
 }
 
 // TestPublishV2Board_ReturnsPlanBoardID (C-18) verifies PublishV2Board returns

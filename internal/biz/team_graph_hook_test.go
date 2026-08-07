@@ -252,6 +252,49 @@ func TestTeamGraphHook_CreateMaterializesPresetAsset(t *testing.T) {
 	}
 }
 
+// --- 2026-08-07 根因回归：Create 物化链路必须保留交付物通道字段 ---
+// 09:24 会话两个 DAG team 落库丢失 enable_state_deliverable → 成员无
+// set_deliverable 工具 → 真实交付物闸门判失败 → DAG 下游节点永不派发。
+
+func TestTeamGraphHook_CreatePreservesDeliverableChannelFields(t *testing.T) {
+	t.Parallel()
+	store := newFakeGraphStore()
+	writer := &recTeamWriter{}
+	uc := newHookUsecase(&stubTeamReader{}, writer, store, &fakeTeamCompiler{cfg: simpleBuildConfig()}, &fakeTxProvider{})
+
+	// 用裸 JSON（非 spec 序列化）模拟 SpiritTeamUsecase 装配产物：
+	// map 构造的 definition_json 携带 enable_state_deliverable / deliverable_contract / verification_gates。
+	raw := `{"version":2,"mode":"coordinator","runtime_engine":"graph","team_graph_runtime":true,` +
+		`"members":[{"agent_id":"a1","role":"synthesizer","name":"S","enabled":true,"sort_order":1}],` +
+		`"enable_state_deliverable":true,` +
+		`"deliverable_contract":{"entries":[{"topic":"root_cause","required":true}]},` +
+		`"verification_gates":[{"gate_type":"tool_assertion","description":"d","max_retries":3,"tool":"skill_list"}]` +
+		`}`
+	created, err := uc.Create(context.Background(), Team{
+		TeamKey:        "t-deliv",
+		DisplayName:    "Deliverable Team",
+		Kind:           "user",
+		DefinitionJSON: raw,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	attrs := definitionAttrs(t, created.DefinitionJSON)
+	if attrs["enable_state_deliverable"] != true {
+		t.Fatalf("enable_state_deliverable dropped by materialize hook: %v", attrs["enable_state_deliverable"])
+	}
+	contract, ok := attrs["deliverable_contract"].(map[string]any)
+	if !ok {
+		t.Fatalf("deliverable_contract dropped by materialize hook: %v", attrs["deliverable_contract"])
+	}
+	if entries, ok := contract["entries"].([]any); !ok || len(entries) != 1 {
+		t.Fatalf("deliverable_contract.entries mangled: %v", contract["entries"])
+	}
+	if gates, ok := attrs["verification_gates"].([]any); !ok || len(gates) != 1 {
+		t.Fatalf("verification_gates dropped by materialize hook: %v", attrs["verification_gates"])
+	}
+}
+
 // --- B3/D1：物化失败 = 保存失败（无残留） ---
 
 func TestTeamGraphHook_CreateMaterializeFailureAbortsSave(t *testing.T) {

@@ -134,6 +134,22 @@ export function buildHealthWsUrl(): string {
 }
 
 /**
+ * 语音通道 `/v1/voice`（M74 设计 §2.1）：独立于 /v1/ws 事件总线。
+ * 鉴权与 /v1/ws 一致（同源 HttpOnly Cookie；跨源回退 token query）。
+ */
+export function buildVoiceWsUrl(params: { sessionId: string; token?: string }): string {
+  const origin = getWsOrigin();
+  const protocol = origin.startsWith('https') ? 'wss' : 'ws';
+  const wsOrigin = origin.replace(/^https?/, protocol);
+  const q = new URLSearchParams({ session_id: params.sessionId });
+  const token = params.token?.trim() || getAuthToken();
+  if (token && !isWsSameOriginAsPage()) {
+    q.set('token', token);
+  }
+  return `${wsOrigin}/v1/voice?${q.toString()}`;
+}
+
+/**
  * @deprecated Session cookie is HttpOnly; JS cannot read it on same-origin deployments.
  * Cross-origin integrations should use Bearer token or explicit `token` query on WS URL.
  */

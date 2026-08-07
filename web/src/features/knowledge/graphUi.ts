@@ -116,38 +116,47 @@ export function oneHopNeighborIds(nodeId: string, edges: CollectionGraphEdge[]):
   return out;
 }
 
-/** 径向 containment 力的节点协议（d3-force ForceFn 兼容，免 d3-force-3d 依赖）。 */
-export interface GraphForceNode {
-  x?: number;
-  y?: number;
-  z?: number;
-  vx?: number;
-  vy?: number;
-  vz?: number;
-}
-
-export interface GraphForce {
-  (alpha: number): void;
-  initialize?: (nodes: GraphForceNode[]) => void;
-}
-
-/** 径向 containment 力：按 距离×强度×alpha 把节点速度拉向原点。
- *  修复：断链（边类型全过滤）或孤立节点在纯电荷斥力下无界飞散，
- *  zoomToFit 框住巨大 bbox → 相机拉到无穷远，画布空白/渲染伪影。
- *  强度 0.03 与默认电荷（-30）在半径约 30 处平衡，远小于 link 距离，不压缩连通簇。 */
-export function graphContainmentForce(strength = 0.03): GraphForce {
-  let nodes: GraphForceNode[] = [];
-  const force = ((alpha: number) => {
-    const k = strength * alpha;
-    for (const n of nodes) {
-      if (n.x == null || n.y == null || n.z == null) continue;
-      n.vx = (n.vx ?? 0) - n.x * k;
-      n.vy = (n.vy ?? 0) - n.y * k;
-      n.vz = (n.vz ?? 0) - n.z * k;
-    }
-  }) as GraphForce;
-  force.initialize = (n) => {
-    nodes = n;
+/** N 跳 BFS 邻域 id 集（含根；无向）。局部图谱「聚焦邻域」用（G5-D D-5）。 */
+export function bfsNeighborhoodIds(rootId: string, edges: CollectionGraphEdge[], hops: number): Set<string> {
+  const visited = new Set<string>([rootId]);
+  if (hops <= 0) return visited;
+  const adj = new Map<string, string[]>();
+  const link = (k: string, v: string): void => {
+    const arr = adj.get(k);
+    if (arr) arr.push(v);
+    else adj.set(k, [v]);
   };
-  return force;
+  for (const e of edges) {
+    link(e.source, e.target);
+    link(e.target, e.source);
+  }
+  let frontier = [rootId];
+  for (let d = 0; d < hops; d++) {
+    const next: string[] = [];
+    for (const u of frontier) {
+      for (const v of adj.get(u) ?? []) {
+        if (!visited.has(v)) {
+          visited.add(v);
+          next.push(v);
+        }
+      }
+    }
+    frontier = next;
+    if (frontier.length === 0) break;
+  }
+  return visited;
+}
+
+/** 局部图谱子图：按 BFS 邻域过滤节点/边（doc_type 不变 → 调色板哈希跨视图同色，反模式⑥）。 */
+export function buildNeighborhoodGraph(
+  nodes: CollectionGraphNode[],
+  edges: CollectionGraphEdge[],
+  rootId: string,
+  hops: number,
+): { nodes: CollectionGraphNode[]; edges: CollectionGraphEdge[] } {
+  const ids = bfsNeighborhoodIds(rootId, edges, hops);
+  return {
+    nodes: nodes.filter((n) => ids.has(n.doc_id)),
+    edges: edges.filter((e) => ids.has(e.source) && ids.has(e.target)),
+  };
 }

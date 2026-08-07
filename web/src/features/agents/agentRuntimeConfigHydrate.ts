@@ -31,6 +31,7 @@ export function hydrateRuntimeFromConfigJson(config: AgentRuntimeConfigForm, raw
       memoryL4: { ...config.memoryL4, ...(parsed.memoryL4 || {}) },
       evolutionSettings: { ...config.evolutionSettings, ...(parsed.evolutionSettings || {}) },
       heartbeat: { ...config.heartbeat, ...(parsed.heartbeat || {}) },
+      evaluation: { ...config.evaluation, ...(parsed.evaluation || {}) },
       evolution: {
         ...config.evolution,
         ...(parsed.evolution || {}),
@@ -218,6 +219,10 @@ export function hydrateAgentRuntime(
         const parsed = JSON.parse(agent.config_json);
         if (parsed.parallel_config) {
           config.spirit = { ...config.spirit, ...parsed.parallel_config };
+        }
+        // After-Turn 自动评估同样只存于 config_json.evaluation（见 biz.AgentEvalAutoConfig）。
+        if (parsed.evaluation) {
+          config.evaluation = { ...config.evaluation, ...parsed.evaluation };
         }
       } catch {
         // ignore

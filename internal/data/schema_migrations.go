@@ -39,6 +39,10 @@ const (
 	// memory_profile_cards 占用（FR-12.6/12.7）。
 	MigrationL2RecallDefaultOn     = 20261127
 	migrationNameL2RecallDefaultOn = "memory_l2_recall_default_on"
+	// 版本取 20260807：修复物化钩子重序列化丢弃 enable_state_deliverable 的
+	// 存量团队（2026-08-07 根因，详见 team_deliverable_channel_migrate.go）。
+	MigrationTeamDeliverableChannelRepair     = 20260807
+	migrationNameTeamDeliverableChannelRepair = "team_deliverable_channel_repair"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

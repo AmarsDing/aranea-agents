@@ -20,6 +20,7 @@ func toProtoSuggestion(s biz.EvolutionSuggestion) *v1.EvolutionSuggestion {
 		DiffPreview: s.DiffPreview,
 		CreatedAt:   s.CreatedAt,
 		AppliedAt:   s.AppliedAt,
+		Applicable:  s.Applicable(),
 	}
 }
 

@@ -10,6 +10,8 @@ package deliverable
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,6 +76,24 @@ func NewSetDeliverableTool() *SetDeliverableTool { return &SetDeliverableTool{} 
 // member-level deliverable contract governing topic writes.
 func NewSetDeliverableToolWithContract(contract *biz.MemberDeliverableContract) *SetDeliverableTool {
 	return &SetDeliverableTool{contract: contract}
+}
+
+// CacheKeyDiscriminator implements the agent build cache's implicit
+// behavior-discriminator interface. A contract-installed set_deliverable
+// rejects violating topic writes while the contract-free variant accepts
+// them — same declaration name, different behavior — so the contract content
+// must participate in the cache key. Returns "" for the contract-free
+// variant (key falls back to the plain declaration name).
+func (t *SetDeliverableTool) CacheKeyDiscriminator() string {
+	if t == nil || t.contract == nil {
+		return ""
+	}
+	raw, err := json.Marshal(t.contract)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return "contract:" + hex.EncodeToString(sum[:])[:16]
 }
 
 type setDeliverableInput struct {

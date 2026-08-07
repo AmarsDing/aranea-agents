@@ -11,10 +11,14 @@
       </div>
     </q-card-section>
 
-    <q-card-section v-if="!agentId" class="text-grey-7">{{ t('memory.cascade.selectAgentFirst') }}</q-card-section>
+    <q-card-section v-if="!agentId" class="memory-cascade-empty">
+      <q-icon name="smart_toy" size="26px" class="memory-cascade-empty__icon" />
+      <div>{{ t('memory.cascade.selectAgentFirst') }}</div>
+    </q-card-section>
 
-    <q-card-section v-else-if="!rows.length && !loading">
-      <q-banner rounded class="memory-info-banner">{{ t('memory.cascade.empty') }}</q-banner>
+    <q-card-section v-else-if="!rows.length && !loading" class="memory-cascade-empty">
+      <q-icon name="account_tree" size="26px" class="memory-cascade-empty__icon" />
+      <div>{{ t('memory.cascade.empty') }}</div>
     </q-card-section>
 
     <q-card-section v-else class="q-pt-none">
@@ -184,7 +188,7 @@
                   <q-item v-for="d in preview.fact_diffs" :key="d.fact_id">
                     <q-item-section>
                       <q-item-label caption>{{ d.scope }} · {{ d.fact_id.slice(0, 8) }}</q-item-label>
-                      <q-item-label class="text-grey-7" style="text-decoration: line-through">{{
+                      <q-item-label class="text-grey-7 memory-cascade-diff__before">{{
                         d.before_statement
                       }}</q-item-label>
                       <q-item-label class="text-weight-medium">{{ d.after_statement }}</q-item-label>
@@ -277,3 +281,21 @@ function riskColor(level?: string) {
   }
 }
 </script>
+
+<style scoped lang="sass">
+.memory-cascade-empty
+  display: flex
+  flex-direction: column
+  align-items: center
+  gap: var(--space-2)
+  padding: var(--space-8) var(--space-4)
+  font-size: var(--text-sm)
+  color: var(--color-text-secondary)
+
+  &__icon
+    color: var(--color-icon-muted)
+    opacity: 0.7
+
+.memory-cascade-diff__before
+  text-decoration: line-through
+</style>

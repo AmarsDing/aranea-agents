@@ -234,9 +234,10 @@ func ProvideEvolutionUsecase(
 - `CreateSuggestion(ctx, s)` — 创建 L3 建议（`EvolutionSuggestionCreator` 端口，供精灵团队学习 / DQ 反馈等非进化消费者调用）
 - `ApplySuggestion(ctx, agentID, suggestionID)` — 应用建议：
   - 校验状态机转换 `Pending → Applied`
+  - **apply payload 门（2026-08-07 P0-2）**：`type=persona`/`prompt` 要求 metadata `apply_payload` 非空，否则拒绝（`BadRequest`，提示"该建议为指标通知，不包含可应用的修改内容"）。现存全部生产者（`AgentConfigTrigger` 指标通知、编排优化通知）只生成通知文本，不携带 payload——防止通知文本被写入 prompt 文件腐蚀配置。存量行无该键，默认拒绝，免迁移；未来 LLM 草稿生成器设置 payload 即解锁 apply
   - 保存 `PreApplySnapshot`（应用前的 prompt files 快照，经 `store.UpdateMetadataKey` 写入 metadata）
-  - `type=persona`：写入 `IDENTITY.md` 的 `## Persona` 段（PGO V2 后替代 SOUL.md，保留 SOUL.md 作为遗留兜底）
-  - `type=prompt`：写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件
+  - `type=persona`：将 payload 写入 `IDENTITY.md` 的 `## Persona` 段（PGO V2 后替代 SOUL.md，保留 SOUL.md 作为遗留兜底）
+  - `type=prompt`：将 payload 写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件
   - 注入 txProvider 时，prompt files 替换 + 状态更新在单事务中执行（红线 #24）
 - `RejectSuggestion(ctx, agentID, suggestionID)` — 拒绝建议，状态机转换 `Pending → Rejected`
 - `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，从 `PreApplySnapshot` 恢复 prompt files（同样支持事务包裹）
@@ -291,7 +292,7 @@ L3 建议的物理存储为 `unified_evolution_suggestions` 表（raw SQL DDL，
 | `action_type` | `evolve_agent` |
 | `trigger_source` | `agent_config`（`unifiedFromEvolutionView` 固定；自动扫描与 `CreateSuggestion` 消费者——精灵团队完成学习、任务编排 DQ 反馈——均走此值） |
 | `draft_body` | legacy `content` |
-| `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot` |
+| `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot`、`apply_payload`（apply 实际写入内容；空 = 通知类建议不可应用） |
 | `status` | `pending` / `applied` / `rejected` / `rolled_back`（原样保留） |
 
 迁移 `20261111` 逐行 backfill（主键预检幂等）legacy `evolution_suggestions` 后 DROP 该表。
@@ -537,8 +538,8 @@ export type EvolutionSuggestion = {
 
 - `props.evolution` / `props.evolutionSettings` / `props.guardrails` 由父组件 `AgentSettingsPage` 通过 `agentRuntimeConfig` 表单双向绑定
 - 指标与建议通过 `useAgentEvolutionPanel(agentId, range)` composable 加载
-- 建议列表从 `useSkillEvolutionStore()` 过滤 `targetType === 'agent' && targetId === agentId` 的 pending 项
-- 应用/拒绝建议调用 `evolutionStore.approveSuggestion(id, 'agent-panel')` / `rejectSuggestion(id, 'agent-panel', '')`
+- 建议列表调用 L3 API `agentDetailStore.fetchEvolutionSuggestions(id)`（`GET /v1/agents/{id}/evolution/suggestions`），展示 `evolve_agent` 行（2026-08-07 P0-1 修复：此前错接 L1 `ListSkillProposals`，L3 建议不可见）
+- 应用/拒绝建议调用 `agentDetailStore.applyEvolution(agentId, id)` / `rejectEvolution(agentId, id)`；apply 被 payload 门拒绝时 toast 后端原因
 
 ### 8.4 API 调用
 
@@ -548,11 +549,15 @@ export type EvolutionSuggestion = {
 // 指标查询通过 agentDetailStore.fetchEvolutionMetrics(id, range) 触发
 // 实际 HTTP 调用：GET /v1/agents/{agentId}/evolution/metrics?time_range={range}
 
-// web/src/features/agents/api.learning.ts 与 stores/skillEvolution/index.ts
+// 建议列表：agentDetailStore.fetchEvolutionSuggestions(id)
+//   → GET /v1/agents/{agentId}/evolution/suggestions（L3，evolve_agent）
+// 应用建议：agentDetailStore.applyEvolution(agentId, suggestionId)
+//   → POST /v1/agents/{agentId}/evolution/suggestions/{suggestionId}/apply
+// 拒绝建议：agentDetailStore.rejectEvolution(agentId, suggestionId)
+//   → POST /v1/agents/{agentId}/evolution/suggestions/{suggestionId}/reject
 
-// 建议列表通过 evolutionStore.loadSuggestions({ targetType, targetId, status }) 触发
-// 应用建议：evolutionStore.approveSuggestion(id, source)
-// 拒绝建议：evolutionStore.rejectSuggestion(id, source, reason)
+// 全局建议中心（Skill 进化页）仍走 web/src/features/skills/api.learning.ts
+// 的 useSkillEvolutionStore（L1/L2 统一建议），与本面板 L3 链路解耦。
 ```
 
 ---
@@ -567,5 +572,6 @@ export type EvolutionSuggestion = {
 - [ ] 指标 Repo 读写通过 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)` 事务感知访问器；建议读写经 `UnifiedEvolutionRepo`（raw SQL + `RWDB()` 事务感知 + 方言感知占位符/JSON 路径）
 - [ ] L3 建议视图经 `evolutionViewFromUnified` 从 unified 行重建，proto 契约不变（A6）
 - [ ] `ApplyEvolutionSuggestion` Service 方法在应用后调用 `invalidateAgentBuildCache` 失效缓存
+- [ ] `ApplySuggestion` 对 `type=persona`/`prompt` 强制要求 metadata `apply_payload` 非空（通知类建议拒绝写入 prompt 文件）
 - [ ] 前端 `AgentEvolutionPanel.vue` 与 `useAgentEvolutionPanel.ts` 数据流单向：composable → store → 组件
 - [ ] L3 自动扫描由 `AgentConfigTrigger` 执行（opt-in 门控 + type+title 去重），跨流水线 pending 去重由 `SkillEvolutionOrchestrator` 统一处理

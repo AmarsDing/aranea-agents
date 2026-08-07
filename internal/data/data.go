@@ -853,6 +853,10 @@ func runPendingDataMigrations(d *Data) error {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.l2_recall_default_on"), loggateway.Err(err))
 		return fmt.Errorf("l2 recall default-on migration: %w", err)
 	}
+	if err := RunTeamDeliverableChannelRepairMigration(ctx, entClient, d.Dialect(), d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.team_deliverable_channel_repair"), loggateway.Err(err))
+		return fmt.Errorf("team deliverable channel repair migration: %w", err)
+	}
 	return nil
 }
 

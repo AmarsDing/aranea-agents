@@ -221,6 +221,8 @@ type SpeechConfigReader interface {
 
 ## 6. 客户端工具桥（`internal/tools/clientbridge/`）
 
+> **实现状态（2026-08-08，V2-T3 ✅）**：后端已落地。锚点：`clientbridge/bridge.go`（pending 登记/30s 超时/离线降级/审计+流程日志）、`clientbridge/toolset.go`（client ToolSet：open_app/open_url）、`internal/server/ws_client_tool.go`（capabilities 注册 + invoke 路由 + result 上行）、`internal/service/client_tool_bridge.go`（AuditRecorder 适配 + wire Provider）、`internal/data/builtin_tools_seed.go`（client 分组种子，opt-in + reqConfirm）。流程日志 step：`client_tool.invoke/result/timeout`（见 52-flow-logger §5.1）。
+
 ### 6.1 工具清单
 
 | 工具 key | 参数 | 风险 | 确认 | Phase |
@@ -273,14 +275,16 @@ Agent 调用 client_open_app
 | 文件 | 职责 |
 |------|------|
 | `stores/companion.ts` | Pinia store：voiceState、实时字幕、HUD 状态、确认卡队列（单一数据源铁律） |
+| `features/companion/types.ts` | 共享类型（VoiceState/VoiceError；红线 #12 展示组件经此引类型） |
 | `voice/audioCapture.ts` | getUserMedia（echoCancellation+noiseSuppression）→ AudioWorklet → 重采样 16k PCM → WS 二进制帧 |
-| `voice/vad.ts` | 能量 + 过零率 VAD，双重职责：①播报期人声检测（持续 ≥200ms 触发 barge_in）；②判停兜底（~700ms 静音且服务端未端点时发 `voice.commit`）。**语句端点判定以火山 ASR 服务端 VAD 为主**（尾延迟 ~300-600ms，计入 NFR1 预算），前端兜底仅在服务端失效时生效 |
+| `voice/vad.ts` | 能量 + 过零率 VAD，双重职责：①播报期人声检测（持续 ≥200ms 触发 barge_in）；②判停兜底（~700ms 静音且服务端未端点时发 `voice.commit`）。**语句端点判定以火山 ASR 服务端 VAD 为主**（尾延迟 ~300-600ms，计入 NFR1 预算），前端兜底仅在服务端失效时生效。含 `decideVadAction(evt, state)` 纯函数：VAD 事件 × 状态机镜像 → barge_in/commit 动作（V2-T1 接线） |
 | `voice/audioPlayback.ts` | PCM chunk 队列 → AudioBuffer 按序调度（gapless，句间 <150ms）；barge_in 时 50ms 淡出清空 |
-| `voice/useVoiceSession.ts` | `/v1/voice` 连接生命周期、状态机镜像、与 chat sender 的衔接 |
+| `voice/useVoiceSession.ts` | `/v1/voice` 连接生命周期（createVoiceSessionClient）+ useVoiceSession composable（采集/播放/可视化桥接、状态机镜像写入 companion store、与 chat sender 的衔接） |
+| `hud/hudParams.ts` | 状态 → HUD 参数纯函数（§7.4 状态驱动参数，与 Three.js 解耦以便单测） |
 | `hud/HudScene.ts` | Three.js 场景（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换） |
-| `components/HudCanvas.vue` | canvas 宿主、点击/双击/拖拽交互、频谱数据桥 |
-| `components/CompanionChatPanel.vue` | 滑出聊天窗（复用 ChatMessagePanel/ChatComposer 组件族） |
-| `components/HoloConfirmCard.vue` | 全息确认卡（confirm 事件渲染 + 粒子发射动画） |
+| `components/companion/HudCanvas.vue` | canvas 宿主、点击/双击/拖拽交互、频谱数据桥 |
+| `components/companion/CompanionChatPanel.vue` | 滑出聊天窗壳（内容由 Page 注入，复用 ChatMessagePanel 组件族） |
+| `components/companion/HoloConfirmCard.vue` | 全息确认卡（confirm 事件渲染 + 粒子发射动画，V2-T5） |
 
 新增依赖：`three`（npm）；Web Audio 全原生 API，无音频库依赖。
 

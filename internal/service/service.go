@@ -123,6 +123,8 @@ var ProviderSet = wire.NewSet(
 	ProvideSessionFlowLogWriter,
 	ProvideMonitorFlowLogWriter,
 	ProvideWebResearchTester,
+	// M74 V2-T3: client tool bridge（desktop companion 工具执行协调器）
+	ProvideClientToolBridge,
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,
 	ProvideSessionStatusPublisher,

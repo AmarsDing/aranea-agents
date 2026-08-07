@@ -123,6 +123,11 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-13 | P3 | 前端 Rollback UI 入口 | ❌ |
 | EVO-14 | P3 | Learning Loop 与 Evolution 对齐（共享 Apply 逻辑） | 🟡 |
 | EVO-15 | P3 | PGO V2 影响 — SOUL.md deprecated，evolution persona target 变更 | ✅ 已迁移到 IDENTITY.md |
+| EVO-16 | P0 | 面板建议区错接 L1 `ListSkillProposals`，L3 `evolve_agent` 建议不可见 → 切换 L3 API（列表 + apply/reject） | ✅ 2026-08-07 |
+| EVO-17 | P0 | 通知类建议（无实质修改内容）apply 会把通知文本写入 IDENTITY.md/AGENTS*.md → `apply_payload` metadata 门，空则拒绝 | ✅ 2026-08-07 |
+| EVO-18 | P1 | 趋势图柱条不可见（`--color-primary` 未定义）→ 双主题补定义 | ✅ 2026-08-07 |
+| EVO-19 | P1 | 无记忆调用时检索质量误显 0.0% → series 空时前端显「暂无数据」 | ✅ 2026-08-07 |
+| EVO-20 | P1 | 通知类建议内容低质（无 diff_preview、文案重复）→ LLM 生成具体修改草稿并设置 `apply_payload` 解锁 apply | ❌ |
 
 ---
 
