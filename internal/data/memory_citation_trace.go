@@ -72,9 +72,9 @@ func (r *memoryCitationTraceRepo) ListCitationCandidates(ctx context.Context, si
 	defer rows.Close()
 
 	type rawCandidate struct {
-		turnID   string
-		factIDs  []string
-		reply    string
+		turnID  string
+		factIDs []string
+		reply   string
 	}
 	var raws []rawCandidate
 	for rows.Next() {

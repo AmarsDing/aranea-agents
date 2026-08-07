@@ -244,6 +244,11 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			strategy = biz.StrategyDirect
 			strategyReason = "任务分解失败，降级为 direct"
 			decomposeReason = "decompose_failed"
+			// P-ORCH: 分解失败必须通知前端——用户已看着「正在分解」等了至多 60s，
+			// 静默降级会让用户认为系统卡死（00:52 会话根因 B3）。
+			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
+				"reason": "error",
+			})
 		} else if len(subTasks) > 0 {
 			// P-ORCH: decomposition finished — report the subtask count.
 			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
@@ -308,6 +313,20 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			// request and no detected intent), strategy stays "direct" even if
 			// decomposition produced subtasks; the subtasks are logged for
 			// analysis but not executed by the orchestrator.
+		} else {
+			// 分解调用成功但产出 0 个子任务（典型成因：LLM 流式超时静默返回空，
+			// 由 llmcompat ctx 校验修复兜底）：与失败等价，显式降级 direct 并
+			// 通知前端，避免 plan 带着 parallel/dag 策略却无 subtasks 的悬空态。
+			impl.lg.Warn("任务分解产出空结果，降级为 direct 策略",
+				loggateway.StepID(biz.SpiritStepPlannerDecompose),
+				loggateway.Str("trace_id", traceID),
+			)
+			strategy = biz.StrategyDirect
+			strategyReason = "任务分解结果为空，降级为 direct"
+			decomposeReason = "decompose_empty"
+			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
+				"reason": "empty",
+			})
 		}
 	}
 

@@ -48,3 +48,29 @@ func TestStreamConsumer_V2DualPath(t *testing.T) {
 	_ = ConsumeEventStream(ctx, events, meta, opts, loggateway.NewNoop())
 	// TODO: assert v2 events were emitted via a capturing sequencer.
 }
+
+// 00:52 会话补充取证：stream_consumer 对每个流式 event 写一条 Info
+// （实测 8287 条/4min），属高频洪泛，违反「高频路径计数器限流」红线。
+// chunk 类（text_delta/response）首条 + 每 200 条采样；重要事件逐条。
+func TestShouldLogStreamEvent(t *testing.T) {
+	// 高频 chunk 类：第 1、200、400 条记录，其余跳过。
+	for _, evType := range []string{"text_delta", "response"} {
+		if !shouldLogStreamEvent(evType, 1) {
+			t.Fatalf("%s: first event must be logged", evType)
+		}
+		if shouldLogStreamEvent(evType, 2) || shouldLogStreamEvent(evType, 199) {
+			t.Fatalf("%s: intermediate events must be skipped", evType)
+		}
+		if !shouldLogStreamEvent(evType, 200) {
+			t.Fatalf("%s: 200th event must be logged", evType)
+		}
+	}
+	// 低频重要事件：每条都记录。
+	for _, evType := range []string{"tool_call", "runner_completion", "response_error", "unknown"} {
+		for _, n := range []int64{1, 2, 57} {
+			if !shouldLogStreamEvent(evType, n) {
+				t.Fatalf("%s: event %d must always be logged", evType, n)
+			}
+		}
+	}
+}

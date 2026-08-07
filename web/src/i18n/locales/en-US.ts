@@ -172,6 +172,7 @@ export default {
       starting: 'Starting execution…',
       decomposing: 'Decomposing task…',
       decomposed: 'Task decomposed into {subTaskCount} subtasks',
+      decomposeFailed: 'Task decomposition unavailable — answering directly…',
       allocating: 'Matching agents… ({index}/{total}) {subTask}',
       allocated: 'Agent allocation complete ({total} total)',
       creatingAgent: 'Creating new agent "{agentName}"…',

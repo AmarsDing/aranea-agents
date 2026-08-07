@@ -169,6 +169,7 @@ export default {
       starting: '正在启动执行…',
       decomposing: '正在分解任务…',
       decomposed: '任务分解完成，共 {subTaskCount} 个子任务',
+      decomposeFailed: '任务分解未完成，已切换为直接回答…',
       allocating: '正在匹配 Agent…（{index}/{total}）{subTask}',
       allocated: 'Agent 分配完成（共 {total} 个）',
       creatingAgent: '正在创建新 Agent "{agentName}"…',

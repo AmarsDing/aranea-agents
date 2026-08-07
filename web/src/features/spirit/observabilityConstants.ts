@@ -143,6 +143,12 @@ export const ORCHESTRATION_PROGRESS_MAP: Record<string, OrchestrationProgressCon
     icon: 'check_circle',
     color: 'blue',
   },
+  // 2026-08-07 00:52 会话修复：分解失败/产空时的显式降级通知（reason=error|empty）。
+  decompose_failed: {
+    messageKey: 'chat.orchestrationProgress.decomposeFailed',
+    icon: 'warning',
+    color: 'orange',
+  },
   allocating: {
     messageKey: 'chat.orchestrationProgress.allocating',
     icon: 'people',

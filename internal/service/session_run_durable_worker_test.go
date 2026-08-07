@@ -211,7 +211,7 @@ func TestResumeDurableSessionRun_panicMarksRunFailed(t *testing.T) {
 // durableRunCtrlStub 实现 biz.TurnRunControlGateway，会话永远无活跃运行。
 type durableRunCtrlStub struct{}
 
-func (durableRunCtrlStub) HasActiveRun(string) bool           { return false }
+func (durableRunCtrlStub) HasActiveRun(string) bool               { return false }
 func (durableRunCtrlStub) CancelRun(context.Context, string) bool { return false }
 func (durableRunCtrlStub) SetRunStatus(context.Context, string, string, string, string) {
 }

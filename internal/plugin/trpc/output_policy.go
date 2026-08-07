@@ -3,6 +3,8 @@ package plugintrpc
 import (
 	"context"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
@@ -26,6 +28,8 @@ type outputPolicyConfig struct {
 type OutputPolicyPlugin struct {
 	base basePlugin
 	cfg  outputPolicyConfig
+	// eventCounts 按采样 key 计数（key 集合有界），用于高频 chunk 日志节流。
+	eventCounts sync.Map // string -> *atomic.Int64
 }
 
 var _ trpcplugin.Plugin = (*OutputPolicyPlugin)(nil)
@@ -65,6 +69,15 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 				Context:        ctx,
 				CustomResponse: blockedModelResponse(msg),
 			}, nil
+		}
+	} else if args.Response.Object == trpcmodel.ObjectTypeChatCompletionChunk {
+		// 干净 chunk 是高频洪泛点（框架对每个 chunk 回调一次，实测 8287
+		// 条/4min）：采样节流。违规安全检查本身不受节流影响（每个 chunk
+		// 仍做 violation 匹配）；blocked 走上方分支逐条记录。
+		v, _ := o.eventCounts.LoadOrStore("after_model:chunk_ok", &atomic.Int64{})
+		n := v.(*atomic.Int64).Add(1)
+		if n == 1 || n%auditEventSampleInterval == 0 {
+			o.base.logger.Info("plugin.output_policy.after_model", "status", "ok", "count", n, "sampled", true)
 		}
 	} else {
 		o.base.logger.Info("plugin.output_policy.after_model", "status", "ok")

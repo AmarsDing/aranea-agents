@@ -4970,6 +4970,7 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 |-----------|-----------|--------------|--------|---------|
 | `orchestration_progress` | `decomposing` | — | `Plan()` decomposeTask 前 | 正在分解任务… |
 | `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
+| `orchestration_progress` | `decompose_failed` | `reason`（`error`/`empty`） | `Plan()` 分解报错或产出 0 子任务时（显式降级 direct） | 任务分解未完成，已切换为直接回答… |
 | `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
 | `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |
 | `orchestration_progress` | `creating_agent` | `agent_name` | `EnsureAgent()` LLM 生成前 | 正在创建新 Agent "X"… |

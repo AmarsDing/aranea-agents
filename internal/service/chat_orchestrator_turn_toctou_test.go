@@ -131,7 +131,7 @@ func TestRunNativeAgentTurn_TOCTOU_SecondTurnMustNotRun(t *testing.T) {
 		defer wg.Done()
 		_, errB = orch.RunNativeAgentTurnWithOutcome(context.Background(), input)
 	}()
-	<-bWaiting     // B 已通过锁外 HasActive 快速检查，正阻塞在会话锁上
+	<-bWaiting      // B 已通过锁外 HasActive 快速检查，正阻塞在会话锁上
 	close(releaseA) // A 放行：StoreCancelable → 释放锁 → admitTurn 失败
 	wg.Wait()
 

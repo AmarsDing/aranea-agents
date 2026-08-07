@@ -54,4 +54,3 @@ func TestResolveChannelTarget_NilDeps_ReturnsErrorNotPanic(t *testing.T) {
 		t.Fatalf("expected team-side guard, got %v", err)
 	}
 }
-

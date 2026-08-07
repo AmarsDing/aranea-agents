@@ -162,11 +162,11 @@ func buildReflectHint(tool, errMsg string, attempt, max int) string {
 // arguments on retry — classifying those as deterministic would lose that.
 // Kept as a package-level var so it can be extended without touching afterTool.
 var deterministicErrorKeywords = []string{
-	"not registered",  // graph node resolution (e.g. orchestration.skip)
-	"unknown node",    // graph node resolution
-	"unknown tool",    // tool resolution
-	"tool not found",  // tool resolution
-	"no such tool",    // tool resolution
+	"not registered", // graph node resolution (e.g. orchestration.skip)
+	"unknown node",   // graph node resolution
+	"unknown tool",   // tool resolution
+	"tool not found", // tool resolution
+	"no such tool",   // tool resolution
 	"permission denied",
 	"forbidden",
 	"unauthorized",

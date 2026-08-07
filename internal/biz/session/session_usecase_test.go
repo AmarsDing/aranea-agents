@@ -14,6 +14,7 @@ type mockSessionRepo struct {
 	searchSessionsFn func(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 	createSessionFn  func(ctx context.Context, s Session) (Session, error)
 	getSessionByIDFn func(ctx context.Context, id string) (Session, error)
+	updateSessionFn  func() (Session, error)
 }
 
 func (m *mockSessionRepo) SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -58,6 +59,9 @@ func (m *mockSessionRepo) UpdateSessionTitle(_ context.Context, _ string, _ stri
 }
 
 func (m *mockSessionRepo) UpdateSession(_ context.Context, _ string, _ SessionUpdateFields) (Session, error) {
+	if m.updateSessionFn != nil {
+		return m.updateSessionFn()
+	}
 	return Session{}, nil
 }
 
@@ -386,6 +390,30 @@ func assertNotFound(t *testing.T, err error, wantMsg string) {
 	}
 }
 
+// 00:52 会话取证：running→running 等同状态转换产生大量 Conflict 告警噪音。
+// 同状态转换语义上是幂等 no-op（目标状态已达成），不应报错、不应写库、
+// 不应发布状态变更事件。
+func TestTransitionStatus_SameStatusIdempotentNoop(t *testing.T) {
+	writeCalled := false
+	repo := &mockSessionRepo{
+		getSessionByIDFn: func(_ context.Context, id string) (Session, error) {
+			return Session{ID: id, Status: string(SessionStatusRunning)}, nil
+		},
+		updateSessionFn: func() (Session, error) {
+			writeCalled = true
+			return Session{}, nil
+		},
+	}
+	uc := newTestUsecase(repo, &mockAgentLookup{}, &mockTeamLookup{})
+
+	if err := uc.TransitionStatus(context.Background(), "s1", SessionStatusRunning, ""); err != nil {
+		t.Fatalf("same-status transition must be idempotent no-op, got error: %v", err)
+	}
+	if writeCalled {
+		t.Fatal("same-status transition must not write to the repository")
+	}
+}
+
 func TestCreate(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -569,11 +597,11 @@ func TestCreate(t *testing.T) {
 				return
 			}
 			if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if tt.checkResult != nil {
-			tt.checkResult(t, got)
-		}
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.checkResult != nil {
+				tt.checkResult(t, got)
+			}
 		})
 	}
 }

@@ -87,8 +87,8 @@ type TRPCMemoryKnowledgeDeps struct {
 	// are recalled into the prompt (design §15.7, FR-10.5). Optional: when
 	// nil, the before-model hook skips the reconsolidation trigger.
 	MemoryReconsolidator biz.L4Reconsolidator
-	KnowledgeRetriever     *knowledge.Retriever
-	KnowledgeUsecase       *biz.KnowledgeUsecase
+	KnowledgeRetriever   *knowledge.Retriever
+	KnowledgeUsecase     *biz.KnowledgeUsecase
 	// ManualCompressor handles session-level compression triggered by the
 	// compact tool. When wired, agents can actively invoke the compact tool
 	// to compress older conversation history into a summary. May be nil

@@ -10,6 +10,94 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// stubTaskPlanRepo is a minimal TaskPlanRepository for Plan() tests.
+type stubTaskPlanRepo struct {
+	created *biz.TaskPlan
+}
+
+func (r *stubTaskPlanRepo) Create(_ context.Context, p *biz.TaskPlan) (*biz.TaskPlan, error) {
+	r.created = p
+	return p, nil
+}
+func (r *stubTaskPlanRepo) GetByID(_ context.Context, id string) (*biz.TaskPlan, error) {
+	return nil, nil
+}
+func (r *stubTaskPlanRepo) Update(_ context.Context, p *biz.TaskPlan) (*biz.TaskPlan, error) {
+	return p, nil
+}
+func (r *stubTaskPlanRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
+	return nil, nil
+}
+
+// captureNoticeBus captures published events for assertion.
+type captureNoticeBus struct {
+	mu     sync.Mutex
+	events []biz.Event
+}
+
+func (b *captureNoticeBus) Publish(_ context.Context, e biz.Event) {
+	b.mu.Lock()
+	b.events = append(b.events, e)
+	b.mu.Unlock()
+}
+func (b *captureNoticeBus) Subscribe(_ biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	return nil, func() {}
+}
+func (b *captureNoticeBus) noticePhases() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var phases []string
+	for _, e := range b.events {
+		if sn, ok := e.(*biz.SystemNoticeEvent); ok && sn.NoticeType == "orchestration_progress" {
+			if ph, _ := sn.Meta["phase"].(string); ph != "" {
+				phases = append(phases, ph)
+			}
+		}
+	}
+	return phases
+}
+
+// 00:52 会话根因（B3）：分解失败时 planner 只写进程日志、不发任何前端进度
+// 事件，用户在 60s 超时期间看不到「正在分解」之后的任何反馈。修复：分解
+// 失败必须发布 decompose_failed 进度事件并显式降级 direct。
+func TestTaskPlanner_Plan_DecomposeFailurePublishesFallback(t *testing.T) {
+	repo := &stubTaskPlanRepo{}
+	bus := &captureNoticeBus{}
+	// catalog=nil + httpClient=nil → decomposeTask 必失败，走错误降级分支。
+	impl := NewTaskPlanner(repo, nil, nil, bus, nil, loggateway.NewNoop(), nil, nil)
+
+	plan, err := impl.Plan(context.Background(), biz.PlanInput{
+		SpiritSessionID: "sp-test",
+		UserMessage:     "组建两个 team 分别调研 A 和 B",
+		Mode:            "parallel", // 显式组队模式 → 强制 Complex → 触发分解
+	})
+	if err != nil {
+		t.Fatalf("Plan should not fail on decompose error (must degrade), got %v", err)
+	}
+	if plan.Strategy != biz.StrategyDirect {
+		t.Fatalf("expected strategy direct after decompose failure, got %s", plan.Strategy)
+	}
+	if plan.DecomposeReason != "decompose_failed" {
+		t.Fatalf("expected decompose_reason decompose_failed, got %q", plan.DecomposeReason)
+	}
+	phases := bus.noticePhases()
+	foundDecomposing, foundFailed := false, false
+	for _, ph := range phases {
+		if ph == "decomposing" {
+			foundDecomposing = true
+		}
+		if ph == "decompose_failed" {
+			foundFailed = true
+		}
+	}
+	if !foundDecomposing {
+		t.Fatalf("expected decomposing progress event, got phases %v", phases)
+	}
+	if !foundFailed {
+		t.Fatalf("expected decompose_failed progress event (user-visible fallback notice), got phases %v", phases)
+	}
+}
+
 // TestTaskPlanner_QuickAssess verifies P1-2: QuickAssess performs pure-computation
 // complexity assessment without LLM/DB, returning the correct ComplexityLevel.
 func TestTaskPlanner_QuickAssess(t *testing.T) {

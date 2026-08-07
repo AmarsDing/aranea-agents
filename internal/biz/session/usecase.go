@@ -681,6 +681,11 @@ func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string
 	if err != nil {
 		return err
 	}
+	// 同状态转换 = 幂等 no-op（目标状态已达成）：不写库、不发事件、不报错。
+	// 00:52 会话取证：running→running 重复转换产生大量 Conflict 告警噪音。
+	if SessionStatus(current.Status) == target {
+		return nil
+	}
 	machine := NewSessionStatusMachine(SessionStatus(current.Status), SessionStatusReason(current.StatusReason), current.StatusChangedAt)
 	if err := machine.TransitionTo(target, reason); err != nil {
 		return err

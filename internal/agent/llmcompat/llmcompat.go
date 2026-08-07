@@ -92,6 +92,20 @@ func providerResponseError(respErr *trpcmodel.ResponseError) error {
 	return apierror.Wrap(respErr, apierror.CodeInternal, apierror.DomainProvider)
 }
 
+// contextError returns the wrapped ctx error when the call context is done
+// (deadline/cancel), nil otherwise.
+//
+// 00:52 会话根因（B1+B2）：openai.go 在 ctx 取消时不保证发射错误响应——
+// 非流式路径直接 silent return；流式路径的错误响应与 ctx.Done() 竞态可被
+// 丢弃——导致 LLM 超时后被吞成「空结果 + nil error」（TaskPlanner 分解静默
+// 产空，用户 60s 无反馈）。所有调用方必须在流结束后显式校验 ctx.Err()。
+func contextError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return apierror.Wrap(err, apierror.CodeUnavailable, apierror.DomainProvider)
+	}
+	return nil
+}
+
 func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (fullText string, reasoningText string, promptTok, completionTok int, err error) {
 	m, err := trpcCompatModel(cfg, hc, modelName)
 	if err != nil {
@@ -110,9 +124,16 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
+			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
+			if err := contextError(ctx); err != nil {
+				return "", "", 0, 0, err
+			}
 			return "", "", 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
+	}
+	if err := contextError(ctx); err != nil {
+		return "", "", 0, 0, err
 	}
 	if last == nil {
 		return "", "", 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")
@@ -139,6 +160,10 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	var accText, accReason strings.Builder
 	for resp := range respCh {
 		if resp.Error != nil {
+			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
+			if err := contextError(ctx); err != nil {
+				return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
+			}
 			return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, providerResponseError(resp.Error)
 		}
 		if len(resp.Choices) == 0 {
@@ -169,6 +194,10 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 			promptTok = resp.Usage.PromptTokens
 			completionTok = resp.Usage.CompletionTokens
 		}
+	}
+	// 流正常关闭但 ctx 已取消 = 超时截断：返回错误而非静默的部分结果。
+	if err := contextError(ctx); err != nil {
+		return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, err
 	}
 	return strings.TrimSpace(accText.String()), strings.TrimSpace(accReason.String()), promptTok, completionTok, nil
 }
@@ -261,9 +290,16 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 	var last *trpcmodel.Response
 	for resp := range respCh {
 		if resp.Error != nil {
+			// ctx 错误优先：超时/取消时框架发射的 stream error 只是次生症状。
+			if err := contextError(ctx); err != nil {
+				return "", nil, 0, 0, err
+			}
 			return "", nil, 0, 0, providerResponseError(resp.Error)
 		}
 		last = resp
+	}
+	if err := contextError(ctx); err != nil {
+		return "", nil, 0, 0, err
 	}
 	if last == nil {
 		return "", nil, 0, 0, apierror.Internal(apierror.DomainProvider, "empty LLM response")

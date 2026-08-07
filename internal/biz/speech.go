@@ -53,7 +53,7 @@ type TTSAudioChunkType int
 
 const (
 	TTSAudioChunkData TTSAudioChunkType = iota
-	TTSAudioChunkEnd                  // 全部句子合成完毕（或取消）
+	TTSAudioChunkEnd                    // 全部句子合成完毕（或取消）
 	TTSAudioChunkError
 )
 

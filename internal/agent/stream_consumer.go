@@ -42,6 +42,27 @@ type turnStreamConsumer struct {
 	// On detection the turn aborts early (result.DoomLoopDetected=true)
 	// instead of streaming an unbounded repetitive response.
 	doomDetector *DoomLoopDetector
+
+	// chunkEvents 计数高频 chunk 类事件（text_delta/response），用于
+	// stream.event 日志采样节流。consume 循环单 goroutine 访问，无需 atomic。
+	chunkEvents int64
+}
+
+// streamEventSampleInterval 是高频流式事件日志的采样间隔（首条 + 每 N 条）。
+// 00:52 会话补充取证：consume 循环对每个 event 写一条 stream.event Info
+// （实测 8287 条/4min），违反「高频路径计数器限流」红线。
+const streamEventSampleInterval = 200
+
+// shouldLogStreamEvent 决定第 count 次（1 起）的 evType 事件是否写日志：
+// chunk 类（text_delta/response）单条审计价值近零，采样；tool_call /
+// runner_completion / response_error 等重要事件逐条保留。
+func shouldLogStreamEvent(evType string, count int64) bool {
+	switch evType {
+	case "text_delta", "response":
+		return count == 1 || count%streamEventSampleInterval == 0
+	default:
+		return true
+	}
 }
 
 func newTurnStreamConsumer(
@@ -140,10 +161,19 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 				}
 			}
 		}
-		c.lg.With(loggateway.StepID("stream.event")).Info("stream event",
-			loggateway.Any("idx", evIdx),
-			loggateway.Any("type", evType),
-			loggateway.Any("author", ev.Author))
+		// 高频 chunk 类事件采样节流：首条 + 每 streamEventSampleInterval 条
+		// 记录一次并附累计计数；重要事件（tool_call/runner_completion/
+		// response_error）逐条保留。
+		if evType == "text_delta" || evType == "response" {
+			c.chunkEvents++
+		}
+		if shouldLogStreamEvent(evType, c.chunkEvents) {
+			c.lg.With(loggateway.StepID("stream.event")).Info("stream event",
+				loggateway.Any("idx", evIdx),
+				loggateway.Any("type", evType),
+				loggateway.Any("author", ev.Author),
+				loggateway.Any("chunk_count", c.chunkEvents))
+		}
 		c.markFirstByte(ev)
 		if c.firstByteCtx.Err() != nil && !c.received {
 			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout, draining important events",

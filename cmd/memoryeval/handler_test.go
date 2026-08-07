@@ -116,7 +116,7 @@ func TestHandleAdd_GeneratesRequestID(t *testing.T) {
 	h := newTestHandler(store, "")
 	rec := doJSON(t, h, http.MethodPost, "/v1/memory/add", "", map[string]any{
 		"user_id":  "u-1",
-		"messages": []map[string]any{{ "role": "user", "content": "hi" }},
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())

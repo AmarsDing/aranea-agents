@@ -1,1 +1,63 @@
-{"items":[{"id":"cdf560cc4ebfe624955c9228", "key":"playwright", "name":"Playwright Browser", "description":"Playwright MCP server for browser automation", "status":"active", "enabled":true, "sortOrder":0, "configJson":"{\"args\":[\"--yes\",\"@playwright/mcp@latest\"],\"command\":\"npx\",\"timeout_sec\":60,\"transport\":\"stdio\"}", "metadataJson":"{\"health_status\":\"ok\",\"last_error_message\":\"\",\"last_health_at\":\"2026-07-25T05:15:01Z\"}", "createdAt":"2026-07-17T17:08:11Z", "updatedAt":"2026-07-25T05:15:01Z", "deletedAt":""}], "total":1, "page":1, "pageSize":1}
+{
+  "items": [
+    {
+      "id": "1f6ddc7211320f0b43784214",
+      "key": "alibabacloud-rds-openapi",
+      "name": "Alibaba Cloud RDS OpenAPI",
+      "description": "aliyun/alibabacloud-rds-openapi-mcp-server v3.1.2 (pinned mcp==1.13.1 for fastmcp compat): RDS instance management via OpenAPI - describe/restart instances, slow query logs, performance metrics.",
+      "status": "active",
+      "enabled": true,
+      "sortOrder": 0,
+      "configJson": "{\"args\":[],\"command\":\"C:\\\\Users\\\\Administrator\\\\.local\\\\bin\\\\alibabacloud-rds-openapi-mcp-server.exe\",\"timeout_sec\":60,\"transport\":\"stdio\"}",
+      "metadataJson": "{\"health_status\":\"ok\",\"last_error_message\":\"\",\"last_health_at\":\"2026-08-06T18:34:54Z\"}",
+      "createdAt": "2026-08-06T11:17:17Z",
+      "updatedAt": "2026-08-06T18:34:54Z",
+      "deletedAt": ""
+    },
+    {
+      "id": "55643119f9efe0207c40c52f",
+      "key": "aliyun-observability-sls",
+      "name": "Aliyun Observability (SLS/ARMS/CloudMonitor)",
+      "description": "aliyun alibabacloud-observability-mcp-server (PyPI: mcp-server-aliyun-observability): SLS log query (text-to-SQL, execute sql, list logstores/projects), ARMS trace/profile analysis, CloudMonitor metrics.",
+      "status": "active",
+      "enabled": true,
+      "sortOrder": 0,
+      "configJson": "{\"args\":[\"--transport\",\"stdio\"],\"command\":\"C:\\\\Users\\\\Administrator\\\\.local\\\\bin\\\\mcp-server-aliyun-observability.exe\",\"timeout_sec\":60,\"transport\":\"stdio\"}",
+      "metadataJson": "{\"health_status\":\"ok\",\"last_error_message\":\"\",\"last_health_at\":\"2026-08-06T18:34:54Z\"}",
+      "createdAt": "2026-08-06T11:17:17Z",
+      "updatedAt": "2026-08-06T18:34:54Z",
+      "deletedAt": ""
+    },
+    {
+      "id": "14aabb0a62a9d3794b90ad75",
+      "key": "alibaba-cloud-ops",
+      "name": "Alibaba Cloud Ops (ECS/CloudMonitor/OOS/RDS)",
+      "description": "aliyun/alibaba-cloud-ops-mcp-server: ECS instance ops, CloudMonitor metrics, OOS command execution, OSS/VPC/RDS management. Credentials via user credential keys ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET.",
+      "status": "active",
+      "enabled": true,
+      "sortOrder": 0,
+      "configJson": "{\"args\":[],\"command\":\"C:\\\\Users\\\\Administrator\\\\.local\\\\bin\\\\alibaba-cloud-ops-mcp-server.exe\",\"timeout_sec\":60,\"transport\":\"stdio\"}",
+      "metadataJson": "{\"health_status\":\"ok\",\"last_error_message\":\"\",\"last_health_at\":\"2026-08-06T18:34:54Z\"}",
+      "createdAt": "2026-08-06T11:17:17Z",
+      "updatedAt": "2026-08-06T18:34:54Z",
+      "deletedAt": ""
+    },
+    {
+      "id": "cdf560cc4ebfe624955c9228",
+      "key": "playwright",
+      "name": "Playwright Browser",
+      "description": "Playwright MCP server for browser automation",
+      "status": "active",
+      "enabled": true,
+      "sortOrder": 0,
+      "configJson": "{\"args\":[\"--yes\",\"@playwright/mcp@latest\"],\"command\":\"npx\",\"timeout_sec\":60,\"transport\":\"stdio\"}",
+      "metadataJson": "{\"health_status\":\"ok\",\"last_error_message\":\"\",\"last_health_at\":\"2026-08-06T18:34:54Z\"}",
+      "createdAt": "2026-07-17T17:08:11Z",
+      "updatedAt": "2026-08-06T18:34:54Z",
+      "deletedAt": ""
+    }
+  ],
+  "total": 4,
+  "page": 1,
+  "pageSize": 4
+}

@@ -71,6 +71,61 @@ func TestOutputPolicy_AfterModel_PassesClean(t *testing.T) {
 	}
 }
 
+// 00:52 会话补充取证：框架对流式响应的每个 chunk 触发一次 afterModel，
+// output_policy 每个干净 chunk 写一条 status=ok Info（实测 8287 条/4min），
+// 属高频洪泛。ok+chunk 必须采样；blocked（安全事件）与非 chunk 响应逐条。
+func TestOutputPolicy_AfterModel_ThrottlesChunkOkLogs(t *testing.T) {
+	cl := &countingLogger{}
+	o := &OutputPolicyPlugin{
+		base: basePlugin{
+			name:   "output_policy",
+			logger: NewPluginSafeLogger("output_policy", nil, cl),
+		},
+		cfg: outputPolicyConfig{BlockedPatterns: []string{"secret_key"}, BlockOnViolation: true},
+	}
+
+	cleanChunk := &trpcmodel.AfterModelArgs{Response: &trpcmodel.Response{
+		Object:  trpcmodel.ObjectTypeChatCompletionChunk,
+		Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "clean"}}},
+	}}
+	for i := 0; i < 250; i++ {
+		if _, err := o.afterModel(context.Background(), cleanChunk); err != nil {
+			t.Fatalf("afterModel returned error: %v", err)
+		}
+	}
+	if got := cl.infoCount(); got != 2 {
+		t.Fatalf("clean chunk after_model must be sampled (1st + every 200th): expected 2 logs for 250 calls, got %d", got)
+	}
+
+	// blocked 是安全事件，逐条保留。
+	blockedChunk := &trpcmodel.AfterModelArgs{Response: &trpcmodel.Response{
+		Object:  trpcmodel.ObjectTypeChatCompletionChunk,
+		Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "the secret_key here"}}},
+	}}
+	for i := 0; i < 3; i++ {
+		if _, err := o.afterModel(context.Background(), blockedChunk); err != nil {
+			t.Fatalf("afterModel returned error: %v", err)
+		}
+	}
+	if got := cl.infoCount(); got != 5 {
+		t.Fatalf("blocked responses must be logged every time: expected 5 total logs, got %d", got)
+	}
+
+	// 非 chunk 的完整干净响应逐条保留。
+	cleanFull := &trpcmodel.AfterModelArgs{Response: &trpcmodel.Response{
+		Object:  trpcmodel.ObjectTypeChatCompletion,
+		Choices: []trpcmodel.Choice{{Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "clean"}}},
+	}}
+	for i := 0; i < 3; i++ {
+		if _, err := o.afterModel(context.Background(), cleanFull); err != nil {
+			t.Fatalf("afterModel returned error: %v", err)
+		}
+	}
+	if got := cl.infoCount(); got != 8 {
+		t.Fatalf("full clean responses must be logged every time: expected 8 total logs, got %d", got)
+	}
+}
+
 func TestOutputPolicy_OnEvent_BlocksStreamingViolation(t *testing.T) {
 	o := newTestOutputPolicy(outputPolicyConfig{
 		BlockedPatterns:       []string{"secret_key"},

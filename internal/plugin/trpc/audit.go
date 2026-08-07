@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -17,6 +19,20 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// auditEventSampleInterval 是高频事件的采样间隔：首条 + 每 200 条记录一次。
+// 00:52 会话取证：单 turn 产生 13501 条 on_event 审计日志（6725 条
+// chat.completion.chunk + 6739 条空 object 事件），每条触发一次进程日志
+// 写入 + 一个 MonitorEvent 发布 goroutine，造成日志洪泛拖慢主链路。
+const auditEventSampleInterval = 200
+
+// throttledEventObjects 是已知的高频事件 object 集合（流式 chunk、空 object
+// 框架内部事件）。这些事件单条审计价值近零，按种类采样；未列入的事件保持
+// 逐条审计（tool/response 等低频高价值事件）。
+var throttledEventObjects = map[string]bool{
+	trpcmodel.ObjectTypeChatCompletionChunk: true,
+	"":                                      true,
+}
+
 type auditConfig struct {
 	LogModelRequest  bool `json:"log_model_request"`
 	LogModelResponse bool `json:"log_model_response"`
@@ -28,6 +44,9 @@ type auditConfig struct {
 type AuditLogPlugin struct {
 	base basePlugin
 	cfg  auditConfig
+	// eventCounts 按 event object 种类计数（仅 throttledEventObjects 中的
+	// 种类会写入），用于采样节流。key 集合有界（框架 event object 是封闭集）。
+	eventCounts sync.Map // string -> *atomic.Int64
 }
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
@@ -105,6 +124,28 @@ func (a *AuditLogPlugin) afterModel(ctx context.Context, args *trpcmodel.AfterMo
 		status = "error"
 	}
 	sid, akey := sessionAgentKey(ctx, nil)
+	// 流式 chunk 的 after_model 与 on_event 同构高频（框架对每个 chunk 回调
+	// 一次，实测 8287 条/4min）：ok 路径采样节流，采样日志附带累计 count。
+	// 错误响应与非 chunk 完整响应保持逐条审计。stats 记录不受节流影响。
+	if status == "ok" && args != nil && args.Response != nil &&
+		args.Response.Object == trpcmodel.ObjectTypeChatCompletionChunk {
+		v, _ := a.eventCounts.LoadOrStore("after_model:chunk", &atomic.Int64{})
+		n := v.(*atomic.Int64).Add(1)
+		if n != 1 && n%auditEventSampleInterval != 0 {
+			a.base.record(ctx, "after_model", status)
+			return &trpcmodel.AfterModelResult{Context: ctx}, nil
+		}
+		a.base.logger.Info("plugin.audit_log.after_model",
+			"session_id", sid,
+			"agent_key", akey,
+			"status", status,
+			"event_object", "chunk",
+			"count", n,
+			"sampled", true,
+		)
+		a.base.record(ctx, "after_model", status)
+		return &trpcmodel.AfterModelResult{Context: ctx}, nil
+	}
 	if a.cfg.LogModelResponse && args != nil && args.Response != nil {
 		text := a.maybeRedact(responseText(args.Response))
 		text = truncateString(text, a.cfg.MaxContentLength)
@@ -166,7 +207,33 @@ func (a *AuditLogPlugin) onEvent(
 		return e, nil
 	}
 	sid, akey := sessionAgentKey(ctx, inv)
-	kind := strings.TrimSpace(e.Object)
+	rawObject := strings.TrimSpace(e.Object)
+	// 高频事件采样节流：首条 + 每 auditEventSampleInterval 条记录一次，
+	// 采样日志附带累计 count 保留体量可观测性。stats 记录（异步批量落库、
+	// 开销极低）不受节流影响。
+	if throttledEventObjects[rawObject] {
+		v, _ := a.eventCounts.LoadOrStore(rawObject, &atomic.Int64{})
+		n := v.(*atomic.Int64).Add(1)
+		if n != 1 && n%auditEventSampleInterval != 0 {
+			a.base.record(ctx, "on_event", "ok")
+			return e, nil
+		}
+		kind := rawObject
+		if kind == "" {
+			kind = "event"
+		}
+		a.base.logger.Info("plugin.audit_log.on_event",
+			"session_id", sid,
+			"agent_key", akey,
+			"event_object", kind,
+			"author", e.Author,
+			"count", n,
+			"sampled", true,
+		)
+		a.base.record(ctx, "on_event", "ok")
+		return e, nil
+	}
+	kind := rawObject
 	if kind == "" {
 		kind = "event"
 	}

@@ -119,7 +119,7 @@ type SleepTimeService struct {
 	llm                 trpcmodel.Model
 	llmResolver         LLMResolver // P1-1: per-target ModelCatalog resolution (takes precedence over llm)
 	queue               ConsolidationQueue
-	episodeConsolidator *EpisodeConsolidator // Phase 6A-06: optional L2→L3 fact extraction
+	episodeConsolidator *EpisodeConsolidator  // Phase 6A-06: optional L2→L3 fact extraction
 	profileDistiller    *ProfileCardDistiller // FR-12.7: optional resident profile card distillation
 	lg                  loggateway.Logger
 }
