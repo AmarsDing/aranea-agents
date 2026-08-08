@@ -66,7 +66,7 @@ export function defaultAgentRuntimeConfig() {
       truncate_strategy: 'summary',
       inject_l1: true,
       inject_l3: true,
-      inject_l4: false,
+      inject_l4: true,
       l3_max_chunks: 5,
       l4_max_paths: 3,
       snapshot_mode: 'on_warning',
@@ -92,7 +92,7 @@ export function defaultAgentRuntimeConfig() {
     memoryL3: {
       enabled: true,
       recall_top_k: 5,
-      recall_min_score: 0.55,
+      recall_min_score: 0.35,
       recall_scopes: ['agent', 'user', 'team', 'workspace'] as string[],
       embedding_model: '',
       decay_interval_hours: 24,

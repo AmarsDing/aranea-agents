@@ -2229,6 +2229,7 @@ func provideSelfImprovementAdminUsecase(
 	runRepo *data.SelfImprovementRunRepo,
 	applier biz.SIApplier,
 	apply *biz.SelfImprovementApplyUsecase,
+	riskRules biz.SIRiskRuleRepo,
 	lg loggateway.Logger,
 ) (*biz.SelfImprovementAdminUsecase, error) {
 	if !siConf.SIEnabled() || applier == nil {
@@ -2244,8 +2245,23 @@ func provideSelfImprovementAdminUsecase(
 		Applier:     applier,
 		ApplyDriver: driver,
 		StatsReader: runRepo,
+		RiskRules:   riskRules,
 		Lg:          lg,
 	})
+}
+
+// provideSelfImprovementService ALWAYS constructs the console service (P5.5) —
+// even when the feature is disabled — so the HTTP/gRPC routes stay registered
+// and the console receives a structured 503 SELF_IMPROVEMENT (rendered as a
+// guided empty state) instead of a bare 404. uc is nil when disabled; GetStatus
+// answers regardless via cfg + refineLLM.
+func provideSelfImprovementService(
+	uc *biz.SelfImprovementAdminUsecase,
+	siConf *conf.SelfImprovement,
+	sys *biz.SystemSettingUsecase,
+	lg loggateway.Logger,
+) *service.SelfImprovementService {
+	return service.NewSelfImprovementService(uc, siConf, sys, lg)
 }
 
 // provideSelfImproveDriveWorker gates the full-chain drive scheduler on
@@ -2816,6 +2832,7 @@ func provideSpeechConfigReader() biz.SpeechConfigReader { return speech.NewEnvSp
 
 // provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
 // 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
+// V2-T5：注入语音确认 resolver（service 层适配 voice.ConfirmResolver）。
 func provideVoiceWSServer(
 	sessionAuth server.SessionAuthorizer,
 	turnExecutor server.WSTurnExecutor,
@@ -2825,6 +2842,7 @@ func provideVoiceWSServer(
 	eventBus biz.EventBus,
 	infra *event.Infra,
 	lg loggateway.Logger,
+	chatService *service.ChatService,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -2848,7 +2866,7 @@ func provideVoiceWSServer(
 		}
 		return p, biz.TTSSessionConfig{Voice: cfg.Voice, SpeedRatio: cfg.SpeedRatio, SampleRate: 16000}, nil
 	}
-	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg)
+	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService))
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces
@@ -3434,6 +3452,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSelfImprovementWatchdogUsecase,
 		provideSelfImprovementOutcomeUsecase,
 		provideSelfImprovementAdminUsecase, // P5：SelfImprovementService 消费
+		provideSelfImprovementService,      // P5.5：始终注册路由（disabled → 503 SELF_IMPROVEMENT）
 		provideSelfImproveDriveWorker,
 		provideSelfImproveWatchdogWorker,
 		provideSelfImproveOutcomeWorker,

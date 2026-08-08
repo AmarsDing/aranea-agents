@@ -42,6 +42,11 @@ type Runner struct {
 	// nil keeps legacy behavior (always success). Wired in production to
 	// biz.SpiritTeamController.HasRealDeliverable.
 	deliverableGate func(ctx context.Context, team biz.Team) (bool, error)
+	// upstreamSeedFn resolves the cross-team deliverable seed injected into
+	// the graph initial state at DAG downstream team turn start (2026-08-08
+	// 问题3c). Optional: nil skips seeding. Wired in production to
+	// biz.SpiritTeamUsecase.UpstreamDeliverableSeed.
+	upstreamSeedFn func(ctx context.Context, team biz.Team) (map[string]any, error)
 	// monitor receives runner.completion events on run terminal states
 	// (Runner metrics + runner.error_rate alert data source). Optional:
 	// nil skips monitor recording (tests).
@@ -78,6 +83,18 @@ func (r *Runner) SetDeliverableGate(fn func(ctx context.Context, team biz.Team) 
 		return
 	}
 	r.deliverableGate = fn
+}
+
+// SetUpstreamDeliverableSeed wires the cross-team deliverable seed resolver.
+// The seed is injected into the graph initial state's "deliverable" field at
+// DAG downstream team turn start, so members read upstream topics via
+// get_deliverable directly. Seed 回流不冒充本团队产出——biz 层
+// HasRealDeliverable / WriteDeliverablesToSession 用同一解析结果减去种子。
+func (r *Runner) SetUpstreamDeliverableSeed(fn func(ctx context.Context, team biz.Team) (map[string]any, error)) {
+	if r == nil {
+		return
+	}
+	r.upstreamSeedFn = fn
 }
 
 func NewRunner(

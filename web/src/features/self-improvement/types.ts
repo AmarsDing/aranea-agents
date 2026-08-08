@@ -129,3 +129,21 @@ export interface SIRiskRulesView {
   configured: SIRiskRules;
   effective: SIRiskRules;
 }
+
+/**
+ * Feature availability + prerequisite preflight (GetStatus RPC, P5.5).
+ * Answers even when the feature is disabled — the console renders the
+ * disabled empty state / missing-prerequisite guidance from it.
+ */
+export interface SIStatus {
+  /** self_improvement.enabled master switch. */
+  enabled: boolean;
+  /** DefaultRefineLLM configured (Analyst/Patcher/Critic hard dependency). */
+  refineLlmConfigured: boolean;
+  refineLlmProvider: string;
+  refineLlmModel: string;
+  /** Resolved sandbox repo root (config sandbox.repo_root, else process cwd). */
+  repoRoot: string;
+  /** Resolved root exists and contains .git. */
+  repoRootValid: boolean;
+}

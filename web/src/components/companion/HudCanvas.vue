@@ -130,6 +130,13 @@ watch(
   () => props.spectrum,
   (data) => scene?.setSpectrum(data),
 );
+
+/** V2-T5：确认通过等外部触发的一次性能量脉冲（核闪光 + 涟漪）。 */
+function triggerBurst(): void {
+  scene?.burst();
+}
+
+defineExpose({ triggerBurst });
 </script>
 
 <style scoped lang="sass">

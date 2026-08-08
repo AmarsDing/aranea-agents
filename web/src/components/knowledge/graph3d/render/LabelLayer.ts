@@ -38,7 +38,7 @@ export function selectLabelCandidates(degree: Uint16Array, maxLabels: number): n
     .slice(0, maxLabels);
 }
 
-/** 可见性判定（纯函数）：距离阈值且（强制可见 或 开关开且度数达标）。 */
+/** 可见性判定（纯函数）：forced（hover/选中）无条件显示（豁免距离/度数/开关——适应视图后相机距离必超 maxDistance，否则 hover 永远不出标签）；普通标签受 距离+度数+开关 三重阈值。 */
 export function shouldShowLabel(
   dist: number,
   maxDistance: number,
@@ -47,7 +47,8 @@ export function shouldShowLabel(
   forced: boolean,
   labelsEnabled: boolean,
 ): boolean {
-  return dist <= maxDistance && (forced || (labelsEnabled && deg >= minDegree));
+  if (forced) return true;
+  return dist <= maxDistance && labelsEnabled && deg >= minDegree;
 }
 
 export class LabelLayer {

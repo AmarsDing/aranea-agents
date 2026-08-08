@@ -27,11 +27,17 @@ func (s *ChatService) SubmitMessageFeedback(ctx context.Context, req *chatv1.Sub
 		return nil, err
 	}
 	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
-		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "user_feedback", "", map[string]any{
+		meta := map[string]any{
 			"message_id": messageID,
 			"rating":     rating,
 			"comment":    comment,
-		}))
+		}
+		// P1-2: context snapshot (input/output/task_id) keeps the feedback
+		// review list self-contained even if the task is later deleted.
+		if ctxJSON := strings.TrimSpace(req.GetContextJson()); ctxJSON != "" {
+			meta["context_json"] = ctxJSON
+		}
+		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "user_feedback", "", meta))
 	}
 	return &chatv1.SubmitMessageFeedbackResponse{Accepted: true}, nil
 }

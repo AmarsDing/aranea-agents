@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -110,7 +111,7 @@ func TestStreamSubTaskParser_PrefixText(t *testing.T) {
 
 func TestParseStreamSubTask_Basic(t *testing.T) {
 	idRemap := make(map[string]string)
-	st, err := parseStreamSubTask(`{"id":"st_1","name":"Research","description":"Do research","depends_on":[],"required_capabilities":["research"],"priority":1,"estimated_complexity":0.5}`, idRemap)
+	st, err := parseStreamSubTask(`{"id":"st_1","name":"Research","description":"Do research","depends_on":[],"required_capabilities":["research"],"priority":1,"estimated_complexity":0.5}`, idRemap, "tp_test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,7 +119,7 @@ func TestParseStreamSubTask_Basic(t *testing.T) {
 		t.Errorf("expected name=Research, got %s", st.Name)
 	}
 	if st.ID == "st_1" {
-		t.Error("ID should be remapped from st_1 to st_<uuid>")
+		t.Error("ID should be remapped from st_1 to deterministic st_<uuidv5>")
 	}
 	if idRemap["st_1"] != st.ID {
 		t.Errorf("idRemap[st_1] = %s, want %s", idRemap["st_1"], st.ID)
@@ -127,11 +128,11 @@ func TestParseStreamSubTask_Basic(t *testing.T) {
 
 func TestParseStreamSubTask_DependencyResolution(t *testing.T) {
 	idRemap := make(map[string]string)
-	st1, err := parseStreamSubTask(`{"id":"st_1","name":"A","depends_on":[]}`, idRemap)
+	st1, err := parseStreamSubTask(`{"id":"st_1","name":"A","depends_on":[]}`, idRemap, "tp_test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	st2, err := parseStreamSubTask(`{"id":"st_2","name":"B","depends_on":["st_1"]}`, idRemap)
+	st2, err := parseStreamSubTask(`{"id":"st_2","name":"B","depends_on":["st_1"]}`, idRemap, "tp_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestParseStreamSubTask_DependencyResolution(t *testing.T) {
 func TestParseStreamSubTask_ForwardReferenceSkipped(t *testing.T) {
 	idRemap := make(map[string]string)
 	// st_2 depends on st_3 which hasn't been parsed yet.
-	st, err := parseStreamSubTask(`{"id":"st_2","name":"B","depends_on":["st_3"]}`, idRemap)
+	st, err := parseStreamSubTask(`{"id":"st_2","name":"B","depends_on":["st_3"]}`, idRemap, "tp_test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +156,7 @@ func TestParseStreamSubTask_ForwardReferenceSkipped(t *testing.T) {
 
 func TestParseStreamSubTask_EmptyID(t *testing.T) {
 	idRemap := make(map[string]string)
-	_, err := parseStreamSubTask(`{"id":"","name":"A"}`, idRemap)
+	_, err := parseStreamSubTask(`{"id":"","name":"A"}`, idRemap, "tp_test")
 	if err == nil {
 		t.Error("expected error for empty id")
 	}
@@ -163,9 +164,36 @@ func TestParseStreamSubTask_EmptyID(t *testing.T) {
 
 func TestParseStreamSubTask_InvalidJSON(t *testing.T) {
 	idRemap := make(map[string]string)
-	_, err := parseStreamSubTask(`{invalid}`, idRemap)
+	_, err := parseStreamSubTask(`{invalid}`, idRemap, "tp_test")
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+// S1 回归：P3 重试时新尝试会重新解析同一 LLM 原始 ID——跨尝试必须生成相同的
+// 全局 ID，前端按 ID 合并去重，计划面板不出现重复步骤；不同 plan 必须隔离。
+func TestParseStreamSubTask_DeterministicIDAcrossAttempts(t *testing.T) {
+	const obj = `{"id":"st_1","name":"调研","depends_on":[]}`
+	attempt1, err := parseStreamSubTask(obj, make(map[string]string), "tp_plan_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt2, err := parseStreamSubTask(obj, make(map[string]string), "tp_plan_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt1.ID != attempt2.ID {
+		t.Errorf("同一 plan 跨尝试 ID 不稳定：%s vs %s（重试会产生重复 PlanStep）", attempt1.ID, attempt2.ID)
+	}
+	otherPlan, err := parseStreamSubTask(obj, make(map[string]string), "tp_plan_b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherPlan.ID == attempt1.ID {
+		t.Errorf("不同 plan 的 ID 必须隔离，均得到 %s", otherPlan.ID)
+	}
+	if !strings.HasPrefix(attempt1.ID, "st_") {
+		t.Errorf("ID 应保留 st_ 前缀，得到 %s", attempt1.ID)
 	}
 }
 

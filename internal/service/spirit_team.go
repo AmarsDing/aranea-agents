@@ -1790,6 +1790,12 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 	}
 	memberCount := 0
 	publishedKeys := make(map[string]bool, len(result.Items))
+	// publishedAgentIDs 按 agent_id 维度去重（2026-08-08 幽灵成员修复）：定义
+	// 快照里成员常缺 agent_key 只有 agent_id，兜底块会以 hex agent_id 作为 key
+	// 补发，与真实成员（按 MemberAgentKey 登记）命名空间不交叉 → 同一成员被
+	// 发布两次（真实 + hex 幽灵）。登记真实成员的 agent_id 让兜底块能识别
+	// 「该成员已有真实 agent session」，跳过重复补发。
+	publishedAgentIDs := make(map[string]bool, len(result.Items))
 	// F10 (Phase 11) 结果导向成员状态：预统计可归属成员数——交付物证据仅
 	// 用于单成员团队（MDC state 是团队共享黑板，多成员无法按成员归因）。
 	eligibleMembers := 0
@@ -1809,6 +1815,9 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 		}
 		memberCount++
 		publishedKeys[agentKey] = true
+		if id := strings.TrimSpace(sess.AgentID); id != "" {
+			publishedAgentIDs[id] = true
+		}
 		msID := string(agent.NewMemberSessionActivityID(teamRunID, agentKey))
 		s.lg.Info("publishV2TeamRunCompletion: 派生 MemberSession ID",
 			loggateway.StepID("spirit.v2.team_run_completion.msid"),
@@ -1832,6 +1841,19 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 				loggateway.Str("reason", outcomeReason),
 			)
 		}
+		// 2026-08-08 问题4a：成员执行窗口取 step 流聚合（最早 StartedAt →
+		// 最晚活动证据），而非发布时刻——否则 StartedAt≈FinishedAt≈now，
+		// 前端耗时恒为 0。无 step 证据（ok=false）回退发布时刻。
+		startedAt := now
+		finishedAt := now
+		if s.team.SpiritUC != nil {
+			if wStart, wEnd, ok := s.team.SpiritUC.MemberExecutionWindow(ctx, sess.ID); ok {
+				startedAt = wStart
+				if !wEnd.IsZero() {
+					finishedAt = wEnd
+				}
+			}
+		}
 		ms := biz.MemberSession{
 			ID:              msID,
 			TeamRunID:       teamRunID,
@@ -1841,8 +1863,8 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 			SpiritSessionID: spiritSessionID,
 			AgentKey:        agentKey,
 			Status:          msStatus,
-			StartedAt:       now,
-			FinishedAt:      &now,
+			StartedAt:       startedAt,
+			FinishedAt:      &finishedAt,
 			// 2026-07-28 单写者重设计：终态事件携带 outcome 权威版本带
 			// （biz.MemberSessionVersion*），service 是成员终态唯一写者。
 			Version: biz.MemberSessionVersionOutcome,
@@ -1879,7 +1901,10 @@ func (s *TeamStarter) publishV2TeamRunCompletion(
 				if key == "" {
 					key = strings.TrimSpace(m.AgentID)
 				}
-				if key == "" || publishedKeys[key] {
+				// 幽灵成员守卫：除按 key 去重外，还要按 agent_id 去重——定义
+				// 快照缺 agent_key 时 key 退化为 hex agent_id，与真实成员的
+				// agent_key 不交叉，单靠 publishedKeys 无法识别重复。
+				if key == "" || publishedKeys[key] || publishedAgentIDs[strings.TrimSpace(m.AgentID)] {
 					continue
 				}
 				publishedKeys[key] = true

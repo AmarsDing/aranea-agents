@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
@@ -907,19 +908,28 @@ func TestExtractTeamOutput_RunningReplyStep_NotUsed(t *testing.T) {
 
 // graphDeliverableReaderStub stubs SpiritGraphDeliverableReader: returns a
 // fixed deliverable map and records the session-key coordinates it was
-// called with (appName/userID/sessionID).
+// called with (appName/userID/sessionID). dataBySession (optional) keys the
+// map by sessionID so cross-team seed tests can give upstream and downstream
+// team sessions different deliverable maps.
 type graphDeliverableReaderStub struct {
-	data       map[string]any
-	err        error
-	calls      int
-	gotAppName string
-	gotUserID  string
-	gotSession string
+	data          map[string]any
+	dataBySession map[string]map[string]any
+	err           error
+	calls         int
+	gotAppName    string
+	gotUserID     string
+	gotSession    string
 }
 
 func (s *graphDeliverableReaderStub) ReadGraphDeliverable(_ context.Context, appName, userID, sessionID string) (map[string]any, error) {
 	s.calls++
 	s.gotAppName, s.gotUserID, s.gotSession = appName, userID, sessionID
+	if s.dataBySession != nil {
+		if m, ok := s.dataBySession[sessionID]; ok {
+			return m, s.err
+		}
+		return nil, s.err
+	}
 	return s.data, s.err
 }
 
@@ -1801,6 +1811,282 @@ func TestBuildTeamTurnInput_DAGTeam_AppendsProtocol(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// 2026-08-08 问题3 修复：跨团队交付物 state 播种（UpstreamDeliverableSeed）
+// 根因：下游团队的 graph execution state 隔离，get_deliverable 在下游团队内
+// 永远读不到上游 topic → 成员按契约 topic 读取时 found=false（断链）。
+// 修复：下游团队 graph run 启动时把上游交付物 topic 播种进 deliverable
+// state；门/信封按值相等的 key 减去种子，只有自有产出才算真实交付物。
+// ---------------------------------------------------------------------------
+
+// seedUpstreamStateTeam seeds a COMPLETED upstream DAG team whose definition
+// enables the state deliverable channel; its team main session is sess-<id>.
+func seedUpstreamStateTeam(teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, id, dagNodeID string) Team {
+	t := Team{
+		ID:              id,
+		SpiritSessionID: "sp1",
+		DagNodeID:       dagNodeID,
+		DisplayName:     "上游-" + id,
+		Status:          TeamStatusCompleted,
+		DefinitionJSON:  `{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-a"}]}`,
+	}
+	teams.items[id] = t
+	sessions.sessionsByTeam[id] = Session{ID: "sess-" + id, TeamID: id, ParentSessionID: "sp1", SessionType: string(SessionTypeTeam)}
+	return t
+}
+
+// seedDownstreamStateTeam seeds a downstream DAG team (st_1) depending on the
+// given upstream dag nodes, with the state deliverable channel enabled.
+func seedDownstreamStateTeam(teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, id string, dependsOn []string) Team {
+	t := Team{
+		ID:              id,
+		SpiritSessionID: "sp1",
+		DagNodeID:       "st_1",
+		DisplayName:     "下游-" + id,
+		Status:          TeamStatusRunning,
+		DependsOn:       dependsOn,
+		DefinitionJSON:  `{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-b"}]}`,
+	}
+	teams.items[id] = t
+	sessions.sessionsByTeam[id] = Session{ID: "sess-" + id, TeamID: id, ParentSessionID: "sp1", SessionType: string(SessionTypeTeam)}
+	return t
+}
+
+// 种子合并上游 topic：reserved（summary/cognition）与 ack/ 键不得进种子。
+func TestUpstreamDeliverableSeed_MergesTopics_SkipsReservedAndAck(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {
+			"index-comparison":       map[string]any{"winner": "bm25"},
+			"performance-comparison": map[string]any{"p95": 120.0},
+			"summary":                "上游摘要（不进种子）",
+			"cognition":              map[string]any{"assumptions": []any{"a"}},
+			"ack/index-comparison":   map[string]any{"accepted": true},
+		},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	downstream := seedDownstreamStateTeam(teams, sessions, "t2", []string{"st_0"})
+
+	seed, err := u.UpstreamDeliverableSeed(context.Background(), downstream)
+	if err != nil {
+		t.Fatalf("UpstreamDeliverableSeed: %v", err)
+	}
+	if len(seed) != 2 {
+		t.Fatalf("seed should carry exactly the 2 business topics, got %v", seed)
+	}
+	if got, ok := seed["index-comparison"].(map[string]any); !ok || got["winner"] != "bm25" {
+		t.Fatalf("seed[index-comparison] mismatch: %v", seed["index-comparison"])
+	}
+	for _, reserved := range []string{"summary", "cognition", "ack/index-comparison"} {
+		if _, ok := seed[reserved]; ok {
+			t.Fatalf("reserved/ack key %q must not be seeded downstream", reserved)
+		}
+	}
+}
+
+// 无依赖 / 上游未完成 → 无种子，且不报错（降级由文本前缀 + read 工具兜底）。
+func TestUpstreamDeliverableSeed_NoDepsOrUpstreamIncomplete(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{"research": map[string]any{"x": 1.0}}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	noDeps := seedDownstreamStateTeam(teams, sessions, "t2", nil)
+	seed, err := u.UpstreamDeliverableSeed(context.Background(), noDeps)
+	if err != nil || len(seed) != 0 {
+		t.Fatalf("no-deps team must yield empty seed, got %v, err=%v", seed, err)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("no-deps team must not touch the graph reader, called %d times", reader.calls)
+	}
+
+	// 上游 running（未 completed）→ 不播种。
+	running := Team{
+		ID: "u2", SpiritSessionID: "sp1", DagNodeID: "st_0", Status: TeamStatusRunning,
+		DefinitionJSON: `{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-a"}]}`,
+	}
+	teams.items["u2"] = running
+	sessions.sessionsByTeam["u2"] = Session{ID: "sess-u2", TeamID: "u2", SessionType: string(SessionTypeTeam)}
+	downstream := seedDownstreamStateTeam(teams, sessions, "t3", []string{"st_0"})
+	seed, err = u.UpstreamDeliverableSeed(context.Background(), downstream)
+	if err != nil || len(seed) != 0 {
+		t.Fatalf("incomplete upstream must yield empty seed, got %v, err=%v", seed, err)
+	}
+}
+
+// 多上游合并：两个上游的独立 topic 共存；topic 冲突时按 DependsOn 顺序后者胜。
+func TestUpstreamDeliverableSeed_MultiUpstream_MergeOrder(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {"research": map[string]any{"from": "u1"}, "a-only": 1.0},
+		"sess-u2": {"research": map[string]any{"from": "u2"}, "b-only": 2.0},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	seedUpstreamStateTeam(teams, sessions, "u2", "st_1")
+	downstream := Team{
+		ID: "t3", SpiritSessionID: "sp1", DagNodeID: "st_2", Status: TeamStatusRunning,
+		DependsOn:      []string{"st_0", "st_1"},
+		DefinitionJSON: `{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-b"}]}`,
+	}
+	teams.items["t3"] = downstream
+	sessions.sessionsByTeam["t3"] = Session{ID: "sess-t3", TeamID: "t3", SessionType: string(SessionTypeTeam)}
+
+	seed, err := u.UpstreamDeliverableSeed(context.Background(), downstream)
+	if err != nil {
+		t.Fatalf("UpstreamDeliverableSeed: %v", err)
+	}
+	if _, ok := seed["a-only"]; !ok {
+		t.Fatalf("u1 unique topic missing from seed: %v", seed)
+	}
+	if _, ok := seed["b-only"]; !ok {
+		t.Fatalf("u2 unique topic missing from seed: %v", seed)
+	}
+	if got, _ := seed["research"].(map[string]any); got["from"] != "u2" {
+		t.Fatalf("topic collision: later dep (u2) must win, got %v", seed["research"])
+	}
+}
+
+// subtractUpstreamSeed 语义：值与种子相等的 key 被减去；成员覆写过的 topic
+// （值不同）算自有产出；nil 种子 → 原样返回。
+func TestSubtractUpstreamSeed(t *testing.T) {
+	state := map[string]any{"a": 1.0, "b": 2.0, "c": 9.0}
+	seed := map[string]any{"a": 1.0, "c": 3.0}
+	own := subtractUpstreamSeed(state, seed)
+	if _, ok := own["a"]; ok {
+		t.Fatalf("seed-identical key a must be subtracted, own=%v", own)
+	}
+	if own["b"] != 2.0 {
+		t.Fatalf("own key b must survive, own=%v", own)
+	}
+	if own["c"] != 9.0 {
+		t.Fatalf("overwritten key c (value differs from seed) must count as own, own=%v", own)
+	}
+	if got := subtractUpstreamSeed(state, nil); len(got) != len(state) {
+		t.Fatalf("nil seed must keep the whole state, got %v", got)
+	}
+}
+
+// 闸门：state 仅含种子（成员未写任何自有 topic）→ 不算真实交付物。
+func TestHasRealDeliverable_SeedOnlyState_NotReal(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	upstreamTopic := map[string]any{"winner": "bm25"}
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {"research": upstreamTopic},
+		// 下游 state 只有种子回流，无自有写入。
+		"sess-t2": {"research": upstreamTopic},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	downstream := seedDownstreamStateTeam(teams, sessions, "t2", []string{"st_0"})
+
+	has, err := u.HasRealDeliverable(context.Background(), downstream)
+	if err != nil {
+		t.Fatalf("HasRealDeliverable: %v", err)
+	}
+	if has {
+		t.Fatal("seed-only state must NOT pass the real-deliverable gate (no own output)")
+	}
+}
+
+// 闸门：种子之外的自有 topic → 通过；覆写种子 topic 也算自有。
+func TestHasRealDeliverable_OwnBeyondSeed_Real(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	upstreamTopic := map[string]any{"winner": "bm25"}
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {"research": upstreamTopic},
+		"sess-t2": {"research": upstreamTopic, "merged-report": map[string]any{"ok": true}},
+		"sess-t3": {"research": map[string]any{"winner": "dense-retrieval"}}, // 覆写种子
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	d2 := seedDownstreamStateTeam(teams, sessions, "t2", []string{"st_0"})
+	has, err := u.HasRealDeliverable(context.Background(), d2)
+	if err != nil || !has {
+		t.Fatalf("own topic beyond seed must pass the gate, has=%v err=%v", has, err)
+	}
+
+	d3 := seedDownstreamStateTeam(teams, sessions, "t3", []string{"st_0"})
+	has, err = u.HasRealDeliverable(context.Background(), d3)
+	if err != nil || !has {
+		t.Fatalf("overwritten seed topic must count as own output, has=%v err=%v", has, err)
+	}
+}
+
+// 信封：种子 topic 不得混入本团队 DeliverableRef（否则下游会把上游产出
+// 当作本团队产出再传播，形成污染链）。
+func TestWriteDeliverablesToSession_ExcludesSeedFromEnvelope(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	upstreamTopic := map[string]any{"winner": "bm25"}
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {"research": upstreamTopic},
+		"sess-t2": {
+			"research":      upstreamTopic, // 种子回流
+			"summary":       "自有摘要",
+			"merged-report": map[string]any{"verdict": "pass"},
+		},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	seedDownstreamStateTeam(teams, sessions, "t2", []string{"st_0"})
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t2"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t2"].DeliverablesOutput)["st_1"]
+	if ref.Summary != "自有摘要" {
+		t.Fatalf("envelope summary should be the own summary, got %q", ref.Summary)
+	}
+	if strings.Contains(ref.StructuredJSON, "research") || strings.Contains(ref.StructuredJSON, "bm25") {
+		t.Fatalf("seeded upstream topic must not leak into the envelope, got %q", ref.StructuredJSON)
+	}
+	if !strings.Contains(ref.StructuredJSON, "merged-report") {
+		t.Fatalf("own topic must be in the envelope, got %q", ref.StructuredJSON)
+	}
+}
+
+// 信封：state 仅含种子时 WriteDeliverablesToSession 必须按无真实交付物失败
+// （与闸门同 posture：种子不是产出）。
+func TestWriteDeliverablesToSession_SeedOnly_Fails(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	upstreamTopic := map[string]any{"winner": "bm25"}
+	reader := &graphDeliverableReaderStub{dataBySession: map[string]map[string]any{
+		"sess-u1": {"research": upstreamTopic},
+		"sess-t2": {"research": upstreamTopic},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedUpstreamStateTeam(teams, sessions, "u1", "st_0")
+	seedDownstreamStateTeam(teams, sessions, "t2", []string{"st_0"})
+
+	err := u.WriteDeliverablesToSession(context.Background(), "t2")
+	if !errors.Is(err, ErrNoRealDeliverable) {
+		t.Fatalf("seed-only state must fail with ErrNoRealDeliverable, got %v", err)
+	}
+	if teams.items["t2"].DeliverablesOutput != "" {
+		t.Fatalf("no envelope may be persisted for seed-only state, got %q", teams.items["t2"].DeliverablesOutput)
+	}
+}
+
 // 声明了交付契约的 DAG 团队 → 协议块列出契约（name/type/format），
 // 让团队知道必须按契约逐项提交。
 func TestBuildTeamTurnInput_Contract_ProtocolDeclaresContract(t *testing.T) {
@@ -1950,6 +2236,55 @@ func TestMemberExecutionEvidence_NoEvidence(t *testing.T) {
 	}
 }
 
+// 2026-08-08 回归（stream_error 误报完成）：coordinator 模式下成员 turn 级错误
+// step（kind=error, stream_error）落在团队会话而非成员会话；成员会话 0 steps。
+// 证据判定必须回扫团队会话中 AuthorAgentKey == 该成员 的 error step → failed。
+func TestMemberExecutionEvidence_TeamSessionStreamError(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	// 成员会话（coordinator 模式下无自有 steps）+ 所属团队会话。
+	sessions.sessionsByTeam["t1"] = Session{
+		ID: "ms-1", Status: string(session.SessionStatusCompleted),
+		ParentSessionID: "sess-team", MemberAgentKey: "search_eng",
+	}
+	sessions.sessionsByTeam["t1-team"] = Session{ID: "sess-team", SessionType: string(SessionTypeTeam)}
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "e1", Kind: StepKindError, Status: StepStatusCompleted,
+			ToolErrorCode: "stream_error", Content: "context deadline exceeded", AuthorAgentKey: "search_eng"},
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if !failed {
+		t.Fatal("team-session stream_error step for this member must be failure evidence")
+	}
+	if !strings.Contains(reason, "context deadline") && !strings.Contains(reason, "stream_error") {
+		t.Fatalf("reason should carry the stream error summary, got %q", reason)
+	}
+}
+
+// 团队会话上的 error step 归属**其他成员**时，不得误判本成员 failed。
+func TestMemberExecutionEvidence_TeamSessionErrorOtherMember(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{
+		ID: "ms-1", Status: string(session.SessionStatusCompleted),
+		ParentSessionID: "sess-team", MemberAgentKey: "search_eng",
+	}
+	sessions.sessionsByTeam["t1-team"] = Session{ID: "sess-team", SessionType: string(SessionTypeTeam)}
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "e1", Kind: StepKindError, Status: StepStatusCompleted,
+			ToolErrorCode: "stream_error", Content: "context deadline exceeded", AuthorAgentKey: "tool_evaluator"},
+		{ID: "r1", Kind: StepKindReply, Status: StepStatusCompleted, Content: "正常", AuthorAgentKey: "search_eng"},
+	}
+
+	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
+	if failed || reason != "" {
+		t.Fatalf("other member's error step must not fail this member, got failed=%v reason=%q", failed, reason)
+	}
+}
+
 // 空 sessionID → 无证据（防御）。
 func TestMemberExecutionEvidence_EmptySessionID(t *testing.T) {
 	u := newDeliverableUsecase(newDeliverableTeamRepo(), newDeliverableSessionAccessor())
@@ -1979,5 +2314,93 @@ func TestMemberExecutionEvidence_NilStepReader(t *testing.T) {
 	failed, reason := u.MemberExecutionEvidence(context.Background(), "ms-1")
 	if failed || reason != "" {
 		t.Fatalf("nil stepReader with completed session must yield no evidence, got failed=%v reason=%q", failed, reason)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// MemberExecutionWindow（2026-08-08 问题4：成员执行时间按 step 流聚合）
+// 成员真实执行窗口 = 其 step 流聚合：start 取最早 StartedAt，end 取最晚活动
+// 证据（CompletedAt 优先，缺省退 StartedAt）；先查成员会话，0 steps 时回退
+// 团队会话（coordinator 模式成员 step 落在团队会话，按 AuthorAgentKey 归属
+// 过滤）。终态事件的 StartedAt/FinishedAt 必须取此窗口而非发布时刻。
+// ---------------------------------------------------------------------------
+
+// 成员会话有 steps → start 取最早 step StartedAt、end 取最晚 CompletedAt
+// （与 step 顺序无关）。
+func TestMemberExecutionWindow_MemberSessionSteps(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", ParentSessionID: "sess-team", MemberAgentKey: "eng"}
+	t0 := time.Date(2026, 8, 8, 1, 0, 0, 0, time.UTC)
+	end1 := t0.Add(80 * time.Second)
+	end2 := t0.Add(120 * time.Second)
+	steps.stepsBySession["ms-1"] = []Step{
+		{ID: "s2", Kind: StepKindReply, Status: StepStatusCompleted, StartedAt: t0.Add(90 * time.Second), CompletedAt: &end2},
+		{ID: "s1", Kind: StepKindThinking, Status: StepStatusCompleted, StartedAt: t0, CompletedAt: &end1},
+	}
+
+	start, end, ok := u.MemberExecutionWindow(context.Background(), "ms-1")
+	if !ok {
+		t.Fatal("window should be found from member session steps")
+	}
+	if !start.Equal(t0) {
+		t.Fatalf("window start = %v, want earliest member step start %v", start, t0)
+	}
+	if !end.Equal(end2) {
+		t.Fatalf("window end = %v, want latest member step CompletedAt %v", end, end2)
+	}
+}
+
+// coordinator 模式回退：成员会话 0 steps → 团队会话中该成员（AuthorAgentKey）
+// 的 step 窗口；其他成员更早/更晚的 step 不得算入。无 CompletedAt 的 step
+// 以 StartedAt 作为活动证据参与 end 聚合。
+func TestMemberExecutionWindow_TeamSessionFallback(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", ParentSessionID: "sess-team", MemberAgentKey: "eng"}
+	t0 := time.Date(2026, 8, 8, 1, 0, 0, 0, time.UTC)
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "o1", Kind: StepKindThinking, Status: StepStatusCompleted, AuthorAgentKey: "other", StartedAt: t0.Add(-time.Hour)},
+		{ID: "m1", Kind: StepKindThinking, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: t0},
+		{ID: "m2", Kind: StepKindReply, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: t0.Add(2 * time.Minute)},
+	}
+
+	start, end, ok := u.MemberExecutionWindow(context.Background(), "ms-1")
+	if !ok {
+		t.Fatal("window should fall back to team-session member steps")
+	}
+	if !start.Equal(t0) {
+		t.Fatalf("window start = %v, want earliest OWN member step %v (other members excluded)", start, t0)
+	}
+	if !end.Equal(t0.Add(2 * time.Minute)) {
+		t.Fatalf("window end = %v, want latest OWN step evidence %v", end, t0.Add(2*time.Minute))
+	}
+}
+
+// 成员会话与团队会话均无该成员 step → ok=false（调用方走下一级回退）。
+func TestMemberExecutionWindow_NoSteps_NotFound(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", ParentSessionID: "sess-team", MemberAgentKey: "eng"}
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "o1", Kind: StepKindThinking, Status: StepStatusCompleted, AuthorAgentKey: "other", StartedAt: time.Now().UTC()},
+	}
+
+	if _, _, ok := u.MemberExecutionWindow(context.Background(), "ms-1"); ok {
+		t.Fatal("no member steps anywhere must yield ok=false")
+	}
+}
+
+// 未装配 stepReader → ok=false（不臆测）。
+func TestMemberExecutionWindow_NilStepReader(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(newDeliverableTeamRepo(), sessions)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", Status: string(session.SessionStatusCompleted)}
+
+	if _, _, ok := u.MemberExecutionWindow(context.Background(), "ms-1"); ok {
+		t.Fatal("nil stepReader must yield ok=false")
 	}
 }

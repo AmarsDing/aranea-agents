@@ -20,25 +20,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KnowledgeService_CreateCollection_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
-	KnowledgeService_GetCollection_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
-	KnowledgeService_ListCollections_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
-	KnowledgeService_DeleteCollection_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
-	KnowledgeService_IngestDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
-	KnowledgeService_ListDocuments_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
-	KnowledgeService_GetDocumentContent_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
-	KnowledgeService_DeleteDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
-	KnowledgeService_MoveDocument_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
-	KnowledgeService_MoveDocumentToDir_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
-	KnowledgeService_UpdateDocumentContent_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
-	KnowledgeService_ListVaultTree_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
-	KnowledgeService_CreateVaultDir_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
-	KnowledgeService_CreateVaultDocument_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
-	KnowledgeService_ListDocumentLinks_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
-	KnowledgeService_ListCollectionGraph_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
-	KnowledgeService_Search_FullMethodName                = "/kratos.knowledge.v1.KnowledgeService/Search"
-	KnowledgeService_GetEmbedderConfig_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
-	KnowledgeService_UpdateEmbedderConfig_FullMethodName  = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
+	KnowledgeService_CreateCollection_FullMethodName           = "/kratos.knowledge.v1.KnowledgeService/CreateCollection"
+	KnowledgeService_GetCollection_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
+	KnowledgeService_ListCollections_FullMethodName            = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
+	KnowledgeService_DeleteCollection_FullMethodName           = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
+	KnowledgeService_IngestDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
+	KnowledgeService_ListDocuments_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
+	KnowledgeService_GetDocumentContent_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
+	KnowledgeService_DeleteDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
+	KnowledgeService_MoveDocument_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
+	KnowledgeService_MoveDocumentToDir_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
+	KnowledgeService_UpdateDocumentContent_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
+	KnowledgeService_ListVaultTree_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
+	KnowledgeService_CreateVaultDir_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
+	KnowledgeService_CreateVaultDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
+	KnowledgeService_ListDocumentLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
+	KnowledgeService_ListCollectionGraph_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
+	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
+	KnowledgeService_MergeKnowledgeEntities_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
+	KnowledgeService_Search_FullMethodName                     = "/kratos.knowledge.v1.KnowledgeService/Search"
+	KnowledgeService_GetEmbedderConfig_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
+	KnowledgeService_UpdateEmbedderConfig_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
 )
 
 // KnowledgeServiceClient is the client API for KnowledgeService service.
@@ -78,6 +80,14 @@ type KnowledgeServiceClient interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error)
+	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+	// normalization conflict groups (same name_norm, different display name)
+	// plus high-similarity embedding pairs when the embedder is configured.
+	// Computed in real time; no queue table.
+	ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...grpc.CallOption) (*ListEntityMergeSuggestionsResponse, error)
+	// MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+	// atomically; returns rewrite counts for inline UI feedback.
+	MergeKnowledgeEntities(ctx context.Context, in *MergeKnowledgeEntitiesRequest, opts ...grpc.CallOption) (*MergeKnowledgeEntitiesResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
@@ -252,6 +262,26 @@ func (c *knowledgeServiceClient) ListCollectionGraph(ctx context.Context, in *Li
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...grpc.CallOption) (*ListEntityMergeSuggestionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListEntityMergeSuggestionsResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListEntityMergeSuggestions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) MergeKnowledgeEntities(ctx context.Context, in *MergeKnowledgeEntitiesRequest, opts ...grpc.CallOption) (*MergeKnowledgeEntitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeKnowledgeEntitiesResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_MergeKnowledgeEntities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchResponse)
@@ -319,6 +349,14 @@ type KnowledgeServiceServer interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
+	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+	// normalization conflict groups (same name_norm, different display name)
+	// plus high-similarity embedding pairs when the embedder is configured.
+	// Computed in real time; no queue table.
+	ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error)
+	// MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+	// atomically; returns rewrite counts for inline UI feedback.
+	MergeKnowledgeEntities(context.Context, *MergeKnowledgeEntitiesRequest) (*MergeKnowledgeEntitiesResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -380,6 +418,12 @@ func (UnimplementedKnowledgeServiceServer) ListDocumentLinks(context.Context, *L
 }
 func (UnimplementedKnowledgeServiceServer) ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCollectionGraph not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListEntityMergeSuggestions not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) MergeKnowledgeEntities(context.Context, *MergeKnowledgeEntitiesRequest) (*MergeKnowledgeEntitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MergeKnowledgeEntities not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -699,6 +743,42 @@ func _KnowledgeService_ListCollectionGraph_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListEntityMergeSuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEntityMergeSuggestionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListEntityMergeSuggestions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListEntityMergeSuggestions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListEntityMergeSuggestions(ctx, req.(*ListEntityMergeSuggestionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_MergeKnowledgeEntities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeKnowledgeEntitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).MergeKnowledgeEntities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_MergeKnowledgeEntities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).MergeKnowledgeEntities(ctx, req.(*MergeKnowledgeEntitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -823,6 +903,14 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCollectionGraph",
 			Handler:    _KnowledgeService_ListCollectionGraph_Handler,
+		},
+		{
+			MethodName: "ListEntityMergeSuggestions",
+			Handler:    _KnowledgeService_ListEntityMergeSuggestions_Handler,
+		},
+		{
+			MethodName: "MergeKnowledgeEntities",
+			Handler:    _KnowledgeService_MergeKnowledgeEntities_Handler,
 		},
 		{
 			MethodName: "Search",

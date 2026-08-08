@@ -161,6 +161,21 @@ export type TriggerOutcomeStatsMsg = {
   regressed: number | undefined;
 };
 
+export type GetStatusRequest = {
+};
+
+// GetStatusResponse reports whether the self-improvement pipeline is enabled
+// and whether its hard prerequisites are satisfied. All fields are best-effort
+// (a failing subsystem degrades to false/empty, never to an error).
+export type GetStatusResponse = {
+  enabled: boolean | undefined;
+  refineLlmConfigured: boolean | undefined;
+  refineLlmProvider: string | undefined;
+  refineLlmModel: string | undefined;
+  repoRoot: string | undefined;
+  repoRootValid: boolean | undefined;
+};
+
 // RiskRulesMsg is one view of the risk-classification rule set. Numeric 0 /
 // empty globs mean "inherit the code default".
 export type RiskRulesMsg = {
@@ -209,6 +224,12 @@ export interface SelfImprovementService {
   // GetOutcomeStats returns Learn-stage attribution statistics
   // (verdict distribution + per-trigger breakdown).
   GetOutcomeStats(request: GetOutcomeStatsRequest): Promise<GetOutcomeStatsResponse>;
+  // GetStatus returns the feature availability + prerequisite preflight view
+  // (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+  // Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+  // it answers even when the feature is disabled — the console uses it to
+  // render the disabled empty state / missing-prerequisite guidance.
+  GetStatus(request: GetStatusRequest): Promise<GetStatusResponse>;
   // GetRiskRules returns the configured risk-classification rules
   // (0/empty fields inherit the code defaults; effective carries the
   // normalized values actually consumed by the pipeline/router).
@@ -378,6 +399,23 @@ export function createSelfImprovementServiceClient(
         service: "SelfImprovementService",
         method: "GetOutcomeStats",
       }) as Promise<GetOutcomeStatsResponse>;
+    },
+    GetStatus(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/self-improvement/status`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "SelfImprovementService",
+        method: "GetStatus",
+      }) as Promise<GetStatusResponse>;
     },
     GetRiskRules(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/self-improvement/risk-rules`; // eslint-disable-line quotes

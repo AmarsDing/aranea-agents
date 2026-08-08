@@ -18,6 +18,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | Biz — 扫描 | `internal/biz/skill_evolution_triggers.go` | `AgentConfigTrigger`（A6 移植自 legacy `evolution_scan.go` 的 `ScanAgent`；opt-in 门控 + type+title 去重） |
 | Biz — 状态机 | `internal/biz/evolution_state_machine.go` | `EvolutionStateMachine`（Pending/Applied/Rejected/RolledBack） |
 | Biz — 统一去重 | `internal/biz/skill_evolution_unified.go` | `SkillEvolutionOrchestrator`（统一跨流水线去重；legacy `evolution_coordinator.go` 已随 A6 删除） |
+| Biz — 草稿生成 | `internal/biz/evolution_drafter.go` | `EvolutionDrafter`（EVO-20：L3 通知类 persona/prompt 建议的 LLM 草稿生成，写回 `apply_payload` + `diff_preview`，1h 节流） |
 | Biz — 设置 | `internal/biz/agent_types.go` | `AgentRuntimeSettings` 定义（含 `Evolution*` / `Evo*` / `Guardrail*` 字段） |
 | Biz — 设置解析 | `internal/biz/agent_settings_helpers.go` | `settingsFromLegacyConfig` 解析存储 |
 | Biz — 设置视图 | `internal/biz/agent_settings.go` | `EvolutionCfg` 定义 + `GetEvolution()` 视图 |
@@ -26,7 +27,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | Service | `internal/service/agent_evolution.go` | Evolution RPC（挂在 `AgentService`） |
 | Service — 主 | `internal/service/agent.go` | `AgentService` 持有 `evoUC` 字段 + `invalidateAgentBuildCache` |
 | Cron | `internal/cronrunner/jobs/evolution_orchestrator_worker.go` | `EvolutionOrchestratorWorker`（30min 默认，统一进化触发入口；legacy `evolution_scanner.go` 已删除） |
-| Wire | `cmd/admin/wire.go` | `provideEvolutionUsecase` / `provideSkillEvolutionOrchestrator` / `provideEvolutionOrchestratorWorker`（`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可关） |
+| Wire | `cmd/admin/wire.go` | `provideEvolutionUsecase` / `provideSkillEvolutionOrchestrator` / `provideEvolutionDrafter` / `provideEvolutionOrchestratorWorker`（`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可关） |
 | Workers | `cmd/admin/workers.go` | `goAfterReady("evolution_orchestrator", ...)` 启动 |
 | Agent Build | `internal/agent/trpc_build.go` | `BuildTRPCLLMAgent` 读取 `ag.Settings`（含进化开关） |
 | Web — 组件 | `web/src/components/agents/AgentEvolutionPanel.vue` | 进化 Tab 主组件 |
@@ -114,7 +115,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-04 | P2 | `RollbackSuggestion` + `PreApplySnapshot` | ✅ |
 | EVO-05 | P2 | 跨流水线去重（`SkillEvolutionOrchestrator`） | ✅ |
 | EVO-06 | P2 | Apply 后 `invalidateAgentBuildCache` 失效缓存 | ✅ |
-| EVO-07 | P3 | `diff_preview` 生成（🟡 `AIRefineButton` has diff, evolution suggestion still empty） | ❌ |
+| EVO-07 | P3 | `diff_preview` 生成（🟡 `AIRefineButton` has diff, evolution suggestion still empty） | ✅ 2026-08-08（EVO-20 草稿写回 diff_preview） |
 | EVO-08 | P3 | SOUL.md 自动演化（仅风格段）（❌ 但 PGO V2 已 deprecated SOUL.md，target 改为 IDENTITY.md） | ❌ |
 | EVO-09 | P3 | 护栏运行时参与扫描 | ❌ |
 | EVO-10 | P3 | `evo_auto_apply` 自动应用 pending 建议 | ❌ |
@@ -127,7 +128,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-17 | P0 | 通知类建议（无实质修改内容）apply 会把通知文本写入 IDENTITY.md/AGENTS*.md → `apply_payload` metadata 门，空则拒绝 | ✅ 2026-08-07 |
 | EVO-18 | P1 | 趋势图柱条不可见（`--color-primary` 未定义）→ 双主题补定义 | ✅ 2026-08-07 |
 | EVO-19 | P1 | 无记忆调用时检索质量误显 0.0% → series 空时前端显「暂无数据」 | ✅ 2026-08-07 |
-| EVO-20 | P1 | 通知类建议内容低质（无 diff_preview、文案重复）→ LLM 生成具体修改草稿并设置 `apply_payload` 解锁 apply | ❌ |
+| EVO-20 | P1 | 通知类建议内容低质（无 diff_preview、文案重复）→ LLM 生成具体修改草稿并设置 `apply_payload` 解锁 apply | ✅ 2026-08-08 |
 
 ---
 
@@ -145,7 +146,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 - [x] 跨流水线去重（trigger 内 type+title 去重 + orchestrator 统一 pending 检查 + DB 唯一索引兜底）
 - [x] Apply 后 `invalidateAgentBuildCache` 失效缓存
 - [ ] 前端趋势图展示 `tool_success_series` / `retrieval_quality_series`（完整折线图）
-- [ ] Evolution suggestion `diff_preview` 非空
+- [x] Evolution suggestion `diff_preview` 非空（EVO-20：drafter 写回草稿时生成 unified diff）
 - [ ] 护栏运行时参与扫描
 - [ ] `evo_auto_apply` 自动应用 pending 建议
 - [ ] 前端 Rollback UI 入口

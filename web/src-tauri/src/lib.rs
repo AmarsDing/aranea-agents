@@ -1,5 +1,7 @@
 mod server;
+pub mod client_tools;
 pub mod config;
+pub mod whitelist;
 
 use tauri::{Manager, WebviewUrl};
 
@@ -15,16 +17,30 @@ pub fn run() {
         .parse()
         .expect("parse local url");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // P2: local notifications (blocking confirm/clarify steps). The JS
         // side gates all calls to the Tauri shell, so registering the plugin
         // on desktop is harmless and keeps one code path.
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+    // P3.1: QR pairing scan (mobile server setup). The plugin crate is
+    // `#![cfg(mobile)]` — empty on desktop — so registration is gated.
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_barcode_scanner::init());
+    builder
+        // M74 V2-T4: client tool bridge executors (whitelist enforced Rust-side).
+        .invoke_handler(tauri::generate_handler![
+            client_tools::client_open_app,
+            client_tools::client_open_url
+        ])
         .setup(move |app| {
             let config_dir = app
                 .path()
                 .app_config_dir()
                 .expect("resolve app config dir");
+            // Client tool whitelist: built-in defaults ∪ user overrides.
+            app.manage(client_tools::ClientToolState {
+                whitelist: whitelist::Whitelist::load(&config_dir),
+            });
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = server::serve(listener, config_dir).await {
                     eprintln!("embedded server exited: {err}");

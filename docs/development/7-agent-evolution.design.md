@@ -424,10 +424,11 @@ func provideEvolutionOrchestratorWorker(
 ```go
 // internal/cronrunner/jobs/evolution_orchestrator_worker.go
 
-type EvolutionOrchestratorWorker struct { /* interval 默认 30 分钟 */ }
+type EvolutionOrchestratorWorker struct { /* interval 默认 2 小时 */ }
 
-// NewEvolutionOrchestratorWorker 创建 worker，interval ≤ 0 时默认 30 分钟
-func NewEvolutionOrchestratorWorker(interval time.Duration, orch *biz.SkillEvolutionOrchestrator, agents biz.AgentRepository, skills biz.SkillQueryReader, logger loggateway.Logger) *EvolutionOrchestratorWorker
+// NewEvolutionOrchestratorWorker 创建 worker，interval ≤ 0 时默认 2 小时；
+// drafter 为 EVO-20 post-pass（nil = 禁用草稿生成）
+func NewEvolutionOrchestratorWorker(interval time.Duration, orch *biz.SkillEvolutionOrchestrator, agents EvolutionAgentLister, skills biz.SkillQueryReader, drafter EvolutionDrafterPort, lg loggateway.Logger) *EvolutionOrchestratorWorker
 
 // Start 阻塞运行直到 ctx 取消，使用 safego.Go 隔离 panic
 func (w *EvolutionOrchestratorWorker) Start(ctx context.Context)
@@ -445,6 +446,25 @@ func (w *EvolutionOrchestratorWorker) Start(ctx context.Context)
 5. 建议落库为 unified 行：`target_type=agent` / `action_type=evolve_agent` / `trigger_source=agent_config`
 
 启动注册：`cmd/admin/workers.go` 中 `goAfterReady("evolution_orchestrator", ...)` 在 ReadinessGate 通过后启动；`EVOLUTION_ORCHESTRATOR_DISABLED=1` 可禁用。
+
+#### 7.2.1 EVO-20：通知类建议的 LLM 草稿 post-pass（已实现 2026-08-08）
+
+**问题**：`AgentConfigTrigger` 只产出指标通知文本（如"近30d负反馈 10 次…"），无 `apply_payload`，建议不可应用（EVO-17 门拒绝），用户看得到问题却拿不到修改方案。
+
+**方案**：`EvolutionDrafter`（`internal/biz/evolution_drafter.go`）作为 worker 的 post-pass，在 `scanAgents` 每个 L3-opted-in agent 的 trigger 之后调用一次 `DraftPending`：
+
+1. 拉取该 agent 的 pending `evolve_agent` 建议（上限 20），筛出 `legacy_type=persona|prompt` 且无 `apply_payload` 的行
+2. 每 agent 每周期最多处理 1 条；每条 LLM 尝试（无论成败）记录 `draft_attempt_at`，1h 节流
+3. 模型解析：agent 自有 `Provider/Model` → 平台 `DefaultRefineLLM` 回退；两者皆空则跳过
+4. 草稿生成：
+   - `persona`：提取 `IDENTITY.md` `## Persona` 段正文 → LLM 输出修订段正文（段级替换，与 `ApplySuggestion` persona 分支语义一致）
+   - `prompt`：读 `AGENTS_CORE.md`/首个 `AGENTS*` 全文件 → LLM 输出完整修订文件（全文件替换语义）
+5. 校验兜底：草稿非空、≤ 长度上限（persona 用 `EvoPersonaMaxChars`，默认 2000；prompt 硬上限 20000）、不短于原文一半（防 LLM 截断丢配置）；不通过则丢弃
+6. 写回 `apply_payload` + `diff_preview`（`UnifiedDiffSimple`，超 4000 字符截断）→ `Applicable()` 自动为 true，前端显示应用按钮
+
+**降级**：LLM 不可用/失败/校验失败一律静默降级为通知态（Warn 进程日志 `step=evolution.draft`），不影响 trigger 主流程；nil `LLMCaller` 时整个 drafter 为 no-op。
+
+**日志策略**：仅进程日志（K6 外部调用）。进化流水线现有 trigger/orchestrator 均不发流程日志，drafter 保持一致——草稿结果经建议列表直接对用户可见。
 
 ### 7.3 SOUL.md / IDENTITY.md 演化
 

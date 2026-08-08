@@ -2069,8 +2069,11 @@ func (s *KnowledgeMemoryBridge) OnKnowledgeConfirmed(
 
 ```
 write   合成 fact（scope_type=canary）经生产 consolidation upsert 路径写入
-recall  以生产默认 minScore（0.55）经生产 L3 召回路径召回 → 断言命中
-        （Bug A 回归捕获点：Scores.Total=0 将使召回阶段失败）
+recall  以严格哨兵阈值 minScore=0.55 经生产 L3 召回路径召回 → 断言命中
+        （Bug A 回归捕获点：Scores.Total=0 将使召回阶段失败。
+         注：P0-4 起生产默认 l3_recall_min_score 已降为 0.35，金丝雀刻意
+         保留 0.55 严格门——合成 fact 构造得分远高于此，严格门不影响
+         金丝雀通过率且保留回归捕获力，与 eval set min_score=0.55 同策略）
 archive 双时态失效（valid_until=now）→ 断言从后续召回消失
 ```
 

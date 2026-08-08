@@ -34,6 +34,27 @@ func teamTurnBaseRunOptions(teamID, turnQuery string) []trpcagent.RunOption {
 	}
 }
 
+// resolveUpstreamDeliverableSeed resolves the cross-team deliverable seed for
+// a DAG downstream team turn (2026-08-08 问题3c). Returns nil when the runner
+// has no seed resolver wired, the team is standalone (no DagNodeID), or the
+// team has no DependsOn. Seed read failure degrades to nil with a Warn — a
+// seed error must never fail the turn (members still have the prompt-inlined
+// digests and the read_upstream_deliverable tool as fallback).
+func (r *Runner) resolveUpstreamDeliverableSeed(ctx context.Context, teamRow biz.Team) map[string]any {
+	if r.upstreamSeedFn == nil || teamRow.DagNodeID == "" || len(teamRow.DependsOn) == 0 {
+		return nil
+	}
+	seed, err := r.upstreamSeedFn(ctx, teamRow)
+	if err != nil {
+		r.lg.Warn("上游交付物种子解析失败，降级为无种子启动",
+			loggateway.StepID("team.run.upstream_seed"),
+			loggateway.Str("team_id", teamRow.ID),
+			loggateway.Err(err))
+		return nil
+	}
+	return seed
+}
+
 func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, input biz.TurnInput, teamRow biz.Team, def Definition, mode string) (userMsg biz.ChatMessage, assistantMsg biz.ChatMessage, err error) {
 	// Phase 1: Validate input and extract options
 	ti, err := r.validateTeamTurnInput(input, sess, def)
@@ -233,6 +254,15 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content), utOpts.intentRunOpts...)
+	// 2026-08-08 问题3c：DAG 下游团队把上游已完成团队的交付物种子注入
+	// graph 初始 state（deliverable StateField，MergeReducer）。graph runtime
+	// 会把 root RuntimeState 合并进 initialState（graph/trpc/builder.go），
+	// 成员节点的 node-start RuntimeState 快照随之携带种子——get_deliverable
+	// 直接读到上游 topic，不再因 per-execution state 隔离而 found=false。
+	// 种子回流不冒充本团队产出：biz 层闸门/信封写入用同一解析结果减种子。
+	if seed := r.resolveUpstreamDeliverableSeed(ctx, teamRow); len(seed) > 0 {
+		runOpts = append(runOpts, trpcagent.MergeRuntimeState(map[string]any{biz.DeliverableStateKey: seed}))
+	}
 	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)

@@ -9,6 +9,8 @@
       :hydration-state="queries.taskHydrationState(task.ID)"
       :collapsed="lazy.isCollapsed(task.ID)"
       @regenerate="(t) => $emit('regenerate', t)"
+      @add-to-eval="(t) => $emit('add-to-eval', t)"
+      @feedback="(p) => $emit('feedback', p)"
       @resume-task="(t) => $emit('resume-task', t)"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
@@ -24,10 +26,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, watch, type Ref } from 'vue';
 import { useActivityQueries } from '../../../features/chat/composables/useActivityQueries';
-import {
-  useLazyTaskHydration,
-  CHAT_SCROLL_EL_KEY,
-} from '../../../features/chat/composables/useLazyTaskHydration';
+import { useLazyTaskHydration, CHAT_SCROLL_EL_KEY } from '../../../features/chat/composables/useLazyTaskHydration';
 import type { Task } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../features/chat/types';
 import TaskCard from './TaskCard.vue';
@@ -35,6 +34,8 @@ import TaskCard from './TaskCard.vue';
 const props = defineProps<{ sessionId: string }>();
 defineEmits<{
   regenerate: [task: Task];
+  'add-to-eval': [task: Task];
+  feedback: [payload: { task: Task; rating: 'positive' | 'negative' }];
   'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];
@@ -50,8 +51,7 @@ const tasks = computed(() => queries.getSessionTasks(props.sessionId));
 const scrollEl = inject<Ref<HTMLElement | null>>(CHAT_SCROLL_EL_KEY, computed(() => null) as never);
 const lazy = useLazyTaskHydration({
   scrollEl,
-  needsHydration: (taskId) =>
-    !queries.isTaskHydrated(taskId) && queries.taskHydrationState(taskId) !== 'loading',
+  needsHydration: (taskId) => !queries.isTaskHydrated(taskId) && queries.taskHydrationState(taskId) !== 'loading',
   hydrate: (taskId) => queries.hydrateTask(taskId),
 });
 

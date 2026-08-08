@@ -58,6 +58,15 @@ func (a *teamRunnerWireAdapter) SetDeliverableGate(fn biz.TeamDeliverableGateFun
 	a.inner.SetDeliverableGate(fn)
 }
 
+func (a *teamRunnerWireAdapter) SetUpstreamDeliverableSeed(fn biz.TeamUpstreamSeedFunc) {
+	if a.inner == nil || fn == nil {
+		return
+	}
+	// biz.TeamUpstreamSeedFunc and the Runner's seed parameter share the
+	// same underlying signature — direct pass-through.
+	a.inner.SetUpstreamDeliverableSeed(fn)
+}
+
 // teamMediatorAdapter adapts *team.TeamRunMediator to biz.TeamMediatorPort.
 type teamMediatorAdapter struct {
 	inner *team.TeamRunMediator

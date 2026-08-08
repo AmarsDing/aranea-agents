@@ -539,6 +539,7 @@ internal/cronrunner/jobs/
 | `knowledge.ingest.embed` | ok / warn | 文档向量嵌入 |
 | `knowledge.ingest.done` | ok / error | 知识摄取完成 |
 | `knowledge.vault.sync` | ok / error | Vault 同步 |
+| `knowledge.entity.merge` | ok / error | 知识实体合并 |
 
 #### A2A 联邦（`domain=a2a`，2026-07-29 补齐 P0）
 
@@ -610,6 +611,7 @@ internal/cronrunner/jobs/
 | `voice.barge_in` | ok / — | 语音打断 |
 | `voice.provider.fallback` | warn | 语音服务降级 |
 | `voice.error` | error | 语音链路错误 |
+| `voice.confirm.resolved` | ok / — | 语音确认决议（M74 V2-T5，2026-08-08） |
 
 #### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
 

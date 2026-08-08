@@ -157,6 +157,10 @@ type Repo interface {
 
 	ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]TrendPoint, error)
 	GetRunsByIDs(ctx context.Context, ids []string) ([]Run, error)
+
+	// ListJudgeAnnotatedResults returns results with human_pass set (joined
+	// with run dataset/agent scope and case text) for judge calibration (P1-3).
+	ListJudgeAnnotatedResults(ctx context.Context, datasetID, agentID string) ([]JudgeAnnotatedResult, error)
 }
 
 // Usecase implements dataset/run management.

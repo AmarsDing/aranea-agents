@@ -15,8 +15,21 @@ const EMPTY_RULES: SIRiskRules = { lowMaxLines: 0, mediumMaxLines: 0, corePathGl
 
 export function useSelfImprovementPage() {
   const store = useSelfImprovementStore();
-  const { runs, total, loading, detail, detailLoading, outcomeStats, statsLoading, riskRules, rulesLoading } =
-    storeToRefs(store);
+  const {
+    runs,
+    total,
+    loading,
+    detail,
+    detailLoading,
+    outcomeStats,
+    statsLoading,
+    riskRules,
+    rulesLoading,
+    featureDisabled,
+    statusInfo,
+    statsFailed,
+    errorKind,
+  } = storeToRefs(store);
   const $q = useQuasar();
   const { t } = useI18n();
 
@@ -27,6 +40,26 @@ export function useSelfImprovementPage() {
   const pageSize = ref(20);
 
   const error = computed(() => store.error ?? '');
+  // 错误码人性化（P5.5）：按 store 分类映射 i18n 文案，unknown 回退原始 message。
+  const errorMessage = computed(() => {
+    switch (errorKind.value) {
+      case 'forbidden':
+        return t('selfImprovementPage.errorForbidden');
+      case 'legacy':
+        return t('selfImprovementPage.errorLegacy');
+      case 'unavailable':
+        return t('selfImprovementPage.errorUnavailable');
+      default:
+        return error.value;
+    }
+  });
+  // 重试只对暂时性故障有意义；forbidden/legacy 需改权限或升级后端。
+  const errorRetryable = computed(
+    () => errorKind.value === '' || errorKind.value === 'unavailable' || errorKind.value === 'unknown',
+  );
+  // 前置条件自检（P5.5）：enabled 但 Refine LLM 未配置或沙盒 repo_root 无效时给出警告。
+  const prereqLlmMissing = computed(() => statusInfo.value?.enabled === true && !statusInfo.value.refineLlmConfigured);
+  const prereqRepoInvalid = computed(() => statusInfo.value?.enabled === true && !statusInfo.value.repoRootValid);
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   const drawerOpen = ref(false);
@@ -63,14 +96,23 @@ export function useSelfImprovementPage() {
     { label: t('selfImprovementPage.trigger.test_failure'), value: 'test_failure' },
   ]);
 
-  async function loadRows() {
-    await store.loadRuns({
+  function currentFilter(): SIRunFilter {
+    return {
       status: status.value || undefined,
       riskLevel: riskLevel.value || undefined,
       triggerSource: triggerSource.value || undefined,
       page: page.value,
       pageSize: pageSize.value,
-    });
+    };
+  }
+
+  async function loadRows() {
+    await store.loadRuns(currentFilter());
+  }
+
+  /** 「重新检测」（disabled 空态）：重新探测 GetStatus，已启用则加载数据。 */
+  async function recheckAction() {
+    await store.recheck(currentFilter());
   }
 
   function resetFilters() {
@@ -223,6 +265,9 @@ export function useSelfImprovementPage() {
   }
 
   onMounted(() => {
+    // GetStatus 探测与业务加载并行：disabled 时业务请求返回 503 SELF_IMPROVEMENT
+    // 并置位 featureDisabled；statusInfo 用于 enabled 态的前置条件自检。
+    void store.loadStatus();
     void loadRows();
     void store.loadOutcomeStats();
   });
@@ -238,15 +283,24 @@ export function useSelfImprovementPage() {
     total,
     loading,
     error,
+    errorMessage,
+    errorRetryable,
     pageMax,
     statusOptions,
     riskOptions,
     triggerOptions,
     loadRows,
     resetFilters,
+    // feature availability / preflight (P5.5)
+    featureDisabled,
+    statusInfo,
+    prereqLlmMissing,
+    prereqRepoInvalid,
+    recheckAction,
     // stats
     outcomeStats,
     statsLoading,
+    statsFailed,
     // detail drawer
     drawerOpen,
     detail,

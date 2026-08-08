@@ -1850,6 +1850,21 @@ web/src/components/knowledge/graph3d/      ← Vue/three.js 命令式壳
 
 **数据流合规**：组件不直接调 api/store——`useKnowledgeGraph.ts` 编排不变（B8 数据/三维过滤/选中/聚焦信号），新增 `graph3d/engine.ts` 纯 TS 装配被 Canvas 组件持有；Worker 文件经 Vite `?worker` 引入。
 
+> **As-built（2026-08-08，渲染管线 v2 —— 万级性能 + 降亮度 + 科幻视觉，替代原 InstancedMesh 方案）**：
+>
+> 原设计（InstancedMesh + 微弯贝塞尔 + Raycaster 逐实例求交）在万级规模不可行：每实例矩阵求逆致 hover 卡顿、每 tick CPU 重组 instanceMatrix 上传 640KB、加法混合重叠烧白。v2 全量重写渲染层为 **GPU 位置纹理管线**：
+>
+> - **PositionTexture.ts（新增）**：RGBA32F DataTexture（尺寸 = ⌈√N⌉² 向上取整，`textureLayout.ts` 纯函数可单测）；物理 tick 回传的 positions 一次 memcpy 写入 + `needsUpdate`，万级 ≈0.3ms/tick。节点/边/瞄准具顶点着色器统一 `texelFetch(uPosTex, ivec2(idx % texW, idx / texW))` 取世界坐标——每 tick 零 CPU 几何计算。
+> - **NodeLayer.ts（重写）**：InstancedMesh → `THREE.Points`（1 节点 = 1 顶点，`gl_VertexID` 取位）；Obsidian 签名柔光点（core 亮核 + halo 外晕径向衰减，`gl_PointSize` 距离缩放 + 亚像素 vFade 淡出防抖）；**普通混合替代加法混合**（重叠不烧白，降亮度核心手段）；静态属性 aColor/aSize，动态属性仅 aEmph（邻居 1.6 / 压暗 0.15 / 常态 1.0，rest 增益压在 bloom 阈值下）。
+> - **EdgeLayer.ts（重写）**：6 段贝塞尔 → **Obsidian 细直线**（每边 2 顶点，顶点量 ÷6，密图视觉更净）；rest α=0.16 细线；hover 关联边提亮 + **流动光脉冲**（`sin(uTime·7 − vT·16)` 沿边跑动的数据流光效，科幻感来源）；动态属性仅 aHi per-edge。
+> - **ReticleLayer.ts（新增）**：HUD 风瞄准具——hover 圆环 + 选中六边形，视空间 billboard（`mv.xy += corner·size`），uHoverIndex/uSelIndex uniform 驱动，-1 隐藏；科幻交互反馈核心。
+> - **Picker.ts + pickMath.ts（重写）**：弃 three Raycaster（每实例矩阵求逆 = 万级 hover 卡顿元凶）→ 自研**射线-球纯循环 O(N)**（无矩阵运算）；阈值 = max(节点半径, t·worldPerPixel·slackPx)（slack 随距离放大保证远节点可点），最近 t 获胜保遮挡语义。
+> - **qualityTiers.ts（新增）**：自适应画质三档 HIGH/MID/LOW——初始按节点数分级（≥2500 MID、≥8000 LOW，万级 LOW 起步保帧率）；运行期 governor（FPS EMA，连续 90 帧 <45fps 降档 / 连续 600 帧 >57fps 升档不超初始档顶防振荡）；档规格驱动 bloom 开关/分辨率、pixelRatio 上限、标签候选数（200/100/40）；HUD 档位指示。
+> - **BackdropLayer.ts（降亮度 v2）**：星云改**烘焙**——FBM 着色器一次性渲入 1024×512 equirect RT（弃每帧全屏 FBM ≈60M hash/帧），球体改贴图采样；bright 0.5→0.34、星空不透明度 ×0.65、核雾 0.2→0.1，全部压在 bloom 阈值 0.55 下。
+> - **BloomPipeline.ts**：threshold 0.28→0.55、strength 1.2→0.9（只有真高亮节点冒辉光）；曝光收敛。
+> - **测试**：新增 `textureLayout.spec.ts`（尺寸取整/边界）、`pickMath.spec.ts`（射线-球/遮挡/slack）、`qualityTiers.spec.ts`（初始分级/governor 升降档/防振荡）、`ReticleLayer.spec.ts`；NodeLayer/EdgeLayer 全量重写用例。graph3d 域 15 文件 106 用例全绿。
+> - **性能预期**：万级节点每 tick GPU 侧一次纹理上传（≈0.3ms）+ 顶点着色器取位，CPU 渲染线程零几何计算；LOW 档关 bloom + pixelRatio=1 + 标签 40 候选，交互帧率优先。
+
 ##### V12.8-2 HUD 操作台（前端）
 
 - 保留 G4 全部控件与 `KnowledgeScopePicker` 复用；视觉换肤限定 `.kg-hud` 作用域类，**不改全局主题 token**（NFR-G5-4）：等宽字体（'JetBrains Mono', Consolas, monospace）、主青 `#00d4ff`、边色 `#1a3a4a`、`letter-spacing:0.08em`、面板 `rgba(5,8,16,0.88)` + `box-shadow:0 0 15px #00d4ff22` + 1px 青色描边、开关为 `[ ON ]/[ OFF ]` 括号式、边类型图例发光色块。
@@ -1871,6 +1886,13 @@ web/src/components/knowledge/graph3d/      ← Vue/three.js 命令式壳
 - **解析管线**（`vault_entity.go` 抽取落库路径）：归一化 → 精确 name_norm → 别名 → （embedding ≥0.90 自动合并入别名表）→ 新建条目。0.80-0.90 不自动动数据，仅入建议（B11 实时计算，不落队列表——YAGNI）。
 - **触点收窄**：归一化只在 `ReplaceDocEntities` 入口与 B10 合并写路径生效；`FindEntityCooccurrences` 查询改按 entity_id 关联（已无 name 字符串比对）。
 - **迁移幂等**：DDL 迁移 SQL 幂等（IF NOT EXISTS）；回填 `name_norm` 用 DB 侧 `lower(nfc)` 不可行（PG 无 NFC）——回填走 Go 数据迁移（L3 数据迁移体系），冲突组按 id 最小者为 keeper 自动合并并落别名。
+
+> **As-built（2026-08-08，G5-F 完成）**：
+> - **B9**：`internal/biz/knowledge/entity_norm.go`（`NormalizeEntityName`：NFC + case-fold + 内部空白折叠单空格 + 去首尾）；DDL 迁移 `internal/data/sql/migrations/20261129_knowledge_entity_governance.sql`（`name_norm` 列 + `UNIQUE(collection_id, name_norm)` + `knowledge_entity_aliases` 表，注册于 `ddl_migration_registry.go`）；L3 Go 数据迁移回填 + 冲突组自动合并（keeper=组内 id 最小者）落别名，与 B10 共享 `mergeKnowledgeEntityRows`/`rewriteEntityLinkContexts` helper 防逻辑漂移。
+> - **B10**：`internal/data/knowledge_entities.go` `MergeEntities`（`PostgresExecInTx`；幂等——不存在的 mergee 跳过、keeper 缺失返回 NotFound、keeper 混入 mergeeIDs 防御剔除）；biz `Usecase.MergeEntities`（未接线 EntityRepo 显式报错）；service `internal/service/knowledge_governance.go`（参数校验 + 跨租户 NotFound + 流程日志 K1 入口/出口 + K2 错误路径）。
+> - **B11**：`internal/biz/knowledge/entity_suggest.go` `ListEntityMergeSuggestions`——norm 冲突组在前（keeper=组内最小 id，Similarity=1.0/tier=auto），embedding 对按相似度降序追加（`EntityEmbedder` 窄端口，生产实现=`MultiProviderEmbedder` 方法子集结构满足；O(N²) 余弦，N≤500 按 id 序截断；id 对去重 norm 优先）；embedder nil 或调用失败降级 norm-only 不报错；service handler 只读不发流程日志。
+> - **B12**：`knowledge_entity_aliases(collection_id, alias_norm, entity_id)`；`ReplaceDocEntities` 解析管线按设计落地为：归一化 → 精确 name_norm → 别名命中 keeper → 新建（同批归一化撞车 mentions 求和；孤儿实体清理级联别名）；设计中「embedding ≥0.90 自动合并入别名表」步骤未接线（YAGNI——自动动数据风险高，当前仅走 B11 建议由用户确认合并）。
+> - **测试**：`entity_norm_test.go`（归一化矩阵）、`internal/data/knowledge_entity_resolution_test.go`（PG 实测：norm 聚合/别名路由/合并全契约/幂等重跑/跨同步持久）、`entity_suggest_test.go`（norm 组/embedding 对/去重/降级）、`internal/service/knowledge_governance_test.go`（参数校验/跨租户/proto 映射/nil embedder 降级）。
 
 ##### V12.8-4 移除清单
 

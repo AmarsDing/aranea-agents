@@ -30,6 +30,9 @@ type CaseMetadata struct {
 	SessionUserID string `json:"session_user_id"`
 	// SessionState seeds SessionInput.State (initial session state).
 	SessionState map[string]any `json:"session_state"`
+	// Rubric is a case-level scoring standard for llm_as_judge (P3-2). It is
+	// forwarded to the framework as an EvalCaseRubric bound to the judge metric.
+	Rubric string `json:"rubric"`
 }
 
 // UserSimMetadata configures user simulation (scripted or LLM-driven).

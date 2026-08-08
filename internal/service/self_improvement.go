@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/self_improvement/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -27,44 +31,119 @@ type siAdminPort interface {
 	UpdateRiskRules(ctx context.Context, operator string, rules biz.SIRiskRules) (biz.SIRiskRules, error)
 }
 
+// SIRefineLLMReader is the narrow read port for the platform DefaultRefineLLM
+// setting — the Analyst/Patcher/Critic stages' hard dependency (satisfied by
+// *biz.SystemSettingUsecase). nil → GetStatus reports refine_llm_configured=false.
+type SIRefineLLMReader interface {
+	GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error)
+}
+
 // SelfImprovementService implements the proto-generated
 // SelfImprovementServiceServer: the P5 console API of the platform
 // self-improvement loop (73-self-iteration-v3, design §七). All endpoints
 // require admin auth; operator identity is taken from the authenticated
 // principal (never from the request body).
+//
+// The service is ALWAYS constructed and registered (P5.5) — even when the
+// feature is disabled — so the console gets a structured 503 SELF_IMPROVEMENT
+// instead of a bare 404; GetStatus answers regardless of the switch.
 type SelfImprovementService struct {
 	v1.UnimplementedSelfImprovementServiceServer
 
-	uc siAdminPort // nil when self_improvement.enabled=false
-	lg loggateway.Logger
+	uc siAdminPort // nil when self_improvement.enabled=false → 业务端点 Unavailable
+	// cfg is the self_improvement config block (nil-safe accessors).
+	cfg *conf.SelfImprovement
+	// refineLLM reads DefaultRefineLLM for the GetStatus preflight (nil → 降级为未配置).
+	refineLLM SIRefineLLMReader
+	lg        loggateway.Logger
 }
 
-// NewSelfImprovementService returns nil when the feature is disabled (usecase
-// not wired), so server registration can nil-guard like LearningLoop.
-func NewSelfImprovementService(uc *biz.SelfImprovementAdminUsecase, lg loggateway.Logger) *SelfImprovementService {
-	if uc == nil {
-		return nil
-	}
+// NewSelfImprovementService builds the console service. uc may be nil when
+// self_improvement.enabled=false — business endpoints then return Unavailable
+// with reason SELF_IMPROVEMENT, while GetStatus stays available.
+//
+// NOTE: uc arrives as a concrete *biz.SelfImprovementAdminUsecase; storing a
+// nil concrete pointer in the siAdminPort interface field would create a
+// typed-nil interface (s.uc == nil is false → nil-receiver panic → 500).
+// Convert explicitly so the disabled guard in requireAdmin actually fires.
+func NewSelfImprovementService(uc *biz.SelfImprovementAdminUsecase, cfg *conf.SelfImprovement, refineLLM SIRefineLLMReader, lg loggateway.Logger) *SelfImprovementService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SelfImprovementService{uc: uc, lg: lg}
+	var port siAdminPort
+	if uc != nil {
+		port = uc
+	}
+	return &SelfImprovementService{uc: port, cfg: cfg, refineLLM: refineLLM, lg: lg}
 }
 
-// requireAdmin authenticates the principal and guards the (possibly
-// feature-disabled) usecase.
-func (s *SelfImprovementService) requireAdmin(ctx context.Context) (*auth.Auth, error) {
+// requireAuth enforces admin access only（GetStatus 等不依赖管线的端点用）。
+func (s *SelfImprovementService) requireAuth(ctx context.Context) (*auth.Auth, error) {
 	a, ok := auth.FromContext(ctx)
-	if !ok {
+	if !ok || a == nil {
 		return nil, auth.ErrUnauthorized
 	}
 	if !a.HasAdminAccess() {
 		return nil, auth.ErrForbidden
 	}
+	return a, nil
+}
+
+// requireAdmin authenticates the principal and guards the (possibly
+// feature-disabled) usecase.
+func (s *SelfImprovementService) requireAdmin(ctx context.Context) (*auth.Auth, error) {
+	a, err := s.requireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if s == nil || s.uc == nil {
 		return nil, apierror.Unavailable("SELF_IMPROVEMENT", "self-improvement feature not enabled")
 	}
 	return a, nil
+}
+
+// GetStatus reports the feature availability + hard-prerequisite preflight
+// (design §七, P5.5). It intentionally does NOT depend on the admin usecase so
+// the console can render the disabled empty state / missing-prerequisite
+// guidance even when the pipeline is off. All probes degrade to false/empty,
+// never to an error.
+func (s *SelfImprovementService) GetStatus(ctx context.Context, _ *v1.GetStatusRequest) (*v1.GetStatusResponse, error) {
+	if _, err := s.requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	resp := &v1.GetStatusResponse{Enabled: s.cfg.SIEnabled()}
+	if s.refineLLM != nil {
+		if rl, err := s.refineLLM.GetRefineLLM(ctx); err == nil {
+			resp.RefineLlmProvider = strings.TrimSpace(rl.Provider)
+			resp.RefineLlmModel = strings.TrimSpace(rl.Model)
+		}
+	}
+	resp.RefineLlmConfigured = resp.RefineLlmProvider != "" && resp.RefineLlmModel != ""
+	root := s.cfg.SIRepoRoot()
+	if root == "" {
+		if wd, err := os.Getwd(); err == nil {
+			root = wd
+		}
+	}
+	resp.RepoRoot = root
+	resp.RepoRootValid = siRepoRootValid(root)
+	return resp, nil
+}
+
+// siRepoRootValid reports whether dir exists and looks like a git checkout
+// (the sandbox/applier hard requirement: worktree + merge run git inside it).
+func siRepoRootValid(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return false
+	}
+	return true
 }
 
 // ListRuns returns runs filtered by status / risk_level / trigger_source with

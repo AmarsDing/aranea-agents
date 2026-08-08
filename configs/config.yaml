@@ -39,7 +39,7 @@ data:
   # pgvector extension is required (DAO_VECTOR_PGVECTOR=1).
   postgres:
     source: "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable"
-    vector_dim: 1536
+    vector_dim: 1024 # bge-m3 via local Ollama (2026-08-08; was 1536 for text-embedding-3-small)
   redis:
     addr: 127.0.0.1:6379
     read_timeout: 0.2s

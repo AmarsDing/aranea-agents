@@ -34,12 +34,60 @@ export type HudParams = {
   tintA: string;
   /** 渐变副色（单色系时与 tintA 相同）。 */
   tintB: string;
+  /** 声波震动增益 [0,1]（粒子环随振幅径向震动；V2-T5 HUD 增强）。 */
+  vibrationGain: number;
+  /** 全息弧线转速因子（Jarvis 弧线组）。 */
+  arcSpeedFactor: number;
+  /** 能量核顶点波动幅度。 */
+  coreWobble: number;
+  /** 声浪涟漪增益 [0,1]（0 = 不发射）。 */
+  rippleGain: number;
 };
 
 export function clampAmplitude(v: number): number {
   if (Number.isNaN(v)) return 0;
   return Math.min(1, Math.max(0, v));
 }
+
+/** 声波震动增益：聆听/播报全开，思考微抖动，其余静止。 */
+const VIBRATION_GAIN: Record<VoiceState, number> = {
+  idle: 0,
+  listening: 1,
+  thinking: 0.25,
+  speaking: 1,
+  interrupted: 0,
+  error: 0,
+};
+
+/** 全息弧线转速因子：思考最快，中断/错误近停滞。 */
+const ARC_SPEED_FACTOR: Record<VoiceState, number> = {
+  idle: 1,
+  listening: 1.6,
+  thinking: 2.8,
+  speaking: 1.4,
+  interrupted: 0.4,
+  error: 0.4,
+};
+
+/** 能量核顶点波动幅度：思考最剧，idle 最缓（listening/speaking 由场景侧叠加振幅）。 */
+const CORE_WOBBLE: Record<VoiceState, number> = {
+  idle: 0.03,
+  listening: 0.05,
+  thinking: 0.09,
+  speaking: 0.06,
+  interrupted: 0.02,
+  error: 0.02,
+};
+
+/** 声浪涟漪增益：仅播报/聆听发射。 */
+const RIPPLE_GAIN: Record<VoiceState, number> = {
+  idle: 0,
+  listening: 0.5,
+  thinking: 0,
+  speaking: 1,
+  interrupted: 0,
+  error: 0,
+};
 
 /**
  * @param state 当前语音状态（服务端镜像，同 VoiceState）
@@ -75,5 +123,9 @@ export function hudParamsFor(state: VoiceState, timeS: number, amplitude: number
     spectrumVisible: state === 'listening',
     tintA: coolTint ? TINT_CYAN : state === 'thinking' ? TINT_AMBER : TINT_RED,
     tintB: coolTint ? TINT_GREEN : state === 'thinking' ? TINT_AMBER : TINT_RED,
+    vibrationGain: VIBRATION_GAIN[state],
+    arcSpeedFactor: ARC_SPEED_FACTOR[state],
+    coreWobble: CORE_WOBBLE[state],
+    rippleGain: RIPPLE_GAIN[state],
   };
 }

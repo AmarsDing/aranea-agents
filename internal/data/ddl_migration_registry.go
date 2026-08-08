@@ -231,6 +231,11 @@ var ddlMigrations = []ddlMigration{
 	// + (collection_id, name_norm) 唯一索引。Postgres-only（knowledge 依赖
 	// pgvector）；fresh 库由 EnsureKnowledgeSchema 以新形态建表，Func 整体跳过。
 	{Version: 20261129, Name: "knowledge_entity_governance", Func: ddlKnowledgeEntityGovernance},
+	// 20261130 memory_recall_defaults_fix: P0-3/P0-4 记忆召回默认值修正——
+	// l0_inject_l4 历史默认 false 导致 L4 图谱从未注入（存量 l4_enabled=true 的行
+	// 全部置 true）；l3_recall_min_score 历史默认 0.55 按加权分布误杀典型相关命中
+	// （≈0.4-0.5），存量 0.55 行降到 0.35（显式 0.00 = 用户关过滤，不动）。
+	{Version: 20261130, Name: "memory_recall_defaults_fix", Func: ddlMemoryRecallDefaultsFix},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1056,6 +1061,57 @@ func ddlIntentPassDefaultOnMigration(ctx context.Context, rawDB *sql.DB, _ *ent.
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit intent_pass_default_on migration: %w", err)
+	}
+	return nil
+}
+
+// ddlMemoryRecallDefaultsFix corrects two historical memory-recall defaults
+// (2026-08-08 review, P0-3/P0-4):
+//   - l0_inject_l4 defaulted false → L4 entity graph was never injected into any
+//     prompt. Flip rows that have the L4 pipeline on (l4_enabled=true) but the
+//     injection toggle off. Downstream guards (0.3 confidence gate + maxPaths
+//     cap) bound the risk. Rows with l4_enabled=false keep their explicit off.
+//   - l3_recall_min_score defaulted 0.55 → typical relevant hits score
+//     Total≈0.4-0.5 under the weighted mix and were false-killed. Lower 0.55
+//     rows to 0.35. Explicit 0.00 rows (user disabled filtering) stay untouched.
+//
+// Idempotent: both UPDATEs are value-guarded no-ops on re-run. TRUE/FALSE
+// literals for the bool column (see ddlIntentPassDefaultOnMigration).
+func ddlMemoryRecallDefaultsFix(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ Dialect, lg loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin memory_recall_defaults_fix tx: %w", err)
+	}
+	defer tx.Rollback()
+	resL4, err := tx.ExecContext(ctx, `
+		UPDATE agent_runtime_settings
+		SET l0_inject_l4 = TRUE
+		WHERE l4_enabled = TRUE AND l0_inject_l4 = FALSE
+	`)
+	if err != nil {
+		return fmt.Errorf("migrate l0_inject_l4 default on: %w", err)
+	}
+	resMin, err := tx.ExecContext(ctx, `
+		UPDATE agent_runtime_settings
+		SET l3_recall_min_score = 0.35
+		WHERE l3_recall_min_score = 0.55
+	`)
+	if err != nil {
+		return fmt.Errorf("migrate l3_recall_min_score 0.55→0.35: %w", err)
+	}
+	nL4, _ := resL4.RowsAffected()
+	nMin, _ := resMin.RowsAffected()
+	if nL4 > 0 || nMin > 0 {
+		lg.Info("memory_recall_defaults_fix migration applied",
+			loggateway.StepID("data.migration.memory_recall_defaults_fix"),
+			loggateway.Int("l0_inject_l4_rows", int(nL4)),
+			loggateway.Int("l3_min_score_rows", int(nMin)))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit memory_recall_defaults_fix migration: %w", err)
 	}
 	return nil
 }

@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","notification:default"]}}
+{"default":{"identifier":"default","description":"Default capability for the main window","local":true,"windows":["main"],"permissions":["core:default","notification:default","barcode-scanner:allow-scan","barcode-scanner:allow-check-permissions","barcode-scanner:allow-request-permissions"]}}

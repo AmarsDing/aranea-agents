@@ -152,6 +152,7 @@
             @feedback="(p) => emit('feedback', p)"
             @regenerate="(msg) => emit('regenerate', msg)"
             @regenerate-v2="(task) => emit('regenerate-v2', task)"
+            @add-to-eval="(task) => emit('add-to-eval', task)"
             @resume-task="(task) => emit('resume-task', task)"
             @retry="(id) => emit('retry', id)"
             @dismiss-failed="(id) => emit('dismiss-failed', id)"
@@ -289,7 +290,12 @@ import { useActivityQueries } from '../../features/chat/composables/useActivityQ
 import { useChatMessageScroll, useChatCodeCopy } from '../../features/chat/composables/useChatMessageScroll';
 import { useChatScrollTitle } from '../../features/chat/useChatScrollTitle';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
-import type { Message, ConfirmStepPayload, SubmitClarificationPayload, TOOL_CONFIRM_REPLY } from '../../features/chat/types';
+import type {
+  Message,
+  ConfirmStepPayload,
+  SubmitClarificationPayload,
+  TOOL_CONFIRM_REPLY,
+} from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { ChatAttachment } from './types';
@@ -376,13 +382,14 @@ const emit = defineEmits<{
   navigate: [route: { name: string; params: Record<string, string> }];
   'focus-turn-cleared': [];
   'a2ui-user-action': [payload: A2UIUserActionPayload];
-  feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
+  feedback: [payload: { task: import('../../features/chat/v2Types').Task; rating: 'positive' | 'negative' }];
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
   'attachment-deleted': [id: string];
   'download-artifact': [meta: import('../../features/artifact/types').ArtifactMeta];
   regenerate: [message: Message];
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
+  'add-to-eval': [task: import('../../features/chat/v2Types').Task];
   'resume-task': [task: import('../../features/chat/v2Types').Task];
   'cancel-job': [job: { id: string; source: string }];
   'paste-unsupported': [];

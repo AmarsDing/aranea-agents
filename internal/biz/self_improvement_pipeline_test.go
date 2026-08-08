@@ -253,8 +253,10 @@ func TestSIPipeline_HappyPath(t *testing.T) {
 	if store.run.Diff == "" || store.run.PatchKind != PatchKindCode {
 		t.Error("patch not persisted")
 	}
-	if len(store.run.VerificationReport) != 3 {
-		t.Errorf("verification report gates = %d, want 3", len(store.run.VerificationReport))
+	if len(store.run.VerificationReport) != 4 {
+		t.Errorf("verification report gates = %d, want 4（G1-G3 + G5 skipped 记录）", len(store.run.VerificationReport))
+	} else if last := store.run.VerificationReport[3]; last.Gate != SandboxGateEvalBase || !last.Passed || !strings.Contains(last.Output, "skipped") {
+		t.Errorf("last gate = %+v, want g5_eval skipped（deferred 透明化）", last)
 	}
 	if store.run.CriticReport == nil || !store.run.CriticReport.IsSafe {
 		t.Error("critic report not persisted")

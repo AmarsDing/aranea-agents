@@ -149,7 +149,8 @@ var ProviderSet = wire.NewSet(
 	NewA2AExtensionCompatService,
 	NewRuntimeProfileService,
 	NewLearningLoopService,
-	NewSelfImprovementService,
+	// SelfImprovementService 由 cmd/admin provideSelfImprovementService 显式装配
+	// （需要 conf + SystemSettingUsecase 适配 SIRefineLLMReader 窄口，不进 ProviderSet）。
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

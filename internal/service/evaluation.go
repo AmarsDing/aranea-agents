@@ -255,6 +255,40 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 	return &v1.CompareEvalRunsResponse{Items: out}, nil
 }
 
+// GetJudgeDivergence reports judge-vs-human agreement for a dataset (P1-3).
+func (s *EvaluationService) GetJudgeDivergence(ctx context.Context, req *v1.GetJudgeDivergenceRequest) (*v1.GetJudgeDivergenceResponse, error) {
+	d, err := s.uc.GetJudgeDivergence(ctx, req.GetDatasetId(), req.GetAgentId(), req.GetThreshold(), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	cases := make([]*v1.JudgeDivergenceCase, 0, len(d.Cases))
+	for _, c := range d.Cases {
+		cases = append(cases, &v1.JudgeDivergenceCase{
+			ResultId:       c.ResultID,
+			RunId:          c.RunID,
+			CaseId:         c.CaseID,
+			Input:          c.Input,
+			ExpectedOutput: c.ExpectedOutput,
+			ActualOutput:   c.ActualOutput,
+			LlmJudgeScore:  c.LLMJudgeScore,
+			HumanPass:      c.HumanPass,
+			HumanComment:   c.HumanComment,
+			DivergenceKind: c.Kind,
+			CreatedAt:      c.CreatedAt,
+		})
+	}
+	return &v1.GetJudgeDivergenceResponse{
+		Threshold:      d.Threshold,
+		AnnotatedTotal: int32(d.AnnotatedTotal),
+		AgreeCount:     int32(d.AgreeCount),
+		DivergeCount:   int32(d.DivergeCount),
+		AgreementRate:  d.AgreementRate,
+		FalsePassCount: int32(d.FalsePassCount),
+		FalseFailCount: int32(d.FalseFailCount),
+		DivergentCases: cases,
+	}, nil
+}
+
 // --- proto conversion helpers ---
 
 func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {

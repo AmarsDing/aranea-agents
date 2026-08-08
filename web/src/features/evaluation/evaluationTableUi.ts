@@ -1,5 +1,5 @@
 import type { QTableColumn } from 'quasar';
-import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from './types';
+import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint, JudgeDivergenceCase } from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
 /** EvaluationPage — Run 列表 */
@@ -67,3 +67,48 @@ export const EVAL_COMPARE_TABLE_COLUMNS: QTableColumn<EvalRunComparison>[] = [
     REGISTRY_COL_W.narrow,
   ),
 ];
+
+/** 最小翻译器签名：兼容 vue-i18n Composer 的 t()（仅简单 key 场景）。 */
+export type EvalTranslator = (key: string) => string;
+
+/** EvaluationAnalyticsPanel — judge 分歧用例（工厂函数，label 走 i18n；human_pass / divergence_kind 由面板 slot 渲染 chip） */
+export function buildEvalDivergenceColumns(t: EvalTranslator): QTableColumn<JudgeDivergenceCase>[] {
+  return [
+    registryCol<JudgeDivergenceCase>('input', t('evaluationPage.divergenceColInput'), 'input', 'left', REGISTRY_COL_W.content),
+    registryCol<JudgeDivergenceCase>(
+      'llm_judge_score',
+      t('evaluationPage.divergenceColLlmScore'),
+      (r) => r.llm_judge_score.toFixed(2),
+      'right',
+      REGISTRY_COL_W.narrow,
+    ),
+    registryCol<JudgeDivergenceCase>(
+      'human_pass',
+      t('evaluationPage.divergenceColHuman'),
+      'human_pass',
+      'center',
+      REGISTRY_COL_W.narrow,
+    ),
+    registryCol<JudgeDivergenceCase>(
+      'divergence_kind',
+      t('evaluationPage.divergenceColKind'),
+      'divergence_kind',
+      'center',
+      REGISTRY_COL_W.status,
+    ),
+    registryCol<JudgeDivergenceCase>(
+      'human_comment',
+      t('evaluationPage.divergenceColComment'),
+      'human_comment',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
+    registryCol<JudgeDivergenceCase>(
+      'created_at',
+      t('evaluationPage.divergenceColTime'),
+      'created_at',
+      'left',
+      REGISTRY_COL_W.time,
+    ),
+  ];
+}

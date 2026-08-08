@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/evaluation"
 )
 
 // --- memKnowledgeRepo ---
@@ -370,6 +371,12 @@ func (m *memEvalRepo2) GetRunsByIDs(_ context.Context, ids []string) ([]biz.Eval
 		}
 	}
 	return out, nil
+}
+
+// Stub for evaluation.Repo.ListJudgeAnnotatedResults (judge calibration P1-3);
+// s6 coverage tests don't exercise the calibration path.
+func (m *memEvalRepo2) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]evaluation.JudgeAnnotatedResult, error) {
+	return nil, nil
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {

@@ -123,13 +123,18 @@
           :runs="runs"
           :trend-points="trendPoints"
           :comparisons="comparisons"
+          :divergence="divergence"
           :trend-loading="trendLoading"
           :compare-loading="compareLoading"
+          :divergence-loading="divergenceLoading"
           @refresh-trend="loadTrend"
+          @refresh-divergence="loadDivergence"
           @compare="submitCompare"
         />
       </div>
     </div>
+
+    <evaluation-feedback-panel class="q-mt-md" />
 
     <evaluation-create-dialog
       v-model:open="createOpen"
@@ -182,6 +187,7 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import EvaluationAnalyticsPanel from '../components/evaluation/EvaluationAnalyticsPanel.vue';
+import EvaluationFeedbackPanel from '../components/evaluation/EvaluationFeedbackPanel.vue';
 import EvaluationDatasetList from '../components/evaluation/EvaluationDatasetList.vue';
 import EvaluationCreateDialog from '../components/evaluation/EvaluationCreateDialog.vue';
 import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vue';
@@ -244,5 +250,8 @@ const {
   compareLoading,
   loadTrend,
   submitCompare,
+  divergence,
+  divergenceLoading,
+  loadDivergence,
 } = useEvaluationPage();
 </script>

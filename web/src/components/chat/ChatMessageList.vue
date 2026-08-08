@@ -36,6 +36,8 @@
       <SessionPanelV2
         :session-id="sessionId ?? ''"
         @regenerate="(t) => $emit('regenerate-v2', t)"
+        @add-to-eval="(t) => $emit('add-to-eval', t)"
+        @feedback="(p) => $emit('feedback', p)"
         @resume-task="(t) => $emit('resume-task', t)"
         @pause-agent="(sid) => $emit('pause-agent', sid)"
         @inject-agent="(p) => $emit('inject-agent', p)"
@@ -62,7 +64,12 @@ import SessionPanelV2 from './v2/SessionPanel.vue';
 import { useScrollToActivity } from '../../features/chat/composables/useScrollToActivity';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { CHAT_SCROLL_EL_KEY } from '../../features/chat/composables/useLazyTaskHydration';
-import type { Message, PendingMessage, ConfirmStepPayload, SubmitClarificationPayload } from '../../features/chat/types';
+import type {
+  Message,
+  PendingMessage,
+  ConfirmStepPayload,
+  SubmitClarificationPayload,
+} from '../../features/chat/types';
 import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 import type { ArtifactMeta } from '../../features/artifact/types';
 import type { Step } from '../../features/chat/v2Types';
@@ -90,7 +97,7 @@ defineEmits<{
   'messages-click': [event: MouseEvent];
   scroll: [event: Event];
   'a2ui-user-action': [payload: A2UIUserActionPayload];
-  feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
+  feedback: [payload: { task: import('../../features/chat/v2Types').Task; rating: 'positive' | 'negative' }];
   regenerate: [message: Message];
   retry: [messageId: string];
   'dismiss-failed': [messageId: string];
@@ -124,6 +131,7 @@ defineEmits<{
   // so ChatPage can lazy-load member/child session activities.
   expand: [sessionIds: string[]];
   'regenerate-v2': [task: import('../../features/chat/v2Types').Task];
+  'add-to-eval': [task: import('../../features/chat/v2Types').Task];
   'resume-task': [task: import('../../features/chat/v2Types').Task];
 }>();
 

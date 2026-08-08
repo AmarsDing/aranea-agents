@@ -86,6 +86,7 @@ type teamGraphRunSession struct {
 	emitter *event.TraceEmitter
 
 	stepDedup     *graphStepDedup
+	nodeStarts    *graphNodeStartTracker
 	memberByNode  map[string]MemberDef
 	stepSortIndex map[string]int
 	obsReg        biz.OrchestrationRegistry
@@ -167,6 +168,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		execID:       execID,
 		emitter:      event.TraceEmitterFromContext(ctx),
 		stepDedup:    newGraphStepDedup(),
+		nodeStarts:   newGraphNodeStartTracker(),
 		registeredAt: time.Now(),
 	}
 	if c.teamRunReader != nil {
@@ -495,6 +497,12 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 	stage := notice.NoticeType
 	isNodeEnd := stage == "node_end"
 	isNodeStart := stage == "node_start"
+	// 2026-08-08 问题4b：记录 node_start 真实开始时刻，node_end persistStep
+	// 时取出计算真实 DurationMS（否则 StartedAt≈FinishedAt≈落库时刻，耗时恒 0）。
+	// tracker first-write-wins：节点重试保留最早开始，窗口覆盖全部尝试。
+	if isNodeStart && stepCtx != nil {
+		stepCtx.MarkNodeStarted(metaString(meta, "node_id"), notice.OccurredAt())
+	}
 	isStepFinished := kind == biz.ActivityKindTeamStage && eventType == biz.ActivityEventCompleted
 	if sess.obsStore != nil {
 		changed := sess.obsStore.ApplySystemNotice(notice, sess.obsReg)

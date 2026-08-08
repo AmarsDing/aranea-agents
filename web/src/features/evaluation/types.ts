@@ -128,3 +128,31 @@ export type EvalRunComparison = {
   delta_llm_judge: number;
   delta_tool_call_accuracy: number;
 };
+
+/** P1-3 judge 校准：judge 与人工标注分歧统计 */
+export type JudgeDivergenceCase = {
+  result_id: string;
+  run_id: string;
+  case_id: string;
+  input: string;
+  expected_output: string;
+  actual_output: string;
+  llm_judge_score: number;
+  human_pass: boolean;
+  human_comment: string;
+  /** false_pass（judge 过松）| false_fail（judge 过严） */
+  divergence_kind: string;
+  created_at: string;
+};
+
+export type JudgeDivergence = {
+  threshold: number;
+  /** 参与统计的样本数（已人工标注且 judge 实际评分） */
+  annotated_total: number;
+  agree_count: number;
+  diverge_count: number;
+  agreement_rate: number;
+  false_pass_count: number;
+  false_fail_count: number;
+  divergent_cases: JudgeDivergenceCase[];
+};

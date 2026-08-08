@@ -7,6 +7,7 @@ import {
   getOutcomeStats,
   getRiskRules,
   getRun,
+  getStatus,
   listRuns,
   rejectRun,
   rollbackRun,
@@ -24,6 +25,7 @@ vi.mock('../../features/self-improvement/api', () => ({
   getOutcomeStats: vi.fn(),
   getRiskRules: vi.fn(),
   updateRiskRules: vi.fn(),
+  getStatus: vi.fn(),
 }));
 
 const listRunsMock = vi.mocked(listRuns);
@@ -35,6 +37,14 @@ const closeRunMock = vi.mocked(closeRun);
 const getOutcomeStatsMock = vi.mocked(getOutcomeStats);
 const getRiskRulesMock = vi.mocked(getRiskRules);
 const updateRiskRulesMock = vi.mocked(updateRiskRules);
+const getStatusMock = vi.mocked(getStatus);
+
+/** 模拟 Kratos HTTP 错误体（apierror.ToKratos：reason = Domain_Code）。 */
+function kratosErr(status: number, reason: string | undefined, message: string): Error {
+  const e = new Error(message) as Error & { response?: { status: number; data?: { reason?: string } } };
+  e.response = { status, data: reason ? { reason } : undefined };
+  return e;
+}
 
 function makeRun(over: Partial<SIRun> = {}): SIRun {
   return {
@@ -193,5 +203,116 @@ describe('useSelfImprovementStore', () => {
 
     updateRiskRulesMock.mockRejectedValue(new Error('low > medium'));
     await expect(store.saveRiskRules(payload)).rejects.toThrow('low > medium');
+  });
+
+  // ── P5.5：feature availability / 错误分类 ────────────────────────────────
+
+  it('503 SELF_IMPROVEMENT_UNAVAILABLE sets featureDisabled and clears error', async () => {
+    listRunsMock.mockRejectedValue(kratosErr(503, 'SELF_IMPROVEMENT_UNAVAILABLE', 'not enabled'));
+    const store = useSelfImprovementStore();
+    await store.loadRuns({ page: 1, pageSize: 20 });
+    expect(store.featureDisabled).toBe(true);
+    expect(store.error).toBeNull();
+    expect(store.errorKind).toBe('');
+  });
+
+  it('loadStatus is authoritative: disabled probe sets featureDisabled=true', async () => {
+    getStatusMock.mockResolvedValue({
+      enabled: false,
+      refineLlmConfigured: false,
+      refineLlmProvider: '',
+      refineLlmModel: '',
+      repoRoot: '/repo',
+      repoRootValid: true,
+    });
+    const store = useSelfImprovementStore();
+    await store.loadStatus();
+    expect(store.featureDisabled).toBe(true);
+  });
+
+  it('recheck on a still-disabled backend keeps the guided empty state', async () => {
+    getStatusMock.mockResolvedValue({
+      enabled: false,
+      refineLlmConfigured: false,
+      refineLlmProvider: '',
+      refineLlmModel: '',
+      repoRoot: '',
+      repoRootValid: false,
+    });
+    const store = useSelfImprovementStore();
+    await store.recheck({ page: 1, pageSize: 20 });
+    expect(store.featureDisabled).toBe(true);
+    // 仍 disabled 时不再调业务端点（避免无意义 503）。
+    expect(listRunsMock).not.toHaveBeenCalled();
+    expect(getOutcomeStatsMock).not.toHaveBeenCalled();
+  });
+
+  it('recheck on a now-enabled backend clears flag and loads data', async () => {
+    getStatusMock.mockResolvedValue({
+      enabled: true,
+      refineLlmConfigured: true,
+      refineLlmProvider: 'openai',
+      refineLlmModel: 'gpt-x',
+      repoRoot: '/repo',
+      repoRootValid: true,
+    });
+    listRunsMock.mockResolvedValue({ items: [makeRun()], total: 1 });
+    getOutcomeStatsMock.mockResolvedValue({
+      total: 1,
+      effective: 1,
+      neutral: 0,
+      regressed: 0,
+      effectiveRate: 1,
+      rollbackRate: 0,
+      byTrigger: [],
+    });
+    const store = useSelfImprovementStore();
+    store.featureDisabled = true;
+    await store.recheck({ page: 1, pageSize: 20 });
+    expect(store.featureDisabled).toBe(false);
+    expect(store.runs).toHaveLength(1);
+    expect(store.outcomeStats?.total).toBe(1);
+  });
+
+  it('404 without domain reason maps to legacy (old backend, route missing)', async () => {
+    listRunsMock.mockRejectedValue(kratosErr(404, undefined, '404 page not found'));
+    const store = useSelfImprovementStore();
+    await store.loadRuns({ page: 1, pageSize: 20 });
+    expect(store.errorKind).toBe('legacy');
+  });
+
+  it('404 with SELF_IMPROVEMENT_NOT_FOUND is a real not-found, not legacy', async () => {
+    getRunMock.mockRejectedValue(kratosErr(404, 'SELF_IMPROVEMENT_NOT_FOUND', 'run run-x not found'));
+    const store = useSelfImprovementStore();
+    const detail = await store.loadRun('run-x');
+    expect(detail).toBeNull();
+    expect(store.errorKind).toBe('unknown'); // 回退原始 message，而非误报「后端版本过旧」
+    expect(store.error).toBe('run run-x not found');
+  });
+
+  it('outcome stats failure degrades to statsFailed without touching main error', async () => {
+    getOutcomeStatsMock.mockRejectedValue(kratosErr(500, 'SELF_IMPROVEMENT_INTERNAL', 'internal error'));
+    const store = useSelfImprovementStore();
+    await store.loadOutcomeStats();
+    expect(store.statsFailed).toBe(true);
+    expect(store.outcomeStats).toBeNull();
+    expect(store.error).toBeNull(); // 不抢主错误条
+  });
+
+  it('outcome stats 503 SELF_IMPROVEMENT sets featureDisabled instead of statsFailed', async () => {
+    getOutcomeStatsMock.mockRejectedValue(kratosErr(503, 'SELF_IMPROVEMENT_UNAVAILABLE', 'not enabled'));
+    const store = useSelfImprovementStore();
+    await store.loadOutcomeStats();
+    expect(store.featureDisabled).toBe(true);
+    expect(store.statsFailed).toBe(false);
+  });
+
+  it('loadStatus probe failure keeps current flag and nulls statusInfo', async () => {
+    getStatusMock.mockRejectedValue(new Error('network down'));
+    const store = useSelfImprovementStore();
+    store.featureDisabled = true;
+    await store.loadStatus();
+    expect(store.statusInfo).toBeNull();
+    expect(store.featureDisabled).toBe(true); // 探测失败不擅自改状态
   });
 });

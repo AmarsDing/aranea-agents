@@ -65,7 +65,12 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
     return interruptAndSendMessage(sessionId, pendingEntryId);
   }
 
-  async function submitFeedback(payload: { session_id: string; message_id: string; rating: 'positive' | 'negative' }) {
+  async function submitFeedback(payload: {
+    session_id: string;
+    message_id: string;
+    rating: 'positive' | 'negative';
+    context_json?: string;
+  }) {
     return apiSubmitFeedback(payload);
   }
 

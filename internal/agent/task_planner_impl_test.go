@@ -752,7 +752,7 @@ func TestDecomposeTaskStream_TransientFailure_RetriesUntilSuccess(t *testing.T) 
 		lg:             loggateway.NewNoop(),
 		retryBackoffFn: func(int) time.Duration { return time.Millisecond },
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		attempts++
 		if attempts < 3 {
 			return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(&llmcompat.StreamIdleError{Timeout: time.Second})
@@ -760,7 +760,7 @@ func TestDecomposeTaskStream_TransientFailure_RetriesUntilSuccess(t *testing.T) 
 		st := []biz.SubTask{{ID: "st_1", Name: "A"}, {ID: "st_2", Name: "B"}}
 		return st, buildDAGFromSubTasks(st), nil
 	}
-	tasks, dag, err := impl.decomposeTaskStream(context.Background(), "组建两个团队并行工作", nil, 0, "spirit-p3", nil)
+	tasks, dag, err := impl.decomposeTaskStream(context.Background(), "组建两个团队并行工作", nil, 0, "spirit-p3", "tp_p3", nil)
 	if err != nil {
 		t.Fatalf("decomposeTaskStream: %v", err)
 	}
@@ -795,11 +795,11 @@ func TestDecomposeTaskStream_PermanentFailure_FuseBlowsImmediately(t *testing.T)
 		lg:             loggateway.NewNoop(),
 		retryBackoffFn: func(int) time.Duration { return time.Millisecond },
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		attempts++
 		return nil, nil, &decomposeConfigError{err: errors.New("LLM catalog or HTTP client not configured")}
 	}
-	_, _, err := impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p3", nil)
+	_, _, err := impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p3", "tp_p3", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -815,14 +815,14 @@ func TestDecomposeTaskStream_ParentCancelDuringBackoff_StopsRetry(t *testing.T) 
 		lg:             loggateway.NewNoop(),
 		retryBackoffFn: func(int) time.Duration { return 30 * time.Second }, // 长退避，验证取消可穿透
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _ string, _ *planningThinkingPublisher, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		attempts++
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM stream call failed").WithCause(&llmcompat.StreamIdleError{Timeout: time.Second})
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
 	start := time.Now()
-	_, _, err := impl.decomposeTaskStream(ctx, "msg", nil, 0, "spirit-p3", nil)
+	_, _, err := impl.decomposeTaskStream(ctx, "msg", nil, 0, "spirit-p3", "tp_p3", nil)
 	if err == nil {
 		t.Fatal("expected error after cancel")
 	}

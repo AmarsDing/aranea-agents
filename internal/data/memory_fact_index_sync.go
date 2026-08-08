@@ -96,7 +96,7 @@ func (s *memoryFactIndexSync) syncEmbeddingBlob(ctx context.Context, factID stri
 	norm := vectorL2Norm(embedding)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', updated_at = ? WHERE id = ?`),
+		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', index_attempts = 0, updated_at = ? WHERE id = ?`),
 		blob, norm, len(embedding), now, factID)
 	return entErrToBizErr(err, "MEMORY_L3")
 }
@@ -104,13 +104,13 @@ func (s *memoryFactIndexSync) syncEmbeddingBlob(ctx context.Context, factID stri
 func (s *memoryFactIndexSync) markFactIndexStale(ctx context.Context, factID, reason string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'stale', updated_at = ? WHERE id = ?`), now, factID)
+		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'stale', index_attempts = index_attempts + 1, updated_at = ? WHERE id = ?`), now, factID)
 	return entErrToBizErr(err, "MEMORY_L3")
 }
 
 func (s *memoryFactIndexSync) markFactIndexSynced(ctx context.Context, factID string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'fresh', updated_at = ? WHERE id = ?`), now, factID)
+		s.data.Dialect().RenumberPlaceholders(`UPDATE memory_facts SET embedding_status = 'fresh', index_attempts = 0, updated_at = ? WHERE id = ?`), now, factID)
 	return entErrToBizErr(err, "MEMORY_L3")
 }

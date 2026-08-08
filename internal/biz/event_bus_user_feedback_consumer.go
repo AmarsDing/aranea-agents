@@ -48,10 +48,11 @@ func (c *userFeedbackConsumer) handle(ctx context.Context, n *SystemNoticeEvent)
 	messageID := metaString(n.Meta, "message_id")
 	rating := metaString(n.Meta, "rating")
 	comment := metaString(n.Meta, "comment")
+	contextJSON := metaString(n.Meta, "context_json")
 	if sessionID == "" || messageID == "" || rating == "" {
 		return
 	}
-	if err := RecordUserFeedbackMonitor(ctx, c.monitor, sessionID, messageID, rating, comment); err != nil {
+	if err := RecordUserFeedbackMonitor(ctx, c.monitor, sessionID, messageID, rating, comment, contextJSON); err != nil {
 		if c.logger != nil {
 			c.logger.LogSessionWarn(ctx, sessionID, "event_bus.feedback.monitor", "反馈监控事件写入失败",
 				LogPair{Key: "message_id", Value: messageID}, LogPair{Key: "error", Value: err})

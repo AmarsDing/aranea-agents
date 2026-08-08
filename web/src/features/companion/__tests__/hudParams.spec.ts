@@ -77,3 +77,54 @@ describe('clampAmplitude', () => {
     expect(clampAmplitude(Number.NaN)).toBe(0);
   });
 });
+
+describe('hudParamsFor — 声波震动增益（V2-T5 HUD 增强）', () => {
+  it('listening/speaking 震动增益 = 1（音频驱动全开）', () => {
+    expect(hudParamsFor('listening', 0, 0).vibrationGain).toBe(1);
+    expect(hudParamsFor('speaking', 0, 0).vibrationGain).toBe(1);
+  });
+
+  it('thinking 微抖动 0.25；idle/interrupted/error 无震动', () => {
+    expect(hudParamsFor('thinking', 0, 0).vibrationGain).toBeCloseTo(0.25, 5);
+    for (const s of ['idle', 'interrupted', 'error'] as const) {
+      expect(hudParamsFor(s, 0, 0).vibrationGain).toBe(0);
+    }
+  });
+});
+
+describe('hudParamsFor — 全息弧线转速因子', () => {
+  it('thinking 最快（2.8），listening 次之（1.6）', () => {
+    expect(hudParamsFor('thinking', 0, 0).arcSpeedFactor).toBeCloseTo(2.8, 5);
+    expect(hudParamsFor('listening', 0, 0).arcSpeedFactor).toBeCloseTo(1.6, 5);
+  });
+
+  it('idle/speaking 常速；interrupted/error 近停滞', () => {
+    expect(hudParamsFor('idle', 0, 0).arcSpeedFactor).toBe(1);
+    expect(hudParamsFor('speaking', 0, 0).arcSpeedFactor).toBeCloseTo(1.4, 5);
+    for (const s of ['interrupted', 'error'] as const) {
+      expect(hudParamsFor(s, 0, 0).arcSpeedFactor).toBeCloseTo(0.4, 5);
+    }
+  });
+});
+
+describe('hudParamsFor — 能量核顶点波动', () => {
+  it('thinking 波动最剧（0.09），idle 最缓（0.03）', () => {
+    expect(hudParamsFor('thinking', 0, 0).coreWobble).toBeCloseTo(0.09, 5);
+    expect(hudParamsFor('idle', 0, 0).coreWobble).toBeCloseTo(0.03, 5);
+  });
+
+  it('listening/speaking 中等波动（音频叠加在场景侧）', () => {
+    expect(hudParamsFor('listening', 0, 0).coreWobble).toBeCloseTo(0.05, 5);
+    expect(hudParamsFor('speaking', 0, 0).coreWobble).toBeCloseTo(0.06, 5);
+  });
+});
+
+describe('hudParamsFor — 声浪涟漪增益', () => {
+  it('仅 speaking（1）/listening（0.5）发射涟漪', () => {
+    expect(hudParamsFor('speaking', 0, 0).rippleGain).toBe(1);
+    expect(hudParamsFor('listening', 0, 0).rippleGain).toBeCloseTo(0.5, 5);
+    for (const s of ['idle', 'thinking', 'interrupted', 'error'] as const) {
+      expect(hudParamsFor(s, 0, 0).rippleGain).toBe(0);
+    }
+  });
+});

@@ -82,11 +82,26 @@ type TeamGraphRunFinisherPort interface {
 	// run-success finalization for DAG teams with no real deliverable
 	// (2026-07-28 修复3). Backed by SpiritTeamController.HasRealDeliverable.
 	SetDeliverableGate(fn TeamDeliverableGateFunc)
+
+	// SetUpstreamDeliverableSeed wires the cross-team deliverable seed
+	// resolver (2026-08-08 问题3c): at DAG downstream team turn start, the
+	// runner injects the seed into the graph initial state's "deliverable"
+	// field, so members read upstream topics directly via get_deliverable
+	// instead of failing on an isolated per-execution state. Backed by
+	// SpiritTeamUsecase.UpstreamDeliverableSeed. Nil keeps legacy behavior
+	// (no seed; members fall back to read_upstream_deliverable / digests).
+	SetUpstreamDeliverableSeed(fn TeamUpstreamSeedFunc)
 }
 
 // TeamDeliverableGateFunc reports whether the team produced a real
 // deliverable via set_deliverable. Mirrors SpiritTeamController.HasRealDeliverable.
 type TeamDeliverableGateFunc func(ctx context.Context, team Team) (bool, error)
+
+// TeamUpstreamSeedFunc resolves the upstream deliverable seed for a DAG
+// downstream team (business topics only; summary/cognition/ack excluded).
+// Returns (nil, nil) when the team has no dependencies or no completed
+// upstream deliverables. Mirrors SpiritTeamUsecase.UpstreamDeliverableSeed.
+type TeamUpstreamSeedFunc func(ctx context.Context, team Team) (map[string]any, error)
 
 // TeamGraphCoordPort is the biz-level port for the team graph run coordinator.
 // It abstracts the coordinator that manages graph execution steps.

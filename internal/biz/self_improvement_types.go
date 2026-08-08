@@ -91,10 +91,12 @@ type Diagnosis struct {
 type SandboxGateKind string
 
 const (
-	SandboxGateBuild    SandboxGateKind = "g1_build"
-	SandboxGateTest     SandboxGateKind = "g2_test"
-	SandboxGateLint     SandboxGateKind = "g3_lint"
-	SandboxGateCritic   SandboxGateKind = "g4_critic"
+	SandboxGateBuild  SandboxGateKind = "g1_build"
+	SandboxGateTest   SandboxGateKind = "g2_test"
+	SandboxGateLint   SandboxGateKind = "g3_lint"
+	SandboxGateCritic SandboxGateKind = "g4_critic"
+	// SandboxGateEvalBase（G5 评估基线）当前未真实执行：pipeline 在 G1-G3
+	// 全过后落一条 passed/skipped 记录保持控制台透明（design D4 注记）。
 	SandboxGateEvalBase SandboxGateKind = "g5_eval"
 )
 

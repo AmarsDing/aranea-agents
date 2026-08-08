@@ -23,6 +23,13 @@ import {
   releaseGlobalWsConsumer,
   shouldUseGlobalWsHub,
 } from './globalWsHub';
+import {
+  buildClientToolResultFrame,
+  createTauriClientToolExecutor,
+  DESKTOP_COMPANION_CAPABILITY,
+  executeClientToolInvoke,
+  isDesktopCompanion,
+} from '../services/clientTools';
 export type {
   GraphNodeState,
   GraphExecutionState,
@@ -127,6 +134,15 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       onMonitorEvent: opts.onMonitorEvent ? (event) => opts.onMonitorEvent!(event) : undefined,
       onBackpressure: opts.onBackpressure ? (payload) => opts.onBackpressure!(payload) : undefined,
       onV2Event: opts.onV2Event ? (env) => opts.onV2Event!(env) : undefined,
+      // M74 V2-T4: desktop companion executes client tools and always answers
+      // the bridge (a known local failure must not hang until the 30s timeout).
+      onClientToolInvoke: (msg) => {
+        const executor = createTauriClientToolExecutor();
+        if (!executor) return; // not a desktop shell: capability never registered, frame unexpected
+        void executeClientToolInvoke(executor, msg).then((outcome) => {
+          t.send(buildClientToolResultFrame(msg, outcome));
+        });
+      },
       onConnected: (info) => {
         connected.value = true;
         lastEventId.value = info.lastEventId;
@@ -134,6 +150,11 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
           if (ch !== 'chat' && ch !== 'system') {
             t.subscribe(ch);
           }
+        }
+        // M74 V2-T4: announce desktop companion capability so the backend can
+        // route client_tool.invoke frames to this connection.
+        if (isDesktopCompanion()) {
+          t.registerCapabilities([DESKTOP_COMPANION_CAPABILITY]);
         }
         opts.onConnected?.(info);
       },

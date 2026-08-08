@@ -296,6 +296,9 @@ export type SubmitMessageFeedbackRequest = {
   // Behaviors: REQUIRED
   rating: string | undefined;
   comment?: string;
+  // context_json: optional JSON snapshot making the review list self-contained,
+  // e.g. {"task_id":"...","input":"...","output":"..."}. Leniently parsed.
+  contextJson?: string;
 };
 
 export type SubmitMessageFeedbackResponse = {

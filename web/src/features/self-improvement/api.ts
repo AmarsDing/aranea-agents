@@ -14,6 +14,7 @@ import type {
   SIRun,
   SIRunDetail,
   SIRunFilter,
+  SIStatus,
 } from './types';
 
 const si = createSelfImprovementService();
@@ -132,6 +133,19 @@ export async function rollbackRun(id: string, reason?: string): Promise<void> {
 
 export async function closeRun(id: string, reason?: string): Promise<void> {
   await si.CloseRun({ id, reason: reason || undefined });
+}
+
+/** GetStatus — 功能可用性 + 前置条件自检（disabled 时也可调用）。 */
+export async function getStatus(): Promise<SIStatus> {
+  const r = await si.GetStatus({});
+  return {
+    enabled: !!r.enabled,
+    refineLlmConfigured: !!r.refineLlmConfigured,
+    refineLlmProvider: str(r.refineLlmProvider),
+    refineLlmModel: str(r.refineLlmModel),
+    repoRoot: str(r.repoRoot),
+    repoRootValid: !!r.repoRootValid,
+  };
 }
 
 function mapRiskRules(m: RiskRulesMsg | undefined): SIRiskRules {

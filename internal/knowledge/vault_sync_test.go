@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,11 @@ type vaultSyncMemRepo struct {
 	links             []bizknowledge.Link
 	docEntities       map[string][]bizknowledge.DocEntity
 	deleteChunksCalls int
+	// G5-F 实体治理：内存实体字典（norm → id）+ 别名（B12）。
+	entityIDs    map[string]int64 // collectionID+\x00+norm → entity id
+	entityNames  map[int64]string // entity id → 展示名（首见写法）
+	entityAlias  map[string]int64 // collectionID+\x00+aliasNorm → entity id
+	nextEntityID int64
 }
 
 func newVaultSyncMemRepo() *vaultSyncMemRepo {
@@ -31,6 +37,9 @@ func newVaultSyncMemRepo() *vaultSyncMemRepo {
 		collections: make(map[string]bizknowledge.Collection),
 		documents:   make(map[string]bizknowledge.Document),
 		docEntities: make(map[string][]bizknowledge.DocEntity),
+		entityIDs:   make(map[string]int64),
+		entityNames: make(map[int64]string),
+		entityAlias: make(map[string]int64),
 	}
 }
 
@@ -255,20 +264,51 @@ func (m *vaultSyncMemRepo) ListLinks(_ context.Context, collectionID, docID, lin
 	}
 	return out, nil
 }
-func (m *vaultSyncMemRepo) ReplaceDocEntities(_ context.Context, collectionID, docID string, entities []bizknowledge.DocEntity) error {
+func (m *vaultSyncMemRepo) ReplaceDocEntities(_ context.Context, collectionID, docID string, entities []bizknowledge.DocEntity) ([]int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.docEntities[docID] = entities
-	return nil
-}
-func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collectionID string, entityNames []string, excludeDocID string, maxDocFreq int) ([]bizknowledge.EntityCooccurrence, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	want := map[string]bool{}
-	for _, n := range entityNames {
-		want[n] = true
+	// 解析管线（G5-F B9/B12）：归一化 → 精确 name_norm → 别名 → 新建；同批撞车去重。
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, e := range entities {
+		name := strings.TrimSpace(e.Name)
+		if name == "" {
+			continue
+		}
+		norm := bizknowledge.NormalizeEntityName(name)
+		if norm == "" {
+			continue
+		}
+		key := collectionID + "\x00" + norm
+		id, ok := m.entityIDs[key]
+		if !ok {
+			id, ok = m.entityAlias[key]
+		}
+		if !ok {
+			m.nextEntityID++
+			id = m.nextEntityID
+			m.entityIDs[key] = id
+			m.entityNames[id] = name // 首见写法作展示名
+		}
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
 	}
-	// 频次统计（R-3：超 maxDocFreq 的实体视为噪声）
+	m.docEntities[docID] = entities
+	return ids, nil
+}
+func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collectionID string, entityIDs []int64, excludeDocID string, maxDocFreq int) ([]bizknowledge.EntityCooccurrence, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// ID → norm + 展示名（keeper 首见写法）。
+	want := map[string]string{}
+	for _, id := range entityIDs {
+		if name, ok := m.entityNames[id]; ok {
+			want[bizknowledge.NormalizeEntityName(name)] = name
+		}
+	}
+	// 频次统计（R-3：超 maxDocFreq 的实体视为噪声；按 norm 聚合对齐生产 entity_id 语义）
 	freq := map[string]int{}
 	for docID, ents := range m.docEntities {
 		if m.documents[docID].CollectionID != collectionID {
@@ -276,9 +316,10 @@ func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collection
 		}
 		seen := map[string]bool{}
 		for _, e := range ents {
-			if !seen[e.Name] {
-				seen[e.Name] = true
-				freq[e.Name]++
+			n := bizknowledge.NormalizeEntityName(e.Name)
+			if !seen[n] {
+				seen[n] = true
+				freq[n]++
 			}
 		}
 	}
@@ -287,14 +328,18 @@ func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collection
 		if docID == excludeDocID || m.documents[docID].CollectionID != collectionID {
 			continue
 		}
+		seen := map[string]bool{}
 		for _, e := range ents {
-			if !want[e.Name] {
+			n := bizknowledge.NormalizeEntityName(e.Name)
+			display, ok := want[n]
+			if !ok || seen[n] {
 				continue
 			}
-			if maxDocFreq > 0 && freq[e.Name] > maxDocFreq {
+			if maxDocFreq > 0 && freq[n] > maxDocFreq {
 				continue
 			}
-			shared[docID] = append(shared[docID], e.Name)
+			seen[n] = true
+			shared[docID] = append(shared[docID], display)
 		}
 	}
 	var out []bizknowledge.EntityCooccurrence
@@ -305,6 +350,30 @@ func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collection
 }
 
 var errMemNotFound = apierror.NotFound("KNOWLEDGE", "document not found")
+
+// MergeEntities 内存 stub（EntityRepo 接口满足；vault 测试不触及治理合并路径）。
+func (m *vaultSyncMemRepo) MergeEntities(_ context.Context, _ string, _ int64, _ []int64) (bizknowledge.EntityMergeResult, error) {
+	return bizknowledge.EntityMergeResult{}, nil
+}
+
+// ListEntities 内存实现（EntityRepo 接口满足；vault 测试不触及建议路径）。
+func (m *vaultSyncMemRepo) ListEntities(_ context.Context, collectionID string) ([]bizknowledge.Entity, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []bizknowledge.Entity
+	for key, id := range m.entityIDs {
+		if !strings.HasPrefix(key, collectionID+"\x00") {
+			continue
+		}
+		out = append(out, bizknowledge.Entity{
+			ID:       id,
+			Name:     m.entityNames[id],
+			NameNorm: strings.TrimPrefix(key, collectionID+"\x00"),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
 
 // ── stub embedder ─────────────────────────────────────────────────────────────
 

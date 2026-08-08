@@ -347,6 +347,16 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 				break
 			}
 		}
+		// G5（eval 基线）门禁延期未接线（73-self-iteration-v3 P2 偏差，design D4
+		// 注记）：显式落一条 skipped 记录，让控制台详情可见「G5 未执行」，
+		// 而非静默缺失（死枚举）。
+		if allPass {
+			report = append(report, SandboxGateResult{
+				Gate:   SandboxGateEvalBase,
+				Passed: true,
+				Output: "skipped: eval baseline gate deferred (73-self-iteration-v3 design D4 note)",
+			})
+		}
 		run.VerificationReport = report
 
 		if allPass {

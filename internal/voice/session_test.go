@@ -48,6 +48,36 @@ func (f *fakeCanceller) CancelRun(_ context.Context, sessionID string) bool {
 	return true
 }
 
+// fakeConfirmer 记录语音确认决议调用并按脚本返回 resolved。
+type fakeConfirmer struct {
+	mu       sync.Mutex
+	calls    []bool // 每次调用的 approved 入参
+	resolved bool
+	err      error
+}
+
+func (f *fakeConfirmer) ResolvePendingConfirm(_ context.Context, _ string, approved bool) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, approved)
+	return f.resolved, f.err
+}
+
+func (f *fakeConfirmer) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakeConfirmer) lastApproved() (bool, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.calls) == 0 {
+		return false, false
+	}
+	return f.calls[len(f.calls)-1], true
+}
+
 type fakeASRSession struct {
 	events    chan biz.ASREvent
 	writeMu   sync.Mutex
@@ -181,6 +211,7 @@ type sessionFixture struct {
 	bus     *fakeBus
 	exec    *fakeExecutor
 	cancel  *fakeCanceller
+	conf    *fakeConfirmer
 	down    *fakeDownlink
 	ttsProv *scriptedTTSProvider
 }
@@ -191,6 +222,7 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 	bus := newFakeBus()
 	exec := &fakeExecutor{}
 	canc := &fakeCanceller{}
+	conf := &fakeConfirmer{}
 	down := &fakeDownlink{}
 	ttsProv := &scriptedTTSProvider{}
 	deps := SessionDeps{
@@ -203,12 +235,13 @@ func newSessionFixture(t *testing.T) *sessionFixture {
 		Bus:       bus,
 		Executor:  exec,
 		Canceller: canc,
+		Confirmer: conf,
 		Infra:     nil, // 测试不发流程日志总线
 		LG:        loggateway.NewNoop(),
 	}
 	sess := NewSession(context.Background(), deps, "sess-1", "user-1", down)
 	t.Cleanup(sess.Close)
-	return &sessionFixture{sess: sess, asr: asr, bus: bus, exec: exec, cancel: canc, down: down, ttsProv: ttsProv}
+	return &sessionFixture{sess: sess, asr: asr, bus: bus, exec: exec, cancel: canc, conf: conf, down: down, ttsProv: ttsProv}
 }
 
 // ---- tests ----
@@ -323,4 +356,92 @@ func TestSessionStopBroadcastsIdle(t *testing.T) {
 	fx.sess.Start(StartParams{})
 	fx.sess.Stop()
 	require.Equal(t, "idle", fx.down.lastState())
+}
+
+// ---- V2-T5：语音确认拦截 ----
+
+// 有待决议确认时，「好的」被拦截：下发 confirm.resolved、不进 Chat 管线、停留 listening。
+func TestSessionVoiceConfirmApproveInterceptsTurn(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.conf.resolved = true
+	fx.sess.Start(StartParams{})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "好的", DurationMs: 300}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "confirm.resolved") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 决议为 approve；状态停留 listening（未进 thinking = 未创建 turn）
+	approved, called := fx.conf.lastApproved()
+	require.True(t, called)
+	require.True(t, approved)
+	require.Equal(t, "listening", fx.down.lastState())
+
+	// 拦截路径同步执行于 asrPump：此刻 Executor 不得被调用
+	fx.exec.mu.Lock()
+	require.Empty(t, fx.exec.inputs)
+	fx.exec.mu.Unlock()
+}
+
+// 「算了」拦截为 deny。
+func TestSessionVoiceConfirmDenyInterceptsTurn(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.conf.resolved = true
+	fx.sess.Start(StartParams{})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "算了。"}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "confirm.resolved") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	approved, called := fx.conf.lastApproved()
+	require.True(t, called)
+	require.False(t, approved)
+	fx.exec.mu.Lock()
+	require.Empty(t, fx.exec.inputs)
+	fx.exec.mu.Unlock()
+}
+
+// 无待决议确认（resolved=false）时，「好的」按普通语句进 Chat 管线。
+func TestSessionVoiceConfirmFallsThroughWhenNoPending(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.conf.resolved = false
+	fx.sess.Start(StartParams{})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "好的"}
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1 && fx.exec.inputs[0].Content == "好的"
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Equal(t, 1, fx.conf.callCount()) // 词表命中 → 问过 resolver
+	require.Equal(t, -1, indexOf(fx.down.typesOf(), "confirm.resolved"))
+}
+
+// resolver 故障时降级：语句照常进 Chat 管线（语音失败不影响文字对话，NFR7）。
+func TestSessionVoiceConfirmResolverErrorFallsThrough(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.conf.err = errors.New("store down")
+	fx.sess.Start(StartParams{})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "好的"}
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+// 非确认词表的普通语句不询问 resolver。
+func TestSessionVoiceConfirmSkipsNonVocabUtterance(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "帮我打开微信"}
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Equal(t, 0, fx.conf.callCount())
 }

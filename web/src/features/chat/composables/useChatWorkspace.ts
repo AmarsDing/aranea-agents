@@ -51,7 +51,8 @@ import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useLlmRetryStore } from '../../../stores/chat/llmRetryStore';
 import { useChatEventRouter } from './useChatEventRouter';
-import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload } from '../v2Types';
+import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload, Task } from '../v2Types';
+import { useAddToEvalDataset } from '../../evaluation/useAddToEvalDataset';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
 import { SESSION_RUN_STATUS } from '../sessionRunStatus';
@@ -454,14 +455,23 @@ export function useChatWorkspace() {
     notifyError: (message) => $q.notify({ type: 'negative', message }),
   });
 
-  async function onMessageFeedback(payload: { messageId: string; rating: 'positive' | 'negative' }) {
+  // P1-2 负反馈采集：点赞/点踩携带上下文快照（task_id/input/output），
+  // 使评估页「反馈审查」列表自包含，任务删除后仍可一键转用例。
+  async function onMessageFeedback(payload: { task: Task; rating: 'positive' | 'negative' }) {
     const sid = sessionStore.currentSessionId();
     if (!sid) return;
+    const { task, rating } = payload;
+    const contextJson = JSON.stringify({
+      task_id: task.ID,
+      input: task.UserMessage ?? '',
+      output: activityStore.getTaskFinalReply(task.ID),
+    });
     try {
       await runtimeStore.submitFeedback({
         session_id: sid,
-        message_id: payload.messageId,
-        rating: payload.rating,
+        message_id: task.ID,
+        rating,
+        context_json: contextJson,
       });
       $q.notify({ type: 'positive', message: t('chat.feedbackThanks', '感谢反馈') });
     } catch (err) {
@@ -470,6 +480,17 @@ export function useChatWorkspace() {
         message: err instanceof Error ? err.message : t('chat.feedbackFailed', '反馈提交失败'),
       });
     }
+  }
+
+  // P1-1 对话→用例一键转化：气泡菜单 → 对话框选数据集 → UploadCases 通道。
+  const addToEval = useAddToEvalDataset();
+  function openAddToEvalCase(task: Task) {
+    void addToEval.openWith({
+      input: task.UserMessage,
+      expected_output: activityStore.getTaskFinalReply(task.ID),
+      source_task_id: task.ID,
+      source_session_id: task.SessionID,
+    });
   }
 
   function makeSessionTitle(content: string) {
@@ -1420,6 +1441,22 @@ export function useChatWorkspace() {
       regenerateV2Task: composerActions.regenerateV2Task,
       cancelBackgroundJob: composerActions.cancelBackgroundJob,
       onPasteUnsupported,
+    }),
+    // P1-1: 对话→评估用例对话框（页面模板渲染 AddEvalCaseDialog 并接线 @add-to-eval）。
+    evalCase: reactive({
+      open: addToEval.open,
+      submitting: addToEval.submitting,
+      datasetsLoading: addToEval.datasetsLoading,
+      datasetOptions: addToEval.datasetOptions,
+      mode: addToEval.mode,
+      datasetId: addToEval.datasetId,
+      newDatasetName: addToEval.newDatasetName,
+      input: addToEval.input,
+      expectedOutput: addToEval.expectedOutput,
+      // P3-2: 必须暴露 rubric，否则对话框录入的评分标准到不了 submit。
+      rubric: addToEval.rubric,
+      openFromTask: openAddToEvalCase,
+      submit: addToEval.submit,
     }),
     dialogs: useChatDialogs({
       deleteFlow,

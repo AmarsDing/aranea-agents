@@ -841,14 +841,16 @@ $env:KRATOS_HTTP_AUTH_DISABLED="1"
 go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 
 # Linux / macOS:
-# DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
+# DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 ```
+
+> ⚠️ **必须带 `-tags pgvector`**：缺失时向量存储静默降级，记忆中心（L2/L3 语义召回）向量读写全部返回 `ErrMemoryUnavailable`，启动日志仅有 Error 提示、进程照常运行。
 
 ```bash
 # 开发模式 B：真实 Cookie 登录（与生产一致）
 # $env:DEPLOY_ENV="dev"
 # $env:KRATOS_AUTH_SECRET="local-dev-only-change-me-32chars-minimum"
-# go run ./cmd/admin -conf ./configs
+# go run -tags pgvector ./cmd/admin -conf ./configs
 ```
 
 本地账号：**`dev` / `dev`** · 健康检查：`curl http://localhost:8000/healthz`

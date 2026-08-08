@@ -64,6 +64,7 @@ func newVoiceTestServer(asr *voiceTestASRSession) *VoiceWSServer {
 		&voiceTestBus{ch: make(chan biz.Event, 8)},
 		nil,
 		loggateway.NewNoop(),
+		nil, // confirmer：语音确认拦截在 voice/service 包单测覆盖
 	)
 }
 

@@ -178,6 +178,10 @@ func (m *fnMockRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]Run, err
 	return nil, nil
 }
 
+func (m *fnMockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]JudgeAnnotatedResult, error) {
+	return nil, nil
+}
+
 func TestListDatasets(t *testing.T) {
 	tests := []struct {
 		name      string

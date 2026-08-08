@@ -1,9 +1,9 @@
 /**
- * ParticleLayer：G5 粒子流（fast-graph 1:1 复刻，设计 §V12.8-1 C-2/D-6）。
+ * ParticleLayer：G5 粒子流（fast-graph 运动学复刻 + v2 单色青数据流，设计 §V12.8-1 C-2/D-6）。
  *
  * - MAX=80 并发上限、SPEED=0.45/s（≈2.2s/边）
  * - hover 节点 → 每邻居一粒子，相位均布 prog[i]=i/n（连续流）
- * - easeInOutQuad 缓动；时变彩虹 hue=0.5+0.32·sin((t·0.6+p·2.2+i·0.12)·π)
+ * - easeInOutQuad 缓动；单色青 particleTint（hue≈0.52 微扰 + light 呼吸，弃时变彩虹降亮度）
  * - PointsMaterial size=8 + 64px 径向渐变 glowTexture + vertexColors + depthWrite:false
  * - 纯数学走 particleMath（可单测）；本层只做 three 缓冲写入
  */
@@ -12,8 +12,8 @@ import {
   PARTICLE_MAX,
   advancePhase,
   easeInOutQuad,
-  particleHsl,
   particlePosition,
+  particleTint,
   spreadPhases,
 } from '../../../../features/knowledge/graph3d/particleMath';
 import { makeRadialTexture } from './BackdropLayer';
@@ -80,7 +80,7 @@ export class ParticleLayer {
     this.geometry.setDrawRange(0, n);
   }
 
-  /** 每帧推进（dt 秒）：位置 ease 插值 + 时变彩虹色。 */
+  /** 每帧推进（dt 秒）：位置 ease 插值 + 单色青呼吸色。 */
   update(nodePositions: Float32Array, dt: number): void {
     if (this.count === 0) return;
     this.time += dt;
@@ -101,7 +101,7 @@ export class ParticleLayer {
       this.positions[i * 3] = tmp[0];
       this.positions[i * 3 + 1] = tmp[1];
       this.positions[i * 3 + 2] = tmp[2];
-      const { h, s: sat, l } = particleHsl(this.time, p, i);
+      const { h, s: sat, l } = particleTint(this.time, p, i);
       tmpColor.setHSL(h, sat, l);
       this.colors[i * 3] = tmpColor.r;
       this.colors[i * 3 + 1] = tmpColor.g;

@@ -2450,3 +2450,57 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 | 项 | 说明 | 状态 |
 |---|---|---|
 | — | P2 召回升级四项已全部完成，无遗留待办 | ✅ |
+
+---
+
+## 十九、Phase R：记忆召回链路升级（2026-08-08 评审终稿）
+
+> 方案详见 [2026-08-08-review-memory-recall-upgrade.md](../reports/2026-08-08-review-memory-recall-upgrade.md)。
+> 前置已完成：embedder 落地（Ollama bge-m3/1024）+ 存量索引回填（195 facts + 39 episodes）。
+
+### 19.1 阶段一：P0 修复
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| R-P0-1 | reconciler 捞取 `pending` 状态事实（`ListStaleIndexFacts` 加 'pending'，保留 attempts 上限） | ✅ |
+| R-P0-2 | pgvector build tag 缺失时启动 Error 级告警（canary 探针 + README 强调 `-tags pgvector`） | ✅ |
+| R-P0-3 | L4 注入默认开启：schema `l0_inject_l4` Default(true) + 存量迁移（55 行 false→true） | ✅ |
+| R-P0-4 | L3 minScore 默认 0.55→0.35 + 存量迁移（60 行）；0.00 行不动 | ✅ |
+
+**阶段一完成记录（2026-08-08）**
+
+- R-P0-1：[memory_maintenance_adapter.go](../../../internal/data/memory_maintenance_adapter.go) `ListStaleIndexFacts` 查询加 `'pending'`；[memory_helpers.go](../../../internal/data/memory_helpers.go) `sqlFactSelect`/`scanFactRowJSON` 补 `index_attempts` 列（原断链：列存在但从未被 select/递增，disable 守卫是死代码）；[memory_fact_index_sync.go](../../../internal/data/memory_fact_index_sync.go) 失败路径 `index_attempts+1`、fresh 路径清零。测试 `TestListStaleIndexFacts_IncludesPending`（三状态覆盖 + fresh/disabled 排除 + JSON 携带 attempts）
+- R-P0-2：[data.go](../../../internal/data/data.go) `ensurePostgresSchemas` 两处降级分支（tag 缺失 / EnsureSchema 失败）Info/Warn 升级为 Error 显著告警；README 三条启动命令全部补 `-tags pgvector` + 警告块
+- R-P0-3/R-P0-4：[agent_defaults.go](../../../internal/biz/agent_defaults.go) + Ent schema + 前端 `agentRuntimeConfig.ts` 三处默认同步翻转；迁移 **20261130 `memory_recall_defaults_fix`**（`ddlMemoryRecallDefaultsFix`，幂等，值守卫 UPDATE）。测试 `TestDefaultAgentRuntimeSettings_L0InjectL4`/`_L3RecallMinScore` + `TestMemoryRecallDefaultsFixMigration`（含幂等重跑）
+- 顺带修复：`s6_coverage_test.go` `memEvalRepo2` 补 `ListJudgeAnnotatedResults` stub（并行会话 evaluation.Repo 接口扩展导致的编译断点，纯增量）
+- 验证：`internal/data` 全包 277s 绿、`internal/biz`+`cronrunner` 绿、`go build ./internal/...` 绿
+
+**阶段一运行时验证（2026-08-08，独立 GOCACHE + 带 `-tags pgvector` 重启 dev 服务）**
+
+- **迁移应用**：`schema_migrations` 20261130 `memory_recall_defaults_fix` applied_at=2026-08-07T20:25:45Z ✅
+- **P0-3 存量翻转**：`l4_enabled=true` 55 行 `l0_inject_l4` 全 false→true（探查前后对比）；0.00×239 行不动 ✅
+- **P0-4 存量翻转**：`l3_recall_min_score` 0.55×60→0.35×60；0.00×239 不动 ✅
+- **P0-1 reconciler 捞 pending**：启动日志 `memory index reconcile completed {total:3, synced:2, failed:1}`——3 条滞留 pending 被捞取，2 条转 fresh（195→197），1 条因 Ollama 冷启动 embed 超时转 stale（attempts=1，下轮重试，重试路径本身即 P0-1 设计意图）✅
+- **P0-2**：带 tag 启动无 pgvector Error 告警（反向证明 tag 缺失分支才会触发）✅
+- **中文查询召回**（Ollama embed → pgvector cosine 生产同路径）：「我想吃火锅」top1 dist=0.3567 显著领先次名 0.4818（该 dist 对应 Total≈0.4-0.5，正是旧默认 0.55 误杀、新默认 0.35 放行的区间，实测印证 P0-4 正确性）；「用户的饮食偏好是什么」top5 全为偏好类事实 ✅
+- **L4 注入就绪**：4 个 scope（含 `agent___spirit__`）持 5 active 实体，全部 inject_on=true（实体 scope × 迁移后配置对齐）；`L4MemoryCue` 门控/mention 排序/confidence 门已有单测覆盖（`l4_prompt_test.go`）✅
+- **全量测试**：5 FAIL 均非本任务——3× models.dev 网络依赖（环境受限，已知）；`internal/evaluation` build failed（并行会话接口演进中间态）；archlint 行数基线（多会话叠加 pre-existing，本任务贡献 +112 行：ddl_migration_registry +85 / memory_helpers +15 / data.go +12，待统一治理）；`TestMemoryEbbinghausDecay_Integration` 全量 flaky（单独跑通过，0.00s setup 竞争）
+- **金丝雀阈值决策**：`MemoryCanaryMinScore` 保持 0.55（刻意严于生产默认 0.35 的哨兵门，与 eval set min_score=0.55 同策略），代码注释与 design §16.4 已同步声明
+- 探查脚本：`test/db-probe-p0/main.go`（可重复执行，供阶段二/三复用）
+
+### 19.2 阶段二：P1 读路径升级（快而准）
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| R-P1-1 | 中文 bigram 分词：`tokenizeQuery`/`keywordOverlapScore`/`bigramJaccard` CJK rune bigram 化 | ⏳ |
+| R-P1-2 | FTS 中文通道：`memory_facts.statement` pg_trgm GIN 索引 + similarity 第三路候选入 RRF | ⏳ |
+| R-P1-3 | 自适应 minScore：`max(floor, top1×0.6)` 分布阈值，静态值降为 floor | ⏳ |
+| R-P1-4 | （可选）真实 Cross-Encoder：Ollama bge-reranker-v2-m3 实现 `biz.Reranker` | 📋 |
+
+### 19.3 阶段三：P2 结构增强
+
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| R-P2-1 | L1 写入侧排查（22 tasks/9 fields）：工具调用率与字段完整性 | ⏳ |
+| R-P2-2 | L4 增产：graph extraction 触发条件与产量排查（实体仅 5 条） | ⏳ |
+| R-P2-3 | 热度换页评估（冷 L3 降档/热事实置顶） | ⏳ |

@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -34,7 +35,7 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 		if in.Result.MemberToolCalls != nil {
 			toolCalls = in.Result.MemberToolCalls[ag.AgentKey]
 		}
-		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok)
+		r.persistStep(ctx, in.Run, in.TeamID, stepCtx.SortIndex(nodeID), m, ag, in.Content, stepMsg, in.Prov, in.Mod, in.DialogMode, toolCalls, cachedTok, time.Time{})
 		stepCtx.MarkPersisted(nodeID)
 	}
 }

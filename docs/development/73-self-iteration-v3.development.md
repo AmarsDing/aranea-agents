@@ -126,9 +126,17 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 | T5.2 | Console usecase（List/Get/Stats/Rules）+ Service 层 9 RPC（admin 鉴权、operator 身份、分页）+ SIRiskRules 可配置化（SystemSetting 持久化 + Pipeline/Router 消费）+ wire 注册 | Biz/Service/Data/Cmd | ✅ | biz/service/data 测试绿，`make wire && go build ./cmd/admin` 绿 |
 | T5.3 | 前端控制台 4 组件 + feature store + i18n 双语言包 | Web | ✅ | `pnpm lint && pnpm test && pnpm build` 绿（组件落 `components/self-improvement/`，diff 纯文本渲染；2026-08-01 补齐 RiskRulesDialog：configured 可编辑 + effective 只读双视图、客户端校验 阈值≥0 且 low≤medium、i18n 双语言、store 单测 11 例绿） |
 | T5.4 | 竞赛四件套更新（需求/概要/详细设计/实施进度对齐实现） | Docs | ✅ | 评审维度映射完整（2026-07-31，`competition/15-平台自改进/`：实施进度 v2.0 全量重写 + 概要 v1.1 + 详设 v1.1 + 需求 v1.1 版本对齐，8 项落地偏差全量记录） |
+| T5.5 | 控制台可用性硬化：路由常驻 + GetStatus 前置自检 RPC + typed-nil 防护 + 前端 disabled 空态/错误码人性化/统计降级/前置条件横幅 + G5 skipped 记录透明化 | Proto/Service/Web | ✅ | service 测试 10 项绿（含 typed-nil 构造回归），前端 lint/test/build 绿，i18n 无新增违规（2026-08-08） |
+
+**T5.5 落地备注（2026-08-08）**：
+- 问题起源：disabled 时 `SelfImprovementService` 整体不注册 → 控制台裸 404；且 wire 注入 nil 具体指针形成 typed-nil 接口，守卫失效 panic 500
+- 修复：`provideSelfImprovementService` 始终装配（usecase nil 时业务端点 503 `SELF_IMPROVEMENT_UNAVAILABLE`）；`NewSelfImprovementService` 显式接口转换防 typed-nil；`GetStatus` 不依赖 usecase（cfg + `SIRefineLLMReader` 窄口，探测全降级不报错）
+- 前端：`isDisabledError`（503+reason 前缀）→ disabled 空态（开启指引+重新检测）；errorKind 分类（forbidden/legacy/unavailable/unknown）映射 i18n 文案；`statsFailed` 独立降级；enabled 态 prereq 横幅（LLM 未配置/repo_root 无效）
+- G5 透明化：G1-G3 全过后落 `g5_eval` skipped 记录（design D4 注记），消除死枚举
+- 测试：`TestNewSelfImprovementService_TypedNilUsecase` 直接锁定构造路径回归；GetStatus 4 项（鉴权/disabled 降级/enabled 全绿/LLM 读取失败降级）
 
 **T5.2 落地备注（2026-07-31）**：
-- `provideSelfImprovementAdminUsecase` 已注册进 wire.Build（W6 备注回收），`SelfImprovementService` 经 `NewSelfImprovementService` 注入并注册 HTTP/gRPC（feature disabled 时 nil-guard 不注册）
+- `provideSelfImprovementAdminUsecase` 已注册进 wire.Build（W6 备注回收），`SelfImprovementService` 经 `NewSelfImprovementService` 注入并注册 HTTP/gRPC（~~feature disabled 时 nil-guard 不注册~~ → T5.5 起改为路由常驻，disabled 返回 503 SELF_IMPROVEMENT）
 - 风险规则链：`SIRiskRules`（biz，0/空继承默认）→ `si_risk_rule_repo.go`（Raw SQL 读写 `system_settings`，迁移 20261121 四列）→ `provideSIRiskRules` 启动加载（失败回退 config/代码默认）→ `NewSIRiskClassifierWithRules`（Pipeline Govern 阶段）+ 治理路由日配额（DB > config > 默认）
 - 服务端校验：阈值 ≥0、low ≤ medium（均非零时）、glob 非空且过 doublestar.ValidatePattern；GetRiskRules 返回 configured（原始）+ effective（归一化）双视图
 

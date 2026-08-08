@@ -281,7 +281,7 @@ func (a *memoryFactIndexMaintainerAdapter) ListStaleIndexFacts(ctx context.Conte
 		batchSize = 50
 	}
 	rows, err := a.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		a.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE embedding_status IN ('stale','failed') AND status = 'active' AND deleted_at = '' LIMIT ?`),
+		a.data.Dialect().RenumberPlaceholders(sqlFactSelect+` WHERE embedding_status IN ('stale','failed','pending') AND status = 'active' AND deleted_at = '' LIMIT ?`),
 		batchSize)
 	if err != nil {
 		return nil, entErrToBizErr(err, "MEMORY_L3")

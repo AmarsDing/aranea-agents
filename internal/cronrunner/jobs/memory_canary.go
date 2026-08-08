@@ -17,10 +17,13 @@ import (
 const (
 	// MemoryCanaryDefaultInterval is the default canary loop period (30m).
 	MemoryCanaryDefaultInterval = 30 * time.Minute
-	// MemoryCanaryMinScore is the production default L3 recall threshold
-	// (agent_runtime_settings.l3_recall_min_score default). The canary recalls
-	// with exactly this value so a regression in score computation (Bug A:
-	// Scores.Total = 0) is caught as a recall-stage failure.
+	// MemoryCanaryMinScore is a deliberately strict sentinel threshold for the
+	// canary recall stage. The production default l3_recall_min_score was
+	// lowered 0.55→0.35 on 2026-08-08 (P0-4: 0.55 false-killed typical
+	// relevant hits scoring Total≈0.4-0.5); the canary keeps 0.55 — its own
+	// synthetic fact is constructed to score well above it, so the stricter
+	// gate preserves regression-catching power (Bug A: Scores.Total = 0
+	// still fails the recall stage) without affecting production recall.
 	MemoryCanaryMinScore = 0.55
 
 	memoryCanaryScopeType = "canary"
@@ -33,10 +36,11 @@ const (
 
 // MemoryCanaryWorker periodically proves the memory closed loop works
 // end-to-end: it writes a synthetic fact through the production consolidation
-// upsert path, recalls it through the production L3 recall path at the
-// production default minScore, then invalidates it (bi-temporal archive) and
-// asserts it disappears. Any stage failure records the failure in
-// biz.MemoryCanaryStatus (alert metric) and emits a flow-log alarm.
+// upsert path, recalls it through the production L3 recall path at a strict
+// sentinel minScore (see MemoryCanaryMinScore), then invalidates it
+// (bi-temporal archive) and asserts it disappears. Any stage failure records
+// the failure in biz.MemoryCanaryStatus (alert metric) and emits a flow-log
+// alarm.
 //
 // Background: the 2026-07 memory outage (6 bugs across write/store/recall/
 // inject) survived because no code asserted "a written fact must come back".

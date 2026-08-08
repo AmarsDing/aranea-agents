@@ -33,6 +33,8 @@ func (s *capturingTeamRunner) RunTurnFromInput(ctx context.Context, _ biz.Sessio
 func (s *capturingTeamRunner) SetMediator(biz.TeamMediatorPort)               {}
 func (s *capturingTeamRunner) SetAwaitHookProvider(biz.AwaitHookProvider)     {}
 func (s *capturingTeamRunner) SetDeliverableGate(biz.TeamDeliverableGateFunc) {}
+func (s *capturingTeamRunner) SetUpstreamDeliverableSeed(biz.TeamUpstreamSeedFunc) {
+}
 
 // capturingTeamStarter implements biz.TeamStarterPort, capturing the
 // RootTaskActivityID visible in the HandleTeamTurnResult ctx.

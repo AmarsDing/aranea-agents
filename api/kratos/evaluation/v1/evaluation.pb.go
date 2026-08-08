@@ -1872,6 +1872,309 @@ func (x *CompareEvalRunsResponse) GetItems() []*EvalRunComparison {
 	return nil
 }
 
+// GetJudgeDivergenceRequest asks for judge-vs-human agreement over annotated
+// results of one dataset (P1-3, judge calibration).
+type GetJudgeDivergenceRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	// agent_id optionally restricts to one agent's runs.
+	AgentId string `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// threshold is the llm_judge_score pass cutoff (0 means default 0.5).
+	Threshold float32 `protobuf:"fixed32,3,opt,name=threshold,proto3" json:"threshold,omitempty"`
+	// limit caps the returned divergent case list (0 means default 50);
+	// counts always cover the full divergent set regardless of limit.
+	Limit         int32 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJudgeDivergenceRequest) Reset() {
+	*x = GetJudgeDivergenceRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJudgeDivergenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJudgeDivergenceRequest) ProtoMessage() {}
+
+func (x *GetJudgeDivergenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJudgeDivergenceRequest.ProtoReflect.Descriptor instead.
+func (*GetJudgeDivergenceRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetJudgeDivergenceRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *GetJudgeDivergenceRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *GetJudgeDivergenceRequest) GetThreshold() float32 {
+	if x != nil {
+		return x.Threshold
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// JudgeDivergenceCase is one annotated result where judge and human disagree.
+type JudgeDivergenceCase struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ResultId       string                 `protobuf:"bytes,1,opt,name=result_id,json=resultId,proto3" json:"result_id,omitempty"`
+	RunId          string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	CaseId         string                 `protobuf:"bytes,3,opt,name=case_id,json=caseId,proto3" json:"case_id,omitempty"`
+	Input          string                 `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`
+	ExpectedOutput string                 `protobuf:"bytes,5,opt,name=expected_output,json=expectedOutput,proto3" json:"expected_output,omitempty"`
+	ActualOutput   string                 `protobuf:"bytes,6,opt,name=actual_output,json=actualOutput,proto3" json:"actual_output,omitempty"`
+	LlmJudgeScore  float32                `protobuf:"fixed32,7,opt,name=llm_judge_score,json=llmJudgeScore,proto3" json:"llm_judge_score,omitempty"`
+	HumanPass      bool                   `protobuf:"varint,8,opt,name=human_pass,json=humanPass,proto3" json:"human_pass,omitempty"`
+	HumanComment   string                 `protobuf:"bytes,9,opt,name=human_comment,json=humanComment,proto3" json:"human_comment,omitempty"`
+	// divergence_kind: false_pass (judge pass, human fail — judge too lenient)
+	// or false_fail (judge fail, human pass — judge too strict).
+	DivergenceKind string `protobuf:"bytes,10,opt,name=divergence_kind,json=divergenceKind,proto3" json:"divergence_kind,omitempty"`
+	CreatedAt      string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JudgeDivergenceCase) Reset() {
+	*x = JudgeDivergenceCase{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JudgeDivergenceCase) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JudgeDivergenceCase) ProtoMessage() {}
+
+func (x *JudgeDivergenceCase) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JudgeDivergenceCase.ProtoReflect.Descriptor instead.
+func (*JudgeDivergenceCase) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *JudgeDivergenceCase) GetResultId() string {
+	if x != nil {
+		return x.ResultId
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetCaseId() string {
+	if x != nil {
+		return x.CaseId
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetInput() string {
+	if x != nil {
+		return x.Input
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetExpectedOutput() string {
+	if x != nil {
+		return x.ExpectedOutput
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetActualOutput() string {
+	if x != nil {
+		return x.ActualOutput
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetLlmJudgeScore() float32 {
+	if x != nil {
+		return x.LlmJudgeScore
+	}
+	return 0
+}
+
+func (x *JudgeDivergenceCase) GetHumanPass() bool {
+	if x != nil {
+		return x.HumanPass
+	}
+	return false
+}
+
+func (x *JudgeDivergenceCase) GetHumanComment() string {
+	if x != nil {
+		return x.HumanComment
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetDivergenceKind() string {
+	if x != nil {
+		return x.DivergenceKind
+	}
+	return ""
+}
+
+func (x *JudgeDivergenceCase) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type GetJudgeDivergenceResponse struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Threshold float32                `protobuf:"fixed32,1,opt,name=threshold,proto3" json:"threshold,omitempty"`
+	// annotated_total counts annotated results where llm_as_judge actually ran
+	// (detected via scores_json key, so legacy-path zeros are excluded).
+	AnnotatedTotal int32                  `protobuf:"varint,2,opt,name=annotated_total,json=annotatedTotal,proto3" json:"annotated_total,omitempty"`
+	AgreeCount     int32                  `protobuf:"varint,3,opt,name=agree_count,json=agreeCount,proto3" json:"agree_count,omitempty"`
+	DivergeCount   int32                  `protobuf:"varint,4,opt,name=diverge_count,json=divergeCount,proto3" json:"diverge_count,omitempty"`
+	AgreementRate  float32                `protobuf:"fixed32,5,opt,name=agreement_rate,json=agreementRate,proto3" json:"agreement_rate,omitempty"`
+	FalsePassCount int32                  `protobuf:"varint,6,opt,name=false_pass_count,json=falsePassCount,proto3" json:"false_pass_count,omitempty"`
+	FalseFailCount int32                  `protobuf:"varint,7,opt,name=false_fail_count,json=falseFailCount,proto3" json:"false_fail_count,omitempty"`
+	DivergentCases []*JudgeDivergenceCase `protobuf:"bytes,8,rep,name=divergent_cases,json=divergentCases,proto3" json:"divergent_cases,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetJudgeDivergenceResponse) Reset() {
+	*x = GetJudgeDivergenceResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJudgeDivergenceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJudgeDivergenceResponse) ProtoMessage() {}
+
+func (x *GetJudgeDivergenceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJudgeDivergenceResponse.ProtoReflect.Descriptor instead.
+func (*GetJudgeDivergenceResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *GetJudgeDivergenceResponse) GetThreshold() float32 {
+	if x != nil {
+		return x.Threshold
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetAnnotatedTotal() int32 {
+	if x != nil {
+		return x.AnnotatedTotal
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetAgreeCount() int32 {
+	if x != nil {
+		return x.AgreeCount
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetDivergeCount() int32 {
+	if x != nil {
+		return x.DivergeCount
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetAgreementRate() float32 {
+	if x != nil {
+		return x.AgreementRate
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetFalsePassCount() int32 {
+	if x != nil {
+		return x.FalsePassCount
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetFalseFailCount() int32 {
+	if x != nil {
+		return x.FalseFailCount
+	}
+	return 0
+}
+
+func (x *GetJudgeDivergenceResponse) GetDivergentCases() []*JudgeDivergenceCase {
+	if x != nil {
+		return x.DivergentCases
+	}
+	return nil
+}
+
 var File_kratos_evaluation_v1_evaluation_proto protoreflect.FileDescriptor
 
 const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
@@ -2051,7 +2354,38 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x0fdelta_llm_judge\x18\r \x01(\x02R\rdeltaLlmJudge\x127\n" +
 	"\x18delta_tool_call_accuracy\x18\x0e \x01(\x02R\x15deltaToolCallAccuracy\"X\n" +
 	"\x17CompareEvalRunsResponse\x12=\n" +
-	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunComparisonR\x05items2\xa4\x0f\n" +
+	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunComparisonR\x05items\"\x8f\x01\n" +
+	"\x19GetJudgeDivergenceRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1c\n" +
+	"\tthreshold\x18\x03 \x01(\x02R\tthreshold\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\"\xfa\x02\n" +
+	"\x13JudgeDivergenceCase\x12\x1b\n" +
+	"\tresult_id\x18\x01 \x01(\tR\bresultId\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
+	"\acase_id\x18\x03 \x01(\tR\x06caseId\x12\x14\n" +
+	"\x05input\x18\x04 \x01(\tR\x05input\x12'\n" +
+	"\x0fexpected_output\x18\x05 \x01(\tR\x0eexpectedOutput\x12#\n" +
+	"\ractual_output\x18\x06 \x01(\tR\factualOutput\x12&\n" +
+	"\x0fllm_judge_score\x18\a \x01(\x02R\rllmJudgeScore\x12\x1d\n" +
+	"\n" +
+	"human_pass\x18\b \x01(\bR\thumanPass\x12#\n" +
+	"\rhuman_comment\x18\t \x01(\tR\fhumanComment\x12'\n" +
+	"\x0fdivergence_kind\x18\n" +
+	" \x01(\tR\x0edivergenceKind\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAt\"\xf8\x02\n" +
+	"\x1aGetJudgeDivergenceResponse\x12\x1c\n" +
+	"\tthreshold\x18\x01 \x01(\x02R\tthreshold\x12'\n" +
+	"\x0fannotated_total\x18\x02 \x01(\x05R\x0eannotatedTotal\x12\x1f\n" +
+	"\vagree_count\x18\x03 \x01(\x05R\n" +
+	"agreeCount\x12#\n" +
+	"\rdiverge_count\x18\x04 \x01(\x05R\fdivergeCount\x12%\n" +
+	"\x0eagreement_rate\x18\x05 \x01(\x02R\ragreementRate\x12(\n" +
+	"\x10false_pass_count\x18\x06 \x01(\x05R\x0efalsePassCount\x12(\n" +
+	"\x10false_fail_count\x18\a \x01(\x05R\x0efalseFailCount\x12R\n" +
+	"\x0fdivergent_cases\x18\b \x03(\v2).kratos.evaluation.v1.JudgeDivergenceCaseR\x0edivergentCases2\xdd\x10\n" +
 	"\x11EvaluationService\x12\x82\x01\n" +
 	"\rCreateDataset\x12*.kratos.evaluation.v1.CreateDatasetRequest\x1a!.kratos.evaluation.v1.EvalDataset\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/evaluation/datasets\x12~\n" +
 	"\n" +
@@ -2067,7 +2401,8 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\rGetRunResults\x12*.kratos.evaluation.v1.GetRunResultsRequest\x1a+.kratos.evaluation.v1.GetRunResultsResponse\",\x82\xd3\xe4\x93\x02&\x12$/v1/evaluation/runs/{run_id}/results\x12\xb3\x01\n" +
 	"\x12AnnotateCaseResult\x12/.kratos.evaluation.v1.AnnotateCaseResultRequest\x1a$.kratos.evaluation.v1.EvalCaseResult\"F\x82\xd3\xe4\x93\x02@:\x01*2;/v1/evaluation/runs/{run_id}/results/{result_id}/annotation\x12\xa4\x01\n" +
 	"\x11GetAgentEvalTrend\x12..kratos.evaluation.v1.GetAgentEvalTrendRequest\x1a/.kratos.evaluation.v1.GetAgentEvalTrendResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/evaluation/agents/{agent_id}/trend\x12\x96\x01\n" +
-	"\x0fCompareEvalRuns\x12,.kratos.evaluation.v1.CompareEvalRunsRequest\x1a-.kratos.evaluation.v1.CompareEvalRunsResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/evaluation/runs/compareBG\n" +
+	"\x0fCompareEvalRuns\x12,.kratos.evaluation.v1.CompareEvalRunsRequest\x1a-.kratos.evaluation.v1.CompareEvalRunsResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/evaluation/runs/compare\x12\xb6\x01\n" +
+	"\x12GetJudgeDivergence\x12/.kratos.evaluation.v1.GetJudgeDivergenceRequest\x1a0.kratos.evaluation.v1.GetJudgeDivergenceResponse\"=\x82\xd3\xe4\x93\x027\x125/v1/evaluation/datasets/{dataset_id}/judge-divergenceBG\n" +
 	"\x18api.kratos.evaluation.v1P\x01Z)aranea-agents/api/kratos/evaluation/v1;v1b\x06proto3"
 
 var (
@@ -2082,35 +2417,38 @@ func file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP() []byte {
 	return file_kratos_evaluation_v1_evaluation_proto_rawDescData
 }
 
-var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_kratos_evaluation_v1_evaluation_proto_goTypes = []any{
-	(*EvalDataset)(nil),               // 0: kratos.evaluation.v1.EvalDataset
-	(*EvalCase)(nil),                  // 1: kratos.evaluation.v1.EvalCase
-	(*EvalRun)(nil),                   // 2: kratos.evaluation.v1.EvalRun
-	(*EvalCaseResult)(nil),            // 3: kratos.evaluation.v1.EvalCaseResult
-	(*CreateDatasetRequest)(nil),      // 4: kratos.evaluation.v1.CreateDatasetRequest
-	(*GetDatasetRequest)(nil),         // 5: kratos.evaluation.v1.GetDatasetRequest
-	(*ListDatasetsRequest)(nil),       // 6: kratos.evaluation.v1.ListDatasetsRequest
-	(*ListDatasetsResponse)(nil),      // 7: kratos.evaluation.v1.ListDatasetsResponse
-	(*DeleteDatasetRequest)(nil),      // 8: kratos.evaluation.v1.DeleteDatasetRequest
-	(*UpdateDatasetRequest)(nil),      // 9: kratos.evaluation.v1.UpdateDatasetRequest
-	(*UploadCasesRequest)(nil),        // 10: kratos.evaluation.v1.UploadCasesRequest
-	(*UploadCasesResponse)(nil),       // 11: kratos.evaluation.v1.UploadCasesResponse
-	(*RunEvaluationRequest)(nil),      // 12: kratos.evaluation.v1.RunEvaluationRequest
-	(*GetRunRequest)(nil),             // 13: kratos.evaluation.v1.GetRunRequest
-	(*DeleteRunRequest)(nil),          // 14: kratos.evaluation.v1.DeleteRunRequest
-	(*ListRunsRequest)(nil),           // 15: kratos.evaluation.v1.ListRunsRequest
-	(*ListRunsResponse)(nil),          // 16: kratos.evaluation.v1.ListRunsResponse
-	(*GetRunResultsRequest)(nil),      // 17: kratos.evaluation.v1.GetRunResultsRequest
-	(*GetRunResultsResponse)(nil),     // 18: kratos.evaluation.v1.GetRunResultsResponse
-	(*AnnotateCaseResultRequest)(nil), // 19: kratos.evaluation.v1.AnnotateCaseResultRequest
-	(*GetAgentEvalTrendRequest)(nil),  // 20: kratos.evaluation.v1.GetAgentEvalTrendRequest
-	(*EvalTrendPoint)(nil),            // 21: kratos.evaluation.v1.EvalTrendPoint
-	(*GetAgentEvalTrendResponse)(nil), // 22: kratos.evaluation.v1.GetAgentEvalTrendResponse
-	(*CompareEvalRunsRequest)(nil),    // 23: kratos.evaluation.v1.CompareEvalRunsRequest
-	(*EvalRunComparison)(nil),         // 24: kratos.evaluation.v1.EvalRunComparison
-	(*CompareEvalRunsResponse)(nil),   // 25: kratos.evaluation.v1.CompareEvalRunsResponse
-	(*emptypb.Empty)(nil),             // 26: google.protobuf.Empty
+	(*EvalDataset)(nil),                // 0: kratos.evaluation.v1.EvalDataset
+	(*EvalCase)(nil),                   // 1: kratos.evaluation.v1.EvalCase
+	(*EvalRun)(nil),                    // 2: kratos.evaluation.v1.EvalRun
+	(*EvalCaseResult)(nil),             // 3: kratos.evaluation.v1.EvalCaseResult
+	(*CreateDatasetRequest)(nil),       // 4: kratos.evaluation.v1.CreateDatasetRequest
+	(*GetDatasetRequest)(nil),          // 5: kratos.evaluation.v1.GetDatasetRequest
+	(*ListDatasetsRequest)(nil),        // 6: kratos.evaluation.v1.ListDatasetsRequest
+	(*ListDatasetsResponse)(nil),       // 7: kratos.evaluation.v1.ListDatasetsResponse
+	(*DeleteDatasetRequest)(nil),       // 8: kratos.evaluation.v1.DeleteDatasetRequest
+	(*UpdateDatasetRequest)(nil),       // 9: kratos.evaluation.v1.UpdateDatasetRequest
+	(*UploadCasesRequest)(nil),         // 10: kratos.evaluation.v1.UploadCasesRequest
+	(*UploadCasesResponse)(nil),        // 11: kratos.evaluation.v1.UploadCasesResponse
+	(*RunEvaluationRequest)(nil),       // 12: kratos.evaluation.v1.RunEvaluationRequest
+	(*GetRunRequest)(nil),              // 13: kratos.evaluation.v1.GetRunRequest
+	(*DeleteRunRequest)(nil),           // 14: kratos.evaluation.v1.DeleteRunRequest
+	(*ListRunsRequest)(nil),            // 15: kratos.evaluation.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),           // 16: kratos.evaluation.v1.ListRunsResponse
+	(*GetRunResultsRequest)(nil),       // 17: kratos.evaluation.v1.GetRunResultsRequest
+	(*GetRunResultsResponse)(nil),      // 18: kratos.evaluation.v1.GetRunResultsResponse
+	(*AnnotateCaseResultRequest)(nil),  // 19: kratos.evaluation.v1.AnnotateCaseResultRequest
+	(*GetAgentEvalTrendRequest)(nil),   // 20: kratos.evaluation.v1.GetAgentEvalTrendRequest
+	(*EvalTrendPoint)(nil),             // 21: kratos.evaluation.v1.EvalTrendPoint
+	(*GetAgentEvalTrendResponse)(nil),  // 22: kratos.evaluation.v1.GetAgentEvalTrendResponse
+	(*CompareEvalRunsRequest)(nil),     // 23: kratos.evaluation.v1.CompareEvalRunsRequest
+	(*EvalRunComparison)(nil),          // 24: kratos.evaluation.v1.EvalRunComparison
+	(*CompareEvalRunsResponse)(nil),    // 25: kratos.evaluation.v1.CompareEvalRunsResponse
+	(*GetJudgeDivergenceRequest)(nil),  // 26: kratos.evaluation.v1.GetJudgeDivergenceRequest
+	(*JudgeDivergenceCase)(nil),        // 27: kratos.evaluation.v1.JudgeDivergenceCase
+	(*GetJudgeDivergenceResponse)(nil), // 28: kratos.evaluation.v1.GetJudgeDivergenceResponse
+	(*emptypb.Empty)(nil),              // 29: google.protobuf.Empty
 }
 var file_kratos_evaluation_v1_evaluation_proto_depIdxs = []int32{
 	0,  // 0: kratos.evaluation.v1.ListDatasetsResponse.items:type_name -> kratos.evaluation.v1.EvalDataset
@@ -2118,39 +2456,42 @@ var file_kratos_evaluation_v1_evaluation_proto_depIdxs = []int32{
 	3,  // 2: kratos.evaluation.v1.GetRunResultsResponse.items:type_name -> kratos.evaluation.v1.EvalCaseResult
 	21, // 3: kratos.evaluation.v1.GetAgentEvalTrendResponse.points:type_name -> kratos.evaluation.v1.EvalTrendPoint
 	24, // 4: kratos.evaluation.v1.CompareEvalRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRunComparison
-	4,  // 5: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
-	5,  // 6: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
-	6,  // 7: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
-	8,  // 8: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
-	9,  // 9: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
-	10, // 10: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
-	12, // 11: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
-	13, // 12: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
-	14, // 13: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
-	15, // 14: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
-	17, // 15: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
-	19, // 16: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
-	20, // 17: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
-	23, // 18: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
-	0,  // 19: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	0,  // 20: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	7,  // 21: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
-	26, // 22: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
-	0,  // 23: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	11, // 24: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
-	2,  // 25: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
-	2,  // 26: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
-	26, // 27: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
-	16, // 28: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
-	18, // 29: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
-	3,  // 30: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
-	22, // 31: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
-	25, // 32: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
-	19, // [19:33] is the sub-list for method output_type
-	5,  // [5:19] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	27, // 5: kratos.evaluation.v1.GetJudgeDivergenceResponse.divergent_cases:type_name -> kratos.evaluation.v1.JudgeDivergenceCase
+	4,  // 6: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
+	5,  // 7: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
+	6,  // 8: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
+	8,  // 9: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
+	9,  // 10: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
+	10, // 11: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
+	12, // 12: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
+	13, // 13: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
+	14, // 14: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
+	15, // 15: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
+	17, // 16: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
+	19, // 17: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
+	20, // 18: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
+	23, // 19: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
+	26, // 20: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:input_type -> kratos.evaluation.v1.GetJudgeDivergenceRequest
+	0,  // 21: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	0,  // 22: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	7,  // 23: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
+	29, // 24: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
+	0,  // 25: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	11, // 26: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
+	2,  // 27: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
+	2,  // 28: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
+	29, // 29: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
+	16, // 30: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
+	18, // 31: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
+	3,  // 32: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
+	22, // 33: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
+	25, // 34: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
+	28, // 35: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:output_type -> kratos.evaluation.v1.GetJudgeDivergenceResponse
+	21, // [21:36] is the sub-list for method output_type
+	6,  // [6:21] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kratos_evaluation_v1_evaluation_proto_init() }
@@ -2166,7 +2507,7 @@ func file_kratos_evaluation_v1_evaluation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_evaluation_v1_evaluation_proto_rawDesc), len(file_kratos_evaluation_v1_evaluation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

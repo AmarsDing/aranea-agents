@@ -67,6 +67,8 @@ type SessionDeps struct {
 	Bus       biz.EventBus
 	Executor  ChatTurnExecutor
 	Canceller RunCanceller
+	// Confirmer 语音确认决议端口（V2-T5）；nil 时关闭语音确认拦截。
+	Confirmer ConfirmResolver
 	Infra     *event.Infra
 	LG        loggateway.Logger
 }
@@ -328,6 +330,12 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	}
 	_ = s.down.SendJSON(map[string]any{"type": "asr.final", "text": text, "duration_ms": ev.DurationMs})
 	s.flow.LogDone("voice.asr.final", "语音识别终稿", event.P("duration_ms", ev.DurationMs))
+	// V2-T5 语音确认拦截：词表命中且有待决议确认时，决议确认且不创建 turn。
+	if decision := MatchVoiceConfirm(text); decision != VoiceConfirmNone {
+		if s.tryResolveVoiceConfirm(text, decision) {
+			return
+		}
+	}
 	s.mu.Lock()
 	if _, err := Transition(s.state, EvASRFinal); err != nil {
 		s.mu.Unlock()
@@ -353,6 +361,39 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 			s.handleTurnFailure(err)
 		}
 	}()
+}
+
+// tryResolveVoiceConfirm 尝试将词表命中的语句决议为工具确认（V2-T5）。
+// 返回 true = 已拦截（停留 listening）；false = 按普通语句进 Chat 管线
+// （无待决议确认 / resolver 故障降级，NFR7：语音失败不影响文字对话）。
+func (s *Session) tryResolveVoiceConfirm(text string, decision VoiceConfirmDecision) bool {
+	s.mu.Lock()
+	resolver := s.deps.Confirmer
+	st := s.state
+	s.mu.Unlock()
+	if resolver == nil || st != StateListening {
+		return false
+	}
+	approved := decision == VoiceConfirmApprove
+	// 与 Chat Turn 一致：决议存活独立于连接（appctx），传播 userID。
+	ctx := ctxuser.WithUserID(appctx.Ctx(), s.userID)
+	resolved, err := resolver.ResolvePendingConfirm(ctx, s.sessionID, approved)
+	if err != nil {
+		s.lg.Warn("voice confirm resolve failed, falling through to chat turn",
+			loggateway.StepID("voice.confirm.resolve_fail"), loggateway.Err(err))
+		return false
+	}
+	if !resolved {
+		return false
+	}
+	word := "deny"
+	if approved {
+		word = "approve"
+	}
+	_ = s.down.SendJSON(map[string]any{"type": "confirm.resolved", "decision": word})
+	s.flow.LogDone("voice.confirm.resolved", "语音确认决议", event.P("decision", word), event.P("text", text))
+	s.lg.Info("voice confirm resolved", loggateway.StepID("voice.confirm.resolved"), loggateway.Str("decision", word))
+	return true
 }
 
 func turnRef(n int) string {

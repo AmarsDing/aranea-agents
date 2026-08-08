@@ -37,7 +37,9 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L0TruncateStrategy:                "summary",
 		L0InjectL1:                        true,
 		L0InjectL3:                        true,
-		L0InjectL4:                        false,
+		// P0-3 (2026-08-08): L4 注入默认开。下游有 0.3 confidence 门控 +
+		// maxPaths 上限兜底；默认关导致 L4 图谱从未进入任何 prompt。
+		L0InjectL4:                        true,
 		L0L3MaxChunks:                     5,
 		L0L4MaxPaths:                      3,
 		L0SnapshotMode:                    "on_warning",
@@ -59,7 +61,8 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		L2ArchiveAfterDays:   30,
 		L3Enabled:            true,
 		L3RecallTopK:         5,
-		L3RecallMinScore:     0.55,
+		// P0-4 (2026-08-08): 0.55 会误杀典型相关命中（加权 Total≈0.4-0.5）。
+		L3RecallMinScore:     0.35,
 		L3RecallScopesJSON:   `["agent","user","team","workspace"]`,
 		L3DecayIntervalHours: 24,
 		L3ArchiveThreshold:   0.2,

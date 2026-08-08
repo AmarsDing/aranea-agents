@@ -89,6 +89,10 @@ func (b *FrameworkBridge) Execute(
 		return nil, nil, 0, 0, fmt.Errorf("create eval set: %w", err)
 	}
 	es := BizCasesToEvalSet(dataset, cases, b.lg)
+	// Case-level rubrics target the llm_as_judge metric instance; the framework
+	// fails a case whose rubric references an unregistered metric, so strip
+	// them when this run does not compute llm_as_judge.
+	stripCaseRubricsWhenNoJudge(es, cfg.Metrics)
 	for _, c := range es.EvalCases {
 		if err := evalSetMgr.AddCase(ctx, AppName, evalSetID, c); err != nil {
 			return nil, nil, 0, 0, fmt.Errorf("add eval case: %w", err)

@@ -4,6 +4,8 @@
     <TaskList
       :session-id="sessionId"
       @regenerate="(t) => $emit('regenerate', t)"
+      @add-to-eval="(t) => $emit('add-to-eval', t)"
+      @feedback="(p) => $emit('feedback', p)"
       @resume-task="(t) => $emit('resume-task', t)"
       @pause-agent="(sid) => $emit('pause-agent', sid)"
       @inject-agent="(p) => $emit('inject-agent', p)"
@@ -22,6 +24,8 @@ import type { ConfirmStepPayload, SubmitClarificationPayload } from '../../../fe
 defineProps<{ sessionId: string }>();
 defineEmits<{
   regenerate: [task: Task];
+  'add-to-eval': [task: Task];
+  feedback: [payload: { task: Task; rating: 'positive' | 'negative' }];
   'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];

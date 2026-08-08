@@ -358,6 +358,19 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     return out.sort(compareBySeqThenTime);
   }
 
+  /** 任务最终回复文本：按序取最后一个非空 reply step 的 Content（转评估用例/复制用）。 */
+  function getTaskFinalReply(taskId: string): string {
+    let last = '';
+    const collect = (list: Step[]) => {
+      for (const s of list) {
+        if (s.Kind === 'reply' && s.Content?.trim()) last = s.Content.trim();
+      }
+    };
+    for (const turn of getTaskTurns(taskId)) collect(getTurnSteps(turn.ID));
+    collect(getTaskOrphanSteps(taskId));
+    return last;
+  }
+
   function getTaskTeamStages(taskId: string): TeamStage[] {
     const out: TeamStage[] = [];
     for (const ts of teamStages.value.values()) {
@@ -740,6 +753,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getTurnSteps,
     getTurnRecallHits,
     getTaskOrphanSteps,
+    getTaskFinalReply,
     getTaskTeamStages,
     getTurnTeamStages,
     getTaskPlanBoards,

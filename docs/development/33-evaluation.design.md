@@ -78,6 +78,8 @@ evaluation.Runner (async goroutine)
 
 **EvalTrendPoint** / **EvalRunComparison**：趋势点与 A/B 对比结果。
 
+**JudgeDivergence** / **JudgeDivergenceCase**（P1-3）：judge 与人工标注的一致性统计（一致率 / false_pass / false_fail / 分歧用例明细）。
+
 ### 3.2 API 端点
 
 | 方法 | 路径 | RPC | 说明 |
@@ -96,6 +98,7 @@ evaluation.Runner (async goroutine)
 | PATCH | `/v1/evaluation/runs/{run_id}/results/{result_id}/annotation` | AnnotateCaseResult | 人工标注 |
 | GET | `/v1/evaluation/agents/{agent_id}/trend` | GetAgentEvalTrend | Agent 分数趋势 |
 | POST | `/v1/evaluation/runs/compare` | CompareEvalRuns | A/B 或多 run 对比 |
+| GET | `/v1/evaluation/datasets/{dataset_id}/judge-divergence` | GetJudgeDivergence | judge/人工分歧统计（P1-3，query：agent_id/threshold/limit） |
 
 ### 3.3 RunEvaluation 请求
 
@@ -127,9 +130,10 @@ Case：InsertCases / ListCases  (2)
 Run：CreateRun / GetRun / UpdateRun / DeleteRun / ListRuns  (5)
 CaseResult：InsertCaseResult / ListCaseResults / GetCaseResult / UpdateCaseResultAnnotation  (4)
 Trend/Compare：ListTrendPoints / GetRunsByIDs  (2)
+Divergence：ListJudgeAnnotatedResults  (1)
 ```
 
-合计 19 方法。
+合计 20 方法。
 
 ### 4.3 EvalUsecase
 
@@ -137,8 +141,9 @@ Trend/Compare：ListTrendPoints / GetRunsByIDs  (2)
 - Run 创建（初始 status=`pending`）+ 查询 + DeleteRun
 - CaseResult 列表 + AnnotateCaseResult（EVAL-02）
 - GetAgentEvalTrend（趋势数据）+ CompareEvalRuns（A/B 对比，baseline = 首个 run）
+- GetJudgeDivergence（judge/人工一致性统计，`divergence.go`，P1-3）
 
-合计 17 方法。
+合计 18 方法。
 
 ---
 
@@ -189,6 +194,11 @@ Trend/Compare：ListTrendPoints / GetRunsByIDs  (2)
 - `turns`：多轮对话序列
 - `user_simulation`：`{script: "..."}` 脚本驱动 或 `{use_llm: true, conversation_plan: "..."}` LLM 驱动
 - `expected_tools` / `expected_tool_calls`：ToolTrajectory 期望工具序列
+- `rubric`：用例级评分标准文本（P3-2）。适配层映射为框架 `EvalCase.Rubrics`（绑定 `llm_as_judge` 指标实例），judge 将其合并进评分准则；当运行未勾选 `llm_as_judge` 时框架会因指标未注册而使该用例失败，故 `FrameworkBridge.Execute` 在此场景自动剥离 rubric（`stripCaseRubricsWhenNoJudge`）
+- `session_user_id` / `session_state`：覆盖 SessionInput 默认值（UserID 默认 `"eval"`，State 默认空）
+- `source` / `task_id` / `session_id`：溯源元数据（P1-1 对话→用例一键转化写入 `source="chat"` + 来源任务/会话 ID；不参与执行语义，仅供回溯）
+
+> **框架版本说明（2026-08-08）**：`trpc-agent-go/evaluation` 模块经 `go.mod` replace 到 vendored 副本（`pkg/trpc-agent-go/evaluation`）——发布版 v1.9.0 的 `EvalCase` 无用例级 `Rubrics` 字段。切换带来一处 API 迁移：`promptiter/engine.RunRequest.TrainEvalSetIDs/ValidationEvalSetIDs` → `Train/Validation []EvalSetInput`（`internal/agent/prompt_iter_adapter.go`）。
 
 ---
 
@@ -277,6 +287,35 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 | `aranea_eval_runs_total{status}` | Counter | started / completed / error |
 | `aranea_eval_case_duration_seconds` | Histogram | 逐用例执行耗时 |
 
+### 6.8 Judge 分歧统计（P1-3）
+
+Judge 校准闭环（对标 T6）的入口：人工标注与 llm_as_judge 分数已同表并存于 `eval_case_results`，本节聚合两者一致性，使 judge 失败模式（过宽/过严）可见。
+
+- **数据源**：`ListJudgeAnnotatedResults`（data 层三表 join：results ⨝ runs ⨝ cases，过滤 `human_pass IS NOT NULL`）；judge 分数读 `scores_json["llm_as_judge"]`——该键存在是 judge 真实评过分的唯一可靠信号（`llm_judge_score` 列默认 0 无法区分）
+- **阈值**：默认 `DefaultJudgePassThreshold = 0.5`（与框架 judge pass cutoff 一致），可经 query `threshold` 覆盖
+- **输出**：`agreement_rate` / `false_pass_count`（judge 过宽）/ `false_fail_count`（judge 过严）/ 分歧明细；计数覆盖全量分歧集，明细列表按 `limit` 截断（默认 50）
+- **前端**：`EvaluationAnalyticsPanel` 分歧卡片（`loadDivergence`，标注保存后自动刷新）
+
+### 6.9 对话转用例与负反馈采集（P1-1 / P1-2）
+
+评估飞轮的两条生产数据入口：
+
+**P1-1 对话→用例一键转化**：TaskCard 气泡菜单「加入评估」→ `useAddToEvalDataset.openWith`（预填 input=用户消息、expected_output=Agent 最终回复、source 溯源元数据）→ `AddEvalCaseDialog`（选已有数据集或内联新建）→ 复用 `UploadCases` 通道落库。
+
+**P1-2 负反馈采集→待审查→转用例**：
+
+```
+TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 {task_id,input,output}）
+  → service/chat_feedback.go 发 SystemNoticeEvent("user_feedback")
+  → biz/event_bus_user_feedback_consumer.go → RecordUserFeedbackMonitor
+  → monitor_events（event_key=chat.user_feedback，negative → status=warning）
+  → EvaluationFeedbackPanel 读取 warning 列表（快照自包含，任务删除后仍可转化）
+  → 「转为用例」复用 AddEvalCaseDialog
+```
+
+- 快照写入侧容错：`context_json` 宽容解析，坏 JSON 静默忽略（反馈持久化永不因快照失败）；input/output 快照按 2000 runes 截断（`feedbackContextSnapshotMaxRunes`）
+- 复用的 chat.proto 契约定点见 [1-chat.design.md](./1-chat.design.md)（`SubmitMessageFeedback` RPC + `context_json` 字段）
+
 ---
 
 ## 七、前端
@@ -288,8 +327,12 @@ Proto：`SystemSettings.eval_llm`；前端 **系统设置** `/settings` 表单�
 | — | `EvaluationCreateDialog.vue` | 新建数据集弹窗（名称 + 描述） |
 | — | `EvaluationRunDialog.vue` | 启动评估弹窗（Agent 选择 + 指标 + MultiRun 次数） |
 | — | `EvaluationResultsDialog.vue` | 逐用例详情 + 人工标注 + CSV/JSON 导出 |
-| — | `EvaluationAnalyticsPanel.vue` | 趋势表 + A/B Run 多选对比 |
-| — | `features/evaluation/api.ts` | 12 个 API 函数（含 snake_case/camelCase 双格式映射） |
+| — | `EvaluationAnalyticsPanel.vue` | 趋势表 + A/B Run 多选对比 + judge 分歧卡片（P1-3） |
+| — | `AddEvalCaseDialog.vue` | 对话/反馈→用例对话框（P1-1/P1-2；含数据集选择/内联新建 + rubric 录入 P3-2） |
+| — | `EvaluationFeedbackPanel.vue` | 负反馈待审查列表（P1-2；monitor_events warning → 一键转用例） |
+| — | `features/evaluation/useAddToEvalDataset.ts` | 转用例对话框状态 + 提交（metadata_json：source 溯源 + rubric） |
+| — | `features/evaluation/useFeedbackReview.ts` | 负反馈列表加载（monitorStore.fetchMonitorEvents 封装） |
+| — | `features/evaluation/api.ts` | 13 个 API 函数（含 snake_case/camelCase 双格式映射） |
 | — | `features/evaluation/types.ts` | 13 个类型定义 |
 | — | `features/evaluation/useEvaluationPage.ts` | 页面级 Composable |
 | — | `features/evaluation/evaluationTableUi.ts` | 5 组表格列定义 |

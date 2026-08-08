@@ -42,6 +42,14 @@ service SelfImprovementService {
   rpc GetOutcomeStats (GetOutcomeStatsRequest) returns (GetOutcomeStatsResponse) {
     option (google.api.http) = { get: "/v1/self-improvement/outcome-stats" };
   }
+  // GetStatus returns the feature availability + prerequisite preflight view
+  // (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+  // Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+  // it answers even when the feature is disabled — the console uses it to
+  // render the disabled empty state / missing-prerequisite guidance.
+  rpc GetStatus (GetStatusRequest) returns (GetStatusResponse) {
+    option (google.api.http) = { get: "/v1/self-improvement/status" };
+  }
   // GetRiskRules returns the configured risk-classification rules
   // (0/empty fields inherit the code defaults; effective carries the
   // normalized values actually consumed by the pipeline/router).
@@ -128,6 +136,22 @@ message TriggerOutcomeStatsMsg {
   int64 effective = 3;
   int64 neutral = 4;
   int64 regressed = 5;
+}
+
+// ── Status / preflight (P5.5 console usability) ─────────────────────────────
+
+message GetStatusRequest {}
+
+// GetStatusResponse reports whether the self-improvement pipeline is enabled
+// and whether its hard prerequisites are satisfied. All fields are best-effort
+// (a failing subsystem degrades to false/empty, never to an error).
+message GetStatusResponse {
+  bool enabled = 1;                // self_improvement.enabled master switch
+  bool refine_llm_configured = 2;  // DefaultRefineLLM provider+model set (Analyst/Patcher/Critic hard dependency)
+  string refine_llm_provider = 3;  // configured provider (empty when unset)
+  string refine_llm_model = 4;     // configured model (empty when unset)
+  string repo_root = 5;            // resolved sandbox repo root (config sandbox.repo_root, else process cwd)
+  bool repo_root_valid = 6;        // resolved root exists and contains .git
 }
 
 // ── Risk rules (D6/D10 configurable rule set) ───────────────────────────────

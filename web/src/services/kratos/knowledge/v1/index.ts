@@ -247,6 +247,49 @@ export type ListCollectionGraphResponse = {
   edges: CollectionGraphEdge[] | undefined;
 };
 
+// EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
+// source = "norm" (same name_norm, different display name) or "embedding"
+// (cosine similarity of entity-name embeddings).
+export type EntityMergeSuggestion = {
+  keeperId: number | undefined;
+  keeperName: string | undefined;
+  mergeeId: number | undefined;
+  mergeeName: string | undefined;
+  source: string | undefined;
+  similarity: number | undefined;
+  tier: string | undefined;
+};
+
+export type ListEntityMergeSuggestionsRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+};
+
+export type ListEntityMergeSuggestionsResponse = {
+  items: EntityMergeSuggestion[] | undefined;
+};
+
+// MergeKnowledgeEntitiesRequest merges mergee entities into the keeper (G5-F B10).
+// Atomic: doc-entity mentions rewritten to keeper (summed on conflict), entity
+// link contexts rewritten to keeper display name, mergee name_norms become
+// keeper aliases (merge persists across re-syncs), mergee rows deleted.
+export type MergeKnowledgeEntitiesRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  keeperId: number | undefined;
+  mergeeIds: number[] | undefined;
+};
+
+export type MergeKnowledgeEntitiesResponse = {
+  rewrittenMentions: number | undefined;
+  rewrittenLinks: number | undefined;
+  mergedEntities: number | undefined;
+};
+
 export type ListDocumentsResponse = {
   items: KnowledgeDocument[] | undefined;
   total: number | undefined;
@@ -389,6 +432,14 @@ export interface KnowledgeService {
   // nodes = documents (after path_prefix filter), edges = links (link_types filter;
   // endpoints outside scope/dangling dropped), degree = in-edge count per node.
   ListCollectionGraph(request: ListCollectionGraphRequest): Promise<ListCollectionGraphResponse>;
+  // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+  // normalization conflict groups (same name_norm, different display name)
+  // plus high-similarity embedding pairs when the embedder is configured.
+  // Computed in real time; no queue table.
+  ListEntityMergeSuggestions(request: ListEntityMergeSuggestionsRequest): Promise<ListEntityMergeSuggestionsResponse>;
+  // MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+  // atomically; returns rewrite counts for inline UI feedback.
+  MergeKnowledgeEntities(request: MergeKnowledgeEntitiesRequest): Promise<MergeKnowledgeEntitiesResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
@@ -743,6 +794,46 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListCollectionGraph",
       }) as Promise<ListCollectionGraphResponse>;
+    },
+    ListEntityMergeSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/entity-merge-suggestions`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListEntityMergeSuggestions",
+      }) as Promise<ListEntityMergeSuggestionsResponse>;
+    },
+    MergeKnowledgeEntities(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/vaults/${request.collectionId}/entity-merges`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "MergeKnowledgeEntities",
+      }) as Promise<MergeKnowledgeEntitiesResponse>;
     },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes

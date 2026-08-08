@@ -25,6 +25,32 @@ func TestDefaultAgentRuntimeSettings_L2RecallEnabled(t *testing.T) {
 	}
 }
 
+// P0-3 (2026-08-08): L4 injection must default to ON. The L4 entity graph was
+// never injected into any prompt because l0_inject_l4 defaulted to false and
+// all 55 existing rows kept that default; downstream guards (0.3 confidence
+// gate + maxPaths cap) already bound the risk.
+func TestDefaultAgentRuntimeSettings_L0InjectL4(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if !s.L0InjectL4 {
+		t.Error("L0InjectL4 should default to true (P0-3)")
+	}
+	p := ResolveMemoryRuntimePolicy(&s)
+	if !p.InjectL4 {
+		t.Error("resolved policy should inject L4 by default")
+	}
+}
+
+// P0-4 (2026-08-08): default L3 minScore 0.55 false-kills typical relevant
+// hits (weighted Total ≈ 0.4-0.5 under keyword .25/vector .30/importance
+// .20/recency .15/quality .10). Default drops to 0.35; explicit 0.00 rows
+// (filter disabled by user) are untouched.
+func TestDefaultAgentRuntimeSettings_L3RecallMinScore(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if s.L3RecallMinScore != 0.35 {
+		t.Errorf("L3RecallMinScore = %v, want 0.35 (P0-4)", s.L3RecallMinScore)
+	}
+}
+
 func TestDefaultToolsDenyFrameworkMemory(t *testing.T) {
 	// Verify the constant is valid JSON
 	var list []string

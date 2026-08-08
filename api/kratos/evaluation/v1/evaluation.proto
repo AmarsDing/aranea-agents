@@ -190,7 +190,6 @@ message GetAgentEvalTrendResponse {
 message CompareEvalRunsRequest {
   repeated string run_ids = 1 [(google.api.field_behavior) = REQUIRED];
 }
-
 message EvalRunComparison {
   string run_id = 1;
   string agent_id = 2;
@@ -210,6 +209,49 @@ message EvalRunComparison {
 
 message CompareEvalRunsResponse {
   repeated EvalRunComparison items = 1;
+}
+
+// GetJudgeDivergenceRequest asks for judge-vs-human agreement over annotated
+// results of one dataset (P1-3, judge calibration).
+message GetJudgeDivergenceRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // agent_id optionally restricts to one agent's runs.
+  string agent_id = 2;
+  // threshold is the llm_judge_score pass cutoff (0 means default 0.5).
+  float threshold = 3;
+  // limit caps the returned divergent case list (0 means default 50);
+  // counts always cover the full divergent set regardless of limit.
+  int32 limit = 4;
+}
+
+// JudgeDivergenceCase is one annotated result where judge and human disagree.
+message JudgeDivergenceCase {
+  string result_id = 1;
+  string run_id = 2;
+  string case_id = 3;
+  string input = 4;
+  string expected_output = 5;
+  string actual_output = 6;
+  float  llm_judge_score = 7;
+  bool   human_pass = 8;
+  string human_comment = 9;
+  // divergence_kind: false_pass (judge pass, human fail — judge too lenient)
+  // or false_fail (judge fail, human pass — judge too strict).
+  string divergence_kind = 10;
+  string created_at = 11;
+}
+
+message GetJudgeDivergenceResponse {
+  float threshold = 1;
+  // annotated_total counts annotated results where llm_as_judge actually ran
+  // (detected via scores_json key, so legacy-path zeros are excluded).
+  int32 annotated_total = 2;
+  int32 agree_count = 3;
+  int32 diverge_count = 4;
+  float agreement_rate = 5;
+  int32 false_pass_count = 6;
+  int32 false_fail_count = 7;
+  repeated JudgeDivergenceCase divergent_cases = 8;
 }
 
 service EvaluationService {
@@ -290,6 +332,11 @@ service EvaluationService {
     option (google.api.http) = {
       post: "/v1/evaluation/runs/compare"
       body: "*"
+    };
+  }
+  rpc GetJudgeDivergence(GetJudgeDivergenceRequest) returns (GetJudgeDivergenceResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets/{dataset_id}/judge-divergence"
     };
   }
 }

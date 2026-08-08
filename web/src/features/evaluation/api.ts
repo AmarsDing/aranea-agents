@@ -13,6 +13,8 @@ import type {
   EvalDataset,
   EvalRun,
   GetRunResultsResult,
+  JudgeDivergence,
+  JudgeDivergenceCase,
   ListDatasetsParams,
   ListDatasetsResult,
   ListRunsParams,
@@ -228,4 +230,48 @@ export async function compareEvalRuns(runIds: string[]): Promise<EvalRunComparis
   const res = asRecord(await svc.CompareEvalRuns({ runIds }));
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapRunComparison) : [];
+}
+
+// ---------- P1-3 Judge 校准 ----------
+
+function mapDivergenceCase(raw: unknown): JudgeDivergenceCase {
+  const r = asRecord(raw);
+  return {
+    result_id: pickStr(r, 'result_id', 'resultId'),
+    run_id: pickStr(r, 'run_id', 'runId'),
+    case_id: pickStr(r, 'case_id', 'caseId'),
+    input: pickStr(r, 'input', 'input'),
+    expected_output: pickStr(r, 'expected_output', 'expectedOutput'),
+    actual_output: pickStr(r, 'actual_output', 'actualOutput'),
+    llm_judge_score: pickNum(r, 'llm_judge_score', 'llmJudgeScore'),
+    human_pass: pickBool(r, 'human_pass', 'humanPass'),
+    human_comment: pickStr(r, 'human_comment', 'humanComment'),
+    divergence_kind: pickStr(r, 'divergence_kind', 'divergenceKind'),
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+  };
+}
+
+export async function getJudgeDivergence(
+  datasetId: string,
+  params: { agent_id?: string; threshold?: number; limit?: number } = {},
+): Promise<JudgeDivergence> {
+  const res = asRecord(
+    await svc.GetJudgeDivergence({
+      datasetId,
+      agentId: params.agent_id ?? '',
+      threshold: params.threshold ?? 0,
+      limit: params.limit ?? 0,
+    }),
+  );
+  const casesRaw = res.divergent_cases ?? res.divergentCases;
+  return {
+    threshold: pickNum(res, 'threshold', 'threshold'),
+    annotated_total: pickI32(res, 'annotated_total', 'annotatedTotal'),
+    agree_count: pickI32(res, 'agree_count', 'agreeCount'),
+    diverge_count: pickI32(res, 'diverge_count', 'divergeCount'),
+    agreement_rate: pickNum(res, 'agreement_rate', 'agreementRate'),
+    false_pass_count: pickI32(res, 'false_pass_count', 'falsePassCount'),
+    false_fail_count: pickI32(res, 'false_fail_count', 'falseFailCount'),
+    divergent_cases: Array.isArray(casesRaw) ? casesRaw.map(mapDivergenceCase) : [],
+  };
 }

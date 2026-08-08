@@ -33,7 +33,9 @@ const OperationKnowledgeServiceListCollectionGraph = "/kratos.knowledge.v1.Knowl
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
+const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
+const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
@@ -63,8 +65,16 @@ type KnowledgeServiceHTTPServer interface {
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
+	// ListEntityMergeSuggestions ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+	// normalization conflict groups (same name_norm, different display name)
+	// plus high-similarity embedding pairs when the embedder is configured.
+	// Computed in real time; no queue table.
+	ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
+	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+	// atomically; returns rewrite counts for inline UI feedback.
+	MergeKnowledgeEntities(context.Context, *MergeKnowledgeEntitiesRequest) (*MergeKnowledgeEntitiesResponse, error)
 	MoveDocument(context.Context, *MoveDocumentRequest) (*KnowledgeDocument, error)
 	// MoveDocumentToDir MoveDocumentToDir moves a vault document to another directory within the same
 	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
@@ -98,6 +108,8 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/vaults/{collection_id}/docs", _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/graph", _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/embedder-config", _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv))
@@ -464,6 +476,53 @@ func _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv KnowledgeServiceHTT
 	}
 }
 
+func _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListEntityMergeSuggestionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListEntityMergeSuggestions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListEntityMergeSuggestions(ctx, req.(*ListEntityMergeSuggestionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListEntityMergeSuggestionsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in MergeKnowledgeEntitiesRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceMergeKnowledgeEntities)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.MergeKnowledgeEntities(ctx, req.(*MergeKnowledgeEntitiesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*MergeKnowledgeEntitiesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_Search0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in SearchRequest
@@ -550,8 +609,16 @@ type KnowledgeServiceHTTPClient interface {
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(ctx context.Context, req *ListDocumentLinksRequest, opts ...http.CallOption) (rsp *ListDocumentLinksResponse, err error)
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *ListDocumentsResponse, err error)
+	// ListEntityMergeSuggestions ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+	// normalization conflict groups (same name_norm, different display name)
+	// plus high-similarity embedding pairs when the embedder is configured.
+	// Computed in real time; no queue table.
+	ListEntityMergeSuggestions(ctx context.Context, req *ListEntityMergeSuggestionsRequest, opts ...http.CallOption) (rsp *ListEntityMergeSuggestionsResponse, err error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, req *ListVaultTreeRequest, opts ...http.CallOption) (rsp *ListVaultTreeResponse, err error)
+	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+	// atomically; returns rewrite counts for inline UI feedback.
+	MergeKnowledgeEntities(ctx context.Context, req *MergeKnowledgeEntitiesRequest, opts ...http.CallOption) (rsp *MergeKnowledgeEntitiesResponse, err error)
 	MoveDocument(ctx context.Context, req *MoveDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	// MoveDocumentToDir MoveDocumentToDir moves a vault document to another directory within the same
 	// collection (G3-B4): atomic fs move + rel_path update (identity/chunks kept) +
@@ -753,6 +820,23 @@ func (c *KnowledgeServiceHTTPClientImpl) ListDocuments(ctx context.Context, in *
 	return &out, nil
 }
 
+// ListEntityMergeSuggestions ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+// normalization conflict groups (same name_norm, different display name)
+// plus high-similarity embedding pairs when the embedder is configured.
+// Computed in real time; no queue table.
+func (c *KnowledgeServiceHTTPClientImpl) ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...http.CallOption) (*ListEntityMergeSuggestionsResponse, error) {
+	var out ListEntityMergeSuggestionsResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListEntityMergeSuggestions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 func (c *KnowledgeServiceHTTPClientImpl) ListVaultTree(ctx context.Context, in *ListVaultTreeRequest, opts ...http.CallOption) (*ListVaultTreeResponse, error) {
 	var out ListVaultTreeResponse
@@ -761,6 +845,21 @@ func (c *KnowledgeServiceHTTPClientImpl) ListVaultTree(ctx context.Context, in *
 	opts = append(opts, http.Operation(OperationKnowledgeServiceListVaultTree))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+// atomically; returns rewrite counts for inline UI feedback.
+func (c *KnowledgeServiceHTTPClientImpl) MergeKnowledgeEntities(ctx context.Context, in *MergeKnowledgeEntitiesRequest, opts ...http.CallOption) (*MergeKnowledgeEntitiesResponse, error) {
+	var out MergeKnowledgeEntitiesResponse
+	pattern := "/v1/knowledge/vaults/{collection_id}/entity-merges"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceMergeKnowledgeEntities))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

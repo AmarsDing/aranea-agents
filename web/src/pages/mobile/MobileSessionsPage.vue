@@ -69,16 +69,31 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { storeToRefs } from 'pinia';
 import { injectChatWorkspace } from '../../features/chat/composables/chatWorkspaceInjection';
 import { sortSessionsForDisplay } from '../../features/session/sessionSort';
 import { composerContextColor } from '../../features/chat/composerUsageMetrics';
+import { useOfflineSessionList } from '../../features/mobile/useOfflineSessionList';
+import { useChatSessionStore } from '../../stores/chat/sessionStore';
 import type { SessionView } from '../../components/chat/types';
 
 const { t } = useI18n();
 const router = useRouter();
 const workspace = injectChatWorkspace();
 
-const sortedSessions = computed(() => sortSessionsForDisplay(workspace.session.displaySessions));
+// P3.2c: offline fallback. The session store only assigns its list after a
+// successful load, so when the app opens without connectivity the list would
+// be empty; useOfflineSessionList serves the last cached list instead (the
+// layout banner flags the stale state).
+const sessionStore = useChatSessionStore();
+const { error: sessionLoadError } = storeToRefs(sessionStore);
+const liveSessions = computed(() => sortSessionsForDisplay(workspace.session.displaySessions));
+const agentId = computed(() => workspace.entity.store.selectedAgent?.id?.trim() ?? '');
+const { displaySessions: sortedSessions } = useOfflineSessionList({
+  live: liveSessions,
+  agentId,
+  loadError: sessionLoadError,
+});
 
 function contextColor(session: SessionView): string {
   return composerContextColor(session.context_status, session.context_used_ratio ?? 0);

@@ -51,8 +51,31 @@ func bizCaseToEvalCase(c biz.EvalCase, lg loggateway.Logger) *trpcevalset.EvalCa
 	if scenario := buildConversationScenario(meta, c.Input); scenario != nil {
 		ec.ConversationScenario = scenario
 	}
+	// P3-2: case-level rubric → framework EvalCaseRubric on the llm_as_judge
+	// metric instance; the judge merges it into the scoring criterion.
+	if text := strings.TrimSpace(meta.Rubric); text != "" {
+		ec.Rubrics = append(ec.Rubrics, &trpcevalset.EvalCaseRubric{
+			MetricName: MetricLLMAsJudge,
+			ID:         evalID + "-rubric",
+			Content:    &trpcevalset.EvalCaseRubricContent{Text: text},
+		})
+	}
 	enrichEvalCase(c, ec, lg)
 	return ec
+}
+
+// stripCaseRubricsWhenNoJudge removes case-level rubrics when llm_as_judge is
+// not among the run's metrics: the framework fails any case whose rubric
+// references a metric instance that was not registered for the run.
+func stripCaseRubricsWhenNoJudge(es *trpcevalset.EvalSet, want map[string]bool) {
+	if es == nil || want[MetricLLMAsJudge] {
+		return
+	}
+	for _, ec := range es.EvalCases {
+		if ec != nil {
+			ec.Rubrics = nil
+		}
+	}
 }
 
 // sessionInputFromMeta builds the mandatory SessionInput, applying optional

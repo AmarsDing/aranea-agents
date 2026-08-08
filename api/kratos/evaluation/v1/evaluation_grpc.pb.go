@@ -34,6 +34,7 @@ const (
 	EvaluationService_AnnotateCaseResult_FullMethodName = "/kratos.evaluation.v1.EvaluationService/AnnotateCaseResult"
 	EvaluationService_GetAgentEvalTrend_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
 	EvaluationService_CompareEvalRuns_FullMethodName    = "/kratos.evaluation.v1.EvaluationService/CompareEvalRuns"
+	EvaluationService_GetJudgeDivergence_FullMethodName = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
 )
 
 // EvaluationServiceClient is the client API for EvaluationService service.
@@ -56,6 +57,7 @@ type EvaluationServiceClient interface {
 	AnnotateCaseResult(ctx context.Context, in *AnnotateCaseResultRequest, opts ...grpc.CallOption) (*EvalCaseResult, error)
 	GetAgentEvalTrend(ctx context.Context, in *GetAgentEvalTrendRequest, opts ...grpc.CallOption) (*GetAgentEvalTrendResponse, error)
 	CompareEvalRuns(ctx context.Context, in *CompareEvalRunsRequest, opts ...grpc.CallOption) (*CompareEvalRunsResponse, error)
+	GetJudgeDivergence(ctx context.Context, in *GetJudgeDivergenceRequest, opts ...grpc.CallOption) (*GetJudgeDivergenceResponse, error)
 }
 
 type evaluationServiceClient struct {
@@ -206,6 +208,16 @@ func (c *evaluationServiceClient) CompareEvalRuns(ctx context.Context, in *Compa
 	return out, nil
 }
 
+func (c *evaluationServiceClient) GetJudgeDivergence(ctx context.Context, in *GetJudgeDivergenceRequest, opts ...grpc.CallOption) (*GetJudgeDivergenceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetJudgeDivergenceResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_GetJudgeDivergence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EvaluationServiceServer is the server API for EvaluationService service.
 // All implementations must embed UnimplementedEvaluationServiceServer
 // for forward compatibility.
@@ -226,6 +238,7 @@ type EvaluationServiceServer interface {
 	AnnotateCaseResult(context.Context, *AnnotateCaseResultRequest) (*EvalCaseResult, error)
 	GetAgentEvalTrend(context.Context, *GetAgentEvalTrendRequest) (*GetAgentEvalTrendResponse, error)
 	CompareEvalRuns(context.Context, *CompareEvalRunsRequest) (*CompareEvalRunsResponse, error)
+	GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error)
 	mustEmbedUnimplementedEvaluationServiceServer()
 }
 
@@ -277,6 +290,9 @@ func (UnimplementedEvaluationServiceServer) GetAgentEvalTrend(context.Context, *
 }
 func (UnimplementedEvaluationServiceServer) CompareEvalRuns(context.Context, *CompareEvalRunsRequest) (*CompareEvalRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CompareEvalRuns not implemented")
+}
+func (UnimplementedEvaluationServiceServer) GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetJudgeDivergence not implemented")
 }
 func (UnimplementedEvaluationServiceServer) mustEmbedUnimplementedEvaluationServiceServer() {}
 func (UnimplementedEvaluationServiceServer) testEmbeddedByValue()                           {}
@@ -551,6 +567,24 @@ func _EvaluationService_CompareEvalRuns_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EvaluationService_GetJudgeDivergence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetJudgeDivergenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).GetJudgeDivergence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_GetJudgeDivergence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).GetJudgeDivergence(ctx, req.(*GetJudgeDivergenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EvaluationService_ServiceDesc is the grpc.ServiceDesc for EvaluationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -613,6 +647,10 @@ var EvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CompareEvalRuns",
 			Handler:    _EvaluationService_CompareEvalRuns_Handler,
+		},
+		{
+			MethodName: "GetJudgeDivergence",
+			Handler:    _EvaluationService_GetJudgeDivergence_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

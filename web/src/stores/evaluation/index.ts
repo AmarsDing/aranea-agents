@@ -7,6 +7,7 @@ import {
   createDataset,
   deleteDataset,
   getAgentEvalTrend,
+  getJudgeDivergence,
   getRun,
   getRunResults,
   listDatasets,
@@ -23,6 +24,7 @@ import type {
   EvalRunComparison,
   EvalTrendPoint,
   GetRunResultsResult,
+  JudgeDivergence,
   ListDatasetsParams,
   ListDatasetsResult,
   ListRunsParams,
@@ -120,6 +122,13 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     return compareEvalRuns(runIds);
   }
 
+  async function loadJudgeDivergence(
+    datasetId: string,
+    params: { agent_id?: string; threshold?: number; limit?: number } = {},
+  ): Promise<JudgeDivergence> {
+    return getJudgeDivergence(datasetId, params);
+  }
+
   return {
     datasets,
     datasetsTotal,
@@ -139,5 +148,6 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     annotateResult,
     loadAgentTrend,
     compareRuns,
+    loadJudgeDivergence,
   };
 });

@@ -9,7 +9,7 @@
   "components/agents/AgentAdvancedDialog.vue": 32,
   "components/agents/AgentCard.vue": 8,
   "components/agents/AgentCreateDialog.vue": 24,
-  "components/agents/AgentEvolutionPanel.vue": 46,
+  "components/agents/AgentEvolutionPanel.vue": 42,
   "components/agents/AgentFilesPanel.vue": 4,
   "components/agents/AgentLearningLoopPanel.vue": 3,
   "components/agents/AgentPlannerSection.vue": 28,

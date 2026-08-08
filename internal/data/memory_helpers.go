@@ -242,7 +242,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
  metadata_json, quality_score, pii_types, created_at, updated_at, archived_at, deleted_at,
  valid_from, valid_until, links, keywords, tags,
- decay_score, context_note
+ decay_score, context_note, index_attempts
  FROM memory_facts`
 
 const sqlEpisodeSelect = `SELECT id, session_id, agent_id, episode_kind, title, outcome_summary, importance,
@@ -406,6 +406,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		links, keywords, llmTags           string
 		decayScore                         float64
 		contextNote                        string
+		indexAttempts                      int
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -421,7 +422,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&ttlD, &decay, &nextD, &lastU, &exp,
 		&meta, &qScore, &piiTypes, &ca, &ua, &arch, &del,
 		&validFrom, &validUntil, &links, &keywords, &llmTags,
-		&decayScore, &contextNote,
+		&decayScore, &contextNote, &indexAttempts,
 	); err != nil {
 		return nil, err
 	}
@@ -448,6 +449,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"valid_from": validFrom, "valid_until": validUntil,
 		"links": links, "keywords": keywords, "tags": llmTags,
 		"decay_score": decayScore, "context_note": contextNote,
+		"index_attempts": indexAttempts,
 	}
 	return json.Marshal(m)
 }

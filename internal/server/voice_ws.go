@@ -24,6 +24,7 @@ type VoiceWSServer struct {
 	sessionAuth SessionAuthorizer
 	executor    WSTurnExecutor
 	canceller   RunCanceller
+	confirmer   voice.ConfirmResolver // V2-T5 语音确认拦截；nil 关闭
 	newASR      voice.ASRProviderFactory
 	newTTS      voice.TTSProviderFactory
 	bus         biz.EventBus
@@ -43,12 +44,14 @@ func NewVoiceWSServer(
 	bus biz.EventBus,
 	infra *event.Infra,
 	lg loggateway.Logger,
+	confirmer voice.ConfirmResolver,
 ) *VoiceWSServer {
 	return &VoiceWSServer{
 		upgrader:    websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
 		sessionAuth: sessionAuth,
 		executor:    executor,
 		canceller:   canceller,
+		confirmer:   confirmer,
 		newASR:      newASR,
 		newTTS:      newTTS,
 		bus:         bus,
@@ -108,6 +111,7 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		Bus:       s.bus,
 		Executor:  voiceChatTurnExecutor{inner: s.executor},
 		Canceller: voiceRunCanceller{inner: s.canceller},
+		Confirmer: s.confirmer,
 		Infra:     s.infra,
 		LG:        s.lg,
 	}

@@ -561,6 +561,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		// service 闸门互为双保险。
 		if deps.Team.Team.SpiritUC != nil {
 			deps.Team.Team.TeamsNative.SetDeliverableGate(deps.Team.Team.SpiritUC.HasRealDeliverable)
+			// 2026-08-08 问题3c：装配上游交付物种子——DAG 下游团队 turn 启动时
+			// 注入 graph 初始 state，成员 get_deliverable 直接读上游 topic。
+			deps.Team.Team.TeamsNative.SetUpstreamDeliverableSeed(deps.Team.Team.SpiritUC.UpstreamDeliverableSeed)
 		}
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)

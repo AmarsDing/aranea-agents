@@ -234,6 +234,51 @@ export type CompareEvalRunsResponse = {
   items: EvalRunComparison[] | undefined;
 };
 
+// GetJudgeDivergenceRequest asks for judge-vs-human agreement over annotated
+// results of one dataset (P1-3, judge calibration).
+export type GetJudgeDivergenceRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  // agent_id optionally restricts to one agent's runs.
+  agentId: string | undefined;
+  // threshold is the llm_judge_score pass cutoff (0 means default 0.5).
+  threshold: number | undefined;
+  // limit caps the returned divergent case list (0 means default 50);
+  // counts always cover the full divergent set regardless of limit.
+  limit: number | undefined;
+};
+
+// JudgeDivergenceCase is one annotated result where judge and human disagree.
+export type JudgeDivergenceCase = {
+  resultId: string | undefined;
+  runId: string | undefined;
+  caseId: string | undefined;
+  input: string | undefined;
+  expectedOutput: string | undefined;
+  actualOutput: string | undefined;
+  llmJudgeScore: number | undefined;
+  humanPass: boolean | undefined;
+  humanComment: string | undefined;
+  // divergence_kind: false_pass (judge pass, human fail — judge too lenient)
+  // or false_fail (judge fail, human pass — judge too strict).
+  divergenceKind: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type GetJudgeDivergenceResponse = {
+  threshold: number | undefined;
+  // annotated_total counts annotated results where llm_as_judge actually ran
+  // (detected via scores_json key, so legacy-path zeros are excluded).
+  annotatedTotal: number | undefined;
+  agreeCount: number | undefined;
+  divergeCount: number | undefined;
+  agreementRate: number | undefined;
+  falsePassCount: number | undefined;
+  falseFailCount: number | undefined;
+  divergentCases: JudgeDivergenceCase[] | undefined;
+};
+
 export interface EvaluationService {
   // Datasets
   CreateDataset(request: CreateDatasetRequest): Promise<EvalDataset>;
@@ -251,6 +296,7 @@ export interface EvaluationService {
   AnnotateCaseResult(request: AnnotateCaseResultRequest): Promise<EvalCaseResult>;
   GetAgentEvalTrend(request: GetAgentEvalTrendRequest): Promise<GetAgentEvalTrendResponse>;
   CompareEvalRuns(request: CompareEvalRunsRequest): Promise<CompareEvalRunsResponse>;
+  GetJudgeDivergence(request: GetJudgeDivergenceRequest): Promise<GetJudgeDivergenceResponse>;
 }
 
 type RequestType = {
@@ -562,6 +608,35 @@ export function createEvaluationServiceClient(
         service: "EvaluationService",
         method: "CompareEvalRuns",
       }) as Promise<CompareEvalRunsResponse>;
+    },
+    GetJudgeDivergence(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/judge-divergence`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.threshold) {
+        queryParams.push(`threshold=${encodeURIComponent(request.threshold.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "GetJudgeDivergence",
+      }) as Promise<GetJudgeDivergenceResponse>;
     },
   };
 }

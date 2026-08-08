@@ -39,6 +39,20 @@ export type MonitorBackpressurePayload = {
 };
 
 /**
+ * M74 V2-T4: client_tool.invoke downstream payload (design 74 §6.2).
+ * Fanned out by the backend only to session connections that advertised
+ * the desktop_companion capability via register_capabilities.
+ */
+export type ClientToolInvokePayload = {
+  invocation_id: string;
+  session_id: string;
+  /** Full runtime tool name, e.g. client_open_app / client_open_url. */
+  tool: string;
+  /** Raw tool arguments ({target} / {url}); absent for arg-less tools. */
+  args?: Record<string, unknown>;
+};
+
+/**
  * WS upstream message shape. Sent by the client over `/v1/ws` for
  * user_message/cancel/subscribe/unsubscribe/ping/enable_log/sync_request.
  */
@@ -53,6 +67,7 @@ import {
   WS_MAX_RECONNECT_DELAY_MS,
   WS_HEARTBEAT_INTERVAL_MS,
   WS_RECONNECT_BASE_DELAY_MS,
+  WS_ZOMBIE_TIMEOUT_MS,
 } from '../features/constants/timeouts';
 
 // T1.8 + P1 #2: 队列分级。控制消息（ping/subscribe 等）可丢弃；业务消息
@@ -73,6 +88,7 @@ function classifyMessagePriority(upstream: WsUpstream): 'control' | 'business' {
     case 'unsubscribe':
     case 'enable_log':
     case 'sync_request':
+    case 'register_capabilities':
       return 'control';
     default:
       return 'business';
@@ -117,6 +133,12 @@ export type WsTransportOptions = {
    * envelope (type="v2_event"). The payload is the raw envelope object.
    */
   onV2Event?: (envelope: V2WsEnvelope) => void;
+  /**
+   * M74 V2-T4: client tool bridge invoke (system channel,
+   * type="client_tool.invoke"). Only connections that registered the
+   * desktop_companion capability receive these frames.
+   */
+  onClientToolInvoke?: (msg: ClientToolInvokePayload) => void;
   onConnected?: (info: { sessionId: string; lastEventId?: string }) => void;
   onDisconnected?: () => void;
   onError?: (error: Event) => void;
@@ -131,10 +153,14 @@ export type WsTransportOptions = {
 export type WsTransport = {
   connect(): void;
   disconnect(): void;
+  /** P3.2: skip the backoff timer and reconnect immediately (network recovery). No-op while connected or after server shutdown. */
+  reconnectNow(): void;
   send(upstream: WsUpstream): void;
   subscribe(channel: string): void;
   unsubscribe(channel: string): void;
   enableLog(enabled: boolean): void;
+  /** M74 V2-T4: announce client capabilities (e.g. desktop_companion). */
+  registerCapabilities(capabilities: string[]): void;
   ping(): void;
   cancel(): void;
   readonly connected: boolean;
@@ -149,6 +175,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let reconnectAttempts = 0;
   let shutdownReceived = false;
+  // P3.2: timestamp of the last downstream frame — drives zombie detection.
+  let lastActivityAt = 0;
+  let onlineListener: (() => void) | null = null;
   // P1 #2: 分级队列。control 可丢弃，business 不丢弃。
   const controlQueue: WsUpstream[] = [];
   const businessQueue: WsUpstream[] = [];
@@ -157,6 +186,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
+    ensureOnlineListener();
 
     const url =
       opts.url ??
@@ -171,11 +201,13 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     ws.onopen = () => {
       _connected = true;
       reconnectAttempts = 0;
+      lastActivityAt = Date.now();
       startHeartbeat();
       flushPendingQueue();
     };
 
     ws.onmessage = (ev: MessageEvent) => {
+      lastActivityAt = Date.now();
       try {
         const raw = JSON.parse(ev.data) as Record<string, unknown>;
 
@@ -216,6 +248,14 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
         if (msg.type === 'monitor.backpressure') {
           opts.onBackpressure?.((msg.payload ?? {}) as MonitorBackpressurePayload);
+          return;
+        }
+
+        // M74 V2-T4: client tool bridge invoke — payload must be present.
+        if (msg.type === 'client_tool.invoke') {
+          if (msg.payload) {
+            opts.onClientToolInvoke?.(msg.payload as ClientToolInvokePayload);
+          }
           return;
         }
 
@@ -264,6 +304,15 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     stopHeartbeat();
     heartbeatTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
+        // P3.2: weak-network zombie detection. A half-open TCP socket (mobile
+        // network drop, NAT timeout) never fires close/error, so the transport
+        // would sit OPEN forever. Any downstream frame (pong included) resets
+        // lastActivityAt; exceeding the window forces close → normal reconnect.
+        if (lastActivityAt > 0 && Date.now() - lastActivityAt >= WS_ZOMBIE_TIMEOUT_MS) {
+          console.warn('ws-transport: zombie connection detected (no downstream frames), force closing');
+          ws.close(4000, 'zombie connection timeout');
+          return;
+        }
         ping();
       }
     }, WS_HEARTBEAT_INTERVAL_MS);
@@ -276,12 +325,47 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     }
   }
 
+  // P3.2: every transport self-heals on network recovery — the browser
+  // `online` event skips the exponential backoff (up to 30s) and reconnects
+  // immediately. Registered lazily on first connect; removed on disconnect().
+  function ensureOnlineListener(): void {
+    if (onlineListener || typeof window === 'undefined' || !window.addEventListener) return;
+    onlineListener = () => reconnectNow();
+    window.addEventListener('online', onlineListener);
+  }
+
+  function reconnectNow(): void {
+    if (shutdownReceived) return;
+    if (ws && ws.readyState === WebSocket.OPEN) return;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    reconnectAttempts = 0;
+    if (ws) {
+      const stale = ws;
+      ws = null;
+      stale.onclose = null; // reconnect handled here — avoid double scheduling
+      try {
+        stale.close();
+      } catch {
+        // already closed
+      }
+    }
+    connect();
+  }
+
   function disconnect(): void {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
     stopHeartbeat();
+    if (onlineListener && typeof window !== 'undefined') {
+      window.removeEventListener('online', onlineListener);
+      onlineListener = null;
+    }
+    lastActivityAt = 0;
     controlQueue.length = 0;
     businessQueue.length = 0;
     if (ws) {
@@ -404,13 +488,24 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     });
   }
 
+  function registerCapabilities(capabilities: string[]): void {
+    send({
+      direction: 'client_to_server',
+      channel: 'system',
+      type: 'register_capabilities',
+      payload: { capabilities },
+    });
+  }
+
   return {
     connect,
     disconnect,
+    reconnectNow,
     send,
     subscribe,
     unsubscribe,
     enableLog,
+    registerCapabilities,
     ping,
     cancel,
     get connected() {

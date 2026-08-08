@@ -880,11 +880,15 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	if vector.IsPgvector() {
 		if err := vector.EnsureSchema(ctxPG, pg, vdim); err != nil {
 			// Portable installs may ship without vector.dll; degrade instead of failing readiness.
-			lg.Warn("pgvector schema skipped; vector search disabled",
+			// Error-level (not Warn): with the vector store down, ALL memory vector
+			// reads/writes silently return ErrMemoryUnavailable (2026-08-08 incident:
+			// embedder configured yet every fact index write was dead-lettered).
+			lg.Error("pgvector schema unavailable; MEMORY VECTOR SEARCH DISABLED (read/write degraded to ErrMemoryUnavailable)",
 				loggateway.StepID("data.schema.pgvector"), loggateway.Err(err))
 		}
 	} else {
-		lg.Info("pgvector build tag not set, skipping vector schema on Postgres", loggateway.StepID("data.schema.pgvector"))
+		lg.Error("pgvector build tag not set; MEMORY VECTOR SEARCH DISABLED — rebuild/run with `-tags pgvector` (read/write degraded to ErrMemoryUnavailable)",
+			loggateway.StepID("data.schema.pgvector"))
 	}
 	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
 		if isPgvectorExtensionError(err) {

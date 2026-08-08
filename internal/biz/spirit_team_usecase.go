@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -111,6 +112,21 @@ type SpiritTeamController interface {
 	// member projection — status follows the execution RESULT, not the
 	// message lifecycle.
 	MemberExecutionEvidence(ctx context.Context, sessionID string) (failed bool, reason string)
+	// MemberExecutionWindow backs the member-duration fix (2026-08-08 问题4):
+	// a member's real execution window aggregates its step stream — start is
+	// the earliest StartedAt, end the latest activity evidence (CompletedAt
+	// preferred, StartedAt fallback) — member session first, team session
+	// (coordinator mode, AuthorAgentKey-attributed) as fallback. The terminal
+	// MemberSession event must carry this window instead of the publish
+	// timestamp.
+	// ok=false means no step evidence (caller falls back to the publish
+	// timestamp). end may be zero when steps carry no timestamps at all.
+	MemberExecutionWindow(ctx context.Context, sessionID string) (start, end time.Time, ok bool)
+	// UpstreamDeliverableSeed backs the runner-side cross-team deliverable
+	// seeding (2026-08-08 问题3c): merged business topics of completed upstream
+	// dependencies' graph deliverables, injected into the downstream DAG team's
+	// initial graph state at turn start. See SpiritTeamUsecase.UpstreamDeliverableSeed.
+	UpstreamDeliverableSeed(ctx context.Context, downstreamTeam Team) (map[string]any, error)
 	// ExecuteVerificationGates backs the F9 (Phase 11) verification gate in
 	// the service-layer outcome pass (2026-07-28): runs the team's definition
 	// verification_gates (current automatic source: skill-install
@@ -1980,6 +1996,18 @@ func (u *SpiritTeamUsecase) WriteDeliverablesToSession(ctx context.Context, team
 		)
 		return ErrNoRealDeliverable
 	}
+	// 2026-08-08 问题3：减去上游播种——信封只承载本团队自有产出；种子
+	// 回流混入信封会把上游产出当本团队产出再向下游传播（污染链）。
+	seed, serr := u.UpstreamDeliverableSeed(ctx, t)
+	if serr != nil {
+		u.lg.Warn("上游种子重算失败，按无真实交付物处理",
+			loggateway.StepID("spirit.write_deliverables"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(serr),
+		)
+		return ErrNoRealDeliverable
+	}
+	stateDeliv = subtractUpstreamSeed(stateDeliv, seed)
 	if len(stateDeliv) == 0 {
 		return ErrNoRealDeliverable
 	}
@@ -2125,7 +2153,14 @@ func (u *SpiritTeamUsecase) HasRealDeliverable(ctx context.Context, team Team) (
 	if err != nil {
 		return false, err
 	}
-	return len(stateDeliv) > 0, nil
+	// 2026-08-08 问题3：下游 graph state 可能含上游播种（turn 启动时经
+	// RuntimeState 注入）。种子回流不是本团队产出——减去种子后再判空，
+	// 否则「成员什么都没写」也会因种子非空误判为真实交付物。
+	seed, serr := u.UpstreamDeliverableSeed(ctx, team)
+	if serr != nil {
+		return false, serr
+	}
+	return len(subtractUpstreamSeed(stateDeliv, seed)) > 0, nil
 }
 
 // memberEvidenceSummaryMaxRunes caps the failed-step summary carried in a
@@ -2192,7 +2227,127 @@ func (u *SpiritTeamUsecase) MemberExecutionEvidence(ctx context.Context, session
 		}
 		return true, fmt.Sprintf("step %s: %s", st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
 	}
+
+	// 2026-08-08 修复（stream_error 误报完成）：coordinator 模式下成员的 turn
+	// 级错误 step（kind=error，如 stream_error/context deadline）落在**团队会话**
+	// 而非成员会话（成员会话 0 steps），上面按成员会话的扫描永远查不到 → 成员
+	// 失败被吞、误报 completed。这里回扫父（团队）会话中归属于该成员
+	// （AuthorAgentKey == MemberAgentKey）的 error/failed/cancelled step 作为
+	// 失败证据。可恢复的普通工具错误是 kind=action + ToolErrorCode，不在此列。
+	parentID := strings.TrimSpace(sess.ParentSessionID)
+	memberKey := strings.TrimSpace(sess.MemberAgentKey)
+	if parentID != "" && parentID != sessionID && memberKey != "" {
+		teamSteps, terr := u.stepReader.ListStepsBySessionID(ctx, parentID)
+		if terr != nil {
+			u.lg.Warn("成员执行证据：读取团队会话 steps 失败，按无证据处理",
+				loggateway.StepID("spirit.member_evidence.team_steps_err"),
+				loggateway.Str("team_session_id", parentID),
+				loggateway.Err(terr),
+			)
+			return false, ""
+		}
+		for _, st := range teamSteps {
+			if strings.TrimSpace(st.AuthorAgentKey) != memberKey {
+				continue
+			}
+			fatal := st.Status == StepStatusFailed || st.Status == StepStatusCancelled || st.Kind == StepKindError
+			if !fatal {
+				continue
+			}
+			summary := strings.TrimSpace(st.Content)
+			if summary == "" {
+				summary = strings.TrimSpace(st.ToolErrorCode)
+			}
+			if summary == "" {
+				summary = string(st.Kind)
+			}
+			return true, fmt.Sprintf("team step %s/%s: %s", st.Kind, st.Status, truncateRunes(summary, memberEvidenceSummaryMaxRunes))
+		}
+	}
 	return false, ""
+}
+
+// MemberExecutionWindow implements the member-duration step-stream aggregation
+// (2026-08-08 问题4): a member's real execution window is aggregated from the
+// steps it owns — start = earliest StartedAt, end = latest activity evidence
+// (CompletedAt when set, StartedAt otherwise). Lookup mirrors
+// MemberExecutionEvidence — member session steps first; when the member
+// session has no steps (coordinator mode lands member steps on the TEAM
+// session), fall back to team-session steps filtered by
+// AuthorAgentKey == MemberAgentKey.
+//
+// Read failures and empty results both yield ok=false (conservative): the
+// caller then falls back to the publish timestamp. Steps with a zero
+// StartedAt are ignored for the start so a malformed row cannot pull the
+// window to the zero time; likewise end only considers non-zero evidence.
+func (u *SpiritTeamUsecase) MemberExecutionWindow(ctx context.Context, sessionID string) (time.Time, time.Time, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || u.stepReader == nil {
+		return time.Time{}, time.Time{}, false
+	}
+	sess, err := u.sessionUC.Get(ctx, sessionID)
+	if err != nil {
+		u.lg.Warn("成员执行窗口：读取成员 session 失败，按无窗口处理",
+			loggateway.StepID("spirit.member_window.session_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+		return time.Time{}, time.Time{}, false
+	}
+	if steps, err := u.stepReader.ListStepsBySessionID(ctx, sessionID); err != nil {
+		u.lg.Warn("成员执行窗口：读取成员 steps 失败，按无窗口处理",
+			loggateway.StepID("spirit.member_window.steps_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+		return time.Time{}, time.Time{}, false
+	} else if start, end, ok := memberStepWindow(steps, ""); ok {
+		return start, end, true
+	}
+	// coordinator 模式回退：成员 step 落在团队会话（与 MemberExecutionEvidence
+	// 同一归属模型），按 AuthorAgentKey 过滤出本成员的 step。
+	parentID := strings.TrimSpace(sess.ParentSessionID)
+	memberKey := strings.TrimSpace(sess.MemberAgentKey)
+	if parentID == "" || parentID == sessionID || memberKey == "" {
+		return time.Time{}, time.Time{}, false
+	}
+	teamSteps, terr := u.stepReader.ListStepsBySessionID(ctx, parentID)
+	if terr != nil {
+		u.lg.Warn("成员执行窗口：读取团队会话 steps 失败，按无窗口处理",
+			loggateway.StepID("spirit.member_window.team_steps_err"),
+			loggateway.Str("team_session_id", parentID),
+			loggateway.Err(terr),
+		)
+		return time.Time{}, time.Time{}, false
+	}
+	return memberStepWindow(teamSteps, memberKey)
+}
+
+// memberStepWindow aggregates the execution window across steps: start is the
+// earliest non-zero StartedAt; end is the latest activity evidence, preferring
+// CompletedAt over StartedAt per step. authorFilter non-empty restricts to
+// steps authored by that agent key. ok=false means no step carried a non-zero
+// StartedAt.
+func memberStepWindow(steps []Step, authorFilter string) (start, end time.Time, ok bool) {
+	for _, st := range steps {
+		if authorFilter != "" && strings.TrimSpace(st.AuthorAgentKey) != authorFilter {
+			continue
+		}
+		if !st.StartedAt.IsZero() {
+			if start.IsZero() || st.StartedAt.Before(start) {
+				start = st.StartedAt
+			}
+		}
+		// 每步的「最后活动证据」：CompletedAt 优先，缺失退 StartedAt。
+		candidate := st.StartedAt
+		if st.CompletedAt != nil && !st.CompletedAt.IsZero() {
+			candidate = *st.CompletedAt
+		}
+		if !candidate.IsZero() && (end.IsZero() || candidate.After(end)) {
+			end = candidate
+		}
+	}
+	return start, end, !start.IsZero()
 }
 
 // stateDeliverableChannel resolves the graph-state deliverable channel
@@ -2294,6 +2449,112 @@ func requiredTopicsMissingFromState(t Team, stateDeliv map[string]any) []string 
 		return nil
 	}
 	return probe.DeliverableContract.RequiredTopicsMissing(stateDeliv)
+}
+
+// UpstreamDeliverableSeed returns the cross-team deliverable seed for a
+// downstream DAG team (2026-08-08 问题3 修复): the business topics of every
+// COMPLETED upstream dependency's graph deliverable map, merged in DependsOn
+// order (later deps win on topic collision, Warn-logged). Reserved keys
+// (summary/cognition) and intra-team ack/* keys are never seeded — the
+// downstream team's own summary must come from its own members, and ack
+// signals are intra-team coordination, not content.
+//
+// The seed is installed into the downstream graph's initial deliverable
+// state at turn start (Runner RuntimeState injection), so members can
+// get_deliverable(topic=...) the upstream contract topics directly — the
+// per-execution graph state is otherwise isolated, which was the 01:54 断链
+// root cause (downstream get_deliverable always returned found=false).
+//
+// HasRealDeliverable / WriteDeliverablesToSession recompute and subtract
+// this same seed (subtractUpstreamSeed): seed round-trip alone can never
+// satisfy the real-deliverable gate, and upstream topics never leak into
+// this team's own envelope.
+//
+// Conservative on infra failure: an unreadable upstream state skips that
+// dependency (Warn) — the text injection prefix + read_upstream_deliverable
+// tool remain as fallback. Domain: Delivery — cross-team state handoff.
+func (u *SpiritTeamUsecase) UpstreamDeliverableSeed(ctx context.Context, downstreamTeam Team) (map[string]any, error) {
+	if len(downstreamTeam.DependsOn) == 0 || u.graphDelivReader == nil {
+		return nil, nil
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, downstreamTeam.SpiritSessionID)
+	if err != nil {
+		return nil, err
+	}
+	teamByDagNode := make(map[string]Team, len(teams))
+	for _, t := range teams {
+		if t.DagNodeID != "" {
+			teamByDagNode[t.DagNodeID] = t
+		}
+	}
+	var seed map[string]any
+	for _, depID := range downstreamTeam.DependsOn {
+		upstream, ok := teamByDagNode[depID]
+		if !ok || upstream.Status != TeamStatusCompleted {
+			continue
+		}
+		anchor, ok := u.stateDeliverableChannel(upstream)
+		if !ok {
+			continue
+		}
+		sessID, serr := u.resolveTeamMainSessionID(ctx, upstream.ID)
+		if serr != nil {
+			u.lg.Warn("上游交付物种子：解析上游团队 session 失败，跳过该依赖",
+				loggateway.StepID("spirit.upstream_seed"),
+				loggateway.Str("upstream_team_id", upstream.ID),
+				loggateway.Err(serr),
+			)
+			continue
+		}
+		if sessID == "" {
+			continue
+		}
+		m, rerr := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), sessID)
+		if rerr != nil {
+			u.lg.Warn("上游交付物种子：读取上游 graph state 失败，跳过该依赖",
+				loggateway.StepID("spirit.upstream_seed"),
+				loggateway.Str("upstream_team_id", upstream.ID),
+				loggateway.Err(rerr),
+			)
+			continue
+		}
+		for k, v := range m {
+			if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition || strings.HasPrefix(k, deliverableAckKeyPrefix) {
+				continue
+			}
+			if seed == nil {
+				seed = make(map[string]any, len(m))
+			}
+			if _, dup := seed[k]; dup {
+				u.lg.Warn("上游交付物 topic 冲突，按 DependsOn 顺序后者覆盖",
+					loggateway.StepID("spirit.upstream_seed"),
+					loggateway.Str("topic", k),
+					loggateway.Str("upstream_team_id", upstream.ID),
+				)
+			}
+			seed[k] = v
+		}
+	}
+	return seed, nil
+}
+
+// subtractUpstreamSeed returns the entries of stateDeliv that did NOT come
+// from the seed. A key counts as seeded only when its current value
+// deep-equals the seed value: a member overwrite of a seeded topic changes
+// the value and therefore counts as the team's OWN output. nil/empty seed
+// (or empty state) returns the state unchanged.
+func subtractUpstreamSeed(stateDeliv, seed map[string]any) map[string]any {
+	if len(seed) == 0 || len(stateDeliv) == 0 {
+		return stateDeliv
+	}
+	own := make(map[string]any, len(stateDeliv))
+	for k, v := range stateDeliv {
+		if sv, ok := seed[k]; ok && reflect.DeepEqual(sv, v) {
+			continue
+		}
+		own[k] = v
+	}
+	return own
 }
 
 // InjectUpstreamDeliverables collects upstream team deliverables and formats

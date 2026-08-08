@@ -112,6 +112,10 @@ func (m *dsMockRepo) GetRunsByIDs(_ context.Context, _ []string) ([]Run, error) 
 	return nil, nil
 }
 
+func (m *dsMockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]JudgeAnnotatedResult, error) {
+	return nil, nil
+}
+
 func TestCreateDataset(t *testing.T) {
 	tests := []struct {
 		name    string

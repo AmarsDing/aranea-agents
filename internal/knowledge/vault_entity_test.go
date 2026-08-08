@@ -65,6 +65,34 @@ func TestVaultEntityExtractAndLink(t *testing.T) {
 	assert.NotContains(t, links[0].Context, "双均线")
 }
 
+// G5-F 验收：docA 实体「AI」与 docB 抽取的「ai」归一化聚合为同一实体并共现建链，
+// 链接 context 用 keeper 展示名（首见写法）。
+func TestVaultEntityNormAggregationLinks(t *testing.T) {
+	repo := newVaultSyncMemRepo()
+	repo.collections["col1"] = bizknowledge.Collection{ID: "col1"}
+	seedDoc(repo, "col1", "docA", "a.md", "AI 研究笔记。")
+	seedDoc(repo, "col1", "docB", "b.md", "ai 应用笔记。")
+	// 经 ReplaceDocEntities 落库注册实体表（生产路径：首见写法 "AI" 为展示名）。
+	_, err := repo.ReplaceDocEntities(context.Background(), "col1", "docA",
+		[]bizknowledge.DocEntity{{Name: "AI", EntityType: "tech", Mentions: 1}})
+	require.NoError(t, err)
+
+	uc := bizknowledge.NewUsecaseFromRepo(repo)
+	uc.SetLinkRepos(repo, repo)
+	llm := &stubSummaryLLM{resp: `{"entities":[{"name":"ai","type":"tech","mentions":2}]}`}
+	e := newEntityExtractorWithModel(llm, uc)
+
+	applied, err := e.ExtractAndLink(context.Background(), "col1", "docB")
+	require.NoError(t, err)
+	assert.True(t, applied)
+
+	links, err := repo.ListLinks(context.Background(), "col1", "docB", bizknowledge.LinkTypeEntity)
+	require.NoError(t, err)
+	require.Len(t, links, 1, "归一化同实体必须共现建链")
+	assert.Equal(t, "docA", links[0].TargetDocID)
+	assert.Equal(t, "AI", links[0].Context, "context 用 keeper 展示名（首见写法）")
+}
+
 func TestVaultEntityStopwordsFiltered(t *testing.T) {
 	repo := newVaultSyncMemRepo()
 	repo.collections["col1"] = bizknowledge.Collection{ID: "col1"}

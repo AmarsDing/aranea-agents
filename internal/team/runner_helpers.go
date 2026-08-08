@@ -271,7 +271,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRunRecor
 	}))
 }
 
-func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int) {
+func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID string, sortIdx int, m MemberDef, ag biz.Agent, userContent string, asst biz.ChatMessage, prov, mod, dialogMode string, toolCallCount, cachedTok int, startedAt time.Time) {
 	step := biz.TeamRunStep{
 		ID:            uuid.NewString(),
 		RunID:         run.ID,
@@ -293,6 +293,16 @@ func (r *Runner) persistStep(ctx context.Context, run biz.TeamRunRecord, teamID 
 		FinishedAt:    asst.CreatedAt,
 		CreatedAt:     agent.RFC3339Now(),
 		ToolCallCount: toolCallCount,
+	}
+	// 2026-08-08 问题4b：graph watch 路径传入 node_start 追踪的真实开始时刻
+	// 时，落真实执行窗口——StartedAt 取追踪值、DurationMS 取墙钟耗时；否则
+	// StartedAt≈FinishedAt≈落库时刻、DurationMS=0（graph 成员消息无 LatencyMS）。
+	// 零值回退保持既有行为（standalone / watch 迟到 / anchor fallback）。
+	if !startedAt.IsZero() {
+		step.StartedAt = startedAt.UTC().Format(time.RFC3339)
+		if d := time.Since(startedAt); d >= 0 {
+			step.DurationMS = int(d.Milliseconds())
+		}
 	}
 	saved, err := r.runWriter.CreateTeamRunStep(ctx, step)
 	if err != nil {

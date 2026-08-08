@@ -235,6 +235,7 @@ var stepTitleRegistry = map[string]string{
 	"knowledge.ingest.done":    "知识摄取完成",
 	"knowledge.vault.sync":     "Vault 同步",
 	"knowledge.search":         "知识库检索",
+	"knowledge.entity.merge":   "知识实体合并",
 	"a2a.invoke.start":         "A2A 联邦调用开始",
 	"a2a.invoke.governance":    "A2A 治理链检查",
 	"a2a.invoke.remote":        "A2A 远端调用",
@@ -278,6 +279,7 @@ var stepTitleRegistry = map[string]string{
 	"voice.barge_in":          "语音打断",
 	"voice.provider.fallback": "语音服务降级",
 	"voice.error":             "语音链路错误",
+	"voice.confirm.resolved":  "语音确认决议",
 	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",

@@ -253,6 +253,13 @@ Agent 调用 client_open_app
 - **确认门时序**：确认发生在后端（tool_confirm_gate，与现有工具一致），确认卡 UI 由 `client_tool.invoke` 前的现有 confirm 事件驱动；全息确认卡是 confirm 事件在 `/companion` 路由下的渲染形态
 - **审计**：invoke/result/timeout 各写一条流程日志 + 审计事件（复用 audit 域）
 
+> **As-built（V2-T5 语音确认拦截，2026-08-08）**：
+>
+> - 词表匹配（`internal/voice/confirm_words.go`）：ASR 终稿归一化（小写/去空白/去首尾标点）后**整句精确匹配**；approve 词表 {好的/好/好吧/好呀/嗯/行/可以/确认/同意/批准/允许/执行/打开吧/开吧/ok/okay/yes/yeah/sure}，deny 词表 {算了/取消/拒绝/不要/别/不行/不用/不用了/先别/no/nope/cancel}。有意保守：误命中代价仅为一次 resolver 查询（无待决议确认时照常落入 Chat 管线）
+> - 决议（`internal/service/voice_confirm.go`）：`VoiceConfirmResolver` 实现 `voice.ConfirmResolver` 窄端口（Stability:evolving）；在 **spirit 树 + 精确 session 两路**收集 `kind=confirm + status=tool_blocked` step（口径与前端 `useCompanionConfirms` 一致），取最早 `StartedAt` 者复用 `ConfirmActivity` 全量校验（归属/状态机/授权）与恢复路径；语音路径只发 approve/deny，不发 always
+> - 拦截（`internal/voice/session.go`）：`handleASRFinal` 词表命中且 resolver 返回 resolved=true 时**不创建 Chat Turn**，停留 listening 并下行 `{type:"confirm.resolved", decision:"approve"|"deny"}` 帧；resolver 故障降级为普通语句（NFR7）
+> - 流程日志：`voice.confirm.resolved` step 已登记（52-flow-logger §5.1 同步）
+
 ### 6.3 Tauri 执行器（`web/src-tauri/src/`）
 
 | 文件（新增） | 职责 |
@@ -262,6 +269,15 @@ Agent 调用 client_open_app
 
 - 前端经 `invoke()` 调原生命令；白名单校验在 Rust 侧强制（不信任 JS 入参）
 - 移动端（Android）调用返回 `UNSUPPORTED_CAPABILITY`
+
+> **As-built（V2-T4，2026-08-08）**：
+>
+> - `client_open_app`：Windows 裸名走 `cmd.exe /C start ""`（App Paths/PATH 解析）、绝对路径直接 spawn（detached 无 shell 窗口）；macOS `open -a`（裸名）/`open`（路径）；Linux 直接 spawn。**未用 `Start-Process`**（避免 PowerShell 启动开销与窗口策略差异）
+> - `client_open_url`：Windows 用 `rundll32.exe url.dll,FileProtocolHandler`（避免 cmd 对 query 中 `&` 的重解析）；macOS `open`；Linux `xdg-open`；URL 校验仅放行 http/https、≤2048 字符、无空白/控制字符、非空 host
+> - 白名单：内置默认 ∪ 用户覆盖（config dir `whitelist.json`）；别名归一化（trim + 小写）；Windows 候选支持 `%ENV%` 展开；**裸绝对路径不作为别名接受**（路径注入防护），命中别名后按序选首个可用候选；`UnknownAlias → NOT_WHITELISTED`、`NoUsableTarget → TARGET_NOT_FOUND`
+> - 结构化错误码：`NOT_WHITELISTED` / `TARGET_NOT_FOUND` / `INVALID_URL` / `UNSUPPORTED_CAPABILITY` / `SPAWN_FAILED`，经 `client_tool.result` 帧（`error` 字段 `CODE: message` 格式）回传后端桥
+> - `client_screenshot` 未随 V2-T4 落地（范围裁剪，留待后续任务）
+> - 前端接线（同属 V2-T4）：`services/clientTools.ts`（`isDesktopCompanion` 探测 + Tauri executor + `executeClientToolInvoke` 参数归一化 + `client_tool.result` 帧构造）、`realtime/ws-transport.ts`（`register_capabilities` 上行 + `client_tool.invoke` 分发）、`realtime/useEnvelopeStream.ts`（连接后声明 `desktop_companion` 能力；invoke 处理本地失败也即时回帧，避免挂到 30s 桥超时）
 
 ## 7. 前端设计（`web/src/`，遵循 aranea-frontend-guide 分层）
 
@@ -308,6 +324,15 @@ Agent 调用 client_open_app
 
 - 动画循环统一 `requestAnimationFrame` + delta time；HUD 不可见（迷你态/窗口失焦）时降帧至 15fps
 - 性能预算：draw call < 20，三角形 < 50k（NFR5 ≥40fps）
+
+> **As-built（V2-T5 全息确认卡 + HUD 科幻增强，2026-08-08）**：
+>
+> - HUD 科幻增强（`hud/hudParams.ts` + `hud/HudScene.ts`）：`HudParams` 新增 4 个状态驱动参数——`vibrationGain`（粒子环声波震动增益，listening/speaking=1，thinking=0.25，idle=0）、`arcSpeedFactor`（全息弧线转速因子）、`coreWobble`（能量核顶点摆动幅度）、`rippleGain`（声波涟漪增益）；场景新增 Jarvis 式全息弧线组（多弧异速旋转、双色交替、呼吸透明度 + burst 提亮）、粒子环双频正弦震动（26Hz/41Hz 叠加，点尺寸随增益放大）、能量核顶点噪声摆动、声波涟漪环。纯函数参数与 Three.js 解耦，hudParams 单测覆盖
+> - 全息确认卡（`components/companion/HoloConfirmCard.vue`）：confirm step（tool_blocked）渲染为悬浮全息卡（扫描线/边角括号/发光边框），含倒计时与三路径按钮——确认/取消/始终允许；批准时触发粒子流发射（乐观视觉，随后走 grant API）
+> - 确认队列（`features/companion/useCompanionConfirms.ts`）：从 `activityV2Store` 派生会话内 tool_blocked confirm steps（单一数据源铁律，WS 事件自动驱动），队首激活渲染；`ConfirmCardModel` 映射工具名/参数摘要
+> - 粒子发射（`features/companion/launchParticles.ts`）：`makeBurstParticles` 纯函数（可注入 RNG 便于单测）生成粒子参数，`spawnLaunchBurst` DOM 发射；批准时从确认卡向 HUD 能量核飞行并触发 HUD burst
+> - 页面接线（`pages/CompanionPage.vue`）：`DECISION_REPLY` 映射 approve/deny/always → `TOOL_CONFIRM_REPLY.approve/deny/approveAlways`，调既有 `confirmActivityGrant` API（confirm 语义零新增）
+> - 测试：launchParticles + useCompanionConfirms + hudParams 新增 vitest 用例全绿；确认卡三路径交互归 V2-T8 真机验收
 
 ## 8. Tauri 窗口与原生集成
 
@@ -357,6 +382,7 @@ Agent 调用 client_open_app
 | `voice.barge_in` | K5 打断事件 | Info |
 | `voice.provider.fallback` | K3 降级（TTS 跳句/Provider 重连/退回文字模式） | Warn |
 | `voice.error` | K2 错误路径 | Error + `loggateway.Err` |
+| `voice.confirm.resolved` | K5 语音确认决议（V2-T5） | Info |
 | `client_tool.invoke` / `client_tool.result` / `client_tool.timeout` | K6/K7 客户端工具生命周期 | Info/Warn |
 
 限流（红线 4）：`asr.partial` 上行不下发流程日志；音频帧不写日志；高频事件走计数器汇总。

@@ -42,7 +42,8 @@ type taskPlannerImpl struct {
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
-type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, thinkingPub *planningThinkingPublisher, onSubTask func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error)
+// planID 用于生成跨尝试确定性的 subtask 全局 ID（见 planStepID）。
+type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error)
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
@@ -275,7 +276,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			onSubTask := func(st biz.SubTask, index int) {
 				impl.publishV2PlanStep(ctx, st, planID, index, input)
 			}
-			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, onSubTask)
+			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, planID, onSubTask)
 			if err == nil && len(subTasks) > 0 {
 				streamPublished = true
 			}
@@ -1009,7 +1010,12 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 //
 // 每次尝试的思考流独立发布——重试时旧 thinkingPub 已以 Fail() 闭合，新的 Attempt
 // 会创建新的 planningThinkingPublisher，前端能看到「思考块失败 → 新思考块」的连贯动画。
-func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+//
+// 事件流幂等（S1 修复）：subtask 全局 ID 由 planID+原始 ID 确定性生成（planStepID），
+// 重试时新尝试重发的 PlanStep/GraphNode 事件与旧尝试同 ID，前端按 ID 合并去重，
+// 计划面板不出现重复步骤。残余边界：重试后子任务数少于旧尝试已发布数时，多余步骤
+// 残留（同 prompt 下结构稳定，罕见）——视为可接受。
+func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	attemptFn := impl.llmAttemptFn
 	if attemptFn == nil {
 		attemptFn = impl.llmDecomposeAttempt
@@ -1020,7 +1026,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 	}
 
 	for attempt := 1; ; attempt++ {
-		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, nil, onSubTask)
+		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, planID, onSubTask)
 		if err == nil {
 			return subTasks, dag, nil
 		}
@@ -1063,7 +1069,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 
 // llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
 // LLM 流式调用 + 解析。任何错误都会被上层重试循环分类处理。
-func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID string, _ *planningThinkingPublisher, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
 
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
@@ -1105,7 +1111,7 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 	onDelta := func(piece string) error {
 		objects := parser.Feed(piece)
 		for _, objJSON := range objects {
-			st, parseErr := parseStreamSubTask(objJSON, idRemap)
+			st, parseErr := parseStreamSubTask(objJSON, idRemap, planID)
 			if parseErr != nil {
 				impl.lg.Warn("流式 subtask 解析失败，跳过",
 					loggateway.StepID(biz.SpiritStepPlannerDecompose),
@@ -1164,8 +1170,8 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 
 // parseStreamSubTask 解析单个 subtask JSON 对象，重映射 ID 并解析 depends_on。
 // idRemap 累积 LLM 原始 ID → 全局唯一 ID 的映射，供后续 subtask 的 depends_on
-// 解析使用。
-func parseStreamSubTask(objJSON string, idRemap map[string]string) (biz.SubTask, error) {
+// 解析使用。planID 参与全局 ID 的确定性生成（跨重试尝试稳定）。
+func parseStreamSubTask(objJSON string, idRemap map[string]string, planID string) (biz.SubTask, error) {
 	var raw struct {
 		ID                   string                    `json:"id"`
 		Name                 string                    `json:"name"`
@@ -1185,9 +1191,10 @@ func parseStreamSubTask(objJSON string, idRemap map[string]string) (biz.SubTask,
 		return biz.SubTask{}, fmt.Errorf("empty id or name")
 	}
 
-	// 重映射 ID：st_1 → st_<uuid>（与 parseDecompositionOutput 一致）。
+	// 重映射 ID：st_1 → 确定性全局 ID（planStepID）。与 parseDecompositionOutput
+	// 的随机 UUID 不同——流式路径有 P3 重试，跨尝试必须稳定，前端按 ID 合并去重。
 	if _, ok := idRemap[raw.ID]; !ok {
-		idRemap[raw.ID] = "st_" + uuid.NewString()
+		idRemap[raw.ID] = planStepID(planID, raw.ID)
 	}
 
 	// 解析 depends_on：仅保留已映射的引用（前向引用在 resolveForwardRefs 中清理）。
@@ -1217,6 +1224,13 @@ func parseStreamSubTask(objJSON string, idRemap map[string]string) (biz.SubTask,
 		InputContract:        raw.InputContract,
 		DomainPath:           raw.DomainPath,
 	}, nil
+}
+
+// planStepID 生成跨重试尝试确定性的 subtask 全局 ID：同一 plan + 同一 LLM 原始
+// ID 恒映射同一值——P3 重试时新尝试重发的 PlanStep/GraphNode 事件与旧尝试同 ID，
+// 前端按 ID 合并去重（事件流幂等），计划面板不出现重复步骤。
+func planStepID(planID, rawID string) string {
+	return "st_" + uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.plan_step.v2:"+planID+":"+rawID)).String()
 }
 
 // resolveForwardRefs 清理 subtask 中无效的 depends_on 引用（指向不存在的

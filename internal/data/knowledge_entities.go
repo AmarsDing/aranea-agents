@@ -7,11 +7,13 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/lib/pq"
@@ -22,6 +24,111 @@ type knowledgeEntityRow struct {
 	ID       int64
 	Name     string // 展示名（首见写法）
 	NameNorm string // 归一化名（NormalizeEntityName）
+}
+
+// MergeEntities 手动/RPC 合并（G5-F B10）：mergeeIDs 并入 keeperID，与迁移冲突组
+// 自动合并共享 mergeKnowledgeEntityRows / rewriteEntityLinkContexts（防逻辑漂移）。
+// 幂等：不存在的 mergee 跳过（重跑零重写）；keeper 不存在返回 NotFound；
+// keeper 出现在 mergeeIDs 中防御性剔除。
+func (r *knowledgeRepo) MergeEntities(ctx context.Context, collectionID string, keeperID int64, mergeeIDs []int64) (bizknowledge.EntityMergeResult, error) {
+	var result bizknowledge.EntityMergeResult
+	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		keeper, mergees, err := loadKnowledgeEntityMergeRows(ctx, tx, collectionID, keeperID, mergeeIDs)
+		if err != nil {
+			return err
+		}
+		if len(mergees) == 0 {
+			return nil
+		}
+		mentions, err := mergeKnowledgeEntityRows(ctx, tx, collectionID, keeper, mergees)
+		if err != nil {
+			return err
+		}
+		renames := map[string]string{}
+		for _, m := range mergees {
+			if m.Name != keeper.Name {
+				renames[m.Name] = keeper.Name
+			}
+		}
+		links, err := rewriteEntityLinkContexts(ctx, tx, collectionID, renames)
+		if err != nil {
+			return err
+		}
+		result = bizknowledge.EntityMergeResult{
+			RewrittenMentions: mentions,
+			RewrittenLinks:    links,
+			MergedEntities:    len(mergees),
+		}
+		return nil
+	})
+	if err != nil {
+		return bizknowledge.EntityMergeResult{}, err
+	}
+	return result, nil
+}
+
+// loadKnowledgeEntityMergeRows 装载 keeper + mergees（同 collection 校验；keeper 缺失
+// 返回 NotFound；mergeeIDs 去重并剔除 keeper/不存在者）。
+func loadKnowledgeEntityMergeRows(ctx context.Context, tx *sql.Tx, collectionID string, keeperID int64, mergeeIDs []int64) (knowledgeEntityRow, []knowledgeEntityRow, error) {
+	var keeper knowledgeEntityRow
+	err := tx.QueryRowContext(ctx,
+		`SELECT id, name, name_norm FROM knowledge_entities WHERE collection_id = $1 AND id = $2`,
+		collectionID, keeperID).Scan(&keeper.ID, &keeper.Name, &keeper.NameNorm)
+	if errors.Is(err, sql.ErrNoRows) {
+		return keeper, nil, apierror.NotFound(apierror.DomainKnowledge, "keeper entity not found")
+	}
+	if err != nil {
+		return keeper, nil, fmt.Errorf("load keeper %d: %w", keeperID, err)
+	}
+	want := make(map[int64]bool, len(mergeeIDs))
+	for _, id := range mergeeIDs {
+		if id > 0 && id != keeperID {
+			want[id] = true
+		}
+	}
+	if len(want) == 0 {
+		return keeper, nil, nil
+	}
+	ids := make([]int64, 0, len(want))
+	for id := range want {
+		ids = append(ids, id)
+	}
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, name, name_norm FROM knowledge_entities WHERE collection_id = $1 AND id = ANY($2) ORDER BY id`,
+		collectionID, pq.Array(ids))
+	if err != nil {
+		return keeper, nil, fmt.Errorf("load mergees: %w", err)
+	}
+	defer rows.Close()
+	var mergees []knowledgeEntityRow
+	for rows.Next() {
+		var m knowledgeEntityRow
+		if err := rows.Scan(&m.ID, &m.Name, &m.NameNorm); err != nil {
+			return keeper, nil, fmt.Errorf("scan mergee: %w", err)
+		}
+		mergees = append(mergees, m)
+	}
+	return keeper, mergees, rows.Err()
+}
+
+// ListEntities 列出库内全部实体字典条目（按 id 有序），供合并建议计算（B11）。
+func (r *knowledgeRepo) ListEntities(ctx context.Context, collectionID string) ([]bizknowledge.Entity, error) {
+	rows, err := r.data.PostgresRead().QueryContext(ctx,
+		`SELECT id, name, name_norm, entity_type FROM knowledge_entities WHERE collection_id = $1 ORDER BY id`,
+		collectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []bizknowledge.Entity
+	for rows.Next() {
+		var e bizknowledge.Entity
+		if err := rows.Scan(&e.ID, &e.Name, &e.NameNorm, &e.EntityType); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // sqlEntityQuerier 抽象 *sql.DB / *sql.Tx 共有操作（迁移与 repo 合并共用）。

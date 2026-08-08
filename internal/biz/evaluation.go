@@ -12,6 +12,9 @@ type (
 	EvalCaseResultAnnotation = evaluation.CaseResultAnnotation
 	EvalTrendPoint           = evaluation.TrendPoint
 	EvalRunComparison        = evaluation.RunComparison
+	EvalJudgeDivergence      = evaluation.JudgeDivergence
+	EvalJudgeDivergenceCase  = evaluation.JudgeDivergenceCase
+	EvalJudgeAnnotatedResult = evaluation.JudgeAnnotatedResult
 	EvalRepo                 = evaluation.Repo
 	EvalUsecase              = evaluation.Usecase
 	EvalScores               = evaluation.Scores

@@ -1,12 +1,14 @@
 <template>
-  <!-- G5 深空图谱画布（V12.8）：自研渲染层装配（Renderer + Worker 客户端 + 交互桥）。
-       lazy-render：needsRender || particles.active || autoRotate 才 composer.render()；
+  <!-- G5 深空图谱画布 v2（V12.8）：GPU 纹理管线装配（PositionTexture 一次 memcpy/tick，节点/边/瞄准具
+       顶点着色器 texelFetch 取位）；自适应画质 governor（FPS 滑动窗降档保帧率，HUD 指示档位）；
+       lazy-render：needsRender || particles.active || reticle.active || 高亮脉冲 || autoRotate 才渲染；
        IntersectionObserver 离屏暂停；WebGL 不可用友好占位。 -->
   <div ref="containerEl" class="kg3d-canvas">
     <div v-if="webglFailed" class="kg3d-canvas__fallback">
       <q-icon name="visibility_off" size="20px" />
       <span>{{ t('knowledgePage.graphWebglUnavailable') }}</span>
     </div>
+    <div v-else class="kg3d-canvas__quality">{{ t('knowledgePage.graphQualityTier', { tier: qualityTier }) }}</div>
   </div>
 </template>
 
@@ -27,6 +29,14 @@ import {
   wheelZoomFactor,
 } from '../../../features/knowledge/graph3d/interaction';
 import { graphLinkColor } from '../../../features/knowledge/graphUi';
+import {
+  GOVERN_DOWN_FPS,
+  GOVERN_UP_FPS,
+  QUALITY_SPECS,
+  governTier,
+  initialTier,
+  type QualityTier,
+} from '../../../features/knowledge/graph3d/qualityTiers';
 import type { CollectionGraphEdge, CollectionGraphNode } from '../../../features/knowledge/types';
 import { NodeLayer } from './render/NodeLayer';
 import { EdgeLayer } from './render/EdgeLayer';
@@ -35,6 +45,8 @@ import { BackdropLayer } from './render/BackdropLayer';
 import { BloomPipeline } from './render/BloomPipeline';
 import { LabelLayer, type LabelVisibility } from './render/LabelLayer';
 import { Picker } from './render/Picker';
+import { PositionTexture } from './render/PositionTexture';
+import { ReticleLayer } from './render/ReticleLayer';
 
 const props = withDefaults(
   defineProps<{
@@ -71,8 +83,7 @@ const LAYOUT_SEED = 1337;
 /** 节点尺寸 = base + √degree·scale（沿用 G4 graphNodeVal 曲线）。 */
 const NODE_SIZE_BASE = 1.5;
 const NODE_SIZE_SCALE = 1.5;
-/** 标签候选池上限 / 度数阈值。 */
-const LABEL_MAX_CANDIDATES = 200;
+/** 标签度数阈值（候选池上限随画质档）。 */
 const LABEL_MIN_DEGREE = 4;
 /** hover 拾取去抖：位移不足不重射线（防粒子相位重置）。 */
 const HOVER_REPICK_PX = 4;
@@ -81,6 +92,8 @@ const CAMERA_FAR = 20000;
 
 const containerEl = ref<HTMLElement | null>(null);
 const webglFailed = ref(false);
+/** HUD 画质档指示（governor 驱动）。 */
+const qualityTier = ref<'HIGH' | 'MID' | 'LOW'>('HIGH');
 
 // ---- three/引擎实例（非响应式） ----
 let renderer: THREE.WebGLRenderer | null = null;
@@ -92,12 +105,24 @@ let backdrop: BackdropLayer | null = null;
 let nodeLayer: NodeLayer | null = null;
 let edgeLayer: EdgeLayer | null = null;
 let labelLayer: LabelLayer | null = null;
+let posTex: PositionTexture | null = null;
+let reticle: ReticleLayer | null = null;
 let picker: Picker | null = null;
 const particleLayer = new ParticleLayer();
 let engine: GraphEngine | null = null;
 let model: GraphModel | null = null;
 const interaction = new GraphInteraction();
 const labelVis: LabelVisibility = { maxDistance: 600, minDegree: LABEL_MIN_DEGREE, extraVisible: new Set() };
+
+// ---- 画质 governor 状态（FPS EMA + 连续低/高帧计数） ----
+let tier: QualityTier = 0 as QualityTier; // QUALITY_HIGH 起步，rebuild 时按节点数重定
+let tierCeiling: QualityTier = 0 as QualityTier;
+let fpsEma = 60;
+let lowFrames = 0;
+let highFrames = 0;
+/** 画布尺寸缓存（applyQuality 重设 pixelRatio 后需回放 setSize）。 */
+let lastW = 1;
+let lastH = 1;
 
 // ---- lazy-render 状态 ----
 let needsRender = true;
@@ -124,7 +149,6 @@ const drag = {
   startY: 0,
   plane: new THREE.Plane(),
   offset: new THREE.Vector3(),
-  connectedEdges: new Set<number>(),
 };
 /** pointerdown 落在画布内才允许 click 判定（防外部按下拖入抬起误触 background-click）。 */
 let downOnCanvas = false;
@@ -158,16 +182,19 @@ function initScene(el: HTMLElement): boolean {
   }
   renderer.setClearColor(BG_HEX, 1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.0; // v2 降亮度：1.2 → 1.0
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   const w = el.clientWidth || 1;
   const h = el.clientHeight || 1;
+  lastW = w;
+  lastH = h;
   renderer.setSize(w, h, false);
   el.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(60, w / h, 0.1, CAMERA_FAR);
   camera.position.set(0, 0, 400);
+  picker = new Picker(camera);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = false; // lazy-render 友好：无阻尼惯性帧
@@ -176,11 +203,35 @@ function initScene(el: HTMLElement): boolean {
   controls.autoRotateSpeed = 0.6;
   controls.addEventListener('change', requestRender);
 
-  backdrop = new BackdropLayer();
+  backdrop = new BackdropLayer(renderer); // 构造内一次性烘焙星云
   scene.add(backdrop.group);
   scene.add(particleLayer.points);
   bloom = new BloomPipeline(renderer, scene, camera, w, h);
   return true;
+}
+
+/** gl_PointSize 像素缩放 = drawingBufferHeight·0.5 / tan(fov/2)（设备像素域）。 */
+function pointScale(): number {
+  const hPx = renderer?.domElement.height ?? 1;
+  const fov = camera?.fov ?? 60;
+  return (hPx * 0.5) / Math.tan((fov * Math.PI) / 360);
+}
+
+/** 应用画质档：pixelRatio 上限 + bloom 开关/分辨率 + HUD 指示；计数器清零防立刻回弹。 */
+function applyQuality(next: QualityTier): void {
+  tier = next;
+  const spec = QUALITY_SPECS[next];
+  qualityTier.value = spec.label;
+  lowFrames = 0;
+  highFrames = 0;
+  if (renderer) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, spec.maxPixelRatio));
+    renderer.setSize(lastW, lastH, false);
+  }
+  bloom?.setBloomEnabled(spec.bloom);
+  bloom?.setResolutionScale(spec.bloomScale);
+  nodeLayer?.setPointScale(pointScale());
+  requestRender();
 }
 
 /** 数据 → 图模型 + 渲染层重建（nodes/edges 变更）。 */
@@ -198,11 +249,19 @@ function rebuildGraph(): void {
   seedPositions(model, LAYOUT_SEED);
   const m = model;
 
+  // 画质初始分级（万级 LOW 起步保帧率），governor 升档不越此顶
+  tierCeiling = initialTier(m.count);
+  applyQuality(tierCeiling);
+
   const tiers = classifyTiers(m.degree, m.edges);
   const sizeMult = new Float32Array(m.count);
   for (let i = 0; i < m.count; i++) sizeMult[i] = TIER_SIZE_MULT[tiers[i]];
 
-  // 节点基础色（palette 分组色 → instanceColor）
+  // GPU 纹理管线：物理 tick → 一次 memcpy → 节点/边/瞄准具顶点着色器 texelFetch
+  posTex = new PositionTexture(m.count);
+  posTex.update(m.positions);
+
+  // 节点基础色（palette 分组色 → aColor 静态属性）
   const palette = buildGroupPalette(m.groups).map((hex) => hexToRgbFloat(hex));
   const nodeColors = new Float32Array(m.count * 3);
   for (let i = 0; i < m.count; i++) {
@@ -212,10 +271,11 @@ function rebuildGraph(): void {
     nodeColors[i * 3 + 2] = b;
   }
   nodeLayer = new NodeLayer(m.count);
+  nodeLayer.setPositionTexture(posTex.texture, posTex.width);
+  nodeLayer.setPointScale(pointScale());
   nodeLayer.setColors(nodeColors);
   nodeLayer.setSizes(m.degree, NODE_SIZE_BASE, NODE_SIZE_SCALE, sizeMult);
-  nodeLayer.updatePositions(m.positions);
-  scene.add(nodeLayer.mesh);
+  scene.add(nodeLayer.points);
 
   // 边基础色（边类型色，层内乘 rest/hover 系数）
   const edgeColors = new Float32Array(m.edgeCount * 3);
@@ -226,14 +286,17 @@ function rebuildGraph(): void {
     edgeColors[e * 3 + 2] = b;
   }
   edgeLayer = new EdgeLayer(m.edges, edgeColors);
-  edgeLayer.updatePositions(m.positions);
+  edgeLayer.setPositionTexture(posTex.texture, posTex.width);
   scene.add(edgeLayer.object);
 
-  labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: LABEL_MAX_CANDIDATES });
+  reticle = new ReticleLayer();
+  reticle.setPositionTexture(posTex.texture, posTex.width);
+  scene.add(reticle.object);
+
+  labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: QUALITY_SPECS[tier].labelCandidates });
   labelLayer.setLabelsEnabled(props.showLabels);
   scene.add(labelLayer.group);
 
-  picker = new Picker(camera, nodeLayer.mesh);
   interaction.setHover(null);
   interaction.setSelected(m.docIdToIndex.get(props.selectedNodeId) ?? null);
 
@@ -251,17 +314,21 @@ function disposeGraph(): void {
   engine?.stop();
   engine = null;
   if (scene) {
-    if (nodeLayer) scene.remove(nodeLayer.mesh);
+    if (nodeLayer) scene.remove(nodeLayer.points);
     if (edgeLayer) scene.remove(edgeLayer.object);
+    if (reticle) scene.remove(reticle.object);
     if (labelLayer) scene.remove(labelLayer.group);
   }
   nodeLayer?.dispose();
   nodeLayer = null;
   edgeLayer?.dispose();
   edgeLayer = null;
+  reticle?.dispose();
+  reticle = null;
   labelLayer?.dispose();
   labelLayer = null;
-  picker = null;
+  posTex?.dispose();
+  posTex = null;
   particleLayer.setSource(null, []);
   drag.active = false;
   drag.index = -1;
@@ -270,13 +337,8 @@ function disposeGraph(): void {
 // ---------------------------------------------------------------- 物理回调
 
 function handleTick(positions: Float32Array): void {
-  nodeLayer?.updatePositions(positions);
-  if (drag.active && drag.moved) {
-    // D-2：拖拽中只重写关联边顶点
-    edgeLayer?.updateEdgesFor(drag.connectedEdges, positions);
-  } else {
-    edgeLayer?.updatePositions(positions);
-  }
+  // GPU 纹理管线：每 tick 仅一次 memcpy + 纹理上传（万级 ≈0.3ms），节点/边/瞄准具零 CPU 几何计算
+  posTex?.update(positions);
   requestRender();
 }
 
@@ -297,7 +359,7 @@ function handleSettled(): void {
 
 // ---------------------------------------------------------------- 高亮/拾取
 
-/** 邻居集驱动 NodeLayer 提亮 / EdgeLayer 换色 / ParticleLayer 发射（D-1）。 */
+/** 邻居集驱动 NodeLayer 提亮 / EdgeLayer 脉冲 / ParticleLayer 发射 / ReticleLayer 瞄准具（D-1）。 */
 function applyHighlight(): void {
   if (!model || !nodeLayer || !edgeLayer) return;
   const active = interaction.active;
@@ -316,6 +378,12 @@ function applyHighlight(): void {
       particleLayer.setSource(null, []);
     }
   }
+  if (reticle) {
+    const hov = interaction.hover;
+    const sel = interaction.selected;
+    reticle.setHover(hov, hov !== null ? nodeLayer.nodeSize(hov) : 0);
+    reticle.setSelected(sel, sel !== null ? nodeLayer.nodeSize(sel) : 0);
+  }
   labelVis.extraVisible = new Set([interaction.hover, interaction.selected].filter((v): v is number => v !== null));
   requestRender();
 }
@@ -326,10 +394,16 @@ function eventToNdc(ev: PointerEvent | MouseEvent | WheelEvent): void {
   ndc.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
 }
 
+/** 统一拾取入口：射线-球 O(N) 纯循环（物理缓冲 + 半径缓冲直读，无矩阵求逆）。 */
+function pickAt(): number | null {
+  if (!picker || !engine || !model || !nodeLayer) return null;
+  return picker.pick(ndc.x, ndc.y, engine.positions, nodeLayer.sizeData, model.count, containerEl.value?.clientHeight ?? 1);
+}
+
 /** hover 拾取（RAF 内合并调用）：去抖防粒子相位重置。 */
 function doHoverPick(): void {
-  if (!picker || !model) return;
-  const idx = picker.pick(ndc.x, ndc.y);
+  if (!model) return;
+  const idx = pickAt();
   if (interaction.setHover(idx)) applyHighlight();
   const el = containerEl.value;
   if (el) el.style.cursor = idx !== null ? 'pointer' : '';
@@ -338,11 +412,11 @@ function doHoverPick(): void {
 // ---------------------------------------------------------------- 指针交互
 
 function onPointerDown(ev: PointerEvent): void {
-  if (ev.button !== 0 || !picker || !model || !camera) return;
+  if (ev.button !== 0 || !model || !camera) return;
   tween.active = false; // 用户介入取消相机动画
   downOnCanvas = true;
   eventToNdc(ev);
-  const idx = picker.pick(ndc.x, ndc.y);
+  const idx = pickAt();
   drag.startX = ev.clientX;
   drag.startY = ev.clientY;
   drag.moved = false;
@@ -358,7 +432,6 @@ function onPointerDown(ev: PointerEvent): void {
     raycaster.setFromCamera(ndc, camera);
     const hit = raycaster.ray.intersectPlane(drag.plane, tmpV2);
     drag.offset.copy(hit ? hit.sub(tmpV1) : tmpV2.set(0, 0, 0));
-    drag.connectedEdges = oneHop(model.edges, model.edgeCount, drag.index).edges;
   }
 }
 
@@ -383,8 +456,7 @@ function onPointerMove(ev: PointerEvent): void {
         p[drag.index * 3] = hit.x;
         p[drag.index * 3 + 1] = hit.y;
         p[drag.index * 3 + 2] = hit.z;
-        nodeLayer?.updatePositions(p);
-        edgeLayer?.updateEdgesFor(drag.connectedEdges, p);
+        posTex?.update(p);
         requestRender();
       }
     }
@@ -399,7 +471,7 @@ function onPointerMove(ev: PointerEvent): void {
 }
 
 function onPointerUp(ev: PointerEvent): void {
-  if (!picker || !model || !downOnCanvas) return;
+  if (!model || !downOnCanvas) return;
   downOnCanvas = false;
   const wasDragging = drag.active && drag.moved;
   const wasCandidate = drag.active;
@@ -420,7 +492,7 @@ function onPointerUp(ev: PointerEvent): void {
   const dy = ev.clientY - drag.startY;
   if (wasCandidate || isClickMovement(dx, dy)) {
     eventToNdc(ev);
-    const idx = picker.pick(ndc.x, ndc.y);
+    const idx = pickAt();
     if (idx !== null) {
       interaction.setSelected(idx);
       emit('node-click', model.docIds[idx]);
@@ -454,9 +526,9 @@ function onWheel(ev: WheelEvent): void {
 }
 
 function onDblClick(ev: MouseEvent): void {
-  if (!picker || !model) return;
+  if (!model) return;
   eventToNdc(ev);
-  const idx = picker.pick(ndc.x, ndc.y);
+  const idx = pickAt();
   if (idx !== null) {
     emit('node-dblclick', { docId: model.docIds[idx], relPath: model.relPaths[idx] });
   }
@@ -514,7 +586,8 @@ function zoomToFit(ms = 600): void {
 function frame(now: number): void {
   if (paused) return;
   rafId = requestAnimationFrame(frame);
-  const dt = Math.min((now - lastFrameT) / 1000, 0.05);
+  const rawDt = (now - lastFrameT) / 1000;
+  const dt = Math.min(rawDt, 0.05);
   lastFrameT = now;
 
   if (hoverDirty) {
@@ -530,7 +603,32 @@ function frame(now: number): void {
     particleLayer.update(engine.positions, dt);
     requestRender();
   }
-  // lazy-render：needsRender || particles.active || autoRotate 才过 GPU
+  // 高亮边流动脉冲 / 瞄准具呼吸：活跃期持续推进时钟（lazy-render 保活条件）
+  if ((edgeLayer?.highlightedEdges?.size ?? 0) > 0 && edgeLayer) {
+    edgeLayer.setTime(now / 1000);
+    requestRender();
+  }
+  if (reticle?.active) {
+    reticle.setTime(now / 1000);
+    requestRender();
+  }
+  // 画质 governor：FPS EMA 连续低帧降档 / 连续高帧升档（不越初始档顶）
+  if (rawDt > 0 && engine) {
+    fpsEma = fpsEma * 0.92 + (1 / rawDt) * 0.08;
+    if (fpsEma < GOVERN_DOWN_FPS) {
+      lowFrames++;
+      highFrames = 0;
+    } else if (fpsEma > GOVERN_UP_FPS) {
+      highFrames++;
+      lowFrames = 0;
+    } else {
+      lowFrames = 0;
+      highFrames = 0;
+    }
+    const next = governTier(tier, lowFrames, highFrames, tierCeiling);
+    if (next !== tier) applyQuality(next);
+  }
+  // lazy-render：needsRender || 活跃动画源 才过 GPU
   if (needsRender && bloom && camera && engine) {
     labelLayer?.update(engine.positions, camera, labelVis);
     bloom.render();
@@ -574,10 +672,13 @@ onMounted(() => {
     const w = el.clientWidth;
     const h = el.clientHeight;
     if (w === 0 || h === 0) return;
+    lastW = w;
+    lastH = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     bloom.setSize(w, h);
+    nodeLayer?.setPointScale(pointScale());
     requestRender();
   });
   resizeObserver.observe(el);
@@ -602,6 +703,7 @@ onBeforeUnmount(() => {
   resizeObserver = null;
   intersectionObserver = null;
   disposeGraph();
+  picker = null;
   controls?.dispose();
   controls = null;
   particleLayer.dispose();
@@ -703,6 +805,22 @@ defineExpose({ zoomToFit });
     gap: 8px;
     font-size: 13px;
     color: var(--color-text-secondary);
+  }
+
+  &__quality {
+    position: absolute;
+    left: 10px;
+    bottom: 8px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+    letter-spacing: 0.08em;
+    color: rgba(159, 220, 255, 0.62);
+    background: rgba(9, 13, 20, 0.42);
+    border: 1px solid rgba(159, 220, 255, 0.16);
+    pointer-events: none;
+    user-select: none;
   }
 }
 </style>

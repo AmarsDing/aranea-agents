@@ -167,6 +167,10 @@ func (f *fakeEvalRepo) GetRunsByIDs(context.Context, []string) ([]beval.Run, err
 	return nil, nil
 }
 
+func (f *fakeEvalRepo) ListJudgeAnnotatedResults(context.Context, string, string) ([]beval.JudgeAnnotatedResult, error) {
+	return nil, nil
+}
+
 // contentSwitchRunner is a framework runner that answers each user message
 // with a fixed reply, and fails inputs listed in failOn.
 type contentSwitchRunner struct {

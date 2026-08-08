@@ -2,7 +2,8 @@
 
 > **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
 > **2026-07-25 新增**：§子模块 Vault 重设计 Phase 计划（P1~P6，含 P4a/P4b 拆分）——Vault 重设计经评审有条件通过，R-1~R-6 已合入设计文档 §V6，待启动实施。
-> **2026-08-07 新增**：§子模块 图谱深空版与实体治理（G5）Phase 计划（G5-A~G5-G）——调研评审通过（`docs/reports/2026-08-07-research-knowledge-graph-oss.md`），V12.8 设计已合入，待启动实施。
+> **2026-08-07 新增**：§子模块 图谱深空版与实体治理（G5）Phase 计划（G5-A~G5-G）——调研评审通过（`docs/reports/2026-08-07-research-knowledge-graph-oss.md`），V12.8 设计已合入；**2026-08-08：G5-F 实体治理后端（B9~B12）✅ 完成**（详见该节 As-built）。
+> **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 ✅、全量静态验证 ✅、浏览器运行时复验进行中、治理前端 G-1 与性能基准 G-3 📋）。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -934,13 +935,13 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 
 | Phase | 内容 | 关联契约 | 状态 |
 |-------|------|---------|------|
-| **G5-A** | 引擎内核（纯 TS，零 Vue/three 依赖，TDD） | FR-G5-1/2/5、NFR-G5-2/3 | 📋 |
-| **G5-B** | 物理执行层（Worker 协议 + 主线程兜底） | FR-G5-1、NFR-G5-5 | 📋 |
-| **G5-C** | 渲染层（Node/Edge/Backdrop/Bloom/Label/Picker + Canvas 装配） | FR-G5-1/3/6 | 📋 |
-| **G5-D** | 交互全集 + 粒子流 | FR-G5-4/7 | 📋 |
-| **G5-E** | HUD 操作台换肤 + 新控件 | FR-G5-8、NFR-G5-4 | 📋 |
-| **G5-F** | 实体治理后端（B9~B12） | FR-G5-9/10/11 | 📋 |
-| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 📋 |
+| **G5-A** | 引擎内核（纯 TS，零 Vue/three 依赖，TDD） | FR-G5-1/2/5、NFR-G5-2/3 | ✅ |
+| **G5-B** | 物理执行层（Worker 协议 + 主线程兜底） | FR-G5-1、NFR-G5-5 | ✅ |
+| **G5-C** | 渲染层（Node/Edge/Backdrop/Bloom/Label/Picker + Canvas 装配） | FR-G5-1/3/6 | ✅（v2 重写，见 As-built） |
+| **G5-D** | 交互全集 + 粒子流 | FR-G5-4/7 | ✅ |
+| **G5-E** | HUD 操作台换肤 + 新控件 | FR-G5-8、NFR-G5-4 | ✅ |
+| **G5-F** | 实体治理后端（B9~B12） | FR-G5-9/10/11 | ✅ |
+| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 🟡（G-2 ✅ 移除完成；G-4 🟡 静态验证过、浏览器复验中；G-1/G-3 📋） |
 
 ### G5-A：引擎内核（纯 TS）
 
@@ -979,6 +980,21 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 
 验收：渲染层组件级快照/像素断言可行部分单测；收敛静置后 RAF 不再过 GPU（lazy-render 计数断言）；WebGL 不可用友好占位。
 
+> **As-built（2026-08-08，渲染管线 v2 —— 万级性能 + 降亮度 + 科幻视觉）**：用户反馈「卡顿/太亮/学习 Obsidian 更科幻」，C-1/C-2/C-6 全量重写为 GPU 位置纹理管线，新增 C-8/C-9/C-10：
+>
+> | # | 落地 | 偏差 |
+> |---|------|------|
+> | C-1 v2 | `render/NodeLayer.ts`：InstancedMesh → `THREE.Points`（1 节点=1 顶点，gl_VertexID→texelFetch 取位）；Obsidian 柔光点（core+halo 径向衰减、亚像素 vFade）；**普通混合替代加法混合**（重叠不烧白）；动态属性仅 aEmph | 原设计 InstancedMesh 每 tick 重组矩阵上传 640KB，万级不可行 |
+> | C-2 v2 | `render/EdgeLayer.ts`：6 段贝塞尔 → **Obsidian 细直线**（每边 2 顶点，顶点量 ÷6）；rest α=0.16；hover 关联边提亮 + 流动光脉冲（sin 沿边跑动数据流） | 用户裁决：直线（Obsidian 风） |
+> | C-3 v2 | `render/BackdropLayer.ts`：星云**烘焙** 1024×512 equirect RT（弃每帧全屏 FBM ≈60M hash/帧）；bright 0.5→0.34、星空 ×0.65、核雾 0.2→0.1（全压 bloom 阈值 0.55 下） | 降亮度需求驱动 |
+> | C-4 v2 | `render/BloomPipeline.ts`：threshold 0.28→0.55、strength 1.2→0.9（只有真高亮冒辉光） | 降亮度需求驱动 |
+> | C-6 v2 | `render/Picker.ts` + `features/knowledge/graph3d/pickMath.ts`：弃 Raycaster 逐实例矩阵求逆 → 自研射线-球 O(N) 纯循环；slack 随距离放大保远节点可点；最近 t 保遮挡 | 原方案每实例矩阵求逆 = 万级 hover 卡顿元凶 |
+> | C-8 新增 | `render/PositionTexture.ts` + `textureLayout.ts`：RGBA32F DataTexture（⌈√N⌉² 取整）；每 tick 一次 memcpy + 纹理上传（万级 ≈0.3ms），节点/边/瞄准具共享取位 | v2 管线核心基础设施 |
+> | C-9 新增 | `render/ReticleLayer.ts`：HUD 瞄准具（hover 圆环 + 选中六边形，视空间 billboard，uniform 索引驱动） | 科幻增强用户裁决「全套」 |
+> | C-10 新增 | `features/knowledge/graph3d/qualityTiers.ts`：自适应画质 HIGH/MID/LOW（初始按节点数 ≥2500/≥8000 分级；FPS EMA governor 连续 90 帧 <45fps 降档 / 600 帧 >57fps 升档不超初始档顶）；档规格驱动 bloom/pixelRatio/标签候选（200/100/40）；HUD 档位指示 | 自适应降级用户裁决「允许」 |
+>
+> C-5/C-7 按原设计落地（LabelLayer 候选池上限改由画质档驱动）。测试：graph3d 域 15 文件 106 用例全绿（新增 textureLayout/pickMath/qualityTiers/ReticleLayer 4 套）；全量 `pnpm lint`（0 错误）+ `pnpm test`（199 文件/1489 用例）+ `pnpm build` 通过。设计同步：[37-knowledge.design.md §V12.8-1 As-built](./37-knowledge.design.md#v128-图谱深空版渲染层--实体治理g52026-08-07-评审通过)。
+
 ### G5-D：交互全集 + 粒子流
 
 | # | 任务 | 涉及文件 |
@@ -1014,6 +1030,8 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 | F-6 | ListEntityMergeSuggestions：归一化冲突组（name 不同 name_norm 相同）+ 配置 embedding 时高相似对（余弦 ≥0.90 标 auto、0.80-0.90 标 suggest）；embedding 未配置仅返回 norm 组（对齐 NFR-15）；实时计算不落队列表（YAGNI） | `internal/biz/knowledge/`、`internal/service/knowledge.go` |
 
 验收："AI"/"ai"/"ＡＩ" 聚合为同一实体；合并事务重写条数正确返回；合并后别名命中跨同步持久；无 embedding 时归一化与手动合并全功能可用。
+
+> **As-built（2026-08-08，全部验收通过）**：F-1 `internal/biz/knowledge/entity_norm.go`(+test)；F-2 `internal/data/sql/migrations/20261129_knowledge_entity_governance.sql` + `ddl_migration_registry.go` + L3 回填/冲突组合并（与 B10 共享 helper）；F-3 `internal/data/knowledge_links.go`（`ReplaceDocEntities` 归一化/别名/同批求和/孤儿清理、`FindEntityCooccurrences` 按 entity_id）+ `internal/knowledge/vault_entity.go` 适配；F-4 `api/kratos/knowledge/v1/knowledge.proto`（`MergeKnowledgeEntities` POST `/v1/knowledge/vaults/{collection_id}/entity-merges`、`ListEntityMergeSuggestions` GET `/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions`）；F-5 `internal/data/knowledge_entities.go`（`MergeEntities`/`ListEntities` + 共享 helper）+ `internal/service/knowledge_governance.go` + step `knowledge.entity.merge` 登记（`internal/event/flow_log.go` + 52-flow-logger §5.1）；F-6 `internal/biz/knowledge/entity_suggest.go`(+test) + `knowledge_governance.go` handler（embedder 经构造函数注入，nil/失败降级 norm-only）。测试：data PG 实测 4 项、service 6 项、biz 归一化/建议矩阵全绿；`go build ./...` + 定向 vet 通过（干净 GOCACHE）。设计偏差：解析管线「embedding ≥0.90 自动合并」步骤未接线（YAGNI，仅走 B11 建议由用户确认），详见 [37-knowledge.design.md §V12.8-3 As-built](./37-knowledge.design.md#v12-图谱深空版渲染层--实体治理g52026-08-07-评审通过)。
 
 ### G5-G：治理前端 + 移除清单 + 全量验证
 

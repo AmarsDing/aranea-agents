@@ -145,7 +145,7 @@
 |---|------|
 | Rust | `cargo test`：配置读写、URL 校验、代理上游选择（桌面回退/Android 未配置 503） |
 | Go | `go test ./internal/server/...`：限流中间件全场景 |
-| 前端 | `vitest`：配置页校验逻辑、布局断点切换 |
+| 前端 | `vitest`：配置页校验逻辑、布局断点切换、扫码 payload 构造/解析（`pairingQr.spec.ts`）、WS 僵尸检测与即时重连（`ws-transport-weaknet.spec.ts`）、离线缓存与回退门控（`offlineCache.spec.ts` / `useOfflineSessionList.spec.ts` / `useNetworkStatus.spec.ts`） |
 | 手工 | AC-1~AC-6 验收清单（真实手机 + 4G 网络） |
 
 ## 9. 已知取舍与风险
@@ -154,3 +154,25 @@
 - 国产 ROM 杀后台无法 100% 规避（前台服务 + 文档引导缓解）
 - 依赖 frps/Caddy 正确透传 XFF，否则限流粒度退化为全局（部署文档强制写明）
 - Tauri 2 Android 需新增 Rust targets（`aarch64-linux-android` 等）、JDK17、Android SDK/NDK（本机当前缺失，构建 APK 前需安装）
+- 离线缓存只写「非空成功列表」：在线删光所有会话后进入离线，缓存仍展示最后一次的非空列表（横幅已声明为缓存数据；按 YAGNI 接受，如需精确需在 store 暴露「加载成功但为空」信号）
+
+## 10. P3 体验优化（As-built，2026-08-08）
+
+### 10.1 扫码配对（FR-10）
+
+- 桌面端：`components/mobile/PairingQrDialog.vue`（MainLayout 用户菜单「配对手机 App」打开），输入公网 https 地址实时生成二维码（`qrcode` → dataURL）；地址经 `isPlausibleServerUrl` 校验（http/https origin，无路径/查询）。
+- Payload：JSON 信封 `{ aranea: 'mobile-setup', v: 1, url }`（`features/mobile/pairingQr.ts` 纯函数构造/解析）；解析侧兼容裸 URL 文本（手动分享/旧版本场景）。
+- 移动端：`ServerSetupPage` 扫码按钮 → `services/qrScanner.ts`（`tauri-plugin-barcode-scanner` 懒加载封装；非 Tauri 环境返回 `unavailable`，权限拒绝/取消/失败分级返回）；扫码内容经 `parsePairingQr` 校验后回填地址输入框。插件在 Rust 侧 `#[cfg(mobile)]` 条件注册（桌面端不链接该插件）。
+
+### 10.2 弱网重连（ws-transport）
+
+- **僵尸连接检测**：移动网络切换/弱网下 TCP 半开连接（系统未及时 RST）会让 WS 看似 OPEN 却永无下行帧。`ws-transport` 在每个心跳周期检查 `lastActivityAt`（任何下行帧刷新），超过 `WS_ZOMBIE_TIMEOUT_MS`（55s ≈ 2 个心跳周期 + 余量）无下行则以 4000 码强关，走正常重连。
+- **online 事件即时重连**：`window online` 事件触发 `reconnectNow()`——清退避计时器、重置重试计数、关闭陈旧 socket 后立即 `connect()`，不等指数退避（WiFi/4G 切换后秒级恢复）。
+
+### 10.3 离线缓存（FR-12）
+
+- `features/mobile/offlineCache.ts`：localStorage 信封 `{ v: 1, agentId, cachedAt, sessions }`，按 agent 隔离、上限 50 条；损坏 JSON / 超配额 / 隐私模式全部降级为「无缓存」，不抛错。
+- 写入时机：`useOfflineSessionList` 监听 live 列表，**仅写非空列表**（sessionStore 只在加载成功后赋值，非空即服务端真相）。
+- 回退门控：live 为空 &&（`navigator.onLine === false` || store `error` 非空）时展示缓存并标记 `showingCache`；在线且无错误时展示真实空态——区分「真的没有会话」与「加载失败」。
+- UX：`MobileLayout` 头部全局离线横幅（`mobile.offlineCached`，`--color-warning` token + `color-mix` 昼夜自适应）；缓存列表可正常点入聊天页（消息加载失败走既有错误处理）。
+

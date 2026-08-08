@@ -229,6 +229,43 @@ message ListCollectionGraphResponse {
   repeated CollectionGraphEdge edges = 2;
 }
 
+// EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
+// source = "norm" (same name_norm, different display name) or "embedding"
+// (cosine similarity of entity-name embeddings).
+message EntityMergeSuggestion {
+  int64 keeper_id = 1;       // suggested survivor entity id
+  string keeper_name = 2;    // survivor display name
+  int64 mergee_id = 3;       // entity id suggested to merge in
+  string mergee_name = 4;    // mergee display name
+  string source = 5;         // norm | embedding
+  double similarity = 6;     // cosine similarity (norm source = 1.0)
+  string tier = 7;           // auto (>=0.90) | suggest (0.80-0.90); norm = auto
+}
+
+message ListEntityMergeSuggestionsRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListEntityMergeSuggestionsResponse {
+  repeated EntityMergeSuggestion items = 1;
+}
+
+// MergeKnowledgeEntitiesRequest merges mergee entities into the keeper (G5-F B10).
+// Atomic: doc-entity mentions rewritten to keeper (summed on conflict), entity
+// link contexts rewritten to keeper display name, mergee name_norms become
+// keeper aliases (merge persists across re-syncs), mergee rows deleted.
+message MergeKnowledgeEntitiesRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int64 keeper_id = 2 [(google.api.field_behavior) = REQUIRED];
+  repeated int64 mergee_ids = 3;
+}
+
+message MergeKnowledgeEntitiesResponse {
+  int32 rewritten_mentions = 1;  // doc-entity mention rows rewritten
+  int32 rewritten_links = 2;     // entity-track link rows with context rewritten
+  int32 merged_entities = 3;     // mergee entities actually merged
+}
+
 message ListDocumentsResponse {
   repeated KnowledgeDocument items = 1;
   int32 total = 2;
@@ -426,6 +463,23 @@ service KnowledgeService {
   rpc ListCollectionGraph(ListCollectionGraphRequest) returns (ListCollectionGraphResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/vaults/{collection_id}/graph"
+    };
+  }
+  // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
+  // normalization conflict groups (same name_norm, different display name)
+  // plus high-similarity embedding pairs when the embedder is configured.
+  // Computed in real time; no queue table.
+  rpc ListEntityMergeSuggestions(ListEntityMergeSuggestionsRequest) returns (ListEntityMergeSuggestionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions"
+    };
+  }
+  // MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
+  // atomically; returns rewrite counts for inline UI feedback.
+  rpc MergeKnowledgeEntities(MergeKnowledgeEntitiesRequest) returns (MergeKnowledgeEntitiesResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/vaults/{collection_id}/entity-merges"
+      body: "*"
     };
   }
 

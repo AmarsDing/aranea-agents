@@ -25,6 +25,11 @@ replace trpc.group/trpc-go/trpc-agent-go/storage/postgres => ./pkg/trpc-agent-go
 // OpenClaw runtime profile support must resolve to the vendored framework source.
 replace trpc.group/trpc-go/trpc-agent-go/openclaw => ./pkg/trpc-agent-go/openclaw
 
+// Evaluation framework must resolve to the vendored source: published v1.9.0
+// lacks case-level rubrics (EvalCase.Rubrics) required for per-case judge
+// scoring standards (P3-2).
+replace trpc.group/trpc-go/trpc-agent-go/evaluation => ./pkg/trpc-agent-go/evaluation
+
 require (
 	entgo.io/ent v0.14.6
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -41,6 +46,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/jackc/pgx/v5 v5.7.2
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.2
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
@@ -75,6 +81,7 @@ require (
 	golang.org/x/net v0.55.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.45.0
+	golang.org/x/text v0.37.0
 	golang.org/x/tools v0.45.0
 	google.golang.org/genai v1.40.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9
@@ -208,7 +215,6 @@ require (
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.7.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
@@ -296,7 +302,6 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/api v0.267.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

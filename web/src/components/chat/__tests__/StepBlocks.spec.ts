@@ -85,7 +85,11 @@ describe('ThinkingBlock 流式自动展开', () => {
   it('挂载时为完成态：保持默认收起，不受流式自动展开影响', () => {
     const wrapper = mount(ThinkingBlock, {
       props: {
-        step: mkStep({ ID: 'st-done-1', Status: 'completed', Reasoning: '已完成的较长推理内容，需要超过三十个字符才会进入折叠态而非内联短文本' }),
+        step: mkStep({
+          ID: 'st-done-1',
+          Status: 'completed',
+          Reasoning: '已完成的较长推理内容，需要超过三十个字符才会进入折叠态而非内联短文本',
+        }),
       },
       global: { plugins: [i18n] },
     });

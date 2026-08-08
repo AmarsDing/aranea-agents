@@ -37,8 +37,10 @@
 | Speech 端口 | `internal/biz/speech.go` | StreamingASR/TTSProvider 窄接口 + 配置模型 ✅ |
 | Speech 适配器 | `internal/data/speech/`（volcengine_asr.go / volcengine_tts.go / ws_conn.go / volc_frame.go / registry.go / env_config.go） | 火山首接 ✅ |
 | 客户端工具桥 | `internal/tools/clientbridge/`（bridge.go / toolset.go + 测试）、`internal/server/ws_client_tool.go`、`internal/service/client_tool_bridge.go` | 工具注册/确认门接入/invoke 路由/pending 超时/离线降级/审计+流程日志 ✅（V2-T3） |
-| Tauri 工具执行器 | `web/src-tauri/src/client_tools.rs`、`whitelist.rs` | open_app/open_url/screenshot（V2-T4） |
-| 前端伴侣模块 | `web/src/features/companion/`（types/voice/hud）、`web/src/stores/companion.ts`、`web/src/components/companion/`（HudCanvas/CompanionChatPanel）、`web/src/pages/CompanionPage.vue` | HUD/语音/聊天窗 ✅（V1-T7/T8）；确认卡（V2-T5） |
+| Tauri 工具执行器 | `web/src-tauri/src/client_tools.rs`、`whitelist.rs`；前端 `web/src/services/clientTools.ts`、`web/src/realtime/ws-transport.ts`（+`useEnvelopeStream.ts` 接线） | open_app/open_url + 能力注册/invoke 分发 ✅（V2-T4）；screenshot 留待后续 |
+| 前端伴侣模块 | `web/src/features/companion/`（types/voice/hud）、`web/src/stores/companion.ts`、`web/src/components/companion/`（HudCanvas/CompanionChatPanel）、`web/src/pages/CompanionPage.vue` | HUD/语音/聊天窗 ✅（V1-T7/T8）；确认卡 ✅（V2-T5） |
+| 全息确认卡 | `web/src/components/companion/HoloConfirmCard.vue`、`web/src/features/companion/useCompanionConfirms.ts`、`launchParticles.ts` | 确认队列派生/全息卡渲染/粒子发射 ✅（V2-T5） |
+| 语音确认拦截 | `internal/voice/confirm_words.go`、`internal/service/voice_confirm.go`、`internal/voice/session.go`（handleASRFinal 拦截） | 「好的/算了」词表 → ConfirmActivity 决议，不建 Chat Turn ✅（V2-T5） |
 
 ## 3. 现状评估与差距
 
@@ -78,8 +80,8 @@
 | V2-T1 | 语音状态机显式化 + barge-in 链路（前端 VAD → 本地停播 → voice.barge_in → CancelRun → TTS 终止 → 前端清队列） | 🟡 | 后端状态机/转换表单测 + Cancel 链路 V1 已落地；2026-08-07 前端 VAD 接线完成（decideVadAction 纯函数 14 单测 + onPcm16k 喂帧 → bargeIn/commit，本地 50ms 淡出停播）；打断 ≤300ms 停播实测待真机（同 V1-T10 凭据依赖） |
 | V2-T2 | AEC 验证与调优（echoCancellation 在扬声器场景实测，误打断率评估） | 📋 | 播报中无误触发打断 |
 | V2-T3 | 客户端工具桥后端（`internal/tools/clientbridge/`：注册/种子/确认门接入/invoke 路由/pending 超时/离线降级，含单测） | ✅ | 2026-08-08 完成：bridge.go（pending 30s 超时/离线 DESKTOP_CLIENT_OFFLINE/审计+流程日志）+ toolset.go（client 工具组 open_app/open_url，确认门 requiresConfirm）；WS 侧 ws_client_tool.go（register_capabilities/client_tool.result 上行 + RouteClientToolInvoke 按 desktop_companion 能力过滤扇出）；service 适配 client_tool_bridge.go（MonitorAuditRepo→AuditRecorder）+ wire 注入；流程日志 client_tool.invoke/result/timeout 三 step 登记。路由/超时/离线/回环单测全绿（clientbridge + server 包） |
-| V2-T4 | Tauri 工具执行器（`client_tools.rs`/`whitelist.rs`：open_app/open_url，白名单 Rust 侧强制） | 📋 | 白名单外目标拒绝执行 |
-| V2-T5 | 全息确认卡 + 科幻开启动画（HoloConfirmCard + 粒子发射；语音确认「好的」映射 confirm 通过） | 📋 | 确认/取消/始终允许三路径可用 |
+| V2-T4 | Tauri 工具执行器（`client_tools.rs`/`whitelist.rs`：open_app/open_url，白名单 Rust 侧强制） | ✅ | 2026-08-08 完成：whitelist.rs（内置默认 ∪ 用户覆盖 whitelist.json；别名归一化大小写不敏感；Windows 环境变量展开；裸绝对路径一律拒绝——路径注入防护）+ client_tools.rs（open_app：Win `cmd /C start` 裸名走 App Paths / 绝对路径直启，macOS `open -a`，Linux 直启；open_url：Win `rundll32 url.dll,FileProtocolHandler` 避免 `&` 重解析，macOS `open`，Linux `xdg-open`；URL 校验仅 http/https、≤2048 字符、无空白控制字符；Android → UNSUPPORTED_CAPABILITY；错误码 NOT_WHITELISTED/TARGET_NOT_FOUND/INVALID_URL/SPAWN_FAILED）。前端：clientTools.ts（Tauri executor + client_tool.result 帧构造）+ ws-transport（register_capabilities/client_tool.invoke 分发）+ useEnvelopeStream 接线（连接后声明 desktop_companion 能力）。cargo test 33 绿 + vitest 19 绿 + pnpm lint 0 errors；screenshot 范围外（留待后续），真机启动验收归 V2-T8 |
+| V2-T5 | 全息确认卡 + 科幻开启动画（HoloConfirmCard + 粒子发射；语音确认「好的」映射 confirm 通过） | ✅ | 2026-08-08 完成：①后端语音确认拦截——confirm_words.go（归一化整句精确匹配 approve 19 词/deny 12 词，误命中代价仅一次 resolver 查询）+ service/voice_confirm.go（spirit 树+精确 session 两路收集 kind=confirm+tool_blocked，取最早 StartedAt，复用 ConfirmActivity 全量校验）+ session.go handleASRFinal 拦截（resolved 时不建 Chat Turn，下行 confirm.resolved 帧；resolver 故障降级普通语句）；voice.confirm.resolved step 登记+52-flow-logger 同步。②前端——HoloConfirmCard（全息扫描线/倒计时/确认/取消/始终允许三路径）+ useCompanionConfirms（activityV2Store 派生确认队列，单一数据源）+ launchParticles（makeBurstParticles 纯函数可注入 RNG + spawnLaunchBurst DOM 发射）+ CompanionPage DECISION_REPLY 映射 approveAlways 走既有 confirmActivityGrant API。③HUD 科幻增强——hudParams 新增 vibrationGain/arcSpeedFactor/coreWobble/rippleGain 四状态驱动参数；HudScene 新增全息弧线组/粒子环双频声波震动/能量核顶点摆动/声波涟漪。验证：go build+voice/server/service 测试全绿（独立 GOCACHE）；vitest 195 文件 1462 测试全绿；pnpm lint 0 errors。真机三路径交互+语音确认端到端归 V2-T8 |
 | V2-T6 | 语音留档（archive_user_audio 开关 + Artifact 附件 + 消息 metadata 标记） | 📋 | 开关开启时音频可回放；关闭时无文件 |
 | V2-T7 | System Settings「语音服务」管理面 Tab（音色/语言/凭据，敏感字段） | 📋 | 配置热生效；凭据不出现在日志 |
 | V2-T8 | 集成验收（语音打开微信全流程、离线降级提示、留档回放） | 📋 | 需求 §2.5/§2.7 验收标准全过 |

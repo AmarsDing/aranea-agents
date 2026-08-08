@@ -1,9 +1,14 @@
 package data
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"aranea-agents/internal/data/testhelper"
+	"aranea-agents/pkg/loggateway"
 )
 
 // M1 fix: PII scanning must happen at the unified fact-write entry so all
@@ -71,5 +76,66 @@ func TestRedactFactWritePII_EmptyStatement(t *testing.T) {
 	got := redactFactWritePII("", "")
 	if got.piiFlag != 0 || got.statement != "" || got.original != "" {
 		t.Fatalf("unexpected result for empty input: %+v", got)
+	}
+}
+
+// P0-1 (2026-08-08): the index reconciler must pick up 'pending' facts in
+// addition to 'stale'/'failed'. Insert defaults embedding_status to 'pending';
+// facts whose synchronous index write never ran (crash window, canary insert,
+// historical rows) were stranded forever because the listing query only
+// matched 'stale'/'failed'. The row JSON must also carry index_attempts so the
+// reconciler's max-attempts disable guard can fire.
+func TestListStaleIndexFacts_IncludesPending(t *testing.T) {
+	client, db := testhelper.SetupTestPG(t)
+	ctx := context.Background()
+	if err := EnsureSessionMemorySchema(ctx, client, DialectPostgres, loggateway.NewNoop()); err != nil {
+		t.Fatalf("ensure session memory schema: %v", err)
+	}
+	d := &Data{}
+	d.SetEntClientForTest(client, db, loggateway.NewNoop())
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	insert := func(id, embStatus string) {
+		t.Helper()
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO memory_facts (id, scope_type, scope_id, agent_id, statement, fingerprint, embedding_status, created_at, updated_at)
+			 VALUES ($1, 'agent', 'agent-1', 'agent-1', $2, $1, $3, $4, $4)`,
+			id, "stmt-"+id, embStatus, now)
+		if err != nil {
+			t.Fatalf("insert %s: %v", id, err)
+		}
+	}
+	insert("f-stale", "stale")
+	insert("f-failed", "failed")
+	insert("f-pending", "pending")
+	insert("f-fresh", "fresh")
+	insert("f-disabled", "disabled")
+
+	m := NewMemoryFactIndexMaintainerAdapter(d)
+	rows, err := m.ListStaleIndexFacts(ctx, 5, 50)
+	if err != nil {
+		t.Fatalf("ListStaleIndexFacts: %v", err)
+	}
+	got := map[string]bool{}
+	for _, raw := range rows {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if _, ok := m["index_attempts"]; !ok {
+			t.Errorf("row JSON missing index_attempts (reconciler disable guard needs it)")
+		}
+		id, _ := m["id"].(string)
+		got[id] = true
+	}
+	for _, want := range []string{"f-stale", "f-failed", "f-pending"} {
+		if !got[want] {
+			t.Errorf("missing %s in stale index list (got %v)", want, got)
+		}
+	}
+	for _, unwanted := range []string{"f-fresh", "f-disabled"} {
+		if got[unwanted] {
+			t.Errorf("unexpected %s in stale index list", unwanted)
+		}
 	}
 }

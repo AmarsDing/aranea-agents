@@ -24,6 +24,7 @@ const OperationSelfImprovementServiceCloseRun = "/kratos.self_improvement.v1.Sel
 const OperationSelfImprovementServiceGetOutcomeStats = "/kratos.self_improvement.v1.SelfImprovementService/GetOutcomeStats"
 const OperationSelfImprovementServiceGetRiskRules = "/kratos.self_improvement.v1.SelfImprovementService/GetRiskRules"
 const OperationSelfImprovementServiceGetRun = "/kratos.self_improvement.v1.SelfImprovementService/GetRun"
+const OperationSelfImprovementServiceGetStatus = "/kratos.self_improvement.v1.SelfImprovementService/GetStatus"
 const OperationSelfImprovementServiceListRuns = "/kratos.self_improvement.v1.SelfImprovementService/ListRuns"
 const OperationSelfImprovementServiceRejectRun = "/kratos.self_improvement.v1.SelfImprovementService/RejectRun"
 const OperationSelfImprovementServiceRollbackRun = "/kratos.self_improvement.v1.SelfImprovementService/RollbackRun"
@@ -43,6 +44,12 @@ type SelfImprovementServiceHTTPServer interface {
 	GetRiskRules(context.Context, *GetRiskRulesRequest) (*GetRiskRulesResponse, error)
 	// GetRun GetRun returns the full run detail including diff/diagnosis/reports.
 	GetRun(context.Context, *GetRunRequest) (*GetRunResponse, error)
+	// GetStatus GetStatus returns the feature availability + prerequisite preflight view
+	// (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+	// Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+	// it answers even when the feature is disabled — the console uses it to
+	// render the disabled empty state / missing-prerequisite guidance.
+	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
 	// ListRuns ListRuns returns runs filtered by status / risk_level / trigger_source
 	// with pagination. Heavy fields (diff/diagnosis/report) are omitted.
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
@@ -64,6 +71,7 @@ func RegisterSelfImprovementServiceHTTPServer(s *http.Server, srv SelfImprovemen
 	r.POST("/v1/self-improvement/runs/{id}/rollback", _SelfImprovementService_RollbackRun0_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/close", _SelfImprovementService_CloseRun0_HTTP_Handler(srv))
 	r.GET("/v1/self-improvement/outcome-stats", _SelfImprovementService_GetOutcomeStats0_HTTP_Handler(srv))
+	r.GET("/v1/self-improvement/status", _SelfImprovementService_GetStatus0_HTTP_Handler(srv))
 	r.GET("/v1/self-improvement/risk-rules", _SelfImprovementService_GetRiskRules0_HTTP_Handler(srv))
 	r.PUT("/v1/self-improvement/risk-rules", _SelfImprovementService_UpdateRiskRules0_HTTP_Handler(srv))
 }
@@ -228,6 +236,25 @@ func _SelfImprovementService_GetOutcomeStats0_HTTP_Handler(srv SelfImprovementSe
 	}
 }
 
+func _SelfImprovementService_GetStatus0_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetStatusRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSelfImprovementServiceGetStatus)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetStatus(ctx, req.(*GetStatusRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetStatusResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _SelfImprovementService_GetRiskRules0_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetRiskRulesRequest
@@ -283,6 +310,12 @@ type SelfImprovementServiceHTTPClient interface {
 	GetRiskRules(ctx context.Context, req *GetRiskRulesRequest, opts ...http.CallOption) (rsp *GetRiskRulesResponse, err error)
 	// GetRun GetRun returns the full run detail including diff/diagnosis/reports.
 	GetRun(ctx context.Context, req *GetRunRequest, opts ...http.CallOption) (rsp *GetRunResponse, err error)
+	// GetStatus GetStatus returns the feature availability + prerequisite preflight view
+	// (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+	// Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+	// it answers even when the feature is disabled — the console uses it to
+	// render the disabled empty state / missing-prerequisite guidance.
+	GetStatus(ctx context.Context, req *GetStatusRequest, opts ...http.CallOption) (rsp *GetStatusResponse, err error)
 	// ListRuns ListRuns returns runs filtered by status / risk_level / trigger_source
 	// with pagination. Heavy fields (diff/diagnosis/report) are omitted.
 	ListRuns(ctx context.Context, req *ListRunsRequest, opts ...http.CallOption) (rsp *ListRunsResponse, err error)
@@ -368,6 +401,24 @@ func (c *SelfImprovementServiceHTTPClientImpl) GetRun(ctx context.Context, in *G
 	pattern := "/v1/self-improvement/runs/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationSelfImprovementServiceGetRun))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetStatus GetStatus returns the feature availability + prerequisite preflight view
+// (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+// Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+// it answers even when the feature is disabled — the console uses it to
+// render the disabled empty state / missing-prerequisite guidance.
+func (c *SelfImprovementServiceHTTPClientImpl) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...http.CallOption) (*GetStatusResponse, error) {
+	var out GetStatusResponse
+	pattern := "/v1/self-improvement/status"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationSelfImprovementServiceGetStatus))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

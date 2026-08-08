@@ -1,57 +1,64 @@
 <template>
   <div class="outcome-stats">
-    <div class="overview-stats-row q-mb-md">
-      <div class="overview-stat-card">
-        <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsTotal') }}</div>
-        <div class="overview-stat-card__value">{{ stats?.total ?? 0 }}</div>
-      </div>
-      <div class="overview-stat-card">
-        <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsEffectiveRate') }}</div>
-        <div class="overview-stat-card__value text-positive">{{ formatPct(stats?.effectiveRate) }}</div>
-      </div>
-      <div class="overview-stat-card">
-        <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsRollbackRate') }}</div>
-        <div class="overview-stat-card__value text-negative">{{ formatPct(stats?.rollbackRate) }}</div>
-      </div>
-      <div class="overview-stat-card">
-        <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsVerdicts') }}</div>
-        <div class="overview-stat-card__value outcome-stats__verdicts">
-          <span class="text-positive">{{ stats?.effective ?? 0 }}</span>
-          <span class="overview-section-caption">/</span>
-          <span>{{ stats?.neutral ?? 0 }}</span>
-          <span class="overview-section-caption">/</span>
-          <span class="text-negative">{{ stats?.regressed ?? 0 }}</span>
+    <!-- 统计接口失败（区别于真实 0 数据）：整面板降级为「不可用」 -->
+    <div v-if="failed" class="outcome-stats__unavailable overview-panel">
+      <q-icon name="cloud_off" size="sm" class="outcome-stats__unavailable-icon" />
+      <span class="overview-section-caption">{{ t('selfImprovementPage.statsUnavailable') }}</span>
+    </div>
+    <template v-else>
+      <div class="overview-stats-row q-mb-md">
+        <div class="overview-stat-card">
+          <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsTotal') }}</div>
+          <div class="overview-stat-card__value">{{ stats?.total ?? 0 }}</div>
+        </div>
+        <div class="overview-stat-card">
+          <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsEffectiveRate') }}</div>
+          <div class="overview-stat-card__value text-positive">{{ formatPct(stats?.effectiveRate) }}</div>
+        </div>
+        <div class="overview-stat-card">
+          <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsRollbackRate') }}</div>
+          <div class="overview-stat-card__value text-negative">{{ formatPct(stats?.rollbackRate) }}</div>
+        </div>
+        <div class="overview-stat-card">
+          <div class="overview-stat-card__label">{{ t('selfImprovementPage.statsVerdicts') }}</div>
+          <div class="overview-stat-card__value outcome-stats__verdicts">
+            <span class="text-positive">{{ stats?.effective ?? 0 }}</span>
+            <span class="overview-section-caption">/</span>
+            <span>{{ stats?.neutral ?? 0 }}</span>
+            <span class="overview-section-caption">/</span>
+            <span class="text-negative">{{ stats?.regressed ?? 0 }}</span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="outcome-stats__charts">
-      <q-card flat class="overview-panel outcome-stats__chart-card">
-        <q-card-section>
-          <div class="overview-section-title">{{ t('selfImprovementPage.statsVerdictDist') }}</div>
-          <div class="overview-section-caption">{{ t('selfImprovementPage.statsVerdictDistHint') }}</div>
-        </q-card-section>
-        <q-card-section>
-          <div v-if="!hasVerdicts" class="outcome-stats__empty overview-section-caption">
-            {{ t('selfImprovementPage.statsEmpty') }}
-          </div>
-          <div v-else ref="verdictEl" class="outcome-stats__chart" />
-        </q-card-section>
-      </q-card>
+      <div class="outcome-stats__charts">
+        <q-card flat class="overview-panel outcome-stats__chart-card">
+          <q-card-section>
+            <div class="overview-section-title">{{ t('selfImprovementPage.statsVerdictDist') }}</div>
+            <div class="overview-section-caption">{{ t('selfImprovementPage.statsVerdictDistHint') }}</div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="!hasVerdicts" class="outcome-stats__empty overview-section-caption">
+              {{ t('selfImprovementPage.statsEmpty') }}
+            </div>
+            <div v-else ref="verdictEl" class="outcome-stats__chart" />
+          </q-card-section>
+        </q-card>
 
-      <q-card flat class="overview-panel outcome-stats__chart-card">
-        <q-card-section>
-          <div class="overview-section-title">{{ t('selfImprovementPage.statsByTrigger') }}</div>
-          <div class="overview-section-caption">{{ t('selfImprovementPage.statsByTriggerHint') }}</div>
-        </q-card-section>
-        <q-card-section>
-          <div v-if="!triggerRows.length" class="outcome-stats__empty overview-section-caption">
-            {{ t('selfImprovementPage.statsEmpty') }}
-          </div>
-          <div v-else ref="triggerEl" class="outcome-stats__chart" />
-        </q-card-section>
-      </q-card>
-    </div>
+        <q-card flat class="overview-panel outcome-stats__chart-card">
+          <q-card-section>
+            <div class="overview-section-title">{{ t('selfImprovementPage.statsByTrigger') }}</div>
+            <div class="overview-section-caption">{{ t('selfImprovementPage.statsByTriggerHint') }}</div>
+          </q-card-section>
+          <q-card-section>
+            <div v-if="!triggerRows.length" class="outcome-stats__empty overview-section-caption">
+              {{ t('selfImprovementPage.statsEmpty') }}
+            </div>
+            <div v-else ref="triggerEl" class="outcome-stats__chart" />
+          </q-card-section>
+        </q-card>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -67,9 +74,14 @@ import { siTriggerLabel } from './selfImprovementUi';
 // OutcomeStatsPanel（73-self-iteration-v3 design §八）：Learn 阶段成效面板 —
 // 4 统计卡 + verdict 分布环图 + 触发源堆叠条形图（复用 usage echarts 封装）。
 
-const props = defineProps<{
-  stats: SIOutcomeStats | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    stats: SIOutcomeStats | null;
+    /** 统计接口失败（P5.5）：区别于真实的 0 数据，整面板降级为「不可用」。 */
+    failed?: boolean;
+  }>(),
+  { failed: false },
+);
 
 const { t } = useI18n();
 
@@ -182,4 +194,15 @@ useUsageChart(triggerEl, triggerOption, () => [props.stats]);
   display: flex
   gap: 6px
   align-items: baseline
+
+.outcome-stats__unavailable
+  display: flex
+  gap: 8px
+  align-items: center
+  justify-content: center
+  padding: 24px 16px
+  border-radius: 12px
+
+.outcome-stats__unavailable-icon
+  opacity: 0.6
 </style>

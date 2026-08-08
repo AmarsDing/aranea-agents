@@ -137,6 +137,7 @@
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
         @regenerate-v2="composer.regenerateV2Task"
+        @add-to-eval="evalCase.openFromTask"
         @resume-task="session.resumeTask"
         @compact="session.onCompactSession"
         @toggle-tool-calls="uiConfig.setShowToolCalls(!uiConfig.showToolCalls)"
@@ -249,12 +250,33 @@
         :timeline-error="dialogs.timelineError"
         @refresh-trace="dialogs.reloadTimeline()"
       />
+
+      <AddEvalCaseDialog
+        v-model:open="evalCase.open"
+        :mode="evalCase.mode"
+        :dataset-id="evalCase.datasetId"
+        :dataset-options="evalCase.datasetOptions"
+        :datasets-loading="evalCase.datasetsLoading"
+        :new-dataset-name="evalCase.newDatasetName"
+        :input="evalCase.input"
+        :expected-output="evalCase.expectedOutput"
+        :rubric="evalCase.rubric"
+        :submitting="evalCase.submitting"
+        @update:mode="evalCase.mode = $event"
+        @update:dataset-id="evalCase.datasetId = $event"
+        @update:new-dataset-name="evalCase.newDatasetName = $event"
+        @update:input="evalCase.input = $event"
+        @update:expected-output="evalCase.expectedOutput = $event"
+        @update:rubric="evalCase.rubric = $event"
+        @submit="evalCase.submit()"
+      />
     </template>
   </ChatWorkspaceShell>
 </template>
 
 <script setup lang="ts">
 import ChatDeleteDialog from '../components/chat/ChatDeleteDialog.vue';
+import AddEvalCaseDialog from '../components/evaluation/AddEvalCaseDialog.vue';
 import ChatEntitySidebar from '../components/chat/ChatEntitySidebar.vue';
 import ChatMessagePanel from '../components/chat/ChatMessagePanel.vue';
 import ChatSessionSidebar from '../components/chat/ChatSessionSidebar.vue';
@@ -280,7 +302,7 @@ import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
 
-const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock } = useChatWorkspace();
+const { coreReady, fileRef, layout, entity, session, composer, dialogs, errorBlock, evalCase } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
 const runtimeStore = useChatRuntimeStore();
 const llmRetryStore = useLlmRetryStore();

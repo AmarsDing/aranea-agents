@@ -360,6 +360,9 @@ message SubmitMessageFeedbackRequest {
   string session_id = 2 [(google.api.field_behavior) = REQUIRED];
   string rating = 3 [(google.api.field_behavior) = REQUIRED];
   optional string comment = 4;
+  // context_json：可选上下文快照 {"task_id","input","output"}，使评估页
+  // 「负反馈待审查」列表自包含（任务删除后仍可一键转用例）；宽容解析。
+  optional string context_json = 5;
 }
 
 message SubmitMessageFeedbackResponse {
@@ -459,7 +462,7 @@ GET /v1/ws?session_id=...  →  WSServer.handleWS()
 | `EnqueueUserMessageResponse` | `accepted` | bool | — | 是否被接受（steer 或 pending） |
 | | `queued` | bool | — | 是否降级到 pending queue |
 | | `pending_id` | string | — | 入队后的 pending ID |
-| `SubmitMessageFeedbackRequest` | `message_id` / `session_id` / `rating` | — | 👍/👎 反馈（positive \| negative） |
+| `SubmitMessageFeedbackRequest` | `message_id` / `session_id` / `rating` / `comment?` / `context_json?` | — | 👍/👎 反馈（positive \| negative）；context_json 为上下文快照（评估域负反馈审查，见 [33-evaluation.design.md §6.9](./33-evaluation.design.md)） |
 | `ConfirmActivityRequest` | `session_id` / `activity_id` / `approved` | — | 工具确认（true 恢复 / false 取消） |
 
 ---
@@ -4953,12 +4956,12 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 
 | 阶段 | 实现 | LLM 调用 | 期间用户可见 |
 |------|------|---------|-------------|
-| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTask`（LLM，60s 超时） | 1 次 | 仅笼统 loading |
+| Plan | `taskPlannerImpl.Plan` → 记忆查询（本地）+ 复杂度评估（本地）+ `decomposeTaskStream`（LLM 流式；2026-08-08 起：45s idle 停滞守卫 + 瞬时故障无限重试，取代 60s 硬超时） | 1 次（含重试） | 思考流实时可见（reasoning 增量发布为 thinking step）+ draft TaskPlan 分解前落库 + 5s 心跳进度 |
 | Allocate | `agentAllocatorImpl.Allocate` → 每 subtask 串行走 4 层匹配 | 0~2×N 次 | 仅笼统 loading |
 | Factory | `agentFactoryImpl.EnsureAgent` → LLM 生成定义 → 直接落库 | 1 次/创建 | 无感知、无审批 |
 | Orchestrate | `PlanExecutor` → `RealTeamOrchestrator.Orchestrate` → `AssembleTeam` | 0 | team_stage 事件 |
 
-**缺口**：plan 分解中（3-8s）、逐 subtask 匹配中（冷启动 3-10s/个）、创建 Agent 中（3-8s）均无细粒度进度；Agent 创建无用户确认。
+**缺口**：~~plan 分解中无细粒度进度~~（2026-08-08 已闭环：P1 思考流实时可见 + P2 draft 计划落库与展示同时 + 5s 心跳 + P3 idle 守卫/无限重试）；逐 subtask 匹配中（冷启动 3-10s/个）、创建 Agent 中（3-8s）均无细粒度进度；Agent 创建无用户确认。
 
 #### 设计一：编排细粒度进度事件（P0）
 
@@ -4968,8 +4971,9 @@ TeamStageID: m.TeamID, // team member turns are identified by non-empty TeamID
 
 | noticeType | meta.phase | meta 其他字段 | 触发点 | 前端文案 |
 |-----------|-----------|--------------|--------|---------|
-| `orchestration_progress` | `decomposing` | — | `Plan()` decomposeTask 前 | 正在分解任务… |
+| `orchestration_progress` | `decomposing` | `elapsed_seconds`（分解期间每 5s 心跳重发，2026-08-08 起） | `Plan()` decomposeTask 前 + 分解期间心跳 | 正在分解任务… |
 | `orchestration_progress` | `decomposed` | `sub_task_count` | `Plan()` decomposeTask 后 | 任务分解完成，共 N 个子任务 |
+| `orchestration_progress` | `decompose_retry` | `attempt`（即将开始的尝试序号）, `reason` | `decomposeTaskStream` 瞬时故障重试前（P3，2026-08-08 起） | 分解遇到网络波动，正在重试… |
 | `orchestration_progress` | `decompose_failed` | `reason`（`error`/`empty`） | `Plan()` 分解报错或产出 0 子任务时（显式降级 direct） | 任务分解未完成，已切换为直接回答… |
 | `orchestration_progress` | `allocating` | `index`, `total`, `sub_task` | `Allocate()` 每 subtask 匹配完成 | 正在匹配 Agent…（i/N） |
 | `orchestration_progress` | `allocated` | `total` | `Allocate()` 完成 | Agent 分配完成 |

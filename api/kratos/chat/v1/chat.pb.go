@@ -2120,8 +2120,11 @@ type SubmitMessageFeedbackRequest struct {
 	MessageId string                 `protobuf:"bytes,1,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// rating: "positive" | "negative"
-	Rating        string  `protobuf:"bytes,3,opt,name=rating,proto3" json:"rating,omitempty"`
-	Comment       *string `protobuf:"bytes,4,opt,name=comment,proto3,oneof" json:"comment,omitempty"`
+	Rating  string  `protobuf:"bytes,3,opt,name=rating,proto3" json:"rating,omitempty"`
+	Comment *string `protobuf:"bytes,4,opt,name=comment,proto3,oneof" json:"comment,omitempty"`
+	// context_json: optional JSON snapshot making the review list self-contained,
+	// e.g. {"task_id":"...","input":"...","output":"..."}. Leniently parsed.
+	ContextJson   *string `protobuf:"bytes,5,opt,name=context_json,json=contextJson,proto3,oneof" json:"context_json,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2180,6 +2183,13 @@ func (x *SubmitMessageFeedbackRequest) GetRating() string {
 func (x *SubmitMessageFeedbackRequest) GetComment() string {
 	if x != nil && x.Comment != nil {
 		return *x.Comment
+	}
+	return ""
+}
+
+func (x *SubmitMessageFeedbackRequest) GetContextJson() string {
+	if x != nil && x.ContextJson != nil {
+		return *x.ContextJson
 	}
 	return ""
 }
@@ -3685,16 +3695,18 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\"?\n" +
 	"\x1fCancelChatBackgroundJobResponse\x12\x1c\n" +
-	"\tcancelled\x18\x01 \x01(\bR\tcancelled\"\xb1\x01\n" +
+	"\tcancelled\x18\x01 \x01(\bR\tcancelled\"\xea\x01\n" +
 	"\x1cSubmitMessageFeedbackRequest\x12#\n" +
 	"\n" +
 	"message_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tmessageId\x12#\n" +
 	"\n" +
 	"session_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x1c\n" +
 	"\x06rating\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x06rating\x12\x1d\n" +
-	"\acomment\x18\x04 \x01(\tH\x00R\acomment\x88\x01\x01B\n" +
+	"\acomment\x18\x04 \x01(\tH\x00R\acomment\x88\x01\x01\x12&\n" +
+	"\fcontext_json\x18\x05 \x01(\tH\x01R\vcontextJson\x88\x01\x01B\n" +
 	"\n" +
-	"\b_comment\";\n" +
+	"\b_commentB\x0f\n" +
+	"\r_context_json\";\n" +
 	"\x1dSubmitMessageFeedbackResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x9c\x01\n" +
 	"\x16ConfirmActivityRequest\x12#\n" +

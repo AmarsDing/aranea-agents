@@ -26,6 +26,7 @@ const (
 	SelfImprovementService_RollbackRun_FullMethodName     = "/kratos.self_improvement.v1.SelfImprovementService/RollbackRun"
 	SelfImprovementService_CloseRun_FullMethodName        = "/kratos.self_improvement.v1.SelfImprovementService/CloseRun"
 	SelfImprovementService_GetOutcomeStats_FullMethodName = "/kratos.self_improvement.v1.SelfImprovementService/GetOutcomeStats"
+	SelfImprovementService_GetStatus_FullMethodName       = "/kratos.self_improvement.v1.SelfImprovementService/GetStatus"
 	SelfImprovementService_GetRiskRules_FullMethodName    = "/kratos.self_improvement.v1.SelfImprovementService/GetRiskRules"
 	SelfImprovementService_UpdateRiskRules_FullMethodName = "/kratos.self_improvement.v1.SelfImprovementService/UpdateRiskRules"
 )
@@ -53,6 +54,12 @@ type SelfImprovementServiceClient interface {
 	// GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(ctx context.Context, in *GetOutcomeStatsRequest, opts ...grpc.CallOption) (*GetOutcomeStatsResponse, error)
+	// GetStatus returns the feature availability + prerequisite preflight view
+	// (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+	// Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+	// it answers even when the feature is disabled — the console uses it to
+	// render the disabled empty state / missing-prerequisite guidance.
+	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
 	// GetRiskRules returns the configured risk-classification rules
 	// (0/empty fields inherit the code defaults; effective carries the
 	// normalized values actually consumed by the pipeline/router).
@@ -140,6 +147,16 @@ func (c *selfImprovementServiceClient) GetOutcomeStats(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *selfImprovementServiceClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStatusResponse)
+	err := c.cc.Invoke(ctx, SelfImprovementService_GetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *selfImprovementServiceClient) GetRiskRules(ctx context.Context, in *GetRiskRulesRequest, opts ...grpc.CallOption) (*GetRiskRulesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetRiskRulesResponse)
@@ -183,6 +200,12 @@ type SelfImprovementServiceServer interface {
 	// GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(context.Context, *GetOutcomeStatsRequest) (*GetOutcomeStatsResponse, error)
+	// GetStatus returns the feature availability + prerequisite preflight view
+	// (master switch, DefaultRefineLLM readiness, sandbox repo-root validity).
+	// Unlike the other endpoints it does NOT depend on the pipeline usecase, so
+	// it answers even when the feature is disabled — the console uses it to
+	// render the disabled empty state / missing-prerequisite guidance.
+	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
 	// GetRiskRules returns the configured risk-classification rules
 	// (0/empty fields inherit the code defaults; effective carries the
 	// normalized values actually consumed by the pipeline/router).
@@ -220,6 +243,9 @@ func (UnimplementedSelfImprovementServiceServer) CloseRun(context.Context, *Clos
 }
 func (UnimplementedSelfImprovementServiceServer) GetOutcomeStats(context.Context, *GetOutcomeStatsRequest) (*GetOutcomeStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOutcomeStats not implemented")
+}
+func (UnimplementedSelfImprovementServiceServer) GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStatus not implemented")
 }
 func (UnimplementedSelfImprovementServiceServer) GetRiskRules(context.Context, *GetRiskRulesRequest) (*GetRiskRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRiskRules not implemented")
@@ -375,6 +401,24 @@ func _SelfImprovementService_GetOutcomeStats_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SelfImprovementService_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SelfImprovementServiceServer).GetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SelfImprovementService_GetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SelfImprovementServiceServer).GetStatus(ctx, req.(*GetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SelfImprovementService_GetRiskRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetRiskRulesRequest)
 	if err := dec(in); err != nil {
@@ -445,6 +489,10 @@ var SelfImprovementService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOutcomeStats",
 			Handler:    _SelfImprovementService_GetOutcomeStats_Handler,
+		},
+		{
+			MethodName: "GetStatus",
+			Handler:    _SelfImprovementService_GetStatus_Handler,
 		},
 		{
 			MethodName: "GetRiskRules",

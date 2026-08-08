@@ -46,6 +46,42 @@
         >
           <q-tooltip>{{ t('chat.regenerate') }}</q-tooltip>
         </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          :aria-label="t('chat.addToEvalDataset')"
+          icon="playlist_add_check"
+          class="task-user-panel__action-btn"
+          @click.stop="emit('add-to-eval', task)"
+        >
+          <q-tooltip>{{ t('chat.addToEvalDataset') }}</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          :aria-label="t('chat.feedbackPositive')"
+          icon="thumb_up"
+          class="task-user-panel__action-btn"
+          @click.stop="emit('feedback', { task, rating: 'positive' })"
+        >
+          <q-tooltip>{{ t('chat.feedbackPositive') }}</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          :aria-label="t('chat.feedbackNegative')"
+          icon="thumb_down"
+          class="task-user-panel__action-btn"
+          @click.stop="emit('feedback', { task, rating: 'negative' })"
+        >
+          <q-tooltip>{{ t('chat.feedbackNegative') }}</q-tooltip>
+        </q-btn>
       </div>
     </div>
 
@@ -194,6 +230,8 @@ const props = withDefaults(
 );
 const emit = defineEmits<{
   regenerate: [task: Task];
+  'add-to-eval': [task: Task];
+  feedback: [payload: { task: Task; rating: 'positive' | 'negative' }];
   'resume-task': [task: Task];
   'pause-agent': [sessionId: string];
   'inject-agent': [payload: { sessionId: string; message: string }];

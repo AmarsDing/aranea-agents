@@ -199,7 +199,7 @@
                   />
                 </q-item-section>
                 <q-item-section>
-                  <q-item-label>{{ gate.gate }}</q-item-label>
+                  <q-item-label>{{ siGateLabel(t, gate.gate) }}</q-item-label>
                   <q-item-label v-if="gate.output" caption lines="3" class="si-run-gate-output">
                     {{ gate.output }}
                   </q-item-label>
@@ -285,6 +285,7 @@ import {
   canRollback,
   formatSITime,
   siChannelLabel,
+  siGateLabel,
   siKindLabel,
   siRiskColor,
   siRiskLabel,

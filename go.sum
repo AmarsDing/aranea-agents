@@ -802,8 +802,6 @@ trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0 h1:v2k9Y4nzp/o
 trpc.group/trpc-go/trpc-agent-go/agent/extension/toolpipe v1.10.0/go.mod h1:zmUfv4JXnvqNrNRDy35Oct+F+CbCLG+WgofSwdmheIs=
 trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0 h1:uTiqJ+BS9mk+3jHQpa2oESV5Fac3ul/ILuXHrQRwLbw=
 trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0/go.mod h1:R3BoHy4Z/LjlARwwOegzEASLb5PwO+t/5uGHgyIbrWs=
-trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0 h1:c6JhLHGDkVXgMcD4lunmSLJfDaYs98qOaAJ3zWQf4k4=
-trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0/go.mod h1:6iP6DwUl3v7JDe945TYlyCmyxZMrz7k5BP3iB05kdKs=
 trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0 h1:5nN8uPLSf6lYZIyItQIqiKRRV5iJNrdLpEAE5LDsYls=
 trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0/go.mod h1:AKe0sobDAgFfnpdOU0sFm1B8tBrKk/PP1a8QDiqPNeg=
 trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0 h1:FBMTjwEIvKL56gIsBmHX8Qv8higyhJxoMaS6ruMAoto=

@@ -2,7 +2,7 @@ import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
-import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from './types';
+import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint, JudgeDivergence } from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
 import { useEvalRunPolling, hasActiveRuns } from './useEvalRunPolling';
@@ -42,6 +42,9 @@ export function useEvaluationPage() {
   const trendLoading = ref(false);
   const comparisons = ref<EvalRunComparison[]>([]);
   const compareLoading = ref(false);
+  // P1-3: judge calibration summary for the selected dataset (+ trend agent).
+  const divergence = ref<JudgeDivergence | null>(null);
+  const divergenceLoading = ref(false);
 
   const createForm = ref({ name: '', description: '' });
   const runForm = ref({ agent_id: '', metrics: '', num_runs: 1, use_user_simulation: false });
@@ -140,6 +143,26 @@ export function useEvaluationPage() {
     selectedDatasetId.value = id;
     runsPage.value = 1;
     void loadRuns();
+    void loadDivergence();
+  }
+
+  async function loadDivergence() {
+    if (!selectedDatasetId.value) {
+      divergence.value = null;
+      return;
+    }
+    divergenceLoading.value = true;
+    try {
+      divergence.value = await evaluationStore.loadJudgeDivergence(selectedDatasetId.value, {
+        agent_id: trendAgentId.value || undefined,
+      });
+    } catch (e) {
+      // Divergence is an auxiliary panel — never notify, just degrade to empty.
+      console.warn('[evaluation] load judge divergence failed:', e);
+      divergence.value = null;
+    } finally {
+      divergenceLoading.value = false;
+    }
   }
 
   function onRunsPage(page: number) {
@@ -270,6 +293,8 @@ export function useEvaluationPage() {
         human_comment: row.human_comment,
       });
       updateResultRow(updated);
+      // Annotation directly feeds the judge calibration summary.
+      void loadDivergence();
       $q.notify({ type: 'positive', message: '标注已保存' });
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
@@ -287,6 +312,8 @@ export function useEvaluationPage() {
         dataset_id: selectedDatasetId.value || undefined,
         limit: 20,
       });
+      // The divergence panel shares the trend agent as its filter.
+      void loadDivergence();
     } catch (e) {
       $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载趋势失败' });
     } finally {
@@ -440,5 +467,8 @@ export function useEvaluationPage() {
     compareLoading,
     loadTrend,
     submitCompare,
+    divergence,
+    divergenceLoading,
+    loadDivergence,
   };
 }

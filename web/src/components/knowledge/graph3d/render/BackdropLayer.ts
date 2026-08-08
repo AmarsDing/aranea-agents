@@ -1,10 +1,10 @@
 /**
- * BackdropLayer：G5 深空背景三层（orrery 蓝本，设计 §V12.8-1 C-3）。
+ * BackdropLayer：G5 深空背景三层 v2（星云烘焙 + 全场景降亮度，设计 §V12.8-1 C-3）。
  *
- * - FBM 星云反转球：3-octave value-noise，colA 紫(0.12,0.06,0.22)/colB 青(0.05,0.17,0.21)，
- *   bright=0.5，pow(fbm,2.2) 压在 bloom 阈值下（防糊屏）
- * - 三档星空（jarvis 参数）：dim 2400/med 4800/bright 800，球面确定性散布（黄金角+固定种子），
- *   sizeAttenuation:false（像素尺寸）+ 64px 柔光 dotTexture
+ * - 星云烘焙：FBM 3-octave 着色器一次性渲入 1024×512 equirect RT（弃每帧全屏 FBM ≈ 60M hash/帧），
+ *   球体改 MeshBasicMaterial 贴图（每像素一次纹理采样）；sRGB 标记保证与直渲观感一致
+ * - 降亮度：bright 0.5→0.34、星空不透明度 ×0.65、核雾 0.2→0.1（全部压在 bloom 阈值 0.55 下）
+ * - 三档星空（jarvis 参数）：球面确定性散布（黄金角+固定种子），sizeAttenuation:false + 64px 柔光纹理
  * - 核雾：520 颗加法 Points，布局收敛后锚定度数最大 hub（setHazeAnchor）
  */
 import * as THREE from 'three';
@@ -43,16 +43,23 @@ export function dotTexture(): THREE.Texture | null {
   return cachedDotTex;
 }
 
-/** 星空档位（数量/像素尺寸/不透明度/颜色）。 */
+/** 星空档位（数量/像素尺寸/不透明度/颜色）；v2 不透明度 ×0.65 降亮度。 */
 export const STAR_TIERS = [
-  { count: 2400, size: 1.2, opacity: 0.35, color: 0x6b7fb8, seed: 101 },
-  { count: 4800, size: 1.8, opacity: 0.6, color: 0x9aa6ff, seed: 202 },
-  { count: 800, size: 3.0, opacity: 0.95, color: 0xd6e0ff, seed: 303 },
+  { count: 2400, size: 1.2, opacity: 0.22, color: 0x6b7fb8, seed: 101 },
+  { count: 4800, size: 1.8, opacity: 0.4, color: 0x9aa6ff, seed: 202 },
+  { count: 800, size: 3.0, opacity: 0.62, color: 0xd6e0ff, seed: 303 },
 ] as const;
 
 export const STAR_SPREAD = 4200;
 export const HAZE_COUNT = 520;
 export const HAZE_SPREAD = 1050;
+
+/** 星云配色（v2 降亮度）与烘焙尺寸。 */
+export const NEBULA_COL_A = new THREE.Color(0.1, 0.05, 0.18);
+export const NEBULA_COL_B = new THREE.Color(0.04, 0.13, 0.17);
+export const NEBULA_BRIGHT = 0.34;
+export const NEBULA_BAKE_W = 1024;
+export const NEBULA_BAKE_H = 512;
 
 /** 确定性球面壳层散布（mulberry32 固定种子，帧间稳定）。 */
 export function scatterSphere(count: number, radius: number, seed: number): Float32Array {
@@ -70,15 +77,16 @@ export function scatterSphere(count: number, radius: number, seed: number): Floa
   return out;
 }
 
-const NEBULA_VERTEX = `
-  varying vec3 vDir;
+const BAKE_VERTEX = `
+  varying vec2 vUv;
   void main() {
-    vDir = normalize(position);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vUv = uv;
+    gl_Position = vec4(position.xy, 0.0, 1.0);
   }`;
 
-const NEBULA_FRAGMENT = `
-  varying vec3 vDir;
+/** equirect uv → 方向向量 → FBM 星云（与原直渲着色器同参数）。 */
+const NEBULA_BAKE_FRAGMENT = `
+  varying vec2 vUv;
   uniform vec3 colA; uniform vec3 colB; uniform float bright;
   float hash(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
   float noise(vec3 x){
@@ -90,11 +98,49 @@ const NEBULA_FRAGMENT = `
   }
   float fbm(vec3 p){ float v=0.0,a=0.5; for(int i=0;i<3;i++){ v+=a*noise(p); p*=2.0; a*=0.5; } return v; }
   void main(){
-    vec3 d = normalize(vDir);
+    float theta = (vUv.x - 0.5) * 6.2831853;
+    float phi = (vUv.y - 0.5) * 3.1415926;
+    float c = cos(phi);
+    vec3 d = vec3(c * cos(theta), sin(phi), c * sin(theta));
     float n = pow(fbm(d * 3.0), 2.2);
     vec3 col = mix(colA, colB, fbm(d * 1.5 + 5.0));
     gl_FragColor = vec4(col * n * bright, 1.0);
   }`;
+
+/**
+ * 星云一次性烘焙：FBM 着色器 → equirect RT（构造时调用一次，替代每帧全屏 FBM）。
+ * RT 纹理标记 sRGB：MeshBasicMaterial 采样解码 + 输出再编码 ≈ 恒等，与直渲观感一致。
+ */
+export function bakeNebulaTexture(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const rt = new THREE.WebGLRenderTarget(NEBULA_BAKE_W, NEBULA_BAKE_H, {
+    depthBuffer: false,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+  });
+  const bakeScene = new THREE.Scene();
+  const bakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const quadGeo = new THREE.PlaneGeometry(2, 2);
+  const quadMat = new THREE.ShaderMaterial({
+    uniforms: {
+      colA: { value: NEBULA_COL_A },
+      colB: { value: NEBULA_COL_B },
+      bright: { value: NEBULA_BRIGHT },
+    },
+    vertexShader: BAKE_VERTEX,
+    fragmentShader: NEBULA_BAKE_FRAGMENT,
+    depthWrite: false,
+    depthTest: false,
+  });
+  bakeScene.add(new THREE.Mesh(quadGeo, quadMat));
+  const prevRT = renderer.getRenderTarget();
+  renderer.setRenderTarget(rt);
+  renderer.render(bakeScene, bakeCam);
+  renderer.setRenderTarget(prevRT);
+  quadGeo.dispose();
+  quadMat.dispose();
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+  return rt.texture;
+}
 
 export class BackdropLayer {
   readonly group = new THREE.Group();
@@ -103,25 +149,21 @@ export class BackdropLayer {
   readonly haze: THREE.Points;
   private readonly disposables: { dispose(): void }[] = [];
 
-  constructor() {
-    // FBM 星云反转球
-    const nebulaMat = new THREE.ShaderMaterial({
-      uniforms: {
-        colA: { value: new THREE.Color(0.12, 0.06, 0.22) },
-        colB: { value: new THREE.Color(0.05, 0.17, 0.21) },
-        bright: { value: 0.5 },
-      },
-      vertexShader: NEBULA_VERTEX,
-      fragmentShader: NEBULA_FRAGMENT,
+  constructor(renderer: THREE.WebGLRenderer) {
+    // 烘焙星云反转球（一次性 GPU 成本，之后每帧仅一次纹理采样）
+    const nebulaTex = bakeNebulaTexture(renderer);
+    const nebulaMat = new THREE.MeshBasicMaterial({
+      map: nebulaTex,
       side: THREE.BackSide,
       depthWrite: false,
       depthTest: false,
+      toneMapped: false, // 烘焙值即终值，跳过 ACES 防二次提亮
     });
     const nebulaGeo = new THREE.SphereGeometry(5000, 48, 48);
     this.nebula = new THREE.Mesh(nebulaGeo, nebulaMat);
     this.nebula.renderOrder = -1;
     this.group.add(this.nebula);
-    this.disposables.push(nebulaGeo, nebulaMat);
+    this.disposables.push(nebulaGeo, nebulaMat, nebulaTex);
 
     // 三档星空
     const tex = dotTexture();
@@ -144,7 +186,7 @@ export class BackdropLayer {
       return points;
     });
 
-    // 核雾（初始在原点，收敛后锚定 hub）
+    // 核雾（初始在原点，收敛后锚定 hub；v2 更淡更青）
     const hazeGeo = new THREE.BufferGeometry();
     const hazePos = new Float32Array(HAZE_COUNT * 3);
     const rand = mulberry32(404);
@@ -159,12 +201,12 @@ export class BackdropLayer {
     }
     hazeGeo.setAttribute('position', new THREE.BufferAttribute(hazePos, 3));
     const hazeMat = new THREE.PointsMaterial({
-      color: 0xb39dff,
+      color: 0x7d8fd4,
       map: tex,
-      size: 14,
+      size: 12,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.2,
+      opacity: 0.1,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });

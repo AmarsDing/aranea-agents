@@ -42,6 +42,7 @@ Aranea-Agents 目前只能在 PC 上查看任务执行情况和下达指令。�
 | FR-9 | Token 认证（长期 token + WS Bearer），解决 WebView cookie 持久化不可靠场景 | P2 |
 | FR-10 | 扫码配对（桌面端显示含服务器地址的二维码） | P3 |
 | FR-11 | frp 部署模板（frps/frpc/Caddyfile）与部署文档 | P0 |
+| FR-12 | 弱网体验优化（WS 僵尸连接检测、网络恢复即时重连、会话列表离线缓存与离线横幅） | P3 |
 
 ## 非功能需求
 

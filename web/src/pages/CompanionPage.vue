@@ -6,6 +6,7 @@
 
     <template v-else>
       <HudCanvas
+        ref="hudRef"
         :voice-state="companion.voiceState"
         :voice-mode-on="companion.voiceModeOn"
         :subtitle="companion.subtitlePartial"
@@ -16,6 +17,18 @@
         @toggle-voice="toggleVoiceMode()"
         @dismiss-error="companion.clearVoiceError()"
       />
+
+      <!-- V2-T5：全息确认卡浮层（确认通过时粒子流发射 + HUD 能量爆发） -->
+      <div ref="confirmLayerRef" class="companion-page__confirm-layer">
+        <HoloConfirmCard
+          v-if="activeConfirm"
+          :key="activeConfirm.id"
+          :card="activeConfirm"
+          :queue-size="confirmQueue.length"
+          :voice-mode-on="companion.voiceModeOn"
+          @decide="onConfirmDecide(activeConfirm!, $event)"
+        />
+      </div>
 
       <CompanionChatPanel :open="companion.chatOpen" @close="companion.toggleChat()">
         <q-banner v-if="workspace.session.inboundHydrateError" dense rounded class="app-banner-warning q-mx-sm q-mt-sm">
@@ -170,17 +183,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import HudCanvas from '../components/companion/HudCanvas.vue';
 import CompanionChatPanel from '../components/companion/CompanionChatPanel.vue';
+import HoloConfirmCard from '../components/companion/HoloConfirmCard.vue';
 import ChatMessagePanel from '../components/chat/ChatMessagePanel.vue';
 import LlmRetryBanner from '../components/chat/LlmRetryBanner.vue';
 import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useChatMessagePanelBindings } from '../features/chat/composables/useChatMessagePanelBindings';
+import { TOOL_CONFIRM_REPLY, type ToolConfirmReply } from '../features/chat/types';
 import { useVoiceSession } from '../features/companion/voice/useVoiceSession';
+import { useCompanionConfirms } from '../features/companion/useCompanionConfirms';
+import { spawnLaunchBurst } from '../features/companion/launchParticles';
+import type { ConfirmCardModel, ConfirmDecision } from '../features/companion/types';
 import { useCompanionStore } from '../stores/companion';
 import { useSpiritTeamStore } from '../stores/spirit';
 import { useLlmRetryStore } from '../stores/chat/llmRetryStore';
@@ -203,6 +221,32 @@ const { spectrum, amplitude, toggleVoiceMode } = useVoiceSession({
   sessionId: () => workspace.session.selectedSessionForUi?.id ?? null,
 });
 
+// V2-T5：确认卡队列（activityV2Store 派生，WS 状态推进自动出队）。
+const { queue: confirmQueue, active: activeConfirm } = useCompanionConfirms(
+  () => workspace.session.selectedSessionForUi?.id ?? null,
+);
+const confirmLayerRef = ref<HTMLDivElement | null>(null);
+const hudRef = ref<InstanceType<typeof HudCanvas> | null>(null);
+
+const DECISION_REPLY: Record<ConfirmDecision, ToolConfirmReply> = {
+  approve: TOOL_CONFIRM_REPLY.approve,
+  deny: TOOL_CONFIRM_REPLY.deny,
+  always: TOOL_CONFIRM_REPLY.approveAlways,
+};
+
+/** 确认卡决议：批准时粒子流发射 + HUD 能量爆发（乐观视觉），随后走 grant API。 */
+function onConfirmDecide(card: ConfirmCardModel, decision: ConfirmDecision) {
+  if (decision !== 'deny') {
+    if (confirmLayerRef.value) spawnLaunchBurst(confirmLayerRef.value);
+    hudRef.value?.triggerBurst();
+  }
+  void workspace.session.onConfirmActivityGrant({
+    sessionId: card.sessionId,
+    activityId: card.id,
+    reply: DECISION_REPLY[decision],
+  });
+}
+
 /** Active LLM retry state for the current session — drives the reconnect banner. */
 const llmRetry = computed(() => {
   const sid = workspace.session.selectedSessionForUi?.id;
@@ -222,4 +266,35 @@ const fileInputRef = workspace.fileRef;
   overflow: hidden
   // HUD 画布为固有深空底色（产品形态，非主题变量）；浮层元素仍走主题 token
   background: radial-gradient(ellipse at 50% 40%, #101826 0%, #090d14 70%)
+
+  &__confirm-layer
+    position: absolute
+    left: 50%
+    bottom: 132px
+    transform: translateX(-50%)
+    z-index: 20
+    display: flex
+    flex-direction: column
+    align-items: center
+    pointer-events: none
+
+    // 卡片本身恢复交互（浮层容器仅定位 + 粒子宿主）
+    :deep(.holo-confirm)
+      pointer-events: auto
+</style>
+
+<!-- 粒子发射层样式：spawnLaunchBurst 动态创建的元素无 scoped 属性，需全局类 -->
+<style lang="sass">
+.launch-burst
+  position: absolute
+  inset: 0
+  overflow: visible
+  pointer-events: none
+
+  &__p
+    position: absolute
+    border-radius: 50%
+    background: radial-gradient(circle, #a5f3fc 0%, #22d3ee 55%, transparent 75%)
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.8), 0 0 2px #fff
+    will-change: transform, opacity
 </style>

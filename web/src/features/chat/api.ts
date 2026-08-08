@@ -237,6 +237,8 @@ export async function submitMessageFeedback(payload: {
   message_id: string;
   rating: 'positive' | 'negative';
   comment?: string;
+  /** P1-2: JSON snapshot {task_id,input,output} making the review list self-contained. */
+  context_json?: string;
 }): Promise<boolean> {
   try {
     const data = await chatService.SubmitMessageFeedback({
@@ -244,6 +246,7 @@ export async function submitMessageFeedback(payload: {
       sessionId: payload.session_id,
       rating: payload.rating,
       comment: payload.comment,
+      contextJson: payload.context_json,
     });
     return Boolean(data?.accepted);
   } catch (err) {

@@ -27,6 +27,7 @@ const OperationEvaluationServiceDeleteDataset = "/kratos.evaluation.v1.Evaluatio
 const OperationEvaluationServiceDeleteRun = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
 const OperationEvaluationServiceGetAgentEvalTrend = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
 const OperationEvaluationServiceGetDataset = "/kratos.evaluation.v1.EvaluationService/GetDataset"
+const OperationEvaluationServiceGetJudgeDivergence = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
 const OperationEvaluationServiceGetRun = "/kratos.evaluation.v1.EvaluationService/GetRun"
 const OperationEvaluationServiceGetRunResults = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
 const OperationEvaluationServiceListDatasets = "/kratos.evaluation.v1.EvaluationService/ListDatasets"
@@ -44,6 +45,7 @@ type EvaluationServiceHTTPServer interface {
 	DeleteRun(context.Context, *DeleteRunRequest) (*emptypb.Empty, error)
 	GetAgentEvalTrend(context.Context, *GetAgentEvalTrendRequest) (*GetAgentEvalTrendResponse, error)
 	GetDataset(context.Context, *GetDatasetRequest) (*EvalDataset, error)
+	GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error)
 	GetRun(context.Context, *GetRunRequest) (*EvalRun, error)
 	GetRunResults(context.Context, *GetRunResultsRequest) (*GetRunResultsResponse, error)
 	ListDatasets(context.Context, *ListDatasetsRequest) (*ListDatasetsResponse, error)
@@ -70,6 +72,7 @@ func RegisterEvaluationServiceHTTPServer(s *http.Server, srv EvaluationServiceHT
 	r.PATCH("/v1/evaluation/runs/{run_id}/results/{result_id}/annotation", _EvaluationService_AnnotateCaseResult0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/agents/{agent_id}/trend", _EvaluationService_GetAgentEvalTrend0_HTTP_Handler(srv))
 	r.POST("/v1/evaluation/runs/compare", _EvaluationService_CompareEvalRuns0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/datasets/{dataset_id}/judge-divergence", _EvaluationService_GetJudgeDivergence0_HTTP_Handler(srv))
 }
 
 func _EvaluationService_CreateDataset0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
@@ -383,6 +386,28 @@ func _EvaluationService_CompareEvalRuns0_HTTP_Handler(srv EvaluationServiceHTTPS
 	}
 }
 
+func _EvaluationService_GetJudgeDivergence0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetJudgeDivergenceRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceGetJudgeDivergence)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetJudgeDivergence(ctx, req.(*GetJudgeDivergenceRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetJudgeDivergenceResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type EvaluationServiceHTTPClient interface {
 	AnnotateCaseResult(ctx context.Context, req *AnnotateCaseResultRequest, opts ...http.CallOption) (rsp *EvalCaseResult, err error)
 	CompareEvalRuns(ctx context.Context, req *CompareEvalRunsRequest, opts ...http.CallOption) (rsp *CompareEvalRunsResponse, err error)
@@ -392,6 +417,7 @@ type EvaluationServiceHTTPClient interface {
 	DeleteRun(ctx context.Context, req *DeleteRunRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetAgentEvalTrend(ctx context.Context, req *GetAgentEvalTrendRequest, opts ...http.CallOption) (rsp *GetAgentEvalTrendResponse, err error)
 	GetDataset(ctx context.Context, req *GetDatasetRequest, opts ...http.CallOption) (rsp *EvalDataset, err error)
+	GetJudgeDivergence(ctx context.Context, req *GetJudgeDivergenceRequest, opts ...http.CallOption) (rsp *GetJudgeDivergenceResponse, err error)
 	GetRun(ctx context.Context, req *GetRunRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
 	GetRunResults(ctx context.Context, req *GetRunResultsRequest, opts ...http.CallOption) (rsp *GetRunResultsResponse, err error)
 	ListDatasets(ctx context.Context, req *ListDatasetsRequest, opts ...http.CallOption) (rsp *ListDatasetsResponse, err error)
@@ -494,6 +520,19 @@ func (c *EvaluationServiceHTTPClientImpl) GetDataset(ctx context.Context, in *Ge
 	pattern := "/v1/evaluation/datasets/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationEvaluationServiceGetDataset))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) GetJudgeDivergence(ctx context.Context, in *GetJudgeDivergenceRequest, opts ...http.CallOption) (*GetJudgeDivergenceResponse, error) {
+	var out GetJudgeDivergenceResponse
+	pattern := "/v1/evaluation/datasets/{dataset_id}/judge-divergence"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceGetJudgeDivergence))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

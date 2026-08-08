@@ -116,10 +116,11 @@ func (e *VaultEntityExtractor) ExtractAndLink(ctx context.Context, collectionID,
 	if entities == nil {
 		return false, nil // 失败已降级（日志已记）
 	}
-	if err := e.uc.ReplaceDocEntities(ctx, collectionID, docID, entities); err != nil {
+	entityIDs, err := e.uc.ReplaceDocEntities(ctx, collectionID, docID, entities)
+	if err != nil {
 		return false, err
 	}
-	links, err := e.buildLinks(ctx, collectionID, docID, entities)
+	links, err := e.buildLinks(ctx, collectionID, docID, entityIDs)
 	if err != nil {
 		return false, err
 	}
@@ -135,16 +136,13 @@ func (e *VaultEntityExtractor) ExtractAndLink(ctx context.Context, collectionID,
 	return true, nil
 }
 
-// buildLinks 基于实体共现建链（Context 为共享实体名逗号分隔，供 UI 标注来源）。
-func (e *VaultEntityExtractor) buildLinks(ctx context.Context, collectionID, docID string, entities []bizknowledge.DocEntity) ([]bizknowledge.Link, error) {
-	if len(entities) == 0 {
+// buildLinks 基于实体共现建链（Context 为共享实体展示名逗号分隔，供 UI 标注来源）。
+// G5-F：共现查询按 ReplaceDocEntities 解析返回的 entity_id 关联（归一化/别名已生效）。
+func (e *VaultEntityExtractor) buildLinks(ctx context.Context, collectionID, docID string, entityIDs []int64) ([]bizknowledge.Link, error) {
+	if len(entityIDs) == 0 {
 		return nil, nil
 	}
-	names := make([]string, 0, len(entities))
-	for _, en := range entities {
-		names = append(names, en.Name)
-	}
-	coocs, err := e.uc.FindEntityCooccurrences(ctx, collectionID, names, docID, e.maxDocFreq)
+	coocs, err := e.uc.FindEntityCooccurrences(ctx, collectionID, entityIDs, docID, e.maxDocFreq)
 	if err != nil {
 		return nil, err
 	}

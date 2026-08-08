@@ -23,6 +23,13 @@
 | 前端 | `web/src/services/localNotification.ts`（新增，P2） | tauri-plugin-notification 封装（懒加载、非 Tauri no-op、深链 onAction） |
 | 前端 | `web/src/features/chat/blockingStepNotification.ts`（新增，P2） | 阻塞步骤→通知描述纯函数（confirm/clarify 过滤、去重、截断、深链路由） |
 | 前端 | `web/src/features/chat/composables/useBlockingStepNotifications.ts`（新增，P2） | activity store 阻塞步骤 watcher（仅 document.hidden 通知） |
+| 前端 | `web/src/features/mobile/pairingQr.ts`（新增，P3） | 配对二维码 payload 构造/解析纯函数（JSON 信封 + 裸 URL 兼容） |
+| 前端 | `web/src/components/mobile/PairingQrDialog.vue`（新增，P3） | 桌面端配对二维码弹窗（MainLayout 菜单入口，qrcode dataURL） |
+| 前端 | `web/src/services/qrScanner.ts`（新增，P3） | tauri-plugin-barcode-scanner 封装（懒加载、非 Tauri unavailable、权限分级） |
+| 前端 | `web/src/features/mobile/offlineCache.ts`（新增，P3） | 会话列表 localStorage 缓存（按 agent 隔离、50 上限、损坏降级） |
+| 前端 | `web/src/features/mobile/useNetworkStatus.ts`（新增，P3） | navigator.onLine + online/offline 事件响应式封装 |
+| 前端 | `web/src/features/mobile/useOfflineSessionList.ts`（新增，P3） | 会话列表离线回退门控（live 空 &&（离线‖loadError）→ 缓存） |
+| 前端 | `web/src/realtime/ws-transport.ts`（P3） | 僵尸连接检测（WS_ZOMBIE_TIMEOUT_MS 无下行强关）+ reconnectNow + online 事件接线 |
 | 后端 | `internal/server/http.go` | 登录限流中间件挂载 |
 | 后端 | `internal/server/login_ratelimit.go`（新增） | IP 限流 + 失败锁定 |
 | 后端 | `api/kratos/admin/v1/admin.proto`（P2） | `Admin.token=11`（仅 Login 响应填充） |
@@ -79,8 +86,8 @@
 
 | # | 任务 | 状态 |
 |---|------|------|
-| 3.1 | 桌面端配对二维码 + 手机扫码配置 | 📋 |
-| 3.2 | 离线缓存 / 弱网重连优化 | 📋 |
+| 3.1 | 桌面端配对二维码 + 手机扫码配置 | ✅（`features/mobile/pairingQr.ts` payload 纯函数 + 7 单测；`components/mobile/PairingQrDialog.vue` 桌面二维码弹窗（MainLayout 菜单入口）；`services/qrScanner.ts` 扫码封装（非 Tauri 降级 unavailable）+ ServerSetupPage 扫码按钮；Rust 侧 `#[cfg(mobile)]` 条件注册 barcode-scanner 插件；i18n 双语 key 补齐） |
+| 3.2 | 离线缓存 / 弱网重连优化 | ✅（a. ws-transport 僵尸连接检测：55s 无下行帧以 4000 强关；b. `reconnectNow()` + window online 事件即时重连（跳过退避），`ws-transport-weaknet.spec.ts` 7 单测；c. `offlineCache.ts` localStorage 缓存（按 agent 隔离、50 上限、损坏降级）+ `useNetworkStatus` + `useOfflineSessionList`（live 空 &&（离线‖loadError）回退缓存）+ MobileSessionsPage 接线 + MobileLayout 全局离线横幅，17 单测；vitest 1462/1462、lint 0 error、build 0、check:i18n 3767=baseline） |
 
 ## 验收标准
 
@@ -104,3 +111,9 @@
 - 新增：`web/src/services/authToken.ts`（+spec）、`web/src/services/localNotification.ts`、`web/src/features/chat/blockingStepNotification.ts`、`web/src/features/chat/composables/useBlockingStepNotifications.ts`（+spec）、`web/src-tauri/capabilities/default.json`
 - 修改：`api/kratos/admin/v1/admin.proto`（`Admin.token=11`）+ 生成物、`pkg/auth/middleware.go`（Issue/SetCookieWithToken）、`internal/service/admin.go`（Login 返回 token）、`web/src/config/runtime.ts`（buildWsUrl token fallback）、`web/src/services/axiosHandler.ts`（Bearer 拦截器）、`web/src/features/admin/types.ts`/`api.ts`（AdminSession.token）、`web/src/stores/auth.ts`（login 存储/logout 清除）、`web/src/layouts/MobileLayout.vue`（通知挂载）、`web/src-tauri/Cargo.toml`+`lib.rs`（通知插件）、i18n 语言包（mobile.notify\*）
 - 测试：`pkg/auth/cookie_test.go`（+2）、`web/src/config/__tests__/runtime.spec.ts`（新增 4）
+
+## 改动文件清单（P3）
+
+- 新增：`web/src/features/mobile/pairingQr.ts`（+spec）、`web/src/components/mobile/PairingQrDialog.vue`、`web/src/services/qrScanner.ts`、`web/src/features/mobile/offlineCache.ts`（+spec）、`web/src/features/mobile/useNetworkStatus.ts`（+spec）、`web/src/features/mobile/useOfflineSessionList.ts`（+spec）、`web/src/realtime/__tests__/ws-transport-weaknet.spec.ts`
+- 修改：`web/src/realtime/ws-transport.ts`（僵尸检测 + reconnectNow + online 接线）、`web/src/features/constants/timeouts.ts`（WS_ZOMBIE_TIMEOUT_MS）、`web/src/pages/mobile/ServerSetupPage.vue`（扫码按钮）、`web/src/pages/mobile/MobileSessionsPage.vue`（离线缓存接线）、`web/src/layouts/MainLayout.vue`（配对菜单入口）、`web/src/layouts/MobileLayout.vue`（离线横幅）、`web/src-tauri/Cargo.toml` + `lib.rs`（barcode-scanner 插件 `#[cfg(mobile)]` 注册）、i18n 语言包（mobile.pairing\*、mobile.offlineCached）
+- 文档：`docs/development/72-mobile-client.*`（本三件套）

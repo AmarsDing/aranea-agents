@@ -7,8 +7,8 @@ import {
   PARTICLE_SPEED,
   advancePhase,
   easeInOutQuad,
-  particleHsl,
   particlePosition,
+  particleTint,
   spreadPhases,
 } from '../particleMath';
 
@@ -43,22 +43,31 @@ describe('easeInOutQuad', () => {
   });
 });
 
-describe('particleHsl', () => {
-  it('时变彩虹：hue ∈ [0.18, 0.82]，sat=0.9，light=0.62', () => {
+describe('particleTint', () => {
+  it('单色青：hue ∈ [0.50, 0.54]，sat=0.9，light ∈ [0.5, 0.64]', () => {
     for (const t of [0, 1.3, 7.7]) {
       for (const p of [0, 0.33, 0.99]) {
-        const { h, s, l } = particleHsl(t, p, 0);
-        expect(h).toBeGreaterThanOrEqual(0.18 - 1e-6);
-        expect(h).toBeLessThanOrEqual(0.82 + 1e-6);
+        const { h, s, l } = particleTint(t, p, 0);
+        expect(h).toBeGreaterThanOrEqual(0.5 - 1e-6);
+        expect(h).toBeLessThanOrEqual(0.54 + 1e-6);
         expect(s).toBe(0.9);
-        expect(l).toBe(0.62);
+        expect(l).toBeGreaterThanOrEqual(0.5 - 1e-6);
+        expect(l).toBeLessThanOrEqual(0.64 + 1e-6);
       }
     }
   });
 
-  it('公式契约：hue=0.5+0.32·sin((t·0.6+p·2.2+i·0.12)·π)', () => {
-    const { h } = particleHsl(2, 0.5, 3);
-    expect(h).toBeCloseTo(0.5 + 0.32 * Math.sin((2 * 0.6 + 0.5 * 2.2 + 3 * 0.12) * Math.PI), 6);
+  it('公式契约：hue=0.52+0.02·sin(w·0.31)，light=0.5+0.14·(0.5+0.5·sin w)，w=t·2.6-p·2π+i·0.12', () => {
+    const w = 2 * 2.6 - 0.5 * 6.2831853 + 3 * 0.12;
+    const { h, l } = particleTint(2, 0.5, 3);
+    expect(h).toBeCloseTo(0.52 + 0.02 * Math.sin(w * 0.31), 6);
+    expect(l).toBeCloseTo(0.5 + 0.14 * (0.5 + 0.5 * Math.sin(w)), 6);
+  });
+
+  it('亮度随相位呼吸（同刻不同相位亮度不同）', () => {
+    const a = particleTint(1, 0, 0).l;
+    const b = particleTint(1, 0.4, 0).l;
+    expect(Math.abs(a - b)).toBeGreaterThan(0.01);
   });
 });
 

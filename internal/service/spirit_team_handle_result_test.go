@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
@@ -153,6 +154,17 @@ type stubSpiritTeamController struct {
 	gateReasons []string
 	gateErr     error
 	gateCalls   int
+	// memberWindow customizes MemberExecutionWindow（2026-08-08 问题4a）per
+	// member session ID；missing entry = 无 step 证据（ok=false，调用方回退
+	// 发布时刻）。
+	memberWindow map[string]stubMemberWindow
+}
+
+// stubMemberWindow is the per-session canned result for MemberExecutionWindow.
+type stubMemberWindow struct {
+	start time.Time
+	end   time.Time
+	ok    bool
 }
 
 // stubMemberEvidence is the per-session canned result for MemberExecutionEvidence.
@@ -200,6 +212,19 @@ func (s *stubSpiritTeamController) MemberExecutionEvidence(_ context.Context, se
 		return false, ""
 	}
 	return ev.failed, ev.reason
+}
+func (s *stubSpiritTeamController) MemberExecutionWindow(_ context.Context, sessionID string) (time.Time, time.Time, bool) {
+	if s.memberWindow == nil {
+		return time.Time{}, time.Time{}, false
+	}
+	w, ok := s.memberWindow[sessionID]
+	if !ok || !w.ok {
+		return time.Time{}, time.Time{}, false
+	}
+	return w.start, w.end, true
+}
+func (s *stubSpiritTeamController) UpstreamDeliverableSeed(_ context.Context, _ biz.Team) (map[string]any, error) {
+	return nil, nil
 }
 func (s *stubSpiritTeamController) ExecuteVerificationGates(_ context.Context, _ string, _ string) (bool, []string, error) {
 	s.gateCalls++
@@ -410,6 +435,28 @@ func (s *stubTeamRunV2Reader) GetTeamRun(_ context.Context, id string) (biz.Team
 	return biz.TeamRun{}, biz.ErrNotFound
 }
 func (s *stubTeamRunV2Reader) ListTeamRunsByStage(_ context.Context, _ string) ([]biz.TeamRun, error) {
+	return nil, nil
+}
+
+// stubMemberSessionV2Reader implements biz.MemberSessionV2Reader for testing
+// (2026-08-08 问题4：终态事件 StartedAt 的 created 行回退来源)。
+type stubMemberSessionV2Reader struct {
+	items map[string]biz.MemberSession
+}
+
+func (s *stubMemberSessionV2Reader) GetMemberSession(_ context.Context, id string) (biz.MemberSession, error) {
+	if ms, ok := s.items[id]; ok {
+		return ms, nil
+	}
+	return biz.MemberSession{}, biz.ErrNotFound
+}
+func (s *stubMemberSessionV2Reader) ListMemberSessionsByRun(_ context.Context, _ string) ([]biz.MemberSession, error) {
+	return nil, nil
+}
+func (s *stubMemberSessionV2Reader) GetMemberSessionByChatSessionID(_ context.Context, _ string) (biz.MemberSession, error) {
+	return biz.MemberSession{}, biz.ErrNotFound
+}
+func (s *stubMemberSessionV2Reader) ListOrphanMemberSessionsBySpiritSession(_ context.Context, _ string) ([]biz.MemberSession, error) {
 	return nil, nil
 }
 
@@ -1379,6 +1426,99 @@ func TestPublishV2TeamRunCompletion_DefinitionFallback_CarriesOutcomeVersion(t *
 	}
 	if ms.Version != biz.MemberSessionVersionOutcome {
 		t.Errorf("fallback terminal Version = %d, want outcome authority band (%d)", ms.Version, biz.MemberSessionVersionOutcome)
+	}
+}
+
+// 幽灵成员回归（2026-08-08）：成员已有真实 agent session（含 agent_id），但
+// 定义快照只写 agent_id（无 agent_key/name）。修复前兜底块以 hex agent_id 为
+// key 重复补发（与真实成员的 agent_key 命名空间不交叉，publishedKeys 无法
+// 识别）→ 同一成员出现真实 + hex 幽灵两条；修复后按 agent_id 去重，只发真实成员。
+func TestPublishV2TeamRunCompletion_DefinitionFallback_SkipsGhostByAgentID(t *testing.T) {
+	team := biz.Team{
+		ID: "team-ghost", DisplayName: "去重团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCompleted, DagNodeID: "st_1",
+		// 定义快照：仅 agent_id（hex），无 agent_key / name —— 复现线上快照形态。
+		DefinitionJSON: `{"members":[{"agent_id":"hex-a","role":"synthesizer"},{"agent_id":"hex-b","role":"worker"}]}`,
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a", AgentID: "hex-a"},
+		{ID: "sess-b", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-b", AgentID: "hex-b"},
+	}
+	ctrl := &stubSpiritTeamController{hasRealDeliverable: true}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCompleted, biz.TeamStatusCompleted)
+
+	got := memberSessionsByAgentKey(seq)
+	if len(got) != 2 {
+		t.Fatalf("published member sessions = %d, want 2 (no hex ghost), keys=%v", len(got), got)
+	}
+	if _, ok := got["agent-a"]; !ok {
+		t.Errorf("missing real member agent-a, keys=%v", got)
+	}
+	if _, ok := got["agent-b"]; !ok {
+		t.Errorf("missing real member agent-b, keys=%v", got)
+	}
+	for _, hexKey := range []string{"hex-a", "hex-b"} {
+		if _, ok := got[hexKey]; ok {
+			t.Errorf("ghost member %q should not be published (already has real agent session)", hexKey)
+		}
+	}
+}
+
+// 问题4a 回归（2026-08-08）：终态 MemberSession 事件的 StartedAt/FinishedAt
+// 必须取 MemberExecutionWindow 的 step 流聚合窗口，而非发布时刻——否则前端
+// 成员耗时恒为 ≈0。无窗口证据的成员回退发布时刻（不崩溃、不零值）。
+func TestPublishV2TeamRunCompletion_MemberWindowFromStepStream(t *testing.T) {
+	team := biz.Team{
+		ID: "team-window", DisplayName: "窗口团队", SpiritSessionID: "spirit-1",
+		AutoCreated: true, Status: biz.TeamStatusCompleted, DagNodeID: "st_1",
+	}
+	sessions := []biz.Session{
+		{ID: "sess-team", TeamID: team.ID, SessionType: "team"},
+		{ID: "sess-a", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-a"},
+		{ID: "sess-b", TeamID: team.ID, SessionType: "agent", MemberAgentKey: "agent-b"},
+	}
+	wStart := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Second)
+	wEnd := wStart.Add(3 * time.Minute)
+	ctrl := &stubSpiritTeamController{
+		hasRealDeliverable: true,
+		memberWindow: map[string]stubMemberWindow{
+			"sess-a": {start: wStart, end: wEnd, ok: true},
+			// sess-b 无窗口证据 → 回退发布时刻。
+		},
+	}
+	seq := &capturingSeq{}
+	s := newF10Starter(team, ctrl, sessions, seq)
+
+	before := time.Now()
+	s.publishV2TeamRunCompletion(context.Background(), team.SpiritSessionID, team.ID,
+		biz.TeamStageStatusCompleted, biz.TeamStatusCompleted)
+	after := time.Now()
+
+	got := memberSessionsByAgentKey(seq)
+	msA, ok := got["agent-a"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-a")
+	}
+	if !msA.StartedAt.Equal(wStart) {
+		t.Errorf("agent-a StartedAt = %v, want window start %v", msA.StartedAt, wStart)
+	}
+	if msA.FinishedAt == nil || !msA.FinishedAt.Equal(wEnd) {
+		t.Errorf("agent-a FinishedAt = %v, want window end %v", msA.FinishedAt, wEnd)
+	}
+	msB, ok := got["agent-b"]
+	if !ok {
+		t.Fatalf("no MemberSession event for agent-b")
+	}
+	if msB.StartedAt.Before(before.Add(-time.Second)) || msB.StartedAt.After(after.Add(time.Second)) {
+		t.Errorf("agent-b StartedAt = %v, want publish-time fallback within [%v, %v]", msB.StartedAt, before, after)
+	}
+	if msB.FinishedAt == nil {
+		t.Errorf("agent-b FinishedAt must not be nil on fallback")
 	}
 }
 

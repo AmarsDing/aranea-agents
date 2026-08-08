@@ -22,6 +22,11 @@
           </q-menu>
         </q-btn>
       </q-toolbar>
+      <!-- P3.2c: global offline indicator; the sessions tab serves cached data in this state. -->
+      <div v-if="!online" class="mobile-offline-banner" role="status">
+        <q-icon name="cloud_off" size="16px" />
+        <span>{{ t('mobile.offlineCached') }}</span>
+      </div>
     </q-header>
 
     <q-footer :elevated="false" :class="isDark ? 'dark-header' : 'cream-header'">
@@ -55,12 +60,16 @@ import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace'
 import { CHAT_WORKSPACE_KEY } from '../features/chat/composables/chatWorkspaceInjection';
 import { useBlockingStepNotifications } from '../features/chat/composables/useBlockingStepNotifications';
 import { initLocalNotifications } from '../services/localNotification';
+import { useNetworkStatus } from '../features/mobile/useNetworkStatus';
 
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const { isDark } = useTheme();
+
+// P3.2c: drives the offline banner in the header.
+const { online } = useNetworkStatus();
 
 // P1: one shared ChatWorkspace for all mobile tabs (sessions list / chat
 // detail). Created once here so the WS stream manager and bootstrap run a
@@ -96,3 +105,17 @@ async function onLogout() {
   await router.push('/login');
 }
 </script>
+
+<style scoped>
+.mobile-offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+</style>

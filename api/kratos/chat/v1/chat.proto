@@ -405,6 +405,9 @@ message SubmitMessageFeedbackRequest {
   // rating: "positive" | "negative"
   string rating = 3 [(google.api.field_behavior) = REQUIRED];
   optional string comment = 4;
+  // context_json: optional JSON snapshot making the review list self-contained,
+  // e.g. {"task_id":"...","input":"...","output":"..."}. Leniently parsed.
+  optional string context_json = 5;
 }
 
 message SubmitMessageFeedbackResponse {

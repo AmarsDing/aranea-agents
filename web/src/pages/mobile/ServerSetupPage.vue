@@ -18,6 +18,15 @@
           inputmode="url"
           @update:model-value="showError = false"
         />
+        <q-btn
+          v-if="scannerAvailable"
+          outline
+          icon="qr_code_scanner"
+          class="full-width"
+          :label="$t('mobile.pairingScan')"
+          :loading="scanning"
+          @click="onScan"
+        />
         <div v-if="statusMessage" class="text-body2" :class="statusOk ? 'text-positive' : 'text-negative'">
           {{ statusMessage }}
         </div>
@@ -36,6 +45,8 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { fetchBackendConfig, isPlausibleServerUrl, probeBackend, saveBackendConfig } from 'src/services/backendConfig';
+import { isQrScannerAvailable, scanQrOnce } from 'src/services/qrScanner';
+import { parsePairingQr } from 'src/features/mobile/pairingQr';
 
 const router = useRouter();
 const { t } = useI18n();
@@ -46,6 +57,8 @@ const testing = ref(false);
 const saving = ref(false);
 const statusMessage = ref('');
 const statusOk = ref(false);
+const scanning = ref(false);
+const scannerAvailable = isQrScannerAvailable();
 
 onMounted(async () => {
   const cfg = await fetchBackendConfig();
@@ -56,6 +69,31 @@ function validate(): boolean {
   const ok = isPlausibleServerUrl(url.value);
   showError.value = !ok;
   return ok;
+}
+
+async function onScan() {
+  statusMessage.value = '';
+  scanning.value = true;
+  try {
+    const outcome = await scanQrOnce();
+    if (outcome.kind === 'cancelled') return;
+    if (outcome.kind === 'scanned') {
+      const parsed = parsePairingQr(outcome.content);
+      if (parsed) {
+        url.value = parsed.url;
+        showError.value = false;
+      } else {
+        statusOk.value = false;
+        statusMessage.value = t('mobile.pairingScanInvalid');
+      }
+      return;
+    }
+    // unavailable / denied / error all land on the manual-input fallback hint.
+    statusOk.value = false;
+    statusMessage.value = t('mobile.pairingScanFailed');
+  } finally {
+    scanning.value = false;
+  }
 }
 
 async function onTest() {

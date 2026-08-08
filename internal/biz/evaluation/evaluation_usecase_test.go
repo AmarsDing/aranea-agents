@@ -20,6 +20,8 @@ type mockRepo struct {
 	updateCaseCountFn func(ctx context.Context, id string, delta int) error
 	getRunsByIDsRuns  []Run
 	getRunsByIDsErr   error
+	judgeAnnotated    []JudgeAnnotatedResult
+	judgeAnnotatedErr error
 }
 
 func (m *mockRepo) CreateDataset(_ context.Context, d Dataset) (Dataset, error) {
@@ -108,6 +110,10 @@ func (m *mockRepo) ListTrendPoints(_ context.Context, _, _ string, _ int) ([]Tre
 
 func (m *mockRepo) GetRunsByIDs(_ context.Context, _ []string) ([]Run, error) {
 	return m.getRunsByIDsRuns, m.getRunsByIDsErr
+}
+
+func (m *mockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]JudgeAnnotatedResult, error) {
+	return m.judgeAnnotated, m.judgeAnnotatedErr
 }
 
 func TestUploadCases(t *testing.T) {

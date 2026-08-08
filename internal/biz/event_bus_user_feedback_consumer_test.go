@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -91,7 +92,7 @@ func (e *testFeedbackEnqueuer) EnqueueFeedbackMemory(sessionID, messageID, ratin
 func TestRecordUserFeedbackMonitor(t *testing.T) {
 	repo := &feedbackMonitorRepo{}
 	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
-	if err := RecordUserFeedbackMonitor(context.Background(), uc, "sess-1", "msg-1", "negative", "too verbose"); err != nil {
+	if err := RecordUserFeedbackMonitor(context.Background(), uc, "sess-1", "msg-1", "negative", "too verbose", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.events) != 1 {
@@ -100,6 +101,42 @@ func TestRecordUserFeedbackMonitor(t *testing.T) {
 	ev := repo.events[0]
 	if ev.EventKey != "chat.user_feedback" || ev.Status != "warning" {
 		t.Fatalf("unexpected event: %+v", ev)
+	}
+}
+
+// P1-2: context snapshot (task_id/input/output) must land in monitor metadata
+// so the review list stays self-contained; malformed JSON must not fail.
+func TestRecordUserFeedbackMonitor_ContextSnapshot(t *testing.T) {
+	repo := &feedbackMonitorRepo{}
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
+	ctxJSON := `{"task_id":"task-1","input":"为什么失败","output":"因为……"}`
+	if err := RecordUserFeedbackMonitor(context.Background(), uc, "sess-1", "msg-1", "negative", "", ctxJSON); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(repo.events))
+	}
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(repo.events[0].MetadataJSON), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["task_id"] != "task-1" || meta["input"] != "为什么失败" || meta["output"] != "因为……" {
+		t.Fatalf("snapshot not merged: %v", meta)
+	}
+
+	// Malformed context JSON is ignored without failing the record.
+	if err := RecordUserFeedbackMonitor(context.Background(), uc, "sess-1", "msg-2", "negative", "", "{bad json"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(repo.events))
+	}
+	var meta2 map[string]any
+	if err := json.Unmarshal([]byte(repo.events[1].MetadataJSON), &meta2); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := meta2["task_id"]; ok {
+		t.Fatalf("malformed snapshot must not merge: %v", meta2)
 	}
 }
 

@@ -308,6 +308,7 @@ const evolutionSettings = defineModel<AgentRuntimeConfigForm['evolutionSettings'
 });
 // Container: approved — evolution Tab 内指标/建议编排；内部调用 useAgentEvolutionPanel。
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { EvolutionKey } from './agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
@@ -324,6 +325,8 @@ const props = defineProps<{
   loadingEvalDatasets?: boolean;
 }>();
 defineEmits<{ 'load-eval-datasets': [] }>();
+
+const { t } = useI18n();
 
 const evolutionRange = ref('30d');
 
@@ -398,15 +401,15 @@ function suggestionTypeColor(type: string): string {
 function suggestionStatusLabel(status: string): string {
   switch (status) {
     case 'applied':
-      return '已应用';
+      return t('agentSettings.suggestionStatus.applied');
     case 'rejected':
-      return '已拒绝';
+      return t('agentSettings.suggestionStatus.rejected');
     case 'rolled_back':
-      return '已回滚';
+      return t('agentSettings.suggestionStatus.rolledBack');
     case 'pending':
-      return '待处理';
+      return t('agentSettings.suggestionStatus.pending');
     case 'expired':
-      return '已过期';
+      return t('agentSettings.suggestionStatus.expired');
     default:
       return status;
   }

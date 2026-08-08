@@ -33,6 +33,12 @@
                   <q-item-section class="text-caption text-grey">{{ auth.displayLabel }}</q-item-section>
                 </q-item>
                 <q-separator />
+                <q-item v-close-popup clickable @click="pairingOpen = true">
+                  <q-item-section avatar>
+                    <q-icon name="qr_code_2" size="xs" />
+                  </q-item-section>
+                  <q-item-section>{{ t('mobile.pairingMenuItem') }}</q-item-section>
+                </q-item>
                 <q-item v-close-popup clickable @click="onLogout">
                   <q-item-section>{{ t('auth.logout') }}</q-item-section>
                 </q-item>
@@ -125,6 +131,8 @@
     <q-page-container class="app-page-container">
       <router-view />
     </q-page-container>
+
+    <PairingQrDialog v-model="pairingOpen" />
   </q-layout>
 </template>
 
@@ -137,6 +145,7 @@ import { sideNavGroups } from '../config/sideNav';
 import { useAuthStore } from '../stores/auth';
 import { useInboundNotificationStore } from '../stores/inboundNotifications';
 import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
+import PairingQrDialog from '../components/mobile/PairingQrDialog.vue';
 import { useGlobalInboundNotifications } from '../composables/useGlobalInboundNotifications';
 import { useTheme } from '../composables/useTheme';
 
@@ -147,6 +156,7 @@ const auth = useAuthStore();
 const inboundStore = useInboundNotificationStore();
 const drawerOpen = ref(true);
 const drawerMini = ref(true);
+const pairingOpen = ref(false);
 
 useGlobalInboundNotifications();
 

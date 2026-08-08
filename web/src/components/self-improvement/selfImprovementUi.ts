@@ -109,6 +109,14 @@ export function siChannelLabel(t: Translate, channel: string): string {
   return label === key ? channel || '—' : label;
 }
 
+// ── 沙盒 Gate（D4；g5_eval 当前为 skipped 占位记录）─────────────────────────
+
+export function siGateLabel(t: Translate, gate: string): string {
+  const key = `selfImprovementPage.gate.${gate || 'unknown'}`;
+  const label = t(key);
+  return label === key ? gate || '—' : label;
+}
+
 // ── 可用操作（状态机终态/中间态决定） ────────────────────────────────────────
 
 export function canApprove(status: string): boolean {

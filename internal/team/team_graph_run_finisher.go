@@ -62,7 +62,10 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 		ErrorMessage:    errMsg,
 		CreatedAt:       agent.RFC3339Now(),
 	}
-	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0)
+	// 2026-08-08 问题4b：取 node_start 追踪的真实开始时刻落真实执行窗口；
+	// watch 未观察到 node_start 时零值回退（StartedAt=FinishedAt=落库时刻）。
+	startedAt, _ := stepCtx.NodeStartedAt(nodeID)
+	r.persistStep(ctx, run, stepCtx.TeamID, stepCtx.SortIndex(nodeID), m, ag, stepCtx.InputPreview, asst, strings.TrimSpace(ag.Provider), strings.TrimSpace(ag.Model), "default", toolCallCount, 0, startedAt)
 	stepCtx.MarkPersisted(nodeID)
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		agentName := strutil.FirstNonEmpty(ag.DisplayName, ag.AgentKey)
@@ -290,5 +293,5 @@ func (r *Runner) ensureGraphRunStepsFallback(
 	stepMsg.TokenIn, stepMsg.TokenOut = promptTok, completionTok
 	prov = strutil.FirstNonEmpty(strings.TrimSpace(prov), strings.TrimSpace(anchorAg.Provider))
 	mod = strutil.FirstNonEmpty(strings.TrimSpace(mod), strings.TrimSpace(anchorAg.Model))
-	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok)
+	r.persistStep(ctx, run, teamID, 0, anchor, anchorAg, userContent, stepMsg, prov, mod, "default", 0, cachedTok, time.Time{})
 }

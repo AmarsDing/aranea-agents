@@ -135,6 +135,8 @@ RunGate(ctx, workspaceDir, gate, scope) → GateResult{gate, passed, output, dur
 - **生产隔离**：沙盒只读配置副本，测试走独立 PG schema（testhelper 模式）；禁止访问生产外部服务（环境变量白名单注入）
 
 > P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限（golangci-lint 包级接线推迟 Phase 3）；web 侧 gate（pnpm）未进 Runner，`DeriveAffectedScopes` 已输出 web 范围标志，Phase 3 随 Meta Team 集成接入；进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`；Patcher 工具集（patcher_fs_read/patcher_fs_write/patcher_git_diff，worktree 作用域限定）实现于 `internal/tools/patcherfs/`。
+>
+> **G5（eval 基线）延期未接线**：Pipeline 实际只执行 G1-G3（+G4 Critic 在治理前）；为保持控制台透明，G1-G3 全过后显式落一条 `g5_eval` passed/skipped 记录（Output 注明 deferred），而非静默缺失。G5 真实执行（eval baseline 对比进沙盒）待后续迭代。
 
 ### D5：Meta Team 编排映射（竞赛 AgentTeams 基点）
 
@@ -421,12 +423,15 @@ self_improvement:
 | RollbackRun | POST /api/v1/self-improvement/runs/{id}/rollback | 手动回滚 | admin |
 | CloseRun | POST /api/v1/self-improvement/runs/{id}/close | 观察窗提前关闭 | admin |
 | GetOutcomeStats | GET /api/v1/self-improvement/outcome-stats | 成效统计 | admin |
+| GetStatus | GET /api/v1/self-improvement/status | 功能可用性 + 前置条件自检（master 开关 / DefaultRefineLLM 就绪 / 沙盒 repo_root 有效性）；**不依赖管线 usecase，disabled 时也应答** | admin |
 | GetRiskRules | GET /api/v1/self-improvement/risk-rules | 分级规则读取（configured 原始值 + effective 归一化值双视图） | admin |
 | UpdateRiskRules | PUT /api/v1/self-improvement/risk-rules | 分级规则配置（0/空 = 继承代码默认） | admin |
 
 P1-P4 阶段高风险审批经由既有聊天审批 activity 完成，不落 Proto。
 
 > P5 落地注记（2026-07-31）：9 个 RPC 全部实现于 `internal/service/self_improvement.go`（admin 鉴权，operator 取认证身份）；风险规则持久化于 `system_settings`（迁移 20261121，Raw SQL repo `internal/data/si_risk_rule_repo.go`），经 wire 注入 Pipeline 分类器（`NewSIRiskClassifierWithRules`）与治理路由日配额；校验（阈值 ≥0、low ≤ medium、doublestar glob 合法性）在 `SelfImprovementAdminUsecase.UpdateRiskRules`。
+
+> P5.5 落地注记（2026-08-08）：**路由常驻 + 结构化 503**。`SelfImprovementService` 不再随 `enabled=false` 整体缺席——`cmd/admin provideSelfImprovementService` 始终装配注册（usecase 为 nil），业务端点经 `requireAdmin` 守卫返回 `503 SELF_IMPROVEMENT_UNAVAILABLE`，控制台渲染「功能未启用」空态（开启指引 + 重新检测），替代此前的裸 404。构造函数对 wire 注入的 nil 具体指针做显式接口转换，防 typed-nil 守卫失效（`svc.uc == nil` 必须成立）；`GetStatus` 仅依赖 cfg + `SIRefineLLMReader` 窄口（`SystemSettingUsecase` 适配），所有探测降级为 false/empty 永不报错。前端配套：`isDisabledError`（503 + reason 前缀 `SELF_IMPROVEMENT`）置位 `featureDisabled`；错误码人性化分类（403=forbidden / 404=legacy 旧后端 / 5xx=unavailable）；统计接口失败独立 `statsFailed` 降级「不可用」（区别于真实 0 数据）；enabled 态前置条件横幅（Refine LLM 未配置 / repo_root 无效）。
 
 ---
 

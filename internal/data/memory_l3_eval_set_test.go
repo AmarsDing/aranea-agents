@@ -21,7 +21,8 @@ import (
 // + FTS injection; no embedder so the run is deterministic). Every item is
 // scoped as eval-<id> for isolation within one shared schema.
 //
-// Gate semantics (dataset min_score = 0.55, the production default):
+// Gate semantics (dataset min_score = 0.55, deliberately stricter than the
+// 0.35 production runtime default since 2026-08-08 P0-4):
 //   - extraction / multi_hop / temporal / knowledge_update: every expect_hits
 //     substring must appear in some recalled statement, and every
 //     expect_absent substring must appear in NONE.

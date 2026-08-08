@@ -3,11 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	v1 "aranea-agents/api/kratos/self_improvement/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -122,6 +125,107 @@ func TestSelfImprovementService_NilUsecase(t *testing.T) {
 	svc := siSvcNew(nil)
 	if _, err := svc.ListRuns(siSvcAdminCtx(), &v1.ListRunsRequest{}); !apierror.IsCode(err, apierror.CodeUnavailable) {
 		t.Fatalf("err = %v, want Unavailable", err)
+	}
+}
+
+// 构造函数 typed-nil 防护回归（P5.5）：wire 注入的是 nil 具体指针
+// *biz.SelfImprovementAdminUsecase，直接存入接口字段会形成 typed-nil
+// （uc != nil 但接收者为 nil → 调用即 panic）。构造函数必须显式转换。
+func TestNewSelfImprovementService_TypedNilUsecase(t *testing.T) {
+	var uc *biz.SelfImprovementAdminUsecase // nil 具体指针（wire disabled 路径的实际注入值）
+	svc := NewSelfImprovementService(uc, &conf.SelfImprovement{}, nil, nil)
+	if svc.uc != nil {
+		t.Fatalf("uc = %T, want nil interface（typed-nil 会绕过 requireAdmin 守卫）", svc.uc)
+	}
+	if _, err := svc.ListRuns(siSvcAdminCtx(), &v1.ListRunsRequest{}); !apierror.IsCode(err, apierror.CodeUnavailable) {
+		t.Fatalf("err = %v, want Unavailable（typed-nil 应触发 disabled 守卫而非 panic）", err)
+	}
+}
+
+// ── GetStatus（P5.5 前置自检：disabled 也可用，不依赖 usecase）──────────────
+
+type siRefineLLMFake struct {
+	setting biz.RefineLLMSetting
+	err     error
+}
+
+func (f *siRefineLLMFake) GetRefineLLM(context.Context) (biz.RefineLLMSetting, error) {
+	return f.setting, f.err
+}
+
+func TestSelfImprovementService_GetStatus_RequiresAdmin(t *testing.T) {
+	svc := siSvcNew(nil)
+	if _, err := svc.GetStatus(context.Background(), &v1.GetStatusRequest{}); !errors.Is(err, auth.ErrUnauthorized) {
+		t.Fatalf("GetStatus err = %v, want ErrUnauthorized", err)
+	}
+	if _, err := svc.GetStatus(siSvcUserCtx(), &v1.GetStatusRequest{}); !errors.Is(err, auth.ErrForbidden) {
+		t.Fatalf("GetStatus err = %v, want ErrForbidden", err)
+	}
+}
+
+// disabled + 未配置 LLM + repo_root 回退进程 cwd（包目录无 .git → invalid）。
+func TestSelfImprovementService_GetStatus_Disabled(t *testing.T) {
+	svc := siSvcNew(nil)
+	svc.cfg = &conf.SelfImprovement{}
+	svc.refineLLM = &siRefineLLMFake{}
+	st, err := svc.GetStatus(siSvcAdminCtx(), &v1.GetStatusRequest{})
+	if err != nil {
+		t.Fatalf("GetStatus (disabled) err = %v, want nil（disabled 也必须可用）", err)
+	}
+	if st.GetEnabled() {
+		t.Fatalf("Enabled = true, want false")
+	}
+	if st.GetRefineLlmConfigured() {
+		t.Fatalf("RefineLlmConfigured = true, want false（未配置 provider/model）")
+	}
+	if st.GetRepoRoot() == "" {
+		t.Fatalf("RepoRoot empty, want 进程 cwd 回退值")
+	}
+	if st.GetRepoRootValid() {
+		t.Fatalf("RepoRootValid = true, want false（包目录无 .git）")
+	}
+}
+
+// enabled + 已配置 LLM + 显式合法 repo_root（含 .git）。
+func TestSelfImprovementService_GetStatus_Enabled(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svc := siSvcNew(&siAdminPortFake{})
+	svc.cfg = &conf.SelfImprovement{
+		Enabled: true,
+		Sandbox: &conf.SelfImprovement_Sandbox{RepoRoot: dir},
+	}
+	svc.refineLLM = &siRefineLLMFake{setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-x"}}
+	st, err := svc.GetStatus(siSvcAdminCtx(), &v1.GetStatusRequest{})
+	if err != nil {
+		t.Fatalf("GetStatus err = %v", err)
+	}
+	if !st.GetEnabled() {
+		t.Fatalf("Enabled = false, want true")
+	}
+	if !st.GetRefineLlmConfigured() {
+		t.Fatalf("RefineLlmConfigured = false, want true")
+	}
+	if st.GetRefineLlmProvider() != "openai" || st.GetRefineLlmModel() != "gpt-x" {
+		t.Fatalf("provider/model = %q/%q, want openai/gpt-x", st.GetRefineLlmProvider(), st.GetRefineLlmModel())
+	}
+	if st.GetRepoRoot() != dir || !st.GetRepoRootValid() {
+		t.Fatalf("repo root = %q valid=%v, want %q valid=true", st.GetRepoRoot(), st.GetRepoRootValid(), dir)
+	}
+}
+
+// refine LLM 读取失败 → 降级为未配置（不报错）。
+func TestSelfImprovementService_GetStatus_RefineLLMDegraded(t *testing.T) {
+	svc := siSvcNew(nil)
+	svc.refineLLM = &siRefineLLMFake{err: errors.New("store down")}
+	st, err := svc.GetStatus(siSvcAdminCtx(), &v1.GetStatusRequest{})
+	if err != nil {
+		t.Fatalf("GetStatus err = %v, want nil（LLM 读取失败须降级）", err)
+	}
+	if st.GetRefineLlmConfigured() {
+		t.Fatalf("RefineLlmConfigured = true, want false（读取失败降级）")
 	}
 }
 
