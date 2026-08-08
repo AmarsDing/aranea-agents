@@ -33,7 +33,9 @@ import (
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
+	"aranea-agents/internal/data/ent/evalgateconfig"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/evalrunpreference"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -168,8 +170,12 @@ type Client struct {
 	EvalCaseResult *EvalCaseResultClient
 	// EvalDataset is the client for interacting with the EvalDataset builders.
 	EvalDataset *EvalDatasetClient
+	// EvalGateConfig is the client for interacting with the EvalGateConfig builders.
+	EvalGateConfig *EvalGateConfigClient
 	// EvalRun is the client for interacting with the EvalRun builders.
 	EvalRun *EvalRunClient
+	// EvalRunPreference is the client for interacting with the EvalRunPreference builders.
+	EvalRunPreference *EvalRunPreferenceClient
 	// EventDeliveryOutbox is the client for interacting with the EventDeliveryOutbox builders.
 	EventDeliveryOutbox *EventDeliveryOutboxClient
 	// ExperienceReport is the client for interacting with the ExperienceReport builders.
@@ -355,7 +361,9 @@ func (c *Client) init() {
 	c.EvalCase = NewEvalCaseClient(c.config)
 	c.EvalCaseResult = NewEvalCaseResultClient(c.config)
 	c.EvalDataset = NewEvalDatasetClient(c.config)
+	c.EvalGateConfig = NewEvalGateConfigClient(c.config)
 	c.EvalRun = NewEvalRunClient(c.config)
+	c.EvalRunPreference = NewEvalRunPreferenceClient(c.config)
 	c.EventDeliveryOutbox = NewEventDeliveryOutboxClient(c.config)
 	c.ExperienceReport = NewExperienceReportClient(c.config)
 	c.FailurePattern = NewFailurePatternClient(c.config)
@@ -546,7 +554,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		EvalCase:                   NewEvalCaseClient(cfg),
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
+		EvalGateConfig:             NewEvalGateConfigClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
+		EvalRunPreference:          NewEvalRunPreferenceClient(cfg),
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -664,7 +674,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		EvalCase:                   NewEvalCaseClient(cfg),
 		EvalCaseResult:             NewEvalCaseResultClient(cfg),
 		EvalDataset:                NewEvalDatasetClient(cfg),
+		EvalGateConfig:             NewEvalGateConfigClient(cfg),
 		EvalRun:                    NewEvalRunClient(cfg),
+		EvalRunPreference:          NewEvalRunPreferenceClient(cfg),
 		EventDeliveryOutbox:        NewEventDeliveryOutboxClient(cfg),
 		ExperienceReport:           NewExperienceReportClient(cfg),
 		FailurePattern:             NewFailurePatternClient(cfg),
@@ -775,26 +787,26 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
-		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
-		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
-		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
-		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
-		c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
-		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
-		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
-		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
-		c.UserEmbeddingSetting,
+		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
+		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
+		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
+		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
+		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
+		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -809,26 +821,26 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
 		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalRun, c.EventDeliveryOutbox, c.ExperienceReport, c.FailurePattern,
-		c.FederationAuditLog, c.FederationOrg, c.FederationPolicy, c.FlowLogEvent,
-		c.GatewayWebhook, c.GraphDefinition, c.GraphExecution, c.GraphNodeV2,
-		c.GraphStageV2, c.GraphTask, c.GraphTaskComment, c.GraphTaskEvent,
-		c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun, c.HealRecord,
-		c.LlmProviderModel, c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
-		c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
-		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
-		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
-		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
-		c.UserEmbeddingSetting,
+		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
+		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
+		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
+		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
+		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
+		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -881,8 +893,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EvalCaseResult.mutate(ctx, m)
 	case *EvalDatasetMutation:
 		return c.EvalDataset.mutate(ctx, m)
+	case *EvalGateConfigMutation:
+		return c.EvalGateConfig.mutate(ctx, m)
 	case *EvalRunMutation:
 		return c.EvalRun.mutate(ctx, m)
+	case *EvalRunPreferenceMutation:
+		return c.EvalRunPreference.mutate(ctx, m)
 	case *EventDeliveryOutboxMutation:
 		return c.EventDeliveryOutbox.mutate(ctx, m)
 	case *ExperienceReportMutation:
@@ -4062,6 +4078,139 @@ func (c *EvalDatasetClient) mutate(ctx context.Context, m *EvalDatasetMutation) 
 	}
 }
 
+// EvalGateConfigClient is a client for the EvalGateConfig schema.
+type EvalGateConfigClient struct {
+	config
+}
+
+// NewEvalGateConfigClient returns a client for the EvalGateConfig from the given config.
+func NewEvalGateConfigClient(c config) *EvalGateConfigClient {
+	return &EvalGateConfigClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `evalgateconfig.Hooks(f(g(h())))`.
+func (c *EvalGateConfigClient) Use(hooks ...Hook) {
+	c.hooks.EvalGateConfig = append(c.hooks.EvalGateConfig, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `evalgateconfig.Intercept(f(g(h())))`.
+func (c *EvalGateConfigClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EvalGateConfig = append(c.inters.EvalGateConfig, interceptors...)
+}
+
+// Create returns a builder for creating a EvalGateConfig entity.
+func (c *EvalGateConfigClient) Create() *EvalGateConfigCreate {
+	mutation := newEvalGateConfigMutation(c.config, OpCreate)
+	return &EvalGateConfigCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EvalGateConfig entities.
+func (c *EvalGateConfigClient) CreateBulk(builders ...*EvalGateConfigCreate) *EvalGateConfigCreateBulk {
+	return &EvalGateConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EvalGateConfigClient) MapCreateBulk(slice any, setFunc func(*EvalGateConfigCreate, int)) *EvalGateConfigCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EvalGateConfigCreateBulk{err: fmt.Errorf("calling to EvalGateConfigClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EvalGateConfigCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EvalGateConfigCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EvalGateConfig.
+func (c *EvalGateConfigClient) Update() *EvalGateConfigUpdate {
+	mutation := newEvalGateConfigMutation(c.config, OpUpdate)
+	return &EvalGateConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EvalGateConfigClient) UpdateOne(_m *EvalGateConfig) *EvalGateConfigUpdateOne {
+	mutation := newEvalGateConfigMutation(c.config, OpUpdateOne, withEvalGateConfig(_m))
+	return &EvalGateConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EvalGateConfigClient) UpdateOneID(id string) *EvalGateConfigUpdateOne {
+	mutation := newEvalGateConfigMutation(c.config, OpUpdateOne, withEvalGateConfigID(id))
+	return &EvalGateConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EvalGateConfig.
+func (c *EvalGateConfigClient) Delete() *EvalGateConfigDelete {
+	mutation := newEvalGateConfigMutation(c.config, OpDelete)
+	return &EvalGateConfigDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EvalGateConfigClient) DeleteOne(_m *EvalGateConfig) *EvalGateConfigDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EvalGateConfigClient) DeleteOneID(id string) *EvalGateConfigDeleteOne {
+	builder := c.Delete().Where(evalgateconfig.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EvalGateConfigDeleteOne{builder}
+}
+
+// Query returns a query builder for EvalGateConfig.
+func (c *EvalGateConfigClient) Query() *EvalGateConfigQuery {
+	return &EvalGateConfigQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEvalGateConfig},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EvalGateConfig entity by its id.
+func (c *EvalGateConfigClient) Get(ctx context.Context, id string) (*EvalGateConfig, error) {
+	return c.Query().Where(evalgateconfig.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EvalGateConfigClient) GetX(ctx context.Context, id string) *EvalGateConfig {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EvalGateConfigClient) Hooks() []Hook {
+	return c.hooks.EvalGateConfig
+}
+
+// Interceptors returns the client interceptors.
+func (c *EvalGateConfigClient) Interceptors() []Interceptor {
+	return c.inters.EvalGateConfig
+}
+
+func (c *EvalGateConfigClient) mutate(ctx context.Context, m *EvalGateConfigMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EvalGateConfigCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EvalGateConfigUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EvalGateConfigUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EvalGateConfigDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EvalGateConfig mutation op: %q", m.Op())
+	}
+}
+
 // EvalRunClient is a client for the EvalRun schema.
 type EvalRunClient struct {
 	config
@@ -4224,6 +4373,139 @@ func (c *EvalRunClient) mutate(ctx context.Context, m *EvalRunMutation) (Value, 
 		return (&EvalRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown EvalRun mutation op: %q", m.Op())
+	}
+}
+
+// EvalRunPreferenceClient is a client for the EvalRunPreference schema.
+type EvalRunPreferenceClient struct {
+	config
+}
+
+// NewEvalRunPreferenceClient returns a client for the EvalRunPreference from the given config.
+func NewEvalRunPreferenceClient(c config) *EvalRunPreferenceClient {
+	return &EvalRunPreferenceClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `evalrunpreference.Hooks(f(g(h())))`.
+func (c *EvalRunPreferenceClient) Use(hooks ...Hook) {
+	c.hooks.EvalRunPreference = append(c.hooks.EvalRunPreference, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `evalrunpreference.Intercept(f(g(h())))`.
+func (c *EvalRunPreferenceClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EvalRunPreference = append(c.inters.EvalRunPreference, interceptors...)
+}
+
+// Create returns a builder for creating a EvalRunPreference entity.
+func (c *EvalRunPreferenceClient) Create() *EvalRunPreferenceCreate {
+	mutation := newEvalRunPreferenceMutation(c.config, OpCreate)
+	return &EvalRunPreferenceCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EvalRunPreference entities.
+func (c *EvalRunPreferenceClient) CreateBulk(builders ...*EvalRunPreferenceCreate) *EvalRunPreferenceCreateBulk {
+	return &EvalRunPreferenceCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EvalRunPreferenceClient) MapCreateBulk(slice any, setFunc func(*EvalRunPreferenceCreate, int)) *EvalRunPreferenceCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EvalRunPreferenceCreateBulk{err: fmt.Errorf("calling to EvalRunPreferenceClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EvalRunPreferenceCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EvalRunPreferenceCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EvalRunPreference.
+func (c *EvalRunPreferenceClient) Update() *EvalRunPreferenceUpdate {
+	mutation := newEvalRunPreferenceMutation(c.config, OpUpdate)
+	return &EvalRunPreferenceUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EvalRunPreferenceClient) UpdateOne(_m *EvalRunPreference) *EvalRunPreferenceUpdateOne {
+	mutation := newEvalRunPreferenceMutation(c.config, OpUpdateOne, withEvalRunPreference(_m))
+	return &EvalRunPreferenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EvalRunPreferenceClient) UpdateOneID(id string) *EvalRunPreferenceUpdateOne {
+	mutation := newEvalRunPreferenceMutation(c.config, OpUpdateOne, withEvalRunPreferenceID(id))
+	return &EvalRunPreferenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EvalRunPreference.
+func (c *EvalRunPreferenceClient) Delete() *EvalRunPreferenceDelete {
+	mutation := newEvalRunPreferenceMutation(c.config, OpDelete)
+	return &EvalRunPreferenceDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EvalRunPreferenceClient) DeleteOne(_m *EvalRunPreference) *EvalRunPreferenceDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EvalRunPreferenceClient) DeleteOneID(id string) *EvalRunPreferenceDeleteOne {
+	builder := c.Delete().Where(evalrunpreference.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EvalRunPreferenceDeleteOne{builder}
+}
+
+// Query returns a query builder for EvalRunPreference.
+func (c *EvalRunPreferenceClient) Query() *EvalRunPreferenceQuery {
+	return &EvalRunPreferenceQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEvalRunPreference},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EvalRunPreference entity by its id.
+func (c *EvalRunPreferenceClient) Get(ctx context.Context, id string) (*EvalRunPreference, error) {
+	return c.Query().Where(evalrunpreference.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EvalRunPreferenceClient) GetX(ctx context.Context, id string) *EvalRunPreference {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EvalRunPreferenceClient) Hooks() []Hook {
+	return c.hooks.EvalRunPreference
+}
+
+// Interceptors returns the client interceptors.
+func (c *EvalRunPreferenceClient) Interceptors() []Interceptor {
+	return c.inters.EvalRunPreference
+}
+
+func (c *EvalRunPreferenceClient) mutate(ctx context.Context, m *EvalRunPreferenceMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EvalRunPreferenceCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EvalRunPreferenceUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EvalRunPreferenceUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EvalRunPreferenceDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EvalRunPreference mutation op: %q", m.Op())
 	}
 }
 
@@ -14342,14 +14624,14 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
-		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
-		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
-		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
-		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
+		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
+		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
+		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
+		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
+		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
 		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
@@ -14366,14 +14648,14 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalRun, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
-		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
-		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
-		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
-		LlmProviderModel, MediaProvider, MemberSessionV2, ModelPricingRule,
-		ModelTokenUsageHourly, Orchestration, OrchestrationStep, Organization,
-		PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
+		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
+		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
+		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
+		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
+		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
 		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
 		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
 		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,

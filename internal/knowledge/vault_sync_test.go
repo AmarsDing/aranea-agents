@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,11 @@ type vaultSyncMemRepo struct {
 	entityNames  map[int64]string // entity id → 展示名（首见写法）
 	entityAlias  map[string]int64 // collectionID+\x00+aliasNorm → entity id
 	nextEntityID int64
+	// SP1-C 块级双链：块/边物化 + 解析键（frontmatter title/aliases）。
+	blocks    map[string][]bizknowledge.KnowledgeBlock         // docID → 块（ordinal 序）
+	blockRefs map[string][]bizknowledge.KnowledgeBlockRefInput // docID → 边（自引用已回填块 ID）
+	linkTitle map[string]string                                // docID → 解析键 title
+	linkAlias map[string][]string                              // docID → 解析键 aliases
 }
 
 func newVaultSyncMemRepo() *vaultSyncMemRepo {
@@ -40,6 +46,10 @@ func newVaultSyncMemRepo() *vaultSyncMemRepo {
 		entityIDs:   make(map[string]int64),
 		entityNames: make(map[int64]string),
 		entityAlias: make(map[string]int64),
+		blocks:      make(map[string][]bizknowledge.KnowledgeBlock),
+		blockRefs:   make(map[string][]bizknowledge.KnowledgeBlockRefInput),
+		linkTitle:   make(map[string]string),
+		linkAlias:   make(map[string][]string),
 	}
 }
 
@@ -375,6 +385,126 @@ func (m *vaultSyncMemRepo) ListEntities(_ context.Context, collectionID string) 
 	return out, nil
 }
 
+// ── BlockIndexRepo / ResolveIndex（SP1-C 块级双链，内存实现） ─────────────────
+
+// ReplaceDocBlocks 内存整文档重放（对齐生产语义：删旧插新；SrcOrdinal /
+// DstSelfOrdinal 按本次插入的 ordinal→ID 映射回填块 ID；未锚块 ID 确定性生成）。
+// 返回本次物化边（SP1-D 签名契约）。
+func (m *vaultSyncMemRepo) ReplaceDocBlocks(_ context.Context, collectionID, docID string, blocks []bizknowledge.KnowledgeBlock, refs []bizknowledge.KnowledgeBlockRefInput) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	idByOrdinal := make(map[int]string, len(blocks))
+	stored := make([]bizknowledge.KnowledgeBlock, len(blocks))
+	for i, b := range blocks {
+		if b.ID == "" {
+			b.ID = b.Anchor
+		}
+		if b.ID == "" {
+			b.ID = docID + "#" + strconv.Itoa(b.Ordinal)
+		}
+		b.CollectionID = collectionID
+		b.DocID = docID
+		idByOrdinal[b.Ordinal] = b.ID
+		stored[i] = b
+	}
+	out := make([]bizknowledge.KnowledgeBlockRefInput, len(refs))
+	edges := make([]bizknowledge.KnowledgeBlockRefEdge, len(refs))
+	for i, rf := range refs {
+		if rf.DstBlockID == "" && rf.DstSelfOrdinal != nil {
+			rf.DstBlockID = idByOrdinal[*rf.DstSelfOrdinal]
+		}
+		out[i] = rf
+		edges[i] = bizknowledge.KnowledgeBlockRefEdge{
+			CollectionID:    collectionID,
+			SrcBlockID:      idByOrdinal[rf.SrcOrdinal],
+			SrcDocID:        docID,
+			DstCollectionID: rf.DstCollectionID,
+			DstDocID:        rf.DstDocID,
+			DstBlockID:      rf.DstBlockID,
+			RawTarget:       rf.RawTarget,
+			EdgeType:        rf.EdgeType,
+			Context:         rf.Context,
+			Ambiguous:       rf.Ambiguous,
+		}
+	}
+	m.blocks[docID] = stored
+	m.blockRefs[docID] = out
+	return edges, nil
+}
+
+// ListDocBlocks 按 ordinal 序返回（插入序即 ordinal 序）。
+func (m *vaultSyncMemRepo) ListDocBlocks(_ context.Context, docID string) ([]bizknowledge.KnowledgeBlock, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]bizknowledge.KnowledgeBlock(nil), m.blocks[docID]...), nil
+}
+
+// UpdateDocLinkKeys 物化解析键（frontmatter title/aliases），供 ListResolveCandidates。
+func (m *vaultSyncMemRepo) UpdateDocLinkKeys(_ context.Context, docID, title string, aliases []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.linkTitle[docID] = title
+	m.linkAlias[docID] = aliases
+	return nil
+}
+
+// ListResolveCandidates 按可见集合裁剪候选文档（B-1）；title/aliases 取
+// UpdateDocLinkKeys 物化值，CollectionCreatedAt 零值（确定性排序靠 RelPath 兜底）。
+func (m *vaultSyncMemRepo) ListResolveCandidates(_ context.Context, collectionIDs []string) ([]bizknowledge.ResolveDocCandidate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	visible := make(map[string]bool, len(collectionIDs))
+	for _, id := range collectionIDs {
+		visible[id] = true
+	}
+	var out []bizknowledge.ResolveDocCandidate
+	for _, d := range m.documents {
+		if !visible[d.CollectionID] {
+			continue
+		}
+		out = append(out, bizknowledge.ResolveDocCandidate{
+			DocID:        d.ID,
+			CollectionID: d.CollectionID,
+			RelPath:      d.RelPath,
+			Title:        m.linkTitle[d.ID],
+			Aliases:      m.linkAlias[d.ID],
+		})
+	}
+	return out, nil
+}
+
+// FindBlockByAnchor 按显式锚点定位块；未命中 ok=false（块级 dangling，非错误）。
+func (m *vaultSyncMemRepo) FindBlockByAnchor(_ context.Context, docID, anchor string) (string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, b := range m.blocks[docID] {
+		if b.Anchor != "" && b.Anchor == anchor {
+			return b.ID, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// FindBlockByHeadingPath 按标题路径定位 heading 块；重复标题取首（块按 ordinal 序
+// 存储，首个命中即 ordinal 最小者，与生产 ORDER BY ordinal LIMIT 1 口径一致）。
+func (m *vaultSyncMemRepo) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+next:
+	for _, b := range m.blocks[docID] {
+		if b.Kind != "heading" || len(b.HeadingPath) != len(path) {
+			continue
+		}
+		for i := range path {
+			if b.HeadingPath[i] != path[i] {
+				continue next
+			}
+		}
+		return b.ID, true, nil
+	}
+	return "", false, nil
+}
+
 // ── stub embedder ─────────────────────────────────────────────────────────────
 
 type vaultSyncStubEmbedder struct {
@@ -423,7 +553,8 @@ func createdEvent(rel, content string) bizknowledge.ChangeEvent {
 
 func newTestApplier(repo *vaultSyncMemRepo, embedder Embedder) *VaultSyncApplier {
 	uc := bizknowledge.NewUsecaseFromRepo(repo)
-	uc.SetLinkRepos(repo, repo) // P2-4：接线双轨关联持久化
+	uc.SetLinkRepos(repo, repo)       // P2-4：接线双轨关联持久化
+	uc.SetBlockIndexRepos(repo, repo) // SP1-C：接线块级双链索引（物化 + 解析）
 	return NewVaultSyncApplier(uc, bizknowledge.NewVaultFiler(nil), embedder, loggateway.NewNoop())
 }
 

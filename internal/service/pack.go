@@ -5,7 +5,9 @@ import (
 	"context"
 
 	packv1 "aranea-agents/api/kratos/pack/v1"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
+	"aranea-agents/internal/evaluation"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 
@@ -22,13 +24,15 @@ type PackService struct {
 	validatorRepo pack.ValidatorRepo
 	lg            loggateway.Logger
 	monitorBus    contract.MonitorBus
+	gate          *evaluation.PublishGate
 }
 
 // NewPackService creates a new PackService.
 // adapter must satisfy pack.ExporterRepo, pack.ImporterRepo, and pack.ValidatorRepo.
 // lg / monitorBus feed the ecosystem.pack.install flow log; both are nil-safe
 // (nil disables the process-log line / bus publication respectively).
-func NewPackService(adapter PackExporterImporterValidator, lg loggateway.Logger, monitorBus contract.MonitorBus) *PackService {
+// gate is the P2-1 publish regression gate; nil disables the check.
+func NewPackService(adapter PackExporterImporterValidator, lg loggateway.Logger, monitorBus contract.MonitorBus, gate *evaluation.PublishGate) *PackService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -38,6 +42,7 @@ func NewPackService(adapter PackExporterImporterValidator, lg loggateway.Logger,
 		validatorRepo: adapter,
 		lg:            lg,
 		monitorBus:    monitorBus,
+		gate:          gate,
 	}
 }
 
@@ -139,6 +144,19 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 		strategy = pack.ConflictOverwrite
 	case "duplicate":
 		strategy = pack.ConflictDuplicate
+	}
+
+	// P2-1: publish regression gate — blocked installs return Conflict and
+	// nothing is imported. Nil gate / disabled config = no-op.
+	if err := s.gate.Check(ctx, biz.EvalGateTriggerPackInstall); err != nil {
+		if flow != nil {
+			flow.LogError("ecosystem.pack.install", "生态包安装被评估门禁拦截",
+				event.P("pack", p.Manifest.Name),
+				event.P("version", p.Manifest.Version),
+				event.P("error", err.Error()),
+			)
+		}
+		return nil, err
 	}
 
 	// Import

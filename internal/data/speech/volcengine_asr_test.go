@@ -91,9 +91,17 @@ func pushServerJSON(t *testing.T, conn *fakeWSConn, flags byte, v any) {
 	conn.toRead <- readMsg{mt: websocket.BinaryMessage, data: frame}
 }
 
+// pushServerAck 推入 full client request 的服务端应答（空结果）。SAUC 协议保证
+// full client request 必有 full server response，Open 会同步消费该首帧。
+func pushServerAck(t *testing.T, conn *fakeWSConn) {
+	t.Helper()
+	pushServerJSON(t, conn, volcFlagNone, map[string]any{"result": map[string]any{}})
+}
+
 func TestASROpenSendsFullClientRequest(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
 	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{Language: "zh-CN", SampleRate: 16000})
 	require.NoError(t, err)
 	defer sess.Close()
@@ -111,6 +119,7 @@ func TestASROpenSendsFullClientRequest(t *testing.T) {
 func TestASRWriteAndFinishSeq(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
 	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
 	require.NoError(t, err)
 	defer sess.Close()
@@ -136,6 +145,7 @@ func TestASRWriteAndFinishSeq(t *testing.T) {
 func TestASRPartialAndFinalEvents(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
 	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
 	require.NoError(t, err)
 	defer sess.Close()
@@ -163,6 +173,7 @@ func TestASRPartialAndFinalEvents(t *testing.T) {
 func TestASRErrorFrameAndClose(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
 	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
 	require.NoError(t, err)
 	_ = mustReadFrame(t, conn)
@@ -188,4 +199,37 @@ func TestASRDialFailureIsUnavailable(t *testing.T) {
 	}
 	_, err := p.Open(context.Background(), biz.ASRSessionConfig{})
 	require.True(t, apierror.IsCode(err, apierror.CodeUnavailable), "got %v", err)
+}
+
+// TestASROpenServerSilentTimesOut 覆盖真机事故场景：WS 握手成功但上游永不应答
+// （如协议不匹配的 v2 端点），Open 必须在 ack 超时后 fail-fast 返回 UNAVAILABLE，
+// 而不是让语音会话静默挂起到 10min 空闲回收。
+func TestASROpenServerSilentTimesOut(t *testing.T) {
+	conn := newFakeWSConn()
+	p := newTestASRProvider(conn)
+	p.(*volcASRProvider).ackTimeout = 100 * time.Millisecond
+
+	start := time.Now()
+	_, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.True(t, apierror.IsCode(err, apierror.CodeUnavailable), "got %v", err)
+	require.Less(t, elapsed, 3*time.Second, "ack wait must fail fast, not hang")
+	require.True(t, conn.closed.Load(), "timed-out conn must be closed")
+}
+
+// TestASROpenServerErrorFrame 首帧为服务端错误帧时，Open 返回带服务端详情的错误。
+func TestASROpenServerErrorFrame(t *testing.T) {
+	conn := newFakeWSConn()
+	p := newTestASRProvider(conn)
+	errFrame, err := marshalVolcFrame(volcFrame{msgType: volcMsgError, flags: volcFlagNone, json: true, payload: []byte(`{"code":4500,"message":"unsupported protocol"}`)}, false)
+	require.NoError(t, err)
+	conn.toRead <- readMsg{mt: websocket.BinaryMessage, data: errFrame}
+
+	_, err = p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
+	require.Error(t, err)
+	require.True(t, apierror.IsCode(err, apierror.CodeUnavailable), "got %v", err)
+	require.Contains(t, err.Error(), "unsupported protocol")
+	require.True(t, conn.closed.Load(), "rejected conn must be closed")
 }

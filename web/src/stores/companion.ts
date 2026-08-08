@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
 import type { VoiceError, VoiceState } from '../features/companion/types';
@@ -17,6 +17,19 @@ export const useCompanionStore = defineStore('companion', () => {
   const chatOpen = ref(false);
   const subtitlePartial = ref('');
   const lastError = ref<VoiceError | null>(null);
+  /**
+   * 语音服务可用性（V2-T8 差距2，GET /v1/voice/status 探测结果）。
+   * 三态：null=未知（探测失败/未拉取，不置灰，点击后 voice.error 兜底）；
+   * false=明确未配置（麦克风置灰门控）；true=可用。
+   */
+  const voiceAvailable = ref<boolean | null>(null);
+
+  /** 麦克风置灰门控：仅明确不可用时置灰（未知不阻断，避免误伤）。 */
+  const voiceMicDisabled = computed(() => voiceAvailable.value === false);
+
+  function setVoiceAvailable(available: boolean | null) {
+    voiceAvailable.value = available;
+  }
 
   function setVoiceState(state: VoiceState) {
     voiceState.value = state;
@@ -64,6 +77,9 @@ export const useCompanionStore = defineStore('companion', () => {
     chatOpen,
     subtitlePartial,
     lastError,
+    voiceAvailable,
+    voiceMicDisabled,
+    setVoiceAvailable,
     setVoiceState,
     setVoiceMode,
     setSubtitlePartial,

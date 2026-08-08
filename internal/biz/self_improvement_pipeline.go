@@ -213,7 +213,7 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 			emitStage(cursor.stage, cursor.attempt, ActivityStatusFailed, cause.Error())
 			cursor.stage = ""
 		}
-		run.ClosedReason = cause.Error()
+		run.ClosedReason = siTruncateClosedReason(cause.Error())
 		if terr := transition(RunEventError); terr != nil {
 			uc.lg.Error("self-improve pipeline: fail transition broken",
 				loggateway.StepID("si_pipeline.error"), loggateway.Err(terr))
@@ -225,7 +225,7 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 			emitStage(cursor.stage, cursor.attempt, ActivityStatusFailed, reason)
 			cursor.stage = ""
 		}
-		run.ClosedReason = reason
+		run.ClosedReason = siTruncateClosedReason(reason)
 		uc.lg.Info("self-improve run rejected",
 			loggateway.StepID("si_pipeline.reject"),
 			loggateway.Str("run_id", run.ID), loggateway.Str("reason", reason))

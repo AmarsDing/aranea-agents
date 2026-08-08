@@ -26,7 +26,10 @@ type SystemSetting struct {
 	// PlannerModel controls how plan_and_execute planner/allocator resolve
 	// their internal LLM model. Replaces ARANEA_PLANNER_PROVIDER/MODEL env vars.
 	PlannerModel PlannerModelSetting
-	UpdateTime   time.Time
+	// Speech holds the voice companion (M74) ASR/TTS provider configuration
+	// (V2-T7). Empty fields fall back to SPEECH_* env vars at read time.
+	Speech     SpeechSetting
+	UpdateTime time.Time
 }
 
 // RefineLLMSetting holds the platform default provider/model for AI refinement.
@@ -60,7 +63,7 @@ type PlannerModelSetting struct {
 // memory platform, refine LLM).
 //
 // Stability:evolving
-// TECH-DEBT(DB-DEBT-02): This interface has 11 methods, exceeding the ≤5
+// TECH-DEBT(DB-DEBT-02): This interface has 13 methods, exceeding the ≤5
 // guideline (BI1/BI6). It should be split by domain into smaller interfaces
 // (e.g., SystemSettingCoreRepo, KnowledgeEmbedSettingRepo,
 // WebResearchSettingRepo, RefineLLMSettingRepo). Deferred because the split
@@ -82,6 +85,9 @@ type SystemSettingRepo interface {
 	// PlannerModel: plan_and_execute planner/allocator model resolution config.
 	GetPlannerModel(ctx context.Context) (PlannerModelSetting, error)
 	UpdatePlannerModel(ctx context.Context, patch PlannerModelSetting) (PlannerModelSetting, error)
+	// Speech: voice companion (M74) ASR/TTS provider config (V2-T7).
+	GetSpeech(ctx context.Context) (SpeechSetting, error)
+	UpdateSpeech(ctx context.Context, patch SpeechSetting, updateASRCred, updateTTSCred bool) (SpeechSetting, error)
 }
 
 // SystemSettingTxProvider provides transactional execution for atomic
@@ -126,6 +132,9 @@ type SystemSettingAllPatch struct {
 	EvalLLM                 *EvalLLMSetting
 	WebResearch             *WebResearchSetting
 	WebResearchUpdateKey    bool
+	Speech                  *SpeechSetting
+	SpeechUpdateASRCred     bool
+	SpeechUpdateTTSCred     bool
 }
 
 // UpdateAll atomically persists core settings and any optional sub-settings
@@ -160,6 +169,13 @@ func (u *SystemSettingUsecase) UpdateAll(ctx context.Context, p SystemSettingAll
 				}
 				row.WebResearch = web
 			}
+			if p.Speech != nil {
+				speech, err := u.UpdateSpeech(txCtx, *p.Speech, p.SpeechUpdateASRCred, p.SpeechUpdateTTSCred)
+				if err != nil {
+					return err
+				}
+				row.Speech = speech
+			}
 			result = row
 			return nil
 		})
@@ -193,6 +209,13 @@ func (u *SystemSettingUsecase) UpdateAll(ctx context.Context, p SystemSettingAll
 			return SystemSetting{}, err
 		}
 		row.WebResearch = web
+	}
+	if p.Speech != nil {
+		speech, err := u.UpdateSpeech(ctx, *p.Speech, p.SpeechUpdateASRCred, p.SpeechUpdateTTSCred)
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		row.Speech = speech
 	}
 	return row, nil
 }
@@ -325,4 +348,25 @@ func (u *SystemSettingUsecase) UpdatePlannerModel(ctx context.Context, patch Pla
 		Provider: strings.TrimSpace(patch.Provider),
 		Model:    strings.TrimSpace(patch.Model),
 	})
+}
+
+// GetSpeech returns the stored voice companion ASR/TTS provider configuration
+// (raw stored values; empty fields fall back to SPEECH_* env at read time).
+func (u *SystemSettingUsecase) GetSpeech(ctx context.Context) (SpeechSetting, error) {
+	return u.repo.GetSpeech(ctx)
+}
+
+// UpdateSpeech persists voice companion speech settings (M74 V2-T7). Empty
+// patch fields preserve current stored values; credentials are replaced only
+// when the matching updateXxxCred flag is set and the value is non-empty.
+func (u *SystemSettingUsecase) UpdateSpeech(ctx context.Context, patch SpeechSetting, updateASRCred, updateTTSCred bool) (SpeechSetting, error) {
+	if patch.TTS.SpeedRatio < 0 {
+		return SpeechSetting{}, apierror.BadRequest("SYSTEM_SETTING", "speech_tts_speed_ratio must be > 0")
+	}
+	cur, err := u.repo.GetSpeech(ctx)
+	if err != nil {
+		return SpeechSetting{}, err
+	}
+	merged := ApplySpeechPatch(cur, patch, updateASRCred, updateTTSCred)
+	return u.repo.UpdateSpeech(ctx, merged, updateASRCred, updateTTSCred)
 }

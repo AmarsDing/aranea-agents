@@ -46,6 +46,8 @@ const (
 	FieldStartedAt = "started_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
 	FieldFinishedAt = "finished_at"
+	// FieldDatasetHash holds the string denoting the dataset_hash field in the database.
+	FieldDatasetHash = "dataset_hash"
 	// FieldWorkspaceID holds the string denoting the workspace_id field in the database.
 	FieldWorkspaceID = "workspace_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldErrorMessage,
 	FieldStartedAt,
 	FieldFinishedAt,
+	FieldDatasetHash,
 	FieldWorkspaceID,
 	FieldCreatedAt,
 }
@@ -137,6 +140,10 @@ var (
 	DefaultStartedAt string
 	// DefaultFinishedAt holds the default value on creation for the "finished_at" field.
 	DefaultFinishedAt string
+	// DefaultDatasetHash holds the default value on creation for the "dataset_hash" field.
+	DefaultDatasetHash string
+	// DatasetHashValidator is a validator for the "dataset_hash" field. It is called by the builders before save.
+	DatasetHashValidator func(string) error
 	// DefaultWorkspaceID holds the default value on creation for the "workspace_id" field.
 	DefaultWorkspaceID string
 	// WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
@@ -238,6 +245,11 @@ func ByStartedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByFinishedAt orders the results by the finished_at field.
 func ByFinishedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFinishedAt, opts...).ToFunc()
+}
+
+// ByDatasetHash orders the results by the dataset_hash field.
+func ByDatasetHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDatasetHash, opts...).ToFunc()
 }
 
 // ByWorkspaceID orders the results by the workspace_id field.

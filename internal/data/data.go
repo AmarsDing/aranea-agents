@@ -98,6 +98,7 @@ var ProviderSet = wire.NewSet(
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
 	NewKnowledgeSparseSearcherFromData,
+	NewKnowledgeBlockRepoFromData,
 	NewEvalRepoFromData,
 	NewBackgroundJobRepo,
 	NewA2ARepoFromData,

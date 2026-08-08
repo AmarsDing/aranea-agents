@@ -140,6 +140,12 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 		`CREATE INDEX IF NOT EXISTS knowledge_links_target_idx ON knowledge_links(target_doc_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
 			ON knowledge_links(doc_id, target_doc_id, link_type)`,
+		// --- SP1-C 跨库双链解析（fresh 形态；存量库由迁移 20261204 补列） ---
+		// documents.title/aliases：Resolver 文档键（frontmatter 物化）；
+		// links.weight：N-3 投影权重（同文档对块边数聚合）。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS aliases JSONB`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS weight INT NOT NULL DEFAULT 1`,
 		// --- 实体治理（G5-F B9/B12）：name_norm 承载唯一性（展示名 name 保留首见写法）；
 		// 存量库由迁移 20261129 回填/合并后建唯一索引，此处定义 fresh 库最终形态 ---
 		`CREATE TABLE IF NOT EXISTS knowledge_entities (

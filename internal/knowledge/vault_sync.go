@@ -195,9 +195,10 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		loggateway.Str("rel_path", ev.RelPath),
 		loggateway.Int("chunks", len(chunks)),
 	)
-	// P2-4 explicit 轨：重建 [[...]] 双链（失败仅降级记日志，不回滚索引）。
-	if err := a.rebuildExplicitLinks(ctx, vault, doc.ID, vdoc.Body); err != nil {
-		a.lg.Warn("vault explicit links rebuild failed",
+	// SP1-C 块级双链：解析 [[...]] 重建块/refs 索引并投影 explicit 文档轨
+	// （失败仅降级记日志，不回滚索引；未接线块端口时 no-op）。
+	if err := a.rebuildBlockIndex(ctx, vault, doc.ID, vdoc.Body); err != nil {
+		a.lg.Warn("vault block index rebuild failed",
 			loggateway.Str("vault_id", vault.ID),
 			loggateway.Str("rel_path", ev.RelPath),
 			loggateway.Err(err),
@@ -214,10 +215,10 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	return nil
 }
 
-// rebuildExplicitLinks 解析正文 [[...]] 引用并重建该文档的 explicit 出链。
-// 委托 biz 公共实现（G3-B4 收编；语义不变：候选来自 DB 镜像最终一致，自链跳过）。
-func (a *VaultSyncApplier) rebuildExplicitLinks(ctx context.Context, vault bizknowledge.Collection, docID, body string) error {
-	return a.uc.RebuildExplicitLinks(ctx, vault.ID, docID, body)
+// rebuildBlockIndex 重建该文档的块级派生索引（块/refs 物化 + explicit 轨投影）。
+// 委托 biz 公共实现（SP1-C；语义：候选来自 DB 镜像最终一致，悬空引用转 dangling）。
+func (a *VaultSyncApplier) rebuildBlockIndex(ctx context.Context, vault bizknowledge.Collection, docID, body string) error {
+	return a.uc.RebuildBlockIndex(ctx, vault.ID, docID, body)
 }
 
 // buildChunks 分块 + 可选 embed。无语义层（embedding_model 空或 embedder nil）时

@@ -257,7 +257,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	knowledgeRepo := data.NewKnowledgeRepoFromData(dataData)
 	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
 	vaultFiler := provideKnowledgeVaultFiler(loggatewayLogger)
-	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler)
+	blockIndexRepo := data.NewKnowledgeBlockRepoFromData(dataData)
+	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler, blockIndexRepo)
 	deptTeamLister := biz.ProvideDeptTeamLister(teamRepo)
 	deptAgentPositionClearer := biz.ProvideDeptAgentPositionClearer(agentRepository)
 	positionPromptUsecase := biz.NewPositionPromptUsecase(organizationRepo, loggatewayLogger)
@@ -329,7 +330,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	messageReader := provideM71MessageReader(activityLister)
 	globalMessageSearcher := data.NewGlobalMessageSearchRepo(dataData)
 	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -424,7 +425,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	llmLister := importer.ProvideLLMLister(llmProviderModelUsecase)
 	skillImportJobStore := data.NewSkillImportJobStore(dataData)
 	engine := importer.ProvideEngine(skillRepo, llmLister, systemSettingRepo, skillImportJobStore, monitorBus, loggatewayLogger)
-	skillService := service.NewSkillService(skillUsecase, agentUsecase, skillHealthUsecase, skillFilesystem, engine, loggatewayLogger)
+	evaluationRepo := data.NewEvalRepoFromData(dataData)
+	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
+	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
+	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
+	skillService := service.NewSkillService(skillUsecase, agentUsecase, skillHealthUsecase, skillFilesystem, engine, publishGate, loggatewayLogger)
 	toolService := service.NewToolService(toolUsecase, agentUsecase, monitorUsecase)
 	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
 	serviceSessionService := service.NewSessionService(sessionUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
@@ -491,9 +496,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	extractorRegistry := service.NewKnowledgeExtractorRegistry(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	assetStore := service.NewKnowledgeAssetStore(loggatewayLogger)
 	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, loggatewayLogger)
-	evaluationRepo := data.NewEvalRepoFromData(dataData)
-	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
-	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, loggatewayLogger)
 	evaluationService := service.NewEvaluationService(evaluationUsecase, evaluationRunner)
 	redisClient := provideRedisClient(confData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
@@ -536,7 +538,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillMergeUsecase := provideSkillMergeUsecase(skillMergeRepo, skillMergeRepo, ruleBasedContentFuser, skillGateVerifier, skillDedupUsecase, loggatewayLogger)
 	skillDedupService := service.NewSkillDedupService(skillDedupUsecase, skillMergeUsecase, loggatewayLogger)
 	packRepoAdapter := data.NewPackRepoAdapter(agentRepository, teamRepo, teamRepo, organizationRepo, graphRepo, skillRepo)
-	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus)
+	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus, publishGate)
 	skillCuratorService := service.NewSkillCuratorService(skillIntelligenceUsecase, loggatewayLogger)
 	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, loggatewayLogger)
 	selfImprovementRunRepo := data.NewSelfImprovementRunRepo(dataData, loggatewayLogger)
@@ -569,8 +571,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, runtimeProfileService, learningLoopService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
-	speechConfigReader := provideSpeechConfigReader()
-	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService)
+	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
+	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService, artifactUsecase)
 	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, voiceWSServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
@@ -1066,6 +1068,7 @@ func provideRuntimeTooling(
 	resourceAccess *biz.ResourceAccessUsecase,
 	deptMailbox *biz.DeptMailboxUsecase,
 	sessionSearch *biz.SessionSearchUsecase,
+	clientBridge *clientbridge.Bridge,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -1087,6 +1090,7 @@ func provideRuntimeTooling(
 		ResourceAccess:              resourceAccess,
 		DeptMailbox:                 deptMailbox,
 		SessionSearch:               sessionSearch,
+		ClientBridge:                clientBridge,
 	}
 }
 
@@ -3305,13 +3309,18 @@ func provideWSServer(
 // ASR/TTS factories registered by default). M74 voice companion.
 func provideSpeechRegistry() *speech.Registry { return speech.NewRegistry() }
 
-// provideSpeechConfigReader constructs the env-based speech config reader
-// (V1; System Settings speech 分组在 V2-T7 替换实现，端口不变）。
-func provideSpeechConfigReader() biz.SpeechConfigReader { return speech.NewEnvSpeechConfigReader() }
+// provideSpeechConfigReader constructs the System Settings backed speech config
+// reader (V2-T7): DB-first field-level merge with SPEECH_* env fallback. The
+// port (biz.SpeechConfigReader) is unchanged from the V1 env implementation.
+func provideSpeechConfigReader(repo biz.SystemSettingRepo, lg loggateway.Logger) biz.SpeechConfigReader {
+	return speech.NewSystemSpeechConfigReader(repo, lg)
+}
 
 // provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
 // 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
 // V2-T5：注入语音确认 resolver（service 层适配 voice.ConfirmResolver）。
+// V2-T6：注入语音留档 archiver（service 层适配 voice.AudioArchiver；
+// ASRSessionConfig.Driver 透传给消息元数据 asr_provider）。
 func provideVoiceWSServer(
 	sessionAuth server.SessionAuthorizer,
 	turnExecutor server.WSTurnExecutor,
@@ -3322,6 +3331,7 @@ func provideVoiceWSServer(
 	infra *event.Infra,
 	lg loggateway.Logger,
 	chatService *service.ChatService,
+	artifactUC *biz.ArtifactUsecase,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -3332,7 +3342,7 @@ func provideVoiceWSServer(
 		if err != nil {
 			return nil, biz.ASRSessionConfig{}, err
 		}
-		return p, biz.ASRSessionConfig{Language: cfg.Language, SampleRate: 16000}, nil
+		return p, biz.ASRSessionConfig{Driver: cfg.Driver, Language: cfg.Language, SampleRate: 16000}, nil
 	}
 	newTTS := func(ctx context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
 		cfg, err := cfgReader.TTSConfig(ctx)
@@ -3345,7 +3355,14 @@ func provideVoiceWSServer(
 		}
 		return p, biz.TTSSessionConfig{Voice: cfg.Voice, SpeedRatio: cfg.SpeedRatio, SampleRate: 16000}, nil
 	}
-	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService))
+	archiver := service.NewVoiceAudioArchiver(artifactUC, cfgReader, lg)
+
+	probe := func(ctx context.Context) (bool, bool) {
+		_, asrErr := cfgReader.ASRConfig(ctx)
+		_, ttsErr := cfgReader.TTSConfig(ctx)
+		return asrErr == nil, ttsErr == nil
+	}
+	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces

@@ -518,6 +518,12 @@ type TeamService struct {
 
 错误映射：`sql.ErrNoRows` → `kerrors.NotFound("TEAM", ...)`。
 
+**成员终态投影（2026-08-08 as-built，问题1/2/4a 修复）**：`publishV2TeamRunCompletion` 发布成员终态 MemberSession 时——
+
+- **幽灵成员去重**：定义快照成员常缺 `agent_key` 只有 `agent_id`，兜底补发会以 hex agent_id 为 key、与真实成员（按 MemberAgentKey 登记）命名空间不交叉 → 同一成员发布两次。修复：登记真实成员的 `agent_id` 集合（`publishedAgentIDs`），兜底块按 key + agent_id 双维度去重。
+- **成员执行窗口**：终态事件 `StartedAt`/`FinishedAt` 取 `SpiritTeamUsecase.MemberExecutionWindow`（成员 step 流聚合：最早 StartedAt → 最晚活动证据 CompletedAt 优先；coordinator 模式成员 step 落团队会话，回退按 `AuthorAgentKey == MemberAgentKey` 过滤），而非发布时刻（否则前端耗时恒 0）。无 step 证据回退发布时刻。`notice` 类 step（context_usage 等被动通知）不算活动证据——其以成员 author 持续落到 run 结束，会把 FinishedAt 撑大到远超成员真实工作完成时刻，且与 publish 查询存在时序 race（2026-08-08 第 3 轮回归验证：排除后成员 FinishedAt 与 team_run_steps 真实节点完成时刻一致）。
+- **失败证据团队会话回扫**：`MemberExecutionEvidence` 在成员会话 0 steps（coordinator 模式）时回扫父团队会话中归属该成员的 error/failed/cancelled step——否则 stream_error/context deadline 等 turn 级错误被吞、成员误报 completed。判据含 `Kind==error`（即使 `Status==completed`）：运行时实测 stream_error 以 error/completed 组合落库（2026-08-08 第 3 轮回归，wordpress 成员 `context deadline exceeded` 正确判 failed）。
+
 ---
 
 ## 六、Team 运行时
@@ -565,7 +571,7 @@ Graph 路径要点：
 - 创建 TeamRun（status=running）→ 发射 `team_run_started`
 - `TraceEmitter`：`team.run.start` / `team.run.execute` / `team.run.finish`
 - `ConsumeEventStream` + `ProjectMeta.MemberAgentKeys` → `member_message_start` / `member_delta` / `member_message_done`
-- `persistStep` → `team_step_finished` + Usage `team_member`
+- `persistStep` → `team_step_finished` + Usage `team_member`（2026-08-08 问题4b：graph watch 路径落**真实执行窗口**——`team_graph_run_coordinator` 在 `node_start` notice 时把 `OccurredAt` 记入 session 级 `graphNodeStartTracker`（first-write-wins，重试保留最早开始），`PersistGraphRunStep` 取出传入 `persistStep` 覆盖 `StartedAt` 并以墙钟计算 `DurationMS`；无追踪（standalone/watch 迟到/anchor fallback）保持既有回退）
 - 成功/失败 → `team_run_finished` / `team_run_failed` + `publishTeamRunSummary`
 
 ### 6.3 运行汇总
@@ -615,6 +621,12 @@ Graph 路径要点：
 - 写入位置：`deliverable["ack/<topic>"] = {status, by, comment, at}`（顶层 key，并行 ack 不同 topic 在 MergeReducer 下互不覆盖）
 - 语义：advisory 信号，不阻断运行；coordinator/synthesizer 经 `get_deliverable(key="ack/<topic>")` 读取决定是否返工
 - 桥接排除：`WriteDeliverablesToSession` → `marshalNonReservedStateKeys` 排除 `ack/` 前缀 key，确认记录不会泄漏进团队间 `DeliverableRef.StructuredJSON` 信封
+
+**跨团队交付物种子（2026-08-08 as-built，问题3 断链修复）**：graph state 按执行隔离——DAG 下游团队的 `get_deliverable` 原本永远读不到上游 topic（found=false）。修复链路：
+
+- `SpiritTeamUsecase.UpstreamDeliverableSeed`：合并所有**已完成**上游依赖（DependsOn 顺序，topic 冲突后者覆盖并 Warn）的 graph deliverable 业务 topic；排除 summary/cognition 保留 key 与 `ack/` 前缀
+- Runner 注入：`runner_team_trpc.go` 在下游团队 turn 启动时经 `trpcagent.MergeRuntimeState({deliverable: seed})` 注入 graph 初始 state（MergeReducer 顶层 key 合并），成员节点 RuntimeState 快照随之携带种子；解析失败降级无种子启动（不 fail turn）
+- 防冒充：`HasRealDeliverable` / `WriteDeliverablesToSession` 用同一解析结果经 `subtractUpstreamSeed`（值级 reflect.DeepEqual；成员改写种子 topic 后值变化即视为本团队自有产出）减种子——种子回流不满足真实交付物闸门、不混入本团队信封向下游传播
 
 ---
 

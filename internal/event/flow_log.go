@@ -280,6 +280,9 @@ var stepTitleRegistry = map[string]string{
 	"voice.provider.fallback": "语音服务降级",
 	"voice.error":             "语音链路错误",
 	"voice.confirm.resolved":  "语音确认决议",
+	"voice.archive.saved":     "语音留档保存",
+	"voice.archive.degraded":  "语音留档降级",
+	"voice.archive.truncate":  "语音留档截断",
 	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",

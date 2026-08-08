@@ -176,7 +176,10 @@ type PatchOutcome struct {
 
 // RunFilter filters the run list query.
 type RunFilter struct {
-	Status        SelfImprovementRunStatus
+	Status SelfImprovementRunStatus
+	// Statuses 多状态 IN 过滤（worker 侧按职责域圈选，如 drive 只驱动 6 个
+	// 中途态，避免每 tick 全表扫描含重 JSON 字段的终态行）。与 Status 叠加（AND）。
+	Statuses      []SelfImprovementRunStatus
 	RiskLevel     SelfImprovementRiskLevel
 	TriggerSource string
 	Limit         int

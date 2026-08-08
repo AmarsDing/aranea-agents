@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,7 @@ type fakeEvalRepo struct {
 	runs      map[string]beval.Run
 	results   []beval.CaseResult
 	insertErr error // when set, InsertCaseResult fails with this error
+	gateCfg   beval.GateConfig
 }
 
 func newFakeEvalRepo() *fakeEvalRepo {
@@ -80,10 +82,17 @@ func (f *fakeEvalRepo) UpdateDataset(_ context.Context, id, _, _ string) (beval.
 
 func (f *fakeEvalRepo) UpdateDatasetCaseCount(context.Context, string, int) error { return nil }
 
-func (f *fakeEvalRepo) InsertCases(context.Context, []beval.Case) error { return nil }
-
-func (f *fakeEvalRepo) InsertCasesWithCountUpdate(context.Context, string, []beval.Case) error {
+func (f *fakeEvalRepo) InsertCases(_ context.Context, cases []beval.Case) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range cases {
+		f.cases[c.DatasetID] = append(f.cases[c.DatasetID], c)
+	}
 	return nil
+}
+
+func (f *fakeEvalRepo) InsertCasesWithCountUpdate(ctx context.Context, _ string, cases []beval.Case) error {
+	return f.InsertCases(ctx, cases)
 }
 
 func (f *fakeEvalRepo) ListCases(ctx context.Context, datasetID string) ([]beval.Case, error) {
@@ -130,8 +139,29 @@ func (f *fakeEvalRepo) UpdateRun(ctx context.Context, r beval.Run) error {
 
 func (f *fakeEvalRepo) DeleteRun(context.Context, string) error { return nil }
 
-func (f *fakeEvalRepo) ListRuns(context.Context, string, string, int, int) ([]beval.Run, int, error) {
-	return nil, 0, nil
+func (f *fakeEvalRepo) ListRuns(_ context.Context, datasetID, agentID string, limit, offset int) ([]beval.Run, int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]beval.Run, 0, len(f.runs))
+	for _, r := range f.runs {
+		if datasetID != "" && r.DatasetID != datasetID {
+			continue
+		}
+		if agentID != "" && r.AgentID != agentID {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt > out[j].CreatedAt })
+	total := len(out)
+	if offset > len(out) {
+		offset = len(out)
+	}
+	out = out[offset:]
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, total, nil
 }
 
 func (f *fakeEvalRepo) InsertCaseResult(ctx context.Context, r beval.CaseResult) error {
@@ -169,6 +199,29 @@ func (f *fakeEvalRepo) GetRunsByIDs(context.Context, []string) ([]beval.Run, err
 
 func (f *fakeEvalRepo) ListJudgeAnnotatedResults(context.Context, string, string) ([]beval.JudgeAnnotatedResult, error) {
 	return nil, nil
+}
+
+func (f *fakeEvalRepo) ListFailureGroups(context.Context, string, string, int) ([]beval.FailureGroup, int, error) {
+	return nil, 0, nil
+}
+
+func (f *fakeEvalRepo) InsertRunPreference(context.Context, beval.RunPreference) error { return nil }
+
+func (f *fakeEvalRepo) ListRunPreferences(context.Context, string, int) ([]beval.RunPreference, error) {
+	return nil, nil
+}
+
+func (f *fakeEvalRepo) GetGateConfig(context.Context) (beval.GateConfig, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.gateCfg, nil
+}
+
+func (f *fakeEvalRepo) UpsertGateConfig(_ context.Context, cfg beval.GateConfig) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gateCfg = cfg
+	return nil
 }
 
 // contentSwitchRunner is a framework runner that answers each user message

@@ -9,7 +9,7 @@
  */
 import { computed, ref, watch, type Ref } from 'vue';
 import { useKnowledgeStore } from '../../stores/knowledge';
-import { listCollectionGraph } from './api';
+import { listCollectionGraph, listEntityMergeSuggestions, mergeKnowledgeEntities } from './api';
 import {
   buildNeighborhoodGraph,
   buildRenderGraph,
@@ -20,7 +20,13 @@ import {
 } from './graphUi';
 import { parseVaultTreeKey } from './vaultTreeUi';
 import { dirToQNode, vaultToQNode, type VaultLazyLoadPayload, type VaultQTreeNode } from './useVaultExplorer';
-import type { CollectionGraphEdge, CollectionGraphNode, KnowledgeCollection } from './types';
+import type {
+  CollectionGraphEdge,
+  CollectionGraphNode,
+  EntityMergeSuggestion,
+  KnowledgeCollection,
+  MergeEntitiesResult,
+} from './types';
 
 export function useKnowledgeGraph(input: {
   collections: Ref<KnowledgeCollection[]>;
@@ -82,6 +88,8 @@ export function useKnowledgeGraph(input: {
     // 切库重置范围与选中（范围语义绑定具体 vault 目录）。
     pathPrefix.value = '';
     selectedNodeId.value = '';
+    // 切库清空合并反馈（反馈语义绑定具体库）。
+    lastMergeResult.value = null;
   }
 
   function toggleLinkType(type: string) {
@@ -165,6 +173,50 @@ export function useKnowledgeGraph(input: {
     focusSignal.value++;
   }
 
+  // ---------- 实体治理（G5-G G-1：合并建议 + 一键合并） ----------
+
+  /** 合并建议列表（norm 冲突组在前 + embedding 高相似对；随库加载）。 */
+  const mergeSuggestions = ref<EntityMergeSuggestion[]>([]);
+  /** 合并进行中（按钮 loading/防重入）。 */
+  const merging = ref(false);
+  /** 最近一次合并重写反馈（内联展示；切库清空）。 */
+  const lastMergeResult = ref<MergeEntitiesResult | null>(null);
+
+  /** 拉取合并建议：失败降级空列表（辅助数据不阻断图谱主流程）。 */
+  async function loadMergeSuggestions() {
+    if (!collectionId.value) {
+      mergeSuggestions.value = [];
+      return;
+    }
+    try {
+      mergeSuggestions.value = await listEntityMergeSuggestions(collectionId.value);
+    } catch (e) {
+      console.warn('[knowledge-graph] load merge suggestions failed', e);
+      mergeSuggestions.value = [];
+    }
+  }
+
+  // 建议只随库变化（与边类型/目录过滤无关）。
+  watch(collectionId, () => void loadMergeSuggestions(), { immediate: true });
+
+  /** 一键合并：mergee 并入 keeper → 重拉图谱（边可能变化）与建议列表 → 内联反馈重写条数。 */
+  async function mergeEntities(keeperId: number, mergeeId: number) {
+    if (!collectionId.value || merging.value) return;
+    merging.value = true;
+    try {
+      lastMergeResult.value = await mergeKnowledgeEntities({
+        collectionId: collectionId.value,
+        keeperId,
+        mergeeIds: [mergeeId],
+      });
+      await Promise.all([loadGraph(), loadMergeSuggestions()]);
+    } catch (e) {
+      error.value = friendlyError(e) || 'merge failed';
+    } finally {
+      merging.value = false;
+    }
+  }
+
   // ---------- 范围选择器迷你树（仅目录懒加载） ----------
 
   /** 迷你树根节点：当前库（选中即全库）。 */
@@ -220,6 +272,12 @@ export function useKnowledgeGraph(input: {
     focusSignal,
     selectNode,
     focusNode,
+    // 实体治理（G5-G）
+    mergeSuggestions,
+    merging,
+    lastMergeResult,
+    loadMergeSuggestions,
+    mergeEntities,
     // 范围选择器
     scopeNodes,
     onScopeLazyLoad,

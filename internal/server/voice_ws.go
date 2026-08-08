@@ -17,6 +17,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// VoiceStatusProbe 报告 ASR/TTS 当前配置是否可用（V2-T8 差距2：前端麦克风
+// 置灰门控的数据源）。实现 = DB-first/env-fallback 配置读取 + Validate。
+type VoiceStatusProbe func(ctx context.Context) (asrAvailable, ttsAvailable bool)
+
 // VoiceWSServer 是 /v1/voice 语音网关（设计 §2）：鉴权/单会话单连接/帧路由。
 // 音频帧与高频事件走独立端点，不污染 /v1/ws 事件总线通道。
 type VoiceWSServer struct {
@@ -25,6 +29,8 @@ type VoiceWSServer struct {
 	executor    WSTurnExecutor
 	canceller   RunCanceller
 	confirmer   voice.ConfirmResolver // V2-T5 语音确认拦截；nil 关闭
+	archiver    voice.AudioArchiver   // V2-T6 语音留档；nil 关闭
+	probe       VoiceStatusProbe      // V2-T8 麦克风置灰门控；nil = 保守报不可用
 	newASR      voice.ASRProviderFactory
 	newTTS      voice.TTSProviderFactory
 	bus         biz.EventBus
@@ -45,6 +51,8 @@ func NewVoiceWSServer(
 	infra *event.Infra,
 	lg loggateway.Logger,
 	confirmer voice.ConfirmResolver,
+	archiver voice.AudioArchiver,
+	probe VoiceStatusProbe,
 ) *VoiceWSServer {
 	return &VoiceWSServer{
 		upgrader:    websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }},
@@ -52,6 +60,8 @@ func NewVoiceWSServer(
 		executor:    executor,
 		canceller:   canceller,
 		confirmer:   confirmer,
+		archiver:    archiver,
+		probe:       probe,
 		newASR:      newASR,
 		newTTS:      newTTS,
 		bus:         bus,
@@ -68,6 +78,31 @@ func (s *VoiceWSServer) RegisterOnKratos(srv *kratoshttp.Server) {
 	// Exemption from red-line #12 (no business routes in Server layer):
 	// WebSocket upgrade cannot be defined via proto; HandleFunc is the only way.
 	srv.HandleFunc("/v1/voice", s.handleVoiceWS)
+	// V2-T8：语音可用性探测（前端麦克风置灰门控）。任意登录用户可读——
+	// 只暴露 ASR/TTS 是否配置完成的布尔位，不泄漏 endpoint/凭据等敏感信息。
+	srv.HandleFunc("/v1/voice/status", s.handleVoiceStatus)
+}
+
+// handleVoiceStatus 返回语音服务可用性（V2-T8 差距2）。probe 未接线时保守
+// 报不可用（前端置灰），禁止默认可用导致用户点了麦克风才发现降级。
+func (s *VoiceWSServer) handleVoiceStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, err := wsAuthenticate(r); err != nil { // 与 /v1/ws 同一鉴权（JWT / dev bypass）
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	asrOK, ttsOK := false, false
+	if s.probe != nil {
+		asrOK, ttsOK = s.probe(r.Context())
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{
+		"asr_available": asrOK,
+		"tts_available": ttsOK,
+	})
 }
 
 func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +147,7 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		Executor:  voiceChatTurnExecutor{inner: s.executor},
 		Canceller: voiceRunCanceller{inner: s.canceller},
 		Confirmer: s.confirmer,
+		Archiver:  s.archiver,
 		Infra:     s.infra,
 		LG:        s.lg,
 	}
@@ -229,6 +265,7 @@ func (a voiceChatTurnExecutor) ExecuteTurn(ctx context.Context, in voice.ChatTur
 		TeamID:      in.TeamID,
 		AllowQueue:  true,
 		AllowStream: true,
+		Voice:       in.Voice, // V2-T6 语音溯源元数据透传
 	})
 }
 

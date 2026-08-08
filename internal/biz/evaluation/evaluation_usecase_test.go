@@ -22,6 +22,8 @@ type mockRepo struct {
 	getRunsByIDsErr   error
 	judgeAnnotated    []JudgeAnnotatedResult
 	judgeAnnotatedErr error
+	preferences       []RunPreference
+	gateCfg           GateConfig
 }
 
 func (m *mockRepo) CreateDataset(_ context.Context, d Dataset) (Dataset, error) {
@@ -114,6 +116,28 @@ func (m *mockRepo) GetRunsByIDs(_ context.Context, _ []string) ([]Run, error) {
 
 func (m *mockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]JudgeAnnotatedResult, error) {
 	return m.judgeAnnotated, m.judgeAnnotatedErr
+}
+
+func (m *mockRepo) ListFailureGroups(_ context.Context, _, _ string, _ int) ([]FailureGroup, int, error) {
+	return nil, 0, nil
+}
+
+func (m *mockRepo) InsertRunPreference(_ context.Context, p RunPreference) error {
+	m.preferences = append(m.preferences, p)
+	return nil
+}
+
+func (m *mockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]RunPreference, error) {
+	return m.preferences, nil
+}
+
+func (m *mockRepo) GetGateConfig(_ context.Context) (GateConfig, error) {
+	return m.gateCfg, nil
+}
+
+func (m *mockRepo) UpsertGateConfig(_ context.Context, cfg GateConfig) error {
+	m.gateCfg = cfg
+	return nil
 }
 
 func TestUploadCases(t *testing.T) {

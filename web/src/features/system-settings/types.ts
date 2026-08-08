@@ -1,6 +1,7 @@
 import type { KnowledgeEmbedPatch } from './knowledge-embed';
 import type { EvalLLMForm } from './eval-llm';
 import type { WebResearchPatch } from './web-research';
+import type { SpeechPatch } from './speech';
 
 export type UpdateSystemSettingsInput = {
   rootDirectory: string;
@@ -11,6 +12,7 @@ export type UpdateSystemSettingsInput = {
   knowledgeEmbed?: KnowledgeEmbedPatch;
   evalLLM?: EvalLLMForm;
   webResearch?: WebResearchPatch;
+  speech?: SpeechPatch;
 };
 
 export type TestWebResearchInput = {

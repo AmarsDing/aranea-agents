@@ -68,11 +68,11 @@ func TestGetJudgeDivergence(t *testing.T) {
 
 	t.Run("agreement matrix and rate", func(t *testing.T) {
 		repo := &mockRepo{judgeAnnotated: []JudgeAnnotatedResult{
-			judgedResult("agree-pass", 0.9, true),   // agree
-			judgedResult("agree-fail", 0.1, false),  // agree
-			judgedResult("lenient", 0.8, false),     // false_pass: judge pass, human fail
-			judgedResult("strict", 0.2, true),       // false_fail: judge fail, human pass
-			judgedResult("edge-exact", 0.5, true),   // score == threshold counts as pass → agree
+			judgedResult("agree-pass", 0.9, true),  // agree
+			judgedResult("agree-fail", 0.1, false), // agree
+			judgedResult("lenient", 0.8, false),    // false_pass: judge pass, human fail
+			judgedResult("strict", 0.2, true),      // false_fail: judge fail, human pass
+			judgedResult("edge-exact", 0.5, true),  // score == threshold counts as pass → agree
 		}}
 		uc := NewUsecase(repo, loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 0)

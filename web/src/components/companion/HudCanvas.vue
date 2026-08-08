@@ -28,18 +28,22 @@
       </template>
     </q-banner>
 
-    <!-- 麦克风按钮（语音模式开关；需求 §2.3：点击进入语音模式） -->
-    <q-btn
-      round
-      class="hud-canvas__mic"
-      :class="{ 'hud-canvas__mic--on': voiceModeOn }"
-      :icon="voiceModeOn ? 'mic' : 'mic_none'"
-      :aria-label="voiceModeOn ? t('companion.micStop') : t('companion.micStart')"
-      :aria-pressed="voiceModeOn"
-      @click.stop="emit('toggleVoice')"
-    >
-      <q-tooltip>{{ voiceModeOn ? t('companion.micStop') : t('companion.micStart') }}</q-tooltip>
-    </q-btn>
+    <!-- 麦克风按钮（语音模式开关；需求 §2.3：点击进入语音模式）。
+         V2-T8 差距2：voiceDisabled（语音服务未配置）时置灰阻断，tooltip 指引配置入口。
+         禁用按钮 pointer-events:none，tooltip 须挂在外层 span 上才能悬停可见。 -->
+    <span class="hud-canvas__mic-wrap">
+      <q-btn
+        round
+        class="hud-canvas__mic"
+        :class="{ 'hud-canvas__mic--on': voiceModeOn }"
+        :icon="voiceDisabled ? 'mic_off' : voiceModeOn ? 'mic' : 'mic_none'"
+        :disable="voiceDisabled"
+        :aria-label="micAriaLabel"
+        :aria-pressed="voiceModeOn"
+        @click.stop="emit('toggleVoice')"
+      />
+      <q-tooltip>{{ micAriaLabel }}</q-tooltip>
+    </span>
   </div>
 </template>
 
@@ -59,6 +63,8 @@ const props = defineProps<{
   spectrum: Uint8Array | null;
   /** speaking 态播放振幅 [0,1]（能量核脉动）。 */
   amplitude: number;
+  /** V2-T8 差距2：语音服务未配置时麦克风置灰门控（父级经 /v1/voice/status 探测）。 */
+  voiceDisabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -90,6 +96,12 @@ const stateLabel = computed(() => {
     default:
       return '';
   }
+});
+
+/** 麦克风按钮文案（aria-label + tooltip 共用）：置灰时指引配置入口。 */
+const micAriaLabel = computed(() => {
+  if (props.voiceDisabled) return t('companion.voiceUnavailable');
+  return props.voiceModeOn ? t('companion.micStop') : t('companion.micStart');
 });
 
 onMounted(() => {
@@ -213,11 +225,14 @@ defineExpose({ triggerBurst });
     backdrop-filter: blur(var(--glass-blur-default))
     -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
-  &__mic
+  &__mic-wrap
     position: absolute
     bottom: 28px
     left: 50%
     transform: translateX(-50%)
+    display: inline-flex
+
+  &__mic
     color: var(--color-neon-cyan)
     background: rgba(9, 13, 20, 0.6)
     border: 1px solid rgba(0, 229, 255, 0.35)

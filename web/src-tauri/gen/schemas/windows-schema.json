@@ -177,6 +177,30 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the client_open_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-client-open-app",
+          "markdownDescription": "Enables the client_open_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the client_open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-client-open-url",
+          "markdownDescription": "Enables the client_open_url command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the client_open_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-client-open-app",
+          "markdownDescription": "Denies the client_open_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the client_open_url command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-client-open-url",
+          "markdownDescription": "Denies the client_open_url command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures which\nbarcode scanning features are by default exposed.\n\n#### Granted Permissions\n\nIt allows all barcode related features.\n\n\n#### This default permission set includes:\n\n- `allow-cancel`\n- `allow-check-permissions`\n- `allow-open-app-settings`\n- `allow-request-permissions`\n- `allow-scan`\n- `allow-vibrate`",
           "type": "string",
           "const": "barcode-scanner:default",

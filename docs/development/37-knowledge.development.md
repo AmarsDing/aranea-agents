@@ -3,7 +3,9 @@
 > **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
 > **2026-07-25 新增**：§子模块 Vault 重设计 Phase 计划（P1~P6，含 P4a/P4b 拆分）——Vault 重设计经评审有条件通过，R-1~R-6 已合入设计文档 §V6，待启动实施。
 > **2026-08-07 新增**：§子模块 图谱深空版与实体治理（G5）Phase 计划（G5-A~G5-G）——调研评审通过（`docs/reports/2026-08-07-research-knowledge-graph-oss.md`），V12.8 设计已合入；**2026-08-08：G5-F 实体治理后端（B9~B12）✅ 完成**（详见该节 As-built）。
-> **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 ✅、全量静态验证 ✅、浏览器运行时复验进行中、治理前端 G-1 与性能基准 G-3 📋）。
+> **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 G-2 ✅、治理前端 G-1 ✅、全量静态验证与浏览器运行时复验 G-4 ✅——含复验发现的标签可见性修复；性能基准 G-3 📋）。
+> **2026-08-08 新增**：§子模块 双模块级知识内核（SP1）Phase 计划（SP1-A~SP1-I）——双模统一架构经评审通过（用户裁决：块级双链完整粒度；批准落档三件套），S1~S11 设计已合入设计文档，待启动实施。
+> **2026-08-08 深入评审**：[SP1 三件套评审报告](../reports/2026-08-08-review-sp1-knowledge-blueprint.md)——B-1~B-4 阻断项修订全部合入下列任务；G1~G8 前瞻提案全部采纳，产品路线扩展为 SP1~SP7（见 SP1 节末预告表）。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -941,7 +943,7 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 | **G5-D** | 交互全集 + 粒子流 | FR-G5-4/7 | ✅ |
 | **G5-E** | HUD 操作台换肤 + 新控件 | FR-G5-8、NFR-G5-4 | ✅ |
 | **G5-F** | 实体治理后端（B9~B12） | FR-G5-9/10/11 | ✅ |
-| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 🟡（G-2 ✅ 移除完成；G-4 🟡 静态验证过、浏览器复验中；G-1/G-3 📋） |
+| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 🟡（G-1/G-2/G-4 ✅；G-3 性能基准 📋，见该节 As-built） |
 
 ### G5-A：引擎内核（纯 TS）
 
@@ -1035,14 +1037,21 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 
 ### G5-G：治理前端 + 移除清单 + 全量验证
 
-| # | 任务 | 涉及文件 |
-|---|------|----------|
-| G-1 | HUD「实体治理」分区：合并建议列表（保留名 ← 候选名、来源徽标 norm/embedding、相似度）+ 一键合并 + 重写条数内联反馈；api.ts + store 接线 | `KnowledgeGraph3D.vue`、`api.ts`、`stores/knowledge/` |
-| G-2 | 移除清单执行：`3d-force-graph` 从 package.json 移除（新增 `three-spritetext`）；`KnowledgeGraphCanvas.vue` 删除；`graphUi.ts graphContainmentForce` 删除（配色/排序/过滤/一跳邻居纯函数保留复用）；Grep 全局搜索确认零残留引用 | `web/package.json`、`KnowledgeGraphCanvas.vue`、`graphUi.ts` |
-| G-3 | 性能基准：2 万节点/5 万边合成数据集交互帧率记录入测试文档；布局收敛静置 CPU/GPU 零占用断言 | `docs/testing/`（性能基准记录） |
-| G-4 | 全量验证：前端 `pnpm lint && pnpm test && pnpm build`；后端 `make api && make wire && make build && make test && make lint`（干净 GOCACHE）；浏览器运行时复验（深空视觉/hover 粒子流/pin/局部图谱/合并治理全链路，对照验收 30~37） | — |
+| # | 任务 | 状态 | 涉及文件 |
+|---|------|------|----------|
+| G-1 | HUD「实体治理」分区：合并建议列表（保留名 ← 候选名、来源徽标 norm/embedding、相似度）+ 一键合并 + 重写条数内联反馈；api.ts + store 接线 | ✅ | `KnowledgeGraph3D.vue`、`api.ts`、`useKnowledgeGraph.ts`、`types.ts` |
+| G-2 | 移除清单执行：`3d-force-graph` 从 package.json 移除（新增 `three-spritetext`）；`KnowledgeGraphCanvas.vue` 删除；`graphUi.ts graphContainmentForce` 删除（配色/排序/过滤/一跳邻居纯函数保留复用）；Grep 全局搜索确认零残留引用 | ✅ | `web/package.json`、`KnowledgeGraphCanvas.vue`、`graphUi.ts` |
+| G-3 | 性能基准：2 万节点/5 万边合成数据集交互帧率记录入测试文档；布局收敛静置 CPU/GPU 零占用断言 | 📋 | `docs/testing/`（性能基准记录） |
+| G-4 | 全量验证：前端 `pnpm lint && pnpm test && pnpm build`；后端 `make api && make wire && make build && make test && make lint`（干净 GOCACHE）；浏览器运行时复验（深空视觉/hover 粒子流/pin/局部图谱/合并治理全链路，对照验收 30~37） | ✅ | — |
 
 验收：验收标准 30~37 全部通过；移除清单零残留；性能基准落档。
+
+> **As-built（2026-08-08，G-1/G-2/G-4 完成）**：
+>
+> - **G-1 治理前端**：`KnowledgeGraph3D.vue` 新增「实体治理」分区（建议列表限高滚动、norm/embedding 来源徽标、embedding 对相似度两位小数、合并按钮防重入、`merged: 重写 N 处提及 · M 条关联` 内联反馈）；`api.ts` 新增 `listEntityMergeSuggestions`/`mergeKnowledgeEntities`（snake/camel 双键映射对齐既有风格）；`useKnowledgeGraph.ts` 新增 `mergeSuggestions`/`merging`/`lastMergeResult` 状态与 `mergeEntities()`——建议只随库加载（与边类型/目录过滤无关），拉取失败降级空列表不置主 error（辅助数据不阻断图谱），合并成功并行重拉图谱与建议；`types.ts` 新增 `EntityMergeSuggestion`/`MergeEntitiesResult`；i18n 键 `knowledgePage.graphEntityGovernance`/`mergeSource.*`/`mergeAction`/`mergeNoSuggestions`/`mergeFeedback`（zh+en）。单测：`useKnowledgeGraph.spec.ts` 新增 2 用例（建议随库加载+失败降级；合并→重拉→反馈置位）。
+> - **G-4 浏览器复验修复（标签可见性）**：复验发现两标签缺陷并修复——① `maxDistance = fitDist × 0.85` 致适应视图后候选标签全隐藏，修为 `fitDist + 半径`（适应视图即全候选可达，拉远按距离渐进隐藏）；② 固定 `minDegree=4` 致小图（最大度数 < 4）无任何标签，新增纯函数 `effectiveMinDegree(maxDegree, base)` 降档到图最大度数（全孤立图钳 1，孤立节点不出标签）；hover/选中 forced 标签豁免距离/度数/开关三重阈值（labels OFF 时悬停/选中仍出标签，已浏览器实证）。`LabelLayer.spec.ts` 新增 `effectiveMinDegree` 3 用例。
+> - **G-4 复验记录**：合并全链路（造数 norm 冲突三元组 OpenAI/OPENAI/" OpenAI " → 建议出现 → 一键合并 → 反馈「重写 1 处提及 · 0 条关联」→ 建议清空 → DB 验 keeper/别名/提及重写与唯一索引完好，测试数据已清理）；标签修复前后对照；labels 开关切换；hover 瞄准具+forced 标签；选中六边形；浅色主题渲染；边类型 chips。对照验收 30~37：30/31/32/33/35/36/37 通过，34 的性能基准部分随 G-3 落档后关闭。
+> - **G-3 遗留**：2 万节点/5 万边合成数据集性能基准与静置零占用断言未做（G5-C v2 管线已实测 1 万节点/2 万边 ≈100FPS、Worker 物理 48ms tick 不阻塞主线程，可作基准起点参考）。
 
 ### 依赖关系
 
@@ -1052,3 +1061,163 @@ G5-F（后端治理，独立可并行）─────────────�
 ```
 
 > **反模式红线**（调研 §8，实施时必须规避）：① bloom 必须不透明深空底 clear（alpha:false）；② 星云/核雾亮度压在 bloom threshold 下防糊屏；③ 力布局必须 maxStep 钳制防 hub 发散；④ Worker init 先 slice 再 transfer；⑤ 拖拽挂起 controls/autoRotate，恢复时 hoverId 指向刚放下节点；⑥ 子图重建 groupId 沿原图复制保色。
+
+---
+
+## 子模块：双模块级知识内核（SP1）Phase 计划
+
+> **设计契约**：[37-knowledge.design.md §子模块：双模块级知识内核（SP1）](./37-knowledge.design.md#子模块双模块级知识内核sp12026-08-08-评审通过)（S1~S11）
+> **需求**：[37-knowledge.md §子模块：双模块级知识内核（SP1）](./37-knowledge.md#子模块双模块级知识内核sp12026-08-08-评审通过)（US-24~US-29、F-SP1-1~11、NFR-SP1-1~4、验收 38~44）
+> **调研依据**：[2026-08-08-research-pkm-obsidian-blueprint.md](../reports/2026-08-08-research-pkm-obsidian-blueprint.md)（学术 × 开源 × Obsidian 逆向 × SiYuan 源码四路调研；SiYuan 证据锚点 `test/pkm-research/D-siyuan-kernel.md` §10）
+> **状态**：🟡 进行中（SP1-A/B/C 已建成） | 用户已裁决：SP1 做块级双链完整粒度；批准双模统一架构 + SP1 范围落档三件套。2026-08-08 深入评审通过：B-1~B-4 修订已合入下列任务（C-1/C-3/D-1/D-2/F-2/G-2）。
+> **License 纪律**：SiYuan（AGPL）/Logseq（AGPL）仅借鉴思路，全部逐行自研；解析器用 goldmark（MIT）扩展。
+
+### 总览
+
+| Phase | 内容 | 关联契约 | 状态 |
+|-------|------|---------|------|
+| **SP1-A** | 块解析管线 blockparse 包（纯函数，TDD） | F-SP1-1/2、NFR-SP1-1 | ✅ |
+| **SP1-B** | 块/refs 物化表（DDL 迁移 + ReplaceDocBlocks Repo） | F-SP1-3、NFR-SP1-2 | ✅ |
+| **SP1-C** | Resolver + 写路径接线 + explicit 轨投影 | F-SP1-3/8、S3/S4 | ✅ |
+| **SP1-D** | 统一链接索引 LinkIndex + WS 增量 | F-SP1-4、NFR-SP1-4、S5 | ✅ |
+| **SP1-E** | 块级反链 API（含 dangling 语义） | F-SP1-5、S8 | 📋 |
+| **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | 📋 |
+| **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | 📋 |
+| **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | 📋 |
+| **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | 📋 |
+
+### SP1-A：块解析管线 blockparse 包（纯函数）
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| A-1 | goldmark wikilink inline parser 扩展（spike 定案：AST 扩展 vs 前置正则切分，倾向 AST 扩展保位置准确；goldmark 不原生支持 wikilink） | `internal/knowledge/blockparse/`（新增，TDD） |
+| A-2 | AST 块切分 → `BlockRow`：heading/paragraph/list_item/code_block/blockquote/table/math；frontmatter 不切块；heading 块产 `heading_path`；每块 `content_hash` + `text_excerpt`（前 200 字符）+ ordinal | `blockparse/blocks.go`（新增） |
+| A-3 | 四语法 + `\|别名` 变体产 `RefRow`：`raw_target`（原文）、`context`（±50 字符）、`syntax`、`edge_type`（ref/embed） | `blockparse/refs.go`（新增） |
+| A-4 | `Parse(docKey, markdown []byte) (blocks, refs, err)` 纯函数契约收口（无 IO、无全局态） | `blockparse/parse.go`（新增） |
+
+验收：语法矩阵单测全覆盖（NFR-SP1-1）；同输入同输出（纯函数确定性）；dangling 目标产 raw_target 不报错。
+
+> **2026-08-08 完成**：spike 定案——goldmark AST 负责块结构与 CodeSpan 排除，wikilink 扫描器在 AST 定位的连续文本 run 上扫描（保证源码位置准确，Context ±50 rune 直接从源文本取窗口）。实现合并为单文件 `internal/knowledge/blockparse/parse.go`（A-1~A-4 同文件，包内内聚优于拆分）。验证：`go test ./internal/knowledge/blockparse/ -count=1 -v` 13 测试函数 + 25 语法矩阵子用例全绿；`go vet` 零告警。
+
+### SP1-B：块/refs 物化表
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| B-1 | ~~Ent Schema `KnowledgeBlock`~~（**2026-08-08 裁决改道**：弃 Ent，Raw SQL 域内一致——knowledge 域全 TEXT id Raw SQL，uuid FK 物理不可建；派生索引表批量写 Ent 无收益；裁决 D1~D6 全文见设计文档 S2 修订注记） | `internal/data/sql/migrations/20261203_knowledge_blocks.sql`（新增） |
+| B-2 | DDL 迁移：`knowledge_blocks` 部分唯一索引 UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL；`knowledge_block_refs` 表（src_block_id FK ON DELETE CASCADE、dst_block_id/dst_doc_id FK ON DELETE SET NULL 转 dangling、索引 (dst_block_id)/(dst_doc_id)/(collection_id, raw_target)/(src_block_id)）；注册 `ddl_migration_registry.go`（Version 20261203）；幂等（IF NOT EXISTS） | 同上 + `ddl_migration_registry.go` |
+| B-3 | Repo `ReplaceDocBlocks`：`PostgresExecInTx` 内整文档删了重插（删块 FK 级联清出向边；指向旧块的入向边 FK 自动置 NULL 保 raw_target 转 dangling；插新块 → 插新 refs）；refs 不做 diff；块 content_hash diff 仅供跳过 embedding/FTS 重算。块 ID 规则：显式锚定后 = `^anchor`，未锚块存储层生成随机 hex | `internal/data/knowledge_blocks.go`（新增）、`internal/biz/knowledge/block_index.go`（窄接口 `BlockIndexRepo`，Stability:evolving） |
+
+验收：整文档重建后零孤儿边（NFR-SP1-2）；同一文档重复重建结果一致（幂等）；旧块 dst 引用正确转 dangling。
+
+> **2026-08-08 完成（TDD）**：5 个 PG 集成测试全绿——Basic（锚块 ID=anchor、refs ordinal 映射、dangling 初态 dst 全 NULL）、Rebuild（重复重建不累积、内容变更旧边清零）、DstDangling（目标块重建删除后 dst 置 NULL 保 raw_target）、AnchorUniquePerCollection（库级锚冲突映射 CodeConflict、无锚块不受影响）、DocDeleteCascade（文档删除级联清块、入向边转 dangling）。验证：`go test ./internal/data/ -run TestKnowledgeBlocks -count=1` 5/5 PASS；`go build ./...` + `go vet` + gofmt 全净。
+
+### SP1-C：Resolver + 写路径接线
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| C-1 | Resolver：`raw_target` → `dst_doc_id/dst_block_id`（文档键最短路径唯一匹配——rel_path 无扩展名/标题/别名；`#heading` 按 heading_path 定位；`#^anchor` 按 anchor 定位；查不到 → dst NULL + dangling）；两阶段分离（目标后创建重跑 Resolver 即复活，不重解析源文档）；**跨库规则（B-1）**：同库优先 → 可见库最短路径 → 多义按（collection 创建序、路径字典序）取首记 `ambiguous=true`；不可见库不参与匹配 | `internal/biz/knowledge/link_resolver.go`（新增，TDD） |
+| C-2 | 写路径接线：VaultSyncApplier 事件 → blockparse → ReplaceDocBlocks；「粘贴文本入库」与 agent knowledge_write 路径同接（local/team 同管线） | `internal/knowledge/vault_sync.go`、`internal/biz/knowledge/`（写路径） |
+| C-3 | explicit 轨投影：块级 refs 同文档去重聚合 → `knowledge_links` explicit 轨（G5 图谱/关联区消费方式不变；entity/semantic 轨不动）；**权重规则（N-3）**：同文档对聚合为一条文档边，`meta.weight=块边数` | `internal/data/knowledge_links.go`（适配） |
+
+验收：Vault 文件写入后块/边落库正确；标题改名后 `[[doc#标题]]` 按最新解析不存死 ID；G5 图谱/关联区数据语义不回归。
+
+> **2026-08-08 完成（TDD）**：
+> - **C-1 Resolver**：`LinkResolver.ResolveRefs`（`internal/biz/knowledge/link_resolver.go`）——同库优先 → 可见库最短路径 → 多义按（collection created_at、路径字典序）取首记 `Ambiguous=true`；不可见库由调用方传入的 visibleCollectionIDs 裁剪（防文档名泄漏）；`#^anchor`/`#heading` 块级定位经 `ResolveIndex` 端口；查不到 → dst 留空转 dangling 保 raw_target；自文档引用走内存态块产 `DstSelfOrdinal`；15 个测试函数全绿（同库优先/最短路径/多义确定性/可见性/title+alias/大小写/embed 资产/heading/anchor/块失文档存/文档失 dangling/自引用锚/自引用标题/端口故障上抛/纯自引用零查询）。
+> - **C-2 写路径接线**：`Usecase.RebuildBlockIndex`（`biz/knowledge/block_pipeline.go`）统一 parse→resolve→persist→explicit 投影四步；vault 同步（`vault_sync.go`）、移动入链修复（`vault_write.go`）、粘贴文本摄取（`service/knowledge.go` IngestDocument）同走此入口；失败降级记日志不回滚主流程。旧 `link_parser.go`（正则 explicit 重建）已删除。Wire 经 `ProvideKnowledgeUsecase` 类型断言装配（`BlockIndexRepo` 与 `ResolveIndex` 同一 data repo 实现）。
+> - **C-3 explicit 投影**：`projectExplicitLinks` 同 (src_doc, dst_doc) 块边聚合为一条文档边、`Weight=块边数`；dangling 与文档级自环不投影。`knowledge_links.weight` + `knowledge_documents.title/aliases` 落列（DDL 迁移 20261204，`EnsureKnowledgeSchema` fresh 形态同步）；`ReplaceLinks` 改 ON CONFLICT 刷新 weight/context；`UpdateDocLinkKeys` 物化 frontmatter 解析键。
+> - **自引用存储契约**：Resolver 对自文档引用只产 `DstSelfOrdinal`，`ReplaceDocBlocks` 事务内按本次插入 ordinal→ID 映射回填 `dst_block_id`；ordinal 越界 → CodeBadRequest 整事务回滚（`TestKnowledgeBlocksReplace_SelfReference` 覆盖）。
+> - **可见集合推导**：后台索引无「当前用户」，取文档所在 workspace 全部集合作为可见集（`visibleCollectionIDs`）。
+>
+> 验证：`go test ./internal/biz/knowledge/ -run TestResolve -count=1` 15/15 PASS；`go test ./internal/data/ -run TestKnowledgeBlocks -count=1` 6/6 PASS（含 SelfReference）；`vault_sync_test`/`vault_write_test` 经 memBlockIndex 内存端口覆盖写路径全链路；`go build ./...` + `go vet` + gofmt 全净。
+
+### SP1-D：统一链接索引 LinkIndex + WS 增量
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| D-1 | `LinkIndex` 进程内内存图：正/反邻接表 + 单调递增版本号；启动时从 `knowledge_block_refs` 全量构建（万级边毫秒级）；解析事务提交后 apply 增量（add/remove 边，版本号+1）；**单进程约束（N-1）**：多副本化需改事件广播，另立 ADR | `internal/biz/knowledge/link_index.go`（新增，TDD） |
+| D-2 | `knowledge.graph.delta` WS 事件（`{added, removed, version}`，经 `event.Bus` 复用既有 WS 链路）；边带 scope（src/dst 块所属 collection backend + 租户推导），查询按当前用户可见 collection 集过滤（SP1 仅 scope 字段 + 基础过滤，完整片段级权限属 SP5）；**事件分级（N-2）**：按 AS-EVT-01 登记 Informational | `internal/event/`（事件定义）、`internal/biz/knowledge/link_index.go` |
+| D-3 | 内存基准：10 万边 < 100MB（NFR-SP1-4），基准测试落档 | `link_index_bench_test.go`（新增） |
+
+> **2026-08-08 完成（TDD，D-1/D-2）**：
+> - **D-1 LinkIndex**：`internal/biz/knowledge/link_index.go`——五索引同增同删（bySrc/byDstBlk/incoming/bySrcDoc/danglingByColl），边单分配多索引共享指针；`ApplyDocDelta`（摘旧出边 → 入向块边转文档级镜像 FK SET NULL → 加新边，multiset 集合差收敛，空 delta 不递增版本）、`RemoveDoc`（出边级联清除、入边转 dangling 保 raw_target）、`LoadAll`（重置语义 version 归零）；可见性过滤按边源集合（B-1 防泄漏延伸到图谱读侧）。**时序契约**：ApplyDocDelta 不区分初次/重建，目标文档每次 apply 均转换入向块边（与 ReplaceDocBlocks 先删后插 FK 语义一致）。
+> - **D-2 WS 增量**：`knowledge.graph.delta` SystemNoticeEvent（WS-only；AS-EVT-01 登记 Informational）——`GraphDeltaPublisher` biz 端口 + service 适配器（`internal/service/knowledge_graph_delta.go`，meta 携带 version + added/removed 边负载）；`NewKnowledgeService` 构造期创建 LinkIndex 并 `uc.SetLinkIndex` 接线（共享 uc，serve 前单线程）；启动全量加载 `Usecase.LoadLinkIndex`（LinkEdgeLoader 端口，data `ListAllRefEdges` JOIN 推导 SrcDocID/DstCollectionID）经 app.go readiness 门控后后台触发（`startup.knowledge_link_index`，失败仅降级不阻塞）；`DeleteDocument` 接 `RemoveDoc` 同步删除语义（集合删除的图同步归 SP1-G）。
+> - **测试**：biz 12 个用例（增删/空 delta 不推/块级与文档级反链/dangling 聚合/目标重建转换/RemoveDoc/增量 vs 全量重放一致性/LoadAll 重置/并发 -race/启动加载四分支/删除同步含失败路径）+ service 发布器负载断言全绿。
+>
+> 验证：`go test ./internal/biz/knowledge/ -run 'TestLinkIndex|TestUsecase_LoadLinkIndex|TestUsecase_DeleteDocument' -count=1 -race` PASS；`go test ./internal/service/ -run 'Knowledge' -count=1` PASS；独立 GOCACHE 全新编译 `go build ./internal/... ./cmd/admin` + `go vet` 全净。（注：本次独立缓存重编发现上轮「全绿」为默认缓存幻影，两个测试期望与 FK 语义矛盾已修正。）
+
+验收：增量 apply 后内存图与 DB 重放结果一致（一致性单测 ✅）；WS delta 事件到达前端（SP1-I 订阅接线后复验）；内存基准达标（✅ 见下）。
+
+> **2026-08-08 完成（D-3 内存基准）**：`link_index_bench_test.go`——`TestLinkIndex_MemoryFootprint100K`（NFR-SP1-4 门控，常驻测试）：10 万仿真边（块 ID ~20 字符、raw_target ~24、context ~60，含 10% dangling + 10% embed）LoadAll 后 HeapAlloc 增量 **51.3 MB < 100 MB** ✅。基准（i9-12900K）：`LoadAll` 10 万边 **~49ms**（设计「万级边毫秒级」达标）；`ApplyDocDelta` 单文档 10 出边（图内已有 10 万边）**~112µs**。
+
+### SP1-E：块级反链 API
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| E-1 | Proto：`rpc ListBlockBacklinks`（GET `/v1/knowledge/blocks/{block_id}/backlinks`，支持 `doc_id` 参数聚合文档全部块反链）+ `rpc ListDanglingLinks`（GET `/v1/knowledge/collections/{id}/dangling-links`）+ `make api` | `api/kratos/knowledge/v1/knowledge.proto` |
+| E-2 | biz/service 实现：块级反链读内存图（O（度数）），落库查询兜底；dangling 聚合（raw_target 分组 + 引用计数，「未创建笔记」视图语义） | `internal/biz/knowledge/`、`internal/service/knowledge.go` |
+
+验收：反链精确到块级含上下文片段；文档反链 = 全部块反链聚合；dangling 出现在目标名反链语义中（验收 39）。
+
+### SP1-F：团队库后端（vault_backend 维度）
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| F-1 | `knowledge_collections` 加 `vault_backend TEXT NOT NULL DEFAULT 'local'`（DDL 迁移 + Ent Schema）；约束调整：backend=local 时 root_path 必填唯一，team 时为空 | `internal/data/ent/schema/knowledge_collection.go`、`sql/migrations/`（新增）、`ddl_migration_registry.go` |
+| F-2 | team 库文档本体复用 PG `knowledge_documents.content_text` 路径；同管线解析接线（content_text → blockparse → 同套块/边表）；team 库无 SyncEngine（PG 即真相源）；**写路径契约（B-2）**：SP1 单写者语义 + activities 审计，并发冲突协议（版本/etag）后置 SP2；Proto `KnowledgeCollection` + `vault_backend` 字段 | `internal/biz/knowledge/`、`internal/service/knowledge.go`、`knowledge.proto` |
+
+验收：两种库走同一条解析管线产出同构索引（US-26-2）；图谱/检索对个人边与团队边统一查询按可见性过滤（US-26-3）。
+
+### SP1-G：晋升 + 删除同步
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| G-1 | Proto：`rpc PromoteBlocks`（POST `/v1/knowledge/blocks/promote`，body `{block_ids[], target_collection_id}`；返回 created_blocks/cascade_candidates/lineage）+ `make api` | `knowledge.proto` |
+| G-2 | `PromoteBlocks` usecase（`Data.ExecInTx`）：校验目标 backend=team + 写权限；团队库克隆（目标文档按 rel_path 同名查找或新建 + 新块 ID + `promoted_from`；源块回写 `promoted_to`）；**目标文档派生索引同事务重放（B-3）**：chunk→embed（有语义层时）→FTS，晋升即可检索；引用私有块的返回 cascade_candidates，未一并晋升的团队侧落 raw_target + dangling + `meta.private_external=true`；activities 表审计（对齐 knowledge_write R-6 惯例） | `internal/biz/knowledge/promote.go`（新增，TDD） |
+| G-3 | 删除同步：team 块删除 → dst FK SET NULL 转 dangling；src 块删除 → 边显式同事务 DELETE（区分「边消失」与「转 dangling」）；WS 增量携带两类变更 | `internal/data/knowledge_blocks.go`、`link_index.go` |
+
+验收：晋升产生谱系对 + 审计（验收 41）；team 块删除后边级联清除、WS 增量到达、私有侧 dangling 化（验收 42）。
+
+### SP1-H：RebuildIndex + 惰性锚点回填
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| H-1 | Proto `RebuildKnowledgeIndex`（POST `/v1/knowledge/collections/{id}/rebuild-index`）；流式重建：按文档分批（每批一事务，删块→重解析→重插），`sync_state` 加 `rebuilding` 态（期间检索走旧 chunks/FTS 降级可用）；幂等（中断重跑继续）；进度事件复用 EP-KN-02 模式 | `knowledge.proto`、`internal/biz/knowledge/`（新增 rebuild usecase） |
+| H-2 | 惰性锚点回填：写路径发现引用指向未锚块时，经 VaultFiler（local）/团队内容写路径（team）向源文本行尾追加 ` ^<uuid7>`；幂等（已有锚点跳过）；同一文件多次解析锚点稳定不漂移 | `internal/biz/knowledge/vault_filer.go`（扩展）、`internal/biz/knowledge/`（team 写路径） |
+
+验收：RebuildIndex 幂等可重入、重建期检索降级可用、重建后 refs 无孤儿边（验收 43）；锚点回填幂等稳定（验收 44）。
+
+### SP1-I：前端
+
+| # | 任务 | 涉及文件 |
+|---|------|----------|
+| I-1 | 文档详情关联区新增「反向链接」分组（与既有显式/实体/语义分区并列），块级粒度 + 上下文片段 | `web/src/components/knowledge/KnowledgeDocDetail.vue`（改造）、`api.ts`、store |
+| I-2 | dangling 灰显 + hover 提示「目标未创建」；库选择器 team 库「团队」徽标 | 浏览视图组件、库选择器组件、locales |
+| I-3 | 晋升 UI：文档/块操作菜单「晋升到团队库…」→ 目标库选择 + 级联提示清单 → 确认执行 → 结果反馈（新建块数/谱系链接） | 晋升对话框组件（新增）、`api.ts`、store |
+| I-4 | `knowledge.graph.delta` WS 订阅接线：图谱/反链视图增量更新（摘除边 / 节点灰显两类变更分别处理） | `web/src/features/knowledge/`（新增 composable）、图谱/反链消费方 |
+
+验收：对照验收 38~44 全链路浏览器复验；i18n 键全入 locale（check-i18n 红线）。
+
+### 依赖关系
+
+```
+SP1-A（解析）──→ SP1-B（物化）──→ SP1-C（Resolver/接线）──→ SP1-D（LinkIndex/WS）──→ SP1-E（反链 API）──→ SP1-I（前端）
+                                    │                          ↑
+SP1-F（team 后端，依赖 B/C）──────────┘                          │
+SP1-G（晋升/删除，依赖 D/F）─────────────────────────────────────┘
+SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
+```
+
+> **实施红线**：① TDD 铁律——blockparse/Resolver/LinkIndex/PromoteBlocks 全部先写失败测试；② refs 一律整文档重插不做 diff（一致性优先）；③ dangling 与边消失必须区分（SET NULL vs DELETE）；④ SiYuan/Logseq 仅借鉴思路逐行自研，禁止抄代码（License 纪律）；⑤ SP1 实施完成后同步 `65-module-cross-reference-full.md` knowledge 模块卡片（新增 blocks/refs 表、LinkIndex、blockparse 包）；⑥ 新增流程日志 step 须登记 `internal/event/flow_log.go` stepTitleRegistry + 同步 52-flow-logger.design.md §5.1。
+
+### SP2~SP7 路线预告（G1~G8，2026-08-08 评审合入）
+
+> 前瞻提案的产品化映射，学术依据见[评审报告 §五](../reports/2026-08-08-review-sp1-knowledge-blueprint.md)；各 SP 均须各自走 需求→设计→TDD 流程立项，本表仅为路线图锚点。
+
+| # | 子项目 | 关键任务域 | 依赖 | 状态 |
+|---|--------|-----------|------|------|
+| SP2 | 编辑器与笔记体验 | TipTap/BlockSuite（MIT）+ 自研 wikilink 扩展；Live Preview；反链面板；**显式跨库链接语法在此定案**（B-1 遗留） | SP1 | 待立项 |
+| SP3 | 图谱 2.0 | sigma.js 2D + three.js 3D（复用 G5-C v2 GPU 纹理管线）；Worker FA2；Obsidian 四区控制台；局部图谱；**时间轴回放**（消费 G4 valid_from/to） | SP1 | 待立项 |
+| SP4 | 多模态摄取管线 | 文本代理路线（Whisper ASR + 关键帧 OCR + 场景描述，时间戳回链原片）；Office（docconv/excelize/pdfium 思路）；模态分库 + 查询路由（G5） | SP1 | 待立项 |
+| SP5 | 双模权限与成熟度 | 片段级权限（Collaborative Memory 模型）；成熟度状态机（草稿→共享→精炼→规范，AS-FSM-01 显式建模）；AI 去私人化 super note 综合（G3） | SP1 | 待立项 |
+| SP6 | AI 知识伙伴 | 写入即自动链接/标签建议（Notemd 式批量限流）；会话决策点主动唤回（复用 BeforeModel 钩子）；摄入即综合（交叉引用 + 矛盾检测）（G6） | SP1 | 待立项 |
+| **SP7（新）** | 知识-记忆同基底 + 写回飞轮 | 记忆 L3/L4 投影为 agent vault 块（G1）；会话/TeamRun → LLM 抽取 → 团队库（验证门 + provenance，G2）；专家定位聚合（G7）；知识健康度指标（G8） | SP1+SP5 | 待立项 |

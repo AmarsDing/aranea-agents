@@ -12,6 +12,15 @@
           rounded
           no-caps
           color="primary"
+          icon="gavel"
+          :label="$t('evaluationPage.gateOpen')"
+          @click="openGate"
+        />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
           icon="refresh"
           label="刷新"
           :loading="loading"
@@ -127,9 +136,18 @@
           :trend-loading="trendLoading"
           :compare-loading="compareLoading"
           :divergence-loading="divergenceLoading"
+          :failure-groups="failureGroups"
+          :failure-groups-total="failureGroupsTotal"
+          :failure-groups-loading="failureGroupsLoading"
+          :preferences="preferences"
+          :preferences-loading="preferencesLoading"
+          :preference-saving="preferenceSaving"
+          :dataset-changed="datasetChanged"
           @refresh-trend="loadTrend"
           @refresh-divergence="loadDivergence"
+          @refresh-failures="loadFailureGroups"
           @compare="submitCompare"
+          @prefer="submitPreferenceWinner"
         />
       </div>
     </div>
@@ -160,6 +178,20 @@
       :dataset-name="selectedDataset?.name ?? ''"
       @submit="submitUpload"
     />
+    <evaluation-gate-dialog
+      v-model:open="gateOpen"
+      v-model:enabled="gateForm.enabled"
+      v-model:agent-id="gateForm.agent_id"
+      v-model:dataset-id="gateForm.dataset_id"
+      v-model:metric="gateForm.metric"
+      v-model:min-score="gateForm.min_score"
+      v-model:max-drop="gateForm.max_drop"
+      :loading="gateLoading"
+      :saving="gateSaving"
+      :agent-options="agentOptions"
+      :dataset-options="datasetOptions"
+      @submit="saveGate"
+    />
     <evaluation-results-dialog
       v-model:open="resultsOpen"
       :run-id="resultsRun?.id ?? ''"
@@ -183,6 +215,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
@@ -193,7 +227,10 @@ import EvaluationCreateDialog from '../components/evaluation/EvaluationCreateDia
 import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vue';
 import EvaluationResultsDialog from '../components/evaluation/EvaluationResultsDialog.vue';
 import EvaluationUploadCasesDialog from '../components/evaluation/EvaluationUploadCasesDialog.vue';
+import EvaluationGateDialog from '../components/evaluation/EvaluationGateDialog.vue';
 import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
+
+const { t } = useI18n();
 
 const {
   datasets,
@@ -253,5 +290,29 @@ const {
   divergence,
   divergenceLoading,
   loadDivergence,
+  failureGroups,
+  failureGroupsTotal,
+  failureGroupsLoading,
+  loadFailureGroups,
+  preferences,
+  preferencesLoading,
+  preferenceSaving,
+  submitPreferenceWinner,
+  datasetChanged,
+  gateOpen,
+  gateLoading,
+  gateSaving,
+  gateForm,
+  openGate,
+  saveGate,
 } = useEvaluationPage();
+
+// Gate dialog needs all datasets as options (gate config is a global singleton,
+// not bound to the currently selected dataset).
+const datasetOptions = computed(() =>
+  datasets.value.map((d) => ({
+    label: t('evaluationPage.datasetOptionLabel', { name: d.name, count: d.case_count }),
+    value: d.id,
+  })),
+);
 </script>

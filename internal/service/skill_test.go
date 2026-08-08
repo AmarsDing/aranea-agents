@@ -187,7 +187,7 @@ func (m *memSkillRepo) SetSkillDerivedFrom(_ context.Context, _ string, _ []stri
 func newSkillService() *service.SkillService {
 	repo := newMemSkillRepo()
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active", WorkspaceID: workspace.DefaultWorkspaceID}
-	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, nil, loggateway.NewNoop())
+	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, nil, nil, loggateway.NewNoop())
 }
 
 func adminCtx() context.Context {

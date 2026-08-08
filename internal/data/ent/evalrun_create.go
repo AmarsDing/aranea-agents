@@ -246,6 +246,20 @@ func (_c *EvalRunCreate) SetNillableFinishedAt(v *string) *EvalRunCreate {
 	return _c
 }
 
+// SetDatasetHash sets the "dataset_hash" field.
+func (_c *EvalRunCreate) SetDatasetHash(v string) *EvalRunCreate {
+	_c.mutation.SetDatasetHash(v)
+	return _c
+}
+
+// SetNillableDatasetHash sets the "dataset_hash" field if the given value is not nil.
+func (_c *EvalRunCreate) SetNillableDatasetHash(v *string) *EvalRunCreate {
+	if v != nil {
+		_c.SetDatasetHash(*v)
+	}
+	return _c
+}
+
 // SetWorkspaceID sets the "workspace_id" field.
 func (_c *EvalRunCreate) SetWorkspaceID(v string) *EvalRunCreate {
 	_c.mutation.SetWorkspaceID(v)
@@ -395,6 +409,10 @@ func (_c *EvalRunCreate) defaults() {
 		v := evalrun.DefaultFinishedAt
 		_c.mutation.SetFinishedAt(v)
 	}
+	if _, ok := _c.mutation.DatasetHash(); !ok {
+		v := evalrun.DefaultDatasetHash
+		_c.mutation.SetDatasetHash(v)
+	}
 	if _, ok := _c.mutation.WorkspaceID(); !ok {
 		v := evalrun.DefaultWorkspaceID
 		_c.mutation.SetWorkspaceID(v)
@@ -457,6 +475,14 @@ func (_c *EvalRunCreate) check() error {
 	}
 	if _, ok := _c.mutation.FinishedAt(); !ok {
 		return &ValidationError{Name: "finished_at", err: errors.New(`ent: missing required field "EvalRun.finished_at"`)}
+	}
+	if _, ok := _c.mutation.DatasetHash(); !ok {
+		return &ValidationError{Name: "dataset_hash", err: errors.New(`ent: missing required field "EvalRun.dataset_hash"`)}
+	}
+	if v, ok := _c.mutation.DatasetHash(); ok {
+		if err := evalrun.DatasetHashValidator(v); err != nil {
+			return &ValidationError{Name: "dataset_hash", err: fmt.Errorf(`ent: validator failed for field "EvalRun.dataset_hash": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.WorkspaceID(); !ok {
 		return &ValidationError{Name: "workspace_id", err: errors.New(`ent: missing required field "EvalRun.workspace_id"`)}
@@ -576,6 +602,10 @@ func (_c *EvalRunCreate) createSpec() (*EvalRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
 		_node.FinishedAt = value
+	}
+	if value, ok := _c.mutation.DatasetHash(); ok {
+		_spec.SetField(evalrun.FieldDatasetHash, field.TypeString, value)
+		_node.DatasetHash = value
 	}
 	if value, ok := _c.mutation.WorkspaceID(); ok {
 		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)
@@ -925,6 +955,18 @@ func (u *EvalRunUpsert) SetFinishedAt(v string) *EvalRunUpsert {
 // UpdateFinishedAt sets the "finished_at" field to the value that was provided on create.
 func (u *EvalRunUpsert) UpdateFinishedAt() *EvalRunUpsert {
 	u.SetExcluded(evalrun.FieldFinishedAt)
+	return u
+}
+
+// SetDatasetHash sets the "dataset_hash" field.
+func (u *EvalRunUpsert) SetDatasetHash(v string) *EvalRunUpsert {
+	u.Set(evalrun.FieldDatasetHash, v)
+	return u
+}
+
+// UpdateDatasetHash sets the "dataset_hash" field to the value that was provided on create.
+func (u *EvalRunUpsert) UpdateDatasetHash() *EvalRunUpsert {
+	u.SetExcluded(evalrun.FieldDatasetHash)
 	return u
 }
 
@@ -1298,6 +1340,20 @@ func (u *EvalRunUpsertOne) SetFinishedAt(v string) *EvalRunUpsertOne {
 func (u *EvalRunUpsertOne) UpdateFinishedAt() *EvalRunUpsertOne {
 	return u.Update(func(s *EvalRunUpsert) {
 		s.UpdateFinishedAt()
+	})
+}
+
+// SetDatasetHash sets the "dataset_hash" field.
+func (u *EvalRunUpsertOne) SetDatasetHash(v string) *EvalRunUpsertOne {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.SetDatasetHash(v)
+	})
+}
+
+// UpdateDatasetHash sets the "dataset_hash" field to the value that was provided on create.
+func (u *EvalRunUpsertOne) UpdateDatasetHash() *EvalRunUpsertOne {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.UpdateDatasetHash()
 	})
 }
 
@@ -1842,6 +1898,20 @@ func (u *EvalRunUpsertBulk) SetFinishedAt(v string) *EvalRunUpsertBulk {
 func (u *EvalRunUpsertBulk) UpdateFinishedAt() *EvalRunUpsertBulk {
 	return u.Update(func(s *EvalRunUpsert) {
 		s.UpdateFinishedAt()
+	})
+}
+
+// SetDatasetHash sets the "dataset_hash" field.
+func (u *EvalRunUpsertBulk) SetDatasetHash(v string) *EvalRunUpsertBulk {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.SetDatasetHash(v)
+	})
+}
+
+// UpdateDatasetHash sets the "dataset_hash" field to the value that was provided on create.
+func (u *EvalRunUpsertBulk) UpdateDatasetHash() *EvalRunUpsertBulk {
+	return u.Update(func(s *EvalRunUpsert) {
+		s.UpdateDatasetHash()
 	})
 }
 

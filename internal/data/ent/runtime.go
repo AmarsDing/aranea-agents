@@ -25,7 +25,9 @@ import (
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
+	"aranea-agents/internal/data/ent/evalgateconfig"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/evalrunpreference"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -1651,6 +1653,40 @@ func init() {
 	evaldatasetDescID := evaldatasetFields[0].Descriptor()
 	// evaldataset.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	evaldataset.IDValidator = evaldatasetDescID.Validators[0].(func(string) error)
+	evalgateconfigFields := schema.EvalGateConfig{}.Fields()
+	_ = evalgateconfigFields
+	// evalgateconfigDescEnabled is the schema descriptor for enabled field.
+	evalgateconfigDescEnabled := evalgateconfigFields[1].Descriptor()
+	// evalgateconfig.DefaultEnabled holds the default value on creation for the enabled field.
+	evalgateconfig.DefaultEnabled = evalgateconfigDescEnabled.Default.(int)
+	// evalgateconfigDescAgentID is the schema descriptor for agent_id field.
+	evalgateconfigDescAgentID := evalgateconfigFields[2].Descriptor()
+	// evalgateconfig.DefaultAgentID holds the default value on creation for the agent_id field.
+	evalgateconfig.DefaultAgentID = evalgateconfigDescAgentID.Default.(string)
+	// evalgateconfigDescDatasetID is the schema descriptor for dataset_id field.
+	evalgateconfigDescDatasetID := evalgateconfigFields[3].Descriptor()
+	// evalgateconfig.DefaultDatasetID holds the default value on creation for the dataset_id field.
+	evalgateconfig.DefaultDatasetID = evalgateconfigDescDatasetID.Default.(string)
+	// evalgateconfigDescMetric is the schema descriptor for metric field.
+	evalgateconfigDescMetric := evalgateconfigFields[4].Descriptor()
+	// evalgateconfig.DefaultMetric holds the default value on creation for the metric field.
+	evalgateconfig.DefaultMetric = evalgateconfigDescMetric.Default.(string)
+	// evalgateconfigDescMinScore is the schema descriptor for min_score field.
+	evalgateconfigDescMinScore := evalgateconfigFields[5].Descriptor()
+	// evalgateconfig.DefaultMinScore holds the default value on creation for the min_score field.
+	evalgateconfig.DefaultMinScore = evalgateconfigDescMinScore.Default.(float64)
+	// evalgateconfigDescMaxDrop is the schema descriptor for max_drop field.
+	evalgateconfigDescMaxDrop := evalgateconfigFields[6].Descriptor()
+	// evalgateconfig.DefaultMaxDrop holds the default value on creation for the max_drop field.
+	evalgateconfig.DefaultMaxDrop = evalgateconfigDescMaxDrop.Default.(float64)
+	// evalgateconfigDescUpdatedAt is the schema descriptor for updated_at field.
+	evalgateconfigDescUpdatedAt := evalgateconfigFields[7].Descriptor()
+	// evalgateconfig.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	evalgateconfig.DefaultUpdatedAt = evalgateconfigDescUpdatedAt.Default.(string)
+	// evalgateconfigDescID is the schema descriptor for id field.
+	evalgateconfigDescID := evalgateconfigFields[0].Descriptor()
+	// evalgateconfig.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	evalgateconfig.IDValidator = evalgateconfigDescID.Validators[0].(func(string) error)
 	evalrunFields := schema.EvalRun{}.Fields()
 	_ = evalrunFields
 	// evalrunDescStatus is the schema descriptor for status field.
@@ -1713,20 +1749,44 @@ func init() {
 	evalrunDescFinishedAt := evalrunFields[17].Descriptor()
 	// evalrun.DefaultFinishedAt holds the default value on creation for the finished_at field.
 	evalrun.DefaultFinishedAt = evalrunDescFinishedAt.Default.(string)
+	// evalrunDescDatasetHash is the schema descriptor for dataset_hash field.
+	evalrunDescDatasetHash := evalrunFields[18].Descriptor()
+	// evalrun.DefaultDatasetHash holds the default value on creation for the dataset_hash field.
+	evalrun.DefaultDatasetHash = evalrunDescDatasetHash.Default.(string)
+	// evalrun.DatasetHashValidator is a validator for the "dataset_hash" field. It is called by the builders before save.
+	evalrun.DatasetHashValidator = evalrunDescDatasetHash.Validators[0].(func(string) error)
 	// evalrunDescWorkspaceID is the schema descriptor for workspace_id field.
-	evalrunDescWorkspaceID := evalrunFields[18].Descriptor()
+	evalrunDescWorkspaceID := evalrunFields[19].Descriptor()
 	// evalrun.DefaultWorkspaceID holds the default value on creation for the workspace_id field.
 	evalrun.DefaultWorkspaceID = evalrunDescWorkspaceID.Default.(string)
 	// evalrun.WorkspaceIDValidator is a validator for the "workspace_id" field. It is called by the builders before save.
 	evalrun.WorkspaceIDValidator = evalrunDescWorkspaceID.Validators[0].(func(string) error)
 	// evalrunDescCreatedAt is the schema descriptor for created_at field.
-	evalrunDescCreatedAt := evalrunFields[19].Descriptor()
+	evalrunDescCreatedAt := evalrunFields[20].Descriptor()
 	// evalrun.DefaultCreatedAt holds the default value on creation for the created_at field.
 	evalrun.DefaultCreatedAt = evalrunDescCreatedAt.Default.(string)
 	// evalrunDescID is the schema descriptor for id field.
 	evalrunDescID := evalrunFields[0].Descriptor()
 	// evalrun.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	evalrun.IDValidator = evalrunDescID.Validators[0].(func(string) error)
+	evalrunpreferenceFields := schema.EvalRunPreference{}.Fields()
+	_ = evalrunpreferenceFields
+	// evalrunpreferenceDescComment is the schema descriptor for comment field.
+	evalrunpreferenceDescComment := evalrunpreferenceFields[5].Descriptor()
+	// evalrunpreference.DefaultComment holds the default value on creation for the comment field.
+	evalrunpreference.DefaultComment = evalrunpreferenceDescComment.Default.(string)
+	// evalrunpreferenceDescCreatedBy is the schema descriptor for created_by field.
+	evalrunpreferenceDescCreatedBy := evalrunpreferenceFields[6].Descriptor()
+	// evalrunpreference.DefaultCreatedBy holds the default value on creation for the created_by field.
+	evalrunpreference.DefaultCreatedBy = evalrunpreferenceDescCreatedBy.Default.(string)
+	// evalrunpreferenceDescCreatedAt is the schema descriptor for created_at field.
+	evalrunpreferenceDescCreatedAt := evalrunpreferenceFields[7].Descriptor()
+	// evalrunpreference.DefaultCreatedAt holds the default value on creation for the created_at field.
+	evalrunpreference.DefaultCreatedAt = evalrunpreferenceDescCreatedAt.Default.(string)
+	// evalrunpreferenceDescID is the schema descriptor for id field.
+	evalrunpreferenceDescID := evalrunpreferenceFields[0].Descriptor()
+	// evalrunpreference.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	evalrunpreference.IDValidator = evalrunpreferenceDescID.Validators[0].(func(string) error)
 	eventdeliveryoutboxFields := schema.EventDeliveryOutbox{}.Fields()
 	_ = eventdeliveryoutboxFields
 	// eventdeliveryoutboxDescSessionID is the schema descriptor for session_id field.

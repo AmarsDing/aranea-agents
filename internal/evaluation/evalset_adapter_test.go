@@ -1,6 +1,7 @@
 package evaluation
 
 import (
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -100,13 +101,54 @@ func TestBizCaseToEvalCaseAttachesRubric(t *testing.T) {
 	}
 }
 
-func TestBizCaseToEvalCaseWithoutRubricHasNoRubrics(t *testing.T) {
+// The llm_rubric_response evaluator hard-requires at least one rubric per case
+// ("llm judge rubrics are required"). Cases without a custom rubric must get a
+// synthesized default: reference-consistency when expected output exists,
+// generic quality otherwise.
+func TestBizCaseToEvalCaseWithoutRubricGetsDefaultRubric(t *testing.T) {
 	t.Parallel()
 	es := BizCasesToEvalSet(biz.EvalDataset{ID: "ds-1"}, []biz.EvalCase{
 		{ID: "c1", Input: "hello", ExpectedOutput: "world"},
+		{ID: "c2", Input: "free-form"},
 	}, loggateway.NewNoop())
-	if len(es.EvalCases[0].Rubrics) != 0 {
-		t.Fatalf("expected no rubrics, got %+v", es.EvalCases[0].Rubrics)
+
+	withExpected := es.EvalCases[0].Rubrics
+	if len(withExpected) != 1 {
+		t.Fatalf("expected 1 default rubric, got %+v", withExpected)
+	}
+	if withExpected[0].MetricName != MetricLLMAsJudge {
+		t.Fatalf("default rubric must target %q, got %q", MetricLLMAsJudge, withExpected[0].MetricName)
+	}
+	if withExpected[0].ID == "" {
+		t.Fatal("default rubric ID must be set (structured output requires unique IDs)")
+	}
+	if !strings.Contains(withExpected[0].Content.Text, "world") {
+		t.Fatalf("default rubric must embed expected output, got %q", withExpected[0].Content.Text)
+	}
+
+	withoutExpected := es.EvalCases[1].Rubrics
+	if len(withoutExpected) != 1 {
+		t.Fatalf("expected 1 generic default rubric, got %+v", withoutExpected)
+	}
+	if strings.Contains(withoutExpected[0].Content.Text, "参考答案") {
+		t.Fatalf("generic default rubric must not reference an answer, got %q", withoutExpected[0].Content.Text)
+	}
+}
+
+// A custom rubric is authoritative: it replaces the synthesized default rather
+// than being appended alongside it.
+func TestBizCaseToEvalCaseCustomRubricReplacesDefault(t *testing.T) {
+	t.Parallel()
+	meta := `{"rubric":"回答必须给出具体数字"}`
+	es := BizCasesToEvalSet(biz.EvalDataset{ID: "ds-1"}, []biz.EvalCase{
+		{ID: "c1", Input: "1+1?", ExpectedOutput: "2", MetadataJSON: meta},
+	}, loggateway.NewNoop())
+	rubrics := es.EvalCases[0].Rubrics
+	if len(rubrics) != 1 {
+		t.Fatalf("custom rubric must replace default, got %d rubrics", len(rubrics))
+	}
+	if rubrics[0].Content.Text != "回答必须给出具体数字" {
+		t.Fatalf("unexpected rubric text: %q", rubrics[0].Content.Text)
 	}
 }
 

@@ -116,6 +116,20 @@ func (m *dsMockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) (
 	return nil, nil
 }
 
+func (m *dsMockRepo) ListFailureGroups(_ context.Context, _, _ string, _ int) ([]FailureGroup, int, error) {
+	return nil, 0, nil
+}
+
+func (m *dsMockRepo) InsertRunPreference(_ context.Context, _ RunPreference) error { return nil }
+
+func (m *dsMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]RunPreference, error) {
+	return nil, nil
+}
+
+func (m *dsMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
+
+func (m *dsMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
+
 func TestCreateDataset(t *testing.T) {
 	tests := []struct {
 		name    string

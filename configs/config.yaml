@@ -114,3 +114,6 @@ logging:
 #   drive_interval: 1m              # full-chain drive tick
 #   stale_timeout: 30m              # mid-pipeline stale threshold before recover
 
+# P0-2 运行时冒烟已完成（2026-08-08）：enabled 态 API/UI/动作端点 409 守卫、
+# 风险规则读写回路、disabled 态空态均验证通过。恢复默认关闭。
+

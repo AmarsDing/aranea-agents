@@ -44,6 +44,9 @@ export type EvalRun = {
   passHatK: number | undefined;
   // scores_json holds extended metric averages (json_match, rouge_l, tool_trajectory, etc.).
   scoresJson: string | undefined;
+  // dataset_hash is the dataset content snapshot at run start (P3-5);
+  // differing hashes across compared runs mean scores are not directly comparable.
+  datasetHash: string | undefined;
 };
 
 // EvalCaseResult is the output for one case in a run.
@@ -228,6 +231,8 @@ export type EvalRunComparison = {
   deltaContainsMatch: number | undefined;
   deltaLlmJudge: number | undefined;
   deltaToolCallAccuracy: number | undefined;
+  // dataset_hash enables the dataset-changed comparability warning (P3-5).
+  datasetHash: string | undefined;
 };
 
 export type CompareEvalRunsResponse = {
@@ -279,6 +284,102 @@ export type GetJudgeDivergenceResponse = {
   divergentCases: JudgeDivergenceCase[] | undefined;
 };
 
+export type GetFailureGroupsRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  // agent_id optionally restricts to one agent's runs.
+  agentId: string | undefined;
+  // limit caps the returned group list (0 means default 20);
+  // total_failed always covers the full failed-result set.
+  limit: number | undefined;
+};
+
+// EvalFailureGroup aggregates failed case results sharing one error_message.
+export type EvalFailureGroup = {
+  errorMessage: string | undefined;
+  count: number | undefined;
+  runCount: number | undefined;
+  latestAt: string | undefined;
+};
+
+export type GetFailureGroupsResponse = {
+  totalFailed: number | undefined;
+  groups: EvalFailureGroup[] | undefined;
+};
+
+// EvalRunPreference records a human judgment that one run is better than
+// another for the same dataset.
+export type EvalRunPreference = {
+  id: string | undefined;
+  datasetId: string | undefined;
+  runIdA: string | undefined;
+  runIdB: string | undefined;
+  // winner_run_id must equal run_id_a or run_id_b.
+  winnerRunId: string | undefined;
+  comment: string | undefined;
+  createdBy: string | undefined;
+  createdAt: string | undefined;
+};
+
+export type SubmitRunPreferenceRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  runIdA: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  runIdB: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  winnerRunId: string | undefined;
+  comment: string | undefined;
+};
+
+export type ListRunPreferencesRequest = {
+  //
+  // Behaviors: REQUIRED
+  datasetId: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListRunPreferencesResponse = {
+  items: EvalRunPreference[] | undefined;
+};
+
+// EvalGateConfig is the singleton publish-gate configuration. The gate runs
+// the configured dataset against the configured agent on skill publish /
+// pack install and blocks the operation when the score breaches the
+// configured floor (min_score) or drops too far vs the latest completed
+// baseline (max_drop).
+export type EvalGateConfig = {
+  enabled: boolean | undefined;
+  agentId: string | undefined;
+  datasetId: string | undefined;
+  // metric: exact_match | contains_match | llm_as_judge | tool_call_accuracy
+  // (or any extended scores_json key).
+  metric: string | undefined;
+  // min_score: absolute floor in [0,1]; 0 disables the absolute check.
+  minScore: number | undefined;
+  // max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
+  maxDrop: number | undefined;
+  updatedAt: string | undefined;
+};
+
+export type GetEvalGateRequest = {
+};
+
+export type UpdateEvalGateRequest = {
+  enabled: boolean | undefined;
+  agentId: string | undefined;
+  datasetId: string | undefined;
+  metric: string | undefined;
+  minScore: number | undefined;
+  maxDrop: number | undefined;
+};
+
 export interface EvaluationService {
   // Datasets
   CreateDataset(request: CreateDatasetRequest): Promise<EvalDataset>;
@@ -297,6 +398,11 @@ export interface EvaluationService {
   GetAgentEvalTrend(request: GetAgentEvalTrendRequest): Promise<GetAgentEvalTrendResponse>;
   CompareEvalRuns(request: CompareEvalRunsRequest): Promise<CompareEvalRunsResponse>;
   GetJudgeDivergence(request: GetJudgeDivergenceRequest): Promise<GetJudgeDivergenceResponse>;
+  GetFailureGroups(request: GetFailureGroupsRequest): Promise<GetFailureGroupsResponse>;
+  SubmitRunPreference(request: SubmitRunPreferenceRequest): Promise<EvalRunPreference>;
+  ListRunPreferences(request: ListRunPreferencesRequest): Promise<ListRunPreferencesResponse>;
+  GetEvalGate(request: GetEvalGateRequest): Promise<EvalGateConfig>;
+  UpdateEvalGate(request: UpdateEvalGateRequest): Promise<EvalGateConfig>;
 }
 
 type RequestType = {
@@ -637,6 +743,106 @@ export function createEvaluationServiceClient(
         service: "EvaluationService",
         method: "GetJudgeDivergence",
       }) as Promise<GetJudgeDivergenceResponse>;
+    },
+    GetFailureGroups(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.datasetId) {
+        throw new Error("missing required field request.dataset_id");
+      }
+      const path = `v1/evaluation/datasets/${request.datasetId}/failure-groups`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "GetFailureGroups",
+      }) as Promise<GetFailureGroupsResponse>;
+    },
+    SubmitRunPreference(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/evaluation/preferences`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "SubmitRunPreference",
+      }) as Promise<EvalRunPreference>;
+    },
+    ListRunPreferences(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/evaluation/preferences`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.datasetId) {
+        queryParams.push(`datasetId=${encodeURIComponent(request.datasetId.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "ListRunPreferences",
+      }) as Promise<ListRunPreferencesResponse>;
+    },
+    GetEvalGate(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/evaluation/gate`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "GetEvalGate",
+      }) as Promise<EvalGateConfig>;
+    },
+    UpdateEvalGate(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/evaluation/gate`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "PUT",
+        body,
+      }, {
+        service: "EvaluationService",
+        method: "UpdateEvalGate",
+      }) as Promise<EvalGateConfig>;
     },
   };
 }

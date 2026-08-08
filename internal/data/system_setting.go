@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -104,6 +105,12 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 	// Overlay planner model config (stored via DDL migration columns).
 	if pm, perr := r.GetPlannerModel(ctx); perr == nil {
 		out.PlannerModel = pm
+	}
+	// Overlay speech config (M74 V2-T7, DDL migration columns). Read error is
+	// non-fatal: a missing speech column set (pre-migration DB) must not break
+	// the whole settings read.
+	if sp, serr := r.GetSpeech(ctx); serr == nil {
+		out.Speech = sp
 	}
 	return out, nil
 }
@@ -343,6 +350,75 @@ func (r *systemSettingRepo) UpdatePlannerModel(ctx context.Context, patch biz.Pl
 		return biz.PlannerModelSetting{}, err
 	}
 	return patch, nil
+}
+
+// GetSpeech returns the stored voice companion (M74) ASR/TTS provider config.
+// Uses raw SQL because the columns are managed via DDL migration (same pattern
+// as RefineLLM / PlannerModel). Empty fields mean "unset" — the runtime reader
+// falls back to SPEECH_* env vars. speech_archive_user_audio is nullable:
+// NULL = unset (env fallback), scanned into SpeechSetting.ArchiveUserAudio.
+func (r *systemSettingRepo) GetSpeech(ctx context.Context) (biz.SpeechSetting, error) {
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT speech_asr_driver, speech_asr_endpoint, speech_asr_app_key,
+		 speech_asr_access_key, speech_asr_resource_id, speech_asr_language,
+		 speech_tts_driver, speech_tts_endpoint, speech_tts_app_key,
+		 speech_tts_access_key, speech_tts_resource_id, speech_tts_voice,
+		 speech_tts_speed_ratio, speech_archive_user_audio
+		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
+	if err != nil {
+		return biz.SpeechSetting{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.SpeechSetting{}, apierror.NotFound(apierror.DomainData, "not found")
+	}
+	var s biz.SpeechSetting
+	var archive sql.NullBool
+	if err := rows.Scan(
+		&s.ASR.Driver, &s.ASR.Endpoint, &s.ASR.AppKey, &s.ASR.AccessKey, &s.ASR.ResourceID, &s.ASR.Language,
+		&s.TTS.Driver, &s.TTS.Endpoint, &s.TTS.AppKey, &s.TTS.AccessKey, &s.TTS.ResourceID, &s.TTS.Voice,
+		&s.TTS.SpeedRatio, &archive,
+	); err != nil {
+		return biz.SpeechSetting{}, err
+	}
+	if archive.Valid {
+		v := archive.Bool
+		s.ArchiveUserAudio = &v
+	}
+	return s, nil
+}
+
+// UpdateSpeech persists the voice companion speech settings. Credentials are
+// replaced only when the matching updateXxxCred flag is set (empty = keep).
+// ArchiveUserAudio nil writes NULL (unset → env fallback).
+func (r *systemSettingRepo) UpdateSpeech(ctx context.Context, patch biz.SpeechSetting, updateASRCred, updateTTSCred bool) (biz.SpeechSetting, error) {
+	var archive any
+	if patch.ArchiveUserAudio != nil {
+		archive = *patch.ArchiveUserAudio
+	}
+	query := `UPDATE system_settings SET speech_asr_driver=?, speech_asr_endpoint=?, speech_asr_resource_id=?,
+		 speech_asr_language=?, speech_tts_driver=?, speech_tts_endpoint=?, speech_tts_resource_id=?,
+		 speech_tts_voice=?, speech_tts_speed_ratio=?, speech_archive_user_audio=?`
+	args := []any{
+		patch.ASR.Driver, patch.ASR.Endpoint, patch.ASR.ResourceID, patch.ASR.Language,
+		patch.TTS.Driver, patch.TTS.Endpoint, patch.TTS.ResourceID, patch.TTS.Voice,
+		patch.TTS.SpeedRatio, archive,
+	}
+	if updateASRCred {
+		query += `, speech_asr_app_key=?, speech_asr_access_key=?`
+		args = append(args, strings.TrimSpace(patch.ASR.AppKey), strings.TrimSpace(patch.ASR.AccessKey))
+	}
+	if updateTTSCred {
+		query += `, speech_tts_app_key=?, speech_tts_access_key=?`
+		args = append(args, strings.TrimSpace(patch.TTS.AppKey), strings.TrimSpace(patch.TTS.AccessKey))
+	}
+	query += ` WHERE id=?`
+	args = append(args, systemSettingSingletonID)
+	if _, err := r.data.RW().Write(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(query), args...); err != nil {
+		return biz.SpeechSetting{}, err
+	}
+	// Return the stored row (with credentials populated for has_api_key mapping).
+	return r.GetSpeech(ctx)
 }
 
 func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.MemoryPlatformSetting) (biz.MemoryPlatformSetting, error) {

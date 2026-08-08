@@ -51,6 +51,10 @@ type voiceTestExecutor struct{}
 func (voiceTestExecutor) ExecuteTurn(context.Context, WSTurnInput) error { return nil }
 
 func newVoiceTestServer(asr *voiceTestASRSession) *VoiceWSServer {
+	return newVoiceTestServerWithProbe(asr, nil)
+}
+
+func newVoiceTestServerWithProbe(asr *voiceTestASRSession, probe VoiceStatusProbe) *VoiceWSServer {
 	return NewVoiceWSServer(
 		nil, // sessionAuth：bypass 下 admin 免 ownership
 		voiceTestExecutor{},
@@ -65,6 +69,8 @@ func newVoiceTestServer(asr *voiceTestASRSession) *VoiceWSServer {
 		nil,
 		loggateway.NewNoop(),
 		nil, // confirmer：语音确认拦截在 voice/service 包单测覆盖
+		nil, // archiver：语音留档在 voice/service 包单测覆盖
+		probe,
 	)
 }
 
@@ -158,4 +164,68 @@ func TestVoiceWSPingPong(t *testing.T) {
 	require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`)))
 	msg := readVoiceJSON(t, conn)
 	require.Equal(t, "pong", msg["type"])
+}
+
+// ---- /v1/voice/status（V2-T8 差距2：麦克风置灰门控的可用性探测） ----
+
+func getVoiceStatus(t *testing.T, srv *httptest.Server) (int, map[string]any) {
+	t.Helper()
+	resp, err := http.Get(srv.URL + "/v1/voice/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var m map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&m))
+	return resp.StatusCode, m
+}
+
+func TestVoiceStatusAvailable(t *testing.T) {
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
+	t.Setenv("DEPLOY_ENV", "test")
+	s := newVoiceTestServerWithProbe(&voiceTestASRSession{events: make(chan biz.ASREvent, 1)},
+		func(context.Context) (bool, bool) { return true, true })
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceStatus))
+	defer srv.Close()
+
+	code, m := getVoiceStatus(t, srv)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, true, m["asr_available"])
+	require.Equal(t, true, m["tts_available"])
+}
+
+func TestVoiceStatusUnavailable(t *testing.T) {
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
+	t.Setenv("DEPLOY_ENV", "test")
+	s := newVoiceTestServerWithProbe(&voiceTestASRSession{events: make(chan biz.ASREvent, 1)},
+		func(context.Context) (bool, bool) { return false, true })
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceStatus))
+	defer srv.Close()
+
+	code, m := getVoiceStatus(t, srv)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, m["asr_available"])
+	require.Equal(t, true, m["tts_available"])
+}
+
+// nil probe（未接线）必须保守报不可用，禁止默认可用误导前端放开麦克风。
+func TestVoiceStatusNilProbeConservative(t *testing.T) {
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
+	t.Setenv("DEPLOY_ENV", "test")
+	s := newVoiceTestServer(&voiceTestASRSession{events: make(chan biz.ASREvent, 1)})
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceStatus))
+	defer srv.Close()
+
+	code, m := getVoiceStatus(t, srv)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, false, m["asr_available"])
+	require.Equal(t, false, m["tts_available"])
+}
+
+func TestVoiceStatusUnauthorizedWithoutBypass(t *testing.T) {
+	s := newVoiceTestServer(&voiceTestASRSession{events: make(chan biz.ASREvent, 1)})
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceStatus))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/v1/voice/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

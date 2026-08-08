@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	nethttp "net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
@@ -19,16 +21,23 @@ import (
 // volcFlagLastPackage 标记服务端最后一帧（0b0010）。帧头其余 flags 见 volc_frame.go。
 const volcFlagLastPackage byte = 0x2
 
+// defaultASRAckTimeout 是等待服务端应答 full client request 的默认超时。
+// SAUC 协议保证该应答必达；超时即上游静默/协议不匹配（真机事故：误连 v2 端点
+// 导致 WS 握手成功但永不应答），必须 fail-fast 而非挂起到语音会话 10min 空闲回收。
+const defaultASRAckTimeout = 3 * time.Second
+
 // volcASRProvider 实现火山 SAUC 流式 ASR（双向 WS，服务端 VAD 端点检测）。
 // 协议字段按火山公开文档；字节级真机校准归 V1-T10。
 type volcASRProvider struct {
 	cfg  biz.ASRProviderConfig
 	dial wsDialer
 	lg   loggateway.Logger
+	// ackTimeout 覆盖默认应答超时（测试用）；<=0 回退 defaultASRAckTimeout。
+	ackTimeout time.Duration
 }
 
 func newVolcASRProvider(cfg biz.ASRProviderConfig, lg loggateway.Logger) biz.StreamingASRProvider {
-	return &volcASRProvider{cfg: cfg, dial: gorillaDialer, lg: lg}
+	return &volcASRProvider{cfg: cfg, dial: gorillaDialer, lg: lg, ackTimeout: defaultASRAckTimeout}
 }
 
 func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (biz.ASRSession, error) {
@@ -57,8 +66,76 @@ func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (bi
 		_ = conn.Close()
 		return nil, apierror.Wrap(err, apierror.CodeUnavailable, "speech")
 	}
+	// SAUC 协议保证 full client request 必有 full server response（或 error frame）。
+	// 同步消费首帧应答：上游静默/协议不匹配时 fail-fast，而非让语音会话挂起。
+	if err := p.waitServerAck(ctx, conn); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
 	go s.readPump()
 	return s, nil
+}
+
+// ackResult 承载首帧读取结果（带缓冲，Open 超时返回后 goroutine 随 conn.Close 退出，无泄漏）。
+type ackResult struct {
+	frame volcFrame
+	err   error
+}
+
+// waitServerAck 同步等待 full client request 的服务端首帧应答。
+// 超时 / 读失败 / error frame 均判定 Open 失败（UNAVAILABLE），由调用方关闭连接。
+func (p *volcASRProvider) waitServerAck(ctx context.Context, conn wsConn) error {
+	timeout := p.ackTimeout
+	if timeout <= 0 {
+		timeout = defaultASRAckTimeout
+	}
+	ch := make(chan ackResult, 1)
+	go func() {
+		f, err := readFirstServerFrame(conn)
+		ch <- ackResult{f, err}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return apierror.Wrap(ctx.Err(), apierror.CodeUnavailable, "speech")
+	case <-timer.C:
+		err := apierror.Unavailable("speech", "ASR server did not respond to full client request within %v (upstream silent or protocol mismatch)", timeout)
+		p.lg.Warn("volc asr: open failed, server silent after full client request", loggateway.Err(err))
+		return err
+	case r := <-ch:
+		if r.err != nil {
+			return apierror.Wrap(r.err, apierror.CodeUnavailable, "speech")
+		}
+		if r.frame.msgType == volcMsgError {
+			return apierror.Unavailable("speech", "ASR server rejected full client request: %s", formatVolcErrorPayload(r.frame.payload))
+		}
+		return nil
+	}
+}
+
+// readFirstServerFrame 读取服务端首帧（须为 SAUC 二进制帧）。
+func readFirstServerFrame(conn wsConn) (volcFrame, error) {
+	mt, data, err := conn.ReadMessage()
+	if err != nil {
+		return volcFrame{}, err
+	}
+	if mt != websocket.BinaryMessage {
+		return volcFrame{}, fmt.Errorf("expected binary first frame, got message type %d", mt)
+	}
+	return unmarshalVolcFrame(bytes.NewReader(data))
+}
+
+// formatVolcErrorPayload 提取 SAUC error frame 的 code/message；解析失败回退原始 payload。
+func formatVolcErrorPayload(payload []byte) string {
+	var e struct {
+		Code    int64  `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(payload, &e); err == nil && (e.Code != 0 || e.Message != "") {
+		return fmt.Sprintf("code %d: %s", e.Code, e.Message)
+	}
+	return string(payload)
 }
 
 type volcASRSession struct {

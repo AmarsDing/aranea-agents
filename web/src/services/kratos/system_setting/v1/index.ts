@@ -22,6 +22,9 @@ export type SystemSettings = {
   evalLlm: EvalLLMSettings | undefined;
   // Web research (Tavily / SerpAPI) defaults for web_research tool. Env TAVILY_API_KEY / SERPAPI_API_KEY overrides api_key when DB empty.
   webResearch: WebResearchSettings | undefined;
+  // Voice companion (M74) ASR/TTS provider config. Empty fields fall back to
+  // SPEECH_* env vars at read time (field-level merge); credentials never returned.
+  speech: SpeechSettings | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized
@@ -57,6 +60,33 @@ export type WebResearchSettings = {
   hasApiKey: boolean | undefined;
 };
 
+export type SpeechSettings = {
+  asr: SpeechASRSettings | undefined;
+  tts: SpeechTTSSettings | undefined;
+  // Stored voice-archive toggle. False may mean "explicitly off" or "unset →
+  // env SPEECH_ARCHIVE_USER_AUDIO fallback" (tri-state collapsed for display).
+  archiveUserAudio: boolean | undefined;
+};
+
+export type SpeechASRSettings = {
+  driver: string | undefined;
+  endpoint: string | undefined;
+  resourceId: string | undefined;
+  language: string | undefined;
+  configured: boolean | undefined;
+  hasApiKey: boolean | undefined;
+};
+
+export type SpeechTTSSettings = {
+  driver: string | undefined;
+  endpoint: string | undefined;
+  resourceId: string | undefined;
+  voice: string | undefined;
+  speedRatio: number | undefined;
+  configured: boolean | undefined;
+  hasApiKey: boolean | undefined;
+};
+
 export type UpdateSystemSettingsRequest = {
   workDirectory: string | undefined;
   rootDirectory: string | undefined;
@@ -81,6 +111,24 @@ export type UpdateSystemSettingsRequest = {
   webResearchSearchDepth: string | undefined;
   webResearchTimeoutSec: number | undefined;
   webResearchHttpProxy: string | undefined;
+  // Voice companion speech settings (M74 V2-T7). Empty string / 0 = keep stored
+  // value; credential fields: empty = do not change stored key, non-empty replaces.
+  speechAsrDriver: string | undefined;
+  speechAsrEndpoint: string | undefined;
+  speechAsrAppKey: string | undefined;
+  speechAsrAccessKey: string | undefined;
+  speechAsrResourceId: string | undefined;
+  speechAsrLanguage: string | undefined;
+  speechTtsDriver: string | undefined;
+  speechTtsEndpoint: string | undefined;
+  speechTtsAppKey: string | undefined;
+  speechTtsAccessKey: string | undefined;
+  speechTtsResourceId: string | undefined;
+  speechTtsVoice: string | undefined;
+  speechTtsSpeedRatio: number | undefined;
+  // Tri-state via proto3 optional: unset = keep stored value; explicit true/false
+  // replaces (explicit value ends env fallback for the toggle).
+  speechArchiveUserAudio?: boolean;
 };
 
 export type TestWebResearchRequest = {

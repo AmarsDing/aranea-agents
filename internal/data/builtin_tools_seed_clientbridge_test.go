@@ -45,3 +45,24 @@ func TestBuiltinPlatformToolSeeds_ClientBridge(t *testing.T) {
 		t.Errorf("client_open_url riskLevel = %q, want low", url.riskLevel)
 	}
 }
+
+// TestDDLMigrations_BuiltinToolsClientReseed guards the M74 V2-T8 gap-1 fix:
+// migration 20260610 (builtin_platform_tools) was applied on existing
+// databases BEFORE client_open_app/client_open_url were added to the seed
+// list; the schema_migrations gate then skips 20260610 forever, so those DBs
+// permanently lack the client bridge tools (voice「打开微信」degrades to
+// "client offline" because the tool row is missing entirely). The reseed
+// migration must stay registered — the seed is idempotent (ON CONFLICT
+// DO NOTHING + catalog UPDATEs), so re-running is safe.
+func TestDDLMigrations_BuiltinToolsClientReseed(t *testing.T) {
+	const wantVersion = 20261202
+	for _, m := range ddlMigrations {
+		if m.Version == wantVersion {
+			if m.Func == nil {
+				t.Fatalf("migration %d (%s) must carry the reseed Func", wantVersion, m.Name)
+			}
+			return
+		}
+	}
+	t.Fatalf("migration %d (builtin_platform_tools_client_reseed) not registered", wantVersion)
+}

@@ -116,6 +116,19 @@ func (r *RepoSandboxRunner) PrepareWorktree(ctx context.Context, runID, baseRef 
 
 	r.mu.Lock()
 	err := r.runGit(ctx, r.repoRoot, nil, "worktree", "add", "-b", branch, wtPath, ref)
+	if err != nil && !r.worktreeRegistered(ctx, wtPath) {
+		// 崩溃孤儿自愈（2026-08-08 exit 128 事故）：分支已建/目录残留但 worktree
+		// 未注册 = 上次 prepare 中途失败（或进程被杀）的遗留。清理后重试一次；
+		// 再失败同样清理，保证错误返回后无孤儿，下次 stale 恢复仍是干净起点。
+		// 已注册的同名 worktree（活跃重复 runID）不在此清理，直接报错。
+		r.purgeWorktreeOrphan(ctx, branch, wtPath)
+		if retryErr := r.runGit(ctx, r.repoRoot, nil, "worktree", "add", "-b", branch, wtPath, ref); retryErr != nil {
+			r.purgeWorktreeOrphan(ctx, branch, wtPath)
+			r.mu.Unlock()
+			return "", nil, err
+		}
+		err = nil
+	}
 	r.mu.Unlock()
 	if err != nil {
 		return "", nil, err
@@ -247,9 +260,53 @@ func (r *RepoSandboxRunner) checkSandboxPath(p string) (string, error) {
 	return abs, nil
 }
 
+// worktreeRegistered reports whether wtPath is a currently registered git
+// worktree. Conservative: returns true when the listing itself fails, so an
+// active worktree is never mistaken for a crash orphan and purged.
+func (r *RepoSandboxRunner) worktreeRegistered(ctx context.Context, wtPath string) bool {
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.longpaths=true", "worktree", "list", "--porcelain")
+	cmd.Dir = r.repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return true
+	}
+	target := filepath.ToSlash(wtPath)
+	for line := range strings.Lines(string(out)) {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok {
+			if strings.EqualFold(strings.TrimRight(p, "\r\n"), target) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// purgeWorktreeOrphan best-effort removes a crash-orphaned branch + leftover
+// directory (no registered worktree). Errors are logged, never fatal: the
+// subsequent add retry is the real verdict.
+func (r *RepoSandboxRunner) purgeWorktreeOrphan(ctx context.Context, branch, wtPath string) {
+	if err := r.runGit(ctx, r.repoRoot, nil, "branch", "-D", branch); err != nil {
+		r.lg.Debug("self-improve orphan branch delete skipped",
+			loggateway.StepID("sandbox.worktree.purge"),
+			loggateway.Str("branch", branch),
+			loggateway.Err(err))
+	}
+	if err := os.RemoveAll(wtPath); err != nil {
+		r.lg.Warn("self-improve orphan dir removal failed",
+			loggateway.StepID("sandbox.worktree.purge"),
+			loggateway.Str("path", wtPath),
+			loggateway.Err(err))
+	}
+}
+
 // runGit executes a git command with optional stdin and wraps failures with
 // the captured output for diagnostics.
 func (r *RepoSandboxRunner) runGit(ctx context.Context, dir string, stdin *strings.Reader, args ...string) error {
+	// core.longpaths：Windows 下沙盒路径前缀（repoRoot + .aranea-self-improve +
+	// uuid ≈ 76 字符）叠加仓库长路径文件（bench 输出最长达 229 字符）撞
+	// MAX_PATH(260)，checkout/cleanup 均 "Filename too long" exit 128
+	//（2026-08-08 事故）；非 Windows 平台该配置无害。
+	args = append([]string{"-c", "core.longpaths=true"}, args...)
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	if stdin != nil {

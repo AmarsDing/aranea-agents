@@ -177,6 +177,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			ToolResultGate:   d.rt.ToolResultGate,
 			SubAgentService:  d.subAgentSvc,
 			OutboundRouter:   d.outboundRouter,
+			ClientBridge:     d.rt.ClientBridge,
 			L0SnapshotForcer: d.td.SessionRT,
 			LearningLoop:     d.td.LearningLoop,
 			ToolVersionHash:  toolHash,

@@ -175,6 +175,9 @@ func (r *SelfImprovementRunRepo) List(ctx context.Context, filter biz.RunFilter)
 	if filter.Status != "" {
 		q = q.Where(selfimprovementrun.StatusEQ(string(filter.Status)))
 	}
+	if len(filter.Statuses) > 0 {
+		q = q.Where(selfimprovementrun.StatusIn(siRunStatusStrings(filter.Statuses)...))
+	}
 	if filter.RiskLevel != "" {
 		q = q.Where(selfimprovementrun.RiskLevelEQ(string(filter.RiskLevel)))
 	}
@@ -212,6 +215,9 @@ func (r *SelfImprovementRunRepo) Count(ctx context.Context, filter biz.RunFilter
 	if filter.Status != "" {
 		q = q.Where(selfimprovementrun.StatusEQ(string(filter.Status)))
 	}
+	if len(filter.Statuses) > 0 {
+		q = q.Where(selfimprovementrun.StatusIn(siRunStatusStrings(filter.Statuses)...))
+	}
 	if filter.RiskLevel != "" {
 		q = q.Where(selfimprovementrun.RiskLevelEQ(string(filter.RiskLevel)))
 	}
@@ -225,29 +231,13 @@ func (r *SelfImprovementRunRepo) Count(ctx context.Context, filter biz.RunFilter
 	return n, nil
 }
 
-func (r *SelfImprovementRunRepo) ListObservingDue(ctx context.Context, now time.Time) ([]biz.SelfImprovementRun, error) {
-	if r == nil || r.data == nil {
-		return nil, apierror.Internal("SELF_IMPROVE", "database not configured")
+// siRunStatusStrings converts the biz status slice for Ent StatusIn predicates.
+func siRunStatusStrings(statuses []biz.SelfImprovementRunStatus) []string {
+	out := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		out = append(out, string(s))
 	}
-	rows, err := r.data.RW().Read(ctx).SelfImprovementRun.Query().
-		Where(
-			selfimprovementrun.StatusEQ(string(biz.RunStatusObserving)),
-			selfimprovementrun.ObserveUntilNotNil(),
-			selfimprovementrun.ObserveUntilLTE(now),
-		).
-		All(ctx)
-	if err != nil {
-		return nil, entErrToBizErr(err, "SELF_IMPROVE")
-	}
-	out := make([]biz.SelfImprovementRun, 0, len(rows))
-	for _, row := range rows {
-		b, err := siRunToBiz(row)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *b)
-	}
-	return out, nil
+	return out
 }
 
 // ListTerminalPendingOutcome implements biz.SelfImprovementRunReader: terminal
@@ -369,6 +359,17 @@ func (r *SelfImprovementRunRepo) Update(ctx context.Context, run *biz.SelfImprov
 	} else {
 		u.ClearObserveUntil()
 	}
+
+	// Metadata 全量覆盖（与 diagnosis/critic/governance 同语义：调用方持有的
+	// run 由 GetByID/List 载入，Metadata 即当前真相）。缺失此映射曾导致
+	// watchdog 基线/到期快照永不落库（run 永卡 observing）。
+	metadata := map[string]any{}
+	if len(run.Metadata) > 0 {
+		if err := json.Unmarshal(run.Metadata, &metadata); err != nil {
+			return entErrToBizErr(err, "SELF_IMPROVE")
+		}
+	}
+	u.SetMetadata(metadata)
 
 	n, err := u.Save(ctx)
 	if err != nil {
@@ -574,12 +575,21 @@ func siRunToBiz(row *ent.SelfImprovementRun) (*biz.SelfImprovementRun, error) {
 			Deletions: row.DiffStats["deletions"],
 		}
 	}
-	if row.Diagnosis != nil {
+	// 空 map / 零值结构体均视为未设置：Update 全量覆盖在 biz 字段为 nil 时写入
+	// {}（ent JSON 列非 Nillable，无 NULL 语义）；历史读路径把 {} 物化为零值
+	// 结构体后被再次全量覆盖写回，升级为带完整零值字段的 map。两种污染形态
+	// 都不可能来自真实生产路径（ParseDiagnosisJSON 强制 root_cause；
+	// ParseCriticReportJSON 强制 risk_level 枚举；SIRiskClassifier 恒设
+	// channel），读到即视为该阶段未执行——否则零值 CriticReport{IsSafe:false}
+	// 经 API 透出后被前端误渲染为「存在风险」。
+	if len(row.Diagnosis) > 0 {
 		d := &biz.Diagnosis{}
 		if err := siMapToStruct(row.Diagnosis, d); err != nil {
 			return nil, entErrToBizErr(err, "SELF_IMPROVE")
 		}
-		run.Diagnosis = d
+		if d.RootCause != "" {
+			run.Diagnosis = d
+		}
 	}
 	if row.VerificationReport != nil {
 		raw, err := json.Marshal(row.VerificationReport)
@@ -592,19 +602,23 @@ func siRunToBiz(row *ent.SelfImprovementRun) (*biz.SelfImprovementRun, error) {
 		}
 		run.VerificationReport = report
 	}
-	if row.CriticReport != nil {
+	if len(row.CriticReport) > 0 {
 		c := &biz.CriticReport{}
 		if err := siMapToStruct(row.CriticReport, c); err != nil {
 			return nil, entErrToBizErr(err, "SELF_IMPROVE")
 		}
-		run.CriticReport = c
+		if c.RiskLevel != "" {
+			run.CriticReport = c
+		}
 	}
-	if row.Governance != nil {
+	if len(row.Governance) > 0 {
 		g := &biz.GovernanceDecision{}
 		if err := siMapToStruct(row.Governance, g); err != nil {
 			return nil, entErrToBizErr(err, "SELF_IMPROVE")
 		}
-		run.Governance = g
+		if g.Channel != "" {
+			run.Governance = g
+		}
 	}
 	if row.ObserveUntil != nil {
 		t := *row.ObserveUntil

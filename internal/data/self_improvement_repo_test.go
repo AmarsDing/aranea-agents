@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,6 +91,74 @@ func TestSelfImprovementRunRepo_GetAbsentReturnsNilNil(t *testing.T) {
 	}
 }
 
+// 回归：record_only / fail-fast 路径的 run 从未设置 Diagnosis/CriticReport/
+// Governance；Update 全量覆盖会把 nil 写成 {}（ent JSON 列非 Nillable），
+// 读路径必须把空 map 视为 nil——否则零值 CriticReport{IsSafe:false} 经 API
+// 透出后被前端误渲染为「存在风险（未通过安全审查）」。
+func TestSelfImprovementRunRepo_EmptyJSONMapsReadAsNil(t *testing.T) {
+	repo, ctx := setupSelfImprovementRepo(t)
+	if err := repo.Create(ctx, newTestRun("run-empty", "sug-empty", biz.RunStatusDetected)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// 模拟 record_only 关闭：nil 诊断/审查/治理经 Update 全量覆盖落库。
+	run, _ := repo.GetByID(ctx, "run-empty")
+	run.Status = biz.RunStatusClosed
+	run.ClosedReason = "record_only: confidence 0.35 < 0.50"
+	if err := repo.Update(ctx, run, biz.RunStatusDetected); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	got, err := repo.GetByID(ctx, "run-empty")
+	if err != nil || got == nil {
+		t.Fatalf("GetByID: %v, %+v", err, got)
+	}
+	if got.Diagnosis != nil {
+		t.Errorf("空 diagnosis 应读为 nil, 实际 %+v", got.Diagnosis)
+	}
+	if got.CriticReport != nil {
+		t.Errorf("空 critic_report 应读为 nil, 实际 %+v", got.CriticReport)
+	}
+	if got.Governance != nil {
+		t.Errorf("空 governance 应读为 nil, 实际 %+v", got.Governance)
+	}
+}
+
+// 回归（污染升级形态）：历史读路径把 {} 物化为零值结构体后，下一次 Update
+// 全量覆盖会将其写回为带完整零值字段的 map（{"is_safe":false,...}）。该形态
+// 不可能来自真实生产路径（ParseCriticReportJSON 强制 risk_level 枚举；
+// SIRiskClassifier 恒设 channel；ParseDiagnosisJSON 强制 root_cause），
+// 读路径必须同样视为未设置。
+func TestSelfImprovementRunRepo_ZeroValueJSONMapsReadAsNil(t *testing.T) {
+	client, _ := testhelper.SetupTestPG(t)
+	d := newDataFromClient(client, loggateway.NewNoop())
+	repo := NewSelfImprovementRunRepo(d, loggateway.NewNoop())
+	ctx := context.Background()
+	if err := repo.Create(ctx, newTestRun("run-zero", "sug-zero", biz.RunStatusDetected)); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	// 直接写入升级形态的零值污染（模拟历史缺陷库行）。
+	zeroCritic := map[string]any{"is_safe": false, "risk_level": "", "concerns": nil, "suggestion": ""}
+	zeroGov := map[string]any{"risk_level": "", "channel": "", "rule_hits": nil}
+	zeroDiag := map[string]any{"root_cause": "", "fix_strategy": "", "impact_scope": "", "confidence": 0}
+	if _, err := client.SelfImprovementRun.UpdateOneID("run-zero").
+		SetCriticReport(zeroCritic).SetGovernance(zeroGov).SetDiagnosis(zeroDiag).
+		Save(ctx); err != nil {
+		t.Fatalf("seed zero-value pollution: %v", err)
+	}
+	got, err := repo.GetByID(ctx, "run-zero")
+	if err != nil || got == nil {
+		t.Fatalf("GetByID: %v, %+v", err, got)
+	}
+	if got.Diagnosis != nil {
+		t.Errorf("零值 diagnosis 应读为 nil, 实际 %+v", got.Diagnosis)
+	}
+	if got.CriticReport != nil {
+		t.Errorf("零值 critic_report 应读为 nil, 实际 %+v", got.CriticReport)
+	}
+	if got.Governance != nil {
+		t.Errorf("零值 governance 应读为 nil, 实际 %+v", got.Governance)
+	}
+}
+
 func TestSelfImprovementRunRepo_UpdateCAS(t *testing.T) {
 	repo, ctx := setupSelfImprovementRepo(t)
 	if err := repo.Create(ctx, newTestRun("run-2", "sug-2", biz.RunStatusDetected)); err != nil {
@@ -98,12 +168,18 @@ func TestSelfImprovementRunRepo_UpdateCAS(t *testing.T) {
 	run, _ := repo.GetByID(ctx, "run-2")
 	run.Status = biz.RunStatusDiagnosing
 	run.Diagnosis = &biz.Diagnosis{RootCause: "rc", Confidence: 0.9}
+	run.Metadata = json.RawMessage(`{"observe_baseline":{"error_rate":0.02,"p95_ms":800,"alert_count":1}}`)
 	if err := repo.Update(ctx, run, biz.RunStatusDetected); err != nil {
 		t.Fatalf("Update CAS: %v", err)
 	}
 	got, _ := repo.GetByID(ctx, "run-2")
 	if got.Status != biz.RunStatusDiagnosing || got.Diagnosis == nil || got.Diagnosis.Confidence != 0.9 {
 		t.Fatalf("Update 未生效: %+v", got)
+	}
+	// Metadata 往返回归：Update 必须持久化 Metadata（watchdog 基线/到期快照
+	// 依赖它；曾缺失 SetMetadata 导致基线永不落库、run 永卡 observing）。
+	if len(got.Metadata) == 0 || !strings.Contains(string(got.Metadata), "observe_baseline") {
+		t.Fatalf("Update 后 Metadata 丢失: %s", got.Metadata)
 	}
 
 	// CAS 冲突：from 状态不匹配 → CodeConflict
@@ -133,15 +209,11 @@ func TestSelfImprovementRunRepo_RecordAttempt(t *testing.T) {
 	}
 }
 
-func TestSelfImprovementRunRepo_ListAndObservingDue(t *testing.T) {
+func TestSelfImprovementRunRepo_List(t *testing.T) {
 	repo, ctx := setupSelfImprovementRepo(t)
-	past := time.Now().UTC().Add(-time.Hour)
-	future := time.Now().UTC().Add(time.Hour)
 
 	r1 := newTestRun("run-a", "sug-a", biz.RunStatusObserving)
-	r1.ObserveUntil = &past
 	r2 := newTestRun("run-b", "sug-b", biz.RunStatusObserving)
-	r2.ObserveUntil = &future
 	r2.TriggerSource = biz.TriggerSourcePerfBottleneck
 	r3 := newTestRun("run-c", "sug-c", biz.RunStatusDetected)
 	for _, r := range []*biz.SelfImprovementRun{r1, r2, r3} {
@@ -163,9 +235,18 @@ func TestSelfImprovementRunRepo_ListAndObservingDue(t *testing.T) {
 		t.Fatalf("List 分页: %v, len=%d", err, len(paged))
 	}
 
-	due, err := repo.ListObservingDue(ctx, time.Now().UTC())
-	if err != nil || len(due) != 1 || due[0].ID != "run-a" {
-		t.Fatalf("ListObservingDue: %v, %+v", err, due)
+	// Statuses 多状态 IN 过滤（drive 职责域圈选用）；与 Status 叠加为 AND。
+	byStatuses, err := repo.List(ctx, biz.RunFilter{Statuses: []biz.SelfImprovementRunStatus{biz.RunStatusObserving, biz.RunStatusDetected}, Limit: 10})
+	if err != nil || len(byStatuses) != 3 {
+		t.Fatalf("List Statuses[observing,detected]: %v, len=%d", err, len(byStatuses))
+	}
+	single, err := repo.List(ctx, biz.RunFilter{Statuses: []biz.SelfImprovementRunStatus{biz.RunStatusDetected}, Limit: 10})
+	if err != nil || len(single) != 1 || single[0].ID != "run-c" {
+		t.Fatalf("List Statuses[detected]: %v, %+v", err, single)
+	}
+	andCombo, err := repo.List(ctx, biz.RunFilter{Status: biz.RunStatusObserving, Statuses: []biz.SelfImprovementRunStatus{biz.RunStatusDetected}, Limit: 10})
+	if err != nil || len(andCombo) != 0 {
+		t.Fatalf("Status EQ + Statuses IN 应为 AND（空结果）: %v, len=%d", err, len(andCombo))
 	}
 }
 

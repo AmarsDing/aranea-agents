@@ -330,6 +330,20 @@ func (_u *EvalRunUpdate) SetNillableFinishedAt(v *string) *EvalRunUpdate {
 	return _u
 }
 
+// SetDatasetHash sets the "dataset_hash" field.
+func (_u *EvalRunUpdate) SetDatasetHash(v string) *EvalRunUpdate {
+	_u.mutation.SetDatasetHash(v)
+	return _u
+}
+
+// SetNillableDatasetHash sets the "dataset_hash" field if the given value is not nil.
+func (_u *EvalRunUpdate) SetNillableDatasetHash(v *string) *EvalRunUpdate {
+	if v != nil {
+		_u.SetDatasetHash(*v)
+	}
+	return _u
+}
+
 // SetWorkspaceID sets the "workspace_id" field.
 func (_u *EvalRunUpdate) SetWorkspaceID(v string) *EvalRunUpdate {
 	_u.mutation.SetWorkspaceID(v)
@@ -439,6 +453,11 @@ func (_u *EvalRunUpdate) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *EvalRunUpdate) check() error {
+	if v, ok := _u.mutation.DatasetHash(); ok {
+		if err := evalrun.DatasetHashValidator(v); err != nil {
+			return &ValidationError{Name: "dataset_hash", err: fmt.Errorf(`ent: validator failed for field "EvalRun.dataset_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.WorkspaceID(); ok {
 		if err := evalrun.WorkspaceIDValidator(v); err != nil {
 			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "EvalRun.workspace_id": %w`, err)}
@@ -536,6 +555,9 @@ func (_u *EvalRunUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DatasetHash(); ok {
+		_spec.SetField(evalrun.FieldDatasetHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)
@@ -938,6 +960,20 @@ func (_u *EvalRunUpdateOne) SetNillableFinishedAt(v *string) *EvalRunUpdateOne {
 	return _u
 }
 
+// SetDatasetHash sets the "dataset_hash" field.
+func (_u *EvalRunUpdateOne) SetDatasetHash(v string) *EvalRunUpdateOne {
+	_u.mutation.SetDatasetHash(v)
+	return _u
+}
+
+// SetNillableDatasetHash sets the "dataset_hash" field if the given value is not nil.
+func (_u *EvalRunUpdateOne) SetNillableDatasetHash(v *string) *EvalRunUpdateOne {
+	if v != nil {
+		_u.SetDatasetHash(*v)
+	}
+	return _u
+}
+
 // SetWorkspaceID sets the "workspace_id" field.
 func (_u *EvalRunUpdateOne) SetWorkspaceID(v string) *EvalRunUpdateOne {
 	_u.mutation.SetWorkspaceID(v)
@@ -1060,6 +1096,11 @@ func (_u *EvalRunUpdateOne) ExecX(ctx context.Context) {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *EvalRunUpdateOne) check() error {
+	if v, ok := _u.mutation.DatasetHash(); ok {
+		if err := evalrun.DatasetHashValidator(v); err != nil {
+			return &ValidationError{Name: "dataset_hash", err: fmt.Errorf(`ent: validator failed for field "EvalRun.dataset_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.WorkspaceID(); ok {
 		if err := evalrun.WorkspaceIDValidator(v); err != nil {
 			return &ValidationError{Name: "workspace_id", err: fmt.Errorf(`ent: validator failed for field "EvalRun.workspace_id": %w`, err)}
@@ -1174,6 +1215,9 @@ func (_u *EvalRunUpdateOne) sqlSave(ctx context.Context) (_node *EvalRun, err er
 	}
 	if value, ok := _u.mutation.FinishedAt(); ok {
 		_spec.SetField(evalrun.FieldFinishedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DatasetHash(); ok {
+		_spec.SetField(evalrun.FieldDatasetHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.WorkspaceID(); ok {
 		_spec.SetField(evalrun.FieldWorkspaceID, field.TypeString, value)

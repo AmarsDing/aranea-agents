@@ -561,11 +561,78 @@ func newLocalProgramCommand(
 	if resolved, ok := localProgramCommandPath(cwd, spec.Cmd, env); ok {
 		cmd.Path = resolved
 		cmd.Err = nil
+	} else if resolved, ok := resolveWindowsShellFallback(spec.Cmd, env); ok {
+		cmd.Path = resolved
+		cmd.Err = nil
 	} else {
 		cmd.Path = spec.Cmd
-		cmd.Err = exec.ErrNotFound
+		cmd.Err = fmt.Errorf("exec: %q: %w", spec.Cmd, exec.ErrNotFound)
 	}
 	return cmd
+}
+
+// resolveWindowsShellFallback locates the POSIX shell shipped with Git for
+// Windows when plain PATH resolution fails. The standard Git for Windows
+// installer adds only <Git>\cmd to PATH, so bash.exe under <Git>\bin is
+// present on the machine but invisible to PATH lookup; without this
+// fallback every workspace shell invocation fails with "executable file
+// not found".
+func resolveWindowsShellFallback(name string, env []string) (string, bool) {
+	return resolveWindowsShellFallbackForGOOS(name, env, runtime.GOOS)
+}
+
+func resolveWindowsShellFallbackForGOOS(
+	name string,
+	env []string,
+	goos string,
+) (string, bool) {
+	if goos != "windows" {
+		return "", false
+	}
+	if name != "bash" && name != "sh" {
+		return "", false
+	}
+	fileName := name + ".exe"
+	var candidates []string
+	// Sibling of git.exe discovered in PATH: <Git>\cmd\git.exe -> <Git>\bin.
+	if pathValue, ok := envValue(env, envPathKey); ok {
+		for _, dir := range filepath.SplitList(pathValue) {
+			if strings.TrimSpace(dir) == "" {
+				continue
+			}
+			if !isLocalExecutableFileForGOOS(
+				filepath.Join(dir, "git.exe"), goos,
+			) {
+				continue
+			}
+			root := filepath.Dir(dir)
+			candidates = append(candidates,
+				filepath.Join(root, "bin", fileName),
+				filepath.Join(root, "usr", "bin", fileName),
+			)
+		}
+	}
+	// Well-known Git for Windows install locations.
+	for _, key := range []string{
+		"ProgramFiles", "ProgramFiles(x86)",
+	} {
+		if base, ok := envValue(env, key); ok && base != "" {
+			candidates = append(candidates,
+				filepath.Join(base, "Git", "bin", fileName),
+			)
+		}
+	}
+	if base, ok := envValue(env, "LOCALAPPDATA"); ok && base != "" {
+		candidates = append(candidates,
+			filepath.Join(base, "Programs", "Git", "bin", fileName),
+		)
+	}
+	for _, candidate := range candidates {
+		if isLocalExecutableFileForGOOS(candidate, goos) {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 func localProgramCommandPath(

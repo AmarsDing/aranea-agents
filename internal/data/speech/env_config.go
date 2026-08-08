@@ -38,8 +38,11 @@ func envOr(name, fallback string) string {
 	return fallback
 }
 
-func (r *EnvSpeechConfigReader) ASRConfig(_ context.Context) (biz.ASRProviderConfig, error) {
-	cfg := biz.ASRProviderConfig{
+// loadEnvASRConfig reads raw ASR config from env without validation. Shared by
+// EnvSpeechConfigReader (V1, validating) and SystemSpeechConfigReader (V2-T7,
+// DB-first field-level merge fallback).
+func loadEnvASRConfig() biz.ASRProviderConfig {
+	return biz.ASRProviderConfig{
 		Driver:     envOr("SPEECH_ASR_DRIVER", defaultASRDriver),
 		Endpoint:   envOr("SPEECH_ASR_ENDPOINT", defaultASREndpoint),
 		AppKey:     strings.TrimSpace(os.Getenv("SPEECH_ASR_APP_KEY")),
@@ -47,20 +50,17 @@ func (r *EnvSpeechConfigReader) ASRConfig(_ context.Context) (biz.ASRProviderCon
 		ResourceID: envOr("SPEECH_ASR_RESOURCE_ID", defaultASRResourceID),
 		Language:   envOr("SPEECH_ASR_LANGUAGE", defaultASRLanguage),
 	}
-	if err := cfg.Validate(); err != nil {
-		return biz.ASRProviderConfig{}, err
-	}
-	return cfg, nil
 }
 
-func (r *EnvSpeechConfigReader) TTSConfig(_ context.Context) (biz.TTSProviderConfig, error) {
+// loadEnvTTSConfig reads raw TTS config from env without validation.
+func loadEnvTTSConfig() biz.TTSProviderConfig {
 	speed := defaultTTSSpeedRatio
 	if raw := strings.TrimSpace(os.Getenv("SPEECH_TTS_SPEED_RATIO")); raw != "" {
 		if v, err := strconv.ParseFloat(raw, 64); err == nil {
 			speed = v
 		}
 	}
-	cfg := biz.TTSProviderConfig{
+	return biz.TTSProviderConfig{
 		Driver:     envOr("SPEECH_TTS_DRIVER", defaultTTSDriver),
 		Endpoint:   envOr("SPEECH_TTS_ENDPOINT", defaultTTSEndpoint),
 		AppKey:     strings.TrimSpace(os.Getenv("SPEECH_TTS_APP_KEY")),
@@ -69,8 +69,37 @@ func (r *EnvSpeechConfigReader) TTSConfig(_ context.Context) (biz.TTSProviderCon
 		Voice:      strings.TrimSpace(os.Getenv("SPEECH_TTS_VOICE")),
 		SpeedRatio: speed,
 	}
+}
+
+// loadEnvArchiveUserAudio reads SPEECH_ARCHIVE_USER_AUDIO（V2-T6 语音留档开关）。
+// 默认 false；非法值按 false 处理（配置笔误不应打断语音链路）。
+func loadEnvArchiveUserAudio() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SPEECH_ARCHIVE_USER_AUDIO"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *EnvSpeechConfigReader) ASRConfig(_ context.Context) (biz.ASRProviderConfig, error) {
+	cfg := loadEnvASRConfig()
+	if err := cfg.Validate(); err != nil {
+		return biz.ASRProviderConfig{}, err
+	}
+	return cfg, nil
+}
+
+func (r *EnvSpeechConfigReader) TTSConfig(_ context.Context) (biz.TTSProviderConfig, error) {
+	cfg := loadEnvTTSConfig()
 	if err := cfg.Validate(); err != nil {
 		return biz.TTSProviderConfig{}, err
 	}
 	return cfg, nil
+}
+
+// ArchiveUserAudio 读取 SPEECH_ARCHIVE_USER_AUDIO（V2-T6 语音留档开关）。
+// 默认 false；非法值按 false 处理（配置笔误不应打断语音链路）。
+func (r *EnvSpeechConfigReader) ArchiveUserAudio(_ context.Context) (bool, error) {
+	return loadEnvArchiveUserAudio(), nil
 }

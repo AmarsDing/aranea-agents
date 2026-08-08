@@ -157,6 +157,27 @@ func TestSIGovernanceRouter_RejectChannel(t *testing.T) {
 	}
 }
 
+// 回归（2026-08-08）：reject 直接拼接 RuleHits 未截断，命中规则多/文案长时
+// 超 ent closed_reason MaxLen(64) → Update 校验失败 → reject 无法落库。
+func TestSIGovernanceRouter_RejectTruncatesClosedReason(t *testing.T) {
+	router, store, _, _ := siRouterFixture("reject", nil)
+	store.run.Governance.RuleHits = []string{"R1", strings.Repeat("core-path-glob-hit/", 8)}
+	channel, err := router.Route(context.Background(), "run-1")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if channel != "reject" || store.run.Status != RunStatusRejected {
+		t.Fatalf("channel=%q status=%s, want reject/rejected", channel, store.run.Status)
+	}
+	if len(store.run.ClosedReason) > siClosedReasonMaxLen {
+		t.Fatalf("ClosedReason len = %d, want <= %d: %q",
+			len(store.run.ClosedReason), siClosedReasonMaxLen, store.run.ClosedReason)
+	}
+	if !strings.HasPrefix(store.run.ClosedReason, "governance reject: R1") {
+		t.Errorf("ClosedReason 前缀信息丢失: %q", store.run.ClosedReason)
+	}
+}
+
 func TestSIGovernanceRouter_EntryGuards(t *testing.T) {
 	router, store, _, _ := siRouterFixture("auto", nil)
 	store.run.Status = RunStatusApplying // 非 awaiting_governance

@@ -612,6 +612,9 @@ internal/cronrunner/jobs/
 | `voice.provider.fallback` | warn | 语音服务降级 |
 | `voice.error` | error | 语音链路错误 |
 | `voice.confirm.resolved` | ok / — | 语音确认决议（M74 V2-T5，2026-08-08） |
+| `voice.archive.saved` | ok / — | 语音留档保存（M74 V2-T6，2026-08-08） |
+| `voice.archive.degraded` | warn | 语音留档降级（开关读取失败/存储失败，消息正常派发；M74 V2-T6，2026-08-08） |
+| `voice.archive.truncate` | warn | 语音留档截断（语句 PCM 超 8 MiB 上限；M74 V2-T6，2026-08-08） |
 
 #### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
 

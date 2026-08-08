@@ -245,9 +245,12 @@ export function useSelfImprovementPage() {
   const configuredRules = computed(() => riskRules.value?.configured ?? EMPTY_RULES);
   const effectiveRules = computed(() => riskRules.value?.effective ?? EMPTY_RULES);
 
-  function openRulesDialog() {
+  async function openRulesDialog() {
+    await store.loadRiskRules();
+    // 加载失败（503 未启用 → featureDisabled 空态；其他错误 → 错误横幅）时不打开
+    // 对话框，避免 configured/effective 回退 EMPTY_RULES 展示假零值。
+    if (featureDisabled.value || error.value) return;
     rulesDialogOpen.value = true;
-    void store.loadRiskRules();
   }
 
   async function saveRiskRulesAction(rules: SIRiskRules) {

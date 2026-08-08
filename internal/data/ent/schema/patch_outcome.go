@@ -40,7 +40,9 @@ func (PatchOutcome) Fields() []ent.Field {
 
 func (PatchOutcome) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("run_id"),
+		// 1 run : 1 outcome（D8 终态归因唯一性不变量）；ListTerminalPendingOutcome
+		// 的 NOT IN 去重是读路径优化，本唯一索引是写入兜底（防并发 tick 重归因）。
+		index.Fields("run_id").Unique(),
 		index.Fields("verdict", "created_at"),
 	}
 }

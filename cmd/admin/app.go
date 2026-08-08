@@ -125,6 +125,13 @@ func newApp(
 						teamUC.MigrateLegacyEmbeddedGraphs(consumerCtx)
 					})
 				}
+				// SP1-D：readiness 后全量构建知识链接内存图（派生索引，
+				// 失败仅降级——反链查询 DB 兜底，不阻塞启动）。
+				if knowledgeSvc != nil {
+					safego.Go(consumerCtx, "startup.knowledge_link_index", func() {
+						_ = knowledgeSvc.LoadKnowledgeLinkIndex(consumerCtx)
+					})
+				}
 				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, lg)
 				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
 			}

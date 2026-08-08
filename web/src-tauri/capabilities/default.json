@@ -2,11 +2,16 @@
   "identifier": "default",
   "description": "Default capability for the main window",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
+  },
   "permissions": [
     "core:default",
     "notification:default",
     "barcode-scanner:allow-scan",
     "barcode-scanner:allow-check-permissions",
-    "barcode-scanner:allow-request-permissions"
+    "barcode-scanner:allow-request-permissions",
+    "allow-client-open-app",
+    "allow-client-open-url"
   ]
 }

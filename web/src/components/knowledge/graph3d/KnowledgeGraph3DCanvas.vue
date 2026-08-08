@@ -43,7 +43,7 @@ import { EdgeLayer } from './render/EdgeLayer';
 import { ParticleLayer } from './render/ParticleLayer';
 import { BackdropLayer } from './render/BackdropLayer';
 import { BloomPipeline } from './render/BloomPipeline';
-import { LabelLayer, type LabelVisibility } from './render/LabelLayer';
+import { effectiveMinDegree, LabelLayer, type LabelVisibility } from './render/LabelLayer';
 import { Picker } from './render/Picker';
 import { PositionTexture } from './render/PositionTexture';
 import { ReticleLayer } from './render/ReticleLayer';
@@ -296,6 +296,10 @@ function rebuildGraph(): void {
   labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: QUALITY_SPECS[tier].labelCandidates });
   labelLayer.setLabelsEnabled(props.showLabels);
   scene.add(labelLayer.group);
+  // 动态度数下限（G5-G）：小图（最大度数 < 基准 4）降档到最大度数，hub 标签适应视图后可见。
+  let maxDeg = 0;
+  for (let i = 0; i < m.count; i++) if (m.degree[i] > maxDeg) maxDeg = m.degree[i];
+  labelVis.minDegree = effectiveMinDegree(maxDeg, LABEL_MIN_DEGREE);
 
   interaction.setHover(null);
   interaction.setSelected(m.docIdToIndex.get(props.selectedNodeId) ?? null);
@@ -577,7 +581,9 @@ function zoomToFit(ms = 600): void {
   if (tmpV1.lengthSq() < 1e-6) tmpV1.set(0, 0, 1);
   tmpV1.normalize();
   const toPos = center.clone().add(tmpV1.multiplyScalar(dist));
-  labelVis.maxDistance = dist * 0.85; // 标签距离阈值跟随图规模
+  // 标签距离阈值（G5-G 修复）：fitDist + 半径 → 适应视图时全图候选标签可达（由度数下限控量），
+  // 拉远后按距离渐进隐藏（原 ×0.85 在适应视图即全隐藏）。
+  labelVis.maxDistance = dist + radius;
   flyTo(toPos, center, ms);
 }
 

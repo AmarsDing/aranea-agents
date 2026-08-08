@@ -201,3 +201,23 @@ export type CollectionGraph = {
   nodes: CollectionGraphNode[];
   edges: CollectionGraphEdge[];
 };
+
+/** EntityMergeSuggestion 单条实体合并候选对（G5-F B11 实体治理）。
+ *  source = norm（name_norm 相同但展示名不同）| embedding（实体名 embedding 高相似）。 */
+export type EntityMergeSuggestion = {
+  keeper_id: number;
+  keeper_name: string;
+  mergee_id: number;
+  mergee_name: string;
+  /** norm | embedding */
+  source: string;
+  similarity: number;
+  tier: string;
+};
+
+/** MergeEntitiesResult 一键合并重写反馈（G5-F B10；内联展示重写条数）。 */
+export type MergeEntitiesResult = {
+  rewritten_mentions: number;
+  rewritten_links: number;
+  merged_entities: number;
+};

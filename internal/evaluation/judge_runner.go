@@ -13,8 +13,12 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
-const judgeSystemInstruction = `You are an evaluation judge. Score how well ACTUAL matches EXPECTED for the given INPUT.
-Reply with ONLY a JSON object: {"score": <decimal between 0 and 1>, "reason": "<brief explanation>"}.`
+// The framework evaluator prompts each define their own required output
+// format (two-line reasoning/label for llm_final_response, JSON rubricScores
+// for llm_rubric_response). The judge's system instruction must stay neutral:
+// imposing a format here conflicts with the user-message prompt and causes
+// intermittent parse failures (observed: "no final response blocks found").
+const judgeSystemInstruction = `You are an expert evaluation judge. Carefully follow the user's evaluation instructions and produce your judgment in EXACTLY the output format the user specifies, with no extra commentary.`
 
 const (
 	judgeMaxTokens   = 512

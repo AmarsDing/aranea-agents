@@ -836,6 +836,7 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 			inputPreview:   dbSess.InputPreview,
 			definitionJSON: dbSess.DefinitionJSON,
 			stepDedup:      newGraphStepDedup(),
+			nodeStarts:     newGraphNodeStartTracker(),
 			registeredAt:   time.Now(),
 		}
 		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.agentKeyFn, c.lg)

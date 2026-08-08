@@ -149,6 +149,11 @@ func FinishedAt(v string) predicate.EvalRun {
 	return predicate.EvalRun(sql.FieldEQ(FieldFinishedAt, v))
 }
 
+// DatasetHash applies equality check predicate on the "dataset_hash" field. It's identical to DatasetHashEQ.
+func DatasetHash(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldEQ(FieldDatasetHash, v))
+}
+
 // WorkspaceID applies equality check predicate on the "workspace_id" field. It's identical to WorkspaceIDEQ.
 func WorkspaceID(v string) predicate.EvalRun {
 	return predicate.EvalRun(sql.FieldEQ(FieldWorkspaceID, v))
@@ -1037,6 +1042,71 @@ func FinishedAtEqualFold(v string) predicate.EvalRun {
 // FinishedAtContainsFold applies the ContainsFold predicate on the "finished_at" field.
 func FinishedAtContainsFold(v string) predicate.EvalRun {
 	return predicate.EvalRun(sql.FieldContainsFold(FieldFinishedAt, v))
+}
+
+// DatasetHashEQ applies the EQ predicate on the "dataset_hash" field.
+func DatasetHashEQ(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldEQ(FieldDatasetHash, v))
+}
+
+// DatasetHashNEQ applies the NEQ predicate on the "dataset_hash" field.
+func DatasetHashNEQ(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldNEQ(FieldDatasetHash, v))
+}
+
+// DatasetHashIn applies the In predicate on the "dataset_hash" field.
+func DatasetHashIn(vs ...string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldIn(FieldDatasetHash, vs...))
+}
+
+// DatasetHashNotIn applies the NotIn predicate on the "dataset_hash" field.
+func DatasetHashNotIn(vs ...string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldNotIn(FieldDatasetHash, vs...))
+}
+
+// DatasetHashGT applies the GT predicate on the "dataset_hash" field.
+func DatasetHashGT(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldGT(FieldDatasetHash, v))
+}
+
+// DatasetHashGTE applies the GTE predicate on the "dataset_hash" field.
+func DatasetHashGTE(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldGTE(FieldDatasetHash, v))
+}
+
+// DatasetHashLT applies the LT predicate on the "dataset_hash" field.
+func DatasetHashLT(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldLT(FieldDatasetHash, v))
+}
+
+// DatasetHashLTE applies the LTE predicate on the "dataset_hash" field.
+func DatasetHashLTE(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldLTE(FieldDatasetHash, v))
+}
+
+// DatasetHashContains applies the Contains predicate on the "dataset_hash" field.
+func DatasetHashContains(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldContains(FieldDatasetHash, v))
+}
+
+// DatasetHashHasPrefix applies the HasPrefix predicate on the "dataset_hash" field.
+func DatasetHashHasPrefix(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldHasPrefix(FieldDatasetHash, v))
+}
+
+// DatasetHashHasSuffix applies the HasSuffix predicate on the "dataset_hash" field.
+func DatasetHashHasSuffix(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldHasSuffix(FieldDatasetHash, v))
+}
+
+// DatasetHashEqualFold applies the EqualFold predicate on the "dataset_hash" field.
+func DatasetHashEqualFold(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldEqualFold(FieldDatasetHash, v))
+}
+
+// DatasetHashContainsFold applies the ContainsFold predicate on the "dataset_hash" field.
+func DatasetHashContainsFold(v string) predicate.EvalRun {
+	return predicate.EvalRun(sql.FieldContainsFold(FieldDatasetHash, v))
 }
 
 // WorkspaceIDEQ applies the EQ predicate on the "workspace_id" field.

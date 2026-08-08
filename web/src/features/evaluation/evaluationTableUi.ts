@@ -1,5 +1,13 @@
 import type { QTableColumn } from 'quasar';
-import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint, JudgeDivergenceCase } from './types';
+import type {
+  EvalCaseResult,
+  EvalFailureGroup,
+  EvalRun,
+  EvalRunComparison,
+  EvalRunPreference,
+  EvalTrendPoint,
+  JudgeDivergenceCase,
+} from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
 /** EvaluationPage — Run 列表 */
@@ -53,7 +61,7 @@ export const EVAL_RECENT_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
   registryCol<EvalRun>('created_at', '时间', 'created_at', 'left', REGISTRY_COL_W.time),
 ];
 
-/** EvaluationAnalyticsPanel — Run 对比 */
+/** EvaluationAnalyticsPanel — Run 对比（actions 列由面板 slot 渲染 pairwise 按钮） */
 export const EVAL_COMPARE_TABLE_COLUMNS: QTableColumn<EvalRunComparison>[] = [
   registryCol<EvalRunComparison>('run_id', 'Run', 'run_id', 'left', REGISTRY_COL_W.agent),
   registryCol<EvalRunComparison>('exact_match_score', 'Exact', 'exact_match_score', 'right', REGISTRY_COL_W.narrow),
@@ -66,6 +74,7 @@ export const EVAL_COMPARE_TABLE_COLUMNS: QTableColumn<EvalRunComparison>[] = [
     'right',
     REGISTRY_COL_W.narrow,
   ),
+  registryColActions<EvalRunComparison>(REGISTRY_COL_W.actions, ''),
 ];
 
 /** 最小翻译器签名：兼容 vue-i18n Composer 的 t()（仅简单 key 场景）。 */
@@ -74,7 +83,13 @@ export type EvalTranslator = (key: string) => string;
 /** EvaluationAnalyticsPanel — judge 分歧用例（工厂函数，label 走 i18n；human_pass / divergence_kind 由面板 slot 渲染 chip） */
 export function buildEvalDivergenceColumns(t: EvalTranslator): QTableColumn<JudgeDivergenceCase>[] {
   return [
-    registryCol<JudgeDivergenceCase>('input', t('evaluationPage.divergenceColInput'), 'input', 'left', REGISTRY_COL_W.content),
+    registryCol<JudgeDivergenceCase>(
+      'input',
+      t('evaluationPage.divergenceColInput'),
+      'input',
+      'left',
+      REGISTRY_COL_W.content,
+    ),
     registryCol<JudgeDivergenceCase>(
       'llm_judge_score',
       t('evaluationPage.divergenceColLlmScore'),
@@ -106,6 +121,81 @@ export function buildEvalDivergenceColumns(t: EvalTranslator): QTableColumn<Judg
     registryCol<JudgeDivergenceCase>(
       'created_at',
       t('evaluationPage.divergenceColTime'),
+      'created_at',
+      'left',
+      REGISTRY_COL_W.time,
+    ),
+  ];
+}
+
+/** EvaluationAnalyticsPanel — P2-3 失败归组（工厂函数，label 走 i18n） */
+export function buildEvalFailureGroupColumns(t: EvalTranslator): QTableColumn<EvalFailureGroup>[] {
+  return [
+    registryCol<EvalFailureGroup>(
+      'error_message',
+      t('evaluationPage.failureColError'),
+      'error_message',
+      'left',
+      REGISTRY_COL_W.content,
+    ),
+    registryCol<EvalFailureGroup>(
+      'count',
+      t('evaluationPage.failureColCount'),
+      'count',
+      'right',
+      REGISTRY_COL_W.narrow,
+    ),
+    registryCol<EvalFailureGroup>(
+      'run_count',
+      t('evaluationPage.failureColRuns'),
+      'run_count',
+      'right',
+      REGISTRY_COL_W.narrow,
+    ),
+    registryCol<EvalFailureGroup>(
+      'latest_at',
+      t('evaluationPage.failureColLatest'),
+      'latest_at',
+      'left',
+      REGISTRY_COL_W.time,
+    ),
+  ];
+}
+
+/** EvaluationAnalyticsPanel — P3-3 pairwise 偏好记录（工厂函数，label 走 i18n） */
+export function buildEvalPreferenceColumns(t: EvalTranslator): QTableColumn<EvalRunPreference>[] {
+  return [
+    registryCol<EvalRunPreference>(
+      'winner_run_id',
+      t('evaluationPage.preferenceColWinner'),
+      'winner_run_id',
+      'left',
+      REGISTRY_COL_W.agent,
+    ),
+    registryCol<EvalRunPreference>(
+      'loser',
+      t('evaluationPage.preferenceColLoser'),
+      (r) => (r.winner_run_id === r.run_id_a ? r.run_id_b : r.run_id_a),
+      'left',
+      REGISTRY_COL_W.agent,
+    ),
+    registryCol<EvalRunPreference>(
+      'comment',
+      t('evaluationPage.preferenceColComment'),
+      'comment',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
+    registryCol<EvalRunPreference>(
+      'created_by',
+      t('evaluationPage.preferenceColBy'),
+      'created_by',
+      'left',
+      REGISTRY_COL_W.narrow,
+    ),
+    registryCol<EvalRunPreference>(
+      'created_at',
+      t('evaluationPage.preferenceColTime'),
       'created_at',
       'left',
       REGISTRY_COL_W.time,

@@ -34,6 +34,8 @@ func (f *fakeRepoSandbox) ApplyDiff(ctx context.Context, path, diff string) erro
 	return f.applyErr
 }
 
+func (f *fakeRepoSandbox) ResetWorktree(_ context.Context, _ string) error { return nil }
+
 func (f *fakeRepoSandbox) RunGate(ctx context.Context, path string, gate SandboxGateKind, pkgs []string) (SandboxGateResult, error) {
 	f.lastGatePkgs = pkgs
 	if f.gateErr != nil {

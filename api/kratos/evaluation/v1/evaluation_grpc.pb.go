@@ -20,21 +20,26 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EvaluationService_CreateDataset_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/CreateDataset"
-	EvaluationService_GetDataset_FullMethodName         = "/kratos.evaluation.v1.EvaluationService/GetDataset"
-	EvaluationService_ListDatasets_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/ListDatasets"
-	EvaluationService_DeleteDataset_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/DeleteDataset"
-	EvaluationService_UpdateDataset_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/UpdateDataset"
-	EvaluationService_UploadCases_FullMethodName        = "/kratos.evaluation.v1.EvaluationService/UploadCases"
-	EvaluationService_RunEvaluation_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/RunEvaluation"
-	EvaluationService_GetRun_FullMethodName             = "/kratos.evaluation.v1.EvaluationService/GetRun"
-	EvaluationService_DeleteRun_FullMethodName          = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
-	EvaluationService_ListRuns_FullMethodName           = "/kratos.evaluation.v1.EvaluationService/ListRuns"
-	EvaluationService_GetRunResults_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
-	EvaluationService_AnnotateCaseResult_FullMethodName = "/kratos.evaluation.v1.EvaluationService/AnnotateCaseResult"
-	EvaluationService_GetAgentEvalTrend_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
-	EvaluationService_CompareEvalRuns_FullMethodName    = "/kratos.evaluation.v1.EvaluationService/CompareEvalRuns"
-	EvaluationService_GetJudgeDivergence_FullMethodName = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
+	EvaluationService_CreateDataset_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/CreateDataset"
+	EvaluationService_GetDataset_FullMethodName          = "/kratos.evaluation.v1.EvaluationService/GetDataset"
+	EvaluationService_ListDatasets_FullMethodName        = "/kratos.evaluation.v1.EvaluationService/ListDatasets"
+	EvaluationService_DeleteDataset_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/DeleteDataset"
+	EvaluationService_UpdateDataset_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/UpdateDataset"
+	EvaluationService_UploadCases_FullMethodName         = "/kratos.evaluation.v1.EvaluationService/UploadCases"
+	EvaluationService_RunEvaluation_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/RunEvaluation"
+	EvaluationService_GetRun_FullMethodName              = "/kratos.evaluation.v1.EvaluationService/GetRun"
+	EvaluationService_DeleteRun_FullMethodName           = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
+	EvaluationService_ListRuns_FullMethodName            = "/kratos.evaluation.v1.EvaluationService/ListRuns"
+	EvaluationService_GetRunResults_FullMethodName       = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
+	EvaluationService_AnnotateCaseResult_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/AnnotateCaseResult"
+	EvaluationService_GetAgentEvalTrend_FullMethodName   = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
+	EvaluationService_CompareEvalRuns_FullMethodName     = "/kratos.evaluation.v1.EvaluationService/CompareEvalRuns"
+	EvaluationService_GetJudgeDivergence_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
+	EvaluationService_GetFailureGroups_FullMethodName    = "/kratos.evaluation.v1.EvaluationService/GetFailureGroups"
+	EvaluationService_SubmitRunPreference_FullMethodName = "/kratos.evaluation.v1.EvaluationService/SubmitRunPreference"
+	EvaluationService_ListRunPreferences_FullMethodName  = "/kratos.evaluation.v1.EvaluationService/ListRunPreferences"
+	EvaluationService_GetEvalGate_FullMethodName         = "/kratos.evaluation.v1.EvaluationService/GetEvalGate"
+	EvaluationService_UpdateEvalGate_FullMethodName      = "/kratos.evaluation.v1.EvaluationService/UpdateEvalGate"
 )
 
 // EvaluationServiceClient is the client API for EvaluationService service.
@@ -58,6 +63,11 @@ type EvaluationServiceClient interface {
 	GetAgentEvalTrend(ctx context.Context, in *GetAgentEvalTrendRequest, opts ...grpc.CallOption) (*GetAgentEvalTrendResponse, error)
 	CompareEvalRuns(ctx context.Context, in *CompareEvalRunsRequest, opts ...grpc.CallOption) (*CompareEvalRunsResponse, error)
 	GetJudgeDivergence(ctx context.Context, in *GetJudgeDivergenceRequest, opts ...grpc.CallOption) (*GetJudgeDivergenceResponse, error)
+	GetFailureGroups(ctx context.Context, in *GetFailureGroupsRequest, opts ...grpc.CallOption) (*GetFailureGroupsResponse, error)
+	SubmitRunPreference(ctx context.Context, in *SubmitRunPreferenceRequest, opts ...grpc.CallOption) (*EvalRunPreference, error)
+	ListRunPreferences(ctx context.Context, in *ListRunPreferencesRequest, opts ...grpc.CallOption) (*ListRunPreferencesResponse, error)
+	GetEvalGate(ctx context.Context, in *GetEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error)
+	UpdateEvalGate(ctx context.Context, in *UpdateEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error)
 }
 
 type evaluationServiceClient struct {
@@ -218,6 +228,56 @@ func (c *evaluationServiceClient) GetJudgeDivergence(ctx context.Context, in *Ge
 	return out, nil
 }
 
+func (c *evaluationServiceClient) GetFailureGroups(ctx context.Context, in *GetFailureGroupsRequest, opts ...grpc.CallOption) (*GetFailureGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetFailureGroupsResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_GetFailureGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) SubmitRunPreference(ctx context.Context, in *SubmitRunPreferenceRequest, opts ...grpc.CallOption) (*EvalRunPreference, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalRunPreference)
+	err := c.cc.Invoke(ctx, EvaluationService_SubmitRunPreference_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) ListRunPreferences(ctx context.Context, in *ListRunPreferencesRequest, opts ...grpc.CallOption) (*ListRunPreferencesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRunPreferencesResponse)
+	err := c.cc.Invoke(ctx, EvaluationService_ListRunPreferences_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) GetEvalGate(ctx context.Context, in *GetEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalGateConfig)
+	err := c.cc.Invoke(ctx, EvaluationService_GetEvalGate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *evaluationServiceClient) UpdateEvalGate(ctx context.Context, in *UpdateEvalGateRequest, opts ...grpc.CallOption) (*EvalGateConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvalGateConfig)
+	err := c.cc.Invoke(ctx, EvaluationService_UpdateEvalGate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EvaluationServiceServer is the server API for EvaluationService service.
 // All implementations must embed UnimplementedEvaluationServiceServer
 // for forward compatibility.
@@ -239,6 +299,11 @@ type EvaluationServiceServer interface {
 	GetAgentEvalTrend(context.Context, *GetAgentEvalTrendRequest) (*GetAgentEvalTrendResponse, error)
 	CompareEvalRuns(context.Context, *CompareEvalRunsRequest) (*CompareEvalRunsResponse, error)
 	GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error)
+	GetFailureGroups(context.Context, *GetFailureGroupsRequest) (*GetFailureGroupsResponse, error)
+	SubmitRunPreference(context.Context, *SubmitRunPreferenceRequest) (*EvalRunPreference, error)
+	ListRunPreferences(context.Context, *ListRunPreferencesRequest) (*ListRunPreferencesResponse, error)
+	GetEvalGate(context.Context, *GetEvalGateRequest) (*EvalGateConfig, error)
+	UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error)
 	mustEmbedUnimplementedEvaluationServiceServer()
 }
 
@@ -293,6 +358,21 @@ func (UnimplementedEvaluationServiceServer) CompareEvalRuns(context.Context, *Co
 }
 func (UnimplementedEvaluationServiceServer) GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetJudgeDivergence not implemented")
+}
+func (UnimplementedEvaluationServiceServer) GetFailureGroups(context.Context, *GetFailureGroupsRequest) (*GetFailureGroupsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetFailureGroups not implemented")
+}
+func (UnimplementedEvaluationServiceServer) SubmitRunPreference(context.Context, *SubmitRunPreferenceRequest) (*EvalRunPreference, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitRunPreference not implemented")
+}
+func (UnimplementedEvaluationServiceServer) ListRunPreferences(context.Context, *ListRunPreferencesRequest) (*ListRunPreferencesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRunPreferences not implemented")
+}
+func (UnimplementedEvaluationServiceServer) GetEvalGate(context.Context, *GetEvalGateRequest) (*EvalGateConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetEvalGate not implemented")
+}
+func (UnimplementedEvaluationServiceServer) UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateEvalGate not implemented")
 }
 func (UnimplementedEvaluationServiceServer) mustEmbedUnimplementedEvaluationServiceServer() {}
 func (UnimplementedEvaluationServiceServer) testEmbeddedByValue()                           {}
@@ -585,6 +665,96 @@ func _EvaluationService_GetJudgeDivergence_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EvaluationService_GetFailureGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFailureGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).GetFailureGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_GetFailureGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).GetFailureGroups(ctx, req.(*GetFailureGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_SubmitRunPreference_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitRunPreferenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).SubmitRunPreference(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_SubmitRunPreference_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).SubmitRunPreference(ctx, req.(*SubmitRunPreferenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_ListRunPreferences_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRunPreferencesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).ListRunPreferences(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_ListRunPreferences_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).ListRunPreferences(ctx, req.(*ListRunPreferencesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_GetEvalGate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEvalGateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).GetEvalGate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_GetEvalGate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).GetEvalGate(ctx, req.(*GetEvalGateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EvaluationService_UpdateEvalGate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateEvalGateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EvaluationServiceServer).UpdateEvalGate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EvaluationService_UpdateEvalGate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EvaluationServiceServer).UpdateEvalGate(ctx, req.(*UpdateEvalGateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EvaluationService_ServiceDesc is the grpc.ServiceDesc for EvaluationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -651,6 +821,26 @@ var EvaluationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetJudgeDivergence",
 			Handler:    _EvaluationService_GetJudgeDivergence_Handler,
+		},
+		{
+			MethodName: "GetFailureGroups",
+			Handler:    _EvaluationService_GetFailureGroups_Handler,
+		},
+		{
+			MethodName: "SubmitRunPreference",
+			Handler:    _EvaluationService_SubmitRunPreference_Handler,
+		},
+		{
+			MethodName: "ListRunPreferences",
+			Handler:    _EvaluationService_ListRunPreferences_Handler,
+		},
+		{
+			MethodName: "GetEvalGate",
+			Handler:    _EvaluationService_GetEvalGate_Handler,
+		},
+		{
+			MethodName: "UpdateEvalGate",
+			Handler:    _EvaluationService_UpdateEvalGate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

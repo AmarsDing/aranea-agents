@@ -2,7 +2,15 @@ import { computed, onMounted, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
-import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint, JudgeDivergence } from './types';
+import type {
+  EvalCaseResult,
+  EvalFailureGroup,
+  EvalRun,
+  EvalRunComparison,
+  EvalRunPreference,
+  EvalTrendPoint,
+  JudgeDivergence,
+} from './types';
 import { useEvaluationStore } from '../../stores/evaluation';
 import { exportEvalRunCsv, exportEvalRunJson } from './exportRunResults';
 import { useEvalRunPolling, hasActiveRuns } from './useEvalRunPolling';
@@ -45,6 +53,31 @@ export function useEvaluationPage() {
   // P1-3: judge calibration summary for the selected dataset (+ trend agent).
   const divergence = ref<JudgeDivergence | null>(null);
   const divergenceLoading = ref(false);
+  // P2-3: failure groups (error_message aggregation) for the selected dataset.
+  const failureGroups = ref<EvalFailureGroup[]>([]);
+  const failureGroupsTotal = ref(0);
+  const failureGroupsLoading = ref(false);
+  // P3-3: pairwise human preferences for the selected dataset.
+  const preferences = ref<EvalRunPreference[]>([]);
+  const preferencesLoading = ref(false);
+  const preferenceSaving = ref(false);
+  // P3-5: compared runs recorded different dataset hashes → scores not comparable.
+  const datasetChanged = computed(() => {
+    const hashes = comparisons.value.map((c) => c.dataset_hash).filter((h) => h);
+    return hashes.length > 1 && new Set(hashes).size > 1;
+  });
+  // P2-1: publish gate singleton config dialog.
+  const gateOpen = ref(false);
+  const gateLoading = ref(false);
+  const gateSaving = ref(false);
+  const gateForm = ref({
+    enabled: false,
+    agent_id: '',
+    dataset_id: '',
+    metric: 'exact_match',
+    min_score: 0,
+    max_drop: 0,
+  });
 
   const createForm = ref({ name: '', description: '' });
   const runForm = ref({ agent_id: '', metrics: '', num_runs: 1, use_user_simulation: false });
@@ -134,8 +167,12 @@ export function useEvaluationPage() {
   // last active run reaches a terminal status, refresh the trend panel once.
   useEvalRunPolling(runs, async () => {
     await loadRuns(true);
-    if (!hasActiveRuns(runs.value) && trendAgentId.value) {
-      void loadTrend();
+    if (!hasActiveRuns(runs.value)) {
+      if (trendAgentId.value) {
+        void loadTrend();
+      }
+      // Terminal runs may have produced new failures — regroup.
+      void loadFailureGroups();
     }
   });
 
@@ -144,6 +181,8 @@ export function useEvaluationPage() {
     runsPage.value = 1;
     void loadRuns();
     void loadDivergence();
+    void loadFailureGroups();
+    void loadPreferences();
   }
 
   async function loadDivergence() {
@@ -332,6 +371,120 @@ export function useEvaluationPage() {
     }
   }
 
+  // P2-3: failure groups follow the trend agent filter (online vs manual runs).
+  async function loadFailureGroups() {
+    if (!selectedDatasetId.value) {
+      failureGroups.value = [];
+      failureGroupsTotal.value = 0;
+      return;
+    }
+    failureGroupsLoading.value = true;
+    try {
+      const res = await evaluationStore.loadFailureGroups(selectedDatasetId.value, {
+        agent_id: trendAgentId.value || undefined,
+      });
+      failureGroups.value = res.groups;
+      failureGroupsTotal.value = res.total_failed;
+    } catch (e) {
+      // Auxiliary panel — degrade to empty instead of notifying.
+      console.warn('[evaluation] load failure groups failed:', e);
+      failureGroups.value = [];
+      failureGroupsTotal.value = 0;
+    } finally {
+      failureGroupsLoading.value = false;
+    }
+  }
+
+  // P3-3: pairwise preference — challengeRow is a non-baseline comparison row;
+  // the baseline is always comparisons[0] (backend sorts by created_at asc).
+  async function loadPreferences() {
+    if (!selectedDatasetId.value) {
+      preferences.value = [];
+      return;
+    }
+    preferencesLoading.value = true;
+    try {
+      preferences.value = await evaluationStore.loadPreferences(selectedDatasetId.value);
+    } catch (e) {
+      console.warn('[evaluation] load preferences failed:', e);
+      preferences.value = [];
+    } finally {
+      preferencesLoading.value = false;
+    }
+  }
+
+  function submitPreferenceWinner(challengeRow: EvalRunComparison) {
+    const base = comparisons.value[0];
+    if (!base || challengeRow.run_id === base.run_id) return;
+    $q.dialog({
+      title: t('evaluationPage.preferenceDialogTitle'),
+      message: t('evaluationPage.preferenceDialogMessage'),
+      prompt: { model: '', type: 'text' },
+      cancel: true,
+    }).onOk(async (comment: string) => {
+      preferenceSaving.value = true;
+      try {
+        await evaluationStore.submitPreference({
+          dataset_id: challengeRow.dataset_id,
+          run_id_a: base.run_id,
+          run_id_b: challengeRow.run_id,
+          winner_run_id: challengeRow.run_id,
+          comment: comment?.trim() || undefined,
+        });
+        await loadPreferences();
+        $q.notify({ type: 'positive', message: t('evaluationPage.preferenceSaved') });
+      } catch (e) {
+        $q.notify({
+          type: 'negative',
+          message: e instanceof Error ? e.message : t('evaluationPage.preferenceSaveFailed'),
+        });
+      } finally {
+        preferenceSaving.value = false;
+      }
+    });
+  }
+
+  // P2-1: publish gate config — load on open, save via singleton upsert.
+  async function openGate() {
+    gateOpen.value = true;
+    gateLoading.value = true;
+    try {
+      const cfg = await evaluationStore.loadGateConfig();
+      gateForm.value = {
+        enabled: cfg.enabled,
+        agent_id: cfg.agent_id,
+        dataset_id: cfg.dataset_id,
+        metric: cfg.metric || 'exact_match',
+        min_score: cfg.min_score,
+        max_drop: cfg.max_drop,
+      };
+    } catch (e) {
+      console.warn('[evaluation] load gate config failed:', e);
+    } finally {
+      gateLoading.value = false;
+    }
+  }
+
+  async function saveGate() {
+    if (gateForm.value.enabled && (!gateForm.value.agent_id || !gateForm.value.dataset_id)) {
+      $q.notify({ type: 'warning', message: t('evaluationPage.gateNeedTarget') });
+      return;
+    }
+    gateSaving.value = true;
+    try {
+      await evaluationStore.saveGateConfig({ ...gateForm.value });
+      gateOpen.value = false;
+      $q.notify({ type: 'positive', message: t('evaluationPage.gateSaved') });
+    } catch (e) {
+      $q.notify({
+        type: 'negative',
+        message: e instanceof Error ? e.message : t('evaluationPage.gateSaveFailed'),
+      });
+    } finally {
+      gateSaving.value = false;
+    }
+  }
+
   async function loadCaseResults() {
     if (!resultsRun.value) return;
     resultsLoading.value = true;
@@ -470,5 +623,21 @@ export function useEvaluationPage() {
     divergence,
     divergenceLoading,
     loadDivergence,
+    failureGroups,
+    failureGroupsTotal,
+    failureGroupsLoading,
+    loadFailureGroups,
+    preferences,
+    preferencesLoading,
+    preferenceSaving,
+    loadPreferences,
+    submitPreferenceWinner,
+    datasetChanged,
+    gateOpen,
+    gateLoading,
+    gateSaving,
+    gateForm,
+    openGate,
+    saveGate,
   };
 }

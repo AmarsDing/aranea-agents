@@ -210,12 +210,15 @@ type EvalRun struct {
 	StartedAt          string                 `protobuf:"bytes,12,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	FinishedAt         string                 `protobuf:"bytes,13,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
 	CreatedAt          string                 `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	TriggerSource      string                 `protobuf:"bytes,15,opt,name=trigger_source,json=triggerSource,proto3" json:"trigger_source,omitempty"` // manual | after_turn
+	TriggerSource      string                 `protobuf:"bytes,15,opt,name=trigger_source,json=triggerSource,proto3" json:"trigger_source,omitempty"` // manual | after_turn | gate
 	NumRuns            int32                  `protobuf:"varint,16,opt,name=num_runs,json=numRuns,proto3" json:"num_runs,omitempty"`
 	PassAtK            float32                `protobuf:"fixed32,17,opt,name=pass_at_k,json=passAtK,proto3" json:"pass_at_k,omitempty"`
 	PassHatK           float32                `protobuf:"fixed32,18,opt,name=pass_hat_k,json=passHatK,proto3" json:"pass_hat_k,omitempty"`
 	// scores_json holds extended metric averages (json_match, rouge_l, tool_trajectory, etc.).
-	ScoresJson    string `protobuf:"bytes,19,opt,name=scores_json,json=scoresJson,proto3" json:"scores_json,omitempty"`
+	ScoresJson string `protobuf:"bytes,19,opt,name=scores_json,json=scoresJson,proto3" json:"scores_json,omitempty"`
+	// dataset_hash is the dataset content snapshot at run start (P3-5);
+	// differing hashes across compared runs mean scores are not directly comparable.
+	DatasetHash   string `protobuf:"bytes,20,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -379,6 +382,13 @@ func (x *EvalRun) GetPassHatK() float32 {
 func (x *EvalRun) GetScoresJson() string {
 	if x != nil {
 		return x.ScoresJson
+	}
+	return ""
+}
+
+func (x *EvalRun) GetDatasetHash() string {
+	if x != nil {
+		return x.DatasetHash
 	}
 	return ""
 }
@@ -1696,8 +1706,10 @@ type EvalRunComparison struct {
 	DeltaContainsMatch    float32                `protobuf:"fixed32,12,opt,name=delta_contains_match,json=deltaContainsMatch,proto3" json:"delta_contains_match,omitempty"`
 	DeltaLlmJudge         float32                `protobuf:"fixed32,13,opt,name=delta_llm_judge,json=deltaLlmJudge,proto3" json:"delta_llm_judge,omitempty"`
 	DeltaToolCallAccuracy float32                `protobuf:"fixed32,14,opt,name=delta_tool_call_accuracy,json=deltaToolCallAccuracy,proto3" json:"delta_tool_call_accuracy,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// dataset_hash enables the dataset-changed comparability warning (P3-5).
+	DatasetHash   string `protobuf:"bytes,15,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvalRunComparison) Reset() {
@@ -1826,6 +1838,13 @@ func (x *EvalRunComparison) GetDeltaToolCallAccuracy() float32 {
 		return x.DeltaToolCallAccuracy
 	}
 	return 0
+}
+
+func (x *EvalRunComparison) GetDatasetHash() string {
+	if x != nil {
+		return x.DatasetHash
+	}
+	return ""
 }
 
 type CompareEvalRunsResponse struct {
@@ -2175,6 +2194,686 @@ func (x *GetJudgeDivergenceResponse) GetDivergentCases() []*JudgeDivergenceCase 
 	return nil
 }
 
+type GetFailureGroupsRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	// agent_id optionally restricts to one agent's runs.
+	AgentId string `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// limit caps the returned group list (0 means default 20);
+	// total_failed always covers the full failed-result set.
+	Limit         int32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFailureGroupsRequest) Reset() {
+	*x = GetFailureGroupsRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFailureGroupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFailureGroupsRequest) ProtoMessage() {}
+
+func (x *GetFailureGroupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFailureGroupsRequest.ProtoReflect.Descriptor instead.
+func (*GetFailureGroupsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetFailureGroupsRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *GetFailureGroupsRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *GetFailureGroupsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// EvalFailureGroup aggregates failed case results sharing one error_message.
+type EvalFailureGroup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ErrorMessage  string                 `protobuf:"bytes,1,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	RunCount      int32                  `protobuf:"varint,3,opt,name=run_count,json=runCount,proto3" json:"run_count,omitempty"`
+	LatestAt      string                 `protobuf:"bytes,4,opt,name=latest_at,json=latestAt,proto3" json:"latest_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvalFailureGroup) Reset() {
+	*x = EvalFailureGroup{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvalFailureGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvalFailureGroup) ProtoMessage() {}
+
+func (x *EvalFailureGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvalFailureGroup.ProtoReflect.Descriptor instead.
+func (*EvalFailureGroup) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *EvalFailureGroup) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *EvalFailureGroup) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *EvalFailureGroup) GetRunCount() int32 {
+	if x != nil {
+		return x.RunCount
+	}
+	return 0
+}
+
+func (x *EvalFailureGroup) GetLatestAt() string {
+	if x != nil {
+		return x.LatestAt
+	}
+	return ""
+}
+
+type GetFailureGroupsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TotalFailed   int32                  `protobuf:"varint,1,opt,name=total_failed,json=totalFailed,proto3" json:"total_failed,omitempty"`
+	Groups        []*EvalFailureGroup    `protobuf:"bytes,2,rep,name=groups,proto3" json:"groups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFailureGroupsResponse) Reset() {
+	*x = GetFailureGroupsResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFailureGroupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFailureGroupsResponse) ProtoMessage() {}
+
+func (x *GetFailureGroupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFailureGroupsResponse.ProtoReflect.Descriptor instead.
+func (*GetFailureGroupsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetFailureGroupsResponse) GetTotalFailed() int32 {
+	if x != nil {
+		return x.TotalFailed
+	}
+	return 0
+}
+
+func (x *GetFailureGroupsResponse) GetGroups() []*EvalFailureGroup {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
+// EvalRunPreference records a human judgment that one run is better than
+// another for the same dataset.
+type EvalRunPreference struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	DatasetId string                 `protobuf:"bytes,2,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	RunIdA    string                 `protobuf:"bytes,3,opt,name=run_id_a,json=runIdA,proto3" json:"run_id_a,omitempty"`
+	RunIdB    string                 `protobuf:"bytes,4,opt,name=run_id_b,json=runIdB,proto3" json:"run_id_b,omitempty"`
+	// winner_run_id must equal run_id_a or run_id_b.
+	WinnerRunId   string `protobuf:"bytes,5,opt,name=winner_run_id,json=winnerRunId,proto3" json:"winner_run_id,omitempty"`
+	Comment       string `protobuf:"bytes,6,opt,name=comment,proto3" json:"comment,omitempty"`
+	CreatedBy     string `protobuf:"bytes,7,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	CreatedAt     string `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvalRunPreference) Reset() {
+	*x = EvalRunPreference{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvalRunPreference) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvalRunPreference) ProtoMessage() {}
+
+func (x *EvalRunPreference) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvalRunPreference.ProtoReflect.Descriptor instead.
+func (*EvalRunPreference) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *EvalRunPreference) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetRunIdA() string {
+	if x != nil {
+		return x.RunIdA
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetRunIdB() string {
+	if x != nil {
+		return x.RunIdB
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetWinnerRunId() string {
+	if x != nil {
+		return x.WinnerRunId
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetComment() string {
+	if x != nil {
+		return x.Comment
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+func (x *EvalRunPreference) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type SubmitRunPreferenceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId     string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	RunIdA        string                 `protobuf:"bytes,2,opt,name=run_id_a,json=runIdA,proto3" json:"run_id_a,omitempty"`
+	RunIdB        string                 `protobuf:"bytes,3,opt,name=run_id_b,json=runIdB,proto3" json:"run_id_b,omitempty"`
+	WinnerRunId   string                 `protobuf:"bytes,4,opt,name=winner_run_id,json=winnerRunId,proto3" json:"winner_run_id,omitempty"`
+	Comment       string                 `protobuf:"bytes,5,opt,name=comment,proto3" json:"comment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitRunPreferenceRequest) Reset() {
+	*x = SubmitRunPreferenceRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitRunPreferenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitRunPreferenceRequest) ProtoMessage() {}
+
+func (x *SubmitRunPreferenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitRunPreferenceRequest.ProtoReflect.Descriptor instead.
+func (*SubmitRunPreferenceRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SubmitRunPreferenceRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *SubmitRunPreferenceRequest) GetRunIdA() string {
+	if x != nil {
+		return x.RunIdA
+	}
+	return ""
+}
+
+func (x *SubmitRunPreferenceRequest) GetRunIdB() string {
+	if x != nil {
+		return x.RunIdB
+	}
+	return ""
+}
+
+func (x *SubmitRunPreferenceRequest) GetWinnerRunId() string {
+	if x != nil {
+		return x.WinnerRunId
+	}
+	return ""
+}
+
+func (x *SubmitRunPreferenceRequest) GetComment() string {
+	if x != nil {
+		return x.Comment
+	}
+	return ""
+}
+
+type ListRunPreferencesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DatasetId     string                 `protobuf:"bytes,1,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRunPreferencesRequest) Reset() {
+	*x = ListRunPreferencesRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRunPreferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRunPreferencesRequest) ProtoMessage() {}
+
+func (x *ListRunPreferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRunPreferencesRequest.ProtoReflect.Descriptor instead.
+func (*ListRunPreferencesRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ListRunPreferencesRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *ListRunPreferencesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListRunPreferencesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*EvalRunPreference   `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRunPreferencesResponse) Reset() {
+	*x = ListRunPreferencesResponse{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRunPreferencesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRunPreferencesResponse) ProtoMessage() {}
+
+func (x *ListRunPreferencesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRunPreferencesResponse.ProtoReflect.Descriptor instead.
+func (*ListRunPreferencesResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *ListRunPreferencesResponse) GetItems() []*EvalRunPreference {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+// EvalGateConfig is the singleton publish-gate configuration. The gate runs
+// the configured dataset against the configured agent on skill publish /
+// pack install and blocks the operation when the score breaches the
+// configured floor (min_score) or drops too far vs the latest completed
+// baseline (max_drop).
+type EvalGateConfig struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Enabled   bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	AgentId   string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	DatasetId string                 `protobuf:"bytes,3,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	// metric: exact_match | contains_match | llm_as_judge | tool_call_accuracy
+	// (or any extended scores_json key).
+	Metric string `protobuf:"bytes,4,opt,name=metric,proto3" json:"metric,omitempty"`
+	// min_score: absolute floor in [0,1]; 0 disables the absolute check.
+	MinScore float32 `protobuf:"fixed32,5,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`
+	// max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
+	MaxDrop       float32 `protobuf:"fixed32,6,opt,name=max_drop,json=maxDrop,proto3" json:"max_drop,omitempty"`
+	UpdatedAt     string  `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvalGateConfig) Reset() {
+	*x = EvalGateConfig{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvalGateConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvalGateConfig) ProtoMessage() {}
+
+func (x *EvalGateConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvalGateConfig.ProtoReflect.Descriptor instead.
+func (*EvalGateConfig) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *EvalGateConfig) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *EvalGateConfig) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *EvalGateConfig) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *EvalGateConfig) GetMetric() string {
+	if x != nil {
+		return x.Metric
+	}
+	return ""
+}
+
+func (x *EvalGateConfig) GetMinScore() float32 {
+	if x != nil {
+		return x.MinScore
+	}
+	return 0
+}
+
+func (x *EvalGateConfig) GetMaxDrop() float32 {
+	if x != nil {
+		return x.MaxDrop
+	}
+	return 0
+}
+
+func (x *EvalGateConfig) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type GetEvalGateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEvalGateRequest) Reset() {
+	*x = GetEvalGateRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEvalGateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEvalGateRequest) ProtoMessage() {}
+
+func (x *GetEvalGateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEvalGateRequest.ProtoReflect.Descriptor instead.
+func (*GetEvalGateRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{37}
+}
+
+type UpdateEvalGateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	DatasetId     string                 `protobuf:"bytes,3,opt,name=dataset_id,json=datasetId,proto3" json:"dataset_id,omitempty"`
+	Metric        string                 `protobuf:"bytes,4,opt,name=metric,proto3" json:"metric,omitempty"`
+	MinScore      float32                `protobuf:"fixed32,5,opt,name=min_score,json=minScore,proto3" json:"min_score,omitempty"`
+	MaxDrop       float32                `protobuf:"fixed32,6,opt,name=max_drop,json=maxDrop,proto3" json:"max_drop,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateEvalGateRequest) Reset() {
+	*x = UpdateEvalGateRequest{}
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateEvalGateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateEvalGateRequest) ProtoMessage() {}
+
+func (x *UpdateEvalGateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_evaluation_v1_evaluation_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateEvalGateRequest.ProtoReflect.Descriptor instead.
+func (*UpdateEvalGateRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *UpdateEvalGateRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *UpdateEvalGateRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *UpdateEvalGateRequest) GetDatasetId() string {
+	if x != nil {
+		return x.DatasetId
+	}
+	return ""
+}
+
+func (x *UpdateEvalGateRequest) GetMetric() string {
+	if x != nil {
+		return x.Metric
+	}
+	return ""
+}
+
+func (x *UpdateEvalGateRequest) GetMinScore() float32 {
+	if x != nil {
+		return x.MinScore
+	}
+	return 0
+}
+
+func (x *UpdateEvalGateRequest) GetMaxDrop() float32 {
+	if x != nil {
+		return x.MaxDrop
+	}
+	return 0
+}
+
 var File_kratos_evaluation_v1_evaluation_proto protoreflect.FileDescriptor
 
 const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
@@ -2197,7 +2896,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x14\n" +
 	"\x05input\x18\x03 \x01(\tR\x05input\x12'\n" +
 	"\x0fexpected_output\x18\x04 \x01(\tR\x0eexpectedOutput\x12#\n" +
-	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\x8a\x05\n" +
+	"\rmetadata_json\x18\x05 \x01(\tR\fmetadataJson\"\xad\x05\n" +
 	"\aEvalRun\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -2225,7 +2924,8 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\n" +
 	"pass_hat_k\x18\x12 \x01(\x02R\bpassHatK\x12\x1f\n" +
 	"\vscores_json\x18\x13 \x01(\tR\n" +
-	"scoresJson\"\xcc\x04\n" +
+	"scoresJson\x12!\n" +
+	"\fdataset_hash\x18\x14 \x01(\tR\vdatasetHash\"\xcc\x04\n" +
 	"\x0eEvalCaseResult\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x17\n" +
@@ -2333,7 +3033,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x19GetAgentEvalTrendResponse\x12<\n" +
 	"\x06points\x18\x01 \x03(\v2$.kratos.evaluation.v1.EvalTrendPointR\x06points\"7\n" +
 	"\x16CompareEvalRunsRequest\x12\x1d\n" +
-	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xb0\x04\n" +
+	"\arun_ids\x18\x01 \x03(\tB\x04\xe2A\x01\x02R\x06runIds\"\xd3\x04\n" +
 	"\x11EvalRunComparison\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x19\n" +
 	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
@@ -2352,7 +3052,8 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x11delta_exact_match\x18\v \x01(\x02R\x0fdeltaExactMatch\x120\n" +
 	"\x14delta_contains_match\x18\f \x01(\x02R\x12deltaContainsMatch\x12&\n" +
 	"\x0fdelta_llm_judge\x18\r \x01(\x02R\rdeltaLlmJudge\x127\n" +
-	"\x18delta_tool_call_accuracy\x18\x0e \x01(\x02R\x15deltaToolCallAccuracy\"X\n" +
+	"\x18delta_tool_call_accuracy\x18\x0e \x01(\x02R\x15deltaToolCallAccuracy\x12!\n" +
+	"\fdataset_hash\x18\x0f \x01(\tR\vdatasetHash\"X\n" +
 	"\x17CompareEvalRunsResponse\x12=\n" +
 	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunComparisonR\x05items\"\x8f\x01\n" +
 	"\x19GetJudgeDivergenceRequest\x12#\n" +
@@ -2385,7 +3086,64 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x0eagreement_rate\x18\x05 \x01(\x02R\ragreementRate\x12(\n" +
 	"\x10false_pass_count\x18\x06 \x01(\x05R\x0efalsePassCount\x12(\n" +
 	"\x10false_fail_count\x18\a \x01(\x05R\x0efalseFailCount\x12R\n" +
-	"\x0fdivergent_cases\x18\b \x03(\v2).kratos.evaluation.v1.JudgeDivergenceCaseR\x0edivergentCases2\xdd\x10\n" +
+	"\x0fdivergent_cases\x18\b \x03(\v2).kratos.evaluation.v1.JudgeDivergenceCaseR\x0edivergentCases\"o\n" +
+	"\x17GetFailureGroupsRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"\x87\x01\n" +
+	"\x10EvalFailureGroup\x12#\n" +
+	"\rerror_message\x18\x01 \x01(\tR\ferrorMessage\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x1b\n" +
+	"\trun_count\x18\x03 \x01(\x05R\brunCount\x12\x1b\n" +
+	"\tlatest_at\x18\x04 \x01(\tR\blatestAt\"}\n" +
+	"\x18GetFailureGroupsResponse\x12!\n" +
+	"\ftotal_failed\x18\x01 \x01(\x05R\vtotalFailed\x12>\n" +
+	"\x06groups\x18\x02 \x03(\v2&.kratos.evaluation.v1.EvalFailureGroupR\x06groups\"\xf2\x01\n" +
+	"\x11EvalRunPreference\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"dataset_id\x18\x02 \x01(\tR\tdatasetId\x12\x18\n" +
+	"\brun_id_a\x18\x03 \x01(\tR\x06runIdA\x12\x18\n" +
+	"\brun_id_b\x18\x04 \x01(\tR\x06runIdB\x12\"\n" +
+	"\rwinner_run_id\x18\x05 \x01(\tR\vwinnerRunId\x12\x18\n" +
+	"\acomment\x18\x06 \x01(\tR\acomment\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\a \x01(\tR\tcreatedBy\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\b \x01(\tR\tcreatedAt\"\xc5\x01\n" +
+	"\x1aSubmitRunPreferenceRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x1e\n" +
+	"\brun_id_a\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06runIdA\x12\x1e\n" +
+	"\brun_id_b\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x06runIdB\x12(\n" +
+	"\rwinner_run_id\x18\x04 \x01(\tB\x04\xe2A\x01\x02R\vwinnerRunId\x12\x18\n" +
+	"\acomment\x18\x05 \x01(\tR\acomment\"V\n" +
+	"\x19ListRunPreferencesRequest\x12#\n" +
+	"\n" +
+	"dataset_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tdatasetId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"[\n" +
+	"\x1aListRunPreferencesResponse\x12=\n" +
+	"\x05items\x18\x01 \x03(\v2'.kratos.evaluation.v1.EvalRunPreferenceR\x05items\"\xd3\x01\n" +
+	"\x0eEvalGateConfig\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
+	"\n" +
+	"dataset_id\x18\x03 \x01(\tR\tdatasetId\x12\x16\n" +
+	"\x06metric\x18\x04 \x01(\tR\x06metric\x12\x1b\n" +
+	"\tmin_score\x18\x05 \x01(\x02R\bminScore\x12\x19\n" +
+	"\bmax_drop\x18\x06 \x01(\x02R\amaxDrop\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\a \x01(\tR\tupdatedAt\"\x14\n" +
+	"\x12GetEvalGateRequest\"\xbb\x01\n" +
+	"\x15UpdateEvalGateRequest\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x1d\n" +
+	"\n" +
+	"dataset_id\x18\x03 \x01(\tR\tdatasetId\x12\x16\n" +
+	"\x06metric\x18\x04 \x01(\tR\x06metric\x12\x1b\n" +
+	"\tmin_score\x18\x05 \x01(\x02R\bminScore\x12\x19\n" +
+	"\bmax_drop\x18\x06 \x01(\x02R\amaxDrop2\xc8\x16\n" +
 	"\x11EvaluationService\x12\x82\x01\n" +
 	"\rCreateDataset\x12*.kratos.evaluation.v1.CreateDatasetRequest\x1a!.kratos.evaluation.v1.EvalDataset\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/evaluation/datasets\x12~\n" +
 	"\n" +
@@ -2402,7 +3160,12 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x12AnnotateCaseResult\x12/.kratos.evaluation.v1.AnnotateCaseResultRequest\x1a$.kratos.evaluation.v1.EvalCaseResult\"F\x82\xd3\xe4\x93\x02@:\x01*2;/v1/evaluation/runs/{run_id}/results/{result_id}/annotation\x12\xa4\x01\n" +
 	"\x11GetAgentEvalTrend\x12..kratos.evaluation.v1.GetAgentEvalTrendRequest\x1a/.kratos.evaluation.v1.GetAgentEvalTrendResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/evaluation/agents/{agent_id}/trend\x12\x96\x01\n" +
 	"\x0fCompareEvalRuns\x12,.kratos.evaluation.v1.CompareEvalRunsRequest\x1a-.kratos.evaluation.v1.CompareEvalRunsResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/evaluation/runs/compare\x12\xb6\x01\n" +
-	"\x12GetJudgeDivergence\x12/.kratos.evaluation.v1.GetJudgeDivergenceRequest\x1a0.kratos.evaluation.v1.GetJudgeDivergenceResponse\"=\x82\xd3\xe4\x93\x027\x125/v1/evaluation/datasets/{dataset_id}/judge-divergenceBG\n" +
+	"\x12GetJudgeDivergence\x12/.kratos.evaluation.v1.GetJudgeDivergenceRequest\x1a0.kratos.evaluation.v1.GetJudgeDivergenceResponse\"=\x82\xd3\xe4\x93\x027\x125/v1/evaluation/datasets/{dataset_id}/judge-divergence\x12\xae\x01\n" +
+	"\x10GetFailureGroups\x12-.kratos.evaluation.v1.GetFailureGroupsRequest\x1a..kratos.evaluation.v1.GetFailureGroupsResponse\";\x82\xd3\xe4\x93\x025\x123/v1/evaluation/datasets/{dataset_id}/failure-groups\x12\x97\x01\n" +
+	"\x13SubmitRunPreference\x120.kratos.evaluation.v1.SubmitRunPreferenceRequest\x1a'.kratos.evaluation.v1.EvalRunPreference\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/evaluation/preferences\x12\x9b\x01\n" +
+	"\x12ListRunPreferences\x12/.kratos.evaluation.v1.ListRunPreferencesRequest\x1a0.kratos.evaluation.v1.ListRunPreferencesResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/evaluation/preferences\x12z\n" +
+	"\vGetEvalGate\x12(.kratos.evaluation.v1.GetEvalGateRequest\x1a$.kratos.evaluation.v1.EvalGateConfig\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/evaluation/gate\x12\x83\x01\n" +
+	"\x0eUpdateEvalGate\x12+.kratos.evaluation.v1.UpdateEvalGateRequest\x1a$.kratos.evaluation.v1.EvalGateConfig\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\x1a\x13/v1/evaluation/gateBG\n" +
 	"\x18api.kratos.evaluation.v1P\x01Z)aranea-agents/api/kratos/evaluation/v1;v1b\x06proto3"
 
 var (
@@ -2417,7 +3180,7 @@ func file_kratos_evaluation_v1_evaluation_proto_rawDescGZIP() []byte {
 	return file_kratos_evaluation_v1_evaluation_proto_rawDescData
 }
 
-var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_kratos_evaluation_v1_evaluation_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_kratos_evaluation_v1_evaluation_proto_goTypes = []any{
 	(*EvalDataset)(nil),                // 0: kratos.evaluation.v1.EvalDataset
 	(*EvalCase)(nil),                   // 1: kratos.evaluation.v1.EvalCase
@@ -2448,7 +3211,17 @@ var file_kratos_evaluation_v1_evaluation_proto_goTypes = []any{
 	(*GetJudgeDivergenceRequest)(nil),  // 26: kratos.evaluation.v1.GetJudgeDivergenceRequest
 	(*JudgeDivergenceCase)(nil),        // 27: kratos.evaluation.v1.JudgeDivergenceCase
 	(*GetJudgeDivergenceResponse)(nil), // 28: kratos.evaluation.v1.GetJudgeDivergenceResponse
-	(*emptypb.Empty)(nil),              // 29: google.protobuf.Empty
+	(*GetFailureGroupsRequest)(nil),    // 29: kratos.evaluation.v1.GetFailureGroupsRequest
+	(*EvalFailureGroup)(nil),           // 30: kratos.evaluation.v1.EvalFailureGroup
+	(*GetFailureGroupsResponse)(nil),   // 31: kratos.evaluation.v1.GetFailureGroupsResponse
+	(*EvalRunPreference)(nil),          // 32: kratos.evaluation.v1.EvalRunPreference
+	(*SubmitRunPreferenceRequest)(nil), // 33: kratos.evaluation.v1.SubmitRunPreferenceRequest
+	(*ListRunPreferencesRequest)(nil),  // 34: kratos.evaluation.v1.ListRunPreferencesRequest
+	(*ListRunPreferencesResponse)(nil), // 35: kratos.evaluation.v1.ListRunPreferencesResponse
+	(*EvalGateConfig)(nil),             // 36: kratos.evaluation.v1.EvalGateConfig
+	(*GetEvalGateRequest)(nil),         // 37: kratos.evaluation.v1.GetEvalGateRequest
+	(*UpdateEvalGateRequest)(nil),      // 38: kratos.evaluation.v1.UpdateEvalGateRequest
+	(*emptypb.Empty)(nil),              // 39: google.protobuf.Empty
 }
 var file_kratos_evaluation_v1_evaluation_proto_depIdxs = []int32{
 	0,  // 0: kratos.evaluation.v1.ListDatasetsResponse.items:type_name -> kratos.evaluation.v1.EvalDataset
@@ -2457,41 +3230,53 @@ var file_kratos_evaluation_v1_evaluation_proto_depIdxs = []int32{
 	21, // 3: kratos.evaluation.v1.GetAgentEvalTrendResponse.points:type_name -> kratos.evaluation.v1.EvalTrendPoint
 	24, // 4: kratos.evaluation.v1.CompareEvalRunsResponse.items:type_name -> kratos.evaluation.v1.EvalRunComparison
 	27, // 5: kratos.evaluation.v1.GetJudgeDivergenceResponse.divergent_cases:type_name -> kratos.evaluation.v1.JudgeDivergenceCase
-	4,  // 6: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
-	5,  // 7: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
-	6,  // 8: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
-	8,  // 9: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
-	9,  // 10: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
-	10, // 11: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
-	12, // 12: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
-	13, // 13: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
-	14, // 14: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
-	15, // 15: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
-	17, // 16: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
-	19, // 17: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
-	20, // 18: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
-	23, // 19: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
-	26, // 20: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:input_type -> kratos.evaluation.v1.GetJudgeDivergenceRequest
-	0,  // 21: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	0,  // 22: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	7,  // 23: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
-	29, // 24: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
-	0,  // 25: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
-	11, // 26: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
-	2,  // 27: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
-	2,  // 28: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
-	29, // 29: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
-	16, // 30: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
-	18, // 31: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
-	3,  // 32: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
-	22, // 33: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
-	25, // 34: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
-	28, // 35: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:output_type -> kratos.evaluation.v1.GetJudgeDivergenceResponse
-	21, // [21:36] is the sub-list for method output_type
-	6,  // [6:21] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	30, // 6: kratos.evaluation.v1.GetFailureGroupsResponse.groups:type_name -> kratos.evaluation.v1.EvalFailureGroup
+	32, // 7: kratos.evaluation.v1.ListRunPreferencesResponse.items:type_name -> kratos.evaluation.v1.EvalRunPreference
+	4,  // 8: kratos.evaluation.v1.EvaluationService.CreateDataset:input_type -> kratos.evaluation.v1.CreateDatasetRequest
+	5,  // 9: kratos.evaluation.v1.EvaluationService.GetDataset:input_type -> kratos.evaluation.v1.GetDatasetRequest
+	6,  // 10: kratos.evaluation.v1.EvaluationService.ListDatasets:input_type -> kratos.evaluation.v1.ListDatasetsRequest
+	8,  // 11: kratos.evaluation.v1.EvaluationService.DeleteDataset:input_type -> kratos.evaluation.v1.DeleteDatasetRequest
+	9,  // 12: kratos.evaluation.v1.EvaluationService.UpdateDataset:input_type -> kratos.evaluation.v1.UpdateDatasetRequest
+	10, // 13: kratos.evaluation.v1.EvaluationService.UploadCases:input_type -> kratos.evaluation.v1.UploadCasesRequest
+	12, // 14: kratos.evaluation.v1.EvaluationService.RunEvaluation:input_type -> kratos.evaluation.v1.RunEvaluationRequest
+	13, // 15: kratos.evaluation.v1.EvaluationService.GetRun:input_type -> kratos.evaluation.v1.GetRunRequest
+	14, // 16: kratos.evaluation.v1.EvaluationService.DeleteRun:input_type -> kratos.evaluation.v1.DeleteRunRequest
+	15, // 17: kratos.evaluation.v1.EvaluationService.ListRuns:input_type -> kratos.evaluation.v1.ListRunsRequest
+	17, // 18: kratos.evaluation.v1.EvaluationService.GetRunResults:input_type -> kratos.evaluation.v1.GetRunResultsRequest
+	19, // 19: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:input_type -> kratos.evaluation.v1.AnnotateCaseResultRequest
+	20, // 20: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:input_type -> kratos.evaluation.v1.GetAgentEvalTrendRequest
+	23, // 21: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:input_type -> kratos.evaluation.v1.CompareEvalRunsRequest
+	26, // 22: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:input_type -> kratos.evaluation.v1.GetJudgeDivergenceRequest
+	29, // 23: kratos.evaluation.v1.EvaluationService.GetFailureGroups:input_type -> kratos.evaluation.v1.GetFailureGroupsRequest
+	33, // 24: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:input_type -> kratos.evaluation.v1.SubmitRunPreferenceRequest
+	34, // 25: kratos.evaluation.v1.EvaluationService.ListRunPreferences:input_type -> kratos.evaluation.v1.ListRunPreferencesRequest
+	37, // 26: kratos.evaluation.v1.EvaluationService.GetEvalGate:input_type -> kratos.evaluation.v1.GetEvalGateRequest
+	38, // 27: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:input_type -> kratos.evaluation.v1.UpdateEvalGateRequest
+	0,  // 28: kratos.evaluation.v1.EvaluationService.CreateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	0,  // 29: kratos.evaluation.v1.EvaluationService.GetDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	7,  // 30: kratos.evaluation.v1.EvaluationService.ListDatasets:output_type -> kratos.evaluation.v1.ListDatasetsResponse
+	39, // 31: kratos.evaluation.v1.EvaluationService.DeleteDataset:output_type -> google.protobuf.Empty
+	0,  // 32: kratos.evaluation.v1.EvaluationService.UpdateDataset:output_type -> kratos.evaluation.v1.EvalDataset
+	11, // 33: kratos.evaluation.v1.EvaluationService.UploadCases:output_type -> kratos.evaluation.v1.UploadCasesResponse
+	2,  // 34: kratos.evaluation.v1.EvaluationService.RunEvaluation:output_type -> kratos.evaluation.v1.EvalRun
+	2,  // 35: kratos.evaluation.v1.EvaluationService.GetRun:output_type -> kratos.evaluation.v1.EvalRun
+	39, // 36: kratos.evaluation.v1.EvaluationService.DeleteRun:output_type -> google.protobuf.Empty
+	16, // 37: kratos.evaluation.v1.EvaluationService.ListRuns:output_type -> kratos.evaluation.v1.ListRunsResponse
+	18, // 38: kratos.evaluation.v1.EvaluationService.GetRunResults:output_type -> kratos.evaluation.v1.GetRunResultsResponse
+	3,  // 39: kratos.evaluation.v1.EvaluationService.AnnotateCaseResult:output_type -> kratos.evaluation.v1.EvalCaseResult
+	22, // 40: kratos.evaluation.v1.EvaluationService.GetAgentEvalTrend:output_type -> kratos.evaluation.v1.GetAgentEvalTrendResponse
+	25, // 41: kratos.evaluation.v1.EvaluationService.CompareEvalRuns:output_type -> kratos.evaluation.v1.CompareEvalRunsResponse
+	28, // 42: kratos.evaluation.v1.EvaluationService.GetJudgeDivergence:output_type -> kratos.evaluation.v1.GetJudgeDivergenceResponse
+	31, // 43: kratos.evaluation.v1.EvaluationService.GetFailureGroups:output_type -> kratos.evaluation.v1.GetFailureGroupsResponse
+	32, // 44: kratos.evaluation.v1.EvaluationService.SubmitRunPreference:output_type -> kratos.evaluation.v1.EvalRunPreference
+	35, // 45: kratos.evaluation.v1.EvaluationService.ListRunPreferences:output_type -> kratos.evaluation.v1.ListRunPreferencesResponse
+	36, // 46: kratos.evaluation.v1.EvaluationService.GetEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
+	36, // 47: kratos.evaluation.v1.EvaluationService.UpdateEvalGate:output_type -> kratos.evaluation.v1.EvalGateConfig
+	28, // [28:48] is the sub-list for method output_type
+	8,  // [8:28] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kratos_evaluation_v1_evaluation_proto_init() }
@@ -2507,7 +3292,7 @@ func file_kratos_evaluation_v1_evaluation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_evaluation_v1_evaluation_proto_rawDesc), len(file_kratos_evaluation_v1_evaluation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   29,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

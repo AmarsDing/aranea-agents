@@ -25,7 +25,9 @@ import (
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
+	"aranea-agents/internal/data/ent/evalgateconfig"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/evalrunpreference"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -193,7 +195,9 @@ func checkColumn(t, c string) error {
 			evalcase.Table:                   evalcase.ValidColumn,
 			evalcaseresult.Table:             evalcaseresult.ValidColumn,
 			evaldataset.Table:                evaldataset.ValidColumn,
+			evalgateconfig.Table:             evalgateconfig.ValidColumn,
 			evalrun.Table:                    evalrun.ValidColumn,
+			evalrunpreference.Table:          evalrunpreference.ValidColumn,
 			eventdeliveryoutbox.Table:        eventdeliveryoutbox.ValidColumn,
 			experiencereport.Table:           experiencereport.ValidColumn,
 			failurepattern.Table:             failurepattern.ValidColumn,

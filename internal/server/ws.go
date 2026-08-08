@@ -33,6 +33,8 @@ type WSTurnInput struct {
 	Options     WSTurnOptions
 	AllowQueue  bool
 	AllowStream bool
+	// Voice 语音输入溯源元数据（M74 V2-T6，/v1/voice 网关注入）；nil = 非语音输入。
+	Voice *biz.VoiceTurnMeta
 }
 
 type WSTurnOptions struct {

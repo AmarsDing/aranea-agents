@@ -272,6 +272,18 @@ func (f EvalDatasetFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvalDatasetMutation", m)
 }
 
+// The EvalGateConfigFunc type is an adapter to allow the use of ordinary
+// function as EvalGateConfig mutator.
+type EvalGateConfigFunc func(context.Context, *ent.EvalGateConfigMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EvalGateConfigFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EvalGateConfigMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvalGateConfigMutation", m)
+}
+
 // The EvalRunFunc type is an adapter to allow the use of ordinary
 // function as EvalRun mutator.
 type EvalRunFunc func(context.Context, *ent.EvalRunMutation) (ent.Value, error)
@@ -282,6 +294,18 @@ func (f EvalRunFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvalRunMutation", m)
+}
+
+// The EvalRunPreferenceFunc type is an adapter to allow the use of ordinary
+// function as EvalRunPreference mutator.
+type EvalRunPreferenceFunc func(context.Context, *ent.EvalRunPreferenceMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EvalRunPreferenceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EvalRunPreferenceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EvalRunPreferenceMutation", m)
 }
 
 // The EventDeliveryOutboxFunc type is an adapter to allow the use of ordinary

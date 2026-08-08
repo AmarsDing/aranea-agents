@@ -51,6 +51,8 @@ type EvalRun struct {
 	StartedAt string `json:"started_at,omitempty"`
 	// FinishedAt holds the value of the "finished_at" field.
 	FinishedAt string `json:"finished_at,omitempty"`
+	// DatasetHash holds the value of the "dataset_hash" field.
+	DatasetHash string `json:"dataset_hash,omitempty"`
 	// WorkspaceID holds the value of the "workspace_id" field.
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -101,7 +103,7 @@ func (*EvalRun) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case evalrun.FieldTotalCases, evalrun.FieldCompletedCases, evalrun.FieldNumRuns:
 			values[i] = new(sql.NullInt64)
-		case evalrun.FieldID, evalrun.FieldDatasetID, evalrun.FieldAgentID, evalrun.FieldStatus, evalrun.FieldTriggerSource, evalrun.FieldScoresJSON, evalrun.FieldErrorMessage, evalrun.FieldStartedAt, evalrun.FieldFinishedAt, evalrun.FieldWorkspaceID, evalrun.FieldCreatedAt:
+		case evalrun.FieldID, evalrun.FieldDatasetID, evalrun.FieldAgentID, evalrun.FieldStatus, evalrun.FieldTriggerSource, evalrun.FieldScoresJSON, evalrun.FieldErrorMessage, evalrun.FieldStartedAt, evalrun.FieldFinishedAt, evalrun.FieldDatasetHash, evalrun.FieldWorkspaceID, evalrun.FieldCreatedAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -226,6 +228,12 @@ func (_m *EvalRun) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FinishedAt = value.String
 			}
+		case evalrun.FieldDatasetHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dataset_hash", values[i])
+			} else if value.Valid {
+				_m.DatasetHash = value.String
+			}
 		case evalrun.FieldWorkspaceID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field workspace_id", values[i])
@@ -334,6 +342,9 @@ func (_m *EvalRun) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("finished_at=")
 	builder.WriteString(_m.FinishedAt)
+	builder.WriteString(", ")
+	builder.WriteString("dataset_hash=")
+	builder.WriteString(_m.DatasetHash)
 	builder.WriteString(", ")
 	builder.WriteString("workspace_id=")
 	builder.WriteString(_m.WorkspaceID)

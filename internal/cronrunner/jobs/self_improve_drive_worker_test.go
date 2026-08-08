@@ -40,9 +40,6 @@ func (s *siDriveRunStoreStub) List(context.Context, biz.RunFilter) ([]biz.SelfIm
 func (s *siDriveRunStoreStub) Count(context.Context, biz.RunFilter) (int, error) {
 	return 0, nil
 }
-func (s *siDriveRunStoreStub) ListObservingDue(context.Context, time.Time) ([]biz.SelfImprovementRun, error) {
-	return nil, nil
-}
 func (s *siDriveRunStoreStub) ListTerminalPendingOutcome(context.Context, int) ([]biz.SelfImprovementRun, error) {
 	return nil, nil
 }

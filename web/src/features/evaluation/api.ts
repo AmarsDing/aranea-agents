@@ -11,7 +11,11 @@ import type {
   CreateDatasetInput,
   EvalCaseResult,
   EvalDataset,
+  EvalFailureGroup,
+  EvalGateConfig,
   EvalRun,
+  EvalRunPreference,
+  GetFailureGroupsResult,
   GetRunResultsResult,
   JudgeDivergence,
   JudgeDivergenceCase,
@@ -20,6 +24,8 @@ import type {
   ListRunsParams,
   ListRunsResult,
   RunEvaluationInput,
+  SubmitRunPreferenceInput,
+  UpdateEvalGateInput,
   EvalTrendPoint,
   EvalRunComparison,
 } from './types';
@@ -207,6 +213,7 @@ function mapRunComparison(raw: unknown): EvalRunComparison {
     delta_contains_match: pickNum(r, 'delta_contains_match', 'deltaContainsMatch'),
     delta_llm_judge: pickNum(r, 'delta_llm_judge', 'deltaLlmJudge'),
     delta_tool_call_accuracy: pickNum(r, 'delta_tool_call_accuracy', 'deltaToolCallAccuracy'),
+    dataset_hash: pickStr(r, 'dataset_hash', 'datasetHash'),
   };
 }
 
@@ -274,4 +281,98 @@ export async function getJudgeDivergence(
     false_fail_count: pickI32(res, 'false_fail_count', 'falseFailCount'),
     divergent_cases: Array.isArray(casesRaw) ? casesRaw.map(mapDivergenceCase) : [],
   };
+}
+
+// ---------- P2-3 失败归组 ----------
+
+function mapFailureGroup(raw: unknown): EvalFailureGroup {
+  const r = asRecord(raw);
+  return {
+    error_message: pickStr(r, 'error_message', 'errorMessage'),
+    count: pickI32(r, 'count', 'count'),
+    run_count: pickI32(r, 'run_count', 'runCount'),
+    latest_at: pickStr(r, 'latest_at', 'latestAt'),
+  };
+}
+
+export async function getFailureGroups(
+  datasetId: string,
+  params: { agent_id?: string; limit?: number } = {},
+): Promise<GetFailureGroupsResult> {
+  const res = asRecord(
+    await svc.GetFailureGroups({
+      datasetId,
+      agentId: params.agent_id ?? '',
+      limit: params.limit ?? 0,
+    }),
+  );
+  const groupsRaw = res.groups ?? res.Groups;
+  return {
+    total_failed: pickI32(res, 'total_failed', 'totalFailed'),
+    groups: Array.isArray(groupsRaw) ? groupsRaw.map(mapFailureGroup) : [],
+  };
+}
+
+// ---------- P3-3 Pairwise 偏好 ----------
+
+function mapRunPreference(raw: unknown): EvalRunPreference {
+  const r = asRecord(raw);
+  return {
+    id: pickStr(r, 'id', 'id'),
+    dataset_id: pickStr(r, 'dataset_id', 'datasetId'),
+    run_id_a: pickStr(r, 'run_id_a', 'runIdA'),
+    run_id_b: pickStr(r, 'run_id_b', 'runIdB'),
+    winner_run_id: pickStr(r, 'winner_run_id', 'winnerRunId'),
+    comment: pickStr(r, 'comment', 'comment'),
+    created_by: pickStr(r, 'created_by', 'createdBy'),
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+  };
+}
+
+export async function submitRunPreference(input: SubmitRunPreferenceInput): Promise<EvalRunPreference> {
+  const raw = await svc.SubmitRunPreference({
+    datasetId: input.dataset_id,
+    runIdA: input.run_id_a,
+    runIdB: input.run_id_b,
+    winnerRunId: input.winner_run_id,
+    comment: input.comment ?? '',
+  });
+  return mapRunPreference(raw);
+}
+
+export async function listRunPreferences(datasetId: string, limit = 50): Promise<EvalRunPreference[]> {
+  const res = asRecord(await svc.ListRunPreferences({ datasetId, limit }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapRunPreference) : [];
+}
+
+// ---------- P2-1 发布门禁配置 ----------
+
+function mapGateConfig(raw: unknown): EvalGateConfig {
+  const r = asRecord(raw);
+  return {
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    agent_id: pickStr(r, 'agent_id', 'agentId'),
+    dataset_id: pickStr(r, 'dataset_id', 'datasetId'),
+    metric: pickStr(r, 'metric', 'metric'),
+    min_score: pickNum(r, 'min_score', 'minScore'),
+    max_drop: pickNum(r, 'max_drop', 'maxDrop'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+  };
+}
+
+export async function getEvalGate(): Promise<EvalGateConfig> {
+  return mapGateConfig(await svc.GetEvalGate({}));
+}
+
+export async function updateEvalGate(input: UpdateEvalGateInput): Promise<EvalGateConfig> {
+  const raw = await svc.UpdateEvalGate({
+    enabled: input.enabled,
+    agentId: input.agent_id,
+    datasetId: input.dataset_id,
+    metric: input.metric,
+    minScore: input.min_score,
+    maxDrop: input.max_drop,
+  });
+  return mapGateConfig(raw);
 }

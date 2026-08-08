@@ -26,7 +26,9 @@ import (
 	"aranea-agents/internal/data/ent/evalcase"
 	"aranea-agents/internal/data/ent/evalcaseresult"
 	"aranea-agents/internal/data/ent/evaldataset"
+	"aranea-agents/internal/data/ent/evalgateconfig"
 	"aranea-agents/internal/data/ent/evalrun"
+	"aranea-agents/internal/data/ent/evalrunpreference"
 	"aranea-agents/internal/data/ent/eventdeliveryoutbox"
 	"aranea-agents/internal/data/ent/experiencereport"
 	"aranea-agents/internal/data/ent/failurepattern"
@@ -145,7 +147,9 @@ const (
 	TypeEvalCase                   = "EvalCase"
 	TypeEvalCaseResult             = "EvalCaseResult"
 	TypeEvalDataset                = "EvalDataset"
+	TypeEvalGateConfig             = "EvalGateConfig"
 	TypeEvalRun                    = "EvalRun"
+	TypeEvalRunPreference          = "EvalRunPreference"
 	TypeEventDeliveryOutbox        = "EventDeliveryOutbox"
 	TypeExperienceReport           = "ExperienceReport"
 	TypeFailurePattern             = "FailurePattern"
@@ -29533,6 +29537,764 @@ func (m *EvalDatasetMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown EvalDataset edge %s", name)
 }
 
+// EvalGateConfigMutation represents an operation that mutates the EvalGateConfig nodes in the graph.
+type EvalGateConfigMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	enabled       *int
+	addenabled    *int
+	agent_id      *string
+	dataset_id    *string
+	metric        *string
+	min_score     *float64
+	addmin_score  *float64
+	max_drop      *float64
+	addmax_drop   *float64
+	updated_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*EvalGateConfig, error)
+	predicates    []predicate.EvalGateConfig
+}
+
+var _ ent.Mutation = (*EvalGateConfigMutation)(nil)
+
+// evalgateconfigOption allows management of the mutation configuration using functional options.
+type evalgateconfigOption func(*EvalGateConfigMutation)
+
+// newEvalGateConfigMutation creates new mutation for the EvalGateConfig entity.
+func newEvalGateConfigMutation(c config, op Op, opts ...evalgateconfigOption) *EvalGateConfigMutation {
+	m := &EvalGateConfigMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEvalGateConfig,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEvalGateConfigID sets the ID field of the mutation.
+func withEvalGateConfigID(id string) evalgateconfigOption {
+	return func(m *EvalGateConfigMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EvalGateConfig
+		)
+		m.oldValue = func(ctx context.Context) (*EvalGateConfig, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EvalGateConfig.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEvalGateConfig sets the old EvalGateConfig of the mutation.
+func withEvalGateConfig(node *EvalGateConfig) evalgateconfigOption {
+	return func(m *EvalGateConfigMutation) {
+		m.oldValue = func(context.Context) (*EvalGateConfig, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EvalGateConfigMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EvalGateConfigMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of EvalGateConfig entities.
+func (m *EvalGateConfigMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EvalGateConfigMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EvalGateConfigMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EvalGateConfig.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *EvalGateConfigMutation) SetEnabled(i int) {
+	m.enabled = &i
+	m.addenabled = nil
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *EvalGateConfigMutation) Enabled() (r int, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldEnabled(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// AddEnabled adds i to the "enabled" field.
+func (m *EvalGateConfigMutation) AddEnabled(i int) {
+	if m.addenabled != nil {
+		*m.addenabled += i
+	} else {
+		m.addenabled = &i
+	}
+}
+
+// AddedEnabled returns the value that was added to the "enabled" field in this mutation.
+func (m *EvalGateConfigMutation) AddedEnabled() (r int, exists bool) {
+	v := m.addenabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *EvalGateConfigMutation) ResetEnabled() {
+	m.enabled = nil
+	m.addenabled = nil
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *EvalGateConfigMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *EvalGateConfigMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *EvalGateConfigMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetDatasetID sets the "dataset_id" field.
+func (m *EvalGateConfigMutation) SetDatasetID(s string) {
+	m.dataset_id = &s
+}
+
+// DatasetID returns the value of the "dataset_id" field in the mutation.
+func (m *EvalGateConfigMutation) DatasetID() (r string, exists bool) {
+	v := m.dataset_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDatasetID returns the old "dataset_id" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldDatasetID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDatasetID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDatasetID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDatasetID: %w", err)
+	}
+	return oldValue.DatasetID, nil
+}
+
+// ResetDatasetID resets all changes to the "dataset_id" field.
+func (m *EvalGateConfigMutation) ResetDatasetID() {
+	m.dataset_id = nil
+}
+
+// SetMetric sets the "metric" field.
+func (m *EvalGateConfigMutation) SetMetric(s string) {
+	m.metric = &s
+}
+
+// Metric returns the value of the "metric" field in the mutation.
+func (m *EvalGateConfigMutation) Metric() (r string, exists bool) {
+	v := m.metric
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMetric returns the old "metric" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldMetric(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMetric is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMetric requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMetric: %w", err)
+	}
+	return oldValue.Metric, nil
+}
+
+// ResetMetric resets all changes to the "metric" field.
+func (m *EvalGateConfigMutation) ResetMetric() {
+	m.metric = nil
+}
+
+// SetMinScore sets the "min_score" field.
+func (m *EvalGateConfigMutation) SetMinScore(f float64) {
+	m.min_score = &f
+	m.addmin_score = nil
+}
+
+// MinScore returns the value of the "min_score" field in the mutation.
+func (m *EvalGateConfigMutation) MinScore() (r float64, exists bool) {
+	v := m.min_score
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMinScore returns the old "min_score" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldMinScore(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMinScore is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMinScore requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMinScore: %w", err)
+	}
+	return oldValue.MinScore, nil
+}
+
+// AddMinScore adds f to the "min_score" field.
+func (m *EvalGateConfigMutation) AddMinScore(f float64) {
+	if m.addmin_score != nil {
+		*m.addmin_score += f
+	} else {
+		m.addmin_score = &f
+	}
+}
+
+// AddedMinScore returns the value that was added to the "min_score" field in this mutation.
+func (m *EvalGateConfigMutation) AddedMinScore() (r float64, exists bool) {
+	v := m.addmin_score
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMinScore resets all changes to the "min_score" field.
+func (m *EvalGateConfigMutation) ResetMinScore() {
+	m.min_score = nil
+	m.addmin_score = nil
+}
+
+// SetMaxDrop sets the "max_drop" field.
+func (m *EvalGateConfigMutation) SetMaxDrop(f float64) {
+	m.max_drop = &f
+	m.addmax_drop = nil
+}
+
+// MaxDrop returns the value of the "max_drop" field in the mutation.
+func (m *EvalGateConfigMutation) MaxDrop() (r float64, exists bool) {
+	v := m.max_drop
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxDrop returns the old "max_drop" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldMaxDrop(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxDrop is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxDrop requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxDrop: %w", err)
+	}
+	return oldValue.MaxDrop, nil
+}
+
+// AddMaxDrop adds f to the "max_drop" field.
+func (m *EvalGateConfigMutation) AddMaxDrop(f float64) {
+	if m.addmax_drop != nil {
+		*m.addmax_drop += f
+	} else {
+		m.addmax_drop = &f
+	}
+}
+
+// AddedMaxDrop returns the value that was added to the "max_drop" field in this mutation.
+func (m *EvalGateConfigMutation) AddedMaxDrop() (r float64, exists bool) {
+	v := m.addmax_drop
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxDrop resets all changes to the "max_drop" field.
+func (m *EvalGateConfigMutation) ResetMaxDrop() {
+	m.max_drop = nil
+	m.addmax_drop = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *EvalGateConfigMutation) SetUpdatedAt(s string) {
+	m.updated_at = &s
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *EvalGateConfigMutation) UpdatedAt() (r string, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the EvalGateConfig entity.
+// If the EvalGateConfig object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalGateConfigMutation) OldUpdatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *EvalGateConfigMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the EvalGateConfigMutation builder.
+func (m *EvalGateConfigMutation) Where(ps ...predicate.EvalGateConfig) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EvalGateConfigMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EvalGateConfigMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EvalGateConfig, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EvalGateConfigMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EvalGateConfigMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EvalGateConfig).
+func (m *EvalGateConfigMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EvalGateConfigMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.enabled != nil {
+		fields = append(fields, evalgateconfig.FieldEnabled)
+	}
+	if m.agent_id != nil {
+		fields = append(fields, evalgateconfig.FieldAgentID)
+	}
+	if m.dataset_id != nil {
+		fields = append(fields, evalgateconfig.FieldDatasetID)
+	}
+	if m.metric != nil {
+		fields = append(fields, evalgateconfig.FieldMetric)
+	}
+	if m.min_score != nil {
+		fields = append(fields, evalgateconfig.FieldMinScore)
+	}
+	if m.max_drop != nil {
+		fields = append(fields, evalgateconfig.FieldMaxDrop)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, evalgateconfig.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EvalGateConfigMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		return m.Enabled()
+	case evalgateconfig.FieldAgentID:
+		return m.AgentID()
+	case evalgateconfig.FieldDatasetID:
+		return m.DatasetID()
+	case evalgateconfig.FieldMetric:
+		return m.Metric()
+	case evalgateconfig.FieldMinScore:
+		return m.MinScore()
+	case evalgateconfig.FieldMaxDrop:
+		return m.MaxDrop()
+	case evalgateconfig.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EvalGateConfigMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case evalgateconfig.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case evalgateconfig.FieldDatasetID:
+		return m.OldDatasetID(ctx)
+	case evalgateconfig.FieldMetric:
+		return m.OldMetric(ctx)
+	case evalgateconfig.FieldMinScore:
+		return m.OldMinScore(ctx)
+	case evalgateconfig.FieldMaxDrop:
+		return m.OldMaxDrop(ctx)
+	case evalgateconfig.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EvalGateConfig field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EvalGateConfigMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case evalgateconfig.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case evalgateconfig.FieldDatasetID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDatasetID(v)
+		return nil
+	case evalgateconfig.FieldMetric:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMetric(v)
+		return nil
+	case evalgateconfig.FieldMinScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMinScore(v)
+		return nil
+	case evalgateconfig.FieldMaxDrop:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxDrop(v)
+		return nil
+	case evalgateconfig.FieldUpdatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EvalGateConfig field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EvalGateConfigMutation) AddedFields() []string {
+	var fields []string
+	if m.addenabled != nil {
+		fields = append(fields, evalgateconfig.FieldEnabled)
+	}
+	if m.addmin_score != nil {
+		fields = append(fields, evalgateconfig.FieldMinScore)
+	}
+	if m.addmax_drop != nil {
+		fields = append(fields, evalgateconfig.FieldMaxDrop)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EvalGateConfigMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		return m.AddedEnabled()
+	case evalgateconfig.FieldMinScore:
+		return m.AddedMinScore()
+	case evalgateconfig.FieldMaxDrop:
+		return m.AddedMaxDrop()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EvalGateConfigMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEnabled(v)
+		return nil
+	case evalgateconfig.FieldMinScore:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMinScore(v)
+		return nil
+	case evalgateconfig.FieldMaxDrop:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxDrop(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EvalGateConfig numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EvalGateConfigMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EvalGateConfigMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EvalGateConfigMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown EvalGateConfig nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EvalGateConfigMutation) ResetField(name string) error {
+	switch name {
+	case evalgateconfig.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case evalgateconfig.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case evalgateconfig.FieldDatasetID:
+		m.ResetDatasetID()
+		return nil
+	case evalgateconfig.FieldMetric:
+		m.ResetMetric()
+		return nil
+	case evalgateconfig.FieldMinScore:
+		m.ResetMinScore()
+		return nil
+	case evalgateconfig.FieldMaxDrop:
+		m.ResetMaxDrop()
+		return nil
+	case evalgateconfig.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EvalGateConfig field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EvalGateConfigMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EvalGateConfigMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EvalGateConfigMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EvalGateConfigMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EvalGateConfigMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EvalGateConfigMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EvalGateConfigMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EvalGateConfig unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EvalGateConfigMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EvalGateConfig edge %s", name)
+}
+
 // EvalRunMutation represents an operation that mutates the EvalRun nodes in the graph.
 type EvalRunMutation struct {
 	config
@@ -29564,6 +30326,7 @@ type EvalRunMutation struct {
 	error_message           *string
 	started_at              *string
 	finished_at             *string
+	dataset_hash            *string
 	workspace_id            *string
 	created_at              *string
 	clearedFields           map[string]struct{}
@@ -30473,6 +31236,42 @@ func (m *EvalRunMutation) ResetFinishedAt() {
 	m.finished_at = nil
 }
 
+// SetDatasetHash sets the "dataset_hash" field.
+func (m *EvalRunMutation) SetDatasetHash(s string) {
+	m.dataset_hash = &s
+}
+
+// DatasetHash returns the value of the "dataset_hash" field in the mutation.
+func (m *EvalRunMutation) DatasetHash() (r string, exists bool) {
+	v := m.dataset_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDatasetHash returns the old "dataset_hash" field's value of the EvalRun entity.
+// If the EvalRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunMutation) OldDatasetHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDatasetHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDatasetHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDatasetHash: %w", err)
+	}
+	return oldValue.DatasetHash, nil
+}
+
+// ResetDatasetHash resets all changes to the "dataset_hash" field.
+func (m *EvalRunMutation) ResetDatasetHash() {
+	m.dataset_hash = nil
+}
+
 // SetWorkspaceID sets the "workspace_id" field.
 func (m *EvalRunMutation) SetWorkspaceID(s string) {
 	m.workspace_id = &s
@@ -30660,7 +31459,7 @@ func (m *EvalRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EvalRunMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.dataset != nil {
 		fields = append(fields, evalrun.FieldDatasetID)
 	}
@@ -30712,6 +31511,9 @@ func (m *EvalRunMutation) Fields() []string {
 	if m.finished_at != nil {
 		fields = append(fields, evalrun.FieldFinishedAt)
 	}
+	if m.dataset_hash != nil {
+		fields = append(fields, evalrun.FieldDatasetHash)
+	}
 	if m.workspace_id != nil {
 		fields = append(fields, evalrun.FieldWorkspaceID)
 	}
@@ -30760,6 +31562,8 @@ func (m *EvalRunMutation) Field(name string) (ent.Value, bool) {
 		return m.StartedAt()
 	case evalrun.FieldFinishedAt:
 		return m.FinishedAt()
+	case evalrun.FieldDatasetHash:
+		return m.DatasetHash()
 	case evalrun.FieldWorkspaceID:
 		return m.WorkspaceID()
 	case evalrun.FieldCreatedAt:
@@ -30807,6 +31611,8 @@ func (m *EvalRunMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldStartedAt(ctx)
 	case evalrun.FieldFinishedAt:
 		return m.OldFinishedAt(ctx)
+	case evalrun.FieldDatasetHash:
+		return m.OldDatasetHash(ctx)
 	case evalrun.FieldWorkspaceID:
 		return m.OldWorkspaceID(ctx)
 	case evalrun.FieldCreatedAt:
@@ -30938,6 +31744,13 @@ func (m *EvalRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFinishedAt(v)
+		return nil
+	case evalrun.FieldDatasetHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDatasetHash(v)
 		return nil
 	case evalrun.FieldWorkspaceID:
 		v, ok := value.(string)
@@ -31164,6 +31977,9 @@ func (m *EvalRunMutation) ResetField(name string) error {
 	case evalrun.FieldFinishedAt:
 		m.ResetFinishedAt()
 		return nil
+	case evalrun.FieldDatasetHash:
+		m.ResetDatasetHash()
+		return nil
 	case evalrun.FieldWorkspaceID:
 		m.ResetWorkspaceID()
 		return nil
@@ -31274,6 +32090,662 @@ func (m *EvalRunMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown EvalRun edge %s", name)
+}
+
+// EvalRunPreferenceMutation represents an operation that mutates the EvalRunPreference nodes in the graph.
+type EvalRunPreferenceMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	dataset_id    *string
+	run_id_a      *string
+	run_id_b      *string
+	winner_run_id *string
+	comment       *string
+	created_by    *string
+	created_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*EvalRunPreference, error)
+	predicates    []predicate.EvalRunPreference
+}
+
+var _ ent.Mutation = (*EvalRunPreferenceMutation)(nil)
+
+// evalrunpreferenceOption allows management of the mutation configuration using functional options.
+type evalrunpreferenceOption func(*EvalRunPreferenceMutation)
+
+// newEvalRunPreferenceMutation creates new mutation for the EvalRunPreference entity.
+func newEvalRunPreferenceMutation(c config, op Op, opts ...evalrunpreferenceOption) *EvalRunPreferenceMutation {
+	m := &EvalRunPreferenceMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEvalRunPreference,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEvalRunPreferenceID sets the ID field of the mutation.
+func withEvalRunPreferenceID(id string) evalrunpreferenceOption {
+	return func(m *EvalRunPreferenceMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EvalRunPreference
+		)
+		m.oldValue = func(ctx context.Context) (*EvalRunPreference, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EvalRunPreference.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEvalRunPreference sets the old EvalRunPreference of the mutation.
+func withEvalRunPreference(node *EvalRunPreference) evalrunpreferenceOption {
+	return func(m *EvalRunPreferenceMutation) {
+		m.oldValue = func(context.Context) (*EvalRunPreference, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EvalRunPreferenceMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EvalRunPreferenceMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of EvalRunPreference entities.
+func (m *EvalRunPreferenceMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EvalRunPreferenceMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EvalRunPreferenceMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EvalRunPreference.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDatasetID sets the "dataset_id" field.
+func (m *EvalRunPreferenceMutation) SetDatasetID(s string) {
+	m.dataset_id = &s
+}
+
+// DatasetID returns the value of the "dataset_id" field in the mutation.
+func (m *EvalRunPreferenceMutation) DatasetID() (r string, exists bool) {
+	v := m.dataset_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDatasetID returns the old "dataset_id" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldDatasetID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDatasetID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDatasetID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDatasetID: %w", err)
+	}
+	return oldValue.DatasetID, nil
+}
+
+// ResetDatasetID resets all changes to the "dataset_id" field.
+func (m *EvalRunPreferenceMutation) ResetDatasetID() {
+	m.dataset_id = nil
+}
+
+// SetRunIDA sets the "run_id_a" field.
+func (m *EvalRunPreferenceMutation) SetRunIDA(s string) {
+	m.run_id_a = &s
+}
+
+// RunIDA returns the value of the "run_id_a" field in the mutation.
+func (m *EvalRunPreferenceMutation) RunIDA() (r string, exists bool) {
+	v := m.run_id_a
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunIDA returns the old "run_id_a" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldRunIDA(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunIDA is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunIDA requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunIDA: %w", err)
+	}
+	return oldValue.RunIDA, nil
+}
+
+// ResetRunIDA resets all changes to the "run_id_a" field.
+func (m *EvalRunPreferenceMutation) ResetRunIDA() {
+	m.run_id_a = nil
+}
+
+// SetRunIDB sets the "run_id_b" field.
+func (m *EvalRunPreferenceMutation) SetRunIDB(s string) {
+	m.run_id_b = &s
+}
+
+// RunIDB returns the value of the "run_id_b" field in the mutation.
+func (m *EvalRunPreferenceMutation) RunIDB() (r string, exists bool) {
+	v := m.run_id_b
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunIDB returns the old "run_id_b" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldRunIDB(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunIDB is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunIDB requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunIDB: %w", err)
+	}
+	return oldValue.RunIDB, nil
+}
+
+// ResetRunIDB resets all changes to the "run_id_b" field.
+func (m *EvalRunPreferenceMutation) ResetRunIDB() {
+	m.run_id_b = nil
+}
+
+// SetWinnerRunID sets the "winner_run_id" field.
+func (m *EvalRunPreferenceMutation) SetWinnerRunID(s string) {
+	m.winner_run_id = &s
+}
+
+// WinnerRunID returns the value of the "winner_run_id" field in the mutation.
+func (m *EvalRunPreferenceMutation) WinnerRunID() (r string, exists bool) {
+	v := m.winner_run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWinnerRunID returns the old "winner_run_id" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldWinnerRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWinnerRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWinnerRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWinnerRunID: %w", err)
+	}
+	return oldValue.WinnerRunID, nil
+}
+
+// ResetWinnerRunID resets all changes to the "winner_run_id" field.
+func (m *EvalRunPreferenceMutation) ResetWinnerRunID() {
+	m.winner_run_id = nil
+}
+
+// SetComment sets the "comment" field.
+func (m *EvalRunPreferenceMutation) SetComment(s string) {
+	m.comment = &s
+}
+
+// Comment returns the value of the "comment" field in the mutation.
+func (m *EvalRunPreferenceMutation) Comment() (r string, exists bool) {
+	v := m.comment
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComment returns the old "comment" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldComment(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComment is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComment requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComment: %w", err)
+	}
+	return oldValue.Comment, nil
+}
+
+// ResetComment resets all changes to the "comment" field.
+func (m *EvalRunPreferenceMutation) ResetComment() {
+	m.comment = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *EvalRunPreferenceMutation) SetCreatedBy(s string) {
+	m.created_by = &s
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *EvalRunPreferenceMutation) CreatedBy() (r string, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldCreatedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *EvalRunPreferenceMutation) ResetCreatedBy() {
+	m.created_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *EvalRunPreferenceMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *EvalRunPreferenceMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the EvalRunPreference entity.
+// If the EvalRunPreference object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EvalRunPreferenceMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *EvalRunPreferenceMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the EvalRunPreferenceMutation builder.
+func (m *EvalRunPreferenceMutation) Where(ps ...predicate.EvalRunPreference) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EvalRunPreferenceMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EvalRunPreferenceMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EvalRunPreference, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EvalRunPreferenceMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EvalRunPreferenceMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EvalRunPreference).
+func (m *EvalRunPreferenceMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EvalRunPreferenceMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.dataset_id != nil {
+		fields = append(fields, evalrunpreference.FieldDatasetID)
+	}
+	if m.run_id_a != nil {
+		fields = append(fields, evalrunpreference.FieldRunIDA)
+	}
+	if m.run_id_b != nil {
+		fields = append(fields, evalrunpreference.FieldRunIDB)
+	}
+	if m.winner_run_id != nil {
+		fields = append(fields, evalrunpreference.FieldWinnerRunID)
+	}
+	if m.comment != nil {
+		fields = append(fields, evalrunpreference.FieldComment)
+	}
+	if m.created_by != nil {
+		fields = append(fields, evalrunpreference.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, evalrunpreference.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EvalRunPreferenceMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case evalrunpreference.FieldDatasetID:
+		return m.DatasetID()
+	case evalrunpreference.FieldRunIDA:
+		return m.RunIDA()
+	case evalrunpreference.FieldRunIDB:
+		return m.RunIDB()
+	case evalrunpreference.FieldWinnerRunID:
+		return m.WinnerRunID()
+	case evalrunpreference.FieldComment:
+		return m.Comment()
+	case evalrunpreference.FieldCreatedBy:
+		return m.CreatedBy()
+	case evalrunpreference.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EvalRunPreferenceMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case evalrunpreference.FieldDatasetID:
+		return m.OldDatasetID(ctx)
+	case evalrunpreference.FieldRunIDA:
+		return m.OldRunIDA(ctx)
+	case evalrunpreference.FieldRunIDB:
+		return m.OldRunIDB(ctx)
+	case evalrunpreference.FieldWinnerRunID:
+		return m.OldWinnerRunID(ctx)
+	case evalrunpreference.FieldComment:
+		return m.OldComment(ctx)
+	case evalrunpreference.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case evalrunpreference.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EvalRunPreference field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EvalRunPreferenceMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case evalrunpreference.FieldDatasetID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDatasetID(v)
+		return nil
+	case evalrunpreference.FieldRunIDA:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunIDA(v)
+		return nil
+	case evalrunpreference.FieldRunIDB:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunIDB(v)
+		return nil
+	case evalrunpreference.FieldWinnerRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWinnerRunID(v)
+		return nil
+	case evalrunpreference.FieldComment:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComment(v)
+		return nil
+	case evalrunpreference.FieldCreatedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case evalrunpreference.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EvalRunPreference field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EvalRunPreferenceMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EvalRunPreferenceMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EvalRunPreferenceMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown EvalRunPreference numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EvalRunPreferenceMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EvalRunPreferenceMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EvalRunPreferenceMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown EvalRunPreference nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EvalRunPreferenceMutation) ResetField(name string) error {
+	switch name {
+	case evalrunpreference.FieldDatasetID:
+		m.ResetDatasetID()
+		return nil
+	case evalrunpreference.FieldRunIDA:
+		m.ResetRunIDA()
+		return nil
+	case evalrunpreference.FieldRunIDB:
+		m.ResetRunIDB()
+		return nil
+	case evalrunpreference.FieldWinnerRunID:
+		m.ResetWinnerRunID()
+		return nil
+	case evalrunpreference.FieldComment:
+		m.ResetComment()
+		return nil
+	case evalrunpreference.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case evalrunpreference.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EvalRunPreference field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EvalRunPreferenceMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EvalRunPreferenceMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EvalRunPreferenceMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EvalRunPreferenceMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EvalRunPreferenceMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EvalRunPreferenceMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EvalRunPreferenceMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EvalRunPreference unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EvalRunPreferenceMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EvalRunPreference edge %s", name)
 }
 
 // EventDeliveryOutboxMutation represents an operation that mutates the EventDeliveryOutbox nodes in the graph.

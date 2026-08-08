@@ -30,6 +30,7 @@ type ASREvent struct {
 }
 
 type ASRSessionConfig struct {
+	Driver     string // Provider 驱动名（如 volcengine），随消息元数据落库（V2-T6 asr_provider）
 	Language   string // 默认 zh-CN
 	SampleRate int    // 默认 16000
 }
@@ -141,4 +142,7 @@ func (c TTSProviderConfig) Validate() error {
 type SpeechConfigReader interface {
 	ASRConfig(ctx context.Context) (ASRProviderConfig, error)
 	TTSConfig(ctx context.Context) (TTSProviderConfig, error)
+	// ArchiveUserAudio 返回语音留档开关（speech.archive_user_audio，V2-T6）。
+	// 默认 false；读取失败时调用方按 Warn 降级为不留档（K3）。
+	ArchiveUserAudio(ctx context.Context) (bool, error)
 }

@@ -18,6 +18,7 @@
           indicator-color="primary"
         >
           <q-tab name="general" :label="t('settingsPage.tabGeneral')" icon="tune" />
+          <q-tab name="speech" :label="t('settingsPage.tabSpeech')" icon="record_voice_over" />
           <q-tab name="catalog" :label="t('settingsPage.tabCatalog')" icon="dns" />
         </q-tabs>
         <q-separator />
@@ -344,6 +345,56 @@
               </div>
             </q-card-section>
           </q-tab-panel>
+          <q-tab-panel name="speech" class="q-pa-none">
+            <q-card-section class="app-settings-shell__body">
+              <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">{{ error }}</q-banner>
+
+              <div class="settings-grid settings-grid--2col">
+                <section class="settings-section settings-section--span">
+                  <div class="section-heading">
+                    <div class="section-heading__main">
+                      <div class="section-title">
+                        <q-icon name="record_voice_over" size="sm" color="primary" />
+                        <span class="section-title__text">{{ t('settingsPage.speech.title') }}</span>
+                      </div>
+                      <p class="settings-section__hint">{{ t('settingsPage.speech.hint') }}</p>
+                    </div>
+                  </div>
+                  <speech-service-fields
+                    v-model:form="speechForm"
+                    :asr-configured="speechAsrConfigured"
+                    :asr-has-api-key="speechAsrHasApiKey"
+                    :tts-configured="speechTtsConfigured"
+                    :tts-has-api-key="speechTtsHasApiKey"
+                  />
+                </section>
+              </div>
+
+              <div class="settings-footer">
+                <div v-if="lastSavedLabel" class="settings-footer__timestamp">{{ lastSavedLabel }}</div>
+                <div class="settings-footer__actions">
+                  <q-btn
+                    outline
+                    color="primary"
+                    no-caps
+                    :loading="loading"
+                    :label="t('settingsPage.reload')"
+                    icon="refresh"
+                    @click="load"
+                  />
+                  <q-btn
+                    color="primary"
+                    unelevated
+                    no-caps
+                    :loading="saving"
+                    :label="t('settingsPage.save')"
+                    icon="save"
+                    @click="save"
+                  />
+                </div>
+              </div>
+            </q-card-section>
+          </q-tab-panel>
           <q-tab-panel name="catalog" class="q-pa-md">
             <SystemSettingsCatalogTab />
           </q-tab-panel>
@@ -390,6 +441,7 @@ import { ref } from 'vue';
 import KnowledgeEmbedderFields from '../components/knowledge/KnowledgeEmbedderFields.vue';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import WebResearchFields from '../components/settings/WebResearchFields.vue';
+import SpeechServiceFields from '../components/settings/SpeechServiceFields.vue';
 import SystemSettingsCatalogTab from './SystemSettingsCatalogTab.vue';
 import { useSystemSettingsPage } from '../features/system-settings/useSystemSettingsPage';
 import { useEcosystemPreset } from '../features/system-settings/useEcosystemPreset';
@@ -408,6 +460,11 @@ const {
   knowledgeEmbedForm,
   evalLLMForm,
   webResearchForm,
+  speechForm,
+  speechAsrConfigured,
+  speechAsrHasApiKey,
+  speechTtsConfigured,
+  speechTtsHasApiKey,
   knowledgeEmbedConfigured,
   webResearchConfigured,
   webResearchHasApiKey,

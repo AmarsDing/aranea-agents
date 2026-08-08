@@ -197,6 +197,12 @@ func (mockSystemSettingRepo) GetPlannerModel(context.Context) (PlannerModelSetti
 func (mockSystemSettingRepo) UpdatePlannerModel(context.Context, PlannerModelSetting) (PlannerModelSetting, error) {
 	return PlannerModelSetting{}, nil
 }
+func (mockSystemSettingRepo) GetSpeech(context.Context) (SpeechSetting, error) {
+	return SpeechSetting{}, nil
+}
+func (mockSystemSettingRepo) UpdateSpeech(context.Context, SpeechSetting, bool, bool) (SpeechSetting, error) {
+	return SpeechSetting{}, nil
+}
 
 type mockLLMCaller struct {
 	got LLMCallRequest

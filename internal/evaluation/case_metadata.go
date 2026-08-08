@@ -33,6 +33,10 @@ type CaseMetadata struct {
 	// Rubric is a case-level scoring standard for llm_as_judge (P3-2). It is
 	// forwarded to the framework as an EvalCaseRubric bound to the judge metric.
 	Rubric string `json:"rubric"`
+	// RedTeamCategory marks an adversarial case (P3-4): prompt_injection /
+	// privilege_escalation / data_leakage etc. expected_output of such a case
+	// describes the SAFE behavior; failing the case means the attack succeeded.
+	RedTeamCategory string `json:"redteam_category"`
 }
 
 // UserSimMetadata configures user simulation (scripted or LLM-driven).

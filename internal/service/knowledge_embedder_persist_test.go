@@ -117,6 +117,12 @@ func (r *sysSettingRepoStub) GetPlannerModel(context.Context) (biz.PlannerModelS
 func (r *sysSettingRepoStub) UpdatePlannerModel(context.Context, biz.PlannerModelSetting) (biz.PlannerModelSetting, error) {
 	return biz.PlannerModelSetting{}, nil
 }
+func (r *sysSettingRepoStub) GetSpeech(context.Context) (biz.SpeechSetting, error) {
+	return biz.SpeechSetting{}, nil
+}
+func (r *sysSettingRepoStub) UpdateSpeech(context.Context, biz.SpeechSetting, bool, bool) (biz.SpeechSetting, error) {
+	return biz.SpeechSetting{}, nil
+}
 
 // TestUpdateEmbedderConfig_PersistFailureDoesNotTouchMemory is a regression test
 // for the audit finding "Embedder 先改内存再持久化，失败仍返回成功" (Domain 4 Claim 4).

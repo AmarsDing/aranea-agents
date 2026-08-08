@@ -110,6 +110,12 @@ client                      voice gateway                 chat pipeline
   │←─ tts.end / state(listening)                           │
 ```
 
+### 2.5 服务可用性探测（`GET /v1/voice/status`，V2-T8）
+
+- HTTP GET（非 WS），复用 WS 同源鉴权；响应 `{asr_available, tts_available}`（bool）
+- 探测逻辑：`VoiceStatusProbe`（wire 注入）经 `SpeechConfigReader` 实时读 ASR/TTS 配置（DB-first/env-fallback，同 §3.3），`SpeechASRConfigured`/`SpeechTTSConfigured` 判定——每次调用实时读 DB，配置热生效
+- 用途：前端麦克风门控——`features/companion/voiceStatus.ts` 挂载时拉取写入 companion store `voiceAvailable`（三态 null/true/false），`voiceMicDisabled` 派生；ASR 或 TTS 任一未配置即禁用麦克风按钮并提示前往「系统设置 → 语音服务」配置，避免用户点了才发现没配的坏体验
+
 ## 3. SpeechProvider 端口（biz）与适配器（data）
 
 ### 3.1 端口定义（`internal/biz/speech.go`）
@@ -279,6 +285,12 @@ Agent 调用 client_open_app
 > - `client_screenshot` 未随 V2-T4 落地（范围裁剪，留待后续任务）
 > - 前端接线（同属 V2-T4）：`services/clientTools.ts`（`isDesktopCompanion` 探测 + Tauri executor + `executeClientToolInvoke` 参数归一化 + `client_tool.result` 帧构造）、`realtime/ws-transport.ts`（`register_capabilities` 上行 + `client_tool.invoke` 分发）、`realtime/useEnvelopeStream.ts`（连接后声明 `desktop_companion` 能力；invoke 处理本地失败也即时回帧，避免挂到 30s 桥超时）
 
+> **As-built（V2-T8 集成修复，2026-08-08）**：集成验收发现三处装配缺口并修复——
+>
+> - **种子补播**：存量库在 client 工具加入种子清单前已应用过 `builtin_platform_tools` 迁移，导致缺 `client_open_app`/`client_open_url` 两行；新增版本化迁移 `20261202 builtin_platform_tools_client_reseed`（`ddl_migration_registry.go`）复跑幂等种子（ON CONFLICT DO NOTHING），启动时自动补齐
+> - **chat 主链路装配**：`ClientBridge` 此前仅注入 graph/team/task 路径，chat 主链路 agent 构建缺失导致 `CallableTool client_open_app not found`；修复路径为 `service.RuntimeTooling.ClientBridge` 字段 + `cmd/admin/wire.go provideRuntimeTooling` 注入 + `chat_orch_agent_build.go` 透传至 `TRPCExtensionDeps.ClientBridge`
+> - **提示词引导**：spirit 提示词此前未明确客户端工具语义，agent 误用 `exec_command` 在服务器侧查找应用；`CAPABILITIES.md` 新增「客户端工具（用户本机控制）」章节（直接调用规则/禁止服务器侧探测/离线如实转述），`DECISION.md` 与 intent 分类器同步放行「打开本机应用/网址」类请求不再追问澄清
+
 ## 7. 前端设计（`web/src/`，遵循 aranea-frontend-guide 分层）
 
 ### 7.1 路由与页面
@@ -352,10 +364,31 @@ Agent 调用 client_open_app
 - 用户消息：`content` = ASR 终稿；`metadata` 增加 `input_modality="voice"`、`asr_provider`、`asr_duration_ms`（JSON 元数据，非新列——若 messages 表 metadata 不支持则随 V1 实施评估最小变更）
 - 语音留档（开关开启时）：Artifact（PreviewKind=audio）+ 消息附件引用（复用 `AttachmentRef` 链路）；留档失败仅 Warn 降级，不阻断消息（K3）
 
+> **As-built（V2-T6 语音留档 + 语音溯源元数据，2026-08-08）**：
+>
+> - **元数据落点**：语音溯源元数据落在用户消息 `options_json`（非 messages.metadata）——`chatagent.MergeVoiceMetaIntoUserOptionsJSON` 在 `prepareTurnUserOptions` 阶段盖章 `input_modality="voice"` + `asr_provider`（ASR 配置 Driver，经 `ASRSessionConfig.Driver` 透传）+ `asr_duration_ms`（空 provider/零时长省略），既有键全保留
+> - **留档链路**：`voice.Session` 在 listening 态按语句缓冲上行 PCM（上限 8 MiB ≈ 4.4 分钟 @16kHz，超限截断并 Warn 一次）；ASR 终稿 = 语句边界，PCM 经 `voice.EncodeWAV` 封装后由 `voice.AudioArchiver` 端口（`internal/service/voice_archive.go` 实现）落 Artifact——文件名 `voice-<UTC时间戳>-<μs>-<序号>.wav`（原子序号兜底低分辨率时钟，避免同 session+name 版本堆叠）
+> - **开关**：`speech.archive_user_audio`（V1 读 env `SPEECH_ARCHIVE_USER_AUDIO`；V2-T7 切 System Settings 分组，端口不变）；开关关闭/读取失败/存储失败均返回零值 Ref 降级（K3），**不阻断 Turn 派发**
+> - **展示态附件刻意绕开 LLM 附件链路**：留档 Ref 合并进 `options_json.attachments` 仅供 UI 回放，**不经** `Options.AttachmentIDs`——避免 `validateTurnAttachmentCapabilities` 把 audio/* 当 file 附件拒绝、及 WAV 字节注入 LLM 上下文
+> - **生命周期对齐 Chat Turn**：留档在 `appctx` + userID 传播上执行（独立于 WS 连接存活）；`archiveUtterance` 同步执行于 asrPump（本地产物存储 + 单次 DB 写入，时延可忽略）
+> - **确认拦截/取消/停止分支直接丢弃缓冲**，保证下一句从空缓冲开始
+> - **wire 装配**：`provideVoiceWSServer` 注入既有 `*biz.ArtifactUsecase`（实现 `artifact.Saver` 窄接口）构造 `VoiceAudioArchiver`；`VoiceWSServer` 新增 `archiver` 字段，`SessionDeps.Archiver` 为 nil 时整体关闭留档（不缓冲 PCM）
+> - **流程日志**：`voice.archive.saved` / `voice.archive.degraded` / `voice.archive.truncate` 三 step 已登记（52-flow-logger §5.1 同步）
+
 ### 9.2 Speech 配置（System Settings `speech` 分组，见 §3.3）
 
 - 无新 Ent Schema；凭据字段走既有敏感字段加密（DB-N8）
 - V2 期管理面 UI 落 System Settings 新 Tab
+
+> **As-built（V2-T7 System Settings「语音服务」Tab，2026-08-08）**：
+>
+> - **存储落点偏差（vs D9「JSON 分组」）**：实现为 `system_settings` 单例表上 14 个离散列（DDL 迁移 `20260808_speech_columns.sql`，raw SQL 读写）——与 `planner_model_columns`/`refine_llm` 同模式（ent generator 被 tablewriter 版本冲突阻塞，列走 DDL 管理）。string 空串 = 未设置；`speech_tts_speed_ratio=0` = 未设置（proto3 零值对齐）；`speech_archive_user_audio` 为 nullable 三态（NULL = 未设置）
+> - **读取语义（DB-first / env-fallback 字段级合并）**：`internal/data/speech/system_config.go` `SystemSpeechConfigReader` 实现 `biz.SpeechConfigReader`——每个字段独立取「DB 非空值 ⊻ env（`SPEECH_ASR_*`/`SPEECH_TTS_*`/`SPEECH_ARCHIVE_USER_AUDIO`）」，部分填写的 DB 行不会遮蔽其余 env 值；留档开关 NULL 回退 env，**V1 env 开关升级后不被静默覆盖**
+> - **热生效**：每次 `ASRConfig/TTSConfig/ArchiveUserAudio` 调用实时读 DB（系统设置单例读取低开销），保存后新连接即生效，无需重启；读取失败回退 env 并 Warn（K3）
+> - **wire 装配**：`SpeechConfigReader` 绑定由 `EnvSpeechConfigReader` 切换为 `SystemSpeechConfigReader`（构造注入 `biz.SystemSettingRepo` + Logger）
+> - **API 契约**：`SystemSettings.speech` 消息（asr/tts/archive_user_audio）+ `UpdateSystemSettingsRequest` 字段 22-35；**凭据 write-only**——响应永不返回 app_key/access_key 明文，仅给 `has_api_key`/`configured` 标志；更新时空凭据 = 保留已存值（`updateXxxCred` 仅在新值非空时置位）；`speed_ratio < 0` 拒绝（BadRequest）
+> - **前端**：System Settings 新增「语音服务」Tab（`SpeechServiceFields.vue` + `features/system-settings/speech.ts` 表单态/差分 patch）——已存凭据以 mask placeholder 呈现、仅输入新值才提交；`archive_user_audio` 三态经 proto3 `optional bool` 传递（未触碰 = 键缺省 = 保留已存/env）；i18n zh-CN/en-US 全量
+> - **流程日志**：管理面配置读写属管理操作非业务流程，沿用 System Settings 既有惯例不新增 flow step（K1-K7 评估）
 
 ## 10. 技术选型
 
@@ -383,6 +416,9 @@ Agent 调用 client_open_app
 | `voice.provider.fallback` | K3 降级（TTS 跳句/Provider 重连/退回文字模式） | Warn |
 | `voice.error` | K2 错误路径 | Error + `loggateway.Err` |
 | `voice.confirm.resolved` | K5 语音确认决议（V2-T5） | Info |
+| `voice.archive.saved` | K6 语音留档保存（V2-T6，含时长/大小/artifact_id） | Info |
+| `voice.archive.degraded` | K3 留档降级（开关读取失败/存储失败，消息正常派发；V2-T6） | Warn |
+| `voice.archive.truncate` | K3 留档截断（语句 PCM 超 8 MiB 上限；V2-T6） | Warn |
 | `client_tool.invoke` / `client_tool.result` / `client_tool.timeout` | K6/K7 客户端工具生命周期 | Info/Warn |
 
 限流（红线 4）：`asr.partial` 上行不下发流程日志；音频帧不写日志；高频事件走计数器汇总。

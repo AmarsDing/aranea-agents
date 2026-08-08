@@ -15,16 +15,27 @@ type (
 	EvalJudgeDivergence      = evaluation.JudgeDivergence
 	EvalJudgeDivergenceCase  = evaluation.JudgeDivergenceCase
 	EvalJudgeAnnotatedResult = evaluation.JudgeAnnotatedResult
+	EvalFailureGroup         = evaluation.FailureGroup
+	EvalFailureGroupReport   = evaluation.FailureGroupReport
+	EvalRunPreference        = evaluation.RunPreference
+	EvalGateConfig           = evaluation.GateConfig
 	EvalRepo                 = evaluation.Repo
 	EvalUsecase              = evaluation.Usecase
 	EvalScores               = evaluation.Scores
 	EvalLLMSetting           = evaluation.LLMSetting
 )
 
+// Re-export evaluation gate trigger constants.
+const (
+	EvalGateTriggerSkillPublish = evaluation.GateTriggerSkillPublish
+	EvalGateTriggerPackInstall  = evaluation.GateTriggerPackInstall
+)
+
 // Re-export evaluation constructors and helpers for backward compatibility.
 var (
-	NewEvalUsecase    = evaluation.NewUsecase
-	ParseEvalScores   = evaluation.ParseScores
-	MarshalEvalScores = evaluation.MarshalScores
-	ApplyEvalLLMPatch = evaluation.ApplyLLMPatch
+	NewEvalUsecase     = evaluation.NewUsecase
+	ParseEvalScores    = evaluation.ParseScores
+	MarshalEvalScores  = evaluation.MarshalScores
+	ApplyEvalLLMPatch  = evaluation.ApplyLLMPatch
+	EvalRunMetricScore = evaluation.RunMetricScore
 )

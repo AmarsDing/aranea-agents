@@ -21,7 +21,8 @@ var (
 )
 
 // ReplaceLinks 事务性替换某文档某类型的全部出链（删旧 + 插新；空切片 = 仅清理）。
-// 同 (doc,target,type) 去重靠 knowledge_links_unique 唯一索引兜底（ON CONFLICT 跳过）。
+// 同 (doc,target,type) 由 knowledge_links_unique 唯一索引兜底；冲突时刷新
+// weight/context（SP1-C 块级投影聚合权重，N-3）。weight<=0 归一为 1。
 func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, linkType string, links []bizknowledge.Link) error {
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx,
@@ -32,11 +33,15 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			if l.TargetDocID == "" || l.TargetDocID == docID {
 				continue
 			}
+			weight := l.Weight
+			if weight <= 0 {
+				weight = 1
+			}
 			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context)
-				 VALUES ($1,$2,$3,$4,$5)
-				 ON CONFLICT (doc_id, target_doc_id, link_type) DO NOTHING`,
-				collectionID, docID, l.TargetDocID, linkType, l.Context); err != nil {
+				`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context, weight)
+				 VALUES ($1,$2,$3,$4,$5,$6)
+				 ON CONFLICT (doc_id, target_doc_id, link_type) DO UPDATE SET weight = EXCLUDED.weight, context = EXCLUDED.context`,
+				collectionID, docID, l.TargetDocID, linkType, l.Context, weight); err != nil {
 				return err
 			}
 		}
@@ -46,7 +51,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 
 // ListLinks 列出文档的全部关联（出向 + 入向）；linkType 空 = 全部类型。
 func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, linkType string) ([]bizknowledge.Link, error) {
-	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context
+	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context, weight
 		FROM knowledge_links
 		WHERE collection_id = $1 AND (doc_id = $2 OR target_doc_id = $2)`
 	args := []any{collectionID, docID}
@@ -63,7 +68,7 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 	var out []bizknowledge.Link
 	for rows.Next() {
 		var l bizknowledge.Link
-		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context); err != nil {
+		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context, &l.Weight); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
@@ -74,7 +79,7 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 // ListCollectionLinks 列出库内全部关联（G4-B8 图谱数据源）；linkTypes 空 = 全部类型。
 // 按 id 有序保证返回稳定；路径前缀过滤在 biz 层按文档集裁剪（端点须在范围内）。
 func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID string, linkTypes []string) ([]bizknowledge.Link, error) {
-	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context
+	q := `SELECT id, collection_id, doc_id, target_doc_id, link_type, context, weight
 		FROM knowledge_links
 		WHERE collection_id = $1`
 	args := []any{collectionID}
@@ -91,7 +96,7 @@ func (r *knowledgeRepo) ListCollectionLinks(ctx context.Context, collectionID st
 	var out []bizknowledge.Link
 	for rows.Next() {
 		var l bizknowledge.Link
-		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context); err != nil {
+		if err := rows.Scan(&l.ID, &l.CollectionID, &l.DocID, &l.TargetDocID, &l.LinkType, &l.Context, &l.Weight); err != nil {
 			return nil, err
 		}
 		out = append(out, l)

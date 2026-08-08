@@ -480,6 +480,7 @@ func provideRuntimeTooling(
 	resourceAccess *biz.ResourceAccessUsecase,
 	deptMailbox *biz.DeptMailboxUsecase,
 	sessionSearch *biz.SessionSearchUsecase,
+	clientBridge *clientbridge.Bridge,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -501,6 +502,7 @@ func provideRuntimeTooling(
 		ResourceAccess:              resourceAccess,
 		DeptMailbox:                 deptMailbox,
 		SessionSearch:               sessionSearch,
+		ClientBridge:                clientBridge,
 	}
 }
 
@@ -2826,13 +2828,18 @@ func provideWSServer(
 // ASR/TTS factories registered by default). M74 voice companion.
 func provideSpeechRegistry() *speech.Registry { return speech.NewRegistry() }
 
-// provideSpeechConfigReader constructs the env-based speech config reader
-// (V1; System Settings speech 分组在 V2-T7 替换实现，端口不变）。
-func provideSpeechConfigReader() biz.SpeechConfigReader { return speech.NewEnvSpeechConfigReader() }
+// provideSpeechConfigReader constructs the System Settings backed speech config
+// reader (V2-T7): DB-first field-level merge with SPEECH_* env fallback. The
+// port (biz.SpeechConfigReader) is unchanged from the V1 env implementation.
+func provideSpeechConfigReader(repo biz.SystemSettingRepo, lg loggateway.Logger) biz.SpeechConfigReader {
+	return speech.NewSystemSpeechConfigReader(repo, lg)
+}
 
 // provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
 // 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
 // V2-T5：注入语音确认 resolver（service 层适配 voice.ConfirmResolver）。
+// V2-T6：注入语音留档 archiver（service 层适配 voice.AudioArchiver；
+// ASRSessionConfig.Driver 透传给消息元数据 asr_provider）。
 func provideVoiceWSServer(
 	sessionAuth server.SessionAuthorizer,
 	turnExecutor server.WSTurnExecutor,
@@ -2843,6 +2850,7 @@ func provideVoiceWSServer(
 	infra *event.Infra,
 	lg loggateway.Logger,
 	chatService *service.ChatService,
+	artifactUC *biz.ArtifactUsecase,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -2853,7 +2861,7 @@ func provideVoiceWSServer(
 		if err != nil {
 			return nil, biz.ASRSessionConfig{}, err
 		}
-		return p, biz.ASRSessionConfig{Language: cfg.Language, SampleRate: 16000}, nil
+		return p, biz.ASRSessionConfig{Driver: cfg.Driver, Language: cfg.Language, SampleRate: 16000}, nil
 	}
 	newTTS := func(ctx context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
 		cfg, err := cfgReader.TTSConfig(ctx)
@@ -2866,7 +2874,15 @@ func provideVoiceWSServer(
 		}
 		return p, biz.TTSSessionConfig{Voice: cfg.Voice, SpeedRatio: cfg.SpeedRatio, SampleRate: 16000}, nil
 	}
-	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService))
+	archiver := service.NewVoiceAudioArchiver(artifactUC, cfgReader, lg)
+	// V2-T8 差距2：麦克风置灰门控的可用性探测——复用同一 DB-first/env-fallback
+	// 配置读取，Validate 通过即视为可用（与 voice.start 的 openASR 判定同源）。
+	probe := func(ctx context.Context) (bool, bool) {
+		_, asrErr := cfgReader.ASRConfig(ctx)
+		_, ttsErr := cfgReader.TTSConfig(ctx)
+		return asrErr == nil, ttsErr == nil
+	}
+	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces

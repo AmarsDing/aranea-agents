@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	evalfinalresponse "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/finalresponse"
+	llmrubricresponse "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/llm/rubricresponse"
 	evaltooltrajectory "trpc.group/trpc-go/trpc-agent-go/evaluation/evaluator/tooltrajectory"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/metric/criterion"
@@ -24,6 +25,7 @@ import (
 var (
 	finalResponseEvaluatorName  = evalfinalresponse.New().Name()
 	toolTrajectoryEvaluatorName = evaltooltrajectory.New().Name()
+	rubricResponseEvaluatorName = llmrubricresponse.New().Name()
 )
 
 const (
@@ -91,9 +93,11 @@ func buildMetricSpecs(want metricSet) []metricSpec {
 		tooltrajectory.New(tooltrajectory.WithOrderSensitive(true)),
 	)), toolTrajectoryEvaluatorName)
 	add(MetricToolCallAccuracy, 1.0, criterion.New(criterion.WithToolTrajectory(tooltrajectory.New())), toolTrajectoryEvaluatorName)
-	// P1-7: llm_as_judge uses the framework's llm_final_response evaluator with
-	// LLMCriterion. When WithJudgeRunner is configured, the framework automatically
-	// routes all LLM metrics through the judge runner for evaluation.
-	add(MetricLLMAsJudge, 0.5, criterion.New(criterion.WithLLMJudge(&criterionllm.LLMCriterion{})), "llm_final_response")
+	// P1-7/P3-2: llm_as_judge uses the framework's llm_rubric_response evaluator.
+	// Its prompt renders the case's rubrics (merged from EvalCase.Rubrics by the
+	// service layer) and asks the judge for per-rubric JSON scores, so judge
+	// reasons always reflect the case's scoring standard. Cases without a
+	// custom rubric get a synthesized default in the evalset adapter.
+	add(MetricLLMAsJudge, 0.5, criterion.New(criterion.WithLLMJudge(&criterionllm.LLMCriterion{})), rubricResponseEvaluatorName)
 	return specs
 }

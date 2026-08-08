@@ -292,6 +292,26 @@ func TestSIDrive_TerminalRunsIgnored(t *testing.T) {
 	}
 }
 
+// 驱动域圈选回归：DriveOnce 必须经 RunFilter.Statuses 在查询层排除
+// 终态/applied/observing（含重 JSON 字段的行不进内存），只取 6 个驱动态。
+func TestSIDrive_QueriesOnlyDriveDomain(t *testing.T) {
+	uc, store, _, _, _ := siDriveFixture(t, nil, nil)
+	if err := uc.DriveOnce(context.Background()); err != nil {
+		t.Fatalf("DriveOnce: %v", err)
+	}
+	store.mu.Lock()
+	got := append([]SelfImprovementRunStatus(nil), store.lastFilter.Statuses...)
+	store.mu.Unlock()
+	if len(got) != len(siDriveStatuses) {
+		t.Fatalf("Statuses = %v, want %v（drive 职责域 6 态）", got, siDriveStatuses)
+	}
+	for i, st := range siDriveStatuses {
+		if got[i] != st {
+			t.Fatalf("Statuses[%d] = %s, want %s（full: %v）", i, got[i], st, got)
+		}
+	}
+}
+
 func TestSIDrive_ConflictMeansSomeoneElseDriving(t *testing.T) {
 	// 路由/应用返回 Conflict（run 已被其他入口推进）→ 静默跳过，不报错。
 	uc, _, _, _, _ := siDriveFixture(t,

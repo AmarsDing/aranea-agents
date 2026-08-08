@@ -99,14 +99,30 @@ func ProvideEvaluationRunner(
 	evalUC *biz.EvalUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	sys biz.SystemSettingRepo,
+	agents *biz.AgentUsecase,
+	bus biz.EventBus,
 	lg loggateway.Logger,
 ) *evaluation.Runner {
 	if chat == nil || turns == nil || evalUC == nil || catalog == nil || sys == nil {
 		return nil
 	}
 	runner := NewEvaluationRunner(evalUC, turns, catalog, sys, lg)
+	// P2-2: online score-drop alert — nil-safe when agents/bus are unavailable.
+	if agents != nil && bus != nil {
+		runner.WithDropAlerter(evaluation.NewScoreDropAlerter(evalUC, evalAgentConfigReader{agents: agents}, bus, lg))
+	}
 	chat.AttachNativeTurnAfterHook(NewEvaluationAfterTurnTrigger(evalUC, runner))
 	return runner
+}
+
+// ProvidePublishGate builds the P2-1 publish regression gate. Nil when the
+// evaluation stack is unavailable; Check is nil-safe so consumers can call it
+// unconditionally.
+func ProvidePublishGate(evalUC *biz.EvalUsecase, runner *evaluation.Runner, bus biz.EventBus, lg loggateway.Logger) *evaluation.PublishGate {
+	if evalUC == nil || runner == nil {
+		return nil
+	}
+	return evaluation.NewPublishGate(evalUC, runner, bus, lg)
 }
 
 // AttachNativeTurnAfterHook sets the post-turn hook after evaluation runner is constructed.

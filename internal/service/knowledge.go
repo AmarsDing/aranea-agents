@@ -13,6 +13,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/knowledge"
@@ -85,6 +86,9 @@ type KnowledgeService struct {
 	lg            loggateway.Logger
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时仅进程日志，不发流程日志事件）。
 	monitorBus contract.MonitorBus
+	// linkIndex 统一链接内存图（SP1-D；构造时创建并接线进 uc，启动 readiness 后
+	// 经 LoadKnowledgeLinkIndex 全量构建；SP1-E 反链查询直读）。
+	linkIndex *bizknowledge.LinkIndex
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。
@@ -125,7 +129,7 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 	if a, ok := embedder.(knowledge.EmbedderAdmin); ok {
 		admin = a
 	}
-	return &KnowledgeService{
+	s := &KnowledgeService{
 		uc:            uc,
 		embedder:      embedder,
 		embedderAdmin: admin,
@@ -137,6 +141,14 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		systemSetting: systemSetting,
 		lg:            lg,
 	}
+	// SP1-D：统一链接内存图 + WS 增量事件出口（GraphDeltaPublisher 适配器）。
+	// uc 为共享实例，构造期接线（serve 前单线程）；启动全量加载由 app 层
+	// readiness 后触发（LoadKnowledgeLinkIndex）。
+	if uc != nil {
+		s.linkIndex = bizknowledge.NewLinkIndex()
+		uc.SetLinkIndex(s.linkIndex, newKnowledgeGraphDeltaPublisher(eventBus))
+	}
+	return s
 }
 
 // CreateCollection creates a Vault (V2: root_path required; embedding_model optional = lexical-only vault).
@@ -602,6 +614,15 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			s.lg.Error("failed to update collection counts",
 				loggateway.StepID("knowledge.ingest.counts_fail"),
 				loggateway.Str("col_id", col.ID),
+				loggateway.Err(err),
+			)
+		}
+		// SP1-C：team/上传文档与 local 同管线——块级双链索引（块/refs + explicit 投影）。
+		// 失败降级记日志，不回滚摄取主流程（最终一致，下次重建自愈）。
+		if err := uc.RebuildBlockIndex(ingestCtx, col.ID, doc.ID, params.Text); err != nil {
+			s.lg.Warn("ingest block index rebuild failed",
+				loggateway.StepID("knowledge.ingest.block_index_fail"),
+				loggateway.Str("doc_id", doc.ID),
 				loggateway.Err(err),
 			)
 		}

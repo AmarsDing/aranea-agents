@@ -17,9 +17,6 @@ var ErrSIMergeConflict = errors.New("self-improvement merge conflict")
 // SelfImprovementRunReader reads platform self-improvement runs.
 // GetByID/GetBySuggestionID return (nil, nil) when absent.
 // Stability:evolving
-// TECH-DEBT(DB-DEBT-02): 6 methods after Count (P5 console pagination),
-// exceeding the ≤5 narrow-interface guideline; split deferred with the
-// other oversize ports.
 type SelfImprovementRunReader interface {
 	GetByID(ctx context.Context, id string) (*SelfImprovementRun, error)
 	GetBySuggestionID(ctx context.Context, suggestionID string) (*SelfImprovementRun, error)
@@ -28,9 +25,6 @@ type SelfImprovementRunReader interface {
 	// risk_level / trigger_source conditions; Limit/Offset are ignored
 	// (console list total, P5).
 	Count(ctx context.Context, filter RunFilter) (int, error)
-	// ListObservingDue returns runs in observing status whose observe_until <= now
-	// (Watchdog scan).
-	ListObservingDue(ctx context.Context, now time.Time) ([]SelfImprovementRun, error)
 	// ListTerminalPendingOutcome returns terminal runs (closed / rolled_back /
 	// verify_failed / rejected / failed) that have no PatchOutcome yet, oldest
 	// first (Outcome worker attribution scan, D8).
@@ -92,14 +86,22 @@ type SIRiskRuleRepo interface {
 // applies the candidate patch, and executes verification gates G1-G3 inside
 // it. Implemented by service.RepoSandboxRunner.
 //
-// Lifecycle: PrepareWorktree → ApplyDiff → RunGate(...) → cleanup().
-// The cleanup func returned by PrepareWorktree must be idempotent and must
-// release the worktree even when the caller's ctx is already cancelled.
+// Lifecycle: PrepareWorktree → ResetWorktree → ApplyDiff → RunGate(...) →
+// cleanup(). The cleanup func returned by PrepareWorktree must be idempotent
+// and must release the worktree even when the caller's ctx is already
+// cancelled.
 // Stability:evolving
 type RepoSandbox interface {
 	// PrepareWorktree creates worktree <worktree_root>/<runID> on branch
 	// self-improve/<runID> based at baseRef. baseRef empty means HEAD.
 	PrepareWorktree(ctx context.Context, runID, baseRef string) (path string, cleanup func(), err error)
+	// ResetWorktree restores the worktree to its pristine base-ref state
+	// (git reset --hard + clean -fd). The pipeline calls it before every
+	// Patcher attempt so a retry never sees the previous attempt's applied
+	// diff — otherwise the LLM reads polluted file contents, the new diff
+	// stacks on top of the old one, and verification passes a code state
+	// that run.Diff alone does not reproduce on the live repo.
+	ResetWorktree(ctx context.Context, path string) error
 	// ApplyDiff applies a unified diff inside the worktree at path.
 	ApplyDiff(ctx context.Context, path, diff string) error
 	// RunGate executes one verification gate (G1 build / G2 test / G3 lint)

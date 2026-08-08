@@ -170,6 +170,29 @@ func MergeSourceIntoUserOptionsJSON(optionsJSON, source string) (string, error) 
 	return MergeInboundSourceIntoUserOptionsJSON(optionsJSON, source, "", "")
 }
 
+// MergeVoiceMetaIntoUserOptionsJSON stamps voice-input provenance (M74 V2-T6):
+// input_modality="voice" + asr_provider + asr_duration_ms（空 provider / 零时长省略）。
+func MergeVoiceMetaIntoUserOptionsJSON(optionsJSON, asrProvider string, durationMs int) (string, error) {
+	opts := map[string]any{}
+	if raw := strings.TrimSpace(optionsJSON); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &opts); err != nil {
+			return optionsJSON, err
+		}
+	}
+	opts["input_modality"] = "voice"
+	if p := strings.TrimSpace(asrProvider); p != "" {
+		opts["asr_provider"] = p
+	}
+	if durationMs > 0 {
+		opts["asr_duration_ms"] = durationMs
+	}
+	out, err := json.Marshal(opts)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // MergeInboundSourceIntoUserOptionsJSON stamps source, platform, and channel_key (M55 Tier 0).
 func MergeInboundSourceIntoUserOptionsJSON(optionsJSON, source, platform, channelKey string) (string, error) {
 	source = strings.TrimSpace(source)

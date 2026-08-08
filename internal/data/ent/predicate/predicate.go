@@ -72,8 +72,14 @@ type EvalCaseResult func(*sql.Selector)
 // EvalDataset is the predicate function for evaldataset builders.
 type EvalDataset func(*sql.Selector)
 
+// EvalGateConfig is the predicate function for evalgateconfig builders.
+type EvalGateConfig func(*sql.Selector)
+
 // EvalRun is the predicate function for evalrun builders.
 type EvalRun func(*sql.Selector)
+
+// EvalRunPreference is the predicate function for evalrunpreference builders.
+type EvalRunPreference func(*sql.Selector)
 
 // EventDeliveryOutbox is the predicate function for eventdeliveryoutbox builders.
 type EventDeliveryOutbox func(*sql.Selector)

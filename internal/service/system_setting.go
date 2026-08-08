@@ -121,6 +121,32 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 		}
 		patch.WebResearchUpdateKey = strings.TrimSpace(req.GetWebResearchApiKey()) != ""
 	}
+	if hasSpeechUpdate(req) {
+		patch.Speech = &biz.SpeechSetting{
+			ASR: biz.ASRProviderConfig{
+				Driver:     req.GetSpeechAsrDriver(),
+				Endpoint:   req.GetSpeechAsrEndpoint(),
+				AppKey:     req.GetSpeechAsrAppKey(),
+				AccessKey:  req.GetSpeechAsrAccessKey(),
+				ResourceID: req.GetSpeechAsrResourceId(),
+				Language:   req.GetSpeechAsrLanguage(),
+			},
+			TTS: biz.TTSProviderConfig{
+				Driver:     req.GetSpeechTtsDriver(),
+				Endpoint:   req.GetSpeechTtsEndpoint(),
+				AppKey:     req.GetSpeechTtsAppKey(),
+				AccessKey:  req.GetSpeechTtsAccessKey(),
+				ResourceID: req.GetSpeechTtsResourceId(),
+				Voice:      req.GetSpeechTtsVoice(),
+				SpeedRatio: req.GetSpeechTtsSpeedRatio(),
+			},
+			ArchiveUserAudio: req.SpeechArchiveUserAudio, // *bool: nil = keep stored
+		}
+		patch.SpeechUpdateASRCred = strings.TrimSpace(req.GetSpeechAsrAppKey()) != "" ||
+			strings.TrimSpace(req.GetSpeechAsrAccessKey()) != ""
+		patch.SpeechUpdateTTSCred = strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
+			strings.TrimSpace(req.GetSpeechTtsAccessKey()) != ""
+	}
 	// 流程日志 extra 仅含更新的 key 列表（分区名），严禁记录任何配置值（可能敏感）。
 	updateKeys := updatedSettingSections(req, patch)
 	row, err := s.uc.UpdateAll(ctx, patch)
@@ -174,7 +200,32 @@ func updatedSettingSections(req *v1.UpdateSystemSettingsRequest, patch biz.Syste
 	if patch.WebResearch != nil || hasWebResearchUpdate(req) {
 		sections = append(sections, "web_research")
 	}
+	if patch.Speech != nil || hasSpeechUpdate(req) {
+		sections = append(sections, "speech")
+	}
 	return sections
+}
+
+// hasSpeechUpdate reports whether the request carries any speech-group field.
+// archive_user_audio uses proto3 optional presence (explicit false must count).
+func hasSpeechUpdate(req *v1.UpdateSystemSettingsRequest) bool {
+	if req == nil {
+		return false
+	}
+	return req.GetSpeechAsrDriver() != "" ||
+		req.GetSpeechAsrEndpoint() != "" ||
+		req.GetSpeechAsrResourceId() != "" ||
+		req.GetSpeechAsrLanguage() != "" ||
+		strings.TrimSpace(req.GetSpeechAsrAppKey()) != "" ||
+		strings.TrimSpace(req.GetSpeechAsrAccessKey()) != "" ||
+		req.GetSpeechTtsDriver() != "" ||
+		req.GetSpeechTtsEndpoint() != "" ||
+		req.GetSpeechTtsResourceId() != "" ||
+		req.GetSpeechTtsVoice() != "" ||
+		req.GetSpeechTtsSpeedRatio() > 0 ||
+		strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
+		strings.TrimSpace(req.GetSpeechTtsAccessKey()) != "" ||
+		req.SpeechArchiveUserAudio != nil
 }
 
 func hasWebResearchUpdate(req *v1.UpdateSystemSettingsRequest) bool {
@@ -223,6 +274,34 @@ func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {
 		EvalLlm:                           toProtoEvalLLM(row.EvalLLM),
 		McpAllowAdhocHttp:                 row.MCPAllowAdHocHTTP,
 		WebResearch:                       toProtoWebResearch(row.WebResearch),
+		Speech:                            toProtoSpeech(row.Speech),
+	}
+}
+
+// toProtoSpeech maps stored speech settings to the API view. Credentials are
+// never exposed — only has_api_key markers (knowledge_embed/web_research 同惯例).
+func toProtoSpeech(row biz.SpeechSetting) *v1.SpeechSettings {
+	return &v1.SpeechSettings{
+		Asr: &v1.SpeechASRSettings{
+			Driver:     row.ASR.Driver,
+			Endpoint:   row.ASR.Endpoint,
+			ResourceId: row.ASR.ResourceID,
+			Language:   row.ASR.Language,
+			Configured: biz.SpeechASRConfigured(row),
+			HasApiKey: strings.TrimSpace(row.ASR.AppKey) != "" &&
+				strings.TrimSpace(row.ASR.AccessKey) != "",
+		},
+		Tts: &v1.SpeechTTSSettings{
+			Driver:     row.TTS.Driver,
+			Endpoint:   row.TTS.Endpoint,
+			ResourceId: row.TTS.ResourceID,
+			Voice:      row.TTS.Voice,
+			SpeedRatio: row.TTS.SpeedRatio,
+			Configured: biz.SpeechTTSConfigured(row),
+			HasApiKey: strings.TrimSpace(row.TTS.AppKey) != "" &&
+				strings.TrimSpace(row.TTS.AccessKey) != "",
+		},
+		ArchiveUserAudio: row.ArchiveUserAudio != nil && *row.ArchiveUserAudio,
 	}
 }
 

@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"time"
+
+	artifactbiz "aranea-agents/internal/biz/artifact"
 )
 
 // TurnInput is the transport-neutral input for a single chat/team turn.
@@ -28,6 +30,20 @@ type TurnInput struct {
 	// 触发）。沿 TurnIntent→执行链路→v2 ProjectMeta 透传，reply step 的
 	// AuthorAgentKey 覆盖为 SynthesisAuthorAgentKey，供前端总结徽章高亮。
 	Synthesis bool
+	// Voice 携带语音输入溯源元数据（M74 V2-T6）：随用户消息 options_json
+	// 持久化（input_modality / asr_provider / asr_duration_ms）并附展示态
+	// 留档音频引用。nil = 非语音输入。
+	Voice *VoiceTurnMeta
+}
+
+// VoiceTurnMeta 是语音输入的溯源元数据（M74 V2-T6）。
+// Archive 为展示态附件引用（合并进 options_json.attachments 供 UI 回放）——
+// 刻意不经 Options.AttachmentIDs：避免 LLM 附件能力校验拒绝（audio/* 视为
+// file 附件）及 WAV 字节注入 LLM 上下文。
+type VoiceTurnMeta struct {
+	ASRProvider string
+	DurationMs  int
+	Archive     *artifactbiz.Ref // nil = 未留档（开关关闭或降级）
 }
 
 // TurnOptions carries per-turn overrides (dialog mode, provider, model, attachments).

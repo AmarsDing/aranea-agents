@@ -332,15 +332,84 @@ func TestNewLocalProgramCommand_NonBareCommand(t *testing.T) {
 }
 
 func TestNewLocalProgramCommand_PathMissDoesNotUseProcessPATH(t *testing.T) {
+	// Use a non-shell name: bash/sh have a Windows Git-bash fallback that
+	// probes well-known install dirs beyond the provided env PATH.
 	cmd := newLocalProgramCommand(
 		context.Background(),
 		t.TempDir(),
-		codeexecutor.RunProgramSpec{Cmd: "sh"},
+		codeexecutor.RunProgramSpec{Cmd: "definitely-missing-tool"},
 		[]string{envPathKey + "=" + t.TempDir()},
 	)
 
-	require.Equal(t, "sh", cmd.Path)
+	require.Equal(t, "definitely-missing-tool", cmd.Path)
 	require.ErrorIs(t, cmd.Err, exec.ErrNotFound)
+}
+
+func TestNewLocalProgramCommand_WindowsShellFallback(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only shell fallback")
+	}
+	root := t.TempDir()
+	gitCmdDir := filepath.Join(root, "Git", "cmd")
+	bashPath := filepath.Join(root, "Git", "bin", "bash.exe")
+	require.NoError(t, os.MkdirAll(filepath.Dir(bashPath), 0o755))
+	require.NoError(t, os.MkdirAll(gitCmdDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(gitCmdDir, "git.exe"), []byte("x"), 0o755,
+	))
+	require.NoError(t, os.WriteFile(bashPath, []byte("x"), 0o755))
+
+	cmd := newLocalProgramCommand(
+		context.Background(),
+		t.TempDir(),
+		codeexecutor.RunProgramSpec{Cmd: "bash"},
+		[]string{envPathKey + "=" + gitCmdDir},
+	)
+
+	require.NoError(t, cmd.Err)
+	require.Equal(t, bashPath, cmd.Path)
+}
+
+func TestResolveWindowsShellFallbackForGOOS(t *testing.T) {
+	root := t.TempDir()
+	gitCmdDir := filepath.Join(root, "Git", "cmd")
+	bashPath := filepath.Join(root, "Git", "bin", "bash.exe")
+	require.NoError(t, os.MkdirAll(filepath.Dir(bashPath), 0o755))
+	require.NoError(t, os.MkdirAll(gitCmdDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(gitCmdDir, "git.exe"), []byte("x"), 0o755,
+	))
+	require.NoError(t, os.WriteFile(bashPath, []byte("x"), 0o755))
+
+	t.Run("non-windows goos never resolves", func(t *testing.T) {
+		_, ok := resolveWindowsShellFallbackForGOOS("bash", nil, "linux")
+		require.False(t, ok)
+	})
+	t.Run("non-shell name never resolves", func(t *testing.T) {
+		_, ok := resolveWindowsShellFallbackForGOOS(
+			"python",
+			[]string{envPathKey + "=" + gitCmdDir},
+			"windows",
+		)
+		require.False(t, ok)
+	})
+	t.Run("git sibling in PATH", func(t *testing.T) {
+		got, ok := resolveWindowsShellFallbackForGOOS(
+			"bash",
+			[]string{envPathKey + "=" + gitCmdDir},
+			"windows",
+		)
+		require.True(t, ok)
+		require.Equal(t, bashPath, got)
+	})
+	t.Run("nothing found", func(t *testing.T) {
+		_, ok := resolveWindowsShellFallbackForGOOS(
+			"bash",
+			[]string{envPathKey + "=" + t.TempDir()},
+			"windows",
+		)
+		require.False(t, ok)
+	})
 }
 
 func TestLocalProgramCommandPath_NonBareCommand(t *testing.T) {

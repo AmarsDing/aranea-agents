@@ -101,22 +101,24 @@ defineEmits<{
 }>();
 
 /** 将 SpiritMember.status + teamStatus + 阻塞信息映射为显示状态。
- * 团队进入终态（completed/failed/cancelled）时，成员卡片应同步显示对应终态。
- * 团队运行中（running/pending）时，成员未明确终态则继承运行态。
+ * 成员自身已达终态（completed/failed）时优先展示成员终态——团队可能带失败成员
+ * 整体完成，若让团队状态覆盖成员终态会导致侧栏与流程图显示不一致。
+ * 成员状态滞后（未推送终态）时回退到团队终态同步。
  */
 const displayStatus = computed<'running' | 'blocked' | 'completed' | 'failed' | 'pending'>(() => {
   if (props.blockedInfo?.blocked) return 'blocked';
+
+  const s = props.member.status;
+  if (s === 'completed' || s === 'ok' || s === 'done') return 'completed';
+  if (s === 'failed' || s === 'error') return 'failed';
 
   const ts = props.teamStatus;
   if (ts === 'completed' || ts === 'archived') return 'completed';
   if (ts === 'failed') return 'failed';
   if (ts === 'cancelled' || ts === 'interrupted') return 'failed';
 
-  const s = props.member.status;
   if (s === 'running' || s === 'executing') return 'running';
   if (s === 'blocked' || s === 'stuck') return 'blocked';
-  if (s === 'completed' || s === 'ok' || s === 'done') return 'completed';
-  if (s === 'failed' || s === 'error') return 'failed';
   // 团队运行中时，成员未明确终态则显示为 running（触发暂停按钮）
   if (ts === 'running' || ts === 'pending') return 'running';
   return 'pending';

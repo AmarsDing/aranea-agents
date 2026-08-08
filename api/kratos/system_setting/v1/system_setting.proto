@@ -30,6 +30,36 @@ message SystemSettings {
   EvalLLMSettings eval_llm = 9;
   // Web research (Tavily / SerpAPI) defaults for web_research tool. Env TAVILY_API_KEY / SERPAPI_API_KEY overrides api_key when DB empty.
   WebResearchSettings web_research = 10;
+  // Voice companion (M74) ASR/TTS provider config. Empty fields fall back to
+  // SPEECH_* env vars at read time (field-level merge); credentials never returned.
+  SpeechSettings speech = 11;
+}
+
+message SpeechSettings {
+  SpeechASRSettings asr = 1;
+  SpeechTTSSettings tts = 2;
+  // Stored voice-archive toggle. False may mean "explicitly off" or "unset →
+  // env SPEECH_ARCHIVE_USER_AUDIO fallback" (tri-state collapsed for display).
+  bool archive_user_audio = 3;
+}
+
+message SpeechASRSettings {
+  string driver = 1;      // volcengine
+  string endpoint = 2;
+  string resource_id = 3;
+  string language = 4;    // default zh-CN
+  bool configured = 5;
+  bool has_api_key = 6;   // app_key/access_key never returned
+}
+
+message SpeechTTSSettings {
+  string driver = 1;      // volcengine
+  string endpoint = 2;
+  string resource_id = 3;
+  string voice = 4;       // provider voice ID
+  double speed_ratio = 5; // 0 = unset (env/default 1.0)
+  bool configured = 6;
+  bool has_api_key = 7;   // app_key/access_key never returned
 }
 
 message WebResearchSettings {
@@ -84,6 +114,24 @@ message UpdateSystemSettingsRequest {
   string web_research_search_depth = 19;
   int32 web_research_timeout_sec = 20;
   string web_research_http_proxy = 21;
+  // Voice companion speech settings (M74 V2-T7). Empty string / 0 = keep stored
+  // value; credential fields: empty = do not change stored key, non-empty replaces.
+  string speech_asr_driver = 22;
+  string speech_asr_endpoint = 23;
+  string speech_asr_app_key = 24;
+  string speech_asr_access_key = 25;
+  string speech_asr_resource_id = 26;
+  string speech_asr_language = 27;
+  string speech_tts_driver = 28;
+  string speech_tts_endpoint = 29;
+  string speech_tts_app_key = 30;
+  string speech_tts_access_key = 31;
+  string speech_tts_resource_id = 32;
+  string speech_tts_voice = 33;
+  double speech_tts_speed_ratio = 34;
+  // Tri-state via proto3 optional: unset = keep stored value; explicit true/false
+  // replaces (explicit value ends env fallback for the toggle).
+  optional bool speech_archive_user_audio = 35;
 }
 
 message TestWebResearchRequest {

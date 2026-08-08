@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -17,7 +16,8 @@ import (
 type siRunStore struct {
 	mu          sync.Mutex
 	run         *SelfImprovementRun
-	others      []SelfImprovementRun          // List 额外返回的行（按 filter.Status 过滤）
+	others      []SelfImprovementRun          // List 额外返回的行（按 filter.Status/Statuses 过滤）
+	lastFilter  RunFilter                     // List 最近一次收到的过滤器（驱动域断言用）
 	transitions [][2]SelfImprovementRunStatus // (from → to) per Update
 	attempts    int
 }
@@ -49,19 +49,38 @@ func (s *siRunStore) GetBySuggestionID(_ context.Context, suggestionID string) (
 func (s *siRunStore) List(_ context.Context, f RunFilter) ([]SelfImprovementRun, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.lastFilter = f
 	var out []SelfImprovementRun
-	if s.run != nil && (f.Status == "" || s.run.Status == f.Status) {
+	if s.run != nil && siRunMatchesFilter(*s.run, f) {
 		out = append(out, *s.run)
 	}
 	for _, r := range s.others {
-		if f.Status == "" || r.Status == f.Status {
+		if siRunMatchesFilter(r, f) {
 			out = append(out, r)
 		}
 	}
 	return out, nil
 }
-func (s *siRunStore) ListObservingDue(_ context.Context, _ time.Time) ([]SelfImprovementRun, error) {
-	return nil, nil
+
+// siRunMatchesFilter mirrors the repo contract: Status EQ（空=跳过）与
+// Statuses IN（空=跳过）叠加（AND）。
+func siRunMatchesFilter(r SelfImprovementRun, f RunFilter) bool {
+	if f.Status != "" && r.Status != f.Status {
+		return false
+	}
+	if len(f.Statuses) > 0 {
+		in := false
+		for _, st := range f.Statuses {
+			if r.Status == st {
+				in = true
+				break
+			}
+		}
+		if !in {
+			return false
+		}
+	}
+	return true
 }
 func (s *siRunStore) Count(_ context.Context, f RunFilter) (int, error) {
 	runs, err := s.List(context.Background(), f)
@@ -139,6 +158,9 @@ type siFakeSandbox struct {
 	cleanupCalls int
 	appliedDiffs []string
 	gateCalls    []SandboxGateKind
+	resetCalls   int
+	resetErr     error
+	callLog      *[]string // 共享调用顺序日志（与 patcher 协同断言 reset 先于 patch）
 	gateFn       func(gate SandboxGateKind, gateCallIdx int) SandboxGateResult
 	prepareErr   error
 }
@@ -156,6 +178,13 @@ func (s *siFakeSandbox) PrepareWorktree(_ context.Context, runID, _ string) (str
 func (s *siFakeSandbox) ApplyDiff(_ context.Context, _, diff string) error {
 	s.appliedDiffs = append(s.appliedDiffs, diff)
 	return nil
+}
+func (s *siFakeSandbox) ResetWorktree(_ context.Context, _ string) error {
+	s.resetCalls++
+	if s.callLog != nil {
+		*s.callLog = append(*s.callLog, "reset")
+	}
+	return s.resetErr
 }
 func (s *siFakeSandbox) RunGate(_ context.Context, _ string, gate SandboxGateKind, _ []string) (SandboxGateResult, error) {
 	s.gateCalls = append(s.gateCalls, gate)
@@ -298,6 +327,44 @@ func TestSIPipeline_LowConfidenceRecordOnly(t *testing.T) {
 	}
 }
 
+func TestSIPipeline_RetryResetsWorktreeBeforePatch(t *testing.T) {
+	callLog := &[]string{}
+	uc, _, sandbox, _ := siPipelineFixture(3, func(d *SelfImprovementPipelineDeps) {
+		d.Patcher = siPatcherFn(func(context.Context, SIPatchRequest) (*PatcherOutput, error) {
+			*callLog = append(*callLog, "patch")
+			return &PatcherOutput{Diff: siRiskDiff("internal/biz/x.go", 5), Kind: PatchKindCode}, nil
+		})
+	})
+	sandbox.callLog = callLog
+	g2Calls := 0
+	sandbox.gateFn = func(gate SandboxGateKind, _ int) SandboxGateResult {
+		if gate == SandboxGateTest {
+			g2Calls++
+			if g2Calls == 1 {
+				return SandboxGateResult{Gate: gate, Passed: false, Output: "TestX failed"}
+			}
+		}
+		return SandboxGateResult{Gate: gate, Passed: true}
+	}
+	if err := uc.Execute(context.Background(), "run-1"); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	// 每个 attempt 的 Patch 前都必须 reset worktree（R1：防止上一次 attempt 的
+	// diff 污染 LLM 读到的文件内容与本次 git apply 的基线）。
+	if sandbox.resetCalls != 2 {
+		t.Errorf("reset calls = %d, want 2 (one per patch attempt)", sandbox.resetCalls)
+	}
+	want := []string{"reset", "patch", "reset", "patch"}
+	if len(*callLog) != len(want) {
+		t.Fatalf("call log = %v, want %v", *callLog, want)
+	}
+	for i, w := range want {
+		if (*callLog)[i] != w {
+			t.Fatalf("call log = %v, want %v", *callLog, want)
+		}
+	}
+}
+
 func TestSIPipeline_VerifyRetryThenPass(t *testing.T) {
 	uc, store, sandbox, patchReqs := siPipelineFixture(3, nil)
 	g2Calls := 0
@@ -426,6 +493,32 @@ func TestSIPipeline_AnalystErrorFailsRun(t *testing.T) {
 	}
 	if !strings.Contains(store.run.ClosedReason, "llm timeout") {
 		t.Errorf("ClosedReason = %q", store.run.ClosedReason)
+	}
+}
+
+// 回归（2026-08-08 运行时事故）：failWith/rejectWith 直接写变长字符串未截断，
+// 超 ent closed_reason MaxLen(64) 时 Update 校验失败 → fail transition broken，
+// run 永久卡死在驱动态（只能 stale 恢复后重试再炸，LLM 每 30min 白烧一次）。
+// biz 层必须保证写入的 ClosedReason ≤ siClosedReasonMaxLen。
+func TestSIPipeline_LongErrorClosedReasonTruncated(t *testing.T) {
+	longErr := "patch llm call failed: " + strings.Repeat("context-window-overflow ", 20)
+	uc, store, _, _ := siPipelineFixture(3, func(d *SelfImprovementPipelineDeps) {
+		d.Analyst = siAnalystFn(func(context.Context, *SelfImprovementRun, *UnifiedEvolutionSuggestion) (*Diagnosis, error) {
+			return nil, errors.New(longErr)
+		})
+	})
+	if err := uc.Execute(context.Background(), "run-1"); err == nil {
+		t.Fatal("Execute must return the stage error")
+	}
+	if store.run.Status != RunStatusFailed {
+		t.Fatalf("status = %s, want failed", store.run.Status)
+	}
+	if len(store.run.ClosedReason) > siClosedReasonMaxLen {
+		t.Fatalf("ClosedReason len = %d, want <= %d（ent MaxLen 守卫）: %q",
+			len(store.run.ClosedReason), siClosedReasonMaxLen, store.run.ClosedReason)
+	}
+	if !strings.HasPrefix(store.run.ClosedReason, "analyst: patch llm call failed") {
+		t.Errorf("ClosedReason 前缀信息丢失: %q", store.run.ClosedReason)
 	}
 }
 

@@ -47,6 +47,28 @@
     <q-page-container class="app-page-container">
       <router-view />
     </q-page-container>
+
+    <!-- 对话转评估用例对话框（P1-1）：workspace 在布局层共享，对话框需在布局层渲染，
+         否则移动任务页 @add-to-eval 只改状态无 UI。绑定与桌面 ChatPage 一致。 -->
+    <AddEvalCaseDialog
+      v-model:open="workspace.evalCase.open"
+      :mode="workspace.evalCase.mode"
+      :dataset-id="workspace.evalCase.datasetId"
+      :dataset-options="workspace.evalCase.datasetOptions"
+      :datasets-loading="workspace.evalCase.datasetsLoading"
+      :new-dataset-name="workspace.evalCase.newDatasetName"
+      :input="workspace.evalCase.input"
+      :expected-output="workspace.evalCase.expectedOutput"
+      :rubric="workspace.evalCase.rubric"
+      :submitting="workspace.evalCase.submitting"
+      @update:mode="workspace.evalCase.mode = $event"
+      @update:dataset-id="workspace.evalCase.datasetId = $event"
+      @update:new-dataset-name="workspace.evalCase.newDatasetName = $event"
+      @update:input="workspace.evalCase.input = $event"
+      @update:expected-output="workspace.evalCase.expectedOutput = $event"
+      @update:rubric="workspace.evalCase.rubric = $event"
+      @submit="workspace.evalCase.submit()"
+    />
   </q-layout>
 </template>
 
@@ -58,6 +80,7 @@ import { useAuthStore } from '../stores/auth';
 import { useTheme } from '../composables/useTheme';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { CHAT_WORKSPACE_KEY } from '../features/chat/composables/chatWorkspaceInjection';
+import AddEvalCaseDialog from '../components/evaluation/AddEvalCaseDialog.vue';
 import { useBlockingStepNotifications } from '../features/chat/composables/useBlockingStepNotifications';
 import { initLocalNotifications } from '../services/localNotification';
 import { useNetworkStatus } from '../features/mobile/useNetworkStatus';
@@ -74,7 +97,8 @@ const { online } = useNetworkStatus();
 // P1: one shared ChatWorkspace for all mobile tabs (sessions list / chat
 // detail). Created once here so the WS stream manager and bootstrap run a
 // single time across tab switches; pages inject it via CHAT_WORKSPACE_KEY.
-provide(CHAT_WORKSPACE_KEY, useChatWorkspace());
+const workspace = useChatWorkspace();
+provide(CHAT_WORKSPACE_KEY, workspace);
 
 // P2: local notifications for steps blocked on user input (confirm/clarify).
 // The watcher is no-op outside the Tauri shell; the click handler deep-links

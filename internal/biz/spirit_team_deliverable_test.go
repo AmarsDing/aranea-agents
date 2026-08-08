@@ -2379,6 +2379,52 @@ func TestMemberExecutionWindow_TeamSessionFallback(t *testing.T) {
 	}
 }
 
+// notice step 不算活动证据（2026-08-08 回归发现）：context_usage 等被动通知
+// 以成员 author 持续落到 run 结束，会把 end 撑大到远超成员真实工作完成时刻
+// （真实 reply 12:54:42，notice 拖到 12:59:15）。窗口必须只看执行类 step。
+func TestMemberExecutionWindow_NoticeExcluded(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", ParentSessionID: "sess-team", MemberAgentKey: "eng"}
+	t0 := time.Date(2026, 8, 8, 1, 0, 0, 0, time.UTC)
+	replyEnd := t0.Add(2 * time.Minute)
+	noticeLate := t0.Add(8 * time.Minute)
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "m1", Kind: StepKindThinking, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: t0},
+		{ID: "m2", Kind: StepKindReply, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: t0.Add(time.Minute), CompletedAt: &replyEnd},
+		{ID: "n1", Kind: StepKindNotice, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: noticeLate, CompletedAt: &noticeLate},
+	}
+
+	start, end, ok := u.MemberExecutionWindow(context.Background(), "ms-1")
+	if !ok {
+		t.Fatal("window should be found from execution steps")
+	}
+	if !start.Equal(t0) {
+		t.Fatalf("window start = %v, want %v", start, t0)
+	}
+	if !end.Equal(replyEnd) {
+		t.Fatalf("window end = %v, want latest EXECUTION step evidence %v (notice must not extend window)", end, replyEnd)
+	}
+}
+
+// 成员名下只有 notice step（无任何执行 step）→ ok=false：notice 不能单独
+// 撑起窗口，调用方回退发布时刻。
+func TestMemberExecutionWindow_OnlyNotice_NotFound(t *testing.T) {
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	u := newDeliverableUsecaseWithSteps(newDeliverableTeamRepo(), sessions, steps)
+	sessions.sessionsByTeam["t1"] = Session{ID: "ms-1", ParentSessionID: "sess-team", MemberAgentKey: "eng"}
+	now := time.Now().UTC()
+	steps.stepsBySession["sess-team"] = []Step{
+		{ID: "n1", Kind: StepKindNotice, Status: StepStatusCompleted, AuthorAgentKey: "eng", StartedAt: now, CompletedAt: &now},
+	}
+
+	if _, _, ok := u.MemberExecutionWindow(context.Background(), "ms-1"); ok {
+		t.Fatal("notice-only steps must yield ok=false")
+	}
+}
+
 // 成员会话与团队会话均无该成员 step → ok=false（调用方走下一级回退）。
 func TestMemberExecutionWindow_NoSteps_NotFound(t *testing.T) {
 	sessions := newDeliverableSessionAccessor()

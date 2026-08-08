@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-client-open-url"
+description = "Enables the client_open_url command without any pre-configured scope."
+commands.allow = ["client_open_url"]
+
+[[permission]]
+identifier = "deny-client-open-url"
+description = "Denies the client_open_url command without any pre-configured scope."
+commands.deny = ["client_open_url"]

@@ -250,6 +250,7 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 			DeltaContainsMatch:    c.DeltaContainsMatch,
 			DeltaLlmJudge:         c.DeltaLLMJudge,
 			DeltaToolCallAccuracy: c.DeltaToolAccuracy,
+			DatasetHash:           c.DatasetHash,
 		})
 	}
 	return &v1.CompareEvalRunsResponse{Items: out}, nil
@@ -289,6 +290,109 @@ func (s *EvaluationService) GetJudgeDivergence(ctx context.Context, req *v1.GetJ
 	}, nil
 }
 
+// --- Governance (P2-1 publish gate / P2-3 failure grouping / P3-3 pairwise) ---
+
+// GetFailureGroups groups failed case results of a dataset by error_message (P2-3).
+func (s *EvaluationService) GetFailureGroups(ctx context.Context, req *v1.GetFailureGroupsRequest) (*v1.GetFailureGroupsResponse, error) {
+	report, err := s.uc.GetFailureGroups(ctx, req.GetDatasetId(), req.GetAgentId(), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	groups := make([]*v1.EvalFailureGroup, 0, len(report.Groups))
+	for _, g := range report.Groups {
+		groups = append(groups, &v1.EvalFailureGroup{
+			ErrorMessage: g.ErrorMessage,
+			Count:        int32(g.Count),
+			RunCount:     int32(g.RunCount),
+			LatestAt:     g.LatestAt,
+		})
+	}
+	return &v1.GetFailureGroupsResponse{TotalFailed: int32(report.TotalFailed), Groups: groups}, nil
+}
+
+// SubmitRunPreference records one pairwise human judgment (P3-3).
+func (s *EvaluationService) SubmitRunPreference(ctx context.Context, req *v1.SubmitRunPreferenceRequest) (*v1.EvalRunPreference, error) {
+	createdBy := "system"
+	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
+		createdBy = fmt.Sprintf("user:%d", a.UserID)
+	}
+	p, err := s.uc.SubmitRunPreference(ctx, biz.EvalRunPreference{
+		DatasetID:   req.GetDatasetId(),
+		RunIDA:      req.GetRunIdA(),
+		RunIDB:      req.GetRunIdB(),
+		WinnerRunID: req.GetWinnerRunId(),
+		Comment:     req.GetComment(),
+		CreatedBy:   createdBy,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoRunPreference(p), nil
+}
+
+// ListRunPreferences lists recorded pairwise judgments for a dataset (P3-3).
+func (s *EvaluationService) ListRunPreferences(ctx context.Context, req *v1.ListRunPreferencesRequest) (*v1.ListRunPreferencesResponse, error) {
+	items, err := s.uc.ListRunPreferences(ctx, req.GetDatasetId(), int(req.GetLimit()))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*v1.EvalRunPreference, 0, len(items))
+	for _, p := range items {
+		out = append(out, toProtoRunPreference(p))
+	}
+	return &v1.ListRunPreferencesResponse{Items: out}, nil
+}
+
+// GetEvalGate returns the singleton publish-gate config (P2-1).
+func (s *EvaluationService) GetEvalGate(ctx context.Context, _ *v1.GetEvalGateRequest) (*v1.EvalGateConfig, error) {
+	cfg, err := s.uc.GetGateConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toProtoGateConfig(cfg), nil
+}
+
+// UpdateEvalGate validates and persists the publish-gate config (P2-1).
+func (s *EvaluationService) UpdateEvalGate(ctx context.Context, req *v1.UpdateEvalGateRequest) (*v1.EvalGateConfig, error) {
+	cfg, err := s.uc.UpdateGateConfig(ctx, biz.EvalGateConfig{
+		Enabled:   req.GetEnabled(),
+		AgentID:   req.GetAgentId(),
+		DatasetID: req.GetDatasetId(),
+		Metric:    req.GetMetric(),
+		MinScore:  req.GetMinScore(),
+		MaxDrop:   req.GetMaxDrop(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoGateConfig(cfg), nil
+}
+
+func toProtoRunPreference(p biz.EvalRunPreference) *v1.EvalRunPreference {
+	return &v1.EvalRunPreference{
+		Id:          p.ID,
+		DatasetId:   p.DatasetID,
+		RunIdA:      p.RunIDA,
+		RunIdB:      p.RunIDB,
+		WinnerRunId: p.WinnerRunID,
+		Comment:     p.Comment,
+		CreatedBy:   p.CreatedBy,
+		CreatedAt:   p.CreatedAt,
+	}
+}
+
+func toProtoGateConfig(c biz.EvalGateConfig) *v1.EvalGateConfig {
+	return &v1.EvalGateConfig{
+		Enabled:   c.Enabled,
+		AgentId:   c.AgentID,
+		DatasetId: c.DatasetID,
+		Metric:    c.Metric,
+		MinScore:  c.MinScore,
+		MaxDrop:   c.MaxDrop,
+		UpdatedAt: c.UpdatedAt,
+	}
+}
+
 // --- proto conversion helpers ---
 
 func toProtoDataset(d biz.EvalDataset) *v1.EvalDataset {
@@ -323,6 +427,7 @@ func toProtoRun(r biz.EvalRun) *v1.EvalRun {
 		ErrorMessage:       r.ErrorMessage,
 		StartedAt:          r.StartedAt,
 		FinishedAt:         r.FinishedAt,
+		DatasetHash:        r.DatasetHash,
 		CreatedAt:          r.CreatedAt,
 	}
 }

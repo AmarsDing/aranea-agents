@@ -389,6 +389,16 @@ func (r *Runtime) RunProgram(
 		Duration: dur,
 		TimedOut: errors.Is(tctx.Err(), context.DeadlineExceeded),
 	}
+	if exitCode == -1 && runErr != nil {
+		// The process never started (e.g. executable not found), so the
+		// captured stderr is empty; surface the real start error instead
+		// of dropping it.
+		if res.Stderr == "" {
+			res.Stderr = runErr.Error()
+		} else {
+			res.Stderr += "\n" + runErr.Error()
+		}
+	}
 	span.SetAttributes(
 		attribute.Int(codeexecutor.AttrExitCode, res.ExitCode),
 		attribute.Bool(codeexecutor.AttrTimedOut, res.TimedOut),

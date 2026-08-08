@@ -23,6 +23,7 @@ import (
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/clientbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -70,6 +71,9 @@ type RuntimeTooling struct {
 	ToolResultGate              *biz.ToolResultGate
 	OutboundRouter              *outbound.Router
 	SubAgentService             *subagenttool.Service
+	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
+	// client_open_url) in chat-turn agent builds. Nil prunes the ToolSet.
+	ClientBridge                *clientbridge.Bridge
 	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
 	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
 	ParallelToolExecutor *tools.ParallelToolExecutor

@@ -46,12 +46,15 @@ message EvalRun {
   string started_at = 12;
   string finished_at = 13;
   string created_at = 14;
-  string trigger_source = 15; // manual | after_turn
+  string trigger_source = 15; // manual | after_turn | gate
   int32  num_runs = 16;
   float  pass_at_k = 17;
   float  pass_hat_k = 18;
   // scores_json holds extended metric averages (json_match, rouge_l, tool_trajectory, etc.).
   string scores_json = 19;
+  // dataset_hash is the dataset content snapshot at run start (P3-5);
+  // differing hashes across compared runs mean scores are not directly comparable.
+  string dataset_hash = 20;
 }
 
 // EvalCaseResult is the output for one case in a run.
@@ -205,6 +208,8 @@ message EvalRunComparison {
   float delta_contains_match = 12;
   float delta_llm_judge = 13;
   float delta_tool_call_accuracy = 14;
+  // dataset_hash enables the dataset-changed comparability warning (P3-5).
+  string dataset_hash = 15;
 }
 
 message CompareEvalRunsResponse {
@@ -252,6 +257,95 @@ message GetJudgeDivergenceResponse {
   int32 false_pass_count = 6;
   int32 false_fail_count = 7;
   repeated JudgeDivergenceCase divergent_cases = 8;
+}
+
+// --- P2-3: failure grouping ---
+
+message GetFailureGroupsRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // agent_id optionally restricts to one agent's runs.
+  string agent_id = 2;
+  // limit caps the returned group list (0 means default 20);
+  // total_failed always covers the full failed-result set.
+  int32 limit = 3;
+}
+
+// EvalFailureGroup aggregates failed case results sharing one error_message.
+message EvalFailureGroup {
+  string error_message = 1;
+  int32  count = 2;
+  int32  run_count = 3;
+  string latest_at = 4;
+}
+
+message GetFailureGroupsResponse {
+  int32 total_failed = 1;
+  repeated EvalFailureGroup groups = 2;
+}
+
+// --- P3-3: pairwise run preference ---
+
+// EvalRunPreference records a human judgment that one run is better than
+// another for the same dataset.
+message EvalRunPreference {
+  string id = 1;
+  string dataset_id = 2;
+  string run_id_a = 3;
+  string run_id_b = 4;
+  // winner_run_id must equal run_id_a or run_id_b.
+  string winner_run_id = 5;
+  string comment = 6;
+  string created_by = 7;
+  string created_at = 8;
+}
+
+message SubmitRunPreferenceRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string run_id_a = 2 [(google.api.field_behavior) = REQUIRED];
+  string run_id_b = 3 [(google.api.field_behavior) = REQUIRED];
+  string winner_run_id = 4 [(google.api.field_behavior) = REQUIRED];
+  string comment = 5;
+}
+
+message ListRunPreferencesRequest {
+  string dataset_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListRunPreferencesResponse {
+  repeated EvalRunPreference items = 1;
+}
+
+// --- P2-1: publish regression gate ---
+
+// EvalGateConfig is the singleton publish-gate configuration. The gate runs
+// the configured dataset against the configured agent on skill publish /
+// pack install and blocks the operation when the score breaches the
+// configured floor (min_score) or drops too far vs the latest completed
+// baseline (max_drop).
+message EvalGateConfig {
+  bool   enabled = 1;
+  string agent_id = 2;
+  string dataset_id = 3;
+  // metric: exact_match | contains_match | llm_as_judge | tool_call_accuracy
+  // (or any extended scores_json key).
+  string metric = 4;
+  // min_score: absolute floor in [0,1]; 0 disables the absolute check.
+  float min_score = 5;
+  // max_drop: allowed drop vs baseline in [0,1]; 0 disables the relative check.
+  float max_drop = 6;
+  string updated_at = 7;
+}
+
+message GetEvalGateRequest {}
+
+message UpdateEvalGateRequest {
+  bool   enabled = 1;
+  string agent_id = 2;
+  string dataset_id = 3;
+  string metric = 4;
+  float  min_score = 5;
+  float  max_drop = 6;
 }
 
 service EvaluationService {
@@ -337,6 +431,33 @@ service EvaluationService {
   rpc GetJudgeDivergence(GetJudgeDivergenceRequest) returns (GetJudgeDivergenceResponse) {
     option (google.api.http) = {
       get: "/v1/evaluation/datasets/{dataset_id}/judge-divergence"
+    };
+  }
+  rpc GetFailureGroups(GetFailureGroupsRequest) returns (GetFailureGroupsResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/datasets/{dataset_id}/failure-groups"
+    };
+  }
+  rpc SubmitRunPreference(SubmitRunPreferenceRequest) returns (EvalRunPreference) {
+    option (google.api.http) = {
+      post: "/v1/evaluation/preferences"
+      body: "*"
+    };
+  }
+  rpc ListRunPreferences(ListRunPreferencesRequest) returns (ListRunPreferencesResponse) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/preferences"
+    };
+  }
+  rpc GetEvalGate(GetEvalGateRequest) returns (EvalGateConfig) {
+    option (google.api.http) = {
+      get: "/v1/evaluation/gate"
+    };
+  }
+  rpc UpdateEvalGate(UpdateEvalGateRequest) returns (EvalGateConfig) {
+    option (google.api.http) = {
+      put: "/v1/evaluation/gate"
+      body: "*"
     };
   }
 }

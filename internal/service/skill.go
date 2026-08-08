@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/evaluation"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/tools/skillruntime"
@@ -27,14 +28,15 @@ type SkillService struct {
 	healthUC *biz.SkillHealthUsecase
 	fs       biz.SkillFilesystem
 	import_  *importer.Engine
+	gate     *evaluation.PublishGate
 	lg       loggateway.Logger
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, lg loggateway.Logger) *SkillService {
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, gate *evaluation.PublishGate, lg loggateway.Logger) *SkillService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, fs: fs, import_: importEng, lg: lg}
+	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, fs: fs, import_: importEng, gate: gate, lg: lg}
 }
 
 // assertSkillAccess 校验 caller 是否可访问指定 skill（P2-B IDOR 防护）。
@@ -422,6 +424,11 @@ func (s *SkillService) PublishSkill(ctx context.Context, req *v1.PublishSkillReq
 	s.lg.Info("publish skill",
 		loggateway.StepID("service.skill"),
 		loggateway.Str("skill_id", req.GetId()))
+	// P2-1: publish regression gate — blocked publishes return Conflict and
+	// the skill stays unpublished. Nil gate / disabled config = no-op.
+	if err := s.gate.Check(ctx, biz.EvalGateTriggerSkillPublish); err != nil {
+		return nil, err
+	}
 	out, err := s.uc.Publish(ctx, req.GetId())
 	if err != nil {
 		s.lg.Error("publish skill failed",

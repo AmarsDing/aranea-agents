@@ -17,6 +17,7 @@ func (r *Runner) executeLegacy(ctx context.Context, run biz.EvalRun, cases []biz
 	}
 
 	var agg legacyAgg
+	results := make([]biz.EvalCaseResult, 0, len(cases))
 	caseErrs := make([]string, 0)
 	for _, c := range cases {
 		start := time.Now()
@@ -42,22 +43,26 @@ func (r *Runner) executeLegacy(ctx context.Context, run biz.EvalRun, cases []biz
 		}
 
 		if err := r.uc.InsertCaseResult(ctx, res); err != nil {
-		r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
-		// Persistence failure silently drops the case row — count it as a case
-		// error so the run fails instead of reporting "completed".
-		caseErrs = append(caseErrs, fmt.Sprintf("case %s: persist result: %v", c.ID, err))
-	} else {
-		// Only count cases whose results were actually persisted; otherwise
-		// CompletedCases would diverge from the persisted CaseResult rows
-		// and the run would report "completed" with an inflated count.
-		run.CompletedCases++
-	}
+			r.lg.Warn("failed to insert evaluation case result", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+			// Persistence failure silently drops the case row — count it as a case
+			// error so the run fails instead of reporting "completed".
+			caseErrs = append(caseErrs, fmt.Sprintf("case %s: persist result: %v", c.ID, err))
+		} else {
+			// Only count cases whose results were actually persisted; otherwise
+			// CompletedCases would diverge from the persisted CaseResult rows
+			// and the run would report "completed" with an inflated count.
+			run.CompletedCases++
+			results = append(results, res)
+		}
 		if err := r.uc.UpdateRun(ctx, run); err != nil {
 			r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
 		}
 	}
 
 	agg.finalize(&run)
+	// P3-4: red-team attack success rate — computed only when the dataset
+	// carries adversarial cases (metadata_json.redteam_category).
+	mergeAttackSuccessRate(&run, cases, results)
 	// ISSUE-006: any case-level agent error fails the run — marking it
 	// "completed" would silently report a broken evaluation as healthy.
 	if len(caseErrs) > 0 {

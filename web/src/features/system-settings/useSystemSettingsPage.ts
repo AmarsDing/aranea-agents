@@ -6,6 +6,7 @@ import { useA2AStore } from '../../stores/a2a';
 import { knowledgeEmbedFromSettings, knowledgeEmbedToPatch } from './knowledge-embed';
 import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from './eval-llm';
 import { DEFAULT_WEB_RESEARCH_FORM, webResearchFromSettings, webResearchToPatch } from './web-research';
+import { DEFAULT_SPEECH_FORM, speechFromSettings, speechToPatch } from './speech';
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from '../knowledge/embedder-constants';
 
 function usdToMicroUsd(usd: number | null | undefined): number {
@@ -34,6 +35,14 @@ export function useSystemSettingsPage() {
   const knowledgeEmbedForm = reactive({ ...DEFAULT_KNOWLEDGE_EMBED_FORM });
   const evalLLMForm = reactive({ ...DEFAULT_EVAL_LLM_FORM });
   const webResearchForm = reactive({ ...DEFAULT_WEB_RESEARCH_FORM });
+  const speechForm = reactive({ ...DEFAULT_SPEECH_FORM });
+  // Loaded snapshot for the speech diff-patch (see speechToPatch): keeps the
+  // env-fallback semantics intact on unrelated saves.
+  const speechLoaded = ref({ ...DEFAULT_SPEECH_FORM });
+  const speechAsrConfigured = ref(false);
+  const speechAsrHasApiKey = ref(false);
+  const speechTtsConfigured = ref(false);
+  const speechTtsHasApiKey = ref(false);
   const knowledgeEmbedConfigured = ref(false);
   const webResearchConfigured = ref(false);
   const webResearchHasApiKey = ref(false);
@@ -66,6 +75,13 @@ export function useSystemSettingsPage() {
     Object.assign(knowledgeEmbedForm, knowledgeEmbedFromSettings(res.knowledgeEmbed));
     Object.assign(evalLLMForm, evalLLMFromSettings(res.evalLlm));
     Object.assign(webResearchForm, webResearchFromSettings(res.webResearch));
+    const speechNext = speechFromSettings(res.speech);
+    Object.assign(speechForm, speechNext);
+    speechLoaded.value = speechNext;
+    speechAsrConfigured.value = Boolean(res.speech?.asr?.configured);
+    speechAsrHasApiKey.value = Boolean(res.speech?.asr?.hasApiKey);
+    speechTtsConfigured.value = Boolean(res.speech?.tts?.configured);
+    speechTtsHasApiKey.value = Boolean(res.speech?.tts?.hasApiKey);
     knowledgeEmbedConfigured.value = Boolean(res.knowledgeEmbed?.configured);
     knowledgeEmbedHasApiKey.value = Boolean(res.knowledgeEmbed?.hasApiKey);
     webResearchConfigured.value = Boolean(res.webResearch?.configured);
@@ -137,6 +153,7 @@ export function useSystemSettingsPage() {
         knowledgeEmbed: knowledgeEmbedToPatch(knowledgeEmbedForm),
         evalLLM: evalLLMForm,
         webResearch: webResearchToPatch(webResearchForm),
+        speech: speechToPatch(speechForm, speechLoaded.value),
       });
       const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
       effectiveA2AUrl.value = a2aCfg?.public_base_url ?? '';
@@ -165,6 +182,11 @@ export function useSystemSettingsPage() {
     knowledgeEmbedForm,
     evalLLMForm,
     webResearchForm,
+    speechForm,
+    speechAsrConfigured,
+    speechAsrHasApiKey,
+    speechTtsConfigured,
+    speechTtsHasApiKey,
     knowledgeEmbedConfigured,
     webResearchConfigured,
     webResearchHasApiKey,

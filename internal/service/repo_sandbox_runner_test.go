@@ -159,6 +159,65 @@ func TestRepoSandboxRunner_PrepareDuplicateRunIDFails(t *testing.T) {
 	}
 }
 
+// 回归（2026-08-08 运行时事故）：prepare 在分支创建后/checkout 中途失败（或进程
+// 被杀），留下同名分支 + 残留目录的崩溃孤儿；stale 恢复重驱动时 `worktree add -b`
+// 撞 "already exists" 永久 exit 128。PrepareWorktree 必须清理孤儿后自愈重试。
+// 注意与 TestRepoSandboxRunner_PrepareDuplicateRunIDFails 的边界：已注册的同名
+// worktree（活跃重复 runID）仍必须报错，仅清理未注册的孤儿。
+func TestRepoSandboxRunner_PrepareHealsCrashOrphan(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	r := newTestRunner(t, repo)
+
+	// 构造孤儿：分支已建、worktree 未注册、目录有半截残留文件。
+	cmd := exec.Command("git", "branch", "self-improve/run-orphan")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git branch: %v\n%s", err, out)
+	}
+	writeFile(t, repo, ".aranea-self-improve/run-orphan/partial.txt", "half-written checkout")
+
+	path, cleanup, err := r.PrepareWorktree(context.Background(), "run-orphan", "")
+	if err != nil {
+		t.Fatalf("PrepareWorktree must self-heal crash orphan: %v", err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(path, "main.go")); err != nil {
+		t.Errorf("healed worktree missing main.go: %v", err)
+	}
+}
+
+// 回归（2026-08-08 运行时事故）：Windows MAX_PATH(260) —— 沙盒路径前缀
+// （repoRoot + .aranea-self-improve + uuid ≈ 76 字符）叠加仓库长路径文件
+// （如 bench 输出 229 字符）→ checkout "Filename too long" exit 128，分支成孤儿。
+// runGit 必须携带 -c core.longpaths=true（非 Windows 平台无害）。
+func TestRepoSandboxRunner_PrepareLongPaths(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	// 提交一个深嵌套长文件名文件（总长 > 260 触发 Windows MAX_PATH）。
+	longRel := "pkg/deep/" + strings.Repeat("sub/", 20) + strings.Repeat("d", 120) + ".txt"
+	writeFile(t, repo, longRel, "deep")
+	for _, args := range [][]string{
+		{"-c", "core.longpaths=true", "add", "."},
+		{"-c", "core.longpaths=true", "commit", "-m", "long path file"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		cmd.Env = fixtureCmdEnv(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	r := newTestRunner(t, repo)
+	path, cleanup, err := r.PrepareWorktree(context.Background(), "run-longpath", "")
+	if err != nil {
+		t.Fatalf("PrepareWorktree with long repo paths: %v", err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(path, filepath.FromSlash(longRel))); err != nil {
+		t.Errorf("long-path file missing in worktree: %v", err)
+	}
+}
+
 func TestRepoSandboxRunner_RunIDSanitized(t *testing.T) {
 	repo := initFixtureGoRepo(t)
 	r := newTestRunner(t, repo)

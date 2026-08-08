@@ -91,15 +91,20 @@ kratosApi.interceptors.response.use(
     const data = err.response?.data as Record<string, unknown> | undefined;
     const kratosMsg = typeof data?.message === 'string' ? data.message : undefined;
 
+    // skipErrorNotify：调用方自行呈现错误（如自改进控制台的引导空态/错误横幅/
+    // notifyError），全局 toast 会与之重复；5xx 与 4xx 同等尊重该开关。
+    const skipNotify = Boolean(err.config?.skipErrorNotify);
+
     if (status && status >= 500) {
-      Notify.create({
-        type: 'negative',
-        message: kratosMsg ?? `服务器错误 (${status})`,
-        timeout: 5000,
-        actions: [{ label: '关闭', color: 'white' }],
-      });
+      if (!skipNotify) {
+        Notify.create({
+          type: 'negative',
+          message: kratosMsg ?? `服务器错误 (${status})`,
+          timeout: 5000,
+          actions: [{ label: '关闭', color: 'white' }],
+        });
+      }
     } else if (status && status >= 400 && status !== 401 && status !== 404) {
-      const skipNotify = Boolean(err.config?.skipErrorNotify);
       if (!skipNotify) {
         Notify.create({
           type: 'warning',
@@ -146,7 +151,12 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
     headers['Content-Type'] = 'application/json';
   }
-  const skipErrorNotify = meta?.skipErrorNotify ?? meta?.method === 'CreateAgent';
+  // CreateAgent：内联字段错误自呈现；SelfImprovementService：页面经
+  // featureDisabled 空态 / 错误横幅 / notifyError 全量自呈现（含 503 功能
+  // 未启用结构化信号），全局 toast 均属重复。
+  const skipErrorNotify =
+    (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
+    meta?.service === 'SelfImprovementService';
   const urlPath = '/' + path.replace(/^\//, '');
   return kratosApi
     .request({

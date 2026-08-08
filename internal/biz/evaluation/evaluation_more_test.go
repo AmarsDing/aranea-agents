@@ -182,6 +182,20 @@ func (m *fnMockRepo) ListJudgeAnnotatedResults(_ context.Context, _, _ string) (
 	return nil, nil
 }
 
+func (m *fnMockRepo) ListFailureGroups(_ context.Context, _, _ string, _ int) ([]FailureGroup, int, error) {
+	return nil, 0, nil
+}
+
+func (m *fnMockRepo) InsertRunPreference(_ context.Context, _ RunPreference) error { return nil }
+
+func (m *fnMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]RunPreference, error) {
+	return nil, nil
+}
+
+func (m *fnMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
+
+func (m *fnMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
+
 func TestListDatasets(t *testing.T) {
 	tests := []struct {
 		name      string

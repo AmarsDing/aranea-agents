@@ -156,6 +156,9 @@
           :show-labels="graphShowLabels"
           :neighborhood-hops="graphNeighborhoodHops"
           :neighborhood-root-name="graphNeighborhoodRootName"
+          :merge-suggestions="graphMergeSuggestions"
+          :merging="graphMerging"
+          :last-merge-result="graphLastMergeResult"
           @select-collection="graph.selectCollection"
           @toggle-link-type="graph.toggleLinkType"
           @set-path-prefix="graph.setPathPrefix"
@@ -169,6 +172,7 @@
           @update:show-labels="(v: boolean) => (graphShowLabels = v)"
           @focus-neighborhood="onGraphFocusNeighborhood"
           @reset-global-view="graph.resetGlobalView"
+          @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
         />
       </q-tab-panel>
 
@@ -402,6 +406,9 @@ const {
   selectedNode: graphSelectedNode,
   focusSignal: graphFocusSignal,
   scopeNodes: graphScopeNodes,
+  mergeSuggestions: graphMergeSuggestions,
+  merging: graphMerging,
+  lastMergeResult: graphLastMergeResult,
 } = graph;
 
 // 渲染视图派生（viewGraph = 孤立裁剪 + 邻域裁剪；computed 解构后模板自动解包）。

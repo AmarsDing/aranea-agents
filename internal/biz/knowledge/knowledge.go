@@ -191,6 +191,14 @@ type Usecase struct {
 	// links/entities 为可选关联能力（P2-4），经 SetLinkRepos 接线；nil 时关联方法降级 no-op。
 	links    LinkRepo
 	entities EntityRepo
+	// blockIndex/resolveIndex 为块级双链派生索引（SP1），经 SetBlockIndexRepos 接线；
+	// blockIndex nil 时 RebuildBlockIndex 降级 no-op。
+	blockIndex   BlockIndexRepo
+	resolveIndex ResolveIndex
+	// linkIndex/graphPub 为统一链接索引与图谱增量事件出口（SP1-D），经 SetLinkIndex 接线；
+	// linkIndex nil 时 RebuildBlockIndex 跳过内存图 apply 与 WS 增量（降级安全）。
+	linkIndex *LinkIndex
+	graphPub  GraphDeltaPublisher
 	// paths/resolvedLinks 为资源管理器能力（P3），经 SetExplorerRepos 接线；
 	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
 	paths         DocumentPathReader
@@ -343,6 +351,7 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 // keep `knowledge_collections.document_count / chunk_count` in sync atomically.
 // DAT-02 / KB-04: prior repo implementations only deleted the document row
 // (relying on FK cascade for chunks) but never decremented the collection tally.
+// SP1-D：删除成功后同步内存图（出边清除、入边转 dangling）并发 WS 增量。
 func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err
@@ -350,7 +359,11 @@ func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrIDRequired
 	}
-	return u.documents.DeleteDocument(ctx, id)
+	if err := u.documents.DeleteDocument(ctx, id); err != nil {
+		return err
+	}
+	u.removeLinkIndexDoc(ctx, id)
+	return nil
 }
 
 // InsertChunks stores indexed chunks for a document.

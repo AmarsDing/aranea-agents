@@ -49,6 +49,9 @@ func (EvalRun) Fields() []ent.Field {
 		field.Text("error_message").Default(""),
 		field.String("started_at").Default(""),
 		field.String("finished_at").Default(""),
+		// P3-5: dataset content hash snapshot at run start — trend/compare uses
+		// it to warn when the dataset changed between runs.
+		field.String("dataset_hash").Default("").MaxLen(64),
 		// P2-B: tenant isolation. empty = legacy (treated as default workspace);
 		// non-empty = tenant-private (visible only to owning workspace).
 		field.String("workspace_id").Default("").MaxLen(128),

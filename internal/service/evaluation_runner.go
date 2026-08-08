@@ -14,6 +14,20 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
+// evalAgentConfigReader adapts AgentUsecase to evaluation.AgentEvalConfigReader
+// (P2-2 score-drop alert reads the agent's config_json.evaluation).
+type evalAgentConfigReader struct {
+	agents *biz.AgentUsecase
+}
+
+func (r evalAgentConfigReader) EvalAutoConfigForAgent(ctx context.Context, agentID string) (biz.AgentEvalAutoConfig, error) {
+	a, err := r.agents.Get(ctx, agentID)
+	if err != nil {
+		return biz.AgentEvalAutoConfig{}, err
+	}
+	return biz.ParseAgentEvalAutoConfig(a.ConfigJSON), nil
+}
+
 // NewEvaluationRunner wires AgentRunner + JudgeRunner for evaluation runs (EP-RT-08).
 func NewEvaluationRunner(
 	uc *biz.EvalUsecase,

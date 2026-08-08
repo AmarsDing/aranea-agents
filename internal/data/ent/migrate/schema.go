@@ -850,6 +850,23 @@ var (
 		Columns:    EvalDatasetsColumns,
 		PrimaryKey: []*schema.Column{EvalDatasetsColumns[0]},
 	}
+	// EvalGateConfigColumns holds the columns for the "eval_gate_config" table.
+	EvalGateConfigColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "enabled", Type: field.TypeInt, Default: 0},
+		{Name: "agent_id", Type: field.TypeString, Default: ""},
+		{Name: "dataset_id", Type: field.TypeString, Default: ""},
+		{Name: "metric", Type: field.TypeString, Default: "exact_match"},
+		{Name: "min_score", Type: field.TypeFloat64, Default: 0},
+		{Name: "max_drop", Type: field.TypeFloat64, Default: 0},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// EvalGateConfigTable holds the schema information for the "eval_gate_config" table.
+	EvalGateConfigTable = &schema.Table{
+		Name:       "eval_gate_config",
+		Columns:    EvalGateConfigColumns,
+		PrimaryKey: []*schema.Column{EvalGateConfigColumns[0]},
+	}
 	// EvalRunsColumns holds the columns for the "eval_runs" table.
 	EvalRunsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -869,6 +886,7 @@ var (
 		{Name: "error_message", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "started_at", Type: field.TypeString, Default: ""},
 		{Name: "finished_at", Type: field.TypeString, Default: ""},
+		{Name: "dataset_hash", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "workspace_id", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "created_at", Type: field.TypeString, Default: ""},
 		{Name: "dataset_id", Type: field.TypeString, Size: 256},
@@ -881,7 +899,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "eval_runs_eval_datasets_runs",
-				Columns:    []*schema.Column{EvalRunsColumns[19]},
+				Columns:    []*schema.Column{EvalRunsColumns[20]},
 				RefColumns: []*schema.Column{EvalDatasetsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -890,7 +908,7 @@ var (
 			{
 				Name:    "evalrun_dataset_id",
 				Unique:  false,
-				Columns: []*schema.Column{EvalRunsColumns[19]},
+				Columns: []*schema.Column{EvalRunsColumns[20]},
 			},
 			{
 				Name:    "evalrun_agent_id",
@@ -900,7 +918,31 @@ var (
 			{
 				Name:    "idx_eval_runs_workspace",
 				Unique:  false,
-				Columns: []*schema.Column{EvalRunsColumns[17]},
+				Columns: []*schema.Column{EvalRunsColumns[18]},
+			},
+		},
+	}
+	// EvalRunPreferencesColumns holds the columns for the "eval_run_preferences" table.
+	EvalRunPreferencesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
+		{Name: "dataset_id", Type: field.TypeString},
+		{Name: "run_id_a", Type: field.TypeString},
+		{Name: "run_id_b", Type: field.TypeString},
+		{Name: "winner_run_id", Type: field.TypeString},
+		{Name: "comment", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_by", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+	}
+	// EvalRunPreferencesTable holds the schema information for the "eval_run_preferences" table.
+	EvalRunPreferencesTable = &schema.Table{
+		Name:       "eval_run_preferences",
+		Columns:    EvalRunPreferencesColumns,
+		PrimaryKey: []*schema.Column{EvalRunPreferencesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "evalrunpreference_dataset_id",
+				Unique:  false,
+				Columns: []*schema.Column{EvalRunPreferencesColumns[1]},
 			},
 		},
 	}
@@ -1849,7 +1891,7 @@ var (
 		Indexes: []*schema.Index{
 			{
 				Name:    "patchoutcome_run_id",
-				Unique:  false,
+				Unique:  true,
 				Columns: []*schema.Column{PatchOutcomesColumns[1]},
 			},
 			{
@@ -3661,7 +3703,9 @@ var (
 		EvalCasesTable,
 		EvalCaseResultsTable,
 		EvalDatasetsTable,
+		EvalGateConfigTable,
 		EvalRunsTable,
+		EvalRunPreferencesTable,
 		EventDeliveryOutboxTable,
 		ExperienceReportsTable,
 		FailurePatternTable,
@@ -3808,9 +3852,15 @@ func init() {
 	EvalDatasetsTable.Annotation = &entsql.Annotation{
 		Table: "eval_datasets",
 	}
+	EvalGateConfigTable.Annotation = &entsql.Annotation{
+		Table: "eval_gate_config",
+	}
 	EvalRunsTable.ForeignKeys[0].RefTable = EvalDatasetsTable
 	EvalRunsTable.Annotation = &entsql.Annotation{
 		Table: "eval_runs",
+	}
+	EvalRunPreferencesTable.Annotation = &entsql.Annotation{
+		Table: "eval_run_preferences",
 	}
 	EventDeliveryOutboxTable.Annotation = &entsql.Annotation{
 		Table: "event_delivery_outbox",

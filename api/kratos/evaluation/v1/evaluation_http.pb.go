@@ -27,13 +27,18 @@ const OperationEvaluationServiceDeleteDataset = "/kratos.evaluation.v1.Evaluatio
 const OperationEvaluationServiceDeleteRun = "/kratos.evaluation.v1.EvaluationService/DeleteRun"
 const OperationEvaluationServiceGetAgentEvalTrend = "/kratos.evaluation.v1.EvaluationService/GetAgentEvalTrend"
 const OperationEvaluationServiceGetDataset = "/kratos.evaluation.v1.EvaluationService/GetDataset"
+const OperationEvaluationServiceGetEvalGate = "/kratos.evaluation.v1.EvaluationService/GetEvalGate"
+const OperationEvaluationServiceGetFailureGroups = "/kratos.evaluation.v1.EvaluationService/GetFailureGroups"
 const OperationEvaluationServiceGetJudgeDivergence = "/kratos.evaluation.v1.EvaluationService/GetJudgeDivergence"
 const OperationEvaluationServiceGetRun = "/kratos.evaluation.v1.EvaluationService/GetRun"
 const OperationEvaluationServiceGetRunResults = "/kratos.evaluation.v1.EvaluationService/GetRunResults"
 const OperationEvaluationServiceListDatasets = "/kratos.evaluation.v1.EvaluationService/ListDatasets"
+const OperationEvaluationServiceListRunPreferences = "/kratos.evaluation.v1.EvaluationService/ListRunPreferences"
 const OperationEvaluationServiceListRuns = "/kratos.evaluation.v1.EvaluationService/ListRuns"
 const OperationEvaluationServiceRunEvaluation = "/kratos.evaluation.v1.EvaluationService/RunEvaluation"
+const OperationEvaluationServiceSubmitRunPreference = "/kratos.evaluation.v1.EvaluationService/SubmitRunPreference"
 const OperationEvaluationServiceUpdateDataset = "/kratos.evaluation.v1.EvaluationService/UpdateDataset"
+const OperationEvaluationServiceUpdateEvalGate = "/kratos.evaluation.v1.EvaluationService/UpdateEvalGate"
 const OperationEvaluationServiceUploadCases = "/kratos.evaluation.v1.EvaluationService/UploadCases"
 
 type EvaluationServiceHTTPServer interface {
@@ -45,14 +50,19 @@ type EvaluationServiceHTTPServer interface {
 	DeleteRun(context.Context, *DeleteRunRequest) (*emptypb.Empty, error)
 	GetAgentEvalTrend(context.Context, *GetAgentEvalTrendRequest) (*GetAgentEvalTrendResponse, error)
 	GetDataset(context.Context, *GetDatasetRequest) (*EvalDataset, error)
+	GetEvalGate(context.Context, *GetEvalGateRequest) (*EvalGateConfig, error)
+	GetFailureGroups(context.Context, *GetFailureGroupsRequest) (*GetFailureGroupsResponse, error)
 	GetJudgeDivergence(context.Context, *GetJudgeDivergenceRequest) (*GetJudgeDivergenceResponse, error)
 	GetRun(context.Context, *GetRunRequest) (*EvalRun, error)
 	GetRunResults(context.Context, *GetRunResultsRequest) (*GetRunResultsResponse, error)
 	ListDatasets(context.Context, *ListDatasetsRequest) (*ListDatasetsResponse, error)
+	ListRunPreferences(context.Context, *ListRunPreferencesRequest) (*ListRunPreferencesResponse, error)
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	// RunEvaluation Runs
 	RunEvaluation(context.Context, *RunEvaluationRequest) (*EvalRun, error)
+	SubmitRunPreference(context.Context, *SubmitRunPreferenceRequest) (*EvalRunPreference, error)
 	UpdateDataset(context.Context, *UpdateDatasetRequest) (*EvalDataset, error)
+	UpdateEvalGate(context.Context, *UpdateEvalGateRequest) (*EvalGateConfig, error)
 	UploadCases(context.Context, *UploadCasesRequest) (*UploadCasesResponse, error)
 }
 
@@ -73,6 +83,11 @@ func RegisterEvaluationServiceHTTPServer(s *http.Server, srv EvaluationServiceHT
 	r.GET("/v1/evaluation/agents/{agent_id}/trend", _EvaluationService_GetAgentEvalTrend0_HTTP_Handler(srv))
 	r.POST("/v1/evaluation/runs/compare", _EvaluationService_CompareEvalRuns0_HTTP_Handler(srv))
 	r.GET("/v1/evaluation/datasets/{dataset_id}/judge-divergence", _EvaluationService_GetJudgeDivergence0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/datasets/{dataset_id}/failure-groups", _EvaluationService_GetFailureGroups0_HTTP_Handler(srv))
+	r.POST("/v1/evaluation/preferences", _EvaluationService_SubmitRunPreference0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/preferences", _EvaluationService_ListRunPreferences0_HTTP_Handler(srv))
+	r.GET("/v1/evaluation/gate", _EvaluationService_GetEvalGate0_HTTP_Handler(srv))
+	r.PUT("/v1/evaluation/gate", _EvaluationService_UpdateEvalGate0_HTTP_Handler(srv))
 }
 
 func _EvaluationService_CreateDataset0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
@@ -408,6 +423,110 @@ func _EvaluationService_GetJudgeDivergence0_HTTP_Handler(srv EvaluationServiceHT
 	}
 }
 
+func _EvaluationService_GetFailureGroups0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetFailureGroupsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceGetFailureGroups)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetFailureGroups(ctx, req.(*GetFailureGroupsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetFailureGroupsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_SubmitRunPreference0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SubmitRunPreferenceRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceSubmitRunPreference)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SubmitRunPreference(ctx, req.(*SubmitRunPreferenceRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvalRunPreference)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_ListRunPreferences0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListRunPreferencesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceListRunPreferences)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListRunPreferences(ctx, req.(*ListRunPreferencesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListRunPreferencesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_GetEvalGate0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetEvalGateRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceGetEvalGate)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetEvalGate(ctx, req.(*GetEvalGateRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvalGateConfig)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _EvaluationService_UpdateEvalGate0_HTTP_Handler(srv EvaluationServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateEvalGateRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationEvaluationServiceUpdateEvalGate)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateEvalGate(ctx, req.(*UpdateEvalGateRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvalGateConfig)
+		return ctx.Result(200, reply)
+	}
+}
+
 type EvaluationServiceHTTPClient interface {
 	AnnotateCaseResult(ctx context.Context, req *AnnotateCaseResultRequest, opts ...http.CallOption) (rsp *EvalCaseResult, err error)
 	CompareEvalRuns(ctx context.Context, req *CompareEvalRunsRequest, opts ...http.CallOption) (rsp *CompareEvalRunsResponse, err error)
@@ -417,14 +536,19 @@ type EvaluationServiceHTTPClient interface {
 	DeleteRun(ctx context.Context, req *DeleteRunRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetAgentEvalTrend(ctx context.Context, req *GetAgentEvalTrendRequest, opts ...http.CallOption) (rsp *GetAgentEvalTrendResponse, err error)
 	GetDataset(ctx context.Context, req *GetDatasetRequest, opts ...http.CallOption) (rsp *EvalDataset, err error)
+	GetEvalGate(ctx context.Context, req *GetEvalGateRequest, opts ...http.CallOption) (rsp *EvalGateConfig, err error)
+	GetFailureGroups(ctx context.Context, req *GetFailureGroupsRequest, opts ...http.CallOption) (rsp *GetFailureGroupsResponse, err error)
 	GetJudgeDivergence(ctx context.Context, req *GetJudgeDivergenceRequest, opts ...http.CallOption) (rsp *GetJudgeDivergenceResponse, err error)
 	GetRun(ctx context.Context, req *GetRunRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
 	GetRunResults(ctx context.Context, req *GetRunResultsRequest, opts ...http.CallOption) (rsp *GetRunResultsResponse, err error)
 	ListDatasets(ctx context.Context, req *ListDatasetsRequest, opts ...http.CallOption) (rsp *ListDatasetsResponse, err error)
+	ListRunPreferences(ctx context.Context, req *ListRunPreferencesRequest, opts ...http.CallOption) (rsp *ListRunPreferencesResponse, err error)
 	ListRuns(ctx context.Context, req *ListRunsRequest, opts ...http.CallOption) (rsp *ListRunsResponse, err error)
 	// RunEvaluation Runs
 	RunEvaluation(ctx context.Context, req *RunEvaluationRequest, opts ...http.CallOption) (rsp *EvalRun, err error)
+	SubmitRunPreference(ctx context.Context, req *SubmitRunPreferenceRequest, opts ...http.CallOption) (rsp *EvalRunPreference, err error)
 	UpdateDataset(ctx context.Context, req *UpdateDatasetRequest, opts ...http.CallOption) (rsp *EvalDataset, err error)
+	UpdateEvalGate(ctx context.Context, req *UpdateEvalGateRequest, opts ...http.CallOption) (rsp *EvalGateConfig, err error)
 	UploadCases(ctx context.Context, req *UploadCasesRequest, opts ...http.CallOption) (rsp *UploadCasesResponse, err error)
 }
 
@@ -528,6 +652,32 @@ func (c *EvaluationServiceHTTPClientImpl) GetDataset(ctx context.Context, in *Ge
 	return &out, nil
 }
 
+func (c *EvaluationServiceHTTPClientImpl) GetEvalGate(ctx context.Context, in *GetEvalGateRequest, opts ...http.CallOption) (*EvalGateConfig, error) {
+	var out EvalGateConfig
+	pattern := "/v1/evaluation/gate"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceGetEvalGate))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) GetFailureGroups(ctx context.Context, in *GetFailureGroupsRequest, opts ...http.CallOption) (*GetFailureGroupsResponse, error) {
+	var out GetFailureGroupsResponse
+	pattern := "/v1/evaluation/datasets/{dataset_id}/failure-groups"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceGetFailureGroups))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *EvaluationServiceHTTPClientImpl) GetJudgeDivergence(ctx context.Context, in *GetJudgeDivergenceRequest, opts ...http.CallOption) (*GetJudgeDivergenceResponse, error) {
 	var out GetJudgeDivergenceResponse
 	pattern := "/v1/evaluation/datasets/{dataset_id}/judge-divergence"
@@ -580,6 +730,19 @@ func (c *EvaluationServiceHTTPClientImpl) ListDatasets(ctx context.Context, in *
 	return &out, nil
 }
 
+func (c *EvaluationServiceHTTPClientImpl) ListRunPreferences(ctx context.Context, in *ListRunPreferencesRequest, opts ...http.CallOption) (*ListRunPreferencesResponse, error) {
+	var out ListRunPreferencesResponse
+	pattern := "/v1/evaluation/preferences"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationEvaluationServiceListRunPreferences))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *EvaluationServiceHTTPClientImpl) ListRuns(ctx context.Context, in *ListRunsRequest, opts ...http.CallOption) (*ListRunsResponse, error) {
 	var out ListRunsResponse
 	pattern := "/v1/evaluation/runs"
@@ -607,6 +770,19 @@ func (c *EvaluationServiceHTTPClientImpl) RunEvaluation(ctx context.Context, in 
 	return &out, nil
 }
 
+func (c *EvaluationServiceHTTPClientImpl) SubmitRunPreference(ctx context.Context, in *SubmitRunPreferenceRequest, opts ...http.CallOption) (*EvalRunPreference, error) {
+	var out EvalRunPreference
+	pattern := "/v1/evaluation/preferences"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationEvaluationServiceSubmitRunPreference))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *EvaluationServiceHTTPClientImpl) UpdateDataset(ctx context.Context, in *UpdateDatasetRequest, opts ...http.CallOption) (*EvalDataset, error) {
 	var out EvalDataset
 	pattern := "/v1/evaluation/datasets/{id}"
@@ -614,6 +790,19 @@ func (c *EvaluationServiceHTTPClientImpl) UpdateDataset(ctx context.Context, in 
 	opts = append(opts, http.Operation(OperationEvaluationServiceUpdateDataset))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PATCH", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *EvaluationServiceHTTPClientImpl) UpdateEvalGate(ctx context.Context, in *UpdateEvalGateRequest, opts ...http.CallOption) (*EvalGateConfig, error) {
+	var out EvalGateConfig
+	pattern := "/v1/evaluation/gate"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationEvaluationServiceUpdateEvalGate))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

@@ -256,7 +256,7 @@ internal/data/ent/*.go（Ent 生成物，禁手改；允许 go generate 产物�
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | string (UUID) | 主键 |
-| run_id | string，索引 | 关联 run |
+| run_id | string，**唯一索引** | 关联 run（1 run : 1 outcome；2026-08-08 落地注记：由普通索引加固为唯一索引，写入兜底防并发 tick 重归因，读路径 NOT IN 去重不变） |
 | suggestion_id | string | 冗余便于按建议查询 |
 | verdict | string(16) | effective/neutral/regressed |
 | metrics_before | JSON | 应用前 1h 滑窗 {error_rate,p95_ms,alert_count} |
@@ -281,14 +281,15 @@ internal/data/ent/*.go（Ent 生成物，禁手改；允许 go generate 产物�
 type SelfImprovementRunReader interface {
     GetByID(ctx context.Context, id string) (*SelfImprovementRun, error)
     GetBySuggestionID(ctx context.Context, suggestionID string) (*SelfImprovementRun, error)
-    List(ctx context.Context, filter RunFilter) ([]SelfImprovementRun, error) // 状态/风险/触发源/分页
-    ListObserving(ctx context.Context, now time.Time) ([]SelfImprovementRun, error) // Watchdog
+    List(ctx context.Context, filter RunFilter) ([]SelfImprovementRun, error) // Status EQ/Statuses IN/风险/触发源/分页
+    Count(ctx context.Context, filter RunFilter) (int, error) // 控制台列表总数（P5）
+    ListTerminalPendingOutcome(ctx context.Context, limit int) ([]SelfImprovementRun, error) // Outcome 归因扫描（D8）
 }
 
 // Stability:evolving
 type SelfImprovementRunWriter interface {
     Create(ctx context.Context, run *SelfImprovementRun) error
-    UpdateStatus(ctx context.Context, id string, from, to RunStatus, patch RunPatch) error // CAS from 状态
+    Update(ctx context.Context, run *SelfImprovementRun, from RunStatus) error // 全量可变字段 + CAS from 状态
     RecordAttempt(ctx context.Context, id string) error
 }
 
@@ -299,7 +300,9 @@ type PatchOutcomeWriter interface {
 }
 ```
 
-`UpdateStatus` 采用 CAS（WHERE status=from）保证状态机迁移原子性；冲突返回 CodeConflict。
+`Update` 采用 CAS（WHERE status=from）保证状态机迁移原子性；冲突返回 CodeConflict。
+
+> 落地注记（2026-08-08）：Reader 收敛为 5 方法——原计划 `ListObserving`（实现名 `ListObservingDue`）无生产调用方（Watchdog 需先为未到期 run 采基线，用 `List(Status=observing)` 全程扫描），已删除；`UpdateStatus` 落地为全量 `Update`，含 Metadata 覆盖持久化（watchdog 基线/到期快照依赖，曾缺失 `SetMetadata` 导致基线永不落库，已修复并加 PG 回归）。
 
 ### 4.2 沙盒端口
 
@@ -352,6 +355,8 @@ type Applier interface {
 | self_improve_outcome | 1h | 终态 run 生成 PatchOutcome + KB 反哺 + 触发器自适应降频 | V2 pattern_mining |
 
 > self_improve_drive 为 Phase 4 实施期增补：原设计将「pipeline 启动/治理路由/应用驱动」挂在 observe worker 与 router 回调上，落地时发现异步 pipeline 失败与 pause 恢复需要独立重驱动入口，故拆出 drive worker 统一承担全链推进与陈旧恢复（`SIStaleTimeout`/`SIDriveInterval` 可配）。
+>
+> 落地注记（2026-08-08）：`RunFilter` 新增 `Statuses` 多状态 IN 过滤（与 `Status` 叠加 AND），drive 每 tick 以 6 个驱动态（detected/diagnosing/patching/verifying/awaiting_governance/applying）在 SQL 层圈选职责域，不再全表扫描含重 JSON 字段（Diff/VerificationReport）的终态/applied/observing 行；watchdog/apply 沿用单状态 `Status` EQ 过滤不变。
 
 分布式安全：复用现有 worker 单实例运行约定（workers.go 启动模式），Watchdog 的 rollback 与 Drive 的 recover/晋升均以 run 状态 CAS 防重。
 

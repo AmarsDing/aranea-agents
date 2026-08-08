@@ -397,6 +397,120 @@ func (s *stubLinkRepo) ListLinks(_ context.Context, collectionID, docID, linkTyp
 	return out, nil
 }
 
+// memBlockIndex 内存 BlockIndexRepo + ResolveIndex（SP1-C 写路径测试用）。
+// candidatesFn 由测试注入，返回当前候选文档视图（模拟 DB 镜像最终一致）。
+type memBlockIndex struct {
+	candidatesFn func() []ResolveDocCandidate
+	blocks       map[string][]KnowledgeBlock
+	refs         map[string][]KnowledgeBlockRefInput
+	titles       map[string]string
+	aliases      map[string][]string
+}
+
+func newMemBlockIndex(candidatesFn func() []ResolveDocCandidate) *memBlockIndex {
+	return &memBlockIndex{
+		candidatesFn: candidatesFn,
+		blocks:       map[string][]KnowledgeBlock{},
+		refs:         map[string][]KnowledgeBlockRefInput{},
+		titles:       map[string]string{},
+		aliases:      map[string][]string{},
+	}
+}
+
+// ReplaceDocBlocks 对齐生产语义：整文档删了重插；SrcOrdinal/DstSelfOrdinal
+// 按本次插入的 ordinal→ID 映射回填块 ID；未锚块 ID 确定性生成。
+// 返回本次物化边（SP1-D 签名契约）。
+func (m *memBlockIndex) ReplaceDocBlocks(_ context.Context, collectionID, docID string, blocks []KnowledgeBlock, refs []KnowledgeBlockRefInput) ([]KnowledgeBlockRefEdge, error) {
+	idByOrdinal := make(map[int]string, len(blocks))
+	stored := make([]KnowledgeBlock, len(blocks))
+	for i, b := range blocks {
+		if b.ID == "" {
+			b.ID = b.Anchor
+		}
+		if b.ID == "" {
+			b.ID = fmt.Sprintf("%s#%d", docID, b.Ordinal)
+		}
+		b.CollectionID = collectionID
+		b.DocID = docID
+		idByOrdinal[b.Ordinal] = b.ID
+		stored[i] = b
+	}
+	out := make([]KnowledgeBlockRefInput, len(refs))
+	edges := make([]KnowledgeBlockRefEdge, len(refs))
+	for i, rf := range refs {
+		if rf.DstBlockID == "" && rf.DstSelfOrdinal != nil {
+			rf.DstBlockID = idByOrdinal[*rf.DstSelfOrdinal]
+		}
+		out[i] = rf
+		edges[i] = KnowledgeBlockRefEdge{
+			CollectionID:    collectionID,
+			SrcBlockID:      idByOrdinal[rf.SrcOrdinal],
+			SrcDocID:        docID,
+			DstCollectionID: rf.DstCollectionID,
+			DstDocID:        rf.DstDocID,
+			DstBlockID:      rf.DstBlockID,
+			RawTarget:       rf.RawTarget,
+			EdgeType:        rf.EdgeType,
+			Context:         rf.Context,
+			Ambiguous:       rf.Ambiguous,
+		}
+	}
+	m.blocks[docID] = stored
+	m.refs[docID] = out
+	return edges, nil
+}
+
+func (m *memBlockIndex) ListDocBlocks(_ context.Context, docID string) ([]KnowledgeBlock, error) {
+	return append([]KnowledgeBlock(nil), m.blocks[docID]...), nil
+}
+
+func (m *memBlockIndex) UpdateDocLinkKeys(_ context.Context, docID, title string, aliases []string) error {
+	m.titles[docID] = title
+	m.aliases[docID] = aliases
+	return nil
+}
+
+func (m *memBlockIndex) ListResolveCandidates(_ context.Context, collectionIDs []string) ([]ResolveDocCandidate, error) {
+	visible := make(map[string]bool, len(collectionIDs))
+	for _, id := range collectionIDs {
+		visible[id] = true
+	}
+	var out []ResolveDocCandidate
+	for _, c := range m.candidatesFn() {
+		if visible[c.CollectionID] {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func (m *memBlockIndex) FindBlockByAnchor(_ context.Context, docID, anchor string) (string, bool, error) {
+	for _, b := range m.blocks[docID] {
+		if b.Anchor != "" && b.Anchor == anchor {
+			return b.ID, true, nil
+		}
+	}
+	return "", false, nil
+}
+
+// FindBlockByHeadingPath 重复标题取首（块按 ordinal 序存储，与生产取 ordinal
+// 最小者口径一致）。
+func (m *memBlockIndex) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, error) {
+next:
+	for _, b := range m.blocks[docID] {
+		if b.Kind != "heading" || len(b.HeadingPath) != len(path) {
+			continue
+		}
+		for i := range path {
+			if b.HeadingPath[i] != path[i] {
+				continue next
+			}
+		}
+		return b.ID, true, nil
+	}
+	return "", false, nil
+}
+
 // moveDocUsecase 构造文档 B 位于 notes/B.md 的 vault usecase（文件已落盘）。
 // 返回的 mockRepo 捕获 UpdateDocumentRelPath 调用。
 func moveDocUsecase(t *testing.T, root string) (*Usecase, *mockRepo, *string) {
@@ -553,6 +667,16 @@ func TestUsecase_MoveVaultDocumentToDir_RebuildsInboundLinks(t *testing.T) {
 		{CollectionID: "col-1", DocID: "a2-id", TargetDocID: "b-id", LinkType: LinkTypeExplicit, Context: "B"},
 	}}
 	u.SetLinkRepos(links, nil)
+	// SP1-C：移动入链修复走 RebuildBlockIndex（parse→resolve→物化→explicit 投影），
+	// 解析候选来自 docs map 当前视图（docRelPathFn 已同步新路径，模拟 DB 镜像）。
+	blockIdx := newMemBlockIndex(func() []ResolveDocCandidate {
+		out := make([]ResolveDocCandidate, 0, len(docs))
+		for _, d := range docs {
+			out = append(out, ResolveDocCandidate{DocID: d.ID, CollectionID: d.CollectionID, RelPath: d.RelPath})
+		}
+		return out
+	})
+	u.SetBlockIndexRepos(blockIdx, blockIdx)
 
 	_, err := u.MoveVaultDocumentToDir(context.Background(), "b-id", "archive", "")
 	require.NoError(t, err)

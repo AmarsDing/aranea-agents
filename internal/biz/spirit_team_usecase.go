@@ -2328,9 +2328,17 @@ func (u *SpiritTeamUsecase) MemberExecutionWindow(ctx context.Context, sessionID
 // CompletedAt over StartedAt per step. authorFilter non-empty restricts to
 // steps authored by that agent key. ok=false means no step carried a non-zero
 // StartedAt.
+//
+// notice steps are excluded (2026-08-08 回归发现): context_usage 等被动通知以
+// 成员 author 持续落到 run 结束，会把 end 撑大到远超成员真实工作完成时刻
+// （真实 reply 04:54:42，notice 拖到 04:59:15），且 publish 查询与 notice 落库
+// 存在时序 race，窗口结果不稳定。notice 不产生任何执行工作量，不是活动证据。
 func memberStepWindow(steps []Step, authorFilter string) (start, end time.Time, ok bool) {
 	for _, st := range steps {
 		if authorFilter != "" && strings.TrimSpace(st.AuthorAgentKey) != authorFilter {
+			continue
+		}
+		if st.Kind == StepKindNotice {
 			continue
 		}
 		if !st.StartedAt.IsZero() {

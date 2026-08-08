@@ -80,9 +80,6 @@ func (s *siStubRunStore) List(context.Context, RunFilter) ([]SelfImprovementRun,
 func (s *siStubRunStore) Count(context.Context, RunFilter) (int, error) {
 	return 0, nil
 }
-func (s *siStubRunStore) ListObservingDue(context.Context, time.Time) ([]SelfImprovementRun, error) {
-	return nil, nil
-}
 func (s *siStubRunStore) ListTerminalPendingOutcome(context.Context, int) ([]SelfImprovementRun, error) {
 	return nil, nil
 }

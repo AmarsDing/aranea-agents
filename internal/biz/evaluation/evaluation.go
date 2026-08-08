@@ -61,6 +61,10 @@ type Run struct {
 	ErrorMessage       string
 	StartedAt          string
 	FinishedAt         string
+	// DatasetHash is a content hash snapshot of the dataset cases at run
+	// start (P3-5). Trend/compare surfaces a warning when two runs of the
+	// same dataset carry different hashes (scores not directly comparable).
+	DatasetHash string
 	// WorkspaceID scopes this run to a tenant workspace.
 	// empty = legacy (treated as default workspace); non-empty = tenant-private.
 	WorkspaceID string
@@ -114,6 +118,7 @@ type RunComparison struct {
 	AgentID            string
 	DatasetID          string
 	CreatedAt          string
+	DatasetHash        string // P3-5: snapshot for dataset-changed warning
 	ExactMatchScore    float32
 	ContainsMatchScore float32
 	LLMJudgeScore      float32
@@ -161,6 +166,20 @@ type Repo interface {
 	// ListJudgeAnnotatedResults returns results with human_pass set (joined
 	// with run dataset/agent scope and case text) for judge calibration (P1-3).
 	ListJudgeAnnotatedResults(ctx context.Context, datasetID, agentID string) ([]JudgeAnnotatedResult, error)
+
+	// ListFailureGroups aggregates case-result failures by error_message for
+	// one dataset (P2-3, SQL-version failure clustering).
+	ListFailureGroups(ctx context.Context, datasetID, agentID string, limit int) ([]FailureGroup, int, error)
+
+	// InsertRunPreference / ListRunPreferences persist pairwise human
+	// preferences between two runs of one dataset (P3-3).
+	InsertRunPreference(ctx context.Context, p RunPreference) error
+	ListRunPreferences(ctx context.Context, datasetID string, limit int) ([]RunPreference, error)
+
+	// GetGateConfig / UpsertGateConfig read/write the publish-gate singleton
+	// (P2-1). GetGateConfig returns a disabled zero config when no row exists.
+	GetGateConfig(ctx context.Context) (GateConfig, error)
+	UpsertGateConfig(ctx context.Context, cfg GateConfig) error
 }
 
 // Usecase implements dataset/run management.
@@ -388,6 +407,7 @@ func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunCo
 			AgentID:            r.AgentID,
 			DatasetID:          r.DatasetID,
 			CreatedAt:          r.CreatedAt,
+			DatasetHash:        r.DatasetHash,
 			ExactMatchScore:    r.ExactMatchScore,
 			ContainsMatchScore: r.ContainsMatchScore,
 			LLMJudgeScore:      r.LLMJudgeScore,

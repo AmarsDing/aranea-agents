@@ -45,6 +45,7 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     knowledgeEmbed,
     evalLLM,
     webResearch,
+    speech,
   } = input;
   return api.UpdateSystemSettings({
     rootDirectory,
@@ -68,6 +69,22 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     webResearchSearchDepth: webResearch?.searchDepth ?? 'basic',
     webResearchTimeoutSec: webResearch?.timeoutSec ?? 15,
     webResearchHttpProxy: webResearch?.httpProxy ?? '',
+    speechAsrDriver: speech?.asrDriver,
+    speechAsrEndpoint: speech?.asrEndpoint,
+    speechAsrResourceId: speech?.asrResourceId,
+    speechAsrLanguage: speech?.asrLanguage,
+    speechAsrAppKey: speech?.asrAppKey,
+    speechAsrAccessKey: speech?.asrAccessKey,
+    speechTtsDriver: speech?.ttsDriver,
+    speechTtsEndpoint: speech?.ttsEndpoint,
+    speechTtsResourceId: speech?.ttsResourceId,
+    speechTtsVoice: speech?.ttsVoice,
+    speechTtsSpeedRatio: speech?.ttsSpeedRatio,
+    speechTtsAppKey: speech?.ttsAppKey,
+    speechTtsAccessKey: speech?.ttsAccessKey,
+    // Tri-state: undefined → key omitted from JSON → proto3 optional unset →
+    // backend keeps stored value (env fallback preserved).
+    speechArchiveUserAudio: speech?.archiveUserAudio,
   });
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/stretchr/testify/require"
@@ -444,4 +445,195 @@ func TestSessionVoiceConfirmSkipsNonVocabUtterance(t *testing.T) {
 		return len(fx.exec.inputs) == 1
 	}, 2*time.Second, 10*time.Millisecond)
 	require.Equal(t, 0, fx.conf.callCount())
+}
+
+// ---- V2-T6：语音留档 ----
+
+type archiveCall struct {
+	sessionID  string
+	wav        []byte
+	durationMs int
+}
+
+// fakeArchiver 记录留档调用并按脚本返回引用/错误。
+type fakeArchiver struct {
+	mu    sync.Mutex
+	calls []archiveCall
+	ref   artifactbiz.Ref
+	err   error
+}
+
+func (f *fakeArchiver) SaveUtteranceAudio(_ context.Context, sessionID string, wav []byte, durationMs int) (artifactbiz.Ref, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, archiveCall{sessionID: sessionID, wav: append([]byte(nil), wav...), durationMs: durationMs})
+	return f.ref, f.err
+}
+
+func (f *fakeArchiver) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakeArchiver) lastCall() (archiveCall, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.calls) == 0 {
+		return archiveCall{}, false
+	}
+	return f.calls[len(f.calls)-1], true
+}
+
+// withArchiver 将留档端口接入 fixture（默认 fixture 不接 = 留档关闭）。
+func (fx *sessionFixture) withArchiver(a *fakeArchiver) {
+	fx.sess.deps.Archiver = a
+}
+
+func lastExecInput(fx *sessionFixture) ChatTurnInput {
+	fx.exec.mu.Lock()
+	defer fx.exec.mu.Unlock()
+	return fx.exec.inputs[len(fx.exec.inputs)-1]
+}
+
+// 留档开启：终稿语句 PCM 封装为 WAV 送留档端口，附件引用随 Turn 透传。
+func TestSessionArchivesUtteranceOnFinal(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{ref: artifactbiz.Ref{ID: "art-1", Name: "voice-x.wav", MimeType: "audio/wav", Size: 3264}}
+	fx.withArchiver(arch)
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{1, 2, 3, 4})
+	fx.sess.WriteAudio([]byte{5, 6, 7, 8})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "打开微信", DurationMs: 1200}
+
+	require.Eventually(t, func() bool { return arch.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+	call, _ := arch.lastCall()
+	require.Equal(t, "sess-1", call.sessionID)
+	require.Equal(t, 1200, call.durationMs)
+	// WAV 封装：RIFF 头 + 全部上行 PCM
+	require.Equal(t, "RIFF", string(call.wav[0:4]))
+	require.Equal(t, 44+8, len(call.wav))
+	require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8}, call.wav[44:])
+
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	in := lastExecInput(fx)
+	require.NotNil(t, in.Voice, "语音 Turn 必须携带溯源元数据")
+	require.Equal(t, 1200, in.Voice.DurationMs)
+	require.NotNil(t, in.Voice.Archive)
+	require.Equal(t, "art-1", in.Voice.Archive.ID)
+	require.Equal(t, "audio/wav", in.Voice.Archive.MimeType)
+}
+
+// 留档端口未接线（nil）：Turn 照常派发，Voice 元数据在但无附件引用。
+func TestSessionArchiveDisabledWhenArchiverNil(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{1, 2, 3, 4})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 500}
+
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	in := lastExecInput(fx)
+	require.NotNil(t, in.Voice)
+	require.Equal(t, 500, in.Voice.DurationMs)
+	require.Nil(t, in.Voice.Archive)
+}
+
+// 开关关闭（端口返回零值 Ref）：Turn 照常派发，无附件引用。
+func TestSessionArchiveSwitchOffSkipsAttachment(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{ref: artifactbiz.Ref{}} // 开关关闭契约：零值 Ref + nil 错误
+	fx.withArchiver(arch)
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{9, 9})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 300}
+
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	in := lastExecInput(fx)
+	require.NotNil(t, in.Voice)
+	require.Nil(t, in.Voice.Archive)
+}
+
+// 留档失败降级（K3）：Turn 照常派发，无附件引用。
+func TestSessionArchiveFailureDegrades(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{err: errors.New("disk full")}
+	fx.withArchiver(arch)
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{1, 2})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 300}
+
+	require.Eventually(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+	in := lastExecInput(fx)
+	require.NotNil(t, in.Voice)
+	require.Nil(t, in.Voice.Archive)
+}
+
+// 语句缓冲按终稿切分：两次终稿各自仅含本语句的 PCM。
+func TestSessionArchiveBufferResetsBetweenUtterances(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{ref: artifactbiz.Ref{ID: "art-x", MimeType: "audio/wav"}}
+	fx.withArchiver(arch)
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{1, 1})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "第一句", DurationMs: 100}
+	require.Eventually(t, func() bool { return arch.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+	first, _ := arch.lastCall()
+	require.Equal(t, []byte{1, 1}, first.wav[44:])
+
+	// 第一句终稿后状态进 thinking；Cancel 在 thinking 态经 EvBargeIn 直接回
+	// listening（状态机转换表），第二句音频方可被接收。
+	fx.sess.Cancel("test")
+	require.Eventually(t, func() bool { return fx.down.lastState() == "listening" }, 2*time.Second, 10*time.Millisecond)
+
+	fx.sess.WriteAudio([]byte{2, 2, 2})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "第二句", DurationMs: 150}
+	require.Eventually(t, func() bool { return arch.callCount() == 2 }, 2*time.Second, 10*time.Millisecond)
+	second, _ := arch.lastCall()
+	require.Equal(t, []byte{2, 2, 2}, second.wav[44:], "第二句不得混入第一句的 PCM")
+}
+
+// 语音确认拦截的语句不留档（不创建消息，无挂载点）。
+func TestSessionVoiceConfirmNotArchived(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{ref: artifactbiz.Ref{ID: "art-c", MimeType: "audio/wav"}}
+	fx.withArchiver(arch)
+	fx.conf.resolved = true
+	fx.sess.Start(StartParams{SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{7, 7})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "好的", DurationMs: 200}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "confirm.resolved") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 拦截路径同步执行于 asrPump：此刻留档端口不得被调用，且缓冲已清空。
+	require.Equal(t, 0, arch.callCount())
+
+	// 下一句正常语句的留档不得混入确认词的 PCM。
+	fx.sess.WriteAudio([]byte{8, 8, 8})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "打开微信", DurationMs: 900}
+	require.Eventually(t, func() bool { return arch.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+	call, _ := arch.lastCall()
+	require.Equal(t, []byte{8, 8, 8}, call.wav[44:])
 }

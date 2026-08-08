@@ -1,13 +1,15 @@
 // G4-F：3D 知识图谱 composable 行为测试（V12.7）。
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, nextTick } from 'vue';
-import type { CollectionGraph, KnowledgeCollection } from '../types';
+import type { CollectionGraph, EntityMergeSuggestion, KnowledgeCollection } from '../types';
 
 const mockStore = {
   loadVaultTree: vi.fn(),
 };
 const mockApi = {
   listCollectionGraph: vi.fn(),
+  listEntityMergeSuggestions: vi.fn(),
+  mergeKnowledgeEntities: vi.fn(),
 };
 
 vi.mock('../../../stores/knowledge', () => ({
@@ -16,6 +18,8 @@ vi.mock('../../../stores/knowledge', () => ({
 
 vi.mock('../api', () => ({
   listCollectionGraph: (...args: unknown[]) => mockApi.listCollectionGraph(...args),
+  listEntityMergeSuggestions: (...args: unknown[]) => mockApi.listEntityMergeSuggestions(...args),
+  mergeKnowledgeEntities: (...args: unknown[]) => mockApi.mergeKnowledgeEntities(...args),
 }));
 
 import { useKnowledgeGraph } from '../useKnowledgeGraph';
@@ -47,6 +51,10 @@ const GRAPH: CollectionGraph = {
   edges: [{ source: 'd1', target: 'd2', type: 'explicit' }],
 };
 
+const SUGGESTIONS: EntityMergeSuggestion[] = [
+  { keeper_id: 1, keeper_name: 'AI', mergee_id: 2, mergee_name: 'ai', source: 'norm', similarity: 1, tier: 'auto' },
+];
+
 function setup(cols: string[] = ['c1']) {
   const collections = ref<KnowledgeCollection[]>(cols.map(makeCollection));
   const graph = useKnowledgeGraph({
@@ -67,6 +75,8 @@ describe('useKnowledgeGraph', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockApi.listCollectionGraph.mockResolvedValue(GRAPH);
+    mockApi.listEntityMergeSuggestions.mockResolvedValue(SUGGESTIONS);
+    mockApi.mergeKnowledgeEntities.mockResolvedValue({ rewritten_mentions: 3, rewritten_links: 2, merged_entities: 1 });
     mockStore.loadVaultTree.mockResolvedValue([]);
   });
 
@@ -164,5 +174,59 @@ describe('useKnowledgeGraph', () => {
     expect(done).toHaveBeenCalledWith([
       expect.objectContaining({ kind: 'dir', prefix: 'guides/', vaultId: 'c1' }),
     ]);
+  });
+
+  // ---------- G5-G G-1：实体治理（合并建议 + 一键合并） ----------
+
+  it('合并建议随库加载；建议拉取失败降级空列表不污染图谱 error', async () => {
+    const { graph } = setup();
+    await settle();
+    await vi.waitFor(() => expect(mockApi.listEntityMergeSuggestions).toHaveBeenCalledWith('c1'));
+    expect(graph.mergeSuggestions.value).toHaveLength(1);
+    expect(graph.mergeSuggestions.value[0].keeper_name).toBe('AI');
+
+    // 拉取失败：降级空列表，主 error 不置位（辅助数据不阻断图谱）。
+    mockApi.listEntityMergeSuggestions.mockRejectedValue(new Error('suggest boom'));
+    graph.selectCollection('c1'); // 同库不触发；改库才重拉
+    await graph.loadMergeSuggestions();
+    expect(graph.mergeSuggestions.value).toEqual([]);
+    expect(graph.error.value).toBe('');
+  });
+
+  it('mergeEntities：调合并 RPC → 重拉图谱与建议 → 内联反馈置位', async () => {
+    const { graph } = setup();
+    await settle();
+    await vi.waitFor(() => expect(graph.mergeSuggestions.value).toHaveLength(1));
+    const graphCalls = mockApi.listCollectionGraph.mock.calls.length;
+
+    await graph.mergeEntities(1, 2);
+
+    expect(mockApi.mergeKnowledgeEntities).toHaveBeenCalledWith({ collectionId: 'c1', keeperId: 1, mergeeIds: [2] });
+    expect(mockApi.listCollectionGraph.mock.calls.length).toBe(graphCalls + 1);
+    expect(mockApi.listEntityMergeSuggestions.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(graph.lastMergeResult.value).toEqual({ rewritten_mentions: 3, rewritten_links: 2, merged_entities: 1 });
+    expect(graph.merging.value).toBe(false);
+  });
+
+  it('mergeEntities 失败：error 置位且 merging 复位，无反馈残留', async () => {
+    mockApi.mergeKnowledgeEntities.mockRejectedValue(new Error('merge boom'));
+    const { graph } = setup();
+    await settle();
+
+    await graph.mergeEntities(1, 2);
+
+    expect(graph.error.value).toBe('merge boom');
+    expect(graph.merging.value).toBe(false);
+    expect(graph.lastMergeResult.value).toBeNull();
+  });
+
+  it('切库清空合并反馈', async () => {
+    const { graph } = setup(['c1', 'c2']);
+    await settle();
+    await graph.mergeEntities(1, 2);
+    expect(graph.lastMergeResult.value).not.toBeNull();
+
+    graph.selectCollection('c2');
+    expect(graph.lastMergeResult.value).toBeNull();
   });
 });

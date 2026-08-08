@@ -13,6 +13,7 @@
         :error="companion.lastError"
         :spectrum="spectrum"
         :amplitude="amplitude"
+        :voice-disabled="companion.voiceMicDisabled"
         @toggle-chat="companion.toggleChat()"
         @toggle-voice="toggleVoiceMode()"
         @dismiss-error="companion.clearVoiceError()"
@@ -183,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import HudCanvas from '../components/companion/HudCanvas.vue';
@@ -198,6 +199,7 @@ import { TOOL_CONFIRM_REPLY, type ToolConfirmReply } from '../features/chat/type
 import { useVoiceSession } from '../features/companion/voice/useVoiceSession';
 import { useCompanionConfirms } from '../features/companion/useCompanionConfirms';
 import { spawnLaunchBurst } from '../features/companion/launchParticles';
+import { fetchVoiceAvailability } from '../features/companion/voiceStatus';
 import type { ConfirmCardModel, ConfirmDecision } from '../features/companion/types';
 import { useCompanionStore } from '../stores/companion';
 import { useSpiritTeamStore } from '../stores/spirit';
@@ -219,6 +221,12 @@ const companion = useCompanionStore();
 // 语音会话绑定当前选中的聊天会话（/v1/voice?session_id=...，设计 §2.1）。
 const { spectrum, amplitude, toggleVoiceMode } = useVoiceSession({
   sessionId: () => workspace.session.selectedSessionForUi?.id ?? null,
+});
+
+// V2-T8 差距2：挂载时探测语音服务可用性（/v1/voice/status）——
+// 明确未配置才置灰麦克风；探测失败（null）不置灰，点击后 voice.error 兜底。
+onMounted(() => {
+  void fetchVoiceAvailability().then((available) => companion.setVoiceAvailable(available));
 });
 
 // V2-T5：确认卡队列（activityV2Store 派生，WS 状态推进自动出队）。

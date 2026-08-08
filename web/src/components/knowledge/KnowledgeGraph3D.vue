@@ -184,6 +184,44 @@
           </div>
         </div>
 
+        <!-- 实体治理（G5-G G-1）：合并建议列表 + 一键合并 + 重写条数内联反馈 -->
+        <div class="knowledge-graph__section">
+          <div class="knowledge-graph__section-title">{{ t('knowledgePage.graphEntityGovernance') }}</div>
+          <q-list v-if="mergeSuggestions.length" dense class="knowledge-graph__merge-list">
+            <q-item v-for="sg in mergeSuggestions" :key="`${sg.keeper_id}-${sg.mergee_id}`">
+              <q-item-section>
+                <q-item-label lines="1" class="knowledge-graph__merge-names">
+                  {{ sg.keeper_name }} <span class="knowledge-graph__merge-arrow">←</span> {{ sg.mergee_name }}
+                </q-item-label>
+                <q-item-label caption class="knowledge-graph__merge-meta">
+                  <span class="knowledge-graph__merge-badge" :class="`knowledge-graph__merge-badge--${sg.source}`">
+                    {{ t(`knowledgePage.mergeSource.${sg.source}`) }}
+                  </span>
+                  <span v-if="sg.source === 'embedding'">{{ sg.similarity.toFixed(2) }}</span>
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <button
+                  class="kg-hud__switch kg-hud__switch--accent"
+                  :disabled="merging"
+                  @click="$emit('merge-entities', { keeperId: sg.keeper_id, mergeeId: sg.mergee_id })"
+                >
+                  {{ t('knowledgePage.mergeAction') }}
+                </button>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-else class="knowledge-graph__nodes-empty">{{ t('knowledgePage.mergeNoSuggestions') }}</div>
+          <div v-if="lastMergeResult" class="knowledge-graph__merge-feedback">
+            {{
+              t('knowledgePage.mergeFeedback', {
+                mentions: lastMergeResult.rewritten_mentions,
+                links: lastMergeResult.rewritten_links,
+              })
+            }}
+          </div>
+        </div>
+
         <!-- 节点搜索定位 -->
         <q-input
           :model-value="nodeQuery"
@@ -264,7 +302,13 @@ import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
-import type { CollectionGraphEdge, CollectionGraphNode, KnowledgeCollection } from '../../features/knowledge/types';
+import type {
+  CollectionGraphEdge,
+  CollectionGraphNode,
+  EntityMergeSuggestion,
+  KnowledgeCollection,
+  MergeEntitiesResult,
+} from '../../features/knowledge/types';
 
 const props = defineProps<{
   collections: KnowledgeCollection[];
@@ -303,6 +347,12 @@ const props = defineProps<{
   neighborhoodHops: number;
   /** 局部图谱根节点名（统计行提示）。 */
   neighborhoodRootName: string;
+  /** 实体治理：合并建议列表（G5-G）。 */
+  mergeSuggestions: EntityMergeSuggestion[];
+  /** 实体治理：合并进行中（按钮防重入）。 */
+  merging: boolean;
+  /** 实体治理：最近一次合并重写反馈（null = 无）。 */
+  lastMergeResult: MergeEntitiesResult | null;
 }>();
 
 const emit = defineEmits<{
@@ -320,6 +370,8 @@ const emit = defineEmits<{
   /** 聚焦邻域：root 由页面决定（邻域模式下锁定原根）。 */
   'focus-neighborhood': [hops: number];
   'reset-global-view': [];
+  /** 一键合并：mergee 并入 keeper（G5-G）。 */
+  'merge-entities': [payload: { keeperId: number; mergeeId: number }];
 }>();
 
 const { t } = useI18n();
@@ -531,6 +583,41 @@ const nodeLegend = computed(() => {
     padding: 8px 0;
   }
 
+  // 实体治理（G5-G）：合并建议列表限高滚动，避免挤压节点列表。
+  &__merge-list {
+    max-height: 148px;
+    overflow-y: auto;
+  }
+
+  &__merge-names {
+    font-size: 12px;
+  }
+
+  &__merge-arrow {
+    opacity: 0.6;
+  }
+
+  &__merge-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  &__merge-badge {
+    font-size: 10px;
+    line-height: 1.4;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid var(--color-border-soft);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+  }
+
+  &__merge-feedback {
+    font-size: 11px;
+    color: var(--q-positive);
+  }
+
   &__selected {
     border-top: 1px solid var(--color-border-soft);
     padding-top: 10px;
@@ -660,6 +747,27 @@ const nodeLegend = computed(() => {
   .knowledge-graph__node--active {
     background: rgba(0, 212, 255, 0.12);
     color: var(--kg-cyan);
+  }
+
+  // 实体治理深空适配：norm 确定性冲突用主青，embedding 语义建议用紫（区分来源可信度）。
+  .knowledge-graph__merge-badge {
+    border-color: var(--kg-edge);
+    color: var(--kg-text-dim);
+
+    &--norm {
+      color: var(--kg-cyan);
+      border-color: var(--kg-cyan);
+    }
+
+    &--embedding {
+      color: #c792ea;
+      border-color: #c792ea66;
+    }
+  }
+
+  .knowledge-graph__merge-feedback {
+    color: #5ce8a0;
+    text-shadow: 0 0 6px #5ce8a044;
   }
 
   // Quasar 表单件深空适配（select/input/toggle/chip）

@@ -379,6 +379,28 @@ func (m *memEvalRepo2) ListJudgeAnnotatedResults(_ context.Context, _, _ string)
 	return nil, nil
 }
 
+// Stubs for evaluation.Repo governance methods (P2-1/P2-3/P3-3); s6 coverage
+// tests don't exercise failure grouping, pairwise preference, or the gate.
+func (m *memEvalRepo2) ListFailureGroups(_ context.Context, _, _ string, _ int) ([]evaluation.FailureGroup, int, error) {
+	return nil, 0, nil
+}
+
+func (m *memEvalRepo2) InsertRunPreference(_ context.Context, _ evaluation.RunPreference) error {
+	return nil
+}
+
+func (m *memEvalRepo2) ListRunPreferences(_ context.Context, _ string, _ int) ([]evaluation.RunPreference, error) {
+	return nil, nil
+}
+
+func (m *memEvalRepo2) GetGateConfig(_ context.Context) (evaluation.GateConfig, error) {
+	return evaluation.GateConfig{}, nil
+}
+
+func (m *memEvalRepo2) UpsertGateConfig(_ context.Context, _ evaluation.GateConfig) error {
+	return nil
+}
+
 func TestEvalUsecase_CreateDataset(t *testing.T) {
 	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
 	d, err := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})

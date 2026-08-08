@@ -335,7 +335,7 @@ func (u *Usecase) rebuildMovedDocInboundLinks(ctx context.Context, col Collectio
 			continue
 		}
 		// 重建失败降级：最终一致语义，引用方下次变更自愈。
-		_ = u.RebuildExplicitLinks(ctx, col.ID, srcDoc.ID, vd.Body)
+		_ = u.RebuildBlockIndex(ctx, col.ID, srcDoc.ID, vd.Body)
 	}
 }
 

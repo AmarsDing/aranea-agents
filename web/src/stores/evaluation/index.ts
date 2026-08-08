@@ -7,12 +7,17 @@ import {
   createDataset,
   deleteDataset,
   getAgentEvalTrend,
+  getEvalGate,
+  getFailureGroups,
   getJudgeDivergence,
   getRun,
   getRunResults,
   listDatasets,
+  listRunPreferences,
   listRuns,
   runEvaluation,
+  submitRunPreference,
+  updateEvalGate,
   uploadCases,
 } from '../../features/evaluation/api';
 import type {
@@ -20,9 +25,12 @@ import type {
   CreateDatasetInput,
   EvalCaseResult,
   EvalDataset,
+  EvalGateConfig,
   EvalRun,
   EvalRunComparison,
+  EvalRunPreference,
   EvalTrendPoint,
+  GetFailureGroupsResult,
   GetRunResultsResult,
   JudgeDivergence,
   ListDatasetsParams,
@@ -30,6 +38,8 @@ import type {
   ListRunsParams,
   ListRunsResult,
   RunEvaluationInput,
+  SubmitRunPreferenceInput,
+  UpdateEvalGateInput,
 } from '../../features/evaluation/types';
 
 export const useEvaluationStore = defineStore('evaluation', () => {
@@ -129,6 +139,29 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     return getJudgeDivergence(datasetId, params);
   }
 
+  async function loadFailureGroups(
+    datasetId: string,
+    params: { agent_id?: string; limit?: number } = {},
+  ): Promise<GetFailureGroupsResult> {
+    return getFailureGroups(datasetId, params);
+  }
+
+  async function submitPreference(input: SubmitRunPreferenceInput): Promise<EvalRunPreference> {
+    return submitRunPreference(input);
+  }
+
+  async function loadPreferences(datasetId: string, limit = 50): Promise<EvalRunPreference[]> {
+    return listRunPreferences(datasetId, limit);
+  }
+
+  async function loadGateConfig(): Promise<EvalGateConfig> {
+    return getEvalGate();
+  }
+
+  async function saveGateConfig(input: UpdateEvalGateInput): Promise<EvalGateConfig> {
+    return updateEvalGate(input);
+  }
+
   return {
     datasets,
     datasetsTotal,
@@ -149,5 +182,10 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     loadAgentTrend,
     compareRuns,
     loadJudgeDivergence,
+    loadFailureGroups,
+    submitPreference,
+    loadPreferences,
+    loadGateConfig,
+    saveGateConfig,
   };
 });

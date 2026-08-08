@@ -6,7 +6,9 @@
       :subtitle="t('selfImprovementPage.subtitle')"
     >
       <template #actions>
+        <!-- 风险规则是流水线治理配置，功能未启用时无意义（GetRiskRules 亦 503） -->
         <q-btn
+          v-if="!featureDisabled"
           flat
           rounded
           no-caps

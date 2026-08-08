@@ -97,6 +97,10 @@ var ddlMigrations = []ddlMigration{
 	// 导致 DDL 被静默跳过（生产 memory_episodes 缺部分唯一索引、cascade_saga_steps.id
 	// 仍为 integer）。已重编号为 20261118/20261119，见本文件末尾。
 	{Version: 20260804, Name: "planner_model_columns", SQL: "sql/migrations/20260804_planner_model_columns.sql"},
+	// 20260808 speech_columns: M74 V2-T7 System Settings「语音服务」分组——
+	// ASR/TTS driver/endpoint/凭据/音色/语速 + 语音留档开关（nullable 三态，
+	// NULL=回退 env）。同 planner_model_columns 的 raw-SQL 读写模式。
+	{Version: 20260808, Name: "speech_columns", SQL: "sql/migrations/20260808_speech_columns.sql"},
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
 	{Version: 20260826, Name: "event_dead_letter_schema", SQL: "sql/migrations/20260826_event_dead_letter_schema.sql"},
 	{Version: 20260901, Name: "drop_event_store_subsystem", SQL: "sql/migrations/20260901_drop_event_store_subsystem.sql"},
@@ -211,9 +215,14 @@ var ddlMigrations = []ddlMigration{
 	// Watchdog scan. Tables are Ent-managed (Schema.Create); only the partial
 	// index needs DDL.
 	{Version: 20261120, Name: "self_improvement_observing_index", SQL: "sql/migrations/20261120_self_improvement_observing_index.sql"},
-	// 20261121 si_risk_rule_columns: P5 console risk-rule config on the
-	// system_settings singleton (same raw-SQL pattern as planner_model_columns).
-	{Version: 20261121, Name: "si_risk_rule_columns", SQL: "sql/migrations/20261121_si_risk_rule_columns.sql"},
+	// 20261201 si_risk_rule_columns（原 20261121，与数据迁移
+	// team_copy_ownership_to_user 的历史编号碰撞重编号——该数据迁移在以
+	// 20261124 落库前曾用 20261121，凡在此窗口跑过它的库会把本迁移误判为
+	// 已应用而永久跳过，si_risk_* 列缺失导致 GetRiskRules 500）：P5 console
+	// risk-rule config on the system_settings singleton (same raw-SQL pattern
+	// as planner_model_columns)。SQL 逐句幂等（AlreadyExistsErr 跳过），
+	// 已建列库重跑安全。
+	{Version: 20261201, Name: "si_risk_rule_columns", SQL: "sql/migrations/20261201_si_risk_rule_columns.sql"},
 	// 20261125 memory_fact_three_counters: FR-12.6 recalled/injected/cited
 	// three-stage counters replacing the semantically-wrong use_count, plus the
 	// memory_fact_citations dedup ledger for the citation backfill worker.
@@ -236,6 +245,17 @@ var ddlMigrations = []ddlMigration{
 	// 全部置 true）；l3_recall_min_score 历史默认 0.55 按加权分布误杀典型相关命中
 	// （≈0.4-0.5），存量 0.55 行降到 0.35（显式 0.00 = 用户关过滤，不动）。
 	{Version: 20261130, Name: "memory_recall_defaults_fix", Func: ddlMemoryRecallDefaultsFix},
+	// 20261202 builtin_platform_tools_client_reseed（M74 V2-T8 差距1修复）：
+	// 20260610 builtin_platform_tools 在 client_open_app/client_open_url 加入种子
+	// 列表之前已在存量库应用，schema_migrations 门控使其永不重跑 → 存量库 tools
+	// 表缺 client 桥接工具（语音「打开微信」因查无工具行而误报客户端离线）。
+	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog/registry UPDATE），重跑安全。
+	{Version: 20261202, Name: "builtin_platform_tools_client_reseed", Func: ddlBuiltinPlatformTools},
+	// SP1-B 块级双链派生索引表（knowledge 域 Raw SQL 通道：TEXT id 与 knowledge_documents 一致；
+	// 部分唯一索引/FK 级联语义超出 Ent 表达能力，版本化 DDL 显式控制）。
+	{Version: 20261203, Name: "knowledge_blocks", SQL: "sql/migrations/20261203_knowledge_blocks.sql"},
+	// SP1-C 跨库双链解析支撑列：documents.title/aliases（Resolver 文档键）+ links.weight（N-3 投影权重）。
+	{Version: 20261204, Name: "knowledge_resolve", SQL: "sql/migrations/20261204_knowledge_resolve.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

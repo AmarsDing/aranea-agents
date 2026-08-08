@@ -56,3 +56,33 @@ func TestEnvSpeechConfigReaderOverrides(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "en-US", asr.Language)
 }
+
+func TestEnvSpeechConfigReaderArchiveUserAudio(t *testing.T) {
+	r := speech.NewEnvSpeechConfigReader()
+
+	// 默认关闭（env 未设置）
+	on, err := r.ArchiveUserAudio(context.Background())
+	require.NoError(t, err)
+	require.False(t, on)
+
+	t.Setenv("SPEECH_ARCHIVE_USER_AUDIO", "true")
+	on, err = r.ArchiveUserAudio(context.Background())
+	require.NoError(t, err)
+	require.True(t, on)
+
+	t.Setenv("SPEECH_ARCHIVE_USER_AUDIO", "1")
+	on, err = r.ArchiveUserAudio(context.Background())
+	require.NoError(t, err)
+	require.True(t, on)
+
+	t.Setenv("SPEECH_ARCHIVE_USER_AUDIO", "false")
+	on, err = r.ArchiveUserAudio(context.Background())
+	require.NoError(t, err)
+	require.False(t, on)
+
+	// 非法值按关闭处理（不报错，防配置笔误打断语音链路）
+	t.Setenv("SPEECH_ARCHIVE_USER_AUDIO", "bogus")
+	on, err = r.ArchiveUserAudio(context.Background())
+	require.NoError(t, err)
+	require.False(t, on)
+}

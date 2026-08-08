@@ -38,7 +38,13 @@ export function selectLabelCandidates(degree: Uint16Array, maxLabels: number): n
     .slice(0, maxLabels);
 }
 
-/** 可见性判定（纯函数）：forced（hover/选中）无条件显示（豁免距离/度数/开关——适应视图后相机距离必超 maxDistance，否则 hover 永远不出标签）；普通标签受 距离+度数+开关 三重阈值。 */
+/** 动态度数下限（纯函数，G5-G 小图标签修复）：图最大度数低于基准时降档到最大度数，
+ *  保证小图 hub 标签可见；全孤立图钳到 1（孤立节点不出标签）。 */
+export function effectiveMinDegree(maxDegree: number, base: number): number {
+  return Math.max(1, Math.min(base, maxDegree));
+}
+
+/** 可见性判定（纯函数）：forced（hover/选中）无条件显示（豁免距离/度数/开关——拉远超 maxDistance 时 hover 仍须出标签）；普通标签受 距离+度数+开关 三重阈值。 */
 export function shouldShowLabel(
   dist: number,
   maxDistance: number,

@@ -52,9 +52,18 @@ var (
 // 接口时保持未接线降级语义（关联 no-op / 关联查询为空 / 树查询显式报错）。
 // filer 为共享 VaultFiler 实例（G1-B1 树目录 FS 扫描 + G1-B2 树内写文件）：
 // 与 vault 同步链同一实例，自写标记统一登记防 watcher 回环。
-func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler) *KnowledgeUsecase {
+func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, blockIndex knowledge.BlockIndexRepo) *KnowledgeUsecase {
 	uc := knowledge.NewUsecaseFromRepo(repo)
 	uc.SetVaultFiler(filer)
+	// SP1-C 块级双链索引：BlockIndexRepo 与 ResolveIndex 由同一 data repo 实现，
+	// 经类型断言接线；未提供时 RebuildBlockIndex 降级 no-op。
+	if blockIndex != nil {
+		var idx knowledge.ResolveIndex
+		if ri, ok := blockIndex.(knowledge.ResolveIndex); ok {
+			idx = ri
+		}
+		uc.SetBlockIndexRepos(blockIndex, idx)
+	}
 	if repo == nil {
 		return uc
 	}

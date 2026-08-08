@@ -53,15 +53,34 @@ func bizCaseToEvalCase(c biz.EvalCase, lg loggateway.Logger) *trpcevalset.EvalCa
 	}
 	// P3-2: case-level rubric → framework EvalCaseRubric on the llm_as_judge
 	// metric instance; the judge merges it into the scoring criterion.
-	if text := strings.TrimSpace(meta.Rubric); text != "" {
-		ec.Rubrics = append(ec.Rubrics, &trpcevalset.EvalCaseRubric{
-			MetricName: MetricLLMAsJudge,
-			ID:         evalID + "-rubric",
-			Content:    &trpcevalset.EvalCaseRubricContent{Text: text},
-		})
+	// The llm_rubric_response evaluator hard-requires at least one rubric per
+	// case ("llm judge rubrics are required"), and its prompt never shows the
+	// expected answer — so cases without a custom rubric get a synthesized
+	// default that embeds the reference answer, or a generic quality rubric
+	// when there is none. A custom rubric is authoritative and replaces the
+	// default.
+	rubricText := strings.TrimSpace(meta.Rubric)
+	if rubricText == "" {
+		rubricText = defaultRubricText(c.ExpectedOutput)
 	}
+	ec.Rubrics = append(ec.Rubrics, &trpcevalset.EvalCaseRubric{
+		MetricName: MetricLLMAsJudge,
+		ID:         evalID + "-rubric",
+		Content:    &trpcevalset.EvalCaseRubricContent{Text: rubricText},
+	})
 	enrichEvalCase(c, ec, lg)
 	return ec
+}
+
+// defaultRubricText synthesizes the fallback scoring standard for cases
+// without a custom rubric. With an expected output the judge scores semantic
+// consistency against the embedded reference answer; otherwise it scores
+// generic response quality.
+func defaultRubricText(expectedOutput string) string {
+	if expected := strings.TrimSpace(expectedOutput); expected != "" {
+		return fmt.Sprintf("判断最终回答与参考答案是否语义一致、结论正确（允许等价表述与数值等价）。参考答案：%s", expected)
+	}
+	return "评估最终回答的整体质量：准确、相关、完整、表达清晰，且直接回应了用户请求。"
 }
 
 // stripCaseRubricsWhenNoJudge removes case-level rubrics when llm_as_judge is

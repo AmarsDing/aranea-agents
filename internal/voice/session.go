@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
@@ -33,6 +34,9 @@ type ChatTurnInput struct {
 	Content   string
 	AgentKey  string
 	TeamID    string
+	// Voice 语音输入溯源元数据（V2-T6）：随用户消息 options_json 持久化；
+	// ASR 终稿派发的 Turn 恒非 nil。
+	Voice *biz.VoiceTurnMeta
 }
 
 // Stability:evolving — Chat 管线入口端口（server.WSTurnExecutor 适配实现）。
@@ -69,8 +73,10 @@ type SessionDeps struct {
 	Canceller RunCanceller
 	// Confirmer 语音确认决议端口（V2-T5）；nil 时关闭语音确认拦截。
 	Confirmer ConfirmResolver
-	Infra     *event.Infra
-	LG        loggateway.Logger
+	// Archiver 语音留档端口（V2-T6）；nil 时关闭留档（不缓冲 PCM）。
+	Archiver AudioArchiver
+	Infra    *event.Infra
+	LG       loggateway.Logger
 }
 
 // Session 编排单条语音 WS 连接的生命周期（设计 §2.4）。
@@ -92,6 +98,10 @@ type Session struct {
 	state         VoiceState
 	params        StartParams
 	asr           biz.ASRSession
+	asrDriver     string // 当前 ASR 配置驱动名（V2-T6 asr_provider 元数据）
+	sampleRate    int    // 当前 ASR 配置采样率（V2-T6 WAV 封装）
+	utterBuf      []byte // 当前语句留档 PCM 缓冲（V2-T6；Archiver 非 nil 时累积）
+	utterOverflow bool   // 当前语句缓冲已截断（超 maxUtterancePCMBytes）
 	chunker       *SentenceChunker
 	scheduler     *TTSScheduler
 	pendingTurns  int
@@ -168,6 +178,7 @@ func (s *Session) WriteAudio(pcm []byte) {
 		return // thinking/speaking/idle/error 不收音频（打断走控制帧）
 	}
 	s.resetIdleTimer()
+	s.bufferUtterance(pcm)
 	s.mu.Lock()
 	asr := s.asr
 	s.mu.Unlock()
@@ -183,6 +194,43 @@ func (s *Session) WriteAudio(pcm []byte) {
 	if err := asr.Write(pcm); err != nil {
 		s.sendError("ASR_WRITE", err, true)
 	}
+}
+
+// bufferUtterance 累积当前语句 PCM（V2-T6 留档）；超上限截断并 Warn 一次（K3 双轨）。
+func (s *Session) bufferUtterance(pcm []byte) {
+	s.mu.Lock()
+	if s.deps.Archiver == nil {
+		s.mu.Unlock()
+		return
+	}
+	truncated := false
+	if len(s.utterBuf)+len(pcm) > maxUtterancePCMBytes {
+		if !s.utterOverflow {
+			s.utterOverflow = true
+			truncated = true
+		}
+	} else {
+		s.utterBuf = append(s.utterBuf, pcm...)
+	}
+	s.mu.Unlock()
+	if truncated {
+		// 流程日志在锁外发射（TraceEmitter 异步，但避免持锁跨层调用）。
+		s.lg.Warn("voice utterance archive buffer truncated",
+			loggateway.StepID("voice.archive.truncate"),
+			loggateway.Str("session_id", s.sessionID))
+		s.flow.LogWarn("voice.archive.truncate", "语音留档截断", "语句音频超上限，留档仅保留前段",
+			event.P("limit_bytes", maxUtterancePCMBytes))
+	}
+}
+
+// takeUtteranceBuffer 取出并复位当前语句缓冲（终稿/取消/停止时调用）。
+func (s *Session) takeUtteranceBuffer() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	buf := s.utterBuf
+	s.utterBuf = nil
+	s.utterOverflow = false
+	return buf
 }
 
 // Commit 处理 voice.commit（PTT 兜底）：标记当前语句结束。
@@ -201,6 +249,7 @@ func (s *Session) Commit() {
 // Cancel 处理 voice.cancel / voice.barge_in（V1 裁剪 #4：同路径）。
 func (s *Session) Cancel(reason string) {
 	s.deps.Canceller.CancelRun(ctxuser.WithUserID(context.Background(), s.userID), s.sessionID)
+	s.takeUtteranceBuffer() // 丢弃未终稿语句的留档缓冲（V2-T6）
 	s.mu.Lock()
 	sch := s.scheduler
 	st := s.state
@@ -290,6 +339,8 @@ func (s *Session) openASR() error {
 		return err
 	}
 	s.asr = sess
+	s.asrDriver = cfg.Driver
+	s.sampleRate = cfg.SampleRate
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -328,6 +379,9 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	if text == "" {
 		return
 	}
+	// 终稿 = 语句边界：取出并复位留档缓冲（V2-T6）。确认拦截/残余 final 等
+	// 不进 Chat 管线的分支直接丢弃缓冲，保证下一句从空缓冲开始。
+	pcm := s.takeUtteranceBuffer()
 	_ = s.down.SendJSON(map[string]any{"type": "asr.final", "text": text, "duration_ms": ev.DurationMs})
 	s.flow.LogDone("voice.asr.final", "语音识别终稿", event.P("duration_ms", ev.DurationMs))
 	// V2-T5 语音确认拦截：词表命中且有待决议确认时，决议确认且不创建 turn。
@@ -347,7 +401,14 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	s.turnSeq++
 	turnID := s.turnSeq
 	params := s.params
+	driver := s.asrDriver
+	rate := s.sampleRate
 	s.mu.Unlock()
+	voiceMeta := &biz.VoiceTurnMeta{
+		ASRProvider: driver,
+		DurationMs:  ev.DurationMs,
+		Archive:     s.archiveUtterance(pcm, rate, ev.DurationMs),
+	}
 	s.broadcastState()
 	_ = s.down.SendJSON(map[string]any{"type": "turn.accepted", "turn_id": turnRef(turnID)})
 	// 与 WS 用户消息一致：turn 存活独立于连接（appctx），传播 userID。
@@ -356,11 +417,42 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	go func() {
 		defer s.wg.Done()
 		if err := s.deps.Executor.ExecuteTurn(turnCtx, ChatTurnInput{
-			SessionID: s.sessionID, Content: text, AgentKey: params.AgentKey, TeamID: params.TeamID,
+			SessionID: s.sessionID, Content: text, AgentKey: params.AgentKey, TeamID: params.TeamID, Voice: voiceMeta,
 		}); err != nil {
 			s.handleTurnFailure(err)
 		}
 	}()
+}
+
+// archiveUtterance 将终稿语句 PCM 封装为 WAV 并送留档端口（V2-T6）。
+// 返回 nil 表示无附件引用（端口未接线/开关关闭/无音频/失败降级 K3）。
+// 同步执行于 asrPump：本地产物存储 + 单次 DB 写入，时延可忽略；
+// 留档失败仅 Warn + 流程日志降级，不阻断 Turn 派发。
+func (s *Session) archiveUtterance(pcm []byte, sampleRate, durationMs int) *artifactbiz.Ref {
+	s.mu.Lock()
+	archiver := s.deps.Archiver
+	s.mu.Unlock()
+	if archiver == nil || len(pcm) == 0 {
+		return nil
+	}
+	if sampleRate <= 0 {
+		sampleRate = 16000
+	}
+	// 与 Chat Turn 一致：留档存活独立于连接（appctx），传播 userID。
+	ctx := ctxuser.WithUserID(appctx.Ctx(), s.userID)
+	ref, err := archiver.SaveUtteranceAudio(ctx, s.sessionID, EncodeWAV(pcm, sampleRate), durationMs)
+	if err != nil {
+		s.lg.Warn("voice archive failed, turn continues without attachment",
+			loggateway.StepID("voice.archive.degraded"), loggateway.Err(err))
+		s.flow.LogWarn("voice.archive.degraded", "语音留档降级", "留档失败，消息正常派发", event.P("error", err.Error()))
+		return nil
+	}
+	if ref.ID == "" {
+		return nil // 开关关闭（实现内部判定）
+	}
+	s.flow.LogDone("voice.archive.saved", "语音留档保存",
+		event.P("duration_ms", durationMs), event.P("size", ref.Size), event.P("artifact_id", ref.ID))
+	return &ref
 }
 
 // tryResolveVoiceConfirm 尝试将词表命中的语句决议为工具确认（V2-T5）。
@@ -680,6 +772,8 @@ func (s *Session) teardown() {
 	sch := s.scheduler
 	s.scheduler = nil
 	s.chunker = nil
+	s.utterBuf = nil
+	s.utterOverflow = false
 	unsub := s.unsub
 	s.unsub = nil
 	s.mu.Unlock()

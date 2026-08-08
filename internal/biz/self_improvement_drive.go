@@ -22,7 +22,8 @@ import (
 //	applying            → Applier.Apply（router 未挂钩时的重驱动入口）
 //	applied             → Applier.PromoteEligible（每 tick，观察窗槽位释放后晋升）
 //
-// 终态 / 活跃中途态 / observing 由本 usecase 跳过（observing 归 Watchdog）。
+// 终态 / applied / observing 经 RunFilter.Statuses 在 SQL 层排除（observing 归
+// Watchdog，applied 等 PromoteEligible）；driveRun 的 default 分支为双保险。
 // 错误语义：ErrSIRunPaused 与 CodeConflict 静默吸收（pause 驻留 / 他入口已
 // 推进）；其余错误按 run 记日志，不中断整 tick。
 
@@ -30,6 +31,19 @@ import (
 // UpdatedAt is older than this is treated as a crash orphan / expired pause
 // and recovered to detected for re-driving.
 const defaultSIDriveStaleTimeout = 30 * time.Minute
+
+// siDriveStatuses is the drive usecase's responsibility domain: the six
+// non-terminal states it actively drives. Applied（等 PromoteEligible）/
+// observing（归 Watchdog）/ 终态在 SQL 层即被排除，避免每 tick 全表扫描
+// 含重 JSON 字段（Diff/VerificationReport）的终态行。
+var siDriveStatuses = []SelfImprovementRunStatus{
+	RunStatusDetected,
+	RunStatusDiagnosing,
+	RunStatusPatching,
+	RunStatusVerifying,
+	RunStatusAwaitingGovernance,
+	RunStatusApplying,
+}
 
 // SIPipelineExecutor executes the Meta Team pipeline for one detected run.
 // Implemented by SelfImprovementPipelineUsecase.
@@ -132,7 +146,7 @@ func (uc *SelfImprovementDriveUsecase) DriveOnce(ctx context.Context) error {
 			loggateway.StepID("si_drive.promote"),
 			loggateway.Err(err))
 	}
-	runs, err := uc.runReader.List(ctx, RunFilter{})
+	runs, err := uc.runReader.List(ctx, RunFilter{Statuses: siDriveStatuses})
 	if err != nil {
 		return err
 	}

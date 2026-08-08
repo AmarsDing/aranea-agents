@@ -212,7 +212,7 @@ func (r *SIGovernanceRouter) submitApproval(ctx context.Context, run *SelfImprov
 
 // reject closes the run as rejected (governance decision reject, D6 R5).
 func (r *SIGovernanceRouter) reject(ctx context.Context, run *SelfImprovementRun) error {
-	run.ClosedReason = "governance reject: " + strings.Join(run.Governance.RuleHits, ",")
+	run.ClosedReason = siTruncateClosedReason("governance reject: " + strings.Join(run.Governance.RuleHits, ","))
 	to, err := NewSelfImprovementRunStateMachine().Transition(run.Status, RunEventReject)
 	if err != nil {
 		return apierror.Internal("SELF_IMPROVEMENT", "illegal run transition %s --reject--> ?: %s", run.Status, err)

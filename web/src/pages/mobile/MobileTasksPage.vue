@@ -29,6 +29,8 @@
           <TaskList
             :session-id="session!.id"
             @regenerate="workspace.composer.regenerateV2Task"
+            @add-to-eval="workspace.evalCase.openFromTask"
+            @feedback="workspace.composer.onMessageFeedback"
             @resume-task="workspace.session.resumeTask"
             @pause-agent="handlers.onPauseAgent"
             @inject-agent="handlers.onInjectAgent"

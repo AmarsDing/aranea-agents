@@ -26,13 +26,13 @@ func TestMatchVoiceConfirm_DenyWords(t *testing.T) {
 
 func TestMatchVoiceConfirm_NormalizesPunctuationAndCase(t *testing.T) {
 	cases := map[string]VoiceConfirmDecision{
-		"好的。":   VoiceConfirmApprove,
-		" 好的 ":  VoiceConfirmApprove,
-		"OK!":    VoiceConfirmApprove,
-		"可以，":   VoiceConfirmApprove,
-		"算了…":   VoiceConfirmDeny,
-		"No。":    VoiceConfirmDeny,
-		"好 吧":   VoiceConfirmApprove,
+		"好的。":  VoiceConfirmApprove,
+		" 好的 ": VoiceConfirmApprove,
+		"OK!":  VoiceConfirmApprove,
+		"可以，":  VoiceConfirmApprove,
+		"算了…":  VoiceConfirmDeny,
+		"No。":  VoiceConfirmDeny,
+		"好 吧":  VoiceConfirmApprove,
 	}
 	for in, want := range cases {
 		if got := MatchVoiceConfirm(in); got != want {

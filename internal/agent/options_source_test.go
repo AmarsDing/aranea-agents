@@ -36,3 +36,45 @@ func TestMergeInboundSourceIntoUserOptionsJSON_platform(t *testing.T) {
 		t.Fatalf("opts=%v", opts)
 	}
 }
+
+func TestMergeVoiceMetaIntoUserOptionsJSON(t *testing.T) {
+	merged, err := MergeVoiceMetaIntoUserOptionsJSON(`{"dialog_mode":"chat"}`, "volcengine", 1200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var opts map[string]any
+	if err := json.Unmarshal([]byte(merged), &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts["input_modality"] != "voice" {
+		t.Fatalf("input_modality=%v", opts["input_modality"])
+	}
+	if opts["asr_provider"] != "volcengine" {
+		t.Fatalf("asr_provider=%v", opts["asr_provider"])
+	}
+	if opts["asr_duration_ms"] != float64(1200) {
+		t.Fatalf("asr_duration_ms=%v", opts["asr_duration_ms"])
+	}
+	if opts["dialog_mode"] != "chat" {
+		t.Fatalf("existing keys must be preserved: %v", opts)
+	}
+
+	// 空 provider / 零时长不落键
+	merged, err = MergeVoiceMetaIntoUserOptionsJSON(`{}`, "  ", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts = map[string]any{}
+	if err := json.Unmarshal([]byte(merged), &opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := opts["asr_provider"]; ok {
+		t.Fatalf("blank provider must be omitted: %v", opts)
+	}
+	if _, ok := opts["asr_duration_ms"]; ok {
+		t.Fatalf("zero duration must be omitted: %v", opts)
+	}
+	if opts["input_modality"] != "voice" {
+		t.Fatalf("input_modality=%v", opts["input_modality"])
+	}
+}

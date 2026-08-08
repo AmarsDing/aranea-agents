@@ -39,11 +39,12 @@ type AgentRunner func(ctx context.Context, agentID, input string) (string, error
 
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
-	uc         *biz.EvalUsecase
-	agent      AgentRunner
-	framework  *FrameworkBridge
-	monitorBus contract.MonitorBus
-	lg         loggateway.Logger
+	uc          *biz.EvalUsecase
+	agent       AgentRunner
+	framework   *FrameworkBridge
+	monitorBus  contract.MonitorBus
+	dropAlerter *ScoreDropAlerter
+	lg          loggateway.Logger
 }
 
 func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
@@ -55,6 +56,15 @@ func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, framework *FrameworkBridg
 func (r *Runner) WithMonitorBus(bus contract.MonitorBus) *Runner {
 	if r != nil && bus != nil {
 		r.monitorBus = bus
+	}
+	return r
+}
+
+// WithDropAlerter wires the online score-drop alerter (chainable, P2-2).
+// When nil, drop detection is skipped.
+func (r *Runner) WithDropAlerter(a *ScoreDropAlerter) *Runner {
+	if r != nil && a != nil {
+		r.dropAlerter = a
 	}
 	return r
 }
@@ -102,6 +112,22 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 	})
 }
 
+// RunSync executes a run inline and returns the final persisted state (P2-1
+// publish gate). Unlike Start it does not fork a goroutine — the caller
+// awaits the outcome. execute() persists the failed status before returning
+// an error, so on error the final row is still read back for the message.
+func (r *Runner) RunSync(ctx context.Context, run biz.EvalRun, metrics string, numRuns int) (biz.EvalRun, error) {
+	if numRuns <= 0 {
+		numRuns = 1
+	}
+	err := r.execute(ctx, run, metrics, numRuns, false)
+	final, gerr := r.uc.GetRun(ctx, run.ID)
+	if gerr != nil {
+		return run, err
+	}
+	return final, err
+}
+
 func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) error {
 	cases, err := r.uc.ListCases(ctx, run.DatasetID)
 	if err != nil {
@@ -126,6 +152,9 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 	run.TotalCases = len(cases)
 	run.Status = "running"
 	run.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	// P3-5: snapshot the dataset content hash so trend/compare can warn when
+	// the dataset changed between runs (scores not directly comparable).
+	run.DatasetHash = hashEvalCases(cases)
 	if err := r.uc.UpdateRun(ctx, run); err != nil {
 		return err
 	}
@@ -185,6 +214,9 @@ func (r *Runner) executeFramework(
 	}
 	run.PassAtK = passAtK
 	run.PassHatK = passHatK
+	// P3-4: red-team attack success rate — computed only when the dataset
+	// carries adversarial cases (metadata_json.redteam_category).
+	mergeAttackSuccessRate(&run, cases, results)
 	// ISSUE-006: partial case failure must fail the run — the framework returns
 	// no global error when individual cases fail, so a silent "completed" would
 	// report a broken evaluation as healthy.
@@ -206,7 +238,15 @@ func (r *Runner) executeFramework(
 			event.P("pass_at_k", passAtK),
 			event.P("pass_hat_k", passHatK))
 	}
-	return r.uc.UpdateRun(ctx, run)
+	if err := r.uc.UpdateRun(ctx, run); err != nil {
+		return err
+	}
+	// P2-2: online quality watch — check the consecutive-drop condition after
+	// the run is durably completed so the trend query sees this run's score.
+	if r.dropAlerter != nil {
+		r.dropAlerter.CheckAfterRun(ctx, run)
+	}
+	return nil
 }
 
 func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error {

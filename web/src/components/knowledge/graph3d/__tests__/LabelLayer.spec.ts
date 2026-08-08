@@ -1,8 +1,9 @@
 /**
- * LabelLayer 纯函数单测：候选池 top-K + 双阈值可见性（forced 豁免距离，G5-C v2 修复）。
+ * LabelLayer 纯函数单测：候选池 top-K + 双阈值可见性（forced 豁免距离，G5-C v2 修复）
+ * + 动态度数下限（G5-G 小图标签修复）。
  */
 import { describe, expect, it } from 'vitest';
-import { selectLabelCandidates, shouldShowLabel } from '../render/LabelLayer';
+import { effectiveMinDegree, selectLabelCandidates, shouldShowLabel } from '../render/LabelLayer';
 
 describe('selectLabelCandidates', () => {
   it('按 degree 降序取 top-K', () => {
@@ -34,9 +35,25 @@ describe('shouldShowLabel', () => {
     expect(shouldShowLabel(700, 600, 8, 4, false, true)).toBe(false);
   });
 
-  it('forced（hover/选中）豁免距离阈值：适应视图后 hover 必须出标签', () => {
-    // zoomToFit 后相机距离 ≈ fitDist，maxDistance = fitDist×0.85 → 距离必超阈值
+  it('forced（hover/选中）豁免距离阈值：拉远超阈值后 hover 必须出标签', () => {
+    // maxDistance = fitDist + radius（G5-G 修复）；用户拉远或 hover 远侧节点时距离必超阈值
     expect(shouldShowLabel(1000, 600, 0, 4, true, true)).toBe(true);
     expect(shouldShowLabel(1000, 600, 0, 4, true, false)).toBe(true);
+  });
+});
+
+describe('effectiveMinDegree（G5-G：小图标签修复）', () => {
+  it('大图维持基准值防拥挤', () => {
+    expect(effectiveMinDegree(12, 4)).toBe(4);
+    expect(effectiveMinDegree(4, 4)).toBe(4);
+  });
+
+  it('小图降档到最大度数：hub 标签在适应视图后可见', () => {
+    expect(effectiveMinDegree(2, 4)).toBe(2);
+    expect(effectiveMinDegree(1, 4)).toBe(1);
+  });
+
+  it('全孤立图（maxDegree 0）钳到 1：孤立节点不出标签', () => {
+    expect(effectiveMinDegree(0, 4)).toBe(1);
   });
 });

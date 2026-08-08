@@ -127,6 +127,8 @@ export type EvalRunComparison = {
   delta_contains_match: number;
   delta_llm_judge: number;
   delta_tool_call_accuracy: number;
+  /** P3-5: dataset content hash at run start; differs across runs → not comparable */
+  dataset_hash: string;
 };
 
 /** P1-3 judge 校准：judge 与人工标注分歧统计 */
@@ -155,4 +157,57 @@ export type JudgeDivergence = {
   false_pass_count: number;
   false_fail_count: number;
   divergent_cases: JudgeDivergenceCase[];
+};
+
+/** P2-3 失败归组：按 error_message 聚合的失败用例统计 */
+export type EvalFailureGroup = {
+  error_message: string;
+  count: number;
+  run_count: number;
+  latest_at: string;
+};
+
+export type GetFailureGroupsResult = {
+  total_failed: number;
+  groups: EvalFailureGroup[];
+};
+
+/** P3-3 pairwise：人工裁决某次运行优于另一次 */
+export type EvalRunPreference = {
+  id: string;
+  dataset_id: string;
+  run_id_a: string;
+  run_id_b: string;
+  winner_run_id: string;
+  comment: string;
+  created_by: string;
+  created_at: string;
+};
+
+export type SubmitRunPreferenceInput = {
+  dataset_id: string;
+  run_id_a: string;
+  run_id_b: string;
+  winner_run_id: string;
+  comment?: string;
+};
+
+/** P2-1 发布门禁配置（单例） */
+export type EvalGateConfig = {
+  enabled: boolean;
+  agent_id: string;
+  dataset_id: string;
+  metric: string;
+  min_score: number;
+  max_drop: number;
+  updated_at: string;
+};
+
+export type UpdateEvalGateInput = {
+  enabled: boolean;
+  agent_id: string;
+  dataset_id: string;
+  metric: string;
+  min_score: number;
+  max_drop: number;
 };

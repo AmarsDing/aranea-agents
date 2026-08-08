@@ -12,6 +12,20 @@ type AgentEvalAutoConfig struct {
 	Metrics        string `json:"metrics"`
 	NumRuns        int    `json:"num_runs"`
 	MinIntervalSec int    `json:"min_interval_sec"`
+	// SampleRate gates what fraction of turns trigger an online eval run
+	// (P2-2). (0,1] enables sampling; <=0 or >1 is normalized to 1.0 (every
+	// eligible turn evaluates) for backward compatibility with configs that
+	// predate the field.
+	SampleRate float64 `json:"sample_rate"`
+	// AlertConsecutiveDrops enables the online score-drop alert: when the
+	// latest N after_turn runs each score strictly lower than the previous
+	// one, a SystemNoticeEvent is published (P2-2). 0 disables alerting.
+	AlertConsecutiveDrops int `json:"alert_consecutive_drops"`
+	// AlertMetric selects which metric the drop detection watches
+	// (exact_match | contains_match | llm_as_judge | tool_call_accuracy).
+	// Empty defaults to llm_as_judge. The metric should be part of Metrics,
+	// otherwise its score column stays 0 and would look like a permanent drop.
+	AlertMetric string `json:"alert_metric"`
 }
 
 // ParseAgentEvalAutoConfig reads evaluation.auto_after_turn settings from agent config_json.
@@ -38,6 +52,16 @@ func ParseAgentEvalAutoConfig(configJSON string) AgentEvalAutoConfig {
 	}
 	if cfg.MinIntervalSec <= 0 {
 		cfg.MinIntervalSec = 300
+	}
+	if cfg.SampleRate <= 0 || cfg.SampleRate > 1 {
+		cfg.SampleRate = 1
+	}
+	if cfg.AlertConsecutiveDrops < 0 {
+		cfg.AlertConsecutiveDrops = 0
+	}
+	cfg.AlertMetric = strings.TrimSpace(cfg.AlertMetric)
+	if cfg.AlertMetric == "" {
+		cfg.AlertMetric = "llm_as_judge"
 	}
 	return cfg
 }

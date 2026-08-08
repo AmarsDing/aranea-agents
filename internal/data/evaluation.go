@@ -69,6 +69,7 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			started_at           TEXT NOT NULL DEFAULT '',
 			finished_at          TEXT NOT NULL DEFAULT '',
 			workspace_id         TEXT NOT NULL DEFAULT '',
+			dataset_hash         TEXT NOT NULL DEFAULT '',
 			created_at           TEXT NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS eval_case_results (
@@ -89,6 +90,28 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 			annotated_by      TEXT NOT NULL DEFAULT '',
 			scores_json       TEXT NOT NULL DEFAULT '{}'
 		)`,
+		// P3-3: pairwise human preference between two runs of one dataset.
+		`CREATE TABLE IF NOT EXISTS eval_run_preferences (
+			id            TEXT PRIMARY KEY,
+			dataset_id    TEXT NOT NULL,
+			run_id_a      TEXT NOT NULL,
+			run_id_b      TEXT NOT NULL,
+			winner_run_id TEXT NOT NULL,
+			comment       TEXT NOT NULL DEFAULT '',
+			created_by    TEXT NOT NULL DEFAULT '',
+			created_at    TEXT NOT NULL
+		)`,
+		// P2-1: publish regression gate config (singleton row id='singleton').
+		`CREATE TABLE IF NOT EXISTS eval_gate_config (
+			id         TEXT PRIMARY KEY,
+			enabled    INTEGER NOT NULL DEFAULT 0,
+			agent_id   TEXT NOT NULL DEFAULT '',
+			dataset_id TEXT NOT NULL DEFAULT '',
+			metric     TEXT NOT NULL DEFAULT 'exact_match',
+			min_score  REAL NOT NULL DEFAULT 0,
+			max_drop   REAL NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -108,6 +131,8 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE eval_runs ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE eval_case_results ADD COLUMN scores_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE eval_runs ADD COLUMN workspace_id TEXT NOT NULL DEFAULT ''`,
+		// P3-5: dataset content hash snapshot.
+		`ALTER TABLE eval_runs ADD COLUMN dataset_hash TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, s := range migrations {
 		_, _ = db.ExecContext(ctx, s) // best-effort for existing DBs
@@ -288,7 +313,7 @@ func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, 
 const evalRunSelect = `SELECT id,dataset_id,agent_id,status,total_cases,completed_cases,
 	exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
 	pass_at_k,pass_hat_k,trigger_source,num_runs,scores_json,
-	error_message,started_at,finished_at,workspace_id,created_at FROM eval_runs`
+	error_message,started_at,finished_at,workspace_id,dataset_hash,created_at FROM eval_runs`
 
 func normalizeEvalScoresJSON(raw string) string {
 	if strings.TrimSpace(raw) == "" {
@@ -302,7 +327,7 @@ func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) 
 	err := row.Scan(&rn.ID, &rn.DatasetID, &rn.AgentID, &rn.Status, &rn.TotalCases, &rn.CompletedCases,
 		&rn.ExactMatchScore, &rn.ContainsMatchScore, &rn.LLMJudgeScore, &rn.ToolCallAccuracy,
 		&rn.PassAtK, &rn.PassHatK, &rn.TriggerSource, &rn.NumRuns, &rn.ScoresJSON,
-		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.CreatedAt)
+		&rn.ErrorMessage, &rn.StartedAt, &rn.FinishedAt, &rn.WorkspaceID, &rn.DatasetHash, &rn.CreatedAt)
 	return rn, err
 }
 
@@ -323,12 +348,12 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 		r.data.Dialect().RenumberPlaceholders(`UPDATE eval_runs SET status=?,total_cases=?,completed_cases=?,
 		        exact_match_score=?,contains_match_score=?,llm_judge_score=?,tool_call_accuracy=?,
 		        pass_at_k=?,pass_hat_k=?,scores_json=?,
-		        error_message=?,started_at=?,finished_at=?
+		        error_message=?,started_at=?,finished_at=?,dataset_hash=?
 		 WHERE id=?`),
 		rn.Status, rn.TotalCases, rn.CompletedCases,
 		rn.ExactMatchScore, rn.ContainsMatchScore, rn.LLMJudgeScore, rn.ToolCallAccuracy,
 		rn.PassAtK, rn.PassHatK, normalizeEvalScoresJSON(rn.ScoresJSON),
-		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.ID)
+		rn.ErrorMessage, rn.StartedAt, rn.FinishedAt, rn.DatasetHash, rn.ID)
 	return err
 }
 

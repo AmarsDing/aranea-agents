@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"context"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,9 @@ type AfterTurnTrigger struct {
 	mu        sync.Mutex
 	last      map[string]time.Time
 	lastClean time.Time
+	// randFn supplies the sampling coin flip (P2-2 sample_rate); injectable
+	// for deterministic tests. Defaults to rand.Float64.
+	randFn func() float64
 }
 
 // NewAfterTurnTrigger constructs an AfterTurnTrigger.
@@ -47,6 +51,11 @@ func (t *AfterTurnTrigger) AfterNativeTurn(ctx context.Context, ev biz.NativeTur
 	if agentID == "" {
 		return
 	}
+	// P2-2: sample before rate-limit accounting so sample_rate approximates
+	// the fraction of eligible turns that actually trigger an online run.
+	if !t.samplePass(cfg.SampleRate) {
+		return
+	}
 	if !t.allowTrigger(agentID, cfg.MinIntervalSec) {
 		return
 	}
@@ -67,6 +76,20 @@ func (t *AfterTurnTrigger) AfterNativeTurn(ctx context.Context, ev biz.NativeTur
 		}
 		t.runner.Start(bgCtx, run, metrics, numRuns, false)
 	})
+}
+
+// samplePass reports whether this turn wins the sampling lottery. Rates
+// outside (0,1) always pass (backward-compatible default = evaluate every
+// eligible turn).
+func (t *AfterTurnTrigger) samplePass(rate float64) bool {
+	if rate <= 0 || rate >= 1 {
+		return true
+	}
+	fn := t.randFn
+	if fn == nil {
+		fn = rand.Float64
+	}
+	return fn() < rate
 }
 
 func (t *AfterTurnTrigger) allowTrigger(agentID string, minIntervalSec int) bool {

@@ -12,11 +12,13 @@ import type {
   CollectionGraphEdge,
   CollectionGraphNode,
   CreateCollectionInput,
+  EntityMergeSuggestion,
   IngestDocumentInput,
   KnowledgeChunk,
   KnowledgeCollection,
   KnowledgeDocument,
   KnowledgeDocumentContent,
+  MergeEntitiesResult,
   KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
@@ -298,6 +300,44 @@ export async function listCollectionGraph(
   return {
     nodes: Array.isArray(nodesRaw) ? nodesRaw.map(mapGraphNode) : [],
     edges: Array.isArray(edgesRaw) ? edgesRaw.map(mapGraphEdge) : [],
+  };
+}
+
+// ---------- 实体治理（G5-F/G5-G） ----------
+
+function mapMergeSuggestion(raw: unknown): EntityMergeSuggestion {
+  const r = asRecord(raw);
+  return {
+    keeper_id: pickI64(r, 'keeper_id', 'keeperId'),
+    keeper_name: pickStr(r, 'keeper_name', 'keeperName'),
+    mergee_id: pickI64(r, 'mergee_id', 'mergeeId'),
+    mergee_name: pickStr(r, 'mergee_name', 'mergeeName'),
+    source: pickStr(r, 'source', 'source'),
+    similarity: pickNum(r, 'similarity', 'similarity'),
+    tier: pickStr(r, 'tier', 'tier'),
+  };
+}
+
+/** listEntityMergeSuggestions 合并建议列表（G5-F B11）：norm 冲突组在前，
+ *  embedding 高相似对按相似度降序追加；未配置 embedding 时仅 norm 组。 */
+export async function listEntityMergeSuggestions(collectionId: string): Promise<EntityMergeSuggestion[]> {
+  const res = asRecord(await svc.ListEntityMergeSuggestions({ collectionId }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapMergeSuggestion) : [];
+}
+
+/** mergeKnowledgeEntities 一键合并（G5-F B10）：事务重写 mergee 的文档提及与
+ *  关联引用指向 keeper，mergee 名落 keeper 别名（跨同步持久）；返回重写条数。 */
+export async function mergeKnowledgeEntities(input: {
+  collectionId: string;
+  keeperId: number;
+  mergeeIds: number[];
+}): Promise<MergeEntitiesResult> {
+  const res = asRecord(await svc.MergeKnowledgeEntities(input));
+  return {
+    rewritten_mentions: pickI64(res, 'rewritten_mentions', 'rewrittenMentions'),
+    rewritten_links: pickI64(res, 'rewritten_links', 'rewrittenLinks'),
+    merged_entities: pickI64(res, 'merged_entities', 'mergedEntities'),
   };
 }
 

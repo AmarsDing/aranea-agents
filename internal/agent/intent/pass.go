@@ -100,6 +100,7 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
 - risk_flags (array of strings): e.g. touches_auth, migrations, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
+Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
 
 const intentSystemGeneral = `You classify and restate the user's request. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -110,6 +111,7 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
 - risk_flags (array of strings): e.g. sensitive_data, compliance, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
+Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
 
 // PassEffective returns whether the intent pass should run (extra LLM call).

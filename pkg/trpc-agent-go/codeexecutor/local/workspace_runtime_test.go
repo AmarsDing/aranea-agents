@@ -69,6 +69,28 @@ func TestRuntime_RunProgram_Basic(t *testing.T) {
 	require.Contains(t, res.Stdout, "hello runtime")
 }
 
+func TestRuntime_RunProgram_StartFailureSurfacesStderr(t *testing.T) {
+	rt := local.NewRuntime("")
+	ctx := context.Background()
+	ws, err := rt.CreateWorkspace(
+		ctx,
+		"rt-start-fail",
+		codeexecutor.WorkspacePolicy{},
+	)
+	require.NoError(t, err)
+	defer rt.Cleanup(ctx, ws)
+
+	// A missing executable never starts: exit code -1 with the original
+	// start error surfaced in stderr instead of an empty message.
+	res, err := rt.RunProgram(ctx, ws, codeexecutor.RunProgramSpec{
+		Cmd:     "definitely-not-a-real-command-xyz123",
+		Timeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	require.Equal(t, -1, res.ExitCode)
+	require.Contains(t, res.Stderr, "definitely-not-a-real-command-xyz123")
+}
+
 func TestRuntime_PathListSeparator(t *testing.T) {
 	rt := local.NewRuntime("")
 

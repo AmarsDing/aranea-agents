@@ -68,4 +68,21 @@ describe('useCompanionStore', () => {
     expect(store.voiceState).toBe('idle');
     expect(store.subtitlePartial).toBe('');
   });
+
+  // V2-T8 差距2：麦克风置灰门控。三态语义——null=未知（探测失败/未拉取，
+  // 不置灰，点击后由 voice.error 降级条兜底）；false=明确未配置（置灰）。
+  it('gates the mic only when voice is explicitly unavailable', () => {
+    const store = useCompanionStore();
+    expect(store.voiceAvailable).toBeNull();
+    expect(store.voiceMicDisabled).toBe(false); // 未知不置灰
+
+    store.setVoiceAvailable(true);
+    expect(store.voiceMicDisabled).toBe(false);
+
+    store.setVoiceAvailable(false);
+    expect(store.voiceMicDisabled).toBe(true); // 明确未配置 → 置灰
+
+    store.setVoiceAvailable(null);
+    expect(store.voiceMicDisabled).toBe(false); // 回到未知 → 解除置灰
+  });
 });

@@ -29,7 +29,7 @@ evaluation.Runner (async goroutine)
    │      ├── exact_match / contains_match (FinalResponse text)
    │      ├── json_match / xml_match / rouge_l (FinalResponse criterion)
    │      ├── tool_call_accuracy / tool_trajectory (ToolTrajectory)
-   │      └── llm_as_judge (Aranea LLMJudge hook, 框架外补算)
+   │      └── llm_as_judge (框架 llm_rubric_response 评估器 + JudgeRunner 注入)
    └── executeLegacy (FrameworkBridge 不可用时的回退)
 ```
 
@@ -37,7 +37,7 @@ evaluation.Runner (async goroutine)
 
 | 层 | 文件 | 职责 |
 |----|------|------|
-| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（14 RPC + 26 Message） |
+| Proto | `api/kratos/evaluation/v1/evaluation.proto` | HTTP + gRPC API 契约（20 RPC + 39 Message） |
 | Service | `internal/service/evaluation.go` | proto ↔ biz 映射；RunEvaluation 触发 Runner |
 | Service | `internal/service/evaluation_runner.go` | Wire：`NewEvaluationRunner` 装配 AgentRunner + LLMJudge + FrameworkBridge |
 | Service | `internal/service/evaluation_after_turn.go` | Wire：`NewEvaluationAfterTurnTrigger` 创建 AfterTurn 触发器 |
@@ -72,13 +72,19 @@ evaluation.Runner (async goroutine)
 
 **EvalCase**：评估用例（输入、期望输出、metadata_json）。
 
-**EvalRun**：评估运行（状态、进度、4 种指标汇总分数、`scores_json` 扩展分、`pass_at_k`/`pass_hat_k`、错误信息）。
+**EvalRun**：评估运行（状态、进度、4 种指标汇总分数、`scores_json` 扩展分、`pass_at_k`/`pass_hat_k`、错误信息、`dataset_hash` 数据集快照（P3-5））。
 
 **EvalCaseResult**：逐用例结果（实际输出、各指标得分/判定、人工标注字段）。
 
 **EvalTrendPoint** / **EvalRunComparison**：趋势点与 A/B 对比结果。
 
 **JudgeDivergence** / **JudgeDivergenceCase**（P1-3）：judge 与人工标注的一致性统计（一致率 / false_pass / false_fail / 分歧用例明细）。
+
+**EvalFailureGroup** / **GetFailureGroupsResponse**（P2-3）：失败归组（`error_message` 聚合：`count` / `run_count` / `latest_at`，外加 `total_failed`）。
+
+**EvalRunPreference**（P3-3）：Pairwise 偏好裁决记录（`dataset_id` / `run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by` / `created_at`）。
+
+**EvalGateConfig**（P2-1）：发布质量门禁单例配置（`enabled` / `agent_id` / `dataset_id` / `metric` / `min_score` / `max_drop` / `updated_at`）。
 
 ### 3.2 API 端点
 
@@ -99,6 +105,11 @@ evaluation.Runner (async goroutine)
 | GET | `/v1/evaluation/agents/{agent_id}/trend` | GetAgentEvalTrend | Agent 分数趋势 |
 | POST | `/v1/evaluation/runs/compare` | CompareEvalRuns | A/B 或多 run 对比 |
 | GET | `/v1/evaluation/datasets/{dataset_id}/judge-divergence` | GetJudgeDivergence | judge/人工分歧统计（P1-3，query：agent_id/threshold/limit） |
+| GET | `/v1/evaluation/datasets/{dataset_id}/failure-groups` | GetFailureGroups | 失败用例按 error_message 归组（P2-3，query：limit） |
+| POST | `/v1/evaluation/preferences` | SubmitRunPreference | 提交 Pairwise 偏好裁决（P3-3） |
+| GET | `/v1/evaluation/preferences` | ListRunPreferences | 偏好记录列表（P3-3，query：dataset_id/limit） |
+| GET | `/v1/evaluation/gate` | GetEvalGate | 读取发布质量门禁单例配置（P2-1） |
+| PUT | `/v1/evaluation/gate` | UpdateEvalGate | 更新发布质量门禁单例配置（P2-1） |
 
 ### 3.3 RunEvaluation 请求
 
@@ -155,16 +166,24 @@ Divergence：ListJudgeAnnotatedResults  (1)
 
 `eval_case_results` 含人工标注列与 `scores_json`；`eval_runs` 含 `pass_at_k`/`pass_hat_k`/`trigger_source`/`num_runs`/`scores_json`，通过 ALTER 迁移兼容旧库。
 
+P2/P3 新增 2 张表 + 1 个列：
+
+- `eval_gate_config`（P2-1）：发布门禁单例配置表（单行）；`enabled` 以 INTEGER 0/1 存储（与既有 eval 表 raw SQL INTEGER bool 惯例一致）
+- `eval_run_preference`（P3-3）：Pairwise 偏好记录（`run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by`）
+- `eval_runs.dataset_hash`（P3-5）：运行启动时写入的数据集内容 hash（随 eval 域既有双轨机制落地：Ent Schema L1 自动迁移 + `EnsureEvalSchema` 幂等 ALTER 兜底存量库）
+
 ### 5.2 Ent Schema
 
-4 个 Ent Schema（`internal/data/ent/schema/eval_*.go`）显式映射表名（`entsql.Annotation{Table: ...}`）：
+6 个 Ent Schema（`internal/data/ent/schema/eval_*.go`）显式映射表名（`entsql.Annotation{Table: ...}`）：
 
 | Schema | 表名 | Edge |
 |--------|------|------|
 | `EvalDataset` | `eval_datasets` | → cases / runs |
 | `EvalCase` | `eval_cases` | ← dataset / → results |
-| `EvalRun` | `eval_runs` | ← dataset / → results |
+| `EvalRun` | `eval_runs` | ← dataset / → results（P3-5 新增 `dataset_hash` 列） |
 | `EvalCaseResult` | `eval_case_results` | ← run / ← case |
+| `EvalGateConfig` | `eval_gate_config`（P2-1，单例行） | — |
+| `EvalRunPreference` | `eval_run_preference`（P3-3） | — |
 
 > Ent Schema 与 Raw SQL `EnsureEvalSchema` 并存：Ent Schema 作为类型映射真相源，运行期建表由 `EnsureEvalSchema` 完成（含 ALTER 兼容旧库）。
 
@@ -195,6 +214,12 @@ Divergence：ListJudgeAnnotatedResults  (1)
 - `user_simulation`：`{script: "..."}` 脚本驱动 或 `{use_llm: true, conversation_plan: "..."}` LLM 驱动
 - `expected_tools` / `expected_tool_calls`：ToolTrajectory 期望工具序列
 - `rubric`：用例级评分标准文本（P3-2）。适配层映射为框架 `EvalCase.Rubrics`（绑定 `llm_as_judge` 指标实例），judge 将其合并进评分准则；当运行未勾选 `llm_as_judge` 时框架会因指标未注册而使该用例失败，故 `FrameworkBridge.Execute` 在此场景自动剥离 rubric（`stripCaseRubricsWhenNoJudge`）
+
+**judge 解析链（2026-08-08 as-built 修复）**：
+
+- `llm_as_judge` 走框架 `llm_rubric_response` 评估器（`framework_metrics.go`）：其 prompt 渲染用例 rubrics 并要求按 rubric 输出 JSON 分值，judge 评语始终体现用例评分标准；无自定义 rubric 的用例由 evalset 适配层合成默认 rubric（该评估器硬要求每用例至少一条 rubric）
+- JudgeRunner 的 system instruction 保持中立（`judge_runner.go`：不强制任何输出格式）——各框架评估器 prompt 自定义输出格式（llm_final_response 两行 verdict / llm_rubric_response JSON rubricScores），在 system 层强加格式会与 user prompt 冲突导致间歇解析失败（"no final response blocks found"）
+- `judgeReasonFromRuns`（`framework.go`）从 per-run 结果提取 judge 评语写入进程日志——框架聚合计分时丢弃 Details，需从单次运行结果回填
 - `session_user_id` / `session_state`：覆盖 SessionInput 默认值（UserID 默认 `"eval"`，State 默认空）
 - `source` / `task_id` / `session_id`：溯源元数据（P1-1 对话→用例一键转化写入 `source="chat"` + 来源任务/会话 ID；不参与执行语义，仅供回溯）
 
@@ -302,6 +327,9 @@ Judge 校准闭环（对标 T6）的入口：人工标注与 llm_as_judge 分数
 
 **P1-1 对话→用例一键转化**：TaskCard 气泡菜单「加入评估」→ `useAddToEvalDataset.openWith`（预填 input=用户消息、expected_output=Agent 最终回复、source 溯源元数据）→ `AddEvalCaseDialog`（选已有数据集或内联新建）→ 复用 `UploadCases` 通道落库。
 
+- **桌面端链路**：TaskCard → SessionPanel/ChatMessagePanel 逐层 `@add-to-eval` 转发 → ChatPage 渲染对话框
+- **移动端链路（2026-08-08 补）**：MobileTasksPage 绑定 `@add-to-eval`/`@feedback` → 共享 workspace（`useChatWorkspace` 在 MobileLayout 布局层创建并 provide）→ **对话框在 MobileLayout 布局层渲染**（workspace 状态在布局层，若只在页面内渲染则事件只改状态无 UI）
+
 **P1-2 负反馈采集→待审查→转用例**：
 
 ```
@@ -316,6 +344,66 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 - 快照写入侧容错：`context_json` 宽容解析，坏 JSON 静默忽略（反馈持久化永不因快照失败）；input/output 快照按 2000 runes 截断（`feedbackContextSnapshotMaxRunes`）
 - 复用的 chat.proto 契约定点见 [1-chat.design.md](./1-chat.design.md)（`SubmitMessageFeedback` RPC + `context_json` 字段）
 
+### 6.10 发布质量门禁（P2-1）
+
+- **配置**：`eval_gate_config` 单例表（单行）；biz `GateConfig`（`internal/biz/evaluation/governance.go`），data 实现 `internal/data/evaluation_governance.go`；API `GET/PUT /v1/evaluation/gate`
+- **判定流程**：`PublishGate.Check(ctx, trigger)`（`internal/evaluation/gate.go`）——加载单例配置（未启用直接放行）→ `Runner.RunSync` 同步跑配置的数据集 → 双阈值判定：分数 < `min_score`，或相对最新 completed 基线跌幅 > `max_drop`，命中任一即阻断并发布通知事件
+- **注入点**：`internal/service/chat_wire.go` `ProvidePublishGate` 装配；消费方为 skill 发布（`internal/service/skill.go`）与 pack 安装（`internal/service/pack.go`）——均 nil-safe，门禁不可用时不阻断主流程
+- **前端**：`EvaluationGateDialog.vue` 配置对话框（开关 / Agent / 数据集 / 指标 / min_score / max_drop）+ 评估页入口
+
+### 6.11 在线评估：采样率与连跌告警（P2-2）
+
+- **采样率**：`AgentEvalAutoConfig.SampleRate`（`internal/biz/agent_eval_config.go`，`config_json.evaluation.sample_rate`）——(0,1] 生效，越界归一化为 1.0（向后兼容既有配置）；采样判定位于 after_turn 触发链路的限流判定之前（`internal/evaluation/after_turn.go`）
+- **连跌告警**：`ScoreDropAlerter.CheckAfterRun`（`internal/evaluation/drop_alert.go`）——after_turn run 完成后读 agent 配置 `alert_consecutive_drops`（N，0 禁用）与 `alert_metric`（默认 llm_as_judge），取最近 N 条 online run，该指标分数严格连跌则发布 SystemNoticeEvent 通知
+- **装配**：`chat_wire.go` `ProvideEvaluationRunner` 内 `runner.WithDropAlerter(evaluation.NewScoreDropAlerter(...))`；agents/bus 任一为 nil 则不挂（nil-safe）
+- **趋势拆分**：趋势面板按 `trigger_source`（manual / after_turn / gate）筛选，拆分在线/离线序列
+
+### 6.12 失败归组（P2-3）
+
+- **API**：`GET /v1/evaluation/datasets/{dataset_id}/failure-groups` → `{total_failed, groups[]{error_message, count, run_count, latest_at}}`
+- **实现**：data 层 `ListFailureGroups`（`internal/data/evaluation_governance.go`）纯 SQL：`eval_case_results ⨝ eval_runs`，仅失败用例，`GROUP BY error_message`，按 count 降序 + limit
+- **前端**：`EvaluationAnalyticsPanel.vue` 失败归组面板；运行记录全部终态后自动刷新
+
+### 6.13 Pairwise 偏好裁决（P3-3）
+
+- **表**：`eval_run_preference`（Ent schema `eval_run_preference.go`）：`dataset_id` / `run_id_a` / `run_id_b` / `winner_run_id` / `comment` / `created_by` / `created_at`
+- **校验**：`winner_run_id` 必须等于 `run_id_a` 或 `run_id_b`（service/biz 校验，违反返回 Conflict/BadRequest）
+- **API**：`POST /v1/evaluation/preferences` 提交；`GET /v1/evaluation/preferences`（query dataset_id/limit）列表
+- **前端**：A/B 对比结果行加「更优」按钮（`emit('prefer', row)` 由页面提交）；偏好列表展示
+
+### 6.14 红队用例包（P3-4）
+
+- **交付形态**：预制对抗用例集 JSON（prompt injection / 越权 / 数据泄漏），存放 `internal/evaluation/testdata/`，经既有 UploadCases JSON 导入通道入库（不绑 pack 机制）；用例 metadata 携带攻击类别标记
+- **专用指标**：`redteam_attack_success_rate`——`internal/evaluation/redteam.go` `mergeAttackSuccessRate` 按用例 metadata 攻击标记 + 结果判定攻击成功数/总数，合并进 `run.ScoresJSON`
+- **覆盖**：legacy（exact/contains）与 framework（judge）两条执行路径均计算
+
+### 6.15 数据集版本快照（P3-5）
+
+- **算法**：`internal/evaluation/dataset_hash.go` `hashEvalCases`——cases 按 ID 排序后 SHA-256（字段间 NUL 分隔），取 hex 前 16 字符
+- **写入时机**：`Runner.execute` 在 run 启动时写入 `eval_runs.dataset_hash`（Ent schema `eval_run.go` L1 自动迁移 + `EnsureEvalSchema` 幂等 ALTER 兜底存量库，与 eval 域既有双轨机制一致）
+- **对比透出**：`CompareEvalRuns` 对比响应每行携带 `dataset_hash`（proto `EvalRun` 字段 20、对比消息字段 15）
+- **前端**：参与对比的 runs 间 hash 不一致时 q-banner 提示「数据集已变更，分数不可直接比较」
+
+### 6.16 RAG 指标 spike 结论（P3-1，已验证可行 / 实施未排期）
+
+**结论：可行。推荐 Aranea 侧后处理路径**（不改 vendored 框架，与 `redteam.go` 同模式）：executeFramework 提取 knowledge_search chunks → 存 EvalCaseResult 扩展字段 → faithfulness 用既有 judge runner 打分合并进 run scores。
+
+**证据链**：
+
+- 框架 inference 捕获工具调用与结果——`pkg/trpc-agent-go/evaluation/service/internal/inference/inference.go` L227-245：`IsToolCallResponse`→convertTools 捕获 name+args；`IsToolResultResponse`→mergeToolResultResponse 将工具返回 JSON 反序列化进 `Tool.Result`
+- `evalset.Invocation.Tools []*Tool{ID,Name,Arguments,Result}`（evalset/evalcase.go L96-119）
+- knowledge_search 工具返回 chunks 列表（id/content/score/doc_id，`internal/tools/knowledge/tool.go`）
+- Aranea 挂接点：`internal/evaluation/framework.go` executeFramework 已访问 `rd.Inference.Inferences[0]` 取 FinalResponse（L157-168），同位置可读 `.Tools`
+
+**注意点**：
+
+1. 评估 agent 需绑定知识库才会产生检索调用
+2. 无检索调用的用例应记 N/A 并在聚合时排除（避免 0 分拉低均分）
+3. context_precision 需 chunk 级相关性判定，judge prompt 设计是主要工作量
+4. 自定义框架 evaluator 路径（实现 `evaluator.Evaluator` 接口 + `mgr.Add` 注册，类比 tooltrajectory）亦可行，但需动框架层
+
+**排期建议**：faithfulness 先行（工作量中），context_precision 后置。
+
 ---
 
 ## 七、前端
@@ -327,7 +415,8 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 | — | `EvaluationCreateDialog.vue` | 新建数据集弹窗（名称 + 描述） |
 | — | `EvaluationRunDialog.vue` | 启动评估弹窗（Agent 选择 + 指标 + MultiRun 次数） |
 | — | `EvaluationResultsDialog.vue` | 逐用例详情 + 人工标注 + CSV/JSON 导出 |
-| — | `EvaluationAnalyticsPanel.vue` | 趋势表 + A/B Run 多选对比 + judge 分歧卡片（P1-3） |
+| — | `EvaluationAnalyticsPanel.vue` | 趋势表 + A/B Run 多选对比 + judge 分歧卡片（P1-3）+ trigger_source 趋势拆分（P2-2）+ 失败归组面板（P2-3）+ pairwise「更优」按钮与偏好列表（P3-3）+ 数据集变更 q-banner 提示（P3-5） |
+| — | `EvaluationGateDialog.vue` | 发布质量门禁配置对话框（P2-1：开关/Agent/数据集/指标/min_score/max_drop） |
 | — | `AddEvalCaseDialog.vue` | 对话/反馈→用例对话框（P1-1/P1-2；含数据集选择/内联新建 + rubric 录入 P3-2） |
 | — | `EvaluationFeedbackPanel.vue` | 负反馈待审查列表（P1-2；monitor_events warning → 一键转用例） |
 | — | `features/evaluation/useAddToEvalDataset.ts` | 转用例对话框状态 + 提交（metadata_json：source 溯源 + rubric） |

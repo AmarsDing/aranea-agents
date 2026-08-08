@@ -172,6 +172,19 @@ func (b *FrameworkBridge) Execute(
 				res.ErrorMessage = last.ErrorMessage
 			}
 		}
+		// K6: surface the judge's rubric verdict in process logs so rubric
+		// calibration is observable at runtime (the reason is not persisted).
+		// The framework's aggregateCaseRuns drops Details when averaging scores
+		// into cr.MetricResults, so the reason is read from per-run results.
+		if reason := judgeReasonFromRuns(cr); reason != "" {
+			rs := []rune(reason)
+			if len(rs) > 500 {
+				reason = string(rs[:500]) + "..."
+			}
+			b.lg.Info("eval judge verdict",
+				loggateway.Str("case_id", bc.ID),
+				loggateway.Str("reason", reason))
+		}
 		for _, mr := range cr.MetricResults {
 			if mr == nil {
 				continue
@@ -192,4 +205,28 @@ func (b *FrameworkBridge) Execute(
 		}
 	}
 	return out, scores, passAtK, passHatK, nil
+}
+
+// judgeReasonFromRuns extracts the llm_as_judge verdict reason from per-run
+// metric results. The framework's aggregateCaseRuns averages scores into
+// EvaluationCaseResult.MetricResults but drops Details, so the judge reason
+// only survives on each run's OverallEvalMetricResults.
+func judgeReasonFromRuns(cr *trpceval.EvaluationCaseResult) string {
+	if cr == nil {
+		return ""
+	}
+	for _, run := range cr.EvalCaseResults {
+		if run == nil {
+			continue
+		}
+		for _, mr := range run.OverallEvalMetricResults {
+			if mr == nil || mr.MetricName != MetricLLMAsJudge || mr.Details == nil {
+				continue
+			}
+			if reason := strings.TrimSpace(mr.Details.Reason); reason != "" {
+				return reason
+			}
+		}
+	}
+	return ""
 }

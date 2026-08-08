@@ -24,6 +24,9 @@ type Link struct {
 	TargetDocID  string // 入向文档
 	LinkType     string // explicit / entity / semantic
 	Context      string // explicit: [[ref]] 原文；entity: 共享实体名（逗号分隔）
+	// Weight 聚合权重（N-3）：explicit 轨由块级 refs 投影时 = 块边数；
+	// 其他轨/历史行默认 1（20261204 迁移回填语义）。
+	Weight int
 }
 
 // DocEntity 一条文档实体提及记录。
@@ -91,42 +94,8 @@ func (u *Usecase) ReplaceExplicitLinks(ctx context.Context, collectionID, docID 
 	return u.links.ReplaceLinks(ctx, collectionID, docID, LinkTypeExplicit, links)
 }
 
-// maxLinkCandidates 单 vault 参与 [[...]] 解析的候选文档上限。
+// maxLinkCandidates 参与解析/可见集合枚举的候选上限。
 const maxLinkCandidates = 10000
-
-// RebuildExplicitLinks 解析正文 [[...]] 引用并重建该文档的 explicit 出链
-// （Vault 同步索引成功后、G3-B4 移动入链修复时调用）。
-// 解析候选来自 DB 镜像（最终一致：目标文档尚未同步时引用悬空不建链，
-// 待目标索引后、引用方下次变更时自愈）。自链跳过。
-// 未接线 LinkRepo 或失败返回 error 供调用方降级记录（不回滚主流程）。
-func (u *Usecase) RebuildExplicitLinks(ctx context.Context, collectionID, docID, body string) error {
-	if u == nil || u.links == nil {
-		return nil
-	}
-	refs := ParseWikiLinks(body)
-	var links []Link
-	if len(refs) > 0 {
-		candidates, _, err := u.ListDocuments(ctx, collectionID, maxLinkCandidates, 0)
-		if err != nil {
-			return err
-		}
-		resolved := ResolveLinkRefs(refs, candidates)
-		for _, ref := range refs {
-			targetID, ok := resolved[ref]
-			if !ok || targetID == docID {
-				continue
-			}
-			links = append(links, Link{
-				CollectionID: collectionID,
-				DocID:        docID,
-				TargetDocID:  targetID,
-				LinkType:     LinkTypeExplicit,
-				Context:      ref,
-			})
-		}
-	}
-	return u.links.ReplaceLinks(ctx, collectionID, docID, LinkTypeExplicit, links)
-}
 
 // ReplaceEntityLinks 重建文档 entity 出链（实体共现建链后调用）。
 func (u *Usecase) ReplaceEntityLinks(ctx context.Context, collectionID, docID string, links []Link) error {

@@ -75,6 +75,25 @@ func (o *ChatOrchestrator) prepareTurnUserOptions(
 		}
 	}
 
+	// V2-T6 语音输入溯源：input_modality/asr_provider/asr_duration_ms +
+	// 展示态留档音频附件（仅 UI 回放，不经 LLM 附件链路——刻意绕开
+	// validateTurnAttachmentCapabilities 与 BuildUserMessageFromArtifacts，
+	// 防止 audio/* 触发能力拒绝及 WAV 字节注入 LLM 上下文）。
+	if v := input.Voice; v != nil {
+		userOpts, err = chatagent.MergeVoiceMetaIntoUserOptionsJSON(userOpts, v.ASRProvider, v.DurationMs)
+		if err != nil {
+			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+			return "", err
+		}
+		if v.Archive != nil {
+			userOpts, err = mergeUserAttachmentRefs(userOpts, []artifactbiz.Ref{*v.Archive})
+			if err != nil {
+				o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+				return "", err
+			}
+		}
+	}
+
 	userOpts, err = mergeUserAttachmentRefs(userOpts, attachmentRefs)
 	if err != nil {
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")

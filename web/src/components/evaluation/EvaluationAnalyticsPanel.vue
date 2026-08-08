@@ -18,8 +18,21 @@
     </q-card-section>
 
     <q-card-section>
+      <div class="row items-center justify-between q-mb-sm">
+        <q-btn-toggle
+          v-model="triggerFilter"
+          dense
+          no-caps
+          toggle-color="primary"
+          :options="triggerFilterOptions"
+          @update:model-value="trendPage = 1"
+        />
+        <div class="text-caption text-grey-7">
+          {{ $t('evaluationPage.trendFilteredCount', { shown: filteredTrendPoints.length, total: trendPoints.length }) }}
+        </div>
+      </div>
       <div v-if="trendLoading" class="text-grey-7 q-py-md">加载趋势…</div>
-      <div v-else-if="!trendPoints.length" class="text-grey-7 q-py-md">暂无已完成运行记录</div>
+      <div v-else-if="!filteredTrendPoints.length" class="text-grey-7 q-py-md">暂无已完成运行记录</div>
       <template v-else>
         <AppRegistryTable
           :shell="false"
@@ -35,7 +48,7 @@
           v-model:page="trendPage"
           v-model:page-size="trendPageSize"
           :page-max="trendPageMax"
-          :total="trendPoints.length"
+          :total="filteredTrendPoints.length"
           :loading="trendLoading"
           label="条趋势"
         />
@@ -78,6 +91,9 @@
         />
       </div>
       <template v-if="comparisons.length">
+        <q-banner v-if="datasetChanged" rounded dense class="bg-warning text-white q-mt-md">
+          {{ $t('evaluationPage.datasetChangedWarning') }}
+        </q-banner>
         <AppRegistryTable
           :shell="false"
           :data-shell="true"
@@ -88,7 +104,27 @@
           row-key="run_id"
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
-        />
+        >
+          <template #body-cell-actions="props">
+            <q-td :props="props">
+              <q-btn
+                v-if="props.row.run_id !== baselineRunId"
+                flat
+                dense
+                no-caps
+                color="primary"
+                size="sm"
+                icon="thumb_up"
+                :label="$t('evaluationPage.preferThisRun')"
+                :loading="preferenceSaving"
+                @click="emit('prefer', props.row)"
+              />
+              <q-chip v-else dense color="grey-4" text-color="grey-8" size="sm">
+                {{ $t('evaluationPage.compareBaseline') }}
+              </q-chip>
+            </q-td>
+          </template>
+        </AppRegistryTable>
         <AppRegistryPagination
           v-model:page="comparisonPage"
           v-model:page-size="comparisonPageSize"
@@ -96,6 +132,34 @@
           :total="comparisons.length"
           label="条对比"
         />
+      </template>
+
+      <template v-if="preferences.length">
+        <div class="text-subtitle2 text-weight-bold q-mt-md q-mb-xs">{{ $t('evaluationPage.preferenceTitle') }}</div>
+        <AppRegistryTable
+          :shell="false"
+          :data-shell="true"
+          column-persist-key="eval-preferences"
+          :rows="preferences"
+          :columns="preferenceColumns"
+          row-key="id"
+          :loading="preferencesLoading"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        >
+          <template #body-cell-winner_run_id="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub ellipsis" :title="props.row.winner_run_id">{{
+                props.row.winner_run_id
+              }}</span>
+            </q-td>
+          </template>
+          <template #body-cell-loser="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub ellipsis" :title="props.col.value">{{ props.col.value }}</span>
+            </q-td>
+          </template>
+        </AppRegistryTable>
       </template>
     </q-card-section>
 
@@ -201,6 +265,55 @@
         <div v-else class="text-grey-7 q-py-sm">{{ $t('evaluationPage.divergenceNoCases') }}</div>
       </template>
     </q-card-section>
+
+    <q-separator />
+
+    <q-card-section>
+      <div class="row items-center justify-between">
+        <div>
+          <div class="text-subtitle2 text-weight-bold">{{ $t('evaluationPage.failureTitle') }}</div>
+          <div class="text-caption text-grey-7">
+            {{ $t('evaluationPage.failureMeta', { total: failureGroupsTotal }) }}
+          </div>
+        </div>
+        <q-btn flat dense round icon="refresh" :loading="failureGroupsLoading" @click="emit('refresh-failures')" />
+      </div>
+      <div v-if="failureGroupsLoading && !failureGroups.length" class="text-grey-7 q-py-md">
+        {{ $t('evaluationPage.failureLoading') }}
+      </div>
+      <div v-else-if="!failureGroups.length" class="text-grey-7 q-py-md">
+        {{ $t('evaluationPage.failureEmpty') }}
+      </div>
+      <template v-else>
+        <AppRegistryTable
+          :shell="false"
+          :data-shell="true"
+          column-persist-key="eval-failure-groups"
+          class="q-mt-xs"
+          :rows="pagedFailureGroups"
+          :columns="failureGroupColumns"
+          row-key="error_message"
+          hide-pagination
+          :pagination="{ rowsPerPage: 0 }"
+        >
+          <template #body-cell-error_message="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub ellipsis" :title="props.row.error_message">{{
+                props.row.error_message
+              }}</span>
+            </q-td>
+          </template>
+        </AppRegistryTable>
+        <AppRegistryPagination
+          v-model:page="failurePage"
+          v-model:page-size="failurePageSize"
+          :page-max="failurePageMax"
+          :total="failureGroups.length"
+          :loading="failureGroupsLoading"
+          :label="$t('evaluationPage.failurePagination')"
+        />
+      </template>
+    </q-card-section>
   </q-card>
 </template>
 
@@ -210,9 +323,18 @@ import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { EvalRun, EvalRunComparison, EvalTrendPoint, JudgeDivergence } from '../../features/evaluation/types';
+import type {
+  EvalFailureGroup,
+  EvalRun,
+  EvalRunComparison,
+  EvalRunPreference,
+  EvalTrendPoint,
+  JudgeDivergence,
+} from '../../features/evaluation/types';
 import {
   buildEvalDivergenceColumns,
+  buildEvalFailureGroupColumns,
+  buildEvalPreferenceColumns,
   EVAL_COMPARE_TABLE_COLUMNS,
   EVAL_RECENT_RUN_TABLE_COLUMNS,
   EVAL_TREND_TABLE_COLUMNS,
@@ -228,13 +350,22 @@ const props = defineProps<{
   trendLoading: boolean;
   compareLoading: boolean;
   divergenceLoading: boolean;
+  failureGroups: EvalFailureGroup[];
+  failureGroupsTotal: number;
+  failureGroupsLoading: boolean;
+  preferences: EvalRunPreference[];
+  preferencesLoading: boolean;
+  preferenceSaving: boolean;
+  datasetChanged: boolean;
 }>();
 
 const emit = defineEmits<{
   'update:agentId': [value: string];
   'refresh-trend': [];
   'refresh-divergence': [];
+  'refresh-failures': [];
   compare: [runIds: string[]];
+  prefer: [row: EvalRunComparison];
 }>();
 
 const localAgentId = ref(props.agentId);
@@ -248,8 +379,13 @@ const comparisonPage = ref(1);
 const comparisonPageSize = ref(10);
 const divergencePage = ref(1);
 const divergencePageSize = ref(5);
+const failurePage = ref(1);
+const failurePageSize = ref(5);
 
-const trendPageMax = computed(() => Math.max(1, Math.ceil(props.trendPoints.length / trendPageSize.value)));
+// P2-2: split the trend series by trigger_source ('' = all).
+const triggerFilter = ref('');
+
+const trendPageMax = computed(() => Math.max(1, Math.ceil(filteredTrendPoints.value.length / trendPageSize.value)));
 const comparePageMax = computed(() => Math.max(1, Math.ceil(props.runs.length / comparePageSize.value)));
 const comparisonPageMax = computed(() => Math.max(1, Math.ceil(props.comparisons.length / comparisonPageSize.value)));
 const divergencePageMax = computed(() =>
@@ -258,7 +394,7 @@ const divergencePageMax = computed(() =>
 
 const pagedTrendPoints = computed(() => {
   const start = (trendPage.value - 1) * trendPageSize.value;
-  return props.trendPoints.slice(start, start + trendPageSize.value);
+  return filteredTrendPoints.value.slice(start, start + trendPageSize.value);
 });
 const pagedCompareRuns = computed(() => {
   const start = (comparePage.value - 1) * comparePageSize.value;
@@ -272,6 +408,29 @@ const pagedDivergentCases = computed(() => {
   const cases = props.divergence?.divergent_cases ?? [];
   const start = (divergencePage.value - 1) * divergencePageSize.value;
   return cases.slice(start, start + divergencePageSize.value);
+});
+
+const { t } = useI18n();
+
+const triggerFilterOptions = computed(() => [
+  { label: t('evaluationPage.triggerFilterAll'), value: '' },
+  { label: t('evaluationPage.triggerFilterManual'), value: 'manual' },
+  { label: t('evaluationPage.triggerFilterOnline'), value: 'after_turn' },
+  { label: t('evaluationPage.triggerFilterGate'), value: 'gate' },
+]);
+
+const filteredTrendPoints = computed(() => {
+  if (!triggerFilter.value) return props.trendPoints;
+  return props.trendPoints.filter((p) => p.trigger_source === triggerFilter.value);
+});
+
+// Baseline is always the first comparison row (backend sorts by created_at asc).
+const baselineRunId = computed(() => props.comparisons[0]?.run_id ?? '');
+
+const failurePageMax = computed(() => Math.max(1, Math.ceil(props.failureGroups.length / failurePageSize.value)));
+const pagedFailureGroups = computed(() => {
+  const start = (failurePage.value - 1) * failurePageSize.value;
+  return props.failureGroups.slice(start, start + failurePageSize.value);
 });
 
 watch(
@@ -310,12 +469,19 @@ watch(
   },
 );
 
-const { t } = useI18n();
+watch(
+  () => props.failureGroups,
+  () => {
+    failurePage.value = 1;
+  },
+);
 
 const trendColumns = EVAL_TREND_TABLE_COLUMNS;
 const compareSelectColumns = EVAL_RECENT_RUN_TABLE_COLUMNS;
 const comparisonColumns = EVAL_COMPARE_TABLE_COLUMNS;
 const divergenceColumns = computed(() => buildEvalDivergenceColumns(t));
+const failureGroupColumns = computed(() => buildEvalFailureGroupColumns(t));
+const preferenceColumns = computed(() => buildEvalPreferenceColumns(t));
 
 function formatPercent(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
