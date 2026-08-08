@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import {
   approveRun,
   closeRun,
+  controlRun,
   getOutcomeStats,
   getRiskRules,
   getRun,
@@ -13,6 +14,7 @@ import {
   updateRiskRules,
 } from '../../features/self-improvement/api';
 import type {
+  SIControlCommand,
   SIOutcomeStats,
   SIRiskRules,
   SIRiskRulesView,
@@ -189,6 +191,13 @@ export const useSelfImprovementStore = defineStore('selfImprovement', () => {
     patchRow(id, 'closed');
   }
 
+  // control 不 patchRow：指令由流水线在阶段边界异步消费，状态变化不可预知
+  // （pause 驻留原状态 / skip_retry 维持现状 / rollback 之后才转 rejected），
+  // 由调用方刷新详情与列表获取权威状态。
+  async function control(id: string, command: SIControlCommand) {
+    await controlRun(id, command);
+  }
+
   /** 「重新检测」：重置 disabled 标记，重新探测状态并按需加载数据。 */
   async function recheck(filter: SIRunFilter) {
     featureDisabled.value = false;
@@ -224,5 +233,6 @@ export const useSelfImprovementStore = defineStore('selfImprovement', () => {
     reject,
     rollback,
     close,
+    control,
   };
 });

@@ -1,0 +1,191 @@
+{
+  "model": "CLEVER 克莱沃 MPDU Pro PFGA-134-0800",
+  "role": "数据中心管理型 PDU",
+  "prefix": "PFGA",
+  "fbx": "PDU3_CLEVER_PFGA-134-0800.fbx",
+  "glb": "PDU3_CLEVER_PFGA-134-0800.glb",
+  "dims_mm": [
+    482.4,
+    66,
+    44.4
+  ],
+  "units": "mm (pos_mm) / FBX 导出为 cm, UE5 默认 1:1",
+  "electrical": {
+    "input": "220V~/32A IEC 60309 工业插头",
+    "rated_a": 32,
+    "max_w": 7360,
+    "phase": "单相",
+    "metering": "1% 计费级计量 + 四级告警阈值"
+  },
+  "lcd": {
+    "object": "PFGA_LCD",
+    "anchor": "PFGA_ANCHOR_LCD",
+    "pos_mm": [
+      -194.0,
+      -36.7,
+      0.0
+    ],
+    "size_mm": [
+      36.0,
+      20.0
+    ]
+  },
+  "naming": {
+    "static_mesh": "PFGA_DETAIL",
+    "outlet_led": "PFGA_LED_P{nn}  (部分型号无分位灯则 outlets[].led=null)",
+    "sys_led": "PFGA_LED_SYS_{PWR|ALM|NET}",
+    "lcd_screen": "PFGA_LCD  (独立 Mesh, UE5 挂 RenderTarget/WidgetComponent)",
+    "anchor_outlet": "PFGA_ANCHOR_P{nn}  (Empty, 插座 UI 挂点)",
+    "anchor_lcd": "PFGA_ANCHOR_LCD  (Empty, 电力详情 UI 挂点)"
+  },
+  "led_semantics": {
+    "green": "正常供电 (负载<60%) / M_LED_GREEN",
+    "amber": "高负载 (60%~85%) / M_LED_AMBER",
+    "red": "告警/过载 (>85% 或越限) / M_LED_RED",
+    "off": "无输出 (继电器断开/断路器跳闸) / M_LED_OFF",
+    "sys": "PWR=电源(绿) ALM=告警(红) NET=通讯(蓝)"
+  },
+  "outlets": [
+    {
+      "index": 1,
+      "type": "GB10A",
+      "led": "PFGA_LED_P01",
+      "anchor": "PFGA_ANCHOR_P01",
+      "pos_mm": [
+        -118.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "机柜服务器 A 路"
+    },
+    {
+      "index": 2,
+      "type": "GB10A",
+      "led": "PFGA_LED_P02",
+      "anchor": "PFGA_ANCHOR_P02",
+      "pos_mm": [
+        -76.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "机柜服务器 B 路"
+    },
+    {
+      "index": 3,
+      "type": "GB10A",
+      "led": "PFGA_LED_P03",
+      "anchor": "PFGA_ANCHOR_P03",
+      "pos_mm": [
+        -34.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "核心交换机"
+    },
+    {
+      "index": 4,
+      "type": "GB10A",
+      "led": "PFGA_LED_P04",
+      "anchor": "PFGA_ANCHOR_P04",
+      "pos_mm": [
+        8.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "存储阵列"
+    },
+    {
+      "index": 5,
+      "type": "GB10A",
+      "led": "PFGA_LED_P05",
+      "anchor": "PFGA_ANCHOR_P05",
+      "pos_mm": [
+        50.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "KVM 管理终端"
+    },
+    {
+      "index": 6,
+      "type": "GB10A",
+      "led": "PFGA_LED_P06",
+      "anchor": "PFGA_ANCHOR_P06",
+      "pos_mm": [
+        92.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "备份电源输入"
+    },
+    {
+      "index": 7,
+      "type": "GB10A",
+      "led": "PFGA_LED_P07",
+      "anchor": "PFGA_ANCHOR_P07",
+      "pos_mm": [
+        134.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "预留扩容位"
+    },
+    {
+      "index": 8,
+      "type": "GB10A",
+      "led": "PFGA_LED_P08",
+      "anchor": "PFGA_ANCHOR_P08",
+      "pos_mm": [
+        176.0,
+        -35.0,
+        0.0
+      ],
+      "socket": "GB 10A 新国标五孔",
+      "rated_a": 16,
+      "purpose": "维护调试插座"
+    }
+  ],
+  "system_leds": [
+    {
+      "label": "PWR",
+      "object": "PFGA_LED_SYS_PWR",
+      "pos_mm": [
+        -228.0,
+        -35.0,
+        -15.5
+      ]
+    },
+    {
+      "label": "NET",
+      "object": "PFGA_LED_SYS_NET",
+      "pos_mm": [
+        -220.0,
+        -35.0,
+        -15.5
+      ]
+    },
+    {
+      "label": "ALM",
+      "object": "PFGA_LED_SYS_ALM",
+      "pos_mm": [
+        223.0,
+        -37.0,
+        -9.5
+      ]
+    }
+  ]
+}

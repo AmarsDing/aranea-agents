@@ -36,6 +36,8 @@ const (
 	KnowledgeService_CreateVaultDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
 	KnowledgeService_ListDocumentLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 	KnowledgeService_ListCollectionGraph_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
+	KnowledgeService_ListBlockBacklinks_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
+	KnowledgeService_ListDanglingLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 	KnowledgeService_MergeKnowledgeEntities_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 	KnowledgeService_Search_FullMethodName                     = "/kratos.knowledge.v1.KnowledgeService/Search"
@@ -80,6 +82,13 @@ type KnowledgeServiceClient interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error)
+	// ListBlockBacklinks returns block-level inbound references (SP1-E): context
+	// excerpt + source block/document per edge. Single block via block_id path;
+	// aggregate all blocks of a document via the doc_id binding.
+	ListBlockBacklinks(ctx context.Context, in *ListBlockBacklinksRequest, opts ...grpc.CallOption) (*ListBlockBacklinksResponse, error)
+	// ListDanglingLinks aggregates dangling references of one collection by
+	// raw_target with ref counts (SP1-E; "uncreated notes" view).
+	ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...grpc.CallOption) (*ListDanglingLinksResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -262,6 +271,26 @@ func (c *knowledgeServiceClient) ListCollectionGraph(ctx context.Context, in *Li
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListBlockBacklinks(ctx context.Context, in *ListBlockBacklinksRequest, opts ...grpc.CallOption) (*ListBlockBacklinksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListBlockBacklinksResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListBlockBacklinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...grpc.CallOption) (*ListDanglingLinksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDanglingLinksResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListDanglingLinks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...grpc.CallOption) (*ListEntityMergeSuggestionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEntityMergeSuggestionsResponse)
@@ -349,6 +378,13 @@ type KnowledgeServiceServer interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
+	// ListBlockBacklinks returns block-level inbound references (SP1-E): context
+	// excerpt + source block/document per edge. Single block via block_id path;
+	// aggregate all blocks of a document via the doc_id binding.
+	ListBlockBacklinks(context.Context, *ListBlockBacklinksRequest) (*ListBlockBacklinksResponse, error)
+	// ListDanglingLinks aggregates dangling references of one collection by
+	// raw_target with ref counts (SP1-E; "uncreated notes" view).
+	ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -418,6 +454,12 @@ func (UnimplementedKnowledgeServiceServer) ListDocumentLinks(context.Context, *L
 }
 func (UnimplementedKnowledgeServiceServer) ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCollectionGraph not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListBlockBacklinks(context.Context, *ListBlockBacklinksRequest) (*ListBlockBacklinksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListBlockBacklinks not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDanglingLinks not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEntityMergeSuggestions not implemented")
@@ -743,6 +785,42 @@ func _KnowledgeService_ListCollectionGraph_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListBlockBacklinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBlockBacklinksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListBlockBacklinks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListBlockBacklinks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListBlockBacklinks(ctx, req.(*ListBlockBacklinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ListDanglingLinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDanglingLinksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListDanglingLinks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListDanglingLinks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListDanglingLinks(ctx, req.(*ListDanglingLinksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListEntityMergeSuggestionsRequest)
 	if err := dec(in); err != nil {
@@ -903,6 +981,14 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCollectionGraph",
 			Handler:    _KnowledgeService_ListCollectionGraph_Handler,
+		},
+		{
+			MethodName: "ListBlockBacklinks",
+			Handler:    _KnowledgeService_ListBlockBacklinks_Handler,
+		},
+		{
+			MethodName: "ListDanglingLinks",
+			Handler:    _KnowledgeService_ListDanglingLinks_Handler,
 		},
 		{
 			MethodName: "ListEntityMergeSuggestions",

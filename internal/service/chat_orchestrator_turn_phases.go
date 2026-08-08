@@ -837,7 +837,11 @@ func (o *ChatOrchestrator) postProcessTurn(
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	o.bumpSessionRevision(ctx, sessionID)
-	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, persistResult.assistantMsg.ContentMarkdown)
+	// Synthetic evaluation-case turns must not fire post-turn hooks: the
+	// after_turn auto-eval hook would spawn a new run per case and cascade.
+	if input.EntryConfig.EntryPoint != biz.EntryPointEvaluation {
+		o.notifyNativeTurnHooks(ctx, sessionID, ag, content, persistResult.assistantMsg.ContentMarkdown)
+	}
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",
 		event.P("run_id", runID),
 		event.P("reply_len", len(persistResult.assistantMsg.ContentMarkdown)),

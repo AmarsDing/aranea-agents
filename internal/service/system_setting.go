@@ -126,6 +126,7 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 			ASR: biz.ASRProviderConfig{
 				Driver:     req.GetSpeechAsrDriver(),
 				Endpoint:   req.GetSpeechAsrEndpoint(),
+				APIKey:     req.GetSpeechAsrApiKey(),
 				AppKey:     req.GetSpeechAsrAppKey(),
 				AccessKey:  req.GetSpeechAsrAccessKey(),
 				ResourceID: req.GetSpeechAsrResourceId(),
@@ -134,6 +135,7 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 			TTS: biz.TTSProviderConfig{
 				Driver:     req.GetSpeechTtsDriver(),
 				Endpoint:   req.GetSpeechTtsEndpoint(),
+				APIKey:     req.GetSpeechTtsApiKey(),
 				AppKey:     req.GetSpeechTtsAppKey(),
 				AccessKey:  req.GetSpeechTtsAccessKey(),
 				ResourceID: req.GetSpeechTtsResourceId(),
@@ -142,9 +144,11 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 			},
 			ArchiveUserAudio: req.SpeechArchiveUserAudio, // *bool: nil = keep stored
 		}
-		patch.SpeechUpdateASRCred = strings.TrimSpace(req.GetSpeechAsrAppKey()) != "" ||
+		patch.SpeechUpdateASRCred = strings.TrimSpace(req.GetSpeechAsrApiKey()) != "" ||
+			strings.TrimSpace(req.GetSpeechAsrAppKey()) != "" ||
 			strings.TrimSpace(req.GetSpeechAsrAccessKey()) != ""
-		patch.SpeechUpdateTTSCred = strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
+		patch.SpeechUpdateTTSCred = strings.TrimSpace(req.GetSpeechTtsApiKey()) != "" ||
+			strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
 			strings.TrimSpace(req.GetSpeechTtsAccessKey()) != ""
 	}
 	// 流程日志 extra 仅含更新的 key 列表（分区名），严禁记录任何配置值（可能敏感）。
@@ -216,6 +220,7 @@ func hasSpeechUpdate(req *v1.UpdateSystemSettingsRequest) bool {
 		req.GetSpeechAsrEndpoint() != "" ||
 		req.GetSpeechAsrResourceId() != "" ||
 		req.GetSpeechAsrLanguage() != "" ||
+		strings.TrimSpace(req.GetSpeechAsrApiKey()) != "" ||
 		strings.TrimSpace(req.GetSpeechAsrAppKey()) != "" ||
 		strings.TrimSpace(req.GetSpeechAsrAccessKey()) != "" ||
 		req.GetSpeechTtsDriver() != "" ||
@@ -223,6 +228,7 @@ func hasSpeechUpdate(req *v1.UpdateSystemSettingsRequest) bool {
 		req.GetSpeechTtsResourceId() != "" ||
 		req.GetSpeechTtsVoice() != "" ||
 		req.GetSpeechTtsSpeedRatio() > 0 ||
+		strings.TrimSpace(req.GetSpeechTtsApiKey()) != "" ||
 		strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
 		strings.TrimSpace(req.GetSpeechTtsAccessKey()) != "" ||
 		req.SpeechArchiveUserAudio != nil
@@ -279,7 +285,8 @@ func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {
 }
 
 // toProtoSpeech maps stored speech settings to the API view. Credentials are
-// never exposed — only has_api_key markers (knowledge_embed/web_research 同惯例).
+// never exposed — only has_api_key markers (knowledge_embed/web_research 同惯例)。
+// has_api_key 双模式：X-Api-Key 或 legacy AppKey+AccessKey 对任一完整即 true。
 func toProtoSpeech(row biz.SpeechSetting) *v1.SpeechSettings {
 	return &v1.SpeechSettings{
 		Asr: &v1.SpeechASRSettings{
@@ -288,8 +295,7 @@ func toProtoSpeech(row biz.SpeechSetting) *v1.SpeechSettings {
 			ResourceId: row.ASR.ResourceID,
 			Language:   row.ASR.Language,
 			Configured: biz.SpeechASRConfigured(row),
-			HasApiKey: strings.TrimSpace(row.ASR.AppKey) != "" &&
-				strings.TrimSpace(row.ASR.AccessKey) != "",
+			HasApiKey:  biz.SpeechCredOK(row.ASR.APIKey, row.ASR.AppKey, row.ASR.AccessKey),
 		},
 		Tts: &v1.SpeechTTSSettings{
 			Driver:     row.TTS.Driver,
@@ -298,8 +304,7 @@ func toProtoSpeech(row biz.SpeechSetting) *v1.SpeechSettings {
 			Voice:      row.TTS.Voice,
 			SpeedRatio: row.TTS.SpeedRatio,
 			Configured: biz.SpeechTTSConfigured(row),
-			HasApiKey: strings.TrimSpace(row.TTS.AppKey) != "" &&
-				strings.TrimSpace(row.TTS.AccessKey) != "",
+			HasApiKey:  biz.SpeechCredOK(row.TTS.APIKey, row.TTS.AppKey, row.TTS.AccessKey),
 		},
 		ArchiveUserAudio: row.ArchiveUserAudio != nil && *row.ArchiveUserAudio,
 	}

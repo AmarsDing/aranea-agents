@@ -1,0 +1,5476 @@
+{
+ "units": "meters in Blender; FBX exported with unit scale -> UE5 centimeters (1:1 real size)",
+ "coordinate": "front=-Y, up=+Z in Blender; FBX default export axes",
+ "animation": {
+  "frame_1": "assembled",
+  "frame_100": "exploded",
+  "note": "UE5 recommended: drive explode procedurally via explode_dx/dy/dz custom props (lerp home -> home+offset with a Timeline). FBX baked object animation is also included."
+ },
+ "led_materials": {
+  "M_LED_Power": {
+   "bind": "server.power",
+   "states": {
+    "on": "green",
+    "off": "off",
+    "standby": "amber"
+   }
+  },
+  "M_LED_Health": {
+   "bind": "server.health",
+   "states": {
+    "ok": "green",
+    "warning": "amber",
+    "critical": "red"
+   }
+  },
+  "M_LED_Alert": {
+   "bind": "server.alert",
+   "states": {
+    "none": "off",
+    "fault": "amber blink"
+   }
+  },
+  "M_LED_UID": {
+   "bind": "server.uid",
+   "states": {
+    "on": "blue",
+    "off": "off"
+   }
+  },
+  "M_LED_NIC": {
+   "bind": "server.nics[i].activity",
+   "states": {
+    "link": "green",
+    "activity": "green blink",
+    "down": "off"
+   }
+  },
+  "M_LED_Disk": {
+   "bind": "server.disks[i].activity",
+   "states": {
+    "activity": "green blink",
+    "fault": "amber",
+    "off": "off"
+   }
+  }
+ },
+ "led_usage": "UE5: per LED object create a Material Instance Dynamic from its M_LED_* material, set Emissive Color/Intensity from monitoring data. Each LED object custom props carry led_type / led_desc / data_bind.",
+ "hw_props": "Every hardware object carries custom props hw_category/hw_name/hw_model/hw_spec. FBX use_custom_props exports them; UE5 imports as user-defined metadata for UI display.",
+ "servers": {
+  "1U": [
+   {
+    "name": "SRV_1U_ROOT",
+    "type": "EMPTY",
+    "parent": null,
+    "material": null,
+    "props": {
+     "hw_category": "SERVER",
+     "hw_name": "1U Compute Server",
+     "hw_model": "Aranea R110 (1U)",
+     "hw_spec": "2P Xeon, 8x DDR5, 4x LFF, 1x LP GPU, 2x 800W",
+     "server_u": 1
+    }
+   },
+   {
+    "name": "SRV_1U_Bezel_L",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_Bezel_R",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_Bezel_T",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_BTN_Power",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "BUTTON",
+     "hw_name": "Power Button"
+    }
+   },
+   {
+    "name": "SRV_1U_Chipset_HS",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_CPU_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 0",
+     "hw_model": "Intel Xeon Silver 4510",
+     "hw_spec": "12C/24T, 2.4GHz, 150W"
+    }
+   },
+   {
+    "name": "SRV_1U_CPU_0_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 0 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "26mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.07400000000000001
+    }
+   },
+   {
+    "name": "SRV_1U_CPU_0_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_1U_CPU_0_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_CPU_0_socket",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 0 Socket"
+    }
+   },
+   {
+    "name": "SRV_1U_CPU_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 1",
+     "hw_model": "Intel Xeon Silver 4510",
+     "hw_spec": "12C/24T, 2.4GHz, 150W"
+    }
+   },
+   {
+    "name": "SRV_1U_CPU_1_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 1 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "26mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.08600000000000001
+    }
+   },
+   {
+    "name": "SRV_1U_CPU_1_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_1U_CPU_1_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_CPU_1_socket",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 1 Socket"
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 0",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.043000000000000003
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_0_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 1",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.047
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_1_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_2",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 2",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.047
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_2_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_2",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_3",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 3",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.051000000000000004
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_3_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_3",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_4",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 4",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.043000000000000003
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_4_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_4",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_5",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 5",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.047
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_5_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_5",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_6",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 6",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.047
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_6_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_6",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_DIMM_7",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 7",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.051000000000000004
+    }
+   },
+   {
+    "name": "SRV_1U_DIMM_7_chips",
+    "type": "MESH",
+    "parent": "SRV_1U_DIMM_7",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_Ear_L",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_Ear_R",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_EarHole_L_25",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_EarHole_L_75",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_EarHole_R_25",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_EarHole_R_75",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 0",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.041999999999999996
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_0_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_0_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 1",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.04699999999999999
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_1_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_1_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_2",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 2",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.052
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_2_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_2_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_3",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 3",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.041999999999999996
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_3_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_3_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_4",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 4",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.04699999999999999
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_4_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_4_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_5",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 5",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "40mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.052
+    }
+   },
+   {
+    "name": "SRV_1U_FAN_5_blades",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FAN_5_hub",
+    "type": "MESH",
+    "parent": "SRV_1U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_Floor",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_FUSB_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front USB 1",
+     "hw_model": "USB 3.0 Type-A",
+     "hw_spec": "5Gb/s"
+    }
+   },
+   {
+    "name": "SRV_1U_FVGA",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_VGA_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front VGA",
+     "hw_model": "DE-15",
+     "hw_spec": "BMC console video"
+    }
+   },
+   {
+    "name": "SRV_1U_GPU_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 0",
+     "hw_model": "NVIDIA L4 24GB",
+     "hw_spec": "24GB GDDR6, 72W, low-profile single-slot",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.10500000000000001
+    }
+   },
+   {
+    "name": "SRV_1U_GPU_0_backplate",
+    "type": "MESH",
+    "parent": "SRV_1U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_GPU_0_bracket",
+    "type": "MESH",
+    "parent": "SRV_1U_GPU_0",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_GPU_0_conn",
+    "type": "MESH",
+    "parent": "SRV_1U_GPU_0",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_GPU_0_fan0",
+    "type": "MESH",
+    "parent": "SRV_1U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_GPU_0_pwr",
+    "type": "MESH",
+    "parent": "SRV_1U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 0",
+     "hw_model": "3.5in SAS HDD 8TB",
+     "hw_spec": "8TB 7.2K SAS 12Gb/s",
+     "explode_dx": 0.0,
+     "explode_dy": -0.04,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_HDD_0_face",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_0_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_0_label",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_0",
+    "material": "MAT_Label_White",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_0_latch",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 1",
+     "hw_model": "3.5in SAS HDD 8TB",
+     "hw_spec": "8TB 7.2K SAS 12Gb/s",
+     "explode_dx": 0.0,
+     "explode_dy": -0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_HDD_1_face",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_1_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_1_label",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_1",
+    "material": "MAT_Label_White",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_1_latch",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_2",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 2",
+     "hw_model": "3.5in SAS HDD 8TB",
+     "hw_spec": "8TB 7.2K SAS 12Gb/s",
+     "explode_dx": 0.0,
+     "explode_dy": -0.06,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_HDD_2_face",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_2_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_2_label",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_2",
+    "material": "MAT_Label_White",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_2_latch",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_3",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 3",
+     "hw_model": "3.5in SAS HDD 8TB",
+     "hw_spec": "8TB 7.2K SAS 12Gb/s",
+     "explode_dx": 0.0,
+     "explode_dy": -0.07,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_HDD_3_face",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_3_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_3_label",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_3",
+    "material": "MAT_Label_White",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HDD_3_latch",
+    "type": "MESH",
+    "parent": "SRV_1U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_HealthBar",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Health",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "health",
+     "led_desc": "System health bar (chassis health + system ID)",
+     "data_bind": "server.health"
+    }
+   },
+   {
+    "name": "SRV_1U_IO_COM",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_iDRAC",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "iDRAC Management Port",
+     "hw_model": "RJ45 1GbE",
+     "hw_spec": "dedicated BMC"
+    }
+   },
+   {
+    "name": "SRV_1U_IO_RJ45_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_RJ45_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_shield",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_USB_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_USB_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_IO_VGA",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_VGA_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_LED_Alert",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "alert",
+     "led_desc": "Fault alert",
+     "data_bind": "server.alert"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 0 activity",
+     "data_bind": "server.disks[0].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD0_st",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 0 status",
+     "data_bind": "server.disks[0].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 1 activity",
+     "data_bind": "server.disks[1].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD1_st",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 1 status",
+     "data_bind": "server.disks[1].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD2",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 2 activity",
+     "data_bind": "server.disks[2].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD2_st",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 2 status",
+     "data_bind": "server.disks[2].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD3",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 3 activity",
+     "data_bind": "server.disks[3].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_HDD3_st",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 3 status",
+     "data_bind": "server.disks[3].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_NIC1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC1 link/activity",
+     "data_bind": "server.nics[0].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_NIC2",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC2 link/activity",
+     "data_bind": "server.nics[1].activity"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_Power",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "power",
+     "led_desc": "Power status",
+     "data_bind": "server.power"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_PSU0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 0 status",
+     "data_bind": "server.psus[0].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_PSU1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 1 status",
+     "data_bind": "server.psus[1].status"
+    }
+   },
+   {
+    "name": "SRV_1U_LED_UID",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "M_LED_UID",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "uid",
+     "led_desc": "Unit ID beacon",
+     "data_bind": "server.uid"
+    }
+   },
+   {
+    "name": "SRV_1U_Motherboard",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_PCB_Green",
+    "props": {
+     "hw_category": "MOTHERBOARD",
+     "hw_name": "Motherboard",
+     "hw_model": "Aranea MB-1U-2P",
+     "hw_spec": "2P LGA4677, C741, 8x DDR5",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_PCIe_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 1",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_1U_PCIe_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 2",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_1U_PSU_0",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 0",
+     "hw_model": "CRPS 800W Titanium",
+     "hw_spec": "800W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_PSU_0_fan",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_0_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_0_inlet",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_0_rear",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_1",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 1",
+     "hw_model": "CRPS 800W Titanium",
+     "hw_spec": "800W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.062,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_1U_PSU_1_fan",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_1_handle",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_1_inlet",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_PSU_1_rear",
+    "type": "MESH",
+    "parent": "SRV_1U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_RearPanel",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_TopCover",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {
+     "hw_category": "COVER",
+     "hw_name": "Top Cover",
+     "hw_model": "-",
+     "hw_spec": "tool-less latch",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.135
+    }
+   },
+   {
+    "name": "SRV_1U_CoverVents",
+    "type": "MESH",
+    "parent": "SRV_1U_TopCover",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_VRM_HS_L",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_VRM_HS_R",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_Wall_L",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_1U_Wall_R",
+    "type": "MESH",
+    "parent": "SRV_1U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   }
+  ],
+  "2U": [
+   {
+    "name": "SRV_2U_ROOT",
+    "type": "EMPTY",
+    "parent": null,
+    "material": null,
+    "props": {
+     "hw_category": "SERVER",
+     "hw_name": "2U Virtualization Server",
+     "hw_model": "Aranea R220 (2U)",
+     "hw_spec": "2P Xeon, 16x DDR5, 8x SFF, 2x GPU, 2x 1200W",
+     "server_u": 2
+    }
+   },
+   {
+    "name": "SRV_2U_Bezel_L",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_Bezel_R",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_Bezel_T",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_BTN_Power",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "BUTTON",
+     "hw_name": "Power Button"
+    }
+   },
+   {
+    "name": "SRV_2U_Chipset_HS",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_CPU_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 0",
+     "hw_model": "Intel Xeon Gold 6448Y",
+     "hw_spec": "32C/64T, 2.1GHz, 225W"
+    }
+   },
+   {
+    "name": "SRV_2U_CPU_0_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 0 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "45mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.07800000000000001
+    }
+   },
+   {
+    "name": "SRV_2U_CPU_0_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_2U_CPU_0_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_CPU_0_socket",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 0 Socket"
+    }
+   },
+   {
+    "name": "SRV_2U_CPU_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 1",
+     "hw_model": "Intel Xeon Gold 6448Y",
+     "hw_spec": "32C/64T, 2.1GHz, 225W"
+    }
+   },
+   {
+    "name": "SRV_2U_CPU_1_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 1 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "45mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.09000000000000001
+    }
+   },
+   {
+    "name": "SRV_2U_CPU_1_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_2U_CPU_1_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_CPU_1_socket",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 1 Socket"
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 0",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.046
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_0_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 1",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_1_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_10",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 10",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_10_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_10",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_11",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 11",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.057999999999999996
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_11_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_11",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_12",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 12",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_12_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_12",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_13",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 13",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054000000000000006
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_13_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_13",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_14",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 14",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.057999999999999996
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_14_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_14",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_15",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 15",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.062
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_15_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_15",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 2",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_2_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_2",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_3",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 3",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.057999999999999996
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_3_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_3",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_4",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 4",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_4_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_4",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_5",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 5",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054000000000000006
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_5_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_5",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_6",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 6",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.057999999999999996
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_6_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_6",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_7",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 7",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.062
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_7_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_7",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_8",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 8",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.046
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_8_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_8",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_DIMM_9",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 9",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05
+    }
+   },
+   {
+    "name": "SRV_2U_DIMM_9_chips",
+    "type": "MESH",
+    "parent": "SRV_2U_DIMM_9",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Ear_L",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Ear_R",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_EarHole_L_25",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_EarHole_L_75",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_EarHole_R_25",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_EarHole_R_75",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 0",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.046
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_0_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_0_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 1",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.051
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_1_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_1_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 2",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.056
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_2_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_2_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_3",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 3",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.046
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_3_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_3_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_4",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 4",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.051
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_4_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_4_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_5",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 5",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "60mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.056
+    }
+   },
+   {
+    "name": "SRV_2U_FAN_5_blades",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FAN_5_hub",
+    "type": "MESH",
+    "parent": "SRV_2U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Floor",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_FUSB_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front USB 1",
+     "hw_model": "USB 3.0 Type-A",
+     "hw_spec": "5Gb/s"
+    }
+   },
+   {
+    "name": "SRV_2U_FUSB_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front USB 2",
+     "hw_model": "USB 3.0 Type-A",
+     "hw_spec": "5Gb/s"
+    }
+   },
+   {
+    "name": "SRV_2U_GPU_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 0",
+     "hw_model": "NVIDIA L40S 48GB",
+     "hw_spec": "48GB GDDR6, 350W, dual-slot FHFL",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.125
+    }
+   },
+   {
+    "name": "SRV_2U_GPU_0_backplate",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_0_bracket",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_0_conn",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_0_fan0",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_0_fan1",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_0_pwr",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 1",
+     "hw_model": "NVIDIA L40S 48GB",
+     "hw_spec": "48GB GDDR6, 350W, dual-slot FHFL",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.14
+    }
+   },
+   {
+    "name": "SRV_2U_GPU_1_backplate",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1_bracket",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1_conn",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1_fan0",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1_fan1",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_GPU_1_pwr",
+    "type": "MESH",
+    "parent": "SRV_2U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Grille_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "hw_category": "VENT",
+     "hw_name": "Ventilation Grille 0",
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 0",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.04,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_0_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_0_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_0_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 1",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_1_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_1_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_1_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 2",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.06,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_2_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_2_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_2_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_3",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 3",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.07,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_3_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_3_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_3_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_4",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 4",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.08,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_4_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_4",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_4_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_4_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_4",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_5",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 5",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.09,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_5_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_5",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_5_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_5_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_5",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_6",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 6",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.1,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_6_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_6",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_6_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_6",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_6_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_6",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_7",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 7",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.11000000000000001,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_HDD_7_face",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_7",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_7_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_7",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HDD_7_latch",
+    "type": "MESH",
+    "parent": "SRV_2U_HDD_7",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_HealthBar",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Health",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "health",
+     "led_desc": "System health bar (chassis health + system ID)",
+     "data_bind": "server.health"
+    }
+   },
+   {
+    "name": "SRV_2U_IO_COM",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_iDRAC",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "iDRAC Management Port",
+     "hw_model": "RJ45 1GbE",
+     "hw_spec": "dedicated BMC"
+    }
+   },
+   {
+    "name": "SRV_2U_IO_RJ45_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_RJ45_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_shield",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_USB_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_USB_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_IO_VGA",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_VGA_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_LED_Alert",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "alert",
+     "led_desc": "Fault alert",
+     "data_bind": "server.alert"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 0 activity",
+     "data_bind": "server.disks[0].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD0_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 0 status",
+     "data_bind": "server.disks[0].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 1 activity",
+     "data_bind": "server.disks[1].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD1_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 1 status",
+     "data_bind": "server.disks[1].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 2 activity",
+     "data_bind": "server.disks[2].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD2_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 2 status",
+     "data_bind": "server.disks[2].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD3",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 3 activity",
+     "data_bind": "server.disks[3].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD3_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 3 status",
+     "data_bind": "server.disks[3].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD4",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 4 activity",
+     "data_bind": "server.disks[4].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD4_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 4 status",
+     "data_bind": "server.disks[4].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD5",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 5 activity",
+     "data_bind": "server.disks[5].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD5_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 5 status",
+     "data_bind": "server.disks[5].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD6",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 6 activity",
+     "data_bind": "server.disks[6].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD6_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 6 status",
+     "data_bind": "server.disks[6].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD7",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 7 activity",
+     "data_bind": "server.disks[7].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_HDD7_st",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 7 status",
+     "data_bind": "server.disks[7].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_NIC1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC1 link/activity",
+     "data_bind": "server.nics[0].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_NIC2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC2 link/activity",
+     "data_bind": "server.nics[1].activity"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_Power",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "power",
+     "led_desc": "Power status",
+     "data_bind": "server.power"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_PSU0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 0 status",
+     "data_bind": "server.psus[0].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_PSU1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 1 status",
+     "data_bind": "server.psus[1].status"
+    }
+   },
+   {
+    "name": "SRV_2U_LED_UID",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "M_LED_UID",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "uid",
+     "led_desc": "Unit ID beacon",
+     "data_bind": "server.uid"
+    }
+   },
+   {
+    "name": "SRV_2U_Motherboard",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_PCB_Green",
+    "props": {
+     "hw_category": "MOTHERBOARD",
+     "hw_name": "Motherboard",
+     "hw_model": "Aranea MB-2U-2P",
+     "hw_spec": "2P LGA4677, C741, 16x DDR5, 5x PCIe5",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_PCIe_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 1",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_2U_PCIe_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 2",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_2U_PCIe_2",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 3",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_2U_PCIe_3",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 4",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_2U_PSU_0",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 0",
+     "hw_model": "CRPS 1200W Titanium",
+     "hw_spec": "1200W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_PSU_0_fan",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_0_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_0_inlet",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_0_rear",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_1",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 1",
+     "hw_model": "CRPS 1200W Titanium",
+     "hw_spec": "1200W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.062,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_2U_PSU_1_fan",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_1_handle",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_1_inlet",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_PSU_1_rear",
+    "type": "MESH",
+    "parent": "SRV_2U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_RearPanel",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_TopCover",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {
+     "hw_category": "COVER",
+     "hw_name": "Top Cover",
+     "hw_model": "-",
+     "hw_spec": "tool-less latch",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.17
+    }
+   },
+   {
+    "name": "SRV_2U_CoverVents",
+    "type": "MESH",
+    "parent": "SRV_2U_TopCover",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_VRM_HS_L",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_VRM_HS_R",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Wall_L",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_2U_Wall_R",
+    "type": "MESH",
+    "parent": "SRV_2U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   }
+  ],
+  "4U": [
+   {
+    "name": "SRV_4U_ROOT",
+    "type": "EMPTY",
+    "parent": null,
+    "material": null,
+    "props": {
+     "hw_category": "SERVER",
+     "hw_name": "4U AI Training Server",
+     "hw_model": "Aranea R540 (4U)",
+     "hw_spec": "2P Xeon, 16x DDR5, 10x SFF, 4x GPU, 4x 2000W",
+     "server_u": 4
+    }
+   },
+   {
+    "name": "SRV_4U_Bezel_L",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_Bezel_R",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_BTN_Power",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "BUTTON",
+     "hw_name": "Power Button"
+    }
+   },
+   {
+    "name": "SRV_4U_Chipset_HS",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_CPU_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 0",
+     "hw_model": "Intel Xeon Platinum 8480+",
+     "hw_spec": "56C/112T, 2.0GHz, 350W"
+    }
+   },
+   {
+    "name": "SRV_4U_CPU_0_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 0 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "100mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.08600000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_CPU_0_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_4U_CPU_0_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_CPU_0_socket",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 0 Socket"
+    }
+   },
+   {
+    "name": "SRV_4U_CPU_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Contact_Gold",
+    "props": {
+     "hw_category": "CPU",
+     "hw_name": "CPU 1",
+     "hw_model": "Intel Xeon Platinum 8480+",
+     "hw_spec": "56C/112T, 2.0GHz, 350W"
+    }
+   },
+   {
+    "name": "SRV_4U_CPU_1_Heatsink",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Heatsink_Cu",
+    "props": {
+     "hw_category": "HEATSINK",
+     "hw_name": "CPU 1 Heatsink",
+     "hw_model": "Passive coldplate, front-to-back airflow",
+     "hw_spec": "100mm Al fin stack + Cu base",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.098
+    }
+   },
+   {
+    "name": "SRV_4U_CPU_1_HS_fins",
+    "type": "MESH",
+    "parent": "SRV_4U_CPU_1_Heatsink",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_CPU_1_socket",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "CPU_SOCKET",
+     "hw_name": "CPU 1 Socket"
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 0",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.052000000000000005
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_0_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 1",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05600000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_1_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_10",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 10",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.060000000000000005
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_10_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_10",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_11",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 11",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_11_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_11",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_12",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 12",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05600000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_12_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_12",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_13",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 13",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.06000000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_13_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_13",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_14",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 14",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_14_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_14",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_15",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 15",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.068
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_15_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_15",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 2",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.060000000000000005
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_2_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_2",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 3",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_3_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_3",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_4",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 4",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05600000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_4_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_4",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_5",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 5",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.06000000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_5_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_5",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_6",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 6",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_6_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_6",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_7",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 7",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.068
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_7_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_7",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_8",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 8",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.052000000000000005
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_8_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_8",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_DIMM_9",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_DIMM_PCB",
+    "props": {
+     "hw_category": "MEMORY",
+     "hw_name": "DIMM 9",
+     "hw_model": "DDR5 RDIMM 64GB",
+     "hw_spec": "64GB DDR5-5600 ECC Registered",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.05600000000000001
+    }
+   },
+   {
+    "name": "SRV_4U_DIMM_9_chips",
+    "type": "MESH",
+    "parent": "SRV_4U_DIMM_9",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Ear_L",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Ear_R",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_EarHole_L_25",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_EarHole_L_75",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_EarHole_R_25",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_EarHole_R_75",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 0",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_0_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_0_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 1",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.059
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_1_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_1_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 2",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_2_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_2_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 3",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_3_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_3_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_4",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 4",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.059
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_4_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_4_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_5",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 5",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.064
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_5_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_5_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_6",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 6",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.054
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_6_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_6",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_6_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_6",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_7",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {
+     "hw_category": "FAN",
+     "hw_name": "Cooling Fan 7",
+     "hw_model": "Delta FFB series (dual-rotor)",
+     "hw_spec": "80mm PWM, hot-swap",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.059
+    }
+   },
+   {
+    "name": "SRV_4U_FAN_7_blades",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_7",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FAN_7_hub",
+    "type": "MESH",
+    "parent": "SRV_4U_FAN_7",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Floor",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_FUSB_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front USB 1",
+     "hw_model": "USB 3.0 Type-A",
+     "hw_spec": "5Gb/s"
+    }
+   },
+   {
+    "name": "SRV_4U_FUSB_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front USB 2",
+     "hw_model": "USB 3.0 Type-A",
+     "hw_spec": "5Gb/s"
+    }
+   },
+   {
+    "name": "SRV_4U_FVGA",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_VGA_Blue",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "Front VGA",
+     "hw_model": "DE-15",
+     "hw_spec": "BMC console video"
+    }
+   },
+   {
+    "name": "SRV_4U_GPU_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 0",
+     "hw_model": "NVIDIA H100 80GB PCIe",
+     "hw_spec": "80GB HBM3, 350W, NVLink",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.165
+    }
+   },
+   {
+    "name": "SRV_4U_GPU_0_backplate",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_0_bracket",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_0_conn",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_0_fan0",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_0_fan1",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_0_pwr",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 1",
+     "hw_model": "NVIDIA H100 80GB PCIe",
+     "hw_spec": "80GB HBM3, 350W, NVLink",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.18
+    }
+   },
+   {
+    "name": "SRV_4U_GPU_1_backplate",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1_bracket",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1_conn",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1_fan0",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1_fan1",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_1_pwr",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 2",
+     "hw_model": "NVIDIA H100 80GB PCIe",
+     "hw_spec": "80GB HBM3, 350W, NVLink",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.195
+    }
+   },
+   {
+    "name": "SRV_4U_GPU_2_backplate",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2_bracket",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2_conn",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2_fan0",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2_fan1",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_2_pwr",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_GPU_Shroud",
+    "props": {
+     "hw_category": "GPU",
+     "hw_name": "GPU 3",
+     "hw_model": "NVIDIA H100 80GB PCIe",
+     "hw_spec": "80GB HBM3, 350W, NVLink",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.21000000000000002
+    }
+   },
+   {
+    "name": "SRV_4U_GPU_3_backplate",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3_bracket",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3_conn",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Contact_Gold",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3_fan0",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3_fan1",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_GPU_3_pwr",
+    "type": "MESH",
+    "parent": "SRV_4U_GPU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Grille_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Front_Bezel",
+    "props": {
+     "hw_category": "VENT",
+     "hw_name": "Ventilation Grille 0",
+     "explode_dx": 0.0,
+     "explode_dy": -0.055,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 0",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.04,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_0_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_0_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_0_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_0",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 1",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_1_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_1_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_1_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_1",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 2",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.06,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_2_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_2_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_2_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_2",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 3",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.07,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_3_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_3_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_3_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_3",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_4",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 4",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.08,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_4_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_4",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_4_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_4",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_4_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_4",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_5",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 5",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.09,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_5_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_5",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_5_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_5",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_5_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_5",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_6",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 6",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.1,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_6_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_6",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_6_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_6",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_6_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_6",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_7",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 7",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.11000000000000001,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_7_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_7",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_7_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_7",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_7_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_7",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_8",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 8",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.12,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_8_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_8",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_8_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_8",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_8_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_8",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_9",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_HDD_Top",
+    "props": {
+     "hw_category": "STORAGE",
+     "hw_name": "Drive Bay 9",
+     "hw_model": "2.5in NVMe SSD 3.84TB",
+     "hw_spec": "3.84TB NVMe Gen4 U.2",
+     "explode_dx": 0.0,
+     "explode_dy": -0.13,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_HDD_9_face",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_9",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_9_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_9",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HDD_9_latch",
+    "type": "MESH",
+    "parent": "SRV_4U_HDD_9",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_HealthBar",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Health",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "health",
+     "led_desc": "System health bar (chassis health + system ID)",
+     "data_bind": "server.health"
+    }
+   },
+   {
+    "name": "SRV_4U_IO_COM",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_iDRAC",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {
+     "hw_category": "PORT",
+     "hw_name": "iDRAC Management Port",
+     "hw_model": "RJ45 1GbE",
+     "hw_spec": "dedicated BMC"
+    }
+   },
+   {
+    "name": "SRV_4U_IO_RJ45_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_RJ45_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_shield",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_USB_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_USB_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_USB_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_IO_VGA",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_VGA_Blue",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_LED_Alert",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "alert",
+     "led_desc": "Fault alert",
+     "data_bind": "server.alert"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 0 activity",
+     "data_bind": "server.disks[0].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD0_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 0 status",
+     "data_bind": "server.disks[0].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 1 activity",
+     "data_bind": "server.disks[1].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD1_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 1 status",
+     "data_bind": "server.disks[1].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 2 activity",
+     "data_bind": "server.disks[2].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD2_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 2 status",
+     "data_bind": "server.disks[2].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 3 activity",
+     "data_bind": "server.disks[3].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD3_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 3 status",
+     "data_bind": "server.disks[3].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD4",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 4 activity",
+     "data_bind": "server.disks[4].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD4_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 4 status",
+     "data_bind": "server.disks[4].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD5",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 5 activity",
+     "data_bind": "server.disks[5].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD5_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 5 status",
+     "data_bind": "server.disks[5].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD6",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 6 activity",
+     "data_bind": "server.disks[6].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD6_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 6 status",
+     "data_bind": "server.disks[6].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD7",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 7 activity",
+     "data_bind": "server.disks[7].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD7_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 7 status",
+     "data_bind": "server.disks[7].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD8",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 8 activity",
+     "data_bind": "server.disks[8].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD8_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 8 status",
+     "data_bind": "server.disks[8].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD9",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Disk",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk",
+     "led_desc": "Drive 9 activity",
+     "data_bind": "server.disks[9].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_HDD9_st",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Alert",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "disk_status",
+     "led_desc": "Drive 9 status",
+     "data_bind": "server.disks[9].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_NIC1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC1 link/activity",
+     "data_bind": "server.nics[0].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_NIC2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_NIC",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "nic",
+     "led_desc": "NIC2 link/activity",
+     "data_bind": "server.nics[1].activity"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_Power",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "power",
+     "led_desc": "Power status",
+     "data_bind": "server.power"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_PSU0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 0 status",
+     "data_bind": "server.psus[0].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_PSU1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 1 status",
+     "data_bind": "server.psus[1].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_PSU2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 2 status",
+     "data_bind": "server.psus[2].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_PSU3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_Power",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "psu",
+     "led_desc": "PSU 3 status",
+     "data_bind": "server.psus[3].status"
+    }
+   },
+   {
+    "name": "SRV_4U_LED_UID",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "M_LED_UID",
+    "props": {
+     "hw_category": "LED",
+     "led_type": "uid",
+     "led_desc": "Unit ID beacon",
+     "data_bind": "server.uid"
+    }
+   },
+   {
+    "name": "SRV_4U_Motherboard",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_PCB_Green",
+    "props": {
+     "hw_category": "MOTHERBOARD",
+     "hw_name": "Motherboard",
+     "hw_model": "Aranea MB-4U-2P",
+     "hw_spec": "2P LGA4677, C741, 16x DDR5, 8x PCIe5 x16",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 1",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 2",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 3",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 4",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_4",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 5",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PCIe_5",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Tray_Silver",
+    "props": {
+     "hw_category": "PCIE_SLOT",
+     "hw_name": "PCIe Slot 6",
+     "hw_model": "PCIe 5.0 x16 (riser)",
+     "hw_spec": "expansion via riser cage"
+    }
+   },
+   {
+    "name": "SRV_4U_PSU_0",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 0",
+     "hw_model": "CRPS 2000W Titanium",
+     "hw_spec": "2000W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.05,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_PSU_0_fan",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_0_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_0_inlet",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_0",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_0_rear",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_0",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_1",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 1",
+     "hw_model": "CRPS 2000W Titanium",
+     "hw_spec": "2000W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.062,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_PSU_1_fan",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_1_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_1_inlet",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_1",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_1_rear",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_1",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_2",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 2",
+     "hw_model": "CRPS 2000W Titanium",
+     "hw_spec": "2000W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.07400000000000001,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_PSU_2_fan",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_2",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_2_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_2_inlet",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_2",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_2_rear",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_2",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_3",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_PSU_Shell",
+    "props": {
+     "hw_category": "PSU",
+     "hw_name": "PSU 3",
+     "hw_model": "CRPS 2000W Titanium",
+     "hw_spec": "2000W 80+ Titanium, hot-swap redundant",
+     "explode_dx": 0.0,
+     "explode_dy": 0.08600000000000001,
+     "explode_dz": 0.0
+    }
+   },
+   {
+    "name": "SRV_4U_PSU_3_fan",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_3",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_3_handle",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_3_inlet",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_3",
+    "material": "MAT_Chip_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_PSU_3_rear",
+    "type": "MESH",
+    "parent": "SRV_4U_PSU_3",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_RearPanel",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_TopCover",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {
+     "hw_category": "COVER",
+     "hw_name": "Top Cover",
+     "hw_model": "-",
+     "hw_spec": "tool-less latch",
+     "explode_dx": 0.0,
+     "explode_dy": 0.0,
+     "explode_dz": 0.24000000000000002
+    }
+   },
+   {
+    "name": "SRV_4U_CoverVents",
+    "type": "MESH",
+    "parent": "SRV_4U_TopCover",
+    "material": "MAT_Plastic_Black",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_VRM_HS_L",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_VRM_HS_R",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Heatsink_Al",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Wall_L",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   },
+   {
+    "name": "SRV_4U_Wall_R",
+    "type": "MESH",
+    "parent": "SRV_4U_ROOT",
+    "material": "MAT_Chassis_Steel",
+    "props": {}
+   }
+  ]
+ },
+ "assembly": {
+  "1U": {
+   "u_count": 1,
+   "dims_m": {
+    "width": 0.4826,
+    "depth": 0.6813,
+    "height": 0.04445
+   },
+   "mount": {
+    "front_y_local": -0.34,
+    "bottom_z_local": 0.0,
+    "formula": "rack 装配: root.z = u_bottom_z(u); root.y = rack_rail_front_y + D/2"
+   },
+   "ports": [
+    {
+     "name": "SRV_1U_FUSB_0",
+     "category": "PORT",
+     "desc": "Front USB 1",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3365,
+      0.02245
+     ]
+    },
+    {
+     "name": "SRV_1U_FVGA",
+     "category": "PORT",
+     "desc": "Front VGA",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3365,
+      0.011
+     ]
+    },
+    {
+     "name": "SRV_1U_IO_iDRAC",
+     "category": "PORT",
+     "desc": "iDRAC Management Port",
+     "bind": "",
+     "pos_local": [
+      -0.108,
+      0.3338,
+      0.014
+     ]
+    },
+    {
+     "name": "SRV_1U_LED_NIC1",
+     "category": "LED",
+     "desc": "NIC1 link/activity",
+     "bind": "server.nics[0].activity",
+     "pos_local": [
+      -0.196,
+      0.3398,
+      0.019
+     ]
+    },
+    {
+     "name": "SRV_1U_LED_NIC2",
+     "category": "LED",
+     "desc": "NIC2 link/activity",
+     "bind": "server.nics[1].activity",
+     "pos_local": [
+      -0.196,
+      0.3398,
+      0.034
+     ]
+    },
+    {
+     "name": "SRV_1U_PSU_0",
+     "category": "PSU",
+     "desc": "PSU 0",
+     "bind": "",
+     "pos_local": [
+      -0.0075,
+      0.2395,
+      0.0217
+     ]
+    },
+    {
+     "name": "SRV_1U_PSU_1",
+     "category": "PSU",
+     "desc": "PSU 1",
+     "bind": "",
+     "pos_local": [
+      0.0755,
+      0.2395,
+      0.0217
+     ]
+    }
+   ]
+  },
+  "2U": {
+   "u_count": 2,
+   "dims_m": {
+    "width": 0.4826,
+    "depth": 0.7213,
+    "height": 0.092
+   },
+   "mount": {
+    "front_y_local": -0.36,
+    "bottom_z_local": 0.0,
+    "formula": "rack 装配: root.z = u_bottom_z(u); root.y = rack_rail_front_y + D/2"
+   },
+   "ports": [
+    {
+     "name": "SRV_2U_FUSB_0",
+     "category": "PORT",
+     "desc": "Front USB 1",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3565,
+      0.0669
+     ]
+    },
+    {
+     "name": "SRV_2U_FUSB_1",
+     "category": "PORT",
+     "desc": "Front USB 2",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3565,
+      0.0559
+     ]
+    },
+    {
+     "name": "SRV_2U_IO_iDRAC",
+     "category": "PORT",
+     "desc": "iDRAC Management Port",
+     "bind": "",
+     "pos_local": [
+      -0.108,
+      0.3538,
+      0.014
+     ]
+    },
+    {
+     "name": "SRV_2U_LED_NIC1",
+     "category": "LED",
+     "desc": "NIC1 link/activity",
+     "bind": "server.nics[0].activity",
+     "pos_local": [
+      -0.196,
+      0.3598,
+      0.019
+     ]
+    },
+    {
+     "name": "SRV_2U_LED_NIC2",
+     "category": "LED",
+     "desc": "NIC2 link/activity",
+     "bind": "server.nics[1].activity",
+     "pos_local": [
+      -0.196,
+      0.3598,
+      0.034
+     ]
+    },
+    {
+     "name": "SRV_2U_PSU_0",
+     "category": "PSU",
+     "desc": "PSU 0",
+     "bind": "",
+     "pos_local": [
+      -0.00825,
+      0.252,
+      0.0217
+     ]
+    },
+    {
+     "name": "SRV_2U_PSU_1",
+     "category": "PSU",
+     "desc": "PSU 1",
+     "bind": "",
+     "pos_local": [
+      0.07325,
+      0.252,
+      0.0217
+     ]
+    }
+   ]
+  },
+  "4U": {
+   "u_count": 4,
+   "dims_m": {
+    "width": 0.4826,
+    "depth": 0.7713,
+    "height": 0.18
+   },
+   "mount": {
+    "front_y_local": -0.385,
+    "bottom_z_local": 0.0,
+    "formula": "rack 装配: root.z = u_bottom_z(u); root.y = rack_rail_front_y + D/2"
+   },
+   "ports": [
+    {
+     "name": "SRV_4U_FUSB_0",
+     "category": "PORT",
+     "desc": "Front USB 1",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3815,
+      0.0595
+     ]
+    },
+    {
+     "name": "SRV_4U_FUSB_1",
+     "category": "PORT",
+     "desc": "Front USB 2",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3815,
+      0.0485
+     ]
+    },
+    {
+     "name": "SRV_4U_FVGA",
+     "category": "PORT",
+     "desc": "Front VGA",
+     "bind": "",
+     "pos_local": [
+      0.22815,
+      -0.3815,
+      0.011
+     ]
+    },
+    {
+     "name": "SRV_4U_IO_iDRAC",
+     "category": "PORT",
+     "desc": "iDRAC Management Port",
+     "bind": "",
+     "pos_local": [
+      -0.105,
+      0.3788,
+      0.063
+     ]
+    },
+    {
+     "name": "SRV_4U_LED_NIC1",
+     "category": "LED",
+     "desc": "NIC1 link/activity",
+     "bind": "server.nics[0].activity",
+     "pos_local": [
+      -0.193,
+      0.3848,
+      0.068
+     ]
+    },
+    {
+     "name": "SRV_4U_LED_NIC2",
+     "category": "LED",
+     "desc": "NIC2 link/activity",
+     "bind": "server.nics[1].activity",
+     "pos_local": [
+      -0.193,
+      0.3848,
+      0.083
+     ]
+    },
+    {
+     "name": "SRV_4U_PSU_0",
+     "category": "PSU",
+     "desc": "PSU 0",
+     "bind": "",
+     "pos_local": [
+      -0.12225,
+      0.277,
+      0.0217
+     ]
+    },
+    {
+     "name": "SRV_4U_PSU_1",
+     "category": "PSU",
+     "desc": "PSU 1",
+     "bind": "",
+     "pos_local": [
+      -0.04075,
+      0.277,
+      0.0217
+     ]
+    },
+    {
+     "name": "SRV_4U_PSU_2",
+     "category": "PSU",
+     "desc": "PSU 2",
+     "bind": "",
+     "pos_local": [
+      0.04075,
+      0.277,
+      0.0217
+     ]
+    },
+    {
+     "name": "SRV_4U_PSU_3",
+     "category": "PSU",
+     "desc": "PSU 3",
+     "bind": "",
+     "pos_local": [
+      0.12225,
+      0.277,
+      0.0217
+     ]
+    }
+   ]
+  }
+ }
+}

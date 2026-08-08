@@ -7,6 +7,7 @@ import type {
   SIDiagnosis,
   SIGateResult,
   SIGovernanceDecision,
+  SIControlCommand,
   SICriticReport,
   SIOutcomeStats,
   SIRiskRules,
@@ -133,6 +134,11 @@ export async function rollbackRun(id: string, reason?: string): Promise<void> {
 
 export async function closeRun(id: string, reason?: string): Promise<void> {
   await si.CloseRun({ id, reason: reason || undefined });
+}
+
+/** ControlRun — 用户介入指令（pause/skip_retry/rollback），由流水线在阶段边界异步消费。 */
+export async function controlRun(id: string, command: SIControlCommand): Promise<void> {
+  await si.ControlRun({ id, command });
 }
 
 /** GetStatus — 功能可用性 + 前置条件自检（disabled 时也可调用）。 */

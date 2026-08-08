@@ -1069,7 +1069,7 @@ G5-F（后端治理，独立可并行）─────────────�
 > **设计契约**：[37-knowledge.design.md §子模块：双模块级知识内核（SP1）](./37-knowledge.design.md#子模块双模块级知识内核sp12026-08-08-评审通过)（S1~S11）
 > **需求**：[37-knowledge.md §子模块：双模块级知识内核（SP1）](./37-knowledge.md#子模块双模块级知识内核sp12026-08-08-评审通过)（US-24~US-29、F-SP1-1~11、NFR-SP1-1~4、验收 38~44）
 > **调研依据**：[2026-08-08-research-pkm-obsidian-blueprint.md](../reports/2026-08-08-research-pkm-obsidian-blueprint.md)（学术 × 开源 × Obsidian 逆向 × SiYuan 源码四路调研；SiYuan 证据锚点 `test/pkm-research/D-siyuan-kernel.md` §10）
-> **状态**：🟡 进行中（SP1-A/B/C 已建成） | 用户已裁决：SP1 做块级双链完整粒度；批准双模统一架构 + SP1 范围落档三件套。2026-08-08 深入评审通过：B-1~B-4 修订已合入下列任务（C-1/C-3/D-1/D-2/F-2/G-2）。
+> **状态**：🟡 进行中（SP1-A/B/C/D/E/F 已建成） | 用户已裁决：SP1 做块级双链完整粒度；批准双模统一架构 + SP1 范围落档三件套。2026-08-08 深入评审通过：B-1~B-4 修订已合入下列任务（C-1/C-3/D-1/D-2/F-2/G-2）。
 > **License 纪律**：SiYuan（AGPL）/Logseq（AGPL）仅借鉴思路，全部逐行自研；解析器用 goldmark（MIT）扩展。
 
 ### 总览
@@ -1080,8 +1080,8 @@ G5-F（后端治理，独立可并行）─────────────�
 | **SP1-B** | 块/refs 物化表（DDL 迁移 + ReplaceDocBlocks Repo） | F-SP1-3、NFR-SP1-2 | ✅ |
 | **SP1-C** | Resolver + 写路径接线 + explicit 轨投影 | F-SP1-3/8、S3/S4 | ✅ |
 | **SP1-D** | 统一链接索引 LinkIndex + WS 增量 | F-SP1-4、NFR-SP1-4、S5 | ✅ |
-| **SP1-E** | 块级反链 API（含 dangling 语义） | F-SP1-5、S8 | 📋 |
-| **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | 📋 |
+| **SP1-E** | 块级反链 API（含 dangling 语义） | F-SP1-5、S8 | ✅ |
+| **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | ✅ |
 | **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | 📋 |
 | **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | 📋 |
 | **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | 📋 |
@@ -1158,14 +1158,33 @@ G5-F（后端治理，独立可并行）─────────────�
 
 验收：反链精确到块级含上下文片段；文档反链 = 全部块反链聚合；dangling 出现在目标名反链语义中（验收 39）。
 
+> **2026-08-08 完成（TDD，E-1/E-2）**：
+> - **E-1 Proto**：`BlockBacklink`（src_block/src_doc/src_collection/src_doc_name/raw_target/edge_type/context/ambiguous）+ `DanglingLink`（raw_target/ref_count/refs）+ 双 RPC（`ListBlockBacklinks` 支持 block_id 路径与 doc_id 绑定双路由，doc_id 优先；`ListDanglingLinks` 按集合聚合）。
+> - **E-2 biz 读路径**（`internal/biz/knowledge/backlink.go`）：读路由 `linkIndex.Loaded()` 已加载 → 直读内存图（O(度数)）；启动窗口未加载 → `BlockLinkReader` 落库兜底；双端口未接线 → 空降级。**loaded 门**（`LinkIndex.Loaded()`，LoadAll 置位）修复启动窗口读空图误判无反链。`DocNameReader` 批量解析源文档显示名（rel_path 优先、source 兜底），失败/缺失留空不阻塞主查询。输出确定性：反链按 (SrcDocID, SrcBlockID) 字典序；dangling 组间 ref_count 降序 + raw_target 字典序，组内同反链序。`ResolveBlockOwnerDoc` 支撑块级路径的 service 权限断言前置。
+> - **E-2 data 兜底**：`knowledgeBlockRepo` 实现 `BlockLinkReader`（`ListBacklinksByBlock/ByDoc/ListDanglingEdges/GetBlockOwnerDoc`，复用 `refEdgeSelect` 公共 SELECT+JOIN）；主 repo 实现 `ListDocumentNames`（`COALESCE(NULLIF(rel_path,''), source)`，空入参短路）。
+> - **E-2 service**：`internal/service/knowledge_backlink.go`——双 RPC + proto 映射；块级路径经 `ResolveBlockOwnerDoc → GetDocument → GetCollection → assertCollectionAccess` 权限链（与 ListDocumentLinks 同款 C-01 跨租户断言）；装配 `ProvideKnowledgeUsecase` 类型断言自动接线（BlockLinkReader ← blockIndex repo，DocNameReader ← 主 repo）。
+> - **测试**：biz 7 用例（内存图/doc 聚合/DB 兜底/参数校验/名字降级/dangling 聚合排序/兜底+校验）+ data PG 集成 3 用例（三查询/空结果/名字解析）+ service 3 用例（块路径含 NotFound/BadRequest、doc 绑定、dangling 聚合+未知集合）全绿。
+>
+> 验证：`go test ./internal/biz/... ./internal/data/ ./internal/service/ ./internal/knowledge/... -count=1` 全绿（service 包 2 个 models.dev 网络依赖失败为已登记环境受限项，与本改动无关）；`go vet` + `gofmt` 全净。
+
 ### SP1-F：团队库后端（vault_backend 维度）
 
 | # | 任务 | 涉及文件 |
 |---|------|----------|
-| F-1 | `knowledge_collections` 加 `vault_backend TEXT NOT NULL DEFAULT 'local'`（DDL 迁移 + Ent Schema）；约束调整：backend=local 时 root_path 必填唯一，team 时为空 | `internal/data/ent/schema/knowledge_collection.go`、`sql/migrations/`（新增）、`ddl_migration_registry.go` |
+| F-1 | `knowledge_collections` 加 `vault_backend TEXT NOT NULL DEFAULT 'local'`（DDL 迁移 + ~~Ent Schema~~（B-1 裁决：knowledge 域纯 Raw SQL，无 Ent，实际为 `EnsureKnowledgeSchema` fresh 形态））；约束调整：backend=local 时 root_path 必填唯一，team 时为空 | `internal/data/knowledge.go`、`sql/migrations/20261205_knowledge_vault_backend.sql`（新增）、`ddl_migration_registry.go` |
 | F-2 | team 库文档本体复用 PG `knowledge_documents.content_text` 路径；同管线解析接线（content_text → blockparse → 同套块/边表）；team 库无 SyncEngine（PG 即真相源）；**写路径契约（B-2）**：SP1 单写者语义 + activities 审计，并发冲突协议（版本/etag）后置 SP2；Proto `KnowledgeCollection` + `vault_backend` 字段 | `internal/biz/knowledge/`、`internal/service/knowledge.go`、`knowledge.proto` |
 
 验收：两种库走同一条解析管线产出同构索引（US-26-2）；图谱/检索对个人边与团队边统一查询按可见性过滤（US-26-3）。
+
+> **2026-08-08 完成（TDD，F-1/F-2）**：
+> - **F-1 DDL**：迁移 `20261205_knowledge_vault_backend.sql`（幂等 ALTER，存量行默认 `local` 与历史语义一致无需回填）+ `EnsureKnowledgeSchema` fresh 形态补列 + registry 登记（Version 20261205）。root_path 部分唯一索引（`WHERE root_path <> ''`）对 team 行天然不生效，无需调整。
+> - **F-1 Proto/模型**：`KnowledgeCollection.vault_backend=15` + `CreateCollectionRequest.vault_backend=5`（root_path 由 REQUIRED 注解改条件必填：local 必填 / team 必须为空）；biz `Collection.VaultBackend` + `VaultBackendLocal/Team` 常量；data 层 INSERT/Get/List/scanCollection 全链读写。
+> - **F-2 约束（biz）**：`CreateVault` 按 backend 分支——local（缺省归一）走 `NormalizeRootPath`；team 禁 root_path（`ErrTeamRootPathForbidden`）且跳过路径规范化；未知值 `ErrInvalidVaultBackend`。
+> - **F-2 接线（service）**：`CreateCollection` root_path 必填仅对 local 生效；team 创建后不启动同步循环（`StartVault` 门控）；`toProtoCollection` 映射新字段。
+> - **F-2 同管线确认**：team 库写路径 = 既有 IngestDocument（粘贴文本/agent write），SP1-C 已在 `knowledge.go` ingest 尾部对任意 collection 调 `RebuildBlockIndex`（content_text → blockparse → 同套 blocks/refs 表），backend 无关无需新接线；`VaultSyncSupervisor.StartAll` 显式跳过 team（纵深防御，root_path 空本已排除）；图谱/检索可见性沿用 C-01 workspace 过滤，team 边与个人边同路径查询（US-26-3）。
+> - **测试**：biz 5 用例（缺省归一 local/team 成功/team 禁 root_path/local 显式空路径报错/未知 backend）+ service 4 用例（team 成功且不启动同步/team 禁 root_path/local 启动同步/未知 backend）全绿。
+>
+> 验证：独立 GOCACHE 全新 `go build ./internal/... ./cmd/admin` ✅；`go test ./internal/biz/knowledge/ ./internal/service(-run Knowledge) ./internal/data(-run Knowledge,PG 集成) ./internal/knowledge/... -count=1` 全绿（service 包 2 个 models.dev 网络依赖失败为已登记环境受限项；chat durable-resume panic 属并行会话 self_improvement WIP，与本改动无关）；`go vet` 全净。
 
 ### SP1-G：晋升 + 删除同步
 

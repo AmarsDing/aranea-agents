@@ -182,7 +182,11 @@ func (s *TTSScheduler) synthesize(ctx context.Context, job sentenceJob) error {
 			case biz.TTSAudioChunkError:
 				return chunk.Err
 			case biz.TTSAudioChunkEnd:
-				// 句级结束：无动作
+				// 句级合成完成即返回（V1 一句一连接：Write 一次 ↔ 一次 SessionFinished）。
+				// 真机校准（2026-08-08）：火山在 152 后保持 WS 连接，audio 信道不会
+				// 随即关闭；继续等待会把 worker 饿死在本句，后续句子与 OnDrained
+				// （tts.end）全部阻塞。Turn 级结束仍由 flush 任务触发 OnDrained。
+				return nil
 			}
 		}
 	}

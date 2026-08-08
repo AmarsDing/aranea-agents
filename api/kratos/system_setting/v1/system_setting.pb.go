@@ -700,8 +700,12 @@ type UpdateSystemSettingsRequest struct {
 	// Tri-state via proto3 optional: unset = keep stored value; explicit true/false
 	// replaces (explicit value ends env fallback for the toggle).
 	SpeechArchiveUserAudio *bool `protobuf:"varint,35,opt,name=speech_archive_user_audio,json=speechArchiveUserAudio,proto3,oneof" json:"speech_archive_user_audio,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// X-Api-Key 鉴权模式（火山控制台新 API Key，M74 真机校准）：write-only，
+	// 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
+	SpeechAsrApiKey string `protobuf:"bytes,36,opt,name=speech_asr_api_key,json=speechAsrApiKey,proto3" json:"speech_asr_api_key,omitempty"`
+	SpeechTtsApiKey string `protobuf:"bytes,37,opt,name=speech_tts_api_key,json=speechTtsApiKey,proto3" json:"speech_tts_api_key,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdateSystemSettingsRequest) Reset() {
@@ -979,6 +983,20 @@ func (x *UpdateSystemSettingsRequest) GetSpeechArchiveUserAudio() bool {
 	return false
 }
 
+func (x *UpdateSystemSettingsRequest) GetSpeechAsrApiKey() string {
+	if x != nil {
+		return x.SpeechAsrApiKey
+	}
+	return ""
+}
+
+func (x *UpdateSystemSettingsRequest) GetSpeechTtsApiKey() string {
+	if x != nil {
+		return x.SpeechTtsApiKey
+	}
+	return ""
+}
+
 type TestWebResearchRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Provider string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
@@ -1232,7 +1250,7 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\n" +
 	"configured\x18\x05 \x01(\bR\n" +
 	"configured\x12\x1e\n" +
-	"\vhas_api_key\x18\x06 \x01(\bR\thasApiKey\"\x8b\x0e\n" +
+	"\vhas_api_key\x18\x06 \x01(\bR\thasApiKey\"\xe5\x0e\n" +
 	"\x1bUpdateSystemSettingsRequest\x12%\n" +
 	"\x0ework_directory\x18\x01 \x01(\tR\rworkDirectory\x12%\n" +
 	"\x0eroot_directory\x18\x02 \x01(\tR\rrootDirectory\x127\n" +
@@ -1269,7 +1287,9 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\x16speech_tts_resource_id\x18  \x01(\tR\x13speechTtsResourceId\x12(\n" +
 	"\x10speech_tts_voice\x18! \x01(\tR\x0espeechTtsVoice\x123\n" +
 	"\x16speech_tts_speed_ratio\x18\" \x01(\x01R\x13speechTtsSpeedRatio\x12>\n" +
-	"\x19speech_archive_user_audio\x18# \x01(\bH\x00R\x16speechArchiveUserAudio\x88\x01\x01B\x1c\n" +
+	"\x19speech_archive_user_audio\x18# \x01(\bH\x00R\x16speechArchiveUserAudio\x88\x01\x01\x12+\n" +
+	"\x12speech_asr_api_key\x18$ \x01(\tR\x0fspeechAsrApiKey\x12+\n" +
+	"\x12speech_tts_api_key\x18% \x01(\tR\x0fspeechTtsApiKeyB\x1c\n" +
 	"\x1a_speech_archive_user_audio\"\xee\x01\n" +
 	"\x16TestWebResearchRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x17\n" +

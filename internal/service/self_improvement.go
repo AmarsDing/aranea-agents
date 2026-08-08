@@ -55,7 +55,10 @@ type SelfImprovementService struct {
 	cfg *conf.SelfImprovement
 	// refineLLM reads DefaultRefineLLM for the GetStatus preflight (nil → 降级为未配置).
 	refineLLM SIRefineLLMReader
-	lg        loggateway.Logger
+	// control is the in-memory user-intervention command plane consumed by the
+	// pipeline at stage boundaries (nil → ControlRun Unavailable).
+	control *biz.SIControlPlane
+	lg      loggateway.Logger
 }
 
 // NewSelfImprovementService builds the console service. uc may be nil when
@@ -66,7 +69,7 @@ type SelfImprovementService struct {
 // nil concrete pointer in the siAdminPort interface field would create a
 // typed-nil interface (s.uc == nil is false → nil-receiver panic → 500).
 // Convert explicitly so the disabled guard in requireAdmin actually fires.
-func NewSelfImprovementService(uc *biz.SelfImprovementAdminUsecase, cfg *conf.SelfImprovement, refineLLM SIRefineLLMReader, lg loggateway.Logger) *SelfImprovementService {
+func NewSelfImprovementService(uc *biz.SelfImprovementAdminUsecase, cfg *conf.SelfImprovement, refineLLM SIRefineLLMReader, control *biz.SIControlPlane, lg loggateway.Logger) *SelfImprovementService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -74,7 +77,7 @@ func NewSelfImprovementService(uc *biz.SelfImprovementAdminUsecase, cfg *conf.Se
 	if uc != nil {
 		port = uc
 	}
-	return &SelfImprovementService{uc: port, cfg: cfg, refineLLM: refineLLM, lg: lg}
+	return &SelfImprovementService{uc: port, cfg: cfg, refineLLM: refineLLM, control: control, lg: lg}
 }
 
 // requireAuth enforces admin access only（GetStatus 等不依赖管线的端点用）。
@@ -229,6 +232,41 @@ func (s *SelfImprovementService) CloseRun(ctx context.Context, req *v1.CloseRunR
 		return nil, err
 	}
 	return &v1.CloseRunResponse{}, nil
+}
+
+// ControlRun issues a user-intervention command (pause/skip_retry/rollback)
+// to an in-flight run. The command is enqueued into the in-memory control
+// plane and consumed asynchronously by the pipeline at stage boundaries; this
+// endpoint does not change the run status synchronously. Only runs in
+// detected/diagnosing/patching/verifying accept commands (other statuses never
+// reach a poll point, so a command would linger unconsumed).
+func (s *SelfImprovementService) ControlRun(ctx context.Context, req *v1.ControlRunRequest) (*v1.ControlRunResponse, error) {
+	if _, err := s.requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+	if s.control == nil {
+		return nil, apierror.Unavailable("SELF_IMPROVEMENT", "self-improvement control plane not wired")
+	}
+	cmd, err := biz.ParseSIControlCommand(strings.TrimSpace(req.GetCommand()))
+	if err != nil {
+		return nil, apierror.BadRequest("SELF_IMPROVEMENT", "%s", err.Error())
+	}
+	run, err := s.uc.Get(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	switch run.Status {
+	case biz.RunStatusDetected, biz.RunStatusDiagnosing, biz.RunStatusPatching, biz.RunStatusVerifying:
+	default:
+		return nil, apierror.Conflict("SELF_IMPROVEMENT", "run %s in status %s does not accept control commands", run.ID, run.Status)
+	}
+	if err := s.control.Issue(run.ID, cmd); err != nil {
+		return nil, apierror.Internal("SELF_IMPROVEMENT", "%s", err.Error())
+	}
+	s.lg.Info("self-improve control command issued",
+		loggateway.StepID("si_console.control"),
+		loggateway.Str("run_id", run.ID), loggateway.Str("command", string(cmd)))
+	return &v1.ControlRunResponse{}, nil
 }
 
 // GetOutcomeStats returns Learn-stage attribution statistics (verdict

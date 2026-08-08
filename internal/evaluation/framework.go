@@ -3,6 +3,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -18,6 +19,19 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/usersimulation"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
+
+// frameworkCaseErrPrefix matches the framework's per-case error wrapper
+// "inference eval case (evalCaseID=X, sessionID=Y): ". The IDs are unique per
+// case execution, so persisting the wrapper verbatim would defeat P2-3 SQL
+// failure grouping (GROUP BY error_message) — every case would form its own
+// group. The IDs stay available in structured fields/logs.
+var frameworkCaseErrPrefix = regexp.MustCompile(`^inference eval case \(evalCaseID=[^,]+, sessionID=[^)]+\):\s*`)
+
+// normalizeCaseErrorMessage strips per-case unique-ID wrappers so identical
+// failures cluster into one failure group.
+func normalizeCaseErrorMessage(msg string) string {
+	return frameworkCaseErrPrefix.ReplaceAllString(msg, "")
+}
 
 // FrameworkBridge runs evaluations via trpc-agent-go AgentEvaluator (MultiRun, etc.).
 type FrameworkBridge struct {
@@ -162,14 +176,14 @@ func (b *FrameworkBridge) Execute(
 					res.ActualOutput = inv.FinalResponse.Content
 				}
 				if rd.Inference.ErrorMessage != "" {
-					res.ErrorMessage = rd.Inference.ErrorMessage
+					res.ErrorMessage = normalizeCaseErrorMessage(rd.Inference.ErrorMessage)
 				}
 			}
 		}
 		if len(cr.EvalCaseResults) > 0 {
 			last := cr.EvalCaseResults[len(cr.EvalCaseResults)-1]
 			if last != nil && last.FinalEvalStatus == status.EvalStatusFailed && res.ErrorMessage == "" {
-				res.ErrorMessage = last.ErrorMessage
+				res.ErrorMessage = normalizeCaseErrorMessage(last.ErrorMessage)
 			}
 		}
 		// K6: surface the judge's rubric verdict in process logs so rubric

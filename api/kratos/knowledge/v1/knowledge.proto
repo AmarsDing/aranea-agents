@@ -27,6 +27,9 @@ message KnowledgeCollection {
   string root_path = 12;
   string sync_state = 13;     // active | paused | error | migrating
   string last_sync_at = 14;
+  // SP1-F: storage backend dimension. local = filesystem source of truth
+  // (root_path set); team = Postgres source of truth (root_path empty).
+  string vault_backend = 15;  // local | team
 }
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -76,13 +79,16 @@ message KnowledgeChunk {
 
 // --- Requests / Responses ---
 
-// CreateCollectionRequest creates a Vault (V2: local folder as source of truth).
-// root_path is required; embedding_model is optional (empty = lexical-only vault, no semantic layer).
+// CreateCollectionRequest creates a knowledge collection (Vault V2 / SP1-F team library).
+// vault_backend = local (default): local folder as source of truth, root_path required.
+// vault_backend = team: Postgres as source of truth, root_path must be empty.
+// embedding_model is optional (empty = lexical-only vault, no semantic layer).
 message CreateCollectionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   string description = 2;
   string embedding_model = 3;
-  string root_path = 4 [(google.api.field_behavior) = REQUIRED];
+  string root_path = 4;       // required when vault_backend = local; must be empty when team
+  string vault_backend = 5;   // local (default) | team
 }
 
 message GetCollectionRequest {
@@ -227,6 +233,45 @@ message ListCollectionGraphRequest {
 message ListCollectionGraphResponse {
   repeated CollectionGraphNode nodes = 1;
   repeated CollectionGraphEdge edges = 2;
+}
+
+// BlockBacklink is one inbound reference edge to a block/document (SP1-E).
+// Block-granular: a document backlink list is the aggregate of its blocks' edges.
+message BlockBacklink {
+  string src_block_id = 1;
+  string src_doc_id = 2;
+  string src_collection_id = 3;
+  string src_doc_name = 4;    // source document display name (rel_path)
+  string raw_target = 5;      // original link text as written
+  string edge_type = 6;       // ref | embed
+  string context = 7;         // 引用上下文片段
+  bool ambiguous = 8;         // cross-collection ambiguous resolution (deterministic first pick)
+}
+
+message ListBlockBacklinksRequest {
+  string block_id = 1;  // path binding: single block's backlinks
+  string doc_id = 2;    // binding/query: aggregate all blocks of one document (takes precedence)
+}
+
+message ListBlockBacklinksResponse {
+  repeated BlockBacklink items = 1;
+}
+
+// DanglingLink aggregates references whose target does not exist (yet), grouped
+// by raw_target — the "uncreated notes" view (SP1-E). The link revives
+// automatically once the target document is created and indexed.
+message DanglingLink {
+  string raw_target = 1;
+  int32 ref_count = 2;
+  repeated BlockBacklink refs = 3;  // block-level sources of this dangling target
+}
+
+message ListDanglingLinksRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];  // collection id
+}
+
+message ListDanglingLinksResponse {
+  repeated DanglingLink items = 1;
 }
 
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
@@ -463,6 +508,24 @@ service KnowledgeService {
   rpc ListCollectionGraph(ListCollectionGraphRequest) returns (ListCollectionGraphResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/vaults/{collection_id}/graph"
+    };
+  }
+  // ListBlockBacklinks returns block-level inbound references (SP1-E): context
+  // excerpt + source block/document per edge. Single block via block_id path;
+  // aggregate all blocks of a document via the doc_id binding.
+  rpc ListBlockBacklinks(ListBlockBacklinksRequest) returns (ListBlockBacklinksResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/blocks/{block_id}/backlinks"
+      additional_bindings {
+        get: "/v1/knowledge/documents/{doc_id}/block-backlinks"
+      }
+    };
+  }
+  // ListDanglingLinks aggregates dangling references of one collection by
+  // raw_target with ref counts (SP1-E; "uncreated notes" view).
+  rpc ListDanglingLinks(ListDanglingLinksRequest) returns (ListDanglingLinksResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/collections/{id}/dangling-links"
     };
   }
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):

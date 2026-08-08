@@ -66,6 +66,23 @@ func TestSIAdmin_ApproveTransitionsAndDrives(t *testing.T) {
 	}
 }
 
+// S2：Approve 迁移已生效（applying）后 apply 驱动失败 → 记日志返回 nil，
+// 由 drive worker 下 tick 重驱动；操作员不应看到与实际状态矛盾的报错。
+func TestSIAdmin_ApproveApplyFailureStillSucceeds(t *testing.T) {
+	uc, store, _, driver := siAdminFixture(t,
+		[]SelfImprovementRun{siAdminRun("run-1", RunStatusAwaitingGovernance)}, nil)
+	driver.err = errors.New("apply exploded")
+	if err := uc.Approve(context.Background(), "run-1", "alice", ""); err != nil {
+		t.Fatalf("Approve 应忽略 apply 失败（drive 重驱动兜底）, got: %v", err)
+	}
+	if store.run.Status != RunStatusApplying {
+		t.Fatalf("status = %s, want applying", store.run.Status)
+	}
+	if len(driver.applyCalls) != 1 {
+		t.Fatalf("driver 应被驱动一次, 实际 %v", driver.applyCalls)
+	}
+}
+
 // Approve 非 awaiting_governance → Conflict，不迁移不驱动。
 func TestSIAdmin_ApproveWrongStatusConflict(t *testing.T) {
 	uc, store, _, driver := siAdminFixture(t,

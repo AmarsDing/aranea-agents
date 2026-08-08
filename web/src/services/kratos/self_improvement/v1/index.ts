@@ -140,6 +140,19 @@ export type CloseRunRequest = {
 export type CloseRunResponse = {
 };
 
+export type ControlRunRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+  // pause | skip_retry | rollback (see biz.ParseSIControlCommand)
+  //
+  // Behaviors: REQUIRED
+  command: string | undefined;
+};
+
+export type ControlRunResponse = {
+};
+
 export type GetOutcomeStatsRequest = {
 };
 
@@ -221,6 +234,11 @@ export interface SelfImprovementService {
   RollbackRun(request: RollbackRunRequest): Promise<RollbackRunResponse>;
   // CloseRun closes an observing run early (confirmed effective).
   CloseRun(request: CloseRunRequest): Promise<CloseRunResponse>;
+  // ControlRun issues a user-intervention command to an in-flight run
+  // (pause / skip_retry / rollback). The command is consumed asynchronously
+  // by the pipeline at stage boundaries; only runs in
+  // detected/diagnosing/patching/verifying accept commands.
+  ControlRun(request: ControlRunRequest): Promise<ControlRunResponse>;
   // GetOutcomeStats returns Learn-stage attribution statistics
   // (verdict distribution + per-trigger breakdown).
   GetOutcomeStats(request: GetOutcomeStatsRequest): Promise<GetOutcomeStatsResponse>;
@@ -382,6 +400,26 @@ export function createSelfImprovementServiceClient(
         service: "SelfImprovementService",
         method: "CloseRun",
       }) as Promise<CloseRunResponse>;
+    },
+    ControlRun(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/self-improvement/runs/${request.id}/control`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "SelfImprovementService",
+        method: "ControlRun",
+      }) as Promise<ControlRunResponse>;
     },
     GetOutcomeStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/self-improvement/outcome-stats`; // eslint-disable-line quotes

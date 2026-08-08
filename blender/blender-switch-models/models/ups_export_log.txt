@@ -1,0 +1,21 @@
+=== rebuild ===
+built: [('C6KS', 15), ('HU10K', 15), ('YDC10H', 15)]
+=== export ===
+exported UPS1_SANTAK_C6KS.fbx
+exported UPS1_SANTAK_C6KS.glb
+manifest C6KS_manifest.json (15 leds)
+exported UPS2_HUAWEI_UPS2000-A-10KTTL.fbx
+exported UPS2_HUAWEI_UPS2000-A-10KTTL.glb
+manifest HU10K_manifest.json (15 leds)
+exported UPS3_KSTAR_YDC9110H.fbx
+exported UPS3_KSTAR_YDC9110H.glb
+manifest YDC10H_manifest.json (15 leds)
+=== stage & render ===
+rendered ups_showcase.png
+rendered preview_ups1.png
+rendered preview_ups2.png
+rendered preview_ups3.png
+rendered preview_ups_lcd.png
+rendered preview_ups_rear.png
+saved f:\aranea-agents\test\blender-switch-models\models\ups_showcase.blend
+=== DONE ===

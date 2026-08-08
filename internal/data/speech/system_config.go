@@ -61,6 +61,7 @@ func (r *SystemSpeechConfigReader) ASRConfig(ctx context.Context) (biz.ASRProvid
 	cfg := biz.ASRProviderConfig{
 		Driver:     firstNonEmptyStr(db.Driver, env.Driver),
 		Endpoint:   firstNonEmptyStr(db.Endpoint, env.Endpoint),
+		APIKey:     firstNonEmptyStr(db.APIKey, env.APIKey),
 		AppKey:     firstNonEmptyStr(db.AppKey, env.AppKey),
 		AccessKey:  firstNonEmptyStr(db.AccessKey, env.AccessKey),
 		ResourceID: firstNonEmptyStr(db.ResourceID, env.ResourceID),
@@ -82,6 +83,7 @@ func (r *SystemSpeechConfigReader) TTSConfig(ctx context.Context) (biz.TTSProvid
 	cfg := biz.TTSProviderConfig{
 		Driver:     firstNonEmptyStr(db.Driver, env.Driver),
 		Endpoint:   firstNonEmptyStr(db.Endpoint, env.Endpoint),
+		APIKey:     firstNonEmptyStr(db.APIKey, env.APIKey),
 		AppKey:     firstNonEmptyStr(db.AppKey, env.AppKey),
 		AccessKey:  firstNonEmptyStr(db.AccessKey, env.AccessKey),
 		ResourceID: firstNonEmptyStr(db.ResourceID, env.ResourceID),

@@ -51,6 +51,14 @@ type SIRepoApplier struct {
 	sandbox *RepoSandboxRunner
 	lg      loggateway.Logger
 	mu      sync.Mutex
+	// reverted 记录本进程已成功 revert 的 applied commit / 已恢复的 snapshot
+	// 指针（mu 保护）。R3 修复：admin 与 watchdog 可基于同一 observing 快照
+	// 并发进入 Rollback，mu 只串行化执行、不判重——git revert 一个已 revert
+	// 的 commit 会冲突报错或生成 revert-of-revert（补丁静默复活）。集合判重
+	// 使重复 Rollback 幂等返回 nil（已回滚 = 目标状态达成）。
+	// 残余窗口（已注释接受）：revert 成功到 CAS 迁移之间的毫秒级进程崩溃 +
+	// 重启后内存集合丢失，依赖调用方状态守卫（rolled_back 后不再触发）兜底。
+	reverted map[string]struct{}
 }
 
 // NewSIRepoApplier binds the applier to the sandbox runner owning the
@@ -63,8 +71,9 @@ func NewSIRepoApplier(sandbox *RepoSandboxRunner, lg loggateway.Logger) (*SIRepo
 		lg = loggateway.NewNoop()
 	}
 	return &SIRepoApplier{
-		sandbox: sandbox,
-		lg:      lg.With(loggateway.Domain(siApplierDomain)),
+		sandbox:  sandbox,
+		lg:       lg.With(loggateway.Domain(siApplierDomain)),
+		reverted: map[string]struct{}{},
 	}, nil
 }
 
@@ -160,6 +169,14 @@ func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRu
 
 	switch {
 	case strings.TrimSpace(run.AppliedCommit) != "":
+		key := "commit:" + run.AppliedCommit
+		if _, done := a.reverted[key]; done {
+			a.lg.Info("self-improvement code patch already reverted, idempotent skip",
+				loggateway.StepID("si_apply.rollback"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Str("commit", run.AppliedCommit))
+			return nil
+		}
 		args := append(append([]string{}, siApplierGitIdentity...), "revert", "--no-edit", run.AppliedCommit)
 		if err := a.sandbox.runGit(ctx, a.sandbox.repoRoot, nil, args...); err != nil {
 			a.lg.Warn("self-improvement code revert failed",
@@ -169,6 +186,7 @@ func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRu
 				loggateway.Err(err))
 			return err
 		}
+		a.reverted[key] = struct{}{}
 		a.lg.Info("self-improvement code patch reverted",
 			loggateway.StepID("si_apply.rollback"),
 			loggateway.Str("run_id", run.ID),
@@ -176,6 +194,13 @@ func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRu
 			loggateway.Str("reason", reason))
 		return nil
 	case strings.HasPrefix(run.RollbackPointer, siSnapshotRefPrefix):
+		key := "snapshot:" + run.RollbackPointer
+		if _, done := a.reverted[key]; done {
+			a.lg.Info("self-improvement hot-reload snapshot already restored, idempotent skip",
+				loggateway.StepID("si_apply.rollback"),
+				loggateway.Str("run_id", run.ID))
+			return nil
+		}
 		if err := a.restoreSnapshot(run.RollbackPointer); err != nil {
 			a.lg.Warn("self-improvement hot-reload rollback failed",
 				loggateway.StepID("si_apply.rollback"),
@@ -183,6 +208,7 @@ func (a *SIRepoApplier) Rollback(ctx context.Context, run *biz.SelfImprovementRu
 				loggateway.Err(err))
 			return err
 		}
+		a.reverted[key] = struct{}{}
 		a.lg.Info("self-improvement hot-reload patch rolled back",
 			loggateway.StepID("si_apply.rollback"),
 			loggateway.Str("run_id", run.ID),

@@ -27,8 +27,9 @@ import (
 // 文件内容内联进 user prompt（路径限定 worktree 内，总量 48KB 封顶），
 // 不跑工具回路；工具化升级属后续迭代。
 //
-// 成本控制（D10）：Patcher 日配额 20 次（24h 窗口，与 Critic 同模式）；
-// 配额耗尽返回 ErrSIPatcherQuotaExceeded，流水线将 run 置 failed（保守制动，
+// 成本控制（D10）：Patcher 日配额 20 次（24h 窗口，与 Critic 同模式，按
+// LLM 调用计——一次 Patch 含 S5 格式纠正重试时最多消耗 2 单位）；配额耗
+// 尽返回 ErrSIPatcherQuotaExceeded，流水线将 run 置 failed（保守制动，
 // Outcome 记 neutral 反哺触发器降频）。
 
 // ErrSIPatcherQuotaExceeded is returned when the Patcher daily LLM quota is
@@ -67,20 +68,56 @@ func NewSIAnalystAgent(caller biz.LLMCaller, provider, model string, lg loggatew
 }
 
 // Analyze runs one Analyst diagnosis of the run's originating suggestion.
+//
+// S5 格式纠正重试：LLM 输出解析失败（非合法 JSON / 契约字段缺失）时，把
+// 解析错误与原始输出反馈给模型重问一次；仍失败则返回解析错误。LLM 调用
+// 本身失败（网络/限流）不重试。
 func (a *SIAnalystAgent) Analyze(ctx context.Context, run *biz.SelfImprovementRun, sug *biz.UnifiedEvolutionSuggestion) (*biz.Diagnosis, error) {
 	if a == nil || a.caller == nil {
 		return nil, apierror.Internal("SELF_IMPROVEMENT", "analyst agent not initialized")
 	}
+	user := siAnalystUserMessage(run, sug)
 	text, _, err := a.caller.Call(ctx, biz.LLMCallRequest{
 		Provider: a.provider,
 		Model:    a.model,
 		System:   biz.SIAnalystSystemPrompt,
-		User:     siAnalystUserMessage(run, sug),
+		User:     user,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("analyst llm: %w", err)
 	}
+	diag, perr := biz.ParseDiagnosisJSON(text)
+	if perr == nil {
+		return diag, nil
+	}
+	a.lg.Warn("si analyst output parse failed, retrying with format feedback",
+		loggateway.StepID("si_analyst.parse_retry"),
+		loggateway.Str("run_id", siPatcherRunID(run)),
+		loggateway.Err(perr))
+	text, _, err = a.caller.Call(ctx, biz.LLMCallRequest{
+		Provider: a.provider,
+		Model:    a.model,
+		System:   biz.SIAnalystSystemPrompt,
+		User:     siFormatCorrection(user, text, perr),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("analyst llm retry: %w", err)
+	}
 	return biz.ParseDiagnosisJSON(text)
+}
+
+// siFormatFeedbackLimit caps the bad-output bytes echoed back to the LLM.
+const siFormatFeedbackLimit = 1024
+
+// siFormatCorrection builds the format-correction retry prompt: original user
+// message + parse error + (bounded) bad output, asking for strict re-output.
+func siFormatCorrection(original, badOutput string, parseErr error) string {
+	bad := strings.TrimSpace(badOutput)
+	if len(bad) > siFormatFeedbackLimit {
+		bad = bad[:siFormatFeedbackLimit] + "\n…[truncated]"
+	}
+	return fmt.Sprintf("%s\n\n[系统]上一次输出无法解析：%v\n上一次输出：\n%s\n请严格按要求重新输出一个 JSON 对象（不要输出任何额外文字）。",
+		original, parseErr, bad)
 }
 
 // siAnalystUserMessage packs suggestion + evidence snapshot into the prompt.
@@ -139,26 +176,56 @@ func NewSIPatcherAgent(caller biz.LLMCaller, provider, model string, dailyMax in
 
 // Patch runs one Patcher invocation: diagnosis + (bounded) affected worktree
 // file contents in, unified diff out.
+//
+// S5 格式纠正重试：LLM 输出解析失败时反馈解析错误重问一次。配额按 LLM 调用
+// 计（一次 Patch 最多消耗 2 单位：首次 + 格式重试）；重试时配额耗尽则放弃
+// 重试、返回原始解析错误。
 func (a *SIPatcherAgent) Patch(ctx context.Context, req biz.SIPatchRequest) (*biz.PatcherOutput, error) {
 	if a == nil || a.caller == nil {
 		return nil, apierror.Internal("SELF_IMPROVEMENT", "patcher agent not initialized")
 	}
+	runID := siPatcherRunID(req.Run)
+	user := siPatcherUserMessage(req, a.lg)
+	text, err := a.callLLM(ctx, runID, user)
+	if err != nil {
+		return nil, err
+	}
+	out, perr := biz.ParsePatcherOutputJSON(text)
+	if perr == nil {
+		return out, nil
+	}
+	a.lg.Warn("si patcher output parse failed, retrying with format feedback",
+		loggateway.StepID("si_patcher.parse_retry"),
+		loggateway.Str("run_id", runID),
+		loggateway.Err(perr))
+	text, err = a.callLLM(ctx, runID, siFormatCorrection(user, text, perr))
+	if errors.Is(err, ErrSIPatcherQuotaExceeded) {
+		return nil, perr
+	}
+	if err != nil {
+		return nil, err
+	}
+	return biz.ParsePatcherOutputJSON(text)
+}
+
+// callLLM consumes one quota unit then performs the Patcher LLM call.
+func (a *SIPatcherAgent) callLLM(ctx context.Context, runID, user string) (string, error) {
 	if !a.consumeQuota() {
 		a.lg.Warn("si patcher daily quota exhausted",
 			loggateway.StepID("si_patcher.quota"),
-			loggateway.Str("run_id", siPatcherRunID(req.Run)))
-		return nil, ErrSIPatcherQuotaExceeded
+			loggateway.Str("run_id", runID))
+		return "", ErrSIPatcherQuotaExceeded
 	}
 	text, _, err := a.caller.Call(ctx, biz.LLMCallRequest{
 		Provider: a.provider,
 		Model:    a.model,
 		System:   biz.SIPatcherSystemPrompt,
-		User:     siPatcherUserMessage(req, a.lg),
+		User:     user,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("patcher llm: %w", err)
+		return "", fmt.Errorf("patcher llm: %w", err)
 	}
-	return biz.ParsePatcherOutputJSON(text)
+	return text, nil
 }
 
 // consumeQuota enforces the 24h-window daily budget (same pattern as Critic).

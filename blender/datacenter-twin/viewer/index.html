@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>数据中心数字孪生 — 装配预览</title>
+<style>
+  :root { --cy:#35e0ff; --cyd:rgba(53,224,255,.35); --panel:rgba(8,18,28,.78); }
+  body { margin:0; font:12px/1.45 ui-monospace,'Cascadia Mono',Consolas,monospace; background:#04070d; color:#bfe6f2; overflow:hidden; }
+  .holo { background:var(--panel); border:1px solid var(--cyd); box-shadow:0 0 18px rgba(53,224,255,.12) inset,0 0 12px rgba(0,0,0,.6);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); backdrop-filter:blur(6px); }
+  #ui { position:fixed; top:10px; left:10px; z-index:9; padding:10px 12px; max-width:360px; }
+  #ui b { color:var(--cy); letter-spacing:2px; }
+  #ui button { margin:2px; font:11px ui-monospace,monospace; cursor:pointer; background:rgba(53,224,255,.06);
+    color:#bfe6f2; border:1px solid rgba(53,224,255,.30); padding:2px 8px; }
+  #ui button:hover { background:rgba(53,224,255,.22); }
+  #ui button.on { background:rgba(53,224,255,.30); color:#04121a; font-weight:bold; }
+  #status { position:fixed; bottom:10px; left:10px; z-index:9; padding:6px 10px; color:#8fd8ea; }
+  #counts { color:#5e8fa0; margin-top:4px; }
+  #card { position:fixed; z-index:9; display:none; min-width:220px; max-width:300px; padding:10px 12px; pointer-events:auto; }
+  #card .ct { color:var(--cy); letter-spacing:2px; font-weight:bold; }
+  #card .cm { color:#eafcff; font-size:13px; margin-top:2px; }
+  #card .cs { color:#9fd8e8; margin-top:2px; white-space:pre-wrap; }
+  #card .x { position:absolute; top:4px; right:8px; color:#5e8fa0; cursor:pointer; }
+  #card .x:hover { color:var(--cy); }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./lib/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="ui" class="holo">
+  <div><b>数据中心数字孪生 · 装配预览</b></div>
+  <div>视角:
+    <button data-view="iso" class="on">3/4</button><button data-view="cold">冷通道</button><button data-view="hot">热通道</button><button data-view="top">顶视</button>
+  </div>
+  <div>LED 演示:
+    <button data-led="ok">全正常</button><button data-led="warn">告警</button><button data-led="crit">故障</button><button data-led="cycle" class="on">循环</button>
+  </div>
+  <div>机柜门: <button id="doorF">前门 开/关</button><button id="doorR">后门 开/关</button></div>
+  <div id="counts">loading…</div>
+</div>
+<div id="card" class="holo"><span class="x">✕</span><div class="ct"></div><div class="cm"></div><div class="cs"></div></div>
+<div id="status" class="holo">…</div>
+<script type="module">
+window.__ERRORS = [];
+window.addEventListener('error', e => window.__ERRORS.push(String(e.message || e)));
+window.addEventListener('unhandledrejection', e => window.__ERRORS.push('rej: ' + String(e.reason)));
+import * as THREE from 'three';
+import { OrbitControls } from './lib/OrbitControls.js';
+import { FBXLoader } from './lib/FBXLoader.js';
+
+const report = { loaded: [], errors: [], meshes: 0, leds: 0, devices: [], bbox: {} };
+window.__REPORT = report; window.__READY = false;
+
+// ---------------------------------------------------------------- renderer / scene
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+window.__SCENE = scene;   // debug probe
+scene.background = new THREE.Color(0x0a0e14);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+window.__CAM = camera; window.__CTL = controls;   // debug probe
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xdfe8f2, 0x20242a, 0.9));
+const key = new THREE.DirectionalLight(0xfff4e8, 2.2);
+key.position.set(3.5, 5.5, 3.0);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.bias = -0.0002;
+key.shadow.normalBias = 0.02;
+Object.assign(key.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.1, far: 20 });
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x9db8e8, 0.8);
+fill.position.set(-3, 2.5, -2.5);
+scene.add(fill);
+// 室内顶灯 (机房是封闭壳, 外部平行光进不来多少)
+for (const [lx, lz] of [[-1.5, 0], [1.5, 0], [0.2, 1.6], [0.2, -1.6]]) {
+  const pl = new THREE.PointLight(0xf2f6ff, 6, 7, 1.6);
+  pl.position.set(lx, 2.85, lz);
+  scene.add(pl);
+}
+
+// ---------------------------------------------------------------- material conversion
+const stdCache = new Map();
+function toStandard(m) {
+  if (!m || m.isMeshStandardMaterial) return m;
+  const hit = stdCache.get(m.name);
+  if (hit) return hit;
+  const s = new THREE.MeshStandardMaterial({ name: m.name });
+  if (m.color) s.color.copy(m.color);
+  if (m.transparent || m.opacity < 1) { s.transparent = true; s.opacity = Math.min(m.opacity, 0.35); s.depthWrite = false; }
+  if (m.name.includes('Glass')) { s.transparent = true; s.opacity = 0.18; s.roughness = 0.1; s.metalness = 0.1; s.depthWrite = false; }
+  s.metalness = 0.35; s.roughness = 0.55;
+  if (m.name.startsWith('M_LED_') || m.name.includes('_LED')) {
+    s.emissive.copy(s.color);
+    s.emissiveIntensity = 2.0;
+  }
+  stdCache.set(m.name, s);
+  return s;
+}
+const ledMeshes = [];
+function prepareMaterials(root) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    report.meshes++;
+    o.material = Array.isArray(o.material) ? o.material.map(toStandard) : toStandard(o.material);
+    o.castShadow = true; o.receiveShadow = true;
+    const mn = (Array.isArray(o.material) ? o.material[0] : o.material).name || '';
+    if (mn.startsWith('M_LED_') || o.name.includes('_LED_')) {
+      o.material = (Array.isArray(o.material) ? o.material[0] : o.material).clone();
+      o.castShadow = false;
+      ledMeshes.push(o);
+      report.leds++;
+    }
+  });
+}
+
+// ---------------------------------------------------------------- loading & normalization
+// FBX (Blender 默认导出) → three.js: cm 单位, Y-up, Blender front=-Y 映射到 +Z (正面朝 +Z)。
+// normalize: 包一层 Group(缩放 0.01 → 米), origin 移到 (x中, 底, 前面)。
+const loader = new FBXLoader();
+const CM = 0.01;
+function loadFbx(url) {
+  return new Promise((res, rej) => loader.load(url, res, undefined, rej));
+}
+function makeTemplate(fbx) {
+  prepareMaterials(fbx);
+  const inner = new THREE.Group();
+  inner.add(fbx);
+  inner.scale.setScalar(CM);
+  const bb = new THREE.Box3().setFromObject(inner);   // 米单位 bbox
+  return { inner, bb, size: bb.getSize(new THREE.Vector3()) };
+}
+/** origin: (x中, 底面, 前面=+Z面) */
+function atFrontBottom(t) {
+  const g = new THREE.Group();
+  const c = (t.bb.min.x + t.bb.max.x) / 2;
+  t.inner.position.set(-c, -t.bb.min.y, -t.bb.max.z);
+  g.add(t.inner);
+  return g;
+}
+/** origin: (x/z 中心, 底面) — 塔式设备 */
+function atCenterBottom(t) {
+  const g = new THREE.Group();
+  const cx = (t.bb.min.x + t.bb.max.x) / 2, cz = (t.bb.min.z + t.bb.max.z) / 2;
+  t.inner.position.set(-cx, -t.bb.min.y, -cz);
+  g.add(t.inner);
+  return g;
+}
+
+// ---------------------------------------------------------------- assembly (datacenter_layout.json)
+const RACK = { U: 0.04445, Z0: 0.115, FRONT_Z: 0.53 };   // three 空间: 前面板 z=+0.53 (贴近前框柱后平面 0.54, 避免隧道遮挡边缘 LED)
+const uBottom = u => RACK.Z0 + (u - 1) * RACK.U;
+
+const ASSETS = {
+  RACK_42U:  { url: '/blender-rack/models/RACK_42U.fbx' },
+  SRV_1U:    { url: '/server-3d/SRV_1U.fbx' },
+  SRV_2U:    { url: '/server-3d/SRV_2U.fbx' },
+  SRV_4U:    { url: '/server-3d/SRV_4U.fbx' },
+  SW1_S5735: { url: '/blender-switch-models/models/SW1_Huawei_S5735-L24P4S-A1.fbx' },
+  SW2_H3C52: { url: '/blender-switch-models/models/SW2_H3C_S5130S-52S-EI.fbx' },
+  SW3_CE6857:{ url: '/blender-switch-models/models/SW3_Huawei_CE6857-48S8CQ.fbx' },
+  UPS2_HU10K:{ url: '/blender-switch-models/models/UPS2_HUAWEI_UPS2000-A-10KTTL.fbx' },
+  UPS1_C6KS: { url: '/blender-switch-models/models/UPS1_SANTAK_C6KS.fbx' },
+  UPS3_YDC10H:{ url: '/blender-switch-models/models/UPS3_KSTAR_YDC9110H.fbx' },
+  ROOM_ENV:  { url: '/datacenter-twin/models/ROOM_ENV.fbx' },
+};
+const LAYOUT_URL = '/datacenter-twin/datacenter_layout.json';
+const templates = {};
+const deviceMeta = {};   // deviceId -> {asset, u, rackId}
+
+async function boot() {
+  const layout = await (await fetch(LAYOUT_URL)).json();
+  // 1) 加载全部资产模板
+  await Promise.all(Object.entries(ASSETS).map(async ([key, def]) => {
+    try {
+      const fbx = await loadFbx(def.url);
+      templates[key] = makeTemplate(fbx);
+      report.loaded.push(key);
+    } catch (e) {
+      report.errors.push(key + ': ' + String(e));
+    }
+  }));
+  // 2) 房间
+  if (templates.ROOM_ENV) {
+    const room = new THREE.Group();
+    room.add(templates.ROOM_ENV.inner);
+    scene.add(room);
+  }
+  // 3) 机柜 + 内部设备
+  const rackDoors = { F: [], R: [] };
+  // 门是 ~18 个零件(mesh 各自原点), 不能逐个旋转——按面板分组挂到铰链 pivot 上整体旋转。
+  // 局部空间为 Blender 坐标(Z-up): 前面板 y<0, 后面板 y>0, 铰链轴取 Hinge_0 零件位置。
+  const DOOR_PANELS = [
+    { side: 'F', match: n => n.startsWith('DoorF_'),                     openTheta: -1.92 },
+    { side: 'R', match: n => n.startsWith('DoorR_L_') || n === 'DoorR_SeamSeal', openTheta: +1.92 },
+    { side: 'R', match: n => n.startsWith('DoorR_R_'),                   openTheta: -1.92 },
+  ];
+  function buildDoorPivots(inner) {
+    for (const def of DOOR_PANELS) {
+      const parts = [];
+      inner.traverse(o => { if (o.isMesh && def.match(o.name)) parts.push(o); });
+      if (!parts.length) continue;
+      const h = parts.find(m => /Hinge_0$/.test(m.name)) || parts[0];
+      const pivot = new THREE.Group();
+      pivot.name = parts[0].name.split('_')[0] + '_PIVOT';
+      pivot.position.set(h.position.x, h.position.y, 0);   // 铰链竖直轴
+      pivot.userData.openTheta = def.openTheta;
+      h.parent.add(pivot);
+      for (const m of parts) pivot.attach(m);              // attach 保持世界变换不变
+      rackDoors[def.side].push(pivot);
+    }
+  }
+  for (const rackDef of layout.racks) {
+    const rackT = templates[rackDef.asset];
+    if (!rackT) continue;
+    const rack = new THREE.Group();
+    rack.name = rackDef.rack_id;
+    const inner = rackT.inner.clone(true);
+    inner.traverse(o => {   // clone 后 LED 材质重新独立
+      if (o.isMesh && o.name.includes('_LED_')) o.material = o.material.clone();
+    });
+    buildDoorPivots(inner);
+    rack.add(inner);
+    const [px, py, pz] = rackDef.position;
+    rack.position.set(px, pz, -py);          // Blender(x,y,z) → three(x,z,-y)
+    rack.rotation.y = THREE.MathUtils.degToRad(rackDef.rotation_z_deg || 0);
+    scene.add(rack);
+    for (const u of rackDef.units) {
+      const t = templates[u.asset];
+      if (!t) continue;
+      const dev = atFrontBottom({ inner: t.inner.clone(true), bb: t.bb });
+      dev.name = u.device_id;
+      // clone(true) 共享材质 → 每实例独立 LED 材质, 才能按实例独立闪烁
+      dev.traverse(o => { if (o.isMesh && (o.material.name || '').startsWith('M_LED_')) o.material = o.material.clone(); });
+      dev.position.set(0, uBottom(u.u), RACK.FRONT_Z);
+      rack.add(dev);
+      deviceMeta[u.device_id] = { asset: u.asset, u: u.u, rack: rackDef.rack_id };
+      report.devices.push(u.device_id);
+    }
+  }
+  window.__RACK_DOORS = rackDoors;
+  // 4) 塔式设备 (floor_items)
+  for (const fi of layout.floor_items || []) {
+    const t = templates[fi.asset];
+    if (!t) continue;
+    const dev = atCenterBottom({ inner: t.inner.clone(true), bb: t.bb });
+    dev.name = fi.item_id;
+    dev.traverse(o => { if (o.isMesh && (o.material.name || '').startsWith('M_LED_')) o.material = o.material.clone(); });
+    const [px, py, pz] = fi.position;
+    dev.position.set(px, pz, -py);
+    scene.add(dev);
+    deviceMeta[fi.item_id] = { asset: fi.asset, u: null, rack: null };
+    report.devices.push(fi.item_id);
+  }
+  // 5) 重新收集 LED (clone 后) + 按名字分类闪烁行为
+  ledMeshes.length = 0;
+  scene.traverse(o => {
+    if (o.isMesh && (o.material.name || '').startsWith('M_LED_')) {
+      const n = o.name;
+      // act: 活动灯(随流量闪烁); uid: 定位灯(慢闪); stat: 状态灯(常亮, 告警时闪)
+      const kind = /_ACT($|_)|Disk|NIC/i.test(n) ? 'act'
+                 : /UID/i.test(n) ? 'uid' : 'stat';
+      o.userData.led = { kind, phase: Math.random(), freq: 2.5 + Math.random() * 3,
+                         duty: 0.3 + Math.random() * 0.35, baseI: o.material.emissiveIntensity };
+      ledMeshes.push(o);
+    }
+  });
+  report.leds = ledMeshes.length;
+  // 6) 相机 + 默认开前门 (关门时门框條会挡住设备两侧 LED)
+  setView('iso');
+  toggleDoor('F');
+  document.getElementById('counts').textContent =
+    `资产=${report.loaded.length}/11 设备=${report.devices.length} meshes=${report.meshes} leds=${report.leds}`;
+  document.getElementById('status').textContent = report.errors.length ? '有加载错误, 见 __REPORT' : '装配完成';
+  window.__READY = true;
+}
+
+// ---------------------------------------------------------------- views (室内机位; 冷通道在 +Z, 热通道在 -Z)
+const VIEWS = {
+  iso:  { pos: [2.6, 2.3, 2.9],  tgt: [0.35, 0.9, 0] },
+  cold: { pos: [0.35, 1.5, 2.7], tgt: [0.35, 1.1, -0.2] },
+  hot:  { pos: [0.35, 1.6, -2.7], tgt: [0.35, 1.1, 0.2] },
+  top:  { pos: [0.35, 7.5, 0.9], tgt: [0.35, 0, 0] },
+};
+function setCeilingVisible(vis) {
+  scene.traverse(o => {
+    if (o.isMesh && (o.name === 'ROOM_Ceiling' || o.name.startsWith('ROOM_LightPanel'))) o.visible = vis;
+  });
+}
+function setView(name) {
+  const v = VIEWS[name];
+  camera.position.set(...v.pos);
+  controls.target.set(...v.tgt);
+  controls.update();
+  setCeilingVisible(name !== 'top');
+  document.querySelectorAll('button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === name));
+}
+document.querySelectorAll('button[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+
+// ---------------------------------------------------------------- LED demo
+const LED_STATES = {
+  ok:   0x00ff44,
+  warn: 0xffaa00,
+  crit: 0xff2222,
+};
+let ledMode = 'cycle';
+function applyLed(hex, filter) {
+  let n = 0;
+  for (const m of ledMeshes) {
+    if (filter && !filter(m)) continue;
+    m.material.emissive.setHex(hex);
+    m.material.color.setHex(hex).multiplyScalar(0.2);
+    n++;
+  }
+  return n;
+}
+document.querySelectorAll('button[data-led]').forEach(b => b.addEventListener('click', () => {
+  ledMode = b.dataset.led;
+  document.querySelectorAll('button[data-led]').forEach(x => x.classList.toggle('on', x === b));
+  if (LED_STATES[ledMode] !== undefined) applyLed(LED_STATES[ledMode]);
+}));
+let ledT = 0;
+function tickLeds(dt) {
+  ledT += dt;
+  if (ledMode === 'cycle') {
+    const phase = Math.floor(ledT / 1.6) % 3;
+    applyLed([0x00ff44, 0xffaa00, 0xff2222][phase]);
+  }
+  // 闪烁: 调制 emissiveIntensity (亮暗交替; 暗态保留微光更接近真实 LED)
+  //  ok/cycle: act 按各自频率/占空比快闪, uid 慢闪, stat 常亮
+  //  warn: 全体 1.6Hz 慢闪;  crit: 全体 3.2Hz 快闪(报警)
+  for (const m of ledMeshes) {
+    const L = m.userData.led;
+    if (!L) continue;
+    let on = 1;
+    if (ledMode === 'crit') on = ((ledT * 3.2 + L.phase) % 1) < 0.55 ? 1 : 0.08;
+    else if (ledMode === 'warn') on = ((ledT * 1.6 + L.phase) % 1) < 0.6 ? 1 : 0.2;
+    else if (L.kind === 'act') on = ((ledT * L.freq + L.phase) % 1) < L.duty ? 1 : 0.1;
+    else if (L.kind === 'uid') on = ((ledT * 1.1 + L.phase) % 1) < 0.5 ? 1 : 0.1;
+    m.material.emissiveIntensity = L.baseI * on;
+  }
+}
+
+// ---------------------------------------------------------------- doors (门面板绕铰链 pivot 旋转, pivot 见 buildDoorPivots)
+let doorsOpen = { F: false, R: false };
+function toggleDoor(side) {
+  doorsOpen[side] = !doorsOpen[side];
+  const list = (window.__RACK_DOORS || { F: [], R: [] })[side] || [];
+  for (const p of list) {
+    // pivot 局部空间是 Blender Z-up → 绕 Z 轴旋转
+    p.rotation.z = doorsOpen[side] ? p.userData.openTheta : 0;
+  }
+}
+document.getElementById('doorF').addEventListener('click', () => toggleDoor('F'));
+document.getElementById('doorR').addEventListener('click', () => toggleDoor('R'));
+
+// ---------------------------------------------------------------- picking
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const card = document.getElementById('card');
+card.querySelector('.x').addEventListener('click', () => card.style.display = 'none');
+function findDeviceRoot(o) {
+  while (o) {
+    if (deviceMeta[o.name]) return o;
+    o = o.parent;
+  }
+  return null;
+}
+renderer.domElement.addEventListener('pointerdown', ev => {
+  mouse.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(mouse, camera);
+  const hits = ray.intersectObjects(scene.children, true);
+  for (const h of hits) {
+    const root = findDeviceRoot(h.object);
+    if (!root) continue;
+    const meta = deviceMeta[root.name];
+    const ud = h.object.userData || {};
+    card.querySelector('.ct').textContent = root.name;
+    card.querySelector('.cm').textContent = `${meta.asset}${meta.u ? ' · U' + meta.u : ''}${meta.rack ? ' · ' + meta.rack : ''}`;
+    card.querySelector('.cs').textContent =
+      [ud.hw_category, ud.hw_name, ud.hw_model, ud.hw_spec].filter(Boolean).join('\n') || h.object.name;
+    card.style.display = 'block';
+    card.style.left = Math.min(ev.clientX + 20, innerWidth - 320) + 'px';
+    card.style.top = Math.max(ev.clientY - 40, 10) + 'px';
+    document.getElementById('status').textContent = '选中: ' + root.name + ' / ' + h.object.name;
+    return;
+  }
+  card.style.display = 'none';
+});
+
+// ---------------------------------------------------------------- main loop
+let lastT = performance.now();
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+  tickLeds(dt);
+  controls.update();
+  renderer.render(scene, camera);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+boot().catch(e => {
+  report.errors.push(String(e));
+  document.getElementById('status').textContent = 'ERROR: ' + e;
+});
+</script>
+</body>
+</html>

@@ -13,6 +13,12 @@ import (
 // ErrRootPathRequired 创建 Vault 必须给定本地路径（US-15）。
 var ErrRootPathRequired = apierror.BadRequest("KNOWLEDGE", "root_path is required")
 
+// ErrTeamRootPathForbidden 团队库（backend=team）禁止设置 root_path（SP1-F 设计 S6：PG 即真相源，无文件概念）。
+var ErrTeamRootPathForbidden = apierror.BadRequest("KNOWLEDGE", "team vault must not set root_path")
+
+// ErrInvalidVaultBackend vault_backend 取值非法（SP1-F：仅 local / team）。
+var ErrInvalidVaultBackend = apierror.BadRequest("KNOWLEDGE", "vault_backend must be local or team")
+
 // NormalizeRootPath 规范化 vault 根路径（S-1）：
 // 绝对路径化 → 解析 symlink → 去尾部斜杠；校验存在、为目录、非系统根。
 func NormalizeRootPath(p string) (string, error) {
@@ -44,6 +50,8 @@ func NormalizeRootPath(p string) (string, error) {
 
 // CreateVault 创建 Vault（US-15）：root_path 规范化 + 唯一（DB 约束兜底），
 // embedding_model 可选（空 = 无语义层）。
+// SP1-F：backend=local（缺省）时 root_path 必填并规范化；backend=team 时 root_path 必须为空
+// （PG 即真相源，无文件监听），跳过路径规范化。
 func (u *Usecase) CreateVault(ctx context.Context, in Collection) (Collection, error) {
 	if err := u.requireRepo(); err != nil {
 		return Collection{}, err
@@ -52,11 +60,25 @@ func (u *Usecase) CreateVault(ctx context.Context, in Collection) (Collection, e
 	if in.Name == "" {
 		return Collection{}, ErrNameRequired
 	}
-	root, err := NormalizeRootPath(in.RootPath)
-	if err != nil {
-		return Collection{}, err
+	in.VaultBackend = strings.TrimSpace(in.VaultBackend)
+	if in.VaultBackend == "" {
+		in.VaultBackend = VaultBackendLocal
 	}
-	in.RootPath = root
+	switch in.VaultBackend {
+	case VaultBackendLocal:
+		root, err := NormalizeRootPath(in.RootPath)
+		if err != nil {
+			return Collection{}, err
+		}
+		in.RootPath = root
+	case VaultBackendTeam:
+		if strings.TrimSpace(in.RootPath) != "" {
+			return Collection{}, ErrTeamRootPathForbidden
+		}
+		in.RootPath = ""
+	default:
+		return Collection{}, ErrInvalidVaultBackend
+	}
 	in.EmbeddingModel = strings.TrimSpace(in.EmbeddingModel)
 	if in.EmbeddingModel != "" && in.Dim <= 0 {
 		in.Dim = 1536

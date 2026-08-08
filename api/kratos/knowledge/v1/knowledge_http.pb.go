@@ -29,8 +29,10 @@ const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeSe
 const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 const OperationKnowledgeServiceIngestDocument = "/kratos.knowledge.v1.KnowledgeService/IngestDocument"
+const OperationKnowledgeServiceListBlockBacklinks = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 const OperationKnowledgeServiceListCollectionGraph = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
+const OperationKnowledgeServiceListDanglingLinks = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
@@ -57,11 +59,18 @@ type KnowledgeServiceHTTPServer interface {
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
 	// IngestDocument Documents
 	IngestDocument(context.Context, *IngestDocumentRequest) (*KnowledgeDocument, error)
+	// ListBlockBacklinks ListBlockBacklinks returns block-level inbound references (SP1-E): context
+	// excerpt + source block/document per edge. Single block via block_id path;
+	// aggregate all blocks of a document via the doc_id binding.
+	ListBlockBacklinks(context.Context, *ListBlockBacklinksRequest) (*ListBlockBacklinksResponse, error)
 	// ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
+	// ListDanglingLinks ListDanglingLinks aggregates dangling references of one collection by
+	// raw_target with ref counts (SP1-E; "uncreated notes" view).
+	ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
@@ -108,6 +117,9 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/vaults/{collection_id}/docs", _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/graph", _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{doc_id}/block-backlinks", _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
@@ -476,6 +488,72 @@ func _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv KnowledgeServiceHTT
 	}
 }
 
+func _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListBlockBacklinksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListBlockBacklinks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListBlockBacklinks(ctx, req.(*ListBlockBacklinksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListBlockBacklinksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListBlockBacklinksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListBlockBacklinks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListBlockBacklinks(ctx, req.(*ListBlockBacklinksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListBlockBacklinksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListDanglingLinksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListDanglingLinks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListDanglingLinks(ctx, req.(*ListDanglingLinksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListDanglingLinksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListEntityMergeSuggestionsRequest
@@ -601,11 +679,18 @@ type KnowledgeServiceHTTPClient interface {
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
 	// IngestDocument Documents
 	IngestDocument(ctx context.Context, req *IngestDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
+	// ListBlockBacklinks ListBlockBacklinks returns block-level inbound references (SP1-E): context
+	// excerpt + source block/document per edge. Single block via block_id path;
+	// aggregate all blocks of a document via the doc_id binding.
+	ListBlockBacklinks(ctx context.Context, req *ListBlockBacklinksRequest, opts ...http.CallOption) (rsp *ListBlockBacklinksResponse, err error)
 	// ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(ctx context.Context, req *ListCollectionGraphRequest, opts ...http.CallOption) (rsp *ListCollectionGraphResponse, err error)
 	ListCollections(ctx context.Context, req *ListCollectionsRequest, opts ...http.CallOption) (rsp *ListCollectionsResponse, err error)
+	// ListDanglingLinks ListDanglingLinks aggregates dangling references of one collection by
+	// raw_target with ref counts (SP1-E; "uncreated notes" view).
+	ListDanglingLinks(ctx context.Context, req *ListDanglingLinksRequest, opts ...http.CallOption) (rsp *ListDanglingLinksResponse, err error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(ctx context.Context, req *ListDocumentLinksRequest, opts ...http.CallOption) (rsp *ListDocumentLinksResponse, err error)
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *ListDocumentsResponse, err error)
@@ -764,6 +849,22 @@ func (c *KnowledgeServiceHTTPClientImpl) IngestDocument(ctx context.Context, in 
 	return &out, nil
 }
 
+// ListBlockBacklinks ListBlockBacklinks returns block-level inbound references (SP1-E): context
+// excerpt + source block/document per edge. Single block via block_id path;
+// aggregate all blocks of a document via the doc_id binding.
+func (c *KnowledgeServiceHTTPClientImpl) ListBlockBacklinks(ctx context.Context, in *ListBlockBacklinksRequest, opts ...http.CallOption) (*ListBlockBacklinksResponse, error) {
+	var out ListBlockBacklinksResponse
+	pattern := "/v1/knowledge/blocks/{block_id}/backlinks"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListBlockBacklinks))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListCollectionGraph ListCollectionGraph returns the full link graph of one collection (G4-B8):
 // nodes = documents (after path_prefix filter), edges = links (link_types filter;
 // endpoints outside scope/dangling dropped), degree = in-edge count per node.
@@ -785,6 +886,21 @@ func (c *KnowledgeServiceHTTPClientImpl) ListCollections(ctx context.Context, in
 	pattern := "/v1/knowledge/collections"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceListCollections))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListDanglingLinks ListDanglingLinks aggregates dangling references of one collection by
+// raw_target with ref counts (SP1-E; "uncreated notes" view).
+func (c *KnowledgeServiceHTTPClientImpl) ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...http.CallOption) (*ListDanglingLinksResponse, error) {
+	var out ListDanglingLinksResponse
+	pattern := "/v1/knowledge/collections/{id}/dangling-links"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListDanglingLinks))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

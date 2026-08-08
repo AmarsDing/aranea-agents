@@ -129,17 +129,64 @@ func (r *knowledgeBlockRepo) ReplaceDocBlocks(ctx context.Context, collectionID,
 	return edges, nil
 }
 
+// refEdgeSelect 边查询公共 SELECT+JOIN（SrcDocID 经 src 块推导，DstCollectionID
+// 经 dst 文档推导，dangling 为 NULL → 空串）。
+const refEdgeSelect = `SELECT r.collection_id, r.src_block_id, sb.doc_id,
+        COALESCE(dd.collection_id, ''), COALESCE(r.dst_doc_id, ''), COALESCE(r.dst_block_id, ''),
+        r.raw_target, r.edge_type, r.context, r.ambiguous
+ FROM knowledge_block_refs r
+ JOIN knowledge_blocks sb ON sb.id = r.src_block_id
+ LEFT JOIN knowledge_documents dd ON dd.id = r.dst_doc_id`
+
 // ListAllRefEdges 启动全量加载（SP1-D LinkEdgeLoader）：重放 knowledge_block_refs
-// 全部边构建内存图。SrcDocID 经 src 块 JOIN 推导；DstCollectionID 经 dst 文档
-// JOIN 推导（dangling 为 NULL → 空串）。
+// 全部边构建内存图。
 func (r *knowledgeBlockRepo) ListAllRefEdges(ctx context.Context) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	return r.queryRefEdges(ctx, "")
+}
+
+// ── SP1-E：BlockLinkReader 落库兜底（linkIndex 启动窗口未加载时启用） ─────────
+
+var _ bizknowledge.BlockLinkReader = (*knowledgeBlockRepo)(nil)
+
+// ListBacklinksByBlock 块级反链（dst_block_id 精确匹配）。
+func (r *knowledgeBlockRepo) ListBacklinksByBlock(ctx context.Context, blockID string) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	return r.queryRefEdges(ctx, ` WHERE r.dst_block_id = $1`, blockID)
+}
+
+// ListBacklinksByDoc 文档反链（dst_doc_id 匹配；块级 + 文档级全部入边）。
+func (r *knowledgeBlockRepo) ListBacklinksByDoc(ctx context.Context, docID string) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	return r.queryRefEdges(ctx, ` WHERE r.dst_doc_id = $1`, docID)
+}
+
+// ListDanglingEdges 集合 dangling 边（dst_doc_id IS NULL，raw_target 保复活线索）。
+func (r *knowledgeBlockRepo) ListDanglingEdges(ctx context.Context, collectionID string) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	return r.queryRefEdges(ctx, ` WHERE r.collection_id = $1 AND r.dst_doc_id IS NULL`, collectionID)
+}
+
+// GetBlockOwnerDoc 块所属文档 id（SP1-E service 层权限断言前置）。
+func (r *knowledgeBlockRepo) GetBlockOwnerDoc(ctx context.Context, blockID string) (string, error) {
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT r.collection_id, r.src_block_id, sb.doc_id,
-		        COALESCE(dd.collection_id, ''), COALESCE(r.dst_doc_id, ''), COALESCE(r.dst_block_id, ''),
-		        r.raw_target, r.edge_type, r.context, r.ambiguous
-		 FROM knowledge_block_refs r
-		 JOIN knowledge_blocks sb ON sb.id = r.src_block_id
-		 LEFT JOIN knowledge_documents dd ON dd.id = r.dst_doc_id`)
+		`SELECT doc_id FROM knowledge_blocks WHERE id = $1`, blockID)
+	if err != nil {
+		return "", entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		var docID string
+		if err := rows.Scan(&docID); err != nil {
+			return "", entErrToBizErr(err, "knowledge")
+		}
+		return docID, nil
+	}
+	if err := rows.Err(); err != nil {
+		return "", entErrToBizErr(err, "knowledge")
+	}
+	return "", apierror.NotFound("knowledge", "block not found: %s", blockID)
+}
+
+// queryRefEdges 边查询公共执行（SELECT+JOIN + 可选 WHERE 后缀）。
+func (r *knowledgeBlockRepo) queryRefEdges(ctx context.Context, where string, args ...any) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, refEdgeSelect+where, args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "knowledge")
 	}

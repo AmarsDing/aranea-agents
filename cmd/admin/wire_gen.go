@@ -557,7 +557,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		cleanup()
 		return wireOut{}, nil, err
 	}
-	selfImprovementService := provideSelfImprovementService(selfImprovementAdminUsecase, selfImprovement, systemSettingUsecase, loggatewayLogger)
+	siControlPlane := provideSIControlPlane()
+	selfImprovementService := provideSelfImprovementService(selfImprovementAdminUsecase, selfImprovement, systemSettingUsecase, siControlPlane, loggatewayLogger)
 	ecosystemPresetRepo := data.NewEcosystemPresetRepo(dataData)
 	packSeeder := data.NewPackSeeder(dataData)
 	string2 := provideEcosystemPresetScenarioDir()
@@ -648,7 +649,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	siPatcherStage := provideSIPatcherStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
 	siCriticStage := provideSICriticStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
 	siActivitySink := provideSIActivitySink(eventRepo, loggatewayLogger)
-	siControlPlane := provideSIControlPlane()
 	selfImprovementPipelineUsecase := provideSelfImprovementPipelineUsecase(selfImprovement, siAnalystStage, siPatcherStage, siCriticStage, repoSandboxRunner, unifiedEvolutionRepo, selfImprovementRunRepo, selfImprovementRunRepo, siActivitySink, siControlPlane, siRiskRules, loggatewayLogger)
 	siNotifier := provideSINotifier(eventRepo, loggatewayLogger)
 	siGovernanceRouter := provideSIGovernanceRouter(selfImprovement, selfImprovementRunRepo, selfImprovementRunRepo, siNotifier, siApprovalSink, selfImprovementApplyUsecase, siRiskRules, loggatewayLogger)
@@ -2770,9 +2770,10 @@ func provideSelfImprovementService(
 	uc *biz.SelfImprovementAdminUsecase,
 	siConf *conf.SelfImprovement,
 	sys *biz.SystemSettingUsecase,
+	control *biz.SIControlPlane,
 	lg loggateway.Logger,
 ) *service.SelfImprovementService {
-	return service.NewSelfImprovementService(uc, siConf, sys, lg)
+	return service.NewSelfImprovementService(uc, siConf, sys, control, lg)
 }
 
 // provideSelfImproveDriveWorker gates the full-chain drive scheduler on

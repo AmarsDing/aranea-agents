@@ -25,6 +25,7 @@ const (
 	SelfImprovementService_RejectRun_FullMethodName       = "/kratos.self_improvement.v1.SelfImprovementService/RejectRun"
 	SelfImprovementService_RollbackRun_FullMethodName     = "/kratos.self_improvement.v1.SelfImprovementService/RollbackRun"
 	SelfImprovementService_CloseRun_FullMethodName        = "/kratos.self_improvement.v1.SelfImprovementService/CloseRun"
+	SelfImprovementService_ControlRun_FullMethodName      = "/kratos.self_improvement.v1.SelfImprovementService/ControlRun"
 	SelfImprovementService_GetOutcomeStats_FullMethodName = "/kratos.self_improvement.v1.SelfImprovementService/GetOutcomeStats"
 	SelfImprovementService_GetStatus_FullMethodName       = "/kratos.self_improvement.v1.SelfImprovementService/GetStatus"
 	SelfImprovementService_GetRiskRules_FullMethodName    = "/kratos.self_improvement.v1.SelfImprovementService/GetRiskRules"
@@ -51,6 +52,11 @@ type SelfImprovementServiceClient interface {
 	RollbackRun(ctx context.Context, in *RollbackRunRequest, opts ...grpc.CallOption) (*RollbackRunResponse, error)
 	// CloseRun closes an observing run early (confirmed effective).
 	CloseRun(ctx context.Context, in *CloseRunRequest, opts ...grpc.CallOption) (*CloseRunResponse, error)
+	// ControlRun issues a user-intervention command to an in-flight run
+	// (pause / skip_retry / rollback). The command is consumed asynchronously
+	// by the pipeline at stage boundaries; only runs in
+	// detected/diagnosing/patching/verifying accept commands.
+	ControlRun(ctx context.Context, in *ControlRunRequest, opts ...grpc.CallOption) (*ControlRunResponse, error)
 	// GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(ctx context.Context, in *GetOutcomeStatsRequest, opts ...grpc.CallOption) (*GetOutcomeStatsResponse, error)
@@ -137,6 +143,16 @@ func (c *selfImprovementServiceClient) CloseRun(ctx context.Context, in *CloseRu
 	return out, nil
 }
 
+func (c *selfImprovementServiceClient) ControlRun(ctx context.Context, in *ControlRunRequest, opts ...grpc.CallOption) (*ControlRunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ControlRunResponse)
+	err := c.cc.Invoke(ctx, SelfImprovementService_ControlRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *selfImprovementServiceClient) GetOutcomeStats(ctx context.Context, in *GetOutcomeStatsRequest, opts ...grpc.CallOption) (*GetOutcomeStatsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetOutcomeStatsResponse)
@@ -197,6 +213,11 @@ type SelfImprovementServiceServer interface {
 	RollbackRun(context.Context, *RollbackRunRequest) (*RollbackRunResponse, error)
 	// CloseRun closes an observing run early (confirmed effective).
 	CloseRun(context.Context, *CloseRunRequest) (*CloseRunResponse, error)
+	// ControlRun issues a user-intervention command to an in-flight run
+	// (pause / skip_retry / rollback). The command is consumed asynchronously
+	// by the pipeline at stage boundaries; only runs in
+	// detected/diagnosing/patching/verifying accept commands.
+	ControlRun(context.Context, *ControlRunRequest) (*ControlRunResponse, error)
 	// GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(context.Context, *GetOutcomeStatsRequest) (*GetOutcomeStatsResponse, error)
@@ -240,6 +261,9 @@ func (UnimplementedSelfImprovementServiceServer) RollbackRun(context.Context, *R
 }
 func (UnimplementedSelfImprovementServiceServer) CloseRun(context.Context, *CloseRunRequest) (*CloseRunResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CloseRun not implemented")
+}
+func (UnimplementedSelfImprovementServiceServer) ControlRun(context.Context, *ControlRunRequest) (*ControlRunResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ControlRun not implemented")
 }
 func (UnimplementedSelfImprovementServiceServer) GetOutcomeStats(context.Context, *GetOutcomeStatsRequest) (*GetOutcomeStatsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetOutcomeStats not implemented")
@@ -383,6 +407,24 @@ func _SelfImprovementService_CloseRun_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SelfImprovementService_ControlRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ControlRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SelfImprovementServiceServer).ControlRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SelfImprovementService_ControlRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SelfImprovementServiceServer).ControlRun(ctx, req.(*ControlRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SelfImprovementService_GetOutcomeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetOutcomeStatsRequest)
 	if err := dec(in); err != nil {
@@ -485,6 +527,10 @@ var SelfImprovementService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CloseRun",
 			Handler:    _SelfImprovementService_CloseRun_Handler,
+		},
+		{
+			MethodName: "ControlRun",
+			Handler:    _SelfImprovementService_ControlRun_Handler,
 		},
 		{
 			MethodName: "GetOutcomeStats",

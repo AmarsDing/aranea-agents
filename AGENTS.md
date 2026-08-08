@@ -99,6 +99,7 @@
 | `build/` | 编译目录：编译脚本 + 编译产物 | 打包/发布脚本（`build/*.ps1`）、NSIS 脚本（`build/installer/`）、staging/deps 中间产物、安装包输出（`build/release/`） |
 | `docs/` | 所有文档 | 规范见下文「docs 目录规范」 |
 | `test/` | 测试中间文件 | 按测试名称自建子目录 `test/<test-name>/`；禁止在仓库根或 `_temp/`、`tmp/` 等临时目录堆放排查脚本/中间产物 |
+| `blender/` | Blender 3D 资产与预览 Demo | 机房/机柜/服务器/交换机/UPS/PDU/显示器等 3D 模型（.blend/.glb/.fbx）与 Three.js 预览页；`start.bat` 一键启动本地预览服务（http://localhost:8930/） |
 | `scripts/` | ~~构建脚本~~（已废弃） | 构建/打包脚本已全部迁入 `build/`；禁止新增 |
 
 - 一次性调试/排查脚本、日志、抓包等中间产物：放 `test/<test-name>/`，用完可整目录删除

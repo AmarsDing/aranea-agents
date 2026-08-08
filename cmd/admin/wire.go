@@ -2261,9 +2261,10 @@ func provideSelfImprovementService(
 	uc *biz.SelfImprovementAdminUsecase,
 	siConf *conf.SelfImprovement,
 	sys *biz.SystemSettingUsecase,
+	control *biz.SIControlPlane,
 	lg loggateway.Logger,
 ) *service.SelfImprovementService {
-	return service.NewSelfImprovementService(uc, siConf, sys, lg)
+	return service.NewSelfImprovementService(uc, siConf, sys, control, lg)
 }
 
 // provideSelfImproveDriveWorker gates the full-chain drive scheduler on

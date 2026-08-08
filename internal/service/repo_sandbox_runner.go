@@ -171,6 +171,20 @@ func (r *RepoSandboxRunner) ApplyDiff(ctx context.Context, path, diff string) er
 	return r.runGit(ctx, wtPath, strings.NewReader(diff), "apply", "--whitespace=nowarn", "-")
 }
 
+// ResetWorktree restores the worktree to its base-ref state (git reset --hard
+// + clean -fd), discarding any previously applied diff. The pipeline calls it
+// before every Patcher attempt (biz.RepoSandbox port doc).
+func (r *RepoSandboxRunner) ResetWorktree(ctx context.Context, path string) error {
+	wtPath, err := r.checkSandboxPath(path)
+	if err != nil {
+		return err
+	}
+	if err := r.runGit(ctx, wtPath, nil, "reset", "--hard"); err != nil {
+		return err
+	}
+	return r.runGit(ctx, wtPath, nil, "clean", "-fd")
+}
+
 // RunGate executes one verification gate inside the worktree. G4 (Critic) and
 // G5 (Eval baseline) are not runner gates and return an explicit error.
 func (r *RepoSandboxRunner) RunGate(ctx context.Context, path string, gate biz.SandboxGateKind, pkgs []string) (biz.SandboxGateResult, error) {

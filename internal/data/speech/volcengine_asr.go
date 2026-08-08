@@ -48,8 +48,7 @@ func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (bi
 		sc.Language = p.cfg.Language
 	}
 	header := nethttp.Header{}
-	header.Set("X-Api-App-Key", p.cfg.AppKey)
-	header.Set("X-Api-Access-Key", p.cfg.AccessKey)
+	setVolcAuthHeader(header, p.cfg.APIKey, p.cfg.AppKey, p.cfg.AccessKey)
 	header.Set("X-Api-Resource-Id", p.cfg.ResourceID)
 	header.Set("X-Api-Connect-Id", uuid.NewString())
 	conn, err := p.dial(ctx, p.cfg.Endpoint, header)
@@ -62,6 +61,9 @@ func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (bi
 		done:   make(chan struct{}),
 		lg:     p.lg,
 	}
+	// 真机校准（2026-08-08）：bigmodel 端点把 full client request 计入序号空间
+	// （autoAssignedSequence 校验严格连续）。full request 显式 seq=1，音频帧从 2 续号。
+	s.seq.Store(1)
 	if err := s.sendFullClientRequest(sc); err != nil {
 		_ = conn.Close()
 		return nil, apierror.Wrap(err, apierror.CodeUnavailable, "speech")
@@ -108,7 +110,7 @@ func (p *volcASRProvider) waitServerAck(ctx context.Context, conn wsConn) error 
 			return apierror.Wrap(r.err, apierror.CodeUnavailable, "speech")
 		}
 		if r.frame.msgType == volcMsgError {
-			return apierror.Unavailable("speech", "ASR server rejected full client request: %s", formatVolcErrorPayload(r.frame.payload))
+			return apierror.Unavailable("speech", "ASR server rejected full client request: %s", formatVolcError(r.frame))
 		}
 		return nil
 	}
@@ -124,18 +126,6 @@ func readFirstServerFrame(conn wsConn) (volcFrame, error) {
 		return volcFrame{}, fmt.Errorf("expected binary first frame, got message type %d", mt)
 	}
 	return unmarshalVolcFrame(bytes.NewReader(data))
-}
-
-// formatVolcErrorPayload 提取 SAUC error frame 的 code/message；解析失败回退原始 payload。
-func formatVolcErrorPayload(payload []byte) string {
-	var e struct {
-		Code    int64  `json:"code"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(payload, &e); err == nil && (e.Code != 0 || e.Message != "") {
-		return fmt.Sprintf("code %d: %s", e.Code, e.Message)
-	}
-	return string(payload)
 }
 
 type volcASRSession struct {
@@ -162,7 +152,7 @@ func (s *volcASRSession) sendFullClientRequest(sc biz.ASRSessionConfig) error {
 	if err != nil {
 		return err
 	}
-	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgFullClientRequest, flags: volcFlagNone, json: true, payload: raw}, true)
+	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgFullClientRequest, flags: volcFlagPositiveSeq, seq: 1, json: true, payload: raw}, true)
 	if err != nil {
 		return err
 	}
@@ -178,10 +168,11 @@ func (s *volcASRSession) Write(pcm []byte) error {
 	return s.conn.WriteMessage(websocket.BinaryMessage, frame)
 }
 
-// Finish 发送负序号空音频帧，标记当前语句结束（voice.commit / PTT）。
+// Finish 发送末帧（flags=0b0010：最后一包、无序号字段），标记当前语句结束
+// （voice.commit / PTT）。无序号即不参与 autoAssignedSequence 校验，规避末帧
+// 绝对值约定（-(N) vs -(N+1)）的端点间差异——真机校准选择。
 func (s *volcASRSession) Finish() error {
-	n := s.seq.Load()
-	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgAudioOnlyRequest, flags: volcFlagNegativeSeq, seq: -n, payload: []byte{}}, false)
+	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgAudioOnlyRequest, flags: volcFlagLastPackage, payload: []byte{}}, false)
 	if err != nil {
 		return err
 	}
@@ -216,6 +207,12 @@ func (s *volcASRSession) readPump() {
 				return // 主动 Close 的正常路径
 			default:
 			}
+			// 真机校准（2026-08-08）：火山在末帧应答后以 close 1000 正常关闭
+			// （reason "finish last sequence"）。识别结果已交付，正常关闭是
+			// 流结束信号而非错误——误报 ASR_ERROR 会把 thinking 态打断回 listening。
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				return
+			}
 			s.emit(biz.ASREvent{Type: biz.ASREventError, Err: apierror.Wrap(err, apierror.CodeUnavailable, "speech")})
 			return
 		}
@@ -229,7 +226,7 @@ func (s *volcASRSession) readPump() {
 		}
 		switch f.msgType {
 		case volcMsgError:
-			s.emit(biz.ASREvent{Type: biz.ASREventError, Err: apierror.Internal("speech", "volc asr error: %s", string(f.payload))})
+			s.emit(biz.ASREvent{Type: biz.ASREventError, Err: apierror.Internal("speech", "volc asr error: %s", formatVolcError(f))})
 		case volcMsgFullServerResponse:
 			s.handleResponse(f)
 		}

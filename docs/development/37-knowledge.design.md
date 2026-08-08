@@ -127,7 +127,8 @@ message CreateCollectionRequest {
   string name = 1 [(google.api.field_behavior) = REQUIRED];
   string description = 2;
   string embedding_model = 3;   // V2 可选：留空 = 仅词法检索，不建语义层
-  string root_path = 4 [(google.api.field_behavior) = REQUIRED]; // V2 必填：本地文件夹绝对路径
+  string root_path = 4;         // SP1-F 条件必填：backend=local 必填（本地文件夹绝对路径），team 必须为空
+  string vault_backend = 5;     // SP1-F：local（缺省）| team
 }
 
 message GetCollectionRequest {
@@ -1685,7 +1686,7 @@ VaultFiler（KB 侧唯一写文件出口）
 
 | 项 | 变化 |
 |----|------|
-| `KnowledgeCollection` | + `root_path`/`sync_state`/`last_sync_at`（Vault 切换栏展示同步状态） |
+| `KnowledgeCollection` | + `root_path`/`sync_state`/`last_sync_at`（Vault 切换栏展示同步状态）；SP1-F + `vault_backend`（local/team） |
 | `KnowledgeDocument` | + `rel_path`/`summary`/`tags`/`doc_type`（列表与 hover 卡一级密度直接可用，无需二次请求） |
 | `rpc ListVaultTree` | `GET /v1/knowledge/vaults/{collection_id}/tree?prefix=`；懒加载：返回 prefix 直接子节点（目录+文件各一条），节点 `{name, path, kind(dir/file), doc_id, summary, tags, doc_type, status, size_bytes, updated_at}`；中栏文档列表复用文件节点（不再给 ListDocuments 加 prefix 过滤，YAGNI） |
 | `rpc ListDocumentLinks` | `GET /v1/knowledge/documents/{id}/links`；返回 `{target_doc_id, target_source, target_rel_path, link_type, context, direction(out/in)}`，data 层 JOIN knowledge_documents 一次取回（禁 N+1） |
@@ -2035,6 +2036,8 @@ UNIQUE(doc_id, ordinal)；UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL
 **事件分级（N-2，评审修订）**：`knowledge.graph.delta` 按 AS-EVT-01 登记为 Informational（可从 `knowledge_block_refs` 全量重放重建，丢失可容忍）。
 
 > **As-built（2026-08-08，D-1/D-2）**：事件载体为 v2 `SystemNoticeEvent`（noticeType=`knowledge.graph.delta`，meta={event_type, version, added, removed}，边负载含 collection/src/dst/raw_target/edge_type/context/ambiguous），service 适配器 `knowledgeGraphDeltaPublisher` 经 v2Bus 广播；`NewKnowledgeService` 构造期创建 LinkIndex 并接线共享 uc；启动全量加载经 app.go readiness 门控后后台 goroutine（失败降级不阻塞）；`DeleteDocument` 接 `RemoveDoc`（集合删除归 SP1-G）。时序契约：`ApplyDocDelta` 不区分初次/重建，目标文档每次 apply 均将入向块边转文档级（严格镜像 `ReplaceDocBlocks` 先删后插的 FK SET NULL 语义）。
+>
+> **As-built（2026-08-08，SP1-E 读路径）**：`biz/knowledge/backlink.go` 落地 S5 消费方——读路由 `LinkIndex.Loaded()` 已加载 → 直读内存图（O(度数)），启动窗口未加载 → `BlockLinkReader` 落库兜底（data `refEdgeSelect` 公共 SELECT+JOIN：`ListBacklinksByBlock/ByDoc/ListDanglingEdges` + `GetBlockOwnerDoc` 支撑块级路径权限断言），双端口未接线 → 空降级；`Loaded` 门（LoadAll 置位）修复启动窗口读空图误判。源文档显示名经 `DocNameReader.ListDocumentNames` 批量解析（rel_path 优先、source 兜底，失败留空降级不阻塞）。输出确定性契约：反链按 (SrcDocID, SrcBlockID) 字典序；dangling 组间 ref_count 降序 + raw_target 字典序。service 双 RPC（`knowledge_backlink.go`）沿用 C-01 `assertCollectionAccess` 跨租户断言；装配经 `ProvideKnowledgeUsecase` 类型断言自动接线。可见性：当前 API 无用户上下文，visible=nil（片段级权限属 SP5）。
 
 ### S6. 团队库（team 后端）
 

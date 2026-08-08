@@ -129,6 +129,10 @@ export type UpdateSystemSettingsRequest = {
   // Tri-state via proto3 optional: unset = keep stored value; explicit true/false
   // replaces (explicit value ends env fallback for the toggle).
   speechArchiveUserAudio?: boolean;
+  // X-Api-Key 鉴权模式（火山控制台新 API Key，M74 真机校准）：write-only，
+  // 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
+  speechAsrApiKey: string | undefined;
+  speechTtsApiKey: string | undefined;
 };
 
 export type TestWebResearchRequest = {

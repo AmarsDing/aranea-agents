@@ -10,8 +10,8 @@ import (
 )
 
 // setupSpeechSettingRepo builds a Data with the Ent-managed system_settings
-// table plus the speech_* DDL columns (mirroring 20260808_speech_columns.sql,
-// which Ent auto-migration does not cover).
+// table plus the speech_* DDL columns (mirroring 20260808_speech_columns.sql +
+// 20260809_speech_api_key_columns.sql, which Ent auto-migration does not cover).
 func setupSpeechSettingRepo(t *testing.T) *systemSettingRepo {
 	t.Helper()
 	client, db := testhelper.SetupTestPG(t)
@@ -19,12 +19,14 @@ func setupSpeechSettingRepo(t *testing.T) *systemSettingRepo {
 	for _, stmt := range []string{
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_driver TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_endpoint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_api_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_app_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_access_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_resource_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_asr_language TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_driver TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_endpoint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_api_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_app_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_access_key TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS speech_tts_resource_id TEXT NOT NULL DEFAULT ''`,
@@ -72,11 +74,11 @@ func TestSystemSettingRepo_SpeechRoundTrip(t *testing.T) {
 	off := false
 	in := biz.SpeechSetting{
 		ASR: biz.ASRProviderConfig{
-			Driver: "volcengine", Endpoint: "wss://asr", AppKey: " ak ", AccessKey: "sk",
+			Driver: "volcengine", Endpoint: "wss://asr", APIKey: " api-1 ", AppKey: " ak ", AccessKey: "sk",
 			ResourceID: "rid", Language: "zh-CN",
 		},
 		TTS: biz.TTSProviderConfig{
-			Driver: "volcengine", Endpoint: "wss://tts", AppKey: "ak", AccessKey: " sk ",
+			Driver: "volcengine", Endpoint: "wss://tts", APIKey: "api-2", AppKey: "ak", AccessKey: " sk ",
 			ResourceID: "rid2", Voice: "zh_female_x", SpeedRatio: 1.5,
 		},
 		ArchiveUserAudio: &off,
@@ -87,6 +89,9 @@ func TestSystemSettingRepo_SpeechRoundTrip(t *testing.T) {
 	}
 	if saved.ASR.AppKey != "ak" || saved.TTS.AccessKey != "sk" {
 		t.Fatalf("credentials must be trimmed+persisted: %#v", saved)
+	}
+	if saved.ASR.APIKey != "api-1" || saved.TTS.APIKey != "api-2" {
+		t.Fatalf("api keys must be trimmed+persisted: %#v", saved)
 	}
 	if saved.ArchiveUserAudio == nil || *saved.ArchiveUserAudio != false {
 		t.Fatalf("explicit archive false must persist, got %#v", saved.ArchiveUserAudio)
@@ -108,6 +113,9 @@ func TestSystemSettingRepo_SpeechRoundTrip(t *testing.T) {
 	}
 	if kept.ASR.AppKey != "ak" || kept.TTS.AccessKey != "sk" {
 		t.Fatalf("cred flags off must preserve credentials: %#v", kept)
+	}
+	if kept.ASR.APIKey != "api-1" || kept.TTS.APIKey != "api-2" {
+		t.Fatalf("cred flags off must preserve api keys: %#v", kept)
 	}
 
 	// Archive back to NULL (unset). Note: repo writes patch fields verbatim —

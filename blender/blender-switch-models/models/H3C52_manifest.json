@@ -1,0 +1,985 @@
+{
+  "model": "H3C S5130S-52S-EI",
+  "role": "高密度千兆接入交换机",
+  "prefix": "H3C52",
+  "fbx": "SW2_H3C_S5130S-52S-EI.fbx",
+  "glb": "SW2_H3C_S5130S-52S-EI.glb",
+  "dims_mm": [
+    440,
+    260,
+    43.6
+  ],
+  "units": "mm (pos_mm) / FBX 导出为 cm, UE5 默认 1:1",
+  "naming": {
+    "static_mesh": "H3C52_DETAIL",
+    "led_link": "H3C52_LED_P{nn}_LNK",
+    "led_act": "H3C52_LED_P{nn}_ACT",
+    "anchor": "H3C52_ANCHOR_P{nn}  (Empty, 端口 UI 挂点)",
+    "sys_led": "H3C52_LED_SYS_{PWR|SYS|STK}"
+  },
+  "led_semantics": {
+    "green": "Link Up (常亮) / 对应材质 M_LED_GREEN",
+    "amber": "Active 数据收发 (闪烁) / M_LED_AMBER",
+    "red": "Alarm 端口告警 / M_LED_RED",
+    "blue": "Uplink 上联指示 / M_LED_BLUE",
+    "off": "Link Down 无连接 / M_LED_OFF"
+  },
+  "ports": [
+    {
+      "index": 1,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P01_LNK",
+      "led_act": "H3C52_LED_P01_ACT",
+      "anchor": "H3C52_ANCHOR_P01",
+      "pos_mm": [
+        -202.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/1",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 2,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P02_LNK",
+      "led_act": "H3C52_LED_P02_ACT",
+      "anchor": "H3C52_ANCHOR_P02",
+      "pos_mm": [
+        -202.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/2",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 3,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P03_LNK",
+      "led_act": "H3C52_LED_P03_ACT",
+      "anchor": "H3C52_ANCHOR_P03",
+      "pos_mm": [
+        -186.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/3",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 4,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P04_LNK",
+      "led_act": "H3C52_LED_P04_ACT",
+      "anchor": "H3C52_ANCHOR_P04",
+      "pos_mm": [
+        -186.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/4",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 5,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P05_LNK",
+      "led_act": "H3C52_LED_P05_ACT",
+      "anchor": "H3C52_ANCHOR_P05",
+      "pos_mm": [
+        -171.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/5",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 6,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P06_LNK",
+      "led_act": "H3C52_LED_P06_ACT",
+      "anchor": "H3C52_ANCHOR_P06",
+      "pos_mm": [
+        -171.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/6",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 7,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P07_LNK",
+      "led_act": "H3C52_LED_P07_ACT",
+      "anchor": "H3C52_ANCHOR_P07",
+      "pos_mm": [
+        -155.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/7",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 8,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P08_LNK",
+      "led_act": "H3C52_LED_P08_ACT",
+      "anchor": "H3C52_ANCHOR_P08",
+      "pos_mm": [
+        -155.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/8",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 9,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P09_LNK",
+      "led_act": "H3C52_LED_P09_ACT",
+      "anchor": "H3C52_ANCHOR_P09",
+      "pos_mm": [
+        -140.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/9",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 10,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P10_LNK",
+      "led_act": "H3C52_LED_P10_ACT",
+      "anchor": "H3C52_ANCHOR_P10",
+      "pos_mm": [
+        -140.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/10",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 11,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P11_LNK",
+      "led_act": "H3C52_LED_P11_ACT",
+      "anchor": "H3C52_ANCHOR_P11",
+      "pos_mm": [
+        -124.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/11",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 12,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P12_LNK",
+      "led_act": "H3C52_LED_P12_ACT",
+      "anchor": "H3C52_ANCHOR_P12",
+      "pos_mm": [
+        -124.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/12",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 13,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P13_LNK",
+      "led_act": "H3C52_LED_P13_ACT",
+      "anchor": "H3C52_ANCHOR_P13",
+      "pos_mm": [
+        -109.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/13",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 14,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P14_LNK",
+      "led_act": "H3C52_LED_P14_ACT",
+      "anchor": "H3C52_ANCHOR_P14",
+      "pos_mm": [
+        -109.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/14",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 15,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P15_LNK",
+      "led_act": "H3C52_LED_P15_ACT",
+      "anchor": "H3C52_ANCHOR_P15",
+      "pos_mm": [
+        -93.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/15",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 16,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P16_LNK",
+      "led_act": "H3C52_LED_P16_ACT",
+      "anchor": "H3C52_ANCHOR_P16",
+      "pos_mm": [
+        -93.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/16",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 17,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P17_LNK",
+      "led_act": "H3C52_LED_P17_ACT",
+      "anchor": "H3C52_ANCHOR_P17",
+      "pos_mm": [
+        -78.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/17",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 18,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P18_LNK",
+      "led_act": "H3C52_LED_P18_ACT",
+      "anchor": "H3C52_ANCHOR_P18",
+      "pos_mm": [
+        -78.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/18",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 19,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P19_LNK",
+      "led_act": "H3C52_LED_P19_ACT",
+      "anchor": "H3C52_ANCHOR_P19",
+      "pos_mm": [
+        -62.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/19",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 20,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P20_LNK",
+      "led_act": "H3C52_LED_P20_ACT",
+      "anchor": "H3C52_ANCHOR_P20",
+      "pos_mm": [
+        -62.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/20",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 21,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P21_LNK",
+      "led_act": "H3C52_LED_P21_ACT",
+      "anchor": "H3C52_ANCHOR_P21",
+      "pos_mm": [
+        -47.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/21",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 22,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P22_LNK",
+      "led_act": "H3C52_LED_P22_ACT",
+      "anchor": "H3C52_ANCHOR_P22",
+      "pos_mm": [
+        -47.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/22",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 23,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P23_LNK",
+      "led_act": "H3C52_LED_P23_ACT",
+      "anchor": "H3C52_ANCHOR_P23",
+      "pos_mm": [
+        -31.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/23",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 24,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P24_LNK",
+      "led_act": "H3C52_LED_P24_ACT",
+      "anchor": "H3C52_ANCHOR_P24",
+      "pos_mm": [
+        -31.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/24",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 25,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P25_LNK",
+      "led_act": "H3C52_LED_P25_ACT",
+      "anchor": "H3C52_ANCHOR_P25",
+      "pos_mm": [
+        -16.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/25",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 26,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P26_LNK",
+      "led_act": "H3C52_LED_P26_ACT",
+      "anchor": "H3C52_ANCHOR_P26",
+      "pos_mm": [
+        -16.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/26",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 27,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P27_LNK",
+      "led_act": "H3C52_LED_P27_ACT",
+      "anchor": "H3C52_ANCHOR_P27",
+      "pos_mm": [
+        -0.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/27",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 28,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P28_LNK",
+      "led_act": "H3C52_LED_P28_ACT",
+      "anchor": "H3C52_ANCHOR_P28",
+      "pos_mm": [
+        -0.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/28",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 29,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P29_LNK",
+      "led_act": "H3C52_LED_P29_ACT",
+      "anchor": "H3C52_ANCHOR_P29",
+      "pos_mm": [
+        15.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/29",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 30,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P30_LNK",
+      "led_act": "H3C52_LED_P30_ACT",
+      "anchor": "H3C52_ANCHOR_P30",
+      "pos_mm": [
+        15.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/30",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 31,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P31_LNK",
+      "led_act": "H3C52_LED_P31_ACT",
+      "anchor": "H3C52_ANCHOR_P31",
+      "pos_mm": [
+        30.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/31",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 32,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P32_LNK",
+      "led_act": "H3C52_LED_P32_ACT",
+      "anchor": "H3C52_ANCHOR_P32",
+      "pos_mm": [
+        30.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/32",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 33,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P33_LNK",
+      "led_act": "H3C52_LED_P33_ACT",
+      "anchor": "H3C52_ANCHOR_P33",
+      "pos_mm": [
+        46.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/33",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 34,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P34_LNK",
+      "led_act": "H3C52_LED_P34_ACT",
+      "anchor": "H3C52_ANCHOR_P34",
+      "pos_mm": [
+        46.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/34",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 35,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P35_LNK",
+      "led_act": "H3C52_LED_P35_ACT",
+      "anchor": "H3C52_ANCHOR_P35",
+      "pos_mm": [
+        61.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/35",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 36,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P36_LNK",
+      "led_act": "H3C52_LED_P36_ACT",
+      "anchor": "H3C52_ANCHOR_P36",
+      "pos_mm": [
+        61.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/36",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 37,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P37_LNK",
+      "led_act": "H3C52_LED_P37_ACT",
+      "anchor": "H3C52_ANCHOR_P37",
+      "pos_mm": [
+        77.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/37",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 38,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P38_LNK",
+      "led_act": "H3C52_LED_P38_ACT",
+      "anchor": "H3C52_ANCHOR_P38",
+      "pos_mm": [
+        77.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/38",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 39,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P39_LNK",
+      "led_act": "H3C52_LED_P39_ACT",
+      "anchor": "H3C52_ANCHOR_P39",
+      "pos_mm": [
+        92.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/39",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 40,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P40_LNK",
+      "led_act": "H3C52_LED_P40_ACT",
+      "anchor": "H3C52_ANCHOR_P40",
+      "pos_mm": [
+        92.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/40",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 41,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P41_LNK",
+      "led_act": "H3C52_LED_P41_ACT",
+      "anchor": "H3C52_ANCHOR_P41",
+      "pos_mm": [
+        108.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/41",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "办公网接入",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 42,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P42_LNK",
+      "led_act": "H3C52_LED_P42_ACT",
+      "anchor": "H3C52_ANCHOR_P42",
+      "pos_mm": [
+        108.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/42",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "AP接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 43,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P43_LNK",
+      "led_act": "H3C52_LED_P43_ACT",
+      "anchor": "H3C52_ANCHOR_P43",
+      "pos_mm": [
+        123.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/43",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "IP电话",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 44,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P44_LNK",
+      "led_act": "H3C52_LED_P44_ACT",
+      "anchor": "H3C52_ANCHOR_P44",
+      "pos_mm": [
+        123.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/44",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "打印/外设",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 45,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P45_LNK",
+      "led_act": "H3C52_LED_P45_ACT",
+      "anchor": "H3C52_ANCHOR_P45",
+      "pos_mm": [
+        139.0,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/45",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "视频监控",
+      "vlan": "Access: 20"
+    },
+    {
+      "index": 46,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P46_LNK",
+      "led_act": "H3C52_LED_P46_ACT",
+      "anchor": "H3C52_ANCHOR_P46",
+      "pos_mm": [
+        139.0,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/46",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "服务器接入",
+      "vlan": "Access: 30"
+    },
+    {
+      "index": 47,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P47_LNK",
+      "led_act": "H3C52_LED_P47_ACT",
+      "anchor": "H3C52_ANCHOR_P47",
+      "pos_mm": [
+        154.5,
+        -132.0,
+        8.2
+      ],
+      "ifname": "GigabitEthernet1/0/47",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "物联网关",
+      "vlan": "Access: 40"
+    },
+    {
+      "index": 48,
+      "type": "RJ45",
+      "led_link": "H3C52_LED_P48_LNK",
+      "led_act": "H3C52_LED_P48_ACT",
+      "anchor": "H3C52_ANCHOR_P48",
+      "pos_mm": [
+        154.5,
+        -132.0,
+        -8.2
+      ],
+      "ifname": "GigabitEthernet1/0/48",
+      "port_type": "RJ45_1G",
+      "speed_mbps": 1000,
+      "poe": false,
+      "purpose": "备用",
+      "vlan": "Access: 10"
+    },
+    {
+      "index": 49,
+      "type": "SFP+",
+      "led_link": "H3C52_LED_P49_LNK",
+      "led_act": "H3C52_LED_P49_ACT",
+      "anchor": "H3C52_ANCHOR_P49",
+      "pos_mm": [
+        163.55,
+        -132.0,
+        0.0
+      ],
+      "ifname": "Ten-GigabitEthernet1/0/49",
+      "port_type": "SFP+_10G",
+      "speed_mbps": 10000,
+      "poe": false,
+      "purpose": "上联-汇聚/核心",
+      "vlan": "Trunk: 1,10,20,30,100"
+    },
+    {
+      "index": 50,
+      "type": "SFP+",
+      "led_link": "H3C52_LED_P50_LNK",
+      "led_act": "H3C52_LED_P50_ACT",
+      "anchor": "H3C52_ANCHOR_P50",
+      "pos_mm": [
+        178.85,
+        -132.0,
+        0.0
+      ],
+      "ifname": "Ten-GigabitEthernet1/0/50",
+      "port_type": "SFP+_10G",
+      "speed_mbps": 10000,
+      "poe": false,
+      "purpose": "上联-汇聚/核心",
+      "vlan": "Trunk: 1,10,20,30,100"
+    },
+    {
+      "index": 51,
+      "type": "SFP+",
+      "led_link": "H3C52_LED_P51_LNK",
+      "led_act": "H3C52_LED_P51_ACT",
+      "anchor": "H3C52_ANCHOR_P51",
+      "pos_mm": [
+        194.15,
+        -132.0,
+        0.0
+      ],
+      "ifname": "Ten-GigabitEthernet1/0/51",
+      "port_type": "SFP+_10G",
+      "speed_mbps": 10000,
+      "poe": false,
+      "purpose": "上联-汇聚/核心",
+      "vlan": "Trunk: 1,10,20,30,100"
+    },
+    {
+      "index": 52,
+      "type": "SFP+",
+      "led_link": "H3C52_LED_P52_LNK",
+      "led_act": "H3C52_LED_P52_ACT",
+      "anchor": "H3C52_ANCHOR_P52",
+      "pos_mm": [
+        209.45,
+        -132.0,
+        0.0
+      ],
+      "ifname": "Ten-GigabitEthernet1/0/52",
+      "port_type": "SFP+_10G",
+      "speed_mbps": 10000,
+      "poe": false,
+      "purpose": "上联-汇聚/核心",
+      "vlan": "Trunk: 1,10,20,30,100"
+    }
+  ],
+  "system_leds": [
+    {
+      "label": "PWR",
+      "object": "H3C52_LED_SYS_PWR",
+      "pos_mm": [
+        -213.5,
+        -132.0,
+        -15.5
+      ]
+    },
+    {
+      "label": "SYS",
+      "object": "H3C52_LED_SYS_SYS",
+      "pos_mm": [
+        -205.5,
+        -132.0,
+        -15.5
+      ]
+    }
+  ]
+}

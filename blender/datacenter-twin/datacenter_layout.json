@@ -1,0 +1,115 @@
+{
+ "version": 1,
+ "name": "Aranea 数据中心数字孪生 — 装配契约",
+ "units": "meters",
+ "coordinate": "Blender/资产局部: front=-Y, up=+Z; FBX 导入 UE5 后为 cm, 1:1 实物尺寸",
+ "mount_formula": {
+  "rack_u": "u_bottom_z(u) = 0.115 + (u-1)*0.04445 (机柜局部坐标)",
+  "device": "设备根节点局部: 前面 y=-D/2, 底 z=0。装入机柜时: device_root.z = u_bottom_z(u), device_root.y = rack_local(-0.45 + D/2), device_root.x = 0",
+  "note": "D=设备进深(见各资产 dims)。交换机/服务器均为前=-Y, 与机柜同向, 无需旋转"
+ },
+ "assets": {
+  "RACK_42U": {
+   "fbx": "../blender-rack/models/RACK_42U.fbx",
+   "glb": "../blender-rack/models/RACK_42U.glb",
+   "manifest": "../blender-rack/models/rack_manifest.json",
+   "dims_m": {"width": 0.60, "depth": 1.20, "height": 1.982},
+   "u_count": 42
+  },
+  "SRV_1U": {
+   "fbx": "../server-3d/SRV_1U.fbx",
+   "manifest": "../server-3d/ue5_integration.json#assembly.1U",
+   "u_height": 1, "depth_m": 0.66, "telemetry": "server"
+  },
+  "SRV_2U": {
+   "fbx": "../server-3d/SRV_2U.fbx",
+   "manifest": "../server-3d/ue5_integration.json#assembly.2U",
+   "u_height": 2, "depth_m": 0.70, "telemetry": "server"
+  },
+  "SRV_4U": {
+   "fbx": "../server-3d/SRV_4U.fbx",
+   "manifest": "../server-3d/ue5_integration.json#assembly.4U",
+   "u_height": 4, "depth_m": 0.75, "telemetry": "server"
+  },
+  "SW1_S5735": {
+   "fbx": "../blender-switch-models/models/SW1_Huawei_S5735-L24P4S-A1.fbx",
+   "glb": "../blender-switch-models/models/SW1_Huawei_S5735-L24P4S-A1.glb",
+   "manifest": "../blender-switch-models/models/S5735_manifest.json",
+   "u_height": 1, "depth_m": 0.220, "telemetry": "switch"
+  },
+  "SW2_H3C52": {
+   "fbx": "../blender-switch-models/models/SW2_H3C_S5130S-52S-EI.fbx",
+   "glb": "../blender-switch-models/models/SW2_H3C_S5130S-52S-EI.glb",
+   "manifest": "../blender-switch-models/models/H3C52_manifest.json",
+   "u_height": 1, "depth_m": 0.260, "telemetry": "switch"
+  },
+  "SW3_CE6857": {
+   "fbx": "../blender-switch-models/models/SW3_Huawei_CE6857-48S8CQ.fbx",
+   "glb": "../blender-switch-models/models/SW3_Huawei_CE6857-48S8CQ.glb",
+   "manifest": "../blender-switch-models/models/CE6857_manifest.json",
+   "u_height": 1, "depth_m": 0.420, "telemetry": "switch"
+  },
+  "UPS2_HU10K": {
+   "fbx": "../blender-switch-models/models/UPS2_HUAWEI_UPS2000-A-10KTTL.fbx",
+   "glb": "../blender-switch-models/models/UPS2_HUAWEI_UPS2000-A-10KTTL.glb",
+   "manifest": "../blender-switch-models/models/HU10K_manifest.json",
+   "u_height": 2, "depth_m": 0.585, "telemetry": "ups"
+  },
+  "UPS1_C6KS": {
+   "fbx": "../blender-switch-models/models/UPS1_SANTAK_C6KS.fbx",
+   "glb": "../blender-switch-models/models/UPS1_SANTAK_C6KS.glb",
+   "manifest": "../blender-switch-models/models/C6KS_manifest.json",
+   "tower": true, "dims_m": {"width": 0.24, "depth": 0.50, "height": 0.46}, "telemetry": "ups"
+  },
+  "UPS3_YDC10H": {
+   "fbx": "../blender-switch-models/models/UPS3_KSTAR_YDC9110H.fbx",
+   "glb": "../blender-switch-models/models/UPS3_KSTAR_YDC9110H.glb",
+   "manifest": "../blender-switch-models/models/YDC10H_manifest.json",
+   "tower": true, "dims_m": {"width": 0.25, "depth": 0.59, "height": 0.655}, "telemetry": "ups"
+  }
+ },
+ "racks": [
+  {
+   "rack_id": "A01",
+   "asset": "RACK_42U",
+   "position": [0.0, 0.0, 0.0],
+   "rotation_z_deg": 0,
+   "comment": "网络接入柜: TOR 置顶, UPS 置底, 服务器居中",
+   "units": [
+    {"u": 1, "asset": "UPS2_HU10K", "device_id": "A01.ups2", "u_span": 2},
+    {"u": 10, "asset": "SRV_1U", "device_id": "A01.srv1", "u_span": 1},
+    {"u": 12, "asset": "SRV_2U", "device_id": "A01.srv2", "u_span": 2},
+    {"u": 20, "asset": "SW1_S5735", "device_id": "A01.sw1", "u_span": 1},
+    {"u": 21, "asset": "SW2_H3C52", "device_id": "A01.sw2", "u_span": 1},
+    {"u": 42, "asset": "SW3_CE6857", "device_id": "A01.sw3", "u_span": 1, "comment": "TOR 置顶便于脊线布线"}
+   ]
+  },
+  {
+   "rack_id": "A02",
+   "asset": "RACK_42U",
+   "position": [0.7, 0.0, 0.0],
+   "rotation_z_deg": 0,
+   "comment": "AI 计算柜: 4U GPU 训练机置底承重, UPS 置底",
+   "units": [
+    {"u": 1, "asset": "UPS2_HU10K", "device_id": "A02.ups2", "u_span": 2},
+    {"u": 5, "asset": "SRV_4U", "device_id": "A02.srv4", "u_span": 4},
+    {"u": 10, "asset": "SRV_2U", "device_id": "A02.srv2", "u_span": 2},
+    {"u": 13, "asset": "SRV_1U", "device_id": "A02.srv1", "u_span": 1},
+    {"u": 42, "asset": "SW3_CE6857", "device_id": "A02.sw3", "u_span": 1}
+   ]
+  }
+ ],
+ "floor_items": [
+  {"item_id": "UPS-A", "asset": "UPS1_C6KS", "position": [-0.75, 0.0, 0.0], "rotation_z_deg": 0, "comment": "塔式 UPS, A01 旁"},
+  {"item_id": "UPS-B", "asset": "UPS3_YDC10H", "position": [-0.75, 0.7, 0.0], "rotation_z_deg": 0, "comment": "塔式 UPS(带脚轮)"}
+ ],
+ "aisles": {
+  "cold": {"y_center": -1.25, "width_m": 1.2, "comment": "前排进风冷通道 (设备 front=-Y 朝向)"},
+  "hot": {"y_center": 1.15, "width_m": 1.0, "comment": "后排热通道"}
+ },
+ "telemetry_id_rules": {
+  "pattern": "<rack_id>.<device_key>[.<subsystem>]",
+  "examples": ["A01.srv1.power", "A01.srv1.nics[0].activity", "A02.srv4.gpus[2].temp", "A01.sw1.ports[3].link", "A01.ups2.load_pct", "A01.env.temp_in"],
+  "doc": "./TELEMETRY.md"
+ }
+}

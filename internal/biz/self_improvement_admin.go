@@ -238,8 +238,14 @@ func (uc *SelfImprovementAdminUsecase) Approve(ctx context.Context, runID, opera
 		loggateway.Str("run_id", run.ID),
 		loggateway.Str("operator", operator))
 	if uc.applyDrive != nil {
+		// S2 修复：迁移已生效（applying），apply 失败不再向操作员返回错误
+		// （状态与反馈矛盾的误导），仅记日志——drive worker 下 tick 经
+		// driveApplying 重驱动兜底。
 		if err := uc.applyDrive.Apply(ctx, run.ID); err != nil {
-			return err // 迁移已生效；apply 失败由 drive worker 下 tick 重驱动。
+			uc.lg.Warn("self-improve approve: apply drive failed, drive worker will retry",
+				loggateway.StepID("si_admin.approve"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Err(err))
 		}
 	}
 	return nil

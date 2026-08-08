@@ -24,6 +24,9 @@ export type SITriggerSource = 'error_cluster' | 'perf_bottleneck' | 'eval_regres
 
 export type SIPatchKind = 'code' | 'config' | 'prompt' | 'docs' | 'i18n' | 'test' | '';
 
+/** User-intervention command (ControlRun RPC, R2/S1); consumed by the pipeline at stage boundaries. */
+export type SIControlCommand = 'pause' | 'skip_retry' | 'rollback';
+
 export interface SIDiffStats {
   files: number;
   additions: number;

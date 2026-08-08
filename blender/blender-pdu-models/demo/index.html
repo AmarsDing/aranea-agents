@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POWERGRID · 智能 PDU 3D 配电可视化 · UE5 资产预览</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#03060b;
+    font-family:"Segoe UI","Microsoft YaHei",sans-serif; color:#cfe6f5; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* 扫描线 + 暗角 (科技感) */
+  #fx-scan { position:fixed; inset:0; z-index:5; pointer-events:none; mix-blend-mode:overlay; opacity:.5;
+    background:repeating-linear-gradient(0deg, rgba(160,220,255,.028) 0 1px, transparent 1px 3px); }
+  #fx-vig  { position:fixed; inset:0; z-index:4; pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,4,10,.55) 100%); }
+
+  /* ---------- 顶栏 ---------- */
+  #hud-top { position:fixed; top:0; left:0; right:0; display:flex; align-items:center; gap:14px;
+    padding:12px 20px; background:linear-gradient(180deg,rgba(3,8,16,.94),rgba(3,8,16,0));
+    pointer-events:none; z-index:10; }
+  #hud-top h1 { font-size:15px; font-weight:600; letter-spacing:2px; color:#7fe8ff;
+    text-shadow:0 0 12px rgba(60,200,255,.6); white-space:nowrap; }
+  #hud-top .sub { font-size:11px; color:#4a6a80; letter-spacing:1px; }
+  .tabs { display:flex; gap:6px; margin-left:16px; pointer-events:auto; }
+  .tabs button, .ops button {
+    background:rgba(14,30,50,.65); border:1px solid rgba(64,180,230,.35); color:#9fd0ea;
+    font-size:12px; padding:5px 13px; border-radius:3px; cursor:pointer; letter-spacing:1px;
+    transition:all .18s; backdrop-filter:blur(6px); }
+  .tabs button:hover, .ops button:hover { border-color:#46e0ff; color:#dff8ff;
+    box-shadow:0 0 10px rgba(70,220,255,.35); }
+  .tabs button.on { background:rgba(24,84,130,.75); border-color:#46e0ff; color:#fff; }
+  .ops { margin-left:auto; display:flex; gap:8px; align-items:center; pointer-events:auto; }
+  #clock { font-size:12px; color:#67e3ff; letter-spacing:2px; font-variant-numeric:tabular-nums;
+    text-shadow:0 0 8px rgba(70,220,255,.5); }
+  #stats { font-size:11px; color:#5f89a5; letter-spacing:1px; margin-right:4px; }
+  #stats b { color:#8ff3ff; font-weight:600; }
+  #stats .al { color:#ff5f6b; }
+
+  /* ---------- 左: 电力仪表盘 ---------- */
+  #dash { position:fixed; left:18px; top:64px; z-index:9; width:238px;
+    background:linear-gradient(165deg,rgba(8,20,34,.86),rgba(5,11,22,.82));
+    border:1px solid rgba(64,190,240,.28); border-radius:8px; padding:12px 14px;
+    backdrop-filter:blur(10px); box-shadow:0 0 28px rgba(30,140,220,.12);
+    transition:opacity .3s; }
+  #dash .dev { font-size:12px; color:#8fd8f5; letter-spacing:1px; font-weight:600; }
+  #dash .role { font-size:10px; color:#4d6d84; margin-top:2px; letter-spacing:1px; }
+  #gaugeWrap { display:flex; justify-content:center; margin:6px 0 2px; }
+  #dash .grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; margin-top:4px; }
+  .digi { background:rgba(6,16,28,.6); border:1px solid rgba(60,170,220,.16); border-radius:4px;
+    padding:4px 8px 3px; }
+  .digi .k { font-size:9px; color:#4d6d84; letter-spacing:2px; }
+  .digi .v { font-size:15px; color:#aef4ff; font-variant-numeric:tabular-nums; font-weight:600;
+    text-shadow:0 0 8px rgba(70,220,255,.35); line-height:1.25; }
+  .digi .v small { font-size:9px; color:#5f89a5; font-weight:400; margin-left:2px; }
+  #energy { grid-column:1/3; }
+  #energy .v { color:#ffe9a8; text-shadow:0 0 8px rgba(255,210,110,.3); }
+  #spectrum { display:flex; align-items:flex-end; gap:5px; height:44px; margin-top:9px;
+    padding:6px 8px 4px; background:rgba(6,16,28,.6); border:1px solid rgba(60,170,220,.16);
+    border-radius:4px; position:relative; }
+  #spectrum .bar { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; }
+  #spectrum .bar i { width:100%; margin-top:auto; border-radius:1px 1px 0 0; transition:height .5s, background .3s;
+    box-shadow:0 0 6px currentColor; }
+  #spectrum .bar em { font-style:normal; font-size:8px; color:#46647a; }
+  #spectrum::before { content:"分位负载"; position:absolute; top:-7px; left:8px; font-size:8px;
+    color:#4d6d84; letter-spacing:2px; background:#071322; padding:0 4px; }
+
+  /* ---------- 底部: 示波器 ---------- */
+  #scopeWrap { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:9;
+    background:rgba(6,15,26,.78); border:1px solid rgba(64,190,240,.25); border-radius:8px;
+    padding:8px 12px 6px; backdrop-filter:blur(8px); }
+  #scopeWrap .cap { display:flex; justify-content:space-between; font-size:9px; color:#4d6d84;
+    letter-spacing:2px; margin-bottom:4px; }
+  #scopeWrap .cap b { color:#67e3ff; font-weight:400; }
+  #scopeWrap .cap .i { color:#ffb35f; }
+
+  /* ---------- 右: 事件流 ---------- */
+  #events { position:fixed; right:18px; top:64px; z-index:9; width:252px;
+    background:linear-gradient(195deg,rgba(8,20,34,.86),rgba(5,11,22,.82));
+    border:1px solid rgba(64,190,240,.28); border-radius:8px; padding:10px 12px;
+    backdrop-filter:blur(10px); }
+  #events .hd { font-size:10px; color:#4d6d84; letter-spacing:3px; margin-bottom:6px;
+    display:flex; justify-content:space-between; }
+  #events .hd b { color:#8fd8f5; font-weight:600; }
+  #evList { list-style:none; max-height:220px; overflow:hidden; }
+  #evList li { font-size:11px; padding:5px 8px; margin-bottom:4px; border-radius:4px; cursor:pointer;
+    background:rgba(10,24,40,.5); border-left:2px solid #2e5a74; color:#9dc3da; line-height:1.5;
+    transition:all .2s; animation:evin .3s; }
+  #evList li:hover { background:rgba(24,54,84,.6); color:#dff4ff; }
+  #evList li.warn { border-left-color:#ffae3d; }
+  #evList li.crit { border-left-color:#ff4655; }
+  #evList li.ok   { border-left-color:#2dffa0; }
+  #evList li .t { color:#46647a; font-size:9px; margin-right:6px; font-variant-numeric:tabular-nums; }
+  @keyframes evin { from { opacity:0; transform:translateX(14px); } }
+
+  /* ---------- 图例 ---------- */
+  #legend { position:fixed; left:18px; bottom:16px; z-index:9; font-size:11px;
+    background:rgba(7,15,26,.75); border:1px solid rgba(64,190,240,.22); border-radius:6px;
+    padding:9px 13px; backdrop-filter:blur(8px); line-height:1.9; letter-spacing:1px; }
+  #legend i { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  #legend .g { background:#00e659; box-shadow:0 0 6px #00e659; }
+  #legend .a { background:#ff8c0d; box-shadow:0 0 6px #ff8c0d; }
+  #legend .r { background:#ff1419; box-shadow:0 0 6px #ff1419; animation:blink 1s infinite; }
+  #legend .o { background:#1a2026; border:1px solid #333c44; }
+
+  /* ---------- 全息插座卡片 ---------- */
+  #card { position:fixed; z-index:20; min-width:238px; pointer-events:none; display:none;
+    background:linear-gradient(160deg,rgba(8,22,38,.93),rgba(5,12,24,.89));
+    border:1px solid rgba(70,220,255,.5); border-radius:6px; padding:11px 13px;
+    box-shadow:0 0 26px rgba(40,190,255,.28), inset 0 0 18px rgba(40,160,255,.07);
+    backdrop-filter:blur(10px); transform:translate(-50%,-118%); }
+  #card::after { content:""; position:absolute; left:50%; bottom:-6px; width:10px; height:10px;
+    background:inherit; border-right:1px solid rgba(70,220,255,.5); border-bottom:1px solid rgba(70,220,255,.5);
+    transform:translateX(-50%) rotate(45deg); }
+  #card .ttl { font-size:13px; font-weight:600; color:#bff2ff; display:flex; align-items:center; gap:8px; }
+  .badge { font-size:10px; padding:1px 8px; border-radius:2px; letter-spacing:1px; }
+  .badge.normal { background:rgba(0,200,110,.18); color:#2dffa0; border:1px solid rgba(0,230,120,.5); }
+  .badge.high   { background:rgba(255,150,20,.15); color:#ffb35f; border:1px solid rgba(255,160,40,.55); }
+  .badge.alarm  { background:rgba(255,40,60,.18); color:#ff6b75; border:1px solid rgba(255,60,80,.6);
+    animation:blink 1s infinite; }
+  .badge.off    { background:rgba(120,130,140,.12); color:#8a98a5; border:1px solid rgba(140,150,160,.35); }
+  @keyframes blink { 50% { opacity:.4; } }
+  #card .rows { margin-top:7px; font-size:11px; line-height:2; color:#9dc3da; }
+  #card .rows span { color:#557183; display:inline-block; width:62px; }
+  #card .rows b { color:#d8f6ff; font-weight:500; font-variant-numeric:tabular-nums; }
+  #card .ringrow { display:flex; align-items:center; gap:10px; margin-top:7px; }
+  #card .ringlbl { font-size:10px; color:#557183; line-height:1.7; }
+  #card .ringlbl b { font-size:14px; color:#aef4ff; }
+  #card .hint { margin-top:7px; font-size:9px; color:#41606f; letter-spacing:1px;
+    border-top:1px dashed rgba(90,180,220,.25); padding-top:5px; }
+
+  /* ---------- 断路器跳闸横幅 ---------- */
+  #banner { position:fixed; top:56px; left:50%; transform:translateX(-50%); z-index:30; display:none;
+    align-items:center; gap:12px; padding:9px 18px; border-radius:6px;
+    background:linear-gradient(90deg,rgba(60,6,12,.92),rgba(40,4,10,.92));
+    border:1px solid rgba(255,70,85,.65); box-shadow:0 0 30px rgba(255,40,60,.35);
+    animation:blink 1.2s infinite; }
+  #banner .msg { font-size:13px; color:#ffb9bf; letter-spacing:1px; }
+  #banner button { background:rgba(255,70,85,.18); border:1px solid #ff4655; color:#ffd9dd;
+    font-size:11px; padding:4px 12px; border-radius:3px; cursor:pointer; letter-spacing:1px; }
+  #banner button:hover { background:rgba(255,70,85,.35); }
+
+  /* ---------- 聚焦取景框 ---------- */
+  .corner { position:fixed; z-index:6; width:26px; height:26px; display:none;
+    border:2px solid rgba(90,230,255,.85); filter:drop-shadow(0 0 6px rgba(70,220,255,.7)); }
+  #c1 { border-right:none; border-bottom:none; }
+  #c2 { border-left:none; border-bottom:none; }
+  #c3 { border-right:none; border-top:none; }
+  #c4 { border-left:none; border-top:none; }
+
+  #tip { position:fixed; bottom:16px; right:18px; z-index:8; font-size:10px; color:#3f5a70;
+    letter-spacing:1px; text-align:right; line-height:1.8; }
+  #loading { position:fixed; inset:0; z-index:50; background:#03060b; display:flex;
+    flex-direction:column; align-items:center; justify-content:center; gap:16px; transition:opacity .6s; }
+  #loading .t { font-size:13px; letter-spacing:5px; color:#58d6f8; }
+  #loading .s { font-size:10px; letter-spacing:2px; color:#37576c; }
+  #loading .bar { width:280px; height:2px; background:rgba(80,200,255,.15); }
+  #loading .bar i { display:block; height:100%; width:0; background:#46e0ff;
+    box-shadow:0 0 8px #46e0ff; transition:width .3s; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="fx-vig"></div>
+<div id="fx-scan"></div>
+
+<div id="hud-top">
+  <h1>POWERGRID · 智能 PDU 配电可视化</h1>
+  <span class="sub">UE5 资产预览 · Three.js</span>
+  <div class="tabs" id="tabs">
+    <button data-f="all" class="on">全景机柜</button>
+    <button data-f="BULL">公牛·计量</button>
+    <button data-f="TOP">突破·智能</button>
+    <button data-f="PFGA">克莱沃·管理</button>
+  </div>
+  <div class="ops">
+    <span id="stats"></span>
+    <span id="clock"></span>
+    <button id="btn-load">⚡ 负载演练</button>
+    <button id="btn-over">⚠ 过载演练</button>
+    <button id="btn-reset">复位状态</button>
+  </div>
+</div>
+
+<div id="dash">
+  <div class="dev" id="dashDev">全机柜汇总</div>
+  <div class="role" id="dashRole">3 台国产 PDU · 实时遥测</div>
+  <div id="gaugeWrap">
+    <svg width="170" height="104" viewBox="0 0 170 104">
+      <defs>
+        <linearGradient id="ggrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#19e0ff"/><stop offset="60%" stop-color="#ffd23d"/>
+          <stop offset="100%" stop-color="#ff4655"/>
+        </linearGradient>
+      </defs>
+      <circle cx="85" cy="88" r="66" pathLength="100" fill="none" stroke="rgba(60,140,190,.15)"
+        stroke-width="9" stroke-dasharray="75 100" transform="rotate(135 85 88)" stroke-linecap="round"/>
+      <circle id="gaugeArc" cx="85" cy="88" r="66" pathLength="100" fill="none" stroke="url(#ggrad)"
+        stroke-width="9" stroke-dasharray="0 100" transform="rotate(135 85 88)" stroke-linecap="round"
+        style="transition:stroke-dasharray .6s"/>
+      <text id="gaugeVal" x="85" y="82" text-anchor="middle" fill="#aef4ff" font-size="21"
+        font-weight="600" style="font-variant-numeric:tabular-nums">0.00</text>
+      <text x="85" y="97" text-anchor="middle" fill="#4d6d84" font-size="9" letter-spacing="2">TOTAL kW</text>
+    </svg>
+  </div>
+  <div class="grid">
+    <div class="digi"><div class="k">电压 VOLT</div><div class="v" id="dV">--<small>V</small></div></div>
+    <div class="digi"><div class="k">电流 CURR</div><div class="v" id="dA">--<small>A</small></div></div>
+    <div class="digi"><div class="k">功率因数 PF</div><div class="v" id="dPF">--</div></div>
+    <div class="digi"><div class="k">机内温度 TEMP</div><div class="v" id="dT">--<small>°C</small></div></div>
+    <div class="digi" id="energy"><div class="k">累计电能 ENERGY</div><div class="v" id="dE">--<small>kWh</small></div></div>
+  </div>
+  <div id="spectrum"></div>
+</div>
+
+<div id="scopeWrap">
+  <div class="cap"><span><b>―</b> 电压 230V/50Hz</span><span>REALTIME WAVEFORM</span><span class="i"><b>―</b> 电流 ×0.1A</span></div>
+  <canvas id="scope" width="520" height="86"></canvas>
+</div>
+
+<div id="events">
+  <div class="hd"><b>事件流 EVENTS</b><span id="evCount">0</span></div>
+  <ul id="evList"></ul>
+</div>
+
+<div id="legend">
+  <i class="g"></i>正常供电&nbsp;&nbsp;<i class="a"></i>高负载<br>
+  <i class="r"></i>过载告警&nbsp;&nbsp;<i class="o"></i>无输出
+</div>
+
+<div id="card"></div>
+<div id="banner"><span class="msg" id="bannerMsg"></span><button id="btn-brk">复位断路器</button></div>
+<div class="corner" id="c1"></div><div class="corner" id="c2"></div>
+<div class="corner" id="c3"></div><div class="corner" id="c4"></div>
+<div id="tip">拖拽旋转 · 滚轮缩放 · 悬停查看插座<br>单击插座远程分合 · 双击聚焦 · ESC 全景</div>
+
+<div id="loading"><div class="t">POWERGRID ONLINE</div>
+  <div class="bar"><i id="lbar"></i></div><div class="s" id="lmsg">正在接入遥测链路…</div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ================= 设备与初始工况 ================= */
+const DEVICES = [
+  { prefix:'BULL', glb:'../models/PDU1_BULL_GNE-1080A.glb',      manifest:'../models/BULL_manifest.json',  x:-0.55 },
+  { prefix:'TOP',  glb:'../models/PDU2_TOP_TZ-C032.glb',         manifest:'../models/TOP_manifest.json',   x: 0.00 },
+  { prefix:'PFGA', glb:'../models/PDU3_CLEVER_PFGA-134-0800.glb',manifest:'../models/PFGA_manifest.json',  x: 0.57 },
+];
+const BASE_W = [420, 380, 65, 360, 18, 290, 0, 75];   // 各路典型负载(W)
+const OVERRIDE = {  // 演示工况: 高负载/告警/继电器断开
+  TOP:  { w:{ 4:1500, 6:1980 }, off:[7] },
+  PFGA: { w:{ 3:2400, 5:3120 }, off:[8] },
+};
+const LED_COLOR = { normal:0x00e659, high:0xff8c0d, alarm:0xff1419, off:0x14161a };
+const LED_INTEN = { normal:2.4, high:2.6, alarm:3.2, off:0.10 };
+const OUTLET_W_MM = 40, OUTLET_H_MM = 32;
+
+/* ================= 场景 ================= */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x03070c);
+scene.fog = new THREE.Fog(0x03070c, 3.2, 9);
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.005, 60);
+camera.position.set(0.0, 0.28, 1.18);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.06;
+controls.target.set(0.0, 0.02, 0.05);
+controls.maxDistance = 4; controls.minDistance = 0.04;
+
+scene.add(new THREE.AmbientLight(0x8899bb, 0.45));
+const key = new THREE.DirectionalLight(0xdde8ff, 0.85); key.position.set(-0.8, 1.4, 1.0); scene.add(key);
+const rim = new THREE.DirectionalLight(0x3f8cff, 0.9); rim.position.set(0.3, 0.9, -1.2); scene.add(rim);
+const accent = new THREE.PointLight(0x1a73ff, 0.5, 1.6); accent.position.set(0.02, 0.12, 0.38); scene.add(accent);
+/* IBL 环境反射: 金属机箱(铝/钢)无 envmap 会渲染成黑色 */
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(7, 64),
+  new THREE.MeshStandardMaterial({ color:0x05080d, metalness:0.20, roughness:0.75 }));
+ground.rotation.x = -Math.PI/2; scene.add(ground);
+const grid = new THREE.GridHelper(6, 60, 0x1a4a66, 0x0d2a40);
+grid.position.y = 0.0005; grid.material.transparent = true; grid.material.opacity = 0.7; scene.add(grid);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.45, 0.82));
+composer.addPass(new OutputPass());
+
+/* ================= 遥测模拟引擎 ================= */
+const devs = new Map();   // prefix → dev runtime
+const hitboxes = [];
+let focused = 'all';      // 当前聚焦设备
+let simT = 0;
+
+function mapPos(mm){ return new THREE.Vector3(mm[0]/1000, mm[2]/1000, -mm[1]/1000); }
+
+function makeDevRuntime(cfg, manifest, group){
+  const ov = OVERRIDE[cfg.prefix] || { w:{}, off:[] };
+  const ratedA = manifest.electrical.rated_a;
+  const outlets = manifest.outlets.map(o => {
+    const baseW = ov.w[o.index] ?? BASE_W[(o.index-1) % 8];
+    const on = !ov.off.includes(o.index);
+    return { dev:cfg.prefix, idx:o.index, baseW, w: on ? baseW : 0, a:0, on,
+             ratedA: o.rated_a, purpose:o.purpose, state:'normal', info:o };
+  });
+  return { prefix:cfg.prefix, manifest, group, cfg, outlets,
+    ratedA, maxW: manifest.electrical.max_w,
+    V:229.5, I:0, kW:0, kWh: 900 + Math.random()*400, pf:0.975, temp:31,
+    breaker:'closed', surge:1, surgeTarget:1,
+    leds:new Map(), sysLeds:new Map(), lcd:null };
+}
+
+function outletState(o, dev){
+  if (!o.on || dev.breaker === 'tripped') return 'off';
+  const pct = o.w / (o.ratedA * 220);
+  return pct > 0.85 ? 'alarm' : (pct > 0.60 ? 'high' : 'normal');
+}
+
+function applyOutletLed(dev, o){
+  const mat = dev.leds.get(o.idx);
+  if (!mat) return;   // 公牛无分位灯
+  mat.emissive.setHex(LED_COLOR[o.state]);
+  mat.emissiveIntensity = LED_INTEN[o.state];
+}
+
+function simTick(dt){
+  simT += dt;
+  for (const dev of devs.values()) {
+    dev.surge += (dev.surgeTarget - dev.surge) * Math.min(1, dt * 1.5);
+    dev.V = 229.3 + 1.1 * Math.sin(simT / 9 + dev.cfg.x * 7) + (Math.random() - .5) * 0.5;
+    let sumW = 0;
+    for (const o of dev.outlets) {
+      const target = o.on ? o.baseW * dev.surge * (0.94 + Math.random() * 0.12) : 0;
+      o.w += (target - o.w) * 0.5;
+      o.a = o.w / dev.V;
+      o.state = outletState(o, dev);
+      sumW += o.on && dev.breaker !== 'tripped' ? o.w : 0;
+    }
+    dev.kW = dev.breaker === 'tripped' ? 0 : sumW / 1000;
+    dev.I  = dev.breaker === 'tripped' ? 0 : sumW / dev.V;
+    dev.pf = 0.965 + 0.02 * Math.sin(simT / 13);
+    dev.temp += ((28 + dev.kW / (dev.maxW / 1000) * 26) - dev.temp) * 0.05;
+    dev.kWh += dev.kW * (dt / 3600);
+    // 过流 → 断路器跳闸
+    if (dev.breaker === 'closed' && dev.I > dev.ratedA) tripBreaker(dev);
+    // LED 应用
+    for (const o of dev.outlets) applyOutletLed(dev, o);
+    const alm = dev.sysLeds.get('ALM');
+    if (alm) {
+      const anyAlarm = dev.outlets.some(o => o.state === 'alarm');
+      const hot = dev.breaker === 'tripped' || anyAlarm;
+      alm.emissive.setHex(hot ? 0xff1419 : 0x14161a);
+      alm.emissiveIntensity = hot ? (Math.sin(simT * 9) > 0 ? 3.2 : 0.5) : 0.10;
+    }
+    const net = dev.sysLeds.get('NET');
+    if (net) net.emissiveIntensity = 1.6 + Math.random() * 1.4;
+    paintLcd(dev);
+  }
+  updateDash();
+  updateBanner();
+}
+
+/* ================= LCD 数据面板 (CanvasTexture) ================= */
+function setupLcd(dev, mesh){
+  const cv = document.createElement('canvas');
+  cv.width = 336; cv.height = 192;
+  const tex = new THREE.CanvasTexture(cv);
+  tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  mesh.material = new THREE.MeshStandardMaterial({
+    color:0x000000, roughness:0.35, metalness:0.1,
+    emissive:0xffffff, emissiveMap:tex, emissiveIntensity:3.2 });
+  dev.lcd = { mesh, ctx: cv.getContext('2d'), tex };
+}
+
+function paintLcd(dev){
+  if (!dev.lcd) return;
+  const { ctx, tex } = dev.lcd;
+  const W = 336, H = 192;
+  const trip = dev.breaker === 'tripped';
+  const anyAlarm = dev.outlets.some(o => o.state === 'alarm');
+  const fg = trip ? '#ff5f6b' : (anyAlarm ? '#ffb35f' : '#3df2ff');
+  ctx.fillStyle = '#02100f'; ctx.fillRect(0, 0, W, H);
+  // 点阵噪点底纹
+  ctx.fillStyle = 'rgba(60,240,255,.04)';
+  for (let y = 4; y < H; y += 6) for (let x = 4; x < W; x += 6) ctx.fillRect(x, y, 1.4, 1.4);
+  ctx.strokeStyle = 'rgba(80,220,255,.25)'; ctx.lineWidth = 2; ctx.strokeRect(3, 3, W - 6, H - 6);
+  if (trip) {                                        // 跳闸告警帧 (高亮红, 双帧闪烁)
+    const flash = Math.sin(simT * 8) > 0;
+    ctx.fillStyle = flash ? '#c2102a' : '#5a060f';
+    ctx.fillRect(4, 4, W - 8, H - 8);
+    ctx.strokeStyle = '#ff8a95'; ctx.lineWidth = 3; ctx.strokeRect(8, 8, W - 16, H - 16);
+    ctx.fillStyle = flash ? '#ffffff' : '#ff8a95';
+    ctx.font = 'bold 46px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('OVERLOAD', W / 2, 86); ctx.fillText('TRIP', W / 2, 136);
+    ctx.font = 'bold 15px monospace';
+    ctx.fillText('BREAKER OPEN · CHECK LOAD', W / 2, 168);
+    tex.needsUpdate = true; return;
+  }
+  ctx.textAlign = 'left'; ctx.fillStyle = fg;
+  ctx.font = 'bold 15px monospace';
+  ctx.fillText(dev.manifest.model.split(' ')[0] + ' · ' + dev.prefix, 14, 26);
+  ctx.textAlign = 'right'; const hh = new Date();
+  ctx.fillText(hh.toTimeString().slice(0, 8), W - 14, 26);
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 58px monospace';                    // 大字: 电压
+  ctx.fillText(dev.V.toFixed(1), 14, 92);
+  ctx.font = 'bold 20px monospace'; ctx.fillText('V', 158, 92);
+  ctx.font = 'bold 26px monospace';                    // 右上: 电流/功率
+  ctx.fillText(dev.I.toFixed(1) + ' A', 218, 62);
+  ctx.fillText(dev.kW.toFixed(2) + ' kW', 218, 96);
+  ctx.font = '16px monospace'; ctx.fillStyle = 'rgba(160,235,255,.8)';
+  ctx.fillText('PF ' + dev.pf.toFixed(3) + '   ' + dev.temp.toFixed(1) + 'C', 14, 122);
+  ctx.fillText('E  ' + dev.kWh.toFixed(1) + ' kWh', 14, 146);
+  // 负载率段条
+  const pct = Math.min(1, dev.I / dev.ratedA);
+  const seg = 24, filled = Math.round(pct * seg);
+  for (let i = 0; i < seg; i++) {
+    ctx.fillStyle = i < filled ? (i > seg * .85 ? '#ff4655' : (i > seg * .6 ? '#ffb35f' : fg))
+                               : 'rgba(80,220,255,.12)';
+    ctx.fillRect(14 + i * 12.9, 160, 10, 18);
+  }
+  tex.needsUpdate = true;
+}
+
+/* ================= 资产加载 ================= */
+const loader = new GLTFLoader();
+let loaded = 0;
+const lbar = document.getElementById('lbar');
+const lmsg = document.getElementById('lmsg');
+
+async function loadDevice(cfg){
+  const [gltf, mani] = await Promise.all([
+    loader.loadAsync(cfg.glb),
+    fetch(cfg.manifest).then(r => r.json()),
+  ]);
+  const g = new THREE.Group(); g.name = cfg.prefix;
+  g.add(gltf.scene); g.position.set(cfg.x, 0.0265, 0);
+  scene.add(g);
+  const dev = makeDevRuntime(cfg, mani, g);
+  devs.set(cfg.prefix, dev);
+
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    let m = o.name.match(/_LED_P(\d+)$/);
+    if (m) { o.material = o.material.clone(); dev.leds.set(+m[1], o.material); return; }
+    m = o.name.match(/_LED_SYS_(\w+)$/);
+    if (m) { o.material = o.material.clone(); dev.sysLeds.set(m[1], o.material); return; }
+    if (o.name.endsWith('_LCD')) setupLcd(dev, o);
+  });
+
+  for (const o of mani.outlets) {
+    const hb = new THREE.Mesh(
+      new THREE.BoxGeometry(OUTLET_W_MM/1000, OUTLET_H_MM/1000, 0.03),
+      new THREE.MeshBasicMaterial({ visible:false }));
+    const lp = mapPos(o.pos_mm);
+    hb.position.set(lp.x, lp.y, lp.z + 0.014);
+    hb.userData = { dev:cfg.prefix, idx:o.index };
+    g.add(hb); hitboxes.push(hb);
+  }
+  // 初始 LED
+  for (const o of dev.outlets) { o.state = outletState(o, dev); applyOutletLed(dev, o); }
+  loaded++; lbar.style.width = (loaded / DEVICES.length * 100) + '%';
+  lmsg.textContent = `已接入 ${loaded}/${DEVICES.length} 台 PDU 遥测…`;
+  if (loaded === DEVICES.length) setTimeout(() => {
+    const l = document.getElementById('loading'); l.style.opacity = 0;
+    setTimeout(() => l.remove(), 650);
+    addEvent('ok', '遥测链路建立 · 3 台 PDU 数据流正常', null);
+  }, 250);
+}
+DEVICES.forEach(cfg => loadDevice(cfg).catch(err => {
+  console.error('加载失败:', cfg.glb, err);
+  lmsg.textContent = '加载失败: ' + cfg.glb + ' (需 HTTP 访问, 见 启动预览Demo.bat)';
+}));
+
+/* ================= 仪表盘 ================= */
+const $ = id => document.getElementById(id);
+const specBars = [];
+for (let i = 0; i < 8; i++) {
+  const d = document.createElement('div'); d.className = 'bar';
+  d.innerHTML = `<i style="height:2%"></i><em>${i + 1}</em>`;
+  $('spectrum').appendChild(d); specBars.push(d.firstChild);
+}
+
+function dashSource(){
+  if (focused !== 'all' && devs.has(focused)) return [devs.get(focused)];
+  return [...devs.values()];
+}
+function updateDash(){
+  const list = dashSource();
+  if (!list.length) return;
+  const one = list.length === 1 ? list[0] : null;
+  $('dashDev').textContent = one ? one.manifest.model : '全机柜汇总';
+  $('dashRole').textContent = one ? one.manifest.role + ' · ' + one.manifest.electrical.input
+                                  : `${list.length} 台国产 PDU · 实时遥测`;
+  const kW = list.reduce((s, d) => s + d.kW, 0);
+  const I  = list.reduce((s, d) => s + d.I, 0);
+  const maxW = list.reduce((s, d) => s + d.maxW, 0) / 1000;
+  const V = list.reduce((s, d) => s + d.V, 0) / list.length;
+  $('gaugeVal').textContent = kW.toFixed(2);
+  $('gaugeArc').setAttribute('stroke-dasharray', `${Math.min(100, kW / maxW * 100) * 0.75} 100`);
+  $('dV').innerHTML  = V.toFixed(1) + '<small>V</small>';
+  $('dA').innerHTML  = I.toFixed(2) + '<small>A</small>';
+  $('dPF').textContent = (list.reduce((s, d) => s + d.pf, 0) / list.length).toFixed(3);
+  $('dT').innerHTML  = Math.max(...list.map(d => d.temp)).toFixed(1) + '<small>°C</small>';
+  $('dE').innerHTML  = list.reduce((s, d) => s + d.kWh, 0).toFixed(1) + '<small>kWh</small>';
+  const ref = one || devs.get('TOP');
+  ref.outlets.forEach((o, i) => {
+    const pct = o.on && ref.breaker !== 'tripped' ? o.w / (o.ratedA * 220) : 0;
+    specBars[i].style.height = Math.max(2, pct * 100) + '%';
+    specBars[i].style.background = { normal:'#19e0ff', high:'#ffb35f', alarm:'#ff4655', off:'#1c2a33' }[o.state];
+    specBars[i].style.color = specBars[i].style.background;
+  });
+  let al = 0, hi = 0;
+  for (const d of devs.values()) for (const o of d.outlets) {
+    if (o.state === 'alarm') al++; else if (o.state === 'high') hi++;
+  }
+  const tripped = [...devs.values()].filter(d => d.breaker === 'tripped').length;
+  $('stats').innerHTML = `总功率 <b>${[...devs.values()].reduce((s,d)=>s+d.kW,0).toFixed(2)} kW</b>` +
+    ` · 高负载 ${hi} · <span class="al">告警 ${al}${tripped ? ' · 跳闸 ' + tripped : ''}</span>`;
+}
+
+/* ================= 示波器 ================= */
+const sctx = $('scope').getContext('2d');
+const vhist = [], ihist = [];
+function pushScope(){
+  const list = dashSource();
+  const V = list.length ? list.reduce((s, d) => s + d.V, 0) / list.length : 229;
+  const I = list.reduce((s, d) => s + d.I, 0);
+  vhist.push(V); ihist.push(I);
+  if (vhist.length > 130) { vhist.shift(); ihist.shift(); }
+}
+function drawScope(){
+  const W = 520, H = 86;
+  sctx.fillStyle = 'rgba(4,12,20,.9)'; sctx.fillRect(0, 0, W, H);
+  sctx.strokeStyle = 'rgba(70,180,230,.10)'; sctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 26) { sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, H); sctx.stroke(); }
+  for (let y = 0; y < H; y += 21.5) { sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(W, y); sctx.stroke(); }
+  const trace = (arr, min, max, color, glow) => {
+    if (arr.length < 2) return;
+    sctx.strokeStyle = color; sctx.lineWidth = 1.6;
+    sctx.shadowColor = glow; sctx.shadowBlur = 7;
+    sctx.beginPath();
+    arr.forEach((v, i) => {
+      const x = i / 129 * W;
+      const y = H - ((v - min) / (max - min)) * (H - 14) - 7;
+      i ? sctx.lineTo(x, y) : sctx.moveTo(x, y);
+    });
+    sctx.stroke(); sctx.shadowBlur = 0;
+  };
+  trace(vhist, 226, 233, '#46e8ff', '#19b8e0');
+  trace(ihist, 0, 34, '#ffb35f', '#e08a19');
+}
+
+/* ================= 事件流 ================= */
+let evN = 0;
+function addEvent(level, text, target){
+  evN++; $('evCount').textContent = evN;
+  const li = document.createElement('li');
+  li.className = level;
+  li.innerHTML = `<span class="t">${new Date().toTimeString().slice(0, 8)}</span>${text}`;
+  if (target) li.onclick = () => flyTo(target.dev, target.idx);
+  $('evList').prepend(li);
+  while ($('evList').children.length > 7) $('evList').lastChild.remove();
+}
+
+/* ================= 断路器 ================= */
+function tripBreaker(dev){
+  dev.breaker = 'tripped';
+  addEvent('crit', `${dev.prefix} 总电流 ${dev.I.toFixed(1)}A 越限 ${dev.ratedA}A · 断路器跳闸`, { dev: dev.prefix });
+  dev.outlets.forEach(o => { o.state = 'off'; applyOutletLed(dev, o); });
+}
+function updateBanner(){
+  const t = [...devs.values()].filter(d => d.breaker === 'tripped');
+  $('banner').style.display = t.length ? 'flex' : 'none';
+  if (t.length) $('bannerMsg').textContent = `⚠ ${t.map(d => d.prefix).join(' / ')} 过载跳闸 · 全部插座已断电保护`;
+}
+$('btn-brk').onclick = () => {
+  for (const d of devs.values()) if (d.breaker === 'tripped') {
+    d.breaker = 'closed'; d.surgeTarget = 1; d.surge = 1;
+    // o.w 也要瞬时回落: 跳闸期间 o.w 仍按 surge 爬升到 ~3x 基线, 只降 surge 会让下一 tick 的 I 立即再越限
+    d.outlets.forEach(o => { o.w = Math.min(o.w, o.baseW); });
+    addEvent('ok', `${d.prefix} 断路器已复位 · 供电恢复`, { dev: d.prefix });
+  }
+};
+
+/* ================= 演练 / 复位 ================= */
+$('btn-load').onclick = () => {
+  for (const d of devs.values()) d.surgeTarget = 1.6;
+  addEvent('warn', '负载演练: 全机柜负载 ×1.6 (20s 自动恢复)', null);
+  setTimeout(() => { for (const d of devs.values()) d.surgeTarget = 1; }, 20000);
+};
+$('btn-over').onclick = () => {
+  for (const d of devs.values()) d.surgeTarget = 3.2;
+  addEvent('warn', '过载演练: 负载冲击 ×3.2 · 观察断路器保护', null);
+  setTimeout(() => { for (const d of devs.values()) d.surgeTarget = 1; }, 30000);
+};
+$('btn-reset').onclick = () => {
+  for (const d of devs.values()) {
+    d.breaker = 'closed'; d.surgeTarget = 1; d.surge = 1;
+    const ov = OVERRIDE[d.prefix] || { off: [] };
+    d.outlets.forEach(o => { o.on = !ov.off.includes(o.idx); o.w = Math.min(o.w, o.baseW); });
+  }
+  addEvent('ok', '全部状态已复位至初始工况', null);
+};
+
+/* ================= 悬停卡片 ================= */
+const card = $('card');
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(-9, -9);
+const outline = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+  new THREE.LineBasicMaterial({ color:0x46e8ff, transparent:true, opacity:0.95 }));
+outline.visible = false; scene.add(outline);
+let hovered = null, pinned = null;
+
+addEventListener('pointermove', e => {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+function ringSvg(pct, color){
+  const p = Math.min(100, pct * 100);
+  return `<svg width="52" height="52" viewBox="0 0 52 52">
+    <circle cx="26" cy="26" r="21" pathLength="100" fill="none" stroke="rgba(70,170,220,.15)" stroke-width="5"/>
+    <circle cx="26" cy="26" r="21" pathLength="100" fill="none" stroke="${color}" stroke-width="5"
+      stroke-dasharray="${p} 100" stroke-linecap="round" transform="rotate(-90 26 26)"
+      style="filter:drop-shadow(0 0 4px ${color})"/></svg>`;
+}
+
+function renderCard(hb){
+  const { dev, idx } = hb.userData;
+  const d = devs.get(dev), o = d.outlets.find(x => x.idx === idx);
+  const pct = o.on && d.breaker !== 'tripped' ? o.w / (o.ratedA * 220) : 0;
+  const stTxt = { normal:'NORMAL', high:'HIGH LOAD', alarm:'OVERLOAD', off:'OFF' }[o.state];
+  const stColor = { normal:'#2dffa0', high:'#ffb35f', alarm:'#ff6b75', off:'#8a98a5' }[o.state];
+  card.innerHTML = `
+    <div class="ttl">OUT-${String(idx).padStart(2, '0')} · ${o.purpose}<span class="badge ${o.state}">${stTxt}</span></div>
+    <div class="rows">
+      <div><span>插座制式</span><b>${o.info.socket}</b></div>
+      <div><span>分位额定</span><b>${o.ratedA}A / ${o.ratedA * 220}W</b></div>
+    </div>
+    <div class="ringrow">${ringSvg(pct, stColor)}
+      <div class="ringlbl">负载率 <b>${(pct * 100).toFixed(0)}%</b><br>
+      电流 <b>${o.on ? o.a.toFixed(2) : '0.00'} A</b> · 功率 <b>${o.on ? o.w.toFixed(0) : 0} W</b></div>
+    </div>
+    <div class="hint">${o.state === 'off' ? '继电器断开 — 单击恢复供电' : '单击远程分合继电器 · 双击聚焦'}</div>`;
+  card.style.display = 'block';
+  card._hb = hb;
+}
+function hoverCheck(){
+  if (pinned) { placeCard(pinned); return; }
+  raycaster.setFromCamera(mouse, camera);
+  const hb = raycaster.intersectObjects(hitboxes, false)[0]?.object || null;
+  if (hb !== hovered) {
+    hovered = hb;
+    document.body.style.cursor = hb ? 'pointer' : 'default';
+    if (!hb) { card.style.display = 'none'; outline.visible = false; return; }
+    outline.visible = true; renderCard(hb);
+  }
+  if (hovered) {
+    renderCard(hovered);
+    const p = hovered.getWorldPosition(new THREE.Vector3());
+    outline.position.copy(p);
+    outline.scale.set(OUTLET_W_MM/1000 + 0.002, OUTLET_H_MM/1000 + 0.002, 0.032);
+  }
+}
+function placeCard(hb){
+  const v = hb.getWorldPosition(new THREE.Vector3());
+  v.y += OUTLET_H_MM / 1000 / 2 + 0.012;
+  v.project(camera);
+  card.style.left = ((v.x * .5 + .5) * innerWidth) + 'px';
+  card.style.top = ((-v.y * .5 + .5) * innerHeight) + 'px';
+}
+
+/* ================= 交互: 继电器分合 / 聚焦 ================= */
+let clickTimer = null;
+addEventListener('click', e => {
+  if (e.target.closest('#hud-top,#dash,#events,#banner,#legend')) return;
+  const hb = hovered;                 // 立即捕获, 240ms 后 hovered 可能已 null
+  if (!hb) return;
+  clearTimeout(clickTimer);
+  clickTimer = setTimeout(() => {
+    const { dev, idx } = hb.userData;
+    const d = devs.get(dev), o = d.outlets.find(x => x.idx === idx);
+    if (d.breaker === 'tripped') return;
+    o.on = !o.on;
+    addEvent(o.on ? 'ok' : 'warn', `${dev} OUT-${String(idx).padStart(2,'0')} 继电器${o.on ? '闭合 · 供电' : '断开 · 断电'} (${o.purpose})`, { dev, idx });
+  }, 240);
+});
+addEventListener('dblclick', e => {
+  if (e.target.closest('#hud-top,#dash,#events,#banner,#legend')) return;
+  clearTimeout(clickTimer);
+  if (hovered) {
+    const { dev, idx } = hovered.userData;
+    pinned = hovered; flyTo(dev, idx);
+  } else {
+    raycaster.setFromCamera(mouse, camera);
+    const any = raycaster.intersectObjects(scene.children, true)[0];
+    if (any) {
+      let p = any.object; while (p && !DEVICES.some(d => d.prefix === p.name)) p = p.parent;
+      if (p) { focusTab(p.name); }
+    }
+  }
+});
+addEventListener('keydown', e => { if (e.key === 'Escape') { pinned = null; focusTab('all'); } });
+
+/* ================= 相机 ================= */
+const VIEWS = {
+  all:  { cam:[0.0, 0.28, 1.18],  tgt:[0.0, 0.02, 0.05] },
+  BULL: { cam:[-0.55, 0.26, 0.58], tgt:[-0.55, 0.01, 0.10] },
+  TOP:  { cam:[0.00, 0.26, 0.60],  tgt:[0.0, 0.01, 0.10] },
+  PFGA: { cam:[0.57, 0.28, 0.62],  tgt:[0.57, 0.01, 0.10] },
+};
+let camAnim = null;
+function flyCam(cam, tgt){
+  camAnim = { cam:new THREE.Vector3(...cam), tgt:new THREE.Vector3(...tgt), t:0,
+              fromCam:camera.position.clone(), fromTgt:controls.target.clone() };
+}
+function flyTo(devPrefix, idx){
+  const d = devs.get(devPrefix);
+  if (!d) return;
+  let local;
+  if (idx != null) {
+    const o = d.manifest.outlets.find(x => x.index === idx);
+    local = mapPos(o.pos_mm);
+  } else {
+    const c = d.manifest.lcd ? mapPos(d.manifest.lcd.pos_mm) : new THREE.Vector3();
+    local = c;
+  }
+  const world = local.clone().add(d.group.position);
+  flyCam([world.x, world.y + 0.09, world.z + 0.30], [world.x, world.y, world.z]);
+  setFocus(devPrefix);
+}
+function focusTab(name){
+  const v = VIEWS[name]; if (!v) return;
+  flyCam(v.cam, v.tgt); setFocus(name);
+}
+function setFocus(name){
+  focused = name;
+  document.querySelectorAll('#tabs button').forEach(x =>
+    x.classList.toggle('on', x.dataset.f === name));
+  const show = name !== 'all';
+  document.querySelectorAll('.corner').forEach(c => c.style.display = show ? 'block' : 'none');
+}
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  pinned = null; focusTab(b.dataset.f);
+});
+
+/* 取景框跟随 (固定在视口四角内缩) */
+function placeCorners(){
+  if (focused === 'all') return;
+  const m = 70;
+  const set = (id, x, y) => { const c = $(id); c.style.left = x + 'px'; c.style.top = y + 'px'; };
+  set('c1', m, m); set('c2', innerWidth - m - 26, m);
+  set('c3', m, innerHeight - m - 26); set('c4', innerWidth - m - 26, innerHeight - m - 26);
+}
+
+/* ================= 主循环 ================= */
+const clock = new THREE.Clock();
+let acc = 0;
+setInterval(() => { $('clock').textContent = new Date().toTimeString().slice(0, 8); }, 1000);
+function tick(){
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  acc += dt;
+  if (acc >= 0.5) { simTick(acc); acc = 0; pushScope(); }
+  if (camAnim) {
+    camAnim.t = Math.min(1, camAnim.t + dt / 0.9);
+    const k = 1 - Math.pow(1 - camAnim.t, 3);
+    camera.position.lerpVectors(camAnim.fromCam, camAnim.cam, k);
+    controls.target.lerpVectors(camAnim.fromTgt, camAnim.tgt, k);
+    if (camAnim.t >= 1) camAnim = null;
+  }
+  controls.update();
+  hoverCheck();
+  if (card.style.display !== 'none' && card._hb) placeCard(card._hb);
+  drawScope();
+  placeCorners();
+  composer.render();
+}
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+/* 调试/自动化钩子: 控制台可用 PDU.flyTo('TOP', 4) / PDU.devs.get('TOP') 等 */
+window.PDU = { devs, flyTo, focusTab, tripBreaker, VIEWS, camera, controls, version:'1.1' };
+tick();
+</script>
+</body>
+</html>

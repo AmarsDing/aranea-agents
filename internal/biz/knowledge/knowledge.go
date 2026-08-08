@@ -14,6 +14,7 @@ import (
 // Collection is a named vector store.
 // V2：Collection 语义升级为 Vault——root_path 指向本地目录（文件系统即真相源），
 // embedding_model 可选（空 = 无语义层，L0 词法 + L1 导航完整可用）。
+// SP1-F：VaultBackend 区分存储后端——local=文件系统真相源 / team=PG 真相源（团队库）。
 type Collection struct {
 	ID             string
 	Name           string
@@ -24,14 +25,25 @@ type Collection struct {
 	DocumentCount  int
 	ChunkCount     int
 	Workspace      string
-	// RootPath 是 vault 根目录（规范化绝对路径，唯一）；空表示历史 Collection（未迁移）。
+	// RootPath 是 vault 根目录（规范化绝对路径，唯一）；空表示历史 Collection（未迁移）或 team 库。
 	RootPath string
 	// SyncState 同步状态：active / paused / error / migrating。
 	SyncState  string
 	LastSyncAt string
-	CreatedAt  string
-	UpdatedAt  string
+	// VaultBackend 存储后端维度（SP1-F）：VaultBackendLocal / VaultBackendTeam。
+	// local：文件系统即真相源，RootPath 必填；team：PG 即真相源，RootPath 必须为空。
+	VaultBackend string
+	CreatedAt    string
+	UpdatedAt    string
 }
+
+// VaultBackend 存储后端取值（SP1-F，设计 S6）。
+const (
+	// VaultBackendLocal 本地库：文件系统即真相源，SyncEngine 监听 root_path。
+	VaultBackendLocal = "local"
+	// VaultBackendTeam 团队库：PG 即真相源（documents.content_text 承载本体），无 SyncEngine。
+	VaultBackendTeam = "team"
+)
 
 // Document is one source document ingested into a collection.
 type Document struct {
@@ -199,6 +211,10 @@ type Usecase struct {
 	// linkIndex nil 时 RebuildBlockIndex 跳过内存图 apply 与 WS 增量（降级安全）。
 	linkIndex *LinkIndex
 	graphPub  GraphDeltaPublisher
+	// blockLinks/docNames 为块级反链读端口（SP1-E），经 SetBacklinkRepos 接线；
+	// blockLinks 为启动窗口 DB 兜底，docNames 为源文档名解析（失败留空降级）。
+	blockLinks BlockLinkReader
+	docNames   DocNameReader
 	// paths/resolvedLinks 为资源管理器能力（P3），经 SetExplorerRepos 接线；
 	// paths nil 时 ListVaultTree 显式报错，resolvedLinks nil 时关联查询降级为空。
 	paths         DocumentPathReader

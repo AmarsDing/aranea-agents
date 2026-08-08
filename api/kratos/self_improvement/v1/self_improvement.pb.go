@@ -607,6 +607,95 @@ func (*CloseRunResponse) Descriptor() ([]byte, []int) {
 	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{11}
 }
 
+type ControlRunRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// pause | skip_retry | rollback (see biz.ParseSIControlCommand)
+	Command       string `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControlRunRequest) Reset() {
+	*x = ControlRunRequest{}
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControlRunRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControlRunRequest) ProtoMessage() {}
+
+func (x *ControlRunRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControlRunRequest.ProtoReflect.Descriptor instead.
+func (*ControlRunRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ControlRunRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ControlRunRequest) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+type ControlRunResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ControlRunResponse) Reset() {
+	*x = ControlRunResponse{}
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ControlRunResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ControlRunResponse) ProtoMessage() {}
+
+func (x *ControlRunResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ControlRunResponse.ProtoReflect.Descriptor instead.
+func (*ControlRunResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{13}
+}
+
 type GetOutcomeStatsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -615,7 +704,7 @@ type GetOutcomeStatsRequest struct {
 
 func (x *GetOutcomeStatsRequest) Reset() {
 	*x = GetOutcomeStatsRequest{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[12]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -627,7 +716,7 @@ func (x *GetOutcomeStatsRequest) String() string {
 func (*GetOutcomeStatsRequest) ProtoMessage() {}
 
 func (x *GetOutcomeStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[12]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -640,7 +729,7 @@ func (x *GetOutcomeStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOutcomeStatsRequest.ProtoReflect.Descriptor instead.
 func (*GetOutcomeStatsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{12}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{14}
 }
 
 type GetOutcomeStatsResponse struct {
@@ -658,7 +747,7 @@ type GetOutcomeStatsResponse struct {
 
 func (x *GetOutcomeStatsResponse) Reset() {
 	*x = GetOutcomeStatsResponse{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[13]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -670,7 +759,7 @@ func (x *GetOutcomeStatsResponse) String() string {
 func (*GetOutcomeStatsResponse) ProtoMessage() {}
 
 func (x *GetOutcomeStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[13]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -683,7 +772,7 @@ func (x *GetOutcomeStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOutcomeStatsResponse.ProtoReflect.Descriptor instead.
 func (*GetOutcomeStatsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{13}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetOutcomeStatsResponse) GetTotal() int64 {
@@ -748,7 +837,7 @@ type TriggerOutcomeStatsMsg struct {
 
 func (x *TriggerOutcomeStatsMsg) Reset() {
 	*x = TriggerOutcomeStatsMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[14]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -760,7 +849,7 @@ func (x *TriggerOutcomeStatsMsg) String() string {
 func (*TriggerOutcomeStatsMsg) ProtoMessage() {}
 
 func (x *TriggerOutcomeStatsMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[14]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -773,7 +862,7 @@ func (x *TriggerOutcomeStatsMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerOutcomeStatsMsg.ProtoReflect.Descriptor instead.
 func (*TriggerOutcomeStatsMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{14}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *TriggerOutcomeStatsMsg) GetTriggerSource() string {
@@ -819,7 +908,7 @@ type GetStatusRequest struct {
 
 func (x *GetStatusRequest) Reset() {
 	*x = GetStatusRequest{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[15]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +920,7 @@ func (x *GetStatusRequest) String() string {
 func (*GetStatusRequest) ProtoMessage() {}
 
 func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[15]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +933,7 @@ func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetStatusRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{15}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{17}
 }
 
 // GetStatusResponse reports whether the self-improvement pipeline is enabled
@@ -864,7 +953,7 @@ type GetStatusResponse struct {
 
 func (x *GetStatusResponse) Reset() {
 	*x = GetStatusResponse{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[16]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -876,7 +965,7 @@ func (x *GetStatusResponse) String() string {
 func (*GetStatusResponse) ProtoMessage() {}
 
 func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[16]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -889,7 +978,7 @@ func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetStatusResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{16}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetStatusResponse) GetEnabled() bool {
@@ -948,7 +1037,7 @@ type RiskRulesMsg struct {
 
 func (x *RiskRulesMsg) Reset() {
 	*x = RiskRulesMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[17]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -960,7 +1049,7 @@ func (x *RiskRulesMsg) String() string {
 func (*RiskRulesMsg) ProtoMessage() {}
 
 func (x *RiskRulesMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[17]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -973,7 +1062,7 @@ func (x *RiskRulesMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RiskRulesMsg.ProtoReflect.Descriptor instead.
 func (*RiskRulesMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{17}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *RiskRulesMsg) GetLowMaxLines() int32 {
@@ -1012,7 +1101,7 @@ type GetRiskRulesRequest struct {
 
 func (x *GetRiskRulesRequest) Reset() {
 	*x = GetRiskRulesRequest{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[18]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1024,7 +1113,7 @@ func (x *GetRiskRulesRequest) String() string {
 func (*GetRiskRulesRequest) ProtoMessage() {}
 
 func (x *GetRiskRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[18]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1037,7 +1126,7 @@ func (x *GetRiskRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRiskRulesRequest.ProtoReflect.Descriptor instead.
 func (*GetRiskRulesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{18}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{20}
 }
 
 type GetRiskRulesResponse struct {
@@ -1050,7 +1139,7 @@ type GetRiskRulesResponse struct {
 
 func (x *GetRiskRulesResponse) Reset() {
 	*x = GetRiskRulesResponse{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[19]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1062,7 +1151,7 @@ func (x *GetRiskRulesResponse) String() string {
 func (*GetRiskRulesResponse) ProtoMessage() {}
 
 func (x *GetRiskRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[19]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1075,7 +1164,7 @@ func (x *GetRiskRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRiskRulesResponse.ProtoReflect.Descriptor instead.
 func (*GetRiskRulesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{19}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetRiskRulesResponse) GetConfigured() *RiskRulesMsg {
@@ -1104,7 +1193,7 @@ type UpdateRiskRulesRequest struct {
 
 func (x *UpdateRiskRulesRequest) Reset() {
 	*x = UpdateRiskRulesRequest{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[20]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1116,7 +1205,7 @@ func (x *UpdateRiskRulesRequest) String() string {
 func (*UpdateRiskRulesRequest) ProtoMessage() {}
 
 func (x *UpdateRiskRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[20]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1129,7 +1218,7 @@ func (x *UpdateRiskRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRiskRulesRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRiskRulesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{20}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *UpdateRiskRulesRequest) GetLowMaxLines() int32 {
@@ -1170,7 +1259,7 @@ type UpdateRiskRulesResponse struct {
 
 func (x *UpdateRiskRulesResponse) Reset() {
 	*x = UpdateRiskRulesResponse{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[21]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1182,7 +1271,7 @@ func (x *UpdateRiskRulesResponse) String() string {
 func (*UpdateRiskRulesResponse) ProtoMessage() {}
 
 func (x *UpdateRiskRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[21]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1195,7 +1284,7 @@ func (x *UpdateRiskRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRiskRulesResponse.ProtoReflect.Descriptor instead.
 func (*UpdateRiskRulesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{21}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *UpdateRiskRulesResponse) GetConfigured() *RiskRulesMsg {
@@ -1245,7 +1334,7 @@ type SelfImprovementRunMsg struct {
 
 func (x *SelfImprovementRunMsg) Reset() {
 	*x = SelfImprovementRunMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[22]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1346,7 @@ func (x *SelfImprovementRunMsg) String() string {
 func (*SelfImprovementRunMsg) ProtoMessage() {}
 
 func (x *SelfImprovementRunMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[22]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1359,7 @@ func (x *SelfImprovementRunMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SelfImprovementRunMsg.ProtoReflect.Descriptor instead.
 func (*SelfImprovementRunMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{22}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SelfImprovementRunMsg) GetId() string {
@@ -1431,7 +1520,7 @@ type DiffStatsMsg struct {
 
 func (x *DiffStatsMsg) Reset() {
 	*x = DiffStatsMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[23]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1532,7 @@ func (x *DiffStatsMsg) String() string {
 func (*DiffStatsMsg) ProtoMessage() {}
 
 func (x *DiffStatsMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[23]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1545,7 @@ func (x *DiffStatsMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffStatsMsg.ProtoReflect.Descriptor instead.
 func (*DiffStatsMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{23}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DiffStatsMsg) GetFiles() int32 {
@@ -1494,7 +1583,7 @@ type DiagnosisMsg struct {
 
 func (x *DiagnosisMsg) Reset() {
 	*x = DiagnosisMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[24]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1506,7 +1595,7 @@ func (x *DiagnosisMsg) String() string {
 func (*DiagnosisMsg) ProtoMessage() {}
 
 func (x *DiagnosisMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[24]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1519,7 +1608,7 @@ func (x *DiagnosisMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiagnosisMsg.ProtoReflect.Descriptor instead.
 func (*DiagnosisMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{24}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *DiagnosisMsg) GetRootCause() string {
@@ -1570,7 +1659,7 @@ type SandboxGateResultMsg struct {
 
 func (x *SandboxGateResultMsg) Reset() {
 	*x = SandboxGateResultMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[25]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1582,7 +1671,7 @@ func (x *SandboxGateResultMsg) String() string {
 func (*SandboxGateResultMsg) ProtoMessage() {}
 
 func (x *SandboxGateResultMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[25]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1595,7 +1684,7 @@ func (x *SandboxGateResultMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxGateResultMsg.ProtoReflect.Descriptor instead.
 func (*SandboxGateResultMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{25}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *SandboxGateResultMsg) GetGate() string {
@@ -1639,7 +1728,7 @@ type CriticReportMsg struct {
 
 func (x *CriticReportMsg) Reset() {
 	*x = CriticReportMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[26]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1651,7 +1740,7 @@ func (x *CriticReportMsg) String() string {
 func (*CriticReportMsg) ProtoMessage() {}
 
 func (x *CriticReportMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[26]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1664,7 +1753,7 @@ func (x *CriticReportMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CriticReportMsg.ProtoReflect.Descriptor instead.
 func (*CriticReportMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{26}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *CriticReportMsg) GetIsSafe() bool {
@@ -1707,7 +1796,7 @@ type GovernanceDecisionMsg struct {
 
 func (x *GovernanceDecisionMsg) Reset() {
 	*x = GovernanceDecisionMsg{}
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[27]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1719,7 +1808,7 @@ func (x *GovernanceDecisionMsg) String() string {
 func (*GovernanceDecisionMsg) ProtoMessage() {}
 
 func (x *GovernanceDecisionMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[27]
+	mi := &file_kratos_self_improvement_v1_self_improvement_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1732,7 +1821,7 @@ func (x *GovernanceDecisionMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GovernanceDecisionMsg.ProtoReflect.Descriptor instead.
 func (*GovernanceDecisionMsg) Descriptor() ([]byte, []int) {
-	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{27}
+	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GovernanceDecisionMsg) GetRiskLevel() string {
@@ -1792,7 +1881,11 @@ const file_kratos_self_improvement_v1_self_improvement_proto_rawDesc = "" +
 	"\x0fCloseRunRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x12\n" +
-	"\x10CloseRunResponse\"\x18\n" +
+	"\x10CloseRunResponse\"I\n" +
+	"\x11ControlRunRequest\x12\x14\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\x12\x1e\n" +
+	"\acommand\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\acommand\"\x14\n" +
+	"\x12ControlRunResponse\"\x18\n" +
 	"\x16GetOutcomeStatsRequest\"\xa4\x02\n" +
 	"\x17GetOutcomeStatsResponse\x12\x14\n" +
 	"\x05total\x18\x01 \x01(\x03R\x05total\x12\x1c\n" +
@@ -1900,7 +1993,7 @@ const file_kratos_self_improvement_v1_self_improvement_proto_rawDesc = "" +
 	"\n" +
 	"risk_level\x18\x01 \x01(\tR\triskLevel\x12\x18\n" +
 	"\achannel\x18\x02 \x01(\tR\achannel\x12\x1b\n" +
-	"\trule_hits\x18\x03 \x03(\tR\bruleHits2\xa8\f\n" +
+	"\trule_hits\x18\x03 \x03(\tR\bruleHits2\xc9\r\n" +
 	"\x16SelfImprovementService\x12\x88\x01\n" +
 	"\bListRuns\x12+.kratos.self_improvement.v1.ListRunsRequest\x1a,.kratos.self_improvement.v1.ListRunsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/self-improvement/runs\x12\x87\x01\n" +
 	"\x06GetRun\x12).kratos.self_improvement.v1.GetRunRequest\x1a*.kratos.self_improvement.v1.GetRunResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/self-improvement/runs/{id}\x12\x9e\x01\n" +
@@ -1908,7 +2001,9 @@ const file_kratos_self_improvement_v1_self_improvement_proto_rawDesc = "" +
 	"ApproveRun\x12-.kratos.self_improvement.v1.ApproveRunRequest\x1a..kratos.self_improvement.v1.ApproveRunResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/self-improvement/runs/{id}/approve\x12\x9a\x01\n" +
 	"\tRejectRun\x12,.kratos.self_improvement.v1.RejectRunRequest\x1a-.kratos.self_improvement.v1.RejectRunResponse\"0\x82\xd3\xe4\x93\x02*:\x01*\"%/v1/self-improvement/runs/{id}/reject\x12\xa2\x01\n" +
 	"\vRollbackRun\x12..kratos.self_improvement.v1.RollbackRunRequest\x1a/.kratos.self_improvement.v1.RollbackRunResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/self-improvement/runs/{id}/rollback\x12\x96\x01\n" +
-	"\bCloseRun\x12+.kratos.self_improvement.v1.CloseRunRequest\x1a,.kratos.self_improvement.v1.CloseRunResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/self-improvement/runs/{id}/close\x12\xa6\x01\n" +
+	"\bCloseRun\x12+.kratos.self_improvement.v1.CloseRunRequest\x1a,.kratos.self_improvement.v1.CloseRunResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/self-improvement/runs/{id}/close\x12\x9e\x01\n" +
+	"\n" +
+	"ControlRun\x12-.kratos.self_improvement.v1.ControlRunRequest\x1a..kratos.self_improvement.v1.ControlRunResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/self-improvement/runs/{id}/control\x12\xa6\x01\n" +
 	"\x0fGetOutcomeStats\x122.kratos.self_improvement.v1.GetOutcomeStatsRequest\x1a3.kratos.self_improvement.v1.GetOutcomeStatsResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/self-improvement/outcome-stats\x12\x8d\x01\n" +
 	"\tGetStatus\x12,.kratos.self_improvement.v1.GetStatusRequest\x1a-.kratos.self_improvement.v1.GetStatusResponse\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/self-improvement/status\x12\x9a\x01\n" +
 	"\fGetRiskRules\x12/.kratos.self_improvement.v1.GetRiskRulesRequest\x1a0.kratos.self_improvement.v1.GetRiskRulesResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/self-improvement/risk-rules\x12\xa6\x01\n" +
@@ -1927,7 +2022,7 @@ func file_kratos_self_improvement_v1_self_improvement_proto_rawDescGZIP() []byte
 	return file_kratos_self_improvement_v1_self_improvement_proto_rawDescData
 }
 
-var file_kratos_self_improvement_v1_self_improvement_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_kratos_self_improvement_v1_self_improvement_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_kratos_self_improvement_v1_self_improvement_proto_goTypes = []any{
 	(*ListRunsRequest)(nil),         // 0: kratos.self_improvement.v1.ListRunsRequest
 	(*ListRunsResponse)(nil),        // 1: kratos.self_improvement.v1.ListRunsResponse
@@ -1941,62 +2036,66 @@ var file_kratos_self_improvement_v1_self_improvement_proto_goTypes = []any{
 	(*RollbackRunResponse)(nil),     // 9: kratos.self_improvement.v1.RollbackRunResponse
 	(*CloseRunRequest)(nil),         // 10: kratos.self_improvement.v1.CloseRunRequest
 	(*CloseRunResponse)(nil),        // 11: kratos.self_improvement.v1.CloseRunResponse
-	(*GetOutcomeStatsRequest)(nil),  // 12: kratos.self_improvement.v1.GetOutcomeStatsRequest
-	(*GetOutcomeStatsResponse)(nil), // 13: kratos.self_improvement.v1.GetOutcomeStatsResponse
-	(*TriggerOutcomeStatsMsg)(nil),  // 14: kratos.self_improvement.v1.TriggerOutcomeStatsMsg
-	(*GetStatusRequest)(nil),        // 15: kratos.self_improvement.v1.GetStatusRequest
-	(*GetStatusResponse)(nil),       // 16: kratos.self_improvement.v1.GetStatusResponse
-	(*RiskRulesMsg)(nil),            // 17: kratos.self_improvement.v1.RiskRulesMsg
-	(*GetRiskRulesRequest)(nil),     // 18: kratos.self_improvement.v1.GetRiskRulesRequest
-	(*GetRiskRulesResponse)(nil),    // 19: kratos.self_improvement.v1.GetRiskRulesResponse
-	(*UpdateRiskRulesRequest)(nil),  // 20: kratos.self_improvement.v1.UpdateRiskRulesRequest
-	(*UpdateRiskRulesResponse)(nil), // 21: kratos.self_improvement.v1.UpdateRiskRulesResponse
-	(*SelfImprovementRunMsg)(nil),   // 22: kratos.self_improvement.v1.SelfImprovementRunMsg
-	(*DiffStatsMsg)(nil),            // 23: kratos.self_improvement.v1.DiffStatsMsg
-	(*DiagnosisMsg)(nil),            // 24: kratos.self_improvement.v1.DiagnosisMsg
-	(*SandboxGateResultMsg)(nil),    // 25: kratos.self_improvement.v1.SandboxGateResultMsg
-	(*CriticReportMsg)(nil),         // 26: kratos.self_improvement.v1.CriticReportMsg
-	(*GovernanceDecisionMsg)(nil),   // 27: kratos.self_improvement.v1.GovernanceDecisionMsg
-	(*timestamppb.Timestamp)(nil),   // 28: google.protobuf.Timestamp
+	(*ControlRunRequest)(nil),       // 12: kratos.self_improvement.v1.ControlRunRequest
+	(*ControlRunResponse)(nil),      // 13: kratos.self_improvement.v1.ControlRunResponse
+	(*GetOutcomeStatsRequest)(nil),  // 14: kratos.self_improvement.v1.GetOutcomeStatsRequest
+	(*GetOutcomeStatsResponse)(nil), // 15: kratos.self_improvement.v1.GetOutcomeStatsResponse
+	(*TriggerOutcomeStatsMsg)(nil),  // 16: kratos.self_improvement.v1.TriggerOutcomeStatsMsg
+	(*GetStatusRequest)(nil),        // 17: kratos.self_improvement.v1.GetStatusRequest
+	(*GetStatusResponse)(nil),       // 18: kratos.self_improvement.v1.GetStatusResponse
+	(*RiskRulesMsg)(nil),            // 19: kratos.self_improvement.v1.RiskRulesMsg
+	(*GetRiskRulesRequest)(nil),     // 20: kratos.self_improvement.v1.GetRiskRulesRequest
+	(*GetRiskRulesResponse)(nil),    // 21: kratos.self_improvement.v1.GetRiskRulesResponse
+	(*UpdateRiskRulesRequest)(nil),  // 22: kratos.self_improvement.v1.UpdateRiskRulesRequest
+	(*UpdateRiskRulesResponse)(nil), // 23: kratos.self_improvement.v1.UpdateRiskRulesResponse
+	(*SelfImprovementRunMsg)(nil),   // 24: kratos.self_improvement.v1.SelfImprovementRunMsg
+	(*DiffStatsMsg)(nil),            // 25: kratos.self_improvement.v1.DiffStatsMsg
+	(*DiagnosisMsg)(nil),            // 26: kratos.self_improvement.v1.DiagnosisMsg
+	(*SandboxGateResultMsg)(nil),    // 27: kratos.self_improvement.v1.SandboxGateResultMsg
+	(*CriticReportMsg)(nil),         // 28: kratos.self_improvement.v1.CriticReportMsg
+	(*GovernanceDecisionMsg)(nil),   // 29: kratos.self_improvement.v1.GovernanceDecisionMsg
+	(*timestamppb.Timestamp)(nil),   // 30: google.protobuf.Timestamp
 }
 var file_kratos_self_improvement_v1_self_improvement_proto_depIdxs = []int32{
-	22, // 0: kratos.self_improvement.v1.ListRunsResponse.items:type_name -> kratos.self_improvement.v1.SelfImprovementRunMsg
-	22, // 1: kratos.self_improvement.v1.GetRunResponse.run:type_name -> kratos.self_improvement.v1.SelfImprovementRunMsg
-	14, // 2: kratos.self_improvement.v1.GetOutcomeStatsResponse.by_trigger:type_name -> kratos.self_improvement.v1.TriggerOutcomeStatsMsg
-	17, // 3: kratos.self_improvement.v1.GetRiskRulesResponse.configured:type_name -> kratos.self_improvement.v1.RiskRulesMsg
-	17, // 4: kratos.self_improvement.v1.GetRiskRulesResponse.effective:type_name -> kratos.self_improvement.v1.RiskRulesMsg
-	17, // 5: kratos.self_improvement.v1.UpdateRiskRulesResponse.configured:type_name -> kratos.self_improvement.v1.RiskRulesMsg
-	17, // 6: kratos.self_improvement.v1.UpdateRiskRulesResponse.effective:type_name -> kratos.self_improvement.v1.RiskRulesMsg
-	23, // 7: kratos.self_improvement.v1.SelfImprovementRunMsg.diff_stats:type_name -> kratos.self_improvement.v1.DiffStatsMsg
-	28, // 8: kratos.self_improvement.v1.SelfImprovementRunMsg.observe_until:type_name -> google.protobuf.Timestamp
-	28, // 9: kratos.self_improvement.v1.SelfImprovementRunMsg.created_at:type_name -> google.protobuf.Timestamp
-	28, // 10: kratos.self_improvement.v1.SelfImprovementRunMsg.updated_at:type_name -> google.protobuf.Timestamp
-	24, // 11: kratos.self_improvement.v1.SelfImprovementRunMsg.diagnosis:type_name -> kratos.self_improvement.v1.DiagnosisMsg
-	25, // 12: kratos.self_improvement.v1.SelfImprovementRunMsg.verification_report:type_name -> kratos.self_improvement.v1.SandboxGateResultMsg
-	26, // 13: kratos.self_improvement.v1.SelfImprovementRunMsg.critic_report:type_name -> kratos.self_improvement.v1.CriticReportMsg
-	27, // 14: kratos.self_improvement.v1.SelfImprovementRunMsg.governance:type_name -> kratos.self_improvement.v1.GovernanceDecisionMsg
+	24, // 0: kratos.self_improvement.v1.ListRunsResponse.items:type_name -> kratos.self_improvement.v1.SelfImprovementRunMsg
+	24, // 1: kratos.self_improvement.v1.GetRunResponse.run:type_name -> kratos.self_improvement.v1.SelfImprovementRunMsg
+	16, // 2: kratos.self_improvement.v1.GetOutcomeStatsResponse.by_trigger:type_name -> kratos.self_improvement.v1.TriggerOutcomeStatsMsg
+	19, // 3: kratos.self_improvement.v1.GetRiskRulesResponse.configured:type_name -> kratos.self_improvement.v1.RiskRulesMsg
+	19, // 4: kratos.self_improvement.v1.GetRiskRulesResponse.effective:type_name -> kratos.self_improvement.v1.RiskRulesMsg
+	19, // 5: kratos.self_improvement.v1.UpdateRiskRulesResponse.configured:type_name -> kratos.self_improvement.v1.RiskRulesMsg
+	19, // 6: kratos.self_improvement.v1.UpdateRiskRulesResponse.effective:type_name -> kratos.self_improvement.v1.RiskRulesMsg
+	25, // 7: kratos.self_improvement.v1.SelfImprovementRunMsg.diff_stats:type_name -> kratos.self_improvement.v1.DiffStatsMsg
+	30, // 8: kratos.self_improvement.v1.SelfImprovementRunMsg.observe_until:type_name -> google.protobuf.Timestamp
+	30, // 9: kratos.self_improvement.v1.SelfImprovementRunMsg.created_at:type_name -> google.protobuf.Timestamp
+	30, // 10: kratos.self_improvement.v1.SelfImprovementRunMsg.updated_at:type_name -> google.protobuf.Timestamp
+	26, // 11: kratos.self_improvement.v1.SelfImprovementRunMsg.diagnosis:type_name -> kratos.self_improvement.v1.DiagnosisMsg
+	27, // 12: kratos.self_improvement.v1.SelfImprovementRunMsg.verification_report:type_name -> kratos.self_improvement.v1.SandboxGateResultMsg
+	28, // 13: kratos.self_improvement.v1.SelfImprovementRunMsg.critic_report:type_name -> kratos.self_improvement.v1.CriticReportMsg
+	29, // 14: kratos.self_improvement.v1.SelfImprovementRunMsg.governance:type_name -> kratos.self_improvement.v1.GovernanceDecisionMsg
 	0,  // 15: kratos.self_improvement.v1.SelfImprovementService.ListRuns:input_type -> kratos.self_improvement.v1.ListRunsRequest
 	2,  // 16: kratos.self_improvement.v1.SelfImprovementService.GetRun:input_type -> kratos.self_improvement.v1.GetRunRequest
 	4,  // 17: kratos.self_improvement.v1.SelfImprovementService.ApproveRun:input_type -> kratos.self_improvement.v1.ApproveRunRequest
 	6,  // 18: kratos.self_improvement.v1.SelfImprovementService.RejectRun:input_type -> kratos.self_improvement.v1.RejectRunRequest
 	8,  // 19: kratos.self_improvement.v1.SelfImprovementService.RollbackRun:input_type -> kratos.self_improvement.v1.RollbackRunRequest
 	10, // 20: kratos.self_improvement.v1.SelfImprovementService.CloseRun:input_type -> kratos.self_improvement.v1.CloseRunRequest
-	12, // 21: kratos.self_improvement.v1.SelfImprovementService.GetOutcomeStats:input_type -> kratos.self_improvement.v1.GetOutcomeStatsRequest
-	15, // 22: kratos.self_improvement.v1.SelfImprovementService.GetStatus:input_type -> kratos.self_improvement.v1.GetStatusRequest
-	18, // 23: kratos.self_improvement.v1.SelfImprovementService.GetRiskRules:input_type -> kratos.self_improvement.v1.GetRiskRulesRequest
-	20, // 24: kratos.self_improvement.v1.SelfImprovementService.UpdateRiskRules:input_type -> kratos.self_improvement.v1.UpdateRiskRulesRequest
-	1,  // 25: kratos.self_improvement.v1.SelfImprovementService.ListRuns:output_type -> kratos.self_improvement.v1.ListRunsResponse
-	3,  // 26: kratos.self_improvement.v1.SelfImprovementService.GetRun:output_type -> kratos.self_improvement.v1.GetRunResponse
-	5,  // 27: kratos.self_improvement.v1.SelfImprovementService.ApproveRun:output_type -> kratos.self_improvement.v1.ApproveRunResponse
-	7,  // 28: kratos.self_improvement.v1.SelfImprovementService.RejectRun:output_type -> kratos.self_improvement.v1.RejectRunResponse
-	9,  // 29: kratos.self_improvement.v1.SelfImprovementService.RollbackRun:output_type -> kratos.self_improvement.v1.RollbackRunResponse
-	11, // 30: kratos.self_improvement.v1.SelfImprovementService.CloseRun:output_type -> kratos.self_improvement.v1.CloseRunResponse
-	13, // 31: kratos.self_improvement.v1.SelfImprovementService.GetOutcomeStats:output_type -> kratos.self_improvement.v1.GetOutcomeStatsResponse
-	16, // 32: kratos.self_improvement.v1.SelfImprovementService.GetStatus:output_type -> kratos.self_improvement.v1.GetStatusResponse
-	19, // 33: kratos.self_improvement.v1.SelfImprovementService.GetRiskRules:output_type -> kratos.self_improvement.v1.GetRiskRulesResponse
-	21, // 34: kratos.self_improvement.v1.SelfImprovementService.UpdateRiskRules:output_type -> kratos.self_improvement.v1.UpdateRiskRulesResponse
-	25, // [25:35] is the sub-list for method output_type
-	15, // [15:25] is the sub-list for method input_type
+	12, // 21: kratos.self_improvement.v1.SelfImprovementService.ControlRun:input_type -> kratos.self_improvement.v1.ControlRunRequest
+	14, // 22: kratos.self_improvement.v1.SelfImprovementService.GetOutcomeStats:input_type -> kratos.self_improvement.v1.GetOutcomeStatsRequest
+	17, // 23: kratos.self_improvement.v1.SelfImprovementService.GetStatus:input_type -> kratos.self_improvement.v1.GetStatusRequest
+	20, // 24: kratos.self_improvement.v1.SelfImprovementService.GetRiskRules:input_type -> kratos.self_improvement.v1.GetRiskRulesRequest
+	22, // 25: kratos.self_improvement.v1.SelfImprovementService.UpdateRiskRules:input_type -> kratos.self_improvement.v1.UpdateRiskRulesRequest
+	1,  // 26: kratos.self_improvement.v1.SelfImprovementService.ListRuns:output_type -> kratos.self_improvement.v1.ListRunsResponse
+	3,  // 27: kratos.self_improvement.v1.SelfImprovementService.GetRun:output_type -> kratos.self_improvement.v1.GetRunResponse
+	5,  // 28: kratos.self_improvement.v1.SelfImprovementService.ApproveRun:output_type -> kratos.self_improvement.v1.ApproveRunResponse
+	7,  // 29: kratos.self_improvement.v1.SelfImprovementService.RejectRun:output_type -> kratos.self_improvement.v1.RejectRunResponse
+	9,  // 30: kratos.self_improvement.v1.SelfImprovementService.RollbackRun:output_type -> kratos.self_improvement.v1.RollbackRunResponse
+	11, // 31: kratos.self_improvement.v1.SelfImprovementService.CloseRun:output_type -> kratos.self_improvement.v1.CloseRunResponse
+	13, // 32: kratos.self_improvement.v1.SelfImprovementService.ControlRun:output_type -> kratos.self_improvement.v1.ControlRunResponse
+	15, // 33: kratos.self_improvement.v1.SelfImprovementService.GetOutcomeStats:output_type -> kratos.self_improvement.v1.GetOutcomeStatsResponse
+	18, // 34: kratos.self_improvement.v1.SelfImprovementService.GetStatus:output_type -> kratos.self_improvement.v1.GetStatusResponse
+	21, // 35: kratos.self_improvement.v1.SelfImprovementService.GetRiskRules:output_type -> kratos.self_improvement.v1.GetRiskRulesResponse
+	23, // 36: kratos.self_improvement.v1.SelfImprovementService.UpdateRiskRules:output_type -> kratos.self_improvement.v1.UpdateRiskRulesResponse
+	26, // [26:37] is the sub-list for method output_type
+	15, // [15:26] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -2013,7 +2112,7 @@ func file_kratos_self_improvement_v1_self_improvement_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_self_improvement_v1_self_improvement_proto_rawDesc), len(file_kratos_self_improvement_v1_self_improvement_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

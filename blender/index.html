@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blender 3D 资产预览 · 导航</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { min-height:100vh; background:#04070c; color:#cfe6f5;
+    font-family:"Segoe UI","Microsoft YaHei",sans-serif; padding:48px 24px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  h1 { font-size:20px; letter-spacing:3px; color:#7fe8ff;
+    text-shadow:0 0 14px rgba(60,200,255,.5); }
+  .sub { font-size:12px; color:#4a6a80; letter-spacing:1px; margin:8px 0 32px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+  a.card { display:block; text-decoration:none; padding:18px 20px; border-radius:8px;
+    background:linear-gradient(165deg,rgba(10,24,40,.85),rgba(6,13,24,.8));
+    border:1px solid rgba(64,190,240,.25); transition:all .18s; }
+  a.card:hover { border-color:#46e0ff; box-shadow:0 0 16px rgba(70,220,255,.25); transform:translateY(-2px); }
+  .card .t { font-size:14px; color:#9fd8f2; letter-spacing:1px; font-weight:600; }
+  .card .d { font-size:11px; color:#557183; margin-top:8px; line-height:1.7; }
+  .card .u { font-size:10px; color:#3d5a70; margin-top:10px; font-family:Consolas,monospace; }
+  .grp { font-size:12px; color:#46e0ff; letter-spacing:2px; margin:28px 0 12px;
+    border-left:3px solid rgba(70,224,255,.5); padding-left:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ARANEA · BLENDER 3D 资产预览</h1>
+  <div class="sub">本地 HTTP 服务运行中（start.bat）· 点击卡片进入对应 Demo</div>
+
+  <div class="grp">机房全景</div>
+  <div class="grid">
+    <a class="card" href="/datacenter-twin/viewer/index.html">
+      <div class="t">数据中心数字孪生</div>
+      <div class="d">机房环境 + 42U 机柜 + 服务器/交换机/UPS 整柜装配布局</div>
+      <div class="u">/datacenter-twin/viewer/index.html</div>
+    </a>
+  </div>
+
+  <div class="grp">设备展示</div>
+  <div class="grid">
+    <a class="card" href="/blender-switch-models/demo/index.html">
+      <div class="t">交换机 3D 可视化</div>
+      <div class="d">华为 S5735 / H3C S5130S / 华为 CE6857 端口状态演示</div>
+      <div class="u">/blender-switch-models/demo/index.html</div>
+    </a>
+    <a class="card" href="/blender-switch-models/demo/ups.html">
+      <div class="t">UPS 3D 可视化</div>
+      <div class="d">山特 C6KS / 华为 UPS2000-A / 科士达 YDC9110H</div>
+      <div class="u">/blender-switch-models/demo/ups.html</div>
+    </a>
+    <a class="card" href="/blender-pdu-models/demo/index.html">
+      <div class="t">智能 PDU 3D 配电可视化</div>
+      <div class="d">BULL GNE-1080A / TOP TZ-C032 / CLEVER PFGA-134</div>
+      <div class="u">/blender-pdu-models/demo/index.html</div>
+    </a>
+    <a class="card" href="/blender-monitor-models/demo/index.html">
+      <div class="t">27 寸显示器 3D 可视化</div>
+      <div class="d">显示器外观 / 信号源画面切换演示</div>
+      <div class="u">/blender-monitor-models/demo/index.html</div>
+    </a>
+  </div>
+
+  <div class="grp">服务器</div>
+  <div class="grid">
+    <a class="card" href="/server-3d/viewer/index.html">
+      <div class="t">服务器 1U/2U/4U 预览</div>
+      <div class="d">1U / 2U / 4U 服务器模型与内部结构爆炸视图</div>
+      <div class="u">/server-3d/viewer/index.html</div>
+    </a>
+  </div>
+</div>
+</body>
+</html>

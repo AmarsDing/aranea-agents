@@ -1,0 +1,252 @@
+{
+  "model": "SANTAK CASTLE C6KS",
+  "role": "塔式在线双变换 UPS",
+  "prefix": "C6KS",
+  "fbx": "UPS1_SANTAK_C6KS.fbx",
+  "glb": "UPS1_SANTAK_C6KS.glb",
+  "dims_mm": [
+    240,
+    500,
+    460
+  ],
+  "units": "mm (pos_mm) / FBX 导出为 cm, UE5 默认 1:1",
+  "rated": {
+    "kva": 6,
+    "kw": 5.4,
+    "input_v": "120-275VAC",
+    "output_v": "220VAC±2%",
+    "batt_vdc": 192,
+    "freq_hz": "50/60",
+    "input_a_max": 32,
+    "output_a_max": 27.3
+  },
+  "naming": {
+    "static_mesh": "C6KS_DETAIL",
+    "screen": "C6KS_SCREEN  (LCD, 独立 Mesh, 替换为动态 UI)",
+    "status_led": "C6KS_LED_{MAINS|BYPASS|INVERT|BATTERY|FAULT}",
+    "load_seg": "C6KS_LED_LOAD_{1..5}  (输出负载/输出电流水平)",
+    "batt_seg": "C6KS_LED_BATT_{1..5}",
+    "anchor": "C6KS_ANCHOR_{PANEL|SCREEN|INPUT|OUTPUT|BATT}  (Empty, UI 挂点)"
+  },
+  "led_semantics": {
+    "green": "正常/在线 (市电OK, 逆变工作) / M_LED_GREEN",
+    "amber": "电池放电 / 旁路供电 / 中级告警 / M_LED_AMBER",
+    "red": "故障 / 过载 / 市电异常 / M_LED_RED",
+    "off": "未激活 / M_LED_OFF",
+    "seg_load": "负载段: <=60%绿, 60-80%琥珀, >80%红 (输出电流水平)",
+    "seg_batt": "电量段: >50%绿, 20-50%琥珀, <20%红(快闪)"
+  },
+  "leds": [
+    {
+      "label": "MAINS",
+      "object": "C6KS_LED_MAINS",
+      "pos_mm": [
+        -88.0,
+        -253.2,
+        326.0
+      ]
+    },
+    {
+      "label": "BYPASS",
+      "object": "C6KS_LED_BYPASS",
+      "pos_mm": [
+        -44.0,
+        -253.2,
+        326.0
+      ]
+    },
+    {
+      "label": "INVERT",
+      "object": "C6KS_LED_INVERT",
+      "pos_mm": [
+        0.0,
+        -253.2,
+        326.0
+      ]
+    },
+    {
+      "label": "BATTERY",
+      "object": "C6KS_LED_BATTERY",
+      "pos_mm": [
+        44.0,
+        -253.2,
+        326.0
+      ]
+    },
+    {
+      "label": "FAULT",
+      "object": "C6KS_LED_FAULT",
+      "pos_mm": [
+        88.0,
+        -253.2,
+        326.0
+      ]
+    },
+    {
+      "label": "LOAD_1",
+      "object": "C6KS_LED_LOAD_1",
+      "pos_mm": [
+        -71.8,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "LOAD_2",
+      "object": "C6KS_LED_LOAD_2",
+      "pos_mm": [
+        -61.9,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "LOAD_3",
+      "object": "C6KS_LED_LOAD_3",
+      "pos_mm": [
+        -52.0,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "LOAD_4",
+      "object": "C6KS_LED_LOAD_4",
+      "pos_mm": [
+        -42.1,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "LOAD_5",
+      "object": "C6KS_LED_LOAD_5",
+      "pos_mm": [
+        -32.2,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "BATT_1",
+      "object": "C6KS_LED_BATT_1",
+      "pos_mm": [
+        32.2,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "BATT_2",
+      "object": "C6KS_LED_BATT_2",
+      "pos_mm": [
+        42.1,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "BATT_3",
+      "object": "C6KS_LED_BATT_3",
+      "pos_mm": [
+        52.0,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "BATT_4",
+      "object": "C6KS_LED_BATT_4",
+      "pos_mm": [
+        61.9,
+        -253.2,
+        288.0
+      ]
+    },
+    {
+      "label": "BATT_5",
+      "object": "C6KS_LED_BATT_5",
+      "pos_mm": [
+        71.8,
+        -253.2,
+        288.0
+      ]
+    }
+  ],
+  "screen": {
+    "object": "C6KS_SCREEN",
+    "anchor": "C6KS_ANCHOR_SCREEN",
+    "pos_mm": [
+      0.0,
+      -253.2,
+      372.0
+    ],
+    "size_mm": [
+      76.0,
+      42.0
+    ]
+  },
+  "io": {
+    "input": {
+      "anchor": "C6KS_ANCHOR_INPUT",
+      "desc": "市电输入: 空开+端子排",
+      "pos_mm": [
+        -6,
+        255,
+        336
+      ]
+    },
+    "output": {
+      "anchor": "C6KS_ANCHOR_OUTPUT",
+      "desc": "输出: 国标10A插座x2 + 端子排",
+      "pos_mm": [
+        36,
+        255,
+        250
+      ],
+      "sockets": 2
+    },
+    "battery": {
+      "anchor": "C6KS_ANCHOR_BATT",
+      "desc": "外接电池组 192VDC(16节x12V)",
+      "pos_mm": [
+        92,
+        255,
+        250
+      ]
+    },
+    "comms": [
+      "RS232",
+      "USB",
+      "EPO",
+      "INT SLOT(SNMP/干接点)"
+    ]
+  },
+  "telemetry": {
+    "device": "C6KS",
+    "ts": 1786200000,
+    "mode": "normal | battery | bypass | eco | standby | fault",
+    "input": {
+      "voltage_v": 220.4,
+      "current_a": 12.6,
+      "freq_hz": 50.0,
+      "state": "ok"
+    },
+    "output": {
+      "voltage_v": 220.1,
+      "current_a": 11.8,
+      "freq_hz": 50.0,
+      "load_pct": 58,
+      "state": "on"
+    },
+    "battery": {
+      "voltage_v": 192.0,
+      "soc_pct": 86,
+      "current_a": -4.2,
+      "charging": true,
+      "runtime_min": 42
+    },
+    "temp_c": 33.5,
+    "alarms": []
+  }
+}

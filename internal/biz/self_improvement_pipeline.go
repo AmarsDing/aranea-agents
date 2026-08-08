@@ -150,6 +150,12 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 	if run.Status != RunStatusDetected {
 		return apierror.Conflict("SELF_IMPROVEMENT", "run %s not detected (current %s)", runID, run.Status)
 	}
+	// R2：Execute 退出时清理控制面残留指令——执行期间未轮询到的指令（如在
+	// 最后一个 poll 点之后 Issue）不得泄漏到本 run 的下一次驱动。已被 Poll
+	// 消费的指令（pause 等）此处 Clear 为 no-op。
+	if uc.control != nil {
+		defer uc.control.Clear(run.ID)
+	}
 
 	// ── 过程活动挂载（T3.6，nil-safe） ─────────────────────────────────────
 	cursor := &siStageCursor{}
@@ -253,6 +259,12 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 	if err := transition(RunEventDiagnose); err != nil {
 		return err
 	}
+	// 用户介入（S4）：Analyst LLM 调用可能分钟级，调用前消费一次控制指令。
+	if cmd, ok := pollControl(); ok {
+		if exitErr, exit := handleControl(cmd); exit {
+			return exitErr
+		}
+	}
 	cursor.stage, cursor.attempt = SIStageDiagnosing, 0
 	emitStage(SIStageDiagnosing, 0, ActivityStatusRunning, "")
 	var sug *UnifiedEvolutionSuggestion
@@ -297,6 +309,14 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 				return exitErr
 			}
 		}
+		// R1 修复：每次 attempt 的 Patch 前重置 worktree 到 base-ref 干净态。
+		// 否则上一次 attempt 已 apply 的 diff 会同时污染 Patcher prompt 读到的
+		// 文件内容与本次 git apply 的基线——verify 验证的是叠加态，而 run.Diff
+		// 只记录最后一次 diff，治理/审查/生产 apply 全部失真。attempt 1 时
+		// worktree 刚创建本就干净，统一调用换无分支。
+		if rerr := uc.sandbox.ResetWorktree(ctx, worktree); rerr != nil {
+			return failWith(fmt.Errorf("reset worktree: %w", rerr))
+		}
 		cursor.stage, cursor.attempt = SIStagePatching, attempt
 		emitStage(SIStagePatching, attempt, ActivityStatusRunning, "")
 		patch, perr := uc.patcher.Patch(ctx, SIPatchRequest{
@@ -337,6 +357,13 @@ func (uc *SelfImprovementPipelineUsecase) Execute(ctx context.Context, runID str
 		var report []SandboxGateResult
 		allPass := true
 		for _, gate := range []SandboxGateKind{SandboxGateBuild, SandboxGateTest, SandboxGateLint} {
+			// 用户介入（S4）：G1-G3 各 5-10min 超时上限，每个 Gate 前消费一次，
+			// 避免 pause/rollback 最长延迟整个 verify 段才生效。
+			if cmd, ok := pollControl(); ok {
+				if exitErr, exit := handleControl(cmd); exit {
+					return exitErr
+				}
+			}
 			res, gerr := uc.sandbox.RunGate(ctx, worktree, gate, goPkgs)
 			if gerr != nil {
 				res = SandboxGateResult{Gate: gate, Passed: false, Output: "gate exec error: " + gerr.Error()}

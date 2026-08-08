@@ -101,6 +101,9 @@ var ddlMigrations = []ddlMigration{
 	// ASR/TTS driver/endpoint/凭据/音色/语速 + 语音留档开关（nullable 三态，
 	// NULL=回退 env）。同 planner_model_columns 的 raw-SQL 读写模式。
 	{Version: 20260808, Name: "speech_columns", SQL: "sql/migrations/20260808_speech_columns.sql"},
+	// 20260809 speech_api_key_columns: M74 真机校准——X-Api-Key 鉴权模式列
+	// （火山控制台新 API Key，与 legacy AppKey+AccessKey 双模式并存）。
+	{Version: 20260809, Name: "speech_api_key_columns", SQL: "sql/migrations/20260809_speech_api_key_columns.sql"},
 	{Version: 20260825, Name: "activity_session_tree_columns", SQL: "sql/migrations/20260825_activity_session_tree_columns.sql"},
 	{Version: 20260826, Name: "event_dead_letter_schema", SQL: "sql/migrations/20260826_event_dead_letter_schema.sql"},
 	{Version: 20260901, Name: "drop_event_store_subsystem", SQL: "sql/migrations/20260901_drop_event_store_subsystem.sql"},
@@ -256,6 +259,9 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20261203, Name: "knowledge_blocks", SQL: "sql/migrations/20261203_knowledge_blocks.sql"},
 	// SP1-C 跨库双链解析支撑列：documents.title/aliases（Resolver 文档键）+ links.weight（N-3 投影权重）。
 	{Version: 20261204, Name: "knowledge_resolve", SQL: "sql/migrations/20261204_knowledge_resolve.sql"},
+	// SP1-F 团队库后端维度：knowledge_collections.vault_backend（local=文件真相源 /
+	// team=PG 真相源，设计 S6）。存量行默认 local 与历史语义一致，无需回填。
+	{Version: 20261205, Name: "knowledge_vault_backend", SQL: "sql/migrations/20261205_knowledge_vault_backend.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

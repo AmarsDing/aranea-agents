@@ -58,3 +58,24 @@ func TestJudgeReasonFromRunsSkipsOtherMetricsAndEmpty(t *testing.T) {
 		t.Fatalf("nil case result must yield empty, got %q", got)
 	}
 }
+
+// P2-3: the framework wraps case inference errors with per-case unique IDs
+// (evalCaseID/sessionID). Persisted error_message must drop that prefix so
+// SQL failure grouping (GROUP BY error_message) actually clusters.
+func TestNormalizeCaseErrorMessageStripsFrameworkPrefix(t *testing.T) {
+	t.Parallel()
+	raw := "inference eval case (evalCaseID=6775ca575ddc79922016, sessionID=1fb487d0-6674-48f9-864f-13debca12201): event: [CHAT/INTERNAL] eval: create session failed"
+	want := "event: [CHAT/INTERNAL] eval: create session failed"
+	if got := normalizeCaseErrorMessage(raw); got != want {
+		t.Fatalf("normalizeCaseErrorMessage = %q, want %q", got, want)
+	}
+}
+
+func TestNormalizeCaseErrorMessageKeepsPlainMessages(t *testing.T) {
+	t.Parallel()
+	for _, msg := range []string{"", "agent timeout", "inference eval case: unexpected shape"} {
+		if got := normalizeCaseErrorMessage(msg); got != msg {
+			t.Fatalf("normalizeCaseErrorMessage(%q) = %q, want unchanged", msg, got)
+		}
+	}
+}

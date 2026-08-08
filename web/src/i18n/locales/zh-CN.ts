@@ -4162,6 +4162,18 @@ export default {
     rollbackConfirm: '将 revert 已应用的补丁提交。Run：{id}',
     closeTitle: '提前关闭观察窗',
     closeConfirm: '确认补丁有效并提前结束观察（observing → closed）。Run：{id}',
+    controlPause: '暂停',
+    controlSkipRetry: '跳过重试',
+    controlRollback: '中止运行',
+    controlPauseTitle: '暂停流水线',
+    controlPauseConfirm:
+      '流水线将在当前阶段边界暂停并驻留当前状态；超过恢复窗口（约 30 分钟）后由驱动器自动恢复重新驱动。Run：{id}',
+    controlSkipRetryTitle: '跳过重试',
+    controlSkipRetryConfirm:
+      '若当前验证未通过，剩余重试将被跳过，Run 直接进入 verify_failed 终态；验证通过则不受影响。Run：{id}',
+    controlRollbackTitle: '中止在途运行',
+    controlRollbackConfirm: '应用前终止流水线，Run 进入 rejected 终态。Run：{id}',
+    controlSent: '介入指令已下发，将在阶段边界生效',
     reasonOptional: '备注（可选）',
     reasonRequired: '拒绝原因（必填）',
     drawerClose: '关闭',

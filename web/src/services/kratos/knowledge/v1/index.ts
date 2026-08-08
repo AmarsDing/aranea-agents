@@ -19,6 +19,9 @@ export type KnowledgeCollection = {
   rootPath: string | undefined;
   syncState: string | undefined;
   lastSyncAt: string | undefined;
+  // SP1-F: storage backend dimension. local = filesystem source of truth
+  // (root_path set); team = Postgres source of truth (root_path empty).
+  vaultBackend: string | undefined;
 };
 
 // KnowledgeDocument is one source document ingested into a collection.
@@ -66,17 +69,18 @@ export type KnowledgeChunk = {
   score: number | undefined;
 };
 
-// CreateCollectionRequest creates a Vault (V2: local folder as source of truth).
-// root_path is required; embedding_model is optional (empty = lexical-only vault, no semantic layer).
+// CreateCollectionRequest creates a knowledge collection (Vault V2 / SP1-F team library).
+// vault_backend = local (default): local folder as source of truth, root_path required.
+// vault_backend = team: Postgres as source of truth, root_path must be empty.
+// embedding_model is optional (empty = lexical-only vault, no semantic layer).
 export type CreateCollectionRequest = {
   //
   // Behaviors: REQUIRED
   name: string | undefined;
   description: string | undefined;
   embeddingModel: string | undefined;
-  //
-  // Behaviors: REQUIRED
   rootPath: string | undefined;
+  vaultBackend: string | undefined;
 };
 
 export type GetCollectionRequest = {
@@ -245,6 +249,47 @@ export type ListCollectionGraphRequest = {
 export type ListCollectionGraphResponse = {
   nodes: CollectionGraphNode[] | undefined;
   edges: CollectionGraphEdge[] | undefined;
+};
+
+// BlockBacklink is one inbound reference edge to a block/document (SP1-E).
+// Block-granular: a document backlink list is the aggregate of its blocks' edges.
+export type BlockBacklink = {
+  srcBlockId: string | undefined;
+  srcDocId: string | undefined;
+  srcCollectionId: string | undefined;
+  srcDocName: string | undefined;
+  rawTarget: string | undefined;
+  edgeType: string | undefined;
+  context: string | undefined;
+  ambiguous: boolean | undefined;
+};
+
+export type ListBlockBacklinksRequest = {
+  blockId: string | undefined;
+  docId: string | undefined;
+};
+
+export type ListBlockBacklinksResponse = {
+  items: BlockBacklink[] | undefined;
+};
+
+// DanglingLink aggregates references whose target does not exist (yet), grouped
+// by raw_target — the "uncreated notes" view (SP1-E). The link revives
+// automatically once the target document is created and indexed.
+export type DanglingLink = {
+  rawTarget: string | undefined;
+  refCount: number | undefined;
+  refs: BlockBacklink[] | undefined;
+};
+
+export type ListDanglingLinksRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+export type ListDanglingLinksResponse = {
+  items: DanglingLink[] | undefined;
 };
 
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
@@ -432,6 +477,13 @@ export interface KnowledgeService {
   // nodes = documents (after path_prefix filter), edges = links (link_types filter;
   // endpoints outside scope/dangling dropped), degree = in-edge count per node.
   ListCollectionGraph(request: ListCollectionGraphRequest): Promise<ListCollectionGraphResponse>;
+  // ListBlockBacklinks returns block-level inbound references (SP1-E): context
+  // excerpt + source block/document per edge. Single block via block_id path;
+  // aggregate all blocks of a document via the doc_id binding.
+  ListBlockBacklinks(request: ListBlockBacklinksRequest): Promise<ListBlockBacklinksResponse>;
+  // ListDanglingLinks aggregates dangling references of one collection by
+  // raw_target with ref counts (SP1-E; "uncreated notes" view).
+  ListDanglingLinks(request: ListDanglingLinksRequest): Promise<ListDanglingLinksResponse>;
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
   // normalization conflict groups (same name_norm, different display name)
   // plus high-similarity embedding pairs when the embedder is configured.
@@ -794,6 +846,49 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListCollectionGraph",
       }) as Promise<ListCollectionGraphResponse>;
+    },
+    ListBlockBacklinks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.blockId) {
+        throw new Error("missing required field request.block_id");
+      }
+      const path = `v1/knowledge/blocks/${request.blockId}/backlinks`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.docId) {
+        queryParams.push(`docId=${encodeURIComponent(request.docId.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListBlockBacklinks",
+      }) as Promise<ListBlockBacklinksResponse>;
+    },
+    ListDanglingLinks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/collections/${request.id}/dangling-links`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListDanglingLinks",
+      }) as Promise<ListDanglingLinksResponse>;
     },
     ListEntityMergeSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {

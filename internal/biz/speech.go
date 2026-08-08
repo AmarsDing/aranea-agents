@@ -89,7 +89,8 @@ type TTSSession interface {
 type ASRProviderConfig struct {
 	Driver     string
 	Endpoint   string
-	AppKey     string // sensitive，禁止入日志
+	APIKey     string // sensitive，禁止入日志。X-Api-Key 鉴权模式（火山控制台新 API Key）
+	AppKey     string // sensitive，禁止入日志（legacy 模式：AppKey+AccessKey 对）
 	AccessKey  string // sensitive，禁止入日志
 	ResourceID string
 	Language   string
@@ -102,15 +103,24 @@ func (c ASRProviderConfig) Validate() error {
 	if strings.TrimSpace(c.Endpoint) == "" {
 		return apierror.FailedPrecondition("speech", "asr endpoint is required")
 	}
-	if strings.TrimSpace(c.AppKey) == "" || strings.TrimSpace(c.AccessKey) == "" {
-		return apierror.FailedPrecondition("speech", "asr credential is required (SPEECH_ASR_APP_KEY / SPEECH_ASR_ACCESS_KEY)")
+	if !SpeechCredOK(c.APIKey, c.AppKey, c.AccessKey) {
+		return apierror.FailedPrecondition("speech", "asr credential is required (SPEECH_ASR_API_KEY，或 SPEECH_ASR_APP_KEY + SPEECH_ASR_ACCESS_KEY)")
 	}
 	return nil
+}
+
+// SpeechCredOK 判定凭据完整性：X-Api-Key 单 key 模式，或 legacy AppKey+AccessKey 对。
+func SpeechCredOK(apiKey, appKey, accessKey string) bool {
+	if strings.TrimSpace(apiKey) != "" {
+		return true
+	}
+	return strings.TrimSpace(appKey) != "" && strings.TrimSpace(accessKey) != ""
 }
 
 type TTSProviderConfig struct {
 	Driver     string
 	Endpoint   string
+	APIKey     string // sensitive
 	AppKey     string // sensitive
 	AccessKey  string // sensitive
 	ResourceID string
@@ -125,8 +135,8 @@ func (c TTSProviderConfig) Validate() error {
 	if strings.TrimSpace(c.Endpoint) == "" {
 		return apierror.FailedPrecondition("speech", "tts endpoint is required")
 	}
-	if strings.TrimSpace(c.AppKey) == "" || strings.TrimSpace(c.AccessKey) == "" {
-		return apierror.FailedPrecondition("speech", "tts credential is required (SPEECH_TTS_APP_KEY / SPEECH_TTS_ACCESS_KEY)")
+	if !SpeechCredOK(c.APIKey, c.AppKey, c.AccessKey) {
+		return apierror.FailedPrecondition("speech", "tts credential is required (SPEECH_TTS_API_KEY，或 SPEECH_TTS_APP_KEY + SPEECH_TTS_ACCESS_KEY)")
 	}
 	if strings.TrimSpace(c.Voice) == "" {
 		return apierror.FailedPrecondition("speech", "tts voice is required (SPEECH_TTS_VOICE)")

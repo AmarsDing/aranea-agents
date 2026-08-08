@@ -109,6 +109,11 @@ func TestASROpenSendsFullClientRequest(t *testing.T) {
 	f := mustReadFrame(t, conn)
 	require.Equal(t, volcMsgFullClientRequest, f.msgType)
 	require.True(t, f.json)
+	// 真机校准（2026-08-08）：bigmodel 端点把 full client request 计入序号空间，
+	// 必须显式携带 seq=1（正序号），音频帧从 2 续号，否则服务端报
+	// "autoAssignedSequence (2) mismatch sequence in request (1)"。
+	require.Equal(t, volcFlagPositiveSeq, f.flags)
+	require.Equal(t, int32(1), f.seq)
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(f.payload, &body))
 	audio := body["audio"].(map[string]any)
@@ -123,23 +128,25 @@ func TestASRWriteAndFinishSeq(t *testing.T) {
 	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
 	require.NoError(t, err)
 	defer sess.Close()
-	_ = mustReadFrame(t, conn) // full client request
+	_ = mustReadFrame(t, conn) // full client request (seq=1)
 
+	// 音频帧续 full client request 的序号空间：首音频帧 seq=2。
 	pcm := bytes.Repeat([]byte{0x01}, 640)
 	require.NoError(t, sess.Write(pcm))
 	f := mustReadFrame(t, conn)
 	require.Equal(t, volcMsgAudioOnlyRequest, f.msgType)
-	require.Equal(t, int32(1), f.seq)
+	require.Equal(t, int32(2), f.seq)
 	require.Equal(t, pcm, f.payload)
 
 	require.NoError(t, sess.Write(pcm))
 	f = mustReadFrame(t, conn)
-	require.Equal(t, int32(2), f.seq)
+	require.Equal(t, int32(3), f.seq)
 
+	// 末帧：flags=0b0010（最后一包、无序号字段），空 payload。
 	require.NoError(t, sess.Finish())
 	f = mustReadFrame(t, conn)
-	require.Equal(t, volcFlagNegativeSeq, f.flags)
-	require.Equal(t, int32(-2), f.seq)
+	require.Equal(t, volcFlagLastPackage, f.flags)
+	require.Empty(t, f.payload)
 }
 
 func TestASRPartialAndFinalEvents(t *testing.T) {

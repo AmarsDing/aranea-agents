@@ -20,9 +20,9 @@ type SpeechSetting struct {
 
 // SpeechASRConfigured reports whether the stored ASR sub-config is complete
 // enough to open a session without env fallback (credential + driver + endpoint).
+// 凭据双模式：X-Api-Key 单 key，或 legacy AppKey+AccessKey 对（SpeechCredOK）。
 func SpeechASRConfigured(s SpeechSetting) bool {
-	return strings.TrimSpace(s.ASR.AppKey) != "" &&
-		strings.TrimSpace(s.ASR.AccessKey) != "" &&
+	return SpeechCredOK(s.ASR.APIKey, s.ASR.AppKey, s.ASR.AccessKey) &&
 		strings.TrimSpace(s.ASR.Driver) != "" &&
 		strings.TrimSpace(s.ASR.Endpoint) != ""
 }
@@ -30,8 +30,7 @@ func SpeechASRConfigured(s SpeechSetting) bool {
 // SpeechTTSConfigured reports whether the stored TTS sub-config is complete
 // enough to open a session without env fallback.
 func SpeechTTSConfigured(s SpeechSetting) bool {
-	return strings.TrimSpace(s.TTS.AppKey) != "" &&
-		strings.TrimSpace(s.TTS.AccessKey) != "" &&
+	return SpeechCredOK(s.TTS.APIKey, s.TTS.AppKey, s.TTS.AccessKey) &&
 		strings.TrimSpace(s.TTS.Driver) != "" &&
 		strings.TrimSpace(s.TTS.Endpoint) != "" &&
 		strings.TrimSpace(s.TTS.Voice) != ""
@@ -59,6 +58,9 @@ func ApplySpeechPatch(cur SpeechSetting, patch SpeechSetting, updateASRCred, upd
 		out.ASR.Language = v
 	}
 	if updateASRCred {
+		if v := strings.TrimSpace(patch.ASR.APIKey); v != "" {
+			out.ASR.APIKey = v
+		}
 		if v := strings.TrimSpace(patch.ASR.AppKey); v != "" {
 			out.ASR.AppKey = v
 		}
@@ -83,6 +85,9 @@ func ApplySpeechPatch(cur SpeechSetting, patch SpeechSetting, updateASRCred, upd
 		out.TTS.SpeedRatio = patch.TTS.SpeedRatio
 	}
 	if updateTTSCred {
+		if v := strings.TrimSpace(patch.TTS.APIKey); v != "" {
+			out.TTS.APIKey = v
+		}
 		if v := strings.TrimSpace(patch.TTS.AppKey); v != "" {
 			out.TTS.AppKey = v
 		}

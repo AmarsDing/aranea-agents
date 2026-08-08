@@ -37,6 +37,13 @@ service SelfImprovementService {
   rpc CloseRun (CloseRunRequest) returns (CloseRunResponse) {
     option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/close" body: "*" };
   }
+  // ControlRun issues a user-intervention command to an in-flight run
+  // (pause / skip_retry / rollback). The command is consumed asynchronously
+  // by the pipeline at stage boundaries; only runs in
+  // detected/diagnosing/patching/verifying accept commands.
+  rpc ControlRun (ControlRunRequest) returns (ControlRunResponse) {
+    option (google.api.http) = { post: "/v1/self-improvement/runs/{id}/control" body: "*" };
+  }
   // GetOutcomeStats returns Learn-stage attribution statistics
   // (verdict distribution + per-trigger breakdown).
   rpc GetOutcomeStats (GetOutcomeStatsRequest) returns (GetOutcomeStatsResponse) {
@@ -115,6 +122,14 @@ message CloseRunRequest {
 }
 
 message CloseRunResponse {}
+
+message ControlRunRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  // pause | skip_retry | rollback (see biz.ParseSIControlCommand)
+  string command = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ControlRunResponse {}
 
 // ── Outcome stats (D8 Learn) ────────────────────────────────────────────────
 

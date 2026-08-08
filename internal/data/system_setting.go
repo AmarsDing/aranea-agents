@@ -359,10 +359,10 @@ func (r *systemSettingRepo) UpdatePlannerModel(ctx context.Context, patch biz.Pl
 // NULL = unset (env fallback), scanned into SpeechSetting.ArchiveUserAudio.
 func (r *systemSettingRepo) GetSpeech(ctx context.Context) (biz.SpeechSetting, error) {
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`SELECT speech_asr_driver, speech_asr_endpoint, speech_asr_app_key,
-		 speech_asr_access_key, speech_asr_resource_id, speech_asr_language,
-		 speech_tts_driver, speech_tts_endpoint, speech_tts_app_key,
-		 speech_tts_access_key, speech_tts_resource_id, speech_tts_voice,
+		r.data.Dialect().RenumberPlaceholders(`SELECT speech_asr_driver, speech_asr_endpoint, speech_asr_api_key,
+		 speech_asr_app_key, speech_asr_access_key, speech_asr_resource_id, speech_asr_language,
+		 speech_tts_driver, speech_tts_endpoint, speech_tts_api_key,
+		 speech_tts_app_key, speech_tts_access_key, speech_tts_resource_id, speech_tts_voice,
 		 speech_tts_speed_ratio, speech_archive_user_audio
 		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
 	if err != nil {
@@ -375,8 +375,8 @@ func (r *systemSettingRepo) GetSpeech(ctx context.Context) (biz.SpeechSetting, e
 	var s biz.SpeechSetting
 	var archive sql.NullBool
 	if err := rows.Scan(
-		&s.ASR.Driver, &s.ASR.Endpoint, &s.ASR.AppKey, &s.ASR.AccessKey, &s.ASR.ResourceID, &s.ASR.Language,
-		&s.TTS.Driver, &s.TTS.Endpoint, &s.TTS.AppKey, &s.TTS.AccessKey, &s.TTS.ResourceID, &s.TTS.Voice,
+		&s.ASR.Driver, &s.ASR.Endpoint, &s.ASR.APIKey, &s.ASR.AppKey, &s.ASR.AccessKey, &s.ASR.ResourceID, &s.ASR.Language,
+		&s.TTS.Driver, &s.TTS.Endpoint, &s.TTS.APIKey, &s.TTS.AppKey, &s.TTS.AccessKey, &s.TTS.ResourceID, &s.TTS.Voice,
 		&s.TTS.SpeedRatio, &archive,
 	); err != nil {
 		return biz.SpeechSetting{}, err
@@ -405,12 +405,12 @@ func (r *systemSettingRepo) UpdateSpeech(ctx context.Context, patch biz.SpeechSe
 		patch.TTS.SpeedRatio, archive,
 	}
 	if updateASRCred {
-		query += `, speech_asr_app_key=?, speech_asr_access_key=?`
-		args = append(args, strings.TrimSpace(patch.ASR.AppKey), strings.TrimSpace(patch.ASR.AccessKey))
+		query += `, speech_asr_api_key=?, speech_asr_app_key=?, speech_asr_access_key=?`
+		args = append(args, strings.TrimSpace(patch.ASR.APIKey), strings.TrimSpace(patch.ASR.AppKey), strings.TrimSpace(patch.ASR.AccessKey))
 	}
 	if updateTTSCred {
-		query += `, speech_tts_app_key=?, speech_tts_access_key=?`
-		args = append(args, strings.TrimSpace(patch.TTS.AppKey), strings.TrimSpace(patch.TTS.AccessKey))
+		query += `, speech_tts_api_key=?, speech_tts_app_key=?, speech_tts_access_key=?`
+		args = append(args, strings.TrimSpace(patch.TTS.APIKey), strings.TrimSpace(patch.TTS.AppKey), strings.TrimSpace(patch.TTS.AccessKey))
 	}
 	query += ` WHERE id=?`
 	args = append(args, systemSettingSingletonID)

@@ -17,7 +17,7 @@ const (
 	defaultASRLanguage   = "zh-CN"
 
 	defaultTTSDriver     = "volcengine"
-	defaultTTSEndpoint   = "wss://openspeech.bytedance.com/api/v1/tts/ws_binary"
+	defaultTTSEndpoint   = "wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream"
 	defaultTTSResourceID = "volc.service_type.10029"
 	defaultTTSSpeedRatio = 1.0
 )
@@ -45,6 +45,7 @@ func loadEnvASRConfig() biz.ASRProviderConfig {
 	return biz.ASRProviderConfig{
 		Driver:     envOr("SPEECH_ASR_DRIVER", defaultASRDriver),
 		Endpoint:   envOr("SPEECH_ASR_ENDPOINT", defaultASREndpoint),
+		APIKey:     strings.TrimSpace(os.Getenv("SPEECH_ASR_API_KEY")),
 		AppKey:     strings.TrimSpace(os.Getenv("SPEECH_ASR_APP_KEY")),
 		AccessKey:  strings.TrimSpace(os.Getenv("SPEECH_ASR_ACCESS_KEY")),
 		ResourceID: envOr("SPEECH_ASR_RESOURCE_ID", defaultASRResourceID),
@@ -63,6 +64,7 @@ func loadEnvTTSConfig() biz.TTSProviderConfig {
 	return biz.TTSProviderConfig{
 		Driver:     envOr("SPEECH_TTS_DRIVER", defaultTTSDriver),
 		Endpoint:   envOr("SPEECH_TTS_ENDPOINT", defaultTTSEndpoint),
+		APIKey:     strings.TrimSpace(os.Getenv("SPEECH_TTS_API_KEY")),
 		AppKey:     strings.TrimSpace(os.Getenv("SPEECH_TTS_APP_KEY")),
 		AccessKey:  strings.TrimSpace(os.Getenv("SPEECH_TTS_ACCESS_KEY")),
 		ResourceID: envOr("SPEECH_TTS_RESOURCE_ID", defaultTTSResourceID),

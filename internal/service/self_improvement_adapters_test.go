@@ -56,6 +56,78 @@ func TestSIAnalystAgent_LLMError(t *testing.T) {
 	}
 }
 
+// ── S5：格式纠正重试 ─────────────────────────────────────────────────────────
+
+// 首次输出非法 JSON → 反馈解析错误重问一次，第二次合法 → 成功。
+func TestSIAnalystAgent_ParseFailureFormatRetrySucceeds(t *testing.T) {
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: "not json at all"},
+		{resp: `{"root_cause":"空指针","affected_files":[],"impact_scope":"local","fix_strategy":"判空","confidence":0.7}`},
+	}}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop())
+	run := &biz.SelfImprovementRun{ID: "run-1", TriggerSource: biz.TriggerSourceErrorCluster}
+
+	d, err := agent.Analyze(context.Background(), run, nil)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if d.RootCause != "空指针" {
+		t.Errorf("RootCause = %q", d.RootCause)
+	}
+	if len(caller.reqs) != 2 {
+		t.Fatalf("caller reqs = %d, want 2（首次 + 格式重试）", len(caller.reqs))
+	}
+	retry := caller.reqs[1]
+	if retry.System != biz.SIAnalystSystemPrompt {
+		t.Error("retry must reuse the analyst system prompt")
+	}
+	if !strings.Contains(retry.User, "not json at all") || !strings.Contains(retry.User, "无法解析") {
+		t.Error("retry user message must carry parse feedback + bad output")
+	}
+}
+
+// 两次都非法 → 返回解析错误，调用恰好 2 次。
+func TestSIAnalystAgent_ParseFailureRetryExhausted(t *testing.T) {
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: "bad"},
+		{resp: `{"root_cause":""}`},
+	}}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop())
+	if _, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{ID: "run-1"}, nil); err == nil {
+		t.Fatal("want parse error after retry exhausted")
+	}
+	if len(caller.reqs) != 2 {
+		t.Fatalf("caller reqs = %d, want exactly 2", len(caller.reqs))
+	}
+}
+
+// LLM 调用本身失败（非解析失败）→ 直接返回，不触发格式重试。
+func TestSIAnalystAgent_LLMErrorNoFormatRetry(t *testing.T) {
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{err: errors.New("boom")},
+		{resp: `{"root_cause":"x","impact_scope":"local","fix_strategy":"y","confidence":0.5}`},
+	}}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop())
+	if _, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{ID: "run-1"}, nil); err == nil {
+		t.Fatal("want llm error")
+	}
+	if len(caller.reqs) != 1 {
+		t.Fatalf("llm 错误不应格式重试, reqs = %d, want 1", len(caller.reqs))
+	}
+}
+
+// 首次合法 → 不重试（只调用 1 次）。
+func TestSIAnalystAgent_ValidFirstTryNoRetry(t *testing.T) {
+	caller := &fakeLLMCaller{resp: `{"root_cause":"x","impact_scope":"local","fix_strategy":"y","confidence":0.5}`}
+	agent := NewSIAnalystAgent(caller, "openai", "gpt-x", loggateway.NewNoop())
+	if _, err := agent.Analyze(context.Background(), &biz.SelfImprovementRun{ID: "run-1"}, nil); err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(caller.reqs) != 1 {
+		t.Fatalf("合法输出不应重试, reqs = %d, want 1", len(caller.reqs))
+	}
+}
+
 // ── SIPatcherAgent ───────────────────────────────────────────────────────────
 
 func siPatchArgs(worktree string) biz.SIPatchRequest {
@@ -112,6 +184,63 @@ func TestSIPatcherAgent_NilCaller(t *testing.T) {
 	agent := NewSIPatcherAgent(nil, "openai", "gpt-x", 20, loggateway.NewNoop())
 	if _, err := agent.Patch(context.Background(), siPatchArgs("")); err == nil {
 		t.Fatal("want not-initialized error")
+	}
+}
+
+// S5：首次输出非法 JSON → 反馈重问，第二次合法 → 成功（消耗 2 单位配额）。
+func TestSIPatcherAgent_ParseFailureFormatRetrySucceeds(t *testing.T) {
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: "here is your patch: …"},
+		{resp: `{"diff":"diff --git a/internal/biz/x.go b/internal/biz/x.go\n--- a/internal/biz/x.go\n+++ b/internal/biz/x.go\n@@ -1 +1 @@\n-a\n+b\n","kind":"code"}`},
+	}}
+	agent := NewSIPatcherAgent(caller, "openai", "gpt-x", 20, loggateway.NewNoop())
+	out, err := agent.Patch(context.Background(), siPatchArgs(""))
+	if err != nil {
+		t.Fatalf("Patch: %v", err)
+	}
+	if out.Kind != biz.PatchKindCode {
+		t.Errorf("kind = %q, want code", out.Kind)
+	}
+	if len(caller.reqs) != 2 {
+		t.Fatalf("caller reqs = %d, want 2（首次 + 格式重试）", len(caller.reqs))
+	}
+	if !strings.Contains(caller.reqs[1].User, "here is your patch") || !strings.Contains(caller.reqs[1].User, "无法解析") {
+		t.Error("retry user message must carry parse feedback + bad output")
+	}
+	// 重试后配额只剩 18：再发起一次 Patch 仍应成功（queue 尾元素重复）。
+	if _, err := agent.Patch(context.Background(), siPatchArgs("")); err != nil {
+		t.Fatalf("third Patch: %v", err)
+	}
+}
+
+// S5：两次都非法 → 返回解析错误；调用恰好 2 次。
+func TestSIPatcherAgent_ParseFailureRetryExhausted(t *testing.T) {
+	caller := &fakeLLMCaller{queue: []fakeLLMReply{
+		{resp: "bad"},
+		{resp: `{"diff":"","kind":"code"}`},
+	}}
+	agent := NewSIPatcherAgent(caller, "openai", "gpt-x", 20, loggateway.NewNoop())
+	if _, err := agent.Patch(context.Background(), siPatchArgs("")); err == nil {
+		t.Fatal("want parse error after retry exhausted")
+	}
+	if len(caller.reqs) != 2 {
+		t.Fatalf("caller reqs = %d, want exactly 2", len(caller.reqs))
+	}
+}
+
+// S5：重试时配额耗尽 → 放弃重试，返回原始解析错误（不吞配额错误掩盖格式问题）。
+func TestSIPatcherAgent_RetryQuotaExhaustedReturnsParseError(t *testing.T) {
+	caller := &fakeLLMCaller{resp: "not json"}
+	agent := NewSIPatcherAgent(caller, "openai", "gpt-x", 1, loggateway.NewNoop())
+	_, err := agent.Patch(context.Background(), siPatchArgs(""))
+	if err == nil {
+		t.Fatal("want parse error")
+	}
+	if errors.Is(err, ErrSIPatcherQuotaExceeded) {
+		t.Fatal("重试配额耗尽时应返回解析错误而非配额错误")
+	}
+	if len(caller.reqs) != 1 {
+		t.Fatalf("配额耗尽不应发起第二次 LLM 调用, reqs = %d, want 1", len(caller.reqs))
 	}
 }
 

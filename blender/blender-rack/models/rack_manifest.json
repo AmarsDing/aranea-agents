@@ -1,0 +1,342 @@
+{
+ "model": "Aranea RK-42U-6012",
+ "role": "42U 服务器机柜",
+ "prefix": "RACK",
+ "fbx": "RACK_42U.fbx",
+ "glb": "RACK_42U.glb",
+ "dims_m": {
+  "width": 0.6,
+  "depth": 1.2,
+  "height": 1.982
+ },
+ "units": "meters in Blender; FBX exported -> UE5 centimeters (1:1 real size)",
+ "coordinate": "front=-Y, up=+Z; U1 在最底部",
+ "rack_geometry": {
+  "u_count": 42,
+  "u_height_m": 0.04445,
+  "u1_bottom_z_m": 0.115,
+  "rail_front_y_m": -0.45,
+  "rail_rear_y_m": 0.45,
+  "rail_x_m": [
+   -0.2326,
+   0.2326
+  ],
+  "mount_width_m": 0.4826,
+  "formula": "u_bottom_z(u) = 0.115 + (u-1)*0.04445; 设备前面板贴 y=-0.45"
+ },
+ "naming": {
+  "root": "RACK_42U_ROOT",
+  "u_anchor": "RACK_ANCHOR_U{nn}  (Empty, U位装配/UI 挂点)",
+  "pdu": "PDU_L / PDU_R (含 PDU_Outlets 插座组)"
+ },
+ "mount_contract": {
+  "server": "设备根节点 local: 前面 y=-D/2, 底 z=0; 装配时 root.z = u_bottom_z, root.y = rail_front_y + D/2",
+  "switch_1u": "同上, 交换机 dims_mm 见各 *_manifest.json"
+ },
+ "pdu": {
+  "left": {
+   "object": "PDU_L",
+   "data_bind": "rack.pdu.left"
+  },
+  "right": {
+   "object": "PDU_R",
+   "data_bind": "rack.pdu.right"
+  }
+ },
+ "u_anchors": [
+  {
+   "u": 1,
+   "anchor": "RACK_ANCHOR_U01",
+   "z_bottom_m": 0.115,
+   "z_center_m": 0.13723,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 2,
+   "anchor": "RACK_ANCHOR_U02",
+   "z_bottom_m": 0.15945,
+   "z_center_m": 0.18168,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 3,
+   "anchor": "RACK_ANCHOR_U03",
+   "z_bottom_m": 0.2039,
+   "z_center_m": 0.22613,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 4,
+   "anchor": "RACK_ANCHOR_U04",
+   "z_bottom_m": 0.24835,
+   "z_center_m": 0.27058,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 5,
+   "anchor": "RACK_ANCHOR_U05",
+   "z_bottom_m": 0.2928,
+   "z_center_m": 0.31502,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 6,
+   "anchor": "RACK_ANCHOR_U06",
+   "z_bottom_m": 0.33725,
+   "z_center_m": 0.35947,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 7,
+   "anchor": "RACK_ANCHOR_U07",
+   "z_bottom_m": 0.3817,
+   "z_center_m": 0.40393,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 8,
+   "anchor": "RACK_ANCHOR_U08",
+   "z_bottom_m": 0.42615,
+   "z_center_m": 0.44838,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 9,
+   "anchor": "RACK_ANCHOR_U09",
+   "z_bottom_m": 0.4706,
+   "z_center_m": 0.49283,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 10,
+   "anchor": "RACK_ANCHOR_U10",
+   "z_bottom_m": 0.51505,
+   "z_center_m": 0.53728,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 11,
+   "anchor": "RACK_ANCHOR_U11",
+   "z_bottom_m": 0.5595,
+   "z_center_m": 0.58173,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 12,
+   "anchor": "RACK_ANCHOR_U12",
+   "z_bottom_m": 0.60395,
+   "z_center_m": 0.62618,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 13,
+   "anchor": "RACK_ANCHOR_U13",
+   "z_bottom_m": 0.6484,
+   "z_center_m": 0.67063,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 14,
+   "anchor": "RACK_ANCHOR_U14",
+   "z_bottom_m": 0.69285,
+   "z_center_m": 0.71508,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 15,
+   "anchor": "RACK_ANCHOR_U15",
+   "z_bottom_m": 0.7373,
+   "z_center_m": 0.75953,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 16,
+   "anchor": "RACK_ANCHOR_U16",
+   "z_bottom_m": 0.78175,
+   "z_center_m": 0.80398,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 17,
+   "anchor": "RACK_ANCHOR_U17",
+   "z_bottom_m": 0.8262,
+   "z_center_m": 0.84843,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 18,
+   "anchor": "RACK_ANCHOR_U18",
+   "z_bottom_m": 0.87065,
+   "z_center_m": 0.89288,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 19,
+   "anchor": "RACK_ANCHOR_U19",
+   "z_bottom_m": 0.9151,
+   "z_center_m": 0.93733,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 20,
+   "anchor": "RACK_ANCHOR_U20",
+   "z_bottom_m": 0.95955,
+   "z_center_m": 0.98178,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 21,
+   "anchor": "RACK_ANCHOR_U21",
+   "z_bottom_m": 1.004,
+   "z_center_m": 1.02622,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 22,
+   "anchor": "RACK_ANCHOR_U22",
+   "z_bottom_m": 1.04845,
+   "z_center_m": 1.07068,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 23,
+   "anchor": "RACK_ANCHOR_U23",
+   "z_bottom_m": 1.0929,
+   "z_center_m": 1.11513,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 24,
+   "anchor": "RACK_ANCHOR_U24",
+   "z_bottom_m": 1.13735,
+   "z_center_m": 1.15958,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 25,
+   "anchor": "RACK_ANCHOR_U25",
+   "z_bottom_m": 1.1818,
+   "z_center_m": 1.20403,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 26,
+   "anchor": "RACK_ANCHOR_U26",
+   "z_bottom_m": 1.22625,
+   "z_center_m": 1.24848,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 27,
+   "anchor": "RACK_ANCHOR_U27",
+   "z_bottom_m": 1.2707,
+   "z_center_m": 1.29293,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 28,
+   "anchor": "RACK_ANCHOR_U28",
+   "z_bottom_m": 1.31515,
+   "z_center_m": 1.33737,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 29,
+   "anchor": "RACK_ANCHOR_U29",
+   "z_bottom_m": 1.3596,
+   "z_center_m": 1.38183,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 30,
+   "anchor": "RACK_ANCHOR_U30",
+   "z_bottom_m": 1.40405,
+   "z_center_m": 1.42627,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 31,
+   "anchor": "RACK_ANCHOR_U31",
+   "z_bottom_m": 1.4485,
+   "z_center_m": 1.47073,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 32,
+   "anchor": "RACK_ANCHOR_U32",
+   "z_bottom_m": 1.49295,
+   "z_center_m": 1.51517,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 33,
+   "anchor": "RACK_ANCHOR_U33",
+   "z_bottom_m": 1.5374,
+   "z_center_m": 1.55963,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 34,
+   "anchor": "RACK_ANCHOR_U34",
+   "z_bottom_m": 1.58185,
+   "z_center_m": 1.60408,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 35,
+   "anchor": "RACK_ANCHOR_U35",
+   "z_bottom_m": 1.6263,
+   "z_center_m": 1.64853,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 36,
+   "anchor": "RACK_ANCHOR_U36",
+   "z_bottom_m": 1.67075,
+   "z_center_m": 1.69298,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 37,
+   "anchor": "RACK_ANCHOR_U37",
+   "z_bottom_m": 1.7152,
+   "z_center_m": 1.73742,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 38,
+   "anchor": "RACK_ANCHOR_U38",
+   "z_bottom_m": 1.75965,
+   "z_center_m": 1.78188,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 39,
+   "anchor": "RACK_ANCHOR_U39",
+   "z_bottom_m": 1.8041,
+   "z_center_m": 1.82632,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 40,
+   "anchor": "RACK_ANCHOR_U40",
+   "z_bottom_m": 1.84855,
+   "z_center_m": 1.87078,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 41,
+   "anchor": "RACK_ANCHOR_U41",
+   "z_bottom_m": 1.893,
+   "z_center_m": 1.91522,
+   "front_y_m": -0.45
+  },
+  {
+   "u": 42,
+   "anchor": "RACK_ANCHOR_U42",
+   "z_bottom_m": 1.93745,
+   "z_center_m": 1.95968,
+   "front_y_m": -0.45
+  }
+ ]
+}

@@ -128,9 +128,16 @@ func TestSIRepoApplier_ApplyHotReload_ModifyCreateDeleteThenRollback(t *testing.
 		t.Errorf("created file should be removed on rollback, stat err = %v", err)
 	}
 
-	// Double rollback must fail (snapshot consumed), not silently succeed.
-	if err := a.Rollback(context.Background(), run, "again"); err == nil {
-		t.Error("second Rollback should fail (snapshot already consumed)")
+	// R3 契约变更（2026-08-08）：double rollback 幂等返回 nil（目标状态已达
+	// 成），不再依赖"快照已消费"报错。幂等跳过只在本进程确认 restore 成功
+	// 后触发（reverted 集合），不会掩盖真实失败；进程重启后集合丢失，第二
+	// 次 restore 仍因快照缺失而报错（残余窗口见 applier 注释）。
+	if err := a.Rollback(context.Background(), run, "again"); err != nil {
+		t.Errorf("second Rollback should be idempotent nil, got: %v", err)
+	}
+	// 幂等跳过无副作用：文件系统仍保持已回滚状态。
+	if got := readFile(t, repo, "configs/app.yaml"); got != "key: v1\n" {
+		t.Errorf("after idempotent skip app.yaml = %q, want still reverted", got)
 	}
 }
 
@@ -320,6 +327,37 @@ func TestSIRepoApplier_Rollback_CodeRevert(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, "docs", "note.md")); !os.IsNotExist(err) {
 		t.Error("added file should be removed by revert")
+	}
+}
+
+func TestSIRepoApplier_Rollback_IdempotentDoubleRevert(t *testing.T) {
+	repo := initFixtureGoRepo(t)
+	a := newApplierFixture(t, repo)
+
+	run := &biz.SelfImprovementRun{ID: "run-cm5", PatchKind: biz.PatchKindCode, Diff: codeMergeDiff}
+	sha, err := a.ApplyCodeMerge(context.Background(), run)
+	if err != nil {
+		t.Fatalf("ApplyCodeMerge: %v", err)
+	}
+	run.AppliedCommit = sha
+
+	// 第一次 rollback：正常 revert。
+	if err := a.Rollback(context.Background(), run, "watchdog: regression"); err != nil {
+		t.Fatalf("first Rollback: %v", err)
+	}
+	headAfterFirst := gitOut(t, repo, "rev-parse", "HEAD")
+
+	// R3：admin 与 watchdog 基于同一 observing 快照并发进入 Rollback 时，
+	// 第二次调用必须幂等——否则 git revert 一个已 revert 的 commit 会生成
+	// revert-of-revert，已回滚的补丁静默复活（DB 却显示 rolled_back）。
+	if err := a.Rollback(context.Background(), run, "admin concurrent"); err != nil {
+		t.Fatalf("second Rollback should be idempotent nil: %v", err)
+	}
+	if got := gitOut(t, repo, "rev-parse", "HEAD"); got != headAfterFirst {
+		t.Errorf("double rollback moved HEAD (%s → %s): revert-of-revert resurrected the patch", headAfterFirst, got)
+	}
+	if got := readFile(t, repo, "main.go"); !strings.Contains(got, `"hi"`) {
+		t.Errorf("main.go should stay reverted: %q", got)
 	}
 }
 

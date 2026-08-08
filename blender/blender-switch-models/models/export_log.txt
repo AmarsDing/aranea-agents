@@ -1,0 +1,20 @@
+=== rebuild ===
+built: [('S5735', 30), ('H3C52', 52), ('CE6857', 56)]
+=== export ===
+exported SW1_Huawei_S5735-L24P4S-A1.fbx
+exported SW1_Huawei_S5735-L24P4S-A1.glb
+manifest S5735_manifest.json (30 ports)
+exported SW2_H3C_S5130S-52S-EI.fbx
+exported SW2_H3C_S5130S-52S-EI.glb
+manifest H3C52_manifest.json (52 ports)
+exported SW3_Huawei_CE6857-48S8CQ.fbx
+exported SW3_Huawei_CE6857-48S8CQ.glb
+manifest CE6857_manifest.json (56 ports)
+=== stage & render ===
+rendered showcase.png
+rendered preview_sw1.png
+rendered preview_sw2.png
+rendered preview_sw3.png
+rendered preview_jack.png
+saved f:\aranea-agents\test\blender-switch-models\models\switch_showcase.blend
+=== DONE ===

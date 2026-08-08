@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>27寸显示器 3D 可视化 · UE5 资产预览 Demo</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#04060b;
+    font-family:"Segoe UI","Microsoft YaHei",sans-serif; color:#cfe6f5; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  /* ---------- 顶栏 ---------- */
+  #hud-top { position:fixed; top:0; left:0; right:0; display:flex; align-items:center; gap:14px;
+    padding:12px 20px; background:linear-gradient(180deg,rgba(4,8,16,.92),rgba(4,8,16,0));
+    pointer-events:none; z-index:10; flex-wrap:wrap; }
+  #hud-top h1 { font-size:15px; font-weight:600; letter-spacing:2px; color:#7fd8ff;
+    text-shadow:0 0 12px rgba(60,180,255,.6); white-space:nowrap; }
+  #hud-top .sub { font-size:11px; color:#4a6a80; letter-spacing:1px; }
+  .grp { display:flex; gap:6px; align-items:center; pointer-events:auto; }
+  .grp .lb { font-size:10px; color:#4a6a80; letter-spacing:1px; margin:0 2px 0 10px; }
+  .grp button {
+    background:rgba(16,32,52,.65); border:1px solid rgba(64,160,220,.35); color:#9fd0ea;
+    font-size:12px; padding:5px 14px; border-radius:3px; cursor:pointer; letter-spacing:1px;
+    transition:all .18s; backdrop-filter:blur(6px); }
+  .grp button:hover { border-color:#46c8ff; color:#dff4ff; box-shadow:0 0 10px rgba(70,200,255,.35); }
+  .grp button.on { background:rgba(30,90,140,.7); border-color:#46c8ff; color:#fff; }
+  #btn-power.off { border-color:rgba(255,120,80,.5); color:#ffb59a; }
+
+  /* ---------- 规格面板 ---------- */
+  #side { position:fixed; right:20px; top:76px; z-index:10; width:225px;
+    background:rgba(8,16,28,.72); border:1px solid rgba(64,160,220,.22); border-radius:4px;
+    backdrop-filter:blur(8px); }
+  #side .hd { font-size:11px; letter-spacing:2px; color:#7fd8ff; padding:9px 14px;
+    border-bottom:1px solid rgba(64,160,220,.18); display:flex; justify-content:space-between; }
+  #side .hd em { font-style:normal; color:#2dffa0; font-size:10px; }
+  #side-body { padding:10px 14px; font-size:11px; line-height:2.1; color:#9dc3da; }
+  #side-body span { color:#557183; display:inline-block; width:72px; }
+  #side-body b { color:#d8f2ff; font-weight:500; }
+
+  /* ---------- 底部提示 ---------- */
+  #tip { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:10;
+    font-size:11px; color:#4a6a80; letter-spacing:1px; white-space:nowrap; }
+  #src-badge { position:fixed; left:20px; bottom:16px; z-index:10; font-size:11px;
+    color:#5f89a5; letter-spacing:1px; }
+  #src-badge b { color:#8fe3ff; font-weight:600; }
+
+  /* ---------- 加载 ---------- */
+  #loading { position:fixed; inset:0; z-index:50; background:#04060b; display:flex;
+    flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    transition:opacity .5s; }
+  #loading.hide { opacity:0; pointer-events:none; }
+  #loading .t { font-size:13px; letter-spacing:6px; color:#7fd8ff; }
+  #loading .bar { width:240px; height:2px; background:rgba(70,200,255,.15); border-radius:1px; overflow:hidden; }
+  #loading .bar i { display:block; height:100%; width:0; background:#46c8ff;
+    box-shadow:0 0 8px #46c8ff; transition:width .3s; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud-top">
+  <h1>MONVIZ · 27寸显示器 3D 可视化</h1>
+  <span class="sub">UE5 资产预览 · Three.js</span>
+  <div class="grp">
+    <span class="lb">电源</span>
+    <button id="btn-power" class="on">⏻ 亮屏</button>
+  </div>
+  <div class="grp">
+    <span class="lb">信号源</span>
+    <button class="img-btn on" data-img="0">极光壁纸</button>
+    <button class="img-btn" data-img="1">监控大屏</button>
+    <button class="img-btn" data-img="2">山水风景</button>
+    <button id="btn-upload">上传图片…</button>
+    <input type="file" id="file-input" accept="image/*" style="display:none">
+  </div>
+  <div class="grp">
+    <span class="lb">视图</span>
+    <button id="btn-rotate">自动旋转</button>
+    <button id="btn-reset">复位视角</button>
+  </div>
+</div>
+
+<div id="side">
+  <div class="hd">MONITOR SPEC<em>1:1</em></div>
+  <div id="side-body">
+    <span>型号</span><b>27" Office Monitor</b><br>
+    <span>可视区</span><b>598 × 336 mm</b><br>
+    <span>整机</span><b>613 × 502 × 200 mm</b><br>
+    <span>面板</span><b>16:9 · 27 inch</b><br>
+    <span>屏幕材质槽</span><b>M_Screen</b><br>
+    <span>指示灯槽</span><b>M_LED</b><br>
+    <span>电源状态</span><b id="spec-power" style="color:#2dffa0">ON</b><br>
+    <span>当前画面</span><b id="spec-img">极光壁纸</b>
+  </div>
+</div>
+
+<div id="src-badge"></div>
+<div id="tip">拖拽旋转 · 滚轮缩放 · 右键平移 · 电源键控制亮灭 · 信号源切换屏幕画面（对应 UE5 SetTextureParameter）</div>
+<div id="loading"><div class="t">LOADING ASSETS</div><div class="bar"><i id="lbar"></i></div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* ================= 常量（与 build_monitor.py 一致，米） ================= */
+const GLB_URL = '../models/Monitor_27inch.glb';
+const PANEL = { W:0.613, H:0.362, D:0.022, BOTTOM:0.140 };
+PANEL.CZ = PANEL.BOTTOM + PANEL.H / 2;
+const SCREEN = { W:0.598, H:0.336 };
+
+/* 预置画面（模拟 UE5 侧下发 Texture） */
+const T2I = (p) => 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=' +
+  encodeURIComponent(p) + '&image_size=landscape_16_9';
+const PRESETS = [
+  { name:'极光壁纸', url:T2I('ultra clean desktop wallpaper, abstract aurora gradient waves in deep blue and teal, soft cinematic glow, minimalist, premium digital art, no text') },
+  { name:'监控大屏', url:T2I('futuristic data center monitoring dashboard UI on screen, dark theme with cyan glowing charts, world map, server status panels, flat design, high detail') },
+  { name:'山水风景', url:T2I('breathtaking mountain lake landscape at dawn, mirror reflection on water, mist, soft golden light, photorealistic, 8k wallpaper') },
+];
+
+/* ================= 场景基础 ================= */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x04070c);
+scene.fog = new THREE.Fog(0x04070c, 3.5, 10);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.005, 60);
+const HOME_POS = new THREE.Vector3(0.42, 0.52, 0.85);
+const HOME_TGT = new THREE.Vector3(0, 0.30, 0);
+camera.position.copy(HOME_POS);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.target.copy(HOME_TGT);
+controls.maxDistance = 3; controls.minDistance = 0.08;
+controls.autoRotateSpeed = 1.2;
+
+scene.add(new THREE.AmbientLight(0x8899bb, 0.35));
+const key = new THREE.DirectionalLight(0xdde8ff, 0.8); key.position.set(-0.8, 1.4, 1.0); scene.add(key);
+const rim = new THREE.DirectionalLight(0x3f8cff, 0.8); rim.position.set(0.3, 0.9, -1.2); scene.add(rim);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(7, 64),
+  new THREE.MeshStandardMaterial({ color:0x070a10, metalness:0.35, roughness:0.55 }));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.001; scene.add(ground);
+const grid = new THREE.GridHelper(6, 60, 0x0d2a40, 0x081826);
+grid.position.y = 0.0005; grid.material.transparent = true; grid.material.opacity = 0.5; scene.add(grid);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.45, 0.82);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* ================= 显示器装配 ================= */
+/* screenMat / ledMat 在 GLB 加载后指向真实材质；fallback 时指向程序化材质 */
+let screenMat = null, ledMat = null, monitorRoot = null;
+
+function makeScreenMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    color:0x030304, roughness:0.22, metalness:0.0,
+    clearcoat:0.6, clearcoatRoughness:0.15,
+    emissive:0xffffff, emissiveIntensity:0.0,
+  });
+}
+function makeLedMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color:0x0a0a0a, roughness:0.4,
+    emissive:0xbfe8ff, emissiveIntensity:2.5,
+  });
+}
+
+/* 程序化后备模型（GLB 缺失时立即可预览，尺寸与 Blender 脚本一致） */
+function buildFallbackMonitor() {
+  const g = new THREE.Group(); g.name = 'Monitor_Fallback';
+  const matBody  = new THREE.MeshStandardMaterial({ color:0x141416, metalness:0.1, roughness:0.4 });
+  const matStand = new THREE.MeshStandardMaterial({ color:0x595c60, metalness:0.9, roughness:0.3 });
+
+  const add = (geo, mat, x, y, z, name) => {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.name = name; g.add(m); return m;
+  };
+  add(new RoundedBoxGeometry(PANEL.W, PANEL.H, PANEL.D, 3, 0.004), matBody, 0, PANEL.CZ, 0, 'SM_Monitor_Body');
+  // 屏幕朝 +Z（与 GLB glTF 约定一致），背部部件一律 -Z
+  add(new RoundedBoxGeometry(0.34, 0.20, 0.022, 3, 0.010), matBody, 0, PANEL.CZ - 0.02, -(PANEL.D/2 + 0.010), 'SM_Monitor_Housing');
+  add(new THREE.PlaneGeometry(SCREEN.W, SCREEN.H), makeScreenMaterial(),
+      0, PANEL.CZ, PANEL.D/2 + 0.0008, 'SM_Monitor_Screen');
+  add(new THREE.BoxGeometry(0.012, 0.0025, 0.003), makeLedMaterial(),
+      0.280, PANEL.BOTTOM + 0.0065, PANEL.D/2 + 0.001, 'SM_Monitor_LED');
+  add(new RoundedBoxGeometry(0.11, PANEL.CZ + 0.05 - 0.018, 0.045, 3, 0.008), matStand,
+      0, (0.018 + PANEL.CZ + 0.05) / 2, -0.045, 'SM_Monitor_Neck');
+  add(new RoundedBoxGeometry(0.24, 0.018, 0.20, 3, 0.006), matStand, 0, 0.009, -0.030, 'SM_Monitor_Base');
+  return g;
+}
+
+/* ================= 资产加载 ================= */
+const lbar = document.getElementById('lbar');
+const srcBadge = document.getElementById('src-badge');
+
+function bindMaterials(root, fromGLB) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    if (o.name === 'SM_Monitor_Screen') {
+      screenMat = makeScreenMaterial();
+      if (fromGLB && screenMat.map !== null) screenMat.map = null;
+      screenMat.emissiveMap = null;
+      o.material = screenMat;
+    }
+    if (o.name === 'SM_Monitor_LED') {
+      ledMat = makeLedMaterial();
+      o.material = ledMat;
+    }
+  });
+  if (!screenMat) {  // GLB 中未找到（防御）
+    const scr = root.getObjectByName('SM_Monitor_Screen');
+    if (scr) { screenMat = makeScreenMaterial(); scr.material = screenMat; }
+  }
+}
+
+function loadMonitor() {
+  lbar.style.width = '30%';
+  const loader = new GLTFLoader();
+  loader.load(GLB_URL,
+    (gltf) => {
+      monitorRoot = gltf.scene;
+      scene.add(monitorRoot);
+      bindMaterials(monitorRoot, true);
+      srcBadge.innerHTML = '资产来源：<b>GLB（Blender 导出）</b>';
+      finishLoad();
+    },
+    (ev) => { if (ev.total) lbar.style.width = (30 + 60 * ev.loaded / ev.total) + '%'; },
+    () => {
+      monitorRoot = buildFallbackMonitor();
+      scene.add(monitorRoot);
+      bindMaterials(monitorRoot, false);
+      srcBadge.innerHTML = '资产来源：<b>内置程序化模型</b>（运行 build_monitor.py 后自动切换为真实 GLB）';
+      finishLoad();
+    });
+}
+
+function finishLoad() {
+  lbar.style.width = '100%';
+  setScreenImage(0);
+  setTimeout(() => document.getElementById('loading').classList.add('hide'), 350);
+}
+
+/* ================= 画面渲染（对应 UE5 SetTextureParameter） ================= */
+const texLoader = new THREE.TextureLoader();
+texLoader.crossOrigin = 'anonymous';
+let currentTex = null;
+
+function applyTexture(tex) {
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false;              // glTF UV 约定；程序化平面同样适配
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  if (currentTex) currentTex.dispose();
+  currentTex = tex;
+  if (screenMat) {
+    screenMat.emissiveMap = tex;
+    screenMat.needsUpdate = true;
+  }
+}
+
+/* 程序化后备画面（外链图跨域失败时保证可演示） */
+function canvasWallpaper(i) {
+  const c = document.createElement('canvas'); c.width = 1280; c.height = 720;
+  const x = c.getContext('2d');
+  const grads = [
+    ['#0a2a5e','#0e6a8a','#7a3fd4'],
+    ['#04121f','#0a3a4a','#0d5a6a'],
+    ['#2b1a4a','#b45a2d','#e8a35d'],
+  ][i % 3];
+  const g = x.createLinearGradient(0, 0, 1280, 720);
+  g.addColorStop(0, grads[0]); g.addColorStop(.55, grads[1]); g.addColorStop(1, grads[2]);
+  x.fillStyle = g; x.fillRect(0, 0, 1280, 720);
+  for (let k = 0; k < 40; k++) {
+    x.beginPath();
+    x.arc(Math.random()*1280, Math.random()*720, Math.random()*120+20, 0, 7);
+    x.fillStyle = 'rgba(255,255,255,' + (Math.random()*0.05) + ')';
+    x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  return t;
+}
+
+function setScreenImage(i) {
+  const p = PRESETS[i];
+  document.getElementById('spec-img').textContent = p.name;
+  document.querySelectorAll('.img-btn').forEach((b, j) => b.classList.toggle('on', j === i));
+  texLoader.load(p.url, applyTexture, undefined, () => applyTexture(canvasWallpaper(i)));
+}
+
+function setScreenImageFile(file) {
+  const url = URL.createObjectURL(file);
+  document.getElementById('spec-img').textContent = file.name.slice(0, 18);
+  document.querySelectorAll('.img-btn').forEach(b => b.classList.remove('on'));
+  texLoader.load(url, applyTexture, undefined, () => applyTexture(canvasWallpaper(0)));
+}
+
+/* ================= 电源亮灭（对应 UE5 SetScalarParameter ScreenOn） ================= */
+const power = { on:true, e:1 };   // e: 动画插值
+const btnPower = document.getElementById('btn-power');
+const specPower = document.getElementById('spec-power');
+
+function setPower(on) {
+  power.on = on;
+  btnPower.classList.toggle('on', on);
+  btnPower.classList.toggle('off', !on);
+  btnPower.textContent = on ? '⏻ 亮屏' : '⏻ 已关屏';
+  specPower.textContent = on ? 'ON' : 'OFF';
+  specPower.style.color = on ? '#2dffa0' : '#ff8c6b';
+}
+btnPower.onclick = () => setPower(!power.on);
+
+document.querySelectorAll('.img-btn').forEach(b =>
+  b.onclick = () => setScreenImage(+b.dataset.img));
+document.getElementById('btn-upload').onclick = () => document.getElementById('file-input').click();
+document.getElementById('file-input').onchange = (ev) => {
+  if (ev.target.files[0]) setScreenImageFile(ev.target.files[0]);
+};
+document.getElementById('btn-rotate').onclick = (ev) => {
+  controls.autoRotate = !controls.autoRotate;
+  ev.target.classList.toggle('on', controls.autoRotate);
+};
+document.getElementById('btn-reset').onclick = () => {
+  camera.position.copy(HOME_POS); controls.target.copy(HOME_TGT);
+};
+
+/* ================= 渲染循环 ================= */
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  // 亮灭渐变（模拟真实 LCD 淡入淡出）
+  power.e = THREE.MathUtils.damp(power.e, power.on ? 1 : 0, 7, dt);
+  if (screenMat) {
+    screenMat.emissiveIntensity = 1.35 * power.e;
+  }
+  if (ledMat) {
+    // 亮屏: 冰蓝; 关屏: 琥珀待机色
+    const on = power.e > 0.5;
+    ledMat.emissive.setHex(on ? 0xbfe8ff : 0xffa030);
+    ledMat.emissiveIntensity = on ? 2.5 : 0.8;
+  }
+  controls.update();
+  composer.render();
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+loadMonitor();
+</script>
+</body>
+</html>

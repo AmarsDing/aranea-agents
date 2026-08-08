@@ -132,6 +132,10 @@ message UpdateSystemSettingsRequest {
   // Tri-state via proto3 optional: unset = keep stored value; explicit true/false
   // replaces (explicit value ends env fallback for the toggle).
   optional bool speech_archive_user_audio = 35;
+  // X-Api-Key 鉴权模式（火山控制台新 API Key，M74 真机校准）：write-only，
+  // 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
+  string speech_asr_api_key = 36;
+  string speech_tts_api_key = 37;
 }
 
 message TestWebResearchRequest {

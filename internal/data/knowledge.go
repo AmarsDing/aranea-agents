@@ -16,6 +16,7 @@ import (
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
+	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -140,6 +141,9 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 		`CREATE INDEX IF NOT EXISTS knowledge_links_target_idx ON knowledge_links(target_doc_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
 			ON knowledge_links(doc_id, target_doc_id, link_type)`,
+		// --- SP1-F 团队库后端维度（fresh 形态；存量库由迁移 20261205 补列） ---
+		// vault_backend：local=文件系统真相源（root_path 必填）/ team=PG 真相源（root_path 空，无 SyncEngine）。
+		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS vault_backend TEXT NOT NULL DEFAULT 'local'`,
 		// --- SP1-C 跨库双链解析（fresh 形态；存量库由迁移 20261204 补列） ---
 		// documents.title/aliases：Resolver 文档键（frontmatter 物化）；
 		// links.weight：N-3 投影权重（同文档对块边数聚合）。
@@ -190,21 +194,21 @@ func (r *knowledgeRepo) CreateCollection(ctx context.Context, c biz.KnowledgeCol
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := `INSERT INTO knowledge_collections
 		(id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		 root_path, sync_state, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$9,$10,$10)
+		 root_path, sync_state, vault_backend, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,0,0,$7,$8,$9,$10,$11,$11)
 		RETURNING id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		          root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		          root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
 	row := r.data.Postgres().QueryRowContext(ctx, q,
-		c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, c.RootPath, c.SyncState, now)
+		c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, c.RootPath, c.SyncState, c.VaultBackend, now)
 	return scanCollection(row)
 }
 
 func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.KnowledgeCollection, error) {
 	// C-25: tenant sees own + shared (empty workspace); system sees all.
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		         root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE id = $1`
@@ -226,7 +230,7 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 		return nil, 0, err
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
-		         root_path, sync_state, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
+		         root_path, sync_state, vault_backend, COALESCE(to_char(last_sync_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),''),
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE workspace = $1 OR workspace = '' OR $1 = ''
@@ -308,6 +312,33 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		return doc, entErrToBizErr(err, "KNOWLEDGE")
 	}
 	return doc, nil
+}
+
+// ListDocumentNames 批量解析文档显示名（SP1-E DocNameReader）：rel_path 优先，
+// 空 rel_path 回 source；未知 id 缺席。空入参短路空 map（避免空数组查询）。
+func (r *knowledgeRepo) ListDocumentNames(ctx context.Context, ids []string) (map[string]string, error) {
+	out := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, COALESCE(NULLIF(rel_path, ''), source) FROM knowledge_documents WHERE id = ANY($1)`,
+		pq.Array(ids))
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, entErrToBizErr(err, "knowledge")
+		}
+		out[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	return out, nil
 }
 
 // UpdateDocumentRelPath 文件移动/重命名时更新镜像路径（保留文档身份与索引）。
@@ -751,7 +782,7 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 	var c biz.KnowledgeCollection
 	err := row.Scan(&c.ID, &c.Name, &c.Description, &c.EmbeddingModel, &c.Dim,
 		&c.Status, &c.DocumentCount, &c.ChunkCount, &c.Workspace,
-		&c.RootPath, &c.SyncState, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
+		&c.RootPath, &c.SyncState, &c.VaultBackend, &c.LastSyncAt, &c.CreatedAt, &c.UpdatedAt)
 	return c, err
 }
 

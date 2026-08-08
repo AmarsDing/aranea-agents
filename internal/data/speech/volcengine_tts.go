@@ -19,9 +19,22 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// volcTTSProvider 实现火山 ws_binary 语音合成。
+// TTS V3 单向流式事件码（火山公开协议「单向流式websocket-V3」）。
+const (
+	volcTTSEventSessionFinished int32 = 152 // 一次完整合成结束
+	volcTTSEventSentenceStart   int32 = 350 // 句内容开始（JSON payload）
+	volcTTSEventSentenceEnd     int32 = 351 // 句内容结束
+	volcTTSEventResponse        int32 = 352 // 音频数据（payload = 原始音频字节）
+)
+
+// volcTTSProvider 实现火山 TTS V3 单向流式语音合成
+// （wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream）。
 // V1 裁剪 #3：每句一条 WS 连接——TTSSession.Write 恰好调用一次（一句一合成），
 // 双工流式/预连接升级归 V3-T5。
+//
+// 真机校准（2026-08-08）：凭据双模式（X-Api-Key 或 legacy AppKey/AccessKey 对）；
+// resource id 决定模型代际（seed-tts-1.0/2.0、volc.service_type.10029 等）；
+// 音色必须与模型代际匹配（2.0 音色如 zh_female_vv_uranus_bigtts 仅配 seed-tts-2.0）。
 type volcTTSProvider struct {
 	cfg  biz.TTSProviderConfig
 	dial wsDialer
@@ -65,10 +78,9 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 		return errors.New("volc tts: Write called twice (V1 一句一连接)")
 	}
 	header := nethttp.Header{}
-	header.Set("X-Api-App-Key", s.p.cfg.AppKey)
-	header.Set("X-Api-Access-Key", s.p.cfg.AccessKey)
+	setVolcAuthHeader(header, s.p.cfg.APIKey, s.p.cfg.AppKey, s.p.cfg.AccessKey)
 	header.Set("X-Api-Resource-Id", s.p.cfg.ResourceID)
-	header.Set("X-Api-Connect-Id", uuid.NewString())
+	header.Set("X-Api-Request-Id", uuid.NewString())
 	conn, err := s.p.dial(context.Background(), s.p.cfg.Endpoint, header)
 	if err != nil {
 		s.failOnce(apierror.Wrap(err, apierror.CodeUnavailable, "speech"))
@@ -76,22 +88,24 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 	}
 	s.setConn(conn)
 	body := map[string]any{
-		"app":  map[string]any{"appid": s.p.cfg.AppKey, "token": s.p.cfg.AccessKey, "cluster": s.p.cfg.ResourceID},
 		"user": map[string]any{"uid": "aranea"},
-		"audio": map[string]any{
-			"voice_type":  s.sc.Voice,
-			"encoding":    "pcm",
-			"speed_ratio": s.sc.SpeedRatio,
-			"rate":        s.sc.SampleRate,
+		"req_params": map[string]any{
+			"text":    text,
+			"speaker": s.sc.Voice,
+			"audio_params": map[string]any{
+				"format":       "pcm",
+				"sample_rate":  s.sc.SampleRate,
+				"speech_rate":  volcTTSSpeechRate(s.sc.SpeedRatio),
+			},
 		},
-		"request": map[string]any{"reqid": uuid.NewString(), "text": text, "operation": "submit"},
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		s.failOnce(err)
 		return nil
 	}
-	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgFullClientRequest, flags: volcFlagNone, json: true, payload: raw}, true)
+	// V3 上行 SendText：full client request，无 event，JSON 不压缩。
+	frame, err := marshalVolcFrame(volcFrame{msgType: volcMsgFullClientRequest, flags: volcFlagNone, json: true, payload: raw}, false)
 	if err != nil {
 		s.failOnce(err)
 		return nil
@@ -102,6 +116,19 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 	}
 	go s.readPump(conn)
 	return nil
+}
+
+// volcTTSSpeechRate 将 biz 语速倍率（1.0=正常）映射为 V3 speech_rate
+// （[-50,100]，0=1x，100=2x，-50=0.5x），超界收敛。
+func volcTTSSpeechRate(ratio float64) int {
+	v := int(math.Round((ratio - 1.0) * 100))
+	if v > 100 {
+		return 100
+	}
+	if v < -50 {
+		return -50
+	}
+	return v
 }
 
 func (s *volcTTSSession) Audio() <-chan biz.TTSAudioChunk { return s.audio }
@@ -163,18 +190,16 @@ func (s *volcTTSSession) readPump(conn wsConn) {
 		}
 		switch f.msgType {
 		case volcMsgAudioOnlyResponse:
-			if len(f.payload) > 0 {
+			if f.event == volcTTSEventResponse && len(f.payload) > 0 {
 				s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkData, PCM: pcmS16ToF32(f.payload)}
 			}
-			if f.flags == volcFlagLastPackage {
-				s.finish()
-			}
 		case volcMsgFullServerResponse:
-			if f.flags == volcFlagLastPackage {
+			// 350/351 句界事件无需业务动作；152 标记整次合成完成。
+			if f.event == volcTTSEventSessionFinished {
 				s.finish()
 			}
 		case volcMsgError:
-			s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Internal("speech", "volc tts error: %s", string(f.payload))}
+			s.audio <- biz.TTSAudioChunk{Type: biz.TTSAudioChunkError, Err: apierror.Internal("speech", "volc tts error: %s", formatVolcError(f))}
 			return
 		}
 	}

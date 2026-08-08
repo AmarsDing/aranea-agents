@@ -44,7 +44,7 @@ func NewVaultSyncSupervisor(runner *VaultSyncRunner, uc *bizknowledge.Usecase, l
 }
 
 // StartAll 拉起所有存量 vault（root_path 非空）的同步循环；单个失败不阻塞其余。
-// 历史 collection（root_path 空）跳过——不属于 vault 同步范围。
+// 历史 collection（root_path 空）与 team 库（SP1-F：PG 即真相源，无文件监听）跳过——不属于 vault 同步范围。
 func (s *VaultSyncSupervisor) StartAll(ctx context.Context) {
 	cols, _, err := s.uc.ListCollections(ctx, "", 10000, 0)
 	if err != nil {
@@ -53,7 +53,7 @@ func (s *VaultSyncSupervisor) StartAll(ctx context.Context) {
 	}
 	n := 0
 	for _, c := range cols {
-		if strings.TrimSpace(c.RootPath) == "" {
+		if c.VaultBackend == bizknowledge.VaultBackendTeam || strings.TrimSpace(c.RootPath) == "" {
 			continue
 		}
 		s.StartVault(c)

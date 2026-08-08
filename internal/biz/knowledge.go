@@ -63,6 +63,10 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 			idx = ri
 		}
 		uc.SetBlockIndexRepos(blockIndex, idx)
+		// SP1-E：反链落库兜底端口由同一块索引 repo 实现（断言失败保持未接线降级）。
+		if blr, ok := blockIndex.(knowledge.BlockLinkReader); ok {
+			uc.SetBacklinkRepos(blr, nil)
+		}
 	}
 	if repo == nil {
 		return uc
@@ -81,6 +85,11 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	// 未接线时 ListCollectionGraph 降级为仅节点无边）。
 	if graphLinks, gok := repo.(knowledge.CollectionLinkReader); gok {
 		uc.SetGraphRepo(graphLinks)
+	}
+	// SP1-E：源文档名解析（DocNameReader）补接进反链端口（SetBacklinkRepos
+	// 可能已由 blockIndex 断言接线兜底 reader，此处仅覆盖 names）。
+	if names, nok := repo.(knowledge.DocNameReader); nok {
+		uc.SetBacklinkNames(names)
 	}
 	return uc
 }

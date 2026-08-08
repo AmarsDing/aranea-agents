@@ -135,6 +135,11 @@ export function canClose(status: string): boolean {
   return status === 'observing';
 }
 
+/** 在途流水线状态（pipeline 在阶段边界消费控制指令）才可下发介入指令（ControlRun）。 */
+export function canControl(status: string): boolean {
+  return status === 'detected' || status === 'diagnosing' || status === 'patching' || status === 'verifying';
+}
+
 /** RFC3339 → 本地短格式（YYYY-MM-DD HH:mm）；空值显示 — */
 export function formatSITime(value: string): string {
   if (!value) return '—';

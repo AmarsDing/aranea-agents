@@ -281,6 +281,7 @@
       @reject="rejectRunAction"
       @rollback="rollbackRunAction"
       @close="closeRunAction"
+      @control="controlRunAction"
     />
 
     <RiskRulesDialog
@@ -354,6 +355,7 @@ const {
   rejectRunAction,
   rollbackRunAction,
   closeRunAction,
+  controlRunAction,
   rulesDialogOpen,
   rulesSaving,
   configuredRules,

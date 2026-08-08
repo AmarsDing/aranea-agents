@@ -151,14 +151,20 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 	return s
 }
 
-// CreateCollection creates a Vault (V2: root_path required; embedding_model optional = lexical-only vault).
+// CreateCollection creates a knowledge collection (Vault V2 / SP1-F team library).
+// vault_backend=local（缺省）：root_path 必填，文件系统即真相源；embedding_model 可选（空 = 词法库）。
+// vault_backend=team：root_path 必须为空，PG 即真相源，不拉起同步循环。
 func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateCollectionRequest) (*v1.KnowledgeCollection, error) {
 	name := strings.TrimSpace(req.GetName())
 	model := strings.TrimSpace(req.GetEmbeddingModel())
+	backend := strings.TrimSpace(req.GetVaultBackend())
+	if backend == "" {
+		backend = bizknowledge.VaultBackendLocal
+	}
 	if name == "" {
 		return nil, apierror.BadRequest("KNOWLEDGE", "name is required")
 	}
-	if strings.TrimSpace(req.GetRootPath()) == "" {
+	if backend == bizknowledge.VaultBackendLocal && strings.TrimSpace(req.GetRootPath()) == "" {
 		return nil, apierror.BadRequest("KNOWLEDGE", "root_path is required")
 	}
 	// embedding 模型校验仅在显式指定时进行（留空 = 无语义层词法库）。
@@ -173,6 +179,7 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		Description:    req.GetDescription(),
 		EmbeddingModel: model,
 		RootPath:       req.GetRootPath(),
+		VaultBackend:   backend,
 	}
 	// C-01: stamp caller workspace so collections are tenant-scoped.
 	// System callers create shared collections (empty workspace).
@@ -189,7 +196,8 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 		return nil, err
 	}
 	// P1-3：拉起同步循环（启动即扫一轮，新 vault 立即入库）。
-	if s.vaultSync != nil {
+	// SP1-F：team 库 PG 即真相源，无文件监听，不启动 SyncEngine。
+	if s.vaultSync != nil && c.VaultBackend != bizknowledge.VaultBackendTeam {
 		s.vaultSync.StartVault(c)
 	}
 	return toProtoCollection(c), nil
@@ -956,6 +964,8 @@ func toProtoCollection(c biz.KnowledgeCollection) *v1.KnowledgeCollection {
 		RootPath:   c.RootPath,
 		SyncState:  c.SyncState,
 		LastSyncAt: c.LastSyncAt,
+		// SP1-F 存储后端维度（local / team）。
+		VaultBackend: c.VaultBackend,
 	}
 }
 

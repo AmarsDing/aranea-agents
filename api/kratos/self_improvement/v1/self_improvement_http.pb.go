@@ -21,6 +21,7 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationSelfImprovementServiceApproveRun = "/kratos.self_improvement.v1.SelfImprovementService/ApproveRun"
 const OperationSelfImprovementServiceCloseRun = "/kratos.self_improvement.v1.SelfImprovementService/CloseRun"
+const OperationSelfImprovementServiceControlRun = "/kratos.self_improvement.v1.SelfImprovementService/ControlRun"
 const OperationSelfImprovementServiceGetOutcomeStats = "/kratos.self_improvement.v1.SelfImprovementService/GetOutcomeStats"
 const OperationSelfImprovementServiceGetRiskRules = "/kratos.self_improvement.v1.SelfImprovementService/GetRiskRules"
 const OperationSelfImprovementServiceGetRun = "/kratos.self_improvement.v1.SelfImprovementService/GetRun"
@@ -35,6 +36,11 @@ type SelfImprovementServiceHTTPServer interface {
 	ApproveRun(context.Context, *ApproveRunRequest) (*ApproveRunResponse, error)
 	// CloseRun CloseRun closes an observing run early (confirmed effective).
 	CloseRun(context.Context, *CloseRunRequest) (*CloseRunResponse, error)
+	// ControlRun ControlRun issues a user-intervention command to an in-flight run
+	// (pause / skip_retry / rollback). The command is consumed asynchronously
+	// by the pipeline at stage boundaries; only runs in
+	// detected/diagnosing/patching/verifying accept commands.
+	ControlRun(context.Context, *ControlRunRequest) (*ControlRunResponse, error)
 	// GetOutcomeStats GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(context.Context, *GetOutcomeStatsRequest) (*GetOutcomeStatsResponse, error)
@@ -70,6 +76,7 @@ func RegisterSelfImprovementServiceHTTPServer(s *http.Server, srv SelfImprovemen
 	r.POST("/v1/self-improvement/runs/{id}/reject", _SelfImprovementService_RejectRun0_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/rollback", _SelfImprovementService_RollbackRun0_HTTP_Handler(srv))
 	r.POST("/v1/self-improvement/runs/{id}/close", _SelfImprovementService_CloseRun0_HTTP_Handler(srv))
+	r.POST("/v1/self-improvement/runs/{id}/control", _SelfImprovementService_ControlRun0_HTTP_Handler(srv))
 	r.GET("/v1/self-improvement/outcome-stats", _SelfImprovementService_GetOutcomeStats0_HTTP_Handler(srv))
 	r.GET("/v1/self-improvement/status", _SelfImprovementService_GetStatus0_HTTP_Handler(srv))
 	r.GET("/v1/self-improvement/risk-rules", _SelfImprovementService_GetRiskRules0_HTTP_Handler(srv))
@@ -217,6 +224,31 @@ func _SelfImprovementService_CloseRun0_HTTP_Handler(srv SelfImprovementServiceHT
 	}
 }
 
+func _SelfImprovementService_ControlRun0_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ControlRunRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSelfImprovementServiceControlRun)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ControlRun(ctx, req.(*ControlRunRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ControlRunResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _SelfImprovementService_GetOutcomeStats0_HTTP_Handler(srv SelfImprovementServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetOutcomeStatsRequest
@@ -301,6 +333,11 @@ type SelfImprovementServiceHTTPClient interface {
 	ApproveRun(ctx context.Context, req *ApproveRunRequest, opts ...http.CallOption) (rsp *ApproveRunResponse, err error)
 	// CloseRun CloseRun closes an observing run early (confirmed effective).
 	CloseRun(ctx context.Context, req *CloseRunRequest, opts ...http.CallOption) (rsp *CloseRunResponse, err error)
+	// ControlRun ControlRun issues a user-intervention command to an in-flight run
+	// (pause / skip_retry / rollback). The command is consumed asynchronously
+	// by the pipeline at stage boundaries; only runs in
+	// detected/diagnosing/patching/verifying accept commands.
+	ControlRun(ctx context.Context, req *ControlRunRequest, opts ...http.CallOption) (rsp *ControlRunResponse, err error)
 	// GetOutcomeStats GetOutcomeStats returns Learn-stage attribution statistics
 	// (verdict distribution + per-trigger breakdown).
 	GetOutcomeStats(ctx context.Context, req *GetOutcomeStatsRequest, opts ...http.CallOption) (rsp *GetOutcomeStatsResponse, err error)
@@ -356,6 +393,23 @@ func (c *SelfImprovementServiceHTTPClientImpl) CloseRun(ctx context.Context, in 
 	pattern := "/v1/self-improvement/runs/{id}/close"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationSelfImprovementServiceCloseRun))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ControlRun ControlRun issues a user-intervention command to an in-flight run
+// (pause / skip_retry / rollback). The command is consumed asynchronously
+// by the pipeline at stage boundaries; only runs in
+// detected/diagnosing/patching/verifying accept commands.
+func (c *SelfImprovementServiceHTTPClientImpl) ControlRun(ctx context.Context, in *ControlRunRequest, opts ...http.CallOption) (*ControlRunResponse, error) {
+	var out ControlRunResponse
+	pattern := "/v1/self-improvement/runs/{id}/control"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationSelfImprovementServiceControlRun))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

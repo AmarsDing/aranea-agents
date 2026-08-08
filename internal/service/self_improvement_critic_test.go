@@ -15,10 +15,28 @@ type fakeLLMCaller struct {
 	reqs []biz.LLMCallRequest
 	resp string
 	err  error
+	// queue, when non-empty, overrides resp/err per call (FIFO, then last
+	// element repeats). Used by format-correction retry tests.
+	queue []fakeLLMReply
+}
+
+type fakeLLMReply struct {
+	resp string
+	err  error
 }
 
 func (f *fakeLLMCaller) Call(_ context.Context, req biz.LLMCallRequest) (string, int, error) {
 	f.reqs = append(f.reqs, req)
+	if len(f.queue) > 0 {
+		r := f.queue[0]
+		if len(f.queue) > 1 {
+			f.queue = f.queue[1:]
+		}
+		if r.err != nil {
+			return "", 0, r.err
+		}
+		return r.resp, 10, nil
+	}
 	if f.err != nil {
 		return "", 0, f.err
 	}

@@ -230,6 +230,36 @@
 
     <!-- 治理操作（按状态机可用性渲染） -->
     <div v-if="run && hasActions" class="si-run-drawer__actions">
+      <!-- 在途介入指令（ControlRun）：流水线在阶段边界异步消费 -->
+      <template v-if="canControl(run.status)">
+        <q-btn
+          outline
+          no-caps
+          color="primary"
+          icon="pause"
+          :label="t('selfImprovementPage.controlPause')"
+          :loading="actionRunning === 'control:pause'"
+          @click="emit('control', run, 'pause')"
+        />
+        <q-btn
+          outline
+          no-caps
+          color="warning"
+          icon="skip_next"
+          :label="t('selfImprovementPage.controlSkipRetry')"
+          :loading="actionRunning === 'control:skip_retry'"
+          @click="emit('control', run, 'skip_retry')"
+        />
+        <q-btn
+          outline
+          no-caps
+          color="negative"
+          icon="stop_circle"
+          :label="t('selfImprovementPage.controlRollback')"
+          :loading="actionRunning === 'control:rollback'"
+          @click="emit('control', run, 'rollback')"
+        />
+      </template>
       <q-btn
         v-if="canApprove(run.status)"
         color="positive"
@@ -277,10 +307,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { SIRunDetail } from '../../features/self-improvement/types';
+import type { SIControlCommand, SIRunDetail } from '../../features/self-improvement/types';
 import {
   canApprove,
   canClose,
+  canControl,
   canReject,
   canRollback,
   formatSITime,
@@ -312,6 +343,7 @@ const emit = defineEmits<{
   reject: [run: SIRunDetail];
   rollback: [run: SIRunDetail];
   close: [run: SIRunDetail];
+  control: [run: SIRunDetail, command: SIControlCommand];
 }>();
 
 const { t } = useI18n();
@@ -320,7 +352,7 @@ const tab = ref('overview');
 
 const hasActions = computed(() => {
   const s = props.run?.status ?? '';
-  return canApprove(s) || canReject(s) || canRollback(s) || canClose(s);
+  return canApprove(s) || canReject(s) || canRollback(s) || canClose(s) || canControl(s);
 });
 
 type DiffLine = { text: string; kind: string };

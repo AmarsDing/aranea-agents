@@ -137,3 +137,59 @@ func TestCreateVaultRejectsSystemRoot(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "root") || strings.Contains(err.Error(), "vault"))
 }
+
+// SP1-F：vault_backend 维度——local 必填 root_path / team 必须为空（设计 S6）。
+func TestCreateVaultBackend(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	newUsecaseWithCapture := func(captured *Collection) *Usecase {
+		return NewUsecaseFromRepo(&mockRepo{
+			collCreateFn: func(_ context.Context, c Collection) (Collection, error) {
+				*captured = c
+				return c, nil
+			},
+		})
+	}
+
+	t.Run("backend 缺省归一为 local", func(t *testing.T) {
+		var captured Collection
+		u := newUsecaseWithCapture(&captured)
+		_, err := u.CreateVault(ctx, Collection{Name: "x", RootPath: dir})
+		require.NoError(t, err)
+		assert.Equal(t, VaultBackendLocal, captured.VaultBackend)
+	})
+
+	t.Run("team：root_path 为空成功且不做路径规范化", func(t *testing.T) {
+		var captured Collection
+		u := newUsecaseWithCapture(&captured)
+		got, err := u.CreateVault(ctx, Collection{Name: "团队库", VaultBackend: VaultBackendTeam})
+		require.NoError(t, err)
+		assert.NotEmpty(t, got.ID)
+		assert.Equal(t, VaultBackendTeam, captured.VaultBackend)
+		assert.Empty(t, captured.RootPath)
+	})
+
+	t.Run("team：设置 root_path 报错且不落库", func(t *testing.T) {
+		var captured Collection
+		u := newUsecaseWithCapture(&captured)
+		_, err := u.CreateVault(ctx, Collection{Name: "x", VaultBackend: VaultBackendTeam, RootPath: dir})
+		require.ErrorIs(t, err, ErrTeamRootPathForbidden)
+		assert.Empty(t, captured.ID, "repo 不应被调用")
+	})
+
+	t.Run("local 显式：root_path 为空仍报错", func(t *testing.T) {
+		var captured Collection
+		u := newUsecaseWithCapture(&captured)
+		_, err := u.CreateVault(ctx, Collection{Name: "x", VaultBackend: VaultBackendLocal})
+		require.ErrorIs(t, err, ErrRootPathRequired)
+	})
+
+	t.Run("未知 backend 报错且不落库", func(t *testing.T) {
+		var captured Collection
+		u := newUsecaseWithCapture(&captured)
+		_, err := u.CreateVault(ctx, Collection{Name: "x", VaultBackend: "s3", RootPath: dir})
+		require.ErrorIs(t, err, ErrInvalidVaultBackend)
+		assert.Empty(t, captured.ID, "repo 不应被调用")
+	})
+}

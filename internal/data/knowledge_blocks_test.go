@@ -222,7 +222,7 @@ func TestKnowledgeBlocks_AnchorUniquePerCollection(t *testing.T) {
 	if _, err := r.ReplaceDocBlocks(ctx, "c1", "d1", blockRows("^dup"), nil); err != nil {
 		t.Fatal(err)
 	}
-	err := r.ReplaceDocBlocks(ctx, "c1", "d2", blockRows("^dup"), nil)
+	_, err := r.ReplaceDocBlocks(ctx, "c1", "d2", blockRows("^dup"), nil)
 	if err == nil {
 		t.Fatal("同 collection 锚冲突应报错")
 	}
@@ -296,7 +296,7 @@ func TestKnowledgeBlocksReplace_SelfReference(t *testing.T) {
 
 	// 契约违例：DstSelfOrdinal 指向不存在的块 → CodeBadRequest + 事务回滚零残留。
 	bad := 99
-	err = r.ReplaceDocBlocks(ctx, "c1", "d1", blockRows("x0"), []bizknowledge.KnowledgeBlockRefInput{
+	_, err = r.ReplaceDocBlocks(ctx, "c1", "d1", blockRows("x0"), []bizknowledge.KnowledgeBlockRefInput{
 		{SrcOrdinal: 0, RawTarget: "#^ghost", EdgeType: "ref", DstDocID: "d1", DstSelfOrdinal: &bad},
 	})
 	if !apierror.IsCode(err, apierror.CodeBadRequest) {

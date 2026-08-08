@@ -3,8 +3,14 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useSelfImprovementStore } from '../../stores/selfImprovement';
-import type { SIRiskRules, SIRun } from './types';
-import { canApprove, canClose, canReject, canRollback } from '../../components/self-improvement/selfImprovementUi';
+import type { SIControlCommand, SIRiskRules, SIRun } from './types';
+import {
+  canApprove,
+  canClose,
+  canControl,
+  canReject,
+  canRollback,
+} from '../../components/self-improvement/selfImprovementUi';
 
 const EMPTY_RULES: SIRiskRules = { lowMaxLines: 0, mediumMaxLines: 0, corePathGlobs: [], dailyAutoQuota: 0 };
 
@@ -239,6 +245,37 @@ export function useSelfImprovementPage() {
     });
   }
 
+  // 用户介入指令（R2/S1）：异步消费、不同步改状态，故不复用 runAction 的
+  // 「操作已提交」提示与即时刷新——指令在阶段边界生效，状态变化由后续刷新/
+  // 轮询呈现。冲突（状态已滑出可控制区间）按普通错误提示。
+  const CONTROL_I18N: Record<SIControlCommand, { title: string; confirm: string }> = {
+    pause: { title: 'controlPauseTitle', confirm: 'controlPauseConfirm' },
+    skip_retry: { title: 'controlSkipRetryTitle', confirm: 'controlSkipRetryConfirm' },
+    rollback: { title: 'controlRollbackTitle', confirm: 'controlRollbackConfirm' },
+  };
+
+  function controlRunAction(run: SIRun, command: SIControlCommand) {
+    if (!canControl(run.status) || actionRunning.value) return;
+    const keys = CONTROL_I18N[command];
+    $q.dialog({
+      title: t(`selfImprovementPage.${keys.title}`),
+      message: t(`selfImprovementPage.${keys.confirm}`, { id: run.id }),
+      cancel: true,
+      persistent: true,
+    }).onOk(() => {
+      actionRunning.value = `control:${command}`;
+      void store
+        .control(run.id, command)
+        .then(() => {
+          $q.notify({ type: 'positive', message: t('selfImprovementPage.controlSent') });
+        })
+        .catch(notifyError)
+        .finally(() => {
+          actionRunning.value = '';
+        });
+    });
+  }
+
   // Risk-rules dialog: configured view is editable, effective view read-only.
   const rulesDialogOpen = ref(false);
   const rulesSaving = ref(false);
@@ -315,6 +352,7 @@ export function useSelfImprovementPage() {
     rejectRunAction,
     rollbackRunAction,
     closeRunAction,
+    controlRunAction,
     // risk rules
     rulesDialogOpen,
     rulesSaving,

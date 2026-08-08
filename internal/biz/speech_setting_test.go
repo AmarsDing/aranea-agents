@@ -26,6 +26,17 @@ func TestSpeechConfigured(t *testing.T) {
 	}
 }
 
+// X-Api-Key 鉴权模式：单 APIKey 即视为凭据完整。
+func TestSpeechConfiguredAPIKeyMode(t *testing.T) {
+	s := SpeechSetting{
+		ASR: ASRProviderConfig{Driver: "volcengine", Endpoint: "wss://x", APIKey: "ak-1"},
+		TTS: TTSProviderConfig{Driver: "volcengine", Endpoint: "wss://x", APIKey: "ak-1", Voice: "v"},
+	}
+	if !SpeechASRConfigured(s) || !SpeechTTSConfigured(s) {
+		t.Fatal("api-key mode must be configured")
+	}
+}
+
 func TestApplySpeechPatch_EmptyPreserves(t *testing.T) {
 	cur := SpeechSetting{
 		ASR:              ASRProviderConfig{Driver: "volcengine", Endpoint: "wss://a", AppKey: "ak", AccessKey: "sk", ResourceID: "rid", Language: "zh-CN"},
@@ -88,6 +99,20 @@ func TestApplySpeechPatch_CredUpdateFlag(t *testing.T) {
 	}
 	if out3.TTS.AccessKey != "new-sk" || out3.TTS.AppKey != "old-ak" {
 		t.Fatalf("TTS cred rotation wrong: %#v", out3.TTS)
+	}
+	// APIKey 同样走 cred flag 合并语义。
+	out4 := ApplySpeechPatch(cur, SpeechSetting{
+		ASR: ASRProviderConfig{APIKey: "api-1"},
+		TTS: TTSProviderConfig{APIKey: "api-2"},
+	}, true, true)
+	if out4.ASR.APIKey != "api-1" || out4.TTS.APIKey != "api-2" {
+		t.Fatalf("APIKey rotation wrong: %#v", out4)
+	}
+	out5 := ApplySpeechPatch(cur, SpeechSetting{
+		ASR: ASRProviderConfig{APIKey: "api-1"},
+	}, false, false)
+	if out5.ASR.APIKey != "" {
+		t.Fatalf("APIKey without cred flag must not rotate: %#v", out5.ASR)
 	}
 }
 

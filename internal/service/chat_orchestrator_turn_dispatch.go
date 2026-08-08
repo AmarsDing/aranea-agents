@@ -122,6 +122,10 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, biz.TurnInput{
 		SessionID: sess.ID,
 		Content:   input,
+		EntryConfig: biz.TurnEntryPointConfig{
+			EntryPoint: biz.EntryPointEvaluation,
+			AllowQueue: false,
+		},
 	})
 	if err != nil {
 		return "", err

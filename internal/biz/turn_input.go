@@ -127,6 +127,11 @@ const (
 	EntryPointCron    TurnEntryPoint = "cron"    // Scheduled task trigger
 	EntryPointA2A     TurnEntryPoint = "a2a"     // Agent-to-Agent protocol
 	EntryPointDurable TurnEntryPoint = "durable" // Durable resume (background worker)
+	// EntryPointEvaluation marks synthetic turns executed by the evaluation
+	// runner (one per dataset case). They must not retrigger post-turn side
+	// effects (e.g. after_turn auto-eval) — otherwise each case turn would
+	// spawn a new eval run and cascade recursively.
+	EntryPointEvaluation TurnEntryPoint = "evaluation"
 )
 
 // TurnEntryPointConfig carries entry-point-specific configuration that

@@ -46,6 +46,7 @@ type GraphDeltaPublisher interface {
 type LinkIndex struct {
 	mu             sync.RWMutex
 	version        uint64
+	loaded         bool // LoadAll 完成后置位：SP1-E 读侧据此选内存图/DB 兜底
 	bySrc          map[string][]*KnowledgeBlockRefEdge
 	byDstBlk       map[string][]*KnowledgeBlockRefEdge
 	incoming       map[string][]*KnowledgeBlockRefEdge
@@ -71,7 +72,15 @@ func (x *LinkIndex) Version() uint64 {
 	return x.version
 }
 
-// LoadAll 全量重放构建（启动/索引重建）：重置全部索引，version 归零。
+// Loaded 报告全量构建是否完成（SP1-E 读侧路由：未加载 = 启动窗口，查询须落库兜底，
+// 避免读空图误判无反链）。
+func (x *LinkIndex) Loaded() bool {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	return x.loaded
+}
+
+// LoadAll 全量重放构建（启动/索引重建）：重置全部索引，version 归零，置 loaded。
 func (x *LinkIndex) LoadAll(edges []KnowledgeBlockRefEdge) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
@@ -84,6 +93,7 @@ func (x *LinkIndex) LoadAll(edges []KnowledgeBlockRefEdge) {
 		x.addEdge(e)
 	}
 	x.version = 0
+	x.loaded = true
 }
 
 // ApplyDocDelta 文档重建后增量 apply：摘除该文档全部旧出边 → 入向块边转文档级

@@ -163,7 +163,8 @@ export default {
     voiceNoSession: 'Session not ready yet, please retry shortly',
     voiceChannelClosed: 'Voice channel disconnected',
     micUnavailable: 'Microphone unavailable — check permission settings',
-    voiceUnavailable: 'Voice service is not configured — ask an admin to set up ASR/TTS in System Settings → Voice Service',
+    voiceUnavailable:
+      'Voice service is not configured — ask an admin to set up ASR/TTS in System Settings → Voice Service',
     webglUnsupported: 'WebGL is not supported in this environment; HUD cannot render',
     confirmTitle: 'Confirm action',
     confirmApprove: 'Approve',
@@ -2077,11 +2078,13 @@ export default {
       title: 'Voice Service (ASR / TTS)',
       hint: 'ASR/TTS provider configuration for the voice companion (/companion), persisted to system_settings. Field-level fallback: empty fields use SPEECH_* env vars or built-in defaults; changes apply to the next voice session without restart.',
       asrTitle: 'Speech Recognition (ASR)',
-      asrHint: 'Uplink speech-to-text. Credentials are stored but never displayed; leave empty to keep the stored credentials.',
+      asrHint:
+        'Uplink speech-to-text. Credentials are stored but never displayed; leave empty to keep the stored credentials.',
       ttsTitle: 'Speech Synthesis (TTS)',
       ttsHint: 'Downlink text-to-speech. Voice and speed are read when each session starts, taking effect immediately.',
       archiveTitle: 'Voice Archive',
-      archiveHint: 'When enabled, user uplink speech is saved per utterance as a WAV attachment (replayable in messages). Off or read failure never breaks the voice pipeline.',
+      archiveHint:
+        'When enabled, user uplink speech is saved per utterance as a WAV attachment (replayable in messages). Off or read failure never breaks the voice pipeline.',
       archiveToggle: 'Archive user audio (WAV)',
       driver: 'Provider',
       endpoint: 'Endpoint (WebSocket)',
@@ -4193,6 +4196,19 @@ export default {
     rollbackConfirm: 'This reverts the applied patch commit. Run: {id}',
     closeTitle: 'Close observation early',
     closeConfirm: 'Confirm the patch is effective and end observation early (observing → closed). Run: {id}',
+    controlPause: 'Pause',
+    controlSkipRetry: 'Skip retry',
+    controlRollback: 'Abort run',
+    controlPauseTitle: 'Pause pipeline',
+    controlPauseConfirm:
+      'The pipeline pauses at the current stage boundary and stays in its current status; the drive worker resumes it after the recovery window (~30 min). Run: {id}',
+    controlSkipRetryTitle: 'Skip retry',
+    controlSkipRetryConfirm:
+      'If the current verification fails, remaining retries are skipped and the run moves to the terminal verify_failed state; a passing verification is unaffected. Run: {id}',
+    controlRollbackTitle: 'Abort in-flight run',
+    controlRollbackConfirm:
+      'Terminates the pipeline before apply; the run moves to the terminal rejected state. Run: {id}',
+    controlSent: 'Control command issued; takes effect at the next stage boundary',
     reasonOptional: 'Note (optional)',
     reasonRequired: 'Rejection reason (required)',
     drawerClose: 'Close',

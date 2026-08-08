@@ -133,7 +133,7 @@ func TestSelfImprovementService_NilUsecase(t *testing.T) {
 // （uc != nil 但接收者为 nil → 调用即 panic）。构造函数必须显式转换。
 func TestNewSelfImprovementService_TypedNilUsecase(t *testing.T) {
 	var uc *biz.SelfImprovementAdminUsecase // nil 具体指针（wire disabled 路径的实际注入值）
-	svc := NewSelfImprovementService(uc, &conf.SelfImprovement{}, nil, nil)
+	svc := NewSelfImprovementService(uc, &conf.SelfImprovement{}, nil, nil, nil)
 	if svc.uc != nil {
 		t.Fatalf("uc = %T, want nil interface（typed-nil 会绕过 requireAdmin 守卫）", svc.uc)
 	}
