@@ -228,6 +228,10 @@ type Usecase struct {
 	// applier 为单文档立即应用端口（G1-B2），经 SetVaultApplier 接线；
 	// nil 时 CreateVaultDocument 跳过立即索引（同步轮询兜底）。
 	applier VaultDocApplier
+	// promoteReader/promoteWriter 为晋升端口（SP1-G），经 SetPromoteRepos 接线；
+	// nil 时 PromoteBlocks 返回 ErrUnavailable。
+	promoteReader PromoteBlockReader
+	promoteWriter PromoteLineageWriter
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.
@@ -309,6 +313,7 @@ func (u *Usecase) ListCollections(ctx context.Context, workspace string, limit, 
 }
 
 // DeleteCollection removes a collection and all its documents/chunks.
+// SP1-G：删除成功后同步内存图（源边消失、外部入边转 dangling）并发 WS 增量。
 func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 	if err := u.requireRepo(); err != nil {
 		return err
@@ -316,7 +321,11 @@ func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrIDRequired
 	}
-	return u.collections.DeleteCollection(ctx, id)
+	if err := u.collections.DeleteCollection(ctx, id); err != nil {
+		return err
+	}
+	u.removeLinkIndexCollection(ctx, id)
+	return nil
 }
 
 // CreateDocument records a document and returns it (status=pending).

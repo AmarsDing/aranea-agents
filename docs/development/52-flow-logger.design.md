@@ -540,6 +540,7 @@ internal/cronrunner/jobs/
 | `knowledge.ingest.done` | ok / error | 知识摄取完成 |
 | `knowledge.vault.sync` | ok / error | Vault 同步 |
 | `knowledge.entity.merge` | ok / error | 知识实体合并 |
+| `knowledge.block.promote` | info / ok / error | 知识块晋升 |
 
 #### A2A 联邦（`domain=a2a`，2026-07-29 补齐 P0）
 

@@ -340,3 +340,54 @@ func TestKnowledgeBlocks_DocDeleteCascade(t *testing.T) {
 		t.Errorf("目标文档删除后 dst 应全 NULL（dangling）: %v/%v", dstDoc, dstBlock)
 	}
 }
+
+// TestKnowledgeBlocks_CollectionDeleteCascade 集合删除级联（G-3 验收）：
+// 被删集合的块与源边整体消失；外部集合指向被删集合文档的入边转 dangling
+// （dst_doc_id/dst_block_id 置 NULL，raw_target 保复活线索）。
+func TestKnowledgeBlocks_CollectionDeleteCascade(t *testing.T) {
+	r := setupKnowledgeBlocksRepo(t)
+	seedDoc(t, r, "cTeam", "dT1")
+	seedDoc(t, r, "cTeam", "dT2")
+	seedDoc(t, r, "cPriv", "dP1")
+	ctx := context.Background()
+
+	// cTeam：dT1 有锚块 ^t1；dT2 库内引用 dT1。
+	if _, err := r.ReplaceDocBlocks(ctx, "cTeam", "dT1", blockRows("^t1"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ReplaceDocBlocks(ctx, "cTeam", "dT2", blockRows("p0"), []bizknowledge.KnowledgeBlockRefInput{
+		{SrcOrdinal: 0, RawTarget: "dT1#^t1", EdgeType: "ref", DstDocID: "dT1", DstBlockID: "t1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// cPriv：外部集合引用 cTeam 的文档（晋升反向：私有侧指向团队块）。
+	if _, err := r.ReplaceDocBlocks(ctx, "cPriv", "dP1", blockRows("p0"), []bizknowledge.KnowledgeBlockRefInput{
+		{SrcOrdinal: 0, RawTarget: "dT1#^t1", EdgeType: "ref", DstDocID: "dT1", DstBlockID: "t1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 删除 cTeam 集合（FK 链：collections → documents → blocks/refs）。
+	if _, err := r.data.rawDB.ExecContext(ctx, `DELETE FROM knowledge_collections WHERE id='cTeam'`); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, r, "knowledge_blocks", "doc_id IN ('dT1','dT2')"); n != 0 {
+		t.Errorf("集合删除后块应级联清除, got %d", n)
+	}
+	if n := countRows(t, r, "knowledge_block_refs", "collection_id='cTeam'"); n != 0 {
+		t.Errorf("被删集合源边应消失, got %d", n)
+	}
+	var rawTarget string
+	var dstDoc, dstBlock *string
+	if err := r.data.rawDB.QueryRow(
+		`SELECT raw_target, dst_doc_id, dst_block_id FROM knowledge_block_refs WHERE collection_id='cPriv'`,
+	).Scan(&rawTarget, &dstDoc, &dstBlock); err != nil {
+		t.Fatal(err)
+	}
+	if dstDoc != nil || dstBlock != nil {
+		t.Errorf("外部入边 dst 应全 NULL（dangling）: %v/%v", dstDoc, dstBlock)
+	}
+	if rawTarget != "dT1#^t1" {
+		t.Errorf("raw_target = %q（复活线索必须保留）", rawTarget)
+	}
+}

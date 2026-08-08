@@ -95,16 +95,16 @@
 
 | 目录 | 用途 | 规则 |
 |------|------|------|
-| `bin/` | 所有生成的 exe/二进制 | `go build` 等一切编译产物一律输出到此；禁止散落到仓库根或其他目录 |
+| `bin/` | 所有生成的 exe/二进制 + 运行日志 | `go build` 等一切编译产物一律输出到此；运行日志写入 `bin/logs/`（`configs/*.yaml` output_dir）；禁止散落到仓库根或其他目录 |
 | `build/` | 编译目录：编译脚本 + 编译产物 | 打包/发布脚本（`build/*.ps1`）、NSIS 脚本（`build/installer/`）、staging/deps 中间产物、安装包输出（`build/release/`） |
 | `docs/` | 所有文档 | 规范见下文「docs 目录规范」 |
 | `test/` | 测试中间文件 | 按测试名称自建子目录 `test/<test-name>/`；禁止在仓库根或 `_temp/`、`tmp/` 等临时目录堆放排查脚本/中间产物 |
 | `blender/` | Blender 3D 资产与预览 Demo | 机房/机柜/服务器/交换机/UPS/PDU/显示器等 3D 模型（.blend/.glb/.fbx）与 Three.js 预览页；`start.bat` 一键启动本地预览服务（http://localhost:8930/） |
-| `scripts/` | ~~构建脚本~~（已废弃） | 构建/打包脚本已全部迁入 `build/`；禁止新增 |
 
 - 一次性调试/排查脚本、日志、抓包等中间产物：放 `test/<test-name>/`，用完可整目录删除
 - 安装包、zip 等发布产物：放 `build/release/`
-- 历史遗留目录（`_temp/`、`_tmp_dbcheck/`、`tmp/`、`release/`）不再新增内容，逐步归档到 `test/` 或 `build/` 后删除
+- 历史遗留目录（`_temp/`、`_tmp_dbcheck/`、`tmp/`、`release/`、`scripts/`、根部 `installer/`、根部 `sql/`）已于 2026-08-09 清理：有价值小文件归档至 `test/legacy-*/`，根部 `sql/`（`internal/data/sql/migrations/` 的残留副本）与重复 `installer/`（正本在 `build/installer/`）已 git rm；禁止再建
+- Go 编译缓存（GOCACHE）一律使用 `F:\gocache`（用户级环境变量），禁止在工程目录内设置 `.gocache*` 等本地缓存
 
 ## docs 目录规范
 

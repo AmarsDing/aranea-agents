@@ -233,3 +233,73 @@ func (r *knowledgeBlockRepo) ListDocBlocks(ctx context.Context, docID string) ([
 	}
 	return out, nil
 }
+
+// ── SP1-G：晋升端口（PromoteBlockReader / PromoteLineageWriter） ─────────────
+
+var _ bizknowledge.PromoteBlockReader = (*knowledgeBlockRepo)(nil)
+var _ bizknowledge.PromoteLineageWriter = (*knowledgeBlockRepo)(nil)
+
+// GetBlocksByIDs 按 ID 批量查块（晋升源块装载；顺序不保证，调用方按输入序重排）。
+func (r *knowledgeBlockRepo) GetBlocksByIDs(ctx context.Context, ids []string) ([]bizknowledge.KnowledgeBlock, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, collection_id, doc_id, ordinal, kind, COALESCE(anchor,''), heading_path,
+		        content_hash, text_excerpt, COALESCE(promoted_from,''), COALESCE(promoted_to,'')
+		 FROM knowledge_blocks WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = rows.Close() }()
+	var out []bizknowledge.KnowledgeBlock
+	for rows.Next() {
+		var b bizknowledge.KnowledgeBlock
+		var headingPath []string
+		if err := rows.Scan(&b.ID, &b.CollectionID, &b.DocID, &b.Ordinal, &b.Kind, &b.Anchor,
+			pq.Array(&headingPath), &b.ContentHash, &b.TextExcerpt, &b.PromotedFrom, &b.PromotedTo); err != nil {
+			return nil, entErrToBizErr(err, "knowledge")
+		}
+		b.HeadingPath = headingPath
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	return out, nil
+}
+
+// ListOutEdgesByBlocks 块的出向引用边（晋升 cascade 候选检测）。
+func (r *knowledgeBlockRepo) ListOutEdgesByBlocks(ctx context.Context, blockIDs []string) ([]bizknowledge.KnowledgeBlockRefEdge, error) {
+	if len(blockIDs) == 0 {
+		return nil, nil
+	}
+	return r.queryRefEdges(ctx, ` WHERE r.src_block_id = ANY($1)`, pq.Array(blockIDs))
+}
+
+// WritePromoteLineage 单事务回写谱系对：新块 promoted_from=源块，源块
+// promoted_to=新块。无 FK（源可删除），两行 UPDATE 同事务保证不成单边对。
+func (r *knowledgeBlockRepo) WritePromoteLineage(ctx context.Context, pairs []bizknowledge.PromoteLineage) error {
+	if len(pairs) == 0 {
+		return nil
+	}
+	err := r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		for _, p := range pairs {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE knowledge_blocks SET promoted_from = $1 WHERE id = $2`,
+				p.SrcBlockID, p.NewBlockID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE knowledge_blocks SET promoted_to = $1 WHERE id = $2`,
+				p.NewBlockID, p.SrcBlockID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return entErrToBizErr(err, "knowledge")
+	}
+	return nil
+}

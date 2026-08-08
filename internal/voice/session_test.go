@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,13 +17,18 @@ import (
 
 // ---- fakes ----
 
-type fakeBus struct{ ch chan biz.Event }
+type fakeBus struct {
+	ch   chan biz.Event
+	subs int32
+}
 
 func newFakeBus() *fakeBus                            { return &fakeBus{ch: make(chan biz.Event, 32)} }
 func (f *fakeBus) Publish(context.Context, biz.Event) {}
 func (f *fakeBus) Subscribe(biz.EventSubscribeOptions) (<-chan biz.Event, func()) {
+	atomic.AddInt32(&f.subs, 1)
 	return f.ch, func() {}
 }
+func (f *fakeBus) subscriberCount() int { return int(atomic.LoadInt32(&f.subs)) }
 
 type fakeExecutor struct {
 	mu     sync.Mutex
@@ -298,6 +304,86 @@ func indexOf(ss []string, target string) int {
 		}
 	}
 	return -1
+}
+
+// reopenASRProvider 每次 Open 返回新会话（模拟火山「每句一连接」真机行为）。
+type reopenASRProvider struct {
+	mu       sync.Mutex
+	sessions []*fakeASRSession
+}
+
+func (p *reopenASRProvider) Open(context.Context, biz.ASRSessionConfig) (biz.ASRSession, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	s := &fakeASRSession{events: make(chan biz.ASREvent, 8)}
+	p.sessions = append(p.sessions, s)
+	return s, nil
+}
+
+func (p *reopenASRProvider) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.sessions)
+}
+
+func (p *reopenASRProvider) at(i int) *fakeASRSession {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.sessions[i]
+}
+
+// 真机回归（2026-08-09）：火山在末帧应答后以 close 1000 关闭连接、事件流终结。
+// asrPump 必须摘掉已终结的 ASR 会话，否则第二句话写已关闭连接报 ASR_WRITE。
+func TestWriteAudioReopensASRAfterUpstreamClose(t *testing.T) {
+	prov := &reopenASRProvider{}
+	down := &fakeDownlink{}
+	deps := SessionDeps{
+		NewASR: func(context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
+			return prov, biz.ASRSessionConfig{Language: "zh-CN", SampleRate: 16000}, nil
+		},
+		NewTTS: func(context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
+			return &scriptedTTSProvider{}, biz.TTSSessionConfig{Voice: "v", SpeedRatio: 1, SampleRate: 16000}, nil
+		},
+		Bus:       newFakeBus(),
+		Executor:  &fakeExecutor{},
+		Canceller: &fakeCanceller{},
+		Infra:     nil,
+		LG:        loggateway.NewNoop(),
+	}
+	sess := NewSession(context.Background(), deps, "sess-1", "user-1", down)
+	t.Cleanup(sess.Close)
+	sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	require.Equal(t, 1, prov.count())
+
+	// 第一句音频写入会话1
+	sess.WriteAudio([]byte{0x01})
+	first := prov.at(0)
+	require.Eventually(t, func() bool {
+		first.writeMu.Lock()
+		defer first.writeMu.Unlock()
+		return len(first.written) == 1
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 上游终结事件流（火山末帧后 close 1000：readPump 退出并关闭 events）
+	_ = first.Close()
+	require.Eventually(t, func() bool {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		return sess.asr == nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 第二句音频：必须懒重开会话2 并写入，不再写已终结的会话1
+	sess.WriteAudio([]byte{0x02})
+	require.Equal(t, 2, prov.count())
+	second := prov.at(1)
+	require.Eventually(t, func() bool {
+		second.writeMu.Lock()
+		defer second.writeMu.Unlock()
+		return len(second.written) == 1 && second.written[0][0] == 0x02
+	}, 2*time.Second, 10*time.Millisecond)
+	first.writeMu.Lock()
+	defer first.writeMu.Unlock()
+	require.Len(t, first.written, 1)
 }
 
 func TestSessionCancelDuringSpeaking(t *testing.T) {
@@ -636,4 +722,87 @@ func TestSessionVoiceConfirmNotArchived(t *testing.T) {
 	require.Eventually(t, func() bool { return arch.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
 	call, _ := arch.lastCall()
 	require.Equal(t, []byte{8, 8, 8}, call.wav[44:])
+}
+
+// ---- 听写模式（voice.start mode=dictation）----
+
+// 听写终稿仅下行 asr.final 文本：不建 Chat Turn、不订阅 TTS 事件流、状态停留 listening。
+func TestSessionDictationFinalDownlinksTextOnly(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Mode: ModeDictation, SampleRate: 16000})
+	require.Equal(t, "listening", fx.down.lastState())
+	require.Equal(t, 0, fx.bus.subscriberCount(), "听写模式无 TTS，不得订阅事件总线")
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "asr.final") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 不建 Turn（异步派发也不会发生）、状态停留 listening、无 turn.accepted。
+	require.Never(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) > 0
+	}, 200*time.Millisecond, 10*time.Millisecond)
+	require.Equal(t, "listening", fx.down.lastState())
+	require.Equal(t, -1, indexOf(fx.down.typesOf(), "turn.accepted"))
+}
+
+// 听写内容原样下行：确认词表不拦截（「好的」是文本内容而非确认决议）。
+func TestSessionDictationSkipsConfirmInterception(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.conf.resolved = true
+	fx.sess.Start(StartParams{Mode: ModeDictation})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "好的"}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "asr.final") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, 0, fx.conf.callCount(), "听写模式不得询问确认 resolver")
+	require.Equal(t, -1, indexOf(fx.down.typesOf(), "confirm.resolved"))
+	require.Equal(t, "listening", fx.down.lastState())
+}
+
+// 听写不创建消息，无留档挂载点：语句 PCM 不缓冲、留档端口不调用。
+func TestSessionDictationSkipsArchive(t *testing.T) {
+	fx := newSessionFixture(t)
+	arch := &fakeArchiver{ref: artifactbiz.Ref{ID: "a", MimeType: "audio/wav"}}
+	fx.withArchiver(arch)
+	fx.sess.Start(StartParams{Mode: ModeDictation, SampleRate: 16000})
+
+	fx.sess.WriteAudio([]byte{1, 2, 3})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 300}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "asr.final") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.Equal(t, 0, arch.callCount())
+	fx.sess.mu.Lock()
+	require.Empty(t, fx.sess.utterBuf, "听写模式不得累积留档缓冲")
+	fx.sess.mu.Unlock()
+}
+
+// 连续听写：多句终稿均下行，状态始终停留 listening（可一直听写直到用户停止）。
+func TestSessionDictationConsecutiveFinals(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Mode: ModeDictation})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "第一句"}
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "第二句"}
+	require.Eventually(t, func() bool {
+		count := 0
+		for _, ty := range fx.down.typesOf() {
+			if ty == "asr.final" {
+				count++
+			}
+		}
+		return count == 2
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Equal(t, "listening", fx.down.lastState())
+	require.Never(t, func() bool {
+		fx.exec.mu.Lock()
+		defer fx.exec.mu.Unlock()
+		return len(fx.exec.inputs) > 0
+	}, 200*time.Millisecond, 10*time.Millisecond)
 }

@@ -73,6 +73,8 @@
         :run-started-at="workspace.composer.runMeta?.startedAt"
         :run-event-count="workspace.composer.runMeta?.eventCount"
         :show-enqueue="workspace.composer.isRunnerActive"
+        :dictating="workspace.composer.dictating"
+        :dictation-partial="workspace.composer.dictationPartial"
         @enqueue-message="workspace.composer.onEnqueueWhileRunning"
         @update:dialog-mode="workspace.composer.onModeChange"
         @update:model-provider="workspace.composer.onProviderChange"

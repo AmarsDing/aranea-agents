@@ -2,7 +2,15 @@
 
 > 需求文档：[73-self-iteration-v3.md](./73-self-iteration-v3.md)
 > 设计文档：[73-self-iteration-v3.design.md](./73-self-iteration-v3.design.md)
-> **版本**：2026-07-31 | **状态**：✅ Phase 1–5 全部完成（T1.1–T5.4）；遗留：运行时端到端冒烟（灰度开启后造信号验证）
+> **版本**：2026-08-09 | **状态**：✅ Phase 1–5 全部完成（T1.1–T5.4）；✅ 运行时端到端冒烟完成（2026-08-09：默认配置灰度开启，造 error_cluster 信号验证全链路）
+
+### 运行时端到端冒烟记录（2026-08-09）
+
+- **开启方式**：`configs/config.yaml` 写入 `self_improvement` 默认配置块（`enabled: true` + 设计默认值，`sandbox.repo_root: f:\aranea-agents`）。注意：proto Duration 仅接受秒单位（`900s`），`15m` 会导致配置解析 panic。
+- **验证链路**：向 `model_token_usage_events` 插入 5 条同 error_code 失败事件 → 重启 admin（observe worker 启动即扫描）→ run(detected) 秒级生成（`si_observe.create`）→ drive worker 驱动 diagnosing（Analyst LLM，confidence 0.86）→ patching（生成 config 类 diff +7 行）→ verifying（G1 build 59s 通过；G2 test 因 HEAD 既有失败——models.dev 网络测试 ×3、archlint TestFileLineCount、voice 未授权测试 ×2——判败）→ attempt 2 重试时 `git apply` exit 128 → run=failed 闭环。
+- **介入入口**：RunDetailDrawer 暂停/跳过重试/中止运行三按钮在真实 run 上渲染正常。
+- **发现的问题（遗留）**：① 重试 attempt 的 `ApplyDiff` 报 `exit status 128` 且未携带 stderr，需增强错误输出并排查重试 apply 失败根因；② G2 全量 `go test ./...` 受 HEAD 红测阻塞，任何 run 都难以越过 verify——建议 G2 收窄为变更影响包或先还 HEAD 测试债。
+- **清理**：冒烟造数已删除（`si-smoke-*`），worktree/分支由沙盒自动回收，主仓库工作区无污染。
 
 ---
 
@@ -220,6 +228,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 ---
 
-*文档版本：2026-07-31 — Phase 1–5（T1.1–T5.4）全部完成并验证；竞赛四件套同步实现口径（8 项落地偏差记录于实施进度文档 v2.0）。遗留：运行时端到端冒烟待灰度开启后执行。*
+*文档版本：2026-08-09 — 运行时端到端冒烟完成（默认配置灰度开启 + 造 error_cluster 信号全链路验证，记录见文首）；遗留：重试 ApplyDiff exit 128 排查、G2 受 HEAD 红测阻塞待治理。*
+*历史版本：2026-07-31 — Phase 1–5（T1.1–T5.4）全部完成并验证；竞赛四件套同步实现口径（8 项落地偏差记录于实施进度文档 v2.0）。遗留：运行时端到端冒烟待灰度开启后执行。*
 *历史版本：2026-07-31 — Phase 1–4（T1.1–T4.6）+ W6 全链接线完成并验证，状态标记与文件清单同步；design.md §五/§6 已同步实际接线（24 providers + drive worker + 配置块）。*
 *历史版本：2026-07-30 — Phase 1（T1.1–T1.11）、Phase 2（T2.1–T2.6）、Phase 3（T3.1–T3.6）完成并验证。*

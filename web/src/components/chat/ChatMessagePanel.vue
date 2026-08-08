@@ -220,6 +220,8 @@
           :session-id="sessionId"
           :file-supported="fileSupported"
           :file-accept="fileAccept"
+          :dictating="dictating"
+          :dictation-partial="dictationPartial"
           @update:model-value="emit('update:modelValue', $event)"
           @update:dialog-mode="emit('update:dialogMode', $event)"
           @update:model-provider="emit('update:modelProvider', $event)"
@@ -359,6 +361,10 @@ const props = defineProps<{
   viewMode?: 'chat' | 'observe';
   /** Whether the composer is visible (used in observe mode to toggle input bar). */
   composerVisible?: boolean;
+  /** M74 听写中（麦克风录音态 UI）。 */
+  dictating?: boolean;
+  /** 听写识别中的部分文本（输入框上方实时字幕）。 */
+  dictationPartial?: string;
 }>();
 
 const emit = defineEmits<{

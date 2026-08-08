@@ -1082,7 +1082,7 @@ G5-F（后端治理，独立可并行）─────────────�
 | **SP1-D** | 统一链接索引 LinkIndex + WS 增量 | F-SP1-4、NFR-SP1-4、S5 | ✅ |
 | **SP1-E** | 块级反链 API（含 dangling 语义） | F-SP1-5、S8 | ✅ |
 | **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | ✅ |
-| **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | 📋 |
+| **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | ✅ |
 | **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | 📋 |
 | **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | 📋 |
 
@@ -1195,6 +1195,14 @@ G5-F（后端治理，独立可并行）─────────────�
 | G-3 | 删除同步：team 块删除 → dst FK SET NULL 转 dangling；src 块删除 → 边显式同事务 DELETE（区分「边消失」与「转 dangling」）；WS 增量携带两类变更 | `internal/data/knowledge_blocks.go`、`link_index.go` |
 
 验收：晋升产生谱系对 + 审计（验收 41）；team 块删除后边级联清除、WS 增量到达、私有侧 dangling 化（验收 42）。
+
+> **2026-08-08 完成（TDD，G-1/G-2/G-3）**：
+> - **G-1 Proto**：`PromoteBlocks`（POST `/v1/knowledge/blocks/promote`）——req `{block_ids[], target_collection_id}`；resp `created_blocks[]`（谱系对 src_block_id/new_block_id/new_doc_id）+ `cascade_candidates[]`（引用私有块的级联提示）+ 目标文档统计。
+> - **G-2 晋升**（`biz/knowledge/promote.go` + `service/knowledge_promote.go`）：权限链——目标库 `assertCollectionMutateAccess` + 源块逐库 `assertPromoteSourceAccess` + biz 侧 backend=team 校验（`ErrPromoteTargetNotTeam`）；块克隆按源文档分单元 `promoteDocBlocks`（提取块全文 → 目标文档 find-or-create → 尾部追加 → 块级索引重放 → 尾部 N 块按序对应回写谱系）；谱系对经 `PromoteLineageWriter.WritePromoteLineage` 单事务回写（新块 `promoted_from` / 源块 `promoted_to`）；目标文档 chunk/FTS 重放走 service 层 `replayPromotedDocChunks`（晋升完成即可检索；单文档失败降级 status=error 不回滚，最终一致）。**对 S7 的四点 as-built 偏差**（设计文档已同步注记）：① 块克隆经「全文追加 + 目标文档重解析」而非直接 INSERT 块行（blocks 是派生索引，直插行会在下次重放丢失）；② 无单一大事务，逐目标文档原子（embed 走外部 API 不可入库事务）；③ `meta.private_external` 列不建——引用私有块的目标经可见性过滤自然落 dangling（raw_target 保留即占位语义）；④ 审计走 `knowledgeFlow` 流程日志 K1/K2（start/error/done 带 target_collection_id/block_count/created_blocks/replay 统计），非 activities 表。
+> - **G-3 删除同步**：两类变更三层覆盖齐备——DB 侧 FK（src 块删 → `src_block_id ON DELETE CASCADE` 边消失；dst 块/文档/集合删 → `dst_* ON DELETE SET NULL` 转 dangling 保 raw_target；「显式同事务 DELETE」由 FK 同事务级联等价实现）；内存图侧 `RemoveDoc`（SP1-D）+ 新增 `RemoveCollection`（补齐 SP1-D 遗留的集合删除图同步：源边消失 + 外部入边转 dangling，镜像 FK 语义）；WS 侧 `DeleteDocument`/`DeleteCollection` 均发布非空 delta（removed 携带两类原形态、added 携带 dangling 新形态，前端按摘除/灰显分别处理）。
+> - **测试**：biz——promote 4 用例（新建目标文档谱系 / 追加既有文档 / cascade 候选 / 校验矩阵）+ `TestLinkIndex_RemoveCollection`（库内边/跨库出边消失、外部入边转 dangling、不相关边不动、delta 两类齐备）+ `EmptyNoVersion`（空 delta 不递增版本）+ `TestUsecase_DeleteCollection_LinkIndex`（接线 + 失败路径不动图）；data PG 集成——`TestKnowledgeBlocks_CollectionDeleteCascade`（集合删除：本集合块/refs 消失、外部集合入边 dst 全 NULL 保 raw_target）；service——promote 4 用例（happy path 谱系+cascade / 追加既有文档 chunk 重放 / 跨租户权限矩阵 / 参数校验）。流程日志 step `knowledge.block.promote` 已双登记（`flow_log.go` stepTitleRegistry + 52-flow-logger.design.md §5.1）。
+>
+> 验证：独立 GOCACHE 全新 `go build ./internal/... ./cmd/admin` ✅；`go test ./internal/biz/knowledge/ ./internal/knowledge/... -count=1` ✅；`go test ./internal/data/ -run Knowledge`（PG 集成 7/7 含新级联用例）✅；`go test ./internal/service/ -run Knowledge` ✅；`go vet` + gofmt 全净。
 
 ### SP1-H：RebuildIndex + 惰性锚点回填
 

@@ -62,8 +62,10 @@ func (f *fakeRefineLLMReader) GetRefineLLM(context.Context) (biz.RefineLLMSettin
 }
 
 type fakeReplaySkillLookup struct {
-	skill biz.Skill
-	err   error
+	skill    biz.Skill
+	err      error
+	markdown string
+	mdErr    error
 }
 
 func (f *fakeReplaySkillLookup) GetSkillByID(context.Context, string) (biz.Skill, error) {
@@ -76,7 +78,34 @@ func (f *fakeReplaySkillLookup) GetSkillStorageDir(context.Context, string) (str
 	return "", errors.New("not implemented")
 }
 func (f *fakeReplaySkillLookup) GetLatestSkillMarkdown(context.Context, string) (string, error) {
-	return "", errors.New("not implemented")
+	if f.mdErr != nil {
+		return "", f.mdErr
+	}
+	if f.markdown == "" {
+		return "", errors.New("not implemented")
+	}
+	return f.markdown, nil
+}
+
+// fakeABLLMCaller returns programmed outputs keyed by the system body, so the
+// baseline and draft sides of an AB replay can be scored independently.
+type fakeABLLMCaller struct {
+	outputsBySystem map[string][]string // per-body outputs, in order
+	callsBySystem   map[string]int
+}
+
+func (f *fakeABLLMCaller) Call(_ context.Context, req biz.LLMCallRequest) (string, int, error) {
+	if f.callsBySystem == nil {
+		f.callsBySystem = map[string]int{}
+	}
+	idx := f.callsBySystem[req.System]
+	outs := f.outputsBySystem[req.System]
+	out := ""
+	if idx < len(outs) {
+		out = outs[idx]
+	}
+	f.callsBySystem[req.System] = idx + 1
+	return out, len(out) / 4, nil
 }
 
 func newTestReplayRunner(eval evalDatasetReader, caller biz.LLMCaller, llm RefineLLMReader, skills biz.SkillLookupReader) *SkillReplayRunner {
@@ -233,5 +262,90 @@ func TestSkillReplayRunner_EmptyExpected_Fails(t *testing.T) {
 	}
 	if !strings.Contains(res.DatasetName, "web-research") {
 		t.Fatalf("unexpected dataset name: %+v", res)
+	}
+}
+
+// ── P2 F1：AB 对照回放 ───────────────────────────────────────────────────────
+
+// 双端对照：baseline 与 draft 各自独立计分，共用同一数据集与同一批 case。
+func TestSkillReplayRunner_ReplayAB_BothSides(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases: []evaluation.Case{
+			{ID: "c1", Input: "q1", ExpectedOutput: "Paris"},
+			{ID: "c2", Input: "q2", ExpectedOutput: "Tokyo"},
+		},
+	}
+	caller := &fakeABLLMCaller{outputsBySystem: map[string][]string{
+		"current body": {"Paris", "Tokyo"},  // baseline 2/2
+		"draft body":   {"Paris", "London"}, // draft 1/2
+	}}
+	skills := &fakeReplaySkillLookup{
+		skill:    biz.Skill{ID: "s1", Name: "web-research"},
+		markdown: "current body",
+	}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	ab, err := r.ReplayAB(context.Background(), "s1", "draft body", 0)
+	if err != nil {
+		t.Fatalf("ReplayAB: %v", err)
+	}
+	if ab.Baseline == nil {
+		t.Fatal("expected baseline result")
+	}
+	if ab.Baseline.PassRate != 1.0 || ab.Baseline.Total != 2 {
+		t.Fatalf("unexpected baseline: %+v", ab.Baseline)
+	}
+	if ab.Draft == nil || ab.Draft.PassRate != 0.5 || ab.Draft.Total != 2 {
+		t.Fatalf("unexpected draft: %+v", ab.Draft)
+	}
+	// 同一 case 集：双端各执行 2 次。
+	if caller.callsBySystem["current body"] != 2 || caller.callsBySystem["draft body"] != 2 {
+		t.Fatalf("expected 2 calls per side, got %+v", caller.callsBySystem)
+	}
+	if ab.Baseline.DatasetID != ab.Draft.DatasetID {
+		t.Fatalf("dataset mismatch: %+v vs %+v", ab.Baseline, ab.Draft)
+	}
+}
+
+// 基线不可得（当前正文查询失败）→ Baseline=nil，Draft 正常，不报错。
+func TestSkillReplayRunner_ReplayAB_BaselineUnavailable(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases:    []evaluation.Case{{ID: "c1", Input: "q1", ExpectedOutput: "Paris"}},
+	}
+	caller := &fakeABLLMCaller{outputsBySystem: map[string][]string{
+		"draft body": {"Paris"},
+	}}
+	skills := &fakeReplaySkillLookup{
+		skill: biz.Skill{ID: "s1", Name: "web-research"},
+		mdErr: errors.New("no current version"),
+	}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	ab, err := r.ReplayAB(context.Background(), "s1", "draft body", 0)
+	if err != nil {
+		t.Fatalf("ReplayAB: %v", err)
+	}
+	if ab.Baseline != nil {
+		t.Fatalf("expected nil baseline, got %+v", ab.Baseline)
+	}
+	if ab.Draft == nil || ab.Draft.PassRate != 1.0 {
+		t.Fatalf("unexpected draft: %+v", ab.Draft)
+	}
+}
+
+// 无绑定数据集 → ErrNoReplayDataset（与单跑语义一致）。
+func TestSkillReplayRunner_ReplayAB_NoDataset(t *testing.T) {
+	eval := &fakeEvalDatasetReader{datasets: []evaluation.Dataset{{ID: "ds1", Name: "other"}}}
+	skills := &fakeReplaySkillLookup{skill: biz.Skill{ID: "s1", Name: "web-research"}}
+	r := newTestReplayRunner(eval, &fakeABLLMCaller{}, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	_, err := r.ReplayAB(context.Background(), "s1", "draft body", 0)
+	if err != biz.ErrNoReplayDataset {
+		t.Fatalf("expected ErrNoReplayDataset, got %v", err)
 	}
 }

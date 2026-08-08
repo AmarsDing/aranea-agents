@@ -40,6 +40,7 @@ const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeSe
 const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
+const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -90,6 +91,11 @@ type KnowledgeServiceHTTPServer interface {
 	// inbound explicit links rebuild. Name clash -> CodeConflict unless
 	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
 	MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error)
+	// PromoteBlocks PromoteBlocks clones blocks from a personal vault into a team collection
+	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
+	// cascade candidates for references into private blocks, and immediate
+	// re-indexing of the target document so promoted content is searchable.
+	PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -120,6 +126,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/documents/{doc_id}/block-backlinks", _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/blocks/promote", _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
@@ -554,6 +561,28 @@ func _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv KnowledgeServiceHTTPS
 	}
 }
 
+func _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in PromoteBlocksRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServicePromoteBlocks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.PromoteBlocks(ctx, req.(*PromoteBlocksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PromoteBlocksResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListEntityMergeSuggestionsRequest
@@ -710,6 +739,11 @@ type KnowledgeServiceHTTPClient interface {
 	// inbound explicit links rebuild. Name clash -> CodeConflict unless
 	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
 	MoveDocumentToDir(ctx context.Context, req *MoveDocumentToDirRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
+	// PromoteBlocks PromoteBlocks clones blocks from a personal vault into a team collection
+	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
+	// cascade candidates for references into private blocks, and immediate
+	// re-indexing of the target document so promoted content is searchable.
+	PromoteBlocks(ctx context.Context, req *PromoteBlocksRequest, opts ...http.CallOption) (rsp *PromoteBlocksResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -1004,6 +1038,23 @@ func (c *KnowledgeServiceHTTPClientImpl) MoveDocumentToDir(ctx context.Context, 
 	pattern := "/v1/knowledge/documents/{id}/move_to_dir"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceMoveDocumentToDir))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PromoteBlocks PromoteBlocks clones blocks from a personal vault into a team collection
+// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
+// cascade candidates for references into private blocks, and immediate
+// re-indexing of the target document so promoted content is searchable.
+func (c *KnowledgeServiceHTTPClientImpl) PromoteBlocks(ctx context.Context, in *PromoteBlocksRequest, opts ...http.CallOption) (*PromoteBlocksResponse, error) {
+	var out PromoteBlocksResponse
+	pattern := "/v1/knowledge/blocks/promote"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServicePromoteBlocks))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

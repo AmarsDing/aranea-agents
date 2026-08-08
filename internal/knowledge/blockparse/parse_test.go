@@ -255,6 +255,54 @@ func TestParseExcerptTruncation(t *testing.T) {
 	}
 }
 
+// TestParseBlockText Text 为块的 Markdown 原文片段（SP1-G 晋升全文提取）：
+// 可直接追加到目标文档重新解析出等价块。heading 带 ##、list_item 带 marker、
+// blockquote 带 >、code_block 带 fence；显式锚保留在原文中。
+func TestParseBlockText(t *testing.T) {
+	md := "# 标题一\n\n第一段带 [[Target Doc]] 链接。 ^p1\n\n- 列表项甲\n- 列表项乙\n\n> 引用块\n\n```go\nfmt.Println()\n```\n"
+	blocks, _ := parse(t, md)
+	want := []string{
+		"# 标题一",
+		"第一段带 [[Target Doc]] 链接。 ^p1",
+		"- 列表项甲",
+		"- 列表项乙",
+		"> 引用块",
+		"```go\nfmt.Println()\n```",
+	}
+	if len(blocks) != len(want) {
+		t.Fatalf("blocks = %d, want %d", len(blocks), len(want))
+	}
+	for i, w := range want {
+		if blocks[i].Text != w {
+			t.Errorf("blocks[%d].Text = %q, want %q", i, blocks[i].Text, w)
+		}
+	}
+}
+
+// TestParseBlockTextRoundTrip 晋升语义：块 Text 追加拼接后重解析，产出
+// 同 kind 同内容（content_hash 一致）的块序列。
+func TestParseBlockTextRoundTrip(t *testing.T) {
+	md := "# H\n\npara one ^a\n\n- item x\n\n> quote\n\n```\ncode\n```\n"
+	blocks, _ := parse(t, md)
+	var texts []string
+	for _, b := range blocks {
+		texts = append(texts, b.Text)
+	}
+	rebuilt, _ := parse(t, strings.Join(texts, "\n\n")+"\n")
+	if len(rebuilt) != len(blocks) {
+		t.Fatalf("rebuilt = %d, want %d", len(rebuilt), len(blocks))
+	}
+	for i := range blocks {
+		if rebuilt[i].Kind != blocks[i].Kind || rebuilt[i].ContentHash != blocks[i].ContentHash {
+			t.Errorf("rebuilt[%d] = %v/%s, want %v/%s",
+				i, rebuilt[i].Kind, rebuilt[i].ContentHash, blocks[i].Kind, blocks[i].ContentHash)
+		}
+		if rebuilt[i].Anchor != blocks[i].Anchor {
+			t.Errorf("rebuilt[%d].Anchor = %q, want %q", i, rebuilt[i].Anchor, blocks[i].Anchor)
+		}
+	}
+}
+
 // TestParseContext Context 为链接前后 ±50 rune 的源文本（UTF-8 安全）。
 func TestParseContext(t *testing.T) {
 	pad := strings.Repeat("文", 60)

@@ -292,6 +292,37 @@ export type ListDanglingLinksResponse = {
   items: DanglingLink[] | undefined;
 };
 
+// PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
+export type PromoteBlocksRequest = {
+  //
+  // Behaviors: REQUIRED
+  blockIds: string[] | undefined;
+  //
+  // Behaviors: REQUIRED
+  targetCollectionId: string | undefined;
+};
+
+// PromotedBlockLineage is one source→clone lineage pair (US-27).
+export type PromotedBlockLineage = {
+  srcBlockId: string | undefined;
+  newBlockId: string | undefined;
+  targetDocId: string | undefined;
+};
+
+// PromoteCascadeCandidate is a reference from a promoted block into a target
+// that was NOT promoted along (left dangling on the team side, raw_target kept).
+export type PromoteCascadeCandidate = {
+  srcBlockId: string | undefined;
+  rawTarget: string | undefined;
+  dstDocId: string | undefined;
+  dstCollectionId: string | undefined;
+};
+
+export type PromoteBlocksResponse = {
+  createdBlocks: PromotedBlockLineage[] | undefined;
+  cascadeCandidates: PromoteCascadeCandidate[] | undefined;
+};
+
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
 // source = "norm" (same name_norm, different display name) or "embedding"
 // (cosine similarity of entity-name embeddings).
@@ -484,6 +515,11 @@ export interface KnowledgeService {
   // ListDanglingLinks aggregates dangling references of one collection by
   // raw_target with ref counts (SP1-E; "uncreated notes" view).
   ListDanglingLinks(request: ListDanglingLinksRequest): Promise<ListDanglingLinksResponse>;
+  // PromoteBlocks clones blocks from a personal vault into a team collection
+  // (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
+  // cascade candidates for references into private blocks, and immediate
+  // re-indexing of the target document so promoted content is searchable.
+  PromoteBlocks(request: PromoteBlocksRequest): Promise<PromoteBlocksResponse>;
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
   // normalization conflict groups (same name_norm, different display name)
   // plus high-similarity embedding pairs when the embedder is configured.
@@ -889,6 +925,23 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListDanglingLinks",
       }) as Promise<ListDanglingLinksResponse>;
+    },
+    PromoteBlocks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/knowledge/blocks/promote`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "PromoteBlocks",
+      }) as Promise<PromoteBlocksResponse>;
     },
     ListEntityMergeSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {

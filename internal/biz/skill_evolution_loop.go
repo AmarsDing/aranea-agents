@@ -116,6 +116,22 @@ type SkillEvolver interface {
 	Evolve(ctx context.Context, skillID string, report *EvolutionObservationReport) (string, error)
 }
 
+// SkillReplayABRunner replays the skill's bound evaluation dataset against
+// BOTH the current live body (baseline) and the evolved draft over the same
+// case set (P2 F1 AB 对照回放). Baseline may be nil when the current body is
+// unavailable — callers then apply only the absolute threshold (no ratchet).
+//
+// Stability:evolving
+type SkillReplayABRunner interface {
+	ReplayAB(ctx context.Context, skillID string, draftBody string, maxCases int) (*SkillReplayABResult, error)
+}
+
+// SkillReplayABResult is one A/B comparison replay outcome.
+type SkillReplayABResult struct {
+	Baseline *SkillReplayResult // nil = 当前正文不可得，仅绝对阈值生效
+	Draft    *SkillReplayResult
+}
+
 // SkillGateVerifier performs multi-dimensional Gate verification.
 type SkillGateVerifier interface {
 	Verify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error)
@@ -370,6 +386,14 @@ func WithSkillLookup(r SkillLookupReader) GateOption {
 	return func(v *GateVerifier) { v.skillLookup = r }
 }
 
+// WithABReplayRunner enables the A/B comparison replay (P2 F1 棘轮门控): the
+// draft is replayed side-by-side with the current live body over the same
+// case set; the draft must not regress below the baseline. When wired, the
+// AB runner takes precedence over the single replay runner.
+func WithABReplayRunner(r SkillReplayABRunner) GateOption {
+	return func(v *GateVerifier) { v.abRunner = r }
+}
+
 // GateVerifier performs multi-dimensional Gate verification for skill evolution.
 // Dimensions:
 //   - Functional correctness (Sandbox Runner + optional dataset replay, or
@@ -383,6 +407,7 @@ type GateVerifier struct {
 	sandboxRunner SandboxRunner
 	lintChecker   SkillLintChecker
 	replayRunner  SkillReplayRunner
+	abRunner      SkillReplayABRunner
 	skillLookup   SkillLookupReader
 }
 
@@ -508,12 +533,16 @@ func (v *GateVerifier) verifyFunctionalBase(ctx context.Context, skillID string,
 	return GateCheckResult{Name: "functional", Passed: true}
 }
 
-// verifyReplay runs the dataset-replay functional check (P1 Solve 接线).
+// verifyReplay runs the dataset-replay functional check (P1 Solve 接线 + P2
+// F1 AB 对照棘轮).
 // Skip semantics: no replay runner wired, no bound dataset, or replay
 // infrastructure unavailable all degrade to pass (the functional verdict then
 // rests on the sandbox/base check alone). Only a completed replay below the
-// pass threshold rejects.
+// pass threshold (or, with AB wired, below the baseline) rejects.
 func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	if v.abRunner != nil {
+		return v.verifyReplayAB(ctx, skillID, draftBody)
+	}
 	if v.replayRunner == nil {
 		return GateCheckResult{Name: "functional", Passed: true}
 	}
@@ -534,6 +563,42 @@ func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBo
 		Name:   "functional",
 		Passed: true,
 		Reason: fmt.Sprintf("dataset replay passed (dataset=%s, %d/%d)", result.DatasetName, result.Passed, result.Total),
+	}
+}
+
+// verifyReplayAB runs the A/B comparison replay (P2 F1). Verdicts:
+//   - replay unavailable (error / nil draft result) → skip, pass
+//   - baseline available and draft < baseline → ratchet rejection
+//   - draft < ReplayPassThreshold → absolute-threshold rejection
+//   - otherwise → pass
+func (v *GateVerifier) verifyReplayAB(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	ab, err := v.abRunner.ReplayAB(ctx, skillID, draftBody, ReplayMaxCases)
+	if err != nil || ab == nil || ab.Draft == nil {
+		// ErrNoReplayDataset 与回放不可用（LLM 未配置等）均跳过，不阻断。
+		return GateCheckResult{Name: "functional", Passed: true, Reason: "AB replay skipped"}
+	}
+	draft := ab.Draft
+	// 棘轮：draft 不得劣于 baseline（baseline 不可得时跳过）。
+	if ab.Baseline != nil && ab.Baseline.Total > 0 && draft.Total > 0 && draft.PassRate < ab.Baseline.PassRate {
+		return GateCheckResult{
+			Name:   "functional",
+			Passed: false,
+			Reason: fmt.Sprintf("AB replay ratchet: draft pass rate %.0f%% < baseline %.0f%% (dataset=%s, %d/%d vs %d/%d)",
+				draft.PassRate*100, ab.Baseline.PassRate*100, draft.DatasetName, draft.Passed, draft.Total, ab.Baseline.Passed, ab.Baseline.Total),
+		}
+	}
+	if draft.Total > 0 && draft.PassRate < ReplayPassThreshold {
+		return GateCheckResult{
+			Name:   "functional",
+			Passed: false,
+			Reason: fmt.Sprintf("dataset replay pass rate %.0f%% < %.0f%% (dataset=%s, %d/%d)",
+				draft.PassRate*100, ReplayPassThreshold*100, draft.DatasetName, draft.Passed, draft.Total),
+		}
+	}
+	return GateCheckResult{
+		Name:   "functional",
+		Passed: true,
+		Reason: fmt.Sprintf("AB replay passed (dataset=%s, draft %d/%d)", draft.DatasetName, draft.Passed, draft.Total),
 	}
 }
 

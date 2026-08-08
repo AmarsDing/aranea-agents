@@ -33,7 +33,7 @@ data:
     access: admin
 logging:
   level: info
-  output_dir: "./logs"
+  output_dir: "./bin/logs"
   max_size_mb: 100
   max_backups: 10
   max_age_days: 30

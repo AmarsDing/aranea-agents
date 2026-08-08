@@ -2062,6 +2062,14 @@ UNIQUE(doc_id, ordinal)；UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL
 
 **删除同步**：team 块删除 → `knowledge_block_refs.dst_block_id` FK `ON DELETE SET NULL`（保 raw_target 转 dangling）；指向它的边删除走显式同事务 DELETE（区分「边消失」与「转 dangling」：src 块删除 = 边级联删除；dst 块删除 = 边转 dangling）。WS 增量事件携带两类变更，前端分别处理（摘除边 / 节点灰显）。
 
+> **2026-08-08 As-built 修订注记（SP1-G 落地偏差）**：
+> 1. **块克隆机制**：不直接 INSERT 块行，改为「目标文档全文尾部追加 + 块级索引重放」——`knowledge_blocks` 是派生索引（整文档删了重插语义），直插块行会在下次重放丢失；追加原文后重放让新块自然生成，谱系按「尾部 N 块按序对应」回写（`promoted_from`/`promoted_to` 单事务）。
+> 2. **事务边界**：无 `Data.ExecInTx` 单一大事务，逐目标文档原子（文档写 + 块重放各自事务）；chunk→embed→FTS 重放在 service 层事务后执行（embed 走外部 API 不可入库事务），单文档失败降级 `status=error` 不回滚晋升——最终一致，重建索引自愈。
+> 3. **`meta.private_external` 不建**：引用私有块的目标经可见性过滤自然落 dangling（`raw_target` 保留即占位语义），无需额外标记列。
+> 4. **审计通道**：走 `knowledgeFlow` 流程日志（step `knowledge.block.promote`，K1 start/done + K2 error），非 activities 表。
+> 5. **「显式同事务 DELETE」实现形态**：由 FK 约束同事务级联等价实现（`src_block_id ON DELETE CASCADE` = 边消失；`dst_* ON DELETE SET NULL` = 转 dangling），语义不变。
+> 6. **集合删除图同步（扩展）**：`LinkIndex.RemoveCollection` 补齐整库删除的内存图同步（源边消失 + 外部入边转 dangling），`DeleteCollection` 发布 WS 增量——原文仅述块/文档级，此处扩展到集合级。
+
 ### S8. Proto 契约（`api/kratos/knowledge/v1/knowledge.proto` 增补）
 
 | RPC | 路径 | 说明 |

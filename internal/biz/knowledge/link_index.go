@@ -152,6 +152,41 @@ func (x *LinkIndex) RemoveDoc(docID string) GraphDelta {
 	return x.commitDelta(removed, added)
 }
 
+// RemoveCollection 集合删除（G-3）：源在被删集合的全部边消失（库内边 +
+// 跨库出边）；外部集合指向被删集合的入边转 dangling 保 raw_target
+// （镜像 FK：refs.collection_id ON DELETE CASCADE + dst_* ON DELETE SET NULL）。
+// delta 携带两类变更。
+func (x *LinkIndex) RemoveCollection(collID string) GraphDelta {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	var removed, added []KnowledgeBlockRefEdge
+	// 1) 源边整体消失（CollectionID 即边源所属集合；含 dangling 源边）。
+	for _, set := range x.bySrcDoc {
+		for _, e := range snapshotEdges(set) {
+			if e.CollectionID != collID {
+				continue
+			}
+			x.removeEdge(e)
+			removed = append(removed, *e)
+		}
+	}
+	// 2) 残余指向被删集合的入边必为外部源（库内入边已随步骤 1 摘除）→ 转 dangling。
+	for _, set := range x.incoming {
+		for _, e := range snapshotEdges(set) {
+			if e.DstCollectionID != collID {
+				continue
+			}
+			x.removeEdge(e)
+			removed = append(removed, *e)
+			dangling := *e
+			dangling.DstCollectionID, dangling.DstDocID, dangling.DstBlockID = "", "", ""
+			x.addEdge(dangling)
+			added = append(added, dangling)
+		}
+	}
+	return x.commitDelta(removed, added)
+}
+
 // snapshotEdges 复制索引切片头（写路径遍历时 removeEdge 会 in-place 过滤同一切片）。
 func snapshotEdges(edges []*KnowledgeBlockRefEdge) []*KnowledgeBlockRefEdge {
 	return append([]*KnowledgeBlockRefEdge(nil), edges...)
@@ -318,6 +353,15 @@ func (u *Usecase) removeLinkIndexDoc(ctx context.Context, docID string) {
 		return
 	}
 	u.publishGraphDelta(ctx, u.linkIndex.RemoveDoc(docID))
+}
+
+// removeLinkIndexCollection 集合删除后同步内存图（G-3：源边消失、外部入边
+// 转 dangling 保 raw_target，镜像 DB FK 语义）并发布 WS 增量。未接线 no-op。
+func (u *Usecase) removeLinkIndexCollection(ctx context.Context, collID string) {
+	if u == nil || u.linkIndex == nil {
+		return
+	}
+	u.publishGraphDelta(ctx, u.linkIndex.RemoveCollection(collID))
 }
 
 // publishGraphDelta 发布 WS 增量；空 delta 不推（无变化重建不制造 WS 噪声）。

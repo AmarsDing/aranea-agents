@@ -73,6 +73,24 @@ describe('createVoiceSessionClient — 上行', () => {
       dialog_mode: 'chat',
       agent_key: 'jarvis',
       team_id: '',
+      mode: '',
+    });
+  });
+
+  it('startVoice carries mode=dictation for chat composer dictation', () => {
+    const { client, sockets } = makeClient();
+    client.connect();
+    client.startVoice({ mode: 'dictation' });
+    sockets[0].open();
+    const msg = JSON.parse(sockets[0].sent[0] as string);
+    expect(msg).toEqual({
+      type: 'voice.start',
+      sample_rate: 16000,
+      language: '',
+      dialog_mode: '',
+      agent_key: '',
+      team_id: '',
+      mode: 'dictation',
     });
   });
 

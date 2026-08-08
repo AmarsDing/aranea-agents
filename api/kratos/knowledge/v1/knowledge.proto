@@ -274,6 +274,33 @@ message ListDanglingLinksResponse {
   repeated DanglingLink items = 1;
 }
 
+// PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
+message PromoteBlocksRequest {
+  repeated string block_ids = 1 [(google.api.field_behavior) = REQUIRED];
+  string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];  // must be vault_backend=team
+}
+
+// PromotedBlockLineage is one source→clone lineage pair (US-27).
+message PromotedBlockLineage {
+  string src_block_id = 1;     // source block (personal vault); gets promoted_to
+  string new_block_id = 2;     // cloned block in the team collection; gets promoted_from
+  string target_doc_id = 3;    // team document holding the clone
+}
+
+// PromoteCascadeCandidate is a reference from a promoted block into a target
+// that was NOT promoted along (left dangling on the team side, raw_target kept).
+message PromoteCascadeCandidate {
+  string src_block_id = 1;
+  string raw_target = 2;
+  string dst_doc_id = 3;         // referenced private document (empty = already dangling)
+  string dst_collection_id = 4;  // referenced collection (empty = dangling)
+}
+
+message PromoteBlocksResponse {
+  repeated PromotedBlockLineage created_blocks = 1;
+  repeated PromoteCascadeCandidate cascade_candidates = 2;
+}
+
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
 // source = "norm" (same name_norm, different display name) or "embedding"
 // (cosine similarity of entity-name embeddings).
@@ -526,6 +553,16 @@ service KnowledgeService {
   rpc ListDanglingLinks(ListDanglingLinksRequest) returns (ListDanglingLinksResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/collections/{id}/dangling-links"
+    };
+  }
+  // PromoteBlocks clones blocks from a personal vault into a team collection
+  // (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
+  // cascade candidates for references into private blocks, and immediate
+  // re-indexing of the target document so promoted content is searchable.
+  rpc PromoteBlocks(PromoteBlocksRequest) returns (PromoteBlocksResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/blocks/promote"
+      body: "*"
     };
   }
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):

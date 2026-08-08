@@ -205,6 +205,8 @@ type voiceControlMessage struct {
 	AgentKey   string `json:"agent_key"`
 	TeamID     string `json:"team_id"`
 	DetectMs   int    `json:"detect_ms"`
+	// Mode 会话模式（空=对话；voice.ModeDictation=听写：终稿仅下行文本不建 Turn）。
+	Mode string `json:"mode"`
 }
 
 func (s *VoiceWSServer) handleControl(sess *voice.Session, msg voiceControlMessage) {
@@ -216,6 +218,7 @@ func (s *VoiceWSServer) handleControl(sess *voice.Session, msg voiceControlMessa
 			DialogMode: msg.DialogMode,
 			AgentKey:   msg.AgentKey,
 			TeamID:     msg.TeamID,
+			Mode:       msg.Mode,
 		})
 	case "voice.stop":
 		sess.Stop()

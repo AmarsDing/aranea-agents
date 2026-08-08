@@ -68,7 +68,7 @@
 | # | 任务 | 状态 | 验收 |
 |---|------|------|------|
 | V1-T1 | SpeechProvider biz 端口 + 配置模型（`internal/biz/speech.go`，System Settings `speech` 分组读取，含单测） | ✅ | 端口单测通过；配置缺失返回 CodeFailedPrecondition（V1 配置读取为 env 实现，System Settings 分组归 V2-T7） |
-| V1-T2 | 火山流式 ASR 适配器（`internal/data/speech/volcengine_asr.go`，含 mock 单测） | ✅ | Write/Events/Close 契约测试通过；真机联调归 V1-T10。2026-08-08 健壮性修复：Open 同步等待 full client request 首帧应答（默认 3s 超时），上游静默/协议不匹配 fail-fast 返回 UNAVAILABLE（原静默挂起至 10min 空闲回收）；error frame 解析 code/message 上抛。2026-08-08 真机校准：X-Api-Key 鉴权（`volc.bigasr.sauc.duration`）；full client request 显式 seq=1、音频帧自 2 续号（bigmodel 端点 autoAssignedSequence 严格连续）；末帧 flags=0b0010 无序号规避端点末帧绝对值约定差异；服务端末帧应答后 close 1000（reason "finish last sequence"）按流结束处理不再误报 ASR_ERROR（误报会把 thinking 态经 recoverToListening 打断） |
+| V1-T2 | 火山流式 ASR 适配器（`internal/data/speech/volcengine_asr.go`，含 mock 单测） | ✅ | Write/Events/Close 契约测试通过；真机联调归 V1-T10。2026-08-08 健壮性修复：Open 同步等待 full client request 首帧应答（默认 3s 超时），上游静默/协议不匹配 fail-fast 返回 UNAVAILABLE（原静默挂起至 10min 空闲回收）；error frame 解析 code/message 上抛。2026-08-08 真机校准：X-Api-Key 鉴权（`volc.bigasr.sauc.duration`）；full client request 显式 seq=1、音频帧自 2 续号（bigmodel 端点 autoAssignedSequence 严格连续）；末帧 flags=0b0010 无序号规避端点末帧绝对值约定差异；服务端末帧应答后 close 1000（reason "finish last sequence"）按流结束处理不再误报 ASR_ERROR（误报会把 thinking 态经 recoverToListening 打断）。2026-08-09 多轮对话修复：asrPump 检测事件流终结后 CAS 摘除已终结会话（`voice.asr.upstream_end` 进程日志），下一句 WriteAudio 懒重开新连接（对齐 reclaimIdleASR 模式）；两句全链路真机探针回归通过 |
 | V1-T3 | 火山流式 TTS 适配器（`internal/data/speech/volcengine_tts.go`，含 mock 单测） | ✅ | 分句写入 → 音频 chunk 契约测试通过；真机联调归 V1-T10。2026-08-08 真机校准：重写为 TTS V3 单向流式（`api/v3/tts/unidirectional/stream`，volc_frame 扩展 event/sessionID/errCode 字段，事件 152 合成完成/350-351 句界/352 音频）；X-Api-Key 鉴权 + `seed-tts-2.0` + `zh_female_vv_uranus_bigtts`（音色须与模型代际匹配）；合成探针（`test/voice-ack-fix/tts_synth_probe.go`）产出 10 chunks / 3.59s PCM |
 | V1-T4 | `/v1/voice` 语音网关（`internal/server/voice_ws.go`：鉴权/单会话/帧路由/空闲回收） | ✅ | 二进制帧收发、鉴权拒绝、会话替换集成测试通过 |
 | V1-T5 | SentenceChunker + TTS 调度器（`internal/voice/`，含分句边界/背压/取消单测） | ✅ | 分句单测覆盖标点/硬切/flush/markdown 剥离。2026-08-08 真机修复：`synthesize` 收到句级 `TTSAudioChunkEnd` 即返回——火山 152 后保持 WS 连接不关 audio 信道，原「无动作」会把 worker 饿死在本句，后续句子与 OnDrained（tts.end）全链路阻塞 |
@@ -106,6 +106,19 @@
 | # | 任务 | 状态 | 验收 |
 |---|------|------|------|
 | V4-T1 | ASR Provider 复用到 59 附件链路（音频附件 → STT → 注入；失败降级） | 📋 | 59-multimodal §2.3 验收标准；同步更新 59 三件套状态 |
+
+### Phase V5 — HUD 科幻重构（反应堆形态 + Bloom + 音效，P1）
+
+目标：初版 HUD 视觉不达标，按 ADR-D11「方舟反应堆 · 混合式」重构（设计 §7.4 v2）：液态 simplex 能量核 + 同心刻度仪表环 + UnrealBloomPass 辉光 + DOM 全息化 + 程序合成音效。`AvatarRenderer` 接口与 hudParams 纯函数架构保持不变。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V5-T1 | 渲染管线升级：EffectComposer + UnrealBloomPass + OutputPass 接入（three/examples/jsm，零新依赖），Bloom 参数入 hudParams | 📋 | hudParams 新增 bloom 参数纯函数单测；各状态 Bloom 强度正确；桌面 ≥40fps |
+| V5-T2 | 场景重构：HudScene 拆分为组合器 + `hud/parts/*`（ReactorCore simplex 液态核 / ReactorRings ×3 刻度环 / Starfield / SpectrumRing 迁移 / ShockwavePool 迁移），移除线框壳与全息弧线组 | 📋 | hudParams 扩展参数（ringExpand 等）单测；单文件 ≤500 行；五状态视觉浏览器实测 |
+| V5-T3 | 启动过场：语音模式开启 ~1.2s 序列（bootProgress 驱动核心点亮 + 刻度环逐层展开 + boot 音效联动） | 📋 | 过场流畅无穿帮；中断（快速关闭）回退正确 |
+| V5-T4 | DOM 全息化：状态标签（角括号+扫描线）/ 打字机字幕 / 反应堆式麦克风按钮 / HoloConfirmCard 视觉对齐 | 📋 | 视觉统一；交互回归（点击/置灰/tooltip/确认三路径） |
+| V5-T5 | 音效引擎 `audio/uiSounds.ts`：boot/chirp/ping/ding/buzz/cut 程序合成 + localStorage 开关 + 状态机联动 | 📋 | 合成参数纯函数单测 + 调度 mock 单测；开关持久化；音量真机主观验证 |
+| V5-T6 | 总验收：`pnpm lint && pnpm test && pnpm build` 全绿 + 五状态/过场/音效浏览器实测 + 三件套同步 | 📋 | 需求 §2.3 验收标准逐条达标 |
 
 ## 5. 总验收标准
 

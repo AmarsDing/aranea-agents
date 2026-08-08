@@ -199,6 +199,49 @@ func TestLinkIndex_RemoveDoc(t *testing.T) {
 	assertEdgesEqual(t, x.BacklinksByDoc("d1", nil)) // d2 已删，出边不再存在
 }
 
+// TestLinkIndex_RemoveCollection 集合删除（G-3）：源在被删集合的全部边消失
+// （库内边 + 跨库出边）；外部集合指向被删集合的入边转 dangling 保 raw_target；
+// 两类变更都进 delta；不相关边不受影响。
+func TestLinkIndex_RemoveCollection(t *testing.T) {
+	x := NewLinkIndex()
+	intra := refEdge("c2", "d2", "bx", "c2", "d4", "by", "D4#^y") // 库内边 → 消失
+	crossOut := refEdge("c2", "d2", "bz", "c1", "d1", "b1", "D1") // 跨库出边 → 消失
+	extIn := refEdge("c1", "d3", "b3", "c2", "d2", "bx", "D2#^x") // 外部入边 → 转 dangling
+	unrelated := refEdge("c1", "d3", "b4", "c3", "d5", "", "D5")  // 不相关 → 不动
+	x.ApplyDocDelta("d2", []KnowledgeBlockRefEdge{intra, crossOut})
+	x.ApplyDocDelta("d3", []KnowledgeBlockRefEdge{extIn, unrelated})
+
+	d := x.RemoveCollection("c2")
+	wantDangling := extIn
+	wantDangling.DstCollectionID, wantDangling.DstDocID, wantDangling.DstBlockID = "", "", ""
+	assertEdgesEqual(t, d.Removed, intra, crossOut, extIn)
+	assertEdgesEqual(t, d.Added, wantDangling)
+
+	if got := x.OutEdges("bx", nil); len(got) != 0 {
+		t.Fatalf("被删集合出边应清除, got %v", got)
+	}
+	assertEdgesEqual(t, x.DanglingByCollection("c1", nil), wantDangling)
+	assertEdgesEqual(t, x.OutEdges("b4", nil), unrelated)
+	if got := x.DanglingByCollection("c2", nil); len(got) != 0 {
+		t.Fatalf("被删集合不应残留 dangling 源边, got %v", got)
+	}
+}
+
+// TestLinkIndex_RemoveCollection_EmptyNoVersion 删除无图集合产空 delta，
+// version 不动（与 ApplyDocDelta 无变化语义一致）。
+func TestLinkIndex_RemoveCollection_EmptyNoVersion(t *testing.T) {
+	x := NewLinkIndex()
+	x.ApplyDocDelta("d1", []KnowledgeBlockRefEdge{refEdge("c1", "d1", "b1", "c1", "d2", "", "A")})
+	v := x.Version()
+	d := x.RemoveCollection("cGhost")
+	if !d.Empty() {
+		t.Fatalf("无图集合 delta 应为空, got +%d/-%d", len(d.Added), len(d.Removed))
+	}
+	if x.Version() != v {
+		t.Fatalf("version = %d, want %d（空 delta 不递增）", x.Version(), v)
+	}
+}
+
 // TestLinkIndex_ConsistencyWithReplay 验收：增量 apply 序列后的内存图与
 // 从最终边集全量重放（LoadAll）结果一致。
 func TestLinkIndex_ConsistencyWithReplay(t *testing.T) {
@@ -410,6 +453,53 @@ func TestUsecase_DeleteDocument_LinkIndex(t *testing.T) {
 	u2.SetLinkIndex(idx2, pub2)
 	idx2.LoadAll([]KnowledgeBlockRefEdge{out})
 	if err := u2.DeleteDocument(context.Background(), "d2"); err == nil {
+		t.Fatal("repo 失败应上抛")
+	}
+	assertEdgesEqual(t, idx2.OutEdges("bx", nil), out)
+	if len(pub2.deltas) != 0 {
+		t.Fatal("失败路径不应发布 delta")
+	}
+}
+
+// TestUsecase_DeleteCollection_LinkIndex 集合删除后内存图同步（G-3：源边消失、
+// 外部入边转 dangling）且发布非空 delta；repo 删除失败时不动内存图。
+func TestUsecase_DeleteCollection_LinkIndex(t *testing.T) {
+	idx := NewLinkIndex()
+	pub := &captureGraphPub{}
+	u := NewUsecaseFromRepo(noOpMockRepo())
+	u.SetLinkIndex(idx, pub)
+
+	out := refEdge("c2", "d2", "bx", "c1", "d1", "b1", "D1")   // 被删集合出边
+	in := refEdge("c1", "d3", "b3", "c2", "d2", "bx", "D2#^x") // 外部入边
+	keep := refEdge("c1", "d3", "b4", "c3", "d5", "", "D5")    // 不相关
+	idx.LoadAll([]KnowledgeBlockRefEdge{out, in, keep})
+
+	if err := u.DeleteCollection(context.Background(), "c2"); err != nil {
+		t.Fatalf("DeleteCollection: %v", err)
+	}
+	wantDangling := in
+	wantDangling.DstCollectionID, wantDangling.DstDocID, wantDangling.DstBlockID = "", "", ""
+	if got := idx.OutEdges("bx", nil); len(got) != 0 {
+		t.Fatalf("删除后源边应清除, got %v", got)
+	}
+	assertEdgesEqual(t, idx.DanglingByCollection("c1", nil), wantDangling)
+	assertEdgesEqual(t, idx.OutEdges("b4", nil), keep)
+	if len(pub.deltas) != 1 {
+		t.Fatalf("发布 delta 数 = %d, want 1", len(pub.deltas))
+	}
+	d := pub.deltas[0]
+	assertEdgesEqual(t, d.Removed, out, in)
+	assertEdgesEqual(t, d.Added, wantDangling)
+
+	// repo 删除失败：不动内存图、不发布。
+	mr := noOpMockRepo()
+	mr.collDeleteFn = func(context.Context, string) error { return fmt.Errorf("db down") }
+	u2 := NewUsecaseFromRepo(mr)
+	idx2 := NewLinkIndex()
+	pub2 := &captureGraphPub{}
+	u2.SetLinkIndex(idx2, pub2)
+	idx2.LoadAll([]KnowledgeBlockRefEdge{out})
+	if err := u2.DeleteCollection(context.Background(), "c2"); err == nil {
 		t.Fatal("repo 失败应上抛")
 	}
 	assertEdgesEqual(t, idx2.OutEdges("bx", nil), out)

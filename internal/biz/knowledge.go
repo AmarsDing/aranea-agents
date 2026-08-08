@@ -67,6 +67,12 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 		if blr, ok := blockIndex.(knowledge.BlockLinkReader); ok {
 			uc.SetBacklinkRepos(blr, nil)
 		}
+		// SP1-G：晋升端口由同一块索引 repo 实现（reader + lineage writer 双断言）。
+		if pr, ok := blockIndex.(knowledge.PromoteBlockReader); ok {
+			if pw, ok2 := blockIndex.(knowledge.PromoteLineageWriter); ok2 {
+				uc.SetPromoteRepos(pr, pw)
+			}
+		}
 	}
 	if repo == nil {
 		return uc

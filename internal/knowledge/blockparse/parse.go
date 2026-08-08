@@ -50,6 +50,10 @@ type BlockRow struct {
 	HeadingPath []string // heading 块的标题路径（含自身）
 	ContentHash string   // 锚点剥离后的规范化文本 hash（锚点回填不触发重算）
 	TextExcerpt string   // 前 200 rune（反链上下文/图谱标签用）
+	// Text 块的 Markdown 原文片段（SP1-G 晋升全文提取）：可直接追加到目标文档
+	// 重新解析出等价块。heading 带 ##、list_item 带 marker、blockquote 带 >、
+	// code_block 带 fence（缩进代码块重构为 fenced）；显式锚保留在原文中。
+	Text string
 }
 
 // RefRow 引用边行（knowledge_block_refs 的解析产物）。
@@ -187,7 +191,7 @@ func (p *parser) emitHeading(h *ast.Heading) {
 	for _, e := range p.headings {
 		path = append(path, e.text)
 	}
-	p.emit(KindHeading, runs, plain, anchor, path)
+	p.emit(KindHeading, runs, plain, anchor, path, rawTextOf(h, p.src))
 }
 
 func (p *parser) emitParagraph(n ast.Node) {
@@ -197,6 +201,8 @@ func (p *parser) emitParagraph(n ast.Node) {
 	if id, ok := matchAnchor(anchorSoloRe, strings.TrimSpace(raw)); ok {
 		if len(p.blocks) > 0 && p.blocks[len(p.blocks)-1].Anchor == "" {
 			p.blocks[len(p.blocks)-1].Anchor = id
+			// 锚行并入前块 Text（锚是块身份，晋升全文须携带）。
+			p.blocks[len(p.blocks)-1].Text += "\n" + rawTextOf(n, p.src)
 		}
 		return
 	}
@@ -205,17 +211,18 @@ func (p *parser) emitParagraph(n ast.Node) {
 	if isMathBlock(plain) {
 		kind = KindMath
 	}
-	p.emit(kind, runs, plain, anchor, p.currentPath())
+	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src))
 }
 
 // emitRich 引用块/表格/列表项：runs 取自节点全部文本后代（CodeSpan 子树除外）。
 func (p *parser) emitRich(kind BlockKind, n ast.Node) {
 	runs := collectRuns(n, p.src)
 	plain, anchor := splitAnchor(joinRuns(runs, p.src))
-	p.emit(kind, runs, plain, anchor, p.currentPath())
+	p.emit(kind, runs, plain, anchor, p.currentPath(), rawTextOf(n, p.src))
 }
 
 // emitCode 代码块：成块但不扫描引用（代码内容无 wikilink 语义）。
+// Text 重构为 fenced 形态（缩进代码块原样内容包 fence；语言标记保留）。
 func (p *parser) emitCode(n ast.Node) {
 	var sb strings.Builder
 	block := n.(interface{ Lines() *text.Segments })
@@ -224,12 +231,68 @@ func (p *parser) emitCode(n ast.Node) {
 		seg := lines.At(i)
 		sb.WriteString(string(seg.Value([]byte(p.src))))
 	}
-	plain, anchor := splitAnchor(strings.TrimRight(sb.String(), "\n"))
-	p.emit(KindCodeBlock, nil, plain, anchor, p.currentPath())
+	lang := ""
+	if fenced, ok := n.(*ast.FencedCodeBlock); ok && fenced.Info != nil {
+		lang = string(fenced.Info.Segment.Value([]byte(p.src)))
+	}
+	content := strings.TrimRight(sb.String(), "\n")
+	plain, anchor := splitAnchor(content)
+	p.emit(KindCodeBlock, nil, plain, anchor, p.currentPath(), "```"+lang+"\n"+content+"\n```")
+}
+
+// rawTextOf 取节点覆盖行的原文切片（首行回溯到行首以含 ##/-/ > 等行首标记；
+// 末行截到节点结束）。供 BlockRow.Text（SP1-G 晋升全文）。
+// 容器节点（blockquote/table 自身无行）取子节点行区间并集。
+func rawTextOf(n ast.Node, src string) string {
+	start, stop, ok := nodeByteRange(n)
+	if !ok {
+		return ""
+	}
+	if ls := strings.LastIndexByte(src[:start], '\n'); ls >= 0 {
+		start = ls + 1
+	} else {
+		start = 0
+	}
+	if stop > len(src) {
+		stop = len(src)
+	}
+	return strings.TrimRight(src[start:stop], "\n")
+}
+
+// nodeByteRange 节点覆盖的字节区间 [start, stop)：叶节点取 Lines 首末段；
+// 容器节点递归取子节点区间并集。
+func nodeByteRange(n ast.Node) (int, int, bool) {
+	if liner, ok := n.(interface{ Lines() *text.Segments }); ok {
+		if lines := liner.Lines(); lines != nil && lines.Len() > 0 {
+			first := lines.At(0)
+			start := first.Start - first.Padding
+			if start < 0 {
+				start = 0
+			}
+			return start, lines.At(lines.Len() - 1).Stop, true
+		}
+	}
+	lo, hi := -1, -1
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		s, e, ok := nodeByteRange(c)
+		if !ok {
+			continue
+		}
+		if lo < 0 || s < lo {
+			lo = s
+		}
+		if e > hi {
+			hi = e
+		}
+	}
+	if lo < 0 {
+		return 0, 0, false
+	}
+	return lo, hi, true
 }
 
 // emit 统一成块入口：plain 已剥离锚点；runs 为引用扫描范围（nil 表示不扫描）。
-func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string, path []string) {
+func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string, path []string, rawText string) {
 	normalized := normalizeSpace(plain)
 	b := BlockRow{
 		Ordinal:     len(p.blocks),
@@ -238,6 +301,7 @@ func (p *parser) emit(kind BlockKind, runs []text.Segment, plain, anchor string,
 		HeadingPath: path,
 		ContentHash: hashText(normalized),
 		TextExcerpt: truncateRunes(wikilinkDisplay(normalized), excerptRunes),
+		Text:        rawText,
 	}
 	p.blocks = append(p.blocks, b)
 	p.scanRefs(b.Ordinal, runs)

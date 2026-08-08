@@ -45,6 +45,8 @@ export type VoiceStartParams = {
   dialogMode?: string;
   agentKey?: string;
   teamId?: string;
+  /** 会话模式：空=对话（默认）；'dictation'=听写（终稿仅下行文本，不建 Turn 不播报）。 */
+  mode?: string;
 };
 
 export type VoiceSessionClientOptions = {
@@ -187,6 +189,7 @@ export function createVoiceSessionClient(opts: VoiceSessionClientOptions): Voice
         dialog_mode: params.dialogMode ?? '',
         agent_key: params.agentKey ?? '',
         team_id: params.teamId ?? '',
+        mode: params.mode ?? '',
       });
     },
 

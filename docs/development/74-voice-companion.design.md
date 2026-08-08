@@ -19,6 +19,7 @@
 | D8 | 语音消息数据形态 | ASR 终稿 = 普通用户消息（metadata 标记 `input_modality=voice`）；音频留档为可选 Artifact 附件 | 语音对话记录与普通聊天天然互通，Web 端可见可回放 |
 | D9 | Speech Provider 配置存储 | System Settings 新增 `speech` 分组（JSON），凭据走既有敏感字段加密 | YAGNI：首期无需多 profile 管理，不新建 Ent 表；后续如需多配置再升级为独立 Schema |
 | D10 | 播报 TTS 与 63-tts 工具的关系 | 各自独立：播报管线是会话级 I/O（本模块）；63-tts 是 Agent 主动调用产出音频附件的工具 | 两者可后续共用 SpeechProvider 端口；本模块不实现 63 工具 |
+| D11 | HUD 科幻重构方向（V5） | **方舟反应堆 · 混合式**：液态 simplex 能量核 + 同心刻度仪表环 + UnrealBloomPass 辉光 + DOM 全息化 + 程序合成音效 | 初版「能量核+粒子环+线框壳」视觉不达标（无真辉光、缺 Jarvis 刻度仪表、控件未 HUD 化、无音效）。替代：纯液态 Orb（缺精密机械感，不 Jarvis）/ 全景 Stark 工作台（面板无真实数据、噪音大），均否决 |
 
 ---
 
@@ -309,7 +310,9 @@ Agent 调用 client_open_app
 | `voice/audioPlayback.ts` | PCM chunk 队列 → AudioBuffer 按序调度（gapless，句间 <150ms）；barge_in 时 50ms 淡出清空 |
 | `voice/useVoiceSession.ts` | `/v1/voice` 连接生命周期（createVoiceSessionClient）+ useVoiceSession composable（采集/播放/可视化桥接、状态机镜像写入 companion store、与 chat sender 的衔接） |
 | `hud/hudParams.ts` | 状态 → HUD 参数纯函数（§7.4 状态驱动参数，与 Three.js 解耦以便单测） |
-| `hud/HudScene.ts` | Three.js 场景（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换） |
+| `hud/HudScene.ts` | Three.js 场景组合器（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换）；V5 起拆分为 `hud/parts/*` 模块化场景部件 |
+| `hud/parts/`（V5 新增） | ReactorCore（simplex 液态核）/ ReactorRings（同心刻度环 ×3）/ Starfield（深空星野）/ SpectrumRing（频谱环）/ ShockwavePool（涟漪池），统一 `update(dt, params, audio)` 接口 |
+| `audio/uiSounds.ts`（V5 新增） | 科幻音效引擎：Web Audio 程序合成（boot/chirp/ping/ding/buzz/cut），零音频资产，localStorage 开关 |
 | `components/companion/HudCanvas.vue` | canvas 宿主、点击/双击/拖拽交互、频谱数据桥 |
 | `components/companion/CompanionChatPanel.vue` | 滑出聊天窗壳（内容由 Page 注入，复用 ChatMessagePanel 组件族） |
 | `components/companion/HoloConfirmCard.vue` | 全息确认卡（confirm 事件渲染 + 粒子发射动画，V2-T5） |
@@ -324,22 +327,58 @@ Agent 调用 client_open_app
 
 ### 7.4 HUD 场景设计（Three.js）
 
-场景构成（`HudScene.ts`）：
+> **v2 修订（2026-08-09，V5 反应堆科幻重构，ADR-D11）**：初版「能量核 + 粒子环 + 线框壳」视觉不达标——无后处理真辉光、核心噪声过于简单、缺 Jarvis 标志性同心刻度仪表、DOM 控件未 HUD 化、无音效反馈。V5 按「方舟反应堆 · 混合式」重构为下文目标设计；初版实现记录见文末 As-built 存档（V2-T5）。
 
-| 元素 | 实现 | 状态驱动参数 |
-|------|------|--------------|
-| 能量核 | Icosahedron + 等离子噪声 shader（emissive） | 缩放/发光强度：idle 呼吸（sin 0.5Hz ±4%）；thinking 收缩 0.85×；speaking 随 AnalyserNode 振幅 1.0-1.15× |
-| 粒子环 ×2 | Points 环形轨道（内外两圈，反向旋转） | listening 外环展开 1.2×；thinking 转速 ×3 |
-| 线框壳 | Icosahedron wireframe（低透明度） | 常态缓旋 |
-| 频谱环 | 128 柱环形布局（listening 态可见） | 实时 FFT 数据（采集侧 AnalyserNode） |
-| 颜色 | uniform tint | idle/listening/speaking=青蓝系（#22d3ee→#34d399），thinking=琥珀（#fbbf24），interrupted 红闪（#f87171，300ms） |
+#### 渲染管线（v2）
 
-- 动画循环统一 `requestAnimationFrame` + delta time；HUD 不可见（迷你态/窗口失焦）时降帧至 15fps
-- 性能预算：draw call < 20，三角形 < 50k（NFR5 ≥40fps）
+- `EffectComposer + RenderPass + UnrealBloomPass（mipmapBlur 半分辨率）+ OutputPass`，全部来自 `three/examples/jsm`，**零新依赖**
+- Bloom 强度/阈值纳入 `hudParams` 状态驱动：speaking 随振幅增强、burst 瞬时提亮、boot 过场由暗渐亮
+- HUD 不可见（`document.hidden`）降帧 15fps 保留；性能预算 NFR5 ≥40fps 不变
 
-> **As-built（V2-T5 全息确认卡 + HUD 科幻增强，2026-08-08）**：
+#### 场景构成（v2，模块化 scene parts）
+
+`HudScene.ts` 降为组合器（创建 renderer/composer/相机 + 帧循环 + 参数分发），视觉元素拆为 `hud/parts/` 独立部件，统一接口 `update(dt, params, audio)`（单文件 ≤500 行红线）：
+
+| 部件 | 文件 | 实现 | 状态驱动 |
+|------|------|------|----------|
+| 能量核 | `parts/ReactorCore.ts` | Icosahedron + GLSL simplex 3D 顶点置换（液态有机形变）+ Fresnel 边缘光 + 双色等离子 | speaking 振幅驱动置换幅度（1.0-1.15× 缩放沿用）；thinking 收缩 0.85×；idle 呼吸 |
+| 刻度环 ×3 | `parts/ReactorRings.ts` | 同心仪表环：细圆环 + InstancedMesh 刻度线段，异速正反转、分段呼吸透明度 | listening 外环展开 1.2×；thinking 转速 ×3；burst 提亮 |
+| 星野 | `parts/Starfield.ts` | ~800 粒子深空背景，缓慢漂移 + 相机微视差 | 常态 |
+| 频谱环 | `parts/SpectrumRing.ts` | 128 柱 InstancedMesh（沿用初版，Bloom 下发光） | listening 可见，实时 FFT |
+| 涟漪池 | `parts/ShockwavePool.ts` | 复用 4 圈声浪涟漪（沿用初版，Bloom 增强） | listening/speaking 周期发射；burst 立即满强度一圈 |
+| （移除） | — | 初版线框壳与全息弧线组由刻度仪表环取代，避免视觉重复 | — |
+
+#### 状态过场（v2 新增）
+
+- **语音模式开启**：~1.2s 启动序列——核心由暗点亮 → 刻度环逐层锁定展开 → 上电扫频音效；`hudParams` 新增 `bootProgress ∈ [0,1]`
+- **打断**：300ms 红闪沿用（`#f87171`）+ 打断切音
+- **颜色体系沿用**：idle/listening/speaking 青蓝系（`#22d3ee→#34d399`），thinking 琥珀（`#fbbf24`）
+
+#### DOM 全息化（v2，companion 作用域 CSS，不改 Quasar 主题）
+
+| 控件 | 全息化设计 |
+|------|-----------|
+| 状态指示 | 角括号 + 扫描线动画 + 大写等宽字母 + 发光描边的 HUD 标签 |
+| 实时字幕 | 打字机逐字浮现 + 全息边框 |
+| 麦克风按钮 | 反应堆式圆形按钮：脉动光环，语音模式开启时光环旋转 |
+| HoloConfirmCard | 微调对齐新视觉语言（描边/发光色值统一） |
+
+#### 科幻音效引擎（v2 新增，`features/companion/audio/uiSounds.ts`）
+
+- **Web Audio 程序合成，零音频资产**：上电扫频（boot sweep）/ 唤醒 chirp / 思考声纳 ping（循环，间隔 ~2s）/ 确认 ding / 拒绝 buzz / 打断切音
+- 音量压低（约 -18dB 混音级）；`localStorage` 开关可关（默认开）
+- 合成参数（波形/频率包络/时长）为纯函数可单测；播放调度注入 `AudioContext` 接口便于 mock
+- 触发点与状态机联动：voice mode on → boot；listening → chirp；thinking → ping 循环；confirm approve → ding；deny → buzz；barge_in → cut
+
+#### 架构约束（v2 沿用）
+
+- `AvatarRenderer` 接口不变（VRM 预留）；`hudParams` 扩展新参数（`bloomIntensity`/`ringExpand`/`bootProgress` 等），纯函数单测同步更新
+- 动画循环统一 `requestAnimationFrame` + delta time；涟漪池/刻度环共享几何，无每帧分配
+
+> **As-built 存档（初版，V1-T8 + V2-T5，2026-08-08）**：初版场景为能量核（Icosahedron + 等离子噪声 shader + 顶点摆动）/ 粒子环 ×2（内外两圈反向旋转、双频正弦声波震动 26Hz/41Hz）/ 线框壳 / 频谱环 / Jarvis 全息弧线组 ×3（多弧异速旋转、双色交替、呼吸透明度 + burst 提亮）/ 声浪涟漪池 ×4；`HudParams` 状态驱动参数 vibrationGain/arcSpeedFactor/coreWobble/rippleGain；draw call ≤12、三角形 <8k。**V5 重构后上述元素由 v2 场景部件取代（频谱环与涟漪池保留迁移）**。
 >
-> - HUD 科幻增强（`hud/hudParams.ts` + `hud/HudScene.ts`）：`HudParams` 新增 4 个状态驱动参数——`vibrationGain`（粒子环声波震动增益，listening/speaking=1，thinking=0.25，idle=0）、`arcSpeedFactor`（全息弧线转速因子）、`coreWobble`（能量核顶点摆动幅度）、`rippleGain`（声波涟漪增益）；场景新增 Jarvis 式全息弧线组（多弧异速旋转、双色交替、呼吸透明度 + burst 提亮）、粒子环双频正弦震动（26Hz/41Hz 叠加，点尺寸随增益放大）、能量核顶点噪声摆动、声波涟漪环。纯函数参数与 Three.js 解耦，hudParams 单测覆盖
+> **As-built（V2-T5 全息确认卡，2026-08-08，不受 V5 影响的保留项）**：
+>
 > - 全息确认卡（`components/companion/HoloConfirmCard.vue`）：confirm step（tool_blocked）渲染为悬浮全息卡（扫描线/边角括号/发光边框），含倒计时与三路径按钮——确认/取消/始终允许；批准时触发粒子流发射（乐观视觉，随后走 grant API）
 > - 确认队列（`features/companion/useCompanionConfirms.ts`）：从 `activityV2Store` 派生会话内 tool_blocked confirm steps（单一数据源铁律，WS 事件自动驱动），队首激活渲染；`ConfirmCardModel` 映射工具名/参数摘要
 > - 粒子发射（`features/companion/launchParticles.ts`）：`makeBurstParticles` 纯函数（可注入 RNG 便于单测）生成粒子参数，`spawnLaunchBurst` DOM 发射；批准时从确认卡向 HUD 能量核飞行并触发 HUD burst

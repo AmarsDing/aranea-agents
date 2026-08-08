@@ -32,6 +32,10 @@ type evalDatasetReader interface {
 // port consumed by biz.GateVerifier (P1 Solve 接线：数据集回放进 Gate 功能维).
 var _ biz.SkillReplayRunner = (*SkillReplayRunner)(nil)
 
+// Compile-time check: SkillReplayRunner implements the biz.SkillReplayABRunner
+// port (P2 F1 AB 对照回放棘轮).
+var _ biz.SkillReplayABRunner = (*SkillReplayRunner)(nil)
+
 // Compile-time check: the production evaluation usecase satisfies the narrow
 // reader port.
 var _ evalDatasetReader = (*evaluation.Usecase)(nil)
@@ -90,18 +94,72 @@ func (r *SkillReplayRunner) Replay(ctx context.Context, skillID string, draftBod
 		return nil, err
 	}
 
+	return r.replayCases(ctx, provider, model, draftBody, dataset, cases), nil
+}
+
+// ReplayAB implements biz.SkillReplayABRunner (P2 F1): replays the same case
+// set against BOTH the current live body (baseline) and the evolved draft.
+// Baseline is nil when the current body is unavailable (lookup failure or
+// empty) — the Gate then applies only the absolute threshold. Dataset/LLM
+// are resolved once and shared by both sides to keep the comparison fair.
+func (r *SkillReplayRunner) ReplayAB(ctx context.Context, skillID string, draftBody string, maxCases int) (*biz.SkillReplayABResult, error) {
+	if strings.TrimSpace(skillID) == "" {
+		return nil, apierror.BadRequest("SKILL_REPLAY", "skill_id is required")
+	}
+	if maxCases <= 0 {
+		maxCases = biz.ReplayMaxCases
+	}
+
+	dataset, err := r.findBoundDataset(ctx, skillID)
+	if err != nil {
+		return nil, err
+	}
+	cases, err := r.eval.ListCases(ctx, dataset.ID)
+	if err != nil {
+		return nil, apierror.Wrap(err, apierror.CodeInternal, "SKILL_REPLAY")
+	}
+	if len(cases) == 0 {
+		return nil, biz.ErrNoReplayDataset
+	}
+	if len(cases) > maxCases {
+		cases = cases[:maxCases]
+	}
+
+	provider, model, err := r.resolveReplayLLM(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	ab := &biz.SkillReplayABResult{}
+	// Baseline：当前正文不可得时置 nil（Gate 仅绝对阈值生效），不阻断。
+	if currentBody, lerr := r.skills.GetLatestSkillMarkdown(ctx, skillID); lerr == nil && strings.TrimSpace(currentBody) != "" {
+		ab.Baseline = r.replayCases(ctx, provider, model, currentBody, dataset, cases)
+	} else if lerr != nil {
+		r.lg.Warn("SkillReplayRunner: baseline body unavailable, AB degrades to absolute-only",
+			loggateway.StepID("skill_replay.ab"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(lerr))
+	}
+	ab.Draft = r.replayCases(ctx, provider, model, draftBody, dataset, cases)
+	return ab, nil
+}
+
+// replayCases executes the case set against one body and returns the summary.
+func (r *SkillReplayRunner) replayCases(ctx context.Context, provider, model, body string, dataset *evaluation.Dataset, cases []evaluation.Case) *biz.SkillReplayResult {
 	result := &biz.SkillReplayResult{
 		DatasetID:   dataset.ID,
 		DatasetName: dataset.Name,
 		Total:       len(cases),
 	}
 	for _, c := range cases {
-		if r.replayCase(ctx, provider, model, draftBody, c) {
+		if r.replayCase(ctx, provider, model, body, c) {
 			result.Passed++
 		}
 	}
-	result.PassRate = float64(result.Passed) / float64(result.Total)
-	return result, nil
+	if result.Total > 0 {
+		result.PassRate = float64(result.Passed) / float64(result.Total)
+	}
+	return result
 }
 
 // findBoundDataset resolves the evaluation dataset bound to the skill by the

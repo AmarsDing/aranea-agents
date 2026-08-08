@@ -35,6 +35,7 @@ import { useChatTraceDialog, useChatSessionArtifacts } from './useChatTraceAndAr
 import { useChatSettingsDialog } from './useChatSettingsDialog';
 import { useChatDialogs } from './useChatDialogs';
 import { useChatComposerActions } from './useChatComposerActions';
+import { joinDictationText, useVoiceDictation } from './useVoiceDictation';
 import { favoriteSessionIDs, toggleFavoriteSession, emitSessionMutation } from '../../../stores/sessionSync';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
@@ -912,8 +913,33 @@ export function useChatWorkspace() {
     traceAndArtifacts.openSessionEvents(selectedSessionForUi.value?.id);
   }
 
+  // M74 听写模式：麦克风按钮 → /v1/voice(mode=dictation) → ASR 终稿填入输入框。
+  // 不建 Chat Turn、不触发 TTS（服务端语义）；手动编辑后由用户自行发送。
+  const voiceDictation = useVoiceDictation({
+    sessionId: () => selectedSessionForUi.value?.id ?? null,
+    onFinalText: (text) => {
+      inputText.value = joinDictationText(inputText.value, text);
+    },
+    onError: (err) => {
+      const key =
+        err.code === 'NO_SESSION'
+          ? 'companion.voiceNoSession'
+          : err.code === 'MIC_UNAVAILABLE'
+            ? 'companion.micUnavailable'
+            : err.code === 'VOICE_CHANNEL_CLOSED'
+              ? 'companion.voiceChannelClosed'
+              : 'chat.voiceDictationError';
+      $q.notify({ type: 'warning', message: t(key) });
+    },
+  });
+  // 会话切换时停止听写，避免终稿写入新会话的草稿。
+  watch(
+    () => selectedSessionForUi.value?.id,
+    () => voiceDictation.stop(),
+  );
+
   function onVoiceClick() {
-    $q.notify({ type: 'info', message: t('chat.voicePlaceholder') });
+    void voiceDictation.toggle();
   }
 
   function onPasteUnsupported() {
@@ -1434,6 +1460,8 @@ export function useChatWorkspace() {
       onInterruptPending,
       onUpdatePending,
       onVoiceClick,
+      dictating: voiceDictation.dictating,
+      dictationPartial: voiceDictation.partial,
       onMessageFeedback,
       retryFailedMessage: sender.retryFailedMessage,
       dismissFailedMessage: composerActions.dismissFailedMessage,

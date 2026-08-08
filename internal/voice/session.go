@@ -62,7 +62,13 @@ type StartParams struct {
 	DialogMode string
 	AgentKey   string
 	TeamID     string
+	// Mode 会话模式：空 = 对话（ASR 终稿建 Chat Turn + TTS 播报）；
+	// ModeDictation = 听写（终稿仅下行文本，由前端填入输入框，不建 Turn 不播报）。
+	Mode string
 }
+
+// ModeDictation 听写模式（聊天页语音输入按钮）。
+const ModeDictation = "dictation"
 
 // SessionDeps 是语音会话的全部外部依赖。
 type SessionDeps struct {
@@ -162,11 +168,20 @@ func (s *Session) Start(p StartParams) {
 		s.recoverToListening()
 		return
 	}
-	s.startEventLoop()
+	if !s.dictation() {
+		s.startEventLoop() // 听写模式无 TTS 播报，不订阅事件总线
+	}
 	s.resetIdleTimer()
-	s.flow.LogStart("voice.session.start", "语音会话开始")
-	s.lg.Info("voice session started", loggateway.StepID("voice.session.start"))
+	s.flow.LogStart("voice.session.start", "语音会话开始", event.P("mode", p.Mode))
+	s.lg.Info("voice session started", loggateway.StepID("voice.session.start"), loggateway.Str("mode", p.Mode))
 	s.broadcastState()
+}
+
+// dictation 报告当前会话是否为听写模式（params 在 Start 时一次性写入）。
+func (s *Session) dictation() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.params.Mode == ModeDictation
 }
 
 // WriteAudio 处理上行 PCM 帧；ASR 被空闲回收后懒重连。
@@ -199,7 +214,8 @@ func (s *Session) WriteAudio(pcm []byte) {
 // bufferUtterance 累积当前语句 PCM（V2-T6 留档）；超上限截断并 Warn 一次（K3 双轨）。
 func (s *Session) bufferUtterance(pcm []byte) {
 	s.mu.Lock()
-	if s.deps.Archiver == nil {
+	if s.deps.Archiver == nil || s.params.Mode == ModeDictation {
+		// 听写模式不创建消息，无留档挂载点，不缓冲 PCM。
 		s.mu.Unlock()
 		return
 	}
@@ -357,6 +373,20 @@ func (s *Session) asrPump(sess biz.ASRSession) {
 			return
 		case ev, ok := <-events:
 			if !ok {
+				// 上游终结事件流（真机：火山末帧应答后 close 1000 关连接，一句一连接）。
+				// CAS 摘掉已终结会话，下一句 WriteAudio 懒重开（对齐 reclaimIdleASR）。
+				// teardown/reclaim 已摘表时 CAS 失败，不重复 Close、不打日志。
+				s.mu.Lock()
+				stale := s.asr == sess
+				if stale {
+					s.asr = nil
+				}
+				s.mu.Unlock()
+				if stale {
+					_ = sess.Close()
+					s.lg.Info("voice asr: upstream stream ended, next utterance reopens",
+						loggateway.StepID("voice.asr.upstream_end"))
+				}
 				return
 			}
 			switch ev.Type {
@@ -384,6 +414,11 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	pcm := s.takeUtteranceBuffer()
 	_ = s.down.SendJSON(map[string]any{"type": "asr.final", "text": text, "duration_ms": ev.DurationMs})
 	s.flow.LogDone("voice.asr.final", "语音识别终稿", event.P("duration_ms", ev.DurationMs))
+	if s.dictation() {
+		// 听写模式：终稿文本已下行，由前端填入输入框；不拦截确认词、
+		// 不建 Chat Turn、不触发 TTS，状态停留 listening 连续听写。
+		return
+	}
 	// V2-T5 语音确认拦截：词表命中且有待决议确认时，决议确认且不创建 turn。
 	if decision := MatchVoiceConfirm(text); decision != VoiceConfirmNone {
 		if s.tryResolveVoiceConfirm(text, decision) {

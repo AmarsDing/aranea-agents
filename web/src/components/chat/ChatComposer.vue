@@ -112,6 +112,14 @@
           </q-select>
         </div>
 
+        <!-- 听写状态条：录音中显示实时识别文本（M74 dictation） -->
+        <div v-if="dictating" class="dictation-bar row items-center no-wrap">
+          <span class="dictation-bar__dot" />
+          <span class="dictation-bar__text ellipsis">{{
+            dictationPartial || t('chat.voiceDictationListening')
+          }}</span>
+        </div>
+
         <!-- 输入框 -->
         <q-input
           :model-value="modelValue"
@@ -160,13 +168,15 @@
             </span>
             <q-btn
               unelevated
-              outline
-              color="accent"
-              :aria-label="t('chat.voiceInput')"
-              class="composer-btn composer-btn--outline"
+              :outline="!dictating"
+              :color="dictating ? 'negative' : 'accent'"
+              :aria-label="dictating ? t('chat.voiceDictationStop') : t('chat.voiceInput')"
+              class="composer-btn"
+              :class="dictating ? 'composer-btn--filled composer-btn--recording' : 'composer-btn--outline'"
               @click="$emit('voice')"
             >
-              <q-icon name="mic" size="22px" />
+              <q-icon :name="dictating ? 'stop' : 'mic'" size="22px" />
+              <q-tooltip v-if="dictating">{{ t('chat.voiceDictationStop') }}</q-tooltip>
             </q-btn>
             <q-btn
               v-if="sending || isRunnerActive"
@@ -222,6 +232,10 @@ const props = defineProps<{
   sessionId?: string;
   fileSupported?: boolean;
   fileAccept?: string;
+  /** M74 听写中（麦克风录音态 UI）。 */
+  dictating?: boolean;
+  /** 听写识别中的部分文本（输入框上方实时字幕）。 */
+  dictationPartial?: string;
 }>();
 
 const emit = defineEmits<{
@@ -294,6 +308,35 @@ function onInputKeydown(event: KeyboardEvent) {
 </script>
 
 <style scoped lang="sass">
+/* 听写状态条（M74 dictation）：录音态红点 + 实时识别文本 */
+.dictation-bar
+  padding: 4px 10px
+  border-radius: 10px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(8px)
+  -webkit-backdrop-filter: blur(8px)
+  font-size: 12px
+  color: var(--color-text-secondary)
+
+.dictation-bar__dot
+  flex: none
+  width: 8px
+  height: 8px
+  border-radius: 50%
+  margin-right: 8px
+  background: var(--color-danger)
+  animation: dictation-pulse 1.2s ease-in-out infinite
+
+.dictation-bar__text
+  min-width: 0
+
+@keyframes dictation-pulse
+  0%, 100%
+    opacity: 1
+  50%
+    opacity: 0.3
+
 /* 统一圆角卡片 */
 .composer-card
   position: relative

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { clampAmplitude, hudParamsFor, TINT_AMBER, TINT_CYAN, TINT_GREEN, TINT_RED } from '../hud/hudParams';
 
-describe('hudParamsFor — 能量核缩放（设计 §7.4）', () => {
+describe('hudParamsFor — 能量核缩放（设计 §7.4 v2）', () => {
   it('idle 呼吸：sin 0.5Hz ±4%', () => {
     // 0.5Hz → 周期 2s；t=0.5s 处 sin(π/2)=1 → 1.04
     expect(hudParamsFor('idle', 0.5, 0).coreScale).toBeCloseTo(1.04, 5);
@@ -28,11 +28,11 @@ describe('hudParamsFor — 能量核缩放（设计 §7.4）', () => {
   });
 });
 
-describe('hudParamsFor — 粒子环与频谱环', () => {
-  it('listening 外环展开 1.2×，其余 1.0×', () => {
-    expect(hudParamsFor('listening', 0, 0).outerRingScale).toBeCloseTo(1.2, 5);
-    expect(hudParamsFor('idle', 0, 0).outerRingScale).toBeCloseTo(1.0, 5);
-    expect(hudParamsFor('speaking', 0, 0).outerRingScale).toBeCloseTo(1.0, 5);
+describe('hudParamsFor — 刻度环与频谱环', () => {
+  it('listening 刻度环展开 1.2×，其余 1.0×', () => {
+    expect(hudParamsFor('listening', 0, 0).ringExpand).toBeCloseTo(1.2, 5);
+    expect(hudParamsFor('idle', 0, 0).ringExpand).toBeCloseTo(1.0, 5);
+    expect(hudParamsFor('speaking', 0, 0).ringExpand).toBeCloseTo(1.0, 5);
   });
 
   it('thinking 转速 ×3，其余 ×1', () => {
@@ -45,6 +45,54 @@ describe('hudParamsFor — 粒子环与频谱环', () => {
     for (const s of ['idle', 'thinking', 'speaking', 'interrupted', 'error'] as const) {
       expect(hudParamsFor(s, 0, 0).spectrumVisible).toBe(false);
     }
+  });
+});
+
+describe('hudParamsFor — Bloom 辉光强度（V5-T1）', () => {
+  it('listening 最强（1.0），speaking 基础 1.1 随振幅增益', () => {
+    expect(hudParamsFor('listening', 0, 0).bloomIntensity).toBeCloseTo(1.0, 5);
+    expect(hudParamsFor('speaking', 0, 0).bloomIntensity).toBeCloseTo(1.1, 5);
+    expect(hudParamsFor('speaking', 0, 1).bloomIntensity).toBeCloseTo(1.5, 5);
+  });
+
+  it('interrupted 红闪提亮 1.3；idle 0.7 / thinking 0.9 / error 0.8', () => {
+    expect(hudParamsFor('interrupted', 0, 0).bloomIntensity).toBeCloseTo(1.3, 5);
+    expect(hudParamsFor('idle', 0, 0).bloomIntensity).toBeCloseTo(0.7, 5);
+    expect(hudParamsFor('thinking', 0, 0).bloomIntensity).toBeCloseTo(0.9, 5);
+    expect(hudParamsFor('error', 0, 0).bloomIntensity).toBeCloseTo(0.8, 5);
+  });
+
+  it('speaking 振幅越界时 bloom 增益被钳制', () => {
+    expect(hudParamsFor('speaking', 0, 9).bloomIntensity).toBeCloseTo(1.5, 5);
+  });
+});
+
+describe('hudParamsFor — 启动过场 boot（V5-T3）', () => {
+  it('boot=0 待机：核心收缩 0.75×、bloom 压至 35%、刻度环收缩 0.8×', () => {
+    const p = hudParamsFor('idle', 0, 0, 0);
+    expect(p.coreScale).toBeCloseTo(0.75, 5);
+    expect(p.bloomIntensity).toBeCloseTo(0.7 * 0.35, 5);
+    expect(p.ringExpand).toBeCloseTo(0.8, 5);
+  });
+
+  it('boot=1 满功率：与默认值一致', () => {
+    const def = hudParamsFor('listening', 0, 0);
+    const full = hudParamsFor('listening', 0, 0, 1);
+    expect(full.coreScale).toBeCloseTo(def.coreScale, 5);
+    expect(full.bloomIntensity).toBeCloseTo(def.bloomIntensity, 5);
+    expect(full.ringExpand).toBeCloseTo(def.ringExpand, 5);
+  });
+
+  it('boot=0.5 线性过渡（核心 0.875×、bloom 67.5%、环 0.9×）', () => {
+    const p = hudParamsFor('idle', 0, 0, 0.5);
+    expect(p.coreScale).toBeCloseTo(0.875, 5);
+    expect(p.bloomIntensity).toBeCloseTo(0.7 * 0.675, 5);
+    expect(p.ringExpand).toBeCloseTo(0.9, 5);
+  });
+
+  it('boot 越界被钳制到 [0,1]', () => {
+    expect(hudParamsFor('idle', 0, 0, -1).coreScale).toBeCloseTo(0.75, 5);
+    expect(hudParamsFor('idle', 0, 0, 2).coreScale).toBeCloseTo(1.0, 5);
   });
 });
 
@@ -75,35 +123,6 @@ describe('clampAmplitude', () => {
     expect(clampAmplitude(-0.2)).toBe(0);
     expect(clampAmplitude(1.8)).toBe(1);
     expect(clampAmplitude(Number.NaN)).toBe(0);
-  });
-});
-
-describe('hudParamsFor — 声波震动增益（V2-T5 HUD 增强）', () => {
-  it('listening/speaking 震动增益 = 1（音频驱动全开）', () => {
-    expect(hudParamsFor('listening', 0, 0).vibrationGain).toBe(1);
-    expect(hudParamsFor('speaking', 0, 0).vibrationGain).toBe(1);
-  });
-
-  it('thinking 微抖动 0.25；idle/interrupted/error 无震动', () => {
-    expect(hudParamsFor('thinking', 0, 0).vibrationGain).toBeCloseTo(0.25, 5);
-    for (const s of ['idle', 'interrupted', 'error'] as const) {
-      expect(hudParamsFor(s, 0, 0).vibrationGain).toBe(0);
-    }
-  });
-});
-
-describe('hudParamsFor — 全息弧线转速因子', () => {
-  it('thinking 最快（2.8），listening 次之（1.6）', () => {
-    expect(hudParamsFor('thinking', 0, 0).arcSpeedFactor).toBeCloseTo(2.8, 5);
-    expect(hudParamsFor('listening', 0, 0).arcSpeedFactor).toBeCloseTo(1.6, 5);
-  });
-
-  it('idle/speaking 常速；interrupted/error 近停滞', () => {
-    expect(hudParamsFor('idle', 0, 0).arcSpeedFactor).toBe(1);
-    expect(hudParamsFor('speaking', 0, 0).arcSpeedFactor).toBeCloseTo(1.4, 5);
-    for (const s of ['interrupted', 'error'] as const) {
-      expect(hudParamsFor(s, 0, 0).arcSpeedFactor).toBeCloseTo(0.4, 5);
-    }
   });
 });
 

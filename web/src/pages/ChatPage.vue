@@ -105,6 +105,8 @@
         :run-started-at="composer.runMeta?.startedAt"
         :run-event-count="composer.runMeta?.eventCount"
         :show-enqueue="composer.isRunnerActive"
+        :dictating="composer.dictating"
+        :dictation-partial="composer.dictationPartial"
         @enqueue-message="composer.onEnqueueWhileRunning"
         @update:dialog-mode="composer.onModeChange"
         @update:model-provider="composer.onProviderChange"
