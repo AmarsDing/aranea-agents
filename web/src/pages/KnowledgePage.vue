@@ -259,6 +259,7 @@ import KnowledgeMoveConflictDialog from '../components/knowledge/KnowledgeMoveCo
 import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
+import { useKnowledgeGraphDeltaWs } from '../features/knowledge/useKnowledgeGraphDeltaWs';
 import type { MoveDropResult, VaultQTreeNode } from '../features/knowledge/useVaultExplorer';
 import type { KnowledgeDocument, VaultTreeNode } from '../features/knowledge/types';
 
@@ -308,6 +309,7 @@ const {
   promotable,
   openPromoteDialog,
   submitPromote,
+  applyGraphDelta,
   explorer,
 } = useKnowledgePage();
 
@@ -469,6 +471,15 @@ function onGraphOpenInExplorer(payload: { docId: string; relPath: string }) {
   pageTab.value = 'explorer';
   void navigateToDocument(payload.docId, payload.relPath);
 }
+
+// SP1-I（I-4）：knowledge.graph.delta WS 订阅——反链/悬空链缓存失效 + 当前详情重载
+// （applyGraphDelta），当前图谱集合受影响时整图重载（文档级投影，增量边无法直接映射）。
+useKnowledgeGraphDeltaWs((delta) => {
+  const affected = applyGraphDelta(delta);
+  if (graphCollectionId.value && affected.collectionIds.includes(graphCollectionId.value)) {
+    void graph.loadGraph();
+  }
+});
 
 // ---------- G3-F 拖拽移动 + 搜索范围（V12.5/V12.6） ----------
 

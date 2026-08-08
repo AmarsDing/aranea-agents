@@ -3,6 +3,7 @@ package voice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/stretchr/testify/require"
@@ -34,13 +36,27 @@ type fakeExecutor struct {
 	mu     sync.Mutex
 	inputs []ChatTurnInput
 	err    error
+	errs   []error // 脚本：每次调用弹出头部错误；弹完后回退 err
 }
 
 func (f *fakeExecutor) ExecuteTurn(_ context.Context, in ChatTurnInput) error {
 	f.mu.Lock()
 	f.inputs = append(f.inputs, in)
+	var err error
+	if len(f.errs) > 0 {
+		err = f.errs[0]
+		f.errs = f.errs[1:]
+	} else {
+		err = f.err
+	}
 	f.mu.Unlock()
-	return f.err
+	return err
+}
+
+func (f *fakeExecutor) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.inputs)
 }
 
 type fakeCanceller struct {
@@ -257,6 +273,61 @@ func TestSessionStartBroadcastsListening(t *testing.T) {
 	fx := newSessionFixture(t)
 	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
 	require.Equal(t, "listening", fx.down.lastState())
+}
+
+func voiceBusyErr() error {
+	return apierror.Conflict("CHAT_TURN_BUSY", "session turn is starting; retry in a moment or use enqueue")
+}
+
+func TestIsTurnBusyError(t *testing.T) {
+	require.False(t, isTurnBusyError(nil))
+	require.False(t, isTurnBusyError(errors.New("boom")))
+	require.False(t, isTurnBusyError(apierror.Conflict("OTHER_DOMAIN", "nope")))
+	require.False(t, isTurnBusyError(apierror.Internal("CHAT_TURN_BUSY", "wrong code")))
+	require.True(t, isTurnBusyError(voiceBusyErr()))
+	require.True(t, isTurnBusyError(fmt.Errorf("wrap: %w", voiceBusyErr())))
+}
+
+func TestSessionTurnBusyRetryThenSuccess(t *testing.T) {
+	fx := newSessionFixture(t)
+	// 前两次撞 CHAT_TURN_BUSY（准入 TOCTOU 竞态），第三次放行。
+	fx.exec.errs = []error{voiceBusyErr(), voiceBusyErr()}
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 3 }, 3*time.Second, 10*time.Millisecond)
+	// 重试成功：整轮不失败（无 voice.error 下行）
+	for _, ty := range fx.down.typesOf() {
+		require.NotEqual(t, "voice.error", ty)
+	}
+}
+
+func TestSessionTurnBusyExhaustedFails(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.exec.err = voiceBusyErr() // 恒 busy：重试耗尽后走失败路径
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 3 }, 3*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		for _, ty := range fx.down.typesOf() {
+			if ty == "voice.error" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 10*time.Millisecond)
+	// 恰好 3 次尝试（1 + 2 次重试），不多不少
+	require.Equal(t, 3, fx.exec.callCount())
+}
+
+func TestSessionTurnNonBusyErrorNoRetry(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.exec.err = errors.New("boom")
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+	// 非 busy 错误不重试：快速失败
+	time.Sleep(600 * time.Millisecond)
+	require.Equal(t, 1, fx.exec.callCount())
 }
 
 func TestSessionTextInAudioOut(t *testing.T) {

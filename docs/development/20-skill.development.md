@@ -53,8 +53,8 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | SkillFilesystem 端口 | ✅ | `SkillFilesystem` 接口下沉到 storage 层，Service 层不再直接操作 `os` 包 |
 | 统一相似度引擎 | ✅ | `SkillSimilarityEngine` 4 维 Jaccard + 可选 Embedding 混合（`internal/biz/skill_similarity.go`） |
 | 三阶段合并 | ✅ | `SkillMergeUsecase` 内容融合 → Gate 验证 → 事务应用（`internal/biz/skill_merge.go`） |
-| 统一进化编排 | ✅ | `SkillEvolutionOrchestrator` + 3 Trigger（Pattern/Health/AgentConfig）+ 原子化检查（`internal/biz/skill_evolution_unified.go`） |
-| 进化验证强化与触发扩展（P2） | ⏳ | AB 对照回放棘轮 / Gate 漂移检测 / SuccessTrigger 成功沉淀 / 触发率黄金集回归（设计 [`phase3-进化能力/08`](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)，2026-08-09 启动） |
+| 统一进化编排 | ✅ | `SkillEvolutionOrchestrator` + 4 Trigger（Pattern/Health/AgentConfig/Success）+ 原子化检查（`internal/biz/skill_evolution_unified.go`） |
+| 进化验证强化与触发扩展（P2） | ✅ | AB 对照回放棘轮 / Gate 漂移检测 / SuccessTrigger 成功沉淀 / 触发率黄金集回归（设计 [`phase3-进化能力/08`](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)，2026-08-09 实施） |
 | ScoreSkill 四维权重 | ✅ | SuccessRate 0.4 + Duration 0.25 + Token 0.2 + Feedback 0.15（条件启用） |
 | 健康指标 | ✅ | `GetSkillHealth` RPC + `SkillHealthMetric`（7d/30d 调用统计、成功率、P95 耗时） |
 | 去重缓存 | ✅ | `DetectDuplicateGroups` 10min TTL 内存缓存 + `InvalidateDedupCache()` |
@@ -229,7 +229,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 25 | EvolutionCoordinator 清理 | P4+ | Phase 3 | ✅（A6） |
 | 26 | R2 进化链路修复（F3 磁盘 watcher 回滚进化成果 / F6 审批草稿冻结 / F8 模板降级可观测 / F9 冷却期过滤终态 / F10 沙盒 validator 标注） | P-evo | — | ✅（2026-07-27，见 [phase3-进化能力/06 §9](./phase3-进化能力/06-P0-LLM-Curator与Reload接线.design.md#9-r2-测试修复2026-07-27)） |
 | 27 | 标签字典（治理表 + 事务重写 + 孤儿治理 + 管理页 + 选项源复用） | P5 | Phase 2″ | ✅（2026-07-28） |
-| 28 | P2 进化验证强化与触发扩展（AB 对照回放棘轮 / 漂移检测 / 成功沉淀触发器 / 触发率黄金集回归） | P-evo | — | ⏳（2026-08-09 启动，设计 [phase3-进化能力/08](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)） |
+| 28 | P2 进化验证强化与触发扩展（AB 对照回放棘轮 / 漂移检测 / 成功沉淀触发器 / 触发率黄金集回归） | P-evo | — | ✅（2026-08-09，见 [phase3-进化能力/08](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)） |
 
 ---
 

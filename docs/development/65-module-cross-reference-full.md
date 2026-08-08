@@ -502,18 +502,19 @@
 
 ### 1.13 知识库 (`internal/knowledge/`)
 
-**职责**：统一摄取管线（上传 → Extractor 模态路由（文本/多模态）→ LLM 整理为 Markdown → 分块 → Embedding → pgvector → 检索）。
+**职责**：统一摄取管线（上传 → Extractor 模态路由（文本/多模态）→ LLM 整理为 Markdown → 分块 → Embedding → pgvector → 检索）；SP1 双模知识内核——块级双链解析/物化/内存图/反链/晋升/重建。
 
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（Knowledge 类型 + LLMCaller）、`provider`（Embedding/LLM 模型） |
 | **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
-| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`、`MarkdownOrganizer`（Phase 8/9 计划新增，见 37-knowledge.development.md） |
-| **共享类型** | `Chunk`、`RetrievalResult` |
-| **事件生产** | `knowledge_ingest` |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex` |
+| **共享类型** | `Chunk`、`RetrievalResult`；SP1：`KnowledgeBlock`、`KnowledgeBlockRefEdge`、`GraphDelta`、`BlockBacklink`/`DanglingLink`（service 契约） |
+| **事件生产** | `knowledge_ingest`；SP1：`knowledge.graph.delta`（SystemNotice，Informational，WS-only 不持久化）、`knowledge_rebuild_index`（进度） |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks） |
-| **前端对应** | KnowledgePage（含拖拽上传区/上传队列/MD 预览，Phase 8 计划新增） |
+| **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks）；SP1：`knowledge_blocks`（块物化，`anchor` 部分唯一索引 + `promoted_from/to` 谱系）、`knowledge_block_refs`（块级引用边，dst_* SET NULL / collection CASCADE 镜像内存图）；`vault_backend` 维度（local=文件系统真相源 / team=PG 真相源） |
+| **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载） |
+| **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；内存图与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本部署需事件广播保持 LinkIndex 一致（另立 ADR） |
 
 ---
 

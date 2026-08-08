@@ -712,6 +712,9 @@ type SimilarityMetrics struct {
 | `PatternTrigger` | 工具调用 Pattern | 从高频工具调用组合中检测新 Skill 需求，返回所有匹配 pattern |
 | `HealthTrigger` | 健康指标 | 检测 30d 失败率 > 30% 或 score < 60；依赖 `SkillScorer` 窄接口 |
 | `AgentConfigTrigger` | Agent 配置 | 预留扩展点（当前返回 nil） |
+| `SuccessTrigger` | 成功沉淀（P2 F3） | 检测 30d 成功率 ≥ 0.85 且调用量 ≥ `EvoTriggerMinInvocations` 且当前正文含规则块；与 health 共用 `(skill, improve_skill)` 冷却槽；产出「固化强化」型（非修复型）delta，禁删 `helpful>0` 规则 |
+
+**Gate 验证维度**（`GateVerifier`，`internal/biz/skill_evolution_loop.go`）：functional（sandbox + 数据集回放，P2 F1 扩展为 AB 对照棘轮——draft 通过率不得劣于当前正文基线，基线不可得时仅查绝对阈值 0.6）、security、performance、style、effectiveness（P1：harmful≥3 规则不得原样保留）、drift（P2 F2：删 helpful≥3 规则 / 删除比例 >50% / 臃肿双条件 >1.5× 且 >+5 → 拒绝）、trigger_accuracy（P2 F4：`{Name|Slug}__trigger` 黄金集确定性回归，复用 `skillruntime.MatchTrigger`，棘轮 + 绝对下限 0.8）。统一降级语义：依赖未配置 / 数据缺失时跳过不阻断。详见 [phase3-进化能力/08](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)。
 
 **SkillEvolutionOrchestrator**：
 

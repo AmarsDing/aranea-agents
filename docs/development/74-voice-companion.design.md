@@ -111,6 +111,13 @@ client                      voice gateway                 chat pipeline
   │←─ tts.end / state(listening)                           │
 ```
 
+> **As-built（V5.2 Turn 派发 busy 重试，2026-08-09）**：ASR 终稿派发 Chat Turn 撞
+> `CHAT_TURN_BUSY`（准入 TOCTOU 竞态：前一轮 Turn 尚在准入期、锁内复查发现活跃运行）
+> 时不再整轮失败——`Session.executeTurnWithBusyRetry` 短退避重试（3 次 × 250ms，对齐
+> channel 入口 `runNativeTurnWithBusyRetry`），重试后准入重查、`AllowQueue=true` 时消息
+> 转入排队队列等待执行，回复 delta 经事件总线正常进 TTS；重试耗尽才走
+> `handleTurnFailure`。首次重试记 `voice.turn.busy_retry` 进程日志（K4，非每次）。
+
 ### 2.5 服务可用性探测（`GET /v1/voice/status`，V2-T8）
 
 - HTTP GET（非 WS），复用 WS 同源鉴权；响应 `{asr_available, tts_available}`（bool）
@@ -191,6 +198,12 @@ type SpeechConfigReader interface {
 - 首句优化：累积 ≥ 6 字符且遇任意标点即切（保首音延迟）；后续句最小 12 字符（合并碎句，防 TTS 抖动）
 - 尾句：Turn 文本结束时 `flush=true` 强制送出残余
 - 过滤：markdown 代码块/URL/表格行不参与播报（剥离后送 TTS；纯工具调用 Turn 无文本则不启动 TTS）
+
+> **As-built（V5.2 纯标点句过滤，2026-08-09）**：`cut`/`hardCut` 送出前经
+> `speakable()` 判定——不含任何可朗读字符（unicode 字母/数字，覆盖 CJK）的句子
+> （纯标点/纯符号）不下发 TTS。此前此类句子被火山拒绝（`45002001 No readable text!`）
+> 并计入连续失败（调度器连续 3 次中止，该 Turn 后续句全部无声）。flush 语义不受影响：
+> 尾句被丢弃时由会话层补空文本 flush 哨兵驱动 `OnDrained`（tts.end 不缺失）。
 
 ### 4.2 TTS 调度器
 

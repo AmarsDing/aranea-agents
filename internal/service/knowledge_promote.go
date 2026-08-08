@@ -21,8 +21,13 @@ import (
 // 不回滚晋升——最终一致，重建索引自愈）。审计走 knowledgeFlow（K1/K2）。
 func (s *KnowledgeService) PromoteBlocks(ctx context.Context, req *v1.PromoteBlocksRequest) (*v1.PromoteBlocksResponse, error) {
 	blockIDs := req.GetBlockIds()
-	if len(blockIDs) == 0 {
-		return nil, apierror.BadRequest("KNOWLEDGE", "block_ids is required")
+	docIDs := req.GetDocIds()
+	// SP1-I：doc_ids 文档级入口（与 block_ids 互斥）——解析整文档全部块走同一晋升管线。
+	if len(blockIDs) > 0 && len(docIDs) > 0 {
+		return nil, apierror.BadRequest("KNOWLEDGE", "block_ids and doc_ids are mutually exclusive")
+	}
+	if len(blockIDs) == 0 && len(docIDs) == 0 {
+		return nil, apierror.BadRequest("KNOWLEDGE", "block_ids or doc_ids is required")
 	}
 	target, err := s.uc.GetCollection(ctx, req.GetTargetCollectionId())
 	if err != nil {
@@ -31,15 +36,26 @@ func (s *KnowledgeService) PromoteBlocks(ctx context.Context, req *v1.PromoteBlo
 	if err := s.assertCollectionMutateAccess(ctx, target); err != nil {
 		return nil, err
 	}
-	if err := s.assertPromoteSourceAccess(ctx, blockIDs); err != nil {
-		return nil, err
-	}
 
 	flow := s.knowledgeFlow(ctx)
-	flow.LogStart("knowledge.block.promote", "知识块晋升",
-		event.P("target_collection_id", target.ID),
-		event.P("block_count", len(blockIDs)))
-	res, err := s.uc.PromoteBlocks(ctx, blockIDs, target.ID)
+	var res bizknowledge.PromoteResult
+	if len(docIDs) > 0 {
+		if err := s.assertPromoteDocSourceAccess(ctx, docIDs); err != nil {
+			return nil, err
+		}
+		flow.LogStart("knowledge.block.promote", "知识块晋升",
+			event.P("target_collection_id", target.ID),
+			event.P("doc_count", len(docIDs)))
+		res, err = s.uc.PromoteDocuments(ctx, docIDs, target.ID)
+	} else {
+		if err := s.assertPromoteSourceAccess(ctx, blockIDs); err != nil {
+			return nil, err
+		}
+		flow.LogStart("knowledge.block.promote", "知识块晋升",
+			event.P("target_collection_id", target.ID),
+			event.P("block_count", len(blockIDs)))
+		res, err = s.uc.PromoteBlocks(ctx, blockIDs, target.ID)
+	}
 	if err != nil {
 		flow.LogError("knowledge.block.promote", "知识块晋升失败",
 			event.P("target_collection_id", target.ID),
@@ -92,6 +108,31 @@ func (s *KnowledgeService) assertPromoteSourceAccess(ctx context.Context, blockI
 		}
 		seenDocs[docID] = true
 		doc, err := s.uc.GetDocument(ctx, docID)
+		if err != nil {
+			return err
+		}
+		if seenCols[doc.CollectionID] {
+			continue
+		}
+		seenCols[doc.CollectionID] = true
+		col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+		if err != nil {
+			return err
+		}
+		if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// assertPromoteDocSourceAccess 文档级晋升源侧写权限断言：逐文档解析归属库
+// （未知文档 NotFound 透传），按库去重后逐库 mutate 断言（C-01 跨租户
+// NotFound 防泄漏，同 assertPromoteSourceAccess 口径）。
+func (s *KnowledgeService) assertPromoteDocSourceAccess(ctx context.Context, docIDs []string) error {
+	seenCols := map[string]bool{}
+	for _, id := range docIDs {
+		doc, err := s.uc.GetDocument(ctx, id)
 		if err != nil {
 			return err
 		}

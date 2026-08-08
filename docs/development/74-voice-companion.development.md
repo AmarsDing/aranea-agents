@@ -130,7 +130,18 @@
 | V5.1-T2 | **thinking 去琥珀**：`TINT_AMBER` 删除，idle/listening/thinking/speaking 统一青蓝系（`#22d3ee→#34d399`），thinking 仅靠转速 ×3/收缩 0.85×/高波动区分；interrupted/error 保留红色警示 | ✅ | hudParams.spec tint 例改写（四态青蓝 + 红警示），26/26 通过 |
 | V5.1-T3 | **speaking 粒子 + 震动**：新增 `parts/EnergyParticles.ts`（220 粒子绕核轨道云，`particleGain` 六态增益驱动亮度/轨道速度/尺寸，speaking 振幅外推粒子，vertexColors 内外层双色，帧间零分配）；进入 speaking 自动 `burst()`（涟漪 + Bloom 提亮）；相机按 `shakeGain × level` 高频微抖 | ✅ | `particleGain`/`shakeGain` 纯函数入 hudParams + 单测 2 例；全量 `pnpm test` 204 文件 1562 例全绿、`pnpm lint` 0 errors（存量 warning 基线不变）、`pnpm build` 通过 |
 
-> V5.1 顺带发现（未修，另行评估）：① 03:28 会话 `TURN_FAILED [CHAT_TURN_BUSY/CONFLICT]`——语音 Turn 与进行中 Turn 冲突时整轮无回复无播报（前端仅有 voice.error 提示）；② 03:11 `voice.tts.sentence_skip`——分句器产出无可读文本的句子被火山 TTS 拒绝（`45002001 No readable text!`）后跳过，造成该句无声。
+> V5.1 顺带发现（已由 V5.2 修复，见下）：① 03:28 会话 `TURN_FAILED [CHAT_TURN_BUSY/CONFLICT]`——语音 Turn 与进行中 Turn 冲突时整轮无回复无播报（前端仅有 voice.error 提示）；② 03:11 `voice.tts.sentence_skip`——分句器产出无可读文本的句子被火山 TTS 拒绝（`45002001 No readable text!`）后跳过，造成该句无声。
+
+### Phase V5.2 — 语音 Turn busy 重试 + 纯标点句过滤（2026-08-09）✅
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V5.2-T1 | **CHAT_TURN_BUSY 整轮无回复修复**：`internal/voice/session.go` 新增 `executeTurnWithBusyRetry`（3 次 × 250ms 退避，镜像 channel 入口 `runNativeTurnWithBusyRetry` 策略）+ `isTurnBusyError` 判定（voice 不反向依赖 service，领域字符串对齐 `turn_outcome.go`）；ASR 终稿派发改走重试——busy 竞态重试后准入重查，`AllowQueue=true` 转排队队列，回复 delta 经事件总线正常进 TTS；耗尽才 `handleTurnFailure`。首次重试记 `voice.turn.busy_retry` 进程日志（K4） | ✅ | TDD：session_test 新增 4 例（isTurnBusyError 谓词 6 断言 / 2 次 busy 后成功无 voice.error / 恒 busy 恰好 3 次后 TURN_FAILED / 非 busy 错误不重试快速失败）RED→GREEN；`go test ./internal/voice/ ./internal/server/ -count=1` 与 `-race` 全绿 |
+| V5.2-T2 | **纯标点句 TTS 跳句修复**：`sentence_chunker.go` 新增 `speakable()`（unicode 字母/数字，覆盖 CJK），`cut`/`hardCut` 送出前过滤无可读字符句——不再触发火山 `45002001` 计入连续失败（原连续 3 次中止调度器致后续句全无声）；flush 语义由会话层空文本哨兵兜底（tts.end 不缺失） | ✅ | TDD：chunker_test 新增 3 例（纯标点 Flush 丢弃 / 前导标点+可读文本整句保留 / 纯标点 hardCut 丢弃）RED→GREEN；voice 包全量 + `-race` 全绿；`go build ./cmd/... ./internal/... ./pkg/...` 干净；新二进制已部署 :8000 供实测 |
+
+> **V5.2 运行时验证（2026-08-09）**：新二进制 :8000 + 前端 :9001 起服后，真机探针 `voice_chain_probe.go` 两句连说全链路通过——turn1/turn2 均 asr.final 准确（"你好，请用一句话介绍你自己。"）→ turn.accepted → tts.start → ~9.8s 音频下行 → tts.end → 回 listening，无 voice.error；后端日志窗口无 `busy_retry`/`sentence_skip`/`TURN_FAILED`。Companion 页浏览器实测 HUD 正常渲染（青蓝反应堆 + 刻度环 + 粒子云，麦克风未置灰，0 console errors）。
+>
+> **V5.2 遗留（另行评估）**：①排队 Turn 静默风险——voice 回 listening 后，若此前派发的 Turn 经 busy 重试/准入转入排队队列，其执行时的 delta 会被 `feedDelta` 门禁（`pendingTurns>0 && thinking/speaking`）丢弃，需 FSM 补边（listening + pendingTurns>0 时 delta 唤醒 thinking）且 `pendingTurns` 计数不区分语音/文字 Turn（同 session 文字 run 的 TurnCompletedEvent 会误扣）；②speaking/thinking 态收到新 ASR 终稿被 FSM 非法转换静默忽略（V1 语义：播报中插话请先打断/取消）——是否改排队为产品决策。真机 busy 竞态窗口为亚秒级，日常连说两句主要命中路径为「前一轮收尾完成后直接执行」，已由探针覆盖。
 
 ### Phase V6 — 语音听写（聊天页语音输入，P1）✅ 2026-08-09
 

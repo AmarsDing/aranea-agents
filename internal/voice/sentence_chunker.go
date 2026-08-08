@@ -6,6 +6,7 @@ package voice
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -95,7 +96,7 @@ func (c *SentenceChunker) cut(flush bool) {
 	text := cleanForSpeech(string(c.buf))
 	c.buf = c.buf[:0]
 	c.sinceMark = 0
-	if text == "" {
+	if !speakable(text) {
 		return
 	}
 	c.emitted++
@@ -112,11 +113,24 @@ func (c *SentenceChunker) hardCut() {
 		c.sinceMark = 0
 	}
 	text := cleanForSpeech(head)
-	if text == "" {
+	if !speakable(text) {
 		return
 	}
 	c.emitted++
 	c.onSentence(text, false)
+}
+
+// speakable 报告文本是否含可朗读字符（字母/数字，unicode 覆盖 CJK）。
+// 纯标点/符号句喂给 TTS 会被火山拒绝（45002001 No readable text!）并计入
+// 连续失败（tts_scheduler 连续 3 次中止），因此不下发。flush 语义不受影响：
+// 尾句被丢弃时由会话层补空文本 flush 哨兵驱动 OnDrained。
+func speakable(text string) bool {
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func isSentenceBoundary(r rune) bool {

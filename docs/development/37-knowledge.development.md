@@ -1084,7 +1084,7 @@ G5-F（后端治理，独立可并行）─────────────�
 | **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | ✅ |
 | **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | ✅ |
 | **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | ✅ |
-| **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | 📋 |
+| **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | ✅ |
 
 ### SP1-A：块解析管线 blockparse 包（纯函数）
 
@@ -1231,6 +1231,18 @@ G5-F（后端治理，独立可并行）─────────────�
 | I-4 | `knowledge.graph.delta` WS 订阅接线：图谱/反链视图增量更新（摘除边 / 节点灰显两类变更分别处理） | `web/src/features/knowledge/`（新增 composable）、图谱/反链消费方 |
 
 验收：对照验收 38~44 全链路浏览器复验；i18n 键全入 locale（check-i18n 红线）。
+
+> **2026-08-09 完成（TDD）**：
+> - **I-1 块级反链分组**：`KnowledgeDocDetail.vue` 关联区下方新增「反向链接」分组（来源文档 + 上下文片段 + embed 徽标，点击导航来源文档）；`api.ts listBlockBacklinks` + store `backlinksByDoc` 缓存 + explorer `reloadDetail` 并行加载。
+> - **I-2 dangling 灰显 + team 徽标**：`knowledgeUi.splitDanglingPreview` 纯函数（wikilink 分段，别名取 `|` 前、`#heading`/`#^anchor` 保留口径与 blockparse 一致），浏览视图命中 dangling 目标灰显 + 虚线 underline + hover 提示；`KnowledgeVaultTree.vue` / `KnowledgeGraph3D.vue` 库选择器 team 库「团队」徽标（`VaultQTreeNode.vaultBackend` 维度）。
+> - **I-3 晋升 UI**：`KnowledgePromoteDialog.vue`（新增）两阶段——目标团队库选择（`promoteTargetOptions` 纯函数过滤 team 库且排除源库）→ 结果反馈（新建块数 + 级联提示清单：未一并晋升的私有引用 raw_target 列表 + 悬空复活提示）；`KnowledgeDocDetail` 操作行晋升按钮（`promotable`：非 team 库 + 已选中文件）；`api.ts promoteDocuments`（doc_ids 文档级入口，SP1-G 后端 `PromoteDocuments`）+ store `promoteDocs`（目标库树缓存失效）。
+> - **I-4 graph.delta WS 订阅**：`graphDelta.ts`（新增，`parseGraphDeltaMeta`/`graphDeltaAffected` 纯函数，snake_case Meta 与 service `knowledge_graph_delta.go` 对齐）+ `useKnowledgeGraphDeltaWs.ts`（新增，SystemNotice 通道过滤 `knowledge.graph.delta`，页面级单订阅）；`useKnowledgePage.applyGraphDelta`——失效受影响文档反链/关联缓存 + 集合悬空链缓存（store `invalidateLinkCaches`），当前详情受影响时 `reloadDetail`（灰显/反链刷新）；当前图谱集合受影响时整图 `loadGraph`（文档级投影，增量边无法直接映射，重载即「摘除边消失 / dangling 节点灰显」两类变更的统一呈现）。
+> - **修 I-1/I-2 遗留断线**：`KnowledgePage.vue` 补 `:dangling-targets` 透传（I-2 灰显此前未生效）；`useVaultExplorer.ux.spec.ts` mock 补 `loadDanglingLinks`（缺失致 3 个 UX 测试失败）；store 补 `moveDocumentToDir` 导入（此前遗漏，build 会断）。
+> - **测试**：`knowledgeUi.spec.ts` +12 用例（splitDanglingPreview 4 + promoteTargetOptions 4，TDD RED→GREEN）；`graphDelta.spec.ts` 7 用例（Meta 解析/受影响面提取）。
+>
+> 验证：`npx vitest run src/features/knowledge src/stores` 382 全绿；`npx eslint --fix`（全部改动文件）零告警；i18n 键 zh-CN/en-US 双侧同步（promote* 13 键 + danglingTargetHint/vaultTeamBadge）。
+>
+> **as-built 偏差**：晋升 UI 仅文档级入口（doc_ids）——浏览视图无块选择能力，块级晋升（block_ids）留待 SP2 编辑器；图谱增量为整图重载而非逐边应用（文档级投影粒度，SP3 图谱 2.0 再评估逐边增量）。
 
 ### 依赖关系
 

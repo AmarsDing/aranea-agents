@@ -99,3 +99,32 @@ func TestChunkerNewlineBoundary(t *testing.T) {
 	ch.Write("第一行足够长了吧\n第二行")
 	require.Equal(t, []string{"第一行足够长了吧"}, c.texts())
 }
+
+func TestChunkerDropsPunctuationOnly(t *testing.T) {
+	c := &collector{}
+	ch := NewSentenceChunker(c.fn())
+	// 纯标点句无可读字符，喂给火山 TTS 会被拒（45002001 No readable text!）
+	// 并计入连续失败（3 次中止调度器）——不下发。
+	ch.Write("！！！。。。")
+	ch.Flush()
+	require.Empty(t, c.texts())
+}
+
+func TestChunkerKeepsSentenceWithLeadingPunct(t *testing.T) {
+	c := &collector{}
+	ch := NewSentenceChunker(c.fn())
+	// 前导标点 + 可读文本：整句保留（标点随可读句一起播报）。
+	ch.Write("！！！好的没问题。")
+	ch.Flush()
+	require.Equal(t, []string{"！！！好的没问题。"}, c.texts())
+}
+
+func TestChunkerHardCutDropsPunctuationOnly(t *testing.T) {
+	c := &collector{}
+	ch := NewSentenceChunker(c.fn())
+	// 纯标点达到硬上限：hardCut 同样丢弃。
+	ch.Write(strings.Repeat("！", 100))
+	require.Empty(t, c.texts())
+	ch.Flush()
+	require.Empty(t, c.texts())
+}

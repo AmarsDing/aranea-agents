@@ -27,8 +27,13 @@ import (
 //     同样在源文档下次写路径重解析时愈合（最终一致，SP1-ADR-3）。
 
 // newAnchorID 生成回填锚点（^<uuid7>；锚字符集 [A-Za-z0-9_-] 兼容解析正则）。
+// 熵源故障降级 v4（项目惯用 uuid.NewString），不 panic（BE5）。
 func newAnchorID() string {
-	return uuid.Must(uuid.NewV7()).String()
+	id, err := uuid.NewV7()
+	if err != nil {
+		return uuid.NewString()
+	}
+	return id.String()
 }
 
 // backfillAnchors 逐请求执行回填；单请求失败不阻塞其余（best-effort）。

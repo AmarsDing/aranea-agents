@@ -2,7 +2,7 @@
 
 > **版本**：2026-06-17 | **状态**：✅ API + 指标 + Scanner + 状态机 + Rollback；🟡 趋势图 / diff / 护栏运行时未通
 > **需求**：[7 agent-evolution.md](./7%20agent-evolution.md) · **设计**：[7 agent-evolution.design.md](./7-agent-evolution.design.md)
-> **进化深化设计**：[phase3-进化能力/实施进度.md](./phase3-进化能力/实施进度.md)（06 P0 Curator/Reload ✅ · 07 P1 Delta 协议与归因 ✅ · 08 P2 验证强化与触发扩展 ⏳）
+> **进化深化设计**：[phase3-进化能力/实施进度.md](./phase3-进化能力/实施进度.md)（06 P0 Curator/Reload ✅ · 07 P1 Delta 协议与归因 ✅ · 08 P2 验证强化与触发扩展 ✅）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-07
 
 ---

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
@@ -19,6 +20,48 @@ const idleReclaimTimeout = 10 * time.Minute
 
 // interruptedSettleDelay 是 interrupted 过渡态自动回 listening 的延迟（设计 §5）。
 const interruptedSettleDelay = 300 * time.Millisecond
+
+// voiceTurnBusyRetries/voiceTurnBusyBackoff 对齐 channel 入口的 busy 重试策略
+// （channelTurnBusyRetries/channelTurnBusyBackoff）。CHAT_TURN_BUSY 是准入
+// TOCTOU 竞态（chat_orchestrator_turn.go 锁内复查）：重试让准入重查，
+// AllowQueue=true 时消息转入排队队列，而非整轮无回复无播报。
+const (
+	voiceTurnBusyRetries = 3
+	voiceTurnBusyBackoff = 250 * time.Millisecond
+)
+
+// isTurnBusyError 报告 CHAT_TURN_BUSY 准入竞态（镜像 service/turn_outcome.go
+// 的判定；voice 不反向依赖 service，领域字符串在此保持一致）。
+func isTurnBusyError(err error) bool {
+	ae, ok := apierror.From(err)
+	return ok && ae.Code == apierror.CodeConflict && ae.Domain == "CHAT_TURN_BUSY"
+}
+
+// executeTurnWithBusyRetry 派发 Chat Turn，撞 CHAT_TURN_BUSY 时短退避重试。
+func (s *Session) executeTurnWithBusyRetry(ctx context.Context, in ChatTurnInput) error {
+	var err error
+	for attempt := 0; attempt < voiceTurnBusyRetries; attempt++ {
+		if attempt > 0 {
+			if attempt == 1 {
+				// K4：首次重试记一条进程日志即可，非每次
+				s.lg.Warn("voice turn busy, retrying (K4)",
+					loggateway.StepID("voice.turn.busy_retry"),
+					loggateway.SessionID(s.sessionID))
+			}
+			timer := time.NewTimer(voiceTurnBusyBackoff)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+		if err = s.deps.Executor.ExecuteTurn(ctx, in); err == nil || !isTurnBusyError(err) {
+			return err
+		}
+	}
+	return err
+}
 
 // ---- 注入端口（server 层适配，避免 voice 依赖 internal/server）----
 
@@ -451,7 +494,7 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		if err := s.deps.Executor.ExecuteTurn(turnCtx, ChatTurnInput{
+		if err := s.executeTurnWithBusyRetry(turnCtx, ChatTurnInput{
 			SessionID: s.sessionID, Content: text, AgentKey: params.AgentKey, TeamID: params.TeamID, Voice: voiceMeta,
 		}); err != nil {
 			s.handleTurnFailure(err)

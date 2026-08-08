@@ -5,6 +5,7 @@ import axios from 'axios';
 import { hasIndexingDocuments, promoteTargetOptions } from './knowledgeUi';
 import { getDocumentContent } from './api';
 import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
+import { graphDeltaAffected, type KnowledgeGraphDelta } from './graphDelta';
 import type {
   KnowledgeDocument,
   KnowledgeUploadTask,
@@ -623,6 +624,21 @@ export function useKnowledgePage() {
     }
   }
 
+  // ---------- SP1-I（I-4）：knowledge.graph.delta WS 增量 ----------
+
+  /** 图谱增量应用：失效受影响文档的反链/关联缓存 + 集合悬空链缓存；
+   *  当前详情文档受影响时重载（dangling 灰显/反链列表随之刷新）。
+   *  返回受影响面供调用方判定图谱重载。 */
+  function applyGraphDelta(delta: KnowledgeGraphDelta): { docIds: string[]; collectionIds: string[] } {
+    const affected = graphDeltaAffected(delta);
+    knowledgeStore.invalidateLinkCaches(affected.docIds, affected.collectionIds);
+    const currentDocId = explorer.selectedDocId.value;
+    if (currentDocId && affected.docIds.includes(currentDocId)) {
+      explorer.reloadDetail();
+    }
+    return affected;
+  }
+
   function stopDocPoll() {
     if (docPollTimer) {
       clearInterval(docPollTimer);
@@ -745,6 +761,7 @@ export function useKnowledgePage() {
     promotable,
     openPromoteDialog,
     submitPromote,
+    applyGraphDelta,
     explorer,
   };
 }
