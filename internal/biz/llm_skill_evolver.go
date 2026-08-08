@@ -110,7 +110,7 @@ func (e *LLMSkillEvolver) EvolveDraft(ctx context.Context, in SkillDraftInput) (
 // the program settles the previous cycle's attribution verdict onto the
 // touched rules, applies the ops locally, and renders the result.
 func (e *LLMSkillEvolver) evolveDelta(ctx context.Context, in SkillDraftInput, currentBody string) (string, error) {
-	text, err := e.callLLM(ctx, evolverDeltaSystemPrompt, buildEvolverUserPrompt(in, currentBody))
+	text, err := e.callLLM(ctx, evolverDeltaSystemPromptFor(in.SuggestType), buildEvolverUserPrompt(in, currentBody))
 	if err != nil {
 		return "", err
 	}
@@ -201,9 +201,34 @@ const evolverDeltaSystemPrompt = `你是 Skill 进化策展人（Curator）。�
 3. helpful/harmful 计数高的规则是历史上有效/无效的规则：harmful 计数 >= 3 的规则应重写或移除，不得原样保留。
 4. 输出必须是合法 JSON 数组，不要使用 code fence。`
 
+// evolverDeltaSuccessConstraint 是 success 来源（P2 F3 成功沉淀）追加到
+// delta system prompt 的约束：沉淀只做固化与强化，remove 仅允许针对
+// harmful>0 的规则。
+const evolverDeltaSuccessConstraint = `5. 本次为成功模式沉淀：remove 操作仅允许针对 harmful > 0 的规则；helpful > 0 的规则不得删除，只可 modify/merge 强化或补充成功示例。`
+
+// evolverDeltaSystemPromptFor returns the delta system prompt, appending the
+// success-precipitation constraint when the suggestion comes from the
+// SuccessTrigger (P2 F3).
+func evolverDeltaSystemPromptFor(t EvolutionSuggestionType) string {
+	if t == EvoSuggestionSuccessPattern {
+		return evolverDeltaSystemPrompt + "\n" + evolverDeltaSuccessConstraint
+	}
+	return evolverDeltaSystemPrompt
+}
+
 func buildEvolverUserPrompt(in SkillDraftInput, currentBody string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## 进化类型\n%s\n\n## 触发原因（运行观测证据）\n%s\n", in.SuggestType, in.TriggerReason)
+
+	// P2 F3 成功沉淀分支：指令为「固化与强化」而非「修复」——保留现有规则
+	// 结构、可为高 helpful 规则补充成功示例、禁止删除 helpful>0 规则。
+	if in.SuggestType == EvoSuggestionSuccessPattern {
+		fmt.Fprintf(&b, "\n## 本次任务：成功模式沉淀\n")
+		fmt.Fprintf(&b, "该 Skill 运行表现优秀。你的任务是固化与强化其正向模式，而不是修复问题：\n")
+		fmt.Fprintf(&b, "1. 保留现有规则结构与全部 helpful > 0 的规则（禁止删除）。\n")
+		fmt.Fprintf(&b, "2. 可为高 helpful 规则补充成功示例或更精确的实施细节，强化其可复用性。\n")
+		fmt.Fprintf(&b, "3. 不要引入与成功证据无关的新约束。\n")
+	}
 
 	if in.Attribution != nil && in.Attribution.Verdict != "" {
 		fmt.Fprintf(&b, "\n## 上一次改进的有效性裁决\n")

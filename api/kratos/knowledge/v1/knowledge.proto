@@ -278,6 +278,10 @@ message ListDanglingLinksResponse {
 message PromoteBlocksRequest {
   repeated string block_ids = 1 [(google.api.field_behavior) = REQUIRED];
   string target_collection_id = 2 [(google.api.field_behavior) = REQUIRED];  // must be vault_backend=team
+  // SP1-I: document-level convenience for the explorer UI — the server resolves
+  // every block of each document (ordinal order) and promotes them through the
+  // same pipeline. Mutually exclusive with block_ids.
+  repeated string doc_ids = 3;
 }
 
 // PromotedBlockLineage is one source→clone lineage pair (US-27).
@@ -299,6 +303,20 @@ message PromoteCascadeCandidate {
 message PromoteBlocksResponse {
   repeated PromotedBlockLineage created_blocks = 1;
   repeated PromoteCascadeCandidate cascade_candidates = 2;
+}
+
+// RebuildKnowledgeIndexRequest triggers a streaming rebuild of the block-level
+// derived index (blocks/refs) for all documents of one collection (SP1-H, US-29).
+// Idempotent: re-running after interruption is equivalent to running from scratch.
+message RebuildKnowledgeIndexRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];  // collection id
+}
+
+// RebuildKnowledgeIndexResponse acknowledges the accepted asynchronous rebuild.
+// Progress is broadcast on the knowledge WS channel (EP-KN-02 pattern,
+// event_type = knowledge_rebuild_index); sync_state = "rebuilding" while running.
+message RebuildKnowledgeIndexResponse {
+  string status = 1;  // "rebuilding" (task accepted)
 }
 
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
@@ -562,6 +580,17 @@ service KnowledgeService {
   rpc PromoteBlocks(PromoteBlocksRequest) returns (PromoteBlocksResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/blocks/promote"
+      body: "*"
+    };
+  }
+  // RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+  // for every document of the collection (SP1-H, US-29). Asynchronous and
+  // idempotent; 409 Conflict while a rebuild is already running for the same
+  // collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+  // stay on old data during the rebuild (degraded but available).
+  rpc RebuildKnowledgeIndex(RebuildKnowledgeIndexRequest) returns (RebuildKnowledgeIndexResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/collections/{id}/rebuild-index"
       body: "*"
     };
   }

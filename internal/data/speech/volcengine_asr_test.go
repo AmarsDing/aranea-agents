@@ -177,6 +177,58 @@ func TestASRPartialAndFinalEvents(t *testing.T) {
 	require.Equal(t, 1200, ev.DurationMs)
 }
 
+// TestASRFinalDedupesCumulativeUtterances 覆盖真机事故（2026-08-09 听写无限输入）：
+// SAUC 服务端每帧响应都携带全量 utterances 累积列表，已 definite 的语句会持续
+// 出现在后续每一帧中。Provider 必须按游标去重——同一终稿只发射一次 Final，
+// 否则听写模式每个重复 Final 都会追加进输入框（无限输入根因）。
+func TestASRFinalDedupesCumulativeUtterances(t *testing.T) {
+	conn := newFakeWSConn()
+	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
+	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
+	require.NoError(t, err)
+	defer sess.Close()
+	_ = mustReadFrame(t, conn)
+
+	utt1 := map[string]any{"text": "你好", "definite": true, "end_time": 1200}
+	// 帧 1：第一句定稿 → 1 条 Final。
+	pushServerJSON(t, conn, volcFlagNone, map[string]any{
+		"result": map[string]any{"text": "你好", "utterances": []any{utt1}},
+	})
+	ev := <-sess.Events()
+	require.Equal(t, biz.ASREventFinal, ev.Type)
+	require.Equal(t, "你好", ev.Text)
+
+	// 帧 2：用户继续说第二句，服务端累积回放 utt1 + 新 partial。
+	// 修复前：utt1 被重复发射 Final（无限输入根因）；修复后：仅下行 Partial。
+	pushServerJSON(t, conn, volcFlagNone, map[string]any{
+		"result": map[string]any{"text": "今天", "utterances": []any{utt1}},
+	})
+	ev = <-sess.Events()
+	require.Equal(t, biz.ASREventPartial, ev.Type)
+	require.Equal(t, "今天", ev.Text)
+
+	// 帧 3：第二句定稿，累积列表含两条 definite → 只发射新终稿。
+	utt2 := map[string]any{"text": "今天天气不错", "definite": true, "end_time": 3500}
+	pushServerJSON(t, conn, volcFlagNone, map[string]any{
+		"result": map[string]any{"text": "今天天气不错", "utterances": []any{utt1, utt2}},
+	})
+	ev = <-sess.Events()
+	require.Equal(t, biz.ASREventFinal, ev.Type)
+	require.Equal(t, "今天天气不错", ev.Text)
+	require.Equal(t, 3500, ev.DurationMs)
+
+	// 帧 4：同内容回放 → 无任何事件。
+	pushServerJSON(t, conn, volcFlagNone, map[string]any{
+		"result": map[string]any{"text": "", "utterances": []any{utt1, utt2}},
+	})
+	select {
+	case dup := <-sess.Events():
+		t.Fatalf("duplicate cumulative replay must not emit event, got %+v", dup)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
 func TestASRErrorFrameAndClose(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)

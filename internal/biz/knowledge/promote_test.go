@@ -138,6 +138,9 @@ func promoteFixture(t *testing.T, targetExists bool) (*Usecase, *mockRepo, *stub
 		return d, nil
 	}
 	blockIdx := newStubPromoteBlockIndex()
+	// 文档级晋升（PromoteDocuments）经 blockIndex 解析源文档全部块；既有
+	// PromoteBlocks 用例不读源文档块（仅用 ListDocBlocks 查目标文档），播种无副作用。
+	blockIdx.blocksByDoc["sd1"] = srcBlocks
 	lineageW := &stubLineageWriter{}
 	u := NewUsecaseFromRepo(repo)
 	u.SetBlockIndexRepos(blockIdx, nil)
@@ -269,5 +272,49 @@ func TestPromoteBlocks_Validation(t *testing.T) {
 	u4 := NewUsecaseFromRepo(noOpMockRepo())
 	if _, err := u4.PromoteBlocks(context.Background(), []string{"sb1"}, "tc1"); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("未接线 = %v, want ErrUnavailable", err)
+	}
+}
+
+// ── SP1-I：文档级晋升（PromoteDocuments） ────────────────────────────────────
+
+// TestPromoteDocuments_HappyPath 文档级入口：经 blockIndex 解析源文档全部块后
+// 与 PromoteBlocks 同路径（新建目标文档 + 谱系对 + touched）；docIDs 去重。
+func TestPromoteDocuments_HappyPath(t *testing.T) {
+	u, _, _, lineageW := promoteFixture(t, false)
+	// 同一文档重复传入只晋升一次。
+	res, err := u.PromoteDocuments(context.Background(), []string{"sd1", "sd1"}, "tc1")
+	if err != nil {
+		t.Fatalf("PromoteDocuments: %v", err)
+	}
+	if len(res.CreatedBlocks) != 2 {
+		t.Fatalf("CreatedBlocks = %d, want 2（sd1 全部块）", len(res.CreatedBlocks))
+	}
+	if res.CreatedBlocks[0].SrcBlockID != "sb1" || res.CreatedBlocks[1].SrcBlockID != "sb2" {
+		t.Errorf("谱系源块顺序 = %+v", res.CreatedBlocks)
+	}
+	if len(lineageW.pairs) != 2 {
+		t.Errorf("谱系回写 pairs = %d, want 2", len(lineageW.pairs))
+	}
+	if len(res.TouchedTargetDocs) != 1 || !res.TouchedTargetDocs[0].Created {
+		t.Errorf("TouchedTargetDocs = %+v", res.TouchedTargetDocs)
+	}
+}
+
+// TestPromoteDocuments_Validation 非法输入矩阵。
+func TestPromoteDocuments_Validation(t *testing.T) {
+	// 空 doc_ids。
+	u, _, _, _ := promoteFixture(t, false)
+	if _, err := u.PromoteDocuments(context.Background(), nil, "tc1"); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Errorf("空 doc_ids = %v, want BadRequest", err)
+	}
+	// 文档无块（空文档/未产块）。
+	u2, _, _, _ := promoteFixture(t, false)
+	if _, err := u2.PromoteDocuments(context.Background(), []string{"sd-empty"}, "tc1"); !errors.Is(err, ErrPromoteNoBlocks) {
+		t.Errorf("无块文档 = %v, want ErrPromoteNoBlocks", err)
+	}
+	// blockIndex 未接线。
+	u3 := NewUsecaseFromRepo(noOpMockRepo())
+	if _, err := u3.PromoteDocuments(context.Background(), []string{"sd1"}, "tc1"); !errors.Is(err, ErrUnavailable) {
+		t.Errorf("blockIndex 未接线 = %v, want ErrUnavailable", err)
 	}
 }

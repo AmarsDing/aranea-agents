@@ -135,6 +135,11 @@ type volcASRSession struct {
 	closeOnce sync.Once
 	seq       atomic.Int32
 	lg        loggateway.Logger
+	// finalCursor 是已发射 Final 的 definite 语句游标（utterances 累积去重）。
+	// SAUC 服务端每帧响应都携带全量 utterances 列表，已 definite 的语句会持续
+	// 回放；无去重时同一终稿被无限重复发射（真机事故 2026-08-09：听写模式
+	// 每个重复 Final 追加进输入框 → 无限输入）。
+	finalCursor int
 }
 
 func (s *volcASRSession) sendFullClientRequest(sc biz.ASRSessionConfig) error {
@@ -251,13 +256,34 @@ func (s *volcASRSession) handleResponse(f volcFrame) {
 		s.lg.Warn("volc asr: undecodable response json", loggateway.Err(err))
 		return
 	}
+	// 累积回放去重：definite 总数回退说明服务端开启了新累积窗口，游标归零。
+	definite := 0
 	for _, u := range resp.Result.Utterances {
-		if u.Definite && u.Text != "" {
-			s.emit(biz.ASREvent{Type: biz.ASREventFinal, Text: u.Text, DurationMs: u.EndTime})
-			return
+		if u.Definite {
+			definite++
 		}
 	}
-	if resp.Result.Text != "" {
+	if definite < s.finalCursor {
+		s.finalCursor = 0
+	}
+	emitted := false
+	idx := 0
+	for _, u := range resp.Result.Utterances {
+		if !u.Definite {
+			continue
+		}
+		idx++
+		if idx <= s.finalCursor {
+			continue // 已发射过的累积回放
+		}
+		s.finalCursor = idx
+		if u.Text != "" {
+			s.emit(biz.ASREvent{Type: biz.ASREventFinal, Text: u.Text, DurationMs: u.EndTime})
+			emitted = true
+		}
+	}
+	// 本帧已产出新终稿时跳过 Partial（result.text 与终稿同源，避免字幕回闪）。
+	if !emitted && resp.Result.Text != "" {
 		s.emit(biz.ASREvent{Type: biz.ASREventPartial, Text: resp.Result.Text})
 	}
 	if f.flags == volcFlagLastPackage {

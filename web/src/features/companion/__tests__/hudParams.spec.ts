@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { clampAmplitude, hudParamsFor, TINT_AMBER, TINT_CYAN, TINT_GREEN, TINT_RED } from '../hud/hudParams';
+import { clampAmplitude, hudParamsFor, TINT_CYAN, TINT_GREEN, TINT_RED } from '../hud/hudParams';
 
 describe('hudParamsFor — 能量核缩放（设计 §7.4 v2）', () => {
   it('idle 呼吸：sin 0.5Hz ±4%', () => {
@@ -96,19 +96,38 @@ describe('hudParamsFor — 启动过场 boot（V5-T3）', () => {
   });
 });
 
+describe('hudParamsFor — 刻度环逐层展开 ringBoot（V5-T3）', () => {
+  it('boot=0 待机：三环全部未点亮 [0,0,0]', () => {
+    expect(hudParamsFor('idle', 0, 0, 0).ringBoot).toEqual([0, 0, 0]);
+  });
+
+  it('boot=1 满功率：三环全部点亮 [1,1,1]', () => {
+    expect(hudParamsFor('listening', 0, 0, 1).ringBoot).toEqual([1, 1, 1]);
+  });
+
+  it('逐层交错：内环先亮（0→0.5），中环 0.25→0.75，外环 0.5→1.0', () => {
+    // boot=0.25：内环半程，中外环未动
+    expect(hudParamsFor('idle', 0, 0, 0.25).ringBoot).toEqual([0.5, 0, 0]);
+    // boot=0.5：内环满，中环半程，外环未动
+    expect(hudParamsFor('idle', 0, 0, 0.5).ringBoot).toEqual([1, 0.5, 0]);
+    // boot=0.75：内中环满，外环半程
+    expect(hudParamsFor('idle', 0, 0, 0.75).ringBoot).toEqual([1, 1, 0.5]);
+  });
+
+  it('boot 越界时 ringBoot 仍钳制在 [0,1]', () => {
+    expect(hudParamsFor('idle', 0, 0, -1).ringBoot).toEqual([0, 0, 0]);
+    expect(hudParamsFor('idle', 0, 0, 2).ringBoot).toEqual([1, 1, 1]);
+  });
+});
+
 describe('hudParamsFor — 颜色 tint', () => {
-  it('idle/listening/speaking = 青蓝系渐变（cyan → green）', () => {
-    for (const s of ['idle', 'listening', 'speaking'] as const) {
+  it('idle/listening/thinking/speaking = 青蓝系渐变（cyan → green）', () => {
+    // V5.1：thinking 不再变琥珀（用户反馈黄色突兀），仅靠转速/收缩/波动区分
+    for (const s of ['idle', 'listening', 'thinking', 'speaking'] as const) {
       const p = hudParamsFor(s, 0, 0);
       expect(p.tintA).toBe(TINT_CYAN);
       expect(p.tintB).toBe(TINT_GREEN);
     }
-  });
-
-  it('thinking = 琥珀', () => {
-    const p = hudParamsFor('thinking', 0, 0);
-    expect(p.tintA).toBe(TINT_AMBER);
-    expect(p.tintB).toBe(TINT_AMBER);
   });
 
   it('interrupted/error = 红', () => {
@@ -144,6 +163,24 @@ describe('hudParamsFor — 声浪涟漪增益', () => {
     expect(hudParamsFor('listening', 0, 0).rippleGain).toBeCloseTo(0.5, 5);
     for (const s of ['idle', 'thinking', 'interrupted', 'error'] as const) {
       expect(hudParamsFor(s, 0, 0).rippleGain).toBe(0);
+    }
+  });
+});
+
+describe('hudParamsFor — 能量粒子与震动（V5.1）', () => {
+  it('粒子增益：speaking 最强（1），idle 最弱，interrupted/error 熄灭', () => {
+    expect(hudParamsFor('speaking', 0, 0).particleGain).toBe(1);
+    expect(hudParamsFor('idle', 0, 0).particleGain).toBeCloseTo(0.15, 5);
+    expect(hudParamsFor('listening', 0, 0).particleGain).toBeCloseTo(0.4, 5);
+    expect(hudParamsFor('thinking', 0, 0).particleGain).toBeCloseTo(0.55, 5);
+    expect(hudParamsFor('interrupted', 0, 0).particleGain).toBe(0);
+    expect(hudParamsFor('error', 0, 0).particleGain).toBe(0);
+  });
+
+  it('震动增益：仅 speaking 随振幅震动，其余状态无震动', () => {
+    expect(hudParamsFor('speaking', 0, 0.8).shakeGain).toBe(1);
+    for (const s of ['idle', 'listening', 'thinking', 'interrupted', 'error'] as const) {
+      expect(hudParamsFor(s, 0, 0.8).shakeGain).toBe(0);
     }
   });
 });

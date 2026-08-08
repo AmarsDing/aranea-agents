@@ -33,6 +33,11 @@ message SystemSettings {
   // Voice companion (M74) ASR/TTS provider config. Empty fields fall back to
   // SPEECH_* env vars at read time (field-level merge); credentials never returned.
   SpeechSettings speech = 11;
+  // Platform default Refine LLM (PGO-3): shared by PromptRefiner / self-improvement
+  // Analyst-Patcher-Critic / knowledge organizer / skill auto-creator / evolution
+  // drafter. Credentials resolve via model catalog first; stored api_key is the
+  // fallback and is never returned.
+  RefineLLMSettings default_refine = 12;
 }
 
 message SpeechSettings {
@@ -60,6 +65,14 @@ message SpeechTTSSettings {
   double speed_ratio = 5; // 0 = unset (env/default 1.0)
   bool configured = 6;
   bool has_api_key = 7;   // app_key/access_key never returned
+}
+
+message RefineLLMSettings {
+  string provider = 1;   // model catalog provider code, e.g. deepseek
+  string model = 2;      // model api id, e.g. deepseek-v4-flash
+  string base_url = 3;   // optional override; empty = catalog provider base url
+  bool configured = 4;   // provider && model both non-empty
+  bool has_api_key = 5;  // fallback key stored; key value never returned
 }
 
 message WebResearchSettings {
@@ -136,6 +149,13 @@ message UpdateSystemSettingsRequest {
   // 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
   string speech_asr_api_key = 36;
   string speech_tts_api_key = 37;
+  // Platform default Refine LLM (PGO-3-PROTO-02). Section applied when any of
+  // provider/model/base_url is non-empty (same convention as knowledge_embed);
+  // api_key: empty = do not change stored key, non-empty replaces.
+  string refine_llm_provider = 38;
+  string refine_llm_model = 39;
+  string refine_llm_base_url = 40;
+  string refine_llm_api_key = 41;
 }
 
 message TestWebResearchRequest {

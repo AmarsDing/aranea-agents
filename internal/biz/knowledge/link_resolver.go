@@ -27,7 +27,19 @@ type ResolveIndex interface {
 	// FindBlockByAnchor 按显式锚点定位块（库内唯一由部分唯一索引保证）。
 	FindBlockByAnchor(ctx context.Context, docID, anchor string) (blockID string, ok bool, err error)
 	// FindBlockByHeadingPath 按标题路径定位 heading 块。
-	FindBlockByHeadingPath(ctx context.Context, docID string, path []string) (blockID string, ok bool, err error)
+	// anchored 报告命中块是否已有显式锚（SP1-H 惰性回填：未锚命中才产回填请求，
+	// 避免稳态下每次写路径对目标文档的空读）。
+	FindBlockByHeadingPath(ctx context.Context, docID string, path []string) (blockID string, anchored bool, ok bool, err error)
+}
+
+// AnchorBackfillRequest 惰性锚点回填请求（SP1-H/F-SP1-10，Resolver 产物）：
+// 一条 heading-path 引用命中了目标文档的未锚 heading 块。执行侧（写路径）
+// 据此向目标文档源文本行尾追加 ^<uuid7>；blockparse.AppendHeadingAnchor
+// 幂等复查兜底（并发/滞后窗口内已锚则跳过）。
+type AnchorBackfillRequest struct {
+	CollectionID string // 目标文档所属集合
+	DocID        string
+	HeadingPath  []string
 }
 
 // LinkResolver 两阶段解析的第二阶段（设计 S3，SP1-ADR-2）：
@@ -44,10 +56,11 @@ func NewLinkResolver(idx ResolveIndex) *LinkResolver { return &LinkResolver{idx:
 // ResolveRefs 批量解析整文档引用。selfBlocks 为本次解析出的源文档块（内存态），
 // 用于自文档引用（[[#^a]]/[[#H]]）与「按名引用回自身」的块级定位——
 // 重建期间新块尚未提交，远端端口查不到，必须走内存。
-// 返回与 refs 等长的新切片（Dst* / Ambiguous 已填充），输入不被修改。
-func (r *LinkResolver) ResolveRefs(ctx context.Context, srcCollectionID, srcDocID string, visibleCollectionIDs []string, refs []KnowledgeBlockRefInput, selfBlocks []KnowledgeBlock) ([]KnowledgeBlockRefInput, error) {
+// 返回与 refs 等长的新切片（Dst* / Ambiguous 已填充，输入不被修改）与惰性锚点
+// 回填请求（SP1-H：heading-path 命中未锚块的目标集合，已按 (doc,path) 去重）。
+func (r *LinkResolver) ResolveRefs(ctx context.Context, srcCollectionID, srcDocID string, visibleCollectionIDs []string, refs []KnowledgeBlockRefInput, selfBlocks []KnowledgeBlock) ([]KnowledgeBlockRefInput, []AnchorBackfillRequest, error) {
 	if len(refs) == 0 {
-		return refs, nil
+		return refs, nil, nil
 	}
 	// 仅当存在跨文档引用时才查候选端口（纯自文档引用零 IO）。
 	needCandidates := false
@@ -62,21 +75,40 @@ func (r *LinkResolver) ResolveRefs(ctx context.Context, srcCollectionID, srcDocI
 		var err error
 		candidates, err = r.idx.ListResolveCandidates(ctx, visibleCollectionIDs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	out := make([]KnowledgeBlockRefInput, len(refs))
+	bf := &backfillCollector{}
 	for i, rf := range refs {
-		got, err := r.resolveOne(ctx, srcCollectionID, srcDocID, candidates, rf, selfBlocks)
+		got, err := r.resolveOne(ctx, srcCollectionID, srcDocID, candidates, rf, selfBlocks, bf)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[i] = got
 	}
-	return out, nil
+	return out, bf.reqs, nil
 }
 
-func (r *LinkResolver) resolveOne(ctx context.Context, srcColl, srcDoc string, candidates []ResolveDocCandidate, rf KnowledgeBlockRefInput, self []KnowledgeBlock) (KnowledgeBlockRefInput, error) {
+// backfillCollector 回填请求收集器：按 (docID, headingPath) 去重。
+type backfillCollector struct {
+	seen map[string]struct{}
+	reqs []AnchorBackfillRequest
+}
+
+func (c *backfillCollector) add(collID, docID string, path []string) {
+	key := docID + "\x00" + strings.Join(path, "\x00")
+	if c.seen == nil {
+		c.seen = map[string]struct{}{}
+	}
+	if _, dup := c.seen[key]; dup {
+		return
+	}
+	c.seen[key] = struct{}{}
+	c.reqs = append(c.reqs, AnchorBackfillRequest{CollectionID: collID, DocID: docID, HeadingPath: path})
+}
+
+func (r *LinkResolver) resolveOne(ctx context.Context, srcColl, srcDoc string, candidates []ResolveDocCandidate, rf KnowledgeBlockRefInput, self []KnowledgeBlock, bf *backfillCollector) (KnowledgeBlockRefInput, error) {
 	docPart, blockPart := splitRefTarget(rf.RawTarget)
 	if docPart == "" {
 		// 自文档引用：[[#^anchor]] / [[#H1#H2]]。doc 即源文档，块走内存。
@@ -85,6 +117,7 @@ func (r *LinkResolver) resolveOne(ctx context.Context, srcColl, srcDoc string, c
 		if blockPart != "" {
 			if ord, _, ok := resolveSelfBlock(blockPart, self); ok {
 				rf.DstSelfOrdinal = &ord // 块 ID 由存储层按 ordinal 映射（解析期无 ID）
+				maybeBackfillSelf(bf, srcColl, srcDoc, blockPart, self[ord])
 			}
 		}
 		return rf, nil
@@ -100,26 +133,46 @@ func (r *LinkResolver) resolveOne(ctx context.Context, srcColl, srcDoc string, c
 	if dstDocID == srcDoc {
 		if ord, _, ok := resolveSelfBlock(blockPart, self); ok {
 			rf.DstSelfOrdinal = &ord
+			maybeBackfillSelf(bf, srcColl, srcDoc, blockPart, self[ord])
 		}
 		return rf, nil
 	}
-	blockID, ok, err := r.resolveRemoteBlock(ctx, dstDocID, blockPart)
+	blockID, anchored, ok, err := r.resolveRemoteBlock(ctx, dstDocID, blockPart)
 	if err != nil {
 		return rf, err
 	}
 	if ok {
 		rf.DstBlockID = blockID
+		// SP1-H 惰性回填：heading-path 命中未锚块 → 产回填请求（^锚引用目标必已锚）。
+		if !anchored {
+			if _, isAnchor := strings.CutPrefix(blockPart, "^"); !isAnchor {
+				bf.add(dstCollID, dstDocID, splitHeadingPath(blockPart))
+			}
+		}
 	}
 	// 块未命中：doc 级已解析，块级悬空（dst_block 空，复活靠重建时重跑 Resolver）。
 	return rf, nil
 }
 
-func (r *LinkResolver) resolveRemoteBlock(ctx context.Context, docID, blockPart string) (string, bool, error) {
-	if r.idx == nil {
-		return "", false, nil
+// maybeBackfillSelf 自文档/按名回自身引用命中未锚 heading 块时产回填请求。
+// ^锚形式与不命中不产；已锚块跳过（内存态直判，无需执行侧复查）。
+func maybeBackfillSelf(bf *backfillCollector, srcColl, srcDoc, blockPart string, target KnowledgeBlock) {
+	if _, isAnchor := strings.CutPrefix(blockPart, "^"); isAnchor {
+		return
 	}
-	if anchor, ok := strings.CutPrefix(blockPart, "^"); ok {
-		return r.idx.FindBlockByAnchor(ctx, docID, anchor)
+	if target.Anchor != "" || target.Kind != "heading" {
+		return
+	}
+	bf.add(srcColl, srcDoc, splitHeadingPath(blockPart))
+}
+
+func (r *LinkResolver) resolveRemoteBlock(ctx context.Context, docID, blockPart string) (blockID string, anchored bool, ok bool, err error) {
+	if r.idx == nil {
+		return "", false, false, nil
+	}
+	if anchor, isAnchor := strings.CutPrefix(blockPart, "^"); isAnchor {
+		id, found, err := r.idx.FindBlockByAnchor(ctx, docID, anchor)
+		return id, true, found, err // 锚形式目标按定义已锚（未命中即 dangling，不回填）
 	}
 	return r.idx.FindBlockByHeadingPath(ctx, docID, splitHeadingPath(blockPart))
 }

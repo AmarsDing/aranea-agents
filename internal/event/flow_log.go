@@ -237,6 +237,7 @@ var stepTitleRegistry = map[string]string{
 	"knowledge.search":         "知识库检索",
 	"knowledge.entity.merge":   "知识实体合并",
 	"knowledge.block.promote":  "知识块晋升",
+	"knowledge.rebuild_index":  "知识块索引重建",
 	"a2a.invoke.start":         "A2A 联邦调用开始",
 	"a2a.invoke.governance":    "A2A 治理链检查",
 	"a2a.invoke.remote":        "A2A 远端调用",

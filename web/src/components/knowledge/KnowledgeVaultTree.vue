@@ -52,6 +52,13 @@
               {{ scope.node.docCount }}
               <q-tooltip>{{ t('knowledgePage.treeDocCount', { count: scope.node.docCount }) }}</q-tooltip>
             </span>
+            <!-- SP1-F/I-2：team 库「团队」徽标（local 库不显示，保持默认视觉安静） -->
+            <span
+              v-if="scope.node.kind === 'vault' && scope.node.vaultBackend === 'team'"
+              class="knowledge-vault-tree__team-badge"
+            >
+              {{ t('knowledgePage.vaultTeamBadge') }}
+            </span>
             <span
               v-if="scope.node.kind === 'vault' && scope.node.syncState"
               class="knowledge-vault-tree__sync-dot"
@@ -296,6 +303,17 @@ function syncLabel(state: string): string {
     color: var(--color-text-secondary);
     background: var(--color-warm-muted-surface);
     font-variant-numeric: tabular-nums;
+  }
+
+  // SP1-F/I-2：team 库徽标——主色描边小胶囊，与计数徽标（灰底）/同步点（状态色）区分语义。
+  &__team-badge {
+    flex: none;
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 6px;
+    border-radius: 8px;
+    color: var(--color-primary, var(--q-primary));
+    border: 1px solid color-mix(in srgb, var(--color-primary, var(--q-primary)) 55%, transparent);
   }
 
   &__sync-dot {

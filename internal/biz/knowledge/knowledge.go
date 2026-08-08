@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Collection is a named vector store.
@@ -232,16 +233,26 @@ type Usecase struct {
 	// nil 时 PromoteBlocks 返回 ErrUnavailable。
 	promoteReader PromoteBlockReader
 	promoteWriter PromoteLineageWriter
+	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
+	// 构造默认 Noop，生产经 SetLogger 接线。
+	lg loggateway.Logger
 }
 
 // NewUsecase constructs a KnowledgeUsecase from individual sub-interfaces.
 func NewUsecase(collections CollectionRepo, documents DocumentRepo, chunks ChunkRepo) *Usecase {
-	return &Usecase{collections: collections, documents: documents, chunks: chunks}
+	return &Usecase{collections: collections, documents: documents, chunks: chunks, lg: loggateway.NewNoop()}
 }
 
 // NewUsecaseFromRepo constructs a KnowledgeUsecase from the combined Repo interface.
 func NewUsecaseFromRepo(repo Repo) *Usecase {
-	return &Usecase{collections: repo, documents: repo, chunks: repo}
+	return &Usecase{collections: repo, documents: repo, chunks: repo, lg: loggateway.NewNoop()}
+}
+
+// SetLogger 接线域日志器（生产装配调用；nil 保持 Noop）。
+func (u *Usecase) SetLogger(lg loggateway.Logger) {
+	if lg != nil {
+		u.lg = lg.With(loggateway.Domain("knowledge"))
+	}
 }
 
 func (u *Usecase) requireRepo() error {

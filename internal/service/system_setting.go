@@ -151,6 +151,15 @@ func (s *SystemSettingService) UpdateSystemSettings(ctx context.Context, req *v1
 			strings.TrimSpace(req.GetSpeechTtsAppKey()) != "" ||
 			strings.TrimSpace(req.GetSpeechTtsAccessKey()) != ""
 	}
+	if hasRefineLLMUpdate(req) {
+		patch.RefineLLM = &biz.RefineLLMSetting{
+			Provider: req.GetRefineLlmProvider(),
+			Model:    req.GetRefineLlmModel(),
+			BaseURL:  req.GetRefineLlmBaseUrl(),
+			APIKey:   req.GetRefineLlmApiKey(),
+		}
+		patch.RefineLLMUpdateKey = strings.TrimSpace(req.GetRefineLlmApiKey()) != ""
+	}
 	// 流程日志 extra 仅含更新的 key 列表（分区名），严禁记录任何配置值（可能敏感）。
 	updateKeys := updatedSettingSections(req, patch)
 	row, err := s.uc.UpdateAll(ctx, patch)
@@ -207,7 +216,22 @@ func updatedSettingSections(req *v1.UpdateSystemSettingsRequest, patch biz.Syste
 	if patch.Speech != nil || hasSpeechUpdate(req) {
 		sections = append(sections, "speech")
 	}
+	if patch.RefineLLM != nil || hasRefineLLMUpdate(req) {
+		sections = append(sections, "default_refine")
+	}
 	return sections
+}
+
+// hasRefineLLMUpdate reports whether the request carries any refine-LLM-group
+// field. Blank api_key alone must NOT trigger (would rotate to empty).
+func hasRefineLLMUpdate(req *v1.UpdateSystemSettingsRequest) bool {
+	if req == nil {
+		return false
+	}
+	return req.GetRefineLlmProvider() != "" ||
+		req.GetRefineLlmModel() != "" ||
+		req.GetRefineLlmBaseUrl() != "" ||
+		strings.TrimSpace(req.GetRefineLlmApiKey()) != ""
 }
 
 // hasSpeechUpdate reports whether the request carries any speech-group field.
@@ -281,6 +305,20 @@ func toProtoSystemSettings(row biz.SystemSetting) *v1.SystemSettings {
 		McpAllowAdhocHttp:                 row.MCPAllowAdHocHTTP,
 		WebResearch:                       toProtoWebResearch(row.WebResearch),
 		Speech:                            toProtoSpeech(row.Speech),
+		DefaultRefine:                     toProtoRefineLLM(row.DefaultRefineLLM),
+	}
+}
+
+// toProtoRefineLLM maps the stored platform default Refine LLM to the API
+// view. The fallback api_key is never exposed — only the has_api_key marker
+// (knowledge_embed/web_research/speech 同惯例)。PGO-3-PROTO-02。
+func toProtoRefineLLM(row biz.RefineLLMSetting) *v1.RefineLLMSettings {
+	return &v1.RefineLLMSettings{
+		Provider:   row.Provider,
+		Model:      row.Model,
+		BaseUrl:    row.BaseURL,
+		Configured: strings.TrimSpace(row.Provider) != "" && strings.TrimSpace(row.Model) != "",
+		HasApiKey:  row.HasAPIKey,
 	}
 }
 

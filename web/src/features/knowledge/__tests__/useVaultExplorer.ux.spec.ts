@@ -8,6 +8,8 @@ const mockStore = {
   loadVaultTree: vi.fn(),
   invalidateTree: vi.fn(),
   loadDocumentLinks: vi.fn(),
+  loadBlockBacklinks: vi.fn().mockResolvedValue([]),
+  loadDanglingLinks: vi.fn().mockResolvedValue([]),
   search: vi.fn(),
   moveDocToDir: vi.fn(),
 };

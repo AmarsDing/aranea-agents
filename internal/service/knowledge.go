@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -89,6 +90,8 @@ type KnowledgeService struct {
 	// linkIndex 统一链接内存图（SP1-D；构造时创建并接线进 uc，启动 readiness 后
 	// 经 LoadKnowledgeLinkIndex 全量构建；SP1-E 反链查询直读）。
 	linkIndex *bizknowledge.LinkIndex
+	// rebuildRuns SP1-H 块索引重建在途集合门（单进程部署 N-1；value 恒为 struct{}）。
+	rebuildRuns sync.Map
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。

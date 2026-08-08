@@ -8,10 +8,12 @@ import { createKnowledgeService } from '../../services';
 import { kratosApi } from '../../services/axiosHandler';
 import { asRecord, pickBool, pickI32, pickI64, pickNum, pickStr } from '../../shared/wireJson';
 import type {
+  BlockBacklink,
   CollectionGraph,
   CollectionGraphEdge,
   CollectionGraphNode,
   CreateCollectionInput,
+  DanglingLink,
   EntityMergeSuggestion,
   IngestDocumentInput,
   KnowledgeChunk,
@@ -22,6 +24,7 @@ import type {
   KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
+  PromoteResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
   UpdateEmbedderConfigInput,
@@ -52,6 +55,7 @@ function mapCollection(raw: unknown): KnowledgeCollection {
     root_path: pickStr(r, 'root_path', 'rootPath'),
     sync_state: pickStr(r, 'sync_state', 'syncState'),
     last_sync_at: pickStr(r, 'last_sync_at', 'lastSyncAt'),
+    vault_backend: pickStr(r, 'vault_backend', 'vaultBackend'),
   };
 }
 
@@ -233,7 +237,11 @@ export async function moveDocument(id: string, targetCollectionId: string): Prom
 
 // G3-B4：库内跨目录移动（拖拽移动）；同名冲突 CodeConflict → 前端弹 覆盖(overwrite)/
 // 保留两份(rename)/取消；文档身份/chunks/hash 保留，入链服务端重建。
-export async function moveDocumentToDir(id: string, targetDir: string, conflictPolicy = ''): Promise<KnowledgeDocument> {
+export async function moveDocumentToDir(
+  id: string,
+  targetDir: string,
+  conflictPolicy = '',
+): Promise<KnowledgeDocument> {
   const raw = await svc.MoveDocumentToDir({ id, targetDir, conflictPolicy });
   return mapDocument(raw);
 }
@@ -263,6 +271,86 @@ export async function listDocumentLinks(docId: string, linkType = ''): Promise<K
   const res = asRecord(await svc.ListDocumentLinks({ id: docId, linkType }));
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapKnowledgeLink) : [];
+}
+
+// ---------- Block backlinks（SP1-E/I-1 块级反链） ----------
+
+function mapBlockBacklink(raw: unknown): BlockBacklink {
+  const r = asRecord(raw);
+  return {
+    src_block_id: pickStr(r, 'src_block_id', 'srcBlockId'),
+    src_doc_id: pickStr(r, 'src_doc_id', 'srcDocId'),
+    src_collection_id: pickStr(r, 'src_collection_id', 'srcCollectionId'),
+    src_doc_name: pickStr(r, 'src_doc_name', 'srcDocName'),
+    raw_target: pickStr(r, 'raw_target', 'rawTarget'),
+    edge_type: pickStr(r, 'edge_type', 'edgeType'),
+    context: pickStr(r, 'context', 'context'),
+    ambiguous: pickBool(r, 'ambiguous', 'ambiguous'),
+  };
+}
+
+/** listBlockBacklinks 列出文档的块级反向链接（SP1-E：按文档聚合所有块的入边）。 */
+export async function listBlockBacklinks(docId: string): Promise<BlockBacklink[]> {
+  const res = asRecord(await svc.ListBlockBacklinks({ blockId: undefined, docId }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapBlockBacklink) : [];
+}
+
+// ---------- Dangling links（SP1-E/I-2 悬空链） ----------
+
+function mapDanglingLink(raw: unknown): DanglingLink {
+  const r = asRecord(raw);
+  const refsRaw = r.refs ?? r.Refs;
+  return {
+    raw_target: pickStr(r, 'raw_target', 'rawTarget'),
+    ref_count: pickI32(r, 'ref_count', 'refCount'),
+    refs: Array.isArray(refsRaw) ? refsRaw.map(mapBlockBacklink) : [],
+  };
+}
+
+/** listDanglingLinks 悬空链列表（SP1-E：raw_target 聚合 + 引用计数，「未创建笔记」视图）。 */
+export async function listDanglingLinks(collectionId: string): Promise<DanglingLink[]> {
+  const res = asRecord(await svc.ListDanglingLinks({ id: collectionId }));
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapDanglingLink) : [];
+}
+
+// ---------- Promote（SP1-G/I-3 晋升到团队库） ----------
+
+function mapPromoteResult(raw: unknown): PromoteResult {
+  const r = asRecord(raw);
+  const createdRaw = r.created_blocks ?? r.createdBlocks;
+  const cascadeRaw = r.cascade_candidates ?? r.cascadeCandidates;
+  return {
+    created_blocks: Array.isArray(createdRaw)
+      ? createdRaw.map((v) => {
+          const e = asRecord(v);
+          return {
+            src_block_id: pickStr(e, 'src_block_id', 'srcBlockId'),
+            new_block_id: pickStr(e, 'new_block_id', 'newBlockId'),
+            target_doc_id: pickStr(e, 'target_doc_id', 'targetDocId'),
+          };
+        })
+      : [],
+    cascade_candidates: Array.isArray(cascadeRaw)
+      ? cascadeRaw.map((v) => {
+          const e = asRecord(v);
+          return {
+            src_block_id: pickStr(e, 'src_block_id', 'srcBlockId'),
+            raw_target: pickStr(e, 'raw_target', 'rawTarget'),
+            dst_doc_id: pickStr(e, 'dst_doc_id', 'dstDocId'),
+            dst_collection_id: pickStr(e, 'dst_collection_id', 'dstCollectionId'),
+          };
+        })
+      : [],
+  };
+}
+
+/** promoteDocuments 文档级晋升（SP1-I）：后端解析整文档全部块走同一晋升管线
+ *  （谱系 + 级联提示 + 目标文档 chunk 重放）。目标库必须 vault_backend=team。 */
+export async function promoteDocuments(docIds: string[], targetCollectionId: string): Promise<PromoteResult> {
+  const raw = await svc.PromoteBlocks({ docIds, targetCollectionId });
+  return mapPromoteResult(raw);
 }
 
 // ---------- Collection graph（G4-B8 3D 知识图谱） ----------

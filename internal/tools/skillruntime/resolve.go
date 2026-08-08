@@ -526,6 +526,12 @@ func reincludeTriggered(filtered, all []biz.SkillRuntimeCandidate, triggerHits m
 	return out
 }
 
+// MatchTrigger 导出 matchTrigger 的确定性触发判定（P2 F4 触发率黄金集回归
+// 复用运行时同一语义）。返回第一个命中用户输入的 trigger；未命中返回空串。
+func MatchTrigger(query string, triggers []string) string {
+	return matchTrigger(query, triggers)
+}
+
 // matchTrigger 返回第一个命中用户输入的 trigger；未命中返回空串。
 // CJK trigger 使用子串语义（中文无词边界）；ASCII trigger 要求词边界匹配，
 // 避免 "pdf" 误中 "pdftk"。大小写不敏感。

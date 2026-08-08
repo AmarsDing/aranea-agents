@@ -754,12 +754,12 @@ func (uc *SkillIntelligenceUsecase) ValidatePendingSuggestionsForSkill(ctx conte
 // draft generation → validating → sandbox verification → lifecycle update.
 func (uc *SkillIntelligenceUsecase) validateCuratorSuggestionUnified(ctx context.Context, s *UnifiedEvolutionSuggestion) error {
 	// Step 1: Generate draft body (LLM evolver first, rule-based fallback).
-	// improve_skill maps to the fix_failure template — HealthTrigger conditions
-	// all indicate health issues.
+	// SuggestType derives from trigger source: success → success_pattern
+	// (consolidation), everything else → fix_failure template (F3).
 	draft, llmGenerated := uc.generateDraft(ctx, &SkillEvolutionSuggestion{
 		ID:            s.ID,
 		SkillID:       s.TargetID,
-		Type:          EvoSuggestionFixFailure,
+		Type:          suggestTypeForUnified(s),
 		TriggerReason: s.TriggerReason,
 	})
 	if err := uc.unifiedStore.UpdateDraftBody(ctx, s.ID, draft); err != nil {
@@ -1091,6 +1091,16 @@ func unifiedToLegacySuggestionPtr(u *UnifiedEvolutionSuggestion) *SkillEvolution
 		EvolutionReason: u.MetaString(EvoMetaEvolutionReason),
 		DraftOrigin:     u.MetaString(EvoMetaDraftOrigin),
 	}
+}
+
+// suggestTypeForUnified derives the evolver SuggestType from a unified
+// suggestion's trigger source (F3): success-triggered suggestions get the
+// success_pattern (consolidation) prompt branch; all others use fix_failure.
+func suggestTypeForUnified(s *UnifiedEvolutionSuggestion) EvolutionSuggestionType {
+	if s != nil && s.TriggerSource == SuccessTriggerSource {
+		return EvoSuggestionSuccessPattern
+	}
+	return EvoSuggestionFixFailure
 }
 
 // legacyTriggerToActionType maps a legacy EvolutionSuggestionType to a UnifiedEvolutionActionType.

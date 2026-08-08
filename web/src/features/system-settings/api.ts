@@ -46,6 +46,7 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     evalLLM,
     webResearch,
     speech,
+    refineLLM,
   } = input;
   return api.UpdateSystemSettings({
     rootDirectory,
@@ -85,6 +86,11 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     // Tri-state: undefined → key omitted from JSON → proto3 optional unset →
     // backend keeps stored value (env fallback preserved).
     speechArchiveUserAudio: speech?.archiveUserAudio,
+    // Refine LLM（PGO-3-PROTO-02）：apiKey 空 = 保留存值。
+    refineLlmProvider: refineLLM?.provider?.trim() ?? '',
+    refineLlmModel: refineLLM?.model?.trim() ?? '',
+    refineLlmBaseUrl: refineLLM?.baseUrl?.trim() ?? '',
+    refineLlmApiKey: refineLLM?.apiKey?.trim() ?? '',
   });
 }
 

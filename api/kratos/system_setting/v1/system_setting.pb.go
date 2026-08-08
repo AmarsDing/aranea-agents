@@ -47,7 +47,12 @@ type SystemSettings struct {
 	WebResearch *WebResearchSettings `protobuf:"bytes,10,opt,name=web_research,json=webResearch,proto3" json:"web_research,omitempty"`
 	// Voice companion (M74) ASR/TTS provider config. Empty fields fall back to
 	// SPEECH_* env vars at read time (field-level merge); credentials never returned.
-	Speech        *SpeechSettings `protobuf:"bytes,11,opt,name=speech,proto3" json:"speech,omitempty"`
+	Speech *SpeechSettings `protobuf:"bytes,11,opt,name=speech,proto3" json:"speech,omitempty"`
+	// Platform default Refine LLM (PGO-3): shared by PromptRefiner / self-improvement
+	// Analyst-Patcher-Critic / knowledge organizer / skill auto-creator / evolution
+	// drafter. Credentials resolve via model catalog first; stored api_key is the
+	// fallback and is never returned.
+	DefaultRefine *RefineLLMSettings `protobuf:"bytes,12,opt,name=default_refine,json=defaultRefine,proto3" json:"default_refine,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -155,6 +160,13 @@ func (x *SystemSettings) GetWebResearch() *WebResearchSettings {
 func (x *SystemSettings) GetSpeech() *SpeechSettings {
 	if x != nil {
 		return x.Speech
+	}
+	return nil
+}
+
+func (x *SystemSettings) GetDefaultRefine() *RefineLLMSettings {
+	if x != nil {
+		return x.DefaultRefine
 	}
 	return nil
 }
@@ -397,6 +409,82 @@ func (x *SpeechTTSSettings) GetHasApiKey() bool {
 	return false
 }
 
+type RefineLLMSettings struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`                       // model catalog provider code, e.g. deepseek
+	Model         string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`                             // model api id, e.g. deepseek-v4-flash
+	BaseUrl       string                 `protobuf:"bytes,3,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`          // optional override; empty = catalog provider base url
+	Configured    bool                   `protobuf:"varint,4,opt,name=configured,proto3" json:"configured,omitempty"`                  // provider && model both non-empty
+	HasApiKey     bool                   `protobuf:"varint,5,opt,name=has_api_key,json=hasApiKey,proto3" json:"has_api_key,omitempty"` // fallback key stored; key value never returned
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RefineLLMSettings) Reset() {
+	*x = RefineLLMSettings{}
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RefineLLMSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RefineLLMSettings) ProtoMessage() {}
+
+func (x *RefineLLMSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RefineLLMSettings.ProtoReflect.Descriptor instead.
+func (*RefineLLMSettings) Descriptor() ([]byte, []int) {
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RefineLLMSettings) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *RefineLLMSettings) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *RefineLLMSettings) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *RefineLLMSettings) GetConfigured() bool {
+	if x != nil {
+		return x.Configured
+	}
+	return false
+}
+
+func (x *RefineLLMSettings) GetHasApiKey() bool {
+	if x != nil {
+		return x.HasApiKey
+	}
+	return false
+}
+
 type WebResearchSettings struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"` // tavily | serpapi
@@ -413,7 +501,7 @@ type WebResearchSettings struct {
 
 func (x *WebResearchSettings) Reset() {
 	*x = WebResearchSettings{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[4]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -425,7 +513,7 @@ func (x *WebResearchSettings) String() string {
 func (*WebResearchSettings) ProtoMessage() {}
 
 func (x *WebResearchSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[4]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -438,7 +526,7 @@ func (x *WebResearchSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WebResearchSettings.ProtoReflect.Descriptor instead.
 func (*WebResearchSettings) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{4}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *WebResearchSettings) GetProvider() string {
@@ -510,7 +598,7 @@ type EvalLLMSettings struct {
 
 func (x *EvalLLMSettings) Reset() {
 	*x = EvalLLMSettings{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[5]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -522,7 +610,7 @@ func (x *EvalLLMSettings) String() string {
 func (*EvalLLMSettings) ProtoMessage() {}
 
 func (x *EvalLLMSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[5]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -535,7 +623,7 @@ func (x *EvalLLMSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvalLLMSettings.ProtoReflect.Descriptor instead.
 func (*EvalLLMSettings) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{5}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *EvalLLMSettings) GetSimProvider() string {
@@ -587,7 +675,7 @@ type KnowledgeEmbedSettings struct {
 
 func (x *KnowledgeEmbedSettings) Reset() {
 	*x = KnowledgeEmbedSettings{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[6]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -599,7 +687,7 @@ func (x *KnowledgeEmbedSettings) String() string {
 func (*KnowledgeEmbedSettings) ProtoMessage() {}
 
 func (x *KnowledgeEmbedSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[6]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -612,7 +700,7 @@ func (x *KnowledgeEmbedSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KnowledgeEmbedSettings.ProtoReflect.Descriptor instead.
 func (*KnowledgeEmbedSettings) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{6}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *KnowledgeEmbedSettings) GetProvider() string {
@@ -704,13 +792,20 @@ type UpdateSystemSettingsRequest struct {
 	// 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
 	SpeechAsrApiKey string `protobuf:"bytes,36,opt,name=speech_asr_api_key,json=speechAsrApiKey,proto3" json:"speech_asr_api_key,omitempty"`
 	SpeechTtsApiKey string `protobuf:"bytes,37,opt,name=speech_tts_api_key,json=speechTtsApiKey,proto3" json:"speech_tts_api_key,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Platform default Refine LLM (PGO-3-PROTO-02). Section applied when any of
+	// provider/model/base_url is non-empty (same convention as knowledge_embed);
+	// api_key: empty = do not change stored key, non-empty replaces.
+	RefineLlmProvider string `protobuf:"bytes,38,opt,name=refine_llm_provider,json=refineLlmProvider,proto3" json:"refine_llm_provider,omitempty"`
+	RefineLlmModel    string `protobuf:"bytes,39,opt,name=refine_llm_model,json=refineLlmModel,proto3" json:"refine_llm_model,omitempty"`
+	RefineLlmBaseUrl  string `protobuf:"bytes,40,opt,name=refine_llm_base_url,json=refineLlmBaseUrl,proto3" json:"refine_llm_base_url,omitempty"`
+	RefineLlmApiKey   string `protobuf:"bytes,41,opt,name=refine_llm_api_key,json=refineLlmApiKey,proto3" json:"refine_llm_api_key,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UpdateSystemSettingsRequest) Reset() {
 	*x = UpdateSystemSettingsRequest{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[7]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +817,7 @@ func (x *UpdateSystemSettingsRequest) String() string {
 func (*UpdateSystemSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateSystemSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[7]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +830,7 @@ func (x *UpdateSystemSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSystemSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSystemSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{7}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateSystemSettingsRequest) GetWorkDirectory() string {
@@ -997,6 +1092,34 @@ func (x *UpdateSystemSettingsRequest) GetSpeechTtsApiKey() string {
 	return ""
 }
 
+func (x *UpdateSystemSettingsRequest) GetRefineLlmProvider() string {
+	if x != nil {
+		return x.RefineLlmProvider
+	}
+	return ""
+}
+
+func (x *UpdateSystemSettingsRequest) GetRefineLlmModel() string {
+	if x != nil {
+		return x.RefineLlmModel
+	}
+	return ""
+}
+
+func (x *UpdateSystemSettingsRequest) GetRefineLlmBaseUrl() string {
+	if x != nil {
+		return x.RefineLlmBaseUrl
+	}
+	return ""
+}
+
+func (x *UpdateSystemSettingsRequest) GetRefineLlmApiKey() string {
+	if x != nil {
+		return x.RefineLlmApiKey
+	}
+	return ""
+}
+
 type TestWebResearchRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Provider string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
@@ -1013,7 +1136,7 @@ type TestWebResearchRequest struct {
 
 func (x *TestWebResearchRequest) Reset() {
 	*x = TestWebResearchRequest{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[8]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1025,7 +1148,7 @@ func (x *TestWebResearchRequest) String() string {
 func (*TestWebResearchRequest) ProtoMessage() {}
 
 func (x *TestWebResearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[8]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1038,7 +1161,7 @@ func (x *TestWebResearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestWebResearchRequest.ProtoReflect.Descriptor instead.
 func (*TestWebResearchRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{8}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TestWebResearchRequest) GetProvider() string {
@@ -1104,7 +1227,7 @@ type TestWebResearchResponse struct {
 
 func (x *TestWebResearchResponse) Reset() {
 	*x = TestWebResearchResponse{}
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[9]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1116,7 +1239,7 @@ func (x *TestWebResearchResponse) String() string {
 func (*TestWebResearchResponse) ProtoMessage() {}
 
 func (x *TestWebResearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[9]
+	mi := &file_kratos_system_setting_v1_system_setting_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1129,7 +1252,7 @@ func (x *TestWebResearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TestWebResearchResponse.ProtoReflect.Descriptor instead.
 func (*TestWebResearchResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{9}
+	return file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TestWebResearchResponse) GetOk() bool {
@@ -1178,7 +1301,7 @@ var File_kratos_system_setting_v1_system_setting_proto protoreflect.FileDescript
 
 const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\n" +
-	"-kratos/system_setting/v1/system_setting.proto\x12\x18kratos.system_setting.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\"\xba\x05\n" +
+	"-kratos/system_setting/v1/system_setting.proto\x12\x18kratos.system_setting.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\"\x8e\x06\n" +
 	"\x0eSystemSettings\x12%\n" +
 	"\x0ework_directory\x18\x01 \x01(\tR\rworkDirectory\x12;\n" +
 	"\vupdate_time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -1192,7 +1315,8 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\beval_llm\x18\t \x01(\v2).kratos.system_setting.v1.EvalLLMSettingsR\aevalLlm\x12P\n" +
 	"\fweb_research\x18\n" +
 	" \x01(\v2-.kratos.system_setting.v1.WebResearchSettingsR\vwebResearch\x12@\n" +
-	"\x06speech\x18\v \x01(\v2(.kratos.system_setting.v1.SpeechSettingsR\x06speech\"\xbc\x01\n" +
+	"\x06speech\x18\v \x01(\v2(.kratos.system_setting.v1.SpeechSettingsR\x06speech\x12R\n" +
+	"\x0edefault_refine\x18\f \x01(\v2+.kratos.system_setting.v1.RefineLLMSettingsR\rdefaultRefine\"\xbc\x01\n" +
 	"\x0eSpeechSettings\x12=\n" +
 	"\x03asr\x18\x01 \x01(\v2+.kratos.system_setting.v1.SpeechASRSettingsR\x03asr\x12=\n" +
 	"\x03tts\x18\x02 \x01(\v2+.kratos.system_setting.v1.SpeechTTSSettingsR\x03tts\x12,\n" +
@@ -1218,7 +1342,15 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\n" +
 	"configured\x18\x06 \x01(\bR\n" +
 	"configured\x12\x1e\n" +
-	"\vhas_api_key\x18\a \x01(\bR\thasApiKey\"\x92\x02\n" +
+	"\vhas_api_key\x18\a \x01(\bR\thasApiKey\"\xa0\x01\n" +
+	"\x11RefineLLMSettings\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12\x19\n" +
+	"\bbase_url\x18\x03 \x01(\tR\abaseUrl\x12\x1e\n" +
+	"\n" +
+	"configured\x18\x04 \x01(\bR\n" +
+	"configured\x12\x1e\n" +
+	"\vhas_api_key\x18\x05 \x01(\bR\thasApiKey\"\x92\x02\n" +
 	"\x13WebResearchSettings\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x1f\n" +
 	"\vmax_results\x18\x02 \x01(\x05R\n" +
@@ -1250,7 +1382,7 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\n" +
 	"configured\x18\x05 \x01(\bR\n" +
 	"configured\x12\x1e\n" +
-	"\vhas_api_key\x18\x06 \x01(\bR\thasApiKey\"\xe5\x0e\n" +
+	"\vhas_api_key\x18\x06 \x01(\bR\thasApiKey\"\x9b\x10\n" +
 	"\x1bUpdateSystemSettingsRequest\x12%\n" +
 	"\x0ework_directory\x18\x01 \x01(\tR\rworkDirectory\x12%\n" +
 	"\x0eroot_directory\x18\x02 \x01(\tR\rrootDirectory\x127\n" +
@@ -1289,7 +1421,11 @@ const file_kratos_system_setting_v1_system_setting_proto_rawDesc = "" +
 	"\x16speech_tts_speed_ratio\x18\" \x01(\x01R\x13speechTtsSpeedRatio\x12>\n" +
 	"\x19speech_archive_user_audio\x18# \x01(\bH\x00R\x16speechArchiveUserAudio\x88\x01\x01\x12+\n" +
 	"\x12speech_asr_api_key\x18$ \x01(\tR\x0fspeechAsrApiKey\x12+\n" +
-	"\x12speech_tts_api_key\x18% \x01(\tR\x0fspeechTtsApiKeyB\x1c\n" +
+	"\x12speech_tts_api_key\x18% \x01(\tR\x0fspeechTtsApiKey\x12.\n" +
+	"\x13refine_llm_provider\x18& \x01(\tR\x11refineLlmProvider\x12(\n" +
+	"\x10refine_llm_model\x18' \x01(\tR\x0erefineLlmModel\x12-\n" +
+	"\x13refine_llm_base_url\x18( \x01(\tR\x10refineLlmBaseUrl\x12+\n" +
+	"\x12refine_llm_api_key\x18) \x01(\tR\x0frefineLlmApiKeyB\x1c\n" +
 	"\x1a_speech_archive_user_audio\"\xee\x01\n" +
 	"\x16TestWebResearchRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x17\n" +
@@ -1328,40 +1464,42 @@ func file_kratos_system_setting_v1_system_setting_proto_rawDescGZIP() []byte {
 	return file_kratos_system_setting_v1_system_setting_proto_rawDescData
 }
 
-var file_kratos_system_setting_v1_system_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_kratos_system_setting_v1_system_setting_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kratos_system_setting_v1_system_setting_proto_goTypes = []any{
 	(*SystemSettings)(nil),              // 0: kratos.system_setting.v1.SystemSettings
 	(*SpeechSettings)(nil),              // 1: kratos.system_setting.v1.SpeechSettings
 	(*SpeechASRSettings)(nil),           // 2: kratos.system_setting.v1.SpeechASRSettings
 	(*SpeechTTSSettings)(nil),           // 3: kratos.system_setting.v1.SpeechTTSSettings
-	(*WebResearchSettings)(nil),         // 4: kratos.system_setting.v1.WebResearchSettings
-	(*EvalLLMSettings)(nil),             // 5: kratos.system_setting.v1.EvalLLMSettings
-	(*KnowledgeEmbedSettings)(nil),      // 6: kratos.system_setting.v1.KnowledgeEmbedSettings
-	(*UpdateSystemSettingsRequest)(nil), // 7: kratos.system_setting.v1.UpdateSystemSettingsRequest
-	(*TestWebResearchRequest)(nil),      // 8: kratos.system_setting.v1.TestWebResearchRequest
-	(*TestWebResearchResponse)(nil),     // 9: kratos.system_setting.v1.TestWebResearchResponse
-	(*timestamppb.Timestamp)(nil),       // 10: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),               // 11: google.protobuf.Empty
+	(*RefineLLMSettings)(nil),           // 4: kratos.system_setting.v1.RefineLLMSettings
+	(*WebResearchSettings)(nil),         // 5: kratos.system_setting.v1.WebResearchSettings
+	(*EvalLLMSettings)(nil),             // 6: kratos.system_setting.v1.EvalLLMSettings
+	(*KnowledgeEmbedSettings)(nil),      // 7: kratos.system_setting.v1.KnowledgeEmbedSettings
+	(*UpdateSystemSettingsRequest)(nil), // 8: kratos.system_setting.v1.UpdateSystemSettingsRequest
+	(*TestWebResearchRequest)(nil),      // 9: kratos.system_setting.v1.TestWebResearchRequest
+	(*TestWebResearchResponse)(nil),     // 10: kratos.system_setting.v1.TestWebResearchResponse
+	(*timestamppb.Timestamp)(nil),       // 11: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),               // 12: google.protobuf.Empty
 }
 var file_kratos_system_setting_v1_system_setting_proto_depIdxs = []int32{
-	10, // 0: kratos.system_setting.v1.SystemSettings.update_time:type_name -> google.protobuf.Timestamp
-	6,  // 1: kratos.system_setting.v1.SystemSettings.knowledge_embed:type_name -> kratos.system_setting.v1.KnowledgeEmbedSettings
-	5,  // 2: kratos.system_setting.v1.SystemSettings.eval_llm:type_name -> kratos.system_setting.v1.EvalLLMSettings
-	4,  // 3: kratos.system_setting.v1.SystemSettings.web_research:type_name -> kratos.system_setting.v1.WebResearchSettings
+	11, // 0: kratos.system_setting.v1.SystemSettings.update_time:type_name -> google.protobuf.Timestamp
+	7,  // 1: kratos.system_setting.v1.SystemSettings.knowledge_embed:type_name -> kratos.system_setting.v1.KnowledgeEmbedSettings
+	6,  // 2: kratos.system_setting.v1.SystemSettings.eval_llm:type_name -> kratos.system_setting.v1.EvalLLMSettings
+	5,  // 3: kratos.system_setting.v1.SystemSettings.web_research:type_name -> kratos.system_setting.v1.WebResearchSettings
 	1,  // 4: kratos.system_setting.v1.SystemSettings.speech:type_name -> kratos.system_setting.v1.SpeechSettings
-	2,  // 5: kratos.system_setting.v1.SpeechSettings.asr:type_name -> kratos.system_setting.v1.SpeechASRSettings
-	3,  // 6: kratos.system_setting.v1.SpeechSettings.tts:type_name -> kratos.system_setting.v1.SpeechTTSSettings
-	11, // 7: kratos.system_setting.v1.SystemSettingService.GetSystemSettings:input_type -> google.protobuf.Empty
-	7,  // 8: kratos.system_setting.v1.SystemSettingService.UpdateSystemSettings:input_type -> kratos.system_setting.v1.UpdateSystemSettingsRequest
-	8,  // 9: kratos.system_setting.v1.SystemSettingService.TestWebResearch:input_type -> kratos.system_setting.v1.TestWebResearchRequest
-	0,  // 10: kratos.system_setting.v1.SystemSettingService.GetSystemSettings:output_type -> kratos.system_setting.v1.SystemSettings
-	0,  // 11: kratos.system_setting.v1.SystemSettingService.UpdateSystemSettings:output_type -> kratos.system_setting.v1.SystemSettings
-	9,  // 12: kratos.system_setting.v1.SystemSettingService.TestWebResearch:output_type -> kratos.system_setting.v1.TestWebResearchResponse
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	4,  // 5: kratos.system_setting.v1.SystemSettings.default_refine:type_name -> kratos.system_setting.v1.RefineLLMSettings
+	2,  // 6: kratos.system_setting.v1.SpeechSettings.asr:type_name -> kratos.system_setting.v1.SpeechASRSettings
+	3,  // 7: kratos.system_setting.v1.SpeechSettings.tts:type_name -> kratos.system_setting.v1.SpeechTTSSettings
+	12, // 8: kratos.system_setting.v1.SystemSettingService.GetSystemSettings:input_type -> google.protobuf.Empty
+	8,  // 9: kratos.system_setting.v1.SystemSettingService.UpdateSystemSettings:input_type -> kratos.system_setting.v1.UpdateSystemSettingsRequest
+	9,  // 10: kratos.system_setting.v1.SystemSettingService.TestWebResearch:input_type -> kratos.system_setting.v1.TestWebResearchRequest
+	0,  // 11: kratos.system_setting.v1.SystemSettingService.GetSystemSettings:output_type -> kratos.system_setting.v1.SystemSettings
+	0,  // 12: kratos.system_setting.v1.SystemSettingService.UpdateSystemSettings:output_type -> kratos.system_setting.v1.SystemSettings
+	10, // 13: kratos.system_setting.v1.SystemSettingService.TestWebResearch:output_type -> kratos.system_setting.v1.TestWebResearchResponse
+	11, // [11:14] is the sub-list for method output_type
+	8,  // [8:11] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_kratos_system_setting_v1_system_setting_proto_init() }
@@ -1369,14 +1507,14 @@ func file_kratos_system_setting_v1_system_setting_proto_init() {
 	if File_kratos_system_setting_v1_system_setting_proto != nil {
 		return
 	}
-	file_kratos_system_setting_v1_system_setting_proto_msgTypes[7].OneofWrappers = []any{}
+	file_kratos_system_setting_v1_system_setting_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_system_setting_v1_system_setting_proto_rawDesc), len(file_kratos_system_setting_v1_system_setting_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

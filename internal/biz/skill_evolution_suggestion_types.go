@@ -13,6 +13,9 @@ const (
 	EvoSuggestionBoostEfficiency EvolutionSuggestionType = "boost_efficiency"
 	EvoSuggestionMergeDuplicate  EvolutionSuggestionType = "merge_duplicate"
 	EvoSuggestionCreateSkill     EvolutionSuggestionType = "create_skill"
+	// EvoSuggestionSuccessPattern 成功沉淀（P2 F3）：高成功率 skill 固化正向
+	// 模式——强化有效规则、补充成功示例，防止好模式在后续全量重写中丢失。
+	EvoSuggestionSuccessPattern EvolutionSuggestionType = "success_pattern"
 )
 
 // EvolutionSuggestionStatus defines the status of a skill evolution suggestion.
@@ -87,6 +90,12 @@ const (
 	EvoTrigger7dSuccessRate    = 0.6 // 7d success rate < 60% triggers suggestion
 	EvoTrigger7dMinInvocations = 5   // Minimum invocations in 7d window for significance
 	EvoTriggerSameTagThreshold = 5   // Same failure tag >= 5 times triggers suggestion
+
+	// SuccessTriggerSource 是 SuccessTrigger（P2 F3 成功沉淀）的触发来源标识，
+	// 与 health 共用 (skill, improve_skill) 冷却槽（有意的保守，见设计 §5.2）。
+	SuccessTriggerSource = "success"
+	// SuccessTriggerSuccessRate 是成功沉淀的 30d 成功率阈值（≥ 触发）。
+	SuccessTriggerSuccessRate = 0.85
 )
 
 // Pre-computed duration constants derived from EvoExpirationDays and EvoTriggerCooldownHours.

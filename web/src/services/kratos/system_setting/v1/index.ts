@@ -25,6 +25,11 @@ export type SystemSettings = {
   // Voice companion (M74) ASR/TTS provider config. Empty fields fall back to
   // SPEECH_* env vars at read time (field-level merge); credentials never returned.
   speech: SpeechSettings | undefined;
+  // Platform default Refine LLM (PGO-3): shared by PromptRefiner / self-improvement
+  // Analyst-Patcher-Critic / knowledge organizer / skill auto-creator / evolution
+  // drafter. Credentials resolve via model catalog first; stored api_key is the
+  // fallback and is never returned.
+  defaultRefine: RefineLLMSettings | undefined;
 };
 
 // Encoded using RFC 3339, where generated output will always be Z-normalized
@@ -87,6 +92,14 @@ export type SpeechTTSSettings = {
   hasApiKey: boolean | undefined;
 };
 
+export type RefineLLMSettings = {
+  provider: string | undefined;
+  model: string | undefined;
+  baseUrl: string | undefined;
+  configured: boolean | undefined;
+  hasApiKey: boolean | undefined;
+};
+
 export type UpdateSystemSettingsRequest = {
   workDirectory: string | undefined;
   rootDirectory: string | undefined;
@@ -133,6 +146,13 @@ export type UpdateSystemSettingsRequest = {
   // 非空即替换并存值；与 app_key/access_key legacy 对并存，api_key 非空优先。
   speechAsrApiKey: string | undefined;
   speechTtsApiKey: string | undefined;
+  // Platform default Refine LLM (PGO-3-PROTO-02). Section applied when any of
+  // provider/model/base_url is non-empty (same convention as knowledge_embed);
+  // api_key: empty = do not change stored key, non-empty replaces.
+  refineLlmProvider: string | undefined;
+  refineLlmModel: string | undefined;
+  refineLlmBaseUrl: string | undefined;
+  refineLlmApiKey: string | undefined;
 };
 
 export type TestWebResearchRequest = {

@@ -41,6 +41,7 @@ const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.Kn
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
+const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -96,6 +97,12 @@ type KnowledgeServiceHTTPServer interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error)
+	// RebuildKnowledgeIndex RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+	// for every document of the collection (SP1-H, US-29). Asynchronous and
+	// idempotent; 409 Conflict while a rebuild is already running for the same
+	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+	// stay on old data during the rebuild (degraded but available).
+	RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -127,6 +134,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/blocks/promote", _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/collections/{id}/rebuild-index", _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
@@ -583,6 +591,31 @@ func _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv KnowledgeServiceHTTPServe
 	}
 }
 
+func _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RebuildKnowledgeIndexRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceRebuildKnowledgeIndex)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RebuildKnowledgeIndex(ctx, req.(*RebuildKnowledgeIndexRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RebuildKnowledgeIndexResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListEntityMergeSuggestionsRequest
@@ -744,6 +777,12 @@ type KnowledgeServiceHTTPClient interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(ctx context.Context, req *PromoteBlocksRequest, opts ...http.CallOption) (rsp *PromoteBlocksResponse, err error)
+	// RebuildKnowledgeIndex RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+	// for every document of the collection (SP1-H, US-29). Asynchronous and
+	// idempotent; 409 Conflict while a rebuild is already running for the same
+	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+	// stay on old data during the rebuild (degraded but available).
+	RebuildKnowledgeIndex(ctx context.Context, req *RebuildKnowledgeIndexRequest, opts ...http.CallOption) (rsp *RebuildKnowledgeIndexResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -1055,6 +1094,24 @@ func (c *KnowledgeServiceHTTPClientImpl) PromoteBlocks(ctx context.Context, in *
 	pattern := "/v1/knowledge/blocks/promote"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServicePromoteBlocks))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RebuildKnowledgeIndex RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+// for every document of the collection (SP1-H, US-29). Asynchronous and
+// idempotent; 409 Conflict while a rebuild is already running for the same
+// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+// stay on old data during the rebuild (degraded but available).
+func (c *KnowledgeServiceHTTPClientImpl) RebuildKnowledgeIndex(ctx context.Context, in *RebuildKnowledgeIndexRequest, opts ...http.CallOption) (*RebuildKnowledgeIndexResponse, error) {
+	var out RebuildKnowledgeIndexResponse
+	pattern := "/v1/knowledge/collections/{id}/rebuild-index"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceRebuildKnowledgeIndex))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

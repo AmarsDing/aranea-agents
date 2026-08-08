@@ -300,6 +300,10 @@ export type PromoteBlocksRequest = {
   //
   // Behaviors: REQUIRED
   targetCollectionId: string | undefined;
+  // SP1-I: document-level convenience for the explorer UI — the server resolves
+  // every block of each document (ordinal order) and promotes them through the
+  // same pipeline. Mutually exclusive with block_ids.
+  docIds: string[] | undefined;
 };
 
 // PromotedBlockLineage is one source→clone lineage pair (US-27).
@@ -321,6 +325,22 @@ export type PromoteCascadeCandidate = {
 export type PromoteBlocksResponse = {
   createdBlocks: PromotedBlockLineage[] | undefined;
   cascadeCandidates: PromoteCascadeCandidate[] | undefined;
+};
+
+// RebuildKnowledgeIndexRequest triggers a streaming rebuild of the block-level
+// derived index (blocks/refs) for all documents of one collection (SP1-H, US-29).
+// Idempotent: re-running after interruption is equivalent to running from scratch.
+export type RebuildKnowledgeIndexRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: string | undefined;
+};
+
+// RebuildKnowledgeIndexResponse acknowledges the accepted asynchronous rebuild.
+// Progress is broadcast on the knowledge WS channel (EP-KN-02 pattern,
+// event_type = knowledge_rebuild_index); sync_state = "rebuilding" while running.
+export type RebuildKnowledgeIndexResponse = {
+  status: string | undefined;
 };
 
 // EntityMergeSuggestion is one entity merge candidate pair (G5-F B11).
@@ -520,6 +540,12 @@ export interface KnowledgeService {
   // cascade candidates for references into private blocks, and immediate
   // re-indexing of the target document so promoted content is searchable.
   PromoteBlocks(request: PromoteBlocksRequest): Promise<PromoteBlocksResponse>;
+  // RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+  // for every document of the collection (SP1-H, US-29). Asynchronous and
+  // idempotent; 409 Conflict while a rebuild is already running for the same
+  // collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+  // stay on old data during the rebuild (degraded but available).
+  RebuildKnowledgeIndex(request: RebuildKnowledgeIndexRequest): Promise<RebuildKnowledgeIndexResponse>;
   // ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
   // normalization conflict groups (same name_norm, different display name)
   // plus high-similarity embedding pairs when the embedder is configured.
@@ -942,6 +968,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "PromoteBlocks",
       }) as Promise<PromoteBlocksResponse>;
+    },
+    RebuildKnowledgeIndex(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/collections/${request.id}/rebuild-index`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "RebuildKnowledgeIndex",
+      }) as Promise<RebuildKnowledgeIndexResponse>;
     },
     ListEntityMergeSuggestions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.collectionId) {

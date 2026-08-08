@@ -275,6 +275,98 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 	}, nil
 }
 
+// ── SuccessTrigger（P2 F3 成功沉淀） ──
+
+// SuccessTrigger 从高成功率 skill 中检测成功模式沉淀需求（Voyager 技能入库 /
+// ReasoningBank 双侧蒸馏）：与失败驱动不对称并行——失败触发修问题，成功触发
+// 固化正向模式（强化有效规则、补充成功示例），防止好模式在后续全量重写中丢失。
+//
+// 触发条件（全部满足）：
+//  1. 30d 调用量 ≥ EvoTriggerMinInvocations（统计显著性，与 HealthTrigger 一致）
+//  2. 30d 成功率 ≥ SuccessTriggerSuccessRate（0.85）
+//  3. 当前正文含规则块（无规则块则跳过——对健康 skill 做全量重写风险大于收益）
+//
+// 冷却：复用 orchestrator 既有 per-(target,action) 冷却 + D8 自适应降频；
+// 与 health 共用 (skill, improve_skill) 冷却槽（有意的保守，见设计 §5.2）。
+// 门控：trigger 层不做 settings 检查——平台 opt-in 门控统一在
+// self_improvement observe worker 层（与 HealthTrigger/AgentConfigTrigger 一致）。
+type SuccessTrigger struct {
+	aggregator SkillHealthAggregator
+	skills     SkillLookupReader // 规则块门控（delta 能力检查）
+	lg         loggateway.Logger
+}
+
+// NewSuccessTrigger constructs a SuccessTrigger. lg may be nil (noop).
+func NewSuccessTrigger(aggregator SkillHealthAggregator, skills SkillLookupReader, lg loggateway.Logger) *SuccessTrigger {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &SuccessTrigger{aggregator: aggregator, skills: skills, lg: lg}
+}
+
+func (t *SuccessTrigger) TargetType() EvolutionTargetType { return EvolutionTargetSkill }
+func (t *SuccessTrigger) ActionType() EvolutionActionType { return EvolutionActionImprove }
+func (t *SuccessTrigger) TriggerSource() string           { return SuccessTriggerSource }
+
+// Check returns one success-precipitation suggestion when all conditions hold.
+func (t *SuccessTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvolutionSuggestion, error) {
+	if t.aggregator == nil {
+		return nil, nil
+	}
+
+	since30d := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	metrics, err := t.aggregator.GetHealthMetrics(ctx, skillID, since30d)
+	if err != nil {
+		return nil, err
+	}
+	if metrics == nil || metrics.InvocationCount < EvoTriggerMinInvocations {
+		return nil, nil
+	}
+	if metrics.SuccessRate < SuccessTriggerSuccessRate {
+		return nil, nil
+	}
+
+	// 规则块门控：仅当当前正文已进入规则块协议时才沉淀（delta 模式可局部
+	// 强化，无需全量重写）。查询失败按跳过处理（nil-safe 降级）。
+	if t.skills != nil {
+		body, lerr := t.skills.GetLatestSkillMarkdown(ctx, skillID)
+		if lerr != nil {
+			t.lg.Warn("SuccessTrigger.Check: GetLatestSkillMarkdown failed, skip",
+				loggateway.StepID("skill_intelligence.success_trigger"),
+				loggateway.Str("skill_id", skillID),
+				loggateway.Err(lerr))
+			return nil, nil
+		}
+		if !HasRuleBlocks(body) {
+			return nil, nil
+		}
+	}
+
+	metadata, _ := json.Marshal(map[string]any{
+		"success_rate":     metrics.SuccessRate,
+		"invocation_count": metrics.InvocationCount,
+		"trigger_source":   SuccessTriggerSource,
+		EvoMetaLegacyType:  string(EvoSuggestionSuccessPattern),
+	})
+
+	return []UnifiedEvolutionSuggestion{
+		{
+			ID:            newAgentCatalogID(),
+			TargetType:    EvolutionTargetSkill,
+			TargetID:      skillID,
+			ActionType:    EvolutionActionImprove,
+			TriggerSource: SuccessTriggerSource,
+			TriggerReason: fmt.Sprintf("30d 成功率 %.1f%%（%d 次调用），沉淀正向模式",
+				metrics.SuccessRate*100, metrics.InvocationCount),
+			Status:          "pending",
+			Priority:        1,
+			LifecycleStatus: "draft",
+			Metadata:        metadata,
+			CreatedAt:       time.Now().UTC(),
+		},
+	}, nil
+}
+
 // ── AgentConfigTrigger（原 EvolutionUsecase.ScanAgent） ──
 
 const (

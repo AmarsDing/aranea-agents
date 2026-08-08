@@ -28,6 +28,9 @@ var ErrPromoteBlockNotFound = apierror.BadRequest("KNOWLEDGE", "some block_ids n
 // ErrPromoteSameCollection 源块已在目标库（同库晋升无意义）。
 var ErrPromoteSameCollection = apierror.BadRequest("KNOWLEDGE", "blocks already in target collection")
 
+// ErrPromoteNoBlocks 文档无可晋升块（空文档或非 Markdown 未产块；SP1-I 文档级入口）。
+var ErrPromoteNoBlocks = apierror.BadRequest("KNOWLEDGE", "document has no promotable blocks")
+
 // PromoteLineage 源→克隆谱系对（US-27 验收 41）。
 type PromoteLineage struct {
 	SrcBlockID  string // 源块（回写 promoted_to）
@@ -264,4 +267,34 @@ func dedupeStrings(in []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// PromoteDocuments 文档级晋升入口（SP1-I 前端整文档「晋升到团队库」）：经
+// blockIndex 解析每篇文档的全部块（ordinal 序），去重后复用 PromoteBlocks
+// 同一路径（谱系/级联/目标文档重放完全一致）。任一文档无块即整体拒绝
+// （ErrPromoteNoBlocks）——空文档/非 Markdown 晋升无意义。
+func (u *Usecase) PromoteDocuments(ctx context.Context, docIDs []string, targetCollectionID string) (PromoteResult, error) {
+	if err := u.requireRepo(); err != nil {
+		return PromoteResult{}, err
+	}
+	if u.blockIndex == nil {
+		return PromoteResult{}, ErrUnavailable
+	}
+	if len(docIDs) == 0 {
+		return PromoteResult{}, apierror.BadRequest("KNOWLEDGE", "doc_ids is required")
+	}
+	var blockIDs []string
+	for _, docID := range dedupeStrings(docIDs) {
+		blocks, err := u.blockIndex.ListDocBlocks(ctx, docID)
+		if err != nil {
+			return PromoteResult{}, err
+		}
+		if len(blocks) == 0 {
+			return PromoteResult{}, ErrPromoteNoBlocks
+		}
+		for _, b := range blocks {
+			blockIDs = append(blockIDs, b.ID)
+		}
+	}
+	return u.PromoteBlocks(ctx, blockIDs, targetCollectionID)
 }

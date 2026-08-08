@@ -119,7 +119,8 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 // Used by Get() to populate biz.SystemSetting.DefaultRefineLLM safely.
 func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.RefineLLMSetting, error) {
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
+		r.data.Dialect().RenumberPlaceholders(`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url,
+		 (COALESCE(refine_llm_api_key, '') <> '')
 		 FROM system_settings WHERE id = ? LIMIT 1`), systemSettingSingletonID)
 	if err != nil {
 		return biz.RefineLLMSetting{}, err
@@ -129,7 +130,7 @@ func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.Refin
 		return biz.RefineLLMSetting{}, apierror.NotFound(apierror.DomainData, "not found")
 	}
 	var s biz.RefineLLMSetting
-	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL); err != nil {
+	if err := rows.Scan(&s.Provider, &s.Model, &s.BaseURL, &s.HasAPIKey); err != nil {
 		return biz.RefineLLMSetting{}, err
 	}
 	return s, nil
@@ -313,7 +314,11 @@ func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.Refin
 			return biz.RefineLLMSetting{}, err
 		}
 	}
-	return biz.RefineLLMSetting{Provider: patch.Provider, Model: patch.Model, BaseURL: patch.BaseURL}, nil
+	// Return the effective stored state (incl. HasAPIKey) so the PUT response
+	// reflects a just-rotated/retained key without a follow-up GET. The read is
+	// transaction-aware (RW().Read resolves the tx client), so it observes the
+	// UPDATE above inside UpdateAll's ExecInTx.
+	return r.getRefineLLMRedacted(ctx)
 }
 
 // GetPlannerModel returns the plan_and_execute planner model configuration.

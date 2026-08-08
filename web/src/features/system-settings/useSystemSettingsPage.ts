@@ -7,6 +7,7 @@ import { knowledgeEmbedFromSettings, knowledgeEmbedToPatch } from './knowledge-e
 import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from './eval-llm';
 import { DEFAULT_WEB_RESEARCH_FORM, webResearchFromSettings, webResearchToPatch } from './web-research';
 import { DEFAULT_SPEECH_FORM, speechFromSettings, speechToPatch } from './speech';
+import { DEFAULT_REFINE_LLM_FORM, refineLLMFromSettings } from './refine-llm';
 import { DEFAULT_KNOWLEDGE_EMBED_FORM } from '../knowledge/embedder-constants';
 
 function usdToMicroUsd(usd: number | null | undefined): number {
@@ -49,6 +50,9 @@ export function useSystemSettingsPage() {
   const webResearchTesting = ref(false);
   const knowledgeEmbedHasApiKey = ref(false);
   const evalLLMConfigured = ref(false);
+  const refineLLMForm = reactive({ ...DEFAULT_REFINE_LLM_FORM });
+  const refineLLMConfigured = ref(false);
+  const refineLLMHasApiKey = ref(false);
   const updateTime = ref<string | undefined>(undefined);
   const loading = ref(false);
   const saving = ref(false);
@@ -87,6 +91,9 @@ export function useSystemSettingsPage() {
     webResearchConfigured.value = Boolean(res.webResearch?.configured);
     webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey);
     evalLLMConfigured.value = Boolean(res.evalLlm?.configured);
+    Object.assign(refineLLMForm, refineLLMFromSettings(res.defaultRefine));
+    refineLLMConfigured.value = Boolean(res.defaultRefine?.configured);
+    refineLLMHasApiKey.value = Boolean(res.defaultRefine?.hasApiKey);
     updateTime.value = res.updateTime;
   }
 
@@ -154,6 +161,7 @@ export function useSystemSettingsPage() {
         evalLLM: evalLLMForm,
         webResearch: webResearchToPatch(webResearchForm),
         speech: speechToPatch(speechForm, speechLoaded.value),
+        refineLLM: refineLLMForm,
       });
       const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
       effectiveA2AUrl.value = a2aCfg?.public_base_url ?? '';
@@ -193,6 +201,9 @@ export function useSystemSettingsPage() {
     webResearchTesting,
     knowledgeEmbedHasApiKey,
     evalLLMConfigured,
+    refineLLMForm,
+    refineLLMConfigured,
+    refineLLMHasApiKey,
     lastSavedLabel,
     loading,
     saving,

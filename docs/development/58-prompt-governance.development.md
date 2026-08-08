@@ -77,7 +77,6 @@ PGO-RED-01        # 红线 / 拦截类
 |---------|------|------|
 | PGO-1-MIG-01/02 | `cmd/migrate-deprecated-prompts/` 迁移工具 | 📋 |
 | PGO-2-WEB-03 | `FieldGuideExamplesDialog.vue` 示例库 modal | 📋 |
-| PGO-3-PROTO-02 | `system_setting.proto` 新增 `default_refine` 字段 | 📋（biz 层已有 `DefaultRefineLLM`，proto 未暴露） |
 | PGO-3-SVC-03 | `EditPromptFileByAI` 转发到 refine service | 📋（仍使用 `PromptFileAIEditor.Revise`） |
 | PGO-3-DOC-01 | `docs/guides/ai-refine.md` | 📋 |
 | PGO-4-SEED-01/02/03 | `cmd/seed-stockx-org/` 重构为读 yaml 调 import | 📋（目录不存在） |
@@ -91,7 +90,6 @@ PGO-RED-01        # 红线 / 拦截类
 | CLI flags | 实际为 `--apply`（非原计划 `--confirm`） | 见 `internal/cli/cmd/import.go` |
 | CLI flags | 未实现 `--update` / `--partial` | 仅 `--dry-run` / `--apply` / `--refine` / `--output-spec` / `--output` / `--timeout` / `--correlation-id` |
 | `orgimport.SpecBody` 字段名 | 用 `companies`，但 LLM prompt 输出 `industries` | 已知不一致，待统一 |
-| `system_setting.proto` | 未暴露 `default_refine` 字段 | biz 层 `SystemSetting.DefaultRefineLLM` 已存在，proto 未同步 |
 
 ---
 
@@ -220,7 +218,7 @@ PGO-RED-01        # 红线 / 拦截类
 | 任务 ID | 内容 | 文件 | 状态 |
 |---------|------|------|------|
 | PGO-3-PROTO-01 | 新建 proto + 生成代码（含 `REFINE_SCOPE_SPEC_EXTRACT = 6`） | `api/kratos/ai_refine/v1/ai_refine.proto` | ✅ |
-| PGO-3-PROTO-02 | `system_setting.proto` 新增 `default_refine` 字段 | `api/kratos/system_setting/v1/system_setting.proto` | 📋（字段未新增） |
+| PGO-3-PROTO-02 | `system_setting.proto` 新增 `default_refine` 字段（`RefineLLMSettings`：provider/model/base_url/configured/has_api_key 脱敏）+ `UpdateSystemSettingsRequest` 补 refine_llm_*（38-41）+ 系统设置页 section | `api/kratos/system_setting/v1/system_setting.proto` / `web/src/features/system-settings/refine-llm.ts` / `web/src/pages/SystemSettingsPage.vue` | ✅（2026-08-09 落地：API 往返 + UI 运行时验证通过） |
 | PGO-3-BIZ-01 | `LLMCaller` 接口 + `OpenAICompatLLMCaller` / `DynamicLLMCaller` 实现 | `internal/biz/llm_caller.go` + `internal/agent/llm_caller_impl.go` | ✅ |
 | PGO-3-BIZ-02 | `PromptRefiner.Refine` + `resolveModel` 3-tier fallback 链 | `internal/biz/prompt_refiner.go` | ✅ |
 | PGO-3-BIZ-03 | `SystemSetting.DefaultRefineLLM` 字段 + CRUD（`GetRefineLLM`/`UpdateRefineLLM`） | `internal/biz/system_setting.go` | ✅ |

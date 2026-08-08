@@ -36,6 +36,23 @@ const (
 	// （必须重写或移除）。
 	GateHarmfulRuleRejectThreshold = 3
 
+	// GateHelpfulRuleKeepThreshold 是 drift 维度（P2 F2 破坏性更新）的保留
+	// 阈值：当前正文中 helpful 计数达到该值的规则被 draft 删除时拒绝。
+	// 与 harmful 拒绝阈值同值（计数对称语义），独立命名避免语义错位。
+	GateHelpfulRuleKeepThreshold = GateHarmfulRuleRejectThreshold
+
+	// GateMaxRemoveRatio 是 drift 维度（P2 F2 破坏性更新）的最大删除比例：
+	// 当前规则数 ≥ GateRemoveRatioMinRules 且 draft 删除比例超过该值时拒绝。
+	GateMaxRemoveRatio = 0.5
+	// GateRemoveRatioMinRules 是删除比例判定生效的最小当前规则数（防小基数
+	// 误杀）。
+	GateRemoveRatioMinRules = 4
+	// GateMaxRuleGrowthRatio 与 GateMaxRuleGrowthAbs 是 drift 维度（P2 F2
+	// 臃肿检测）的双条件阈值：draft 规则数同时超过「当前 × 比例」与
+	// 「当前 + 绝对值」才拒绝（双条件防小基数误杀）。
+	GateMaxRuleGrowthRatio = 1.5
+	GateMaxRuleGrowthAbs   = 5
+
 	// ReplayPassThreshold 是数据集回放（Solve 接线）的通过率阈值，低于
 	// 该值 Gate 功能维拒绝。
 	ReplayPassThreshold = 0.6
@@ -403,12 +420,15 @@ func WithABReplayRunner(r SkillReplayABRunner) GateOption {
 //   - Style (lint check / length check)
 //   - Effectiveness (harmful-count rules must not be kept unchanged; only
 //     when WithSkillLookup is wired)
+//   - Drift (destructive update / bloat detection; WithSkillLookup)
+//   - Trigger accuracy (golden-set regression; WithTriggerGoldenRunner)
 type GateVerifier struct {
-	sandboxRunner SandboxRunner
-	lintChecker   SkillLintChecker
-	replayRunner  SkillReplayRunner
-	abRunner      SkillReplayABRunner
-	skillLookup   SkillLookupReader
+	sandboxRunner       SandboxRunner
+	lintChecker         SkillLintChecker
+	replayRunner        SkillReplayRunner
+	abRunner            SkillReplayABRunner
+	skillLookup         SkillLookupReader
+	triggerGoldenRunner SkillTriggerGoldenRunner
 }
 
 // NewGateVerifier constructs a GateVerifier. sandboxRunner and lintChecker are
@@ -425,7 +445,7 @@ func NewGateVerifier(sandboxRunner SandboxRunner, lintChecker SkillLintChecker, 
 	return v
 }
 
-// Verify performs all five Gate verification dimensions. Any failure rejects
+// Verify performs all seven Gate verification dimensions. Any failure rejects
 // the evolution.
 func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error) {
 	var checks []GateCheckResult
@@ -444,6 +464,12 @@ func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody str
 
 	// Dimension 5: Effectiveness (P1 计数归因)
 	checks = append(checks, v.verifyEffectiveness(ctx, skillID, draftBody))
+
+	// Dimension 6: Drift (P2 F2 破坏性更新 + 臃肿检测)
+	checks = append(checks, v.verifyDrift(ctx, skillID, draftBody))
+
+	// Dimension 7: Trigger accuracy (P2 F4 触发率黄金集回归)
+	checks = append(checks, v.verifyTriggerAccuracy(ctx, skillID, draftBody))
 
 	allPassed := true
 	for _, c := range checks {
@@ -632,6 +658,80 @@ func (v *GateVerifier) verifyEffectiveness(ctx context.Context, skillID string, 
 		}
 	}
 	return GateCheckResult{Name: "effectiveness", Passed: true}
+}
+
+// verifyDrift is the sixth Gate dimension (P2 F2 漂移检测). It implements two
+// of the three SKILL-KD drift classes that are programmatically decidable:
+//   - destructive-update drift: the draft removes a current rule whose helpful
+//     counter reached GateHelpfulRuleKeepThreshold, or removes more than
+//     GateMaxRemoveRatio of the current rules (when there are at least
+//     GateRemoveRatioMinRules of them)
+//   - skill-bloat drift: the draft rule count exceeds BOTH
+//     current × GateMaxRuleGrowthRatio AND current + GateMaxRuleGrowthAbs
+//     (dual condition avoids small-base false positives)
+//
+// modify/merge keep the rule ID and therefore never count as removal.
+// Skips (passes) when no skill lookup is wired, the current body has no rule
+// blocks (full rewrites cannot attribute removals), or the lookup fails.
+func (v *GateVerifier) verifyDrift(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+	if v.skillLookup == nil {
+		return GateCheckResult{Name: "drift", Passed: true}
+	}
+	currentBody, err := v.skillLookup.GetLatestSkillMarkdown(ctx, skillID)
+	if err != nil || !HasRuleBlocks(currentBody) {
+		return GateCheckResult{Name: "drift", Passed: true}
+	}
+	current := ParseRuleBlocks(currentBody).Rules()
+	if len(current) == 0 {
+		return GateCheckResult{Name: "drift", Passed: true}
+	}
+	draftDoc := ParseRuleBlocks(draftBody)
+
+	// 删除集 = 当前规则 id 集合 − draft 规则 id 集合（modify/merge 保留 id，
+	// 不计删除）。
+	var removed []*RuleBlock
+	for _, r := range current {
+		if draftDoc.RuleByID(r.ID) == nil {
+			removed = append(removed, r)
+		}
+	}
+
+	// 破坏性更新 1：删除高 helpful 规则。
+	for _, r := range removed {
+		if r.Helpful >= GateHelpfulRuleKeepThreshold {
+			return GateCheckResult{
+				Name:   "drift",
+				Passed: false,
+				Reason: fmt.Sprintf("destructive update: rule %q with helpful count %d (>= %d) was removed",
+					r.ID, r.Helpful, GateHelpfulRuleKeepThreshold),
+			}
+		}
+	}
+
+	// 破坏性更新 2：删除比例超阈值。
+	if len(current) >= GateRemoveRatioMinRules && len(removed) > 0 &&
+		float64(len(removed))/float64(len(current)) > GateMaxRemoveRatio {
+		return GateCheckResult{
+			Name:   "drift",
+			Passed: false,
+			Reason: fmt.Sprintf("destructive update: %d/%d rules removed (> %.0f%%)",
+				len(removed), len(current), GateMaxRemoveRatio*100),
+		}
+	}
+
+	// 臃肿：双条件同时成立才拒绝。
+	draftCount := len(draftDoc.Rules())
+	if float64(draftCount) > float64(len(current))*GateMaxRuleGrowthRatio &&
+		draftCount > len(current)+GateMaxRuleGrowthAbs {
+		return GateCheckResult{
+			Name:   "drift",
+			Passed: false,
+			Reason: fmt.Sprintf("skill bloat: rule count %d → %d (exceeds both ×%.1f and +%d)",
+				len(current), draftCount, GateMaxRuleGrowthRatio, GateMaxRuleGrowthAbs),
+		}
+	}
+
+	return GateCheckResult{Name: "drift", Passed: true}
 }
 
 // Sensitive info detection patterns.

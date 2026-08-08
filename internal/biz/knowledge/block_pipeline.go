@@ -20,7 +20,17 @@ func (u *Usecase) SetBlockIndexRepos(blocks BlockIndexRepo, idx ResolveIndex) {
 // RebuildBlockIndex 重建文档的块级派生索引（块 + 引用边 + explicit 文档轨投影 +
 // 解析键 title/aliases 物化）。Vault 同步索引成功后 / 移动入链修复 / team 摄取
 // 成功后调用。失败返回 error 供调用方降级记日志（不回滚主流程，最终一致）。
+// 写路径语义：Resolver 检出 heading-path 引用命中的未锚块后执行惰性锚点回填
+// （SP1-H/F-SP1-10，best-effort 副作用，不影响本重建的返回）。
 func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, body string) error {
+	return u.rebuildBlockIndex(ctx, collectionID, docID, body, nil, true)
+}
+
+// rebuildBlockIndex 内部实现：visible 为预解析可见集合集（SP1-H 全量重建整批
+// 提升一次）；nil 时按文档现查（单文档写路径语义不变）。
+// allowBackfill 区分写路径（true，执行惰性锚点回填）与全量重建/回填自触发
+// 重索引（false——重建是索引修复不改源文本；回填一跳即止不级联）。
+func (u *Usecase) rebuildBlockIndex(ctx context.Context, collectionID, docID, body string, visible []string, allowBackfill bool) error {
 	if u == nil || u.blockIndex == nil {
 		return nil
 	}
@@ -28,12 +38,17 @@ func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, bo
 	rows, refRows, _ := blockparse.Parse(docID, []byte(body)) // err 恒 nil（容错解析契约）
 	blocks := toBizBlocks(rows)
 	refs := toBizRefInputs(refRows)
+	var backfills []AnchorBackfillRequest
 	if len(refs) > 0 && u.resolveIndex != nil {
-		visible, err := u.visibleCollectionIDs(ctx, collectionID)
-		if err != nil {
-			return err
+		if visible == nil {
+			var err error
+			visible, err = u.visibleCollectionIDs(ctx, collectionID)
+			if err != nil {
+				return err
+			}
 		}
-		refs, err = NewLinkResolver(u.resolveIndex).ResolveRefs(ctx, collectionID, docID, visible, refs, blocks)
+		var err error
+		refs, backfills, err = NewLinkResolver(u.resolveIndex).ResolveRefs(ctx, collectionID, docID, visible, refs, blocks)
 		if err != nil {
 			return err
 		}
@@ -49,6 +64,11 @@ func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, bo
 		return err
 	}
 	u.applyLinkIndex(ctx, docID, edges)
+	// 主流程物化完成后执行回填副作用（SP1-H）：失败不回滚、不重试，
+	// 目标文档下次写路径自愈（幂等）。
+	if allowBackfill {
+		u.backfillAnchors(ctx, backfills)
+	}
 	return nil
 }
 

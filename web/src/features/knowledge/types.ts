@@ -16,6 +16,8 @@ export type KnowledgeCollection = {
   /** active | paused | error | migrating */
   sync_state: string;
   last_sync_at: string;
+  /** SP1-F：存储后端维度。local（文件系统真相源）| team（PG 真相源）。 */
+  vault_backend: string;
 };
 
 export type KnowledgeDocument = {
@@ -73,6 +75,54 @@ export type KnowledgeLink = {
   context: string;
   /** out（本文引用目标）| in（目标引用本文） */
   direction: string;
+};
+
+/** BlockBacklink 是一条块级反向链接（SP1-E/I-1 反链分组）。 */
+export type BlockBacklink = {
+  src_block_id: string;
+  src_doc_id: string;
+  src_collection_id: string;
+  /** 来源文档展示名（rel_path） */
+  src_doc_name: string;
+  /** 原始链接文本 */
+  raw_target: string;
+  /** ref | embed */
+  edge_type: string;
+  /** 引用上下文片段（±50 字符） */
+  context: string;
+  /** 跨库歧义解析（确定性取首） */
+  ambiguous: boolean;
+};
+
+/** DanglingLink 悬空链聚合（SP1-E/I-2：raw_target 分组，「未创建笔记」语义；
+ *  目标创建后自动复活）。 */
+export type DanglingLink = {
+  raw_target: string;
+  ref_count: number;
+  /** 块级引用来源（复用 BlockBacklink 形状：src_* 字段有效） */
+  refs: BlockBacklink[];
+};
+
+/** PromoteLineage 源→克隆谱系对（SP1-G/I-3：源块 promoted_to ↔ 新块 promoted_from）。 */
+export type PromoteLineage = {
+  src_block_id: string;
+  new_block_id: string;
+  target_doc_id: string;
+};
+
+/** PromoteCascadeCandidate 级联提示：晋升块引用了未一并晋升的私有目标，
+ *  团队侧落 dangling（raw_target 保留，目标创建后自动复活）。 */
+export type PromoteCascadeCandidate = {
+  src_block_id: string;
+  raw_target: string;
+  dst_doc_id: string;
+  dst_collection_id: string;
+};
+
+/** PromoteResult 晋升结果（新建块谱系 + 级联提示清单）。 */
+export type PromoteResult = {
+  created_blocks: PromoteLineage[];
+  cascade_candidates: PromoteCascadeCandidate[];
 };
 
 export type KnowledgeChunk = {

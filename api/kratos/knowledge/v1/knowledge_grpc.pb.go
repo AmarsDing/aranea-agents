@@ -39,6 +39,7 @@ const (
 	KnowledgeService_ListBlockBacklinks_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 	KnowledgeService_ListDanglingLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 	KnowledgeService_PromoteBlocks_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
+	KnowledgeService_RebuildKnowledgeIndex_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 	KnowledgeService_MergeKnowledgeEntities_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 	KnowledgeService_Search_FullMethodName                     = "/kratos.knowledge.v1.KnowledgeService/Search"
@@ -95,6 +96,12 @@ type KnowledgeServiceClient interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(ctx context.Context, in *PromoteBlocksRequest, opts ...grpc.CallOption) (*PromoteBlocksResponse, error)
+	// RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+	// for every document of the collection (SP1-H, US-29). Asynchronous and
+	// idempotent; 409 Conflict while a rebuild is already running for the same
+	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+	// stay on old data during the rebuild (degraded but available).
+	RebuildKnowledgeIndex(ctx context.Context, in *RebuildKnowledgeIndexRequest, opts ...grpc.CallOption) (*RebuildKnowledgeIndexResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -307,6 +314,16 @@ func (c *knowledgeServiceClient) PromoteBlocks(ctx context.Context, in *PromoteB
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) RebuildKnowledgeIndex(ctx context.Context, in *RebuildKnowledgeIndexRequest, opts ...grpc.CallOption) (*RebuildKnowledgeIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RebuildKnowledgeIndexResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_RebuildKnowledgeIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListEntityMergeSuggestions(ctx context.Context, in *ListEntityMergeSuggestionsRequest, opts ...grpc.CallOption) (*ListEntityMergeSuggestionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEntityMergeSuggestionsResponse)
@@ -406,6 +423,12 @@ type KnowledgeServiceServer interface {
 	// cascade candidates for references into private blocks, and immediate
 	// re-indexing of the target document so promoted content is searchable.
 	PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error)
+	// RebuildKnowledgeIndex rebuilds the block-level derived index (blocks/refs)
+	// for every document of the collection (SP1-H, US-29). Asynchronous and
+	// idempotent; 409 Conflict while a rebuild is already running for the same
+	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
+	// stay on old data during the rebuild (degraded but available).
+	RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error)
 	// ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
 	// plus high-similarity embedding pairs when the embedder is configured.
@@ -484,6 +507,9 @@ func (UnimplementedKnowledgeServiceServer) ListDanglingLinks(context.Context, *L
 }
 func (UnimplementedKnowledgeServiceServer) PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PromoteBlocks not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RebuildKnowledgeIndex not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListEntityMergeSuggestions not implemented")
@@ -863,6 +889,24 @@ func _KnowledgeService_PromoteBlocks_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_RebuildKnowledgeIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RebuildKnowledgeIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).RebuildKnowledgeIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_RebuildKnowledgeIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).RebuildKnowledgeIndex(ctx, req.(*RebuildKnowledgeIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListEntityMergeSuggestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListEntityMergeSuggestionsRequest)
 	if err := dec(in); err != nil {
@@ -1035,6 +1079,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PromoteBlocks",
 			Handler:    _KnowledgeService_PromoteBlocks_Handler,
+		},
+		{
+			MethodName: "RebuildKnowledgeIndex",
+			Handler:    _KnowledgeService_RebuildKnowledgeIndex_Handler,
 		},
 		{
 			MethodName: "ListEntityMergeSuggestions",

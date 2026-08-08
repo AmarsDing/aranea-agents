@@ -151,6 +151,9 @@ export function createVoiceSessionClient(opts: VoiceSessionClientOptions): Voice
       }
       const socket = opts.socketFactory ? opts.socketFactory(url) : new WebSocket(url);
       ws = socket;
+      // 二进制帧 = TTS 音频：必须显式声明 arraybuffer，浏览器默认 'blob'
+      // 会让 onmessage 收到 Blob 而被静默丢弃（全部 TTS 音频无声）。
+      socket.binaryType = 'arraybuffer';
       socket.onopen = () => {
         if (ws !== socket) return;
         for (const raw of pendingJson) socket.send(raw);

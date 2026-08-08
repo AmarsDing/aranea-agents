@@ -31,6 +31,19 @@
         />
       </div>
 
+      <!-- V5-T5：科幻音效开关（localStorage 持久化，默认开） -->
+      <q-btn
+        round
+        flat
+        dense
+        class="companion-page__sound-toggle"
+        :icon="soundsEnabled ? 'volume_up' : 'volume_off'"
+        :aria-label="soundsEnabled ? t('companion.soundsOff') : t('companion.soundsOn')"
+        @click.stop="setSoundsEnabled(!soundsEnabled)"
+      >
+        <q-tooltip>{{ soundsEnabled ? t('companion.soundsOff') : t('companion.soundsOn') }}</q-tooltip>
+      </q-btn>
+
       <CompanionChatPanel :open="companion.chatOpen" @close="companion.toggleChat()">
         <q-banner v-if="workspace.session.inboundHydrateError" dense rounded class="app-banner-warning q-mx-sm q-mt-sm">
           {{ workspace.session.inboundHydrateError }}
@@ -198,6 +211,7 @@ import { useChatMessagePanelBindings } from '../features/chat/composables/useCha
 import { TOOL_CONFIRM_REPLY, type ToolConfirmReply } from '../features/chat/types';
 import { useVoiceSession } from '../features/companion/voice/useVoiceSession';
 import { useCompanionConfirms } from '../features/companion/useCompanionConfirms';
+import { useUiSounds } from '../features/companion/audio/useUiSounds';
 import { spawnLaunchBurst } from '../features/companion/launchParticles';
 import { fetchVoiceAvailability } from '../features/companion/voiceStatus';
 import type { ConfirmCardModel, ConfirmDecision } from '../features/companion/types';
@@ -242,11 +256,17 @@ const DECISION_REPLY: Record<ConfirmDecision, ToolConfirmReply> = {
   always: TOOL_CONFIRM_REPLY.approveAlways,
 };
 
+// V5-T5：科幻音效状态机联动（boot/chirp/ping/cut 自动触发；确认卡 ding/buzz）
+const { soundsEnabled, setSoundsEnabled, play: playUiSound } = useUiSounds();
+
 /** 确认卡决议：批准时粒子流发射 + HUD 能量爆发（乐观视觉），随后走 grant API。 */
 function onConfirmDecide(card: ConfirmCardModel, decision: ConfirmDecision) {
   if (decision !== 'deny') {
     if (confirmLayerRef.value) spawnLaunchBurst(confirmLayerRef.value);
     hudRef.value?.triggerBurst();
+    playUiSound('ding');
+  } else {
+    playUiSound('buzz');
   }
   void workspace.session.onConfirmActivityGrant({
     sessionId: card.sessionId,

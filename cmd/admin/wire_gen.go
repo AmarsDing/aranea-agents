@@ -258,7 +258,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
 	vaultFiler := provideKnowledgeVaultFiler(loggatewayLogger)
 	blockIndexRepo := data.NewKnowledgeBlockRepoFromData(dataData)
-	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler, blockIndexRepo)
+	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler, blockIndexRepo, loggatewayLogger)
 	deptTeamLister := biz.ProvideDeptTeamLister(teamRepo)
 	deptAgentPositionClearer := biz.ProvideDeptAgentPositionClearer(agentRepository)
 	positionPromptUsecase := biz.NewPositionPromptUsecase(organizationRepo, loggatewayLogger)
@@ -340,7 +340,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillScoringUsecase := biz.NewSkillScoringUsecase(skillIntelligenceRepo, loggatewayLogger)
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
 	testRunReader := provideSelfImprovementTestRunReader(selfImprovement)
-	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, selfImprovement, selfImprovementSignalRepo, testRunReader, loggatewayLogger)
+	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, selfImprovement, selfImprovementSignalRepo, testRunReader, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
@@ -534,7 +534,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	ruleBasedContentFuser := biz.NewRuleBasedContentFuser()
 	sandboxRunner := service.NewSandboxRunner(skillIntelligenceUsecase, factory, loggatewayLogger)
 	skillReplayRunner := provideSkillReplayRunner(evaluationUsecase, dynamicLLMCaller, systemSettingUsecase, skillRepo, loggatewayLogger)
-	skillGateVerifier := provideSkillGateVerifier(sandboxRunner, skillReplayRunner, skillRepo)
+	skillTriggerGoldenRunner := provideSkillTriggerGoldenRunner(evaluationUsecase, skillRepo, loggatewayLogger)
+	skillGateVerifier := provideSkillGateVerifier(sandboxRunner, skillReplayRunner, skillTriggerGoldenRunner, skillRepo)
 	skillMergeUsecase := provideSkillMergeUsecase(skillMergeRepo, skillMergeRepo, ruleBasedContentFuser, skillGateVerifier, skillDedupUsecase, loggatewayLogger)
 	skillDedupService := service.NewSkillDedupService(skillDedupUsecase, skillMergeUsecase, loggatewayLogger)
 	packRepoAdapter := data.NewPackRepoAdapter(agentRepository, teamRepo, teamRepo, organizationRepo, graphRepo, skillRepo)
@@ -2305,21 +2306,31 @@ func provideSkillVersionReloader(writer biz.SkillVersionWriter, queries skill3.S
 }
 
 // provideSkillReplayRunner assembles the dataset-replay runner (P1 Solve
-// 接线): replays the skill's bound evaluation dataset against evolved drafts
-// via the platform DefaultRefineLLM. DI 环检查：本 provider 依赖
-// evaluation.Usecase + LLMCaller + SkillRepo，不经 SkillIntelligenceUsecase，
-// 无新环。
-func provideSkillReplayRunner(evalUC *evaluation.Usecase, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, skills biz.SkillLookupReader, lg loggateway.Logger) biz.SkillReplayRunner {
+// 接线 + P2 F1 AB 对照回放): replays the skill's bound evaluation dataset
+// against evolved drafts via the platform DefaultRefineLLM. DI 环检查：本
+// provider 依赖 evaluation.Usecase + LLMCaller + SkillRepo，不经
+// SkillIntelligenceUsecase，无新环。
+func provideSkillReplayRunner(evalUC *evaluation.Usecase, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, skills biz.SkillLookupReader, lg loggateway.Logger) *service.SkillReplayRunner {
 	return service.NewSkillReplayRunner(evalUC, caller, sys, skills, lg)
 }
 
+// provideSkillTriggerGoldenRunner assembles the trigger golden-set regression
+// runner (P2 F4): deterministic frontmatter-trigger accuracy check over the
+// {skill.Name|Slug}__trigger evaluation dataset, no LLM. DI 环检查：依赖
+// evaluation.Usecase + SkillRepo，不经 SkillIntelligenceUsecase，无新环。
+func provideSkillTriggerGoldenRunner(evalUC *evaluation.Usecase, skills biz.SkillLookupReader, lg loggateway.Logger) *service.SkillTriggerGoldenRunner {
+	return service.NewSkillTriggerGoldenRunner(evalUC, skills, lg)
+}
+
 // provideSkillGateVerifier assembles the Gate verifier for skill merge /
-// evolution with P1 dimensions: sandbox functional check + dataset replay
-// (Solve 接线, WithReplayRunner) + harmful-rule effectiveness (计数归因,
-// WithSkillLookup). lintChecker is nil so the style dimension falls back to
-// the built-in rule-based checks.
-func provideSkillGateVerifier(sandboxRunner biz.SandboxRunner, replayRunner biz.SkillReplayRunner, skills biz.SkillLookupReader) biz.SkillGateVerifier {
-	return biz.NewGateVerifier(sandboxRunner, nil, biz.WithReplayRunner(replayRunner), biz.WithSkillLookup(skills))
+// evolution. Dimensions: sandbox functional check + AB comparison replay
+// (P2 F1 棘轮门控, WithABReplayRunner; covers the P1 absolute threshold) +
+// harmful-rule effectiveness (计数归因, WithSkillLookup) + drift (P2 F2,
+// WithSkillLookup) + trigger-accuracy golden regression (P2 F4,
+// WithTriggerGoldenRunner). lintChecker is nil so the style dimension falls
+// back to the built-in rule-based checks.
+func provideSkillGateVerifier(sandboxRunner biz.SandboxRunner, replayRunner biz.SkillReplayABRunner, goldenRunner biz.SkillTriggerGoldenRunner, skills biz.SkillLookupReader) biz.SkillGateVerifier {
+	return biz.NewGateVerifier(sandboxRunner, nil, biz.WithABReplayRunner(replayRunner), biz.WithSkillLookup(skills), biz.WithTriggerGoldenRunner(goldenRunner))
 }
 
 func provideSkillIntelligenceUsecase(scorer *biz.SkillScoringUsecase, reporter *biz.SkillReportUsecase, unifiedRepo *data.UnifiedEvolutionRepo, aggregator biz.SkillHealthAggregator, unanalyzedReader biz.SkillInvocationUnanalyzedReader, orch *biz.SkillEvolutionOrchestrator, evolver biz.SkillDraftEvolver, reloader biz.SkillReloader, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
@@ -2357,6 +2368,7 @@ func provideSkillEvolutionOrchestrator(
 	aggregator biz.SkillHealthAggregator,
 	scorer *biz.SkillScoringUsecase,
 	metricsRepo biz.EvolutionMetricsRepo,
+	skills biz.SkillLookupReader,
 	siConf *conf.SelfImprovement,
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
@@ -2366,6 +2378,8 @@ func provideSkillEvolutionOrchestrator(
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
 	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
+
+	orch.RegisterTrigger(biz.NewSuccessTrigger(aggregator, skills, lg))
 	if siConf.SIEnabled() {
 		orch.RegisterTrigger(biz.NewErrorClusterTrigger(siSignals, siConf.SIErrorClusterWindowDays(), siConf.SIErrorClusterMinCount(), lg))
 		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))

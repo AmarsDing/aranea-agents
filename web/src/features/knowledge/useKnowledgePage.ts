@@ -2,10 +2,16 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
-import { hasIndexingDocuments } from './knowledgeUi';
+import { hasIndexingDocuments, promoteTargetOptions } from './knowledgeUi';
 import { getDocumentContent } from './api';
 import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
-import type { KnowledgeDocument, KnowledgeUploadTask, EmbedderConfig, UpdateEmbedderConfigInput } from './types';
+import type {
+  KnowledgeDocument,
+  KnowledgeUploadTask,
+  EmbedderConfig,
+  PromoteResult,
+  UpdateEmbedderConfigInput,
+} from './types';
 import { useKnowledgeStore } from '../../stores/knowledge';
 import { useKnowledgeIngestWs } from './useKnowledgeIngestWs';
 import { useVaultExplorer, type VaultQTreeNode } from './useVaultExplorer';
@@ -427,7 +433,12 @@ export function useKnowledgePage() {
   function promptCreateVaultDir(target: { collectionId: string; prefix: string }, preset = '') {
     $q.dialog({
       title: t('knowledgePage.newDirTitle'),
-      prompt: { model: preset, type: 'text', label: t('knowledgePage.newDirLabel'), isValid: (v: string) => !!v.trim() },
+      prompt: {
+        model: preset,
+        type: 'text',
+        label: t('knowledgePage.newDirLabel'),
+        isValid: (v: string) => !!v.trim(),
+      },
       cancel: true,
       persistent: true,
     }).onOk((name: string) => {
@@ -458,7 +469,12 @@ export function useKnowledgePage() {
   function promptCreateVaultDoc(target: { collectionId: string; prefix: string }, preset = '') {
     $q.dialog({
       title: t('knowledgePage.newDocTitle'),
-      prompt: { model: preset, type: 'text', label: t('knowledgePage.newDocLabel'), isValid: (v: string) => !!v.trim() },
+      prompt: {
+        model: preset,
+        type: 'text',
+        label: t('knowledgePage.newDocLabel'),
+        isValid: (v: string) => !!v.trim(),
+      },
       cancel: true,
       persistent: true,
     }).onOk((name: string) => {
@@ -563,6 +579,49 @@ export function useKnowledgePage() {
   }
 
   let docPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ---------- SP1-G/I-3：晋升到团队库（文档级，doc_ids 入口） ----------
+
+  const promoteOpen = ref(false);
+  const promoteLoading = ref(false);
+  const promoteTargetId = ref('');
+  const promoteResult = ref<PromoteResult | null>(null);
+  /** 晋升源文档名（对话框副标题展示；docId 由 explorer.selectedDocId 提供）。 */
+  const promoteDocName = ref('');
+
+  // 目标库选项：仅 team 库，排除当前库（后端同库/非 team 均拒绝，前端先行过滤）。
+  const promoteOptions = computed(() => promoteTargetOptions(collections.value, selectedId.value));
+
+  // 晋升入口可见性：当前库非 team（团队库再晋升无意义）+ 已选中文件。
+  const promotable = computed(
+    () =>
+      !!selectedCollection.value && selectedCollection.value.vault_backend !== 'team' && !!explorer.selectedDocId.value,
+  );
+
+  function openPromoteDialog() {
+    const node = explorer.selectedNode.value;
+    if (!node || node.kind !== 'file') return;
+    promoteDocName.value = node.path || node.name;
+    promoteTargetId.value = promoteOptions.value[0]?.value ?? '';
+    promoteResult.value = null;
+    promoteOpen.value = true;
+  }
+
+  async function submitPromote() {
+    const docId = explorer.selectedDocId.value;
+    if (!docId || !promoteTargetId.value) return;
+    promoteLoading.value = true;
+    try {
+      promoteResult.value = await knowledgeStore.promoteDocs([docId], promoteTargetId.value);
+      // 目标库文档计数变化（新建目标文档）；源侧谱系字段回写不改变列表。
+      await loadCollections();
+    } catch (e) {
+      promoteOpen.value = false;
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.promoteFailed') });
+    } finally {
+      promoteLoading.value = false;
+    }
+  }
 
   function stopDocPoll() {
     if (docPollTimer) {
@@ -677,6 +736,15 @@ export function useKnowledgePage() {
     moveTargetOptions,
     openMoveDialog,
     submitMove,
+    promoteOpen,
+    promoteLoading,
+    promoteTargetId,
+    promoteResult,
+    promoteDocName,
+    promoteOptions,
+    promotable,
+    openPromoteDialog,
+    submitPromote,
     explorer,
   };
 }

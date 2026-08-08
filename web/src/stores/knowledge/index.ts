@@ -8,17 +8,23 @@ import {
   deleteDocument,
   getCollection,
   ingestDocument,
+  listBlockBacklinks,
   listCollections,
+  listDanglingLinks,
   listDocuments,
   listDocumentLinks,
   listVaultTree,
   moveDocument,
+  moveDocumentToDir,
+  promoteDocuments,
   searchKnowledge,
   getEmbedderConfig,
   updateEmbedderConfig,
 } from '../../features/knowledge/api';
 import type {
+  BlockBacklink,
   CreateCollectionInput,
+  DanglingLink,
   IngestDocumentInput,
   KnowledgeChunk,
   KnowledgeCollection,
@@ -26,6 +32,7 @@ import type {
   KnowledgeLink,
   ListCollectionsResult,
   ListDocumentsResult,
+  PromoteResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
   UpdateEmbedderConfigInput,
@@ -45,6 +52,10 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const treeChildren = ref<Record<string, VaultTreeNode[]>>({});
   /** P3 关联区：文档已解析关联缓存，键 doc_id。 */
   const linksByDoc = ref<Record<string, KnowledgeLink[]>>({});
+  /** SP1-I：块级反链缓存，键 doc_id。 */
+  const backlinksByDoc = ref<Record<string, BlockBacklink[]>>({});
+  /** SP1-I：悬空链缓存，键 collection_id。 */
+  const danglingByCollection = ref<Record<string, DanglingLink[]>>({});
 
   function treeKey(collectionId: string, prefix: string): string {
     return `${collectionId}|${prefix}`;
@@ -80,6 +91,37 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return items;
   }
 
+  /** SP1-I：加载文档的块级反链（缓存按 doc_id）。 */
+  async function loadBlockBacklinks(docId: string, force = false): Promise<BlockBacklink[]> {
+    if (!force && backlinksByDoc.value[docId]) {
+      return backlinksByDoc.value[docId];
+    }
+    const items = await listBlockBacklinks(docId);
+    backlinksByDoc.value[docId] = items;
+    return items;
+  }
+
+  /** SP1-I：加载集合悬空链（缓存按 collection_id）。 */
+  async function loadDanglingLinks(collectionId: string, force = false): Promise<DanglingLink[]> {
+    if (!force && danglingByCollection.value[collectionId]) {
+      return danglingByCollection.value[collectionId];
+    }
+    const items = await listDanglingLinks(collectionId);
+    danglingByCollection.value[collectionId] = items;
+    return items;
+  }
+
+  /** SP1-I：图谱增量（I-4）后失效相关缓存——反链（受影响文档）与悬空链（受影响集合）。 */
+  function invalidateLinkCaches(docIds: string[], collectionIds: string[]) {
+    for (const id of docIds) {
+      delete linksByDoc.value[id];
+      delete backlinksByDoc.value[id];
+    }
+    for (const id of collectionIds) {
+      delete danglingByCollection.value[id];
+    }
+  }
+
   async function loadCollections(params: { limit?: number; offset?: number } = {}): Promise<ListCollectionsResult> {
     loading.value = true;
     try {
@@ -103,6 +145,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     await deleteCollection(id);
     collections.value = collections.value.filter((c) => c.id !== id);
     delete documentsByCollection.value[id];
+    delete danglingByCollection.value[id];
     invalidateTree(id);
     collectionsTotal.value = Math.max(0, collectionsTotal.value - 1);
   }
@@ -153,6 +196,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
       documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter((d) => d.id !== id);
     }
     delete linksByDoc.value[id];
+    delete backlinksByDoc.value[id];
     invalidateTree(collectionId);
   }
 
@@ -178,6 +222,14 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return searchKnowledge(query);
   }
 
+  // SP1-G/I-3：文档级晋升到团队库；目标库文档结构变化（失效树缓存供重载），
+  // 集合计数由页面侧 reload 刷新。
+  async function promoteDocs(docIds: string[], targetCollectionId: string): Promise<PromoteResult> {
+    const result = await promoteDocuments(docIds, targetCollectionId);
+    invalidateTree(targetCollectionId);
+    return result;
+  }
+
   async function loadEmbedderConfig(): Promise<EmbedderConfig> {
     const cfg = await getEmbedderConfig();
     embedderConfig.value = cfg;
@@ -198,9 +250,14 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     embedderConfig,
     treeChildren,
     linksByDoc,
+    backlinksByDoc,
+    danglingByCollection,
     invalidateTree,
+    invalidateLinkCaches,
     loadVaultTree,
     loadDocumentLinks,
+    loadBlockBacklinks,
+    loadDanglingLinks,
     loadCollections,
     addCollection,
     removeCollection,
@@ -212,6 +269,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     removeDocument,
     moveDoc,
     moveDocToDir,
+    promoteDocs,
     search,
     loadEmbedderConfig,
     saveEmbedderConfig,

@@ -4,6 +4,8 @@ import { createVoiceSessionClient, type VoiceDownstreamHandlers, type VoiceState
 class FakeWebSocket {
   static OPEN = 1;
   readyState = 0; // CONNECTING
+  /** 浏览器默认 'blob'；客户端必须显式置为 'arraybuffer'，否则二进制 TTS 帧被静默丢弃。 */
+  binaryType = 'blob';
   sent: (string | ArrayBuffer)[] = [];
   closed = false;
   onopen: (() => void) | null = null;
@@ -162,6 +164,13 @@ describe('createVoiceSessionClient — 下行分发', () => {
     expect(partials).toEqual(['你好']);
     expect(finals).toEqual([{ text: '你好世界', durationMs: 1200 }]);
     expect(turns).toEqual(['vt-1']);
+  });
+
+  it('sets binaryType=arraybuffer so binary TTS frames arrive as ArrayBuffer (not Blob)', () => {
+    const { client, sockets } = makeClient();
+    client.connect();
+    // 回归：默认 'blob' 时 onmessage 收到 Blob，instanceof ArrayBuffer 判空 → 音频全静默
+    expect(sockets[0].binaryType).toBe('arraybuffer');
   });
 
   it('routes binary frames to onTtsAudio and tts.start/end to handlers', () => {

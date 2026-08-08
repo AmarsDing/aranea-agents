@@ -46,6 +46,8 @@
 | 语音可用性探测 | `internal/server/voice_ws.go`（`GET /v1/voice/status` + VoiceStatusProbe）、`internal/biz/speech_setting.go`（SpeechASRConfigured/SpeechTTSConfigured）；前端 `web/src/features/companion/voiceStatus.ts`、`stores/companion.ts`（voiceAvailable/voiceMicDisabled）、`components/companion/HudCanvas.vue`（麦克风门控） | 未配置 ASR/TTS 时麦克风置灰 + 配置引导提示 ✅（V2-T8） |
 | 客户端工具种子补播 | `internal/data/ddl_migration_registry.go`（迁移 `20261202 builtin_platform_tools_client_reseed`） | 存量库补齐 client_open_app/client_open_url ✅（V2-T8） |
 | chat 主链路工具桥装配 | `internal/service/chat_orchestrator.go`（RuntimeTooling.ClientBridge）、`internal/service/chat_orch_agent_build.go`（TRPCExtensionDeps.ClientBridge）、`cmd/admin/wire.go`（provideRuntimeTooling 注入） | chat 主链路可调 client_open_app/client_open_url ✅（V2-T8） |
+| 语音听写（后端） | `internal/voice/session.go`（StartParams.Mode / ModeDictation / dictation() / handleASRFinal 早退）、`internal/server/voice_ws.go`（voiceControlMessage.Mode） | mode=dictation 终稿仅下行文本，不建 Turn 不播报 ✅（V6-T1） |
+| 语音听写（前端） | `web/src/features/chat/composables/useVoiceDictation.ts`（+spec）、`useChatWorkspace.ts`（装配/会话切换停止）、`components/chat/ChatComposer.vue`（听写条 + 录音态按钮）、`ChatMessagePanel.vue` / `ChatPage.vue` / `MobileChatPage.vue`（透传）、i18n zh-CN/en-US | 麦克风按钮 → 听写 → 终稿填入输入框 ✅（V6-T2） |
 
 ## 3. 现状评估与差距
 
@@ -68,7 +70,7 @@
 | # | 任务 | 状态 | 验收 |
 |---|------|------|------|
 | V1-T1 | SpeechProvider biz 端口 + 配置模型（`internal/biz/speech.go`，System Settings `speech` 分组读取，含单测） | ✅ | 端口单测通过；配置缺失返回 CodeFailedPrecondition（V1 配置读取为 env 实现，System Settings 分组归 V2-T7） |
-| V1-T2 | 火山流式 ASR 适配器（`internal/data/speech/volcengine_asr.go`，含 mock 单测） | ✅ | Write/Events/Close 契约测试通过；真机联调归 V1-T10。2026-08-08 健壮性修复：Open 同步等待 full client request 首帧应答（默认 3s 超时），上游静默/协议不匹配 fail-fast 返回 UNAVAILABLE（原静默挂起至 10min 空闲回收）；error frame 解析 code/message 上抛。2026-08-08 真机校准：X-Api-Key 鉴权（`volc.bigasr.sauc.duration`）；full client request 显式 seq=1、音频帧自 2 续号（bigmodel 端点 autoAssignedSequence 严格连续）；末帧 flags=0b0010 无序号规避端点末帧绝对值约定差异；服务端末帧应答后 close 1000（reason "finish last sequence"）按流结束处理不再误报 ASR_ERROR（误报会把 thinking 态经 recoverToListening 打断）。2026-08-09 多轮对话修复：asrPump 检测事件流终结后 CAS 摘除已终结会话（`voice.asr.upstream_end` 进程日志），下一句 WriteAudio 懒重开新连接（对齐 reclaimIdleASR 模式）；两句全链路真机探针回归通过 |
+| V1-T2 | 火山流式 ASR 适配器（`internal/data/speech/volcengine_asr.go`，含 mock 单测） | ✅ | Write/Events/Close 契约测试通过；真机联调归 V1-T10。2026-08-08 健壮性修复：Open 同步等待 full client request 首帧应答（默认 3s 超时），上游静默/协议不匹配 fail-fast 返回 UNAVAILABLE（原静默挂起至 10min 空闲回收）；error frame 解析 code/message 上抛。2026-08-08 真机校准：X-Api-Key 鉴权（`volc.bigasr.sauc.duration`）；full client request 显式 seq=1、音频帧自 2 续号（bigmodel 端点 autoAssignedSequence 严格连续）；末帧 flags=0b0010 无序号规避端点末帧绝对值约定差异；服务端末帧应答后 close 1000（reason "finish last sequence"）按流结束处理不再误报 ASR_ERROR（误报会把 thinking 态经 recoverToListening 打断）。2026-08-09 多轮对话修复：asrPump 检测事件流终结后 CAS 摘除已终结会话（`voice.asr.upstream_end` 进程日志），下一句 WriteAudio 懒重开新连接（对齐 reclaimIdleASR 模式）；两句全链路真机探针回归通过。2026-08-09 无限输入修复：SAUC `result.utterances` 为连接级累积列表，已 definite 语句在每帧响应中持续回放，`handleResponse` 原实现每帧重放首个 definite → 听写模式重复 Final 无限追加输入框；修复为 definite 游标去重（`finalCursor`，总数回退归零），产出新终稿的帧跳过 Partial 防字幕回闪；回归测试 `TestASRFinalDedupesCumulativeUtterances`（累积回放 4 帧场景） |
 | V1-T3 | 火山流式 TTS 适配器（`internal/data/speech/volcengine_tts.go`，含 mock 单测） | ✅ | 分句写入 → 音频 chunk 契约测试通过；真机联调归 V1-T10。2026-08-08 真机校准：重写为 TTS V3 单向流式（`api/v3/tts/unidirectional/stream`，volc_frame 扩展 event/sessionID/errCode 字段，事件 152 合成完成/350-351 句界/352 音频）；X-Api-Key 鉴权 + `seed-tts-2.0` + `zh_female_vv_uranus_bigtts`（音色须与模型代际匹配）；合成探针（`test/voice-ack-fix/tts_synth_probe.go`）产出 10 chunks / 3.59s PCM |
 | V1-T4 | `/v1/voice` 语音网关（`internal/server/voice_ws.go`：鉴权/单会话/帧路由/空闲回收） | ✅ | 二进制帧收发、鉴权拒绝、会话替换集成测试通过 |
 | V1-T5 | SentenceChunker + TTS 调度器（`internal/voice/`，含分句边界/背压/取消单测） | ✅ | 分句单测覆盖标点/硬切/flush/markdown 剥离。2026-08-08 真机修复：`synthesize` 收到句级 `TTSAudioChunkEnd` 即返回——火山 152 后保持 WS 连接不关 audio 信道，原「无动作」会把 worker 饿死在本句，后续句子与 OnDrained（tts.end）全链路阻塞 |
@@ -113,16 +115,38 @@
 
 | # | 任务 | 状态 | 验收 |
 |---|------|------|------|
-| V5-T1 | 渲染管线升级：EffectComposer + UnrealBloomPass + OutputPass 接入（three/examples/jsm，零新依赖），Bloom 参数入 hudParams | 📋 | hudParams 新增 bloom 参数纯函数单测；各状态 Bloom 强度正确；桌面 ≥40fps |
-| V5-T2 | 场景重构：HudScene 拆分为组合器 + `hud/parts/*`（ReactorCore simplex 液态核 / ReactorRings ×3 刻度环 / Starfield / SpectrumRing 迁移 / ShockwavePool 迁移），移除线框壳与全息弧线组 | 📋 | hudParams 扩展参数（ringExpand 等）单测；单文件 ≤500 行；五状态视觉浏览器实测 |
-| V5-T3 | 启动过场：语音模式开启 ~1.2s 序列（bootProgress 驱动核心点亮 + 刻度环逐层展开 + boot 音效联动） | 📋 | 过场流畅无穿帮；中断（快速关闭）回退正确 |
-| V5-T4 | DOM 全息化：状态标签（角括号+扫描线）/ 打字机字幕 / 反应堆式麦克风按钮 / HoloConfirmCard 视觉对齐 | 📋 | 视觉统一；交互回归（点击/置灰/tooltip/确认三路径） |
-| V5-T5 | 音效引擎 `audio/uiSounds.ts`：boot/chirp/ping/ding/buzz/cut 程序合成 + localStorage 开关 + 状态机联动 | 📋 | 合成参数纯函数单测 + 调度 mock 单测；开关持久化；音量真机主观验证 |
-| V5-T6 | 总验收：`pnpm lint && pnpm test && pnpm build` 全绿 + 五状态/过场/音效浏览器实测 + 三件套同步 | 📋 | 需求 §2.3 验收标准逐条达标 |
+| V5-T1 | 渲染管线升级：EffectComposer + UnrealBloomPass + OutputPass 接入（three/examples/jsm，零新依赖），Bloom 参数入 hudParams | ✅ | hudParams `bloomIntensity` 六态纯函数单测（listening 1.0 / speaking 1.1+振幅增益 / interrupted 1.3 等）；`HudScene` 组合器接入三 Pass，flash/burst 瞬时提亮叠加 |
+| V5-T2 | 场景重构：HudScene 拆分为组合器 + `hud/parts/*`（ReactorCore simplex 液态核 / ReactorRings ×3 刻度环 / Starfield / SpectrumRing 迁移 / ShockwavePool 迁移），移除线框壳与全息弧线组 | ✅ | parts 统一 `HudPart` 接口（update/setTint/dispose），HudScene 235 行 ≤500；`ringExpand`/`ringSpeedFactor`/`coreWobble`/`rippleGain` 纯函数单测全绿 |
+| V5-T3 | 启动过场：语音模式开启 ~1.2s 序列（bootProgress 驱动核心点亮 + 刻度环逐层展开 + boot 音效联动） | ✅ | `bootProgress` 1.2s 推进（BOOT_SECONDS），核心 0.75→1 / Bloom 0.35→1 / 环组 0.8→1；`ringBoot [0,1]×3` 交错纯函数（内环 0→0.5、中环 0.25→0.75、外环 0.5→1.0），ReactorRings 逐环透明度+缩放弹入（待机保留 20% 幽影）；快速关闭立即回待机（bootProgress=0）；boot 音效经 `useUiSounds` voiceModeOn watch 联动；hudParams.spec 25 例全绿 |
+| V5-T4 | DOM 全息化：状态标签（角括号+扫描线）/ 打字机字幕 / 反应堆式麦克风按钮 / HoloConfirmCard 视觉对齐 | ✅ | 状态标签：四角括号 + hud-scan 扫描线 + 等宽大写 + 发光描边；字幕：逐字 span 打字机浮现（索引复用旧字不重放）+ 全息边框发光；麦克风：hud-mic-pulse 脉动光环常开 + 开启时 hud-mic-orbit 虚线轨道环旋转（置灰隐藏光环）；HoloConfirmCard 沿用同色系 rgba(0,229,255) 全息语言无需改动 |
+| V5-T5 | 音效引擎 `audio/uiSounds.ts`：boot/chirp/ping/ding/buzz/cut 程序合成 + localStorage 开关 + 状态机联动 | ✅ | `SOUND_SPECS` 纯数据六配方（boot 上电扫频 180→880Hz 双段等）；`UiSoundEngine` 注入 `AudioContextLike` 可 mock，主音量 0.5（约 -18dB），浏览器自动播放策略 resume 钩子；`useUiSounds` 状态机联动（boot/chirp/ping 循环/cut）+ 确认 ding/buzz 页面接线；localStorage 开关默认开 + CompanionPage 音量切换按钮；uiSounds.spec 9 例全绿 |
+| V5-T6 | 总验收：`pnpm lint && pnpm test && pnpm build` 全绿 + 五状态/过场/音效浏览器实测 + 三件套同步 | ✅ | 2026-08-09：`pnpm lint` 0 errors（warnings 均为存量基线）；`pnpm test` 204 文件 1560 测试全绿；`pnpm build` 通过。浏览器实测（localhost:9001/#/companion）：idle 青色反应堆+刻度环+星空渲染 ✅ → 点麦克风 listening（ cyan +「正在聆听…」全息角括号标签）✅ → 环境音 ASR 终稿「你好。」→ thinking 金色高亮 Bloom ✅ → TTS 播报 → speaking → listening 回落 ✅ → 聊天面板自动滑出完整 Turn（记忆召回+回复）✅ → 再点关闭回 idle ✅；音效开关按钮（「关闭科幻音效」）渲染且默认开 ✅；全程控制台零错误（仅 THREE.Clock 弃用警告，存量）。interrupted/error 态由状态机单测覆盖。同日修复听写无限输入根因（ASR 累积回放去重，见 V1-T2），真机探针 `test/dictation-dupcheck/` 验证两句连续听写恰好 2 条 asr.final 无重复 |
+
+### Phase V5.1 — 播报无声根因修复 + HUD 反馈修订（2026-08-09）✅
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V5.1-T1 | **TTS 播报无声根因修复**：`createVoiceSessionClient.connect()` 显式 `socket.binaryType = 'arraybuffer'`——浏览器默认 `'blob'` 导致 onmessage 收到 Blob，`instanceof ArrayBuffer` 判空后全部 TTS 二进制帧静默丢弃（ASR/JSON 控制帧正常故仅音频无声；后端日志佐证：Turn 完成 675 字回复 + TTS worker 运行 15s 无 sentence_skip） | ✅ | useVoiceSession.spec 回归例「sets binaryType=arraybuffer…」RED→GREEN，10/10 通过 |
+| V5.1-T2 | **thinking 去琥珀**：`TINT_AMBER` 删除，idle/listening/thinking/speaking 统一青蓝系（`#22d3ee→#34d399`），thinking 仅靠转速 ×3/收缩 0.85×/高波动区分；interrupted/error 保留红色警示 | ✅ | hudParams.spec tint 例改写（四态青蓝 + 红警示），26/26 通过 |
+| V5.1-T3 | **speaking 粒子 + 震动**：新增 `parts/EnergyParticles.ts`（220 粒子绕核轨道云，`particleGain` 六态增益驱动亮度/轨道速度/尺寸，speaking 振幅外推粒子，vertexColors 内外层双色，帧间零分配）；进入 speaking 自动 `burst()`（涟漪 + Bloom 提亮）；相机按 `shakeGain × level` 高频微抖 | ✅ | `particleGain`/`shakeGain` 纯函数入 hudParams + 单测 2 例；全量 `pnpm test` 204 文件 1562 例全绿、`pnpm lint` 0 errors（存量 warning 基线不变）、`pnpm build` 通过 |
+
+> V5.1 顺带发现（未修，另行评估）：① 03:28 会话 `TURN_FAILED [CHAT_TURN_BUSY/CONFLICT]`——语音 Turn 与进行中 Turn 冲突时整轮无回复无播报（前端仅有 voice.error 提示）；② 03:11 `voice.tts.sentence_skip`——分句器产出无可读文本的句子被火山 TTS 拒绝（`45002001 No readable text!`）后跳过，造成该句无声。
+
+### Phase V6 — 语音听写（聊天页语音输入，P1）✅ 2026-08-09
+
+目标：聊天页麦克风按钮落地「听写」行为（需求 §2.11）——语音转文字填入输入框，手动编辑后发送；不自动发送、不触发 TTS 播报。复用 `/v1/voice` 通道，新增 `mode=dictation` 会话模式（设计 §13）。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V6-T1 | 后端听写模式：`StartParams.Mode`/`ModeDictation`、Start 跳过事件总线订阅、不缓冲留档、handleASRFinal 终稿仅下行文本；voice_ws 透传 mode | ✅ | session_test.go 4 例（仅下行文本/跳过确认拦截/跳过留档/连续终稿）；`go test ./internal/voice/... ./internal/server/...` 全过 |
+| V6-T2 | 前端听写：useVoiceDictation composable + useChatWorkspace 装配 + ChatComposer 听写条/录音态按钮 + i18n + 会话切换自动停止 | ✅ | useVoiceDictation.spec 17 例 + useVoiceSession.spec mode 断言；`pnpm lint && pnpm test && pnpm build` 全绿（204 文件 1556 测试） |
+| V6-T3 | 真机验证 + 三件套同步 | ✅ | 探针 `test/dictation-e2e/dictation_probe.go`：真实火山 ASR 两句连续听写，无 turn.accepted/无 TTS/状态停留 listening；浏览器点麦克风 → 后端 `voice.session.start mode=dictation` → 听写条「正在聆听…」+ 按钮「停止听写」→ 再点 teardown（后端 `voice.session.done`），消息区无消息 |
+
+> V6-T3 顺带修复：HEAD 上 `HudCanvas.vue` 引用已不存在的 `createHudScene` 工厂致 SPA 白屏（V5 重构未对齐），改为 `new HudScene(canvas, {getPlaybackLevel, fillMicSpectrum})` 拉取模型并移除失效的 amplitude/spectrum watch；修复后 hudParams.spec 21 例与全量前端测试通过。
 
 ## 5. 总验收标准
 
-1. 需求文档 §3 验收总览 12 项按 Phase 逐项达标
+1. 需求文档 §3 验收总览 13 项按 Phase 逐项达标
 2. 每 Phase 完成后：后端 `make api && make wire && make build && make test && make lint`；前端 `pnpm lint && pnpm test && pnpm build` 全绿
 3. 运行时验证（R3）：读 `logs/aranea-pipeline.log` 确认 voice.* 流程日志 + 实际桌面端操作验证
 4. 回归：Chat/Team/工具治理既有单测不破坏
@@ -131,8 +155,8 @@
 
 **后端新增**：`internal/server/voice_ws.go`、`internal/voice/*`（4 文件）、`internal/biz/speech.go`、`internal/data/speech/*`（3 文件）、`internal/tools/clientbridge/*`
 **后端修改**：`internal/server/ws.go`（工具桥下行挂载）、`internal/tools/toolset.go`（注册）、`internal/data/builtin_tools_seed.go`（client 工具组种子）、`internal/agent/tool_confirm_gate.go`（catalog）、`internal/event/flow_log.go`（step 登记）、`cmd/admin/wire*.go`（注入）、System Settings 相关（speech 分组）
-**前端新增**：`web/src/pages/CompanionPage.vue`、`web/src/features/companion/*`（~10 文件）
-**前端修改**：`web/package.json`（+three）、路由注册、System Settings 页（语音 Tab，V2）
+**前端新增**：`web/src/pages/CompanionPage.vue`、`web/src/features/companion/*`（~10 文件）、`web/src/features/chat/composables/useVoiceDictation.ts`（+spec，V6）
+**前端修改**：`web/package.json`（+three）、路由注册、System Settings 页（语音 Tab，V2）、`useChatWorkspace.ts` / `ChatComposer.vue` / `ChatMessagePanel.vue` / `ChatPage.vue` / `MobileChatPage.vue` / i18n locales（V6 听写）、`components/companion/HudCanvas.vue`（V6 期修复 V5 拉取模型对齐）
 **Tauri 新增**：`web/src-tauri/src/client_tools.rs`、`whitelist.rs`；**修改**：`Cargo.toml`（+screenshots 等，V3）、`tauri.conf.json`（窗口/权限，V3）
 **文档**：本三件套 + `65-module-cross-reference-full.md`（新增模块卡片）+ 59/63 三件套状态联动（V4/V2 期）
 
@@ -148,4 +172,4 @@
 
 ---
 
-*文档版本：2026-08-05 v1.0 — Phase V1-V4 规划定稿，待 V1 启动。*
+*文档版本：2026-08-09 v1.3 — ASR 累积回放去重修复（听写无限输入根因，`finalCursor` 游标）；Phase V6 语音听写完成（含真机验证）；HUD V5 拉取模型对齐修复入档。*

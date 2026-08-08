@@ -86,6 +86,10 @@
           <q-btn v-if="showDownload" flat dense round size="sm" icon="download" @click="$emit('download-asset')">
             <q-tooltip>{{ t('knowledgePage.detailDownloadOriginal') }}</q-tooltip>
           </q-btn>
+          <!-- SP1-G/I-3：晋升到团队库（仅 local 库文档可见，由父级判定） -->
+          <q-btn v-if="promotable" flat dense round size="sm" icon="drive_file_move_rtl" @click="$emit('promote')">
+            <q-tooltip>{{ t('knowledgePage.promoteTo') }}</q-tooltip>
+          </q-btn>
           <q-btn flat dense round size="sm" icon="drive_file_move_outline" @click="$emit('move')">
             <q-tooltip>{{ t('knowledgePage.moveTo') }}</q-tooltip>
           </q-btn>
@@ -160,7 +164,15 @@
               controls
               class="knowledge-doc-detail__video"
             />
-            <!-- md/txt/word/其他：解析后文本预览 -->
+            <!-- md/txt/word/其他：解析后文本预览（SP1-I：dangling wikilink 灰显 + hover 提示） -->
+            <pre
+              v-else-if="previewContent && previewSegments"
+              class="knowledge-doc-detail__preview"
+            ><template v-for="(seg, i) in previewSegments" :key="i"
+                ><span v-if="seg.dangling" class="knowledge-doc-detail__dangling"
+                  >{{ seg.text }}<q-tooltip>{{ t('knowledgePage.danglingTargetHint') }}</q-tooltip></span
+                ><template v-else>{{ seg.text }}</template></template
+            ></pre>
             <pre v-else-if="previewContent" class="knowledge-doc-detail__preview">{{ previewContent }}</pre>
             <!-- UX-003：加载失败错误态（不再复用「解析中」占位文案），内联重试 -->
             <div v-else-if="previewError" class="knowledge-doc-detail__error">
@@ -223,6 +235,38 @@
           </q-item>
         </q-list>
         <div v-else class="text-caption text-grey-6">{{ t('knowledgePage.detailLinksEmpty') }}</div>
+
+        <!-- SP1-I：反向链接分组（块级粒度 + 上下文片段） -->
+        <template v-if="!linksLoading && !linksError">
+          <div class="knowledge-doc-detail__section-title q-mt-md">
+            {{ t('knowledgePage.detailBacklinks') }}
+            <span v-if="backlinks.length" class="text-caption text-grey-6 q-ml-xs">({{ backlinks.length }})</span>
+          </div>
+          <q-list v-if="backlinks.length" dense separator>
+            <q-item
+              v-for="bl in backlinks"
+              :key="bl.src_block_id"
+              clickable
+              @click="$emit('navigate', { docId: bl.src_doc_id, relPath: bl.src_doc_name })"
+            >
+              <q-item-section avatar>
+                <q-icon name="south_west" size="16px" color="deep-purple" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label lines="1">{{ bl.src_doc_name }}</q-item-label>
+                <q-item-label v-if="bl.context" caption lines="2" class="knowledge-doc-detail__backlink-context">
+                  {{ bl.context }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-chip v-if="bl.edge_type === 'embed'" dense size="sm" color="teal" text-color="white">
+                  {{ t('knowledgePage.backlinkEmbed') }}
+                </q-chip>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <div v-else class="text-caption text-grey-6">{{ t('knowledgePage.detailBacklinksEmpty') }}</div>
+        </template>
       </div>
     </template>
 
@@ -237,13 +281,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { KnowledgeLink, VaultTreeNode } from '../../features/knowledge/types';
+import type { KnowledgeLink, VaultTreeNode, BlockBacklink } from '../../features/knowledge/types';
 import type { KnowledgeMediaKind } from '../../features/knowledge/knowledgeUi';
 import {
   formatKnowledgeDocSize,
   formatKnowledgeTime,
   knowledgeStatusColor,
   knowledgeStatusLabelKey,
+  splitDanglingPreview,
 } from '../../features/knowledge/knowledgeUi';
 
 const props = defineProps<{
@@ -258,6 +303,10 @@ const props = defineProps<{
   links: KnowledgeLink[];
   linksLoading: boolean;
   linkCounts: { explicit: number; entity: number; semantic: number };
+  /** SP1-I：块级反链列表。 */
+  backlinks: BlockBacklink[];
+  /** SP1-I（I-2）：本文档悬空链目标集（raw_target），命中 wikilink 灰显。 */
+  danglingTargets: ReadonlySet<string>;
   mediaKind: KnowledgeMediaKind;
   editable: boolean;
   editing: boolean;
@@ -265,11 +314,14 @@ const props = defineProps<{
   editSaving: boolean;
   assetUrl: string;
   assetLoading: boolean;
+  /** SP1-G/I-3：展示「晋升到团队库」入口（父级判定：local 库 + 文件节点）。 */
+  promotable: boolean;
 }>();
 
 defineEmits<{
   delete: [];
   move: [];
+  promote: [];
   navigate: [payload: { docId: string; relPath: string }];
   'start-edit': [];
   'cancel-edit': [];
@@ -324,6 +376,9 @@ const mediaSectionTitle = computed(() => {
 const showTextPreview = computed(
   () => !props.editing && !(props.assetUrl && ['image', 'audio', 'video'].includes(props.mediaKind)),
 );
+
+/** SP1-I（I-2）：预览分段（null = 无 dangling 命中，走纯文本渲染）。 */
+const previewSegments = computed(() => splitDanglingPreview(props.previewContent, props.danglingTargets));
 
 /** 下载原文按钮：word/其他二进制（md/txt 就地编辑，媒体区已是原件）。 */
 const showDownload = computed(() => props.mediaKind === 'word' || props.mediaKind === 'other');
@@ -578,6 +633,20 @@ function linkTypeLabel(linkType: string): string {
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  // SP1-I：反链上下文片段（斜体弱化，与来源文档名区分层级）。
+  &__backlink-context {
+    font-style: italic;
+    opacity: 0.75;
+  }
+
+  // SP1-I（I-2）：dangling wikilink 灰显（虚线 underline 暗示「占位待建」）。
+  &__dangling {
+    color: var(--color-text-secondary);
+    opacity: 0.65;
+    border-bottom: 1px dashed var(--color-icon-muted);
+    cursor: help;
   }
 }
 </style>

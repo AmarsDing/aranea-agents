@@ -112,12 +112,16 @@
             :links="explorerLinks"
             :links-loading="explorerLinksLoading"
             :link-counts="explorerLinkCounts"
+            :backlinks="explorerBacklinks"
+            :dangling-targets="explorerDanglingTargets"
             :media-kind="explorerMediaKind"
             :editable="explorerEditable"
             :editing="explorerEditing"
             :edit-saving="explorerEditSaving"
             :asset-url="explorerAssetUrl"
             :asset-loading="explorerAssetLoading"
+            :promotable="promotable"
+            @promote="openPromoteDialog"
             @start-edit="startExplorerEdit"
             @cancel-edit="cancelExplorerEdit"
             @save-edit="onExplorerSaveEdit"
@@ -213,6 +217,16 @@
       :loading="moveLoading"
       @submit="submitMove"
     />
+    <!-- SP1-G/I-3 晋升到团队库：目标库选择 → 结果反馈（新建块数 + 级联提示） -->
+    <knowledge-promote-dialog
+      v-model:open="promoteOpen"
+      v-model:target-id="promoteTargetId"
+      :doc-name="promoteDocName"
+      :options="promoteOptions"
+      :loading="promoteLoading"
+      :result="promoteResult"
+      @submit="submitPromote"
+    />
     <!-- G3-F1 拖拽移动同名冲突（V12.5）：覆盖 / 保留两份 / 取消 -->
     <knowledge-move-conflict-dialog
       v-model:open="moveConflictOpen"
@@ -242,6 +256,7 @@ import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog
 import KnowledgeUploadQueue from '../components/knowledge/KnowledgeUploadQueue.vue';
 import KnowledgeMoveDialog from '../components/knowledge/KnowledgeMoveDialog.vue';
 import KnowledgeMoveConflictDialog from '../components/knowledge/KnowledgeMoveConflictDialog.vue';
+import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
 import type { MoveDropResult, VaultQTreeNode } from '../features/knowledge/useVaultExplorer';
@@ -284,6 +299,15 @@ const {
   moveTargetOptions,
   openMoveDialog,
   submitMove,
+  promoteOpen,
+  promoteLoading,
+  promoteTargetId,
+  promoteResult,
+  promoteDocName,
+  promoteOptions,
+  promotable,
+  openPromoteDialog,
+  submitPromote,
   explorer,
 } = useKnowledgePage();
 
@@ -310,6 +334,8 @@ const {
   links: explorerLinks,
   linksLoading: explorerLinksLoading,
   linkCounts: explorerLinkCounts,
+  backlinks: explorerBacklinks,
+  danglingTargets: explorerDanglingTargets,
   mediaKind: explorerMediaKind,
   editable: explorerEditable,
   editing: explorerEditing,

@@ -103,7 +103,7 @@
     <!-- 右：操作台 -->
     <q-card flat class="app-pane-card knowledge-graph__console">
       <q-card-section class="knowledge-graph__console-body">
-        <!-- 库选择 -->
+        <!-- 库选择（SP1-I：team 库选项带「团队」徽标） -->
         <q-select
           :model-value="collectionId"
           :options="collectionOptions"
@@ -113,7 +113,20 @@
           outlined
           :label="t('knowledgePage.graphVaultLabel')"
           @update:model-value="(v: string) => $emit('select-collection', v)"
-        />
+        >
+          <template #option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section>
+                <q-item-label class="row items-center no-wrap q-gutter-xs">
+                  <span class="ellipsis">{{ scope.opt.label }}</span>
+                  <span v-if="scope.opt.backend === 'team'" class="knowledge-graph__team-badge">
+                    {{ t('knowledgePage.vaultTeamBadge') }}
+                  </span>
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
 
         <!-- 边类型过滤 chips -->
         <div class="knowledge-graph__section">
@@ -393,7 +406,9 @@ function setHops(h: number) {
   if (props.neighborhoodHops > 0) emit('focus-neighborhood', h);
 }
 
-const collectionOptions = computed(() => props.collections.map((c) => ({ label: c.name || c.id, value: c.id })));
+const collectionOptions = computed(() =>
+  props.collections.map((c) => ({ label: c.name || c.id, value: c.id, backend: c.vault_backend })),
+);
 
 /** 画布实例（工具条「适应视图」）。 */
 const canvasRef = ref<{ zoomToFit: (ms?: number) => void } | null>(null);
@@ -611,6 +626,17 @@ const nodeLegend = computed(() => {
     border: 1px solid var(--color-border-soft);
     color: var(--color-text-secondary);
     white-space: nowrap;
+  }
+
+  // SP1-I（I-2）：库选择器 team 徽标（与树节点团队徽标同语言）。
+  &__team-badge {
+    flex: none;
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 6px;
+    border-radius: 8px;
+    color: var(--color-primary, var(--q-primary));
+    border: 1px solid color-mix(in srgb, var(--color-primary, var(--q-primary)) 55%, transparent);
   }
 
   &__merge-feedback {

@@ -75,7 +75,7 @@
 | 帧 | 格式 | 说明 |
 |----|------|------|
 | 音频帧 | Binary：PCM s16le 16kHz mono，20ms/帧（640B） | AudioWorklet 采集重采样后直发 |
-| `voice.start` | JSON `{type, sample_rate, language, dialog_mode?}` | 开启/恢复语音会话，协商参数 |
+| `voice.start` | JSON `{type, sample_rate, language, dialog_mode?, agent_key?, team_id?, mode?}` | 开启/恢复语音会话，协商参数；`mode` 空 = 对话（默认），`dictation` = 听写（§13） |
 | `voice.stop` | JSON | 退出语音模式，关闭 ASR/TTS 会话 |
 | `voice.commit` | JSON | 手动提交当前语句（PTT 兼容兜底） |
 | `voice.barge_in` | JSON `{detect_ms}` | 前端 VAD 检测到人声（≥200ms 持续）触发打断 |
@@ -166,6 +166,7 @@ type SpeechConfigReader interface {
 
 - 错误翻译：适配器错误统一翻译为 `apierror`（Provider 不可用 → `CodeUnavailable`，配置缺失 → `CodeFailedPrecondition`），复用 `entErrToBizErr` 同层语义
 - 重连策略：ASR 会话断线指数退避重连 ≤3 次，失败上抛 `voice.error{retryable}`；TTS 单句失败跳过该句并记 Warn（K3 降级日志），连续 3 句失败关闭会话
+- **SAUC 协议契约（As-built 2026-08-09）**：`full_server_response` 的 `result.utterances` 为**连接级累积列表**——已 `definite` 的语句会持续出现在后续每帧响应中；适配器必须按 definite 游标去重（`volcASRSession.finalCursor`），保证一条定稿语句只发射一次 `ASREventFinal`（否则听写模式每个重复 Final 追加进输入框 → 无限输入事故）。definite 总数回退视为服务端开启新累积窗口，游标归零。产出新终稿的帧跳过 Partial（`result.text` 与终稿同源，避免字幕回闪）
 
 ### 3.3 配置模型（System Settings `speech` 分组）
 
@@ -311,7 +312,7 @@ Agent 调用 client_open_app
 | `voice/useVoiceSession.ts` | `/v1/voice` 连接生命周期（createVoiceSessionClient）+ useVoiceSession composable（采集/播放/可视化桥接、状态机镜像写入 companion store、与 chat sender 的衔接） |
 | `hud/hudParams.ts` | 状态 → HUD 参数纯函数（§7.4 状态驱动参数，与 Three.js 解耦以便单测） |
 | `hud/HudScene.ts` | Three.js 场景组合器（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换）；V5 起拆分为 `hud/parts/*` 模块化场景部件 |
-| `hud/parts/`（V5 新增） | ReactorCore（simplex 液态核）/ ReactorRings（同心刻度环 ×3）/ Starfield（深空星野）/ SpectrumRing（频谱环）/ ShockwavePool（涟漪池），统一 `update(dt, params, audio)` 接口 |
+| `hud/parts/`（V5 新增） | ReactorCore（simplex 液态核）/ ReactorRings（同心刻度环 ×3）/ Starfield（深空星野）/ SpectrumRing（频谱环）/ ShockwavePool（涟漪池）/ EnergyParticles（能量粒子云，V5.1），统一 `update(dt, params, audio)` 接口 |
 | `audio/uiSounds.ts`（V5 新增） | 科幻音效引擎：Web Audio 程序合成（boot/chirp/ping/ding/buzz/cut），零音频资产，localStorage 开关 |
 | `components/companion/HudCanvas.vue` | canvas 宿主、点击/双击/拖拽交互、频谱数据桥 |
 | `components/companion/CompanionChatPanel.vue` | 滑出聊天窗壳（内容由 Page 注入，复用 ChatMessagePanel 组件族） |
@@ -346,13 +347,15 @@ Agent 调用 client_open_app
 | 星野 | `parts/Starfield.ts` | ~800 粒子深空背景，缓慢漂移 + 相机微视差 | 常态 |
 | 频谱环 | `parts/SpectrumRing.ts` | 128 柱 InstancedMesh（沿用初版，Bloom 下发光） | listening 可见，实时 FFT |
 | 涟漪池 | `parts/ShockwavePool.ts` | 复用 4 圈声浪涟漪（沿用初版，Bloom 增强） | listening/speaking 周期发射；burst 立即满强度一圈 |
+| 能量粒子云 | `parts/EnergyParticles.ts`（V5.1 新增） | ~220 粒子绕核轨道云（Points + vertexColors 内外层双色插值），帧间零分配 | `particleGain` 状态增益（speaking 满功率/idle 微光/interrupted 熄灭）；speaking 振幅外推粒子 + 加速轨道 |
 | （移除） | — | 初版线框壳与全息弧线组由刻度仪表环取代，避免视觉重复 | — |
 
 #### 状态过场（v2 新增）
 
 - **语音模式开启**：~1.2s 启动序列——核心由暗点亮 → 刻度环逐层锁定展开 → 上电扫频音效；`hudParams` 新增 `bootProgress ∈ [0,1]`
 - **打断**：300ms 红闪沿用（`#f87171`）+ 打断切音
-- **颜色体系沿用**：idle/listening/speaking 青蓝系（`#22d3ee→#34d399`），thinking 琥珀（`#fbbf24`）
+- **颜色体系（V5.1 修订）**：idle/listening/thinking/speaking 统一青蓝系（`#22d3ee→#34d399`）——thinking 不再变琥珀（用户反馈黄色刺眼），仅靠转速 ×3 / 核心收缩 0.85× / 高波动区分；仅 interrupted/error 变红警示
+- **播报入场爆发（V5.1）**：进入 speaking 自动触发 burst（涟漪 + Bloom 提亮）+ 粒子满功率 + 相机按振幅高频微抖（`shakeGain`）
 
 #### DOM 全息化（v2，companion 作用域 CSS，不改 Quasar 主题）
 
@@ -374,6 +377,13 @@ Agent 调用 client_open_app
 
 - `AvatarRenderer` 接口不变（VRM 预留）；`hudParams` 扩展新参数（`bloomIntensity`/`ringExpand`/`bootProgress` 等），纯函数单测同步更新
 - 动画循环统一 `requestAnimationFrame` + delta time；涟漪池/刻度环共享几何，无每帧分配
+
+> **As-built（V5 重构，2026-08-09）**：
+>
+> - **启动过场逐层展开**：`hudParams` 新增 `ringBoot [0,1]×3`——环 i 自 `boot=i×0.25` 起经 0.5 进度铺满（内 0→0.5 / 中 0.25→0.75 / 外 0.5→1.0）；ReactorRings 按 `ringBoot[i]` 驱动透明度（待机保留 20% 幽影）与缩放弹入（0.9→1.0），叠加环组整体 `ringExpand` 0.8→1。核心经 `coreScale` 0.75→1 + Bloom 0.35→1 点亮；`HudScene.setVoiceMode(false)` 立即归零回待机（中断回退）
+> - **DOM 全息化落地**（`HudCanvas.vue` 作用域样式）：状态标签 = 四角括号（`&__state-corner`）+ `hud-scan` 扫描线 + 等宽大写发光描边；字幕 = 逐字 span `hud-char-in` 打字机浮现（按索引复用，旧字不重放）+ 全息边框发光；麦克风 = `hud-mic-pulse` 脉动光环常开 + 开启时 `hud-mic-orbit` 虚线轨道环旋转（voiceDisabled 隐藏光环）；HoloConfirmCard 沿用既有 rgba(0,229,255) 全息语言，色值天然对齐
+> - **音效引擎实现**：`SOUND_SPECS` 六配方（boot=sine 180→880Hz 0.5s + triangle 谐波延迟 0.12s；chirp=660→990Hz 0.12s；ping=520→500Hz 0.25s 循环 2s 间隔；ding=880+1320Hz 双音；buzz=square 140→110Hz；cut=sawtooth 300→60Hz）；`UiSoundEngine` 主音量 0.5、指数扫频 + 线性包络、stop 延后 0.05s 收尾；`useUiSounds` 共享单例引擎 + `AudioContext.resume` 自动播放钩子；开关持久化 `aranea.companion.uiSounds`（默认开），切换按钮在 CompanionPage 右上
+> - **性能**：`document.hidden` 降帧 15fps 保留；Bloom mipmapBlur 半分辨率；InstancedMesh 刻度/频谱/涟漪复用几何
 
 > **As-built 存档（初版，V1-T8 + V2-T5，2026-08-08）**：初版场景为能量核（Icosahedron + 等离子噪声 shader + 顶点摆动）/ 粒子环 ×2（内外两圈反向旋转、双频正弦声波震动 26Hz/41Hz）/ 线框壳 / 频谱环 / Jarvis 全息弧线组 ×3（多弧异速旋转、双色交替、呼吸透明度 + burst 提亮）/ 声浪涟漪池 ×4；`HudParams` 状态驱动参数 vibrationGain/arcSpeedFactor/coreWobble/rippleGain；draw call ≤12、三角形 <8k。**V5 重构后上述元素由 v2 场景部件取代（频谱环与涟漪池保留迁移）**。
 >
@@ -478,4 +488,45 @@ Agent 调用 client_open_app
 
 ---
 
-*文档版本：2026-08-05 v1.0 — 立项设计定稿（经头脑风暴评审：级联流式管线 + Tauri 桌面端 + 抽象科幻 HUD + 深度系统控制 + 可插拔 Provider + 桌面&移动端）。*
+## 13. 语音听写模式（聊天页语音输入，V6）
+
+> 需求锚点：需求 §2.11 / §5.6。聊天页麦克风按钮的落地形态——语音转文字入输入框，**不建 Turn、不播报**。
+
+### 13.1 模式语义对比
+
+| 行为 | 对话模式（mode 空） | 听写模式（mode=dictation） |
+|------|--------------------|---------------------------|
+| ASR 终稿下行 `asr.final` | ✅ | ✅（仅文本，前端填入输入框） |
+| 创建 Chat Turn / 派发 Agent | ✅ | ❌ |
+| TTS 播报 / 事件总线订阅 | ✅（startEventLoop） | ❌（不订阅，省资源） |
+| 确认词拦截（V2-T5） | ✅ | ❌（无待决议确认场景） |
+| 语句 PCM 留档（V2-T6） | ✅ | ❌（不缓冲，不落盘） |
+| voice.state 终稿后 | thinking → speaking → listening | 停留 listening（连续听写） |
+
+### 13.2 后端实现
+
+- `internal/voice/session.go`：`StartParams.Mode` + 常量 `ModeDictation` + `s.dictation()` 判定；`Start` 按模式跳过 `startEventLoop`；`bufferUtterance` 听写模式不缓冲；`handleASRFinal` 下行 `asr.final` 后直接 return（在确认拦截/建 Turn 之前）
+- `internal/server/voice_ws.go`：`voiceControlMessage.Mode` 解析透传
+- ASR 一句一连接的懒重开逻辑对听写同样生效（连续听写不中断）
+- 日志：`voice.session.start` 流程/进程日志均带 `mode` 字段（K1）
+
+### 13.3 前端实现
+
+- `features/chat/composables/useVoiceDictation.ts`（新增）：依赖注入端口（`clientFactory`/`captureFactory` 可 mock）；`toggle()` 启动 = connect + `startVoice({sampleRate:16000, mode:'dictation'})` + 采集启动；`onFinal` → `deps.onFinalText` 回调；`onClose`/`onReplaced`/采集失败 → teardown + 错误上报；`stop()` 幂等
+- `features/chat/composables/useChatWorkspace.ts`：装配 `useVoiceDictation`，`onFinalText` 经 `joinDictationText`（空格连接）写入 `inputText` 草稿；watch 会话切换自动 `stop()`；`onVoiceClick` = `toggle()`
+- `components/chat/ChatComposer.vue`：听写状态条（红点脉动 + `dictationPartial` 实时文本/「正在聆听…」占位）；麦克风按钮录音态 = 红色填充 + stop 图标 + aria-label「停止听写」
+- i18n：`chat.voiceDictationStop/Listening/Error` + 复用 `companion.voiceNoSession/micUnavailable/voiceChannelClosed`（zh-CN/en-US）；移除废弃 `voicePlaceholder`
+- 移动端 `MobileChatPage.vue` 与桌面 `ChatPage.vue` 经 `ChatMessagePanel` 透传 `dictating`/`dictationPartial`，行为一致
+
+### 13.4 测试矩阵
+
+| 层 | 用例 | 位置 |
+|----|------|------|
+| 后端单测 | 听写终稿仅下行文本 / 跳过确认拦截 / 跳过留档 / 连续终稿 | `internal/voice/session_test.go`（4 例） |
+| 前端单测 | 启动/停止/终稿入框/错误三路径/关闭与取代/幂等 | `useVoiceDictation.spec.ts`（17 例） |
+| 前端协议 | `voice.start` 携带 `mode=dictation` | `useVoiceSession.spec.ts` |
+| 真机探针 | 真实火山 ASR 两句连续听写；断言无 turn.accepted / 无 tts / 无二进制下行 / 状态停留 listening | `test/dictation-e2e/dictation_probe.go` |
+
+---
+
+*文档版本：2026-08-09 v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

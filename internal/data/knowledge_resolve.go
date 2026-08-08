@@ -69,12 +69,29 @@ func (r *knowledgeBlockRepo) FindBlockByAnchor(ctx context.Context, docID, ancho
 
 // FindBlockByHeadingPath 按标题路径定位 heading 块；重复标题取 ordinal 最小者
 // （与 Resolver 内存自引用「取首」确定性口径一致）。未命中 ok=false。
-func (r *knowledgeBlockRepo) FindBlockByHeadingPath(ctx context.Context, docID string, path []string) (string, bool, error) {
-	return r.queryOneBlockID(ctx,
-		`SELECT id FROM knowledge_blocks
+// anchored 报告命中块是否已有显式锚（SP1-H 惰性回填：仅未锚命中产回填请求）。
+func (r *knowledgeBlockRepo) FindBlockByHeadingPath(ctx context.Context, docID string, path []string) (string, bool, bool, error) {
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, (anchor IS NOT NULL AND anchor <> '') FROM knowledge_blocks
 		 WHERE doc_id = $1 AND kind = 'heading' AND heading_path = $2
 		 ORDER BY ordinal LIMIT 1`,
 		docID, pq.Array(path))
+	if err != nil {
+		return "", false, false, entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", false, false, entErrToBizErr(err, "knowledge")
+		}
+		return "", false, false, nil
+	}
+	var id string
+	var anchored bool
+	if err := rows.Scan(&id, &anchored); err != nil {
+		return "", false, false, entErrToBizErr(err, "knowledge")
+	}
+	return id, anchored, true, nil
 }
 
 // queryOneBlockID 单行块 ID 查询（execer 无 QueryRowContext，用 rows 收敛）。

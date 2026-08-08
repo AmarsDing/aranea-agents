@@ -487,7 +487,8 @@ func (m *vaultSyncMemRepo) FindBlockByAnchor(_ context.Context, docID, anchor st
 
 // FindBlockByHeadingPath 按标题路径定位 heading 块；重复标题取首（块按 ordinal 序
 // 存储，首个命中即 ordinal 最小者，与生产 ORDER BY ordinal LIMIT 1 口径一致）。
-func (m *vaultSyncMemRepo) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, error) {
+// anchored 报告命中块是否已有显式锚（SP1-H）。
+func (m *vaultSyncMemRepo) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 next:
@@ -500,9 +501,9 @@ next:
 				continue next
 			}
 		}
-		return b.ID, true, nil
+		return b.ID, b.Anchor != "", true, nil
 	}
-	return "", false, nil
+	return "", false, false, nil
 }
 
 // ── stub embedder ─────────────────────────────────────────────────────────────

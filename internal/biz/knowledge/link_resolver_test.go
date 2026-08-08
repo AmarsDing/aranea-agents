@@ -10,11 +10,12 @@ import (
 // ── SP1-C C-1：LinkResolver 跨库双链解析（B-1 确定性规则） ──────────────────
 
 type stubResolveIndex struct {
-	candidates []ResolveDocCandidate
-	gotCollIDs []string
-	byAnchor   map[string]string // docID|anchor → blockID
-	byHeading  map[string]string // docID|H1/H2 → blockID
-	err        error
+	candidates       []ResolveDocCandidate
+	gotCollIDs       []string
+	byAnchor         map[string]string // docID|anchor → blockID
+	byHeading        map[string]string // docID|H1/H2 → blockID
+	anchoredHeadings map[string]bool   // docID|H1/H2 → 命中块已锚（SP1-H）
+	err              error
 }
 
 func (s *stubResolveIndex) ListResolveCandidates(_ context.Context, collectionIDs []string) ([]ResolveDocCandidate, error) {
@@ -30,7 +31,7 @@ func (s *stubResolveIndex) FindBlockByAnchor(_ context.Context, docID, anchor st
 	return id, ok, nil
 }
 
-func (s *stubResolveIndex) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, error) {
+func (s *stubResolveIndex) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, bool, error) {
 	key := docID + "|"
 	for i, p := range path {
 		if i > 0 {
@@ -39,7 +40,7 @@ func (s *stubResolveIndex) FindBlockByHeadingPath(_ context.Context, docID strin
 		key += p
 	}
 	id, ok := s.byHeading[key]
-	return id, ok, nil
+	return id, s.anchoredHeadings[key], ok, nil
 }
 
 func resolverOf(idx *stubResolveIndex) *LinkResolver { return NewLinkResolver(idx) }
@@ -47,7 +48,7 @@ func resolverOf(idx *stubResolveIndex) *LinkResolver { return NewLinkResolver(id
 func resolveOne(t *testing.T, r *LinkResolver, srcColl, srcDoc string, visible []string, rawTarget string, self []KnowledgeBlock) KnowledgeBlockRefInput {
 	t.Helper()
 	refs := []KnowledgeBlockRefInput{{SrcOrdinal: 0, RawTarget: rawTarget, EdgeType: "ref"}}
-	out, err := r.ResolveRefs(context.Background(), srcColl, srcDoc, visible, refs, self)
+	out, _, err := r.ResolveRefs(context.Background(), srcColl, srcDoc, visible, refs, self)
 	if err != nil {
 		t.Fatalf("ResolveRefs: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestResolve_SelfHeading(t *testing.T) {
 // TestResolve_IndexError 数据端口故障原样上抛（调用方降级）。
 func TestResolve_IndexError(t *testing.T) {
 	idx := &stubResolveIndex{err: errors.New("db down")}
-	_, err := NewLinkResolver(idx).ResolveRefs(context.Background(), "c1", "d0", []string{"c1"},
+	_, _, err := NewLinkResolver(idx).ResolveRefs(context.Background(), "c1", "d0", []string{"c1"},
 		[]KnowledgeBlockRefInput{{SrcOrdinal: 0, RawTarget: "X", EdgeType: "ref"}}, nil)
 	if err == nil {
 		t.Fatal("端口错误应上抛")
@@ -265,5 +266,106 @@ func TestResolve_NoCandidateQueryForSelfRefs(t *testing.T) {
 	}
 	if idx.gotCollIDs != nil {
 		t.Errorf("纯自文档引用不应查询候选端口, got %v", idx.gotCollIDs)
+	}
+}
+
+// ── SP1-H H-2：惰性锚点回填请求产物 ─────────────────────────────────────────
+
+// resolveBackfills 单引用解析并返回回填请求集。
+func resolveBackfills(t *testing.T, r *LinkResolver, srcColl, srcDoc string, visible []string, rawTarget string, self []KnowledgeBlock) []AnchorBackfillRequest {
+	t.Helper()
+	refs := []KnowledgeBlockRefInput{{SrcOrdinal: 0, RawTarget: rawTarget, EdgeType: "ref"}}
+	_, reqs, err := r.ResolveRefs(context.Background(), srcColl, srcDoc, visible, refs, self)
+	if err != nil {
+		t.Fatalf("ResolveRefs: %v", err)
+	}
+	return reqs
+}
+
+// TestBackfillRequest_RemoteUnanchored 远端 heading-path 命中未锚块 → 产请求。
+func TestBackfillRequest_RemoteUnanchored(t *testing.T) {
+	idx := &stubResolveIndex{
+		candidates: []ResolveDocCandidate{{DocID: "d1", CollectionID: "c2", RelPath: "note.md", CollectionCreatedAt: t0}},
+		byHeading:  map[string]string{"d1|H1/H2": "blk-h2"}, // anchoredHeadings 无 → 未锚
+	}
+	reqs := resolveBackfills(t, resolverOf(idx), "c1", "s", []string{"c1", "c2"}, "Note#H1#H2", nil)
+	if len(reqs) != 1 {
+		t.Fatalf("reqs = %d, want 1: %+v", len(reqs), reqs)
+	}
+	r := reqs[0]
+	if r.CollectionID != "c2" || r.DocID != "d1" {
+		t.Errorf("req target = %q/%q, want c2/d1", r.CollectionID, r.DocID)
+	}
+	if len(r.HeadingPath) != 2 || r.HeadingPath[0] != "H1" || r.HeadingPath[1] != "H2" {
+		t.Errorf("HeadingPath = %v, want [H1 H2]", r.HeadingPath)
+	}
+}
+
+// TestBackfillRequest_RemoteAnchoredSkips 远端命中块已锚 → 不产请求（稳态零空读）。
+func TestBackfillRequest_RemoteAnchoredSkips(t *testing.T) {
+	idx := &stubResolveIndex{
+		candidates:       []ResolveDocCandidate{{DocID: "d1", CollectionID: "c2", RelPath: "note.md", CollectionCreatedAt: t0}},
+		byHeading:        map[string]string{"d1|H": "blk-h"},
+		anchoredHeadings: map[string]bool{"d1|H": true},
+	}
+	if reqs := resolveBackfills(t, resolverOf(idx), "c1", "s", []string{"c1", "c2"}, "Note#H", nil); len(reqs) != 0 {
+		t.Errorf("已锚块不应产回填请求: %+v", reqs)
+	}
+}
+
+// TestBackfillRequest_AnchorRefSkips ^锚引用 / dangling / 纯文档引用均不产请求。
+func TestBackfillRequest_AnchorRefSkips(t *testing.T) {
+	idx := &stubResolveIndex{
+		candidates: []ResolveDocCandidate{{DocID: "d1", CollectionID: "c2", RelPath: "note.md", CollectionCreatedAt: t0}},
+		byAnchor:   map[string]string{"d1|b1": "blk-b1"},
+	}
+	for _, target := range []string{"Note#^b1", "Note#不存在", "Note", "Ghost#H"} {
+		if reqs := resolveBackfills(t, resolverOf(idx), "c1", "s", []string{"c1", "c2"}, target, nil); len(reqs) != 0 {
+			t.Errorf("%q 不应产回填请求: %+v", target, reqs)
+		}
+	}
+}
+
+// TestBackfillRequest_SelfUnanchored 自文档 heading 引用命中未锚块 → 产请求（源文档自身）。
+func TestBackfillRequest_SelfUnanchored(t *testing.T) {
+	idx := &stubResolveIndex{}
+	self := []KnowledgeBlock{
+		{Ordinal: 0, Kind: "heading", HeadingPath: []string{"Alpha"}},
+		{Ordinal: 1, Kind: "heading", HeadingPath: []string{"Alpha", "Beta"}},       // 未锚 → 请求
+		{Ordinal: 2, Kind: "heading", HeadingPath: []string{"Gamma"}, Anchor: "g1"}, // 已锚 → 跳过
+		{Ordinal: 3, Kind: "paragraph", HeadingPath: []string{"Delta"}},             // 段落不命中
+	}
+	reqs := resolveBackfills(t, resolverOf(idx), "c1", "d-self", nil, "#Alpha#Beta", self)
+	if len(reqs) != 1 || reqs[0].DocID != "d-self" || reqs[0].CollectionID != "c1" {
+		t.Fatalf("reqs = %+v, want 单条 d-self/c1", reqs)
+	}
+	if len(reqs[0].HeadingPath) != 2 || reqs[0].HeadingPath[1] != "Beta" {
+		t.Errorf("HeadingPath = %v", reqs[0].HeadingPath)
+	}
+	if reqs := resolveBackfills(t, resolverOf(idx), "c1", "d-self", nil, "#Gamma", self); len(reqs) != 0 {
+		t.Errorf("已锚自引用不应产请求: %+v", reqs)
+	}
+	if reqs := resolveBackfills(t, resolverOf(idx), "c1", "d-self", nil, "#Delta", self); len(reqs) != 0 {
+		t.Errorf("段落路径不命中不应产请求: %+v", reqs)
+	}
+}
+
+// TestBackfillRequest_Dedup 多条引用指向同一 (doc,path) → 请求去重为一条。
+func TestBackfillRequest_Dedup(t *testing.T) {
+	idx := &stubResolveIndex{
+		candidates: []ResolveDocCandidate{{DocID: "d1", CollectionID: "c2", RelPath: "note.md", CollectionCreatedAt: t0}},
+		byHeading:  map[string]string{"d1|H": "blk-h"},
+	}
+	refs := []KnowledgeBlockRefInput{
+		{SrcOrdinal: 0, RawTarget: "Note#H", EdgeType: "ref"},
+		{SrcOrdinal: 1, RawTarget: "Note#H", EdgeType: "ref"},
+		{SrcOrdinal: 2, RawTarget: "Note#H|别名", EdgeType: "embed"},
+	}
+	_, reqs, err := resolverOf(idx).ResolveRefs(context.Background(), "c1", "s", []string{"c1", "c2"}, refs, nil)
+	if err != nil {
+		t.Fatalf("ResolveRefs: %v", err)
+	}
+	if len(reqs) != 1 {
+		t.Errorf("reqs = %d, want 1（去重）: %+v", len(reqs), reqs)
 	}
 }

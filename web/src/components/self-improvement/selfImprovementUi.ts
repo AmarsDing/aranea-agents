@@ -140,6 +140,19 @@ export function canControl(status: string): boolean {
   return status === 'detected' || status === 'diagnosing' || status === 'patching' || status === 'verifying';
 }
 
+/**
+ * 解析用户可读错误消息：优先取后端 Kratos envelope（`response.data.message`，
+ * 如 409 状态冲突），避免直接展示 axios 英文原始消息。
+ */
+export function resolveSIErrorMessage(e: unknown): string {
+  const data = (e as { response?: { data?: unknown } } | null)?.response?.data;
+  const kratosMsg = (data as { message?: unknown } | null)?.message;
+  if (typeof kratosMsg === 'string' && kratosMsg) return kratosMsg;
+  const msg = (e as { message?: unknown } | null)?.message;
+  if (typeof msg === 'string' && msg) return msg;
+  return e instanceof Error ? e.message : String(e);
+}
+
 /** RFC3339 → 本地短格式（YYYY-MM-DD HH:mm）；空值显示 — */
 export function formatSITime(value: string): string {
   if (!value) return '—';

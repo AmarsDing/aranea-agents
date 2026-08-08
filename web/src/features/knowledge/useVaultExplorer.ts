@@ -31,7 +31,15 @@ import {
   type DragFileRef,
   type DropTargetRef,
 } from './vaultTreeUi';
-import type { KnowledgeChunk, KnowledgeCollection, KnowledgeDocument, KnowledgeLink, VaultTreeNode } from './types';
+import type {
+  BlockBacklink,
+  DanglingLink,
+  KnowledgeChunk,
+  KnowledgeCollection,
+  KnowledgeDocument,
+  KnowledgeLink,
+  VaultTreeNode,
+} from './types';
 
 /** q-tree 节点（库 + 目录；文件在中栏列表展示）。 */
 export interface VaultQTreeNode {
@@ -49,6 +57,8 @@ export interface VaultQTreeNode {
   syncState?: string;
   /** 库节点文档计数（树徽标展示；目录节点无）。 */
   docCount?: number;
+  /** SP1-F/I-2：存储后端维度（team 库节点带「团队」徽标）。 */
+  vaultBackend?: string;
 }
 
 /** Quasar q-tree @lazy-load 载荷（组件透传，composable 处理）。 */
@@ -74,6 +84,7 @@ export function vaultToQNode(c: KnowledgeCollection): VaultQTreeNode {
     prefix: '',
     syncState: c.sync_state,
     docCount: c.document_count,
+    vaultBackend: c.vault_backend,
   };
 }
 
@@ -254,6 +265,10 @@ export function useVaultExplorer(input: {
   const linksError = ref(false);
   const links = ref<KnowledgeLink[]>([]);
   const linksLoading = ref(false);
+  // SP1-I：块级反链（与关联并行加载，共享 linksLoading/linksError 状态位）。
+  const backlinks = ref<BlockBacklink[]>([]);
+  // SP1-I（I-2）：当前文档的悬空链目标集（浏览视图灰显 + hover 提示）。
+  const danglingTargets = ref<ReadonlySet<string>>(new Set());
   // 编辑（G2-B5）：rawContent/baseHash 为编辑器数据源与 CAS 凭证（仅 vault 文档非空）。
   const rawContent = ref('');
   const baseHash = ref('');
@@ -297,6 +312,8 @@ export function useVaultExplorer(input: {
     rawContent.value = '';
     baseHash.value = '';
     links.value = [];
+    backlinks.value = [];
+    danglingTargets.value = new Set();
     editing.value = false;
     editDraft.value = '';
   }
@@ -324,9 +341,26 @@ export function useVaultExplorer(input: {
       previewLoading.value = false;
     }
     try {
-      links.value = await knowledgeStore.loadDocumentLinks(docId, '', true);
+      const [linksResult, backlinksResult, danglingResult] = await Promise.all([
+        knowledgeStore.loadDocumentLinks(docId, '', true),
+        knowledgeStore.loadBlockBacklinks(docId, true),
+        // I-2：悬空链灰显数据源；失败降级为空（不阻塞关联/反链区）。
+        selectedId.value
+          ? knowledgeStore.loadDanglingLinks(selectedId.value, true).catch(() => [] as DanglingLink[])
+          : Promise.resolve([] as DanglingLink[]),
+      ]);
+      links.value = linksResult;
+      backlinks.value = backlinksResult;
+      // 仅保留本文档作为引用源的悬空目标（raw_target 口径与 blockparse 一致）。
+      const targets = new Set<string>();
+      for (const d of danglingResult) {
+        if (d.refs.some((r) => r.src_doc_id === docId)) targets.add(d.raw_target);
+      }
+      danglingTargets.value = targets;
     } catch (e) {
       links.value = [];
+      backlinks.value = [];
+      danglingTargets.value = new Set();
       linksError.value = true;
       notifyError(friendlyError(e));
     } finally {
@@ -668,6 +702,8 @@ export function useVaultExplorer(input: {
     links,
     linksLoading,
     linkCounts,
+    backlinks,
+    danglingTargets,
     mediaKind,
     editable,
     rawContent,

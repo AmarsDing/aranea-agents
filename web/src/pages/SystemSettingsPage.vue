@@ -232,6 +232,60 @@
                   <div class="section-heading">
                     <div class="section-heading__main">
                       <div class="section-title">
+                        <q-icon name="auto_fix_high" size="sm" color="primary" />
+                        <span class="section-title__text">{{ t('settingsPage.refineLLM.title') }}</span>
+                      </div>
+                      <p class="settings-section__hint">{{ t('settingsPage.refineLLM.hint') }}</p>
+                    </div>
+                  </div>
+                  <div class="app-form-field-grid app-form-field-grid--2col">
+                    <q-input
+                      v-model="refineLLMForm.provider"
+                      class="app-glass-control"
+                      :label="t('settingsPage.refineLLM.provider')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="refineLLMForm.model"
+                      class="app-glass-control"
+                      :label="t('settingsPage.refineLLM.model')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="refineLLMForm.baseUrl"
+                      class="app-glass-control"
+                      :label="t('settingsPage.refineLLM.baseUrl')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="refineLLMForm.apiKey"
+                      class="app-glass-control"
+                      :label="t('settingsPage.refineLLM.apiKey')"
+                      type="password"
+                      :placeholder="
+                        refineLLMHasApiKey
+                          ? t('settingsPage.refineLLM.apiKeyPlaceholderSet')
+                          : t('settingsPage.refineLLM.apiKeyPlaceholderEmpty')
+                      "
+                      outlined
+                      dense
+                    />
+                  </div>
+                  <q-banner v-if="refineLLMConfigured" dense rounded class="settings-info-banner q-mt-md">
+                    <template #avatar>
+                      <q-icon name="check_circle" color="positive" />
+                    </template>
+                    {{ t('settingsPage.refineLLM.configured') }}
+                  </q-banner>
+                </section>
+
+                <section class="settings-section settings-section--span">
+                  <div class="section-heading">
+                    <div class="section-heading__main">
+                      <div class="section-title">
                         <q-icon name="park" size="sm" color="primary" />
                         <span class="section-title__text">{{ t('settingsPage.ecosystemTitle') }}</span>
                       </div>
@@ -471,6 +525,9 @@ const {
   webResearchTesting,
   knowledgeEmbedHasApiKey,
   evalLLMConfigured,
+  refineLLMForm,
+  refineLLMConfigured,
+  refineLLMHasApiKey,
   lastSavedLabel,
   loading,
   saving,

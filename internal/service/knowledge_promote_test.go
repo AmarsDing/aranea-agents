@@ -115,7 +115,11 @@ func newPromoteService(t *testing.T) (*KnowledgeService, *us14MemRepo, *promoteL
 	}
 	lineageW := &promoteLineageStub{}
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
-	uc.SetBlockIndexRepos(&promoteBlockIndexStub{}, nil)
+	// 文档级晋升（doc_ids）经 blockIndex 解析源文档全部块；既有 block_ids 用例
+	// 不读源文档块（仅用 ListDocBlocks 查目标文档），播种无副作用。
+	uc.SetBlockIndexRepos(&promoteBlockIndexStub{
+		blocksByDoc: map[string][]bizknowledge.KnowledgeBlock{"sd1": srcBlocks},
+	}, nil)
 	uc.SetPromoteRepos(promoteReaderStub{
 		blocks: srcBlocks,
 		edges: []bizknowledge.KnowledgeBlockRefEdge{
@@ -270,5 +274,81 @@ func TestKnowledgeService_PromoteBlocks_Validation(t *testing.T) {
 		BlockIds: []string{"ghost"}, TargetCollectionId: "tc1",
 	}); !apierror.IsCode(err, apierror.CodeNotFound) {
 		t.Errorf("未知块 = %v, want NotFound", err)
+	}
+}
+
+// ── SP1-I：文档级晋升（doc_ids） ─────────────────────────────────────────────
+
+// TestKnowledgeService_PromoteBlocks_DocIDs 文档级入口全链路：doc_ids 解析整
+// 文档块后走同一晋升管线（谱系 + cascade + 目标文档 chunk 重放）。
+func TestKnowledgeService_PromoteBlocks_DocIDs(t *testing.T) {
+	svc, repo, lineageW := newPromoteService(t)
+	resp, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		DocIds:             []string{"sd1"},
+		TargetCollectionId: "tc1",
+	})
+	if err != nil {
+		t.Fatalf("PromoteBlocks(doc_ids): %v", err)
+	}
+	if len(resp.GetCreatedBlocks()) != 2 {
+		t.Fatalf("created_blocks = %d, want 2（sd1 全部块）", len(resp.GetCreatedBlocks()))
+	}
+	if resp.GetCreatedBlocks()[0].GetSrcBlockId() != "sb1" || resp.GetCreatedBlocks()[1].GetSrcBlockId() != "sb2" {
+		t.Errorf("谱系源块顺序 = %+v", resp.GetCreatedBlocks())
+	}
+	if len(resp.GetCascadeCandidates()) != 1 || resp.GetCascadeCandidates()[0].GetRawTarget() != "私有文档B" {
+		t.Errorf("cascade_candidates = %+v", resp.GetCascadeCandidates())
+	}
+	if len(lineageW.pairs) != 2 {
+		t.Errorf("谱系回写 pairs = %d, want 2", len(lineageW.pairs))
+	}
+	// 目标文档重放完成即可检索。
+	targetDoc, err := repo.GetDocument(context.Background(), resp.GetCreatedBlocks()[0].GetTargetDocId())
+	if err != nil {
+		t.Fatalf("目标文档应存在: %v", err)
+	}
+	if targetDoc.Status != "indexed" || targetDoc.ChunkCount == 0 {
+		t.Errorf("目标文档未重放: status=%s chunks=%d", targetDoc.Status, targetDoc.ChunkCount)
+	}
+}
+
+// TestKnowledgeService_PromoteBlocks_DocIDsValidation doc_ids 非法输入矩阵。
+func TestKnowledgeService_PromoteBlocks_DocIDsValidation(t *testing.T) {
+	svc, repo, _ := newPromoteService(t)
+	// block_ids 与 doc_ids 互斥。
+	if _, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		BlockIds: []string{"sb1"}, DocIds: []string{"sd1"}, TargetCollectionId: "tc1",
+	}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Errorf("block_ids+doc_ids 并存 = %v, want BadRequest", err)
+	}
+	// 未知文档。
+	if _, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		DocIds: []string{"ghost"}, TargetCollectionId: "tc1",
+	}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Errorf("未知文档 = %v, want NotFound", err)
+	}
+	// 文档存在但无块（空文档/非 Markdown 未产块）。
+	if _, err := repo.CreateDocument(context.Background(), biz.KnowledgeDocument{
+		ID: "sd2", CollectionID: "pc1", RelPath: "notes/empty.md", Source: "empty.md",
+		ContentText: "", Status: "indexed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		DocIds: []string{"sd2"}, TargetCollectionId: "tc1",
+	}); !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Errorf("无块文档 = %v, want BadRequest", err)
+	}
+	// 跨租户源文档（doc_ids 路径同样 NotFound 防泄漏）。
+	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{
+		ID: "tc4", Name: "mine-team", VaultBackend: bizknowledge.VaultBackendTeam, Workspace: "ws-mine",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PromoteBlocks(ctx, &v1.PromoteBlocksRequest{
+		DocIds: []string{"sd1"}, TargetCollectionId: "tc4",
+	}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Errorf("跨租户源文档 = %v, want NotFound", err)
 	}
 }

@@ -10,6 +10,7 @@ import {
   canControl,
   canReject,
   canRollback,
+  resolveSIErrorMessage,
 } from '../../components/self-improvement/selfImprovementUi';
 
 const EMPTY_RULES: SIRiskRules = { lowMaxLines: 0, mediumMaxLines: 0, corePathGlobs: [], dailyAutoQuota: 0 };
@@ -147,7 +148,7 @@ export function useSelfImprovementPage() {
   function notifyError(e: unknown) {
     $q.notify({
       type: 'negative',
-      message: e instanceof Error ? e.message : String(e),
+      message: resolveSIErrorMessage(e),
     });
   }
 

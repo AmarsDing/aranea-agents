@@ -494,8 +494,8 @@ func (m *memBlockIndex) FindBlockByAnchor(_ context.Context, docID, anchor strin
 }
 
 // FindBlockByHeadingPath 重复标题取首（块按 ordinal 序存储，与生产取 ordinal
-// 最小者口径一致）。
-func (m *memBlockIndex) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, error) {
+// 最小者口径一致）。anchored 报告命中块是否已有显式锚（SP1-H）。
+func (m *memBlockIndex) FindBlockByHeadingPath(_ context.Context, docID string, path []string) (string, bool, bool, error) {
 next:
 	for _, b := range m.blocks[docID] {
 		if b.Kind != "heading" || len(b.HeadingPath) != len(path) {
@@ -506,9 +506,9 @@ next:
 				continue next
 			}
 		}
-		return b.ID, true, nil
+		return b.ID, b.Anchor != "", true, nil
 	}
-	return "", false, nil
+	return "", false, false, nil
 }
 
 // moveDocUsecase 构造文档 B 位于 notes/B.md 的 vault usecase（文件已落盘）。

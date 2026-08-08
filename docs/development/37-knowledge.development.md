@@ -1083,7 +1083,7 @@ G5-F（后端治理，独立可并行）─────────────�
 | **SP1-E** | 块级反链 API（含 dangling 语义） | F-SP1-5、S8 | ✅ |
 | **SP1-F** | 团队库后端（vault_backend 维度） | F-SP1-6、S6 | ✅ |
 | **SP1-G** | 晋升（复制式）+ 删除同步 | F-SP1-7/8、S7 | ✅ |
-| **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | 📋 |
+| **SP1-H** | RebuildIndex + 惰性锚点回填 | F-SP1-9/10、NFR-SP1-3、S9 | ✅ |
 | **SP1-I** | 前端（反链分组/dangling 灰显/晋升 UI/WS 订阅） | 验收 38~44、交互规格 | 📋 |
 
 ### SP1-A：块解析管线 blockparse 包（纯函数）
@@ -1212,6 +1212,14 @@ G5-F（后端治理，独立可并行）─────────────�
 | H-2 | 惰性锚点回填：写路径发现引用指向未锚块时，经 VaultFiler（local）/团队内容写路径（team）向源文本行尾追加 ` ^<uuid7>`；幂等（已有锚点跳过）；同一文件多次解析锚点稳定不漂移 | `internal/biz/knowledge/vault_filer.go`（扩展）、`internal/biz/knowledge/`（team 写路径） |
 
 验收：RebuildIndex 幂等可重入、重建期检索降级可用、重建后 refs 无孤儿边（验收 43）；锚点回填幂等稳定（验收 44）。
+
+> **2026-08-09 完成（TDD，H-1/H-2）**：
+> - **H-1 RebuildIndex**（`biz/knowledge/rebuild_index.go` + `service/knowledge_rebuild.go` + Proto `RebuildKnowledgeIndex`）：`RebuildCollectionBlockIndex` 流式逐文档重建——可见集合集整批提升一次（`visible` 预解析避免逐文档现查）→ 逐文档调 `rebuildBlockIndex(allowBackfill=false)`（重建是索引修复不改源文本）；幂等可重入（删块→重解析→重插整文档重放，中断重跑继续）；`sync_state` 置 `rebuilding` 期间检索走旧 chunks/FTS 降级可用，完成后恢复 `active`；service 层异步任务执行 + 进度经 WS 事件推送（复用 EP-KN-02 模式）+ `sync.Map` 防同库并发重建冲突（409）。
+> - **H-2 惰性锚点回填**（`blockparse/anchor_backfill.go` + `biz/knowledge/anchor_backfill.go`）：三段式——① `AppendHeadingAnchor` 纯函数（goldmark AST 定位首个命中 heading 块，行尾 ATX 闭合符前插 ` ^<uuid7>`；已锚/未命中/空路径幂等跳过；frontmatter 原样保留；变更时统一 LF 换行）；② Resolver 检出——`ResolveIndex.FindBlockByHeadingPath` 增返回 `anchored` 标记（SQL `(anchor IS NOT NULL AND anchor <> '')`），`ResolveRefs` 收集未锚命中产 `AnchorBackfillRequest`（按 (doc,path) 去重；显式锚引用/已锚块/自文档锚块均不产请求）；③ 执行侧 `backfillAnchors`——team 库走 PG `UpdateDocumentContent`（content_text 即真相源），local 库走 `VaultFiler` CAS 写文件 + 镜像正文/hash 同步（hash 同步后下轮轮询幂等短路，**不触发 chunks/embedding 重建**）；回填自触发目标重索引 `allowBackfill=false`（**一跳即止不级联**）；best-effort——单请求失败仅记 Warn（K3），不回滚主流程、不重试（目标文档下次写路径自愈；源文档指向旧未锚块 ID 的边经 FK SET NULL 转块级 dangling，源文档下次写路径重解析愈合，最终一致 SP1-ADR-3）。
+> - **对 S9 的 as-built 偏差**：回填锚点 ID 直接复用目标块 ID（`^<uuid7>`），不另建锚→块映射——库内唯一由 `knowledge_blocks` 部分唯一索引保证，与设计「块 ID 即锚文本」语义一致。
+> - **测试**：blockparse 8 用例（基本回填/幂等/重复标题取首/ATX 闭合符/Setext/frontmatter 保留/未命中/空 heading）；biz——backfill 4 用例（team 落锚+幂等/不级联/best-effort 失败不阻塞/local CAS+镜像同步）+ Resolver 回填请求 5 用例（远端未锚产请求/已锚跳过/显式锚跳过/自文档未锚/(doc,path) 去重）+ `TestRebuildCollectionBlockIndex_NoBackfill`（全量重建不改源文本）；端到端 `TestVaultSync_AnchorBackfill_LocalEndToEnd`（A 引用 B 未锚标题 → B 文件落锚 + 镜像 hash 同步 + chunks 不重建 + 块索引锚定 + A 重解析边愈合到锚块 ID + 幂等稳定锚点不漂移）。
+>
+> 验证：独立 GOCACHE `go build ./cmd/... ./internal/... ./pkg/...` ✅；`go test ./internal/biz/knowledge/... ./internal/knowledge/... -count=1` ✅ 全绿；`go test ./internal/service/ -run "TestKnowledge|TestPromote|TestRebuild"` ✅；`go vet` 全净。
 
 ### SP1-I：前端
 

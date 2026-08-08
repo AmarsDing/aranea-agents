@@ -38,6 +38,9 @@ type RefineLLMSetting struct {
 	Model    string
 	BaseURL  string
 	APIKey   string
+	// HasAPIKey marks a fallback key is stored; populated on redacted reads
+	// (API edge exposes only this marker, never the key value).
+	HasAPIKey bool
 }
 
 // PlannerModelMode controls how the plan_and_execute planner/allocator resolve
@@ -135,6 +138,8 @@ type SystemSettingAllPatch struct {
 	Speech                  *SpeechSetting
 	SpeechUpdateASRCred     bool
 	SpeechUpdateTTSCred     bool
+	RefineLLM               *RefineLLMSetting
+	RefineLLMUpdateKey      bool
 }
 
 // UpdateAll atomically persists core settings and any optional sub-settings
@@ -176,6 +181,13 @@ func (u *SystemSettingUsecase) UpdateAll(ctx context.Context, p SystemSettingAll
 				}
 				row.Speech = speech
 			}
+			if p.RefineLLM != nil {
+				refine, err := u.UpdateRefineLLM(txCtx, *p.RefineLLM, p.RefineLLMUpdateKey)
+				if err != nil {
+					return err
+				}
+				row.DefaultRefineLLM = refine
+			}
 			result = row
 			return nil
 		})
@@ -216,6 +228,13 @@ func (u *SystemSettingUsecase) UpdateAll(ctx context.Context, p SystemSettingAll
 			return SystemSetting{}, err
 		}
 		row.Speech = speech
+	}
+	if p.RefineLLM != nil {
+		refine, err := u.UpdateRefineLLM(ctx, *p.RefineLLM, p.RefineLLMUpdateKey)
+		if err != nil {
+			return SystemSetting{}, err
+		}
+		row.DefaultRefineLLM = refine
 	}
 	return row, nil
 }
