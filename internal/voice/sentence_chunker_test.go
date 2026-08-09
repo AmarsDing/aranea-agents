@@ -128,3 +128,51 @@ func TestChunkerHardCutDropsPunctuationOnly(t *testing.T) {
 	ch.Flush()
 	require.Empty(t, c.texts())
 }
+
+// 2026-08-09 真机：LLM 回复的 markdown 加粗 ** 被火山 TTS 读作"星星"；
+// 标题/列表符/分隔线/emoji 同样污染播报。
+func TestCleanForSpeechMarkdownEmphasis(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"查询**北京**的天气", "查询北京的天气"},
+		{"天气状况：**烟霾**（轻度污染）", "天气状况：烟霾（轻度污染）"},
+		{"__粗体__ 与 *斜体* 与 _斜体_", "粗体 与 斜体 与 斜体"},
+		{"~~已删除~~事项", "已删除事项"},
+		{"get_user_name 保留", "get_user_name 保留"}, // snake_case 标识符不被下划线规则误伤
+		{"3*4 不配对星号", "3*4 不配对星号"},          // 非配对单星号不误删内容
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, cleanForSpeech(tc.in), "input: %q", tc.in)
+	}
+}
+
+func TestCleanForSpeechMarkdownBlockMarks(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"## 🌤️ 北京天气（8月9日 星期日）", "北京天气（8月9日 星期日）"},
+		{"# 一级标题", "一级标题"},
+		{"- 🌫️ 天气状况：烟霾", "天气状况：烟霾"},
+		{"* 星号列表项", "星号列表项"},
+		{"1. 第一步操作", "第一步操作"},
+		{"3、顿号列表", "顿号列表"},
+		{"> 引用内容", "引用内容"},
+		{"前文 --- 后文", "前文 后文"},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, cleanForSpeech(tc.in), "input: %q", tc.in)
+	}
+	// 独立分隔线整行剥除后无可读内容
+	require.Empty(t, cleanForSpeech("---"))
+	require.Empty(t, cleanForSpeech("***"))
+}
+
+func TestCleanForSpeechEmoji(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"好的，收到 ✅", "好的，收到"},
+		{"我一直都在 😄", "我一直都在"},
+		{"已获取行情 📊📈", "已获取行情"},
+		{"温度：25°C，体感 26°", "温度：25°C，体感 26°"}, // 度数符号必须保留
+		{"A⭐B✨C", "ABC"},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, cleanForSpeech(tc.in), "input: %q", tc.in)
+	}
+}

@@ -177,6 +177,7 @@
 - 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 - 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
 - 需求澄清门（Clarification Gate，§B.10.18）：Intent Pass 后 `chat_clarify_gate.go` 判定阻塞性歧义 → 发布 orphan clarify Step（awaiting_input，信封含 `original_input`）并挂起 turn（`awaiting_confirmation(reason=clarification)`）；提交端点 `SubmitClarification`（CAS 409）→ `resumeTurnWithClarification` 同 turn 续跑（`resolveResumeInput`：内存 pending 优先，缺失从信封 `original_input` 惰性重建）；自由回复等价路径由 `Execute` 统一入口 `resolveClarificationFreeText` 拦截（回写 `free_text` + 按推荐填充 + 输入重写）；开关 `clarification_enabled` 持久化于 `agent_runtime_settings`（迁移 20261108）；orphan Step 前端由 `TaskCard.vue` 渲染 `ClarifyBlock.vue`
+- 抗过度澄清（§B.10.18.7，2026-08-09）：全部问题含推荐默认且无高风险标记（`intent.Artifact.HasHighRiskFlag`）→ `autoResolveClarification` 假设式前进（completed 审计卡 resolution=auto_default + `ResolvedInput` 注入 + Artifact 剥离澄清残留，不挂起）；chat 路径 intent pass 经 `TurnDeps.MsgHistory`（`biz.SessionRecentMessageLister`）注入近 6 条历史（`intent/history.go`，单条 200 runes 截断）+ prompt 历史消歧规则；改澄清判定/历史注入时同步 `chat_clarify_gate_test.go` 与 `intent/history_test.go`、`clarify_test.go` 的 prompt 纪律守卫
 
 ---
 

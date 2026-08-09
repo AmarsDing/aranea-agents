@@ -122,25 +122,25 @@ func (o *ChatOrchestrator) publishTurnProgress(ctx context.Context, sessionID, p
 	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_progress", "orchestration progress: "+phase, meta))
 }
 
-// runIntentPass executes the intent recognition pass and returns run options
-// along with the intent artifact (nil if the pass was skipped or failed).
-// The userOpts merge is deferred to after BUILD completes (see prepareTurnUserOptions).
+// runIntentPass executes the intent recognition pass and returns the intent
+// artifact (nil if the pass was skipped or failed). The artifact is injected
+// as run context by the caller AFTER the clarification gate — an auto-resolved
+// gate strips clarification residue first, and RunOptionInject serializes
+// eagerly, so injecting here would bake the residue in.
 // Stability:internal
 func (o *ChatOrchestrator) runIntentPass(
 	ctx context.Context,
 	ag biz.Agent,
 	sessionID, content, prov, mod string,
 	emitter *event.TraceEmitter,
-) ([]trpcagent.RunOption, *intent.Artifact) {
+) *intent.Artifact {
 	// P0 性能：允许运维通过 ARANEA_INTENT_PASS_MODEL 指定轻量模型加速意图识别；
 	// 覆盖对必须存在于 LLM catalog，否则回退 turn 模型保证 Intent Pass 仍可运行。
 	prov, mod = resolveIntentPassProviderModel(ctx, o.td().ReadDeps.LLM, prov, mod, o.lg())
 	emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.lg())
-	var intentRunOpts []trpcagent.RunOption
+	intRes := intent.RunForAgent(ctx, ag, o.td().ReadDeps.LLM, o.td().LLMHTTP, prov, mod, content, o.recentIntentHistory(ctx, sessionID, content), o.lg())
 	if intRes.Artifact != nil {
 		emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
-		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intRes.Artifact))
 	} else {
 		emitter.LogSkip("chat.intent.pass", "意图识别跳过", event.P("outcome", intRes.Outcome), event.P("duration_ms", intRes.Duration.Milliseconds()))
 	}
@@ -149,7 +149,7 @@ func (o *ChatOrchestrator) runIntentPass(
 	if bus := o.td().Pipeline.EventBus; bus != nil {
 		bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "intent_pass", "", intentPayload))
 	}
-	return intentRunOpts, intRes.Artifact
+	return intRes.Artifact
 }
 
 // resolveIntentPassProviderModel applies the optional ARANEA_INTENT_PASS_MODEL /
@@ -828,6 +828,15 @@ func (o *ChatOrchestrator) postProcessTurn(
 	}
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, execResult.userMsg.ID, persistResult.assistantMsg.ID, prov, mod, persistResult.promptTok, persistResult.completionTok, persistResult.assistantMsg.ContentMarkdown)
+	// F4 取消竞态：cancelActiveRun 已将 run 置 cancelled（终态）后，EXECUTE/PERSIST
+	// 成功路径才走到这里。cancelled wins——跳过 completed 状态发布 / Session 翻转 /
+	// revision bump / after_turn 钩子与"执行完成"流程日志，避免 cancelled 之后再冒出
+	// completed 的矛盾噪音。用量记账（上方 recordSessionTurn）保留：助手消息已落库，
+	// token 真实消耗。
+	if o.runWasCancelled(ctx, sessionID, nil) {
+		emitter.LogSkip("chat.turn.execute", "对话轮次已取消，跳过完成状态发布", event.P("run_id", runID))
+		return
+	}
 	if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "completed", ""); serr != nil {
 		o.lg().Warn("set run status failed on complete",
 			loggateway.StepID("chat.turn.complete"),

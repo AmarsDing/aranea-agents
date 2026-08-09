@@ -152,7 +152,9 @@ func (r *Runner) prepareUserTurnOptions(
 	var intRes intent.RunResult
 	shouldRunIntent := intent.ShouldRun(ar.agent, content)
 	if shouldRunIntent {
-		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, r.lg)
+		// history 传 nil：成员 turn 的 content 是 leader 规划合成的指令（非用户原始
+		// 追问），无指代/省略需解析；注入会话历史反而可能干扰成员对指令的判定。
+		intRes = intent.RunForAgent(ctx, ar.agent, r.td.ReadDeps.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content, nil, r.lg)
 		if intRes.Artifact != nil {
 			if strings.TrimSpace(intRes.RawJSON) != "" {
 				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)

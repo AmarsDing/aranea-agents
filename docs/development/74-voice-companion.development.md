@@ -48,6 +48,7 @@
 | chat 主链路工具桥装配 | `internal/service/chat_orchestrator.go`（RuntimeTooling.ClientBridge）、`internal/service/chat_orch_agent_build.go`（TRPCExtensionDeps.ClientBridge）、`cmd/admin/wire.go`（provideRuntimeTooling 注入） | chat 主链路可调 client_open_app/client_open_url ✅（V2-T8） |
 | 语音听写（后端） | `internal/voice/session.go`（StartParams.Mode / ModeDictation / dictation() / handleASRFinal 早退）、`internal/server/voice_ws.go`（voiceControlMessage.Mode） | mode=dictation 终稿仅下行文本，不建 Turn 不播报 ✅（V6-T1） |
 | 语音听写（前端） | `web/src/features/chat/composables/useVoiceDictation.ts`（+spec）、`useChatWorkspace.ts`（装配/会话切换停止）、`components/chat/ChatComposer.vue`（听写条 + 录音态按钮）、`ChatMessagePanel.vue` / `ChatPage.vue` / `MobileChatPage.vue`（透传）、i18n zh-CN/en-US | 麦克风按钮 → 听写 → 终稿填入输入框 ✅（V6-T2） |
+| HUD TwinSprite 光球 | `web/src/features/companion/hud/parts/SpriteOrbCore.ts`（value noise 光球 + Fresnel，uIntensity 扩展）、`OrbitRing.ts`（260 粒子倾斜环）、`HudPart.ts`（部件接口）、`hudParams.ts`（状态参数纯函数）、`HudScene.ts`（组合器，无后处理直渲）、`components/companion/HudCanvas.vue`（网格/扫描线/光晕舞台） | 视觉完全复刻 TwinSprite SpriteOrb/SpriteOverlay ✅（V7） |
 
 ## 3. 现状评估与差距
 
@@ -143,6 +144,19 @@
 >
 > **V5.2 遗留（另行评估）**：①排队 Turn 静默风险——voice 回 listening 后，若此前派发的 Turn 经 busy 重试/准入转入排队队列，其执行时的 delta 会被 `feedDelta` 门禁（`pendingTurns>0 && thinking/speaking`）丢弃，需 FSM 补边（listening + pendingTurns>0 时 delta 唤醒 thinking）且 `pendingTurns` 计数不区分语音/文字 Turn（同 session 文字 run 的 TurnCompletedEvent 会误扣）；②speaking/thinking 态收到新 ASR 终稿被 FSM 非法转换静默忽略（V1 语义：播报中插话请先打断/取消）——是否改排队为产品决策。真机 busy 竞态窗口为亚秒级，日常连说两句主要命中路径为「前一轮收尾完成后直接执行」，已由探针覆盖。
 
+### Phase V5.3 — 澄清口播 + TTS 挂句超时 + 搜索源实测 + 取消竞态静音（2026-08-09）✅
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V5.3-F1 | **澄清问题语音播报**：澄清门触发（`StepCreatedEvent kind=clarify`）时语音侧原本完全静默（澄清卡片只上 UI，无文本 delta，turn 挂起）。`internal/voice/session.go` 新增 `maybeBroadcastClarification`：解析 `ClarificationEnvelope` → `clarificationSpeech` 渲染口播文本（引导语 + 逐题题干/可选项 + 作答引导，中文序号「第 N 个」「两」）→ 喂 SentenceChunker 走既有 TTS；仅 listening/thinking/speaking 态播报；用户语音作答经自由文本澄清路径续跑（`resolveClarificationFreeText`，与 WS 文字消息同入口） | ✅ | TDD：session_test 新增澄清播报用例（kind=clarify 触发口播 / 非 clarify 不触发 / 非法信封 Warn 跳过）；step `voice.clarify.broadcast` 已登记 `flow_log.go`；`go test ./internal/voice/` 全绿 |
+| V5.3-F2 | **TTS 句子级空闲超时**：挂死句（火山 End 帧永不到达/连接半死）曾把 worker 饿死在单句上，后续句与 `tts.end` 全部阻塞（2026-08-09 天气 Turn 实测挂 3 分钟）。`tts_scheduler.go` 新增 `ttsSentenceTimeout = 15s` 空闲计时——任一 chunk（Data/End/Error）到达即重置，超时放弃本句返回 `errTTSSentenceTimeout`，worker 继续后续句，`OnDrained` 必达 | ✅ | TDD：`TestSchedulerSentenceTimeout`（缩短包级变量验证超时返回与 worker 续跑）RED→GREEN；voice 包全量 + `-race` 全绿 |
+| V5.3-F3 | **WebSearch 源实测选型**：探针 `test/websearch-probe/`（一次性，可整目录删除）实测直连/代理/换源——**Bing 中国（cn.bing.com）直连最优**：195ms/英文 8 条、312ms/中文 10 条真实结果，无需代理；DDG API 走代理默认 UA（`trpc-agent-go-duckduckgo/1.0`）被风控返回 200 空体（换 curl UA 才有 202 数据），直连被墙；百度反爬返回 1KB 验证页。当前 `toolset.go` 的 `NewTool()` 无参构造在本环境必然空响应；切 Bing 需新写 HTML 解析工具（无官方 API），是否实施待定 | ✅ | 探针输出候选源状态/时延/结果量对照表；深挖探针确认 UA 风控行为（trpc UA 空体 vs curl UA 有数据） |
+| V5.3-F4 | **取消竞态日志静音**：`cancelActiveRun` 已将 run 置 cancelled（终态）后，EXECUTE/PERSIST 成功路径仍走 `postProcessTurn`——`SetRunStatus("completed")` 被 FSM 拒绝产生 Warn、Session 状态从 interrupted 翻转 completed、after_turn 钩子误触发、「对话轮次执行完成」流程日志噪音。修复：`postProcessTurn` 在用量记账后加 `runWasCancelled` 守卫——已取消则跳过 completed 状态发布/Session 翻转/revision bump/after_turn 钩子，`LogSkip` 替代 `LogDone`；用量记账保留（助手消息已落库，token 真实消耗） | ✅ | TDD：`chat_orchestrator_turn_postprocess_test.go` 新增 2 例（已取消跳过全部完成动作且记账保留 / 未取消对照组照常）RED→GREEN；service 全包测试仅余 models.dev 网络恒败 2 例（环境受限，与改动无关） |
+
+> **V5.3 验证与部署（2026-08-09）**：独立 GOCACHE 下 `go build ./cmd/... ./internal/... ./pkg/...` 干净；`go test ./internal/voice/ ./internal/biz/ ./internal/event/ ./internal/agent/intent/` 全绿；`internal/service` 全包仅 `TestModelCatalogService_SyncModelCatalog_*` ×2 恒败（models.dev 须代理，环境受限已知项）；go vet 0 问题；改动文件 gofmt 干净。新二进制已部署 :8000（healthz 200）。注：本批次期间共享 GOCACHE 再现幻影编译错误（`decision.AutoResolved undefined` 实际已定义），按既有教训独立缓存绕过。
+>
+> **V5.3 遗留**：F3 结论待决策——web_search 工具是否从 DDG 切换到 Bing 中国（需新写 HTML 解析实现）；切换前语音/文字 Turn 的 web_search 调用在本环境将持续空响应。
+
 ### Phase V6 — 语音听写（聊天页语音输入，P1）✅ 2026-08-09
 
 目标：聊天页麦克风按钮落地「听写」行为（需求 §2.11）——语音转文字填入输入框，手动编辑后发送；不自动发送、不触发 TTS 播报。复用 `/v1/voice` 通道，新增 `mode=dictation` 会话模式（设计 §13）。
@@ -155,19 +169,32 @@
 
 > V6-T3 顺带修复：HEAD 上 `HudCanvas.vue` 引用已不存在的 `createHudScene` 工厂致 SPA 白屏（V5 重构未对齐），改为 `new HudScene(canvas, {getPlaybackLevel, fillMicSpectrum})` 拉取模型并移除失效的 amplitude/spectrum watch；修复后 hudParams.spec 21 例与全量前端测试通过。
 
+### Phase V7 — HUD 视觉完全复刻 TwinSprite 光球（2026-08-09）✅
+
+目标：用户指定以既有 TwinSprite 项目（`F:\TwinSprite`）为视觉准绳——HUD 3D 场景完全复刻其 SpriteOrb（value noise 光球 + 单粒子轨道环 + CSS 光晕 + 网格/扫描线舞台），移除 V5 反应堆部件族与 Bloom 后处理（设计 §7.4 v3，ADR-D12）。保留本产品增量：boot 点亮过场、speaking 相机微抖、burst 脉冲、打断红闪、thinking 无变色约束、DOM 全息化与音效引擎。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V7-T1 | 3D 场景复刻：新增 `hud/parts/SpriteOrbCore.ts`（TwinSprite shader/几何/配色原值 + `uIntensity` 调光扩展）与 `hud/parts/OrbitRing.ts`（`buildRing` 原值 260 粒子环）+ `HudPart` 接口；删除 ReactorCore/ReactorRings/Starfield/SpectrumRing/ShockwavePool/EnergyParticles 六部件与 BloomComposer；`HudScene` 移除 EffectComposer 直渲（相机 fov 45 / z 5.2、电平平滑 0.2/帧→dt×12/s） | ✅ | hudParams.spec 改写 11 例锁定 TwinSprite 原值（uAmp 0.12+level×0.38、thinking 噪声/环速 ×3 + 收缩 0.85×、配色 `#123a6e→#4dd8e8`、红警示、boot intensity 0.35→1 曲线） |
+| V7-T2 | 舞台与光晕：`HudCanvas.vue` 新增网格（accent 6% / 48px / radial mask 30%→75%）+ 垂直扫描线（accent 45% / 7s / opacity 0.5）+ CSS 呼吸光晕（accent 22%→65%，3.2s；语音开 0.55↔1 / 待机 0.25↔0.55）；listening 电平改 TwinSprite `sampleMic` 公式（bins 2..48 均值 /255 ×1.6 钳制）经 `getMicLevel` 拉取注入 | ✅ | `pnpm lint` 0 错误、`pnpm test` 205 文件 1562 用例全绿、`pnpm build` 成功 |
+| V7-T3 | 真机验证 + 三件套同步 | ✅ | 浏览器实测（:9001 dev + :8000 后端在线）：待机微光 → 点麦克风 boot 点亮满功率 →「思考中…」（核心收缩/高速噪声）→「正在播报…」（电平强震 + 相机微抖 + burst）→ 退出语音模式干净回待机；网格/扫描线/光晕与 TwinSprite 原值一致；语音全链路（ASR→Chat→TTS 天气问答）在线 |
+
+> V7 版本编号说明：V6 已被「语音听写」占用（Phase V6），HUD TwinSprite 复刻顺延为 V7；代码注释同步标注「V7 TwinSprite 复刻」。
+
 ## 5. 总验收标准
 
 1. 需求文档 §3 验收总览 13 项按 Phase 逐项达标
 2. 每 Phase 完成后：后端 `make api && make wire && make build && make test && make lint`；前端 `pnpm lint && pnpm test && pnpm build` 全绿
 3. 运行时验证（R3）：读 `logs/aranea-pipeline.log` 确认 voice.* 流程日志 + 实际桌面端操作验证
 4. 回归：Chat/Team/工具治理既有单测不破坏
+5. V7 视觉：HUD 四态（待机/boot/思考/播报）与 TwinSprite SpriteOrb 视觉一致（网格/扫描线/光晕/光球/粒子环原值）；`hudParams.spec` 11 例锁定 TwinSprite 原值常量
 
 ## 6. 改动文件清单（预估）
 
 **后端新增**：`internal/server/voice_ws.go`、`internal/voice/*`（4 文件）、`internal/biz/speech.go`、`internal/data/speech/*`（3 文件）、`internal/tools/clientbridge/*`
 **后端修改**：`internal/server/ws.go`（工具桥下行挂载）、`internal/tools/toolset.go`（注册）、`internal/data/builtin_tools_seed.go`（client 工具组种子）、`internal/agent/tool_confirm_gate.go`（catalog）、`internal/event/flow_log.go`（step 登记）、`cmd/admin/wire*.go`（注入）、System Settings 相关（speech 分组）
-**前端新增**：`web/src/pages/CompanionPage.vue`、`web/src/features/companion/*`（~10 文件）、`web/src/features/chat/composables/useVoiceDictation.ts`（+spec，V6）
-**前端修改**：`web/package.json`（+three）、路由注册、System Settings 页（语音 Tab，V2）、`useChatWorkspace.ts` / `ChatComposer.vue` / `ChatMessagePanel.vue` / `ChatPage.vue` / `MobileChatPage.vue` / i18n locales（V6 听写）、`components/companion/HudCanvas.vue`（V6 期修复 V5 拉取模型对齐）
+**前端新增**：`web/src/pages/CompanionPage.vue`、`web/src/features/companion/*`（~10 文件）、`web/src/features/chat/composables/useVoiceDictation.ts`（+spec，V6）、`web/src/features/companion/hud/parts/`（SpriteOrbCore/OrbitRing/HudPart，V7）
+**前端修改**：`web/package.json`（+three）、路由注册、System Settings 页（语音 Tab，V2）、`useChatWorkspace.ts` / `ChatComposer.vue` / `ChatMessagePanel.vue` / `ChatPage.vue` / `MobileChatPage.vue` / i18n locales（V6 听写）、`components/companion/HudCanvas.vue`（V7 网格/扫描线/光晕舞台）、`features/companion/hud/HudScene.ts` 与 `hudParams.ts`（V7 TwinSprite 复刻重写；V5 反应堆六部件 + BloomComposer 已删除）
 **Tauri 新增**：`web/src-tauri/src/client_tools.rs`、`whitelist.rs`；**修改**：`Cargo.toml`（+screenshots 等，V3）、`tauri.conf.json`（窗口/权限，V3）
 **文档**：本三件套 + `65-module-cross-reference-full.md`（新增模块卡片）+ 59/63 三件套状态联动（V4/V2 期）
 
@@ -183,4 +210,4 @@
 
 ---
 
-*文档版本：2026-08-09 v1.3 — ASR 累积回放去重修复（听写无限输入根因，`finalCursor` 游标）；Phase V6 语音听写完成（含真机验证）；HUD V5 拉取模型对齐修复入档。*
+*文档版本：2026-08-09 v1.4 — 新增 Phase V7 HUD TwinSprite 光球复刻（T1-T3）；锚点表新增 HUD TwinSprite 光球；总验收标准补充 V7 验证项；改动文件清单新增 V7 相关文件。v1.3 — ASR 累积回放去重修复（听写无限输入根因，`finalCursor` 游标）；Phase V6 语音听写完成（含真机验证）；HUD V5 拉取模型对齐修复入档。*

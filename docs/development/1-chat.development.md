@@ -602,6 +602,17 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 全量验证：`go build ./...` + `go test`（service 4.7s/biz 9.8s/agent 32.6s/data 21.0s）全过（2026-07-23 复跑）；前端 `pnpm lint` + `pnpm test`（699 例）+ `pnpm build` 全过
 - [x] 文档同步：本块状态标记、§6 任务清单、65 交叉参考 Chat 卡片；B.10.18.2/3/5 信封字段与自由回复/重启恢复实现语义（2026-07-23）
 
+#### 抗过度澄清增强（P0+P1，2026-08-09）
+
+> **需求**：[1-chat.md §1.10](./1-chat.md#110-需求澄清提问clarification)（US-CLARIFY-02）
+> **设计**：[1-chat.design.md §B.10.18.7](./1-chat.design.md#b10187-抗过度澄清增强as-built2026-08-09)
+
+- [x] P0 TDD：门判定矩阵扩展——全部问题含推荐默认且无高风险标记 → `AutoResolved`（不挂起）；任一问题缺推荐或命中高风险标记（`HasHighRiskFlag`：touches_auth/migrations/sensitive_data/compliance/destructive/irreversible）→ 挂起（`chat_clarify_gate_test.go`：`TestRunClarificationGate_AutoResolvedWhenAllRecommended` / `TestRunClarificationGate_TriggeredWhenQuestionLacksRecommended`）
+- [x] P0 biz：信封 `Resolution` 字段 + `ApplyRecommendedAnswers` + `ClarificationAllRecommended`（`step.go` / `step_clarify_test.go`）；`autoResolveClarification` 落 completed 审计卡（resolution=auto_default）+ `ResolvedInput` 注入澄清上下文 + Artifact 剥离澄清残留（防下游重问）；意图产物注入统一下移到澄清门之后
+- [x] P1 TDD：`history_test.go` 4 例（无历史/含历史拼装/超 6 条截最旧/单条 200 runes 截断）+ prompt 纪律守卫（`TestIntentSystemPrompts_ClarificationDiscipline`：历史消歧优先、禁问已确立事实、推荐默认自主执行）
+- [x] P1 历史注入：`intent/history.go`（HistoryMessage + MaxIntentHistoryMessages=6 + buildUserMessageContent）；`TurnDeps.MsgHistory`（`biz.SessionRecentMessageLister` 窄接口）+ `recentIntentHistory`（过滤角色/空内容、剔除同文当前输入、失败降级 nil）；chat 路径接线、team 成员 turn 传 nil；wire 两处 TurnDeps 接 `MsgHistory: sessions`
+- [x] 验证：独立 GOCACHE 下 `go test ./internal/agent/intent/ ./internal/service/ ./internal/biz/... ./internal/team/ ./internal/runtime/... ./cmd/admin/` 全绿（排除 2 个已知 models.dev 网络受限测试）；`go build ./cmd/... ./internal/... ./pkg/...` + vet 干净；改动文件 gofmt 干净（2026-08-09）
+
 #### 验收标准
 
 - [ ] LLM 判定阻塞性歧义时发布 clarify 卡片并挂起 turn；轻微歧义不触发
@@ -609,6 +620,8 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [ ] 提交后同一任务续跑，澄清问答注入上下文，不产生新任务卡片
 - [ ] 重复提交被 CAS 拒绝（409）；刷新/重启后卡片与作答进度恢复
 - [ ] `clarification_enabled=false` 时门透传走原流程
+- [ ] 全部问题含推荐默认且无高风险标记时不挂起，落 completed 审计卡（resolution=auto_default）续跑；命中高风险标记仍挂起等答
+- [ ] 追问指代（"它""这个"）能从近期对话解析时不触发澄清；对话中已确立的事实不被重问
 
 ---
 

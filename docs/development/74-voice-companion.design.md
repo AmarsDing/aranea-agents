@@ -19,7 +19,8 @@
 | D8 | 语音消息数据形态 | ASR 终稿 = 普通用户消息（metadata 标记 `input_modality=voice`）；音频留档为可选 Artifact 附件 | 语音对话记录与普通聊天天然互通，Web 端可见可回放 |
 | D9 | Speech Provider 配置存储 | System Settings 新增 `speech` 分组（JSON），凭据走既有敏感字段加密 | YAGNI：首期无需多 profile 管理，不新建 Ent 表；后续如需多配置再升级为独立 Schema |
 | D10 | 播报 TTS 与 63-tts 工具的关系 | 各自独立：播报管线是会话级 I/O（本模块）；63-tts 是 Agent 主动调用产出音频附件的工具 | 两者可后续共用 SpeechProvider 端口；本模块不实现 63 工具 |
-| D11 | HUD 科幻重构方向（V5） | **方舟反应堆 · 混合式**：液态 simplex 能量核 + 同心刻度仪表环 + UnrealBloomPass 辉光 + DOM 全息化 + 程序合成音效 | 初版「能量核+粒子环+线框壳」视觉不达标（无真辉光、缺 Jarvis 刻度仪表、控件未 HUD 化、无音效）。替代：纯液态 Orb（缺精密机械感，不 Jarvis）/ 全景 Stark 工作台（面板无真实数据、噪音大），均否决 |
+| D11 | HUD 科幻重构方向（V5） | **方舟反应堆 · 混合式**（**已替代**，见 D12）：液态 simplex 能量核 + 同心刻度仪表环 + UnrealBloomPass 辉光 + DOM 全息化 + 程序合成音效 | 初版「能量核+粒子环+线框壳」视觉不达标（无真辉光、缺 Jarvis 刻度仪表、控件未 HUD 化、无音效）。替代：纯液态 Orb（缺精密机械感，不 Jarvis）/ 全景 Stark 工作台（面板无真实数据、噪音大），均否决 |
+| D12 | HUD 视觉方向再修订（V7） | **完全复刻 TwinSprite SpriteOrb**：value noise 顶点置换光球 + 单粒子轨道环 + CSS 光晕 + 网格/扫描线舞台；**移除 Bloom 后处理与反应堆部件族**（替代 D11 的 3D 场景部分；DOM 全息化与音效引擎沿用） | 用户指定以既有 TwinSprite 项目（`F:\TwinSprite`）视觉为准——该视觉已经真机验证达标、风格简洁；V5 反应堆 6 部件 + Bloom 复杂度冗余且与目标风格不符。保留本产品增量：boot 点亮过场、speaking 相机微抖、burst 脉冲、打断红闪、thinking 无变色约束 |
 
 ---
 
@@ -204,12 +205,27 @@ type SpeechConfigReader interface {
 > （纯标点/纯符号）不下发 TTS。此前此类句子被火山拒绝（`45002001 No readable text!`）
 > 并计入连续失败（调度器连续 3 次中止，该 Turn 后续句全部无声）。flush 语义不受影响：
 > 尾句被丢弃时由会话层补空文本 flush 哨兵驱动 `OnDrained`（tts.end 不缺失）。
+>
+> **As-built（V5.3 播报文本清洗扩展，2026-08-09）**：真机发现 LLM 回复的 markdown
+> 加粗 `**文本**` 被火山 TTS 逐字读作「星星」。`cleanForSpeech` 在原有
+> 代码块/URL/图片/表格/链接剥离基础上，增剥：成对强调符（`**`/`__`/`~~`/`*`/`_`，
+> 保留内文；`*`/`_` 单字符规则带词边界守卫，不误伤 `3*4`、`snake_case`）、行首
+> `#` 标题、`-`/`*`/`+` 及 `1.`/`3、` 列表符、`---` 分隔线、`>` 引用符、emoji
+> （显式枚举 Unicode 区块 1F000–1FAFF/2600–26FF/2700–27BF/2B00–2BFF + FE0F/200D/20E3，
+> 保留 `°`/`℃`/`×` 等 So 类常用符号）；流式切句拆散的残余成串标记（`\*{2,}`/`~{2,}`）
+> 一并剥除。
 
 ### 4.2 TTS 调度器
 
 - 单 Turn 单 TTS 会话；句队列上限 8（防 LLM 快、TTS 慢时内存膨胀；满时 chunker 暂停消费 delta——背压）
 - 音频 chunk 直推 WS；句间无额外间隔（NFR4 句间间隙由前端播放调度保证 <150ms）
 - 取消：Turn cancel / barge_in → `ctx.Done()` → 关闭 TTS 会话 → 发 `tts.end{interrupted:true}`
+
+> **As-built（V5.3 句子级空闲超时，2026-08-09）**：`synthesize` 增加
+> `ttsSentenceTimeout`（15s，包级变量便于测试缩短）空闲计时——任一 chunk
+> （Data/End/Error）到达即重置；超时放弃本句返回 `errTTSSentenceTimeout`，worker
+> 继续后续句，`OnDrained` 必达。此前挂死句（火山 End 帧永不到达/连接半死）会把
+> worker 饿死在单句上，该 Turn 后续句与 `tts.end` 全部阻塞。
 
 ## 5. 语音会话状态机（AS-FSM-01）
 
@@ -237,6 +253,14 @@ type SpeechConfigReader interface {
 | error | listening | — | — | — | — | — | idle |
 
 > `interrupted` 为过渡态：进入即触发本地停播 + CancelRun，~300ms 红闪反馈后自动转换到 `listening`（无需事件）。
+
+> **As-built（V5.3 澄清问题口播，2026-08-09）**：会话订阅 chat 侧
+> `StepCreatedEvent kind=clarify`（澄清门触发）→ `maybeBroadcastClarification` 解析
+> `ClarificationEnvelope`，经 `clarificationSpeech` 渲染口播文本（引导语 + 逐题
+> 题干/可选项 + 作答引导，中文序号「第 N 个」「两」）喂 SentenceChunker 走既有 TTS。
+> 仅 listening/thinking/speaking 态播报；随后的 TurnCompleted 走既有 flush/drain 收尾
+> 回 listening；用户语音作答经自由文本澄清路径续跑（与 WS 文字消息同入口
+> `Execute`），语音侧无特判。流程日志 step：`voice.clarify.broadcast`。
 
 前端镜像同一状态枚举驱动 HUD 动画（§7.4），以服务端 `voice.state` 广播为准。
 
@@ -324,8 +348,8 @@ Agent 调用 client_open_app
 | `voice/audioPlayback.ts` | PCM chunk 队列 → AudioBuffer 按序调度（gapless，句间 <150ms）；barge_in 时 50ms 淡出清空 |
 | `voice/useVoiceSession.ts` | `/v1/voice` 连接生命周期（createVoiceSessionClient）+ useVoiceSession composable（采集/播放/可视化桥接、状态机镜像写入 companion store、与 chat sender 的衔接） |
 | `hud/hudParams.ts` | 状态 → HUD 参数纯函数（§7.4 状态驱动参数，与 Three.js 解耦以便单测） |
-| `hud/HudScene.ts` | Three.js 场景组合器（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换）；V5 起拆分为 `hud/parts/*` 模块化场景部件 |
-| `hud/parts/`（V5 新增） | ReactorCore（simplex 液态核）/ ReactorRings（同心刻度环 ×3）/ Starfield（深空星野）/ SpectrumRing（频谱环）/ ShockwavePool（涟漪池）/ EnergyParticles（能量粒子云，V5.1），统一 `update(dt, params, audio)` 接口 |
+| `hud/HudScene.ts` | Three.js 场景组合器（§7.4）；实现 `AvatarRenderer` 接口（预留 VRM 替换）；视觉拆分为 `hud/parts/*` 模块化场景部件（V7 起为 TwinSprite 光球两部件） |
+| `hud/parts/`（V7 重建） | SpriteOrbCore（TwinSprite value noise 光球）/ OrbitRing（260 粒子倾斜轨道环），统一 `HudPart.update(dt, timeS, params, audio)` 接口；V5 反应堆部件族（ReactorCore/ReactorRings/Starfield/SpectrumRing/ShockwavePool/EnergyParticles）已随 D12 移除 |
 | `audio/uiSounds.ts`（V5 新增） | 科幻音效引擎：Web Audio 程序合成（boot/chirp/ping/ding/buzz/cut），零音频资产，localStorage 开关 |
 | `components/companion/HudCanvas.vue` | canvas 宿主、点击/双击/拖拽交互、频谱数据桥 |
 | `components/companion/CompanionChatPanel.vue` | 滑出聊天窗壳（内容由 Page 注入，复用 ChatMessagePanel 组件族） |
@@ -341,36 +365,45 @@ Agent 调用 client_open_app
 
 ### 7.4 HUD 场景设计（Three.js）
 
-> **v2 修订（2026-08-09，V5 反应堆科幻重构，ADR-D11）**：初版「能量核 + 粒子环 + 线框壳」视觉不达标——无后处理真辉光、核心噪声过于简单、缺 Jarvis 标志性同心刻度仪表、DOM 控件未 HUD 化、无音效反馈。V5 按「方舟反应堆 · 混合式」重构为下文目标设计；初版实现记录见文末 As-built 存档（V2-T5）。
+> **v3 修订（2026-08-09，V7 TwinSprite 光球复刻，ADR-D12）**：视觉方向由用户指定回归既有 TwinSprite 项目（`F:\TwinSprite` 的 SpriteOrb/SpriteOverlay）——shader、几何、配色、粒子环、相机、电平驱动公式全部原值移植；移除 V5 反应堆部件族与 Bloom 后处理。V5/V2 反应堆设计存档见文末。
+>
+> ~~v2 修订（V5 反应堆科幻重构，ADR-D11）~~：已被 D12 替代，存档见文末。
 
-#### 渲染管线（v2）
+#### 渲染管线（v3）
 
-- `EffectComposer + RenderPass + UnrealBloomPass（mipmapBlur 半分辨率）+ OutputPass`，全部来自 `three/examples/jsm`，**零新依赖**
-- Bloom 强度/阈值纳入 `hudParams` 状态驱动：speaking 随振幅增强、burst 瞬时提亮、boot 过场由暗渐亮
-- HUD 不可见（`document.hidden`）降帧 15fps 保留；性能预算 NFR5 ≥40fps 不变
+- **无后处理**：TwinSprite 原配方为加法混合（AdditiveBlending）+ CSS 呼吸光晕即成辉光——`WebGLRenderer(alpha, antialias)` 直渲，V5 的 `EffectComposer/UnrealBloomPass` 全部移除
+- 相机 TwinSprite 原值：fov 45、position z 5.2；`setPixelRatio(min(devicePixelRatio, 2))`
+- HUD 不可见（`document.hidden`）降帧 15fps 保留；性能预算 NFR5 ≥40fps（无 Bloom 后余量更大）
 
-#### 场景构成（v2，模块化 scene parts）
+#### 场景构成（v3，`hud/parts/` 两部件）
 
-`HudScene.ts` 降为组合器（创建 renderer/composer/相机 + 帧循环 + 参数分发），视觉元素拆为 `hud/parts/` 独立部件，统一接口 `update(dt, params, audio)`（单文件 ≤500 行红线）：
+`HudScene.ts` 为组合器（renderer + 相机 + 帧循环 + 状态参数/音频快照分发），部件统一 `HudPart` 接口（`update(dt, timeS, params, audio)` + `setTint(a, b)` + `dispose()`），帧间零分配：
 
-| 部件 | 文件 | 实现 | 状态驱动 |
-|------|------|------|----------|
-| 能量核 | `parts/ReactorCore.ts` | Icosahedron + GLSL simplex 3D 顶点置换（液态有机形变）+ Fresnel 边缘光 + 双色等离子 | speaking 振幅驱动置换幅度（1.0-1.15× 缩放沿用）；thinking 收缩 0.85×；idle 呼吸 |
-| 刻度环 ×3 | `parts/ReactorRings.ts` | 同心仪表环：细圆环 + InstancedMesh 刻度线段，异速正反转、分段呼吸透明度 | listening 外环展开 1.2×；thinking 转速 ×3；burst 提亮 |
-| 星野 | `parts/Starfield.ts` | ~800 粒子深空背景，缓慢漂移 + 相机微视差 | 常态 |
-| 频谱环 | `parts/SpectrumRing.ts` | 128 柱 InstancedMesh（沿用初版，Bloom 下发光） | listening 可见，实时 FFT |
-| 涟漪池 | `parts/ShockwavePool.ts` | 复用 4 圈声浪涟漪（沿用初版，Bloom 增强） | listening/speaking 周期发射；burst 立即满强度一圈 |
-| 能量粒子云 | `parts/EnergyParticles.ts`（V5.1 新增） | ~220 粒子绕核轨道云（Points + vertexColors 内外层双色插值），帧间零分配 | `particleGain` 状态增益（speaking 满功率/idle 微光/interrupted 熄灭）；speaking 振幅外推粒子 + 加速轨道 |
-| （移除） | — | 初版线框壳与全息弧线组由刻度仪表环取代，避免视觉重复 | — |
+| 部件 | 文件 | TwinSprite 原值 | 状态驱动 |
+|------|------|----------------|----------|
+| 光球核心 | `parts/SpriteOrbCore.ts` | Icosahedron(1.15, 48) + 3D value noise 双层顶点置换 + Fresnel 边缘光；`uAmp = 0.12 + level×0.38`；配色 `#123a6e→#4dd8e8`，加法混合 | 电平驱动振幅/发光；thinking 噪声流速 ×3 + 收缩 0.85×；`uIntensity` 调光（本产品扩展：boot 过场/待机微光） |
+| 轨道粒子环 | `parts/OrbitRing.ts` | 260 粒子，半径 1.55~1.80、y 抖动 ±0.06，倾斜 π×0.42；size 0.035、opacity 0.85；转速 `0.002+level×0.02` rad/帧、xz 缩放 `1+level×0.12` | 电平驱动转速/缩放；thinking 转速 ×3；opacity ×intensity |
 
-#### 状态过场（v2 新增）
+#### 舞台背景与光晕（v3，HudCanvas.vue 作用域 CSS）
 
-- **语音模式开启**：~1.2s 启动序列——核心由暗点亮 → 刻度环逐层锁定展开 → 上电扫频音效；`hudParams` 新增 `bootProgress ∈ [0,1]`
-- **打断**：300ms 红闪沿用（`#f87171`）+ 打断切音
-- **颜色体系（V5.1 修订）**：idle/listening/thinking/speaking 统一青蓝系（`#22d3ee→#34d399`）——thinking 不再变琥珀（用户反馈黄色刺眼），仅靠转速 ×3 / 核心收缩 0.85× / 高波动区分；仅 interrupted/error 变红警示
-- **播报入场爆发（V5.1）**：进入 speaking 自动触发 burst（涟漪 + Bloom 提亮）+ 粒子满功率 + 相机按振幅高频微抖（`shakeGain`）
+- **网格**：accent 6% 双线 48px，radial mask（中心 30% → 75% 渐隐）——TwinSprite SpriteOverlay 原值
+- **扫描线**：2px 横向渐变（accent 45%），7s 垂直扫动，opacity 0.5——原值
+- **CSS 光晕**：radial-gradient accent 22% → transparent 65%，3.2s 呼吸（scale 0.96↔1.05）；语音模式开启时 opacity 0.55↔1（TwinSprite 原值），待机降为 0.25↔0.55
 
-#### DOM 全息化（v2，companion 作用域 CSS，不改 Quasar 主题）
+#### 状态映射（v3）
+
+| 状态 | 光球/环表现 |
+|------|------------|
+| idle（待机） | intensity 0.35 微光，uAmp 0.12 呼吸，环慢转 |
+| listening | 麦克风电平（中低频 bins 2..48 均值归一化 ×1.6，TwinSprite `useAudioLevel.sampleMic` 公式）驱动 uAmp/环速/环缩放 |
+| thinking | 噪声流速 ×3 + 环转速 ×3 + 核心收缩 0.85×（**无颜色变化**，V5.1 约束沿用） |
+| speaking | 播放侧振幅驱动强震（uAmp → ~0.5）+ 相机高频微抖（`shakeGain`，V5.1 沿用）+ 入场 burst 电平脉冲 |
+| interrupted/error | 红系 `#4c0519→#f87171`（打断 300ms 红闪提亮沿用） |
+
+- **boot 点亮过场（本产品增量）**：语音模式开启 ~1.2s 内 intensity 0.35→1；关闭立即回待机微光
+- **电平平滑**：TwinSprite 0.2/帧（60fps）→ dt 归一化 ×12/s（`HudScene` 侧）
+
+#### DOM 全息化（v2 沿用，V7 未变）
 
 | 控件 | 全息化设计 |
 |------|-----------|
@@ -379,24 +412,33 @@ Agent 调用 client_open_app
 | 麦克风按钮 | 反应堆式圆形按钮：脉动光环，语音模式开启时光环旋转 |
 | HoloConfirmCard | 微调对齐新视觉语言（描边/发光色值统一） |
 
-#### 科幻音效引擎（v2 新增，`features/companion/audio/uiSounds.ts`）
+#### 科幻音效引擎（v2 沿用，V7 未变，`features/companion/audio/uiSounds.ts`）
 
 - **Web Audio 程序合成，零音频资产**：上电扫频（boot sweep）/ 唤醒 chirp / 思考声纳 ping（循环，间隔 ~2s）/ 确认 ding / 拒绝 buzz / 打断切音
 - 音量压低（约 -18dB 混音级）；`localStorage` 开关可关（默认开）
 - 合成参数（波形/频率包络/时长）为纯函数可单测；播放调度注入 `AudioContext` 接口便于 mock
 - 触发点与状态机联动：voice mode on → boot；listening → chirp；thinking → ping 循环；confirm approve → ding；deny → buzz；barge_in → cut
 
-#### 架构约束（v2 沿用）
+#### 架构约束（v3）
 
-- `AvatarRenderer` 接口不变（VRM 预留）；`hudParams` 扩展新参数（`bloomIntensity`/`ringExpand`/`bootProgress` 等），纯函数单测同步更新
-- 动画循环统一 `requestAnimationFrame` + delta time；涟漪池/刻度环共享几何，无每帧分配
+- `AvatarRenderer` 接口不变（VRM 预留）；`hudParams` 纯函数锁定 TwinSprite 原值（uAmp 常量 0.12/0.38、环速公式、配色 `#123a6e/#4dd8e8`）+ 本产品增量（`noiseSpeedFactor`/`orbScale`/`intensity`/`shakeGain`），单测同步锁定
+- 动画循环统一 `requestAnimationFrame` + delta time；部件帧间零分配；单文件 ≤500 行红线
 
-> **As-built（V5 重构，2026-08-09）**：
+> **As-built（V7 TwinSprite 复刻，2026-08-09）**：
 >
-> - **启动过场逐层展开**：`hudParams` 新增 `ringBoot [0,1]×3`——环 i 自 `boot=i×0.25` 起经 0.5 进度铺满（内 0→0.5 / 中 0.25→0.75 / 外 0.5→1.0）；ReactorRings 按 `ringBoot[i]` 驱动透明度（待机保留 20% 幽影）与缩放弹入（0.9→1.0），叠加环组整体 `ringExpand` 0.8→1。核心经 `coreScale` 0.75→1 + Bloom 0.35→1 点亮；`HudScene.setVoiceMode(false)` 立即归零回待机（中断回退）
-> - **DOM 全息化落地**（`HudCanvas.vue` 作用域样式）：状态标签 = 四角括号（`&__state-corner`）+ `hud-scan` 扫描线 + 等宽大写发光描边；字幕 = 逐字 span `hud-char-in` 打字机浮现（按索引复用，旧字不重放）+ 全息边框发光；麦克风 = `hud-mic-pulse` 脉动光环常开 + 开启时 `hud-mic-orbit` 虚线轨道环旋转（voiceDisabled 隐藏光环）；HoloConfirmCard 沿用既有 rgba(0,229,255) 全息语言，色值天然对齐
-> - **音效引擎实现**：`SOUND_SPECS` 六配方（boot=sine 180→880Hz 0.5s + triangle 谐波延迟 0.12s；chirp=660→990Hz 0.12s；ping=520→500Hz 0.25s 循环 2s 间隔；ding=880+1320Hz 双音；buzz=square 140→110Hz；cut=sawtooth 300→60Hz）；`UiSoundEngine` 主音量 0.5、指数扫频 + 线性包络、stop 延后 0.05s 收尾；`useUiSounds` 共享单例引擎 + `AudioContext.resume` 自动播放钩子；开关持久化 `aranea.companion.uiSounds`（默认开），切换按钮在 CompanionPage 右上
-> - **性能**：`document.hidden` 降帧 15fps 保留；Bloom mipmapBlur 半分辨率；InstancedMesh 刻度/频谱/涟漪复用几何
+> - **移植保真**：`SpriteOrbCore` VERT/FRAG shader 与 TwinSprite `SpriteOrb.vue` 逐行一致（唯一扩展 `uIntensity` 乘算最终颜色，加法混合下等效调光，供 boot/待机微光）；`OrbitRing` = TwinSprite `buildRing()` 原值（260 粒子/半径 1.55~1.80/y ±0.06/倾斜 π×0.42/size 0.035/opacity 0.85）；相机 fov 45 z 5.2；电平平滑 0.2/帧 → dt×12/s；环转速/缩放公式按 dt×60/s 归一化
+> - **删除清单**：`ReactorCore/ReactorRings/Starfield/SpectrumRing/ShockwavePool/EnergyParticles` 六部件文件与 Bloom 后处理（`BloomComposer`）全部移除；`hudParams` 反应堆参数族（bloomIntensity/ringExpand/ringBoot/particleGain/rippleGain 等）同步删除，V5 场景归档不再保留
+> - **本产品增量保留**：boot 点亮过场（1.2s intensity 0.35→1，`setVoiceMode(false)` 立即回待机）；speaking 相机高频微抖（`shakeGain`，双正弦 47.3/31.7/41.9/37.1Hz × level×0.045）；进入 speaking 自动 burst（0.6s 电平冲高 0.8 衰减）；打断 300ms 红闪提亮（×0.5，上限 1.5）；thinking 噪声流速/环转速 ×3 + 核心收缩 0.85×（不变色）
+> - **舞台背景/光晕**：网格（accent 6%、48px、radial mask 30%→75%）+ 垂直扫描线（accent 45%、7s、opacity 0.5）+ CSS 呼吸光晕（accent 22%→65%，3.2s；语音开 0.55↔1 / 待机 0.25↔0.55），均 TwinSprite `SpriteOverlay.vue`/`SpriteOrb.vue` 原值；DOM 全息化（状态角标/打字机字幕/麦克风脉动光环）与音效引擎 V5 成果沿用未变
+> - **listening 电平源**：`HudCanvas.micLevelFromSpectrum()` = TwinSprite `useAudioLevel.sampleMic` 公式原样移植（bins 2..48 均值 /255 ×1.6 钳制），经 `HudScene` 构造注入 `getMicLevel`/`getPlaybackLevel` 拉取（场景不 import voice 模块，单向依赖）
+> - **验证**：`hudParams.spec` 11 例锁定 TwinSprite 原值（uAmp 基值/增益、thinking ×3/0.85、配色、红警示、boot intensity 曲线）；`pnpm lint && pnpm test && pnpm build` 全绿（205 文件 1562 测试）；浏览器实测四态（待机微光 → boot 点亮 → 思考中收缩/高速噪声 → 正在播报电平强震）与 TwinSprite 视觉一致
+
+> **As-built 存档（V5 反应堆，2026-08-09，3D 场景部分已被 D12 替代）**：
+>
+> - ~~**启动过场逐层展开**~~：V5 的 `ringBoot [0,1]×3` 刻度环逐层锁定展开 + `coreScale` 0.75→1 + Bloom 0.35→1 点亮——V7 起随反应堆部件移除，启动过场由光球 `uIntensity` 单参数点亮替代
+> - **DOM 全息化落地**（V7 沿用有效）：状态标签 = 四角括号（`&__state-corner`）+ `hud-scan` 扫描线 + 等宽大写发光描边；字幕 = 逐字 span `hud-char-in` 打字机浮现（按索引复用，旧字不重放）+ 全息边框发光；麦克风 = `hud-mic-pulse` 脉动光环常开 + 开启时 `hud-mic-orbit` 虚线轨道环旋转（voiceDisabled 隐藏光环）；HoloConfirmCard 沿用既有 rgba(0,229,255) 全息语言，色值天然对齐
+> - **音效引擎实现**（V7 沿用有效）：`SOUND_SPECS` 六配方（boot=sine 180→880Hz 0.5s + triangle 谐波延迟 0.12s；chirp=660→990Hz 0.12s；ping=520→500Hz 0.25s 循环 2s 间隔；ding=880+1320Hz 双音；buzz=square 140→110Hz；cut=sawtooth 300→60Hz）；`UiSoundEngine` 主音量 0.5、指数扫频 + 线性包络、stop 延后 0.05s 收尾；`useUiSounds` 共享单例引擎 + `AudioContext.resume` 自动播放钩子；开关持久化 `aranea.companion.uiSounds`（默认开），切换按钮在 CompanionPage 右上
+> - **性能**：`document.hidden` 降帧 15fps 保留（V7 沿用）；V5 的 Bloom mipmapBlur 半分辨率 / InstancedMesh 刻度/频谱/涟漪已随部件移除
 
 > **As-built 存档（初版，V1-T8 + V2-T5，2026-08-08）**：初版场景为能量核（Icosahedron + 等离子噪声 shader + 顶点摆动）/ 粒子环 ×2（内外两圈反向旋转、双频正弦声波震动 26Hz/41Hz）/ 线框壳 / 频谱环 / Jarvis 全息弧线组 ×3（多弧异速旋转、双色交替、呼吸透明度 + burst 提亮）/ 声浪涟漪池 ×4；`HudParams` 状态驱动参数 vibrationGain/arcSpeedFactor/coreWobble/rippleGain；draw call ≤12、三角形 <8k。**V5 重构后上述元素由 v2 场景部件取代（频谱环与涟漪池保留迁移）**。
 >
@@ -542,4 +584,4 @@ Agent 调用 client_open_app
 
 ---
 
-*文档版本：2026-08-09 v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+*文档版本：2026-08-09 v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

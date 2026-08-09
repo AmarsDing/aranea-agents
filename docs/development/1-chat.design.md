@@ -5731,6 +5731,29 @@ const StatusReasonClarification = "clarification"
 | 前端 | ClarifyBlock 分页导航/单多选/推荐高亮/other 输入/留空提交/只读摘要；TaskCard 注册渲染；hydration 恢复 |
 | 契约 | `check-envelope-contract.ts` 通过 |
 
+#### B.10.18.7 抗过度澄清增强（As-built，2026-08-09）
+
+> **需求**：[1-chat.md §1.10](./1-chat.md#110-需求澄清提问clarification)（US-CLARIFY-02）
+> **动机**：澄清门上线后提问触发过频——追问指代未结合上文、低风险歧义也挂起等答。增强两条路径：假设式前进（auto_default）+ 历史消歧。
+
+**① 假设式前进（auto_default）**：澄清门判定新增分支，同时满足时**不挂起** turn：
+
+1. 全部澄清问题均携带推荐默认（`ClarificationAllRecommended`）
+2. Artifact 无高风险标记（`HasHighRiskFlag`：`touches_auth` / `migrations` / `sensitive_data` / `compliance` / `destructive` / `irreversible`；`needs_clarification` 本身不算高风险）
+
+行为（`autoResolveClarification`）：信封按推荐填充答案（`ApplyRecommendedAnswers`）并置 `resolution=auto_default`，clarify step 直接以 **completed** 落库（审计透明，前端 ClarifyBlock 只读摘要可见）；不迁移会话状态、不登记 pendingClarification；澄清问答上下文注入 `ResolvedInput.Content`，Artifact 经 `CloneWithoutClarification` 剥离澄清残留后注入（防下游 LLM 依据 `needs_clarification` 重问）。命中高风险标记或任一问题缺推荐 → 回退 US-CLARIFY-01 挂起路径。
+
+**② Intent Pass 历史消歧**：chat 路径 intent pass 注入近期对话——`ChatOrchestrator.recentIntentHistory` 经 `TurnDeps.MsgHistory`（`biz.SessionRecentMessageLister` 窄接口，`SessionUsecase` 实现）加载最近 `MaxIntentHistoryMessages=6` 条 user/assistant 消息（过滤其他角色/空内容、剔除与当前输入同文条目、单条截断 200 runes），`buildUserMessageContent` 以 "Recent conversation" 段前置（先旧后新）；两个 system prompt 新增规则：先用历史解析指代/省略再判歧义、对话中已确定的事实禁止重问、推荐默认可被系统自主执行。加载失败降级为无历史（不阻断 turn）。Team 成员 turn 不注入（content 为 leader 合成指令，无指代需求）。
+
+| 层 | 锚点 |
+|----|------|
+| intent | `internal/agent/intent/history.go`（HistoryMessage / MaxIntentHistoryMessages / buildUserMessageContent）；`pass.go`（RunForAgent/Run 增 history 参 + prompt 规则） |
+| biz | `step.go`（ClarificationResolution / ApplyRecommendedAnswers / ClarificationAllRecommended）；`session_turn_manager.go`（SessionRecentMessageLister） |
+| runtime | `deps.go`（TurnDeps.MsgHistory） |
+| service | `chat_clarify_gate.go`（autoResolveClarification + recentIntentHistory）；`chat_orchestrator_turn.go`（AutoResolved 分支 + 意图产物延后到门后注入）；`chat_orchestrator_turn_phases.go`（runIntentPass 返回 Artifact） |
+| team | `runner_team_turn.go`（history 传 nil） |
+| wire | `cmd/admin/wire.go`（两处 TurnDeps 接 MsgHistory: sessions） |
+
 ### B.10.19 长会话历史懒加载落地设计（2026-07-23）
 
 > **需求**：[1-chat.md §子模块：长会话历史懒加载](./1-chat.md#子模块长会话历史懒加载lazy-hydration)（LH.1-LH.4）

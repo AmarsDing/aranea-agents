@@ -2,8 +2,10 @@ package voice
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -144,9 +146,16 @@ type scriptedTTSSession struct {
 	blockCh chan struct{}
 	closed  chan struct{}
 	once    sync.Once
+	writeMu sync.Mutex
+	writes  []string
 }
 
-func (f *scriptedTTSSession) Write(string, bool) error { return nil }
+func (f *scriptedTTSSession) Write(text string, _ bool) error {
+	f.writeMu.Lock()
+	f.writes = append(f.writes, text)
+	f.writeMu.Unlock()
+	return nil
+}
 
 func (f *scriptedTTSSession) Audio() <-chan biz.TTSAudioChunk {
 	out := make(chan biz.TTSAudioChunk, 8)
@@ -168,20 +177,40 @@ func (f *scriptedTTSSession) Close() error {
 }
 
 type scriptedTTSProvider struct {
-	mu     sync.Mutex
-	script func() *scriptedTTSSession
+	mu       sync.Mutex
+	script   func() *scriptedTTSSession
+	sessions []*scriptedTTSSession
 }
 
 func (p *scriptedTTSProvider) Open(context.Context, biz.TTSSessionConfig) (biz.TTSSession, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	var s *scriptedTTSSession
 	if p.script != nil {
-		return p.script(), nil
+		s = p.script()
+	} else {
+		s = &scriptedTTSSession{
+			chunks: []biz.TTSAudioChunk{{Type: biz.TTSAudioChunkData, PCM: []byte{1, 2, 3, 4}}, {Type: biz.TTSAudioChunkEnd}},
+			closed: make(chan struct{}),
+		}
 	}
-	return &scriptedTTSSession{
-		chunks: []biz.TTSAudioChunk{{Type: biz.TTSAudioChunkData, PCM: []byte{1, 2, 3, 4}}, {Type: biz.TTSAudioChunkEnd}},
-		closed: make(chan struct{}),
-	}, nil
+	p.sessions = append(p.sessions, s)
+	return s, nil
+}
+
+// allWrites 汇总全部已开 TTS 会话的合成文本（按开序）。
+func (p *scriptedTTSProvider) allWrites() []string {
+	p.mu.Lock()
+	sessions := make([]*scriptedTTSSession, len(p.sessions))
+	copy(sessions, p.sessions)
+	p.mu.Unlock()
+	var out []string
+	for _, s := range sessions {
+		s.writeMu.Lock()
+		out = append(out, s.writes...)
+		s.writeMu.Unlock()
+	}
+	return out
 }
 
 type fakeDownlink struct {
@@ -876,4 +905,88 @@ func TestSessionDictationConsecutiveFinals(t *testing.T) {
 		defer fx.exec.mu.Unlock()
 		return len(fx.exec.inputs) > 0
 	}, 200*time.Millisecond, 10*time.Millisecond)
+}
+
+// ---- F2：澄清问题语音播报 ----
+
+// 澄清门触发（step.created kind=clarify）时，问题必须经 TTS 口播——语音会话
+// 看不到澄清卡片（UI 组件），turn 挂起后若无播报用户将面对静默。作答走既有
+// 自由文本澄清路径（service.resolveClarificationFreeText，与文字消息同入口）。
+func TestSessionClarificationBroadcast(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+
+	// 语音提问 → turn 派发（thinking）
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "帮我做个管理系统", DurationMs: 1200}
+	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)
+
+	// 澄清门触发：step.created(kind=clarify) 事件经事件总线到达语音会话
+	env := biz.ClarificationEnvelope{
+		Version: 1, Kind: biz.ClarificationEnvelopeKind,
+		Questions: []biz.ClarificationQuestion{
+			{Question: "目标用户是谁", Mode: biz.ClarificationModeSingle, Options: []string{"内部员工", "外部客户"}},
+			{Question: "预期上线时间？"},
+		},
+	}
+	raw, err := json.Marshal(env)
+	require.NoError(t, err)
+	fx.bus.ch <- biz.NewStepCreatedEvent(biz.Step{
+		ID: "task-1-clarify", TaskID: "task-1", SessionID: "sess-1", SpiritSessionID: "sess-1",
+		Kind: biz.StepKindClarify, Content: string(raw), Status: biz.StepStatusAwaitingInput,
+	})
+	// turn 挂起返回空回复 → turn.completed 驱动 flush/drain 收尾
+	fx.bus.ch <- &biz.TurnCompletedEvent{}
+
+	// TTS 收到口播文本：两题题干 + 选项 + 引导语
+	require.Eventually(t, func() bool {
+		joined := strings.Join(fx.ttsProv.allWrites(), "")
+		return strings.Contains(joined, "目标用户是谁") &&
+			strings.Contains(joined, "内部员工") && strings.Contains(joined, "外部客户") &&
+			strings.Contains(joined, "预期上线时间")
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// 播报完成：tts.end 下行 + 状态回 listening（等待用户语音作答）
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "tts.end") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return fx.down.lastState() == "listening" }, 2*time.Second, 10*time.Millisecond)
+}
+
+// 非 clarify 的 step.created（reply/thinking 等）不触发口播。
+func TestSessionClarificationBroadcastSkipsNonClarify(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{})
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 500}
+	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)
+
+	fx.bus.ch <- biz.NewStepCreatedEvent(biz.Step{
+		ID: "s-1", TaskID: "task-1", SessionID: "sess-1", SpiritSessionID: "sess-1",
+		Kind: biz.StepKindReply, Content: "普通回复",
+	})
+	require.Never(t, func() bool { return len(fx.ttsProv.allWrites()) > 0 }, 200*time.Millisecond, 20*time.Millisecond)
+}
+
+// 口播文本渲染：空题/单题/多题/选项/补标点。
+func TestClarificationSpeech(t *testing.T) {
+	require.Empty(t, clarificationSpeech(&biz.ClarificationEnvelope{}))
+	require.Empty(t, clarificationSpeech(&biz.ClarificationEnvelope{Questions: []biz.ClarificationQuestion{{Question: "  "}}}))
+
+	single := clarificationSpeech(&biz.ClarificationEnvelope{Questions: []biz.ClarificationQuestion{
+		{Question: "平台？", Options: []string{"Web", "iOS"}},
+	}})
+	require.Contains(t, single, "一个问题")
+	require.Contains(t, single, "平台？")
+	require.Contains(t, single, "Web")
+	require.Contains(t, single, "iOS")
+	require.NotContains(t, single, "第一")
+	require.Contains(t, single, "回答")
+
+	multi := clarificationSpeech(&biz.ClarificationEnvelope{Questions: []biz.ClarificationQuestion{
+		{Question: "平台？"},
+		{Question: "风格"},
+	}})
+	require.Contains(t, multi, "两个问题")
+	require.Contains(t, multi, "第一")
+	require.Contains(t, multi, "第二")
+	require.Contains(t, multi, "风格。") // 无终止标点补句号
 }

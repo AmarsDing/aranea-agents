@@ -86,6 +86,29 @@ type ClarificationAnswer struct {
 	Other    string   `json:"other,omitempty"`
 }
 
+// ClarificationResolution 记录澄清的收口方式。
+type ClarificationResolution string
+
+const (
+	// ClarificationResolutionAutoDefault 全部问题按推荐默认自动作答（假设式前进），
+	// turn 未挂起等待用户。空值表示由用户作答（卡片提交/自由回复）。
+	ClarificationResolutionAutoDefault ClarificationResolution = "auto_default"
+)
+
+// ClarificationAllRecommended 报告全部澄清问题是否都携带推荐默认，
+// 是假设式前进（auto_default）的判据之一；零问题返回 false。
+func ClarificationAllRecommended(qs []ClarificationQuestion) bool {
+	if len(qs) == 0 {
+		return false
+	}
+	for _, q := range qs {
+		if len(q.Recommended) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // ClarificationEnvelope 是 Step(kind=clarify).Content 的 JSON 信封。
 // 发布时 Answers 为 nil；用户提交后回写。
 type ClarificationEnvelope struct {
@@ -102,10 +125,23 @@ type ClarificationEnvelope struct {
 	IntentArtifactJSON string `json:"intent_artifact_json,omitempty"`
 	// FreeText 是用户在澄清等待态直接发消息产生的自由回复内容。
 	FreeText string `json:"free_text,omitempty"`
+	// Resolution 记录收口方式：auto_default=按推荐默认自动作答；空=用户作答。
+	Resolution ClarificationResolution `json:"resolution,omitempty"`
 }
 
 // ClarificationEnvelopeKind 是信封 Kind 字段的固定值。
 const ClarificationEnvelopeKind = "clarification"
+
+// ApplyRecommendedAnswers 按各问题的推荐项填充 Answers（假设式前进）；
+// 无推荐项的问题保持空作答。已有 Answers 会被覆盖重建。
+func (e *ClarificationEnvelope) ApplyRecommendedAnswers() {
+	e.Answers = make([]ClarificationAnswer, len(e.Questions))
+	for i, q := range e.Questions {
+		if len(q.Recommended) > 0 {
+			e.Answers[i].Selected = append([]string(nil), q.Recommended...)
+		}
+	}
+}
 
 // BuildClarifiedContext 把问答渲染为注入 LLM 上下文的用户视角文本。
 // 未作答的问题按推荐项作答；既无作答也无推荐时标注「无偏好」。

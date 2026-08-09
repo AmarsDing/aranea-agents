@@ -285,6 +285,7 @@ var stepTitleRegistry = map[string]string{
 	"voice.archive.saved":     "语音留档保存",
 	"voice.archive.degraded":  "语音留档降级",
 	"voice.archive.truncate":  "语音留档截断",
+	"voice.clarify.broadcast": "澄清问题播报",
 	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",

@@ -1,6 +1,16 @@
 <template>
   <div ref="hostRef" class="hud-canvas" @click="emit('toggleChat')">
+    <!-- V7 TwinSprite 舞台背景：网格 + 扫描线（纯装饰，事件穿透） -->
+    <div class="hud-canvas__bg">
+      <div class="hud-canvas__grid" />
+      <div class="hud-canvas__scanline" />
+    </div>
+
     <canvas ref="canvasRef" class="hud-canvas__gl" />
+
+    <!-- V7 TwinSprite 光晕：CSS 呼吸径向渐变（语音模式开启时更亮） -->
+    <div class="hud-canvas__halo" :class="{ 'hud-canvas__halo--on': voiceModeOn }" />
+
     <div v-if="glFailed" class="hud-canvas__fallback column flex-center">
       <q-icon name="blur_on" size="64px" class="hud-canvas__fallback-icon" />
       <div class="hud-canvas__fallback-text">{{ t('companion.webglUnsupported') }}</div>
@@ -117,8 +127,21 @@ const micAriaLabel = computed(() => {
   return props.voiceModeOn ? t('companion.micStop') : t('companion.micStart');
 });
 
-/** V5-T4 打字机字幕：逐字 span，新到字符单独触发浮现动画（按索引复用，旧字不重放）。 */
+/** V5 打字机字幕：逐字 span，新到字符单独触发浮现动画（按索引复用，旧字不重放）。 */
 const subtitleChars = computed(() => props.subtitle.split(''));
+
+/**
+ * V7 listening 电平：TwinSprite useAudioLevel sampleMic 公式原样移植——
+ * 取中低频段（人声主能区 bins 2..48）均值归一化，增益 ×1.6 后钳制到 [0,1]。
+ */
+function micLevelFromSpectrum(): number {
+  const s = props.spectrum;
+  if (!s || s.length === 0) return 0;
+  const n = Math.min(48, s.length);
+  let sum = 0;
+  for (let i = 2; i < n; i++) sum += s[i];
+  return Math.min(1, (sum / (n - 2) / 255) * 1.6);
+}
 
 onMounted(() => {
   const host = hostRef.value;
@@ -128,15 +151,7 @@ onMounted(() => {
     // V5 拉取模型：音频数据源经 provider 回调注入，场景每帧自取，无需 watch 推送。
     scene = new HudScene(canvas, {
       getPlaybackLevel: () => props.amplitude,
-      fillMicSpectrum: (bins: Uint8Array) => {
-        const s = props.spectrum;
-        if (!s || s.length === 0) {
-          bins.fill(0);
-          return;
-        }
-        bins.fill(0);
-        bins.set(s.subarray(0, Math.min(s.length, bins.length)));
-      },
+      getMicLevel: micLevelFromSpectrum,
     });
   } catch {
     glFailed.value = true;
@@ -184,6 +199,49 @@ defineExpose({ triggerBurst });
   height: 100%
   overflow: hidden
   cursor: pointer
+
+  // ---------- V7 TwinSprite 舞台背景（纯装饰，全部穿透） ----------
+  &__bg
+    position: absolute
+    inset: 0
+    pointer-events: none
+
+  &__grid
+    position: absolute
+    inset: 0
+    background-image: linear-gradient(color-mix(in srgb, var(--color-accent) 6%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 6%, transparent) 1px, transparent 1px)
+    background-size: 48px 48px
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%)
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%)
+
+  &__scanline
+    position: absolute
+    left: 0
+    right: 0
+    height: 2px
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-accent) 45%, transparent), transparent)
+    animation: hud-scan-vertical 7s linear infinite
+    opacity: 0.5
+
+  // ---------- V7 TwinSprite 光晕（呼吸径向渐变，居中贴合光球） ----------
+  &__halo
+    --halo-lo: 0.25
+    --halo-hi: 0.55
+    position: absolute
+    left: 50%
+    top: 50%
+    width: min(72vh, 72vw)
+    height: min(72vh, 72vw)
+    transform: translate(-50%, -50%)
+    border-radius: 50%
+    background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 65%)
+    pointer-events: none
+    animation: hud-orb-breathe 3.2s ease-in-out infinite
+
+    // 语音模式开启：TwinSprite 原值呼吸（0.55 → 1）
+    &--on
+      --halo-lo: 0.55
+      --halo-hi: 1
 
   &__gl
     position: absolute
@@ -352,6 +410,21 @@ defineExpose({ triggerBurst });
 .hud-subtitle-leave-to
   opacity: 0
   transform: translateX(-50%) translateY(6px)
+
+// V7 TwinSprite 舞台动画
+@keyframes hud-scan-vertical
+  0%
+    top: -2%
+  100%
+    top: 102%
+
+@keyframes hud-orb-breathe
+  0%, 100%
+    opacity: var(--halo-lo)
+    transform: translate(-50%, -50%) scale(0.96)
+  50%
+    opacity: var(--halo-hi)
+    transform: translate(-50%, -50%) scale(1.05)
 
 // V5-T4 全息化动画
 @keyframes hud-scan

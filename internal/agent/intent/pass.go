@@ -56,6 +56,30 @@ func (a *Artifact) NeedsClarification() bool {
 	return a.HasRiskFlag(RiskFlagNeedsClarification) && len(a.Clarifications) > 0
 }
 
+// highRiskFlags 是高风险标记集合：命中任一即否决假设式前进（auto_default），
+// 必须挂起等待用户显式确认。needs_clarification 本身不属于高风险。
+var highRiskFlags = map[string]struct{}{
+	"touches_auth":   {},
+	"migrations":     {},
+	"sensitive_data": {},
+	"compliance":     {},
+	"destructive":    {},
+	"irreversible":   {},
+}
+
+// HasHighRiskFlag reports whether the artifact carries any high-risk flag.
+func (a *Artifact) HasHighRiskFlag() bool {
+	if a == nil {
+		return false
+	}
+	for _, f := range a.RiskFlags {
+		if _, ok := highRiskFlags[f]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // ClarificationQuestions returns the questions capped at MaxClarificationQuestions.
 func (a *Artifact) ClarificationQuestions() []ClarificationQuestion {
 	if a == nil {
@@ -101,6 +125,7 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - risk_flags (array of strings): e.g. touches_auth, migrations, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
+When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
 
 const intentSystemGeneral = `You classify and restate the user's request. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -112,6 +137,7 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - risk_flags (array of strings): e.g. sensitive_data, compliance, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
+When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
 
 // PassEffective returns whether the intent pass should run (extra LLM call).
@@ -261,20 +287,22 @@ func MonitorLogEntry(r RunResult, scope string, meta RunMeta) (level, msg string
 }
 
 // Run calls a small chat completion to produce an Artifact. On skip or failure Artifact is nil with Outcome set.
-func Run(ctx context.Context, agentIntentPassEnabled bool, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
-	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText, lg)
+// history 是近期对话消息（先旧后新），用于解析当前输入中的指代/省略；nil 表示无历史注入。
+func Run(ctx context.Context, agentIntentPassEnabled bool, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, history []HistoryMessage, lg loggateway.Logger) (res RunResult) {
+	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText, history, lg)
 }
 
 // RunForAgent runs the intent pass with agent-aware gating and prompt template selection.
-func RunForAgent(ctx context.Context, ag biz.Agent, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+// history 语义同 Run。
+func RunForAgent(ctx context.Context, ag biz.Agent, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, history []HistoryMessage, lg loggateway.Logger) (res RunResult) {
 	if !ShouldRun(ag, userText) {
 		res.Outcome = "skipped_disabled"
 		return res
 	}
-	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText, lg)
+	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText, history, lg)
 }
 
-func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, history []HistoryMessage, lg loggateway.Logger) (res RunResult) {
 	start := time.Now()
 	defer func() { res.Duration = time.Since(start) }()
 
@@ -299,7 +327,7 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 
 	msgs := []llmcompat.OpenAICompatMessage{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: "User message:\n\n" + userText},
+		{Role: "user", Content: buildUserMessageContent(userText, history)},
 	}
 	// Intent pass 超时按设计文档 §8.12.3/§8.28 规定为 45s。该调用与 BUILD
 	// 在 errgroup 中并行，典型延迟被 BUILD 掩盖；45s 仅是 provider 挂死时的

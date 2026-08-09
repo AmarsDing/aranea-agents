@@ -155,16 +155,77 @@ var (
 	linkRe  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	tableRe = regexp.MustCompile(`(?m)^\s*\|.*$`)
 	spaceRe = regexp.MustCompile(`\s{2,}`)
+
+	// 2026-08-09 真机：markdown 强调符 ** 被火山 TTS 读作"星星"；标题/列表符/
+	// 分隔线/引用符/emoji 同样污染播报——全部剥离（保留被强调的内文）。
+	hrLineRe      = regexp.MustCompile(`(?m)^\s*(?:-{3,}|\*{3,}|_{3,})$`)
+	hrInlineRe    = regexp.MustCompile(`\s+-{3,}\s+`)
+	headingRe     = regexp.MustCompile(`(?m)^\s*#{1,6}\s+`)
+	bulletRe      = regexp.MustCompile(`(?m)^\s*[-*+]\s+`)
+	bulletNumRe   = regexp.MustCompile(`(?m)^\s*\d{1,2}(?:\.\s+|、\s*)`)
+	quoteRe       = regexp.MustCompile(`(?m)^\s*>\s?`)
+	boldRe        = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	boldUnderRe   = regexp.MustCompile(`__([^_]+)__`)
+	strikeRe      = regexp.MustCompile(`~~([^~]+)~~`)
+	italicStarRe  = regexp.MustCompile(`(^|[^A-Za-z0-9*])\*([^*]+)\*($|[^A-Za-z0-9*])`)
+	italicUnderRe = regexp.MustCompile(`(^|[^A-Za-z0-9_])_([^_]+)_($|[^A-Za-z0-9_])`)
+	// 流式切句会把成对标记拆到两句（"**北京" / "的天气**"），残余成串符号直接剥除。
+	// 单字符 * 保留（防误伤 3*4）；snake_case 单下划线同理保留。
+	strayStarsRe = regexp.MustCompile(`\*{2,}`)
+	strayTildeRe = regexp.MustCompile(`~{2,}`)
 )
 
-// cleanForSpeech 剥离不参与播报的 markdown 元素（URL/图片/表格/链接语法）。
-// 注意顺序：图片/链接先于裸 URL 剥离，避免 urlRe 吞掉链接语法的右括号。
+// isEmojiRune 报告 emoji/装饰符号（显式枚举区块，避免误伤 ° ℃ × 等 So 类常用符号）。
+func isEmojiRune(r rune) bool {
+	switch {
+	case r >= 0x1F000 && r <= 0x1FAFF, // 现代 emoji 主体（表情/物品/旗帜/天气图标等）
+		r >= 0x2600 && r <= 0x26FF, // 杂项符号 ☀⛅
+		r >= 0x2700 && r <= 0x27BF, // Dingbats ✅✨❤
+		r >= 0x2B00 && r <= 0x2BFF, // ⭐⭕ 等
+		r == 0xFE0F, // 变体选择符（emoji 呈现后缀）
+		r == 0x200D, // ZWJ（组合 emoji 连接符）
+		r == 0x20E3: // 键帽组合符（1️⃣ 的收尾）
+		return true
+	}
+	return false
+}
+
+func stripEmoji(s string) string {
+	return strings.Map(func(r rune) rune {
+		if isEmojiRune(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// cleanForSpeech 剥离不参与播报的 markdown 元素（URL/图片/表格/链接/强调符/
+// 标题/列表符/分隔线/引用符/代码反引号/emoji）。
+// 注意顺序：图片/链接先于裸 URL 剥离，避免 urlRe 吞掉链接语法的右括号；
+// 块级标记（分隔线/标题/列表/引用）先于行内强调符剥离。
 func cleanForSpeech(s string) string {
 	s = imgRe.ReplaceAllString(s, "")
 	s = linkRe.ReplaceAllString(s, "$1")
 	s = urlRe.ReplaceAllString(s, "")
 	s = tableRe.ReplaceAllString(s, "")
+	s = hrLineRe.ReplaceAllString(s, "")
+	s = hrInlineRe.ReplaceAllString(s, " ")
+	s = headingRe.ReplaceAllString(s, "")
+	s = bulletRe.ReplaceAllString(s, "")
+	s = bulletNumRe.ReplaceAllString(s, "")
+	s = quoteRe.ReplaceAllString(s, "")
+	s = boldRe.ReplaceAllString(s, "$1")
+	s = boldUnderRe.ReplaceAllString(s, "$1")
+	s = strikeRe.ReplaceAllString(s, "$1")
+	// 单字符强调符正则会消费前缀字符，相邻两处匹配会漏掉后一处——跑两遍兜底。
+	for i := 0; i < 2; i++ {
+		s = italicStarRe.ReplaceAllString(s, "$1$2$3")
+		s = italicUnderRe.ReplaceAllString(s, "$1$2$3")
+	}
+	s = strayStarsRe.ReplaceAllString(s, "")
+	s = strayTildeRe.ReplaceAllString(s, "")
 	s = strings.ReplaceAll(s, "`", "")
+	s = stripEmoji(s)
 	s = spaceRe.ReplaceAllString(s, " ")
 	return strings.TrimSpace(s)
 }

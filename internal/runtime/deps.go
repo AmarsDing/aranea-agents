@@ -100,7 +100,10 @@ type TurnDeps struct {
 	// (Observation → Pattern → Proposal pipeline). Optional: when nil,
 	// observation recording is skipped.
 	LearningLoop biz.ObservationRecorder
-	Lg           loggateway.Logger
+	// MsgHistory loads recent chat messages (chronological order) for
+	// intent-pass history injection. Optional: nil disables injection.
+	MsgHistory biz.SessionRecentMessageLister
+	Lg         loggateway.Logger
 }
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.

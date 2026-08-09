@@ -51,6 +51,14 @@ type SessionTurnExtrasPort interface {
 	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg session.ChatMessage) error
 }
 
+// SessionRecentMessageLister loads the latest N chat messages of a session in
+// chronological order. Used for lightweight context injection (intent-pass
+// history) where the full SessionTurnManager surface is unnecessary.
+// Stability:evolving
+type SessionRecentMessageLister interface {
+	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]session.ChatMessage, error)
+}
+
 // SessionTurnManager composes all four session sub-interfaces needed by the
 // turn execution infrastructure (ChatOrchestrator, Team Runner, event consumers).
 // Replaces the previous *SessionUsecase concrete dependency in rt.TurnDeps.
@@ -70,3 +78,4 @@ var _ SessionTurnWriterPort = (*SessionUsecase)(nil)
 var _ SessionStatePort = (*SessionUsecase)(nil)
 var _ SessionTurnExtrasPort = (*SessionUsecase)(nil)
 var _ SessionTurnManager = (*SessionUsecase)(nil)
+var _ SessionRecentMessageLister = (*SessionUsecase)(nil)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
@@ -14,6 +15,15 @@ const (
 	ttsQueueCap               = 8
 	ttsMaxConsecutiveFailures = 3
 )
+
+// ttsSentenceTimeout 句子级空闲超时：任一 chunk（Data/End/Error）到达即重置。
+// 挂死句（火山 End 帧永不到达/连接半死）在超时后被放弃，worker 继续后续句，
+// OnDrained 必达（2026-08-09 天气 Turn：worker 挂句上 3 分钟致 tts.end 缺失）。
+// 包级变量以便测试缩短。
+var ttsSentenceTimeout = 15 * time.Second
+
+// errTTSSentenceTimeout 句子级合成空闲超时（End 帧未达/连接半死）。
+var errTTSSentenceTimeout = errors.New("voice: tts sentence idle timeout")
 
 type sentenceJob struct {
 	text  string
@@ -166,14 +176,26 @@ func (s *TTSScheduler) synthesize(ctx context.Context, job sentenceJob) error {
 		return err
 	}
 	audioCh := sess.Audio()
+	idle := time.NewTimer(ttsSentenceTimeout)
+	defer idle.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-idle.C:
+			return errTTSSentenceTimeout
 		case chunk, ok := <-audioCh:
 			if !ok {
 				return nil
 			}
+			// 有活动即重置空闲计时：长句持续流式输出不会被误杀。
+			if !idle.Stop() {
+				select {
+				case <-idle.C:
+				default:
+				}
+			}
+			idle.Reset(ttsSentenceTimeout)
 			switch chunk.Type {
 			case biz.TTSAudioChunkData:
 				if s.opts.OnAudio != nil {

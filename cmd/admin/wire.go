@@ -730,6 +730,7 @@ func provideTeamTurnDeps(
 		Compress:     compress,
 		RunnerMgr:    rt.NewRunnerManagerFromPersist(persist, lg),
 		LearningLoop: learningLoop,
+		MsgHistory:   sessions,
 		Lg:           lg,
 	}
 }
@@ -830,6 +831,7 @@ func provideChatServiceDeps(
 				AfterTurn:    biz.NoopNativeTurnAfter{},
 				RunnerMgr:    rt.NewRunnerManagerFromPersist(persist, lg),
 				LearningLoop: learningLoop,
+				MsgHistory:   sessions,
 				Lg:           lg,
 			},
 			Runs:         runs,

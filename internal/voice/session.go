@@ -2,6 +2,7 @@ package voice
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -619,6 +620,8 @@ func (s *Session) eventLoop(ch <-chan biz.Event) {
 				if ev.DeltaField == "content" && ev.DeltaChunk != "" {
 					s.feedDelta(ev.DeltaChunk)
 				}
+			case *biz.StepCreatedEvent:
+				s.maybeBroadcastClarification(ev)
 			case *biz.TurnCompletedEvent:
 				s.handleTurnCompleted()
 			case *biz.TurnFailedEvent:
@@ -645,6 +648,98 @@ func (s *Session) feedDelta(delta string) {
 	if ch != nil {
 		ch.Write(delta) // 队列满时 Enqueue 阻塞 = 背压（设计 §4.2）
 	}
+}
+
+// maybeBroadcastClarification 澄清门触发（step.created kind=clarify）时把问题
+// 口播给用户（F2）：澄清卡片只在 UI 呈现，语音会话收不到任何文本 delta，
+// turn 挂起后用户会面对静默。此处将信封问题渲染为口播文本喂给 TTS；随后的
+// TurnCompleted 走既有 flush/drain 路径收尾回 listening。用户语音作答经
+// 自由文本澄清路径续跑（service.resolveClarificationFreeText，与 WS 文字
+// 消息同一入口 Execute），语音侧无需特判。
+func (s *Session) maybeBroadcastClarification(ev *biz.StepCreatedEvent) {
+	if ev == nil || ev.Step.Kind != biz.StepKindClarify {
+		return
+	}
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(ev.Step.Content), &env); err != nil {
+		s.lg.Warn("voice clarify: envelope parse failed, skip broadcast",
+			loggateway.StepID("voice.clarify.parse_fail"), loggateway.Err(err))
+		return
+	}
+	text := clarificationSpeech(&env)
+	if text == "" {
+		return
+	}
+	s.mu.Lock()
+	st := s.state
+	s.mu.Unlock()
+	if st != StateListening && st != StateThinking && st != StateSpeaking {
+		return // idle/interrupted/error 不播报
+	}
+	if err := s.ensureTTS(); err != nil {
+		s.sendError("TTS_UNAVAILABLE", err, true)
+		return
+	}
+	s.flow.LogDone("voice.clarify.broadcast", "澄清问题播报", event.P("questions", len(env.Questions)))
+	s.lg.Info("voice clarify questions broadcast",
+		loggateway.StepID("voice.clarify.broadcast"),
+		loggateway.Any("question_count", len(env.Questions)))
+	s.mu.Lock()
+	ch := s.chunker
+	s.mu.Unlock()
+	if ch != nil {
+		ch.Write(text)
+	}
+}
+
+// cnNumerals 口播中文数字（问题序号）。
+var cnNumerals = []string{"零", "一", "二", "三", "四", "五", "六", "七", "八", "九"}
+
+func cnOrdinal(n int) string {
+	if n >= 1 && n <= 9 {
+		return cnNumerals[n]
+	}
+	return itoa(n)
+}
+
+// cnCount 计数用中文数字（2 → 两，口播习惯）。
+func cnCount(n int) string {
+	if n == 2 {
+		return "两"
+	}
+	return cnOrdinal(n)
+}
+
+// clarificationSpeech 把澄清信封渲染为口播文本：引导语 + 逐题（题干 + 可选项）
+// + 作答引导。文本含充足句读，供 SentenceChunker 按句切分。
+func clarificationSpeech(env *biz.ClarificationEnvelope) string {
+	qs := make([]biz.ClarificationQuestion, 0, len(env.Questions))
+	for _, q := range env.Questions {
+		if strings.TrimSpace(q.Question) != "" {
+			qs = append(qs, q)
+		}
+	}
+	if len(qs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("继续之前，需要确认" + cnCount(len(qs)) + "个问题。")
+	for i, q := range qs {
+		if len(qs) > 1 {
+			b.WriteString("第" + cnOrdinal(i+1) + "个，")
+		}
+		qt := strings.TrimSpace(q.Question)
+		b.WriteString(qt)
+		if !strings.HasSuffix(qt, "？") && !strings.HasSuffix(qt, "。") && !strings.HasSuffix(qt, "！") &&
+			!strings.HasSuffix(qt, "?") && !strings.HasSuffix(qt, ".") && !strings.HasSuffix(qt, "!") {
+			b.WriteString("。")
+		}
+		if len(q.Options) > 0 {
+			b.WriteString("可选：" + strings.Join(q.Options, "、") + "。")
+		}
+	}
+	b.WriteString("请直接说出你的回答。")
+	return b.String()
 }
 
 func (s *Session) ensureTTS() error {

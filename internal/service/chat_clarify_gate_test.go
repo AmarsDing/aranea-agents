@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -240,7 +241,9 @@ func TestRunClarificationGate_Triggered(t *testing.T) {
 		},
 	}
 	art := &intent.Artifact{
-		RiskFlags: []string{intent.RiskFlagNeedsClarification},
+		// 伴随高风险标记：即使全部问题有推荐默认也必须挂起弹卡（假设式前进仅
+		// 适用于无高风险标记的场景）。
+		RiskFlags: []string{intent.RiskFlagNeedsClarification, "touches_auth"},
 		Clarifications: []intent.ClarificationQuestion{
 			{Question: "目标平台？", Mode: "single", Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
 			{Question: "受众？", Mode: "multi", Options: []string{"开发者", "设计师"}, Recommended: []string{"开发者"}},
@@ -387,5 +390,143 @@ func TestRunClarificationGate_NilArtifact(t *testing.T) {
 	}
 	if decision.Triggered {
 		t.Error("expected not triggered when artifact is nil")
+	}
+}
+
+func TestRunClarificationGate_AutoResolvedWhenAllRecommended(t *testing.T) {
+	taskWriter := &stubTaskV2Writer{}
+	stepWriter := &stubStepV2Writer{}
+	seq := &stubEventPublisher{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarificationTestOrch(taskWriter, stepWriter, seq, stateMgr)
+
+	ag := biz.Agent{
+		AgentKey: "test-agent",
+		Settings: &biz.AgentRuntimeSettings{
+			ClarificationEnabled: true,
+		},
+	}
+	art := &intent.Artifact{
+		// 仅 needs_clarification、无高风险标记，且全部问题携带推荐默认 →
+		// 假设式前进：不挂起、不等用户作答，按推荐自动作答后继续执行，
+		// 同时落一张已完成的澄清卡保持审计透明。
+		RiskFlags: []string{intent.RiskFlagNeedsClarification},
+		Clarifications: []intent.ClarificationQuestion{
+			{Question: "目标平台？", Mode: "single", Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
+			{Question: "交付物？", Mode: "multi", Options: []string{"代码", "文档"}, Recommended: []string{"代码", "文档"}},
+		},
+	}
+
+	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag,
+		biz.TurnInput{SessionID: "sess-1", Content: "帮我做个应用"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if decision.Triggered {
+		t.Error("expected Triggered=false (turn must not suspend)")
+	}
+	if !decision.AutoResolved {
+		t.Fatal("expected AutoResolved=true")
+	}
+	if decision.StepID == "" {
+		t.Error("expected non-empty StepID (audit card)")
+	}
+	// ResolvedInput：澄清上下文 + 原始需求
+	if !strings.Contains(decision.ResolvedInput.Content, "原始需求：帮我做个应用") {
+		t.Errorf("ResolvedInput missing original input: %q", decision.ResolvedInput.Content)
+	}
+	if !strings.Contains(decision.ResolvedInput.Content, "Web") || !strings.Contains(decision.ResolvedInput.Content, "代码") {
+		t.Errorf("ResolvedInput missing recommended answers: %q", decision.ResolvedInput.Content)
+	}
+	// 产物必须剥离澄清残留，避免下游 LLM 依据 needs_clarification 重问
+	if decision.Artifact == nil {
+		t.Fatal("expected stripped artifact in decision")
+	}
+	if decision.Artifact.NeedsClarification() || len(decision.Artifact.Clarifications) != 0 {
+		t.Errorf("artifact still carries clarification residue: %+v", decision.Artifact)
+	}
+
+	// 审计卡：step 直接以 completed 落库，answers 按推荐填充
+	if len(stepWriter.created) != 1 {
+		t.Fatalf("expected 1 step created, got %d", len(stepWriter.created))
+	}
+	step := stepWriter.created[0]
+	if step.Kind != biz.StepKindClarify {
+		t.Errorf("step.Kind = %q, want %q", step.Kind, biz.StepKindClarify)
+	}
+	if step.Status != biz.StepStatusCompleted {
+		t.Errorf("step.Status = %q, want %q", step.Status, biz.StepStatusCompleted)
+	}
+	var envelope biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &envelope); err != nil {
+		t.Fatalf("unmarshal envelope: %v", err)
+	}
+	if envelope.Resolution != biz.ClarificationResolutionAutoDefault {
+		t.Errorf("envelope.Resolution = %q, want %q", envelope.Resolution, biz.ClarificationResolutionAutoDefault)
+	}
+	if len(envelope.Answers) != 2 || len(envelope.Answers[0].Selected) != 1 || envelope.Answers[0].Selected[0] != "Web" {
+		t.Errorf("envelope.Answers = %+v, want recommended applied", envelope.Answers)
+	}
+	if envelope.OriginalInput != "帮我做个应用" {
+		t.Errorf("envelope.OriginalInput = %q, want %q", envelope.OriginalInput, "帮我做个应用")
+	}
+
+	// 任务与事件仍落（澄清卡挂在任务下）
+	if len(taskWriter.upserted) != 1 {
+		t.Fatalf("expected 1 task upserted, got %d", len(taskWriter.upserted))
+	}
+	if len(seq.published) != 2 {
+		t.Fatalf("expected 2 events published, got %d", len(seq.published))
+	}
+
+	// 不挂起：无会话状态迁移、无 pending 登记
+	if len(stateMgr.statuses) != 0 {
+		t.Errorf("expected no session transition, got %v", stateMgr.statuses)
+	}
+	if _, ok := orch.pendingClarifications.Load("sess-1"); ok {
+		t.Error("expected no pendingClarification stored for auto-resolved turn")
+	}
+}
+
+func TestRunClarificationGate_TriggeredWhenQuestionLacksRecommended(t *testing.T) {
+	taskWriter := &stubTaskV2Writer{}
+	stepWriter := &stubStepV2Writer{}
+	seq := &stubEventPublisher{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarificationTestOrch(taskWriter, stepWriter, seq, stateMgr)
+
+	ag := biz.Agent{
+		AgentKey: "test-agent",
+		Settings: &biz.AgentRuntimeSettings{
+			ClarificationEnabled: true,
+		},
+	}
+	art := &intent.Artifact{
+		RiskFlags: []string{intent.RiskFlagNeedsClarification},
+		Clarifications: []intent.ClarificationQuestion{
+			{Question: "目标平台？", Mode: "single", Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
+			{Question: "配色偏好？", Mode: "single", Options: []string{"深色", "浅色"}}, // 无推荐 → 必须问用户
+		},
+	}
+
+	decision, err := orch.runClarificationGate(context.Background(), "sess-1", art, ag,
+		biz.TurnInput{SessionID: "sess-1", Content: "帮我做个应用"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !decision.Triggered {
+		t.Fatal("expected Triggered=true when any question lacks a recommendation")
+	}
+	if decision.AutoResolved {
+		t.Error("expected AutoResolved=false")
+	}
+	if len(stepWriter.created) != 1 {
+		t.Fatalf("expected 1 step created, got %d", len(stepWriter.created))
+	}
+	if stepWriter.created[0].Status != biz.StepStatusAwaitingInput {
+		t.Errorf("step.Status = %q, want %q", stepWriter.created[0].Status, biz.StepStatusAwaitingInput)
+	}
+	if len(stateMgr.statuses) != 1 || stateMgr.statuses[0] != sessstatus.SessionStatusAwaitingConfirmation {
+		t.Errorf("expected session awaiting_confirmation, got %v", stateMgr.statuses)
 	}
 }

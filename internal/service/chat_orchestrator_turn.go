@@ -424,9 +424,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// （重写后的输入 = 澄清上下文 + 原始需求，产物语义不变）。复用前剥离
 	// 已作答的澄清残留（问题/歧义/needs_clarification 标记），避免 LLM 重问。
 	// 否则对非 A2A 且启用 intent 的 agent 正常执行 Intent Pass。
+	// 注：产物的 RunOptionInject 统一在澄清门之后执行（自动默认路径会先剥离
+	// 澄清残留），此处只赋值 intentArtifact。
 	if reusedArt := intent.ArtifactFromContext(ctx); reusedArt != nil {
 		intentArtifact = reusedArt.CloneWithoutClarification()
-		intentRunOpts = append(intentRunOpts, intent.RunOptionInject(intentArtifact))
 		emitter.LogDone("chat.intent.pass", "意图识别复用澄清前产物",
 			event.P("outcome", "reused"),
 			event.P("intent_kind", intentArtifact.IntentKind),
@@ -434,7 +435,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)
-			intentRunOpts, intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
+			intentArtifact = o.runIntentPass(egCtx, ag, sessionID, content, prov, mod, emitter)
 			return nil // Intent Pass failure is non-fatal; it returns empty opts on error
 		})
 	} else if biz.IsA2AProxyAgent(ag) {
@@ -577,6 +578,22 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		// Run FSM 无此态，直接使用会被 FSM 拒绝导致前端停在"运行中"。
 		o.setRunStatus(ctx, sessionID, runID, string(biz.RunStateAwaitingUser), "")
 		return biz.ChatMessage{}, biz.ChatMessage{}, nil
+	} else if clarifyDecision.AutoResolved {
+		// 假设式前进：澄清上下文已注入输入，产物剥离澄清残留后继续执行。
+		input = clarifyDecision.ResolvedInput
+		if clarifyDecision.Artifact != nil {
+			intentArtifact = clarifyDecision.Artifact
+		}
+		emitter.LogDone("chat.clarification_gate", "澄清问题均含推荐默认，按推荐假设继续执行",
+			event.P("step_id", clarifyDecision.StepID))
+	}
+
+	// 意图产物注入统一在澄清门之后：自动默认路径会替换为剥离澄清残留的
+	// 产物，早注入会把 needs_clarification 残留烘焙进系统消息（RunOptionInject
+	// 在创建时即序列化），诱发下游 LLM 重问已作答的问题。prepend 保持
+	// [inject, forcedPlanning?] 的既有顺序。
+	if intentArtifact != nil {
+		intentRunOpts = append([]trpcagent.RunOption{intent.RunOptionInject(intentArtifact)}, intentRunOpts...)
 	}
 
 	// ── EXECUTE ──

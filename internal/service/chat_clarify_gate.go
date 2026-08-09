@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
@@ -14,12 +15,58 @@ import (
 	"github.com/google/uuid"
 )
 
+// recentIntentHistory 加载近 N 条对话消息供意图识别解析指代/省略（P1 抗过度澄清）。
+// 加载失败降级为 nil（不阻断 turn）；过滤非 user/assistant 角色与空内容，
+// 并剔除与当前输入同文的条目（用户消息先于 intent pass 落库的重入场景）。
+// Stability:internal
+func (o *ChatOrchestrator) recentIntentHistory(ctx context.Context, sessionID, currentContent string) []intent.HistoryMessage {
+	lister := o.td().MsgHistory
+	if lister == nil || strings.TrimSpace(sessionID) == "" {
+		return nil
+	}
+	// 多取 1 条：为与当前输入同文的条目预留去重空间。
+	msgs, err := lister.ListMessagesRecent(ctx, sessionID, intent.MaxIntentHistoryMessages+1)
+	if err != nil {
+		o.lg().Warn("意图识别历史加载失败，降级为无历史注入",
+			loggateway.StepID("chat.intent.history"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err))
+		return nil
+	}
+	current := strings.TrimSpace(currentContent)
+	out := make([]intent.HistoryMessage, 0, len(msgs))
+	for _, m := range msgs {
+		role := strings.TrimSpace(m.Role)
+		if role != "user" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(m.ContentMarkdown)
+		if content == "" || content == current {
+			continue
+		}
+		out = append(out, intent.HistoryMessage{Role: role, Content: content})
+	}
+	if len(out) > intent.MaxIntentHistoryMessages {
+		out = out[len(out)-intent.MaxIntentHistoryMessages:]
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // ClarificationGate 判定结果。
 type ClarificationGateDecision struct {
 	// Triggered 为 true 表示已发布澄清卡片并挂起 turn。
 	Triggered bool
 	// StepID 是发布的澄清 Step ID（仅 Triggered=true 时有效）。
 	StepID string
+	// AutoResolved 为 true 表示全部澄清问题按推荐默认自动作答（假设式前进），
+	// turn 不挂起：已落一张 completed 澄清审计卡，ResolvedInput 注入了澄清上下文，
+	// Artifact 已剥离澄清残留（避免下游 LLM 依据 needs_clarification 重问）。
+	AutoResolved  bool
+	ResolvedInput biz.TurnInput
+	Artifact      *intent.Artifact
 }
 
 // runClarificationGate 在 Intent Pass 之后、PrePlanning 之前执行澄清门判定。
@@ -61,6 +108,15 @@ func (o *ChatOrchestrator) runClarificationGate(
 	questions := intentArt.ClarificationQuestions()
 	if len(questions) == 0 {
 		return ClarificationGateDecision{}, nil
+	}
+
+	// 假设式前进（2026-08-09）：全部问题携带推荐默认且无高风险标记时，
+	// 按推荐自动作答、落 completed 审计卡，turn 注入澄清上下文继续执行，
+	// 不再挂起打扰用户。任一问题无推荐或命中高风险标记（touches_auth/
+	// migrations/sensitive_data/compliance/destructive/irreversible）时，
+	// 仍走下方挂起弹卡路径。
+	if !intentArt.HasHighRiskFlag() && biz.ClarificationAllRecommended(questions) {
+		return o.autoResolveClarification(ctx, sessionID, intentArt, ag, input, questions)
 	}
 
 	lg := o.lg().With(
@@ -162,5 +218,102 @@ func (o *ChatOrchestrator) runClarificationGate(
 	return ClarificationGateDecision{
 		Triggered: true,
 		StepID:    stepID,
+	}, nil
+}
+
+// autoResolveClarification 假设式前进路径：全部澄清问题按推荐默认自动作答。
+// 与挂起路径的差异：step 直接以 completed 落库（resolution=auto_default，审计透明），
+// 不迁移会话状态、不登记 pendingClarification，turn 携带澄清上下文继续执行。
+// Stability:internal
+func (o *ChatOrchestrator) autoResolveClarification(
+	ctx context.Context,
+	sessionID string,
+	intentArt *intent.Artifact,
+	ag biz.Agent,
+	input biz.TurnInput,
+	questions []biz.ClarificationQuestion,
+) (ClarificationGateDecision, error) {
+	lg := o.lg().With(
+		loggateway.SessionID(sessionID),
+		loggateway.StepID("chat.clarification_gate"),
+	)
+
+	taskID := string(chatagent.RootTaskActivityIDFromCtx(ctx))
+	if taskID == "" {
+		taskID = string(chatagent.RootTaskActivityID(uuid.NewString()))
+	}
+	now := time.Now().UTC()
+	task := biz.Task{
+		ID:          taskID,
+		SessionID:   sessionID,
+		UserMessage: input.Content,
+		Status:      biz.TaskStatusRunning,
+		Seq:         1,
+		Version:     1,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if _, err := o.taskV2Writer().UpsertTask(ctx, task); err != nil {
+		lg.Warn("澄清自动作答 UpsertTask 失败", loggateway.Err(err))
+		return ClarificationGateDecision{}, err
+	}
+
+	envelope := biz.ClarificationEnvelope{
+		Version:       1,
+		Kind:          "clarification",
+		Questions:     questions,
+		OriginalInput: input.Content,
+		Resolution:    biz.ClarificationResolutionAutoDefault,
+	}
+	envelope.ApplyRecommendedAnswers()
+	if artJSON, err := json.Marshal(intentArt); err == nil {
+		envelope.IntentArtifactJSON = string(artJSON)
+	}
+	contentJSON, err := json.Marshal(envelope)
+	if err != nil {
+		lg.Warn("澄清自动作答信封序列化失败", loggateway.Err(err))
+		return ClarificationGateDecision{}, err
+	}
+
+	stepID := taskID + "-clarify"
+	step := biz.Step{
+		ID:              stepID,
+		TurnID:          "",
+		TaskID:          taskID,
+		SessionID:       sessionID,
+		SpiritSessionID: sessionID,
+		Kind:            biz.StepKindClarify,
+		AuthorAgentKey:  ag.AgentKey,
+		Seq:             1,
+		Version:         1,
+		Content:         string(contentJSON),
+		Status:          biz.StepStatusCompleted,
+		StartedAt:       now,
+		CompletedAt:     &now,
+	}
+	if _, err := o.stepWriter().CreateStep(ctx, step); err != nil {
+		lg.Warn("澄清自动作答 CreateStep 失败", loggateway.Err(err))
+		return ClarificationGateDecision{}, err
+	}
+
+	if o.v2Seq != nil {
+		o.v2Seq.Publish(ctx, biz.NewTaskCreatedEvent(task))
+		o.v2Seq.Publish(ctx, biz.NewStepCreatedEvent(step))
+	}
+
+	// 重写输入：澄清上下文 + 原始需求；产物剥离澄清残留后由调用方重新注入。
+	resolved := input
+	resolved.Content = envelope.BuildClarifiedContext() + "\n\n原始需求：" + input.Content
+
+	lg.Info("澄清问题均含推荐默认，按推荐假设继续执行",
+		loggateway.Str("task_id", taskID),
+		loggateway.Str("step_id", stepID),
+		loggateway.Int("question_count", len(questions)))
+
+	return ClarificationGateDecision{
+		StepID:        stepID,
+		AutoResolved:  true,
+		ResolvedInput: resolved,
+		Artifact:      intentArt.CloneWithoutClarification(),
 	}, nil
 }

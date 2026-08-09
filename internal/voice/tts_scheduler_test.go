@@ -219,3 +219,43 @@ func TestSchedulerCancelClosesCurrentSession(t *testing.T) {
 		t.Fatal("current TTS session not closed on Cancel")
 	}
 }
+
+func TestSchedulerSentenceTimeout(t *testing.T) {
+	// 挂死句（火山 End 帧永不到达/连接半死）必须在句子级超时后放弃，
+	// 后续句与尾句 flush 哨兵继续推进——worker 不饿死、OnDrained 必达
+	//（2026-08-09 天气 Turn：worker 挂在句上 3 分钟致 tts.end 缺失、状态机卡死）。
+	old := ttsSentenceTimeout
+	ttsSentenceTimeout = 200 * time.Millisecond
+	defer func() { ttsSentenceTimeout = old }()
+
+	block := make(chan struct{}) // 测试期内不关闭：会话挂死
+	defer close(block)           // 收尾释放 fake goroutine
+	var mu sync.Mutex
+	first := true
+	prov := &fakeTTSProvider{script: func() *fakeTTSSession {
+		mu.Lock()
+		defer mu.Unlock()
+		if first {
+			first = false
+			return &fakeTTSSession{blockCh: block, closed: make(chan struct{})}
+		}
+		return &fakeTTSSession{
+			chunks: []biz.TTSAudioChunk{{Type: biz.TTSAudioChunkData, PCM: []byte{7}}, {Type: biz.TTSAudioChunkEnd}},
+			closed: make(chan struct{}),
+		}
+	}}
+	probe := &schedulerProbe{}
+	s := NewTTSScheduler(probe.opts(prov))
+	ctx := context.Background()
+	s.Start(ctx)
+	defer s.Cancel()
+
+	require.NoError(t, s.Enqueue(ctx, "挂死句。", false))
+	require.NoError(t, s.Enqueue(ctx, "正常尾句。", true))
+	require.Eventually(t, func() bool {
+		probe.mu.Lock()
+		defer probe.mu.Unlock()
+		// 挂死句超时跳过（不计 OnError 中止），正常句合成 + 尾句 drain 完成
+		return probe.drained == 1 && len(probe.audios) == 1 && len(probe.errs) == 0
+	}, 3*time.Second, 20*time.Millisecond)
+}

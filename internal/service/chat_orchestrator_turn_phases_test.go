@@ -259,3 +259,55 @@ func TestAssembleTurnResult_TurnTimeoutSoftDegradation(t *testing.T) {
 		t.Errorf("expected turn timeout alert notification, got %+v", monBus.events())
 	}
 }
+
+// stubRecentMessageLister 是 biz.SessionRecentMessageLister 的测试桩。
+type stubRecentMessageLister struct {
+	msgs []biz.ChatMessage
+	err  error
+}
+
+func (s *stubRecentMessageLister) ListMessagesRecent(_ context.Context, _ string, _ int) ([]biz.ChatMessage, error) {
+	return s.msgs, s.err
+}
+
+func newIntentHistoryTestOrch(lister biz.SessionRecentMessageLister) *ChatOrchestrator {
+	return &ChatOrchestrator{
+		core:      chatTurnCoreDeps{TD: rt.TurnDeps{MsgHistory: lister}},
+		infraDeps: ChatInfraDeps{LG: loggateway.NewNoop()},
+	}
+}
+
+func TestRecentIntentHistory_NilLister(t *testing.T) {
+	orch := newIntentHistoryTestOrch(nil)
+	if got := orch.recentIntentHistory(context.Background(), "sess-1", "当前问题"); got != nil {
+		t.Errorf("nil lister should yield nil history, got %+v", got)
+	}
+}
+
+func TestRecentIntentHistory_ListerErrorDegradesToNil(t *testing.T) {
+	orch := newIntentHistoryTestOrch(&stubRecentMessageLister{err: apierror.Internal("TEST", "db down")})
+	if got := orch.recentIntentHistory(context.Background(), "sess-1", "当前问题"); got != nil {
+		t.Errorf("lister error should degrade to nil history (non-fatal), got %+v", got)
+	}
+}
+
+func TestRecentIntentHistory_FiltersDedupesAndCaps(t *testing.T) {
+	msgs := []biz.ChatMessage{
+		{Role: "system", ContentMarkdown: "系统通知"}, // 角色过滤
+		{Role: "user", ContentMarkdown: "   "},    // 空内容过滤
+		{Role: "user", ContentMarkdown: "先做个 Web 版"},
+		{Role: "assistant", ContentMarkdown: "好的，用 React"},
+		{Role: "user", ContentMarkdown: "它支持导出吗？"}, // 与当前输入相同 → 去重
+	}
+	orch := newIntentHistoryTestOrch(&stubRecentMessageLister{msgs: msgs})
+	got := orch.recentIntentHistory(context.Background(), "sess-1", "它支持导出吗？")
+	if len(got) != 2 {
+		t.Fatalf("history len = %d, want 2 (filtered + deduped): %+v", len(got), got)
+	}
+	if got[0].Role != "user" || got[0].Content != "先做个 Web 版" {
+		t.Errorf("history[0] = %+v", got[0])
+	}
+	if got[1].Role != "assistant" || got[1].Content != "好的，用 React" {
+		t.Errorf("history[1] = %+v", got[1])
+	}
+}

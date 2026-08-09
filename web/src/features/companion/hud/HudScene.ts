@@ -1,49 +1,44 @@
 /**
- * Three.js 反应堆 HUD 场景组合器（M74 设计 §7.4 v2，V5 科幻重构）。
+ * Three.js 光球 HUD 场景组合器（M74 设计 §7.4 v3，V7 TwinSprite 光球复刻）。
  *
- * 职责：renderer + EffectComposer（RenderPass/UnrealBloomPass/OutputPass）+
- * 帧循环 + 状态参数分发；视觉元素在 `hud/parts/*` 模块化部件中。
+ * 职责：renderer + 帧循环 + 状态参数分发；视觉为 TwinSprite SpriteOrb 复刻——
+ * 噪声置换发光球体（`parts/SpriteOrbCore`）+ 倾斜轨道粒子环（`parts/OrbitRing`），
+ * 无后处理（TwinSprite 无 Bloom，加法混合 + CSS 光晕即成辉光）。
  *
- * 性能预算：NFR5 ≥40fps；HUD 不可见（document.hidden）时降帧至 15fps。
+ * 相机/驱动公式与 TwinSprite 一致：fov 45、z 5.2；电平指数平滑 0.2/帧
+ * （dt 归一化 ×12/s）；uAmp = 0.12+level×0.38。
+ *
+ * 保留本产品增量：boot 点亮过场（1.2s）、speaking 相机微震、burst 能量脉冲、
+ * HUD 不可见（document.hidden）降帧 15fps（NFR5 ≥40fps）。
  * 音频数据源通过 provider 回调注入（拉取模型，场景每帧自取），
  * 场景不 import 任何 voice 模块，保持单向依赖。
  */
 
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 import type { VoiceState } from '../types';
 import { hudParamsFor } from './hudParams';
 import type { HudAudioFrame, HudPart } from './parts/HudPart';
-import { ReactorCore } from './parts/ReactorCore';
-import { ReactorRings } from './parts/ReactorRings';
-import { Starfield } from './parts/Starfield';
-import { SpectrumRing } from './parts/SpectrumRing';
-import { ShockwavePool } from './parts/ShockwavePool';
-import { EnergyParticles } from './parts/EnergyParticles';
+import { SpriteOrbCore } from './parts/SpriteOrbCore';
+import { OrbitRing } from './parts/OrbitRing';
 
 /** 场景配置（注入音频数据源，方便测试与解耦）。 */
 export type HudSceneOptions = {
-  /** 返回播放侧实时振幅 [0,1]（speaking 状态驱动能量核脉动）。 */
+  /** 返回播放侧实时振幅 [0,1]（speaking 状态驱动光球震动）。 */
   getPlaybackLevel?: (() => number) | null;
-  /** 返回采集侧实时振幅 [0,1]（listening 状态备用）。 */
+  /** 返回采集侧实时电平 [0,1]（listening 状态驱动光球震动）。 */
   getMicLevel?: (() => number) | null;
-  /** 返回采集侧 FFT 频谱（填充传入数组，listening 频谱环）。 */
-  fillMicSpectrum?: ((bins: Uint8Array) => void) | null;
 };
 
 /**
  * 3D 形象渲染器抽象（设计 §3 D7）。
- * V5 实现：Three.js 反应堆 HUD；未来可平滑替换为 VRM 人形实现而不影响上层。
+ * V7 实现：TwinSprite 光球；未来可平滑替换为 VRM 人形实现而不影响上层。
  */
 export interface AvatarRenderer {
   setState(state: VoiceState): void;
-  /** 语音模式开关：开启时触发 ~1.2s 启动过场（核心点亮 + 刻度环展开）。 */
+  /** 语音模式开关：开启时触发 ~1.2s 启动过场（光球由微光点亮至满功率）。 */
   setVoiceMode(on: boolean): void;
-  /** 触发一次能量脉冲（如确认批准）；涟漪爆发 + Bloom 提亮。 */
+  /** 触发一次能量脉冲（如确认批准 / 进入播报）：电平瞬时冲高衰减。 */
   burst(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -52,22 +47,20 @@ export interface AvatarRenderer {
 const FLASH_SECONDS = 0.3;
 const FLASH_BOOST = 0.5;
 const BURST_SECONDS = 0.6;
-const BURST_BOOST = 0.8;
+const BURST_LEVEL_BOOST = 0.8;
 const BOOT_SECONDS = 1.2;
 const IDLE_FPS = 15;
 const IDLE_FRAME_MS = 1000 / IDLE_FPS;
+/** TwinSprite 电平平滑 0.2/帧（60fps）→ dt 归一化系数。 */
+const LEVEL_SMOOTH_RATE = 12;
 
 export class HudScene implements AvatarRenderer {
   private readonly renderer: THREE.WebGLRenderer;
-  private readonly composer: EffectComposer;
-  private readonly bloomPass: UnrealBloomPass;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly clock = new THREE.Clock();
   private readonly parts: HudPart[] = [];
-  private readonly ripples: ShockwavePool;
   private readonly options: HudSceneOptions;
-  private readonly spectrumBins = new Uint8Array(128);
 
   private state: VoiceState = 'idle';
   private timeS = 0;
@@ -93,24 +86,13 @@ export class HudScene implements AvatarRenderer {
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 60);
-    this.camera.position.set(0, 0, 3.6);
+    // TwinSprite 相机原值
+    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 50);
+    this.camera.position.set(0, 0, 5.2);
 
-    // 场景部件（设计 §7.4 v2）
-    this.parts.push(new ReactorCore(this.scene));
-    this.parts.push(new ReactorRings(this.scene));
-    this.parts.push(new Starfield(this.scene));
-    this.parts.push(new SpectrumRing(this.scene));
-    this.parts.push(new EnergyParticles(this.scene));
-    this.ripples = new ShockwavePool(this.scene);
-    this.parts.push(this.ripples);
-
-    // 后处理管线：Bloom 为「炫酷感」核心（V5-T1）
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.55, 0.12);
-    this.composer.addPass(this.bloomPass);
-    this.composer.addPass(new OutputPass());
+    // 场景部件（设计 §7.4 v3）
+    this.parts.push(new SpriteOrbCore(this.scene));
+    this.parts.push(new OrbitRing(this.scene));
 
     const rect = canvas.getBoundingClientRect();
     this.resize(Math.max(rect.width, 1), Math.max(rect.height, 1));
@@ -125,7 +107,7 @@ export class HudScene implements AvatarRenderer {
       this.flashTimer = FLASH_SECONDS;
     }
     if (state === 'speaking') {
-      // V5.1：开始播报即能量爆发——涟漪 + Bloom 提亮 + 粒子满功率（particleGain）
+      // V5.1 沿用：开始播报即能量脉冲——电平冲高驱动振幅/粒子环加速
       this.burst();
     }
     this.state = state;
@@ -136,7 +118,7 @@ export class HudScene implements AvatarRenderer {
       // 开启：从当前进度推进到 1（重复开启可续推）
       this.booting = true;
     } else {
-      // 关闭：立即回待机熄灭
+      // 关闭：立即回待机微光
       this.booting = false;
       this.bootProgress = 0;
     }
@@ -144,12 +126,10 @@ export class HudScene implements AvatarRenderer {
 
   burst(): void {
     this.burstTimer = BURST_SECONDS;
-    this.ripples.queueBurst();
   }
 
   resize(width: number, height: number): void {
     this.renderer.setSize(width, height, false);
-    this.composer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   }
@@ -182,52 +162,49 @@ export class HudScene implements AvatarRenderer {
       }
     }
 
-    // 音频采样（拉取模型）
+    // 音频采样（拉取模型）：speaking 播放侧振幅 / listening 采集侧电平
     let target = 0;
-    let spectrum: Uint8Array | null = null;
     if (this.state === 'speaking') {
       target = this.options.getPlaybackLevel?.() ?? 0;
     } else if (this.state === 'listening') {
       target = this.options.getMicLevel?.() ?? 0;
-      if (this.options.fillMicSpectrum) {
-        this.options.fillMicSpectrum(this.spectrumBins);
-        spectrum = this.spectrumBins;
-      }
     }
-    this.level += (target - this.level) * Math.min(1, dt * 18);
+    this.level += (target - this.level) * Math.min(1, dt * LEVEL_SMOOTH_RATE);
 
     // 状态计时器
     this.flashTimer = Math.max(0, this.flashTimer - dt);
     this.burstTimer = Math.max(0, this.burstTimer - dt);
 
-    const params = hudParamsFor(this.state, this.timeS, this.level, this.bootProgress);
+    const params = hudParamsFor(this.state, this.level, this.bootProgress);
     const colorA = new THREE.Color(params.tintA);
     const colorB = new THREE.Color(params.tintB);
 
-    // Bloom：状态基础强度 + 打断红闪/爆发提亮
-    this.bloomPass.strength =
-      params.bloomIntensity +
-      (this.flashTimer / FLASH_SECONDS) * FLASH_BOOST +
-      (this.burstTimer / BURST_SECONDS) * BURST_BOOST;
-
-    // 相机微视差（缓慢漂移增加空间感）
-    this.camera.position.x = Math.sin(this.timeS * 0.3) * 0.07;
-    this.camera.position.y = Math.cos(this.timeS * 0.23) * 0.05;
-    // speaking 震动（V5.1）：播报振幅驱动的高频微抖，叠加在视差之上
-    const shake = params.shakeGain * this.level * 0.045;
-    if (shake > 0.0005) {
-      this.camera.position.x += (Math.sin(this.timeS * 47.3) + Math.sin(this.timeS * 31.7)) * shake;
-      this.camera.position.y += (Math.cos(this.timeS * 41.9) + Math.sin(this.timeS * 37.1)) * shake;
+    // burst 能量脉冲：电平瞬时冲高（衰减）→ uAmp/环速/环缩放同步冲高
+    const burstLevel = (this.burstTimer / BURST_SECONDS) * BURST_LEVEL_BOOST;
+    const effectiveLevel = Math.min(1, this.level + burstLevel);
+    // 打断红闪：强度瞬时提亮
+    const flashBoost = (this.flashTimer / FLASH_SECONDS) * FLASH_BOOST;
+    if (flashBoost > 0) {
+      params.intensity = Math.min(1.5, params.intensity + flashBoost);
     }
-    this.camera.lookAt(0, 0, 0);
 
-    const audio: HudAudioFrame = { level: this.level, spectrum };
+    // speaking 相机微震（V5.1 沿用）：播报电平驱动的高频微抖
+    const shake = params.shakeGain * effectiveLevel * 0.045;
+    if (shake > 0.0005) {
+      this.camera.position.x = (Math.sin(this.timeS * 47.3) + Math.sin(this.timeS * 31.7)) * shake;
+      this.camera.position.y = (Math.cos(this.timeS * 41.9) + Math.sin(this.timeS * 37.1)) * shake;
+      this.camera.lookAt(0, 0, 0);
+    } else {
+      this.camera.position.set(0, 0, 5.2);
+    }
+
+    const audio: HudAudioFrame = { level: effectiveLevel };
     for (const part of this.parts) {
       part.setTint(colorA, colorB);
       part.update(dt, this.timeS, params, audio);
     }
 
-    this.composer.render();
+    this.renderer.render(this.scene, this.camera);
   }
 
   dispose(): void {
@@ -240,8 +217,6 @@ export class HudScene implements AvatarRenderer {
     for (const part of this.parts) {
       part.dispose();
     }
-    this.bloomPass.dispose();
-    this.composer.dispose();
     this.renderer.dispose();
   }
 }

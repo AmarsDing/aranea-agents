@@ -134,6 +134,60 @@ func TestClarificationEnvelope_OriginalInputRoundTrip(t *testing.T) {
 	}
 }
 
+func TestClarificationEnvelope_ResolutionRoundTrip(t *testing.T) {
+	// 新信封：resolution 持久化
+	env := ClarificationEnvelope{
+		Version:    1,
+		Kind:       "clarification",
+		Resolution: ClarificationResolutionAutoDefault,
+	}
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !containsAll(string(raw), []string{"resolution", "auto_default"}) {
+		t.Errorf("marshaled envelope missing resolution: %s", raw)
+	}
+	var got ClarificationEnvelope
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Resolution != ClarificationResolutionAutoDefault {
+		t.Errorf("Resolution = %q, want %q", got.Resolution, ClarificationResolutionAutoDefault)
+	}
+	// 旧信封（无 resolution 字段）：解析为零值，向后兼容
+	var legacy ClarificationEnvelope
+	if err := json.Unmarshal([]byte(`{"version":1,"kind":"clarification","questions":[],"answers":null}`), &legacy); err != nil {
+		t.Fatalf("legacy unmarshal: %v", err)
+	}
+	if legacy.Resolution != "" {
+		t.Errorf("legacy Resolution = %q, want empty", legacy.Resolution)
+	}
+}
+
+func TestClarificationEnvelope_ApplyRecommendedAnswers(t *testing.T) {
+	env := ClarificationEnvelope{
+		Questions: []ClarificationQuestion{
+			{Question: "平台？", Mode: ClarificationModeSingle, Options: []string{"Web", "iOS"}, Recommended: []string{"Web"}},
+			{Question: "交付物？", Mode: ClarificationModeMulti, Options: []string{"代码", "文档"}, Recommended: []string{"代码", "文档"}},
+			{Question: "无推荐的问题", Mode: ClarificationModeSingle, Options: []string{"x"}}, // 无推荐 → 保持空作答
+		},
+	}
+	env.ApplyRecommendedAnswers()
+	if len(env.Answers) != 3 {
+		t.Fatalf("answers len = %d, want 3", len(env.Answers))
+	}
+	if len(env.Answers[0].Selected) != 1 || env.Answers[0].Selected[0] != "Web" {
+		t.Errorf("answers[0] = %+v, want selected [Web]", env.Answers[0])
+	}
+	if len(env.Answers[1].Selected) != 2 {
+		t.Errorf("answers[1] = %+v, want 2 selected", env.Answers[1])
+	}
+	if len(env.Answers[2].Selected) != 0 {
+		t.Errorf("answers[2] = %+v, want empty selected (no recommended)", env.Answers[2])
+	}
+}
+
 func containsAll(s string, subs []string) bool {
 	for _, sub := range subs {
 		found := false
