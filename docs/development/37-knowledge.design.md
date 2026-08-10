@@ -467,6 +467,19 @@ CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
     ON knowledge_chunks(collection_id);
 ```
 
+#### 维度对账（2026-08-10 事故根修）
+
+`knowledge_chunks.embedding vector(N)` 的 N 在**首次建表**时固定为当时的 `vector_dim` 配置；embedder 换模型（维度变化）后 `CREATE TABLE IF NOT EXISTS` 不会修正存量列，新维度向量插入全部被 PG 拒绝（`expected N dimensions`），而应用层按 `knowledge_collections.dim` 的校验反而通过，故障极难定位（2026-08-08 配置切 bge-m3/1024 后语义检索全灭）。
+
+`EnsureKnowledgeSchema` 尾部执行 `reconcileEmbeddingDim`（幂等；列 typmod == 配置维度时零动作）：
+
+1. 存量向量全部置 NULL 作废（旧维度向量对新 embedder 无检索意义）；
+2. 受影响文档 `content_hash='' + status='pending'`——vault 文档下轮 sync 自动重嵌入自愈；UI 上传文档（rel_path 空）无 sync 循环，需人工重传；
+3. 有语义层集合（`embedding_model <> ''`）的 `dim` 快照同步为新维度——单全局 embedder 架构下不同步 = 应用层校验永远拒绝新插入（死库）；`embedding_model` 名不动（Ensure 拿不到模型名，仅展示用）；
+4. `ALTER COLUMN embedding TYPE vector(N)` + 重建 ivfflat 索引（lists 随新维度重算；先 DROP 再 ALTER，避免 PG 级联重建沿用旧 lists 参数）。
+
+对账事件以 Error 级进程日志记录（`data.schema.knowledge_dim_reconcile`，含 from_dim/to_dim/pending_docs）。另：`SearchChunks` dense 查询排除 `embedding IS NULL` 行（对账后重嵌入窗口期的无向量行不参与 dense 检索）。
+
 ### 4.3 Repo 实现
 
 `knowledgeRepo` 使用 `*sql.DB` 直接操作 PostgreSQL，同时实现 `biz.KnowledgeRepo`、`biz.KnowledgeSparseSearcher`、`bizknowledge.Repo` 三个接口：
@@ -489,10 +502,12 @@ var (
 | `CreateDocument` | `INSERT INTO knowledge_documents ... RETURNING ...` |
 | `UpdateDocumentStatus` | `UPDATE ... SET status, error_message, chunk_count, updated_at` |
 | `InsertChunks` | 事务批量 `INSERT INTO knowledge_chunks`，使用 `pgvector.NewVector`，含维度校验 |
-| `SearchChunks` | `ORDER BY embedding <=> $1::vector LIMIT $3`，支持 `min_score` 和 `filter_json` |
-| `SearchChunksBM25` | 双路 BM25：tsvector 全文检索 + pg_trgm 模糊搜索，合并去重 |
+| `SearchChunks` | `ORDER BY embedding <=> $1::vector LIMIT $3`，排除 `embedding IS NULL` 行，支持 `min_score` 和 `filter_json` |
+| `SearchChunksBM25` | 双路 BM25：tsvector 全文检索 + pg_trgm `word_similarity`（`%>` 操作符）模糊搜索，合并去重 |
 | `DeleteDocument` | 事务删除 + 计数器修正 |
 | `MoveDocument` | 单事务：documents/chunks collection_id 更新 + 源/目标库计数校正（US-14） |
+
+> **trigram 路操作符选型（2026-08-10 中文短查询根修）**：旧实现 `similarity(content, q)` + `%` 的分母含双方 trigram 总数，中文 2-4 字短查询对长文档的相似度被稀释到 0.3 阈值以下（实测"斑马线"=0.064）永不命中，无语义层集合的词法降级对中文实质不可用。改为 `word_similarity(q, content)` + `%>`（查询 trigram 集 vs 文本连续区间的最大相似度，阈值 `pg_trgm.word_similarity_threshold`=0.6；中文子串处 0.67~1.0 命中），`gin_trgm_ops` 索引对 `%>` 同样可用。tsvector 路对 CJK 的局限（`simple` 分词整串单 token）见 §V6 1725 行论述，不在本次修复范围。
 
 ### 4.4 搜索过滤
 
@@ -736,6 +751,7 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 - `embedQuery` 私有方法：优先使用 `TaskTypeEmbedder`（Gemini 用 `RETRIEVAL_QUERY` task type），否则走标准 `Embed`。
 - Rerank 失败时 FlowLog 警告并回退向量排序（`knowledge.rerank.fallback`）。
 - 通过 `knowledgetool.WithRetriever(ctx, retriever)` 注入到工具上下文。
+- **无语义层集合前置降级（2026-08-10 根修，§V5 降级矩阵 #3 落地）**：embed 之前经 `collectionLacksSemanticLayer`（search_helpers.go）判定目标集合 `embedding_model` 为空时直接走 BM25 词法检索（`knowledge.retriever.sparse_fallback` Warn 日志）——此类集合 chunks 无向量，dense 路径恒空且静默无感知；判定前置避免浪费一次查询 embed。embedder 为 nil 或 embed 失败（CodeUnavailable）同样降级 BM25。
 
 ### 5.5 QueryRewriter（internal/knowledge/query_rewriter.go）
 
@@ -806,6 +822,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 - 无 Sparse 配置时 auto 降级为 dense。
 - Dense 或 Sparse 单路失败时自动回退到另一路。
 - RRF overfetch = topK×3（上限 50），保证融合后有足够候选。
+- **无语义层集合前置降级（2026-08-10 根修）**：与 Retriever 同一判定（`collectionLacksSemanticLayer`），在 mode 选择之前执行——无语义层集合 dense/RRF 密集侧恒空，直接降级 BM25（`knowledge.hybrid.sparse_fallback` Warn 日志）。
 
 ### 5.7 AdaptiveRouter（internal/knowledge/adaptive_router.go）
 
@@ -2085,6 +2102,8 @@ UNIQUE(doc_id, ordinal)；UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL
 
 流式重建：按文档分批（每批一事务，删块→重解析→重插），`sync_state` 加 `rebuilding` 态（期间检索走旧 chunks/FTS——旧数据最后一批才清，降级可用）；幂等（中断重跑继续）；进度事件复用 EP-KN-02 模式。
 
+> **2026-08-09 事故根修**：`ListDocuments` 是摘要投影（SELECT 不含 `content_text`），`RebuildCollectionBlockIndex` 直接拿分页结果重建会解析出 0 块 0 边，`ReplaceDocBlocks` 删旧插空 = **全库块索引静默清空**。修复：分页仅取 ID 列表，逐文档 `GetDocument` 取回完整正文再进重建管线（`rebuild_index.go`）；测试 fixture 同步改为摘要投影 + `docGetFn` 回源，防 mock 假绿回归。
+
 ### S10. 关键决策记录（ADR 摘要）
 
 | # | 决策 | 理由 | 放弃方案 |
@@ -2102,3 +2121,191 @@ UNIQUE(doc_id, ordinal)；UNIQUE(collection_id, anchor) WHERE anchor IS NOT NULL
 - **Agent 工具族**：knowledge_write 写入路径接 blockparse；navigate/grep 不受影响
 - **实体共现/语义轨**：不动
 - **65-module-cross-reference-full.md**：SP1 实施后同步 knowledge 模块卡片（新增 blocks/refs 表、LinkIndex、blockparse 包）
+
+---
+
+## SP2. 编辑器与笔记体验（深空液态玻璃工作台，2026-08-10）
+
+> **需求**：见 [37-knowledge.md §子模块：编辑器与笔记体验（SP2 需求）](./37-knowledge.md#子模块编辑器与笔记体验sp2-需求2026-08-10)（US-24~US-30、FR-SP2-1~10）。
+> **用户裁决（2026-08-10）**：Obsidian 级笔记能力为目标；UI 推翻 Tab 管理后台为 Obsidian 工作台；编辑器选型 **CodeMirror 6 Live Preview**（弃 TipTap——源文本即真相源，与 SP1「文件/PG 内容为权威源」哲学一致）；A1（骨架+编辑器+双链）+A2（视觉全套）一轮交付；视觉=液态玻璃+科幻+炫酷。
+> **范围纪律**：**纯前端重构，后端零改动**——全部数据走既有 API（`features/knowledge/api.ts`：tree/content/CAS 保存/反链/出链/dangling/图谱/新建目录文档均已就绪）。
+
+### SP2-1. 架构总览
+
+```
+KnowledgePage.vue（重写，薄壳）
+  └─ KnowledgeWorkbench.vue（工作台根，装配三栏 + 浮层 + 全屏图谱）
+       ├─ WorkbenchTopBar        顶栏：Vault 切换 / ⌘O / ⌘K / 图谱 / 设置浮层入口
+       ├─ WorkbenchSidebar（左）  Vault 树（复用 KnowledgeVaultTree 内核，玻璃换肤）
+       ├─ WorkbenchTabs（中）     笔记标签页条 + 活动笔记编辑器/预览/空态 RingCarousel
+       │    └─ NoteEditor.vue     CM6 编辑器（Live Preview + wikilink 补全/芯片）
+       ├─ WorkbenchSidePanels（右）五面板：反链/出链/大纲/属性/局部图谱
+       ├─ QuickSwitcher.vue       ⌘O 快速切换（液态玻璃浮层）
+       ├─ CommandPalette.vue      ⌘K 命令面板（液态玻璃浮层）
+       └─ KnowledgeGraph3D        全屏覆盖模式（既有组件，顶栏进入、ESC 退出）
+```
+
+**数据流**：`useKnowledgeWorkbench`（composable，唯一状态机）持有——Vault 列表/当前 Vault、树选中、打开标签页数组 `tabs[]`（docId/relPath/title/dirty/saving/baseHash）、活动 tabId、右栏联动数据。组件全部经 props/emits 与该 composable 交互，不各自拉数（Obsidian MetadataCache「单一真相源」哲学的前端映射）。右栏五面板输入仅为 `activeTab`，活动标签切换/保存完成时统一联动刷新。
+
+### SP2-2. 视觉设计令牌（深空液态玻璃）
+
+新增 SCSS 令牌层（`web/src/css/deep-space.sass`，sass 缩进语法对齐项目惯例），仅作用于知识库工作台作用域（`.kb-workbench` 根类名隔离），不污染全局 Quasar 主题：
+
+| 令牌 | 值 | 用途 |
+|------|-----|------|
+| `--kb-bg-deep` | `#0a0e1a` | 深空底 |
+| `--kb-bg-glass` | `rgba(16, 22, 40, 0.55)` | 玻璃面板底色 |
+| `--kb-glass-border` | `rgba(120, 200, 255, 0.14)` | 高光描边 |
+| `--kb-glass-highlight` | `rgba(255, 255, 255, 0.08)` | 顶部高光带 |
+| `--kb-accent-cyan` | `#4fd8ff` | 主霓虹（青） |
+| `--kb-accent-violet` | `#9d6bff` | 辅霓虹（紫，极光光斑） |
+| `--kb-text-primary` | `#dce6f5` | 主文本 |
+| `--kb-text-dim` | `#7a8aa5` | 次文本 |
+| `--kb-radius-glass` | `14px` | 玻璃圆角 |
+| `--kb-blur` | `18px` | backdrop blur |
+
+玻璃质感实现：`background: var(--kb-bg-glass); backdrop-filter: blur(var(--kb-blur)) saturate(1.4); border: 1px solid var(--kb-glass-border);` + `::before` 伪元素顶部 1px 高光线 + 内阴影模拟折射。极光光斑 = 两个固定定位径向渐变圆（cyan/violet，`filter: blur(120px)`，低透明度，不参与交互）。
+
+### SP2-3. 特效组件（5 个自研，`components/knowledge/effects/`）
+
+| 组件 | 职责 | 关键技术 |
+|------|------|---------|
+| `GlassPanel.vue` | 液态玻璃容器（面板/浮层基座） | slot 包装 + 上述令牌 + 可选 `glow` 呼吸辉光 |
+| `ParticleField.vue` | 深空粒子背景 | Canvas 2D；粒子数按设备分级（`navigator.hardwareConcurrency`/`deviceMemory`：高 120 / 中 60 / 低 0）；鼠标 120px 斥力 + 近距连线（<90px 透明度渐隐）；`requestAnimationFrame` 自循环，页面不可见（`document.hidden`）时停帧 |
+| `TiltCard.vue` | 3D 倾斜卡片 | mousemove 求相对中心偏移 → `rotateX/Y`（±8° 上限）+ 移动高光（radial-gradient 跟随）；mouseleave spring 回正（CSS transition 180ms） |
+| `GlowButton.vue` | 辉光磁吸主按钮 | hover 辉光晕（box-shadow 双层 cyan）+ 鼠标磁吸位移（≤6px，transform translate）；active 涟漪 |
+| `RingCarousel.vue` | 空态 3D 环形旋转 | N 张卡片 `transform: rotateY(i*θ) translateZ(r)` 环形排布；CSS keyframes 自动旋转 24s/圈；hover 暂停 + 中心卡片 scale 聚焦；点击进入笔记 |
+
+**降级契约（FR-SP2-10）**：`prefers-reduced-motion: reduce` 时——粒子不渲染、TiltCard 退化为静态卡、RingCarousel 退化为纵向列表、GlowButton 仅保留颜色 hover。统一经 `useReducedMotion()`（matchMedia 封装）判定，各组件消费。
+
+### SP2-4. `useKnowledgeWorkbench` 状态机
+
+`web/src/features/knowledge/useKnowledgeWorkbench.ts`（composable 单例模式——模块级状态 + 工厂函数返回共享实例）：
+
+```ts
+type WorkbenchTab = {
+  docId: string; relPath: string; title: string;
+  mode: 'edit' | 'preview';          // 非 markdown 文档恒 preview
+  dirty: boolean; saving: boolean;
+  baseHash: string;                  // CAS（UpdateDocumentContent）
+  content: string;                   // 编辑缓冲区
+};
+```
+
+| 动作 | 语义 |
+|------|------|
+| `openDoc(doc)` | 已在 tabs → 激活；否则 `getDocumentContent` 取回（content + base_hash）后推入 tabs 并激活；非 markdown MIME → mode=preview 锁死 |
+| `closeTab(id)` | dirty 时弹确认（保存/放弃/取消）；关闭后激活相邻 tab |
+| `saveTab(id)` | `updateDocumentContent({id, content, baseHash})`；CodeConflict → 既有「留双份 + 警告」语义（重新拉取远端 hash 刷新 baseHash，提示冲突副本已留存）；成功刷新 baseHash、清 dirty |
+| `onDocRemoved(docId)` | 树/列表删除事件 → 关闭对应 tab（无确认，数据已删） |
+| `onDocRenamed(doc)` | 同步 tab 的 relPath/title |
+| `activeTab` / `sidePanelData` | computed；活动切换或保存成功后触发右栏五面板并行拉取 |
+
+树与搜索沿用既有 composable 数据源（tree 懒加载/即时搜索），workbench 只订阅其选中事件调 `openDoc`。
+
+### SP2-5. CodeMirror 6 编辑器（`NoteEditor.vue`）
+
+**依赖新增**：`codemirror`（metapackage）、`@codemirror/lang-markdown`、`@codemirror/state`、`@codemirror/view`。
+
+**装配**：
+- `EditorState`：`markdown()` + 高亮 + 深空主题（`EditorView.theme` 定制：背景透明、光标 cyan、选区 rgba cyan 0.15、语法色 token 映射调色板）+ 下列扩展。
+- 双向同步：`updateListener` 文档变更 → 写回 `tab.content` + `dirty=true`（300ms 防抖标脏，避免每 keystroke 触发响应式全链）；外部重建（如切换 tab）时 `dispatch(replace)` 注入。
+- 保存接线：`Ctrl/Cmd+S` → `saveTab`；自动保存不做（CAS 语义下显式保存更安全，与 Obsidian 差异为有意决策——避免无 hash 守卫的后台写覆盖冲突窗口）。
+
+**Live Preview（行级装饰，`ViewPlugin` + `Decoration`）**：
+- 规则集：非光标行——ATX 标题按级别放大/加粗并淡化 `#` 标记；`**bold**`→粗体、`*em*`→斜体、`~~del**`→删除线（语法标记透明度 0.35）；代码块行底色 + 圆角背景；引用行左边框 cyan；列表 marker 替换为 `•`/`◦`。
+- 光标行判定：以 `selection.main` 所在行集合为准，`selectionSet` 或 `docChanged` 时重算装饰（增量：`DocChanged` 时仅重映射受影响区间，Obsidian 同款策略）。
+- 只读预览模式：`EditorState.readOnly` + 全文装饰（无光标行回退）。
+
+### SP2-6. wikilink 写作（`[[` 补全 + 芯片 + 跳链）
+
+**补全**：`@codemirror/autocomplete` 自定义 source——检测 `[[` 前缀（正则 `\[\[([^\]\|#]*)$`），150ms 防抖后调即时搜索数据源（复用统一搜索即时区 `searchVaultFiles` 同一路径，当前库文件名候选）；候选项展示文档名 + 所在目录 dim 后缀；Enter/Tab 确认插入 `[[name]]`（已有 `\|alias`/`#heading` 后缀片段保留）。
+
+**链接芯片（Decoration.replace + Widget）**：`[[target]]`/`[[target|alias]]`/`[[target#heading]]` 在**非光标行**替换为 `WikiLinkWidget`（chip 样式：胶囊玻璃底 + cyan 文本 + 链接图标；展示文本 = alias ?? target）：
+- `resolveWikiTarget(target)`：查当前 tabs 缓存 + 即时搜索数据源判定存在性；不存在 → chip 加 `dangling` 类（灰显 + 虚线边框 + tooltip「目标未创建」），与浏览视图 dangling 视觉一致。
+- 点击行为：widget `mousedown`——Ctrl/Cmd+点击（编辑态）或单击（预览态）→ `openDoc` 跳链；目标不存在时点击 = 经 `createVaultDocument` 新建并打开（Obsidian 语义）。
+
+### SP2-7. ⌘O 快速切换 / ⌘K 命令面板
+
+两浮层共用 `GlassPanel` + 居中模态结构（背景遮罩 `backdrop-filter: blur(6px) brightness(0.6)`）：
+
+| 浮层 | 数据源 | 行为 |
+|------|--------|------|
+| `QuickSwitcher.vue`（⌘O/Ctrl+O） | 即时搜索（文件名，150ms 防抖，复用浏览视图同一函数） | ↑↓ 导航、Enter 打开（`openDoc`）、ESC 关闭；结果项 = 文件名 + 路径 + 库名徽标 |
+| `CommandPalette.vue`（⌘K/Ctrl+K） | 命令注册表（静态数组，见下） | 模糊过滤（子序列匹配 + 打分排序：前缀 > 连续子串 > 散列）；↑↓/Enter/ESC；命令行右侧展示快捷键提示 |
+
+**命令注册表**（初版 9 条，注册表模式便于扩展）：新建笔记 / 新建文件夹 / 保存当前笔记（Ctrl+S）/ 切换编辑预览（Ctrl+E）/ 打开图谱全屏（Ctrl+G）/ 切换 Vault（子列表二级选择）/ 重建当前库索引（调既有 `RebuildKnowledgeIndex` RPC）/ 晋升到团队库（打开既有 KnowledgePromoteDialog）/ 关闭当前标签（Ctrl+W）。
+
+快捷键全局接线：workbench 挂载期注册 `keydown`（capture），输入框聚焦时 ⌘O/⌘K 仍可唤起、其余命令键放行。
+
+### SP2-8. 右栏五面板（`components/knowledge/panels/`）
+
+| 面板 | 数据源（全部既有 API） | 交互 |
+|------|----------------------|------|
+| `PanelBacklinks.vue` | `listBlockBacklinks(docId)` | 块级分组（来源文档 → 上下文片段列表）；点击来源 → `openDoc`；dangling 组展示 raw_target + 计数 |
+| `PanelOutlinks.vue` | `listDocumentLinks(docId)` | 显式/实体/语义分区（沿用既有关联区口径）；点击 → `openDoc` |
+| `PanelOutline.vue` | 当前 tab `content` 前端解析（正则 ATX heading 树，H1-H6 缩进） | 点击 → 编辑器滚动定位（`EditorView.dispatch` 选区 + `scrollIntoView`）；内容变更 300ms 防抖重解析 |
+| `PanelProperties.vue` | `content` frontmatter 区段（`^---\n...\n---`）YAML 键值只读解析（title/aliases/tags 高亮，其余通用键值） | 只读；无 frontmatter → 「无属性」空态 |
+| `PanelLocalGraph.vue` | `listCollectionGraph` 拉全图后前端以当前 docId 为根 BFS（1-5 跳滑块） | 迷你 2D 力导向（轻量自研 canvas，≤200 节点；非 G5 3D 管线复用——迷你图求快不求炫）；点击节点 `openDoc`；「展开全屏」按钮进图谱覆盖模式并定位该节点 |
+
+五面板折叠态持久化到 `localStorage`（`kb-panels-collapsed`）。无活动 tab → 整栏玻璃空态（图标 + 文案，非报错）。
+
+### SP2-9. 文件结构（新增/改动清单）
+
+```
+web/src/
+  css/deep-space.sass                          [新] 设计令牌
+  features/knowledge/
+    useKnowledgeWorkbench.ts                   [新] 状态机
+    useReducedMotion.ts                        [新] 降级判定
+    wikilink.ts                                [新] 补全 source / widget / resolve
+    outline.ts                                 [新] 大纲解析（纯函数）
+    frontmatter.ts                             [新] frontmatter 解析（纯函数）
+    commands.ts                                [新] 命令注册表
+  components/knowledge/
+    effects/GlassPanel.vue                     [新]
+    effects/ParticleField.vue                  [新]
+    effects/TiltCard.vue                       [新]
+    effects/GlowButton.vue                     [新]
+    effects/RingCarousel.vue                   [新]
+    workbench/KnowledgeWorkbench.vue           [新] 工作台根
+    workbench/WorkbenchTopBar.vue              [新]
+    workbench/WorkbenchTabs.vue                [新]
+    workbench/NoteEditor.vue                   [新] CM6 装配
+    workbench/QuickSwitcher.vue                [新]
+    workbench/CommandPalette.vue               [新]
+    panels/PanelBacklinks.vue                  [新]
+    panels/PanelOutlinks.vue                   [新]
+    panels/PanelOutline.vue                    [新]
+    panels/PanelProperties.vue                 [新]
+    panels/PanelLocalGraph.vue                 [新]
+  pages/KnowledgePage.vue                      [重写] 薄壳 → KnowledgeWorkbench
+  components/knowledge/KnowledgeVaultTree.vue  [改] 外观令牌适配（逻辑不动）
+  components/knowledge/KnowledgeGraph3D.vue    [改] 支持全屏覆盖模式（v-model:fullscreen）
+  components/knowledge/KnowledgeEmbedderPanel.vue [改] 包入设置浮层（逻辑不动）
+退役：KnowledgeDocumentsPanel / KnowledgeDocList / KnowledgeDocDetail / KnowledgeSearchDual
+  ——树 + 工作台 + 五面板取代其职责；保留文件至验收通过后再删（切片 8 处理）
+```
+
+**分层纪律**：纯函数解析（outline/frontmatter/wikilink 目标匹配）放 `features/knowledge/` 并可单测；组件只消费；API 层不动。
+
+### SP2-10. 关键决策记录（ADR 摘要）
+
+| # | 决策 | 理由 | 放弃方案 |
+|---|------|------|---------|
+| SP2-ADR-1 | CodeMirror 6 Live Preview | 源文本即真相源，与 SP1 哲学一致；装饰管线精确到行；License MIT | TipTap（富文本中间态与 md 双向映射有损）/BlockSuite（块模型与现有文档粒度不匹配） |
+| SP2-ADR-2 | 单 composable 状态机 + props/emits | Obsidian MetadataCache「单一真相源」前端映射；五面板联动只需订阅 activeTab | Pinia store（跨页面共享无必要，composable 单例已够）/ 组件各自拉数（联动地狱） |
+| SP2-ADR-3 | 显式保存（Ctrl+S）+ CAS，不做自动保存 | CAS 语义下自动保存放大冲突窗口；保存状态可见性更强 | 防抖自动保存（Obsidian 行为，但其无并发写者） |
+| SP2-ADR-4 | 特效组件自研（非引库） | 5 个组件总代码量 <600 行，零依赖风险；液态玻璃为 CSS 技巧非库能力 | 引入 UI 特效库（体积 + 协议 + 主题割裂） |
+| SP2-ADR-5 | 局部迷你图谱自研轻量 2D canvas | 迷你图 ≤200 节点求启动快；复用 G5 3D 管线加载成本高且视觉过载 | 嵌入 G5 3D 实例（重）/ sigma.js（新增依赖只为迷你图不值） |
+| SP2-ADR-6 | 视觉令牌作用域隔离 `.kb-workbench` | 深空风仅知识库沉浸区；不污染全局明暗双主题体系 | 全局主题改造（破坏面大，违背 NFR-G5-4 同原则） |
+
+### SP2-11. 影响面（改 SP2 必须同步谁）
+
+- **KnowledgePage.vue**：整页重写为薄壳；路由 `/knowledge` 不变；i18n key 前缀 `knowledgePage.*` 新增 workbench 段
+- **KnowledgeGraph3D**：新增 `fullscreen` props 模式（覆盖层定位 + ESC 退出），G5 画布/HUD 逻辑零改动
+- **KnowledgeVaultTree**：仅样式适配深空令牌（CSS 变量注入点），交互逻辑/事件签名不变
+- **退役组件**：KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual 被工作台吸收——验收前保留文件，验收后切片 8 删除并全局 grep 清理引用（R4）
+- **WS 摄取进度**：`useKnowledgeIngestWs` 继续工作（上传队列收纳进左栏底部），事件消费不变
+- **后端**：零改动（全部复用既有 RPC）
+- **测试**：纯函数（outline/frontmatter/wikilink resolve/命令过滤）+ 状态机（tabs 开闭/脏标记/CAS 冲突）单测；组件级 smoke（挂载不炸）；`pnpm lint + test + build` 全绿 + 浏览器运行时复验（验收 38）

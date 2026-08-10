@@ -102,24 +102,29 @@ const installLabel = computed(() =>
     background 0.18s ease;
   border-radius: 16px;
 }
+
 .asset-card:hover,
 .asset-card:focus-visible {
   transform: translateY(-3px);
   background: var(--glass-surface-hover);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 10%);
 }
+
 body.body--dark .asset-card:hover {
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
 }
+
 .asset-card__name {
   font-weight: 700;
   font-size: 15px;
   color: var(--color-text-primary);
 }
+
 .asset-card__type {
   color: var(--color-text-secondary);
   margin-top: 1px;
 }
+
 .asset-card__tagline {
   font-size: 13px;
   line-height: 1.55;
@@ -130,27 +135,33 @@ body.body--dark .asset-card:hover {
   overflow: hidden;
   min-height: 2.6em;
 }
+
 .asset-card__creator-avatar {
   flex: none;
 }
+
 .asset-card__creator-initial {
   color: var(--color-on-accent);
   font-size: 10px;
   font-weight: 700;
 }
+
 .asset-card__creator {
   color: var(--color-text-secondary);
   cursor: pointer;
 }
+
 .asset-card__creator:hover {
   color: var(--color-accent);
   text-decoration: underline;
 }
+
 .asset-card__installs {
   color: var(--color-text-secondary);
   display: inline-flex;
   align-items: center;
 }
+
 .asset-card__installed-btn {
   color: var(--color-success);
   border-color: var(--color-success);

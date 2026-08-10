@@ -40,9 +40,9 @@ type volcFrame struct {
 	// sessionID：TTS V3 event 帧携带的服务端会话 ID（编解码对称保留）。
 	sessionID string
 	// errCode：msgType==volcMsgError 时的 4 字节错误码（位于 payload 长度之前）。
-	errCode  uint32
-	json     bool // serialization=JSON（可 gzip）；false=裸字节不压缩
-	payload  []byte
+	errCode uint32
+	json    bool // serialization=JSON（可 gzip）；false=裸字节不压缩
+	payload []byte
 }
 
 func marshalVolcFrame(f volcFrame, gzipJSON bool) ([]byte, error) {

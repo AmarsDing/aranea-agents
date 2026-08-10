@@ -393,18 +393,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	// the runner. The hits are stored in ctx so the MemoryInject before-model
 	// hook can merge them with RecallComposite results. Failures are non-fatal:
 	// only a warning is logged and the turn continues without proactive hits.
-	proactiveStart := time.Now()
-	o.publishTurnProgress(ctx, sessionID, "recalling", nil)
-	proactiveHits := o.runProactiveRecall(ctx, sess, ag, content, emitter)
-	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
-		loggateway.StepID("chat.proactive_recall"),
-		loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
-		loggateway.Any("hits", len(proactiveHits)))
-	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
-
+	//
+	// Voice Fast-Path（2026-08-09）：recall 从串行段移入 errgroup 与 BUILD/INTENT
+	// 三方并行——真机实测串行 recall 0.3-3.3s 且语音轮次 hits 恒为 0，纯开销。
+	// WithProactiveHits 在 eg.Wait() 后注入 ctx：MemoryInject before-model 钩子在
+	// 请求时才读取，语义不变；goroutine→Wait 的 happens-before 由 errgroup 保证。
 	var buildResult turnBuildResult
 	var intentRunOpts []trpcagent.RunOption
 	var intentArtifact *intent.Artifact
+	var proactiveHits []biz.CompositeRecallHit
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	// Goroutine 1: BUILD
@@ -419,7 +416,19 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return buildErr
 	})
 
-	// Goroutine 2: Intent Pass
+	// Goroutine 2: PROACTIVE RECALL
+	eg.Go(func() error {
+		proactiveStart := time.Now()
+		o.publishTurnProgress(ctx, sessionID, "recalling", nil)
+		proactiveHits = o.runProactiveRecall(egCtx, sess, ag, content, emitter)
+		o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
+			loggateway.StepID("chat.proactive_recall"),
+			loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
+			loggateway.Any("hits", len(proactiveHits)))
+		return nil // Recall failure is non-fatal; runProactiveRecall warns internally
+	})
+
+	// Goroutine 3: Intent Pass
 	// 澄清续跑复用：ctx 携带澄清门前的预解析产物时直接复用，跳过重复 LLM 调用
 	// （重写后的输入 = 澄清上下文 + 原始需求，产物语义不变）。复用前剥离
 	// 已作答的澄清残留（问题/歧义/needs_clarification 标记），避免 LLM 重问。
@@ -452,6 +461,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: BUILD+IntentPass parallel",
 		loggateway.StepID("chat.build_intent_parallel"),
 		loggateway.Any("elapsed_ms", time.Since(buildIntentStart).Milliseconds()))
+	// 并行段收口：recall 命中注入 ctx，供下游 MemoryInject before-model 钩子在
+	// 请求时合并（原串行位置在 errgroup 之前，并行化后语义保持）。
+	ctx = chatagent.WithProactiveHits(ctx, proactiveHits)
 
 	preGeneratedTaskID := resolveRootTaskActivityID(input)
 	ctx = chatagent.ContextWithRootTaskActivityID(ctx, preGeneratedTaskID)

@@ -63,26 +63,31 @@ const { t } = useI18n();
   margin-bottom: 8px;
   overflow: hidden;
 }
+
 .org-bundle-tree__dept {
   font-weight: 600;
 }
+
 .org-bundle-tree__positions {
   padding: 4px 16px 12px 44px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
+
 .org-bundle-tree__agents {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding-left: 22px;
 }
+
 .org-bundle-tree__agent {
   background: var(--interaction-surface-hover);
   color: var(--color-text-primary);
 }
+
 body.body--dark .org-bundle-tree__agent {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
 }
 </style>

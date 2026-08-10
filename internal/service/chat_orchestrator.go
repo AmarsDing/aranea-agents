@@ -73,7 +73,7 @@ type RuntimeTooling struct {
 	SubAgentService             *subagenttool.Service
 	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
 	// client_open_url) in chat-turn agent builds. Nil prunes the ToolSet.
-	ClientBridge                *clientbridge.Bridge
+	ClientBridge *clientbridge.Bridge
 	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
 	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
 	ParallelToolExecutor *tools.ParallelToolExecutor

@@ -93,6 +93,7 @@ function statusText(task: KnowledgeUploadTask): string {
   border-radius: 16px;
   background: var(--glass-surface);
 }
+
 .knowledge-upload-queue__item {
   min-height: 44px;
 }

@@ -31,6 +31,7 @@ type VoiceWSServer struct {
 	confirmer   voice.ConfirmResolver // V2-T5 语音确认拦截；nil 关闭
 	archiver    voice.AudioArchiver   // V2-T6 语音留档；nil 关闭
 	probe       VoiceStatusProbe      // V2-T8 麦克风置灰门控；nil = 保守报不可用
+	prewarmer   voice.TurnPrewarmer   // C1 语音 Turn 构建预热；nil 关闭
 	newASR      voice.ASRProviderFactory
 	newTTS      voice.TTSProviderFactory
 	bus         biz.EventBus
@@ -81,6 +82,15 @@ func (s *VoiceWSServer) RegisterOnKratos(srv *kratoshttp.Server) {
 	// V2-T8：语音可用性探测（前端麦克风置灰门控）。任意登录用户可读——
 	// 只暴露 ASR/TTS 是否配置完成的布尔位，不泄漏 endpoint/凭据等敏感信息。
 	srv.HandleFunc("/v1/voice/status", s.handleVoiceStatus)
+}
+
+// SetTurnPrewarmer 注入语音 Turn 构建预热端口（C1，可选依赖 setter 模式，
+// 与 WSServer.SetTaskResumer 一致）；nil 或未调用 = 关闭预热。
+func (s *VoiceWSServer) SetTurnPrewarmer(p voice.TurnPrewarmer) {
+	if s == nil {
+		return
+	}
+	s.prewarmer = p
 }
 
 // handleVoiceStatus 返回语音服务可用性（V2-T8 差距2）。probe 未接线时保守
@@ -148,6 +158,7 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		Canceller: voiceRunCanceller{inner: s.canceller},
 		Confirmer: s.confirmer,
 		Archiver:  s.archiver,
+		Prewarmer: s.prewarmer,
 		Infra:     s.infra,
 		LG:        s.lg,
 	}

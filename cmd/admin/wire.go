@@ -2899,7 +2899,11 @@ func provideVoiceWSServer(
 		_, ttsErr := cfgReader.TTSConfig(ctx)
 		return asrErr == nil, ttsErr == nil
 	}
-	return server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
+	// C1：voice.start 预热 Agent 构建缓存（nil-safe：chatService 异常时返回 nil 即关闭）。
+	prewarmer := service.NewVoiceTurnPrewarmer(chatService)
+	srv := server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
+	srv.SetTurnPrewarmer(prewarmer)
+	return srv
 }
 
 // provideV2ProjectorFactory constructs the v2 ProjectorFactory that produces

@@ -182,9 +182,9 @@ func isEmojiRune(r rune) bool {
 		r >= 0x2600 && r <= 0x26FF, // 杂项符号 ☀⛅
 		r >= 0x2700 && r <= 0x27BF, // Dingbats ✅✨❤
 		r >= 0x2B00 && r <= 0x2BFF, // ⭐⭕ 等
-		r == 0xFE0F, // 变体选择符（emoji 呈现后缀）
-		r == 0x200D, // ZWJ（组合 emoji 连接符）
-		r == 0x20E3: // 键帽组合符（1️⃣ 的收尾）
+		r == 0xFE0F,                // 变体选择符（emoji 呈现后缀）
+		r == 0x200D,                // ZWJ（组合 emoji 连接符）
+		r == 0x20E3:                // 键帽组合符（1️⃣ 的收尾）
 		return true
 	}
 	return false

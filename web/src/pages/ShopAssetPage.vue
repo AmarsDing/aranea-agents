@@ -239,37 +239,46 @@ function goCreator() {
   cursor: pointer;
   color: var(--color-text-secondary);
 }
+
 .shop-asset-page__creator:hover {
   color: var(--color-accent);
 }
+
 .shop-asset-page__creator-initial {
   color: var(--color-on-accent);
   font-size: 11px;
   font-weight: 700;
 }
+
 .shop-asset-page__cta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
 }
+
 .shop-asset-page__price {
   font-size: 20px;
 }
+
 .shop-asset-page__tabs {
   border-radius: 14px;
 }
+
 .shop-asset-page__panels {
   background: transparent;
 }
+
 .shop-asset-page__md {
   font-size: 14px;
   line-height: 1.75;
 }
+
 .shop-asset-page__meta :deep(.q-item) {
   min-height: 32px;
   padding: 0;
 }
+
 .shop-asset-page__meta :deep(.q-item__section--side) {
   color: var(--color-text-secondary);
   font-size: 12px;

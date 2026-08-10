@@ -584,4 +584,60 @@ Agent 调用 client_open_app
 
 ---
 
-*文档版本：2026-08-09 v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+## 14. 语音快速通道延迟优化（2026-08-09/10，Voice Fast-Path）
+
+> 目标 SLO：用户停口（ASR 终稿）→ 首帧音频下行 ≤ ~2s。真机基线（优化前）：意图识别 3.7-26.6s、主 LLM TTFT 2.5-6.7s、BUILD 冷启动 2.6-2.7s、串行 recall 0.3-3.3s——耗时会聚在「思考默认开启 + 串行编排 + 冷启动」三处项目设计问题，非 LLM 本身慢。
+
+### 14.1 根因结论（评审 2026-08-10）
+
+| 根因 | 性质 | 数据 |
+|------|------|------|
+| deepseek 服务端默认开思考，意图分类被迫走思考段 | 项目配置问题 | 意图 3.7-26.6s；分类任务思考段对 JSON 输出无收益 |
+| 主 LLM 硬编码 `Stream=true` 且不读 catalog `thinking_disabled` | 项目设计问题 | 语音 TTFT 2.5-6.7s |
+| BUILD 与 Intent Pass、proactive recall 串行 | 项目设计问题 | recall 语音轮次 hits 恒 0，纯开销 0.3-3.3s |
+| 进程首轮 BUILD cache miss | 冷启动 | 2.6-2.7s |
+
+### 14.2 架构原则
+
+1. **SLO 优先**：先埋测量（E），一切优化以预算表日志为验收标准
+2. **语音一等公民**：语音优化逻辑集中在 `internal/voice/` + 请求级 ctx 标记，通用 chat 路径零感知
+3. **语义不变**：并行化/预热只改时序，不改行为契约；文字路径不回退
+
+### 14.3 已实现优化（P0，2026-08-10）
+
+**A. 全局纯提速（文字+语音共享，无行为变化）**
+
+- **意图识别强制关思考**（`internal/agent/intent/pass.go`）：callsite 强制 `cfg.ThinkingDisabled = true`，不依赖 catalog 行配置。意图是分类任务，思考段纯延迟
+- **BUILD + Intent Pass + proactive recall 三方并行**（`chat_orchestrator_turn.go` errgroup）：`WithProactiveHits` 在 `eg.Wait()` 后注入，MemoryInject before-model 钩子请求时读取，语义不变（happens-before 由 errgroup 保证）；BUILD 的 AwaitHook 在 Wait 后重绑 turn ctx（防 errgroup 派生 ctx 提前取消导致 await 秒败）
+
+**B. 仅语音路径（文字零影响）**
+
+- **Voice Fast-Path 关主 LLM 思考**（`internal/agent/voice_fastpath.go`）：`input.Voice != nil` 时 `WithVoiceFastPath(runCtx)` 打标（`chat_orchestrator_turn_phases.go` prepareRunContext），BeforeModel 回调（LayerDynamic, priority 4）per-request 置 `GenerationConfig.ThinkingEnabled=false`。BUILD 产物跨入口缓存共享（cache key 不含入口），思考开关只能请求级改写，不烘进构建期；planner/compress 等深度推理调用点不经此标记，规划质量不受影响。`TurnInput.Voice` 唯一赋值点在 `internal/voice/session.go`，文字路径 hook 直接透传
+- **E：首音频延迟预算测量**（`internal/voice/session.go`）：T0 = ASR 终稿派发时刻；首帧 TTS 下行消费 T0（每 Turn 只测一次）；打断复位（迟到帧不产生误导测量）。预算 `firstAudioBudget = 2.5s`，超预算 Warn（K2）+ 流程日志 `voice.tts.start` 带 `first_audio_ms`
+- **C1：voice.start 预热 Agent 构建缓存**（`internal/service/chat_voice_prewarm.go`）：voice.start 成功后后台 goroutine 触发 `VoiceTurnPrewarmer.PrewarmTurn`——与 `runNativeAgentTurnBody` 同源解析 dialogMode/provider/model 填充 `BuildTRPCAgentCached`，把首个语音 Turn 的构建冷启动移到「开麦→开口」空窗期。非阻断容错：失败仅 Warn；dictation 模式与团队会话跳过；缓存 key 同源保证预热产物被真实 Turn 命中。接线：`voice_ws.go` setter 注入（`SetTurnPrewarmer`）+ `wire.go`
+
+**C. TTS 文本清洗（上一轮，2026-08-09）**
+
+- `cleanForSpeech`（`sentence_chunker.go`）：剥离成对 markdown 强调符（`**`/`__`/`~~`/`*`/`_`）、行首标题/列表/分隔线/引用符及 emoji，防 TTS 把 `*` 读作「星星」
+
+### 14.4 待办（P1/P2）
+
+| 优先级 | 项 | 内容 |
+|--------|----|------|
+| P1 | 首句快速通道 | `firstSentenceMinRunes` 6→4，加速首句切分 |
+| P1 | C2 ASR partial 投机意图 | partial 稳定 500ms 启动意图识别；final 文本 hash 失配即丢弃投机结果走常规路径 |
+| P2 | D 工具过渡句 filler | 复用 orchestration_progress/工具事件，事件驱动一句话可打断播报，根治工具静默 |
+| P2 | L5 TTS 连接预热 | voice.start 建 TTS 长连接，消除首句握手延迟 |
+
+### 14.5 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| 投机意图不一致 | sourceHash + expiresAt；final≠partial hash 即丢弃 |
+| 预热负载放大 | singleflight 与真实 Turn 合并构建；仅 voice.start 触发，无定时器 |
+| fast-path 标记蔓延 | 标记仅 `input.Voice != nil` 注入；禁止新增 ctx flag（项目红线） |
+| 并行段 ctx 提前取消 | AwaitHook Wait 后重绑 turn ctx（已修复并回归测试） |
+
+---
+
+*文档版本：2026-08-10 v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

@@ -76,7 +76,8 @@ function send() {
   border-left: 3px solid var(--color-accent);
   background: var(--interaction-surface-hover);
 }
+
 body.body--dark .reply-dialog__quote {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 </style>

@@ -1,0 +1,95 @@
+// 深空液态玻璃设计令牌（SP2，37-knowledge.design.md §SP2-2）
+// 作用域纪律（SP2-ADR-6）：全部令牌与样式限定 .kb-workbench 根类名内，不污染全局明暗主题。
+
+.kb-workbench
+  // ── 令牌 ──────────────────────────────
+  --kb-bg-deep: #0a0e1a
+  --kb-bg-glass: rgba(16, 22, 40, 0.55)
+  --kb-bg-glass-strong: rgba(14, 19, 36, 0.78)
+  --kb-glass-border: rgba(120, 200, 255, 0.14)
+  --kb-glass-border-strong: rgba(120, 200, 255, 0.32)
+  --kb-glass-highlight: rgba(255, 255, 255, 0.08)
+  --kb-accent-cyan: #4fd8ff
+  --kb-accent-violet: #9d6bff
+  --kb-accent-cyan-dim: rgba(79, 216, 255, 0.35)
+  --kb-text-primary: #dce6f5
+  --kb-text-dim: #7a8aa5
+  --kb-danger: #ff5d7a
+  --kb-radius-glass: 14px
+  --kb-blur: 18px
+
+  position: relative
+  background: var(--kb-bg-deep)
+  color: var(--kb-text-primary)
+  overflow: hidden
+
+  // ── 极光光斑（固定定位，不参与交互）──────
+  .kb-aurora
+    position: absolute
+    border-radius: 50%
+    filter: blur(120px)
+    pointer-events: none
+    z-index: 0
+
+    &--cyan
+      width: 46vw
+      height: 46vw
+      top: -18vw
+      right: -12vw
+      background: radial-gradient(circle, rgba(79, 216, 255, 0.16) 0%, transparent 65%)
+
+    &--violet
+      width: 40vw
+      height: 40vw
+      bottom: -16vw
+      left: -10vw
+      background: radial-gradient(circle, rgba(157, 107, 255, 0.14) 0%, transparent 65%)
+
+  // ── 通用玻璃表面 ────────────────────────
+  .kb-glass
+    position: relative
+    background: var(--kb-bg-glass)
+    backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+    -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+    border: 1px solid var(--kb-glass-border)
+    border-radius: var(--kb-radius-glass)
+    box-shadow: inset 0 0 24px rgba(79, 216, 255, 0.04), 0 12px 40px rgba(2, 6, 18, 0.5)
+
+    &::before
+      content: ''
+      position: absolute
+      top: 0
+      left: 10%
+      right: 10%
+      height: 1px
+      background: linear-gradient(90deg, transparent, var(--kb-glass-highlight), transparent)
+      pointer-events: none
+
+  .kb-glass--strong
+    background: var(--kb-bg-glass-strong)
+
+  // ── 文本 ──────────────────────────────
+  .kb-text-dim
+    color: var(--kb-text-dim)
+
+  // ── 滚动条（作用域内）────────────────────
+  ::-webkit-scrollbar
+    width: 8px
+    height: 8px
+
+  ::-webkit-scrollbar-thumb
+    background: rgba(79, 216, 255, 0.18)
+    border-radius: 4px
+
+    &:hover
+      background: rgba(79, 216, 255, 0.32)
+
+  ::-webkit-scrollbar-track
+    background: transparent
+
+  // ── reduced-motion 降级：关闭全部过渡/动画 ──
+  @media (prefers-reduced-motion: reduce)
+    *, *::before, *::after
+      animation-duration: 0.001ms !important
+      animation-iteration-count: 1 !important
+      transition-duration: 0.001ms !important

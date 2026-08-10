@@ -105,7 +105,7 @@ const shapeStyle = computed(() => {
 }
 
 .ug-node__shape--triangle::before {
-  border-bottom: 40px solid currentColor;
+  border-bottom: 40px solid currentcolor;
   border-left: 23px solid transparent;
   border-right: 23px solid transparent;
   content: '';
@@ -151,7 +151,7 @@ const shapeStyle = computed(() => {
 }
 
 .ug-node__handle {
-  opacity: 0;
+  opacity: 0%;
   pointer-events: none;
 }
 </style>

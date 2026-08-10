@@ -33,6 +33,7 @@ function shotUrl(index: number): string {
 .asset-screenshots {
   overflow-x: auto;
 }
+
 .asset-screenshots__item {
   flex: none;
   width: min(360px, 72vw);
@@ -40,9 +41,11 @@ function shotUrl(index: number): string {
   overflow: hidden;
   border: 1px solid var(--glass-border);
 }
+
 .asset-screenshots__img {
   border-radius: 12px;
 }
+
 .asset-screenshots__fallback {
   color: var(--color-icon-muted);
   background: var(--glass-surface);

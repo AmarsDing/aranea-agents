@@ -91,9 +91,13 @@ func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	}
 
 	// F5：embedder 缺失或不可用（未配置）时降级 BM25 词法检索——V2 设计 embedding
-	// 为可选增强，无语义层时词法检索必须可用。
 	if r.embedder == nil {
 		return r.searchSparseFallback(ctx, q, topK, "embedder is nil", nil)
+	}
+	// §V5 降级矩阵 #3：目标集合为无语义层词法库（embedding_model 空）时直接降级
+	// BM25——chunks 无向量，dense 检索恒空。判定前置避免浪费一次查询 embed。
+	if collectionLacksSemanticLayer(ctx, r.repo, q.CollectionID) {
+		return r.searchSparseFallback(ctx, q, topK, "collection has no semantic layer", nil)
 	}
 	vec, err := r.embedQuery(ctx, q.Query)
 	if err != nil {

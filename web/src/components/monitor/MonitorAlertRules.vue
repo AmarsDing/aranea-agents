@@ -177,9 +177,11 @@ function onSave() {
 .monitor-alert-rule-item {
   border-bottom: 1px solid var(--q-color-grey-3, #e0e0e0);
 }
+
 .monitor-alert-rule-item--first {
   border-top: none;
 }
+
 .monitor-alert-rule-item:last-child {
   border-bottom: none;
 }

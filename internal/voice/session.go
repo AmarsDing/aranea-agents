@@ -19,6 +19,11 @@ import (
 // idleReclaimTimeout 是 ASR 上游空闲回收时长（设计 §2.1）。
 const idleReclaimTimeout = 10 * time.Minute
 
+// firstAudioBudget 是「ASR 终稿 → 首帧音频下行」的语音快速通道预算
+// （E，2026-08-10：停口→出声目标 ~1.7s，含编排/LLM TTFT/首句合成）。
+// 超预算不阻断，仅 Warn 提示排障（K2）。
+const firstAudioBudget = 2500 * time.Millisecond
+
 // interruptedSettleDelay 是 interrupted 过渡态自动回 listening 的延迟（设计 §5）。
 const interruptedSettleDelay = 300 * time.Millisecond
 
@@ -88,6 +93,14 @@ type ChatTurnExecutor interface {
 	ExecuteTurn(ctx context.Context, input ChatTurnInput) error
 }
 
+// Stability:evolving — Turn 预热端口（service.VoiceTurnPrewarmer 适配实现）。
+// C1（2026-08-10）：voice.start 成功后后台触发一次 Agent 构建缓存填充，
+// 消除首个语音 Turn 的构建冷启动（真机实测 cache miss 2.6-2.7s）。
+// 实现必须非阻断容错：预热失败仅记日志，不影响语音链路。
+type TurnPrewarmer interface {
+	PrewarmTurn(ctx context.Context, sessionID string)
+}
+
 // Stability:evolving — Turn 取消端口（server.RunCanceller 适配实现）。
 type RunCanceller interface {
 	CancelRun(ctx context.Context, sessionID string) bool
@@ -125,8 +138,10 @@ type SessionDeps struct {
 	Confirmer ConfirmResolver
 	// Archiver 语音留档端口（V2-T6）；nil 时关闭留档（不缓冲 PCM）。
 	Archiver AudioArchiver
-	Infra    *event.Infra
-	LG       loggateway.Logger
+	// Prewarmer Turn 预热端口（C1）；nil 时关闭预热。听写模式恒跳过。
+	Prewarmer TurnPrewarmer
+	Infra     *event.Infra
+	LG        loggateway.Logger
 }
 
 // Session 编排单条语音 WS 连接的生命周期（设计 §2.4）。
@@ -156,7 +171,8 @@ type Session struct {
 	scheduler     *TTSScheduler
 	pendingTurns  int
 	ttsStarted    bool
-	flushEnqueued bool // 当前 Turn 尾句（flush=true）是否已入队
+	turnT0        time.Time // 当前 Turn 的 T0（ASR 终稿派发时刻，E 首音频延迟测量）；首帧/取消时复位
+	flushEnqueued bool      // 当前 Turn 尾句（flush=true）是否已入队
 	turnSeq       int
 	eventStarted  bool
 	unsub         func()
@@ -214,6 +230,15 @@ func (s *Session) Start(p StartParams) {
 	}
 	if !s.dictation() {
 		s.startEventLoop() // 听写模式无 TTS 播报，不订阅事件总线
+		// C1 预热：后台填充 Agent 构建缓存，首个语音 Turn 免去冷启动。
+		// 与 Turn 派发一致：预热存活独立于连接（appctx），传播 userID。
+		if pw := s.deps.Prewarmer; pw != nil {
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				pw.PrewarmTurn(ctxuser.WithUserID(appctx.Ctx(), s.userID), s.sessionID)
+			}()
+		}
 	}
 	s.resetIdleTimer()
 	s.flow.LogStart("voice.session.start", "语音会话开始", event.P("mode", p.Mode))
@@ -316,6 +341,7 @@ func (s *Session) Cancel(reason string) {
 	s.chunker = nil
 	s.scheduler = nil
 	s.ttsStarted = false
+	s.turnT0 = time.Time{} // E：打断后迟到的音频帧不产生误导性延迟测量
 	s.mu.Unlock()
 	if sch != nil {
 		sch.Cancel()
@@ -478,6 +504,7 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	s.pendingTurns++
 	s.flushEnqueued = false
 	s.turnSeq++
+	s.turnT0 = time.Now() // E：首音频延迟测量 T0（首帧下行时消费）
 	turnID := s.turnSeq
 	params := s.params
 	driver := s.asrDriver
@@ -849,10 +876,30 @@ func (s *Session) onTTSAudio(pcm []byte) {
 	if first {
 		s.ttsStarted = true
 	}
+	t0 := s.turnT0
+	if first {
+		s.turnT0 = time.Time{} // 消费 T0：每个 Turn 只测一次首音频延迟
+	}
 	s.mu.Unlock()
 	if first {
 		_ = s.down.SendJSON(map[string]any{"type": "tts.start", "encoding": "pcm_f32le_16k", "sample_rate": 16000})
-		s.flow.LogDone("voice.tts.start", "语音播报开始")
+		// E：首音频延迟（ASR 终稿 → 首帧下行），超预算 Warn（K2）。
+		if !t0.IsZero() {
+			ms := time.Since(t0).Milliseconds()
+			s.flow.LogDone("voice.tts.start", "语音播报开始", event.P("first_audio_ms", ms))
+			if time.Duration(ms)*time.Millisecond > firstAudioBudget {
+				s.lg.Warn("voice turn first audio over budget",
+					loggateway.StepID("voice.turn.first_audio"),
+					loggateway.Any("first_audio_ms", ms),
+					loggateway.Any("budget_ms", firstAudioBudget.Milliseconds()))
+			} else {
+				s.lg.Info("voice turn first audio",
+					loggateway.StepID("voice.turn.first_audio"),
+					loggateway.Any("first_audio_ms", ms))
+			}
+		} else {
+			s.flow.LogDone("voice.tts.start", "语音播报开始")
+		}
 		if err := s.transition(EvFirstTTSAudio); err == nil {
 			s.broadcastState()
 		}

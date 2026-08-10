@@ -53,32 +53,40 @@ function kindIcon(kind: string): string {
   flex-direction: column;
   gap: 10px;
 }
+
 .permission-list__kind {
   font-size: 13px;
 }
+
 .permission-list__value {
   color: var(--color-text-secondary);
   font-family: monospace;
 }
+
 .permission-list__icon--low {
   color: var(--color-success);
 }
+
 .permission-list__icon--medium {
   color: var(--color-warning);
 }
+
 .permission-list__icon--high {
   color: var(--color-danger);
 }
+
 .permission-list__risk--low {
-  background: rgba(76, 175, 124, 0.15);
+  background: rgb(76 175 124 / 15%);
   color: var(--color-success);
 }
+
 .permission-list__risk--medium {
-  background: rgba(240, 155, 84, 0.15);
+  background: rgb(240 155 84 / 15%);
   color: var(--color-warning);
 }
+
 .permission-list__risk--high {
-  background: rgba(229, 92, 92, 0.15);
+  background: rgb(229 92 92 / 15%);
   color: var(--color-danger);
 }
 </style>

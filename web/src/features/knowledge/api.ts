@@ -291,10 +291,11 @@ function mapBlockBacklink(raw: unknown): BlockBacklink {
 
 /** listBlockBacklinks 列出文档的块级反向链接（SP1-E：按文档聚合所有块的入边）。
  *  生成客户端只实现主绑定 blocks/{block_id} 路径（block_id 必填），doc 级聚合走
- *  additional_binding GET /v1/knowledge/documents/{doc_id}/block-backlinks 直连。 */
+ *  additional_binding GET /v1/knowledge/documents/{doc_id}/block-backlinks 直连。
+ *  注意：kratosApi.get 裸调返回 AxiosResponse，载荷在 .data（requestHandler 才解包）。 */
 export async function listBlockBacklinks(docId: string): Promise<BlockBacklink[]> {
   const res = asRecord(
-    await kratosApi.get(`/v1/knowledge/documents/${encodeURIComponent(docId)}/block-backlinks`),
+    (await kratosApi.get(`/v1/knowledge/documents/${encodeURIComponent(docId)}/block-backlinks`)).data,
   );
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapBlockBacklink) : [];

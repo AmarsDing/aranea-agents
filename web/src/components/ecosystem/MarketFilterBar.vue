@@ -97,9 +97,11 @@ const sortOptions = computed(() => SORT_KEYS.map((s) => ({ value: s, label: t(`s
   padding-bottom: 2px;
   scrollbar-width: none;
 }
+
 .market-filter-bar__chips::-webkit-scrollbar {
   display: none;
 }
+
 .market-filter-bar__chip {
   flex: none;
   border-radius: 999px;
@@ -111,19 +113,23 @@ const sortOptions = computed(() => SORT_KEYS.map((s) => ({ value: s, label: t(`s
     background 0.15s ease,
     color 0.15s ease;
 }
+
 .market-filter-bar__chip:hover {
   color: var(--color-text-primary);
   background: var(--interaction-surface-hover);
 }
+
 body.body--dark .market-filter-bar__chip:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
+
 .market-filter-bar__chip--active,
 .market-filter-bar__chip--active:hover {
   background: var(--color-accent);
   color: var(--color-on-accent);
   border-color: var(--color-accent);
 }
+
 .market-filter-bar__select {
   min-width: 130px;
 }

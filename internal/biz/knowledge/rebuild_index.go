@@ -69,12 +69,22 @@ func (u *Usecase) RebuildCollectionBlockIndex(ctx context.Context, collectionID 
 		}
 		res.Total = total
 		for _, doc := range docs {
-			// 全量重建不改源文本（allowBackfill=false）：重建是索引修复，惰性锚点
-			// 回填留给写路径触发，避免批量回填改写用户文档。
-			if err := u.rebuildBlockIndex(ctx, collectionID, doc.ID, doc.ContentText, visible, false); err != nil {
+			// ListDocuments 是摘要投影（SELECT 不含 content_text）：必须逐文档
+			// GetDocument 取回正文再重建——2026-08-09 运行时事故：直接传
+			// doc.ContentText（恒空）解析出 0 块 0 边，ReplaceDocBlocks 删了
+			// 重插成空，全库索引被静默清空。
+			full, gerr := u.documents.GetDocument(ctx, doc.ID)
+			switch {
+			case gerr != nil:
 				res.Failed++
-			} else {
-				res.Done++
+			default:
+				// 全量重建不改源文本（allowBackfill=false）：重建是索引修复，
+				// 惰性锚点回填留给写路径触发，避免批量回填改写用户文档。
+				if err := u.rebuildBlockIndex(ctx, collectionID, doc.ID, full.ContentText, visible, false); err != nil {
+					res.Failed++
+				} else {
+					res.Done++
+				}
 			}
 			if onProgress != nil {
 				onProgress(res.Done, res.Total, res.Failed)

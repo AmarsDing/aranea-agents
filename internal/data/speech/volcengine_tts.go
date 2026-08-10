@@ -93,9 +93,9 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 			"text":    text,
 			"speaker": s.sc.Voice,
 			"audio_params": map[string]any{
-				"format":       "pcm",
-				"sample_rate":  s.sc.SampleRate,
-				"speech_rate":  volcTTSSpeechRate(s.sc.SpeedRatio),
+				"format":      "pcm",
+				"sample_rate": s.sc.SampleRate,
+				"speech_rate": volcTTSSpeechRate(s.sc.SpeedRatio),
 			},
 		},
 	}

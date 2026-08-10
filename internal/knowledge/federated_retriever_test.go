@@ -123,10 +123,16 @@ func (stubAllEmbedder) EmbedSingle(_ context.Context, _ string) ([]float32, erro
 	return []float32{0.1, 0.2, 0.3}, nil
 }
 
-// stubAllRepo 内嵌接口只为满足 biz.KnowledgeRepo；SearchAll 路径只会调用 SearchChunks。
+// stubAllRepo 内嵌接口只为满足 biz.KnowledgeRepo；SearchAll 路径调用 SearchChunks
+// 与 GetCollection（无语义层判定）。
 type stubAllRepo struct {
 	biz.KnowledgeRepo
 	searchedCollections []string
+}
+
+func (s *stubAllRepo) GetCollection(context.Context, string) (biz.KnowledgeCollection, error) {
+	// 语义库：dense 路径。
+	return biz.KnowledgeCollection{EmbeddingModel: "m", Dim: 3}, nil
 }
 
 func (s *stubAllRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {

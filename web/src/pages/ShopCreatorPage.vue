@@ -123,27 +123,32 @@ onMounted(async () => {
 
 <style scoped>
 .shop-creator-page__avatar {
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
 }
+
 .shop-creator-page__initial {
   color: var(--color-on-accent);
   font-size: 30px;
   font-weight: 800;
 }
+
 .shop-creator-page__stat {
   text-align: center;
   padding: 12px;
   border-radius: 12px;
   background: var(--interaction-surface-hover);
 }
+
 body.body--dark .shop-creator-page__stat {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgb(255 255 255 / 5%);
 }
+
 .shop-creator-page__stat-value {
   font-size: 22px;
   font-weight: 800;
   color: var(--color-text-primary);
 }
+
 .shop-creator-page__stat-label {
   color: var(--color-text-secondary);
   margin-top: 2px;

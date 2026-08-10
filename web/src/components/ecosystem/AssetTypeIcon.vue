@@ -27,6 +27,6 @@ const avatarStyle = computed(() => ({
 <style scoped>
 .asset-type-icon {
   flex: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
 }
 </style>

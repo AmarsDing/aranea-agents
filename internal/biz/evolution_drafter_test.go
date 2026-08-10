@@ -92,7 +92,9 @@ type draftAgentReader struct {
 	files []biz.AgentPromptFile
 }
 
-func (r *draftAgentReader) GetAgentByID(context.Context, string) (biz.Agent, error) { return r.agent, nil }
+func (r *draftAgentReader) GetAgentByID(context.Context, string) (biz.Agent, error) {
+	return r.agent, nil
+}
 func (r *draftAgentReader) ListAgentPromptFiles(context.Context, string) ([]biz.AgentPromptFile, error) {
 	return r.files, nil
 }
@@ -242,9 +244,9 @@ func TestEvolutionDrafter_ThrottleSkipsRecentAttempt(t *testing.T) {
 
 func TestEvolutionDrafter_SkipsNonDraftableRows(t *testing.T) {
 	store := &draftStore{}
-	store.add("skill", "")                       // skill 类型不生成
-	store.add("orchestration_optimization", "")  // 编排通知不生成
-	store.add("persona", "已有 payload 不再生成") // 已就绪
+	store.add("skill", "")                      // skill 类型不生成
+	store.add("orchestration_optimization", "") // 编排通知不生成
+	store.add("persona", "已有 payload 不再生成")     // 已就绪
 	agents := &draftAgentReader{agent: biz.Agent{ID: "agent-1", Provider: "openai", Model: "gpt-x"}}
 	llm := &draftLLM{resp: "x"}
 	d := newDrafter(store, agents, llm, 0)

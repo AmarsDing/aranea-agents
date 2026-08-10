@@ -128,6 +128,7 @@ function formatLatency(v?: number): string {
   cursor: pointer;
   border-radius: 4px;
 }
+
 .runner-metrics__drill:hover .text-h5 {
   text-decoration: underline;
   text-underline-offset: 4px;

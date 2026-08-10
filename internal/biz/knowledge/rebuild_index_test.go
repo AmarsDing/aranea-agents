@@ -12,6 +12,8 @@ import (
 
 // rebuildFixture 装配含 docs 的集合 + 记录型块索引。返回 rebuild 调用所需句柄。
 // 解析候选由 docs 派生（rel_path = 文档 ID），模拟 DB 镜像最终一致视图。
+// 投影分层与真实 repo 对齐（2026-08-09 事故后修正）：docListFn 返回摘要
+// （剥掉 ContentText），docGetFn 才返回含正文的完整文档。
 func rebuildFixture(docs ...Document) (*Usecase, *mockRepo, *memBlockIndex) {
 	repo := noOpMockRepo()
 	repo.collGetFn = func(_ context.Context, id string) (Collection, error) {
@@ -28,7 +30,21 @@ func rebuildFixture(docs ...Document) (*Usecase, *mockRepo, *memBlockIndex) {
 		if end > len(docs) {
 			end = len(docs)
 		}
-		return docs[offset:end], len(docs), nil
+		// 摘要投影：真实 ListDocuments 不 SELECT content_text。
+		page := make([]Document, 0, end-offset)
+		for _, d := range docs[offset:end] {
+			d.ContentText = ""
+			page = append(page, d)
+		}
+		return page, len(docs), nil
+	}
+	repo.docGetFn = func(_ context.Context, id string) (Document, error) {
+		for _, d := range docs {
+			if d.ID == id {
+				return d, nil
+			}
+		}
+		return Document{}, apierror.NotFound("KNOWLEDGE", "doc not found: %s", id)
 	}
 	idx := newMemBlockIndex(func() []ResolveDocCandidate {
 		out := make([]ResolveDocCandidate, 0, len(docs))
@@ -175,6 +191,43 @@ func TestRebuildCollectionBlockIndex_VisibleHoisted(t *testing.T) {
 	}
 	if listCalls != 1 {
 		t.Errorf("ListCollections 调用 %d 次, want 1（可见集整批提升）", listCalls)
+	}
+}
+
+// TestRebuildCollectionBlockIndex_LoadsContentViaGetDocument 回归（2026-08-09
+// 运行时事故）：真实 ListDocuments 是摘要投影（SELECT 不含 content_text），
+// 重建若直接用摘要的 ContentText（恒空）会把全库索引"删了重插成空"。
+// 契约：重建必须逐文档 GetDocument 取回正文。
+func TestRebuildCollectionBlockIndex_LoadsContentViaGetDocument(t *testing.T) {
+	summaries := []Document{
+		{ID: "d1", CollectionID: "c1"}, // 摘要投影：无 ContentText（模拟真实 repo）
+		{ID: "d2", CollectionID: "c1"},
+	}
+	u, repo, idx := rebuildFixture(summaries...)
+	full := map[string]string{
+		"d1": "# A\n\n[[d2]]\n",
+		"d2": "# B\n\n[[d1#A]]\n",
+	}
+	repo.docGetFn = func(_ context.Context, id string) (Document, error) {
+		body, ok := full[id]
+		if !ok {
+			return Document{}, apierror.NotFound("KNOWLEDGE", "doc not found: %s", id)
+		}
+		return Document{ID: id, CollectionID: "c1", ContentText: body}, nil
+	}
+	res, err := u.RebuildCollectionBlockIndex(context.Background(), "c1", nil)
+	if err != nil {
+		t.Fatalf("RebuildCollectionBlockIndex: %v", err)
+	}
+	if res.Done != 2 || res.Failed != 0 {
+		t.Errorf("res = %+v, want done=2 failed=0", res)
+	}
+	// 边必须真实产出（空 body 时此处为 0 条——事故特征）。
+	if len(idx.refs["d1"]) != 1 || idx.refs["d1"][0].DstDocID != "d2" {
+		t.Errorf("refs[d1] = %+v, want 1 edge → d2", idx.refs["d1"])
+	}
+	if len(idx.refs["d2"]) != 1 || idx.refs["d2"][0].DstDocID != "d1" {
+		t.Errorf("refs[d2] = %+v, want 1 edge → d1", idx.refs["d2"])
 	}
 }
 

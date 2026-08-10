@@ -778,7 +778,7 @@ const failureOnError = computed({
 <style scoped>
 .team-editor--readonly {
   pointer-events: none;
-  opacity: 0.72;
+  opacity: 72%;
 }
 
 .team-editor-spirit-banner {

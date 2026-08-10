@@ -82,6 +82,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newPromptSnapshotBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	// Voice Fast-Path：语音轮次 per-request 关思考（ctx 标记驱动，与入口无关的
+	// 缓存 BUILD 产物共享安全）。无条件注册——非语音轮次仅一次 ctx 读。
+	entries = append(entries, newVoiceFastPathBeforeHook())
 	// Problem 6: inject a reply reminder after each tool call so the LLM
 	// outputs a brief "已完成 + 下一步" reply before calling the next tool.
 	// BeforeModel hook reads state set by the AfterTool hook.

@@ -14,13 +14,20 @@ import (
 type stubKnowledgeRepo struct {
 	lastLimit int
 	chunks    []biz.KnowledgeChunk
+	// collection 显式指定 GetCollection 返回值；零值时默认返回语义库
+	// （EmbeddingModel="m"），保持既有 dense 路径用例的前提。无语义层
+	// 词法库用例须显式设置 collection（EmbeddingModel 留空）。
+	collection biz.KnowledgeCollection
 }
 
 func (s *stubKnowledgeRepo) CreateCollection(context.Context, biz.KnowledgeCollection) (biz.KnowledgeCollection, error) {
 	return biz.KnowledgeCollection{}, nil
 }
 func (s *stubKnowledgeRepo) GetCollection(context.Context, string) (biz.KnowledgeCollection, error) {
-	return biz.KnowledgeCollection{}, nil
+	if s.collection.ID != "" {
+		return s.collection, nil
+	}
+	return biz.KnowledgeCollection{ID: "col", EmbeddingModel: "m", Dim: 3}, nil
 }
 func (s *stubKnowledgeRepo) ListCollections(context.Context, string, int, int) ([]biz.KnowledgeCollection, int, error) {
 	return nil, 0, nil

@@ -138,7 +138,7 @@ func TestCleanForSpeechMarkdownEmphasis(t *testing.T) {
 		{"__粗体__ 与 *斜体* 与 _斜体_", "粗体 与 斜体 与 斜体"},
 		{"~~已删除~~事项", "已删除事项"},
 		{"get_user_name 保留", "get_user_name 保留"}, // snake_case 标识符不被下划线规则误伤
-		{"3*4 不配对星号", "3*4 不配对星号"},          // 非配对单星号不误删内容
+		{"3*4 不配对星号", "3*4 不配对星号"},               // 非配对单星号不误删内容
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.want, cleanForSpeech(tc.in), "input: %q", tc.in)

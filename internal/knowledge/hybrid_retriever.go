@@ -84,6 +84,13 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 		return h.searchSparse(ctx, q, topK)
 	}
 
+	// §V5 降级矩阵 #3：目标集合为无语义层词法库（embedding_model 空）时直接降级
+	// BM25——chunks 无向量，dense/RRF 密集侧恒空。判定前置避免浪费一次查询 embed。
+	if collectionLacksSemanticLayer(ctx, h.dense, q.CollectionID) {
+		h.logSparseFallback(q, "collection has no semantic layer", nil)
+		return h.searchSparse(ctx, q, topK)
+	}
+
 	effectiveMode := mode
 	if effectiveMode == HybridAuto {
 		effectiveMode = h.selectMode(q)

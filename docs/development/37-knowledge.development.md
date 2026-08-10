@@ -6,6 +6,8 @@
 > **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 G-2 ✅、治理前端 G-1 ✅、全量静态验证与浏览器运行时复验 G-4 ✅——含复验发现的标签可见性修复；性能基准 G-3 📋）。
 > **2026-08-08 新增**：§子模块 双模块级知识内核（SP1）Phase 计划（SP1-A~SP1-I）——双模统一架构经评审通过（用户裁决：块级双链完整粒度；批准落档三件套），S1~S11 设计已合入设计文档，待启动实施。
 > **2026-08-08 深入评审**：[SP1 三件套评审报告](../reports/2026-08-08-review-sp1-knowledge-blueprint.md)——B-1~B-4 阻断项修订全部合入下列任务；G1~G8 前瞻提案全部采纳，产品路线扩展为 SP1~SP7（见 SP1 节末预告表）。
+> **2026-08-10 检索链路事故根修（TDD，全绿）**：① **向量维度对账**——`EnsureKnowledgeSchema` 尾部新增 `reconcileEmbeddingDim`（`data/knowledge.go`）：embedder 换模型后 PG 列 typmod 不随 `CREATE TABLE IF NOT EXISTS` 修正，新维度插入全被拒（"expected N dimensions"）而应用层按 `collections.dim` 校验反过，语义检索全灭极难定位；对账幂等四步（向量置 NULL + 文档 hash 重置回 pending + 语义层集合 dim 快照同步 + ALTER 列重建 ivfflat），vault 文档下轮 sync 自愈，UX验证库已愈合复验；② **无语义层集合前置降级**（§V5 降级矩阵 #3 落地）——`collectionLacksSemanticLayer`（`search_helpers.go`）判定 `embedding_model` 空时 Retriever/HybridRetriever 直接降级 BM25，消除 dense 恒空静默；③ **中文短查询词法失效根修**——trigram 路 `similarity(content,q)`+`%` 对 2-4 字中文查询相似度稀释永低于阈值，改 `word_similarity(q,content)`+`%>`（`data/knowledge.go`）；新增 `knowledge_dim_reconcile_test.go` + `TestKnowledgeRepo_SearchChunksBM25_ChineseShortQuery` 等回归。详见设计文档 §4.2 维度对账 / §4.3 trigram 选型注 / §5.4、§5.6 降级注。
+> **2026-08-10 新增**：§子模块 编辑器与笔记体验（SP2）Phase 计划（SP2-1~SP2-9）——用户裁决：Obsidian 级笔记能力、UI 推翻 Tab 管理后台为深空液态玻璃工作台、编辑器选型 CodeMirror 6 Live Preview、A1+A2 一轮交付、纯前端重构后端零改动；设计已合入 [37-knowledge.design.md §SP2](./37-knowledge.design.md#sp2-编辑器与笔记体验深空液态玻璃工作台2026-08-10)。
 > **需求**：[37-knowledge.md](./37-knowledge.md) · **设计**：[37-knowledge.design.md](./37-knowledge.design.md)
 
 ---
@@ -1219,6 +1221,8 @@ G5-F（后端治理，独立可并行）─────────────�
 > - **对 S9 的 as-built 偏差**：回填锚点 ID 直接复用目标块 ID（`^<uuid7>`），不另建锚→块映射——库内唯一由 `knowledge_blocks` 部分唯一索引保证，与设计「块 ID 即锚文本」语义一致。
 > - **测试**：blockparse 8 用例（基本回填/幂等/重复标题取首/ATX 闭合符/Setext/frontmatter 保留/未命中/空 heading）；biz——backfill 4 用例（team 落锚+幂等/不级联/best-effort 失败不阻塞/local CAS+镜像同步）+ Resolver 回填请求 5 用例（远端未锚产请求/已锚跳过/显式锚跳过/自文档未锚/(doc,path) 去重）+ `TestRebuildCollectionBlockIndex_NoBackfill`（全量重建不改源文本）；端到端 `TestVaultSync_AnchorBackfill_LocalEndToEnd`（A 引用 B 未锚标题 → B 文件落锚 + 镜像 hash 同步 + chunks 不重建 + 块索引锚定 + A 重解析边愈合到锚块 ID + 幂等稳定锚点不漂移）。
 >
+> **2026-08-09 事故根修（H-1 补丁）**：`RebuildCollectionBlockIndex` 误用 `ListDocuments` 摘要投影（SELECT 不含 `content_text`）当正文源——重建解析恒 0 块 0 边，`ReplaceDocBlocks` 删旧插空，**全库块索引静默清空**（UX 验证时发现反链全丢）。修复：分页仅取 ID，逐文档 `GetDocument` 回源完整正文再重建；`rebuildFixture` 改为「list 投影无正文 + docGetFn 回源」防 mock 假绿，新增 `TestRebuildCollectionBlockIndex_LoadsContentViaGetDocument` 回归。
+>
 > 验证：独立 GOCACHE `go build ./cmd/... ./internal/... ./pkg/...` ✅；`go test ./internal/biz/knowledge/... ./internal/knowledge/... -count=1` ✅ 全绿；`go test ./internal/service/ -run "TestKnowledge|TestPromote|TestRebuild"` ✅；`go vet` 全净。
 
 ### SP1-I：前端
@@ -1262,9 +1266,56 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 
 | # | 子项目 | 关键任务域 | 依赖 | 状态 |
 |---|--------|-----------|------|------|
-| SP2 | 编辑器与笔记体验 | TipTap/BlockSuite（MIT）+ 自研 wikilink 扩展；Live Preview；反链面板；**显式跨库链接语法在此定案**（B-1 遗留） | SP1 | 待立项 |
+| SP2 | 编辑器与笔记体验 | CodeMirror 6 Live Preview + 自研 wikilink 扩展；反链面板；深空液态玻璃工作台（2026-08-10 用户裁决定稿） | SP1 | **已立项（2026-08-10）→ 见下文 §子模块：编辑器与笔记体验（SP2）Phase 计划** |
 | SP3 | 图谱 2.0 | sigma.js 2D + three.js 3D（复用 G5-C v2 GPU 纹理管线）；Worker FA2；Obsidian 四区控制台；局部图谱；**时间轴回放**（消费 G4 valid_from/to） | SP1 | 待立项 |
 | SP4 | 多模态摄取管线 | 文本代理路线（Whisper ASR + 关键帧 OCR + 场景描述，时间戳回链原片）；Office（docconv/excelize/pdfium 思路）；模态分库 + 查询路由（G5） | SP1 | 待立项 |
 | SP5 | 双模权限与成熟度 | 片段级权限（Collaborative Memory 模型）；成熟度状态机（草稿→共享→精炼→规范，AS-FSM-01 显式建模）；AI 去私人化 super note 综合（G3） | SP1 | 待立项 |
 | SP6 | AI 知识伙伴 | 写入即自动链接/标签建议（Notemd 式批量限流）；会话决策点主动唤回（复用 BeforeModel 钩子）；摄入即综合（交叉引用 + 矛盾检测）（G6） | SP1 | 待立项 |
 | **SP7（新）** | 知识-记忆同基底 + 写回飞轮 | 记忆 L3/L4 投影为 agent vault 块（G1）；会话/TeamRun → LLM 抽取 → 团队库（验证门 + provenance，G2）；专家定位聚合（G7）；知识健康度指标（G8） | SP1+SP5 | 待立项 |
+
+---
+
+## 子模块：编辑器与笔记体验（SP2）Phase 计划
+
+> **状态**：🟡 实施中（2026-08-10 立项） | **需求**：US-24~US-30 / FR-SP2-1~10（[37-knowledge.md](./37-knowledge.md#子模块编辑器与笔记体验sp2-需求2026-08-10)） | **设计**：[37-knowledge.design.md §SP2](./37-knowledge.design.md#sp2-编辑器与笔记体验深空液态玻璃工作台2026-08-10)（SP2-1~SP2-11）
+> **用户裁决（2026-08-10）**：Obsidian 级笔记能力；UI 推翻 Tab 管理后台；编辑器 CodeMirror 6 Live Preview；A1+A2 一轮交付；深空液态玻璃视觉全套。
+> **范围纪律**：纯前端重构，**后端零改动**；全部数据复用既有 `features/knowledge/api.ts`。
+
+### 代码锚点（目标态）
+
+| 路径 | 说明 |
+|------|------|
+| `web/src/css/deep-space.sass` | 深空液态玻璃设计令牌（`.kb-workbench` 作用域隔离） |
+| `web/src/features/knowledge/useKnowledgeWorkbench.ts` | 工作台状态机（tabs/激活/脏标记/CAS 保存） |
+| `web/src/features/knowledge/{wikilink,outline,frontmatter,commands}.ts` | 纯函数层（可单测） |
+| `web/src/components/knowledge/effects/*` | GlassPanel / ParticleField / TiltCard / GlowButton / RingCarousel |
+| `web/src/components/knowledge/workbench/*` | KnowledgeWorkbench / TopBar / Tabs / NoteEditor / QuickSwitcher / CommandPalette |
+| `web/src/components/knowledge/panels/*` | PanelBacklinks / Outlinks / Outline / Properties / LocalGraph |
+| `web/src/pages/KnowledgePage.vue` | 重写为薄壳 |
+
+### Phase 划分
+
+| Phase | 内容 | 关联契约 | 状态 |
+|-------|------|---------|------|
+| SP2-1 | 视觉令牌 + 5 特效组件 | 设计 §SP2-2/§SP2-3；FR-SP2-9/10 | ✅（2026-08-10：deep-space.sass + Glass/Particle/Tilt/Glow/Ring + useReducedMotion；9 测试绿 + eslint/stylelint 干净） |
+| SP2-2 | `useKnowledgeWorkbench` 状态机（TDD：tabs 开闭/去重激活/脏标记/CAS 冲突/删除联动） | 设计 §SP2-4；FR-SP2-2 | 📋 |
+| SP2-3 | Workbench 骨架 + TopBar + 三栏装配（树复用换肤、空态占位） | 设计 §SP2-1；FR-SP2-1 | 📋 |
+| SP2-4 | CM6 编辑器：高亮 + 深空主题 + 保存接线 → Live Preview 行级装饰 → `[[` 补全 + 芯片 + 跳链 | 设计 §SP2-5/§SP2-6；FR-SP2-3/4；验收 31/32 | 📋 |
+| SP2-5 | 右栏五面板（反链/出链/大纲/属性/局部图谱）联动 | 设计 §SP2-8；FR-SP2-7；验收 30/35 | 📋 |
+| SP2-6 | ⌘O 快速切换 + ⌘K 命令面板 + 全局快捷键 | 设计 §SP2-7；FR-SP2-5/6；验收 33 | 📋 |
+| SP2-7 | 新建笔记/文件夹双入口 + 空态 RingCarousel | 设计 §SP2-3/§SP2-7；FR-SP2-8；验收 34 | 📋 |
+| SP2-8 | KnowledgePage 重写接入 + 图谱全屏覆盖 + 设置浮层 + 旧组件退役清理 | 设计 §SP2-9/§SP2-11；验收 36 | 📋 |
+| SP2-9 | i18n + `pnpm lint/test/build` 全绿 + 浏览器运行时复验 + review | 验收 37/38 | 📋 |
+
+### 实施红线
+
+1. **TDD**：状态机与纯函数层（wikilink/outline/frontmatter/命令过滤）先写失败测试再实现；组件级以 smoke 测试兜底
+2. **视觉令牌作用域隔离**：深空样式一律限定 `.kb-workbench` 根类名下，禁止污染全局 Quasar 明暗主题（SP2-ADR-6）
+3. **降级契约**：`prefers-reduced-motion` 全动效关闭 + 粒子按设备分级（FR-SP2-10），每个特效组件自带降级分支
+4. **CAS 语义不变**：保存复用 `updateDocumentContent` 既有冲突行为（留双份 + 警告），禁止引入自动保存（SP2-ADR-3）
+5. **退役组件处理**：KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual 在 SP2-8 验收前保留文件，验收后删除并全局 grep 清理引用（R4）
+6. **小步快跑**：每 Phase 独立可验证（lint+test 绿），一次只改一个明确问题（R5）
+
+### 验收标准（SP2 映射）
+
+对应需求文档验收 30~38：三栏联动与标签页（30）、Live Preview + CAS（31）、wikilink 写作（32）、⌘O/⌘K 键盘全可操作（33）、新建双入口（34）、局部图谱联动（35）、图谱全屏 + 设置浮层（36）、视觉全套 + reduced-motion（37）、lint/test/build 全绿 + 运行时复验（38）。

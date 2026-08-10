@@ -211,6 +211,7 @@ onMounted(async () => {
 .shop-me-page__tabs {
   border-radius: 14px;
 }
+
 .shop-me-page__panels {
   background: transparent;
 }

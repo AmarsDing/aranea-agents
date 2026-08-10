@@ -134,10 +134,11 @@ function importanceStars(value: number): number {
 @keyframes episode-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 100%;
   }
+
   50% {
-    opacity: 0.55;
+    opacity: 55%;
   }
 }
 </style>

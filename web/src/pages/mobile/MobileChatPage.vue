@@ -212,7 +212,7 @@ function onDesktopOnly() {
 <style scoped>
 .mobile-chat-page__topbar {
   min-height: 44px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgb(0 0 0 / 8%);
 }
 
 .mobile-chat-page :deep(.chat-mid-card) {

@@ -50,10 +50,12 @@ const emit = defineEmits<{
 .market-leaderboard {
   border-radius: 14px;
 }
+
 .market-leaderboard__item {
   border-radius: 8px;
   min-height: 44px;
 }
+
 .market-leaderboard__rank {
   width: 20px;
   font-weight: 800;
@@ -62,15 +64,19 @@ const emit = defineEmits<{
   justify-content: center;
   font-style: italic;
 }
+
 .market-leaderboard__rank--1 {
   color: #e9a23b;
 }
+
 .market-leaderboard__rank--2 {
   color: #b8a590;
 }
+
 .market-leaderboard__rank--3 {
   color: #cd7f32;
 }
+
 .market-leaderboard__metric {
   color: var(--color-text-secondary);
   font-weight: 600;

@@ -356,16 +356,19 @@ onMounted(async () => {
 .shop-publish-page__wizard {
   border-radius: 14px;
 }
+
 .shop-publish-page__readme-preview {
   min-height: 220px;
   max-height: 400px;
   overflow-y: auto;
   border-color: var(--glass-border);
 }
+
 .shop-publish-page__summary {
   border-color: var(--glass-border);
   border-radius: 12px;
 }
+
 .shop-publish-page__summary-table td:first-child {
   color: var(--color-text-secondary);
   width: 40%;

@@ -181,6 +181,22 @@
 
 > V7 版本编号说明：V6 已被「语音听写」占用（Phase V6），HUD TwinSprite 复刻顺延为 V7；代码注释同步标注「V7 TwinSprite 复刻」。
 
+### Phase V8 — 语音快速通道延迟优化 P0（2026-08-10）✅
+
+目标 SLO：停口（ASR 终稿）→ 首帧音频 ≤ ~2s。根因评审结论：耗时全部来自项目设计（思考默认开启 + 串行编排 + 冷启动），非 LLM 本身慢（设计 §14.1）。路线约束：语音优化收敛于 voice 包 + 请求级 ctx 标记，文字输入路径零行为变化（全局项仅纯提速）。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V8-T1 | **意图识别强制关思考**（全局）：`intent/pass.go` callsite 强制 `ThinkingDisabled=true`（分类任务思考段无收益，实测 3.7-26.6s 纯延迟），不依赖 catalog 行配置 | ✅ | `pass_thinking_test.go` 断言请求体 thinking disabled；`go test ./internal/agent/intent/` 全绿 |
+| V8-T2 | **主 LLM 思考开关读取 catalog**（全局）：`trpc_build.go` 从 catalog `thinking_disabled` 注入 `GenerationConfig.ThinkingEnabled`，解除硬编码 `Stream=true` 不读配置 | ✅ | `go build ./...` 干净；llmcompat 单测全绿 |
+| V8-T3 | **BUILD + Intent Pass + recall 三方并行**（全局）：`chat_orchestrator_turn.go` errgroup 化；recall 从串行段移入并行（语音轮次 hits 恒 0，纯开销 0.3-3.3s）；`WithProactiveHits` Wait 后注入语义不变；AwaitHook Wait 后重绑 turn ctx（防 errgroup 派生 ctx 提前取消致 await 秒败） | ✅ | service 全包测试通过（仅 models.dev 网络恒败 2 例，环境受限）；`chat.build_intent_parallel` 计时日志 |
+| V8-T4 | **Voice Fast-Path**（仅语音）：`internal/agent/voice_fastpath.go` ctx 标记 + BeforeModel hook（LayerDynamic priority 4）per-request 关主 LLM thinking；`prepareRunContext` 仅 `input.Voice != nil` 打标（唯一赋值点 voice/session.go），文字路径透传 | ✅ | `voice_fastpath_test.go` 4 例（打标关思考/无标记透传/空 args 安全/hook 注册）；agent 包全绿 |
+| V8-T5 | **E：首音频延迟预算测量**（仅语音）：`session.go` T0=ASR 终稿派发、首帧下行消费（每 Turn 一次）、打断复位；预算 2.5s 超预算 Warn（K2）+ `voice.tts.start` 流程日志带 `first_audio_ms` | ✅ | `session_prewarm_test.go` T0 记录/消费/打断复位用例；voice 包全绿（含 -race） |
+| V8-T6 | **C1：voice.start 预热构建缓存**（仅语音）：`chat_voice_prewarm.go` VoiceTurnPrewarmer 与 Turn 同源解析 dialogMode/provider/model 填充 BuildTRPCAgentCached（实测 cache miss 2.6-2.7s 移至开麦空窗）；非阻断容错、dictation/团队会话跳过；voice_ws setter + wire 接线 | ✅ | `chat_voice_prewarm_test.go`（nil 安全/会话缺失/团队跳过）+ `session_prewarm_test.go` 触发与 dictation 跳过用例；service/voice/server 全绿 |
+| V8-T7 | 全量验证 + 三件套同步 | ✅ | 2026-08-10：`go build ./...` 干净；voice/agent/server/service 测试全绿（仅 3 例 models.dev 网络恒败，环境受限已知项）；`make lint` 0 违规 + fmtcheck OK；设计 §14 落档 |
+
+> **V8 P1/P2 待办**（设计 §14.4）：首句快速通道（firstSentenceMinRunes 6→4）、C2 ASR partial 投机意图（500ms 稳定 + hash 复用）、D 工具过渡句 filler（P2）、L5 TTS 连接预热（P2）。
+
 ## 5. 总验收标准
 
 1. 需求文档 §3 验收总览 13 项按 Phase 逐项达标

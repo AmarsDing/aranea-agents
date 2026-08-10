@@ -103,6 +103,7 @@ watch(
   gap: 2px;
   font-size: 13px;
 }
+
 .category-tree button {
   display: flex;
   align-items: center;
@@ -120,42 +121,52 @@ watch(
     background 0.15s ease,
     color 0.15s ease;
 }
+
 .category-tree button:hover {
   background: var(--interaction-surface-hover);
   color: var(--color-text-primary);
 }
+
 body.body--dark .category-tree button:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
+
 .category-tree__all {
   padding: 8px 10px;
   font-weight: 600;
 }
+
 .category-tree__l1 {
   padding: 8px 10px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
+
 .category-tree__l1-icon {
   color: var(--color-icon-muted);
 }
+
 .category-tree__children {
   padding-left: 10px;
 }
+
 .category-tree__l2 {
   padding: 6px 10px;
   font-weight: 500;
 }
+
 .category-tree__leaves {
   padding-left: 14px;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
+
 .category-tree__l3 {
   padding: 5px 10px;
   font-size: 12px;
 }
+
 .category-tree__item--active,
 .category-tree__item--active:hover {
   background: var(--color-accent);

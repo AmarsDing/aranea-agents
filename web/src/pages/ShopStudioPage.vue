@@ -257,17 +257,21 @@ onMounted(async () => {
 .shop-studio-page__tabs {
   border-radius: 14px;
 }
+
 .shop-studio-page__panels {
   background: transparent;
 }
+
 .shop-studio-page__inbox-item {
   padding: 12px 0;
   border-bottom: 1px solid var(--glass-border);
 }
+
 .shop-studio-page__inbox-avatar {
   font-size: 11px;
   font-weight: 700;
 }
+
 .shop-studio-page__inbox-content {
   font-size: 13px;
   line-height: 1.6;

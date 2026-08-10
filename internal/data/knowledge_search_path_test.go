@@ -158,3 +158,43 @@ func TestKnowledgeRepo_SearchChunksBM25_PathPrefix(t *testing.T) {
 	}
 	assertChunkIDs(t, got, "k4")
 }
+
+// ── 2026-08-10 e2e 事故根修：中文短查询词法降级失效 ─────────────────────────
+// similarity(q, content) 的分母是双方 trigram 总数：中文 2-4 字短查询对长文档
+// 相似度被稀释到 0.3 阈值以下（实测 "斑马线"=0.064），`%` 永不命中，无语义层
+// 集合的词法降级路径对中文实质不可用。
+// 修复：换 `word_similarity`（查询 vs 文本连续区间最大相似度，操作符 `%>`），
+// 中文子串处相似度 ≥ 0.6 阈值命中。
+func TestKnowledgeRepo_SearchChunksBM25_ChineseShortQuery(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	ctx := context.Background()
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "czh", Name: "zh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateDocument(ctx, biz.KnowledgeDocument{
+		ID: "dz1", CollectionID: "czh", Source: "zh.md", Status: "indexed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 无语义层集合的 chunk 无向量（R-4），词法路径是唯一检索手段。
+	if err := repo.InsertChunks(ctx, []biz.KnowledgeChunk{{
+		ID: "kzh1", DocID: "dz1", CollectionID: "czh",
+		Content: "# 词法降级验证\n\nObsidian 双链语法与回链面板。BM25 词法检索专用文档，斑马线和卷帘门。",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, q := range []string{"斑马线", "词法", "Obsidian"} {
+		got, err := repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{CollectionID: "czh", Query: q, TopK: 5})
+		if err != nil {
+			t.Fatalf("query %q: %v", q, err)
+		}
+		assertChunkIDs(t, got, "kzh1")
+	}
+	// 不存在的词不得误中。
+	got, err := repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{CollectionID: "czh", Query: "不存在的词语xx", TopK: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got)
+}

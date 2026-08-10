@@ -33,22 +33,27 @@ function starClass(i: number): string {
   gap: 1px;
   line-height: 1;
 }
+
 .rating-stars__star--lit {
   color: #e9a23b;
 }
+
 body.body--dark .rating-stars__star--lit {
   color: #ffcf6e;
 }
+
 .rating-stars__star--dim {
   color: var(--color-icon-muted);
-  opacity: 0.6;
+  opacity: 60%;
 }
+
 .rating-stars__value {
   margin-left: 4px;
   font-weight: 600;
   font-size: 12px;
   color: var(--color-text-primary);
 }
+
 .rating-stars__count {
   margin-left: 2px;
   font-size: 11px;

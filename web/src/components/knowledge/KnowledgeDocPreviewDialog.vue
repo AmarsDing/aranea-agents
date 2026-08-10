@@ -59,6 +59,7 @@ const rendered = computed(() => md.render(props.content));
   display: flex;
   flex-direction: column;
 }
+
 .knowledge-doc-preview__md {
   font-size: 13px;
   line-height: 1.7;

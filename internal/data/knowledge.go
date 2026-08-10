@@ -58,7 +58,8 @@ var (
 )
 
 // EnsureKnowledgeSchema creates the knowledge tables and indexes when they do not exist.
-func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
+// lg 可选（启动脚本式函数的务实妥协：测试零值 Noop，生产传 Gateway 记录对账事件）。
+func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -185,6 +186,67 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			return fmt.Errorf("knowledge schema: %w", err)
 		}
 	}
+	var logger loggateway.Logger
+	if len(lg) > 0 {
+		logger = lg[0]
+	}
+	return reconcileEmbeddingDim(ctx, db, dim, logger)
+}
+
+// reconcileEmbeddingDim 向量维度对账（2026-08-10 "expected N dimensions" 事故根修）：
+// knowledge_chunks.embedding 的列类型在首次建表时固定为当时的 embedder 维度；
+// embedder 换模型（维度变化）后 CREATE TABLE IF NOT EXISTS 不会修正列类型，
+// 新维度向量插入全部被 PG 拒绝——而应用层按 knowledge_collections.dim 的校验
+// 反而通过，错误只在 SQL 层爆炸，极难定位。
+//
+// 对账策略（幂等；维度一致时零动作）：
+//  1. 旧维度向量对新 embedder 无检索意义 → 全部置 NULL 作废；
+//  2. 受影响文档 content_hash 清空 + status 回 pending——vault 文档下轮 sync
+//     自动重嵌入自愈；UI 上传文档（rel_path 空）无 sync 循环，Warn 日志提示
+//     需人工重传（ReindexDocument 出口属能力缺口提案）；
+//  3. 有语义层集合的 dim 快照同步为新维度——系统是单全局 embedder，集合 dim
+//     只是创建时快照；向量已作废后不同步 = 应用层校验永远拒绝新插入（死库）。
+//     embedding_model 名不动（Ensure 拿不到模型名，且仅作展示）；
+//  4. ALTER 列类型 + 重建 ivfflat 索引（lists 随新维度重算；先 DROP 再 ALTER，
+//     避免 PG 级联重建沿用旧 lists 参数）。
+func reconcileEmbeddingDim(ctx context.Context, db *sql.DB, dim int, lg loggateway.Logger) error {
+	if dim <= 0 {
+		return nil
+	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	var cur int
+	if err := db.QueryRowContext(ctx, `
+		SELECT a.atttypmod FROM pg_attribute a
+		WHERE a.attrelid = 'knowledge_chunks'::regclass AND a.attname = 'embedding'`).Scan(&cur); err != nil {
+		return fmt.Errorf("knowledge dim reconcile: read embedding typmod: %w", err)
+	}
+	if cur == dim {
+		return nil
+	}
+	stmts := []string{
+		`DROP INDEX IF EXISTS knowledge_chunks_embedding_idx`,
+		`UPDATE knowledge_chunks SET embedding = NULL WHERE embedding IS NOT NULL`,
+		`UPDATE knowledge_documents SET content_hash = '', status = 'pending', updated_at = NOW()
+			WHERE content_hash <> '' AND id IN (SELECT DISTINCT doc_id FROM knowledge_chunks)`,
+		fmt.Sprintf(`UPDATE knowledge_collections SET dim = %d, updated_at = NOW()
+			WHERE embedding_model <> '' AND dim <> %d`, dim, dim),
+		fmt.Sprintf(`ALTER TABLE knowledge_chunks ALTER COLUMN embedding TYPE vector(%d)`, dim),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
+			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = %d)`, ivfflatLists(dim)),
+	}
+	for _, s := range stmts {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			return fmt.Errorf("knowledge dim reconcile %d→%d: %w", cur, dim, err)
+		}
+	}
+	var affected int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM knowledge_documents WHERE status = 'pending'`).Scan(&affected)
+	// Error 级：对账作废了存量向量，运维必须感知（K3 降级/数据愈合节点）。
+	lg.Error("knowledge embedding dimension reconciled; stale embeddings voided, affected documents reset for re-embed",
+		loggateway.StepID("data.schema.knowledge_dim_reconcile"),
+		loggateway.Int("from_dim", cur), loggateway.Int("to_dim", dim), loggateway.Int("pending_docs", affected))
 	return nil
 }
 
@@ -645,6 +707,7 @@ SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
        (1 - (embedding <=> $1::vector)) AS score
 FROM knowledge_chunks
 WHERE collection_id = $2
+  AND embedding IS NOT NULL
   %s
 ORDER BY embedding <=> $1::vector
 LIMIT $3`, clauses)
@@ -717,12 +780,16 @@ LIMIT $%d`, extraClauses, 3+len(extraArgs))
 }
 
 func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
+	// word_similarity($1, content)：查询 trigram 集 vs 文本连续区间的最大相似度
+	// （2026-08-10 根修）。旧实现 similarity(content, $1) + `%` 对中文短查询失效——
+	// 分母含长文本全部 trigram，2-4 字查询相似度被稀释到 0.3 阈值以下永不命中。
+	// `%>` 是 `<%` 的交换操作符（doc %> query ≡ query <% doc），gin_trgm_ops 索引支持。
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
-       similarity(content, $1) AS score
+       word_similarity($1, content) AS score
 FROM knowledge_chunks
 WHERE collection_id = $2
-  AND content %% $1
+  AND content %%> $1
   %s
 ORDER BY score DESC
 LIMIT $%d`, extraClauses, 3+len(extraArgs))

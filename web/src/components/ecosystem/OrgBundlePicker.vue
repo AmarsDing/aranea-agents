@@ -124,11 +124,13 @@ function nodeColor(node: TreeNode): string {
   max-height: 420px;
   overflow-y: auto;
 }
+
 .org-bundle-picker__summary {
   position: sticky;
   top: 76px;
   border-radius: 12px;
 }
+
 .org-bundle-picker__preview {
   max-height: 240px;
   overflow-y: auto;

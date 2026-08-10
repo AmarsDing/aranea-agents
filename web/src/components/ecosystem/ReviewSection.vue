@@ -125,38 +125,46 @@ function submit() {
   line-height: 1;
   color: var(--color-text-primary);
 }
+
 .review-section__dist-row {
   margin-bottom: 3px;
 }
+
 .review-section__dist-label {
   width: 24px;
   text-align: right;
   color: var(--color-text-secondary);
 }
+
 .review-section__dist-count {
   width: 32px;
 }
+
 .review-section__item {
   padding: 14px 0;
   border-top: 1px solid var(--glass-border);
 }
+
 .review-section__avatar {
   font-size: 12px;
   font-weight: 700;
 }
+
 .review-section__content {
   font-size: 14px;
   line-height: 1.65;
   color: var(--color-text-primary);
   padding-left: 40px;
 }
+
 .review-section__reply {
   margin: 10px 0 0 40px;
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--interaction-surface-hover);
 }
+
 body.body--dark .review-section__reply {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
 </style>

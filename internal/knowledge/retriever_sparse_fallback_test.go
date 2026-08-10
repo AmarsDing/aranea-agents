@@ -134,3 +134,71 @@ func TestHybridRetriever_Search_EmbedUnavailable_RRFFallsBack(t *testing.T) {
 		t.Fatalf("expected rrf→sparse fallback, bm25Called=%v out=%+v", repo.bm25Called, out)
 	}
 }
+
+// §V5 降级矩阵 #3：无语义层词法库（collection.embedding_model 空）即便全局
+// embedder 可用也必须直接降级 BM25——chunks 无向量，dense 检索恒空且用户无感知
+// （2026-08-10 运行时事故：UX验证库未绑 embedding_model，搜索静默返回空）。
+
+func TestRetriever_Search_SparseFallback_LexicalCollection(t *testing.T) {
+	repo := &stubSparseRepo{bm25Chunks: []biz.KnowledgeChunk{{ID: "c1", Content: "lexical hit"}}}
+	repo.collection = biz.KnowledgeCollection{ID: "col-lex"} // EmbeddingModel 空 = 无语义层
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+
+	out, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{CollectionID: "col-lex", Query: "q", TopK: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !repo.bm25Called {
+		t.Fatal("lexical collection must route to BM25 fallback")
+	}
+	if repo.lastLimit != 0 {
+		t.Fatalf("dense SearchChunks must not run for lexical collection, lastLimit=%d", repo.lastLimit)
+	}
+	if len(out) != 1 || out[0].ID != "c1" {
+		t.Fatalf("unexpected chunks: %+v", out)
+	}
+}
+
+func TestRetriever_Search_SemanticCollection_DenseUnaffected(t *testing.T) {
+	// 对照组：语义库（embedding_model 已绑定）保持 dense 路径，不受降级判定影响。
+	repo := &stubSparseRepo{bm25Chunks: []biz.KnowledgeChunk{{ID: "c1"}}}
+	repo.collection = biz.KnowledgeCollection{ID: "col-sem", EmbeddingModel: "m", Dim: 3}
+	repo.chunks = []biz.KnowledgeChunk{{ID: "dense-1"}}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+
+	out, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{CollectionID: "col-sem", Query: "q", TopK: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.bm25Called {
+		t.Fatal("semantic collection must not degrade to BM25")
+	}
+	if len(out) != 1 || out[0].ID != "dense-1" {
+		t.Fatalf("unexpected chunks: %+v", out)
+	}
+}
+
+func TestHybridRetriever_Search_LexicalCollection_SparseFallback(t *testing.T) {
+	repo := &stubSparseRepo{bm25Chunks: []biz.KnowledgeChunk{{ID: "s1"}}}
+	repo.collection = biz.KnowledgeCollection{ID: "col-lex"} // 无语义层
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	h := NewHybridRetriever(ret, repo, loggateway.NewNoop())
+
+	for _, mode := range []HybridSearchMode{HybridDense, HybridAuto, HybridRRF} {
+		repo.bm25Called = false
+		repo.lastLimit = 0
+		out, err := h.Search(context.Background(), biz.KnowledgeSearchQuery{CollectionID: "col-lex", Query: "q", TopK: 5}, mode)
+		if err != nil {
+			t.Fatalf("mode %s: unexpected error: %v", mode, err)
+		}
+		if !repo.bm25Called {
+			t.Fatalf("mode %s: lexical collection must route to BM25", mode)
+		}
+		if repo.lastLimit != 0 {
+			t.Fatalf("mode %s: dense SearchChunks must not run for lexical collection", mode)
+		}
+		if len(out) != 1 || out[0].ID != "s1" {
+			t.Fatalf("mode %s: unexpected chunks: %+v", mode, out)
+		}
+	}
+}

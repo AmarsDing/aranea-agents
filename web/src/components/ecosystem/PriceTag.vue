@@ -28,13 +28,16 @@ const formatted = computed(() => formatCents(props.priceCents));
   font-size: 14px;
   white-space: nowrap;
 }
+
 .price-tag--free {
   color: var(--color-success);
 }
+
 .price-tag--one_time,
 .price-tag--subscription {
   color: var(--color-text-primary);
 }
+
 .price-tag--enterprise {
   color: var(--color-accent);
   font-size: 12px;

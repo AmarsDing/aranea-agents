@@ -891,7 +891,7 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 		lg.Error("pgvector build tag not set; MEMORY VECTOR SEARCH DISABLED — rebuild/run with `-tags pgvector` (read/write degraded to ErrMemoryUnavailable)",
 			loggateway.StepID("data.schema.pgvector"))
 	}
-	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim); err != nil {
+	if err := EnsureKnowledgeSchema(ctxPG, pg, vdim, lg); err != nil {
 		if isPgvectorExtensionError(err) {
 			lg.Warn("knowledge schema skipped; pgvector extension unavailable",
 				loggateway.StepID("data.schema.knowledge"), loggateway.Err(err))

@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
@@ -41,7 +42,9 @@ func (s *KnowledgeService) RebuildKnowledgeIndex(ctx context.Context, req *v1.Re
 	flow.LogStart("knowledge.rebuild_index", "知识块索引重建",
 		event.P("collection_id", col.ID))
 
-	bgCtx := appctx.Ctx()
+	// 后台重建需跨 workspace 取文档正文（biz 逐文档 GetDocument，带 workspace
+	// 过滤）：系统工作区旁路，避免非 default 集合重建时逐文档 NotFound。
+	bgCtx := workspace.WithSystemWorkspace(appctx.Ctx())
 	safego.Go(bgCtx, "knowledge.rebuild_index."+col.ID, func() {
 		defer s.rebuildRuns.Delete(col.ID)
 		s.publishKnowledgeRebuild(col.ID, "rebuilding", 0, 0, 0, "")

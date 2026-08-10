@@ -54,30 +54,37 @@ const { t } = useI18n();
     background 0.15s ease,
     transform 0.15s ease;
 }
+
 .publish-type-select__card:hover {
   background: var(--interaction-surface-hover);
   transform: translateY(-1px);
 }
+
 body.body--dark .publish-type-select__card:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
 }
+
 .publish-type-select__card--active {
   border-color: var(--color-accent);
   background: var(--interaction-surface-hover);
 }
+
 body.body--dark .publish-type-select__card--active {
-  background: rgba(0, 229, 255, 0.08);
+  background: rgb(0 229 255 / 8%);
   box-shadow: 0 0 0 1px var(--color-accent);
 }
+
 .publish-type-select__label {
   font-weight: 600;
   font-size: 13px;
   color: var(--color-text-primary);
 }
+
 .publish-type-select__desc {
   color: var(--color-text-secondary);
   line-height: 1.4;
 }
+
 .publish-type-select__check {
   position: absolute;
   top: 8px;

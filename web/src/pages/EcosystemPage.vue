@@ -182,9 +182,11 @@ const {
 .shop-browse-page__hero-search {
   margin-top: 18px;
 }
+
 .shop-browse-page__search {
   width: min(560px, 100%);
 }
+
 .shop-browse-page__side {
   position: sticky;
   top: 76px;
@@ -192,7 +194,8 @@ const {
   overflow-y: auto;
   border-radius: 14px;
 }
-@media (max-width: 1023px) {
+
+@media (width <= 1023px) {
   .shop-browse-page__side {
     position: static;
     max-height: none;

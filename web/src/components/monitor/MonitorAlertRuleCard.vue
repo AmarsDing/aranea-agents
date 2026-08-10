@@ -186,15 +186,19 @@ function onMetricChange(key: string) {
   border-left: 3px solid transparent;
   transition: border-color 0.2s ease;
 }
+
 .monitor-alert-rule-row--info {
   border-left-color: var(--q-info);
 }
+
 .monitor-alert-rule-row--warning {
   border-left-color: var(--q-warning);
 }
+
 .monitor-alert-rule-row--critical {
   border-left-color: var(--q-negative);
 }
+
 .monitor-alert-metric-help {
   background: var(--color-status-info-bg-alt);
 }

@@ -454,6 +454,11 @@ func (o *ChatOrchestrator) prepareRunContext(
 	deps chatagent.TRPCBuilderDeps,
 ) context.Context {
 	runCtx := serviceawaitreply.WithReplyFunc(ctx, deps.AwaitHook)
+	// Voice Fast-Path（2026-08-09）：语音轮次打标 → BeforeModel 回调 per-request
+	// 关 thinking（见 internal/agent/voice_fastpath.go）。
+	if input.Voice != nil {
+		runCtx = chatagent.WithVoiceFastPath(runCtx)
+	}
 	runCtx = o.injectA2AContext(runCtx, ag.ID)
 	if o.rt().KnowledgeRetriever != nil {
 		runCtx = knowledgetool.WithRetriever(runCtx, o.rt().KnowledgeRetriever)

@@ -596,60 +596,74 @@ function onExportFlow() {
   padding: 0 16px 8px;
   border-bottom: none;
 }
+
 .monitor-traces-filters {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 0 16px 10px;
 }
+
 .monitor-traces-filters__label {
   min-width: 32px;
   font-size: 12px;
   color: var(--color-text-secondary);
 }
+
 .monitor-traces-chip-count {
   margin-left: 4px;
   font-size: 11px;
-  opacity: 0.65;
+  opacity: 65%;
 }
+
 .monitor-traces-live-pill {
   padding: 4px 8px;
 }
+
 .live-dot {
   animation: trace-live-pulse 1.6s ease-in-out infinite;
 }
+
 @keyframes trace-live-pulse {
   0%,
   100% {
-    opacity: 1;
+    opacity: 100%;
   }
+
   50% {
-    opacity: 0.3;
+    opacity: 30%;
   }
 }
+
 .monitor-traces-table :deep(tbody tr) {
   cursor: pointer;
 }
+
 .trace-name-cell {
   max-width: 20ch;
 }
+
 .text-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
+
 .monitor-traces-empty {
   color: var(--color-text-secondary);
 }
+
 .monitor-trace-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 24px;
   font-size: 13px;
 }
+
 .monitor-trace-meta__label {
   color: var(--color-text-secondary);
   margin-right: 4px;
 }
+
 .monitor-trace-meta__sub {
   color: var(--color-text-secondary);
   margin-left: 4px;

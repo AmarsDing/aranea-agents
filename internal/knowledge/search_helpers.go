@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -46,4 +47,24 @@ func SearchWithEvaluation(ctx context.Context, searcher ChunkSearcher, assessor 
 		return chunks, nil
 	}
 	return MergeSearchResults(chunks, supChunks, q.TopK), nil
+}
+
+// collectionLacksSemanticLayer 判定目标集合是否为「无语义层词法库」
+// （embedding_model 留空，R-4 契约：空 = 无语义层）。§V5 降级矩阵 #3：
+// 无语义层 Vault 的检索必须自动降级 L0+L1 词法检索——chunks 无向量，
+// dense 路径对 NULL embedding 排序恒空，静默返回空结果且用户无感知
+// （2026-08-10 运行时事故）。
+//
+// GetCollection 失败（如集合不存在）时返回 false：保持原路径，
+// 由 SearchChunks 产生原有错误语义。collectionID 为空（federated 逐集合
+// 分发前）同样返回 false——调用方保证逐集合设置后再检索。
+func collectionLacksSemanticLayer(ctx context.Context, repo biz.KnowledgeRepo, collectionID string) bool {
+	if repo == nil || collectionID == "" {
+		return false
+	}
+	col, err := repo.GetCollection(ctx, collectionID)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(col.EmbeddingModel) == ""
 }

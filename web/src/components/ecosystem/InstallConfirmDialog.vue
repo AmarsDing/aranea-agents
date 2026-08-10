@@ -58,10 +58,11 @@ const hasHighRisk = computed(() => props.asset.permissions.some((p) => p.risk ==
   width: min(560px, 92vw);
   max-width: 92vw;
 }
+
 .install-confirm__warning {
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(240, 155, 84, 0.12);
+  background: rgb(240 155 84 / 12%);
   color: var(--color-warning);
 }
 </style>
