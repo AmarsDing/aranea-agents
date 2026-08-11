@@ -1,7 +1,7 @@
 <template>
   <!-- 液态玻璃模态框架（SP2 §SP2-7）：遮罩 blur + 居中 GlassPanel；⌘O/⌘K 两浮层共用 -->
   <div class="kb-palette-overlay" @mousedown.self="$emit('close')">
-    <GlassPanel strong class="kb-palette" role="dialog" :aria-label="title">
+    <GlassPanel strong :refract="refract" class="kb-palette" role="dialog" :aria-label="title">
       <div class="kb-palette__input-row">
         <q-icon :name="icon" size="18px" class="kb-palette__input-icon" />
         <input
@@ -32,6 +32,8 @@ const props = defineProps<{
   icon: string;
   placeholder: string;
   query: string;
+  /** M1：背景真折射（backdrop-filter: url(#kb-liquid-bg)；不支持时普通 blur 兜底） */
+  refract?: boolean;
 }>();
 
 defineEmits<{

@@ -6,6 +6,7 @@
     icon="search"
     :placeholder="t('knowledgePage.workbench.search.placeholder')"
     :query="query"
+    refract
     @close="close"
     @update:query="$emit('update:query', $event)"
     @keydown="onKeydown"

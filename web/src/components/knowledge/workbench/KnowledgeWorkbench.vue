@@ -1,5 +1,7 @@
 <template>
   <div class="kb-workbench">
+    <!-- M1：液态玻璃 SVG 滤镜单例（kb-liquid-refract 光纹 / kb-liquid-bg 真折射），全 Workbench 共享 -->
+    <LiquidGlassDefs />
     <!-- 深空背景：粒子 + 极光光斑（不参与交互） -->
     <ParticleField class="kb-workbench__particles" />
     <div class="kb-workbench__aurora kb-workbench__aurora--cyan" />
@@ -155,6 +157,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import ParticleField from '../effects/ParticleField.vue';
+import LiquidGlassDefs from '../effects/LiquidGlassDefs.vue';
 import GlassPanel from '../effects/GlassPanel.vue';
 import WorkbenchTopBar from './WorkbenchTopBar.vue';
 import WorkbenchSidebar from './WorkbenchSidebar.vue';
