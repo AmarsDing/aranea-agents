@@ -97,6 +97,63 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	}
 }
 
+// TestToolRepo_ToolAgentOverride_BoolScanRegression is a regression test for
+// scanToolAgentOverrides scanning Postgres boolean columns into int variables.
+// With any override row present, every override list query failed with:
+//
+//	sql: Scan error on column index 4: converting driver.Value type bool ("true") to a int
+//
+// surfacing as a 500 on both the agent override list API and the build-time
+// confirm-gate snapshot (fail-closed: all tools forced to require confirmation).
+// The test upserts an override and exercises both list paths.
+func TestToolRepo_ToolAgentOverride_BoolScanRegression(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newToolTestRepo(t)
+
+	tool, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key:         "web_fetch",
+		DisplayName: "Web Fetch",
+		Category:    "network",
+		Source:      "builtin",
+		RiskLevel:   "low",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTool: %v", err)
+	}
+
+	saved, err := repo.UpsertToolAgentOverride(ctx, biz.ToolAgentOverrideInput{
+		ToolKey:              tool.Key,
+		AgentID:              "agent_1",
+		Enabled:              true,
+		Mode:                 "allow",
+		ConfigOverrideJSON:   `{"timeout": 5}`,
+		RequiresConfirmation: true,
+	}, tool.ID)
+	if err != nil {
+		t.Fatalf("UpsertToolAgentOverride: %v", err)
+	}
+	if !saved.Enabled || !saved.RequiresConfirmation || saved.Mode != "allow" {
+		t.Fatalf("upsert round-trip mismatch: %+v", saved)
+	}
+
+	byAgent, err := repo.ListToolAgentOverridesByAgent(ctx, "agent_1")
+	if err != nil {
+		t.Fatalf("ListToolAgentOverridesByAgent: %v", err)
+	}
+	if len(byAgent) != 1 || !byAgent[0].Enabled || !byAgent[0].RequiresConfirmation {
+		t.Fatalf("by-agent list mismatch: %+v", byAgent)
+	}
+
+	byTool, err := repo.ListToolAgentOverrides(ctx, tool.Key)
+	if err != nil {
+		t.Fatalf("ListToolAgentOverrides: %v", err)
+	}
+	if len(byTool) != 1 || byTool[0].AgentID != "agent_1" {
+		t.Fatalf("by-tool list mismatch: %+v", byTool)
+	}
+}
+
 // TestToolRepo_SearchTools_LatestInvocationDedup is a regression test for
 // duplicate tool rows produced by toolSelectSQL's `last` subquery: when a tool
 // has multiple invocations sharing the same MAX(started_at), the inner join
@@ -143,6 +200,76 @@ func TestToolRepo_SearchTools_LatestInvocationDedup(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("tool row count = %d, want 1 (tied latest invocations must not duplicate tool rows)", count)
+	}
+}
+
+// TestToolRepo_ListToolCatalogEntries_Batch verifies the lightweight batch
+// catalog query used at agent-build time: a single IN query over the tools
+// table returning only (key, config_json, default_config_json,
+// requires_confirmation), excluding soft-deleted rows and unknown keys.
+// This replaces the previous per-key GetTool monster-SQL loop (N+1).
+func TestToolRepo_ListToolCatalogEntries_Batch(t *testing.T) {
+	ctx := context.Background()
+	repo, _ := newToolTestRepo(t)
+
+	if _, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key: "cat_a", DisplayName: "Cat A", Category: "c", Source: "builtin", RiskLevel: "low", Enabled: true,
+		ConfigJSON: `{"ua":"x"}`, DefaultConfigJSON: `{"ua":"d"}`, RequiresConfirmation: true,
+	}); err != nil {
+		t.Fatalf("CreateTool cat_a: %v", err)
+	}
+	if _, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key: "cat_b", DisplayName: "Cat B", Category: "c", Source: "builtin", RiskLevel: "low", Enabled: true,
+		DefaultConfigJSON: `{"max":10}`,
+	}); err != nil {
+		t.Fatalf("CreateTool cat_b: %v", err)
+	}
+	deleted, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key: "cat_c", DisplayName: "Cat C", Category: "c", Source: "builtin", RiskLevel: "low", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTool cat_c: %v", err)
+	}
+	if err := repo.DeleteTool(ctx, deleted.ID); err != nil {
+		t.Fatalf("DeleteTool cat_c: %v", err)
+	}
+
+	entries, err := repo.ListToolCatalogEntries(ctx, []string{"cat_a", "cat_b", "cat_c", "cat_missing", "cat_a"})
+	if err != nil {
+		t.Fatalf("ListToolCatalogEntries: %v", err)
+	}
+	byKey := make(map[string]biz.ToolCatalogEntry, len(entries))
+	for _, e := range entries {
+		if _, dup := byKey[e.Key]; dup {
+			t.Fatalf("duplicate row for key %q", e.Key)
+		}
+		byKey[e.Key] = e
+	}
+	if len(byKey) != 2 {
+		t.Fatalf("entries = %d, want 2 (deleted+missing excluded): %+v", len(byKey), entries)
+	}
+	if a := byKey["cat_a"]; a.ConfigJSON != `{"ua":"x"}` || a.DefaultConfigJSON != `{"ua":"d"}` || !a.RequiresConfirmation {
+		t.Errorf("cat_a = %+v", a)
+	}
+	// CreateTool normalizes empty config_json to "{}", matching what GetTool
+	// would have returned to the old per-key loop.
+	if b := byKey["cat_b"]; b.ConfigJSON != "{}" || b.DefaultConfigJSON != `{"max":10}` || b.RequiresConfirmation {
+		t.Errorf("cat_b = %+v", b)
+	}
+}
+
+// TestToolRepo_ListToolCatalogEntries_EmptyKeys verifies the empty-input
+// short-circuit: no query is executed and no error is returned.
+func TestToolRepo_ListToolCatalogEntries_EmptyKeys(t *testing.T) {
+	repo, _ := newToolTestRepo(t)
+	for _, keys := range [][]string{nil, {}, {"  ", ""}} {
+		entries, err := repo.ListToolCatalogEntries(context.Background(), keys)
+		if err != nil {
+			t.Fatalf("keys=%q err=%v", keys, err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("keys=%q entries=%+v, want empty", keys, entries)
+		}
 	}
 }
 

@@ -262,6 +262,49 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 	return items[0], nil
 }
 
+// ListToolCatalogEntries batch-loads lightweight build-time catalog rows in a
+// single IN query. It deliberately avoids toolSelectSQL's aggregation joins
+// (stats/p95/overrides/last), which made per-key GetTool loops cost ~49ms per
+// tool. Callers must treat absent keys as "unknown" (fail-soft for runtime
+// configs, fail-closed for the confirmation gate).
+func (r *toolRepo) ListToolCatalogEntries(ctx context.Context, keys []string) ([]biz.ToolCatalogEntry, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	client := r.data.RW().Read(ctx)
+	if client == nil {
+		return nil, apierror.Internal("TOOL", "ent client unavailable")
+	}
+	where := `t.deleted_at = '' AND t.tool_key IN (` + strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",") + `)`
+	args := make([]any, 0, len(keys)+2)
+	for _, k := range keys {
+		args = append(args, k)
+	}
+	// C-25: shared-or-own workspace filter, matching GetTool.
+	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
+		where += ` AND t.workspace_id IN (?, ?)`
+		args = append(args, ids[0], ids[1])
+	}
+	q := `SELECT t.tool_key, t.config_json, t.default_config_json, t.requires_confirmation FROM tools t WHERE ` + where
+	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TOOL")
+	}
+	defer rows.Close()
+	var out []biz.ToolCatalogEntry
+	for rows.Next() {
+		var e biz.ToolCatalogEntry
+		if err := rows.Scan(&e.Key, &e.ConfigJSON, &e.DefaultConfigJSON, &e.RequiresConfirmation); err != nil {
+			return nil, entErrToBizErr(err, "TOOL")
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "TOOL")
+	}
+	return out, nil
+}
+
 func applyBuiltinToolDefaults(in *biz.ToolUpsertInput) {
 	if strings.TrimSpace(in.Key) == "" {
 		return
@@ -699,13 +742,9 @@ func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 	var result []biz.ToolAgentOverride
 	for rows.Next() {
 		var o biz.ToolAgentOverride
-		var enabled int
-		var reqConfirm int
-		if err := rows.Scan(&o.ID, &o.ToolID, &o.ToolKey, &o.AgentID, &enabled, &o.Mode, &o.ConfigOverrideJSON, &reqConfirm, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.ToolID, &o.ToolKey, &o.AgentID, &o.Enabled, &o.Mode, &o.ConfigOverrideJSON, &o.RequiresConfirmation, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, entErrToBizErr(err, "TOOL")
 		}
-		o.Enabled = enabled != 0
-		o.RequiresConfirmation = reqConfirm != 0
 		result = append(result, o)
 	}
 	return result, entErrToBizErr(rows.Err(), "TOOL")

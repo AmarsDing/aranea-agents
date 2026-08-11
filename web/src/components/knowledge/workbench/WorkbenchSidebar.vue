@@ -19,16 +19,47 @@
       />
     </GlassPanel>
 
-    <!-- 当前目录文件列表（点击打开为工作台 tab） -->
+    <!-- 当前目录文件列表（点击打开为工作台 tab；SP2-8：行操作菜单 + 拖拽移动） -->
     <GlassPanel :title="t('knowledgePage.workbench.filesTitle')" icon="description" flush class="kb-sidebar__files">
-      <div v-if="files.length" class="kb-sidebar__file-list">
-        <button
+      <template #header-actions>
+        <q-btn
+          flat
+          dense
+          round
+          size="xs"
+          icon="note_add"
+          class="kb-sidebar__new"
+          :title="t('knowledgePage.workbench.commands.new-note')"
+          @click="$emit('new-note')"
+        />
+        <q-btn
+          flat
+          dense
+          round
+          size="xs"
+          icon="create_new_folder"
+          class="kb-sidebar__new"
+          :title="t('knowledgePage.workbench.commands.new-folder')"
+          @click="$emit('new-folder')"
+        />
+      </template>
+      <div
+        v-if="files.length"
+        class="kb-sidebar__file-list"
+        :class="{ 'kb-sidebar__file-list--drop': dropHover }"
+        @dragover="onListDragOver"
+        @dragleave="onListDragLeave"
+        @drop="onListDrop"
+      >
+        <div
           v-for="f in files"
           :key="f.doc_id || f.path"
-          type="button"
           class="kb-sidebar__file"
           :class="{ 'kb-sidebar__file--active': f.doc_id === activeDocId }"
+          draggable="true"
           @click="$emit('open-file', f)"
+          @dragstart="onFileDragStart(f, $event)"
+          @dragend="$emit('file-drag-end')"
         >
           <q-icon :name="iconOf(f)" size="16px" class="kb-sidebar__file-icon" />
           <span class="kb-sidebar__file-name ellipsis" :title="f.name">{{ f.name }}</span>
@@ -39,25 +70,58 @@
             class="kb-sidebar__file-err"
             :title="f.error_message"
           />
-        </button>
+          <q-btn
+            flat
+            dense
+            round
+            size="xs"
+            icon="more_vert"
+            class="kb-sidebar__file-menu"
+            :aria-label="t('knowledgePage.workbench.fileMenuAria')"
+            @click.stop
+          >
+            <q-menu auto-close content-class="kb-portal">
+              <q-list dense class="kb-sidebar__menu">
+                <q-item clickable @click="$emit('file-action', 'move', f)">
+                  <q-item-section avatar><q-icon name="drive_file_move" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.workbench.fileMove') }}</q-item-section>
+                </q-item>
+                <q-item clickable @click="$emit('file-action', 'download', f)">
+                  <q-item-section avatar><q-icon name="download" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.workbench.fileDownload') }}</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item clickable class="kb-sidebar__menu-danger" @click="$emit('file-action', 'delete', f)">
+                  <q-item-section avatar><q-icon name="delete_outline" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.workbench.fileDelete') }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
       </div>
       <div v-else class="kb-sidebar__files-empty text-caption">
         {{ t('knowledgePage.workbench.filesEmpty') }}
       </div>
     </GlassPanel>
+
+    <!-- SP2-8：左栏底部插槽（上传队列收纳位） -->
+    <slot name="footer" />
   </div>
 </template>
 
 <script setup lang="ts">
 // SP2 §SP2-1 左栏：Vault 树 + 当前目录文件列表（Obsidian 文件资源管理器语义）。
+// SP2-8：文件行操作菜单（移动/下载/删除）+ 行拖拽 + 列表 drop 到当前目录。
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlassPanel from '../effects/GlassPanel.vue';
 import KnowledgeVaultTree from '../KnowledgeVaultTree.vue';
-import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
+import { isValidDropTarget, type DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
 import type { VaultTreeNode } from '../../../features/knowledge/types';
 
-defineProps<{
+const props = defineProps<{
   nodes: VaultQTreeNode[];
   selectedKey: string | null;
   expandedKeys: string[];
@@ -68,9 +132,12 @@ defineProps<{
   files: VaultTreeNode[];
   /** 工作台当前活动文档（高亮） */
   activeDocId: string;
+  /** SP2-8：当前库 id + 目录 prefix（文件列表 drop 合法性判定） */
+  currentVaultId: string;
+  currentPrefix: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'select-node': [key: string];
   'update:expanded-keys': [keys: string[]];
   'lazy-load': [payload: VaultLazyLoadPayload];
@@ -79,6 +146,16 @@ defineEmits<{
   'drop-node': [node: VaultQTreeNode];
   retry: [];
   'open-file': [node: VaultTreeNode];
+  /** SP2-7：当前目录新建笔记/文件夹（KnowledgeWorkbench 弹命名框并落盘） */
+  'new-note': [];
+  'new-folder': [];
+  /** SP2-8：文件行操作（move/download/delete，页面侧弹窗/执行） */
+  'file-action': [action: string, node: VaultTreeNode];
+  /** SP2-8：文件行拖拽（dragstart 记录 / dragend 清空） */
+  'file-drag-start': [node: VaultTreeNode];
+  'file-drag-end': [];
+  /** SP2-8：drop 到文件列表 = 移到当前目录 */
+  'drop-current-dir': [];
 }>();
 
 const { t } = useI18n();
@@ -91,6 +168,46 @@ function iconOf(f: VaultTreeNode): string {
   if (/\.(mp4|webm|mov)$/.test(p)) return 'movie';
   if (/\.pdf$/.test(p)) return 'picture_as_pdf';
   return 'insert_drive_file';
+}
+
+// ---------- SP2-8 文件行拖拽 + 列表 drop（移到当前目录） ----------
+
+/** 列表 drop 高亮（仅合法目标）。 */
+const dropHover = ref(false);
+
+function currentDirValid(): boolean {
+  return isValidDropTarget(props.dragFile, { vaultId: props.currentVaultId, prefix: props.currentPrefix });
+}
+
+function onFileDragStart(f: VaultTreeNode, ev: DragEvent) {
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = 'move';
+    // Firefox 要求 setData 才触发拖拽。
+    ev.dataTransfer.setData('text/plain', f.name);
+  }
+  emit('file-drag-start', f);
+}
+
+function onListDragOver(ev: DragEvent) {
+  if (!props.dragFile || !ev.dataTransfer) return;
+  if (currentDirValid()) {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    dropHover.value = true;
+  } else {
+    ev.dataTransfer.dropEffect = 'none';
+    dropHover.value = false;
+  }
+}
+
+function onListDragLeave() {
+  dropHover.value = false;
+}
+
+function onListDrop(ev: DragEvent) {
+  ev.preventDefault();
+  dropHover.value = false;
+  if (currentDirValid()) emit('drop-current-dir');
 }
 </script>
 
@@ -113,6 +230,12 @@ function iconOf(f: VaultTreeNode): string {
     display: flex
     flex-direction: column
     padding: 4px
+    border-radius: 0 0 var(--kb-radius-glass) var(--kb-radius-glass)
+    transition: box-shadow 0.15s ease
+
+    // SP2-8：drop 到列表 = 移到当前目录（合法目标发光，与树节点同语言）
+    &--drop
+      box-shadow: inset 0 0 0 1px var(--kb-accent-cyan), inset 0 0 18px rgba(79, 216, 255, 0.12)
 
   &__file
     display: flex
@@ -149,9 +272,35 @@ function iconOf(f: VaultTreeNode): string {
 
   &__file-err
     flex: none
-    color: #ff6b81
+    color: var(--kb-danger)
+
+  // SP2-8：行操作菜单按钮（hover 显现，与树节点菜单同语言）
+  &__file-menu
+    flex: none
+    opacity: 0
+    transition: opacity 0.15s ease
+    color: var(--kb-text-dim)
+
+  &__file:hover &__file-menu,
+  &__file-menu:focus-visible
+    opacity: 1
+
+  &__menu
+    min-width: 160px
+
+    :deep(.q-item__section--avatar)
+      min-width: 36px
+
+  &__menu-danger
+    color: var(--kb-danger)
 
   &__files-empty
     padding: 14px
     color: var(--kb-text-dim)
+
+  &__new
+    color: var(--kb-text-dim)
+
+    &:hover
+      color: var(--kb-accent-cyan)
 </style>

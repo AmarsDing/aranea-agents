@@ -1,6 +1,7 @@
 <template>
   <!-- G5 深空图谱（V12.8）：左自研 3D 画布 + 右 HUD 操作台（.kg-hud 作用域皮肤）。 -->
-  <div class="knowledge-graph kg-hud">
+  <!-- SP2-8：fullscreen 覆盖模式（v-model:fullscreen；ESC / 关闭按钮退出）。 -->
+  <div class="knowledge-graph kg-hud" :class="{ 'knowledge-graph--fullscreen': fullscreen }">
     <!-- 左：3D 画布区 -->
     <q-card flat class="app-pane-card knowledge-graph__stage">
       <div v-if="loading" class="knowledge-graph__overlay">
@@ -64,6 +65,19 @@
           @click="fitView"
         >
           <q-tooltip>{{ t('knowledgePage.graphFitView') }}</q-tooltip>
+        </q-btn>
+        <!-- SP2-8：全屏覆盖退出（ESC 等价） -->
+        <q-btn
+          v-if="fullscreen"
+          flat
+          dense
+          round
+          size="sm"
+          icon="close"
+          :aria-label="t('knowledgePage.graphExitFullscreen')"
+          @click="$emit('update:fullscreen', false)"
+        >
+          <q-tooltip>{{ t('knowledgePage.graphExitFullscreen') }} (Esc)</q-tooltip>
         </q-btn>
         <q-btn flat dense round size="sm" icon="palette" :aria-label="t('knowledgePage.graphLegendTitle')">
           <q-tooltip>{{ t('knowledgePage.graphLegendTitle') }}</q-tooltip>
@@ -309,7 +323,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
@@ -366,6 +380,8 @@ const props = defineProps<{
   merging: boolean;
   /** 实体治理：最近一次合并重写反馈（null = 无）。 */
   lastMergeResult: MergeEntitiesResult | null;
+  /** SP2-8：全屏覆盖模式（v-model:fullscreen）。 */
+  fullscreen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -385,10 +401,30 @@ const emit = defineEmits<{
   'reset-global-view': [];
   /** 一键合并：mergee 并入 keeper（G5-G）。 */
   'merge-entities': [payload: { keeperId: number; mergeeId: number }];
+  /** SP2-8：全屏覆盖模式开关。 */
+  'update:fullscreen': [value: boolean];
 }>();
 
 const { t } = useI18n();
 const graphLinkTypes = GRAPH_LINK_TYPES;
+
+// ---------- SP2-8：全屏覆盖模式（ESC 退出；仅全屏时监听，避免截获页面其他 ESC） ----------
+
+function onFullscreenKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') emit('update:fullscreen', false);
+}
+
+watch(
+  () => props.fullscreen,
+  (on) => {
+    if (on) window.addEventListener('keydown', onFullscreenKeydown);
+    else window.removeEventListener('keydown', onFullscreenKeydown);
+  },
+  // immediate：组件经 v-if 挂载时 fullscreen 已为 true，无值变化 watch 不触发，ESC 监听会漏注册
+  { immediate: true },
+);
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onFullscreenKeydown));
 
 /** 邻域跳数草稿（步进器）；进入邻域后与 prop 同步。 */
 const hopsDraft = ref(2);
@@ -436,6 +472,21 @@ const nodeLegend = computed(() => {
 </script>
 
 <style lang="scss" scoped>
+// SP2-8：全屏覆盖模式——fixed 覆盖视口，HUD 布局/交互零改动；z 低于 Quasar dialog（6000）。
+.knowledge-graph--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  padding: 16px;
+  // 覆盖层底色：工作台深空（组件在 .kb-workbench 内时取令牌，独立使用时退化为同值常量）。
+  background: var(--kb-bg-deep, #0a0e1a);
+  grid-template-rows: minmax(0, 1fr);
+
+  .knowledge-graph__stage {
+    min-height: 0;
+  }
+}
+
 .knowledge-graph {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;

@@ -98,8 +98,10 @@ func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolNa
 	return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyPlugin}
 }
 
-func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *toolConfirmGate {
-	catalog := buildCatalogConfirmTools(ctx, ag, deps)
+// buildToolConfirmGate assembles the confirmation gate from the pre-loaded
+// catalog snapshot (nil ⇒ no catalog policy) and the plugin guard. Loading
+// happens once per build in BuildTRPCLLMAgent (loadToolBuildCatalog).
+func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, catalog map[string]confirmCatalogEntry) *toolConfirmGate {
 	var pluginCfg plugintrpc.ConfirmationGuardConfig
 	hasPlugin := false
 	if deps.PluginManager != nil {
@@ -125,63 +127,6 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		gate.persistedGrant = deps.ToolUC.HasToolGrant
 	}
 	return gate
-}
-
-func buildCatalogConfirmTools(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) map[string]confirmCatalogEntry {
-	if deps.ToolUC == nil || strings.TrimSpace(ag.ID) == "" {
-		return nil
-	}
-	eff := loadEffectiveToolKeys(ctx, deps, ag.ID)
-	if len(eff) == 0 {
-		return nil
-	}
-	overrides, err := deps.ToolUC.ListToolAgentOverridesByAgent(ctx, ag.ID)
-	if err != nil {
-		// Fail-closed: when DB is unavailable, assume all enabled tools require
-		// confirmation rather than silently skipping the security gate.
-		lg := deps.Logger()
-		lg.Warn("tool confirm gate: DB query for overrides failed, using fail-closed policy",
-			loggateway.StepID("agent.tool_build"),
-			loggateway.Str("agent_id", ag.ID),
-			loggateway.Err(err))
-		overrides = nil
-		// Build a conservative catalog: all enabled tools require confirmation.
-		out := make(map[string]confirmCatalogEntry, len(eff))
-		for key, enabled := range eff {
-			if enabled {
-				out[key] = confirmCatalogEntry{
-					requiresConfirm: true,
-				}
-			}
-		}
-		return out
-	}
-	overrideByKey := make(map[string]biz.ToolAgentOverride, len(overrides))
-	for _, o := range overrides {
-		overrideByKey[strings.TrimSpace(o.ToolKey)] = o
-	}
-	out := make(map[string]confirmCatalogEntry)
-	for key, enabled := range eff {
-		if !enabled {
-			continue
-		}
-		tool, err := deps.ToolUC.GetTool(ctx, key)
-		if err != nil {
-			// Fail-closed: when DB is unavailable for a specific tool,
-			// assume it requires confirmation to be safe.
-			out[key] = confirmCatalogEntry{
-				requiresConfirm: true,
-			}
-			continue
-		}
-		ov, hasOV := overrideByKey[key]
-		if biz.ToolRequiresConfirmation(tool, ov, hasOV) {
-			out[key] = confirmCatalogEntry{
-				requiresConfirm: true,
-			}
-		}
-	}
-	return out
 }
 
 // Catalog match strategies, recorded in logs to explain gating decisions.

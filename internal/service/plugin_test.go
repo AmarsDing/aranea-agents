@@ -184,3 +184,44 @@ func TestPluginService_UpdateScope(t *testing.T) {
 		t.Errorf("scope mismatch: %s", out.GetScope())
 	}
 }
+
+// 回归：内置共享插件（workspace_id=""）属平台级配置，租户管理员可变更。
+// 此前 P2-B 对共享资源 fail-closed 导致管理页全部写操作 404（dogfood ISSUE-002/003）。
+func newPluginServiceWith(items ...biz.Plugin) *service.PluginService {
+	repo := newMemPluginRepo()
+	for _, p := range items {
+		repo.items[p.ID] = p
+	}
+	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop(), nil)
+}
+
+func TestPluginService_SharedBuiltin_ToggleAndConfig(t *testing.T) {
+	svc := newPluginServiceWith(biz.Plugin{ID: "builtin-audit_log", Key: "audit_log", Name: "审计", WorkspaceID: ""})
+	ctx := context.Background() // tenant caller（默认 default workspace）
+
+	if _, err := svc.TogglePluginEnabled(ctx, &v1.TogglePluginEnabledRequest{Id: "builtin-audit_log", Enabled: true}); err != nil {
+		t.Fatalf("toggle shared builtin plugin: %v", err)
+	}
+	out, err := svc.UpdatePluginConfig(ctx, &v1.UpdatePluginConfigRequest{Id: "builtin-audit_log", ConfigJson: `{"k":"v"}`})
+	if err != nil {
+		t.Fatalf("update shared builtin config: %v", err)
+	}
+	if out.GetConfigJson() != `{"k":"v"}` {
+		t.Errorf("config mismatch: %s", out.GetConfigJson())
+	}
+	if _, err := svc.UpdatePluginSortOrder(ctx, &v1.UpdatePluginSortOrderRequest{Id: "builtin-audit_log", SortOrder: 7}); err != nil {
+		t.Fatalf("update shared builtin sort order: %v", err)
+	}
+	if _, err := svc.UpdatePluginScope(ctx, &v1.UpdatePluginScopeRequest{Id: "builtin-audit_log", Scope: "global"}); err != nil {
+		t.Fatalf("update shared builtin scope: %v", err)
+	}
+}
+
+// 跨租户写私有插件仍须拒绝。
+func TestPluginService_PrivatePlugin_CrossTenantDenied(t *testing.T) {
+	svc := newPluginServiceWith(biz.Plugin{ID: "p9", Key: "private-plugin", WorkspaceID: "ws-a"})
+	ctx := workspace.WithContext(context.Background(), "ws-b")
+	if _, err := svc.TogglePluginEnabled(ctx, &v1.TogglePluginEnabledRequest{Id: "p9", Enabled: true}); err == nil {
+		t.Fatal("expected cross-tenant mutate to be denied")
+	}
+}

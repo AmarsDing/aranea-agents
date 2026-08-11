@@ -151,12 +151,17 @@ func (m *memSpiritTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) 
 	return s, nil
 }
 
-// memSpiritAgentResolver is a minimal SpiritAgentResolver stub: returns an
-// empty active-agent list so resolveAgentKeyToIDMap falls back to "agent_"+key.
+// memSpiritAgentResolver is a minimal SpiritAgentResolver stub: returns the
+// two test agents so resolveAgentKeyToIDMap resolves them to the same
+// "agent_<key>" IDs the old silent fallback produced.
 type memSpiritAgentResolver struct{}
 
 func (m *memSpiritAgentResolver) List(_ context.Context, _ AgentListQuery) (AgentListResult, error) {
-	return AgentListResult{}, nil
+	items := []Agent{
+		{ID: "agent_agent-1", AgentKey: "agent-1"},
+		{ID: "agent_agent-2", AgentKey: "agent-2"},
+	}
+	return AgentListResult{Items: items, Total: len(items)}, nil
 }
 
 // memSpiritAgentLookup is a minimal session.AgentLookup stub: AssembleTeam
@@ -1212,5 +1217,37 @@ func TestAssembleTeam_DAGSingleMember_DefinitionJSON_HasEnableStateDeliverable(t
 	}
 	if v != true {
 		t.Fatalf("enable_state_deliverable should be true, got %v", v)
+	}
+}
+
+// Unresolvable agent keys must surface an explicit error naming the missing
+// keys, not silently fabricate "agent_<key>" IDs (2026-08-11 fix: the silent
+// fallback only ever worked for system agents whose IDs follow that naming
+// convention, and began misfiring once active agents exceeded the old
+// single-page Limit of 200).
+func TestResolveAgentKeyToIDMap_UnresolvedKey_ReturnsError(t *testing.T) {
+	uc := NewSpiritTeamUsecase(nil, nil, &memSpiritAgentResolver{}, loggateway.NewNoop())
+
+	out, err := uc.resolveAgentKeyToIDMap(context.Background(), []string{"agent-1", "ghost-key"})
+	if err == nil {
+		t.Fatalf("expected error for unresolvable agent key, got mapping %v", out)
+	}
+	if !strings.Contains(err.Error(), "ghost-key") {
+		t.Errorf("error should name the missing key, got: %v", err)
+	}
+}
+
+func TestResolveAgentKeyToIDMap_ResolvedKeys(t *testing.T) {
+	uc := NewSpiritTeamUsecase(nil, nil, &memSpiritAgentResolver{}, loggateway.NewNoop())
+
+	out, err := uc.resolveAgentKeyToIDMap(context.Background(), []string{"agent-1", "agent-2", " agent-1 "})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["agent-1"] != "agent_agent-1" || out["agent-2"] != "agent_agent-2" {
+		t.Errorf("unexpected mapping: %v", out)
+	}
+	if len(out) != 2 {
+		t.Errorf("duplicate/blank keys should be deduped, got %v", out)
 	}
 }

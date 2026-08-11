@@ -120,8 +120,14 @@ const emit = defineEmits<{
   refresh: [];
 }>();
 
+/** FN-6：0 调用的 Skill 成功率恒为 0，直接落入「异常」会误导；
+ * 无调用数据时前置显示「无数据」灰色徽章。 */
+const hasNoInvocations = computed(
+  () => !!props.health && props.health.total_invocations_7d === 0 && props.health.total_invocations_30d === 0,
+);
+
 const overallColor = computed(() => {
-  if (!props.health) return 'grey';
+  if (!props.health || hasNoInvocations.value) return 'grey';
   const rate7d = props.health.success_rate_7d;
   if (rate7d >= 0.95) return 'positive';
   if (rate7d >= 0.8) return 'warning';
@@ -129,7 +135,7 @@ const overallColor = computed(() => {
 });
 
 const overallLabel = computed(() => {
-  if (!props.health) return '无数据';
+  if (!props.health || hasNoInvocations.value) return '无数据';
   const rate7d = props.health.success_rate_7d;
   if (rate7d >= 0.95) return '健康';
   if (rate7d >= 0.8) return '注意';

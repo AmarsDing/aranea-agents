@@ -9,7 +9,7 @@ import {
   getAgentEvolutionSuggestions,
   applyEvolutionSuggestion,
   rejectEvolutionSuggestion,
-  editPromptFileByAI,
+  rollbackEvolutionSuggestion,
   estimateAgentTokens,
   updateAgentToolPolicy,
   createAgentPromptFile,
@@ -66,16 +66,16 @@ export const useAgentDetailStore = defineStore('agentDetail', () => {
     return applyEvolutionSuggestion(agentId, suggestionId);
   }
 
-  async function rejectEvolution(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
-    return rejectEvolutionSuggestion(agentId, suggestionId);
+  async function rejectEvolution(agentId: string, suggestionId: string, reason?: string): Promise<EvolutionSuggestion> {
+    return rejectEvolutionSuggestion(agentId, suggestionId, reason);
+  }
+
+  async function rollbackEvolution(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
+    return rollbackEvolutionSuggestion(agentId, suggestionId);
   }
 
   async function toggleFavorite(id: string): Promise<Agent> {
     return toggleAgentFavoriteApi(id);
-  }
-
-  async function editPromptFile(agentId: string, fileId: string, instruction: string): Promise<AgentPromptFile> {
-    return editPromptFileByAI(agentId, fileId, instruction);
   }
 
   async function estimateTokens(agentId: string) {
@@ -120,7 +120,7 @@ export const useAgentDetailStore = defineStore('agentDetail', () => {
     fetchEvolutionSuggestions,
     applyEvolution,
     rejectEvolution,
-    editPromptFile,
+    rollbackEvolution,
     estimateTokens,
     updateToolPolicy,
     createPromptFile,

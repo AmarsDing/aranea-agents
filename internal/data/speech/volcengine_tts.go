@@ -39,10 +39,73 @@ type volcTTSProvider struct {
 	cfg  biz.TTSProviderConfig
 	dial wsDialer
 	lg   loggateway.Logger
+
+	// L5 温连接槽（单槽一次性）：voice.start 预拨 WS 存槽，首个 Turn 首句
+	// Write 弹出复用免握手；消费/释放后后续句维持逐句新拨（握手被播报
+	// 播放缓冲掩盖，不在用户感知关键路径）。
+	warmMu sync.Mutex
+	warm   wsConn
 }
 
 func newVolcTTSProvider(cfg biz.TTSProviderConfig, lg loggateway.Logger) biz.StreamingTTSProvider {
 	return &volcTTSProvider{cfg: cfg, dial: gorillaDialer, lg: lg}
+}
+
+// PrewarmTTSConn 预拨一条 TTS WS 连接存入温槽（L5，2026-08-11）。
+// 幂等：槽位已被占用（含未消费的死亡连接）时跳过；拨号失败仅 Warn 降级（K3），
+// 首句 Write 回退新拨，语音链路不受影响。连接鉴权头在拨号时携带，与
+// Write 的文本帧参数无关，故温连接对任意会话参数可复用。
+func (p *volcTTSProvider) PrewarmTTSConn(ctx context.Context) {
+	p.warmMu.Lock()
+	if p.warm != nil {
+		p.warmMu.Unlock()
+		return
+	}
+	p.warmMu.Unlock()
+	conn, err := p.dialConn(ctx)
+	if err != nil {
+		p.lg.Warn("volc tts: prewarm dial failed, first sentence falls back to fresh dial (K3)",
+			loggateway.Err(err))
+		return
+	}
+	p.warmMu.Lock()
+	if p.warm != nil {
+		// 并发预热竞态：后到的连接直接关闭，单槽语义不放大负载。
+		p.warmMu.Unlock()
+		_ = conn.Close()
+		return
+	}
+	p.warm = conn
+	p.warmMu.Unlock()
+}
+
+// ReleaseWarmTTSConn 关闭未消费的温连接（语音会话 teardown 释放）。幂等。
+func (p *volcTTSProvider) ReleaseWarmTTSConn() {
+	p.warmMu.Lock()
+	conn := p.warm
+	p.warm = nil
+	p.warmMu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+}
+
+// popWarm 弹出温连接（一次性）；无预热返回 nil。
+func (p *volcTTSProvider) popWarm() wsConn {
+	p.warmMu.Lock()
+	defer p.warmMu.Unlock()
+	conn := p.warm
+	p.warm = nil
+	return conn
+}
+
+// dialConn 构造鉴权头并拨号（Prewarm 与 Write 共用）。
+func (p *volcTTSProvider) dialConn(ctx context.Context) (wsConn, error) {
+	header := nethttp.Header{}
+	setVolcAuthHeader(header, p.cfg.APIKey, p.cfg.AppKey, p.cfg.AccessKey)
+	header.Set("X-Api-Resource-Id", p.cfg.ResourceID)
+	header.Set("X-Api-Request-Id", uuid.NewString())
+	return p.dial(ctx, p.cfg.Endpoint, header)
 }
 
 func (p *volcTTSProvider) Open(_ context.Context, sc biz.TTSSessionConfig) (biz.TTSSession, error) {
@@ -77,16 +140,6 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 	if s.started.Swap(true) {
 		return errors.New("volc tts: Write called twice (V1 一句一连接)")
 	}
-	header := nethttp.Header{}
-	setVolcAuthHeader(header, s.p.cfg.APIKey, s.p.cfg.AppKey, s.p.cfg.AccessKey)
-	header.Set("X-Api-Resource-Id", s.p.cfg.ResourceID)
-	header.Set("X-Api-Request-Id", uuid.NewString())
-	conn, err := s.p.dial(context.Background(), s.p.cfg.Endpoint, header)
-	if err != nil {
-		s.failOnce(apierror.Wrap(err, apierror.CodeUnavailable, "speech"))
-		return nil // 错误经 Audio() 通道上报
-	}
-	s.setConn(conn)
 	body := map[string]any{
 		"user": map[string]any{"uid": "aranea"},
 		"req_params": map[string]any{
@@ -110,6 +163,23 @@ func (s *volcTTSSession) Write(text string, _ bool) error {
 		s.failOnce(err)
 		return nil
 	}
+	// L5：优先复用 voice.start 预热的温连接免握手；温连接死亡（服务端 idle
+	// 断连）写失败时回退新拨重试一次——最坏情况 = 现状延迟，首句不丢（K3）。
+	if conn := s.p.popWarm(); conn != nil {
+		if werr := conn.WriteMessage(websocket.BinaryMessage, frame); werr == nil {
+			s.setConn(conn)
+			go s.readPump(conn)
+			return nil
+		}
+		_ = conn.Close()
+		s.p.lg.Warn("volc tts: warm conn write failed, redialing fresh (K3)")
+	}
+	conn, err := s.p.dialConn(context.Background())
+	if err != nil {
+		s.failOnce(apierror.Wrap(err, apierror.CodeUnavailable, "speech"))
+		return nil // 错误经 Audio() 通道上报
+	}
+	s.setConn(conn)
 	if err := conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
 		s.failOnce(apierror.Wrap(err, apierror.CodeUnavailable, "speech"))
 		return nil

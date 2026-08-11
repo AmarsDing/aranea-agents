@@ -779,7 +779,6 @@ body.body--dark
   min-height: 0
 
 .agent-file-list
-  height: 100%
   border-radius: 0
   background: var(--glass-elevated)
   color: var(--color-text-primary)
@@ -812,6 +811,44 @@ body.body--dark
   color: var(--color-text-secondary)
   font-size: 12px
   font-weight: 600
+
+// Sidebar container: file list scrolls, optional-file adder pinned at bottom
+.agent-file-side
+  min-height: 0
+  background: var(--glass-elevated)
+
+.agent-file-side .agent-file-list
+  min-height: 0
+  overflow-y: auto
+
+.agent-file-caption
+  color: var(--color-text-secondary)
+
+.agent-file-not-injected
+  color: var(--color-text-secondary)
+  opacity: 0.75
+  font-style: italic
+
+.agent-file-item__remove
+  opacity: 0.45
+
+.agent-file-item:hover .agent-file-item__remove,
+.agent-file-item--active .agent-file-item__remove
+  opacity: 1
+
+.agent-file-optional
+  padding: 10px 12px
+  border-top: 1px solid var(--glass-border)
+  display: flex
+  flex-direction: column
+  gap: 8px
+  align-items: flex-start
+
+.agent-file-optional__title
+  font-size: 12px
+  font-weight: 600
+  color: var(--color-text-secondary)
+  letter-spacing: 0.04em
 
 body.body--dark .agent-file-item--active
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent), var(--glass-inner-highlight)

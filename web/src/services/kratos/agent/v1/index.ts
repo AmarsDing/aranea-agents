@@ -489,6 +489,17 @@ export type RejectEvolutionSuggestionRequest = {
   //
   // Behaviors: REQUIRED
   suggestionId: string | undefined;
+  // 拒绝原因（可选），持久化到 metadata.rejection_reason 供审计。
+  reason: string | undefined;
+};
+
+export type RollbackEvolutionSuggestionRequest = {
+  //
+  // Behaviors: REQUIRED
+  agentId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  suggestionId: string | undefined;
 };
 
 export type EditPromptFileByAIRequest = {
@@ -553,6 +564,7 @@ export interface AgentService {
   GetAgentEvolutionSuggestions(request: GetAgentEvolutionSuggestionsRequest): Promise<ListEvolutionSuggestionsResponse>;
   ApplyEvolutionSuggestion(request: ApplyEvolutionSuggestionRequest): Promise<EvolutionSuggestion>;
   RejectEvolutionSuggestion(request: RejectEvolutionSuggestionRequest): Promise<EvolutionSuggestion>;
+  RollbackEvolutionSuggestion(request: RollbackEvolutionSuggestionRequest): Promise<EvolutionSuggestion>;
 }
 
 type RequestType = {
@@ -1038,6 +1050,29 @@ export function createAgentServiceClient(
       }, {
         service: "AgentService",
         method: "RejectEvolutionSuggestion",
+      }) as Promise<EvolutionSuggestion>;
+    },
+    RollbackEvolutionSuggestion(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.agentId) {
+        throw new Error("missing required field request.agent_id");
+      }
+      if (!request.suggestionId) {
+        throw new Error("missing required field request.suggestion_id");
+      }
+      const path = `v1/agents/${request.agentId}/evolution/suggestions/${request.suggestionId}/rollback`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "RollbackEvolutionSuggestion",
       }) as Promise<EvolutionSuggestion>;
     },
   };

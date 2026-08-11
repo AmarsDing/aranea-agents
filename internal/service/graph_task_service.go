@@ -10,7 +10,7 @@ import (
 )
 
 func (s *GraphService) ListTasks(ctx context.Context, req *graphv1.ListTasksRequest) (*graphv1.ListTasksResponse, error) {
-	tasks, _, err := s.taskUC.ListTasks(ctx, req.ExecutionId, protoTaskStatusToBiz(req.StatusFilter), int(req.PageSize), req.PageToken)
+	tasks, nextToken, err := s.taskUC.ListTasks(ctx, req.ExecutionId, protoTaskStatusToBiz(req.StatusFilter), int(req.PageSize), req.PageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +18,7 @@ func (s *GraphService) ListTasks(ctx context.Context, req *graphv1.ListTasksRequ
 	for i, t := range tasks {
 		items[i] = toProtoTask(t)
 	}
-	return &graphv1.ListTasksResponse{Items: items}, nil
+	return &graphv1.ListTasksResponse{Items: items, NextPageToken: nextToken}, nil
 }
 
 func (s *GraphService) GetTask(ctx context.Context, req *graphv1.GetTaskRequest) (*graphv1.GetTaskResponse, error) {

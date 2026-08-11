@@ -16,15 +16,11 @@
           @update:model-value="emitFormPatch({ mode: String($event ?? 'inherit') })"
         />
         <q-toggle
-          :model-value="form.enabled"
-          label="启用"
-          @update:model-value="emitFormPatch({ enabled: Boolean($event) })"
-        />
-        <q-toggle
           :model-value="form.requires_confirmation"
           label="需要确认"
           @update:model-value="emitFormPatch({ requires_confirmation: Boolean($event) })"
         />
+        <div class="text-caption text-grey-7">{{ $t('agentSettings.toolOverrideConfirmHint') }}</div>
         <q-input
           :model-value="form.config_override_json"
           label="配置覆盖 JSON"
@@ -32,6 +28,7 @@
           dense
           outlined
           autogrow
+          :rules="[(val) => isValidJson(String(val ?? '')) || $t('agentSettings.toolOverrideInvalidJson')]"
           @update:model-value="emitFormPatch({ config_override_json: String($event ?? '{}') })"
         />
       </q-card-section>
@@ -63,5 +60,14 @@ const emit = defineEmits<{
 
 function emitFormPatch(patch: Partial<AgentToolOverrideForm>) {
   emit('update:form', { ...props.form, ...patch });
+}
+
+function isValidJson(val: string): boolean {
+  try {
+    JSON.parse(val.trim() || '{}');
+    return true;
+  } catch {
+    return false;
+  }
 }
 </script>

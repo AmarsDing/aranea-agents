@@ -14,12 +14,6 @@
 
     <memory-heartbeat-section v-model:config="config" :memory-layers-disabled="memoryLayersDisabled" />
 
-    <memory-optional-files-section
-      :available-optional-files="availableOptionalFiles"
-      :disabled="memoryLayersDisabled || !config.heartbeat.enabled"
-      @add-optional-file="$emit('add-optional-file', $event)"
-    />
-
     <memory-level-section
       v-model:config="config"
       :truncate-strategy-options="truncateStrategyOptions"
@@ -35,28 +29,19 @@
 <script setup lang="ts">
 const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import { computed } from 'vue';
-import type { AgentFile } from '../../components/agents/agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import MemoryHeartbeatSection from '../../components/agents/MemoryHeartbeatSection.vue';
-import MemoryOptionalFilesSection from '../../components/agents/MemoryOptionalFilesSection.vue';
 import MemoryLevelSection from '../../components/agents/MemoryLevelSection.vue';
 
-withDefaults(
-  defineProps<{
-    truncateStrategyOptions: { label: string; value: string }[];
-    snapshotModeOptions: { label: string; value: string }[];
-    memoryScopeOptions: { label: string; value: string }[];
-    piiPolicyOptions: { label: string; value: string }[];
-    availableOptionalFiles?: AgentFile[];
-  }>(),
-  {
-    availableOptionalFiles: () => [],
-  },
-);
+defineProps<{
+  truncateStrategyOptions: { label: string; value: string }[];
+  snapshotModeOptions: { label: string; value: string }[];
+  memoryScopeOptions: { label: string; value: string }[];
+  piiPolicyOptions: { label: string; value: string }[];
+}>();
 
 defineEmits<{
   'open-evolution-tab': [];
-  'add-optional-file': [name: string];
 }>();
 
 const memoryLayersDisabled = computed(() => !config.value.memory.enabled);

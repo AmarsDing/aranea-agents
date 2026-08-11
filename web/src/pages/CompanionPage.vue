@@ -210,6 +210,7 @@ import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace'
 import { useChatMessagePanelBindings } from '../features/chat/composables/useChatMessagePanelBindings';
 import { TOOL_CONFIRM_REPLY, type ToolConfirmReply } from '../features/chat/types';
 import { useVoiceSession } from '../features/companion/voice/useVoiceSession';
+import { useVoiceButlerBinding } from '../features/companion/voice/useVoiceButlerBinding';
 import { useCompanionConfirms } from '../features/companion/useCompanionConfirms';
 import { useUiSounds } from '../features/companion/audio/useUiSounds';
 import { spawnLaunchBurst } from '../features/companion/launchParticles';
@@ -232,9 +233,19 @@ const spiritStore = useSpiritTeamStore();
 const llmRetryStore = useLlmRetryStore();
 const companion = useCompanionStore();
 
-// 语音会话绑定当前选中的聊天会话（/v1/voice?session_id=...，设计 §2.1）。
+// M74 V9-T4（设计 §15.4-E）：进入语音模式选中/创建语音助手（__voice_butler__）
+// 会话——Turn 执行按 sess.AgentID hydrate agent（评审 R5），仅传 agent_key 无效；
+// 退出语音模式恢复先前选中的会话（语音是辅助模式，不吞掉原工作上下文）。
+const voiceBinding = useVoiceButlerBinding({
+  selectAgent: (agent, options) => workspace.entity.selectAgent(agent, options),
+  selectTeam: (team, options) => workspace.entity.selectTeam(team, options),
+  displayTeams: () => workspace.entity.displayTeams,
+  sessionTitle: () => t('companion.voiceButlerSession'),
+});
 const { spectrum, amplitude, toggleVoiceMode } = useVoiceSession({
   sessionId: () => workspace.session.selectedSessionForUi?.id ?? null,
+  resolveSession: voiceBinding.bindVoiceButlerSession,
+  onExit: () => void voiceBinding.restorePreviousSelection(),
 });
 
 // V2-T8 差距2：挂载时探测语音服务可用性（/v1/voice/status）——

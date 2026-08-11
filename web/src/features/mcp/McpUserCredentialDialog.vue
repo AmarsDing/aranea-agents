@@ -8,7 +8,7 @@ fix: CRUD logic + $q.notify extracted to useMcpUserCredentialDialog composable.
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">用户凭据</div>
-          <div class="text-caption text-grey-7">{{ serverLabel }} · 用户 {{ userId }}</div>
+          <div class="text-caption text-grey-7">{{ serverLabel }} · {{ userLabel || `用户 ${userId}` }}</div>
         </div>
         <q-btn flat dense round icon="close" aria-label="关闭" @click="$emit('update:modelValue', false)" />
       </q-card-section>
@@ -76,6 +76,7 @@ const props = defineProps<{
   mcpServerId: string;
   serverLabel: string;
   userId: string;
+  userLabel?: string;
 }>();
 
 const emit = defineEmits<{

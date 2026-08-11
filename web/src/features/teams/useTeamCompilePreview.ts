@@ -5,6 +5,16 @@ import { compileTeamGraph, type CompileTeamGraphResult } from '../orchestration/
 
 export type CompileIssue = { message?: string; code?: string; warning?: boolean };
 
+/** 无启用成员时跳过编译：空表单落预览面板中性空态，避免「no enabled members」红错。 */
+function hasEnabledMember(json: string): boolean {
+  try {
+    const parsed = JSON.parse(json) as { members?: Array<{ enabled?: boolean }> };
+    return Array.isArray(parsed.members) && parsed.members.some((m) => m?.enabled !== false);
+  } catch {
+    return true; // 解析失败交给后端编译报错
+  }
+}
+
 export function useTeamCompilePreview(editingId: MaybeRefOrGetter<string>, definitionJSON: MaybeRefOrGetter<string>) {
   const compileResult = ref<CompileTeamGraphResult | null>(null);
   const compileLoading = ref(false);
@@ -15,8 +25,9 @@ export function useTeamCompilePreview(editingId: MaybeRefOrGetter<string>, defin
 
   async function refreshCompile() {
     const json = toValue(definitionJSON)?.trim();
-    if (!json || json === '{}' || !json.includes('members')) {
+    if (!json || json === '{}' || !json.includes('members') || !hasEnabledMember(json)) {
       compileResult.value = null;
+      compileError.value = '';
       compileIssues.value = [];
       return;
     }

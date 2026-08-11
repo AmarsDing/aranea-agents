@@ -617,6 +617,10 @@ internal/cronrunner/jobs/
 | `voice.archive.saved` | ok / — | 语音留档保存（M74 V2-T6，2026-08-08） |
 | `voice.archive.degraded` | warn | 语音留档降级（开关读取失败/存储失败，消息正常派发；M74 V2-T6，2026-08-08） |
 | `voice.archive.truncate` | warn | 语音留档截断（语句 PCM 超 8 MiB 上限；M74 V2-T6，2026-08-08） |
+| `voice.clarify.broadcast` | ok / — | 澄清问题播报（抗过度澄清，2026-08-09） |
+| `voice.delegation.bind` | ok / — | 委派任务绑定（M74 V9，2026-08-11） |
+| `voice.delegation.terminal` | ok / — | 委派任务终态（M74 V9，2026-08-11） |
+| `voice.delegation.broadcast` | ok / — | 委派结果播报（M74 V9，2026-08-11） |
 
 #### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
 

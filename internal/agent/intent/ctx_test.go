@@ -27,6 +27,32 @@ func TestArtifactFromContext_Missing(t *testing.T) {
 	}
 }
 
+// C2：投机产物 ctx key 往返（与澄清续跑 key 隔离）。
+func TestSpeculativeArtifactContext_RoundTrip(t *testing.T) {
+	art := &Artifact{RefinedGoal: "今天天气怎么样", IntentKind: "question"}
+	ctx := WithSpeculativeArtifact(context.Background(), art)
+	if got := SpeculativeArtifactFromContext(ctx); got != art {
+		t.Fatalf("SpeculativeArtifactFromContext = %p, want %p", got, art)
+	}
+	// 两个 key 互不串扰：投机 key 不影响澄清续跑 key。
+	if got := ArtifactFromContext(ctx); got != nil {
+		t.Fatalf("speculative ctx must not leak into resume key, got %v", got)
+	}
+}
+
+func TestSpeculativeArtifactContext_NilArtifact_NotStored(t *testing.T) {
+	ctx := WithSpeculativeArtifact(context.Background(), nil)
+	if got := SpeculativeArtifactFromContext(ctx); got != nil {
+		t.Fatalf("expected nil artifact, got %v", got)
+	}
+}
+
+func TestSpeculativeArtifactFromContext_Missing(t *testing.T) {
+	if got := SpeculativeArtifactFromContext(context.Background()); got != nil {
+		t.Fatalf("expected nil artifact from empty ctx, got %v", got)
+	}
+}
+
 func TestCloneWithoutClarification(t *testing.T) {
 	art := &Artifact{
 		RefinedGoal:     "做一个内部工具",

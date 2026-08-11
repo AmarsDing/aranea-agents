@@ -1,7 +1,9 @@
 import { computed, onMounted, ref, watch, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { AgentEffectiveTools, Tool, ToolAgentOverride } from '../tools/types';
 import { useToolsStore } from '../../stores/tools';
+import { parseKratosApiError } from '../../utils/kratosError';
 
 export type AgentToolOverrideRow = {
   tool_key: string;
@@ -15,7 +17,6 @@ export type AgentToolOverrideRow = {
 
 export type AgentToolOverrideForm = {
   mode: string;
-  enabled: boolean;
   requires_confirmation: boolean;
   config_override_json: string;
 };
@@ -34,6 +35,7 @@ const effectiveStateLabels: Record<string, string> = {
 /** Agent settings: effective tools matrix + per-agent overrides (store lives here, not in components). */
 export function useAgentToolOverrides(agentId: Ref<string>) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const toolsStore = useToolsStore();
   const loading = ref(false);
   const saving = ref(false);
@@ -46,7 +48,6 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
   const pendingRemoveRow = ref<AgentToolOverrideRow | null>(null);
   const form = ref<AgentToolOverrideForm>({
     mode: 'inherit',
-    enabled: true,
     requires_confirmation: false,
     config_override_json: '{}',
   });
@@ -98,7 +99,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
       }
       catalogByKey.value = map;
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载工具覆盖失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(e).message || '加载工具覆盖失败' });
     } finally {
       loading.value = false;
     }
@@ -109,7 +110,6 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     const o = row.override;
     form.value = {
       mode: o?.mode ?? 'inherit',
-      enabled: o?.enabled ?? true,
       requires_confirmation: o?.requires_confirmation ?? false,
       config_override_json: o?.config_override_json ?? '{}',
     };
@@ -120,13 +120,20 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     const row = editingRow.value;
     const id = agentId.value?.trim();
     if (!row || !id) return;
+    try {
+      JSON.parse(form.value.config_override_json.trim() || '{}');
+    } catch {
+      $q.notify({ type: 'negative', message: t('agentSettings.toolOverrideInvalidJson') });
+      return;
+    }
     saving.value = true;
     try {
       await toolsStore.saveOverride({
         tool_id: row.tool_id,
         agent_id: id,
         mode: form.value.mode,
-        enabled: form.value.enabled,
+        // enabled 列在运行时不参与判定（启停由 mode 决定），恒置 true 归一化存储。
+        enabled: true,
         requires_confirmation: form.value.requires_confirmation,
         config_override_json: form.value.config_override_json,
       });
@@ -134,7 +141,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
       $q.notify({ type: 'positive', message: '已保存工具覆盖' });
       await reload();
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(e).message || '保存失败' });
     } finally {
       saving.value = false;
     }
@@ -157,7 +164,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
       $q.notify({ type: 'positive', message: '已删除' });
       await reload();
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(e).message || '删除失败' });
     } finally {
       pendingRemoveRow.value = null;
     }

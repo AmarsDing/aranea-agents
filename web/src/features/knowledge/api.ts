@@ -26,6 +26,7 @@ import type {
   ListDocumentsResult,
   PromoteResult,
   SearchKnowledgeQuery,
+  UnlinkedMention,
   EmbedderConfig,
   UpdateEmbedderConfigInput,
   VaultTreeNode,
@@ -320,6 +321,29 @@ export async function listDanglingLinks(collectionId: string): Promise<DanglingL
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapDanglingLink) : [];
 }
 
+// ---------- Unlinked mentions（P2-7 未链接提及） ----------
+
+function mapUnlinkedMention(raw: unknown): UnlinkedMention {
+  const r = asRecord(raw);
+  return {
+    src_doc_id: pickStr(r, 'src_doc_id', 'srcDocId'),
+    src_doc_name: pickStr(r, 'src_doc_name', 'srcDocName'),
+    count: pickI32(r, 'count', 'count'),
+    snippet: pickStr(r, 'snippet', 'snippet'),
+  };
+}
+
+/** listUnlinkedMentions 未链接提及（P2-7）：本文档名在他文档正文中的纯文本出现。
+ *  GET /v1/knowledge/documents/{doc_id}/unlinked-mentions 直连（kratosApi.get 裸调
+ *  返回 AxiosResponse，载荷在 .data）。 */
+export async function listUnlinkedMentions(docId: string): Promise<UnlinkedMention[]> {
+  const res = asRecord(
+    (await kratosApi.get(`/v1/knowledge/documents/${encodeURIComponent(docId)}/unlinked-mentions`)).data,
+  );
+  const itemsRaw = res.items ?? res.Items;
+  return Array.isArray(itemsRaw) ? itemsRaw.map(mapUnlinkedMention) : [];
+}
+
 // ---------- Promote（SP1-G/I-3 晋升到团队库） ----------
 
 function mapPromoteResult(raw: unknown): PromoteResult {
@@ -394,6 +418,13 @@ export async function listCollectionGraph(
     nodes: Array.isArray(nodesRaw) ? nodesRaw.map(mapGraphNode) : [],
     edges: Array.isArray(edgesRaw) ? edgesRaw.map(mapGraphEdge) : [],
   };
+}
+
+// ---------- 索引重建（SP2-6 命令面板） ----------
+
+/** rebuildKnowledgeIndex 触发块级派生索引（blocks/refs）流式重建；异步执行，立即返回受理结果。 */
+export async function rebuildKnowledgeIndex(collectionId: string): Promise<void> {
+  await svc.RebuildKnowledgeIndex({ id: collectionId });
 }
 
 // ---------- 实体治理（G5-F/G5-G） ----------

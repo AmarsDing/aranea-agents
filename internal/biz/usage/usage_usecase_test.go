@@ -462,8 +462,8 @@ func TestCheckQuota(t *testing.T) {
 				if qc.RemainingMicroUSD != 5000 {
 					t.Errorf("RemainingMicroUSD = %d, want 5000", qc.RemainingMicroUSD)
 				}
-				if qc.Reason != "within quota" {
-					t.Errorf("Reason = %q, want %q", qc.Reason, "within quota")
+				if qc.Reason != QuotaCheckReasonWithin {
+					t.Errorf("Reason = %q, want %q", qc.Reason, QuotaCheckReasonWithin)
 				}
 			},
 		},

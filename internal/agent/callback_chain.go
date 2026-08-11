@@ -13,8 +13,9 @@ import (
 
 // buildCallbackChainOptions wires product-layer Callback Chain into LLMAgent.
 // Runner-level plugins (WithPlugins) handle DB builtins and OnEvent; see plugintrpc/orchestration.go.
-func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
-	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps)
+// gate is the per-build shared confirmation gate (nil when nothing is gated).
+func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
+	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps, gate)
 	if chain == nil {
 		return nil, nil
 	}
@@ -34,12 +35,12 @@ func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	return opts, cbRegistry
 }
 
-func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *callbacks.Chain {
-	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps)
+func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) *callbacks.Chain {
+	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps, gate)
 	return chain
 }
 
-func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
+func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
 	var entries []callbacks.Callback
 	lg := deps.Logger()
 	entries = append(entries, productChainLifecycleMetrics()...)
@@ -107,7 +108,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolResultCacheBeforeHook(deps))
 		entries = append(entries, newToolCallTimingBeforeHook())
-		if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
+		if gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
 		}
 		// Capture skill_load/skill_run slug into invocation state BEFORE the

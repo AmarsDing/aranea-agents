@@ -42,6 +42,31 @@ export function useCallbackPointOptions() {
   );
 }
 
+/** Localized label for a callback point tag; falls back to the raw point. */
+export function callbackPointLabel(point: string, t: (key: string) => string) {
+  const key = CALLBACK_POINT_I18N_KEYS[point as HookCallbackPoint];
+  return key ? t(key) : point;
+}
+
+/**
+ * on_event condition.event_type 合法值，与后端 eventTypeLabel 对齐
+ * （internal/plugin/trpc/hook_events.go）。label 直接使用技术原值，
+ * 便于与运行记录/日志对照。
+ */
+export const HOOK_EVENT_TYPE_VALUES: string[] = [
+  'runner_completion',
+  'model_response',
+  'chat.completion',
+  'chat.completion.chunk',
+  'tool.response',
+  'error',
+  'agent.transfer',
+  'state.update',
+  'preprocessing',
+  'postprocessing',
+  'event',
+];
+
 export const PLUGIN_RUN_STATUS_OPTIONS = [
   { label: 'Success', value: 'success' },
   { label: 'Blocked', value: 'blocked' },

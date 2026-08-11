@@ -26,7 +26,7 @@ func (s *stubQuotaEnforcer) CheckQuota(_ context.Context, scopeType, scopeID str
 		return v, nil
 	}
 	// Default: allowed, no configured cap.
-	return usage.QuotaCheck{Allowed: true, Reason: "no quota configured"}, nil
+	return usage.QuotaCheck{Allowed: true, Reason: usage.QuotaCheckReasonNoQuota}, nil
 }
 
 func (s *stubQuotaEnforcer) CheckTeamMemberQuotas(_ context.Context, teamID string) error {

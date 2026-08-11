@@ -28,6 +28,7 @@ type CallbackEvent struct {
 	Status     string
 	Action     string
 	AgentID    string
+	AgentKey   string // 运行时 agent_key，persistRun 经 resolveAgent 换算为 agent_id
 	SessionID  string
 	DurationMS int
 	Summary    string
@@ -240,7 +241,7 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		fn := r.resolveAgent
 		r.resolveMu.RUnlock()
 		if fn != nil {
-			agentID = strings.TrimSpace(fn(bg, ""))
+			agentID = strings.TrimSpace(fn(bg, strings.TrimSpace(ev.AgentKey)))
 		}
 	}
 	detail, _ := json.Marshal(map[string]string{

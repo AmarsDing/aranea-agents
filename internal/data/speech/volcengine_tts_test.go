@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	nethttp "net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,4 +215,136 @@ func TestTTSDialFailureEmitsErrorChunk(t *testing.T) {
 	require.NoError(t, sess.Write("x", true))
 	chunk := <-sess.Audio()
 	require.Equal(t, biz.TTSAudioChunkError, chunk.Type)
+}
+
+// ---- L5：TTS 连接预热（voice.start 预拨，首句免握手）----
+
+// countingDialer 记录 dial 次数并按序返回连接。
+type countingDialer struct {
+	mu    sync.Mutex
+	calls int
+	conns []*fakeWSConn
+	err   error
+}
+
+func (d *countingDialer) dial(_ context.Context, _ string, _ nethttp.Header) (wsConn, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.calls++
+	if d.err != nil {
+		return nil, d.err
+	}
+	conn := newFakeWSConn()
+	d.conns = append(d.conns, conn)
+	return conn, nil
+}
+
+func (d *countingDialer) count() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.calls
+}
+
+func newPrewarmTTSProvider(d *countingDialer) *volcTTSProvider {
+	return &volcTTSProvider{
+		cfg: biz.TTSProviderConfig{
+			Driver: "volcengine", Endpoint: "wss://test", APIKey: "api-key-1", ResourceID: "rid", Voice: "v", SpeedRatio: 1,
+		},
+		dial: d.dial,
+		lg:   loggateway.NewNoop(),
+	}
+}
+
+// L5：预热后首句 Write 复用温连接（全程仅预热的一次 dial）；温连接一次性，
+// 第二句回退新拨。
+func TestTTSPrewarmConnReusedOnFirstWrite(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+
+	p.PrewarmTTSConn(context.Background())
+	require.Equal(t, 1, d.count(), "prewarm must dial exactly one connection")
+
+	// 首句：复用温连接，不再 dial。
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("第一句", true))
+	defer sess.Close()
+	require.Equal(t, 1, d.count(), "first sentence must reuse the warm connection")
+	f := mustReadFrame(t, d.conns[0])
+	require.Equal(t, volcMsgFullClientRequest, f.msgType)
+
+	// 温连接一次性：第二句新拨。
+	sess2, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess2.Write("第二句", true))
+	defer sess2.Close()
+	require.Equal(t, 2, d.count(), "second sentence must dial fresh (warm slot consumed)")
+	_ = mustReadFrame(t, d.conns[1])
+}
+
+// L5：无预热时 Write 自行拨号（现状行为不变）。
+func TestTTSWriteWithoutPrewarmDialsFresh(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("x", true))
+	defer sess.Close()
+	require.Equal(t, 1, d.count())
+}
+
+// L5：预热拨号失败仅降级——Write 正常新拨，语音链路不受影响（K3）。
+func TestTTSPrewarmFailureDegradesToFreshDial(t *testing.T) {
+	d := &countingDialer{err: errors.New("dial boom")}
+	p := newPrewarmTTSProvider(d)
+	p.PrewarmTTSConn(context.Background()) // 失败，仅内部 Warn
+
+	d.mu.Lock()
+	d.err = nil // 恢复网络
+	d.mu.Unlock()
+
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("x", true))
+	defer sess.Close()
+	require.Equal(t, 2, d.count(), "write must dial fresh after prewarm failure")
+	_ = mustReadFrame(t, d.conns[0])
+}
+
+// L5：ReleaseWarmTTSConn 关闭未消费的温连接（语音会话 teardown 释放）。
+func TestTTSReleaseWarmConnCloses(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+	p.PrewarmTTSConn(context.Background())
+	require.Equal(t, 1, d.count())
+
+	p.ReleaseWarmTTSConn()
+	require.True(t, d.conns[0].closed.Load(), "release must close the unconsumed warm conn")
+
+	// 释放后首句新拨。
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("x", true))
+	defer sess.Close()
+	require.Equal(t, 2, d.count())
+}
+
+// L5：温连接被服务端 idle 断连（写失败）时，Write 自动新拨重试一次——
+// 温连接死亡不退化为首句丢失，最坏情况 = 现状延迟。
+func TestTTSWarmConnDeadRetriesFresh(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+	p.PrewarmTTSConn(context.Background())
+	require.Equal(t, 1, d.count())
+
+	// 模拟服务端 idle 断连：温连接已关闭，写入必失败。
+	_ = d.conns[0].Close()
+
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("x", true))
+	defer sess.Close()
+	require.Equal(t, 2, d.count(), "dead warm conn must trigger one fresh-dial retry")
+	f := mustReadFrame(t, d.conns[1])
+	require.Equal(t, volcMsgFullClientRequest, f.msgType, "retry must deliver the text frame")
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -557,10 +558,32 @@ func (u *Usecase) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
 	return u.alertRepo.ListAlertRules(ctx)
 }
 
+// validateAlertRule 边界校验：名称/指标必填、阈值与统计窗口为正（前端另有 saveDisabled 门禁，双保险）。
+func validateAlertRule(r AlertRule) error {
+	if strings.TrimSpace(r.Name) == "" {
+		return apierror.BadRequest("MONITOR", "alert rule name is required")
+	}
+	if strings.TrimSpace(r.MetricKey) == "" {
+		return apierror.BadRequest("MONITOR", "alert rule metric_key is required")
+	}
+	if r.Threshold <= 0 {
+		return apierror.BadRequest("MONITOR", "alert rule threshold must be greater than 0")
+	}
+	if r.WindowMinutes <= 0 {
+		return apierror.BadRequest("MONITOR", "alert rule window_minutes must be greater than 0")
+	}
+	return nil
+}
+
 // ReplaceAlertRules replaces all alert rules and cleans up lastFired entries for deleted rules.
 func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) error {
 	if u == nil || u.alertRepo == nil {
 		return nil
+	}
+	for _, r := range rules {
+		if err := validateAlertRule(r); err != nil {
+			return err
+		}
 	}
 
 	oldRules, listErr := u.alertRepo.ListAlertRules(ctx)

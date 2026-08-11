@@ -40,6 +40,9 @@ type TeamAgentLookup interface {
 // (pass-through) and agent.TRPCBuilderDeps.
 type TeamToolLookup interface {
 	GetTool(ctx context.Context, id string) (tool.Tool, error)
+	// ListToolCatalogEntries batch-loads lightweight build-time catalog rows
+	// in a single query, replacing per-key GetTool loops during agent build.
+	ListToolCatalogEntries(ctx context.Context, keys []string) ([]tool.ToolCatalogEntry, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]tool.ToolAgentOverride, error)
 	RecordToolInvocation(ctx context.Context, in tool.ToolInvocationWrite) error
 	RecordToolInvocationAudit(ctx context.Context, in tool.ToolInvocationAuditWrite) error

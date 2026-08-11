@@ -7,6 +7,7 @@ import (
 	"aranea-agents/pkg/apierror"
 
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/biz/usage"
 )
 
 // ---------------------------------------------------------------------------
@@ -235,7 +236,7 @@ func (u *TurnAdmissionUsecase) enforceScope(ctx context.Context, scopeType, scop
 		return err
 	}
 	if !check.Allowed {
-		return apierror.Forbidden("USAGE_QUOTA", check.Reason)
+		return apierror.Forbidden("USAGE_QUOTA", usage.QuotaExceededMessage(check))
 	}
 	return nil
 }

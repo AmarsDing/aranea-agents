@@ -21,7 +21,15 @@
       </template>
     </q-banner>
 
-    <HooksTable variant="agent" :rows="scopedRows" :loading="loading" @edit="openEdit" />
+    <HooksTable
+      variant="agent"
+      :rows="scopedRows"
+      :loading="loading"
+      :toggling-id="togglingId"
+      @edit="openEdit"
+      @toggle-enabled="toggleEnabled"
+      @remove="confirmRemove"
+    />
 
     <q-expansion-item
       v-model="editorExpanded"
@@ -31,7 +39,26 @@
       default-opened
     >
       <div class="app-dialog-section q-pa-md q-mt-sm">
-        <callback-editor v-model="draftRule" v-model:sort-order="draftSort" :agent-id="agentId" :agent-key="agentKey" />
+        <div class="app-form-field-grid app-form-field-grid--wide q-mb-md">
+          <q-input
+            v-model="draftName"
+            dense
+            outlined
+            clearable
+            :label="t('hooksPage.fieldName')"
+            :hint="t('hooksPage.agentPanel.nameHint')"
+          />
+          <q-toggle v-model="draftEnabled" :label="t('hooksPage.fieldEnabled')" />
+        </div>
+        <callback-editor
+          v-model="draftRule"
+          v-model:sort-order="draftSort"
+          :agent-id="agentId"
+          :agent-key="agentKey"
+          lock-agent-id
+          :tool-options="toolOptions"
+          :loading-tool-options="loadingToolOptions"
+        />
         <div class="row justify-end q-mt-md">
           <q-btn
             color="primary"
@@ -44,6 +71,12 @@
       </div>
     </q-expansion-item>
 
+    <template v-if="globalRows.length">
+      <div class="text-subtitle2 q-mt-lg q-mb-xs">{{ t('hooksPage.agentPanel.globalSectionTitle') }}</div>
+      <p class="text-caption text-grey q-mb-sm">{{ t('hooksPage.agentPanel.globalSectionCaption') }}</p>
+      <HooksTable variant="agent" readonly :rows="globalRows" :loading="loading" />
+    </template>
+
     <q-dialog v-model="editOpen" persistent>
       <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between">
@@ -53,12 +86,19 @@
         <q-separator />
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body">
+            <div class="app-form-field-grid app-form-field-grid--2col q-mb-md">
+              <q-input v-model="editName" dense outlined :label="t('hooksPage.fieldName')" />
+              <q-toggle v-model="editEnabled" :label="t('hooksPage.fieldEnabled')" />
+            </div>
             <callback-editor
               v-if="editRow"
               v-model="editRule"
               v-model:sort-order="editSort"
               :agent-id="agentId"
               :agent-key="agentKey"
+              lock-agent-id
+              :tool-options="toolOptions"
+              :loading-tool-options="loadingToolOptions"
             />
           </q-card-section>
         </div>
@@ -87,26 +127,42 @@ import { useAgentHooksPanel } from '../../features/agents/useAgentHooksPanel';
 
 const { t } = useI18n();
 
-const props = defineProps<{
-  agentId: string;
-  agentKey: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    agentId: string;
+    agentKey: string;
+    toolOptions?: { label: string; value: string }[];
+    loadingToolOptions?: boolean;
+  }>(),
+  {
+    toolOptions: undefined,
+    loadingToolOptions: false,
+  },
+);
 
 const {
   loading,
   saving,
   loadError,
   scopedRows,
+  globalRows,
   editorExpanded,
   draftRule,
   draftSort,
+  draftName,
+  draftEnabled,
   editOpen,
   editRow,
   editRule,
   editSort,
+  editName,
+  editEnabled,
+  togglingId,
   createScopedHook,
   openEdit,
   saveEdit,
+  toggleEnabled,
+  confirmRemove,
   reload,
 } = useAgentHooksPanel(
   () => props.agentId,

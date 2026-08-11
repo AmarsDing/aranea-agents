@@ -71,11 +71,12 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | Admin Invoke 实际派发 | ✅ | `A2AService.Invoke` + `NewInvoker`（含 `DefaultRetryPolicy`） |
 | 工作区隔离 | ✅ | `ValidateAdminInvokeWorkspace` + Admin `workspace` 字段 |
 | agent_kind=a2a_proxy | ✅ | `trpc_build_router` + `BuildTRPCA2AAgent` |
-| LLM A2A Endpoint Tab | ✅ | `AgentSettingsA2AEndpointTab.vue` |
+| LLM A2A Endpoint Tab | ✅ | `AgentSettingsA2AEndpointTab.vue`（展示公开 Endpoint URL + 复制；capabilities 支持 `name: 描述` 行格式） |
+| Proxy Tab 测试连接 | ✅ | `AgentSettingsA2ATab.vue` 复用 `DiscoverRemoteAgent` 不落库连通性检查 + URL 协议校验 |
 | 公开 A2A HTTP | ✅ | `/v1/a2a/public/{agent_id}` + `EndpointRegistry` |
 | A2A Extension 端点 | ✅ | `/a2a` + `A2AExtensionCompatService`（懒初始化） |
 | 远程注册 CRUD | ✅ | `a2a_remote_agents` + `/v1/a2a/remote-agents` |
-| 客户端鉴权 api_key/bearer/mtls | ✅ | `remote_client.go` `ClientAuthOptions`（注：biz `ValidateAuthConfig` 存在 basic/mtls 不一致） |
+| 客户端鉴权 api_key/bearer/mtls | ✅ | `remote_client.go` `ClientAuthOptions`；biz `ValidateAuthConfig` 已对齐（2026-08-11 移除 `basic`、补 `mtls`） |
 | 远程调用重试 | ✅ | `RetryPolicy`（MaxRetries=2，指数退避）+ `InvokeRemoteRegistry` |
 | 公开 URL 配置 | ✅ | env > 系统设置 DB > yaml > derived；`GET /v1/a2a/config` |
 | 远程 registry Invoke | ✅ | `remote_invoke.go` + invoker 路由 |
@@ -90,7 +91,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 联邦路由策略 | ❌ | 按 healthy/source 选路未实现 |
 | Ent 列级 agent_kind | 🟡 | 现用 `config_json` + `Kind` 字段 |
 | A2A 表 Ent Schema 化 | 🟡 | 现用 Raw SQL `EnsureA2ASchema`（TECH-DEBT DEV-10） |
-| biz auth 校验一致性 | 🟡 | `ValidateAuthConfig` 含 `basic` 缺 `mtls`，与 `remote_client.go` 偏差 |
+| biz auth 校验一致性 | ✅ | `ValidateAuthConfig` 支持集合 = `none`/`api_key`/`bearer`/`mtls`，与 `remote_client.go` 对齐 |
 
 ---
 
@@ -103,7 +104,6 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 3 | Admin Invoke 可选流式 | **P3** | 外部客户端应走 Public Endpoint |
 | 4 | Ent `agent_kind` 列迁移 | **P3** | 可选 schema 硬化 |
 | 5 | A2A 表 Ent Schema 化 | **P3** | 消除 TECH-DEBT DEV-10，纳入 DDL Migration Registry |
-| 6 | biz auth 校验对齐 | **P3** | `ValidateAuthConfig` 补 `mtls`、移除或实现 `basic` |
 
 ---
 
@@ -187,7 +187,6 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 - **公开 Endpoint**：须 catalog Agent + `a2a_agent_cards.enabled`；`a2a_proxy` 不挂载 Endpoint。
 - **限流后端选择**：多 Pod 部署必须配置 Redis（`data.redis`），否则内存限流器跨 Pod 不一致；工厂会 Warn 提示。
 - **A2A 表非 Ent Schema**：`EnsureA2ASchema` raw SQL + `ALTER TABLE` 补丁属 TECH-DEBT DEV-10，迁移至 DDL Migration Registry 时需版本化。
-- **auth 校验偏差**：biz `ValidateAuthConfig` 与 `remote_client.go` 支持集合不一致，使用 `mtls` 鉴权时需注意 biz 校验层。
 
 ---
 

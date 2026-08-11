@@ -6,6 +6,7 @@ import {
   kratosApi,
 } from '../../services';
 import axios from 'axios';
+import { KRATOS_API_LONG_TIMEOUT_MS } from '../../services/axiosHandler';
 import type {
   PaginatedResponse,
   Skill,
@@ -297,7 +298,9 @@ export async function listSkillRuns(query: SkillRunQuery = {}): Promise<Paginate
 export async function uploadSkillZip(file: File): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append('file', file);
-  const { data } = await kratosApi.post('/v1/skills/import', form);
+  // multipart 直连 kratosApi（不经 requestHandler 白名单），必须显式给长超时：
+  // 导入要对每个已有 Skill 做 LLM 相似度检查，30s 默认超时会中断大库导入（FN-1）。
+  const { data } = await kratosApi.post('/v1/skills/import', form, { timeout: KRATOS_API_LONG_TIMEOUT_MS });
   const d = data as Record<string, unknown>;
   return { job_id: String(d.job_id ?? d.jobId ?? '') };
 }

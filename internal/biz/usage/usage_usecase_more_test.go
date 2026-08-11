@@ -1448,8 +1448,8 @@ func TestCheckQuota_DisabledQuota(t *testing.T) {
 	if !qc.Allowed {
 		t.Error("Allowed = false, want true for disabled quota")
 	}
-	if qc.Reason != "quota disabled" {
-		t.Errorf("Reason = %q, want %q", qc.Reason, "quota disabled")
+	if qc.Reason != usage.QuotaCheckReasonDisabled {
+		t.Errorf("Reason = %q, want %q", qc.Reason, usage.QuotaCheckReasonDisabled)
 	}
 }
 
@@ -1466,7 +1466,113 @@ func TestCheckQuota_NoQuotaConfigured(t *testing.T) {
 	if !qc.Allowed {
 		t.Error("Allowed = false, want true when no quota configured")
 	}
-	if qc.Reason != "no quota configured" {
-		t.Errorf("Reason = %q, want %q", qc.Reason, "no quota configured")
+	if qc.Reason != usage.QuotaCheckReasonNoQuota {
+		t.Errorf("Reason = %q, want %q", qc.Reason, usage.QuotaCheckReasonNoQuota)
+	}
+}
+
+// fixedNow = 2025-03-15 → 当自然月周期为 2025-03-01 ~ 2025-03-31。
+func TestCheckQuota_PeriodRollover(t *testing.T) {
+	var persisted usage.Quota
+	var sumStart, sumEnd string
+	repo := &mockRepo{}
+	repo.getQuotaFn = func(_ context.Context, _, _ string) (usage.Quota, error) {
+		return usage.Quota{
+			ScopeType:       "agent",
+			ScopeID:         "agent-1",
+			MonthlyMicroUSD: 10000,
+			PeriodStart:     "2025-02-01",
+			PeriodEnd:       "2025-02-28", // 相对 fixedNow 已过期
+		}, nil
+	}
+	repo.setQuotaFn = func(_ context.Context, q usage.Quota) (usage.Quota, error) {
+		persisted = q
+		return q, nil
+	}
+	repo.sumScopeCostInPeriodFn = func(_ context.Context, _, _, ps, pe string) (int64, error) {
+		sumStart, sumEnd = ps, pe
+		return 5000, nil
+	}
+	uc := newTestUsecase(repo)
+	qc, err := uc.CheckQuota(context.Background(), "agent", "agent-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if persisted.PeriodStart != "2025-03-01" || persisted.PeriodEnd != "2025-03-31" {
+		t.Errorf("persisted period = %s~%s, want 2025-03-01~2025-03-31", persisted.PeriodStart, persisted.PeriodEnd)
+	}
+	if sumStart != "2025-03-01" || sumEnd != "2025-03-31" {
+		t.Errorf("sum period = %s~%s, want rolled current month", sumStart, sumEnd)
+	}
+	if qc.Quota.PeriodStart != "2025-03-01" || qc.Quota.PeriodEnd != "2025-03-31" {
+		t.Errorf("check quota period = %s~%s, want rolled current month", qc.Quota.PeriodStart, qc.Quota.PeriodEnd)
+	}
+	if !qc.Allowed || qc.Reason != usage.QuotaCheckReasonWithin {
+		t.Errorf("Allowed=%v Reason=%q, want within quota", qc.Allowed, qc.Reason)
+	}
+}
+
+func TestCheckQuota_PeriodRollover_PersistFails(t *testing.T) {
+	var sumStart, sumEnd string
+	repo := &mockRepo{}
+	repo.getQuotaFn = func(_ context.Context, _, _ string) (usage.Quota, error) {
+		return usage.Quota{
+			ScopeType:       "agent",
+			ScopeID:         "agent-1",
+			MonthlyMicroUSD: 10000,
+			PeriodStart:     "2025-02-01",
+			PeriodEnd:       "2025-02-28",
+		}, nil
+	}
+	repo.setQuotaFn = func(_ context.Context, _ usage.Quota) (usage.Quota, error) {
+		return usage.Quota{}, errors.New("db down")
+	}
+	repo.sumScopeCostInPeriodFn = func(_ context.Context, _, _, ps, pe string) (int64, error) {
+		sumStart, sumEnd = ps, pe
+		return 12000, nil
+	}
+	uc := newTestUsecase(repo)
+	qc, err := uc.CheckQuota(context.Background(), "agent", "agent-1")
+	if err != nil {
+		t.Fatalf("persist failure must not fail the check, got: %v", err)
+	}
+	if sumStart != "2025-03-01" || sumEnd != "2025-03-31" {
+		t.Errorf("sum period = %s~%s, want rolled current month despite persist failure", sumStart, sumEnd)
+	}
+	if qc.Allowed || qc.Reason != usage.QuotaCheckReasonExceeded {
+		t.Errorf("Allowed=%v Reason=%q, want exceeded (enforced with in-memory period)", qc.Allowed, qc.Reason)
+	}
+}
+
+func TestCheckQuota_CurrentPeriod_NoRollover(t *testing.T) {
+	setCalls := 0
+	var sumStart, sumEnd string
+	repo := &mockRepo{}
+	repo.getQuotaFn = func(_ context.Context, _, _ string) (usage.Quota, error) {
+		return usage.Quota{
+			ScopeType:       "agent",
+			ScopeID:         "agent-1",
+			MonthlyMicroUSD: 10000,
+			PeriodStart:     "2025-03-01",
+			PeriodEnd:       "2025-03-31", // 未过期（fixedNow=2025-03-15）
+		}, nil
+	}
+	repo.setQuotaFn = func(_ context.Context, q usage.Quota) (usage.Quota, error) {
+		setCalls++
+		return q, nil
+	}
+	repo.sumScopeCostInPeriodFn = func(_ context.Context, _, _, ps, pe string) (int64, error) {
+		sumStart, sumEnd = ps, pe
+		return 5000, nil
+	}
+	uc := newTestUsecase(repo)
+	if _, err := uc.CheckQuota(context.Background(), "agent", "agent-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if setCalls != 0 {
+		t.Errorf("SetQuota called %d times, want 0 for unexpired period", setCalls)
+	}
+	if sumStart != "2025-03-01" || sumEnd != "2025-03-31" {
+		t.Errorf("sum period = %s~%s, want original period", sumStart, sumEnd)
 	}
 }

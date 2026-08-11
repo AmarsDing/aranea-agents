@@ -36,15 +36,17 @@ const props = withDefaults(
     readOnly?: boolean;
     /** wikilink 候选（当前库文档 relPath/文件名） */
     candidates?: string[];
+    /** P2-5：`[[target#` 标题补全数据源（容器提供：已打开 tab 的大纲标题） */
+    getHeadings?: (target: string) => string[];
   }>(),
-  { readOnly: false, candidates: () => [] },
+  { readOnly: false, candidates: () => [], getHeadings: undefined },
 );
 
 const emit = defineEmits<{
   'update-content': [content: string];
   save: [];
-  /** 跳链：目标已存在（target 为链接原文，上层按名归一化解析 docId） */
-  'open-doc': [target: string];
+  /** 跳链：目标已存在（target 为链接原文，上层按名归一化解析 docId；heading 供滚动定位） */
+  'open-doc': [target: string, heading?: string];
   /** 目标不存在：新建并打开（Obsidian 语义） */
   'create-doc': [target: string];
 }>();
@@ -82,36 +84,44 @@ function codeLineSet(v: EditorView): Set<number> {
   return set;
 }
 
-function onWikiJump(target: string) {
+function onWikiJump(target: string, heading: string) {
   const exists = resolveWikiTarget(target, props.candidates ?? []);
-  if (exists) emit('open-doc', target);
-  else emit('create-doc', target);
+  if (!exists) {
+    emit('create-doc', target);
+    return;
+  }
+  // 无 heading 时保持单参数载荷（下游/测试契约：[target]）
+  if (heading) emit('open-doc', target, heading);
+  else emit('open-doc', target);
 }
 
 class WikiLinkWidget extends WidgetType {
   constructor(
     readonly label: string,
     readonly target: string,
+    readonly heading: string,
     readonly dangling: boolean,
   ) {
     super();
   }
 
   eq(other: WikiLinkWidget): boolean {
-    return other.label === this.label && other.target === this.target && other.dangling === this.dangling;
+    return (
+      other.label === this.label && other.target === this.target && other.heading === this.heading && other.dangling === this.dangling
+    );
   }
 
   toDOM(): HTMLElement {
     const el = document.createElement('span');
     el.className = 'kb-wikilink' + (this.dangling ? ' kb-wikilink--dangling' : '');
     el.textContent = this.label;
-    el.title = this.dangling ? t('knowledgePage.workbench.wikilinkDangling') : this.target;
+    el.title = this.dangling ? t('knowledgePage.workbench.wikilinkDangling') : this.heading ? `${this.target}#${this.heading}` : this.target;
     el.onmousedown = (e: MouseEvent) => {
       // 编辑态 Ctrl/Cmd+点击；预览态单击
       if (!props.readOnly && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       e.stopPropagation();
-      onWikiJump(this.target);
+      onWikiJump(this.target, this.heading);
     };
     return el;
   }
@@ -134,7 +144,7 @@ function collectLineDecos(
   codeLines: Set<number>,
   out: DecoItem[],
 ) {
-  const { from, to, text } = line;
+  const { from, text } = line;
 
   // line decoration 为 zero-length（行首点装饰）
   if (codeLines.has(line.number)) {
@@ -177,7 +187,7 @@ function collectLineDecos(
         from: mFrom,
         to: mTo,
         deco: Decoration.replace({
-          widget: new WikiLinkWidget(wikiLinkLabel(ref), ref.target, dangling),
+          widget: new WikiLinkWidget(wikiLinkLabel(ref), ref.target, ref.heading, dangling),
         }),
       });
     } else if (m[2]) {
@@ -345,7 +355,7 @@ function buildExtensions(): Extension[] {
     syntaxHighlighting(kbHighlight),
     closeBrackets(),
     autocompletion({
-      override: [wikiLinkCompletionSource(() => props.candidates ?? [])],
+      override: [wikiLinkCompletionSource(() => props.candidates ?? [], (target) => props.getHeadings?.(target) ?? [])],
       activateOnTyping: true,
       maxRenderedOptions: 20,
     }),

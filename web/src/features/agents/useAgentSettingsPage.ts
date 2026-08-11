@@ -141,6 +141,7 @@ export function useAgentSettingsPage() {
     fileDirty,
     availableOptionalFiles,
     addOptionalFile,
+    removeFile,
     snapshotFiles,
     updateFileBody,
     reloadActiveFile,
@@ -167,6 +168,7 @@ export function useAgentSettingsPage() {
   const persistence = useAgentSettingsPersistence({
     form,
     $q,
+    t,
     agentId,
     detailStore: detailStore as unknown as UseAgentSettingsPersistenceDeps['detailStore'],
     appStore: store,
@@ -248,10 +250,19 @@ export function useAgentSettingsPage() {
   function confirmFileReload() {
     $q.dialog({
       title: '重新召唤',
-      message: '未保存的更改将丢失，确定重新召唤？',
+      message: '将从服务端拉取最新内容覆盖当前文件，未保存的更改将丢失。确定重新召唤？',
       cancel: true,
       persistent: true,
     }).onOk(() => void reloadActiveFile());
+  }
+
+  function confirmRemoveFile(name: string) {
+    $q.dialog({
+      title: '移除文件',
+      message: `确定从 Agent 移除 ${name}？保存后生效，该文件的内容将被删除。`,
+      cancel: true,
+      persistent: true,
+    }).onOk(() => removeFile(name));
   }
 
   const advancedChannelOptions = computed(() =>
@@ -321,12 +332,12 @@ export function useAgentSettingsPage() {
     agentId,
     availableOptionalFiles,
     addOptionalFile,
+    confirmRemoveFile,
     activeFile,
     fileSplitter,
     files,
     fileDirty,
     updateFileBody,
-    reloadActiveFile,
     truncateStrategyOptions,
     snapshotModeOptions,
     memoryScopeOptions,

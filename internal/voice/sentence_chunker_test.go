@@ -43,13 +43,22 @@ func TestChunkerFirstSentenceMinorPunct(t *testing.T) {
 	require.Equal(t, []string{"好的收到没问题，"}, c.texts())
 }
 
+func TestChunkerFirstSentenceFastPath(t *testing.T) {
+	// P1 首句快速通道（2026-08-10）：首句阈值 6→4，
+	// "好的收到，"（5 字符含标点）遇次要边界即切出，压低首音延迟。
+	c := &collector{}
+	ch := NewSentenceChunker(c.fn())
+	ch.Write("好的收到，继续处理")
+	require.Equal(t, []string{"好的收到，"}, c.texts())
+}
+
 func TestChunkerFirstSentenceBelowMinMerges(t *testing.T) {
 	c := &collector{}
 	ch := NewSentenceChunker(c.fn())
-	ch.Write("好。继续说话。") // 首句 "好。" 仅 3 字符，不切
+	ch.Write("好。走。") // 首句 "好。" 仅 2 字符，不切；第二边界累计 2 字符仍 <4，继续合并
 	require.Empty(t, c.texts())
 	ch.Flush()
-	require.Equal(t, []string{"好。继续说话。"}, c.texts())
+	require.Equal(t, []string{"好。走。"}, c.texts())
 }
 
 func TestChunkerLaterSentenceMinMerge(t *testing.T) {

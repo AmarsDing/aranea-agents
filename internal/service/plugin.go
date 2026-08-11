@@ -138,7 +138,8 @@ func (s *PluginService) assertPluginAccess(ctx context.Context, pluginID string)
 }
 
 // assertPluginMutateAccess 校验 caller 是否可变更指定 plugin。
-// 共享 plugin（workspace_id=""）对租户只读（fail-closed）。
+// 内置/共享 plugin（workspace_id=""）是平台级配置，登录管理员可变更
+// （需求 22-plugin §0.3：管理员启停/排序/改配置）；仅租户私有 plugin 做 workspace 写隔离。
 func (s *PluginService) assertPluginMutateAccess(ctx context.Context, pluginID string) error {
 	return s.checkPluginAccess(ctx, pluginID, true)
 }
@@ -155,7 +156,9 @@ func (s *PluginService) checkPluginAccess(ctx context.Context, pluginID string, 
 		return err
 	}
 	callerWS := workspace.IDFromContext(ctx)
-	if mutate {
+	if mutate && p.WorkspaceID != "" {
+		// 租户私有 plugin：仅同 workspace 可写。共享 plugin（workspace_id=""）
+		// 为内置平台级配置，不套用共享资源 fail-closed（否则管理页写功能全灭）。
 		err = workspace.AssertWorkspaceMutate(callerWS, p.WorkspaceID)
 	} else {
 		err = workspace.AssertWorkspaceOrShared(callerWS, p.WorkspaceID)

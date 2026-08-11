@@ -201,6 +201,8 @@ message ToolAgentOverride {
   string tool_id = 2;
   string tool_key = 3;
   string agent_id = 4;
+  // enabled is legacy: runtime enablement is decided by mode alone
+  // (inherit/allow/deny); this field is always stored as true.
   bool enabled = 5;
   string mode = 6;
   string config_override_json = 7;
@@ -277,6 +279,7 @@ message DeleteToolGrantRequest {
 message UpsertToolAgentOverrideRequest {
   string tool_id = 1 [(google.api.field_behavior) = REQUIRED];
   string agent_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // enabled is legacy (see ToolAgentOverride): callers should send true.
   bool enabled = 3;
   string mode = 4;
   string config_override_json = 5;

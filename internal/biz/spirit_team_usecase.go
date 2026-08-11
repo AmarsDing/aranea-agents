@@ -1249,24 +1249,35 @@ const (
 )
 
 // resolveAgentKeyToIDMap maps agentKeys (e.g. "__spirit__") to agent IDs (e.g.
-// "agent___spirit__" or UUID). Uses SpiritAgentResolver.List to fetch all
-// active agents once and builds a lookup map.
+// "agent___spirit__" or UUID). Pages through ALL active agents (the repo clamps
+// a single page to ≤500) and builds a lookup map. Unresolvable keys return an
+// error naming them — the former silent "agent_"+key fallback only ever worked
+// for system agents whose IDs follow that naming convention, and began
+// misfiring once active agents exceeded the old single-page Limit of 200.
 func (u *SpiritTeamUsecase) resolveAgentKeyToIDMap(ctx context.Context, agentKeys []string) (map[string]string, error) {
 	if len(agentKeys) == 0 {
 		return nil, nil
 	}
-	result, err := u.agentUC.List(ctx, AgentListQuery{
-		Status: "active",
-		Limit:  200,
-	})
-	if err != nil {
-		return nil, err
-	}
-	keyToID := make(map[string]string, len(result.Items))
-	for _, a := range result.Items {
-		keyToID[a.AgentKey] = a.ID
+	const pageSize = 500
+	keyToID := make(map[string]string)
+	for offset := 0; ; offset += pageSize {
+		result, err := u.agentUC.List(ctx, AgentListQuery{
+			Status: "active",
+			Limit:  pageSize,
+			Offset: offset,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range result.Items {
+			keyToID[a.AgentKey] = a.ID
+		}
+		if len(result.Items) < pageSize || offset+len(result.Items) >= result.Total {
+			break
+		}
 	}
 	out := make(map[string]string, len(agentKeys))
+	var missing []string
 	for _, key := range agentKeys {
 		key = strings.TrimSpace(key)
 		if key == "" {
@@ -1277,9 +1288,13 @@ func (u *SpiritTeamUsecase) resolveAgentKeyToIDMap(ctx context.Context, agentKey
 		}
 		id, ok := keyToID[key]
 		if !ok {
-			id = "agent_" + key
+			missing = append(missing, key)
+			continue
 		}
 		out[key] = id
+	}
+	if len(missing) > 0 {
+		return nil, apierror.BadRequest("SPIRIT", "agent keys not found or not active: %s", strings.Join(missing, ", "))
 	}
 	return out, nil
 }

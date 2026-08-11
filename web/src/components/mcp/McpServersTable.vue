@@ -28,11 +28,24 @@
       <q-td :props="props">{{ transportLabel(props.row) }}</q-td>
     </template>
 
+    <template #body-cell-toolPrefix="props">
+      <q-td :props="props">
+        <code v-if="rowConfig(props.row).tool_prefix" class="mcp-tool-prefix">
+          mcp_{{ rowConfig(props.row).tool_prefix }}__
+        </code>
+        <span v-else class="text-grey-7">—</span>
+      </q-td>
+    </template>
+
+    <template #body-cell-timeout="props">
+      <q-td :props="props">{{ rowConfig(props.row).timeout_sec ?? 60 }}s</q-td>
+    </template>
+
     <template #body-cell-health="props">
       <q-td :props="props">
         <AppRegistryHoverTip :text="rowMetadata(props.row).last_error_message">
           <q-chip v-if="rowMetadata(props.row).health_status" dense outline :color="healthColor(props.row)">
-            {{ rowMetadata(props.row).health_status }}
+            {{ healthLabel(props.row) }}
           </q-chip>
           <span v-else class="text-grey-7">—</span>
         </AppRegistryHoverTip>
@@ -41,9 +54,13 @@
 
     <template #body-cell-enabled="props">
       <q-td :props="props">
-        <q-chip dense square :color="props.row.enabled ? 'primary' : 'grey'" text-color="white">
-          {{ props.row.enabled ? 'enabled' : 'disabled' }}
-        </q-chip>
+        <q-toggle
+          dense
+          color="primary"
+          :model-value="props.row.enabled"
+          :disable="togglingId === props.row.id"
+          @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
+        />
       </q-td>
     </template>
 
@@ -95,6 +112,7 @@ defineProps<{
   rows: McpServerRow[];
   loading: boolean;
   testingId: string;
+  togglingId: string;
   healthTone: (row: McpServerRow) => string;
   healthTooltip: (row: McpServerRow) => string;
 }>();
@@ -104,6 +122,7 @@ defineEmits<{
   delete: [row: McpServerRow];
   test: [row: McpServerRow];
   credentials: [row: McpServerRow];
+  toggleEnabled: [row: McpServerRow, enabled: boolean];
 }>();
 
 function rowConfig(row: McpServerRow) {
@@ -140,4 +159,23 @@ function healthColor(row: McpServerRow) {
   if (status === 'degraded') return 'warning';
   return 'grey';
 }
+
+function healthLabel(row: McpServerRow) {
+  const status = rowMetadata(row).health_status;
+  if (status === 'ok') return '正常';
+  if (status === 'error') return '异常';
+  if (status === 'degraded') return '退化';
+  return status || '';
+}
 </script>
+
+<style scoped>
+.mcp-tool-prefix {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent);
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+</style>

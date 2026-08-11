@@ -36,6 +36,7 @@ const OperationKnowledgeServiceListDanglingLinks = "/kratos.knowledge.v1.Knowled
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
+const OperationKnowledgeServiceListUnlinkedMentions = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
 const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
@@ -81,6 +82,9 @@ type KnowledgeServiceHTTPServer interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error)
+	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
+	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+	ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(context.Context, *ListVaultTreeRequest) (*ListVaultTreeResponse, error)
 	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
@@ -133,6 +137,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/documents/{doc_id}/block-backlinks", _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{doc_id}/unlinked-mentions", _KnowledgeService_ListUnlinkedMentions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/blocks/promote", _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/collections/{id}/rebuild-index", _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
@@ -569,6 +574,28 @@ func _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv KnowledgeServiceHTTPS
 	}
 }
 
+func _KnowledgeService_ListUnlinkedMentions0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListUnlinkedMentionsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListUnlinkedMentions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListUnlinkedMentions(ctx, req.(*ListUnlinkedMentionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListUnlinkedMentionsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in PromoteBlocksRequest
@@ -761,6 +788,9 @@ type KnowledgeServiceHTTPClient interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(ctx context.Context, req *ListEntityMergeSuggestionsRequest, opts ...http.CallOption) (rsp *ListEntityMergeSuggestionsResponse, err error)
+	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
+	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+	ListUnlinkedMentions(ctx context.Context, req *ListUnlinkedMentionsRequest, opts ...http.CallOption) (rsp *ListUnlinkedMentionsResponse, err error)
 	// ListVaultTree Vault explorer (P3): lazy folder listing derived from document rel_paths.
 	ListVaultTree(ctx context.Context, req *ListVaultTreeRequest, opts ...http.CallOption) (rsp *ListVaultTreeResponse, err error)
 	// MergeKnowledgeEntities MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
@@ -1018,6 +1048,21 @@ func (c *KnowledgeServiceHTTPClientImpl) ListEntityMergeSuggestions(ctx context.
 	pattern := "/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceListEntityMergeSuggestions))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
+// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+func (c *KnowledgeServiceHTTPClientImpl) ListUnlinkedMentions(ctx context.Context, in *ListUnlinkedMentionsRequest, opts ...http.CallOption) (*ListUnlinkedMentionsResponse, error) {
+	var out ListUnlinkedMentionsResponse
+	pattern := "/v1/knowledge/documents/{doc_id}/unlinked-mentions"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListUnlinkedMentions))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

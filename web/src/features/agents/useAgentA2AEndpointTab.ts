@@ -1,29 +1,40 @@
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { A2AAgentCard } from '../a2a/types';
 import { useA2AStore } from '../../stores/a2a';
 
 export function useAgentA2AEndpointTab(agentId: () => string) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const a2aStore = useA2AStore();
   const loading = ref(false);
   const saving = ref(false);
   const card = ref<A2AAgentCard | null>(null);
 
   const capabilityLines = computed({
-    get: () => (card.value?.capabilities ?? []).map((c) => c.name).join('\n'),
+    get: () =>
+      (card.value?.capabilities ?? [])
+        .map((c) => (c.description && c.description !== c.name ? `${c.name}: ${c.description}` : c.name))
+        .join('\n'),
     set: (text: string) => {
       if (!card.value) return;
-      const names = text
+      card.value.capabilities = text
         .split('\n')
         .map((s) => s.trim())
-        .filter(Boolean);
-      card.value.capabilities = names.map((name) => ({
-        name,
-        description: name,
-        input_schema_json: '{}',
-        output_schema_json: '{}',
-      }));
+        .filter(Boolean)
+        .map((line) => {
+          const idx = line.indexOf(':');
+          const name = (idx === -1 ? line : line.slice(0, idx)).trim();
+          const description = (idx === -1 ? '' : line.slice(idx + 1)).trim();
+          return {
+            name,
+            description: description || name,
+            input_schema_json: '{}',
+            output_schema_json: '{}',
+          };
+        })
+        .filter((c) => c.name);
     },
   });
 
@@ -77,6 +88,17 @@ export function useAgentA2AEndpointTab(agentId: () => string) {
     if (card.value) card.value.enabled = val;
   }
 
+  async function copyEndpointUrl() {
+    const url = card.value?.endpoint_url?.trim();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      $q.notify({ type: 'positive', message: t('agentSettings.a2aUrlCopied') });
+    } catch {
+      $q.notify({ type: 'negative', message: t('agentSettings.a2aCopyFailed') });
+    }
+  }
+
   onMounted(loadCard);
 
   return {
@@ -84,7 +106,9 @@ export function useAgentA2AEndpointTab(agentId: () => string) {
     saving,
     card,
     capabilityLines,
+    loadCard,
     setCardEnabled,
     saveEndpoint,
+    copyEndpointUrl,
   };
 }

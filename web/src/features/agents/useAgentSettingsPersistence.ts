@@ -9,6 +9,7 @@ import type { AgentRuntimeHydrateHooks } from './useAgentRuntimeConfig';
 export interface UseAgentSettingsPersistenceDeps {
   form: Agent;
   $q: { notify: (opts: { type?: string; message: string }) => void };
+  t: (key: string) => string;
   agentId: ComputedRef<string>;
 
   detailStore: {
@@ -103,21 +104,30 @@ export function useAgentSettingsPersistence(deps: UseAgentSettingsPersistenceDep
     Object.assign(deps.form, agent);
     deps.hydrateSettings(agent, runtimeHydrateHooks());
     deps.appStore.upsertAgent(agent);
-    deps.snapshotFiles();
-    deps.syncPreviewModeFromAgent(deps.form.system_prompt_mode);
-    await deps.loadPromptPreview();
-    await deps.primeThumbnailCache();
-    void deps.refreshFileTokenEstimates(deps.form.id);
+    // Hydrate before snapshot: the initial snapshot must capture the server
+    // bodies, otherwise the dirty check compares against built-in templates
+    // and reloadActiveFile would roll back to templates instead of server state.
     if (agent.files?.length) {
       deps.hydrateFiles(agent.files);
     } else {
       deps.hydrateFiles([]);
     }
+    deps.snapshotFiles();
+    deps.syncPreviewModeFromAgent(deps.form.system_prompt_mode);
+    await deps.loadPromptPreview();
+    await deps.primeThumbnailCache();
+    void deps.refreshFileTokenEstimates(deps.form.id);
     modelChanged.value = false;
     return true;
   }
 
   async function saveAgent() {
+    // Built-in (system) agents are read-only: the backend rejects PATCH with
+    // workspace access errors, so block before any validation/request.
+    if (deps.form.readonly) {
+      deps.$q.notify({ type: 'warning', message: deps.t('agentsPage.actions.builtinTip') });
+      return;
+    }
     if (!deps.selectedProviderModelID.value) {
       // Allow empty model (agent will inherit from chat interface at runtime).
       // Only block if the model was explicitly set but is orphaned/disabled.

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"time"
 
@@ -10,9 +11,36 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/graphdefinition"
 	"aranea-agents/internal/data/ent/graphexecution"
+	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+// keysetCursor 是 keyset（seek）分页游标：graph 域 ID 为随机 UUID，与排序
+// 字段无序关系，游标必须由排序键组成才能保证翻页连续、不重不漏。
+// Ts 用 Unix 微秒保留 timestamptz 精度。
+type keysetCursor struct {
+	SortOrder int    `json:"s,omitempty"`
+	Ts        int64  `json:"c,omitempty"`
+	ID        string `json:"i,omitempty"`
+}
+
+func encodeKeysetCursor(c keysetCursor) string {
+	raw, _ := json.Marshal(c)
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeKeysetCursor(token string, domain string) (keysetCursor, error) {
+	var c keysetCursor
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return c, apierror.BadRequest(domain, "invalid page token")
+	}
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return c, apierror.BadRequest(domain, "invalid page token")
+	}
+	return c, nil
+}
 
 type graphRepo struct {
 	data *Data
@@ -110,13 +138,21 @@ func (r *graphRepo) GetDefinitionByName(ctx context.Context, name string) (*biz.
 
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
 	client := r.data.RW().Read(ctx)
-	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
+	query := client.GraphDefinition.Query().Order(
+		ent.Asc(graphdefinition.FieldSortOrder),
+		ent.Asc(graphdefinition.FieldCreatedAt),
+		ent.Asc(graphdefinition.FieldID),
+	)
 	if pageSize <= 0 {
 		pageSize = 20
 	}
 	query = query.Limit(pageSize + 1)
 	if pageToken != "" {
-		query = query.Where(graphdefinition.IDGT(pageToken))
+		cur, err := decodeKeysetCursor(pageToken, "GRAPH")
+		if err != nil {
+			return nil, "", err
+		}
+		query = query.Where(graphDefinitionKeyset(cur))
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
@@ -124,7 +160,8 @@ func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken
 	}
 	var nextToken string
 	if len(rows) > pageSize {
-		nextToken = rows[pageSize-1].ID
+		last := rows[pageSize-1]
+		nextToken = encodeKeysetCursor(keysetCursor{SortOrder: last.SortOrder, Ts: last.CreatedAt.UnixMicro(), ID: last.ID})
 		rows = rows[:pageSize]
 	}
 	result := make([]*biz.GraphDefinition, len(rows))
@@ -132,6 +169,24 @@ func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken
 		result[i] = entGraphToBiz(row, r.data.lg)
 	}
 	return result, nextToken, nil
+}
+
+// graphDefinitionKeyset 生成 (sort_order, created_at, id) 的 keyset 续页谓词，
+// 与 ListDefinitions* 的 ORDER BY 严格一致（ASC）。
+func graphDefinitionKeyset(cur keysetCursor) predicate.GraphDefinition {
+	ts := time.UnixMicro(cur.Ts).UTC()
+	return graphdefinition.Or(
+		graphdefinition.SortOrderGT(cur.SortOrder),
+		graphdefinition.And(
+			graphdefinition.SortOrderEQ(cur.SortOrder),
+			graphdefinition.CreatedAtGT(ts),
+		),
+		graphdefinition.And(
+			graphdefinition.SortOrderEQ(cur.SortOrder),
+			graphdefinition.CreatedAtEQ(ts),
+			graphdefinition.IDGT(cur.ID),
+		),
+	)
 }
 
 func (r *graphRepo) ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*biz.GraphDefinition, error) {
@@ -152,7 +207,11 @@ func (r *graphRepo) ListUserTemplateDefinitions(ctx context.Context, pageSize in
 // empty workspaceID = system caller (see all); non-empty = tenant caller (see shared + own).
 func (r *graphRepo) ListDefinitionsByWorkspace(ctx context.Context, pageSize int, pageToken string, workspaceID string) ([]*biz.GraphDefinition, string, error) {
 	client := r.data.RW().Read(ctx)
-	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
+	query := client.GraphDefinition.Query().Order(
+		ent.Asc(graphdefinition.FieldSortOrder),
+		ent.Asc(graphdefinition.FieldCreatedAt),
+		ent.Asc(graphdefinition.FieldID),
+	)
 	// P2-B: workspace 过滤。空 WorkspaceID = system caller（看全部）。
 	// 租户 caller 只看：自己私有的（workspace_id == caller）+ 全局共享的（workspace_id == ""）。
 	if workspaceID != "" {
@@ -166,7 +225,11 @@ func (r *graphRepo) ListDefinitionsByWorkspace(ctx context.Context, pageSize int
 	}
 	query = query.Limit(pageSize + 1)
 	if pageToken != "" {
-		query = query.Where(graphdefinition.IDGT(pageToken))
+		cur, err := decodeKeysetCursor(pageToken, "GRAPH")
+		if err != nil {
+			return nil, "", err
+		}
+		query = query.Where(graphDefinitionKeyset(cur))
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
@@ -174,7 +237,8 @@ func (r *graphRepo) ListDefinitionsByWorkspace(ctx context.Context, pageSize int
 	}
 	var nextToken string
 	if len(rows) > pageSize {
-		nextToken = rows[pageSize-1].ID
+		last := rows[pageSize-1]
+		nextToken = encodeKeysetCursor(keysetCursor{SortOrder: last.SortOrder, Ts: last.CreatedAt.UnixMicro(), ID: last.ID})
 		rows = rows[:pageSize]
 	}
 	result := make([]*biz.GraphDefinition, len(rows))
@@ -360,17 +424,16 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 	client := r.data.RW().Read(ctx)
 	query := client.GraphExecution.Query().
 		Where(graphexecution.GraphIDEQ(graphID)).
-		Order(ent.Desc(graphexecution.FieldStartedAt))
+		Order(ent.Desc(graphexecution.FieldStartedAt), ent.Desc(graphexecution.FieldID))
 
-	var opt biz.GraphRunListOption
-	if len(opts) > 0 {
-		opt = opts[0]
-	}
-	if opt.Status != "" {
-		query = query.Where(graphexecution.StatusEQ(opt.Status))
-	}
-	if opt.StartedAfter != nil {
-		query = query.Where(graphexecution.StartedAtGTE(*opt.StartedAfter))
+	// 合并全部过滤条件（此前只取 opts[0]，status+startedAfter 同传时后者被静默丢弃）。
+	for _, opt := range opts {
+		if opt.Status != "" {
+			query = query.Where(graphexecution.StatusEQ(opt.Status))
+		}
+		if opt.StartedAfter != nil {
+			query = query.Where(graphexecution.StartedAtGTE(*opt.StartedAfter))
+		}
 	}
 
 	if pageSize <= 0 {
@@ -378,7 +441,19 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 	}
 	query = query.Limit(pageSize + 1)
 	if pageToken != "" {
-		query = query.Where(graphexecution.IDLT(pageToken))
+		cur, err := decodeKeysetCursor(pageToken, "GRAPH_RUN")
+		if err != nil {
+			return nil, "", err
+		}
+		// 与 ORDER BY started_at DESC, id DESC 严格一致的 keyset 续页谓词。
+		ts := time.UnixMicro(cur.Ts).UTC()
+		query = query.Where(graphexecution.Or(
+			graphexecution.StartedAtLT(ts),
+			graphexecution.And(
+				graphexecution.StartedAtEQ(ts),
+				graphexecution.IDLT(cur.ID),
+			),
+		))
 	}
 
 	rows, err := query.All(ctx)
@@ -387,7 +462,8 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 	}
 	var nextToken string
 	if len(rows) > pageSize {
-		nextToken = rows[pageSize-1].ID
+		last := rows[pageSize-1]
+		nextToken = encodeKeysetCursor(keysetCursor{Ts: last.StartedAt.UnixMicro(), ID: last.ID})
 		rows = rows[:pageSize]
 	}
 	result := make([]*biz.GraphExecution, len(rows))

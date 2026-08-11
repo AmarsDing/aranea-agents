@@ -896,6 +896,11 @@ body.body--dark .resource-manager-page.is-dark .provider-models-data-table
 .mcp-form-scroll
   max-height: min(70vh, 720px)
   overflow: auto
+  padding-bottom: var(--space-5, 20px)
+
+// 与标准 dialog 滚动区一致的底色（压过 app-glass-dialog 对 q-card__section 的透明化）
+.app-glass-dialog .mcp-form-scroll
+  background: var(--app-dialog-body-bg) !important
 
 .mcp-server-item
   background: color-mix(in srgb, var(--glass-surface) 84%, transparent)

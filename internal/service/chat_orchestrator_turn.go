@@ -441,6 +441,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			event.P("outcome", "reused"),
 			event.P("intent_kind", intentArtifact.IntentKind),
 			event.P("refined_goal_len", len(intentArtifact.RefinedGoal)))
+	} else if specArt := intent.SpeculativeArtifactFromContext(ctx); specArt != nil {
+		// C2 投机复用（语音 L2/L3）：ASR partial 稳定后预跑的产物，fresh 语义——
+		// 未经澄清门评估，保留澄清残留（不剥离），澄清门照常判定。
+		intentArtifact = specArt
+		emitter.LogDone("chat.intent.pass", "意图识别复用投机产物",
+			event.P("outcome", "reused_speculative"),
+			event.P("intent_kind", intentArtifact.IntentKind),
+			event.P("refined_goal_len", len(intentArtifact.RefinedGoal)))
 	} else if !biz.IsA2AProxyAgent(ag) && intent.ShouldRun(ag, content) {
 		eg.Go(func() error {
 			o.publishTurnProgress(ctx, sessionID, "understanding", nil)

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -135,7 +136,7 @@ func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string,
 	client := r.data.RW().Read(ctx)
 	query := client.GraphTask.Query().
 		Where(graphtask.ExecutionIDEQ(executionID)).
-		Order(ent.Asc(graphtask.FieldCreatedAt))
+		Order(ent.Asc(graphtask.FieldCreatedAt), ent.Asc(graphtask.FieldID))
 	if status != "" {
 		query = query.Where(graphtask.StatusEQ(string(status)))
 	}
@@ -144,7 +145,19 @@ func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string,
 	}
 	query = query.Limit(pageSize + 1)
 	if pageToken != "" {
-		query = query.Where(graphtask.IDGT(pageToken))
+		cur, err := decodeKeysetCursor(pageToken, "TASK")
+		if err != nil {
+			return nil, "", err
+		}
+		// 与 ORDER BY created_at ASC, id ASC 严格一致的 keyset 续页谓词。
+		ts := time.UnixMicro(cur.Ts).UTC()
+		query = query.Where(graphtask.Or(
+			graphtask.CreatedAtGT(ts),
+			graphtask.And(
+				graphtask.CreatedAtEQ(ts),
+				graphtask.IDGT(cur.ID),
+			),
+		))
 	}
 	rows, err := query.All(ctx)
 	if err != nil {
@@ -152,7 +165,8 @@ func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string,
 	}
 	var nextToken string
 	if len(rows) > pageSize {
-		nextToken = rows[pageSize-1].ID
+		last := rows[pageSize-1]
+		nextToken = encodeKeysetCursor(keysetCursor{Ts: last.CreatedAt.UnixMicro(), ID: last.ID})
 		rows = rows[:pageSize]
 	}
 	result := make([]*biz.GraphTask, len(rows))

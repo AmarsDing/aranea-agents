@@ -11,6 +11,7 @@ import {
 import { TOOL_CREATE_TEMPLATES } from '../../features/tools/toolEditorCopy';
 import type { Tool, ToolUpsertInput } from '../../features/tools/types';
 import { i18n } from '../../i18n';
+import { parseKratosApiError } from '../../utils/kratosError';
 import { useToolsStore } from './index';
 
 export function blankToolForm(): ToolUpsertInput {
@@ -173,7 +174,7 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
         });
       }
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存 Tool 失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存 Tool 失败' });
     } finally {
       saving.value = false;
     }

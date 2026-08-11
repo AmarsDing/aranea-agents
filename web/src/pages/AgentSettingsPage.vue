@@ -75,8 +75,6 @@
               :snapshot-mode-options="snapshotModeOptions"
               :memory-scope-options="memoryScopeOptions"
               :pii-policy-options="piiPolicyOptions"
-              :available-optional-files="availableOptionalFiles"
-              @add-optional-file="addOptionalFile"
               @open-evolution-tab="tab = 'evolution'"
             />
           </q-tab-panel>
@@ -88,11 +86,14 @@
               :file-token-by-name="fileTokenByName"
               :dirty="fileDirty"
               :agent-id="toValue(agentId)"
+              :system-prompt-mode="form.system_prompt_mode"
+              :available-optional-files="availableOptionalFiles"
               :refine-fn="refinePromptField"
               @update-file-body="updateFileBody"
               @confirm-reload="confirmFileReload"
-              @reload="reloadActiveFile"
               @save="saveAgent"
+              @add-optional-file="addOptionalFile"
+              @remove-file="confirmRemoveFile"
               @refine-error="onRefineError"
             />
           </q-tab-panel>
@@ -141,7 +142,12 @@
           <q-tab-panel name="hooks">
             <div class="settings-grid settings-grid--wide">
               <section class="settings-section">
-                <agent-hooks-panel :agent-id="agentId" :agent-key="form.agent_key" />
+                <agent-hooks-panel
+                  :agent-id="agentId"
+                  :agent-key="form.agent_key"
+                  :tool-options="toolSelectOptions"
+                  :loading-tool-options="loadingCatalogTools"
+                />
               </section>
             </div>
           </q-tab-panel>
@@ -247,13 +253,13 @@ const {
   agentId,
   availableOptionalFiles,
   addOptionalFile,
+  confirmRemoveFile,
   onRefineError,
   activeFile,
   fileSplitter,
   files,
   fileDirty,
   updateFileBody,
-  reloadActiveFile,
   truncateStrategyOptions,
   snapshotModeOptions,
   memoryScopeOptions,

@@ -27,6 +27,7 @@ import (
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
+	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -195,6 +196,11 @@ type ChatOrchestrator struct {
 	// pendingClarifications stores the original turn input for sessions waiting
 	// for clarification submission. Key: sessionID.
 	pendingClarifications sync.Map // map[sessionID]pendingClarification
+
+	// voiceDelegationGw 是 delegate_to_spirit 工具的 turn 提交网关（M74 V9）。
+	// ProvideChatService 启动期回填（Wire 环：ChatService → orch → gateway →
+	// ChatService；SetPlanBoardOrch 先例）。启动后只读，无需锁。
+	voiceDelegationGw biz.TurnExecutorGateway
 
 	// resumeAwaitFn is a test seam for submitAwaitReply's restart-recovery
 	// branch. Nil in production → resumeAwaitAfterRestart.
@@ -406,6 +412,10 @@ type ChatInfraDeps struct {
 	// MemoryConflictStore applies supersede/mark-conflict decisions for the
 	// memory_remember tool (FR-M4). Optional: nil skips governance application.
 	MemoryConflictStore biz.L3ConflictStore
+	// VoiceDelegation 是语音委派登记表单例（M74 V9，设计 74 §15.4-C）。
+	// Wire 提供；voiceButlerTools 注入 delegate_to_spirit 工具。
+	// nil = 委派工具不挂载（语音助手退化为纯快答）。
+	VoiceDelegation *voice.DelegationRegistry
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
@@ -534,6 +544,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			tools = append(tools, o.spiritCustomTools(ag)...)
 			tools = append(tools, o.skillsButlerTools(ctx, ag)...)
 			tools = append(tools, o.memoryButlerTools(ctx, ag)...)
+			tools = append(tools, o.voiceButlerTools(ctx, ag)...)
 			tools = append(tools, o.memoryRememberTools(ag)...)
 			tools = append(tools, o.deliverableReaderTools()...)
 			tools = append(tools, o.memberFSDeptMailTools(ag)...)
@@ -628,6 +639,22 @@ func (o *ChatOrchestrator) planBoardOrchFallback() tools.PlanBoardOrchFallback {
 		return nil
 	}
 	return o.planBoardOrch
+}
+
+// SetVoiceDelegationGateway 回填 delegate_to_spirit 的 turn 提交网关
+// （M74 V9）。ProvideChatService 构造后调用，打破 Wire 环（SetPlanBoardOrch 同款）。
+func (o *ChatOrchestrator) SetVoiceDelegationGateway(gw biz.TurnExecutorGateway) {
+	if o == nil {
+		return
+	}
+	o.voiceDelegationGw = gw
+}
+
+func (o *ChatOrchestrator) voiceDelegationGateway() biz.TurnExecutorGateway {
+	if o == nil {
+		return nil
+	}
+	return o.voiceDelegationGw
 }
 
 // RunGateway exposes the shared session run registry.

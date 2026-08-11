@@ -1277,9 +1277,10 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 
 ## 子模块：编辑器与笔记体验（SP2）Phase 计划
 
-> **状态**：🟡 实施中（2026-08-10 立项） | **需求**：US-24~US-30 / FR-SP2-1~10（[37-knowledge.md](./37-knowledge.md#子模块编辑器与笔记体验sp2-需求2026-08-10)） | **设计**：[37-knowledge.design.md §SP2](./37-knowledge.design.md#sp2-编辑器与笔记体验深空液态玻璃工作台2026-08-10)（SP2-1~SP2-11）
+> **状态**：🟡 实施中（2026-08-10 立项） | **需求**：US-24~US-36 / FR-SP2-1~17（[37-knowledge.md](./37-knowledge.md#子模块编辑器与笔记体验sp2-需求2026-08-10)） | **设计**：[37-knowledge.design.md §SP2](./37-knowledge.design.md#sp2-编辑器与笔记体验深空液态玻璃工作台2026-08-10)（SP2-1~SP2-18）
 > **用户裁决（2026-08-10）**：Obsidian 级笔记能力；UI 推翻 Tab 管理后台；编辑器 CodeMirror 6 Live Preview；A1+A2 一轮交付；深空液态玻璃视觉全套。
 > **范围纪律**：纯前端重构，**后端零改动**；全部数据复用既有 `features/knowledge/api.ts`。
+> **增强轮（2026-08-11，SP2-10）**：用户反馈（配色脱节/液态玻璃不足/对标功能差距）驱动——P0 视觉同源（P0-1 令牌消费全局变量、P0-2 三层液态玻璃）→ P1 功能补齐（P1-3 全库搜索、P1-4 标签页管理）→ P2 体验增强（P2-5 wikilink 标题段、P2-6 命令面板 MRU/别名、P2-7 未链接提及）。P2-7 为 SP2 唯一后端新增（1 个只读 RPC，无 Schema 变更）。
 
 ### 代码锚点（目标态）
 
@@ -1289,23 +1290,25 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | `web/src/features/knowledge/useKnowledgeWorkbench.ts` | 工作台状态机（tabs/激活/脏标记/CAS 保存） |
 | `web/src/features/knowledge/{wikilink,outline,frontmatter,commands}.ts` | 纯函数层（可单测） |
 | `web/src/components/knowledge/effects/*` | GlassPanel / ParticleField / TiltCard / GlowButton / RingCarousel |
-| `web/src/components/knowledge/workbench/*` | KnowledgeWorkbench / TopBar / Tabs / NoteEditor / QuickSwitcher / CommandPalette |
-| `web/src/components/knowledge/panels/*` | PanelBacklinks / Outlinks / Outline / Properties / LocalGraph |
+| `web/src/components/knowledge/workbench/*` | KnowledgeWorkbench / TopBar / Tabs / NoteEditor / QuickSwitcher / CommandPalette / SearchPanel（P1-3） |
+| `web/src/components/knowledge/panels/*` | PanelBacklinks（含 P2-7 未链接提及分组）/ Outlinks / Outline / Properties / LocalGraph |
 | `web/src/pages/KnowledgePage.vue` | 重写为薄壳 |
+| `internal/biz/knowledge/mention.go` + `internal/data/knowledge_mentions.go` + `internal/service/knowledge_mention.go` | P2-7 未链接提及（端口 + ILIKE 预筛实现 + RPC 装配） |
 
 ### Phase 划分
 
 | Phase | 内容 | 关联契约 | 状态 |
 |-------|------|---------|------|
 | SP2-1 | 视觉令牌 + 5 特效组件 | 设计 §SP2-2/§SP2-3；FR-SP2-9/10 | ✅（2026-08-10：deep-space.sass + Glass/Particle/Tilt/Glow/Ring + useReducedMotion；9 测试绿 + eslint/stylelint 干净） |
-| SP2-2 | `useKnowledgeWorkbench` 状态机（TDD：tabs 开闭/去重激活/脏标记/CAS 冲突/删除联动） | 设计 §SP2-4；FR-SP2-2 | 📋 |
-| SP2-3 | Workbench 骨架 + TopBar + 三栏装配（树复用换肤、空态占位） | 设计 §SP2-1；FR-SP2-1 | 📋 |
-| SP2-4 | CM6 编辑器：高亮 + 深空主题 + 保存接线 → Live Preview 行级装饰 → `[[` 补全 + 芯片 + 跳链 | 设计 §SP2-5/§SP2-6；FR-SP2-3/4；验收 31/32 | 📋 |
-| SP2-5 | 右栏五面板（反链/出链/大纲/属性/局部图谱）联动 | 设计 §SP2-8；FR-SP2-7；验收 30/35 | 📋 |
-| SP2-6 | ⌘O 快速切换 + ⌘K 命令面板 + 全局快捷键 | 设计 §SP2-7；FR-SP2-5/6；验收 33 | 📋 |
-| SP2-7 | 新建笔记/文件夹双入口 + 空态 RingCarousel | 设计 §SP2-3/§SP2-7；FR-SP2-8；验收 34 | 📋 |
-| SP2-8 | KnowledgePage 重写接入 + 图谱全屏覆盖 + 设置浮层 + 旧组件退役清理 | 设计 §SP2-9/§SP2-11；验收 36 | 📋 |
-| SP2-9 | i18n + `pnpm lint/test/build` 全绿 + 浏览器运行时复验 + review | 验收 37/38 | 📋 |
+| SP2-2 | `useKnowledgeWorkbench` 状态机（TDD：tabs 开闭/去重激活/脏标记/CAS 冲突/删除联动） | 设计 §SP2-4；FR-SP2-2 | ✅（2026-08-10） |
+| SP2-3 | Workbench 骨架 + TopBar + 三栏装配（树复用换肤、空态占位） | 设计 §SP2-1；FR-SP2-1 | ✅（2026-08-10：workbench.spec smoke 5 测试绿） |
+| SP2-4 | CM6 编辑器：高亮 + 深空主题 + 保存接线 → Live Preview 行级装饰 → `[[` 补全 + 芯片 + 跳链 | 设计 §SP2-5/§SP2-6；FR-SP2-3/4；验收 31/32 | ✅（2026-08-10：NoteEditor.vue + wikilink.ts + note-editor.spec/wikilink.spec） |
+| SP2-5 | 右栏五面板（反链/出链/大纲/属性/局部图谱）联动 | 设计 §SP2-8；FR-SP2-7；验收 30/35 | ✅（2026-08-10：panels/* + WorkbenchSidePanels + outline/frontmatter/localGraphLayout 纯函数层） |
+| SP2-6 | ⌘O 快速切换 + ⌘K 命令面板 + 全局快捷键 | 设计 §SP2-7；FR-SP2-5/6；验收 33 | ✅（2026-08-10：QuickSwitcher/CommandPalette/PaletteModal + commands.ts + commands.spec 10 命令） |
+| SP2-7 | 新建笔记/文件夹双入口 + 空态 RingCarousel | 设计 §SP2-3/§SP2-7；FR-SP2-8；验收 34 | ✅（2026-08-10：Sidebar 头部双按钮 + 命名弹窗落盘） |
+| SP2-8 | KnowledgePage 重写接入 + 图谱全屏覆盖 + 设置浮层 + 旧组件退役清理 | 设计 §SP2-9/§SP2-11；验收 36 | ✅（2026-08-11：KnowledgePage 薄壳重写 + 图谱全屏 overlay + kb-portal 设置浮层 + 文件行操作菜单/拖拽移动/下载；旧组件 KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual/DocPreviewDialog 已删除，knowledgeUi 死导出与 i18n 死 key 已清理；知识域 267 测试绿 + eslint 0 err） |
+| SP2-9 | i18n + `pnpm lint/test/build` 全绿 + 浏览器运行时复验 + review | 验收 37/38 | 🟡（2026-08-11：i18n 双语已补 + lint/test 绿；待 build + 浏览器复验 + review） |
+| SP2-10 | 增强轮：P0 视觉同源（P0-1 令牌消费全局变量 / P0-2 三层液态玻璃）→ P1 功能（P1-3 全库搜索 SearchPanel / P1-4 标签页拖拽重排+中键关闭）→ P2 增强（P2-5 wikilink 标题段补全+定位 / P2-6 命令面板 MRU+别名 / P2-7 未链接提及后端 RPC+面板分组） | 设计 §SP2-2/7/8/12~17；FR-SP2-11~17；US-31~36；验收 39~44 | ✅（2026-08-11：全部落地；mention biz/data/service + 前端 6 文件；wikilink/commands/workbench/api 单测绿） |
 
 ### 实施红线
 
@@ -1313,7 +1316,7 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 2. **视觉令牌作用域隔离**：深空样式一律限定 `.kb-workbench` 根类名下，禁止污染全局 Quasar 明暗主题（SP2-ADR-6）
 3. **降级契约**：`prefers-reduced-motion` 全动效关闭 + 粒子按设备分级（FR-SP2-10），每个特效组件自带降级分支
 4. **CAS 语义不变**：保存复用 `updateDocumentContent` 既有冲突行为（留双份 + 警告），禁止引入自动保存（SP2-ADR-3）
-5. **退役组件处理**：KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual 在 SP2-8 验收前保留文件，验收后删除并全局 grep 清理引用（R4）
+5. **退役组件处理**：~~KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual 在 SP2-8 验收前保留文件，验收后删除并全局 grep 清理引用（R4）~~ ✅ 已完成（2026-08-11：含 KnowledgeDocPreviewDialog 一并删除，knowledgeUi 死导出/i18n 死 key 同步清理）
 6. **小步快跑**：每 Phase 独立可验证（lint+test 绿），一次只改一个明确问题（R5）
 
 ### 验收标准（SP2 映射）

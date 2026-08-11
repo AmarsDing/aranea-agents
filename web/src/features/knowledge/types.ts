@@ -103,6 +103,18 @@ export type DanglingLink = {
   refs: BlockBacklink[];
 };
 
+/** UnlinkedMention 未链接提及（P2-7）：本文档名在他文档正文中以纯文本出现
+ *  （[[wikilink]] 内的出现不计），按来源文档聚合。 */
+export type UnlinkedMention = {
+  src_doc_id: string;
+  /** 来源文档展示名（rel_path） */
+  src_doc_name: string;
+  /** 纯文本出现次数 */
+  count: number;
+  /** 首次出现上下文片段 */
+  snippet: string;
+};
+
 /** PromoteLineage 源→克隆谱系对（SP1-G/I-3：源块 promoted_to ↔ 新块 promoted_from）。 */
 export type PromoteLineage = {
   src_block_id: string;

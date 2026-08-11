@@ -38,6 +38,11 @@ function resolveRequestTimeoutMs(path: string, override?: number): number {
   if (p.startsWith('v1/chat/') || p.startsWith('v1/sessions')) {
     return KRATOS_API_LONG_TIMEOUT_MS;
   }
+  // Skill 包导入需对每个已有 Skill 做 LLM 相似度检查（后端已并发，但仍可能
+  // 超过 30s 默认超时）。复用长超时避免大库导入被前端中断（FN-1）。
+  if (p.startsWith('v1/skills/import')) {
+    return KRATOS_API_LONG_TIMEOUT_MS;
+  }
   if (p.startsWith('v1/model-catalog/sync')) {
     return KRATOS_API_LONG_TIMEOUT_MS;
   }
@@ -145,6 +150,26 @@ export type RequestMeta = {
   timeoutMs?: number;
 };
 
+/**
+ * ToolService 写方法的业务调用方（toolDetail/toolEditor/useToolToggle/
+ * useToolsPage/useAgentToolOverrides）均 catch 后自行 `$q.notify`，
+ * 全局 4xx/5xx toast 会与之重复，故跳过。读方法仍走全局 toast。
+ */
+const TOOL_SELF_PRESENTED_WRITES = new Set([
+  'CreateTool',
+  'UpdateTool',
+  'DeleteTool',
+  'ToggleToolEnabled',
+  'UpsertToolAgentOverride',
+  'DeleteToolAgentOverride',
+  'UpdateToolConfig',
+  'TestTool',
+]);
+
+function isSelfPresentedToolWrite(meta?: RequestMeta): boolean {
+  return meta?.service === 'ToolService' && TOOL_SELF_PRESENTED_WRITES.has(meta.method);
+}
+
 /** 与 proto 生成的 HTTP 客户端（`v1/...`）双参 handler 签名一致；`meta` 可供拦截器或日志使用 */
 export function requestHandler({ path, method, body }: Request, meta?: RequestMeta): Promise<unknown> {
   const headers: Record<string, string> = {};
@@ -156,7 +181,8 @@ export function requestHandler({ path, method, body }: Request, meta?: RequestMe
   // 未启用结构化信号），全局 toast 均属重复。
   const skipErrorNotify =
     (meta?.skipErrorNotify ?? meta?.method === 'CreateAgent') ||
-    meta?.service === 'SelfImprovementService';
+    meta?.service === 'SelfImprovementService' ||
+    isSelfPresentedToolWrite(meta);
   const urlPath = '/' + path.replace(/^\//, '');
   return kratosApi
     .request({

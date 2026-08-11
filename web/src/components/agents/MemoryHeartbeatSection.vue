@@ -5,7 +5,7 @@
         <div class="section-title">
           <span class="section-title__text">心跳</span>
         </div>
-        <p class="settings-section__hint">定时注入 HEARTBEAT.MD 检查清单，驱动 Agent 主动巡检。</p>
+        <p class="settings-section__hint">定时注入 AGENTS_TASK.md 检查清单，驱动 Agent 主动巡检。</p>
       </div>
       <q-toggle v-model="config.heartbeat.enabled" label="启用心跳" :disable="memoryLayersDisabled" />
     </div>

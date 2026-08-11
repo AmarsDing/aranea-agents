@@ -26,17 +26,20 @@
       <q-card-section class="row items-center">
         <div class="text-h6">AI 优化结果</div>
         <q-space />
-        <q-chip v-if="result" color="grey-3" text-color="dark" dense>
+        <span v-if="result" class="refine-chip">
           {{ result.provider }} / {{ result.model }}
           <q-tooltip>模型来源：{{ result.source }}</q-tooltip>
-        </q-chip>
+        </span>
+        <q-btn flat round dense icon="close" class="q-ml-sm" @click="handleCancel">
+          <q-tooltip>关闭（不应用更改）</q-tooltip>
+        </q-btn>
       </q-card-section>
 
       <q-card-section class="q-pt-none">
         <!-- Token delta -->
         <div v-if="result" class="row q-gutter-sm q-mb-sm">
-          <q-chip dense color="blue-1" text-color="blue-9"> 优化前 ≈ {{ result.tokensBefore }} tokens </q-chip>
-          <q-chip dense color="green-1" text-color="green-9"> 优化后 ≈ {{ result.tokensAfter }} tokens </q-chip>
+          <span class="refine-chip">优化前 ≈ {{ result.tokensBefore }} tokens</span>
+          <span class="refine-chip refine-chip--accent">优化后 ≈ {{ result.tokensAfter }} tokens</span>
         </div>
 
         <!-- Diff toggle -->
@@ -83,7 +86,7 @@
       </q-card-section>
 
       <q-card-actions align="right" class="q-pa-md">
-        <q-btn flat label="取消" @click="showResult = false" />
+        <q-btn flat label="取消" @click="handleCancel" />
         <q-btn flat :loading="loading" icon="refresh" label="重新优化" @click="handleRefine" />
         <q-btn color="primary" unelevated rounded label="应用" @click="applyResult" />
       </q-card-actions>
@@ -200,12 +203,37 @@ function applyResult() {
   showResult.value = false;
   userHint.value = '';
 }
+
+function handleCancel() {
+  showResult.value = false;
+  userHint.value = '';
+}
 </script>
 
 <style scoped>
 .ai-refine-dialog-card {
   min-width: min(620px, 92vw);
   max-width: 92vw;
+}
+
+/* Token-aware chip replacement: glass tokens keep day/night themes consistent
+   (Quasar palette chips like grey-3/blue-1 break on the dark glass dialog). */
+.refine-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--text-xs, 12px);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+.refine-chip--accent {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
 }
 
 .diff-view {

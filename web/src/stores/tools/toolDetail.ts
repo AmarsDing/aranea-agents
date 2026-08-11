@@ -7,6 +7,7 @@ import {
   type ToolAgentBindingSummary,
 } from '../../features/tools/toolAgentBindingSummary';
 import { toolToUpsertInput } from '../../features/tools/toolFormPatch';
+import { parseKratosApiError } from '../../utils/kratosError';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
 import { listAgents } from '../../features/agents/api';
 import type { Agent } from '../../features/agents/types';
@@ -14,7 +15,6 @@ import type { Agent } from '../../features/agents/types';
 export type ToolOverrideForm = {
   agent_id: string;
   mode: string;
-  enabled: boolean;
   requires_confirmation: boolean;
   config_override_json: string;
 };
@@ -41,7 +41,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
   const overrideForm = ref<ToolOverrideForm>({
     agent_id: '',
     mode: 'inherit',
-    enabled: true,
     requires_confirmation: false,
     config_override_json: '{}',
   });
@@ -181,7 +180,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       }
       await loadRecentRuns();
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '工具测试失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(e).message || '工具测试失败' });
     } finally {
       testRunning.value = false;
     }
@@ -193,7 +192,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       overrideForm.value = {
         agent_id: o.agent_id,
         mode: o.mode,
-        enabled: o.enabled,
         requires_confirmation: o.requires_confirmation,
         config_override_json: o.config_override_json,
       };
@@ -201,7 +199,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       overrideForm.value = {
         agent_id: '',
         mode: 'inherit',
-        enabled: true,
         requires_confirmation: false,
         config_override_json: '{}',
       };
@@ -229,12 +226,19 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
   async function saveOverride() {
     const key = toolKey();
     if (!key) return;
+    try {
+      JSON.parse(overrideForm.value.config_override_json.trim() || '{}');
+    } catch {
+      $q.notify({ type: 'negative', message: '配置覆盖 JSON 格式无效，请修正后再保存' });
+      return;
+    }
     overrideSaving.value = true;
     try {
       await toolsStore.saveOverride({
         tool_id: key,
         agent_id: overrideForm.value.agent_id,
-        enabled: overrideForm.value.enabled,
+        // enabled 列在运行时不参与判定（启停由 mode 决定），恒置 true 归一化存储。
+        enabled: true,
         mode: overrideForm.value.mode,
         config_override_json: overrideForm.value.config_override_json,
         requires_confirmation: overrideForm.value.requires_confirmation,
@@ -243,7 +247,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       await loadOverrides();
       await loadAgentBindingSummary();
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存覆盖失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存覆盖失败' });
     } finally {
       overrideSaving.value = false;
     }
@@ -263,7 +267,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
         await loadOverrides();
         await loadAgentBindingSummary();
       } catch (err) {
-        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除覆盖失败' });
+        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '删除覆盖失败' });
       }
     });
   }
@@ -286,7 +290,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       tool.value = updated;
       $q.notify({ type: 'positive', message: '配置 Schema 已保存' });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存 Schema 失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存 Schema 失败' });
     } finally {
       configSaving.value = false;
     }
@@ -316,7 +320,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
         await loadAgentBindingSummary();
       }
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存配置失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存配置失败' });
     } finally {
       configSaving.value = false;
     }

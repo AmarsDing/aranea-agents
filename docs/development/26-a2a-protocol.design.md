@@ -347,7 +347,7 @@ Wire：`NewA2AService`、`NewA2AEndpointBuilder`、`NewA2APublicBaseReloader`、
 | `bearer` | Bearer token | `token`，`header_name`（默认 `Authorization`，自动加 `Bearer ` 前缀） |
 | `mtls` | mTLS 客户端证书 | `cert_file` + `key_file`（必填），`ca_file`（可选） |
 
-> **已知不一致**：`internal/biz/a2a/a2a.go` `ValidateAuthConfig` 的 `validAuthTypes` 包含 `basic` 但不包含 `mtls`，与 `remote_client.go` 实际支持的集合（`none`/`api_key`/`bearer`/`mtls`）存在偏差。远程代理创建时 biz 校验可能拒绝 `mtls`，需以 `remote_client.go` 为准。
+> biz 层 `ValidateAuthConfig`（`internal/biz/a2a/a2a.go`）与 `remote_client.go` 支持集合一致：`none` / `api_key` / `bearer` / `mtls`。`api_key` 与 `bearer` 均接受 `api_key` 或 `token` 字段（互备）；`basic` 已移除（运行时不支持）。
 
 ---
 

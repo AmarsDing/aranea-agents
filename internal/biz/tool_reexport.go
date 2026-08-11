@@ -8,6 +8,7 @@ import (
 
 type (
 	Tool                     = tool.Tool
+	ToolCatalogEntry         = tool.ToolCatalogEntry
 	ToolPermissions          = tool.ToolPermissions
 	ToolUpsertInput          = tool.ToolUpsertInput
 	ToolListQuery            = tool.ToolListQuery

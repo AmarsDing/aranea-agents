@@ -248,7 +248,48 @@ func SeedSkillsAgent(ctx context.Context, client *ent.Client, d Dialect, lg logg
 	return nil
 }
 
-// SeedSystemAgentRuntimeSettings ensures the four system agents have runtime_settings rows.
+// SeedVoiceButlerAgent seeds the built-in voice butler agent (M74 V9, design 74 §15).
+// The voice butler is the voice-mode foreground agent: quick answers, delegation
+// of complex tasks to the spirit via delegate_to_spirit, and result broadcasting.
+// It is a peer of the spirit (not a replacement): the spirit keeps full capability.
+func SeedVoiceButlerAgent(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agents (
+		id, agent_key, display_name, provider, model, status,
+		is_default, is_favorite, icon, agent_description,
+		position_id, system_prompt_mode, context_window,
+		budget_monthly_cents, config_json, roles_json, created_by,
+		created_at, updated_at, deleted_at, readonly, kind, source,
+		position_key, agent_variant
+	) VALUES (
+		'agent___voice_butler__', ?, '语音助手', 'openrouter', 'gpt-4.1-mini',
+		'active', FALSE, FALSE, '', '系统内置语音前台助手，语音模式对话入口：快答闲聊、复杂任务委派精灵助手后台执行、完成结果实时播报。',
+		'', 'complete', 0, 0, '{"tools":{"profile":"chat_only"}}', '[]', 'system',
+		?, ?, '', TRUE, 'system_builtin', 'system',
+		'voice_butler', ''
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		status = excluded.status,
+		agent_description = excluded.agent_description,
+		system_prompt_mode = excluded.system_prompt_mode,
+		config_json = excluded.config_json,
+		deleted_at = excluded.deleted_at,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		source = excluded.source,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
+		updated_at = excluded.updated_at`
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(q), biz.VoiceButlerAgentKey, now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.voice_butler_agent"), loggateway.Err(err))
+		return entErrToBizErr(err, "SEED")
+	}
+	return nil
+}
+
+// SeedSystemAgentRuntimeSettings ensures the five system agents have runtime_settings rows.
 // Missing rows cause GetAgentRuntimeSettings → NOT_FOUND and break evolution/settings UX.
 func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d Dialect, lg loggateway.Logger) error {
 	if client == nil {
@@ -276,6 +317,20 @@ func SeedSystemAgentRuntimeSettings(ctx context.Context, client *ent.Client, d D
 			return entErrToBizErr(err, "SEED")
 		}
 	}
+
+	// Voice butler (M74 V9, design 74 §15): chat_only profile + explicit
+	// intent_pass_enabled=false. The DB column defaults to true
+	// (agent_runtime_setting.go), so the minimal insert above would silently
+	// enable IntentPass — the voice fast path must not pay its latency.
+	const qVoice = `INSERT INTO agent_runtime_settings (agent_id, tools_profile, intent_pass_enabled, created_at, updated_at)
+		VALUES (?, 'chat_only', FALSE, ?, ?)
+		ON CONFLICT (agent_id) DO UPDATE SET
+			tools_profile = COALESCE(NULLIF(agent_runtime_settings.tools_profile, ''), excluded.tools_profile),
+			updated_at = excluded.updated_at`
+	if _, err := client.ExecContext(ctx, d.RenumberPlaceholders(qVoice), "agent___voice_butler__", now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_agent_runtime_settings"), loggateway.Str("agent_id", "agent___voice_butler__"), loggateway.Err(err))
+		return entErrToBizErr(err, "SEED")
+	}
 	return nil
 }
 
@@ -292,6 +347,7 @@ func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, d Dialect, s
 		{agentID: "agent___memory__", prefix: "apf_memory_", dirName: "memory"},
 		{agentID: "agent___skills__", prefix: "apf_skills_", dirName: "skills"},
 		{agentID: "agent___system_admin__", prefix: "apf_system_admin_", dirName: "system_admin"},
+		{agentID: "agent___voice_butler__", prefix: "apf_voice_butler_", dirName: "voice_butler"},
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO agent_prompt_files (

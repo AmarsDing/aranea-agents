@@ -423,11 +423,7 @@
               <q-list v-if="overrides.length" separator dense class="rounded-borders">
                 <q-item v-for="o in overrides" :key="o.id" class="app-registry-list-item">
                   <q-item-section avatar>
-                    <q-icon
-                      :name="o.enabled ? 'check_circle' : 'cancel'"
-                      :color="o.enabled ? 'positive' : 'negative'"
-                      size="sm"
-                    />
+                    <q-icon :name="overrideModeIcon(o.mode)" :color="overrideModeColor(o.mode)" size="sm" />
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>{{ agentNameById(o.agent_id) }}</q-item-label>
@@ -577,6 +573,19 @@ const modeOptions = computed(() => [
 function modeLabel(mode: string): string {
   const m = modeOptions.value.find((o) => o.value === mode);
   return m ? m.label : mode;
+}
+
+// 覆盖行的启停由 mode 决定（enabled 列运行时不参与判定），图标按 mode 语义推导。
+function overrideModeIcon(mode: string): string {
+  if (mode === 'allow') return 'check_circle';
+  if (mode === 'deny') return 'cancel';
+  return 'adjust';
+}
+
+function overrideModeColor(mode: string): string {
+  if (mode === 'allow') return 'positive';
+  if (mode === 'deny') return 'negative';
+  return 'grey';
 }
 
 function agentNameById(id: string): string {

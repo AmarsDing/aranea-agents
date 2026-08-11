@@ -1060,6 +1060,14 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 		SetMetadataJSON(string(metaJSON)).
 		SetUpdatedAt(now).
 		SetFilesystemMissing(false)
+	// 缓存键契约（internal/agent/version_hash.go）：updated_at 是
+	// SkillVersionHash 的内容版本标记，仅在内容/元数据/可用性实际变化时
+	// 才允许 bump。reconcile 每 5 分钟全量无变化扫描不得触碰，否则
+	// SkillVersionHash 漂移导致全量 agent 构建缓存周期性失效。
+	rowChanged := skillRow.Name != in.Name ||
+		skillRow.Description != in.Description ||
+		skillRow.MetadataJSON != string(metaJSON) ||
+		skillRow.FilesystemMissing
 
 	sv, svErr := tx.SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillRow.ID)).
@@ -1101,8 +1109,10 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 		outcome.RevertedToDraft = true
 		update = update.SetStatus("draft").SetEnabled(false)
 	}
-	if _, updateErr := update.Save(ctx); updateErr != nil {
-		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(updateErr, apierror.DomainSkill)
+	if rowChanged || outcome.ContentChanged {
+		if _, updateErr := update.Save(ctx); updateErr != nil {
+			return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(updateErr, apierror.DomainSkill)
+		}
 	}
 	if commitErr := tx.Commit(); commitErr != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, entErrToBizErr(commitErr, apierror.DomainSkill)
@@ -1633,8 +1643,15 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 	if slug == "" {
 		return apierror.BadRequest("SKILL", "skill slug is required")
 	}
+	// 缓存键契约（同 UpsertSkillFromDisk）：仅在 missing 标志真正翻转时写库
+	// 并 bump updated_at；reconcile 对每个存活 skill 都会调 missing=false，
+	// 无条件写库会导致 SkillVersionHash 周期性漂移、agent 构建缓存失效。
 	n, err := r.data.RW().Write(ctx).PlatformSkill.Update().
-		Where(platformskill.SkillKeyEQ(slug), platformskill.DeletedAtEQ("")).
+		Where(
+			platformskill.SkillKeyEQ(slug),
+			platformskill.DeletedAtEQ(""),
+			platformskill.FilesystemMissingEQ(!missing),
+		).
 		SetFilesystemMissing(missing).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
@@ -1642,7 +1659,16 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if n == 0 {
-		return apierror.NotFound(apierror.DomainSkill, "not found")
+		// 区分"已是目标状态"（no-op 成功）与"slug 不存在"（NotFound）。
+		exist, qErr := r.data.RW().Read(ctx).PlatformSkill.Query().
+			Where(platformskill.SkillKeyEQ(slug), platformskill.DeletedAtEQ("")).
+			Exist(ctx)
+		if qErr != nil {
+			return entErrToBizErr(qErr, apierror.DomainSkill)
+		}
+		if !exist {
+			return apierror.NotFound(apierror.DomainSkill, "not found")
+		}
 	}
 	return nil
 }

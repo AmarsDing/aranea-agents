@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 )
 
 // F3 (P-evo-1)：进化版本注册后必须同步落盘，保持 DB 与磁盘两个真相源一致；
@@ -161,5 +162,130 @@ func TestUpsertSkillFromDisk_PreservesDerivedFrom(t *testing.T) {
 	md := parseSkillMetadata(d.lg, row.MetadataJSON)
 	if len(md.DerivedFrom) != 2 || md.DerivedFrom[0] != "skill_src_a" || md.DerivedFrom[1] != "skill_src_b" {
 		t.Fatalf("derived_from = %v, want %v (watcher must preserve merge provenance)", md.DerivedFrom, sources)
+	}
+}
+
+// 缓存键契约（internal/agent/version_hash.go）：platform_skill.updated_at 是
+// SkillVersionHash 的内容版本标记，仅允许在内容/元数据/可用性实际变化时 bump。
+// reconcile 每 5 分钟全量无变化扫描若触碰 updated_at，SkillVersionHash 漂移，
+// 全量 agent 构建缓存周期性失效（每次冷构建约 8s）。
+func TestUpsertSkillFromDisk_NoChange_KeepsUpdatedAt(t *testing.T) {
+	d := newTestDataPG(t)
+	r := NewSkillRepo(d)
+	ctx := context.Background()
+	dir := t.TempDir()
+	sk := seedDiskSkill(t, r, dir, "cache-stable", "# body\nsame")
+
+	const sentinel = "2020-01-01T00:00:00Z"
+	if _, err := d.RW().Write(ctx).PlatformSkill.UpdateOneID(sk.ID).SetUpdatedAt(sentinel).Save(ctx); err != nil {
+		t.Fatalf("set sentinel updated_at: %v", err)
+	}
+
+	_, outcome, err := r.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
+		Name: "Seed", Slug: "cache-stable", Body: "# body\nsame", StorageDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("UpsertSkillFromDisk: %v", err)
+	}
+	if outcome.ContentChanged || outcome.RevertedToDraft {
+		t.Fatalf("outcome = %+v, want no change", outcome)
+	}
+
+	row, err := d.RW().Read(ctx).PlatformSkill.Get(ctx, sk.ID)
+	if err != nil {
+		t.Fatalf("PlatformSkill.Get: %v", err)
+	}
+	if row.UpdatedAt != sentinel {
+		t.Fatalf("updated_at = %q, want sentinel %q (no-change disk sync must not bump updated_at)", row.UpdatedAt, sentinel)
+	}
+}
+
+// 反向守卫：内容真实变化时必须 bump updated_at（缓存失效信号），不得跳过写库。
+func TestUpsertSkillFromDisk_ContentChange_BumpsUpdatedAt(t *testing.T) {
+	d := newTestDataPG(t)
+	r := NewSkillRepo(d)
+	ctx := context.Background()
+	dir := t.TempDir()
+	sk := seedDiskSkill(t, r, dir, "cache-bump", "# body\nv1")
+
+	const sentinel = "2020-01-01T00:00:00Z"
+	if _, err := d.RW().Write(ctx).PlatformSkill.UpdateOneID(sk.ID).SetUpdatedAt(sentinel).Save(ctx); err != nil {
+		t.Fatalf("set sentinel updated_at: %v", err)
+	}
+
+	_, outcome, err := r.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
+		Name: "Seed", Slug: "cache-bump", Body: "# body\nv2", StorageDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("UpsertSkillFromDisk: %v", err)
+	}
+	if !outcome.ContentChanged {
+		t.Fatal("ContentChanged = false, want true")
+	}
+
+	row, err := d.RW().Read(ctx).PlatformSkill.Get(ctx, sk.ID)
+	if err != nil {
+		t.Fatalf("PlatformSkill.Get: %v", err)
+	}
+	if row.UpdatedAt == sentinel {
+		t.Fatal("updated_at kept sentinel, want bumped (content change must invalidate agent build cache)")
+	}
+}
+
+// MarkSkillFilesystemMissing 同样受缓存键契约约束：missing 标志无变化时不得
+// 写库（reconcile 每个存活 skill 都会调一次 missing=false）。
+func TestMarkSkillFilesystemMissing_NoChange_KeepsUpdatedAt(t *testing.T) {
+	d := newTestDataPG(t)
+	r := NewSkillRepo(d)
+	ctx := context.Background()
+	dir := t.TempDir()
+	sk := seedDiskSkill(t, r, dir, "cache-mark", "# body")
+
+	const sentinel = "2020-01-01T00:00:00Z"
+	setSentinel := func() {
+		t.Helper()
+		if _, err := d.RW().Write(ctx).PlatformSkill.UpdateOneID(sk.ID).SetUpdatedAt(sentinel).Save(ctx); err != nil {
+			t.Fatalf("set sentinel updated_at: %v", err)
+		}
+	}
+	readRow := func() string {
+		t.Helper()
+		row, err := d.RW().Read(ctx).PlatformSkill.Get(ctx, sk.ID)
+		if err != nil {
+			t.Fatalf("PlatformSkill.Get: %v", err)
+		}
+		return row.UpdatedAt
+	}
+
+	// missing=false 已是当前状态 → no-op，不得 bump。
+	setSentinel()
+	if err := r.MarkSkillFilesystemMissing(ctx, "cache-mark", false); err != nil {
+		t.Fatalf("MarkSkillFilesystemMissing(false): %v", err)
+	}
+	if got := readRow(); got != sentinel {
+		t.Fatalf("updated_at = %q, want sentinel %q (no-op mark must not write)", got, sentinel)
+	}
+
+	// missing=true 状态变化 → 必须写库并 bump。
+	setSentinel()
+	if err := r.MarkSkillFilesystemMissing(ctx, "cache-mark", true); err != nil {
+		t.Fatalf("MarkSkillFilesystemMissing(true): %v", err)
+	}
+	if got := readRow(); got == sentinel {
+		t.Fatal("updated_at kept sentinel, want bumped (missing transition must write)")
+	}
+
+	// 重复 missing=true（已为目标状态）→ no-op。
+	setSentinel()
+	if err := r.MarkSkillFilesystemMissing(ctx, "cache-mark", true); err != nil {
+		t.Fatalf("MarkSkillFilesystemMissing(true) repeat: %v", err)
+	}
+	if got := readRow(); got != sentinel {
+		t.Fatalf("updated_at = %q, want sentinel %q (repeated mark must not write)", got, sentinel)
+	}
+
+	// 不存在的 slug 仍须返回 NotFound（no-op 不得吞掉真正的缺失）。
+	if err := r.MarkSkillFilesystemMissing(ctx, "no-such-slug", true); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("MarkSkillFilesystemMissing(unknown) err = %v, want NOT_FOUND", err)
 	}
 }

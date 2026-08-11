@@ -71,6 +71,7 @@ import (
 	"aranea-agents/internal/tools/clientbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
+	"aranea-agents/internal/voice"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
 
@@ -806,6 +807,7 @@ func provideChatServiceDeps(
 	memoryConflictDetector biz.MemoryConflictDetector,
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
+	voiceDelegation *voice.DelegationRegistry,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	// Backfill TaskOrchestrator into teamDeps to break the Wire cycle:
@@ -881,6 +883,7 @@ func provideChatServiceDeps(
 			MemoryConsolidationWriter: memoryConsolidationWriter,
 			MemoryConflictDetector:    memoryConflictDetector,
 			MemoryConflictStore:       memoryConflictStore,
+			VoiceDelegation:           voiceDelegation,
 		},
 	}
 }
@@ -2852,6 +2855,14 @@ func provideSpeechConfigReader(repo biz.SystemSettingRepo, lg loggateway.Logger)
 	return speech.NewSystemSpeechConfigReader(repo, lg)
 }
 
+// provideVoiceDelegationRegistry 提供语音委派登记表进程级单例（M74 V9，
+// 设计 74 §15.4-C）。双向消费：service 层 voiceButlerTools（Register/
+// MarkSubmitFailed）+ server 层 VoiceWSServer.SetDelegationRegistry（
+// eventLoop 三路分流 BindTask/CompleteTask/SetWatcher）。
+func provideVoiceDelegationRegistry(lg loggateway.Logger) *voice.DelegationRegistry {
+	return voice.NewDelegationRegistry(lg)
+}
+
 // provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
 // 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
 // V2-T5：注入语音确认 resolver（service 层适配 voice.ConfirmResolver）。
@@ -2868,6 +2879,8 @@ func provideVoiceWSServer(
 	lg loggateway.Logger,
 	chatService *service.ChatService,
 	artifactUC *biz.ArtifactUsecase,
+	voiceDelegation *voice.DelegationRegistry,
+	stepReader biz.StepV2Reader,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -2901,8 +2914,13 @@ func provideVoiceWSServer(
 	}
 	// C1：voice.start 预热 Agent 构建缓存（nil-safe：chatService 异常时返回 nil 即关闭）。
 	prewarmer := service.NewVoiceTurnPrewarmer(chatService)
+	// C2：ASR partial 稳定 500ms 投机意图（nil-safe 同上）。
+	speculator := service.NewVoiceIntentSpeculator(chatService)
 	srv := server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
 	srv.SetTurnPrewarmer(prewarmer)
+	srv.SetIntentSpeculator(speculator)
+	// M74 V9：委派登记表 + 终稿读取（eventLoop 三路分流/播报，设计 74 §15.4-C/D）。
+	srv.SetDelegationRegistry(voiceDelegation, stepReader)
 	return srv
 }
 
@@ -3340,6 +3358,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSessionTitleGenerator,
 		provideRunRegistry,
 		provideGlobalBuildCache,
+		provideVoiceDelegationRegistry,
 		provideMCPToolSetPool,
 		provideLifecycleManager,
 		provideDeadLetterQueue,

@@ -183,6 +183,9 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			ToolVersionHash:  toolHash,
 			SkillVersionHash: skillHash,
 			MCPVersionHash:   mcpHash,
+			// LG 缺省会导致 deps.Logger() 返回 Noop，构建路径（skill/tool/assemble）
+			// 的全部过程日志被静默吞掉，冷构建慢时无法定位（2026-08-11 排障发现）。
+			LG: d.lg,
 		},
 	}
 

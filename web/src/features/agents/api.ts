@@ -151,16 +151,6 @@ export async function duplicateAgent(id: string): Promise<Agent> {
   return normalizeAgentFromService(res);
 }
 
-export async function editPromptFileByAI(
-  agentId: string,
-  fileId: string,
-  instruction: string,
-): Promise<AgentPromptFile> {
-  const svc = createAgentService();
-  const res = await svc.EditPromptFileByAI({ agentId, fileId, instruction });
-  return normalizePromptFileFromWire(res.file);
-}
-
 export async function estimateAgentTokens(agentId: string): Promise<{
   total_tokens: number;
   file_estimates: Array<{ file_id: string; file_name: string; estimated_tokens: number }>;
@@ -248,10 +238,21 @@ export async function getAgentEvolutionMetrics(agentId: string, timeRange: strin
   };
 }
 
-export async function getAgentEvolutionSuggestions(agentId: string, status?: string): Promise<EvolutionSuggestion[]> {
-  const svc = createAgentService();
-  const res = await svc.GetAgentEvolutionSuggestions({ agentId, status });
-  return (res.items ?? []).map((item) => ({
+type EvolutionSuggestionWire = {
+  id?: string;
+  agentId?: string;
+  type?: string;
+  title?: string;
+  content?: string;
+  status?: string;
+  diffPreview?: string;
+  createdAt?: string;
+  appliedAt?: string;
+  applicable?: boolean;
+};
+
+function toEvolutionSuggestion(item: EvolutionSuggestionWire): EvolutionSuggestion {
+  return {
     id: item.id ?? '',
     agent_id: item.agentId ?? '',
     type: item.type ?? '',
@@ -262,24 +263,19 @@ export async function getAgentEvolutionSuggestions(agentId: string, status?: str
     created_at: item.createdAt ?? '',
     applied_at: item.appliedAt ?? '',
     applicable: Boolean(item.applicable),
-  }));
+  };
+}
+
+export async function getAgentEvolutionSuggestions(agentId: string, status?: string): Promise<EvolutionSuggestion[]> {
+  const svc = createAgentService();
+  const res = await svc.GetAgentEvolutionSuggestions({ agentId, status });
+  return (res.items ?? []).map(toEvolutionSuggestion);
 }
 
 export async function applyEvolutionSuggestion(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
   const svc = createAgentService();
   const res = await svc.ApplyEvolutionSuggestion({ agentId, suggestionId });
-  return {
-    id: res.id ?? '',
-    agent_id: res.agentId ?? '',
-    type: res.type ?? '',
-    title: res.title ?? '',
-    content: res.content ?? '',
-    status: res.status ?? '',
-    diff_preview: res.diffPreview ?? '',
-    created_at: res.createdAt ?? '',
-    applied_at: res.appliedAt ?? '',
-    applicable: Boolean(res.applicable),
-  };
+  return toEvolutionSuggestion(res);
 }
 
 export async function checkAgentKey(agentKey: string): Promise<{ available: boolean; message: string }> {
@@ -291,21 +287,20 @@ export async function checkAgentKey(agentKey: string): Promise<{ available: bool
   };
 }
 
-export async function rejectEvolutionSuggestion(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
+export async function rejectEvolutionSuggestion(
+  agentId: string,
+  suggestionId: string,
+  reason?: string,
+): Promise<EvolutionSuggestion> {
   const svc = createAgentService();
-  const res = await svc.RejectEvolutionSuggestion({ agentId, suggestionId });
-  return {
-    id: res.id ?? '',
-    agent_id: res.agentId ?? '',
-    type: res.type ?? '',
-    title: res.title ?? '',
-    content: res.content ?? '',
-    status: res.status ?? '',
-    diff_preview: res.diffPreview ?? '',
-    created_at: res.createdAt ?? '',
-    applied_at: res.appliedAt ?? '',
-    applicable: Boolean(res.applicable),
-  };
+  const res = await svc.RejectEvolutionSuggestion({ agentId, suggestionId, reason });
+  return toEvolutionSuggestion(res);
+}
+
+export async function rollbackEvolutionSuggestion(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
+  const svc = createAgentService();
+  const res = await svc.RollbackEvolutionSuggestion({ agentId, suggestionId });
+  return toEvolutionSuggestion(res);
 }
 
 export async function updateAgentToolPolicy(

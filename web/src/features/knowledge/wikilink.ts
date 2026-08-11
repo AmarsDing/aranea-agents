@@ -42,7 +42,10 @@ export function wikiLinkLabel(r: Pick<WikiLinkRef, 'target' | 'alias'>): string 
 export function normalizeTargetName(p: string): string {
   const segs = p.split('/').filter(Boolean);
   const base = segs.length ? segs[segs.length - 1] : p;
-  return base.replace(/\.(md|markdown)$/i, '').trim().toLowerCase();
+  return base
+    .replace(/\.(md|markdown)$/i, '')
+    .trim()
+    .toLowerCase();
 }
 
 /** 目标存在性：候选为当前库文档（relPath 或文件名均可，归一化后比较）。 */
@@ -52,11 +55,26 @@ export function resolveWikiTarget(target: string, candidates: string[]): boolean
   return candidates.some((c) => normalizeTargetName(c) === want);
 }
 
-/** CM 补全工厂：检测 `[[` 前缀，候选 = 当前库文档名（150ms 防抖由 autocompletion 配置层控制）。 */
-export function wikiLinkCompletionSource(getCandidates: () => string[]) {
+/** CM 补全工厂：检测 `[[` 前缀，候选 = 当前库文档名（150ms 防抖由 autocompletion 配置层控制）。
+ *  P2-5：`[[target#partial` 时切换为标题补全（getHeadings 提供目标文档标题列表，通常为已打开 tab 的大纲）。 */
+export function wikiLinkCompletionSource(getCandidates: () => string[], getHeadings?: (target: string) => string[]) {
   return (ctx: CompletionContext): CompletionResult | null => {
-    const m = ctx.matchBefore(/\[\[([^\]|#]*)$/);
+    const m = ctx.matchBefore(/\[\[([^\]|#]*?)(?:#([^\]|]*))?$/);
     if (!m) return null;
+    const hashIdx = m.text.indexOf('#');
+    if (hashIdx >= 0) {
+      // 标题段补全：插入点在 # 之后，候选 = 目标文档标题
+      if (!getHeadings) return null;
+      const target = m.text.slice(2, hashIdx);
+      const partial = m.text.slice(hashIdx + 1);
+      const want = partial.trim().toLowerCase();
+      const options = getHeadings(target)
+        .filter((h) => !want || h.toLowerCase().includes(want))
+        .slice(0, 20)
+        .map((h) => ({ label: h, detail: target }));
+      if (!options.length) return null;
+      return { from: ctx.pos - partial.length, options, validFor: /^[^\]|]*$/ };
+    }
     const query = m.text.slice(2);
     const want = normalizeTargetName(query);
     const options = getCandidates()

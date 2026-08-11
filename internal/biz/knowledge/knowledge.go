@@ -223,6 +223,9 @@ type Usecase struct {
 	// graphLinks 为库级关联读取（G4-B8），经 SetGraphRepo 接线；
 	// nil 时 ListCollectionGraph 降级为仅节点无边。
 	graphLinks CollectionLinkReader
+	// mentionSearch 为 unlinked mentions 内容扫描端口（P2-7），经 SetMentionSearcher 接线；
+	// nil 时 ListUnlinkedMentions 降级为空。
+	mentionSearch DocContentSearcher
 	// filer 为 vault 文件系统边界（G1-B1），经 SetVaultFiler 接线；
 	// nil 时 ListVaultTree 目录退化为纯索引聚合。
 	filer *VaultFiler

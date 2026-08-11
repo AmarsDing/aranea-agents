@@ -95,12 +95,37 @@ func TestUpdateToolConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:       "non-MCP tool config skips MCP validation",
+			id:         "tool_web_research",
+			configJSON: `{"api_key":"secret"}`,
+			repo: &mockRepo{
+				getTool: func(_ context.Context, _ string) (Tool, error) {
+					return Tool{ID: "tool_web_research", Key: "web_research", Source: "builtin"}, nil
+				},
+				updateToolConfig: func(_ context.Context, idOrKey string, configJSON string) (Tool, error) {
+					return Tool{ID: idOrKey, Key: "web_research", Source: "builtin", ConfigJSON: configJSON}, nil
+				},
+			},
+		},
+		{
+			name:       "MCP tool config still requires command",
+			id:         "tool_mcp_1",
+			configJSON: `{"transport":"stdio"}`,
+			repo: &mockRepo{
+				getTool: func(_ context.Context, _ string) (Tool, error) {
+					return Tool{ID: "tool_mcp_1", Key: "mcp_fs", Source: "mcp"}, nil
+				},
+			},
+			wantErr: true,
+			wantMsg: "mcp stdio transport requires command",
+		},
+		{
 			name:       "successful update",
 			id:         "tool_1",
 			configJSON: `{"transport":"stdio","command":"echo"}`,
 			repo: &mockRepo{
 				getTool: func(_ context.Context, _ string) (Tool, error) {
-					return Tool{ID: "tool_1", Key: "test_tool"}, nil
+					return Tool{ID: "tool_1", Key: "test_tool", Source: "mcp"}, nil
 				},
 				updateToolConfig: func(_ context.Context, idOrKey string, configJSON string) (Tool, error) {
 					return Tool{ID: idOrKey, Key: "test_tool", ConfigJSON: configJSON}, nil
@@ -235,6 +260,21 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 					return ToolAgentOverride{ID: "ov_2", ToolID: toolID, AgentID: in.AgentID, Mode: in.Mode}, nil
 				},
 			},
+		},
+		{
+			name: "invalid config override JSON rejected",
+			input: ToolAgentOverrideInput{
+				ToolKey:            "test_tool",
+				AgentID:            "agent_1",
+				ConfigOverrideJSON: `{invalid`,
+			},
+			repo: &mockRepo{
+				getTool: func(_ context.Context, _ string) (Tool, error) {
+					return Tool{ID: "tool_1", Key: "test_tool"}, nil
+				},
+			},
+			wantErr: true,
+			wantMsg: "config_override_json must be valid JSON",
 		},
 		{
 			name: "repo error",

@@ -244,11 +244,11 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | `HooksPage.vue` | `/hooks` 全局 Hook CRUD |
 | `HookDeliveriesPage.vue` | `/hooks/deliveries` Hook 投递记录查看 |
 | `PluginRunsPage.vue` | `/plugins/runs` Plugin/Callback 运行记录（含 `hook:` 前缀筛选） |
-| `AgentHooksPanel.vue` | Agent 设置内嵌作用域 Hook |
-| `CallbackEditor.vue` | `config_json` 可视化编辑（支持 log/notify/block/modify 四种动作） |
-| `HooksTable.vue` | Hook 规则列表（page/agent 两种模式） |
+| `AgentHooksPanel.vue` | Agent 设置内嵌作用域 Hook：作用域规则 CRUD（名称/启停/排序/删除）+ 生效中全局规则只读分组；`condition.agent_id` 锁定当前 Agent |
+| `CallbackEditor.vue` | `config_json` 可视化编辑（log/notify/block/modify）；支持 `lock-agent-id`、`tool_name` 下拉（注入工具目录时，未注入回退手输）、`event_type` 下拉（`HOOK_EVENT_TYPE_VALUES`） |
+| `HooksTable.vue` | Hook 规则列表（page / agent / readonly 三种模式） |
 
-共享常量：`web/src/features/callback/constants.ts`（`CALLBACK_POINT_VALUES`、`PLUGIN_RUN_KEY_PRESETS`）。
+共享常量：`web/src/features/callback/constants.ts`（`CALLBACK_POINT_VALUES`、`useCallbackPointOptions`、`callbackPointLabel`、`HOOK_EVENT_TYPE_VALUES`、`PLUGIN_RUN_KEY_PRESETS`）。
 
 API：`HookService` gRPC/HTTP；Agent 设置页复用同一编辑器组件。
 

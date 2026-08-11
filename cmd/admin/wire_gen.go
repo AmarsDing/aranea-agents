@@ -70,6 +70,7 @@ import (
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/subagent"
+	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
 	"context"
@@ -400,7 +401,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConsolidationWriter := data.NewMemoryConsolidationWriterAdapter(dataData, loggatewayLogger)
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, loggatewayLogger)
+	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector, mailboxWaker)
@@ -1384,6 +1386,7 @@ func provideChatServiceDeps(
 	memoryConflictDetector biz.MemoryConflictDetector,
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
+	voiceDelegation *voice.DelegationRegistry,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 
@@ -1453,6 +1456,7 @@ func provideChatServiceDeps(
 			MemoryConsolidationWriter: memoryConsolidationWriter,
 			MemoryConflictDetector:    memoryConflictDetector,
 			MemoryConflictStore:       memoryConflictStore,
+			VoiceDelegation:           voiceDelegation,
 		},
 	}
 }
@@ -3333,6 +3337,14 @@ func provideSpeechConfigReader(repo biz.SystemSettingRepo, lg loggateway.Logger)
 	return speech.NewSystemSpeechConfigReader(repo, lg)
 }
 
+// provideVoiceDelegationRegistry 提供语音委派登记表进程级单例（M74 V9，
+// 设计 74 §15.4-C）。双向消费：service 层 voiceButlerTools（Register/
+// MarkSubmitFailed）+ server 层 VoiceWSServer.SetDelegationRegistry（
+// eventLoop 三路分流 BindTask/CompleteTask/SetWatcher）。
+func provideVoiceDelegationRegistry(lg loggateway.Logger) *voice.DelegationRegistry {
+	return voice.NewDelegationRegistry(lg)
+}
+
 // provideVoiceWSServer constructs the /v1/voice WS gateway. Provider 工厂
 // 闭包按当前配置懒解析 ASR/TTS Provider（每次 voice.start 重新读配置）。
 // V2-T5：注入语音确认 resolver（service 层适配 voice.ConfirmResolver）。
@@ -3381,8 +3393,11 @@ func provideVoiceWSServer(
 	}
 
 	prewarmer := service.NewVoiceTurnPrewarmer(chatService)
+
+	speculator := service.NewVoiceIntentSpeculator(chatService)
 	srv := server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
 	srv.SetTurnPrewarmer(prewarmer)
+	srv.SetIntentSpeculator(speculator)
 	return srv
 }
 

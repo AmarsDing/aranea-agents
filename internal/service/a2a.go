@@ -72,6 +72,17 @@ func (s *A2AService) effectivePublicBase() (url, source string) {
 	return "", ""
 }
 
+// withEndpointURL sets the public A2A endpoint URL on an enabled local card.
+// The URL stays empty when the endpoint is disabled or no public base is configured.
+func (s *A2AService) withEndpointURL(protoCard *v1.A2AAgentCard, enabled bool, agentID string) {
+	if !enabled {
+		return
+	}
+	if publicBase, _ := s.effectivePublicBase(); publicBase != "" {
+		protoCard.EndpointUrl = publicBase + "/" + agentID
+	}
+}
+
 // Discover returns A2A-enabled agents, optionally filtered by workspace/capability.
 func (s *A2AService) Discover(ctx context.Context, req *v1.DiscoverRequest) (*v1.DiscoverResponse, error) {
 	cards, err := s.uc.Discover(ctx, req.GetWorkspace(), req.GetCapability())
@@ -82,13 +93,10 @@ func (s *A2AService) Discover(ctx context.Context, req *v1.DiscoverRequest) (*v1
 	if mapErr != nil {
 		s.lg.Warn("map endpoint enabled failed", loggateway.Err(mapErr))
 	}
-	publicBase, _ := s.effectivePublicBase()
 	out := make([]*v1.A2AAgentCard, 0, len(cards))
 	for _, c := range cards {
 		protoCard := toProtoA2ACard(c)
-		if c.Source == biz.A2ASourceLocal && endpointEnabled[c.AgentID] && publicBase != "" {
-			protoCard.EndpointUrl = publicBase + "/" + c.AgentID
-		}
+		s.withEndpointURL(protoCard, c.Source == biz.A2ASourceLocal && endpointEnabled[c.AgentID], c.AgentID)
 		out = append(out, protoCard)
 	}
 	return &v1.DiscoverResponse{Agents: out}, nil
@@ -256,7 +264,9 @@ func (s *A2AService) GetAgentCard(ctx context.Context, req *v1.GetAgentCardReque
 	if err != nil {
 		return nil, err
 	}
-	return toProtoA2ACard(card), nil
+	protoCard := toProtoA2ACard(card)
+	s.withEndpointURL(protoCard, card.Enabled, card.AgentID)
+	return protoCard, nil
 }
 
 // ListAudit returns the A2A audit log.

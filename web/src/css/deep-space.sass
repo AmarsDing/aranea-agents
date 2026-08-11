@@ -1,22 +1,41 @@
 // 深空液态玻璃设计令牌（SP2，37-knowledge.design.md §SP2-2）
-// 作用域纪律（SP2-ADR-6）：全部令牌与样式限定 .kb-workbench 根类名内，不污染全局明暗主题。
+// 作用域纪律（SP2-ADR-6）：全部令牌与样式限定 .kb-workbench / .kb-portal 根类名内，不污染全局明暗主题。
+
+// ── Mixin：设计令牌（.kb-workbench 与 .kb-portal 共享单一真相源）────────────
+=kb-tokens
+  // ── 色彩同源（P0-1）：全部消费全局 Tech Night 变量，跟随系统主题 ──
+  --kb-bg-deep: var(--canvas-base)
+  --kb-bg-glass: var(--glass-surface)
+  --kb-bg-glass-strong: var(--glass-elevated)
+  --kb-glass-border: var(--glass-border)
+  --kb-glass-border-strong: var(--glass-border-hover)
+  --kb-glass-highlight: rgba(255, 255, 255, 0.08)
+  --kb-accent-cyan: var(--color-accent)
+  --kb-accent-violet: var(--color-neon-violet)
+  --kb-accent-cyan-dim: color-mix(in srgb, var(--color-accent) 35%, transparent)
+  --kb-text-primary: var(--tech-text-primary)
+  --kb-text-dim: var(--tech-text-muted)
+  --kb-danger: var(--color-danger)
+  --kb-warn: var(--color-warning)
+  // ── kb 本地布局令牌（全局无对应项，保留）──
+  --kb-radius-glass: 14px
+  --kb-blur: var(--glass-blur-default)
+
+// ── Mixin：玻璃表面（工作台面板与传送门浮层共用）──────────────────────────
+// P0-2：box-shadow 第一层/第二层为镜面边缘（顶缘反光 + 底缘暗线），全玻璃表面统一液态断面感
+=kb-glass-surface
+  background: var(--kb-bg-glass)
+  backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+  -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+  border: 1px solid var(--kb-glass-border)
+  border-radius: var(--kb-radius-glass)
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -1px 0 rgba(0, 0, 0, 0.22), inset 0 0 24px color-mix(in srgb, var(--color-accent) 4%, transparent), 0 12px 40px rgba(2, 6, 18, 0.5)
 
 .kb-workbench
-  // ── 令牌 ──────────────────────────────
-  --kb-bg-deep: #0a0e1a
-  --kb-bg-glass: rgba(16, 22, 40, 0.55)
-  --kb-bg-glass-strong: rgba(14, 19, 36, 0.78)
-  --kb-glass-border: rgba(120, 200, 255, 0.14)
-  --kb-glass-border-strong: rgba(120, 200, 255, 0.32)
-  --kb-glass-highlight: rgba(255, 255, 255, 0.08)
-  --kb-accent-cyan: #4fd8ff
-  --kb-accent-violet: #9d6bff
-  --kb-accent-cyan-dim: rgba(79, 216, 255, 0.35)
-  --kb-text-primary: #dce6f5
-  --kb-text-dim: #7a8aa5
-  --kb-danger: #ff5d7a
-  --kb-radius-glass: 14px
-  --kb-blur: 18px
+  +kb-tokens
+
+  // （P0-1 同源化后移除全局变量改道：复用组件 KnowledgeVaultTree / KnowledgeUploadQueue
+  //   直接消费全局 Tech Night 变量，与系统其余页面一致）
 
   position: relative
   background: var(--kb-bg-deep)
@@ -36,24 +55,19 @@
       height: 46vw
       top: -18vw
       right: -12vw
-      background: radial-gradient(circle, rgba(79, 216, 255, 0.16) 0%, transparent 65%)
+      background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 65%)
 
     &--violet
       width: 40vw
       height: 40vw
       bottom: -16vw
       left: -10vw
-      background: radial-gradient(circle, rgba(157, 107, 255, 0.14) 0%, transparent 65%)
+      background: radial-gradient(circle, color-mix(in srgb, var(--color-neon-violet) 14%, transparent) 0%, transparent 65%)
 
   // ── 通用玻璃表面 ────────────────────────
   .kb-glass
     position: relative
-    background: var(--kb-bg-glass)
-    backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
-    -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
-    border: 1px solid var(--kb-glass-border)
-    border-radius: var(--kb-radius-glass)
-    box-shadow: inset 0 0 24px rgba(79, 216, 255, 0.04), 0 12px 40px rgba(2, 6, 18, 0.5)
+    +kb-glass-surface
 
     &::before
       content: ''
@@ -72,17 +86,38 @@
   .kb-text-dim
     color: var(--kb-text-dim)
 
+  // ── 复用组件皮肤褪去：工作台内由 GlassPanel 承载容器 ──
+  // Vault 树外壳（.app-pane-card 全局玻璃卡片 → 透明）
+  .knowledge-vault-tree.app-pane-card
+    border: 0
+    border-radius: 0
+    background: transparent
+    backdrop-filter: none
+    -webkit-backdrop-filter: none
+    box-shadow: none
+    min-height: 0
+
+  // 上传队列（收纳进左栏底部 GlassPanel；卡片皮肤褪去 + 灰字改道深空）
+  .knowledge-upload-queue
+    margin-bottom: 0
+    border: 0
+    border-radius: 0
+    background: transparent
+
+    .text-grey-7
+      color: var(--kb-text-dim) !important
+
   // ── 滚动条（作用域内）────────────────────
   ::-webkit-scrollbar
     width: 8px
     height: 8px
 
   ::-webkit-scrollbar-thumb
-    background: rgba(79, 216, 255, 0.18)
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent)
     border-radius: 4px
 
     &:hover
-      background: rgba(79, 216, 255, 0.32)
+      background: color-mix(in srgb, var(--color-accent) 32%, transparent)
 
   ::-webkit-scrollbar-track
     background: transparent
@@ -93,3 +128,30 @@
       animation-duration: 0.001ms !important
       animation-iteration-count: 1 !important
       transition-duration: 0.001ms !important
+
+// ── 传送门作用域（SP2-8）──────────────────────────────────────────────
+// Quasar 菜单/对话框 teleport 到 body 后脱离 .kb-workbench 作用域；
+// 由 content-class / class="kb-portal" 重新挂上深空令牌与玻璃皮肤。
+.kb-portal
+  +kb-tokens
+
+  background: var(--kb-bg-glass-strong)
+  backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+  -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+  border: 1px solid var(--kb-glass-border)
+  border-radius: var(--kb-radius-glass)
+  box-shadow: 0 12px 40px rgba(2, 6, 18, 0.6)
+  color: var(--kb-text-primary)
+
+  .q-item
+    color: var(--kb-text-primary)
+
+    &__label--caption
+      color: var(--kb-text-dim)
+
+  .q-field__native,
+  .q-field__input
+    color: var(--kb-text-primary)
+
+  .q-field__label
+    color: var(--kb-text-dim)

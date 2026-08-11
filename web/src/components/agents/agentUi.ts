@@ -49,6 +49,9 @@ export const toolOptions = [
 // PGO-1 V2: 5 core files + 1 optional. Removed SOUL.md (merged → IDENTITY.md ## Persona),
 // HEARTBEAT.md (deprecated), USER.md, USER_PREDEFINED.md.
 // Must match internal/biz.pgoDefaultFilesV2 — validated by make fieldguide-lint.
+// Array order must match backend defaultPromptFilesV2 sort_order (CORE→TASK→IDENTITY→
+// CAPABILITIES→RULE): the runtime injects files ordered by sort_order, and the sidebar
+// renders this array; filesForSave regenerates sort_order from this order on save.
 export const defaultAgentFiles: AgentFile[] = [
   {
     name: 'AGENTS_CORE.md',
@@ -106,25 +109,6 @@ export const defaultAgentFiles: AgentFile[] = [
 - 面向非技术用户时自动简化表达`,
   },
   {
-    name: 'RULE.md',
-    caption: '硬性规则、约束与禁止项',
-    body: `# RULE
-
-## 禁止行为
-- 不得越权操作（超出当前权限范围的系统操作）
-- 不得删除未备份的重要数据
-- 不得绕过安全检查或审计机制
-
-## 合规要求
-- 遵守组织安全策略
-- 敏感操作需二次确认
-- 所有变更留有审计日志
-
-## 降级策略
-- 遇到不确定的操作时，选择更保守的方案
-- 服务不可用时，提供替代建议而非报错`,
-  },
-  {
     name: 'CAPABILITIES.md',
     caption: '能力描述、工具使用说明与边界',
     body: `# CAPABILITIES
@@ -143,6 +127,25 @@ export const defaultAgentFiles: AgentFile[] = [
 - 无法直接访问用户本地文件系统（需通过工具）
 - 无法执行需要物理交互的操作
 - 无法访问未授权的内部系统`,
+  },
+  {
+    name: 'RULE.md',
+    caption: '硬性规则、约束与禁止项',
+    body: `# RULE
+
+## 禁止行为
+- 不得越权操作（超出当前权限范围的系统操作）
+- 不得删除未备份的重要数据
+- 不得绕过安全检查或审计机制
+
+## 合规要求
+- 遵守组织安全策略
+- 敏感操作需二次确认
+- 所有变更留有审计日志
+
+## 降级策略
+- 遇到不确定的操作时，选择更保守的方案
+- 服务不可用时，提供替代建议而非报错`,
   },
   {
     name: 'USER_CONTEXT.md',
@@ -164,6 +167,32 @@ export const defaultAgentFiles: AgentFile[] = [
 
 export function promptModeLabel(value: string) {
   return promptModes.find((mode) => mode.value === value)?.label ?? '完整';
+}
+
+// Core (non-optional) file names — these cannot be removed from the working set.
+const coreAgentFileNames = new Set(defaultAgentFiles.filter((f) => !f.optional).map((f) => f.name));
+
+/** Core files cannot be removed; optional/custom files can (takes effect on save). */
+export function isRemovableAgentFile(name: string) {
+  return !coreAgentFileNames.has(name);
+}
+
+// Whitelist mirror of backend biz.FilesForMode (agent_settings_helpers.go).
+// null means "all files injected". Keep in sync with the Go whitelist.
+const injectedFilesByMode: Record<string, ReadonlySet<string> | null> = {
+  complete: null,
+  task: new Set(['AGENTS_CORE.md', 'AGENTS_TASK.md', 'IDENTITY.md', 'CAPABILITIES.md', 'RULE.md']),
+  minimized: new Set(['AGENTS_CORE.md', 'RULE.md']),
+  none: new Set(),
+};
+
+/** Whether a prompt file is injected into the system prompt under the given system_prompt_mode. */
+export function isFileInjectedInMode(name: string, mode: string): boolean {
+  const key = (mode || 'complete').trim().toLowerCase();
+  const allowed = Object.prototype.hasOwnProperty.call(injectedFilesByMode, key)
+    ? injectedFilesByMode[key]
+    : injectedFilesByMode.minimized;
+  return allowed === null || allowed.has(name);
 }
 
 export { tokenEstimateFor } from '../../features/agents/agentUtils';

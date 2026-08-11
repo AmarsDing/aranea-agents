@@ -46,11 +46,14 @@ func validateToolConfigFields(in ToolUpsertInput) error {
 	return nil
 }
 
-func validateToolConfigAgainstSchema(schemaJSON, configJSON string) error {
+func validateToolConfigAgainstSchema(source, schemaJSON, configJSON string) error {
 	if err := shared.ValidateDocumentAgainstSchema("TOOL", schemaJSON, configJSON); err != nil {
 		return err
 	}
-	return validateMCPServerConfigJSON(configJSON)
+	if strings.EqualFold(strings.TrimSpace(source), "mcp") {
+		return validateMCPServerConfigJSON(configJSON)
+	}
+	return nil
 }
 
 func validateMCPServerConfigJSON(raw string) error {

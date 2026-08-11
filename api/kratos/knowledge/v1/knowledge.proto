@@ -274,6 +274,24 @@ message ListDanglingLinksResponse {
   repeated DanglingLink items = 1;
 }
 
+// UnlinkedMention is one document that mentions the target doc's display name
+// in plain text (outside [[wikilinks]]) without linking to it (P2-7,
+// Obsidian "Unlinked mentions").
+message UnlinkedMention {
+  string src_doc_id = 1;
+  string src_doc_name = 2;  // source document display name (rel_path)
+  int32 count = 3;          // plain-text occurrence count
+  string snippet = 4;       // first-occurrence context excerpt
+}
+
+message ListUnlinkedMentionsRequest {
+  string doc_id = 1 [(google.api.field_behavior) = REQUIRED];  // target document
+}
+
+message ListUnlinkedMentionsResponse {
+  repeated UnlinkedMention items = 1;
+}
+
 // PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
 message PromoteBlocksRequest {
   repeated string block_ids = 1 [(google.api.field_behavior) = REQUIRED];
@@ -571,6 +589,13 @@ service KnowledgeService {
   rpc ListDanglingLinks(ListDanglingLinksRequest) returns (ListDanglingLinksResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/collections/{id}/dangling-links"
+    };
+  }
+  // ListUnlinkedMentions returns documents that mention the target doc's name
+  // in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+  rpc ListUnlinkedMentions(ListUnlinkedMentionsRequest) returns (ListUnlinkedMentionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{doc_id}/unlinked-mentions"
     };
   }
   // PromoteBlocks clones blocks from a personal vault into a team collection

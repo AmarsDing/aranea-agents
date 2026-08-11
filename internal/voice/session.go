@@ -1,5 +1,9 @@
 package voice
 
+// TECH-DEBT(COG): 文件总行数=1355, 上限=500（AS-COG-01 既有债务，V8/V9
+// 持续加剧）——下一迭代按职责拆分：eventLoop/委派播报 → session_delegation.go，
+// 确认/澄清 → session_confirm.go，ASR 泵 → session_asr.go。
+
 import (
 	"context"
 	"encoding/json"
@@ -14,6 +18,7 @@ import (
 	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // idleReclaimTimeout 是 ASR 上游空闲回收时长（设计 §2.1）。
@@ -26,6 +31,11 @@ const firstAudioBudget = 2500 * time.Millisecond
 
 // interruptedSettleDelay 是 interrupted 过渡态自动回 listening 的延迟（设计 §5）。
 const interruptedSettleDelay = 300 * time.Millisecond
+
+// speculativeStabilityDelay 是 ASR partial 文本稳定判定窗口（C2，设计 §14.4）：
+// partial 文本 500ms 无变化视为稳定，触发投机意图（L2）。文本变化重置计时；
+// 同文重发不重置（稳定窗口从首次出现算起）。
+const speculativeStabilityDelay = 500 * time.Millisecond
 
 // voiceTurnBusyRetries/voiceTurnBusyBackoff 对齐 channel 入口的 busy 重试策略
 // （channelTurnBusyRetries/channelTurnBusyBackoff）。CHAT_TURN_BUSY 是准入
@@ -101,9 +111,35 @@ type TurnPrewarmer interface {
 	PrewarmTurn(ctx context.Context, sessionID string)
 }
 
+// Stability:evolving — 投机意图端口（service.VoiceIntentSpeculator 适配实现）。
+// C2（2026-08-11）：ASR partial 文本稳定 500ms 后后台预跑意图识别（投机阶梯
+// L2）；ASR final 时（L3 判定）final 文本与投机源一致则注入产物复用，
+// 失配/超时/失败即丢弃走常规意图路径。实现必须非阻断容错，nil 关闭投机。
+type IntentSpeculator interface {
+	// SpeculateIntent 对稳定 partial 文本后台预跑意图识别（fire-and-forget）。
+	SpeculateIntent(ctx context.Context, sessionID, text string)
+	// WithSpeculativeIntent 判定 final 复用：命中返回注入产物的 ctx，
+	// 未命中原样返回。允许有界等待在途投机完成（实现侧兜底上限）。
+	WithSpeculativeIntent(ctx context.Context, sessionID, finalText string) context.Context
+}
+
+// ttsConnPrewarmer 是 TTS Provider 的可选预热能力（L5，2026-08-11）：
+// voice.start 预拨 WS 连接存槽，首个 Turn 首句 Write 弹出复用免握手。
+// 未实现该能力的 provider 自动跳过预热（首句维持逐句拨号现状）。
+type ttsConnPrewarmer interface {
+	PrewarmTTSConn(ctx context.Context)
+	ReleaseWarmTTSConn()
+}
+
 // Stability:evolving — Turn 取消端口（server.RunCanceller 适配实现）。
 type RunCanceller interface {
 	CancelRun(ctx context.Context, sessionID string) bool
+}
+
+// Stability:evolving — 委派播报取精灵终稿的窄端口（M74 V9，设计 74 §15.4.1
+// R7：biz.StepV2Reader 子集，spirit_team_usecase.go 取终稿同款模式）。
+type DelegationStepReader interface {
+	ListStepsBySessionID(ctx context.Context, sessionID string) ([]biz.Step, error)
 }
 
 // Downlink 是网关 → 客户端的下行通道（WS 实现，写锁由实现保证）。
@@ -140,8 +176,15 @@ type SessionDeps struct {
 	Archiver AudioArchiver
 	// Prewarmer Turn 预热端口（C1）；nil 时关闭预热。听写模式恒跳过。
 	Prewarmer TurnPrewarmer
-	Infra     *event.Infra
-	LG        loggateway.Logger
+	// Speculator 投机意图端口（C2）；nil 时关闭投机。听写模式恒跳过。
+	Speculator IntentSpeculator
+	// Delegation 委派登记表单例（M74 V9）；nil 时关闭委派三路分流
+	// （eventLoop 仅处理本会话事件，无 task 绑定/终态播报）。
+	Delegation *DelegationRegistry
+	// DelegationSteps 委派播报终稿读取端口（R7）；nil 时委派完成仅播简报。
+	DelegationSteps DelegationStepReader
+	Infra           *event.Infra
+	LG              loggateway.Logger
 }
 
 // Session 编排单条语音 WS 连接的生命周期（设计 §2.4）。
@@ -163,10 +206,12 @@ type Session struct {
 	state         VoiceState
 	params        StartParams
 	asr           biz.ASRSession
-	asrDriver     string // 当前 ASR 配置驱动名（V2-T6 asr_provider 元数据）
-	sampleRate    int    // 当前 ASR 配置采样率（V2-T6 WAV 封装）
-	utterBuf      []byte // 当前语句留档 PCM 缓冲（V2-T6；Archiver 非 nil 时累积）
-	utterOverflow bool   // 当前语句缓冲已截断（超 maxUtterancePCMBytes）
+	asrDriver     string                   // 当前 ASR 配置驱动名（V2-T6 asr_provider 元数据）
+	sampleRate    int                      // 当前 ASR 配置采样率（V2-T6 WAV 封装）
+	ttsProvider   biz.StreamingTTSProvider // L5：Start 预解析持有（ensureTTS 复用；nil=未解析/失败回退工厂）
+	ttsCfg        biz.TTSSessionConfig     // L5：与 ttsProvider 同次解析的会话参数
+	utterBuf      []byte                   // 当前语句留档 PCM 缓冲（V2-T6；Archiver 非 nil 时累积）
+	utterOverflow bool                     // 当前语句缓冲已截断（超 maxUtterancePCMBytes）
 	chunker       *SentenceChunker
 	scheduler     *TTSScheduler
 	pendingTurns  int
@@ -177,6 +222,12 @@ type Session struct {
 	eventStarted  bool
 	unsub         func()
 	idleTimer     *time.Timer
+	// C2 投机意图：partial 稳定追踪（specTimer 500ms 无变化触发投机）。
+	partialText string      // 当前追踪的 partial 归一化文本
+	partialGen  int         // partial 代际（文本变化递增，计时器防陈旧触发）
+	specTimer   *time.Timer // 稳定判定计时器；final/cancel/teardown 停止
+	// M74 V9：委派终态播报 FIFO（voice 正忙时排队，回 listening 排空，§15.3）。
+	delegationOutbox []string
 }
 
 func NewSession(ctx context.Context, deps SessionDeps, sessionID, userID string, down Downlink) *Session {
@@ -230,15 +281,22 @@ func (s *Session) Start(p StartParams) {
 	}
 	if !s.dictation() {
 		s.startEventLoop() // 听写模式无 TTS 播报，不订阅事件总线
+		// M74 V9：委派提交同步失败（永无 TaskCreated）的带外通知口播（R12）。
+		if reg := s.deps.Delegation; reg != nil {
+			reg.SetWatcher(s.sessionID, s.onDelegationNotice)
+		}
 		// C1 预热：后台填充 Agent 构建缓存，首个语音 Turn 免去冷启动。
 		// 与 Turn 派发一致：预热存活独立于连接（appctx），传播 userID。
 		if pw := s.deps.Prewarmer; pw != nil {
 			s.wg.Add(1)
-			go func() {
+			safego.Go(appctx.Ctx(), "voice.prewarm", func() {
 				defer s.wg.Done()
 				pw.PrewarmTurn(ctxuser.WithUserID(appctx.Ctx(), s.userID), s.sessionID)
-			}()
+			})
 		}
+		// L5 预热：预解析 TTS provider（ensureTTS 复用）并预拨连接，
+		// 首个 Turn 首句免握手。非阻断容错：失败仅 Warn，ensureTTS 回退工厂。
+		s.resolveAndPrewarmTTS()
 	}
 	s.resetIdleTimer()
 	s.flow.LogStart("voice.session.start", "语音会话开始", event.P("mode", p.Mode))
@@ -341,7 +399,8 @@ func (s *Session) Cancel(reason string) {
 	s.chunker = nil
 	s.scheduler = nil
 	s.ttsStarted = false
-	s.turnT0 = time.Time{} // E：打断后迟到的音频帧不产生误导性延迟测量
+	s.turnT0 = time.Time{}    // E：打断后迟到的音频帧不产生误导性延迟测量
+	s.stopSpeculationLocked() // C2：打断后残余 partial 不再触发投机
 	s.mu.Unlock()
 	if sch != nil {
 		sch.Cancel()
@@ -462,6 +521,7 @@ func (s *Session) asrPump(sess biz.ASRSession) {
 			switch ev.Type {
 			case biz.ASREventPartial:
 				_ = s.down.SendJSON(map[string]any{"type": "asr.partial", "text": ev.Text})
+				s.trackPartialStability(ev.Text) // C2：稳定 500ms 触发投机意图
 			case biz.ASREventFinal:
 				s.handleASRFinal(ev)
 			case biz.ASREventError:
@@ -474,11 +534,69 @@ func (s *Session) asrPump(sess biz.ASRSession) {
 	}
 }
 
+// trackPartialStability 追踪 ASR partial 文本稳定性（C2）：文本变化重置
+// 500ms 稳定计时；同文重发不重置（稳定窗口从首次出现算起）。稳定触发投机
+// 意图（L2）。听写模式/未接线投机器时不追踪（零开销）。
+func (s *Session) trackPartialStability(text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.deps.Speculator == nil || s.params.Mode == ModeDictation {
+		return
+	}
+	text = strings.TrimSpace(text)
+	if text == "" || text == s.partialText {
+		return
+	}
+	s.partialText = text
+	s.partialGen++
+	if s.specTimer != nil {
+		s.specTimer.Stop()
+	}
+	gen := s.partialGen
+	s.specTimer = time.AfterFunc(speculativeStabilityDelay, func() { s.fireSpeculation(gen) })
+}
+
+// fireSpeculation 稳定窗口到达：代际未变且仍处 listening 时触发投机意图。
+// ctx 用会话 ctx（s.ctx）：连接拆除即取消在途投机 LLM 调用（final 不可达，
+// 投机无消费者），传播 userID 供审计。
+func (s *Session) fireSpeculation(gen int) {
+	s.mu.Lock()
+	if gen != s.partialGen || s.state != StateListening {
+		s.mu.Unlock()
+		return
+	}
+	text := s.partialText
+	sp := s.deps.Speculator
+	s.mu.Unlock()
+	if sp == nil || text == "" {
+		return
+	}
+	sp.SpeculateIntent(ctxuser.WithUserID(s.ctx, s.userID), s.sessionID, text)
+	s.lg.Info("voice speculative intent triggered",
+		loggateway.StepID("voice.intent.speculate"),
+		loggateway.Int("text_len", len(text)))
+}
+
+// stopSpeculationLocked 停止 partial 稳定追踪（final/cancel/teardown 调用）。
+// 调用方须持有 s.mu。已触发的投机槽不在此清理（由 resolve/取代/TTL 兜底）。
+func (s *Session) stopSpeculationLocked() {
+	if s.specTimer != nil {
+		s.specTimer.Stop()
+		s.specTimer = nil
+	}
+	s.partialText = ""
+	s.partialGen++ // 使任何已派发的计时器回调失效
+}
+
 func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
 		return
 	}
+	// C2：终稿即语句边界，停止 partial 稳定追踪（投机槽由 resolve/取代/TTL 清理）。
+	s.mu.Lock()
+	s.stopSpeculationLocked()
+	s.mu.Unlock()
 	// 终稿 = 语句边界：取出并复位留档缓冲（V2-T6）。确认拦截/残余 final 等
 	// 不进 Chat 管线的分支直接丢弃缓冲，保证下一句从空缓冲开始。
 	pcm := s.takeUtteranceBuffer()
@@ -509,7 +627,21 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	params := s.params
 	driver := s.asrDriver
 	rate := s.sampleRate
+	// M74 V9 评审竞态修复：listening 态存活的 scheduler 必为无主自足播报
+	// （委派结果/失败残余——turn 的 scheduler 回 listening 前已被 OnDrained
+	// 置空）。用户开口优先（barge-in 语义）：锁内摘除、锁外取消。否则其
+	// flush 哨兵 OnDrained 会把 thinking 经 EvTTSEnd（无文本 Turn 合法出口）
+	// 提前拍回 listening，新 turn delta 全丢 + tts.end 缺失。
+	orphanSch := s.scheduler
+	if orphanSch != nil {
+		s.chunker = nil
+		s.scheduler = nil
+		s.ttsStarted = false
+	}
 	s.mu.Unlock()
+	if orphanSch != nil {
+		orphanSch.Cancel() // 锁外取消（wg.Wait 防与回调抢 s.mu 死锁，Cancel 先例）
+	}
 	voiceMeta := &biz.VoiceTurnMeta{
 		ASRProvider: driver,
 		DurationMs:  ev.DurationMs,
@@ -522,6 +654,11 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		// C2 L3 判定：final 文本与投机 partial 一致则注入产物复用
+		// （允许有界等待在途投机完成；失配/超时/失败原样返回走常规意图路径）。
+		if sp := s.deps.Speculator; sp != nil {
+			turnCtx = sp.WithSpeculativeIntent(turnCtx, s.sessionID, text)
+		}
 		if err := s.executeTurnWithBusyRetry(turnCtx, ChatTurnInput{
 			SessionID: s.sessionID, Content: text, AgentKey: params.AgentKey, TeamID: params.TeamID, Voice: voiceMeta,
 		}); err != nil {
@@ -642,20 +779,176 @@ func (s *Session) eventLoop(ch <-chan biz.Event) {
 			if !ok {
 				return
 			}
-			switch ev := e.(type) {
-			case *biz.StepStreamingEvent:
-				if ev.DeltaField == "content" && ev.DeltaChunk != "" {
-					s.feedDelta(ev.DeltaChunk)
-				}
-			case *biz.StepCreatedEvent:
-				s.maybeBroadcastClarification(ev)
-			case *biz.TurnCompletedEvent:
-				s.handleTurnCompleted()
-			case *biz.TurnFailedEvent:
-				s.handleTurnFailure(nil)
-			}
+			s.routeEvent(e)
 		}
 	}
+}
+
+// routeEvent 事件三路分流（M74 V9 组件 D，评审 R3）：V2Bus.Subscribe 忽略
+// EventSubscribeOptions 过滤参数（全量广播），必须显式按归属分流——
+// ① SpiritSessionID()==本会话 → 快答路径（现状）；② 本会话委派的精灵任务
+// 事件 → task 绑定/终态播报；③ 其余一律丢弃（精灵后台执行事件不得串入
+// 语音 TTS）。
+func (s *Session) routeEvent(e biz.Event) {
+	if e == nil {
+		return
+	}
+	sid := e.SpiritSessionID()
+	if sid == s.sessionID {
+		switch ev := e.(type) {
+		case *biz.StepStreamingEvent:
+			if ev.DeltaField == "content" && ev.DeltaChunk != "" {
+				s.feedDelta(ev.DeltaChunk)
+			}
+		case *biz.StepCreatedEvent:
+			s.maybeBroadcastClarification(ev)
+		case *biz.TurnCompletedEvent:
+			s.handleTurnCompleted()
+		case *biz.TurnFailedEvent:
+			s.handleTurnFailure(nil)
+		}
+		return
+	}
+	reg := s.deps.Delegation
+	if reg == nil || sid == "" {
+		return
+	}
+	switch ev := e.(type) {
+	case *biz.TaskCreatedEvent:
+		// 内容匹配绑定 taskID（R10）：先注册后提交无漏绑窗口，内容精确匹配
+		// 免疫外来并发 turn 错绑。多语音会话并发时先到先得，绑定结果幂等。
+		owner, ok := reg.BindTask(sid, ev.Task.UserMessage, ev.TaskID())
+		if ok && owner == s.sessionID {
+			s.flow.LogDone("voice.delegation.bind", "委派任务绑定", event.P("task_id", ev.TaskID()))
+			s.lg.Info("voice delegation task bound",
+				loggateway.StepID("voice.delegation.bind"),
+				loggateway.Str("task_id", ev.TaskID()))
+		}
+	case *biz.TaskCompletedEvent:
+		// owner 限定消费（CompleteTask 第一参）：非本会话委派不得截胡。
+		if entry, ok := reg.CompleteTask(s.sessionID, sid, ev.TaskID()); ok {
+			s.handleDelegationTerminal(entry, ev.Task.Status, sid)
+		}
+	case *biz.TaskFailedEvent:
+		if entry, ok := reg.CompleteTask(s.sessionID, sid, ev.TaskID()); ok {
+			s.handleDelegationTerminal(entry, biz.TaskStatusFailed, sid)
+		}
+	}
+}
+
+// handleDelegationTerminal 委派任务终态：组织口播文本并入队/播报（K5 双轨）。
+// TaskCompletedEvent 含 cancelled（Task.Status 区分，§15.2 R9）。
+func (s *Session) handleDelegationTerminal(entry DelegationEntry, status biz.TaskStatus, spiritSessionID string) {
+	var text string
+	switch status {
+	case biz.TaskStatusCompleted:
+		if reply := s.delegationReplyText(spiritSessionID); reply != "" {
+			text = "精灵助手来回复了。" + reply
+		} else {
+			text = "精灵助手的任务已完成，详细结果请在聊天窗口查看。"
+		}
+	case biz.TaskStatusCancelled:
+		text = "交给精灵助手的任务已取消。"
+	default:
+		text = "交给精灵助手的任务未能完成，详细情况请在聊天窗口查看。"
+	}
+	s.flow.LogDone("voice.delegation.terminal", "委派任务终态",
+		event.P("task_id", entry.TaskID), event.P("status", string(status)))
+	s.lg.Info("voice delegation task terminal",
+		loggateway.StepID("voice.delegation.terminal"),
+		loggateway.Str("task_id", entry.TaskID), loggateway.Str("status", string(status)))
+	s.enqueueDelegationSpeech(text)
+}
+
+// delegationReplyText 取精灵会话最新 completed reply step 全文（R7）。
+// 读失败/无回复返回空串（调用方降级为简报，K3）。
+func (s *Session) delegationReplyText(spiritSessionID string) string {
+	r := s.deps.DelegationSteps
+	if r == nil || spiritSessionID == "" {
+		return ""
+	}
+	// 与 Turn 派发一致：读取存活独立于连接（appctx），传播 userID。
+	ctx, cancel := context.WithTimeout(ctxuser.WithUserID(appctx.Ctx(), s.userID), 5*time.Second)
+	defer cancel()
+	steps, err := r.ListStepsBySessionID(ctx, spiritSessionID)
+	if err != nil {
+		s.lg.Warn("voice delegation reply read failed, broadcast brief (K3)",
+			loggateway.StepID("voice.delegation.reply_read_fail"), loggateway.Err(err))
+		return ""
+	}
+	for i := len(steps) - 1; i >= 0; i-- {
+		st := steps[i]
+		if st.Kind == biz.StepKindReply && st.Status == biz.StepStatusCompleted {
+			return strings.TrimSpace(st.Content)
+		}
+	}
+	return ""
+}
+
+// enqueueDelegationSpeech 委派播报入口：listening 空闲即播；正忙
+// （thinking/speaking/interrupted 或 turn 在途）入 session FIFO，回
+// listening 排空（§15.3「用户说话优先；不打断进行中的问答」）。
+func (s *Session) enqueueDelegationSpeech(text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	s.mu.Lock()
+	idle := s.state == StateListening && s.pendingTurns == 0
+	if !idle {
+		s.delegationOutbox = append(s.delegationOutbox, text)
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+	s.speakDelegation(text)
+}
+
+// speakDelegation 自足播报（R15）：listening 态无活跃 turn/chunker flush 源，
+// 必须一次性 ensureTTS → Write → Flush → flush 哨兵（复用 handleTurnCompleted
+// 哨兵逻辑驱动 OnDrained → tts.end）。状态停留 listening：TTS 播放期间用户
+// 说话照常进 ASR（新 turn 文本排在播报之后合成）。
+func (s *Session) speakDelegation(text string) {
+	if err := s.ensureTTS(); err != nil {
+		s.sendError("TTS_UNAVAILABLE", err, true)
+		return
+	}
+	s.mu.Lock()
+	// 自足路径无 turn 起点复位（handleASRFinal），显式清零防陈旧 true 跳哨兵。
+	s.flushEnqueued = false
+	ch := s.chunker
+	s.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	s.flow.LogDone("voice.delegation.broadcast", "委派结果播报", event.P("chars", len(text)))
+	s.lg.Info("voice delegation broadcast",
+		loggateway.StepID("voice.delegation.broadcast"), loggateway.Int("chars", len(text)))
+	ch.Write(text)
+	s.flushTTSTail()
+}
+
+// drainDelegationOutbox 回 listening 时排空委派播报 FIFO：一次播一条，本次
+// 播报的 OnDrained 再触发下一条（串联播报，防多条叠音）。
+func (s *Session) drainDelegationOutbox() {
+	s.mu.Lock()
+	if s.state != StateListening || s.pendingTurns > 0 || len(s.delegationOutbox) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	text := s.delegationOutbox[0]
+	s.delegationOutbox = s.delegationOutbox[1:]
+	s.mu.Unlock()
+	s.speakDelegation(text)
+}
+
+// onDelegationNotice registry 带外通知（watcher 回调）：提交同步失败等不产生
+// 总线事件的路径，口播失败原因防用户空等（R12）。回调自工具 detached
+// goroutine 触发，线程安全由 s.mu 保证。
+func (s *Session) onDelegationNotice(n DelegationNotice) {
+	if n.Kind != NoticeDelegationSubmitFailed {
+		return
+	}
+	s.enqueueDelegationSpeech(n.Message)
 }
 
 func (s *Session) feedDelta(delta string) {
@@ -775,9 +1068,15 @@ func (s *Session) ensureTTS() error {
 	if s.chunker != nil {
 		return nil
 	}
-	provider, cfg, err := s.deps.NewTTS(s.ctx)
-	if err != nil {
-		return err
+	// L5：优先复用 Start 预解析的 provider（同次解析的会话参数）；
+	// 未预解析/解析失败时回退工厂调用（原错误路径不变）。
+	provider, cfg := s.ttsProvider, s.ttsCfg
+	if provider == nil {
+		var err error
+		provider, cfg, err = s.deps.NewTTS(s.ctx)
+		if err != nil {
+			return err
+		}
 	}
 	s.scheduler = NewTTSScheduler(TTSSchedulerOpts{
 		Provider:  provider,
@@ -801,34 +1100,71 @@ func (s *Session) ensureTTS() error {
 	return nil
 }
 
+// resolveAndPrewarmTTS L5：voice.start 预解析 TTS provider+cfg 存入会话
+// （ensureTTS 复用，Turn 内首个文本 delta 不再二次调工厂），并后台预拨一条
+// WS 连接（provider 支持 ttsConnPrewarmer 时），首个 Turn 首句免握手。
+// 非阻断容错（K3）：解析失败仅 Warn，ensureTTS 回退工厂调用（原错误路径
+// 报 TTS_UNAVAILABLE）；provider 无预热能力时静默跳过。
+func (s *Session) resolveAndPrewarmTTS() {
+	provider, cfg, err := s.deps.NewTTS(s.ctx)
+	if err != nil {
+		s.lg.Warn("voice tts pre-resolve failed, lazy retry on first delta (K3)",
+			loggateway.StepID("voice.tts.preresolve_fail"), loggateway.Err(err))
+		return
+	}
+	s.mu.Lock()
+	s.ttsProvider = provider
+	s.ttsCfg = cfg
+	s.mu.Unlock()
+	pw, ok := provider.(ttsConnPrewarmer)
+	if !ok {
+		return
+	}
+	s.wg.Add(1)
+	safego.Go(s.ctx, "voice.tts_prewarm", func() {
+		defer s.wg.Done()
+		pw.PrewarmTTSConn(s.ctx)
+	})
+	s.lg.Info("voice tts conn prewarm triggered", loggateway.StepID("voice.tts.prewarm"))
+}
+
 func (s *Session) handleTurnCompleted() {
 	s.mu.Lock()
 	if s.pendingTurns > 0 {
 		s.pendingTurns--
 	}
-	ch := s.chunker
-	sch := s.scheduler
 	idleNoText := s.scheduler == nil && s.state == StateThinking
 	s.mu.Unlock()
-	if ch != nil {
-		ch.Flush()
-	}
-	if sch != nil {
-		// Turn 文本可能已在句边界全部切出（Flush 无残余、尾句 flush=false）：
-		// 补一条空文本 flush 哨兵驱动 OnDrained，否则 tts.end 缺失、状态停在 speaking。
-		s.mu.Lock()
-		tailSent := s.flushEnqueued
-		s.mu.Unlock()
-		if !tailSent {
-			if err := sch.Enqueue(s.ctx, "", true); err != nil {
-				s.lg.Warn("voice tts flush sentinel enqueue failed", loggateway.StepID("voice.tts.enqueue_fail"), loggateway.Err(err))
-			}
-		}
-	}
+	s.flushTTSTail()
 	if idleNoText {
 		// 无文本 Turn（纯工具调用等）：thinking --tts_end--> listening（设计 §5）
 		if err := s.transition(EvTTSEnd); err == nil {
 			s.broadcastState()
+		}
+	}
+	s.drainDelegationOutbox()
+}
+
+// flushTTSTail Flush chunker 残余并补 flush 哨兵（尾句已在句边界全部切出、
+// Flush 无残余时驱动 OnDrained，否则 tts.end 缺失、状态停在 speaking）。
+// handleTurnCompleted 与委派自足播报（speakDelegation）共用。
+func (s *Session) flushTTSTail() {
+	s.mu.Lock()
+	ch := s.chunker
+	sch := s.scheduler
+	s.mu.Unlock()
+	if ch != nil {
+		ch.Flush()
+	}
+	if sch == nil {
+		return
+	}
+	s.mu.Lock()
+	tailSent := s.flushEnqueued
+	s.mu.Unlock()
+	if !tailSent {
+		if err := sch.Enqueue(s.ctx, "", true); err != nil {
+			s.lg.Warn("voice tts flush sentinel enqueue failed", loggateway.StepID("voice.tts.enqueue_fail"), loggateway.Err(err))
 		}
 	}
 }
@@ -866,6 +1202,7 @@ func (s *Session) recoverToListening() {
 	if err := s.transition(EvVoiceStart); err == nil {
 		s.broadcastState()
 	}
+	s.drainDelegationOutbox()
 }
 
 // ---- 内部：TTS 回调 ----
@@ -918,6 +1255,7 @@ func (s *Session) onTTSDrained() {
 	if err := s.transition(EvTTSEnd); err == nil {
 		s.broadcastState()
 	}
+	s.drainDelegationOutbox()
 }
 
 func (s *Session) onTTSError(err error) {
@@ -987,11 +1325,15 @@ func (s *Session) teardown() {
 		s.idleTimer.Stop()
 		s.idleTimer = nil
 	}
+	s.stopSpeculationLocked() // C2：拆除即停止 partial 稳定追踪
 	asr := s.asr
 	s.asr = nil
 	sch := s.scheduler
 	s.scheduler = nil
 	s.chunker = nil
+	ttsProv := s.ttsProvider
+	s.ttsProvider = nil
+	s.ttsCfg = biz.TTSSessionConfig{}
 	s.utterBuf = nil
 	s.utterOverflow = false
 	unsub := s.unsub
@@ -1002,6 +1344,14 @@ func (s *Session) teardown() {
 	}
 	if sch != nil {
 		sch.Cancel()
+	}
+	// L5：释放未消费的 TTS 温连接（已消费则槽空 no-op）。
+	if pw, ok := ttsProv.(ttsConnPrewarmer); ok {
+		pw.ReleaseWarmTTSConn()
+	}
+	// M74 V9：会话拆除即清委派条目与 watcher（进程内委派跟随会话生命周期）。
+	if reg := s.deps.Delegation; reg != nil {
+		reg.ClearVoiceSession(s.sessionID)
 	}
 	if unsub != nil {
 		unsub()

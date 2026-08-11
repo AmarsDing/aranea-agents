@@ -47,12 +47,14 @@
         :rows="pagedRows"
         :loading="loading"
         :testing-id="testingId"
+        :toggling-id="togglingId"
         :health-tone="healthTone"
         :health-tooltip="healthTooltip"
         @edit="openEdit"
         @delete="confirmDelete"
         @test="testRow"
         @credentials="openCredentials"
+        @toggle-enabled="toggleEnabled"
       />
 
       <AppRegistryPagination
@@ -72,6 +74,7 @@
       :mcp-server-id="credServer?.id ?? ''"
       :server-label="credServer?.name || credServer?.key || ''"
       :user-id="credUserId"
+      :user-label="credUserLabel"
       @saved="loadRows"
     />
   </q-page>
@@ -96,6 +99,7 @@ const {
   credDialogOpen,
   credServer,
   credUserId,
+  credUserLabel,
   enabledCount,
   filteredRows,
   total,
@@ -109,6 +113,7 @@ const {
   openCredentials,
   onSaved,
   testRow,
+  toggleEnabled,
   confirmDelete,
   healthTone,
   healthTooltip,

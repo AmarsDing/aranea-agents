@@ -373,7 +373,7 @@ func TestSessionTextInAudioOut(t *testing.T) {
 	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)
 
 	// LLM delta → 分句 → TTS 音频下行 + 状态 speaking
-	fx.bus.ch <- &biz.StepStreamingEvent{DeltaField: "content", DeltaChunk: "你好呀，我是助手。"}
+	fx.bus.ch <- biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "你好呀，我是助手。")
 	require.Eventually(t, func() bool {
 		fx.down.mu.Lock()
 		defer fx.down.mu.Unlock()
@@ -382,7 +382,7 @@ func TestSessionTextInAudioOut(t *testing.T) {
 	require.Eventually(t, func() bool { return fx.down.lastState() == "speaking" }, 2*time.Second, 10*time.Millisecond)
 
 	// Turn 结束 → flush 残余 → tts.end → 回 listening
-	fx.bus.ch <- &biz.TurnCompletedEvent{}
+	fx.bus.ch <- biz.NewTurnCompletedEvent(biz.Turn{SpiritSessionID: "sess-1"})
 	require.Eventually(t, func() bool {
 		for _, ty := range fx.down.typesOf() {
 			if ty == "tts.end" {
@@ -499,7 +499,7 @@ func TestSessionCancelDuringSpeaking(t *testing.T) {
 	fx.sess.Start(StartParams{})
 	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好"}
 	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)
-	fx.bus.ch <- &biz.StepStreamingEvent{DeltaField: "content", DeltaChunk: "很长的句子正在合成中。"}
+	fx.bus.ch <- biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "很长的句子正在合成中。")
 	require.Eventually(t, func() bool { return fx.down.lastState() == "speaking" }, 2*time.Second, 10*time.Millisecond)
 
 	fx.sess.Cancel("voice.barge_in")
@@ -935,7 +935,7 @@ func TestSessionClarificationBroadcast(t *testing.T) {
 		Kind: biz.StepKindClarify, Content: string(raw), Status: biz.StepStatusAwaitingInput,
 	})
 	// turn 挂起返回空回复 → turn.completed 驱动 flush/drain 收尾
-	fx.bus.ch <- &biz.TurnCompletedEvent{}
+	fx.bus.ch <- biz.NewTurnCompletedEvent(biz.Turn{SpiritSessionID: "sess-1"})
 
 	// TTS 收到口播文本：两题题干 + 选项 + 引导语
 	require.Eventually(t, func() bool {

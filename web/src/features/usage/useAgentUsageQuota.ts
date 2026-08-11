@@ -1,4 +1,4 @@
-import { ref, watch, type Ref } from 'vue';
+import { computed, ref, watch, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import {
   checkUsageQuota,
@@ -9,6 +9,14 @@ import {
   setUsageQuota,
   type UsageQuotaCheck,
 } from './quotaApi';
+
+/** 后端 CheckQuota reason 机器码 → 中文文案（契约见 internal/biz/usage QuotaCheckReason*）。 */
+const QUOTA_REASON_TEXT: Record<string, string> = {
+  no_quota: '未配置配额，对话不受限制',
+  quota_disabled: '未启用限额（月预算为 0），对话不受限制',
+  quota_exceeded: '本月消耗已达配额上限，新对话已被拦截',
+  within_quota: '本月消耗在配额范围内',
+};
 
 /** Per-agent monthly USD cap; enforced in Chat before each turn (scope_type=agent). */
 export function useAgentUsageQuota(agentId: Ref<string>) {
@@ -24,6 +32,14 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
   const alertEnabled = ref(true);
   const alertSaving = ref(false);
 
+  const reasonText = computed(() => {
+    const c = check.value;
+    if (!c) return '';
+    return QUOTA_REASON_TEXT[c.reason] ?? c.reason;
+  });
+  /** 有有效限额时才展示 已消耗/剩余/月上限 数值区（否则后端不统计，数值恒 0 无意义）。 */
+  const hasActiveQuota = computed(() => (check.value?.quota?.monthly_micro_usd ?? 0) > 0);
+
   async function loadQuota() {
     const id = agentId.value.trim();
     if (!id) {
@@ -31,6 +47,8 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
       return;
     }
     error.value = '';
+    // 先校验：后端会将过期周期惰性滚动为当自然月；随后读取拿到滚动后的最新周期。
+    await runCheck();
     try {
       const q = await getUsageQuota('agent', id);
       monthlyUsd.value = q.monthly_micro_usd > 0 ? q.monthly_micro_usd / 1_000_000 : null;
@@ -41,7 +59,6 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
       periodStart.value = '';
       periodEnd.value = '';
     }
-    await runCheck();
   }
 
   async function runCheck() {
@@ -148,6 +165,8 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
     checking,
     error,
     check,
+    reasonText,
+    hasActiveQuota,
     alertRatioPct,
     alertEnabled,
     alertSaving,

@@ -115,6 +115,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	deps.CustomTools = append(deps.CustomTools, s.orch.spiritCustomTools(ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.skillsButlerTools(ctx, ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.memoryButlerTools(ctx, ag)...)
+	deps.CustomTools = append(deps.CustomTools, s.orch.voiceButlerTools(ctx, ag)...)
 	deps.CustomTools = append(deps.CustomTools, s.orch.memoryRememberTools(ag)...)
 	var plugins []trpcplugin.Plugin
 	wsID := workspace.IDFromContext(ctx)

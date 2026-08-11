@@ -11,6 +11,7 @@ import (
 type mockRepo struct {
 	searchTools                     func(ctx context.Context, q ToolListQuery) (ToolListResult, error)
 	getTool                         func(ctx context.Context, idOrKey string) (Tool, error)
+	listToolCatalogEntries          func(ctx context.Context, keys []string) ([]ToolCatalogEntry, error)
 	createTool                      func(ctx context.Context, in ToolUpsertInput) (Tool, error)
 	updateTool                      func(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
 	deleteTool                      func(ctx context.Context, idOrKey string) error
@@ -41,6 +42,13 @@ func (m *mockRepo) GetTool(ctx context.Context, idOrKey string) (Tool, error) {
 		return m.getTool(ctx, idOrKey)
 	}
 	return Tool{}, nil
+}
+
+func (m *mockRepo) ListToolCatalogEntries(ctx context.Context, keys []string) ([]ToolCatalogEntry, error) {
+	if m.listToolCatalogEntries != nil {
+		return m.listToolCatalogEntries(ctx, keys)
+	}
+	return nil, nil
 }
 
 func (m *mockRepo) CreateTool(ctx context.Context, in ToolUpsertInput) (Tool, error) {
@@ -172,6 +180,44 @@ func assertBadRequest(t *testing.T, err error, wantDomain, wantMsg string) {
 	}
 	if wantMsg != "" && ae.Message != wantMsg {
 		t.Fatalf("expected message %q, got %q", wantMsg, ae.Message)
+	}
+}
+
+func TestListToolCatalogEntries_NormalizesKeys(t *testing.T) {
+	ctx := context.Background()
+	var gotKeys []string
+	calls := 0
+	repo := &mockRepo{
+		listToolCatalogEntries: func(_ context.Context, keys []string) ([]ToolCatalogEntry, error) {
+			calls++
+			gotKeys = append([]string(nil), keys...)
+			return []ToolCatalogEntry{{Key: "a"}}, nil
+		},
+	}
+	uc := NewToolUsecase(repo, nil, loggateway.NewNoop())
+
+	entries, err := uc.ListToolCatalogEntries(ctx, []string{" a ", "b", "a", "", "  "})
+	if err != nil {
+		t.Fatalf("ListToolCatalogEntries: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("repo calls = %d, want 1", calls)
+	}
+	if len(gotKeys) != 2 || gotKeys[0] != "a" || gotKeys[1] != "b" {
+		t.Fatalf("repo keys = %v, want [a b] (trimmed+deduped)", gotKeys)
+	}
+	if len(entries) != 1 || entries[0].Key != "a" {
+		t.Fatalf("entries = %+v", entries)
+	}
+
+	// Empty / whitespace-only input must short-circuit without a repo call.
+	for _, keys := range [][]string{nil, {}, {" ", ""}} {
+		if _, err := uc.ListToolCatalogEntries(ctx, keys); err != nil {
+			t.Fatalf("keys=%q err=%v", keys, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("repo calls = %d after empty inputs, want still 1", calls)
 	}
 }
 

@@ -453,6 +453,13 @@ message ApplyEvolutionSuggestionRequest {
 message RejectEvolutionSuggestionRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // 拒绝原因（可选），持久化到 metadata.rejection_reason 供审计。
+  string reason = 3;
+}
+
+message RollbackEvolutionSuggestionRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 message EditPromptFileByAIRequest {
@@ -577,6 +584,12 @@ service AgentService {
   rpc RejectEvolutionSuggestion(RejectEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
     option (google.api.http) = {
       post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject"
+      body: "*"
+    };
+  }
+  rpc RollbackEvolutionSuggestion(RollbackEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rollback"
       body: "*"
     };
   }

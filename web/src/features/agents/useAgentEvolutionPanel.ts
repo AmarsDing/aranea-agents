@@ -1,17 +1,26 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 
 import type { EvolutionMetrics, EvolutionSuggestion } from './types';
 import { useAgentDetailStore } from '../../stores/agents/detail';
 
 export function useAgentEvolutionPanel(agentId: () => string, range: () => string) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const agentDetailStore = useAgentDetailStore();
   const metricsLoading = ref(false);
   const metrics = ref<EvolutionMetrics | null>(null);
   const suggestions = ref<EvolutionSuggestion[]>([]);
   const applyingId = ref<string | null>(null);
   const rejectingId = ref<string | null>(null);
+  const rejectLoading = ref(false);
+  const rollbackingId = ref<string | null>(null);
+
+  const rejectDialogOpen = ref(false);
+  const rejectReason = ref('');
+  const detailDialogOpen = ref(false);
+  const detailSuggestion = ref<EvolutionSuggestion | null>(null);
 
   const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === 'pending').length);
 
@@ -62,19 +71,56 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     });
   }
 
-  async function onReject(id: string) {
-    const aid = agentId();
-    if (!aid) return;
+  function onReject(id: string) {
+    if (!agentId()) return;
     rejectingId.value = id;
+    rejectReason.value = '';
+    rejectDialogOpen.value = true;
+  }
+
+  async function confirmReject() {
+    const aid = agentId();
+    const id = rejectingId.value;
+    if (!aid || !id) return;
+    rejectLoading.value = true;
     try {
-      await agentDetailStore.rejectEvolution(aid, id);
+      await agentDetailStore.rejectEvolution(aid, id, rejectReason.value || undefined);
+      rejectDialogOpen.value = false;
       await fetchSuggestions();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      $q.notify({ type: 'warning', message: msg || '操作失败' });
+      $q.notify({ type: 'warning', message: msg || t('agentSettings.evolution.operationFailed') });
     } finally {
-      rejectingId.value = null;
+      rejectLoading.value = false;
     }
+  }
+
+  function onShowDetail(id: string) {
+    detailSuggestion.value = suggestions.value.find((s) => s.id === id) ?? null;
+    detailDialogOpen.value = true;
+  }
+
+  async function onRollback(id: string) {
+    const aid = agentId();
+    if (!aid) return;
+    $q.dialog({
+      title: t('agentSettings.evolution.rollbackConfirmTitle'),
+      message: t('agentSettings.evolution.rollbackConfirmMessage'),
+      cancel: true,
+      persistent: true,
+    }).onOk(async () => {
+      rollbackingId.value = id;
+      try {
+        await agentDetailStore.rollbackEvolution(aid, id);
+        await fetchSuggestions();
+        await fetchMetrics();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        $q.notify({ type: 'warning', message: msg || t('agentSettings.evolution.operationFailed') });
+      } finally {
+        rollbackingId.value = null;
+      }
+    });
   }
 
   watch(
@@ -92,8 +138,17 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     suggestions,
     applyingId,
     rejectingId,
+    rejectLoading,
+    rollbackingId,
+    rejectDialogOpen,
+    rejectReason,
+    detailDialogOpen,
+    detailSuggestion,
     pendingSuggestionsCount,
     onApply,
     onReject,
+    confirmReject,
+    onShowDetail,
+    onRollback,
   };
 }

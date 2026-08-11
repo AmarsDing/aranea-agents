@@ -1,8 +1,8 @@
 // useKnowledgeWorkbench（SP2 §SP2-4）：工作台唯一状态机——tabs/激活/脏标记/CAS 保存。
 // 数据流纪律：组件全部经该 composable 交互，不各自拉数（MetadataCache 单一真相源哲学的前端映射）。
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
-import { getDocumentContent, updateDocumentContent, type KnowledgeDocumentContent } from './api';
-import type { KnowledgeDocument } from './types';
+import { getDocumentContent, updateDocumentContent } from './api';
+import type { KnowledgeDocument, KnowledgeDocumentContent } from './types';
 
 export type WorkbenchTab = {
   docId: string;
@@ -84,6 +84,16 @@ export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
 
   function activateTab(docId: string): void {
     if (find(docId)) activeTabId.value = docId;
+  }
+
+  /** 拖拽重排（P1-4）：把 from 索引的 tab 移到 to 索引；激活态不变。 */
+  function reorderTabs(from: number, to: number): void {
+    const len = tabs.value.length;
+    if (from === to || from < 0 || to < 0 || from >= len || to >= len) return;
+    const copy = [...tabs.value];
+    const [moved] = copy.splice(from, 1);
+    copy.splice(to, 0, moved);
+    tabs.value = copy;
   }
 
   function updateContent(docId: string, content: string): void {
@@ -170,6 +180,7 @@ export function createKnowledgeWorkbench(deps: WorkbenchDeps = defaultDeps) {
     confirmCloseId,
     openDoc,
     activateTab,
+    reorderTabs,
     updateContent,
     toggleMode,
     saveTab,

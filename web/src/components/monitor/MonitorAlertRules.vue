@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, toRaw } from 'vue';
+import { computed, ref, watch, toRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { AlertMetricInfo, MonitorAlertRule } from '../../features/monitor/types';
@@ -122,6 +122,18 @@ const editableRules = ref<MonitorAlertRule[]>([]);
 
 // 指标目录默认折叠（已有规则时），减少视觉干扰。
 const catalogExpanded = ref(false);
+
+/** 首条无效规则的校验原因（空串 = 全部有效）；保存按钮禁用时经 tooltip 展示。 */
+const saveDisabledReason = computed(() => {
+  for (const rule of editableRules.value) {
+    if (!rule.name.trim()) return t('monitorPage.alerts.validation.nameRequired');
+    if (!rule.metric_key.trim()) return t('monitorPage.alerts.validation.metricRequired');
+    if (!(rule.threshold > 0)) return t('monitorPage.alerts.validation.thresholdPositive');
+    if (!(rule.window_minutes > 0)) return t('monitorPage.alerts.validation.windowPositive');
+  }
+  return '';
+});
+const saveDisabled = computed(() => saveDisabledReason.value !== '');
 
 watch(
   () => props.rules,

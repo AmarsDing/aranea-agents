@@ -73,9 +73,20 @@ func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.App
 }
 
 func (s *AgentService) RejectEvolutionSuggestion(ctx context.Context, req *v1.RejectEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
-	result, err := s.evoUC.RejectSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
+	result, err := s.evoUC.RejectSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId(), req.GetReason())
 	if err != nil {
 		return nil, err
 	}
+	return toProtoSuggestion(result), nil
+}
+
+func (s *AgentService) RollbackEvolutionSuggestion(ctx context.Context, req *v1.RollbackEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	result, err := s.evoUC.RollbackSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
+	if err != nil {
+		return nil, err
+	}
+	// RollbackSuggestion restores agent prompt files from the pre-apply
+	// snapshot; invalidate the cached build like Apply does.
+	invalidateAgentBuildCache(req.GetAgentId())
 	return toProtoSuggestion(result), nil
 }

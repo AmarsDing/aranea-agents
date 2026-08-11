@@ -24,7 +24,18 @@ export function createHooksAgentTableColumns(t: I18nT): QTableColumn<HookRow>[] 
   return [
     registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide),
     registryCol<HookRow>('rule', t('hooksPage.colRule'), 'config_json', 'left', REGISTRY_COL_W.desc),
-    registryColActions<HookRow>(),
+    registryCol<HookRow>('enabled', t('hooksPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
+      sortable: false,
+    }),
+    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide),
+  ];
+}
+
+/** 只读表（如 Agent 面板中的全局规则分组）：仅名称 + 规则两列，无操作。 */
+export function createHooksReadonlyTableColumns(t: I18nT): QTableColumn<HookRow>[] {
+  return [
+    registryCol<HookRow>('name', t('hooksPage.colName'), 'name', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<HookRow>('rule', t('hooksPage.colRule'), 'config_json', 'left', REGISTRY_COL_W.desc),
   ];
 }
 

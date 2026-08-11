@@ -323,7 +323,7 @@ web/src/pages/McpServersPage.vue
 
 | 页面 | 路由（示例） | 说明 |
 |------|--------------|------|
-| MCP 服务器列表 | `/mcp-servers` | 搜索、`QList` 列表（每项一个 MCP 组件）、空态、刷新、添加 |
+| MCP 服务器列表 | `/mcp-servers` | 搜索、Registry 表格列表（`AppRegistryTable`）、空态、刷新、添加 |
 | 新建 | 列表内「+ 添加服务器」→ `QDialog` 或独立路由 `/mcp-servers/new` | 表单同编辑 |
 | 编辑 | 编辑 → 同上对话框预填 或 `/mcp-servers/:id/edit` | 与创建共用组件 `McpServerFormDialog` |
 
@@ -338,28 +338,19 @@ web/src/pages/McpServersPage.vue
 | 右上 | 「+ 添加服务器」（`QBtn` color=primary）；「刷新」（`QBtn` outline + `refresh` 图标） |
 | 搜索 | `QInput` `debounce` + `clearable`，占位「搜索服务器…」；按 `name`、`display_name` 前端过滤 |
 
-#### 列表项：`QList` + 单项 MCP 组件
+#### 列表：`AppRegistryTable` 表格
 
-不使用表格；外层 `QList` `padding`/`separator`，每个 `QItem` 内嵌一个独立 MCP 展示组件（`McpServerItem.vue` / `McpServerCard`）。
+实现为 Registry 表格（`components/mcp/McpServersTable.vue` + `mcpServerTableUi.ts` 列定义），与 Webhooks/Tools/Channels 等管理页一致；服务端分页 + 搜索。
 
-| 层级 | Quasar / 结构 | 内容 |
-|------|----------------|------|
-| 列表容器 | `QList` + 可选 `QScrollArea`（列表很长时） | `v-for="server in filteredServers"` → 一条 `QItem` 对应一条 `mcp_server` 记录 |
-| 单项 | `QItem` `clickable`（可选：点击进入编辑） | `key=server.id` |
-| 单项内部 | `QItemSection` `side` `top` | 状态灯（§10.2.3），与列表左缘对齐 |
-|  | `QItemSection` | 主体：包一层自定义 MCP 组件 |
-| MCP 组件 | 自定义组件根节点可用 `QCard` `flat` `bordered` 或纯 `div.row` | 内含该服务器的全部摘要与操作 |
-
-**MCP 组件建议布局**：
-
-| 区块 | 内容 |
-|------|------|
-| 标题行 | `display_name` 或 `name`（主标题）；`name` 可作 `text-caption` 副标 |
-| 元信息行 | 传输：`stdio` / `SSE` / `Streamable HTTP`；地址/命令：`url` 或 `command` 单行截断 + `QTooltip` |
-| 次要行 | 工具前缀 `tool_prefix`；超时 `timeout_sec` + `s`；启用 `QChip` 或只读 `QToggle` |
-| 操作行 | 编辑、删除、可选 测试连接（`QBtn` `flat` `dense`） |
-
-列表项之间可用 `QSeparator` `inset` 或 MCP 卡片自带 `margin` 区分层次。
+| 列 | 内容 |
+|----|------|
+| 服务器 | 状态灯圆点（§10.2.3）+ `name`（主标题）/ `key`（副标）；悬停 `AppRegistryHoverTip` 显示地址/命令（`url` 或 `command args`） |
+| 传输 | `stdio` / `SSE` / `Streamable HTTP` |
+| 工具前缀 | `mcp_{tool_prefix}__`（等宽 code 样式）；空显示 `—` |
+| 超时 | `timeout_sec` + `s`（缺省 60s） |
+| 健康 | `health_status` 本地化 `QChip`：`ok`→正常（positive）/ `error`→异常（negative）/ `degraded`→退化（warning）；悬停显示 `last_error_message` |
+| 启用 | 可交互 `QToggle`（dense，primary），切换即调 `PATCH /mcp-servers/:id` 部分更新；切换中禁用 |
+| 操作 | 用户凭据（`vpn_key`，仅 `require_user_credentials=true` 显示）、测试连接（`science`）、编辑、删除 |
 
 #### 空态
 
@@ -381,7 +372,7 @@ web/src/pages/McpServersPage.vue
 | 操作 | 行为 |
 |------|------|
 | 编辑 | 打开 `QDialog` 表单，`GET /mcp-servers/:id` 预填 |
-| 删除 | `QDialog` 确认：「删除后依赖该服务器的工具将不可用」；`DELETE /mcp-servers/:id` |
+| 删除 | `QDialog` 确认：「删除「{name}」后，依赖该服务器的工具（mcp_{prefix}__*）将不可用〔；所有用户已配置的凭据将一并删除〕」；`DELETE /mcp-servers/:id` |
 | 测试连接（可选） | `POST /mcp-servers/:id/test`，结果 `Notify` 或该项内短暂提示 |
 
 ### 10.3 添加/编辑表单（对话框）
@@ -401,6 +392,7 @@ web/src/pages/McpServersPage.vue
 | `env` | 动态键值行 | 占位「变量名称」「值」；+ 添加变量 |
 | `tool_prefix` | `QInput`，前缀可视化 `mcp_` + 输入 | 空则服务端从 `name` 派生；说明文案：`Tools: mcp_{prefix}__{tool}` |
 | `timeout_sec` | `QInput` `type=number` 或 `QSlider` | 默认 60 |
+| `session_reconnect_max` | `QInput` `type=number`（0–10） | 标签「会话重连次数」；说明：SSE / Streamable HTTP 断线重连上限，0=关闭 |
 | `enabled` | `QToggle` | 默认开 |
 | `require_user_credentials` | `QToggle` | 副文案：每个用户须配置自己的凭据，否则无法使用 |
 | `probe_mode` | `QSelect` | `connectivity`（默认）\| `auth_aware` |

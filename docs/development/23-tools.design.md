@@ -674,6 +674,9 @@ type ToolAuditResult struct {
 type ToolReader interface {
     SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
     GetTool(ctx context.Context, idOrKey string) (Tool, error)
+    // ListToolCatalogEntries 单次 IN 批量查询轻量构建期目录行（key/config_json/
+    // default_config_json/requires_confirmation），替代 Agent 构建期逐键 GetTool 循环（N+1）。
+    ListToolCatalogEntries(ctx context.Context, keys []string) ([]ToolCatalogEntry, error)
 }
 
 // Stability:stable
@@ -1303,7 +1306,8 @@ service.ProviderSet → NewToolService
 Agent 构建请求
   → BuildTRPCLLMAgent(ctx, ag, deps)
     → loadEffectiveToolKeys(ctx, deps, agentID)  // 计算生效工具
-    → buildToolsetsForAgent(ctx, ag, deps)        // 装配工具集
+    → loadToolBuildCatalog(ctx, agentID, eff, deps) // 批量预载目录快照（2 条 SQL：IN 批量 + overrides，替代 3×N+1）
+    → buildToolsetsForAgent(ctx, ag, deps, plan) // 装配工具集（plan 打包共享快照）
       → tooltrpc.BuildToolsets(ctx, cfg, lg)      // 桥接层
         → tools.Assemble(ctx, assemblyCfg)        // 核心装配
       → tools.ApplyDecorators(ts, cfg)            // 装饰器：超时+预算+缓存
@@ -1650,10 +1654,10 @@ var toolGroupsSession   = []string{"await_user_reply", "todo_write"}
 **buildToolsetsForAgent**：
 
 ```go
-func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error)
+func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, error)
 ```
 
-从 `loadEffectiveToolKeys` 获取生效工具 key 集合，映射到 `ToolsetConfig` 的布尔字段，调用 `BuildToolsets`。
+`toolBuildPlan` 打包每次构建只加载一次的 eff 键集、工具构建目录快照（`toolBuildCatalog`，2 条批量 SQL）与确认门，由 `BuildTRPCLLMAgent` 构建并共享给回调链，替代原先三处各自逐键 `GetTool` 聚合查询（70 工具 × 3 ≈ 210 次，冷构建约 10s）。快照降级语义：批量加载失败 runtime config 全跳过（fail-soft）、确认门 fail-closed；工具行缺失 fail-closed。eff 映射到 `ToolsetConfig` 的布尔字段，调用 `BuildToolsets`。
 
 **工具记录回调**（`internal/agent/callback_chain.go`）：
 

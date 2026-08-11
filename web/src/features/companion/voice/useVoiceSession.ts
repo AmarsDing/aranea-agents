@@ -258,7 +258,16 @@ function chunkAmplitude(f32: Float32Array): number {
   return Math.min(1, Math.sqrt(sum / f32.length) * 3);
 }
 
-export function useVoiceSession(deps: { sessionId: () => string | null }): UseVoiceSessionReturn {
+export function useVoiceSession(deps: {
+  sessionId: () => string | null;
+  /**
+   * M74 V9-T4（设计 74 §15.4-E）：进入语音模式前异步解析目标会话——
+   * 选中/创建语音助手（__voice_butler__）会话。缺省回退 sessionId() 同步取值。
+   */
+  resolveSession?: () => Promise<string | null>;
+  /** M74 V9-T4：退出语音模式后回调（恢复先前选中的会话）。 */
+  onExit?: () => void;
+}): UseVoiceSessionReturn {
   const { t } = useI18n();
   const store = useCompanionStore();
 
@@ -321,7 +330,7 @@ export function useVoiceSession(deps: { sessionId: () => string | null }): UseVo
   }
 
   async function enterVoiceMode(): Promise<void> {
-    const sessionId = deps.sessionId();
+    const sessionId = deps.resolveSession ? await deps.resolveSession() : deps.sessionId();
     if (!sessionId) {
       store.setVoiceError({ code: 'NO_SESSION', message: t('companion.voiceNoSession'), retryable: true });
       return;
@@ -400,6 +409,7 @@ export function useVoiceSession(deps: { sessionId: () => string | null }): UseVo
     client = null;
     teardownLocal();
     store.setVoiceMode(false);
+    deps.onExit?.();
   }
 
   onUnmounted(() => {

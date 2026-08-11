@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import type { A2AProxyConfig } from './types';
 import { useAgentDetailStore } from '../../stores/agents';
 import { buildA2AAuthJSON, A2A_AUTH_TYPE_OPTIONS } from '../a2a/authUtils';
+import { discoverRemoteAgent } from '../a2a/api';
 
 export function useAgentA2AProxyTab(
   agentId: () => string,
@@ -68,22 +69,13 @@ export function useAgentA2AProxyTab(
   );
 
   async function saveProxy() {
-    if (!proxyForm.remote_url.trim()) {
-      $q.notify({ type: 'negative', message: '远程 URL 不能为空' });
-      return;
-    }
-    const authType = proxyForm.auth_type?.trim() || 'none';
-    if (authType === 'api_key' || authType === 'bearer') {
-      if (!authSecret.value.trim()) {
-        $q.notify({ type: 'negative', message: '请填写鉴权密钥' });
-        return;
-      }
-    }
-    if (authType === 'mtls' && (!mtls.cert_file.trim() || !mtls.key_file.trim())) {
-      $q.notify({ type: 'negative', message: 'mTLS 需填写 cert_file 与 key_file' });
+    const errMsg = validateProxyForm();
+    if (errMsg) {
+      $q.notify({ type: 'negative', message: errMsg });
       return;
     }
     try {
+      const authType = proxyForm.auth_type?.trim() || 'none';
       const payload: A2AProxyConfig = {
         ...proxyForm,
         auth_type: authType === 'none' ? undefined : authType,
@@ -97,13 +89,56 @@ export function useAgentA2AProxyTab(
     }
   }
 
+  /** 返回校验错误消息；null 表示通过。saveProxy 与 testConnection 共用。 */
+  function validateProxyForm(): string | null {
+    const url = proxyForm.remote_url.trim();
+    if (!url) return '远程 URL 不能为空';
+    if (!/^https?:\/\//i.test(url)) return '远程 URL 必须以 http:// 或 https:// 开头';
+    const authType = proxyForm.auth_type?.trim() || 'none';
+    if ((authType === 'api_key' || authType === 'bearer') && !authSecret.value.trim()) {
+      return '请填写鉴权密钥';
+    }
+    if (authType === 'mtls' && (!mtls.cert_file.trim() || !mtls.key_file.trim())) {
+      return 'mTLS 需填写 cert_file 与 key_file';
+    }
+    return null;
+  }
+
+  const testing = ref(false);
+
+  /** 复用 DiscoverRemoteAgent 做连接测试，不落库。 */
+  async function testConnection() {
+    const errMsg = validateProxyForm();
+    if (errMsg) {
+      $q.notify({ type: 'negative', message: errMsg });
+      return;
+    }
+    const authType = proxyForm.auth_type?.trim() || 'none';
+    testing.value = true;
+    try {
+      const card = await discoverRemoteAgent({
+        remote_url: proxyForm.remote_url.trim(),
+        auth_type: authType === 'none' ? undefined : authType,
+        auth_config_json: buildAuthConfigJson(),
+      });
+      const name = card.display_name || card.agent_id || '远程 Agent';
+      $q.notify({ type: 'positive', message: `连接成功：${name}（${card.capabilities?.length ?? 0} 个能力）` });
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '连接失败' });
+    } finally {
+      testing.value = false;
+    }
+  }
+
   return {
     saving,
+    testing,
     showSecret,
     authSecret,
     mtls,
     authTypeOptions,
     proxyForm,
     saveProxy,
+    testConnection,
   };
 }

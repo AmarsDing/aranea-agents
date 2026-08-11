@@ -1,6 +1,6 @@
 <template>
   <!-- G3-F2 搜索范围选择器（V12.6）：弹出迷你目录树（仅目录单选）。
-       G4 抽取为独立组件：搜索框（KnowledgeSearchDual）与 3D 图谱操作台复用。 -->
+       G4 抽取为独立组件：3D 图谱操作台复用。 -->
   <q-btn
     flat
     dense

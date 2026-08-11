@@ -2,6 +2,8 @@ package voice
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -111,4 +113,110 @@ func TestSessionCancelClearsTurnT0(t *testing.T) {
 	cleared := fx.sess.turnT0.IsZero()
 	fx.sess.mu.Unlock()
 	require.True(t, cleared, "cancel must clear turn T0")
+}
+
+// ---- L5：TTS 连接预热（voice.start 预拨，首句免握手）----
+
+// prewarmableTTSProvider 记录 L5 预热/释放调用的 fake TTS Provider。
+type prewarmableTTSProvider struct {
+	scriptedTTSProvider
+	mu       sync.Mutex
+	prewarm  int
+	released int
+}
+
+func (p *prewarmableTTSProvider) PrewarmTTSConn(context.Context) {
+	p.mu.Lock()
+	p.prewarm++
+	p.mu.Unlock()
+}
+
+func (p *prewarmableTTSProvider) ReleaseWarmTTSConn() {
+	p.mu.Lock()
+	p.released++
+	p.mu.Unlock()
+}
+
+func (p *prewarmableTTSProvider) counts() (prewarm, released int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.prewarm, p.released
+}
+
+// newL5Fixture 注入支持 L5 预热的 fake TTS provider，并记录工厂调用次数。
+func newL5Fixture(t *testing.T) (*sessionFixture, *prewarmableTTSProvider, *atomic.Int32) {
+	t.Helper()
+	asr := &fakeASRSession{events: make(chan biz.ASREvent, 8)}
+	bus := newFakeBus()
+	exec := &fakeExecutor{}
+	canc := &fakeCanceller{}
+	down := &fakeDownlink{}
+	ttsProv := &prewarmableTTSProvider{}
+	factoryCalls := &atomic.Int32{}
+	deps := SessionDeps{
+		NewASR: func(context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
+			return &fakeASRProvider{sess: asr}, biz.ASRSessionConfig{Language: "zh-CN", SampleRate: 16000}, nil
+		},
+		NewTTS: func(context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
+			factoryCalls.Add(1)
+			return ttsProv, biz.TTSSessionConfig{Voice: "v", SpeedRatio: 1, SampleRate: 16000}, nil
+		},
+		Bus:       bus,
+		Executor:  exec,
+		Canceller: canc,
+		LG:        loggateway.NewNoop(),
+	}
+	sess := NewSession(context.Background(), deps, "sess-1", "user-1", down)
+	t.Cleanup(sess.Close)
+	return &sessionFixture{sess: sess, asr: asr, bus: bus, exec: exec, cancel: canc, down: down, ttsProv: &ttsProv.scriptedTTSProvider}, ttsProv, factoryCalls
+}
+
+// L5：voice.start（对话模式）后台预拨 TTS 连接。
+func TestSessionStartPrewarmsTTSConn(t *testing.T) {
+	fx, ttsProv, _ := newL5Fixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	require.Eventually(t, func() bool { p, _ := ttsProv.counts(); return p == 1 },
+		2*time.Second, 10*time.Millisecond, "voice.start must prewarm the TTS connection")
+}
+
+// L5：听写模式不播报，不预热 TTS。
+func TestSessionDictationSkipsTTSPrewarm(t *testing.T) {
+	fx, ttsProv, _ := newL5Fixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000, Mode: ModeDictation})
+	time.Sleep(300 * time.Millisecond)
+	p, _ := ttsProv.counts()
+	require.Zero(t, p, "dictation mode must not prewarm TTS (no broadcast)")
+}
+
+// L5：Start 预解析的 provider 被 ensureTTS 复用——Turn 内首个文本 delta
+// 不再二次调用工厂（配置在语音会话期内一致，与 ASR 同款语义）。
+func TestSessionEnsureTTSReusesStartResolvedProvider(t *testing.T) {
+	fx, _, factoryCalls := newL5Fixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	require.Eventually(t, func() bool { return factoryCalls.Load() == 1 },
+		2*time.Second, 10*time.Millisecond, "start must resolve the TTS provider once")
+
+	// 派发 Turn 进入 thinking（pendingTurns=1），首个 delta 触发 ensureTTS。
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "今天天气怎么样", DurationMs: 800}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 1 }, 3*time.Second, 10*time.Millisecond)
+	fx.sess.feedDelta("今天天气不错，")
+
+	require.Equal(t, int32(1), factoryCalls.Load(),
+		"ensureTTS must reuse the provider resolved at voice.start (no second factory call)")
+	fx.sess.mu.Lock()
+	chunked := fx.sess.chunker != nil
+	fx.sess.mu.Unlock()
+	require.True(t, chunked, "ensureTTS must have created the chunker")
+}
+
+// L5：会话拆除释放未消费的温连接。
+func TestSessionTeardownReleasesWarmTTSConn(t *testing.T) {
+	fx, ttsProv, _ := newL5Fixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+	require.Eventually(t, func() bool { p, _ := ttsProv.counts(); return p == 1 },
+		2*time.Second, 10*time.Millisecond)
+
+	fx.sess.Stop()
+	require.Eventually(t, func() bool { _, r := ttsProv.counts(); return r == 1 },
+		2*time.Second, 10*time.Millisecond, "teardown must release the unconsumed warm conn")
 }

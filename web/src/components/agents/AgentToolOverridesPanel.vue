@@ -7,7 +7,17 @@
           按工具粒度覆盖启用、模式、需确认与配置 JSON（运行时与 Tools 详情页一致）。
         </div>
       </div>
-      <q-btn flat dense no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+      <div class="row items-center q-gutter-sm">
+        <q-input
+          v-model="search"
+          dense
+          outlined
+          clearable
+          :placeholder="$t('agentSettings.toolOverrideSearchPlaceholder')"
+          style="min-width: 220px"
+        />
+        <q-btn flat dense no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+      </div>
     </q-card-section>
     <q-separator />
     <q-card-section>
@@ -22,7 +32,7 @@
           :shell="false"
           :data-shell="true"
           table-class="agent-tool-overrides-table"
-          :rows="rows"
+          :rows="filteredRows"
           :columns="AGENT_TOOL_OVERRIDE_TABLE_COLUMNS"
           row-key="tool_key"
           hide-pagination
@@ -113,13 +123,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AgentToolOverrideEditorDialog from './AgentToolOverrideEditorDialog.vue';
 
 import type { AgentToolOverrideForm, AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
 import { AGENT_TOOL_OVERRIDE_TABLE_COLUMNS } from './agentTableUi';
 
-defineProps<{
+const panelProps = defineProps<{
   loading: boolean;
   saving: boolean;
   toolsEnabled: boolean;
@@ -144,4 +155,13 @@ defineEmits<{
   'update:editorOpen': [value: boolean];
   'update:form': [value: AgentToolOverrideForm];
 }>();
+
+const search = ref('');
+const filteredRows = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  if (!q) return panelProps.rows;
+  return panelProps.rows.filter(
+    (r) => r.tool_key.toLowerCase().includes(q) || r.display_name.toLowerCase().includes(q),
+  );
+});
 </script>

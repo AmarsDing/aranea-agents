@@ -39,6 +39,10 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 	if setter, ok := mbWaker.(interface{ SetTurnGateway(biz.TurnExecutorGateway) }); ok {
 		setter.SetTurnGateway(cs)
 	}
+	// M74 V9: backfill TurnExecutorGateway into the orchestrator for the
+	// delegate_to_spirit tool (voice butler → spirit async delegation).
+	// Same Wire cycle shape as the mailbox waker above.
+	cs.orch.SetVoiceDelegationGateway(cs)
 	// Inject the v2 PlanExecutor into TeamStarter. May be nil (v1-only mode);
 	// the setter nil-checks internally and the field is never read in v1 paths.
 	if planExec != nil {

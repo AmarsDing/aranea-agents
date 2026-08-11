@@ -15,7 +15,7 @@
         <q-btn v-close-popup flat round icon="close" />
       </q-card-section>
 
-      <q-scroll-area class="app-glass-dialog__body-scroll">
+      <div class="app-glass-dialog__scroll">
         <div class="q-pa-md q-gutter-md">
           <q-banner rounded dense class="settings-info-banner">
             Ralph Loop（迭代验证）在
@@ -133,7 +133,7 @@
             </q-banner>
           </section>
         </div>
-      </q-scroll-area>
+      </div>
 
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
         <q-btn v-close-popup flat rounded no-caps label="取消" />

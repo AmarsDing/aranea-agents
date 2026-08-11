@@ -181,4 +181,27 @@ describe('useKnowledgeWorkbench', () => {
     wb.activateTab('d1');
     expect(wb.activeTabId.value).toBe('d1');
   });
+
+  it('reorderTabs moves a tab to the target index without touching activeTabId', async () => {
+    const wb = createKnowledgeWorkbench(makeDeps());
+    await wb.openDoc(doc({ id: 'd1' }));
+    await wb.openDoc(doc({ id: 'd2', rel_path: 'b.md' }));
+    await wb.openDoc(doc({ id: 'd3', rel_path: 'c.md' }));
+    wb.activateTab('d1');
+    wb.reorderTabs(0, 2);
+    expect(wb.tabs.value.map((t) => t.docId)).toEqual(['d2', 'd3', 'd1']);
+    expect(wb.activeTabId.value).toBe('d1'); // 重排不改变激活态
+    wb.reorderTabs(2, 0);
+    expect(wb.tabs.value.map((t) => t.docId)).toEqual(['d1', 'd2', 'd3']);
+  });
+
+  it('reorderTabs ignores out-of-range and no-op indexes', async () => {
+    const wb = createKnowledgeWorkbench(makeDeps());
+    await wb.openDoc(doc({ id: 'd1' }));
+    await wb.openDoc(doc({ id: 'd2', rel_path: 'b.md' }));
+    wb.reorderTabs(0, 0); // no-op
+    wb.reorderTabs(-1, 1);
+    wb.reorderTabs(0, 5);
+    expect(wb.tabs.value.map((t) => t.docId)).toEqual(['d1', 'd2']);
+  });
 });

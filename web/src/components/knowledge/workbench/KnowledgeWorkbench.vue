@@ -12,6 +12,7 @@
         @switch-vault="$emit('switch-vault', $event)"
         @open-quick-switcher="openQuickSwitcher"
         @open-command-palette="openCommandPalette"
+        @open-search="openSearch"
         @open-graph="$emit('open-graph')"
         @open-settings="$emit('open-settings')"
       />
@@ -27,6 +28,8 @@
           :drag-file="dragFile"
           :files="files"
           :active-doc-id="workbench.activeTabId.value"
+          :current-vault-id="currentVaultId"
+          :current-prefix="currentPrefix"
           @select-node="$emit('select-node', $event)"
           @update:expanded-keys="$emit('update:expanded-keys', $event)"
           @lazy-load="$emit('lazy-load', $event)"
@@ -35,37 +38,84 @@
           @drop-node="$emit('drop-node', $event)"
           @retry="$emit('retry')"
           @open-file="openFile"
-        />
+          @new-note="createNote"
+          @new-folder="createFolder"
+          @file-action="(a, n) => $emit('file-action', a, n)"
+          @file-drag-start="$emit('file-drag-start', $event)"
+          @file-drag-end="$emit('file-drag-end')"
+          @drop-current-dir="$emit('drop-current-dir')"
+        >
+          <!-- SP2-8：上传队列收纳位（页面注入 KnowledgeUploadQueue） -->
+          <template #footer>
+            <slot name="left-footer" />
+          </template>
+        </WorkbenchSidebar>
 
         <WorkbenchTabs
+          ref="tabsRef"
           class="kb-workbench__center"
           :tabs="workbench.tabs.value"
           :active-tab-id="workbench.activeTabId.value"
           :candidates="candidates"
+          :recent-docs="recentDocs"
+          :get-headings="getHeadingsFor"
           @activate="workbench.activateTab"
           @close="workbench.closeTab"
+          @reorder="workbench.reorderTabs"
           @save="onSave"
           @toggle-mode="workbench.toggleMode"
           @update-content="workbench.updateContent"
           @open-doc="openDocByName"
           @create-doc="createDocByName"
+          @open-doc-id="openDocById"
         />
 
-        <!-- 右栏：五面板占位（SP2-5 接入） -->
-        <GlassPanel
+        <!-- 右栏：五面板联动（SP2-5） -->
+        <WorkbenchSidePanels
           class="kb-workbench__right"
-          :title="t('knowledgePage.workbench.panelsPlaceholder')"
-          icon="dashboard_customize"
-        >
-          <div class="kb-workbench__panels-hint">
-            {{ t('knowledgePage.workbench.panelsPlaceholderHint') }}
-          </div>
-        </GlassPanel>
+          :active-tab="workbench.activeTab.value"
+          :collection-id="currentVaultId"
+          :refresh-nonce="panelsRefreshNonce"
+          @open-doc-id="openDocById"
+          @expand-graph="(docId: string) => $emit('open-graph', docId)"
+          @jump-outline="jumpOutline"
+        />
       </div>
     </div>
 
-    <!-- 脏关闭确认 -->
-    <q-dialog :model-value="!!confirmCloseTab" @update:model-value="onCancelClose">
+    <!-- ⌘O 快速切换 / ⌘K 命令面板（SP2-6） -->
+    <QuickSwitcher
+      :open="quickSwitcherOpen"
+      :documents="vaultDocs"
+      :tabs="workbench.tabs.value"
+      :vault-name="currentVaultName"
+      @update:open="quickSwitcherOpen = $event"
+      @open="(d: KnowledgeDocument) => workbench.openDoc(d)"
+    />
+    <CommandPalette
+      :open="commandPaletteOpen"
+      :commands="commandItems"
+      :collections="collections"
+      :current-vault-id="currentVaultId"
+      :mru="commandMru"
+      @update:open="commandPaletteOpen = $event"
+      @run="runCommand"
+      @switch-vault="(id: string) => $emit('switch-vault', id)"
+    />
+
+    <!-- Ctrl+Shift+F 全库搜索（P1-3） -->
+    <SearchPanel
+      :open="searchOpen"
+      :query="searchQuery"
+      :items="searchItems"
+      :loading="searchLoading"
+      @update:open="searchOpen = $event"
+      @update:query="searchQuery = $event"
+      @pick="onSearchPick"
+    />
+
+    <!-- 脏关闭确认（SP2-8：kb-portal——q-dialog teleport 到 body 后重挂深空令牌） -->
+    <q-dialog :model-value="!!confirmCloseTab" content-class="kb-portal" @update:model-value="onCancelClose">
       <GlassPanel strong :title="t('knowledgePage.workbench.closeConfirmTitle')" class="kb-workbench__confirm">
         <div class="kb-workbench__confirm-hint">
           {{ t('knowledgePage.workbench.closeConfirmHint', { title: confirmCloseTab?.title ?? '' }) }}
@@ -95,8 +145,9 @@
 
 <script setup lang="ts">
 // SP2 §SP2-1 工作台根：装配 TopBar + 三栏（树 / 标签页 / 联动面板）+ 浮层状态。
-// 数据流纪律：全部状态经 props 注入的 workbench 状态机与 explorer，组件不各自拉数。
-import { computed, ref } from 'vue';
+// Container: approved because 工作台命令落盘（新建笔记/文件夹、索引重建）需就近访问 API，
+// 数据流纪律：全部状态经 props 注入的 workbench 状态机与 explorer，子组件不各自拉数。
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import ParticleField from '../effects/ParticleField.vue';
@@ -104,6 +155,19 @@ import GlassPanel from '../effects/GlassPanel.vue';
 import WorkbenchTopBar from './WorkbenchTopBar.vue';
 import WorkbenchSidebar from './WorkbenchSidebar.vue';
 import WorkbenchTabs from './WorkbenchTabs.vue';
+import WorkbenchSidePanels from './WorkbenchSidePanels.vue';
+import QuickSwitcher from './QuickSwitcher.vue';
+import CommandPalette from './CommandPalette.vue';
+import SearchPanel, { type SearchItem } from './SearchPanel.vue';
+import {
+  createVaultDir,
+  createVaultDocument,
+  rebuildKnowledgeIndex,
+  searchKnowledge,
+} from '../../../features/knowledge/api';
+import { COMMAND_DEFS, pushMru, type CommandId, type CommandItem } from '../../../features/knowledge/commands';
+import { normalizeTargetName } from '../../../features/knowledge/wikilink';
+import { parseOutline } from '../../../features/knowledge/outline';
 import type { KnowledgeWorkbench as Workbench } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
@@ -123,9 +187,13 @@ const props = defineProps<{
   dragFile: DragFileRef | null;
   /** 当前目录文件（explorer.currentFiles） */
   files: VaultTreeNode[];
+  /** 当前目录 prefix（wikilink 新建文档落点） */
+  currentPrefix: string;
+  /** SP2-8：图谱增量刷新信号（+1 → 右栏五面板重拉，缓存已被页面失效） */
+  panelsRefreshNonce?: number;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'switch-vault': [id: string];
   'select-node': [key: string];
   'update:expanded-keys': [keys: string[]];
@@ -134,14 +202,29 @@ defineEmits<{
   'create-vault': [];
   'drop-node': [node: VaultQTreeNode];
   retry: [];
-  'open-graph': [];
+  'refresh-tree': [];
+  'open-graph': [focusDocId?: string];
   'open-settings': [];
+  /** 命令面板「晋升到团队库」（SP2-8 由页面接入既有 PromoteDialog） */
+  'promote-active': [docId: string];
+  /** SP2-8：命令面板「粘贴文本入库」（页面打开既有 IngestDialog） */
+  'ingest-text': [];
+  /** SP2-8：文件行操作（move/download/delete）与拖拽，透传页面既有逻辑 */
+  'file-action': [action: string, node: VaultTreeNode];
+  'file-drag-start': [node: VaultTreeNode];
+  'file-drag-end': [];
+  'drop-current-dir': [];
 }>();
 
 const { t } = useI18n();
 const $q = useQuasar();
 
-// ⌘O / ⌘K 浮层状态（SP2-6 接入浮层组件）
+/** wikilink 候选：当前库全部文档 relPath（补全 + 存在性判定同口径）。 */
+const candidates = computed(() =>
+  props.documents.filter((d) => d.collection_id === props.currentVaultId).map((d) => d.rel_path || d.source),
+);
+
+// ⌘O / ⌘K 浮层状态（SP2-6）
 const quickSwitcherOpen = ref(false);
 const commandPaletteOpen = ref(false);
 
@@ -152,6 +235,247 @@ function openQuickSwitcher() {
 function openCommandPalette() {
   commandPaletteOpen.value = true;
 }
+
+// ---------- 全库搜索（Ctrl+Shift+F，P1-3） ----------
+// 容器内检索（数据流纪律）：SearchPanel 纯受控；防抖 300ms + seq 竞态守卫（慢响应不覆盖新查询）。
+const searchOpen = ref(false);
+const searchQuery = ref('');
+const searchItems = ref<SearchItem[]>([]);
+const searchLoading = ref(false);
+let searchSeq = 0;
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** 命中文本窗口：以首个匹配词为中心截取片段（Obsidian 语义）。 */
+function buildSnippet(content: string, query: string): string {
+  const flat = content.replace(/\s+/g, ' ').trim();
+  const idx = flat.toLowerCase().indexOf(query.trim().toLowerCase());
+  if (idx < 0) return flat.slice(0, 160);
+  const start = Math.max(0, idx - 48);
+  const prefix = start > 0 ? '…' : '';
+  const tail = start + 160 < flat.length ? '…' : '';
+  return `${prefix}${flat.slice(start, start + 160)}${tail}`;
+}
+
+async function runSearch(q: string) {
+  const seq = ++searchSeq;
+  if (!q.trim() || !props.currentVaultId) {
+    searchItems.value = [];
+    searchLoading.value = false;
+    return;
+  }
+  searchLoading.value = true;
+  try {
+    const chunks = await searchKnowledge({ collection_id: props.currentVaultId, query: q.trim(), top_k: 12 });
+    if (seq !== searchSeq) return; // 已有更新的查询
+    searchItems.value = chunks.map((chunk) => {
+      const doc = props.documents.find((d) => d.id === chunk.doc_id);
+      const rel = doc?.rel_path || doc?.source || chunk.doc_id;
+      const name = rel.split('/').filter(Boolean).pop() || rel;
+      return {
+        chunk,
+        docId: chunk.doc_id,
+        name,
+        path: rel,
+        snippet: buildSnippet(chunk.content, q),
+        score: chunk.score,
+      };
+    });
+  } catch {
+    if (seq === searchSeq) searchItems.value = [];
+  } finally {
+    if (seq === searchSeq) searchLoading.value = false;
+  }
+}
+
+watch(searchQuery, (q) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void runSearch(q), 300);
+});
+
+watch(searchOpen, (on) => {
+  if (on) return;
+  // 关闭时清理：取消防抖与在途结果，下次打开从零开始
+  if (searchTimer) clearTimeout(searchTimer);
+  searchSeq += 1;
+  searchQuery.value = '';
+  searchItems.value = [];
+  searchLoading.value = false;
+});
+
+function openSearch() {
+  quickSwitcherOpen.value = false;
+  commandPaletteOpen.value = false;
+  searchOpen.value = true;
+}
+
+function onSearchPick(it: SearchItem) {
+  const doc = props.documents.find((d) => d.id === it.docId);
+  if (doc) void props.workbench.openDoc(doc);
+}
+
+/** 当前库文档（快速切换数据源）。 */
+const vaultDocs = computed(() => props.documents.filter((d) => d.collection_id === props.currentVaultId));
+
+/** 空态 RingCarousel：近期更新文档前 8 条（SP2-7）。 */
+const recentDocs = computed(() =>
+  [...vaultDocs.value].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 8),
+);
+
+const currentVaultName = computed(
+  () => props.collections.find((c) => c.id === props.currentVaultId)?.name ?? props.currentVaultId,
+);
+
+// ---------- 命令面板（SP2-6） ----------
+
+// MRU（P2-6）：最近执行命令置顶；localStorage 持久化，隐私模式等写失败时静默降级为会话内 MRU。
+const MRU_STORAGE_KEY = 'kb.command.mru';
+function loadCommandMru(): CommandId[] {
+  try {
+    const raw = localStorage.getItem(MRU_STORAGE_KEY);
+    const arr: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter((x): x is CommandId => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+const commandMru = ref<CommandId[]>(loadCommandMru());
+function recordCommandMru(id: CommandId) {
+  commandMru.value = pushMru(commandMru.value, id);
+  try {
+    localStorage.setItem(MRU_STORAGE_KEY, JSON.stringify(commandMru.value));
+  } catch {
+    /* 写失败不影响功能 */
+  }
+}
+
+const commandItems = computed<CommandItem[]>(() => {
+  const active = props.workbench.activeTab.value;
+  return COMMAND_DEFS.map((def) => ({
+    def,
+    title: t(`knowledgePage.workbench.commands.${def.id}`),
+    disabled: !active
+      ? (['save', 'toggle-mode', 'close-tab', 'promote'] as CommandId[]).includes(def.id)
+      : (def.id === 'save' || def.id === 'toggle-mode') && !active.editable,
+  }));
+});
+
+/** 新建笔记（命令面板/后续侧栏共用，SP2-7 复用）：当前目录落点 + 打开 + 刷新树。 */
+function createNote() {
+  if (!props.currentVaultId) return;
+  $q.dialog({
+    title: t('knowledgePage.workbench.commands.new-note'),
+    prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.noteNamePrompt') },
+    cancel: true,
+    class: 'kb-portal',
+  }).onOk(async (name: string) => {
+    const base = normalizeTargetName(name);
+    if (!base) return;
+    try {
+      const doc = await createVaultDocument(props.currentVaultId, `${props.currentPrefix}${base}.md`);
+      emit('refresh-tree');
+      await props.workbench.openDoc(doc);
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}
+
+function createFolder() {
+  if (!props.currentVaultId) return;
+  $q.dialog({
+    title: t('knowledgePage.workbench.commands.new-folder'),
+    prompt: { model: '', type: 'text', label: t('knowledgePage.workbench.folderNamePrompt') },
+    cancel: true,
+    class: 'kb-portal',
+  }).onOk(async (name: string) => {
+    const base = normalizeTargetName(name);
+    if (!base) return;
+    try {
+      await createVaultDir(props.currentVaultId, `${props.currentPrefix}${base}`);
+      emit('refresh-tree');
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}
+
+async function runCommand(id: CommandId) {
+  recordCommandMru(id);
+  const active = props.workbench.activeTab.value;
+  switch (id) {
+    case 'new-note':
+      createNote();
+      break;
+    case 'new-folder':
+      createFolder();
+      break;
+    case 'save':
+      if (active) await onSave(active.docId);
+      break;
+    case 'toggle-mode':
+      if (active) props.workbench.toggleMode(active.docId);
+      break;
+    case 'open-graph':
+      emit('open-graph');
+      break;
+    case 'rebuild-index':
+      if (!props.currentVaultId) break;
+      try {
+        await rebuildKnowledgeIndex(props.currentVaultId);
+        $q.notify({ type: 'info', message: t('knowledgePage.workbench.rebuildStarted') });
+      } catch (e) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+      }
+      break;
+    case 'ingest-text':
+      emit('ingest-text');
+      break;
+    case 'promote':
+      if (active) emit('promote-active', active.docId);
+      break;
+    case 'close-tab':
+      if (active) props.workbench.closeTab(active.docId);
+      break;
+    case 'switch-vault':
+      break; // 浮层内二级选择，不经 runCommand
+  }
+}
+
+// ---------- 全局快捷键（capture：输入框聚焦时 ⌘O/⌘K 仍可唤起） ----------
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  // Ctrl+Shift+F：全库搜索（P1-3；shift 组合先行判定，下方守卫会排除其余 shift 组合）
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    openSearch();
+    return;
+  }
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  const key = e.key.toLowerCase();
+  if (key === 'o') {
+    e.preventDefault();
+    commandPaletteOpen.value = false;
+    searchOpen.value = false;
+    openQuickSwitcher();
+  } else if (key === 'k') {
+    e.preventDefault();
+    quickSwitcherOpen.value = false;
+    searchOpen.value = false;
+    openCommandPalette();
+  } else if (key === 'e') {
+    const active = props.workbench.activeTab.value;
+    if (active?.editable) {
+      e.preventDefault();
+      props.workbench.toggleMode(active.docId);
+    }
+  } else if (key === 'g') {
+    e.preventDefault();
+    emit('open-graph');
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown, { capture: true }));
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown, { capture: true }));
 
 /** 文件节点 → 完整文档（mime_type 供 isEditable 判定）；列表未覆盖时按节点合成。 */
 function resolveDocument(node: VaultTreeNode): KnowledgeDocument {
@@ -169,6 +493,55 @@ function resolveDocument(node: VaultTreeNode): KnowledgeDocument {
 function openFile(node: VaultTreeNode) {
   if (!node.doc_id) return;
   void props.workbench.openDoc(resolveDocument(node));
+}
+
+/** wikilink 跳链：按名归一化匹配当前库文档后 openDoc；带 #heading 时打开后滚动定位（P2-5）。 */
+async function openDocByName(target: string, heading?: string) {
+  const want = normalizeTargetName(target);
+  const doc = props.documents.find(
+    (d) => d.collection_id === props.currentVaultId && normalizeTargetName(d.rel_path || d.source) === want,
+  );
+  if (!doc) return;
+  await props.workbench.openDoc(doc);
+  if (!heading) return;
+  await nextTick(); // 等 NoteEditor 按新 activeTab 挂载
+  const content = props.workbench.activeTab.value?.content ?? '';
+  const wantHeading = heading.trim().toLowerCase();
+  const hit = parseOutline(content).find((h) => h.text.trim().toLowerCase() === wantHeading);
+  if (hit) tabsRef.value?.scrollToOffset(hit.offset);
+}
+
+/** `[[target#` 标题补全数据源（P2-5）：已打开 tab 的大纲标题（未打开文档不拉取，保持补全零网络）。 */
+function getHeadingsFor(target: string): string[] {
+  const want = normalizeTargetName(target);
+  const tab = props.workbench.tabs.value.find((tb) => normalizeTargetName(tb.relPath) === want);
+  return tab ? parseOutline(tab.content).map((h) => h.text) : [];
+}
+
+/** 右栏面板跳链（SP2-5）：按 docId 直接打开；不在当前文档列表时提示（跨库反链目标）。 */
+function openDocById(docId: string) {
+  const doc = props.documents.find((d) => d.id === docId);
+  if (doc) void props.workbench.openDoc(doc);
+}
+
+/** 右栏大纲跳转（SP2-5）：透传到活动 NoteEditor 滚动定位。 */
+const tabsRef = ref<InstanceType<typeof WorkbenchTabs> | null>(null);
+
+function jumpOutline(offset: number) {
+  tabsRef.value?.scrollToOffset(offset);
+}
+
+/** dangling 链接点击：当前目录新建 `target.md` 并打开 + 刷新树（Obsidian 语义）。 */
+async function createDocByName(target: string) {
+  if (!props.currentVaultId) return;
+  const relPath = `${props.currentPrefix}${normalizeTargetName(target) || target}.md`;
+  try {
+    const doc = await createVaultDocument(props.currentVaultId, relPath);
+    emit('refresh-tree');
+    await props.workbench.openDoc(doc);
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
 }
 
 async function onSave(docId: string) {
@@ -267,11 +640,6 @@ async function onSaveAndClose() {
   &__right
     min-height: 0
     min-width: 0
-
-  &__panels-hint
-    font-size: 12px
-    color: var(--kb-text-dim)
-    line-height: 1.8
 
   &__confirm
     width: 420px

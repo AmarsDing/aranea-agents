@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	mcpconfig "aranea-agents/internal/mcp/config"
@@ -23,13 +24,16 @@ import (
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 )
 
-func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
+// buildToolsetsForAgent assembles runtime toolsets. The plan (enabled keys,
+// batch-loaded catalog snapshot, confirmation gate) is loaded once per build
+// by BuildTRPCLLMAgent and shared with the callback chain, eliminating the
+// previous 3×N+1 GetTool loops.
+func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, error) {
 	lg := deps.Logger()
+	eff := plan.eff
 	var cfg tooltrpc.ToolsetConfig
-	var eff map[string]bool
 
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
-		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
 
 		mcpServers, mcpErr := resolveMCPServers(ctx, deps, ag.ID, deps.Logger())
@@ -132,13 +136,19 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		return nil, nil
 	}
 	lg.Info("工具构建中", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Bool("filesystem", cfg.Filesystem), loggateway.Int("mcp_servers", len(cfg.MCPServers)))
-	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
+	// K6 子步骤计时：冷构建 tools 段实测 3-7s，拆 rt_config/prune/build/gate/decor 归因。
+	phaseStart := time.Now()
+	applyRuntimeToolConfigs(&cfg, eff, plan.catalog)
+	rtCfgMs := time.Since(phaseStart).Milliseconds()
+	phaseStart = time.Now()
 	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
 	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
 	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
 		lg.Warn("已跳过未配置凭证的工具，避免构建失败",
 			loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("skipped_tools", fmt.Sprintf("%v", skipped)))
 	}
+	pruneMs := time.Since(phaseStart).Milliseconds()
+	phaseStart = time.Now()
 	if err := applyToolWorkspaceDirs(ctx, ag, deps, &cfg); err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, err
@@ -148,15 +158,19 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return ts, err
 	}
+	buildMs := time.Since(phaseStart).Milliseconds()
 	toolCount := len(ts.Tools) + len(ts.ToolSets)
 	lg.Info("工具构建完成", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("tool_count", toolCount))
-	if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
-		tooltrpc.ApplyConfirmationPolicy(ts, gate.confirmationMap())
+	phaseStart = time.Now()
+	if plan.gate != nil {
+		tooltrpc.ApplyConfirmationPolicy(ts, plan.gate.confirmationMap())
 	}
+	gateMs := time.Since(phaseStart).Milliseconds()
 	// P0-G3 + P0-D + P2-E + P2-02: 应用工具装饰器（执行超时 + 结果预算 + 确定性缓存 + 流式预算）。
 	// 装饰器包装所有 CallableTool，为每次调用提供 60s 默认超时、10KB 结果截断，
 	// 并对 ConcurrentSafe 工具（如 file、read_document）启用确定性缓存。
 	// 流式工具（StreamableCall）获得 5min 流式超时 + 1MB 流式字节预算（P2-02）。
+	phaseStart = time.Now()
 	tools.ApplyDecorators(ts, tools.ToolDecoratorConfig{
 		Timeout:       tools.DefaultToolTimeout,
 		ResultBudget:  tools.DefaultResultBudget,
@@ -165,38 +179,27 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		StreamTimeout: tools.DefaultStreamTimeout,
 		StreamBudget:  tools.DefaultStreamBudget,
 	})
+	decorMs := time.Since(phaseStart).Milliseconds()
+	lg.Info("工具构建子步骤耗时",
+		loggateway.StepID("agent.tool_phases"),
+		loggateway.Str("agent_id", ag.ID),
+		loggateway.Int("eff_tools", len(eff)),
+		loggateway.Int64("rt_cfg_ms", rtCfgMs),
+		loggateway.Int64("prune_ms", pruneMs),
+		loggateway.Int64("build_ms", buildMs),
+		loggateway.Int64("gate_ms", gateMs),
+		loggateway.Int64("decor_ms", decorMs))
 	return ts, nil
 }
 
-func applyRuntimeToolConfigs(ctx context.Context, agentID string, eff map[string]bool, deps TRPCBuilderDeps, cfg *tooltrpc.ToolsetConfig) {
-	if cfg == nil || deps.ToolUC == nil || len(eff) == 0 {
+// applyRuntimeToolConfigs merges each enabled tool's runtime config (catalog
+// base + agent override) into the toolset config, reading from the per-build
+// snapshot. Nil catalog (no ToolUC / nothing enabled) skips the merge.
+func applyRuntimeToolConfigs(cfg *tooltrpc.ToolsetConfig, eff map[string]bool, catalog *toolBuildCatalog) {
+	if cfg == nil || catalog == nil || len(eff) == 0 {
 		return
 	}
-	overrides, err := deps.ToolUC.ListToolAgentOverridesByAgent(ctx, agentID)
-	if err != nil {
-		overrides = nil
-	}
-	overrideByKey := make(map[string]biz.ToolAgentOverride, len(overrides))
-	for _, o := range overrides {
-		overrideByKey[strings.TrimSpace(o.ToolKey)] = o
-	}
-	merged := make(map[string]map[string]any)
-	for key := range eff {
-		if !eff[key] {
-			continue
-		}
-		tool, err := deps.ToolUC.GetTool(ctx, key)
-		if err != nil {
-			continue
-		}
-		base := strings.TrimSpace(tool.ConfigJSON)
-		if base == "" {
-			base = strings.TrimSpace(tool.DefaultConfigJSON)
-		}
-		ov := overrideByKey[key]
-		merged[key] = biz.MergeToolConfigJSON(base, ov.ConfigOverrideJSON)
-	}
-	tooltrpc.ApplyRuntimeConfigMaps(cfg, merged)
+	tooltrpc.ApplyRuntimeConfigMaps(cfg, catalog.mergedConfigMaps(eff))
 }
 
 func applyWebResearchPlatformDefaults(ctx context.Context, deps TRPCBuilderDeps, cfg *tooltrpc.ToolsetConfig) {

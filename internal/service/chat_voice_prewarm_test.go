@@ -80,3 +80,91 @@ func TestVoiceTurnPrewarmer_SkipsSessionWithoutAgent(t *testing.T) {
 		t.Fatal("prewarm must skip agentless sessions promptly")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 修复 C（2026-08-11）：PrewarmSpiritAgent 启动预构建守卫测试
+// ---------------------------------------------------------------------------
+
+// stubTeamAgentLookup 仅实现窄接口 biz.TeamAgentLookup（无 GetByAgentKey），
+// 用于验证断言失败时启动预热优雅跳过。
+type stubTeamAgentLookup struct{}
+
+func (stubTeamAgentLookup) Get(context.Context, string) (biz.Agent, error) {
+	return biz.Agent{}, apierror.NotFound(apierror.DomainAgent, "not found")
+}
+func (stubTeamAgentLookup) GetEffectiveTools(context.Context, string) (biz.AgentEffectiveTools, error) {
+	return biz.AgentEffectiveTools{}, nil
+}
+func (stubTeamAgentLookup) BatchHydrateForBuild(_ context.Context, agents []biz.Agent) ([]biz.Agent, error) {
+	return agents, nil
+}
+
+// stubSpiritResolver 在窄接口之上额外实现 GetByAgentKey（模拟生产
+// *biz.AgentUsecase），返回错误以验证预热容错路径。
+type stubSpiritResolver struct {
+	stubTeamAgentLookup
+	err error
+}
+
+func (s stubSpiritResolver) GetByAgentKey(context.Context, string) (biz.Agent, error) {
+	return biz.Agent{}, s.err
+}
+
+// 修复 C：nil ChatService / nil orchestrator / 无 AgentsUC → 快速返回，不 panic。
+func TestPrewarmSpiritAgent_NilGuards(t *testing.T) {
+	cases := map[string]*ChatService{
+		"nil service":      nil,
+		"nil orchestrator": {},
+		"no AgentsUC":      {orch: newSubmitAwaitReplyTestOrch(nil), lg: loggateway.NewNoop()},
+	}
+	for name, svc := range cases {
+		t.Run(name, func(t *testing.T) {
+			done := make(chan struct{})
+			go func() {
+				svc.PrewarmSpiritAgent(context.Background())
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("PrewarmSpiritAgent must return promptly on nil guards")
+			}
+		})
+	}
+}
+
+// 修复 C：AgentsUC 仅为窄接口（无 GetByAgentKey，测试桩场景）→ 断言失败跳过预热。
+func TestPrewarmSpiritAgent_SkipsWhenResolverUnsupported(t *testing.T) {
+	orch := newSubmitAwaitReplyTestOrch(nil)
+	orch.core.TD.ReadDeps.AgentsUC = stubTeamAgentLookup{}
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	done := make(chan struct{})
+	go func() {
+		svc.PrewarmSpiritAgent(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prewarm must skip promptly when AgentsUC lacks GetByAgentKey")
+	}
+}
+
+// 修复 C：spirit agent 解析失败 → Warn 容错返回（K3），不 panic 不阻塞启动。
+func TestPrewarmSpiritAgent_ToleratesResolverError(t *testing.T) {
+	orch := newSubmitAwaitReplyTestOrch(nil)
+	orch.core.TD.ReadDeps.AgentsUC = stubSpiritResolver{
+		err: apierror.NotFound(apierror.DomainAgent, "spirit not seeded"),
+	}
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	done := make(chan struct{})
+	go func() {
+		svc.PrewarmSpiritAgent(context.Background())
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prewarm must tolerate resolver errors and return promptly")
+	}
+}

@@ -3,17 +3,24 @@
     <!-- 标签页条 -->
     <div v-if="tabs.length" class="kb-tabs__bar">
       <div
-        v-for="tab in tabs"
+        v-for="(tab, i) in tabs"
         :key="tab.docId"
         class="kb-tabs__tab"
         :class="{
           'kb-tabs__tab--active': tab.docId === activeTabId,
           'kb-tabs__tab--dirty': tab.dirty,
+          'kb-tabs__tab--dragging': i === dragIndex,
+          'kb-tabs__tab--drop-target': i === dropIndex && i !== dragIndex,
         }"
         role="tab"
         :aria-selected="tab.docId === activeTabId"
+        draggable="true"
         @click="$emit('activate', tab.docId)"
         @mousedown.middle.prevent="$emit('close', tab.docId)"
+        @dragstart="onDragStart(i, $event)"
+        @dragover.prevent="onDragOver(i)"
+        @drop.prevent="onDrop(i)"
+        @dragend="onDragEnd"
       >
         <span class="kb-tabs__tab-title ellipsis" :title="tab.relPath">{{ tab.title }}</span>
         <span v-if="tab.dirty" class="kb-tabs__dirty-dot" />
@@ -72,20 +79,23 @@
           <span>{{ t('knowledgePage.workbench.conflictHint') }}</span>
         </div>
         <NoteEditor
+          ref="editorRef"
           :key="`${activeTab.docId}:${activeTab.mode}`"
           :content="activeTab.content"
           :read-only="activeTab.mode === 'preview'"
           :candidates="candidates"
+          :get-headings="getHeadings"
           @update-content="(c: string) => $emit('update-content', activeTab!.docId, c)"
           @save="$emit('save', activeTab!.docId)"
-          @open-doc="(target: string) => $emit('open-doc', target)"
+          @open-doc="(target: string, heading?: string) => $emit('open-doc', target, heading)"
           @create-doc="(target: string) => $emit('create-doc', target)"
         />
       </template>
 
-      <!-- 空态（SP2-7 换 RingCarousel） -->
+      <!-- 空态（SP2-7）：3D 环形近期笔记 + 提示 -->
       <div v-else class="kb-tabs__empty">
-        <q-icon name="auto_stories" size="48px" class="kb-tabs__empty-icon" />
+        <RingCarousel v-if="ringItems.length" :items="ringItems" @select="(it) => $emit('open-doc-id', it.key)" />
+        <q-icon v-else name="auto_stories" size="48px" class="kb-tabs__empty-icon" />
         <div class="kb-tabs__empty-title">{{ t('knowledgePage.workbench.emptyTitle') }}</div>
         <div class="kb-tabs__empty-hint">{{ t('knowledgePage.workbench.emptyHint') }}</div>
       </div>
@@ -95,16 +105,22 @@
 
 <script setup lang="ts">
 // SP2 §SP2-1 中栏：笔记标签页条 + 编辑/预览内容区（编辑器本体 SP2-4 接入 CM6）。
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import NoteEditor from './NoteEditor.vue';
+import RingCarousel, { type RingItem } from '../effects/RingCarousel.vue';
 import type { WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
+import type { KnowledgeDocument } from '../../../features/knowledge/types';
 
 const props = defineProps<{
   tabs: WorkbenchTab[];
   activeTabId: string;
   /** wikilink 补全/存在性判定候选（当前库文档 relPath） */
   candidates: string[];
+  /** 空态 RingCarousel 卡片（近期文档，SP2-7） */
+  recentDocs?: KnowledgeDocument[];
+  /** P2-5：`[[target#` 标题补全数据源 */
+  getHeadings?: (target: string) => string[];
 }>();
 
 const emit = defineEmits<{
@@ -113,13 +129,63 @@ const emit = defineEmits<{
   save: [docId: string];
   'toggle-mode': [docId: string];
   'update-content': [docId: string, content: string];
-  'open-doc': [target: string];
+  'open-doc': [target: string, heading?: string];
   'create-doc': [target: string];
+  'open-doc-id': [docId: string];
+  reorder: [from: number, to: number];
 }>();
 
 const { t } = useI18n();
 
 const activeTab = computed(() => props.tabs.find((x) => x.docId === props.activeTabId) ?? null);
+
+// ---------- 标签页拖拽重排（P1-4，原生 HTML5 DnD，零依赖） ----------
+const dragIndex = ref(-1);
+const dropIndex = ref(-1);
+
+function onDragStart(i: number, e: DragEvent) {
+  dragIndex.value = i;
+  e.dataTransfer?.setData('text/plain', String(i)); // Firefox 要求 setData 才触发拖拽
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(i: number) {
+  dropIndex.value = i;
+}
+
+function onDrop(i: number) {
+  const from = dragIndex.value;
+  onDragEnd();
+  if (from >= 0 && from !== i) emit('reorder', from, i);
+}
+
+function onDragEnd() {
+  dragIndex.value = -1;
+  dropIndex.value = -1;
+}
+
+/** 空态环形卡片：文档名 + 所在目录。 */
+const ringItems = computed<RingItem[]>(() =>
+  (props.recentDocs ?? []).map((d) => {
+    const rel = d.rel_path || d.source;
+    const i = rel.lastIndexOf('/');
+    return {
+      key: d.id,
+      title: i >= 0 ? rel.slice(i + 1) : rel,
+      subtitle: i >= 0 ? rel.slice(0, i) : '',
+      icon: 'description',
+    };
+  }),
+);
+
+/** 右栏大纲跳转透传（SP2-5）：NoteEditor 实例滚动定位。 */
+const editorRef = ref<InstanceType<typeof NoteEditor> | null>(null);
+
+function scrollToOffset(offset: number) {
+  editorRef.value?.scrollToOffset(offset);
+}
+
+defineExpose({ scrollToOffset });
 </script>
 
 <style lang="sass" scoped>
@@ -162,9 +228,15 @@ const activeTab = computed(() => props.tabs.find((x) => x.docId === props.active
       background: var(--kb-glass-highlight)
 
     &--active
-      background: rgba(79, 216, 255, 0.12)
+      background: color-mix(in srgb, var(--color-accent) 12%, transparent)
       color: var(--kb-text-primary)
       box-shadow: inset 0 -2px 0 var(--kb-accent-cyan)
+
+    &--dragging
+      opacity: 0.45
+
+    &--drop-target
+      box-shadow: inset 2px 0 0 var(--kb-accent-cyan)
 
   &__tab-title
     min-width: 0
@@ -179,7 +251,7 @@ const activeTab = computed(() => props.tabs.find((x) => x.docId === props.active
 
   &__conflict
     flex: none
-    color: #ffc857
+    color: var(--kb-warn)
 
   &__close
     flex: none
@@ -210,9 +282,9 @@ const activeTab = computed(() => props.tabs.find((x) => x.docId === props.active
     gap: 8px
     padding: 8px 14px
     font-size: 12px
-    color: #ffc857
-    background: rgba(255, 200, 87, 0.08)
-    border-bottom: 1px solid rgba(255, 200, 87, 0.2)
+    color: var(--kb-warn)
+    background: color-mix(in srgb, var(--color-warning) 8%, transparent)
+    border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 20%, transparent)
     flex: none
 
   &__empty

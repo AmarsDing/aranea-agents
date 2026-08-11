@@ -3,7 +3,7 @@ import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import { hasIndexingDocuments, promoteTargetOptions } from './knowledgeUi';
-import { getDocumentContent } from './api';
+import { fetchDocumentAsset } from './api';
 import { dirNodeKey, vaultNodeKey } from './vaultTreeUi';
 import { graphDeltaAffected, type KnowledgeGraphDelta } from './graphDelta';
 import type {
@@ -26,8 +26,6 @@ export function useKnowledgePage() {
   const docsLoading = ref(false);
   const error = ref('');
   const unavailable = ref('');
-  // 页面级 Tab：explorer（资源管理器三栏）| graph（3D 知识图谱）| settings（Embedder 配置）
-  const pageTab = ref('explorer');
   const createOpen = ref(false);
   const createLoading = ref(false);
   const ingestOpen = ref(false);
@@ -278,6 +276,9 @@ export function useKnowledgePage() {
     }
   }
 
+  /** SP2-8：文档删除广播（工作台据此关闭对应标签页，FR-SP2-2）。 */
+  const removedDocId = ref('');
+
   function confirmDeleteDocument(doc: KnowledgeDocument) {
     $q.dialog({
       title: '删除文档',
@@ -288,6 +289,7 @@ export function useKnowledgePage() {
         await knowledgeStore.removeDocument(doc.id, selectedId.value);
         await loadDocuments();
         await loadCollections();
+        removedDocId.value = doc.id;
         $q.notify({ type: 'positive', message: '已删除' });
       } catch (e) {
         $q.notify({ type: 'negative', message: friendlyError(e) || '删除失败' });
@@ -295,29 +297,18 @@ export function useKnowledgePage() {
     });
   }
 
-  // ---------- 文档预览（GetDocumentContent） ----------
-
-  const previewOpen = ref(false);
-  const previewLoading = ref(false);
-  const previewDoc = ref<KnowledgeDocument | null>(null);
-  const previewContent = ref('');
-  const previewOrganized = ref(false);
-
-  async function openDocPreview(doc: KnowledgeDocument) {
-    previewDoc.value = doc;
-    previewContent.value = '';
-    previewOrganized.value = false;
-    previewOpen.value = true;
-    previewLoading.value = true;
+  /** SP2-8：文档原文下载（工作台文件行菜单）；blob → a[download] 触发浏览器保存。 */
+  async function downloadDocument(doc: Pick<KnowledgeDocument, 'id' | 'source'>) {
     try {
-      const res = await getDocumentContent(doc.id);
-      previewContent.value = res.content_text;
-      previewOrganized.value = res.organized;
+      const { blob, filename } = await fetchDocumentAsset(doc.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || doc.source || 'document';
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
-      previewOpen.value = false;
-      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.previewLoadFailed') });
-    } finally {
-      previewLoading.value = false;
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.downloadFailed') });
     }
   }
 
@@ -587,29 +578,32 @@ export function useKnowledgePage() {
   const promoteLoading = ref(false);
   const promoteTargetId = ref('');
   const promoteResult = ref<PromoteResult | null>(null);
-  /** 晋升源文档名（对话框副标题展示；docId 由 explorer.selectedDocId 提供）。 */
+  /** 晋升源文档 id（SP2-8：支持命令面板对活动 tab 直接发起，不再依赖 explorer 选中态）。 */
+  const promoteDocId = ref('');
+  /** 晋升源文档名（对话框副标题展示）。 */
   const promoteDocName = ref('');
 
   // 目标库选项：仅 team 库，排除当前库（后端同库/非 team 均拒绝，前端先行过滤）。
   const promoteOptions = computed(() => promoteTargetOptions(collections.value, selectedId.value));
 
-  // 晋升入口可见性：当前库非 team（团队库再晋升无意义）+ 已选中文件。
-  const promotable = computed(
-    () =>
-      !!selectedCollection.value && selectedCollection.value.vault_backend !== 'team' && !!explorer.selectedDocId.value,
-  );
+  // 晋升入口可见性：当前库非 team（团队库再晋升无意义）。
+  const promotable = computed(() => !!selectedCollection.value && selectedCollection.value.vault_backend !== 'team');
 
-  function openPromoteDialog() {
+  /** 打开晋升对话框：docId 缺省回退 explorer 当前选中文件（旧详情区入口）。 */
+  function openPromoteDialog(docId?: string) {
+    const id = docId || explorer.selectedDocId.value;
+    if (!id) return;
+    const doc = documents.value.find((d) => d.id === id);
     const node = explorer.selectedNode.value;
-    if (!node || node.kind !== 'file') return;
-    promoteDocName.value = node.path || node.name;
+    promoteDocId.value = id;
+    promoteDocName.value = doc?.rel_path || doc?.source || (node?.kind === 'file' ? node.path || node.name : id);
     promoteTargetId.value = promoteOptions.value[0]?.value ?? '';
     promoteResult.value = null;
     promoteOpen.value = true;
   }
 
   async function submitPromote() {
-    const docId = explorer.selectedDocId.value;
+    const docId = promoteDocId.value;
     if (!docId || !promoteTargetId.value) return;
     promoteLoading.value = true;
     try {
@@ -648,7 +642,7 @@ export function useKnowledgePage() {
 
   function syncDocPoll() {
     stopDocPoll();
-    if (!selectedId.value || pageTab.value !== 'explorer' || !hasIndexingDocuments(documents.value)) return;
+    if (!selectedId.value || !hasIndexingDocuments(documents.value)) return;
     docPollTimer = setInterval(() => {
       if (!selectedId.value || !hasIndexingDocuments(documents.value)) {
         stopDocPoll();
@@ -664,7 +658,7 @@ export function useKnowledgePage() {
   });
 
   watch(
-    () => [documents.value.map((d) => d.status).join(','), pageTab.value, selectedId.value] as const,
+    () => [documents.value.map((d) => d.status).join(','), selectedId.value] as const,
     () => syncDocPoll(),
   );
 
@@ -713,7 +707,7 @@ export function useKnowledgePage() {
     docsLoading,
     error,
     unavailable,
-    pageTab,
+    removedDocId,
     createOpen,
     createLoading,
     ingestOpen,
@@ -732,12 +726,7 @@ export function useKnowledgePage() {
     confirmDeleteCollection,
     submitIngest,
     confirmDeleteDocument,
-    previewOpen,
-    previewLoading,
-    previewDoc,
-    previewContent,
-    previewOrganized,
-    openDocPreview,
+    downloadDocument,
     uploadTasks,
     enqueueUploadFiles,
     removeUploadTask,

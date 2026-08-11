@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/tools/memoryremember"
 	orchtools "aranea-agents/internal/tools/orchestrator"
 	"aranea-agents/internal/tools/skills_butler"
+	"aranea-agents/pkg/apierror"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -230,6 +231,52 @@ func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) 
 		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics(), agentID: ag.ID},
 		LG:        o.lg(),
 	})
+}
+
+// voiceButlerTools assembles delegate_to_spirit for the voice butler agent
+// (M74 V9, 设计 74 §15.4-B)。条件注入：仅 agent_key==__voice_butler__ 挂载；
+// 经 CustomTools 无条件追加绕行 chat_only profile 空工具集（R13）。
+func (o *ChatOrchestrator) voiceButlerTools(_ context.Context, ag biz.Agent) []trpctool.Tool {
+	if o == nil {
+		return nil
+	}
+	if strings.TrimSpace(ag.AgentKey) != biz.VoiceButlerAgentKey {
+		return nil
+	}
+	registry := o.infraDeps.VoiceDelegation
+	gateway := o.voiceDelegationGateway()
+	sessions, _ := o.td().Sessions.(*biz.SessionUsecase)
+	tool := tools.NewDelegateToSpiritTool(tools.DelegateToSpiritDeps{
+		Agents:    o.td().ReadDeps.Agents,
+		Sessions:  sessions,
+		Submitter: delegationTurnSubmitter{gw: gateway},
+		Registry:  registry,
+		LG:        o.lg(),
+	})
+	if tool == nil {
+		return nil
+	}
+	return []trpctool.Tool{tool}
+}
+
+// delegationTurnSubmitter 适配 biz.TurnExecutorGateway 到工具提交窄端口：
+// ErrTurnMessageQueued = 已受理排队（spirit 会话忙时消息入队，排水后照常
+// 建 task），非失败（synthesis 同款语义，spirit_team.go:929）。
+type delegationTurnSubmitter struct {
+	gw biz.TurnExecutorGateway
+}
+
+func (a delegationTurnSubmitter) SubmitDelegatedTurn(ctx context.Context, in biz.TurnInput) (bool, error) {
+	if a.gw == nil {
+		return false, apierror.Internal("VOICE", "delegation turn gateway not wired")
+	}
+	if _, err := a.gw.ExecuteTurn(ctx, in); err != nil {
+		if isTurnMessageQueued(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []trpctool.Tool {

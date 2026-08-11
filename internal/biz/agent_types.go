@@ -12,6 +12,9 @@ const (
 	MemoryAgentKey      = "__memory__"
 	SkillsAgentKey      = "__skills__"
 	SystemAdminAgentKey = "__system_admin__"
+	// VoiceButlerAgentKey 语音助手（M74 V9）：语音前台轻量 agent，快答/委派/播报，
+	// 复杂任务经 delegate_to_spirit 异步委派精灵执行（设计 74 §15）。
+	VoiceButlerAgentKey = "__voice_butler__"
 
 	// Default compression trigger ratios (single source of truth).
 	DefaultCompressionBufferRatio = 0.15
@@ -32,7 +35,7 @@ const (
 // 2026-07-04 问题 3 修复：统一系统 Agent 判断逻辑，避免每个过滤点重复写常量。
 func IsSystemAgentKey(key string) bool {
 	switch key {
-	case SpiritAgentKey, SystemAdminAgentKey, MemoryAgentKey, SkillsAgentKey:
+	case SpiritAgentKey, SystemAdminAgentKey, MemoryAgentKey, SkillsAgentKey, VoiceButlerAgentKey:
 		return true
 	}
 	return false

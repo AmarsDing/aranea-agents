@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { useQuasar } from 'quasar';
 import type { Tool } from './types';
 import { useToolsStore } from '../../stores/tools';
+import { parseKratosApiError } from '../../utils/kratosError';
 
 export function useToolToggle(onChanged: () => void | Promise<void>) {
   const $q = useQuasar();
@@ -21,7 +22,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
           await toolsStore.toggle(tool.id || tool.key, value, 'I_UNDERSTAND_RISK');
           await onChanged();
         } catch (err) {
-          $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '操作失败' });
+          $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '操作失败' });
         } finally {
           busyId.value = '';
         }
@@ -33,7 +34,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
       await toolsStore.toggle(tool.id || tool.key, value);
       await onChanged();
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '操作失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '操作失败' });
     } finally {
       busyId.value = '';
     }
@@ -51,7 +52,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
         await toolsStore.remove(tool.id || tool.key);
         await onChanged();
       } catch (err) {
-        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
+        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '删除失败' });
       } finally {
         busyId.value = '';
       }

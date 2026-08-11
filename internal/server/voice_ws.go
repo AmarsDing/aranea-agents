@@ -24,19 +24,22 @@ type VoiceStatusProbe func(ctx context.Context) (asrAvailable, ttsAvailable bool
 // VoiceWSServer 是 /v1/voice 语音网关（设计 §2）：鉴权/单会话单连接/帧路由。
 // 音频帧与高频事件走独立端点，不污染 /v1/ws 事件总线通道。
 type VoiceWSServer struct {
-	upgrader    websocket.Upgrader
-	sessionAuth SessionAuthorizer
-	executor    WSTurnExecutor
-	canceller   RunCanceller
-	confirmer   voice.ConfirmResolver // V2-T5 语音确认拦截；nil 关闭
-	archiver    voice.AudioArchiver   // V2-T6 语音留档；nil 关闭
-	probe       VoiceStatusProbe      // V2-T8 麦克风置灰门控；nil = 保守报不可用
-	prewarmer   voice.TurnPrewarmer   // C1 语音 Turn 构建预热；nil 关闭
-	newASR      voice.ASRProviderFactory
-	newTTS      voice.TTSProviderFactory
-	bus         biz.EventBus
-	infra       *event.Infra
-	lg          loggateway.Logger
+	upgrader        websocket.Upgrader
+	sessionAuth     SessionAuthorizer
+	executor        WSTurnExecutor
+	canceller       RunCanceller
+	confirmer       voice.ConfirmResolver      // V2-T5 语音确认拦截；nil 关闭
+	archiver        voice.AudioArchiver        // V2-T6 语音留档；nil 关闭
+	probe           VoiceStatusProbe           // V2-T8 麦克风置灰门控；nil = 保守报不可用
+	prewarmer       voice.TurnPrewarmer        // C1 语音 Turn 构建预热；nil 关闭
+	speculator      voice.IntentSpeculator     // C2 投机意图；nil 关闭
+	delegation      *voice.DelegationRegistry  // M74 V9 委派登记表；nil 关闭委派分流
+	delegationSteps voice.DelegationStepReader // M74 V9 委派终稿读取；nil 播简报
+	newASR          voice.ASRProviderFactory
+	newTTS          voice.TTSProviderFactory
+	bus             biz.EventBus
+	infra           *event.Infra
+	lg              loggateway.Logger
 
 	mu    sync.Mutex
 	conns map[string]*voice.Session
@@ -91,6 +94,26 @@ func (s *VoiceWSServer) SetTurnPrewarmer(p voice.TurnPrewarmer) {
 		return
 	}
 	s.prewarmer = p
+}
+
+// SetIntentSpeculator 注入投机意图端口（C2，可选依赖 setter 模式，
+// 与 SetTurnPrewarmer 一致）；nil 或未调用 = 关闭投机。
+func (s *VoiceWSServer) SetIntentSpeculator(sp voice.IntentSpeculator) {
+	if s == nil {
+		return
+	}
+	s.speculator = sp
+}
+
+// SetDelegationRegistry 注入语音委派登记表 + 终稿读取端口（M74 V9，设计 74
+// §15.4-C，可选依赖 setter 模式，与 SetTurnPrewarmer 一致）；nil 或未调用 =
+// 关闭委派三路分流（eventLoop 仅处理本会话事件）。
+func (s *VoiceWSServer) SetDelegationRegistry(reg *voice.DelegationRegistry, steps voice.DelegationStepReader) {
+	if s == nil {
+		return
+	}
+	s.delegation = reg
+	s.delegationSteps = steps
 }
 
 // handleVoiceStatus 返回语音服务可用性（V2-T8 差距2）。probe 未接线时保守
@@ -151,16 +174,19 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 
 	down := &voiceWSDownlink{conn: conn}
 	deps := voice.SessionDeps{
-		NewASR:    s.newASR,
-		NewTTS:    s.newTTS,
-		Bus:       s.bus,
-		Executor:  voiceChatTurnExecutor{inner: s.executor},
-		Canceller: voiceRunCanceller{inner: s.canceller},
-		Confirmer: s.confirmer,
-		Archiver:  s.archiver,
-		Prewarmer: s.prewarmer,
-		Infra:     s.infra,
-		LG:        s.lg,
+		NewASR:          s.newASR,
+		NewTTS:          s.newTTS,
+		Bus:             s.bus,
+		Executor:        voiceChatTurnExecutor{inner: s.executor},
+		Canceller:       voiceRunCanceller{inner: s.canceller},
+		Confirmer:       s.confirmer,
+		Archiver:        s.archiver,
+		Prewarmer:       s.prewarmer,
+		Speculator:      s.speculator,
+		Delegation:      s.delegation,
+		DelegationSteps: s.delegationSteps,
+		Infra:           s.infra,
+		LG:              s.lg,
 	}
 	sess := voice.NewSession(r.Context(), deps, sessionID, userID, down)
 

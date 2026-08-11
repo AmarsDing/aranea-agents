@@ -232,38 +232,48 @@
             <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(s.created_at) }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <div v-if="s.status === 'pending'" class="row q-gutter-xs">
-              <q-btn
-                v-if="s.applicable"
-                flat
-                round
-                dense
-                icon="check"
-                color="positive"
-                size="sm"
-                :loading="applyingId === s.id"
-                @click="onApply(s.id)"
-              >
-                <q-tooltip>应用</q-tooltip>
+            <div class="row q-gutter-xs items-center">
+              <q-btn flat round dense icon="visibility" size="sm" @click="onShowDetail(s.id)">
+                <q-tooltip>{{ $t('agentSettings.evolution.viewDetail') }}</q-tooltip>
               </q-btn>
-              <q-btn
-                flat
-                round
-                dense
-                icon="close"
-                color="negative"
-                size="sm"
-                :loading="rejectingId === s.id"
-                @click="onReject(s.id)"
-              >
-                <q-tooltip>拒绝</q-tooltip>
-              </q-btn>
+              <template v-if="s.status === 'pending'">
+                <q-btn
+                  v-if="s.applicable"
+                  flat
+                  round
+                  dense
+                  icon="check"
+                  color="positive"
+                  size="sm"
+                  :loading="applyingId === s.id"
+                  @click="onApply(s.id)"
+                >
+                  <q-tooltip>{{ $t('agentSettings.evolution.applyTooltip') }}</q-tooltip>
+                </q-btn>
+                <q-btn flat round dense icon="close" color="negative" size="sm" @click="onReject(s.id)">
+                  <q-tooltip>{{ $t('agentSettings.evolution.rejectTooltip') }}</q-tooltip>
+                </q-btn>
+              </template>
+              <template v-else>
+                <q-btn
+                  v-if="s.status === 'applied'"
+                  flat
+                  round
+                  dense
+                  icon="undo"
+                  color="warning"
+                  size="sm"
+                  :loading="rollbackingId === s.id"
+                  @click="onRollback(s.id)"
+                >
+                  <q-tooltip>{{ $t('agentSettings.evolution.rollbackTooltip') }}</q-tooltip>
+                </q-btn>
+                <q-badge
+                  :color="s.status === 'applied' ? 'positive' : 'grey'"
+                  :label="suggestionStatusLabel(s.status)"
+                />
+              </template>
             </div>
-            <q-badge
-              v-else
-              :color="s.status === 'applied' ? 'positive' : 'grey'"
-              :label="suggestionStatusLabel(s.status)"
-            />
           </q-item-section>
         </q-item>
       </q-list>
@@ -298,6 +308,20 @@
         />
       </div>
     </section>
+
+    <AgentEvolutionRejectDialog
+      v-model:open="rejectDialogOpen"
+      v-model:reason="rejectReason"
+      :suggestion-title="rejectTargetTitle"
+      :loading="rejectLoading"
+      @confirm="confirmReject"
+    />
+    <AgentEvolutionSuggestionDialog
+      v-model:open="detailDialogOpen"
+      :suggestion="detailSuggestion"
+      :type-label-of="suggestionTypeLabel"
+      :status-label-of="suggestionStatusLabel"
+    />
   </div>
 </template>
 
@@ -312,6 +336,8 @@ import { useI18n } from 'vue-i18n';
 import type { EvolutionKey } from './agentUi';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import { useAgentEvolutionPanel } from '../../features/agents/useAgentEvolutionPanel';
+import AgentEvolutionRejectDialog from './AgentEvolutionRejectDialog.vue';
+import AgentEvolutionSuggestionDialog from './AgentEvolutionSuggestionDialog.vue';
 
 const guardrails = defineModel<{
   max_change_per_period: number;
@@ -330,11 +356,30 @@ const { t } = useI18n();
 
 const evolutionRange = ref('30d');
 
-const { metricsLoading, metrics, suggestions, applyingId, rejectingId, pendingSuggestionsCount, onApply, onReject } =
-  useAgentEvolutionPanel(
-    () => props.agentId,
-    () => evolutionRange.value,
-  );
+const {
+  metricsLoading,
+  metrics,
+  suggestions,
+  applyingId,
+  rollbackingId,
+  rejectDialogOpen,
+  rejectReason,
+  rejectLoading,
+  rejectingId,
+  detailDialogOpen,
+  detailSuggestion,
+  pendingSuggestionsCount,
+  onApply,
+  onReject,
+  confirmReject,
+  onShowDetail,
+  onRollback,
+} = useAgentEvolutionPanel(
+  () => props.agentId,
+  () => evolutionRange.value,
+);
+
+const rejectTargetTitle = computed(() => suggestions.value.find((s) => s.id === rejectingId.value)?.title ?? '');
 
 // 检索质量：series 为空 ⟺ 时间范围内无记忆工具调用，0.0% 会误导用户。
 const hasRetrievalData = computed(() => (metrics.value?.retrieval_quality_series?.length ?? 0) > 0);

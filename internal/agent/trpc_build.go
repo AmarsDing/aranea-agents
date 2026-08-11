@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/agent/a2ui"
 	localexec "aranea-agents/internal/agent/codeexecutor"
@@ -71,6 +72,12 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 
 	lg.Info("Agent 构建", loggateway.StepID("agent.build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("provider", prov), loggateway.Str("model", mod))
 
+	// K6 子步骤耗时测量：冷构建实测可达数秒，汇总日志拆解 model/prompt/
+	// skill/tools/finalize/new 各段耗时，超预算定位用（仅在 cache miss 构建时发射）。
+	buildStart := time.Now()
+	var modelMs, promptMs, skillMs, toolsMs int64
+
+	modelStart := time.Now()
 	m, err := provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 	if err != nil {
 		// Fallback: when the agent's configured model is not found in the catalog
@@ -97,14 +104,17 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			return nil, nil, err
 		}
 	}
+	modelMs = time.Since(modelStart).Milliseconds()
 
 	files := ag.Files
 	if len(files) == 0 && deps.Agents != nil {
+		promptStart := time.Now()
 		files, err = deps.Agents.ListAgentPromptFiles(ctx, ag.ID)
 		if err != nil {
 			lg.Error("Agent 构建失败：提示文件加载", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, nil, err
 		}
+		promptMs = time.Since(promptStart).Milliseconds()
 	}
 	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
 	// and the agent has a position associated (PositionID != "").
@@ -167,11 +177,13 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	}
 
 	if deps.SkillUC != nil {
+		skillStart := time.Now()
 		repo, filter, exec, err := buildSkillDeps(ctx, ag, deps)
 		if err != nil {
 			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, nil, err
 		}
+		skillMs = time.Since(skillStart).Milliseconds()
 		if repo != nil {
 			opts = append(opts, trpcllmagent.WithSkills(repo))
 		}
@@ -199,10 +211,25 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	}
 
 	var assembledToolSets []trpctool.ToolSet
-	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
+	toolsStart := time.Now()
+	// 批量预载（P0 性能修复）：eff 键集 + 工具构建目录快照 + 确认门各加载一次，
+	// 在 buildToolsetsForAgent 与 buildCallbackChainOptions 之间共享，替代原先
+	// 三处各自 N 次的 GetTool 聚合 SQL（冷构建 70 工具 × 3 ≈ 210 次、约 10s）。
+	var eff map[string]bool
+	var catalog *toolBuildCatalog
+	if ag.Settings != nil && ag.Settings.ToolsEnabled {
+		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
+		catalog = loadToolBuildCatalog(ctx, ag.ID, eff, deps)
+	}
+	// Gate is built even when ToolsEnabled=false so plugin confirmation guards
+	// still cover custom/kanban/memory tools (previous behavior).
+	gate := buildToolConfirmGate(ctx, ag, deps, catalog.confirmCatalog(eff))
+	plan := &toolBuildPlan{eff: eff, catalog: catalog, gate: gate}
+	if ts, err := buildToolsetsForAgent(ctx, ag, deps, plan); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
 	} else if ts != nil {
+		toolsMs = time.Since(toolsStart).Milliseconds()
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
 			assembledToolSets = ts.ToolSets
@@ -231,6 +258,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		}
 	}
 
+	finalizeStart := time.Now()
 	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
 		if !deps.HasMemory {
 			lg.Warn("Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
@@ -239,13 +267,16 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		}
 	}
 
-	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps); len(chainOpts) > 0 {
+	cbStart := time.Now()
+	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps, gate); len(chainOpts) > 0 {
 		opts = append(opts, chainOpts...)
 		if cbRegistry != nil {
 			deps = deps.WithCircuitBreakerRegistry(cbRegistry)
 		}
 	}
+	cbMs := time.Since(cbStart).Milliseconds()
 
+	settingsStart := time.Now()
 	if ag.Settings != nil {
 		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard, prov, mod, deps.ModelCatalog, deps.RT, lg)...)
 		opts = append(opts, SafetyLimitAdapter(ag)...)
@@ -263,6 +294,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			opts = append(opts, trpcllmagent.WithEnableParallelTools(true))
 		}
 	}
+	settingsMs := time.Since(settingsStart).Milliseconds()
 
 	// ToolPipe Extension: enables LLM to filter long tool results (grep/head/tail/jq),
 	// reducing token consumption by 50-90% on large outputs. Uses WithToolScope to
@@ -275,7 +307,48 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		),
 	))
 
-	return trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...), assembledToolSets, nil
+	finalizeMs := time.Since(finalizeStart).Milliseconds()
+	newStart := time.Now()
+	a := trpcllmagent.New(strings.TrimSpace(ag.AgentKey), opts...)
+	newMs := time.Since(newStart).Milliseconds()
+
+	emitBuildDoneSummary(lg, ag, buildStart, buildPhaseDurations{
+		model: modelMs, prompt: promptMs, skill: skillMs, tools: toolsMs,
+		cb: cbMs, settings: settingsMs, finalize: finalizeMs, newAgent: newMs,
+	})
+
+	return a, assembledToolSets, nil
+}
+
+// buildPhaseDurations carries the K6 per-phase build timings (milliseconds).
+type buildPhaseDurations struct {
+	model, prompt, skill, tools, cb, settings, finalize, newAgent int64
+}
+
+// emitBuildDoneSummary 发射构建完成汇总日志：各子步骤耗时拆解，超预算（>2s）升级 Warn
+// 便于运维巡检。冷构建黑盒（实测 6-10s）按 model/prompt/skill/tools/finalize/new 六段
+// 归因，超预算排查直接读本行，无需二次插桩。
+func emitBuildDoneSummary(lg loggateway.Logger, ag biz.Agent, buildStart time.Time, d buildPhaseDurations) {
+	totalMs := time.Since(buildStart).Milliseconds()
+	fields := []loggateway.Field{
+		loggateway.StepID("agent.build_done"),
+		loggateway.Str("agent_id", ag.ID),
+		loggateway.Str("agent_key", ag.AgentKey),
+		loggateway.Int64("total_ms", totalMs),
+		loggateway.Int64("model_ms", d.model),
+		loggateway.Int64("prompt_ms", d.prompt),
+		loggateway.Int64("skill_ms", d.skill),
+		loggateway.Int64("tools_ms", d.tools),
+		loggateway.Int64("finalize_ms", d.finalize),
+		loggateway.Int64("new_ms", d.newAgent),
+		loggateway.Int64("cb_ms", d.cb),
+		loggateway.Int64("settings_ms", d.settings),
+	}
+	if totalMs > 2000 {
+		lg.Warn("Agent 构建完成（超预算）", fields...)
+	} else {
+		lg.Info("Agent 构建完成", fields...)
+	}
 }
 
 // buildSkillDeps resolves the Skill repository, per-invocation visibility filter, and code executor.

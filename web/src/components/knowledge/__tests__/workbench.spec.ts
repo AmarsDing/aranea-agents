@@ -43,6 +43,7 @@ const quasarStubs = {
   'q-banner': { template: '<div><slot /></div>' },
   'q-card': { template: '<div><slot /></div>' },
   'q-tree': { template: '<div />' },
+  'q-slider': { template: '<div />' },
   'q-menu': { template: '<div><slot /></div>' },
   'q-separator': { template: '<hr />' },
 };
@@ -63,7 +64,7 @@ const fileNode: VaultTreeNode = {
   kind: 'file',
   doc_id: 'd1',
   tags: [],
-} as VaultTreeNode;
+} as unknown as VaultTreeNode;
 
 function makeTab(partial: Partial<WorkbenchTab> = {}): WorkbenchTab {
   return {
@@ -98,7 +99,7 @@ describe('workbench skeleton', () => {
 
   it('WorkbenchTabs renders tabs and emits activate/close', async () => {
     const w = mount(WorkbenchTabs, {
-      props: { tabs: [makeTab()], activeTabId: 'd1' },
+      props: { tabs: [makeTab()], activeTabId: 'd1', candidates: [] },
       ...globalOpts(),
     });
     expect(w.text()).toContain('note.md');
@@ -108,7 +109,7 @@ describe('workbench skeleton', () => {
 
   it('WorkbenchTabs shows empty state without tabs', () => {
     const w = mount(WorkbenchTabs, {
-      props: { tabs: [], activeTabId: '' },
+      props: { tabs: [], activeTabId: '', candidates: [] },
       ...globalOpts(),
     });
     expect(w.find('.kb-tabs__empty').exists()).toBe(true);
@@ -125,6 +126,8 @@ describe('workbench skeleton', () => {
         dragFile: null,
         files: [fileNode],
         activeDocId: '',
+        currentVaultId: 'v1',
+        currentPrefix: 'docs/',
       },
       ...globalOpts(),
     });
@@ -157,6 +160,7 @@ describe('workbench skeleton', () => {
         treeError: '',
         dragFile: null,
         files: [fileNode],
+        currentPrefix: 'docs/',
       },
       ...globalOpts(),
     });

@@ -292,6 +292,26 @@ export type ListDanglingLinksResponse = {
   items: DanglingLink[] | undefined;
 };
 
+// UnlinkedMention is one document that mentions the target doc's display name
+// in plain text (outside [[wikilinks]]) without linking to it (P2-7,
+// Obsidian "Unlinked mentions").
+export type UnlinkedMention = {
+  srcDocId: string | undefined;
+  srcDocName: string | undefined;
+  count: number | undefined;
+  snippet: string | undefined;
+};
+
+export type ListUnlinkedMentionsRequest = {
+  //
+  // Behaviors: REQUIRED
+  docId: string | undefined;
+};
+
+export type ListUnlinkedMentionsResponse = {
+  items: UnlinkedMention[] | undefined;
+};
+
 // PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
 export type PromoteBlocksRequest = {
   //
@@ -535,6 +555,9 @@ export interface KnowledgeService {
   // ListDanglingLinks aggregates dangling references of one collection by
   // raw_target with ref counts (SP1-E; "uncreated notes" view).
   ListDanglingLinks(request: ListDanglingLinksRequest): Promise<ListDanglingLinksResponse>;
+  // ListUnlinkedMentions returns documents that mention the target doc's name
+  // in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+  ListUnlinkedMentions(request: ListUnlinkedMentionsRequest): Promise<ListUnlinkedMentionsResponse>;
   // PromoteBlocks clones blocks from a personal vault into a team collection
   // (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
   // cascade candidates for references into private blocks, and immediate
@@ -951,6 +974,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListDanglingLinks",
       }) as Promise<ListDanglingLinksResponse>;
+    },
+    ListUnlinkedMentions(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.docId) {
+        throw new Error("missing required field request.doc_id");
+      }
+      const path = `v1/knowledge/documents/${request.docId}/unlinked-mentions`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListUnlinkedMentions",
+      }) as Promise<ListUnlinkedMentionsResponse>;
     },
     PromoteBlocks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/blocks/promote`; // eslint-disable-line quotes

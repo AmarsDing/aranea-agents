@@ -124,6 +124,11 @@ func completeOpenAICompatible(ctx context.Context, client *http.Client, cfg chat
 			{"role": "user", "content": prompt},
 		},
 	}
+	// DeepSeek 推理模型默认开启思考段（reasoning_content），相似度/炼化等短
+	// 结构化任务无需推理，显式关闭可将单次响应从 30s+ 降到秒级（FN-1）。
+	if strings.Contains(strings.ToLower(cfg.APIBaseURL), "api.deepseek.com") {
+		body["thinking"] = map[string]string{"type": "disabled"}
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return "", err

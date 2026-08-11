@@ -25,7 +25,9 @@
       <q-td :props="slotProps">
         <AppRegistryHoverTip :text="hookConditionHint(slotProps.row, t)" :empty-label="t('hooksPage.noDescription')">
           <div class="app-registry-chip-wrap hooks-data-table__rule-tags">
-            <span class="hook-tag hook-tag--point">{{ hookRuleOf(slotProps.row).callback_point }}</span>
+            <span class="hook-tag hook-tag--point">{{
+              callbackPointLabel(hookRuleOf(slotProps.row).callback_point, t)
+            }}</span>
             <span :class="actionTagClass(hookRuleOf(slotProps.row).action.type)">
               {{ actionTypeLabel(hookRuleOf(slotProps.row).action.type, t) }}
             </span>
@@ -56,7 +58,6 @@
       <q-td :props="slotProps" class="hooks-data-table__actions-cell">
         <div class="app-registry-cell-actions">
           <q-btn
-            v-if="variant === 'page'"
             flat
             dense
             round
@@ -79,7 +80,6 @@
             <q-tooltip>{{ t('hooksPage.tooltipEdit') }}</q-tooltip>
           </q-btn>
           <q-btn
-            v-if="variant === 'page'"
             flat
             dense
             round
@@ -102,9 +102,11 @@ import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import type { HookRow } from '../../features/hooks/types';
+import { callbackPointLabel } from '../../features/callback/constants';
 import { actionTagClass, actionTypeLabel } from './callbackEditorUi';
 import {
   createHooksAgentTableColumns,
+  createHooksReadonlyTableColumns,
   createHooksTableColumns,
   hookConditionHint,
   hookRuleOf,
@@ -120,11 +122,14 @@ const props = withDefaults(
     togglingId?: string;
     variant?: 'page' | 'agent';
     shell?: boolean;
+    /** 只读模式：仅名称 + 规则两列，无操作（用于全局规则分组展示）。 */
+    readonly?: boolean;
   }>(),
   {
     togglingId: '',
     variant: 'page',
     shell: false,
+    readonly: false,
   },
 );
 
@@ -134,9 +139,13 @@ defineEmits<{
   remove: [row: HookRow];
 }>();
 
-const tableColumns = computed(() =>
-  props.variant === 'agent' ? createHooksAgentTableColumns(t) : createHooksTableColumns(t),
-);
+const tableColumns = computed(() => {
+  if (props.readonly) return createHooksReadonlyTableColumns(t);
+  return props.variant === 'agent' ? createHooksAgentTableColumns(t) : createHooksTableColumns(t);
+});
 
-const columnPersistKey = computed(() => (props.variant === 'agent' ? 'hooks-agent-table' : 'hooks-table'));
+const columnPersistKey = computed(() => {
+  if (props.readonly) return 'hooks-readonly-table';
+  return props.variant === 'agent' ? 'hooks-agent-table' : 'hooks-table';
+});
 </script>

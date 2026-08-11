@@ -1,7 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
-import type { McpServerMetadata, McpServerRow } from './types';
+import type { McpServerConfig, McpServerMetadata, McpServerRow } from './types';
 import { parseJSON } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 import { useAuthStore } from '../../stores/auth';
@@ -19,6 +19,7 @@ export function useMcpServersPage() {
   const loading = storeLoading;
   const error = ref('');
   const testingId = ref('');
+  const togglingId = ref('');
   const editorOpen = ref(false);
   const editingRow = ref<McpServerRow | null>(null);
   const credDialogOpen = ref(false);
@@ -27,6 +28,12 @@ export function useMcpServersPage() {
   const credUserId = computed(() => {
     const id = user.value?.id;
     return id != null && id > 0 ? String(id) : '';
+  });
+
+  const credUserLabel = computed(() => {
+    const u = user.value;
+    if (!u) return '';
+    return u.name || u.email || credUserId.value;
   });
 
   const rows = computed(() => servers.value as McpServerRow[]);
@@ -103,10 +110,25 @@ export function useMcpServersPage() {
     }
   }
 
+  async function toggleEnabled(row: McpServerRow, enabled: boolean) {
+    togglingId.value = row.id;
+    try {
+      await mcpStore.editServer(row.id, { enabled });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新启用状态失败' });
+    } finally {
+      togglingId.value = '';
+    }
+  }
+
   function confirmDelete(row: McpServerRow) {
+    const config = parseJSON<McpServerConfig>(row.config_json, {});
+    const name = row.name || row.key;
+    const prefix = config.tool_prefix || row.key;
+    const credentialNote = config.require_user_credentials ? '；所有用户已配置的凭据将一并删除' : '';
     $q.dialog({
       title: '确认删除该 MCP 服务器？',
-      message: '删除后依赖该服务器的工具将不可用。',
+      message: `删除「${name}」后，依赖该服务器的工具（mcp_${prefix}__*）将不可用${credentialNote}。`,
       cancel: true,
       persistent: true,
     }).onOk(async () => {
@@ -155,11 +177,13 @@ export function useMcpServersPage() {
     loading,
     error,
     testingId,
+    togglingId,
     editorOpen,
     editingRow,
     credDialogOpen,
     credServer,
     credUserId,
+    credUserLabel,
     enabledCount,
     filteredRows,
     loadRows,
@@ -168,6 +192,7 @@ export function useMcpServersPage() {
     openCredentials,
     onSaved,
     testRow,
+    toggleEnabled,
     confirmDelete,
     healthTone,
     healthTooltip,

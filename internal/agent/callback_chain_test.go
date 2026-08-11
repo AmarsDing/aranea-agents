@@ -15,11 +15,11 @@ func TestBuildCallbackChainOptions_HasAgentAndModelHooks(t *testing.T) {
 		AgentKey: "test",
 		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: false},
 	}
-	opts, _ := buildCallbackChainOptions(context.Background(), ag, TRPCBuilderDeps{})
+	opts, _ := buildCallbackChainOptions(context.Background(), ag, TRPCBuilderDeps{}, nil)
 	if len(opts) == 0 {
 		t.Fatal("expected callback options")
 	}
-	chain := productCallbackChain(context.Background(), ag, TRPCBuilderDeps{})
+	chain := productCallbackChain(context.Background(), ag, TRPCBuilderDeps{}, nil)
 	if chain == nil {
 		t.Fatal("expected chain")
 	}
@@ -41,7 +41,7 @@ func TestBuildCallbackChainOptions_ToolHooksWhenEnabled(t *testing.T) {
 		AgentKey: "test",
 		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true},
 	}
-	chain := productCallbackChain(context.Background(), ag, TRPCBuilderDeps{})
+	chain := productCallbackChain(context.Background(), ag, TRPCBuilderDeps{}, nil)
 	if chain == nil || !chain.HasToolHooks() {
 		t.Fatal("expected tool hooks when tools enabled")
 	}

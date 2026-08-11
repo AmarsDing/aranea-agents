@@ -40,8 +40,7 @@
               no-caps
               unelevated
               toggle-color="primary"
-              color="grey-2"
-              text-color="grey-9"
+              class="app-btn-toggle"
               :options="transportOptions"
             />
           </div>
@@ -88,8 +87,8 @@
             type="number"
             min="0"
             max="10"
-            label="SSE 重连次数"
-            hint="0=关闭"
+            label="会话重连次数"
+            hint="SSE / Streamable HTTP 断线重连上限，0=关闭"
           />
           <q-toggle v-model="form.enabled" color="primary" label="启用" />
           <q-select

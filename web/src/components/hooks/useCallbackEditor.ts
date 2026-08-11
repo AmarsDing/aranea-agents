@@ -2,13 +2,20 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { cloneHookRuleConfig, defaultHookRuleConfig, type HookRuleConfig } from '../../features/hooks/types';
 import { isOnEventPoint, isToolCallbackPoint, parseModifyPatchText, stringifyModifyPatch } from './callbackEditorUi';
-import { useCallbackPointOptions } from '../../features/callback/constants';
+import { HOOK_EVENT_TYPE_VALUES, useCallbackPointOptions } from '../../features/callback/constants';
+
+type SelectOption = { label: string; value: string };
 
 type CallbackEditorProps = {
   modelValue: HookRuleConfig;
   sortOrder?: number;
   agentId?: string;
   agentKey?: string;
+  /** Agent 面板上下文：锁定 condition.agent_id 为当前 Agent，禁止清空/篡改。 */
+  lockAgentId?: boolean;
+  /** 工具目录选项；传入后 tool_name 渲染为下拉，未传入回退为手输文本。 */
+  toolOptions?: SelectOption[];
+  loadingToolOptions?: boolean;
 };
 
 /** Private IP / localhost patterns that must not be used as webhook targets. */
@@ -56,6 +63,22 @@ export function useCallbackEditor(
   const showLogFields = computed(() => localRule.value.action.type === 'log');
   const showModifyFields = computed(() => localRule.value.action.type === 'modify');
   const showMessageField = computed(() => localRule.value.action.type === 'block');
+
+  const useToolSelect = computed(() => props.toolOptions !== undefined);
+  const toolFilter = ref('');
+  const filteredToolOptions = computed(() => {
+    const all = props.toolOptions ?? [];
+    const needle = toolFilter.value.trim().toLowerCase();
+    if (!needle) return all;
+    return all.filter((o) => o.label.toLowerCase().includes(needle) || o.value.toLowerCase().includes(needle));
+  });
+  const eventTypeOptions = computed(() => HOOK_EVENT_TYPE_VALUES.map((v) => ({ label: v, value: v })));
+
+  function onToolFilter(val: string, update: (cb: () => void) => void) {
+    update(() => {
+      toolFilter.value = val;
+    });
+  }
 
   watch(
     () => props.modelValue,
@@ -160,9 +183,13 @@ export function useCallbackEditor(
     showMessageField,
     showSecret,
     webhookUrlError,
+    useToolSelect,
+    filteredToolOptions,
+    eventTypeOptions,
     emitChange,
     emitMeta,
     onModifyPatchInput,
     onWebhookUrlChange,
+    onToolFilter,
   };
 }

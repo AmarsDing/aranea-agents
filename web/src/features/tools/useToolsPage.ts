@@ -13,6 +13,7 @@ import { useToolToggle } from './useToolToggle';
 import { patchToolForm, toolToUpsertInput } from './toolFormPatch';
 import type { Tool } from './types';
 import { useToolsStore } from '../../stores/tools';
+import { parseKratosApiError } from '../../utils/kratosError';
 
 export function useToolsPage() {
   const $q = useQuasar();
@@ -106,7 +107,7 @@ export function useToolsPage() {
       $q.notify({ type: 'positive', message: '风险级别已更新' });
       await loadRows();
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新风险级别失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '更新风险级别失败' });
     }
   }
 

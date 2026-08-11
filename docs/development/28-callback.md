@@ -146,6 +146,8 @@
 - 条件支持：AgentID / agent_key / tool_name / 事件类型等
 - 动作类型支持：日志记录（log）/ 通知（notify）/ 拦截（block）/ 修改（modify）
 - 规则变更后热更新，下一 Agent 构造即生效
+- Agent 设置「钩子」面板可管理本 Agent 作用域规则（创建/编辑/启停/删除，`condition.agent_id` 锁定为当前 Agent，不可清空为全局规则）
+- Agent 面板同步展示对本 Agent 生效的全局规则（只读），并指引前往全局 Hook 页修改
 
 **验收标准**：规则保存后下一 Agent 构造生效；block/modify 在对应回调点生效；notify 异步投递可重试。数据模型与存储结构见设计文档 §四。
 

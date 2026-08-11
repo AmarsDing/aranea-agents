@@ -38,6 +38,7 @@ const OperationAgentServiceListAgentCreators = "/kratos.agent.v1.AgentService/Li
 const OperationAgentServiceListAgentTemplates = "/kratos.agent.v1.AgentService/ListAgentTemplates"
 const OperationAgentServiceListAgents = "/kratos.agent.v1.AgentService/ListAgents"
 const OperationAgentServiceRejectEvolutionSuggestion = "/kratos.agent.v1.AgentService/RejectEvolutionSuggestion"
+const OperationAgentServiceRollbackEvolutionSuggestion = "/kratos.agent.v1.AgentService/RollbackEvolutionSuggestion"
 const OperationAgentServiceToggleFavorite = "/kratos.agent.v1.AgentService/ToggleFavorite"
 const OperationAgentServiceUpdateAgent = "/kratos.agent.v1.AgentService/UpdateAgent"
 const OperationAgentServiceUpdateAgentPromptFile = "/kratos.agent.v1.AgentService/UpdateAgentPromptFile"
@@ -65,6 +66,7 @@ type AgentServiceHTTPServer interface {
 	ListAgentTemplates(context.Context, *emptypb.Empty) (*ListAgentTemplatesResponse, error)
 	ListAgents(context.Context, *ListAgentsRequest) (*ListAgentsResponse, error)
 	RejectEvolutionSuggestion(context.Context, *RejectEvolutionSuggestionRequest) (*EvolutionSuggestion, error)
+	RollbackEvolutionSuggestion(context.Context, *RollbackEvolutionSuggestionRequest) (*EvolutionSuggestion, error)
 	ToggleFavorite(context.Context, *ToggleFavoriteRequest) (*Agent, error)
 	UpdateAgent(context.Context, *UpdateAgentRequest) (*Agent, error)
 	UpdateAgentPromptFile(context.Context, *UpdateAgentPromptFileRequest) (*AgentPromptFile, error)
@@ -95,6 +97,7 @@ func RegisterAgentServiceHTTPServer(s *http.Server, srv AgentServiceHTTPServer) 
 	r.GET("/v1/agents/{agent_id}/evolution/suggestions", _AgentService_GetAgentEvolutionSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/apply", _AgentService_ApplyEvolutionSuggestion0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject", _AgentService_RejectEvolutionSuggestion0_HTTP_Handler(srv))
+	r.POST("/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rollback", _AgentService_RollbackEvolutionSuggestion0_HTTP_Handler(srv))
 }
 
 func _AgentService_ListAgents0_HTTP_Handler(srv AgentServiceHTTPServer) func(ctx http.Context) error {
@@ -599,6 +602,31 @@ func _AgentService_RejectEvolutionSuggestion0_HTTP_Handler(srv AgentServiceHTTPS
 	}
 }
 
+func _AgentService_RollbackEvolutionSuggestion0_HTTP_Handler(srv AgentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RollbackEvolutionSuggestionRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationAgentServiceRollbackEvolutionSuggestion)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RollbackEvolutionSuggestion(ctx, req.(*RollbackEvolutionSuggestionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EvolutionSuggestion)
+		return ctx.Result(200, reply)
+	}
+}
+
 type AgentServiceHTTPClient interface {
 	ApplyEvolutionSuggestion(ctx context.Context, req *ApplyEvolutionSuggestionRequest, opts ...http.CallOption) (rsp *EvolutionSuggestion, err error)
 	CheckAgentKey(ctx context.Context, req *CheckAgentKeyRequest, opts ...http.CallOption) (rsp *CheckAgentKeyResponse, err error)
@@ -621,6 +649,7 @@ type AgentServiceHTTPClient interface {
 	ListAgentTemplates(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListAgentTemplatesResponse, err error)
 	ListAgents(ctx context.Context, req *ListAgentsRequest, opts ...http.CallOption) (rsp *ListAgentsResponse, err error)
 	RejectEvolutionSuggestion(ctx context.Context, req *RejectEvolutionSuggestionRequest, opts ...http.CallOption) (rsp *EvolutionSuggestion, err error)
+	RollbackEvolutionSuggestion(ctx context.Context, req *RollbackEvolutionSuggestionRequest, opts ...http.CallOption) (rsp *EvolutionSuggestion, err error)
 	ToggleFavorite(ctx context.Context, req *ToggleFavoriteRequest, opts ...http.CallOption) (rsp *Agent, err error)
 	UpdateAgent(ctx context.Context, req *UpdateAgentRequest, opts ...http.CallOption) (rsp *Agent, err error)
 	UpdateAgentPromptFile(ctx context.Context, req *UpdateAgentPromptFileRequest, opts ...http.CallOption) (rsp *AgentPromptFile, err error)
@@ -864,6 +893,19 @@ func (c *AgentServiceHTTPClientImpl) RejectEvolutionSuggestion(ctx context.Conte
 	pattern := "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationAgentServiceRejectEvolutionSuggestion))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *AgentServiceHTTPClientImpl) RollbackEvolutionSuggestion(ctx context.Context, in *RollbackEvolutionSuggestionRequest, opts ...http.CallOption) (*EvolutionSuggestion, error) {
+	var out EvolutionSuggestion
+	pattern := "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rollback"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationAgentServiceRollbackEvolutionSuggestion))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

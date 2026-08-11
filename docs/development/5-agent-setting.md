@@ -49,15 +49,19 @@
 
 ## 4. 主导航 Tab
 
+> 2026-08-11 同步：Tab 结构以当前实现为准。「权限」「用户实例」为独立 PRD，不在本页主导航。
+
 | Tab | 内容概要 |
 |-----|-----------|
-| **Agent** | 系统提示模式、Agent 个性、模型与预算、能力（子 Agent / 工具策略）、记忆、TTS、心跳/技能/编排等（见各节；可 `QScrollArea` 长页） |
+| **AGENT 属性** | 系统提示模式、Agent 个性、模型与预算、规划模式、Ralph Loop、协作能力、渠道引用（见 §5～§9、§11） |
+| **记忆** | 记忆总开关、心跳、可选文件、L0–L4 分层配置、兼容参数（见 §10） |
 | **文件** | 工作区文件浏览（`workspace`、`restrict_to_workspace`）；单独 PRD |
-| **权限** | 谁能使用该 Agent；单独 PRD |
-| **进化** | §12 |
-| **钩子** | 钩子列表与编辑（与 Agent 区内「钩子」摘要卡片可二选一或互链） |
-| **用户实例** | 多租户/用户级覆盖；单独 PRD |
-| **A2A** | LLM Agent：Endpoint（暴露为 A2A 服务 + AgentCard）；A2A Proxy Agent：只读远程连接与 Card（见 §13） |
+| **TOKEN 配额** | Token 用量与配额配置 |
+| **SKILL / 工具** | 技能列表与工具策略（工具总开关、允许/拒绝、工具覆盖；见 §9.2） |
+| **进化** | §12（含自动评估区块） |
+| **学习闭环** | Learning Loop 配置 |
+| **钩子** | 钩子列表与编辑（见 `16-hook.md`） |
+| **A2A 协议** | LLM Agent：Endpoint（暴露为 A2A 服务 + AgentCard）；A2A Proxy Agent：只读远程连接与 Card（见 §13） |
 
 实现：`QTabs` + `QTabPanels` 或 Vue Router 子路由 `children`。
 
@@ -115,11 +119,7 @@
 
 ## 8. Tab「Agent」— 语音合成（TTS）
 
-| 控件 | 说明 |
-|------|------|
-| 空态 | 静音图标 +「未配置 TTS」+ 说明文案 |
-| **配置 TTS** | `QBtn` → 打开对话框：选择 TTS Provider、音色、密钥等 |
-| **存储** | TTS 配置或沙箱配置扩展，结构由后端约定 |
+> 2026-08-11 收敛：**Agent 级 TTS 配置不在本页实现**。后端 `AgentRuntimeSetting` 无 TTS 字段；TTS（Provider、音色、密钥）在「系统设置 → 语音服务」全局配置（`SpeechServiceFields.vue`）。原「配置 TTS」对话框需求作废；如未来需要 Agent 级音色/语速覆盖，先补后端 Schema 再恢复本节。
 
 ---
 
@@ -149,6 +149,8 @@
 **继承逻辑**：未填写「模型覆盖」时，运行时子 Agent 使用父 Agent 在 §7 中配置的 Provider/模型；填写后仅子 Agent 调用链使用该覆盖值。
 
 ### 9.2 工具策略
+
+> 2026-08-11 同步：本节配置在实现中位于「SKILL / 工具」Tab（含工具总开关、有效工具矩阵与逐 Agent 工具覆盖），Agent Tab 内有互链引导。
 
 **子区块标题**：工具策略 — 控制此 Agent 可以使用哪些工具。
 
@@ -232,13 +234,7 @@
 
 ### 10.3 Dreaming（记忆整合）
 
-| 控件 | 存储 |
-|------|------|
-| 说明文案 | 后台将会话摘要提升为长期记忆 |
-| 「已启用」`QToggle` | Dreaming 启用标记 |
-| 阈值 | Dreaming 阈值（如 5） |
-| 防抖间隔 (ms) | Dreaming 防抖（如 600000） |
-| 「详细日志」`QToggle` | Dreaming 详细日志标记 |
+> 2026-08-11 收敛：**本区块未在设置页实现**。后端 `AgentRuntimeSetting` 仅持久化 `dream_snapshot_json`（dream_cycle 执行快照，供回滚），无用户可配的 Dreaming 开关/阈值/防抖字段。原开关、阈值、防抖间隔、详细日志需求挂起；如需恢复，先补后端 Schema 与运行时消费逻辑。
 
 ### 10.4 L0–L4 分层配置
 
@@ -260,13 +256,13 @@
 
 ### 11.1 心跳
 
+> 2026-08-11 同步：HEARTBEAT.MD 已在 PGO-1 弃用，心跳检查清单迁至 AGENTS_TASK.md（界面有明示文案），设置页不再提供 HEARTBEAT.MD 正文编辑区；心跳启用为开关样式，无「空心/红色实心」图标状态。
+
 | 项目 | 说明 |
 |------|------|
-| **卡片状态图标** | **未设置心跳**：**空心**图标；**已设置并保存**（含间隔、正文等持久化成功）：**红色实心**图标 |
-| **间隔** | 图标时间 `QInput`框 标注单位:min，默认值：30 |
-| **编辑区标题** | 示例：**检查清单 (HEARTBEAT.MD)**，旁绿色文档图标 |
-| **编辑区说明** | 每次心跳运行时注入的指令，支持 Markdown。 |
-| **正文编辑** | `QInput` textarea 或 Markdown 编辑器；典型内容如一级标题「心跳检查清单」、待办 bullet（检查待处理任务、报告状态等） |
+| **启用开关** | `QToggle`；控制心跳调度是否生效 |
+| **间隔** | `QInput` 标注单位 min，默认值 30 |
+| **检查清单** | 不在本页编辑；界面文案引导至 AGENTS_TASK.md |
 
 **心跳相关字段（产品含义）**：
 
@@ -274,9 +270,9 @@
 |------------------|------|------|
 | 是否开启 | boolean | 心跳启用标记 |
 | 时间间隔（分钟） | integer，≥1 | 心跳间隔，默认 30 |
-| HEARTBEAT.MD | text（Markdown） | 心跳检查清单正文 |
+| ~~HEARTBEAT.MD~~ | — | 已弃用（PGO-1），检查清单迁至 AGENTS_TASK.md |
 
-**调度执行**：间隔与是否开启由运行时读库触发；注入内容每次心跳从 HEARTBEAT.MD 读取。
+**调度执行**：间隔与是否开启由运行时读库触发；注入内容每次心跳从 AGENTS_TASK.md 读取。
 
 ---
 
@@ -309,15 +305,17 @@
 
 ### 13.2 LLM Agent — Endpoint 配置
 
+> 2026-08-11 同步：与实现对齐。Capabilities 简化为名称列表（每行一个能力名，无 description/schema 编辑）；流式能力由服务端恒定声明（只读展示，非开关）；Discover 预览引导至 `/a2a` 注册表页。
+
 | 控件 | 说明 |
 |------|------|
 | **启用 A2A** | `QToggle`；默认关；对应 A2A AgentCard 启用标记 |
-| **Capabilities** | 能力列表 CRUD（name、description、input/output schema） |
-| **流式能力** | 是否声明 `Streaming`（写入 AgentCard） |
-| **暴露地址** | 只读展示平台分配的 A2A URL / AgentCard 路径 |
-| **Discover 预览** | 展示其他 Agent 调用此 Endpoint 时看到的 Card |
+| **Capabilities** | 能力名称列表（textarea，每行一个名称）；保存时生成 name/description 默认结构 |
+| **流式能力** | 只读展示「流式响应：支持（默认开启）」——服务端始终声明 `Streaming`，不可配置 |
+| **暴露地址** | 只读展示平台分配的 A2A URL（启用后可见；未配置 Public Base URL 时展示配置引导）；支持一键复制 |
+| **Discover 预览** | 跳转链接至 `/a2a` 注册表页查看（见 §13.4 分工） |
 
-保存：调用现有 UpdateAgentCard API；启用后列表卡片可选展示 `A2A ↙` 徽章。
+保存：调用现有 UpdateAgentCard API（独立「保存 AgentCard」按钮，不随设置页「保存设置」持久化）；启用后列表卡片可选展示 `A2A ↙` 徽章。
 
 ### 13.3 A2A Proxy Agent — 只读视图
 
@@ -336,6 +334,7 @@
 ### 13.5 验收要点（A2A Tab）
 
 - [ ] LLM Agent 可启用/禁用 A2A 并编辑 capabilities
+- [ ] 启用后展示只读暴露地址（含复制）与流式能力说明
 - [ ] 启用后出现在 `/a2a` Discover 列表
 - [ ] Proxy Agent 可编辑远程 URL 并重新发现 Card
 - [ ] Tab 对 `a2a_proxy` 隐藏 LLM 专属项（记忆/Skill 等仍在其它 Tab）

@@ -42,6 +42,7 @@ const (
 	AgentService_GetAgentEvolutionSuggestions_FullMethodName = "/kratos.agent.v1.AgentService/GetAgentEvolutionSuggestions"
 	AgentService_ApplyEvolutionSuggestion_FullMethodName     = "/kratos.agent.v1.AgentService/ApplyEvolutionSuggestion"
 	AgentService_RejectEvolutionSuggestion_FullMethodName    = "/kratos.agent.v1.AgentService/RejectEvolutionSuggestion"
+	AgentService_RollbackEvolutionSuggestion_FullMethodName  = "/kratos.agent.v1.AgentService/RollbackEvolutionSuggestion"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -73,6 +74,7 @@ type AgentServiceClient interface {
 	GetAgentEvolutionSuggestions(ctx context.Context, in *GetAgentEvolutionSuggestionsRequest, opts ...grpc.CallOption) (*ListEvolutionSuggestionsResponse, error)
 	ApplyEvolutionSuggestion(ctx context.Context, in *ApplyEvolutionSuggestionRequest, opts ...grpc.CallOption) (*EvolutionSuggestion, error)
 	RejectEvolutionSuggestion(ctx context.Context, in *RejectEvolutionSuggestionRequest, opts ...grpc.CallOption) (*EvolutionSuggestion, error)
+	RollbackEvolutionSuggestion(ctx context.Context, in *RollbackEvolutionSuggestionRequest, opts ...grpc.CallOption) (*EvolutionSuggestion, error)
 }
 
 type agentServiceClient struct {
@@ -303,6 +305,16 @@ func (c *agentServiceClient) RejectEvolutionSuggestion(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *agentServiceClient) RollbackEvolutionSuggestion(ctx context.Context, in *RollbackEvolutionSuggestionRequest, opts ...grpc.CallOption) (*EvolutionSuggestion, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EvolutionSuggestion)
+	err := c.cc.Invoke(ctx, AgentService_RollbackEvolutionSuggestion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -332,6 +344,7 @@ type AgentServiceServer interface {
 	GetAgentEvolutionSuggestions(context.Context, *GetAgentEvolutionSuggestionsRequest) (*ListEvolutionSuggestionsResponse, error)
 	ApplyEvolutionSuggestion(context.Context, *ApplyEvolutionSuggestionRequest) (*EvolutionSuggestion, error)
 	RejectEvolutionSuggestion(context.Context, *RejectEvolutionSuggestionRequest) (*EvolutionSuggestion, error)
+	RollbackEvolutionSuggestion(context.Context, *RollbackEvolutionSuggestionRequest) (*EvolutionSuggestion, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -407,6 +420,9 @@ func (UnimplementedAgentServiceServer) ApplyEvolutionSuggestion(context.Context,
 }
 func (UnimplementedAgentServiceServer) RejectEvolutionSuggestion(context.Context, *RejectEvolutionSuggestionRequest) (*EvolutionSuggestion, error) {
 	return nil, status.Error(codes.Unimplemented, "method RejectEvolutionSuggestion not implemented")
+}
+func (UnimplementedAgentServiceServer) RollbackEvolutionSuggestion(context.Context, *RollbackEvolutionSuggestionRequest) (*EvolutionSuggestion, error) {
+	return nil, status.Error(codes.Unimplemented, "method RollbackEvolutionSuggestion not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -825,6 +841,24 @@ func _AgentService_RejectEvolutionSuggestion_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_RollbackEvolutionSuggestion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RollbackEvolutionSuggestionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).RollbackEvolutionSuggestion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_RollbackEvolutionSuggestion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).RollbackEvolutionSuggestion(ctx, req.(*RollbackEvolutionSuggestionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -919,6 +953,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RejectEvolutionSuggestion",
 			Handler:    _AgentService_RejectEvolutionSuggestion_Handler,
+		},
+		{
+			MethodName: "RollbackEvolutionSuggestion",
+			Handler:    _AgentService_RollbackEvolutionSuggestion_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1,193 +1,112 @@
 <template>
-  <q-page class="app-standard-page app-registry-page knowledge-page">
-    <AppPageHero
-      kicker="RAG / Vault"
-      title="知识库"
-      subtitle="以本地文件夹为真相源的 Vault 知识库：文件夹树导航、摘要卡、双轨关联与语义检索。"
-    >
-      <template #actions>
-        <q-btn
-          outline
-          rounded
-          no-caps
-          color="primary"
-          icon="refresh"
-          label="刷新"
-          :loading="loading"
-          @click="loadCollections"
-        />
-      </template>
-    </AppPageHero>
-
-    <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
+  <q-page class="knowledge-page-wb column no-wrap">
+    <q-banner v-if="unavailable" rounded class="app-banner-warning q-ma-sm flex-none">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
+    <q-banner v-if="error" rounded class="bg-negative text-white q-ma-sm flex-none">
       {{ error }}
       <template #action>
         <q-btn flat color="white" label="重试" @click="loadCollections" />
       </template>
     </q-banner>
 
-    <div class="app-tab-shell q-mb-md">
-      <q-tabs v-model="pageTab" dense align="left" class="text-primary">
-        <q-tab name="explorer" :label="$t('knowledgePage.tabExplorer')" />
-        <q-tab name="graph" :label="$t('knowledgePage.tabGraph')" />
-        <q-tab name="settings" :label="$t('knowledgePage.tabSettings')" />
-      </q-tabs>
-    </div>
-
-    <q-tab-panels v-model="pageTab" animated class="bg-transparent">
-      <!-- P3 资源管理器：统一搜索框双区 + 三栏（Vault 树 / 文档列表 / 详情） -->
-      <q-tab-panel name="explorer" class="q-pa-none">
-        <knowledge-search-dual
-          v-model:query="explorerQuery"
-          class="q-mb-md"
-          :intent="explorerIntent"
-          :instant-results="explorerInstantResults"
-          :semantic-results="explorerSemanticResults"
-          :semantic-loading="explorerSemanticLoading"
-          :semantic-ran="explorerSemanticRan"
-          :semantic-error="explorerSemanticError"
-          :show-instant="explorerShowInstant"
-          :show-semantic="explorerShowSemantic"
-          :doc-source-map="explorerDocSourceMap"
-          :scope-prefix="explorerScopePrefix"
-          :scope-nodes="explorerScopeNodes"
-          @search="runExplorerSemantic"
-          @select-instant="selectExplorerInstant"
-          @select-semantic="selectExplorerSemantic"
-          @update:scope-prefix="setExplorerScope"
-          @scope-lazy-load="onExplorerLazyLoad"
+    <!-- SP2-8：深空液态玻璃工作台（薄壳页面唯一的常驻主体） -->
+    <KnowledgeWorkbench
+      class="knowledge-page-wb__main"
+      :workbench="workbench"
+      :collections="collections"
+      :documents="documents"
+      :current-vault-id="selectedId"
+      :nodes="explorerRootNodes"
+      :selected-key="explorerSelectedKey"
+      :expanded-keys="explorerExpandedKeys"
+      :tree-loading="explorerTreeLoading"
+      :tree-error="explorerTreeError"
+      :drag-file="explorerDragFile"
+      :files="explorerFiles"
+      :current-prefix="explorerPrefix"
+      :panels-refresh-nonce="panelsRefreshNonce"
+      @switch-vault="onSwitchVault"
+      @select-node="selectExplorerTreeNode"
+      @update:expanded-keys="(v: string[]) => (explorerExpandedKeys = v)"
+      @lazy-load="onExplorerLazyLoad"
+      @node-action="onTreeNodeAction"
+      @create-vault="openCreateCollection"
+      @drop-node="onExplorerDropNode"
+      @retry="refreshExplorerTree"
+      @refresh-tree="refreshExplorerTree"
+      @open-graph="onOpenGraph"
+      @open-settings="settingsOpen = true"
+      @promote-active="openPromoteDialog"
+      @ingest-text="ingestOpen = true"
+      @file-action="onFileAction"
+      @file-drag-start="explorerDragStart"
+      @file-drag-end="explorerDragEnd"
+      @drop-current-dir="onDropCurrentDir"
+    >
+      <!-- 上传队列收纳进左栏底部（SP2-8 插槽） -->
+      <template #left-footer>
+        <knowledge-upload-queue
+          v-if="uploadTasks.length"
+          :tasks="uploadTasks"
+          @clear-finished="clearFinishedUploadTasks"
+          @remove-task="removeUploadTask"
         />
+      </template>
+    </KnowledgeWorkbench>
 
-        <div class="knowledge-explorer-grid">
-          <knowledge-vault-tree
-            v-model:expanded-keys="explorerExpandedKeys"
-            :nodes="explorerRootNodes"
-            :selected-key="explorerSelectedKey"
-            :loading="explorerTreeLoading"
-            :error="explorerTreeError"
-            :drag-file="explorerDragFile"
-            @select-node="selectExplorerTreeNode"
-            @lazy-load="onExplorerLazyLoad"
-            @node-action="onTreeNodeAction"
-            @create-vault="openCreateCollection"
-            @drop-node="onExplorerDropNode"
-            @retry="refreshExplorerTree"
-          />
+    <!-- G5 图谱全屏覆盖（SP2-8）：顶栏 / ⌘K / 局部图谱「展开全屏」进入，ESC 或关闭按钮退出 -->
+    <knowledge-graph-3-d
+      v-if="graphFullscreen"
+      v-model:fullscreen="graphFullscreen"
+      :collections="collections"
+      :collection-id="graphCollectionId"
+      :link-types="graphLinkTypes"
+      :path-prefix="graphPathPrefix"
+      :nodes="graphRenderNodes"
+      :edges="graphRenderEdges"
+      :total-nodes="graphAllNodes.length"
+      :total-edges="graphAllEdges.length"
+      :hidden-isolated="graphHiddenIsolated"
+      :loading="graphLoading"
+      :error="graphError"
+      :generation="graphGeneration"
+      :show-isolated="graphShowIsolated"
+      :node-query="graphNodeQuery"
+      :node-list="graphNodeList"
+      :selected-node-id="graphSelectedNodeId"
+      :selected-node="graphSelectedNode"
+      :focus-signal="graphFocusSignal"
+      :scope-nodes="graphScopeNodes"
+      :auto-rotate="graphAutoRotate"
+      :show-labels="graphShowLabels"
+      :neighborhood-hops="graphNeighborhoodHops"
+      :neighborhood-root-name="graphNeighborhoodRootName"
+      :merge-suggestions="graphMergeSuggestions"
+      :merging="graphMerging"
+      :last-merge-result="graphLastMergeResult"
+      @select-collection="graph.selectCollection"
+      @toggle-link-type="graph.toggleLinkType"
+      @set-path-prefix="graph.setPathPrefix"
+      @update:show-isolated="(v: boolean) => (graphShowIsolated = v)"
+      @update:node-query="(v: string) => (graphNodeQuery = v)"
+      @select-node="graph.selectNode"
+      @focus-node="graph.focusNode"
+      @open-in-explorer="onGraphOpenInWorkbench"
+      @scope-lazy-load="graph.onScopeLazyLoad"
+      @update:auto-rotate="(v: boolean) => (graphAutoRotate = v)"
+      @update:show-labels="(v: boolean) => (graphShowLabels = v)"
+      @focus-neighborhood="onGraphFocusNeighborhood"
+      @reset-global-view="graph.resetGlobalView"
+      @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
+    />
 
-          <div class="knowledge-explorer-grid__mid">
-            <knowledge-upload-queue
-              v-if="uploadTasks.length"
-              :tasks="uploadTasks"
-              @clear-finished="clearFinishedUploadTasks"
-              @remove-task="removeUploadTask"
-            />
-            <knowledge-doc-list
-              :prefix="explorerPrefix"
-              :entries="explorerEntries"
-              :loading="explorerTreeLoading"
-              :selected-doc-id="explorerDocId"
-              :drag-file="explorerDragFile"
-              :vault-id="selectedId"
-              @select="onExplorerSelectDoc"
-              @navigate="selectExplorerPrefix"
-              @refresh="refreshExplorerTree"
-              @ingest="ingestOpen = true"
-              @drag-start="explorerDragStart"
-              @drag-end="explorerDragEnd"
-              @drop-prefix="onExplorerDropPrefix"
-            />
-          </div>
-
-          <knowledge-doc-detail
-            v-model:edit-draft="explorerEditDraft"
-            :node="explorerSelectedNode"
-            :preview-content="explorerPreviewContent"
-            :preview-organized="explorerPreviewOrganized"
-            :preview-loading="explorerPreviewLoading"
-            :preview-error="explorerPreviewError"
-            :links-error="explorerLinksError"
-            :links="explorerLinks"
-            :links-loading="explorerLinksLoading"
-            :link-counts="explorerLinkCounts"
-            :backlinks="explorerBacklinks"
-            :dangling-targets="explorerDanglingTargets"
-            :media-kind="explorerMediaKind"
-            :editable="explorerEditable"
-            :editing="explorerEditing"
-            :edit-saving="explorerEditSaving"
-            :asset-url="explorerAssetUrl"
-            :asset-loading="explorerAssetLoading"
-            :promotable="promotable"
-            @promote="openPromoteDialog"
-            @start-edit="startExplorerEdit"
-            @cancel-edit="cancelExplorerEdit"
-            @save-edit="onExplorerSaveEdit"
-            @download-asset="downloadExplorerAsset"
-            @delete="onExplorerDelete"
-            @move="onExplorerMove"
-            @navigate="onExplorerNavigate"
-            @retry="explorer.reloadDetail()"
-          />
-        </div>
-      </q-tab-panel>
-
-      <!-- G5 深空知识图谱（V12.8）：左自研 3D 画布 + 右 HUD 操作台 -->
-      <q-tab-panel name="graph" class="q-pa-none">
-        <knowledge-graph-3-d
-          :collections="collections"
-          :collection-id="graphCollectionId"
-          :link-types="graphLinkTypes"
-          :path-prefix="graphPathPrefix"
-          :nodes="graphRenderNodes"
-          :edges="graphRenderEdges"
-          :total-nodes="graphAllNodes.length"
-          :total-edges="graphAllEdges.length"
-          :hidden-isolated="graphHiddenIsolated"
-          :loading="graphLoading"
-          :error="graphError"
-          :generation="graphGeneration"
-          :show-isolated="graphShowIsolated"
-          :node-query="graphNodeQuery"
-          :node-list="graphNodeList"
-          :selected-node-id="graphSelectedNodeId"
-          :selected-node="graphSelectedNode"
-          :focus-signal="graphFocusSignal"
-          :scope-nodes="graphScopeNodes"
-          :auto-rotate="graphAutoRotate"
-          :show-labels="graphShowLabels"
-          :neighborhood-hops="graphNeighborhoodHops"
-          :neighborhood-root-name="graphNeighborhoodRootName"
-          :merge-suggestions="graphMergeSuggestions"
-          :merging="graphMerging"
-          :last-merge-result="graphLastMergeResult"
-          @select-collection="graph.selectCollection"
-          @toggle-link-type="graph.toggleLinkType"
-          @set-path-prefix="graph.setPathPrefix"
-          @update:show-isolated="(v: boolean) => (graphShowIsolated = v)"
-          @update:node-query="(v: string) => (graphNodeQuery = v)"
-          @select-node="graph.selectNode"
-          @focus-node="graph.focusNode"
-          @open-in-explorer="onGraphOpenInExplorer"
-          @scope-lazy-load="graph.onScopeLazyLoad"
-          @update:auto-rotate="(v: boolean) => (graphAutoRotate = v)"
-          @update:show-labels="(v: boolean) => (graphShowLabels = v)"
-          @focus-neighborhood="onGraphFocusNeighborhood"
-          @reset-global-view="graph.resetGlobalView"
-          @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
-        />
-      </q-tab-panel>
-
-      <q-tab-panel name="settings" class="q-pa-none">
-        <q-card flat class="app-pane-card">
-          <q-card-section>
-            <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
-          </q-card-section>
-        </q-card>
-      </q-tab-panel>
-    </q-tab-panels>
+    <!-- 设置浮层（SP2-8）：Embedder 配置；kb-portal 在 body 重挂深空令牌 -->
+    <q-dialog v-model="settingsOpen" content-class="kb-portal">
+      <GlassPanel strong icon="tune" :title="t('knowledgePage.tabSettings')" class="knowledge-page-wb__settings">
+        <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
+      </GlassPanel>
+    </q-dialog>
 
     <knowledge-create-dialog
       v-model:open="createOpen"
@@ -241,15 +160,14 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from '../components/layout/AppPageHero.vue';
+// SP2-8：薄壳页面——持有 composable（页面级状态）+ 装配 KnowledgeWorkbench / 全屏图谱 / 设置浮层 / 既有对话框。
+// 旧 Tab 管理后台（浏览/图谱/设置三页签）已退役，职责分别由工作台、全屏覆盖图谱、设置浮层吸收。
 import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
-import KnowledgeVaultTree from '../components/knowledge/KnowledgeVaultTree.vue';
-import KnowledgeDocList from '../components/knowledge/KnowledgeDocList.vue';
-import KnowledgeDocDetail from '../components/knowledge/KnowledgeDocDetail.vue';
-import KnowledgeSearchDual from '../components/knowledge/KnowledgeSearchDual.vue';
+import KnowledgeWorkbench from '../components/knowledge/workbench/KnowledgeWorkbench.vue';
+import GlassPanel from '../components/knowledge/effects/GlassPanel.vue';
 import KnowledgeGraph3D from '../components/knowledge/KnowledgeGraph3D.vue';
 import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
 import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
@@ -260,6 +178,7 @@ import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDial
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
 import { useKnowledgeGraphDeltaWs } from '../features/knowledge/useKnowledgeGraphDeltaWs';
+import { createKnowledgeWorkbench } from '../features/knowledge/useKnowledgeWorkbench';
 import type { MoveDropResult, VaultQTreeNode } from '../features/knowledge/useVaultExplorer';
 import type { KnowledgeDocument, VaultTreeNode } from '../features/knowledge/types';
 
@@ -267,10 +186,9 @@ const {
   collections,
   selectedId,
   documents,
-  loading,
   error,
   unavailable,
-  pageTab,
+  removedDocId,
   createOpen,
   createLoading,
   ingestOpen,
@@ -286,6 +204,7 @@ const {
   submitCreateCollection,
   submitIngest,
   confirmDeleteDocument,
+  downloadDocument,
   uploadTasks,
   removeUploadTask,
   clearFinishedUploadTasks,
@@ -306,113 +225,61 @@ const {
   promoteResult,
   promoteDocName,
   promoteOptions,
-  promotable,
   openPromoteDialog,
   submitPromote,
   applyGraphDelta,
   explorer,
 } = useKnowledgePage();
 
-// P3 资源管理器状态（composable 返回 refs，此处解构供模板自动解包）。
+// 工作台消费的 explorer 子集（树状态 + 拖拽；旧详情区/双区搜索已随 SP2-8 退役）。
 const {
   currentPrefix: explorerPrefix,
   rootNodes: explorerRootNodes,
   expandedKeys: explorerExpandedKeys,
   selectedKey: explorerSelectedKey,
-  currentChildren: explorerEntries,
+  currentFiles: explorerFiles,
   treeLoading: explorerTreeLoading,
   treeError: explorerTreeError,
   onLazyLoad: onExplorerLazyLoad,
-  selectPrefix: selectExplorerPrefix,
   selectTreeNode: selectExplorerTreeNode,
   refreshTree: refreshExplorerTree,
-  selectedDocId: explorerDocId,
-  selectedNode: explorerSelectedNode,
-  previewContent: explorerPreviewContent,
-  previewOrganized: explorerPreviewOrganized,
-  previewLoading: explorerPreviewLoading,
-  previewError: explorerPreviewError,
-  linksError: explorerLinksError,
-  links: explorerLinks,
-  linksLoading: explorerLinksLoading,
-  linkCounts: explorerLinkCounts,
-  backlinks: explorerBacklinks,
-  danglingTargets: explorerDanglingTargets,
-  mediaKind: explorerMediaKind,
-  editable: explorerEditable,
-  editing: explorerEditing,
-  editDraft: explorerEditDraft,
-  editSaving: explorerEditSaving,
-  assetUrl: explorerAssetUrl,
-  assetLoading: explorerAssetLoading,
-  selectDocument,
-  navigateToDocument,
-  startEdit: startExplorerEdit,
-  cancelEdit: cancelExplorerEdit,
-  saveEdit: saveExplorerEdit,
-  downloadAsset: downloadExplorerAsset,
-  searchQuery: explorerQuery,
-  searchIntent: explorerIntent,
-  instantResults: explorerInstantResults,
-  showInstantZone: explorerShowInstant,
-  showSemanticZone: explorerShowSemantic,
-  semanticResults: explorerSemanticResults,
-  semanticLoading: explorerSemanticLoading,
-  semanticRan: explorerSemanticRan,
-  semanticError: explorerSemanticError,
-  docSourceMap: explorerDocSourceMap,
-  runSemanticSearch: runExplorerSemantic,
-  selectInstant: selectExplorerInstant,
-  selectSemanticChunk: selectExplorerSemantic,
-  // G3-F1 拖拽移动
   dragFile: explorerDragFile,
   pendingMove: explorerPendingMove,
-  // G3-F2 搜索范围选择器
-  searchScopePrefix: explorerScopePrefix,
-  scopeRootNodes: explorerScopeNodes,
 } = explorer;
 
-function onExplorerSelectDoc(node: VaultTreeNode) {
-  selectDocument(node.doc_id);
-}
-
-// G2-B5 编辑保存：'conflict' = CAS 检测到并发修改（后端已留双份），提示用户注意。
 const $q = useQuasar();
 const { t } = useI18n();
 
-async function onExplorerSaveEdit() {
-  const result = await saveExplorerEdit();
-  if (result === 'saved') {
-    $q.notify({ type: 'positive', message: t('knowledgePage.detailSaveSuccess') });
-  } else if (result === 'conflict') {
-    $q.notify({ type: 'warning', message: t('knowledgePage.detailConflictSaved'), timeout: 6000 });
-  }
+// ---------- SP2-8：工作台状态机（tabs/脏标记/CAS 保存） ----------
+
+const workbench = createKnowledgeWorkbench();
+
+// FR-SP2-2：文档删除广播 → 关闭对应 tab（无确认，数据已删）。
+watch(removedDocId, (id) => {
+  if (id) workbench.onDocRemoved(id);
+});
+
+function onSwitchVault(id: string) {
+  if (id && id !== selectedId.value) selectedId.value = id;
 }
 
-/** 详情区操作需要完整 KnowledgeDocument（删除确认/移动对话框复用旧逻辑）；列表未覆盖时按节点合成。 */
-function resolveExplorerDoc(): KnowledgeDocument | null {
-  const node = explorerSelectedNode.value;
-  if (!node) return null;
+/** 文件行菜单/详情操作需要完整 KnowledgeDocument；列表未覆盖时按节点合成。 */
+function resolveWorkbenchDoc(node: VaultTreeNode): KnowledgeDocument {
   const found = documents.value.find((d) => d.id === node.doc_id);
   if (found) return found;
-  return { id: node.doc_id, source: node.name, collection_id: selectedId.value } as KnowledgeDocument;
+  return { id: node.doc_id, source: node.name, rel_path: node.path, collection_id: selectedId.value } as KnowledgeDocument;
 }
 
-function onExplorerDelete() {
-  const doc = resolveExplorerDoc();
-  if (doc) confirmDeleteDocument(doc);
+/** 侧栏文件行操作（移动跨库 / 下载原文 / 删除），复用既有对话框与逻辑。 */
+function onFileAction(action: string, node: VaultTreeNode) {
+  const doc = resolveWorkbenchDoc(node);
+  if (action === 'move') openMoveDialog(doc);
+  else if (action === 'download') void downloadDocument(doc);
+  else if (action === 'delete') confirmDeleteDocument(doc);
 }
 
-function onExplorerMove() {
-  const doc = resolveExplorerDoc();
-  if (doc) openMoveDialog(doc);
-}
+// ---------- G5 深空知识图谱（全屏覆盖模式） ----------
 
-function onExplorerNavigate(payload: { docId: string; relPath: string }) {
-  void navigateToDocument(payload.docId, payload.relPath);
-}
-
-// ---------- G5 深空知识图谱（V12.8） ----------
 const graph = useKnowledgeGraph({ collections, friendlyError });
 
 const {
@@ -463,25 +330,66 @@ function onGraphFocusNeighborhood(hops: number) {
   if (root) graph.focusNeighborhood(root, hops);
 }
 
-/** 「在浏览中打开」：切浏览 tab 并定位选中文档（跨库时先切库，explorer 内部 watch flush:'sync' 立即复位 prefix）。 */
-function onGraphOpenInExplorer(payload: { docId: string; relPath: string }) {
+// ---------- SP2-8：图谱全屏覆盖 ----------
+
+const graphFullscreen = ref(false);
+/** 「展开全屏并定位」待聚焦节点：切库后 loadGraph 异步，待数据就绪再聚焦。 */
+const pendingGraphFocusId = ref('');
+
+/** 打开图谱全屏：集合对齐当前 vault；带 focusDocId 时数据就绪后聚焦该节点。 */
+function onOpenGraph(focusDocId?: string) {
+  if (selectedId.value && graphCollectionId.value !== selectedId.value) {
+    graph.selectCollection(selectedId.value);
+  }
+  if (focusDocId) pendingGraphFocusId.value = focusDocId;
+  graphFullscreen.value = true;
+}
+
+watch([graphFullscreen, graphGeneration], () => {
+  const id = pendingGraphFocusId.value;
+  if (!graphFullscreen.value || !id) return;
+  if (graphAllNodes.value.some((n) => n.doc_id === id)) {
+    graph.focusNode(id);
+    pendingGraphFocusId.value = '';
+  }
+});
+
+/** 图谱「在浏览中打开」→ 工作台打开该笔记（跨库时先切库），并退出全屏。 */
+function onGraphOpenInWorkbench(payload: { docId: string; relPath: string }) {
   if (graphCollectionId.value && selectedId.value !== graphCollectionId.value) {
     selectedId.value = graphCollectionId.value;
   }
-  pageTab.value = 'explorer';
-  void navigateToDocument(payload.docId, payload.relPath);
+  const doc =
+    documents.value.find((d) => d.id === payload.docId) ??
+    ({
+      id: payload.docId,
+      source: payload.relPath,
+      rel_path: payload.relPath,
+      collection_id: graphCollectionId.value,
+      mime_type: '',
+    } as KnowledgeDocument);
+  graphFullscreen.value = false;
+  void workbench.openDoc(doc);
 }
 
-// SP1-I（I-4）：knowledge.graph.delta WS 订阅——反链/悬空链缓存失效 + 当前详情重载
-// （applyGraphDelta），当前图谱集合受影响时整图重载（文档级投影，增量边无法直接映射）。
+// ---------- SP2-8：设置浮层 ----------
+
+const settingsOpen = ref(false);
+
+// ---------- SP1-I（I-4）：knowledge.graph.delta WS 增量 ----------
+
+/** 图谱增量到达时 +1：右栏五面板据此重拉反链/出链/悬空链/局部图谱（缓存已失效）。 */
+const panelsRefreshNonce = ref(0);
+
 useKnowledgeGraphDeltaWs((delta) => {
   const affected = applyGraphDelta(delta);
+  panelsRefreshNonce.value++;
   if (graphCollectionId.value && affected.collectionIds.includes(graphCollectionId.value)) {
     void graph.loadGraph();
   }
 });
 
-// ---------- G3-F 拖拽移动 + 搜索范围（V12.5/V12.6） ----------
+// ---------- G3-F 拖拽移动（V12.5） ----------
 
 function explorerDragStart(node: VaultTreeNode) {
   explorer.dragStartFile(node);
@@ -513,8 +421,9 @@ async function onExplorerDropNode(node: VaultQTreeNode) {
   handleDropResult(await explorer.dropOnTarget({ vaultId: node.vaultId, prefix: node.prefix }), node.prefix);
 }
 
-async function onExplorerDropPrefix(prefix: string) {
-  handleDropResult(await explorer.dropOnTarget({ vaultId: selectedId.value, prefix }), prefix);
+/** 中栏空白处 drop = 移入当前目录（WorkbenchSidebar 的 drop-current-dir）。 */
+async function onDropCurrentDir() {
+  handleDropResult(await explorer.dropOnTarget({ vaultId: selectedId.value, prefix: explorerPrefix.value }), explorerPrefix.value);
 }
 
 // G3-F1 冲突弹窗（V12.5）：覆盖（旧版入回收站）/ 保留两份（自动改名）/ 取消。
@@ -543,10 +452,6 @@ watch(moveConflictOpen, (open) => {
   if (!open) explorer.dismissMoveConflict();
 });
 
-function setExplorerScope(prefix: string) {
-  explorer.setSearchScope(prefix);
-}
-
 // G1 树 hover「上传文件到此」：pendingUploadTarget 置位 → 触发隐藏 input 选文件。
 const uploadFileInput = ref<HTMLInputElement | null>(null);
 watch(pendingUploadTarget, (target) => {
@@ -567,38 +472,17 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.knowledge-explorer-grid {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 360px;
-  gap: 16px;
-  align-items: start;
-
-  // UX-001：左右栏粘性 + 视口内限高，列内独立滚动——关联区展开不再把整页撑长。
-  .knowledge-vault-tree,
-  .knowledge-doc-detail {
-    position: sticky;
-    top: 76px;
-    max-height: calc(100vh - 92px);
+// SP2-8：沉浸工作台页——满高无滚动（内部栏自滚动），容器高度链见 app-global.sass
+// `.app-page-container:has(.knowledge-page-wb)`（chat-page 同款模式）。
+.knowledge-page-wb {
+  &__main {
+    flex: 1 1 0;
+    min-height: 0;
   }
 
-  &__mid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-width: 0;
-  }
-}
-
-@media (max-width: 1200px) {
-  .knowledge-explorer-grid {
-    grid-template-columns: 220px minmax(0, 1fr);
-
-    .knowledge-doc-detail {
-      grid-column: 1 / -1;
-      // 堆叠布局下页面滚动为自然行为，取消粘性与限高。
-      position: static;
-      max-height: none;
-    }
+  &__settings {
+    width: 640px;
+    max-width: 92vw;
   }
 }
 </style>

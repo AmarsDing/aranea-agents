@@ -272,7 +272,23 @@ type QuotaCheck struct {
 	Allowed           bool
 	SpentMicroUSD     int64
 	RemainingMicroUSD int64
-	Reason            string
+	// Reason is a stable machine-readable code (QuotaCheckReason*); callers
+	// must localize before showing to users.
+	Reason string
+}
+
+// Stable quota-check reason codes (API contract; UI maps them to localized text).
+const (
+	QuotaCheckReasonNoQuota  = "no_quota"
+	QuotaCheckReasonDisabled = "quota_disabled"
+	QuotaCheckReasonExceeded = "quota_exceeded"
+	QuotaCheckReasonWithin   = "within_quota"
+)
+
+// QuotaExceededMessage builds the localized user-facing message for a blocked turn.
+func QuotaExceededMessage(check QuotaCheck) string {
+	return fmt.Sprintf("本月用量已达配额上限（已消耗 $%.2f / 上限 $%.2f），新对话已被拦截；请调整配额或等待下月自动重置",
+		float64(check.SpentMicroUSD)/1e6, float64(check.Quota.MonthlyMicroUSD)/1e6)
 }
 
 // BudgetAlert is a spend-ratio threshold for a scope.
@@ -944,13 +960,14 @@ func (u *Usecase) CheckQuota(ctx context.Context, scopeType, scopeID string) (Qu
 	q, err := u.repo.GetQuota(ctx, scopeType, scopeID)
 	if err != nil {
 		if stderrors.Is(err, shared.ErrQuotaNotFound) {
-			return QuotaCheck{Allowed: true, Reason: "no quota configured"}, nil
+			return QuotaCheck{Allowed: true, Reason: QuotaCheckReasonNoQuota}, nil
 		}
 		return QuotaCheck{}, err
 	}
 	if q.MonthlyMicroUSD <= 0 {
-		return QuotaCheck{Quota: q, Allowed: true, Reason: "quota disabled"}, nil
+		return QuotaCheck{Quota: q, Allowed: true, Reason: QuotaCheckReasonDisabled}, nil
 	}
+	q = u.normalizeQuotaPeriod(ctx, q)
 	spent, err := u.quotaSpent(ctx, scopeType, scopeID, q)
 	if err != nil {
 		return QuotaCheck{}, err
@@ -966,12 +983,56 @@ func (u *Usecase) CheckQuota(ctx context.Context, scopeType, scopeID string) (Qu
 	}
 	if spent >= q.MonthlyMicroUSD {
 		check.Allowed = false
-		check.Reason = fmt.Sprintf("monthly quota exceeded: spent %d >= cap %d micro-USD", spent, q.MonthlyMicroUSD)
+		check.Reason = QuotaCheckReasonExceeded
 		return check, nil
 	}
 	check.Allowed = true
-	check.Reason = "within quota"
+	check.Reason = QuotaCheckReasonWithin
 	return check, nil
+}
+
+// normalizeQuotaPeriod lazily rolls an expired monthly period forward to the
+// current UTC calendar month (same convention as date_key) and best-effort
+// persists it; on persist failure the in-memory period is still used so
+// enforcement never silently keeps summing a stale month.
+func (u *Usecase) normalizeQuotaPeriod(ctx context.Context, q Quota) Quota {
+	if !quotaPeriodExpired(q.PeriodEnd, u.now()) {
+		return q
+	}
+	rolled := q
+	rolled.PeriodStart, rolled.PeriodEnd = currentMonthPeriod(u.now())
+	if _, err := u.repo.SetQuota(ctx, rolled); err != nil {
+		u.lg.Warn("quota period rollover persist failed; enforcing with in-memory period",
+			loggateway.Err(err),
+			loggateway.Str("scope_type", q.ScopeType),
+			loggateway.Str("scope_id", q.ScopeID))
+		return rolled
+	}
+	u.lg.Info("quota period rolled to current month",
+		loggateway.Str("scope_type", q.ScopeType),
+		loggateway.Str("scope_id", q.ScopeID),
+		loggateway.Str("period_start", rolled.PeriodStart),
+		loggateway.Str("period_end", rolled.PeriodEnd))
+	return rolled
+}
+
+// quotaPeriodExpired reports whether the configured period no longer covers
+// today (UTC). Empty or malformed periods count as expired so they self-heal.
+func quotaPeriodExpired(periodEnd string, now time.Time) bool {
+	end := strings.TrimSpace(periodEnd)
+	if _, err := time.Parse("2006-01-02", end); err != nil {
+		return true
+	}
+	return end < now.Format("2006-01-02")
+}
+
+// currentMonthPeriod returns the first and last day ("YYYY-MM-DD") of the
+// calendar month containing now.
+func currentMonthPeriod(now time.Time) (string, string) {
+	y, m, _ := now.Date()
+	start := time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, -1)
+	return start.Format("2006-01-02"), end.Format("2006-01-02")
 }
 
 func (u *Usecase) quotaSpent(ctx context.Context, scopeType, scopeID string, q Quota) (int64, error) {
@@ -1023,7 +1084,7 @@ func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) erro
 		if q.MonthlyMicroUSD <= 0 {
 			continue // quota disabled
 		}
-		relevant = append(relevant, q)
+		relevant = append(relevant, u.normalizeQuotaPeriod(ctx, q))
 	}
 	if len(relevant) == 0 {
 		return nil // no active quotas for these agents
@@ -1038,8 +1099,8 @@ func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) erro
 		spent := spentMap[key]
 		if spent >= q.MonthlyMicroUSD {
 			return apierror.Forbidden("USAGE_QUOTA",
-				"monthly quota exceeded for agent %s: spent %d >= cap %d micro-USD",
-				q.ScopeID, spent, q.MonthlyMicroUSD)
+				"成员 Agent「%s」本月用量已达配额上限（已消耗 $%.2f / 上限 $%.2f），团队运行已被拦截",
+				q.ScopeID, float64(spent)/1e6, float64(q.MonthlyMicroUSD)/1e6)
 		}
 	}
 	return nil
@@ -1057,7 +1118,7 @@ func (u *Usecase) enforceQuota(ctx context.Context, scopeType, scopeID string) e
 		return err
 	}
 	if !check.Allowed {
-		return apierror.Forbidden("USAGE_QUOTA", check.Reason)
+		return apierror.Forbidden("USAGE_QUOTA", QuotaExceededMessage(check))
 	}
 	return nil
 }
@@ -1185,6 +1246,7 @@ func (u *Usecase) evaluateBudgetAlertsForScope(ctx context.Context, scopeType, s
 	if err != nil || q.MonthlyMicroUSD <= 0 {
 		return
 	}
+	q = u.normalizeQuotaPeriod(ctx, q)
 	spent, err := u.repo.SumScopeCostInPeriod(ctx, scopeType, scopeID, q.PeriodStart, q.PeriodEnd)
 	if err != nil || spent <= 0 {
 		return

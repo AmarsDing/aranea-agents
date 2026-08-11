@@ -2,9 +2,15 @@ import type { QTableColumn } from 'quasar';
 import type { Plugin } from '../../features/plugins/types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 
-export const PLUGIN_CATEGORY_OPTIONS = ['observability', 'guard', 'tracking', 'debug', 'routing', 'policy'].map(
-  (value) => ({ label: value, value }),
-);
+// 与后端内置插件注册表（internal/plugin/trpc/registry.go）的 category 枚举保持一致
+export const PLUGIN_CATEGORY_OPTIONS = [
+  'observability',
+  'tracking',
+  'reliability',
+  'security',
+  'governance',
+  'routing',
+].map((value) => ({ label: value, value }));
 
 export const PLUGIN_ENABLED_OPTIONS = [
   { label: '已启用', value: true },

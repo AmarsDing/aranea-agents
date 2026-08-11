@@ -67,12 +67,52 @@ describe('wikiLinkCompletionSource', () => {
   it('filters by typed query and preserves alias/heading suffix validity', () => {
     const res = source(ctxOf('x [[al'));
     expect(res?.options.map((o) => o.label)).toEqual(['alpha']);
-    expect(res?.validFor?.test('pha')).toBe(true);
-    expect(res?.validFor?.test('a|b')).toBe(false);
+    const validFor = res?.validFor as RegExp;
+    expect(validFor.test('pha')).toBe(true);
+    expect(validFor.test('a|b')).toBe(false);
   });
 
   it('returns null without [[ prefix or when no candidates match', () => {
     expect(source(ctxOf('plain text'))).toBeNull();
     expect(source(ctxOf('x [[zzz'))).toBeNull();
+  });
+});
+
+describe('wikiLinkCompletionSource #heading（P2-5）', () => {
+  function ctxOf(doc: string, pos?: number): CompletionContext {
+    const state = EditorState.create({ doc });
+    return new CompletionContext(state, pos ?? doc.length, false);
+  }
+
+  const headings: Record<string, string[]> = {
+    beta: ['快速开始', 'Second Section', '附录'],
+  };
+  const source = wikiLinkCompletionSource(
+    () => ['docs/Alpha.md', 'Beta.md'],
+    (target) => headings[target.trim().toLowerCase()] ?? [],
+  );
+
+  it('offers all headings right after [[target#', () => {
+    const res = source(ctxOf('x [[Beta#'));
+    expect(res).not.toBeNull();
+    expect(res?.from).toBe('x [[Beta#'.length); // 插入点在 # 之后
+    expect(res?.options.map((o) => o.label)).toEqual(['快速开始', 'Second Section', '附录']);
+  });
+
+  it('filters headings by typed partial (case-insensitive)', () => {
+    const res = source(ctxOf('x [[Beta#sec'));
+    expect(res?.options.map((o) => o.label)).toEqual(['Second Section']);
+    expect(res?.from).toBe('x [[Beta#'.length);
+  });
+
+  it('returns null when doc has no headings or no getHeadings provided', () => {
+    expect(source(ctxOf('x [[Alpha#'))).toBeNull();
+    const noHeadings = wikiLinkCompletionSource(() => ['Beta.md']);
+    expect(noHeadings(ctxOf('x [[Beta#'))).toBeNull();
+  });
+
+  it('doc-name completion still works when no # typed', () => {
+    const res = source(ctxOf('x [[al'));
+    expect(res?.options.map((o) => o.label)).toEqual(['alpha']);
   });
 });

@@ -24,10 +24,24 @@
             step="0.01"
             prefix="$"
             label="月预算 (USD)"
-            hint="0 表示不限制"
+            hint="留空或 0 表示不限制"
           />
-          <q-input v-model="periodStart" dense outlined label="周期开始" placeholder="YYYY-MM-DD" />
-          <q-input v-model="periodEnd" dense outlined label="周期结束" placeholder="YYYY-MM-DD" />
+          <q-input
+            v-model="periodStart"
+            dense
+            outlined
+            label="周期开始"
+            placeholder="YYYY-MM-DD"
+            hint="过期后自动重置为当自然月"
+          />
+          <q-input
+            v-model="periodEnd"
+            dense
+            outlined
+            label="周期结束"
+            placeholder="YYYY-MM-DD"
+            hint="过期后自动重置为当自然月"
+          />
         </div>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
@@ -87,8 +101,8 @@
           text-color="white"
           :label="check.allowed ? '允许继续对话' : '已超限'"
         />
-        <div class="text-body2 q-mt-sm text-grey-8">{{ check.reason }}</div>
-        <div class="app-form-field-grid q-mt-md">
+        <div class="text-body2 q-mt-sm text-grey-8">{{ reasonText }}</div>
+        <div v-if="hasActiveQuota" class="app-form-field-grid q-mt-md">
           <div>
             <div class="text-caption text-grey-7">已消耗</div>
             <div class="text-h6">${{ microUsdToUsd(check.spent_micro_usd) }}</div>
@@ -123,6 +137,8 @@ const {
   checking,
   error,
   check,
+  reasonText,
+  hasActiveQuota,
   alertRatioPct,
   alertEnabled,
   alertSaving,

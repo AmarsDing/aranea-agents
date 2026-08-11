@@ -189,18 +189,20 @@ const (
 )
 
 // AuthType constants for remote agent authentication.
+// Must stay in sync with the runtime client field names
+// (internal/a2a/remote_client.go a2aAuthConfig).
 const (
 	AuthTypeNone   = "none"
 	AuthTypeBearer = "bearer"
-	AuthTypeBasic  = "basic"
 	AuthTypeAPIKey = "api_key"
+	AuthTypeMTLS   = "mtls"
 )
 
 var validAuthTypes = map[string]bool{
 	AuthTypeNone:   true,
 	AuthTypeBearer: true,
-	AuthTypeBasic:  true,
 	AuthTypeAPIKey: true,
+	AuthTypeMTLS:   true,
 }
 
 // ValidateAuthConfig checks that authType is valid and authConfigJSON matches the type.
@@ -217,40 +219,39 @@ func ValidateAuthConfig(authType, authConfigJSON string) error {
 	case AuthTypeNone:
 		// No config needed; ignore any provided config silently.
 		return nil
-	case AuthTypeBearer:
+	case AuthTypeBearer, AuthTypeAPIKey:
+		// Runtime (apiKeyClientOptions) accepts "api_key" with "token" fallback;
+		// "header_name" is optional.
 		var m map[string]interface{}
 		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
-			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for bearer auth")
+			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for %s auth", at)
 		}
-		if _, ok := m["token"]; !ok {
-			return apierror.BadRequest("A2A", "bearer auth_config_json must contain 'token' field")
+		if !hasNonEmptyString(m, "api_key") && !hasNonEmptyString(m, "token") {
+			return apierror.BadRequest("A2A", "%s auth_config_json must contain 'api_key' or 'token' field", at)
 		}
-	case AuthTypeBasic:
+	case AuthTypeMTLS:
 		var m map[string]interface{}
 		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
-			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for basic auth")
+			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for mtls auth")
 		}
-		if _, ok := m["username"]; !ok {
-			return apierror.BadRequest("A2A", "basic auth_config_json must contain 'username' field")
+		if !hasNonEmptyString(m, "cert_file") {
+			return apierror.BadRequest("A2A", "mtls auth_config_json must contain 'cert_file' field")
 		}
-		if _, ok := m["password"]; !ok {
-			return apierror.BadRequest("A2A", "basic auth_config_json must contain 'password' field")
-		}
-	case AuthTypeAPIKey:
-		var m map[string]interface{}
-		if err := json.Unmarshal([]byte(cfg), &m); err != nil {
-			return apierror.BadRequest("A2A", "auth_config_json must be valid JSON for api_key auth")
-		}
-		if _, ok := m["key"]; !ok {
-			if _, ok2 := m["header"]; !ok2 {
-				return apierror.BadRequest("A2A", "api_key auth_config_json must contain 'key' or 'header' field")
-			}
-		}
-		if _, ok := m["value"]; !ok {
-			return apierror.BadRequest("A2A", "api_key auth_config_json must contain 'value' field")
+		if !hasNonEmptyString(m, "key_file") {
+			return apierror.BadRequest("A2A", "mtls auth_config_json must contain 'key_file' field")
 		}
 	}
 	return nil
+}
+
+// hasNonEmptyString reports whether m[key] exists and is a non-blank string.
+func hasNonEmptyString(m map[string]interface{}, key string) bool {
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	return ok && strings.TrimSpace(s) != ""
 }
 
 // AgentLookup provides read-only access to agent metadata for workspace resolution.

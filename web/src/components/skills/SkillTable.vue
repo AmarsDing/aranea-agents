@@ -169,6 +169,18 @@
             flat
             dense
             round
+            color="primary"
+            icon="content_copy"
+            :disable="duplicatingId === props.row.id"
+            :loading="duplicatingId === props.row.id"
+            @click="emit('duplicate', props.row)"
+          >
+            <q-tooltip>{{ t('skillsPage.duplicateTooltip') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
             color="negative"
             icon="delete"
             :disable="!props.row.permissions.can_delete"
@@ -203,6 +215,8 @@ const props = defineProps<{
   publishingId?: string;
   /** 正在发布到生态市场的 skill id，用于按钮 loading */
   publishingEcosystemId?: string;
+  /** 正在复制的 skill id，用于按钮 loading */
+  duplicatingId?: string;
   /** 生态市场发布状态判定（published/failed/unpublished），由 Page/composable 注入 */
   ecosystemPublishState: (skill: Skill) => 'published' | 'failed' | 'unpublished';
   /** 懒加载单行健康数据（统计悬浮图形面板用，store 方法经 Page 注入） */
@@ -215,6 +229,7 @@ const emit = defineEmits<{
   'publish-ecosystem': [skill: Skill];
   'edit-meta': [skill: Skill];
   'edit-files': [skill: Skill];
+  duplicate: [skill: Skill];
   delete: [skill: Skill];
 }>();
 

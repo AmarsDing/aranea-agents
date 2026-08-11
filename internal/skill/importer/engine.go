@@ -22,6 +22,7 @@ import (
 	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/loggateway"
+	"golang.org/x/sync/errgroup"
 )
 
 const MaxZipBytes = 20 * 1024 * 1024
@@ -1089,11 +1090,28 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 // maxSimilarityLLMCalls caps the number of LLM similarity comparisons per import.
 const maxSimilarityLLMCalls = 50
 
+// similarityConcurrency caps parallel LLM similarity calls per import job.
+// Serial execution made large imports exceed the frontend HTTP timeout (FN-1).
+const similarityConcurrency = 5
+
+// similarityCallTimeout bounds a single similarity LLM call so one slow
+// provider response cannot stall the whole import. Var for test override.
+var similarityCallTimeout = 15 * time.Second
+
 // similarityThreshold is the minimum similarity score to flag a conflict group.
 // Scores below this threshold are considered not similar enough to warrant
 // user intervention. The value 0.2 was calibrated against embedding model baselines
 // where unrelated skills typically score 0.0–0.15.
 const similarityThreshold = 0.2
+
+// similarityPair snapshots one (candidate, existing source) comparison. The
+// candidate body is captured up front so worker goroutines never touch
+// job.candidates (all job mutations happen under mu after g.Wait joins).
+type similarityPair struct {
+	candidateID string
+	state       candidateState
+	source      biz.SkillSimilaritySource
+}
 
 func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing []biz.SkillSimilaritySource) error {
 	if len(existing) == 0 {
@@ -1113,44 +1131,66 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 		}
 		return nil
 	}
-	llmCalls := 0
+	pairs := make([]similarityPair, 0, len(existing))
+	truncated := false
+collect:
 	for _, candidate := range job.public.Candidates {
 		if candidate.ValidationStatus != "pass" {
 			continue
 		}
-		state := job.candidates[candidate.CandidateID]
 		for _, source := range existing {
-			if llmCalls >= maxSimilarityLLMCalls {
-				e.lg.Warn("inspectSimilarity LLM call limit reached, skipping remaining comparisons",
-					loggateway.StepID("skill.similarity_cap"),
-					loggateway.Int("cap", maxSimilarityLLMCalls))
-				return nil
+			if len(pairs) >= maxSimilarityLLMCalls {
+				truncated = true
+				break collect
 			}
-			llmCalls++
-			metrics, reason, evidence, err := e.modelSimilarity(ctx, cfg, state, source)
+			pairs = append(pairs, similarityPair{
+				candidateID: candidate.CandidateID,
+				state:       job.candidates[candidate.CandidateID],
+				source:      source,
+			})
+		}
+	}
+	if truncated {
+		e.lg.Warn("inspectSimilarity LLM call limit reached, skipping remaining comparisons",
+			loggateway.StepID("skill.similarity_cap"),
+			loggateway.Int("cap", maxSimilarityLLMCalls))
+	}
+	var mu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(similarityConcurrency)
+	for _, pr := range pairs {
+		g.Go(func() error {
+			callCtx, cancel := context.WithTimeout(gctx, similarityCallTimeout)
+			defer cancel()
+			metrics, reason, evidence, err := e.modelSimilarity(callCtx, cfg, pr.state, pr.source)
 			if err != nil {
 				e.lg.Warn("inspectSimilarity: model similarity check failed",
 					loggateway.StepID("skill.similarity_llm_fail"),
-					loggateway.Str("candidate", candidate.CandidateID),
+					loggateway.Str("candidate", pr.candidateID),
 					loggateway.Err(err))
-				continue
+				return nil
 			}
-			if metrics.SimilarityScore >= similarityThreshold {
-				group := biz.SkillConflictGroup{
-					GroupID:                newID(),
-					HighestSimilarityScore: metrics.SimilarityScore,
-					Metrics:                metrics,
-					Reason:                 reason,
-					Evidence:               evidence,
-					CandidateIDs:           []string{candidate.CandidateID},
-					ExistingSkills:         []biz.SkillSimilaritySource{source},
-					CanRefine:              true,
-				}
-				job.public.ConflictGroups = append(job.public.ConflictGroups, group)
-				e.updateCandidateWarning(job, candidate.CandidateID, metrics)
+			if metrics.SimilarityScore < similarityThreshold {
+				return nil
 			}
-		}
+			group := biz.SkillConflictGroup{
+				GroupID:                newID(),
+				HighestSimilarityScore: metrics.SimilarityScore,
+				Metrics:                metrics,
+				Reason:                 reason,
+				Evidence:               evidence,
+				CandidateIDs:           []string{pr.candidateID},
+				ExistingSkills:         []biz.SkillSimilaritySource{pr.source},
+				CanRefine:              true,
+			}
+			mu.Lock()
+			job.public.ConflictGroups = append(job.public.ConflictGroups, group)
+			e.updateCandidateWarning(job, pr.candidateID, metrics)
+			mu.Unlock()
+			return nil
+		})
 	}
+	_ = g.Wait()
 	return nil
 }
 

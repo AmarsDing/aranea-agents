@@ -10,8 +10,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// CleanupNonSystemData 清除非系统 agent/team/organization 数据，仅保留 4 个系统必需 agent
-// （spirit/memory/skills/system_admin）。
+// CleanupNonSystemData 清除非系统 agent/team/organization 数据，仅保留 5 个系统必需 agent
+// （spirit/memory/skills/system_admin/voice_butler）。
 //
 // 清除范围：
 //   - agent_prompt_files：非系统 agent 的提示词文件
@@ -75,7 +75,7 @@ func CleanupNonSystemData(ctx context.Context, client *ent.Client, d Dialect, lg
 
 	lg.Info("cleanup: non-system data cleared",
 		loggateway.StepID("data.seed.cleanup"),
-		loggateway.Str("note", "preserved 4 system agents (spirit/memory/skills/system_admin)"))
+		loggateway.Str("note", "preserved 5 system agents (spirit/memory/skills/system_admin/voice_butler)"))
 
 	// 记录版本
 	if recordErr := recordMigrationApplied(ctx, client, d, SeedCleanupNonSystemV1, "cleanup_non_system_v1", lg); recordErr != nil {

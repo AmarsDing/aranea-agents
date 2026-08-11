@@ -48,6 +48,9 @@
             <q-avatar size="26px" color="primary" text-color="white" :icon="memberIcon(member.role)" />
             <div class="member-primary ellipsis">
               <span class="member-role">{{ teamRoleLabel(member.role) }}</span>
+              <q-badge v-if="isTeamLeader(member)" dense rounded color="deep-orange" text-color="white" class="q-ml-xs"
+                >队长</q-badge
+              >
               <span class="member-sep">·</span>
               <span class="member-label">{{ member.name || agentName(agents, member.agent_id) }}</span>
             </div>
@@ -160,4 +163,26 @@ const statusColor = computed(() => statusConfig.value.color);
 const statusLabel = computed(() => statusConfig.value.label);
 /** failed/cancelled teams can be reset to pending via RetryTeam RPC (backend state machine recover). */
 const canRetry = computed(() => ['failed', 'cancelled'].includes(props.team.status) && !props.team.readonly);
+
+type TeamMember = ReturnType<typeof parseDefinition>['members'][number];
+
+/**
+ * 队长标识（消除「看不出谁是 leader」的感知困惑）：
+ * - 任意模式下 role=coordinator 的协调者；
+ * - coordinator 模式首位启用成员（遗留 spirit 团队首位角色为 synthesizer，
+ *   见 buildSpiritTeamDefinitionJSON）；
+ * - parallel 模式的汇总者（synthesizer）。
+ * sequential / critic_loop / swarm / adaptive 无单一 leader，不显示。
+ */
+function isTeamLeader(member: TeamMember): boolean {
+  const role = String(member.role || '').toLowerCase();
+  if (role === 'coordinator') return true;
+  const mode = String(definition.value.mode || 'sequential').toLowerCase();
+  if (mode === 'parallel') return role === 'synthesizer';
+  if (mode === 'coordinator' && role === 'synthesizer') {
+    const firstEnabled = definition.value.members.find((m) => m.enabled !== false);
+    return firstEnabled === member;
+  }
+  return false;
+}
 </script>

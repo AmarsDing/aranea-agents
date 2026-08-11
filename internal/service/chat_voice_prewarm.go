@@ -6,6 +6,7 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
@@ -91,4 +92,71 @@ func (p *VoiceTurnPrewarmer) PrewarmTurn(ctx context.Context, sessionID string) 
 		loggateway.StepID("chat.voice_prewarm"),
 		loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 		loggateway.Any("agent_key", ag.AgentKey))
+}
+
+// PrewarmSpiritAgent 启动期预构建 __spirit__ agent 构建缓存（修复 C，2026-08-11）。
+//
+// 进程首个语音/聊天 Turn 的 BuildTRPCAgentCached cache miss 实测 2.6-8s
+// （模型解析 + 提示文件 + skill 依赖 + MCP 工具装配）。voice.start 的
+// VoiceTurnPrewarmer 只能在「开麦→开口」空窗期预热，进程首轮仍付冷构建；
+// 启动预构建在 readiness 门控后后台执行，把冷构建移出全部用户路径。
+//
+// 缓存 key 一致性（与 runNativeAgentTurnBody 同源）：
+//   - dialogMode 固定 "default" → cacheKeyDialogMode 归一化为 ""（spirit 无显式
+//     PlannerKind 时仅 "plan" 影响 key；sess.DialogMode="plan" 的会话不覆盖，
+//     首个 plan 模式 Turn 仍付一次冷构建，属可接受少数路径）。
+//   - provider/model 不在 cache key（per-request 经 RunOption 覆盖）。
+//   - 合成 session 仅提供 ID（RoundTripForSession 标签 / AwaitHook 绑定）；
+//     AwaitHook 运行时才从 ctx 解析 reply func（ReplyFuncFromContext），
+//     构建期合成 session 安全。
+//
+// 非阻断容错：任何失败仅 Warn（K3），不阻塞启动（Always-Ready）。
+func (s *ChatService) PrewarmSpiritAgent(ctx context.Context) {
+	if s == nil || s.orch == nil {
+		return
+	}
+	agentsUC := s.orch.td().ReadDeps.AgentsUC
+	if agentsUC == nil {
+		return
+	}
+	// ReadDeps.AgentsUC 是窄接口 TeamAgentLookup（无 GetByAgentKey）；生产绑定
+	// 的 *biz.AgentUsecase 满足带 GetByAgentKey 的完整接口，断言失败时跳过预热
+	// （测试桩场景），不影响启动。
+	resolver, ok := agentsUC.(interface {
+		GetByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error)
+	})
+	if !ok {
+		return
+	}
+	start := time.Now()
+	lg := s.lg
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	lg = lg.With(loggateway.Domain("startup"))
+
+	ag, err := resolver.GetByAgentKey(ctx, biz.SpiritAgentKey)
+	if err != nil {
+		lg.Warn("startup prewarm: spirit agent fetch failed",
+			loggateway.StepID("chat.startup_prewarm"), loggateway.Err(err))
+		return
+	}
+	prov, mod := s.orch.resolveProviderModelFallback(ctx, ag.Provider, ag.Model)
+	deps, err := s.orch.agentBuild.BuildTRPCDeps(ctx, AgentBuildParams{
+		Session: biz.Session{ID: "startup-prewarm"}, Agent: ag, RunID: uuid.NewString(),
+		DialogMode: "default", Provider: prov, Model: mod,
+	})
+	if err != nil {
+		lg.Warn("startup prewarm: build deps failed",
+			loggateway.StepID("chat.startup_prewarm"), loggateway.Err(err))
+		return
+	}
+	if _, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, lg); err != nil {
+		lg.Warn("startup prewarm: agent build failed",
+			loggateway.StepID("chat.startup_prewarm"), loggateway.Err(err))
+		return
+	}
+	lg.Info("startup prewarm: spirit agent built",
+		loggateway.StepID("chat.startup_prewarm"),
+		loggateway.Int64("elapsed_ms", time.Since(start).Milliseconds()))
 }

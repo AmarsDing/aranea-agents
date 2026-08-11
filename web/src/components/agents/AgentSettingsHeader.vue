@@ -61,9 +61,11 @@
         label="保存设置"
         class="settings-save"
         :loading="saving"
-        :disable="!agent.id"
+        :disable="!agent.id || agent.readonly"
         @click="$emit('save')"
-      />
+      >
+        <q-tooltip v-if="agent.readonly">{{ $t('agentsPage.actions.builtinTip') }}</q-tooltip>
+      </q-btn>
     </div>
   </q-card-section>
 </template>

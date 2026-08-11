@@ -7,9 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 var errAny = errors.New("any-error-sentinel")
@@ -1019,5 +1022,226 @@ func TestCompleteChat_RoutesToOpenAI(t *testing.T) {
 	}
 	if result != "from openai route" {
 		t.Errorf("result = %q, want %q", result, "from openai route")
+	}
+}
+
+// TestCompleteOpenAICompatible_ThinkingDisabled guards FN-1: DeepSeek 推理模型
+// 默认开启思考段，相似度短任务响应 30s+ 导致导入超时；请求体必须显式关闭。
+func TestCompleteOpenAICompatible_ThinkingDisabled(t *testing.T) {
+	tests := []struct {
+		name         string
+		baseURL      func(srvURL string) string
+		wantThinking bool
+	}{
+		{
+			name:         "deepseek_injects_thinking_disabled",
+			baseURL:      func(string) string { return "https://api.deepseek.com" },
+			wantThinking: true,
+		},
+		{
+			name:         "deepseek_case_insensitive",
+			baseURL:      func(string) string { return "https://API.DEEPSEEK.COM" },
+			wantThinking: true,
+		},
+		{
+			name:         "openai_no_thinking_field",
+			baseURL:      func(srvURL string) string { return srvURL },
+			wantThinking: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+					t.Errorf("failed to decode request body: %v", err)
+				}
+				resp := map[string]any{
+					"choices": []map[string]any{
+						{"message": map[string]string{"content": "ok"}},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(resp)
+			}))
+			defer srv.Close()
+
+			base := tt.baseURL(srv.URL)
+			cfg := chatModelCfg{ProviderType: "openai", APIBaseURL: base, APIKey: "k", ModelAPIID: "m"}
+
+			if tt.wantThinking {
+				// DeepSeek 真实域名不可达，仅验证请求体构造：用传输层把
+				// api.deepseek.com 重定向到 httptest 服务器。
+				client := &http.Client{
+					Transport: &rewriteHostTransport{target: srv.URL},
+				}
+				if _, err := completeOpenAICompatible(context.Background(), client, cfg, "p"); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			} else {
+				if _, err := completeOpenAICompatible(context.Background(), srv.Client(), cfg, "p"); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+
+			thinking, has := gotBody["thinking"]
+			if has != tt.wantThinking {
+				t.Fatalf("thinking field present = %v, want %v (body=%v)", has, tt.wantThinking, gotBody)
+			}
+			if tt.wantThinking {
+				m, ok := thinking.(map[string]any)
+				if !ok || m["type"] != "disabled" {
+					t.Errorf("thinking = %v, want {\"type\":\"disabled\"}", thinking)
+				}
+			}
+		})
+	}
+}
+
+// rewriteHostTransport rewrites any request URL to the test server while
+// preserving the original path — lets tests exercise provider-specific request
+// construction (e.g. api.deepseek.com) without external network access.
+type rewriteHostTransport struct {
+	target string
+}
+
+func (rt *rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	target := strings.TrimRight(rt.target, "/") + clone.URL.Path
+	if clone.URL.RawQuery != "" {
+		target += "?" + clone.URL.RawQuery
+	}
+	u, err := http.NewRequestWithContext(req.Context(), req.Method, target, req.Body)
+	if err != nil {
+		return nil, err
+	}
+	u.Header = clone.Header
+	return http.DefaultTransport.RoundTrip(u)
+}
+
+// stubEngineWithSimilarityServer builds an Engine whose resolved chat model
+// points at the given test server.
+func stubEngineWithSimilarityServer(srvURL string) *Engine {
+	rows := []biz.ProviderModel{{
+		Provider:   "test",
+		Model:      "m",
+		Enabled:    true,
+		ConfigJSON: `{"api_base_url":"` + srvURL + `","api_key":"k"}`,
+	}}
+	resolved := map[string]biz.ProviderModel{
+		stubKey("test", "m"): {
+			Provider:   "test",
+			Model:      "m",
+			ConfigJSON: `{"provider_type":"openai","api_base_url":"` + srvURL + `","api_key":"k"}`,
+		},
+	}
+	return &Engine{
+		llm: &stubLlmLister{listRows: rows, resolved: resolved},
+		lg:  loggateway.NewNoop(),
+	}
+}
+
+func similarityJobState(candidateID string) *jobState {
+	candidate := biz.SkillImportCandidate{
+		CandidateID:      candidateID,
+		Name:             "cand",
+		ValidationStatus: "pass",
+	}
+	return &jobState{
+		public: biz.SkillImportJob{Candidates: []biz.SkillImportCandidate{candidate}},
+		candidates: map[string]candidateState{
+			candidateID: {public: candidate, body: "candidate body"},
+		},
+		createdAt: time.Now(),
+	}
+}
+
+// TestInspectSimilarity_Parallel guards FN-1: 相似度检查必须并发执行（串行
+// N×30s 会击穿前端超时），且高分对仍聚合成 conflict group + candidate warn。
+func TestInspectSimilarity_Parallel(t *testing.T) {
+	var inflight atomic.Int32
+	var maxInflight atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := inflight.Add(1)
+		defer inflight.Add(-1)
+		for {
+			m := maxInflight.Load()
+			if cur <= m || maxInflight.CompareAndSwap(m, cur) {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"similarity_score":0.9,"conflict_risk":"high","recommendation":"suggest_refine","reason":"dup","evidence":["e"]}`}},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	eng := stubEngineWithSimilarityServer(srv.URL)
+	job := similarityJobState("cand-1")
+	existing := make([]biz.SkillSimilaritySource, 6)
+	for i := range existing {
+		existing[i] = biz.SkillSimilaritySource{ID: "s" + string(rune('a'+i)), Name: "existing"}
+	}
+
+	start := time.Now()
+	if err := eng.inspectSimilarity(context.Background(), job, existing); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if got := len(job.public.ConflictGroups); got != len(existing) {
+		t.Errorf("ConflictGroups = %d, want %d", got, len(existing))
+	}
+	if job.public.Candidates[0].ValidationStatus != "warn" {
+		t.Errorf("candidate ValidationStatus = %q, want warn", job.public.Candidates[0].ValidationStatus)
+	}
+	if got := maxInflight.Load(); got < 2 {
+		t.Errorf("max concurrent LLM calls = %d, want >= 2 (parallelism evidence)", got)
+	}
+	// 串行下 6×50ms=300ms；并发上限 5 时应显著更低。留足抖动余量。
+	if elapsed > 250*time.Millisecond {
+		t.Errorf("elapsed = %v, want < 250ms (serial would be ~300ms)", elapsed)
+	}
+}
+
+// TestInspectSimilarity_CallTimeout guards FN-1: 单次 LLM 调用受独立超时熔断，
+// 慢响应不得拖垮整个导入流程（超时的对仅记 warn，不产生 conflict group）。
+func TestInspectSimilarity_CallTimeout(t *testing.T) {
+	old := similarityCallTimeout
+	similarityCallTimeout = 50 * time.Millisecond
+	defer func() { similarityCallTimeout = old }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"similarity_score":0.9}`}},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	eng := stubEngineWithSimilarityServer(srv.URL)
+	job := similarityJobState("cand-1")
+	existing := []biz.SkillSimilaritySource{{ID: "s1", Name: "slow"}}
+
+	start := time.Now()
+	if err := eng.inspectSimilarity(context.Background(), job, existing); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if got := len(job.public.ConflictGroups); got != 0 {
+		t.Errorf("ConflictGroups = %d, want 0 (timed-out pair must be skipped)", got)
+	}
+	if elapsed > 400*time.Millisecond {
+		t.Errorf("elapsed = %v, want < 400ms (server sleeps 500ms; call must be cut at 50ms)", elapsed)
 	}
 }

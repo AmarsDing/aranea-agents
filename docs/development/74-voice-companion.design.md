@@ -608,6 +608,7 @@ Agent 调用 client_open_app
 **A. 全局纯提速（文字+语音共享，无行为变化）**
 
 - **意图识别强制关思考**（`internal/agent/intent/pass.go`）：callsite 强制 `cfg.ThinkingDisabled = true`，不依赖 catalog 行配置。意图是分类任务，思考段纯延迟
+- **修复 A：skill 同步缓存键契约**（已落地 2026-08-11，`internal/data/skill.go`）：`updated_at` 是 `SkillVersionHash` 的内容版本标记。此前 reconcile 每 5 分钟全量扫描对所有存活 skill 无条件 `SetUpdatedAt(now)`（`UpsertSkillFromDisk`）并无条件写 `MarkSkillFilesystemMissing(slug, false)`，导致 SkillVersionHash 周期性漂移、全量 agent 构建缓存失效（冷构建 10s 级周期性重现）。修复：两处改为**条件写**——仅内容/元数据/可用性（missing 标志）实际变化时才写库并 bump `updated_at`；`MarkSkillFilesystemMissing` 用 `FilesystemMissingEQ(!missing)` 谓词实现翻转才写，n=0 时再区分「已是目标状态」（no-op 成功）与「slug 不存在」（NotFound）
 - **BUILD + Intent Pass + proactive recall 三方并行**（`chat_orchestrator_turn.go` errgroup）：`WithProactiveHits` 在 `eg.Wait()` 后注入，MemoryInject before-model 钩子请求时读取，语义不变（happens-before 由 errgroup 保证）；BUILD 的 AwaitHook 在 Wait 后重绑 turn ctx（防 errgroup 派生 ctx 提前取消导致 await 秒败）
 
 **B. 仅语音路径（文字零影响）**
@@ -615,6 +616,10 @@ Agent 调用 client_open_app
 - **Voice Fast-Path 关主 LLM 思考**（`internal/agent/voice_fastpath.go`）：`input.Voice != nil` 时 `WithVoiceFastPath(runCtx)` 打标（`chat_orchestrator_turn_phases.go` prepareRunContext），BeforeModel 回调（LayerDynamic, priority 4）per-request 置 `GenerationConfig.ThinkingEnabled=false`。BUILD 产物跨入口缓存共享（cache key 不含入口），思考开关只能请求级改写，不烘进构建期；planner/compress 等深度推理调用点不经此标记，规划质量不受影响。`TurnInput.Voice` 唯一赋值点在 `internal/voice/session.go`，文字路径 hook 直接透传
 - **E：首音频延迟预算测量**（`internal/voice/session.go`）：T0 = ASR 终稿派发时刻；首帧 TTS 下行消费 T0（每 Turn 只测一次）；打断复位（迟到帧不产生误导测量）。预算 `firstAudioBudget = 2.5s`，超预算 Warn（K2）+ 流程日志 `voice.tts.start` 带 `first_audio_ms`
 - **C1：voice.start 预热 Agent 构建缓存**（`internal/service/chat_voice_prewarm.go`）：voice.start 成功后后台 goroutine 触发 `VoiceTurnPrewarmer.PrewarmTurn`——与 `runNativeAgentTurnBody` 同源解析 dialogMode/provider/model 填充 `BuildTRPCAgentCached`，把首个语音 Turn 的构建冷启动移到「开麦→开口」空窗期。非阻断容错：失败仅 Warn；dictation 模式与团队会话跳过；缓存 key 同源保证预热产物被真实 Turn 命中。接线：`voice_ws.go` setter 注入（`SetTurnPrewarmer`）+ `wire.go`
+- **C1b：启动期预构建 `__spirit__`**（已落地 2026-08-11，`ChatService.PrewarmSpiritAgent` + `cmd/admin/app.go`）：voice.start 预热只能覆盖「开麦→开口」空窗，进程首个 Turn 仍付冷构建（实测 2.6-8s）。readiness 门控后后台预构建 spirit agent 缓存（dialogMode 固定 "default" 归一化、合成 session 仅提供 ID——AwaitHook 运行时才从 ctx 解析，构建期安全）；非阻断容错，失败仅 Warn 不阻塞启动（Always-Ready）
+- **P0：工具构建 N+1 消除**（已落地 2026-08-11，`internal/agent/tool_build_catalog.go`）：冷构建实测 10.2-10.7s 的主因是 `applyRuntimeToolConfigs` 与 `buildCatalogConfirmTools`（确认门重复构建两次：toolset 策略 + callback chain hook）各对启用工具逐个跑聚合 `GetTool` 查询（70 工具 × 3 ≈ 210 次 × ~49ms）。修复：`toolBuildCatalog` 每次构建只跑两条批量 SQL（`ListToolCatalogEntries` IN 批量 + overrides 列表）生成快照，eff 键集/快照/确认门在 `BuildTRPCLLMAgent` 加载一次，共享给 `buildToolsetsForAgent` 与 `buildCallbackChainOptions`。降级语义与逐键 GetTool 时代完全一致：快照加载失败 runtime config 全跳过（fail-soft）、确认门 fail-closed（所有启用工具需确认）；工具行缺失 fail-closed。配套：构建六段（model/prompt/skill/tools/finalize/new）+ tools 段五子相（rt_config/prune/build/gate/decor）K6 计时日志，超 2s 升级 Warn；`BuildTRPCDeps` 补 LG 注入（修复构建路径日志被 Noop 静默吞掉）
+- **C2：ASR partial 投机意图**（已落地 2026-08-11）：投机阶梯 L2/L3。`internal/voice/session.go` 追踪 partial 稳定（文本 500ms 无变化触发，`trackPartialStability`/`fireSpeculation`；同文重发不重置，final/cancel/teardown 停止计时）→ `voice.IntentSpeculator` 端口 → `internal/service/chat_voice_speculate.go` `VoiceIntentSpeculator`：与 Turn 侧 `runIntentPass` 同源解析 session/agent/provider/model/历史，后台预跑意图识别（15s 调用超时），产物存**每会话单槽**（`sourceText` 归一化精确匹配 = sourceHash 语义 + `createdAt` TTL 30s = expiresAt 语义）。ASR final（L3 判定）经 `WithSpeculativeIntent` 校验：一致且有界等待（cap 2s）在途投机完成 → 经 `intent.WithSpeculativeArtifact` 注入 Turn ctx；失配/超时/失败即丢弃走常规意图路径。Turn 消费（`chat_orchestrator_turn.go`）：新增 `SpeculativeArtifactFromContext` 分支——**fresh 语义不剥离澄清残留**（与澄清续跑 key 隔离，澄清门照常评估），复用记 `outcome=reused_speculative`。去重：同文投机在槽不重复调 LLM；新 partial 取代旧槽。dictation/团队会话/A2A/意图未启用跳过
+- **L5：TTS 连接预热**（已落地 2026-08-11，`internal/data/speech/volcengine_tts.go` + `internal/voice/session.go`）：voice.start 预解析 TTS provider 存入会话（`resolveAndPrewarmTTS`，`ensureTTS` 复用不再二次调工厂）并后台预拨一条 WS 连接存**单槽温连接**（`PrewarmTTSConn`）；首个 Turn 首句 `Write` 弹出复用免握手，写失败回退新拨（K3）；会话拆除释放未消费温连接（`ReleaseWarmTTSConn`，一次性语义）。provider 无预热能力（接口断言失败）自动跳过
 
 **C. TTS 文本清洗（上一轮，2026-08-09）**
 
@@ -624,10 +629,11 @@ Agent 调用 client_open_app
 
 | 优先级 | 项 | 内容 |
 |--------|----|------|
-| P1 | 首句快速通道 | `firstSentenceMinRunes` 6→4，加速首句切分 |
-| P1 | C2 ASR partial 投机意图 | partial 稳定 500ms 启动意图识别；final 文本 hash 失配即丢弃投机结果走常规路径 |
+| ~~P1~~ ✅ | 首句快速通道（已落地 2026-08-10） | `firstSentenceMinRunes` 6→4，首句遇次要标点提前切出；4 为下限防碎句 |
+| ~~P1~~ ✅ | C2 ASR partial 投机意图（已落地 2026-08-11，见 §14.3-B） | partial 稳定 500ms 启动意图识别；final 文本失配即丢弃投机结果走常规路径 |
+| P1 | 文字侧 catalog 主 LLM 思考控制 | 构建期烘焙不可行（BUILD 缓存指纹不含 provider/model，运行时经 `WithModel` RunOption 覆盖，语义错位）；正确实现 = BeforeModel 钩子经 `agent.InvocationFromContext` 定位当前模型 + catalog 查找（带缓存）。语音侧已由 Voice Fast-Path 覆盖，本项仅服务文字路径 |
 | P2 | D 工具过渡句 filler | 复用 orchestration_progress/工具事件，事件驱动一句话可打断播报，根治工具静默 |
-| P2 | L5 TTS 连接预热 | voice.start 建 TTS 长连接，消除首句握手延迟 |
+| ~~P2~~ ✅ | L5 TTS 连接预热（已落地 2026-08-11，见 §14.3-B） | voice.start 预拨 TTS WS 温连接，首句弹出复用免握手 |
 
 ### 14.5 风险与缓解
 
@@ -640,4 +646,95 @@ Agent 调用 client_open_app
 
 ---
 
-*文档版本：2026-08-10 v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+## 15. 语音助手前台模式（Voice Butler，2026-08-10 设计）
+
+> 需求锚点：语音是辅助手段，不改精灵既有模式。语音助手与精灵助手**同级**、**各自独立**；语音助手接收语音指令，复杂任务委派精灵异步执行，委派期间语音助手持续陪聊，精灵反馈到达后实时播报。
+
+### 15.1 架构定位
+
+```
+用户语音 ⇄ 语音助手（新内置 agent，轻量前台：快答 / 委派 / 播报）
+                │ ① delegate_to_spirit(task) 工具调用（异步，立即返回）
+                ▼
+          精灵助手（__spirit__，完整能力后台执行：思考/规划/工具/团队，零改动）
+                │ ② 完成 → 系统推送事件（复用团队完成同款 TurnGateway 链路）
+                ▼
+          语音会话 eventLoop（delegation 关联订阅）→ TTS 实时播报
+```
+
+| 角色 | 实体 | 职责 | 能力集 |
+|------|------|------|--------|
+| 语音助手 | 新内置系统 agent（独立 agent_key） | 快答闲聊/简单问答、复杂任务委派、结果播报 | 轻量 prompt + `delegate_to_spirit` 单一工具；voice fast-path（关思考） |
+| 精灵助手 | `__spirit__`（现状不变） | 复杂任务全能力执行：深度思考/规划/工具链/团队编排 | 现状完整能力，**零改动** |
+
+### 15.2 核心数据流
+
+1. **快答**：用户语音 → ASR → 语音助手 turn（fast-path）→ 直接答 → TTS（现状 V8 链路不变）
+2. **委派**：语音助手 LLM 自主判断复杂任务 → 调 `delegate_to_spirit(task)`：
+   - 工具内：查/建用户的 spirit 主会话 → 提交**异步** turn（detached ctx goroutine 派发，不等完成）→ 登记 delegation（voice_session_id ↔ spirit_session_id + **task_id**）→ 立即返回「已交办精灵助手」
+   - 语音助手收到工具结果 → 口播确认 → **turn 正常结束**，语音助手继续陪聊（每个语音 turn 天然独立，无阻塞点）
+3. **播报**：精灵 **task 终态**（`TaskCompletedEvent`；团队场景含系统推送 synthesis 续跑 turn 完成后才终态）→ 事件总线 → voice eventLoop 按 delegation 关联（spirit_session_id + task_id）匹配 → 取该会话最新 completed reply step 全文 → cleanForSpeech 清洗 → TTS 播报 → 回 listening
+
+> **评审修正（2026-08-11，R9）**：播报触发由「TurnCompleted」改为「**TaskCompleted**」。委派 turn 完成 ≠ 任务完成——团队场景下委派 turn 先产出「已组建团队」reply 并终态 turn，但 task 保持 running，最终总结由 checkAllTeamsCompleted 系统推送的 synthesis 续跑 turn（ParentTaskID 续在同一 task）产出。按 taskID 匹配 TaskCompletedEvent 可统一覆盖直答场景（turn 完成即 task 完成）与团队场景（synthesis 后 task 才终态），播报的必是最终总结。
+
+### 15.3 关键设计决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 委派调用形态 | **异步 turn 提交**（复用系统推送同款 `TurnGateway.ExecuteTurn` 入口） | 框架 AgentTool 是同步调用（父等子），会卡住语音助手，违背「委派后时刻陪聊」 |
+| 精灵执行可见性 | spirit **主会话**执行，chat 页可见全过程 | 用户已确认；可追溯可干预；无需新建隐藏会话体系 |
+| 分流策略 | 语音助手 LLM **自主决策**，prompt 声明委派边界（需工具/多步/团队 → 必委派；闲聊/单句问答 → 直答） | 用户已确认；agent 模式自然形态 |
+| 播报文本 | 首版：**精灵回复全文**经 cleanForSpeech + chunker 分句播报（长文可打断） | 零额外 LLM 调用；播报摘要化（语音助手浓缩 1-2 句）列 P1 优化 |
+| 播报时 voice 正忙 | 排队：当前 turn tts.end 后播 | 用户说话优先；不打断进行中的问答 |
+
+### 15.4 组件清单
+
+| # | 组件 | 位置 | 说明 |
+|---|------|------|------|
+| A | 内置语音助手 agent 种子 | `internal/data/seed_system_admin.go`（spirit 同款：agent 行 + runtime_settings 行 + prompt files） | 独立 agent_key `__voice_butler__`/人格 prompt/委派边界声明；runtime_settings 行**显式** `intent_pass_enabled=false`（**评审修正 R14**：DB 列默认 true，minimal insert 必须显式写 false）+ `tools_profile='chat_only'`（**评审修正 R13**：空 registry 工具集；delegate 工具走 CustomTools 注入，`tool_assembly.go` 无条件追加、绕行 profile allow-set，无需新建 profile） |
+| B | `delegate_to_spirit` 工具 | `internal/tools/`（工具实现）+ **orchestrator 条件注入**（`cli_admin_tools.go` 同款 `NewSynthesizeResultsTool` 模式：依赖 TurnGateway/SessionUsecase/Registry 在 service 层，`tools.Registry()` 静态工厂拿不到） | 仅当 agent_key==`__voice_butler__` 时注入；**评审修正 R12**：依赖用窄端口 `biz.TurnExecutorGateway`（`mailbox_waker.go` 先例，Wire 绑 ChatService）；detached goroutine 用 `safego.Go(appctx.Ctx(), ...)` + `ctxuser.WithUserID`（voice 预热同款 session.go:246-252）；`ErrTurnMessageQueued` = 已受理非失败（synthesis 同款语义 spirit_team.go:929）；提交同步失败 → `registry.MarkFailed` → watcher 通知 voice Session 口播「交办失败」 |
+| C | DelegationRegistry | **`internal/voice` 具体类型**（进程级单例，Wire 提供；**评审修正 R11**） | **评审修正 R11**：server→service 依赖方向不可逆，registry 不能由 VoiceWSServer 持有再暴露；Wire 单例双向注入——① `VoiceWSServer.SetDelegationRegistry`（`SetTurnPrewarmer` setter 先例 wire.go:2905）→ SessionDeps → Session；② service 层 `voiceButlerTools` 工厂。条目：`{voiceSessionID, spiritSessionID, content, taskID(pending→bound), status}`；**watcher 回调**（同包 Session 注册监听）支撑提交失败口播；voice session 关闭即清条目；进程重启退化为 chat 页查看 |
+| D | eventLoop **三路分流** + task 绑定 + 播报队列 | `internal/voice/session.go` | **评审修正 R3**：`V2Bus.Subscribe` 忽略 `EventSubscribeOptions` 过滤参数（全量广播），eventLoop 现状不过滤 session。必须显式三路分流：① `SpiritSessionID()==s.sessionID` → 现有快答路径；② 命中 delegation registry → 委派路径；③ 其余 → 丢弃。否则精灵执行的流式 delta 会串入语音 TTS（串话）。**评审修正 R10**：`ExecuteTurn` 阻塞且 `TurnResult` 无 TaskID → 登记时 taskID 留空；`TaskCreatedEvent.Task.UserMessage == TurnInput.Content`（projector.go:246）→ 按 (spirit_session_id + 内容精确匹配) 绑定 taskID，先注册后提交无窗口期，内容匹配免疫并发外来 turn 错绑；排队 turn 延迟建 task 天然兼容。终态：`TaskCompletedEvent`（含 cancelled，`Task.Status` 区分）/ `TaskFailedEvent` → 取 reply 全文播报。**播报机制**：listening 态无活跃 turn/chunker  flush 源，须一次性 `ensureTTS→Write→Flush→flush 哨兵`（复用澄清播报注入路径 + handleTurnCompleted 哨兵逻辑）；voice 正忙（thinking/speaking）→ session 内 FIFO 队列，回 listening 时排空 |
+| E | 前端语音入口改绑 | `web/src/pages/CompanionPage.vue` + `useChatWorkspace` | **评审修正 R5**：Turn 执行按 `sess.AgentID` hydrate agent（`chat_orchestrator_turn.go`，忽略 `input.AgentKey`），仅改 voice.start 的 agent_key 无效。Companion 进入语音模式时须选中/创建 **agent_id 属于 `__voice_butler__` 的会话**（复用现有会话选择体系；无则经会话 API 创建） |
+
+### 15.4.1 评审结论（2026-08-11 代码级核验）
+
+| # | 核验项 | 结论 |
+|---|--------|------|
+| R1 | 内置 agent 种子机制 | ✅ 可行：`seed_system_admin.go` 四内置 agent 同款三件套（agent 行 `ON CONFLICT(agent_key)` + `SeedSystemAgentRuntimeSettings` + `SeedButlerPromptFiles`），直接复用 |
+| R2 | TurnGateway 异步委派入口 | ✅ 可行：`biz.TurnGateway.ExecuteTurn(ctx, TurnInput)` + `ParentTaskID` 系统推送先例（TeamStarter→checkAllTeamsCompleted→synthesis turn）；委派工具经 Wire 注入 `TurnExecutorGateway` 窄接口即可 |
+| R3 | 事件订阅过滤 | ⚠️ **必须分流**：`V2Bus.Subscribe(_ biz.EventSubscribeOptions)` **忽略过滤参数**，全量广播；voice eventLoop 现状亦无 session 过滤（隐含假设"同时只有一个语音会话的活动 turn"）。引入委派后精灵后台执行事件与语音会话事件同通道，不分流必串话。按组件 D 三路分流 |
+| R4 | 工具注册方式 | ⚠️ **注入路径修正**：`tools.Registry()` 是静态工厂（`func(ctx) (ToolSet, error)`），拿不到 service 层依赖。`delegate_to_spirit` 需要 TurnGateway + Session 查询 + DelegationRegistry，必须走 `cli_admin_tools.go` 同款 orchestrator 条件注入（`NewSynthesizeResultsTool(o.spiritSynthesis())` 先例），按 agent_key 条件挂载 |
+| R5 | 前端 agent 绑定 | ⚠️ **绑定会话而非 agent_key**：Turn 执行 `agentID := sess.AgentID`（hydrateAgent），`TurnInput.AgentKey` 仅作透传标记不参与 agent 解析。前端必须选中/创建 agent_id 属于语音助手的会话 |
+| R6 | 意图识别开关 | ✅ 可行：`AgentRuntimeSettings.IntentPassEnabled` per-agent 开关（`intent.IntentPassFromAgent`），种子 runtime_settings 行写入 `false` 即可（委派分流由 LLM 自主工具调用决策，无需前置 IntentPass 分类） |
+| R7 | 播报文本来源 | ✅ 可行：复用 `spirit_team_usecase.go` 取终稿模式——`stepReader.ListStepsBySessionID` 找最后一条 `Kind==StepKindReply && Status==completed` 的 step 取 Content；voice 侧经注入窄端口（`biz.StepV2Reader` 子集）读取，不反向依赖 service |
+| R8 | spirit 主会话查/建 | ✅ 可行：`SessionUsecase.Search(SessionSearchQuery{AgentID, UserID, RootOnly:true})` 查；无则 `SessionUsecase.Create`（OwnerType=agent, AgentID=spirit agent id）建。工具委派目标恒为用户唯一 spirit 主会话（与 chat 页默认会话一致） |
+| R9 | 播报触发事件 | ⚠️ **TurnCompleted→TaskCompleted**：见 §15.2 评审修正。团队场景委派 turn 先终态（reply="已组建团队"），task 仍 running；synthesis 续跑 turn 完成后 task 才终态。按 taskID 匹配 `TaskCompletedEvent` 统一覆盖直答/团队两场景 |
+| R10 | task_id 登记时机 | ⚠️ **内容匹配绑定**：`ExecuteTurn` 阻塞至 turn 完成（`pipeline.Run` 同步），`TurnResult` 无 TaskID 字段 → 工具提交时拿不到 task_id。但 `TaskCreatedEvent.Task.UserMessage` == `TurnInput.Content`（`projector.go:246` `meta.newTask(..., meta.TaskContent)`）。方案：登记时 taskID 留空（pending），eventLoop 收 `TaskCreatedEvent` 按 (spirit_session_id + UserMessage 精确匹配) 绑定；先注册后提交无漏绑窗口，内容匹配免疫外来并发 turn 错绑；排队 turn（`ErrTurnMessageQueued`）延迟建 task 天然兼容 |
+| R11 | Registry 共享位置 | ⚠️ **Wire 单例双向注入**：VoiceWSServer 在 server 层、工具工厂在 service 层，server→service 方向不可逆 → registry 具体类型放 `internal/voice`（纯内存 struct + sync.Mutex），Wire 提供单例；`VoiceWSServer.SetDelegationRegistry` setter 注入（`SetTurnPrewarmer` 先例，`wire.go:2905`），工具工厂经 orchestrator deps 注入。service import voice 无环（voice 仅依赖 biz/event） |
+| R12 | ExecuteTurn 阻塞性与容错 | ⚠️ **阻塞确认 + 排队语义**：必须 detached goroutine（`safego.Go(appctx.Ctx())` + `ctxuser.WithUserID`，voice 预热同款）。`ErrTurnMessageQueued` = 已受理（spirit 会话有活跃 run 时排队，排水后照常建 task），非失败；同步错误（admission 拒绝/DB 错）→ 永无 TaskCreated → `registry.MarkFailed` + watcher 回调 voice Session 口播失败，防 delegation 泄漏空等。工具依赖用窄端口 `biz.TurnExecutorGateway`（`mailbox_waker.go:26` 先例） |
+| R13 | chat_only profile 可行性 | ✅ `toolProfiles["chat_only"] = {}` 空 registry 工具集；`tool_assembly.go:89` `deps.CustomTools` **无条件追加**、绕行 profile allow-set → delegate 工具注入不受 chat_only 限制；CustomTools 参与 `BuildCacheKey`（cache.go:310）→ 语音助手构建缓存独立，不污染他 agent |
+| R14 | intent_pass_enabled 默认值 | ⚠️ **DB 默认 true**（`agent_runtime_setting.go:115` `Default(true)`）→ 种子 minimal insert 必须显式写 `intent_pass_enabled=false`，默认依赖列默认值会静默开启 IntentPass |
+| R15 | 委派播报的 TTS 生命周期 | ⚠️ **listening 态无 flush 源**：澄清播报依赖本会话 turn 的 TurnCompleted 触发 `chunker.Flush`；委派播报到达时 voice 在 listening（无活跃 turn）→ 必须自足：`ensureTTS → chunker.Write(全文) → Flush → flush 哨兵`（复用 `handleTurnCompleted` 哨兵逻辑驱动 OnDrained → tts.end → 回 listening）。voice 正忙时入 session FIFO 队列，回 listening 排空（§15.3「播报时 voice 正忙」决策落地） |
+
+### 15.5 与既有能力的关系
+
+- **V8 优化全部继续生效**：语音助手 turn 同样走 fast-path/预热/首句快速通道（标记机制与 agent 无关）
+- **精灵零改动**：文字路径/团队编排/深度思考完整保留；委派 turn 在精灵侧就是一次普通用户 turn（来源标记 `voice_delegation` 仅用于审计/播报路由）
+- **听写模式不受影响**：dictation 不建 turn 不订阅事件
+
+### 15.6 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| 语音助手误委派简单问题（响应反而变慢） | prompt 委派边界 + 实测调优；误委派不致命（结果仍正确播报） |
+| 委派后进程重启 delegation 丢失 | 内存 registry 限定 voice 存活期；重启后结果在 chat 页可见（主会话执行），不退化正确性 |
+| 长回复播报冗长 | 语音打断机制已有；P1 播报摘要化（fast-path LLM 浓缩） |
+| 多委派并发完成乱序播报 | registry 按 task 登记，完成一条播一条（FIFO 队列） |
+| 精灵后台事件串入语音 TTS（R3） | eventLoop 三路分流（组件 D），非本语音会话且非关联 delegation 的事件一律丢弃 |
+| 委派 task 失败/取消无播报 | 匹配 `TaskFailedEvent`/取消终态同样触发播报（口播「任务未能完成」+ 失败简报），避免用户空等 |
+| 委派播报进行中用户开口（实施后评审竞态修复） | listening 态存活的 scheduler 必为无主自足播报，`handleASRFinal` 开新 turn 时按 barge-in 语义锁内摘除、锁外 `Cancel()`——否则其 flush 哨兵 OnDrained 会把 thinking 经 EvTTSEnd（无文本 Turn 合法出口）提前拍回 listening，新 turn delta 全丢 + tts.end 缺失。回归：`TestSessionDelegationBroadcastCancelledByNewTurn` |
+
+---
+
+*文档版本：2026-08-11 v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

@@ -30,15 +30,13 @@
           @update:model-value="emitFormPatch({ mode: String($event ?? 'inherit') })"
         />
         <q-toggle
-          :model-value="form.enabled"
-          label="启用"
-          @update:model-value="emitFormPatch({ enabled: Boolean($event) })"
-        />
-        <q-toggle
           :model-value="form.requires_confirmation"
           label="需要确认"
           @update:model-value="emitFormPatch({ requires_confirmation: Boolean($event) })"
         />
+        <div class="text-caption text-grey-7">
+          此开关只能追加确认：工具全局已设为「需确认」时，此处无法豁免（两者任一开启即需确认）。
+        </div>
         <q-input
           :model-value="form.config_override_json"
           label="配置覆盖 JSON"
@@ -53,7 +51,15 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn no-caps unelevated class="app-dialog-accent-btn" label="保存" :loading="saving" @click="$emit('save')" />
+        <q-btn
+          no-caps
+          unelevated
+          class="app-dialog-accent-btn"
+          label="保存"
+          :loading="saving"
+          :disable="Boolean(configJsonError)"
+          @click="$emit('save')"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>

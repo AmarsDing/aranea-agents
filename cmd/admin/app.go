@@ -132,7 +132,7 @@ func newApp(
 						_ = knowledgeSvc.LoadKnowledgeLinkIndex(consumerCtx)
 					})
 				}
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, lg)
 				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
 			}
 			if d != nil {
@@ -227,6 +227,7 @@ func startReadinessDependentServices(
 	spiritUC *biz.SpiritTeamUsecase,
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
 	graphBuildDeps *chatagent.TRPCBuilderDeps,
+	chatSvc *service.ChatService,
 	lg loggateway.Logger,
 ) {
 	// P1-3：DB ready 后拉起全部存量 vault 的同步循环（root_path 非空）。
@@ -238,6 +239,13 @@ func startReadinessDependentServices(
 	if graphBuildDeps != nil {
 		safego.Go(ctx, "startup.mcp_prewarm", func() {
 			chatagent.PrewarmMCPToolSets(ctx, *graphBuildDeps, lg)
+		})
+	}
+	// __spirit__ agent 启动预构建：消除进程首个语音/聊天 Turn 的冷构建
+	// （实测 2.6-8s）。后台执行，失败仅 Warn 不阻塞启动（Always-Ready）。
+	if chatSvc != nil {
+		safego.Go(ctx, "startup.spirit_agent_prewarm", func() {
+			chatSvc.PrewarmSpiritAgent(ctx)
 		})
 	}
 	if err := guard.OnStartup(ctx); err != nil {

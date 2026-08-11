@@ -37,6 +37,17 @@
       flat
       dense
       no-caps
+      icon="search"
+      :label="t('knowledgePage.workbench.searchTitle')"
+      class="kb-topbar__action"
+      @click="$emit('open-search')"
+    >
+      <q-tooltip>Ctrl+Shift+F</q-tooltip>
+    </q-btn>
+    <q-btn
+      flat
+      dense
+      no-caps
       icon="bolt"
       :label="t('knowledgePage.workbench.quickSwitcher')"
       class="kb-topbar__action"
@@ -91,6 +102,7 @@ defineEmits<{
   'switch-vault': [id: string];
   'open-quick-switcher': [];
   'open-command-palette': [];
+  'open-search': [];
   'open-graph': [];
   'open-settings': [];
 }>();

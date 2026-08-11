@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -184,10 +185,12 @@ type ToolInvocationParam struct {
 }
 
 type ToolAgentOverride struct {
-	ID                   string
-	ToolID               string
-	ToolKey              string
-	AgentID              string
+	ID      string
+	ToolID  string
+	ToolKey string
+	AgentID string
+	// Enabled 为遗留列：运行时启停判定只读 Mode（见 applyOverrideToEffectiveItem），
+	// 本字段不参与判定，写入时恒置 true 归一化存储。
 	Enabled              bool
 	Mode                 string
 	ConfigOverrideJSON   string
@@ -269,10 +272,25 @@ type ToolAuditResult struct {
 	Offset int
 }
 
+// ToolCatalogEntry is the lightweight build-time catalog row for a tool. It
+// carries only the columns needed for runtime-config merging and the
+// confirmation gate, so the backing query stays a cheap indexed lookup
+// without the invocation-aggregation joins used by SearchTools/GetTool.
+type ToolCatalogEntry struct {
+	Key                  string
+	ConfigJSON           string
+	DefaultConfigJSON    string
+	RequiresConfirmation bool
+}
+
 // Stability:stable
 type ToolReader interface {
 	SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
 	GetTool(ctx context.Context, idOrKey string) (Tool, error)
+	// ListToolCatalogEntries batch-loads lightweight catalog rows for the
+	// given tool keys in a single query, replacing per-key GetTool loops at
+	// agent-build time. Soft-deleted and unknown keys are simply absent.
+	ListToolCatalogEntries(ctx context.Context, keys []string) ([]ToolCatalogEntry, error)
 }
 
 // Stability:stable
@@ -411,6 +429,33 @@ func (u *ToolUsecase) GetTool(ctx context.Context, id string) (Tool, error) {
 	return t, nil
 }
 
+// ListToolCatalogEntries batch-loads lightweight catalog rows for the given
+// tool keys (trimmed + deduped). Empty input short-circuits without a query.
+// Unlike GetTool it skips platform enrichment — the catalog row carries no
+// runtime fields that enrichment would populate.
+func (u *ToolUsecase) ListToolCatalogEntries(ctx context.Context, keys []string) ([]ToolCatalogEntry, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(keys))
+	normalized := make([]string, 0, len(keys))
+	for _, k := range keys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		normalized = append(normalized, k)
+	}
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+	return u.repo.ListToolCatalogEntries(ctx, normalized)
+}
+
 func (u *ToolUsecase) Create(ctx context.Context, in ToolUpsertInput) (Tool, error) {
 	if err := validateToolUpsert(in); err != nil {
 		return Tool{}, err
@@ -493,7 +538,7 @@ func (u *ToolUsecase) UpdateToolConfig(ctx context.Context, id string, configJSO
 	if err != nil {
 		return Tool{}, err
 	}
-	if err := validateToolConfigAgainstSchema(existing.ConfigSchemaJSON, configJSON); err != nil {
+	if err := validateToolConfigAgainstSchema(existing.Source, existing.ConfigSchemaJSON, configJSON); err != nil {
 		return Tool{}, err
 	}
 	return u.repo.UpdateToolConfig(ctx, id, configJSON)
@@ -586,8 +631,12 @@ func (u *ToolUsecase) UpsertToolAgentOverride(ctx context.Context, in ToolAgentO
 	if in.Mode == "" {
 		in.Mode = "inherit"
 	}
+	in.ConfigOverrideJSON = strings.TrimSpace(in.ConfigOverrideJSON)
 	if in.ConfigOverrideJSON == "" {
 		in.ConfigOverrideJSON = "{}"
+	}
+	if !json.Valid([]byte(in.ConfigOverrideJSON)) {
+		return ToolAgentOverride{}, apierror.BadRequest("TOOL", "config_override_json must be valid JSON")
 	}
 	return u.repo.UpsertToolAgentOverride(ctx, in, tool.ID)
 }

@@ -1,0 +1,28 @@
+{
+  "cookies": [
+    {
+      "name": "access_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiYWNjZXNzIjoiYWRtaW4iLCJ3b3Jrc3BhY2VfaWQiOiJkZWZhdWx0IiwiaXNzIjoia3JhdG9zIiwic3ViIjoidXNlciIsImF1ZCI6WyJhZG1pbiJdLCJleHAiOjE3ODY5OTUyMjAsIm5iZiI6MTc4NjM5MDQyMCwiaWF0IjoxNzg2MzkwNDIwLCJqdGkiOiJiNDk2NWI5NS0wYTI3LTQ2OTktYTBhZC1hMjExNWI2NzYzMWYifQ.gcjXftS_lbSGZ-_1DZzXRLySSUfWeXs2bciHyVX_Tsw",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1786995220.54813,
+      "size": 347,
+      "httpOnly": true,
+      "secure": false,
+      "session": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:9001",
+      "localStorage": [
+        {
+          "name": "aranea.auth.token",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiYWNjZXNzIjoiYWRtaW4iLCJ3b3Jrc3BhY2VfaWQiOiJkZWZhdWx0IiwiaXNzIjoia3JhdG9zIiwic3ViIjoidXNlciIsImF1ZCI6WyJhZG1pbiJdLCJleHAiOjE3ODY5OTUyMjAsIm5iZiI6MTc4NjM5MDQyMCwiaWF0IjoxNzg2MzkwNDIwLCJqdGkiOiJiNDk2NWI5NS0wYTI3LTQ2OTktYTBhZC1hMjExNWI2NzYzMWYifQ.gcjXftS_lbSGZ-_1DZzXRLySSUfWeXs2bciHyVX_Tsw"
+        }
+      ],
+      "sessionStorage": []
+    }
+  ]
+}

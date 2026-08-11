@@ -1659,17 +1659,19 @@ func (x *ListToolRunsForToolRequest) GetPageSize() int32 {
 }
 
 type ToolAgentOverride struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Id                   string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ToolId               string                 `protobuf:"bytes,2,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
-	ToolKey              string                 `protobuf:"bytes,3,opt,name=tool_key,json=toolKey,proto3" json:"tool_key,omitempty"`
-	AgentId              string                 `protobuf:"bytes,4,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Enabled              bool                   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Mode                 string                 `protobuf:"bytes,6,opt,name=mode,proto3" json:"mode,omitempty"`
-	ConfigOverrideJson   string                 `protobuf:"bytes,7,opt,name=config_override_json,json=configOverrideJson,proto3" json:"config_override_json,omitempty"`
-	RequiresConfirmation bool                   `protobuf:"varint,8,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
-	CreatedAt            string                 `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt            string                 `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Id      string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ToolId  string                 `protobuf:"bytes,2,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
+	ToolKey string                 `protobuf:"bytes,3,opt,name=tool_key,json=toolKey,proto3" json:"tool_key,omitempty"`
+	AgentId string                 `protobuf:"bytes,4,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// enabled is legacy: runtime enablement is decided by mode alone
+	// (inherit/allow/deny); this field is always stored as true.
+	Enabled              bool   `protobuf:"varint,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Mode                 string `protobuf:"bytes,6,opt,name=mode,proto3" json:"mode,omitempty"`
+	ConfigOverrideJson   string `protobuf:"bytes,7,opt,name=config_override_json,json=configOverrideJson,proto3" json:"config_override_json,omitempty"`
+	RequiresConfirmation bool   `protobuf:"varint,8,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
+	CreatedAt            string `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt            string `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -2371,13 +2373,14 @@ func (x *DeleteToolGrantRequest) GetToolKey() string {
 }
 
 type UpsertToolAgentOverrideRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	ToolId               string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
-	AgentId              string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	Enabled              bool                   `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Mode                 string                 `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
-	ConfigOverrideJson   string                 `protobuf:"bytes,5,opt,name=config_override_json,json=configOverrideJson,proto3" json:"config_override_json,omitempty"`
-	RequiresConfirmation bool                   `protobuf:"varint,6,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	ToolId  string                 `protobuf:"bytes,1,opt,name=tool_id,json=toolId,proto3" json:"tool_id,omitempty"`
+	AgentId string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// enabled is legacy (see ToolAgentOverride): callers should send true.
+	Enabled              bool   `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Mode                 string `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	ConfigOverrideJson   string `protobuf:"bytes,5,opt,name=config_override_json,json=configOverrideJson,proto3" json:"config_override_json,omitempty"`
+	RequiresConfirmation bool   `protobuf:"varint,6,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }

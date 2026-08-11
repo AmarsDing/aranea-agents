@@ -3655,9 +3655,11 @@ func (x *ApplyEvolutionSuggestionRequest) GetSuggestionId() string {
 }
 
 type RejectEvolutionSuggestionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	SuggestionId  string                 `protobuf:"bytes,2,opt,name=suggestion_id,json=suggestionId,proto3" json:"suggestion_id,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	AgentId      string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	SuggestionId string                 `protobuf:"bytes,2,opt,name=suggestion_id,json=suggestionId,proto3" json:"suggestion_id,omitempty"`
+	// 拒绝原因（可选），持久化到 metadata.rejection_reason 供审计。
+	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3706,6 +3708,65 @@ func (x *RejectEvolutionSuggestionRequest) GetSuggestionId() string {
 	return ""
 }
 
+func (x *RejectEvolutionSuggestionRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type RollbackEvolutionSuggestionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	SuggestionId  string                 `protobuf:"bytes,2,opt,name=suggestion_id,json=suggestionId,proto3" json:"suggestion_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RollbackEvolutionSuggestionRequest) Reset() {
+	*x = RollbackEvolutionSuggestionRequest{}
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RollbackEvolutionSuggestionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RollbackEvolutionSuggestionRequest) ProtoMessage() {}
+
+func (x *RollbackEvolutionSuggestionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RollbackEvolutionSuggestionRequest.ProtoReflect.Descriptor instead.
+func (*RollbackEvolutionSuggestionRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *RollbackEvolutionSuggestionRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *RollbackEvolutionSuggestionRequest) GetSuggestionId() string {
+	if x != nil {
+		return x.SuggestionId
+	}
+	return ""
+}
+
 type EditPromptFileByAIRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
@@ -3717,7 +3778,7 @@ type EditPromptFileByAIRequest struct {
 
 func (x *EditPromptFileByAIRequest) Reset() {
 	*x = EditPromptFileByAIRequest{}
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3729,7 +3790,7 @@ func (x *EditPromptFileByAIRequest) String() string {
 func (*EditPromptFileByAIRequest) ProtoMessage() {}
 
 func (x *EditPromptFileByAIRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[36]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3742,7 +3803,7 @@ func (x *EditPromptFileByAIRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditPromptFileByAIRequest.ProtoReflect.Descriptor instead.
 func (*EditPromptFileByAIRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{36}
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *EditPromptFileByAIRequest) GetAgentId() string {
@@ -3775,7 +3836,7 @@ type EditPromptFileByAIResponse struct {
 
 func (x *EditPromptFileByAIResponse) Reset() {
 	*x = EditPromptFileByAIResponse{}
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3787,7 +3848,7 @@ func (x *EditPromptFileByAIResponse) String() string {
 func (*EditPromptFileByAIResponse) ProtoMessage() {}
 
 func (x *EditPromptFileByAIResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[37]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3800,7 +3861,7 @@ func (x *EditPromptFileByAIResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditPromptFileByAIResponse.ProtoReflect.Descriptor instead.
 func (*EditPromptFileByAIResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{37}
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *EditPromptFileByAIResponse) GetFile() *AgentPromptFile {
@@ -3825,7 +3886,7 @@ type AgentTemplate struct {
 
 func (x *AgentTemplate) Reset() {
 	*x = AgentTemplate{}
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3837,7 +3898,7 @@ func (x *AgentTemplate) String() string {
 func (*AgentTemplate) ProtoMessage() {}
 
 func (x *AgentTemplate) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[38]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3850,7 +3911,7 @@ func (x *AgentTemplate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentTemplate.ProtoReflect.Descriptor instead.
 func (*AgentTemplate) Descriptor() ([]byte, []int) {
-	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{38}
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *AgentTemplate) GetKey() string {
@@ -3911,7 +3972,7 @@ type ListAgentTemplatesResponse struct {
 
 func (x *ListAgentTemplatesResponse) Reset() {
 	*x = ListAgentTemplatesResponse{}
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3923,7 +3984,7 @@ func (x *ListAgentTemplatesResponse) String() string {
 func (*ListAgentTemplatesResponse) ProtoMessage() {}
 
 func (x *ListAgentTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[39]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3936,7 +3997,7 @@ func (x *ListAgentTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAgentTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListAgentTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{39}
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListAgentTemplatesResponse) GetItems() []*AgentTemplate {
@@ -3955,7 +4016,7 @@ type DuplicateAgentRequest struct {
 
 func (x *DuplicateAgentRequest) Reset() {
 	*x = DuplicateAgentRequest{}
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3967,7 +4028,7 @@ func (x *DuplicateAgentRequest) String() string {
 func (*DuplicateAgentRequest) ProtoMessage() {}
 
 func (x *DuplicateAgentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_agent_v1_agent_proto_msgTypes[40]
+	mi := &file_kratos_agent_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3980,7 +4041,7 @@ func (x *DuplicateAgentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DuplicateAgentRequest.ProtoReflect.Descriptor instead.
 func (*DuplicateAgentRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{40}
+	return file_kratos_agent_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *DuplicateAgentRequest) GetId() string {
@@ -4362,8 +4423,12 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2$.kratos.agent.v1.EvolutionSuggestionR\x05items\"m\n" +
 	"\x1fApplyEvolutionSuggestionRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12)\n" +
-	"\rsuggestion_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\fsuggestionId\"n\n" +
+	"\rsuggestion_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\fsuggestionId\"\x86\x01\n" +
 	" RejectEvolutionSuggestionRequest\x12\x1f\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12)\n" +
+	"\rsuggestion_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\fsuggestionId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"p\n" +
+	"\"RollbackEvolutionSuggestionRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12)\n" +
 	"\rsuggestion_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\fsuggestionId\"\x83\x01\n" +
 	"\x19EditPromptFileByAIRequest\x12\x1f\n" +
@@ -4383,7 +4448,7 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x1aListAgentTemplatesResponse\x124\n" +
 	"\x05items\x18\x01 \x03(\v2\x1e.kratos.agent.v1.AgentTemplateR\x05items\"-\n" +
 	"\x15DuplicateAgentRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\xc4\x18\n" +
+	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id2\x90\x1a\n" +
 	"\fAgentService\x12i\n" +
 	"\n" +
 	"ListAgents\x12\".kratos.agent.v1.ListAgentsRequest\x1a#.kratos.agent.v1.ListAgentsResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
@@ -4409,7 +4474,8 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x18GetAgentEvolutionMetrics\x120.kratos.agent.v1.GetAgentEvolutionMetricsRequest\x1a).kratos.agent.v1.EvolutionMetricsResponse\"/\x82\xd3\xe4\x93\x02)\x12'/v1/agents/{agent_id}/evolution/metrics\x12\xbc\x01\n" +
 	"\x1cGetAgentEvolutionSuggestions\x124.kratos.agent.v1.GetAgentEvolutionSuggestionsRequest\x1a1.kratos.agent.v1.ListEvolutionSuggestionsResponse\"3\x82\xd3\xe4\x93\x02-\x12+/v1/agents/{agent_id}/evolution/suggestions\x12\xc0\x01\n" +
 	"\x18ApplyEvolutionSuggestion\x120.kratos.agent.v1.ApplyEvolutionSuggestionRequest\x1a$.kratos.agent.v1.EvolutionSuggestion\"L\x82\xd3\xe4\x93\x02F:\x01*\"A/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/apply\x12\xc3\x01\n" +
-	"\x19RejectEvolutionSuggestion\x121.kratos.agent.v1.RejectEvolutionSuggestionRequest\x1a$.kratos.agent.v1.EvolutionSuggestion\"M\x82\xd3\xe4\x93\x02G:\x01*\"B/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rejectB=\n" +
+	"\x19RejectEvolutionSuggestion\x121.kratos.agent.v1.RejectEvolutionSuggestionRequest\x1a$.kratos.agent.v1.EvolutionSuggestion\"M\x82\xd3\xe4\x93\x02G:\x01*\"B/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject\x12\xc9\x01\n" +
+	"\x1bRollbackEvolutionSuggestion\x123.kratos.agent.v1.RollbackEvolutionSuggestionRequest\x1a$.kratos.agent.v1.EvolutionSuggestion\"O\x82\xd3\xe4\x93\x02I:\x01*\"D/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rollbackB=\n" +
 	"\x13api.kratos.agent.v1P\x01Z$aranea-agents/api/kratos/agent/v1;v1b\x06proto3"
 
 var (
@@ -4424,7 +4490,7 @@ func file_kratos_agent_v1_agent_proto_rawDescGZIP() []byte {
 	return file_kratos_agent_v1_agent_proto_rawDescData
 }
 
-var file_kratos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
+var file_kratos_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_kratos_agent_v1_agent_proto_goTypes = []any{
 	(*AgentRuntimeSettings)(nil),                // 0: kratos.agent.v1.AgentRuntimeSettings
 	(*AgentPromptFile)(nil),                     // 1: kratos.agent.v1.AgentPromptFile
@@ -4462,12 +4528,13 @@ var file_kratos_agent_v1_agent_proto_goTypes = []any{
 	(*ListEvolutionSuggestionsResponse)(nil),    // 33: kratos.agent.v1.ListEvolutionSuggestionsResponse
 	(*ApplyEvolutionSuggestionRequest)(nil),     // 34: kratos.agent.v1.ApplyEvolutionSuggestionRequest
 	(*RejectEvolutionSuggestionRequest)(nil),    // 35: kratos.agent.v1.RejectEvolutionSuggestionRequest
-	(*EditPromptFileByAIRequest)(nil),           // 36: kratos.agent.v1.EditPromptFileByAIRequest
-	(*EditPromptFileByAIResponse)(nil),          // 37: kratos.agent.v1.EditPromptFileByAIResponse
-	(*AgentTemplate)(nil),                       // 38: kratos.agent.v1.AgentTemplate
-	(*ListAgentTemplatesResponse)(nil),          // 39: kratos.agent.v1.ListAgentTemplatesResponse
-	(*DuplicateAgentRequest)(nil),               // 40: kratos.agent.v1.DuplicateAgentRequest
-	(*emptypb.Empty)(nil),                       // 41: google.protobuf.Empty
+	(*RollbackEvolutionSuggestionRequest)(nil),  // 36: kratos.agent.v1.RollbackEvolutionSuggestionRequest
+	(*EditPromptFileByAIRequest)(nil),           // 37: kratos.agent.v1.EditPromptFileByAIRequest
+	(*EditPromptFileByAIResponse)(nil),          // 38: kratos.agent.v1.EditPromptFileByAIResponse
+	(*AgentTemplate)(nil),                       // 39: kratos.agent.v1.AgentTemplate
+	(*ListAgentTemplatesResponse)(nil),          // 40: kratos.agent.v1.ListAgentTemplatesResponse
+	(*DuplicateAgentRequest)(nil),               // 41: kratos.agent.v1.DuplicateAgentRequest
+	(*emptypb.Empty)(nil),                       // 42: google.protobuf.Empty
 }
 var file_kratos_agent_v1_agent_proto_depIdxs = []int32{
 	0,  // 0: kratos.agent.v1.Agent.settings:type_name -> kratos.agent.v1.AgentRuntimeSettings
@@ -4486,10 +4553,10 @@ var file_kratos_agent_v1_agent_proto_depIdxs = []int32{
 	29, // 13: kratos.agent.v1.EvolutionMetricsResponse.retrieval_quality_series:type_name -> kratos.agent.v1.MetricDataPoint
 	32, // 14: kratos.agent.v1.ListEvolutionSuggestionsResponse.items:type_name -> kratos.agent.v1.EvolutionSuggestion
 	1,  // 15: kratos.agent.v1.EditPromptFileByAIResponse.file:type_name -> kratos.agent.v1.AgentPromptFile
-	38, // 16: kratos.agent.v1.ListAgentTemplatesResponse.items:type_name -> kratos.agent.v1.AgentTemplate
+	39, // 16: kratos.agent.v1.ListAgentTemplatesResponse.items:type_name -> kratos.agent.v1.AgentTemplate
 	4,  // 17: kratos.agent.v1.AgentService.ListAgents:input_type -> kratos.agent.v1.ListAgentsRequest
 	8,  // 18: kratos.agent.v1.AgentService.CreateAgent:input_type -> kratos.agent.v1.CreateAgentRequest
-	41, // 19: kratos.agent.v1.AgentService.ListAgentCreators:input_type -> google.protobuf.Empty
+	42, // 19: kratos.agent.v1.AgentService.ListAgentCreators:input_type -> google.protobuf.Empty
 	9,  // 20: kratos.agent.v1.AgentService.GetAgent:input_type -> kratos.agent.v1.GetAgentRequest
 	10, // 21: kratos.agent.v1.AgentService.UpdateAgent:input_type -> kratos.agent.v1.UpdateAgentRequest
 	11, // 22: kratos.agent.v1.AgentService.DeleteAgent:input_type -> kratos.agent.v1.DeleteAgentRequest
@@ -4501,38 +4568,40 @@ var file_kratos_agent_v1_agent_proto_depIdxs = []int32{
 	21, // 28: kratos.agent.v1.AgentService.UpdateAgentPromptFile:input_type -> kratos.agent.v1.UpdateAgentPromptFileRequest
 	22, // 29: kratos.agent.v1.AgentService.DeleteAgentPromptFile:input_type -> kratos.agent.v1.DeleteAgentPromptFileRequest
 	23, // 30: kratos.agent.v1.AgentService.EstimateTokens:input_type -> kratos.agent.v1.EstimateTokensRequest
-	36, // 31: kratos.agent.v1.AgentService.EditPromptFileByAI:input_type -> kratos.agent.v1.EditPromptFileByAIRequest
-	41, // 32: kratos.agent.v1.AgentService.ListAgentTemplates:input_type -> google.protobuf.Empty
-	40, // 33: kratos.agent.v1.AgentService.DuplicateAgent:input_type -> kratos.agent.v1.DuplicateAgentRequest
+	37, // 31: kratos.agent.v1.AgentService.EditPromptFileByAI:input_type -> kratos.agent.v1.EditPromptFileByAIRequest
+	42, // 32: kratos.agent.v1.AgentService.ListAgentTemplates:input_type -> google.protobuf.Empty
+	41, // 33: kratos.agent.v1.AgentService.DuplicateAgent:input_type -> kratos.agent.v1.DuplicateAgentRequest
 	26, // 34: kratos.agent.v1.AgentService.CheckAgentKey:input_type -> kratos.agent.v1.CheckAgentKeyRequest
 	28, // 35: kratos.agent.v1.AgentService.GetAgentEvolutionMetrics:input_type -> kratos.agent.v1.GetAgentEvolutionMetricsRequest
 	31, // 36: kratos.agent.v1.AgentService.GetAgentEvolutionSuggestions:input_type -> kratos.agent.v1.GetAgentEvolutionSuggestionsRequest
 	34, // 37: kratos.agent.v1.AgentService.ApplyEvolutionSuggestion:input_type -> kratos.agent.v1.ApplyEvolutionSuggestionRequest
 	35, // 38: kratos.agent.v1.AgentService.RejectEvolutionSuggestion:input_type -> kratos.agent.v1.RejectEvolutionSuggestionRequest
-	7,  // 39: kratos.agent.v1.AgentService.ListAgents:output_type -> kratos.agent.v1.ListAgentsResponse
-	3,  // 40: kratos.agent.v1.AgentService.CreateAgent:output_type -> kratos.agent.v1.Agent
-	6,  // 41: kratos.agent.v1.AgentService.ListAgentCreators:output_type -> kratos.agent.v1.ListAgentCreatorsResponse
-	3,  // 42: kratos.agent.v1.AgentService.GetAgent:output_type -> kratos.agent.v1.Agent
-	3,  // 43: kratos.agent.v1.AgentService.UpdateAgent:output_type -> kratos.agent.v1.Agent
-	41, // 44: kratos.agent.v1.AgentService.DeleteAgent:output_type -> google.protobuf.Empty
-	3,  // 45: kratos.agent.v1.AgentService.ToggleFavorite:output_type -> kratos.agent.v1.Agent
-	13, // 46: kratos.agent.v1.AgentService.GetAgentPromptPreview:output_type -> kratos.agent.v1.GetAgentPromptPreviewResponse
-	16, // 47: kratos.agent.v1.AgentService.GetAgentEffectiveTools:output_type -> kratos.agent.v1.AgentEffectiveToolsView
-	16, // 48: kratos.agent.v1.AgentService.UpdateAgentToolPolicy:output_type -> kratos.agent.v1.AgentEffectiveToolsView
-	1,  // 49: kratos.agent.v1.AgentService.CreateAgentPromptFile:output_type -> kratos.agent.v1.AgentPromptFile
-	1,  // 50: kratos.agent.v1.AgentService.UpdateAgentPromptFile:output_type -> kratos.agent.v1.AgentPromptFile
-	41, // 51: kratos.agent.v1.AgentService.DeleteAgentPromptFile:output_type -> google.protobuf.Empty
-	25, // 52: kratos.agent.v1.AgentService.EstimateTokens:output_type -> kratos.agent.v1.EstimateTokensResponse
-	37, // 53: kratos.agent.v1.AgentService.EditPromptFileByAI:output_type -> kratos.agent.v1.EditPromptFileByAIResponse
-	39, // 54: kratos.agent.v1.AgentService.ListAgentTemplates:output_type -> kratos.agent.v1.ListAgentTemplatesResponse
-	3,  // 55: kratos.agent.v1.AgentService.DuplicateAgent:output_type -> kratos.agent.v1.Agent
-	27, // 56: kratos.agent.v1.AgentService.CheckAgentKey:output_type -> kratos.agent.v1.CheckAgentKeyResponse
-	30, // 57: kratos.agent.v1.AgentService.GetAgentEvolutionMetrics:output_type -> kratos.agent.v1.EvolutionMetricsResponse
-	33, // 58: kratos.agent.v1.AgentService.GetAgentEvolutionSuggestions:output_type -> kratos.agent.v1.ListEvolutionSuggestionsResponse
-	32, // 59: kratos.agent.v1.AgentService.ApplyEvolutionSuggestion:output_type -> kratos.agent.v1.EvolutionSuggestion
-	32, // 60: kratos.agent.v1.AgentService.RejectEvolutionSuggestion:output_type -> kratos.agent.v1.EvolutionSuggestion
-	39, // [39:61] is the sub-list for method output_type
-	17, // [17:39] is the sub-list for method input_type
+	36, // 39: kratos.agent.v1.AgentService.RollbackEvolutionSuggestion:input_type -> kratos.agent.v1.RollbackEvolutionSuggestionRequest
+	7,  // 40: kratos.agent.v1.AgentService.ListAgents:output_type -> kratos.agent.v1.ListAgentsResponse
+	3,  // 41: kratos.agent.v1.AgentService.CreateAgent:output_type -> kratos.agent.v1.Agent
+	6,  // 42: kratos.agent.v1.AgentService.ListAgentCreators:output_type -> kratos.agent.v1.ListAgentCreatorsResponse
+	3,  // 43: kratos.agent.v1.AgentService.GetAgent:output_type -> kratos.agent.v1.Agent
+	3,  // 44: kratos.agent.v1.AgentService.UpdateAgent:output_type -> kratos.agent.v1.Agent
+	42, // 45: kratos.agent.v1.AgentService.DeleteAgent:output_type -> google.protobuf.Empty
+	3,  // 46: kratos.agent.v1.AgentService.ToggleFavorite:output_type -> kratos.agent.v1.Agent
+	13, // 47: kratos.agent.v1.AgentService.GetAgentPromptPreview:output_type -> kratos.agent.v1.GetAgentPromptPreviewResponse
+	16, // 48: kratos.agent.v1.AgentService.GetAgentEffectiveTools:output_type -> kratos.agent.v1.AgentEffectiveToolsView
+	16, // 49: kratos.agent.v1.AgentService.UpdateAgentToolPolicy:output_type -> kratos.agent.v1.AgentEffectiveToolsView
+	1,  // 50: kratos.agent.v1.AgentService.CreateAgentPromptFile:output_type -> kratos.agent.v1.AgentPromptFile
+	1,  // 51: kratos.agent.v1.AgentService.UpdateAgentPromptFile:output_type -> kratos.agent.v1.AgentPromptFile
+	42, // 52: kratos.agent.v1.AgentService.DeleteAgentPromptFile:output_type -> google.protobuf.Empty
+	25, // 53: kratos.agent.v1.AgentService.EstimateTokens:output_type -> kratos.agent.v1.EstimateTokensResponse
+	38, // 54: kratos.agent.v1.AgentService.EditPromptFileByAI:output_type -> kratos.agent.v1.EditPromptFileByAIResponse
+	40, // 55: kratos.agent.v1.AgentService.ListAgentTemplates:output_type -> kratos.agent.v1.ListAgentTemplatesResponse
+	3,  // 56: kratos.agent.v1.AgentService.DuplicateAgent:output_type -> kratos.agent.v1.Agent
+	27, // 57: kratos.agent.v1.AgentService.CheckAgentKey:output_type -> kratos.agent.v1.CheckAgentKeyResponse
+	30, // 58: kratos.agent.v1.AgentService.GetAgentEvolutionMetrics:output_type -> kratos.agent.v1.EvolutionMetricsResponse
+	33, // 59: kratos.agent.v1.AgentService.GetAgentEvolutionSuggestions:output_type -> kratos.agent.v1.ListEvolutionSuggestionsResponse
+	32, // 60: kratos.agent.v1.AgentService.ApplyEvolutionSuggestion:output_type -> kratos.agent.v1.EvolutionSuggestion
+	32, // 61: kratos.agent.v1.AgentService.RejectEvolutionSuggestion:output_type -> kratos.agent.v1.EvolutionSuggestion
+	32, // 62: kratos.agent.v1.AgentService.RollbackEvolutionSuggestion:output_type -> kratos.agent.v1.EvolutionSuggestion
+	40, // [40:63] is the sub-list for method output_type
+	17, // [17:40] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
@@ -4550,7 +4619,7 @@ func file_kratos_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_agent_v1_agent_proto_rawDesc), len(file_kratos_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   41,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

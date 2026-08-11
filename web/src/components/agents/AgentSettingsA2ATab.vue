@@ -7,7 +7,14 @@
       </div>
     </div>
     <div class="app-form-field-grid">
-      <q-input v-model.trim="proxyForm.remote_url" class="app-field-long" dense outlined label="远程 URL *" />
+      <q-input
+        v-model.trim="proxyForm.remote_url"
+        class="app-field-long"
+        dense
+        outlined
+        label="远程 URL *"
+        hint="远程 A2A 服务地址，须以 http:// 或 https:// 开头"
+      />
       <q-toggle v-model="proxyForm.enable_streaming" color="primary" label="流式响应" />
       <q-input v-model.number="proxyForm.timeout_seconds" dense outlined type="number" min="5" label="超时（秒）" />
       <q-select
@@ -39,12 +46,22 @@
         </template>
       </q-input>
       <template v-if="proxyForm.auth_type === 'mtls'">
-        <q-input v-model="mtls.cert_file" dense outlined label="客户端证书路径 (cert_file)" />
-        <q-input v-model="mtls.key_file" dense outlined label="私钥路径 (key_file)" />
-        <q-input v-model="mtls.ca_file" dense outlined label="CA 路径 (ca_file，可选)" />
+        <q-input v-model="mtls.cert_file" class="app-field-long" dense outlined label="客户端证书路径 (cert_file)" />
+        <q-input v-model="mtls.key_file" class="app-field-long" dense outlined label="私钥路径 (key_file)" />
+        <q-input v-model="mtls.ca_file" class="app-field-long" dense outlined label="CA 路径 (ca_file，可选)" />
       </template>
     </div>
     <div class="app-actions-bar app-actions-bar--start q-mt-md">
+      <q-btn
+        flat
+        rounded
+        no-caps
+        color="primary"
+        icon="cable"
+        label="测试连接"
+        :loading="testing"
+        @click="testConnection"
+      />
       <q-btn color="primary" rounded unelevated no-caps label="保存连接" :loading="saving" @click="saveProxy" />
     </div>
   </section>
@@ -63,9 +80,10 @@ const emit = defineEmits<{
   saved: [];
 }>();
 
-const { saving, showSecret, authSecret, mtls, authTypeOptions, proxyForm, saveProxy } = useAgentA2AProxyTab(
-  () => props.agentId,
-  () => props.a2aProxy,
-  () => emit('saved'),
-);
+const { saving, testing, showSecret, authSecret, mtls, authTypeOptions, proxyForm, saveProxy, testConnection } =
+  useAgentA2AProxyTab(
+    () => props.agentId,
+    () => props.a2aProxy,
+    () => emit('saved'),
+  );
 </script>

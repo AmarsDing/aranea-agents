@@ -211,6 +211,8 @@ export type ToolAgentOverride = {
   toolId: string | undefined;
   toolKey: string | undefined;
   agentId: string | undefined;
+  // enabled is legacy: runtime enablement is decided by mode alone
+  // (inherit/allow/deny); this field is always stored as true.
   enabled: boolean | undefined;
   mode: string | undefined;
   configOverrideJson: string | undefined;
@@ -303,6 +305,7 @@ export type UpsertToolAgentOverrideRequest = {
   //
   // Behaviors: REQUIRED
   agentId: string | undefined;
+  // enabled is legacy (see ToolAgentOverride): callers should send true.
   enabled: boolean | undefined;
   mode: string | undefined;
   configOverrideJson: string | undefined;

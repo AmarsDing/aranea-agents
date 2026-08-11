@@ -28,7 +28,7 @@ type platformToolSeed struct {
 	registryName string
 }
 
-const webResearchConfigSchema = `{"type":"object","properties":{"provider":{"type":"string","enum":["tavily","serpapi"],"description":"Search API provider"},"api_key":{"type":"string","description":"Provider API key (optional if set in system settings)"},"search_depth":{"type":"string","enum":["basic","advanced"],"description":"Tavily search depth"},"max_results":{"type":"integer","minimum":1,"maximum":20},"fetch_top":{"type":"integer","minimum":0,"maximum":20,"description":"URLs to fetch for full page excerpts"},"timeout_sec":{"type":"integer","minimum":5,"maximum":120},"http_proxy":{"type":"string","description":"HTTP proxy URL for search and fetch"}}}`
+const webResearchConfigSchema = `{"type":"object","properties":{"provider":{"type":"string","enum":["tavily","serpapi"],"description":"Search API provider"},"api_key":{"type":"string","format":"password","description":"Provider API key (optional if set in system settings)"},"search_depth":{"type":"string","enum":["basic","advanced"],"description":"Tavily search depth"},"max_results":{"type":"integer","minimum":1,"maximum":20},"fetch_top":{"type":"integer","minimum":0,"maximum":20,"description":"URLs to fetch for full page excerpts"},"timeout_sec":{"type":"integer","minimum":5,"maximum":120},"http_proxy":{"type":"string","description":"HTTP proxy URL for search and fetch"}}}`
 
 func b2i(b bool) int {
 	if b {

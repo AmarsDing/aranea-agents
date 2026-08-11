@@ -33,6 +33,8 @@ type applyGuardStore struct {
 	biz.UnifiedEvolutionStore
 	row          *biz.UnifiedEvolutionSuggestion
 	statusUpdate string
+	statusActor  string
+	statusReason string
 }
 
 func (s *applyGuardStore) Create(_ context.Context, suggestion biz.UnifiedEvolutionSuggestion) error {
@@ -45,8 +47,10 @@ func (s *applyGuardStore) GetByID(context.Context, string) (*biz.UnifiedEvolutio
 	return s.row, nil
 }
 
-func (s *applyGuardStore) UpdateStatus(_ context.Context, _ string, status string, _ string, _ string) error {
+func (s *applyGuardStore) UpdateStatus(_ context.Context, _ string, status string, actor string, reason string) error {
 	s.statusUpdate = status
+	s.statusActor = actor
+	s.statusReason = reason
 	s.row.Status = status
 	return nil
 }
@@ -191,6 +195,53 @@ func TestApplySuggestion_PromptPayloadApplied(t *testing.T) {
 	}
 	if agents.files[0].Body != payload {
 		t.Errorf("AGENTS_CORE.md = %q, want payload %q", agents.files[0].Body, payload)
+	}
+}
+
+// ── Reject: 原因必须透传到 store（持久化 metadata.rejection_reason）─────────
+
+func TestRejectSuggestion_PersistsReason(t *testing.T) {
+	store := &applyGuardStore{row: applyGuardRow("prompt", "工具成功率偏低",
+		"近30d工具成功率 45.0%。建议检查工具策略。", "")}
+	agents := &applyGuardAgentRepo{}
+	uc := newApplyGuardUsecase(store, agents)
+
+	got, err := uc.RejectSuggestion(context.Background(), "agent-1", "sug-1", "当前场景不适用")
+	if err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	if got.Status != biz.EvolutionStatusRejected {
+		t.Errorf("status = %q, want rejected", got.Status)
+	}
+	if store.statusReason != "当前场景不适用" {
+		t.Errorf("reason not persisted: got %q", store.statusReason)
+	}
+	if agents.replaceCall != 0 {
+		t.Errorf("reject must not touch prompt files, replaceCall=%d", agents.replaceCall)
+	}
+}
+
+func TestRejectSuggestion_EmptyReasonAllowed(t *testing.T) {
+	store := &applyGuardStore{row: applyGuardRow("persona", "负反馈累积", "建议调整语气。", "")}
+	agents := &applyGuardAgentRepo{}
+	uc := newApplyGuardUsecase(store, agents)
+
+	if _, err := uc.RejectSuggestion(context.Background(), "agent-1", "sug-1", ""); err != nil {
+		t.Fatalf("empty reason must be allowed: %v", err)
+	}
+	if store.statusUpdate != biz.EvolutionStatusRejected {
+		t.Errorf("status = %q, want rejected", store.statusUpdate)
+	}
+}
+
+func TestRejectSuggestion_NonPendingRejected(t *testing.T) {
+	row := applyGuardRow("prompt", "t", "c", "")
+	row.Status = biz.EvolutionStatusApplied
+	store := &applyGuardStore{row: row}
+	uc := newApplyGuardUsecase(store, &applyGuardAgentRepo{})
+
+	if _, err := uc.RejectSuggestion(context.Background(), "agent-1", "sug-1", "r"); err == nil {
+		t.Fatal("rejecting an applied suggestion must fail")
 	}
 }
 

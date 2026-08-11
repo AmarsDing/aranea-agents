@@ -437,9 +437,10 @@ func (uc *EvolutionUsecase) applyAndMark(ctx context.Context, agentID, suggestio
 	return uc.GetSuggestionByID(ctx, suggestionID)
 }
 
-func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string, suggestionID string) (EvolutionSuggestion, error) {
+func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string, suggestionID string, reason string) (EvolutionSuggestion, error) {
 	agentID = strings.TrimSpace(agentID)
 	suggestionID = strings.TrimSpace(suggestionID)
+	reason = strings.TrimSpace(reason)
 	if agentID == "" || suggestionID == "" {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "agent_id and suggestion_id are required")
 	}
@@ -457,7 +458,7 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 	if _, err := uc.evolutionSM.Transition(ParseEvolutionState(s.Status), EvolutionEventReject); err != nil {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "invalid status transition from "+s.Status+" to rejected")
 	}
-	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRejected, "", ""); err != nil {
+	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRejected, "", reason); err != nil {
 		return EvolutionSuggestion{}, err
 	}
 	return uc.GetSuggestionByID(ctx, suggestionID)

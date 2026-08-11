@@ -10,7 +10,9 @@ import (
 )
 
 const (
-	firstSentenceMinRunes = 6
+	// P1 首句快速通道（2026-08-10）：首句阈值 6→4，遇次要标点即切，
+	// 首句 TTS 合成提前 ~2 字符的 LLM 流式时间；4 为下限防碎句（"好。" 3 字符仍合并）。
+	firstSentenceMinRunes = 4
 	laterSentenceMinRunes = 12
 	chunkHardMaxRunes     = 80
 )

@@ -41,6 +41,20 @@ func TestEmbeddedSpiritPrompts(t *testing.T) {
 	if err != nil || len(admin) == 0 {
 		t.Fatalf("system_admin prompts: %v %v", admin, err)
 	}
+	voice, err := systemprompts.ListSubdirMarkdown("voice_butler")
+	if err != nil || len(voice) == 0 {
+		t.Fatalf("voice_butler prompts: %v %v", voice, err)
+	}
+	body, err = systemprompts.ReadMarkdown("voice_butler/voice_butler.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 语音助手 prompt 必须包含委派边界与 TTS 口语输出约束（M74 V9 设计 74 §15）。
+	for _, want := range []string{"delegate_to_spirit", "TTS", "禁止任何 markdown"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("voice_butler.md should contain %q", want)
+		}
+	}
 }
 
 // 2026-07-25 Fix 4：DECISION.md 必须保留「需求不明先澄清、禁止组队」约束。

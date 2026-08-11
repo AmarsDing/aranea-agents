@@ -38,6 +38,7 @@ const (
 	KnowledgeService_ListCollectionGraph_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
 	KnowledgeService_ListBlockBacklinks_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 	KnowledgeService_ListDanglingLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
+	KnowledgeService_ListUnlinkedMentions_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
 	KnowledgeService_PromoteBlocks_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 	KnowledgeService_RebuildKnowledgeIndex_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
@@ -91,6 +92,9 @@ type KnowledgeServiceClient interface {
 	// ListDanglingLinks aggregates dangling references of one collection by
 	// raw_target with ref counts (SP1-E; "uncreated notes" view).
 	ListDanglingLinks(ctx context.Context, in *ListDanglingLinksRequest, opts ...grpc.CallOption) (*ListDanglingLinksResponse, error)
+	// ListUnlinkedMentions returns documents that mention the target doc's name
+	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+	ListUnlinkedMentions(ctx context.Context, in *ListUnlinkedMentionsRequest, opts ...grpc.CallOption) (*ListUnlinkedMentionsResponse, error)
 	// PromoteBlocks clones blocks from a personal vault into a team collection
 	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
 	// cascade candidates for references into private blocks, and immediate
@@ -304,6 +308,16 @@ func (c *knowledgeServiceClient) ListDanglingLinks(ctx context.Context, in *List
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListUnlinkedMentions(ctx context.Context, in *ListUnlinkedMentionsRequest, opts ...grpc.CallOption) (*ListUnlinkedMentionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUnlinkedMentionsResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListUnlinkedMentions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) PromoteBlocks(ctx context.Context, in *PromoteBlocksRequest, opts ...grpc.CallOption) (*PromoteBlocksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PromoteBlocksResponse)
@@ -418,6 +432,9 @@ type KnowledgeServiceServer interface {
 	// ListDanglingLinks aggregates dangling references of one collection by
 	// raw_target with ref counts (SP1-E; "uncreated notes" view).
 	ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error)
+	// ListUnlinkedMentions returns documents that mention the target doc's name
+	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
+	ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error)
 	// PromoteBlocks clones blocks from a personal vault into a team collection
 	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
 	// cascade candidates for references into private blocks, and immediate
@@ -504,6 +521,9 @@ func (UnimplementedKnowledgeServiceServer) ListBlockBacklinks(context.Context, *
 }
 func (UnimplementedKnowledgeServiceServer) ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDanglingLinks not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUnlinkedMentions not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PromoteBlocks not implemented")
@@ -871,6 +891,24 @@ func _KnowledgeService_ListDanglingLinks_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListUnlinkedMentions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUnlinkedMentionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListUnlinkedMentions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListUnlinkedMentions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListUnlinkedMentions(ctx, req.(*ListUnlinkedMentionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_PromoteBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PromoteBlocksRequest)
 	if err := dec(in); err != nil {
@@ -1075,6 +1113,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDanglingLinks",
 			Handler:    _KnowledgeService_ListDanglingLinks_Handler,
+		},
+		{
+			MethodName: "ListUnlinkedMentions",
+			Handler:    _KnowledgeService_ListUnlinkedMentions_Handler,
 		},
 		{
 			MethodName: "PromoteBlocks",

@@ -2149,28 +2149,34 @@ KnowledgePage.vue（重写，薄壳）
 
 ### SP2-2. 视觉设计令牌（深空液态玻璃）
 
-新增 SCSS 令牌层（`web/src/css/deep-space.sass`，sass 缩进语法对齐项目惯例），仅作用于知识库工作台作用域（`.kb-workbench` 根类名隔离），不污染全局 Quasar 主题：
+新增 SCSS 令牌层（`web/src/css/deep-space.sass`，sass 缩进语法对齐项目惯例），仅作用于知识库工作台作用域（`.kb-workbench` 根类名隔离），不污染全局 Quasar 主题。
 
-| 令牌 | 值 | 用途 |
+> **2026-08-11 增强轮（P0-1 色彩同源）**：初版硬编码色值已废弃，kb 令牌全部改为消费全局 Tech Night 变量（`app-theme.sass` / `theme/_css-vars-dark.sass`），系统主题切换时工作台自动跟随。下表为当前生效映射：
+
+| 令牌 | 值（同源映射） | 用途 |
 |------|-----|------|
-| `--kb-bg-deep` | `#0a0e1a` | 深空底 |
-| `--kb-bg-glass` | `rgba(16, 22, 40, 0.55)` | 玻璃面板底色 |
-| `--kb-glass-border` | `rgba(120, 200, 255, 0.14)` | 高光描边 |
+| `--kb-bg-deep` | `var(--canvas-base)` | 深空底 |
+| `--kb-bg-glass` | `var(--glass-surface)` | 玻璃面板底色 |
+| `--kb-bg-glass-strong` | `var(--glass-elevated)` | 强玻璃底（浮层/确认框） |
+| `--kb-glass-border` | `var(--glass-border)` | 高光描边 |
+| `--kb-glass-border-strong` | `var(--glass-border-hover)` | 悬停描边 |
 | `--kb-glass-highlight` | `rgba(255, 255, 255, 0.08)` | 顶部高光带 |
-| `--kb-accent-cyan` | `#4fd8ff` | 主霓虹（青） |
-| `--kb-accent-violet` | `#9d6bff` | 辅霓虹（紫，极光光斑） |
-| `--kb-text-primary` | `#dce6f5` | 主文本 |
-| `--kb-text-dim` | `#7a8aa5` | 次文本 |
-| `--kb-radius-glass` | `14px` | 玻璃圆角 |
-| `--kb-blur` | `18px` | backdrop blur |
+| `--kb-accent-cyan` | `var(--color-accent)` | 主霓虹（青） |
+| `--kb-accent-violet` | `var(--color-neon-violet)` | 辅霓虹（紫，极光光斑） |
+| `--kb-accent-cyan-dim` | `color-mix(in srgb, var(--color-accent) 35%, transparent)` | 主霓虹淡化 |
+| `--kb-text-primary` | `var(--tech-text-primary)` | 主文本 |
+| `--kb-text-dim` | `var(--tech-text-muted)` | 次文本 |
+| `--kb-danger` / `--kb-warn` | `var(--color-danger)` / `var(--color-warning)` | 危险/警告 |
+| `--kb-radius-glass` | `14px` | 玻璃圆角（全局无对应，本地保留） |
+| `--kb-blur` | `var(--glass-blur-default)` | backdrop blur |
 
-玻璃质感实现：`background: var(--kb-bg-glass); backdrop-filter: blur(var(--kb-blur)) saturate(1.4); border: 1px solid var(--kb-glass-border);` + `::before` 伪元素顶部 1px 高光线 + 内阴影模拟折射。极光光斑 = 两个固定定位径向渐变圆（cyan/violet，`filter: blur(120px)`，低透明度，不参与交互）。
+玻璃质感实现：`background: var(--kb-bg-glass); backdrop-filter: blur(var(--kb-blur)) saturate(1.4); border: 1px solid var(--kb-glass-border);` + 镜面断面（box-shadow 顶缘反光 + 底缘暗线，见 §SP2-12 三层液态效果）。极光光斑 = 两个固定定位径向渐变圆（cyan/violet，`filter: blur(120px)`，低透明度，不参与交互）。
 
 ### SP2-3. 特效组件（5 个自研，`components/knowledge/effects/`）
 
 | 组件 | 职责 | 关键技术 |
 |------|------|---------|
-| `GlassPanel.vue` | 液态玻璃容器（面板/浮层基座） | slot 包装 + 上述令牌 + 可选 `glow` 呼吸辉光 |
+| `GlassPanel.vue` | 液态玻璃容器（面板/浮层基座） | slot 包装 + 上述令牌 + 可选 `glow` 呼吸辉光；**P0-2 三层液态效果**（§SP2-12）：SVG 折射光纹 + 镜面断面 + 指针追随高光 |
 | `ParticleField.vue` | 深空粒子背景 | Canvas 2D；粒子数按设备分级（`navigator.hardwareConcurrency`/`deviceMemory`：高 120 / 中 60 / 低 0）；鼠标 120px 斥力 + 近距连线（<90px 透明度渐隐）；`requestAnimationFrame` 自循环，页面不可见（`document.hidden`）时停帧 |
 | `TiltCard.vue` | 3D 倾斜卡片 | mousemove 求相对中心偏移 → `rotateX/Y`（±8° 上限）+ 移动高光（radial-gradient 跟随）；mouseleave spring 回正（CSS transition 180ms） |
 | `GlowButton.vue` | 辉光磁吸主按钮 | hover 辉光晕（box-shadow 双层 cyan）+ 鼠标磁吸位移（≤6px，transform translate）；active 涟漪 |
@@ -2219,30 +2225,31 @@ type WorkbenchTab = {
 
 ### SP2-6. wikilink 写作（`[[` 补全 + 芯片 + 跳链）
 
-**补全**：`@codemirror/autocomplete` 自定义 source——检测 `[[` 前缀（正则 `\[\[([^\]\|#]*)$`），150ms 防抖后调即时搜索数据源（复用统一搜索即时区 `searchVaultFiles` 同一路径，当前库文件名候选）；候选项展示文档名 + 所在目录 dim 后缀；Enter/Tab 确认插入 `[[name]]`（已有 `\|alias`/`#heading` 后缀片段保留）。
+**补全**：`@codemirror/autocomplete` 自定义 source——检测 `[[` 前缀（正则 `\[\[([^\]|#]*?)(?:#([^\]|]*))?$`），150ms 防抖后调即时搜索数据源（复用统一搜索即时区 `searchVaultFiles` 同一路径，当前库文件名候选）；候选项展示文档名 + 所在目录 dim 后缀；Enter/Tab 确认插入 `[[name]]`（已有 `\|alias`/`#heading` 后缀片段保留）。**P2-5 标题段补全**：`[[target#partial` 时切换为标题候选（`getHeadings(target)` 由容器提供——已打开 tab 的大纲解析），确认插入完整 `[[target#heading]]`；跳链时 heading 随 `open-doc` 事件上抛，容器打开文档后按标题文本匹配滚动定位（§SP2-15）。
 
 **链接芯片（Decoration.replace + Widget）**：`[[target]]`/`[[target|alias]]`/`[[target#heading]]` 在**非光标行**替换为 `WikiLinkWidget`（chip 样式：胶囊玻璃底 + cyan 文本 + 链接图标；展示文本 = alias ?? target）：
 - `resolveWikiTarget(target)`：查当前 tabs 缓存 + 即时搜索数据源判定存在性；不存在 → chip 加 `dangling` 类（灰显 + 虚线边框 + tooltip「目标未创建」），与浏览视图 dangling 视觉一致。
 - 点击行为：widget `mousedown`——Ctrl/Cmd+点击（编辑态）或单击（预览态）→ `openDoc` 跳链；目标不存在时点击 = 经 `createVaultDocument` 新建并打开（Obsidian 语义）。
 
-### SP2-7. ⌘O 快速切换 / ⌘K 命令面板
+### SP2-7. ⌘O 快速切换 / ⌘K 命令面板 / Ctrl+Shift+F 全库搜索
 
-两浮层共用 `GlassPanel` + 居中模态结构（背景遮罩 `backdrop-filter: blur(6px) brightness(0.6)`）：
+两浮层共用 `PaletteModal`（`GlassPanel` + 居中模态结构，背景遮罩 `backdrop-filter: blur(6px) brightness(0.6)`）：
 
 | 浮层 | 数据源 | 行为 |
 |------|--------|------|
 | `QuickSwitcher.vue`（⌘O/Ctrl+O） | 即时搜索（文件名，150ms 防抖，复用浏览视图同一函数） | ↑↓ 导航、Enter 打开（`openDoc`）、ESC 关闭；结果项 = 文件名 + 路径 + 库名徽标 |
-| `CommandPalette.vue`（⌘K/Ctrl+K） | 命令注册表（静态数组，见下） | 模糊过滤（子序列匹配 + 打分排序：前缀 > 连续子串 > 散列）；↑↓/Enter/ESC；命令行右侧展示快捷键提示 |
+| `CommandPalette.vue`（⌘K/Ctrl+K） | 命令注册表（静态数组，见下） | 模糊过滤（子序列匹配 + 打分排序：前缀 > 连续子串 > 散列）+ **P2-6 别名/MRU**（§SP2-16）；↑↓/Enter/ESC；命令行右侧展示快捷键提示 |
+| `SearchPanel.vue`（Ctrl+Shift+F，**P1-3 新增**） | `SearchKnowledge` RPC（内容检索，300ms 防抖 + seq 竞态守卫） | 结果项 = 文档名 + 路径 + 相关度分数 + 命中片段（匹配词居中截取 160 字符）；↑↓/Enter/ESC；关闭时清零状态（§SP2-13） |
 
-**命令注册表**（初版 9 条，注册表模式便于扩展）：新建笔记 / 新建文件夹 / 保存当前笔记（Ctrl+S）/ 切换编辑预览（Ctrl+E）/ 打开图谱全屏（Ctrl+G）/ 切换 Vault（子列表二级选择）/ 重建当前库索引（调既有 `RebuildKnowledgeIndex` RPC）/ 晋升到团队库（打开既有 KnowledgePromoteDialog）/ 关闭当前标签（Ctrl+W）。
+**命令注册表**（初版 9 条 + SP2-8 粘贴文本入库，注册表模式便于扩展）：新建笔记 / 新建文件夹 / 保存当前笔记（Ctrl+S）/ 切换编辑预览（Ctrl+E）/ 打开图谱全屏（Ctrl+G）/ 切换 Vault（子列表二级选择）/ 重建当前库索引（调既有 `RebuildKnowledgeIndex` RPC）/ 粘贴文本入库 / 晋升到团队库（打开既有 KnowledgePromoteDialog）/ 关闭当前标签（Ctrl+W）。**P2-6**：每条命令注册英文/拼音别名（`aliases` 字段），空查询时 MRU（至多 3 条，localStorage `kb.command.mru` 持久化）置顶并显示 history 角标。
 
-快捷键全局接线：workbench 挂载期注册 `keydown`（capture），输入框聚焦时 ⌘O/⌘K 仍可唤起、其余命令键放行。
+快捷键全局接线：workbench 挂载期注册 `keydown`（capture），输入框聚焦时 ⌘O/⌘K/Ctrl+Shift+F 仍可唤起、其余命令键放行。三浮层互斥（开任一关其余）。
 
 ### SP2-8. 右栏五面板（`components/knowledge/panels/`）
 
-| 面板 | 数据源（全部既有 API） | 交互 |
+| 面板 | 数据源（除 P2-7 外全部既有 API） | 交互 |
 |------|----------------------|------|
-| `PanelBacklinks.vue` | `listBlockBacklinks(docId)` | 块级分组（来源文档 → 上下文片段列表）；点击来源 → `openDoc`；dangling 组展示 raw_target + 计数 |
+| `PanelBacklinks.vue` | `listBlockBacklinks(docId)` + `listUnlinkedMentions(docId)`（**P2-7**） | 块级分组（来源文档 → 上下文片段列表）；点击来源 → `openDoc`；dangling 组展示 raw_target + 计数；**未链接提及分组**（来源文档名 + 次数，点击跳转，§SP2-17） |
 | `PanelOutlinks.vue` | `listDocumentLinks(docId)` | 显式/实体/语义分区（沿用既有关联区口径）；点击 → `openDoc` |
 | `PanelOutline.vue` | 当前 tab `content` 前端解析（正则 ATX heading 树，H1-H6 缩进） | 点击 → 编辑器滚动定位（`EditorView.dispatch` 选区 + `scrollIntoView`）；内容变更 300ms 防抖重解析 |
 | `PanelProperties.vue` | `content` frontmatter 区段（`^---\n...\n---`）YAML 键值只读解析（title/aliases/tags 高亮，其余通用键值） | 只读；无 frontmatter → 「无属性」空态 |
@@ -2274,7 +2281,8 @@ web/src/
     workbench/NoteEditor.vue                   [新] CM6 装配
     workbench/QuickSwitcher.vue                [新]
     workbench/CommandPalette.vue               [新]
-    panels/PanelBacklinks.vue                  [新]
+    workbench/SearchPanel.vue                  [新，P1-3] Ctrl+Shift+F 全库搜索浮层
+    panels/PanelBacklinks.vue                  [新；P2-7 增未链接提及分组]
     panels/PanelOutlinks.vue                   [新]
     panels/PanelOutline.vue                    [新]
     panels/PanelProperties.vue                 [新]
@@ -2285,6 +2293,16 @@ web/src/
   components/knowledge/KnowledgeEmbedderPanel.vue [改] 包入设置浮层（逻辑不动）
 退役：KnowledgeDocumentsPanel / KnowledgeDocList / KnowledgeDocDetail / KnowledgeSearchDual
   ——树 + 工作台 + 五面板取代其职责；保留文件至验收通过后再删（切片 8 处理）
+
+2026-08-11 增强轮新增/改动：
+  api/kratos/knowledge/v1/knowledge.proto       [改，P2-7] ListUnlinkedMentions RPC
+  internal/biz/knowledge/mention.go             [新，P2-7] 未链接提及领域逻辑 + DocContentSearcher 端口
+  internal/data/knowledge_mentions.go           [新，P2-7] 端口实现（content_text ILIKE 预筛）
+  internal/service/knowledge_mention.go         [新，P2-7] RPC 装配
+  web/src/features/knowledge/commands.ts        [改，P2-6] aliases 字段 + pushMru + filterCommands MRU
+  web/src/features/knowledge/wikilink.ts        [改，P2-5] #heading 标题补全分支
+  web/src/features/knowledge/useKnowledgeWorkbench.ts [改，P1-4] reorderTabs
+  web/src/components/knowledge/workbench/WorkbenchTabs.vue [改，P1-4] 原生 DnD + 中键关闭
 ```
 
 **分层纪律**：纯函数解析（outline/frontmatter/wikilink 目标匹配）放 `features/knowledge/` 并可单测；组件只消费；API 层不动。
@@ -2299,13 +2317,79 @@ web/src/
 | SP2-ADR-4 | 特效组件自研（非引库） | 5 个组件总代码量 <600 行，零依赖风险；液态玻璃为 CSS 技巧非库能力 | 引入 UI 特效库（体积 + 协议 + 主题割裂） |
 | SP2-ADR-5 | 局部迷你图谱自研轻量 2D canvas | 迷你图 ≤200 节点求启动快；复用 G5 3D 管线加载成本高且视觉过载 | 嵌入 G5 3D 实例（重）/ sigma.js（新增依赖只为迷你图不值） |
 | SP2-ADR-6 | 视觉令牌作用域隔离 `.kb-workbench` | 深空风仅知识库沉浸区；不污染全局明暗双主题体系 | 全局主题改造（破坏面大，违背 NFR-G5-4 同原则） |
+| SP2-ADR-7 | kb 令牌消费全局 Tech Night 变量（P0-1） | 色彩同源消除主题漂移；作用域隔离不变（ADR-6），只是值的来源从硬编码改为 `var(--*)` | 保留独立硬编码调色板（主题切换时工作台颜色脱节，2026-08-11 用户反馈根因） |
+| SP2-ADR-8 | 液态玻璃三层效果纯 CSS+SVG 实现（P0-2） | SVG 位移滤镜提供折射光纹，镜面断面/指针高光为 CSS 渐变与阴影；零 JS 动画循环、零依赖 | WebGL/canvas 流体模拟（性能与复杂度远超收益）/ 引入 liquid-glass 库（协议与主题割裂，同 ADR-4） |
+| SP2-ADR-9 | 全库搜索复用 SearchKnowledge（P1-3） | 既有 RPC 已支持 collection 限定 + top_k；容器侧防抖 + seq 竞态守卫即可满足体验 | 新增专用全文搜索 RPC（重复能力，维护两套检索入口） |
+| SP2-ADR-10 | 标签页拖拽用原生 HTML5 DnD（P1-4） | 标签条为扁平数组重排，原生 dragstart/dragover/drop 足够；零新增依赖 | vue-draggable 等库（为一个列表引入依赖不值，同 ADR-5 哲学） |
+| SP2-ADR-11 | 未链接提及做端口 + 可选降级（P2-7） | `DocContentSearcher` 为 evolving 端口，SQL ILIKE 预筛 + biz 层剔除 `[[...]]` 内命中；未接线返回空不阻断反链 | 全量扫描无预筛（大库性能不可控）/ 纯前端扫描（拉全库正文不可行） |
 
-### SP2-11. 影响面（改 SP2 必须同步谁）
+### SP2-12. 真液态玻璃三层效果（P0-2，`GlassPanel.vue`）
+
+初版玻璃仅「半透明 + blur + 1px 高光线」，无液态质感。增强后三层叠加（均为装饰层，`pointer-events: none`，`z-index` 低于内容）：
+
+| 层 | 实现 | 效果 |
+|----|------|------|
+| 1 折射光纹 | SVG `<filter id="kb-liquid-refract">`：`feTurbulence`（fractalNoise，baseFrequency 0.012/0.028，2 octave）→ `feDisplacementMap`（scale 10）作用于对角线性渐变光泽 | 光纹被噪声位移扭曲，产生液态折射感；静态无动画 |
+| 2 镜面断面 | `::after` 伪元素 inset box-shadow：顶缘 1px 白色反光（0.12）+ 左缘弱反光（0.05）+ 底缘暗线（0.3） | 玻璃厚度/断面感；全局玻璃表面在 `deep-space.sass` 统一注入同组阴影 |
+| 3 指针追随高光 | `pointermove` 写入 `--kb-mx/--kb-my` CSS 变量 → radial-gradient 240px 跟随圆斑；hover 淡入（0.35s opacity 过渡） | 光照随指针流动 |
+
+边缘羽化：层 1/3 均加 `mask-image: radial-gradient(130% 130% at 50% 50%, black 62%, transparent 100%)`，光效在角落淡出无硬边。降级契约不变（FR-SP2-10）。
+
+### SP2-13. 全库内容搜索（P1-3，`SearchPanel.vue` + 容器检索）
+
+**职责划分**（数据流纪律）：`SearchPanel` 纯受控组件（渲染结果 + 键盘导航）；检索逻辑在容器 `KnowledgeWorkbench`——
+
+- **触发**：Ctrl+Shift+F / 顶栏搜索按钮；与 ⌘O/⌘K 互斥（`openSearch` 关闭另两者）。
+- **检索**：`searchQuery` watch → 300ms 防抖 → `searchKnowledge({collection_id: 当前 Vault, query, top_k: 12})`；`searchSeq` 单调递增守卫，慢响应落地前比对序号，过期结果直接丢弃。
+- **片段**：`buildSnippet` 以首个匹配词为中心前后各扩 48 字符、总长 160，两端越界加省略号（Obsidian 语义）。
+- **结果项**：文档名（rel_path basename）+ 路径 + 分数徽标（tabular-nums）+ 双行截断片段；Enter/点击 → `openDoc`。
+- **关闭清理**：取消防抖定时器 + 序号失效 + 清空 query/items/loading，下次打开从零开始。
+
+### SP2-14. 标签页管理增强（P1-4，`WorkbenchTabs.vue` + `reorderTabs`）
+
+- **拖拽重排**：原生 HTML5 DnD——tab `draggable`，`dragstart` 记录源索引，`dragover` 阻止默认使落点合法，`drop` 上抛 `reorder(from, to)`；状态机 `reorderTabs` 做 splice 移动，激活态 docId 不变。拖动中 `kb-tabs__tab--dragging` 半透明反馈。
+- **中键关闭**：`@mousedown.middle.prevent` 直接走 `close` 事件（脏标签仍进保存确认弹窗，逻辑复用）。
+- **边界**：from/to 越界或相等时状态机直接返回；纯前端数组变更，无持久化（标签序是会话态，Obsidian 同）。
+
+### SP2-15. wikilink 标题段补全与定位（P2-5）
+
+- **补全分支**：`wikiLinkCompletionSource` 正则升级为 `\[\[([^\]|#]*?)(?:#([^\]|]*))?$`；检测到 `#` 时——目标名为 `#` 前段，候选 = `getHeadings(target)`（容器提供：已打开 tab 的 `parseOutline` 标题文本列表），过滤后插入点从 `#` 后起算。未提供 `getHeadings` 时该分支返回 null（降级为仅文档名补全）。
+- **装配**：`KnowledgeWorkbench.getHeadingsFor(target)` 按名归一化匹配已打开 tab → `parseOutline(tab.content)` 取标题文本；经 `WorkbenchTabs → NoteEditor` props 传递。
+- **跳链定位**：`WikiLinkWidget` 持有 `heading` 字段；`open-doc` 事件载荷 `(target, heading?)`——无 heading 保持单参数（不破坏既有测试/下游契约）。容器 `openDocByName` 打开后 `nextTick` 在目标文档大纲中大小写不敏感匹配标题，命中则 `EditorView.dispatch` 选区 + `scrollIntoView`。
+
+### SP2-16. 命令面板 MRU 与别名（P2-6，`commands.ts`）
+
+- **别名**：`CommandDef.aliases` 注册英文/拼音关键词（如 save → `['save','write','baocun']`）；`filterCommands` 键入查询时 `instantFilter` 同时匹配标题 + 别名，打分排序不变。
+- **MRU**：`pushMru(mru, id, keep=3)` 纯函数——id 置顶、去重、截断；空查询时 MRU 项置顶（保持近→远顺序）并显示 history 角标，其余按注册顺序。
+- **持久化**：容器 `KnowledgeWorkbench` 持有 `commandMru` ref，命令执行后 `pushMru` + 写 localStorage `kb.command.mru`；读写均 try/catch，隐私模式写失败静默降级为会话内 MRU。
+
+### SP2-17. 未链接提及（P2-7，SP2 唯一后端新增）
+
+**定义**（Obsidian "Unlinked mentions"）：目标文档显示名（rel_path/source 取 basename 去扩展名）在同库其他文档正文中以**纯文本**出现——`[[wikilink]]` 整段剔除后计数。
+
+**链路**：
+
+```
+proto: GET /v1/knowledge/documents/{doc_id}/unlinked-mentions
+  → service/knowledge_mention.go（薄装配）
+  → biz/knowledge/mention.go ListUnlinkedMentions
+      ① 取目标文档 → mentionNeedle 提取显示名
+      ② needle < 2 字符或端口未接线 → 返回空（降级不阻断）
+      ③ DocContentSearcher.SearchDocContentMentions（端口，evolving）
+         = data/knowledge_mentions.go：content_text ILIKE %needle% 预筛（排除自身，≤200 候选）
+      ④ biz 精确化：wikiLinkSpanRe 剔除 [[...]] → 小写计数 + 首次出现片段（前后 48 rune）
+      ⑤ Count 降序 + SrcDocID 字典序，≤50 条输出
+  → PanelBacklinks 未链接提及分组（来源文档名 + 计数徽标，点击 openDocId）
+```
+
+**设计要点**：ILIKE 只作预筛（可能命中全在 `[[...]]` 内），精确判定必须在 biz 层剔除链接段后重算；snippet 用 `strings.ToLower` 对本域字符集（CJK/ASCII）等长的性质直接索引原文取片段；单字符名噪声过大直接降级。
+
+### SP2-18. 影响面（改 SP2 必须同步谁）
 
 - **KnowledgePage.vue**：整页重写为薄壳；路由 `/knowledge` 不变；i18n key 前缀 `knowledgePage.*` 新增 workbench 段
 - **KnowledgeGraph3D**：新增 `fullscreen` props 模式（覆盖层定位 + ESC 退出），G5 画布/HUD 逻辑零改动
 - **KnowledgeVaultTree**：仅样式适配深空令牌（CSS 变量注入点），交互逻辑/事件签名不变
 - **退役组件**：KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual 被工作台吸收——验收前保留文件，验收后切片 8 删除并全局 grep 清理引用（R4）
 - **WS 摄取进度**：`useKnowledgeIngestWs` 继续工作（上传队列收纳进左栏底部），事件消费不变
-- **后端**：零改动（全部复用既有 RPC）
-- **测试**：纯函数（outline/frontmatter/wikilink resolve/命令过滤）+ 状态机（tabs 开闭/脏标记/CAS 冲突）单测；组件级 smoke（挂载不炸）；`pnpm lint + test + build` 全绿 + 浏览器运行时复验（验收 38）
+- **后端**：初版零改动；**2026-08-11 增强轮 P2-7 新增 1 个只读 RPC** `ListUnlinkedMentions`（proto + biz 端口 + data 实现 + service 装配，见 §SP2-17），无 Schema/迁移变更
+- **测试**：纯函数（outline/frontmatter/wikilink resolve/命令过滤/pushMru）+ 状态机（tabs 开闭/脏标记/CAS 冲突/reorderTabs）单测；组件级 smoke（挂载不炸）；`pnpm lint + test + build` 全绿 + 浏览器运行时复验（验收 38）

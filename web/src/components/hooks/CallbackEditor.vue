@@ -3,7 +3,7 @@
     <section class="callback-editor__section">
       <div class="callback-editor__section-head">
         <span class="callback-editor__section-title">{{ t('hooksPage.callbackEditor.sectionSummary') }}</span>
-        <span class="hook-tag hook-tag--point">{{ localRule.callback_point }}</span>
+        <span class="hook-tag hook-tag--point">{{ callbackPointLabel(localRule.callback_point, t) }}</span>
         <span :class="actionTagClass(localRule.action.type)">{{ actionTypeLabel(localRule.action.type, t) }}</span>
       </div>
       <div class="app-form-field-grid app-form-field-grid--wide">
@@ -51,12 +51,33 @@
           v-model="localRule.condition.agent_id"
           dense
           outlined
-          clearable
+          :clearable="!lockAgentId"
           :label="t('hooksPage.callbackEditor.fieldAgentId')"
-          :hint="t('hooksPage.callbackEditor.agentIdHint')"
+          :hint="
+            lockAgentId ? t('hooksPage.callbackEditor.agentIdLockedHint') : t('hooksPage.callbackEditor.agentIdHint')
+          "
+          :disable="lockAgentId"
+          @update:model-value="emitChange"
+        />
+        <q-select
+          v-if="useToolSelect"
+          v-model="localRule.condition.tool_name"
+          dense
+          outlined
+          clearable
+          use-input
+          emit-value
+          map-options
+          :label="t('hooksPage.callbackEditor.fieldToolName')"
+          :hint="t('hooksPage.callbackEditor.toolNameHint')"
+          :disable="!toolPoint"
+          :options="filteredToolOptions"
+          :loading="loadingToolOptions"
+          @filter="onToolFilter"
           @update:model-value="emitChange"
         />
         <q-input
+          v-else
           v-model="localRule.condition.tool_name"
           dense
           outlined
@@ -66,14 +87,17 @@
           :disable="!toolPoint"
           @update:model-value="emitChange"
         />
-        <q-input
+        <q-select
           v-model="localRule.condition.event_type"
           dense
           outlined
           clearable
+          emit-value
+          map-options
           :label="t('hooksPage.callbackEditor.fieldEventType')"
           :hint="t('hooksPage.callbackEditor.eventTypeHint')"
           :disable="!onEventPoint"
+          :options="eventTypeOptions"
           @update:model-value="emitChange"
         />
       </div>
@@ -190,6 +214,7 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { actionTagClass, actionTypeLabel } from './callbackEditorUi';
+import { callbackPointLabel } from '../../features/callback/constants';
 import { useCallbackEditor } from './useCallbackEditor';
 import type { HookRuleConfig } from '../../features/hooks/types';
 
@@ -207,6 +232,9 @@ const props = defineProps<{
   sortOrder?: number;
   agentId?: string;
   agentKey?: string;
+  lockAgentId?: boolean;
+  toolOptions?: { label: string; value: string }[];
+  loadingToolOptions?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -229,9 +257,13 @@ const {
   showMessageField,
   showSecret,
   webhookUrlError,
+  useToolSelect,
+  filteredToolOptions,
+  eventTypeOptions,
   emitChange,
   emitMeta,
   onModifyPatchInput,
   onWebhookUrlChange,
+  onToolFilter,
 } = useCallbackEditor(props, emit);
 </script>

@@ -13,7 +13,7 @@ vi.mock('../../../services', () => ({
   createKnowledgeService: () => ({}),
 }));
 
-import { listBlockBacklinks } from '../api';
+import { listBlockBacklinks, listUnlinkedMentions } from '../api';
 
 describe('listBlockBacklinks（SP1-I：doc_id 附加绑定直连）', () => {
   beforeEach(() => {
@@ -57,5 +57,31 @@ describe('listBlockBacklinks（SP1-I：doc_id 附加绑定直连）', () => {
   it('响应缺 items 时返回空数组', async () => {
     mockGet.mockResolvedValue({ data: {} });
     await expect(listBlockBacklinks('d1')).resolves.toEqual([]);
+  });
+});
+
+describe('listUnlinkedMentions（P2-7：doc_id 直连）', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+  });
+
+  it('经 documents/{doc_id}/unlinked-mentions 路由请求并映射 snake_case 字段', async () => {
+    // kratosApi.get 裸调返回 AxiosResponse（载荷在 .data）——mock 保持真实形状。
+    mockGet.mockResolvedValue({
+      data: {
+        items: [{ src_doc_id: 'd2', src_doc_name: 'notes/a.md', count: 2, snippet: '…上下文…' }],
+      },
+    });
+    const out = await listUnlinkedMentions('doc/特殊 id');
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(String(mockGet.mock.calls[0][0])).toBe(
+      '/v1/knowledge/documents/doc%2F%E7%89%B9%E6%AE%8A%20id/unlinked-mentions',
+    );
+    expect(out).toEqual([{ src_doc_id: 'd2', src_doc_name: 'notes/a.md', count: 2, snippet: '…上下文…' }]);
+  });
+
+  it('响应缺 items 时返回空数组', async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    await expect(listUnlinkedMentions('d1')).resolves.toEqual([]);
   });
 });

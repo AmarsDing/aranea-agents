@@ -102,5 +102,9 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	if names, nok := repo.(knowledge.DocNameReader); nok {
 		uc.SetBacklinkNames(names)
 	}
+	// P2-7：unlinked mentions 内容扫描端口（未接线时降级为空）。
+	if searcher, sok := repo.(knowledge.DocContentSearcher); sok {
+		uc.SetMentionSearcher(searcher)
+	}
 	return uc
 }
