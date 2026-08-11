@@ -22,6 +22,7 @@ type GraphExecutionUsecase struct {
 	factory      GraphRunnerFactory
 	execObserver GraphExecutionObserver
 	taskCoord    GraphTaskCoordinator
+	runEventSink GraphRunEventSink
 	defProvider  GraphDefinitionProvider
 	sm           *GraphExecutionStateMachine
 	mu           sync.RWMutex
@@ -88,6 +89,13 @@ func (uc *GraphExecutionUsecase) applyExecTransition(exec *GraphExecution, event
 // SetTaskCoordinator sets the task coordinator for graph-node-to-task-board wiring.
 func (uc *GraphExecutionUsecase) SetTaskCoordinator(c GraphTaskCoordinator) {
 	uc.taskCoord = c
+}
+
+// SetRunEventSink registers an external run-event bridge (e.g. the
+// twinmonitor OpenAPI compat facade). Optional; nil disables callbacks.
+// Set once during wire assembly before the server starts accepting traffic.
+func (uc *GraphExecutionUsecase) SetRunEventSink(s GraphRunEventSink) {
+	uc.runEventSink = s
 }
 
 // CacheMgr returns the embedded GraphCacheManager for callers that need cache operations.
@@ -326,7 +334,11 @@ func (uc *GraphExecutionUsecase) CancelExecution(ctx context.Context, executionI
 	now := time.Now()
 	exec.FinishedAt = &now
 	persistSnap = exec.SnapshotForPersist()
+	graphID := exec.GraphID
 	exec.execMu.Unlock()
+	if uc.runEventSink != nil {
+		uc.runEventSink.OnRunCancelled(ctx, executionID, graphID)
+	}
 	return uc.runRepo.UpdateRun(ctx, persistSnap)
 }
 
@@ -495,6 +507,7 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	var persistSnap *GraphExecution
 	var wasEvicted bool
 	var persistCtx context.Context
+	completed := false
 	exec.execMu.Lock()
 	// Only mark as completed if still running and not already in a terminal state
 	// (e.g., cancelled by GC eviction, failed by node error, or interrupted).
@@ -505,11 +518,17 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 		uc.applyExecTransition(exec, GraphExecEventComplete)
 		now := time.Now()
 		exec.FinishedAt = &now
+		completed = true
 	}
 	persistSnap = exec.SnapshotForPersist()
 	wasEvicted = exec.evicted
 	persistCtx = exec.ctx
+	startedAt := exec.StartedAt
 	exec.execMu.Unlock()
+
+	if completed && uc.runEventSink != nil {
+		uc.runEventSink.OnRunCompleted(persistCtx, execID, graphID, time.Since(startedAt).Milliseconds())
+	}
 
 	if !wasEvicted {
 		uc.mu.Lock()
@@ -537,6 +556,9 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 			exec.CurrentNode = e.NodeID
 		}
 		exec.execMu.Unlock()
+		if uc.runEventSink != nil {
+			uc.runEventSink.OnNodeStarted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber)
+		}
 		if uc.taskCoord != nil {
 			ctx := exec.ctx
 			ct, err := uc.cacheMgr.BuildConfigForExecution(ctx, exec)
@@ -565,6 +587,9 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		})
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		if uc.runEventSink != nil {
+			uc.runEventSink.OnNodeCompleted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber, "completed", "")
+		}
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
@@ -582,6 +607,10 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		})
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		if uc.runEventSink != nil {
+			uc.runEventSink.OnNodeCompleted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber, "failed", e.Error)
+			uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
+		}
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
@@ -595,6 +624,9 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
+		if uc.runEventSink != nil {
+			uc.runEventSink.OnRunWaitingApproval(exec.ctx, exec.ID, exec.GraphID, e.NodeID)
+		}
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}

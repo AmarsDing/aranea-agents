@@ -99,7 +99,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -181,6 +181,7 @@ func registerCustomRoutes(
 	aguiCompat *service.AGUICompatService,
 	openaiSession *service.OpenAISessionCompatService,
 	a2aExtension *service.A2AExtensionCompatService,
+	twinOpenAPI *service.TwinOpenAPICompatService,
 ) {
 	// GET /v1/system/info — CLI info endpoint; requires auth (not in noAuthPaths).
 	if systemSettingSvc != nil {
@@ -237,6 +238,20 @@ func registerCustomRoutes(
 	}
 	if a2aExtension != nil && a2aExtension.Enabled() {
 		srv.HandlePrefix(a2aExtension.Path(), lazyCompatHandler(a2aExtension))
+	}
+	// TwinOpenAPI 门面（twinmonitor 机器对接）：自校验 Bearer token
+	// （ARANEA_TWINOPENAPI_TOKEN），门面子树注册为 noAuth 以跳过 JWT 过滤器。
+	// 注意：/api/v1/admin/* 不在豁免清单内，仍走 JWT 保护；且 mux 按注册
+	// 次序匹配，上方 admin 精确路由优先于此前缀。
+	if twinOpenAPI != nil && twinOpenAPI.Enabled() {
+		auth.RegisterNoAuthPath("/api/v1/health")
+		auth.RegisterNoAuthPathPrefix("/api/v1/agents")
+		auth.RegisterNoAuthPathPrefix("/api/v1/graphs")
+		auth.RegisterNoAuthPathPrefix("/api/v1/runs")
+		auth.RegisterNoAuthPathPrefix("/api/v1/memory/")
+		auth.RegisterNoAuthPathPrefix("/api/v1/quota/")
+		auth.RegisterNoAuthPathPrefix("/api/v1/metrics/")
+		srv.HandlePrefix(twinOpenAPI.Path(), lazyCompatHandler(twinOpenAPI))
 	}
 }
 

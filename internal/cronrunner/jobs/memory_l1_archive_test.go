@@ -130,6 +130,7 @@ type compositeStore struct {
 	biz.L2RecallStore
 	biz.L3FactReader
 	biz.L3FactWriter
+	biz.L3FactReviewStore
 	biz.L3ConflictStore
 	biz.PIIReviewStore
 	biz.L4EntityStore

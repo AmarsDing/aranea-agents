@@ -54,6 +54,8 @@ type ServiceRegistry struct {
 	AGUICompat    *service.AGUICompatService
 	OpenAISession *service.OpenAISessionCompatService
 	A2AExtension  *service.A2AExtensionCompatService
+	// TwinOpenAPI is the twinmonitor OpenAPI compat facade (/api/v1/*).
+	TwinOpenAPI *service.TwinOpenAPICompatService
 	// RuntimeProfileService manages per-agent runtime configuration profiles.
 	RuntimeProfile *service.RuntimeProfileService
 	LearningLoop   *service.LearningLoopService
@@ -105,6 +107,7 @@ func NewServiceRegistry(
 	aguiCompat *service.AGUICompatService,
 	openaiSession *service.OpenAISessionCompatService,
 	a2aExtension *service.A2AExtensionCompatService,
+	twinOpenAPI *service.TwinOpenAPICompatService,
 	runtimeProfile *service.RuntimeProfileService,
 	learningLoop *service.LearningLoopService,
 ) *ServiceRegistry {
@@ -152,6 +155,7 @@ func NewServiceRegistry(
 		AGUICompat:         aguiCompat,
 		OpenAISession:      openaiSession,
 		A2AExtension:       a2aExtension,
+		TwinOpenAPI:        twinOpenAPI,
 		RuntimeProfile:     runtimeProfile,
 		LearningLoop:       learningLoop,
 	}

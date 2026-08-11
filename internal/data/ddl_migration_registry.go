@@ -265,6 +265,12 @@ var ddlMigrations = []ddlMigration{
 	// SP2 #9 embedding 熔断：knowledge_documents.embed_fail_count/embed_last_tried
 	// （embed 失败降级词法索引 + 指数退避后台重试）+ 降级文档扫描部分索引。
 	{Version: 20261206, Name: "knowledge_embed_circuit", SQL: "sql/migrations/20261206_knowledge_embed_circuit.sql"},
+	// 20261207 memory_agent_cases: P3 M2 Agent Case 经验记忆（EverOS Agent
+	// Memory 启发）。会话结束后 AutoMemoryWorker 追加提取结构化任务经验
+	// （goal/approach/outcome/pitfalls/tools_used），唯一锚点
+	// (agent_id, source_session_id) 保证重试幂等。供 M3 召回注入与 M4
+	// case→skill 蒸馏消费。
+	{Version: 20261207, Name: "memory_agent_cases", SQL: "sql/migrations/20261207_memory_agent_cases.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

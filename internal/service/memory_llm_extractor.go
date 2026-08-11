@@ -58,26 +58,6 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		return nil, nil
 	}
 
-	prov, mod, err := e.resolveProviderModel(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	if prov == "" || mod == "" {
-		return nil, biz.ErrLLMExtractorUnavailable
-	}
-
-	m, err := provider.TRPCModelForProviderModel(ctx, e.modelCatalog, e.rt, prov, mod, e.lg)
-	if err != nil {
-		return nil, err
-	}
-
-	callCtx := ctx
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		callCtx, cancel = context.WithTimeout(ctx, 90*time.Second)
-		defer cancel()
-	}
-
 	toolDecls := mapSchemaToToolDecls([]map[string]any{compress.ExtractMemoryFactsFunctionSchemaV3})
 
 	req := &trpcmodel.Request{
@@ -88,33 +68,10 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		Tools: toolDecls,
 	}
 
-	respCh, err := m.GenerateContent(callCtx, req)
+	text, toolCalls, err := e.callModel(ctx, in, req)
 	if err != nil {
 		return nil, err
 	}
-
-	var text string
-	var toolCalls []toolCallResult
-	for resp := range respCh {
-		if resp.Error != nil {
-			return nil, biz.ErrLLMExtractionFailed
-		}
-		for _, c := range resp.Choices {
-			if c.Delta.Content != "" {
-				text += c.Delta.Content
-			}
-			if c.Message.Content != "" {
-				text += c.Message.Content
-			}
-			for _, tc := range c.Message.ToolCalls {
-				toolCalls = append(toolCalls, toolCallResult{
-					Name:      tc.Function.Name,
-					Arguments: string(tc.Function.Arguments),
-				})
-			}
-		}
-	}
-	text = strings.TrimSpace(text)
 
 	var proposals []biz.MemoryProposal
 	var extractionQuality float64
@@ -151,6 +108,60 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 type toolCallResult struct {
 	Name      string
 	Arguments string
+}
+
+// callModel resolves the memory-worker model for the input and executes the
+// request, returning the accumulated assistant text and any tool calls. It is
+// the shared LLM plumbing for memory extraction (facts) and P3 M2 Agent Case
+// extraction. A 90s timeout is applied when the caller's ctx has no deadline.
+func (e *MemoryLLMExtractor) callModel(ctx context.Context, in biz.ConsolidateInput, req *trpcmodel.Request) (string, []toolCallResult, error) {
+	prov, mod, err := e.resolveProviderModel(ctx, in)
+	if err != nil {
+		return "", nil, err
+	}
+	if prov == "" || mod == "" {
+		return "", nil, biz.ErrLLMExtractorUnavailable
+	}
+
+	m, err := provider.TRPCModelForProviderModel(ctx, e.modelCatalog, e.rt, prov, mod, e.lg)
+	if err != nil {
+		return "", nil, err
+	}
+
+	callCtx := ctx
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, 90*time.Second)
+		defer cancel()
+	}
+
+	respCh, err := m.GenerateContent(callCtx, req)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var text string
+	var toolCalls []toolCallResult
+	for resp := range respCh {
+		if resp.Error != nil {
+			return "", nil, biz.ErrLLMExtractionFailed
+		}
+		for _, c := range resp.Choices {
+			if c.Delta.Content != "" {
+				text += c.Delta.Content
+			}
+			if c.Message.Content != "" {
+				text += c.Message.Content
+			}
+			for _, tc := range c.Message.ToolCalls {
+				toolCalls = append(toolCalls, toolCallResult{
+					Name:      tc.Function.Name,
+					Arguments: string(tc.Function.Arguments),
+				})
+			}
+		}
+	}
+	return strings.TrimSpace(text), toolCalls, nil
 }
 
 // staticToolDecl wraps a trpctool.Declaration to implement the Tool interface.

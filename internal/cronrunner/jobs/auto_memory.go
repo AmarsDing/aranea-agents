@@ -43,7 +43,11 @@ type AutoMemoryWorker struct {
 	memConf      conf.RuntimeAutoMemoryConfig
 	stats        *biz.MemoryWorkerStats
 	monitorBus   contract.MonitorBus
-	lg           loggateway.Logger
+	// P3 M2: Agent Case 经验提取（用户记忆主流程之后的增强分支）。
+	caseExtractor biz.AgentCaseExtractor
+	caseReader    biz.AgentCaseReader
+	caseWriter    biz.AgentCaseWriter
+	lg            loggateway.Logger
 }
 
 // AutoMemoryWorkerConfig holds all dependencies for AutoMemoryWorker.
@@ -72,7 +76,12 @@ type AutoMemoryWorkerConfig struct {
 	// MonitorBus enables flow-log emission (memory.auto.extract / system.auto_memory.*).
 	// When nil, flow-log emission is skipped.
 	MonitorBus contract.MonitorBus
-	Logger     loggateway.Logger
+	// CaseExtractor/CaseReader/CaseWriter wire the P3 M2 Agent Case pipeline.
+	// All three nil → case branch skipped entirely (legacy behavior).
+	CaseExtractor biz.AgentCaseExtractor
+	CaseReader    biz.AgentCaseReader
+	CaseWriter    biz.AgentCaseWriter
+	Logger        loggateway.Logger
 }
 
 // NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
@@ -89,22 +98,25 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		consolidator = biz.DefaultMemoryConsolidator(nil)
 	}
 	return &AutoMemoryWorker{
-		interval:     interval,
-		sessions:     cfg.Sessions,
-		agents:       cfg.Agents,
-		writer:       cfg.Writer,
-		indexSync:    cfg.IndexSync,
-		episodeSync:  cfg.EpisodeSync,
-		l4:           cfg.L4,
-		consolidator: consolidator,
-		feedback:     biz.NewFeedbackConsolidator(),
-		queue:        cfg.Queue,
-		deadLetter:   cfg.DeadLetterSink,
-		factPipeline: cfg.FactPipeline,
-		memConf:      cfg.RuntimeConf.AutoMemoryConfig(),
-		stats:        cfg.Stats,
-		monitorBus:   cfg.MonitorBus,
-		lg:           cfg.Logger,
+		interval:      interval,
+		sessions:      cfg.Sessions,
+		agents:        cfg.Agents,
+		writer:        cfg.Writer,
+		indexSync:     cfg.IndexSync,
+		episodeSync:   cfg.EpisodeSync,
+		l4:            cfg.L4,
+		consolidator:  consolidator,
+		feedback:      biz.NewFeedbackConsolidator(),
+		queue:         cfg.Queue,
+		deadLetter:    cfg.DeadLetterSink,
+		factPipeline:  cfg.FactPipeline,
+		memConf:       cfg.RuntimeConf.AutoMemoryConfig(),
+		stats:         cfg.Stats,
+		monitorBus:    cfg.MonitorBus,
+		caseExtractor: cfg.CaseExtractor,
+		caseReader:    cfg.CaseReader,
+		caseWriter:    cfg.CaseWriter,
+		lg:            cfg.Logger,
 	}, nil
 }
 
@@ -290,6 +302,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			Role:      msg.Role,
 			Content:   msg.ContentMarkdown,
 			MessageID: msg.ID,
+			ToolName:  chatMessageToolName(msg),
 		})
 	}
 
@@ -455,12 +468,87 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
+	// P3 M2: Agent Case 经验提取（增强分支，失败只 Warn 不阻断主流程/不重试）。
+	if memoryPolicy.WriteL2Episode {
+		w.extractAgentCase(ctx, sid, agentID, userID, in)
+	}
+
 	w.lg.With(loggateway.SessionID(sid)).Info("自动记忆提取完成",
 		loggateway.Int("messages_scanned", len(msgs)),
 		loggateway.Int("facts_added", added),
 		loggateway.Int("l4_entities", l4Written),
 	)
 	return nil
+}
+
+// extractAgentCase 是 P3 M2 的 Case 提取分支：LLM 优先、启发式保底、skip
+// 信号整条跳过、(agent_id, source_session_id) 幂等。所有失败路径只记日志。
+func (w *AutoMemoryWorker) extractAgentCase(ctx context.Context, sid, agentID, userID string, in biz.ConsolidateInput) {
+	if w.caseWriter == nil || strings.TrimSpace(agentID) == "" {
+		return
+	}
+	if !biz.ShouldExtractAgentCase(in.Messages) {
+		return
+	}
+	if w.caseReader != nil {
+		existing, err := w.caseReader.GetAgentCaseBySession(ctx, agentID, sid)
+		if err != nil {
+			w.lg.With(loggateway.SessionID(sid)).Warn("Agent Case 幂等检查失败，按未提取继续", loggateway.Err(err))
+		} else if existing != nil {
+			return
+		}
+	}
+	var c *biz.AgentCase
+	if w.caseExtractor != nil {
+		cc, err := w.caseExtractor.ExtractCase(ctx, in)
+		switch {
+		case err == nil:
+			c = cc
+		case errors.Is(err, biz.ErrAgentCaseSkip):
+			return
+		default:
+			w.lg.With(loggateway.SessionID(sid)).Warn("LLM Agent Case 提取失败，已降级启发式", loggateway.Err(err))
+		}
+	}
+	if c == nil {
+		c = biz.HeuristicAgentCase(in)
+	}
+	if c == nil {
+		return
+	}
+	c.AgentID = agentID
+	c.UserID = userID
+	c.SourceSessionID = sid
+	if err := w.caseWriter.UpsertAgentCase(ctx, *c); err != nil {
+		w.lg.With(loggateway.SessionID(sid)).Warn("Agent Case 写入失败", loggateway.Err(err))
+		return
+	}
+	if flow := w.flowEmitter(ctx, sid); flow != nil {
+		flow.LogDone("memory.auto.case_extract", "Agent Case 经验提取",
+			event.P("session_id", sid),
+			event.P("agent_id", agentID),
+			event.P("outcome", c.Outcome))
+	}
+	w.lg.With(loggateway.SessionID(sid)).Info("Agent Case 经验已沉淀",
+		loggateway.Str("agent_id", agentID),
+		loggateway.Str("outcome", c.Outcome),
+		loggateway.Int("tools_used", len(c.ToolsUsed)),
+	)
+}
+
+// chatMessageToolName 从 ChatMessage.OptionsJSON 解析工具名（role=tool 时由
+// activity 适配器写入 {"tool_name":"..."}），供 Case 提取收集 tools_used。
+func chatMessageToolName(msg biz.ChatMessage) string {
+	if msg.Role != "tool" || strings.TrimSpace(msg.OptionsJSON) == "" {
+		return ""
+	}
+	var opts struct {
+		ToolName string `json:"tool_name"`
+	}
+	if json.Unmarshal([]byte(msg.OptionsJSON), &opts) != nil {
+		return ""
+	}
+	return opts.ToolName
 }
 
 func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {

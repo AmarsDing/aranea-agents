@@ -15,6 +15,9 @@ type ConsolidateMessage struct {
 	Role      string
 	Content   string
 	MessageID string
+	// ToolName 仅对 role=tool 的消息有意义（P3 M2 Agent Case 提取消费）；
+	// 由 Worker 从 ChatMessage.OptionsJSON 解析填充，其他路径留空。
+	ToolName string
 }
 
 // ConsolidateInput is the async consolidator payload after a turn completes.

@@ -148,6 +148,7 @@ var ProviderSet = wire.NewSet(
 	NewAGUICompatService,
 	NewOpenAISessionCompatService,
 	NewA2AExtensionCompatService,
+	NewTwinOpenAPICompatService,
 	NewRuntimeProfileService,
 	NewLearningLoopService,
 	// SelfImprovementService 由 cmd/admin provideSelfImprovementService 显式装配

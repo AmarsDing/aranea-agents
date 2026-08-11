@@ -258,6 +258,7 @@ var stepTitleRegistry = map[string]string{
 	"mcp.server.add":             "MCP 服务器添加",
 	"mcp.server.remove":          "MCP 服务器移除",
 	"memory.auto.extract":        "自动记忆提取",
+	"memory.auto.case_extract":   "Agent Case 经验提取",
 	"media.generate":             "媒体生成",
 	"evaluation.run":             "评测集运行",
 	"channel.connect.open":       "渠道连接建立",
