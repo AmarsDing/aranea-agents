@@ -277,6 +277,9 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 		Content:   input.Content,
 		AgentKey:  input.AgentKey,
 		TeamID:    input.TeamID,
+		// Voice 语音溯源元数据必须透传：prepareRunContext 依此打 voice
+		// fast-path 标记（主 LLM 关思考），并持久化 ASR 溯源（V2-T6）。
+		Voice: input.Voice,
 		Options: biz.TurnOptions{
 			DialogMode:     input.Options.DialogMode,
 			Provider:       input.Options.Provider,

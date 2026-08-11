@@ -16,7 +16,10 @@
           </span>
           <AppRegistryHoverTip :text="endpointLabel(props.row)" empty-label="暂无地址">
             <div class="min-width-0">
-              <div class="app-registry-cell-primary ellipsis">{{ displayName(props.row) }}</div>
+              <div class="app-registry-cell-primary ellipsis">
+                {{ displayName(props.row) }}
+                <q-badge v-if="props.row.shared" outline color="grey-6" class="q-ml-xs">内置</q-badge>
+              </div>
               <div class="app-registry-cell-sub ellipsis">{{ props.row.key }}</div>
             </div>
           </AppRegistryHoverTip>
@@ -58,9 +61,11 @@
           dense
           color="primary"
           :model-value="props.row.enabled"
-          :disable="togglingId === props.row.id"
+          :disable="togglingId === props.row.id || props.row.shared"
           @update:model-value="$emit('toggleEnabled', props.row, Boolean($event))"
-        />
+        >
+          <q-tooltip v-if="props.row.shared">内置共享服务器，全租户共用，不可单独启停</q-tooltip>
+        </q-toggle>
       </q-td>
     </template>
 
@@ -89,10 +94,20 @@
           >
             <q-tooltip>测试连接</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="edit" color="primary" @click="$emit('edit', props.row)">
+          <span v-if="props.row.shared" class="inline-block">
+            <q-btn flat dense round icon="edit" color="primary" disable>
+              <q-tooltip>内置共享服务器，不可编辑</q-tooltip>
+            </q-btn>
+          </span>
+          <q-btn v-else flat dense round icon="edit" color="primary" @click="$emit('edit', props.row)">
             <q-tooltip>编辑</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="delete" color="negative" @click="$emit('delete', props.row)">
+          <span v-if="props.row.shared" class="inline-block">
+            <q-btn flat dense round icon="delete" color="negative" disable>
+              <q-tooltip>内置共享服务器，不可删除</q-tooltip>
+            </q-btn>
+          </span>
+          <q-btn v-else flat dense round icon="delete" color="negative" @click="$emit('delete', props.row)">
             <q-tooltip>删除</q-tooltip>
           </q-btn>
         </div>

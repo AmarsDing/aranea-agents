@@ -1,0 +1,108 @@
+// 液态玻璃卡片光学层（Liquid Glass Card）
+// 适用：Agent / Team / Graph / 组织架构 Position 卡片（TaxonomyIndustryCard 因 scoped 样式在组件内单独同步）
+// 手法：backdrop saturate 增透 + ::after 光学层（静态 sheen + hover 扫掠高光 + 同色相内缘描边）+ spring 缓动
+// 配色：深色主导（中性微高光 + 深色底缘纵深）；主题色仅作极淡光斑与 hover 细描边，不喧宾夺主
+// 夜间：追加鼠标跟随光斑（v-liquid-glow 指令写入 --liquid-mx/--liquid-my）
+// 规范：backdrop-filter 双前缀成对；霓虹仅作夜间交互强调；移动端降 blur 关扫掠；reduced-motion 降级
+
+// ── 基底：增透 + 液态 spring 缓动 ──────────────────────────────
+.agent-card,
+.team-card,
+.graph-card:not(.graph-card--add),
+.position-card
+  position: relative
+  backdrop-filter: blur(var(--glass-blur-default)) saturate(var(--liquid-saturate))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) saturate(var(--liquid-saturate))
+  transition: transform 340ms cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 280ms ease, border-color 220ms ease, background 220ms ease, opacity 180ms ease
+
+// ── 光学层：静态 sheen + 扫掠高光 + 渐变内缘描边 ────────────────
+.agent-card::after,
+.team-card::after,
+.graph-card:not(.graph-card--add)::after,
+.position-card::after
+  content: ""
+  position: absolute
+  inset: 0
+  border: 1px solid transparent
+  border-radius: inherit
+  pointer-events: none
+  background-image: linear-gradient(115deg, transparent 32%, var(--liquid-sheen-band) 47%, var(--liquid-sheen-peak) 50%, var(--liquid-sheen-band) 53%, transparent 68%), linear-gradient(135deg, var(--liquid-sheen-static), transparent 42%), linear-gradient(155deg, var(--liquid-rim-hi), var(--liquid-rim-mid) 42%, var(--liquid-rim-lo) 74%, var(--liquid-rim-hi))
+  background-size: 280% 100%, 100% 100%, 100% 100%
+  background-position: 130% 0, 0 0, 0 0
+  background-repeat: no-repeat
+  background-clip: padding-box, padding-box, border-box
+  opacity: 0.7
+  transition: background-position 720ms cubic-bezier(0.22, 0.8, 0.36, 1), opacity 240ms ease, box-shadow 220ms ease
+
+.agent-card:hover::after,
+.team-card:hover::after,
+.graph-card:not(.graph-card--add):hover::after,
+.position-card:hover::after
+  background-position: -40% 0, 0 0, 0 0
+  opacity: 1
+  // 菜单选中态描边：主题强调色内缘
+  box-shadow: inset 0 0 0 1px var(--liquid-accent-edge)
+
+// 拖拽占位 / 停用卡片：熄灭光学层
+.agent-card--ghost::after,
+.team-card--ghost::after,
+.graph-card--ghost::after,
+.position-card--disabled::after
+  opacity: 0
+
+// 选中卡片：rim 常亮 + 强调色内缘（对齐菜单选中态）
+.graph-card--selected::after
+  opacity: 1
+  box-shadow: inset 0 0 0 1px var(--liquid-accent-edge)
+
+// ── 夜间：鼠标跟随光斑 + 同色相青 rim（v-liquid-glow 提供坐标）──────
+body.body--dark .agent-card::after,
+body.body--dark .team-card::after,
+body.body--dark .graph-card:not(.graph-card--add)::after,
+body.body--dark .position-card::after
+  background-image: radial-gradient(220px circle at var(--liquid-mx, 50%) var(--liquid-my, -20%), var(--liquid-spot), transparent 62%), linear-gradient(115deg, transparent 32%, var(--liquid-sheen-band) 47%, var(--liquid-sheen-peak) 50%, var(--liquid-sheen-band) 53%, transparent 68%), linear-gradient(135deg, var(--liquid-sheen-static), transparent 42%), linear-gradient(155deg, var(--liquid-rim-hi), var(--liquid-rim-mid) 42%, var(--liquid-rim-lo) 74%, var(--liquid-rim-hi))
+  background-size: 100% 100%, 280% 100%, 100% 100%, 100% 100%
+  background-position: 0 0, 130% 0, 0 0, 0 0
+  background-clip: padding-box, padding-box, padding-box, border-box
+  opacity: 0.85
+
+body.body--dark .agent-card:hover::after,
+body.body--dark .team-card:hover::after,
+body.body--dark .graph-card:not(.graph-card--add):hover::after,
+body.body--dark .position-card:hover::after
+  background-position: 0 0, -40% 0, 0 0, 0 0
+  opacity: 1
+  box-shadow: inset 0 0 0 1px var(--liquid-accent-edge)
+
+// 夜间 hover：Graph 顶部节点构成条点亮辉光
+body.body--dark .graph-card:not(.graph-card--add):not(.graph-card--status-draft):hover::before
+  opacity: 1
+  box-shadow: 0 0 10px rgba(77, 216, 232, 0.12)
+
+// ── 降级：移动端降 blur、关扫掠；reduced-motion 去动画 ───────────
+@media (width <= 599px)
+  .agent-card,
+  .team-card,
+  .graph-card:not(.graph-card--add),
+  .position-card
+    backdrop-filter: blur(10px) saturate(140%)
+    -webkit-backdrop-filter: blur(10px) saturate(140%)
+
+  .agent-card::after,
+  .team-card::after,
+  .graph-card:not(.graph-card--add)::after,
+  .position-card::after
+    transition: opacity 240ms ease
+
+@media (prefers-reduced-motion: reduce)
+  .agent-card,
+  .team-card,
+  .graph-card:not(.graph-card--add),
+  .position-card
+    transition: box-shadow 200ms ease, border-color 200ms ease, opacity 180ms ease
+
+  .agent-card::after,
+  .team-card::after,
+  .graph-card:not(.graph-card--add)::after,
+  .position-card::after
+    transition: opacity 200ms ease

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,10 +13,10 @@ import (
 
 // C1：nil ChatService（或 nil orchestrator）→ 返回 nil，接线方跳过预热。
 func TestNewVoiceTurnPrewarmer_NilService(t *testing.T) {
-	if got := NewVoiceTurnPrewarmer(nil); got != nil {
+	if got := NewVoiceTurnPrewarmer(nil, nil); got != nil {
 		t.Fatalf("expected nil prewarmer for nil ChatService, got %v", got)
 	}
-	if got := NewVoiceTurnPrewarmer(&ChatService{}); got != nil {
+	if got := NewVoiceTurnPrewarmer(&ChatService{}, nil); got != nil {
 		t.Fatalf("expected nil prewarmer for nil orchestrator, got %v", got)
 	}
 }
@@ -26,7 +27,7 @@ func TestVoiceTurnPrewarmer_SessionNotFound(t *testing.T) {
 	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(context.Context, string) (biz.Session, error) {
 		return biz.Session{}, apierror.NotFound(apierror.DomainSession, "session not found")
 	}}
-	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()})
+	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()}, nil)
 	if pw == nil {
 		t.Fatal("expected non-nil prewarmer")
 	}
@@ -49,7 +50,7 @@ func TestVoiceTurnPrewarmer_SkipsTeamSession(t *testing.T) {
 	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(_ context.Context, id string) (biz.Session, error) {
 		return biz.Session{ID: id, OwnerType: "team", TeamID: "team-1"}, nil
 	}}
-	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()})
+	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()}, nil)
 	done := make(chan struct{})
 	go func() {
 		pw.PrewarmTurn(context.Background(), "sess-team")
@@ -68,7 +69,7 @@ func TestVoiceTurnPrewarmer_SkipsSessionWithoutAgent(t *testing.T) {
 	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(_ context.Context, id string) (biz.Session, error) {
 		return biz.Session{ID: id, OwnerType: "agent"}, nil
 	}}
-	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()})
+	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()}, nil)
 	done := make(chan struct{})
 	go func() {
 		pw.PrewarmTurn(context.Background(), "sess-no-agent")
@@ -78,6 +79,45 @@ func TestVoiceTurnPrewarmer_SkipsSessionWithoutAgent(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("prewarm must skip agentless sessions promptly")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C3（2026-08-11）：voice.start 并列触发 embedding 冷启动预热
+// ---------------------------------------------------------------------------
+
+// countingEmbedPrewarmer 记录 Prewarm 调用次数（窄接口 embedPrewarmer 桩）。
+type countingEmbedPrewarmer struct{ calls int32 }
+
+func (c *countingEmbedPrewarmer) Prewarm(context.Context) error {
+	atomic.AddInt32(&c.calls, 1)
+	return nil
+}
+
+// C3：embedding 预热不依赖会话/agent 构建——即使会话获取失败（预热主流程
+// 容错返回），voice.start 也必须已触发一次 embedding ping。
+func TestVoiceTurnPrewarmer_PrewarmsEmbedderEvenWhenSessionMissing(t *testing.T) {
+	orch := newSubmitAwaitReplyTestOrch(nil)
+	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(context.Context, string) (biz.Session, error) {
+		return biz.Session{}, apierror.NotFound(apierror.DomainSession, "session not found")
+	}}
+	emb := &countingEmbedPrewarmer{}
+	pw := NewVoiceTurnPrewarmer(&ChatService{orch: orch, lg: loggateway.NewNoop()}, emb)
+	if pw == nil {
+		t.Fatal("expected non-nil prewarmer")
+	}
+	done := make(chan struct{})
+	go func() {
+		pw.PrewarmTurn(context.Background(), "sess-missing")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("prewarm must return promptly when session is missing")
+	}
+	if got := atomic.LoadInt32(&emb.calls); got != 1 {
+		t.Fatalf("expected embedder prewarm to run exactly once, got %d", got)
 	}
 }
 

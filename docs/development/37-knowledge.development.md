@@ -1289,6 +1289,7 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | `web/src/css/deep-space.sass` | 深空液态玻璃设计令牌（`.kb-workbench` 作用域隔离） |
 | `web/src/features/knowledge/useKnowledgeWorkbench.ts` | 工作台状态机（tabs/激活/脏标记/CAS 保存） |
 | `web/src/features/knowledge/{wikilink,outline,frontmatter,commands}.ts` | 纯函数层（可单测） |
+| `web/src/features/knowledge/particles.ts` | ParticleField 纯函数层（V2：闪烁/流星/视差/双层种子，全单测） |
 | `web/src/components/knowledge/effects/*` | GlassPanel / ParticleField / TiltCard / GlowButton / RingCarousel |
 | `web/src/components/knowledge/workbench/*` | KnowledgeWorkbench / TopBar / Tabs / NoteEditor / QuickSwitcher / CommandPalette / SearchPanel（P1-3） |
 | `web/src/components/knowledge/panels/*` | PanelBacklinks（含 P2-7 未链接提及分组）/ Outlinks / Outline / Properties / LocalGraph |
@@ -1309,6 +1310,7 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | SP2-8 | KnowledgePage 重写接入 + 图谱全屏覆盖 + 设置浮层 + 旧组件退役清理 | 设计 §SP2-9/§SP2-11；验收 36 | ✅（2026-08-11：KnowledgePage 薄壳重写 + 图谱全屏 overlay + kb-portal 设置浮层 + 文件行操作菜单/拖拽移动/下载；旧组件 KnowledgeDocumentsPanel/DocList/DocDetail/SearchDual/DocPreviewDialog 已删除，knowledgeUi 死导出与 i18n 死 key 已清理；知识域 267 测试绿 + eslint 0 err） |
 | SP2-9 | i18n + `pnpm lint/test/build` 全绿 + 浏览器运行时复验 + review | 验收 37/38 | 🟡（2026-08-11：i18n 双语已补 + lint/test 绿；待 build + 浏览器复验 + review） |
 | SP2-10 | 增强轮：P0 视觉同源（P0-1 令牌消费全局变量 / P0-2 三层液态玻璃）→ P1 功能（P1-3 全库搜索 SearchPanel / P1-4 标签页拖拽重排+中键关闭）→ P2 增强（P2-5 wikilink 标题段补全+定位 / P2-6 命令面板 MRU+别名 / P2-7 未链接提及后端 RPC+面板分组） | 设计 §SP2-2/7/8/12~17；FR-SP2-11~17；US-31~36；验收 39~44 | ✅（2026-08-11：全部落地；mention biz/data/service + 前端 6 文件；wikilink/commands/workbench/api 单测绿） |
+| SP2-11 | 流体卡/粒子/3D 旋转增强轮（抖音调研）：V1 RingCarousel 重写（JS rAF 驱动 + --focus 衰减 + 拖拽/滚轮/惯性/吸附 + 流体卡 + 聚焦光环）→ V2 ParticleField（星光闪烁 + 流星 + 视差双层 + particles.ts 纯函数层）→ V3 TiltCard 弹簧回正（overshoot）+ 空态流体 GlowButton CTA（create-note） | 设计 §SP2-3；方案 `docs/reports/2026-08-11-research-ui-fluid-3d-particle-plan.md` | ✅（2026-08-11：effects.spec/particles.spec/workbench.spec 新增用例；全量 225 文件/1699 用例绿 + build 通过；浏览器复验：环旋转/流体色团/粒子画布/CTA/点击开文档全链路确认） |
 
 ### 实施红线
 

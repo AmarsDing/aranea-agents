@@ -115,6 +115,18 @@ describe('workbench skeleton', () => {
     expect(w.find('.kb-tabs__empty').exists()).toBe(true);
   });
 
+  // V3：空态主 CTA（新建笔记）——流体 GlowButton，点击冒泡 create-note
+  it('WorkbenchTabs empty state CTA emits create-note', async () => {
+    const w = mount(WorkbenchTabs, {
+      props: { tabs: [], activeTabId: '', candidates: [] },
+      ...globalOpts(),
+    });
+    const cta = w.find('.kb-tabs__empty-cta');
+    expect(cta.exists()).toBe(true);
+    await cta.trigger('click');
+    expect(w.emitted('create-note')).toHaveLength(1);
+  });
+
   it('WorkbenchSidebar emits open-file on file click', async () => {
     const w = mount(WorkbenchSidebar, {
       props: {

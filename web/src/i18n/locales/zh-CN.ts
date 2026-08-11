@@ -1984,7 +1984,8 @@ export default {
     factEdit: {
       refineTitle: '修改事实',
       createTitle: '新增事实',
-      caption: '仅更新文本与分类，图谱关联与统计不受影响。',
+      refineCaption: '仅更新文本与分类，图谱关联与统计不受影响。',
+      createCaption: '手动录入一条长期事实，默认置信度 85%，创建后可在列表中调整。',
       statementLabel: '事实陈述',
       statementHint: '一句话描述用户偏好、规则或经验',
       statementRequired: '请输入事实陈述',

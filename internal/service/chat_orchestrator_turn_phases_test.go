@@ -83,6 +83,22 @@ func TestResolveIntentPassProviderModel(t *testing.T) {
 	})
 }
 
+// TestShouldRunProactiveRecall_VoiceTurnSkipped pins the 2026-08-11 voice
+// fast-path decision: voice turns (input.Voice != nil) skip proactive memory
+// recall entirely. Real-device measurement showed voice-turn recall hits are
+// consistently 0 while the recall itself (query embedding + vector search)
+// costs 0.3-3.3s; although it runs inside the BUILD/Intent errgroup,
+// eg.Wait() closes on the slowest goroutine, so a zero-yield recall directly
+// blows the ≤2s stop-to-first-audio budget.
+func TestShouldRunProactiveRecall_VoiceTurnSkipped(t *testing.T) {
+	if shouldRunProactiveRecall(biz.TurnInput{Voice: &biz.VoiceTurnMeta{ASRProvider: "volcengine_sauc"}}) {
+		t.Fatal("voice turn must skip proactive recall (hits empirically 0, pure critical-path overhead)")
+	}
+	if !shouldRunProactiveRecall(biz.TurnInput{}) {
+		t.Fatal("text turn must keep proactive recall")
+	}
+}
+
 // captureNoticeBus extracts SystemNoticeEvents from the shared captureEventBus
 // (run_heartbeat_test.go) for progress-notice assertions.
 func captureNoticeBus(bus *captureEventBus) []*biz.SystemNoticeEvent {

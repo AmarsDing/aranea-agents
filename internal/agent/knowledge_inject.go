@@ -33,9 +33,10 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// Prefix stabilization: append after the existing system block.
+		// P2 TTFT: append the per-turn dynamic cue at the END of the message
+		// list so the [system block + history + user] prefix stays cacheable.
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
+		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

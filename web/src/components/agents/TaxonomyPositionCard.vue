@@ -1,5 +1,6 @@
 <template>
   <article
+    v-liquid-glow
     class="position-card app-entity-glass-panel"
     :class="{ 'position-card--highlight': highlight, 'position-card--disabled': !position.enabled }"
   >

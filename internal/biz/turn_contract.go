@@ -79,6 +79,10 @@ type TurnIntent struct {
 	EntryConfig     TurnEntryPointConfig
 	ParentTaskID    string
 	Synthesis       bool // 精灵总结 turn 标记（见 TurnInput.Synthesis）
+	// Voice 语音溯源元数据（见 TurnInput.Voice）：admission pipeline 折叠/
+	// 重建 TurnInput 时必须透传——voice fast-path（关思考）与语音轮次跳过
+	// 主动召回均依赖编排侧能读到该字段（2026-08-11 真机回归）。
+	Voice *VoiceTurnMeta
 }
 
 // Canonicalize fills source/target defaults from legacy TurnInput-compatible fields.
@@ -118,6 +122,7 @@ func (i TurnIntent) TurnInput() TurnInput {
 		},
 		ParentTaskID: i.ParentTaskID,
 		Synthesis:    i.Synthesis,
+		Voice:        i.Voice,
 	}
 }
 

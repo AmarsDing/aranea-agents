@@ -67,6 +67,8 @@ type MultiProviderEmbedder struct {
 	Model    string
 	dim      int
 	lg       loggateway.Logger
+	// lastPrewarmAt 记录最近一次成功预热时间（60s 窗口去重；仅成功才写入）。
+	lastPrewarmAt time.Time
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
 	monitorBus contract.MonitorBus
 }
@@ -167,6 +169,48 @@ func (e *MultiProviderEmbedder) Dim() int {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.dim
+}
+
+// prewarmMinInterval bounds how often Prewarm re-sends its ping request.
+const prewarmMinInterval = 60 * time.Second
+
+// Prewarm sends a minimal embedding request ("ping") to move the cold-start
+// cost (TCP/TLS handshake + remote model warm-up, 实测 ~2.4s) off the first
+// real memory-recall turn. Mounted on process startup and voice.start.
+//
+// Semantics (C3):
+//   - nil receiver / not configured → silent no-op (embedding is optional);
+//   - success is deduplicated for prewarmMinInterval;
+//   - failure logs Warn (K3) and is NOT deduplicated — the next call retries
+//     (K4). The error is returned for testability; callers ignore it.
+//
+// Concurrency: check-then-ping without holding the lock during network I/O;
+// a rare concurrent double-ping is harmless.
+func (e *MultiProviderEmbedder) Prewarm(ctx context.Context) error {
+	if e == nil {
+		return nil
+	}
+	if _, _, _, _, configured, _ := e.Config(); !configured {
+		return nil
+	}
+	e.mu.RLock()
+	last := e.lastPrewarmAt
+	e.mu.RUnlock()
+	if !last.IsZero() && time.Since(last) < prewarmMinInterval {
+		return nil
+	}
+	// RETRIEVAL_QUERY task type: semantically a query-side warm-up, and it
+	// keeps the ping out of the ingest flow log (EmbedBatchWithTaskType only
+	// flow-logs non-query batches).
+	if _, err := e.embedBatchWithTaskType(ctx, []string{"ping"}, "RETRIEVAL_QUERY"); err != nil {
+		e.lg.Warn("embedding prewarm failed", loggateway.StepID("knowledge.embed_prewarm"), loggateway.Err(err))
+		return err
+	}
+	e.mu.Lock()
+	e.lastPrewarmAt = time.Now()
+	e.mu.Unlock()
+	e.lg.Info("embedding prewarm done", loggateway.StepID("knowledge.embed_prewarm"))
+	return nil
 }
 
 // EmbedSingle returns a single embedding vector for the input text.

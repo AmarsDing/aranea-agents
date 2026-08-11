@@ -13,6 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// embedPrewarmer 是 embedding 冷启动预热的窄接口（生产绑定
+// *knowledge.MultiProviderEmbedder；测试注入计数桩）。Prewarm 自身已做
+// 60s 成功去重 / 失败重试 / 未配置跳过。
+type embedPrewarmer interface {
+	Prewarm(ctx context.Context) error
+}
+
 // VoiceTurnPrewarmer 实现 voice.TurnPrewarmer（C1，2026-08-10）。
 //
 // voice.start 成功后后台预热 Agent 构建缓存：首个语音 Turn 的
@@ -25,13 +32,14 @@ import (
 // runNativeAgentTurnBody 完全同源（语音 Turn 的 input.Options 为空），
 // 保证预热产物被真实 Turn 命中。
 type VoiceTurnPrewarmer struct {
-	orch *ChatOrchestrator
-	lg   loggateway.Logger
+	orch     *ChatOrchestrator
+	lg       loggateway.Logger
+	embedder embedPrewarmer
 }
 
 // NewVoiceTurnPrewarmer 构造预热器；chatService/orchestrator 为 nil 时返回
-// nil（接线方视为关闭预热）。
-func NewVoiceTurnPrewarmer(chatService *ChatService) *VoiceTurnPrewarmer {
+// nil（接线方视为关闭预热）。embedder 为 nil 时跳过 embedding 预热。
+func NewVoiceTurnPrewarmer(chatService *ChatService, embedder embedPrewarmer) *VoiceTurnPrewarmer {
 	if chatService == nil || chatService.orch == nil {
 		return nil
 	}
@@ -39,13 +47,19 @@ func NewVoiceTurnPrewarmer(chatService *ChatService) *VoiceTurnPrewarmer {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &VoiceTurnPrewarmer{orch: chatService.orch, lg: lg.With(loggateway.Domain("voice"))}
+	return &VoiceTurnPrewarmer{orch: chatService.orch, lg: lg.With(loggateway.Domain("voice")), embedder: embedder}
 }
 
 // PrewarmTurn 预热指定会话的 Agent 构建缓存。非阻断容错：任何失败仅记日志。
 func (p *VoiceTurnPrewarmer) PrewarmTurn(ctx context.Context, sessionID string) {
 	start := time.Now()
 	lg := p.lg.With(loggateway.SessionID(sessionID))
+
+	// C3：embedding 冷启动预热（最小 ping）与 agent 构建预热并列——不依赖
+	// 会话/agent 解析结果，voice.start 即触发；内部 60s 去重、失败仅 Warn。
+	if p.embedder != nil {
+		_ = p.embedder.Prewarm(ctx)
+	}
 
 	sess, err := p.orch.td().Sessions.Get(ctx, sessionID)
 	if err != nil {

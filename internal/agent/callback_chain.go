@@ -90,6 +90,11 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// outputs a brief "已完成 + 下一步" reply before calling the next tool.
 	// BeforeModel hook reads state set by the AfterTool hook.
 	entries = append(entries, newReplyReminderBeforeHook())
+	// P2 TTFT: the framework content processor appends intent context right
+	// after the system block (before session history), which invalidates the
+	// prompt-cache prefix every turn. This hook (priority 100, runs after all
+	// other message-mutating hooks) moves it to the END of the message list.
+	entries = append(entries, newIntentReorderBeforeHook())
 	if hook := newL0SnapshotAfterModelHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}

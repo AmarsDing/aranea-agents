@@ -7,7 +7,7 @@
     >
       <template #actions>
         <q-btn color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />
-        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+        <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRows(true)" />
       </template>
     </AppPageHero>
 
@@ -29,7 +29,7 @@
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="loadRows" />
+        <q-btn flat color="white" label="重试" @click="loadRows(true)" />
       </template>
     </q-banner>
 
@@ -94,6 +94,7 @@ const {
   loading,
   error,
   testingId,
+  togglingId,
   editorOpen,
   editingRow,
   credDialogOpen,

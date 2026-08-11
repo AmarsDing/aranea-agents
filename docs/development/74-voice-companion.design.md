@@ -619,6 +619,7 @@ Agent 调用 client_open_app
 - **C1b：启动期预构建 `__spirit__`**（已落地 2026-08-11，`ChatService.PrewarmSpiritAgent` + `cmd/admin/app.go`）：voice.start 预热只能覆盖「开麦→开口」空窗，进程首个 Turn 仍付冷构建（实测 2.6-8s）。readiness 门控后后台预构建 spirit agent 缓存（dialogMode 固定 "default" 归一化、合成 session 仅提供 ID——AwaitHook 运行时才从 ctx 解析，构建期安全）；非阻断容错，失败仅 Warn 不阻塞启动（Always-Ready）
 - **P0：工具构建 N+1 消除**（已落地 2026-08-11，`internal/agent/tool_build_catalog.go`）：冷构建实测 10.2-10.7s 的主因是 `applyRuntimeToolConfigs` 与 `buildCatalogConfirmTools`（确认门重复构建两次：toolset 策略 + callback chain hook）各对启用工具逐个跑聚合 `GetTool` 查询（70 工具 × 3 ≈ 210 次 × ~49ms）。修复：`toolBuildCatalog` 每次构建只跑两条批量 SQL（`ListToolCatalogEntries` IN 批量 + overrides 列表）生成快照，eff 键集/快照/确认门在 `BuildTRPCLLMAgent` 加载一次，共享给 `buildToolsetsForAgent` 与 `buildCallbackChainOptions`。降级语义与逐键 GetTool 时代完全一致：快照加载失败 runtime config 全跳过（fail-soft）、确认门 fail-closed（所有启用工具需确认）；工具行缺失 fail-closed。配套：构建六段（model/prompt/skill/tools/finalize/new）+ tools 段五子相（rt_config/prune/build/gate/decor）K6 计时日志，超 2s 升级 Warn；`BuildTRPCDeps` 补 LG 注入（修复构建路径日志被 Noop 静默吞掉）
 - **C2：ASR partial 投机意图**（已落地 2026-08-11）：投机阶梯 L2/L3。`internal/voice/session.go` 追踪 partial 稳定（文本 500ms 无变化触发，`trackPartialStability`/`fireSpeculation`；同文重发不重置，final/cancel/teardown 停止计时）→ `voice.IntentSpeculator` 端口 → `internal/service/chat_voice_speculate.go` `VoiceIntentSpeculator`：与 Turn 侧 `runIntentPass` 同源解析 session/agent/provider/model/历史，后台预跑意图识别（15s 调用超时），产物存**每会话单槽**（`sourceText` 归一化精确匹配 = sourceHash 语义 + `createdAt` TTL 30s = expiresAt 语义）。ASR final（L3 判定）经 `WithSpeculativeIntent` 校验：一致且有界等待（cap 2s）在途投机完成 → 经 `intent.WithSpeculativeArtifact` 注入 Turn ctx；失配/超时/失败即丢弃走常规意图路径。Turn 消费（`chat_orchestrator_turn.go`）：新增 `SpeculativeArtifactFromContext` 分支——**fresh 语义不剥离澄清残留**（与澄清续跑 key 隔离，澄清门照常评估），复用记 `outcome=reused_speculative`。去重：同文投机在槽不重复调 LLM；新 partial 取代旧槽。dictation/团队会话/A2A/意图未启用跳过
+- **语音轮次跳过主动召回**（已落地 2026-08-11，`chat_orchestrator_turn.go` `shouldRunProactiveRecall`）：`input.Voice != nil` 时不启动 recall goroutine（记 `chat.proactive_recall` LogSkip）。真机实测语音轮次 hits 恒为 0（短口语句实体提及稀少），而 recall 含 query embedding + 向量检索耗时 0.3-3.3s；三方并行后 `eg.Wait()` 仍以**最慢 goroutine** 收口，零产出召回是关键路径纯开销，单独即可击穿 ≤2s 停口到首音预算。文字路径行为不变
 - **L5：TTS 连接预热**（已落地 2026-08-11，`internal/data/speech/volcengine_tts.go` + `internal/voice/session.go`）：voice.start 预解析 TTS provider 存入会话（`resolveAndPrewarmTTS`，`ensureTTS` 复用不再二次调工厂）并后台预拨一条 WS 连接存**单槽温连接**（`PrewarmTTSConn`）；首个 Turn 首句 `Write` 弹出复用免握手，写失败回退新拨（K3）；会话拆除释放未消费温连接（`ReleaseWarmTTSConn`，一次性语义）。provider 无预热能力（接口断言失败）自动跳过
 
 **C. 前缀稳定化（P1，2026-08-11）**
@@ -628,6 +629,14 @@ Agent 调用 client_open_app
 **D. TTS 文本清洗（上一轮，2026-08-09）**
 
 - `cleanForSpeech`（`sentence_chunker.go`）：剥离成对 markdown 强调符（`**`/`__`/`~~`/`*`/`_`）、行首标题/列表/分隔线/引用符及 emoji，防 TTS 把 `*` 读作「星星」
+
+**E. TTFT 二轮深化（已落地 2026-08-11）**
+
+- **P0-A：预算表分解日志**：per-turn token/缓存命中入进程日志（`chat_turn_metrics.go`，step `chat.turn_usage` 带 cached_tokens/cache_hit_ratio，前缀稳定化效果直接可验）；记忆 cue 构建计时（`memory_inject.go`，step `agent.memory_cue.build` 带 cue_chars/recall_hits）；turnStreamConsumer logger 关联 session_id（`stream_consumer.go`），TTFT 黑盒可按会话拆段
+- **P0-C：单轮共享 embedding**（`memory_composite_recall.go` + `memory_l2_recall.go` + `memory_l3_fused_recall.go`）：composite layered 路径每轮只 Embed 一次（3s 超时 `memoryRecallEmbedTimeout`；失败置 EmbedAttempted，层内降级非向量检索且不再各自重复 embed），向量经 `QueryEmbedding`/`EmbedAttempted` 字段传给 L2/L3 fused；Wire 装配 `SetEmbedder`（`wire_memory.go`，typed-nil 守卫）。此前 L2/L3 各自对同一 query 独立 embed，关键路径多付一次网络往返
+- **P0-D：温连接消费后异步补充**（`volcengine_tts.go`）：`popWarm` 消费即 safego 后台重拨补槽，后续句/后续轮首句继续免握手，同步握手彻底移出用户感知关键路径；`released` 标志 teardown 后抑制补充、迟到预热连接到达即关（防泄漏）；补充失败仅少一次预热，下一句回退同步拨号（K3）
+- **P1-E：skill overview stale-while-revalidate**（`skill/trpc/db_repository.go`）：TTL 自然过期且已有快照 → 旧快照立即应答 + safego 后台 single-flight 刷新，每轮 ~280ms 同步全量拉 DB 移出请求路径；冷启动/Invalidate 后仍同步拉（变更立即生效语义）；失败退避 30s（loaded 前移）防 DB 故障期每请求重试；`invalidateGen` 代际替代 loaded 零值表达「fetch 期间又 Invalidate」——修复冷启动后 loaded 永零、TTL 永不生效导致缓存形同虚设
+- **P1-F：投机意图归一化匹配**（`chat_voice_speculate.go`）：`normalizeSpeculativeMatchText`（小写、去 Unicode 标点/空白）替代 sourceText 精确匹配——ASR final 对 partial 的标点润色（补句号/去逗号）归一化后命中复用投机产物；实体差异（改口/纠错）归一化后仍不同照常失配丢弃；同文标点变体重触发去重不重复调 LLM
 
 ### 14.4 待办（P1/P2）
 

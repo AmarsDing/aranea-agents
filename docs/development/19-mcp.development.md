@@ -51,6 +51,11 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | Health bounded concurrency | ✅ | `maxConcurrentProbes=8` semaphore |
 | mcpobserve 精确查询 | ✅ | `GetMCPServerByKey` 替代 O(n) 全表扫 |
 | Metadata 并发写隔离 | ✅ | `UpdateMCPServerMetadata` 只写 metadata+status 字段 |
+| 工作区隔离（P2-B IDOR） | ✅ | `workspace_id` 列 + `assertMCPServerAccess`（读级）/ `assertMCPServerMutateAccess`（变更级）双守卫；`shared` 派生字段下发 |
+| 服务端分页 + 搜索 | ✅ | `ListMCPServersRequest{page,page_size,search}` + `ListPaged`（默认 20，上限 100）；旧版不分页路径保留给内部调用方 |
+| 内置共享服务器只读 UI | ✅ | 「内置」徽标 + 编辑/删除/启用开关禁用（tooltip 说明）；测试连接对共享行放行（读级守卫） |
+| 手动刷新反馈 | ✅ | `refreshFeedback`：行数 + 最近 `last_health_at` |
+| 后端错误文案透出 | ✅ | `axiosHandler` 提取 Kratos 错误信封 `message` 覆盖 axios 通用文案 |
 
 ---
 
@@ -233,3 +238,55 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - [x] `internal/tools/...` 全量测试通过
 - [x] Init 失败不中断组装（弹性降级语义保持）
 - [x] 缓存淘汰/关闭时 ToolSet 被关闭（资源释放）
+
+---
+
+## 12. 2026-08-11 共享服务器测试 404 + 列表分页/刷新反馈修复
+
+> 来源：用户反馈 Playwright（内置共享服务器）点击「测试连接」404、点击「刷新」无效果无反馈、状态不更新。
+
+### 12.1 根因分析
+
+| # | 现象 | 根因 |
+|---|------|------|
+| 30 | 内置服务器「测试连接」404 | `TestMCPServer` 误用变更级 IDOR 守卫，对 `workspace_id=""` 的共享服务器 fail-closed |
+| 31 | 刷新「无效果」 | 健康数据由服务端定时探活更新，手动刷新只重拉列表且无成功反馈，用户无法感知数据新鲜度 |
+| 32 | 分页/搜索失效 | rpc 声明 `ListMCPServers(google.protobuf.Empty)`，生成客户端丢弃 page/page_size/search，请求以无 query 的裸 GET 发出 |
+| 33 | 错误文案无信息量 | axios 通用文案 "Request failed with status code 404" 掩盖了 Kratos 错误信封中的后端 message |
+
+### 12.2 修复清单
+
+| # | 修复 | 状态 |
+|---|------|------|
+| 30 | `TestMCPServer` 改用读级守卫 `assertMCPServerAccess`（探测仅刷新系统健康簿记，与 health runner 语义一致） | ✅ |
+| 31 | 手动刷新成功后 `Notify` 反馈行数 + 最近 `last_health_at`（`refreshFeedback`） | ✅ |
+| 32 | proto 改 `ListMCPServersRequest{page,page_size,search}`；service 优先取请求参数、HTTP query fallback 兼容旧客户端 | ✅ |
+| 33 | `axiosHandler.humanizeAxiosError` 提取 Kratos 错误信封 `message` | ✅ |
+| 34 | `MCPServer.shared` 派生字段下发；前端内置徽标 + 编辑/删除/开关禁用（tooltip 说明） | ✅ |
+
+### 12.3 改动文件清单
+
+**后端**：
+- `api/kratos/mcp_server/v1/mcp_server.proto`：`ListMCPServersRequest` + `MCPServer.shared` + 响应分页字段
+- `internal/service/mcp_server.go`：读级/变更级双守卫；`ListMCPServers` 分页搜索；`toProtoMCP` 派生 `shared`
+- `internal/biz/mcp_server.go`：`WorkspaceID`、`MCPListQuery`、`ListPaged`
+- `internal/data/ent/schema/platform_mcp_server.go`：`workspace_id` 列 + 索引
+
+**前端**：
+- `web/src/features/mcp/api.ts`：`shared` 映射 + `listMcpServersPaged`
+- `web/src/features/mcp/useMcpServersPage.ts`：`loadRows(manual)` + `refreshFeedback`
+- `web/src/components/mcp/McpServersTable.vue`：内置徽标 + 共享行禁用编辑/删除/开关
+- `web/src/services/axiosHandler.ts`：后端错误 message 提取
+
+**测试**：
+- `internal/service/mcp_server_test.go`：`TestMCPServerService_TestMCPServer_SharedServerAllowedForTenant`（租户探测共享服务器回归）
+- `web/src/features/mcp/__tests__/mcpServerListQuery.spec.ts`：生成客户端序列化 page/page_size/search 回归
+
+### 12.4 验收标准
+
+- [x] `go build ./...` + MCP 相关单测（service/biz/data）通过
+- [x] 前端 `eslint` 0 错误、`vitest` 13/13 MCP 测试通过、`quasar build` 成功
+- [x] 租户调用 `POST /v1/mcp-servers/{共享服务器id}/test` 不再 404
+- [x] 列表请求携带 `page`/`page_size`/`search` query 参数
+- [x] 手动刷新后展示行数 + 最近健康检测时间
+- [x] HTTP 错误提示展示后端 message（如 "mcp server not found"）

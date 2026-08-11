@@ -158,6 +158,9 @@ func turnIntentFromInput(input biz.TurnInput) biz.TurnIntent {
 		EntryConfig:   input.EntryConfig,
 		ParentTaskID:  input.ParentTaskID,
 		Synthesis:     input.Synthesis,
+		// Voice 必须透传：pipeline 出口 TurnIntent.TurnInput() 重建后，
+		// orchestrator 依此打 voice fast-path（关思考）与跳过主动召回。
+		Voice: input.Voice,
 	}
 }
 

@@ -36,7 +36,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MCPServerServiceClient interface {
-	ListMCPServers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListMCPServersResponse, error)
+	ListMCPServers(ctx context.Context, in *ListMCPServersRequest, opts ...grpc.CallOption) (*ListMCPServersResponse, error)
 	CreateMCPServer(ctx context.Context, in *CreateMCPServerRequest, opts ...grpc.CallOption) (*MCPServer, error)
 	GetMCPServer(ctx context.Context, in *GetMCPServerRequest, opts ...grpc.CallOption) (*MCPServer, error)
 	UpdateMCPServer(ctx context.Context, in *UpdateMCPServerRequest, opts ...grpc.CallOption) (*MCPServer, error)
@@ -56,7 +56,7 @@ func NewMCPServerServiceClient(cc grpc.ClientConnInterface) MCPServerServiceClie
 	return &mCPServerServiceClient{cc}
 }
 
-func (c *mCPServerServiceClient) ListMCPServers(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListMCPServersResponse, error) {
+func (c *mCPServerServiceClient) ListMCPServers(ctx context.Context, in *ListMCPServersRequest, opts ...grpc.CallOption) (*ListMCPServersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListMCPServersResponse)
 	err := c.cc.Invoke(ctx, MCPServerService_ListMCPServers_FullMethodName, in, out, cOpts...)
@@ -160,7 +160,7 @@ func (c *mCPServerServiceClient) DeleteMCPServerUserCredential(ctx context.Conte
 // All implementations must embed UnimplementedMCPServerServiceServer
 // for forward compatibility.
 type MCPServerServiceServer interface {
-	ListMCPServers(context.Context, *emptypb.Empty) (*ListMCPServersResponse, error)
+	ListMCPServers(context.Context, *ListMCPServersRequest) (*ListMCPServersResponse, error)
 	CreateMCPServer(context.Context, *CreateMCPServerRequest) (*MCPServer, error)
 	GetMCPServer(context.Context, *GetMCPServerRequest) (*MCPServer, error)
 	UpdateMCPServer(context.Context, *UpdateMCPServerRequest) (*MCPServer, error)
@@ -180,7 +180,7 @@ type MCPServerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedMCPServerServiceServer struct{}
 
-func (UnimplementedMCPServerServiceServer) ListMCPServers(context.Context, *emptypb.Empty) (*ListMCPServersResponse, error) {
+func (UnimplementedMCPServerServiceServer) ListMCPServers(context.Context, *ListMCPServersRequest) (*ListMCPServersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMCPServers not implemented")
 }
 func (UnimplementedMCPServerServiceServer) CreateMCPServer(context.Context, *CreateMCPServerRequest) (*MCPServer, error) {
@@ -232,7 +232,7 @@ func RegisterMCPServerServiceServer(s grpc.ServiceRegistrar, srv MCPServerServic
 }
 
 func _MCPServerService_ListMCPServers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ListMCPServersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func _MCPServerService_ListMCPServers_Handler(srv interface{}, ctx context.Conte
 		FullMethod: MCPServerService_ListMCPServers_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MCPServerServiceServer).ListMCPServers(ctx, req.(*emptypb.Empty))
+		return srv.(MCPServerServiceServer).ListMCPServers(ctx, req.(*ListMCPServersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

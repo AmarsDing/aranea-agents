@@ -2881,6 +2881,7 @@ func provideVoiceWSServer(
 	artifactUC *biz.ArtifactUsecase,
 	voiceDelegation *voice.DelegationRegistry,
 	stepReader biz.StepV2Reader,
+	embedder *knowledge.MultiProviderEmbedder,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -2913,7 +2914,8 @@ func provideVoiceWSServer(
 		return asrErr == nil, ttsErr == nil
 	}
 	// C1：voice.start 预热 Agent 构建缓存（nil-safe：chatService 异常时返回 nil 即关闭）。
-	prewarmer := service.NewVoiceTurnPrewarmer(chatService)
+	// C3：并列触发 embedding 冷启动预热（nil-safe 同上）。
+	prewarmer := service.NewVoiceTurnPrewarmer(chatService, embedder)
 	// C2：ASR partial 稳定 500ms 投机意图（nil-safe 同上）。
 	speculator := service.NewVoiceIntentSpeculator(chatService)
 	srv := server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)

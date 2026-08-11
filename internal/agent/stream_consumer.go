@@ -72,6 +72,10 @@ func newTurnStreamConsumer(
 	opts *StreamConsumeOptions,
 	lg loggateway.Logger,
 ) *turnStreamConsumer {
+	// 带上 session_id：TTFT/stream 事件可按会话关联（语音延迟分段排查）。
+	if projectMeta.SessionID != "" {
+		lg = lg.With(loggateway.SessionID(projectMeta.SessionID))
+	}
 	c := &turnStreamConsumer{
 		firstByteCtx:      firstByteCtx,
 		turnCtx:           turnCtx,

@@ -3,12 +3,22 @@
 </template>
 
 <script setup lang="ts">
-// 深空粒子背景（SP2 §SP2-3）：Canvas 2D 漂浮粒子 + 鼠标斥力 + 近距连线。
+// 深空粒子背景（V2 升级，方案 §三-V2）：视差双层漂浮粒子 + 星光闪烁 + 流星 + 鼠标斥力 + 近距连线。
+// 纯函数层在 features/knowledge/particles.ts（twinkle/meteor/parallax/seed 可单测）。
 // 降级：reduced-motion 或低端设备（particleBudget()=0）时不渲染；页面不可见时停帧。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { particleBudget, useReducedMotion } from '../../../features/knowledge/useReducedMotion';
-
-type Particle = { x: number; y: number; vx: number; vy: number; r: number; hue: number };
+import {
+  createMeteor,
+  meteorHead,
+  meteorProgress,
+  nextMeteorDelay,
+  parallaxOffset,
+  seedField,
+  twinkleAlpha,
+  type FieldParticle,
+  type Meteor,
+} from '../../../features/knowledge/particles';
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const { reducedMotion } = useReducedMotion();
@@ -16,7 +26,9 @@ const budget = particleBudget();
 const enabled = computed(() => !reducedMotion.value && budget > 0);
 
 let ctx: CanvasRenderingContext2D | null = null;
-let particles: Particle[] = [];
+let particles: FieldParticle[] = [];
+let meteor: Meteor | null = null;
+let nextMeteorAt = 0;
 let rafId = 0;
 let width = 0;
 let height = 0;
@@ -29,19 +41,17 @@ const REPEL_RADIUS = 120;
 const LINK_RADIUS = 90;
 
 function seed() {
-  particles = Array.from({ length: budget }, () => ({
-    x: Math.random() * width,
-    y: Math.random() * height,
-    vx: (Math.random() - 0.5) * 0.22,
-    vy: (Math.random() - 0.5) * 0.22,
-    r: 0.8 + Math.random() * 1.6,
-    hue: Math.random() < 0.72 ? 197 : 262, // cyan / violet
-  }));
+  particles = seedField(width, height, budget);
 }
 
-function step() {
+function step(ts: number) {
   if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
+
+  // 视差双层：鼠标在画布内才偏移（离开归零）；按深度预计算两层偏移，避免逐粒子分配
+  const mouseInside = mouseX > -999;
+  const offFar = mouseInside ? parallaxOffset(mouseX, mouseY, width, height, 0.35) : { x: 0, y: 0 };
+  const offNear = mouseInside ? parallaxOffset(mouseX, mouseY, width, height, 1) : { x: 0, y: 0 };
 
   for (const p of particles) {
     // 鼠标斥力
@@ -64,26 +74,56 @@ function step() {
     if (p.y < -10) p.y = height + 10;
     else if (p.y > height + 10) p.y = -10;
 
+    // 视差后的绘制坐标（连线共用）
+    const off = p.depth < 1 ? offFar : offNear;
+    p.px = p.x + off.x;
+    p.py = p.y + off.y;
+
+    // 星光闪烁：透明度正弦振荡
     ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${p.hue}, 95%, 72%, 0.55)`;
+    ctx.arc(p.px, p.py, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue}, 95%, 72%, ${twinkleAlpha(p.phase, ts).toFixed(3)})`;
     ctx.fill();
   }
 
-  // 近距连线
+  // 近距连线（绘制坐标系）
   for (let i = 0; i < particles.length; i++) {
     for (let j = i + 1; j < particles.length; j++) {
       const a = particles[i];
       const b = particles[j];
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const d = Math.hypot(a.px - b.px, a.py - b.py);
       if (d < LINK_RADIUS) {
-        ctx!.beginPath();
-        ctx!.moveTo(a.x, a.y);
-        ctx!.lineTo(b.x, b.y);
-        ctx!.strokeStyle = `rgba(79, 216, 255, ${(1 - d / LINK_RADIUS) * 0.14})`;
-        ctx!.lineWidth = 0.6;
-        ctx!.stroke();
+        ctx.beginPath();
+        ctx.moveTo(a.px, a.py);
+        ctx.lineTo(b.px, b.py);
+        ctx.strokeStyle = `rgba(79, 216, 255, ${(1 - d / LINK_RADIUS) * 0.14})`;
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
       }
+    }
+  }
+
+  // 流星：到点生成 → 300ms 划出 → 回收并排程下一颗（屏上同时至多 1 颗）
+  if (!meteor && ts >= nextMeteorAt) meteor = createMeteor(width, ts);
+  if (meteor) {
+    const prog = meteorProgress(meteor, ts);
+    if (prog >= 1) {
+      meteor = null;
+      nextMeteorAt = ts + nextMeteorDelay();
+    } else {
+      const head = meteorHead(meteor, ts);
+      const tailX = head.x - meteor.dx * meteor.length;
+      const tailY = head.y - meteor.dy * meteor.length;
+      const fade = Math.sin(prog * Math.PI); // 淡入淡出
+      const grad = ctx.createLinearGradient(tailX, tailY, head.x, head.y);
+      grad.addColorStop(0, 'rgba(140, 220, 255, 0)');
+      grad.addColorStop(1, `rgba(220, 245, 255, ${(fade * 0.9).toFixed(3)})`);
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(head.x, head.y);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
     }
   }
 
@@ -133,6 +173,7 @@ onMounted(() => {
   if (!canvas || !canvas.parentElement) return;
   hostEl = canvas.parentElement;
   resize();
+  nextMeteorAt = performance.now() + nextMeteorDelay();
   resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(hostEl);
   hostEl.addEventListener('mousemove', onMouseMove);

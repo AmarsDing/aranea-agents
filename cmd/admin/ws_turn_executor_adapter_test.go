@@ -38,3 +38,39 @@ func TestWSTurnExecutorAdapter_QueuedIsNotError(t *testing.T) {
 		t.Fatalf("P2: queued outcome must not surface as error (frontend renders false send_failed card), got %v", err)
 	}
 }
+
+// captureTurnGateway 捕获透传的 biz.TurnInput 供断言。
+type captureTurnGateway struct {
+	biz.TurnExecutorGateway
+	got biz.TurnInput
+}
+
+func (g *captureTurnGateway) ExecuteTurn(_ context.Context, in biz.TurnInput) (biz.TurnResult, error) {
+	g.got = in
+	return biz.TurnResult{}, nil
+}
+
+// TestWSTurnExecutorAdapter_VoiceMetaPassthrough 复现 2026-08-11 真机回归：
+// 语音轮次 WSTurnInput.Voice 在适配器被丢弃 → biz.TurnInput.Voice=nil →
+// prepareRunContext 不打 voice fast-path 标记 → 主 LLM 思考未禁用（真机实测
+// 语音 TTFT 含 1.7s+ reasoning 流），且 V2-T6 语音溯源元数据未持久化。
+//
+// 期望行为：Voice 必须透传到 biz.TurnInput。
+func TestWSTurnExecutorAdapter_VoiceMetaPassthrough(t *testing.T) {
+	gw := &captureTurnGateway{}
+	var exec server.WSTurnExecutor = provideWSTurnExecutor(gw, loggateway.NewNoop())
+	err := exec.ExecuteTurn(context.Background(), server.WSTurnInput{
+		SessionID: "sess-1",
+		Content:   "你好",
+		Voice:     &biz.VoiceTurnMeta{ASRProvider: "volcengine_sauc", DurationMs: 2740},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gw.got.Voice == nil {
+		t.Fatal("Voice must be passed through to biz.TurnInput (voice fast-path thinking-disable depends on it)")
+	}
+	if gw.got.Voice.ASRProvider != "volcengine_sauc" || gw.got.Voice.DurationMs != 2740 {
+		t.Fatalf("Voice meta mangled: %+v", gw.got.Voice)
+	}
+}

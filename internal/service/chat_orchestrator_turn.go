@@ -417,16 +417,23 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	})
 
 	// Goroutine 2: PROACTIVE RECALL
-	eg.Go(func() error {
-		proactiveStart := time.Now()
-		o.publishTurnProgress(ctx, sessionID, "recalling", nil)
-		proactiveHits = o.runProactiveRecall(egCtx, sess, ag, content, emitter)
-		o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
-			loggateway.StepID("chat.proactive_recall"),
-			loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
-			loggateway.Any("hits", len(proactiveHits)))
-		return nil // Recall failure is non-fatal; runProactiveRecall warns internally
-	})
+	// 语音轮次跳过：真机实测语音轮次 recall hits 恒为 0，而 recall 含 query
+	// embedding + 向量检索耗时 0.3-3.3s；eg.Wait() 以最慢 goroutine 收口，
+	// 零产出召回直接击穿 ≤2s 停口到首音预算（2026-08-11）。
+	if shouldRunProactiveRecall(input) {
+		eg.Go(func() error {
+			proactiveStart := time.Now()
+			o.publishTurnProgress(ctx, sessionID, "recalling", nil)
+			proactiveHits = o.runProactiveRecall(egCtx, sess, ag, content, emitter)
+			o.lg().With(loggateway.SessionID(sessionID)).Info("turn timing: runProactiveRecall",
+				loggateway.StepID("chat.proactive_recall"),
+				loggateway.Any("elapsed_ms", time.Since(proactiveStart).Milliseconds()),
+				loggateway.Any("hits", len(proactiveHits)))
+			return nil // Recall failure is non-fatal; runProactiveRecall warns internally
+		})
+	} else {
+		emitter.LogSkip("chat.proactive_recall", "语音轮次跳过主动召回", event.P("reason", "voice_fast_path"))
+	}
 
 	// Goroutine 3: Intent Pass
 	// 澄清续跑复用：ctx 携带澄清门前的预解析产物时直接复用，跳过重复 LLM 调用
@@ -659,6 +666,18 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	o.postProcessTurn(ctx, sess, ag, input, admit, execResult, persistResult, emitter, turnStart, turnStatus)
 
 	return userMsg, persistResult.assistantMsg, nil
+}
+
+// shouldRunProactiveRecall 判定本 turn 是否执行主动召回（P3-11）。
+//
+// 语音轮次（input.Voice != nil）跳过：真机实测语音轮次 recall hits 恒为 0
+// （语音输入多为短口语句，实体提及稀少），而 recall 含 query embedding +
+// 向量检索，耗时 0.3-3.3s；虽然 recall 与 BUILD/Intent Pass 同 errgroup
+// 并行，eg.Wait() 以最慢 goroutine 收口，零产出召回会成为关键路径纯开销，
+// 直接击穿 ≤2s 停口到首音预算（2026-08-11）。
+// Stability:internal
+func shouldRunProactiveRecall(input biz.TurnInput) bool {
+	return input.Voice == nil
 }
 
 // runProactiveRecall triggers proactive memory recall at turn start to surface

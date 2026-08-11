@@ -2137,7 +2137,7 @@ KnowledgePage.vue（重写，薄壳）
   └─ KnowledgeWorkbench.vue（工作台根，装配三栏 + 浮层 + 全屏图谱）
        ├─ WorkbenchTopBar        顶栏：Vault 切换 / ⌘O / ⌘K / 图谱 / 设置浮层入口
        ├─ WorkbenchSidebar（左）  Vault 树（复用 KnowledgeVaultTree 内核，玻璃换肤）
-       ├─ WorkbenchTabs（中）     笔记标签页条 + 活动笔记编辑器/预览/空态 RingCarousel
+       ├─ WorkbenchTabs（中）     笔记标签页条 + 活动笔记编辑器/预览/空态（RingCarousel + 流体 GlowButton 主 CTA「新建笔记」，emit `create-note` 由父级弹命名对话框）
        │    └─ NoteEditor.vue     CM6 编辑器（Live Preview + wikilink 补全/芯片）
        ├─ WorkbenchSidePanels（右）五面板：反链/出链/大纲/属性/局部图谱
        ├─ QuickSwitcher.vue       ⌘O 快速切换（液态玻璃浮层）
@@ -2186,10 +2186,12 @@ KnowledgePage.vue（重写，薄壳）
 | 组件 | 职责 | 关键技术 |
 |------|------|---------|
 | `GlassPanel.vue` | 液态玻璃容器（面板/浮层基座） | slot 包装 + 上述令牌 + 可选 `glow` 呼吸辉光；**P0-2 三层液态效果**（§SP2-12）：SVG 折射光纹 + 镜面断面 + 指针追随高光 |
-| `ParticleField.vue` | 深空粒子背景 | Canvas 2D；粒子数按设备分级（`navigator.hardwareConcurrency`/`deviceMemory`：高 120 / 中 60 / 低 0）；鼠标 120px 斥力 + 近距连线（<90px 透明度渐隐）；`requestAnimationFrame` 自循环，页面不可见（`document.hidden`）时停帧 |
-| `TiltCard.vue` | 3D 倾斜卡片 | mousemove 求相对中心偏移 → `rotateX/Y`（±8° 上限）+ 移动高光（radial-gradient 跟随）；mouseleave spring 回正（CSS transition 180ms） |
-| `GlowButton.vue` | 辉光磁吸主按钮 | hover 辉光晕（box-shadow 双层 cyan）+ 鼠标磁吸位移（≤6px，transform translate）；active 涟漪 |
-| `RingCarousel.vue` | 空态 3D 环形旋转 | N 张卡片 `transform: rotateY(i*θ) translateZ(r)` 环形排布；CSS keyframes 自动旋转 24s/圈；hover 暂停 + 中心卡片 scale 聚焦；点击进入笔记 |
+| `ParticleField.vue` | 深空粒子背景 | Canvas 2D；粒子数按设备分级（`navigator.hardwareConcurrency`/`deviceMemory`：高 120 / 中 60 / 低 0）；鼠标 120px 斥力 + 近距连线（<90px 透明度渐隐）；`requestAnimationFrame` 自循环，页面不可见（`document.hidden`）时停帧。**2026-08-11 V2 增强**：星光闪烁（透明度正弦振荡 [0.25,0.85]，~3.9s 周期）+ 流星（4~8s 随机间隔，300ms 生命周期，淡入淡出渐变尾迹，屏上至多 1 颗）+ 视差双层（远层 depth 0.35 小且慢 / 近层 depth 1，鼠标归一化位移 × 深度反向偏移，满幅 18px）；纯函数层抽至 `features/knowledge/particles.ts`（seedField/twinkleAlpha/createMeteor/meteorProgress/meteorHead/parallaxOffset/nextMeteorDelay，全单测） |
+| `TiltCard.vue` | 3D 倾斜卡片 | mousemove 求相对中心偏移 → `rotateX/Y`（±8° 上限）+ 移动高光（radial-gradient 跟随）；hover 跟随 120ms ease-out；mouseleave 弹簧回正 420ms overshoot 缓动 `cubic-bezier(0.34,1.56,0.64,1)`（V3，回弹感）；零尺寸守卫（jsdom/隐藏态不倾斜） |
+| `GlowButton.vue` | 辉光磁吸主按钮 | hover 辉光晕（box-shadow 双层 cyan）+ 鼠标磁吸位移（≤6px，transform translate）；active 涟漪；**V3**：非 ghost 变体注入低透明度流体色团（`kb-fluid-blobs`，opacity 0.22，不抢 label 可读性） |
+| `RingCarousel.vue` | 空态 3D 聚焦环 | N 张卡片 `rotateY(i*θ) translateZ(r)` 环形排布；**2026-08-11 V1 重写**：弃 CSS keyframes，改 JS rAF 帧循环驱动（旋转态自持，不走 Vue 响应式）——逐帧计算各卡与正面角差输出 `--focus`（cos 衰减），联动 opacity/blur/scale 衰减 + 聚焦卡旋转渐变光环（`@property --kb-halo-angle`）；交互全集：拖拽（0.35°/px）/滚轮（0.12°/px）/惯性（阻尼 2.2/s）/最近卡吸附（10/s）/hover 暂停/click 抑制（拖拽 >6px）；卡片为流体玻璃卡（`kb-fluid-blobs`：cyan/violet 双径向渐变反向漂移 + 42px 自模糊漫射光，宿主 `overflow:hidden` 裁剪）；点击进入笔记 |
+
+> **V1~V3 增强轮（2026-08-11，抖音流体卡/粒子/3D 旋转调研落地）**：调研方案 `docs/reports/2026-08-11-research-ui-fluid-3d-particle-plan.md`。流体色团 mixin（`kb-fluid-blobs`）宿主纪律：仅装饰性玻璃卡使用，宿主必须 `overflow:hidden`；叠序 元素玻璃底 < 流体层(::after, z-index -1) < 内容 < 渐变边缘(::before)。
 
 **降级契约（FR-SP2-10）**：`prefers-reduced-motion: reduce` 时——粒子不渲染、TiltCard 退化为静态卡、RingCarousel 退化为纵向列表、GlowButton 仅保留颜色 hover。统一经 `useReducedMotion()`（matchMedia 封装）判定，各组件消费。
 
@@ -2278,6 +2280,7 @@ web/src/
     outline.ts                                 [新] 大纲解析（纯函数）
     frontmatter.ts                             [新] frontmatter 解析（纯函数）
     commands.ts                                [新] 命令注册表
+    particles.ts                               [新，V2] ParticleField 纯函数层（闪烁/流星/视差/双层种子）
   components/knowledge/
     effects/GlassPanel.vue                     [新]
     effects/ParticleField.vue                  [新]

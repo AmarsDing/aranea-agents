@@ -127,6 +127,10 @@ func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 		DeletedAt:    m.DeletedAt,
+		// Shared = system built-in (workspace_id==""). Exposed as a derived bool
+		// (not the raw workspace ID) so the UI can disable mutation affordances
+		// without leaking tenant topology.
+		Shared: m.WorkspaceID == "",
 	}
 }
 
@@ -167,14 +171,25 @@ func boolPtr(b bool) *bool { return &b }
 
 func intPtr(i int) *int { return &i }
 
-func (s *MCPServerService) ListMCPServers(ctx context.Context, _ *emptypb.Empty) (*v1.ListMCPServersResponse, error) {
-	q := biz.MCPListQuery{Search: searchQueryFromContext(ctx)}
+func (s *MCPServerService) ListMCPServers(ctx context.Context, req *v1.ListMCPServersRequest) (*v1.ListMCPServersResponse, error) {
+	// Prefer proto request params (typed clients); fall back to the raw HTTP
+	// query for legacy clients (CLI, older generated TS client that silently
+	// dropped page/pageSize/search when the rpc took google.protobuf.Empty).
+	search := strings.TrimSpace(req.GetSearch())
+	if search == "" {
+		search = searchQueryFromContext(ctx)
+	}
+	q := biz.MCPListQuery{Search: search}
 	// P2-B: workspace visibility filter.
 	// System caller (cron/admin) sees all; tenant caller sees shared + own.
 	if !workspace.IsSystem(ctx) {
 		q.WorkspaceID = workspace.IDFromContext(ctx)
 	}
-	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
+	page, pageSize := req.GetPage(), req.GetPageSize()
+	if page <= 0 && pageSize <= 0 {
+		page, pageSize, _ = pageQueryFromContext(ctx)
+	}
+	if page > 0 || pageSize > 0 {
 		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
 		q.Limit, q.Offset = limit, offset
 		result, err := s.uc.ListPaged(ctx, q)
@@ -351,8 +366,14 @@ func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.Valida
 }
 
 func (s *MCPServerService) TestMCPServer(ctx context.Context, req *v1.TestMCPServerRequest) (*v1.MCPServerTestResponse, error) {
-	// P2-B: IDOR guard — verify caller workspace before probe.
-	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
+	// P2-B: IDOR guard — read-level is sufficient here. Probing does not mutate
+	// tenant-owned config; it only refreshes system health bookkeeping metadata
+	// (health_status/last_health_at), which the background health runner already
+	// writes for shared servers under the system workspace. Using the mutate
+	// guard here fail-closed on shared/built-in servers (workspace_id="") and
+	// made the UI 测试连接 button permanently 404 for exactly the servers an
+	// operator most needs to probe.
+	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
 	res, err := s.uc.TestMCPServer(ctx, req.GetId())

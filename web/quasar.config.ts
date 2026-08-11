@@ -3,7 +3,7 @@ import { configure } from "quasar/wrappers";
 export default configure(() => {
   return {
     supportTS: true,
-    boot: ["pinia", "theme", "i18n", "runtime", "heartbeat", "close-menu-on-scroll"],
+    boot: ["pinia", "theme", "i18n", "runtime", "heartbeat", "close-menu-on-scroll", "liquid-glow"],
     css: ["style.sass"],
     extras: ["material-icons"],
     build: {

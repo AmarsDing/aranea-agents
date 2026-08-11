@@ -73,7 +73,10 @@ export type McpServerFormValue = {
   probe_mode: 'connectivity' | 'auth_aware';
 };
 
-export type McpServerRow = PlatformResource;
+export type McpServerRow = PlatformResource & {
+  /** 内置/共享服务器（workspace_id=""）：全租户可读，但租户不可编辑/删除/启停。 */
+  shared?: boolean;
+};
 
 export type McpServerTestResult = {
   ok: boolean;

@@ -71,6 +71,7 @@
           @create-doc="createDocByName"
           @open-doc-id="openDocById"
           @pick-link="onPickLink"
+          @create-note="createNote"
         />
 
         <!-- 右栏：五面板联动（SP2-5） -->

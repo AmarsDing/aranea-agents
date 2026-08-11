@@ -1,6 +1,7 @@
 package speech
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -245,6 +246,23 @@ func (d *countingDialer) count() int {
 	return d.calls
 }
 
+// conn 返回第 i 条拨出的连接（互斥访问；P0-D 异步补充会并发 append）。
+func (d *countingDialer) conn(i int) *fakeWSConn {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.conns[i]
+}
+
+// connsSince 返回从第 i 条起的连接快照（互斥访问）。
+func (d *countingDialer) connsSince(i int) []*fakeWSConn {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if i >= len(d.conns) {
+		return nil
+	}
+	return append([]*fakeWSConn(nil), d.conns[i:]...)
+}
+
 func newPrewarmTTSProvider(d *countingDialer) *volcTTSProvider {
 	return &volcTTSProvider{
 		cfg: biz.TTSProviderConfig{
@@ -255,8 +273,8 @@ func newPrewarmTTSProvider(d *countingDialer) *volcTTSProvider {
 	}
 }
 
-// L5：预热后首句 Write 复用温连接（全程仅预热的一次 dial）；温连接一次性，
-// 第二句回退新拨。
+// L5+P0-D：预热后首句 Write 复用温连接（全程仅预热的一次 dial）；消费后
+// 异步补充温槽，第二句复用补充的连接——整轮任意句均无同步握手。
 func TestTTSPrewarmConnReusedOnFirstWrite(t *testing.T) {
 	d := &countingDialer{}
 	p := newPrewarmTTSProvider(d)
@@ -270,16 +288,80 @@ func TestTTSPrewarmConnReusedOnFirstWrite(t *testing.T) {
 	require.NoError(t, sess.Write("第一句", true))
 	defer sess.Close()
 	require.Equal(t, 1, d.count(), "first sentence must reuse the warm connection")
-	f := mustReadFrame(t, d.conns[0])
+	f := mustReadFrame(t, d.conn(0))
 	require.Equal(t, volcMsgFullClientRequest, f.msgType)
 
-	// 温连接一次性：第二句新拨。
+	// P0-D：消费触发异步补充；温槽重新填满后第二句复用（无新同步拨号）。
+	waitWarmSlot(t, p)
+	require.Equal(t, 2, d.count(), "replenish dials exactly one background conn")
 	sess2, err := p.Open(context.Background(), biz.TTSSessionConfig{})
 	require.NoError(t, err)
 	require.NoError(t, sess2.Write("第二句", true))
 	defer sess2.Close()
-	require.Equal(t, 2, d.count(), "second sentence must dial fresh (warm slot consumed)")
-	_ = mustReadFrame(t, d.conns[1])
+	require.Equal(t, 2, d.count(), "second sentence must reuse the replenished conn")
+	_ = mustReadFrame(t, d.conn(1))
+}
+
+// P0-D：补充链——连续三句各复用温连接，dial 全部发生在后台（每句恰好 +1）。
+func TestTTSWarmConnReplenishChain(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+	p.PrewarmTTSConn(context.Background())
+	waitWarmSlot(t, p)
+
+	for i := 0; i < 3; i++ {
+		want := d.count()
+		sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+		require.NoError(t, err)
+		require.NoError(t, sess.Write("句", true))
+		require.Equal(t, want, d.count(), "sentence %d must reuse warm conn (no sync dial)", i)
+		waitWarmSlot(t, p) // 等补充完成再写下一句，消除调度竞态
+		require.Equal(t, want+1, d.count(), "sentence %d consume must trigger one replenish dial", i)
+		sess.Close()
+	}
+}
+
+// P0-D：teardown 释放后不再补充；释放前 in-flight 的补充连接到达即关闭（防泄漏）。
+func TestTTSReleaseStopsReplenish(t *testing.T) {
+	d := &countingDialer{}
+	p := newPrewarmTTSProvider(d)
+	p.PrewarmTTSConn(context.Background())
+	waitWarmSlot(t, p)
+
+	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
+	require.NoError(t, err)
+	require.NoError(t, sess.Write("第一句", true))
+	sess.Close()
+
+	p.ReleaseWarmTTSConn()
+	// 等可能 in-flight 的补充走完（到达即关或直接跳过）。
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) && d.count() < 2 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	p.warmMu.Lock()
+	warm := p.warm
+	p.warmMu.Unlock()
+	require.Nil(t, warm, "released provider must not hold a warm conn")
+	if d.count() >= 2 {
+		require.True(t, d.conn(1).closed.Load(), "late replenish conn must be closed after release")
+	}
+}
+
+// waitWarmSlot 轮询温槽直到被填满（异步补充的可观测同步点）。
+func waitWarmSlot(t *testing.T, p *volcTTSProvider) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		p.warmMu.Lock()
+		ok := p.warm != nil
+		p.warmMu.Unlock()
+		if ok {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("warm slot not replenished in time")
 }
 
 // L5：无预热时 Write 自行拨号（现状行为不变）。
@@ -308,7 +390,7 @@ func TestTTSPrewarmFailureDegradesToFreshDial(t *testing.T) {
 	require.NoError(t, sess.Write("x", true))
 	defer sess.Close()
 	require.Equal(t, 2, d.count(), "write must dial fresh after prewarm failure")
-	_ = mustReadFrame(t, d.conns[0])
+	_ = mustReadFrame(t, d.conn(0))
 }
 
 // L5：ReleaseWarmTTSConn 关闭未消费的温连接（语音会话 teardown 释放）。
@@ -319,7 +401,7 @@ func TestTTSReleaseWarmConnCloses(t *testing.T) {
 	require.Equal(t, 1, d.count())
 
 	p.ReleaseWarmTTSConn()
-	require.True(t, d.conns[0].closed.Load(), "release must close the unconsumed warm conn")
+	require.True(t, d.conn(0).closed.Load(), "release must close the unconsumed warm conn")
 
 	// 释放后首句新拨。
 	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
@@ -331,6 +413,8 @@ func TestTTSReleaseWarmConnCloses(t *testing.T) {
 
 // L5：温连接被服务端 idle 断连（写失败）时，Write 自动新拨重试一次——
 // 温连接死亡不退化为首句丢失，最坏情况 = 现状延迟。
+// P0-D：pop 消费死连接同时触发异步补充，终态 = 预热1 + 补充1 + 重试1 次 dial，
+// 文本帧落在重试连接上，补充连接入槽待用。
 func TestTTSWarmConnDeadRetriesFresh(t *testing.T) {
 	d := &countingDialer{}
 	p := newPrewarmTTSProvider(d)
@@ -338,13 +422,32 @@ func TestTTSWarmConnDeadRetriesFresh(t *testing.T) {
 	require.Equal(t, 1, d.count())
 
 	// 模拟服务端 idle 断连：温连接已关闭，写入必失败。
-	_ = d.conns[0].Close()
+	_ = d.conn(0).Close()
 
 	sess, err := p.Open(context.Background(), biz.TTSSessionConfig{})
 	require.NoError(t, err)
 	require.NoError(t, sess.Write("x", true))
 	defer sess.Close()
-	require.Equal(t, 2, d.count(), "dead warm conn must trigger one fresh-dial retry")
-	f := mustReadFrame(t, d.conns[1])
-	require.Equal(t, volcMsgFullClientRequest, f.msgType, "retry must deliver the text frame")
+
+	// P0-D：补充与同步重试竞态并发，等待两者完成（共 3 次 dial）。
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && d.count() < 3 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.Equal(t, 3, d.count(), "prewarm + async replenish + fresh retry")
+	waitWarmSlot(t, p) // 补充连接入槽
+
+	// 文本帧必须落在重试/补充之一的存活连接上（顺序不定）。
+	frameFound := false
+	for _, c := range d.connsSince(1) {
+		select {
+		case data := <-c.written:
+			f, uerr := unmarshalVolcFrame(bytes.NewReader(data))
+			require.NoError(t, uerr)
+			require.Equal(t, volcMsgFullClientRequest, f.msgType, "retry must deliver the text frame")
+			frameFound = true
+		default:
+		}
+	}
+	require.True(t, frameFound, "text frame must land on a live conn")
 }

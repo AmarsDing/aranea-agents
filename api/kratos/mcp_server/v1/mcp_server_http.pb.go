@@ -37,7 +37,7 @@ type MCPServerServiceHTTPServer interface {
 	DeleteMCPServerUserCredential(context.Context, *DeleteMCPServerUserCredentialRequest) (*emptypb.Empty, error)
 	GetMCPServer(context.Context, *GetMCPServerRequest) (*MCPServer, error)
 	ListMCPServerUserCredentials(context.Context, *ListMCPServerUserCredentialsRequest) (*ListMCPServerUserCredentialsResponse, error)
-	ListMCPServers(context.Context, *emptypb.Empty) (*ListMCPServersResponse, error)
+	ListMCPServers(context.Context, *ListMCPServersRequest) (*ListMCPServersResponse, error)
 	TestMCPServer(context.Context, *TestMCPServerRequest) (*MCPServerTestResponse, error)
 	UpdateMCPServer(context.Context, *UpdateMCPServerRequest) (*MCPServer, error)
 	UpsertMCPServerUserCredential(context.Context, *UpsertMCPServerUserCredentialRequest) (*MCPServerUserCredential, error)
@@ -60,13 +60,13 @@ func RegisterMCPServerServiceHTTPServer(s *http.Server, srv MCPServerServiceHTTP
 
 func _MCPServerService_ListMCPServers0_HTTP_Handler(srv MCPServerServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ListMCPServersRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
 		}
 		http.SetOperation(ctx, OperationMCPServerServiceListMCPServers)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ListMCPServers(ctx, req.(*emptypb.Empty))
+			return srv.ListMCPServers(ctx, req.(*ListMCPServersRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -293,7 +293,7 @@ type MCPServerServiceHTTPClient interface {
 	DeleteMCPServerUserCredential(ctx context.Context, req *DeleteMCPServerUserCredentialRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetMCPServer(ctx context.Context, req *GetMCPServerRequest, opts ...http.CallOption) (rsp *MCPServer, err error)
 	ListMCPServerUserCredentials(ctx context.Context, req *ListMCPServerUserCredentialsRequest, opts ...http.CallOption) (rsp *ListMCPServerUserCredentialsResponse, err error)
-	ListMCPServers(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListMCPServersResponse, err error)
+	ListMCPServers(ctx context.Context, req *ListMCPServersRequest, opts ...http.CallOption) (rsp *ListMCPServersResponse, err error)
 	TestMCPServer(ctx context.Context, req *TestMCPServerRequest, opts ...http.CallOption) (rsp *MCPServerTestResponse, err error)
 	UpdateMCPServer(ctx context.Context, req *UpdateMCPServerRequest, opts ...http.CallOption) (rsp *MCPServer, err error)
 	UpsertMCPServerUserCredential(ctx context.Context, req *UpsertMCPServerUserCredentialRequest, opts ...http.CallOption) (rsp *MCPServerUserCredential, err error)
@@ -373,7 +373,7 @@ func (c *MCPServerServiceHTTPClientImpl) ListMCPServerUserCredentials(ctx contex
 	return &out, nil
 }
 
-func (c *MCPServerServiceHTTPClientImpl) ListMCPServers(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListMCPServersResponse, error) {
+func (c *MCPServerServiceHTTPClientImpl) ListMCPServers(ctx context.Context, in *ListMCPServersRequest, opts ...http.CallOption) (*ListMCPServersResponse, error) {
 	var out ListMCPServersResponse
 	pattern := "/v1/mcp-servers"
 	path := binding.EncodeURL(pattern, in, true)

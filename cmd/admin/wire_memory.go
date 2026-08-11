@@ -126,7 +126,7 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
-func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Recall biz.MemoryL2Recaller, l3Recall biz.MemoryL3Recaller) biz.MemoryCompositeRecaller {
+func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Recall biz.MemoryL2Recaller, l3Recall biz.MemoryL3Recaller, vec *biz.MemoryUsecase, lg loggateway.Logger) biz.MemoryCompositeRecaller {
 	uc := biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
 	if uc == nil {
 		return nil
@@ -135,6 +135,12 @@ func provideMemoryCompositeRecall(d *data.Data, memSvc trpcmemory.Service, l2Rec
 	// gets embedding + pgvector/FTS RRF + calibrated scores + recalled_count
 	// bumps (the legacy store path had none of these).
 	uc.SetLayerRecallers(l2Recall, l3Recall)
+	// P0-C: share one query embedding per turn across L2/L3 recallers
+	// (previously each embedded the same query independently on the LLM
+	// critical path). Guard against typed-nil: vec may be a nil pointer.
+	if vec != nil {
+		uc.SetEmbedder(vec, lg)
+	}
 	// Wire the proactive recaller so the composite usecase can surface
 	// memories based on conversation context (P3-11).
 	if proactiveRecaller := memtrpc.NewProactiveRecallAdapter(memSvc); proactiveRecaller != nil {

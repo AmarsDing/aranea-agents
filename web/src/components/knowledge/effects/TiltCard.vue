@@ -1,5 +1,12 @@
 <template>
-  <div ref="cardRef" class="kb-tilt-card" :style="cardStyle" @mousemove="onMouseMove" @mouseleave="onMouseLeave">
+  <div
+    ref="cardRef"
+    class="kb-tilt-card"
+    :class="{ 'kb-tilt-card--spring': !hovering }"
+    :style="cardStyle"
+    @mousemove="onMouseMove"
+    @mouseleave="onMouseLeave"
+  >
     <div class="kb-tilt-card__glare" :style="glareStyle" />
     <div class="kb-tilt-card__content">
       <slot />
@@ -45,6 +52,7 @@ function onMouseMove(e: MouseEvent) {
   const el = cardRef.value;
   if (!el) return;
   const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return; // 未布局（jsdom/隐藏态）不倾斜
   const px = (e.clientX - rect.left) / rect.width; // 0..1
   const py = (e.clientY - rect.top) / rect.height;
   hovering.value = true;
@@ -63,9 +71,14 @@ function onMouseLeave() {
 .kb-tilt-card
   position: relative
   border-radius: var(--kb-radius-glass)
-  transition: transform 180ms ease-out
+  // hover 跟随：快速 ease-out 贴手
+  transition: transform 120ms ease-out
   transform-style: preserve-3d
   will-change: transform
+
+  // V3 弹簧回正：离开后以 overshoot 缓动归位（回弹感，方案 §三-V3）
+  &--spring
+    transition: transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1)
 
   &__glare
     position: absolute

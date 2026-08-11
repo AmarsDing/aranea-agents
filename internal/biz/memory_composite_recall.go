@@ -5,7 +5,14 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
+
+// memoryRecallEmbedTimeout bounds query embedding on the LLM critical path
+// (P0-C, 2026-08-11). Recall degrades to non-vector search past this budget.
+const memoryRecallEmbedTimeout = 3 * time.Second
 
 // CompositeRecallQuery merges L2 episodes and L3 facts by fused score.
 type CompositeRecallQuery struct {
@@ -88,6 +95,11 @@ type MemoryCompositeRecallUsecase struct {
 	// path (raw repo, importance-as-score, no counters).
 	l2 MemoryL2Recaller
 	l3 MemoryL3Recaller
+	// P0-C: shared per-turn query embedding. When set, recallCompositeLayered
+	// embeds the query once and passes the vector down to both layer
+	// recallers (previously each embedded the same query independently).
+	embedder EmbeddingService
+	lg       loggateway.Logger
 }
 
 // NewMemoryCompositeRecallUsecase wires the composite recall store.
@@ -118,6 +130,17 @@ func (uc *MemoryCompositeRecallUsecase) SetLayerRecallers(l2 MemoryL2Recaller, l
 	}
 	uc.l2 = l2
 	uc.l3 = l3
+}
+
+// SetEmbedder injects the shared query embedder (P0-C). When set, the
+// layered path embeds the query once per turn instead of letting L2 and L3
+// each embed independently.
+func (uc *MemoryCompositeRecallUsecase) SetEmbedder(e EmbeddingService, lg loggateway.Logger) {
+	if uc == nil {
+		return
+	}
+	uc.embedder = e
+	uc.lg = lg
 }
 
 func (uc *MemoryCompositeRecallUsecase) RecallComposite(ctx context.Context, q CompositeRecallQuery) ([]CompositeRecallHit, error) {
@@ -186,16 +209,46 @@ func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Conte
 	}
 	query := strings.TrimSpace(q.Query)
 
+	// P0-C: embed the query once per turn and share the vector with both
+	// layer recallers. EmbedAttempted is set even on failure so layers
+	// degrade to non-vector search instead of re-embedding independently.
+	// E 预算表分解（2026-08-11）：语音真机实测 memory cue build 2579ms 阻塞
+	// LLM 关键路径，拆出 embed/L2/L3 子阶段耗时定位根因。
+	stageStart := time.Now()
+	embedMs := int64(-1)
+	var qvec []float32
+	embedAttempted := false
+	if query != "" && uc.embedder != nil {
+		embedAttempted = true
+		embedCtx, cancel := context.WithTimeout(ctx, memoryRecallEmbedTimeout)
+		vec, err := uc.embedder.Embed(embedCtx, query)
+		cancel()
+		embedMs = time.Since(stageStart).Milliseconds()
+		if err == nil {
+			qvec = vec
+		} else if uc.lg != nil {
+			uc.lg.Warn("composite recall embed failed, layers degrade to non-vector search",
+				loggateway.StepID("memory.composite_embed_fail"),
+				loggateway.Err(err))
+		}
+	}
+
 	var all []CompositeRecallHit
+	l2Ms := int64(-1)
+	l3Ms := int64(-1)
 
 	// L2 episodes (fused usecase: embedding + vector/cross-encoder rerank).
 	if uc.l2 != nil {
+		l2Start := time.Now()
 		epRows, err := uc.l2.RecallEpisodes(ctx, L2RecallQuery{
-			AgentID:   agentID,
-			SessionID: strings.TrimSpace(q.SessionID),
-			Query:     query,
-			Limit:     limit,
+			AgentID:        agentID,
+			SessionID:      strings.TrimSpace(q.SessionID),
+			Query:          query,
+			Limit:          limit,
+			QueryEmbedding: qvec,
+			EmbedAttempted: embedAttempted,
 		})
+		l2Ms = time.Since(l2Start).Milliseconds()
 		if err == nil {
 			for _, raw := range epRows {
 				hit := compositeHitFromEpisodeJSON(raw)
@@ -208,11 +261,15 @@ func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Conte
 
 	// L3 facts (fused usecase: embedding + pgvector/FTS RRF + decay fusion +
 	// recalled_count bumps inside the scored store adapter).
+	l3Start := time.Now()
 	factRows, err := uc.l3.RecallFactsFused(ctx, L3FusedRecallQuery{
-		Runtime: MemoryRuntimeContext{AgentID: agentID, UserID: strings.TrimSpace(q.UserID)},
-		Query:   query,
-		Limit:   limit,
+		Runtime:        MemoryRuntimeContext{AgentID: agentID, UserID: strings.TrimSpace(q.UserID)},
+		Query:          query,
+		Limit:          limit,
+		QueryEmbedding: qvec,
+		EmbedAttempted: embedAttempted,
 	})
+	l3Ms = time.Since(l3Start).Milliseconds()
 	if err == nil {
 		for _, raw := range factRows {
 			hit := compositeHitFromFactJSON(raw)
@@ -220,6 +277,16 @@ func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Conte
 				all = append(all, hit)
 			}
 		}
+	}
+
+	if uc.lg != nil {
+		uc.lg.Info("composite recall stage timing",
+			loggateway.StepID("memory.composite_recall.stages"),
+			loggateway.Any("embed_ms", embedMs),
+			loggateway.Any("l2_ms", l2Ms),
+			loggateway.Any("l3_ms", l3Ms),
+			loggateway.Any("total_ms", time.Since(stageStart).Milliseconds()),
+			loggateway.Any("hits", len(all)))
 	}
 
 	sort.Slice(all, func(i, j int) bool { return all[i].Score > all[j].Score })

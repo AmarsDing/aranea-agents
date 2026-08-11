@@ -42,7 +42,7 @@ export function useMcpServersPage() {
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);
 
-  async function loadRows() {
+  async function loadRows(manual = false) {
     error.value = '';
     try {
       await mcpStore.loadServers({
@@ -51,9 +51,25 @@ export function useMcpServersPage() {
         search: search.value,
       });
       if (page.value > pageMax.value) page.value = pageMax.value;
+      if (manual) {
+        $q.notify({ type: 'positive', message: refreshFeedback(), timeout: 2500 });
+      }
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载 MCP 服务器失败';
     }
+  }
+
+  // refreshFeedback summarizes list freshness after a manual refresh: row
+  // count + latest background health probe time, so the operator knows how
+  // fresh the 健康 column data is (probes run server-side on an interval).
+  function refreshFeedback(): string {
+    let latest = '';
+    for (const row of rows.value) {
+      const at = parseJSON<McpServerMetadata>(row.metadata_json, {}).last_health_at ?? '';
+      if (at > latest) latest = at;
+    }
+    const base = `已刷新，共 ${total.value} 个服务器`;
+    return latest ? `${base}，最近健康检测：${formatDate(latest)}` : base;
   }
 
   let skipNextPageWatch = false;

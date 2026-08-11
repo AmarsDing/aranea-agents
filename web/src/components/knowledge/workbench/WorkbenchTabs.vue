@@ -94,12 +94,18 @@
         />
       </template>
 
-      <!-- 空态（SP2-7）：3D 环形近期笔记 + 提示 -->
+      <!-- 空态（SP2-7）：3D 环形近期笔记 + 提示 + V3 主 CTA（流体 GlowButton） -->
       <div v-else class="kb-tabs__empty">
         <RingCarousel v-if="ringItems.length" :items="ringItems" @select="(it) => $emit('open-doc-id', it.key)" />
         <q-icon v-else name="auto_stories" size="48px" class="kb-tabs__empty-icon" />
         <div class="kb-tabs__empty-title">{{ t('knowledgePage.workbench.emptyTitle') }}</div>
         <div class="kb-tabs__empty-hint">{{ t('knowledgePage.workbench.emptyHint') }}</div>
+        <GlowButton
+          class="kb-tabs__empty-cta"
+          icon="add"
+          :label="t('knowledgePage.workbench.commands.new-note')"
+          @click="$emit('create-note')"
+        />
       </div>
     </div>
   </div>
@@ -111,6 +117,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import NoteEditor from './NoteEditor.vue';
 import RingCarousel, { type RingItem } from '../effects/RingCarousel.vue';
+import GlowButton from '../effects/GlowButton.vue';
 import type { WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { KnowledgeDocument } from '../../../features/knowledge/types';
 
@@ -139,6 +146,8 @@ const emit = defineEmits<{
   reorder: [from: number, to: number];
   /** B4 #8：wikilink 补全落链（原始候选 relPath，供上报 recency） */
   'pick-link': [target: string];
+  /** V3：空态主 CTA「新建笔记」（父级弹新建对话框） */
+  'create-note': [];
 }>();
 
 const { t } = useI18n();
@@ -312,4 +321,7 @@ defineExpose({ scrollToOffset });
 
   &__empty-hint
     font-size: 12px
+
+  &__empty-cta
+    margin-top: 10px
 </style>

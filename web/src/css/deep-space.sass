@@ -57,6 +57,40 @@
   mask-composite: exclude
   pointer-events: none
 
+// ── Mixin：流体色团（V1，方案 §二/§三）────────────────────────────────
+// 卡内 cyan/violet 双径向渐变反向漂移，自模糊 + 低透明度 → 玻璃内漫射光。
+// 叠序：元素玻璃底 < 流体层(::after, z-index -1) < 内容 < 渐变边缘(::before, z 2)。
+// 宿主纪律：仅装饰性玻璃卡使用；宿主必须 overflow:hidden（裁剪色团到圆角内）。
+=kb-fluid-blobs
+  &::after
+    content: ''
+    position: absolute
+    inset: 0
+    z-index: -1
+    border-radius: inherit
+    background: radial-gradient(circle at 28% 24%, color-mix(in srgb, var(--kb-accent-cyan) 60%, transparent) 0%, transparent 62%), radial-gradient(circle at 74% 78%, color-mix(in srgb, var(--kb-accent-violet) 50%, transparent) 0%, transparent 58%)
+    background-size: 170% 170%
+    filter: blur(42px)
+    opacity: 0.32
+    animation: kb-fluid-drift 26s ease-in-out infinite alternate
+    pointer-events: none
+
+// ── V1 光环角度注册（聚焦卡旋转渐变边框；不支持 @property 时静态兜底）──
+@property --kb-halo-angle
+  syntax: '<angle>'
+  initial-value: 0deg
+  inherits: false
+
+@keyframes kb-halo-spin
+  to
+    --kb-halo-angle: 360deg
+
+@keyframes kb-fluid-drift
+  0%
+    background-position: 0% 0%, 100% 100%
+  100%
+    background-position: 90% 65%, 8% 30%
+
 .kb-workbench
   +kb-tokens
 
@@ -95,6 +129,41 @@
 
   .kb-glass--strong
     background: var(--kb-bg-glass-strong)
+
+  // ── V1 流体卡片：3D 聚焦环卡片（装饰性玻璃，注入流体色团）──
+  .kb-ring__card
+    overflow: hidden // 裁剪色团到圆角内（mixin 宿主纪律）
+    +kb-fluid-blobs
+
+  // V1 聚焦卡旋转渐变光环（只给聚焦卡——克制原则，方案 §四）
+  // inset 0：宿主 overflow:hidden 裁剪流体色团，光环贴内缘绘制（border 之上）
+  .kb-ring__card-halo
+    position: absolute
+    inset: 0
+    z-index: 3
+    border-radius: inherit
+    padding: 1.5px
+    background: conic-gradient(from var(--kb-halo-angle, 0deg), transparent 0turn, color-mix(in srgb, var(--kb-accent-cyan) 85%, transparent) 0.08turn, color-mix(in srgb, var(--kb-accent-violet) 85%, transparent) 0.16turn, transparent 0.3turn)
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)
+    -webkit-mask-composite: xor
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)
+    mask-composite: exclude
+    opacity: 0
+    transition: opacity 240ms ease-out
+    pointer-events: none
+
+  .kb-ring__card--focus .kb-ring__card-halo
+    opacity: 1
+    animation: kb-halo-spin 3.6s linear infinite
+
+  // ── V3 流体主按钮：GlowButton（非 ghost）注入低透明度流体色团 ──
+  .kb-glow-btn:not(.kb-glow-btn--ghost)
+    position: relative
+    overflow: hidden // 裁剪色团到圆角内（mixin 宿主纪律）
+    +kb-fluid-blobs
+
+    &::after
+      opacity: 0.22 // 小面积按钮降噪，不抢 label 可读性
 
   // ── 文本（U1 色彩阶梯工具类）──────────────
   .kb-text-dim

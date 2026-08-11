@@ -223,6 +223,64 @@ func TestSpeculateResolve_FailedSpeculationFallsBack(t *testing.T) {
 	}
 }
 
+// P1-F：final 仅标点/空白差异（ASR 润色：补句号、去逗号）→ 归一化匹配命中，
+// 复用投机产物。refined_goal 语义不变，零误复用风险。
+func TestSpeculateResolve_PunctuationVariantReuses(t *testing.T) {
+	_, sp := newSpeculatorFixture(
+		biz.Session{ID: "sess-1", OwnerType: "agent", AgentID: "a1"},
+		biz.Agent{ID: "a1"},
+	)
+	art := &intent.Artifact{RefinedGoal: "查询天气", IntentKind: "question"}
+	sp.runIntentFn = func(context.Context, biz.Agent, biz.Session, string, string) *intent.Artifact { return art }
+
+	sp.SpeculateIntent(context.Background(), "sess-1", "今天天气，怎么样")
+	ctx := sp.WithSpeculativeIntent(context.Background(), "sess-1", "今天天气怎么样。")
+	if got := intent.SpeculativeArtifactFromContext(ctx); got != art {
+		t.Fatalf("punctuation-variant final must reuse the speculative artifact, got %v", got)
+	}
+}
+
+// P1-F：同一语句的标点变体重触发 → 归一化去重，不重复调用 LLM。
+func TestSpeculateIntent_PunctuationVariantSkipsRedundantCall(t *testing.T) {
+	_, sp := newSpeculatorFixture(
+		biz.Session{ID: "sess-1", OwnerType: "agent", AgentID: "a1"},
+		biz.Agent{ID: "a1"},
+	)
+	calls := make(chan string, 4)
+	sp.runIntentFn = func(_ context.Context, _ biz.Agent, _ biz.Session, _, text string) *intent.Artifact {
+		calls <- text
+		return &intent.Artifact{RefinedGoal: "查询天气", IntentKind: "question"}
+	}
+	sp.SpeculateIntent(context.Background(), "sess-1", "今天天气怎么样")
+	sp.SpeculateIntent(context.Background(), "sess-1", "今天天气怎么样。")
+	select {
+	case <-calls:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first speculation must run")
+	}
+	select {
+	case <-calls:
+		t.Fatal("punctuation-variant stable text must not trigger a second LLM call")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// P1-F：文本实体差异（用户改口/ASR 纠错）归一化后仍不同 → 丢弃走常规路径。
+func TestSpeculateResolve_EntityMismatchStillDiscards(t *testing.T) {
+	_, sp := newSpeculatorFixture(
+		biz.Session{ID: "sess-1", OwnerType: "agent", AgentID: "a1"},
+		biz.Agent{ID: "a1"},
+	)
+	sp.runIntentFn = func(context.Context, biz.Agent, biz.Session, string, string) *intent.Artifact {
+		return &intent.Artifact{RefinedGoal: "查询天气", IntentKind: "question"}
+	}
+	sp.SpeculateIntent(context.Background(), "sess-1", "今天天气怎么样")
+	ctx := sp.WithSpeculativeIntent(context.Background(), "sess-1", "明天天气怎么样。")
+	if got := intent.SpeculativeArtifactFromContext(ctx); got != nil {
+		t.Fatalf("entity-mismatched final must discard the artifact, got %v", got)
+	}
+}
+
 // C2：同一稳定文本重复触发 → 去重，不重复调用 LLM（稳定计时器重入场景）。
 func TestSpeculateIntent_DuplicateTextSkipsRedundantCall(t *testing.T) {
 	_, sp := newSpeculatorFixture(

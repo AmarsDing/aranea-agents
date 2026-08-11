@@ -2206,4 +2206,6 @@ RecallComposite
 
 MMR 实现由 data 层上移至 biz（`biz/memory_mmr.go` `MMRRerankTexts`），data 层保留包装供 legacy 调用方。l3 为 nil 时回退 legacy store 路径（向后兼容）。
 
+> **P0-C 补记（2026-08-11）**：layered 路径查询向量改为**每轮共享单 embed**——`MemoryCompositeRecallUsecase.SetEmbedder`（Wire 装配于 `wire_memory.go`）注入后，RecallComposite 先以 3s 超时 Embed 一次，向量经 `L2RecallQuery`/`L3FusedRecallQuery` 的 `QueryEmbedding`/`EmbedAttempted` 字段下传，L2/L3 不再各自对同一 query 独立 embed；embed 失败置 EmbedAttempted=true +  nil 向量，层内直接降级非向量检索（不再重复尝试）。未 SetEmbedder 时行为与此前完全一致（各层自行 embed，3s 超时降级）。
+
 **P2-R2：L2 召回候选池 agent 全域化**。`recallL2Episodes`（无向量暴力路径）原将 `sessionID` 作为 SQL 过滤条件构造候选池——跨会话 episode 在该路径永不可达（向量路径 `recallL2WithVectorStore` 本就只按 agent_id 过滤，两条路径语义不一致）。修复后候选池与向量路径对齐为 agent 全域；`sessionID` 仅保留于打分的连续性加分（`l2ScoreWeightSession=0.05` 的 sessionBoost）——同会话 episode 在同等相关度下优先，但不再排除跨会话记忆。

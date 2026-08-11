@@ -3,7 +3,11 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestFormatCompositeRecallLine(t *testing.T) {
@@ -155,4 +159,172 @@ type compositeStoreStub struct {
 
 func (s *compositeStoreStub) CompositeSearchMemories(_ context.Context, _, _, _, _ string, _ int32) ([]CompositeRecallStoreRow, error) {
 	return s.rows, nil
+}
+
+// ── P0-C: single embedding per turn across L2/L3 (2026-08-11) ───────────
+//
+// The layered composite path previously embedded the same query twice per
+// turn (once inside L2, once inside L3 fused), each a network round-trip on
+// the LLM critical path. The composite usecase now embeds once and passes
+// the vector down via QueryEmbedding + EmbedAttempted.
+
+type embedderStub struct {
+	calls         int
+	vec           []float32
+	err           error
+	deadlineDelta time.Duration
+}
+
+func (e *embedderStub) Embed(ctx context.Context, _ string) ([]float32, error) {
+	e.calls++
+	if d, ok := ctx.Deadline(); ok {
+		e.deadlineDelta = time.Until(d)
+	}
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.vec, nil
+}
+
+func TestRecallComposite_LayeredSharesSingleEmbedding(t *testing.T) {
+	l2 := &l2RecallerStub{}
+	l3 := &l3RecallerStub{}
+	emb := &embedderStub{vec: []float32{0.1, 0.2, 0.3}}
+	uc := NewMemoryCompositeRecallUsecase(&compositeStoreStub{})
+	uc.SetLayerRecallers(l2, l3)
+	uc.SetEmbedder(emb, loggateway.NewNoop())
+	_, err := uc.RecallComposite(context.Background(), CompositeRecallQuery{
+		AgentID: "ag1", Query: "q", Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("RecallComposite: %v", err)
+	}
+	if emb.calls != 1 {
+		t.Fatalf("embed calls=%d, want exactly 1 per turn", emb.calls)
+	}
+	if !l2.got.EmbedAttempted || !l3.got.EmbedAttempted {
+		t.Fatalf("EmbedAttempted not propagated: l2=%+v l3=%+v", l2.got, l3.got)
+	}
+	if len(l2.got.QueryEmbedding) != 3 || len(l3.got.QueryEmbedding) != 3 {
+		t.Fatalf("shared embedding not propagated: l2=%v l3=%v", l2.got.QueryEmbedding, l3.got.QueryEmbedding)
+	}
+	// Shared embed must carry a bounded deadline (LLM critical path).
+	if emb.deadlineDelta <= 0 || emb.deadlineDelta > 3*time.Second+500*time.Millisecond {
+		t.Fatalf("shared embed ctx deadline=%v, want ~3s timeout", emb.deadlineDelta)
+	}
+}
+
+func TestRecallComposite_LayeredEmbedFailureSkipsLayerReembed(t *testing.T) {
+	l2 := &l2RecallerStub{}
+	l3 := &l3RecallerStub{}
+	emb := &embedderStub{err: errors.New("embed down")}
+	uc := NewMemoryCompositeRecallUsecase(&compositeStoreStub{})
+	uc.SetLayerRecallers(l2, l3)
+	uc.SetEmbedder(emb, loggateway.NewNoop())
+	_, err := uc.RecallComposite(context.Background(), CompositeRecallQuery{
+		AgentID: "ag1", Query: "q", Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("RecallComposite: %v", err)
+	}
+	if emb.calls != 1 {
+		t.Fatalf("embed calls=%d, want 1 (failure must not fan out to layers)", emb.calls)
+	}
+	if !l2.got.EmbedAttempted || !l3.got.EmbedAttempted {
+		t.Fatal("EmbedAttempted must be true even on failure so layers skip re-embed")
+	}
+	if l2.got.QueryEmbedding != nil || l3.got.QueryEmbedding != nil {
+		t.Fatal("failed embed must pass nil vector (layers degrade to non-vector search)")
+	}
+}
+
+// ── P0-C: usecase-level preset embedding + L2 embed timeout ─────────────
+
+type l2StoreStub struct {
+	gotVec []float32
+}
+
+func (s *l2StoreStub) RecallL2Episodes(_ context.Context, _, _, _ string, vec []float32, _ int32) ([][]byte, error) {
+	s.gotVec = vec
+	return nil, nil
+}
+
+func TestL2Recall_PresetEmbeddingSkipsEmbed(t *testing.T) {
+	store := &l2StoreStub{}
+	emb := &embedderStub{vec: []float32{9, 9}}
+	uc := NewMemoryL2RecallUsecase(store, emb, loggateway.NewNoop())
+	preset := []float32{1, 2, 3}
+	if _, err := uc.RecallEpisodes(context.Background(), L2RecallQuery{
+		AgentID: "ag1", Query: "q", QueryEmbedding: preset, EmbedAttempted: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if emb.calls != 0 {
+		t.Fatalf("embed calls=%d, want 0 when embedding preset", emb.calls)
+	}
+	if len(store.gotVec) != 3 {
+		t.Fatalf("store vec=%v, want preset vector", store.gotVec)
+	}
+}
+
+func TestL2Recall_EmbedAttemptedFailureDegradesWithoutReembed(t *testing.T) {
+	store := &l2StoreStub{}
+	emb := &embedderStub{vec: []float32{9, 9}}
+	uc := NewMemoryL2RecallUsecase(store, emb, loggateway.NewNoop())
+	if _, err := uc.RecallEpisodes(context.Background(), L2RecallQuery{
+		AgentID: "ag1", Query: "q", EmbedAttempted: true, // nil vector = upstream embed failed
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if emb.calls != 0 {
+		t.Fatalf("embed calls=%d, want 0 (attempted upstream)", emb.calls)
+	}
+	if store.gotVec != nil {
+		t.Fatalf("store vec=%v, want nil (non-vector degrade)", store.gotVec)
+	}
+}
+
+func TestL2Recall_OwnEmbedAppliesTimeout(t *testing.T) {
+	store := &l2StoreStub{}
+	emb := &embedderStub{vec: []float32{1}}
+	uc := NewMemoryL2RecallUsecase(store, emb, loggateway.NewNoop())
+	if _, err := uc.RecallEpisodes(context.Background(), L2RecallQuery{
+		AgentID: "ag1", Query: "q",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if emb.calls != 1 {
+		t.Fatalf("embed calls=%d, want 1", emb.calls)
+	}
+	if emb.deadlineDelta <= 0 || emb.deadlineDelta > 3*time.Second+500*time.Millisecond {
+		t.Fatalf("L2 embed ctx deadline=%v, want ~3s timeout (P0-C)", emb.deadlineDelta)
+	}
+}
+
+type l3ScoredCaptureStub struct {
+	gotVec []float32
+}
+
+func (s *l3ScoredCaptureStub) RecallL3Hits(_ context.Context, _, _, _, _ string, vec []float32, _ int32) ([]RecallHit, error) {
+	s.gotVec = vec
+	return nil, nil
+}
+
+func TestL3FusedRecall_PresetEmbeddingSkipsEmbed(t *testing.T) {
+	scored := &l3ScoredCaptureStub{}
+	emb := &embedderStub{vec: []float32{9, 9}}
+	uc := NewMemoryL3RecallUsecase(recallStoreMock{}, scored, emb, loggateway.NewNoop())
+	preset := []float32{1, 2, 3}
+	if _, err := uc.RecallFactsFused(context.Background(), L3FusedRecallQuery{
+		Runtime: MemoryRuntimeContext{AgentID: "ag1"}, Scopes: []string{"agent"},
+		Query: "q", QueryEmbedding: preset, EmbedAttempted: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if emb.calls != 0 {
+		t.Fatalf("embed calls=%d, want 0 when embedding preset", emb.calls)
+	}
+	if len(scored.gotVec) != 3 {
+		t.Fatalf("store vec=%v, want preset vector", scored.gotVec)
+	}
 }

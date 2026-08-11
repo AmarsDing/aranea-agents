@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -51,6 +50,10 @@ type L3RecallQuery struct {
 	Query     string
 	Limit     int32
 	MinScore  float64
+	// QueryEmbedding / EmbedAttempted (P0-C, 2026-08-11): preset per-turn
+	// embedding from the composite layered path; see L2RecallQuery.
+	QueryEmbedding []float32
+	EmbedAttempted bool
 }
 
 // SessionL3RecallStore is the persistence port for L3 recall (implemented by sessionmemory.Store).
@@ -71,6 +74,10 @@ type L3FusedRecallQuery struct {
 	Limit           int32
 	MinScoreQuery   float64
 	MinScorePassive float64
+	// QueryEmbedding / EmbedAttempted (P0-C, 2026-08-11): preset per-turn
+	// embedding from the composite layered path; see L2RecallQuery.
+	QueryEmbedding []float32
+	EmbedAttempted bool
 }
 
 // MemoryL3Recaller performs query-aware L3 fact recall with optional fused multi-scope ranking.
@@ -104,10 +111,14 @@ func (uc *MemoryL3RecallUsecase) RecallFacts(ctx context.Context, q L3RecallQuer
 		minScore = 0
 	}
 	var qvec []float32
-	if query != "" && uc.embedder != nil {
+	switch {
+	case q.EmbedAttempted:
+		// P0-C: caller already embedded (or attempted) this turn — reuse.
+		qvec = q.QueryEmbedding
+	case query != "" && uc.embedder != nil:
 		// Short timeout: L3 recall is on the LLM critical path. Degrade to
 		// non-vector search quickly if embed is slow or misconfigured.
-		embedCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		embedCtx, cancel := context.WithTimeout(ctx, memoryRecallEmbedTimeout)
 		vec, err := uc.embedder.Embed(embedCtx, query)
 		cancel()
 		if err == nil {
@@ -127,12 +138,14 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 	}
 	if uc.scored == nil {
 		return uc.RecallFacts(ctx, L3RecallQuery{
-			ScopeType: "agent",
-			ScopeID:   strings.TrimSpace(q.Runtime.AgentID),
-			UserID:    strings.TrimSpace(q.Runtime.UserID),
-			Query:     q.Query,
-			Limit:     q.Limit,
-			MinScore:  EffectiveL3MinScore(MemoryRuntimePolicy{L3MinScoreQuery: q.MinScoreQuery, L3MinScorePassive: q.MinScorePassive}, q.Query),
+			ScopeType:      "agent",
+			ScopeID:        strings.TrimSpace(q.Runtime.AgentID),
+			UserID:         strings.TrimSpace(q.Runtime.UserID),
+			Query:          q.Query,
+			Limit:          q.Limit,
+			MinScore:       EffectiveL3MinScore(MemoryRuntimePolicy{L3MinScoreQuery: q.MinScoreQuery, L3MinScorePassive: q.MinScorePassive}, q.Query),
+			QueryEmbedding: q.QueryEmbedding,
+			EmbedAttempted: q.EmbedAttempted,
 		})
 	}
 	query := strings.TrimSpace(q.Query)
@@ -141,10 +154,14 @@ func (uc *MemoryL3RecallUsecase) RecallFactsFused(ctx context.Context, q L3Fused
 		minScore = q.MinScoreQuery
 	}
 	var qvec []float32
-	if query != "" && uc.embedder != nil {
+	switch {
+	case q.EmbedAttempted:
+		// P0-C: caller already embedded (or attempted) this turn — reuse.
+		qvec = q.QueryEmbedding
+	case query != "" && uc.embedder != nil:
 		// Short timeout: L3 fused recall is on the LLM critical path.
 		// Degrade to non-vector search quickly if embed is slow or misconfigured.
-		embedCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		embedCtx, cancel := context.WithTimeout(ctx, memoryRecallEmbedTimeout)
 		vec, err := uc.embedder.Embed(embedCtx, query)
 		cancel()
 		if err == nil {

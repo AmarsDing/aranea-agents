@@ -35,7 +35,7 @@ MCP（Model Context Protocol）服务器管理：平台注册、健康探活、A
 
 ```protobuf
 service MCPServerService {
-  rpc ListMCPServers(google.protobuf.Empty) returns (ListMCPServersResponse) {
+  rpc ListMCPServers(ListMCPServersRequest) returns (ListMCPServersResponse) {
     option (google.api.http) = { get: "/v1/mcp-servers" };
   }
   rpc CreateMCPServer(CreateMCPServerRequest) returns (MCPServer) {
@@ -68,7 +68,11 @@ service MCPServerService {
 }
 ```
 
-**MCPServer**：`id` / `key`（slug）/ `name`（展示名）/ `description` / `status` / `enabled` / `sort_order` / `config_json` / `metadata_json` / 时间戳。
+**MCPServer**：`id` / `key`（slug）/ `name`（展示名）/ `description` / `status` / `enabled` / `sort_order` / `config_json` / `metadata_json` / 时间戳 / `shared`（派生自 `workspace_id == ""`：内置共享服务器，所有工作区可读但租户不可变更；不下发真实 workspace_id 避免泄露租户拓扑）。
+
+**ListMCPServersRequest**：`page`（1-based）/ `page_size`（默认 20，上限 100）/ `search`。零值/缺省走旧版不分页路径（picker、health runner、CLI 等内部调用方）；HTTP query fallback（`page`/`page_size`/`search`）保留兼容旧客户端。
+
+**ListMCPServersResponse**：`items` / `total` / `page` / `page_size`（分页元数据）。
 
 **MCPServerTestResponse**：`ok` / `status` / `message` / `details_json`。
 
@@ -84,7 +88,7 @@ service MCPServerService {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/mcp-servers` | 列表（前端本地 `q` 过滤） |
+| GET | `/v1/mcp-servers` | 列表；query 支持 `page` / `page_size` / `search`（服务端分页 + 搜索）；不带分页参数时返回全量（兼容内部调用方） |
 | GET | `/v1/mcp-servers/{id}` | 详情 |
 | POST | `/v1/mcp-servers` | 创建（`key` + `name` 必填） |
 | PATCH | `/v1/mcp-servers/{id}` | 更新（body `mcp_server`） |
@@ -108,6 +112,10 @@ type MCPServer struct {
     SortOrder int
     ConfigJSON, MetadataJSON string
     CreatedAt, UpdatedAt, DeletedAt string
+    // WorkspaceID： owning workspace ID（P2-B 租户隔离）。
+    // 空 = 共享/内置（所有工作区可见，如系统内置 playwright）；
+    // 非空 = 租户私有（仅 owning workspace 可见）。
+    WorkspaceID string
 }
 ```
 
@@ -118,7 +126,8 @@ type MCPServer struct {
 
 | 方法 | 说明 |
 |------|------|
-| `List` / `Get` / `Create` / `Update` / `Delete` | CRUD |
+| `List` / `Get` / `Create` / `Update` / `Delete` | CRUD；`List` 接受 `MCPListQuery{WorkspaceID, Search, Limit, Offset}` |
+| `ListPaged` | 管理台注册表分页查询（默认 `Limit=20`，上限 100），返回 `MCPListResult{Items, Total, Limit, Offset}` |
 | `TestMCPServer` | `probe.Evaluate` + 内部 `persistHealth`（写入 `metadata_json`） |
 | `ValidateConfig` | URL 预检（不持久化） |
 | `RecordReconnectMetadata` | `mcpobserve` 回调递增 `reconnect_count` |
@@ -180,9 +189,10 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx, agentID) ([]EffectiveMCP
 | `sort_order` | 排序 |
 | `config_json` | 连接配置（见 §5.3） |
 | `metadata_json` | 健康与重连元数据（见 §5.4） |
+| `workspace_id` | owning workspace ID（默认 `""` = 共享/系统内置；P2-B 租户隔离） |
 | `created_at` / `updated_at` / `deleted_at` | 软删除时间戳 |
 
-索引：`idx_mcp_server_status_enabled`（`status`, `enabled`）、`idx_mcp_server_deleted_at`（`deleted_at`）。
+索引：`idx_mcp_server_status_enabled`（`status`, `enabled`）、`idx_mcp_server_deleted_at`（`deleted_at`）、（`workspace_id`, `enabled`）。
 
 ### 5.2 表：`mcp_server_user_credential`
 
@@ -285,6 +295,17 @@ AgentMCPTooling.EffectiveServersForAgent
 
 `internal/service/mcp_server.go`：Proto ↔ `biz.MCPServer`；`TestMCPServer` 返回探活结果；`ValidateMCPServer` 返回预检结果（不持久化）；用户凭据 CRUD；CRUD 写 Admin Audit。`patchFromProtoMCPWithDiff` 解决 proto3 零值歧义。
 
+### 7.1 工作区守卫（P2-B IDOR 防护）
+
+双级守卫，按操作读写语义选择：
+
+| 守卫 | 语义 | 适用 RPC |
+|------|------|---------|
+| `assertMCPServerAccess` | **读级**：共享服务器（`workspace_id=""`）对所有租户放行；租户私有仅 owning workspace | `GetMCPServer`、`TestMCPServer`、`ListMCPServerUserCredentials` |
+| `assertMCPServerMutateAccess` | **变更级**：共享服务器对租户调用方 fail-closed（仅系统工作区可变更） | `UpdateMCPServer`、`DeleteMCPServer`、凭据写/删 |
+
+> **为什么 `TestMCPServer` 用读级守卫**：探活不变更租户配置，仅刷新系统健康簿记元数据（`health_status`/`last_health_at`）——与后台 health runner 对共享服务器的写入语义一致。若用变更级守卫，内置服务器（如 playwright）的「测试连接」按钮会对所有租户 404，而它们恰恰是运维最需要探测的对象。回归测试：`TestMCPServerService_TestMCPServer_SharedServerAllowedForTenant`。
+
 ---
 
 ## 八、Wire 注入
@@ -335,8 +356,8 @@ web/src/pages/McpServersPage.vue
 |------|------|
 | 标题 | 「MCP 服务器」 |
 | 副标题 | 「管理 Model Context Protocol 服务器连接」 |
-| 右上 | 「+ 添加服务器」（`QBtn` color=primary）；「刷新」（`QBtn` outline + `refresh` 图标） |
-| 搜索 | `QInput` `debounce` + `clearable`，占位「搜索服务器…」；按 `name`、`display_name` 前端过滤 |
+| 右上 | 「+ 添加服务器」（`QBtn` color=primary）；「刷新」（`QBtn` outline + `refresh` 图标）；手动刷新成功后 `Notify` 反馈「已刷新，共 N 个服务器，最近健康检测：时间」（取各行 `metadata_json.last_health_at` 最大值，让运维感知健康列数据新鲜度——探活由服务端定时执行） |
+| 搜索 | `QInput` `debounce` + `clearable`，占位「搜索服务器…」；服务端搜索（`search` query 参数，匹配 `name`/`key`） |
 
 #### 列表：`AppRegistryTable` 表格
 
@@ -344,13 +365,13 @@ web/src/pages/McpServersPage.vue
 
 | 列 | 内容 |
 |----|------|
-| 服务器 | 状态灯圆点（§10.2.3）+ `name`（主标题）/ `key`（副标）；悬停 `AppRegistryHoverTip` 显示地址/命令（`url` 或 `command args`） |
+| 服务器 | 状态灯圆点（§10.2.3）+ `name`（主标题，`shared=true` 时追加「内置」outline 徽标）/ `key`（副标）；悬停 `AppRegistryHoverTip` 显示地址/命令（`url` 或 `command args`） |
 | 传输 | `stdio` / `SSE` / `Streamable HTTP` |
 | 工具前缀 | `mcp_{tool_prefix}__`（等宽 code 样式）；空显示 `—` |
 | 超时 | `timeout_sec` + `s`（缺省 60s） |
 | 健康 | `health_status` 本地化 `QChip`：`ok`→正常（positive）/ `error`→异常（negative）/ `degraded`→退化（warning）；悬停显示 `last_error_message` |
-| 启用 | 可交互 `QToggle`（dense，primary），切换即调 `PATCH /mcp-servers/:id` 部分更新；切换中禁用 |
-| 操作 | 用户凭据（`vpn_key`，仅 `require_user_credentials=true` 显示）、测试连接（`science`）、编辑、删除 |
+| 启用 | 可交互 `QToggle`（dense，primary），切换即调 `PATCH /mcp-servers/:id` 部分更新；切换中禁用；`shared=true` 行禁用（内置共享服务器租户不可变更） |
+| 操作 | 用户凭据（`vpn_key`，仅 `require_user_credentials=true` 显示）、测试连接（`science`，共享行可用）、编辑、删除（`shared=true` 行编辑/删除禁用 + tooltip「内置共享服务器，不可编辑/删除」） |
 
 #### 空态
 
@@ -411,6 +432,7 @@ web/src/pages/McpServersPage.vue
 
 - 表单底部或字段下方：红色 `div.text-negative` 展示服务端返回（如 URL 非法、SSRF、传输初始化失败）。
 - 测试连接：`POST` 不持久化或先保存草稿再测；失败时保留错误在对话框内。
+- 全局错误文案：`services/axiosHandler.ts` 从 Kratos 错误信封（`{code, reason, message}`）提取后端 `message` 覆盖 axios 通用文案（如 "Request failed with status code 404"），调用方 `Notify` 直接展示后端解释（如 "mcp server not found"）。
 
 #### Quasar 映射摘要
 
@@ -418,4 +440,4 @@ web/src/pages/McpServersPage.vue
 
 ---
 
-*文档版本：4.0 — 2026-06-17 按三件套边界重组：UX 规范/持久化模型/API 端点表从需求文档迁入；修正 user-credential 表名/字段、Delete 端点方法、PersistHealth 描述、Broker 挂载条件。*
+*文档版本：5.0 — 2026-08-11 同步 P2-B 工作区隔离与本轮修复：`shared` 字段 + 双级守卫语义（§7.1）、`ListMCPServersRequest` 服务端分页/搜索、`workspace_id` 列、内置服务器 UI 只读（徽标 + 禁用编辑/删除/开关）、手动刷新反馈、axiosHandler 后端错误 message 提取。*

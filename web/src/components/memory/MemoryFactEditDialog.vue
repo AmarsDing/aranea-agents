@@ -5,7 +5,9 @@
         <div class="text-h6">
           {{ mode === 'refine' ? t('memory.factEdit.refineTitle') : t('memory.factEdit.createTitle') }}
         </div>
-        <div class="text-caption text-grey-7">{{ t('memory.factEdit.caption') }}</div>
+        <div class="text-caption text-grey-7">
+          {{ mode === 'refine' ? t('memory.factEdit.refineCaption') : t('memory.factEdit.createCaption') }}
+        </div>
       </q-card-section>
       <q-card-section class="q-pt-none column q-gutter-md">
         <q-input

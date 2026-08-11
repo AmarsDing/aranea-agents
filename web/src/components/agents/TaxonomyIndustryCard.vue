@@ -1,5 +1,5 @@
 <template>
-  <article :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
+  <article v-liquid-glow :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]">
     <!-- Header: monogram + title + status -->
     <header class="taxonomy-industry-card__head">
       <div class="taxonomy-industry-card__mono" :style="{ background: monoBg }" :aria-label="`行业 ${industry.name}`">
@@ -217,15 +217,52 @@ function positionNodes(dept: PlatformResourceTreeNode) {
   border: 1px solid var(--glass-border)
   border-radius: 18px
   background: var(--glass-surface)
-  backdrop-filter: blur(18px)
-  -webkit-backdrop-filter: blur(18px)
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45)
-  transition: transform 0.18s ease, border-color 0.18s, box-shadow 0.18s
+  backdrop-filter: blur(18px) saturate(var(--liquid-saturate))
+  -webkit-backdrop-filter: blur(18px) saturate(var(--liquid-saturate))
+  box-shadow: var(--glass-inner-highlight)
+  transition: transform 340ms cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 280ms ease, border-color 220ms ease
+
+  // 液态玻璃光学层（与 _liquid-card.sass 同配方；scoped 样式无法复用全局规则，需保持同步）
+  &::after
+    content: ""
+    position: absolute
+    inset: 0
+    border: 1px solid transparent
+    border-radius: inherit
+    pointer-events: none
+    background-image: linear-gradient(115deg, transparent 32%, var(--liquid-sheen-band) 47%, var(--liquid-sheen-peak) 50%, var(--liquid-sheen-band) 53%, transparent 68%), linear-gradient(135deg, var(--liquid-sheen-static), transparent 42%), linear-gradient(155deg, var(--liquid-rim-hi), var(--liquid-rim-mid) 42%, var(--liquid-rim-lo) 74%, var(--liquid-rim-hi))
+    background-size: 280% 100%, 100% 100%, 100% 100%
+    background-position: 130% 0, 0 0, 0 0
+    background-repeat: no-repeat
+    background-clip: padding-box, padding-box, border-box
+    opacity: 0.7
+    transition: background-position 720ms cubic-bezier(0.22, 0.8, 0.36, 1), opacity 240ms ease, box-shadow 220ms ease
+
+  &:hover::after
+    background-position: -40% 0, 0 0, 0 0
+    opacity: 1
+    // 菜单选中态描边：主题强调色内缘
+    box-shadow: inset 0 0 0 1px var(--liquid-accent-edge)
+
+  &.is-dark::after
+    background-image: radial-gradient(220px circle at var(--liquid-mx, 50%) var(--liquid-my, -20%), var(--liquid-spot), transparent 62%), linear-gradient(115deg, transparent 32%, var(--liquid-sheen-band) 47%, var(--liquid-sheen-peak) 50%, var(--liquid-sheen-band) 53%, transparent 68%), linear-gradient(135deg, var(--liquid-sheen-static), transparent 42%), linear-gradient(155deg, var(--liquid-rim-hi), var(--liquid-rim-mid) 42%, var(--liquid-rim-lo) 74%, var(--liquid-rim-hi))
+    background-size: 100% 100%, 280% 100%, 100% 100%, 100% 100%
+    background-position: 0 0, 130% 0, 0 0, 0 0
+    background-clip: padding-box, padding-box, padding-box, border-box
+    opacity: 0.85
+
+  &.is-dark:hover::after
+    background-position: 0 0, -40% 0, 0 0, 0 0
+    opacity: 1
+    box-shadow: inset 0 0 0 1px var(--liquid-accent-edge)
+
+  &.is-disabled::after
+    opacity: 0
 
   &:hover
     transform: translateY(-2px)
     border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
-    box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.45)
+    box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), var(--glass-inner-highlight)
 
   &.is-disabled
     background: color-mix(in srgb, var(--glass-surface) 60%, var(--color-page-tint, #FBFCFF))

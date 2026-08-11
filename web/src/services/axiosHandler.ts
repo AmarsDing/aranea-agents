@@ -60,6 +60,15 @@ function humanizeAxiosError(err: AxiosError): AxiosError {
     err.message = '请求超时，请确认后端 admin 是否运行并重试';
   } else if (!err.response && (err.code === 'ERR_NETWORK' || err.message === 'Network Error')) {
     err.message = '无法连接后端，请确认 admin 是否运行';
+  } else {
+    // Surface the Kratos error envelope message ({code, reason, message}) so
+    // callers that notify err.message show the backend's explanation (e.g.
+    // "mcp server not found") instead of axios's generic
+    // "Request failed with status code 404".
+    const data = err.response?.data as Record<string, unknown> | undefined;
+    if (typeof data?.message === 'string' && data.message) {
+      err.message = data.message;
+    }
   }
   return err;
 }

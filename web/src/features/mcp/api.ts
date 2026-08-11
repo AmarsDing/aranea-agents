@@ -5,13 +5,19 @@
 import { createMCPServerService } from '../../services';
 import type { PlatformResource, PlatformResourceInput } from '../platform/types';
 import { asRecord, pickBool, pickI32, pickStr } from '../../shared/wireJson';
-import type { McpServerTestResult, McpServerValidateResult, McpUserCredential, McpUserCredentialInput } from './types';
+import type {
+  McpServerRow,
+  McpServerTestResult,
+  McpServerValidateResult,
+  McpUserCredential,
+  McpUserCredentialInput,
+} from './types';
 
 export type { PlatformResource, PlatformResourceInput } from '../platform/types';
 
 const svc = createMCPServerService();
 
-function mcpRowToPlatform(raw: unknown): PlatformResource {
+function mcpRowToPlatform(raw: unknown): McpServerRow {
   const r = asRecord(raw);
   return {
     id: pickStr(r, 'id', 'id'),
@@ -28,6 +34,7 @@ function mcpRowToPlatform(raw: unknown): PlatformResource {
     provider: '',
     model: '',
     is_system: false,
+    shared: pickBool(r, 'shared', 'shared'),
     config_json: pickStr(r, 'config_json', 'configJson'),
     metadata_json: pickStr(r, 'metadata_json', 'metadataJson'),
     dept_lead_agent_id: '',
@@ -45,7 +52,7 @@ export type McpServerListQuery = {
 };
 
 export type McpServerListResult = {
-  items: PlatformResource[];
+  items: McpServerRow[];
   total: number;
   page: number;
   page_size: number;

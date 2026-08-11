@@ -15,6 +15,20 @@ export type MCPServer = {
   createdAt: string | undefined;
   updatedAt: string | undefined;
   deletedAt: string | undefined;
+  // Derived from workspace_id == "": shared/system built-in server, readable by
+  // all workspaces but read-only for tenant callers (no real workspace ID is
+  // exposed to avoid leaking tenant topology).
+  shared: boolean | undefined;
+};
+
+// ListMCPServersRequest carries server-side pagination + search params.
+// Zero/absent page params keep the legacy unpaginated path (pickers, health
+// runner, CLI); the HTTP query fallback (page/page_size/search) is retained
+// for older clients.
+export type ListMCPServersRequest = {
+  page: number | undefined;
+  pageSize: number | undefined;
+  search: string | undefined;
 };
 
 export type ListMCPServersResponse = {
@@ -133,7 +147,7 @@ export type DeleteMCPServerUserCredentialRequest = {
 };
 
 export interface MCPServerService {
-  ListMCPServers(request: wellKnownEmpty): Promise<ListMCPServersResponse>;
+  ListMCPServers(request: ListMCPServersRequest): Promise<ListMCPServersResponse>;
   CreateMCPServer(request: CreateMCPServerRequest): Promise<MCPServer>;
   GetMCPServer(request: GetMCPServerRequest): Promise<MCPServer>;
   UpdateMCPServer(request: UpdateMCPServerRequest): Promise<MCPServer>;
@@ -161,6 +175,15 @@ export function createMCPServerServiceClient(
       const path = `v1/mcp-servers`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

@@ -23,6 +23,20 @@ message MCPServer {
   string created_at = 10;
   string updated_at = 11;
   string deleted_at = 12;
+  // Derived from workspace_id == "": shared/system built-in server, readable by
+  // all workspaces but read-only for tenant callers (no real workspace ID is
+  // exposed to avoid leaking tenant topology).
+  bool shared = 13;
+}
+
+// ListMCPServersRequest carries server-side pagination + search params.
+// Zero/absent page params keep the legacy unpaginated path (pickers, health
+// runner, CLI); the HTTP query fallback (page/page_size/search) is retained
+// for older clients.
+message ListMCPServersRequest {
+  int32 page = 1;      // 1-based
+  int32 page_size = 2; // default: 20
+  string search = 3;
 }
 
 message ListMCPServersResponse {
@@ -115,7 +129,7 @@ message DeleteMCPServerUserCredentialRequest {
 }
 
 service MCPServerService {
-  rpc ListMCPServers(google.protobuf.Empty) returns (ListMCPServersResponse) {
+  rpc ListMCPServers(ListMCPServersRequest) returns (ListMCPServersResponse) {
     option (google.api.http) = {get: "/v1/mcp-servers"};
   }
   rpc CreateMCPServer(CreateMCPServerRequest) returns (MCPServer) {

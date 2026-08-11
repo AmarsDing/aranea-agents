@@ -239,4 +239,17 @@ func TestTurnIntentTurnInput(t *testing.T) {
 			t.Fatalf("EntryPoint = %q, want channel", got.EntryConfig.EntryPoint)
 		}
 	})
+
+	t.Run("voice metadata preserved", func(t *testing.T) {
+		// 2026-08-11 真机回归：TurnIntent 丢失 Voice 导致 voice fast-path 失效。
+		intent := biz.TurnIntent{
+			SessionID: "sess-1",
+			Content:   "你好",
+			Voice:     &biz.VoiceTurnMeta{ASRProvider: "volcengine_sauc", DurationMs: 2740},
+		}
+		got := intent.TurnInput()
+		if got.Voice == nil || got.Voice.ASRProvider != "volcengine_sauc" || got.Voice.DurationMs != 2740 {
+			t.Fatalf("Voice must survive TurnIntent→TurnInput, got %+v", got.Voice)
+		}
+	})
 }

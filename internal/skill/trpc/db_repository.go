@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -45,6 +46,11 @@ type DBRepositoryAdapter struct {
 	index     map[string]int // slug → entries index
 	loaded    time.Time
 	reloading bool // prevents concurrent redundant DB fetches
+	// invalidateGen 由 Invalidate 递增。reload 完成时若代际变化（fetch 期间
+	// 又有 Invalidate），装载新数据但保持 stale，下一轮再拉取确认 —— 用
+	// 独立代际而非 loaded 零值表达「Invalidate during fetch」，避免冷启动
+	// 首次加载后 loaded 永远零值导致 TTL 永不生效（缓存形同虚设）。
+	invalidateGen uint64
 
 	// skillCache holds lazily-loaded *trpcskill.Skill keyed by slug.
 	// Pointer so the entire map can be swapped atomically under mu.
@@ -186,6 +192,7 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 func (r *DBRepositoryAdapter) Invalidate() {
 	r.mu.Lock()
 	r.loaded = time.Time{}
+	r.invalidateGen++
 	r.skillCache = &sync.Map{}
 	r.mu.Unlock()
 }
@@ -197,14 +204,35 @@ func (r *DBRepositoryAdapter) InvalidateSkillRuntimeCache() {
 	r.Invalidate()
 }
 
+// reloadFailureBackoff 是后台 reload 失败后的重试退避窗口。single-flight 只能
+// 挡住并发重复，挡不住串行请求各自触发后台重试；失败时把 loaded 前移使 TTL
+// 在该窗口后才再次过期，避免 DB 故障期间每个 stale 请求都打一次 DB。
+// 包级变量以便测试缩短窗口。
+var reloadFailureBackoff = 30 * time.Second
+
+// refreshIfStale 采用 stale-while-revalidate：
+//   - 冷启动（无快照）或 Invalidate 后（loaded 零值）：同步 reload —— 主动失效
+//     语义要求「变更立即生效」，首请求必须见到新数据，不能落回旧快照。
+//   - TTL 自然过期且已有快照：立即用旧快照应答，后台 single-flight 刷新，
+//     请求路径不再承担同步 reload 的毛刺（实测 summaries 全量拉取 ~280ms）。
 func (r *DBRepositoryAdapter) refreshIfStale(ctx context.Context) {
 	r.mu.RLock()
 	stale := time.Since(r.loaded) > r.ttl
+	syncLoad := len(r.entries) == 0 || r.loaded.IsZero()
 	r.mu.RUnlock()
 	if !stale {
 		return
 	}
-	r.reload(ctx)
+	if syncLoad {
+		r.reload(ctx)
+		return
+	}
+	// 红线 #13：后台刷新走 safego（panic 恢复 + hook），进程级生命周期。
+	safego.GoBackground("skill.repo_revalidate", func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), dbQueryTimeout)
+		defer cancel()
+		r.reload(bgCtx)
+	})
 }
 
 func (r *DBRepositoryAdapter) reload(ctx context.Context) {
@@ -217,6 +245,7 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 		return
 	}
 	r.reloading = true
+	gen := r.invalidateGen
 	r.mu.Unlock()
 
 	candidates, err := r.uc.ListEnabledPublishedCandidates(ctx)
@@ -225,6 +254,13 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 			loggateway.StepID("skill.reload_fail"),
 			loggateway.Err(err))
 		r.mu.Lock()
+		// 失败退避：loaded 前移使 TTL 在 backoff 后才再次过期，
+		// 避免 DB 故障期间每个 stale 请求都触发一次后台 reload。
+		// loaded 零值（冷启动失败 / Invalidate 等待同步拉取）不退避，
+		// 保持「下次访问同步重试」语义。
+		if !r.loaded.IsZero() {
+			r.loaded = time.Now().Add(-r.ttl + reloadFailureBackoff)
+		}
 		r.reloading = false
 		r.mu.Unlock()
 		return
@@ -261,14 +297,12 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 	}
 	// Swap entries, index, and skillCache atomically under write lock.
 	// Preserve the "invalidated" state: if Invalidate() was called while we
-	// were fetching, loaded will be zero — don't overwrite that with time.Now()
-	// or the invalidation is silently lost.
+	// were fetching (generation changed), the data we fetched may predate the
+	// invalidation — install it but stay stale so the next access re-fetches.
 	r.mu.Lock()
 	r.entries = entries
 	r.index = index
-	if r.loaded.IsZero() {
-		// Invalidate was called during fetch; mark as stale so next access
-		// triggers another reload, but still install the fresh data.
+	if gen != r.invalidateGen {
 		r.loaded = time.Time{}
 	} else {
 		r.loaded = time.Now()

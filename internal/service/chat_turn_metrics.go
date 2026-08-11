@@ -57,6 +57,21 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	if m == nil || m.usage == nil {
 		return
 	}
+	// E 预算表分解（P0-A，2026-08-11）：per-turn token/缓存命中入进程日志，
+	// 前缀稳定化效果直接由 cache_hit_ratio 验证（此前只落库，排查需查表）。
+	if p.PromptTok > 0 {
+		m.lg.Info("turn token usage",
+			loggateway.StepID("chat.turn_usage"),
+			loggateway.SessionID(p.SessionID),
+			loggateway.RunID(p.RunID),
+			loggateway.AgentKey(p.AgentKey),
+			loggateway.Str("model", p.Model),
+			loggateway.Int("prompt_tokens", p.PromptTok),
+			loggateway.Int("completion_tokens", p.CompletionTok),
+			loggateway.Int("cached_tokens", p.CachedTok),
+			loggateway.Float64("cache_hit_ratio", float64(p.CachedTok)/float64(p.PromptTok)),
+			loggateway.Duration(p.Latency.Milliseconds()))
+	}
 	meta := "{}"
 	if p.Emitter != nil {
 		meta = p.Emitter.MetadataJSON()

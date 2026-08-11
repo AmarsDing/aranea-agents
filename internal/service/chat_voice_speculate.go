@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
@@ -27,9 +28,27 @@ const (
 // speculativeIntentSlot 是一次投机意图的槽位（每会话单槽，新 partial 取代旧槽）。
 type speculativeIntentSlot struct {
 	sourceText string // 触发投机的 partial 归一化文本（final 精确匹配校验）
+	matchText  string // sourceText 的匹配归一化形（小写、去标点/空白）
 	createdAt  time.Time
 	done       chan struct{}    // 完成（含失败）时关闭
 	art        *intent.Artifact // done 关闭后有效；nil = 跳过/失败
+}
+
+// normalizeSpeculativeMatchText 归一化 ASR 文本用于 partial/final 匹配（P1-F）：
+// 转小写、去 Unicode 标点与所有空白。ASR final 常对 partial 做标点增删润色
+// （补句号、去逗号），归一化后语义等价即复用投机产物 —— refined_goal 语义
+// 不变，零误复用风险；文本实体差异（用户改口/ASR 纠错）归一化后仍不同，
+// 照常失配丢弃。
+func normalizeSpeculativeMatchText(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsPunct(r) || unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // VoiceIntentSpeculator 实现 voice.IntentSpeculator（C2，2026-08-11）。
@@ -115,10 +134,10 @@ func (s *VoiceIntentSpeculator) SpeculateIntent(ctx context.Context, sessionID, 
 		return
 	}
 
-	slot := &speculativeIntentSlot{sourceText: text, createdAt: time.Now(), done: make(chan struct{})}
+	slot := &speculativeIntentSlot{sourceText: text, matchText: normalizeSpeculativeMatchText(text), createdAt: time.Now(), done: make(chan struct{})}
 	s.mu.Lock()
-	// 去重：同一稳定文本的投机已在槽（稳定计时器重入/重连重发），不重复调 LLM。
-	if cur := s.slots[sessionID]; cur != nil && cur.sourceText == text && time.Since(cur.createdAt) <= s.slotTTL {
+	// 去重：同一稳定文本（含标点变体，P1-F 归一化）的投机已在槽，不重复调 LLM。
+	if cur := s.slots[sessionID]; cur != nil && cur.matchText == slot.matchText && time.Since(cur.createdAt) <= s.slotTTL {
 		s.mu.Unlock()
 		return
 	}
@@ -160,7 +179,7 @@ func (s *VoiceIntentSpeculator) WithSpeculativeIntent(ctx context.Context, sessi
 
 	s.mu.Lock()
 	slot := s.slots[sessionID]
-	if slot != nil && slot.sourceText != finalText {
+	if slot != nil && slot.matchText != normalizeSpeculativeMatchText(finalText) {
 		delete(s.slots, sessionID)
 		s.mu.Unlock()
 		// K3 降级：final≠partial（用户改口/ASR 纠错），丢弃投机走常规路径。

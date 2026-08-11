@@ -1,5 +1,6 @@
 <template>
   <q-card
+    v-liquid-glow
     flat
     bordered
     :class="['agent-card full-height', { 'agent-card--dark': isDark, 'agent-card--builtin': isBuiltin }]"

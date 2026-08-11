@@ -1985,7 +1985,8 @@ export default {
     factEdit: {
       refineTitle: 'Edit Fact',
       createTitle: 'New Fact',
-      caption: 'Only text and classification change; graph links and stats stay intact.',
+      refineCaption: 'Only text and classification change; graph links and stats stay intact.',
+      createCaption: 'Manually record a long-term fact with a default 85% confidence; adjust it later from the list.',
       statementLabel: 'Statement',
       statementHint: 'One sentence describing a user preference, rule or experience',
       statementRequired: 'Statement is required',

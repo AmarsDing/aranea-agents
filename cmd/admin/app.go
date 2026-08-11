@@ -55,6 +55,7 @@ func newApp(
 	graphBuildDeps *chatagent.TRPCBuilderDeps,
 	knowledgeSvc *service.KnowledgeService,
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
+	embedder *knowledge.MultiProviderEmbedder,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -132,7 +133,7 @@ func newApp(
 						_ = knowledgeSvc.LoadKnowledgeLinkIndex(consumerCtx)
 					})
 				}
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, embedder, lg)
 				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
 			}
 			if d != nil {
@@ -228,6 +229,7 @@ func startReadinessDependentServices(
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
 	graphBuildDeps *chatagent.TRPCBuilderDeps,
 	chatSvc *service.ChatService,
+	embedder *knowledge.MultiProviderEmbedder,
 	lg loggateway.Logger,
 ) {
 	// P1-3：DB ready 后拉起全部存量 vault 的同步循环（root_path 非空）。
@@ -246,6 +248,14 @@ func startReadinessDependentServices(
 	if chatSvc != nil {
 		safego.Go(ctx, "startup.spirit_agent_prewarm", func() {
 			chatSvc.PrewarmSpiritAgent(ctx)
+		})
+	}
+	// C3：embedding 冷启动预热——最小 ping 请求把 TCP/TLS 握手 + 远端模型
+	// 冷启动（实测 ~2.4s）移出首个记忆召回 Turn。与 spirit 预构建并列；
+	// 内部 60s 成功去重，失败仅 Warn（K3），未配置静默跳过。
+	if embedder != nil {
+		safego.Go(ctx, "startup.embedding_prewarm", func() {
+			_ = embedder.Prewarm(ctx)
 		})
 	}
 	if err := guard.OnStartup(ctx); err != nil {

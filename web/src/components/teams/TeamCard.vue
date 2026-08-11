@@ -3,7 +3,7 @@
   路径约定：SKILL §3.3 → `web/src/components/teams/`。
 -->
 <template>
-  <q-card flat bordered :class="['team-card full-height', { 'is-dark': isDark }]">
+  <q-card v-liquid-glow flat bordered :class="['team-card full-height', { 'is-dark': isDark }]">
     <div class="team-card__inner">
       <header class="team-card__head">
         <div class="team-card__head-main min-width-0">

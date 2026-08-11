@@ -192,7 +192,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryPolicyEngine := provideMemoryPolicyEngine(dataData, systemSettingRepo)
 	memoryL2Recaller := provideMemoryL2Recall(dataData, memoryUsecase, loggatewayLogger)
 	memoryL3Recaller := provideMemoryL3Recall(dataData, memoryUsecase, loggatewayLogger)
-	memoryCompositeRecaller := provideMemoryCompositeRecall(dataData, memoryService, memoryL2Recaller, memoryL3Recaller)
+	memoryCompositeRecaller := provideMemoryCompositeRecall(dataData, memoryService, memoryL2Recaller, memoryL3Recaller, memoryUsecase, loggatewayLogger)
 	sessionAdminStore := provideSessionAdminStore(dataData)
 	memoryAdminDeps := provideMemoryAdminDeps(sessionAdminStore)
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
@@ -576,7 +576,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
-	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService, artifactUsecase)
+	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService, artifactUsecase, delegationRegistry, stepV2Repo, multiProviderEmbedder)
 	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, voiceWSServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
@@ -591,7 +591,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -3361,6 +3361,9 @@ func provideVoiceWSServer(
 	lg loggateway.Logger,
 	chatService *service.ChatService,
 	artifactUC *biz.ArtifactUsecase,
+	voiceDelegation *voice.DelegationRegistry,
+	stepReader biz.StepV2Reader,
+	embedder *knowledge.MultiProviderEmbedder,
 ) *server.VoiceWSServer {
 	newASR := func(ctx context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
 		cfg, err := cfgReader.ASRConfig(ctx)
@@ -3392,12 +3395,14 @@ func provideVoiceWSServer(
 		return asrErr == nil, ttsErr == nil
 	}
 
-	prewarmer := service.NewVoiceTurnPrewarmer(chatService)
+	prewarmer := service.NewVoiceTurnPrewarmer(chatService, embedder)
 
 	speculator := service.NewVoiceIntentSpeculator(chatService)
 	srv := server.NewVoiceWSServer(sessionAuth, turnExecutor, canceller, newASR, newTTS, eventBus, infra, lg, service.NewVoiceConfirmResolver(chatService), archiver, probe)
 	srv.SetTurnPrewarmer(prewarmer)
 	srv.SetIntentSpeculator(speculator)
+
+	srv.SetDelegationRegistry(voiceDelegation, stepReader)
 	return srv
 }
 

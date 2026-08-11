@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -40,11 +41,12 @@ type volcTTSProvider struct {
 	dial wsDialer
 	lg   loggateway.Logger
 
-	// L5 温连接槽（单槽一次性）：voice.start 预拨 WS 存槽，首个 Turn 首句
-	// Write 弹出复用免握手；消费/释放后后续句维持逐句新拨（握手被播报
-	// 播放缓冲掩盖，不在用户感知关键路径）。
-	warmMu sync.Mutex
-	warm   wsConn
+	// L5 温连接槽（单槽）：voice.start 预拨 WS 存槽，首句 Write 弹出复用免
+	// 握手。P0-D（2026-08-11）：消费后异步补充——补充在句间空隙完成拨号，
+	// 后续句/后续轮次首句继续免握手，同步握手彻底移出用户感知关键路径。
+	warmMu   sync.Mutex
+	warm     wsConn
+	released bool // teardown 后抑制补充；迟到的预热连接到达即关（防泄漏）
 }
 
 func newVolcTTSProvider(cfg biz.TTSProviderConfig, lg loggateway.Logger) biz.StreamingTTSProvider {
@@ -57,7 +59,7 @@ func newVolcTTSProvider(cfg biz.TTSProviderConfig, lg loggateway.Logger) biz.Str
 // Write 的文本帧参数无关，故温连接对任意会话参数可复用。
 func (p *volcTTSProvider) PrewarmTTSConn(ctx context.Context) {
 	p.warmMu.Lock()
-	if p.warm != nil {
+	if p.warm != nil || p.released {
 		p.warmMu.Unlock()
 		return
 	}
@@ -69,8 +71,8 @@ func (p *volcTTSProvider) PrewarmTTSConn(ctx context.Context) {
 		return
 	}
 	p.warmMu.Lock()
-	if p.warm != nil {
-		// 并发预热竞态：后到的连接直接关闭，单槽语义不放大负载。
+	if p.warm != nil || p.released {
+		// 并发预热竞态 / teardown 后迟到：连接直接关闭，单槽语义不放大负载。
 		p.warmMu.Unlock()
 		_ = conn.Close()
 		return
@@ -79,23 +81,34 @@ func (p *volcTTSProvider) PrewarmTTSConn(ctx context.Context) {
 	p.warmMu.Unlock()
 }
 
-// ReleaseWarmTTSConn 关闭未消费的温连接（语音会话 teardown 释放）。幂等。
+// ReleaseWarmTTSConn 关闭未消费的温连接（语音会话 teardown 释放），并抑制
+// 后续补充。幂等。
 func (p *volcTTSProvider) ReleaseWarmTTSConn() {
 	p.warmMu.Lock()
 	conn := p.warm
 	p.warm = nil
+	p.released = true
 	p.warmMu.Unlock()
 	if conn != nil {
 		_ = conn.Close()
 	}
 }
 
-// popWarm 弹出温连接（一次性）；无预热返回 nil。
+// popWarm 弹出温连接；P0-D：成功消费后异步补充温槽（未释放时），
+// 下一句/下一轮首写继续免握手。
 func (p *volcTTSProvider) popWarm() wsConn {
 	p.warmMu.Lock()
-	defer p.warmMu.Unlock()
 	conn := p.warm
 	p.warm = nil
+	replenish := conn != nil && !p.released
+	p.warmMu.Unlock()
+	if replenish {
+		// 红线 #13：异步补充走 safego（panic 恢复）；补充失败仅少一次预热，
+		// 下一句回退同步拨号（K3），不影响正确性。
+		safego.GoBackground("voice.tts_warm_replenish", func() {
+			p.PrewarmTTSConn(context.Background())
+		})
+	}
 	return conn
 }
 

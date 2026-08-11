@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -170,7 +171,22 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		// E 预算表分解（P0-A，2026-08-11）：记忆 cue 构建在 LLM 关键路径上，
+		// 含多次 DB 读 + embedding，计时以便从 TTFT 黑盒中拆出本段耗时。
+		cueStart := time.Now()
 		result := buildRuntimeMemoryCue(ctx, deps, ag, args.Request.Messages)
+		cueElapsed := time.Since(cueStart)
+		sessionID := ""
+		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
+			sessionID = strings.TrimSpace(inv.Session.ID)
+		}
+		deps.Logger().Info("memory cue build timing",
+			loggateway.StepID("agent.memory_cue.build"),
+			loggateway.SessionID(sessionID),
+			loggateway.Duration(cueElapsed.Milliseconds()),
+			loggateway.Int("cue_chars", len([]rune(result.JoinCues()))),
+			loggateway.Int("recall_hits", len(result.RecallHits)),
+			loggateway.Bool("empty", result.IsEmpty()))
 		if result.IsEmpty() {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -185,10 +201,11 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		ctx = triggerL4Reconsolidation(ctx, deps, result.L4RecalledEntityIDs)
 		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
 		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
-		// Prefix stabilization: append after the existing system block so the
-		// session-stable prefix stays intact for prompt caching (never prepend).
+		// P2 TTFT: append the per-turn dynamic cue at the END of the message
+		// list so the [system block + history + user] prefix stays
+		// monotonically growing and cacheable (never insert mid-list).
 		sys := trpcmodel.NewSystemMessage(memoryInjectCueContent(cue))
-		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
+		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -319,10 +336,10 @@ func RebuildMemoryInjectForCompaction(ctx context.Context, deps TRPCBuilderDeps,
 	}
 
 	// If no existing MemoryInject message found (edge case: first turn after
-	// compaction with no prior inject), insert a new one after the system
-	// block (prefix stabilization — never prepend to position 0).
+	// compaction with no prior inject), append a new one at the END of the
+	// message list (P2 TTFT: keep the cacheable prefix intact).
 	sys := trpcmodel.NewSystemMessage(newCue)
-	req.Messages = insertAfterLastSystem(req.Messages, sys)
+	req.Messages = append(req.Messages, sys)
 }
 
 // ── memory_recalled transparency notice (R4) ─────────────────────────────

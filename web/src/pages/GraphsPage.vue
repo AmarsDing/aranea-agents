@@ -147,6 +147,7 @@
         >
           <template #item="{ element: graph, index }">
             <q-card
+              v-liquid-glow
               flat
               :class="[
                 'graph-card',
