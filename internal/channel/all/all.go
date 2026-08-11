@@ -10,4 +10,5 @@ import (
 	_ "aranea-agents/internal/channel/slack"
 	_ "aranea-agents/internal/channel/teams"
 	_ "aranea-agents/internal/channel/telegram"
+	_ "aranea-agents/internal/channel/wechatilink"
 )

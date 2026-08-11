@@ -35,6 +35,7 @@ type ChannelIngress struct {
 	concurrentGate biz.ConcurrencyGate
 	admission      *biz.TurnAdmissionUsecase
 	teamCompiler   biz.TeamCompiler
+	gateCards      *ChannelGateCards // 交互门卡片（确认/澄清）管理器，SetGateCards 注入
 	lg             loggateway.Logger
 }
 
@@ -80,6 +81,16 @@ func NewChannelIngress(
 		admission:      admission,
 		teamCompiler:   teamCompiler,
 	}
+}
+
+// SetGateCards 注入交互门卡片管理器（gate_confirm/gate_clarify 卡片回调入口）。
+// Setter 注入避免改动 NewChannelIngress 签名（wire 构造顺序：gateCards 依赖
+// chat gateway，与 ingress 平级）。
+func (h *ChannelIngress) SetGateCards(g *ChannelGateCards) {
+	if h == nil {
+		return
+	}
+	h.gateCards = g
 }
 
 func (h *ChannelIngress) writeJSON(w http.ResponseWriter, status int, v any) {

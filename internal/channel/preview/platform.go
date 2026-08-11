@@ -9,6 +9,8 @@ func PlatformTextLimit(platform string) int {
 		return 11800
 	case "telegram":
 		return 4000
+	case "wechat_ilink":
+		return 4000
 	case "line":
 		return 5000
 	case "teams":

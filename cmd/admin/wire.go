@@ -1214,6 +1214,9 @@ func provideAutoMemoryWorker(
 	workerStats *biz.MemoryWorkerStats,
 	monitorBus contract.MonitorBus,
 	factPipeline *biz.FactWritePipeline,
+	caseExtractor biz.AgentCaseExtractor,
+	caseReader biz.AgentCaseReader,
+	caseWriter biz.AgentCaseWriter,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
@@ -1231,6 +1234,9 @@ func provideAutoMemoryWorker(
 		Stats:          workerStats,
 		MonitorBus:     monitorBus,
 		FactPipeline:   factPipeline,
+		CaseExtractor:  caseExtractor,
+		CaseReader:     caseReader,
+		CaseWriter:     caseWriter,
 		Logger:         lg,
 	})
 }
@@ -1359,13 +1365,29 @@ func provideChannelIngress(
 	monitorBus contract.MonitorBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
+	gateCards *service.ChannelGateCards,
 	lg loggateway.Logger,
 ) *service.ChannelIngress {
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, monitorBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	ingress := service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron, eventBus, monitorBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	ingress.SetGateCards(gateCards)
+	return ingress
+}
+
+// provideChannelGateCards 构建渠道交互门卡片管理器（确认/澄清卡片的订阅、
+// 发送、跟踪与 PATCH）。生命周期 Start 在 app.go readiness 后挂载。
+func provideChannelGateCards(
+	eventBus biz.EventBus,
+	sessions *biz.SessionUsecase,
+	channels *biz.ChannelUsecase,
+	chat biz.ChannelTurnGateway,
+	steps biz.StepV2Reader,
+	lg loggateway.Logger,
+) *service.ChannelGateCards {
+	return service.NewChannelGateCards(eventBus, sessions, channels, chat, steps, lg)
 }
 
 func provideChannelIngressAdmission(
@@ -3521,6 +3543,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideChannelHealthScanner,
 		provideTeamCompiler,
 		provideChannelIngress,
+		provideChannelGateCards,
 		provideChannelIngressAdmission,
 		provideChannelDeliveryWorker,
 		provideChannelDeliveryScanner,

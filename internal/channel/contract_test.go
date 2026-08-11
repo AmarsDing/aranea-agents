@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/teams"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/internal/channel/wechatilink"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 	_ channel.OutboundText = (*line.TextSender)(nil)
 	_ channel.OutboundText = (*mattermost.TextSender)(nil)
 	_ channel.OutboundText = (*teams.TextSender)(nil)
+	_ channel.OutboundText = (*wechatilink.TextSender)(nil)
 )
 
 func TestFeishuTextSenderID(t *testing.T) {
@@ -37,5 +39,11 @@ func TestSlackTextSenderID(t *testing.T) {
 func TestTelegramTextSenderID(t *testing.T) {
 	if (&telegram.TextSender{}).ID() != "telegram" {
 		t.Fatal("expected telegram id")
+	}
+}
+
+func TestWechatILinkTextSenderID(t *testing.T) {
+	if (&wechatilink.TextSender{}).ID() != "wechat_ilink" {
+		t.Fatal("expected wechat_ilink id")
 	}
 }

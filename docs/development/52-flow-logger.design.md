@@ -575,6 +575,7 @@ internal/cronrunner/jobs/
 | `mcp.server.add` | ok / error | MCP 服务器添加 |
 | `mcp.server.remove` | ok / error | MCP 服务器移除 |
 | `memory.auto.extract` | ok / error | 自动记忆提取 |
+| `memory.auto.case_extract` | ok | Agent Case 经验提取（P3 M2） |
 | `media.generate` | ok / error | 媒体生成 |
 | `evaluation.run` | ok / error | 评测集运行 |
 | `gateway.webhook.delivery` | ok / error | 出站 Webhook 投递 |

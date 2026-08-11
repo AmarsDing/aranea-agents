@@ -209,6 +209,34 @@ export async function testChannel(id: string): Promise<ChannelTestResult> {
   return kratosTestToLegacy(data);
 }
 
+export type WechatILinkLoginResult = {
+  qrcode_data_url: string;
+  qrcode_session: string;
+  status: string;
+};
+
+export async function wechatILinkLogin(channelId: string): Promise<WechatILinkLoginResult> {
+  const data = await channelApi.WechatILinkLogin({ channelId });
+  return {
+    qrcode_data_url: data.qrcodeDataUrl ?? '',
+    qrcode_session: data.qrcodeSession ?? '',
+    status: data.status ?? 'wait',
+  };
+}
+
+export type WechatILinkPollResult = {
+  status: string;
+  error_message: string;
+};
+
+export async function wechatILinkPoll(channelId: string, qrcodeSession: string): Promise<WechatILinkPollResult> {
+  const data = await channelApi.WechatILinkPoll({ channelId, qrcodeSession });
+  return {
+    status: data.status ?? 'wait',
+    error_message: data.errorMessage ?? '',
+  };
+}
+
 export async function listChannelCredentials(id: string): Promise<ChannelCredential[]> {
   const data = await channelApi.ListChannelCredentials({ id });
   return (data.items ?? []).map(kratosCredentialToLegacy);

@@ -100,21 +100,82 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		return nil, err
 	}
 
+	accepted, newStatus, err := s.confirmToolGate(ctx, step, replyMsg, approved)
+	if err != nil {
+		return nil, err
+	}
+
+	return &chatv1.ConfirmActivityResponse{
+		Accepted: accepted,
+		Status:   newStatus,
+	}, nil
+}
+
+// ConfirmToolGateForCard 实现 biz.TurnControlGateway：渠道卡片回调的工具确认入口。
+// 归属校验已由渠道 peer 绑定（resolveCardActionSessionID）完成，此处不复查 ctxuser。
+func (s *ChatService) ConfirmToolGateForCard(ctx context.Context, sessionID, stepID, replyToken string) (bool, string) {
+	if s == nil || s.orch == nil {
+		return false, "服务不可用"
+	}
+	stepReader := s.orch.stepReader()
+	if stepReader == nil {
+		return false, "服务不可用"
+	}
+	step, err := stepReader.GetStep(ctx, strings.TrimSpace(stepID))
+	if err != nil {
+		return false, "确认不存在或已删除"
+	}
+	if step.SessionID != strings.TrimSpace(sessionID) {
+		return false, "确认不属于当前会话"
+	}
+	if step.Kind != biz.StepKindConfirm || step.Status != biz.StepStatusToolBlocked {
+		return false, "该确认已被处理或已超时"
+	}
+	replyMsg, approved, err := resolveConfirmReply(true, replyToken)
+	if err != nil {
+		return false, "未知的确认操作"
+	}
+	accepted, _, err := s.confirmToolGate(ctx, step, replyMsg, approved)
+	if err != nil {
+		s.lg.Warn("channel card confirm failed",
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("step_id", stepID),
+			loggateway.Err(err),
+		)
+		return false, "确认处理失败，请稍后重试"
+	}
+	if !accepted {
+		return false, "确认未生效（运行可能已结束）"
+	}
+	if approved {
+		return true, "已批准执行"
+	}
+	return true, "已拒绝执行"
+}
+
+// confirmToolGate 是工具确认的状态机核心：状态转换、落库、事件发布、续跑投递。
+// 调用方负责鉴权（RPC 路径：ctxuser + 归属；卡片区路径：peer 绑定）。
+func (s *ChatService) confirmToolGate(ctx context.Context, step biz.Step, replyMsg string, approved bool) (accepted bool, newStatus string, err error) {
+	stepWriter := s.orch.stepWriter()
+	if stepWriter == nil {
+		return false, "", apierror.Internal(apierror.DomainChat, "step store unavailable")
+	}
+
 	transitionEvent := biz.ActivityTransitionDone
 	if !approved {
 		transitionEvent = biz.ActivityTransitionCancel
 	}
-	newStatus, err := biz.TransitionActivityStatus(biz.ActivityStatus(step.Status), transitionEvent)
+	nextStatus, err := biz.TransitionActivityStatus(biz.ActivityStatus(step.Status), transitionEvent)
 	if err != nil {
-		return nil, apierror.BadRequest(apierror.DomainChat,
+		return false, "", apierror.BadRequest(apierror.DomainChat,
 			"illegal activity transition from %s via %s: %v",
 			step.Status, transitionEvent, err)
 	}
-	step.Status = biz.StepStatus(newStatus)
+	step.Status = biz.StepStatus(nextStatus)
 	now := time.Now().UTC()
 	step.CompletedAt = &now
 	if _, err := stepWriter.UpdateStep(ctx, step); err != nil {
-		return nil, err
+		return false, "", err
 	}
 
 	if bus := s.orch.td().Pipeline.EventBus; bus != nil {
@@ -135,7 +196,7 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	}
 
 	runID := ""
-	if _, requestID, active := s.orch.ActiveRunner(sessionID); active {
+	if _, requestID, active := s.orch.ActiveRunner(step.SessionID); active {
 		runID = requestID
 	}
 	// Unified delivery: the live channel receives the machine token (parsed by
@@ -143,19 +204,16 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 	// run is resumed with a semantic natural-language statement of the user's
 	// decision so the LLM receives it as meaningful context (P3 fix —
 	// previously the decision was silently dropped on the restart path).
-	outcome, err := s.orch.submitAwaitReply(ctx, sessionID, awaitReply{
+	outcome, err := s.orch.submitAwaitReply(ctx, step.SessionID, awaitReply{
 		runID:         runID,
 		token:         replyMsg,
 		resumeContent: buildConfirmResumeContent(step, approved),
 	})
 	if err != nil {
-		return nil, err
+		return false, "", err
 	}
 
-	return &chatv1.ConfirmActivityResponse{
-		Accepted: outcome != awaitReplyRejected,
-		Status:   string(newStatus),
-	}, nil
+	return outcome != awaitReplyRejected, string(nextStatus), nil
 }
 
 // buildConfirmResumeContent renders the user's tool-confirmation decision as

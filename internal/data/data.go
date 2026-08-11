@@ -114,6 +114,10 @@ var ProviderSet = wire.NewSet(
 	NewTeamGraphSessionRepo,
 	NewAgentTemplateRepo,
 	NewMemoryConsolidationWriterAdapter,
+	// P3 M2: Agent Case 经验存储（biz.AgentCaseReader/Writer 端口）。
+	NewMemoryAgentCaseStore,
+	wire.Bind(new(biz.AgentCaseReader), new(*memoryAgentCaseRepo)),
+	wire.Bind(new(biz.AgentCaseWriter), new(*memoryAgentCaseRepo)),
 	NewMemoryFactIndexMaintainerAdapter,
 	NewMemoryEpisodeDecayerAdapter,
 	NewMemoryFactDecayerAdapter,

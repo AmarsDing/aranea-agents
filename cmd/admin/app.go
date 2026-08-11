@@ -56,6 +56,7 @@ func newApp(
 	knowledgeSvc *service.KnowledgeService,
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
 	embedder *knowledge.MultiProviderEmbedder,
+	gateCards *service.ChannelGateCards,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -133,7 +134,7 @@ func newApp(
 						_ = knowledgeSvc.LoadKnowledgeLinkIndex(consumerCtx)
 					})
 				}
-				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, embedder, lg)
+				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, embedder, gateCards, lg)
 				emitStartupFlows(consumerCtx, eventInfra, lg, startupBegin)
 			}
 			if d != nil {
@@ -230,6 +231,7 @@ func startReadinessDependentServices(
 	graphBuildDeps *chatagent.TRPCBuilderDeps,
 	chatSvc *service.ChatService,
 	embedder *knowledge.MultiProviderEmbedder,
+	gateCards *service.ChannelGateCards,
 	lg loggateway.Logger,
 ) {
 	// P1-3：DB ready 后拉起全部存量 vault 的同步循环（root_path 非空）。
@@ -266,6 +268,10 @@ func startReadinessDependentServices(
 	}
 	if sideConsumers != nil {
 		sideConsumers.Start(ctx)
+	}
+	// 渠道交互门卡片（确认/澄清）：订阅 step 事件发卡/PATCH。
+	if gateCards != nil {
+		gateCards.Start(ctx)
 	}
 	sessions.StartMetricsFlusher(ctx)
 	if eventInfra != nil {

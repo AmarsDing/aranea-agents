@@ -77,12 +77,6 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 		return nil, apierror.Internal(apierror.DomainChat, "session store unavailable, cannot verify ownership")
 	}
 
-	// Parse the clarification envelope from step content.
-	var envelope biz.ClarificationEnvelope
-	if err := json.Unmarshal([]byte(step.Content), &envelope); err != nil {
-		return nil, apierror.Internal(apierror.DomainChat, "failed to parse clarification envelope: %v", err)
-	}
-
 	// Convert proto answers to biz answers.
 	answers := make([]biz.ClarificationAnswer, len(req.GetAnswers()))
 	for i, a := range req.GetAnswers() {
@@ -90,6 +84,60 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 			Selected: a.GetSelected(),
 			Other:    strings.TrimSpace(a.GetOther()),
 		}
+	}
+
+	clarifiedContext, err := s.submitClarification(ctx, step, answers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &chatv1.SubmitClarificationResponse{
+		Accepted:         true,
+		Status:           string(biz.StepStatusCompleted),
+		ClarifiedContext: clarifiedContext,
+	}, nil
+}
+
+// SubmitClarificationForCard 实现 biz.TurnControlGateway：渠道卡片回调的澄清提交入口。
+// 归属校验已由渠道 peer 绑定（resolveCardActionSessionID）完成，此处不复查 ctxuser。
+func (s *ChatService) SubmitClarificationForCard(ctx context.Context, sessionID, stepID string, answers []biz.ClarificationAnswer) (string, error) {
+	if s == nil || s.orch == nil {
+		return "", apierror.Internal(apierror.DomainChat, "service unavailable")
+	}
+	stepReader := s.orch.stepReader()
+	if stepReader == nil {
+		return "", apierror.Internal(apierror.DomainChat, "step store unavailable")
+	}
+	step, err := stepReader.GetStep(ctx, strings.TrimSpace(stepID))
+	if err != nil {
+		return "", err
+	}
+	if step.SessionID != strings.TrimSpace(sessionID) {
+		return "", apierror.BadRequest(apierror.DomainChat, "step does not belong to session %s", sessionID)
+	}
+	if step.Kind != biz.StepKindClarify || step.Status != biz.StepStatusAwaitingInput {
+		return "", apierror.Conflict(apierror.DomainChat, "clarification already submitted or expired (current status: %s)", step.Status)
+	}
+	if _, err := s.submitClarification(ctx, step, answers); err != nil {
+		return "", err
+	}
+	return "已提交澄清回答", nil
+}
+
+// submitClarification 是澄清提交的状态机核心：信封作答、落库、事件发布、续跑。
+// 调用方负责鉴权（RPC 路径：ctxuser + 归属；卡片路径：peer 绑定）。
+// 返回注入 LLM 的澄清上下文。
+func (s *ChatService) submitClarification(ctx context.Context, step biz.Step, answers []biz.ClarificationAnswer) (string, error) {
+	stepWriter := s.orch.stepWriter()
+	if stepWriter == nil {
+		return "", apierror.Internal(apierror.DomainChat, "step store unavailable")
+	}
+	sessionID := step.SessionID
+
+	// Parse the clarification envelope from step content.
+	var envelope biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &envelope); err != nil {
+		return "", apierror.Internal(apierror.DomainChat, "failed to parse clarification envelope: %v", err)
 	}
 	envelope.Answers = answers
 
@@ -102,12 +150,12 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 	step.CompletedAt = &now
 	updatedContent, err := json.Marshal(envelope)
 	if err != nil {
-		return nil, apierror.Internal(apierror.DomainChat, "failed to marshal clarification envelope: %v", err)
+		return "", apierror.Internal(apierror.DomainChat, "failed to marshal clarification envelope: %v", err)
 	}
 	step.Content = string(updatedContent)
 
 	if _, err := stepWriter.UpdateStep(ctx, step); err != nil {
-		return nil, err
+		return "", err
 	}
 
 	// Publish step updated event.
@@ -141,7 +189,7 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 		if resumeErr := s.orch.resumeTurnWithClarification(context.Background(), sessionID, step.TaskID, clarifiedContext, envelope.OriginalInput, fallbackArt); resumeErr != nil {
 			s.lg.Warn("failed to resume turn with clarification",
 				loggateway.Str("session_id", sessionID),
-				loggateway.Str("step_id", stepID),
+				loggateway.Str("step_id", step.ID),
 				loggateway.Err(resumeErr),
 			)
 			// Non-fatal: the step is already marked completed, so the user can
@@ -149,11 +197,7 @@ func (s *ChatService) SubmitClarification(ctx context.Context, req *chatv1.Submi
 		}
 	})
 
-	return &chatv1.SubmitClarificationResponse{
-		Accepted:         true,
-		Status:           string(step.Status),
-		ClarifiedContext: clarifiedContext,
-	}, nil
+	return clarifiedContext, nil
 }
 
 // resumeTurnWithClarification resumes a paused turn after the user submits

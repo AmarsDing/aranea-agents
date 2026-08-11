@@ -66,17 +66,33 @@
 | 媒体 | 直接 URL | CDN + AES-128-ECB |
 | 流式 | `telegram.StreamSender` | Phase 3 支持 |
 
-### 3.3 渠道类型注册
+### 3.3 渠道类型注册（两处）
+
+> **评审修正**：类型注册是单点白名单 `catalogHasType`（`channel_rules.go`），注册需同时改两个文件。
 
 ```go
-// internal/biz/channel_catalog.go
+// ① internal/biz/channel_catalog.go — item 定义
 func wechatILinkTypeItem() ChannelTypeItem {
     item := channelTypeItem("wechat_ilink", "微信（个人号·iLink）", "国内", "polling",
         "腾讯 iLink 官方 Bot API，扫码登录，支持私聊/群聊/多媒体", 45, true, false, false)
     item.ReceiveModes = []string{"polling"}
+    // ConfigSchema 需显式声明群聊门控字段，前端才能渲染：
+    //   group_enabled (bool, 默认 false)、require_mention (bool, 默认 true)、bot_nickname (string)
     return item
 }
+
+// ② internal/biz/channel_type_registry.go — init() specs 追加
+{
+    TypeItem:            wechatILinkTypeItem(),
+    RequiredCredentials: []string{"bot_token"},
+    CredentialProps: []CredentialProperty{
+        {Key: "bot_token", Title: "wechat_ilink_bot_token", Format: "password", Required: true},
+    },
+    SupportsLightTest: true,
+}
 ```
+
+说明：`bot_token` 标记 Required 只影响 `TestChannel` 的 `pending_auth` 提示（`evaluateChannelTest`），**不阻塞渠道创建**——用户可先建渠道后扫码，凭证由登录流程自动写入。`baseurl`/`ilink_user_id` 非用户填写项，不进凭证 schema，登录后由后端写入凭证行（非敏感）。
 
 ### 3.4 运行时模式映射
 
@@ -249,7 +265,11 @@ POST /ilink/bot/sendtyping
 
 凭证由扫码登录流程自动写入，用户无需手动填写。
 
-### 5.3 持久化状态（metadata_json）
+### 5.3 持久化状态（本地状态文件）
+
+> **评审修正（2026-08-12）**：原设计写 `metadata_json`，但 runtime starter 签名（`ch, creds, lookup, handler, lg`）无 usecase 访问权，无法写 DB。且 iLink 协议丢失 `get_updates_buf` 的后果是**丢消息**（协议 §sync_buf：未回传正确 buf 将无法收到错过的消息），必须可靠持久化。改为包内状态文件，自包含、无跨层改动。
+
+存储位置：`bin/data/channel-state/wechat_ilink-<channel_id>.json`（`bin/` 为既有运行产物目录，符合根目录规范）。
 
 ```json
 {
@@ -261,6 +281,8 @@ POST /ilink/bot/sendtyping
   "login_status": "active | expired"
 }
 ```
+
+写入策略：每轮 getupdates 成功返回后原子写入（临时文件 + rename）；启动时读取恢复。
 
 ## 六、API 设计
 
@@ -326,7 +348,7 @@ service ChannelService {
 | 错误码 | 含义 | 处理策略 |
 |--------|------|---------|
 | `ret=0` | 成功 | — |
-| `errcode=-14` | 会话超时/过期 | 暂停 API 调用，标记 `login_status=expired`，前端提示重新扫码 |
+| `errcode=-14` | 会话超时/过期 | starter 记 Error 日志 + `EmitConnectError`（"微信登录已过期，请重新扫码"）后返回错误；supervisor backoff 重启并重读凭证；用户重扫后 credential revision 变化触发 fingerprint 变更 → 自动重启恢复（自愈，无需 park 逻辑）；状态文件标记 `login_status=expired` 供登录 RPC 查询 |
 | `errcode=-2` | 参数错误 | 记录错误日志，跳过当前消息 |
 | HTTP 4xx | 客户端错误 | 记录日志，指数退避重试（最多 3 次） |
 | HTTP 5xx | 服务端错误 | 指数退避重试（最多 3 次） |
@@ -378,19 +400,24 @@ internal/channel/wechatilink/
 
 ```
 api/kratos/channel/v1/channel.proto           // 新增 WechatILinkLogin/WechatILinkPoll RPC
-internal/biz/channel_catalog.go               // 注册 wechat_ilink 类型
+internal/biz/channel_catalog.go               // wechatILinkTypeItem() item 定义
+internal/biz/channel_type_registry.go         // init() specs 注册 wechat_ilink（凭证 schema 白名单）
 internal/channel/runtime/config.go            // 默认模式映射 wechat_ilink → polling
-internal/channel/port/meta.go                 // 新增 wechat_ilink 所需 outbound meta keys
+internal/channel/port/meta.go                 // 新增 MetaContextToken well-known key
 internal/service/channel_platform_registry.go // 注册 wechat_ilink outbound handler
-internal/service/channel.go                   // 注册 wechat_ilink live tester
-internal/service/channel_ingress.go           // 无需改动（polling 渠道不走 webhook）
+internal/service/channel.go                   // 注册 wechat_ilink live tester（getconfig 只读探活）
+internal/service/channel_wechat_ilink_login.go // 新增：扫码登录 RPC 实现
 internal/channel/contract_test.go             // 添加 wechatilink.TextSender 契约断言
-internal/channel/preview/platform.go          // 新增 wechat_ilink 预览格式
-web/src/features/channels/                   // 前端渠道页：扫码登录对话框组件
-docs/development/17-channel.md                // 文档同步（DOC-SYNC 红线）
-docs/development/17-channel.design.md
-docs/development/17-channel.development.md
+web/src/services/kratos/channel/v1/index.ts   // make api 自动再生成（protoc-gen-typescript-http）
+web/src/features/channels/api.ts              // 新增 wechatIlinkLogin/wechatIlinkPoll 方法
+web/src/features/channels/ChannelEditorDialog.vue + useChannelEditorForm.ts // 扫码登录区块（二维码展示+轮询+过期刷新）
+web/src/features/channels/channelPlatformFields.ts // wechat_ilink 平台字段
+docs/development/17-channel.md                // 文档同步（DOC-SYNC 红线）：§2 平台表 + §5 凭据配置 + §7 运行时
+docs/development/17-channel.design.md         // §三 Adapter + §五 Service 层
+docs/development/17-channel.development.md    // 任务清单
 ```
+
+> **说明**：`internal/channel/preview/platform.go`（PlatformTextLimit）使用默认 4000 即可，无需改动；`biz/channel_im_render.go` 的 `ChannelACKDeferredToPreview` 与 `biz/avatar_channel_refresh.go` 平台映射在 P3（流式预览）时才需追加 wechat_ilink。
 
 ## 十一、Phase 划分
 

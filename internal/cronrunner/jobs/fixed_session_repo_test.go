@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -240,6 +241,14 @@ func chatMessagesToActivityEntries(msgs []sessionsess.ChatMessage) []sessionsess
 		}
 		if kind == "action" {
 			a.ToolResult = m.ContentMarkdown
+			// Round-trip tool_name: production activities carry ToolName and the
+			// adapter rebuilds options_json from it, so fixtures must too.
+			var opts struct {
+				ToolName string `json:"tool_name"`
+			}
+			if json.Unmarshal([]byte(m.OptionsJSON), &opts) == nil {
+				a.ToolName = opts.ToolName
+			}
 		}
 		if m.CreatedAt != "" {
 			if t, err := time.Parse(time.RFC3339Nano, m.CreatedAt); err == nil {

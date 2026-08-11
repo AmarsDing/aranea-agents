@@ -26,6 +26,9 @@ const (
 	MetaConversationID   = "conversation_id"
 	MetaReplyToken       = "reply_token"
 	MetaChannel          = "channel"
+	// MetaContextToken carries the iLink context_token that must be echoed
+	// back in sendmessage replies (wechat_ilink).
+	MetaContextToken = "context_token"
 )
 
 var knownOutboundMetaKeys = map[string]struct{}{
@@ -48,6 +51,7 @@ var knownOutboundMetaKeys = map[string]struct{}{
 	MetaConversationID:   {},
 	MetaReplyToken:       {},
 	MetaChannel:          {},
+	MetaContextToken:     {},
 }
 
 var platformRequiredOutboundMeta = map[string][]string{

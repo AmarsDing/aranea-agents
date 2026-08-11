@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/internal/channel/wechatilink"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -45,9 +46,10 @@ func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUseca
 // buildLiveTesters registers platform-specific live testers.
 func (s *ChannelService) buildLiveTesters() map[string]biz.ChannelLiveTester {
 	return map[string]biz.ChannelLiveTester{
-		"feishu":   biz.ChannelLiveTesterFunc(s.testFeishuLive),
-		"slack":    biz.ChannelLiveTesterFunc(s.testSlackLive),
-		"telegram": biz.ChannelLiveTesterFunc(s.testTelegramLive),
+		"feishu":       biz.ChannelLiveTesterFunc(s.testFeishuLive),
+		"slack":        biz.ChannelLiveTesterFunc(s.testSlackLive),
+		"telegram":     biz.ChannelLiveTesterFunc(s.testTelegramLive),
+		"wechat_ilink": biz.ChannelLiveTesterFunc(s.testWechatILinkLive),
 	}
 }
 
@@ -672,4 +674,17 @@ func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string
 		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
 	}
 	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "telegram getMe ok"}
+}
+
+// testWechatILinkLive performs a live wechat_ilink getconfig probe (read-only).
+func (s *ChannelService) testWechatILinkLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
+	if terr != nil || strings.TrimSpace(token) == "" {
+		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured，请先扫码登录"}
+	}
+	baseURL, _ := resolveCredentialPlain(ctx, s.uc, creds, "baseurl", s.lg)
+	if err := wechatilink.TestConnection(ctx, lark.DefaultHTTPClient(), baseURL, token, s.lg); err != nil {
+		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
+	}
+	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "wechat_ilink getconfig ok"}
 }

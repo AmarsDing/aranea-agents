@@ -212,6 +212,32 @@ export type ListChannelTurnJobsResponse = {
   items: ChannelTurnJob[] | undefined;
 };
 
+export type WechatILinkLoginRequest = {
+  //
+  // Behaviors: REQUIRED
+  channelId: string | undefined;
+};
+
+export type WechatILinkLoginResponse = {
+  qrcodeDataUrl: string | undefined;
+  qrcodeSession: string | undefined;
+  status: string | undefined;
+};
+
+export type WechatILinkPollRequest = {
+  //
+  // Behaviors: REQUIRED
+  channelId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  qrcodeSession: string | undefined;
+};
+
+export type WechatILinkPollResponse = {
+  status: string | undefined;
+  errorMessage: string | undefined;
+};
+
 export interface ChannelService {
   ListChannelTypes(request: wellKnownEmpty): Promise<ListChannelTypesResponse>;
   ListChannels(request: wellKnownEmpty): Promise<ListChannelsResponse>;
@@ -226,6 +252,8 @@ export interface ChannelService {
   DeleteChannelCredential(request: DeleteChannelCredentialRequest): Promise<wellKnownEmpty>;
   ListChannelDeliveries(request: ListChannelDeliveriesRequest): Promise<ListChannelDeliveriesResponse>;
   ListChannelTurnJobs(request: ListChannelTurnJobsRequest): Promise<ListChannelTurnJobsResponse>;
+  WechatILinkLogin(request: WechatILinkLoginRequest): Promise<WechatILinkLoginResponse>;
+  WechatILinkPoll(request: WechatILinkPollRequest): Promise<WechatILinkPollResponse>;
 }
 
 type RequestType = {
@@ -499,6 +527,46 @@ export function createChannelServiceClient(
         service: "ChannelService",
         method: "ListChannelTurnJobs",
       }) as Promise<ListChannelTurnJobsResponse>;
+    },
+    WechatILinkLogin(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.channelId) {
+        throw new Error("missing required field request.channel_id");
+      }
+      const path = `v1/channels/${request.channelId}/wechat-ilink/login`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "WechatILinkLogin",
+      }) as Promise<WechatILinkLoginResponse>;
+    },
+    WechatILinkPoll(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.channelId) {
+        throw new Error("missing required field request.channel_id");
+      }
+      const path = `v1/channels/${request.channelId}/wechat-ilink/poll`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "ChannelService",
+        method: "WechatILinkPoll",
+      }) as Promise<WechatILinkPollResponse>;
     },
   };
 }

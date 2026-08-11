@@ -190,6 +190,26 @@ message ListChannelTurnJobsResponse {
   repeated ChannelTurnJob items = 1;
 }
 
+message WechatILinkLoginRequest {
+  string channel_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message WechatILinkLoginResponse {
+  string qrcode_data_url = 1;
+  string qrcode_session = 2;
+  string status = 3;
+}
+
+message WechatILinkPollRequest {
+  string channel_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string qrcode_session = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message WechatILinkPollResponse {
+  string status = 1;
+  string error_message = 2;
+}
+
 service ChannelService {
   rpc ListChannelTypes(google.protobuf.Empty) returns (ListChannelTypesResponse) {
     option (google.api.http) = {get: "/v1/channels/catalog"};
@@ -244,5 +264,17 @@ service ChannelService {
   }
   rpc ListChannelTurnJobs(ListChannelTurnJobsRequest) returns (ListChannelTurnJobsResponse) {
     option (google.api.http) = {get: "/v1/channels/{id}/turn-jobs"};
+  }
+  rpc WechatILinkLogin(WechatILinkLoginRequest) returns (WechatILinkLoginResponse) {
+    option (google.api.http) = {
+      post: "/v1/channels/{channel_id}/wechat-ilink/login"
+      body: "*"
+    };
+  }
+  rpc WechatILinkPoll(WechatILinkPollRequest) returns (WechatILinkPollResponse) {
+    option (google.api.http) = {
+      post: "/v1/channels/{channel_id}/wechat-ilink/poll"
+      body: "*"
+    };
   }
 }

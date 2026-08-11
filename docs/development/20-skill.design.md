@@ -828,6 +828,26 @@ Data 侧关键实现：
 - `rewriteSkillTagReferences` — 在事务内用 `MetadataJSONContainsFold(target)` 预筛候选行，逐行重写 `tags` 键（`rewriteMetadataTags` 保留其他键），命中才 UPDATE。
 - Rename 合并语义：目标名已收录时删除源字典行；未收录时原地改名。两种情况都继续执行引用重写。
 
+### 6.12 Agent Case 经验记忆（P3 M2，EverOS Agent Memory 启发）
+
+**定位**：User Memory（L3 facts）理解用户；Agent Case 理解任务。会话结束后由 AutoMemoryWorker 在用户记忆提取之后追加提取，产出结构化经验（goal/approach/outcome/pitfalls/tools_used），供 M3 召回注入与 M4 case→skill 蒸馏消费。
+
+**存储**：`memory_agent_cases` 表（DDL 迁移 `20261207`，raw SQL 管理，不进 Ent Schema）。幂等锚点 `UNIQUE(agent_id, source_session_id)`——重复提取/重试覆盖更新而非新增重复行；`INDEX(agent_id, outcome)` 供 M3 召回过滤。Data 实现 `internal/data/memory_agent_case.go`（`NewMemoryAgentCaseStore`，raw SQL + `RWDB()` 读写分离 + `entErrToBizErr` 翻译）。
+
+**biz 端口**（`internal/biz/agent_case.go`）：
+
+- `AgentCaseReader.GetAgentCaseBySession` — 幂等守卫，无记录返回 `(nil, nil)`。
+- `AgentCaseWriter.UpsertAgentCase` — 空 goal/agentID 静默拒绝（无 goal 的 Case 是噪声）。
+- `AgentCaseExtractor.ExtractCase` — 返回 `ErrAgentCaseSkip` 表示会话无提取价值（闲聊/单轮问答），整条跳过不落启发式；其他错误降级启发式。
+- `ShouldExtractAgentCase` — 零成本预过滤：user 消息 <2 条或总内容 <200 字符直接跳过，省 LLM 成本。
+- `HeuristicAgentCase` — LLM 不可用时的保底：goal 取首条 user 消息（截 120 字符），outcome 按末条是否 assistant 回复判定 success/partial，tools_used 从工具消息去重收集；approach/pitfalls 留空（启发式无法可靠推断，宁缺毋滥）。
+
+**LLM 提取器**（`internal/service/agent_case_llm_extractor.go`）：`AgentCaseLLMExtractor` 复用 `MemoryLLMExtractor` 的 provider 路由 LLM 通道（同一实例注入，不另建调用链）。System prompt 显式要求 Agent 自我改进视角、排除用户画像（那是用户记忆管线职责）；输出严格 JSON，`{"skip":true}` 映射 `ErrAgentCaseSkip`。
+
+**Worker 接线**（`internal/cronrunner/jobs/auto_memory.go` `extractAgentCase`）：在主提取流程（facts/episode）完成后追加，复用同一 `ConsolidateInput`；`tools_used` 由 Worker 从 `ChatMessage.OptionsJSON` 解析 `tool_name` 填充 `ConsolidateMessage.ToolName`（Activity 适配器在 role=tool 时写入）。幂等读失败按未提取继续（重试安全）；Case 写入失败只 Warn，主流程与 job 结果不受影响。流程日志 step `memory.auto.case_extract`。
+
+**Wire 装配**：`data.NewMemoryAgentCaseStore` 同实例绑定 `AgentCaseReader`/`AgentCaseWriter`；`service.NewAgentCaseLLMExtractor(memoryLLMExtractor)` 绑定 `AgentCaseExtractor`；三者注入 `provideAutoMemoryWorker`。全部 nil 时 Case 分支整体跳过（legacy 行为）。
+
 ---
 
 ## 七、运行时层

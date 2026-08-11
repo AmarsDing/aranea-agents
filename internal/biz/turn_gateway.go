@@ -44,6 +44,15 @@ type TurnControlGateway interface {
 
 	// EscalateSessionRun escalates a specific session run to background.
 	EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error)
+
+	// ConfirmToolGateForCard resolves a tool-blocked confirm step from a channel
+	// card action. replyToken 为 serviceawaitreply 结构化 token；归属校验由调用方
+	// 的渠道 peer 绑定完成，此处仅校验 step 归属与状态机。
+	ConfirmToolGateForCard(ctx context.Context, sessionID, stepID, replyToken string) (accepted bool, reply string)
+
+	// SubmitClarificationForCard submits clarification answers from a channel
+	// card action. 语义同 SubmitClarification RPC（无 ctxuser 校验）。
+	SubmitClarificationForCard(ctx context.Context, sessionID, stepID string, answers []ClarificationAnswer) (reply string, err error)
 }
 
 // PendingMessageGateway is the narrow interface for pending message operations.

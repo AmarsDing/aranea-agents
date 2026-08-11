@@ -176,20 +176,6 @@ function baseFields(type: string, catalog: ChannelTypeCatalog | null): ChannelPl
           kind: 'password',
           required: true,
         },
-        {
-          museKey: 'slack_app_token',
-          bind: { source: 'credential', key: 'app_token' },
-          kind: 'password',
-          hint: 'channelEditor.hints.slackSocketMode',
-        },
-        {
-          museKey: 'signing_secret',
-          bind: { source: 'credential', key: 'signing_secret' },
-          kind: 'password',
-          required: true,
-        },
-      );
-      break;
     case 'telegram':
       fields.push({
         museKey: 'telegram_bot_token',

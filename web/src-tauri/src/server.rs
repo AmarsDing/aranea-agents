@@ -29,8 +29,8 @@ use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message as WsMsg
 
 use crate::config::{self, BackendConfig};
 
-const DEFAULT_DESKTOP_HTTP: &str = "http://127.0.0.1:8000";
-const DEFAULT_DESKTOP_WS: &str = "ws://127.0.0.1:8000";
+const DEFAULT_DESKTOP_HTTP: &str = "http://127.0.0.1:8800";
+const DEFAULT_DESKTOP_WS: &str = "ws://127.0.0.1:8800";
 
 /// True when compiled for Android (mobile entry point).
 const IS_ANDROID: bool = cfg!(target_os = "android");
@@ -39,7 +39,7 @@ const IS_ANDROID: bool = cfg!(target_os = "android");
 /// `assets/config/runtime-config.json`. Desktop only — Android serves `{}`
 /// so the SPA talks to the embedded proxy same-origin (see runtime.ts).
 const DESKTOP_RUNTIME_CONFIG: &str =
-    r#"{"backendUrl":"http://127.0.0.1:8000","wsOrigin":"http://127.0.0.1:8000"}"#;
+    r#"{"backendUrl":"http://127.0.0.1:8800","wsOrigin":"http://127.0.0.1:8800"}"#;
 
 /// Shared runtime state: the upstream backend can be (re)configured at
 /// runtime via the loopback-only `/__local/backend-config` endpoints.
@@ -372,8 +372,8 @@ mod tests {
     #[test]
     fn resolve_upstream_desktop_falls_back_to_local_backend() {
         let (http, ws) = resolve_upstream(None, false).expect("desktop fallback");
-        assert_eq!(http, "http://127.0.0.1:8000");
-        assert_eq!(ws, "ws://127.0.0.1:8000");
+        assert_eq!(http, "http://127.0.0.1:8800");
+        assert_eq!(ws, "ws://127.0.0.1:8800");
     }
 
     #[test]
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn runtime_config_json_desktop_points_to_local_backend() {
         let json = runtime_config_json(false);
-        assert!(json.contains("127.0.0.1:8000"));
+        assert!(json.contains("127.0.0.1:8800"));
     }
 
     #[test]

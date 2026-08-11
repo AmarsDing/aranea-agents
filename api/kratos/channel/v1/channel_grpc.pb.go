@@ -33,6 +33,8 @@ const (
 	ChannelService_DeleteChannelCredential_FullMethodName  = "/kratos.channel.v1.ChannelService/DeleteChannelCredential"
 	ChannelService_ListChannelDeliveries_FullMethodName    = "/kratos.channel.v1.ChannelService/ListChannelDeliveries"
 	ChannelService_ListChannelTurnJobs_FullMethodName      = "/kratos.channel.v1.ChannelService/ListChannelTurnJobs"
+	ChannelService_WechatILinkLogin_FullMethodName         = "/kratos.channel.v1.ChannelService/WechatILinkLogin"
+	ChannelService_WechatILinkPoll_FullMethodName          = "/kratos.channel.v1.ChannelService/WechatILinkPoll"
 )
 
 // ChannelServiceClient is the client API for ChannelService service.
@@ -52,6 +54,8 @@ type ChannelServiceClient interface {
 	DeleteChannelCredential(ctx context.Context, in *DeleteChannelCredentialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListChannelDeliveries(ctx context.Context, in *ListChannelDeliveriesRequest, opts ...grpc.CallOption) (*ListChannelDeliveriesResponse, error)
 	ListChannelTurnJobs(ctx context.Context, in *ListChannelTurnJobsRequest, opts ...grpc.CallOption) (*ListChannelTurnJobsResponse, error)
+	WechatILinkLogin(ctx context.Context, in *WechatILinkLoginRequest, opts ...grpc.CallOption) (*WechatILinkLoginResponse, error)
+	WechatILinkPoll(ctx context.Context, in *WechatILinkPollRequest, opts ...grpc.CallOption) (*WechatILinkPollResponse, error)
 }
 
 type channelServiceClient struct {
@@ -192,6 +196,26 @@ func (c *channelServiceClient) ListChannelTurnJobs(ctx context.Context, in *List
 	return out, nil
 }
 
+func (c *channelServiceClient) WechatILinkLogin(ctx context.Context, in *WechatILinkLoginRequest, opts ...grpc.CallOption) (*WechatILinkLoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WechatILinkLoginResponse)
+	err := c.cc.Invoke(ctx, ChannelService_WechatILinkLogin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *channelServiceClient) WechatILinkPoll(ctx context.Context, in *WechatILinkPollRequest, opts ...grpc.CallOption) (*WechatILinkPollResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WechatILinkPollResponse)
+	err := c.cc.Invoke(ctx, ChannelService_WechatILinkPoll_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChannelServiceServer is the server API for ChannelService service.
 // All implementations must embed UnimplementedChannelServiceServer
 // for forward compatibility.
@@ -209,6 +233,8 @@ type ChannelServiceServer interface {
 	DeleteChannelCredential(context.Context, *DeleteChannelCredentialRequest) (*emptypb.Empty, error)
 	ListChannelDeliveries(context.Context, *ListChannelDeliveriesRequest) (*ListChannelDeliveriesResponse, error)
 	ListChannelTurnJobs(context.Context, *ListChannelTurnJobsRequest) (*ListChannelTurnJobsResponse, error)
+	WechatILinkLogin(context.Context, *WechatILinkLoginRequest) (*WechatILinkLoginResponse, error)
+	WechatILinkPoll(context.Context, *WechatILinkPollRequest) (*WechatILinkPollResponse, error)
 	mustEmbedUnimplementedChannelServiceServer()
 }
 
@@ -257,6 +283,12 @@ func (UnimplementedChannelServiceServer) ListChannelDeliveries(context.Context, 
 }
 func (UnimplementedChannelServiceServer) ListChannelTurnJobs(context.Context, *ListChannelTurnJobsRequest) (*ListChannelTurnJobsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListChannelTurnJobs not implemented")
+}
+func (UnimplementedChannelServiceServer) WechatILinkLogin(context.Context, *WechatILinkLoginRequest) (*WechatILinkLoginResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WechatILinkLogin not implemented")
+}
+func (UnimplementedChannelServiceServer) WechatILinkPoll(context.Context, *WechatILinkPollRequest) (*WechatILinkPollResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method WechatILinkPoll not implemented")
 }
 func (UnimplementedChannelServiceServer) mustEmbedUnimplementedChannelServiceServer() {}
 func (UnimplementedChannelServiceServer) testEmbeddedByValue()                        {}
@@ -513,6 +545,42 @@ func _ChannelService_ListChannelTurnJobs_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChannelService_WechatILinkLogin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WechatILinkLoginRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChannelServiceServer).WechatILinkLogin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChannelService_WechatILinkLogin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChannelServiceServer).WechatILinkLogin(ctx, req.(*WechatILinkLoginRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChannelService_WechatILinkPoll_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WechatILinkPollRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChannelServiceServer).WechatILinkPoll(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChannelService_WechatILinkPoll_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChannelServiceServer).WechatILinkPoll(ctx, req.(*WechatILinkPollRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChannelService_ServiceDesc is the grpc.ServiceDesc for ChannelService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -571,6 +639,14 @@ var ChannelService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListChannelTurnJobs",
 			Handler:    _ChannelService_ListChannelTurnJobs_Handler,
+		},
+		{
+			MethodName: "WechatILinkLogin",
+			Handler:    _ChannelService_WechatILinkLogin_Handler,
+		},
+		{
+			MethodName: "WechatILinkPoll",
+			Handler:    _ChannelService_WechatILinkPoll_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

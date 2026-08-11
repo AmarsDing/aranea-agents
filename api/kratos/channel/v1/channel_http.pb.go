@@ -33,6 +33,8 @@ const OperationChannelServiceTestChannel = "/kratos.channel.v1.ChannelService/Te
 const OperationChannelServiceToggleChannel = "/kratos.channel.v1.ChannelService/ToggleChannel"
 const OperationChannelServiceUpdateChannel = "/kratos.channel.v1.ChannelService/UpdateChannel"
 const OperationChannelServiceUpsertChannelCredentials = "/kratos.channel.v1.ChannelService/UpsertChannelCredentials"
+const OperationChannelServiceWechatILinkLogin = "/kratos.channel.v1.ChannelService/WechatILinkLogin"
+const OperationChannelServiceWechatILinkPoll = "/kratos.channel.v1.ChannelService/WechatILinkPoll"
 
 type ChannelServiceHTTPServer interface {
 	CreateChannel(context.Context, *CreateChannelRequest) (*Channel, error)
@@ -48,6 +50,8 @@ type ChannelServiceHTTPServer interface {
 	ToggleChannel(context.Context, *ToggleChannelRequest) (*Channel, error)
 	UpdateChannel(context.Context, *UpdateChannelRequest) (*Channel, error)
 	UpsertChannelCredentials(context.Context, *UpsertChannelCredentialsRequest) (*ListChannelCredentialsResponse, error)
+	WechatILinkLogin(context.Context, *WechatILinkLoginRequest) (*WechatILinkLoginResponse, error)
+	WechatILinkPoll(context.Context, *WechatILinkPollRequest) (*WechatILinkPollResponse, error)
 }
 
 func RegisterChannelServiceHTTPServer(s *http.Server, srv ChannelServiceHTTPServer) {
@@ -65,6 +69,8 @@ func RegisterChannelServiceHTTPServer(s *http.Server, srv ChannelServiceHTTPServ
 	r.DELETE("/v1/channels/{channel_id}/credentials/{credential_key}", _ChannelService_DeleteChannelCredential0_HTTP_Handler(srv))
 	r.GET("/v1/channels/{id}/deliveries", _ChannelService_ListChannelDeliveries0_HTTP_Handler(srv))
 	r.GET("/v1/channels/{id}/turn-jobs", _ChannelService_ListChannelTurnJobs0_HTTP_Handler(srv))
+	r.POST("/v1/channels/{channel_id}/wechat-ilink/login", _ChannelService_WechatILinkLogin0_HTTP_Handler(srv))
+	r.POST("/v1/channels/{channel_id}/wechat-ilink/poll", _ChannelService_WechatILinkPoll0_HTTP_Handler(srv))
 }
 
 func _ChannelService_ListChannelTypes0_HTTP_Handler(srv ChannelServiceHTTPServer) func(ctx http.Context) error {
@@ -359,6 +365,56 @@ func _ChannelService_ListChannelTurnJobs0_HTTP_Handler(srv ChannelServiceHTTPSer
 	}
 }
 
+func _ChannelService_WechatILinkLogin0_HTTP_Handler(srv ChannelServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in WechatILinkLoginRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationChannelServiceWechatILinkLogin)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.WechatILinkLogin(ctx, req.(*WechatILinkLoginRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*WechatILinkLoginResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _ChannelService_WechatILinkPoll0_HTTP_Handler(srv ChannelServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in WechatILinkPollRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationChannelServiceWechatILinkPoll)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.WechatILinkPoll(ctx, req.(*WechatILinkPollRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*WechatILinkPollResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type ChannelServiceHTTPClient interface {
 	CreateChannel(ctx context.Context, req *CreateChannelRequest, opts ...http.CallOption) (rsp *Channel, err error)
 	DeleteChannel(ctx context.Context, req *DeleteChannelRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
@@ -373,6 +429,8 @@ type ChannelServiceHTTPClient interface {
 	ToggleChannel(ctx context.Context, req *ToggleChannelRequest, opts ...http.CallOption) (rsp *Channel, err error)
 	UpdateChannel(ctx context.Context, req *UpdateChannelRequest, opts ...http.CallOption) (rsp *Channel, err error)
 	UpsertChannelCredentials(ctx context.Context, req *UpsertChannelCredentialsRequest, opts ...http.CallOption) (rsp *ListChannelCredentialsResponse, err error)
+	WechatILinkLogin(ctx context.Context, req *WechatILinkLoginRequest, opts ...http.CallOption) (rsp *WechatILinkLoginResponse, err error)
+	WechatILinkPoll(ctx context.Context, req *WechatILinkPollRequest, opts ...http.CallOption) (rsp *WechatILinkPollResponse, err error)
 }
 
 type ChannelServiceHTTPClientImpl struct {
@@ -546,6 +604,32 @@ func (c *ChannelServiceHTTPClientImpl) UpsertChannelCredentials(ctx context.Cont
 	opts = append(opts, http.Operation(OperationChannelServiceUpsertChannelCredentials))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ChannelServiceHTTPClientImpl) WechatILinkLogin(ctx context.Context, in *WechatILinkLoginRequest, opts ...http.CallOption) (*WechatILinkLoginResponse, error) {
+	var out WechatILinkLoginResponse
+	pattern := "/v1/channels/{channel_id}/wechat-ilink/login"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationChannelServiceWechatILinkLogin))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *ChannelServiceHTTPClientImpl) WechatILinkPoll(ctx context.Context, in *WechatILinkPollRequest, opts ...http.CallOption) (*WechatILinkPollResponse, error) {
+	var out WechatILinkPollResponse
+	pattern := "/v1/channels/{channel_id}/wechat-ilink/poll"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationChannelServiceWechatILinkPoll))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

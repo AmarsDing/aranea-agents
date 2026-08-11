@@ -95,7 +95,7 @@ func caseTestRequest() memtrpc.AutoMemoryJobRequest {
 func TestAutoMemoryWorker_ExtractsAgentCase(t *testing.T) {
 	store := &fakeCaseStore{}
 	ext := &stubCaseExtractor{c: &biz.AgentCase{
-		Goal:     "定位接口超时", Approach: "查慢查询日志", Outcome: biz.AgentCaseOutcomeSuccess,
+		Goal: "定位接口超时", Approach: "查慢查询日志", Outcome: biz.AgentCaseOutcomeSuccess,
 		ToolsUsed: []string{"query_db"}, Quality: 0.9,
 	}}
 	w := newCaseTestWorker(t, store, ext)

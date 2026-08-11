@@ -58,6 +58,8 @@ func defaultReceiveMode(channelType string) string {
 		return "event"
 	case "telegram":
 		return "webhook"
+	case "wechat_ilink":
+		return "polling"
 	case "discord":
 		return "gateway"
 	case "personal_qq":

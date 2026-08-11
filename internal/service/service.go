@@ -109,6 +109,9 @@ var ProviderSet = wire.NewSet(
 	NewMemoryEnhancedExtractor,
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
 	wire.Bind(new(biz.EnhancedTextExtractor), new(*MemoryEnhancedExtractor)),
+	// P3 M2: Agent Case LLM 提取器（复用 MemoryLLMExtractor 的 LLM 通道）。
+	NewAgentCaseLLMExtractor,
+	wire.Bind(new(biz.AgentCaseExtractor), new(*AgentCaseLLMExtractor)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Dependency inversion: bind concrete types to biz ports for TeamService
 	wire.Bind(new(biz.TeamTurnRunnerPort), new(*team.Runner)),

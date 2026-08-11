@@ -437,7 +437,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	serviceSessionService := service.NewSessionService(sessionUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
 	cronTriggerGateway := service.NewCronTriggerGatewayAdapter(cronService)
 	turnAdmissionUsecase := provideChannelIngressAdmission(usageUsecase, agentRepository, channelUsecase)
-	channelIngress := provideChannelIngress(channelUsecase, channelTurnJobUsecase, sessionUsecase, chatService, graphService, cronTriggerGateway, v2Bus, monitorBus, turnAdmissionUsecase, teamCompiler, loggatewayLogger)
+	channelGateCards := provideChannelGateCards(v2Bus, sessionUsecase, channelUsecase, chatService, stepV2Repo, loggatewayLogger)
+	channelIngress := provideChannelIngress(channelUsecase, channelTurnJobUsecase, sessionUsecase, chatService, graphService, cronTriggerGateway, v2Bus, monitorBus, turnAdmissionUsecase, teamCompiler, channelGateCards, loggatewayLogger)
 	channelRuntimeLeaseRepo := data.NewChannelRuntimeLeaseRepo(dataData)
 	channelRuntime := provideChannelRuntime(channelUsecase, channelIngress, channelRuntimeLeaseRepo, router, loggatewayLogger)
 	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, monitorUsecase, loggatewayLogger)
@@ -592,7 +593,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
@@ -600,7 +601,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
 	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, loggatewayLogger)
+	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
+	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, loggatewayLogger)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -1785,6 +1788,9 @@ func provideAutoMemoryWorker(
 	workerStats *biz.MemoryWorkerStats,
 	monitorBus contract.MonitorBus,
 	factPipeline *biz.FactWritePipeline,
+	caseExtractor biz.AgentCaseExtractor,
+	caseReader biz.AgentCaseReader,
+	caseWriter biz.AgentCaseWriter,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
@@ -1802,6 +1808,9 @@ func provideAutoMemoryWorker(
 		Stats:          workerStats,
 		MonitorBus:     monitorBus,
 		FactPipeline:   factPipeline,
+		CaseExtractor:  caseExtractor,
+		CaseReader:     caseReader,
+		CaseWriter:     caseWriter,
 		Logger:         lg,
 	})
 }
@@ -1930,13 +1939,29 @@ func provideChannelIngress(
 	monitorBus contract.MonitorBus,
 	admission *biz.TurnAdmissionUsecase,
 	teamCompiler biz.TeamCompiler,
+	gateCards *service.ChannelGateCards,
 	lg loggateway.Logger,
 ) *service.ChannelIngress {
 	dedupe := biz.NewIngressMessageDedupe(biz.DefaultMessageDedupeTTL)
 	debouncer := biz.NewIngressPeerDebouncer(biz.DefaultIngressDebounce, lg)
 	registry := biz.NewTurnPreviewRegistry()
 	gate := biz.NewChannelConcurrentGate()
-	return service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron2, eventBus, monitorBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	ingress := service.NewChannelIngress(channels, turnJobs, sessions, chat, graphs, cron2, eventBus, monitorBus, dedupe, debouncer, registry, gate, admission, teamCompiler, lg)
+	ingress.SetGateCards(gateCards)
+	return ingress
+}
+
+// provideChannelGateCards 构建渠道交互门卡片管理器（确认/澄清卡片的订阅、
+// 发送、跟踪与 PATCH）。生命周期 Start 在 app.go readiness 后挂载。
+func provideChannelGateCards(
+	eventBus biz.EventBus,
+	sessions *biz.SessionUsecase,
+	channels *biz.ChannelUsecase,
+	chat biz.ChannelTurnGateway,
+	steps biz.StepV2Reader,
+	lg loggateway.Logger,
+) *service.ChannelGateCards {
+	return service.NewChannelGateCards(eventBus, sessions, channels, chat, steps, lg)
 }
 
 func provideChannelIngressAdmission(

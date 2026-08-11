@@ -165,6 +165,16 @@ func init() {
 			SupportsLightTest: true,
 		},
 		{
+			TypeItem:            wechatILinkTypeItem(),
+			RequiredCredentials: []string{"bot_token"},
+			CredentialProps: []CredentialProperty{
+				{Key: "bot_token", Title: "wechat_ilink_bot_token", Format: "password", Required: true},
+				{Key: "baseurl", Title: "wechat_ilink_baseurl", Format: "password", Required: false},
+				{Key: "ilink_user_id", Title: "wechat_ilink_user_id", Format: "password", Required: false},
+			},
+			SupportsLightTest: true,
+		},
+		{
 			TypeItem:            slackTypeItem(),
 			RequiredCredentials: []string{"bot_token", "signing_secret"},
 			CredentialProps: []CredentialProperty{

@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/channel/teams"
 	"aranea-agents/internal/channel/telegram"
 	"aranea-agents/internal/channel/wechat"
+	"aranea-agents/internal/channel/wechatilink"
 	"aranea-agents/internal/channel/wecom"
 
 	"aranea-agents/pkg/apierror"
@@ -51,6 +52,7 @@ func init() {
 	registerPlatform("discord", outboundDiscord, nil)
 	registerPlatform("personal_qq", outboundPersonalQQ, nil)
 	registerPlatform("wechat", outboundWechat, nil)
+	registerPlatform("wechat_ilink", outboundWechatILink, nil)
 	registerPlatform("qq", outboundQQ, nil)
 	registerPlatform("line", outboundLine, streamLine)
 	registerPlatform("mattermost", outboundMattermost, streamMattermost)
@@ -148,6 +150,21 @@ func outboundWechat(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 		AppID:     appID,
 		AppSecret: appSecret,
 		HTTP:      h.http,
+	}).SendText(ctx, payload.Recipient, payload.Text)
+}
+
+func outboundWechatILink(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token", h.lg)
+	if err != nil {
+		return err
+	}
+	baseURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "baseurl", h.lg) // optional
+	return (&wechatilink.TextSender{
+		BotToken:     token,
+		BaseURL:      baseURL,
+		ContextToken: payload.Extra["context_token"],
+		HTTP:         h.http,
+		Lg:           h.lg,
 	}).SendText(ctx, payload.Recipient, payload.Text)
 }
 

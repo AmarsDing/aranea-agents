@@ -59,6 +59,21 @@ func wechatTypeItem() ChannelTypeItem {
 	return channelTypeItem("wechat", "微信公众号", "国内", "webhook", "被动回复或客服 API；MuseBot wechat.go", 50, true, false, true)
 }
 
+func wechatILinkTypeItem() ChannelTypeItem {
+	item := channelTypeItem("wechat_ilink", "微信（个人号·iLink）", "国内", "polling",
+		"腾讯 iLink 官方 Bot API，扫码登录，支持私聊/群聊", 45, true, true, false)
+	item.ReceiveModes = []string{"polling"}
+	item.ConfigSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"group_enabled":   map[string]any{"type": "boolean", "default": false},
+			"require_mention": map[string]any{"type": "boolean", "default": true},
+			"bot_nickname":    map[string]any{"type": "string", "default": ""},
+		},
+	}
+	return item
+}
+
 func slackTypeItem() ChannelTypeItem {
 	item := channelTypeItem("slack", "Slack", "办公协作", "event", "Events API 或 Socket Mode；MuseBot slack.go", 60, true, true, true)
 	item.ReceiveModes = []string{"event", "socket_mode"}
