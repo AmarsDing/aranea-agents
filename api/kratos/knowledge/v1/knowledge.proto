@@ -410,6 +410,21 @@ message DeleteDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// ReembedDocumentsRequest re-chunks and re-embeds documents from their stored
+// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+message ReembedDocumentsRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string doc_ids = 2;  // 空 = 全集合待重嵌入文档（chunks embedding IS NULL 或无 chunks）
+  int32 chunk_size = 3;
+  int32 chunk_overlap = 4;
+}
+
+message ReembedDocumentsResponse {
+  int32 accepted_count = 1;  // 已受理进入重嵌入队列的文档数
+  int32 skipped_count = 2;   // 跳过数（content_text 空 / 正在 indexing / vault 文档走 sync 自愈）
+}
+
 // MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
 // Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
 message MoveDocumentRequest {
@@ -553,6 +568,15 @@ service KnowledgeService {
   rpc MoveDocumentToDir(MoveDocumentToDirRequest) returns (KnowledgeDocument) {
     option (google.api.http) = {
       post: "/v1/knowledge/documents/{id}/move_to_dir"
+      body: "*"
+    };
+  }
+  // ReembedDocuments re-chunks and re-embeds documents from their stored
+  // content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+  // reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+  rpc ReembedDocuments(ReembedDocumentsRequest) returns (ReembedDocumentsResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/collections/{collection_id}/documents:reembed"
       body: "*"
     };
   }

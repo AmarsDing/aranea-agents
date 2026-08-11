@@ -45,6 +45,7 @@ const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.Knowled
 const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 const OperationKnowledgeServiceRecordLinkUse = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
+const OperationKnowledgeServiceReembedDocuments = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -116,6 +117,10 @@ type KnowledgeServiceHTTPServer interface {
 	// RecordLinkUse RecordLinkUse upserts the (collection, doc) recency row when a wikilink
 	// completion is applied (B4 #8); best-effort, callers may ignore failures.
 	RecordLinkUse(context.Context, *RecordLinkUseRequest) (*RecordLinkUseResponse, error)
+	// ReembedDocuments ReembedDocuments re-chunks and re-embeds documents from their stored
+	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -137,6 +142,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.DELETE("/v1/knowledge/documents/{id}", _KnowledgeService_DeleteDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move", _KnowledgeService_MoveDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move_to_dir", _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/collections/{collection_id}/documents:reembed", _KnowledgeService_ReembedDocuments0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/documents/{id}/content", _KnowledgeService_UpdateDocumentContent0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/tree", _KnowledgeService_ListVaultTree0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/dirs", _KnowledgeService_CreateVaultDir0_HTTP_Handler(srv))
@@ -374,6 +380,31 @@ func _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv KnowledgeServiceHTTPS
 			return err
 		}
 		reply := out.(*KnowledgeDocument)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ReembedDocuments0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ReembedDocumentsRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceReembedDocuments)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ReembedDocuments(ctx, req.(*ReembedDocumentsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ReembedDocumentsResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -878,6 +909,10 @@ type KnowledgeServiceHTTPClient interface {
 	// RecordLinkUse RecordLinkUse upserts the (collection, doc) recency row when a wikilink
 	// completion is applied (B4 #8); best-effort, callers may ignore failures.
 	RecordLinkUse(ctx context.Context, req *RecordLinkUseRequest, opts ...http.CallOption) (rsp *RecordLinkUseResponse, err error)
+	// ReembedDocuments ReembedDocuments re-chunks and re-embeds documents from their stored
+	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+	ReembedDocuments(ctx context.Context, req *ReembedDocumentsRequest, opts ...http.CallOption) (rsp *ReembedDocumentsResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -1253,6 +1288,22 @@ func (c *KnowledgeServiceHTTPClientImpl) RecordLinkUse(ctx context.Context, in *
 	pattern := "/v1/knowledge/collections/{collection_id}/link-uses"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceRecordLinkUse))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ReembedDocuments ReembedDocuments re-chunks and re-embeds documents from their stored
+// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+func (c *KnowledgeServiceHTTPClientImpl) ReembedDocuments(ctx context.Context, in *ReembedDocumentsRequest, opts ...http.CallOption) (*ReembedDocumentsResponse, error) {
+	var out ReembedDocumentsResponse
+	pattern := "/v1/knowledge/collections/{collection_id}/documents:reembed"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceReembedDocuments))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

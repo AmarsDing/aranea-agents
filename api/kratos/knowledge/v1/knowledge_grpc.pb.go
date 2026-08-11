@@ -30,6 +30,7 @@ const (
 	KnowledgeService_DeleteDocument_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
 	KnowledgeService_MoveDocument_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 	KnowledgeService_MoveDocumentToDir_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
+	KnowledgeService_ReembedDocuments_FullMethodName           = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
 	KnowledgeService_UpdateDocumentContent_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 	KnowledgeService_ListVaultTree_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 	KnowledgeService_CreateVaultDir_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
@@ -70,6 +71,10 @@ type KnowledgeServiceClient interface {
 	// inbound explicit links rebuild. Name clash -> CodeConflict unless
 	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
 	MoveDocumentToDir(ctx context.Context, in *MoveDocumentToDirRequest, opts ...grpc.CallOption) (*KnowledgeDocument, error)
+	// ReembedDocuments re-chunks and re-embeds documents from their stored
+	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+	ReembedDocuments(ctx context.Context, in *ReembedDocumentsRequest, opts ...grpc.CallOption) (*ReembedDocumentsResponse, error)
 	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -231,6 +236,16 @@ func (c *knowledgeServiceClient) MoveDocumentToDir(ctx context.Context, in *Move
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(KnowledgeDocument)
 	err := c.cc.Invoke(ctx, KnowledgeService_MoveDocumentToDir_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ReembedDocuments(ctx context.Context, in *ReembedDocumentsRequest, opts ...grpc.CallOption) (*ReembedDocumentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReembedDocumentsResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ReembedDocuments_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -437,6 +452,10 @@ type KnowledgeServiceServer interface {
 	// inbound explicit links rebuild. Name clash -> CodeConflict unless
 	// conflict_policy=overwrite|rename. Vault documents only (rel_path required).
 	MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error)
+	// ReembedDocuments re-chunks and re-embeds documents from their stored
+	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
 	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -533,6 +552,9 @@ func (UnimplementedKnowledgeServiceServer) MoveDocument(context.Context, *MoveDo
 }
 func (UnimplementedKnowledgeServiceServer) MoveDocumentToDir(context.Context, *MoveDocumentToDirRequest) (*KnowledgeDocument, error) {
 	return nil, status.Error(codes.Unimplemented, "method MoveDocumentToDir not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReembedDocuments not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDocumentContent not implemented")
@@ -785,6 +807,24 @@ func _KnowledgeService_MoveDocumentToDir_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).MoveDocumentToDir(ctx, req.(*MoveDocumentToDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ReembedDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReembedDocumentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ReembedDocuments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ReembedDocuments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ReembedDocuments(ctx, req.(*ReembedDocumentsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1159,6 +1199,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MoveDocumentToDir",
 			Handler:    _KnowledgeService_MoveDocumentToDir_Handler,
+		},
+		{
+			MethodName: "ReembedDocuments",
+			Handler:    _KnowledgeService_ReembedDocuments_Handler,
 		},
 		{
 			MethodName: "UpdateDocumentContent",
