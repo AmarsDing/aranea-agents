@@ -29,6 +29,10 @@ type MemorySet struct {
 	// use_count + Hebbian reinforcement) when entities are recalled into the
 	// prompt (design §15.7, FR-10.5). Optional: nil disables the trigger.
 	Reconsolidator biz.L4Reconsolidator
+	// AgentCaseRecaller feeds the task-experience case block (P3 M3): the
+	// agent's distilled goal/approach/pitfalls from past sessions, merged
+	// into the recall cue alongside L2/L3. Optional: nil skips case recall.
+	AgentCaseRecaller biz.AgentCaseRecaller
 }
 
 func (s MemorySet) Available() bool {

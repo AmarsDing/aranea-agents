@@ -45,7 +45,7 @@ func ResolvePublicBaseURL(in PublicBaseURLInput) PublicBaseURLResult {
 	}
 	host := normalizeListenHost(strings.TrimSpace(in.HTTPAddr))
 	if host == "" {
-		host = "127.0.0.1:8000"
+		host = "127.0.0.1:8800"
 	}
 	return PublicBaseURLResult{
 		URL:    fmt.Sprintf("http://%s%s", host, prefix),

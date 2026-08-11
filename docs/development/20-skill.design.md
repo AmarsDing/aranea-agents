@@ -848,6 +848,14 @@ Data 侧关键实现：
 
 **Wire 装配**：`data.NewMemoryAgentCaseStore` 同实例绑定 `AgentCaseReader`/`AgentCaseWriter`；`service.NewAgentCaseLLMExtractor(memoryLLMExtractor)` 绑定 `AgentCaseExtractor`；三者注入 `provideAutoMemoryWorker`。全部 nil 时 Case 分支整体跳过（legacy 行为）。
 
+**召回注入（P3 M3）**：
+
+- **biz 端口**：`AgentCaseRecaller.RecallAgentCases(ctx, agentID, query, limit)`（`internal/biz/agent_case.go`）。query 为空时实现返回最近高质量 Case；limit 由调用方给上限。
+- **data 实现**（`memoryAgentCaseRepo.RecallAgentCases`）：query 非空走 pg_trgm `word_similarity(query, goal||approach||pitfalls||outcome_summary)` + `%>` 操作符（2026-08-10 中文短查询根修的同一惯用法，避免 `similarity()` 分母稀释）。注意 `%>` 匹配的是**文本连续区间**的最大相似度：中文查询须为 Case 文本的连续子串方可命中（psql 实测"批量导入"命中，非连续 token 组合"导入数据"仅 0.2 不命中）；无命中时返回空（合法的"无相关经验"），由调用方接受无 Case 块。query 为空或 trigram 查询出错时降级为 `quality DESC, updated_at DESC` 的最近高质量 Case——trigram 失败只 Warn 不返回错误，召回 best-effort 绝不阻断 turn。
+- **prompt 注入**（`internal/agent/case_prompt.go` `CaseMemoryCue`）：每 turn 最多注入 3 条（`caseRecallMax`），单字段截 120 字符；渲染 `## 任务经验（该 Agent 的历史案例）` 块，success 行展示 goal+approach、failure 行展示 goal+pitfalls，带 `[SUCCESS]/[PARTIAL]/[FAILURE]` 结局标记。nil recaller / 召回错误 / 空结果一律返回 `""`。
+- **管线位置**（`memory_inject.go` `buildRuntimeMemoryCue`）：与 L2/L3 并列、位于 L4 之前并入 `recallParts`，复用统一预算截断（`JoinCuesWithBudget`）与末尾追加（前缀稳定）。
+- **接线**：`rt.MemorySet.AgentCaseRecaller` ← `data.NewMemoryAgentCaseStore(d)`（`providePersistenceSet`），6 个 `TRPCMemoryKnowledgeDeps` 消费点（wire.go ×2、chat_orch_agent_build、openai_compat、a2a_endpoint、runner_team_trpc_phases）透传；nil 时 Case 块整体跳过。
+
 ---
 
 ## 七、运行时层

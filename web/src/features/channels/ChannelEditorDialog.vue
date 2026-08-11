@@ -218,6 +218,48 @@
                 </channel-config-row>
               </div>
 
+              <div v-if="section.id === 'base' && selectedType === 'wechat_ilink'" class="channel-wechat-ilink q-mt-md">
+                <div class="channel-wechat-ilink__title">{{ t('channelEditor.wechatILink.title') }}</div>
+                <template v-if="row?.id">
+                  <div v-if="wechatILink.status === 'idle' || wechatILink.status === 'error'">
+                    <q-btn
+                      outline
+                      no-caps
+                      color="primary"
+                      icon="qr_code_2"
+                      :label="t('channelEditor.wechatILink.start')"
+                      @click="startWechatILinkLogin"
+                    />
+                    <div v-if="wechatILink.status === 'error'" class="text-negative text-caption q-mt-xs">
+                      {{ t('channelEditor.wechatILink.error', { msg: wechatILink.errorMsg }) }}
+                    </div>
+                  </div>
+                  <div v-else-if="wechatILink.status === 'wait'" class="channel-wechat-ilink__qrcode">
+                    <img v-if="wechatILink.qrcode" :src="wechatILink.qrcode" alt="wechat ilink qrcode" />
+                    <div class="text-caption text-grey-7 q-mt-xs">
+                      {{ t('channelEditor.wechatILink.waiting') }}
+                    </div>
+                  </div>
+                  <div v-else-if="wechatILink.status === 'confirmed'" class="row items-center no-wrap q-gutter-xs">
+                    <q-icon name="check_circle" color="positive" />
+                    <span>{{ t('channelEditor.wechatILink.confirmed') }}</span>
+                  </div>
+                  <div v-else-if="wechatILink.status === 'expired'" class="row items-center no-wrap q-gutter-xs">
+                    <q-icon name="error_outline" color="warning" />
+                    <span>{{ t('channelEditor.wechatILink.expired') }}</span>
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      color="primary"
+                      :label="t('channelEditor.wechatILink.restart')"
+                      @click="startWechatILinkLogin"
+                    />
+                  </div>
+                </template>
+                <div v-else class="text-caption text-grey-7">{{ t('channelEditor.wechatILink.needSave') }}</div>
+              </div>
+
               <q-banner
                 v-if="section.id === 'connection' && webhookIsLocalhost"
                 dense
@@ -382,6 +424,8 @@ const {
   save,
   saveAndTest,
   copyWebhookPreview,
+  wechatILink,
+  startWechatILinkLogin,
 } = useChannelEditorForm(props, toRef(props, 'modelValue'), emit);
 
 const {
@@ -406,3 +450,23 @@ function sectionDomId(id: string) {
 
 const { refreshingIcons, refreshPlatformIcons } = useChannelIconRefresh();
 </script>
+
+<style scoped>
+.channel-wechat-ilink {
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+}
+
+.channel-wechat-ilink__title {
+  font-weight: 600;
+  margin-bottom: var(--space-2, 8px);
+}
+
+.channel-wechat-ilink__qrcode img {
+  max-width: 200px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+</style>

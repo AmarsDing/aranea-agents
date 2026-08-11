@@ -253,15 +253,15 @@ New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 $deployConfig = @"
 server:
   http:
-    addr: 0.0.0.0:8000
+    addr: 0.0.0.0:8800
     timeout: 0s
   grpc:
-    addr: 0.0.0.0:9000
+    addr: 0.0.0.0:9900
     timeout: 120s
   ws:
     enable: true
     network: tcp
-    addr: 0.0.0.0:8002
+    addr: 0.0.0.0:8802
   monitor:
     process_log_enabled: true
 data:
@@ -435,8 +435,9 @@ $readmeContent = @"
 
 | 端口 | 服务 |
 |------|------|
-| 8000 | 后端 HTTP / WebSocket (``/v1/ws``) |
-| 9000 | gRPC |
+| 8800 | 后端 HTTP / WebSocket (``/v1/ws``) |
+| 9900 | gRPC |
+| 8802 | WebSocket 独立端口 |
 | 5433 | PostgreSQL（便携版） |
 | 6379 | Redis |
 

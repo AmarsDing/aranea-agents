@@ -345,14 +345,14 @@ func detectRuntime(root string, log func(string, ...any)) *runtimeEnv {
 	}
 
 	// ports that must be free for backend
-	if tcpOpen("127.0.0.1", "8000", 200*time.Millisecond) {
+	if tcpOpen("127.0.0.1", "8800", 200*time.Millisecond) {
 		if healthy() {
-			env.add("Port 8000", checkInfo, "backend already running and healthy", false)
+			env.add("Port 8800", checkInfo, "backend already running and healthy", false)
 		} else {
-			env.add("Port 8000", checkWarn, "in use but /healthz not ready; launcher will try to take over", false)
+			env.add("Port 8800", checkWarn, "in use but /healthz not ready; launcher will try to take over", false)
 		}
 	} else {
-		env.add("Port 8000", checkOK, "available", false)
+		env.add("Port 8800", checkOK, "available", false)
 	}
 
 	_ = log

@@ -2663,7 +2663,18 @@ export default {
       allowedGroupIds:
         'Allowed group chat_ids (Feishu oc_xxx), JSON or comma-separated; leave empty for no restriction. DMs are not affected',
       requireMention: 'Require @bot mention in group chats (Feishu/DingTalk etc.)',
+      wechatILinkBotToken: 'Auto-filled after QR-code login; you can also paste an iLink bot_token manually',
       avatarIcon: 'Leave empty to use platform default icon',
+    },
+    wechatILink: {
+      title: 'WeChat QR-code Login',
+      needSave: 'Save the channel first; then scan the QR code to auto-fill the bot_token, or paste it manually',
+      start: 'Get Login QR Code',
+      restart: 'Refresh',
+      waiting: 'Scan with WeChat and confirm the login on your phone',
+      confirmed: 'Logged in — bot_token has been written to credentials',
+      expired: 'QR code expired. Please request a new one',
+      error: 'Login failed: {msg}',
     },
     sectionHints: {
       base: 'Instance identity and platform credentials (MuseBot snake_case field names)',

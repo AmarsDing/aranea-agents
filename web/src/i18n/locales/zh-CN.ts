@@ -2689,10 +2689,21 @@ export default {
     hints: {
       wechatActiveMode: '开启后走客服 API 主动回复',
       slackSocketMode: 'Socket Mode 必填',
+      wechatILinkBotToken: '扫码登录后自动写入，也可手动粘贴 iLink bot_token',
       allowedUserIds: '允许发消息的用户 ID，JSON 数组或逗号分隔；留空=不限制。飞书填 open_id（ou_xxx）或 user_id',
       allowedGroupIds: '允许响应的群 chat_id（飞书 oc_xxx），JSON 或逗号分隔；留空=不限制。单聊不受此字段约束',
       requireMention: `群聊需 {'@'} 机器人才响应（飞书/钉钉等）`,
       avatarIcon: '留空使用平台默认图标',
+    },
+    wechatILink: {
+      title: '微信扫码登录',
+      needSave: '请先保存渠道；保存后可扫码登录自动获取 bot_token，也可以手动粘贴',
+      start: '获取登录二维码',
+      restart: '重新获取',
+      waiting: '请使用微信扫码，并在手机上确认登录',
+      confirmed: '登录成功，bot_token 已自动写入凭证',
+      expired: '二维码已过期，请重新获取',
+      error: '登录失败：{msg}',
     },
     sectionHints: {
       base: '实例标识与平台凭据（字段名对齐 MuseBot snake_case）',

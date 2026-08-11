@@ -74,3 +74,17 @@ func writeState(channelID string, s *stateFile) error {
 	}
 	return nil
 }
+
+// CachedContextToken returns the last seen context_token for a peer, captured
+// by the polling loop. Used as send-path fallback when the outbound payload
+// does not carry a fresh context_token (e.g. proactive sends after restart).
+func CachedContextToken(channelID, userID string) string {
+	if channelID == "" || userID == "" {
+		return ""
+	}
+	s, err := readState(channelID)
+	if err != nil {
+		return ""
+	}
+	return s.ContextTokens[userID]
+}

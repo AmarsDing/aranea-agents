@@ -164,6 +164,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	hasDep = hasDep || (policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil)
 	hasDep = hasDep || (policy.InjectL3 && deps.MemoryPreferenceLister != nil)
 	hasDep = hasDep || (policy.InjectL3 && deps.MemoryProfileCardReader != nil)
+	hasDep = hasDep || deps.AgentCaseRecaller != nil
 	if !hasDep {
 		return nil
 	}
@@ -275,6 +276,10 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 				result.InjectedFactIDs = append(result.InjectedFactIDs, l3IDs...)
 			}
 		}
+	}
+	// P3 M3: Agent Case 召回（任务经验），与 L2/L3 并列、位于 L4 之前。
+	if caseCue := CaseMemoryCue(ctx, deps.AgentCaseRecaller, rt.AgentID, keyword); caseCue != "" {
+		recallParts = append(recallParts, caseCue)
 	}
 	if policy.InjectL4 {
 		if l4, entityIDs := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword, deps.LG); l4 != "" {

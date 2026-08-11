@@ -304,6 +304,8 @@ func providePersistenceSet(
 			ProfileCardReader: data.NewMemoryProfileCardStore(d),
 			FactInjectCounter: data.NewL3FactInjectCounter(d),
 			Reconsolidator:    reconsolidator,
+			// P3 M3: Agent Case 召回（任务经验），与 L2/L3 并列注入 recall cue。
+			AgentCaseRecaller: data.NewMemoryAgentCaseStore(d),
 		}
 		// Connect dead-letter sink so queue overflow is persisted instead of silently dropped.
 		if queue, ok := q.(*memtrpc.MemoryJobQueue); ok && deadLetterRepo != nil {

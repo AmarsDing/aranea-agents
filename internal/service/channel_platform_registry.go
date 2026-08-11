@@ -153,16 +153,22 @@ func outboundWechat(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 	}).SendText(ctx, payload.Recipient, payload.Text)
 }
 
-func outboundWechatILink(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+func outboundWechatILink(ctx context.Context, h *ChannelIngress, ch biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
 	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token", h.lg)
 	if err != nil {
 		return err
 	}
 	baseURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "baseurl", h.lg) // optional
+	contextToken := payload.Extra["context_token"]
+	if contextToken == "" {
+		// Fallback: reuse the last token the polling loop cached for this peer
+		// (proactive sends or replies after a restart have no fresh token).
+		contextToken = wechatilink.CachedContextToken(ch.ID, payload.Recipient)
+	}
 	return (&wechatilink.TextSender{
 		BotToken:     token,
 		BaseURL:      baseURL,
-		ContextToken: payload.Extra["context_token"],
+		ContextToken: contextToken,
 		HTTP:         h.http,
 		Lg:           h.lg,
 	}).SendText(ctx, payload.Recipient, payload.Text)

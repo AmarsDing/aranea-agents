@@ -215,6 +215,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MemoryCompositeRecall:  r.td.Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: r.td.Persist.Memory.PreferenceLister,
 			MemoryReconsolidator:   r.td.Persist.Memory.Reconsolidator,
+			AgentCaseRecaller:      r.td.Persist.Memory.AgentCaseRecaller,
 			KnowledgeRetriever:     r.cfg.Knowledge.Retriever,
 			KnowledgeUsecase:       r.cfg.KnowledgeUsecase,
 		},

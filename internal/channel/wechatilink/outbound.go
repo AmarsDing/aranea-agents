@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -70,9 +71,35 @@ func (s *TextSender) SendText(ctx context.Context, recipient, text string) error
 		MessageType:  MessageTypeBot,
 		MessageState: MessageStateFinish,
 		ContextToken: s.ContextToken,
-		ItemList:     []MessageItem{{Type: ItemTypeText, TextItem: &TextItem{Text: text}}},
+		ItemList:     []MessageItem{{Type: ItemTypeText, TextItem: &TextItem{Text: markdownToWechat(text)}}},
 	}
 	return c.SendMessage(ctx, &msg)
+}
+
+// markdownToWechat degrades Markdown to plain text acceptable for WeChat
+// personal chat: headings lose their # prefix, list markers become •,
+// thematic breaks become ——, quotes become ▎, and inline emphasis markers
+// are stripped while keeping the inner text.
+func markdownToWechat(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		switch {
+		case strings.HasPrefix(trimmed, "#"):
+			lines[i] = strings.TrimLeft(strings.TrimLeft(trimmed, "#"), " ")
+		case trimmed == "---" || trimmed == "***" || trimmed == "___":
+			lines[i] = "——"
+		case strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") || strings.HasPrefix(trimmed, "+ "):
+			lines[i] = "• " + trimmed[2:]
+		case strings.HasPrefix(trimmed, "> "):
+			lines[i] = "▎" + trimmed[2:]
+		}
+	}
+	text = strings.Join(lines, "\n")
+	for _, marker := range []string{"**", "__", "~~", "`", "*", "_"} {
+		text = strings.ReplaceAll(text, marker, "")
+	}
+	return text
 }
 
 // newClientID returns a random client_id for outbound messages.

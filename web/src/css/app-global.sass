@@ -754,6 +754,29 @@ body.body--dark .theme-preview-page
     min-height: 0 !important
     overflow: hidden
 
+// 移动端整页（MobileLayout 下全部页面）：chat-page 同款满高锁定。
+// q-page 仅有 Quasar 注入的 min-height（非确定高度），flex 子项 .q-scroll-area 的
+// 高度对子级 height:100%（.fit）不算 definite，导致 .q-scrollarea__container 高度
+// 塌陷为 0——列表/消息在 DOM 中但不可见。锁定整链为确定高度后恢复。
+.mobile-layout-root
+  height: 100vh
+  max-height: 100dvh
+  overflow: hidden
+
+  .q-page-container
+    display: flex
+    flex-direction: column
+    min-height: 0
+    height: 100%
+    max-height: 100%
+    overflow: hidden
+    box-sizing: border-box
+
+    > .q-page
+      flex: 1 1 0
+      min-height: 0 !important
+      overflow: hidden
+
 .chat-composer-toolbar-slot
   display: contents
 

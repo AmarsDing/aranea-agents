@@ -43,6 +43,7 @@ Catalog 由 `ListChannelTypes` 返回。
 | `wecom` | 企微智能机器人 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
 | `wecom-app` | 企微自建应用 | `robot/comwechat.go` | webhook | ✅ | ✅ | ✅ |
 | `wechat` | 微信公众号 | `robot/wechat.go` | webhook（被动/客服） | ✅ | ✅ | ✅ |
+| `wechat_ilink` | 微信（个人号·iLink） | 腾讯 iLink 官方 Bot API（无 MuseBot 对应） | **polling**（扫码登录） | ✅ | ✅ | ✅（文本） |
 | `slack` | Slack | `robot/slack.go` | event · **socket_mode** | ✅ | ✅ | ✅ |
 | `telegram` | Telegram | `robot/telegram.go` | webhook · **polling** | ✅ | ✅ | ✅ |
 | `discord` | Discord | `robot/discord.go` | **gateway** WebSocket | ✅ | ✅ | ✅ |
@@ -77,7 +78,7 @@ Catalog 由 `ListChannelTypes` 返回。
 | `websocket` | 飞书 Lark WS、Mattermost | 长连接收事件；MuseBot `larkws.Client.Start` | 出站即可 |
 | `stream` | 钉钉 Stream | `dingtalk-stream-sdk-go`；替代传统机器人 Webhook | 出站即可 |
 | `socket_mode` | Slack | App Token + Bot Token；MuseBot Socket Mode | 出站即可 |
-| `polling` | Telegram | `GetUpdatesChan`；无需 Webhook | 出站即可 |
+| `polling` | Telegram、微信 iLink | Telegram `GetUpdatesChan`；iLink `getupdates` 长轮询 | 出站即可 |
 | `gateway` | Discord | discordgo Gateway | 出站即可 |
 | `onebot` | Personal QQ | 接收 OneBot POST；发送调 OneBot HTTP API | 视 NapCat 部署 |
 
@@ -192,6 +193,32 @@ Stream 模式使用 `client_id` + `client_secret`；当前 Webhook 模式使用 
 | `send_token` | credential | `qq_one_bot_send_token` |
 | `onebot_base_url` | config | `qq_one_bot_http_server` |
 
+### 5.10 微信个人号（`wechat_ilink`，2026-08-12）
+
+腾讯 iLink 官方 Bot API（`ilinkai.weixin.qq.com`），扫码登录自动获取凭证，无需公网回调。
+
+| 字段 | 位置 | 获取方式 |
+|------|------|----------|
+| `bot_token` | credential（必填） | **扫码登录自动写入**（推荐），或手动粘贴 |
+| `baseurl` | credential（可选） | 扫码登录自动写入（自定义 API 域名时用手动） |
+| `ilink_user_id` | credential（可选） | 扫码登录自动写入（typing 状态用） |
+
+**扫码登录流程**（编辑弹窗「微信扫码登录」区块，仅已保存渠道可用）：
+
+1. 点「获取登录二维码」→ `WechatILinkLogin` RPC 返回二维码（data URL）并启动服务端后台轮询（3 分钟上限）
+2. 微信扫码 + 手机确认 → 服务端写入 `bot_token` / `baseurl` / `ilink_user_id` 三个凭证并触发 runtime reload
+3. 前端每 2s 轮询 `WechatILinkPoll`（凭证已写入即返回 `confirmed`），3 分钟超时提示过期可重新获取
+
+**config 配置项**（`config_json.config`）：
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `group_enabled` | bool | `false` | 是否处理群聊消息 |
+| `require_mention` | bool | `true` | 群聊需 @ `bot_nickname` 才响应 |
+| `bot_nickname` | string | 空 | Bot 在群内的昵称（mention 检测用）；留空且 `require_mention=true` 时全响应 |
+
+**登录态持久化**：状态文件 `bin/data/channel-state/wechat_ilink-<channel_id>.json` 保存 `get_updates_buf` 游标、各用户 `context_token` 缓存与 `login_status`；进程重启后从游标续收，不丢消息。
+
 ---
 
 ## 6. 配置语义（`config_json`）
@@ -282,6 +309,9 @@ UI 支持 **JSON 数组** 或 **英文逗号分隔** 字符串；保存后 **重
 **B. 长连接路径（已实现）**  
 `ChannelRuntimeManager` 按实例启动 goroutine（larkws / ding stream / socketmode / polling / discordgo）→ 标准化 `InboundEvent` → 同 A 后半段
 
+**微信 iLink 会话过期自愈（2026-08-12）**  
+polling 检测 `errcode=-14` → 状态文件标记 `login_status=expired` 并退出 connector → 用户重新扫码登录写入新凭证 → 触发 runtime reload 重启 polling。
+
 **长任务（Phase E，规划）**  
 Webhook 与 WS 统一 **Accept（ACK + 200）→ 异步 Execute Turn**；详见 [§8](#8-长任务场景飞书-channel)。
 
@@ -298,6 +328,7 @@ Webhook 与 WS 统一 **Accept（ACK + 200）→ 异步 Execute Turn**；详见 
 
 - 默认：完整回复经 `channel_delivery` 异步发送  
 - 流式（MVP ✅）：Telegram / 飞书 / Slack / LINE / Mattermost — `config.streaming_enabled`；长任务场景 **建议开启**（见 §8）  
+- 文本降级（2026-08-12）：`wechat_ilink` 出站经 `markdownToWechat` 将 Markdown 降级为纯文本（标题去 `#`、列表转 `•`、强调符剥离）  
 - 长任务 ACK / 进度 / 排队提示：Phase E（见 [开发计划 §10](./17-channel-development.md#10-长任务异步执行phase-e)）
 
 ### 7.3 健康与运维

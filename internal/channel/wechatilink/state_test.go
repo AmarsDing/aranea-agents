@@ -84,5 +84,25 @@ func TestStateFileCorrupted(t *testing.T) {
 	})
 }
 
+func TestCachedContextToken(t *testing.T) {
+	WithStateDir(t.TempDir(), func() {
+		if got := CachedContextToken("ch-none", "u1"); got != "" {
+			t.Errorf("missing state file should yield empty token, got %q", got)
+		}
+		if err := writeState("ch-3", &stateFile{ContextTokens: map[string]string{"u1": "tk-cached"}}); err != nil {
+			t.Fatal(err)
+		}
+		if got := CachedContextToken("ch-3", "u1"); got != "tk-cached" {
+			t.Errorf("want tk-cached, got %q", got)
+		}
+		if got := CachedContextToken("ch-3", "u2"); got != "" {
+			t.Errorf("unknown user should yield empty token, got %q", got)
+		}
+		if got := CachedContextToken("", "u1"); got != "" {
+			t.Errorf("empty channel id should yield empty token, got %q", got)
+		}
+	})
+}
+
 var _ = json.Marshal // keep import used if helpers change
 var _ = sync.Mutex{}

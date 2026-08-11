@@ -168,6 +168,19 @@ function baseFields(type: string, catalog: ChannelTypeCatalog | null): ChannelPl
         },
       );
       break;
+    case 'wechat_ilink':
+      fields.push(
+        {
+          museKey: 'wechat_ilink_bot_token',
+          bind: { source: 'credential', key: 'bot_token' },
+          kind: 'password',
+          hint: 'channelEditor.hints.wechatILinkBotToken',
+        },
+        { museKey: 'group_enabled', bind: { source: 'config', key: 'group_enabled' }, kind: 'toggle' },
+        { museKey: 'require_mention', bind: { source: 'config', key: 'require_mention' }, kind: 'toggle' },
+        { museKey: 'bot_nickname', bind: { source: 'config', key: 'bot_nickname' }, kind: 'text' },
+      );
+      break;
     case 'slack':
       fields.push(
         {
@@ -176,6 +189,20 @@ function baseFields(type: string, catalog: ChannelTypeCatalog | null): ChannelPl
           kind: 'password',
           required: true,
         },
+        {
+          museKey: 'slack_app_token',
+          bind: { source: 'credential', key: 'app_token' },
+          kind: 'password',
+          hint: 'channelEditor.hints.slackSocketMode',
+        },
+        {
+          museKey: 'signing_secret',
+          bind: { source: 'credential', key: 'signing_secret' },
+          kind: 'password',
+          required: true,
+        },
+      );
+      break;
     case 'telegram':
       fields.push({
         museKey: 'telegram_bot_token',

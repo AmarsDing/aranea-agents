@@ -454,6 +454,26 @@ go test ./internal/channel/preview/... -count=1
 
 ---
 
+## 11A. Phase G — 交互门卡片（2026-08-12，已完成 ✅）
+
+> **设计**：[17-channel.design.md §5.4](./17-channel.design.md#54-交互门卡片channelgatecards2026-08-12)
+> **目标**：工具确认 / 澄清挂起时向飞书会话发交互卡片，飞书端与 Web 端操作经同一状态机收口、双向同步。
+
+| ID | 任务 | 文件 | 状态 |
+|----|------|------|------|
+| G-01 | CardActionPayload 扩展（step_id/reply/q/opt）+ gate action 常量 | `lark/card_action.go` | ✅ |
+| G-02 | 确认/澄清/终态卡片构建器 | `preview/feishu_gate_card.go` | ✅ |
+| G-03 | TurnControlGateway 新增 ConfirmToolGateForCard / SubmitClarificationForCard | `biz/turn_gateway.go` | ✅ |
+| G-04 | confirmToolGate / submitClarification 状态机同核提取（RPC 与卡片两入口复用） | `chat_confirm.go` / `chat_clarify.go` | ✅ |
+| G-05 | ChannelGateCards 管理器（事件订阅/发卡/跟踪/终态 PATCH/点击入口） | `channel_gate_cards.go` | ✅ |
+| G-06 | 回调路由 gate_confirm / gate_clarify | `channel_ingress_card_action.go` | ✅ |
+| G-07 | Wire + 生命周期挂载（readiness 后 Start） | `wire.go` / `app.go` | ✅ |
+| G-08 | 单测：归属校验/降级判定/点击全路径/卡片契约（-race 通过） | `channel_gate_cards_test.go` / `feishu_gate_card_test.go` | ✅ |
+
+**验收**：`go test ./internal/service/ -run 'TestGateCard|TestHandleConfirmClick|TestSelectClarifyOption|TestResultCard' -race` 全绿；`go test ./internal/channel/preview/ -race` 全绿。
+
+---
+
 ## 12. IM Preview — E2E 验收清单（LT-01–07）
 
 > 原 `需求/17-channel-development.md#12-im-preview--e2e-验收清单lt-0107` 已并入本文。

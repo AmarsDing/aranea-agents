@@ -30,7 +30,7 @@ import (
 
 const (
 	appTitle       = "Aranea-Agents"
-	healthURL      = "http://127.0.0.1:8000/healthz"
+	healthURL      = "http://127.0.0.1:8800/healthz"
 	backendWaitSec = 60
 	mutexName      = "Local\\AraneaAgentsLauncherMutex"
 )

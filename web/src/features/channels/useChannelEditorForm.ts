@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch, type Ref } from 'vue';
+import { computed, onUnmounted, reactive, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { Agent } from '../agents/types';
@@ -29,6 +29,7 @@ import {
   parseJSON,
 } from '../../domain/channel';
 import { isImPreviewFormKey } from './channelImPreviewDefaults';
+import { wechatILinkLogin, wechatILinkPoll } from './api';
 import { useChannelsStore } from '../../stores/channels';
 import { useAgentModelValidation } from '../agents/useAgentModelValidation';
 import type {
@@ -145,8 +146,12 @@ export function useChannelEditorForm(
   const iconPreviewMetadata = computed(() => ({ icon_asset_id: iconAssetId.value || undefined }));
 
   watch(modelOpen, (open) => {
-    if (!open) return;
+    if (!open) {
+      stopWechatILinkTimer();
+      return;
+    }
     resetForm();
+    resetWechatILink();
     void loadRoutingOptions();
   });
   watch(selectedType, (type, previousType) => {
@@ -353,9 +358,12 @@ export function useChannelEditorForm(
       'allowed_group_ids',
       'active_mode',
       'require_mention',
+      'group_enabled',
+      'bot_nickname',
     ]) {
       if (platformConfig[key] === undefined || platformConfig[key] === null) continue;
-      if (key === 'active_mode' || key === 'require_mention') configBoolDraft[key] = Boolean(platformConfig[key]);
+      if (key === 'active_mode' || key === 'require_mention' || key === 'group_enabled')
+        configBoolDraft[key] = Boolean(platformConfig[key]);
       else if (typeof platformConfig[key] === 'object') configDraft[key] = JSON.stringify(platformConfig[key]);
       else configDraft[key] = String(platformConfig[key]);
       delete platformConfig[key];
@@ -569,6 +577,77 @@ export function useChannelEditorForm(
     }
   }
 
+  // ---- WeChat iLink QR-code login ----
+  type WechatILinkLoginStatus = 'idle' | 'wait' | 'confirmed' | 'expired' | 'error';
+  const wechatILink = reactive({
+    qrcode: '',
+    session: '',
+    status: 'idle' as WechatILinkLoginStatus,
+    errorMsg: '',
+  });
+  let wechatILinkTimer: ReturnType<typeof setInterval> | null = null;
+  let wechatILinkDeadline = 0;
+
+  function stopWechatILinkTimer() {
+    if (wechatILinkTimer) {
+      clearInterval(wechatILinkTimer);
+      wechatILinkTimer = null;
+    }
+  }
+
+  function resetWechatILink() {
+    stopWechatILinkTimer();
+    wechatILink.qrcode = '';
+    wechatILink.session = '';
+    wechatILink.status = 'idle';
+    wechatILink.errorMsg = '';
+  }
+
+  async function pollWechatILinkStatus() {
+    const channelId = props.row?.id;
+    if (!channelId) {
+      resetWechatILink();
+      return;
+    }
+    if (Date.now() > wechatILinkDeadline) {
+      stopWechatILinkTimer();
+      wechatILink.status = 'expired';
+      return;
+    }
+    try {
+      const res = await wechatILinkPoll(channelId, wechatILink.session);
+      if (res.status === 'confirmed') {
+        stopWechatILinkTimer();
+        wechatILink.status = 'confirmed';
+        emit('tested'); // refresh channel list so credential status updates
+        $q.notify({ type: 'positive', message: t('channelEditor.wechatILink.confirmed') });
+      }
+    } catch {
+      // transient poll failure: keep polling until deadline
+    }
+  }
+
+  async function startWechatILinkLogin() {
+    const channelId = props.row?.id;
+    if (!channelId) return;
+    wechatILink.status = 'wait';
+    wechatILink.errorMsg = '';
+    wechatILink.qrcode = '';
+    try {
+      const res = await wechatILinkLogin(channelId);
+      wechatILink.qrcode = res.qrcode_data_url;
+      wechatILink.session = res.qrcode_session;
+      wechatILinkDeadline = Date.now() + 3 * 60 * 1000;
+      stopWechatILinkTimer();
+      wechatILinkTimer = setInterval(() => void pollWechatILinkStatus(), 2000);
+    } catch (err) {
+      wechatILink.status = 'error';
+      wechatILink.errorMsg = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  onUnmounted(stopWechatILinkTimer);
+
   async function loadRoutingOptions() {
     routingOptionsLoading.value = true;
     try {
@@ -639,6 +718,8 @@ export function useChannelEditorForm(
     save,
     saveAndTest,
     copyWebhookPreview,
+    wechatILink,
+    startWechatILinkLogin,
   };
 }
 

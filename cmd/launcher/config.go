@@ -47,15 +47,15 @@ func writeRuntimeConfig(env *runtimeEnv, log func(string, ...any)) error {
 	dsn := env.postgresDSN("aranea")
 	content := fmt.Sprintf(`server:
   http:
-    addr: 0.0.0.0:8000
+    addr: 0.0.0.0:8800
     timeout: 0s
   grpc:
-    addr: 0.0.0.0:9000
+    addr: 0.0.0.0:9900
     timeout: 120s
   ws:
     enable: true
     network: tcp
-    addr: 0.0.0.0:8002
+    addr: 0.0.0.0:8802
   monitor:
     process_log_enabled: true
 data:

@@ -54,6 +54,13 @@ type AgentCaseWriter interface {
 	UpsertAgentCase(ctx context.Context, c AgentCase) error
 }
 
+// AgentCaseRecaller 按相关度召回 Agent 的历史任务经验（P3 M3 prompt 注入）。
+// query 为空时实现应返回最近高质量 Case；limit 由调用方给上限。
+// Stability:evolving
+type AgentCaseRecaller interface {
+	RecallAgentCases(ctx context.Context, agentID, query string, limit int) ([]AgentCase, error)
+}
+
 // AgentCaseExtractor 从会话消息中提取 Agent Case（LLM 实现在 service 层）。
 // 返回 ErrAgentCaseSkip 表示会话无提取价值；其他错误由调用方降级启发式。
 type AgentCaseExtractor interface {

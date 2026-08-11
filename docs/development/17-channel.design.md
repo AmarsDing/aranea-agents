@@ -128,6 +128,7 @@ type StreamOutbound interface {
 | `thread_id` · `reply_in_thread` | 话题线程（F-06） |
 | `inbound_message_id` | 幂等 / reaction 锚点 |
 | `session_webhook` · `response_url` | 钉钉 / Slack 等 webhook 回复 |
+| `context_token` | 微信 iLink 回复窗口关联（入站透传出站，缺失时回落状态文件缓存） |
 | `x_*` | 平台扩展（校验放行） |
 
 **代码**：`internal/channel/port/meta.go`
@@ -137,6 +138,29 @@ type StreamOutbound interface {
 - `NormalizeOutboundMeta` — 出站透传前 trim
 
 **新平台 checklist**：adapter build 阶段填满必填 meta → 单测 `ValidateOutboundMeta` → 禁止在 `channel_ingress_*` 新增 platform 特判路由字段。
+
+### 3.2 微信 iLink Adapter（`internal/channel/wechatilink/`，2026-08-12）
+
+腾讯 iLink 官方 Bot API（个人号），纯 HTTP/JSON 协议，无 SDK 依赖。
+
+| 文件 | 职责 |
+|------|------|
+| `client.go` | 认证头（`iLink-App-Id` / `Bearer bot_token` / `X-WECHAT-UIN` 随机 nonce）、`LoginClient`（免 token 的登录端点） |
+| `login.go` | `get_bot_qrcode` / `get_qrcode_status` 扫码登录；状态常量 `wait/scaned/confirmed/expired` |
+| `polling.go` | `RunPolling` starter（注册进 `runtime.RegisterStarterWithLogger`）：`getupdates` 长轮询 + 游标持久化 + 会话过期（errcode -14）检测退出 |
+| `parse.go` | `WeixinMessage` → `port.InboundEvent`；群聊门控（`group_enabled` / `require_mention` / `bot_nickname`）；媒体消息占位符（`[图片]` 等） |
+| `outbound.go` | `TextSender`（`sendmessage` + `context_token` 透传）；`markdownToWechat` Markdown 降级 |
+| `state.go` | 状态文件 `bin/data/channel-state/wechat_ilink-<id>.json`（游标 / context_token 缓存 / login_status），原子写入；`CachedContextToken` 供出站回落 |
+| `media.go` | AES-128-ECB（PKCS7）加解密 + CDN 上传/下载（`getuploadurl`） |
+| `typing.go` | `sendtyping`（ticket 来自 `getconfig`，ilink_user_id 来自登录凭证） |
+| `config.go` | `getconfig` 只读探活（live tester 用） |
+| `errors.go` | `ErrSessionExpired`（errcode -14） |
+
+**关键设计**：
+
+- **context_token 链路**：入站消息携带 → `OutboundMeta` 透传出站；缺失时出站回落 `CachedContextToken(channelID, recipient)` 读状态文件缓存（每次轮询都会刷新缓存）
+- **会话过期自愈**：polling 检测到 -14 → 状态文件标记 `expired` → connector 退出报错；重新扫码写凭证触发 runtime reload
+- **回复目标**：私聊回 `from_user_id`；群聊回 `group_id`（`to_user_id` 传群 ID）
 
 ---
 
@@ -164,6 +188,8 @@ Webhook 路由在 `internal/server/http.go`，不进 Proto。
 | `DeleteChannelCredential` | `DELETE /v1/channels/{channel_id}/credentials/{credential_key}` | 删除凭据 |
 | `ListChannelDeliveries` | `GET /v1/channels/{id}/deliveries` | 出站投递记录 |
 | `ListChannelTurnJobs` | `GET /v1/channels/{id}/turn-jobs` | Turn Job 列表（长任务审计） |
+| `WechatILinkLogin` | `POST /v1/channels/{channel_id}/wechat-ilink/login` | 微信 iLink 扫码登录：返回二维码 data URL，后台轮询确认后写凭证 + runtime reload |
+| `WechatILinkPoll` | `POST /v1/channels/{channel_id}/wechat-ilink/poll` | 前端轮询登录结果（凭证已写入即 `confirmed`） |
 
 ### 4.2 Biz
 
@@ -291,6 +317,48 @@ Wire：admin 进程启动时 `Reload()`；Toggle/Update 后触发单实例重启
 | 其他 | — | unary 回退 | delivery 队列 |
 
 流式回合不走 outbound delivery 队列；失败写入 `channel_delivery` audit（`status=streamed|error`）。
+
+### 5.4 交互门卡片（ChannelGateCards，2026-08-12）
+
+工具确认（confirm/tool_blocked）与澄清（clarify/awaiting_input）挂起时，向渠道会话发送飞书交互卡片；用户在飞书端操作与 Web 端操作经同一状态机收口，双向同步。
+
+**组件**：
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `ChannelGateCards` | `internal/service/channel_gate_cards.go` | 订阅 v2 EventBus；开闸发卡、终态 PATCH、点击入口 |
+| 卡片构建器 | `internal/channel/preview/feishu_gate_card.go` | 确认卡（4 键）/澄清卡（逐题选项）/终态结果卡 JSON |
+| 回调解析 | `internal/channel/lark/card_action.go` | `CardActionPayload` 扩展 `step_id`/`reply`/`q`/`opt` |
+| 回调路由 | `internal/service/channel_ingress_card_action.go` | `gate_confirm`/`gate_clarify` → GateCards |
+| 状态机同核 | `internal/service/chat_confirm.go` / `chat_clarify.go` | `confirmToolGate`/`submitClarification` 提取核心，RPC 与卡片两入口复用 |
+
+**数据流**：
+
+```
+agent 挂起 → StepCreated/Updated(confirm.tool_blocked | clarify.awaiting_input)
+  → ChannelGateCards.maybeOpenGate → resolveChannelMeta（团队子会话回退 SpiritSessionID）
+  → preview 构建卡片 → lark.CardSender.UpsertToolCard → 跟踪 stepID→messageID
+
+飞书点击 → card.action.trigger → HandleFeishuCardAction
+  → resolveCardActionSessionID（peer 绑定 + 卡片 session_id 一致性校验）
+  → GateCards.HandleConfirmClick / SelectClarifyOption（step 归属二次校验）
+  → biz.TurnControlGateway.ConfirmToolGateForCard / SubmitClarificationForCard
+  → confirmToolGate / submitClarification（与 RPC 同核：状态机 + 落库 + 事件）
+
+任一端到达终态 → StepUpdated/Completed 或 SystemNotice(tool_confirm_*/clarification_submitted)
+  → maybeCloseGate PATCH 结果卡（approved=rejected=红绿；confirm_timeout=灰）
+  → Web 端经 WS 同步更新 ConfirmBlock/ClarifyBlock
+```
+
+**契约与降级**：
+
+- 确认卡片按钮 value 只带短键（`approve`/`deny`/`approve_session`/`approve_always`），service 层映射为 `serviceawaitreply` 结构化 token，卡片协议不泄漏内部格式。
+- 澄清卡片仅对「全部单选、题数 ≤10、选项 ≤6」渲染可点击按钮（`gateCardClarifyInteractive`）；多选/超限降级为纯文本说明卡，用户自由回复作答（复用 `resolveClarificationFreeText` 路径）。
+- 澄清逐题点击累积选择（内存 `selections`），全部作答后自动提交；中间态 PATCH 回显选中。
+- 跟踪态为进程内内存：重启后已发出卡片无法 PATCH，但回调经 gateway + DB 状态机正常处理，点击时惰性重建瞬态 ref（无 messageID 不 PATCH）。
+- 非飞书渠道（`meta.Platform` 非 feishu/lark）或无渠道绑定的会话不发卡。
+
+**Wire 与生命周期**：`provideChannelGateCards`（wire.go）→ `app.go` readiness 后 `Start(ctx)` 订阅事件；`ChannelIngress.SetGateCards` Setter 注入（构造顺序：gateCards 依赖 chat gateway，与 ingress 平级）。
 
 ---
 

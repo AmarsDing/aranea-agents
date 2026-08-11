@@ -1,5 +1,5 @@
 <template>
-  <q-layout view="hHh lpR fFf" class="app-layout-root">
+  <q-layout view="hHh lpR fFf" class="app-layout-root mobile-layout-root">
     <q-header :elevated="false" :class="isDark ? 'dark-header' : 'cream-header'">
       <q-toolbar>
         <q-toolbar-title class="app-toolbar-title text-weight-bold">

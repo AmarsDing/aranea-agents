@@ -27,8 +27,8 @@ export async function loadRuntimeConfig(): Promise<void> {
   // Fallback for standalone: point to local backend
   if (isFileProtocol) {
     runtimeConfig = {
-      backendUrl: 'http://127.0.0.1:8000',
-      wsOrigin: 'http://127.0.0.1:8000',
+      backendUrl: 'http://127.0.0.1:8800',
+      wsOrigin: 'http://127.0.0.1:8800',
     };
   } else {
     runtimeConfig = {};
