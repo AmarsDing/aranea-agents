@@ -1,6 +1,6 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-07-16 | **状态**：🟢 13 平台连接主干可用；Runtime 重连 + 流式出站 MVP；**非「剩余 0」**——见下方已知缺口
+> **版本**：2026-08-12 | **状态**：🟢 14 平台连接主干可用（含 wechat_ilink 扫码登录）；Runtime 重连 + 流式出站 MVP；**非「剩余 0」**——见下方已知缺口
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十二](./17%20channel.design.md#十二hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
@@ -89,6 +89,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | `mustMarshalJSON` → `marshalOutboundPayload` | ✅ | 消除 panic 风险，返回 error（Phase M 修复 R04） |
 | 错误分类下沉 biz 层 | ✅ | `ChannelTurnErrorKind` + 消息常量 + `FormatChannelTurnErrorMessage` 迁入 `biz/channel_turn_errors.go`（Phase M 修复 S01） |
 | 前端重复组件/函数清理 | ✅ | 删除 3 个重复 Picker 组件；提取共享 `parseJSON`（Phase M 修复 S10/S14） |
+| 微信个人号 iLink 接入 | ✅ | `wechatilink` 包 + 扫码登录 RPC + 前端二维码登录 + 群聊门控 + context_token 链路（Phase O，2026-08-12） |
 
 ---
 
@@ -109,6 +110,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | `line` | Webhook | webhook ✅ · outbound ✅ · 流式 update ✅ | ✅ | line-bot-sdk-go |
 | `mattermost` | WebSocket / Webhook | webhook ✅ · websocket ✅ · outbound ✅ · 流式 update ✅ | ✅ | gorilla/websocket + REST API v4 |
 | `teams` | Bot Framework Webhook | webhook ✅ · outbound ✅ · **RS256 JWKS 验签 ✅**（2026-07-16） | ✅ | Bot Framework OAuth2 |
+| `wechat_ilink` | 腾讯 iLink 官方 Bot API（无 MuseBot 对应） | **polling ✅**（扫码登录）· outbound 文本 ✅ · 群聊门控 ✅（2026-08-12 Phase O） | ✅ | 无 SDK（纯 HTTP/JSON） |
 
 ---
 
@@ -1346,6 +1348,98 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 ---
 
+## 17.10 Phase O — 微信个人号 iLink 渠道（2026-08-12）
+
+> **实施计划**：[docs/superpowers/plans/2026-08-12-wechat-ilink-channel.md](../superpowers/plans/2026-08-12-wechat-ilink-channel.md)
+> **平台参考**：腾讯 iLink 官方 Bot API（`ilinkai.weixin.qq.com`，纯 HTTP/JSON，无 SDK）；ClawBot 协议逆向文档
+> **实施日期**：2026-08-12
+
+### O.1 任务板
+
+| # | 任务 | 状态 | 说明 |
+|---|------|------|------|
+| O-01 | Proto：`WechatILinkLogin` / `WechatILinkPoll` RPC | ✅ | `api/kratos/channel/v1/channel.proto` |
+| O-02 | Biz 类型注册：catalog item + credential schema（bot_token 必填 / baseurl、ilink_user_id 可选） | ✅ | `channel_catalog.go` + `channel_type_registry.go` |
+| O-03 | 运行时模式映射 `wechat_ilink → polling` | ✅ | `runtime/config.go` |
+| O-04 | `port.MetaContextToken` well-known key | ✅ | `port/meta.go` |
+| O-05 | iLink HTTP client（认证头 `iLink-App-Id` / `Bearer` / `X-WECHAT-UIN` nonce；`loginClient` 免 token 登录端点） | ✅ | `client.go` + 测试 |
+| O-06 | 扫码登录：`get_bot_qrcode` → 轮询 `get_qrcode_status` → 写凭证（bot_token/baseurl/ilink_user_id）+ runtime reload | ✅ | `login.go` + `service/channel_wechat_ilink_login.go` |
+| O-07 | 长轮询 starter：`getupdates` + 游标持久化 + 指数退避 + 回声过滤（`MessageTypeUser`） | ✅ | `polling.go` + 测试 |
+| O-08 | 消息解析：文本/图片/语音（ASR 文本）/文件/视频 → `port.InboundEvent` | ✅ | `parse.go` + 测试 |
+| O-09 | 文本出站：`sendmessage` + `client_id` 幂等 + context_token 透传 | ✅ | `outbound.go` + 测试 |
+| O-10 | 状态文件：`bin/data/channel-state/wechat_ilink-<id>.json`（游标 + context_token 缓存 + login_status），原子写入 | ✅ | `state.go` + 测试 |
+| O-11 | 群聊门控：`group_enabled` / `require_mention` / `bot_nickname`（默认需 @） | ✅ | `parse.go` `shouldHandleGroupMessage` |
+| O-12 | 会话过期自愈：errcode -14 → 状态文件标记 `expired` + `EmitConnectError` + connector 退出；重扫码触发 reload | ✅ | `polling.go` + 测试 |
+| O-13 | 出站 context_token 回落：`payload.Extra` 缺失时读 `CachedContextToken(channelID, recipient)` 状态缓存 | ✅ | `channel_platform_registry.go` + `state.go` |
+| O-14 | Live tester：`getconfig` 只读探活 | ✅ | `config.go` `TestConnection` + `service/channel.go` |
+| O-15 | 前端扫码登录 UI：二维码展示 + 轮询 + 过期刷新 + i18n（zh/en） | ✅ | `ChannelEditorDialog.vue` + `useChannelEditorForm.ts` + `api.ts` |
+| O-16 | Markdown 降级：出站文本去 `**`/`` ` ``/标题号，列表转 `•`，分隔线转 `——`，引用转 `▎` | ✅ | `outbound.go` `markdownToWechat`（已集成 SendText） |
+| O-17 | 媒体原语：AES-128-ECB（PKCS7）加解密 + `getuploadurl` + CDN 上传/下载 | ✅ 原语 | `media.go` + roundtrip 测试；**未接入收发闭环**（见 O.5 待办） |
+| O-18 | Typing 原语：`sendtyping`（ticket 来自 `getconfig`） | ✅ 原语 | `typing.go` + 测试；**未接入 turn 生命周期**（见 O.5 待办） |
+| O-19 | 契约测试：`wechatilink.TextSender` 注册进 channel 契约断言 | ✅ | `internal/channel/contract_test.go` |
+
+### O.2 关键设计
+
+- **context_token 链路**：入站消息携带 → `OutboundMeta` 透传出站；缺失时出站回落 `CachedContextToken` 读状态文件缓存（每次轮询刷新），解决主动发送/重启后无新鲜 token 的问题
+- **回复目标**：私聊回 `from_user_id`；群聊回 `group_id`（`to_user_id` 传群 ID）
+- **凭证获取**：扫码登录自动写入（推荐路径），手动粘贴 `bot_token` 为降级路径；`baseurl` 支持自定义 API 域名
+- **无 SDK 依赖**：纯 `net/http` + JSON，认证头含随机 `X-WECHAT-UIN` nonce
+
+### O.3 验证结果
+
+| 验证项 | 结果 |
+|--------|------|
+| `go build ./...` | ✅ |
+| `go test ./internal/channel/... -count=1` | ✅ 17/17 包（含契约测试） |
+| `go vet ./internal/channel/... ./internal/biz/...` | ✅ |
+| `cd web && pnpm build` | ✅ |
+| `cd web && pnpm lint` | 🟡 基线外违规均来自并行任务文件（非 channels 目录）；本任务文件 i18n 合规 |
+| `go test ./internal/service/...` | 🟡 受并行任务 M4 TDD RED 中间态阻断（`agent_case_skill_distiller_test.go` 引用未定义符号），与本任务无关；本任务 service 改动经 `go build` 覆盖 |
+
+### O.4 红线合规性
+
+| 红线 # | 检查项 | 结果 |
+|--------|--------|------|
+| #2 | `internal/channel/*` 不 import `pkg/trpc-agent-go` | ✅ |
+| #9 / #13 | goroutine 走 `safego.Go` | ✅（登录轮询 `safego.Go(context.WithoutCancel(ctx), ...)`) |
+| #14 | Service 层不 `fmt.Errorf` | ✅（login RPC 经 `kerrors`/helper 返回） |
+| #15 | 非 Service 层不 import proto 包 | ✅ |
+| #16 | 禁止 `log/slog`，统一 `loggateway.Logger` 构造注入 | ✅ |
+| #19 | 不新增死代码 | ✅ |
+| DB-R6 | 不使用废弃连接访问器 | ✅（本任务无 DB 改动） |
+| 密钥安全 | 凭证不 hardcode；bot_token 走 credential 加密存储 | ✅ |
+
+### O.5 已知待办（需真实账号联调）
+
+| # | 问题 | 说明 |
+|---|------|------|
+| O-T1 | 媒体收发闭环 | AES/CDN 原语已就绪并测试；入站媒体当前为占位符文本（`[图片]` 等），CDN 下载落盘与媒体出站 sender 需真实 iLink 账号验证 CDN URL/字段格式后接入 |
+| O-T2 | Typing 生命周期集成 | `SendTyping` 原语就绪；需在 turn 开始/结束 hook 中调用（框架暂无 typing 横切机制先例），待联调验证 ticket 获取时机后接入 |
+| O-T3 | 群聊 mention 检测精度 | 当前为文本包含 `@昵称` 的简单匹配；iLink 若提供结构化 mention 字段应切换 |
+
+### O.6 变更文件清单
+
+| 文件 | 变更类型 | 说明 |
+|------|----------|------|
+| `api/kratos/channel/v1/channel.proto` | 修改 | O-01：2 个 RPC + 4 个 message |
+| `internal/biz/channel_catalog.go` / `channel_type_registry.go` | 修改 | O-02 |
+| `internal/channel/runtime/config.go` | 修改 | O-03 |
+| `internal/channel/port/meta.go` | 修改 | O-04 |
+| `internal/channel/wechatilink/{types,errors,client,login,polling,parse,outbound,state,config,media,typing}.go` + 8 个 `_test.go` | 新增 | O-05~O-14、O-17、O-18 |
+| `internal/service/channel_wechat_ilink_login.go` | 新增 | O-06：扫码登录 RPC 实现 |
+| `internal/service/channel_platform_registry.go` | 修改 | O-09/O-13：注册 outbound + context_token 回落 |
+| `internal/service/channel.go` | 修改 | O-14：live tester 注册 |
+| `internal/channel/contract_test.go` | 修改 | O-19 |
+| `internal/channel/all/all.go` | 修改 | import 注册 starter |
+| `internal/channel/preview/platform.go` | 修改 | `PlatformTextLimit` wechat_ilink → 4000 |
+| `web/src/features/channels/api.ts` | 修改 | O-15：login/poll 方法 |
+| `web/src/domain/channel/channelPlatformFields.ts` | 修改 | O-15：平台字段声明 |
+| `web/src/features/channels/ChannelEditorDialog.vue` / `useChannelEditorForm.ts` | 修改 | O-15：扫码区块 + 状态管理 |
+| `web/src/i18n/locales/{zh-CN,en-US}.ts` | 修改 | O-15：`channelEditor.wechatILink.*` 词条 |
+| `docs/development/17-channel.md` / `.design.md` / `.development.md` | 修改 | 文档同步 |
+
+---
+
 ## 18. 文档修订记录
 
 | 版本 | 日期 | 说明 |
@@ -1367,6 +1461,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 1.15 | 2026-06-11 | §17.8 Phase M 深度审查修复：R01-R04 阻断项修复 + S01/S05/S10/S14/S15 建议项修复；错误分类下沉 biz 层；UpsertCredential 原子 upsert；前端重复组件/函数清理 |
 | 1.16 | 2026-06-11 | §17.9 Phase N 全栈架构审查修复：R06 ChannelRepo 上帝接口拆分 + R07 inflight TTL；S16-S26 共 11 项建议修复（配置解析迁 biz 层、context.WithoutCancel、TOCTOU 文档+日志、错误日志、init() 清理、Store TECH-DEBT 升级、前端 domain/channel 层、locale TECH-DEBT、语义色修复） |
 | 1.17 | 2026-06-17 | 三件套内容边界重组：移除子模块「Channel 全量迁移计划」（W0–W6 任务已全部完成，进度汇总并入 §2 现状评估与 §4 路线图）；移除子模块「Channel Chat 外部参考借鉴手册」（独立文档 `17-channel-external-reference-playbook.md`，任务卡 CH-BOR-* 已在 §13 Phase G 落地）；接收从 `.design.md` 迁移的「当前实现状态」与「新增平台优先级」（已并入 §2 与 §16） |
+| 1.18 | 2026-08-12 | §17.10 Phase O：微信个人号 iLink 渠道接入（O-01–O-19 ✅）：扫码登录 RPC + 长轮询 starter + 群聊门控 + context_token 链路 + Markdown 降级 + 媒体/Typing 原语；平台矩阵 13→14；§2/§3 同步 |
 
 
 ---

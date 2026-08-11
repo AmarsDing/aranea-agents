@@ -1860,3 +1860,686 @@ git commit -m "feat(knowledge): M5 过滤图例集成 + 透镜 dim + 隐藏状�
 ```
 
 ---
+
+# 轨道 B — B1：文档重新 embedding（能力缺口①）
+
+> 设计依据：spec §8。核心事实：UI 上传文档 `content_text` 已存 DB，重嵌入**无需原始文件**——删旧 chunks → `content_text` 重新分块 → EmbedBatch → 插入新 chunks，复用 `knowledge.BuildIndexedChunks`（[knowledge.go:579](file:///f:/aranea-agents/internal/service/knowledge.go#L579) 同款调用）与 `DeleteChunksByDocument`（vault sync 既有接口）。
+
+## Task B1-T1: Proto ReembedDocuments 定义 + make api
+
+**Files:**
+- Modify: `api/kratos/knowledge/v1/knowledge.proto`（message 插到 `DeleteDocumentRequest`（:409-411）之后；rpc 插到 `MoveDocumentToDir` rpc（:553 区域）之后）
+- Modify: `api/kratos/knowledge/v1/*.pb.go`（生成物，`make api` 产出）
+
+- [ ] **Step 1: Proto 定义**
+
+```proto
+// ReembedDocuments re-chunks and re-embeds documents from their stored
+// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+rpc ReembedDocuments(ReembedDocumentsRequest) returns (ReembedDocumentsResponse) {
+  option (google.api.http) = { post: "/v1/knowledge/collections/{collection_id}/documents:reembed", body: "*" };
+}
+
+message ReembedDocumentsRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  repeated string doc_ids = 2;  // 空 = 全集合待重嵌入文档（chunks embedding IS NULL 或无 chunks）
+  int32 chunk_size = 3;
+  int32 chunk_overlap = 4;
+}
+
+message ReembedDocumentsResponse {
+  int32 accepted_count = 1;  // 已受理进入重嵌入队列的文档数
+  int32 skipped_count = 2;   // 跳过数（content_text 空 / 正在 indexing / vault 文档走 sync 自愈）
+}
+```
+
+- [ ] **Step 2: 生成 + 构建验证**
+
+Run: `make api && go build ./api/...`
+Expected: 生成成功，零编译错误
+
+- [ ] **Step 3: Commit**
+
+```powershell
+git add api/kratos/knowledge/v1/
+git commit -m "feat(knowledge): B1 ReembedDocuments proto 定义"
+```
+
+---
+
+## Task B1-T2: data ListDocumentsPendingReembed + biz DocumentRepo/Usecase 扩展
+
+**Files:**
+- Modify: `internal/biz/knowledge/knowledge.go`（`DocumentRepo`（:131-148）加方法 + `Usecase` 透传，模式见 `UpdateDocumentStatus`（:460-464)）
+- Modify: `internal/data/knowledge.go`（`ListDocuments`（:560）之后新增实现，复用 `scanDocumentSummary`）
+- Test: `internal/data/knowledge_reembed_test.go`（PG 集成，`testhelper.SetupTestPG`，同款见 `knowledge_dim_reconcile_test.go`）
+
+**背景**：DB-N3 接口 ≤5 方法属既有债务区（DB-DEBT-02/05，`DocumentRepo` 已 10+ 方法），本次随既有复合接口走（Wire 绑定用 `Repo` 复合接口），不新增拆分。
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+// internal/data/knowledge_reembed_test.go
+// TestKnowledgeRepo_ListDocumentsPendingReembed 覆盖筛选正确性：
+// - 命中：chunks embedding IS NULL 的文档；无任何 chunks 但有 content_text 的文档
+// - 排除：content_text='' 的文档；status='indexing' 的文档；embedding 非 NULL 的正常文档
+func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
+	// SetupTestPG 建集合 + 4 篇文档（null-embedding / no-chunks / indexing / healthy）
+	// 断言返回 id 集合 = {null-embedding, no-chunks}，按 created_at ASC
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/data/ -run TestKnowledgeRepo_ListDocumentsPendingReembed -count=1`
+Expected: FAIL（`ListDocumentsPendingReembed` 未定义）
+
+- [ ] **Step 3: Write minimal implementation**
+
+```go
+// biz/knowledge/knowledge.go — DocumentRepo 接口加：
+// ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
+// 且（chunks embedding IS NULL 或无任何 chunks）。按 created_at ASC（先入队先处理）。
+ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error)
+
+// Usecase 透传（knowledge.go:460 同款）：
+func (u *Usecase) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error) {
+	if strings.TrimSpace(collectionID) == "" {
+		return nil, ErrCollectionIDRequired
+	}
+	return u.documents.ListDocumentsPendingReembed(ctx, collectionID)
+}
+```
+
+```go
+// internal/data/knowledge.go — knowledgeRepo 实现（读路径 RW().Read 同款 Postgres() 读取，
+// 错误处理遵循 ListDocuments 既有 raw-SQL 模式）：
+func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]biz.KnowledgeDocument, error) {
+	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         organized, asset_uri,
+		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
+		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_documents d
+		  WHERE collection_id = $1
+		    AND content_text <> ''
+		    AND status <> 'indexing'
+		    AND (id IN (SELECT doc_id FROM knowledge_chunks WHERE embedding IS NULL)
+		         OR NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id))
+		  ORDER BY created_at ASC`
+	// rows → scanDocumentSummary（复用 :580 既有扫描器）
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `go test ./internal/data/ -run TestKnowledgeRepo_ListDocumentsPendingReembed -count=1`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add internal/biz/knowledge/knowledge.go internal/data/knowledge.go internal/data/knowledge_reembed_test.go
+git commit -m "feat(knowledge): B1 ListDocumentsPendingReembed 待重嵌入文档筛选（data+biz）"
+```
+
+---
+
+## Task B1-T3: service knowledge_reembed.go（串行重嵌入管线 + flow log 登记）+ 单测
+
+**Files:**
+- Create: `internal/service/knowledge_reembed.go`
+- Test: `internal/service/knowledge_reembed_test.go`
+- Modify: `internal/event/flow_log.go`（`stepTitleRegistry`（:233-241 knowledge.* 区）登记 2 个 step）
+- Modify: `docs/development/52-flow-logger.design.md` §5.1 步骤注册表（同步登记，红线）
+
+**设计**（spec §8.2）：
+- RPC 同步返回 accepted/skipped 计数（异步模式与 IngestDocument 一致）
+- **单后台 goroutine 串行处理**（不打爆 embedder API）：per doc `DeleteChunksByDocument` → `UpdateDocumentStatus("indexing")` + `publishKnowledgeIngest` WS → `BuildIndexedChunks(content_text)` → `InsertChunks` → `UpdateDocumentStatus("indexed", chunk_count)` + WS；单文档失败置 error 继续下一篇
+- **不触发** `RebuildBlockIndex`（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）
+- K7 进程日志：goroutine 启动/每文档 done/退出/panic 各一条
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+// internal/service/knowledge_reembed_test.go
+// 构造模式参照 knowledge_us14_test.go：biz.NewKnowledgeUsecase(memRepo...) + &KnowledgeService{uc, embedder, lg: loggateway.NewNoop()}
+// 异步管线用 require.Eventually 轮询 memRepo 中文档 status 落定为 indexed。
+
+func TestReembedDocuments_LexicalCollectionRejected(t *testing.T) {
+	// embedding_model='' 集合 → CodeBadRequest
+}
+func TestReembedDocuments_MutateAccessDenied(t *testing.T) {
+	// 共享/跨租户集合 → 权限错误（assertCollectionMutateAccess 路径）
+}
+func TestReembedDocuments_ExplicitDocIdsSkipsRules(t *testing.T) {
+	// 显式 doc_ids：content_text 空 / status=indexing 计 skipped；正常文档 accepted
+}
+func TestReembedDocuments_DefaultSelectsPending(t *testing.T) {
+	// doc_ids 空 → 走 ListDocumentsPendingReembed；accepted = 待重嵌入数
+}
+func TestReembedDocuments_PipelineReembedsFromContentText(t *testing.T) {
+	// stub embedder（EmbedBatch 返固定向量）；Eventually 断言：
+	// DeleteChunksByDocument 被调 → status 终态 indexed + chunk_count>0
+	// 且 RebuildBlockIndex 未被调用（spy 断言）
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/service/ -run TestReembedDocuments -count=1`
+Expected: FAIL（`ReembedDocuments` 未实现）
+
+- [ ] **Step 3: Write minimal implementation**
+
+`internal/event/flow_log.go` stepTitleRegistry 登记（紧随 `knowledge.ingest.*` 区）：
+
+```go
+"knowledge.reembed.start":  "文档重嵌入开始",
+"knowledge.reembed.done":   "文档重嵌入完成",
+```
+
+`internal/service/knowledge_reembed.go` 骨架（关键调用锚点，完整错误处理同 IngestDocument 模式）：
+
+```go
+package service
+
+// ReembedDocuments B1：从已存 content_text 重建 chunks+embedding（无需原始文件）。
+// 同步返回受理计数；重嵌入在单后台 goroutine 串行执行（复用摄取管线路径）。
+func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.ReembedDocumentsRequest) (*v1.ReembedDocumentsResponse, error) {
+	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
+	}
+	// 词法库（无 embedding_model）：重嵌入无语义层无意义。
+	if strings.TrimSpace(col.EmbeddingModel) == "" {
+		return nil, apierror.BadRequest("KNOWLEDGE", "collection has no semantic layer (embedding_model is empty)")
+	}
+	if s.embedder == nil {
+		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
+	}
+
+	// 筛选目标：显式 doc_ids（per-id GetDocument + 跳过规则）或默认全集合待重嵌入。
+	var docs []biz.KnowledgeDocument
+	skipped := 0
+	if len(req.GetDocIds()) > 0 {
+		for _, id := range req.GetDocIds() {
+			d, getErr := s.uc.GetDocument(ctx, id)
+			if getErr != nil || d.CollectionID != col.ID ||
+				strings.TrimSpace(d.ContentText) == "" || d.Status == "indexing" {
+				skipped++
+				continue
+			}
+			docs = append(docs, d)
+		}
+	} else {
+		pending, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+		if listErr != nil {
+			return nil, listErr
+		}
+		docs = pending
+	}
+	if len(docs) == 0 {
+		return &v1.ReembedDocumentsResponse{AcceptedCount: 0, SkippedCount: int32(skipped)}, nil
+	}
+
+	flow := s.knowledgeFlow(ctx)
+	flow.LogStart("knowledge.reembed.start", "文档重嵌入开始",
+		event.P("collection_id", col.ID),
+		event.P("doc_count", len(docs)))
+
+	embedder := s.embedder
+	uc := s.uc
+	reembedCtx := appctx.Ctx()
+	safego.Go(reembedCtx, "knowledge-reembed", func() {
+		s.lg.Info("knowledge reembed worker started", // K7 启动
+			loggateway.StepID("knowledge.reembed.worker_start"),
+			loggateway.Str("collection_id", col.ID),
+			loggateway.Int("doc_count", len(docs)))
+		defer s.lg.Info("knowledge reembed worker exited", // K7 退出
+			loggateway.StepID("knowledge.reembed.worker_exit"),
+			loggateway.Str("collection_id", col.ID))
+		for _, doc := range docs {
+			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, req.GetChunkSize(), req.GetChunkOverlap(), flow)
+		}
+		flow.LogDone("knowledge.reembed.done", "文档重嵌入完成",
+			event.P("collection_id", col.ID),
+			event.P("doc_count", len(docs)))
+	})
+	return &v1.ReembedDocumentsResponse{AcceptedCount: int32(len(docs)), SkippedCount: int32(skipped)}, nil
+}
+
+// reembedOneDocument 单文档串行管线：DeleteChunksByDocument → indexing+WS →
+// BuildIndexedChunks(content_text) → InsertChunks → indexed+WS。失败置 error 由调用方继续下一篇。
+// 不触发 RebuildBlockIndex（content_text 未变，块/边不变）。
+func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) {
+	if err := uc.DeleteChunksByDocument(ctx, doc.ID); err != nil { /* Warn + 置 error + WS，return */ }
+	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil { /* Error 日志 */ }
+	s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
+	params := knowledge.IngestParams{
+		DocID: doc.ID, CollectionID: col.ID, Text: doc.ContentText,
+		ChunkSize: int(chunkSize), ChunkOverlap: int(chunkOverlap),
+	}
+	params.ApplyDefaults()
+	bizChunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, flow)
+	if err != nil { /* 置 error + WS + flow.LogError，return */ }
+	if err := uc.InsertChunks(ctx, bizChunks); err != nil { /* 同上 */ }
+	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(bizChunks)); err != nil { /* Error 日志 + WS error */ }
+	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
+	s.lg.Info("knowledge reembed document done", // K7 每文档 done
+		loggateway.StepID("knowledge.reembed.doc_done"),
+		loggateway.Str("doc_id", doc.ID),
+		loggateway.Int("chunk_count", len(bizChunks)))
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `go test ./internal/service/ -run TestReembedDocuments -count=1`
+Expected: PASS（5 tests）
+
+- [ ] **Step 5: 门禁 + Commit**
+
+Run: `make build && go test ./internal/service/ ./internal/event/ -count=1`（干净 GOCACHE）
+Expected: 全绿（已知环境受限失败 `TestModelCatalogService_SyncModelCatalog_*` 除外）
+
+```powershell
+git add internal/service/knowledge_reembed.go internal/service/knowledge_reembed_test.go internal/event/flow_log.go docs/development/52-flow-logger.design.md
+git commit -m "feat(knowledge): B1 ReembedDocuments 串行重嵌入管线（复用摄取链路 + flow log 双轨）"
+```
+
+---
+
+## Task B1-T4: 前端入口（api/store + WorkbenchSidebar 菜单 + FocusCard 接线）
+
+**Files:**
+- Modify: `web/src/features/knowledge/api.ts`（`deleteDocument`（:230）后新增 `reembedDocuments`）
+- Modify: `web/src/stores/knowledge.ts`（`removeDocument` 旁新增 store action）
+- Modify: `web/src/components/knowledge/workbench/WorkbenchSidebar.vue`（文件行菜单（:85-94 move/download/delete 区）加「重新向量化」项）
+- Modify: `web/src/features/knowledge/useKnowledgePage.ts`（`onFileAction`（KnowledgePage.vue:274 路由至此）加 `reembed` 分支 + `confirmReembed` 处理器）
+- Modify: `web/src/components/knowledge/KnowledgeGraph3D.vue`（FocusCard `@reembed` 透传为 `reembed` emit + `:can-reembed` 绑定集合语义层判定）
+- Modify: `web/src/pages/KnowledgePage.vue`（`@reembed` handler → 同一 `confirmReembed`）
+- Test: `web/src/components/knowledge/workbench/__tests__/WorkbenchSidebar.spec.ts`（新增或追加）
+- Test: `web/src/stores/__tests__/knowledge.spec.ts`（新增或追加 reembedDocuments action）
+
+**设计**（spec §8.3 落地修正）：spec 原述「文档面板批量操作栏」——SP2-8 工作台时代该 UI 已不存在，文档操作实际位于 WorkbenchSidebar 文件行右键菜单（move/download/delete 同模式）。**入口①修正为单文档菜单项**（与既有交互一致；批量留待后续多选能力）。入口②（FocusCard 按钮）已在 M4-T2 落组件、本任务接线。
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// WorkbenchSidebar.spec.ts 追加：
+it('文件行菜单含「重新向量化」项并发射 file-action reembed', async () => {
+  // mount with 文件节点 → 打开菜单 → 点击 data-test="file-reembed"
+  // 断言 emitted('file-action')[0] = ['reembed', node]
+});
+
+// knowledge.spec.ts 追加：
+it('reembedDocuments action 调用 api 并返回受理计数', async () => {
+  // mock api.reembedDocuments resolve { accepted_count: 1, skipped_count: 0 }
+  // 断言 store.reembedDocuments('col-1', ['doc-1']) 返回计数且 api 入参正确
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd web && pnpm vitest run src/components/knowledge/workbench/__tests__/WorkbenchSidebar.spec.ts src/stores/__tests__/knowledge.spec.ts`
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+```typescript
+// api.ts：
+export async function reembedDocuments(
+  collectionId: string,
+  docIds?: string[],
+  chunkSize?: number,
+  chunkOverlap?: number,
+): Promise<{ accepted_count: number; skipped_count: number }> {
+  const { data } = await apiClient.post(`/v1/knowledge/collections/${collectionId}/documents:reembed`, {
+    doc_ids: docIds ?? [],
+    chunk_size: chunkSize ?? 0,
+    chunk_overlap: chunkOverlap ?? 0,
+  });
+  return data;
+}
+```
+
+```typescript
+// useKnowledgePage.ts — onFileAction 增加分支 + 处理器（对话框在 T5 完善，本步直调）：
+function confirmReembed(docIds: string[]) {
+  if (!selectedId.value || !docIds.length) return;
+  void knowledgeStore.reembedDocuments(selectedId.value, docIds).then((r) => {
+    $q.notify({ type: 'positive', message: t('knowledgePage.reembedAccepted', { n: r.accepted_count }) });
+    void loadDocuments(); // 状态经摄取 WS 实时刷新（零新订阅）
+  }).catch((e) => $q.notify({ type: 'negative', message: friendlyError(e) }));
+}
+// onFileAction: } else if (action === 'reembed') confirmReembed([node.doc_id]);
+```
+
+```vue
+<!-- WorkbenchSidebar.vue 文件菜单 download 与 delete 之间： -->
+<q-item clickable data-test="file-reembed" @click="$emit('file-action', 'reembed', f)">
+  <q-item-section avatar><q-icon name="psychology" size="18px" /></q-item-section>
+  <q-item-section>{{ t('knowledgePage.reembedDocument') }}</q-item-section>
+</q-item>
+```
+
+KnowledgeGraph3D.vue：FocusCard 挂载处加 `@reembed="(docId: string) => $emit('reembed', docId)"`，`:can-reembed="collectionHasSemantic"`（从 `collections` prop 按 `collection-id` 查 `embedding_model` 非空）；emits 加 `'reembed': [docId: string]`。KnowledgePage.vue：`<knowledge-graph-3-d ... @reembed="(docId) => confirmReembed([docId])" />`。
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: 同 Step 2 命令
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add web/src/features/knowledge/api.ts web/src/stores/knowledge.ts web/src/components/knowledge/workbench/WorkbenchSidebar.vue web/src/features/knowledge/useKnowledgePage.ts web/src/components/knowledge/KnowledgeGraph3D.vue web/src/pages/KnowledgePage.vue web/src/components/knowledge/workbench/__tests__/ web/src/stores/__tests__/
+git commit -m "feat(knowledge): B1 前端重嵌入入口（文件菜单① + FocusCard② 接线）"
+```
+
+---
+
+## Task B1-T5: 确认对话框 + 词法库置灰 + i18n + 运行时验证
+
+**Files:**
+- Modify: `web/src/features/knowledge/useKnowledgePage.ts`（`confirmReembed` 包 `$q.dialog` 确认层）
+- Modify: `web/src/components/knowledge/workbench/WorkbenchSidebar.vue`（词法库菜单项置灰 + tooltip）
+- Modify: `web/src/components/knowledge/workbench/KnowledgeWorkbench.vue`（如需透传当前集合语义层标记给 Sidebar）
+- Modify: `web/src/i18n/`（zh-Hans / en-US 文案）
+- Test: 上述两 spec 追加对话框/置灰用例
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+// useKnowledgePage spec 或 sidebar spec 追加：
+it('词法库（embedding_model 空）时「重新向量化」菜单项置灰', () => {
+  // mount sidebar with 当前集合 embedding_model='' → data-test="file-reembed" 项 disabled
+});
+it('confirmReembed 先弹确认对话框（列出文档数），确认后才调 store', async () => {
+  // $q.dialog spy；未确认不调 store；确认后调且 notify
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails** → **Step 3: Write minimal implementation**
+
+- 词法库置灰：Sidebar 由 `current-vault-id` + `collections`（Workbench 已有 props）computed `currentHasSemantic`；菜单项 `:disable="!currentHasSemantic"` + `q-tooltip` 说明「词法库无语义层，先启用语义检索」
+- 确认对话框（复用 M1 真折射玻璃风格类）：列出文档数 + 「从已存正文重建向量，无需原文件」说明；确认后调 store
+- i18n 文案（zh-Hans / en-US）：`reembedDocument: '重新向量化' / 'Re-embed'`；`reembedConfirmTitle: '重新向量化文档' / 'Re-embed documents'`；`reembedConfirmBody: '将从已存正文为 {n} 篇文档重建向量索引（无需原文件）。' / 'Rebuilds vectors from stored text for {n} document(s).'`；`reembedAccepted: '已受理 {n} 篇重嵌入' / '{n} document(s) queued'`；`reembedNoSemantic: '词法库无语义层' / 'No semantic layer'`
+
+- [ ] **Step 4: Run test to verify it passes + 门禁**
+
+Run: `cd web && pnpm lint && pnpm test && pnpm build`
+Expected: 全绿（含 check-i18n）
+
+- [ ] **Step 5: 运行时验证（R3 红线，spec §8.4）**
+
+1. 起 dev（`make build` pgvector tag + 前端 dev）
+2. 事故复现：DB 执行 `UPDATE knowledge_chunks SET embedding = NULL WHERE doc_id = '<某 UI 上传文档>'`
+3. 工作台文件行菜单点「重新向量化」→ 确认对话框 → 受理 notify
+4. 文档列表状态实时 indexing → indexed（摄取 WS 复用生效）
+5. 语义检索该文档内容 → 命中恢复
+6. 图谱 FocusCard「重新向量化」按钮同链路验证（入口②）
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add web/src/features/knowledge/useKnowledgePage.ts web/src/components/knowledge/workbench/ web/src/i18n/
+git commit -m "feat(knowledge): B1 重嵌入确认对话框 + 词法库置灰 + i18n"
+```
+
+---
+
+# 轨道 B — B2：集合语义层启用（空 → 启用单向，能力缺口②）
+
+> 设计依据：spec §9。**仅支持「空语义层 → 启用」单向**（绑定当前全局 embedder）；换模型/降维不走 UI，仍走配置文件 + 重启 reconcile 既有路径。
+
+## Task B2-T1: 后端 EnableCollectionSemantic（Proto + data/biz/service，复用 B1 管线）
+
+**Files:**
+- Modify: `api/kratos/knowledge/v1/knowledge.proto` + `make api`（message 紧随 B1-T1 区块；rpc 紧随 ReembedDocuments）
+- Modify: `internal/biz/knowledge/knowledge.go`（`CollectionRepo`（:112-120）加 `EnableCollectionSemantic` + Usecase 透传含 Conflict 守卫）
+- Modify: `internal/data/knowledge.go`（knowledgeRepo 实现，写路径 `RW().Write` 区域既有 UPDATE 模式）
+- Modify: `internal/service/knowledge_reembed.go`（同文件加 RPC——B1/B2 共用重嵌入管线）
+- Modify: `internal/event/flow_log.go` stepTitleRegistry + `docs/development/52-flow-logger.design.md` §5.1
+- Test: `internal/service/knowledge_reembed_test.go` 追加；`internal/data/knowledge_reembed_test.go` 追加 PG 用例
+
+- [ ] **Step 1: Write the failing test**
+
+```go
+func TestEnableCollectionSemantic_ConflictWhenAlreadyEnabled(t *testing.T) {
+	// embedding_model 非空集合 → CodeConflict
+}
+func TestEnableCollectionSemantic_BadRequestWhenEmbedderNotConfigured(t *testing.T) {
+	// s.embedder.Config() configured=false → CodeBadRequest
+}
+func TestEnableCollectionSemantic_EnqueuesAllContentDocs(t *testing.T) {
+	// 词法库 + 3 篇有正文文档 → resp.EnqueuedDocs=3、EmbeddingModel/Dim = 全局 embedder 值
+	// Eventually：全部文档 status 终态 indexed（复用 B1 串行管线）
+}
+func TestEnableCollectionSemantic_MutateAccessDenied(t *testing.T) { /* 权限拒绝 */ }
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/service/ -run TestEnableCollectionSemantic -count=1`
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+```proto
+// knowledge.proto：
+rpc EnableCollectionSemantic(EnableCollectionSemanticRequest) returns (EnableCollectionSemanticResponse) {
+  option (google.api.http) = { post: "/v1/knowledge/collections/{collection_id}:enable-semantic", body: "*" };
+}
+message EnableCollectionSemanticRequest { string collection_id = 1 [(google.api.field_behavior) = REQUIRED]; }
+message EnableCollectionSemanticResponse {
+  int32 enqueued_docs = 1;    // 进入重嵌入队列的文档数
+  string embedding_model = 2; // 绑定的模型名（当前全局 embedder）
+  int32 dim = 3;
+}
+```
+
+```go
+// data knowledge.go（守卫式 UPDATE：仅当仍为空语义层才绑定，返 bool=是否生效）：
+func (r *knowledgeRepo) EnableCollectionSemantic(ctx context.Context, id, model string, dim int) (bool, error) {
+	res, err := r.data.RW().Write(ctx).ExecContext(ctx,
+		`UPDATE knowledge_collections SET embedding_model = $2, dim = $3, updated_at = now()
+		 WHERE id = $1 AND embedding_model = ''`, id, model, dim)
+	// RowsAffected==0 → false（并发/已启用）
+}
+
+// biz Usecase 透传：false → ErrCollectionSemanticConflict（apierror.Conflict）
+
+// service knowledge_reembed.go：
+func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1.EnableCollectionSemanticRequest) (*v1.EnableCollectionSemanticResponse, error) {
+	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())        // 存在性
+	if err != nil { return nil, err }
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil { return nil, err }
+	if strings.TrimSpace(col.EmbeddingModel) != "" {
+		return nil, apierror.Conflict("KNOWLEDGE", "semantic layer already enabled")
+	}
+	_, _, model, dim, configured, _ := s.embedder.Config()           // 全局 embedder 快照
+	if s.embedder == nil || !configured {
+		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
+	}
+	if err := s.uc.EnableCollectionSemantic(ctx, col.ID, model, dim); err != nil { return nil, err }
+	// 全集合有正文文档入队（复用 B1 同一串行管线 goroutine 函数）
+	docs, err := s.uc.ListDocumentsPendingReembed(ctx, col.ID)       // 启用后全部 chunks 缺失/NULL，恰为 pending 集
+	if err != nil { return nil, err }
+	flow := s.knowledgeFlow(ctx)
+	flow.LogStart("knowledge.collection.enable_semantic", "集合语义层启用",
+		event.P("collection_id", col.ID), event.P("embedding_model", model), event.P("dim", dim))
+	// safego.Go 串行循环 reembedOneDocument（K7 日志同款），done 时 flow.LogDone 同 step
+	return &v1.EnableCollectionSemanticResponse{
+		EnqueuedDocs: int32(len(docs)), EmbeddingModel: model, Dim: int32(dim),
+	}, nil
+}
+```
+
+stepTitleRegistry 登记：`"knowledge.collection.enable_semantic": "集合语义层启用"`。
+
+- [ ] **Step 4: Run test to verify it passes + 门禁**
+
+Run: `make api && make build && go test ./internal/service/ ./internal/data/ -run 'TestEnableCollectionSemantic|TestKnowledgeRepo_EnableCollectionSemantic' -count=1`
+Expected: 全绿
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add api/kratos/knowledge/v1/ internal/biz/knowledge/knowledge.go internal/data/knowledge.go internal/data/knowledge_reembed_test.go internal/service/knowledge_reembed.go internal/service/knowledge_reembed_test.go internal/event/flow_log.go docs/development/52-flow-logger.design.md
+git commit -m "feat(knowledge): B2 EnableCollectionSemantic 空语义层单向启用（绑定全局 embedder + 批量重嵌入）"
+```
+
+---
+
+## Task B2-T2: 前端 vault 树根菜单「启用语义检索」+ 确认对话框 + 运行时验证
+
+**Files:**
+- Modify: `web/src/components/knowledge/KnowledgeVaultTree.vue`（vault 根节点菜单（:96-105 refresh/delete-vault 区）加项，仅词法库显示）
+- Modify: `web/src/features/knowledge/api.ts` + `web/src/stores/knowledge.ts`（`enableCollectionSemantic`）
+- Modify: `web/src/features/knowledge/useKnowledgePage.ts`（`onTreeNodeAction`（:499）加 `enable-semantic` 分支 + 确认对话框）
+- Modify: `web/src/pages/KnowledgePage.vue`（向树传 `lexical-vault-ids` computed：collections 中 `embedding_model===''` 的 id 集）
+- Modify: `web/src/i18n/`
+- Test: `web/src/components/knowledge/__tests__/KnowledgeVaultTree.spec.ts` 追加；store spec 追加
+
+**设计**：
+- 树节点不复制 collection 字段（单一事实源在 `collections`）；树经 `lexical-vault-ids` prop 判定菜单可见性
+- 确认对话框（M1 真折射玻璃）：展示将绑定的全局 embedder 模型名/dim（`embedderConfig` store computed）+ 文档数耗时提示 +「启用后词法检索自动升级为混合检索」
+- 启用后 `loadCollections()` 刷新；重嵌入进度复用摄取 WS（文档状态实时流转）
+
+- [ ] **Step 1: Write the failing test**
+
+```typescript
+it('词法库 vault 根菜单显示「启用语义检索」，语义库不显示', () => {
+  // lexicalVaultIds 含目标 vault → 菜单项存在；不含 → 不存在
+});
+it('enable-semantic action 确认后调 store 并刷新集合', async () => {
+  // dialog 确认 → store.enableCollectionSemantic 被调 + loadCollections 被调
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd web && pnpm vitest run src/components/knowledge/__tests__/KnowledgeVaultTree.spec.ts`
+Expected: FAIL
+
+- [ ] **Step 3: Write minimal implementation**
+
+```vue
+<!-- KnowledgeVaultTree.vue：delete-vault 菜单项之前，v-if="lexicalVaultIds.includes(vaultIdOf(scope.node))" -->
+<q-item clickable data-test="vault-enable-semantic" @click="emitAction('enable-semantic', scope.node)">
+  <q-item-section avatar><q-icon name="travel_explore" size="18px" /></q-item-section>
+  <q-item-section>{{ t('knowledgePage.enableSemantic') }}</q-item-section>
+</q-item>
+```
+
+```typescript
+// useKnowledgePage.ts — onTreeNodeAction 分支：
+} else if (action === 'enable-semantic') {
+  const col = collections.value.find((c) => vaultNodeKey(c.id) === node.key);
+  if (!col) return;
+  $q.dialog({
+    title: t('knowledgePage.enableSemanticTitle'),
+    message: t('knowledgePage.enableSemanticBody', {
+      model: embedderConfig.value?.model ?? '', dim: embedderConfig.value?.dim ?? 0,
+    }),
+    cancel: true,
+  }).onOk(async () => {
+    try {
+      const r = await knowledgeStore.enableCollectionSemantic(col.id);
+      $q.notify({ type: 'positive', message: t('knowledgePage.enableSemanticAccepted', { n: r.enqueued_docs }) });
+      await loadCollections();
+    } catch (e) { $q.notify({ type: 'negative', message: friendlyError(e) }); }
+  });
+}
+```
+
+i18n（zh-Hans / en-US）：`enableSemantic: '启用语义检索' / 'Enable semantic search'`；`enableSemanticTitle: '启用语义检索' / 'Enable semantic search'`；`enableSemanticBody: '将绑定当前 Embedder（{model}，{dim} 维）并为全部文档重建向量；启用后词法检索自动升级为混合检索。' / 'Binds current embedder ({model}, {dim}d) and re-embeds all documents; lexical search upgrades to hybrid.'`；`enableSemanticAccepted: '已启用，{n} 篇文档进入重嵌入队列' / 'Enabled; {n} document(s) queued'`。
+
+- [ ] **Step 4: Run test to verify it passes + 门禁**
+
+Run: `cd web && pnpm lint && pnpm test && pnpm build`
+Expected: 全绿
+
+- [ ] **Step 5: 运行时验证（R3 红线，spec §9.4）**
+
+词法库（embedding_model 空）vault 根菜单点「启用语义检索」→ 对话框显示模型名/dim → 确认 → 文档批量 indexing → indexed → 检索从 BM25-only 升级为混合检索命中；已启用集合菜单项消失。
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add web/src/components/knowledge/KnowledgeVaultTree.vue web/src/features/knowledge/api.ts web/src/stores/knowledge.ts web/src/features/knowledge/useKnowledgePage.ts web/src/pages/KnowledgePage.vue web/src/i18n/ web/src/components/knowledge/__tests__/ web/src/stores/__tests__/
+git commit -m "feat(knowledge): B2 前端语义层启用入口（vault 菜单 + 确认对话框）"
+```
+
+---
+
+# 轨道 C — G5-G G-3 性能基准（双布局矩阵）
+
+> 设计依据：spec §10。与 M2 协同：一次造数双布局复用。关闭 37-knowledge.development.md:1046 的 G-3 📋。
+
+## Task C-T1: 2 万节点/5 万边双布局基准录制 + 落档
+
+**Files:**
+- Create: `test/graph3d-perf/gen-dataset.ts`（合成数据集生成器，一次性工具，test/ 目录纪律）
+- Create: `docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（基准记录，沿用 reports/ acceptance-* 位置与结构）
+- Modify: `docs/development/37-knowledge.development.md`（G-3 📋→✅，DOC-T1 亦可合并收尾）
+
+- [ ] **Step 1: 合成数据集 + dev 注入**
+
+`test/graph3d-perf/gen-dataset.ts`：确定性 seed 生成 20,000 节点 / 50,000 边（doc_type 分布 ≥6 组，度数幂律逼近真实 vault）；输出 JSON 供 dev 控制台注入图谱全屏（`generation` +1 触发重建）。双布局各测一轮：force（FORCE_DEFAULTS）→ HUD 切 galaxy（GALAXY_FORCE_PARAMS 再加热）。
+
+- [ ] **Step 2: 基准矩阵录制**
+
+| 项 | 指标 | 方法 |
+|----|------|------|
+| 交互帧率 | hover/拖拽/缩放 FPS（HIGH/MID/LOW 三档 × 双布局） | DevTools Performance 录制 |
+| Worker tick | 物理单 tick 耗时（双布局） | performance.now 采样（worker onmessage 计时注入） |
+| 布局收敛 | alpha 收敛时间（双布局） | engine onSettled 计时 |
+| 静置零占用 | 收敛后 CPU/GPU 零占用断言 | lazy-render 验证（needsRender=false 时无 RAF；Performance 静置 10s 无长任务） |
+
+- [ ] **Step 3: 落档 + G-3 关闭**
+
+结果写 `docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（环境：CPU/GPU/浏览器版本；矩阵表格；结论与档位建议）；37-knowledge.development.md G-3 行 📋→✅（As-built 引用基准文档路径）。
+
+- [ ] **Step 4: Commit**
+
+```powershell
+git add test/graph3d-perf/ docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md docs/development/37-knowledge.development.md
+git commit -m "test(knowledge): C 双布局性能基准（2 万节点/5 万边）落档，G-3 关闭"
+```
+
+---
+
+# 轨道 DOC — 文档同步（DOC-SYNC 红线）
+
+## Task DOC-T1: 37-knowledge 三件套 + 交叉参考同步
+
+**Files:**
+- Modify: `docs/development/37-knowledge.design.md`（增补 V12.9 章节：M1 真折射 / M2 星系盘+布局切换 / M3 电影感镜头 / M4 聚焦+节点卡 / M5 图例透镜 / B1 重嵌入 / B2 语义层启用；API 端点表加 2 个 RPC——DOC-SYNC-7）
+- Modify: `docs/development/37-knowledge.development.md`（M1-M5/B1/B2/C 任务清单 ✅ + G-3 关闭 + 代码锚点——DOC-SYNC-5/6）
+- Modify: `docs/development/37-knowledge.md`（需求文档增补 B1/B2 需求条目与验收标准；验收 34 性能基准引用更新——DOC-SYNC-2 边界：只写需求/验收，实现细节留在 design）
+- Modify: `docs/development/65-module-cross-reference-full.md`（knowledge 模块卡片：新增 RPC/前端组件关联——若该手册含 API/组件清单）
+- 归档说明：本计划与 spec（`docs/reports/2026-08-12-plan-knowledge-galaxy-liquid-glass.md`）保留为方案档案
+
+- [ ] **Step 1: 三件套同步**（按上方 Files 各点；三件套内容边界红线：需求/.md、设计/.design.md、进度/.development.md 不跨类混写）
+
+- [ ] **Step 2: 一致性自检**
+
+- design.md API 端点表 vs `api/kratos/knowledge/v1/knowledge.proto`（ReembedDocuments / EnableCollectionSemantic）
+- development.md 代码锚点路径全部真实存在（含本计划全部新增文件）
+- 52-flow-logger.design.md §5.1 已含 `knowledge.reembed.*` / `knowledge.collection.enable_semantic`（B1-T3/B2-T1 已同步，此处复核）
+
+- [ ] **Step 3: Commit**
+
+```powershell
+git add docs/development/37-knowledge.design.md docs/development/37-knowledge.development.md docs/development/37-knowledge.md docs/development/65-module-cross-reference-full.md
+git commit -m "docs(knowledge): 全面升级文档同步（V12.9 + B1/B2 + G-3 关闭）"
+```
+
+---

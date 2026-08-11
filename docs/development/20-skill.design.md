@@ -856,6 +856,15 @@ Data 侧关键实现：
 - **管线位置**（`memory_inject.go` `buildRuntimeMemoryCue`）：与 L2/L3 并列、位于 L4 之前并入 `recallParts`，复用统一预算截断（`JoinCuesWithBudget`）与末尾追加（前缀稳定）。
 - **接线**：`rt.MemorySet.AgentCaseRecaller` ← `data.NewMemoryAgentCaseStore(d)`（`providePersistenceSet`），6 个 `TRPCMemoryKnowledgeDeps` 消费点（wire.go ×2、chat_orch_agent_build、openai_compat、a2a_endpoint、runner_team_trpc_phases）透传；nil 时 Case 块整体跳过。
 
+**Case→Skill 蒸馏触发（P3 M4，EverOS 蒸馏链落地）**：
+
+- **定位**：Case 积累到阈值后，把最近一批高质量任务经验蒸馏成一份 SKILL.md 草稿，作为 `create_skill` 建议汇入统一进化建议漏斗（pending → 人工审批 → 落库），不在后台自动创建技能。
+- **触发器**（`internal/biz/skill_evolution_trigger_case_distill.go` `CaseDistillTrigger`）：挂为 orchestrator 的 `EvolutionTrigger`（target=agent / action=create_skill / source=`agent_case_distill`）而非独立 job——免费获得 pending 短路、per-action 7 天冷却、D8 自适应降频与 DB UNIQUE 兜底，且 LLM 蒸馏不占 memory 队列关键路径。判定链：L1 opt-in（`EvolutionSkillEvolve`，与 PatternTrigger 共用开关）→ 空 query 召回最近高质量 Case（复用 M3 `AgentCaseRecaller`，上限 10 条）→ 不足 5 条（`caseDistillMinCases`）跳过 → LLM 蒸馏。
+- **错误语义**：DB 召回失败上抛 error（orchestrator 记 Warn，K2）；LLM 蒸馏失败/输出非法仅本地 Warn 本轮跳过（best-effort，下轮重试，避免 Warn 刷屏）；name/body 为空跳过。
+- **建议载荷**：`DraftName`+`DraftBody`（完整 SKILL.md 草稿，审批界面直接预览），`Metadata.source_case_ids`（`EvoMetaSourceCaseIDs`）记录来源 Case ID 供审计追溯。
+- **蒸馏器**（`internal/service/agent_case_skill_distiller.go` `AgentCaseSkillDistiller`，实现 `biz.CaseSkillDistiller`）：复用 `MemoryLLMExtractor.callModel` 通道（`ConsolidateInput{AgentID}` 仅作 provider 路由，无会话上下文）；`buildCaseDistillDigest` 把 Case 渲染为带 `[SUCCESS]/[FAILURE]` 大写结局、goal/approach/pitfalls/tools 信号的摘要；prompt 要求只固化多条经验中反复出现的共性模式、无共性输出空对象；`parseCaseDistillResponse` 容忍 markdown fence，name 归一化为 `[a-z0-9-]` slug（纯非 ASCII 名折叠为空 → 按提取失败跳过），body 低于 10 runes 视为敷衍输出跳过。
+- **Wire 装配**：`NewAgentCaseSkillDistiller` 绑定 `biz.CaseSkillDistiller`（service.ProviderSet）；`NewMemoryAgentCaseStore` 同实例追加绑定 `biz.AgentCaseRecaller`（data.ProviderSet）；`provideSkillEvolutionOrchestrator` 注入二者并 `RegisterTrigger(NewCaseDistillTrigger(agents, caseRecaller, caseDistiller, lg))`。distiller 为 nil（LLM 通道不可用）时 trigger 整体 no-op。
+
 ---
 
 ## 七、运行时层

@@ -112,6 +112,9 @@ var ProviderSet = wire.NewSet(
 	// P3 M2: Agent Case LLM 提取器（复用 MemoryLLMExtractor 的 LLM 通道）。
 	NewAgentCaseLLMExtractor,
 	wire.Bind(new(biz.AgentCaseExtractor), new(*AgentCaseLLMExtractor)),
+	// P3 M4: Case→Skill 蒸馏器（复用 MemoryLLMExtractor 的 LLM 通道）。
+	NewAgentCaseSkillDistiller,
+	wire.Bind(new(biz.CaseSkillDistiller), new(*AgentCaseSkillDistiller)),
 	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Dependency inversion: bind concrete types to biz ports for TeamService
 	wire.Bind(new(biz.TeamTurnRunnerPort), new(*team.Runner)),

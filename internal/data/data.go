@@ -115,9 +115,11 @@ var ProviderSet = wire.NewSet(
 	NewAgentTemplateRepo,
 	NewMemoryConsolidationWriterAdapter,
 	// P3 M2: Agent Case 经验存储（biz.AgentCaseReader/Writer 端口）。
+	// P3 M4: 同实例兼作 AgentCaseRecaller（蒸馏触发的空 query 高质量召回）。
 	NewMemoryAgentCaseStore,
 	wire.Bind(new(biz.AgentCaseReader), new(*memoryAgentCaseRepo)),
 	wire.Bind(new(biz.AgentCaseWriter), new(*memoryAgentCaseRepo)),
+	wire.Bind(new(biz.AgentCaseRecaller), new(*memoryAgentCaseRepo)),
 	NewMemoryFactIndexMaintainerAdapter,
 	NewMemoryEpisodeDecayerAdapter,
 	NewMemoryFactDecayerAdapter,

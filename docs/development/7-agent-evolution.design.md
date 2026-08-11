@@ -397,10 +397,13 @@ func provideEvolutionUsecase(
 ) *biz.EvolutionUsecase          // → biz.ProvideEvolutionUsecase（注入事务提供者）
 
 func provideSkillEvolutionOrchestrator(...) *biz.SkillEvolutionOrchestrator
-    // 组装统一编排器并注册三个触发器：
+    // 组装统一编排器并注册触发器：
     //   PatternTrigger（L1，原 SkillEvolutionScanner 职责）
     //   HealthTrigger（L2，原 CuratorWorker 触发职责）
     //   AgentConfigTrigger（L3，A6 移植自 EvolutionUsecase.ScanAgent）
+    //   SuccessTrigger（P2 F3，高成功率 skill 正向模式沉淀）
+    //   CaseDistillTrigger（P3 M4，Agent Case 蒸馏 SKILL.md 草稿，
+    //     source=agent_case_distill，详见 20-skill.design.md §6.12）
 
 func provideEvolutionOrchestratorWorker(
     orch *biz.SkillEvolutionOrchestrator,

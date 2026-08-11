@@ -123,26 +123,24 @@ public sealed class Dispatcher
     /// <summary>处理一行请求，返回一行响应 JSON（保证单请求异常不崩进程）</summary>
     public string HandleLine(string line)
     {
-        if (!JsonRpc.TryParseRequest(line, out var req, out var err))
+        if (!JsonRpc.TryParseRequest(line, out var parsed, out var err))
         {
             return err!;
         }
-        using (req!)
+        using var req = parsed!;
+        try
         {
-            try
-            {
-                var result = Dispatch(req);
-                return JsonRpc.ResultResponse(req.IdRaw, result);
-            }
-            catch (CuaException ce)
-            {
-                return JsonRpc.ErrorResponse(req.IdRaw, ce.Code, ce.Message);
-            }
-            catch (Exception ex)
-            {
-                Program.Diag($"请求 {req.Method} 未捕获异常: {ex}");
-                return JsonRpc.ErrorResponse(req.IdRaw, JsonRpc.InternalError, "内部错误: " + ex.Message);
-            }
+            var result = Dispatch(req);
+            return JsonRpc.ResultResponse(req.IdRaw, result);
+        }
+        catch (CuaException ce)
+        {
+            return JsonRpc.ErrorResponse(req.IdRaw, ce.Code, ce.Message);
+        }
+        catch (Exception ex)
+        {
+            Program.Diag($"请求 {req.Method} 未捕获异常: {ex}");
+            return JsonRpc.ErrorResponse(req.IdRaw, JsonRpc.InternalError, "内部错误: " + ex.Message);
         }
     }
 

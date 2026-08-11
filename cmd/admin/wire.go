@@ -1866,6 +1866,8 @@ func provideSkillEvolutionOrchestrator(
 	scorer *biz.SkillScoringUsecase,
 	metricsRepo biz.EvolutionMetricsRepo,
 	skills biz.SkillLookupReader,
+	caseRecaller biz.AgentCaseRecaller,
+	caseDistiller biz.CaseSkillDistiller,
 	siConf *conf.SelfImprovement,
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
@@ -1877,6 +1879,9 @@ func provideSkillEvolutionOrchestrator(
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
 	// P2 F3 成功沉淀：高成功率 skill 固化正向模式（规则块门控在 trigger 内）。
 	orch.RegisterTrigger(biz.NewSuccessTrigger(aggregator, skills, lg))
+	// P3 M4 case→skill 蒸馏：Agent Case 积累到阈值（5 条）后蒸馏为 SKILL.md
+	// 草稿建议；冷却/pending 短路/DB UNIQUE 由 orchestrator 统一兜底。
+	orch.RegisterTrigger(biz.NewCaseDistillTrigger(agents, caseRecaller, caseDistiller, lg))
 	if siConf.SIEnabled() {
 		orch.RegisterTrigger(biz.NewErrorClusterTrigger(siSignals, siConf.SIErrorClusterWindowDays(), siConf.SIErrorClusterMinCount(), lg))
 		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))

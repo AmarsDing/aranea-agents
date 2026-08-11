@@ -339,9 +339,13 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillRegistrationPort := provideSkillRegistrationPort(skillUsecase)
 	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
 	skillScoringUsecase := biz.NewSkillScoringUsecase(skillIntelligenceRepo, loggatewayLogger)
+	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
+	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
+	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
+	agentCaseSkillDistiller := service.NewAgentCaseSkillDistiller(memoryLLMExtractor)
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
 	testRunReader := provideSelfImprovementTestRunReader(selfImprovement)
-	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, selfImprovement, selfImprovementSignalRepo, testRunReader, loggatewayLogger)
+	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
@@ -597,12 +601,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
-	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
-	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
 	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
-	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
 	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, loggatewayLogger)
 	if err != nil {
 		cleanup()
@@ -2403,6 +2404,8 @@ func provideSkillEvolutionOrchestrator(
 	scorer *biz.SkillScoringUsecase,
 	metricsRepo biz.EvolutionMetricsRepo,
 	skills biz.SkillLookupReader,
+	caseRecaller biz.AgentCaseRecaller,
+	caseDistiller biz.CaseSkillDistiller,
 	siConf *conf.SelfImprovement,
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
@@ -2414,6 +2417,8 @@ func provideSkillEvolutionOrchestrator(
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
 
 	orch.RegisterTrigger(biz.NewSuccessTrigger(aggregator, skills, lg))
+
+	orch.RegisterTrigger(biz.NewCaseDistillTrigger(agents, caseRecaller, caseDistiller, lg))
 	if siConf.SIEnabled() {
 		orch.RegisterTrigger(biz.NewErrorClusterTrigger(siSignals, siConf.SIErrorClusterWindowDays(), siConf.SIErrorClusterMinCount(), lg))
 		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))

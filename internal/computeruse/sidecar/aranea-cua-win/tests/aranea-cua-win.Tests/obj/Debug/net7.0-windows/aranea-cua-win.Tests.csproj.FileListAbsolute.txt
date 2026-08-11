@@ -1,0 +1,5 @@
+F:\aranea-agents\internal\computeruse\sidecar\aranea-cua-win\tests\aranea-cua-win.Tests\obj\Debug\net7.0-windows\aranea-cua-win.Tests.csproj.AssemblyReference.cache
+F:\aranea-agents\internal\computeruse\sidecar\aranea-cua-win\tests\aranea-cua-win.Tests\obj\Debug\net7.0-windows\aranea-cua-win.Tests.GeneratedMSBuildEditorConfig.editorconfig
+F:\aranea-agents\internal\computeruse\sidecar\aranea-cua-win\tests\aranea-cua-win.Tests\obj\Debug\net7.0-windows\aranea-cua-win.Tests.AssemblyInfoInputs.cache
+F:\aranea-agents\internal\computeruse\sidecar\aranea-cua-win\tests\aranea-cua-win.Tests\obj\Debug\net7.0-windows\aranea-cua-win.Tests.AssemblyInfo.cs
+F:\aranea-agents\internal\computeruse\sidecar\aranea-cua-win\tests\aranea-cua-win.Tests\obj\Debug\net7.0-windows\aranea-cua-win.Tests.csproj.CoreCompileInputs.cache
