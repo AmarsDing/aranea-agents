@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/loggateway"
 )
@@ -455,5 +456,49 @@ func TestConfirmActivity_LiveChannelReceivesToken(t *testing.T) {
 	}
 	if sent.Reply != "approved" {
 		t.Fatalf("live channel must receive the machine token, got %q", sent.Reply)
+	}
+}
+
+// Channel-ingress sessions (e.g. Feishu) are created with an empty UserID.
+// The web console operator must be able to confirm tool cards on those
+// sessions — same semantics as assertSessionAccess / ConfirmPlan /
+// SubmitClarification: empty UserID is allowed, only cross-user is denied.
+func TestConfirmActivity_ChannelSessionEmptyUserIDAllowed(t *testing.T) {
+	coord := stubAwaitCoord{trySendFn: func(string, biz.AwaitReplyMsg) bool { return true }}
+	svc, orch, _ := newConfirmActivityTestSvc(coord, toolBlockedConfirmStep())
+	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(context.Context, string) (biz.Session, error) {
+		return biz.Session{ID: "sess-1", UserID: ""}, nil // channel-created session
+	}}
+
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	resp, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: "step-confirm-1",
+		Approved:   true,
+	})
+	if err != nil {
+		t.Fatalf("channel session (empty UserID) must be confirmable by any authenticated user: %v", err)
+	}
+	if !resp.GetAccepted() {
+		t.Fatal("live channel path must accept")
+	}
+}
+
+// Cross-user access must still be denied for owned sessions.
+func TestConfirmActivity_CrossUserDenied(t *testing.T) {
+	coord := stubAwaitCoord{trySendFn: func(string, biz.AwaitReplyMsg) bool { return true }}
+	svc, orch, _ := newConfirmActivityTestSvc(coord, toolBlockedConfirmStep())
+	orch.core.TD.Sessions = stubSessionTurnManagerGet{getFn: func(context.Context, string) (biz.Session, error) {
+		return biz.Session{ID: "sess-1", UserID: "user-2"}, nil
+	}}
+
+	ctx := ctxuser.WithUserID(context.Background(), "user-1")
+	_, err := svc.ConfirmActivity(ctx, &chatv1.ConfirmActivityRequest{
+		SessionId:  "sess-1",
+		ActivityId: "step-confirm-1",
+		Approved:   true,
+	})
+	if !apierror.IsCode(err, apierror.CodeForbidden) {
+		t.Fatalf("cross-user confirm must be Forbidden, got %v", err)
 	}
 }

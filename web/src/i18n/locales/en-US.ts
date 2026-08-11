@@ -952,6 +952,7 @@ export default {
     usageEvents: 'Usage events',
     usageQuotas: 'Usage quotas',
     chat: 'Chat',
+    companion: 'Voice Companion',
     sessions: 'Session history',
     memory: 'Memory Center',
     agents: 'Agent management',

@@ -79,7 +79,10 @@ func (s *ChatService) ConfirmActivity(ctx context.Context, req *chatv1.ConfirmAc
 		if err != nil {
 			return nil, apierror.NotFound(apierror.DomainChat, "session not found")
 		}
-		if session.UserID != userID {
+		// 与 chat_plan_confirm.go / chat_clarify.go / assertSessionAccess 同语义：
+		// 空 UserID 的会话（dev bypass/渠道入口创建，如飞书）放行，仅拒绝跨用户访问。
+		// 严格相等会让渠道会话的工具确认卡在 Web 控制台被 403。
+		if session.UserID != "" && session.UserID != userID {
 			s.lg.Warn("confirm activity ownership denied",
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("activity_id", activityID),

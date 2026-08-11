@@ -966,6 +966,7 @@ export default {
     usageEvents: '用量事件',
     usageQuotas: '用量配额',
     chat: '聊天',
+    companion: '语音伴侣',
     sessions: '会话历史',
     memory: '记忆中心',
     agents: 'Agent 管理',

@@ -185,6 +185,15 @@ function onConfirm(reply: ToolConfirmReply) {
     sessionId: props.step.SessionID,
     activityId: props.step.ID,
     reply,
+    // 结算回调：终点 handler 在 RPC 成功/失败后立即复位按钮，
+    // 避免失败时按钮卡在「提交中…」直到 15s 兜底定时器到期。
+    onSettled: () => {
+      confirming.value = false;
+      if (confirmTimer) {
+        clearTimeout(confirmTimer);
+        confirmTimer = null;
+      }
+    },
   });
 }
 </script>

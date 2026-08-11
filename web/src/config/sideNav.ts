@@ -18,6 +18,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
       { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
       { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
+      { to: '/companion', icon: 'record_voice_over', labelKey: 'menu.companion' },
       { to: '/sessions', icon: 'history', labelKey: 'menu.sessions', exact: false },
       { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false },
     ],

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -144,7 +146,8 @@ func (r *SkillReplayRunner) ReplayAB(ctx context.Context, skillID string, draftB
 	return ab, nil
 }
 
-// replayCases executes the case set against one body and returns the summary.
+// replayCases executes the case set against one body and returns the summary
+// plus per-case verdicts (P3 M1: paired regression / no-op detection data).
 func (r *SkillReplayRunner) replayCases(ctx context.Context, provider, model, body string, dataset *evaluation.Dataset, cases []evaluation.Case) *biz.SkillReplayResult {
 	result := &biz.SkillReplayResult{
 		DatasetID:   dataset.ID,
@@ -152,14 +155,32 @@ func (r *SkillReplayRunner) replayCases(ctx context.Context, provider, model, bo
 		Total:       len(cases),
 	}
 	for _, c := range cases {
-		if r.replayCase(ctx, provider, model, body, c) {
+		passed, output := r.replayCase(ctx, provider, model, body, c)
+		if passed {
 			result.Passed++
 		}
+		result.CaseResults = append(result.CaseResults, biz.CaseVerdict{
+			CaseID:     c.ID,
+			Passed:     passed,
+			OutputHash: hashReplayOutput(output),
+		})
 	}
 	if result.Total > 0 {
 		result.PassRate = float64(result.Passed) / float64(result.Total)
 	}
 	return result
+}
+
+// hashReplayOutput hashes the trim-normalized replay output for cross-side
+// equivalence comparison (no-op detection). Empty output (failed LLM call)
+// yields an empty hash, excluded from equivalence comparison.
+func hashReplayOutput(output string) string {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(trimmed))
+	return hex.EncodeToString(sum[:])
 }
 
 // findBoundDataset resolves the evaluation dataset bound to the skill by the
@@ -194,9 +215,10 @@ func (r *SkillReplayRunner) resolveReplayLLM(ctx context.Context) (string, strin
 
 // replayCase executes one case: draft body as system, case input as user.
 // Scoring is case-insensitive contains-match on the expected output. A failed
-// LLM call counts as a failed case (best-effort, one flaky call must not
-// abort the whole replay).
-func (r *SkillReplayRunner) replayCase(ctx context.Context, provider, model, draftBody string, c evaluation.Case) bool {
+// LLM call counts as a failed case with empty output (best-effort, one flaky
+// call must not abort the whole replay). The raw output is returned alongside
+// the verdict for per-case equivalence hashing (P3 M1).
+func (r *SkillReplayRunner) replayCase(ctx context.Context, provider, model, draftBody string, c evaluation.Case) (bool, string) {
 	callCtx, cancel := context.WithTimeout(ctx, replayCaseTimeout)
 	defer cancel()
 	output, _, err := r.caller.Call(callCtx, biz.LLMCallRequest{
@@ -210,11 +232,11 @@ func (r *SkillReplayRunner) replayCase(ctx context.Context, provider, model, dra
 			loggateway.StepID("skill_replay.case"),
 			loggateway.Str("case_id", c.ID),
 			loggateway.Err(err))
-		return false
+		return false, ""
 	}
 	expected := strings.TrimSpace(c.ExpectedOutput)
 	if expected == "" {
-		return false
+		return false, output
 	}
-	return strings.Contains(strings.ToLower(output), strings.ToLower(expected))
+	return strings.Contains(strings.ToLower(output), strings.ToLower(expected)), output
 }

@@ -183,6 +183,18 @@ type SkillReplayResult struct {
 	Total       int
 	Passed      int
 	PassRate    float64
+	// CaseResults 是逐 case 判定（P3 M1 配对归因的数据基础），与数据集 case
+	// 顺序对齐。旧实现/假 runner 可能为空——消费方按跳过语义降级。
+	CaseResults []CaseVerdict
+}
+
+// CaseVerdict 是一个 case 的回放判定（P3 M1）。OutputHash 为 trim 后输出的
+// sha256（十六进制）；LLM 调用失败时 Passed=false 且 OutputHash 为空，
+// 空 hash 不参与等价比较。
+type CaseVerdict struct {
+	CaseID     string
+	Passed     bool
+	OutputHash string
 }
 
 // SkillReplayRunner 用 evaluation 数据集对 draft 做真实任务回放（Solve 阶段
@@ -414,7 +426,8 @@ func WithABReplayRunner(r SkillReplayABRunner) GateOption {
 // GateVerifier performs multi-dimensional Gate verification for skill evolution.
 // Dimensions:
 //   - Functional correctness (Sandbox Runner + optional dataset replay, or
-//     rule-based fallback)
+//     rule-based fallback; with AB wired, includes the ratchet + absolute
+//     threshold over replay summaries)
 //   - Security (sensitive info detection: API key, password, token)
 //   - Performance (Token/duration comparison, >20% degradation → reject)
 //   - Style (lint check / length check)
@@ -422,6 +435,10 @@ func WithABReplayRunner(r SkillReplayABRunner) GateOption {
 //     when WithSkillLookup is wired)
 //   - Drift (destructive update / bloat detection; WithSkillLookup)
 //   - Trigger accuracy (golden-set regression; WithTriggerGoldenRunner)
+//   - Paired regression (P3 M1: per-case paired comparison over AB replay
+//     verdicts — a case passing under baseline must not fail under draft)
+//   - No-op change (P3 M1: draft outputs byte-identical to baseline on every
+//     comparable case → no measurable effect → reject)
 type GateVerifier struct {
 	sandboxRunner       SandboxRunner
 	lintChecker         SkillLintChecker
@@ -445,13 +462,26 @@ func NewGateVerifier(sandboxRunner SandboxRunner, lintChecker SkillLintChecker, 
 	return v
 }
 
-// Verify performs all seven Gate verification dimensions. Any failure rejects
+// Verify performs all nine Gate verification dimensions. Any failure rejects
 // the evolution.
 func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody string, observation *EvolutionObservationReport) (*GateVerificationResult, error) {
 	var checks []GateCheckResult
 
-	// Dimension 1: Functional correctness (sandbox + optional dataset replay)
-	checks = append(checks, v.verifyFunctional(ctx, skillID, draftBody))
+	// Dimension 1: Functional correctness (sandbox/base + optional dataset replay).
+	// P3 M1：AB 回放提升为共享单次执行——functional（棘轮/绝对阈值）、
+	// paired_regression、no_op_change 三个维度共用同一份回放结果，LLM 成本
+	// 只付一次。base 检查失败时不触发回放（非法 draft 不烧 LLM 调用）。
+	base := v.verifyFunctionalBase(ctx, skillID, draftBody)
+	var ab *SkillReplayABResult
+	var abErr error
+	if base.Passed && v.abRunner != nil {
+		ab, abErr = v.abRunner.ReplayAB(ctx, skillID, draftBody, ReplayMaxCases)
+	}
+	functional := base
+	if functional.Passed {
+		functional = v.verifyReplay(ctx, skillID, draftBody, ab, abErr)
+	}
+	checks = append(checks, functional)
 
 	// Dimension 2: Security
 	checks = append(checks, v.verifySecurity(draftBody))
@@ -471,6 +501,12 @@ func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody str
 	// Dimension 7: Trigger accuracy (P2 F4 触发率黄金集回归)
 	checks = append(checks, v.verifyTriggerAccuracy(ctx, skillID, draftBody))
 
+	// Dimension 8: Paired regression (P3 M1 per-case 配对判定)
+	checks = append(checks, v.verifyPairedRegression(ab, abErr))
+
+	// Dimension 9: No-op change (P3 M1 等价改动检测)
+	checks = append(checks, v.verifyNoOpChange(ab, abErr))
+
 	allPassed := true
 	for _, c := range checks {
 		if !c.Passed {
@@ -483,16 +519,6 @@ func (v *GateVerifier) Verify(ctx context.Context, skillID string, draftBody str
 		Passed: allPassed,
 		Checks: checks,
 	}, nil
-}
-
-// verifyFunctional checks functional correctness via Sandbox Runner (plus the
-// optional dataset replay) or rule-based fallback.
-func (v *GateVerifier) verifyFunctional(ctx context.Context, skillID string, draftBody string) GateCheckResult {
-	base := v.verifyFunctionalBase(ctx, skillID, draftBody)
-	if !base.Passed {
-		return base
-	}
-	return v.verifyReplay(ctx, skillID, draftBody)
 }
 
 // verifyFunctionalBase is the pre-P1 functional check: Sandbox Runner when
@@ -560,14 +586,15 @@ func (v *GateVerifier) verifyFunctionalBase(ctx context.Context, skillID string,
 }
 
 // verifyReplay runs the dataset-replay functional check (P1 Solve 接线 + P2
-// F1 AB 对照棘轮).
+// F1 AB 对照棘轮). When the AB runner is wired, the caller-prefetched AB
+// result (ab/abErr) is used — the replay executes at most once per Verify.
 // Skip semantics: no replay runner wired, no bound dataset, or replay
 // infrastructure unavailable all degrade to pass (the functional verdict then
 // rests on the sandbox/base check alone). Only a completed replay below the
 // pass threshold (or, with AB wired, below the baseline) rejects.
-func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBody string) GateCheckResult {
+func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBody string, ab *SkillReplayABResult, abErr error) GateCheckResult {
 	if v.abRunner != nil {
-		return v.verifyReplayAB(ctx, skillID, draftBody)
+		return replayABGateCheck(ab, abErr)
 	}
 	if v.replayRunner == nil {
 		return GateCheckResult{Name: "functional", Passed: true}
@@ -592,13 +619,13 @@ func (v *GateVerifier) verifyReplay(ctx context.Context, skillID string, draftBo
 	}
 }
 
-// verifyReplayAB runs the A/B comparison replay (P2 F1). Verdicts:
+// replayABGateCheck derives the functional-dimension verdict from a
+// prefetched A/B comparison replay result (P2 F1). Verdicts:
 //   - replay unavailable (error / nil draft result) → skip, pass
 //   - baseline available and draft < baseline → ratchet rejection
 //   - draft < ReplayPassThreshold → absolute-threshold rejection
 //   - otherwise → pass
-func (v *GateVerifier) verifyReplayAB(ctx context.Context, skillID string, draftBody string) GateCheckResult {
-	ab, err := v.abRunner.ReplayAB(ctx, skillID, draftBody, ReplayMaxCases)
+func replayABGateCheck(ab *SkillReplayABResult, err error) GateCheckResult {
 	if err != nil || ab == nil || ab.Draft == nil {
 		// ErrNoReplayDataset 与回放不可用（LLM 未配置等）均跳过，不阻断。
 		return GateCheckResult{Name: "functional", Passed: true, Reason: "AB replay skipped"}
@@ -626,6 +653,99 @@ func (v *GateVerifier) verifyReplayAB(ctx context.Context, skillID string, draft
 		Passed: true,
 		Reason: fmt.Sprintf("AB replay passed (dataset=%s, draft %d/%d)", draft.DatasetName, draft.Passed, draft.Total),
 	}
+}
+
+// pairedCaseResults aligns baseline/draft per-case verdicts for the P3 M1
+// paired dimensions. ok=false when data is unavailable (replay error, no
+// baseline, legacy runner without per-case collection) or the two sides
+// cannot be paired (different case sets) — callers degrade to skip-to-pass.
+func pairedCaseResults(ab *SkillReplayABResult, abErr error) (base, draft []CaseVerdict, ok bool) {
+	if abErr != nil || ab == nil || ab.Baseline == nil || ab.Draft == nil {
+		return nil, nil, false
+	}
+	base, draft = ab.Baseline.CaseResults, ab.Draft.CaseResults
+	if len(base) == 0 || len(base) != len(draft) {
+		return nil, nil, false
+	}
+	for i := range base {
+		if base[i].CaseID != draft[i].CaseID {
+			return nil, nil, false
+		}
+	}
+	return base, draft, true
+}
+
+// verifyPairedRegression is the eighth Gate dimension (P3 M1 per-case 配对判
+// 定): a case that passed under the baseline must not fail under the draft —
+// wins on other cases do not compensate a regression. Win/loss/tie counts are
+// recorded in the reason for approval audit. Skips (passes) when paired
+// per-case data is unavailable.
+func (v *GateVerifier) verifyPairedRegression(ab *SkillReplayABResult, abErr error) GateCheckResult {
+	base, draft, ok := pairedCaseResults(ab, abErr)
+	if !ok {
+		return GateCheckResult{Name: "paired_regression", Passed: true, Reason: "AB per-case data unavailable, skipped"}
+	}
+	wins, losses, ties := 0, 0, 0
+	var regressions []string
+	for i := range base {
+		switch {
+		case base[i].Passed && !draft[i].Passed:
+			losses++
+			regressions = append(regressions, base[i].CaseID)
+		case !base[i].Passed && draft[i].Passed:
+			wins++
+		default:
+			ties++
+		}
+	}
+	if len(regressions) > 0 {
+		shown := regressions
+		if len(shown) > 3 {
+			shown = shown[:3]
+		}
+		return GateCheckResult{
+			Name:   "paired_regression",
+			Passed: false,
+			Reason: fmt.Sprintf("per-case regression on %d case(s) [%s] (win/loss/tie=%d/%d/%d): cases passing under baseline must not fail under draft",
+				len(regressions), strings.Join(shown, ","), wins, losses, ties),
+		}
+	}
+	return GateCheckResult{
+		Name:   "paired_regression",
+		Passed: true,
+		Reason: fmt.Sprintf("no per-case regression (win/loss/tie=%d/%d/%d)", wins, losses, ties),
+	}
+}
+
+// verifyNoOpChange is the ninth Gate dimension (P3 M1 等价改动检测): when the
+// draft's replay outputs are byte-identical to the baseline on every
+// comparable case, the change has no measurable effect and must not consume a
+// version/approval cycle. Cases with a failed LLM call (empty hash) on either
+// side are not comparable and excluded. Skips (passes) when no comparable
+// case exists.
+func (v *GateVerifier) verifyNoOpChange(ab *SkillReplayABResult, abErr error) GateCheckResult {
+	base, draft, ok := pairedCaseResults(ab, abErr)
+	if !ok {
+		return GateCheckResult{Name: "no_op_change", Passed: true, Reason: "AB per-case data unavailable, skipped"}
+	}
+	comparable, identical := 0, 0
+	for i := range base {
+		if base[i].OutputHash == "" || draft[i].OutputHash == "" {
+			continue
+		}
+		comparable++
+		if base[i].OutputHash == draft[i].OutputHash {
+			identical++
+		}
+	}
+	if comparable > 0 && identical == comparable {
+		return GateCheckResult{
+			Name:   "no_op_change",
+			Passed: false,
+			Reason: fmt.Sprintf("draft outputs byte-identical to baseline on all %d comparable case(s): no measurable effect", comparable),
+		}
+	}
+	return GateCheckResult{Name: "no_op_change", Passed: true}
 }
 
 // verifyEffectiveness is the fifth Gate dimension (P1 计数归因): current-body

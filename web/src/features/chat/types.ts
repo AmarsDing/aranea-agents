@@ -137,6 +137,13 @@ export interface ConfirmStepPayload {
   sessionId: string;
   activityId: string;
   reply: ToolConfirmReply;
+  /**
+   * Optional settlement callback invoked by the terminal handler once the
+   * confirm RPC resolves (true = accepted, false = rejected/failed). Lets the
+   * emitting card reset its pending state immediately instead of waiting for
+   * the fallback timeout. Intermediate layers forward the payload unchanged.
+   */
+  onSettled?: (accepted: boolean) => void;
 }
 
 /** Payload emitted by ClarifyBlock and forwarded up the v2 component chain. */

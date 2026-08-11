@@ -334,7 +334,7 @@ Agent 调用 client_open_app
 
 ### 7.1 路由与页面
 
-- 新路由 `/companion` → `pages/CompanionPage.vue`（桌面端 Tauri 默认入口页可配置；Web 端手动访问）
+- 新路由 `/companion` → `pages/CompanionPage.vue`（桌面端 Tauri 默认入口页可配置；Web 端经主导航侧栏「工作台 → 语音伴侣」进入，2026-08-12 起）
 - 布局：HUD 画布（左/中心）+ 聊天面板（右，滑出抽屉）；移动端 HUD 居中 + 全屏抽屉
 
 ### 7.2 功能模块（`features/companion/`）
@@ -610,6 +610,7 @@ Agent 调用 client_open_app
 - **意图识别强制关思考**（`internal/agent/intent/pass.go`）：callsite 强制 `cfg.ThinkingDisabled = true`，不依赖 catalog 行配置。意图是分类任务，思考段纯延迟
 - **修复 A：skill 同步缓存键契约**（已落地 2026-08-11，`internal/data/skill.go`）：`updated_at` 是 `SkillVersionHash` 的内容版本标记。此前 reconcile 每 5 分钟全量扫描对所有存活 skill 无条件 `SetUpdatedAt(now)`（`UpsertSkillFromDisk`）并无条件写 `MarkSkillFilesystemMissing(slug, false)`，导致 SkillVersionHash 周期性漂移、全量 agent 构建缓存失效（冷构建 10s 级周期性重现）。修复：两处改为**条件写**——仅内容/元数据/可用性（missing 标志）实际变化时才写库并 bump `updated_at`；`MarkSkillFilesystemMissing` 用 `FilesystemMissingEQ(!missing)` 谓词实现翻转才写，n=0 时再区分「已是目标状态」（no-op 成功）与「slug 不存在」（NotFound）
 - **BUILD + Intent Pass + proactive recall 三方并行**（`chat_orchestrator_turn.go` errgroup）：`WithProactiveHits` 在 `eg.Wait()` 后注入，MemoryInject before-model 钩子请求时读取，语义不变（happens-before 由 errgroup 保证）；BUILD 的 AwaitHook 在 Wait 后重绑 turn ctx（防 errgroup 派生 ctx 提前取消导致 await 秒败）
+- **C3：embedding 冷启动预热**（已落地 2026-08-11，`internal/knowledge/embedder.go` `Prewarm`）：记忆召回分相计时定位——2579ms 召回中 ~2.4s 是 embedding 服务冷启动（TCP/TLS 握手 + 远端模型懒加载），热路径 embed 仅 191ms（L2 2ms / L3 4ms）。`MultiProviderEmbedder.Prewarm` 发最小 "ping" 请求（RETRIEVAL_QUERY task type，不污染摄取流程日志）把冷启动移出首个召回 Turn；**60s 成功时间戳去重**（高频 voice.start 不放大负载）、**失败仅 Warn（K3）且不参与去重**（下次调用重试，K4）、**未配置静默跳过**；不持锁发网络请求（不阻塞正常 Embed 的 RLock），并发双 ping 无害。双探针挂载：启动探针 `startup.embedding_prewarm`（`cmd/admin/app.go`，readiness 门控后与 spirit 预构建并列）+ voice.start 探针（`chat_voice_prewarm.go` `PrewarmTurn` 起始处，不依赖会话/agent 解析结果，窄接口 `embedPrewarmer` 构造注入，wire 绑定 `*knowledge.MultiProviderEmbedder`）
 
 **B. 仅语音路径（文字零影响）**
 
@@ -622,9 +623,10 @@ Agent 调用 client_open_app
 - **语音轮次跳过主动召回**（已落地 2026-08-11，`chat_orchestrator_turn.go` `shouldRunProactiveRecall`）：`input.Voice != nil` 时不启动 recall goroutine（记 `chat.proactive_recall` LogSkip）。真机实测语音轮次 hits 恒为 0（短口语句实体提及稀少），而 recall 含 query embedding + 向量检索耗时 0.3-3.3s；三方并行后 `eg.Wait()` 仍以**最慢 goroutine** 收口，零产出召回是关键路径纯开销，单独即可击穿 ≤2s 停口到首音预算。文字路径行为不变
 - **L5：TTS 连接预热**（已落地 2026-08-11，`internal/data/speech/volcengine_tts.go` + `internal/voice/session.go`）：voice.start 预解析 TTS provider 存入会话（`resolveAndPrewarmTTS`，`ensureTTS` 复用不再二次调工厂）并后台预拨一条 WS 连接存**单槽温连接**（`PrewarmTTSConn`）；首个 Turn 首句 `Write` 弹出复用免握手，写失败回退新拨（K3）；会话拆除释放未消费温连接（`ReleaseWarmTTSConn`，一次性语义）。provider 无预热能力（接口断言失败）自动跳过
 
-**C. 前缀稳定化（P1，2026-08-11）**
+**C. 前缀稳定化（P1/P2，2026-08-11）**
 
-- **Prompt cache 前缀稳定化**（已落地 2026-08-11）：DeepSeek prompt caching 从 token 0 匹配，system-message 前缀内任何 per-turn 变化使整段缓存失效。真机分析 spirit agent 初始 prompt ≈10.1k token（5296 system + 4803 tool schema），但 chat_turn 缓存命中率仅 6.3%（team 路径 0%）——根因是所有 BeforeModel 注入钩子用 prepend，per-turn 动态内容（memory/knowledge cue）落在 position 0，每轮失效整个前缀。修复：8 处注入点全部改用 `insertAfterLastSystem`（`runtime_cue_inject`×2、`skill_guidance_inject`×2、`memory_inject`×2、`knowledge_inject`、`reply_reminder`），配合 Hook Layer 排序（Static→SemiStatic→Dynamic）保证 base system→static cue→semi-static cue→dynamic cue→user 的三层前缀结构。测试契约 `prompt_prefix_position_test.go` 8 个位置 pin 测试。详见 [28-callback.design.md §3.1](./28-callback.design.md#31-system-message-注入顺序前缀稳定化)
+- **Prompt cache 前缀稳定化**（已落地 2026-08-11）：DeepSeek prompt caching 从 token 0 匹配，system-message 前缀内任何 per-turn 变化使整段缓存失效。真机分析 spirit agent 初始 prompt ≈10.1k token（5296 system + 4803 tool schema），但 chat_turn 缓存命中率仅 6.3%（team 路径 0%）——根因是所有 BeforeModel 注入钩子用 prepend，per-turn 动态内容（memory/knowledge cue）落在 position 0，每轮失效整个前缀。修复：8 处注入点全部改用 `insertAfterLastSystem`（`runtime_cue_inject`×2、`skill_guidance_inject`×2、`memory_inject`×2、`knowledge_inject`、`reply_reminder`），配合 Hook Layer 排序（Static→SemiStatic→Dynamic）保证三层前缀结构。详见 [28-callback.design.md §3.1](./28-callback.design.md#31-system-message-注入顺序前缀稳定化)
+- **P2 深化：per-turn 动态 cue 末尾追加 + intent 搬移**（已落地 2026-08-11）：P1 后真机复测命中率仅 19%——`insertAfterLastSystem` 仍把 per-turn 动态 cue 插在 system 块后、history 前，history 每轮增长使可缓存前缀在动态 cue 处截断，长会话命中率随轮次衰减。彻底修复（两档契约）：会话级稳定 cue（static/semi-static runtime cue、skill guidance）维持 `insertAfterLastSystem`；per-turn 动态 cue 一律 **append 到消息列表末尾**——`memory_inject.go`（含 compaction rebuild 兜底：有既有 cue 原位替换、无则末尾追加）、`knowledge_inject.go`、`reply_reminder_inject.go` 四处改为 append；intent JSON 由框架 content processor 经 `RunOptions.InjectedContextMessages` 固定在 system 块后 history 前（注入点不可控位），新增 `newIntentReorderBeforeHook`（`intent_reorder_inject.go`，LayerDynamic priority 100，晚于全部消息改写钩子）稳定分区搬移到末尾——每次模型调用（含工具循环重入）请求重建，搬移幂等不累积。最终结构：`[system 块 + history + user]` 单调增长可缓存前缀 + 尾部动态段每轮重算。测试契约 `prompt_prefix_position_test.go`：`assertCueAfterBase`×4（稳定档）+ `assertCueAtEnd`×4（动态档）+ intent 搬移×4
 
 **D. TTS 文本清洗（上一轮，2026-08-09）**
 

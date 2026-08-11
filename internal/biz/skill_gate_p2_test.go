@@ -14,9 +14,11 @@ import (
 type fakeABReplayRunner struct {
 	result *SkillReplayABResult
 	err    error
+	calls  int
 }
 
 func (f *fakeABReplayRunner) ReplayAB(context.Context, string, string, int) (*SkillReplayABResult, error) {
+	f.calls++
 	return f.result, f.err
 }
 

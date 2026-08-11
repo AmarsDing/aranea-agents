@@ -349,3 +349,124 @@ func TestSkillReplayRunner_ReplayAB_NoDataset(t *testing.T) {
 		t.Fatalf("expected ErrNoReplayDataset, got %v", err)
 	}
 }
+
+// ── P3 M1：per-case verdict 收集（配对判定/等价检测的数据基础）───────────────
+
+// 单跑回放逐 case 记录 CaseID/Passed/OutputHash，与 case 集顺序对齐。
+func TestSkillReplayRunner_CaseResultsCollected(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases: []evaluation.Case{
+			{ID: "c1", Input: "q1", ExpectedOutput: "Paris"},
+			{ID: "c2", Input: "q2", ExpectedOutput: "Tokyo"},
+		},
+	}
+	caller := &fakeReplayLLMCaller{outputs: []string{"Paris, France.", "London."}}
+	skills := &fakeReplaySkillLookup{skill: biz.Skill{ID: "s1", Name: "web-research"}}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	res, err := r.Replay(context.Background(), "s1", "# draft", 0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if len(res.CaseResults) != 2 {
+		t.Fatalf("expected 2 case verdicts, got %+v", res.CaseResults)
+	}
+	c1, c2 := res.CaseResults[0], res.CaseResults[1]
+	if c1.CaseID != "c1" || !c1.Passed || c1.OutputHash == "" {
+		t.Fatalf("unexpected c1 verdict: %+v", c1)
+	}
+	if c2.CaseID != "c2" || c2.Passed || c2.OutputHash == "" {
+		t.Fatalf("unexpected c2 verdict: %+v", c2)
+	}
+	// 不同输出必须产生不同 hash（等价检测的分辨力）。
+	if c1.OutputHash == c2.OutputHash {
+		t.Fatal("different outputs must hash differently")
+	}
+}
+
+// 相同输出（含首尾空白差异）必须产生相同 hash——等价检测判"无变化"的依据。
+func TestSkillReplayRunner_OutputHashStable(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases: []evaluation.Case{
+			{ID: "c1", Input: "q1", ExpectedOutput: "x"},
+			{ID: "c2", Input: "q2", ExpectedOutput: "y"},
+		},
+	}
+	caller := &fakeReplayLLMCaller{outputs: []string{"same output", "  same output  "}}
+	skills := &fakeReplaySkillLookup{skill: biz.Skill{ID: "s1", Name: "web-research"}}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	res, err := r.Replay(context.Background(), "s1", "# draft", 0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if res.CaseResults[0].OutputHash != res.CaseResults[1].OutputHash {
+		t.Fatalf("trim-equivalent outputs must hash equal: %+v", res.CaseResults)
+	}
+}
+
+// LLM 调用失败的 case：Passed=false 且 OutputHash 为空（不参与等价比较）。
+func TestSkillReplayRunner_CaseLLMFailure_EmptyHash(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases:    []evaluation.Case{{ID: "c1", Input: "q1", ExpectedOutput: "x"}},
+	}
+	caller := &fakeReplayLLMCaller{err: errors.New("llm timeout")}
+	skills := &fakeReplaySkillLookup{skill: biz.Skill{ID: "s1", Name: "web-research"}}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	res, err := r.Replay(context.Background(), "s1", "# draft", 0)
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if len(res.CaseResults) != 1 || res.CaseResults[0].Passed || res.CaseResults[0].OutputHash != "" {
+		t.Fatalf("failed call must yield passed=false hash='', got %+v", res.CaseResults)
+	}
+}
+
+// AB 双端各自携带 per-case verdict，按 case ID 对齐可配对。
+func TestSkillReplayRunner_ReplayAB_CaseResultsPairable(t *testing.T) {
+	eval := &fakeEvalDatasetReader{
+		datasets: []evaluation.Dataset{{ID: "ds1", Name: "web-research"}},
+		cases: []evaluation.Case{
+			{ID: "c1", Input: "q1", ExpectedOutput: "Paris"},
+			{ID: "c2", Input: "q2", ExpectedOutput: "Tokyo"},
+		},
+	}
+	caller := &fakeABLLMCaller{outputsBySystem: map[string][]string{
+		"current body": {"Paris", "Tokyo"},
+		"draft body":   {"Paris", "London"},
+	}}
+	skills := &fakeReplaySkillLookup{
+		skill:    biz.Skill{ID: "s1", Name: "web-research"},
+		markdown: "current body",
+	}
+	r := newTestReplayRunner(eval, caller, &fakeRefineLLMReader{
+		setting: biz.RefineLLMSetting{Provider: "openai", Model: "gpt-4o"}}, skills)
+
+	ab, err := r.ReplayAB(context.Background(), "s1", "draft body", 0)
+	if err != nil {
+		t.Fatalf("ReplayAB: %v", err)
+	}
+	if len(ab.Baseline.CaseResults) != 2 || len(ab.Draft.CaseResults) != 2 {
+		t.Fatalf("both sides must carry per-case verdicts: %+v", ab)
+	}
+	for i := range ab.Baseline.CaseResults {
+		if ab.Baseline.CaseResults[i].CaseID != ab.Draft.CaseResults[i].CaseID {
+			t.Fatalf("case sets must align by ID at %d: %+v vs %+v",
+				i, ab.Baseline.CaseResults[i], ab.Draft.CaseResults[i])
+		}
+	}
+	// c1 双端同输出 → hash 相同；c2 输出不同 → hash 不同。
+	if ab.Baseline.CaseResults[0].OutputHash != ab.Draft.CaseResults[0].OutputHash {
+		t.Fatal("c1 identical outputs must hash equal across sides")
+	}
+	if ab.Baseline.CaseResults[1].OutputHash == ab.Draft.CaseResults[1].OutputHash {
+		t.Fatal("c2 differing outputs must hash differently across sides")
+	}
+}

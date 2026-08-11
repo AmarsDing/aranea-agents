@@ -6,7 +6,7 @@ import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
 import type { CompressStatus } from '../../session/types';
 import type { SpiritPanelMode } from '../../spirit/types';
-import type { SubmitClarificationPayload } from '../types';
+import type { ConfirmStepPayload, SubmitClarificationPayload } from '../types';
 import { useAppStore } from '../../../stores/app';
 import { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -989,9 +989,10 @@ export function useChatWorkspace() {
     }
   }
 
-  async function onConfirmActivityGrant(payload: { sessionId: string; activityId: string; reply: string }) {
+  async function onConfirmActivityGrant(payload: ConfirmStepPayload) {
     try {
       const ok = await confirmActivityGrant(payload);
+      payload.onSettled?.(ok);
       if (!ok) {
         $q.notify({
           type: 'warning',
@@ -999,6 +1000,7 @@ export function useChatWorkspace() {
         });
       }
     } catch (err) {
+      payload.onSettled?.(false);
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('chat.confirmActivity.failed') });
     }
   }
