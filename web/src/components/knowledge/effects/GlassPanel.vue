@@ -2,18 +2,17 @@
   <div
     ref="panelEl"
     class="kb-glass kb-glass-panel"
-    :class="{ 'kb-glass--strong': strong, 'kb-glass-panel--glow': glow }"
+    :class="{
+      'kb-glass--strong': strong,
+      'kb-glass-panel--glow': glow,
+      'kb-glass-panel--refract': refract,
+    }"
     @pointermove="onPointerMove"
   >
-    <!-- 液态玻璃装饰层（P0-2）：SVG 折射光纹 + 指针追随高光，均不拦截交互 -->
+    <!-- 液态玻璃装饰层：SVG 折射光纹 + 指针追随高光，均不拦截交互。
+         滤镜定义由 LiquidGlassDefs 单例提供（Workbench 根挂载）。 -->
     <div class="kb-glass-panel__sheen" aria-hidden="true" />
     <div class="kb-glass-panel__highlight" aria-hidden="true" />
-    <svg class="kb-glass-panel__filter-def" width="0" height="0" aria-hidden="true" focusable="false">
-      <filter id="kb-liquid-refract" color-interpolation-filters="sRGB">
-        <feTurbulence type="fractalNoise" baseFrequency="0.012 0.028" numOctaves="2" seed="7" result="noise" />
-        <feDisplacementMap in="SourceGraphic" in2="noise" scale="10" xChannelSelector="R" yChannelSelector="G" />
-      </filter>
-    </svg>
     <div v-if="title" class="kb-glass-panel__header">
       <q-icon v-if="icon" :name="icon" size="16px" class="kb-glass-panel__icon" />
       <span class="kb-glass-panel__title">{{ title }}</span>
@@ -43,6 +42,8 @@ defineProps<{
   glow?: boolean;
   /** 去掉 body 内边距（编辑器/列表等自管理padding的内容） */
   flush?: boolean;
+  /** M1：背景真折射（backdrop-filter: url(#kb-liquid-bg)；@supports 降级普通 blur） */
+  refract?: boolean;
 }>();
 
 const panelEl = ref<HTMLElement>();
@@ -92,9 +93,6 @@ function onPointerMove(e: PointerEvent): void {
 
   &:hover > &__highlight
     opacity: 1
-
-  &__filter-def
-    position: absolute
 
   // ── 层 2：镜面边缘（顶/左缘反光，底缘暗线 → 玻璃断面感）──
   &::after
