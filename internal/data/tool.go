@@ -128,6 +128,16 @@ func toolWhereClause(q biz.ToolListQuery) (string, []any) {
 		where = append(where, "t.enabled = ?")
 		args = append(args, q.Enabled == "true")
 	}
+	if q.Abnormal {
+		// 仅看异常：最近一次调用（按 started_at/id 倒序首行）以 error/blocked 收尾。
+		// 相关子查询只依赖 t.tool_key，COUNT 查询（无 join）与列表查询均可复用。
+		where = append(where, `COALESCE((
+			SELECT ti.status FROM tool_invocations ti
+			WHERE ti.tool_key = t.tool_key
+			ORDER BY ti.started_at DESC, ti.id DESC
+			LIMIT 1
+		), '') IN ('error', 'blocked')`)
+	}
 	return strings.Join(where, " AND "), args
 }
 

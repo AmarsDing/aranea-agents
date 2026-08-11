@@ -120,6 +120,15 @@ func (uc *MemoryAdminUsecase) GetFactByID(ctx context.Context, factID string) ([
 	return rows[0], nil
 }
 
+// ReviewFact applies a single-fact user review action (confirm/reject/archive/
+// dispute/deprecate/refine) via a column-targeted UPDATE — see L3FactReviewStore.
+func (uc *MemoryAdminUsecase) ReviewFact(ctx context.Context, in FactReview) ([]byte, error) {
+	if err := uc.requireAdmin(); err != nil {
+		return nil, err
+	}
+	return uc.admin.ReviewFactRow(ctx, in)
+}
+
 func (uc *MemoryAdminUsecase) ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error) {
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err

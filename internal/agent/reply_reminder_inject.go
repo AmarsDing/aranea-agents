@@ -79,8 +79,10 @@ func newReplyReminderBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 
+		// Prefix stabilization: append after the existing system block so the
+		// cacheable prefix stays intact across tool-loop model calls.
 		sys := trpcmodel.NewSystemMessage(replyReminderCue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

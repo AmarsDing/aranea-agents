@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { AgentPromptFile } from './types';
 import { useAgentDetailStore } from '../../stores/agents/detail';
 import { defaultAgentFiles, isRemovableAgentFile, type AgentFile } from '../../components/agents/agentUi';
@@ -10,6 +11,7 @@ type NotifyFn = (opts: { type: string; message: string }) => void;
 
 /** Prompt file editor state for Agent settings. */
 export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
+  const { t } = useI18n();
   const detailStore = useAgentDetailStore();
   const fileSplitter = ref(28);
   const activeFile = ref('AGENTS_CORE.md');
@@ -100,13 +102,13 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
       const agent = await detailStore.fetchById(id);
       const latest = (agent.files ?? []).find((file) => file.name === name);
       if (!latest) {
-        notify({ type: 'warning', message: '服务端不存在该文件，已保留本地内容' });
+        notify({ type: 'warning', message: t('agentSettings.files.reloadNotFound') });
         return;
       }
       updateFileBody(name, latest.body);
       initialFileBodies.value[name] = latest.body;
     } catch (e) {
-      notify({ type: 'negative', message: e instanceof Error ? e.message : '重新召唤失败' });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('agentSettings.files.reloadFailed') });
     }
   }
 

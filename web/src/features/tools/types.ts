@@ -73,6 +73,8 @@ export type ToolListQuery = {
   risk_level?: string;
   enabled?: boolean | null;
   sort?: string;
+  /** abnormal=true：仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」） */
+  abnormal?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -114,6 +116,16 @@ export type ToolInvocation = {
   created_at: string;
   streaming?: boolean;
   chunk_count?: number;
+};
+
+/** 调用记录参数详情（GET /v1/tools/runs/{invocation_id}/params，脱敏后参数）。 */
+export type ToolInvocationParamDetail = {
+  id: string;
+  invocation_id: string;
+  tool_key: string;
+  params_json: string;
+  redaction_applied: boolean;
+  created_at: string;
 };
 
 export type ToolInvocationAudit = {

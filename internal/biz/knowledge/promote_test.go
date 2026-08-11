@@ -37,6 +37,9 @@ func (s *stubPromoteBlockIndex) ListDocBlocks(_ context.Context, docID string) (
 func (s *stubPromoteBlockIndex) UpdateDocLinkKeys(context.Context, string, string, []string) error {
 	return nil
 }
+func (s *stubPromoteBlockIndex) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
 
 func itoa(i int) string {
 	if i == 0 {

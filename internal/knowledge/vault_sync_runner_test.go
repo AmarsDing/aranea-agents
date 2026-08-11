@@ -8,7 +8,6 @@ import (
 	"time"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -221,37 +220,20 @@ func TestVaultSyncRunner_RunVault_WatcherHint_EarlyScan(t *testing.T) {
 
 // ── 可靠性契约：apply 失败后下轮 SyncOnce 自动重试（prev 未推进） ──────────
 
-// failOnceEmbedder 首次 Embed 返回错误，之后正常。
-type failOnceEmbedder struct {
-	calls atomic.Int32
-}
-
-func (f *failOnceEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
-	if f.calls.Add(1) == 1 {
-		return nil, errEmbedOnce
-	}
-	out := make([][]float32, len(texts))
-	for i := range texts {
-		out[i] = []float32{0.1, 0.2, 0.3}
-	}
-	return out, nil
-}
-func (f *failOnceEmbedder) Dim() int { return 3 }
-
-var errEmbedOnce = apierror.Internal("KNOWLEDGE", "transient embed failure")
-
+// SP2 #9 注：embed 失败已不再构成 apply 失败（降级词法索引 + 熔断计数，
+// 见 vault_sync_test.go SP2 #9 组）。本契约以 InsertChunks 写库失败注入验证。
 func TestVaultSyncRunner_SyncOnce_ApplyFailure_RetriedNextRound(t *testing.T) {
 	root := t.TempDir()
 	writeVaultFile(t, root, "a.md", testVaultMD)
 
 	repo := newVaultSyncMemRepo()
+	repo.failInsertChunks = 1 // 首轮 InsertChunks 注入失败
 	vault := bizknowledge.Collection{ID: "col1", RootPath: root, EmbeddingModel: "m", Dim: 3}
 	repo.collections[vault.ID] = vault
 
-	emb := &failOnceEmbedder{}
-	r := newTestRunner(repo, emb)
+	r := newTestRunner(repo, nil)
 
-	// 第一轮：embed 失败 → 整轮 error，文档已建镜像但未索引。
+	// 第一轮：chunks 写库失败 → 整轮 error，文档已建镜像但未索引（hash 未落库）。
 	if err := r.SyncOnce(context.Background(), vault); err == nil {
 		t.Fatal("first round must fail")
 	}
@@ -296,4 +278,23 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition not met within timeout")
+}
+
+// SP2 #4：块索引收敛低频门——同 vault 首轮放行，间隔内拒绝，越窗再放行。
+func TestVaultSyncRunner_ConvergeDue_RateLimited(t *testing.T) {
+	r := newTestRunner(newVaultSyncMemRepo(), nil)
+	now := time.Now()
+	if !r.convergeDue("col1", now) {
+		t.Fatal("首轮必须放行收敛校验")
+	}
+	if r.convergeDue("col1", now.Add(convergeInterval-time.Second)) {
+		t.Fatal("间隔窗口内不得重复收敛")
+	}
+	if !r.convergeDue("col1", now.Add(convergeInterval)) {
+		t.Fatal("越过间隔窗口必须放行")
+	}
+	// 不同 vault 独立计窗。
+	if !r.convergeDue("col2", now) {
+		t.Fatal("其他 vault 不受 col1 窗口影响")
+	}
 }

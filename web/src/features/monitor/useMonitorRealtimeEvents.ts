@@ -5,14 +5,7 @@ import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import { useMonitorStore } from '../../stores/monitor';
 import { listMonitorTraces } from './api';
 import type { MonitorTrace, StreamState } from './types';
-import {
-  findRunByTraceId,
-  findRunByUsageEventId,
-  isRunnerCompletionRow,
-  runnerCompletionMetaFromRow,
-  shouldHideCompletionInEvents,
-  shouldHideWsRunnerCompletion,
-} from './runCorrelation';
+import { findRunByTraceId, findRunByUsageEventId, shouldHideWsRunnerCompletion } from './runCorrelation';
 import { persistedEventToView, wsEventToView, buildMonitorEventsQuery, type MonitorViewEvent } from './eventView';
 import { useMonitorRunNavigation } from './useMonitorRunNavigation';
 
@@ -58,13 +51,10 @@ export function useMonitorRealtimeEvents() {
   // 默认隐藏 skill 文件同步等高频系统噪音；打开后全量展示。
   const showSystemEvents = ref(false);
 
+  // 关联去重已在服务端完成（buildMonitorEventsQuery 固定 hide_linked_completions: true），
+  // 此处不再客户端过滤——否则每页渲染行数与分页 total 脱节。
   const historyEvents = computed<MonitorViewEvent[]>(() =>
-    persistedRows.value
-      .filter((row) => {
-        if (!isRunnerCompletionRow(row)) return true;
-        return !shouldHideCompletionInEvents(runnerCompletionMetaFromRow(row), correlationTraces.value);
-      })
-      .map((row) => persistedEventToView(t, row, correlationTraces.value)),
+    persistedRows.value.map((row) => persistedEventToView(t, row, correlationTraces.value)),
   );
 
   async function refreshHistory() {

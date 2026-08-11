@@ -629,7 +629,7 @@ export async function updateAgentToolPolicy(agentId: string, payload: ToolPolicy
 | 记忆 | `agent_runtime_settings.memory_enabled`、`memory_max_chunk_length`、`memory_max_results`、`memory_min_score`、`l0_*` ~ `l4_*` |
 | 进化 Tab | `agent_runtime_settings.evolution_self_evolve`、`evolution_skill_evolve`、`evolution_metrics_enabled`、`evolution_suggestions_enabled` |
 | 心跳 | `agent_runtime_settings.heartbeat_enabled`、`heartbeat_interval_minutes`、HEARTBEAT.MD 正文（存于 `agent_prompt_files` 或 config_json） |
-| 钩子 | `hooks` 表 + `hook_agents` 关联表（见 `16. hook.md`） |
+| 钩子 | `hooks` 表（Agent 关联经 `config_json.condition.agent_id`，见 `28-callback.design.md`） |
 | 技能/编排 | `agent_runtime_settings.skill_runtime_json`；编排见 `subagents_*` |
 | 分类 | `agents.position_id`、`agents.position_key`（见 `4.agent-type.md`） |
 | A2A | `agents.agent_kind`、`agents.a2a_proxy_config`（config_json）；AgentCard 见 `a2a_agent_cards` 表 |

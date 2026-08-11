@@ -53,7 +53,8 @@ func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool
 			"tool", args.ToolName,
 			"default_action", c.cfg.DefaultAction,
 		)
-		c.base.record(ctx, "before_tool", "blocked")
+		c.base.recordEvent(ctx, "before_tool", "blocked",
+			fmt.Sprintf("tool %s 需要确认（default_action=%s，未接入交互确认门）", args.ToolName, c.cfg.DefaultAction))
 		msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation (enable product confirm gate for interactive approval)", args.ToolName)
 		return &trpctool.BeforeToolResult{
 			Context:      ctx,

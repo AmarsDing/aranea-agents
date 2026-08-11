@@ -9,6 +9,7 @@ export type {
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
+  FactReviewPayload,
   GraphNeighborhood,
   L0AssemblySegmentStats,
   L0AssemblySegmentsMap,
@@ -57,6 +58,7 @@ import type {
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
+  FactReviewPayload,
   GraphNeighborhood,
   L0AssemblySnapshot,
   L1Field,
@@ -463,7 +465,14 @@ export async function listMemoryFacts(query: MemoryFactListQuery = {}): Promise<
   const total = pickOptionalI32(res, 'total', 'total') ?? items.length;
   const limit = pickOptionalI32(res, 'limit', 'limit') ?? query.limit ?? items.length;
   const offset = pickOptionalI32(res, 'offset', 'offset') ?? query.offset ?? 0;
-  return { items, total, limit, offset };
+  return {
+    items,
+    total,
+    limit,
+    offset,
+    active_count: pickOptionalI32(res, 'active_count', 'activeCount'),
+    archived_count: pickOptionalI32(res, 'archived_count', 'archivedCount'),
+  };
 }
 
 export async function listMemoryEntities(
@@ -556,6 +565,24 @@ export async function upsertMemoryFact(fact: Partial<PbMemoryFact>): Promise<Mem
   const res = asRecord(await memory.UpsertMemoryFact({ fact: fact as PbMemoryFact }));
   const raw = res.fact ?? res.Fact;
   return mapFact(raw);
+}
+
+/**
+ * ReviewMemoryFact：列级精准 UPDATE 的治理动作（confirm/reject/archive/dispute/deprecate/refine）。
+ * 与 UpsertMemoryFact 不同，不会触碰 links/keywords/metadata/quality_score。
+ */
+export async function reviewMemoryFact(input: FactReviewPayload): Promise<MemoryFact> {
+  const res = asRecord(
+    await memory.ReviewMemoryFact({
+      factId: input.fact_id,
+      action: input.action,
+      statement: input.statement,
+      detailsMarkdown: input.details_markdown,
+      factKind: input.fact_kind,
+      tagsJson: input.tags_json,
+    }),
+  );
+  return mapFact(res.fact ?? res.Fact);
 }
 
 export async function appendEvolutionEvent(req: AppendEvolutionEventRequest): Promise<EvolutionEvent> {

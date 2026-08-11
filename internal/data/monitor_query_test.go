@@ -7,6 +7,33 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+// HideLinkedCompletions：服务端排除已落入 Runs 的 runner.completion 行——
+// usage_event_id 非空、或 trace_id 命中 monitor_traces（trace_key / metadata trace_id）。
+// 前端 Events 历史表恒传 true，保证分页 total 与实际渲染行数一致（ISSUE-007）。
+func TestMonitorEventsWhereHideLinkedCompletions(t *testing.T) {
+	for _, d := range []Dialect{DialectPostgres, DialectSQLite} {
+		where, args := monitorEventsWhere(biz.MonitorEventsQuery{HideLinkedCompletions: true}, d)
+		if !strings.Contains(where, "event_key != 'runner.completion'") {
+			t.Fatalf("%s: hide_linked_completions should scope exclusion to runner.completion, got %q", d, where)
+		}
+		if !strings.Contains(where, "usage_event_id") {
+			t.Fatalf("%s: hide_linked_completions should check usage_event_id, got %q", d, where)
+		}
+		if !strings.Contains(where, "NOT EXISTS") || !strings.Contains(where, "monitor_traces") || !strings.Contains(where, "trace_key") {
+			t.Fatalf("%s: hide_linked_completions should NOT EXISTS against monitor_traces.trace_key, got %q", d, where)
+		}
+		if len(args) != 0 {
+			t.Fatalf("%s: hide_linked_completions takes no args, got %v", d, args)
+		}
+	}
+
+	// 默认关闭：不带标志时无排除子句，行为不变。
+	where, _ := monitorEventsWhere(biz.MonitorEventsQuery{}, DialectPostgres)
+	if strings.Contains(where, "runner.completion") {
+		t.Fatalf("empty query should not exclude completions, got %q", where)
+	}
+}
+
 // ExcludeSystem：未显式按动作过滤时追加 sync.% 排除；显式动作过滤优先（不叠加排除）。
 func TestAuditWhereExcludeSystem(t *testing.T) {
 	where, args := auditWhere(biz.AuditQuery{ExcludeSystem: true})

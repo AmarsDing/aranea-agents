@@ -100,6 +100,8 @@ type ToolListQuery struct {
 	Sort      string
 	Limit     int
 	Offset    int
+	// Abnormal=true 仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」筛选）。
+	Abnormal bool
 	// WorkspaceID filters by tenant visibility (P2-B).
 	// empty = system caller (see all); non-empty = tenant caller
 	// (see shared with workspace_id="" + own with workspace_id==WorkspaceID).

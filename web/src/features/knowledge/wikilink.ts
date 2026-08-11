@@ -1,6 +1,11 @@
 // wikilink（SP2 §SP2-6）：[[target]] / [[target|alias]] / [[target#heading]] 解析、存在性判定、CM 补全工厂。
 // 分层纪律：解析/匹配为纯函数可单测；CM 依赖仅补全工厂一处。
-import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import {
+  insertCompletionText,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from '@codemirror/autocomplete';
 
 export type WikiLinkRef = {
   /** 链接目标（文档名，可能不含扩展名） */
@@ -56,8 +61,16 @@ export function resolveWikiTarget(target: string, candidates: string[]): boolean
 }
 
 /** CM 补全工厂：检测 `[[` 前缀，候选 = 当前库文档名（150ms 防抖由 autocompletion 配置层控制）。
- *  P2-5：`[[target#partial` 时切换为标题补全（getHeadings 提供目标文档标题列表，通常为已打开 tab 的大纲）。 */
-export function wikiLinkCompletionSource(getCandidates: () => string[], getHeadings?: (target: string) => string[]) {
+ *  P2-5：`[[target#partial` 时切换为标题补全（getHeadings 提供目标文档标题列表，通常为已打开 tab 的大纲）。
+ *  B4 #8：getRecencyRank 提供「归一化名 → 最近引用名次（0=最近）」，仅空关键词时按名次排序
+ *  （SiYuan refUsed 语义：有记录者优先、名次升序、无记录保持文档序）；onPick 在选项落链时回调
+ *  原始候选（relPath），供上报 recency。 */
+export function wikiLinkCompletionSource(
+  getCandidates: () => string[],
+  getHeadings?: (target: string) => string[],
+  getRecencyRank?: () => ReadonlyMap<string, number>,
+  onPick?: (target: string) => void,
+) {
   return (ctx: CompletionContext): CompletionResult | null => {
     const m = ctx.matchBefore(/\[\[([^\]|#]*?)(?:#([^\]|]*))?$/);
     if (!m) return null;
@@ -77,10 +90,33 @@ export function wikiLinkCompletionSource(getCandidates: () => string[], getHeadi
     }
     const query = m.text.slice(2);
     const want = normalizeTargetName(query);
-    const options = getCandidates()
-      .filter((c) => !want || normalizeTargetName(c).includes(want))
-      .slice(0, 20)
-      .map((c) => ({ label: normalizeTargetName(c), detail: c }));
+    let matched = getCandidates().filter((c) => !want || normalizeTargetName(c).includes(want));
+    if (!want && getRecencyRank) {
+      const rank = getRecencyRank();
+      if (rank.size) {
+        // 稳定排序：有记录者按名次升序在前，无记录者保持文档序在后。
+        matched = matched
+          .map((c, i) => ({ c, i, r: rank.get(normalizeTargetName(c)) }))
+          .sort((a, b) => {
+            if (a.r !== undefined && b.r !== undefined) return a.r - b.r;
+            if (a.r !== undefined) return -1;
+            if (b.r !== undefined) return 1;
+            return a.i - b.i;
+          })
+          .map((x) => x.c);
+      }
+    }
+    const options = matched.slice(0, 20).map((c): Completion => {
+      const label = normalizeTargetName(c);
+      const opt: Completion = { label, detail: c };
+      if (onPick) {
+        opt.apply = (view, _completion, from, to) => {
+          view.dispatch(insertCompletionText(view.state, label, from, to));
+          onPick(c);
+        };
+      }
+      return opt;
+    });
     if (!options.length) return null;
     return { from: ctx.pos - query.length, options, validFor: /^[^\]|#]*$/ };
   };

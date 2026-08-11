@@ -7,6 +7,7 @@ import type { MonitorEvent } from '../../realtime/monitorEvent';
 import { useMonitorStore } from '../../stores/monitor/index';
 import { monitorLogLineFromFlowEvent } from './flow';
 import type { MonitorLogLine, StreamState } from './types';
+import { normalizeLogLevel } from './utils';
 
 const MAX_LINES = 5000;
 
@@ -32,8 +33,8 @@ export type MonitorLogHub = {
 };
 
 function processLineFromEvent(ev: MonitorEvent): MonitorLogLine {
-  const metaLevel = ev.metadata?.level as MonitorLogLine['level'] | undefined;
-  const level = (ev.level as MonitorLogLine['level'] | undefined) ?? metaLevel ?? 'INFO';
+  const metaLevel = ev.metadata?.level as string | undefined;
+  const level = normalizeLogLevel((ev.level as string | undefined) ?? metaLevel);
   return {
     id: ev.id,
     time: ev.timestamp,

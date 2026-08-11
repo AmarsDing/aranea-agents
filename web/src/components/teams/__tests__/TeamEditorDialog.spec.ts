@@ -199,3 +199,31 @@ describe('TeamEditorDialog F2 (M53 Phase 11)', () => {
     expect(dialogOnOk.current).toBeNull();
   });
 });
+
+describe('TeamEditorDialog 配置易用性（C-1/C-2）', () => {
+  function findSelectByLabel(wrapper: ReturnType<typeof mountDialog>['wrapper'], label: string) {
+    return wrapper.findAllComponents({ name: 'QSelect' }).find((s) => s.props('label') === label);
+  }
+
+  it('C-1：Envelope Version 为下拉选择，仅列受支持版本且默认 a2a.v1', () => {
+    const { wrapper } = mountDialog();
+    const env = findSelectByLabel(wrapper, 'Envelope Version');
+    expect(env, 'Envelope Version 应渲染为 q-select 防 typo').toBeTruthy();
+    expect(env!.props('options')).toEqual([{ label: 'a2a.v1', value: 'a2a.v1' }]);
+    expect(env!.props('modelValue')).toBe('a2a.v1');
+  });
+
+  it('C-1：选择版本后写回 definition.a2a.envelope_version', async () => {
+    const { wrapper, definition } = mountDialog();
+    const env = findSelectByLabel(wrapper, 'Envelope Version');
+    await env!.vm.$emit('update:modelValue', 'a2a.v1');
+    expect(definition.a2a?.envelope_version).toBe('a2a.v1');
+  });
+
+  it('C-2：Intent 锚定成员 hint 解释术语含义', () => {
+    const { wrapper } = mountDialog();
+    const anchor = findSelectByLabel(wrapper, 'Intent 锚定成员（可选）');
+    expect(anchor).toBeTruthy();
+    expect(anchor!.attributes('hint')).toContain('意图识别');
+  });
+});

@@ -41,6 +41,10 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
   }
 
   function removeTool(tool: Tool) {
+    if (tool.readonly) {
+      $q.notify({ type: 'warning', message: `「${tool.display_name}」为内置/只读工具，不可删除` });
+      return;
+    }
     $q.dialog({
       title: '删除 Tool',
       message: `确认删除 ${tool.display_name}（${tool.key}）？`,

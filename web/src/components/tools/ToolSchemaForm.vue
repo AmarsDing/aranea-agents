@@ -30,8 +30,9 @@
         type="number"
         dense
         outlined
+        clearable
         :hint="def.description"
-        @update:model-value="setValue(key, Number($event))"
+        @update:model-value="setNumberValue(key, $event)"
       />
 
       <q-input
@@ -208,6 +209,19 @@ function setValue(key: string, val: unknown) {
   }
   const next = { ...data.value, [key]: parsed };
   emit('update:modelValue', JSON.stringify(next, null, 2));
+}
+
+/** 数字字段：清空（null/''）→ 移除 key 回退默认；非法中间输入忽略，避免 Number('')=0 误写。 */
+function setNumberValue(key: string, val: string | number | null) {
+  if (val === null || val === '') {
+    const next = { ...data.value };
+    delete next[key];
+    emit('update:modelValue', JSON.stringify(next, null, 2));
+    return;
+  }
+  const n = Number(val);
+  if (Number.isNaN(n)) return;
+  setValue(key, n);
 }
 
 function setArrayItem(key: string, idx: number, val: string) {

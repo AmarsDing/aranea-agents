@@ -243,8 +243,12 @@ func (uc *SkillReportUsecase) ScanAndGenerateReports(ctx context.Context) error 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func buildFlowSummary(inv SkillInvocationWrite, isSuccess bool, failureTags []string) string {
+	name := inv.SkillName
+	if name == "" {
+		name = inv.SkillID
+	}
 	if isSuccess {
-		return fmt.Sprintf("Skill %s completed successfully in %dms.", inv.SkillID, inv.DurationMS)
+		return fmt.Sprintf("技能 %s 执行成功，耗时 %dms。", name, inv.DurationMS)
 	}
 	tagsStr := "unknown"
 	if len(failureTags) > 0 {
@@ -255,42 +259,42 @@ func buildFlowSummary(inv SkillInvocationWrite, isSuccess bool, failureTags []st
 		errMsg = inv.ErrorCode
 	}
 	if errMsg != "" {
-		return fmt.Sprintf("Skill %s failed in %dms. Failure tags: [%s]. Error: %s", inv.SkillID, inv.DurationMS, tagsStr, truncateStr(errMsg, 200))
+		return fmt.Sprintf("技能 %s 执行失败，耗时 %dms。失败标签：[%s]。错误：%s", name, inv.DurationMS, tagsStr, truncateStr(errMsg, 200))
 	}
-	return fmt.Sprintf("Skill %s failed in %dms. Failure tags: [%s].", inv.SkillID, inv.DurationMS, tagsStr)
+	return fmt.Sprintf("技能 %s 执行失败，耗时 %dms。失败标签：[%s]。", name, inv.DurationMS, tagsStr)
 }
 
 func buildOptimizationAdvice(inv SkillInvocationWrite, isSuccess bool, failureTags []string) string {
 	if isSuccess {
 		if inv.DurationMS > 10000 {
-			return "Consider optimizing skill performance to reduce latency."
+			return "建议优化技能性能以降低耗时。"
 		}
-		return "No optimization needed."
+		return "无需优化。"
 	}
 
 	var advices []string
 	for _, tag := range failureTags {
 		switch tag {
 		case FailureTagToolTimeout:
-			advices = append(advices, "Add timeout handling and retry logic to the skill implementation")
+			advices = append(advices, "为技能实现增加超时处理与重试逻辑")
 		case FailureTagToolAPIError:
-			advices = append(advices, "Add error handling for API failures and implement fallback behavior")
+			advices = append(advices, "为 API 失败增加错误处理并实现降级行为")
 		case FailureTagParamMismatch:
-			advices = append(advices, "Improve parameter validation and add clearer parameter descriptions")
+			advices = append(advices, "改进参数校验并补充更清晰的参数说明")
 		case FailureTagWrongToolChoice:
-			advices = append(advices, "Refine skill description to reduce ambiguity in tool selection")
+			advices = append(advices, "优化技能描述以降低工具选择歧义")
 		case FailureTagContextOverflow:
-			advices = append(advices, "Reduce input size or add context window management")
+			advices = append(advices, "减小输入规模或增加上下文窗口管理")
 		case FailureTagInstructionAmbiguity:
-			advices = append(advices, "Clarify skill instructions and add examples")
+			advices = append(advices, "澄清技能指令并补充示例")
 		default:
-			advices = append(advices, "Investigate root cause and add error handling")
+			advices = append(advices, "排查根因并增加错误处理")
 		}
 	}
 	if len(advices) == 0 {
-		return "Investigate failure and add appropriate error handling."
+		return "建议排查失败原因并增加相应的错误处理。"
 	}
-	return strings.Join(advices, "; ")
+	return strings.Join(advices, "；")
 }
 
 func truncateStr(s string, maxLen int) string {

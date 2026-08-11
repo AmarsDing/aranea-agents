@@ -39,6 +39,8 @@ const (
 	KnowledgeService_ListBlockBacklinks_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 	KnowledgeService_ListDanglingLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 	KnowledgeService_ListUnlinkedMentions_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
+	KnowledgeService_RecordLinkUse_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
+	KnowledgeService_ListRecentLinkUses_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListRecentLinkUses"
 	KnowledgeService_PromoteBlocks_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 	KnowledgeService_RebuildKnowledgeIndex_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
@@ -95,6 +97,13 @@ type KnowledgeServiceClient interface {
 	// ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(ctx context.Context, in *ListUnlinkedMentionsRequest, opts ...grpc.CallOption) (*ListUnlinkedMentionsResponse, error)
+	// RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+	// completion is applied (B4 #8); best-effort, callers may ignore failures.
+	RecordLinkUse(ctx context.Context, in *RecordLinkUseRequest, opts ...grpc.CallOption) (*RecordLinkUseResponse, error)
+	// ListRecentLinkUses returns recently used wikilink targets of one
+	// collection, most recent first (B4 #8); drives empty-query [[ completion
+	// ordering on the client.
+	ListRecentLinkUses(ctx context.Context, in *ListRecentLinkUsesRequest, opts ...grpc.CallOption) (*ListRecentLinkUsesResponse, error)
 	// PromoteBlocks clones blocks from a personal vault into a team collection
 	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
 	// cascade candidates for references into private blocks, and immediate
@@ -318,6 +327,26 @@ func (c *knowledgeServiceClient) ListUnlinkedMentions(ctx context.Context, in *L
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) RecordLinkUse(ctx context.Context, in *RecordLinkUseRequest, opts ...grpc.CallOption) (*RecordLinkUseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecordLinkUseResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_RecordLinkUse_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ListRecentLinkUses(ctx context.Context, in *ListRecentLinkUsesRequest, opts ...grpc.CallOption) (*ListRecentLinkUsesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRecentLinkUsesResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListRecentLinkUses_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) PromoteBlocks(ctx context.Context, in *PromoteBlocksRequest, opts ...grpc.CallOption) (*PromoteBlocksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PromoteBlocksResponse)
@@ -435,6 +464,13 @@ type KnowledgeServiceServer interface {
 	// ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error)
+	// RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+	// completion is applied (B4 #8); best-effort, callers may ignore failures.
+	RecordLinkUse(context.Context, *RecordLinkUseRequest) (*RecordLinkUseResponse, error)
+	// ListRecentLinkUses returns recently used wikilink targets of one
+	// collection, most recent first (B4 #8); drives empty-query [[ completion
+	// ordering on the client.
+	ListRecentLinkUses(context.Context, *ListRecentLinkUsesRequest) (*ListRecentLinkUsesResponse, error)
 	// PromoteBlocks clones blocks from a personal vault into a team collection
 	// (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
 	// cascade candidates for references into private blocks, and immediate
@@ -524,6 +560,12 @@ func (UnimplementedKnowledgeServiceServer) ListDanglingLinks(context.Context, *L
 }
 func (UnimplementedKnowledgeServiceServer) ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListUnlinkedMentions not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) RecordLinkUse(context.Context, *RecordLinkUseRequest) (*RecordLinkUseResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecordLinkUse not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListRecentLinkUses(context.Context, *ListRecentLinkUsesRequest) (*ListRecentLinkUsesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRecentLinkUses not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) PromoteBlocks(context.Context, *PromoteBlocksRequest) (*PromoteBlocksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PromoteBlocks not implemented")
@@ -909,6 +951,42 @@ func _KnowledgeService_ListUnlinkedMentions_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_RecordLinkUse_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecordLinkUseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).RecordLinkUse(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_RecordLinkUse_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).RecordLinkUse(ctx, req.(*RecordLinkUseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ListRecentLinkUses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRecentLinkUsesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListRecentLinkUses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListRecentLinkUses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListRecentLinkUses(ctx, req.(*ListRecentLinkUsesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_PromoteBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PromoteBlocksRequest)
 	if err := dec(in); err != nil {
@@ -1117,6 +1195,14 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUnlinkedMentions",
 			Handler:    _KnowledgeService_ListUnlinkedMentions_Handler,
+		},
+		{
+			MethodName: "RecordLinkUse",
+			Handler:    _KnowledgeService_RecordLinkUse_Handler,
+		},
+		{
+			MethodName: "ListRecentLinkUses",
+			Handler:    _KnowledgeService_ListRecentLinkUses_Handler,
 		},
 		{
 			MethodName: "PromoteBlocks",

@@ -85,10 +85,12 @@
           :read-only="activeTab.mode === 'preview'"
           :candidates="candidates"
           :get-headings="getHeadings"
+          :link-recency-rank="linkRecencyRank"
           @update-content="(c: string) => $emit('update-content', activeTab!.docId, c)"
           @save="$emit('save', activeTab!.docId)"
           @open-doc="(target: string, heading?: string) => $emit('open-doc', target, heading)"
           @create-doc="(target: string) => $emit('create-doc', target)"
+          @pick-link="(target: string) => $emit('pick-link', target)"
         />
       </template>
 
@@ -121,6 +123,8 @@ const props = defineProps<{
   recentDocs?: KnowledgeDocument[];
   /** P2-5：`[[target#` 标题补全数据源 */
   getHeadings?: (target: string) => string[];
+  /** B4 #8：空查询 [[ 补全的最近引用名次（归一化名 → 名次，0=最近） */
+  linkRecencyRank?: ReadonlyMap<string, number>;
 }>();
 
 const emit = defineEmits<{
@@ -133,6 +137,8 @@ const emit = defineEmits<{
   'create-doc': [target: string];
   'open-doc-id': [docId: string];
   reorder: [from: number, to: number];
+  /** B4 #8：wikilink 补全落链（原始候选 relPath，供上报 recency） */
+  'pick-link': [target: string];
 }>();
 
 const { t } = useI18n();

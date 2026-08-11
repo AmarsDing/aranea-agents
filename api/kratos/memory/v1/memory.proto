@@ -148,6 +148,11 @@ message ListMemoryFactsResponse {
   int32 total = 2;
   int32 limit = 3;
   int32 offset = 4;
+  // active_count / archived_count are status-based counts over the FULL filter
+  // set (scope/kind/keyword/agent) ignoring the status filter itself — used by
+  // the memory-center knowledge panel statistics row.
+  int32 active_count = 5;
+  int32 archived_count = 6;
 }
 
 message ListConflictingFactsRequest {
@@ -403,6 +408,26 @@ message UpsertMemoryFactRequest {
 }
 
 message UpsertMemoryFactResponse {
+  MemoryFact fact = 1;
+}
+
+// ReviewMemoryFact applies a single-fact user governance action with a precise
+// column-targeted UPDATE (memory.md §9.4). Unlike UpsertMemoryFact it never
+// touches links/keywords/metadata/quality_score, so feedback actions cannot
+// silently wipe graph linkages.
+message ReviewMemoryFactRequest {
+  string fact_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // confirm | reject | archive | dispute | deprecate | refine
+  string action = 2 [(google.api.field_behavior) = REQUIRED];
+  // refine-only replacement fields. statement is required for refine; the
+  // remaining fields overwrite unconditionally (callers merge current values).
+  string statement = 3;
+  string details_markdown = 4;
+  string fact_kind = 5;
+  string tags_json = 6;
+}
+
+message ReviewMemoryFactResponse {
   MemoryFact fact = 1;
 }
 
@@ -856,6 +881,13 @@ service MemoryService {
   rpc UpsertMemoryFact(UpsertMemoryFactRequest) returns (UpsertMemoryFactResponse) {
     option (google.api.http) = {
       post: "/v1/memory/l3/facts"
+      body: "*"
+    };
+  }
+
+  rpc ReviewMemoryFact(ReviewMemoryFactRequest) returns (ReviewMemoryFactResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/l3/facts/{fact_id}/review"
       body: "*"
     };
   }

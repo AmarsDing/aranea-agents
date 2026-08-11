@@ -55,6 +55,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgelinkused"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -214,6 +215,8 @@ type Client struct {
 	GraphTaskRun *GraphTaskRunClient
 	// HealRecord is the client for interacting with the HealRecord builders.
 	HealRecord *HealRecordClient
+	// KnowledgeLinkUsed is the client for interacting with the KnowledgeLinkUsed builders.
+	KnowledgeLinkUsed *KnowledgeLinkUsedClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
 	// MediaProvider is the client for interacting with the MediaProvider builders.
@@ -383,6 +386,7 @@ func (c *Client) init() {
 	c.GraphTaskLog = NewGraphTaskLogClient(c.config)
 	c.GraphTaskRun = NewGraphTaskRunClient(c.config)
 	c.HealRecord = NewHealRecordClient(c.config)
+	c.KnowledgeLinkUsed = NewKnowledgeLinkUsedClient(c.config)
 	c.LlmProviderModel = NewLlmProviderModelClient(c.config)
 	c.MediaProvider = NewMediaProviderClient(c.config)
 	c.MemberSessionV2 = NewMemberSessionV2Client(c.config)
@@ -576,6 +580,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		GraphTaskLog:               NewGraphTaskLogClient(cfg),
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
+		KnowledgeLinkUsed:          NewKnowledgeLinkUsedClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
@@ -696,6 +701,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		GraphTaskLog:               NewGraphTaskLogClient(cfg),
 		GraphTaskRun:               NewGraphTaskRunClient(cfg),
 		HealRecord:                 NewHealRecordClient(cfg),
+		KnowledgeLinkUsed:          NewKnowledgeLinkUsedClient(cfg),
 		LlmProviderModel:           NewLlmProviderModelClient(cfg),
 		MediaProvider:              NewMediaProviderClient(cfg),
 		MemberSessionV2:            NewMemberSessionV2Client(cfg),
@@ -792,21 +798,22 @@ func (c *Client) Use(hooks ...Hook) {
 		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
 		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
 		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
+		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -826,21 +833,22 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
 		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
 		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
+		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -937,6 +945,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GraphTaskRun.mutate(ctx, m)
 	case *HealRecordMutation:
 		return c.HealRecord.mutate(ctx, m)
+	case *KnowledgeLinkUsedMutation:
+		return c.KnowledgeLinkUsed.mutate(ctx, m)
 	case *LlmProviderModelMutation:
 		return c.LlmProviderModel.mutate(ctx, m)
 	case *MediaProviderMutation:
@@ -7033,6 +7043,139 @@ func (c *HealRecordClient) mutate(ctx context.Context, m *HealRecordMutation) (V
 		return (&HealRecordDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown HealRecord mutation op: %q", m.Op())
+	}
+}
+
+// KnowledgeLinkUsedClient is a client for the KnowledgeLinkUsed schema.
+type KnowledgeLinkUsedClient struct {
+	config
+}
+
+// NewKnowledgeLinkUsedClient returns a client for the KnowledgeLinkUsed from the given config.
+func NewKnowledgeLinkUsedClient(c config) *KnowledgeLinkUsedClient {
+	return &KnowledgeLinkUsedClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `knowledgelinkused.Hooks(f(g(h())))`.
+func (c *KnowledgeLinkUsedClient) Use(hooks ...Hook) {
+	c.hooks.KnowledgeLinkUsed = append(c.hooks.KnowledgeLinkUsed, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `knowledgelinkused.Intercept(f(g(h())))`.
+func (c *KnowledgeLinkUsedClient) Intercept(interceptors ...Interceptor) {
+	c.inters.KnowledgeLinkUsed = append(c.inters.KnowledgeLinkUsed, interceptors...)
+}
+
+// Create returns a builder for creating a KnowledgeLinkUsed entity.
+func (c *KnowledgeLinkUsedClient) Create() *KnowledgeLinkUsedCreate {
+	mutation := newKnowledgeLinkUsedMutation(c.config, OpCreate)
+	return &KnowledgeLinkUsedCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of KnowledgeLinkUsed entities.
+func (c *KnowledgeLinkUsedClient) CreateBulk(builders ...*KnowledgeLinkUsedCreate) *KnowledgeLinkUsedCreateBulk {
+	return &KnowledgeLinkUsedCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *KnowledgeLinkUsedClient) MapCreateBulk(slice any, setFunc func(*KnowledgeLinkUsedCreate, int)) *KnowledgeLinkUsedCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &KnowledgeLinkUsedCreateBulk{err: fmt.Errorf("calling to KnowledgeLinkUsedClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*KnowledgeLinkUsedCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &KnowledgeLinkUsedCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for KnowledgeLinkUsed.
+func (c *KnowledgeLinkUsedClient) Update() *KnowledgeLinkUsedUpdate {
+	mutation := newKnowledgeLinkUsedMutation(c.config, OpUpdate)
+	return &KnowledgeLinkUsedUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *KnowledgeLinkUsedClient) UpdateOne(_m *KnowledgeLinkUsed) *KnowledgeLinkUsedUpdateOne {
+	mutation := newKnowledgeLinkUsedMutation(c.config, OpUpdateOne, withKnowledgeLinkUsed(_m))
+	return &KnowledgeLinkUsedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *KnowledgeLinkUsedClient) UpdateOneID(id int) *KnowledgeLinkUsedUpdateOne {
+	mutation := newKnowledgeLinkUsedMutation(c.config, OpUpdateOne, withKnowledgeLinkUsedID(id))
+	return &KnowledgeLinkUsedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for KnowledgeLinkUsed.
+func (c *KnowledgeLinkUsedClient) Delete() *KnowledgeLinkUsedDelete {
+	mutation := newKnowledgeLinkUsedMutation(c.config, OpDelete)
+	return &KnowledgeLinkUsedDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *KnowledgeLinkUsedClient) DeleteOne(_m *KnowledgeLinkUsed) *KnowledgeLinkUsedDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *KnowledgeLinkUsedClient) DeleteOneID(id int) *KnowledgeLinkUsedDeleteOne {
+	builder := c.Delete().Where(knowledgelinkused.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &KnowledgeLinkUsedDeleteOne{builder}
+}
+
+// Query returns a query builder for KnowledgeLinkUsed.
+func (c *KnowledgeLinkUsedClient) Query() *KnowledgeLinkUsedQuery {
+	return &KnowledgeLinkUsedQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeKnowledgeLinkUsed},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a KnowledgeLinkUsed entity by its id.
+func (c *KnowledgeLinkUsedClient) Get(ctx context.Context, id int) (*KnowledgeLinkUsed, error) {
+	return c.Query().Where(knowledgelinkused.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *KnowledgeLinkUsedClient) GetX(ctx context.Context, id int) *KnowledgeLinkUsed {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *KnowledgeLinkUsedClient) Hooks() []Hook {
+	return c.hooks.KnowledgeLinkUsed
+}
+
+// Interceptors returns the client interceptors.
+func (c *KnowledgeLinkUsedClient) Interceptors() []Interceptor {
+	return c.inters.KnowledgeLinkUsed
+}
+
+func (c *KnowledgeLinkUsedClient) mutate(ctx context.Context, m *KnowledgeLinkUsedMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&KnowledgeLinkUsedCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&KnowledgeLinkUsedUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&KnowledgeLinkUsedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&KnowledgeLinkUsedDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown KnowledgeLinkUsed mutation op: %q", m.Op())
 	}
 }
 
@@ -14629,19 +14772,20 @@ type (
 		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
 		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
 		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
+		GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel, MediaProvider,
+		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
+		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
+		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
+		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
@@ -14653,19 +14797,19 @@ type (
 		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
 		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
 		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, LlmProviderModel, MediaProvider, MemberSessionV2,
-		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
-		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
-		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
-		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
-		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
-		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
-		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
-		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
-		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
-		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
-		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
-		ToolResultReplacement, TurnV2, UsageQuota,
+		GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel, MediaProvider,
+		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
+		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
+		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
+		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
+		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
+		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
+		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
+		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
+		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
+		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
+		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
+		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

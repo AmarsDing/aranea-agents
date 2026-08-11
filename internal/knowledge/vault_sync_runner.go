@@ -44,6 +44,8 @@ type VaultSyncRunner struct {
 
 	mu   sync.Mutex
 	prev map[string][]bizknowledge.FileSnapshot // vaultID → 上一轮快照
+	// lastConverge 块索引漂移收敛的逐 vault 上次执行时间（SP2 #4 低频门控）。
+	lastConverge map[string]time.Time
 }
 
 // NewVaultSyncRunner 构造。lg 为 nil 时使用 Noop。
@@ -109,9 +111,47 @@ func (r *VaultSyncRunner) SyncOnce(ctx context.Context, vault bizknowledge.Colle
 				event.P("changed_files", len(events)))
 		}
 	}
+	// SP2 #9：退避重试熔断中文档的向量补齐。无文件变更时也运行——熔断恢复独立于
+	// 文件事件（故障恢复后不应等文件变更才补向量）。无语义层/无降级文档时廉价短路；
+	// 扫描失败不拖垮同步轮次（K4：Warn 后照常 active）。
+	if err := r.applier.RetryDegradedEmbeddings(ctx, vault); err != nil {
+		r.lg.Warn("vault embed retry sweep failed",
+			loggateway.Str("vault_id", vault.ID),
+			loggateway.Err(err),
+		)
+	}
+	// SP2 #4：块索引漂移收敛（低频，convergeInterval 门控）。rebuildBlockIndex 失败
+	// 仅 Warn 降级而 content_hash 已落库、下轮不再重试——靠此校验检出并自动重建。
+	if r.convergeDue(vault.ID, time.Now()) {
+		if err := r.applier.ConvergeMissingBlockIndex(ctx, vault); err != nil {
+			r.lg.Warn("vault block index converge failed",
+				loggateway.Str("vault_id", vault.ID),
+				loggateway.Err(err),
+			)
+		}
+	}
 	r.markState(ctx, vault.ID, "active", time.Now().UTC())
 	r.savePrev(vault.ID, curr)
 	return nil
+}
+
+// convergeInterval 是块索引漂移收敛的最低间隔（SP2 #4 低频校验；30s 轮询不每轮执行）。
+const convergeInterval = 10 * time.Minute
+
+// convergeDue 判定该 vault 是否到达收敛窗口并登记本次时间（先登记者执行，
+// 并发轮次天然去重）。不同 vault 独立计窗。
+func (r *VaultSyncRunner) convergeDue(vaultID string, now time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.lastConverge == nil {
+		r.lastConverge = make(map[string]time.Time)
+	}
+	last, ok := r.lastConverge[vaultID]
+	if ok && now.Sub(last) < convergeInterval {
+		return false
+	}
+	r.lastConverge[vaultID] = now
+	return true
 }
 
 func (r *VaultSyncRunner) logVaultSyncError(ctx context.Context, vaultID string, err error) {

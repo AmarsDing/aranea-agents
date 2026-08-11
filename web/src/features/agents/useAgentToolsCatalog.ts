@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { listTools } from '../tools/api';
-import type { AgentRuntimeConfigForm } from './agentRuntimeConfig';
+import { toolGroupOptions, type AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
 const defaultNativeToolKeys = [
   'datetime',
@@ -37,6 +37,10 @@ export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
 
   const toolSelectOptions = computed(() => {
     const byKey = new Map<string, { label: string; value: string }>();
+    // group:<name> 组 key（后端 expandToolGroup 支持），排在最前便于按组授权。
+    for (const g of toolGroupOptions) {
+      byKey.set(g.value, { label: g.label, value: g.value });
+    }
     for (const k of defaultNativeToolKeys) {
       byKey.set(k, { label: `${k} · 内置`, value: k });
     }

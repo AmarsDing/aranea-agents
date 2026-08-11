@@ -31,9 +31,10 @@
             icon="delete"
             color="negative"
             class="app-registry-icon-btn"
+            :disable="tool.readonly"
             @click="$emit('remove-tool', tool)"
           >
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ tool.readonly ? '内置/只读工具不可删除' : '删除' }}</q-tooltip>
           </q-btn>
           <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('close')">
             <q-tooltip>关闭</q-tooltip>

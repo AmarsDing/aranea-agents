@@ -688,9 +688,13 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
         return
     }
     for _, def := range plugintrpc.BuiltinPluginDefs() {
-        _, err := s.uc.GetByKey(ctx, def.Key)
+        existing, err := s.uc.GetByKey(ctx, def.Key)
         if err == nil {
-            continue  // 已存在，不覆盖
+            // 已存在：不覆盖管理员字段，但平台自有元数据（name/category/
+            // schema/default_config 等）漂移时经 SyncBuiltinMeta 同步——
+            // 内置定义演进（如 schema 增加中文 title/description）须对存量生效。
+            s.syncBuiltinMeta(ctx, def, existing)
+            continue
         }
         if !apierror.IsCode(err, apierror.CodeNotFound) {
             s.lg.Warn("插件种子查询失败",
@@ -1421,9 +1425,12 @@ export async function deleteAllPluginRuns(): Promise<number>
 func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
     builtins := builtinPluginDefs()
     for _, def := range builtins {
-        _, err := s.uc.GetByKey(ctx, def.Key)
+        existing, err := s.uc.GetByKey(ctx, def.Key)
         if err == sql.ErrNoRows {
             s.uc.Create(ctx, def)
+        } else if err == nil {
+            // 已有行：仅同步平台自有元数据（漂移才写库），保留管理员字段
+            s.syncBuiltinMeta(ctx, def, existing)
         }
     }
     s.reloadRuntime(ctx)

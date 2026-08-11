@@ -125,7 +125,7 @@ const SEVERITY_TO_STATUS: Record<string, string> = {
   info: 'info',
 };
 
-/** 历史查询组装（纯函数）：类型前缀 + 级别→status + 服务端分页 + 默认噪音排除 */
+/** 历史查询组装（纯函数）：类型前缀 + 级别→status + 服务端分页 + 默认噪音排除 + 关联去重下沉服务端 */
 export function buildMonitorEventsQuery(opts: {
   type: string;
   severity: string;
@@ -137,6 +137,9 @@ export function buildMonitorEventsQuery(opts: {
   const query: MonitorEventsQuery = {
     limit: opts.pageSize,
     offset: Math.max(0, (opts.page - 1) * opts.pageSize),
+    // 关联去重必须在服务端完成：服务端分页后再在客户端隐藏关联行会让
+    // 每页渲染行数与分页 total 脱节（本页 15 条可能只剩 2 条可见）。
+    hide_linked_completions: true,
   };
   if (opts.type && opts.type !== 'all') {
     query.event_type = opts.type;
@@ -312,9 +315,8 @@ export function persistedEventToView(
   const title = completion && meta ? completionTitle(t, meta, row.name) : persistedTitle(t, type, row);
   // 摘要用 description；不回退 JSON.stringify(cfg)（原始 JSON 进详情弹窗）。
   // 与标题重复时置空，避免标题/摘要两列展示同一文本。
-  const rawSubtitle = completion && meta
-    ? completionSubtitle(t, meta, row.description)
-    : String(row.description || '').trim();
+  const rawSubtitle =
+    completion && meta ? completionSubtitle(t, meta, row.description) : String(row.description || '').trim();
   const subtitle = rawSubtitle === title ? '' : rawSubtitle;
   // 标题回退为行 name（未知事件类型）时，主体列不再重复同一文本。
   const rawActor = String(row.name || '').trim();

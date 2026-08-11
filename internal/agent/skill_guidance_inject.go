@@ -95,8 +95,9 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
 		}
 		cue := truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
+		// Prefix stabilization: append after the existing system block.
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -132,7 +133,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 			b.WriteString(fmt.Sprintf("- %s\n", slug))
 		}
 		sys := trpcmodel.NewSystemMessage(b.String())
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

@@ -62,13 +62,18 @@
             <q-select
               v-if="scopeMode === 'agent'"
               :model-value="scopeAgentId"
-              :options="agentOptions"
+              :options="filteredAgentOptions"
               dense
               outlined
               emit-value
               map-options
+              use-input
+              hide-selected
+              fill-input
+              input-debounce="0"
               label="选择 Agent"
               :disable="!target.permissions?.can_edit_config"
+              @filter="filterAgentOptions"
               @update:model-value="$emit('update:scopeAgentId', String($event ?? ''))"
             />
             <q-btn
@@ -112,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Plugin } from '../../features/plugins/types';
 import { formatPluginDate, lastStatusLabel, lastStatusTagClass, prettyJSON, riskTagClass } from './pluginUi';
 
@@ -133,6 +138,25 @@ defineEmits<{
   bumpSort: [delta: number];
   saveScope: [];
 }>();
+
+// 指定 Agent 下拉：数量多（20+）时支持输入过滤（label/value 双向匹配）
+const filteredAgentOptions = ref(props.agentOptions);
+
+function filterAgentOptions(val: string, update: (fn: () => void) => void) {
+  update(() => {
+    const needle = val.toLowerCase();
+    filteredAgentOptions.value = props.agentOptions.filter(
+      (o) => o.label.toLowerCase().includes(needle) || o.value.toLowerCase().includes(needle),
+    );
+  });
+}
+
+watch(
+  () => props.agentOptions,
+  (opts) => {
+    filteredAgentOptions.value = opts;
+  },
+);
 
 const metrics = computed(() => {
   const target = props.target;

@@ -216,6 +216,54 @@ ProviderTrendDialog 打开 → watch(open, row) → loadOverview()
 
 ---
 
+## 第五轮 Dogfood 实测审查（问题 20-22 + 观察项）
+
+> 审查日期：2026-08-11。方式：Playwright 浏览器实测模型注册表页面（搜索/筛选/开关/编辑弹窗）。
+
+### 问题 20（高）：搜索框输入后不过滤 ✅ 已修复
+
+**文件**：[llm_provider_model.proto](file:///f:/aranea-agents/api/kratos/llm_provider_model/v1/llm_provider_model.proto)
+
+**现象**：列表搜索框输入关键词后结果不变，请求是不带任何 query 的裸 GET。
+
+**根因**：proto 中 `ListProviderModels` 声明为 `google.protobuf.Empty` 入参，生成的 TS 客户端丢弃 `page/pageSize/search`，服务端只能走 `searchQueryFromContext` 旁路且永远读不到值。
+
+**修复**：proto 新增 `ListProviderModelsRequest{page, page_size, search}`，`make api` 重生成 Go + TS；service 改为从请求消息读取参数（空分页参数时保留 legacy 全量路径供选择器/健康检查）。回归测试：`internal/service/llm_provider_model_list_test.go`、`web/src/features/platform/__tests__/llmProviderModelListQuery.spec.ts`。
+
+---
+
+### 问题 21（低）：「Provider 类型」筛选下拉 label 截断 ✅ 已修复
+
+**文件**：[_form-layout.sass](file:///f:/aranea-agents/web/src/css/theme/_form-layout.sass)
+
+**现象**：工具栏 Provider 类型筛选下拉在空选时内容塌缩，通用 `min-width: 120px` 截断 label。
+
+**修复**：追加 `> .q-select.provider-control { min-width: 168px }` 规则。
+
+---
+
+### 问题 22（高）：切换启用开关后 30 天用量统计列清零 ✅ 已修复
+
+**文件**：[llm_provider_model.go](file:///f:/aranea-agents/internal/biz/llm_provider_model.go)
+
+**现象**：toggle 启用/禁用后，「30 天调用/热度」等统计列变成「—」，刷新页面才恢复。
+
+**根因**：前端用 PATCH 响应整行替换列表行；`List`/`ListPaged` 会经 `statsInjector` 注入 `usage_*_30d` 统计到 config_json，但 `Update` 返回的是未装饰数据，统计字段被抹掉。
+
+**修复**：`Usecase.Update` 返回前同样经 `statsInjector.InjectStats` 装饰（statsInjector 为 nil 时跳过，保持兼容）。回归测试：`internal/biz/llm_provider_model_update_stats_test.go`。
+
+---
+
+### 观察项：价格输入框显示 float32 加宽噪声长小数 ✅ 已修复
+
+**现象**：编辑弹窗价格偶发显示 `0.14000000059604645`。
+
+**根因**：上游 models.dev 价格为 float32，加宽到 float64 后产生尾数噪声。
+
+**修复**：价格粒度为 micro-USD/1K（USD/1M 下 6 位小数以外恒为噪声），两侧统一归一化——后端 `normalizeUSDPer1M`（catalog 同步写入 config_json 前，`internal/modelregistry/pricing.go`），前端 `normalizeUsdPer1M`（加载进编辑表单前，`providerRuntimeOverlay.ts` + `useProviderCredentials.ts`）。各有单测覆盖。
+
+---
+
 ## 已知限制（暂不修复）
 
 1. **HA 候选 API Key 无服务端 `api_key_set` 标记**：编辑已有 HA 候选 API Key 的 Provider 时，Key 字段为空且无 "••••••" 占位符或图标提示 Key 已存在。后端 `mergeHACandidateSecrets` 按 name 匹配正确保留 Key，但用户无法感知 Key 是否已配置。需后端在 API 响应中增加 `api_key_set` 标记。

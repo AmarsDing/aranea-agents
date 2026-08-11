@@ -312,6 +312,40 @@ export type ListUnlinkedMentionsResponse = {
   items: UnlinkedMention[] | undefined;
 };
 
+// RecordLinkUseRequest records one wikilink completion apply (B4 #8): the
+// picked target becomes the most-recently-used link target of the collection
+// (upsert on (collection_id, doc_id), best-effort).
+export type RecordLinkUseRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  //
+  // Behaviors: REQUIRED
+  docId: string | undefined;
+};
+
+export type RecordLinkUseResponse = {
+};
+
+// LinkUseEntry is one recently used wikilink target (recency-ordered).
+export type LinkUseEntry = {
+  docId: string | undefined;
+  lastUsedAt: string | undefined;
+};
+
+// ListRecentLinkUsesRequest asks for the recency ordering of wikilink targets
+// in one collection (B4 #8); drives empty-query [[ completion ordering.
+export type ListRecentLinkUsesRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListRecentLinkUsesResponse = {
+  items: LinkUseEntry[] | undefined;
+};
+
 // PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
 export type PromoteBlocksRequest = {
   //
@@ -558,6 +592,13 @@ export interface KnowledgeService {
   // ListUnlinkedMentions returns documents that mention the target doc's name
   // in plain text (outside [[wikilinks]]) without linking to it (P2-7).
   ListUnlinkedMentions(request: ListUnlinkedMentionsRequest): Promise<ListUnlinkedMentionsResponse>;
+  // RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+  // completion is applied (B4 #8); best-effort, callers may ignore failures.
+  RecordLinkUse(request: RecordLinkUseRequest): Promise<RecordLinkUseResponse>;
+  // ListRecentLinkUses returns recently used wikilink targets of one
+  // collection, most recent first (B4 #8); drives empty-query [[ completion
+  // ordering on the client.
+  ListRecentLinkUses(request: ListRecentLinkUsesRequest): Promise<ListRecentLinkUsesResponse>;
   // PromoteBlocks clones blocks from a personal vault into a team collection
   // (SP1-G, US-27): copy-not-move with lineage pair (promoted_from/promoted_to),
   // cascade candidates for references into private blocks, and immediate
@@ -994,6 +1035,49 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ListUnlinkedMentions",
       }) as Promise<ListUnlinkedMentionsResponse>;
+    },
+    RecordLinkUse(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/collections/${request.collectionId}/link-uses`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "RecordLinkUse",
+      }) as Promise<RecordLinkUseResponse>;
+    },
+    ListRecentLinkUses(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/collections/${request.collectionId}/link-uses`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListRecentLinkUses",
+      }) as Promise<ListRecentLinkUsesResponse>;
     },
     PromoteBlocks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/blocks/promote`; // eslint-disable-line quotes

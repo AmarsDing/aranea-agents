@@ -21,13 +21,17 @@
     <tool-runs-filters
       :tool-key="toolKey"
       :agent-id="agentId"
+      :session-id="sessionId"
       :status="status"
+      :has-error="hasError"
       :from="from"
       :status-options="statusOptions"
       :loading="loading"
       @update:tool-key="toolKey = $event ?? ''"
       @update:agent-id="agentId = $event ?? ''"
+      @update:session-id="sessionId = $event ?? ''"
       @update:status="status = $event ?? ''"
+      @update:has-error="hasError = $event"
       @update:from="from = $event ?? ''"
       @reset="resetFilters"
       @refresh="loadRows"
@@ -40,7 +44,7 @@
       </template>
     </q-banner>
 
-    <tool-runs-table :rows="rows" :loading="loading" />
+    <tool-runs-table :rows="rows" :loading="loading" @view-detail="openDetail" />
 
     <app-registry-pagination
       v-model:page="page"
@@ -50,6 +54,15 @@
       :loading="loading"
       label="条调用记录"
     />
+
+    <tool-run-detail-dialog
+      :open="detailOpen"
+      :invocation="detailRow"
+      :params="detailParams"
+      :params-loading="detailParamsLoading"
+      :params-error="detailParamsError"
+      @update:open="detailOpen = $event"
+    />
   </q-page>
 </template>
 
@@ -58,12 +71,15 @@ import AppRegistryPagination from '../components/layout/AppRegistryPagination.vu
 import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
 import ToolRunsFilters from '../components/tools/ToolRunsFilters.vue';
 import ToolRunsTable from '../components/tools/ToolRunsTable.vue';
+import ToolRunDetailDialog from '../components/tools/ToolRunDetailDialog.vue';
 import { useToolRunsPage } from '../features/tools/useToolRunsPage';
 
 const {
   toolKey,
   agentId,
+  sessionId,
   status,
+  hasError,
   from,
   page,
   pageSize,
@@ -73,6 +89,12 @@ const {
   error,
   pageMax,
   statusOptions,
+  detailOpen,
+  detailRow,
+  detailParams,
+  detailParamsLoading,
+  detailParamsError,
+  openDetail,
   resetFilters,
   loadRows,
 } = useToolRunsPage();

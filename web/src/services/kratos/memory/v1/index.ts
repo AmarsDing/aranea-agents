@@ -146,6 +146,11 @@ export type ListMemoryFactsResponse = {
   total: number | undefined;
   limit: number | undefined;
   offset: number | undefined;
+  // active_count / archived_count are status-based counts over the FULL filter
+  // set (scope/kind/keyword/agent) ignoring the status filter itself — used by
+  // the memory-center knowledge panel statistics row.
+  activeCount: number | undefined;
+  archivedCount: number | undefined;
 };
 
 export type MemoryFact = {
@@ -415,6 +420,30 @@ export type UpsertMemoryFactRequest = {
 };
 
 export type UpsertMemoryFactResponse = {
+  fact: MemoryFact | undefined;
+};
+
+// ReviewMemoryFact applies a single-fact user governance action with a precise
+// column-targeted UPDATE (memory.md §9.4). Unlike UpsertMemoryFact it never
+// touches links/keywords/metadata/quality_score, so feedback actions cannot
+// silently wipe graph linkages.
+export type ReviewMemoryFactRequest = {
+  //
+  // Behaviors: REQUIRED
+  factId: string | undefined;
+  // confirm | reject | archive | dispute | deprecate | refine
+  //
+  // Behaviors: REQUIRED
+  action: string | undefined;
+  // refine-only replacement fields. statement is required for refine; the
+  // remaining fields overwrite unconditionally (callers merge current values).
+  statement: string | undefined;
+  detailsMarkdown: string | undefined;
+  factKind: string | undefined;
+  tagsJson: string | undefined;
+};
+
+export type ReviewMemoryFactResponse = {
   fact: MemoryFact | undefined;
 };
 
@@ -870,6 +899,7 @@ export interface MemoryService {
   ListEvolutionEvents(request: ListEvolutionEventsRequest): Promise<ListEvolutionEventsResponse>;
   GetEvolutionMetrics(request: GetEvolutionMetricsRequest): Promise<EvolutionMetricsReport>;
   UpsertMemoryFact(request: UpsertMemoryFactRequest): Promise<UpsertMemoryFactResponse>;
+  ReviewMemoryFact(request: ReviewMemoryFactRequest): Promise<ReviewMemoryFactResponse>;
   AppendEvolutionEvent(request: AppendEvolutionEventRequest): Promise<AppendEvolutionEventResponse>;
   ListCascadeProposals(request: ListCascadeProposalsRequest): Promise<ListCascadeProposalsResponse>;
   ApproveCascadeProposal(request: ApproveCascadeProposalRequest): Promise<ApproveCascadeProposalResponse>;
@@ -1289,6 +1319,26 @@ export function createMemoryServiceClient(
         service: "MemoryService",
         method: "UpsertMemoryFact",
       }) as Promise<UpsertMemoryFactResponse>;
+    },
+    ReviewMemoryFact(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.factId) {
+        throw new Error("missing required field request.fact_id");
+      }
+      const path = `v1/memory/l3/facts/${request.factId}/review`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "MemoryService",
+        method: "ReviewMemoryFact",
+      }) as Promise<ReviewMemoryFactResponse>;
     },
     AppendEvolutionEvent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.agentId) {

@@ -67,6 +67,8 @@ message ListToolsRequest {
   int32 page = 6;
   int32 page_size = 7;
   string sort = 8;
+  // abnormal=true：仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」）。
+  bool abnormal = 9;
 }
 
 message ListToolsResponse {

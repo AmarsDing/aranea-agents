@@ -25,6 +25,7 @@ import { useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { createMonitorStream } from '../../realtime/useMonitorStream';
 import type { MonitorEvent } from '../../realtime/monitorEvent';
 import { flowSeverityToLevel, monitorLogLineFromFlowEvent } from './flow';
+import { normalizeLogLevel } from './utils';
 import { teamRunEventFromV2Event } from '../teams/teamRunEventFromV2Event';
 
 const monitor = createMonitorService();
@@ -129,7 +130,7 @@ function logLineFromWire(raw: unknown): MonitorLogLine {
   return {
     id: String(r.id ?? ''),
     time: String(r.time ?? ''),
-    level: String(r.level ?? 'INFO') as MonitorLogLine['level'],
+    level: normalizeLogLevel(String(r.level ?? '')),
     message: String(r.message ?? ''),
     source: String(r.source ?? ''),
     created_at: String(r.created_at ?? r.createdAt ?? ''),
@@ -164,6 +165,7 @@ export async function listMonitorEvents(query: MonitorEventsQuery = {}): Promise
     status: query.status,
     eventTypes: query.event_types,
     excludeEventTypes: query.exclude_event_types,
+    hideLinkedCompletions: query.hide_linked_completions,
   });
   const items = (res.items ?? []).map((item: unknown) => platformResourceFromWire(item));
   return { items, total: Number(res.total ?? items.length) };
@@ -222,8 +224,8 @@ export function subscribeMonitorLogsWs(
           if (ev.metadata?.flow_step || ev.metadata?.schema_version === 'flow_log/v1') {
             return;
           }
-          const metaLevel = ev.metadata?.level as MonitorLogLine['level'] | undefined;
-          const level = (ev.level as MonitorLogLine['level'] | undefined) ?? metaLevel ?? 'INFO';
+          const metaLevel = ev.metadata?.level as string | undefined;
+          const level = normalizeLogLevel((ev.level as string | undefined) ?? metaLevel);
           onLine({
             id: ev.id,
             time: ev.timestamp,

@@ -9,7 +9,15 @@
       <q-space />
       <div class="app-actions-bar">
         <q-btn flat rounded no-caps icon="add" :label="t('monitorPage.alerts.add')" @click="addRule" />
-        <q-btn flat rounded no-caps icon="refresh" :label="t('monitorPage.alerts.refresh')" :loading="loading" @click="$emit('reload')" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('monitorPage.alerts.refresh')"
+          :loading="loading"
+          @click="$emit('reload')"
+        />
         <!-- span 包裹：disabled 按钮不触发 tooltip，需要宿主元素 -->
         <span class="inline-block">
           <q-btn
@@ -30,10 +38,7 @@
 
     <!-- 指标目录（可折叠） -->
     <q-card flat bordered class="monitor-card q-mb-md">
-      <q-card-section
-        class="row items-center cursor-pointer"
-        @click="catalogExpanded = !catalogExpanded"
-      >
+      <q-card-section class="row items-center cursor-pointer" @click="catalogExpanded = !catalogExpanded">
         <q-icon name="speed" size="sm" color="primary" class="q-mr-sm" />
         <div>
           <div class="text-subtitle1 text-weight-medium">{{ t('monitorPage.alerts.catalog.title') }}</div>

@@ -311,7 +311,7 @@
                   emit-value
                   map-options
                   label="Intent 锚定成员（可选）"
-                  hint="留空则用排序后首位启用成员"
+                  hint="意图识别锁定由哪个成员承接；留空则用排序后首位启用成员"
                   :options="intentAnchorOptions"
                 />
                 <q-toggle
@@ -328,12 +328,16 @@
                 <div class="team-editor-expansion__body">
                   <div class="app-form-field-grid app-form-field-grid--2col">
                     <q-toggle v-model="a2aEnabled" class="app-grid-span-full" label="启用 A2A 信封" />
-                    <q-input
+                    <q-select
                       v-model="a2aEnvelopeVersion"
                       class="team-control"
                       dense
                       outlined
+                      emit-value
+                      map-options
                       label="Envelope Version"
+                      hint="信封协议版本，当前支持 a2a.v1"
+                      :options="a2aVersionOptions"
                     />
                     <q-select
                       v-model="a2aMessageFormat"
@@ -678,6 +682,8 @@ const a2aFormatOptions = [
   { label: 'Markdown + JSON', value: 'markdown_json' },
   { label: 'Plain', value: 'plain' },
 ];
+// C-1：信封版本枚举化，防自由文本 typo；后端支持新版本时在此扩展。
+const a2aVersionOptions = [{ label: 'a2a.v1', value: 'a2a.v1' }];
 const a2aEnabled = computed({
   get: () => definition.value.a2a?.enabled ?? true,
   set: (value: boolean) => {

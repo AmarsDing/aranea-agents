@@ -59,6 +59,8 @@ export type ListToolsRequest = {
   page: number | undefined;
   pageSize: number | undefined;
   sort: string | undefined;
+  // abnormal=true：仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」）。
+  abnormal: boolean | undefined;
 };
 
 export type ListToolsResponse = {
@@ -456,6 +458,9 @@ export function createToolServiceClient(
       }
       if (request.sort) {
         queryParams.push(`sort=${encodeURIComponent(request.sort.toString())}`)
+      }
+      if (request.abnormal) {
+        queryParams.push(`abnormal=${encodeURIComponent(request.abnormal.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

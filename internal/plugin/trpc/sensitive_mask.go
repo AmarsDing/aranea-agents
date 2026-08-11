@@ -94,7 +94,7 @@ func (s *SensitiveDataMaskPlugin) afterModel(ctx context.Context, args *trpcmode
 	}
 	if secretRE.MatchString(text) && s.cfg.BlockLeakOutput {
 		s.base.logger.Info("plugin.sensitive_mask.after_model", "status", "blocked", "reason", "secret_leak_detected")
-		s.base.record(ctx, "after_model", "blocked")
+		s.base.recordEvent(ctx, "after_model", "blocked", "模型输出疑似包含密钥/敏感凭据，已按 block_leak_output 阻断")
 		return &trpcmodel.AfterModelResult{
 			Context:        ctx,
 			CustomResponse: blockedModelResponse("sensitive_data_mask: possible secret leak in model output"),

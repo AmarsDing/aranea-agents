@@ -223,10 +223,32 @@ export const piiPolicyOptions = [
   { label: 'review · 人工审核', value: 'review' },
 ];
 
+// 与后端 toolProfiles（internal/biz/agent_effective_tools.go）9 个 profile 对齐；
+// minimal/safe 为 chat_only/read_only 的兼容别名，system_admin/spirit 为系统内部 profile。
 export const toolProfileOptions = [
   { label: 'chat_only · 仅对话（无工具）', value: 'chat_only' },
   { label: 'read_only · 只读 + 时间', value: 'read_only' },
   { label: 'coding · 文件读写 + 网页 + 技能', value: 'coding' },
   { label: 'research · 网页 + 检索 + 技能', value: 'research' },
   { label: 'full · 全工具（高权限，慎用）', value: 'full' },
+  { label: 'minimal · 同 chat_only（兼容别名）', value: 'minimal' },
+  { label: 'safe · 同 read_only（兼容别名）', value: 'safe' },
+  { label: 'system_admin · CLI 管理工具组（系统内部）', value: 'system_admin' },
+  { label: 'spirit · 编排工具（系统内部）', value: 'spirit' },
+];
+
+/** 后端 expandToolGroup 支持的 12 个工具组（allow/deny/并行白名单可用 group:<name>）。 */
+export const toolGroupOptions = [
+  { label: 'group:filesystem · 文件系统', value: 'group:filesystem' },
+  { label: 'group:web · 网页检索/抓取', value: 'group:web' },
+  { label: 'group:memory · 记忆', value: 'group:memory' },
+  { label: 'group:skill · 技能', value: 'group:skill' },
+  { label: 'group:media · 媒体处理', value: 'group:media' },
+  { label: 'group:runtime · 运行时/Shell', value: 'group:runtime' },
+  { label: 'group:messaging · 消息通知', value: 'group:messaging' },
+  { label: 'group:session · 会话管理', value: 'group:session' },
+  { label: 'group:integration · 外部集成', value: 'group:integration' },
+  { label: 'group:subagent · 子代理', value: 'group:subagent' },
+  { label: 'group:browser · 浏览器', value: 'group:browser' },
+  { label: 'group:cli_admin · CLI 管理（系统）', value: 'group:cli_admin' },
 ];

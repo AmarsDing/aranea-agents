@@ -6,6 +6,7 @@ import {
   categoryFilterOptions,
   enabledTriStateOptions,
   riskLevelOptions,
+  sourceFilterOptions,
 } from '../../components/tools/toolUi';
 import { useToolDetailStore } from '../../stores/tools/toolDetail';
 import { useToolEditorStore } from '../../stores/tools/toolEditor';
@@ -24,14 +25,17 @@ export function useToolsPage() {
 
   const search = ref('');
   const category = ref('');
+  const source = ref('');
   const riskLevel = ref('');
   const enabled = ref<boolean | null>(null);
+  const abnormal = ref(false);
   const page = ref(1);
   const pageSize = ref(20);
   const error = ref('');
   const selected = ref<Tool[]>([]);
 
   const categoryOptions = categoryFilterOptions;
+  const sourceOptions = sourceFilterOptions;
   const riskOptions = riskLevelOptions;
   const enabledOptions = enabledTriStateOptions;
 
@@ -44,8 +48,10 @@ export function useToolsPage() {
       await toolsStore.loadTools({
         search: search.value,
         category: category.value,
+        source: source.value,
         risk_level: riskLevel.value,
         enabled: enabled.value,
+        abnormal: abnormal.value,
         page: page.value,
         page_size: pageSize.value,
       });
@@ -67,8 +73,10 @@ export function useToolsPage() {
   function resetFilters() {
     search.value = '';
     category.value = '';
+    source.value = '';
     riskLevel.value = '';
     enabled.value = null;
+    abnormal.value = false;
     page.value = 1;
     void loadRows();
   }
@@ -138,7 +146,6 @@ export function useToolsPage() {
       }
     }
 
-    const confirmIntent = value ? 'I_UNDERSTAND_RISK' : undefined;
     let ok = 0;
     let failed = 0;
     for (const tool of targets) {
@@ -167,14 +174,22 @@ export function useToolsPage() {
   }
 
   function batchRemove() {
-    const count = selected.value.length;
+    const readonlyCount = selected.value.filter((t) => t.readonly).length;
+    const targets = selected.value.filter((t) => !t.readonly);
+    const count = targets.length;
+    if (count === 0) {
+      $q.notify({ type: 'warning', message: '选中项均为内置/只读工具，不可删除' });
+      return;
+    }
     $q.dialog({
       title: '批量删除',
-      message: `确认删除选中的 ${count} 个 Tool？`,
+      message:
+        readonlyCount > 0
+          ? `确认删除选中的 ${count} 个 Tool？（已排除 ${readonlyCount} 个内置/只读工具）`
+          : `确认删除选中的 ${count} 个 Tool？`,
       cancel: true,
       persistent: true,
     }).onOk(async () => {
-      const targets = selected.value.slice();
       let ok = 0;
       let failed = 0;
       for (const tool of targets) {
@@ -215,7 +230,7 @@ export function useToolsPage() {
     },
   );
 
-  watch([search, category, riskLevel, enabled], () => {
+  watch([search, category, source, riskLevel, enabled, abnormal], () => {
     page.value = 1;
     void loadRows();
   });
@@ -233,8 +248,10 @@ export function useToolsPage() {
     loading,
     search,
     category,
+    source,
     riskLevel,
     enabled,
+    abnormal,
     page,
     pageSize,
     error,
@@ -243,6 +260,7 @@ export function useToolsPage() {
     pageMax,
     summaryCards,
     categoryOptions,
+    sourceOptions,
     riskOptions,
     enabledOptions,
     // from useToolToggle

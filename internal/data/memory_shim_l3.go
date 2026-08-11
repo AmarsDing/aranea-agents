@@ -29,6 +29,7 @@ type l3FactRepo struct {
 var (
 	_ biz.L3FactReader               = (*l3FactRepo)(nil)
 	_ biz.L3FactWriter               = (*l3FactRepo)(nil)
+	_ biz.L3FactReviewStore          = (*l3FactRepo)(nil)
 	_ biz.L3ConflictStore            = (*l3FactRepo)(nil)
 	_ biz.PIIReviewStore             = (*l3FactRepo)(nil)
 	_ biz.DecayScoreWriter           = (*l3FactRepo)(nil)
@@ -1109,6 +1110,134 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		return nil, entErrToBizErr(err, "MEMORY_L3")
 	}
 	return result, nil
+}
+
+// --- L3FactReviewStore ---
+
+// ReviewFactRow applies a single-fact user governance action via a precise
+// column-targeted UPDATE (memory.md §9.4). Unlike UpsertFactRow it never
+// touches links/keywords/metadata/quality_score, so feedback actions cannot
+// silently wipe A-MEM graph linkages.
+//
+// Action semantics (L3.md acceptance: confirm +0.10 / reject -0.20, clamped
+// to [0,1]):
+//   - confirm:   positive_feedback_count+1, confidence bump
+//   - reject:    negative_feedback_count+1, confidence drop
+//   - archive:   status='archived' (forget)
+//   - dispute:   status='disputed'   (conflict governance quarantine)
+//   - deprecate: status='deprecated' (conflict arbitration loser)
+//   - refine:    statement/details/kind/tags replace, version+1, fingerprint
+//     recomputed, PII gate re-run, embedding marked stale
+//
+// Refine recomputes the fingerprint from the new statement: keeping the stale
+// fingerprint would let the next auto-extraction of the OLD text merge via
+// ON CONFLICT and silently revert the user's edit.
+func (r *l3FactRepo) ReviewFactRow(ctx context.Context, in biz.FactReview) ([]byte, error) {
+	factID := strings.TrimSpace(in.FactID)
+	if factID == "" {
+		return nil, apierror.BadRequest("MEMORY", "fact_id is required")
+	}
+	action := strings.TrimSpace(in.Action)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	d := r.data.Dialect()
+
+	var updateSQL string
+	var args []any
+	switch action {
+	case biz.FactReviewConfirm:
+		updateSQL = `UPDATE memory_facts SET positive_feedback_count = positive_feedback_count + 1, confidence = ` +
+			d.Least("1.0", d.Greatest("0.0", "confidence + 0.10")) +
+			`, updated_at = ? WHERE id = ? AND deleted_at = ''`
+		args = []any{now, factID}
+	case biz.FactReviewReject:
+		updateSQL = `UPDATE memory_facts SET negative_feedback_count = negative_feedback_count + 1, confidence = ` +
+			d.Least("1.0", d.Greatest("0.0", "confidence - 0.20")) +
+			`, updated_at = ? WHERE id = ? AND deleted_at = ''`
+		args = []any{now, factID}
+	case biz.FactReviewArchive:
+		updateSQL = `UPDATE memory_facts SET status = 'archived', archived_at = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`
+		args = []any{now, now, factID}
+	case biz.FactReviewDispute:
+		updateSQL = `UPDATE memory_facts SET status = 'disputed', updated_at = ? WHERE id = ? AND deleted_at = ''`
+		args = []any{now, factID}
+	case biz.FactReviewDeprecate:
+		updateSQL = `UPDATE memory_facts SET status = 'deprecated', updated_at = ? WHERE id = ? AND deleted_at = ''`
+		args = []any{now, factID}
+	case biz.FactReviewRefine:
+		// SQL built inside the transaction (needs the row's scope to recompute fingerprint).
+	default:
+		return nil, apierror.BadRequest("MEMORY", "unknown fact review action: "+action)
+	}
+
+	var result []byte
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		if action == biz.FactReviewRefine {
+			sql_, args_, buildErr := r.buildFactRefineUpdate(txCtx, in, factID, now)
+			if buildErr != nil {
+				return buildErr
+			}
+			updateSQL, args = sql_, args_
+		}
+		res, execErr := r.data.RWDB().WriteDB(txCtx).ExecContext(txCtx, d.RenumberPlaceholders(updateSQL), args...)
+		if execErr != nil {
+			return execErr
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return apierror.NotFound("MEMORY", "fact not found or deleted")
+		}
+		rows, queryErr := r.data.RWDB().ReadDB(txCtx).QueryContext(txCtx,
+			d.RenumberPlaceholders(sqlFactSelect+` WHERE id = ?`), factID)
+		if queryErr != nil {
+			return queryErr
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			return apierror.NotFound("MEMORY", "fact row not found after review")
+		}
+		var scanErr error
+		result, scanErr = scanFactRowJSON(rows)
+		return scanErr
+	})
+	if err != nil {
+		return nil, entErrToBizErr(err, "MEMORY_L3")
+	}
+	return result, nil
+}
+
+// buildFactRefineUpdate constructs the UPDATE for the refine action. It reads
+// the fact's scope inside the transaction so the fingerprint can be recomputed
+// from the refined statement (matching UpsertFactRow's gate-then-fingerprint
+// order). A fingerprint collision with an existing fact surfaces as
+// CodeConflict via entErrToBizErr, which is the desired duplicate guard.
+func (r *l3FactRepo) buildFactRefineUpdate(ctx context.Context, in biz.FactReview, factID, now string) (string, []any, error) {
+	var scopeType, scopeID string
+	err := QueryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
+		r.data.Dialect().RenumberPlaceholders(`SELECT scope_type, scope_id FROM memory_facts WHERE id = ? AND deleted_at = ''`),
+		[]any{factID}, &scopeType, &scopeID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil, apierror.NotFound("MEMORY", "fact not found or deleted")
+		}
+		return "", nil, err
+	}
+	statement, details, pii, redacted, piiTypesJSON := applyFactPIIGate(biz.FactUpsert{
+		Statement:       in.Statement,
+		DetailsMarkdown: in.DetailsMarkdown,
+	})
+	if statement == "" {
+		return "", nil, apierror.BadRequest("MEMORY", "statement is required for refine")
+	}
+	fp := biz.FactFingerprint(statement, scopeType, scopeID)
+	tags := strings.TrimSpace(in.TagsJSON)
+	if tags == "" {
+		tags = "[]"
+	}
+	updateSQL := `UPDATE memory_facts SET statement = ?, statement_normalized = ?, fingerprint = ?, details_markdown = ?, fact_kind = ?, tags_json = ?, version = version + 1, embedding_status = 'stale', pii_flag = ?, redacted_statement = ?, pii_types = ?, updated_at = ? WHERE id = ? AND deleted_at = ''`
+	args := []any{statement, strings.ToLower(statement), fp, details, strings.TrimSpace(in.FactKind), tags, pii, redacted, piiTypesJSON, now, factID}
+	return updateSQL, args, nil
 }
 
 // --- L3ConflictStore ---

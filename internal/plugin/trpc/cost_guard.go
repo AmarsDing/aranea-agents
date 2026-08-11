@@ -80,7 +80,8 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		c.base.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "est_tokens", est, "reason", reason)
-		c.base.record(ctx, "before_model", "blocked")
+		c.base.recordEvent(ctx, "before_model", "blocked",
+			fmt.Sprintf("模型 %s 调用被阻止（原因：%s，预估 prompt tokens=%d）", model, reason, est))
 		// N-03: Emit notice Activity for blocked model.
 		c.emitNotice(ctx, "cost_guard_blocked",
 			fmt.Sprintf("模型 %s 已被阻止（原因：%s）", model, reason))
@@ -97,8 +98,8 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	// block the over-budget base model from executing.
 	if c.cfg.DailyTokenBudget > 0 && !budget.TryConsume(c.cfg.DailyTokenBudget, est) {
 		c.base.logger.Info("plugin.cost_guard.before_model", "status", "blocked", "model", model, "reason", "daily_budget_exceeded")
-		c.base.record(ctx, "before_model", "blocked")
-		// N-03: Emit notice Activity for daily budget exceeded.
+		c.base.recordEvent(ctx, "before_model", "blocked",
+			fmt.Sprintf("模型 %s 调用被阻止（原因：daily_budget_exceeded，日预算 %d tokens 已用尽）", model, c.cfg.DailyTokenBudget))
 		c.emitNotice(ctx, "cost_guard_budget_exceeded",
 			fmt.Sprintf("日 token 预算已用尽，模型 %s 调用被阻止", model))
 		return &trpcmodel.BeforeModelResult{

@@ -47,6 +47,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgelinkused"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -217,6 +218,7 @@ func checkColumn(t, c string) error {
 			graphtasklog.Table:               graphtasklog.ValidColumn,
 			graphtaskrun.Table:               graphtaskrun.ValidColumn,
 			healrecord.Table:                 healrecord.ValidColumn,
+			knowledgelinkused.Table:          knowledgelinkused.ValidColumn,
 			llmprovidermodel.Table:           llmprovidermodel.ValidColumn,
 			mediaprovider.Table:              mediaprovider.ValidColumn,
 			membersessionv2.Table:            membersessionv2.ValidColumn,

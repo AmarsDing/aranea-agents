@@ -37,6 +37,9 @@ func (s *statsRepoStub) UpdateSortOrder(context.Context, string, int) (biz.Plugi
 func (s *statsRepoStub) UpdatePluginScope(context.Context, string, string) (biz.Plugin, error) {
 	return biz.Plugin{}, nil
 }
+func (s *statsRepoStub) SyncBuiltinMeta(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
+	return p, nil
+}
 func (s *statsRepoStub) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	if pluginKey == s.key {
 		s.count += delta.InvokeCount

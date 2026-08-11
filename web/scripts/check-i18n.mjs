@@ -24,7 +24,15 @@
  *   2. Violation counts in baseline files that EXCEED the recorded count
  *      (new hardcoded strings added to already-debt-laden files)
  *
- * Exit codes: 0 = pass, 1 = new violations found
+ * Key existence check (always on, not gated by baseline):
+ *   3. Every key used via $t('...') / t('...') WITHOUT an inline default
+ *      message must exist in BOTH zh-CN.ts and en-US.ts (missing keys
+ *      render as raw key text at runtime). Calls with an inline default
+ *      (t('key', '默认文案')) are exempt by design.
+ *   4. Used keys defined in only one locale are reported as a non-blocking
+ *      note (call sites fall back to inline defaults).
+ *
+ * Exit codes: 0 = pass, 1 = new violations found, 2 = setup error
  */
 import fs from 'fs';
 import path from 'path';
@@ -39,6 +47,146 @@ const CJK_REGEX = /[\u4e00-\u9fff]/;
 
 const SKIP_PATHS = ['i18n/locales/', '__tests__/'];
 const SKIP_FILE_SUFFIXES = ['.spec.ts', '.test.ts', '.spec.vue', '.test.vue'];
+
+const LOCALES = [
+  { name: 'zh-CN', path: path.resolve(SRC_DIR, 'i18n/locales/zh-CN.ts') },
+  { name: 'en-US', path: path.resolve(SRC_DIR, 'i18n/locales/en-US.ts') },
+];
+
+// ─── Locale key extraction ────────────────────────────────────────────────
+// Minimal object-literal scanner: walks the exported default object, tracking
+// nested keys. Handles line/block comments, single/double-quoted strings,
+// template literals (incl. ${...}), and quoted keys like '300'.
+
+function skipStringLiteral(text, i) {
+  const quote = text[i];
+  i++;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '\\') { i += 2; continue; }
+    if (quote === '`' && ch === '$' && text[i + 1] === '{') {
+      // Skip ${...} expression with balanced braces (may contain strings).
+      let depth = 1;
+      i += 2;
+      while (i < text.length && depth > 0) {
+        const c = text[i];
+        if (c === "'" || c === '"' || c === '`') { i = skipStringLiteral(text, i); continue; }
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+        i++;
+      }
+      continue;
+    }
+    if (ch === quote) return i + 1;
+    i++;
+  }
+  return i;
+}
+
+function skipWsAndComments(text, i) {
+  for (;;) {
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (text[i] === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i + 2);
+      i = nl === -1 ? text.length : nl + 1;
+      continue;
+    }
+    if (text[i] === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      i = end === -1 ? text.length : end + 2;
+      continue;
+    }
+    return i;
+  }
+}
+
+function extractLocaleKeys(filePath) {
+  const text = fs.readFileSync(filePath, 'utf8');
+  const keys = new Set();
+  const stack = [];
+  let i = 0;
+  while (i < text.length) {
+    i = skipWsAndComments(text, i);
+    if (i >= text.length) break;
+    const ch = text[i];
+    if (ch === '}') { stack.pop(); i++; continue; }
+    if (ch === ',' || ch === '{' || ch === ';') { i++; continue; }
+    if (ch === '.' && text[i + 1] === '.' && text[i + 2] === '.') { i += 3; continue; }
+    let key = null;
+    if (ch === "'" || ch === '"') {
+      const end = skipStringLiteral(text, i);
+      const after = skipWsAndComments(text, end);
+      if (text[after] === ':') {
+        key = text.slice(i + 1, end - 1);
+        i = after + 1;
+      } else {
+        i = end; // string value
+        continue;
+      }
+    } else if (/[A-Za-z_$]/.test(ch)) {
+      let j = i + 1;
+      while (j < text.length && /[\w$-]/.test(text[j])) j++;
+      const word = text.slice(i, j);
+      const after = skipWsAndComments(text, j);
+      if (text[after] === ':') {
+        key = word;
+        i = after + 1;
+      } else {
+        i = j; // identifier value / keyword (e.g. export default)
+        continue;
+      }
+    } else if (ch === '`') {
+      i = skipStringLiteral(text, i); // template literal value (may contain {} / ${...})
+      continue;
+    } else if (/\d/.test(ch)) {
+      while (i < text.length && /[\d.]/.test(text[i])) i++; // numeric value
+      continue;
+    } else {
+      i++;
+      continue;
+    }
+    i = skipWsAndComments(text, i);
+    if (text[i] === '{') {
+      stack.push(key);
+      i++;
+    } else {
+      keys.add([...stack, key].join('.'));
+      // leaf value: consumed on following iterations (string/number skipped above)
+    }
+  }
+  return keys;
+}
+
+// ─── Used-key scanning ────────────────────────────────────────────────────
+// Matches t('key') / $t('key') and captures an optional inline default
+// message: t('key', '默认文案'). Calls with an inline default intentionally
+// omit the key from locale files, so they are exempt from existence checks.
+// A second argument that is an object/number (named values / plural) is NOT
+// a default message.
+
+const USED_KEY_REGEX = /(?<![\w$])\$?t\(\s*(['"`])([A-Za-z][\w$.-]*)\1(\s*,\s*['"`])?/g;
+
+function collectUsedKeys(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const results = [];
+  // Precompute line start offsets for index → line mapping.
+  const lineStarts = [0];
+  for (let k = 0; k < content.length; k++) {
+    if (content[k] === '\n') lineStarts.push(k + 1);
+  }
+  const lineOf = (idx) => {
+    let lo = 0, hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= idx) lo = mid; else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+  for (const m of content.matchAll(USED_KEY_REGEX)) {
+    results.push({ key: m[2], line: lineOf(m.index), hasFallback: Boolean(m[3]) });
+  }
+  return results;
+}
 
 function shouldSkip(relPath) {
   if (SKIP_FILE_SUFFIXES.some((s) => relPath.endsWith(s))) return true;
@@ -185,6 +333,64 @@ function saveBaseline(baseline) {
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(sorted, null, 2) + '\n', 'utf8');
 }
 
+function checkKeys(files) {
+  const localeKeys = new Map();
+  for (const loc of LOCALES) {
+    if (!fs.existsSync(loc.path)) {
+      console.error(`ERROR: locale file not found at ${loc.path}`);
+      process.exit(2);
+    }
+    localeKeys.set(loc.name, extractLocaleKeys(loc.path));
+  }
+  const [zhKeys, enKeys] = [localeKeys.get('zh-CN'), localeKeys.get('en-US')];
+
+  // Collect usage: a key is "required" if any call site lacks an inline
+  // default message; keys always called with a default are exempt.
+  const required = new Map(); // key -> [{file, line}]
+  const usedKeys = new Set();
+  for (const f of files) {
+    const rel = path.relative(SRC_DIR, f).replace(/\\/g, '/');
+    if (shouldSkip(rel)) continue;
+    for (const { key, line, hasFallback } of collectUsedKeys(f)) {
+      usedKeys.add(key);
+      if (!hasFallback) {
+        if (!required.has(key)) required.set(key, []);
+        required.get(key).push({ file: rel, line });
+      }
+    }
+  }
+
+  // 1) Required keys must exist in BOTH locales (else raw key renders).
+  const missing = []; // {key, absent: string[], sites: [{file, line}]}
+  for (const [key, sites] of required) {
+    const absent = [];
+    if (!zhKeys.has(key)) absent.push('zh-CN');
+    if (!enKeys.has(key)) absent.push('en-US');
+    if (absent.length > 0) missing.push({ key, absent, sites });
+  }
+
+  // 2) Parity warning (non-blocking): used keys defined in only one locale.
+  const onlyZh = [...usedKeys].filter((k) => zhKeys.has(k) && !enKeys.has(k));
+  const onlyEn = [...usedKeys].filter((k) => !zhKeys.has(k) && enKeys.has(k));
+
+  if (missing.length > 0) {
+    console.error(`FAIL: ${missing.length} used i18n key(s) missing from locale files (no inline default at call site):`);
+    for (const m of missing.slice(0, 30)) {
+      const site = m.sites[0];
+      console.error(`  '${m.key}' missing in ${m.absent.join(', ')}  (e.g. ${site.file}:${site.line})`);
+    }
+    if (missing.length > 30) console.error(`  ... and ${missing.length - 30} more`);
+    console.error('');
+    return false;
+  }
+
+  console.log(`OK: i18n keys consistent (${zhKeys.size} zh-CN / ${enKeys.size} en-US keys; ${required.size} required keys all resolve).`);
+  if (onlyZh.length > 0 || onlyEn.length > 0) {
+    console.log(`  Note: ${onlyZh.length} used key(s) defined only in zh-CN, ${onlyEn.length} only in en-US (call sites use inline defaults).`);
+  }
+  return true;
+}
+
 function main() {
   const updateBaseline = process.argv.includes('--update-baseline');
   if (!fs.existsSync(SRC_DIR)) {
@@ -238,6 +444,7 @@ function main() {
     .map(([f, c]) => ({ file: f, count: c, baseCount: baseline[f] }));
 
   // Report
+  const keysOk = checkKeys(files);
   if (newFiles.length === 0 && increasedFiles.length === 0) {
     const totalCurrent = Object.values(current).reduce((a, b) => a + b, 0);
     const totalBase = Object.values(baseline).reduce((a, b) => a + b, 0);
@@ -245,7 +452,7 @@ function main() {
     console.log(`  Current tech debt: ${totalCurrent} violation(s) in ${Object.keys(current).length} file(s) (baseline: ${totalBase}).`);
     if (fixedFiles.length > 0) console.log(`  Files fully fixed since baseline: ${fixedFiles.length}`);
     if (reducedFiles.length > 0) console.log(`  Files with reduced violations: ${reducedFiles.length}`);
-    process.exit(0);
+    process.exit(keysOk ? 0 : 1);
   }
 
   console.error(`FAIL: ${newViolationsCount} NEW hardcoded Chinese violation(s) found.\n`);

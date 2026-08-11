@@ -90,6 +90,8 @@ export type MonitorEventsQuery = {
   event_types?: string[];
   /** 前缀排除（如 ['skill.filesystem.'] 隐藏治理噪音） */
   exclude_event_types?: string[];
+  /** 服务端排除已落入 Runs 的 runner.completion 行，使分页总数与渲染行数一致 */
+  hide_linked_completions?: boolean;
 };
 
 export type MonitorTracesQuery = {

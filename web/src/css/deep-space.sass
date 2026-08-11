@@ -17,19 +17,45 @@
   --kb-text-dim: var(--tech-text-muted)
   --kb-danger: var(--color-danger)
   --kb-warn: var(--color-warning)
+  // ── U1 色彩阶梯（透明度层级，全部派生自同源令牌，跟随主题）──
+  --kb-text-secondary: color-mix(in srgb, var(--kb-text-primary) 68%, transparent)
+  --kb-text-faint: color-mix(in srgb, var(--kb-text-primary) 42%, transparent)
+  --kb-text-disabled: color-mix(in srgb, var(--kb-text-primary) 28%, transparent)
+  --kb-line-hairline: color-mix(in srgb, var(--kb-text-primary) 7%, transparent)
+  --kb-line-emphasis: color-mix(in srgb, var(--kb-text-primary) 16%, transparent)
+  --kb-bg-hover: color-mix(in srgb, var(--kb-text-primary) 6%, transparent)
+  --kb-bg-active: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  --kb-accent-glow: color-mix(in srgb, var(--color-accent) 22%, transparent)
   // ── kb 本地布局令牌（全局无对应项，保留）──
   --kb-radius-glass: 14px
   --kb-blur: var(--glass-blur-default)
 
 // ── Mixin：玻璃表面（工作台面板与传送门浮层共用）──────────────────────────
 // P0-2：box-shadow 第一层/第二层为镜面边缘（顶缘反光 + 底缘暗线），全玻璃表面统一液态断面感
+// U1：补左缘反光（边缘光 inset 体系），三向受光更接近实体玻璃断面
 =kb-glass-surface
   background: var(--kb-bg-glass)
   backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
   -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
   border: 1px solid var(--kb-glass-border)
   border-radius: var(--kb-radius-glass)
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -1px 0 rgba(0, 0, 0, 0.22), inset 0 0 24px color-mix(in srgb, var(--color-accent) 4%, transparent), 0 12px 40px rgba(2, 6, 18, 0.5)
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 1px 0 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.22), inset 0 0 24px color-mix(in srgb, var(--color-accent) 4%, transparent), 0 12px 40px rgba(2, 6, 18, 0.5)
+
+// ── Mixin：渐变边缘光（U1）──────────────────────────────────────────
+// 顶亮 → 中暗 → 底缘微青的 1px 渐变环，模拟玻璃断面折射；mask 合成只画边缘，
+// 不覆盖玻璃背景与 backdrop-filter。降级：不支持 mask-composite 时由 border 兜底。
+=kb-gradient-edge
+  content: ''
+  position: absolute
+  inset: 0
+  border-radius: inherit
+  padding: 1px
+  background: linear-gradient(165deg, color-mix(in srgb, var(--kb-text-primary) 18%, transparent), color-mix(in srgb, var(--kb-text-primary) 5%, transparent) 48%, color-mix(in srgb, var(--color-accent) 14%, transparent))
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)
+  -webkit-mask-composite: xor
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)
+  mask-composite: exclude
+  pointer-events: none
 
 .kb-workbench
   +kb-tokens
@@ -42,49 +68,43 @@
   color: var(--kb-text-primary)
   overflow: hidden
 
-  // ── 极光光斑（固定定位，不参与交互）──────
-  .kb-aurora
+  // ── U2 噪点纹理（胶片颗粒，防大面积深色渐变色带、掩 backdrop-blur 廉价感）──
+  // SVG feTurbulence 单色颗粒平铺；overlay 混合 + 极低透明度，盖在内容上方不干扰阅读。
+  &::after
+    content: ''
     position: absolute
-    border-radius: 50%
-    filter: blur(120px)
+    inset: 0
+    z-index: 2
     pointer-events: none
-    z-index: 0
-
-    &--cyan
-      width: 46vw
-      height: 46vw
-      top: -18vw
-      right: -12vw
-      background: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 65%)
-
-    &--violet
-      width: 40vw
-      height: 40vw
-      bottom: -16vw
-      left: -10vw
-      background: radial-gradient(circle, color-mix(in srgb, var(--color-neon-violet) 14%, transparent) 0%, transparent 65%)
+    opacity: 0.04
+    mix-blend-mode: overlay
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")
+    background-size: 160px 160px
 
   // ── 通用玻璃表面 ────────────────────────
   .kb-glass
     position: relative
     +kb-glass-surface
+    // U1：平边框降为发丝级兜底，视觉边缘由渐变光环承载
+    border-color: var(--kb-line-hairline)
 
+    // U1 渐变边缘光（取代原顶部高光线）：顶亮底暗 + 底缘微青，玻璃断面折射感
     &::before
-      content: ''
-      position: absolute
-      top: 0
-      left: 10%
-      right: 10%
-      height: 1px
-      background: linear-gradient(90deg, transparent, var(--kb-glass-highlight), transparent)
-      pointer-events: none
+      +kb-gradient-edge
+      z-index: 2
 
   .kb-glass--strong
     background: var(--kb-bg-glass-strong)
 
-  // ── 文本 ──────────────────────────────
+  // ── 文本（U1 色彩阶梯工具类）──────────────
   .kb-text-dim
     color: var(--kb-text-dim)
+
+  .kb-text-secondary
+    color: var(--kb-text-secondary)
+
+  .kb-text-faint
+    color: var(--kb-text-faint)
 
   // ── 复用组件皮肤褪去：工作台内由 GlassPanel 承载容器 ──
   // Vault 树外壳（.app-pane-card 全局玻璃卡片 → 透明）
@@ -146,6 +166,13 @@
   .q-item
     color: var(--kb-text-primary)
 
+    // U1 色彩阶梯：悬停/激活行用亮度阶梯而非彩色填充
+    &:hover
+      background: var(--kb-bg-hover)
+
+    &--active
+      background: var(--kb-bg-active)
+
     &__label--caption
       color: var(--kb-text-dim)
 
@@ -155,3 +182,15 @@
 
   .q-field__label
     color: var(--kb-text-dim)
+
+// ── U1 焦点环与选区（.kb-workbench / .kb-portal 共享）────────────────────
+// 双环焦点（Vercel 手法）：内环切开背景、外环 accent 发光，深浅底均清晰；
+// :where() 零特指度，组件自有焦点样式可覆盖。
+.kb-workbench, .kb-portal
+  ::selection
+    background: color-mix(in srgb, var(--color-accent) 32%, transparent)
+    color: var(--kb-text-primary)
+
+  :where(button, a, input, textarea, select, [tabindex]:not([tabindex='-1']), .q-btn, .q-tab, .q-item):focus-visible
+    outline: none
+    box-shadow: 0 0 0 2px var(--kb-bg-deep), 0 0 0 4px color-mix(in srgb, var(--color-accent) 60%, transparent)

@@ -33,6 +33,7 @@ const (
 	MemoryService_ListEvolutionEvents_FullMethodName          = "/kratos.memory.v1.MemoryService/ListEvolutionEvents"
 	MemoryService_GetEvolutionMetrics_FullMethodName          = "/kratos.memory.v1.MemoryService/GetEvolutionMetrics"
 	MemoryService_UpsertMemoryFact_FullMethodName             = "/kratos.memory.v1.MemoryService/UpsertMemoryFact"
+	MemoryService_ReviewMemoryFact_FullMethodName             = "/kratos.memory.v1.MemoryService/ReviewMemoryFact"
 	MemoryService_AppendEvolutionEvent_FullMethodName         = "/kratos.memory.v1.MemoryService/AppendEvolutionEvent"
 	MemoryService_ListCascadeProposals_FullMethodName         = "/kratos.memory.v1.MemoryService/ListCascadeProposals"
 	MemoryService_ApproveCascadeProposal_FullMethodName       = "/kratos.memory.v1.MemoryService/ApproveCascadeProposal"
@@ -74,6 +75,7 @@ type MemoryServiceClient interface {
 	ListEvolutionEvents(ctx context.Context, in *ListEvolutionEventsRequest, opts ...grpc.CallOption) (*ListEvolutionEventsResponse, error)
 	GetEvolutionMetrics(ctx context.Context, in *GetEvolutionMetricsRequest, opts ...grpc.CallOption) (*EvolutionMetricsReport, error)
 	UpsertMemoryFact(ctx context.Context, in *UpsertMemoryFactRequest, opts ...grpc.CallOption) (*UpsertMemoryFactResponse, error)
+	ReviewMemoryFact(ctx context.Context, in *ReviewMemoryFactRequest, opts ...grpc.CallOption) (*ReviewMemoryFactResponse, error)
 	AppendEvolutionEvent(ctx context.Context, in *AppendEvolutionEventRequest, opts ...grpc.CallOption) (*AppendEvolutionEventResponse, error)
 	ListCascadeProposals(ctx context.Context, in *ListCascadeProposalsRequest, opts ...grpc.CallOption) (*ListCascadeProposalsResponse, error)
 	ApproveCascadeProposal(ctx context.Context, in *ApproveCascadeProposalRequest, opts ...grpc.CallOption) (*ApproveCascadeProposalResponse, error)
@@ -239,6 +241,16 @@ func (c *memoryServiceClient) UpsertMemoryFact(ctx context.Context, in *UpsertMe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UpsertMemoryFactResponse)
 	err := c.cc.Invoke(ctx, MemoryService_UpsertMemoryFact_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *memoryServiceClient) ReviewMemoryFact(ctx context.Context, in *ReviewMemoryFactRequest, opts ...grpc.CallOption) (*ReviewMemoryFactResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReviewMemoryFactResponse)
+	err := c.cc.Invoke(ctx, MemoryService_ReviewMemoryFact_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -473,6 +485,7 @@ type MemoryServiceServer interface {
 	ListEvolutionEvents(context.Context, *ListEvolutionEventsRequest) (*ListEvolutionEventsResponse, error)
 	GetEvolutionMetrics(context.Context, *GetEvolutionMetricsRequest) (*EvolutionMetricsReport, error)
 	UpsertMemoryFact(context.Context, *UpsertMemoryFactRequest) (*UpsertMemoryFactResponse, error)
+	ReviewMemoryFact(context.Context, *ReviewMemoryFactRequest) (*ReviewMemoryFactResponse, error)
 	AppendEvolutionEvent(context.Context, *AppendEvolutionEventRequest) (*AppendEvolutionEventResponse, error)
 	ListCascadeProposals(context.Context, *ListCascadeProposalsRequest) (*ListCascadeProposalsResponse, error)
 	ApproveCascadeProposal(context.Context, *ApproveCascadeProposalRequest) (*ApproveCascadeProposalResponse, error)
@@ -545,6 +558,9 @@ func (UnimplementedMemoryServiceServer) GetEvolutionMetrics(context.Context, *Ge
 }
 func (UnimplementedMemoryServiceServer) UpsertMemoryFact(context.Context, *UpsertMemoryFactRequest) (*UpsertMemoryFactResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpsertMemoryFact not implemented")
+}
+func (UnimplementedMemoryServiceServer) ReviewMemoryFact(context.Context, *ReviewMemoryFactRequest) (*ReviewMemoryFactResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReviewMemoryFact not implemented")
 }
 func (UnimplementedMemoryServiceServer) AppendEvolutionEvent(context.Context, *AppendEvolutionEventRequest) (*AppendEvolutionEventResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppendEvolutionEvent not implemented")
@@ -878,6 +894,24 @@ func _MemoryService_UpsertMemoryFact_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MemoryServiceServer).UpsertMemoryFact(ctx, req.(*UpsertMemoryFactRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MemoryService_ReviewMemoryFact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReviewMemoryFactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MemoryServiceServer).ReviewMemoryFact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MemoryService_ReviewMemoryFact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MemoryServiceServer).ReviewMemoryFact(ctx, req.(*ReviewMemoryFactRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1322,6 +1356,10 @@ var MemoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpsertMemoryFact",
 			Handler:    _MemoryService_UpsertMemoryFact_Handler,
+		},
+		{
+			MethodName: "ReviewMemoryFact",
+			Handler:    _MemoryService_ReviewMemoryFact_Handler,
 		},
 		{
 			MethodName: "AppendEvolutionEvent",

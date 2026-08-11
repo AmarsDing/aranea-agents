@@ -1583,6 +1583,31 @@ var (
 			},
 		},
 	}
+	// KnowledgeLinkUsedColumns holds the columns for the "knowledge_link_used" table.
+	KnowledgeLinkUsedColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "collection_id", Type: field.TypeString, Size: 64},
+		{Name: "doc_id", Type: field.TypeString, Size: 64},
+		{Name: "last_used_at", Type: field.TypeTime},
+	}
+	// KnowledgeLinkUsedTable holds the schema information for the "knowledge_link_used" table.
+	KnowledgeLinkUsedTable = &schema.Table{
+		Name:       "knowledge_link_used",
+		Columns:    KnowledgeLinkUsedColumns,
+		PrimaryKey: []*schema.Column{KnowledgeLinkUsedColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "knowledgelinkused_collection_id_doc_id",
+				Unique:  true,
+				Columns: []*schema.Column{KnowledgeLinkUsedColumns[1], KnowledgeLinkUsedColumns[2]},
+			},
+			{
+				Name:    "knowledgelinkused_collection_id_last_used_at",
+				Unique:  false,
+				Columns: []*schema.Column{KnowledgeLinkUsedColumns[1], KnowledgeLinkUsedColumns[3]},
+			},
+		},
+	}
 	// LlmProviderModelsColumns holds the columns for the "llm_provider_models" table.
 	LlmProviderModelsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -3725,6 +3750,7 @@ var (
 		GraphTaskLogsTable,
 		GraphTaskRunsTable,
 		HealRecordsTable,
+		KnowledgeLinkUsedTable,
 		LlmProviderModelsTable,
 		MediaProvidersTable,
 		MemberSessionsV2Table,
@@ -3918,6 +3944,9 @@ func init() {
 	}
 	HealRecordsTable.Annotation = &entsql.Annotation{
 		Table: "heal_records",
+	}
+	KnowledgeLinkUsedTable.Annotation = &entsql.Annotation{
+		Table: "knowledge_link_used",
 	}
 	LlmProviderModelsTable.Annotation = &entsql.Annotation{
 		Table: "llm_provider_models",

@@ -115,6 +115,13 @@ export type UnlinkedMention = {
   snippet: string;
 };
 
+/** LinkUseEntry 一条最近 wikilink 落链记录（B4 #8，last_used_at 降序消费）。 */
+export type LinkUseEntry = {
+  doc_id: string;
+  /** RFC3339；零值时间为空串 */
+  last_used_at: string;
+};
+
 /** PromoteLineage 源→克隆谱系对（SP1-G/I-3：源块 promoted_to ↔ 新块 promoted_from）。 */
 export type PromoteLineage = {
   src_block_id: string;

@@ -116,3 +116,57 @@ describe('wikiLinkCompletionSource #heading（P2-5）', () => {
     expect(res?.options.map((o) => o.label)).toEqual(['alpha']);
   });
 });
+
+describe('wikiLinkCompletionSource 最近引用排序（B4 #8）', () => {
+  function ctxOf(doc: string, pos?: number): CompletionContext {
+    const state = EditorState.create({ doc });
+    return new CompletionContext(state, pos ?? doc.length, false);
+  }
+
+  // gamma 最近一次引用，alpha 其次；beta 无记录。
+  const recency = new Map([
+    ['gamma', 0],
+    ['alpha', 1],
+  ]);
+  const source = wikiLinkCompletionSource(
+    () => ['docs/Alpha.md', 'Beta.md', 'dir/Gamma.md'],
+    undefined,
+    () => recency,
+  );
+
+  it('empty query orders by recency rank, unranked keep original order', () => {
+    const res = source(ctxOf('start [['));
+    expect(res?.options.map((o) => o.label)).toEqual(['gamma', 'alpha', 'beta']);
+  });
+
+  it('non-empty query ignores recency (document order preserved)', () => {
+    const res = source(ctxOf('x [[a')); // alpha/beta/gamma 均含 a
+    expect(res?.options.map((o) => o.label)).toEqual(['alpha', 'beta', 'gamma']);
+  });
+
+  it('no recency provider keeps original order', () => {
+    const plain = wikiLinkCompletionSource(() => ['docs/Alpha.md', 'dir/Gamma.md']);
+    const res = plain(ctxOf('start [['));
+    expect(res?.options.map((o) => o.label)).toEqual(['alpha', 'gamma']);
+  });
+
+  it('onPick fires with raw candidate when an option is applied', () => {
+    const picks: string[] = [];
+    const src = wikiLinkCompletionSource(
+      () => ['docs/Alpha.md'],
+      undefined,
+      undefined,
+      (target) => picks.push(target),
+    );
+    const doc = 'x [[';
+    const res = src(ctxOf(doc));
+    expect(res).not.toBeNull();
+    const opt = res!.options[0];
+    const state = EditorState.create({ doc });
+    const dispatched: unknown[] = [];
+    const fakeView = { state, dispatch: (tr: unknown) => dispatched.push(tr) };
+    (opt.apply as (v: unknown, c: unknown, from: number, to: number) => void)(fakeView, opt, res!.from, doc.length);
+    expect(picks).toEqual(['docs/Alpha.md']);
+    expect(dispatched).toHaveLength(1); // 标准插入事务仍派发
+  });
+});

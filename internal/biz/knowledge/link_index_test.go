@@ -336,6 +336,9 @@ func (s stubBlockIndexLoader) ListDocBlocks(context.Context, string) ([]Knowledg
 func (s stubBlockIndexLoader) UpdateDocLinkKeys(context.Context, string, string, []string) error {
 	return nil
 }
+func (s stubBlockIndexLoader) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
 func (s stubBlockIndexLoader) ListAllRefEdges(context.Context) ([]KnowledgeBlockRefEdge, error) {
 	return s.edges, s.err
 }
@@ -402,6 +405,9 @@ func (stubBlockIndexRepo) ListDocBlocks(context.Context, string) ([]KnowledgeBlo
 }
 func (stubBlockIndexRepo) UpdateDocLinkKeys(context.Context, string, string, []string) error {
 	return nil
+}
+func (stubBlockIndexRepo) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
 }
 
 // TestUsecase_DeleteDocument_LinkIndex 删除文档后内存图同步（出边清除、入边

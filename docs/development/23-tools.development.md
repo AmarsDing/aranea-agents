@@ -75,6 +75,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 调用记录 | ✅ 已实现 | ToolInvocationWrite + RecordToolInvocationAsync |
 | 参数详情 | ✅ 已实现 | GetToolInvocationParams (脱敏参数查询) |
 | 前端管理 | ✅ 已实现 | Tool 详情页 Override + Agent 设置页「工具覆盖」 |
+| 管理界面增强 | ✅ 已实现（2026-08-11） | 列表新增覆盖/成功率/耗时/最近调用列 + 来源/仅看异常筛选（`abnormal` 查询参数 + 相关子查询）；调用记录页 Session/仅看错误筛选 + `ToolRunDetailDialog.vue` 详情弹窗（参数/输出/错误/上下文 4 Tab） |
 | TRPC 需确认 | ✅ 已实现 | `ApplyConfirmationPolicy` + BeforeTool `blocked` |
 | 调用统计闭环 | ✅ 已实现 | `duration_ms` + `p95_duration_ms` + Prometheus + 列表 SQL 聚合 |
 | **工作区统一（file+shell）** | ✅ 已实现 | `applyToolWorkspaceDirs` + `ShellExecDir` + hostexec `WithBaseDir` |

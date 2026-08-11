@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
@@ -101,14 +102,13 @@ func hasExplicitBizCapabilities(c biz.ModelCapabilities) bool {
 }
 
 // ListProviderModels GET /v1/llm-provider-models.
-// Without page/page_size query params this returns the full catalog (pickers/health).
+// Without page/page_size this returns the full catalog (pickers/health).
 // Admin registry UIs should pass page/page_size for server-side pagination.
-func (s *LlmProviderModelService) ListProviderModels(ctx context.Context, _ *emptypb.Empty) (*v1.ListProviderModelsResponse, error) {
-	search := searchQueryFromContext(ctx)
-	if page, pageSize, ok := pageQueryFromContext(ctx); ok {
-		limit, offset, page, pageSize := biz.PageToLimitOffset(page, pageSize)
+func (s *LlmProviderModelService) ListProviderModels(ctx context.Context, req *v1.ListProviderModelsRequest) (*v1.ListProviderModelsResponse, error) {
+	if req.GetPage() > 0 || req.GetPageSize() > 0 {
+		limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 		result, err := s.uc.ListPaged(ctx, biz.ProviderModelListQuery{
-			Search: search,
+			Search: strings.TrimSpace(req.GetSearch()),
 			Limit:  limit,
 			Offset: offset,
 		})

@@ -45,6 +45,15 @@
         <template #actions>
           <q-btn flat rounded no-caps icon="restart_alt" :label="t('memory.knowledge.reset')" @click="$emit('reset')" />
           <q-btn
+            flat
+            rounded
+            no-caps
+            icon="add"
+            color="primary"
+            :label="t('memory.knowledge.create')"
+            @click="$emit('createFact')"
+          />
+          <q-btn
             unelevated
             rounded
             no-caps
@@ -56,6 +65,21 @@
           />
         </template>
       </AppPageToolbar>
+
+      <div v-if="factsEndpointReady" class="memory-knowledge-stats row q-gutter-lg q-px-md q-pt-sm">
+        <div class="memory-knowledge-stats__item">
+          <span class="memory-knowledge-stats__value text-positive">{{ factsActiveCount }}</span>
+          <span class="memory-knowledge-stats__label">{{ t('memory.knowledge.statsActive') }}</span>
+        </div>
+        <div class="memory-knowledge-stats__item">
+          <span class="memory-knowledge-stats__value text-blue-grey">{{ factsArchivedCount }}</span>
+          <span class="memory-knowledge-stats__label">{{ t('memory.knowledge.statsArchived') }}</span>
+        </div>
+        <div class="memory-knowledge-stats__item">
+          <span class="memory-knowledge-stats__value">{{ factRows.length }}</span>
+          <span class="memory-knowledge-stats__label">{{ t('memory.knowledge.statsListed') }}</span>
+        </div>
+      </div>
 
       <q-card-section v-if="!loadingFacts && factRows.length === 0" class="app-registry-empty app-empty-state-center">
         <q-icon name="psychology_alt" size="44px" color="grey-6" />
@@ -75,13 +99,31 @@
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
           >
-            <template #body-cell-scope="slotProps">
+            <template #body-cell-statement="slotProps">
               <q-td :props="slotProps">
                 <AppRegistryHoverTip :text="factHoverText(slotProps.row)">
-                  <q-chip dense square color="primary" text-color="white">{{
-                    scopeLabel(slotProps.row.scope_type)
-                  }}</q-chip>
+                  <div class="memory-fact-statement">
+                    <q-chip
+                      v-if="slotProps.row.fact_kind"
+                      dense
+                      square
+                      size="sm"
+                      outline
+                      color="blue-grey"
+                      class="memory-fact-statement__kind"
+                    >
+                      {{ kindLabel(slotProps.row.fact_kind) }}
+                    </q-chip>
+                    <span class="memory-fact-statement__text ellipsis-2-lines">{{ slotProps.row.statement }}</span>
+                  </div>
                 </AppRegistryHoverTip>
+              </q-td>
+            </template>
+            <template #body-cell-scope="slotProps">
+              <q-td :props="slotProps">
+                <q-chip dense square color="primary" text-color="white">{{
+                  scopeLabel(slotProps.row.scope_type)
+                }}</q-chip>
               </q-td>
             </template>
             <template #body-cell-confidence="slotProps">
@@ -158,6 +200,8 @@ const props = defineProps<{
   factRows: MemoryFact[];
   factColumns: QTableProps['columns'];
   loadingFacts: boolean;
+  factsActiveCount: number;
+  factsArchivedCount: number;
 }>();
 
 defineEmits<{
@@ -167,6 +211,7 @@ defineEmits<{
   reset: [];
   search: [];
   openFact: [fact: MemoryFact];
+  createFact: [];
 }>();
 
 const page = ref(1);
@@ -218,11 +263,58 @@ function scopeLabel(scopeType?: string) {
   const translated = t(key);
   return translated !== key ? translated : scopeType || 'agent';
 }
+
+function kindLabel(factKind?: string) {
+  const key = `memory.factEdit.kind.${factKind || 'fact'}`;
+  const translated = t(key);
+  return translated !== key ? translated : factKind || 'fact';
+}
 </script>
 
 <style scoped>
+.memory-fact-statement {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.memory-fact-statement__kind {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.memory-fact-statement__text {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .memory-knowledge-toolbar {
   padding: var(--space-3) var(--space-4) 0;
   border-bottom: none;
+}
+
+.memory-knowledge-stats {
+  border-bottom: 1px solid var(--glass-border);
+  padding-bottom: var(--space-3);
+}
+
+.memory-knowledge-stats__item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.memory-knowledge-stats__value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.memory-knowledge-stats__label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
 }
 </style>

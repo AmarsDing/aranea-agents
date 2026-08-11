@@ -292,6 +292,33 @@ message ListUnlinkedMentionsResponse {
   repeated UnlinkedMention items = 1;
 }
 
+// RecordLinkUseRequest records one wikilink completion apply (B4 #8): the
+// picked target becomes the most-recently-used link target of the collection
+// (upsert on (collection_id, doc_id), best-effort).
+message RecordLinkUseRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string doc_id = 2 [(google.api.field_behavior) = REQUIRED];  // picked target document
+}
+
+message RecordLinkUseResponse {}
+
+// LinkUseEntry is one recently used wikilink target (recency-ordered).
+message LinkUseEntry {
+  string doc_id = 1;
+  string last_used_at = 2;  // RFC3339
+}
+
+// ListRecentLinkUsesRequest asks for the recency ordering of wikilink targets
+// in one collection (B4 #8); drives empty-query [[ completion ordering.
+message ListRecentLinkUsesRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;  // default 32, max 128
+}
+
+message ListRecentLinkUsesResponse {
+  repeated LinkUseEntry items = 1;
+}
+
 // PromoteBlocksRequest clones the given blocks into a team collection (SP1-G).
 message PromoteBlocksRequest {
   repeated string block_ids = 1 [(google.api.field_behavior) = REQUIRED];
@@ -596,6 +623,22 @@ service KnowledgeService {
   rpc ListUnlinkedMentions(ListUnlinkedMentionsRequest) returns (ListUnlinkedMentionsResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/documents/{doc_id}/unlinked-mentions"
+    };
+  }
+  // RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+  // completion is applied (B4 #8); best-effort, callers may ignore failures.
+  rpc RecordLinkUse(RecordLinkUseRequest) returns (RecordLinkUseResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/collections/{collection_id}/link-uses"
+      body: "*"
+    };
+  }
+  // ListRecentLinkUses returns recently used wikilink targets of one
+  // collection, most recent first (B4 #8); drives empty-query [[ completion
+  // ordering on the client.
+  rpc ListRecentLinkUses(ListRecentLinkUsesRequest) returns (ListRecentLinkUsesResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/collections/{collection_id}/link-uses"
     };
   }
   // PromoteBlocks clones blocks from a personal vault into a team collection

@@ -68,6 +68,18 @@ export function buildCascadeSagaTableColumns(t: MemoryTranslator): QTableColumn<
 /** MemoryCenter — Facts 表 */
 export function buildMemoryFactTableColumns(formatDate: (value: string) => string, t: MemoryTranslator) {
   return [
+    // 陈述是知识列表的核心内容（memory.md §9.2 首列），必须可直接扫读，
+    // 不能只靠 hover 作用域 chip 查看。
+    registryCol<MemoryFact>(
+      'statement',
+      t('memory.table.columns.statement'),
+      'statement',
+      'left',
+      REGISTRY_COL_W.contentWide,
+      {
+        sortable: false,
+      },
+    ),
     registryCol<MemoryFact>('scope', t('memory.table.columns.scope'), 'scope_type', 'center', REGISTRY_COL_W.metric, {
       sortable: false,
     }),

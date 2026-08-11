@@ -46,6 +46,10 @@ func (s *rebuildBlockIndexStub) UpdateDocLinkKeys(context.Context, string, strin
 	return nil
 }
 
+func (s *rebuildBlockIndexStub) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
+
 func (s *rebuildBlockIndexStub) count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

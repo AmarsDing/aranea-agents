@@ -47,6 +47,7 @@ import (
 	"aranea-agents/internal/data/ent/graphtasklog"
 	"aranea-agents/internal/data/ent/graphtaskrun"
 	"aranea-agents/internal/data/ent/healrecord"
+	"aranea-agents/internal/data/ent/knowledgelinkused"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/mediaprovider"
 	"aranea-agents/internal/data/ent/membersessionv2"
@@ -2783,6 +2784,44 @@ func init() {
 	healrecordDescID := healrecordFields[0].Descriptor()
 	// healrecord.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	healrecord.IDValidator = healrecordDescID.Validators[0].(func(string) error)
+	knowledgelinkusedFields := schema.KnowledgeLinkUsed{}.Fields()
+	_ = knowledgelinkusedFields
+	// knowledgelinkusedDescCollectionID is the schema descriptor for collection_id field.
+	knowledgelinkusedDescCollectionID := knowledgelinkusedFields[0].Descriptor()
+	// knowledgelinkused.CollectionIDValidator is a validator for the "collection_id" field. It is called by the builders before save.
+	knowledgelinkused.CollectionIDValidator = func() func(string) error {
+		validators := knowledgelinkusedDescCollectionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(collection_id string) error {
+			for _, fn := range fns {
+				if err := fn(collection_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// knowledgelinkusedDescDocID is the schema descriptor for doc_id field.
+	knowledgelinkusedDescDocID := knowledgelinkusedFields[1].Descriptor()
+	// knowledgelinkused.DocIDValidator is a validator for the "doc_id" field. It is called by the builders before save.
+	knowledgelinkused.DocIDValidator = func() func(string) error {
+		validators := knowledgelinkusedDescDocID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(doc_id string) error {
+			for _, fn := range fns {
+				if err := fn(doc_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	llmprovidermodelFields := schema.LlmProviderModel{}.Fields()
 	_ = llmprovidermodelFields
 	// llmprovidermodelDescModelKey is the schema descriptor for model_key field.

@@ -34,7 +34,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LlmProviderModelServiceClient interface {
-	ListProviderModels(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProviderModelsResponse, error)
+	ListProviderModels(ctx context.Context, in *ListProviderModelsRequest, opts ...grpc.CallOption) (*ListProviderModelsResponse, error)
 	CreateProviderModel(ctx context.Context, in *CreateProviderModelRequest, opts ...grpc.CallOption) (*ProviderModel, error)
 	GetProviderModel(ctx context.Context, in *GetProviderModelRequest, opts ...grpc.CallOption) (*ProviderModel, error)
 	// RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
@@ -54,7 +54,7 @@ func NewLlmProviderModelServiceClient(cc grpc.ClientConnInterface) LlmProviderMo
 	return &llmProviderModelServiceClient{cc}
 }
 
-func (c *llmProviderModelServiceClient) ListProviderModels(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProviderModelsResponse, error) {
+func (c *llmProviderModelServiceClient) ListProviderModels(ctx context.Context, in *ListProviderModelsRequest, opts ...grpc.CallOption) (*ListProviderModelsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListProviderModelsResponse)
 	err := c.cc.Invoke(ctx, LlmProviderModelService_ListProviderModels_FullMethodName, in, out, cOpts...)
@@ -138,7 +138,7 @@ func (c *llmProviderModelServiceClient) ValidateProviderPair(ctx context.Context
 // All implementations must embed UnimplementedLlmProviderModelServiceServer
 // for forward compatibility.
 type LlmProviderModelServiceServer interface {
-	ListProviderModels(context.Context, *emptypb.Empty) (*ListProviderModelsResponse, error)
+	ListProviderModels(context.Context, *ListProviderModelsRequest) (*ListProviderModelsResponse, error)
 	CreateProviderModel(context.Context, *CreateProviderModelRequest) (*ProviderModel, error)
 	GetProviderModel(context.Context, *GetProviderModelRequest) (*ProviderModel, error)
 	// RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
@@ -158,7 +158,7 @@ type LlmProviderModelServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLlmProviderModelServiceServer struct{}
 
-func (UnimplementedLlmProviderModelServiceServer) ListProviderModels(context.Context, *emptypb.Empty) (*ListProviderModelsResponse, error) {
+func (UnimplementedLlmProviderModelServiceServer) ListProviderModels(context.Context, *ListProviderModelsRequest) (*ListProviderModelsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListProviderModels not implemented")
 }
 func (UnimplementedLlmProviderModelServiceServer) CreateProviderModel(context.Context, *CreateProviderModelRequest) (*ProviderModel, error) {
@@ -205,7 +205,7 @@ func RegisterLlmProviderModelServiceServer(s grpc.ServiceRegistrar, srv LlmProvi
 }
 
 func _LlmProviderModelService_ListProviderModels_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ListProviderModelsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -217,7 +217,7 @@ func _LlmProviderModelService_ListProviderModels_Handler(srv interface{}, ctx co
 		FullMethod: LlmProviderModelService_ListProviderModels_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(LlmProviderModelServiceServer).ListProviderModels(ctx, req.(*emptypb.Empty))
+		return srv.(LlmProviderModelServiceServer).ListProviderModels(ctx, req.(*ListProviderModelsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

@@ -7,6 +7,7 @@ import {
   definitionTopologyKey,
   definitionTopologyOverwriteKey,
   deriveMemberRolesForMode,
+  formatCost,
   groupTeamsByIndustry,
   inferTeamIndustryId,
   linkableGraphOptions,
@@ -17,6 +18,18 @@ import {
 import type { Team, TeamDefinition } from '../../../features/teams/types';
 import type { Agent } from '../../../features/agents/types';
 import type { PlatformResourceTreeNode } from '../../../features/platform/types';
+
+describe('teamUtils.formatCost (UI-3)', () => {
+  it('无成本数据（undefined / 0）显示占位符而非 $0.0000', () => {
+    expect(formatCost(undefined)).toBe('—');
+    expect(formatCost(0)).toBe('—');
+  });
+
+  it('非零成本按美元 4 位小数展示', () => {
+    expect(formatCost(1_500_000)).toBe('$1.5000');
+    expect(formatCost(87)).toBe('$0.0001');
+  });
+});
 
 describe('teamUtils.parseDefinition', () => {
   it('preserves runtime_engine, failure_policy, and linked_graph_id', () => {

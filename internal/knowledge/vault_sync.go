@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/apierror"
@@ -151,7 +152,9 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		}
 	}
 
-	chunks, err := a.buildChunks(ctx, vault, doc.ID, vdoc.Body)
+	// SP2 #9：熔断窗口内跳过 embed 尝试（故障期不打 API，词法索引照常）。
+	allowEmbed := bizknowledge.EmbedCircuitAllow(existing.EmbedFailCount, existing.EmbedLastTried, time.Now())
+	chunks, embedOutcome, err := a.buildChunks(ctx, vault, doc.ID, vdoc.Body, allowEmbed)
 	if err != nil {
 		a.markError(ctx, doc.ID, err)
 		return err
@@ -177,6 +180,32 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	}
 	if err := a.uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(chunks)); err != nil {
 		return err
+	}
+
+	// SP2 #9 熔断状态维护：embed 失败递增计数（退避加深，K3 降级）；embed 成功且
+	// 曾有失败 → 复位。熔断窗口内未尝试（skipped）时计数保持不变。
+	switch embedOutcome {
+	case embedFailed:
+		if err := a.uc.UpdateDocumentEmbedCircuit(ctx, doc.ID, existing.EmbedFailCount+1, time.Now()); err != nil {
+			a.lg.Warn("vault sync: record embed circuit failure failed",
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Err(err),
+			)
+		}
+		a.lg.Warn("vault embed failed; degraded to lexical-only indexing",
+			loggateway.Str("vault_id", vault.ID),
+			loggateway.Str("rel_path", ev.RelPath),
+			loggateway.Int("fail_count", existing.EmbedFailCount+1),
+		)
+	case embedOK:
+		if existing.EmbedFailCount > 0 {
+			if err := a.uc.UpdateDocumentEmbedCircuit(ctx, doc.ID, 0, time.Time{}); err != nil {
+				a.lg.Warn("vault sync: reset embed circuit failed",
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Err(err),
+				)
+			}
+		}
 	}
 
 	// 计数：仅「未计入 → indexed」的文档 +1（error/pending 重试不重复计数）。
@@ -221,29 +250,44 @@ func (a *VaultSyncApplier) rebuildBlockIndex(ctx context.Context, vault bizknowl
 	return a.uc.RebuildBlockIndex(ctx, vault.ID, docID, body)
 }
 
-// buildChunks 分块 + 可选 embed。无语义层（embedding_model 空或 embedder nil）时
-// Embedding 留空（data 层写 NULL，R-4 降级）。
-func (a *VaultSyncApplier) buildChunks(ctx context.Context, vault bizknowledge.Collection, docID, body string) ([]bizknowledge.Chunk, error) {
+// embedOutcome 表示本轮 embed 尝试结果（SP2 #9）。
+type embedOutcome int
+
+const (
+	embedSkipped embedOutcome = iota // 无语义层或熔断窗口内：未尝试
+	embedOK                          // 尝试成功
+	embedFailed                      // 尝试失败：降级写 NULL 向量
+)
+
+// buildChunks 分块 + 可选 embed。无语义层（embedding_model 空或 embedder nil）或
+// 熔断窗口内（allowEmbed=false）时 Embedding 留空（data 层写 NULL，R-4 降级）。
+// SP2 #9：embed 失败不再返回 error——词法索引不被语义故障绑架，降级 NULL 向量继续，
+// 熔断计数由调用方维护。
+func (a *VaultSyncApplier) buildChunks(ctx context.Context, vault bizknowledge.Collection, docID, body string, allowEmbed bool) ([]bizknowledge.Chunk, embedOutcome, error) {
 	splits, err := SplitWithStrategy(ChunkByMarkdown, body, 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, embedSkipped, err
 	}
 	if len(splits) == 0 {
-		return nil, nil
+		return nil, embedSkipped, nil
 	}
 	var vecs [][]float32
-	if strings.TrimSpace(vault.EmbeddingModel) != "" && a.embedder != nil {
+	outcome := embedSkipped
+	if strings.TrimSpace(vault.EmbeddingModel) != "" && a.embedder != nil && allowEmbed {
 		texts := make([]string, len(splits))
 		for i, sp := range splits {
 			texts[i] = sp.Content
 		}
 		vecs, err = a.embedder.Embed(ctx, texts)
 		if err != nil {
-			return nil, err
-		}
-		if len(vecs) != len(splits) {
-			return nil, apierror.Internal(apierror.DomainKnowledge,
+			// 降级：写 NULL 向量，词法索引照常；熔断计数由 upsertDoc 维护。
+			vecs = nil
+			outcome = embedFailed
+		} else if len(vecs) != len(splits) {
+			return nil, embedSkipped, apierror.Internal(apierror.DomainKnowledge,
 				"vault sync: embedding count mismatch: expected %d, got %d", len(splits), len(vecs))
+		} else {
+			outcome = embedOK
 		}
 	}
 	out := make([]bizknowledge.Chunk, 0, len(splits))
@@ -261,7 +305,7 @@ func (a *VaultSyncApplier) buildChunks(ctx context.Context, vault bizknowledge.C
 		}
 		out = append(out, ch)
 	}
-	return out, nil
+	return out, outcome, nil
 }
 
 // deleteDoc 外部删除 → 镜像内容抢救进 trash 后删文档镜像（R-2：不丢用户数据）。
@@ -317,4 +361,120 @@ func (a *VaultSyncApplier) markError(ctx context.Context, docID string, cause er
 			loggateway.Err(err),
 		)
 	}
+}
+
+// convergeMissingBatchSize 是单轮块索引漂移收敛的文档上限（SP2 #4）。
+const convergeMissingBatchSize = 50
+
+// ConvergeMissingBlockIndex 检出「已索引但块索引缺失」的漂移文档并自动重建
+// （SP2 #4 下游收敛：rebuildBlockIndex 失败仅 Warn 降级而 content_hash 已落库，
+// 下轮不再重试——不收敛则块级双链长期静默滞后）。单文档失败不阻塞后续文档。
+// 未接线块端口/无漂移时廉价 no-op；由 Runner 低频调用（convergeInterval 门控）。
+func (a *VaultSyncApplier) ConvergeMissingBlockIndex(ctx context.Context, vault bizknowledge.Collection) error {
+	docIDs, err := a.uc.ListDocsMissingBlockIndex(ctx, vault.ID, convergeMissingBatchSize)
+	if err != nil {
+		return err
+	}
+	if len(docIDs) == 0 {
+		return nil
+	}
+	recovered := 0
+	for _, docID := range docIDs {
+		doc, err := a.uc.GetDocument(ctx, docID)
+		if err != nil {
+			a.lg.Warn("vault block index converge: fetch doc failed",
+				loggateway.Str("vault_id", vault.ID),
+				loggateway.Str("doc_id", docID),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		if err := a.rebuildBlockIndex(ctx, vault, doc.ID, doc.ContentText); err != nil {
+			a.lg.Warn("vault block index converge: rebuild failed",
+				loggateway.Str("vault_id", vault.ID),
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		recovered++
+	}
+	// K3 降级恢复：漂移检出即收敛动作发生，一条 Info 汇总（低频调用，非噪声）。
+	a.lg.Info("vault block index converge sweep done",
+		loggateway.Str("vault_id", vault.ID),
+		loggateway.Int("drifted", len(docIDs)),
+		loggateway.Int("recovered", recovered),
+	)
+	return nil
+}
+
+// embedRetryBatchSize 是单轮退避重试的文档上限（SP2 #9）。
+const embedRetryBatchSize = 50
+
+// RetryDegradedEmbeddings 按指数退避重试熔断中文档的向量补齐（SP2 #9）。
+// 熔断窗口内的文档跳过（不打 API）；成功复位熔断并回填向量，失败递增计数加深退避。
+// 单文档失败不阻塞后续文档。无语义层/无 embedder 时 no-op。
+func (a *VaultSyncApplier) RetryDegradedEmbeddings(ctx context.Context, vault bizknowledge.Collection) error {
+	if a.embedder == nil || strings.TrimSpace(vault.EmbeddingModel) == "" {
+		return nil
+	}
+	docs, err := a.uc.ListEmbedDegradedDocuments(ctx, vault.ID, embedRetryBatchSize)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	for _, d := range docs {
+		if !bizknowledge.EmbedCircuitAllow(d.EmbedFailCount, d.EmbedLastTried, now) {
+			continue
+		}
+		if err := a.retryDocEmbeddings(ctx, d); err != nil {
+			// K4 重试失败（每文档一条，批量上限 50 天然限流）。
+			a.lg.Warn("vault embed retry failed; backoff deepened",
+				loggateway.Str("vault_id", vault.ID),
+				loggateway.Str("doc_id", d.ID),
+				loggateway.Int("fail_count", d.EmbedFailCount+1),
+				loggateway.Err(err),
+			)
+		}
+	}
+	return nil
+}
+
+// retryDocEmbeddings 重嵌单文档：从镜像正文重分块 → embed → 回填向量 → 复位熔断；
+// 失败递增计数并刷新退避起点。
+func (a *VaultSyncApplier) retryDocEmbeddings(ctx context.Context, doc bizknowledge.Document) error {
+	splits, err := SplitWithStrategy(ChunkByMarkdown, doc.ContentText, 0, 0)
+	if err != nil || len(splits) == 0 {
+		return err
+	}
+	texts := make([]string, len(splits))
+	for i, sp := range splits {
+		texts[i] = sp.Content
+	}
+	vecs, err := a.embedder.Embed(ctx, texts)
+	if err == nil && len(vecs) != len(splits) {
+		err = apierror.Internal(apierror.DomainKnowledge,
+			"vault embed retry: embedding count mismatch: expected %d, got %d", len(splits), len(vecs))
+	}
+	if err != nil {
+		if uerr := a.uc.UpdateDocumentEmbedCircuit(ctx, doc.ID, doc.EmbedFailCount+1, time.Now()); uerr != nil {
+			a.lg.Warn("vault sync: deepen embed circuit failed",
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Err(uerr),
+			)
+		}
+		return err
+	}
+	// 按 chunk ID 精确寻址回填（与 buildChunks 的确定性 ID 构造一致）。
+	updates := make([]bizknowledge.ChunkEmbedding, len(splits))
+	for i, sp := range splits {
+		updates[i] = bizknowledge.ChunkEmbedding{
+			ChunkID:   fmt.Sprintf("%s-ch-%d", doc.ID, sp.ChunkIndex),
+			Embedding: vecs[i],
+		}
+	}
+	if err := a.uc.UpdateChunkEmbeddings(ctx, doc.ID, updates); err != nil {
+		return err
+	}
+	return a.uc.UpdateDocumentEmbedCircuit(ctx, doc.ID, 0, time.Time{})
 }

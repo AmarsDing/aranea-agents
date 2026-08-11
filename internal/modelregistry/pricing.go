@@ -34,23 +34,33 @@ func MicroPer1KToUSDPer1M(v int64) float64 {
 	return float64(v) / 1000
 }
 
+// normalizeUSDPer1M 去除上游 models.dev 价格的 float32 加宽噪声
+// （如 0.14000000059604645）：价格粒度为 micro-USD/1K，即 USD/1M 下 6 位
+// 小数以外的部分恒为噪声，统一舍入到 6 位小数后再写入 config_json cost 块。
+func normalizeUSDPer1M(v float64) float64 {
+	if v <= 0 || math.IsNaN(v) {
+		return 0
+	}
+	return math.Round(v*1e6) / 1e6
+}
+
 func MicroPricingFromModelCost(c *ModelCost) (CostUSDPer1M, MicroPricing) {
 	if c == nil {
 		return CostUSDPer1M{}, MicroPricing{}
 	}
 	cost := CostUSDPer1M{
-		Input:      c.Input,
-		Output:     c.Output,
-		CacheRead:  c.CacheRead,
-		CacheWrite: c.CacheWrite,
-		Reasoning:  c.Reasoning,
+		Input:      normalizeUSDPer1M(c.Input),
+		Output:     normalizeUSDPer1M(c.Output),
+		CacheRead:  normalizeUSDPer1M(c.CacheRead),
+		CacheWrite: normalizeUSDPer1M(c.CacheWrite),
+		Reasoning:  normalizeUSDPer1M(c.Reasoning),
 	}
 	return cost, MicroPricing{
-		Input:      USDPer1MToMicroPer1K(c.Input),
-		Output:     USDPer1MToMicroPer1K(c.Output),
-		CacheRead:  USDPer1MToMicroPer1K(c.CacheRead),
-		CacheWrite: USDPer1MToMicroPer1K(c.CacheWrite),
-		Reasoning:  USDPer1MToMicroPer1K(c.Reasoning),
+		Input:      USDPer1MToMicroPer1K(cost.Input),
+		Output:     USDPer1MToMicroPer1K(cost.Output),
+		CacheRead:  USDPer1MToMicroPer1K(cost.CacheRead),
+		CacheWrite: USDPer1MToMicroPer1K(cost.CacheWrite),
+		Reasoning:  USDPer1MToMicroPer1K(cost.Reasoning),
 	}
 }
 

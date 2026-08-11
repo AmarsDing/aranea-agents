@@ -30,6 +30,7 @@ import {
   listL1Fields,
   listConflictingFacts,
   upsertMemoryFact,
+  reviewMemoryFact,
   appendEvolutionEvent,
   listPIIFlaggedFacts,
   reviewPIIFact,
@@ -58,6 +59,7 @@ import type {
   CascadeSagaStep,
   MemoryWorkerStatus,
   MemoryDeadLetterEntry,
+  FactReviewPayload,
 } from '../../features/memory/types';
 
 export type MemoryEvolutionBundle = {
@@ -280,6 +282,16 @@ export const useMemoryStore = defineStore('memory', () => {
     return upsertMemoryFact(fact);
   }
 
+  /** 治理动作后同步本地列表中的对应行（若已加载）。 */
+  async function reviewFact(input: FactReviewPayload): Promise<MemoryFact> {
+    const updated = await reviewMemoryFact(input);
+    const idx = facts.value.findIndex((f) => f.id === updated.id);
+    if (idx >= 0) {
+      facts.value[idx] = updated;
+    }
+    return updated;
+  }
+
   async function appendEvolution(req: Parameters<typeof appendEvolutionEvent>[0]): Promise<EvolutionEvent> {
     return appendEvolutionEvent(req);
   }
@@ -342,6 +354,7 @@ export const useMemoryStore = defineStore('memory', () => {
     loadL1Fields,
     loadConflictingFacts,
     upsertFact,
+    reviewFact,
     appendEvolution,
     loadPIIFlaggedFacts,
     reviewPII,

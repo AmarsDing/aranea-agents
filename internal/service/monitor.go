@@ -131,13 +131,14 @@ func (s *MonitorService) DeleteAuditLogs(ctx context.Context, in *v1.DeleteAudit
 
 func (s *MonitorService) ListMonitorEvents(ctx context.Context, in *v1.ListMonitorEventsRequest) (*v1.ListMonitorEventsResponse, error) {
 	result, err := s.uc.ListMonitorEvents(ctx, biz.MonitorEventsQuery{
-		Limit:             in.GetLimit(),
-		Offset:            in.GetOffset(),
-		EventType:         in.GetEventType(),
-		AgentID:           in.GetAgentId(),
-		Status:            in.GetStatus(),
-		EventTypes:        in.GetEventTypes(),
-		ExcludeEventTypes: in.GetExcludeEventTypes(),
+		Limit:                 in.GetLimit(),
+		Offset:                in.GetOffset(),
+		EventType:             in.GetEventType(),
+		AgentID:               in.GetAgentId(),
+		Status:                in.GetStatus(),
+		EventTypes:            in.GetEventTypes(),
+		ExcludeEventTypes:     in.GetExcludeEventTypes(),
+		HideLinkedCompletions: in.GetHideLinkedCompletions(),
 	})
 	if err != nil {
 		return nil, err

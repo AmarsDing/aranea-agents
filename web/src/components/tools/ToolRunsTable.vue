@@ -60,6 +60,22 @@
           <div class="text-caption muted-caption">{{ formatInvocationDuration(props.row.duration_ms) }}</div>
         </q-td>
       </template>
+
+      <template #body-cell-actions="props">
+        <q-td :props="props">
+          <q-btn
+            flat
+            dense
+            round
+            class="app-registry-icon-btn"
+            color="primary"
+            icon="visibility"
+            @click="$emit('viewDetail', props.row)"
+          >
+            <q-tooltip>查看详情</q-tooltip>
+          </q-btn>
+        </q-td>
+      </template>
     </AppRegistryTable>
   </tool-glass-panel>
 </template>
@@ -82,6 +98,10 @@ import {
 defineProps<{
   rows: ToolInvocation[];
   loading: boolean;
+}>();
+
+defineEmits<{
+  viewDetail: [row: ToolInvocation];
 }>();
 
 function toolRunHoverText(row: ToolInvocation) {

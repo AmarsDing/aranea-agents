@@ -228,6 +228,10 @@ body.body--dark
     width: auto
     max-width: none
 
+  // Provider 类型筛选下拉：空选时内容塌缩，120px 会截断 label「Provider 类型」
+  > .q-select.provider-control
+    min-width: 168px
+
   // 工具栏内取消表单网格的固定 max-width
   .app-field-md,
   .app-field-sm

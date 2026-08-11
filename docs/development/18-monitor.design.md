@@ -178,6 +178,7 @@ service MonitorService {
 | `status` | string | 按状态精确匹配 |
 | `event_types` | repeated string | 前缀匹配集合（OR，与 `event_type` 取并集），如 `["alert.","runner.completion"]`（2026-07-29 EVT-R） |
 | `exclude_event_types` | repeated string | 前缀排除集合，在 include 结果上应用，如 `["skill.filesystem."]`（2026-07-29 EVT-R） |
+| `hide_linked_completions` | bool | 服务端隐藏已落入 Runs 的 `runner.completion` 行（`usage_event_id` 非空，或 `trace_id` 命中 `monitor_traces.trace_key`/metadata trace_id）。前端历史表固定开启，分页 total 与渲染行数一致（2026-08-11 ISSUE-007） |
 
 **ListMonitorTracesRequest**：
 
@@ -425,7 +426,7 @@ func (u *UsageUsecase) RecordTokenUsageEvent(ctx, e TokenUsageEvent) (TokenUsage
 - `GetMonitorTrace`：额外提取 `config_json` 中的 `spans`，组装 `MonitorTraceDetail`
 - `GetMonitorLogs`：返回 `enabled`（镜像 `server.monitor.process_log_enabled`）+ hint；实时行走 WS
 - `ListFlowLogs`：HTTP 历史 FlowLog 查询（`FlowLogService` + `biz.FlowLogUsecase` + Ent Repo）
-- `ListMonitorAlertRules` / `PutMonitorAlertRules`：告警规则 CRUD；PUT 时无规则则写入默认 `runner.error_rate` 种子
+- `ListMonitorAlertRules` / `PutMonitorAlertRules`：告警规则 CRUD；PUT 时无规则则写入默认 `runner.error_rate` 种子；PUT 服务端逐条校验（name/metric_key 必填、threshold>0、window_minutes>0，2026-08-11 ISSUE-001），前端同步以 `saveDisabled` 阻止非法提交
 - `GetRunnerMetrics`：窗口内 completion 计数聚合 → `RunnerMetricsSummary`（含 P50/P95/P99）
 - `GenerateDiagnosticBundle`：诊断包生成 API
 - `DiagnoseAndHeal`：诊断+自愈 API
@@ -648,10 +649,10 @@ Chat Turn 结束
 
 | 组件 | 变更 |
 |------|------|
-| `RealtimeEvents.vue` | 过滤 persisted `runner.completion`（有 `usage_event_id` 或可对上 Runs）；仅降级场景展示 |
+| `RealtimeEvents.vue` | ~~客户端过滤 persisted `runner.completion`~~ → 2026-08-11 起由服务端 `hide_linked_completions` 去重（前端仅保留 WS pulse 的 `runner_completion` 屏蔽）；仅降级场景展示 |
 | `TraceList.vue` | **打开会话**；列表标题 Runs；路由 Tab 仍为 `traces`（P2 可改标签） |
 | `RunnerMetricsPanel.vue` | 点击下钻 `?tab=traces` |
-| `features/monitor/runCorrelation.ts` | `shouldHideCompletionInEvents`、`completionCanOpenInRuns` 等 |
+| `features/monitor/runCorrelation.ts` | `completionCanOpenInRuns`、`shouldHideWsRunnerCompletion` 等（原 `shouldHideCompletionInEvents` 已随服务端去重删除） |
 | `pages/MonitorPage.vue` | `tab` / `usage_event_id` query |
 
 **不新建** `MonitorEventDetailDialog` 用于 Chat completion。
@@ -673,7 +674,7 @@ Chat Turn 结束
 ### 9.8 后续（P2，可选）
 
 - UI 标签 `Traces` → `Runs`，query `?tab=runs` 别名。
-- `ListMonitorEvents` 服务端过滤 `hide_linked_completions`（减轻前端过滤）。
+- ~~`ListMonitorEvents` 服务端过滤 `hide_linked_completions`~~（✅ 2026-08-11 已完成，见 §2.4）。
 
 
 ---

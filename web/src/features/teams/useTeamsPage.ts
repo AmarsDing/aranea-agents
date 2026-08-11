@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useRoute, useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
@@ -163,8 +163,11 @@ export function useTeamsPage() {
 
   // ── Runs UI state ──
   const runsOpen = ref(false);
-  const runEventsConnected = ref(false);
-  let runEventsSource: ReturnType<typeof store.subscribeRunEvents> | null = null;
+  // UI-2：连接状态派生自 WS 流 connected ref（订阅建立/断开即时反映），
+  // 不再等首个事件置位——空闲 Team 不再恒显示「未连接」。
+  // shallowRef 持有流句柄：深响应式会解包内部 connected ref，导致派生失效。
+  const runEventsSource = shallowRef<ReturnType<typeof store.subscribeRunEvents> | null>(null);
+  const runEventsConnected = computed(() => runEventsSource.value?.connected.value ?? false);
   const deadLetters = ref<TaskDeadLetterRow[]>([]);
   const deadLettersLoading = ref(false);
 
@@ -459,16 +462,12 @@ export function useTeamsPage() {
 
   function openRunEvents(teamID: string) {
     closeRunEvents();
-    runEventsSource = store.subscribeRunEvents(GLOBAL_WS_SESSION_ID, teamID, (event) => {
-      runEventsConnected.value = true;
-      applyRunEvent(event);
-    });
+    runEventsSource.value = store.subscribeRunEvents(GLOBAL_WS_SESSION_ID, teamID, applyRunEvent);
   }
 
   function closeRunEvents() {
-    runEventsSource?.close();
-    runEventsSource = null;
-    runEventsConnected.value = false;
+    runEventsSource.value?.close();
+    runEventsSource.value = null;
   }
 
   function applyRunEvent(event: TeamRunEvent) {

@@ -621,7 +621,11 @@ Agent 调用 client_open_app
 - **C2：ASR partial 投机意图**（已落地 2026-08-11）：投机阶梯 L2/L3。`internal/voice/session.go` 追踪 partial 稳定（文本 500ms 无变化触发，`trackPartialStability`/`fireSpeculation`；同文重发不重置，final/cancel/teardown 停止计时）→ `voice.IntentSpeculator` 端口 → `internal/service/chat_voice_speculate.go` `VoiceIntentSpeculator`：与 Turn 侧 `runIntentPass` 同源解析 session/agent/provider/model/历史，后台预跑意图识别（15s 调用超时），产物存**每会话单槽**（`sourceText` 归一化精确匹配 = sourceHash 语义 + `createdAt` TTL 30s = expiresAt 语义）。ASR final（L3 判定）经 `WithSpeculativeIntent` 校验：一致且有界等待（cap 2s）在途投机完成 → 经 `intent.WithSpeculativeArtifact` 注入 Turn ctx；失配/超时/失败即丢弃走常规意图路径。Turn 消费（`chat_orchestrator_turn.go`）：新增 `SpeculativeArtifactFromContext` 分支——**fresh 语义不剥离澄清残留**（与澄清续跑 key 隔离，澄清门照常评估），复用记 `outcome=reused_speculative`。去重：同文投机在槽不重复调 LLM；新 partial 取代旧槽。dictation/团队会话/A2A/意图未启用跳过
 - **L5：TTS 连接预热**（已落地 2026-08-11，`internal/data/speech/volcengine_tts.go` + `internal/voice/session.go`）：voice.start 预解析 TTS provider 存入会话（`resolveAndPrewarmTTS`，`ensureTTS` 复用不再二次调工厂）并后台预拨一条 WS 连接存**单槽温连接**（`PrewarmTTSConn`）；首个 Turn 首句 `Write` 弹出复用免握手，写失败回退新拨（K3）；会话拆除释放未消费温连接（`ReleaseWarmTTSConn`，一次性语义）。provider 无预热能力（接口断言失败）自动跳过
 
-**C. TTS 文本清洗（上一轮，2026-08-09）**
+**C. 前缀稳定化（P1，2026-08-11）**
+
+- **Prompt cache 前缀稳定化**（已落地 2026-08-11）：DeepSeek prompt caching 从 token 0 匹配，system-message 前缀内任何 per-turn 变化使整段缓存失效。真机分析 spirit agent 初始 prompt ≈10.1k token（5296 system + 4803 tool schema），但 chat_turn 缓存命中率仅 6.3%（team 路径 0%）——根因是所有 BeforeModel 注入钩子用 prepend，per-turn 动态内容（memory/knowledge cue）落在 position 0，每轮失效整个前缀。修复：8 处注入点全部改用 `insertAfterLastSystem`（`runtime_cue_inject`×2、`skill_guidance_inject`×2、`memory_inject`×2、`knowledge_inject`、`reply_reminder`），配合 Hook Layer 排序（Static→SemiStatic→Dynamic）保证 base system→static cue→semi-static cue→dynamic cue→user 的三层前缀结构。测试契约 `prompt_prefix_position_test.go` 8 个位置 pin 测试。详见 [28-callback.design.md §3.1](./28-callback.design.md#31-system-message-注入顺序前缀稳定化)
+
+**D. TTS 文本清洗（上一轮，2026-08-09）**
 
 - `cleanForSpeech`（`sentence_chunker.go`）：剥离成对 markdown 强调符（`**`/`__`/`~~`/`*`/`_`）、行首标题/列表/分隔线/引用符及 emoji，防 TTS 把 `*` 读作「星星」
 

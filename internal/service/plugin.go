@@ -58,8 +58,9 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 		return
 	}
 	for _, def := range plugintrpc.BuiltinPluginDefs() {
-		_, err := s.uc.GetByKey(ctx, def.Key)
+		existing, err := s.uc.GetByKey(ctx, def.Key)
 		if err == nil {
+			s.syncBuiltinMeta(ctx, def, existing)
 			continue
 		}
 		if !apierror.IsCode(err, apierror.CodeNotFound) {
@@ -83,6 +84,30 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 		}
 	}
 	s.reloadRuntime(ctx)
+}
+
+// syncBuiltinMeta 将内置定义的平台自有元数据同步到已有行（ISSUE-009：
+// 内置插件 schema/名称等演进后，存量行必须跟进，否则修复对既有安装不生效）。
+// 仅在漂移时写库；管理员字段（enabled/config/sort_order/scope）由 data 层保留。
+func (s *PluginService) syncBuiltinMeta(ctx context.Context, def plugintrpc.BuiltinPluginDef, existing biz.Plugin) {
+	want := def.ToBizPlugin()
+	if !biz.BuiltinMetaDrifted(existing, want) {
+		return
+	}
+	if _, err := s.uc.SyncBuiltinMeta(ctx, want); err != nil {
+		s.lg.Warn("内置插件元数据同步失败",
+			loggateway.StepID("plugin.seed_meta_sync_fail"),
+			loggateway.Str("key", def.Key),
+			loggateway.Err(err),
+		)
+		s.emitPluginFlowError(ctx, "system.plugin.seed_meta_sync_fail", "内置插件元数据同步失败",
+			event.P("key", def.Key), event.P("error", err.Error()))
+		return
+	}
+	s.lg.Info("内置插件元数据已同步",
+		loggateway.StepID("plugin.seed_meta_synced"),
+		loggateway.Str("key", def.Key),
+	)
 }
 
 // emitPluginFlowError 发射系统域流程日志错误事件；monitorBus 未注入时跳过

@@ -249,8 +249,8 @@ export function useAgentSettingsPage() {
 
   function confirmFileReload() {
     $q.dialog({
-      title: '重新召唤',
-      message: '将从服务端拉取最新内容覆盖当前文件，未保存的更改将丢失。确定重新召唤？',
+      title: t('agentSettings.files.reload'),
+      message: t('agentSettings.files.reloadConfirmMessage'),
       cancel: true,
       persistent: true,
     }).onOk(() => void reloadActiveFile());
@@ -258,8 +258,8 @@ export function useAgentSettingsPage() {
 
   function confirmRemoveFile(name: string) {
     $q.dialog({
-      title: '移除文件',
-      message: `确定从 Agent 移除 ${name}？保存后生效，该文件的内容将被删除。`,
+      title: t('agentSettings.files.removeConfirmTitle'),
+      message: t('agentSettings.files.removeConfirmMessage', { name }),
       cancel: true,
       persistent: true,
     }).onOk(() => removeFile(name));

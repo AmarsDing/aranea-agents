@@ -94,7 +94,31 @@ type Repo interface {
 	UpdatePluginConfig(ctx context.Context, id string, configJSON string) (Plugin, error)
 	UpdateSortOrder(ctx context.Context, id string, sortOrder int) (Plugin, error)
 	UpdatePluginScope(ctx context.Context, id string, scope string) (Plugin, error)
+	// SyncBuiltinMeta 同步内置插件的平台自有元数据（name/description/category/
+	// risk_level/callback_points/config_schema_json/default_config_json），
+	// 保留管理员字段（enabled/config_json/sort_order/scope/workspace_id）。
+	SyncBuiltinMeta(ctx context.Context, p Plugin) (Plugin, error)
 	IncrementStats(ctx context.Context, pluginKey string, delta StatUpdate) error
+}
+
+// BuiltinMetaDrifted 报告已有行的平台自有元数据是否与内置定义漂移。
+// 仅比较 SyncBuiltinMeta 覆盖的字段；管理员字段不参与比较。
+func BuiltinMetaDrifted(cur, want Plugin) bool {
+	if cur.Name != want.Name || cur.Description != want.Description ||
+		cur.Category != want.Category || cur.RiskLevel != want.RiskLevel ||
+		cur.ConfigSchemaJSON != want.ConfigSchemaJSON ||
+		cur.DefaultConfigJSON != want.DefaultConfigJSON {
+		return true
+	}
+	if len(cur.CallbackPoints) != len(want.CallbackPoints) {
+		return true
+	}
+	for i := range cur.CallbackPoints {
+		if cur.CallbackPoints[i] != want.CallbackPoints[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // Run is one plugin callback invocation audit row.
@@ -226,6 +250,15 @@ func (u *Usecase) Create(ctx context.Context, p Plugin) (Plugin, error) {
 		p.Scope = "global"
 	}
 	return u.repo.CreatePlugin(ctx, p)
+}
+
+// SyncBuiltinMeta 将内置定义的平台自有元数据同步到已有行（bootstrap 种子用）。
+// 漂移判定由调用方经 BuiltinMetaDrifted 完成；此处直接落库。
+func (u *Usecase) SyncBuiltinMeta(ctx context.Context, p Plugin) (Plugin, error) {
+	if strings.TrimSpace(p.ID) == "" {
+		return Plugin{}, apierror.BadRequest("PLUGIN", "id is required")
+	}
+	return u.repo.SyncBuiltinMeta(ctx, p)
 }
 
 // UpdateConfig updates a plugin's configuration.

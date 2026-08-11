@@ -61,7 +61,7 @@
           class="monitor-log-line"
           :class="lineClass(line)"
         >
-          <span class="monitor-log-time">{{ line.time }}</span>
+          <span class="monitor-log-time">{{ formatDate(line.time) }}</span>
           <span class="monitor-log-level">[{{ line.level }}]</span>
           <span v-if="line.title && line.title !== line.message" class="monitor-log-title text-weight-medium">
             {{ line.title }}
@@ -80,6 +80,7 @@ import { computed, inject, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
 import type { MonitorLogLine, StreamState } from '../../features/monitor/types';
+import { formatDate } from '../../features/monitor/utils';
 import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

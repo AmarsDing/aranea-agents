@@ -98,7 +98,7 @@
 
 ## 3. 差距与优化（P2+）
 
-1. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名；Events 服务端 `hide_linked_completions`（减轻前端过滤）。
+1. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名。（原「Events 服务端 `hide_linked_completions`」已于 2026-08-11 完成，见 §4 dogfood 修复表）
 2. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
 3. **P3 — LOOP-01 FR-02**：清理 cronrunner 剩余 7 处 Kratos `log.Helper`（5 个文件：monitor_alert_cooldown、memory_dead_letter_replayer、provider_health、channel_health、evolution_scanner、channel_delivery）。
 4. **P3 — LOOP-01 FR-03**：补全 stepTitleRegistry 22 个缺失 step_id 注册。
@@ -119,6 +119,20 @@
 | Phase 2 | Dashboard 增强（`/overview`） | ✅ 见 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | Phase 3 | 告警（已提前完成，见上） | ✅ |
 | Phase 1（原） | 全局 latency / error_rate 聚合 API | ✅ P50/P95/P99 + `meta_duration_ms` generated column |
+
+### 2026-08-11 监控界面 dogfood 修复（ISSUE-001~007）
+
+> 来源：监控管理界面 UI/功能/配置 dogfood 检查报告。详细契约变更见 [18-monitor.design.md](./18-monitor.design.md) §2.4 / §五 / §9.5。
+
+| ID | 问题 | 修复 | 状态 |
+|----|------|------|------|
+| ISSUE-001/002 | Alerts 空规则可保存、无校验反馈 | 前端 `MonitorAlertRules.vue` `saveDisabled`/`saveDisabledReason` 校验 + 服务端 `ReplaceAlertRules` 逐条边界校验 | ✅ |
+| ISSUE-003/005 | 告警删除确认框、Traces 筛选 i18n key 直出 | 补齐 zh-CN/en-US 语言包缺失 key | ✅ |
+| ISSUE-004 | Events/Chat 页 WS 卡死 | 复测为集成 WebView 环境问题，Playwright Chromium 正常 | ✅（非代码问题） |
+| ISSUE-006 | Logs 时间 UTC 原样、级别小写 | `formatDate` 本地化 + `normalizeLogLevel` 大写归一 | ✅ |
+| ISSUE-007 | Events 分页失真（服务端 15 条/页客户端过滤后仅 2 条可见） | `ListMonitorEventsRequest.hide_linked_completions` 服务端去重（proto/biz/service/data），前端客户端过滤与 `shouldHideCompletionInEvents` 死代码删除 | ✅ |
+
+改动文件：`monitor.proto`、`internal/biz/monitor/monitor.go`、`internal/data/monitor.go`（+`monitor_query_test.go`）、`internal/service/monitor.go`、`web/src/features/monitor/{eventView,api,types,utils,useMonitorRealtimeEvents,runCorrelation}.ts`、`web/src/components/monitor/{MonitorAlertRules,FlowLogStream,ProcessLogStream}.vue`、`web/src/i18n/locales/{zh-CN,en-US}.ts`
 
 ### Phase 1c — Logs 流程/进程拆分
 

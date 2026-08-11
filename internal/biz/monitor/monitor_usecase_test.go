@@ -558,9 +558,40 @@ func TestReplaceAlertRules_Success(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "new1"}})
+	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("new1")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// validAlertRule 返回通过 ReplaceAlertRules 边界校验的规则（2026-08-11 ISSUE-001）。
+func validAlertRule(id string) monitor.AlertRule {
+	return monitor.AlertRule{ID: id, Name: "rule-" + id, MetricKey: "runner.error_rate", Threshold: 0.5, WindowMinutes: 5}
+}
+
+func TestReplaceAlertRules_ValidationRejectsInvalidRules(t *testing.T) {
+	replaceCalled := false
+	repo := &mockRepo{
+		replaceAlertRulesFn: func(context.Context, []monitor.AlertRule) error {
+			replaceCalled = true
+			return nil
+		},
+	}
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
+	cases := map[string]monitor.AlertRule{
+		"empty name":      {MetricKey: "runner.error_rate", Threshold: 0.5, WindowMinutes: 5},
+		"empty metric":    {Name: "r", Threshold: 0.5, WindowMinutes: 5},
+		"zero threshold":  {Name: "r", MetricKey: "runner.error_rate", WindowMinutes: 5},
+		"zero window":     {Name: "r", MetricKey: "runner.error_rate", Threshold: 0.5},
+		"negative window": {Name: "r", MetricKey: "runner.error_rate", Threshold: 0.5, WindowMinutes: -1},
+	}
+	for name, rule := range cases {
+		if err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{rule}); err == nil {
+			t.Errorf("%s: expected validation error, got nil", name)
+		}
+	}
+	if replaceCalled {
+		t.Error("repo ReplaceAlertRules must not be called when validation fails")
 	}
 }
 
@@ -577,7 +608,7 @@ func TestReplaceAlertRules_DeletesStaleLastFired(t *testing.T) {
 	uc.MarkAlertFired("old1", time.Now())
 	uc.MarkAlertFired("old2", time.Now())
 
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "old1"}})
+	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("old1")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -598,7 +629,7 @@ func TestReplaceAlertRules_RepoError(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "r1"}})
+	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("r1")})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -616,7 +647,7 @@ func TestReplaceAlertRules_ListOldRulesError(t *testing.T) {
 		},
 	}
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "r1"}})
+	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("r1")})
 	if err != nil {
 		t.Fatalf("should not fail when ListAlertRules fails, got: %v", err)
 	}

@@ -96,6 +96,7 @@
             class="app-registry-icon-btn"
             color="secondary"
             icon="history"
+            :aria-label="t('plugins.actionViewRuns')"
             :to="pluginRunsTo(props.row)"
           >
             <q-tooltip>运行记录</q-tooltip>
@@ -107,6 +108,7 @@
             class="app-registry-icon-btn"
             color="primary"
             icon="visibility"
+            :aria-label="t('plugins.actionViewDetail')"
             :disable="!props.row.permissions?.can_view"
             @click="$emit('viewDetail', props.row)"
           >
@@ -119,6 +121,7 @@
             class="app-registry-icon-btn"
             color="primary"
             icon="settings"
+            :aria-label="t('plugins.actionEditConfig')"
             :disable="!props.row.permissions?.can_edit_config"
             @click="$emit('editConfig', props.row)"
           >
@@ -131,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import type { Plugin } from '../../features/plugins/types';
@@ -162,4 +166,6 @@ defineEmits<{
   viewDetail: [row: Plugin];
   editConfig: [row: Plugin];
 }>();
+
+const { t } = useI18n();
 </script>

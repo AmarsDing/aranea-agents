@@ -76,7 +76,7 @@
           class="monitor-log-line"
           :class="`monitor-log-line--${line.level.toLowerCase()}`"
         >
-          <span class="monitor-log-time">{{ line.time }}</span>
+          <span class="monitor-log-time">{{ formatDate(line.time) }}</span>
           <span class="monitor-log-level">[{{ line.level }}]</span>
           <span class="text-caption text-grey-6 q-mr-sm">[{{ line.source }}]</span>
           <span>{{ line.message }}</span>
@@ -92,6 +92,7 @@ import { computed, inject, ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
 import type { StreamState } from '../../features/monitor/types';
+import { formatDate } from '../../features/monitor/utils';
 import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
 const { t } = useI18n();

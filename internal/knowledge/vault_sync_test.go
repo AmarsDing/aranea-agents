@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,6 +27,8 @@ type vaultSyncMemRepo struct {
 	links             []bizknowledge.Link
 	docEntities       map[string][]bizknowledge.DocEntity
 	deleteChunksCalls int
+	// failInsertChunks 可靠性契约测试钩子：>0 时 InsertChunks 注入失败并递减。
+	failInsertChunks int
 	// G5-F 实体治理：内存实体字典（norm → id）+ 别名（B12）。
 	entityIDs    map[string]int64 // collectionID+\x00+norm → entity id
 	entityNames  map[int64]string // entity id → 展示名（首见写法）
@@ -221,6 +224,11 @@ func (m *vaultSyncMemRepo) MoveDocument(_ context.Context, id, target string) (b
 func (m *vaultSyncMemRepo) InsertChunks(_ context.Context, chunks []bizknowledge.Chunk) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// 可靠性契约测试钩子：failInsertChunks>0 时注入一次性写库失败。
+	if m.failInsertChunks > 0 {
+		m.failInsertChunks--
+		return errMemInsertChunks
+	}
 	m.chunks = append(m.chunks, chunks...)
 	return nil
 }
@@ -235,6 +243,52 @@ func (m *vaultSyncMemRepo) DeleteChunksByDocument(_ context.Context, docID strin
 		}
 	}
 	m.chunks = kept
+	return nil
+}
+
+// ── SP2 #9 embedding 熔断端口（内存实现） ─────────────────────────────────
+
+func (m *vaultSyncMemRepo) UpdateDocumentEmbedCircuit(_ context.Context, id string, failCount int, lastTried time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.documents[id]
+	d.EmbedFailCount = failCount
+	d.EmbedLastTried = lastTried
+	m.documents[id] = d
+	return nil
+}
+
+func (m *vaultSyncMemRepo) ListEmbedDegradedDocuments(_ context.Context, collectionID string, limit int) ([]bizknowledge.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []bizknowledge.Document
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.EmbedFailCount > 0 {
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *vaultSyncMemRepo) UpdateChunkEmbeddings(_ context.Context, docID string, vecs []bizknowledge.ChunkEmbedding) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	byID := make(map[string][]float32, len(vecs))
+	for _, v := range vecs {
+		byID[v.ChunkID] = v.Embedding
+	}
+	for i, ch := range m.chunks {
+		if ch.DocID != docID {
+			continue
+		}
+		if vec, ok := byID[ch.ID]; ok {
+			m.chunks[i].Embedding = vec
+		}
+	}
 	return nil
 }
 func (m *vaultSyncMemRepo) SearchChunks(_ context.Context, _ bizknowledge.SearchQuery, _ []float32) ([]bizknowledge.Chunk, error) {
@@ -361,6 +415,9 @@ func (m *vaultSyncMemRepo) FindEntityCooccurrences(_ context.Context, collection
 
 var errMemNotFound = apierror.NotFound("KNOWLEDGE", "document not found")
 
+// errMemInsertChunks 可靠性契约测试的注入写库失败。
+var errMemInsertChunks = apierror.Internal("KNOWLEDGE", "injected insert chunks failure")
+
 // MergeEntities 内存 stub（EntityRepo 接口满足；vault 测试不触及治理合并路径）。
 func (m *vaultSyncMemRepo) MergeEntities(_ context.Context, _ string, _ int64, _ []int64) (bizknowledge.EntityMergeResult, error) {
 	return bizknowledge.EntityMergeResult{}, nil
@@ -439,6 +496,29 @@ func (m *vaultSyncMemRepo) ListDocBlocks(_ context.Context, docID string) ([]biz
 	return append([]bizknowledge.KnowledgeBlock(nil), m.blocks[docID]...), nil
 }
 
+// ListDocsMissingBlockIndex 内存漂移检测（SP2 #4）：已索引 + 内容非空 + 无块。
+func (m *vaultSyncMemRepo) ListDocsMissingBlockIndex(_ context.Context, collectionID string, limit int) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for _, d := range m.documents {
+		if d.CollectionID != collectionID || d.Status != "indexed" {
+			continue
+		}
+		if strings.TrimSpace(d.ContentText) == "" {
+			continue // 空内容文档合法 0 块
+		}
+		if len(m.blocks[d.ID]) > 0 {
+			continue
+		}
+		out = append(out, d.ID)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
 // UpdateDocLinkKeys 物化解析键（frontmatter title/aliases），供 ListResolveCandidates。
 func (m *vaultSyncMemRepo) UpdateDocLinkKeys(_ context.Context, docID, title string, aliases []string) error {
 	m.mu.Lock()
@@ -511,10 +591,14 @@ next:
 type vaultSyncStubEmbedder struct {
 	dim   int
 	calls int
+	err   error // 非 nil 时 Embed 恒失败（SP2 #9 熔断测试）
 }
 
 func (s *vaultSyncStubEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
 	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
 	out := make([][]float32, len(texts))
 	for i := range texts {
 		v := make([]float32, s.dim)
@@ -556,6 +640,7 @@ func newTestApplier(repo *vaultSyncMemRepo, embedder Embedder) *VaultSyncApplier
 	uc := bizknowledge.NewUsecaseFromRepo(repo)
 	uc.SetLinkRepos(repo, repo)       // P2-4：接线双轨关联持久化
 	uc.SetBlockIndexRepos(repo, repo) // SP1-C：接线块级双链索引（物化 + 解析）
+	uc.SetEmbedCircuitRepo(repo)      // SP2 #9：接线 embedding 熔断状态端口
 	return NewVaultSyncApplier(uc, bizknowledge.NewVaultFiler(nil), embedder, loggateway.NewNoop())
 }
 
@@ -1102,5 +1187,254 @@ func TestVaultUsecase_LinksDegradeWhenUnset(t *testing.T) {
 	links, err := uc.ListDocumentLinks(context.Background(), "c1", "d1", "")
 	if err != nil || len(links) != 0 {
 		t.Errorf("unset links: ListDocumentLinks = (%v, %v), want (nil, empty)", links, err)
+	}
+}
+
+// ── SP2 #9 embedding 熔断（SiYuan block_embeddings fail_count 同源） ────────────
+
+// embed 失败 → 降级写 NULL 向量，词法索引正常落库，文档记 indexed + 熔断计数。
+// （旧行为：整文档 markError，词法索引被 embed 故障绑架，且 30s 后全量重打 API。）
+func TestVaultSyncApplier_EmbedFailure_DegradesToLexical(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, EmbeddingModel: "m", Dim: 3}
+	repo.collections[vault.ID] = vault
+
+	emb := &vaultSyncStubEmbedder{dim: 3, err: errors.New("embed api down")}
+	applier := newTestApplier(repo, emb)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", testVaultMD)}); err != nil {
+		t.Fatalf("embed 失败不得阻塞词法索引落库, got err %v", err)
+	}
+	var doc bizknowledge.Document
+	for _, d := range repo.documents {
+		doc = d
+	}
+	if doc.Status != "indexed" {
+		t.Errorf("Status = %q, want indexed（词法可用，语义降级）", doc.Status)
+	}
+	if doc.ContentHash != bizknowledge.HashContent(testVaultMD) {
+		t.Errorf("ContentHash 未落库——下轮扫描会全量重试")
+	}
+	if doc.EmbedFailCount != 1 {
+		t.Errorf("EmbedFailCount = %d, want 1", doc.EmbedFailCount)
+	}
+	if doc.EmbedLastTried.IsZero() {
+		t.Error("EmbedLastTried 必须记录失败时间（退避判定依据）")
+	}
+	if len(repo.chunks) == 0 {
+		t.Fatal("词法 chunks 必须落库")
+	}
+	for i, ch := range repo.chunks {
+		if len(ch.Embedding) != 0 {
+			t.Errorf("chunk %d: 降级时必须写 NULL 向量, got %d dims", i, len(ch.Embedding))
+		}
+	}
+}
+
+// 退避窗口内 → 不重试（embedder 零调用）；窗口过后 → 重试成功并复位熔断。
+func TestVaultSyncApplier_RetryDegraded_BackoffAndRecovery(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, EmbeddingModel: "m", Dim: 3}
+	repo.collections[vault.ID] = vault
+
+	emb := &vaultSyncStubEmbedder{dim: 3, err: errors.New("embed api down")}
+	applier := newTestApplier(repo, emb)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", testVaultMD)}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	callsAfterFail := emb.calls
+
+	// 退避窗口内（failCount=1 → 1min）：重试不得调用 embedder。
+	if err := applier.RetryDegradedEmbeddings(context.Background(), vault); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if emb.calls != callsAfterFail {
+		t.Errorf("退避窗口内不得重试, calls = %d, want %d", emb.calls, callsAfterFail)
+	}
+
+	// 窗口过后 + embedder 恢复：重试成功，向量补齐，熔断复位。
+	emb.err = nil
+	for id, d := range repo.documents {
+		d.EmbedLastTried = time.Now().Add(-2 * time.Minute)
+		repo.documents[id] = d
+	}
+	if err := applier.RetryDegradedEmbeddings(context.Background(), vault); err != nil {
+		t.Fatalf("retry after backoff: %v", err)
+	}
+	if emb.calls == callsAfterFail {
+		t.Error("退避过后必须重试 embedder")
+	}
+	for i, ch := range repo.chunks {
+		if len(ch.Embedding) != 3 {
+			t.Errorf("chunk %d: 恢复后向量维度 = %d, want 3", i, len(ch.Embedding))
+		}
+	}
+	for _, d := range repo.documents {
+		if d.EmbedFailCount != 0 {
+			t.Errorf("恢复后 EmbedFailCount = %d, want 0（复位）", d.EmbedFailCount)
+		}
+	}
+}
+
+// 重试仍失败 → failCount 递增（退避加深），chunks 保持 NULL 向量。
+func TestVaultSyncApplier_RetryDegraded_FailureIncrements(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, EmbeddingModel: "m", Dim: 3}
+	repo.collections[vault.ID] = vault
+
+	emb := &vaultSyncStubEmbedder{dim: 3, err: errors.New("embed api down")}
+	applier := newTestApplier(repo, emb)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", testVaultMD)}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	for id, d := range repo.documents {
+		d.EmbedLastTried = time.Now().Add(-2 * time.Minute) // 越过 fc=1 退避窗
+		repo.documents[id] = d
+	}
+	if err := applier.RetryDegradedEmbeddings(context.Background(), vault); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	for _, d := range repo.documents {
+		if d.EmbedFailCount != 2 {
+			t.Errorf("EmbedFailCount = %d, want 2（递增加深退避）", d.EmbedFailCount)
+		}
+		if d.EmbedLastTried.IsZero() || time.Since(d.EmbedLastTried) > time.Minute {
+			t.Errorf("EmbedLastTried 必须刷新到本次重试时间, got %v", d.EmbedLastTried)
+		}
+	}
+	for i, ch := range repo.chunks {
+		if len(ch.Embedding) != 0 {
+			t.Errorf("chunk %d: 重试失败仍须保持 NULL 向量", i)
+		}
+	}
+}
+
+// 熔断中（退避窗口内）的文档内容变更：重建 chunks 但跳过 embed 尝试（故障期不打 API）。
+func TestVaultSyncApplier_UpsertSkipsEmbedWhileCircuitOpen(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root, EmbeddingModel: "m", Dim: 3}
+	repo.collections[vault.ID] = vault
+
+	emb := &vaultSyncStubEmbedder{dim: 3, err: errors.New("embed api down")}
+	applier := newTestApplier(repo, emb)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{createdEvent("a.md", testVaultMD)}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	callsAfterFail := emb.calls
+
+	// 熔断窗口内修改文档：chunks 重建，embed 不尝试。
+	newBody := "# 动量策略\n\n修订版内容。\n"
+	writeVaultFile(t, root, "a.md", newBody)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		{Type: bizknowledge.ChangeModified, RelPath: "a.md", Snapshot: bizknowledge.FileSnapshot{
+			RelPath: "a.md", Size: int64(len(newBody)), Hash: bizknowledge.HashContent(newBody),
+		}},
+	}); err != nil {
+		t.Fatalf("apply modified: %v", err)
+	}
+	if emb.calls != callsAfterFail {
+		t.Errorf("熔断窗口内内容变更不得尝试 embed, calls = %d, want %d", emb.calls, callsAfterFail)
+	}
+	for _, d := range repo.documents {
+		if d.Status != "indexed" || d.ContentHash != bizknowledge.HashContent(newBody) {
+			t.Errorf("词法索引必须照常落库: status=%q hash=%q", d.Status, d.ContentHash)
+		}
+		if d.EmbedFailCount != 1 {
+			t.Errorf("熔断窗口内未尝试 → 计数不变, got %d, want 1", d.EmbedFailCount)
+		}
+	}
+}
+
+// ── SP2 #4 下游收敛：块索引漂移检测 + 自动重建 ──────────────────────────────
+
+// 块索引静默缺失（rebuildBlockIndex 失败仅 Warn 降级，content_hash 已落库下轮不再
+// 重试）→ 收敛扫描检出漂移并自动重建块/refs。
+func TestVaultSyncApplier_ConvergeMissingBlockIndex_RebuildsDrift(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+	writeVaultFile(t, root, "b.md", "# 目标笔记\n\n被引用内容。\n")
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root} // 无语义层：纯词法
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+	linkBody := "# 动量策略\n\n详见 [[b.md]] 的说明。\n"
+	writeVaultFile(t, root, "a.md", linkBody)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		createdEvent("a.md", linkBody),
+		createdEvent("b.md", "# 目标笔记\n\n被引用内容。\n"),
+	}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	var docA string
+	for id, d := range repo.documents {
+		if d.RelPath == "a.md" {
+			docA = id
+		}
+	}
+	if docA == "" {
+		t.Fatal("doc a.md 未落库")
+	}
+	if len(repo.blocks[docA]) == 0 || len(repo.blockRefs[docA]) == 0 {
+		t.Fatalf("前置：a.md 应有块和 refs, blocks=%d refs=%d", len(repo.blocks[docA]), len(repo.blockRefs[docA]))
+	}
+
+	// 注入漂移：块索引静默清空（模拟历史 rebuild 失败仅 Warn 的遗留态）。
+	repo.blocks[docA] = nil
+	repo.blockRefs[docA] = nil
+
+	if err := applier.ConvergeMissingBlockIndex(context.Background(), vault); err != nil {
+		t.Fatalf("converge: %v", err)
+	}
+	if len(repo.blocks[docA]) == 0 {
+		t.Error("收敛后 a.md 块索引必须重建")
+	}
+	if len(repo.blockRefs[docA]) == 0 {
+		t.Error("收敛后 a.md refs 必须重建（含 [[b.md]] 解析边）")
+	}
+}
+
+// 无漂移 → 不重建（块索引保持原值，零写放大）；空内容文档不误报（合法 0 块）。
+func TestVaultSyncApplier_ConvergeMissingBlockIndex_NoDriftNoOp(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", testVaultMD)
+	writeVaultFile(t, root, "empty.md", "")
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		createdEvent("a.md", testVaultMD),
+		createdEvent("empty.md", ""),
+	}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	// 无漂移：记录现有块切片头地址，收敛后必须未被替换。
+	before := repo.blocks
+	if err := applier.ConvergeMissingBlockIndex(context.Background(), vault); err != nil {
+		t.Fatalf("converge: %v", err)
+	}
+	for id, blocks := range repo.blocks {
+		if len(before[id]) > 0 && len(blocks) > 0 && &before[id][0] != &blocks[0] {
+			t.Errorf("doc %s: 无漂移不得重建块索引", id)
+		}
+	}
+	// 空内容文档合法 0 块，不得被误报为漂移（二次收敛仍无副作用即通过）。
+	if err := applier.ConvergeMissingBlockIndex(context.Background(), vault); err != nil {
+		t.Fatalf("converge again: %v", err)
 	}
 }

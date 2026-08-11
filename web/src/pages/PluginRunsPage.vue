@@ -63,7 +63,7 @@
       />
       <q-input
         v-model="from"
-        class="app-page-toolbar__field"
+        class="app-page-toolbar__field app-page-toolbar__field--time"
         dense
         outlined
         clearable
@@ -73,7 +73,7 @@
       />
       <q-input
         v-model="to"
-        class="app-page-toolbar__field"
+        class="app-page-toolbar__field app-page-toolbar__field--time"
         dense
         outlined
         clearable
@@ -209,3 +209,16 @@ function confirmClear() {
   }).onOk(() => void clearAll());
 }
 </script>
+
+<style scoped lang="sass">
+// 6 个筛选字段 + 操作按钮：字段禁止收缩（避免标签截断），空间不足时换行
+:deep(.app-page-toolbar__body)
+  flex-wrap: wrap
+
+:deep(.app-page-toolbar__field)
+  flex: 0 0 auto
+  min-width: 150px
+
+:deep(.app-page-toolbar__field--time)
+  min-width: 200px
+</style>

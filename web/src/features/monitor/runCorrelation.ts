@@ -38,17 +38,6 @@ export function isRunnerCompletionRow(row: PlatformResource): boolean {
   return key === 'runner.completion' || type === 'runner.completion' || type === 'runner_completion';
 }
 
-/** Plan C: hide persisted Chat completion when Runs already has the truth row. */
-export function shouldHideCompletionInEvents(meta: RunnerCompletionMeta, traces: MonitorTrace[] = []): boolean {
-  if (String(meta.usage_event_id || '').trim()) return true;
-  const traceId = String(meta.trace_id || '').trim();
-  if (!traceId) return false;
-  return traces.some((row) => {
-    const rowMeta = parseJSON(row.metadata_json || '');
-    return String(rowMeta.trace_id || '').trim() === traceId;
-  });
-}
-
 /** True when Runs list has a row we can open for this completion metadata. */
 export function completionCanOpenInRuns(meta: RunnerCompletionMeta, traces: MonitorTrace[] = []): boolean {
   const usageId = String(meta.usage_event_id || '').trim();

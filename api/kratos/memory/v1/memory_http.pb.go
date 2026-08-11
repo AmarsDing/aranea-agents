@@ -50,6 +50,7 @@ const OperationMemoryServicePreviewCascadeApprove = "/kratos.memory.v1.MemorySer
 const OperationMemoryServiceRejectCascadeProposal = "/kratos.memory.v1.MemoryService/RejectCascadeProposal"
 const OperationMemoryServiceReplayMemoryDeadLetter = "/kratos.memory.v1.MemoryService/ReplayMemoryDeadLetter"
 const OperationMemoryServiceRetryCascadeApprove = "/kratos.memory.v1.MemoryService/RetryCascadeApprove"
+const OperationMemoryServiceReviewMemoryFact = "/kratos.memory.v1.MemoryService/ReviewMemoryFact"
 const OperationMemoryServiceReviewPIIFact = "/kratos.memory.v1.MemoryService/ReviewPIIFact"
 const OperationMemoryServiceSpreadingActivation = "/kratos.memory.v1.MemoryService/SpreadingActivation"
 const OperationMemoryServiceUpdateMemoryPlatformSettings = "/kratos.memory.v1.MemoryService/UpdateMemoryPlatformSettings"
@@ -87,6 +88,7 @@ type MemoryServiceHTTPServer interface {
 	RejectCascadeProposal(context.Context, *RejectCascadeProposalRequest) (*RejectCascadeProposalResponse, error)
 	ReplayMemoryDeadLetter(context.Context, *ReplayMemoryDeadLetterRequest) (*ReplayMemoryDeadLetterResponse, error)
 	RetryCascadeApprove(context.Context, *RetryCascadeApproveRequest) (*RetryCascadeApproveResponse, error)
+	ReviewMemoryFact(context.Context, *ReviewMemoryFactRequest) (*ReviewMemoryFactResponse, error)
 	ReviewPIIFact(context.Context, *ReviewPIIFactRequest) (*ReviewPIIFactResponse, error)
 	SpreadingActivation(context.Context, *SpreadingActivationRequest) (*SpreadingActivationResponse, error)
 	UpdateMemoryPlatformSettings(context.Context, *UpdateMemoryPlatformSettingsRequest) (*MemoryPlatformSettings, error)
@@ -109,6 +111,7 @@ func RegisterMemoryServiceHTTPServer(s *http.Server, srv MemoryServiceHTTPServer
 	r.GET("/v1/agents/{agent_id}/evolution/events", _MemoryService_ListEvolutionEvents0_HTTP_Handler(srv))
 	r.GET("/v1/agents/{agent_id}/evolution/metrics", _MemoryService_GetEvolutionMetrics0_HTTP_Handler(srv))
 	r.POST("/v1/memory/l3/facts", _MemoryService_UpsertMemoryFact0_HTTP_Handler(srv))
+	r.POST("/v1/memory/l3/facts/{fact_id}/review", _MemoryService_ReviewMemoryFact0_HTTP_Handler(srv))
 	r.POST("/v1/agents/{agent_id}/evolution/events", _MemoryService_AppendEvolutionEvent0_HTTP_Handler(srv))
 	r.GET("/v1/memory/cascade/proposals", _MemoryService_ListCascadeProposals0_HTTP_Handler(srv))
 	r.POST("/v1/memory/cascade/proposals/{id}/approve", _MemoryService_ApproveCascadeProposal0_HTTP_Handler(srv))
@@ -424,6 +427,31 @@ func _MemoryService_UpsertMemoryFact0_HTTP_Handler(srv MemoryServiceHTTPServer) 
 			return err
 		}
 		reply := out.(*UpsertMemoryFactResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _MemoryService_ReviewMemoryFact0_HTTP_Handler(srv MemoryServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ReviewMemoryFactRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMemoryServiceReviewMemoryFact)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ReviewMemoryFact(ctx, req.(*ReviewMemoryFactRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ReviewMemoryFactResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -919,6 +947,7 @@ type MemoryServiceHTTPClient interface {
 	RejectCascadeProposal(ctx context.Context, req *RejectCascadeProposalRequest, opts ...http.CallOption) (rsp *RejectCascadeProposalResponse, err error)
 	ReplayMemoryDeadLetter(ctx context.Context, req *ReplayMemoryDeadLetterRequest, opts ...http.CallOption) (rsp *ReplayMemoryDeadLetterResponse, err error)
 	RetryCascadeApprove(ctx context.Context, req *RetryCascadeApproveRequest, opts ...http.CallOption) (rsp *RetryCascadeApproveResponse, err error)
+	ReviewMemoryFact(ctx context.Context, req *ReviewMemoryFactRequest, opts ...http.CallOption) (rsp *ReviewMemoryFactResponse, err error)
 	ReviewPIIFact(ctx context.Context, req *ReviewPIIFactRequest, opts ...http.CallOption) (rsp *ReviewPIIFactResponse, err error)
 	SpreadingActivation(ctx context.Context, req *SpreadingActivationRequest, opts ...http.CallOption) (rsp *SpreadingActivationResponse, err error)
 	UpdateMemoryPlatformSettings(ctx context.Context, req *UpdateMemoryPlatformSettingsRequest, opts ...http.CallOption) (rsp *MemoryPlatformSettings, err error)
@@ -1328,6 +1357,19 @@ func (c *MemoryServiceHTTPClientImpl) RetryCascadeApprove(ctx context.Context, i
 	pattern := "/v1/memory/cascade/proposals/{id}/retry"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationMemoryServiceRetryCascadeApprove))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *MemoryServiceHTTPClientImpl) ReviewMemoryFact(ctx context.Context, in *ReviewMemoryFactRequest, opts ...http.CallOption) (*ReviewMemoryFactResponse, error) {
+	var out ReviewMemoryFactResponse
+	pattern := "/v1/memory/l3/facts/{fact_id}/review"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationMemoryServiceReviewMemoryFact))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

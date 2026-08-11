@@ -512,6 +512,14 @@ export function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
+// ── Cost ──
+
+/** micro-USD → 美元展示；无成本数据（0/undefined）显示占位符，避免恒为 $0.0000（UI-3）。 */
+export function formatCost(value?: number) {
+  if (!value) return '—';
+  return `$${(value / 1_000_000).toFixed(4)}`;
+}
+
 // ── Industry grouping ──
 
 function teamDefinitionExtras(team: Team) {

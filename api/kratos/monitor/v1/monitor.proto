@@ -88,6 +88,11 @@ message ListMonitorEventsRequest {
   repeated string event_types = 6;
   // Prefix exclusion applied after the include set; e.g. ["skill.filesystem."].
   repeated string exclude_event_types = 7;
+  // Hide runner.completion rows already materialized as Runs (monitor_traces):
+  // rows with usage_event_id, or whose trace_id matches a trace row. Keeps the
+  // Events history deduplicated server-side so pagination total matches what
+  // the table actually renders.
+  bool hide_linked_completions = 8;
 }
 
 message ListMonitorEventsResponse {

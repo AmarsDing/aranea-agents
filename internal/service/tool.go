@@ -147,6 +147,7 @@ func (s *ToolService) ListTools(ctx context.Context, req *v1.ListToolsRequest) (
 		Sort:      req.GetSort(),
 		Limit:     limit,
 		Offset:    offset,
+		Abnormal:  req.GetAbnormal(),
 	}
 	// P2-B: workspace visibility filter.
 	// System caller (cron/admin) sees all; tenant caller sees shared + own.

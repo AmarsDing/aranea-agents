@@ -255,8 +255,19 @@ message ModelCapabilities {
   bool text_only = 8;
 }
 
+// ListProviderModelsRequest 携带可选的分页 + 搜索参数（管理端注册表 UI 使用）。
+// page 与 page_size 均为 0 时回退为 legacy 全量目录列表（选择器/健康检查/运行时消费方）。
+message ListProviderModelsRequest {
+  int32 page = 1;      // 1-based
+  int32 page_size = 2; // default: 20, max: 100
+  string search = 3;
+}
+
 message ListProviderModelsResponse {
   repeated ProviderModel items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
 }
 
 message CreateProviderModelRequest {
@@ -350,7 +361,7 @@ message InspectProviderModelResponse {
 }
 
 service LlmProviderModelService {
-  rpc ListProviderModels(google.protobuf.Empty) returns (ListProviderModelsResponse) {
+  rpc ListProviderModels(ListProviderModelsRequest) returns (ListProviderModelsResponse) {
     option (google.api.http) = {get: "/v1/llm-provider-models"};
   }
   rpc CreateProviderModel(CreateProviderModelRequest) returns (ProviderModel) {
@@ -381,7 +392,7 @@ service LlmProviderModelService {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/llm-provider-models` | 列表 |
+| GET | `/v1/llm-provider-models` | 列表（支持 `page`/`page_size`/`search` 查询参数；不带分页参数时返回全量目录，供选择器/健康检查使用） |
 | POST | `/v1/llm-provider-models` | 创建 |
 | GET | `/v1/llm-provider-models/{id}` | 详情 |
 | GET | `/v1/llm-provider-models/{id}/credentials` | 揭示解密后的凭据（管理后台编辑用） |
@@ -504,8 +515,24 @@ type LLMInspectResult struct {
 ```go
 type LlmProviderModelReader interface {
     ListProviderModels(ctx context.Context) ([]ProviderModel, error)
+    SearchProviderModels(ctx context.Context, q ProviderModelListQuery) (ProviderModelListResult, error)
     GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
     GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
+}
+
+// ProviderModelListQuery 管理端模型列表的分页/筛选输入
+type ProviderModelListQuery struct {
+    Search string
+    Limit  int
+    Offset int
+}
+
+// ProviderModelListResult 一页模型 + 筛选范围内总数
+type ProviderModelListResult struct {
+    Items  []ProviderModel
+    Total  int
+    Limit  int
+    Offset int
 }
 
 type LlmProviderModelWriter interface {
@@ -555,6 +582,8 @@ type LlmProviderModelUsecase struct {
     inspector  LLMInspector
     crypto     *CredentialCrypto
     agentRefs  AgentReferenceChecker
+    // statsInjector 注入 30 天用量统计到响应的 ConfigJSON（仅响应装饰，不持久化）
+    statsInjector *ModelStatsInjector
     lg         loggateway.Logger
 }
 
@@ -566,11 +595,13 @@ func NewLlmProviderModelUsecase(
     inspector LLMInspector,
     crypto *CredentialCrypto,
     agentRefs AgentReferenceChecker,
+    statsInjector *ModelStatsInjector, // 可为 nil
     lg loggateway.Logger,
 ) *LlmProviderModelUsecase
 
 // 方法
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error)
+func (u *LlmProviderModelUsecase) ListPaged(ctx context.Context, q ProviderModelListQuery) (ProviderModelListResult, error)
 func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderModel, error)
 func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
 func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) (ProviderModel, error)
@@ -582,6 +613,7 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 
 **关键行为**：
 - `List` / `Get`：通过 `sanitizeProviderModelForAPI` 脱敏后返回
+- `List` / `ListPaged` / `Update`：返回前经 `statsInjector.InjectStats` 注入 30 天用量统计（`usage_*_30d`、`model_hotness_score` 等，见 §6.3）。前端用 PATCH 响应整行替换列表行，故 `Update` 必须与列表保持同样的装饰，否则统计列被清零
 - `GetByProviderAndModel`：通过 `crypto.PrepareProviderModelForRuntime` 解密后返回（运行时使用）
 - `Create` / `Update`：通过 `crypto.RequireKeyForPlaintext` + `crypto.ProcessConfigJSONForStorage` 加密后写入；同步调用 `syncProviderModelPricing` 更新定价规则（best-effort，失败不回滚）
 - `Inspect`：通过 `mergeInspectConfigJSON` 合并请求字段与已存 config_json，再调用 `inspector.Run`
@@ -1051,18 +1083,20 @@ http.DefaultTransport (或 rt.HTTP.Transport)
 ```go
 type LlmProviderModelService struct {
     v1.UnimplementedLlmProviderModelServiceServer
-    uc *biz.LlmProviderModelUsecase
-    lg loggateway.Logger
+    uc  *biz.LlmProviderModelUsecase
+    mon *biz.MonitorUsecase
+    lg  loggateway.Logger
 }
 
-func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, lg loggateway.Logger) *LlmProviderModelService
+func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, mon *biz.MonitorUsecase, lg loggateway.Logger) *LlmProviderModelService
 
 // Proto ↔ Biz 转换
 func toProtoPM(m biz.ProviderModel) *v1.ProviderModel  // 含 CapabilitiesForProviderModel 推导
 func patchFromProto(pb *v1.ProviderModel) biz.ProviderModel
 
 // RPC 实现
-func (s *LlmProviderModelService) ListProviderModels(ctx, *emptypb.Empty) (*v1.ListProviderModelsResponse, error)
+func (s *LlmProviderModelService) ListProviderModels(ctx, *v1.ListProviderModelsRequest) (*v1.ListProviderModelsResponse, error)
+//   - page/page_size 任一为 0 时返回全量目录；否则走 uc.ListPaged 服务端分页 + search 过滤
 func (s *LlmProviderModelService) CreateProviderModel(ctx, *v1.CreateProviderModelRequest) (*v1.ProviderModel, error)
 func (s *LlmProviderModelService) GetProviderModel(ctx, *v1.GetProviderModelRequest) (*v1.ProviderModel, error)
 func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx, *v1.RevealProviderModelCredentialsRequest) (*v1.RevealProviderModelCredentialsResponse, error)

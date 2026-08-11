@@ -55,6 +55,8 @@ var (
 	_ biz.KnowledgeRepo           = (*knowledgeRepo)(nil)
 	_ biz.KnowledgeSparseSearcher = (*knowledgeRepo)(nil)
 	_ bizknowledge.Repo           = (*knowledgeRepo)(nil)
+	// SP2 #9 embedding 熔断端口。
+	_ bizknowledge.EmbedCircuitRepo = (*knowledgeRepo)(nil)
 )
 
 // EnsureKnowledgeSchema creates the knowledge tables and indexes when they do not exist.
@@ -145,6 +147,11 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		// --- SP1-F 团队库后端维度（fresh 形态；存量库由迁移 20261205 补列） ---
 		// vault_backend：local=文件系统真相源（root_path 必填）/ team=PG 真相源（root_path 空，无 SyncEngine）。
 		`ALTER TABLE knowledge_collections ADD COLUMN IF NOT EXISTS vault_backend TEXT NOT NULL DEFAULT 'local'`,
+		// --- SP2 #9 embedding 熔断（fresh 形态；存量库由迁移 20261206 补列） ---
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS embed_fail_count INT NOT NULL DEFAULT 0`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS embed_last_tried TIMESTAMPTZ`,
+		`CREATE INDEX IF NOT EXISTS knowledge_documents_embed_degraded_idx
+			ON knowledge_documents (collection_id, embed_last_tried) WHERE embed_fail_count > 0`,
 		// --- SP1-C 跨库双链解析（fresh 形态；存量库由迁移 20261204 补列） ---
 		// documents.title/aliases：Resolver 文档键（frontmatter 物化）；
 		// links.weight：N-3 投影权重（同文档对块边数聚合）。
@@ -341,10 +348,11 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 		 rel_path, content_hash, summary, summary_hash, tags, doc_type, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,0,$6,'',$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
-		          content_text, organized, asset_uri,
-		          rel_path, content_hash, summary, summary_hash, tags, doc_type,
-		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
+	          content_text, organized, asset_uri,
+	          rel_path, content_hash, summary, summary_hash, tags, doc_type,
+	          embed_fail_count, embed_last_tried,
+	          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+	          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
 	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
 		d.ContentText, d.Organized, d.AssetURI,
 		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now)
@@ -356,6 +364,7 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
 		         d.content_text, d.organized, d.asset_uri,
 		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
+		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents d
@@ -442,6 +451,7 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 	q := `SELECT d.id, d.collection_id, d.source, d.mime_type, d.size_bytes, d.chunk_count, d.status, d.error_message,
 		         d.content_text, d.organized, d.asset_uri,
 		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
+		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents d
@@ -475,6 +485,76 @@ func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentTe
 		 SET content_text = $2, organized = $3, updated_at = NOW()
 		 WHERE id = $1`, id, contentText, organized)
 	return err
+}
+
+// --- SP2 #9 embedding 熔断端口（bizknowledge.EmbedCircuitRepo） ---
+
+// UpdateDocumentEmbedCircuit 回写文档熔断状态。failCount=0 表示复位（lastTried 清 NULL）。
+func (r *knowledgeRepo) UpdateDocumentEmbedCircuit(ctx context.Context, id string, failCount int, lastTried time.Time) error {
+	var tried any
+	if !lastTried.IsZero() {
+		tried = lastTried.UTC()
+	}
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents
+		 SET embed_fail_count = $2, embed_last_tried = $3, updated_at = NOW()
+		 WHERE id = $1`, id, failCount, tried)
+	return entErrToBizErr(err, "KNOWLEDGE")
+}
+
+// ListEmbedDegradedDocuments 列出熔断中（failCount>0）的文档，按退避起点升序
+// （最久未尝试者优先）。含 content_text 供重分块回填向量。
+func (r *knowledgeRepo) ListEmbedDegradedDocuments(ctx context.Context, collectionID string, limit int) ([]biz.KnowledgeDocument, error) {
+	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         content_text, organized, asset_uri,
+		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
+		         embed_fail_count, embed_last_tried,
+		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_documents
+		  WHERE collection_id = $1 AND embed_fail_count > 0
+		  ORDER BY embed_last_tried ASC NULLS FIRST
+		  LIMIT $2`
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, collectionID, limit)
+	if err != nil {
+		return nil, entErrToBizErr(err, "KNOWLEDGE")
+	}
+	defer rows.Close()
+	var out []biz.KnowledgeDocument
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "KNOWLEDGE")
+		}
+		out = append(out, d)
+	}
+	return out, entErrToBizErr(rows.Err(), "KNOWLEDGE")
+}
+
+// UpdateChunkEmbeddings 恢复成功时按 chunk ID 精确寻址回填向量（ChunkIndex 源自
+// splitter 元数据，不保证连续，禁止按位置映射）。docID 作为归属守卫防止跨文档误写。
+func (r *knowledgeRepo) UpdateChunkEmbeddings(ctx context.Context, docID string, vecs []bizknowledge.ChunkEmbedding) error {
+	if len(vecs) == 0 {
+		return nil
+	}
+	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx,
+			`UPDATE knowledge_chunks SET embedding = $1 WHERE id = $2 AND doc_id = $3`)
+		if err != nil {
+			return entErrToBizErr(err, "KNOWLEDGE")
+		}
+		defer stmt.Close()
+		for _, v := range vecs {
+			var vec any
+			if len(v.Embedding) > 0 {
+				vec = pgvector.NewVector(v.Embedding)
+			}
+			if _, err := stmt.ExecContext(ctx, vec, v.ChunkID, docID); err != nil {
+				return entErrToBizErr(err, "KNOWLEDGE")
+			}
+		}
+		return nil
+	})
 }
 
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]biz.KnowledgeDocument, int, error) {
@@ -856,14 +936,19 @@ func scanCollection(row scannable) (biz.KnowledgeCollection, error) {
 func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 	var d biz.KnowledgeDocument
 	var tagsRaw []byte
+	var embedLastTried sql.NullTime
 	err := row.Scan(&d.ID, &d.CollectionID, &d.Source, &d.MimeType, &d.SizeBytes,
 		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
 		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
+		&d.EmbedFailCount, &embedLastTried,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return d, err
 	}
 	d.Tags = unmarshalTags(tagsRaw)
+	if embedLastTried.Valid {
+		d.EmbedLastTried = embedLastTried.Time
+	}
 	return d, nil
 }
 

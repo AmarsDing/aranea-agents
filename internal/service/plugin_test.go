@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
@@ -93,6 +94,22 @@ func (m *memPluginRepo) UpdatePluginScope(_ context.Context, id string, scope st
 	p.Scope = scope
 	m.items[id] = p
 	return p, nil
+}
+
+func (m *memPluginRepo) SyncBuiltinMeta(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
+	cur, ok := m.items[p.ID]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("plugin not found: %s", p.ID)
+	}
+	cur.Name = p.Name
+	cur.Description = p.Description
+	cur.Category = p.Category
+	cur.RiskLevel = p.RiskLevel
+	cur.CallbackPoints = p.CallbackPoints
+	cur.ConfigSchemaJSON = p.ConfigSchemaJSON
+	cur.DefaultConfigJSON = p.DefaultConfigJSON
+	m.items[p.ID] = cur
+	return cur, nil
 }
 
 func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
@@ -223,5 +240,48 @@ func TestPluginService_PrivatePlugin_CrossTenantDenied(t *testing.T) {
 	ctx := workspace.WithContext(context.Background(), "ws-b")
 	if _, err := svc.TogglePluginEnabled(ctx, &v1.TogglePluginEnabledRequest{Id: "p9", Enabled: true}); err == nil {
 		t.Fatal("expected cross-tenant mutate to be denied")
+	}
+}
+
+// ISSUE-009：内置插件元数据演进（如 schema 增加中文 title/description）必须
+// 在 bootstrap 时同步到已有行；seeder 此前对已有行直接跳过，修复对存量安装
+// 永不生效。同步仅限平台自有字段（name/category/schema/默认值等），保留管理
+// 员字段（enabled/config_json/sort_order/scope）。
+func TestPluginService_SeedBuiltin_SyncsMetadata(t *testing.T) {
+	repo := newMemPluginRepo()
+	repo.items["builtin-audit_log"] = biz.Plugin{
+		ID: "builtin-audit_log", Key: "audit_log",
+		Name: "旧审计", Enabled: true, // 管理员已启用 + 自定义配置/排序/作用域
+		ConfigJSON: `{"max_content_length":100}`, DefaultConfigJSON: "{}",
+		ConfigSchemaJSON: "{}", SortOrder: 7, Scope: "agent-1", WorkspaceID: "",
+	}
+	svc := service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop(), nil)
+	svc.Bootstrap(context.Background())
+
+	got, err := repo.GetPlugin(context.Background(), "builtin-audit_log")
+	if err != nil {
+		t.Fatalf("get builtin-audit_log: %v", err)
+	}
+	if !strings.Contains(got.ConfigSchemaJSON, "记录模型请求") {
+		t.Errorf("config_schema_json not synced from registry, got: %s", got.ConfigSchemaJSON)
+	}
+	if got.Name != "运行日志和审计" {
+		t.Errorf("name not synced, got: %s", got.Name)
+	}
+	if !strings.Contains(got.DefaultConfigJSON, "max_content_length") {
+		t.Errorf("default_config_json not synced, got: %s", got.DefaultConfigJSON)
+	}
+	// 管理员字段必须保留
+	if !got.Enabled {
+		t.Error("enabled must be preserved (admin enabled it)")
+	}
+	if got.ConfigJSON != `{"max_content_length":100}` {
+		t.Errorf("config_json must be preserved, got: %s", got.ConfigJSON)
+	}
+	if got.SortOrder != 7 {
+		t.Errorf("sort_order must be preserved, got: %d", got.SortOrder)
+	}
+	if got.Scope != "agent-1" {
+		t.Errorf("scope must be preserved, got: %s", got.Scope)
 	}
 }

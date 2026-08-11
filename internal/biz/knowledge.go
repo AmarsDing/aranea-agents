@@ -97,6 +97,11 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	if graphLinks, gok := repo.(knowledge.CollectionLinkReader); gok {
 		uc.SetGraphRepo(graphLinks)
 	}
+	// SP2 #9：embedding 熔断端口（repo 已实现时接线；未接线时熔断读写 no-op——
+	// embed 失败仍降级词法索引，仅失去跨进程熔断记忆与后台退避重试）。
+	if ec, ok := repo.(knowledge.EmbedCircuitRepo); ok {
+		uc.SetEmbedCircuitRepo(ec)
+	}
 	// SP1-E：源文档名解析（DocNameReader）补接进反链端口（SetBacklinkRepos
 	// 可能已由 blockIndex 断言接线兜底 reader，此处仅覆盖 names）。
 	if names, nok := repo.(knowledge.DocNameReader); nok {
@@ -105,6 +110,10 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	// P2-7：unlinked mentions 内容扫描端口（未接线时降级为空）。
 	if searcher, sok := repo.(knowledge.DocContentSearcher); sok {
 		uc.SetMentionSearcher(searcher)
+	}
+	// B4 #8：wikilink 落链 recency 端口（未接线时 [[ 补全仅按文档序，无最近引用排序）。
+	if lu, luk := repo.(knowledge.LinkUsageRepo); luk {
+		uc.SetLinkUsageRepo(lu)
 	}
 	return uc
 }

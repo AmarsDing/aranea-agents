@@ -185,8 +185,10 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		ctx = triggerL4Reconsolidation(ctx, deps, result.L4RecalledEntityIDs)
 		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
 		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
+		// Prefix stabilization: append after the existing system block so the
+		// session-stable prefix stays intact for prompt caching (never prepend).
 		sys := trpcmodel.NewSystemMessage(memoryInjectCueContent(cue))
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -317,9 +319,10 @@ func RebuildMemoryInjectForCompaction(ctx context.Context, deps TRPCBuilderDeps,
 	}
 
 	// If no existing MemoryInject message found (edge case: first turn after
-	// compaction with no prior inject), prepend a new one.
+	// compaction with no prior inject), insert a new one after the system
+	// block (prefix stabilization — never prepend to position 0).
 	sys := trpcmodel.NewSystemMessage(newCue)
-	req.Messages = append([]trpcmodel.Message{sys}, req.Messages...)
+	req.Messages = insertAfterLastSystem(req.Messages, sys)
 }
 
 // ── memory_recalled transparency notice (R4) ─────────────────────────────

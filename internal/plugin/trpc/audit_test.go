@@ -2,8 +2,10 @@ package plugintrpc
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -11,6 +13,35 @@ import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
+
+// truncateString 按 rune 截断：中文 summary（3 字节/rune）在字节截断下必切
+// UTF-8 序列（500%3≠0），落库 JSON 出现 U+FFFD。回归：截断结果必须合法 UTF-8。
+func TestTruncateString_RuneSafe(t *testing.T) {
+	cjk := strings.Repeat("拦", 600) // 1800 字节 / 600 rune
+	got := truncateString(cjk, 500)
+	if !utf8.ValidString(got) {
+		t.Fatal("truncated string is not valid UTF-8")
+	}
+	if strings.Contains(got, "\uFFFD") {
+		t.Fatal("truncated string contains U+FFFD replacement char")
+	}
+	if n := utf8.RuneCountInString(got); n != 501 { // 500 rune + "…"
+		t.Fatalf("want 501 runes, got %d", n)
+	}
+
+	ascii := strings.Repeat("a", 600)
+	if got := truncateString(ascii, 500); len(got) != 500+len("…") {
+		t.Fatalf("ascii truncate length wrong: %d", len(got))
+	}
+
+	short := "未超限"
+	if got := truncateString(short, 500); got != short {
+		t.Fatalf("short string must be unchanged, got %q", got)
+	}
+	if got := truncateString(cjk, 0); got != cjk {
+		t.Fatal("max<=0 must return input unchanged")
+	}
+}
 
 // countingLogger counts Info calls (the only level onEvent uses).
 type countingLogger struct {

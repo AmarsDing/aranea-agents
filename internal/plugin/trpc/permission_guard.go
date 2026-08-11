@@ -53,7 +53,8 @@ func (p *PermissionGuardPlugin) beforeTool(ctx context.Context, args *trpctool.B
 	}
 	if toolInList(args.ToolName, p.cfg.DenyTools) {
 		p.base.logger.Info("plugin.permission_guard.before_tool", "status", "blocked", "tool", args.ToolName, "reason", "deny_tools")
-		p.base.record(ctx, "before_tool", "blocked")
+		p.base.recordEvent(ctx, "before_tool", "blocked",
+			fmt.Sprintf("tool %s 被 deny_tools 禁止调用", args.ToolName))
 		msg := fmt.Sprintf("permission_guard: tool %q is not permitted", args.ToolName)
 		return &trpctool.BeforeToolResult{
 			Context:      ctx,

@@ -449,6 +449,31 @@ Service 层通过 `ChatOrchestrator.admission()` 调用：
 - `internal/service/team_turn_hooks.go` → `EnforceChatTurnQuotas`（Team 整轮）
 - `internal/service/chat_orchestrator_turn_metrics.go` → `checkTeamMemberQuotas` 包装 `EnforceTeamMemberQuotas`
 
+### 3.5 配额检查契约（Reason 机器码 + 周期惰性滚动）
+
+**Reason 机器码**（`internal/biz/usage/usage.go` `QuotaCheckReason*`，API 稳定契约，调用方负责本地化，禁止直出给用户）：
+
+| 码 | 含义 | Allowed |
+|----|------|---------|
+| `no_quota` | 未配置配额记录 | true |
+| `quota_disabled` | 已配置但 `monthly_micro_usd <= 0`（不限制） | true |
+| `quota_exceeded` | 当月消耗已达上限 | false |
+| `within_quota` | 当月消耗在配额内 | true |
+
+- 拦截文案：超限时由 `QuotaExceededMessage(check)` 生成中文用户文案（含 USD 金额），`TurnAdmissionUsecase.enforceScope` 与 `Usecase.enforceQuota` 统一使用；Team 批量校验（`CheckTeamMemberQuotas`）单独生成含成员 Agent ID 的中文文案。
+- 前端映射：`web/src/features/usage/useAgentUsageQuota.ts` `QUOTA_REASON_TEXT`；未配置/未启用时不展示 已消耗/剩余/月上限 数值区（后端不统计，数值恒 0 无意义）。
+
+**周期惰性滚动（每月自动重置）**：`period_start`/`period_end` 为静态存储值，`normalizeQuotaPeriod` 在读取配额后检测 `period_end < today(UTC)`（空/非法视为过期），自动滚动为当自然月（UTC，与 `date_key` 同口径）并 best-effort 回写（回写失败仅 Warn，用内存周期继续校验，保证 enforcement 不静默失效）。三条路径共用：
+
+| 路径 | 位置 |
+|------|------|
+| 单 scope 校验 | `Usecase.CheckQuota` |
+| Team 成员批量校验 | `Usecase.CheckTeamMemberQuotas` |
+| 预算告警评估 | `Usecase.evaluateBudgetAlertsForScope` |
+
+- 滚动仅对有效配额（`monthly_micro_usd > 0`）触发；disabled 配额不写库。
+- 前端 `loadQuota` 先 `check` 后 `get`，确保表单展示滚动后的最新周期。
+
 ---
 
 ## 四、Data 层

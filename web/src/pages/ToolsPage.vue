@@ -41,16 +41,21 @@
     <tool-catalog-filters
       :search="search"
       :category="category"
+      :source="source"
       :risk-level="riskLevel"
       :enabled="enabled"
+      :abnormal="abnormal"
       :category-options="categoryOptions"
+      :source-options="sourceOptions"
       :risk-options="riskOptions"
       :enabled-options="enabledOptions"
       :loading="loading"
       @update:search="search = $event"
       @update:category="category = $event"
+      @update:source="source = $event"
       @update:risk-level="riskLevel = $event"
       @update:enabled="enabled = $event"
+      @update:abnormal="abnormal = $event"
       @reset="resetFilters"
       @refresh="loadRows"
     />
@@ -177,8 +182,10 @@ const {
   loading,
   search,
   category,
+  source,
   riskLevel,
   enabled,
+  abnormal,
   page,
   pageSize,
   error,
@@ -186,6 +193,7 @@ const {
   pageMax,
   summaryCards,
   categoryOptions,
+  sourceOptions,
   riskOptions,
   enabledOptions,
   busyId,

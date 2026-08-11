@@ -122,7 +122,8 @@ func (r *RetryAndReflectPlugin) afterTool(ctx context.Context, args *trpctool.Af
 		} else {
 			r.base.logger.Info("plugin.retry_reflect.after_tool", "status", "max_retries_exceeded", "tool", args.ToolName, "retries", n)
 		}
-		r.base.record(ctx, "after_tool", status)
+		r.base.recordEvent(ctx, "after_tool", status,
+			fmt.Sprintf("tool %s 超过最大反思重试次数（%d/%d），最近错误: %s", args.ToolName, n, r.cfg.MaxRetries, args.Error.Error()))
 		return &trpctool.AfterToolResult{}, nil
 	}
 

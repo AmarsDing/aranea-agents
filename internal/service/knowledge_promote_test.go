@@ -42,6 +42,9 @@ func (s *promoteBlockIndexStub) ListDocBlocks(_ context.Context, docID string) (
 func (s *promoteBlockIndexStub) UpdateDocLinkKeys(context.Context, string, string, []string) error {
 	return nil
 }
+func (s *promoteBlockIndexStub) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
 
 // promoteReaderStub mock PromoteBlockReader（按请求 ID 过滤）。
 type promoteReaderStub struct {

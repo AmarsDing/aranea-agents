@@ -82,6 +82,11 @@ export type ListMonitorEventsRequest = {
   eventTypes: string[] | undefined;
   // Prefix exclusion applied after the include set; e.g. ["skill.filesystem."].
   excludeEventTypes: string[] | undefined;
+  // Hide runner.completion rows already materialized as Runs (monitor_traces):
+  // rows with usage_event_id, or whose trace_id matches a trace row. Keeps the
+  // Events history deduplicated server-side so pagination total matches what
+  // the table actually renders.
+  hideLinkedCompletions: boolean | undefined;
 };
 
 export type ListMonitorEventsResponse = {
@@ -528,6 +533,9 @@ export function createMonitorServiceClient(
         request.excludeEventTypes.forEach((x) => {
           queryParams.push(`excludeEventTypes=${encodeURIComponent(x.toString())}`)
         })
+      }
+      if (request.hideLinkedCompletions) {
+        queryParams.push(`hideLinkedCompletions=${encodeURIComponent(request.hideLinkedCompletions.toString())}`)
       }
       let uri = path;
       if (queryParams.length > 0) {

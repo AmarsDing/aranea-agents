@@ -98,6 +98,7 @@ message ListToolsRequest {
   int32 page = 6;
   int32 page_size = 7;
   string sort = 8;                      // 排序字段
+  bool abnormal = 9;                    // true：仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」）
 }
 
 message ListToolsResponse {
@@ -393,7 +394,7 @@ service ToolService {
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/v1/tools` | 列表查询，支持 search/category/source/risk_level/enabled/sort 筛选，含 Summary |
+| GET | `/v1/tools` | 列表查询，支持 search/category/source/risk_level/enabled/sort/abnormal 筛选，含 Summary |
 | GET | `/v1/tools/runs` | 全局工具调用记录查询（静态路径，先于 `{id}` 注册） |
 | GET | `/v1/tools/audits` | 工具调用审计日志查询（静态路径，先于 `{id}` 注册） |
 | GET | `/v1/tools/runs/{invocation_id}/params` | 查询工具调用脱敏参数 |

@@ -101,6 +101,13 @@ message ApplyEvolutionSuggestionRequest {
 message RejectEvolutionSuggestionRequest {
   string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
   string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
+  // 拒绝原因（可选），持久化到 metadata.rejection_reason 供审计。
+  string reason = 3;
+}
+
+message RollbackEvolutionSuggestionRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string suggestion_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
 service AgentService {
@@ -117,6 +124,9 @@ service AgentService {
   }
   rpc RejectEvolutionSuggestion(RejectEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
     option (google.api.http) = { post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/reject" body: "*" };
+  }
+  rpc RollbackEvolutionSuggestion(RollbackEvolutionSuggestionRequest) returns (EvolutionSuggestion) {
+    option (google.api.http) = { post: "/v1/agents/{agent_id}/evolution/suggestions/{suggestion_id}/rollback" body: "*" };
   }
 }
 ```
@@ -350,11 +360,12 @@ func (s *AgentService) GetAgentEvolutionMetrics(ctx, req) (*v1.EvolutionMetricsR
 func (s *AgentService) GetAgentEvolutionSuggestions(ctx, req) (*v1.ListEvolutionSuggestionsResponse, error)
 func (s *AgentService) ApplyEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggestion, error)
 func (s *AgentService) RejectEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggestion, error)
+func (s *AgentService) RollbackEvolutionSuggestion(ctx, req) (*v1.EvolutionSuggestion, error)
 ```
 
 `AgentService` 通过 `evoUC *biz.EvolutionUsecase` 字段持有 usecase（见 `internal/service/agent.go`）。
 
-**关键设计**：`ApplyEvolutionSuggestion` 在应用建议后调用 `invalidateAgentBuildCache(req.GetAgentId())` 失效 Agent 构建缓存，避免下次加载 Agent 时使用过期的 prompt files。
+**关键设计**：`ApplyEvolutionSuggestion` 在应用建议后调用 `invalidateAgentBuildCache(req.GetAgentId())` 失效 Agent 构建缓存，避免下次加载 Agent 时使用过期的 prompt files。`RejectEvolutionSuggestion` 将可选 `reason` 持久化到建议 metadata 的 `rejection_reason` 供审计；`RollbackEvolutionSuggestion` 仅允许 `applied` 状态回滚，恢复 apply 前快照（snapshot）后同样失效构建缓存。
 
 ---
 

@@ -38,8 +38,10 @@ const props = withDefaults(
     candidates?: string[];
     /** P2-5：`[[target#` 标题补全数据源（容器提供：已打开 tab 的大纲标题） */
     getHeadings?: (target: string) => string[];
+    /** B4 #8：空查询 [[ 补全的最近引用名次（归一化名 → 名次，0=最近） */
+    linkRecencyRank?: ReadonlyMap<string, number>;
   }>(),
-  { readOnly: false, candidates: () => [], getHeadings: undefined },
+  { readOnly: false, candidates: () => [], getHeadings: undefined, linkRecencyRank: undefined },
 );
 
 const emit = defineEmits<{
@@ -49,6 +51,8 @@ const emit = defineEmits<{
   'open-doc': [target: string, heading?: string];
   /** 目标不存在：新建并打开（Obsidian 语义） */
   'create-doc': [target: string];
+  /** B4 #8：wikilink 补全落链（target 为选中的原始候选 relPath，供上报 recency） */
+  'pick-link': [target: string];
 }>();
 
 const { t } = useI18n();
@@ -107,7 +111,10 @@ class WikiLinkWidget extends WidgetType {
 
   eq(other: WikiLinkWidget): boolean {
     return (
-      other.label === this.label && other.target === this.target && other.heading === this.heading && other.dangling === this.dangling
+      other.label === this.label &&
+      other.target === this.target &&
+      other.heading === this.heading &&
+      other.dangling === this.dangling
     );
   }
 
@@ -115,7 +122,11 @@ class WikiLinkWidget extends WidgetType {
     const el = document.createElement('span');
     el.className = 'kb-wikilink' + (this.dangling ? ' kb-wikilink--dangling' : '');
     el.textContent = this.label;
-    el.title = this.dangling ? t('knowledgePage.workbench.wikilinkDangling') : this.heading ? `${this.target}#${this.heading}` : this.target;
+    el.title = this.dangling
+      ? t('knowledgePage.workbench.wikilinkDangling')
+      : this.heading
+        ? `${this.target}#${this.heading}`
+        : this.target;
     el.onmousedown = (e: MouseEvent) => {
       // 编辑态 Ctrl/Cmd+点击；预览态单击
       if (!props.readOnly && !e.ctrlKey && !e.metaKey) return;
@@ -308,19 +319,34 @@ const kbTheme = EditorView.theme(
     '.kb-lp-h5': { fontSize: '1.08em', fontWeight: '600' },
     '.kb-lp-h6': { fontSize: '1.02em', fontWeight: '600', color: 'var(--kb-text-dim)' },
     '.kb-lp-bullet': { color: 'var(--kb-accent-cyan)' },
+    // U3 wikilink 芯片（研究 F2）：accent 10% 底 + 6px 圆角；hover 底色升 20% + 微光
     '.kb-wikilink': {
       display: 'inline-block',
-      padding: '0 8px',
-      borderRadius: '999px',
-      background: 'rgba(79, 216, 255, 0.1)',
-      border: '1px solid rgba(79, 216, 255, 0.25)',
+      padding: '1px 7px',
+      borderRadius: '6px',
+      background: 'color-mix(in srgb, var(--kb-accent-cyan) 10%, transparent)',
+      border: '1px solid color-mix(in srgb, var(--kb-accent-cyan) 22%, transparent)',
       color: 'var(--kb-accent-cyan)',
       cursor: 'pointer',
+      transition: 'background 150ms ease-out, border-color 150ms ease-out, box-shadow 150ms ease-out',
     },
+    '.kb-wikilink:hover': {
+      background: 'color-mix(in srgb, var(--kb-accent-cyan) 20%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--kb-accent-cyan) 38%, transparent)',
+      boxShadow: '0 0 12px color-mix(in srgb, var(--kb-accent-cyan) 25%, transparent)',
+    },
+    // 断链降级：虚线边 + 降透明度，与可解析链拉开视觉层级
     '.kb-wikilink--dangling': {
-      color: 'var(--kb-text-dim)',
-      border: '1px dashed rgba(122, 138, 165, 0.5)',
-      background: 'rgba(122, 138, 165, 0.08)',
+      color: 'var(--kb-text-faint)',
+      border: '1px dashed color-mix(in srgb, var(--kb-text-dim) 45%, transparent)',
+      background: 'color-mix(in srgb, var(--kb-text-dim) 8%, transparent)',
+      opacity: '0.6',
+    },
+    '.kb-wikilink--dangling:hover': {
+      background: 'color-mix(in srgb, var(--kb-text-dim) 14%, transparent)',
+      borderColor: 'color-mix(in srgb, var(--kb-text-dim) 60%, transparent)',
+      boxShadow: 'none',
+      opacity: '0.8',
     },
   },
   { dark: true },
@@ -355,7 +381,14 @@ function buildExtensions(): Extension[] {
     syntaxHighlighting(kbHighlight),
     closeBrackets(),
     autocompletion({
-      override: [wikiLinkCompletionSource(() => props.candidates ?? [], (target) => props.getHeadings?.(target) ?? [])],
+      override: [
+        wikiLinkCompletionSource(
+          () => props.candidates ?? [],
+          (target) => props.getHeadings?.(target) ?? [],
+          () => props.linkRecencyRank ?? new Map(),
+          (target) => emit('pick-link', target),
+        ),
+      ],
       activateOnTyping: true,
       maxRenderedOptions: 20,
     }),

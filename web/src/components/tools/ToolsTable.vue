@@ -27,17 +27,29 @@
 
     <template #body-cell-risk="props">
       <q-td :props="props">
-        <q-select
-          dense
-          outlined
-          emit-value
-          map-options
-          :model-value="props.row.risk_level"
-          :options="riskLevelOptions"
-          class="tool-risk-inline-select"
-          :loading="busyId === props.row.id"
-          @update:model-value="$emit('updateRisk', props.row, String($event ?? 'low'))"
-        />
+        <div class="row items-center no-wrap">
+          <q-icon name="circle" size="8px" :color="riskQuasarColor(props.row.risk_level)" class="q-mr-xs" />
+          <q-select
+            dense
+            outlined
+            emit-value
+            map-options
+            :model-value="props.row.risk_level"
+            :options="riskLevelOptions"
+            class="tool-risk-inline-select"
+            :loading="busyId === props.row.id"
+            @update:model-value="$emit('updateRisk', props.row, String($event ?? 'low'))"
+          >
+            <template #option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section avatar class="tool-risk-option-dot">
+                  <q-icon name="circle" size="8px" :color="riskQuasarColor(scope.opt.value)" />
+                </q-item-section>
+                <q-item-section>{{ scope.opt.label }}</q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+        </div>
         <q-badge v-if="props.row.requires_confirmation" rounded color="warning" class="q-ml-xs">
           需确认
           <q-tooltip>{{ policyChip.requires_confirmation.tooltip }}</q-tooltip>
@@ -66,12 +78,59 @@
       </q-td>
     </template>
 
+    <template #body-cell-overrides="props">
+      <q-td :props="props">
+        <q-badge
+          rounded
+          :color="props.row.agent_override_count > 0 ? 'primary' : 'grey'"
+          :outline="props.row.agent_override_count <= 0"
+        >
+          {{ props.row.agent_override_count }}
+        </q-badge>
+        <q-tooltip>有 allow / deny 覆盖的 Agent 数</q-tooltip>
+      </q-td>
+    </template>
+
     <template #body-cell-stats="props">
       <q-td :props="props">
         <div class="text-weight-medium">{{ props.row.invoke_count }} 次</div>
-        <div class="text-caption app-registry-muted-caption">
-          24h {{ props.row.invoke_count_24h }} · 失败 {{ props.row.failure_count }}
+        <div class="text-caption app-registry-muted-caption">24h {{ props.row.invoke_count_24h }}</div>
+      </q-td>
+    </template>
+
+    <template #body-cell-success_rate="props">
+      <q-td :props="props">
+        <div class="text-weight-medium" :class="`text-${toolSuccessRateColor(props.row)}`">
+          {{ formatToolSuccessRate(props.row) }}
         </div>
+        <div class="text-caption app-registry-muted-caption">
+          成功 {{ props.row.success_count }} · 失败 {{ props.row.failure_count + props.row.blocked_count }}
+        </div>
+      </q-td>
+    </template>
+
+    <template #body-cell-duration="props">
+      <q-td :props="props">
+        <div>avg {{ formatInvocationDuration(props.row.avg_duration_ms ?? undefined) }}</div>
+        <div class="text-caption app-registry-muted-caption">
+          P95 {{ formatInvocationDuration(props.row.p95_duration_ms) }}
+        </div>
+      </q-td>
+    </template>
+
+    <template #body-cell-last="props">
+      <q-td :props="props">
+        <template v-if="props.row.last_invoked_at">
+          <div class="row items-center no-wrap q-gutter-xs">
+            <q-badge rounded :color="toolInvocationStatusColor(props.row.last_status)">
+              {{ toolInvocationStatusLabel(props.row.last_status) }}
+            </q-badge>
+          </div>
+          <div class="text-caption app-registry-muted-caption q-mt-xs">
+            {{ formatInvocationWhen(props.row.last_invoked_at) }}
+          </div>
+        </template>
+        <span v-else class="app-registry-muted-caption">未调用</span>
       </q-td>
     </template>
 
@@ -107,10 +166,11 @@
             class="app-registry-icon-btn"
             color="negative"
             icon="delete"
+            :disable="props.row.readonly"
             :loading="busyId === props.row.id"
             @click="$emit('remove', props.row)"
           >
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ props.row.readonly ? '内置/只读工具不可删除' : '删除' }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -124,10 +184,17 @@ import type { Tool } from '../../features/tools/types';
 import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
 import {
   TOOL_TABLE_COLUMNS,
+  formatInvocationDuration,
+  formatInvocationWhen,
+  formatToolSuccessRate,
   riskLevelOptions,
+  riskQuasarColor,
   runtimeKindHint,
   runtimeStatusLabel,
   runtimeStatusColor,
+  toolInvocationStatusColor,
+  toolInvocationStatusLabel,
+  toolSuccessRateColor,
 } from './toolUi';
 
 defineProps<{
@@ -149,3 +216,11 @@ defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 const policyChip = TOOL_POLICY_CHIP_COPY;
 </script>
+
+<style scoped>
+/* 风险下拉选项的色点列：压缩 Quasar avatar 默认 56px 最小宽度 */
+.tool-risk-option-dot {
+  min-width: 16px;
+  padding-right: 4px;
+}
+</style>

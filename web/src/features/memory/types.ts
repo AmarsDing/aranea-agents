@@ -153,6 +153,21 @@ export type MemoryFactListResult = {
   total: number;
   limit: number;
   offset: number;
+  /** 全量筛选集（忽略 status）下的活跃/归档计数，用于知识面板统计行。 */
+  active_count?: number;
+  archived_count?: number;
+};
+
+/** ReviewMemoryFact 治理动作（memory.md §9.4）。refine 需携带替换字段。 */
+export type FactReviewAction = 'confirm' | 'reject' | 'archive' | 'dispute' | 'deprecate' | 'refine';
+
+export type FactReviewPayload = {
+  fact_id: string;
+  action: FactReviewAction;
+  statement?: string;
+  details_markdown?: string;
+  fact_kind?: string;
+  tags_json?: string;
 };
 
 export type MemoryEntity = {

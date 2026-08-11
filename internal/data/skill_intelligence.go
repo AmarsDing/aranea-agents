@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/biz/types"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/experiencereport"
+	"aranea-agents/internal/data/ent/platformskill"
 	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/pkg/apierror"
@@ -51,7 +52,9 @@ func (r *SkillIntelligenceRepo) ListBySkill(ctx context.Context, skillID string,
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
-	return mapEntReports(rows), nil
+	reports := mapEntReports(rows)
+	r.backfillReportSkillNames(ctx, reports)
+	return reports, nil
 }
 
 func (r *SkillIntelligenceRepo) GetByID(ctx context.Context, id string) (*biz.ExperienceReport, error) {
@@ -60,6 +63,11 @@ func (r *SkillIntelligenceRepo) GetByID(ctx context.Context, id string) (*biz.Ex
 		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
 	report := mapEntReport(row)
+	if report.SkillName == "" && report.SkillID != "" {
+		reports := []biz.ExperienceReport{report}
+		r.backfillReportSkillNames(ctx, reports)
+		report = reports[0]
+	}
 	return &report, nil
 }
 
@@ -81,7 +89,9 @@ func (r *SkillIntelligenceRepo) ListByTimeRange(ctx context.Context, from, to ti
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
-	return mapEntReports(rows), nil
+	reports := mapEntReports(rows)
+	r.backfillReportSkillNames(ctx, reports)
+	return reports, nil
 }
 
 // buildExperienceReportPredicates constructs dynamic Ent predicates from optional
@@ -124,7 +134,9 @@ func (r *SkillIntelligenceRepo) ListFiltered(ctx context.Context, skillID string
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
-	return mapEntReports(rows), count, nil
+	reports := mapEntReports(rows)
+	r.backfillReportSkillNames(ctx, reports)
+	return reports, count, nil
 }
 
 // ── ExperienceReportStatsReader ────────────────────────────────────────────────
@@ -176,7 +188,9 @@ func (r *SkillIntelligenceRepo) GetRootCauseReportsFiltered(ctx context.Context,
 	if err != nil {
 		return nil, entErrToBizErr(err, "SKILL_INTELLIGENCE")
 	}
-	return mapEntReports(rows), nil
+	reports := mapEntReports(rows)
+	r.backfillReportSkillNames(ctx, reports)
+	return reports, nil
 }
 
 // ── ExperienceReportWriter ────────────────────────────────────────────────────
@@ -525,7 +539,69 @@ func (r *SkillIntelligenceRepo) ListUnanalyzed(ctx context.Context, batchSize in
 	for _, row := range rows {
 		result = append(result, mapEntSkillInvocationToWrite(row))
 	}
+	// skill_invocation 不冗余存 skill_name；报告生成依赖 SkillName（FN-7），
+	// 此处批量联表 platform_skill 回填，保证新经验报告携带技能名。
+	r.backfillInvocationSkillNames(ctx, result)
 	return result, nil
+}
+
+// backfillInvocationSkillNames fills SkillName on invocation writes via a single
+// batch lookup against platform_skill. Best-effort: lookup failure leaves names empty.
+func (r *SkillIntelligenceRepo) backfillInvocationSkillNames(ctx context.Context, writes []biz.SkillInvocationWrite) {
+	idSet := map[string]struct{}{}
+	for _, w := range writes {
+		if w.SkillID != "" && w.SkillName == "" {
+			idSet[w.SkillID] = struct{}{}
+		}
+	}
+	names := r.querySkillNames(ctx, idSet)
+	for i := range writes {
+		if writes[i].SkillName == "" {
+			writes[i].SkillName = names[writes[i].SkillID]
+		}
+	}
+}
+
+// backfillReportSkillNames fills SkillName on reports whose stored skill_name is
+// empty (legacy rows written before the backfill existed). Best-effort.
+func (r *SkillIntelligenceRepo) backfillReportSkillNames(ctx context.Context, reports []biz.ExperienceReport) {
+	idSet := map[string]struct{}{}
+	for _, rep := range reports {
+		if rep.SkillID != "" && rep.SkillName == "" {
+			idSet[rep.SkillID] = struct{}{}
+		}
+	}
+	names := r.querySkillNames(ctx, idSet)
+	for i := range reports {
+		if reports[i].SkillName == "" {
+			reports[i].SkillName = names[reports[i].SkillID]
+		}
+	}
+}
+
+// querySkillNames batch-resolves platform_skill IDs to display names.
+// Returns an empty map (not error) on lookup failure — name backfill is best-effort.
+func (r *SkillIntelligenceRepo) querySkillNames(ctx context.Context, idSet map[string]struct{}) map[string]string {
+	if len(idSet) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	skills, err := r.data.RW().Read(ctx).PlatformSkill.Query().
+		Where(platformskill.IDIn(ids...)).
+		Select(platformskill.FieldID, platformskill.FieldName).
+		All(ctx)
+	if err != nil {
+		r.lg.Warn("backfill skill names failed", loggateway.StepID("data.skill_intelligence"), loggateway.Err(err))
+		return nil
+	}
+	names := make(map[string]string, len(skills))
+	for _, s := range skills {
+		names[s.ID] = s.Name
+	}
+	return names
 }
 
 func (r *SkillIntelligenceRepo) MarkAnalyzed(ctx context.Context, activationID string) error {

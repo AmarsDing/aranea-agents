@@ -126,7 +126,7 @@
 
     <!-- 新建标签 -->
     <q-dialog v-model="createOpen" persistent>
-      <q-card class="skill-tags-dialog-card">
+      <q-card class="skill-tags-dialog-card app-dialog-card app-dialog-card--sm">
         <q-card-section class="text-h6">{{ $t('skillTags.createDialogTitle') }}</q-card-section>
         <q-card-section class="q-pt-none">
           <q-input
@@ -157,7 +157,7 @@
 
     <!-- 改名 -->
     <q-dialog v-model="renameOpen" persistent>
-      <q-card class="skill-tags-dialog-card">
+      <q-card class="skill-tags-dialog-card app-dialog-card app-dialog-card--sm">
         <q-card-section class="text-h6">{{ $t('skillTags.renameDialogTitle') }}</q-card-section>
         <q-card-section class="q-pt-none">
           <div class="text-body2 text-grey-7 q-mb-sm">
@@ -253,8 +253,18 @@ const filteredGroups = computed(() => {
     }));
 });
 
+// 与后端 normalizeTagName 同一规则：小写字母/数字开头，可用 _ -，可选维度前缀。
+const TAG_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*(:[a-z0-9][a-z0-9_-]*)?$/;
+
 function errMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
+  const msg = err instanceof Error ? err.message : '';
+  if (!msg) return fallback;
+  // 后端标签校验错误中文化映射（后端错误消息统一英文，见 biz/skill/tag.go）。
+  if (msg.includes('tag name must match')) return t('skillTags.nameInvalid');
+  if (msg.includes('tag name is empty')) return t('skillTags.nameRequired');
+  if (msg.includes('exceeds 128')) return t('skillTags.nameTooLong');
+  if (msg.includes('already exists') || msg.toLowerCase().includes('conflict')) return t('skillTags.nameConflict');
+  return msg;
 }
 
 async function reload() {
@@ -272,14 +282,19 @@ function openCreate() {
 }
 
 async function onCreate() {
-  if (!createName.value.trim()) {
+  const name = createName.value.trim();
+  if (!name) {
     createError.value = t('skillTags.nameRequired');
+    return;
+  }
+  if (!TAG_NAME_PATTERN.test(name.toLowerCase())) {
+    createError.value = t('skillTags.nameInvalid');
     return;
   }
   creating.value = true;
   createError.value = '';
   try {
-    await skillsStore.createTag(createName.value);
+    await skillsStore.createTag(name);
     createOpen.value = false;
     $q.notify({ type: 'positive', message: t('skillTags.created') });
   } catch (err) {
@@ -309,14 +324,19 @@ function openRename(tag: SkillTagInfo) {
 async function onRename() {
   const target = renameTarget.value;
   if (!target) return;
-  if (!renameName.value.trim()) {
+  const name = renameName.value.trim();
+  if (!name) {
     renameError.value = t('skillTags.newNameRequired');
+    return;
+  }
+  if (!TAG_NAME_PATTERN.test(name.toLowerCase())) {
+    renameError.value = t('skillTags.nameInvalid');
     return;
   }
   renaming.value = true;
   renameError.value = '';
   try {
-    const rewritten = await skillsStore.renameTag(target.name, renameName.value);
+    const rewritten = await skillsStore.renameTag(target.name, name);
     renameOpen.value = false;
     $q.notify({ type: 'positive', message: t('skillTags.renamed', { count: rewritten }) });
   } catch (err) {

@@ -17,7 +17,9 @@
               <q-item-label>{{ file.name }}</q-item-label>
               <q-item-label caption class="agent-file-caption">
                 {{ fileTokenLabel(file.name, file.body) }}
-                <span v-if="!isInjected(file.name)" class="agent-file-not-injected">· 当前模式不注入</span>
+                <span v-if="!isInjected(file.name)" class="agent-file-not-injected"
+                  >· {{ $t('agentSettings.files.notInjected') }}</span
+                >
               </q-item-label>
             </q-item-section>
             <q-item-section v-if="isRemovable(file.name)" side>
@@ -30,14 +32,14 @@
                 class="agent-file-item__remove"
                 @click.stop="$emit('remove-file', file.name)"
               >
-                <q-tooltip>移除该文件（保存后生效）</q-tooltip>
+                <q-tooltip>{{ $t('agentSettings.files.removeTooltip') }}</q-tooltip>
               </q-btn>
             </q-item-section>
           </q-item>
         </q-list>
 
         <div v-if="availableOptionalFiles?.length" class="agent-file-optional flex-shrink-0">
-          <div class="agent-file-optional__title">可选文件</div>
+          <div class="agent-file-optional__title">{{ $t('agentSettings.files.optionalTitle') }}</div>
           <q-btn
             v-for="file in availableOptionalFiles"
             :key="file.name"
@@ -47,7 +49,7 @@
             color="primary"
             icon="add"
             size="sm"
-            :label="`添加 ${file.name}`"
+            :label="$t('agentSettings.files.addOptional', { name: file.name })"
             @click="$emit('add-optional-file', file.name)"
           />
         </div>
@@ -62,7 +64,13 @@
             <div class="text-caption agent-file-caption">{{ activeFileMeta.caption }}</div>
           </div>
           <div class="row q-gutter-sm">
-            <q-btn outline rounded icon="refresh" label="重新召唤" @click="$emit('confirm-reload')" />
+            <q-btn
+              outline
+              rounded
+              icon="refresh"
+              :label="$t('agentSettings.files.reload')"
+              @click="$emit('confirm-reload')"
+            />
             <!-- PGO-3-WEB-03: AIRefineButton for file Tab editor. -->
             <AIRefineButton
               scope="agent.file"
@@ -79,14 +87,16 @@
               rounded
               unelevated
               icon="save"
-              label="保存"
+              :label="$t('agentSettings.files.save')"
               :disable="!dirty"
               @click="$emit('save')"
             />
           </div>
         </div>
         <q-input v-model="bodyModel" class="q-mt-md app-markdown-editor" outlined type="textarea" label="Markdown" />
-        <div class="agent-file-editor__footer flex-shrink-0">Token 估算：约 {{ activeTokenCount }} token</div>
+        <div class="agent-file-editor__footer flex-shrink-0">
+          {{ $t('agentSettings.files.tokenEstimateFooter', { count: activeTokenCount }) }}
+        </div>
       </div>
     </template>
   </q-splitter>
@@ -94,10 +104,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { AgentFile } from './agentUi';
 import { isFileInjectedInMode, isRemovableAgentFile, tokenEstimateFor, tokenText } from './agentUi';
 import AIRefineButton from './AIRefineButton.vue';
 import type { RefineResponse } from '../../features/agents/aiRefine';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   files: AgentFile[];
@@ -122,7 +135,7 @@ const props = defineProps<{
 
 function fileTokenLabel(name: string, body: string) {
   const n = props.fileTokenByName?.[name];
-  if (n != null && n > 0) return `估计 ${n} token`;
+  if (n != null && n > 0) return t('agentSettings.files.tokenEstimateLabel', { n });
   return tokenText(body);
 }
 

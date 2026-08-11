@@ -144,7 +144,24 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 
 ---
 
-## 8. 依赖与风险
+## 8. Agent 钩子面板增强（2026-08-11 ✅）
+
+针对「Agent 管理-钩子设置」界面审查发现的问题（标签英文、缺名称/启停/删除、误建全局规则、工具名/事件类型手输、全局生效规则不可见、保存后全量重拉）的修复：
+
+| ID | 项 | 状态 |
+|----|-----|------|
+| CB-R3-01 | 回调点/动作标签 i18n（`callbackPoints`/`actionTypes`，`callbackPointLabel` 表格标签） | ✅ |
+| CB-R3-02 | Agent 面板创建/编辑补名称 + 启用字段；行内启停 toggle 与删除确认 | ✅ |
+| CB-R3-03 | `CallbackEditor` `lock-agent-id`：Agent 上下文锁定 `condition.agent_id`，防误建全局规则 | ✅ |
+| CB-R3-04 | `tool_name` 下拉（Agent 工具目录注入，未注入回退手输）；`event_type` 下拉（`HOOK_EVENT_TYPE_VALUES`，与 `hook_events.go` `eventTypeLabel` 对齐） | ✅ |
+| CB-R3-05 | Agent 面板新增「生效中的全局规则」只读分组（`HooksTable readonly` 模式） | ✅ |
+| CB-R3-06 | 创建/编辑/启停/删除后本地行更新（`upsertLocalRow`/`replaceLocalRow`），不再全量重拉 | ✅ |
+
+测试：`web/src/features/agents/__tests__/useAgentHooksPanel.spec.ts`（10 例）。
+
+---
+
+## 9. 依赖与风险
 
 - **框架**：依赖 trpc-agent-go `llmagent.With*Callbacks` 与 `plugin.Plugin.OnEvent`
 - **Hook 兼容**：`config_json` 仅可选扩展字段

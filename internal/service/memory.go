@@ -210,6 +210,47 @@ func (s *MemoryService) ReviewPIIFact(ctx context.Context, req *v1.ReviewPIIFact
 	return &v1.ReviewPIIFactResponse{Fact: fact}, nil
 }
 
+// ReviewMemoryFact applies a single-fact user governance action (confirm /
+// reject / archive / dispute / deprecate / refine) via the column-targeted
+// review path — never UpsertMemoryFact, which would silently wipe links/
+// keywords/metadata on feedback-only actions (memory.md §9.4).
+func (s *MemoryService) ReviewMemoryFact(ctx context.Context, req *v1.ReviewMemoryFactRequest) (*v1.ReviewMemoryFactResponse, error) {
+	if err := s.requireAdmin(); err != nil {
+		return nil, err
+	}
+	factID := strings.TrimSpace(req.GetFactId())
+	if factID == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "fact_id is required")
+	}
+	action := strings.TrimSpace(req.GetAction())
+	switch action {
+	case biz.FactReviewConfirm, biz.FactReviewReject, biz.FactReviewArchive,
+		biz.FactReviewDispute, biz.FactReviewDeprecate, biz.FactReviewRefine:
+	default:
+		return nil, apierror.BadRequest(apierror.DomainMemory, "action must be one of confirm|reject|archive|dispute|deprecate|refine")
+	}
+	in := biz.FactReview{
+		FactID:          factID,
+		Action:          action,
+		Statement:       strings.TrimSpace(req.GetStatement()),
+		DetailsMarkdown: req.GetDetailsMarkdown(),
+		FactKind:        strings.TrimSpace(req.GetFactKind()),
+		TagsJSON:        strings.TrimSpace(req.GetTagsJson()),
+	}
+	if action == biz.FactReviewRefine && in.Statement == "" {
+		return nil, apierror.BadRequest(apierror.DomainMemory, "statement is required for refine")
+	}
+	raw, err := s.admin.ReviewFact(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	fact, err := pbMemoryFact(raw)
+	if err != nil || fact == nil {
+		return nil, apierror.Internal(apierror.DomainMemory, "failed to hydrate fact after review")
+	}
+	return &v1.ReviewMemoryFactResponse{Fact: fact}, nil
+}
+
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
 	if err := s.requireAdmin(); err != nil {
 		return nil, err
@@ -301,7 +342,7 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if scopeType == "" && scopeID != "" {
 		scopeType = "user"
 	}
-	rows, total, lim, off, err := s.admin.ListFactRows(ctx, biz.ListFactRowsParams{
+	rows, total, active, archived, err := s.admin.ListFactRows(ctx, biz.ListFactRowsParams{
 		ScopeType: scopeType,
 		ScopeID:   scopeID,
 		Kind:      strings.TrimSpace(req.GetKind()),
@@ -314,7 +355,13 @@ func (s *MemoryService) ListMemoryFacts(ctx context.Context, req *v1.ListMemoryF
 	if err != nil {
 		return nil, err
 	}
-	out := &v1.ListMemoryFactsResponse{Total: total, Limit: lim, Offset: off}
+	out := &v1.ListMemoryFactsResponse{
+		Total:         total,
+		Limit:         req.GetLimit(),
+		Offset:        req.GetOffset(),
+		ActiveCount:   active,
+		ArchivedCount: archived,
+	}
 	for _, raw := range rows {
 		f, e := pbMemoryFact(raw)
 		if e != nil {

@@ -26,6 +26,15 @@ func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, bo
 	return u.rebuildBlockIndex(ctx, collectionID, docID, body, nil, true)
 }
 
+// ListDocsMissingBlockIndex 列出「已索引但块索引缺失」的文档 ID（SP2 #4 下游收敛
+// 校验）；未接线块端口时返回空（收敛扫描 no-op）。
+func (u *Usecase) ListDocsMissingBlockIndex(ctx context.Context, collectionID string, limit int) ([]string, error) {
+	if u == nil || u.blockIndex == nil {
+		return nil, nil
+	}
+	return u.blockIndex.ListDocsMissingBlockIndex(ctx, collectionID, limit)
+}
+
 // rebuildBlockIndex 内部实现：visible 为预解析可见集合集（SP1-H 全量重建整批
 // 提升一次）；nil 时按文档现查（单文档写路径语义不变）。
 // allowBackfill 区分写路径（true，执行惰性锚点回填）与全量重建/回填自触发

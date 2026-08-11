@@ -22,6 +22,7 @@ import type {
   KnowledgeDocumentContent,
   MergeEntitiesResult,
   KnowledgeLink,
+  LinkUseEntry,
   ListCollectionsResult,
   ListDocumentsResult,
   PromoteResult,
@@ -342,6 +343,32 @@ export async function listUnlinkedMentions(docId: string): Promise<UnlinkedMenti
   );
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapUnlinkedMention) : [];
+}
+
+/** recordLinkUse wikilink 落链上报（B4 #8）：补全选中目标后 upsert recency 行。
+ *  best-effort——调用方应 catch 忽略失败（recency 非正确性依赖）。 */
+export async function recordLinkUse(collectionId: string, docId: string): Promise<void> {
+  await kratosApi.post(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/link-uses`, {
+    collection_id: collectionId,
+    doc_id: docId,
+  });
+}
+
+/** listRecentLinkUses 最近落链目标（B4 #8）：last_used_at 降序，驱动空查询 [[ 补全排序。 */
+export async function listRecentLinkUses(collectionId: string, limit = 32): Promise<LinkUseEntry[]> {
+  const res = asRecord(
+    (
+      await kratosApi.get(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/link-uses`, {
+        params: { limit },
+      })
+    ).data,
+  );
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    return { doc_id: pickStr(r, 'doc_id', 'docId'), last_used_at: pickStr(r, 'last_used_at', 'lastUsedAt') };
+  });
 }
 
 // ---------- Promote（SP1-G/I-3 晋升到团队库） ----------

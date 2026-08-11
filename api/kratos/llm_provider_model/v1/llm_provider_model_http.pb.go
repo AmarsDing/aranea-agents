@@ -34,7 +34,7 @@ type LlmProviderModelServiceHTTPServer interface {
 	DeleteProviderModel(context.Context, *DeleteProviderModelRequest) (*emptypb.Empty, error)
 	GetProviderModel(context.Context, *GetProviderModelRequest) (*ProviderModel, error)
 	InspectProviderModel(context.Context, *InspectProviderModelRequest) (*InspectProviderModelResponse, error)
-	ListProviderModels(context.Context, *emptypb.Empty) (*ListProviderModelsResponse, error)
+	ListProviderModels(context.Context, *ListProviderModelsRequest) (*ListProviderModelsResponse, error)
 	// RevealProviderModelCredentials RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
 	// Requires the same authentication as other admin APIs; access is audit-logged (no secret values in logs).
 	RevealProviderModelCredentials(context.Context, *RevealProviderModelCredentialsRequest) (*RevealProviderModelCredentialsResponse, error)
@@ -56,13 +56,13 @@ func RegisterLlmProviderModelServiceHTTPServer(s *http.Server, srv LlmProviderMo
 
 func _LlmProviderModelService_ListProviderModels0_HTTP_Handler(srv LlmProviderModelServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ListProviderModelsRequest
 		if err := ctx.BindQuery(&in); err != nil {
 			return err
 		}
 		http.SetOperation(ctx, OperationLlmProviderModelServiceListProviderModels)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ListProviderModels(ctx, req.(*emptypb.Empty))
+			return srv.ListProviderModels(ctx, req.(*ListProviderModelsRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -235,7 +235,7 @@ type LlmProviderModelServiceHTTPClient interface {
 	DeleteProviderModel(ctx context.Context, req *DeleteProviderModelRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	GetProviderModel(ctx context.Context, req *GetProviderModelRequest, opts ...http.CallOption) (rsp *ProviderModel, err error)
 	InspectProviderModel(ctx context.Context, req *InspectProviderModelRequest, opts ...http.CallOption) (rsp *InspectProviderModelResponse, err error)
-	ListProviderModels(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ListProviderModelsResponse, err error)
+	ListProviderModels(ctx context.Context, req *ListProviderModelsRequest, opts ...http.CallOption) (rsp *ListProviderModelsResponse, err error)
 	// RevealProviderModelCredentials RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
 	// Requires the same authentication as other admin APIs; access is audit-logged (no secret values in logs).
 	RevealProviderModelCredentials(ctx context.Context, req *RevealProviderModelCredentialsRequest, opts ...http.CallOption) (rsp *RevealProviderModelCredentialsResponse, err error)
@@ -303,7 +303,7 @@ func (c *LlmProviderModelServiceHTTPClientImpl) InspectProviderModel(ctx context
 	return &out, nil
 }
 
-func (c *LlmProviderModelServiceHTTPClientImpl) ListProviderModels(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ListProviderModelsResponse, error) {
+func (c *LlmProviderModelServiceHTTPClientImpl) ListProviderModels(ctx context.Context, in *ListProviderModelsRequest, opts ...http.CallOption) (*ListProviderModelsResponse, error) {
 	var out ListProviderModelsResponse
 	pattern := "/v1/llm-provider-models"
 	path := binding.EncodeURL(pattern, in, true)

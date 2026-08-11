@@ -17,6 +17,7 @@ type mockRepo struct {
 	updateCfgFn func(ctx context.Context, id string, configJSON string) (Plugin, error)
 	updateSOFn  func(ctx context.Context, id string, sortOrder int) (Plugin, error)
 	updateScFn  func(ctx context.Context, id string, scope string) (Plugin, error)
+	syncMetaFn  func(ctx context.Context, p Plugin) (Plugin, error)
 	incrStatFn  func(ctx context.Context, pluginKey string, delta StatUpdate) error
 }
 
@@ -43,6 +44,9 @@ func (m *mockRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder int
 }
 func (m *mockRepo) UpdatePluginScope(ctx context.Context, id string, scope string) (Plugin, error) {
 	return m.updateScFn(ctx, id, scope)
+}
+func (m *mockRepo) SyncBuiltinMeta(ctx context.Context, p Plugin) (Plugin, error) {
+	return m.syncMetaFn(ctx, p)
 }
 func (m *mockRepo) IncrementStats(ctx context.Context, pluginKey string, delta StatUpdate) error {
 	return m.incrStatFn(ctx, pluginKey, delta)
@@ -86,6 +90,7 @@ func noOpRepo() *mockRepo {
 		updateScFn: func(_ context.Context, id string, scope string) (Plugin, error) {
 			return Plugin{ID: id, Scope: scope}, nil
 		},
+		syncMetaFn: func(_ context.Context, p Plugin) (Plugin, error) { return p, nil },
 		incrStatFn: func(_ context.Context, _ string, _ StatUpdate) error { return nil },
 	}
 }

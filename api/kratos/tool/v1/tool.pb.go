@@ -444,15 +444,17 @@ func (x *ToolSummary) GetFailureRate_24H() float64 {
 }
 
 type ListToolsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Search        string                 `protobuf:"bytes,1,opt,name=search,proto3" json:"search,omitempty"`
-	Category      string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
-	Source        string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	RiskLevel     string                 `protobuf:"bytes,4,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
-	Enabled       string                 `protobuf:"bytes,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	Page          int32                  `protobuf:"varint,6,opt,name=page,proto3" json:"page,omitempty"`
-	PageSize      int32                  `protobuf:"varint,7,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	Sort          string                 `protobuf:"bytes,8,opt,name=sort,proto3" json:"sort,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Search    string                 `protobuf:"bytes,1,opt,name=search,proto3" json:"search,omitempty"`
+	Category  string                 `protobuf:"bytes,2,opt,name=category,proto3" json:"category,omitempty"`
+	Source    string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
+	RiskLevel string                 `protobuf:"bytes,4,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	Enabled   string                 `protobuf:"bytes,5,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	Page      int32                  `protobuf:"varint,6,opt,name=page,proto3" json:"page,omitempty"`
+	PageSize  int32                  `protobuf:"varint,7,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	Sort      string                 `protobuf:"bytes,8,opt,name=sort,proto3" json:"sort,omitempty"`
+	// abnormal=true：仅返回最近一次调用以 error/blocked 收尾的工具（「仅看异常」）。
+	Abnormal      bool `protobuf:"varint,9,opt,name=abnormal,proto3" json:"abnormal,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -541,6 +543,13 @@ func (x *ListToolsRequest) GetSort() string {
 		return x.Sort
 	}
 	return ""
+}
+
+func (x *ListToolsRequest) GetAbnormal() bool {
+	if x != nil {
+		return x.Abnormal
+	}
+	return false
 }
 
 type ListToolsResponse struct {
@@ -3173,7 +3182,7 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\renabled_tools\x18\x02 \x01(\x05R\fenabledTools\x12*\n" +
 	"\x11high_risk_enabled\x18\x03 \x01(\x05R\x0fhighRiskEnabled\x12\x1b\n" +
 	"\tcalls_24h\x18\x04 \x01(\x05R\bcalls24h\x12(\n" +
-	"\x10failure_rate_24h\x18\x05 \x01(\x01R\x0efailureRate24h\"\xdc\x01\n" +
+	"\x10failure_rate_24h\x18\x05 \x01(\x01R\x0efailureRate24h\"\xf8\x01\n" +
 	"\x10ListToolsRequest\x12\x16\n" +
 	"\x06search\x18\x01 \x01(\tR\x06search\x12\x1a\n" +
 	"\bcategory\x18\x02 \x01(\tR\bcategory\x12\x16\n" +
@@ -3183,7 +3192,8 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\aenabled\x18\x05 \x01(\tR\aenabled\x12\x12\n" +
 	"\x04page\x18\x06 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\a \x01(\x05R\bpageSize\x12\x12\n" +
-	"\x04sort\x18\b \x01(\tR\x04sort\"\xbd\x01\n" +
+	"\x04sort\x18\b \x01(\tR\x04sort\x12\x1a\n" +
+	"\babnormal\x18\t \x01(\bR\babnormal\"\xbd\x01\n" +
 	"\x11ListToolsResponse\x12*\n" +
 	"\x05items\x18\x01 \x03(\v2\x14.kratos.tool.v1.ToolR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +

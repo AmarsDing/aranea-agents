@@ -31,15 +31,19 @@
           <q-tooltip>模型来源：{{ result.source }}</q-tooltip>
         </span>
         <q-btn flat round dense icon="close" class="q-ml-sm" @click="handleCancel">
-          <q-tooltip>关闭（不应用更改）</q-tooltip>
+          <q-tooltip>{{ $t('agentSettings.aiRefine.closeTooltip') }}</q-tooltip>
         </q-btn>
       </q-card-section>
 
       <q-card-section class="q-pt-none">
         <!-- Token delta -->
         <div v-if="result" class="row q-gutter-sm q-mb-sm">
-          <span class="refine-chip">优化前 ≈ {{ result.tokensBefore }} tokens</span>
-          <span class="refine-chip refine-chip--accent">优化后 ≈ {{ result.tokensAfter }} tokens</span>
+          <span class="refine-chip">{{
+            $t('agentSettings.aiRefine.tokensBefore', { count: result.tokensBefore })
+          }}</span>
+          <span class="refine-chip refine-chip--accent">{{
+            $t('agentSettings.aiRefine.tokensAfter', { count: result.tokensAfter })
+          }}</span>
         </div>
 
         <!-- Diff toggle -->
@@ -86,7 +90,7 @@
       </q-card-section>
 
       <q-card-actions align="right" class="q-pa-md">
-        <q-btn flat label="取消" @click="handleCancel" />
+        <q-btn flat :label="$t('agentSettings.aiRefine.cancel')" @click="handleCancel" />
         <q-btn flat :loading="loading" icon="refresh" label="重新优化" @click="handleRefine" />
         <q-btn color="primary" unelevated rounded label="应用" @click="applyResult" />
       </q-card-actions>

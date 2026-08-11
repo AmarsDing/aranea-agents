@@ -36,6 +36,7 @@ var (
 	AdminPluginPerms           = plugin.AdminPerms
 	NormalizePluginSandboxMode = plugin.NormalizeSandboxMode
 	ResolvePluginVersion       = plugin.ResolveVersion
+	BuiltinMetaDrifted         = plugin.BuiltinMetaDrifted
 )
 
 // agentScopeLookup adapts AgentRepository to plugin.ScopeAgentLookup.

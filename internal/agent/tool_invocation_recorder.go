@@ -319,21 +319,32 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 	// (skill_load/skill_run 的 slug 在参数 {"skill": "<name>"} 中，已由 capture hook
 	// 提取进 invocation state）；旧式 use_skill_<slug> 工具名作为兜底。
 	skillID := ""
+	skillName := ""
+	skillVersion := ""
 	slug := loadedSlug
 	if slug == "" {
 		slug = strings.TrimPrefix(write.ToolKey, "use_skill_")
 	}
+	resolve := func(s biz.Skill) {
+		skillID = s.ID
+		skillName = s.Name
+		if s.CurrentVersion != nil {
+			skillVersion = s.CurrentVersion.Version
+		}
+	}
 	if sk, err := deps.SkillUC.GetBySlug(bg, slug); err == nil {
-		skillID = sk.ID
+		resolve(sk)
 	} else {
 		// Fallback: try the raw tool key as slug.
 		if sk2, err2 := deps.SkillUC.GetBySlug(bg, write.ToolKey); err2 == nil {
-			skillID = sk2.ID
+			resolve(sk2)
 		}
 	}
 
 	skillWrite := biz.SkillInvocationWrite{
 		SkillID:         skillID,
+		SkillName:       skillName,
+		SkillVersion:    skillVersion,
 		AgentID:         ag.ID,
 		UserID:          write.UserID,
 		SessionID:       write.SessionID,

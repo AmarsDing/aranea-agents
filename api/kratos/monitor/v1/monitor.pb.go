@@ -616,8 +616,13 @@ type ListMonitorEventsRequest struct {
 	EventTypes []string `protobuf:"bytes,6,rep,name=event_types,json=eventTypes,proto3" json:"event_types,omitempty"`
 	// Prefix exclusion applied after the include set; e.g. ["skill.filesystem."].
 	ExcludeEventTypes []string `protobuf:"bytes,7,rep,name=exclude_event_types,json=excludeEventTypes,proto3" json:"exclude_event_types,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Hide runner.completion rows already materialized as Runs (monitor_traces):
+	// rows with usage_event_id, or whose trace_id matches a trace row. Keeps the
+	// Events history deduplicated server-side so pagination total matches what
+	// the table actually renders.
+	HideLinkedCompletions bool `protobuf:"varint,8,opt,name=hide_linked_completions,json=hideLinkedCompletions,proto3" json:"hide_linked_completions,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ListMonitorEventsRequest) Reset() {
@@ -697,6 +702,13 @@ func (x *ListMonitorEventsRequest) GetExcludeEventTypes() []string {
 		return x.ExcludeEventTypes
 	}
 	return nil
+}
+
+func (x *ListMonitorEventsRequest) GetHideLinkedCompletions() bool {
+	if x != nil {
+		return x.HideLinkedCompletions
+	}
+	return false
 }
 
 type ListMonitorEventsResponse struct {
@@ -3798,7 +3810,7 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"\tteam_name\x18\x14 \x01(\tR\bteamName\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x15 \x01(\tR\tsessionId\x12\x15\n" +
-	"\x06run_id\x18\x16 \x01(\tR\x05runId\"\xeb\x01\n" +
+	"\x06run_id\x18\x16 \x01(\tR\x05runId\"\xa3\x02\n" +
 	"\x18ListMonitorEventsRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12\x1d\n" +
@@ -3808,7 +3820,8 @@ const file_kratos_monitor_v1_monitor_proto_rawDesc = "" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1f\n" +
 	"\vevent_types\x18\x06 \x03(\tR\n" +
 	"eventTypes\x12.\n" +
-	"\x13exclude_event_types\x18\a \x03(\tR\x11excludeEventTypes\"n\n" +
+	"\x13exclude_event_types\x18\a \x03(\tR\x11excludeEventTypes\x126\n" +
+	"\x17hide_linked_completions\x18\b \x01(\bR\x15hideLinkedCompletions\"n\n" +
 	"\x19ListMonitorEventsResponse\x12;\n" +
 	"\x05items\x18\x01 \x03(\v2%.kratos.monitor.v1.MonitorPlatformRowR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"(\n" +

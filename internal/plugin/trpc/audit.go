@@ -183,8 +183,10 @@ func (a *AuditLogPlugin) afterTool(ctx context.Context, args *trpctool.AfterTool
 		return &trpctool.AfterToolResult{}, nil
 	}
 	status := "ok"
+	summary := ""
 	if args.Error != nil {
 		status = "error"
+		summary = "tool " + args.ToolName + " failed: " + args.Error.Error()
 	}
 	sid, akey := sessionAgentKey(ctx, nil)
 	a.base.logger.Info("plugin.audit_log.after_tool",
@@ -194,7 +196,7 @@ func (a *AuditLogPlugin) afterTool(ctx context.Context, args *trpctool.AfterTool
 		"status", status,
 		"at", time.Now().UTC().Format(time.RFC3339),
 	)
-	a.base.record(ctx, "after_tool", status)
+	a.base.recordEvent(ctx, "after_tool", status, summary)
 	return &trpctool.AfterToolResult{}, nil
 }
 

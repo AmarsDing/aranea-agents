@@ -320,6 +320,23 @@ func monitorEventsWhere(q biz.MonitorEventsQuery, d Dialect) (string, []any) {
 		parts = append(parts, "status = ?")
 		args = append(args, q.Status)
 	}
+	if q.HideLinkedCompletions {
+		// 排除已落入 Runs 的 runner.completion 行（语义对齐前端 shouldHideCompletionInEvents）：
+		// usage_event_id 非空 → 该行已有 monitor_traces 真相行；或 trace_id 命中 monitor_traces
+		// （trace_key 或 metadata trace_id 均可匹配）。De Morgan 展开：
+		// NOT (A AND (B OR C)) ≡ !A OR (!B AND (!trace OR NOT EXISTS))。
+		// 事件侧列必须带 monitor_events 限定符：子查询内 monitor_traces 同名列（metadata_json）
+		// 会发生列捕获，导致相关子查询语义错误。
+		usageExpr := d.JSONExtract("monitor_events.metadata_json", "usage_event_id")
+		traceExpr := "COALESCE(monitor_events.meta_trace_id, " + d.JSONExtract("monitor_events.metadata_json", "trace_id") + ")"
+		tTraceExpr := d.JSONExtract("t.metadata_json", "trace_id")
+		parts = append(parts, "(event_key != 'runner.completion' OR ("+
+			"COALESCE("+usageExpr+", '') = '' AND ("+
+			"COALESCE("+traceExpr+", '') = '' OR NOT EXISTS ("+
+			"SELECT 1 FROM monitor_traces t WHERE t.deleted_at = '' "+
+			"AND (t.trace_key = "+traceExpr+" OR "+tTraceExpr+" = "+traceExpr+")"+
+			"))))")
+	}
 	if len(parts) == 0 {
 		return "", args
 	}

@@ -311,6 +311,20 @@ func (d Dialect) Greatest(args ...string) string {
 	return fn + "(" + strings.Join(args, ", ") + ")"
 }
 
+// Least returns the SQL scalar function that picks the smallest of the given
+// arguments. SQLite uses the multi-argument MIN (a scalar function when given
+// 2+ args), while Postgres uses LEAST. Postgres' MIN is aggregate-only and
+// rejects multi-argument scalar usage (error 42883).
+//
+// Example: DialectPostgres.Least("1", "x") → "LEAST(1, x)"
+func (d Dialect) Least(args ...string) string {
+	fn := "LEAST"
+	if d.IsSQLite() {
+		fn = "MIN"
+	}
+	return fn + "(" + strings.Join(args, ", ") + ")"
+}
+
 // Placeholders returns n positional placeholders joined by commas.
 // SQLite: ?,?,?
 // Postgres: $1,$2,$3

@@ -470,6 +470,10 @@ func (m *memBlockIndex) UpdateDocLinkKeys(_ context.Context, docID, title string
 	return nil
 }
 
+func (m *memBlockIndex) ListDocsMissingBlockIndex(context.Context, string, int) ([]string, error) {
+	return nil, nil
+}
+
 func (m *memBlockIndex) ListResolveCandidates(_ context.Context, collectionIDs []string) ([]ResolveDocCandidate, error) {
 	visible := make(map[string]bool, len(collectionIDs))
 	for _, id := range collectionIDs {

@@ -86,6 +86,7 @@
         :toggling-id="togglingId"
         :publishing-id="publishingId"
         :publishing-ecosystem-id="publishingEcosystemId"
+        :duplicating-id="duplicatingId"
         :ecosystem-publish-state="ecosystemPublishState"
         :load-health="loadSkillHealth"
         @toggle-enabled="onToggleEnabled"
@@ -93,6 +94,7 @@
         @publish-ecosystem="onPublishToEcosystem"
         @edit-meta="openMetaEditor"
         @edit-files="openEditor"
+        @duplicate="onDuplicateSkill"
         @delete="confirmDelete"
       />
 
@@ -170,6 +172,7 @@ const {
   togglingId,
   publishingId,
   publishingEcosystemId,
+  duplicatingId,
   ecosystemPublishOpen,
   ecosystemPublishTarget,
   ecosystemPublishState,
@@ -190,6 +193,7 @@ const {
   filterMissingFilesystem,
   onPublishSkill,
   onPublishToEcosystem,
+  onDuplicateSkill,
   onToggleEnabled,
   openEditor,
   openMetaEditor,

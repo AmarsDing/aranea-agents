@@ -234,6 +234,36 @@ func (r *knowledgeBlockRepo) ListDocBlocks(ctx context.Context, docID string) ([
 	return out, nil
 }
 
+// ListDocsMissingBlockIndex 检出「已索引但块索引缺失」的漂移文档（SP2 #4 下游收敛）。
+// 口径：status='indexed' + 内容非空（空文档合法 0 块，不误报）+ NOT EXISTS 任何块行。
+// 走 NOT EXISTS 反连接：knowledge_blocks.doc_id 无索引时全表扫一次的成本由
+// convergeInterval 低频门控吸收（10min/次，批上限 50）。
+func (r *knowledgeBlockRepo) ListDocsMissingBlockIndex(ctx context.Context, collectionID string, limit int) ([]string, error) {
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT d.id FROM knowledge_documents d
+		 WHERE d.collection_id = $1 AND d.status = 'indexed'
+		   AND length(btrim(d.content_text)) > 0
+		   AND NOT EXISTS (SELECT 1 FROM knowledge_blocks b WHERE b.doc_id = d.id)
+		 ORDER BY d.updated_at ASC
+		 LIMIT $2`, collectionID, limit)
+	if err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, entErrToBizErr(err, "knowledge")
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "knowledge")
+	}
+	return out, nil
+}
+
 // ── SP1-G：晋升端口（PromoteBlockReader / PromoteLineageWriter） ─────────────
 
 var _ bizknowledge.PromoteBlockReader = (*knowledgeBlockRepo)(nil)

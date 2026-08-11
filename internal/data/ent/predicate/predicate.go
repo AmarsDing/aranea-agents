@@ -138,6 +138,9 @@ type GraphTaskRun func(*sql.Selector)
 // HealRecord is the predicate function for healrecord builders.
 type HealRecord func(*sql.Selector)
 
+// KnowledgeLinkUsed is the predicate function for knowledgelinkused builders.
+type KnowledgeLinkUsed func(*sql.Selector)
+
 // LlmProviderModel is the predicate function for llmprovidermodel builders.
 type LlmProviderModel func(*sql.Selector)
 

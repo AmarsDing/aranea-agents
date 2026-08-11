@@ -170,7 +170,7 @@
 import { ref } from 'vue';
 import type { Agent } from '../../features/agents/types';
 import type { Team, TeamRun, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from '../../features/teams/types';
-import { agentName, formatDate, teamModeLabel, teamRoleLabel, teamRunStatusLabel } from './teamUtils';
+import { agentName, formatCost, formatDate, teamModeLabel, teamRoleLabel, teamRunStatusLabel } from './teamUtils';
 
 const tab = ref('runs');
 
@@ -201,10 +201,6 @@ defineEmits<{
   refreshDeadLetters: [];
   resolveDeadLetter: [id: string];
 }>();
-
-function formatCost(value?: number) {
-  return `$${((value ?? 0) / 1_000_000).toFixed(4)}`;
-}
 
 function stepStatusColor(status: string) {
   const normalized = status.trim().toLowerCase();

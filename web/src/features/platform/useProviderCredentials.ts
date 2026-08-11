@@ -4,7 +4,7 @@ import type { ProviderConfig, ProviderForm } from './types';
 import { errorMessage, toNumber } from './providerUtils';
 import { usePlatformStore } from '../../stores/platform';
 import type { ProviderHAForm } from './types';
-import { microPer1KToUsdPer1M } from '../../config/providerRuntimeOverlay';
+import { microPer1KToUsdPer1M, normalizeUsdPer1M } from '../../config/providerRuntimeOverlay';
 
 export function useProviderCredentials(deps: {
   providerForm: ProviderForm;
@@ -107,12 +107,12 @@ export function useProviderCredentials(deps: {
   function loadUsdPricingFromConfig(config: ProviderConfig) {
     const cost = config.cost;
     if (cost && typeof cost === 'object') {
-      deps.providerForm.input_price_usd_per_1m = toNumber(cost.input_usd_per_1m, 0);
-      deps.providerForm.output_price_usd_per_1m = toNumber(cost.output_usd_per_1m, 0);
-      deps.providerForm.cache_read_usd_per_1m = toNumber(cost.cache_read_usd_per_1m, 0);
-      deps.providerForm.cache_write_usd_per_1m = toNumber(cost.cache_write_usd_per_1m, 0);
-      deps.providerForm.reasoning_price_usd_per_1m = toNumber(cost.reasoning_usd_per_1m, 0);
-      deps.providerForm.embedding_price_usd_per_1m = toNumber(cost.embedding_usd_per_1m, 0);
+      deps.providerForm.input_price_usd_per_1m = normalizeUsdPer1M(toNumber(cost.input_usd_per_1m, 0));
+      deps.providerForm.output_price_usd_per_1m = normalizeUsdPer1M(toNumber(cost.output_usd_per_1m, 0));
+      deps.providerForm.cache_read_usd_per_1m = normalizeUsdPer1M(toNumber(cost.cache_read_usd_per_1m, 0));
+      deps.providerForm.cache_write_usd_per_1m = normalizeUsdPer1M(toNumber(cost.cache_write_usd_per_1m, 0));
+      deps.providerForm.reasoning_price_usd_per_1m = normalizeUsdPer1M(toNumber(cost.reasoning_usd_per_1m, 0));
+      deps.providerForm.embedding_price_usd_per_1m = normalizeUsdPer1M(toNumber(cost.embedding_usd_per_1m, 0));
       return;
     }
     deps.providerForm.input_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.input_price_micro_usd_per_1k, 0));

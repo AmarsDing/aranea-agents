@@ -536,6 +536,18 @@ func (f HealRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, 
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.HealRecordMutation", m)
 }
 
+// The KnowledgeLinkUsedFunc type is an adapter to allow the use of ordinary
+// function as KnowledgeLinkUsed mutator.
+type KnowledgeLinkUsedFunc func(context.Context, *ent.KnowledgeLinkUsedMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f KnowledgeLinkUsedFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.KnowledgeLinkUsedMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.KnowledgeLinkUsedMutation", m)
+}
+
 // The LlmProviderModelFunc type is an adapter to allow the use of ordinary
 // function as LlmProviderModel mutator.
 type LlmProviderModelFunc func(context.Context, *ent.LlmProviderModelMutation) (ent.Value, error)

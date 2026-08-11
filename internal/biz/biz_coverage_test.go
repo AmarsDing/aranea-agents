@@ -421,6 +421,21 @@ func (m *memPluginRepoB) UpdatePluginScope(_ context.Context, id string, scope s
 	m.items[id] = p
 	return p, nil
 }
+func (m *memPluginRepoB) SyncBuiltinMeta(_ context.Context, p biz.Plugin) (biz.Plugin, error) {
+	cur, ok := m.items[p.ID]
+	if !ok {
+		return biz.Plugin{}, fmt.Errorf("not found")
+	}
+	cur.Name = p.Name
+	cur.Description = p.Description
+	cur.Category = p.Category
+	cur.RiskLevel = p.RiskLevel
+	cur.CallbackPoints = p.CallbackPoints
+	cur.ConfigSchemaJSON = p.ConfigSchemaJSON
+	cur.DefaultConfigJSON = p.DefaultConfigJSON
+	m.items[p.ID] = cur
+	return cur, nil
+}
 
 func (m *memPluginRepoB) IncrementStats(_ context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	for id, p := range m.items {

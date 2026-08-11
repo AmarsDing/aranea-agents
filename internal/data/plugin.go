@@ -247,6 +247,32 @@ func (r *pluginRepo) UpdatePluginScope(ctx context.Context, id string, scope str
 	return r.GetPlugin(ctx, id)
 }
 
+// SyncBuiltinMeta 仅更新平台自有元数据字段；enabled/config_json/sort_order/
+// scope/workspace_id 等管理员字段保持不变（bootstrap 种子同步用）。
+func (r *pluginRepo) SyncBuiltinMeta(ctx context.Context, p biz.Plugin) (biz.Plugin, error) {
+	cbsJSON, _ := json.Marshal(p.CallbackPoints)
+	if len(p.CallbackPoints) == 0 {
+		cbsJSON = []byte("[]")
+	}
+	err := r.data.RW().Write(ctx).PlatformPlugin.UpdateOneID(p.ID).
+		SetName(p.Name).
+		SetDescription(p.Description).
+		SetCategory(p.Category).
+		SetRiskLevel(p.RiskLevel).
+		SetCallbackPointsJSON(string(cbsJSON)).
+		SetConfigSchemaJSON(p.ConfigSchemaJSON).
+		SetFallbackConfigJSON(p.DefaultConfigJSON).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
+		}
+		return biz.Plugin{}, err
+	}
+	return r.GetPlugin(ctx, p.ID)
+}
+
 func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	pluginKey = strings.TrimSpace(pluginKey)
 	if pluginKey == "" {

@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -59,7 +60,8 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 	text := responseText(args.Response)
 	if viol, pat := o.violation(text); viol {
 		o.base.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
-		o.base.record(ctx, "after_model", "blocked")
+		o.base.recordEvent(ctx, "after_model", "blocked",
+			fmt.Sprintf("模型输出命中阻断策略（pattern=%s）", pat))
 		if o.cfg.BlockOnViolation {
 			msg := strings.TrimSpace(o.cfg.ReplacementMessage)
 			if msg == "" {
@@ -102,7 +104,8 @@ func (o *OutputPolicyPlugin) onEvent(
 	if !viol {
 		return e, nil
 	}
-	o.base.record(ctx, "on_event", "blocked")
+	o.base.recordEvent(ctx, "on_event", "blocked",
+		fmt.Sprintf("流式输出命中阻断策略（pattern=%s）", pat))
 	o.base.logger.Warn("output_policy.event_blocked", "plugin", o.base.name, "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
 	// TPM-P1-04: actually enforce block_on_violation in streaming path. Previously
 	// the event passed through unchanged — admin's block_on_violation=true was a no-op

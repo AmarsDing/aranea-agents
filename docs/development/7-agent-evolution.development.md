@@ -87,9 +87,9 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | 适应护栏表单 | ✅ | 三项数值输入（`max_change_per_period` / `min_data_points` / `rollback_on_decline_percent`） |
 | Learning loop panel | ✅ | 4 sub-components（Overview/Observation/Pattern/Proposal） |
 | 折线图表（ECharts/Chart.js） | ❌ | 仅有迷你柱状图，无完整折线图（`retrieval_quality_series` 未绘图） |
-| Diff preview 展示 | 🟡 | `AIRefineButton` 有 diff，但 evolution suggestion `diff_preview` 仍空 |
-| 指标/建议空态 | 🟡 | 零值时仍展示卡片，可增强文案 |
-| Rollback UI | ❌ | 后端 `RollbackSuggestion` 已实现，前端无入口 |
+| Diff preview 展示 | ✅ | 建议详情弹窗展示 `diff_preview`（后端 EVO-20 生成，前端 2026-08-11 接入） |
+| 指标/建议空态 | 🟡 | 建议列表已加空态文案（2026-08-11）；指标零值时仍展示卡片 |
+| Rollback UI | ✅ | 回滚按钮 + 确认弹窗 + `RollbackEvolutionSuggestion` RPC（2026-08-11） |
 
 ### 2.3 进化开关字段实现状态
 
@@ -122,7 +122,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-10 | P3 | `evo_auto_apply` 自动应用 pending 建议 | ❌ |
 | EVO-11 | P3 | per-agent 节流 TTL（`evo_throttle_hours`） | ❌ |
 | EVO-12 | P3 | 前端趋势图（ECharts/Chart.js）展示 `retrieval_quality_series` | ❌ |
-| EVO-13 | P3 | 前端 Rollback UI 入口 | ❌ |
+| EVO-13 | P3 | 前端 Rollback UI 入口 | ✅ 2026-08-11 |
 | EVO-14 | P3 | Learning Loop 与 Evolution 对齐（共享 Apply 逻辑） | 🟡 |
 | EVO-15 | P3 | PGO V2 影响 — SOUL.md deprecated，evolution persona target 变更 | ✅ 已迁移到 IDENTITY.md |
 | EVO-16 | P0 | 面板建议区错接 L1 `ListSkillProposals`，L3 `evolve_agent` 建议不可见 → 切换 L3 API（列表 + apply/reject） | ✅ 2026-08-07 |
@@ -130,6 +130,8 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-18 | P1 | 趋势图柱条不可见（`--color-primary` 未定义）→ 双主题补定义 | ✅ 2026-08-07 |
 | EVO-19 | P1 | 无记忆调用时检索质量误显 0.0% → series 空时前端显「暂无数据」 | ✅ 2026-08-07 |
 | EVO-20 | P1 | 通知类建议内容低质（无 diff_preview、文案重复）→ LLM 生成具体修改草稿并设置 `apply_payload` 解锁 apply | ✅ 2026-08-08 |
+| EVO-21 | P1 | 拒绝原因未持久化（reject 无审计线索）→ proto 增 `reason` 字段，`RejectSuggestion` 写入 metadata `rejection_reason`，前端拒绝弹窗收集原因 | ✅ 2026-08-11 |
+| EVO-22 | P1 | 建议无详情查看入口（内容/diff 不可见）→ 新增详情弹窗（元信息 + 内容 + `diff_preview` 预览） | ✅ 2026-08-11 |
 
 ---
 
@@ -150,7 +152,7 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 - [x] Evolution suggestion `diff_preview` 非空（EVO-20：drafter 写回草稿时生成 unified diff）
 - [ ] 护栏运行时参与扫描
 - [ ] `evo_auto_apply` 自动应用 pending 建议
-- [ ] 前端 Rollback UI 入口
+- [x] 前端 Rollback UI 入口
 
 ---
 

@@ -426,7 +426,15 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 			loggateway.Str("model_id", out.ID),
 			loggateway.Err(err))
 	}
-	return sanitizeProviderModelForAPI(out), nil
+	result := sanitizeProviderModelForAPI(out)
+	// 与 List/ListPaged 保持一致：管理端响应统一注入 30 天用量统计。
+	// 前端用 PATCH 响应整行替换列表行，未装饰的响应会把 usage_* 显示清零。
+	if u.statsInjector != nil {
+		items := []ProviderModel{result}
+		u.statsInjector.InjectStats(ctx, items)
+		result = items[0]
+	}
+	return result, nil
 }
 
 func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {

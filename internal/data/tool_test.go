@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -307,5 +308,24 @@ func TestToolRepo_SearchTools_EmptyInvocations(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("seeded tool read_file not found in %d results", len(result.Items))
+	}
+}
+
+// TestToolWhereClause_Abnormal covers the "仅看异常" filter: when Abnormal is
+// set, the WHERE clause must restrict to tools whose latest invocation ended
+// error/blocked; the condition must reference only `t` + tool_invocations so
+// it works in both the COUNT query (no joins) and the list query.
+func TestToolWhereClause_Abnormal(t *testing.T) {
+	where, args := toolWhereClause(biz.ToolListQuery{Abnormal: true})
+	if !strings.Contains(where, "tool_invocations") || !strings.Contains(where, "'error'") || !strings.Contains(where, "'blocked'") {
+		t.Fatalf("abnormal where missing latest-status condition: %s", where)
+	}
+	if len(args) != 0 {
+		t.Fatalf("abnormal filter should be arg-free, got %v", args)
+	}
+
+	whereOff, _ := toolWhereClause(biz.ToolListQuery{})
+	if strings.Contains(whereOff, "tool_invocations") {
+		t.Fatalf("abnormal off must not reference tool_invocations: %s", whereOff)
 	}
 }

@@ -71,6 +71,38 @@ type FactUpsert struct {
 	ContextNote string
 }
 
+// Fact review actions (memory.md §9.4 user feedback + conflict governance).
+const (
+	FactReviewConfirm   = "confirm"   // positive feedback +1, confidence bump
+	FactReviewReject    = "reject"    // negative feedback +1, confidence drop
+	FactReviewArchive   = "archive"   // forget: status=archived
+	FactReviewDispute   = "dispute"   // conflict governance: status=disputed
+	FactReviewDeprecate = "deprecate" // conflict governance: status=deprecated
+	FactReviewRefine    = "refine"    // edit statement/details/kind/tags, new version
+)
+
+// FactReview is the domain-level DTO for a single-fact review action.
+// Refine-only fields: Statement is required; DetailsMarkdown/FactKind/TagsJSON
+// overwrite unconditionally (callers merge current values when partial edits
+// are intended).
+type FactReview struct {
+	FactID          string
+	Action          string
+	Statement       string
+	DetailsMarkdown string
+	FactKind        string
+	TagsJSON        string
+}
+
+// L3FactReviewStore applies user review actions to a single fact via precise
+// column-targeted UPDATEs. Unlike UpsertFactRow it never touches links/
+// keywords/metadata/quality_score, so feedback actions cannot silently wipe
+// A-MEM graph linkages.
+// Stability:evolving
+type L3FactReviewStore interface {
+	ReviewFactRow(ctx context.Context, in FactReview) ([]byte, error)
+}
+
 // EvolutionEventInsert is the domain-level DTO for inserting evolution events.
 type EvolutionEventInsert struct {
 	AgentID       string
@@ -373,6 +405,7 @@ type MemoryAdminDeps interface {
 	L1ExpiredFieldCleaner
 	L2EpisodeWriter
 	L3FactReader
+	L3FactReviewStore
 	L3ConflictStore
 	PIIReviewStore
 	L4EntityStore

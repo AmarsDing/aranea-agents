@@ -96,10 +96,16 @@ func (s *SkillUsageTrackerPlugin) afterTool(ctx context.Context, args *trpctool.
 	}
 	s.base.logger.Info("plugin.skill_tracker.after_tool", fields...)
 	// Record asynchronously to avoid blocking the tool execution pipeline
+	//（session/agent 需在 request ctx 存活时同步提取）
+	sid, akey := sessionAgentKey(ctx, nil)
+	summary := ""
+	if args.Error != nil {
+		summary = "skill tool " + args.ToolName + " failed: " + args.Error.Error()
+	}
 	capturedCtx := context.Background()
 	statusCapture := status
 	safego.Go(capturedCtx, "skill_tracker.after_tool.record", func() {
-		s.base.record(capturedCtx, "after_tool", statusCapture)
+		s.base.recordEventAt(sid, akey, "after_tool", statusCapture, summary)
 	})
 	return &trpctool.AfterToolResult{}, nil
 }

@@ -288,6 +288,69 @@ func (x *ModelCapabilities) GetTextOnly() bool {
 	return false
 }
 
+// ListProviderModelsRequest carries optional pagination + search for the admin
+// registry UI. When both page and page_size are zero the service falls back to
+// the legacy full-catalog list (pickers/health/runtime consumers).
+type ListProviderModelsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Page          int32                  `protobuf:"varint,1,opt,name=page,proto3" json:"page,omitempty"`                         // 1-based
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"` // default: 20, max: 100
+	Search        string                 `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListProviderModelsRequest) Reset() {
+	*x = ListProviderModelsRequest{}
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListProviderModelsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListProviderModelsRequest) ProtoMessage() {}
+
+func (x *ListProviderModelsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListProviderModelsRequest.ProtoReflect.Descriptor instead.
+func (*ListProviderModelsRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListProviderModelsRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListProviderModelsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListProviderModelsRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
 type ListProviderModelsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*ProviderModel       `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -300,7 +363,7 @@ type ListProviderModelsResponse struct {
 
 func (x *ListProviderModelsResponse) Reset() {
 	*x = ListProviderModelsResponse{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[2]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -312,7 +375,7 @@ func (x *ListProviderModelsResponse) String() string {
 func (*ListProviderModelsResponse) ProtoMessage() {}
 
 func (x *ListProviderModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[2]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -325,7 +388,7 @@ func (x *ListProviderModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProviderModelsResponse.ProtoReflect.Descriptor instead.
 func (*ListProviderModelsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{2}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ListProviderModelsResponse) GetItems() []*ProviderModel {
@@ -375,7 +438,7 @@ type CreateProviderModelRequest struct {
 
 func (x *CreateProviderModelRequest) Reset() {
 	*x = CreateProviderModelRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[3]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +450,7 @@ func (x *CreateProviderModelRequest) String() string {
 func (*CreateProviderModelRequest) ProtoMessage() {}
 
 func (x *CreateProviderModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[3]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +463,7 @@ func (x *CreateProviderModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProviderModelRequest.ProtoReflect.Descriptor instead.
 func (*CreateProviderModelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{3}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateProviderModelRequest) GetKey() string {
@@ -489,7 +552,7 @@ type GetProviderModelRequest struct {
 
 func (x *GetProviderModelRequest) Reset() {
 	*x = GetProviderModelRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[4]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -501,7 +564,7 @@ func (x *GetProviderModelRequest) String() string {
 func (*GetProviderModelRequest) ProtoMessage() {}
 
 func (x *GetProviderModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[4]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -514,7 +577,7 @@ func (x *GetProviderModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProviderModelRequest.ProtoReflect.Descriptor instead.
 func (*GetProviderModelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{4}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetProviderModelRequest) GetId() string {
@@ -534,7 +597,7 @@ type UpdateProviderModelRequest struct {
 
 func (x *UpdateProviderModelRequest) Reset() {
 	*x = UpdateProviderModelRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[5]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -546,7 +609,7 @@ func (x *UpdateProviderModelRequest) String() string {
 func (*UpdateProviderModelRequest) ProtoMessage() {}
 
 func (x *UpdateProviderModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[5]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -559,7 +622,7 @@ func (x *UpdateProviderModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProviderModelRequest.ProtoReflect.Descriptor instead.
 func (*UpdateProviderModelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{5}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UpdateProviderModelRequest) GetId() string {
@@ -585,7 +648,7 @@ type DeleteProviderModelRequest struct {
 
 func (x *DeleteProviderModelRequest) Reset() {
 	*x = DeleteProviderModelRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[6]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -597,7 +660,7 @@ func (x *DeleteProviderModelRequest) String() string {
 func (*DeleteProviderModelRequest) ProtoMessage() {}
 
 func (x *DeleteProviderModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[6]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -610,7 +673,7 @@ func (x *DeleteProviderModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteProviderModelRequest.ProtoReflect.Descriptor instead.
 func (*DeleteProviderModelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{6}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteProviderModelRequest) GetId() string {
@@ -631,7 +694,7 @@ type ValidateProviderPairRequest struct {
 
 func (x *ValidateProviderPairRequest) Reset() {
 	*x = ValidateProviderPairRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[7]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +706,7 @@ func (x *ValidateProviderPairRequest) String() string {
 func (*ValidateProviderPairRequest) ProtoMessage() {}
 
 func (x *ValidateProviderPairRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[7]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +719,7 @@ func (x *ValidateProviderPairRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateProviderPairRequest.ProtoReflect.Descriptor instead.
 func (*ValidateProviderPairRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{7}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ValidateProviderPairRequest) GetProvider() string {
@@ -683,7 +746,7 @@ type ValidateProviderPairResponse struct {
 
 func (x *ValidateProviderPairResponse) Reset() {
 	*x = ValidateProviderPairResponse{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[8]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -695,7 +758,7 @@ func (x *ValidateProviderPairResponse) String() string {
 func (*ValidateProviderPairResponse) ProtoMessage() {}
 
 func (x *ValidateProviderPairResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[8]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -708,7 +771,7 @@ func (x *ValidateProviderPairResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateProviderPairResponse.ProtoReflect.Descriptor instead.
 func (*ValidateProviderPairResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{8}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ValidateProviderPairResponse) GetOk() bool {
@@ -743,7 +806,7 @@ type InspectProviderModelRequest struct {
 
 func (x *InspectProviderModelRequest) Reset() {
 	*x = InspectProviderModelRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[9]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +818,7 @@ func (x *InspectProviderModelRequest) String() string {
 func (*InspectProviderModelRequest) ProtoMessage() {}
 
 func (x *InspectProviderModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[9]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +831,7 @@ func (x *InspectProviderModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectProviderModelRequest.ProtoReflect.Descriptor instead.
 func (*InspectProviderModelRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{9}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InspectProviderModelRequest) GetResourceId() string {
@@ -850,7 +913,7 @@ type RevealProviderModelCredentialsRequest struct {
 
 func (x *RevealProviderModelCredentialsRequest) Reset() {
 	*x = RevealProviderModelCredentialsRequest{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[10]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -862,7 +925,7 @@ func (x *RevealProviderModelCredentialsRequest) String() string {
 func (*RevealProviderModelCredentialsRequest) ProtoMessage() {}
 
 func (x *RevealProviderModelCredentialsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[10]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -875,7 +938,7 @@ func (x *RevealProviderModelCredentialsRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use RevealProviderModelCredentialsRequest.ProtoReflect.Descriptor instead.
 func (*RevealProviderModelCredentialsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{10}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RevealProviderModelCredentialsRequest) GetId() string {
@@ -895,7 +958,7 @@ type HACandidateCredential struct {
 
 func (x *HACandidateCredential) Reset() {
 	*x = HACandidateCredential{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[11]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -907,7 +970,7 @@ func (x *HACandidateCredential) String() string {
 func (*HACandidateCredential) ProtoMessage() {}
 
 func (x *HACandidateCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[11]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -920,7 +983,7 @@ func (x *HACandidateCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HACandidateCredential.ProtoReflect.Descriptor instead.
 func (*HACandidateCredential) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{11}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *HACandidateCredential) GetName() string {
@@ -950,7 +1013,7 @@ type RevealProviderModelCredentialsResponse struct {
 
 func (x *RevealProviderModelCredentialsResponse) Reset() {
 	*x = RevealProviderModelCredentialsResponse{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[12]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +1025,7 @@ func (x *RevealProviderModelCredentialsResponse) String() string {
 func (*RevealProviderModelCredentialsResponse) ProtoMessage() {}
 
 func (x *RevealProviderModelCredentialsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[12]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +1038,7 @@ func (x *RevealProviderModelCredentialsResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use RevealProviderModelCredentialsResponse.ProtoReflect.Descriptor instead.
 func (*RevealProviderModelCredentialsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{12}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RevealProviderModelCredentialsResponse) GetApiKey() string {
@@ -1041,7 +1104,7 @@ type InspectProviderModelResponse struct {
 
 func (x *InspectProviderModelResponse) Reset() {
 	*x = InspectProviderModelResponse{}
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[13]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1053,7 +1116,7 @@ func (x *InspectProviderModelResponse) String() string {
 func (*InspectProviderModelResponse) ProtoMessage() {}
 
 func (x *InspectProviderModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[13]
+	mi := &file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1066,7 +1129,7 @@ func (x *InspectProviderModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectProviderModelResponse.ProtoReflect.Descriptor instead.
 func (*InspectProviderModelResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{13}
+	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *InspectProviderModelResponse) GetOk() bool {
@@ -1245,7 +1308,11 @@ const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"\ttool_call\x18\x05 \x01(\bR\btoolCall\x12\x14\n" +
 	"\x05cache\x18\x06 \x01(\bR\x05cache\x12\x1a\n" +
 	"\bthinking\x18\a \x01(\bR\bthinking\x12\x1b\n" +
-	"\ttext_only\x18\b \x01(\bR\btextOnly\"\xa6\x01\n" +
+	"\ttext_only\x18\b \x01(\bR\btextOnly\"d\n" +
+	"\x19ListProviderModelsRequest\x12\x12\n" +
+	"\x04page\x18\x01 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x16\n" +
+	"\x06search\x18\x03 \x01(\tR\x06search\"\xa6\x01\n" +
 	"\x1aListProviderModelsResponse\x12A\n" +
 	"\x05items\x18\x01 \x03(\v2+.kratos.llm_provider_model.v1.ProviderModelR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
@@ -1330,10 +1397,9 @@ const file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc = "" +
 	"\avariant\x18\x11 \x01(\tR\avariant\x124\n" +
 	"\x16enable_token_tailoring\x18\x12 \x01(\bR\x14enableTokenTailoring\x12%\n" +
 	"\x0esupports_cache\x18\x13 \x01(\bR\rsupportsCache\x12+\n" +
-	"\x11supports_thinking\x18\x14 \x01(\bR\x10supportsThinking2\xfc\n" +
-	"\n" +
-	"\x17LlmProviderModelService\x12\x87\x01\n" +
-	"\x12ListProviderModels\x12\x16.google.protobuf.Empty\x1a8.kratos.llm_provider_model.v1.ListProviderModelsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/llm-provider-models\x12\xa0\x01\n" +
+	"\x11supports_thinking\x18\x14 \x01(\bR\x10supportsThinking2\x9d\v\n" +
+	"\x17LlmProviderModelService\x12\xa8\x01\n" +
+	"\x12ListProviderModels\x127.kratos.llm_provider_model.v1.ListProviderModelsRequest\x1a8.kratos.llm_provider_model.v1.ListProviderModelsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/llm-provider-models\x12\xa0\x01\n" +
 	"\x13CreateProviderModel\x128.kratos.llm_provider_model.v1.CreateProviderModelRequest\x1a+.kratos.llm_provider_model.v1.ProviderModel\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/llm-provider-models\x12\x9c\x01\n" +
 	"\x10GetProviderModel\x125.kratos.llm_provider_model.v1.GetProviderModelRequest\x1a+.kratos.llm_provider_model.v1.ProviderModel\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/llm-provider-models/{id}\x12\xdd\x01\n" +
 	"\x1eRevealProviderModelCredentials\x12C.kratos.llm_provider_model.v1.RevealProviderModelCredentialsRequest\x1aD.kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse\"0\x82\xd3\xe4\x93\x02*\x12(/v1/llm-provider-models/{id}/credentials\x12\xb2\x01\n" +
@@ -1355,46 +1421,47 @@ func file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescGZIP() []
 	return file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDescData
 }
 
-var file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_kratos_llm_provider_model_v1_llm_provider_model_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_kratos_llm_provider_model_v1_llm_provider_model_proto_goTypes = []any{
 	(*ProviderModel)(nil),                          // 0: kratos.llm_provider_model.v1.ProviderModel
 	(*ModelCapabilities)(nil),                      // 1: kratos.llm_provider_model.v1.ModelCapabilities
-	(*ListProviderModelsResponse)(nil),             // 2: kratos.llm_provider_model.v1.ListProviderModelsResponse
-	(*CreateProviderModelRequest)(nil),             // 3: kratos.llm_provider_model.v1.CreateProviderModelRequest
-	(*GetProviderModelRequest)(nil),                // 4: kratos.llm_provider_model.v1.GetProviderModelRequest
-	(*UpdateProviderModelRequest)(nil),             // 5: kratos.llm_provider_model.v1.UpdateProviderModelRequest
-	(*DeleteProviderModelRequest)(nil),             // 6: kratos.llm_provider_model.v1.DeleteProviderModelRequest
-	(*ValidateProviderPairRequest)(nil),            // 7: kratos.llm_provider_model.v1.ValidateProviderPairRequest
-	(*ValidateProviderPairResponse)(nil),           // 8: kratos.llm_provider_model.v1.ValidateProviderPairResponse
-	(*InspectProviderModelRequest)(nil),            // 9: kratos.llm_provider_model.v1.InspectProviderModelRequest
-	(*RevealProviderModelCredentialsRequest)(nil),  // 10: kratos.llm_provider_model.v1.RevealProviderModelCredentialsRequest
-	(*HACandidateCredential)(nil),                  // 11: kratos.llm_provider_model.v1.HACandidateCredential
-	(*RevealProviderModelCredentialsResponse)(nil), // 12: kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse
-	(*InspectProviderModelResponse)(nil),           // 13: kratos.llm_provider_model.v1.InspectProviderModelResponse
-	(*emptypb.Empty)(nil),                          // 14: google.protobuf.Empty
+	(*ListProviderModelsRequest)(nil),              // 2: kratos.llm_provider_model.v1.ListProviderModelsRequest
+	(*ListProviderModelsResponse)(nil),             // 3: kratos.llm_provider_model.v1.ListProviderModelsResponse
+	(*CreateProviderModelRequest)(nil),             // 4: kratos.llm_provider_model.v1.CreateProviderModelRequest
+	(*GetProviderModelRequest)(nil),                // 5: kratos.llm_provider_model.v1.GetProviderModelRequest
+	(*UpdateProviderModelRequest)(nil),             // 6: kratos.llm_provider_model.v1.UpdateProviderModelRequest
+	(*DeleteProviderModelRequest)(nil),             // 7: kratos.llm_provider_model.v1.DeleteProviderModelRequest
+	(*ValidateProviderPairRequest)(nil),            // 8: kratos.llm_provider_model.v1.ValidateProviderPairRequest
+	(*ValidateProviderPairResponse)(nil),           // 9: kratos.llm_provider_model.v1.ValidateProviderPairResponse
+	(*InspectProviderModelRequest)(nil),            // 10: kratos.llm_provider_model.v1.InspectProviderModelRequest
+	(*RevealProviderModelCredentialsRequest)(nil),  // 11: kratos.llm_provider_model.v1.RevealProviderModelCredentialsRequest
+	(*HACandidateCredential)(nil),                  // 12: kratos.llm_provider_model.v1.HACandidateCredential
+	(*RevealProviderModelCredentialsResponse)(nil), // 13: kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse
+	(*InspectProviderModelResponse)(nil),           // 14: kratos.llm_provider_model.v1.InspectProviderModelResponse
+	(*emptypb.Empty)(nil),                          // 15: google.protobuf.Empty
 }
 var file_kratos_llm_provider_model_v1_llm_provider_model_proto_depIdxs = []int32{
 	1,  // 0: kratos.llm_provider_model.v1.ProviderModel.capabilities:type_name -> kratos.llm_provider_model.v1.ModelCapabilities
 	0,  // 1: kratos.llm_provider_model.v1.ListProviderModelsResponse.items:type_name -> kratos.llm_provider_model.v1.ProviderModel
 	1,  // 2: kratos.llm_provider_model.v1.CreateProviderModelRequest.capabilities:type_name -> kratos.llm_provider_model.v1.ModelCapabilities
 	0,  // 3: kratos.llm_provider_model.v1.UpdateProviderModelRequest.provider_model:type_name -> kratos.llm_provider_model.v1.ProviderModel
-	11, // 4: kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse.ha_candidates:type_name -> kratos.llm_provider_model.v1.HACandidateCredential
-	14, // 5: kratos.llm_provider_model.v1.LlmProviderModelService.ListProviderModels:input_type -> google.protobuf.Empty
-	3,  // 6: kratos.llm_provider_model.v1.LlmProviderModelService.CreateProviderModel:input_type -> kratos.llm_provider_model.v1.CreateProviderModelRequest
-	4,  // 7: kratos.llm_provider_model.v1.LlmProviderModelService.GetProviderModel:input_type -> kratos.llm_provider_model.v1.GetProviderModelRequest
-	10, // 8: kratos.llm_provider_model.v1.LlmProviderModelService.RevealProviderModelCredentials:input_type -> kratos.llm_provider_model.v1.RevealProviderModelCredentialsRequest
-	5,  // 9: kratos.llm_provider_model.v1.LlmProviderModelService.UpdateProviderModel:input_type -> kratos.llm_provider_model.v1.UpdateProviderModelRequest
-	6,  // 10: kratos.llm_provider_model.v1.LlmProviderModelService.DeleteProviderModel:input_type -> kratos.llm_provider_model.v1.DeleteProviderModelRequest
-	9,  // 11: kratos.llm_provider_model.v1.LlmProviderModelService.InspectProviderModel:input_type -> kratos.llm_provider_model.v1.InspectProviderModelRequest
-	7,  // 12: kratos.llm_provider_model.v1.LlmProviderModelService.ValidateProviderPair:input_type -> kratos.llm_provider_model.v1.ValidateProviderPairRequest
-	2,  // 13: kratos.llm_provider_model.v1.LlmProviderModelService.ListProviderModels:output_type -> kratos.llm_provider_model.v1.ListProviderModelsResponse
+	12, // 4: kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse.ha_candidates:type_name -> kratos.llm_provider_model.v1.HACandidateCredential
+	2,  // 5: kratos.llm_provider_model.v1.LlmProviderModelService.ListProviderModels:input_type -> kratos.llm_provider_model.v1.ListProviderModelsRequest
+	4,  // 6: kratos.llm_provider_model.v1.LlmProviderModelService.CreateProviderModel:input_type -> kratos.llm_provider_model.v1.CreateProviderModelRequest
+	5,  // 7: kratos.llm_provider_model.v1.LlmProviderModelService.GetProviderModel:input_type -> kratos.llm_provider_model.v1.GetProviderModelRequest
+	11, // 8: kratos.llm_provider_model.v1.LlmProviderModelService.RevealProviderModelCredentials:input_type -> kratos.llm_provider_model.v1.RevealProviderModelCredentialsRequest
+	6,  // 9: kratos.llm_provider_model.v1.LlmProviderModelService.UpdateProviderModel:input_type -> kratos.llm_provider_model.v1.UpdateProviderModelRequest
+	7,  // 10: kratos.llm_provider_model.v1.LlmProviderModelService.DeleteProviderModel:input_type -> kratos.llm_provider_model.v1.DeleteProviderModelRequest
+	10, // 11: kratos.llm_provider_model.v1.LlmProviderModelService.InspectProviderModel:input_type -> kratos.llm_provider_model.v1.InspectProviderModelRequest
+	8,  // 12: kratos.llm_provider_model.v1.LlmProviderModelService.ValidateProviderPair:input_type -> kratos.llm_provider_model.v1.ValidateProviderPairRequest
+	3,  // 13: kratos.llm_provider_model.v1.LlmProviderModelService.ListProviderModels:output_type -> kratos.llm_provider_model.v1.ListProviderModelsResponse
 	0,  // 14: kratos.llm_provider_model.v1.LlmProviderModelService.CreateProviderModel:output_type -> kratos.llm_provider_model.v1.ProviderModel
 	0,  // 15: kratos.llm_provider_model.v1.LlmProviderModelService.GetProviderModel:output_type -> kratos.llm_provider_model.v1.ProviderModel
-	12, // 16: kratos.llm_provider_model.v1.LlmProviderModelService.RevealProviderModelCredentials:output_type -> kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse
+	13, // 16: kratos.llm_provider_model.v1.LlmProviderModelService.RevealProviderModelCredentials:output_type -> kratos.llm_provider_model.v1.RevealProviderModelCredentialsResponse
 	0,  // 17: kratos.llm_provider_model.v1.LlmProviderModelService.UpdateProviderModel:output_type -> kratos.llm_provider_model.v1.ProviderModel
-	14, // 18: kratos.llm_provider_model.v1.LlmProviderModelService.DeleteProviderModel:output_type -> google.protobuf.Empty
-	13, // 19: kratos.llm_provider_model.v1.LlmProviderModelService.InspectProviderModel:output_type -> kratos.llm_provider_model.v1.InspectProviderModelResponse
-	8,  // 20: kratos.llm_provider_model.v1.LlmProviderModelService.ValidateProviderPair:output_type -> kratos.llm_provider_model.v1.ValidateProviderPairResponse
+	15, // 18: kratos.llm_provider_model.v1.LlmProviderModelService.DeleteProviderModel:output_type -> google.protobuf.Empty
+	14, // 19: kratos.llm_provider_model.v1.LlmProviderModelService.InspectProviderModel:output_type -> kratos.llm_provider_model.v1.InspectProviderModelResponse
+	9,  // 20: kratos.llm_provider_model.v1.LlmProviderModelService.ValidateProviderPair:output_type -> kratos.llm_provider_model.v1.ValidateProviderPairResponse
 	13, // [13:21] is the sub-list for method output_type
 	5,  // [5:13] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
@@ -1413,7 +1480,7 @@ func file_kratos_llm_provider_model_v1_llm_provider_model_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc), len(file_kratos_llm_provider_model_v1_llm_provider_model_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

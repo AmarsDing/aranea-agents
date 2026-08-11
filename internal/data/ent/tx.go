@@ -102,6 +102,8 @@ type Tx struct {
 	GraphTaskRun *GraphTaskRunClient
 	// HealRecord is the client for interacting with the HealRecord builders.
 	HealRecord *HealRecordClient
+	// KnowledgeLinkUsed is the client for interacting with the KnowledgeLinkUsed builders.
+	KnowledgeLinkUsed *KnowledgeLinkUsedClient
 	// LlmProviderModel is the client for interacting with the LlmProviderModel builders.
 	LlmProviderModel *LlmProviderModelClient
 	// MediaProvider is the client for interacting with the MediaProvider builders.
@@ -391,6 +393,7 @@ func (tx *Tx) init() {
 	tx.GraphTaskLog = NewGraphTaskLogClient(tx.config)
 	tx.GraphTaskRun = NewGraphTaskRunClient(tx.config)
 	tx.HealRecord = NewHealRecordClient(tx.config)
+	tx.KnowledgeLinkUsed = NewKnowledgeLinkUsedClient(tx.config)
 	tx.LlmProviderModel = NewLlmProviderModelClient(tx.config)
 	tx.MediaProvider = NewMediaProviderClient(tx.config)
 	tx.MemberSessionV2 = NewMemberSessionV2Client(tx.config)

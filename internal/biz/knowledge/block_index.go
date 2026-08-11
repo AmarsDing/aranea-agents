@@ -75,4 +75,8 @@ type BlockIndexRepo interface {
 	// UpdateDocLinkKeys 物化文档解析键（frontmatter title/aliases，Resolver 文档键）。
 	// 与 ReplaceDocBlocks 同事务非必需：失败仅解析键滞后，下次重建自愈。
 	UpdateDocLinkKeys(ctx context.Context, docID, title string, aliases []string) error
+	// ListDocsMissingBlockIndex 列出「已索引但块索引缺失」的文档 ID（SP2 #4 下游
+	// 收敛）：rebuildBlockIndex 失败仅 Warn 降级而 content_hash 已落库，下轮不再
+	// 重试——靠此低频校验检出漂移并自动重建。空内容文档（合法 0 块）须排除。
+	ListDocsMissingBlockIndex(ctx context.Context, collectionID string, limit int) ([]string, error)
 }

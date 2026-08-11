@@ -76,9 +76,12 @@
               :fact-rows="factRows"
               :fact-columns="factColumns"
               :loading-facts="loadingFacts"
+              :facts-active-count="factsActiveCount"
+              :facts-archived-count="factsArchivedCount"
               @reset="resetFactFilters"
               @search="loadFacts"
               @open-fact="openFact"
+              @create-fact="openCreateFact"
             />
           </template>
         </memory-browse-tab>
@@ -86,6 +89,14 @@
 
       <q-tab-panel name="governance">
         <div class="column q-gutter-md">
+          <memory-conflict-panel
+            :rows="conflictFacts"
+            :loading="loadingConflicts"
+            :acting-id="conflictActingId"
+            @refresh="loadFacts"
+            @open-fact="openFact"
+            @review="reviewConflictFact"
+          />
           <memory-cascade-panel
             v-model:preview-open="cascadePreviewOpen"
             :agent-id="selectedAgentId"
@@ -123,7 +134,20 @@
     </q-tab-panels>
 
     <memory-snapshot-drawer v-model="snapshotDrawer" :snapshot="selectedSnapshot" />
-    <memory-fact-drawer v-model="factDrawer" :fact="selectedFact" />
+    <memory-fact-drawer
+      v-model="factDrawer"
+      :fact="selectedFact"
+      :acting="factReviewActing"
+      @review="reviewSelectedFact"
+      @refine="openRefineFact"
+    />
+    <memory-fact-edit-dialog
+      v-model:open="factEditOpen"
+      :mode="factEditMode"
+      :fact="selectedFact"
+      :saving="factReviewActing"
+      @submit="submitFactEdit"
+    />
     <memory-saga-drawer v-model="cascadeSagaDrawerOpen" :loading="loadingCascadeSaga" :steps="sagaSteps" />
   </q-page>
 </template>
@@ -138,8 +162,10 @@ import MemoryWorkerStatusPanel from '../components/memory/MemoryWorkerStatusPane
 import MemoryBrowseTab, { type BrowseLayer } from '../features/memory/browse/MemoryBrowseTab.vue';
 import MemoryEpisodeTimeline from '../features/memory/browse/MemoryEpisodeTimeline.vue';
 import MemoryCascadePanel from '../features/memory/MemoryCascadePanel.vue';
+import MemoryConflictPanel from '../features/memory/MemoryConflictPanel.vue';
 import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue';
 import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
+import MemoryFactEditDialog from '../components/memory/MemoryFactEditDialog.vue';
 import MemoryHero from '../components/memory/MemoryHero.vue';
 import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';
 import MemoryMetricCards from '../components/memory/MemoryMetricCards.vue';
@@ -169,6 +195,12 @@ const {
   factStatus,
   snapshotDrawer,
   factDrawer,
+  factEditOpen,
+  factEditMode,
+  factReviewActing,
+  conflictFacts,
+  loadingConflicts,
+  conflictActingId,
   error,
   loading,
   loadingFacts,
@@ -198,6 +230,8 @@ const {
   factColumns,
   snapshotColumns,
   factsEndpointReady,
+  factsActiveCount,
+  factsArchivedCount,
   loadAll,
   loadSessions,
   loadFacts,
@@ -213,6 +247,11 @@ const {
   resetFactFilters,
   openSnapshot,
   openFact,
+  reviewSelectedFact,
+  openRefineFact,
+  openCreateFact,
+  submitFactEdit,
+  reviewConflictFact,
   handleDeadLetterReplay,
   handleDeadLetterAbandon,
   workerStatus,

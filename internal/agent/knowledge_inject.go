@@ -33,8 +33,9 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		// Prefix stabilization: append after the existing system block.
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

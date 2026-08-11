@@ -136,6 +136,7 @@ var stepTitleRegistry = map[string]string{
 	"system.auth.bypass_refused":           "认证绕过被拒绝",
 	"system.auth.bypass_active":            "认证绕过已启用",
 	"system.plugin.seed_fail":              "插件种子同步失败",
+	"system.plugin.seed_meta_sync_fail":    "内置插件元数据同步失败",
 	"system.plugin.reload_fail":            "插件运行时重载失败",
 	"system.hook.reload_fail":              "Hook 重载失败",
 	"system.mcp.health_list_fail":          "MCP 健康检查列表失败",

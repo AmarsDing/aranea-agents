@@ -41,11 +41,17 @@ func parsePluginConfig(configJSON, defaultJSON string, dest any, lg loggateway.L
 	}
 }
 
+// truncateString 按字符（rune）截断：避免按字节切断 UTF-8 序列，
+// 导致落库 JSON 出现 U+FFFD 替换符（summary 多为中文，字节截断必切 rune）。
 func truncateString(s string, max int) string {
-	if max <= 0 || len(s) <= max {
+	if max <= 0 {
 		return s
 	}
-	return s[:max] + "…"
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
 }
 
 type customPattern struct {

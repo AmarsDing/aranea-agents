@@ -262,6 +262,9 @@ var ddlMigrations = []ddlMigration{
 	// SP1-F 团队库后端维度：knowledge_collections.vault_backend（local=文件真相源 /
 	// team=PG 真相源，设计 S6）。存量行默认 local 与历史语义一致，无需回填。
 	{Version: 20261205, Name: "knowledge_vault_backend", SQL: "sql/migrations/20261205_knowledge_vault_backend.sql"},
+	// SP2 #9 embedding 熔断：knowledge_documents.embed_fail_count/embed_last_tried
+	// （embed 失败降级词法索引 + 指数退避后台重试）+ 降级文档扫描部分索引。
+	{Version: 20261206, Name: "knowledge_embed_circuit", SQL: "sql/migrations/20261206_knowledge_embed_circuit.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

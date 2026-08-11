@@ -41,6 +41,15 @@ message ModelCapabilities {
   bool text_only = 8;
 }
 
+// ListProviderModelsRequest carries optional pagination + search for the admin
+// registry UI. When both page and page_size are zero the service falls back to
+// the legacy full-catalog list (pickers/health/runtime consumers).
+message ListProviderModelsRequest {
+  int32 page = 1;      // 1-based
+  int32 page_size = 2; // default: 20, max: 100
+  string search = 3;
+}
+
 message ListProviderModelsResponse {
   repeated ProviderModel items = 1;
   int32 total = 2;
@@ -140,7 +149,7 @@ message InspectProviderModelResponse {
 }
 
 service LlmProviderModelService {
-  rpc ListProviderModels(google.protobuf.Empty) returns (ListProviderModelsResponse) {
+  rpc ListProviderModels(ListProviderModelsRequest) returns (ListProviderModelsResponse) {
     option (google.api.http) = {get: "/v1/llm-provider-models"};
   }
   rpc CreateProviderModel(CreateProviderModelRequest) returns (ProviderModel) {

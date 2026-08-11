@@ -33,6 +33,7 @@ export function useSkillsPage() {
   const togglingId = ref('');
   const publishingId = ref('');
   const publishingEcosystemId = ref('');
+  const duplicatingId = ref('');
   /** 生态市场发布确认对话框 */
   const ecosystemPublishOpen = ref(false);
   const ecosystemPublishTarget = ref<Skill | null>(null);
@@ -219,6 +220,20 @@ export function useSkillsPage() {
     }
   }
 
+  /** 复制 Skill（FN-2：后端/store 已就绪，此处接 UI 事件）。 */
+  async function onDuplicateSkill(skill: Skill) {
+    duplicatingId.value = skill.id;
+    try {
+      const copy = await skillsStore.duplicate(skill.id);
+      $q.notify({ type: 'positive', message: t('skillsPage.duplicateOk', { name: copy.name }) });
+      await loadRows();
+    } catch (err) {
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('skillsPage.duplicateFailed') });
+    } finally {
+      duplicatingId.value = '';
+    }
+  }
+
   /** 发布到生态市场（区别于生命周期启用：上架为 ecosystem product）。 */
   type EcosystemPublishState = 'published' | 'failed' | 'unpublished';
 
@@ -348,6 +363,7 @@ export function useSkillsPage() {
     togglingId,
     publishingId,
     publishingEcosystemId,
+    duplicatingId,
     ecosystemPublishOpen,
     ecosystemPublishTarget,
     ecosystemPublishState,
@@ -368,6 +384,7 @@ export function useSkillsPage() {
     filterMissingFilesystem,
     onPublishSkill,
     onPublishToEcosystem,
+    onDuplicateSkill,
     onToggleEnabled,
     openEditor,
     openMetaEditor,

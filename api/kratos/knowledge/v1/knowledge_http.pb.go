@@ -36,6 +36,7 @@ const OperationKnowledgeServiceListDanglingLinks = "/kratos.knowledge.v1.Knowled
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
+const OperationKnowledgeServiceListRecentLinkUses = "/kratos.knowledge.v1.KnowledgeService/ListRecentLinkUses"
 const OperationKnowledgeServiceListUnlinkedMentions = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 const OperationKnowledgeServiceMergeKnowledgeEntities = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
@@ -43,6 +44,7 @@ const OperationKnowledgeServiceMoveDocument = "/kratos.knowledge.v1.KnowledgeSer
 const OperationKnowledgeServiceMoveDocumentToDir = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeService/PromoteBlocks"
 const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
+const OperationKnowledgeServiceRecordLinkUse = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -82,6 +84,10 @@ type KnowledgeServiceHTTPServer interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error)
+	// ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
+	// collection, most recent first (B4 #8); drives empty-query [[ completion
+	// ordering on the client.
+	ListRecentLinkUses(context.Context, *ListRecentLinkUsesRequest) (*ListRecentLinkUsesResponse, error)
 	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(context.Context, *ListUnlinkedMentionsRequest) (*ListUnlinkedMentionsResponse, error)
@@ -107,6 +113,9 @@ type KnowledgeServiceHTTPServer interface {
 	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
 	// stay on old data during the rebuild (degraded but available).
 	RebuildKnowledgeIndex(context.Context, *RebuildKnowledgeIndexRequest) (*RebuildKnowledgeIndexResponse, error)
+	// RecordLinkUse RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+	// completion is applied (B4 #8); best-effort, callers may ignore failures.
+	RecordLinkUse(context.Context, *RecordLinkUseRequest) (*RecordLinkUseResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -138,6 +147,8 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{doc_id}/unlinked-mentions", _KnowledgeService_ListUnlinkedMentions0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/collections/{collection_id}/link-uses", _KnowledgeService_RecordLinkUse0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/collections/{collection_id}/link-uses", _KnowledgeService_ListRecentLinkUses0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/blocks/promote", _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/collections/{id}/rebuild-index", _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
@@ -596,6 +607,53 @@ func _KnowledgeService_ListUnlinkedMentions0_HTTP_Handler(srv KnowledgeServiceHT
 	}
 }
 
+func _KnowledgeService_RecordLinkUse0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RecordLinkUseRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceRecordLinkUse)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RecordLinkUse(ctx, req.(*RecordLinkUseRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RecordLinkUseResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ListRecentLinkUses0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListRecentLinkUsesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListRecentLinkUses)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListRecentLinkUses(ctx, req.(*ListRecentLinkUsesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListRecentLinkUsesResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_PromoteBlocks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in PromoteBlocksRequest
@@ -788,6 +846,10 @@ type KnowledgeServiceHTTPClient interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(ctx context.Context, req *ListEntityMergeSuggestionsRequest, opts ...http.CallOption) (rsp *ListEntityMergeSuggestionsResponse, err error)
+	// ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
+	// collection, most recent first (B4 #8); drives empty-query [[ completion
+	// ordering on the client.
+	ListRecentLinkUses(ctx context.Context, req *ListRecentLinkUsesRequest, opts ...http.CallOption) (rsp *ListRecentLinkUsesResponse, err error)
 	// ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
 	// in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 	ListUnlinkedMentions(ctx context.Context, req *ListUnlinkedMentionsRequest, opts ...http.CallOption) (rsp *ListUnlinkedMentionsResponse, err error)
@@ -813,6 +875,9 @@ type KnowledgeServiceHTTPClient interface {
 	// collection. Progress via knowledge WS events (EP-KN-02 pattern); chunks/FTS
 	// stay on old data during the rebuild (degraded but available).
 	RebuildKnowledgeIndex(ctx context.Context, req *RebuildKnowledgeIndexRequest, opts ...http.CallOption) (rsp *RebuildKnowledgeIndexResponse, err error)
+	// RecordLinkUse RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+	// completion is applied (B4 #8); best-effort, callers may ignore failures.
+	RecordLinkUse(ctx context.Context, req *RecordLinkUseRequest, opts ...http.CallOption) (rsp *RecordLinkUseResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -1056,6 +1121,22 @@ func (c *KnowledgeServiceHTTPClientImpl) ListEntityMergeSuggestions(ctx context.
 	return &out, nil
 }
 
+// ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
+// collection, most recent first (B4 #8); drives empty-query [[ completion
+// ordering on the client.
+func (c *KnowledgeServiceHTTPClientImpl) ListRecentLinkUses(ctx context.Context, in *ListRecentLinkUsesRequest, opts ...http.CallOption) (*ListRecentLinkUsesResponse, error) {
+	var out ListRecentLinkUsesResponse
+	pattern := "/v1/knowledge/collections/{collection_id}/link-uses"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListRecentLinkUses))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListUnlinkedMentions ListUnlinkedMentions returns documents that mention the target doc's name
 // in plain text (outside [[wikilinks]]) without linking to it (P2-7).
 func (c *KnowledgeServiceHTTPClientImpl) ListUnlinkedMentions(ctx context.Context, in *ListUnlinkedMentionsRequest, opts ...http.CallOption) (*ListUnlinkedMentionsResponse, error) {
@@ -1157,6 +1238,21 @@ func (c *KnowledgeServiceHTTPClientImpl) RebuildKnowledgeIndex(ctx context.Conte
 	pattern := "/v1/knowledge/collections/{id}/rebuild-index"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceRebuildKnowledgeIndex))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RecordLinkUse RecordLinkUse upserts the (collection, doc) recency row when a wikilink
+// completion is applied (B4 #8); best-effort, callers may ignore failures.
+func (c *KnowledgeServiceHTTPClientImpl) RecordLinkUse(ctx context.Context, in *RecordLinkUseRequest, opts ...http.CallOption) (*RecordLinkUseResponse, error) {
+	var out RecordLinkUseResponse
+	pattern := "/v1/knowledge/collections/{collection_id}/link-uses"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceRecordLinkUse))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

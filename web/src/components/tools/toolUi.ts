@@ -11,11 +11,15 @@ import {
 
 /** ToolsTable 列定义 */
 export const TOOL_TABLE_COLUMNS: QTableColumn<Tool>[] = [
-  registryCol<Tool>('name', 'Tool', 'display_name', 'left', REGISTRY_COL_W.name),
+  registryCol<Tool>('name', 'Tool', 'display_name', 'left', REGISTRY_COL_W.nameWide),
   registryCol<Tool>('category', '分类 / 来源', 'category', 'left', REGISTRY_COL_W.category),
-  registryCol<Tool>('runtime', '运行时', 'runtime_status', 'left', REGISTRY_COL_W.category),
+  registryCol<Tool>('runtime', '运行时', 'runtime_status', 'left', REGISTRY_COL_W.status),
   registryColEnabled<Tool>(),
-  registryCol<Tool>('stats', '调用', 'invoke_count', 'left', REGISTRY_COL_W.status),
+  registryCol<Tool>('overrides', '覆盖', 'agent_override_count', 'center', REGISTRY_COL_W.narrow),
+  registryCol<Tool>('stats', '使用频率', 'invoke_count', 'left', REGISTRY_COL_W.status),
+  registryCol<Tool>('success_rate', '成功率', (row) => row.success_count, 'left', REGISTRY_COL_W.status),
+  registryCol<Tool>('duration', '耗时', (row) => row.p95_duration_ms, 'left', REGISTRY_COL_W.status),
+  registryCol<Tool>('last', '最近调用', 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide),
   registryCol<Tool>('risk', '风险', 'risk_level', 'left', REGISTRY_COL_W.status),
   registryColActions<Tool>(),
 ];
@@ -27,6 +31,7 @@ export const TOOL_RUNS_TABLE_COLUMNS: QTableColumn<ToolInvocation>[] = [
   registryCol<ToolInvocation>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
   registryCol<ToolInvocation>('session_id', 'Session', 'session_id', 'left', REGISTRY_COL_W.session),
   registryCol<ToolInvocation>('time', '时间 / 耗时', 'started_at', 'left', REGISTRY_COL_W.time),
+  registryColActions<ToolInvocation>(REGISTRY_COL_W.narrow, '操作'),
 ];
 
 /** ToolAuditsTable 列定义 */
@@ -57,6 +62,9 @@ export const sourceSuggestions = [
   { value: 'system', label: 'system', caption: '系统级' },
   { value: 'external', label: 'external', caption: '外部注册' },
 ];
+
+/** 列表「来源」筛选选项（与 sourceSuggestions 对齐） */
+export const sourceFilterOptions = sourceSuggestions.map(({ value, label }) => ({ label, value }));
 
 export const riskLevelOptions = [
   { label: '低', value: 'low' },
@@ -158,6 +166,25 @@ export function buildToolSummaryCards(summary: ToolSummary) {
 export function formatFailureRatePercent(rate: number): string {
   if (!Number.isFinite(rate)) return '—';
   return `${(rate * 100).toFixed(1)}%`;
+}
+
+/** 成功率（0~1）；无调用时返回 null。分母用总调用数（含 error/blocked/cancelled）。 */
+export function toolSuccessRate(tool: Pick<Tool, 'invoke_count' | 'success_count'>): number | null {
+  if (!tool.invoke_count || tool.invoke_count <= 0) return null;
+  return tool.success_count / tool.invoke_count;
+}
+
+export function formatToolSuccessRate(tool: Pick<Tool, 'invoke_count' | 'success_count'>): string {
+  const rate = toolSuccessRate(tool);
+  if (rate == null) return '—';
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
+/** 成功率低于阈值（默认 90%）且有调用量时标红（需求 23-tools §5.2「成功率」列）。 */
+export function toolSuccessRateColor(tool: Pick<Tool, 'invoke_count' | 'success_count'>, threshold = 0.9): string {
+  const rate = toolSuccessRate(tool);
+  if (rate == null) return 'grey';
+  return rate < threshold ? 'negative' : 'positive';
 }
 
 export function prettyJSON(raw: string): string {
@@ -267,7 +294,17 @@ export function agentBindingColumns(): QTableColumn<ToolAgentBindingRow>[] {
   ];
 }
 
-const TOOL_PROFILE_KEYS = ['chat_only', 'read_only', 'coding', 'research', 'full'] as const;
+const TOOL_PROFILE_KEYS = [
+  'chat_only',
+  'read_only',
+  'coding',
+  'research',
+  'full',
+  'minimal',
+  'safe',
+  'system_admin',
+  'spirit',
+] as const;
 
 export function toolProfileLabel(profile: string): string {
   const key = (profile || '').trim();

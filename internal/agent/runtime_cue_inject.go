@@ -33,8 +33,10 @@ func newStaticRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		// Prefix stabilization: append after the existing system block so the
+		// session-stable prefix stays intact for prompt caching (never prepend).
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -64,7 +66,7 @@ func newDynamicRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

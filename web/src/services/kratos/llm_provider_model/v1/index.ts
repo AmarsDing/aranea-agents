@@ -33,6 +33,15 @@ export type ModelCapabilities = {
   textOnly: boolean | undefined;
 };
 
+// ListProviderModelsRequest carries optional pagination + search for the admin
+// registry UI. When both page and page_size are zero the service falls back to
+// the legacy full-catalog list (pickers/health/runtime consumers).
+export type ListProviderModelsRequest = {
+  page: number | undefined;
+  pageSize: number | undefined;
+  search: string | undefined;
+};
+
 export type ListProviderModelsResponse = {
   items: ProviderModel[] | undefined;
   total: number | undefined;
@@ -144,7 +153,7 @@ export type InspectProviderModelResponse = {
 };
 
 export interface LlmProviderModelService {
-  ListProviderModels(request: wellKnownEmpty): Promise<ListProviderModelsResponse>;
+  ListProviderModels(request: ListProviderModelsRequest): Promise<ListProviderModelsResponse>;
   CreateProviderModel(request: CreateProviderModelRequest): Promise<ProviderModel>;
   GetProviderModel(request: GetProviderModelRequest): Promise<ProviderModel>;
   // RevealProviderModelCredentials returns decrypted API secrets for admin console edit UI only.
@@ -172,6 +181,15 @@ export function createLlmProviderModelServiceClient(
       const path = `v1/llm-provider-models`; // eslint-disable-line quotes
       const body = null;
       const queryParams: string[] = [];
+      if (request.page) {
+        queryParams.push(`page=${encodeURIComponent(request.page.toString())}`)
+      }
+      if (request.pageSize) {
+        queryParams.push(`pageSize=${encodeURIComponent(request.pageSize.toString())}`)
+      }
+      if (request.search) {
+        queryParams.push(`search=${encodeURIComponent(request.search.toString())}`)
+      }
       let uri = path;
       if (queryParams.length > 0) {
         uri += `?${queryParams.join("&")}`

@@ -73,9 +73,13 @@ type Document struct {
 	// Tags 是 LLM 打标（摘要卡）。
 	Tags []string
 	// DocType 是自动分类（report/manual/note/faq…）。
-	DocType   string
-	CreatedAt string
-	UpdatedAt string
+	DocType string
+	// EmbedFailCount 是 embedding 连续失败计数（SP2 #9 熔断）；0 = 熔断关闭。
+	EmbedFailCount int
+	// EmbedLastTried 是最近一次 embed 尝试时间（退避判定依据）；零值 = 从未尝试。
+	EmbedLastTried time.Time
+	CreatedAt      string
+	UpdatedAt      string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -236,6 +240,12 @@ type Usecase struct {
 	// nil 时 PromoteBlocks 返回 ErrUnavailable。
 	promoteReader PromoteBlockReader
 	promoteWriter PromoteLineageWriter
+	// embedCircuit 为 embedding 熔断端口（SP2 #9），经 SetEmbedCircuitRepo 接线；
+	// nil 时熔断读写降级 no-op（embed 失败仍降级词法索引，仅失去熔断记忆）。
+	embedCircuit EmbedCircuitRepo
+	// linkUsage 为 wikilink 落链 recency 端口（B4 #8），经 SetLinkUsageRepo 接线；
+	// nil 时 RecordLinkUse/ListRecentLinkUses 降级 no-op（recency 非正确性依赖）。
+	linkUsage LinkUsageRepo
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger

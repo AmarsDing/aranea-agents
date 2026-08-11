@@ -2170,7 +2170,16 @@ KnowledgePage.vue（重写，薄壳）
 | `--kb-radius-glass` | `14px` | 玻璃圆角（全局无对应，本地保留） |
 | `--kb-blur` | `var(--glass-blur-default)` | backdrop blur |
 
-玻璃质感实现：`background: var(--kb-bg-glass); backdrop-filter: blur(var(--kb-blur)) saturate(1.4); border: 1px solid var(--kb-glass-border);` + 镜面断面（box-shadow 顶缘反光 + 底缘暗线，见 §SP2-12 三层液态效果）。极光光斑 = 两个固定定位径向渐变圆（cyan/violet，`filter: blur(120px)`，低透明度，不参与交互）。
+玻璃质感实现：`background: var(--kb-bg-glass); backdrop-filter: blur(var(--kb-blur)) saturate(1.4); border: 1px solid var(--kb-glass-border);` + 镜面断面（box-shadow 顶缘反光 + 底缘暗线，见 §SP2-12 三层液态效果）。极光光斑 = 三个固定定位径向渐变色团（cyan/violet/teal，视口相对 46/40/34vw，`filter: blur(120px)`，慢速漂移，不参与交互）。
+
+> **2026-08-11 美化提升轮（U1~U3，调研 `docs/reports/2026-08-11-research-ui-liquid-glass-visual.md`）**：
+>
+> - **U1 色彩阶梯**：新增透明度阶梯令牌——文本 `--kb-text-secondary/faint/disabled`（68%/42%/28%）、边框 `--kb-line-hairline/emphasis`（7%/16%）、行态 `--kb-bg-hover/active`、辉光 `--kb-accent-glow`，全部 color-mix 派生自同源令牌、跟随主题；`.kb-portal` 菜单行 hover/active 改亮度阶梯。
+> - **U1 渐变边缘光**：`kb-gradient-edge` mixin（顶亮 18% → 中暗 5% → 底缘微青 14% 的 1px 渐变环，mask-composite 合成只画边缘），`.kb-glass::before` 承载并取代原顶部高光线，平边框降为 `--kb-line-hairline` 兜底；`kb-glass-surface` 补左缘反光 inset（三向受光）。
+> - **U1 焦点环/选区**：双环焦点（`0 0 0 2px 背景 + 0 0 0 4px accent 60%`，`:where()` 零特指度、`:focus-visible` 仅键盘）；`::selection` accent 32% 透明底，两作用域共享。
+> - **U2 噪点纹理**：`.kb-workbench::after` feTurbulence 单色颗粒（data-URI SVG，160px 平铺，`mix-blend-mode: overlay` + opacity 0.04，z-index 2 盖内容上方）——防色带、掩 blur 廉价感；浮层 PaletteModal z-index 30 不受影响。
+> - **U2 光晕增强**：极光由 480px 双团升级为视口相对三团 + `kb-aurora-drift` 慢速漂移（26/32/38s 交错，仅 transform，reduced-motion 统一降级）。
+> - **U3 wikilink 芯片**（`NoteEditor.vue` kbTheme）：6px 圆角 + accent 10% 底；hover 底色升 20% + accent 微光 + 150ms 过渡；断链虚线边 + opacity 0.6 降级，dangling hover 独立态（无辉光、opacity 0.8）。
 
 ### SP2-3. 特效组件（5 个自研，`components/knowledge/effects/`）
 

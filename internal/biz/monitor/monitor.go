@@ -95,6 +95,10 @@ type EventsQuery struct {
 	// ExcludeEventTypes: prefix exclusion applied after the include set
 	// (e.g. ["skill.filesystem."] to hide governance noise from the Events tab).
 	ExcludeEventTypes []string
+	// HideLinkedCompletions: exclude runner.completion rows already materialized
+	// as Runs (usage_event_id set, or trace_id matching a monitor_traces row), so
+	// server-side pagination total matches what the Events table renders.
+	HideLinkedCompletions bool
 }
 
 // TracesQuery filters monitor traces list.
@@ -561,16 +565,16 @@ func (u *Usecase) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
 // validateAlertRule 边界校验：名称/指标必填、阈值与统计窗口为正（前端另有 saveDisabled 门禁，双保险）。
 func validateAlertRule(r AlertRule) error {
 	if strings.TrimSpace(r.Name) == "" {
-		return apierror.BadRequest("MONITOR", "alert rule name is required")
+		return apierror.BadRequest(apierror.DomainMonitor, "alert rule name is required")
 	}
 	if strings.TrimSpace(r.MetricKey) == "" {
-		return apierror.BadRequest("MONITOR", "alert rule metric_key is required")
+		return apierror.BadRequest(apierror.DomainMonitor, "alert rule metric_key is required")
 	}
 	if r.Threshold <= 0 {
-		return apierror.BadRequest("MONITOR", "alert rule threshold must be greater than 0")
+		return apierror.BadRequest(apierror.DomainMonitor, "alert rule threshold must be greater than 0")
 	}
 	if r.WindowMinutes <= 0 {
-		return apierror.BadRequest("MONITOR", "alert rule window_minutes must be greater than 0")
+		return apierror.BadRequest(apierror.DomainMonitor, "alert rule window_minutes must be greater than 0")
 	}
 	return nil
 }

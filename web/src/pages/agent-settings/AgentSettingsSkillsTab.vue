@@ -161,7 +161,7 @@
             emit-value
             map-options
             label="工具配置文件"
-            hint="chat_only / read_only / coding / research / full"
+            hint="chat_only / read_only / coding / research / full（另：minimal·safe 别名，system_admin·spirit 系统内部）"
             :options="toolProfileOptions"
           />
           <q-banner v-if="config.tools.profile === 'full'" class="app-grid-span-full settings-warning-banner" rounded>

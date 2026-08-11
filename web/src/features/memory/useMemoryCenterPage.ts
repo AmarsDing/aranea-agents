@@ -11,6 +11,7 @@ import type {
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
+  FactReviewAction,
   L0AssemblySnapshot,
   L1Task,
   MemoryFact,
@@ -19,7 +20,6 @@ import { buildMemoryAssemblyTableColumns, buildMemoryFactTableColumns } from './
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
 import { useSessionStore } from '../../stores/session';
 import { useMemoryStore } from '../../stores/memory';
-import { MEMORY_ENTITY_LIMIT } from '../constants/queryLimits';
 
 export function useMemoryCenterPage() {
   const { notify } = useQuasar();
@@ -69,8 +69,16 @@ export function useMemoryCenterPage() {
   const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
   const factsTotal = ref(0);
+  const factsActiveCount = ref(0);
+  const factsArchivedCount = ref(0);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
+  const factEditOpen = ref(false);
+  const factEditMode = ref<'refine' | 'create'>('refine');
+  const factReviewActing = ref(false);
+  const conflictFacts = ref<MemoryFact[]>([]);
+  const loadingConflicts = ref(false);
+  const conflictActingId = ref<string | null>(null);
   const cascadePreviewOpen = ref(false);
   const cascadeSagaDrawerOpen = ref(false);
   const cascadePreviewProposalId = ref<string | null>(null);
@@ -396,14 +404,35 @@ export function useMemoryCenterPage() {
   async function loadConflictingFacts() {
     const agentID = selectedAgentId.value || agents.value[0]?.id || '';
     if (!agentID) {
+      conflictFacts.value = [];
       return;
     }
+    loadingConflicts.value = true;
     try {
       // H2: agent_id 跨 scope 口径——冲突事实分布在 session/user/agent scope，
       // 仅查 agent scope 会漏计（与 F1 facts 列表口径一致）。
-      await memoryStore.loadConflictingFacts('', '', agentID, 50, 0);
+      const result = await memoryStore.loadConflictingFacts('', '', agentID, 50, 0);
+      conflictFacts.value = result.items;
     } catch {
-      // 冲突总数仅用于全景行动项（后端聚合）；此处预取失败不阻断 facts 列表。
+      // 冲突列表拉取失败不阻断 facts 主列表。
+      conflictFacts.value = [];
+    } finally {
+      loadingConflicts.value = false;
+    }
+  }
+
+  /** 冲突仲裁：confirm/reject/deprecate 后刷新冲突列表与 facts 主列表。 */
+  async function reviewConflictFact(fact: MemoryFact, action: FactReviewAction) {
+    if (conflictActingId.value) return;
+    conflictActingId.value = fact.id;
+    try {
+      await memoryStore.reviewFact({ fact_id: fact.id, action });
+      notify({ type: 'positive', message: t(`memory.factDrawer.reviewDone.${action}`) });
+      await Promise.all([loadConflictingFacts(), loadFacts()]);
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.factDrawer.reviewFailed') });
+    } finally {
+      conflictActingId.value = null;
     }
   }
 
@@ -418,11 +447,15 @@ export function useMemoryCenterPage() {
         limit: 50,
       });
       factsTotal.value = result.total;
+      factsActiveCount.value = result.active_count ?? 0;
+      factsArchivedCount.value = result.archived_count ?? 0;
       factsEndpointReady.value = true;
       await loadConflictingFacts();
     } catch {
       memoryStore.clearFacts();
       factsTotal.value = 0;
+      factsActiveCount.value = 0;
+      factsArchivedCount.value = 0;
       factsEndpointReady.value = false;
     } finally {
       loadingFacts.value = false;
@@ -479,6 +512,93 @@ export function useMemoryCenterPage() {
     factDrawer.value = true;
   }
 
+  /** 抽屉治理动作：confirm/reject 就地更新；archive/deprecate 变更状态后按当前过滤刷新列表。 */
+  async function reviewSelectedFact(action: FactReviewAction) {
+    const fact = selectedFact.value;
+    if (!fact || factReviewActing.value) return;
+    factReviewActing.value = true;
+    try {
+      const updated = await memoryStore.reviewFact({ fact_id: fact.id, action });
+      selectedFact.value = updated;
+      notify({ type: 'positive', message: t(`memory.factDrawer.reviewDone.${action}`) });
+      if (action === 'archive' || action === 'deprecate') {
+        await loadFacts();
+        if (factStatus.value === 'active') {
+          factDrawer.value = false;
+        }
+      }
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.factDrawer.reviewFailed') });
+    } finally {
+      factReviewActing.value = false;
+    }
+  }
+
+  function openRefineFact() {
+    if (!selectedFact.value) return;
+    factEditMode.value = 'refine';
+    factEditOpen.value = true;
+  }
+
+  function openCreateFact() {
+    factEditMode.value = 'create';
+    factEditOpen.value = true;
+  }
+
+  /** 编辑对话框提交：refine 走列级 ReviewMemoryFact；create 走 UpsertMemoryFact（默认 agent 作用域）。 */
+  async function submitFactEdit(payload: {
+    statement: string;
+    details_markdown: string;
+    fact_kind: string;
+    tags: string[];
+  }) {
+    if (factReviewActing.value) return;
+    factReviewActing.value = true;
+    const tags_json = JSON.stringify(payload.tags);
+    try {
+      if (factEditMode.value === 'refine') {
+        const fact = selectedFact.value;
+        if (!fact) return;
+        const updated = await memoryStore.reviewFact({
+          fact_id: fact.id,
+          action: 'refine',
+          statement: payload.statement,
+          details_markdown: payload.details_markdown,
+          fact_kind: payload.fact_kind,
+          tags_json,
+        });
+        selectedFact.value = updated;
+        notify({ type: 'positive', message: t('memory.factDrawer.reviewDone.refine') });
+      } else {
+        // agentId 必须显式传入：列表/统计走 F1 口径（memory_facts.agent_id 列，
+        // 按产生方 agent 跨 scope 聚合），仅设 scope=agent 不带 agent_id 会导致
+        // 新事实在当前 Agent 过滤下不可见。
+        await memoryStore.upsertFact({
+          scopeType: 'agent',
+          scopeId: selectedAgentId.value || undefined,
+          agentId: selectedAgentId.value || undefined,
+          statement: payload.statement,
+          detailsMarkdown: payload.details_markdown,
+          factKind: payload.fact_kind || 'fact',
+          tagsJson: tags_json,
+          // 用户手动陈述的事实给中高默认置信度（对齐 auto_memory 的 0.85 量级），
+          // 缺省 0 会在列表中显示红色 0%，与「用户明确告知」的语义相悖。
+          confidence: 0.85,
+          // 手动创建标记来源，区别于 auto_memory 自动提炼，便于治理时辨识。
+          sourceKind: 'manual',
+          status: 'active',
+        });
+        notify({ type: 'positive', message: t('memory.factDrawer.createDone') });
+      }
+      factEditOpen.value = false;
+      await loadFacts();
+    } catch (e: unknown) {
+      notify({ type: 'negative', message: e instanceof Error ? e.message : t('memory.factDrawer.reviewFailed') });
+    } finally {
+      factReviewActing.value = false;
+    }
+  }
+
   function contextRatioColor(value?: number) {
     const ratio = Math.max(0, Math.min(1, Number(value) || 0));
     if (ratio >= 0.85) return 'negative';
@@ -524,6 +644,12 @@ export function useMemoryCenterPage() {
     factStatus,
     snapshotDrawer,
     factDrawer,
+    factEditOpen,
+    factEditMode,
+    factReviewActing,
+    conflictFacts,
+    loadingConflicts,
+    conflictActingId,
     error,
     loading,
     loadingFacts,
@@ -556,6 +682,8 @@ export function useMemoryCenterPage() {
     factColumns,
     snapshotColumns,
     factsEndpointReady,
+    factsActiveCount,
+    factsArchivedCount,
     loadAll,
     loadSessions,
     loadFacts,
@@ -571,6 +699,11 @@ export function useMemoryCenterPage() {
     resetFactFilters,
     openSnapshot,
     openFact,
+    reviewSelectedFact,
+    openRefineFact,
+    openCreateFact,
+    submitFactEdit,
+    reviewConflictFact,
     loadEvolution,
     handleDeadLetterReplay,
     handleDeadLetterAbandon,

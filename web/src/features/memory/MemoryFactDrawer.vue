@@ -29,6 +29,7 @@
           <div class="q-mt-md row q-gutter-sm">
             <q-chip dense color="primary" text-color="white">{{ fact.scope_type }}</q-chip>
             <q-chip dense color="blue-grey" text-color="white">{{ fact.fact_kind || 'fact' }}</q-chip>
+            <q-chip dense :color="statusColor(fact.status)" text-color="white">{{ statusLabel(fact.status) }}</q-chip>
             <q-chip dense :color="scoreColor(fact.confidence)" text-color="white">{{
               t('memory.factDrawer.confidence', { percent: formatPercent(fact.confidence) })
             }}</q-chip>
@@ -39,6 +40,57 @@
               t('memory.factDrawer.pii')
             }}</q-chip>
           </div>
+
+          <div class="q-mt-md row q-gutter-sm memory-fact-actions">
+            <q-btn
+              outline
+              rounded
+              no-caps
+              dense
+              color="positive"
+              icon="thumb_up"
+              :label="t('memory.factDrawer.confirm')"
+              :loading="acting"
+              :disable="fact.status !== 'active'"
+              @click="$emit('review', 'confirm')"
+            />
+            <q-btn
+              outline
+              rounded
+              no-caps
+              dense
+              color="negative"
+              icon="thumb_down"
+              :label="t('memory.factDrawer.reject')"
+              :loading="acting"
+              :disable="fact.status !== 'active'"
+              @click="$emit('review', 'reject')"
+            />
+            <q-btn
+              outline
+              rounded
+              no-caps
+              dense
+              color="primary"
+              icon="edit"
+              :label="t('memory.factDrawer.refine')"
+              :disable="acting || fact.status !== 'active'"
+              @click="$emit('refine')"
+            />
+            <q-btn
+              outline
+              rounded
+              no-caps
+              dense
+              color="blue-grey"
+              icon="archive"
+              :label="t('memory.factDrawer.archive')"
+              :loading="acting"
+              :disable="fact.status !== 'active'"
+              @click="$emit('review', 'archive')"
+            />
+          </div>
+          <div class="text-caption text-grey-6 q-mt-xs">{{ t('memory.factDrawer.actionsHint') }}</div>
           <div v-if="fact.pii_flag && fact.pii_types?.length" class="q-mt-sm">
             <q-badge v-for="pt in fact.pii_types" :key="pt" color="deep-orange" class="q-mr-xs">{{ pt }}</q-badge>
           </div>
@@ -72,17 +124,20 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
-import type { MemoryFact } from './types';
+import type { FactReviewAction, MemoryFact } from './types';
 
 const { t } = useI18n();
 
 defineProps<{
   modelValue: boolean;
   fact: MemoryFact | null;
+  acting?: boolean;
 }>();
 
 defineEmits<{
   'update:modelValue': [value: boolean];
+  review: [action: FactReviewAction];
+  refine: [];
 }>();
 
 function bounded(value?: number) {
@@ -95,6 +150,26 @@ function scoreColor(value?: number) {
   if (score >= 0.75) return 'positive';
   if (score >= 0.45) return 'warning';
   return 'negative';
+}
+
+function statusColor(status?: string) {
+  switch (status) {
+    case 'active':
+      return 'positive';
+    case 'disputed':
+      return 'warning';
+    case 'archived':
+    case 'deprecated':
+      return 'blue-grey';
+    default:
+      return 'grey';
+  }
+}
+
+function statusLabel(status?: string) {
+  const key = `memory.knowledge.status.${status || 'active'}`;
+  const translated = t(key);
+  return translated !== key ? translated : status || 'active';
 }
 
 function formatPercent(value?: number) {

@@ -1163,11 +1163,16 @@ func (x *ListMemoryFactsRequest) GetAgentId() string {
 }
 
 type ListMemoryFactsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Items         []*MemoryFact          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
-	Offset        int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Items  []*MemoryFact          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	Total  int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Limit  int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	Offset int32                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	// active_count / archived_count are status-based counts over the FULL filter
+	// set (scope/kind/keyword/agent) ignoring the status filter itself — used by
+	// the memory-center knowledge panel statistics row.
+	ActiveCount   int32 `protobuf:"varint,5,opt,name=active_count,json=activeCount,proto3" json:"active_count,omitempty"`
+	ArchivedCount int32 `protobuf:"varint,6,opt,name=archived_count,json=archivedCount,proto3" json:"archived_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1226,6 +1231,20 @@ func (x *ListMemoryFactsResponse) GetLimit() int32 {
 func (x *ListMemoryFactsResponse) GetOffset() int32 {
 	if x != nil {
 		return x.Offset
+	}
+	return 0
+}
+
+func (x *ListMemoryFactsResponse) GetActiveCount() int32 {
+	if x != nil {
+		return x.ActiveCount
+	}
+	return 0
+}
+
+func (x *ListMemoryFactsResponse) GetArchivedCount() int32 {
+	if x != nil {
+		return x.ArchivedCount
 	}
 	return 0
 }
@@ -3536,6 +3555,141 @@ func (x *UpsertMemoryFactResponse) GetFact() *MemoryFact {
 	return nil
 }
 
+// ReviewMemoryFact applies a single-fact user governance action with a precise
+// column-targeted UPDATE (memory.md §9.4). Unlike UpsertMemoryFact it never
+// touches links/keywords/metadata/quality_score, so feedback actions cannot
+// silently wipe graph linkages.
+type ReviewMemoryFactRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	FactId string                 `protobuf:"bytes,1,opt,name=fact_id,json=factId,proto3" json:"fact_id,omitempty"`
+	// confirm | reject | archive | dispute | deprecate | refine
+	Action string `protobuf:"bytes,2,opt,name=action,proto3" json:"action,omitempty"`
+	// refine-only replacement fields. statement is required for refine; the
+	// remaining fields overwrite unconditionally (callers merge current values).
+	Statement       string `protobuf:"bytes,3,opt,name=statement,proto3" json:"statement,omitempty"`
+	DetailsMarkdown string `protobuf:"bytes,4,opt,name=details_markdown,json=detailsMarkdown,proto3" json:"details_markdown,omitempty"`
+	FactKind        string `protobuf:"bytes,5,opt,name=fact_kind,json=factKind,proto3" json:"fact_kind,omitempty"`
+	TagsJson        string `protobuf:"bytes,6,opt,name=tags_json,json=tagsJson,proto3" json:"tags_json,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ReviewMemoryFactRequest) Reset() {
+	*x = ReviewMemoryFactRequest{}
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewMemoryFactRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewMemoryFactRequest) ProtoMessage() {}
+
+func (x *ReviewMemoryFactRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewMemoryFactRequest.ProtoReflect.Descriptor instead.
+func (*ReviewMemoryFactRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ReviewMemoryFactRequest) GetFactId() string {
+	if x != nil {
+		return x.FactId
+	}
+	return ""
+}
+
+func (x *ReviewMemoryFactRequest) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *ReviewMemoryFactRequest) GetStatement() string {
+	if x != nil {
+		return x.Statement
+	}
+	return ""
+}
+
+func (x *ReviewMemoryFactRequest) GetDetailsMarkdown() string {
+	if x != nil {
+		return x.DetailsMarkdown
+	}
+	return ""
+}
+
+func (x *ReviewMemoryFactRequest) GetFactKind() string {
+	if x != nil {
+		return x.FactKind
+	}
+	return ""
+}
+
+func (x *ReviewMemoryFactRequest) GetTagsJson() string {
+	if x != nil {
+		return x.TagsJson
+	}
+	return ""
+}
+
+type ReviewMemoryFactResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Fact          *MemoryFact            `protobuf:"bytes,1,opt,name=fact,proto3" json:"fact,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewMemoryFactResponse) Reset() {
+	*x = ReviewMemoryFactResponse{}
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewMemoryFactResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewMemoryFactResponse) ProtoMessage() {}
+
+func (x *ReviewMemoryFactResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewMemoryFactResponse.ProtoReflect.Descriptor instead.
+func (*ReviewMemoryFactResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ReviewMemoryFactResponse) GetFact() *MemoryFact {
+	if x != nil {
+		return x.Fact
+	}
+	return nil
+}
+
 // AppendEvolutionEventRequest registers a persisted evolution timeline row (SQLite agent_evolution_events).
 type AppendEvolutionEventRequest struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
@@ -3556,7 +3710,7 @@ type AppendEvolutionEventRequest struct {
 
 func (x *AppendEvolutionEventRequest) Reset() {
 	*x = AppendEvolutionEventRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[39]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3568,7 +3722,7 @@ func (x *AppendEvolutionEventRequest) String() string {
 func (*AppendEvolutionEventRequest) ProtoMessage() {}
 
 func (x *AppendEvolutionEventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[39]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3581,7 +3735,7 @@ func (x *AppendEvolutionEventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendEvolutionEventRequest.ProtoReflect.Descriptor instead.
 func (*AppendEvolutionEventRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{39}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *AppendEvolutionEventRequest) GetAgentId() string {
@@ -3656,7 +3810,7 @@ type AppendEvolutionEventResponse struct {
 
 func (x *AppendEvolutionEventResponse) Reset() {
 	*x = AppendEvolutionEventResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[40]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3668,7 +3822,7 @@ func (x *AppendEvolutionEventResponse) String() string {
 func (*AppendEvolutionEventResponse) ProtoMessage() {}
 
 func (x *AppendEvolutionEventResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[40]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3681,7 +3835,7 @@ func (x *AppendEvolutionEventResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendEvolutionEventResponse.ProtoReflect.Descriptor instead.
 func (*AppendEvolutionEventResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{40}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AppendEvolutionEventResponse) GetEvent() *EvolutionEvent {
@@ -3704,7 +3858,7 @@ type CascadeAffectedEntity struct {
 
 func (x *CascadeAffectedEntity) Reset() {
 	*x = CascadeAffectedEntity{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[41]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3716,7 +3870,7 @@ func (x *CascadeAffectedEntity) String() string {
 func (*CascadeAffectedEntity) ProtoMessage() {}
 
 func (x *CascadeAffectedEntity) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[41]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3729,7 +3883,7 @@ func (x *CascadeAffectedEntity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeAffectedEntity.ProtoReflect.Descriptor instead.
 func (*CascadeAffectedEntity) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{41}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CascadeAffectedEntity) GetEntityId() string {
@@ -3792,7 +3946,7 @@ type CascadeProposal struct {
 
 func (x *CascadeProposal) Reset() {
 	*x = CascadeProposal{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[42]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3804,7 +3958,7 @@ func (x *CascadeProposal) String() string {
 func (*CascadeProposal) ProtoMessage() {}
 
 func (x *CascadeProposal) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[42]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3817,7 +3971,7 @@ func (x *CascadeProposal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeProposal.ProtoReflect.Descriptor instead.
 func (*CascadeProposal) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{42}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CascadeProposal) GetId() string {
@@ -3950,7 +4104,7 @@ type ListCascadeProposalsRequest struct {
 
 func (x *ListCascadeProposalsRequest) Reset() {
 	*x = ListCascadeProposalsRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[43]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3962,7 +4116,7 @@ func (x *ListCascadeProposalsRequest) String() string {
 func (*ListCascadeProposalsRequest) ProtoMessage() {}
 
 func (x *ListCascadeProposalsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[43]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3975,7 +4129,7 @@ func (x *ListCascadeProposalsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCascadeProposalsRequest.ProtoReflect.Descriptor instead.
 func (*ListCascadeProposalsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{43}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ListCascadeProposalsRequest) GetAgentId() string {
@@ -4008,7 +4162,7 @@ type ListCascadeProposalsResponse struct {
 
 func (x *ListCascadeProposalsResponse) Reset() {
 	*x = ListCascadeProposalsResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[44]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4020,7 +4174,7 @@ func (x *ListCascadeProposalsResponse) String() string {
 func (*ListCascadeProposalsResponse) ProtoMessage() {}
 
 func (x *ListCascadeProposalsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[44]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4033,7 +4187,7 @@ func (x *ListCascadeProposalsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCascadeProposalsResponse.ProtoReflect.Descriptor instead.
 func (*ListCascadeProposalsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{44}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ListCascadeProposalsResponse) GetItems() []*CascadeProposal {
@@ -4053,7 +4207,7 @@ type ApproveCascadeProposalRequest struct {
 
 func (x *ApproveCascadeProposalRequest) Reset() {
 	*x = ApproveCascadeProposalRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[45]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4065,7 +4219,7 @@ func (x *ApproveCascadeProposalRequest) String() string {
 func (*ApproveCascadeProposalRequest) ProtoMessage() {}
 
 func (x *ApproveCascadeProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[45]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4078,7 +4232,7 @@ func (x *ApproveCascadeProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveCascadeProposalRequest.ProtoReflect.Descriptor instead.
 func (*ApproveCascadeProposalRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{45}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ApproveCascadeProposalRequest) GetId() string {
@@ -4104,7 +4258,7 @@ type ApproveCascadeProposalResponse struct {
 
 func (x *ApproveCascadeProposalResponse) Reset() {
 	*x = ApproveCascadeProposalResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[46]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4116,7 +4270,7 @@ func (x *ApproveCascadeProposalResponse) String() string {
 func (*ApproveCascadeProposalResponse) ProtoMessage() {}
 
 func (x *ApproveCascadeProposalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[46]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4129,7 +4283,7 @@ func (x *ApproveCascadeProposalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApproveCascadeProposalResponse.ProtoReflect.Descriptor instead.
 func (*ApproveCascadeProposalResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{46}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ApproveCascadeProposalResponse) GetProposal() *CascadeProposal {
@@ -4150,7 +4304,7 @@ type RejectCascadeProposalRequest struct {
 
 func (x *RejectCascadeProposalRequest) Reset() {
 	*x = RejectCascadeProposalRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[47]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4162,7 +4316,7 @@ func (x *RejectCascadeProposalRequest) String() string {
 func (*RejectCascadeProposalRequest) ProtoMessage() {}
 
 func (x *RejectCascadeProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[47]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4175,7 +4329,7 @@ func (x *RejectCascadeProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectCascadeProposalRequest.ProtoReflect.Descriptor instead.
 func (*RejectCascadeProposalRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{47}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *RejectCascadeProposalRequest) GetId() string {
@@ -4208,7 +4362,7 @@ type RejectCascadeProposalResponse struct {
 
 func (x *RejectCascadeProposalResponse) Reset() {
 	*x = RejectCascadeProposalResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[48]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4220,7 +4374,7 @@ func (x *RejectCascadeProposalResponse) String() string {
 func (*RejectCascadeProposalResponse) ProtoMessage() {}
 
 func (x *RejectCascadeProposalResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[48]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4233,7 +4387,7 @@ func (x *RejectCascadeProposalResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RejectCascadeProposalResponse.ProtoReflect.Descriptor instead.
 func (*RejectCascadeProposalResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{48}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RejectCascadeProposalResponse) GetProposal() *CascadeProposal {
@@ -4255,7 +4409,7 @@ type CascadeFactDiff struct {
 
 func (x *CascadeFactDiff) Reset() {
 	*x = CascadeFactDiff{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[49]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4267,7 +4421,7 @@ func (x *CascadeFactDiff) String() string {
 func (*CascadeFactDiff) ProtoMessage() {}
 
 func (x *CascadeFactDiff) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[49]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4280,7 +4434,7 @@ func (x *CascadeFactDiff) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeFactDiff.ProtoReflect.Descriptor instead.
 func (*CascadeFactDiff) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{49}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CascadeFactDiff) GetFactId() string {
@@ -4323,7 +4477,7 @@ type CascadeEntityRename struct {
 
 func (x *CascadeEntityRename) Reset() {
 	*x = CascadeEntityRename{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[50]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4335,7 +4489,7 @@ func (x *CascadeEntityRename) String() string {
 func (*CascadeEntityRename) ProtoMessage() {}
 
 func (x *CascadeEntityRename) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[50]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4348,7 +4502,7 @@ func (x *CascadeEntityRename) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeEntityRename.ProtoReflect.Descriptor instead.
 func (*CascadeEntityRename) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{50}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *CascadeEntityRename) GetEntityId() string {
@@ -4391,7 +4545,7 @@ type CascadePreview struct {
 
 func (x *CascadePreview) Reset() {
 	*x = CascadePreview{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[51]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4403,7 +4557,7 @@ func (x *CascadePreview) String() string {
 func (*CascadePreview) ProtoMessage() {}
 
 func (x *CascadePreview) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[51]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4416,7 +4570,7 @@ func (x *CascadePreview) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadePreview.ProtoReflect.Descriptor instead.
 func (*CascadePreview) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{51}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CascadePreview) GetAffectedEntitiesCount() int32 {
@@ -4456,7 +4610,7 @@ type PreviewCascadeApproveRequest struct {
 
 func (x *PreviewCascadeApproveRequest) Reset() {
 	*x = PreviewCascadeApproveRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[52]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4468,7 +4622,7 @@ func (x *PreviewCascadeApproveRequest) String() string {
 func (*PreviewCascadeApproveRequest) ProtoMessage() {}
 
 func (x *PreviewCascadeApproveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[52]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4481,7 +4635,7 @@ func (x *PreviewCascadeApproveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewCascadeApproveRequest.ProtoReflect.Descriptor instead.
 func (*PreviewCascadeApproveRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{52}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *PreviewCascadeApproveRequest) GetId() string {
@@ -4500,7 +4654,7 @@ type PreviewCascadeApproveResponse struct {
 
 func (x *PreviewCascadeApproveResponse) Reset() {
 	*x = PreviewCascadeApproveResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[53]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4512,7 +4666,7 @@ func (x *PreviewCascadeApproveResponse) String() string {
 func (*PreviewCascadeApproveResponse) ProtoMessage() {}
 
 func (x *PreviewCascadeApproveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[53]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4525,7 +4679,7 @@ func (x *PreviewCascadeApproveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewCascadeApproveResponse.ProtoReflect.Descriptor instead.
 func (*PreviewCascadeApproveResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{53}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *PreviewCascadeApproveResponse) GetPreview() *CascadePreview {
@@ -4555,7 +4709,7 @@ type CascadeSagaStep struct {
 
 func (x *CascadeSagaStep) Reset() {
 	*x = CascadeSagaStep{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[54]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4567,7 +4721,7 @@ func (x *CascadeSagaStep) String() string {
 func (*CascadeSagaStep) ProtoMessage() {}
 
 func (x *CascadeSagaStep) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[54]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4580,7 +4734,7 @@ func (x *CascadeSagaStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CascadeSagaStep.ProtoReflect.Descriptor instead.
 func (*CascadeSagaStep) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{54}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CascadeSagaStep) GetId() string {
@@ -4676,7 +4830,7 @@ type GetCascadeSagaStepsRequest struct {
 
 func (x *GetCascadeSagaStepsRequest) Reset() {
 	*x = GetCascadeSagaStepsRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[55]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4688,7 +4842,7 @@ func (x *GetCascadeSagaStepsRequest) String() string {
 func (*GetCascadeSagaStepsRequest) ProtoMessage() {}
 
 func (x *GetCascadeSagaStepsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[55]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4701,7 +4855,7 @@ func (x *GetCascadeSagaStepsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCascadeSagaStepsRequest.ProtoReflect.Descriptor instead.
 func (*GetCascadeSagaStepsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{55}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *GetCascadeSagaStepsRequest) GetProposalId() string {
@@ -4720,7 +4874,7 @@ type GetCascadeSagaStepsResponse struct {
 
 func (x *GetCascadeSagaStepsResponse) Reset() {
 	*x = GetCascadeSagaStepsResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[56]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4732,7 +4886,7 @@ func (x *GetCascadeSagaStepsResponse) String() string {
 func (*GetCascadeSagaStepsResponse) ProtoMessage() {}
 
 func (x *GetCascadeSagaStepsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[56]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4745,7 +4899,7 @@ func (x *GetCascadeSagaStepsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCascadeSagaStepsResponse.ProtoReflect.Descriptor instead.
 func (*GetCascadeSagaStepsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{56}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *GetCascadeSagaStepsResponse) GetSteps() []*CascadeSagaStep {
@@ -4765,7 +4919,7 @@ type RetryCascadeApproveRequest struct {
 
 func (x *RetryCascadeApproveRequest) Reset() {
 	*x = RetryCascadeApproveRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[57]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4777,7 +4931,7 @@ func (x *RetryCascadeApproveRequest) String() string {
 func (*RetryCascadeApproveRequest) ProtoMessage() {}
 
 func (x *RetryCascadeApproveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[57]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4790,7 +4944,7 @@ func (x *RetryCascadeApproveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetryCascadeApproveRequest.ProtoReflect.Descriptor instead.
 func (*RetryCascadeApproveRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{57}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *RetryCascadeApproveRequest) GetId() string {
@@ -4816,7 +4970,7 @@ type RetryCascadeApproveResponse struct {
 
 func (x *RetryCascadeApproveResponse) Reset() {
 	*x = RetryCascadeApproveResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[58]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4828,7 +4982,7 @@ func (x *RetryCascadeApproveResponse) String() string {
 func (*RetryCascadeApproveResponse) ProtoMessage() {}
 
 func (x *RetryCascadeApproveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[58]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4841,7 +4995,7 @@ func (x *RetryCascadeApproveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetryCascadeApproveResponse.ProtoReflect.Descriptor instead.
 func (*RetryCascadeApproveResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{58}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *RetryCascadeApproveResponse) GetProposal() *CascadeProposal {
@@ -4861,7 +5015,7 @@ type CompensateCascadeApproveRequest struct {
 
 func (x *CompensateCascadeApproveRequest) Reset() {
 	*x = CompensateCascadeApproveRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[59]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4873,7 +5027,7 @@ func (x *CompensateCascadeApproveRequest) String() string {
 func (*CompensateCascadeApproveRequest) ProtoMessage() {}
 
 func (x *CompensateCascadeApproveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[59]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4886,7 +5040,7 @@ func (x *CompensateCascadeApproveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompensateCascadeApproveRequest.ProtoReflect.Descriptor instead.
 func (*CompensateCascadeApproveRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{59}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *CompensateCascadeApproveRequest) GetId() string {
@@ -4912,7 +5066,7 @@ type CompensateCascadeApproveResponse struct {
 
 func (x *CompensateCascadeApproveResponse) Reset() {
 	*x = CompensateCascadeApproveResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[60]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4924,7 +5078,7 @@ func (x *CompensateCascadeApproveResponse) String() string {
 func (*CompensateCascadeApproveResponse) ProtoMessage() {}
 
 func (x *CompensateCascadeApproveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[60]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4937,7 +5091,7 @@ func (x *CompensateCascadeApproveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompensateCascadeApproveResponse.ProtoReflect.Descriptor instead.
 func (*CompensateCascadeApproveResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{60}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *CompensateCascadeApproveResponse) GetProposal() *CascadeProposal {
@@ -4962,7 +5116,7 @@ type MemoryRecallScoreBreakdown struct {
 
 func (x *MemoryRecallScoreBreakdown) Reset() {
 	*x = MemoryRecallScoreBreakdown{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[61]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4974,7 +5128,7 @@ func (x *MemoryRecallScoreBreakdown) String() string {
 func (*MemoryRecallScoreBreakdown) ProtoMessage() {}
 
 func (x *MemoryRecallScoreBreakdown) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[61]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4987,7 +5141,7 @@ func (x *MemoryRecallScoreBreakdown) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryRecallScoreBreakdown.ProtoReflect.Descriptor instead.
 func (*MemoryRecallScoreBreakdown) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{61}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *MemoryRecallScoreBreakdown) GetKeyword() float64 {
@@ -5053,7 +5207,7 @@ type MemoryRecallHit struct {
 
 func (x *MemoryRecallHit) Reset() {
 	*x = MemoryRecallHit{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[62]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5065,7 +5219,7 @@ func (x *MemoryRecallHit) String() string {
 func (*MemoryRecallHit) ProtoMessage() {}
 
 func (x *MemoryRecallHit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[62]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5078,7 +5232,7 @@ func (x *MemoryRecallHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryRecallHit.ProtoReflect.Descriptor instead.
 func (*MemoryRecallHit) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{62}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *MemoryRecallHit) GetLayer() string {
@@ -5137,7 +5291,7 @@ type DebugMemoryRecallRequest struct {
 
 func (x *DebugMemoryRecallRequest) Reset() {
 	*x = DebugMemoryRecallRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[63]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5149,7 +5303,7 @@ func (x *DebugMemoryRecallRequest) String() string {
 func (*DebugMemoryRecallRequest) ProtoMessage() {}
 
 func (x *DebugMemoryRecallRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[63]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5162,7 +5316,7 @@ func (x *DebugMemoryRecallRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugMemoryRecallRequest.ProtoReflect.Descriptor instead.
 func (*DebugMemoryRecallRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{63}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *DebugMemoryRecallRequest) GetAgentId() string {
@@ -5217,7 +5371,7 @@ type DebugMemoryRecallResponse struct {
 
 func (x *DebugMemoryRecallResponse) Reset() {
 	*x = DebugMemoryRecallResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[64]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5229,7 +5383,7 @@ func (x *DebugMemoryRecallResponse) String() string {
 func (*DebugMemoryRecallResponse) ProtoMessage() {}
 
 func (x *DebugMemoryRecallResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[64]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5242,7 +5396,7 @@ func (x *DebugMemoryRecallResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DebugMemoryRecallResponse.ProtoReflect.Descriptor instead.
 func (*DebugMemoryRecallResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{64}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *DebugMemoryRecallResponse) GetL2Hits() []*MemoryRecallHit {
@@ -5271,7 +5425,7 @@ type CompositeSearchHit struct {
 
 func (x *CompositeSearchHit) Reset() {
 	*x = CompositeSearchHit{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[65]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5283,7 +5437,7 @@ func (x *CompositeSearchHit) String() string {
 func (*CompositeSearchHit) ProtoMessage() {}
 
 func (x *CompositeSearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[65]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5296,7 +5450,7 @@ func (x *CompositeSearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompositeSearchHit.ProtoReflect.Descriptor instead.
 func (*CompositeSearchHit) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{65}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *CompositeSearchHit) GetLayer() string {
@@ -5340,7 +5494,7 @@ type CompositeSearchMemoriesRequest struct {
 
 func (x *CompositeSearchMemoriesRequest) Reset() {
 	*x = CompositeSearchMemoriesRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[66]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5352,7 +5506,7 @@ func (x *CompositeSearchMemoriesRequest) String() string {
 func (*CompositeSearchMemoriesRequest) ProtoMessage() {}
 
 func (x *CompositeSearchMemoriesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[66]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5365,7 +5519,7 @@ func (x *CompositeSearchMemoriesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompositeSearchMemoriesRequest.ProtoReflect.Descriptor instead.
 func (*CompositeSearchMemoriesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{66}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CompositeSearchMemoriesRequest) GetAgentId() string {
@@ -5412,7 +5566,7 @@ type CompositeSearchMemoriesResponse struct {
 
 func (x *CompositeSearchMemoriesResponse) Reset() {
 	*x = CompositeSearchMemoriesResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[67]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5424,7 +5578,7 @@ func (x *CompositeSearchMemoriesResponse) String() string {
 func (*CompositeSearchMemoriesResponse) ProtoMessage() {}
 
 func (x *CompositeSearchMemoriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[67]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5437,7 +5591,7 @@ func (x *CompositeSearchMemoriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompositeSearchMemoriesResponse.ProtoReflect.Descriptor instead.
 func (*CompositeSearchMemoriesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{67}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *CompositeSearchMemoriesResponse) GetItems() []*CompositeSearchHit {
@@ -5455,7 +5609,7 @@ type GetMemoryWorkerStatusRequest struct {
 
 func (x *GetMemoryWorkerStatusRequest) Reset() {
 	*x = GetMemoryWorkerStatusRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[68]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5467,7 +5621,7 @@ func (x *GetMemoryWorkerStatusRequest) String() string {
 func (*GetMemoryWorkerStatusRequest) ProtoMessage() {}
 
 func (x *GetMemoryWorkerStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[68]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5480,7 +5634,7 @@ func (x *GetMemoryWorkerStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryWorkerStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetMemoryWorkerStatusRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{68}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{70}
 }
 
 type MemoryWorkerStatus struct {
@@ -5507,7 +5661,7 @@ type MemoryWorkerStatus struct {
 
 func (x *MemoryWorkerStatus) Reset() {
 	*x = MemoryWorkerStatus{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[69]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5519,7 +5673,7 @@ func (x *MemoryWorkerStatus) String() string {
 func (*MemoryWorkerStatus) ProtoMessage() {}
 
 func (x *MemoryWorkerStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[69]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5532,7 +5686,7 @@ func (x *MemoryWorkerStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryWorkerStatus.ProtoReflect.Descriptor instead.
 func (*MemoryWorkerStatus) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{69}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *MemoryWorkerStatus) GetJobsDone() int64 {
@@ -5640,7 +5794,7 @@ type MemoryPlatformSettings struct {
 
 func (x *MemoryPlatformSettings) Reset() {
 	*x = MemoryPlatformSettings{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[70]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5652,7 +5806,7 @@ func (x *MemoryPlatformSettings) String() string {
 func (*MemoryPlatformSettings) ProtoMessage() {}
 
 func (x *MemoryPlatformSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[70]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5665,7 +5819,7 @@ func (x *MemoryPlatformSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryPlatformSettings.ProtoReflect.Descriptor instead.
 func (*MemoryPlatformSettings) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{70}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *MemoryPlatformSettings) GetPolicyStrict() bool {
@@ -5704,7 +5858,7 @@ type GetMemoryPlatformSettingsRequest struct {
 
 func (x *GetMemoryPlatformSettingsRequest) Reset() {
 	*x = GetMemoryPlatformSettingsRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[71]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5716,7 +5870,7 @@ func (x *GetMemoryPlatformSettingsRequest) String() string {
 func (*GetMemoryPlatformSettingsRequest) ProtoMessage() {}
 
 func (x *GetMemoryPlatformSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[71]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5729,7 +5883,7 @@ func (x *GetMemoryPlatformSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryPlatformSettingsRequest.ProtoReflect.Descriptor instead.
 func (*GetMemoryPlatformSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{71}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{73}
 }
 
 type UpdateMemoryPlatformSettingsRequest struct {
@@ -5742,7 +5896,7 @@ type UpdateMemoryPlatformSettingsRequest struct {
 
 func (x *UpdateMemoryPlatformSettingsRequest) Reset() {
 	*x = UpdateMemoryPlatformSettingsRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[72]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5754,7 +5908,7 @@ func (x *UpdateMemoryPlatformSettingsRequest) String() string {
 func (*UpdateMemoryPlatformSettingsRequest) ProtoMessage() {}
 
 func (x *UpdateMemoryPlatformSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[72]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5767,7 +5921,7 @@ func (x *UpdateMemoryPlatformSettingsRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use UpdateMemoryPlatformSettingsRequest.ProtoReflect.Descriptor instead.
 func (*UpdateMemoryPlatformSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{72}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *UpdateMemoryPlatformSettingsRequest) GetPolicyStrict() bool {
@@ -5802,7 +5956,7 @@ type MemoryDeadLetterEntry struct {
 
 func (x *MemoryDeadLetterEntry) Reset() {
 	*x = MemoryDeadLetterEntry{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[73]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5814,7 +5968,7 @@ func (x *MemoryDeadLetterEntry) String() string {
 func (*MemoryDeadLetterEntry) ProtoMessage() {}
 
 func (x *MemoryDeadLetterEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[73]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5827,7 +5981,7 @@ func (x *MemoryDeadLetterEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryDeadLetterEntry.ProtoReflect.Descriptor instead.
 func (*MemoryDeadLetterEntry) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{73}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *MemoryDeadLetterEntry) GetId() int64 {
@@ -5910,7 +6064,7 @@ type ListMemoryDeadLettersRequest struct {
 
 func (x *ListMemoryDeadLettersRequest) Reset() {
 	*x = ListMemoryDeadLettersRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[74]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5922,7 +6076,7 @@ func (x *ListMemoryDeadLettersRequest) String() string {
 func (*ListMemoryDeadLettersRequest) ProtoMessage() {}
 
 func (x *ListMemoryDeadLettersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[74]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5935,7 +6089,7 @@ func (x *ListMemoryDeadLettersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryDeadLettersRequest.ProtoReflect.Descriptor instead.
 func (*ListMemoryDeadLettersRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{74}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ListMemoryDeadLettersRequest) GetState() string {
@@ -5961,7 +6115,7 @@ type ListMemoryDeadLettersResponse struct {
 
 func (x *ListMemoryDeadLettersResponse) Reset() {
 	*x = ListMemoryDeadLettersResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[75]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5973,7 +6127,7 @@ func (x *ListMemoryDeadLettersResponse) String() string {
 func (*ListMemoryDeadLettersResponse) ProtoMessage() {}
 
 func (x *ListMemoryDeadLettersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[75]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5986,7 +6140,7 @@ func (x *ListMemoryDeadLettersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryDeadLettersResponse.ProtoReflect.Descriptor instead.
 func (*ListMemoryDeadLettersResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{75}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ListMemoryDeadLettersResponse) GetItems() []*MemoryDeadLetterEntry {
@@ -6005,7 +6159,7 @@ type ReplayMemoryDeadLetterRequest struct {
 
 func (x *ReplayMemoryDeadLetterRequest) Reset() {
 	*x = ReplayMemoryDeadLetterRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[76]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6017,7 +6171,7 @@ func (x *ReplayMemoryDeadLetterRequest) String() string {
 func (*ReplayMemoryDeadLetterRequest) ProtoMessage() {}
 
 func (x *ReplayMemoryDeadLetterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[76]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6030,7 +6184,7 @@ func (x *ReplayMemoryDeadLetterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayMemoryDeadLetterRequest.ProtoReflect.Descriptor instead.
 func (*ReplayMemoryDeadLetterRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{76}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ReplayMemoryDeadLetterRequest) GetId() int64 {
@@ -6049,7 +6203,7 @@ type ReplayMemoryDeadLetterResponse struct {
 
 func (x *ReplayMemoryDeadLetterResponse) Reset() {
 	*x = ReplayMemoryDeadLetterResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[77]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6061,7 +6215,7 @@ func (x *ReplayMemoryDeadLetterResponse) String() string {
 func (*ReplayMemoryDeadLetterResponse) ProtoMessage() {}
 
 func (x *ReplayMemoryDeadLetterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[77]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6074,7 +6228,7 @@ func (x *ReplayMemoryDeadLetterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayMemoryDeadLetterResponse.ProtoReflect.Descriptor instead.
 func (*ReplayMemoryDeadLetterResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{77}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ReplayMemoryDeadLetterResponse) GetEntry() *MemoryDeadLetterEntry {
@@ -6094,7 +6248,7 @@ type AbandonMemoryDeadLetterRequest struct {
 
 func (x *AbandonMemoryDeadLetterRequest) Reset() {
 	*x = AbandonMemoryDeadLetterRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[78]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6106,7 +6260,7 @@ func (x *AbandonMemoryDeadLetterRequest) String() string {
 func (*AbandonMemoryDeadLetterRequest) ProtoMessage() {}
 
 func (x *AbandonMemoryDeadLetterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[78]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6119,7 +6273,7 @@ func (x *AbandonMemoryDeadLetterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbandonMemoryDeadLetterRequest.ProtoReflect.Descriptor instead.
 func (*AbandonMemoryDeadLetterRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{78}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *AbandonMemoryDeadLetterRequest) GetId() int64 {
@@ -6145,7 +6299,7 @@ type AbandonMemoryDeadLetterResponse struct {
 
 func (x *AbandonMemoryDeadLetterResponse) Reset() {
 	*x = AbandonMemoryDeadLetterResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[79]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6157,7 +6311,7 @@ func (x *AbandonMemoryDeadLetterResponse) String() string {
 func (*AbandonMemoryDeadLetterResponse) ProtoMessage() {}
 
 func (x *AbandonMemoryDeadLetterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[79]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6170,7 +6324,7 @@ func (x *AbandonMemoryDeadLetterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AbandonMemoryDeadLetterResponse.ProtoReflect.Descriptor instead.
 func (*AbandonMemoryDeadLetterResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{79}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *AbandonMemoryDeadLetterResponse) GetEntry() *MemoryDeadLetterEntry {
@@ -6192,7 +6346,7 @@ type ListPIIFlaggedFactsRequest struct {
 
 func (x *ListPIIFlaggedFactsRequest) Reset() {
 	*x = ListPIIFlaggedFactsRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[80]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6204,7 +6358,7 @@ func (x *ListPIIFlaggedFactsRequest) String() string {
 func (*ListPIIFlaggedFactsRequest) ProtoMessage() {}
 
 func (x *ListPIIFlaggedFactsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[80]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6217,7 +6371,7 @@ func (x *ListPIIFlaggedFactsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPIIFlaggedFactsRequest.ProtoReflect.Descriptor instead.
 func (*ListPIIFlaggedFactsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{80}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ListPIIFlaggedFactsRequest) GetScopeType() string {
@@ -6258,7 +6412,7 @@ type ListPIIFlaggedFactsResponse struct {
 
 func (x *ListPIIFlaggedFactsResponse) Reset() {
 	*x = ListPIIFlaggedFactsResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[81]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6270,7 +6424,7 @@ func (x *ListPIIFlaggedFactsResponse) String() string {
 func (*ListPIIFlaggedFactsResponse) ProtoMessage() {}
 
 func (x *ListPIIFlaggedFactsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[81]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6283,7 +6437,7 @@ func (x *ListPIIFlaggedFactsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPIIFlaggedFactsResponse.ProtoReflect.Descriptor instead.
 func (*ListPIIFlaggedFactsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{81}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ListPIIFlaggedFactsResponse) GetItems() []*MemoryFact {
@@ -6310,7 +6464,7 @@ type ReviewPIIFactRequest struct {
 
 func (x *ReviewPIIFactRequest) Reset() {
 	*x = ReviewPIIFactRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[82]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6322,7 +6476,7 @@ func (x *ReviewPIIFactRequest) String() string {
 func (*ReviewPIIFactRequest) ProtoMessage() {}
 
 func (x *ReviewPIIFactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[82]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6335,7 +6489,7 @@ func (x *ReviewPIIFactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewPIIFactRequest.ProtoReflect.Descriptor instead.
 func (*ReviewPIIFactRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{82}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ReviewPIIFactRequest) GetFactId() string {
@@ -6361,7 +6515,7 @@ type ReviewPIIFactResponse struct {
 
 func (x *ReviewPIIFactResponse) Reset() {
 	*x = ReviewPIIFactResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[83]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6373,7 +6527,7 @@ func (x *ReviewPIIFactResponse) String() string {
 func (*ReviewPIIFactResponse) ProtoMessage() {}
 
 func (x *ReviewPIIFactResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[83]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6386,7 +6540,7 @@ func (x *ReviewPIIFactResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewPIIFactResponse.ProtoReflect.Descriptor instead.
 func (*ReviewPIIFactResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{83}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ReviewPIIFactResponse) GetFact() *MemoryFact {
@@ -6406,7 +6560,7 @@ type GetMemoryLayerOverviewRequest struct {
 
 func (x *GetMemoryLayerOverviewRequest) Reset() {
 	*x = GetMemoryLayerOverviewRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[84]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6418,7 +6572,7 @@ func (x *GetMemoryLayerOverviewRequest) String() string {
 func (*GetMemoryLayerOverviewRequest) ProtoMessage() {}
 
 func (x *GetMemoryLayerOverviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[84]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6431,7 +6585,7 @@ func (x *GetMemoryLayerOverviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryLayerOverviewRequest.ProtoReflect.Descriptor instead.
 func (*GetMemoryLayerOverviewRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{84}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *GetMemoryLayerOverviewRequest) GetAgentId() string {
@@ -6462,7 +6616,7 @@ type MemoryLayerStat struct {
 
 func (x *MemoryLayerStat) Reset() {
 	*x = MemoryLayerStat{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[85]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6474,7 +6628,7 @@ func (x *MemoryLayerStat) String() string {
 func (*MemoryLayerStat) ProtoMessage() {}
 
 func (x *MemoryLayerStat) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[85]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6487,7 +6641,7 @@ func (x *MemoryLayerStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryLayerStat.ProtoReflect.Descriptor instead.
 func (*MemoryLayerStat) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{85}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *MemoryLayerStat) GetLayer() string {
@@ -6543,7 +6697,7 @@ type MemoryActionItem struct {
 
 func (x *MemoryActionItem) Reset() {
 	*x = MemoryActionItem{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[86]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6555,7 +6709,7 @@ func (x *MemoryActionItem) String() string {
 func (*MemoryActionItem) ProtoMessage() {}
 
 func (x *MemoryActionItem) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[86]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6568,7 +6722,7 @@ func (x *MemoryActionItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryActionItem.ProtoReflect.Descriptor instead.
 func (*MemoryActionItem) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{86}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *MemoryActionItem) GetKind() string {
@@ -6605,7 +6759,7 @@ type MemoryActivityItem struct {
 
 func (x *MemoryActivityItem) Reset() {
 	*x = MemoryActivityItem{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[87]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6617,7 +6771,7 @@ func (x *MemoryActivityItem) String() string {
 func (*MemoryActivityItem) ProtoMessage() {}
 
 func (x *MemoryActivityItem) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[87]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6630,7 +6784,7 @@ func (x *MemoryActivityItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryActivityItem.ProtoReflect.Descriptor instead.
 func (*MemoryActivityItem) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{87}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *MemoryActivityItem) GetTs() string {
@@ -6679,7 +6833,7 @@ type GetMemoryLayerOverviewResponse struct {
 
 func (x *GetMemoryLayerOverviewResponse) Reset() {
 	*x = GetMemoryLayerOverviewResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[88]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6691,7 +6845,7 @@ func (x *GetMemoryLayerOverviewResponse) String() string {
 func (*GetMemoryLayerOverviewResponse) ProtoMessage() {}
 
 func (x *GetMemoryLayerOverviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[88]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6704,7 +6858,7 @@ func (x *GetMemoryLayerOverviewResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMemoryLayerOverviewResponse.ProtoReflect.Descriptor instead.
 func (*GetMemoryLayerOverviewResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{88}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *GetMemoryLayerOverviewResponse) GetLayers() []*MemoryLayerStat {
@@ -6741,7 +6895,7 @@ type GetUnifiedMemoryGraphRequest struct {
 
 func (x *GetUnifiedMemoryGraphRequest) Reset() {
 	*x = GetUnifiedMemoryGraphRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[89]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6753,7 +6907,7 @@ func (x *GetUnifiedMemoryGraphRequest) String() string {
 func (*GetUnifiedMemoryGraphRequest) ProtoMessage() {}
 
 func (x *GetUnifiedMemoryGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[89]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6766,7 +6920,7 @@ func (x *GetUnifiedMemoryGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUnifiedMemoryGraphRequest.ProtoReflect.Descriptor instead.
 func (*GetUnifiedMemoryGraphRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{89}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *GetUnifiedMemoryGraphRequest) GetAgentId() string {
@@ -6818,7 +6972,7 @@ type UnifiedGraphNode struct {
 
 func (x *UnifiedGraphNode) Reset() {
 	*x = UnifiedGraphNode{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[90]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6830,7 +6984,7 @@ func (x *UnifiedGraphNode) String() string {
 func (*UnifiedGraphNode) ProtoMessage() {}
 
 func (x *UnifiedGraphNode) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[90]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6843,7 +6997,7 @@ func (x *UnifiedGraphNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnifiedGraphNode.ProtoReflect.Descriptor instead.
 func (*UnifiedGraphNode) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{90}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *UnifiedGraphNode) GetId() string {
@@ -6902,7 +7056,7 @@ type UnifiedGraphEdge struct {
 
 func (x *UnifiedGraphEdge) Reset() {
 	*x = UnifiedGraphEdge{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[91]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6914,7 +7068,7 @@ func (x *UnifiedGraphEdge) String() string {
 func (*UnifiedGraphEdge) ProtoMessage() {}
 
 func (x *UnifiedGraphEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[91]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6927,7 +7081,7 @@ func (x *UnifiedGraphEdge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnifiedGraphEdge.ProtoReflect.Descriptor instead.
 func (*UnifiedGraphEdge) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{91}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *UnifiedGraphEdge) GetSource() string {
@@ -6987,7 +7141,7 @@ type GetUnifiedMemoryGraphResponse struct {
 
 func (x *GetUnifiedMemoryGraphResponse) Reset() {
 	*x = GetUnifiedMemoryGraphResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[92]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6999,7 +7153,7 @@ func (x *GetUnifiedMemoryGraphResponse) String() string {
 func (*GetUnifiedMemoryGraphResponse) ProtoMessage() {}
 
 func (x *GetUnifiedMemoryGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[92]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7012,7 +7166,7 @@ func (x *GetUnifiedMemoryGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUnifiedMemoryGraphResponse.ProtoReflect.Descriptor instead.
 func (*GetUnifiedMemoryGraphResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{92}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *GetUnifiedMemoryGraphResponse) GetFocus() string {
@@ -7076,7 +7230,7 @@ type ListMemoryEpisodesRequest struct {
 
 func (x *ListMemoryEpisodesRequest) Reset() {
 	*x = ListMemoryEpisodesRequest{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[93]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7088,7 +7242,7 @@ func (x *ListMemoryEpisodesRequest) String() string {
 func (*ListMemoryEpisodesRequest) ProtoMessage() {}
 
 func (x *ListMemoryEpisodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[93]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7101,7 +7255,7 @@ func (x *ListMemoryEpisodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryEpisodesRequest.ProtoReflect.Descriptor instead.
 func (*ListMemoryEpisodesRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{93}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *ListMemoryEpisodesRequest) GetAgentId() string {
@@ -7151,7 +7305,7 @@ type MemoryEpisode struct {
 
 func (x *MemoryEpisode) Reset() {
 	*x = MemoryEpisode{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[94]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7163,7 +7317,7 @@ func (x *MemoryEpisode) String() string {
 func (*MemoryEpisode) ProtoMessage() {}
 
 func (x *MemoryEpisode) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[94]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7176,7 +7330,7 @@ func (x *MemoryEpisode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryEpisode.ProtoReflect.Descriptor instead.
 func (*MemoryEpisode) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{94}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *MemoryEpisode) GetId() string {
@@ -7266,7 +7420,7 @@ type ListMemoryEpisodesResponse struct {
 
 func (x *ListMemoryEpisodesResponse) Reset() {
 	*x = ListMemoryEpisodesResponse{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[95]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7278,7 +7432,7 @@ func (x *ListMemoryEpisodesResponse) String() string {
 func (*ListMemoryEpisodesResponse) ProtoMessage() {}
 
 func (x *ListMemoryEpisodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[95]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7291,7 +7445,7 @@ func (x *ListMemoryEpisodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryEpisodesResponse.ProtoReflect.Descriptor instead.
 func (*ListMemoryEpisodesResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{95}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ListMemoryEpisodesResponse) GetItems() []*MemoryEpisode {
@@ -7321,7 +7475,7 @@ type MemoryWorkerStatus_QueueStats struct {
 
 func (x *MemoryWorkerStatus_QueueStats) Reset() {
 	*x = MemoryWorkerStatus_QueueStats{}
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[100]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7333,7 +7487,7 @@ func (x *MemoryWorkerStatus_QueueStats) String() string {
 func (*MemoryWorkerStatus_QueueStats) ProtoMessage() {}
 
 func (x *MemoryWorkerStatus_QueueStats) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_memory_v1_memory_proto_msgTypes[100]
+	mi := &file_kratos_memory_v1_memory_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7346,7 +7500,7 @@ func (x *MemoryWorkerStatus_QueueStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryWorkerStatus_QueueStats.ProtoReflect.Descriptor instead.
 func (*MemoryWorkerStatus_QueueStats) Descriptor() ([]byte, []int) {
-	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{69, 0}
+	return file_kratos_memory_v1_memory_proto_rawDescGZIP(), []int{71, 0}
 }
 
 func (x *MemoryWorkerStatus_QueueStats) GetCapacity() int64 {
@@ -7520,12 +7674,14 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\akeyword\x18\x05 \x01(\tR\akeyword\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\a \x01(\x05R\x06offset\x12\x19\n" +
-	"\bagent_id\x18\b \x01(\tR\aagentId\"\x91\x01\n" +
+	"\bagent_id\x18\b \x01(\tR\aagentId\"\xdb\x01\n" +
 	"\x17ListMemoryFactsResponse\x122\n" +
 	"\x05items\x18\x01 \x03(\v2\x1c.kratos.memory.v1.MemoryFactR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x05R\x06offset\"\xa0\x01\n" +
+	"\x06offset\x18\x04 \x01(\x05R\x06offset\x12!\n" +
+	"\factive_count\x18\x05 \x01(\x05R\vactiveCount\x12%\n" +
+	"\x0earchived_count\x18\x06 \x01(\x05R\rarchivedCount\"\xa0\x01\n" +
 	"\x1bListConflictingFactsRequest\x12\x1d\n" +
 	"\n" +
 	"scope_type\x18\x01 \x01(\tR\tscopeType\x12\x19\n" +
@@ -7768,6 +7924,15 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\x17UpsertMemoryFactRequest\x126\n" +
 	"\x04fact\x18\x01 \x01(\v2\x1c.kratos.memory.v1.MemoryFactB\x04\xe2A\x01\x02R\x04fact\"L\n" +
 	"\x18UpsertMemoryFactResponse\x120\n" +
+	"\x04fact\x18\x01 \x01(\v2\x1c.kratos.memory.v1.MemoryFactR\x04fact\"\xd9\x01\n" +
+	"\x17ReviewMemoryFactRequest\x12\x1d\n" +
+	"\afact_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x06factId\x12\x1c\n" +
+	"\x06action\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x06action\x12\x1c\n" +
+	"\tstatement\x18\x03 \x01(\tR\tstatement\x12)\n" +
+	"\x10details_markdown\x18\x04 \x01(\tR\x0fdetailsMarkdown\x12\x1b\n" +
+	"\tfact_kind\x18\x05 \x01(\tR\bfactKind\x12\x1b\n" +
+	"\ttags_json\x18\x06 \x01(\tR\btagsJson\"L\n" +
+	"\x18ReviewMemoryFactResponse\x120\n" +
 	"\x04fact\x18\x01 \x01(\v2\x1c.kratos.memory.v1.MemoryFactR\x04fact\"\xca\x02\n" +
 	"\x1bAppendEvolutionEventRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12!\n" +
@@ -8092,7 +8257,7 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"created_at\x18\v \x01(\tR\tcreatedAt\"i\n" +
 	"\x1aListMemoryEpisodesResponse\x125\n" +
 	"\x05items\x18\x01 \x03(\v2\x1f.kratos.memory.v1.MemoryEpisodeR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total2\xfc+\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total2\x99-\n" +
 	"\rMemoryService\x12\x96\x01\n" +
 	"\x0fListL0Snapshots\x12(.kratos.memory.v1.ListL0SnapshotsRequest\x1a).kratos.memory.v1.ListL0SnapshotsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/sessions/{session_id}/l0/snapshots\x12\x86\x01\n" +
 	"\vListL1Tasks\x12$.kratos.memory.v1.ListL1TasksRequest\x1a%.kratos.memory.v1.ListL1TasksResponse\"*\x82\xd3\xe4\x93\x02$\x12\"/v1/sessions/{session_id}/l1/tasks\x12\x9a\x01\n" +
@@ -8107,7 +8272,8 @@ const file_kratos_memory_v1_memory_proto_rawDesc = "" +
 	"\x16ListEvolutionProposals\x12/.kratos.memory.v1.ListEvolutionProposalsRequest\x1a0.kratos.memory.v1.ListEvolutionProposalsResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/agents/{agent_id}/evolution/proposals\x12\xa2\x01\n" +
 	"\x13ListEvolutionEvents\x12,.kratos.memory.v1.ListEvolutionEventsRequest\x1a-.kratos.memory.v1.ListEvolutionEventsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/agents/{agent_id}/evolution/events\x12\x9e\x01\n" +
 	"\x13GetEvolutionMetrics\x12,.kratos.memory.v1.GetEvolutionMetricsRequest\x1a(.kratos.memory.v1.EvolutionMetricsReport\"/\x82\xd3\xe4\x93\x02)\x12'/v1/agents/{agent_id}/evolution/metrics\x12\x89\x01\n" +
-	"\x10UpsertMemoryFact\x12).kratos.memory.v1.UpsertMemoryFactRequest\x1a*.kratos.memory.v1.UpsertMemoryFactResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/memory/l3/facts\x12\xa8\x01\n" +
+	"\x10UpsertMemoryFact\x12).kratos.memory.v1.UpsertMemoryFactRequest\x1a*.kratos.memory.v1.UpsertMemoryFactResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/memory/l3/facts\x12\x9a\x01\n" +
+	"\x10ReviewMemoryFact\x12).kratos.memory.v1.ReviewMemoryFactRequest\x1a*.kratos.memory.v1.ReviewMemoryFactResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/memory/l3/facts/{fact_id}/review\x12\xa8\x01\n" +
 	"\x14AppendEvolutionEvent\x12-.kratos.memory.v1.AppendEvolutionEventRequest\x1a..kratos.memory.v1.AppendEvolutionEventResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/agents/{agent_id}/evolution/events\x12\x9b\x01\n" +
 	"\x14ListCascadeProposals\x12-.kratos.memory.v1.ListCascadeProposalsRequest\x1a..kratos.memory.v1.ListCascadeProposalsResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/memory/cascade/proposals\x12\xb1\x01\n" +
 	"\x16ApproveCascadeProposal\x12/.kratos.memory.v1.ApproveCascadeProposalRequest\x1a0.kratos.memory.v1.ApproveCascadeProposalResponse\"4\x82\xd3\xe4\x93\x02.:\x01*\")/v1/memory/cascade/proposals/{id}/approve\x12\xad\x01\n" +
@@ -8143,7 +8309,7 @@ func file_kratos_memory_v1_memory_proto_rawDescGZIP() []byte {
 	return file_kratos_memory_v1_memory_proto_rawDescData
 }
 
-var file_kratos_memory_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 101)
+var file_kratos_memory_v1_memory_proto_msgTypes = make([]protoimpl.MessageInfo, 103)
 var file_kratos_memory_v1_memory_proto_goTypes = []any{
 	(*ListL0SnapshotsRequest)(nil),              // 0: kratos.memory.v1.ListL0SnapshotsRequest
 	(*ListL0SnapshotsResponse)(nil),             // 1: kratos.memory.v1.ListL0SnapshotsResponse
@@ -8184,68 +8350,70 @@ var file_kratos_memory_v1_memory_proto_goTypes = []any{
 	(*EvolutionMetricsReport)(nil),              // 36: kratos.memory.v1.EvolutionMetricsReport
 	(*UpsertMemoryFactRequest)(nil),             // 37: kratos.memory.v1.UpsertMemoryFactRequest
 	(*UpsertMemoryFactResponse)(nil),            // 38: kratos.memory.v1.UpsertMemoryFactResponse
-	(*AppendEvolutionEventRequest)(nil),         // 39: kratos.memory.v1.AppendEvolutionEventRequest
-	(*AppendEvolutionEventResponse)(nil),        // 40: kratos.memory.v1.AppendEvolutionEventResponse
-	(*CascadeAffectedEntity)(nil),               // 41: kratos.memory.v1.CascadeAffectedEntity
-	(*CascadeProposal)(nil),                     // 42: kratos.memory.v1.CascadeProposal
-	(*ListCascadeProposalsRequest)(nil),         // 43: kratos.memory.v1.ListCascadeProposalsRequest
-	(*ListCascadeProposalsResponse)(nil),        // 44: kratos.memory.v1.ListCascadeProposalsResponse
-	(*ApproveCascadeProposalRequest)(nil),       // 45: kratos.memory.v1.ApproveCascadeProposalRequest
-	(*ApproveCascadeProposalResponse)(nil),      // 46: kratos.memory.v1.ApproveCascadeProposalResponse
-	(*RejectCascadeProposalRequest)(nil),        // 47: kratos.memory.v1.RejectCascadeProposalRequest
-	(*RejectCascadeProposalResponse)(nil),       // 48: kratos.memory.v1.RejectCascadeProposalResponse
-	(*CascadeFactDiff)(nil),                     // 49: kratos.memory.v1.CascadeFactDiff
-	(*CascadeEntityRename)(nil),                 // 50: kratos.memory.v1.CascadeEntityRename
-	(*CascadePreview)(nil),                      // 51: kratos.memory.v1.CascadePreview
-	(*PreviewCascadeApproveRequest)(nil),        // 52: kratos.memory.v1.PreviewCascadeApproveRequest
-	(*PreviewCascadeApproveResponse)(nil),       // 53: kratos.memory.v1.PreviewCascadeApproveResponse
-	(*CascadeSagaStep)(nil),                     // 54: kratos.memory.v1.CascadeSagaStep
-	(*GetCascadeSagaStepsRequest)(nil),          // 55: kratos.memory.v1.GetCascadeSagaStepsRequest
-	(*GetCascadeSagaStepsResponse)(nil),         // 56: kratos.memory.v1.GetCascadeSagaStepsResponse
-	(*RetryCascadeApproveRequest)(nil),          // 57: kratos.memory.v1.RetryCascadeApproveRequest
-	(*RetryCascadeApproveResponse)(nil),         // 58: kratos.memory.v1.RetryCascadeApproveResponse
-	(*CompensateCascadeApproveRequest)(nil),     // 59: kratos.memory.v1.CompensateCascadeApproveRequest
-	(*CompensateCascadeApproveResponse)(nil),    // 60: kratos.memory.v1.CompensateCascadeApproveResponse
-	(*MemoryRecallScoreBreakdown)(nil),          // 61: kratos.memory.v1.MemoryRecallScoreBreakdown
-	(*MemoryRecallHit)(nil),                     // 62: kratos.memory.v1.MemoryRecallHit
-	(*DebugMemoryRecallRequest)(nil),            // 63: kratos.memory.v1.DebugMemoryRecallRequest
-	(*DebugMemoryRecallResponse)(nil),           // 64: kratos.memory.v1.DebugMemoryRecallResponse
-	(*CompositeSearchHit)(nil),                  // 65: kratos.memory.v1.CompositeSearchHit
-	(*CompositeSearchMemoriesRequest)(nil),      // 66: kratos.memory.v1.CompositeSearchMemoriesRequest
-	(*CompositeSearchMemoriesResponse)(nil),     // 67: kratos.memory.v1.CompositeSearchMemoriesResponse
-	(*GetMemoryWorkerStatusRequest)(nil),        // 68: kratos.memory.v1.GetMemoryWorkerStatusRequest
-	(*MemoryWorkerStatus)(nil),                  // 69: kratos.memory.v1.MemoryWorkerStatus
-	(*MemoryPlatformSettings)(nil),              // 70: kratos.memory.v1.MemoryPlatformSettings
-	(*GetMemoryPlatformSettingsRequest)(nil),    // 71: kratos.memory.v1.GetMemoryPlatformSettingsRequest
-	(*UpdateMemoryPlatformSettingsRequest)(nil), // 72: kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
-	(*MemoryDeadLetterEntry)(nil),               // 73: kratos.memory.v1.MemoryDeadLetterEntry
-	(*ListMemoryDeadLettersRequest)(nil),        // 74: kratos.memory.v1.ListMemoryDeadLettersRequest
-	(*ListMemoryDeadLettersResponse)(nil),       // 75: kratos.memory.v1.ListMemoryDeadLettersResponse
-	(*ReplayMemoryDeadLetterRequest)(nil),       // 76: kratos.memory.v1.ReplayMemoryDeadLetterRequest
-	(*ReplayMemoryDeadLetterResponse)(nil),      // 77: kratos.memory.v1.ReplayMemoryDeadLetterResponse
-	(*AbandonMemoryDeadLetterRequest)(nil),      // 78: kratos.memory.v1.AbandonMemoryDeadLetterRequest
-	(*AbandonMemoryDeadLetterResponse)(nil),     // 79: kratos.memory.v1.AbandonMemoryDeadLetterResponse
-	(*ListPIIFlaggedFactsRequest)(nil),          // 80: kratos.memory.v1.ListPIIFlaggedFactsRequest
-	(*ListPIIFlaggedFactsResponse)(nil),         // 81: kratos.memory.v1.ListPIIFlaggedFactsResponse
-	(*ReviewPIIFactRequest)(nil),                // 82: kratos.memory.v1.ReviewPIIFactRequest
-	(*ReviewPIIFactResponse)(nil),               // 83: kratos.memory.v1.ReviewPIIFactResponse
-	(*GetMemoryLayerOverviewRequest)(nil),       // 84: kratos.memory.v1.GetMemoryLayerOverviewRequest
-	(*MemoryLayerStat)(nil),                     // 85: kratos.memory.v1.MemoryLayerStat
-	(*MemoryActionItem)(nil),                    // 86: kratos.memory.v1.MemoryActionItem
-	(*MemoryActivityItem)(nil),                  // 87: kratos.memory.v1.MemoryActivityItem
-	(*GetMemoryLayerOverviewResponse)(nil),      // 88: kratos.memory.v1.GetMemoryLayerOverviewResponse
-	(*GetUnifiedMemoryGraphRequest)(nil),        // 89: kratos.memory.v1.GetUnifiedMemoryGraphRequest
-	(*UnifiedGraphNode)(nil),                    // 90: kratos.memory.v1.UnifiedGraphNode
-	(*UnifiedGraphEdge)(nil),                    // 91: kratos.memory.v1.UnifiedGraphEdge
-	(*GetUnifiedMemoryGraphResponse)(nil),       // 92: kratos.memory.v1.GetUnifiedMemoryGraphResponse
-	(*ListMemoryEpisodesRequest)(nil),           // 93: kratos.memory.v1.ListMemoryEpisodesRequest
-	(*MemoryEpisode)(nil),                       // 94: kratos.memory.v1.MemoryEpisode
-	(*ListMemoryEpisodesResponse)(nil),          // 95: kratos.memory.v1.ListMemoryEpisodesResponse
-	nil,                                         // 96: kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
-	nil,                                         // 97: kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
-	nil,                                         // 98: kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
-	nil,                                         // 99: kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
-	(*MemoryWorkerStatus_QueueStats)(nil),       // 100: kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	(*ReviewMemoryFactRequest)(nil),             // 39: kratos.memory.v1.ReviewMemoryFactRequest
+	(*ReviewMemoryFactResponse)(nil),            // 40: kratos.memory.v1.ReviewMemoryFactResponse
+	(*AppendEvolutionEventRequest)(nil),         // 41: kratos.memory.v1.AppendEvolutionEventRequest
+	(*AppendEvolutionEventResponse)(nil),        // 42: kratos.memory.v1.AppendEvolutionEventResponse
+	(*CascadeAffectedEntity)(nil),               // 43: kratos.memory.v1.CascadeAffectedEntity
+	(*CascadeProposal)(nil),                     // 44: kratos.memory.v1.CascadeProposal
+	(*ListCascadeProposalsRequest)(nil),         // 45: kratos.memory.v1.ListCascadeProposalsRequest
+	(*ListCascadeProposalsResponse)(nil),        // 46: kratos.memory.v1.ListCascadeProposalsResponse
+	(*ApproveCascadeProposalRequest)(nil),       // 47: kratos.memory.v1.ApproveCascadeProposalRequest
+	(*ApproveCascadeProposalResponse)(nil),      // 48: kratos.memory.v1.ApproveCascadeProposalResponse
+	(*RejectCascadeProposalRequest)(nil),        // 49: kratos.memory.v1.RejectCascadeProposalRequest
+	(*RejectCascadeProposalResponse)(nil),       // 50: kratos.memory.v1.RejectCascadeProposalResponse
+	(*CascadeFactDiff)(nil),                     // 51: kratos.memory.v1.CascadeFactDiff
+	(*CascadeEntityRename)(nil),                 // 52: kratos.memory.v1.CascadeEntityRename
+	(*CascadePreview)(nil),                      // 53: kratos.memory.v1.CascadePreview
+	(*PreviewCascadeApproveRequest)(nil),        // 54: kratos.memory.v1.PreviewCascadeApproveRequest
+	(*PreviewCascadeApproveResponse)(nil),       // 55: kratos.memory.v1.PreviewCascadeApproveResponse
+	(*CascadeSagaStep)(nil),                     // 56: kratos.memory.v1.CascadeSagaStep
+	(*GetCascadeSagaStepsRequest)(nil),          // 57: kratos.memory.v1.GetCascadeSagaStepsRequest
+	(*GetCascadeSagaStepsResponse)(nil),         // 58: kratos.memory.v1.GetCascadeSagaStepsResponse
+	(*RetryCascadeApproveRequest)(nil),          // 59: kratos.memory.v1.RetryCascadeApproveRequest
+	(*RetryCascadeApproveResponse)(nil),         // 60: kratos.memory.v1.RetryCascadeApproveResponse
+	(*CompensateCascadeApproveRequest)(nil),     // 61: kratos.memory.v1.CompensateCascadeApproveRequest
+	(*CompensateCascadeApproveResponse)(nil),    // 62: kratos.memory.v1.CompensateCascadeApproveResponse
+	(*MemoryRecallScoreBreakdown)(nil),          // 63: kratos.memory.v1.MemoryRecallScoreBreakdown
+	(*MemoryRecallHit)(nil),                     // 64: kratos.memory.v1.MemoryRecallHit
+	(*DebugMemoryRecallRequest)(nil),            // 65: kratos.memory.v1.DebugMemoryRecallRequest
+	(*DebugMemoryRecallResponse)(nil),           // 66: kratos.memory.v1.DebugMemoryRecallResponse
+	(*CompositeSearchHit)(nil),                  // 67: kratos.memory.v1.CompositeSearchHit
+	(*CompositeSearchMemoriesRequest)(nil),      // 68: kratos.memory.v1.CompositeSearchMemoriesRequest
+	(*CompositeSearchMemoriesResponse)(nil),     // 69: kratos.memory.v1.CompositeSearchMemoriesResponse
+	(*GetMemoryWorkerStatusRequest)(nil),        // 70: kratos.memory.v1.GetMemoryWorkerStatusRequest
+	(*MemoryWorkerStatus)(nil),                  // 71: kratos.memory.v1.MemoryWorkerStatus
+	(*MemoryPlatformSettings)(nil),              // 72: kratos.memory.v1.MemoryPlatformSettings
+	(*GetMemoryPlatformSettingsRequest)(nil),    // 73: kratos.memory.v1.GetMemoryPlatformSettingsRequest
+	(*UpdateMemoryPlatformSettingsRequest)(nil), // 74: kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
+	(*MemoryDeadLetterEntry)(nil),               // 75: kratos.memory.v1.MemoryDeadLetterEntry
+	(*ListMemoryDeadLettersRequest)(nil),        // 76: kratos.memory.v1.ListMemoryDeadLettersRequest
+	(*ListMemoryDeadLettersResponse)(nil),       // 77: kratos.memory.v1.ListMemoryDeadLettersResponse
+	(*ReplayMemoryDeadLetterRequest)(nil),       // 78: kratos.memory.v1.ReplayMemoryDeadLetterRequest
+	(*ReplayMemoryDeadLetterResponse)(nil),      // 79: kratos.memory.v1.ReplayMemoryDeadLetterResponse
+	(*AbandonMemoryDeadLetterRequest)(nil),      // 80: kratos.memory.v1.AbandonMemoryDeadLetterRequest
+	(*AbandonMemoryDeadLetterResponse)(nil),     // 81: kratos.memory.v1.AbandonMemoryDeadLetterResponse
+	(*ListPIIFlaggedFactsRequest)(nil),          // 82: kratos.memory.v1.ListPIIFlaggedFactsRequest
+	(*ListPIIFlaggedFactsResponse)(nil),         // 83: kratos.memory.v1.ListPIIFlaggedFactsResponse
+	(*ReviewPIIFactRequest)(nil),                // 84: kratos.memory.v1.ReviewPIIFactRequest
+	(*ReviewPIIFactResponse)(nil),               // 85: kratos.memory.v1.ReviewPIIFactResponse
+	(*GetMemoryLayerOverviewRequest)(nil),       // 86: kratos.memory.v1.GetMemoryLayerOverviewRequest
+	(*MemoryLayerStat)(nil),                     // 87: kratos.memory.v1.MemoryLayerStat
+	(*MemoryActionItem)(nil),                    // 88: kratos.memory.v1.MemoryActionItem
+	(*MemoryActivityItem)(nil),                  // 89: kratos.memory.v1.MemoryActivityItem
+	(*GetMemoryLayerOverviewResponse)(nil),      // 90: kratos.memory.v1.GetMemoryLayerOverviewResponse
+	(*GetUnifiedMemoryGraphRequest)(nil),        // 91: kratos.memory.v1.GetUnifiedMemoryGraphRequest
+	(*UnifiedGraphNode)(nil),                    // 92: kratos.memory.v1.UnifiedGraphNode
+	(*UnifiedGraphEdge)(nil),                    // 93: kratos.memory.v1.UnifiedGraphEdge
+	(*GetUnifiedMemoryGraphResponse)(nil),       // 94: kratos.memory.v1.GetUnifiedMemoryGraphResponse
+	(*ListMemoryEpisodesRequest)(nil),           // 95: kratos.memory.v1.ListMemoryEpisodesRequest
+	(*MemoryEpisode)(nil),                       // 96: kratos.memory.v1.MemoryEpisode
+	(*ListMemoryEpisodesResponse)(nil),          // 97: kratos.memory.v1.ListMemoryEpisodesResponse
+	nil,                                         // 98: kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
+	nil,                                         // 99: kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
+	nil,                                         // 100: kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
+	nil,                                         // 101: kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
+	(*MemoryWorkerStatus_QueueStats)(nil),       // 102: kratos.memory.v1.MemoryWorkerStatus.QueueStats
 }
 var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	2,   // 0: kratos.memory.v1.ListL0SnapshotsResponse.items:type_name -> kratos.memory.v1.L0AssemblySnapshot
@@ -8259,119 +8427,122 @@ var file_kratos_memory_v1_memory_proto_depIdxs = []int32{
 	17,  // 8: kratos.memory.v1.GraphNeighborhood.relations:type_name -> kratos.memory.v1.MemoryRelation
 	21,  // 9: kratos.memory.v1.ActivationResult.activation_path:type_name -> kratos.memory.v1.ActivationPathStep
 	22,  // 10: kratos.memory.v1.SpreadingActivationResponse.items:type_name -> kratos.memory.v1.ActivationResult
-	96,  // 11: kratos.memory.v1.AgentStrategyProfile.tool_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
-	97,  // 12: kratos.memory.v1.AgentStrategyProfile.provider_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
-	98,  // 13: kratos.memory.v1.AgentStrategyProfile.model_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
+	98,  // 11: kratos.memory.v1.AgentStrategyProfile.tool_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ToolPreferenceEntry
+	99,  // 12: kratos.memory.v1.AgentStrategyProfile.provider_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ProviderPreferenceEntry
+	100, // 13: kratos.memory.v1.AgentStrategyProfile.model_preference:type_name -> kratos.memory.v1.AgentStrategyProfile.ModelPreferenceEntry
 	30,  // 14: kratos.memory.v1.ListEvolutionProposalsResponse.items:type_name -> kratos.memory.v1.EvolutionProposal
 	33,  // 15: kratos.memory.v1.ListEvolutionEventsResponse.items:type_name -> kratos.memory.v1.EvolutionEvent
-	99,  // 16: kratos.memory.v1.EvolutionMetricsReport.proposals_by_status:type_name -> kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
+	101, // 16: kratos.memory.v1.EvolutionMetricsReport.proposals_by_status:type_name -> kratos.memory.v1.EvolutionMetricsReport.ProposalsByStatusEntry
 	35,  // 17: kratos.memory.v1.EvolutionMetricsReport.skill_stats:type_name -> kratos.memory.v1.AgentSkillStat
 	13,  // 18: kratos.memory.v1.UpsertMemoryFactRequest.fact:type_name -> kratos.memory.v1.MemoryFact
 	13,  // 19: kratos.memory.v1.UpsertMemoryFactResponse.fact:type_name -> kratos.memory.v1.MemoryFact
-	33,  // 20: kratos.memory.v1.AppendEvolutionEventResponse.event:type_name -> kratos.memory.v1.EvolutionEvent
-	41,  // 21: kratos.memory.v1.CascadeProposal.affected_entities:type_name -> kratos.memory.v1.CascadeAffectedEntity
-	42,  // 22: kratos.memory.v1.ListCascadeProposalsResponse.items:type_name -> kratos.memory.v1.CascadeProposal
-	42,  // 23: kratos.memory.v1.ApproveCascadeProposalResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
-	42,  // 24: kratos.memory.v1.RejectCascadeProposalResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
-	49,  // 25: kratos.memory.v1.CascadePreview.fact_diffs:type_name -> kratos.memory.v1.CascadeFactDiff
-	50,  // 26: kratos.memory.v1.CascadePreview.entity_renames:type_name -> kratos.memory.v1.CascadeEntityRename
-	51,  // 27: kratos.memory.v1.PreviewCascadeApproveResponse.preview:type_name -> kratos.memory.v1.CascadePreview
-	54,  // 28: kratos.memory.v1.GetCascadeSagaStepsResponse.steps:type_name -> kratos.memory.v1.CascadeSagaStep
-	42,  // 29: kratos.memory.v1.RetryCascadeApproveResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
-	42,  // 30: kratos.memory.v1.CompensateCascadeApproveResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
-	61,  // 31: kratos.memory.v1.MemoryRecallHit.scores:type_name -> kratos.memory.v1.MemoryRecallScoreBreakdown
-	62,  // 32: kratos.memory.v1.DebugMemoryRecallResponse.l2_hits:type_name -> kratos.memory.v1.MemoryRecallHit
-	62,  // 33: kratos.memory.v1.DebugMemoryRecallResponse.l3_hits:type_name -> kratos.memory.v1.MemoryRecallHit
-	65,  // 34: kratos.memory.v1.CompositeSearchMemoriesResponse.items:type_name -> kratos.memory.v1.CompositeSearchHit
-	100, // 35: kratos.memory.v1.MemoryWorkerStatus.queue_high:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
-	100, // 36: kratos.memory.v1.MemoryWorkerStatus.queue_normal:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
-	100, // 37: kratos.memory.v1.MemoryWorkerStatus.queue_low:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
-	73,  // 38: kratos.memory.v1.ListMemoryDeadLettersResponse.items:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
-	73,  // 39: kratos.memory.v1.ReplayMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
-	73,  // 40: kratos.memory.v1.AbandonMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
-	13,  // 41: kratos.memory.v1.ListPIIFlaggedFactsResponse.items:type_name -> kratos.memory.v1.MemoryFact
-	13,  // 42: kratos.memory.v1.ReviewPIIFactResponse.fact:type_name -> kratos.memory.v1.MemoryFact
-	85,  // 43: kratos.memory.v1.GetMemoryLayerOverviewResponse.layers:type_name -> kratos.memory.v1.MemoryLayerStat
-	86,  // 44: kratos.memory.v1.GetMemoryLayerOverviewResponse.action_items:type_name -> kratos.memory.v1.MemoryActionItem
-	87,  // 45: kratos.memory.v1.GetMemoryLayerOverviewResponse.activity_feed:type_name -> kratos.memory.v1.MemoryActivityItem
-	90,  // 46: kratos.memory.v1.GetUnifiedMemoryGraphResponse.nodes:type_name -> kratos.memory.v1.UnifiedGraphNode
-	91,  // 47: kratos.memory.v1.GetUnifiedMemoryGraphResponse.edges:type_name -> kratos.memory.v1.UnifiedGraphEdge
-	94,  // 48: kratos.memory.v1.ListMemoryEpisodesResponse.items:type_name -> kratos.memory.v1.MemoryEpisode
-	0,   // 49: kratos.memory.v1.MemoryService.ListL0Snapshots:input_type -> kratos.memory.v1.ListL0SnapshotsRequest
-	3,   // 50: kratos.memory.v1.MemoryService.ListL1Tasks:input_type -> kratos.memory.v1.ListL1TasksRequest
-	6,   // 51: kratos.memory.v1.MemoryService.ListL1Fields:input_type -> kratos.memory.v1.ListL1FieldsRequest
-	9,   // 52: kratos.memory.v1.MemoryService.ListMemoryFacts:input_type -> kratos.memory.v1.ListMemoryFactsRequest
-	11,  // 53: kratos.memory.v1.MemoryService.ListConflictingFacts:input_type -> kratos.memory.v1.ListConflictingFactsRequest
-	14,  // 54: kratos.memory.v1.MemoryService.ListMemoryEntities:input_type -> kratos.memory.v1.ListMemoryEntitiesRequest
-	18,  // 55: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:input_type -> kratos.memory.v1.GetMemoryNeighborhoodRequest
-	20,  // 56: kratos.memory.v1.MemoryService.SpreadingActivation:input_type -> kratos.memory.v1.SpreadingActivationRequest
-	24,  // 57: kratos.memory.v1.MemoryService.GetAgentIdentity:input_type -> kratos.memory.v1.GetAgentIdentityRequest
-	26,  // 58: kratos.memory.v1.MemoryService.GetAgentStrategy:input_type -> kratos.memory.v1.GetAgentStrategyRequest
-	28,  // 59: kratos.memory.v1.MemoryService.ListEvolutionProposals:input_type -> kratos.memory.v1.ListEvolutionProposalsRequest
-	31,  // 60: kratos.memory.v1.MemoryService.ListEvolutionEvents:input_type -> kratos.memory.v1.ListEvolutionEventsRequest
-	34,  // 61: kratos.memory.v1.MemoryService.GetEvolutionMetrics:input_type -> kratos.memory.v1.GetEvolutionMetricsRequest
-	37,  // 62: kratos.memory.v1.MemoryService.UpsertMemoryFact:input_type -> kratos.memory.v1.UpsertMemoryFactRequest
-	39,  // 63: kratos.memory.v1.MemoryService.AppendEvolutionEvent:input_type -> kratos.memory.v1.AppendEvolutionEventRequest
-	43,  // 64: kratos.memory.v1.MemoryService.ListCascadeProposals:input_type -> kratos.memory.v1.ListCascadeProposalsRequest
-	45,  // 65: kratos.memory.v1.MemoryService.ApproveCascadeProposal:input_type -> kratos.memory.v1.ApproveCascadeProposalRequest
-	47,  // 66: kratos.memory.v1.MemoryService.RejectCascadeProposal:input_type -> kratos.memory.v1.RejectCascadeProposalRequest
-	52,  // 67: kratos.memory.v1.MemoryService.PreviewCascadeApprove:input_type -> kratos.memory.v1.PreviewCascadeApproveRequest
-	55,  // 68: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:input_type -> kratos.memory.v1.GetCascadeSagaStepsRequest
-	57,  // 69: kratos.memory.v1.MemoryService.RetryCascadeApprove:input_type -> kratos.memory.v1.RetryCascadeApproveRequest
-	59,  // 70: kratos.memory.v1.MemoryService.CompensateCascadeApprove:input_type -> kratos.memory.v1.CompensateCascadeApproveRequest
-	63,  // 71: kratos.memory.v1.MemoryService.DebugMemoryRecall:input_type -> kratos.memory.v1.DebugMemoryRecallRequest
-	66,  // 72: kratos.memory.v1.MemoryService.CompositeSearchMemories:input_type -> kratos.memory.v1.CompositeSearchMemoriesRequest
-	68,  // 73: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:input_type -> kratos.memory.v1.GetMemoryWorkerStatusRequest
-	71,  // 74: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:input_type -> kratos.memory.v1.GetMemoryPlatformSettingsRequest
-	72,  // 75: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:input_type -> kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
-	74,  // 76: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:input_type -> kratos.memory.v1.ListMemoryDeadLettersRequest
-	76,  // 77: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:input_type -> kratos.memory.v1.ReplayMemoryDeadLetterRequest
-	78,  // 78: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:input_type -> kratos.memory.v1.AbandonMemoryDeadLetterRequest
-	80,  // 79: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:input_type -> kratos.memory.v1.ListPIIFlaggedFactsRequest
-	82,  // 80: kratos.memory.v1.MemoryService.ReviewPIIFact:input_type -> kratos.memory.v1.ReviewPIIFactRequest
-	84,  // 81: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:input_type -> kratos.memory.v1.GetMemoryLayerOverviewRequest
-	89,  // 82: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:input_type -> kratos.memory.v1.GetUnifiedMemoryGraphRequest
-	93,  // 83: kratos.memory.v1.MemoryService.ListMemoryEpisodes:input_type -> kratos.memory.v1.ListMemoryEpisodesRequest
-	1,   // 84: kratos.memory.v1.MemoryService.ListL0Snapshots:output_type -> kratos.memory.v1.ListL0SnapshotsResponse
-	4,   // 85: kratos.memory.v1.MemoryService.ListL1Tasks:output_type -> kratos.memory.v1.ListL1TasksResponse
-	7,   // 86: kratos.memory.v1.MemoryService.ListL1Fields:output_type -> kratos.memory.v1.ListL1FieldsResponse
-	10,  // 87: kratos.memory.v1.MemoryService.ListMemoryFacts:output_type -> kratos.memory.v1.ListMemoryFactsResponse
-	12,  // 88: kratos.memory.v1.MemoryService.ListConflictingFacts:output_type -> kratos.memory.v1.ListConflictingFactsResponse
-	15,  // 89: kratos.memory.v1.MemoryService.ListMemoryEntities:output_type -> kratos.memory.v1.ListMemoryEntitiesResponse
-	19,  // 90: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:output_type -> kratos.memory.v1.GraphNeighborhood
-	23,  // 91: kratos.memory.v1.MemoryService.SpreadingActivation:output_type -> kratos.memory.v1.SpreadingActivationResponse
-	25,  // 92: kratos.memory.v1.MemoryService.GetAgentIdentity:output_type -> kratos.memory.v1.AgentIdentity
-	27,  // 93: kratos.memory.v1.MemoryService.GetAgentStrategy:output_type -> kratos.memory.v1.AgentStrategyProfile
-	29,  // 94: kratos.memory.v1.MemoryService.ListEvolutionProposals:output_type -> kratos.memory.v1.ListEvolutionProposalsResponse
-	32,  // 95: kratos.memory.v1.MemoryService.ListEvolutionEvents:output_type -> kratos.memory.v1.ListEvolutionEventsResponse
-	36,  // 96: kratos.memory.v1.MemoryService.GetEvolutionMetrics:output_type -> kratos.memory.v1.EvolutionMetricsReport
-	38,  // 97: kratos.memory.v1.MemoryService.UpsertMemoryFact:output_type -> kratos.memory.v1.UpsertMemoryFactResponse
-	40,  // 98: kratos.memory.v1.MemoryService.AppendEvolutionEvent:output_type -> kratos.memory.v1.AppendEvolutionEventResponse
-	44,  // 99: kratos.memory.v1.MemoryService.ListCascadeProposals:output_type -> kratos.memory.v1.ListCascadeProposalsResponse
-	46,  // 100: kratos.memory.v1.MemoryService.ApproveCascadeProposal:output_type -> kratos.memory.v1.ApproveCascadeProposalResponse
-	48,  // 101: kratos.memory.v1.MemoryService.RejectCascadeProposal:output_type -> kratos.memory.v1.RejectCascadeProposalResponse
-	53,  // 102: kratos.memory.v1.MemoryService.PreviewCascadeApprove:output_type -> kratos.memory.v1.PreviewCascadeApproveResponse
-	56,  // 103: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:output_type -> kratos.memory.v1.GetCascadeSagaStepsResponse
-	58,  // 104: kratos.memory.v1.MemoryService.RetryCascadeApprove:output_type -> kratos.memory.v1.RetryCascadeApproveResponse
-	60,  // 105: kratos.memory.v1.MemoryService.CompensateCascadeApprove:output_type -> kratos.memory.v1.CompensateCascadeApproveResponse
-	64,  // 106: kratos.memory.v1.MemoryService.DebugMemoryRecall:output_type -> kratos.memory.v1.DebugMemoryRecallResponse
-	67,  // 107: kratos.memory.v1.MemoryService.CompositeSearchMemories:output_type -> kratos.memory.v1.CompositeSearchMemoriesResponse
-	69,  // 108: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:output_type -> kratos.memory.v1.MemoryWorkerStatus
-	70,  // 109: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
-	70,  // 110: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
-	75,  // 111: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:output_type -> kratos.memory.v1.ListMemoryDeadLettersResponse
-	77,  // 112: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:output_type -> kratos.memory.v1.ReplayMemoryDeadLetterResponse
-	79,  // 113: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:output_type -> kratos.memory.v1.AbandonMemoryDeadLetterResponse
-	81,  // 114: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:output_type -> kratos.memory.v1.ListPIIFlaggedFactsResponse
-	83,  // 115: kratos.memory.v1.MemoryService.ReviewPIIFact:output_type -> kratos.memory.v1.ReviewPIIFactResponse
-	88,  // 116: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:output_type -> kratos.memory.v1.GetMemoryLayerOverviewResponse
-	92,  // 117: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:output_type -> kratos.memory.v1.GetUnifiedMemoryGraphResponse
-	95,  // 118: kratos.memory.v1.MemoryService.ListMemoryEpisodes:output_type -> kratos.memory.v1.ListMemoryEpisodesResponse
-	84,  // [84:119] is the sub-list for method output_type
-	49,  // [49:84] is the sub-list for method input_type
-	49,  // [49:49] is the sub-list for extension type_name
-	49,  // [49:49] is the sub-list for extension extendee
-	0,   // [0:49] is the sub-list for field type_name
+	13,  // 20: kratos.memory.v1.ReviewMemoryFactResponse.fact:type_name -> kratos.memory.v1.MemoryFact
+	33,  // 21: kratos.memory.v1.AppendEvolutionEventResponse.event:type_name -> kratos.memory.v1.EvolutionEvent
+	43,  // 22: kratos.memory.v1.CascadeProposal.affected_entities:type_name -> kratos.memory.v1.CascadeAffectedEntity
+	44,  // 23: kratos.memory.v1.ListCascadeProposalsResponse.items:type_name -> kratos.memory.v1.CascadeProposal
+	44,  // 24: kratos.memory.v1.ApproveCascadeProposalResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
+	44,  // 25: kratos.memory.v1.RejectCascadeProposalResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
+	51,  // 26: kratos.memory.v1.CascadePreview.fact_diffs:type_name -> kratos.memory.v1.CascadeFactDiff
+	52,  // 27: kratos.memory.v1.CascadePreview.entity_renames:type_name -> kratos.memory.v1.CascadeEntityRename
+	53,  // 28: kratos.memory.v1.PreviewCascadeApproveResponse.preview:type_name -> kratos.memory.v1.CascadePreview
+	56,  // 29: kratos.memory.v1.GetCascadeSagaStepsResponse.steps:type_name -> kratos.memory.v1.CascadeSagaStep
+	44,  // 30: kratos.memory.v1.RetryCascadeApproveResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
+	44,  // 31: kratos.memory.v1.CompensateCascadeApproveResponse.proposal:type_name -> kratos.memory.v1.CascadeProposal
+	63,  // 32: kratos.memory.v1.MemoryRecallHit.scores:type_name -> kratos.memory.v1.MemoryRecallScoreBreakdown
+	64,  // 33: kratos.memory.v1.DebugMemoryRecallResponse.l2_hits:type_name -> kratos.memory.v1.MemoryRecallHit
+	64,  // 34: kratos.memory.v1.DebugMemoryRecallResponse.l3_hits:type_name -> kratos.memory.v1.MemoryRecallHit
+	67,  // 35: kratos.memory.v1.CompositeSearchMemoriesResponse.items:type_name -> kratos.memory.v1.CompositeSearchHit
+	102, // 36: kratos.memory.v1.MemoryWorkerStatus.queue_high:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	102, // 37: kratos.memory.v1.MemoryWorkerStatus.queue_normal:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	102, // 38: kratos.memory.v1.MemoryWorkerStatus.queue_low:type_name -> kratos.memory.v1.MemoryWorkerStatus.QueueStats
+	75,  // 39: kratos.memory.v1.ListMemoryDeadLettersResponse.items:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
+	75,  // 40: kratos.memory.v1.ReplayMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
+	75,  // 41: kratos.memory.v1.AbandonMemoryDeadLetterResponse.entry:type_name -> kratos.memory.v1.MemoryDeadLetterEntry
+	13,  // 42: kratos.memory.v1.ListPIIFlaggedFactsResponse.items:type_name -> kratos.memory.v1.MemoryFact
+	13,  // 43: kratos.memory.v1.ReviewPIIFactResponse.fact:type_name -> kratos.memory.v1.MemoryFact
+	87,  // 44: kratos.memory.v1.GetMemoryLayerOverviewResponse.layers:type_name -> kratos.memory.v1.MemoryLayerStat
+	88,  // 45: kratos.memory.v1.GetMemoryLayerOverviewResponse.action_items:type_name -> kratos.memory.v1.MemoryActionItem
+	89,  // 46: kratos.memory.v1.GetMemoryLayerOverviewResponse.activity_feed:type_name -> kratos.memory.v1.MemoryActivityItem
+	92,  // 47: kratos.memory.v1.GetUnifiedMemoryGraphResponse.nodes:type_name -> kratos.memory.v1.UnifiedGraphNode
+	93,  // 48: kratos.memory.v1.GetUnifiedMemoryGraphResponse.edges:type_name -> kratos.memory.v1.UnifiedGraphEdge
+	96,  // 49: kratos.memory.v1.ListMemoryEpisodesResponse.items:type_name -> kratos.memory.v1.MemoryEpisode
+	0,   // 50: kratos.memory.v1.MemoryService.ListL0Snapshots:input_type -> kratos.memory.v1.ListL0SnapshotsRequest
+	3,   // 51: kratos.memory.v1.MemoryService.ListL1Tasks:input_type -> kratos.memory.v1.ListL1TasksRequest
+	6,   // 52: kratos.memory.v1.MemoryService.ListL1Fields:input_type -> kratos.memory.v1.ListL1FieldsRequest
+	9,   // 53: kratos.memory.v1.MemoryService.ListMemoryFacts:input_type -> kratos.memory.v1.ListMemoryFactsRequest
+	11,  // 54: kratos.memory.v1.MemoryService.ListConflictingFacts:input_type -> kratos.memory.v1.ListConflictingFactsRequest
+	14,  // 55: kratos.memory.v1.MemoryService.ListMemoryEntities:input_type -> kratos.memory.v1.ListMemoryEntitiesRequest
+	18,  // 56: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:input_type -> kratos.memory.v1.GetMemoryNeighborhoodRequest
+	20,  // 57: kratos.memory.v1.MemoryService.SpreadingActivation:input_type -> kratos.memory.v1.SpreadingActivationRequest
+	24,  // 58: kratos.memory.v1.MemoryService.GetAgentIdentity:input_type -> kratos.memory.v1.GetAgentIdentityRequest
+	26,  // 59: kratos.memory.v1.MemoryService.GetAgentStrategy:input_type -> kratos.memory.v1.GetAgentStrategyRequest
+	28,  // 60: kratos.memory.v1.MemoryService.ListEvolutionProposals:input_type -> kratos.memory.v1.ListEvolutionProposalsRequest
+	31,  // 61: kratos.memory.v1.MemoryService.ListEvolutionEvents:input_type -> kratos.memory.v1.ListEvolutionEventsRequest
+	34,  // 62: kratos.memory.v1.MemoryService.GetEvolutionMetrics:input_type -> kratos.memory.v1.GetEvolutionMetricsRequest
+	37,  // 63: kratos.memory.v1.MemoryService.UpsertMemoryFact:input_type -> kratos.memory.v1.UpsertMemoryFactRequest
+	39,  // 64: kratos.memory.v1.MemoryService.ReviewMemoryFact:input_type -> kratos.memory.v1.ReviewMemoryFactRequest
+	41,  // 65: kratos.memory.v1.MemoryService.AppendEvolutionEvent:input_type -> kratos.memory.v1.AppendEvolutionEventRequest
+	45,  // 66: kratos.memory.v1.MemoryService.ListCascadeProposals:input_type -> kratos.memory.v1.ListCascadeProposalsRequest
+	47,  // 67: kratos.memory.v1.MemoryService.ApproveCascadeProposal:input_type -> kratos.memory.v1.ApproveCascadeProposalRequest
+	49,  // 68: kratos.memory.v1.MemoryService.RejectCascadeProposal:input_type -> kratos.memory.v1.RejectCascadeProposalRequest
+	54,  // 69: kratos.memory.v1.MemoryService.PreviewCascadeApprove:input_type -> kratos.memory.v1.PreviewCascadeApproveRequest
+	57,  // 70: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:input_type -> kratos.memory.v1.GetCascadeSagaStepsRequest
+	59,  // 71: kratos.memory.v1.MemoryService.RetryCascadeApprove:input_type -> kratos.memory.v1.RetryCascadeApproveRequest
+	61,  // 72: kratos.memory.v1.MemoryService.CompensateCascadeApprove:input_type -> kratos.memory.v1.CompensateCascadeApproveRequest
+	65,  // 73: kratos.memory.v1.MemoryService.DebugMemoryRecall:input_type -> kratos.memory.v1.DebugMemoryRecallRequest
+	68,  // 74: kratos.memory.v1.MemoryService.CompositeSearchMemories:input_type -> kratos.memory.v1.CompositeSearchMemoriesRequest
+	70,  // 75: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:input_type -> kratos.memory.v1.GetMemoryWorkerStatusRequest
+	73,  // 76: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:input_type -> kratos.memory.v1.GetMemoryPlatformSettingsRequest
+	74,  // 77: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:input_type -> kratos.memory.v1.UpdateMemoryPlatformSettingsRequest
+	76,  // 78: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:input_type -> kratos.memory.v1.ListMemoryDeadLettersRequest
+	78,  // 79: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:input_type -> kratos.memory.v1.ReplayMemoryDeadLetterRequest
+	80,  // 80: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:input_type -> kratos.memory.v1.AbandonMemoryDeadLetterRequest
+	82,  // 81: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:input_type -> kratos.memory.v1.ListPIIFlaggedFactsRequest
+	84,  // 82: kratos.memory.v1.MemoryService.ReviewPIIFact:input_type -> kratos.memory.v1.ReviewPIIFactRequest
+	86,  // 83: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:input_type -> kratos.memory.v1.GetMemoryLayerOverviewRequest
+	91,  // 84: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:input_type -> kratos.memory.v1.GetUnifiedMemoryGraphRequest
+	95,  // 85: kratos.memory.v1.MemoryService.ListMemoryEpisodes:input_type -> kratos.memory.v1.ListMemoryEpisodesRequest
+	1,   // 86: kratos.memory.v1.MemoryService.ListL0Snapshots:output_type -> kratos.memory.v1.ListL0SnapshotsResponse
+	4,   // 87: kratos.memory.v1.MemoryService.ListL1Tasks:output_type -> kratos.memory.v1.ListL1TasksResponse
+	7,   // 88: kratos.memory.v1.MemoryService.ListL1Fields:output_type -> kratos.memory.v1.ListL1FieldsResponse
+	10,  // 89: kratos.memory.v1.MemoryService.ListMemoryFacts:output_type -> kratos.memory.v1.ListMemoryFactsResponse
+	12,  // 90: kratos.memory.v1.MemoryService.ListConflictingFacts:output_type -> kratos.memory.v1.ListConflictingFactsResponse
+	15,  // 91: kratos.memory.v1.MemoryService.ListMemoryEntities:output_type -> kratos.memory.v1.ListMemoryEntitiesResponse
+	19,  // 92: kratos.memory.v1.MemoryService.GetMemoryNeighborhood:output_type -> kratos.memory.v1.GraphNeighborhood
+	23,  // 93: kratos.memory.v1.MemoryService.SpreadingActivation:output_type -> kratos.memory.v1.SpreadingActivationResponse
+	25,  // 94: kratos.memory.v1.MemoryService.GetAgentIdentity:output_type -> kratos.memory.v1.AgentIdentity
+	27,  // 95: kratos.memory.v1.MemoryService.GetAgentStrategy:output_type -> kratos.memory.v1.AgentStrategyProfile
+	29,  // 96: kratos.memory.v1.MemoryService.ListEvolutionProposals:output_type -> kratos.memory.v1.ListEvolutionProposalsResponse
+	32,  // 97: kratos.memory.v1.MemoryService.ListEvolutionEvents:output_type -> kratos.memory.v1.ListEvolutionEventsResponse
+	36,  // 98: kratos.memory.v1.MemoryService.GetEvolutionMetrics:output_type -> kratos.memory.v1.EvolutionMetricsReport
+	38,  // 99: kratos.memory.v1.MemoryService.UpsertMemoryFact:output_type -> kratos.memory.v1.UpsertMemoryFactResponse
+	40,  // 100: kratos.memory.v1.MemoryService.ReviewMemoryFact:output_type -> kratos.memory.v1.ReviewMemoryFactResponse
+	42,  // 101: kratos.memory.v1.MemoryService.AppendEvolutionEvent:output_type -> kratos.memory.v1.AppendEvolutionEventResponse
+	46,  // 102: kratos.memory.v1.MemoryService.ListCascadeProposals:output_type -> kratos.memory.v1.ListCascadeProposalsResponse
+	48,  // 103: kratos.memory.v1.MemoryService.ApproveCascadeProposal:output_type -> kratos.memory.v1.ApproveCascadeProposalResponse
+	50,  // 104: kratos.memory.v1.MemoryService.RejectCascadeProposal:output_type -> kratos.memory.v1.RejectCascadeProposalResponse
+	55,  // 105: kratos.memory.v1.MemoryService.PreviewCascadeApprove:output_type -> kratos.memory.v1.PreviewCascadeApproveResponse
+	58,  // 106: kratos.memory.v1.MemoryService.GetCascadeSagaSteps:output_type -> kratos.memory.v1.GetCascadeSagaStepsResponse
+	60,  // 107: kratos.memory.v1.MemoryService.RetryCascadeApprove:output_type -> kratos.memory.v1.RetryCascadeApproveResponse
+	62,  // 108: kratos.memory.v1.MemoryService.CompensateCascadeApprove:output_type -> kratos.memory.v1.CompensateCascadeApproveResponse
+	66,  // 109: kratos.memory.v1.MemoryService.DebugMemoryRecall:output_type -> kratos.memory.v1.DebugMemoryRecallResponse
+	69,  // 110: kratos.memory.v1.MemoryService.CompositeSearchMemories:output_type -> kratos.memory.v1.CompositeSearchMemoriesResponse
+	71,  // 111: kratos.memory.v1.MemoryService.GetMemoryWorkerStatus:output_type -> kratos.memory.v1.MemoryWorkerStatus
+	72,  // 112: kratos.memory.v1.MemoryService.GetMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
+	72,  // 113: kratos.memory.v1.MemoryService.UpdateMemoryPlatformSettings:output_type -> kratos.memory.v1.MemoryPlatformSettings
+	77,  // 114: kratos.memory.v1.MemoryService.ListMemoryDeadLetters:output_type -> kratos.memory.v1.ListMemoryDeadLettersResponse
+	79,  // 115: kratos.memory.v1.MemoryService.ReplayMemoryDeadLetter:output_type -> kratos.memory.v1.ReplayMemoryDeadLetterResponse
+	81,  // 116: kratos.memory.v1.MemoryService.AbandonMemoryDeadLetter:output_type -> kratos.memory.v1.AbandonMemoryDeadLetterResponse
+	83,  // 117: kratos.memory.v1.MemoryService.ListPIIFlaggedFacts:output_type -> kratos.memory.v1.ListPIIFlaggedFactsResponse
+	85,  // 118: kratos.memory.v1.MemoryService.ReviewPIIFact:output_type -> kratos.memory.v1.ReviewPIIFactResponse
+	90,  // 119: kratos.memory.v1.MemoryService.GetMemoryLayerOverview:output_type -> kratos.memory.v1.GetMemoryLayerOverviewResponse
+	94,  // 120: kratos.memory.v1.MemoryService.GetUnifiedMemoryGraph:output_type -> kratos.memory.v1.GetUnifiedMemoryGraphResponse
+	97,  // 121: kratos.memory.v1.MemoryService.ListMemoryEpisodes:output_type -> kratos.memory.v1.ListMemoryEpisodesResponse
+	86,  // [86:122] is the sub-list for method output_type
+	50,  // [50:86] is the sub-list for method input_type
+	50,  // [50:50] is the sub-list for extension type_name
+	50,  // [50:50] is the sub-list for extension extendee
+	0,   // [0:50] is the sub-list for field type_name
 }
 
 func init() { file_kratos_memory_v1_memory_proto_init() }
@@ -8385,7 +8556,7 @@ func file_kratos_memory_v1_memory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_memory_v1_memory_proto_rawDesc), len(file_kratos_memory_v1_memory_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   101,
+			NumMessages:   103,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

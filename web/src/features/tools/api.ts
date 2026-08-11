@@ -16,6 +16,7 @@ import type {
   ToolAgentBinding,
   ToolAgentOverride,
   ToolInvocation,
+  ToolInvocationParamDetail,
   ToolListQuery,
   ToolListResponse,
   ToolRunQuery,
@@ -144,6 +145,7 @@ export async function listTools(query: ToolListQuery = {}): Promise<ToolListResp
     riskLevel: query.risk_level,
     enabled: enabledFilter(query.enabled),
     sort: query.sort,
+    abnormal: query.abnormal,
     page: query.page,
     pageSize: query.page_size,
   });
@@ -258,6 +260,19 @@ export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedR
     page: data.page ?? query.page ?? 1,
     page_size: data.pageSize ?? query.page_size ?? 20,
     total: data.total ?? items.length,
+  };
+}
+
+/** 调用记录详情「参数」Tab：GET /v1/tools/runs/{invocation_id}/params（脱敏后参数）。 */
+export async function getToolInvocationParams(invocationId: string): Promise<ToolInvocationParamDetail> {
+  const data = await toolApi.GetToolInvocationParams({ invocationId });
+  return {
+    id: data.id ?? '',
+    invocation_id: data.invocationId ?? '',
+    tool_key: data.toolKey ?? '',
+    params_json: data.paramsJson ?? '',
+    redaction_applied: Boolean(data.redactionApplied),
+    created_at: data.createdAt ?? '',
   };
 }
 

@@ -255,7 +255,9 @@ func (s *A2AService) UpdateAgentCard(ctx context.Context, req *v1.UpdateAgentCar
 	if s.endpoints != nil {
 		s.endpoints.Invalidate(req.GetAgentId())
 	}
-	return toProtoA2ACard(card), nil
+	protoCard := toProtoA2ACard(card)
+	s.withEndpointURL(protoCard, card.Enabled, card.AgentID)
+	return protoCard, nil
 }
 
 // GetAgentCard returns the A2A card for one agent.

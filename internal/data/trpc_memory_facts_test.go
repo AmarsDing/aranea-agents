@@ -382,3 +382,152 @@ func TestInvalidateFact_DataLayer(t *testing.T) {
 		t.Fatalf("expected 0 rows after invalidation, got %d", len(rows))
 	}
 }
+
+// TestReviewFactRow_DataLayer verifies the column-targeted review path
+// (memory.md §9.4): feedback actions bump counters/confidence without touching
+// links/keywords/metadata, and refine replaces content with a version bump and
+// a recomputed fingerprint.
+func TestReviewFactRow_DataLayer(t *testing.T) {
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	admin := data.NewSessionAdminStoreAdapter(d, nil)
+	ctx := context.Background()
+
+	raw, err := factWriter.UpsertFactRow(ctx, biz.FactUpsert{
+		ScopeType: "agent", ScopeID: "agent-review-dl",
+		Statement: "User likes tea", FactKind: "preference",
+		TagsJSON: `["drink"]`, LinksJSON: `["fact-x"]`, KeywordsJSON: `["tea"]`,
+		MetadataJSON: `{"origin":"test"}`, Confidence: 0.95, Importance: 0.6,
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	parse := func(raw []byte) map[string]any {
+		t.Helper()
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		return m
+	}
+	m := parse(raw)
+	factID, _ := m["id"].(string)
+	if factID == "" {
+		t.Fatal("expected non-empty fact ID")
+	}
+	if v, _ := m["version"].(float64); v != 1 {
+		t.Fatalf("expected version 1 after insert, got %v", v)
+	}
+
+	// confirm: positive+1, confidence clamped at 1.0 (0.95 + 0.10 > 1).
+	raw, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewConfirm})
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	m = parse(raw)
+	if v, _ := m["positive_feedback_count"].(float64); v != 1 {
+		t.Fatalf("expected positive_feedback_count 1, got %v", v)
+	}
+	if v, _ := m["confidence"].(float64); v != 1.0 {
+		t.Fatalf("expected confidence clamped to 1.0, got %v", v)
+	}
+	// Regression guard: feedback must not wipe A-MEM linkages/metadata.
+	if v, _ := m["links"].(string); v != `["fact-x"]` {
+		t.Fatalf("links wiped by confirm: %q", v)
+	}
+	if v, _ := m["keywords"].(string); v != `["tea"]` {
+		t.Fatalf("keywords wiped by confirm: %q", v)
+	}
+	if v, _ := m["metadata_json"].(string); v != `{"origin":"test"}` {
+		t.Fatalf("metadata wiped by confirm: %q", v)
+	}
+
+	// reject ×5: confidence 1.0 − 0.20×5 clamps at 0.0.
+	for i := 0; i < 5; i++ {
+		raw, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewReject})
+		if err != nil {
+			t.Fatalf("reject %d: %v", i, err)
+		}
+	}
+	m = parse(raw)
+	if v, _ := m["negative_feedback_count"].(float64); v != 5 {
+		t.Fatalf("expected negative_feedback_count 5, got %v", v)
+	}
+	// 0.20 is not exactly representable in binary float; after 5 subtractions
+	// a tiny positive residue (~3e-08) is expected. Assert the clamp floor.
+	if v, _ := m["confidence"].(float64); v < 0.0 || v > 1e-6 {
+		t.Fatalf("expected confidence clamped near 0.0, got %v", v)
+	}
+
+	// refine: content replace, version 1→2, fingerprint recomputed, links kept.
+	raw, err = admin.ReviewFactRow(ctx, biz.FactReview{
+		FactID: factID, Action: biz.FactReviewRefine,
+		Statement: "User likes coffee", DetailsMarkdown: "edited by user",
+		FactKind: "preference", TagsJSON: `["drink","coffee"]`,
+	})
+	if err != nil {
+		t.Fatalf("refine: %v", err)
+	}
+	m = parse(raw)
+	if v, _ := m["statement"].(string); v != "User likes coffee" {
+		t.Fatalf("expected refined statement, got %q", v)
+	}
+	if v, _ := m["version"].(float64); v != 2 {
+		t.Fatalf("expected version 2 after refine, got %v", v)
+	}
+	if v, _ := m["fingerprint"].(string); v == "" || v == biz.FactFingerprint("User likes tea", "agent", "agent-review-dl") {
+		t.Fatalf("expected recomputed fingerprint, got %q", v)
+	}
+	if v, _ := m["embedding_status"].(string); v != "stale" {
+		t.Fatalf("expected embedding_status stale after refine, got %q", v)
+	}
+	if v, _ := m["links"].(string); v != `["fact-x"]` {
+		t.Fatalf("links wiped by refine: %q", v)
+	}
+
+	// refine with empty statement → error.
+	if _, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewRefine}); err == nil {
+		t.Fatal("expected error for refine with empty statement")
+	}
+	// unknown action → error.
+	if _, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: "explode"}); err == nil {
+		t.Fatal("expected error for unknown action")
+	}
+
+	// dispute / deprecate: status transitions.
+	raw, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewDispute})
+	if err != nil {
+		t.Fatalf("dispute: %v", err)
+	}
+	if v, _ := parse(raw)["status"].(string); v != "disputed" {
+		t.Fatalf("expected status disputed, got %q", v)
+	}
+	raw, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewDeprecate})
+	if err != nil {
+		t.Fatalf("deprecate: %v", err)
+	}
+	if v, _ := parse(raw)["status"].(string); v != "deprecated" {
+		t.Fatalf("expected status deprecated, got %q", v)
+	}
+
+	// archive: status + archived_at.
+	raw, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewArchive})
+	if err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	m = parse(raw)
+	if v, _ := m["status"].(string); v != "archived" {
+		t.Fatalf("expected status archived, got %q", v)
+	}
+	if v, _ := m["archived_at"].(string); v == "" {
+		t.Fatal("expected archived_at to be set")
+	}
+
+	// deleted fact → not found.
+	if err := factWriter.DeleteFactRow(ctx, factID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err = admin.ReviewFactRow(ctx, biz.FactReview{FactID: factID, Action: biz.FactReviewConfirm}); err == nil {
+		t.Fatal("expected error reviewing a deleted fact")
+	}
+}

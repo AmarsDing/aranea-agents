@@ -60,6 +60,37 @@
 
 **编排统一**：所有 DB Plugin 统一走 Runner `WithPlugins` 路径，不再支持 `callback_orchestration:"chain"` 镜像。`plugin_chain_mirror.go` 已移除。
 
+### 3.1 System Message 注入顺序（前缀稳定化）
+
+> 落地 2026-08-11（P1 TTFT 优化）。
+
+DeepSeek prompt caching 从 token 0 开始匹配：system-message 前缀内任何 per-turn 变化会使整个缓存块失效。因此所有 BeforeModel 注入钩子**禁止 prepend 到 position 0**，必须使用 `insertAfterLastSystem` 将注入的 system message 追加到已有 system 块之后。
+
+**三层前缀设计**（按 Hook Layer 排序保证注入顺序）：
+
+| 层 | Hook Layer | 内容 | 示例 |
+|----|-----------|------|------|
+| Static | LayerStatic | 会话级稳定（不随 turn 变化） | 基础 system prompt、静态运行时能力 cue |
+| Semi-Static | LayerSemiStatic | 任务/turn 级变化 | 动态运行时 cue、skill guidance、knowledge cue |
+| Dynamic | LayerDynamic | 每 turn 变化 | memory cue（含 recall 结果）、reply reminder |
+
+**最终消息结构**：`[base system, static cue, semi-static cue..., dynamic cue..., user, assistant, ...]`
+
+**已实现注入点**（8 处，全部经 `insertAfterLastSystem`）：
+
+| 文件 | 钩子 | Layer |
+|------|------|-------|
+| `runtime_cue_inject.go` | 静态运行时 cue | Static |
+| `runtime_cue_inject.go` | 动态运行时 cue | SemiStatic |
+| `skill_guidance_inject.go` | 完整 skill 指引 | SemiStatic |
+| `skill_guidance_inject.go` | 渐进式 skill 指引 | SemiStatic |
+| `memory_inject.go` | 记忆注入（recall + profile card） | SemiStatic |
+| `memory_inject.go` | 压缩后记忆重建 | SemiStatic |
+| `knowledge_inject.go` | 知识库 cue | SemiStatic |
+| `reply_reminder_inject.go` | 回复提醒 | Dynamic |
+
+**测试契约**：`prompt_prefix_position_test.go` 8 个测试 pin 住位置契约——base system 保持在 index 0，注入 cue 在其后，user message 在 system 块之后。
+
 ---
 
 ## 四、现有代码资产

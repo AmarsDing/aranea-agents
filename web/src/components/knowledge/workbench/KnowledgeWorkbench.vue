@@ -4,6 +4,7 @@
     <ParticleField class="kb-workbench__particles" />
     <div class="kb-workbench__aurora kb-workbench__aurora--cyan" />
     <div class="kb-workbench__aurora kb-workbench__aurora--violet" />
+    <div class="kb-workbench__aurora kb-workbench__aurora--teal" />
 
     <div class="kb-workbench__frame">
       <WorkbenchTopBar
@@ -59,6 +60,7 @@
           :candidates="candidates"
           :recent-docs="recentDocs"
           :get-headings="getHeadingsFor"
+          :link-recency-rank="linkRecencyRank"
           @activate="workbench.activateTab"
           @close="workbench.closeTab"
           @reorder="workbench.reorderTabs"
@@ -68,6 +70,7 @@
           @open-doc="openDocByName"
           @create-doc="createDocByName"
           @open-doc-id="openDocById"
+          @pick-link="onPickLink"
         />
 
         <!-- 右栏：五面板联动（SP2-5） -->
@@ -162,6 +165,8 @@ import SearchPanel, { type SearchItem } from './SearchPanel.vue';
 import {
   createVaultDir,
   createVaultDocument,
+  listRecentLinkUses,
+  recordLinkUse,
   rebuildKnowledgeIndex,
   searchKnowledge,
 } from '../../../features/knowledge/api';
@@ -223,6 +228,54 @@ const $q = useQuasar();
 const candidates = computed(() =>
   props.documents.filter((d) => d.collection_id === props.currentVaultId).map((d) => d.rel_path || d.source),
 );
+
+// ---------- wikilink 落链 recency（B4 #8） ----------
+// 归一化名 → 名次（0=最近）；仅空查询补全消费。库切换时整表拉取一次（≤32 条），
+// 落链时乐观更新 + best-effort 上报（失败静默，recency 非正确性依赖）。
+const linkRecencyRank = ref<ReadonlyMap<string, number>>(new Map());
+
+async function loadLinkRecency(vaultId: string) {
+  if (!vaultId) {
+    linkRecencyRank.value = new Map();
+    return;
+  }
+  try {
+    const items = await listRecentLinkUses(vaultId);
+    const byId = new Map(props.documents.filter((d) => d.collection_id === vaultId).map((d) => [d.id, d]));
+    const rank = new Map<string, number>();
+    for (const it of items) {
+      const doc = byId.get(it.doc_id);
+      if (!doc) continue; // 已删除/移动文档的孤儿行不映射候选
+      const name = normalizeTargetName(doc.rel_path || doc.source);
+      if (name && !rank.has(name)) rank.set(name, rank.size);
+    }
+    linkRecencyRank.value = rank;
+  } catch {
+    linkRecencyRank.value = new Map(); // 拉取失败降级为无 recency 排序
+  }
+}
+
+watch(
+  () => props.currentVaultId,
+  (id) => void loadLinkRecency(id),
+  { immediate: true },
+);
+
+function onPickLink(target: string) {
+  const doc = props.documents.find(
+    (d) => d.collection_id === props.currentVaultId && (d.rel_path || d.source) === target,
+  );
+  if (!doc) return;
+  // 乐观置顶：目标 rank 0，其余按原名次顺延。
+  const next = new Map<string, number>();
+  const name = normalizeTargetName(target);
+  if (name) next.set(name, 0);
+  for (const [k] of [...linkRecencyRank.value.entries()].sort((a, b) => a[1] - b[1])) {
+    if (k !== name) next.set(k, next.size);
+  }
+  linkRecencyRank.value = next;
+  recordLinkUse(props.currentVaultId, doc.id).catch(() => undefined);
+}
 
 // ⌘O / ⌘K 浮层状态（SP2-6）
 const quickSwitcherOpen = ref(false);
@@ -599,24 +652,40 @@ async function onSaveAndClose() {
     inset: 0
     pointer-events: none
 
+  // U2 光晕增强：视口相对超大色团（研究 A6：直径 60–120vw、四角分布），慢速漂移
   &__aurora
     position: absolute
-    width: 480px
-    height: 480px
     border-radius: 50%
     filter: blur(120px)
-    opacity: 0.16
     pointer-events: none
 
     &--cyan
-      top: -160px
-      right: -80px
-      background: radial-gradient(circle, var(--kb-accent-cyan), transparent 70%)
+      width: 46vw
+      height: 46vw
+      top: -18vw
+      right: -12vw
+      opacity: 0.14
+      background: radial-gradient(circle, var(--kb-accent-cyan), transparent 65%)
+      animation: kb-aurora-drift 26s ease-in-out infinite alternate
 
     &--violet
-      bottom: -200px
-      left: -120px
-      background: radial-gradient(circle, var(--kb-accent-violet), transparent 70%)
+      width: 40vw
+      height: 40vw
+      bottom: -16vw
+      left: -10vw
+      opacity: 0.12
+      background: radial-gradient(circle, var(--kb-accent-violet), transparent 65%)
+      animation: kb-aurora-drift 32s ease-in-out infinite alternate-reverse
+
+    // 第三团：底部中央微青光，补深空纵深
+    &--teal
+      width: 34vw
+      height: 34vw
+      bottom: -20vw
+      right: 18vw
+      opacity: 0.08
+      background: radial-gradient(circle, var(--kb-accent-cyan), transparent 68%)
+      animation: kb-aurora-drift 38s ease-in-out infinite alternate
 
   &__frame
     position: relative
@@ -661,4 +730,11 @@ async function onSaveAndClose() {
 
   .kb-workbench__right
     display: none
+
+// U2 光晕漂移动画（仅 transform/opacity，GPU 合成层；reduced-motion 由 deep-space.sass 统一降级）
+@keyframes kb-aurora-drift
+  0%
+    transform: translate3d(0, 0, 0) scale(1)
+  100%
+    transform: translate3d(3vw, 2vw, 0) scale(1.08)
 </style>

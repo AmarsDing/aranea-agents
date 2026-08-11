@@ -33,9 +33,28 @@
           <p class="settings-section__hint">基于 Episode / 负反馈触发结构化进化提议（与 L4 图谱注入无关）。</p>
         </div>
       </div>
+      <q-list separator class="app-glass-list q-mb-md">
+        <q-item class="app-glass-list__item--md">
+          <q-item-section>
+            <q-item-label>{{ $t('agentSettings.evolution.pipelineEnableLabel') }}</q-item-label>
+            <q-item-label caption>{{ $t('agentSettings.evolution.pipelineEnableCaption') }}</q-item-label>
+          </q-item-section>
+          <q-item-section side><q-toggle v-model="evolutionSettings.enabled" /></q-item-section>
+        </q-item>
+        <q-item class="app-glass-list__item--md">
+          <q-item-section>
+            <q-item-label>{{ $t('agentSettings.evolution.autoApplyLabel') }}</q-item-label>
+            <q-item-label caption>{{ $t('agentSettings.evolution.autoApplyCaption') }}</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-toggle v-model="evolutionSettings.auto_apply" :disable="!evolutionSettings.enabled" />
+          </q-item-section>
+        </q-item>
+      </q-list>
+      <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mb-md">
+        {{ $t('agentSettings.evolution.pipelineNotLiveBanner') }}
+      </q-banner>
       <div class="app-form-field-grid app-form-field-grid--2col">
-        <q-toggle v-model="evolutionSettings.enabled" label="启用提议流水线" />
-        <q-toggle v-model="evolutionSettings.auto_apply" label="低风险自动应用" />
         <q-input
           v-model.number="evolutionSettings.min_episodes"
           dense
@@ -43,6 +62,7 @@
           type="number"
           label="触发 Episode 数"
           :min="1"
+          :hint="$t('agentSettings.evolution.minEpisodesHint')"
         />
         <q-input
           v-model.number="evolutionSettings.min_negative_feedback"
@@ -51,6 +71,7 @@
           type="number"
           label="触发负反馈数"
           :min="1"
+          :hint="$t('agentSettings.evolution.minNegativeFeedbackHint')"
         />
         <q-input
           v-model.number="evolutionSettings.throttle_hours"
@@ -59,6 +80,7 @@
           type="number"
           label="节流小时"
           :min="1"
+          :hint="$t('agentSettings.evolution.throttleHoursHint')"
         />
         <q-input
           v-model.number="evolutionSettings.proposal_ttl_days"
@@ -67,6 +89,7 @@
           type="number"
           label="提议过期天数"
           :min="1"
+          :hint="$t('agentSettings.evolution.proposalTtlDaysHint')"
         />
         <q-input
           v-model.number="evolutionSettings.persona_max_chars"
@@ -75,6 +98,7 @@
           type="number"
           label="Persona 最大字符"
           :min="1"
+          :hint="$t('agentSettings.evolution.personaMaxCharsHint')"
         />
         <q-input
           v-model.number="evolutionSettings.system_prompt_max_appends"
@@ -83,6 +107,7 @@
           type="number"
           label="Prompt 追加段上限"
           :min="0"
+          :hint="$t('agentSettings.evolution.maxAppendsHint')"
         />
       </div>
     </section>
@@ -158,10 +183,25 @@
           </div>
           <p class="settings-section__hint">时间范围只影响看板读取，不写入 Agent 配置。</p>
         </div>
-        <q-btn-toggle v-model="rangeModel" rounded unelevated toggle-color="primary" :options="rangeOptions" />
+        <q-btn-toggle
+          v-model="rangeModel"
+          rounded
+          unelevated
+          toggle-color="primary"
+          :options="rangeOptions"
+          :disable="!metricsEnabled"
+        />
       </div>
-      <q-inner-loading :showing="metricsLoading" label="加载指标..." />
-      <div v-if="!metricsLoading" class="app-metrics-grid q-mt-sm">
+      <q-banner
+        v-if="!metricsEnabled"
+        rounded
+        class="settings-info-banner settings-info-banner--bordered q-mt-sm"
+      >
+        {{ $t('agentSettings.evolution.metricsDisabledBanner') }}
+      </q-banner>
+      <template v-else>
+        <q-inner-loading :showing="metricsLoading" label="加载指标..." />
+        <div v-if="!metricsLoading" class="app-metrics-grid q-mt-sm">
         <q-card flat bordered class="overview-metric-card app-metrics-grid__item">
           <q-card-section class="overview-metric-card__body">
             <div class="row items-center q-gutter-sm">
@@ -210,9 +250,10 @@
           />
         </div>
       </div>
+      </template>
     </section>
 
-    <section v-if="suggestions.length > 0" class="settings-section">
+    <section class="settings-section">
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
@@ -221,7 +262,12 @@
           <p class="settings-section__hint">基于指标自动生成的改进建议，可应用或拒绝。</p>
         </div>
       </div>
-      <q-list separator class="app-glass-list">
+      <div v-if="suggestions.length === 0" class="app-empty-state-center app-empty-state-center--sm">
+        <q-icon name="tips_and_updates" size="36px" color="grey-5" />
+        <div class="text-body1">{{ $t('agentSettings.evolution.suggestionsEmptyTitle') }}</div>
+        <div class="text-caption">{{ $t('agentSettings.evolution.suggestionsEmptyCaption') }}</div>
+      </div>
+      <q-list v-else separator class="app-glass-list">
         <q-item v-for="s in suggestions" :key="s.id" class="app-glass-list__item--lg">
           <q-item-section>
             <q-item-label class="text-weight-medium">
@@ -288,6 +334,9 @@
           <p class="settings-section__hint">限制自动调整幅度，样本不足或表现下降时回滚。</p>
         </div>
       </div>
+      <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mb-md">
+        {{ $t('agentSettings.evolution.guardrailsNotLiveBanner') }}
+      </q-banner>
       <div class="app-form-field-grid app-form-field-grid--2col">
         <q-input
           v-model.number="guardrails.max_change_per_period"
@@ -296,8 +345,16 @@
           type="number"
           step="0.01"
           label="每周期最大变化"
+          :hint="$t('agentSettings.evolution.maxChangeHint')"
         />
-        <q-input v-model.number="guardrails.min_data_points" dense outlined type="number" label="最少数据点" />
+        <q-input
+          v-model.number="guardrails.min_data_points"
+          dense
+          outlined
+          type="number"
+          label="最少数据点"
+          :hint="$t('agentSettings.evolution.minDataPointsHint')"
+        />
         <q-input
           v-model.number="guardrails.rollback_on_decline_percent"
           dense
@@ -305,6 +362,7 @@
           type="number"
           suffix="%"
           label="下降时回滚"
+          :hint="$t('agentSettings.evolution.rollbackDeclineHint')"
         />
       </div>
     </section>
@@ -380,6 +438,9 @@ const {
 );
 
 const rejectTargetTitle = computed(() => suggestions.value.find((s) => s.id === rejectingId.value)?.title ?? '');
+
+// 进化指标开关关闭时，指标看板用遮罩提示替代（U2）。
+const metricsEnabled = computed(() => evolution.value.evolution_metrics_enabled);
 
 // 检索质量：series 为空 ⟺ 时间范围内无记忆工具调用，0.0% 会误导用户。
 const hasRetrievalData = computed(() => (metrics.value?.retrieval_quality_series?.length ?? 0) > 0);

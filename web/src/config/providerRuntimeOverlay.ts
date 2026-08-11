@@ -66,3 +66,13 @@ export function microPer1KToUsdPer1M(microPer1K: number): number {
   if (!Number.isFinite(microPer1K) || microPer1K <= 0) return 0;
   return microPer1K / 1000;
 }
+
+/**
+ * 去除上游 models.dev 价格的 float32 加宽噪声（如 0.14000000059604645）。
+ * 价格粒度为 micro-USD/1K，即 USD/1M 下 6 位小数以外恒为噪声，
+ * 加载进编辑表单前统一舍入到 6 位小数，避免 number input 原样显示长小数。
+ */
+export function normalizeUsdPer1M(usdPer1M: number): number {
+  if (!Number.isFinite(usdPer1M) || usdPer1M <= 0) return 0;
+  return Math.round(usdPer1M * 1e6) / 1e6;
+}

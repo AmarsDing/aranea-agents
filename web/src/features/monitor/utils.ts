@@ -36,6 +36,12 @@ export function formatDate(value?: string) {
   return date.toLocaleString();
 }
 
+/** 日志级别归一为大写（后端 WS 帧可能带小写 level，如 info），与筛选器/等级表一致。 */
+export function normalizeLogLevel(level?: string): string {
+  const v = String(level ?? '').trim();
+  return v ? v.toUpperCase() : 'INFO';
+}
+
 export function compactJSON(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
