@@ -26,6 +26,9 @@ import (
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
 	"aranea-agents/internal/data/ent/circuitbreakerstate"
+	"aranea-agents/internal/data/ent/codingagent"
+	"aranea-agents/internal/data/ent/codingproject"
+	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
@@ -157,6 +160,12 @@ type Client struct {
 	ChannelTurnJob *ChannelTurnJobClient
 	// CircuitBreakerState is the client for interacting with the CircuitBreakerState builders.
 	CircuitBreakerState *CircuitBreakerStateClient
+	// CodingAgent is the client for interacting with the CodingAgent builders.
+	CodingAgent *CodingAgentClient
+	// CodingProject is the client for interacting with the CodingProject builders.
+	CodingProject *CodingProjectClient
+	// CodingTask is the client for interacting with the CodingTask builders.
+	CodingTask *CodingTaskClient
 	// CompiledTeam is the client for interacting with the CompiledTeam builders.
 	CompiledTeam *CompiledTeamClient
 	// CronTask is the client for interacting with the CronTask builders.
@@ -357,6 +366,9 @@ func (c *Client) init() {
 	c.ChannelRuntimeLease = NewChannelRuntimeLeaseClient(c.config)
 	c.ChannelTurnJob = NewChannelTurnJobClient(c.config)
 	c.CircuitBreakerState = NewCircuitBreakerStateClient(c.config)
+	c.CodingAgent = NewCodingAgentClient(c.config)
+	c.CodingProject = NewCodingProjectClient(c.config)
+	c.CodingTask = NewCodingTaskClient(c.config)
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
@@ -551,6 +563,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ChannelRuntimeLease:        NewChannelRuntimeLeaseClient(cfg),
 		ChannelTurnJob:             NewChannelTurnJobClient(cfg),
 		CircuitBreakerState:        NewCircuitBreakerStateClient(cfg),
+		CodingAgent:                NewCodingAgentClient(cfg),
+		CodingProject:              NewCodingProjectClient(cfg),
+		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
@@ -672,6 +687,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ChannelRuntimeLease:        NewChannelRuntimeLeaseClient(cfg),
 		ChannelTurnJob:             NewChannelTurnJobClient(cfg),
 		CircuitBreakerState:        NewCircuitBreakerStateClient(cfg),
+		CodingAgent:                NewCodingAgentClient(cfg),
+		CodingProject:              NewCodingProjectClient(cfg),
+		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
@@ -791,29 +809,29 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile, c.AgentRuntimeSetting,
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
-		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
-		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
-		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
-		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
-		c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
-		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
-		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
-		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
-		c.UserEmbeddingSetting,
+		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
+		c.CodingTask, c.CompiledTeam, c.CronTask, c.CronTaskRun, c.DeptLeadMessage,
+		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
+		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
+		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
+		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
+		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -826,29 +844,29 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Admin, c.Agent, c.AgentPerformance, c.AgentPromptFile, c.AgentRuntimeSetting,
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
-		c.ChannelTurnJob, c.CircuitBreakerState, c.CompiledTeam, c.CronTask,
-		c.CronTaskRun, c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
-		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
-		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
-		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
-		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
-		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
-		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
-		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
-		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
-		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
-		c.PlatformChannelCredential, c.PlatformChannelDelivery,
-		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
-		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
-		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
-		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
-		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
-		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
-		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
-		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
-		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
-		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
-		c.UserEmbeddingSetting,
+		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
+		c.CodingTask, c.CompiledTeam, c.CronTask, c.CronTaskRun, c.DeptLeadMessage,
+		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
+		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
+		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
+		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
+		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
+		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
+		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
+		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
+		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
+		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
+		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
+		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
+		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
+		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
+		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
+		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
+		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
+		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
+		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
+		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
+		c.UsageQuota, c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -887,6 +905,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ChannelTurnJob.mutate(ctx, m)
 	case *CircuitBreakerStateMutation:
 		return c.CircuitBreakerState.mutate(ctx, m)
+	case *CodingAgentMutation:
+		return c.CodingAgent.mutate(ctx, m)
+	case *CodingProjectMutation:
+		return c.CodingProject.mutate(ctx, m)
+	case *CodingTaskMutation:
+		return c.CodingTask.mutate(ctx, m)
 	case *CompiledTeamMutation:
 		return c.CompiledTeam.mutate(ctx, m)
 	case *CronTaskMutation:
@@ -3058,6 +3082,405 @@ func (c *CircuitBreakerStateClient) mutate(ctx context.Context, m *CircuitBreake
 		return (&CircuitBreakerStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CircuitBreakerState mutation op: %q", m.Op())
+	}
+}
+
+// CodingAgentClient is a client for the CodingAgent schema.
+type CodingAgentClient struct {
+	config
+}
+
+// NewCodingAgentClient returns a client for the CodingAgent from the given config.
+func NewCodingAgentClient(c config) *CodingAgentClient {
+	return &CodingAgentClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `codingagent.Hooks(f(g(h())))`.
+func (c *CodingAgentClient) Use(hooks ...Hook) {
+	c.hooks.CodingAgent = append(c.hooks.CodingAgent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `codingagent.Intercept(f(g(h())))`.
+func (c *CodingAgentClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodingAgent = append(c.inters.CodingAgent, interceptors...)
+}
+
+// Create returns a builder for creating a CodingAgent entity.
+func (c *CodingAgentClient) Create() *CodingAgentCreate {
+	mutation := newCodingAgentMutation(c.config, OpCreate)
+	return &CodingAgentCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CodingAgent entities.
+func (c *CodingAgentClient) CreateBulk(builders ...*CodingAgentCreate) *CodingAgentCreateBulk {
+	return &CodingAgentCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CodingAgentClient) MapCreateBulk(slice any, setFunc func(*CodingAgentCreate, int)) *CodingAgentCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CodingAgentCreateBulk{err: fmt.Errorf("calling to CodingAgentClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CodingAgentCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CodingAgentCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CodingAgent.
+func (c *CodingAgentClient) Update() *CodingAgentUpdate {
+	mutation := newCodingAgentMutation(c.config, OpUpdate)
+	return &CodingAgentUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CodingAgentClient) UpdateOne(_m *CodingAgent) *CodingAgentUpdateOne {
+	mutation := newCodingAgentMutation(c.config, OpUpdateOne, withCodingAgent(_m))
+	return &CodingAgentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CodingAgentClient) UpdateOneID(id string) *CodingAgentUpdateOne {
+	mutation := newCodingAgentMutation(c.config, OpUpdateOne, withCodingAgentID(id))
+	return &CodingAgentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CodingAgent.
+func (c *CodingAgentClient) Delete() *CodingAgentDelete {
+	mutation := newCodingAgentMutation(c.config, OpDelete)
+	return &CodingAgentDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CodingAgentClient) DeleteOne(_m *CodingAgent) *CodingAgentDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CodingAgentClient) DeleteOneID(id string) *CodingAgentDeleteOne {
+	builder := c.Delete().Where(codingagent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CodingAgentDeleteOne{builder}
+}
+
+// Query returns a query builder for CodingAgent.
+func (c *CodingAgentClient) Query() *CodingAgentQuery {
+	return &CodingAgentQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCodingAgent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CodingAgent entity by its id.
+func (c *CodingAgentClient) Get(ctx context.Context, id string) (*CodingAgent, error) {
+	return c.Query().Where(codingagent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CodingAgentClient) GetX(ctx context.Context, id string) *CodingAgent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CodingAgentClient) Hooks() []Hook {
+	return c.hooks.CodingAgent
+}
+
+// Interceptors returns the client interceptors.
+func (c *CodingAgentClient) Interceptors() []Interceptor {
+	return c.inters.CodingAgent
+}
+
+func (c *CodingAgentClient) mutate(ctx context.Context, m *CodingAgentMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CodingAgentCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CodingAgentUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CodingAgentUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CodingAgentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CodingAgent mutation op: %q", m.Op())
+	}
+}
+
+// CodingProjectClient is a client for the CodingProject schema.
+type CodingProjectClient struct {
+	config
+}
+
+// NewCodingProjectClient returns a client for the CodingProject from the given config.
+func NewCodingProjectClient(c config) *CodingProjectClient {
+	return &CodingProjectClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `codingproject.Hooks(f(g(h())))`.
+func (c *CodingProjectClient) Use(hooks ...Hook) {
+	c.hooks.CodingProject = append(c.hooks.CodingProject, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `codingproject.Intercept(f(g(h())))`.
+func (c *CodingProjectClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodingProject = append(c.inters.CodingProject, interceptors...)
+}
+
+// Create returns a builder for creating a CodingProject entity.
+func (c *CodingProjectClient) Create() *CodingProjectCreate {
+	mutation := newCodingProjectMutation(c.config, OpCreate)
+	return &CodingProjectCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CodingProject entities.
+func (c *CodingProjectClient) CreateBulk(builders ...*CodingProjectCreate) *CodingProjectCreateBulk {
+	return &CodingProjectCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CodingProjectClient) MapCreateBulk(slice any, setFunc func(*CodingProjectCreate, int)) *CodingProjectCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CodingProjectCreateBulk{err: fmt.Errorf("calling to CodingProjectClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CodingProjectCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CodingProjectCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CodingProject.
+func (c *CodingProjectClient) Update() *CodingProjectUpdate {
+	mutation := newCodingProjectMutation(c.config, OpUpdate)
+	return &CodingProjectUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CodingProjectClient) UpdateOne(_m *CodingProject) *CodingProjectUpdateOne {
+	mutation := newCodingProjectMutation(c.config, OpUpdateOne, withCodingProject(_m))
+	return &CodingProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CodingProjectClient) UpdateOneID(id string) *CodingProjectUpdateOne {
+	mutation := newCodingProjectMutation(c.config, OpUpdateOne, withCodingProjectID(id))
+	return &CodingProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CodingProject.
+func (c *CodingProjectClient) Delete() *CodingProjectDelete {
+	mutation := newCodingProjectMutation(c.config, OpDelete)
+	return &CodingProjectDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CodingProjectClient) DeleteOne(_m *CodingProject) *CodingProjectDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CodingProjectClient) DeleteOneID(id string) *CodingProjectDeleteOne {
+	builder := c.Delete().Where(codingproject.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CodingProjectDeleteOne{builder}
+}
+
+// Query returns a query builder for CodingProject.
+func (c *CodingProjectClient) Query() *CodingProjectQuery {
+	return &CodingProjectQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCodingProject},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CodingProject entity by its id.
+func (c *CodingProjectClient) Get(ctx context.Context, id string) (*CodingProject, error) {
+	return c.Query().Where(codingproject.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CodingProjectClient) GetX(ctx context.Context, id string) *CodingProject {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CodingProjectClient) Hooks() []Hook {
+	return c.hooks.CodingProject
+}
+
+// Interceptors returns the client interceptors.
+func (c *CodingProjectClient) Interceptors() []Interceptor {
+	return c.inters.CodingProject
+}
+
+func (c *CodingProjectClient) mutate(ctx context.Context, m *CodingProjectMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CodingProjectCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CodingProjectUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CodingProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CodingProjectDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CodingProject mutation op: %q", m.Op())
+	}
+}
+
+// CodingTaskClient is a client for the CodingTask schema.
+type CodingTaskClient struct {
+	config
+}
+
+// NewCodingTaskClient returns a client for the CodingTask from the given config.
+func NewCodingTaskClient(c config) *CodingTaskClient {
+	return &CodingTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `codingtask.Hooks(f(g(h())))`.
+func (c *CodingTaskClient) Use(hooks ...Hook) {
+	c.hooks.CodingTask = append(c.hooks.CodingTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `codingtask.Intercept(f(g(h())))`.
+func (c *CodingTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CodingTask = append(c.inters.CodingTask, interceptors...)
+}
+
+// Create returns a builder for creating a CodingTask entity.
+func (c *CodingTaskClient) Create() *CodingTaskCreate {
+	mutation := newCodingTaskMutation(c.config, OpCreate)
+	return &CodingTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CodingTask entities.
+func (c *CodingTaskClient) CreateBulk(builders ...*CodingTaskCreate) *CodingTaskCreateBulk {
+	return &CodingTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CodingTaskClient) MapCreateBulk(slice any, setFunc func(*CodingTaskCreate, int)) *CodingTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CodingTaskCreateBulk{err: fmt.Errorf("calling to CodingTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CodingTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CodingTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CodingTask.
+func (c *CodingTaskClient) Update() *CodingTaskUpdate {
+	mutation := newCodingTaskMutation(c.config, OpUpdate)
+	return &CodingTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CodingTaskClient) UpdateOne(_m *CodingTask) *CodingTaskUpdateOne {
+	mutation := newCodingTaskMutation(c.config, OpUpdateOne, withCodingTask(_m))
+	return &CodingTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CodingTaskClient) UpdateOneID(id string) *CodingTaskUpdateOne {
+	mutation := newCodingTaskMutation(c.config, OpUpdateOne, withCodingTaskID(id))
+	return &CodingTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CodingTask.
+func (c *CodingTaskClient) Delete() *CodingTaskDelete {
+	mutation := newCodingTaskMutation(c.config, OpDelete)
+	return &CodingTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CodingTaskClient) DeleteOne(_m *CodingTask) *CodingTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CodingTaskClient) DeleteOneID(id string) *CodingTaskDeleteOne {
+	builder := c.Delete().Where(codingtask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CodingTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for CodingTask.
+func (c *CodingTaskClient) Query() *CodingTaskQuery {
+	return &CodingTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCodingTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CodingTask entity by its id.
+func (c *CodingTaskClient) Get(ctx context.Context, id string) (*CodingTask, error) {
+	return c.Query().Where(codingtask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CodingTaskClient) GetX(ctx context.Context, id string) *CodingTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CodingTaskClient) Hooks() []Hook {
+	return c.hooks.CodingTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *CodingTaskClient) Interceptors() []Interceptor {
+	return c.inters.CodingTask
+}
+
+func (c *CodingTaskClient) mutate(ctx context.Context, m *CodingTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CodingTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CodingTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CodingTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CodingTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CodingTask mutation op: %q", m.Op())
 	}
 }
 
@@ -14766,50 +15189,51 @@ type (
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
-		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
-		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
-		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel, MediaProvider,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
-		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
-		UserEmbeddingSetting []ent.Hook
+		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
+		CronTask, CronTaskRun, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota, UserEmbeddingSetting []ent.Hook
 	}
 	inters struct {
 		Admin, Agent, AgentPerformance, AgentPromptFile, AgentRuntimeSetting,
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
-		CircuitBreakerState, CompiledTeam, CronTask, CronTaskRun, DeptLeadMessage,
-		EvalCase, EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun,
-		EvalRunPreference, EventDeliveryOutbox, ExperienceReport, FailurePattern,
-		FederationAuditLog, FederationOrg, FederationPolicy, FlowLogEvent,
-		GatewayWebhook, GraphDefinition, GraphExecution, GraphNodeV2, GraphStageV2,
-		GraphTask, GraphTaskComment, GraphTaskEvent, GraphTaskLink, GraphTaskLog,
-		GraphTaskRun, HealRecord, KnowledgeLinkUsed, LlmProviderModel, MediaProvider,
-		MemberSessionV2, ModelPricingRule, ModelTokenUsageHourly, Orchestration,
-		OrchestrationStep, Organization, PatchOutcome, PlanBoardV2, PlanStepV2,
-		PlatformChannel, PlatformChannelCredential, PlatformChannelDelivery,
-		PlatformChannelPeerSession, PlatformHook, PlatformMCPServer,
-		PlatformMCPUserCredential, PlatformPlugin, PlatformSkill, PlatformTool,
-		ResourceAccessAudit, SchemaMigration, SelfCheckReport, SelfImprovementRun,
-		Session, SessionMetrics, SessionParticipant, SessionRun, SessionRunCheckpoint,
-		SessionRuntime, SessionTurn, SessionV2, SkillImportJob, SkillInvocation,
-		SkillTag, SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan,
-		TaskV2, Team, TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride,
-		ToolGrant, ToolInvocation, ToolInvocationAudit, ToolInvocationParam,
-		ToolResultBlob, ToolResultReplacement, TurnV2, UsageQuota,
+		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
+		CronTask, CronTaskRun, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
+		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
+		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
+		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
+		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
+		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
+		ModelPricingRule, ModelTokenUsageHourly, Orchestration, OrchestrationStep,
+		Organization, PatchOutcome, PlanBoardV2, PlanStepV2, PlatformChannel,
+		PlatformChannelCredential, PlatformChannelDelivery, PlatformChannelPeerSession,
+		PlatformHook, PlatformMCPServer, PlatformMCPUserCredential, PlatformPlugin,
+		PlatformSkill, PlatformTool, ResourceAccessAudit, SchemaMigration,
+		SelfCheckReport, SelfImprovementRun, Session, SessionMetrics,
+		SessionParticipant, SessionRun, SessionRunCheckpoint, SessionRuntime,
+		SessionTurn, SessionV2, SkillImportJob, SkillInvocation, SkillTag,
+		SkillVersion, StepV2, SystemSetting, TaskDeadLetter, TaskPlan, TaskV2, Team,
+		TeamRun, TeamRunStep, TeamRunV2, TeamStageV2, ToolAgentOverride, ToolGrant,
+		ToolInvocation, ToolInvocationAudit, ToolInvocationParam, ToolResultBlob,
+		ToolResultReplacement, TurnV2, UsageQuota,
 		UserEmbeddingSetting []ent.Interceptor
 	}
 )

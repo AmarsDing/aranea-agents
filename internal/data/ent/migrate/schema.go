@@ -624,6 +624,92 @@ var (
 			},
 		},
 	}
+	// CodingAgentsColumns holds the columns for the "coding_agents" table.
+	CodingAgentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "workspace", Type: field.TypeString, Size: 128, Default: "default"},
+		{Name: "agent_key", Type: field.TypeString, Size: 64},
+		{Name: "display_name", Type: field.TypeString, Size: 128},
+		{Name: "command", Type: field.TypeString, Size: 512},
+		{Name: "args", Type: field.TypeJSON, Nullable: true},
+		{Name: "env", Type: field.TypeJSON, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "last_probe_ok", Type: field.TypeBool, Default: false},
+		{Name: "last_probe_error", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// CodingAgentsTable holds the schema information for the "coding_agents" table.
+	CodingAgentsTable = &schema.Table{
+		Name:       "coding_agents",
+		Columns:    CodingAgentsColumns,
+		PrimaryKey: []*schema.Column{CodingAgentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "codingagent_workspace_agent_key",
+				Unique:  true,
+				Columns: []*schema.Column{CodingAgentsColumns[1], CodingAgentsColumns[2]},
+			},
+		},
+	}
+	// CodingProjectsColumns holds the columns for the "coding_projects" table.
+	CodingProjectsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "workspace", Type: field.TypeString, Size: 128, Default: "default"},
+		{Name: "name", Type: field.TypeString, Size: 256},
+		{Name: "path", Type: field.TypeString, Size: 1024},
+		{Name: "description", Type: field.TypeString, Size: 2048, Default: ""},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+	}
+	// CodingProjectsTable holds the schema information for the "coding_projects" table.
+	CodingProjectsTable = &schema.Table{
+		Name:       "coding_projects",
+		Columns:    CodingProjectsColumns,
+		PrimaryKey: []*schema.Column{CodingProjectsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "codingproject_workspace_name",
+				Unique:  true,
+				Columns: []*schema.Column{CodingProjectsColumns[1], CodingProjectsColumns[2]},
+			},
+		},
+	}
+	// CodingTasksColumns holds the columns for the "coding_tasks" table.
+	CodingTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "workspace", Type: field.TypeString, Size: 128, Default: "default"},
+		{Name: "session_id", Type: field.TypeString, Size: 256},
+		{Name: "agent_id", Type: field.TypeString, Size: 64},
+		{Name: "project_id", Type: field.TypeString, Size: 64},
+		{Name: "prompt", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "dispatched"},
+		{Name: "acp_session_id", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "summary", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "progress_count", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeString, Default: ""},
+		{Name: "updated_at", Type: field.TypeString, Default: ""},
+		{Name: "completed_at", Type: field.TypeString, Default: ""},
+	}
+	// CodingTasksTable holds the schema information for the "coding_tasks" table.
+	CodingTasksTable = &schema.Table{
+		Name:       "coding_tasks",
+		Columns:    CodingTasksColumns,
+		PrimaryKey: []*schema.Column{CodingTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "codingtask_session_id",
+				Unique:  false,
+				Columns: []*schema.Column{CodingTasksColumns[2]},
+			},
+			{
+				Name:    "codingtask_status",
+				Unique:  false,
+				Columns: []*schema.Column{CodingTasksColumns[6]},
+			},
+		},
+	}
 	// CompiledTeamsColumns holds the columns for the "compiled_teams" table.
 	CompiledTeamsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 192},
@@ -3721,6 +3807,9 @@ var (
 		ChannelRuntimeLeaseTable,
 		ChannelTurnJobTable,
 		CircuitBreakerStatesTable,
+		CodingAgentsTable,
+		CodingProjectsTable,
+		CodingTasksTable,
 		CompiledTeamsTable,
 		CronTaskTable,
 		CronTaskRunTable,
@@ -3853,6 +3942,15 @@ func init() {
 	}
 	CircuitBreakerStatesTable.Annotation = &entsql.Annotation{
 		Table: "circuit_breaker_states",
+	}
+	CodingAgentsTable.Annotation = &entsql.Annotation{
+		Table: "coding_agents",
+	}
+	CodingProjectsTable.Annotation = &entsql.Annotation{
+		Table: "coding_projects",
+	}
+	CodingTasksTable.Annotation = &entsql.Annotation{
+		Table: "coding_tasks",
 	}
 	CompiledTeamsTable.Annotation = &entsql.Annotation{
 		Table: "compiled_teams",

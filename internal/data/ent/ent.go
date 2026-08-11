@@ -18,6 +18,9 @@ import (
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
 	"aranea-agents/internal/data/ent/circuitbreakerstate"
+	"aranea-agents/internal/data/ent/codingagent"
+	"aranea-agents/internal/data/ent/codingproject"
+	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
@@ -189,6 +192,9 @@ func checkColumn(t, c string) error {
 			channelruntimelease.Table:        channelruntimelease.ValidColumn,
 			channelturnjob.Table:             channelturnjob.ValidColumn,
 			circuitbreakerstate.Table:        circuitbreakerstate.ValidColumn,
+			codingagent.Table:                codingagent.ValidColumn,
+			codingproject.Table:              codingproject.ValidColumn,
+			codingtask.Table:                 codingtask.ValidColumn,
 			compiledteam.Table:               compiledteam.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,

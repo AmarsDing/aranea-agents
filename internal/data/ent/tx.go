@@ -44,6 +44,12 @@ type Tx struct {
 	ChannelTurnJob *ChannelTurnJobClient
 	// CircuitBreakerState is the client for interacting with the CircuitBreakerState builders.
 	CircuitBreakerState *CircuitBreakerStateClient
+	// CodingAgent is the client for interacting with the CodingAgent builders.
+	CodingAgent *CodingAgentClient
+	// CodingProject is the client for interacting with the CodingProject builders.
+	CodingProject *CodingProjectClient
+	// CodingTask is the client for interacting with the CodingTask builders.
+	CodingTask *CodingTaskClient
 	// CompiledTeam is the client for interacting with the CompiledTeam builders.
 	CompiledTeam *CompiledTeamClient
 	// CronTask is the client for interacting with the CronTask builders.
@@ -364,6 +370,9 @@ func (tx *Tx) init() {
 	tx.ChannelRuntimeLease = NewChannelRuntimeLeaseClient(tx.config)
 	tx.ChannelTurnJob = NewChannelTurnJobClient(tx.config)
 	tx.CircuitBreakerState = NewCircuitBreakerStateClient(tx.config)
+	tx.CodingAgent = NewCodingAgentClient(tx.config)
+	tx.CodingProject = NewCodingProjectClient(tx.config)
+	tx.CodingTask = NewCodingTaskClient(tx.config)
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)

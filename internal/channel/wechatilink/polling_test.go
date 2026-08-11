@@ -104,6 +104,67 @@ func TestPollingReceivesMessage(t *testing.T) {
 	}
 }
 
+// TestPollingCachesGroupContextToken 群消息的 context_token 必须同时以
+// GroupID 为键缓存——群聊出站 recipient = GroupID，CachedContextToken 回退
+// 按 recipient 查找，仅以 FromUserID 缓存会导致群聊回退永远 miss。
+func TestPollingCachesGroupContextToken(t *testing.T) {
+	stateDir = t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret": 0,
+			"msgs": []map[string]any{
+				{
+					"message_id":    300,
+					"from_user_id":  "member@im.wechat",
+					"group_id":      "group@im.wechat",
+					"message_type":  MessageTypeUser,
+					"message_state": MessageStateNew,
+					"item_list":     []map[string]any{{"type": ItemTypeText, "text_item": map[string]any{"text": "@bot hi"}}},
+					"context_token": "ctx-group",
+				},
+			},
+			"get_updates_buf": "buf_g1",
+		})
+	}))
+	defer server.Close()
+
+	received := make(chan port.InboundEvent, 1)
+	handler := &mockInboundHandler{onEvent: func(ev port.InboundEvent) {
+		received <- ev
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch := biz.Channel{ID: "ch-grp", ConfigJSON: `{"type":"wechat_ilink","config":{"group_enabled":true,"require_mention":false}}`, Enabled: true}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- RunPolling(ctx, ch, nil, testLookup(server.URL), handler, loggateway.NewNoop())
+	}()
+
+	select {
+	case ev := <-received:
+		if ev.OutboundMeta[port.MetaRecipient] != "group@im.wechat" {
+			t.Errorf("group recipient want group id, got %v", ev.OutboundMeta)
+		}
+		cancel()
+	case <-time.After(5 * time.Second):
+		t.Fatal("no message received within 5s")
+	}
+	<-done
+
+	state, err := readState("ch-grp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ContextTokens["group@im.wechat"] != "ctx-group" {
+		t.Errorf("group context token not cached by group id: %v", state.ContextTokens)
+	}
+	if CachedContextToken("ch-grp", "group@im.wechat") != "ctx-group" {
+		t.Error("CachedContextToken fallback miss for group recipient")
+	}
+}
+
 func TestSessionExpiredRecovery(t *testing.T) {
 	stateDir = t.TempDir()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -40,6 +40,31 @@ func TestAESDecryptBadPadding(t *testing.T) {
 	}
 }
 
+func TestPKCS7UnpadStrict(t *testing.T) {
+	// padLen 超过块长（16）必须报错，而非静默截断
+	oversized := make([]byte, 32)
+	oversized[31] = 17
+	if _, err := pkcs7Unpad(oversized); err == nil {
+		t.Error("want error for padLen > blockSize")
+	}
+	// 填充字节不一致必须报错
+	inconsistent := make([]byte, 16)
+	inconsistent[15] = 4 // 声称 4 字节填充，但前 3 字节为 0
+	if _, err := pkcs7Unpad(inconsistent); err == nil {
+		t.Error("want error for inconsistent padding bytes")
+	}
+	// 合法填充仍可通过
+	valid := []byte("hello world!") // 12 字节
+	padded := pkcs7Pad(valid, 16)
+	got, err := pkcs7Unpad(padded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(valid) {
+		t.Errorf("valid padding rejected: got %q", got)
+	}
+}
+
 func TestCDNUploadDownload(t *testing.T) {
 	var uploaded []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

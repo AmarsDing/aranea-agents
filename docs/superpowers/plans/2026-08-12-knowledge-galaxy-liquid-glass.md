@@ -35,7 +35,7 @@ M1（玻璃）∥ B1-T1~T3（后端）→ M2（星系盘）→ M3（镜头）→
 
 **背景**：`GlassPanel.vue:11-16` 当前内联 `kb-liquid-refract` filter（scale=10，装饰光纹用）。多实例重复定义同 id（HTML 非法但浏览器容忍）。M1 抽离为单例 Defs，并新增 `kb-liquid-bg`（背景真折射用，更细腻位移）。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // web/src/components/knowledge/effects/__tests__/LiquidGlassDefs.spec.ts
@@ -66,12 +66,12 @@ describe('LiquidGlassDefs', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/effects/__tests__/LiquidGlassDefs.spec.ts`
 Expected: FAIL（`Cannot find module '../LiquidGlassDefs.vue'`）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```vue
 <!-- web/src/components/knowledge/effects/LiquidGlassDefs.vue -->
@@ -100,7 +100,7 @@ Expected: FAIL（`Cannot find module '../LiquidGlassDefs.vue'`）
 </style>
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/effects/__tests__/LiquidGlassDefs.spec.ts`
 Expected: PASS（3 tests）

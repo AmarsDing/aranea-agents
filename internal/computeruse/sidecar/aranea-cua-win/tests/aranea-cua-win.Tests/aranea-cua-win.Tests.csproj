@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\aranea-cua-win\aranea-cua-win.csproj" />
+    <ProjectReference Include="..\..\aranea-cua-win.csproj" />
   </ItemGroup>
 
 </Project>

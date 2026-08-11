@@ -51,6 +51,15 @@ type ChannelTurnJob func(*sql.Selector)
 // CircuitBreakerState is the predicate function for circuitbreakerstate builders.
 type CircuitBreakerState func(*sql.Selector)
 
+// CodingAgent is the predicate function for codingagent builders.
+type CodingAgent func(*sql.Selector)
+
+// CodingProject is the predicate function for codingproject builders.
+type CodingProject func(*sql.Selector)
+
+// CodingTask is the predicate function for codingtask builders.
+type CodingTask func(*sql.Selector)
+
 // CompiledTeam is the predicate function for compiledteam builders.
 type CompiledTeam func(*sql.Selector)
 

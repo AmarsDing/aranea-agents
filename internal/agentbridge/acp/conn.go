@@ -208,12 +208,17 @@ func (c *Conn) dispatch(line []byte) {
 			c.respondError(f.ID, -32601, "permission not supported")
 			return
 		}
-		result, err := c.onReq(context.Background(), req)
-		if err != nil {
-			c.respondError(f.ID, -32603, err.Error())
-			return
-		}
-		_ = c.writeFrame(frame{JSONRPC: "2.0", ID: f.ID, Result: mustMarshal(result)})
+		// 审批可能阻塞数分钟（等用户操作），必须异步，否则读循环停摆、
+		// 后续 session/update 全部积压在管道里。
+		id := f.ID
+		go func() {
+			result, err := c.onReq(context.Background(), req)
+			if err != nil {
+				c.respondError(id, -32603, err.Error())
+				return
+			}
+			_ = c.writeFrame(frame{JSONRPC: "2.0", ID: id, Result: mustMarshal(result)})
+		}()
 
 	case f.Method == "" && len(f.ID) > 0:
 		key := normalizeID(f.ID)

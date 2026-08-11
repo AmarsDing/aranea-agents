@@ -19,6 +19,9 @@ import (
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
 	"aranea-agents/internal/data/ent/circuitbreakerstate"
+	"aranea-agents/internal/data/ent/codingagent"
+	"aranea-agents/internal/data/ent/codingproject"
+	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
@@ -141,6 +144,9 @@ const (
 	TypeChannelRuntimeLease        = "ChannelRuntimeLease"
 	TypeChannelTurnJob             = "ChannelTurnJob"
 	TypeCircuitBreakerState        = "CircuitBreakerState"
+	TypeCodingAgent                = "CodingAgent"
+	TypeCodingProject              = "CodingProject"
+	TypeCodingTask                 = "CodingTask"
 	TypeCompiledTeam               = "CompiledTeam"
 	TypeCronTask                   = "CronTask"
 	TypeCronTaskRun                = "CronTaskRun"
@@ -23490,6 +23496,2554 @@ func (m *CircuitBreakerStateMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CircuitBreakerStateMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CircuitBreakerState edge %s", name)
+}
+
+// CodingAgentMutation represents an operation that mutates the CodingAgent nodes in the graph.
+type CodingAgentMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *string
+	workspace        *string
+	agent_key        *string
+	display_name     *string
+	command          *string
+	args             *[]string
+	appendargs       []string
+	env              *map[string]string
+	enabled          *bool
+	last_probe_ok    *bool
+	last_probe_error *string
+	created_at       *string
+	updated_at       *string
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*CodingAgent, error)
+	predicates       []predicate.CodingAgent
+}
+
+var _ ent.Mutation = (*CodingAgentMutation)(nil)
+
+// codingagentOption allows management of the mutation configuration using functional options.
+type codingagentOption func(*CodingAgentMutation)
+
+// newCodingAgentMutation creates new mutation for the CodingAgent entity.
+func newCodingAgentMutation(c config, op Op, opts ...codingagentOption) *CodingAgentMutation {
+	m := &CodingAgentMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCodingAgent,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCodingAgentID sets the ID field of the mutation.
+func withCodingAgentID(id string) codingagentOption {
+	return func(m *CodingAgentMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CodingAgent
+		)
+		m.oldValue = func(ctx context.Context) (*CodingAgent, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CodingAgent.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCodingAgent sets the old CodingAgent of the mutation.
+func withCodingAgent(node *CodingAgent) codingagentOption {
+	return func(m *CodingAgentMutation) {
+		m.oldValue = func(context.Context) (*CodingAgent, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CodingAgentMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CodingAgentMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CodingAgent entities.
+func (m *CodingAgentMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CodingAgentMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CodingAgentMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CodingAgent.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetWorkspace sets the "workspace" field.
+func (m *CodingAgentMutation) SetWorkspace(s string) {
+	m.workspace = &s
+}
+
+// Workspace returns the value of the "workspace" field in the mutation.
+func (m *CodingAgentMutation) Workspace() (r string, exists bool) {
+	v := m.workspace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspace returns the old "workspace" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldWorkspace(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspace: %w", err)
+	}
+	return oldValue.Workspace, nil
+}
+
+// ResetWorkspace resets all changes to the "workspace" field.
+func (m *CodingAgentMutation) ResetWorkspace() {
+	m.workspace = nil
+}
+
+// SetAgentKey sets the "agent_key" field.
+func (m *CodingAgentMutation) SetAgentKey(s string) {
+	m.agent_key = &s
+}
+
+// AgentKey returns the value of the "agent_key" field in the mutation.
+func (m *CodingAgentMutation) AgentKey() (r string, exists bool) {
+	v := m.agent_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentKey returns the old "agent_key" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldAgentKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentKey: %w", err)
+	}
+	return oldValue.AgentKey, nil
+}
+
+// ResetAgentKey resets all changes to the "agent_key" field.
+func (m *CodingAgentMutation) ResetAgentKey() {
+	m.agent_key = nil
+}
+
+// SetDisplayName sets the "display_name" field.
+func (m *CodingAgentMutation) SetDisplayName(s string) {
+	m.display_name = &s
+}
+
+// DisplayName returns the value of the "display_name" field in the mutation.
+func (m *CodingAgentMutation) DisplayName() (r string, exists bool) {
+	v := m.display_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayName returns the old "display_name" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldDisplayName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayName: %w", err)
+	}
+	return oldValue.DisplayName, nil
+}
+
+// ResetDisplayName resets all changes to the "display_name" field.
+func (m *CodingAgentMutation) ResetDisplayName() {
+	m.display_name = nil
+}
+
+// SetCommand sets the "command" field.
+func (m *CodingAgentMutation) SetCommand(s string) {
+	m.command = &s
+}
+
+// Command returns the value of the "command" field in the mutation.
+func (m *CodingAgentMutation) Command() (r string, exists bool) {
+	v := m.command
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCommand returns the old "command" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldCommand(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCommand is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCommand requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCommand: %w", err)
+	}
+	return oldValue.Command, nil
+}
+
+// ResetCommand resets all changes to the "command" field.
+func (m *CodingAgentMutation) ResetCommand() {
+	m.command = nil
+}
+
+// SetArgs sets the "args" field.
+func (m *CodingAgentMutation) SetArgs(s []string) {
+	m.args = &s
+	m.appendargs = nil
+}
+
+// Args returns the value of the "args" field in the mutation.
+func (m *CodingAgentMutation) Args() (r []string, exists bool) {
+	v := m.args
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArgs returns the old "args" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldArgs(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArgs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArgs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArgs: %w", err)
+	}
+	return oldValue.Args, nil
+}
+
+// AppendArgs adds s to the "args" field.
+func (m *CodingAgentMutation) AppendArgs(s []string) {
+	m.appendargs = append(m.appendargs, s...)
+}
+
+// AppendedArgs returns the list of values that were appended to the "args" field in this mutation.
+func (m *CodingAgentMutation) AppendedArgs() ([]string, bool) {
+	if len(m.appendargs) == 0 {
+		return nil, false
+	}
+	return m.appendargs, true
+}
+
+// ClearArgs clears the value of the "args" field.
+func (m *CodingAgentMutation) ClearArgs() {
+	m.args = nil
+	m.appendargs = nil
+	m.clearedFields[codingagent.FieldArgs] = struct{}{}
+}
+
+// ArgsCleared returns if the "args" field was cleared in this mutation.
+func (m *CodingAgentMutation) ArgsCleared() bool {
+	_, ok := m.clearedFields[codingagent.FieldArgs]
+	return ok
+}
+
+// ResetArgs resets all changes to the "args" field.
+func (m *CodingAgentMutation) ResetArgs() {
+	m.args = nil
+	m.appendargs = nil
+	delete(m.clearedFields, codingagent.FieldArgs)
+}
+
+// SetEnv sets the "env" field.
+func (m *CodingAgentMutation) SetEnv(value map[string]string) {
+	m.env = &value
+}
+
+// Env returns the value of the "env" field in the mutation.
+func (m *CodingAgentMutation) Env() (r map[string]string, exists bool) {
+	v := m.env
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnv returns the old "env" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldEnv(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnv is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnv requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnv: %w", err)
+	}
+	return oldValue.Env, nil
+}
+
+// ClearEnv clears the value of the "env" field.
+func (m *CodingAgentMutation) ClearEnv() {
+	m.env = nil
+	m.clearedFields[codingagent.FieldEnv] = struct{}{}
+}
+
+// EnvCleared returns if the "env" field was cleared in this mutation.
+func (m *CodingAgentMutation) EnvCleared() bool {
+	_, ok := m.clearedFields[codingagent.FieldEnv]
+	return ok
+}
+
+// ResetEnv resets all changes to the "env" field.
+func (m *CodingAgentMutation) ResetEnv() {
+	m.env = nil
+	delete(m.clearedFields, codingagent.FieldEnv)
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *CodingAgentMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *CodingAgentMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *CodingAgentMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetLastProbeOk sets the "last_probe_ok" field.
+func (m *CodingAgentMutation) SetLastProbeOk(b bool) {
+	m.last_probe_ok = &b
+}
+
+// LastProbeOk returns the value of the "last_probe_ok" field in the mutation.
+func (m *CodingAgentMutation) LastProbeOk() (r bool, exists bool) {
+	v := m.last_probe_ok
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeOk returns the old "last_probe_ok" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldLastProbeOk(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeOk is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeOk requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeOk: %w", err)
+	}
+	return oldValue.LastProbeOk, nil
+}
+
+// ResetLastProbeOk resets all changes to the "last_probe_ok" field.
+func (m *CodingAgentMutation) ResetLastProbeOk() {
+	m.last_probe_ok = nil
+}
+
+// SetLastProbeError sets the "last_probe_error" field.
+func (m *CodingAgentMutation) SetLastProbeError(s string) {
+	m.last_probe_error = &s
+}
+
+// LastProbeError returns the value of the "last_probe_error" field in the mutation.
+func (m *CodingAgentMutation) LastProbeError() (r string, exists bool) {
+	v := m.last_probe_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeError returns the old "last_probe_error" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldLastProbeError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeError: %w", err)
+	}
+	return oldValue.LastProbeError, nil
+}
+
+// ResetLastProbeError resets all changes to the "last_probe_error" field.
+func (m *CodingAgentMutation) ResetLastProbeError() {
+	m.last_probe_error = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CodingAgentMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CodingAgentMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CodingAgentMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CodingAgentMutation) SetUpdatedAt(s string) {
+	m.updated_at = &s
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CodingAgentMutation) UpdatedAt() (r string, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CodingAgent entity.
+// If the CodingAgent object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingAgentMutation) OldUpdatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CodingAgentMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the CodingAgentMutation builder.
+func (m *CodingAgentMutation) Where(ps ...predicate.CodingAgent) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CodingAgentMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CodingAgentMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodingAgent, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CodingAgentMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CodingAgentMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CodingAgent).
+func (m *CodingAgentMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CodingAgentMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.workspace != nil {
+		fields = append(fields, codingagent.FieldWorkspace)
+	}
+	if m.agent_key != nil {
+		fields = append(fields, codingagent.FieldAgentKey)
+	}
+	if m.display_name != nil {
+		fields = append(fields, codingagent.FieldDisplayName)
+	}
+	if m.command != nil {
+		fields = append(fields, codingagent.FieldCommand)
+	}
+	if m.args != nil {
+		fields = append(fields, codingagent.FieldArgs)
+	}
+	if m.env != nil {
+		fields = append(fields, codingagent.FieldEnv)
+	}
+	if m.enabled != nil {
+		fields = append(fields, codingagent.FieldEnabled)
+	}
+	if m.last_probe_ok != nil {
+		fields = append(fields, codingagent.FieldLastProbeOk)
+	}
+	if m.last_probe_error != nil {
+		fields = append(fields, codingagent.FieldLastProbeError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, codingagent.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, codingagent.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CodingAgentMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case codingagent.FieldWorkspace:
+		return m.Workspace()
+	case codingagent.FieldAgentKey:
+		return m.AgentKey()
+	case codingagent.FieldDisplayName:
+		return m.DisplayName()
+	case codingagent.FieldCommand:
+		return m.Command()
+	case codingagent.FieldArgs:
+		return m.Args()
+	case codingagent.FieldEnv:
+		return m.Env()
+	case codingagent.FieldEnabled:
+		return m.Enabled()
+	case codingagent.FieldLastProbeOk:
+		return m.LastProbeOk()
+	case codingagent.FieldLastProbeError:
+		return m.LastProbeError()
+	case codingagent.FieldCreatedAt:
+		return m.CreatedAt()
+	case codingagent.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CodingAgentMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case codingagent.FieldWorkspace:
+		return m.OldWorkspace(ctx)
+	case codingagent.FieldAgentKey:
+		return m.OldAgentKey(ctx)
+	case codingagent.FieldDisplayName:
+		return m.OldDisplayName(ctx)
+	case codingagent.FieldCommand:
+		return m.OldCommand(ctx)
+	case codingagent.FieldArgs:
+		return m.OldArgs(ctx)
+	case codingagent.FieldEnv:
+		return m.OldEnv(ctx)
+	case codingagent.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case codingagent.FieldLastProbeOk:
+		return m.OldLastProbeOk(ctx)
+	case codingagent.FieldLastProbeError:
+		return m.OldLastProbeError(ctx)
+	case codingagent.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case codingagent.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CodingAgent field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingAgentMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case codingagent.FieldWorkspace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspace(v)
+		return nil
+	case codingagent.FieldAgentKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentKey(v)
+		return nil
+	case codingagent.FieldDisplayName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayName(v)
+		return nil
+	case codingagent.FieldCommand:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCommand(v)
+		return nil
+	case codingagent.FieldArgs:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArgs(v)
+		return nil
+	case codingagent.FieldEnv:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnv(v)
+		return nil
+	case codingagent.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case codingagent.FieldLastProbeOk:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeOk(v)
+		return nil
+	case codingagent.FieldLastProbeError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeError(v)
+		return nil
+	case codingagent.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case codingagent.FieldUpdatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodingAgent field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CodingAgentMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CodingAgentMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingAgentMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CodingAgent numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CodingAgentMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(codingagent.FieldArgs) {
+		fields = append(fields, codingagent.FieldArgs)
+	}
+	if m.FieldCleared(codingagent.FieldEnv) {
+		fields = append(fields, codingagent.FieldEnv)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CodingAgentMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CodingAgentMutation) ClearField(name string) error {
+	switch name {
+	case codingagent.FieldArgs:
+		m.ClearArgs()
+		return nil
+	case codingagent.FieldEnv:
+		m.ClearEnv()
+		return nil
+	}
+	return fmt.Errorf("unknown CodingAgent nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CodingAgentMutation) ResetField(name string) error {
+	switch name {
+	case codingagent.FieldWorkspace:
+		m.ResetWorkspace()
+		return nil
+	case codingagent.FieldAgentKey:
+		m.ResetAgentKey()
+		return nil
+	case codingagent.FieldDisplayName:
+		m.ResetDisplayName()
+		return nil
+	case codingagent.FieldCommand:
+		m.ResetCommand()
+		return nil
+	case codingagent.FieldArgs:
+		m.ResetArgs()
+		return nil
+	case codingagent.FieldEnv:
+		m.ResetEnv()
+		return nil
+	case codingagent.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case codingagent.FieldLastProbeOk:
+		m.ResetLastProbeOk()
+		return nil
+	case codingagent.FieldLastProbeError:
+		m.ResetLastProbeError()
+		return nil
+	case codingagent.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case codingagent.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CodingAgent field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CodingAgentMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CodingAgentMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CodingAgentMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CodingAgentMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CodingAgentMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CodingAgentMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CodingAgentMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodingAgent unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CodingAgentMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodingAgent edge %s", name)
+}
+
+// CodingProjectMutation represents an operation that mutates the CodingProject nodes in the graph.
+type CodingProjectMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	workspace     *string
+	name          *string
+	_path         *string
+	description   *string
+	created_at    *string
+	updated_at    *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*CodingProject, error)
+	predicates    []predicate.CodingProject
+}
+
+var _ ent.Mutation = (*CodingProjectMutation)(nil)
+
+// codingprojectOption allows management of the mutation configuration using functional options.
+type codingprojectOption func(*CodingProjectMutation)
+
+// newCodingProjectMutation creates new mutation for the CodingProject entity.
+func newCodingProjectMutation(c config, op Op, opts ...codingprojectOption) *CodingProjectMutation {
+	m := &CodingProjectMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCodingProject,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCodingProjectID sets the ID field of the mutation.
+func withCodingProjectID(id string) codingprojectOption {
+	return func(m *CodingProjectMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CodingProject
+		)
+		m.oldValue = func(ctx context.Context) (*CodingProject, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CodingProject.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCodingProject sets the old CodingProject of the mutation.
+func withCodingProject(node *CodingProject) codingprojectOption {
+	return func(m *CodingProjectMutation) {
+		m.oldValue = func(context.Context) (*CodingProject, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CodingProjectMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CodingProjectMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CodingProject entities.
+func (m *CodingProjectMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CodingProjectMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CodingProjectMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CodingProject.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetWorkspace sets the "workspace" field.
+func (m *CodingProjectMutation) SetWorkspace(s string) {
+	m.workspace = &s
+}
+
+// Workspace returns the value of the "workspace" field in the mutation.
+func (m *CodingProjectMutation) Workspace() (r string, exists bool) {
+	v := m.workspace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspace returns the old "workspace" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldWorkspace(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspace: %w", err)
+	}
+	return oldValue.Workspace, nil
+}
+
+// ResetWorkspace resets all changes to the "workspace" field.
+func (m *CodingProjectMutation) ResetWorkspace() {
+	m.workspace = nil
+}
+
+// SetName sets the "name" field.
+func (m *CodingProjectMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *CodingProjectMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *CodingProjectMutation) ResetName() {
+	m.name = nil
+}
+
+// SetPath sets the "path" field.
+func (m *CodingProjectMutation) SetPath(s string) {
+	m._path = &s
+}
+
+// Path returns the value of the "path" field in the mutation.
+func (m *CodingProjectMutation) Path() (r string, exists bool) {
+	v := m._path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPath returns the old "path" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPath: %w", err)
+	}
+	return oldValue.Path, nil
+}
+
+// ResetPath resets all changes to the "path" field.
+func (m *CodingProjectMutation) ResetPath() {
+	m._path = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *CodingProjectMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *CodingProjectMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *CodingProjectMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CodingProjectMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CodingProjectMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CodingProjectMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CodingProjectMutation) SetUpdatedAt(s string) {
+	m.updated_at = &s
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CodingProjectMutation) UpdatedAt() (r string, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CodingProject entity.
+// If the CodingProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingProjectMutation) OldUpdatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CodingProjectMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the CodingProjectMutation builder.
+func (m *CodingProjectMutation) Where(ps ...predicate.CodingProject) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CodingProjectMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CodingProjectMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodingProject, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CodingProjectMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CodingProjectMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CodingProject).
+func (m *CodingProjectMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CodingProjectMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.workspace != nil {
+		fields = append(fields, codingproject.FieldWorkspace)
+	}
+	if m.name != nil {
+		fields = append(fields, codingproject.FieldName)
+	}
+	if m._path != nil {
+		fields = append(fields, codingproject.FieldPath)
+	}
+	if m.description != nil {
+		fields = append(fields, codingproject.FieldDescription)
+	}
+	if m.created_at != nil {
+		fields = append(fields, codingproject.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, codingproject.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CodingProjectMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case codingproject.FieldWorkspace:
+		return m.Workspace()
+	case codingproject.FieldName:
+		return m.Name()
+	case codingproject.FieldPath:
+		return m.Path()
+	case codingproject.FieldDescription:
+		return m.Description()
+	case codingproject.FieldCreatedAt:
+		return m.CreatedAt()
+	case codingproject.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CodingProjectMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case codingproject.FieldWorkspace:
+		return m.OldWorkspace(ctx)
+	case codingproject.FieldName:
+		return m.OldName(ctx)
+	case codingproject.FieldPath:
+		return m.OldPath(ctx)
+	case codingproject.FieldDescription:
+		return m.OldDescription(ctx)
+	case codingproject.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case codingproject.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CodingProject field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingProjectMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case codingproject.FieldWorkspace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspace(v)
+		return nil
+	case codingproject.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case codingproject.FieldPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPath(v)
+		return nil
+	case codingproject.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case codingproject.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case codingproject.FieldUpdatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodingProject field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CodingProjectMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CodingProjectMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingProjectMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown CodingProject numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CodingProjectMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CodingProjectMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CodingProjectMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CodingProject nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CodingProjectMutation) ResetField(name string) error {
+	switch name {
+	case codingproject.FieldWorkspace:
+		m.ResetWorkspace()
+		return nil
+	case codingproject.FieldName:
+		m.ResetName()
+		return nil
+	case codingproject.FieldPath:
+		m.ResetPath()
+		return nil
+	case codingproject.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case codingproject.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case codingproject.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CodingProject field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CodingProjectMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CodingProjectMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CodingProjectMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CodingProjectMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CodingProjectMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CodingProjectMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CodingProjectMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodingProject unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CodingProjectMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodingProject edge %s", name)
+}
+
+// CodingTaskMutation represents an operation that mutates the CodingTask nodes in the graph.
+type CodingTaskMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *string
+	workspace         *string
+	session_id        *string
+	agent_id          *string
+	project_id        *string
+	prompt            *string
+	status            *string
+	acp_session_id    *string
+	summary           *string
+	error             *string
+	progress_count    *int
+	addprogress_count *int
+	created_at        *string
+	updated_at        *string
+	completed_at      *string
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*CodingTask, error)
+	predicates        []predicate.CodingTask
+}
+
+var _ ent.Mutation = (*CodingTaskMutation)(nil)
+
+// codingtaskOption allows management of the mutation configuration using functional options.
+type codingtaskOption func(*CodingTaskMutation)
+
+// newCodingTaskMutation creates new mutation for the CodingTask entity.
+func newCodingTaskMutation(c config, op Op, opts ...codingtaskOption) *CodingTaskMutation {
+	m := &CodingTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCodingTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCodingTaskID sets the ID field of the mutation.
+func withCodingTaskID(id string) codingtaskOption {
+	return func(m *CodingTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CodingTask
+		)
+		m.oldValue = func(ctx context.Context) (*CodingTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CodingTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCodingTask sets the old CodingTask of the mutation.
+func withCodingTask(node *CodingTask) codingtaskOption {
+	return func(m *CodingTaskMutation) {
+		m.oldValue = func(context.Context) (*CodingTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CodingTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CodingTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of CodingTask entities.
+func (m *CodingTaskMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CodingTaskMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CodingTaskMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CodingTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetWorkspace sets the "workspace" field.
+func (m *CodingTaskMutation) SetWorkspace(s string) {
+	m.workspace = &s
+}
+
+// Workspace returns the value of the "workspace" field in the mutation.
+func (m *CodingTaskMutation) Workspace() (r string, exists bool) {
+	v := m.workspace
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorkspace returns the old "workspace" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldWorkspace(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorkspace is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorkspace requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorkspace: %w", err)
+	}
+	return oldValue.Workspace, nil
+}
+
+// ResetWorkspace resets all changes to the "workspace" field.
+func (m *CodingTaskMutation) ResetWorkspace() {
+	m.workspace = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *CodingTaskMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *CodingTaskMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *CodingTaskMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetAgentID sets the "agent_id" field.
+func (m *CodingTaskMutation) SetAgentID(s string) {
+	m.agent_id = &s
+}
+
+// AgentID returns the value of the "agent_id" field in the mutation.
+func (m *CodingTaskMutation) AgentID() (r string, exists bool) {
+	v := m.agent_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentID returns the old "agent_id" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldAgentID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentID: %w", err)
+	}
+	return oldValue.AgentID, nil
+}
+
+// ResetAgentID resets all changes to the "agent_id" field.
+func (m *CodingTaskMutation) ResetAgentID() {
+	m.agent_id = nil
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *CodingTaskMutation) SetProjectID(s string) {
+	m.project_id = &s
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *CodingTaskMutation) ProjectID() (r string, exists bool) {
+	v := m.project_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldProjectID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *CodingTaskMutation) ResetProjectID() {
+	m.project_id = nil
+}
+
+// SetPrompt sets the "prompt" field.
+func (m *CodingTaskMutation) SetPrompt(s string) {
+	m.prompt = &s
+}
+
+// Prompt returns the value of the "prompt" field in the mutation.
+func (m *CodingTaskMutation) Prompt() (r string, exists bool) {
+	v := m.prompt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPrompt returns the old "prompt" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldPrompt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPrompt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPrompt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPrompt: %w", err)
+	}
+	return oldValue.Prompt, nil
+}
+
+// ResetPrompt resets all changes to the "prompt" field.
+func (m *CodingTaskMutation) ResetPrompt() {
+	m.prompt = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *CodingTaskMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *CodingTaskMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *CodingTaskMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAcpSessionID sets the "acp_session_id" field.
+func (m *CodingTaskMutation) SetAcpSessionID(s string) {
+	m.acp_session_id = &s
+}
+
+// AcpSessionID returns the value of the "acp_session_id" field in the mutation.
+func (m *CodingTaskMutation) AcpSessionID() (r string, exists bool) {
+	v := m.acp_session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAcpSessionID returns the old "acp_session_id" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldAcpSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAcpSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAcpSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAcpSessionID: %w", err)
+	}
+	return oldValue.AcpSessionID, nil
+}
+
+// ResetAcpSessionID resets all changes to the "acp_session_id" field.
+func (m *CodingTaskMutation) ResetAcpSessionID() {
+	m.acp_session_id = nil
+}
+
+// SetSummary sets the "summary" field.
+func (m *CodingTaskMutation) SetSummary(s string) {
+	m.summary = &s
+}
+
+// Summary returns the value of the "summary" field in the mutation.
+func (m *CodingTaskMutation) Summary() (r string, exists bool) {
+	v := m.summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSummary returns the old "summary" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldSummary(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSummary: %w", err)
+	}
+	return oldValue.Summary, nil
+}
+
+// ResetSummary resets all changes to the "summary" field.
+func (m *CodingTaskMutation) ResetSummary() {
+	m.summary = nil
+}
+
+// SetError sets the "error" field.
+func (m *CodingTaskMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *CodingTaskMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *CodingTaskMutation) ResetError() {
+	m.error = nil
+}
+
+// SetProgressCount sets the "progress_count" field.
+func (m *CodingTaskMutation) SetProgressCount(i int) {
+	m.progress_count = &i
+	m.addprogress_count = nil
+}
+
+// ProgressCount returns the value of the "progress_count" field in the mutation.
+func (m *CodingTaskMutation) ProgressCount() (r int, exists bool) {
+	v := m.progress_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProgressCount returns the old "progress_count" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldProgressCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProgressCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProgressCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProgressCount: %w", err)
+	}
+	return oldValue.ProgressCount, nil
+}
+
+// AddProgressCount adds i to the "progress_count" field.
+func (m *CodingTaskMutation) AddProgressCount(i int) {
+	if m.addprogress_count != nil {
+		*m.addprogress_count += i
+	} else {
+		m.addprogress_count = &i
+	}
+}
+
+// AddedProgressCount returns the value that was added to the "progress_count" field in this mutation.
+func (m *CodingTaskMutation) AddedProgressCount() (r int, exists bool) {
+	v := m.addprogress_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProgressCount resets all changes to the "progress_count" field.
+func (m *CodingTaskMutation) ResetProgressCount() {
+	m.progress_count = nil
+	m.addprogress_count = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CodingTaskMutation) SetCreatedAt(s string) {
+	m.created_at = &s
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CodingTaskMutation) CreatedAt() (r string, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldCreatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CodingTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CodingTaskMutation) SetUpdatedAt(s string) {
+	m.updated_at = &s
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CodingTaskMutation) UpdatedAt() (r string, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldUpdatedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CodingTaskMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *CodingTaskMutation) SetCompletedAt(s string) {
+	m.completed_at = &s
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *CodingTaskMutation) CompletedAt() (r string, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the CodingTask entity.
+// If the CodingTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CodingTaskMutation) OldCompletedAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *CodingTaskMutation) ResetCompletedAt() {
+	m.completed_at = nil
+}
+
+// Where appends a list predicates to the CodingTaskMutation builder.
+func (m *CodingTaskMutation) Where(ps ...predicate.CodingTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CodingTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CodingTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CodingTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CodingTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CodingTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CodingTask).
+func (m *CodingTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CodingTaskMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.workspace != nil {
+		fields = append(fields, codingtask.FieldWorkspace)
+	}
+	if m.session_id != nil {
+		fields = append(fields, codingtask.FieldSessionID)
+	}
+	if m.agent_id != nil {
+		fields = append(fields, codingtask.FieldAgentID)
+	}
+	if m.project_id != nil {
+		fields = append(fields, codingtask.FieldProjectID)
+	}
+	if m.prompt != nil {
+		fields = append(fields, codingtask.FieldPrompt)
+	}
+	if m.status != nil {
+		fields = append(fields, codingtask.FieldStatus)
+	}
+	if m.acp_session_id != nil {
+		fields = append(fields, codingtask.FieldAcpSessionID)
+	}
+	if m.summary != nil {
+		fields = append(fields, codingtask.FieldSummary)
+	}
+	if m.error != nil {
+		fields = append(fields, codingtask.FieldError)
+	}
+	if m.progress_count != nil {
+		fields = append(fields, codingtask.FieldProgressCount)
+	}
+	if m.created_at != nil {
+		fields = append(fields, codingtask.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, codingtask.FieldUpdatedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, codingtask.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CodingTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case codingtask.FieldWorkspace:
+		return m.Workspace()
+	case codingtask.FieldSessionID:
+		return m.SessionID()
+	case codingtask.FieldAgentID:
+		return m.AgentID()
+	case codingtask.FieldProjectID:
+		return m.ProjectID()
+	case codingtask.FieldPrompt:
+		return m.Prompt()
+	case codingtask.FieldStatus:
+		return m.Status()
+	case codingtask.FieldAcpSessionID:
+		return m.AcpSessionID()
+	case codingtask.FieldSummary:
+		return m.Summary()
+	case codingtask.FieldError:
+		return m.Error()
+	case codingtask.FieldProgressCount:
+		return m.ProgressCount()
+	case codingtask.FieldCreatedAt:
+		return m.CreatedAt()
+	case codingtask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case codingtask.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CodingTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case codingtask.FieldWorkspace:
+		return m.OldWorkspace(ctx)
+	case codingtask.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case codingtask.FieldAgentID:
+		return m.OldAgentID(ctx)
+	case codingtask.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case codingtask.FieldPrompt:
+		return m.OldPrompt(ctx)
+	case codingtask.FieldStatus:
+		return m.OldStatus(ctx)
+	case codingtask.FieldAcpSessionID:
+		return m.OldAcpSessionID(ctx)
+	case codingtask.FieldSummary:
+		return m.OldSummary(ctx)
+	case codingtask.FieldError:
+		return m.OldError(ctx)
+	case codingtask.FieldProgressCount:
+		return m.OldProgressCount(ctx)
+	case codingtask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case codingtask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case codingtask.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CodingTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case codingtask.FieldWorkspace:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorkspace(v)
+		return nil
+	case codingtask.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case codingtask.FieldAgentID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentID(v)
+		return nil
+	case codingtask.FieldProjectID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case codingtask.FieldPrompt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPrompt(v)
+		return nil
+	case codingtask.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case codingtask.FieldAcpSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAcpSessionID(v)
+		return nil
+	case codingtask.FieldSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSummary(v)
+		return nil
+	case codingtask.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	case codingtask.FieldProgressCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProgressCount(v)
+		return nil
+	case codingtask.FieldCreatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case codingtask.FieldUpdatedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case codingtask.FieldCompletedAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodingTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CodingTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addprogress_count != nil {
+		fields = append(fields, codingtask.FieldProgressCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CodingTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case codingtask.FieldProgressCount:
+		return m.AddedProgressCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CodingTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case codingtask.FieldProgressCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProgressCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CodingTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CodingTaskMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CodingTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CodingTaskMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CodingTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CodingTaskMutation) ResetField(name string) error {
+	switch name {
+	case codingtask.FieldWorkspace:
+		m.ResetWorkspace()
+		return nil
+	case codingtask.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case codingtask.FieldAgentID:
+		m.ResetAgentID()
+		return nil
+	case codingtask.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case codingtask.FieldPrompt:
+		m.ResetPrompt()
+		return nil
+	case codingtask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case codingtask.FieldAcpSessionID:
+		m.ResetAcpSessionID()
+		return nil
+	case codingtask.FieldSummary:
+		m.ResetSummary()
+		return nil
+	case codingtask.FieldError:
+		m.ResetError()
+		return nil
+	case codingtask.FieldProgressCount:
+		m.ResetProgressCount()
+		return nil
+	case codingtask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case codingtask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case codingtask.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CodingTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CodingTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CodingTaskMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CodingTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CodingTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CodingTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CodingTaskMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CodingTaskMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CodingTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CodingTaskMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CodingTask edge %s", name)
 }
 
 // CompiledTeamMutation represents an operation that mutates the CompiledTeam nodes in the graph.

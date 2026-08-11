@@ -51,8 +51,13 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 		return nil, errors.New("wechat_ilink: empty data")
 	}
 	padLen := int(data[len(data)-1])
-	if padLen == 0 || padLen > len(data) {
+	if padLen == 0 || padLen > aes.BlockSize || padLen > len(data) {
 		return nil, errors.New("wechat_ilink: invalid pkcs7 padding")
+	}
+	for _, b := range data[len(data)-padLen:] {
+		if int(b) != padLen {
+			return nil, errors.New("wechat_ilink: inconsistent pkcs7 padding bytes")
+		}
 	}
 	return data[:len(data)-padLen], nil
 }

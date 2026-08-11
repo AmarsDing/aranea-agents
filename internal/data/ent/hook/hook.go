@@ -188,6 +188,42 @@ func (f CircuitBreakerStateFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CircuitBreakerStateMutation", m)
 }
 
+// The CodingAgentFunc type is an adapter to allow the use of ordinary
+// function as CodingAgent mutator.
+type CodingAgentFunc func(context.Context, *ent.CodingAgentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CodingAgentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodingAgentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodingAgentMutation", m)
+}
+
+// The CodingProjectFunc type is an adapter to allow the use of ordinary
+// function as CodingProject mutator.
+type CodingProjectFunc func(context.Context, *ent.CodingProjectMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CodingProjectFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodingProjectMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodingProjectMutation", m)
+}
+
+// The CodingTaskFunc type is an adapter to allow the use of ordinary
+// function as CodingTask mutator.
+type CodingTaskFunc func(context.Context, *ent.CodingTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CodingTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CodingTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CodingTaskMutation", m)
+}
+
 // The CompiledTeamFunc type is an adapter to allow the use of ordinary
 // function as CompiledTeam mutator.
 type CompiledTeamFunc func(context.Context, *ent.CompiledTeamMutation) (ent.Value, error)

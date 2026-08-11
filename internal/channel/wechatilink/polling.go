@@ -163,6 +163,11 @@ func RunPolling(
 			}
 			if msg.ContextToken != "" {
 				state.ContextTokens[msg.FromUserID] = msg.ContextToken
+				if msg.GroupID != "" {
+					// 群聊出站 recipient = GroupID，回退查找按 recipient 进行，
+					// 必须同时以 GroupID 为键缓存。
+					state.ContextTokens[msg.GroupID] = msg.ContextToken
+				}
 			}
 			if !shouldHandleGroupMessage(msg, cfg) {
 				continue

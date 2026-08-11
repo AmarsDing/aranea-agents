@@ -18,6 +18,9 @@ import (
 	"aranea-agents/internal/data/ent/channelruntimelease"
 	"aranea-agents/internal/data/ent/channelturnjob"
 	"aranea-agents/internal/data/ent/circuitbreakerstate"
+	"aranea-agents/internal/data/ent/codingagent"
+	"aranea-agents/internal/data/ent/codingproject"
+	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
@@ -1396,6 +1399,150 @@ func init() {
 	circuitbreakerstateDescSuccessCount := circuitbreakerstateFields[3].Descriptor()
 	// circuitbreakerstate.DefaultSuccessCount holds the default value on creation for the success_count field.
 	circuitbreakerstate.DefaultSuccessCount = circuitbreakerstateDescSuccessCount.Default.(int)
+	codingagentFields := schema.CodingAgent{}.Fields()
+	_ = codingagentFields
+	// codingagentDescWorkspace is the schema descriptor for workspace field.
+	codingagentDescWorkspace := codingagentFields[1].Descriptor()
+	// codingagent.DefaultWorkspace holds the default value on creation for the workspace field.
+	codingagent.DefaultWorkspace = codingagentDescWorkspace.Default.(string)
+	// codingagent.WorkspaceValidator is a validator for the "workspace" field. It is called by the builders before save.
+	codingagent.WorkspaceValidator = codingagentDescWorkspace.Validators[0].(func(string) error)
+	// codingagentDescAgentKey is the schema descriptor for agent_key field.
+	codingagentDescAgentKey := codingagentFields[2].Descriptor()
+	// codingagent.AgentKeyValidator is a validator for the "agent_key" field. It is called by the builders before save.
+	codingagent.AgentKeyValidator = codingagentDescAgentKey.Validators[0].(func(string) error)
+	// codingagentDescDisplayName is the schema descriptor for display_name field.
+	codingagentDescDisplayName := codingagentFields[3].Descriptor()
+	// codingagent.DisplayNameValidator is a validator for the "display_name" field. It is called by the builders before save.
+	codingagent.DisplayNameValidator = codingagentDescDisplayName.Validators[0].(func(string) error)
+	// codingagentDescCommand is the schema descriptor for command field.
+	codingagentDescCommand := codingagentFields[4].Descriptor()
+	// codingagent.CommandValidator is a validator for the "command" field. It is called by the builders before save.
+	codingagent.CommandValidator = codingagentDescCommand.Validators[0].(func(string) error)
+	// codingagentDescEnabled is the schema descriptor for enabled field.
+	codingagentDescEnabled := codingagentFields[7].Descriptor()
+	// codingagent.DefaultEnabled holds the default value on creation for the enabled field.
+	codingagent.DefaultEnabled = codingagentDescEnabled.Default.(bool)
+	// codingagentDescLastProbeOk is the schema descriptor for last_probe_ok field.
+	codingagentDescLastProbeOk := codingagentFields[8].Descriptor()
+	// codingagent.DefaultLastProbeOk holds the default value on creation for the last_probe_ok field.
+	codingagent.DefaultLastProbeOk = codingagentDescLastProbeOk.Default.(bool)
+	// codingagentDescLastProbeError is the schema descriptor for last_probe_error field.
+	codingagentDescLastProbeError := codingagentFields[9].Descriptor()
+	// codingagent.DefaultLastProbeError holds the default value on creation for the last_probe_error field.
+	codingagent.DefaultLastProbeError = codingagentDescLastProbeError.Default.(string)
+	// codingagent.LastProbeErrorValidator is a validator for the "last_probe_error" field. It is called by the builders before save.
+	codingagent.LastProbeErrorValidator = codingagentDescLastProbeError.Validators[0].(func(string) error)
+	// codingagentDescCreatedAt is the schema descriptor for created_at field.
+	codingagentDescCreatedAt := codingagentFields[10].Descriptor()
+	// codingagent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	codingagent.DefaultCreatedAt = codingagentDescCreatedAt.Default.(string)
+	// codingagentDescUpdatedAt is the schema descriptor for updated_at field.
+	codingagentDescUpdatedAt := codingagentFields[11].Descriptor()
+	// codingagent.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	codingagent.DefaultUpdatedAt = codingagentDescUpdatedAt.Default.(string)
+	// codingagentDescID is the schema descriptor for id field.
+	codingagentDescID := codingagentFields[0].Descriptor()
+	// codingagent.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	codingagent.IDValidator = codingagentDescID.Validators[0].(func(string) error)
+	codingprojectFields := schema.CodingProject{}.Fields()
+	_ = codingprojectFields
+	// codingprojectDescWorkspace is the schema descriptor for workspace field.
+	codingprojectDescWorkspace := codingprojectFields[1].Descriptor()
+	// codingproject.DefaultWorkspace holds the default value on creation for the workspace field.
+	codingproject.DefaultWorkspace = codingprojectDescWorkspace.Default.(string)
+	// codingproject.WorkspaceValidator is a validator for the "workspace" field. It is called by the builders before save.
+	codingproject.WorkspaceValidator = codingprojectDescWorkspace.Validators[0].(func(string) error)
+	// codingprojectDescName is the schema descriptor for name field.
+	codingprojectDescName := codingprojectFields[2].Descriptor()
+	// codingproject.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	codingproject.NameValidator = codingprojectDescName.Validators[0].(func(string) error)
+	// codingprojectDescPath is the schema descriptor for path field.
+	codingprojectDescPath := codingprojectFields[3].Descriptor()
+	// codingproject.PathValidator is a validator for the "path" field. It is called by the builders before save.
+	codingproject.PathValidator = codingprojectDescPath.Validators[0].(func(string) error)
+	// codingprojectDescDescription is the schema descriptor for description field.
+	codingprojectDescDescription := codingprojectFields[4].Descriptor()
+	// codingproject.DefaultDescription holds the default value on creation for the description field.
+	codingproject.DefaultDescription = codingprojectDescDescription.Default.(string)
+	// codingproject.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	codingproject.DescriptionValidator = codingprojectDescDescription.Validators[0].(func(string) error)
+	// codingprojectDescCreatedAt is the schema descriptor for created_at field.
+	codingprojectDescCreatedAt := codingprojectFields[5].Descriptor()
+	// codingproject.DefaultCreatedAt holds the default value on creation for the created_at field.
+	codingproject.DefaultCreatedAt = codingprojectDescCreatedAt.Default.(string)
+	// codingprojectDescUpdatedAt is the schema descriptor for updated_at field.
+	codingprojectDescUpdatedAt := codingprojectFields[6].Descriptor()
+	// codingproject.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	codingproject.DefaultUpdatedAt = codingprojectDescUpdatedAt.Default.(string)
+	// codingprojectDescID is the schema descriptor for id field.
+	codingprojectDescID := codingprojectFields[0].Descriptor()
+	// codingproject.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	codingproject.IDValidator = codingprojectDescID.Validators[0].(func(string) error)
+	codingtaskFields := schema.CodingTask{}.Fields()
+	_ = codingtaskFields
+	// codingtaskDescWorkspace is the schema descriptor for workspace field.
+	codingtaskDescWorkspace := codingtaskFields[1].Descriptor()
+	// codingtask.DefaultWorkspace holds the default value on creation for the workspace field.
+	codingtask.DefaultWorkspace = codingtaskDescWorkspace.Default.(string)
+	// codingtask.WorkspaceValidator is a validator for the "workspace" field. It is called by the builders before save.
+	codingtask.WorkspaceValidator = codingtaskDescWorkspace.Validators[0].(func(string) error)
+	// codingtaskDescSessionID is the schema descriptor for session_id field.
+	codingtaskDescSessionID := codingtaskFields[2].Descriptor()
+	// codingtask.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	codingtask.SessionIDValidator = codingtaskDescSessionID.Validators[0].(func(string) error)
+	// codingtaskDescAgentID is the schema descriptor for agent_id field.
+	codingtaskDescAgentID := codingtaskFields[3].Descriptor()
+	// codingtask.AgentIDValidator is a validator for the "agent_id" field. It is called by the builders before save.
+	codingtask.AgentIDValidator = codingtaskDescAgentID.Validators[0].(func(string) error)
+	// codingtaskDescProjectID is the schema descriptor for project_id field.
+	codingtaskDescProjectID := codingtaskFields[4].Descriptor()
+	// codingtask.ProjectIDValidator is a validator for the "project_id" field. It is called by the builders before save.
+	codingtask.ProjectIDValidator = codingtaskDescProjectID.Validators[0].(func(string) error)
+	// codingtaskDescPrompt is the schema descriptor for prompt field.
+	codingtaskDescPrompt := codingtaskFields[5].Descriptor()
+	// codingtask.DefaultPrompt holds the default value on creation for the prompt field.
+	codingtask.DefaultPrompt = codingtaskDescPrompt.Default.(string)
+	// codingtaskDescStatus is the schema descriptor for status field.
+	codingtaskDescStatus := codingtaskFields[6].Descriptor()
+	// codingtask.DefaultStatus holds the default value on creation for the status field.
+	codingtask.DefaultStatus = codingtaskDescStatus.Default.(string)
+	// codingtask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	codingtask.StatusValidator = codingtaskDescStatus.Validators[0].(func(string) error)
+	// codingtaskDescAcpSessionID is the schema descriptor for acp_session_id field.
+	codingtaskDescAcpSessionID := codingtaskFields[7].Descriptor()
+	// codingtask.DefaultAcpSessionID holds the default value on creation for the acp_session_id field.
+	codingtask.DefaultAcpSessionID = codingtaskDescAcpSessionID.Default.(string)
+	// codingtask.AcpSessionIDValidator is a validator for the "acp_session_id" field. It is called by the builders before save.
+	codingtask.AcpSessionIDValidator = codingtaskDescAcpSessionID.Validators[0].(func(string) error)
+	// codingtaskDescSummary is the schema descriptor for summary field.
+	codingtaskDescSummary := codingtaskFields[8].Descriptor()
+	// codingtask.DefaultSummary holds the default value on creation for the summary field.
+	codingtask.DefaultSummary = codingtaskDescSummary.Default.(string)
+	// codingtaskDescError is the schema descriptor for error field.
+	codingtaskDescError := codingtaskFields[9].Descriptor()
+	// codingtask.DefaultError holds the default value on creation for the error field.
+	codingtask.DefaultError = codingtaskDescError.Default.(string)
+	// codingtaskDescProgressCount is the schema descriptor for progress_count field.
+	codingtaskDescProgressCount := codingtaskFields[10].Descriptor()
+	// codingtask.DefaultProgressCount holds the default value on creation for the progress_count field.
+	codingtask.DefaultProgressCount = codingtaskDescProgressCount.Default.(int)
+	// codingtaskDescCreatedAt is the schema descriptor for created_at field.
+	codingtaskDescCreatedAt := codingtaskFields[11].Descriptor()
+	// codingtask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	codingtask.DefaultCreatedAt = codingtaskDescCreatedAt.Default.(string)
+	// codingtaskDescUpdatedAt is the schema descriptor for updated_at field.
+	codingtaskDescUpdatedAt := codingtaskFields[12].Descriptor()
+	// codingtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	codingtask.DefaultUpdatedAt = codingtaskDescUpdatedAt.Default.(string)
+	// codingtaskDescCompletedAt is the schema descriptor for completed_at field.
+	codingtaskDescCompletedAt := codingtaskFields[13].Descriptor()
+	// codingtask.DefaultCompletedAt holds the default value on creation for the completed_at field.
+	codingtask.DefaultCompletedAt = codingtaskDescCompletedAt.Default.(string)
+	// codingtaskDescID is the schema descriptor for id field.
+	codingtaskDescID := codingtaskFields[0].Descriptor()
+	// codingtask.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	codingtask.IDValidator = codingtaskDescID.Validators[0].(func(string) error)
 	compiledteamFields := schema.CompiledTeam{}.Fields()
 	_ = compiledteamFields
 	// compiledteamDescTeamID is the schema descriptor for team_id field.

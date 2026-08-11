@@ -24,7 +24,8 @@ func TestHelperProcess(t *testing.T) {
 		case "quit":
 			os.Exit(0)
 		case "sleep":
-			select {} // 永不返回，等待被杀
+			fmt.Println("sleeping")
+			time.Sleep(time.Hour) // 带定时器阻塞，避开死锁检测；等待被杀
 		default:
 			fmt.Println("echo:" + line)
 		}
@@ -67,8 +68,8 @@ func TestProcessCleanExit(t *testing.T) {
 		t.Fatalf("write quit: %v", err)
 	}
 	select {
-	case err := <-p.Done():
-		if err != nil {
+	case <-p.Done():
+		if err := p.ExitErr(); err != nil {
 			t.Fatalf("clean exit should yield nil, got %v", err)
 		}
 	case <-time.After(5 * time.Second):
@@ -85,11 +86,18 @@ func TestProcessKillTerminates(t *testing.T) {
 	if _, err := p.Stdin().Write([]byte("sleep\n")); err != nil {
 		t.Fatalf("write sleep: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond) // 等 helper 进入阻塞
+	// 等 helper 确认已进入阻塞（避免竞态：进程还没开始读就被 Kill）
+	line, err := bufio.NewReader(p.Stdout()).ReadString('\n')
+	if err != nil {
+		t.Fatalf("read sleeping ack: %v", err)
+	}
+	if strings.TrimSpace(line) != "sleeping" {
+		t.Fatalf("want sleeping ack, got %q", line)
+	}
 	p.Kill()
 	select {
-	case err := <-p.Done():
-		if err == nil {
+	case <-p.Done():
+		if err := p.ExitErr(); err == nil {
 			t.Fatal("killed process must yield non-nil error")
 		}
 	case <-time.After(5 * time.Second):
