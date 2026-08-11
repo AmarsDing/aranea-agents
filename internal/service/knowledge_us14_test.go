@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -167,6 +168,21 @@ func (m *us14MemRepo) ListDocuments(_ context.Context, collectionID string, _, _
 		}
 	}
 	return out, len(out), nil
+}
+
+// ListDocumentsPendingReembed B1 内存版：mem 无 chunks 概念，退化为「有正文且非 indexing」
+// （排序按 CreatedAt ASC，RFC3339 字典序即时间序）。
+func (m *us14MemRepo) ListDocumentsPendingReembed(_ context.Context, collectionID string) ([]biz.KnowledgeDocument, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []biz.KnowledgeDocument
+	for _, d := range m.documents {
+		if d.CollectionID == collectionID && d.ContentText != "" && d.Status != "indexing" {
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt < out[j].CreatedAt })
+	return out, nil
 }
 
 func (m *us14MemRepo) DeleteDocument(_ context.Context, id string) error {

@@ -131,6 +131,9 @@ func (m *vaultSyncMemRepo) GetDocumentByRelPath(_ context.Context, collectionID,
 	}
 	return bizknowledge.Document{}, errMemNotFound
 }
+func (m *vaultSyncMemRepo) ListDocumentsPendingReembed(context.Context, string) ([]bizknowledge.Document, error) {
+	return nil, nil
+}
 func (m *vaultSyncMemRepo) UpdateDocumentRelPath(_ context.Context, id, newRelPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

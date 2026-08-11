@@ -66,6 +66,9 @@ func (m *mockKnowledgeRepo) UpdateDocumentContent(_ context.Context, _, _ string
 func (m *mockKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) ([]biz.KnowledgeDocument, int, error) {
 	return nil, 0, nil
 }
+func (m *mockKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string) ([]biz.KnowledgeDocument, error) {
+	return nil, nil
+}
 func (m *mockKnowledgeRepo) DeleteDocument(_ context.Context, _ string) error { return nil }
 func (m *mockKnowledgeRepo) MoveDocument(_ context.Context, id, target string) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{ID: id, CollectionID: target}, nil

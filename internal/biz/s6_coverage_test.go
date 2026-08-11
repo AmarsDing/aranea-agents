@@ -118,6 +118,9 @@ func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) 
 	}
 	return out, len(out), nil
 }
+func (m *memKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string) ([]biz.KnowledgeDocument, error) {
+	return nil, nil
+}
 func (m *memKnowledgeRepo) DeleteDocument(_ context.Context, id string) error {
 	delete(m.documents, id)
 	return nil

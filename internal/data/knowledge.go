@@ -586,6 +586,40 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 	return out, total, rows.Err()
 }
 
+// ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
+// 且（chunks embedding IS NULL 或无任何 chunks）。按 created_at ASC（先入队先处理）。
+// 返回完整文档（含 content_text，scanDocument 全字段扫描）——重嵌入以 content_text
+// 为正文源，无需原始文件（与 ListEmbedDegradedDocuments 同理带正文）。
+func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]biz.KnowledgeDocument, error) {
+	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
+		         content_text, organized, asset_uri,
+		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
+		         embed_fail_count, embed_last_tried,
+		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		  FROM knowledge_documents d
+		  WHERE collection_id = $1
+		    AND content_text <> ''
+		    AND status <> 'indexing'
+		    AND (id IN (SELECT doc_id FROM knowledge_chunks WHERE embedding IS NULL)
+		         OR NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id))
+		  ORDER BY created_at ASC`
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.KnowledgeDocument
+	for rows.Next() {
+		d, err := scanDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 // DeleteDocument removes a document, lets the FK cascade drop its chunks, and
 // atomically adjusts the owning collection's cached counters (DAT-02 / REV-B).
 //

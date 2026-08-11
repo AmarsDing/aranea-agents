@@ -23,6 +23,7 @@ type mockRepo struct {
 	docUpdateFn   func(ctx context.Context, id, status, errMsg string, chunkCount int) error
 	docContentFn  func(ctx context.Context, id, contentText string, organized bool) error
 	docListFn     func(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
+	docPendingFn  func(ctx context.Context, collectionID string) ([]Document, error)
 	docDeleteFn   func(ctx context.Context, id string) error
 	docMoveFn     func(ctx context.Context, id, targetCollectionID string) (Document, error)
 	chunkInsertFn func(ctx context.Context, chunks []Chunk) error
@@ -72,6 +73,9 @@ func (m *mockRepo) UpdateDocumentContent(ctx context.Context, id, contentText st
 func (m *mockRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error) {
 	return m.docListFn(ctx, collectionID, limit, offset)
 }
+func (m *mockRepo) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error) {
+	return m.docPendingFn(ctx, collectionID)
+}
 func (m *mockRepo) DeleteDocument(ctx context.Context, id string) error {
 	return m.docDeleteFn(ctx, id)
 }
@@ -106,6 +110,7 @@ func noOpMockRepo() *mockRepo {
 		docUpdateFn:   func(_ context.Context, _, _, _ string, _ int) error { return nil },
 		docContentFn:  func(_ context.Context, _, _ string, _ bool) error { return nil },
 		docListFn:     func(_ context.Context, _ string, _, _ int) ([]Document, int, error) { return nil, 0, nil },
+		docPendingFn:  func(_ context.Context, _ string) ([]Document, error) { return nil, nil },
 		docDeleteFn:   func(_ context.Context, _ string) error { return nil },
 		docMoveFn: func(_ context.Context, id, target string) (Document, error) {
 			return Document{ID: id, CollectionID: target}, nil

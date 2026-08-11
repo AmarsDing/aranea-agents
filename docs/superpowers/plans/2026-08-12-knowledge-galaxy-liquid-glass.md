@@ -123,7 +123,7 @@ git commit -m "feat(knowledge): M1 液态玻璃滤镜单例 LiquidGlassDefs（�
 
 **设计**：`backdrop-filter: url(#kb-liquid-bg)` 仅 Chromium/Firefox 支持；`@supports` 探测失败时保持现有 `blur+saturate`（`kb-glass-surface` 已有），零回归。真折射只加在 `refract` prop 显式开启的浮层面板，普通面板不受影响。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // web/src/components/knowledge/effects/__tests__/GlassPanel.spec.ts
@@ -156,12 +156,12 @@ describe('GlassPanel（M1 refract）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/effects/__tests__/GlassPanel.spec.ts`
 Expected: FAIL（`refract` prop 未定义；`.kb-glass-panel__filter-def` 仍存在）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 GlassPanel.vue 三处改动：
 
@@ -222,7 +222,7 @@ defineProps<{
 
 同时删除 GlassPanel.vue `<style>` 中不再引用的 `&__filter-def` 规则（第 96-97 行）。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/effects/__tests__/GlassPanel.spec.ts`
 Expected: PASS（4 tests）
@@ -246,12 +246,12 @@ git commit -m "feat(knowledge): M1 GlassPanel refract prop + 真折射 @supports
 
 **纪律**：仅浮层启用 refract（编辑器/侧栏面板禁用——大面积折射影响可读性）。三个浮层均使用 `PaletteModal.vue` 或直接使用 GlassPanel——先 Grep 确认实际使用点再改。
 
-- [ ] **Step 1: 定位 GlassPanel 使用点**
+- [x] **Step 1: 定位 GlassPanel 使用点**
 
 Run: `cd web && Grep -n "GlassPanel" src/components/knowledge/workbench/QuickSwitcher.vue src/components/knowledge/workbench/CommandPalette.vue src/components/knowledge/workbench/SearchPanel.vue src/components/knowledge/workbench/PaletteModal.vue`
 Expected: 找到各浮层的 GlassPanel 引用行（若三者共用 PaletteModal 壳，则只在 PaletteModal 加 refract 透传 prop）
 
-- [ ] **Step 2: Workbench 根挂载 LiquidGlassDefs**
+- [x] **Step 2: Workbench 根挂载 LiquidGlassDefs**
 
 `KnowledgeWorkbench.vue` 模板根节点内（第一个子元素位置）加：
 
@@ -265,18 +265,18 @@ script 加 import：
 import LiquidGlassDefs from '../effects/LiquidGlassDefs.vue';
 ```
 
-- [ ] **Step 3: 浮层启用 refract**
+- [x] **Step 3: 浮层启用 refract**
 
 按 Step 1 定位结果：直接使用 GlassPanel 的浮层加 `refract` prop；若共用 PaletteModal 壳，则给 PaletteModal 加 `refract?: boolean` 透传 prop 并在三个浮层调用处开启。
 
-- [ ] **Step 4: 门禁 + 运行时验证（R3）**
+- [x] **Step 4: 门禁 + 运行时验证（R3）**（门禁已绿；浏览器运行时验证由协调员执行——子代理无浏览器工具）
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿（check-i18n 无新增文案，不涉及）
 
 运行时：起 dev，打开知识库 Workbench → ⌘K 命令面板 / ⌘O QuickSwitcher / ⌘⇧F 搜索面板 → 浏览器截图确认背景扭曲折射可见（对比 refract 前后）；DevTools 模拟禁用 `backdrop-filter: url()`（或不支持浏览器）确认降级普通 blur 无破版。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/components/knowledge/workbench/
@@ -1871,7 +1871,7 @@ git commit -m "feat(knowledge): M5 过滤图例集成 + 透镜 dim + 隐藏状�
 - Modify: `api/kratos/knowledge/v1/knowledge.proto`（message 插到 `DeleteDocumentRequest`（:409-411）之后；rpc 插到 `MoveDocumentToDir` rpc（:553 区域）之后）
 - Modify: `api/kratos/knowledge/v1/*.pb.go`（生成物，`make api` 产出）
 
-- [ ] **Step 1: Proto 定义**
+- [x] **Step 1: Proto 定义**
 
 ```proto
 // ReembedDocuments re-chunks and re-embeds documents from their stored
@@ -1894,12 +1894,12 @@ message ReembedDocumentsResponse {
 }
 ```
 
-- [ ] **Step 2: 生成 + 构建验证**
+- [x] **Step 2: 生成 + 构建验证**
 
 Run: `make api && go build ./api/...`
 Expected: 生成成功，零编译错误
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```powershell
 git add api/kratos/knowledge/v1/
@@ -1917,7 +1917,7 @@ git commit -m "feat(knowledge): B1 ReembedDocuments proto 定义"
 
 **背景**：DB-N3 接口 ≤5 方法属既有债务区（DB-DEBT-02/05，`DocumentRepo` 已 10+ 方法），本次随既有复合接口走（Wire 绑定用 `Repo` 复合接口），不新增拆分。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/data/knowledge_reembed_test.go
@@ -1930,12 +1930,12 @@ func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/data/ -run TestKnowledgeRepo_ListDocumentsPendingReembed -count=1`
 Expected: FAIL（`ListDocumentsPendingReembed` 未定义）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```go
 // biz/knowledge/knowledge.go — DocumentRepo 接口加：
@@ -1972,12 +1972,12 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/data/ -run TestKnowledgeRepo_ListDocumentsPendingReembed -count=1`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add internal/biz/knowledge/knowledge.go internal/data/knowledge.go internal/data/knowledge_reembed_test.go

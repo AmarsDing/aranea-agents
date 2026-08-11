@@ -141,6 +141,9 @@ type DocumentRepo interface {
 	// UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
 	UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error
 	ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
+	// ListDocumentsPendingReembed 列出待重嵌入文档（B1）：有正文、非 indexing、
+	// 且（chunks embedding IS NULL 或无任何 chunks）。按 created_at ASC（先入队先处理）。
+	ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error)
 	DeleteDocument(ctx context.Context, id string) error
 	// MoveDocument 文档连同 chunks 移至目标 Collection（US-14）。
 	// Repo 实现必须在单事务内完成 documents/chunks 的 collection_id 更新与两侧计数校正。
@@ -394,6 +397,18 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 		limit = 20
 	}
 	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
+}
+
+// ListDocumentsPendingReembed 列出集合内待重嵌入文档（B1：维度对账向量置 NULL 后，
+// UI 上传文档无 vault_sync 自愈循环，由本方法筛出喂给重嵌入管线）。
+func (u *Usecase) ListDocumentsPendingReembed(ctx context.Context, collectionID string) ([]Document, error) {
+	if err := u.requireRepo(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(collectionID) == "" {
+		return nil, ErrCollectionIDRequired
+	}
+	return u.documents.ListDocumentsPendingReembed(ctx, collectionID)
 }
 
 // DeleteDocument removes a document and its chunks. Repo implementations MUST
