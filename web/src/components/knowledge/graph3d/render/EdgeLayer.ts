@@ -1,8 +1,9 @@
 /**
  * EdgeLayer：G5 渲染管线 v2 边层（直线 LineSegments + 位置纹理，每 tick 零 CPU）。
  *
- * - Obsidian 签名细直线：每边 2 顶点（弃 6 段贝塞尔——密图视觉更净，顶点量 ÷6）
- * - 顶点着色器按 aNode texelFetch 端点位置（替代每 tick CPU 重算贝塞尔 + 字符串哈希）
+ * - Obsidian 签名细直线：默认每边 2 顶点（segments=1 直线，密图视觉更净）；
+ *   M2 可选 segmentsPerEdge=8 + uCurvature 贝塞尔（星系盘弧线沿盘面弯曲，力导向曲率 0 零回归）
+ * - 顶点着色器按 aNodeA/aNodeB texelFetch 端点位置 + aT 插值（替代每 tick CPU 重算贝塞尔 + 字符串哈希）
  * - rest=低透明度细线（普通混合）；hover 关联边 = 提亮 + 流动光脉冲（uTime sin 沿边跑动，科幻数据流）
  * - 动态属性仅 aHi（per-edge 0/1），hover 变更时一次性写入
  */
@@ -18,7 +19,9 @@ export const EDGE_HOVER_BOOST = 1.2;
 const EDGE_VERTEX = `
   uniform sampler2D uPosTex;
   uniform float uTexW;
-  attribute float aNode;
+  uniform float uCurvature;
+  attribute float aNodeA;
+  attribute float aNodeB;
   attribute float aT;
   attribute vec3 aColor;
   attribute float aHi;
@@ -26,8 +29,20 @@ const EDGE_VERTEX = `
   varying float vHi;
   varying float vT;
   void main() {
-    int idx = int(aNode + 0.5);
-    vec3 wp = texelFetch(uPosTex, ivec2(idx % int(uTexW), idx / int(uTexW)), 0).xyz;
+    int ia = int(aNodeA + 0.5);
+    int ib = int(aNodeB + 0.5);
+    vec3 pa = texelFetch(uPosTex, ivec2(ia % int(uTexW), ia / int(uTexW)), 0).xyz;
+    vec3 pb = texelFetch(uPosTex, ivec2(ib % int(uTexW), ib / int(uTexW)), 0).xyz;
+    vec3 wp = mix(pa, pb, aT);
+    if (uCurvature > 0.0001) {
+      // 二次贝塞尔：控制点 = 中点 + XZ 平面法向偏移（弧线沿盘面弯曲）
+      vec3 mid = (pa + pb) * 0.5;
+      vec3 dir = pb - pa;
+      vec3 normal = normalize(vec3(-dir.z, 0.0, dir.x) + vec3(1e-4));
+      vec3 ctrl = mid + normal * uCurvature * length(dir);
+      float t = aT;
+      wp = mix(mix(pa, ctrl, t), mix(ctrl, pb, t), t);
+    }
     gl_Position = projectionMatrix * modelViewMatrix * vec4(wp, 1.0);
     vColor = aColor;
     vHi = aHi;
@@ -62,36 +77,50 @@ export class EdgeLayer {
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.ShaderMaterial;
   private readonly edgeCount: number;
+  /** 每边顶点数（segmentsPerEdge × 2；LineSegments 逐对连线）。 */
+  private readonly verticesPerEdge: number;
   private highlighted: Set<number> | null = null;
 
-  constructor(edges: Int32Array, edgeColors: Float32Array) {
+  constructor(edges: Int32Array, edgeColors: Float32Array, segmentsPerEdge = 1) {
     this.edgeCount = edges.length / 2;
+    this.verticesPerEdge = segmentsPerEdge * 2;
     this.geometry = new THREE.BufferGeometry();
+    const vCount = this.edgeCount * this.verticesPerEdge;
     // position 仅作顶点计数驱动（真实端点位置走 uPosTex）
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.edgeCount * 2 * 3), 3));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vCount * 3), 3));
 
-    const nodeAttr = new Float32Array(this.edgeCount * 2);
-    const tAttr = new Float32Array(this.edgeCount * 2);
-    const colorAttr = new Float32Array(this.edgeCount * 2 * 3);
+    const nodeAAttr = new Float32Array(vCount);
+    const nodeBAttr = new Float32Array(vCount);
+    const tAttr = new Float32Array(vCount);
+    const colorAttr = new Float32Array(vCount * 3);
     for (let e = 0; e < this.edgeCount; e++) {
-      nodeAttr[e * 2] = edges[e * 2];
-      nodeAttr[e * 2 + 1] = edges[e * 2 + 1];
-      tAttr[e * 2] = 0;
-      tAttr[e * 2 + 1] = 1;
+      const na = edges[e * 2];
+      const nb = edges[e * 2 + 1];
       const r = edgeColors[e * 3];
       const g = edgeColors[e * 3 + 1];
       const b = edgeColors[e * 3 + 2];
-      colorAttr[e * 6] = r;
-      colorAttr[e * 6 + 1] = g;
-      colorAttr[e * 6 + 2] = b;
-      colorAttr[e * 6 + 3] = r;
-      colorAttr[e * 6 + 4] = g;
-      colorAttr[e * 6 + 5] = b;
+      for (let s = 0; s < segmentsPerEdge; s++) {
+        const v0 = e * this.verticesPerEdge + s * 2;
+        const v1 = v0 + 1;
+        nodeAAttr[v0] = na;
+        nodeAAttr[v1] = na;
+        nodeBAttr[v0] = nb;
+        nodeBAttr[v1] = nb;
+        tAttr[v0] = s / segmentsPerEdge;
+        tAttr[v1] = (s + 1) / segmentsPerEdge;
+        colorAttr[v0 * 3] = r;
+        colorAttr[v0 * 3 + 1] = g;
+        colorAttr[v0 * 3 + 2] = b;
+        colorAttr[v1 * 3] = r;
+        colorAttr[v1 * 3 + 1] = g;
+        colorAttr[v1 * 3 + 2] = b;
+      }
     }
-    this.geometry.setAttribute('aNode', new THREE.BufferAttribute(nodeAttr, 1));
+    this.geometry.setAttribute('aNodeA', new THREE.BufferAttribute(nodeAAttr, 1));
+    this.geometry.setAttribute('aNodeB', new THREE.BufferAttribute(nodeBAttr, 1));
     this.geometry.setAttribute('aT', new THREE.BufferAttribute(tAttr, 1));
     this.geometry.setAttribute('aColor', new THREE.BufferAttribute(colorAttr, 3));
-    const hi = new THREE.BufferAttribute(new Float32Array(this.edgeCount * 2), 1);
+    const hi = new THREE.BufferAttribute(new Float32Array(vCount), 1);
     hi.setUsage(THREE.DynamicDrawUsage);
     this.geometry.setAttribute('aHi', hi);
 
@@ -100,6 +129,7 @@ export class EdgeLayer {
         uPosTex: { value: null },
         uTexW: { value: 1 },
         uTime: { value: 0 },
+        uCurvature: { value: 0 },
         uRestAlpha: { value: EDGE_REST_ALPHA },
         uHoverAlpha: { value: EDGE_HOVER_ALPHA },
         uRestDim: { value: EDGE_REST_DIM },
@@ -127,6 +157,11 @@ export class EdgeLayer {
     this.material.uniforms.uTime.value = t;
   }
 
+  /** M2：弧线弯曲系数（0=直线，力导向；>0 星系盘）。 */
+  setCurvature(v: number): void {
+    this.material.uniforms.uCurvature.value = v;
+  }
+
   /** hover 关联边 aHi=1，其余回 0；null 全 0。 */
   setHighlight(edgeIndices: Set<number> | null): void {
     this.highlighted = edgeIndices;
@@ -136,8 +171,8 @@ export class EdgeLayer {
     if (edgeIndices) {
       for (const e of edgeIndices) {
         if (e >= 0 && e < this.edgeCount) {
-          arr[e * 2] = 1;
-          arr[e * 2 + 1] = 1;
+          const base = e * this.verticesPerEdge;
+          for (let v = 0; v < this.verticesPerEdge; v++) arr[base + v] = 1;
         }
       }
     }

@@ -17,10 +17,11 @@ function attr(l: EdgeLayer, name: string): Float32Array {
 }
 
 describe('EdgeLayer v2', () => {
-  it('缓冲结构：每边 2 顶点；aNode=端点索引、aT=0/1', () => {
+  it('缓冲结构：每边 2 顶点；aNodeA/aNodeB=端点索引、aT=0/1', () => {
     const l = mkLayer();
     expect(attr(l, 'position')).toHaveLength(2 * 2 * 3);
-    expect(Array.from(attr(l, 'aNode'))).toEqual([0, 1, 1, 2]);
+    expect(Array.from(attr(l, 'aNodeA'))).toEqual([0, 0, 1, 1]);
+    expect(Array.from(attr(l, 'aNodeB'))).toEqual([1, 1, 2, 2]);
     expect(Array.from(attr(l, 'aT'))).toEqual([0, 1, 0, 1]);
     l.dispose();
   });
@@ -66,5 +67,37 @@ describe('EdgeLayer v2', () => {
     expect(mat.uniforms.uTime.value).toBe(3.5);
     tex.dispose();
     l.dispose();
+  });
+});
+
+describe('EdgeLayer（M2 曲线）', () => {
+  const edges = new Int32Array([0, 1, 1, 2]); // 2 边
+  const colors = new Float32Array([1, 0, 0, 0, 1, 0]);
+
+  it('segments=1（默认）：每边 2 顶点，与现有一致', () => {
+    const layer = new EdgeLayer(edges, colors);
+    expect(layer.object.geometry.getAttribute('position').count).toBe(4);
+    layer.dispose();
+  });
+
+  it('segments=8：每边 16 顶点（8 段 × 2）', () => {
+    const layer = new EdgeLayer(edges, colors, 8);
+    expect(layer.object.geometry.getAttribute('position').count).toBe(32);
+    // 每顶点携带两端点索引 + 插值参数
+    expect(layer.object.geometry.getAttribute('aNodeA')).toBeDefined();
+    expect(layer.object.geometry.getAttribute('aNodeB')).toBeDefined();
+    const at = layer.object.geometry.getAttribute('aT');
+    expect(at.getX(0)).toBe(0);
+    expect(at.getX(1)).toBeCloseTo(1 / 8, 5);
+    layer.dispose();
+  });
+
+  it('setCurvature 更新 uniform', () => {
+    const layer = new EdgeLayer(edges, colors);
+    layer.setCurvature(0.25);
+    expect(
+      (layer.object.material as { uniforms: { uCurvature: { value: number } } }).uniforms.uCurvature.value,
+    ).toBe(0.25);
+    layer.dispose();
   });
 });
