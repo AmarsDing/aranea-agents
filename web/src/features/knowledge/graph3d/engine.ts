@@ -6,10 +6,13 @@
  * - 收敛懒惰：alpha<alphaMin → settled，停止驱动；reheat/pin 唤醒
  * - stepFrame 可测试直接驱动（不依赖 RAF 时序）
  */
-import { FORCE_DEFAULTS, ForceEngine, type ForceParams } from './forces';
+import { FORCE_DEFAULTS, ForceEngine, GALAXY_FORCE_PARAMS, type ForceParams } from './forces';
 import type { GraphModel } from './model';
 import type { InMessage, OutMessage } from './protocol';
 import PhysicsWorker from './physics.worker?worker';
+
+/** M2：图谱布局模式。force=力导向（默认）；galaxy=星系盘。 */
+export type GraphLayout = 'force' | 'galaxy';
 
 /** 可注入的 Worker 抽象（测试用 FakeWorker 替换真实 Worker）。 */
 export interface WorkerLike {
@@ -173,6 +176,12 @@ export class GraphEngine {
     } else {
       this.fallback?.setParams(params);
     }
+  }
+
+  /** 布局切换：参数预设 + alpha 再加热 morph（非坐标插值；Worker/主线程同路径）。 */
+  setLayout(layout: GraphLayout): void {
+    this.setParams(layout === 'galaxy' ? { ...GALAXY_FORCE_PARAMS } : { ...FORCE_DEFAULTS });
+    this.reheat();
   }
 
   private startFallback(): void {
