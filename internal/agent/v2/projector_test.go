@@ -128,6 +128,33 @@ func TestEmitConfirmRequest(t *testing.T) {
 	}
 }
 
+// 75 M1.4 A5：danger=true 经 ActivityConfirmParams 透传到确认 step，
+// 前端确认卡据此渲染高危徽标。
+func TestEmitConfirmRequest_DangerPropagates(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	_, err := p.EmitConfirmRequest(context.Background(), biz.ActivityConfirmParams{
+		ToolName:      "computer_use_act",
+		ToolArguments: `{"target":"永久删除按钮","action":"click"}`,
+		Content:       "工具 computer_use_act 需要确认后执行",
+		Danger:        true,
+	})
+	if err != nil {
+		t.Fatalf("EmitConfirmRequest returned error: %v", err)
+	}
+	if len(capture.events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(capture.events))
+	}
+	updated, ok := capture.events[1].(*biz.StepUpdatedEvent)
+	if !ok {
+		t.Fatalf("expected StepUpdatedEvent, got %T", capture.events[1])
+	}
+	if !updated.Step.Danger {
+		t.Error("expected step.Danger=true propagated to confirm step")
+	}
+}
+
 // Team mode: a member agent's tool confirmation must be attributed to the
 // member (AuthorAgentKey = member key), not the projector's base meta key
 // (anchor agent). Otherwise the frontend cannot match the confirm step to

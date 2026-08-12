@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -690,6 +691,38 @@ func TestUsecase_ListenerNotifiedOnSpawnFailure(t *testing.T) {
 	got := lis.waitN(t, 1)[0]
 	if got.Status != StatusFailed {
 		t.Fatalf("notified = %s, want failed", got.Status)
+	}
+}
+
+// TestUsecase_PromptPanicRecovered：run goroutine 内 Prompt panic 必须被 recover，
+// 任务推进 failed 并通知 listener（K7：后台 goroutine panic 恢复必须留痕）。
+func TestUsecase_PromptPanicRecovered(t *testing.T) {
+	e := newTestEnv()
+	lis := &mockListener{}
+	e.uc = NewAgentBridgeUsecase(UsecaseDeps{
+		Agents: e.agents, Projects: e.projects, Tasks: e.tasks,
+		Sessions: e.factory, Listener: lis,
+	})
+	e.seedAgent("codebuddy", true)
+	e.seedProject("proj", `F:\proj`)
+	e.factory.sessions = []*mockACPSession{{
+		promptFn: func(context.Context, string, string, EventHandler) (string, error) {
+			panic("acp conn exploded")
+		},
+	}}
+
+	res, err := e.uc.Dispatch(context.Background(), DispatchInput{
+		SessionID: "s1", AgentKey: "codebuddy", ProjectQuery: "proj", Prompt: "x", Handler: noopHandler(),
+	})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	got := lis.waitN(t, 1)[0]
+	if got.ID != res.Task.ID || got.Status != StatusFailed {
+		t.Fatalf("notified = %s/%s, want %s/failed", got.ID, got.Status, res.Task.ID)
+	}
+	if !strings.Contains(got.Error, "panic") {
+		t.Fatalf("panic task error = %q, want contains panic", got.Error)
 	}
 }
 

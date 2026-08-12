@@ -3,7 +3,7 @@
  * 5 力模型 + maxStep 钳制 + alphaDecay=0.0228/alphaMin=0.005 + 分层 chargeScale。
  */
 import { describe, expect, it } from 'vitest';
-import { FORCE_DEFAULTS, ForceEngine, type ForceParams } from '../forces';
+import { FORCE_DEFAULTS, GALAXY_FORCE_PARAMS, ForceEngine, type ForceParams } from '../forces';
 
 function mkParams(over: Partial<ForceParams> = {}): ForceParams {
   return { ...FORCE_DEFAULTS, ...over };
@@ -165,5 +165,57 @@ describe('ForceEngine 稳定性', () => {
     const d1 = Math.abs(e1.positions[3] - 50);
     const d2 = Math.abs(e2.positions[3] - 50);
     expect(d2).toBeGreaterThan(d1);
+  });
+});
+
+describe('M2 星系盘三力', () => {
+  function makeGalaxyEngine(params: Partial<ForceParams>): ForceEngine {
+    const count = 3;
+    const positions = new Float32Array([10, 8, 0, -20, -4, 10, 30, 2, -15]);
+    return new ForceEngine({
+      count,
+      edges: new Int32Array([0, 1]),
+      positions,
+      params: { ...FORCE_DEFAULTS, ...params },
+    });
+  }
+
+  it('默认参数三力为 0：力导向行为不变（回归）', () => {
+    expect(FORCE_DEFAULTS.coreGravity).toBe(0);
+    expect(FORCE_DEFAULTS.discFlatten).toBe(0);
+    expect(FORCE_DEFAULTS.spiralSwirl).toBe(0);
+  });
+
+  it('discFlatten>0：Y 坐标绝对值收敛（压向 XZ 盘面）', () => {
+    const e = makeGalaxyEngine({ discFlatten: 0.12, repulsion: 0, linkStrength: 0, gravity: 0, groupCohesion: 0, groupSeparation: 0 });
+    const before = Math.abs(e.positions[1]); // 节点0 的 y=8
+    for (let t = 0; t < 40; t++) e.tick();
+    expect(Math.abs(e.positions[1])).toBeLessThan(before);
+  });
+
+  it('spiralSwirl>0：产生 XZ 平面切向速度（角度位置变化）', () => {
+    const e = makeGalaxyEngine({ spiralSwirl: 0.05, repulsion: 0, linkStrength: 0, gravity: 0, groupCohesion: 0, groupSeparation: 0 });
+    const angleBefore = Math.atan2(e.positions[2], e.positions[0]); // 节点0 (10,8,0) → atan2(0,10)=0
+    for (let t = 0; t < 10; t++) e.tick();
+    const angleAfter = Math.atan2(e.positions[2], e.positions[0]);
+    expect(angleAfter).not.toBeCloseTo(angleBefore, 5);
+  });
+
+  it('coreGravity>0：径向距离收缩快于纯线性 gravity', () => {
+    const lin = makeGalaxyEngine({ gravity: 0.011, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
+    const core = makeGalaxyEngine({ gravity: 0, coreGravity: 0.08, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
+    const r0 = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
+    for (let t = 0; t < 30; t++) { lin.tick(); core.tick(); }
+    const rLin = Math.hypot(lin.positions[0], lin.positions[1], lin.positions[2]);
+    const rCore = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
+    expect(rCore).toBeLessThan(rLin);
+    expect(rCore).toBeLessThan(r0);
+  });
+
+  it('GALAXY_FORCE_PARAMS 预设：三力启用且默认 gravity 减弱', () => {
+    expect(GALAXY_FORCE_PARAMS.coreGravity).toBeGreaterThan(0);
+    expect(GALAXY_FORCE_PARAMS.discFlatten).toBeGreaterThan(0);
+    expect(GALAXY_FORCE_PARAMS.spiralSwirl).toBeGreaterThan(0);
+    expect(GALAXY_FORCE_PARAMS.gravity).toBeLessThan(FORCE_DEFAULTS.gravity);
   });
 });

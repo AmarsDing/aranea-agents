@@ -27,6 +27,12 @@ export interface ForceParams {
   groupCohesion: number;
   /** 簇分离强度（组中心间 Coulomb 斥力）。 */
   groupSeparation: number;
+  /** M2 星系盘：核心引力强度（0=关闭）。软化径向，形成致密核。 */
+  coreGravity: number;
+  /** M2 星系盘：盘压扁强度（0=关闭）。Y 轴单向向心，压向 XZ 盘面。 */
+  discFlatten: number;
+  /** M2 星系盘：螺旋切向力强度（0=关闭）。XZ 平面绕 Y 轴，径向包络中心弱边缘饱和。 */
+  spiralSwirl: number;
 }
 
 export const FORCE_DEFAULTS: ForceParams = {
@@ -38,6 +44,18 @@ export const FORCE_DEFAULTS: ForceParams = {
   theta: 0.8,
   groupCohesion: 0.08,
   groupSeparation: 100,
+  coreGravity: 0,
+  discFlatten: 0,
+  spiralSwirl: 0,
+};
+
+/** M2 星系盘布局预设（布局切换 = setParams(GALAXY_FORCE_PARAMS) + reheat）。 */
+export const GALAXY_FORCE_PARAMS: Partial<ForceParams> = {
+  coreGravity: 0.08,
+  discFlatten: 0.12,
+  spiralSwirl: 0.02,
+  gravity: 0.004, // 默认向心减弱（核心引力接管）
+  groupSeparation: 60, // 簇间更紧凑（盘内悬臂簇）
 };
 
 const ALPHA_DECAY = 0.0228;

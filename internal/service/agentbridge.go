@@ -74,6 +74,29 @@ func NewAgentBridgeService(deps AgentBridgeServiceDeps) *AgentBridgeService {
 	}
 }
 
+// ProvideAgentBridgeService 是 Wire provider：装配 service + usecase 构造环
+// （usecase 的 TaskListener 是 service 自身，须 NewAgentBridgeService →
+// NewAgentBridgeUsecase(Listener) → BindUsecase 二次绑定，wire 无法表达）。
+func ProvideAgentBridgeService(agents agentbridge.AgentRepo, projects agentbridge.ProjectRepo, tasks agentbridge.TaskRepo, factory agentbridge.SessionFactory, bus biz.EventBus, infra *event.Infra, lg loggateway.Logger) *AgentBridgeService {
+	svc := NewAgentBridgeService(AgentBridgeServiceDeps{
+		Agents:   agents,
+		Projects: projects,
+		Bus:      bus,
+		Infra:    infra,
+		Logger:   lg,
+	})
+	uc := agentbridge.NewAgentBridgeUsecase(agentbridge.UsecaseDeps{
+		Agents:   agents,
+		Projects: projects,
+		Tasks:    tasks,
+		Sessions: factory,
+		Listener: svc,
+		Logger:   lg,
+	})
+	svc.BindUsecase(uc)
+	return svc
+}
+
 // BindUsecase 绑定用例（Wire/测试装配顺序：NewAgentBridgeService →
 // NewAgentBridgeUsecase(Listener: svc) → BindUsecase）。
 func (s *AgentBridgeService) BindUsecase(uc *agentbridge.AgentBridgeUsecase) {
@@ -114,6 +137,11 @@ func (s *AgentBridgeService) DispatchTask(ctx context.Context, sessionID, agentK
 	agentKeyResolved, projectName := s.resolveNames(res.Task.Workspace, res.Task.AgentID, res.Task.ProjectID)
 	h.bind(res.Task.ID, agentKeyResolved, projectName)
 	s.emitter(ctx, sessionID).LogDone("agentbridge.task.dispatch", "编程任务已派发",
+		event.P("task_id", res.Task.ID),
+		event.P("agent_key", agentKeyResolved),
+		event.P("project_name", projectName))
+	// K7：进程生命周期流程日志。uc.Dispatch 返回成功即 ACP 进程已 spawn。
+	s.emitter(ctx, sessionID).LogDone("agentbridge.process.spawn", "编程 Agent 进程已启动",
 		event.P("task_id", res.Task.ID),
 		event.P("agent_key", agentKeyResolved),
 		event.P("project_name", projectName))
@@ -168,14 +196,23 @@ func (s *AgentBridgeService) OnTaskTerminal(t *agentbridge.CodingTask) {
 		s.publish(biz.NewSystemNoticeEvent(t.SessionID, noticeCodingTaskCompleted, t.Summary, meta))
 		s.emitter(ctx, t.SessionID).LogDone("agentbridge.task.done", "编程任务完成",
 			event.P("task_id", t.ID), event.P("agent_key", agentKey))
+		s.emitter(ctx, t.SessionID).LogDone("agentbridge.process.exit", "编程 Agent 进程已退出",
+			event.P("task_id", t.ID), event.P("agent_key", agentKey))
 	case agentbridge.StatusFailed:
 		meta["error"] = t.Error
 		s.publish(biz.NewSystemNoticeEvent(t.SessionID, noticeCodingTaskFailed, t.Error, meta))
 		s.emitter(ctx, t.SessionID).LogError("agentbridge.task.failed", "编程任务失败",
 			event.P("task_id", t.ID), event.P("agent_key", agentKey), event.P("error", t.Error))
+		// ACPSessionID 为空 = spawn 失败，进程从未启动，不发 process.exit。
+		if t.ACPSessionID != "" {
+			s.emitter(ctx, t.SessionID).LogError("agentbridge.process.exit", "编程 Agent 进程异常退出",
+				event.P("task_id", t.ID), event.P("agent_key", agentKey), event.P("error", t.Error))
+		}
 	case agentbridge.StatusCancelled:
 		s.publish(biz.NewSystemNoticeEvent(t.SessionID, noticeCodingTaskCancelled, "编程任务已取消", meta))
 		s.emitter(ctx, t.SessionID).LogDone("agentbridge.task.cancelled", "编程任务取消",
+			event.P("task_id", t.ID), event.P("agent_key", agentKey))
+		s.emitter(ctx, t.SessionID).LogDone("agentbridge.process.exit", "编程 Agent 进程已退出",
 			event.P("task_id", t.ID), event.P("agent_key", agentKey))
 	}
 }

@@ -10,6 +10,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/agentbridge"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -338,7 +340,9 @@ func (c *abFakeClock) Advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-func newABSvcEnv() *abSvcEnv {
+func newABSvcEnv() *abSvcEnv { return newABSvcEnvWithInfra(nil) }
+
+func newABSvcEnvWithInfra(infra *event.Infra) *abSvcEnv {
 	e := &abSvcEnv{
 		agents:   &abFakeAgents{byKey: map[string]*agentbridge.CodingAgent{}},
 		projects: &abFakeProjects{byName: map[string]*agentbridge.CodingProject{}},
@@ -351,6 +355,7 @@ func newABSvcEnv() *abSvcEnv {
 		Agents:   e.agents,
 		Projects: e.projects,
 		Bus:      e.bus,
+		Infra:    infra,
 		Clock:    e.clock.Now,
 	})
 	uc := agentbridge.NewAgentBridgeUsecase(agentbridge.UsecaseDeps{
@@ -545,5 +550,96 @@ func TestAgentBridgeService_ProbeAgent(t *testing.T) {
 	last := e.agents.probes[len(e.agents.probes)-1]
 	if !last.ok {
 		t.Fatalf("probe go must succeed: %+v", last)
+	}
+}
+
+// ---------- M1-12 测试：进程生命周期流程日志（设计 §11 K7） ----------
+
+// abCaptureMonBus 捕获 flow_log MonitorEvent（复刻 event 包 captureMonitorBus 模式）。
+type abCaptureMonBus struct {
+	mu  sync.Mutex
+	evs []contract.MonitorEvent
+}
+
+func (b *abCaptureMonBus) Publish(_ context.Context, ev contract.MonitorEvent) {
+	b.mu.Lock()
+	b.evs = append(b.evs, ev)
+	b.mu.Unlock()
+}
+
+func (b *abCaptureMonBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	return nil, func() {}
+}
+
+func (b *abCaptureMonBus) DropCount() uint64 { return 0 }
+
+func (b *abCaptureMonBus) flowSteps() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []string
+	for _, ev := range b.evs {
+		if ev.Type != contract.MonitorEventTypeFlowLog {
+			continue
+		}
+		if sid, _ := ev.Metadata["step_id"].(string); sid != "" {
+			out = append(out, sid)
+		}
+	}
+	return out
+}
+
+func (b *abCaptureMonBus) waitFlowStep(t *testing.T, step string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, s := range b.flowSteps() {
+			if s == step {
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("flow step %s not emitted, got %v", step, b.flowSteps())
+}
+
+func TestAgentBridgeService_ProcessLifecycleFlowLogs(t *testing.T) {
+	mon := &abCaptureMonBus{}
+	e := newABSvcEnvWithInfra(event.NewInfraFromBus(mon))
+	e.seedAgent("codebuddy")
+	e.seedProject("aranea", `F:\aranea`)
+	e.factory.sessions = []*abFakeSession{{
+		promptFn: func(context.Context, string, string, agentbridge.EventHandler) (string, error) {
+			return "搞定", nil
+		},
+	}}
+
+	if _, err := e.svc.DispatchTask(context.Background(), "sess-1", "codebuddy", "aranea", "修复样式"); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	e.bus.waitNoticeType(t, "coding_task_completed", 1)
+
+	// K7：进程启动/退出各一条流程日志
+	mon.waitFlowStep(t, "agentbridge.process.spawn")
+	mon.waitFlowStep(t, "agentbridge.process.exit")
+}
+
+func TestAgentBridgeService_SpawnFailSkipsProcessFlowLogs(t *testing.T) {
+	mon := &abCaptureMonBus{}
+	e := newABSvcEnvWithInfra(event.NewInfraFromBus(mon))
+	e.seedAgent("codebuddy")
+	e.seedProject("aranea", `F:\aranea`)
+	// 不投放 fake session → Spawn 返回错误
+
+	if _, err := e.svc.DispatchTask(context.Background(), "sess-1", "codebuddy", "aranea", "x"); err == nil {
+		t.Fatal("want spawn error")
+	}
+	e.bus.waitNoticeType(t, "coding_task_failed", 1)
+
+	// spawn 失败：task.failed 必须有，process.spawn/exit 不得发射（进程从未启动）
+	mon.waitFlowStep(t, "agentbridge.task.failed")
+	for _, s := range mon.flowSteps() {
+		if s == "agentbridge.process.spawn" || s == "agentbridge.process.exit" {
+			t.Fatalf("unexpected process flow step %s on spawn failure", s)
+		}
 	}
 }

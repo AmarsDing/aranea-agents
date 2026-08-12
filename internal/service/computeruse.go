@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
 	cuinfra "aranea-agents/internal/computeruse"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -32,10 +33,11 @@ const defaultCUASidecarPath = "bin/cua/aranea-cua-win.exe"
 const defaultOmniParserURL = "http://127.0.0.1:8100"
 
 // ProvideComputerUseUsecase 构造进程级 Computer Use 用例编排器。
-// flow 可 nil（跳过流程日志）；audit 可 nil（跳过审计落库，M1.4 已接线 Ent repo）。
+// flow 可 nil（跳过流程日志）；audit 可 nil（跳过审计落库，M1.4 已接线 Ent repo）；
+// monitorBus 可 nil（跳过 computeruse.step 实时事件，M1.4 已接线 MonitorBus）。
 // Vision（OmniParser）不可用时按 Available 探测自动降级；Grounder（VLM）
 // 经 LLM catalog 解析视觉模型，sys/catalog 与 knowledge 模块同签名接口复用。
-func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, audit bizcu.AuditStore, lg loggateway.Logger) *bizcu.ComputerUseUsecase {
+func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, audit bizcu.AuditStore, monitorBus contract.MonitorBus, lg loggateway.Logger) *bizcu.ComputerUseUsecase {
 	path := os.Getenv("ARANEA_CUA_SIDECAR_PATH")
 	if path == "" {
 		path = defaultCUASidecarPath
@@ -51,6 +53,7 @@ func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *b
 		Vision:   cuinfra.NewOmniParserClient(omniURL, lg),
 		Grounder: cuinfra.NewVLMGrounder(llm, sys, catalog, lg),
 		Audit:    audit,
+		Events:   cuinfra.NewStepEventPublisher(monitorBus),
 		FlowLog:  flow,
 		Lg:       lg,
 	})

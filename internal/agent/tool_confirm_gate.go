@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/alias"
@@ -60,6 +62,10 @@ const (
 	confirmReasonPolicyCatalog = "policy_catalog"
 	// confirmReasonPolicyPlugin: confirmation required by plugin guard.
 	confirmReasonPolicyPlugin = "policy_plugin"
+	// confirmReasonPolicyDanger: confirmation forced by computer-use
+	// danger-word content inspection (75 A5). Grants never bypass it —
+	// a danger-word target prompts every single time.
+	confirmReasonPolicyDanger = "policy_danger"
 )
 
 // confirmDecision is the outcome of the confirmation decision chain.
@@ -81,6 +87,11 @@ var defaultToolGrantStore = newToolGrantStore(time.Now)
 // other tools short-circuit as default_allow.
 func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolName string, args []byte) confirmDecision {
 	toolName = strings.TrimSpace(toolName)
+	// Computer-use danger-word floor (75 A5): a danger hit on act/launch
+	// forces per-invocation confirmation regardless of catalog or grants.
+	if computerUseDangerHit(toolName, args) {
+		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyDanger}
+	}
 	needsByCatalog := g.catalogCheck(toolName)
 	needsByPlugin := g.hasPlugin && plugintrpc.MatchConfirmationGuard(g.plugin, toolName, args)
 	if !needsByCatalog && !needsByPlugin {
@@ -247,11 +258,37 @@ func (g *toolConfirmGate) catalogCheck(toolName string) bool {
 	return m.requiresConfirm
 }
 
+// computerUseDangerTools are the computer-use tools whose arguments are
+// content-inspected for danger words (75 A5). Only action-injecting tools
+// are listed; observe/screenshot/session are read-only and never gated here.
+var computerUseDangerTools = map[string]bool{
+	"computer_use_act":    true,
+	"computer_use_launch": true,
+}
+
+// computerUseDangerHit reports whether a computer-use act/launch invocation
+// carries a danger-word target or payload text. Unparseable args fall
+// through to the normal chain (the tool itself will reject them).
+func computerUseDangerHit(toolName string, args []byte) bool {
+	if !computerUseDangerTools[toolName] || len(args) == 0 {
+		return false
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return false
+	}
+	target, _ := parsed["target"].(string)
+	return bizcu.Policy{}.IsDanger(target, parsed)
+}
+
 func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
 	if g == nil {
 		return false
 	}
 	toolName = strings.TrimSpace(toolName)
+	if computerUseDangerHit(toolName, args) {
+		return true
+	}
 	if g.catalogCheck(toolName) {
 		return true
 	}

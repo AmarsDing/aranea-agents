@@ -276,7 +276,7 @@ data:
     access: admin
   postgres:
     source: "postgres://postgres@127.0.0.1:5433/aranea?sslmode=disable"
-    vector_dim: 1536
+    vector_dim: 1024
   redis:
     addr: 127.0.0.1:6379
     read_timeout: 0.2s

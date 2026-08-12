@@ -70,7 +70,7 @@ data:
     access: admin
   postgres:
     source: %q
-    vector_dim: 1536
+    vector_dim: 1024
   redis:
     addr: %q
     read_timeout: 0.2s

@@ -143,6 +143,10 @@ type ActivityConfirmParams struct {
 	// e.g. a team member agent's tool call in graph mode (the projector meta
 	// carries the anchor agent key). Empty keeps the meta default.
 	AuthorAgentKey string
+	// Danger marks the confirmation as a high-risk action (75 A5: computer-use
+	// danger-word hit). Propagated to Step.Danger so the confirm card can
+	// render a 高危 badge.
+	Danger bool
 }
 
 // ActivityEmitter emits Activity events for runtime notifications.

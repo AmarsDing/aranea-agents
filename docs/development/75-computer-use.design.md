@@ -217,14 +217,14 @@ Act(target)
 
 ### 3.7 事件与日志
 
-- **envelope**：新增 `EnvelopeTypeComputerUseStep = "computeruse.step"`（internal/event/envelope.go），payload=Step 摘要；发布走既有 EventBus（Important 级，审计事件同步落库）
-- **流程日志 step_id**（登记 stepTitleRegistry + 52 号文档 §5.1）：
+- **实时事件**：`computeruse.step` MonitorEvent（`internal/event/contract/monitor_event.go`，ADR-03 双总线迁移后不再新增 Envelope 类型）。payload=Step 摘要（Metadata：step_index/target/path/action/result/duration_ms/danger/confirmed_by/error）；发布端口 `bizcu.StepEventPublisher`，适配器 `internal/computeruse/step_events.go` 走 MonitorBus → WS monitor pump。可靠性 Informational——持久化以 `computer_use_audit` 表为准（每步同步落库）
+- **流程日志 step_id**（登记 stepTitleRegistry + 52 号文档 §5.1；domain=computeruse 已注册 TraceDomain 并接入 `domainForStepID`）：
   `computeruse.session.start` / `computeruse.session.done` / `computeruse.act` / `computeruse.grounding.fallback`（降级 warn）/ `computeruse.act.done` / `computeruse.act.error` / `computeruse.budget.exceeded` / `computeruse.killswitch`
 - **进程日志**：loggateway 构造注入；K7：sidecar 启停/panic/看门狗各一条；K2 错误含 `loggateway.Err`
 
 ### 3.8 前端设计（P1 最简视图）
 
-- `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（复用 realtime envelope dispatcher 订阅 `computeruse.step`）
+- `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent）
 - 聊天气泡内嵌：步骤卡片（目标/路径徽标/耗时/结果/失败原因）；头部急停按钮 → `POST /v1/computeruse/sessions/{id}/kill`
 - ToolsPage 自动展示新工具（种子分类 computeruse）
 
@@ -267,7 +267,7 @@ Proto：`api/kratos/computeruse/v1/computeruse.proto`（`make api` 生成；服�
 |------|------|
 | tools 装配（场景 2） | Registry+seed+Assemble 五步；Chat/Team 双生效 |
 | 确认门 tool-grants | act/launch 走既有授权链，grant_persisted 短路 |
-| event/envelope | 新增 computeruse.step（场景 4 五步） |
+| event/monitor | 新增 computeruse.step MonitorEvent 类型（contract/monitor_event.go）+ StepEventPublisher 适配器 |
 | LLM catalog | VLM 模型配置复用，不另建模型栈 |
 | MCP 管理（P3） | iOS sidecar 以 MCP server 托管 |
 | 语音伴侣（M74） | 语音任务可调用 computer_use 工具控制桌面（自然延伸，无代码耦合） |

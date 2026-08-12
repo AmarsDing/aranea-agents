@@ -122,6 +122,9 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 	task.Status = StatusRunning
 
 	u.track(task.ID, sess)
+	u.lg.Info("agentbridge process spawned",
+		loggateway.Str("task_id", task.ID),
+		loggateway.Str("agent_key", agent.AgentKey))
 	go u.run(task, sess, project.Path, in.Handler)
 	return &DispatchResult{Task: task}, nil
 }
@@ -186,9 +189,25 @@ func (u *AgentBridgeUsecase) checkConcurrency(ctx context.Context, agentID strin
 // run 在独立 ctx 中执行 Prompt 至结束，按结果推进终态。
 // 调用方 ctx 随工具调用返回即取消，任务必须脱离之运行（硬上限 30min）。
 func (u *AgentBridgeUsecase) run(task *CodingTask, sess ACPSession, cwd string, h EventHandler) {
+	// defer 执行逆序：recover（最先）→ notifyTerminal → Close → untrack → exit 日志。
+	// recover 必须先于 notifyTerminal：panic 路径在此推进 failed，listener 才能收到终态。
+	defer func() {
+		u.lg.Info("agentbridge process exited", loggateway.Str("task_id", task.ID))
+	}()
 	defer u.untrack(task.ID)
 	defer sess.Close()
 	defer u.notifyTerminal(task.ID)
+	defer func() {
+		if r := recover(); r != nil {
+			u.lg.Error("agentbridge run goroutine panic recovered",
+				loggateway.Str("task_id", task.ID),
+				loggateway.Err(fmt.Errorf("%v", r)))
+			cur, getErr := u.tasks.Get(context.Background(), task.ID)
+			if getErr == nil && !cur.Status.IsTerminal() {
+				u.failTaskFrom(cur.Status, task.ID, fmt.Sprintf("internal panic: %v", r))
+			}
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), taskHardTimeout)
 	defer cancel()

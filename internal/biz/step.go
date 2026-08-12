@@ -27,6 +27,7 @@ type Step struct {
 	ToolDurationMs  int64
 	ToolErrorCode   string
 	NoticeType      string // kind=notice: notification type (e.g. "model_router", "cost_guard")
+	Danger          bool   // kind=confirm: 高危动作标记（75 A5 敏感词命中），前端渲染高危徽标
 	Status          StepStatus
 	IsFinal         bool // reply 是否为最终回复
 	StartedAt       time.Time
