@@ -44,6 +44,19 @@ func okParseHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// TestNewOmniParserClient_NilLogger 构造函数对 nil Logger 兜底 Noop（B2）；
+// Parse 失败路径要打 Warn 日志，nil Logger 会 panic。
+func TestNewOmniParserClient_NilLogger(t *testing.T) {
+	c := NewOmniParserClient("http://127.0.0.1:1", nil)
+	if c.lg == nil {
+		t.Fatal("lg = nil, want Noop 兜底")
+	}
+	img := bizcu.Image{PNG: []byte("x"), Width: 1, Height: 1}
+	if _, err := c.Parse(context.Background(), img); err == nil {
+		t.Fatal("Parse err = nil, want 连接失败错误")
+	}
+}
+
 func TestOmniParserParse_MapsElements(t *testing.T) {
 	srv, _ := newOmniTestServer(t, okParseHandler)
 	defer srv.Close()

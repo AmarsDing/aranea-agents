@@ -2514,7 +2514,7 @@ export default {
     metadataExtraLabel: 'metadata_json 额外字段',
     comingSoon: '即将支持',
     webhookLocalTitle: '飞书 / 钉钉等平台无法访问 localhost。本地调试请用 ngrok 填入 public_webhook_origin。',
-    webhookLocalStep1: '运行 ngrok http 9001',
+    webhookLocalStep1: '运行 ngrok http 8800',
     webhookLocalStep2: '将 HTTPS 根地址填入 public_webhook_origin',
     webhookLocalStep3: '复制 webhook_url_preview 到平台后台',
     routingTargetLabel: '消息路由目标',

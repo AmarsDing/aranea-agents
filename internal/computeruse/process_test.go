@@ -81,6 +81,30 @@ func newTestManager(t *testing.T, handler sidecarHandler) (*Manager, *int32) {
 	return m, count
 }
 
+// TestManagerStop_WaitPanicRecovered stopHandleLocked 的 wait 等待 goroutine 内 panic
+// 不得整进程崩溃（B1：裸 goroutine 必须走 safego.Go 兜底）。
+func TestManagerStop_WaitPanicRecovered(t *testing.T) {
+	m := NewManager("fake-sidecar.exe", loggateway.NewNoop())
+	m.starter = func(_ context.Context) (*processHandle, error) {
+		_, stdinW := io.Pipe()
+		stdoutR, _ := io.Pipe()
+		return &processHandle{
+			stdin:  stdinW,
+			stdout: stdoutR,
+			wait:   func() error { panic("wait boom") },
+			kill:   func() error { return nil },
+		}, nil
+	}
+	m.stopGrace = 50 * time.Millisecond
+	if err := m.EnsureRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRunning err = %v", err)
+	}
+	// wait() panic 若无 safego 兜底，测试进程直接崩溃
+	if err := m.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop err = %v", err)
+	}
+}
+
 // TestManagerEnsureRunningIdempotent EnsureRunning 幂等：多次调用只拉起一次。
 func TestManagerEnsureRunningIdempotent(t *testing.T) {
 	m, count := newTestManager(t, func(req rpcRequest) (any, *rpcError) {

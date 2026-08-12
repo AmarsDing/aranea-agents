@@ -2482,7 +2482,7 @@ export default {
     comingSoon: 'Coming soon',
     webhookLocalTitle:
       'Feishu / DingTalk cannot reach localhost. Use ngrok and set public_webhook_origin for local debugging.',
-    webhookLocalStep1: 'Run ngrok http 9001',
+    webhookLocalStep1: 'Run ngrok http 8800',
     webhookLocalStep2: 'Paste the HTTPS root URL into public_webhook_origin',
     webhookLocalStep3: 'Copy webhook_url_preview into the platform console',
     routingTargetLabel: 'Routing target',

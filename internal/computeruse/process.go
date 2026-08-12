@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // 看门狗与停止的默认参数（§2.1：每 5s 心跳，连续 3 次超时判僵死）。
@@ -88,7 +89,8 @@ func (m *Manager) EnsureRunning(ctx context.Context) error {
 	// 拉起看门狗（每轮运行仅一个；重启复用当前看门狗，不重复启动）
 	m.stopCh = make(chan struct{})
 	m.wg.Add(1)
-	go m.watchdog(m.stopCh)
+	stopCh := m.stopCh
+	safego.Go(context.Background(), "computeruse.sidecar.watchdog", func() { m.watchdog(stopCh) })
 	return nil
 }
 
@@ -256,7 +258,7 @@ func (m *Manager) stopHandleLocked() {
 	}
 	h.stdin.Close()
 	done := make(chan error, 1)
-	go func() { done <- h.wait() }()
+	safego.Go(context.Background(), "computeruse.sidecar.wait", func() { done <- h.wait() })
 	select {
 	case <-done:
 	case <-time.After(m.stopGrace):
@@ -289,7 +291,7 @@ func (m *Manager) startRealProcess(_ context.Context) (*processHandle, error) {
 	}
 
 	// stderr 排入进程日志（sidecar 自身诊断输出）
-	go m.drainStderr(stderr)
+	safego.Go(context.Background(), "computeruse.sidecar.stderr", func() { m.drainStderr(stderr) })
 
 	return &processHandle{
 		stdin:  stdin,

@@ -40,6 +40,9 @@ type VLMGrounder struct {
 
 // NewVLMGrounder 构造 VLM 定位器；llm 必填，sys/catalog 可 nil（解析时互为降级）。
 func NewVLMGrounder(llm biz.LLMCaller, sys VisionLLMSettingsGetter, catalog VisionLLMCatalogLister, lg loggateway.Logger) *VLMGrounder {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &VLMGrounder{llm: llm, sys: sys, catalog: catalog, lg: lg}
 }
 

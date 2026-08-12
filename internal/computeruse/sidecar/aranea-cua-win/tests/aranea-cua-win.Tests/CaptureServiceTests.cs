@@ -44,6 +44,16 @@ public class CaptureServiceTests
     }
 
     [Fact]
+    public void ScaleBitmap_HugeZoom_ClampedToMax()
+    {
+        // B3：zoom 无上界时攻击者可传入极大值触发巨额位图分配（OOM/DoS）
+        using var src = new Bitmap(10, 6);
+        using var dst = CaptureService.ScaleBitmap(src, 1000.0);
+        Assert.Equal(100, dst.Width);  // MaxZoom=10 → 10x
+        Assert.Equal(60, dst.Height);
+    }
+
+    [Fact]
     public void ScaleBitmap_Zoom2_PreservesPixelContent()
     {
         using var src = new Bitmap(2, 1);

@@ -129,12 +129,19 @@ public sealed class CaptureService
         }
     }
 
-    /// <summary>按倍率缩放位图（zoom=1 原样复制；结果至少 1x1）。纯位图操作，可单测</summary>
+    /// <summary>zoom 上限：防止超大 zoom 触发巨额位图分配（OOM/DoS，75 review B3）；局部放大场景 10x 足够</summary>
+    private const double MaxZoom = 10.0;
+
+    /// <summary>按倍率缩放位图（zoom=1 原样复制；结果至少 1x1；zoom 超过 MaxZoom 截断）。纯位图操作，可单测</summary>
     public static Bitmap ScaleBitmap(Bitmap src, double zoom)
     {
         if (zoom <= 0)
         {
             zoom = 1.0;
+        }
+        if (zoom > MaxZoom)
+        {
+            zoom = MaxZoom;
         }
         var zw = Math.Max(1, (int)Math.Round(src.Width * zoom));
         var zh = Math.Max(1, (int)Math.Round(src.Height * zoom));

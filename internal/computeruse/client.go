@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // CDP 错误码（设计文档 §2.4）映射的 sentinel error，供上层 errors.Is 判定。
@@ -96,7 +97,7 @@ func NewClient(w io.Writer, r io.Reader, lg loggateway.Logger) *Client {
 		closeCh: make(chan struct{}),
 	}
 	c.wg.Add(1)
-	go c.readLoop(r)
+	safego.Go(context.Background(), "computeruse.sidecar.readloop", func() { c.readLoop(r) })
 	return c
 }
 

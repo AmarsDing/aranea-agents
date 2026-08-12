@@ -32,6 +32,9 @@ type OmniParserClient struct {
 
 // NewOmniParserClient 构造客户端。baseURL 形如 http://127.0.0.1:8100。
 func NewOmniParserClient(baseURL string, lg loggateway.Logger) *OmniParserClient {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &OmniParserClient{
 		baseURL:  baseURL,
 		hc:       &http.Client{Timeout: 30 * time.Second},

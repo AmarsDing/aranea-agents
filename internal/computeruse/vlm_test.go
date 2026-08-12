@@ -77,6 +77,14 @@ func visionCatalog() fakeVisionCatalog {
 	}}
 }
 
+// TestNewVLMGrounder_NilLogger 构造函数对 nil Logger 兜底 Noop（B2）。
+func TestNewVLMGrounder_NilLogger(t *testing.T) {
+	g := NewVLMGrounder(&fakeLLMCaller{}, nil, nil, nil)
+	if g.lg == nil {
+		t.Fatal("lg = nil, want Noop 兜底")
+	}
+}
+
 func TestVLMGrounderPick_SelectsByNumber(t *testing.T) {
 	caller := &fakeLLMCaller{resp: "2"}
 	g := NewVLMGrounder(caller, nil, visionCatalog(), loggateway.NewNoop())
