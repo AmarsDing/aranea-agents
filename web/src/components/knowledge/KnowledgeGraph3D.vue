@@ -41,6 +41,16 @@
         @reembed="(docId: string) => $emit('reembed-node', docId)"
         @close="onFocusClose"
       />
+      <!-- M5：过滤图例（点击隐藏组 / 悬停透镜），HUD 左下（统计行上方） -->
+      <GraphLegend
+        v-if="nodes.length && !error"
+        class="knowledge-graph__legend-panel"
+        :groups="legendGroups"
+        :hidden-groups="hiddenGroups"
+        @toggle-group="(d: string) => $emit('toggle-group', d)"
+        @lens-enter="(d: string) => canvasRef?.setLens(d)"
+        @lens-leave="canvasRef?.setLens(null)"
+      />
       <!-- 画布工具条（右上浮动）：适应视图 + 图例 + HUD 开关 + 返回全局 -->
       <div v-if="nodes.length && !error" class="knowledge-graph__toolbar">
         <button
@@ -349,6 +359,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
 import FocusCard from './graph3d/FocusCard.vue';
+import GraphLegend, { type LegendGroup } from './graph3d/GraphLegend.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
@@ -368,9 +379,13 @@ const props = defineProps<{
   linkTypes: string[];
   /** 目录前缀过滤（'' = 全库）。 */
   pathPrefix: string;
-  /** 渲染节点/边（经孤立裁剪 + 邻域裁剪）。 */
+  /** 渲染节点/边（经孤立裁剪 + 邻域裁剪 + M5 组过滤）。 */
   nodes: CollectionGraphNode[];
   edges: CollectionGraphEdge[];
+  /** M5：图例组统计源（未做组过滤的视图节点——隐藏组仍在图例中可恢复）。 */
+  legendNodes: CollectionGraphNode[];
+  /** M5：已隐藏的 doc_type 组列表（页面持有 + localStorage 持久化）。 */
+  hiddenGroups: string[];
   /** 全量计数（统计行）。 */
   totalNodes: number;
   totalEdges: number;
@@ -428,6 +443,8 @@ const emit = defineEmits<{
   'update:fullscreen': [value: boolean];
   /** M4：FocusCard「重新向量化」（B1 入口②，API 接线在 B1-T4）。 */
   'reembed-node': [docId: string];
+  /** M5：图例点击切换 doc_type 组隐藏（状态由页面持有）。 */
+  'toggle-group': [docType: string];
 }>();
 
 const { t } = useI18n();
@@ -471,8 +488,12 @@ const collectionOptions = computed(() =>
   props.collections.map((c) => ({ label: c.name || c.id, value: c.id, backend: c.vault_backend })),
 );
 
-/** 画布实例（工具条「适应视图」）。 */
-const canvasRef = ref<{ zoomToFit: (ms?: number) => void; clearFocus: () => void } | null>(null);
+/** 画布实例（工具条「适应视图」+ M5 透镜）。 */
+const canvasRef = ref<{
+  zoomToFit: (ms?: number) => void;
+  clearFocus: () => void;
+  setLens: (docType: string | null) => void;
+} | null>(null);
 
 function fitView() {
   canvasRef.value?.zoomToFit();
@@ -520,6 +541,18 @@ watch(layout, (v) => {
 function toggleLayout() {
   layout.value = layout.value === 'galaxy' ? 'force' : 'galaxy';
 }
+
+/** M5 图例组统计：未过滤视图节点按 doc_type 聚合计数（取色与画布 palette 同源，排序稳定）。 */
+const legendGroups = computed<LegendGroup[]>(() => {
+  const counts = new Map<string, number>();
+  for (const n of props.legendNodes) {
+    const k = n.doc_type || '';
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([docType, count]) => ({ docType, color: graphDocTypeColor(docType), count }));
+});
 
 /** 节点图例：doc_type 按频次降序取前 8，色板与画布一致。 */
 const nodeLegend = computed(() => {
@@ -615,6 +648,12 @@ const nodeLegend = computed(() => {
     min-width: 180px;
     max-width: 240px;
     padding: 10px 12px;
+  }
+
+  // M5 图例面板：GraphLegend 默认 left:16/bottom:16，抬高避开左下统计行。
+  &__legend-panel {
+    bottom: 44px;
+    max-width: 240px;
   }
 
   &__legend-section + &__legend-section {

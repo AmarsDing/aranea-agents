@@ -65,6 +65,8 @@
       :path-prefix="graphPathPrefix"
       :nodes="graphRenderNodes"
       :edges="graphRenderEdges"
+      :legend-nodes="graphViewGraph.nodes"
+      :hidden-groups="graphHiddenGroups"
       :total-nodes="graphAllNodes.length"
       :total-edges="graphAllEdges.length"
       :hidden-isolated="graphHiddenIsolated"
@@ -100,6 +102,7 @@
       @reset-global-view="graph.resetGlobalView"
       @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
       @reembed-node="(docId: string) => confirmReembed([docId])"
+      @toggle-group="onGraphToggleGroup"
     />
 
     <!-- 设置浮层（SP2-8）：Embedder 配置；kb-portal 在 body 重挂深空令牌 -->
@@ -177,6 +180,7 @@ import KnowledgeMoveDialog from '../components/knowledge/KnowledgeMoveDialog.vue
 import KnowledgeMoveConflictDialog from '../components/knowledge/KnowledgeMoveConflictDialog.vue';
 import KnowledgePromoteDialog from '../components/knowledge/KnowledgePromoteDialog.vue';
 import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
+import { filterGraphByGroups } from '../features/knowledge/graph3d/model';
 import { useKnowledgeGraph } from '../features/knowledge/useKnowledgeGraph';
 import { useKnowledgeGraphDeltaWs } from '../features/knowledge/useKnowledgeGraphDeltaWs';
 import { createKnowledgeWorkbench } from '../features/knowledge/useKnowledgeWorkbench';
@@ -309,10 +313,56 @@ const {
   lastMergeResult: graphLastMergeResult,
 } = graph;
 
+// ---------- M5：doc_type 组隐藏（图例点击切换，localStorage 持久化） ----------
+
+/** 读取持久化的隐藏组（隐私模式/脏数据退化为空）。 */
+function readGraphHiddenGroups(): string[] {
+  try {
+    const raw = localStorage.getItem('kg3d-hidden-groups');
+    const v: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+const graphHiddenGroups = ref<string[]>(readGraphHiddenGroups());
+
+watch(graphHiddenGroups, (v) => {
+  try {
+    localStorage.setItem('kg3d-hidden-groups', JSON.stringify(v));
+  } catch {
+    /* 隐私模式忽略 */
+  }
+});
+
+/** 图例点击：切换 doc_type 组隐藏。 */
+function onGraphToggleGroup(docType: string) {
+  const i = graphHiddenGroups.value.indexOf(docType);
+  if (i >= 0) graphHiddenGroups.value.splice(i, 1);
+  else graphHiddenGroups.value.push(docType);
+}
+
 // 渲染视图派生（viewGraph = 孤立裁剪 + 邻域裁剪；computed 解构后模板自动解包）。
-const graphRenderNodes = computed(() => graphViewGraph.value.nodes);
-const graphRenderEdges = computed(() => graphViewGraph.value.edges);
-const graphHiddenIsolated = computed(() => graphViewGraph.value.hiddenIsolated);
+// M5 过滤管线：viewGraph → filterGraphByGroups（doc_type 组隐藏 + 边级联排除）。
+const graphFiltered = computed(() => {
+  const view = graphViewGraph.value;
+  if (!graphHiddenGroups.value.length) return view;
+  const out = filterGraphByGroups(
+    view.nodes.map((n) => ({ docId: n.doc_id, name: n.name, relPath: n.rel_path, docType: n.doc_type })),
+    view.edges,
+    new Set(graphHiddenGroups.value),
+  );
+  const keptIds = new Set(out.nodes.map((n) => n.docId));
+  return {
+    nodes: view.nodes.filter((n) => keptIds.has(n.doc_id)),
+    edges: out.edges,
+    hiddenIsolated: view.hiddenIsolated,
+  };
+});
+const graphRenderNodes = computed(() => graphFiltered.value.nodes);
+const graphRenderEdges = computed(() => graphFiltered.value.edges);
+const graphHiddenIsolated = computed(() => graphFiltered.value.hiddenIsolated);
 
 // G5-E HUD 开关（纯 UI 状态，页面持有）。
 const graphAutoRotate = ref(false);

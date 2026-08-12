@@ -880,7 +880,30 @@ function clearFocusLock(): void {
   emit('focus-change', '');
 }
 
-defineExpose({ zoomToFit, clearFocus: clearFocusLock });
+/** M5 透镜：按 doc_type 组临时提亮/dim（null 解除，恢复 hover/selected 驱动）。
+ *  互斥纪律：聚焦锁定时透镜不生效；透镜激活时清除 hover。 */
+function setLens(docType: string | null): void {
+  if (!model || !nodeLayer || !edgeLayer) return;
+  if (interaction.focused !== null) return; // 聚焦锁定优先
+  if (docType === null) {
+    applyHighlight();
+    return;
+  }
+  interaction.setHover(null);
+  const gid = model.groups.indexOf(docType);
+  if (gid < 0) return; // 组被隐藏（不在当前模型）
+  const nodes = new Set<number>();
+  for (let i = 0; i < model.count; i++) if (model.groupId[i] === gid) nodes.add(i);
+  const edges = new Set<number>();
+  for (let e = 0; e < model.edgeCount; e++) {
+    if (nodes.has(model.edges[e * 2]) && nodes.has(model.edges[e * 2 + 1])) edges.add(e);
+  }
+  nodeLayer.setHighlight(nodes);
+  edgeLayer.setHighlight(edges);
+  requestRender();
+}
+
+defineExpose({ zoomToFit, clearFocus: clearFocusLock, setLens });
 </script>
 
 <style lang="scss" scoped>
