@@ -112,6 +112,19 @@ export function buildGraphModel(nodes: GraphNodeInput[], edges: GraphEdgeInput[]
   };
 }
 
+/** M5：按 doc_type 组过滤（隐藏组节点排除 + 边级联排除）。空集合零开销原样返回。 */
+export function filterGraphByGroups(
+  nodes: GraphNodeInput[],
+  edges: GraphEdgeInput[],
+  hiddenGroups: ReadonlySet<string>,
+): { nodes: GraphNodeInput[]; edges: GraphEdgeInput[] } {
+  if (hiddenGroups.size === 0) return { nodes, edges };
+  const kept = nodes.filter((n) => !hiddenGroups.has(n.docType));
+  const keptIds = new Set(kept.map((n) => n.docId));
+  const keptEdges = edges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+  return { nodes: kept, edges: keptEdges };
+}
+
 /** mulberry32 — 可播种确定性 PRNG。 */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;

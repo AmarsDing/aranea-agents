@@ -2,7 +2,14 @@
  * model.spec：G5-A SoA 图模型契约（设计 §V12.8-1 model.ts）。
  */
 import { describe, expect, it } from 'vitest';
-import { buildGraphModel, mulberry32, seedPositions, type GraphEdgeInput, type GraphNodeInput } from '../model';
+import {
+  buildGraphModel,
+  filterGraphByGroups,
+  mulberry32,
+  seedPositions,
+  type GraphEdgeInput,
+  type GraphNodeInput,
+} from '../model';
 
 function node(docId: string, docType = ''): GraphNodeInput {
   return { docId, name: docId, relPath: `${docId}.md`, docType };
@@ -97,6 +104,36 @@ describe('mulberry32', () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+});
+
+describe('M5 filterGraphByGroups', () => {
+  const nodes: GraphNodeInput[] = [
+    { docId: 'a', name: 'a', relPath: 'a.md', docType: 'note' },
+    { docId: 'b', name: 'b', relPath: 'b.md', docType: 'note' },
+    { docId: 'c', name: 'c', relPath: 'c.md', docType: 'image' },
+  ];
+  const edges: GraphEdgeInput[] = [
+    { source: 'a', target: 'b', type: 'explicit' },
+    { source: 'b', target: 'c', type: 'semantic' },
+  ];
+
+  it('空 hiddenGroups：原样返回（引用相等，零开销）', () => {
+    const out = filterGraphByGroups(nodes, edges, new Set());
+    expect(out.nodes).toBe(nodes);
+    expect(out.edges).toBe(edges);
+  });
+
+  it('隐藏 image 组：节点 c 排除 + 边 b-c 级联排除', () => {
+    const out = filterGraphByGroups(nodes, edges, new Set(['image']));
+    expect(out.nodes.map((n) => n.docId)).toEqual(['a', 'b']);
+    expect(out.edges).toEqual([{ source: 'a', target: 'b', type: 'explicit' }]);
+  });
+
+  it('隐藏全部组：空图', () => {
+    const out = filterGraphByGroups(nodes, edges, new Set(['note', 'image']));
+    expect(out.nodes).toEqual([]);
+    expect(out.edges).toEqual([]);
   });
 });
 
