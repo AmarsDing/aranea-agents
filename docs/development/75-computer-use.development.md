@@ -70,14 +70,14 @@
 | 2 | omniparser.go HTTP 客户端 + Available 健康检查 + 降级标记 | 单测绿（httptest） |
 | 3 | vlm.go VisionGrounder（catalog 多模态调用）+ Act 编排接入视觉路径 | 单测绿（mock VLM）；自绘窗口场景命中率验证 |
 
-### Phase M1.4 — 安全/审计/观测/前端 ⏳
+### Phase M1.4 — 安全/审计/观测/前端 ✅
 
 | # | 任务 | 验收 | 状态 |
 |---|------|------|------|
 | 1 | Ent Schema computer_use_audit + AuditStore repo | `go generate` + 迁移绿 | ✅ |
 | 2 | computeruse.step MonitorEvent + 流程日志 step 登记 + 双文档同步 | 事件链路全做（contract 类型/Publisher 适配器/MonitorBus 装配/WS pump 直达/前端订阅在任务 4）；52 号文档 §5.1 已同步；TraceDomainComputerUse + domainForStepID 已注册 | ✅（wire_gen 待并行会话 76 接线完成后 `make wire` 重生） |
-| 3 | 安全门全链路（确认卡 danger 标记/禁区/预算/急停 API） | 验收 A5-A8 | ⏳ |
-| 4 | 前端 CuStepStream 最简视图 + 急停按钮 + ToolsPage 展示 | `pnpm lint && pnpm test && pnpm build` 绿 | ⏳ |
+| 3 | 安全门全链路（确认卡 danger 标记/禁区/预算/急停 API） | 验收 A5-A8：danger 强制逐次确认（授权链短路，tool_confirm_gate_computeruse_test.go 绿）；确认卡 Danger=true 仅「允许本次/拒绝」两按钮（ConfirmBlock.spec.ts 绿）；禁区拒绝含原因（ErrBlockedProcess+进程名）；预算超限自动终止+流程日志；急停 API+前端按钮 | ✅ |
+| 4 | 前端 CuStepStream 最简视图 + 急停按钮 + ToolsPage 展示 | `pnpm test`（1735 绿）+ `pnpm build` 绿；TurnContainer 运行中 turn 内嵌步骤流（cuSessionIdFromSteps）；ToolsPage 分类筛选含 computeruse；i18n keys 已注册 zh/en（pnpm lint 本模块文件干净，全局 lint 基线漂移归并行会话） | ✅ |
 
 ### Phase P2 — Linux sidecar（后续迭代）
 ### Phase P3 — iOS 模拟器（macOS 宿主 WDA + MCP 托管，后续迭代）
@@ -88,7 +88,7 @@
 
 ## 6. 改动文件清单（预估）
 
-见 §2.2 新增锚点；修改锚点：`internal/tools/toolset.go`（Registry 追加）、`internal/tools/toolset_assemble.go`（装配）、`internal/data/builtin_tools_seed.go`（种子）、`internal/event/contract/monitor_event.go`（新 MonitorEvent 类型）、`internal/event/trace_context.go`（TraceDomainComputerUse）、`internal/event/flow_log.go`（step 登记）、`internal/service/event_adapter.go`（domainForStepID 前缀映射）、`internal/computeruse/step_events.go`（MonitorBus 适配器）、`internal/service/`（proto 实现）、`docs/development/52-flow-logger.design.md`（§5.1 同步）、`AGENTS.md`（如需登记 bin/cua 产物约定）。
+见 §2.2 新增锚点；修改锚点：`internal/tools/toolset.go`（Registry 追加）、`internal/tools/toolset_assemble.go`（装配）、`internal/data/builtin_tools_seed.go`（种子）、`internal/event/contract/monitor_event.go`（新 MonitorEvent 类型）、`internal/event/trace_context.go`（TraceDomainComputerUse）、`internal/event/flow_log.go`（step 登记）、`internal/service/event_adapter.go`（domainForStepID 前缀映射）、`internal/computeruse/step_events.go`（MonitorBus 适配器）、`internal/agent/tool_confirm_gate.go`（danger 短路）、`internal/biz/step.go` + `internal/biz/activity.go` + `internal/agent/v2/projector.go`（Step.Danger 传递）、`internal/service/`（proto 实现）、`web/src/components/chat/ConfirmBlock.vue`（高危徽标+两按钮）、`web/src/components/chat/v2/TurnContainer.vue`（内嵌步骤流）、`web/src/features/computeruse/`（CuStepStream/useCuStepStream）、`web/src/i18n/locales/{zh-CN,en-US}.ts`（computeruse + chat.confirm.danger keys）、`web/src/realtime/monitorEvent.ts`（事件类型）、`web/src/services/index.ts`（ComputerUseService）、`web/src/components/tools/toolUi.ts`（分类筛选）、`docs/development/52-flow-logger.design.md`（§5.1 同步）、`AGENTS.md`（如需登记 bin/cua 产物约定）。
 
 ## 7. 风险与对策
 

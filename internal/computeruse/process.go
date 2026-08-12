@@ -290,10 +290,10 @@ func (m *Manager) startRealProcess(_ context.Context) (*processHandle, error) {
 		stdout: stdout,
 		wait:   cmd.Wait,
 		kill: func() error {
-		if cmd.Process == nil {
-			return nil
-		}
-		return cmd.Process.Kill()
+			if cmd.Process == nil {
+				return nil
+			}
+			return cmd.Process.Kill()
 		},
 	}, nil
 }

@@ -28,7 +28,7 @@ type UsecaseDeps struct {
 	Projects ProjectRepo
 	Tasks    TaskRepo
 	Sessions SessionFactory
-	Listener TaskListener      // 可选：终态通知（事件发射/播报）
+	Listener TaskListener     // 可选：终态通知（事件发射/播报）
 	Logger   loggateway.Logger // 可选，nil 时 Noop
 }
 

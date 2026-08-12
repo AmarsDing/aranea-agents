@@ -27,7 +27,7 @@ type sidecarHandler func(req rpcRequest) (result any, rpcErr *rpcError)
 
 func newFakeSidecar(t *testing.T, handler sidecarHandler) *fakeSidecar {
 	t.Helper()
-	reqR, reqW := io.Pipe() // client → sidecar
+	reqR, reqW := io.Pipe()   // client → sidecar
 	respR, respW := io.Pipe() // sidecar → client
 
 	c := NewClient(reqW, respR, loggateway.NewNoop())

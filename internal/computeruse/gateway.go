@@ -206,10 +206,10 @@ func (g *Gateway) ListWindows(ctx context.Context) ([]bizcomputeruse.WindowInfo,
 
 // elementDTO sidecar 线格式（camelCase，CDP §2.3）→ biz UIElement。
 type elementDTO struct {
-	Ref            string `json:"ref"`
-	Type           string `json:"type"`
-	Name           string `json:"name"`
-	BBox           struct {
+	Ref  string `json:"ref"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+	BBox struct {
 		X int `json:"x"`
 		Y int `json:"y"`
 		W int `json:"w"`
@@ -224,14 +224,14 @@ type elementDTO struct {
 // toBiz 转换为 biz 模型并回填所属 snapshot 代。
 func (d elementDTO) toBiz(generation int) bizcomputeruse.UIElement {
 	return bizcomputeruse.UIElement{
-		Ref:            d.Ref,
-		Type:           d.Type,
-		Name:           d.Name,
-		BBox:           bizcomputeruse.Rect{X: d.BBox.X, Y: d.BBox.Y, W: d.BBox.W, H: d.BBox.H},
-		Interactivity:  d.Interactivity,
-		Source:         d.Source,
-		AppName:        d.AppName,
-		Enabled:        d.Enabled,
-		Generation:     generation,
+		Ref:           d.Ref,
+		Type:          d.Type,
+		Name:          d.Name,
+		BBox:          bizcomputeruse.Rect{X: d.BBox.X, Y: d.BBox.Y, W: d.BBox.W, H: d.BBox.H},
+		Interactivity: d.Interactivity,
+		Source:        d.Source,
+		AppName:       d.AppName,
+		Enabled:       d.Enabled,
+		Generation:    generation,
 	}
 }

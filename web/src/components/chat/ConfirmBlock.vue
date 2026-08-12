@@ -3,7 +3,7 @@
     <div class="confirm-block__header">
       <span class="confirm-block__icon">⚠️</span>
       <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
-      <span v-if="step.Danger" class="confirm-block__danger">{{ t('chat.confirm.danger', '高危') }}</span>
+      <span v-if="step.Danger" class="confirm-block__danger">{{ t('chat.confirm.danger') }}</span>
       <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
     </div>
     <div class="confirm-block__content">{{ step.Content }}</div>
@@ -30,7 +30,10 @@
       >
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.reject', '拒绝') }}
       </button>
+      <!-- 75 A5/需求 §5.3：高危确认只保留「允许本次/拒绝」——后端 danger 命中
+           强制逐次确认（授权链不生效），隐藏会话/持久授权按钮避免误导。 -->
       <button
+        v-if="!step.Danger"
         class="confirm-block__btn confirm-block__btn--approve-session"
         :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.approveSession)"
@@ -38,6 +41,7 @@
         {{ confirming ? t('chat.confirm.submitting', '提交中…') : t('chat.confirm.approveSession', '会话内始终允许') }}
       </button>
       <button
+        v-if="!step.Danger"
         class="confirm-block__btn confirm-block__btn--approve-always"
         :disabled="confirming || expired"
         @click="onConfirm(TOOL_CONFIRM_REPLY.approveAlways)"

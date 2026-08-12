@@ -37,11 +37,11 @@ func TestTransition_IllegalRejected(t *testing.T) {
 		from SessionStatus
 		ev   SessionEvent
 	}{
-		{SessionDone, EvGround},        // 终态不可再转换
-		{SessionCancelled, EvAct},      // 急停后不可动作
-		{SessionFailed, EvStepDone},    // 失败终态
-		{SessionIdle, EvStepDone},      // idle 无单步完成
-		{SessionObserving, EvAct},      // 感知中不能直接动作
+		{SessionDone, EvGround},         // 终态不可再转换
+		{SessionCancelled, EvAct},       // 急停后不可动作
+		{SessionFailed, EvStepDone},     // 失败终态
+		{SessionIdle, EvStepDone},       // idle 无单步完成
+		{SessionObserving, EvAct},       // 感知中不能直接动作
 		{SessionAwaitingConfirm, EvAct}, // 确认等待中不能动作
 	}
 	for _, c := range cases {

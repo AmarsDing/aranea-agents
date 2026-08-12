@@ -57,3 +57,31 @@ describe('ConfirmBlock danger badge', () => {
     expect(wrapper.find('.confirm-block__danger').exists()).toBe(false);
   });
 });
+
+// 75 M1.4 A5 + 需求 §5.3：高危确认卡只保留「允许本次/拒绝」两选项——
+// 后端 danger 命中强制逐次确认（授权不生效），会话/持久授权按钮必须隐藏。
+describe('ConfirmBlock danger two-button mode', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  it('hides session/always grant buttons when step.Danger is true', () => {
+    const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
+      props: { step: mkConfirmStep({ Danger: true }) },
+    });
+    expect(wrapper.find('.confirm-block__btn--approve').exists()).toBe(true);
+    expect(wrapper.find('.confirm-block__btn--reject').exists()).toBe(true);
+    expect(wrapper.find('.confirm-block__btn--approve-session').exists()).toBe(false);
+    expect(wrapper.find('.confirm-block__btn--approve-always').exists()).toBe(false);
+  });
+
+  it('shows all four buttons when step.Danger is falsy', () => {
+    const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
+      props: { step: mkConfirmStep({}) },
+    });
+    expect(wrapper.find('.confirm-block__btn--approve').exists()).toBe(true);
+    expect(wrapper.find('.confirm-block__btn--reject').exists()).toBe(true);
+    expect(wrapper.find('.confirm-block__btn--approve-session').exists()).toBe(true);
+    expect(wrapper.find('.confirm-block__btn--approve-always').exists()).toBe(true);
+  });
+});

@@ -69,6 +69,7 @@ import (
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
@@ -334,7 +335,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
 	computerUseAuditRepo := data.NewComputerUseAuditRepo(dataData, loggatewayLogger)
 	computerUseUsecase := service.ProvideComputerUseUsecase(flowLogWriter, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, computerUseAuditRepo, monitorBus, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase)
+	agentRepo := data.NewCodingAgentRepo(dataData)
+	projectRepo := data.NewCodingProjectRepo(dataData)
+	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
+	sessionFactory := service.NewACPSessionFactory()
+	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -583,11 +589,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	runtimeProfileService := service.NewRuntimeProfileService(runtimeProfileUsecase)
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
-	agentRepo := data.NewCodingAgentRepo(dataData)
-	projectRepo := data.NewCodingProjectRepo(dataData)
-	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
-	sessionFactory := service.NewACPSessionFactory()
-	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
 	agentBridgeAPI := service.NewAgentBridgeAPI(agentBridgeService)
 	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, evolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
@@ -1089,6 +1090,7 @@ func provideRuntimeTooling(
 	sessionSearch *biz.SessionSearchUsecase,
 	clientBridge *clientbridge.Bridge,
 	computerUseUC *computeruse.ComputerUseUsecase,
+	codingBridgeSvc codingbridge.BridgeService,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -1112,6 +1114,7 @@ func provideRuntimeTooling(
 		DeptMailbox:                 deptMailbox,
 		SessionSearch:               sessionSearch,
 		ClientBridge:                clientBridge,
+		CodingBridgeSvc:             codingBridgeSvc,
 	}
 }
 

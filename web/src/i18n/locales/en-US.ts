@@ -2805,7 +2805,8 @@ export default {
       pipelineEnableLabel: 'Enable proposal pipeline',
       pipelineEnableCaption: 'Scan sessions and generate improvement proposals once thresholds are met.',
       autoApplyLabel: 'Auto-apply low-risk proposals',
-      autoApplyCaption: 'Low-risk proposals are applied without per-item confirmation; requires the pipeline to be enabled.',
+      autoApplyCaption:
+        'Low-risk proposals are applied without per-item confirmation; requires the pipeline to be enabled.',
       pipelineNotLiveBanner:
         'These thresholds and toggles are saved, but automatic proposal generation is not live yet and currently has no effect.',
       minEpisodesHint: 'Minimum sessions required to trigger an evaluation',
@@ -2814,7 +2815,8 @@ export default {
       proposalTtlDaysHint: 'Proposals expire if left unhandled beyond this many days',
       personaMaxCharsHint: 'Max characters of persona content for injection and drafts (effective immediately)',
       maxAppendsHint: 'Maximum appended sections allowed in the system prompt',
-      guardrailsNotLiveBanner: 'Guardrail rules are saved and will take effect once auto-tuning ships; currently record-only.',
+      guardrailsNotLiveBanner:
+        'Guardrail rules are saved and will take effect once auto-tuning ships; currently record-only.',
       maxChangeHint: 'Maximum adjustment magnitude allowed per period (0–1)',
       minDataPointsHint: 'Minimum samples required before auto-tuning',
       rollbackDeclineHint: 'Trigger a rollback when metrics decline by this percentage',
@@ -3017,14 +3019,16 @@ export default {
     promoteTitle: 'Promote to Team Vault',
     promoteTargetLabel: 'Target team vault',
     promoteEmpty: 'No team vault available',
-    promoteHint: 'Clones all blocks of this document into the target team vault; the source stays and lineage links are recorded.',
+    promoteHint:
+      'Clones all blocks of this document into the target team vault; the source stays and lineage links are recorded.',
     promoteSubmit: 'Promote',
     promoteCancel: 'Cancel',
     promoteFailed: 'Promotion failed',
     promoteResultTitle: 'Promotion Complete',
     promoteResultCreated: 'Cloned {count} block(s) into the team vault with lineage links.',
     promoteCascadeTitle: '{count} reference(s) point to private documents not promoted along',
-    promoteCascadeHint: 'These references stay dangling on the team side and resolve once the target notes are created.',
+    promoteCascadeHint:
+      'These references stay dangling on the team side and resolve once the target notes are created.',
     promoteClose: 'Done',
     searchDualPlaceholder: 'Search files or knowledge…',
     searchZoneInstant: 'Instant',
@@ -4653,6 +4657,25 @@ export default {
       saved: 'Risk rules saved',
       errNegative: 'Thresholds must not be negative',
       errLowGtMedium: 'Low-risk cap must not exceed the medium-risk cap',
+    },
+  },
+  // 75 M1.4: Computer Use step stream (CuStepStream.vue)
+  computeruse: {
+    stream: {
+      title: 'Desktop automation steps',
+      kill: 'Kill switch',
+      killing: 'Killing…',
+      killed: 'Killed',
+      empty: 'No steps yet',
+      danger: 'High risk',
+      confirmedBy: 'Confirmed by',
+      result: {
+        ok: 'OK',
+        retry: 'Retry',
+        failed: 'Failed',
+        cancelled: 'Cancelled',
+        unknown: 'Unknown',
+      },
     },
   },
 };

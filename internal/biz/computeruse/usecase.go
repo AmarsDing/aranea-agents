@@ -14,14 +14,14 @@ import (
 
 // 流程日志 step_id（已登记 internal/event/flow_log.go stepTitleRegistry）。
 const (
-	StepSessionStart    = "computeruse.session.start"
-	StepSessionDone     = "computeruse.session.done"
-	StepAct             = "computeruse.act"
-	StepActDone         = "computeruse.act.done"
-	StepActError        = "computeruse.act.error"
-	StepGroundFall      = "computeruse.grounding.fallback"
-	StepBudgetExceeded  = "computeruse.budget.exceeded"
-	StepKillSwitch      = "computeruse.killswitch"
+	StepSessionStart   = "computeruse.session.start"
+	StepSessionDone    = "computeruse.session.done"
+	StepAct            = "computeruse.act"
+	StepActDone        = "computeruse.act.done"
+	StepActError       = "computeruse.act.error"
+	StepGroundFall     = "computeruse.grounding.fallback"
+	StepBudgetExceeded = "computeruse.budget.exceeded"
+	StepKillSwitch     = "computeruse.killswitch"
 )
 
 // 业务错误（供 service/工具层判定）。
@@ -67,8 +67,8 @@ type ComputerUseUsecase struct {
 	d Deps
 
 	mu             sync.Mutex
-	sessions       map[string]*Session       // sessionID → session
-	activeByAgent  map[string]string         // agentKey → 活跃 sessionID
+	sessions       map[string]*Session // sessionID → session
+	activeByAgent  map[string]string   // agentKey → 活跃 sessionID
 	sessionCancels map[string]context.CancelFunc
 	idSeq          int
 }

@@ -4611,4 +4611,23 @@ export default {
       errLowGtMedium: '低风险上限不能大于中风险上限',
     },
   },
+  // 75 M1.4：Computer Use 步骤流（CuStepStream.vue）
+  computeruse: {
+    stream: {
+      title: '桌面自动化步骤',
+      kill: '急停',
+      killing: '急停中…',
+      killed: '已急停',
+      empty: '暂无步骤',
+      danger: '高危',
+      confirmedBy: '确认人',
+      result: {
+        ok: '成功',
+        retry: '重试',
+        failed: '失败',
+        cancelled: '已取消',
+        unknown: '未知',
+      },
+    },
+  },
 };

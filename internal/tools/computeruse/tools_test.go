@@ -21,17 +21,19 @@ func (f *fakeGW) Info(context.Context) (bizcu.DeviceInfo, error) {
 	return bizcu.DeviceInfo{Platform: "windows", ScreenW: 1920, ScreenH: 1080, ScaleFactor: 1}, nil
 }
 
-func (f *fakeGW) Snapshot(context.Context, bizcu.SnapshotOpts) (bizcu.Snapshot, error) { return f.snap, nil }
+func (f *fakeGW) Snapshot(context.Context, bizcu.SnapshotOpts) (bizcu.Snapshot, error) {
+	return f.snap, nil
+}
 
 func (f *fakeGW) Screenshot(context.Context, *bizcu.Rect, float64) (bizcu.Image, error) {
 	return bizcu.Image{PNG: []byte("png-bytes"), Width: 800, Height: 600, ScaleFactor: 1.5}, nil
 }
 
-func (f *fakeGW) Invoke(_ context.Context, ref string, _ int) error { f.invoked = ref; return nil }
+func (f *fakeGW) Invoke(_ context.Context, ref string, _ int) error     { f.invoked = ref; return nil }
 func (f *fakeGW) Click(context.Context, bizcu.Point, string, int) error { return nil }
-func (f *fakeGW) TypeText(context.Context, string) error                 { return nil }
-func (f *fakeGW) Key(context.Context, string) error                      { return nil }
-func (f *fakeGW) FocusWindow(context.Context, string) error              { return nil }
+func (f *fakeGW) TypeText(context.Context, string) error                { return nil }
+func (f *fakeGW) Key(context.Context, string) error                     { return nil }
+func (f *fakeGW) FocusWindow(context.Context, string) error             { return nil }
 func (f *fakeGW) Launch(context.Context, string, string, string) (int, error) {
 	return 4321, nil
 }
@@ -106,7 +108,7 @@ func TestToolset_Declarations(t *testing.T) {
 func TestActTool_EndToEnd(t *testing.T) {
 	saveBtn := &bizcu.UIElement{
 		Ref: "g1.e3", Name: "保存", Type: "button",
-		BBox: bizcu.Rect{X: 10, Y: 20, W: 50, H: 20},
+		BBox:          bizcu.Rect{X: 10, Y: 20, W: 50, H: 20},
 		Interactivity: true, Enabled: true,
 	}
 	gw := &fakeGW{snap: bizcu.Snapshot{Elements: []bizcu.UIElement{*saveBtn}, Generation: 1}}

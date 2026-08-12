@@ -35,6 +35,7 @@ import { createSelfImprovementServiceClient } from './kratos/self_improvement/v1
 import { createPackServiceClient } from './kratos/pack/v1/index';
 import { createRuntimeProfileServiceClient } from './kratos/runtime_profile/v1/index';
 import { createChatServiceClient } from './kratos/chat/v1/index';
+import { createComputerUseServiceClient } from './kratos/computeruse/v1/index';
 import { requestHandler, kratosApi } from './axiosHandler';
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
@@ -128,6 +129,10 @@ export function createGraphService() {
 
 export function createChatService() {
   return createChatServiceClient(requestHandler);
+}
+
+export function createComputerUseService() {
+  return createComputerUseServiceClient(requestHandler);
 }
 
 export function createArtifactService() {

@@ -811,7 +811,7 @@ git commit -m "feat(knowledge): M2 HUD 布局切换接线 + localStorage 持久�
 
 **设计**：5 状态（idle/flying/orbiting/cruising/genesis）+ 合法转换表 + `canTransition` 校验 + `update(progress01)` 输出相机位姿（位置 + 看向 + revealT）。用户交互（OrbitControls start 事件）任何状态 → idle（中断镜头）。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // cameraDirector.spec.ts
@@ -886,12 +886,12 @@ describe('cameraDirector 状态机（M3）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/cameraDirector.spec.ts`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // cameraDirector.ts
@@ -1010,12 +1010,12 @@ export class CameraDirector {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/cameraDirector.spec.ts`
 Expected: PASS（6 tests）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/features/knowledge/graph3d/cameraDirector.ts web/src/features/knowledge/graph3d/__tests__/cameraDirector.spec.ts
@@ -1033,7 +1033,7 @@ git commit -m "feat(knowledge): M3 CameraDirector 电影感镜头状态机（AS-
 
 **范围纪律**：Canvas 已有 zoomToFit/聚焦 tween（第 157-165 行）。M3 落地两件事：① 创世动画（首载/代际变化时 uRevealT 0→1，节点从核心绽放，1.2s）；② OrbitControls `start` 事件 → 立即完成动画（镜头让位）。flying/orbiting 复用既有 tween + CameraDirector 位姿输出的完整接线**降级为后续可选增强**（YAGNI：创世是视觉主菜，飞入已有 tween 覆盖）——CameraDirector 状态机保留供聚焦链路后续接入。LOW 画质档跳过 genesis。
 
-- [ ] **Step 1: NodeLayer reveal 测试先行**
+- [x] **Step 1: NodeLayer reveal 测试先行**
 
 ```typescript
 // NodeLayer.spec.ts（无 WebGL 上下文，仅测 uniform 接线）
@@ -1056,12 +1056,12 @@ describe('NodeLayer（M3 reveal）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/render/__tests__/NodeLayer.spec.ts`
 Expected: FAIL（`setRevealT is not a function`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 NodeLayer.ts：
 - uniforms 加 `uRevealT: { value: 1 }`
@@ -1114,14 +1114,14 @@ KnowledgeGraph3DCanvas.vue：
 
 - `disposeGraph()` 中重置：`revealT = 1;`
 
-- [ ] **Step 4: 测试 + 门禁 + 运行时验证**
+- [x] **Step 4: 测试 + 门禁 + 运行时验证**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/render/__tests__/NodeLayer.spec.ts && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿
 
 运行时：打开知识库图谱（首载/切库）→ 节点从核心 1.2s 绽放（HIGH/MID 档）；拖拽立刻接管；LOW 档直接全显；FPS 无异常掉档；切到 LOW 档再切回无残留动画状态。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/components/knowledge/graph3d/render/NodeLayer.ts web/src/components/knowledge/graph3d/render/__tests__/NodeLayer.spec.ts web/src/components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue
@@ -1140,7 +1140,7 @@ git commit -m "feat(knowledge): M3 创世绽放动画（uRevealT）+ 用户交�
 
 **设计**：现有 `oneHop` 返回一跳邻居集驱动 hover 高亮。M4 聚焦模式：点击节点 → BFS N 跳集合（默认 2 跳）→ 复用 `NodeLayer.setHighlight`（集内 1.6 / 集外 0.15 dim）→ 锁定（hover 不覆盖，点击空白解除）。状态优先级：**聚焦锁定 > hover 高亮 > 默认**。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // interaction.spec.ts 追加
@@ -1184,12 +1184,12 @@ git commit -m "feat(knowledge): M3 创世绽放动画（uRevealT）+ 用户交�
   });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/interaction.spec.ts`
 Expected: FAIL（`nHop is not exported` / `gi.setFocus is not a function`）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `interaction.ts` 追加：
 
@@ -1256,12 +1256,12 @@ export function nHop(
 
 并调整 `active` getter（既有）：`active = focused ?? hover ?? selected`（聚焦锁定优先级最高——具体以既有 active 语义为准微调，保证 hover 高亮在聚焦时不覆盖 dim 集）。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/interaction.spec.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/features/knowledge/graph3d/interaction.ts web/src/features/knowledge/graph3d/__tests__/interaction.spec.ts
@@ -1278,7 +1278,7 @@ git commit -m "feat(knowledge): M4 nHop BFS + 聚焦锁定状态（优先级高�
 
 **设计**：复用 M1 `GlassPanel refract`；内容 = 文档标题 + doc_type 色点 + 度数 + rel_path；操作区 =「在编辑器打开」（既有 open-in-explorer 链路）+「重新向量化」（B1 入口②，emit 事件由 KnowledgePage 接线调 B1 RPC，M4 阶段先 emit 占位）。可拖动（pointer 拖拽）+ 可收起。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // FocusCard.spec.ts
@@ -1331,12 +1331,12 @@ describe('FocusCard（M4）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/__tests__/FocusCard.spec.ts`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```vue
 <!-- web/src/components/knowledge/graph3d/FocusCard.vue -->
@@ -1433,12 +1433,12 @@ const pos = reactive({ x: 16, y: 76 });
 
 i18n 文案（zh-Hans / en-US）：`graphFocusCardTitle: '聚焦节点'` / `Focus node`；`graphFocusDegree: '度数 {n}'` / `Degree {n}`；`graphOpenInEditor: '在编辑器打开'` / `Open in editor`；`graphReembed: '重新向量化'` / `Re-embed`。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/__tests__/FocusCard.spec.ts`
 Expected: PASS（5 tests）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/components/knowledge/graph3d/FocusCard.vue web/src/components/knowledge/graph3d/__tests__/FocusCard.spec.ts web/src/i18n/
@@ -1460,7 +1460,7 @@ git commit -m "feat(knowledge): M4 FocusCard 节点信息卡（真折射 + B1 �
 - Canvas emit 新增 `focus-change: [docId: string]`（聚焦锁定/解除时抛出，''=解除），KnowledgeGraph3D 据此挂载/卸载 FocusCard
 - FocusCard 的 `canReembed`：由 KnowledgePage 传入（当前集合 `embedding_model !== ''`，B1-T4 后接通真实 RPC）
 
-- [ ] **Step 1: Canvas 集成**
+- [x] **Step 1: Canvas 集成**
 
 ```typescript
 // applyHighlight() 改造：聚焦分支优先（现第 367-393 行函数内开头插入）
@@ -1498,7 +1498,7 @@ import { GraphInteraction, isClickMovement, nHop, oneHop, wheelZoomFactor } from
 // 单击空白处理处（既有 background-click emit 旁）：interaction.clearFocus() + emit('focus-change', '')
 ```
 
-- [ ] **Step 2: KnowledgeGraph3D 挂载 FocusCard**
+- [x] **Step 2: KnowledgeGraph3D 挂载 FocusCard**
 
 ```vue
 <!-- 画布容器内（KnowledgeGraph3DCanvas 同级浮层） -->
@@ -1523,7 +1523,7 @@ Expected: 全绿
 
 运行时：单击节点 → 2 跳内节点高亮、其余压暗 + FocusCard 出现（标题/度数/路径正确）；hover 其他节点 dim 集不变（锁定）；单击空白 → dim 解除 + 卡片关闭；「在编辑器打开」跳转工作台正确 tab；「重新向量化」按钮在无语义层集合禁用。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**（注：KnowledgePage.vue 按子代理约束留待 M5/B1-T4 接线，本任务未改）
 
 ```powershell
 git add web/src/components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue web/src/components/knowledge/KnowledgeGraph3D.vue web/src/pages/KnowledgePage.vue

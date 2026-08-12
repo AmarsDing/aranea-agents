@@ -108,3 +108,53 @@ describe('TurnContainer.visibleSteps — empty reply filtering', () => {
     expect(wrapper.findAll('.reply-block')).toHaveLength(1);
   });
 });
+
+// 75 M1.4 任务 4（设计 §3.8）：运行中的 turn 含 computer_use 工具会话时，
+// 聊天气泡尾部内嵌 CuStepStream（实时步骤卡片 + 急停）；历史 turn 不渲染
+// （急停按钮对死会话无意义，审计回放走监控页 steps API）。
+describe('TurnContainer — CuStepStream embedding', () => {
+  beforeEach(() => setActivePinia(createPinia()));
+
+  const cuActionStep = (over: Partial<Step> = {}) =>
+    mkStep({
+      ID: 'cu1',
+      Kind: 'action',
+      ToolName: 'computer_use_act',
+      ToolResult: { session_id: 'cu-sess-1', result: 'ok' },
+      ...over,
+    });
+
+  function mountWithStream(turn: Turn) {
+    return mount(TurnContainer, {
+      props: { turn },
+      global: {
+        stubs: {
+          CuStepStream: { template: '<div class="cu-stream-stub" :data-session="sessionId" />', props: ['sessionId'] },
+        },
+      },
+    });
+  }
+
+  it('embeds CuStepStream with session id when turn is running', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(cuActionStep());
+    const wrapper = mountWithStream(mkTurn({ Status: 'running' }));
+    const stub = wrapper.find('.cu-stream-stub');
+    expect(stub.exists()).toBe(true);
+    expect(stub.attributes('data-session')).toBe('cu-sess-1');
+  });
+
+  it('does not embed for completed turns (historical replay via audit API)', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(cuActionStep());
+    const wrapper = mountWithStream(mkTurn({ Status: 'completed' }));
+    expect(wrapper.find('.cu-stream-stub').exists()).toBe(false);
+  });
+
+  it('does not embed when no computer_use session exists in steps', () => {
+    const store = useChatActivityStore();
+    store.upsertStep(mkStep({ ID: 'a1', Kind: 'action', ToolName: 'web_search', ToolResult: { session_id: 'x' } }));
+    const wrapper = mountWithStream(mkTurn({ Status: 'running' }));
+    expect(wrapper.find('.cu-stream-stub').exists()).toBe(false);
+  });
+});

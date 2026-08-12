@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	computerusepkg "aranea-agents/internal/tools/computeruse"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
@@ -84,6 +85,11 @@ type ToolsetConfig struct {
 	// a tool whose sidecar backend is unavailable (75-computer-use).
 	ComputerUse   bool
 	ComputerUseUC *bizcu.ComputerUseUsecase
+	// CodingBridge enables the coding agent bridge ToolSet (coding_dispatch_task /
+	// coding_check_task / coding_cancel_task). Requires CodingBridgeSvc; when nil
+	// the flag is pruned so agents never see a tool with no backend (76-coding-agent-bridge).
+	CodingBridge    bool
+	CodingBridgeSvc codingbridge.BridgeService
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -171,6 +177,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ClientBridge && cfg.ClientBridgeSvc != nil {
 		enabled = append(enabled, clientbridge.ToolSetName)
+	}
+	if cfg.CodingBridge && cfg.CodingBridgeSvc != nil {
+		enabled = append(enabled, codingbridge.ToolSetName)
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))
@@ -274,6 +283,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 			SubAgentService: cfg.SubAgentService,
 			BlobReader:      cfg.BlobReader,
 			ClientBridge:    cfg.ClientBridgeSvc,
+			CodingBridge:    cfg.CodingBridgeSvc,
 		},
 		Browser: cfg.Browser,
 		Lg:      lg,

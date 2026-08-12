@@ -24,9 +24,9 @@ type OmniParserClient struct {
 	// probeTTL 健康状态缓存时长（测试可注入短值）。
 	probeTTL time.Duration
 
-	mu        sync.Mutex
-	healthy   bool
-	probedAt  time.Time // 上次真探测时间；零值表示从未探测
+	mu         sync.Mutex
+	healthy    bool
+	probedAt   time.Time // 上次真探测时间；零值表示从未探测
 	probedOnce bool
 }
 
@@ -134,12 +134,12 @@ func (c *OmniParserClient) Parse(ctx context.Context, img bizcu.Image) ([]bizcu.
 		x2 := int(it.BBox[2] * float64(img.Width))
 		y2 := int(it.BBox[3] * float64(img.Height))
 		els = append(els, bizcu.UIElement{
-			Type:           it.Type,
-			Name:           it.Content,
-			BBox:           bizcu.Rect{X: x1, Y: y1, W: x2 - x1, H: y2 - y1},
-			Interactivity:  it.Interactivity,
-			Source:         "vision",
-			Enabled:        true,
+			Type:          it.Type,
+			Name:          it.Content,
+			BBox:          bizcu.Rect{X: x1, Y: y1, W: x2 - x1, H: y2 - y1},
+			Interactivity: it.Interactivity,
+			Source:        "vision",
+			Enabled:       true,
 		})
 	}
 	return els, nil

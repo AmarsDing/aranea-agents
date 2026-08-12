@@ -133,11 +133,11 @@ func TestMatcherReturnsCopy(t *testing.T) {
 // TestNormalize 归一化单测。
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
-		"保存（Ｓ）":   "保存s",
+		"保存（Ｓ）":     "保存s",
 		" Save As ": "saveas",
-		"Ctrl＋Ｃ":   "ctrlc",
-		"":         "",
-		"　":        "", // 全角空格
+		"Ctrl＋Ｃ":    "ctrlc",
+		"":          "",
+		"　":         "", // 全角空格
 	}
 	for in, want := range cases {
 		if got := normalize(in); got != want {

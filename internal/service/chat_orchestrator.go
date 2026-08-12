@@ -25,6 +25,7 @@ import (
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -79,6 +80,9 @@ type RuntimeTooling struct {
 	// ComputerUseUC enables the computer_use_* desktop automation toolset
 	// (75-computer-use). Nil prunes the toolset from agent builds.
 	ComputerUseUC *bizcu.ComputerUseUsecase
+	// CodingBridgeSvc enables the coding agent bridge ToolSet (coding_dispatch_task /
+	// coding_check_task / coding_cancel_task). Nil prunes the toolset (76-coding-agent-bridge).
+	CodingBridgeSvc codingbridge.BridgeService
 	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
 	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
 	ParallelToolExecutor *tools.ParallelToolExecutor

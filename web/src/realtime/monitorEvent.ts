@@ -27,7 +27,8 @@ export type MonitorEventType =
   | 'skill.reload'
   | 'skill.filesystem.updated'
   | 'skill.filesystem.recovered'
-  | 'skill.filesystem.imported';
+  | 'skill.filesystem.imported'
+  | 'computeruse.step';
 
 /**
  * MonitorEvent is the unified transport format for monitor-channel events.

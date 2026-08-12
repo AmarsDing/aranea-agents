@@ -12,8 +12,22 @@ GO_BIN_DIR:=$(subst \,/,$(GOBIN_RAW))
 endif
 VERSION=$(shell git describe --tags --always)
 COMMIT=$(shell git rev-parse HEAD)
+ifeq ($(GOHOSTOS),windows)
+# cmd `date` is interactive on Windows; use PowerShell for ISO-8601 UTC.
+BUILD_DATE=$(shell powershell -NoProfile -Command "Get-Date -Format yyyy-MM-ddTHH:mm:ssZ")
+else
 BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+endif
 LDFLAGS=-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(BUILD_DATE)
+
+# Cross-shell bin dir creation: PowerShell terminals lack sh.exe so make falls
+# back to cmd.exe, which rejects `mkdir -p`. Own recipe line (no && chaining:
+# cmd `if` would swallow the rest of the chain when bin/ already exists).
+ifeq ($(GOHOSTOS),windows)
+MKDIR_BIN=if not exist bin mkdir bin
+else
+MKDIR_BIN=mkdir -p bin
+endif
 
 # Explicit plugin path: Windows protoc often does not see Cygwin/MSYS PATH for protoc-gen-*.
 PROTOC_GEN_TYPESCRIPT_HTTP:=$(GO_BIN_DIR)/protoc-gen-typescript-http$(GOEXE)
@@ -83,7 +97,8 @@ check-overlay:
 .PHONY: cli
 # build the aranea CLI binary to ./bin/aranea
 cli:
-	mkdir -p bin/ && go build -ldflags "$(LDFLAGS)" -o ./bin/aranea$(GOEXE) ./cmd/aranea
+	$(MKDIR_BIN)
+	go build -ldflags "$(LDFLAGS)" -o ./bin/aranea$(GOEXE) ./cmd/aranea
 
 .PHONY: cli-all
 # build aranea CLI for linux/amd64 (cross-compile)
@@ -93,7 +108,8 @@ cli-all: cli
 .PHONY: build
 # build (GO_BUILD_TAGS optional, e.g. GO_BUILD_TAGS=pgvector for the eval image)
 build:
-	mkdir -p bin/ && go build -tags "$(GO_BUILD_TAGS)" -ldflags "$(LDFLAGS)" -o ./bin/ ./...
+	$(MKDIR_BIN)
+	go build -tags "$(GO_BUILD_TAGS)" -ldflags "$(LDFLAGS)" -o ./bin/ ./...
 
 .PHONY: fieldguide-lint
 # PGO-2-LINT-02: check Go ↔ TypeScript FieldGuide scope registry is in sync

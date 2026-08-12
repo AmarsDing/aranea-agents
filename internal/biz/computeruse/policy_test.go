@@ -16,7 +16,7 @@ func TestPolicy_IsDanger(t *testing.T) {
 		{"输入文本", map[string]any{"text": "hello world"}, false},
 		{"输入转账金额", map[string]any{"text": "100元"}, true},
 		{"press", map[string]any{"combo": "ctrl+s"}, false},
-		{"点 击 删 除", nil, true}, // 空白归一化后仍命中
+		{"点 击 删 除", nil, true},     // 空白归一化后仍命中
 		{"DELETE FILE", nil, true}, // 大小写归一化
 	}
 	for _, c := range cases {

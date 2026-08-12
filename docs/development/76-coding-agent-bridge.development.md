@@ -57,6 +57,7 @@
 | M1-12 | 流程日志 step 登记（flow_log.go stepTitleRegistry + 52 文档 §5.1 同步） | 登记检查 | ✅ |
 | M1-13 | fake ACP server 端到端：dispatch → 进度 → done 全链路 | 集成测试绿 | 📋 |
 | M1-14 | CodeBuddy 真实冒烟（手动）：`codebuddy --acp` 跑真实任务 | 语音派发→完成播报人工验收 | 📋 |
+| M1-15 | 工具运行时挂载链收尾（M1-14 前置，M1-12 审查发现）：catalog seed（`builtin_tools_seed.go` + coding_dispatch_task/check_task/cancel_task）+ `effective_config.go` key 映射 + `ToolsetConfig.CodingBridge` flag + `TRPCToolAssemblyDeps.CodingBridgeSvc` + `tool_assembly.go` 传递 + `RuntimeTooling` 注入 | agent 启用 coding_* 后 `BuildToolsets` 产出三工具 | ✅ |
 
 ## 6. M1 验收标准
 

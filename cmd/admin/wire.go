@@ -26,9 +26,9 @@ import (
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
-	bizcu "aranea-agents/internal/biz/computeruse"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
@@ -70,6 +70,7 @@ import (
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
@@ -484,6 +485,7 @@ func provideRuntimeTooling(
 	sessionSearch *biz.SessionSearchUsecase,
 	clientBridge *clientbridge.Bridge,
 	computerUseUC *bizcu.ComputerUseUsecase,
+	codingBridgeSvc codingbridge.BridgeService,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -507,6 +509,7 @@ func provideRuntimeTooling(
 		DeptMailbox:                 deptMailbox,
 		SessionSearch:               sessionSearch,
 		ClientBridge:                clientBridge,
+		CodingBridgeSvc:             codingBridgeSvc,
 	}
 }
 
@@ -3726,6 +3729,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideWSTurnExecutor,
 		// Kanban bridge binding
 		wire.Bind(new(kanbanpkg.Bridge), new(*service.KanbanToolBridge)),
+		// Coding agent bridge binding (76-coding-agent-bridge M1-15)
+		wire.Bind(new(codingbridge.BridgeService), new(*service.AgentBridgeService)),
 		// ToolResultGate bindings
 		wire.Bind(new(biz.ToolResultBlobReader), new(*data.ToolResultBlobRepo)),
 		wire.Bind(new(biz.ToolResultBlobWriter), new(*data.ToolResultBlobRepo)),

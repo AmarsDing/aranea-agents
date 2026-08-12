@@ -11,6 +11,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
@@ -66,6 +67,10 @@ type TRPCToolAssemblyDeps struct {
 	// (75-computer-use). Optional: when nil, computer-use tools are pruned
 	// from assembly even if enabled in effective tool keys.
 	ComputerUseUC *bizcu.ComputerUseUsecase
+	// CodingBridgeSvc enables the coding agent bridge ToolSet (coding_dispatch_task /
+	// coding_check_task / coding_cancel_task). Optional: when nil, coding tools are
+	// pruned from assembly even if enabled in effective tool keys (76-coding-agent-bridge).
+	CodingBridgeSvc codingbridge.BridgeService
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.

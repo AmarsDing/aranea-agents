@@ -180,13 +180,13 @@ Act(target)
 
 - 注册：`toolset.go` Registry() 追加 + `internal/data/builtin_tools_seed.go` 种子（分类 `computeruse`，Tags `["desktop","gui","automation"]`，RiskLevel=high for act/launch）
 - 工厂经 `AssemblyConfig` 新增 `ComputerUse *bizcomputeruse.ComputerUseUsecase` 字段装配
-- 确认门：复用现有 tool-grants；敏感词命中时在工具描述/确认卡 metadata 标注 `danger=true`
+- 确认门：复用现有 tool-grants；敏感词命中（`tool_confirm_gate.go` `computerUseDangerHit`，仅 act/launch 两工具检查入参）时决策链短路为 `policy_danger`——**强制逐次确认，持久/会话授权不生效**；确认卡 Step.Danger=true 渲染「高危」徽标，且前端仅显示「允许本次/拒绝」两按钮（需求 §5.3）
 
 ### 3.5 安全模型实现点
 
 | 机制 | 实现位置 |
 |------|---------|
-| 确认门 | 工具 RequiresConfirmation + Usecase 内 danger 二次判定 |
+| 确认门 | 工具 RequiresConfirmation + 确认门 danger 短路（`computerUseDangerHit` 命中敏感词时绕过授权链）+ Usecase 内 `Policy.IsDanger` 标记审计/事件 |
 | 敏感词表 | `internal/biz/computeruse/policy.go` 内置默认表（删除/支付/转账/发送/确认支付/格式化/永久删除…），配置可覆盖 |
 | 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾…）→ act 拒绝 |
 | 预算 | Session.Budget，Act 原子自增 StepsUsed，超限返回预算错误 |
@@ -225,8 +225,8 @@ Act(target)
 ### 3.8 前端设计（P1 最简视图）
 
 - `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent）
-- 聊天气泡内嵌：步骤卡片（目标/路径徽标/耗时/结果/失败原因）；头部急停按钮 → `POST /v1/computeruse/sessions/{id}/kill`
-- ToolsPage 自动展示新工具（种子分类 computeruse）
+- 聊天气泡内嵌：`TurnContainer.vue` 在 **turn.Status=running** 且 steps 中含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时，气泡尾部渲染 CuStepStream——步骤卡片（目标/路径徽标/耗时/结果/失败原因）；头部急停按钮 → `POST /v1/computeruse/sessions/{id}/kill`。历史 turn 不渲染（急停对死会话无意义，审计回放走监控页 steps API）
+- ToolsPage 自动展示新工具（种子分类 computeruse，分类筛选项含 computeruse）
 
 ### 3.9 API（service 层）
 

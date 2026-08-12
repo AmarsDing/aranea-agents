@@ -52,6 +52,7 @@ export const categoryFilterOptions = [
   'media',
   'runtime',
   'integration',
+  'computeruse',
   'custom',
 ].map((value) => ({ label: value, value }));
 

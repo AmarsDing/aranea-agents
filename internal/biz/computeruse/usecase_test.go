@@ -109,7 +109,7 @@ func newTestUsecase(gw *fakeGateway, m ElementMatcher) (*ComputerUseUsecase, *fa
 
 var saveButton = UIElement{
 	Ref: "g1.e3", Type: "button", Name: "保存",
-	BBox: Rect{X: 100, Y: 200, W: 80, H: 28},
+	BBox:          Rect{X: 100, Y: 200, W: 80, H: 28},
 	Interactivity: true, Source: "uia", Enabled: true, Generation: 1,
 }
 

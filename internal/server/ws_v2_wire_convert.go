@@ -63,6 +63,7 @@ func stepToWire(s biz.Step) stepWire {
 		ToolDurationMs:  s.ToolDurationMs,
 		ToolErrorCode:   s.ToolErrorCode,
 		NoticeType:      s.NoticeType,
+		Danger:          s.Danger,
 		Status:          s.Status,
 		IsFinal:         s.IsFinal,
 		StartedAt:       s.StartedAt,

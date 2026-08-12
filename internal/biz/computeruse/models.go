@@ -80,15 +80,15 @@ func (r Rect) Center() Point { return Point{X: r.X + r.W/2, Y: r.Y + r.H/2} }
 
 // UIElement 统一元素模型（CDP §2.3）。bbox 一律物理像素。
 type UIElement struct {
-	Ref            string `json:"ref"`           // g{generation}.e{index}，仅同代有效
-	Type           string `json:"type"`          // button|edit|menuitem|text|icon|...
-	Name           string `json:"name"`          // 可访问名称
-	BBox           Rect   `json:"bbox"`          // 物理像素
-	Interactivity  bool   `json:"interactivity"` // 是否可交互
-	Source         string `json:"source"`        // uia|atspi|wda|vision
-	AppName        string `json:"app_name"`
-	Enabled        bool   `json:"enabled"`
-	Generation     int    `json:"generation"` // 所属 snapshot 代
+	Ref           string `json:"ref"`           // g{generation}.e{index}，仅同代有效
+	Type          string `json:"type"`          // button|edit|menuitem|text|icon|...
+	Name          string `json:"name"`          // 可访问名称
+	BBox          Rect   `json:"bbox"`          // 物理像素
+	Interactivity bool   `json:"interactivity"` // 是否可交互
+	Source        string `json:"source"`        // uia|atspi|wda|vision
+	AppName       string `json:"app_name"`
+	Enabled       bool   `json:"enabled"`
+	Generation    int    `json:"generation"` // 所属 snapshot 代
 }
 
 // SnapshotOpts 快照选项。
@@ -106,17 +106,17 @@ type Snapshot struct {
 
 // Image 截图（PNG 字节流 + 元数据）。
 type Image struct {
-	PNG         []byte `json:"-"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
+	PNG         []byte  `json:"-"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
 	ScaleFactor float64 `json:"scale_factor"`
 }
 
 // DeviceInfo 设备信息。
 type DeviceInfo struct {
-	Platform    string `json:"platform"`
-	ScreenW     int    `json:"screen_w"`
-	ScreenH     int    `json:"screen_h"`
+	Platform    string  `json:"platform"`
+	ScreenW     int     `json:"screen_w"`
+	ScreenH     int     `json:"screen_h"`
 	ScaleFactor float64 `json:"scale_factor"`
 }
 
@@ -141,20 +141,20 @@ const (
 
 // Step 一步动作记录（内存态 + 审计落库载荷）。
 type Step struct {
-	ID         int64         `json:"id"`
-	SessionID  string        `json:"session_id"`
-	AgentKey   string        `json:"agent_key"`
-	Index      int           `json:"index"`
-	Target     string        `json:"target"`
-	Path       GroundingPath `json:"path"`
-	Action     ActionType    `json:"action"`
-	Params     map[string]any `json:"params,omitempty"`
-	Result     StepResult    `json:"result"`
-	Error      string        `json:"error,omitempty"`
-	DurationMs int64         `json:"duration_ms"`
-	ConfirmedBy string       `json:"confirmed_by,omitempty"`
-	Danger     bool          `json:"danger"`
-	CreatedAt  time.Time     `json:"created_at"`
+	ID          int64          `json:"id"`
+	SessionID   string         `json:"session_id"`
+	AgentKey    string         `json:"agent_key"`
+	Index       int            `json:"index"`
+	Target      string         `json:"target"`
+	Path        GroundingPath  `json:"path"`
+	Action      ActionType     `json:"action"`
+	Params      map[string]any `json:"params,omitempty"`
+	Result      StepResult     `json:"result"`
+	Error       string         `json:"error,omitempty"`
+	DurationMs  int64          `json:"duration_ms"`
+	ConfirmedBy string         `json:"confirmed_by,omitempty"`
+	Danger      bool           `json:"danger"`
+	CreatedAt   time.Time      `json:"created_at"`
 }
 
 // AuditEntry 审计落库记录（= Step 持久化形态）。
@@ -179,8 +179,8 @@ type ObserveResult struct {
 // ActRequest 动作请求。
 type ActRequest struct {
 	AgentKey    string
-	SessionID   string      // 可空：空时复用/自动创建该 Agent 活跃会话
-	Target      string      // 目标语义描述（如 "保存菜单项"）；坐标动作可空
+	SessionID   string // 可空：空时复用/自动创建该 Agent 活跃会话
+	Target      string // 目标语义描述（如 "保存菜单项"）；坐标动作可空
 	Action      ActionType
 	Args        map[string]any // text/combo/x/y/button/delta/from/to 等
 	DryRun      bool           // 干跑：只 grounding + 返回计划，不注入

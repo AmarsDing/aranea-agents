@@ -16,6 +16,9 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
+    <!-- 75 M1.4（设计 §3.8）：运行中的 turn 含 computer_use 会话时，气泡尾部
+         内嵌实时步骤流 + 急停；历史 turn 不渲染（回放走监控页审计 API）。 -->
+    <CuStepStream v-if="liveCuSessionId" :session-id="liveCuSessionId" />
   </div>
 </template>
 
@@ -25,6 +28,7 @@ import { useActivityQueries } from '../../../features/chat/composables/useActivi
 import type { Turn } from '../../../features/chat/v2Types';
 import type { ConfirmStepPayload } from '../../../features/chat/types';
 import { isSystemInternalNotice } from '../../../features/chat/noticeFilter';
+import { cuSessionIdFromSteps } from '../../../features/computeruse/useCuStepStream';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ActionBlock from '../ActionBlock.vue';
 import ReplyBlock from '../ReplyBlock.vue';
@@ -32,6 +36,7 @@ import NoticeBlock from '../NoticeBlock.vue';
 import ConfirmBlock from '../ConfirmBlock.vue';
 import ErrorBlock from '../ErrorBlock.vue';
 import MemoryRecallChips from '../MemoryRecallChips.vue';
+import CuStepStream from '../../../features/computeruse/CuStepStream.vue';
 
 const props = defineProps<{ turn: Turn }>();
 defineEmits<{
@@ -50,5 +55,11 @@ const visibleSteps = computed(() =>
     }
     return true;
   }),
+);
+
+// 仅运行中的 turn 内嵌步骤流：急停对活会话才有意义；历史 turn 的审计回放
+// 走监控页（ListComputerUseSteps），避免对死会话渲染可用急停按钮。
+const liveCuSessionId = computed(() =>
+  props.turn.Status === 'running' ? cuSessionIdFromSteps(visibleSteps.value) : '',
 );
 </script>

@@ -6,15 +6,15 @@ import "fmt"
 type SessionEvent string
 
 const (
-	EvObserve       SessionEvent = "observe"        // 开始感知
-	EvGround        SessionEvent = "ground"         // 开始 grounding
-	EvAct           SessionEvent = "act"            // 开始动作注入
-	EvAwaitConfirm  SessionEvent = "await_confirm"  // 进入确认等待
-	EvConfirmed     SessionEvent = "confirmed"      // 确认通过，回到 grounding
-	EvStepDone      SessionEvent = "step_done"      // 单步完成，回到 idle
-	EvFinish        SessionEvent = "finish"         // 正常结束
-	EvFail          SessionEvent = "fail"           // 失败
-	EvCancel        SessionEvent = "cancel"         // 急停/超预算取消
+	EvObserve      SessionEvent = "observe"       // 开始感知
+	EvGround       SessionEvent = "ground"        // 开始 grounding
+	EvAct          SessionEvent = "act"           // 开始动作注入
+	EvAwaitConfirm SessionEvent = "await_confirm" // 进入确认等待
+	EvConfirmed    SessionEvent = "confirmed"     // 确认通过，回到 grounding
+	EvStepDone     SessionEvent = "step_done"     // 单步完成，回到 idle
+	EvFinish       SessionEvent = "finish"        // 正常结束
+	EvFail         SessionEvent = "fail"          // 失败
+	EvCancel       SessionEvent = "cancel"        // 急停/超预算取消
 )
 
 // transitions 合法转换表：from → event → to。

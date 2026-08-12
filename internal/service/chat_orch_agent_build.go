@@ -147,6 +147,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			CustomTools:          customTools,
 			KanbanBridge:         d.rt.KanbanBridge,
 			ComputerUseUC:        d.rt.ComputerUseUC,
+			CodingBridgeSvc:      d.rt.CodingBridgeSvc,
 			MediaProviders:       d.td.ReadDeps.MediaProviders,
 			ArtifactWriter:       d.td.Persist.ArtifactUC,
 			CachedEffectiveTools: cachedEffTools,

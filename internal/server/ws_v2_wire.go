@@ -70,6 +70,7 @@ type stepWire struct {
 	ToolDurationMs  int64           `json:"ToolDurationMs"`
 	ToolErrorCode   string          `json:"ToolErrorCode"`
 	NoticeType      string          `json:"NoticeType"`
+	Danger          bool            `json:"Danger"`
 	Status          biz.StepStatus  `json:"Status"`
 	IsFinal         bool            `json:"IsFinal"`
 	StartedAt       time.Time       `json:"StartedAt"`
