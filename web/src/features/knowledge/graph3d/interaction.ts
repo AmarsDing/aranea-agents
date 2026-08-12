@@ -42,6 +42,40 @@ export function oneHop(edges: Int32Array, edgeCount: number, index: number): One
   return { nodes, edges: hitEdges };
 }
 
+/** M4：BFS N 跳邻居集（聚焦模式）。hops=0 仅根；边集 = 两端点都在节点集内的边。 */
+export function nHop(
+  edges: Int32Array,
+  edgeCount: number,
+  root: number,
+  hops: number,
+): { nodes: Set<number>; edges: Set<number> } {
+  const nodes = new Set<number>([root]);
+  if (hops > 0) {
+    let frontier = [root];
+    for (let h = 0; h < hops; h++) {
+      const next: number[] = [];
+      for (let e = 0; e < edgeCount; e++) {
+        const a = edges[e * 2];
+        const b = edges[e * 2 + 1];
+        if (frontier.includes(a) && !nodes.has(b)) {
+          nodes.add(b);
+          next.push(b);
+        } else if (frontier.includes(b) && !nodes.has(a)) {
+          nodes.add(a);
+          next.push(a);
+        }
+      }
+      frontier = next;
+      if (frontier.length === 0) break;
+    }
+  }
+  const edgeSet = new Set<number>();
+  for (let e = 0; e < edgeCount; e++) {
+    if (nodes.has(edges[e * 2]) && nodes.has(edges[e * 2 + 1])) edgeSet.add(e);
+  }
+  return { nodes, edges: edgeSet };
+}
+
 /**
  * 交互状态机：hover(shown)/selected 分离。
  * - hover 优先于 selected（悬停时临时高亮一跳，移开后回落到选中锁定高亮）
@@ -50,6 +84,9 @@ export function oneHop(edges: Int32Array, edgeCount: number, index: number): One
 export class GraphInteraction {
   private hoverIndex: number | null = null;
   private selectedIndex: number | null = null;
+  /** M4 聚焦锁定：非 null 时 active 由 focused 驱动（hover 不覆盖）。 */
+  private _focused: number | null = null;
+  private _focusHops = 2;
 
   get hover(): number | null {
     return this.hoverIndex;
@@ -59,9 +96,17 @@ export class GraphInteraction {
     return this.selectedIndex;
   }
 
-  /** 有效高亮锚点：hover 优先，否则 selected。 */
+  get focused(): number | null {
+    return this._focused;
+  }
+
+  get focusHops(): number {
+    return this._focusHops;
+  }
+
+  /** 有效高亮锚点：聚焦锁定 > hover > selected。 */
   get active(): number | null {
-    return this.hoverIndex ?? this.selectedIndex;
+    return this._focused ?? this.hoverIndex ?? this.selectedIndex;
   }
 
   /** hover 变更；返回是否变化。 */
@@ -76,5 +121,16 @@ export class GraphInteraction {
     if (this.selectedIndex === i) return false;
     this.selectedIndex = i;
     return true;
+  }
+
+  /** M4：聚焦锁定（单击节点触发，BFS N 跳 dim）。 */
+  setFocus(index: number, hops: number): void {
+    this._focused = index;
+    this._focusHops = hops;
+  }
+
+  /** M4：解除聚焦锁定（单击空白触发），恢复 hover 驱动。 */
+  clearFocus(): void {
+    this._focused = null;
   }
 }

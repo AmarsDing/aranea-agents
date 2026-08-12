@@ -5,7 +5,7 @@
  * - wheelZoomFactor 0.95^(-ΔY·0.01)；isClickMovement <5px
  */
 import { describe, expect, it } from 'vitest';
-import { GraphInteraction, isClickMovement, oneHop, wheelZoomFactor } from '../interaction';
+import { GraphInteraction, isClickMovement, nHop, oneHop, wheelZoomFactor } from '../interaction';
 
 describe('oneHop 一跳邻居', () => {
   // 星形图：0 为中心，1/2/3 为叶；4 孤立
@@ -84,5 +84,44 @@ describe('zoom/点击判别', () => {
     expect(isClickMovement(3, 3)).toBe(true); // ~4.24px
     expect(isClickMovement(3, 4)).toBe(false); // 5px 整
     expect(isClickMovement(10, 0)).toBe(false);
+  });
+});
+
+describe('M4 聚焦模式', () => {
+  // 图：0-1-2-3 链 + 0-4 支链
+  const edges = new Int32Array([0, 1, 1, 2, 2, 3, 0, 4]);
+  const edgeCount = 4;
+
+  it('nHop(root, 1) = 一跳邻居（与 oneHop 一致）', () => {
+    const { nodes } = nHop(edges, edgeCount, 0, 1);
+    expect([...nodes].sort()).toEqual([0, 1, 4]);
+  });
+
+  it('nHop(root, 2) = 二跳邻居（含 2）', () => {
+    const { nodes } = nHop(edges, edgeCount, 0, 2);
+    expect([...nodes].sort()).toEqual([0, 1, 2, 4]);
+  });
+
+  it('nHop(root, 0) = 仅根节点', () => {
+    const { nodes } = nHop(edges, edgeCount, 0, 0);
+    expect([...nodes]).toEqual([0]);
+  });
+
+  it('nHop 边集 = 两端点都在节点集内的边', () => {
+    const { edges: edgeSet } = nHop(edges, edgeCount, 0, 1);
+    expect(edgeSet.has(0)).toBe(true); // 0-1
+    expect(edgeSet.has(3)).toBe(true); // 0-4
+    expect(edgeSet.has(1)).toBe(false); // 1-2 出圈
+  });
+
+  it('GraphInteraction 聚焦锁定：focus 后 hover 不覆盖；clearFocus 恢复 hover 驱动', () => {
+    const gi = new GraphInteraction();
+    gi.setFocus(0, 2);
+    expect(gi.focused).toBe(0);
+    expect(gi.focusHops).toBe(2);
+    gi.setHover(1);
+    expect(gi.focused).toBe(0); // hover 不覆盖锁定
+    gi.clearFocus();
+    expect(gi.focused).toBeNull();
   });
 });
