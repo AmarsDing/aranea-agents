@@ -1,6 +1,6 @@
 # 76 编程 Agent 桥接（Coding Agent Bridge）开发计划
 
-> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 进行中（M1-1~9 已完成）
+> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 进行中（M1-1~12 已完成）
 > 需求见 [76-coding-agent-bridge.md](./76-coding-agent-bridge.md) ｜ 设计见 [76-coding-agent-bridge.design.md](./76-coding-agent-bridge.design.md)
 
 ---
@@ -52,9 +52,9 @@
 | M1-7 | biz AgentBridgeUsecase：派发/取消/项目消歧（mock ACPSession 端口） | 单测：消歧三分支、并发上限、错误路径（15/15 全绿） | ✅ |
 | M1-8 | service AgentBridgeService：事件聚合限流（5s 窗口）+ 进度事件发射 | 单测：限流窗口、事件负载（6/6 全绿） | ✅ |
 | M1-9 | codingbridge 三工具（dispatch/check/cancel）注册进 tools registry | 单测：工具入参校验、返回结构（11/11 全绿） | ✅ |
-| M1-10 | proto + service 管理 API（agent/project CRUD、task 查询/取消） | `make api` 编译 + service 层测试 | 📋 |
-| M1-11 | Wire 装配 + 启动恢复钩子（RecoverActiveTasks） | `make wire && go build ./cmd/admin` | 📋 |
-| M1-12 | 流程日志 step 登记（flow_log.go stepTitleRegistry + 52 文档 §5.1 同步） | 登记检查 | 📋 |
+| M1-10 | proto + service 管理 API（agent/project CRUD、task 查询/取消） | `make api` 编译 + service 层测试 | ✅ |
+| M1-11 | Wire 装配 + 启动恢复钩子（RecoverActiveTasks） | `make wire && go build ./cmd/admin` | ✅ |
+| M1-12 | 流程日志 step 登记（flow_log.go stepTitleRegistry + 52 文档 §5.1 同步） | 登记检查 | ✅ |
 | M1-13 | fake ACP server 端到端：dispatch → 进度 → done 全链路 | 集成测试绿 | 📋 |
 | M1-14 | CodeBuddy 真实冒烟（手动）：`codebuddy --acp` 跑真实任务 | 语音派发→完成播报人工验收 | 📋 |
 

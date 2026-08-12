@@ -299,7 +299,7 @@ git commit -m "feat(knowledge): M1 Workbench 挂载 LiquidGlassDefs，浮层启�
 - `spiralSwirl`：XZ 平面切向力 `f += k·(-z,0,x)/r·envelope(r)`，螺旋悬臂；envelope = `r/(r+40)` 中心弱、边缘饱和
 - 三力默认 0（纯力导向行为完全不变，向后兼容）
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 在 `__tests__/forces.spec.ts` 末尾追加（复用文件内既有 ForceEngine 构造 helper；若无 helper，用最小构造：2 节点 1 边）：
 
@@ -359,12 +359,12 @@ git commit -m "feat(knowledge): M1 Workbench 挂载 LiquidGlassDefs，浮层启�
 
 文件头部 import 需补充 `GALAXY_FORCE_PARAMS`（若既有 import 是 `import { FORCE_DEFAULTS, ForceEngine } from '../forces'` 则改为含 `GALAXY_FORCE_PARAMS` 与类型 `ForceParams`）。
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/forces.spec.ts`
 Expected: FAIL（`FORCE_DEFAULTS.coreGravity` undefined / `GALAXY_FORCE_PARAMS` 未导出）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `forces.ts` 改动：
 
@@ -465,12 +465,12 @@ export const GALAXY_FORCE_PARAMS: Partial<ForceParams> = {
       // ……速度积分部分（vx/vy/vz 计算）保持不变
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/forces.spec.ts`
 Expected: PASS（既有用例 + 新 5 用例全绿）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/features/knowledge/graph3d/forces.ts web/src/features/knowledge/graph3d/__tests__/forces.spec.ts

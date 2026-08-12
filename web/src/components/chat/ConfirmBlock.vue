@@ -3,6 +3,7 @@
     <div class="confirm-block__header">
       <span class="confirm-block__icon">⚠️</span>
       <span class="confirm-block__label">{{ t('chat.confirm.label', '需要确认') }}</span>
+      <span v-if="step.Danger" class="confirm-block__danger">{{ t('chat.confirm.danger', '高危') }}</span>
       <span v-if="countdownText" class="confirm-block__countdown">{{ countdownText }}</span>
     </div>
     <div class="confirm-block__content">{{ step.Content }}</div>
@@ -246,6 +247,14 @@ function onConfirm(reply: ToolConfirmReply) {
   &__label
     font-weight: 500
     color: var(--color-warning)
+
+  &__danger
+    font-size: 11px
+    font-weight: 600
+    padding: 1px 6px
+    border-radius: 4px
+    color: var(--color-on-accent, #fff)
+    background: var(--color-danger)
 
   &__countdown
     font-size: 11px

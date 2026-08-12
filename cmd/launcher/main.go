@@ -327,7 +327,9 @@ func startBackend(root string, env *runtimeEnv, log func(string, ...any)) error 
 	if err != nil {
 		return err
 	}
-	cmd := hiddenCmd(exe, "-conf", "configs")
+	// 只加载 config.yaml 文件而非 configs 目录：目录模式会把 launcher 的
+	// 辅助文件（pg.password / launcher-setup.json）误并入配置树导致严格 decode panic。
+	cmd := hiddenCmd(exe, "-conf", filepath.Join("configs", "config.yaml"))
 	cmd.Dir = root
 	cmd.Stdout = stdout
 	cmd.Stderr = stdout

@@ -192,3 +192,44 @@ describe('GraphEngine 主线程兜底', () => {
     e.stop();
   });
 });
+
+describe('M2 setLayout 布局切换', () => {
+  function makeEngine(): GraphEngine {
+    const model = buildGraphModel(
+      [
+        { docId: 'a', name: 'a', relPath: 'a.md', docType: 'note' },
+        { docId: 'b', name: 'b', relPath: 'b.md', docType: 'note' },
+      ],
+      [{ source: 'a', target: 'b', type: 'explicit' }],
+    );
+    seedPositions(model, 1337);
+    return new GraphEngine(model, {}, { workerFactory: () => null as unknown as WorkerLike });
+  }
+
+  it('setLayout("galaxy")：主线程兜底路径参数切到星系盘预设且 alpha 再加热', () => {
+    const e = makeEngine();
+    e.start();
+    // 收敛后 alpha 衰减
+    for (let t = 0; t < 400; t++) e.stepFrame();
+    expect(e.settled).toBe(true);
+    e.setLayout('galaxy');
+    expect(e.settled).toBe(false); // reheat 唤醒
+    // 参数生效：再跑若干 tick 不发散（数值护栏）
+    for (let t = 0; t < 60; t++) e.stepFrame();
+    const p = e.positions;
+    for (let i = 0; i < p.length; i++) expect(Number.isFinite(p[i])).toBe(true);
+    e.stop();
+  });
+
+  it('setLayout("force")：切回力导向默认参数', () => {
+    const e = makeEngine();
+    e.start();
+    e.setLayout('galaxy');
+    e.setLayout('force');
+    expect(e.settled).toBe(false);
+    for (let t = 0; t < 60; t++) e.stepFrame();
+    const p = e.positions;
+    for (let i = 0; i < p.length; i++) expect(Number.isFinite(p[i])).toBe(true);
+    e.stop();
+  });
+});

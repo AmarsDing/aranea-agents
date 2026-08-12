@@ -74,6 +74,7 @@ export interface Step {
   ToolDurationMs: number;
   ToolErrorCode: string;
   NoticeType?: string; // kind=notice: notification type (e.g. "model_router", "cost_guard")
+  Danger?: boolean; // kind=confirm: 高危动作标记（75 A5 敏感词命中），渲染高危徽标
   Status: StepStatus;
   IsFinal: boolean;
   StartedAt: string;

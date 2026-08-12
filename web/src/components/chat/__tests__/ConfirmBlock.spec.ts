@@ -3,8 +3,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { mount } from '@vue/test-utils';
+import { createI18n } from 'vue-i18n';
 import ConfirmBlock from '../ConfirmBlock.vue';
+import zhCN from '../../../i18n/locales/zh-CN';
 import type { Step } from '../../../features/chat/v2Types';
+
+const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } });
 
 function mkConfirmStep(overrides: Partial<Step>): Step {
   return {
@@ -38,6 +42,7 @@ describe('ConfirmBlock danger badge', () => {
 
   it('renders 高危 badge when step.Danger is true', () => {
     const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
       props: { step: mkConfirmStep({ Danger: true }) },
     });
     expect(wrapper.find('.confirm-block__danger').exists()).toBe(true);
@@ -46,6 +51,7 @@ describe('ConfirmBlock danger badge', () => {
 
   it('omits danger badge when step.Danger is falsy', () => {
     const wrapper = mount(ConfirmBlock, {
+      global: { plugins: [i18n] },
       props: { step: mkConfirmStep({}) },
     });
     expect(wrapper.find('.confirm-block__danger').exists()).toBe(false);

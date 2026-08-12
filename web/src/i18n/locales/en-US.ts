@@ -679,6 +679,7 @@ export default {
     },
     confirm: {
       label: 'Requires Confirmation',
+      danger: 'High risk',
       tool: 'Tool',
       arguments: 'Arguments',
       remaining: '{time} left',

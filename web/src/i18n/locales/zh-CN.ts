@@ -693,6 +693,7 @@ export default {
     },
     confirm: {
       label: '需要确认',
+      danger: '高危',
       tool: '工具',
       arguments: '参数',
       remaining: '剩余 {time}',
