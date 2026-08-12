@@ -90,7 +90,7 @@
                   <q-item-section avatar><q-icon name="download" size="18px" /></q-item-section>
                   <q-item-section>{{ t('knowledgePage.workbench.fileDownload') }}</q-item-section>
                 </q-item>
-                <!-- B1 入口①：文档重嵌入（词法库无语义层时置灰，T5 补 tooltip） -->
+                <!-- B1 入口①：文档重嵌入（词法库无语义层时置灰 + tooltip 说明） -->
                 <q-item
                   clickable
                   data-test="file-reembed"
@@ -99,6 +99,7 @@
                 >
                   <q-item-section avatar><q-icon name="psychology" size="18px" /></q-item-section>
                   <q-item-section>{{ t('knowledgePage.reembedDocument') }}</q-item-section>
+                  <q-tooltip v-if="!currentHasSemantic">{{ t('knowledgePage.reembedNoSemantic') }}</q-tooltip>
                 </q-item>
                 <q-separator />
                 <q-item clickable class="kb-sidebar__menu-danger" @click="$emit('file-action', 'delete', f)">

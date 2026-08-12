@@ -2948,6 +2948,8 @@ export default {
     moveFailed: 'Move failed',
     reembedDocument: 'Re-embed',
     reembedNoSemantic: 'No semantic layer',
+    reembedConfirmTitle: 'Re-embed documents',
+    reembedConfirmBody: 'Rebuilds vectors from stored text for {n} document(s).',
     reembedAccepted: '{n} document(s) queued',
     vaultSwitcherEmpty: 'Select a vault',
     vaultDeleteAria: 'Delete vault',

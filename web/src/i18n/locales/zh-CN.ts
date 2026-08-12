@@ -2967,6 +2967,8 @@ export default {
     moveFailed: '移动失败',
     reembedDocument: '重新向量化',
     reembedNoSemantic: '词法库无语义层',
+    reembedConfirmTitle: '重新向量化文档',
+    reembedConfirmBody: '将从已存正文为 {n} 篇文档重建向量索引（无需原文件）。',
     reembedAccepted: '已受理 {n} 篇重嵌入',
     vaultSwitcherEmpty: '选择知识库',
     vaultDeleteAria: '删除知识库',
