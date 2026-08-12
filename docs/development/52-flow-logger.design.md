@@ -96,6 +96,8 @@ const (
     TraceDomainA2A       TraceDomain = "a2a"
     TraceDomainVoice      TraceDomain = "voice"
     TraceDomainClientTool TraceDomain = "client_tool"
+    TraceDomainAgentBridge TraceDomain = "agentbridge"
+    TraceDomainComputerUse TraceDomain = "computeruse"
 )
 
 type TraceContext struct {
@@ -553,6 +555,35 @@ internal/cronrunner/jobs/
 | `a2a.invoke.governance` | ok / warn | A2A 治理链检查 |
 | `a2a.invoke.remote` | ok / error | A2A 远端调用 |
 | `a2a.invoke.done` | ok / error | A2A 调用完成 |
+
+#### Computer Use（`domain=computeruse`，M75，2026-08-12）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `computeruse.session.start` | info / — | 桌面会话已创建 |
+| `computeruse.session.done` | ok / — | 桌面会话已结束 |
+| `computeruse.act` | info / — | 执行桌面动作 |
+| `computeruse.act.done` | ok / — | 桌面动作完成 |
+| `computeruse.act.error` | — / error | 桌面动作失败 |
+| `computeruse.grounding.fallback` | warn | 元素定位降级视觉兜底 |
+| `computeruse.budget.exceeded` | error | 桌面会话预算耗尽 |
+| `computeruse.killswitch` | warn | 桌面会话已急停 |
+
+> `computeruse.*` 发射点：`internal/biz/computeruse/usecase.go`（经 `biz.FlowLogWriter` 端口）；domain 映射见 `internal/service/event_adapter.go` `domainForStepID`；实时步骤事件另走 `computeruse.step` MonitorEvent（`internal/computeruse/step_events.go`），持久化以 `computer_use_audit` 表为准。
+
+#### Coding Agent Bridge（`domain=agentbridge`，M76，2026-08-12）
+
+| step_id | severity（成功/失败） | title |
+|---------|----------------------|-------|
+| `agentbridge.task.dispatch` | ok / — | 派发编程任务 |
+| `agentbridge.task.done` | ok / — | 编程任务完成 |
+| `agentbridge.task.failed` | — / error | 编程任务失败 |
+| `agentbridge.task.cancelled` | ok / — | 编程任务取消 |
+| `agentbridge.process.spawn` | ok / — | 启动编程 Agent 进程 |
+| `agentbridge.process.exit` | ok / error | 编程 Agent 进程退出 |
+| `agentbridge.probe.degraded` | warn | 编程工具探测降级 |
+
+> `agentbridge.*` 发射点：`internal/service/agentbridge.go`（service 层直持 `TraceEmitter`，Domain 显式传 `TraceDomainAgentBridge`，不经 biz 端口/`domainForStepID`）。`process.exit` 仅在进程曾成功 spawn（`ACPSessionID != ""`）时发射——spawn 失败路径只发 `task.failed`。进程维度另有 loggateway 进程日志（usecase `run` goroutine 启动/退出/panic recover）。M2 审批中继启用后补 `agentbridge.approval.request`/`agentbridge.approval.timeout`（设计 76 §11 已声明）。
 
 #### 系统启动/关闭（2026-07-29 补齐 P0）
 
