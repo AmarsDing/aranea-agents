@@ -44,6 +44,8 @@ public sealed class SnapshotResultDto
 {
     public List<UIElementDto> Elements { get; set; } = new();
     public int Generation { get; set; }
+    /// <summary>仅 includeScreenshot=true 时内联返回（可空，null 时 JSON 省略）——F2</summary>
+    public ScreenshotResultDto? Screenshot { get; set; }
 }
 
 /// <summary>perception.screenshot 返回</summary>

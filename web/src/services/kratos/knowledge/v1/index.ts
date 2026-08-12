@@ -468,6 +468,21 @@ export type ReembedDocumentsResponse = {
   skippedCount: number | undefined;
 };
 
+// EnableCollectionSemanticRequest enables the semantic layer on a lexical-only
+// collection (B2: one-way binding; embedding_model empty -> bound to the current
+// global embedder, then all content documents are re-embedded via the B1 pipeline).
+export type EnableCollectionSemanticRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+};
+
+export type EnableCollectionSemanticResponse = {
+  enqueuedDocs: number | undefined;
+  embeddingModel: string | undefined;
+  dim: number | undefined;
+};
+
 // MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
 // Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
 export type MoveDocumentRequest = {
@@ -586,6 +601,11 @@ export interface KnowledgeService {
   // content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
   // reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
   ReembedDocuments(request: ReembedDocumentsRequest): Promise<ReembedDocumentsResponse>;
+  // EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+  // collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+  // conflict when already enabled) and enqueues all content documents into the
+  // B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+  EnableCollectionSemantic(request: EnableCollectionSemanticRequest): Promise<EnableCollectionSemanticResponse>;
   // UpdateDocumentContent saves editor body back to the vault file (G2-B5):
   // frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
   // backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -879,6 +899,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "ReembedDocuments",
       }) as Promise<ReembedDocumentsResponse>;
+    },
+    EnableCollectionSemantic(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/collections/${request.collectionId}:enable-semantic`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "EnableCollectionSemantic",
+      }) as Promise<EnableCollectionSemanticResponse>;
     },
     UpdateDocumentContent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {

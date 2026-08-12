@@ -88,8 +88,8 @@ public sealed class CaptureService
         };
     }
 
-    /// <summary>截图（默认主屏全屏；region 指定时裁剪），返回 PNG base64</summary>
-    public ScreenshotResultDto Screenshot(int? x, int? y, int? w, int? h)
+    /// <summary>截图（默认主屏全屏；region 指定时裁剪；zoom≠1 时缩放位图），返回 PNG base64</summary>
+    public ScreenshotResultDto Screenshot(int? x, int? y, int? w, int? h, double zoom)
     {
         var sx = x ?? 0;
         var sy = y ?? 0;
@@ -99,6 +99,10 @@ public sealed class CaptureService
         {
             throw new CuaException(JsonRpc.InternalError, $"非法截图区域: {sw}x{sh}");
         }
+        if (zoom <= 0)
+        {
+            zoom = 1.0;
+        }
         try
         {
             using var bmp = new Bitmap(sw, sh, PixelFormat.Format32bppArgb);
@@ -106,13 +110,15 @@ public sealed class CaptureService
             {
                 g.CopyFromScreen(sx, sy, 0, 0, new Size(sw, sh), CopyPixelOperation.SourceCopy);
             }
+            // F1：zoom≠1 时缩放（dense UI 局部放大提升 VLM 精度）；返回尺寸为缩放后实际像素
+            using var scaled = ScaleBitmap(bmp, zoom);
             using var ms = new MemoryStream();
-            bmp.Save(ms, ImageFormat.Png);
+            scaled.Save(ms, ImageFormat.Png);
             return new ScreenshotResultDto
             {
                 PngBase64 = Convert.ToBase64String(ms.ToArray()),
-                Width = sw,
-                Height = sh,
+                Width = scaled.Width,
+                Height = scaled.Height,
                 ScaleFactor = PrimaryScaleFactor(),
             };
         }
@@ -121,5 +127,21 @@ public sealed class CaptureService
             // 安全桌面/锁屏等场景 CopyFromScreen 会失败
             throw new CuaException(JsonRpc.InjectionDenied, "截图被 OS 拒绝: " + wex.Message);
         }
+    }
+
+    /// <summary>按倍率缩放位图（zoom=1 原样复制；结果至少 1x1）。纯位图操作，可单测</summary>
+    public static Bitmap ScaleBitmap(Bitmap src, double zoom)
+    {
+        if (zoom <= 0)
+        {
+            zoom = 1.0;
+        }
+        var zw = Math.Max(1, (int)Math.Round(src.Width * zoom));
+        var zh = Math.Max(1, (int)Math.Round(src.Height * zoom));
+        var dst = new Bitmap(zw, zh, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(dst);
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.DrawImage(src, 0, 0, zw, zh);
+        return dst;
     }
 }

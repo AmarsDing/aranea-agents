@@ -143,19 +143,16 @@ func (u *ComputerUseUsecase) StopSession(ctx context.Context, sessionID string) 
 		u.mu.Unlock()
 		return nil
 	}
-	s.Status = SessionDone
-	s.UpdatedAt = u.d.Now()
-	if u.activeByAgent[s.AgentKey] == sessionID {
-		delete(u.activeByAgent, s.AgentKey)
-	}
+	u.transitionLocked(s, EvFinish)
+	stepsUsed := s.StepsUsed
 	u.mu.Unlock()
 	u.d.Lg.Info("computer-use 会话已结束",
 		loggateway.StepID(StepSessionDone),
 		loggateway.Str("session_id", sessionID),
-		loggateway.Int("steps_used", s.StepsUsed))
+		loggateway.Int("steps_used", stepsUsed))
 	if u.d.FlowLog != nil {
 		u.d.FlowLog.LogFlowDone(ctx, sessionID, StepSessionDone, "桌面会话已结束",
-			biz.LogPair{Key: "steps_used", Value: s.StepsUsed})
+			biz.LogPair{Key: "steps_used", Value: stepsUsed})
 	}
 	return nil
 }
@@ -170,12 +167,9 @@ func (u *ComputerUseUsecase) KillSwitch(ctx context.Context, sessionID string) e
 	}
 	cancel := u.sessionCancels[sessionID]
 	if !IsTerminal(s.Status) {
-		s.Status = SessionCancelled
-		s.UpdatedAt = u.d.Now()
+		u.transitionLocked(s, EvCancel)
 	}
-	if u.activeByAgent[s.AgentKey] == sessionID {
-		delete(u.activeByAgent, s.AgentKey)
-	}
+	agentKey, stepsUsed := s.AgentKey, s.StepsUsed
 	u.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -183,11 +177,11 @@ func (u *ComputerUseUsecase) KillSwitch(ctx context.Context, sessionID string) e
 	u.d.Lg.Warn("computer-use 急停触发",
 		loggateway.StepID(StepKillSwitch),
 		loggateway.Str("session_id", sessionID),
-		loggateway.Str("agent_key", s.AgentKey),
-		loggateway.Int("steps_used", s.StepsUsed))
+		loggateway.Str("agent_key", agentKey),
+		loggateway.Int("steps_used", stepsUsed))
 	if u.d.FlowLog != nil {
 		u.d.FlowLog.LogFlowError(ctx, sessionID, StepKillSwitch, "会话已急停",
-			biz.LogPair{Key: "agent_key", Value: s.AgentKey})
+			biz.LogPair{Key: "agent_key", Value: agentKey})
 	}
 	return nil
 }
@@ -272,10 +266,11 @@ func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult
 	}
 
 	// 预算守卫（原子占用一步）。
-	if err := u.chargeBudget(s); err != nil {
+	stepsUsed, err := u.chargeBudget(s)
+	if err != nil {
 		if u.d.FlowLog != nil {
 			u.d.FlowLog.LogFlowError(ctx, s.ID, StepBudgetExceeded, "会话预算耗尽",
-				biz.LogPair{Key: "steps_used", Value: s.StepsUsed})
+				biz.LogPair{Key: "steps_used", Value: stepsUsed})
 		}
 		u.finishStep(ctx, s, req, Step{Result: StepFailed, Error: err.Error(), Danger: u.d.Policy.IsDanger(req.Target, req.Args)}, started)
 		return ActResult{}, err
@@ -297,7 +292,7 @@ func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult
 	step := Step{
 		SessionID:   s.ID,
 		AgentKey:    s.AgentKey,
-		Index:       s.StepsUsed,
+		Index:       stepsUsed,
 		Target:      req.Target,
 		Action:      req.Action,
 		Params:      req.Args,
@@ -314,7 +309,7 @@ func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult
 	}
 
 	if !u.transit(s, EvGround) {
-		return ActResult{}, fmt.Errorf("computeruse: 会话状态 %s 不允许动作", s.Status)
+		return ActResult{}, fmt.Errorf("computeruse: 会话状态 %s 不允许动作", u.statusOf(s))
 	}
 
 	// 禁区检查：前台进程命中黑名单直接拒绝。
@@ -395,29 +390,34 @@ func (u *ComputerUseUsecase) resolveSession(req ActRequest) (*Session, error) {
 	return s, nil
 }
 
-// chargeBudget 原子占用一步预算；超限把会话置 failed/cancelled 并返回错误。
-func (u *ComputerUseUsecase) chargeBudget(s *Session) error {
+// chargeBudget 原子占用一步预算并返回已用步数；超限时经状态机把会话置 failed
+// （进终态同时解除 agent 活跃映射，下一次 Act 自动重建会话——B2）。
+func (u *ComputerUseUsecase) chargeBudget(s *Session) (int, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if s.Budget.MaxSteps > 0 && s.StepsUsed >= s.Budget.MaxSteps {
-		s.Status = SessionFailed
-		s.UpdatedAt = u.d.Now()
-		return ErrBudgetExceeded
+		u.transitionLocked(s, EvFail)
+		return s.StepsUsed, ErrBudgetExceeded
 	}
 	if !s.Budget.Deadline.IsZero() && u.d.Now().After(s.Budget.Deadline) {
-		s.Status = SessionFailed
-		s.UpdatedAt = u.d.Now()
-		return ErrBudgetExceeded
+		u.transitionLocked(s, EvFail)
+		return s.StepsUsed, ErrBudgetExceeded
 	}
 	s.StepsUsed++
 	s.UpdatedAt = u.d.Now()
-	return nil
+	return s.StepsUsed, nil
 }
 
 // transit 状态机转换（非法转换记 warn 不阻断，防状态卡死）。
 func (u *ComputerUseUsecase) transit(s *Session, ev SessionEvent) bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	return u.transitionLocked(s, ev)
+}
+
+// transitionLocked 状态机转换（调用方须持 u.mu）。进入终态时解除 agent 活跃映射：
+// failed/cancelled/done 会话不得继续占据 activeByAgent，否则 agent 被永久阻塞（B2）。
+func (u *ComputerUseUsecase) transitionLocked(s *Session, ev SessionEvent) bool {
 	to, err := Transition(s.Status, ev)
 	if err != nil {
 		u.d.Lg.Warn("computer-use 非法状态转换",
@@ -429,7 +429,17 @@ func (u *ComputerUseUsecase) transit(s *Session, ev SessionEvent) bool {
 	}
 	s.Status = to
 	s.UpdatedAt = u.d.Now()
+	if IsTerminal(to) && u.activeByAgent[s.AgentKey] == s.ID {
+		delete(u.activeByAgent, s.AgentKey)
+	}
 	return true
+}
+
+// statusOf 锁内读取会话当前状态（供错误消息等锁外路径使用——B1）。
+func (u *ComputerUseUsecase) statusOf(s *Session) SessionStatus {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return s.Status
 }
 
 // checkBlockedProcess 禁区检查。
@@ -585,7 +595,9 @@ func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req Act
 	step.SessionID = s.ID
 	step.AgentKey = s.AgentKey
 	if step.Index == 0 {
+		u.mu.Lock()
 		step.Index = s.StepsUsed
+		u.mu.Unlock()
 	}
 	if step.Target == "" {
 		step.Target = req.Target
@@ -620,11 +632,12 @@ func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args,
 	if err != nil {
 		return Step{}, err
 	}
-	if err := u.chargeBudget(s); err != nil {
+	stepsUsed, err := u.chargeBudget(s)
+	if err != nil {
 		return Step{}, err
 	}
 	step := Step{
-		SessionID: s.ID, AgentKey: agentKey, Index: s.StepsUsed,
+		SessionID: s.ID, AgentKey: agentKey, Index: stepsUsed,
 		Target: target, Action: ActionLaunch, Path: PathA11y,
 		Params:      map[string]any{"target": target, "args": args},
 		Danger:      u.d.Policy.IsDanger(target, map[string]any{"target": target}),

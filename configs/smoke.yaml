@@ -7,15 +7,15 @@
 # Optional: KRATOS_HTTP_AUTH_DISABLED=1 skips cookie auth for local SPA.
 server:
   http:
-    addr: 0.0.0.0:8000
+    addr: 0.0.0.0:8800
     timeout: 600s
   grpc:
-    addr: 0.0.0.0:9100
+    addr: 0.0.0.0:9900
     timeout: 120s
   ws:
     enable: true
     network: tcp
-    addr: 0.0.0.0:8002
+    addr: 0.0.0.0:8802
   monitor:
     process_log_enabled: true
 data:

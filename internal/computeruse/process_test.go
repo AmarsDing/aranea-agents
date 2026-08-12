@@ -177,3 +177,49 @@ func TestManagerWatchdogRestart(t *testing.T) {
 	}
 	t.Errorf("看门狗未触发重启，starter 调用 %d 次", atomic.LoadInt32(count))
 }
+
+// TestManagerWatchdogSkipsWhileInFlight 75 review F3：sidecar 单线程顺序执行，
+// 长动作在途期间无法应答 ping——看门狗此时 ping 必超时，误判僵死杀进程（假僵死）。
+// 修复：有在途请求时跳过本轮 ping 且不计 miss；在途请求自身 10s/30s 超时兜底。
+func TestManagerWatchdogSkipsWhileInFlight(t *testing.T) {
+	block := make(chan struct{})
+	var execMu sync.Mutex // 串行化执行，模拟真实单线程 sidecar
+	m, count := newTestManager(t, func(req rpcRequest) (any, *rpcError) {
+		execMu.Lock()
+		defer execMu.Unlock()
+		if req.Method == "action.invoke" {
+			<-block // 长动作挂起期间 ping 得不到响应
+			return map[string]any{"ok": true}, nil
+		}
+		return map[string]any{"ok": true}, nil
+	})
+	if err := m.EnsureRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRunning err = %v", err)
+	}
+	defer m.Stop(context.Background())
+
+	actDone := make(chan error, 1)
+	go func() {
+		_, err := m.Client().Call(context.Background(), "action.invoke", nil)
+		actDone <- err
+	}()
+
+	// 等待远超 3 次心跳周期（3×(30+50)=240ms）；期间 ping 被挂起的动作阻塞。
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(count); got != 1 {
+		t.Fatalf("长动作在途期间看门狗误判僵死重启，starter 调用 %d 次, want 1", got)
+	}
+
+	close(block) // 动作放行，应正常完成
+	select {
+	case err := <-actDone:
+		if err != nil {
+			t.Errorf("action call err = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("action call did not return after unblock")
+	}
+	if got := atomic.LoadInt32(count); got != 1 {
+		t.Errorf("动作完成后仍发生重启，starter 调用 %d 次, want 1", got)
+	}
+}

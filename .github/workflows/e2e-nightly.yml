@@ -42,7 +42,7 @@ jobs:
           KRATOS_HTTP_AUTH_DISABLED=1 DEPLOY_ENV=dev ./bin/admin -conf ./configs &
           # Wait for backend to be ready (up to 30s)
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:8800/health > /dev/null 2>&1; then
               echo "Backend ready after ${i}s"
               break
             fi
@@ -56,10 +56,10 @@ jobs:
       - name: Start frontend preview
         working-directory: web
         run: |
-          npx vite preview --port 9000 --host 0.0.0.0 &
+          npx vite preview --port 9301 --host 0.0.0.0 &
           # Wait for frontend to be ready (up to 15s)
           for i in $(seq 1 15); do
-            if curl -sf http://localhost:9000 > /dev/null 2>&1; then
+            if curl -sf http://localhost:9301 > /dev/null 2>&1; then
               echo "Frontend ready after ${i}s"
               break
             fi
@@ -70,7 +70,7 @@ jobs:
         working-directory: web
         run: npx playwright test
         env:
-          PLAYWRIGHT_BASE_URL: http://localhost:9000
+          PLAYWRIGHT_BASE_URL: http://localhost:9301
 
       - name: Upload test results
         if: failure()

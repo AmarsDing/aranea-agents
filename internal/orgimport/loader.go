@@ -19,7 +19,7 @@ type LoadOptions struct {
 	// markdown prose into a structured YAML spec. Set when the input file ends
 	// in .md or when ForceExtract is true.
 	ExtractViaAPI bool
-	// APIURL is the base URL of the Aranea backend (e.g. http://localhost:8000).
+	// APIURL is the base URL of the Aranea backend (e.g. http://localhost:8800).
 	APIURL string
 	// APIToken is the optional Bearer token for authenticated requests.
 	APIToken string

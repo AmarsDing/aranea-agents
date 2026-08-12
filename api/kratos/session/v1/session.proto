@@ -762,6 +762,9 @@ message StepV2 {
   bool is_final = 20;
   string started_at = 21;
   string completed_at = 22;
+  // 75 review S3：高危动作标记（敏感词命中确认门）。REST 重载路径必须携带，
+  // 否则页面刷新后 confirm 卡高危徽标丢失（WS 路径已有，见 ws_v2_wire.go）。
+  bool danger = 23;
 }
 
 // === 2026-07-04 问题 6 修复：v2 entity 消息定义（7 类） ===

@@ -156,6 +156,13 @@ func (c *Client) Call(ctx context.Context, method string, params any) (json.RawM
 	}
 }
 
+// InFlight 返回已发出未收到响应（含未超时）的请求数。看门狗据此区分"忙"与"僵死"（F3）。
+func (c *Client) InFlight() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.pending)
+}
+
 // Close 幂等关闭：所有 in-flight 请求收到 ErrClosed，读循环退出。
 func (c *Client) Close() error {
 	c.closeOnce.Do(func() {

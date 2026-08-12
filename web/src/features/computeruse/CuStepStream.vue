@@ -3,7 +3,12 @@
     <div class="cu-stream__header">
       <span class="cu-stream__title">{{ t('computeruse.stream.title') }}</span>
       <span v-if="sessionId" class="cu-stream__session">{{ sessionId }}</span>
-      <button v-if="killState !== 'killed'" class="cu-stream__kill" :disabled="killState === 'killing'" @click="onKill">
+      <button
+        v-if="killState !== 'killed'"
+        class="cu-stream__kill"
+        :disabled="killState === 'killing'"
+        @click="onKill"
+      >
         {{ killState === 'killing' ? t('computeruse.stream.killing') : t('computeruse.stream.kill') }}
       </button>
       <span v-else class="cu-stream__killed">{{ t('computeruse.stream.killed') }}</span>

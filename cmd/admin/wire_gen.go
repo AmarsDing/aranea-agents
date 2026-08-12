@@ -3512,7 +3512,7 @@ func provideA2APublicBaseInput(c *conf.Server) a2a2.PublicBaseURLInput {
 	if c != nil {
 		configURL = c.GetA2APublicBaseUrl()
 	}
-	addr := ":8000"
+	addr := ":8800"
 	if c != nil && c.GetHttp() != nil && strings.TrimSpace(c.GetHttp().GetAddr()) != "" {
 		addr = strings.TrimSpace(c.GetHttp().GetAddr())
 	}

@@ -32,6 +32,33 @@ func TestSessionV2Service_ListSteps(t *testing.T) {
 	}
 }
 
+// TestSessionV2Service_ListSteps_DangerMapping 75 review S3：confirm 步骤的
+// 高危标记 Danger 必须经 REST 路径（bizStepToProto）携带——页面刷新后前端
+// 重载历史，高危徽标不得丢失（WS 事件路径已带，见 ws_v2_wire.go）。
+func TestSessionV2Service_ListSteps_DangerMapping(t *testing.T) {
+	svc := &SessionV2Service{
+		stepReader: &stubStepV2Reader{
+			steps: []biz.Step{
+				{ID: "c1", SessionID: "sess1", Kind: biz.StepKindConfirm, Danger: true},
+				{ID: "c2", SessionID: "sess1", Kind: biz.StepKindConfirm},
+			},
+		},
+	}
+	resp, err := svc.ListSteps(context.Background(), &v1.ListStepsV2Request{SessionId: "sess1"})
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if len(resp.Steps) != 2 {
+		t.Fatalf("unexpected: %+v", resp.Steps)
+	}
+	if !resp.Steps[0].Danger {
+		t.Error("danger step: Danger = false, want true")
+	}
+	if resp.Steps[1].Danger {
+		t.Error("normal step: Danger = true, want false")
+	}
+}
+
 // TestSessionV2Service_GetStep verifies GetStep returns the step by ID.
 func TestSessionV2Service_GetStep(t *testing.T) {
 	svc := &SessionV2Service{

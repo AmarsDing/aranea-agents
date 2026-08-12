@@ -2,7 +2,7 @@
 #
 # Build:  docker compose -f docker-compose.eval.yml build
 # Run:    docker compose -f docker-compose.eval.yml up -d
-# Smoke:  ./test/agent-memory-challenge/smoke.sh http://localhost:9100 "$EVAL_MEMORY_TOKEN"
+# Smoke:  ./test/agent-memory-challenge/smoke.sh http://localhost:8910 "$EVAL_MEMORY_TOKEN"
 # Stop:   docker compose -f docker-compose.eval.yml down   (add -v to drop data)
 #
 # The stack runs only the standalone evaluation entrypoint (cmd/memoryeval) —
@@ -32,7 +32,7 @@ services:
         GO_BUILD_TAGS: pgvector
     command: ["./memoryeval"]
     environment:
-      EVAL_HTTP_ADDR: ":9100"
+      EVAL_HTTP_ADDR: ":8910"
       EVAL_PG_SOURCE: "postgres://aranea:${EVAL_DB_PASSWORD:-aranea_eval}@db:5432/aranea?sslmode=disable"
       # Use the pgvector store provided by the db service (required together
       # with the GO_BUILD_TAGS=pgvector build arg above).
@@ -47,7 +47,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
       EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
     ports:
-      - "9100:9100"
+      - "8910:8910"
     depends_on:
       db:
         condition: service_healthy

@@ -19,6 +19,12 @@ func TestTransition_LegalPaths(t *testing.T) {
 		{SessionActing, EvFail, SessionFailed},
 		{SessionActing, EvCancel, SessionCancelled},
 		{SessionAwaitingConfirm, EvCancel, SessionCancelled},
+		// 75 review B3：以下转换原本被直赋绕过，现纳入状态机表。
+		{SessionIdle, EvFail, SessionFailed},          // 预算耗尽（chargeBudget 于 idle 判失败）
+		{SessionObserving, EvFinish, SessionDone},     // 用户中途结束
+		{SessionGrounding, EvFinish, SessionDone},     // 用户中途结束
+		{SessionActing, EvFinish, SessionDone},        // 用户中途结束
+		{SessionAwaitingConfirm, EvFinish, SessionDone}, // 用户中途结束
 	}
 	for _, c := range cases {
 		got, err := Transition(c.from, c.ev)

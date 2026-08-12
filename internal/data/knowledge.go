@@ -448,7 +448,7 @@ func (r *knowledgeRepo) UpdateCollectionSyncState(ctx context.Context, id, state
 
 // EnableCollectionSemantic 空语义层单向启用（B2）：守卫式 UPDATE，仅当集合
 // embedding_model 仍为空时绑定 model/dim；返回 bool=是否生效
-// （RowsAffected=0 → false：并发已绑定或集合不存在，service 层已先做存在性检查）。
+//（RowsAffected=0 → false：并发已绑定或集合不存在，service 层已先做存在性检查）。
 func (r *knowledgeRepo) EnableCollectionSemantic(ctx context.Context, id, model string, dim int) (bool, error) {
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE knowledge_collections SET embedding_model = $2, dim = $3, updated_at = NOW()

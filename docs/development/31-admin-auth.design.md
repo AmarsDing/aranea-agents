@@ -72,7 +72,7 @@ Aranea 管理端需要一套对人和对机器都清晰的认证方式：浏览�
 
 | 现象 | 根因 |
 |------|------|
-| 已登录但 Chat/WS 401 | 页面在 `:9000`（gRPC）或跨 host，Cookie 未带上 |
+| 已登录但 Chat/WS 401 | 页面在 `:9900`（gRPC）或跨 host，Cookie 未带上 |
 | dev 下 HTTP 可用、WS 不行 | 曾要求 Cookie，bypass 未覆盖 WS |
 | 心跳失败就跳登录 | `isAlive` 与真实 `/healthz` 脱节 |
 | 脚本难以调用 API | 仅 Cookie 登录，无长期 Token |
@@ -127,8 +127,8 @@ flowchart TD
 ```mermaid
 sequenceDiagram
   participant B as 浏览器
-  participant P as Quasar 代理 :9001
-  participant S as WSServer :8000
+  participant P as Quasar 代理 :9301
+  participant S as WSServer :8800
 
   Note over B,S: 主路径
   B->>P: GET /v1/ws?session_id=... (Cookie 自动携带)

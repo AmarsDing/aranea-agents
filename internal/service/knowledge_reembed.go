@@ -89,7 +89,7 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 // EnableCollectionSemantic B2：词法集合（embedding_model 为空）单向启用语义层——
 // 绑定当前全局 embedder 的 model/dim（守卫式 UPDATE，并发/重复调用 → Conflict，
 // 不可改绑/清空），随后全集合有正文文档进入 B1 同一串行重嵌入管线
-// （启用后全部 chunks 缺失，恰为 ListDocumentsPendingReembed 集合）。
+//（启用后全部 chunks 缺失，恰为 ListDocumentsPendingReembed 集合）。
 func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1.EnableCollectionSemanticRequest) (*v1.EnableCollectionSemanticResponse, error) {
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
@@ -119,9 +119,9 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 		return nil, err
 	}
 	resp := &v1.EnableCollectionSemanticResponse{
-		EnqueuedDocs:   int32(len(docs)),
+		EnqueuedDocs:  int32(len(docs)),
 		EmbeddingModel: model,
-		Dim:            int32(dim),
+		Dim:           int32(dim),
 	}
 	if len(docs) == 0 {
 		return resp, nil

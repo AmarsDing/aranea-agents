@@ -634,6 +634,9 @@ export type StepV2 = {
   isFinal: boolean | undefined;
   startedAt: string | undefined;
   completedAt: string | undefined;
+  // 75 review S3：高危动作标记（敏感词命中确认门）。REST 重载路径必须携带，
+  // 否则页面刷新后 confirm 卡高危徽标丢失（WS 路径已有，见 ws_v2_wire.go）。
+  danger: boolean | undefined;
 };
 
 export type GetStepV2Request = {

@@ -89,6 +89,8 @@ interface StepV2Dto {
   toolDurationMs?: number | string;
   toolErrorCode?: string;
   noticeType?: string;
+  // 75 review S3：高危标记（confirm 步骤敏感词命中），缺省=非高危。
+  danger?: boolean;
   status?: string;
   isFinal?: boolean;
   startedAt?: string;
@@ -207,6 +209,7 @@ function mapStep(dto: StepV2Dto): Step {
     ToolDurationMs: toNum(dto.toolDurationMs),
     ToolErrorCode: toStr(dto.toolErrorCode),
     NoticeType: dto.noticeType || undefined,
+    Danger: dto.danger || undefined,
     Status: (toStr(dto.status) || 'pending') as StepStatus,
     IsFinal: Boolean(dto.isFinal),
     StartedAt: toStr(dto.startedAt),

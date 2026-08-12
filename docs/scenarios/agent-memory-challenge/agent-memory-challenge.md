@@ -112,7 +112,7 @@
 
 1. **仓库**：https://github.com/AmarsDing/aranea-agents ，固定 tag `amc-2026.08`
 2. **构建**：`docker compose -f docker-compose.eval.yml build`（根 Dockerfile，Go 1.23 多阶段构建，自动包含 `memoryeval` 评测二进制）
-3. **运行**：`docker compose -f docker-compose.eval.yml up -d`（app + pgvector 两服务）；评测端点 `http://<host>:9100`，健康检查 `GET /healthz`
+3. **运行**：`docker compose -f docker-compose.eval.yml up -d`（app + pgvector 两服务）；评测端点 `http://<host>:8910`，健康检查 `GET /healthz`
 4. **Add/Search 封装**：`cmd/memoryeval/` 独立 HTTP 适配层（主程序零修改），契约细节见 [design.md §5](./agent-memory-challenge.design.md#5-addsearch-api-封装方案)
 5. **外部依赖**：语义向量检索依赖 OpenAI 兼容 Embedding API（环境变量配置 base_url/api_key/model/dim）；未配置时自动降级为关键词混合召回，Add/Search 契约保持可用
 6. **数据库**：Postgres + pgvector（compose 内置 `pgvector/pgvector:pg16` 服务，首次启动自动完成 schema 迁移）

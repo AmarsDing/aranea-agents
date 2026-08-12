@@ -178,6 +178,12 @@ func (m *Manager) watchdog(stopCh chan struct{}) {
 		if c == nil {
 			continue
 		}
+		// F3：sidecar 单线程顺序执行，有在途请求时无法插队应答 ping——
+		// 此时 ping 必超时，误判僵死会误杀合法长动作（假僵死）。跳过本轮
+		// 且不计 miss；在途请求自身有 10s/30s 超时兜底，超时后 ping 恢复检测。
+		if c.InFlight() > 0 {
+			continue
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), m.pingTimeout)
 		_, err := c.Call(ctx, "device.ping", nil)

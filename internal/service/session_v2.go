@@ -384,6 +384,7 @@ func bizStepToProto(s biz.Step) *v1.StepV2 {
 		ToolDurationMs:  s.ToolDurationMs,
 		ToolErrorCode:   s.ToolErrorCode,
 		NoticeType:      s.NoticeType,
+		Danger:          s.Danger,
 		Status:          string(s.Status),
 		IsFinal:         s.IsFinal,
 		StartedAt:       s.StartedAt.Format(time.RFC3339),

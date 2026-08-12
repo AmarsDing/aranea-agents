@@ -3,7 +3,7 @@
 手机 App 通过 `https://aranea.example.com` 访问家里/办公室 PC 上的 Aranea 后端，PC 无需公网 IP、无需放行入站端口。
 
 ```
-手机 App ──HTTPS──► VPS (Caddy :443 → frps :8080) ──frp 隧道──► PC (frpc → 127.0.0.1:8000)
+手机 App ──HTTPS──► VPS (Caddy :443 → frps :8080) ──frp 隧道──► PC (frpc → 127.0.0.1:8800)
 ```
 
 ## 前置条件

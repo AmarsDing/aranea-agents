@@ -105,4 +105,31 @@ public class JsonRpcTests
         Assert.True(JsonRpc.IsKnownMethod("action.invoke"));
         Assert.False(JsonRpc.IsKnownMethod("action.explode"));
     }
+
+    // ---- 75 review F2：includeScreenshot=true 时快照内联截图子对象 ----
+
+    [Fact]
+    public void ResultResponse_SnapshotWithInlineScreenshot_SerializesScreenshotProperty()
+    {
+        var dto = new SnapshotResultDto
+        {
+            Generation = 3,
+            Screenshot = new ScreenshotResultDto { PngBase64 = "AA==", Width = 2, Height = 1, ScaleFactor = 1.25 },
+        };
+        var frame = JsonRpc.ResultResponse("1", dto);
+        using var doc = JsonDocument.Parse(frame);
+        var result = doc.RootElement.GetProperty("result");
+        Assert.Equal(3, result.GetProperty("generation").GetInt32());
+        var shot = result.GetProperty("screenshot");
+        Assert.Equal("AA==", shot.GetProperty("pngBase64").GetString());
+        Assert.Equal(1.25, shot.GetProperty("scaleFactor").GetDouble());
+    }
+
+    [Fact]
+    public void ResultResponse_SnapshotWithoutScreenshot_OmitsScreenshotProperty()
+    {
+        var frame = JsonRpc.ResultResponse("1", new SnapshotResultDto { Generation = 1 });
+        using var doc = JsonDocument.Parse(frame);
+        Assert.False(doc.RootElement.GetProperty("result").TryGetProperty("screenshot", out _));
+    }
 }

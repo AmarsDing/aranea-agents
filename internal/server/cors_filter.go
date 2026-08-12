@@ -36,7 +36,7 @@ func OriginAllowed(origin string) bool {
 	return false
 }
 
-// CorsDevFilter echoes allowed browser Origins so local SPAs (e.g. Quasar on :9001 hitting API on :8000)
+// CorsDevFilter echoes allowed browser Origins so local SPAs (e.g. Quasar on :9301 hitting API on :8800)
 // receive Access-Control-* on errors as well—otherwise 401 without CORS surfaces as “blocked by CORS”.
 func CorsDevFilter() httpm.FilterFunc {
 	return func(next http.Handler) http.Handler {

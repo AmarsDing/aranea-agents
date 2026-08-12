@@ -4,7 +4,7 @@
 # Exits non-zero on the first failed check; prints a PASS report otherwise.
 set -euo pipefail
 
-BASE="${1:-http://localhost:9100}"
+BASE="${1:-http://localhost:8910}"
 TOKEN="${2:-}"
 AUTH=()
 if [ -n "$TOKEN" ]; then AUTH=(-H "Authorization: Bearer ${TOKEN}"); fi

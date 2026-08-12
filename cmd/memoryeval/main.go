@@ -24,7 +24,7 @@ import (
 //
 // Environment:
 //
-//	EVAL_HTTP_ADDR        listen address (default ":9100")
+//	EVAL_HTTP_ADDR        listen address (default ":8910")
 //	EVAL_PG_SOURCE        Postgres DSN (pgvector-enabled); fallback DATABASE_URL
 //	EVAL_VECTOR_DIM       embedding dimension (default 0 = server default 1536)
 //	EVAL_MEMORY_TOKEN     Memory System Key for Bearer/X-Api-Key auth (empty = no auth, sandbox only)
@@ -34,7 +34,7 @@ import (
 //	EMBEDDING_MODEL       embedding model (default text-embedding-3-small)
 //	EMBEDDING_DIM         embedding dimension (default 1536)
 func main() {
-	addr := envOr("EVAL_HTTP_ADDR", ":9100")
+	addr := envOr("EVAL_HTTP_ADDR", ":8910")
 	token := os.Getenv("EVAL_MEMORY_TOKEN")
 	pgSource := os.Getenv("EVAL_PG_SOURCE")
 	if pgSource == "" {

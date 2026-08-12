@@ -28,7 +28,7 @@ const banner = `
 
 // Config holds REPL startup parameters.
 type Config struct {
-	// APIBase is the backend base URL, e.g. "http://localhost:8000".
+	// APIBase is the backend base URL, e.g. "http://localhost:8800".
 	APIBase string
 	// Token is the JWT for authentication.
 	Token string

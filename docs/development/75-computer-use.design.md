@@ -97,6 +97,7 @@
 idle → observing → grounding → acting → done
   ↘ awaiting_confirm ↗（确认门）   ↘ failed / cancelled(急停/超预算)
 ```
+补充转换（M1.5 审查 B3 后补全）：`EvFinish`（用户中途结束）从任意非终态直达 `done`；`EvFail` 从 `idle` 可达（chargeBudget 预算预检失败）；终态不可再转换，会话复用由 Usecase 重建 idle 处理。
 
 **Port 接口**（窄接口 + Stability 标注）：
 
@@ -226,6 +227,8 @@ Act(target)
 
 - `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent）
 - 聊天气泡内嵌：`TurnContainer.vue` 在 **turn.Status=running** 且 steps 中含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时，气泡尾部渲染 CuStepStream——步骤卡片（目标/路径徽标/耗时/结果/失败原因）；头部急停按钮 → `POST /v1/computeruse/sessions/{id}/kill`。历史 turn 不渲染（急停对死会话无意义，审计回放走监控页 steps API）
+- **容器白名单（M1.5 审查 S1）**：CuStepStream 仅允许嵌入 TurnContainer（聊天气泡尾部）；监控页等其他场景复用前须过 UX 评审（实时事件流+急停按钮的展示语境与气泡内不同）
+- **TECH-DEBT（M1.5 审查 S2）**：步骤流仅消费 WS 实时事件，页面刷新后不回放（审计数据仍可经 ListComputerUseSteps 查询）；后续补齐 REST 回补时须复用 `cuStepFromMonitorEvent` 字段映射口径（含 danger/confirmed_by），避免双份映射漂移
 - ToolsPage 自动展示新工具（种子分类 computeruse，分类筛选项含 computeruse）
 
 ### 3.9 API（service 层）

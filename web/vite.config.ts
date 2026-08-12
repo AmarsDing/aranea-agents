@@ -12,19 +12,19 @@ export default defineConfig({
     })
   ],
   server: {
-    port: 9001,
+    port: 9301,
     proxy: {
-      "/v1": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/healthz": { target: "http://127.0.0.1:8000", changeOrigin: true }
+      "/v1": { target: "http://127.0.0.1:8800", changeOrigin: true, ws: true },
+      "/api": { target: "http://127.0.0.1:8800", changeOrigin: true },
+      "/healthz": { target: "http://127.0.0.1:8800", changeOrigin: true }
     }
   },
   preview: {
-    port: 9001,
+    port: 9301,
     proxy: {
-      "/v1": { target: "http://127.0.0.1:8000", changeOrigin: true, ws: true },
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/healthz": { target: "http://127.0.0.1:8000", changeOrigin: true }
+      "/v1": { target: "http://127.0.0.1:8800", changeOrigin: true, ws: true },
+      "/api": { target: "http://127.0.0.1:8800", changeOrigin: true },
+      "/healthz": { target: "http://127.0.0.1:8800", changeOrigin: true }
     }
   }
 });

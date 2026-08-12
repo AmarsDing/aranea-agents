@@ -22,6 +22,7 @@ var transitions = map[SessionStatus]map[SessionEvent]SessionStatus{
 	SessionIdle: {
 		EvObserve: SessionObserving,
 		EvGround:  SessionGrounding,
+		EvFail:    SessionFailed, // 预算耗尽（chargeBudget 于 idle 直接判失败）
 		EvCancel:  SessionCancelled,
 		EvFinish:  SessionDone,
 	},
@@ -29,6 +30,7 @@ var transitions = map[SessionStatus]map[SessionEvent]SessionStatus{
 		EvStepDone: SessionIdle,
 		EvFail:     SessionFailed,
 		EvCancel:   SessionCancelled,
+		EvFinish:   SessionDone, // 用户中途结束
 	},
 	SessionGrounding: {
 		EvAct:          SessionActing,
@@ -36,15 +38,18 @@ var transitions = map[SessionStatus]map[SessionEvent]SessionStatus{
 		EvStepDone:     SessionIdle, // 干跑：grounding 完即回 idle
 		EvFail:         SessionFailed,
 		EvCancel:       SessionCancelled,
+		EvFinish:       SessionDone, // 用户中途结束
 	},
 	SessionAwaitingConfirm: {
 		EvConfirmed: SessionGrounding,
 		EvCancel:    SessionCancelled, // 确认拒绝/超时
+		EvFinish:    SessionDone,      // 用户中途结束
 	},
 	SessionActing: {
 		EvStepDone: SessionIdle,
 		EvFail:     SessionFailed,
 		EvCancel:   SessionCancelled,
+		EvFinish:   SessionDone, // 用户中途结束
 	},
 	// 终态：done/failed/cancelled 不允许再转换（会话复用由 Usecase 重建 idle 处理）
 }

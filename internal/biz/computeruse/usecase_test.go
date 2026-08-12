@@ -72,6 +72,11 @@ type fakeMatcher struct{ hit *UIElement }
 
 func (m fakeMatcher) Match(_ []UIElement, _ string) *UIElement { return m.hit }
 
+// mutableMatcher 可在测试中途切换命中结果（B2 回归：先失败后成功）。
+type mutableMatcher struct{ hit *UIElement }
+
+func (m *mutableMatcher) Match(_ []UIElement, _ string) *UIElement { return m.hit }
+
 type fakeAudit struct{ entries []AuditEntry }
 
 func (a *fakeAudit) RecordStep(_ context.Context, e AuditEntry) error {
@@ -292,5 +297,95 @@ func TestObserve_SummaryContainsElements(t *testing.T) {
 	}
 	if res.Summary == "" {
 		t.Error("summary should not be empty")
+	}
+}
+
+// --- 75 review 修复回归（B1/B2/B3）---
+
+// B2：动作失败把会话置 failed 后，agent 不得被永久阻塞——下一次 Act 自动重建会话。
+func TestAct_FailedSessionDoesNotBlockAgent(t *testing.T) {
+	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
+	m := &mutableMatcher{} // 首轮必失败（a11y 未命中且无视觉兜底）
+	u, _, _ := newTestUsecase(gw, m)
+	ctx := context.Background()
+
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", Target: "不存在", Action: ActionInvoke}); !errors.Is(err, ErrGroundingFailed) {
+		t.Fatalf("first act err = %v, want ErrGroundingFailed", err)
+	}
+
+	m.hit = &saveButton // 修复条件后重试
+	res, err := u.Act(ctx, ActRequest{AgentKey: "agent1", Target: "保存", Action: ActionInvoke})
+	if err != nil {
+		t.Fatalf("second act should auto-recreate session, got err: %v", err)
+	}
+	if res.Step.Result != StepOK {
+		t.Errorf("second act result = %s", res.Step.Result)
+	}
+	// 显式引用已失败会话仍拒绝（终态语义不变）。
+	s1, _ := u.GetSession(ctx, res.Step.SessionID)
+	_ = s1
+	failed := ""
+	u.mu.Lock()
+	for id, s := range u.sessions {
+		if s.Status == SessionFailed {
+			failed = id
+		}
+	}
+	u.mu.Unlock()
+	if failed == "" {
+		t.Fatal("expected a failed session recorded")
+	}
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: failed, Target: "保存", Action: ActionInvoke}); !errors.Is(err, ErrSessionTerminal) {
+		t.Errorf("act on failed session err = %v, want ErrSessionTerminal", err)
+	}
+}
+
+// B2：预算耗尽置 failed 后，agent 下一次 Act 自动换新会话，不再报 ErrSessionTerminal。
+func TestAct_BudgetExhaustedSessionDoesNotBlockAgent(t *testing.T) {
+	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
+	u, _, _ := newTestUsecase(gw, fakeMatcher{hit: &saveButton})
+	ctx := context.Background()
+
+	s, _ := u.StartSession(ctx, "agent1", Budget{MaxSteps: 1, Deadline: time.Now().Add(time.Hour)})
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: s.ID, Target: "保存", Action: ActionInvoke}); err != nil {
+		t.Fatalf("first act err: %v", err)
+	}
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: s.ID, Target: "保存", Action: ActionInvoke}); !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("second act err = %v, want ErrBudgetExceeded", err)
+	}
+	// 不显式指定会话：应自动创建新会话并成功。
+	res, err := u.Act(ctx, ActRequest{AgentKey: "agent1", Target: "保存", Action: ActionInvoke})
+	if err != nil {
+		t.Fatalf("auto-recreate after budget exhaustion err: %v", err)
+	}
+	if res.Step.SessionID == s.ID {
+		t.Error("expected a fresh session id, got the exhausted one")
+	}
+}
+
+// B1/B3：KillSwitch 与进行中 Act 并发——状态经状态机转换，字段访问全部持锁。
+// go test -race 下验证无数据竞态；功能上动作要么完成要么被取消，不得死锁。
+func TestAct_ConcurrentKillSwitch(t *testing.T) {
+	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
+	u, _, _ := newTestUsecase(gw, fakeMatcher{hit: &saveButton})
+	ctx := context.Background()
+
+	s, _ := u.StartSession(ctx, "agent1", Budget{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: s.ID, Target: "保存", Action: ActionInvoke})
+		done <- err
+	}()
+	for i := 0; i < 10; i++ {
+		_ = u.KillSwitch(ctx, s.ID)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("act did not return after kill switch")
+	}
+	got, _ := u.GetSession(ctx, s.ID)
+	if got.Status != SessionCancelled {
+		t.Errorf("status = %s, want cancelled", got.Status)
 	}
 }

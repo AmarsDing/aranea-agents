@@ -135,6 +135,41 @@ func TestGatewayScreenshot(t *testing.T) {
 	}
 }
 
+// TestGatewaySnapshotWithScreenshot 75 review F2：includeScreenshot 响应映射——
+// sidecar 内联返回 screenshot 子对象，gateway 解码进 Snapshot.Screenshot。
+func TestGatewaySnapshotWithScreenshot(t *testing.T) {
+	png := []byte{0x89, 'P', 'N', 'G'}
+	g, received := newTestGateway(t, func(req rpcRequest) (any, *rpcError) {
+		return json.RawMessage(`{
+			"generation": 3, "elements": [],
+			"screenshot": {"pngBase64": "` + base64.StdEncoding.EncodeToString(png) + `", "width": 640, "height": 480, "scaleFactor": 1.25}
+		}`), nil
+	})
+
+	snap, err := g.Snapshot(context.Background(), bizcomputeruse.SnapshotOpts{IncludeScreenshot: true})
+	if err != nil {
+		t.Fatalf("Snapshot err = %v", err)
+	}
+	if snap.Screenshot == nil {
+		t.Fatal("Snapshot.Screenshot should be mapped when sidecar returns it")
+	}
+	if snap.Screenshot.Width != 640 || snap.Screenshot.Height != 480 || snap.Screenshot.ScaleFactor != 1.25 {
+		t.Errorf("screenshot meta = %+v", snap.Screenshot)
+	}
+	if string(snap.Screenshot.PNG) != string(png) {
+		t.Errorf("screenshot PNG bytes mismatch")
+	}
+
+	req := <-received
+	var params map[string]any
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		t.Fatalf("params unmarshal: %v", err)
+	}
+	if params["includeScreenshot"] != true {
+		t.Errorf("params = %v, want includeScreenshot=true", params)
+	}
+}
+
 // TestGatewayInvoke 成功与跨代 ref 错误映射。
 func TestGatewayInvoke(t *testing.T) {
 	stale := false

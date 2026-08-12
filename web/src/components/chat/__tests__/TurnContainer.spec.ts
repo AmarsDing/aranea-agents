@@ -127,11 +127,7 @@ describe('TurnContainer — CuStepStream embedding', () => {
   function mountWithStream(turn: Turn) {
     return mount(TurnContainer, {
       props: { turn },
-      global: {
-        stubs: {
-          CuStepStream: { template: '<div class="cu-stream-stub" :data-session="sessionId" />', props: ['sessionId'] },
-        },
-      },
+      global: { stubs: { CuStepStream: { template: '<div class="cu-stream-stub" :data-session="sessionId" />', props: ['sessionId'] } } },
     });
   }
 

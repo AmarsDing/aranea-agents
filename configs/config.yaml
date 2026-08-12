@@ -38,7 +38,7 @@ data:
   # SECURITY: Override via env var DATA__POSTGRES__SOURCE in production.
   # pgvector extension is required (DAO_VECTOR_PGVECTOR=1).
   postgres:
-    source: "postgres://postgres:Hangshan%40123@127.0.0.1:5432/aranea?sslmode=disable"
+    source: "postgres://postgres:123456@127.0.0.1:5432/aranea?sslmode=disable" # app 便携实例（2026-08-12 起，原本机实例已停用）
     vector_dim: 1024 # bge-m3 via local Ollama (2026-08-08; was 1536 for text-embedding-3-small)
   redis:
     addr: 127.0.0.1:6379

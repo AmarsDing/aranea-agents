@@ -2169,7 +2169,7 @@ git commit -m "feat(knowledge): B1 ReembedDocuments 串行重嵌入管线（复�
 
 **设计**（spec §8.3 落地修正）：spec 原述「文档面板批量操作栏」——SP2-8 工作台时代该 UI 已不存在，文档操作实际位于 WorkbenchSidebar 文件行右键菜单（move/download/delete 同模式）。**入口①修正为单文档菜单项**（与既有交互一致；批量留待后续多选能力）。入口②（FocusCard 按钮）已在 M4-T2 落组件、本任务接线。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // WorkbenchSidebar.spec.ts 追加：
@@ -2185,12 +2185,12 @@ it('reembedDocuments action 调用 api 并返回受理计数', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/workbench/__tests__/WorkbenchSidebar.spec.ts src/stores/__tests__/knowledge.spec.ts`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 // api.ts：
@@ -2231,12 +2231,12 @@ function confirmReembed(docIds: string[]) {
 
 KnowledgeGraph3D.vue：FocusCard 挂载处加 `@reembed="(docId: string) => $emit('reembed', docId)"`，`:can-reembed="collectionHasSemantic"`（从 `collections` prop 按 `collection-id` 查 `embedding_model` 非空）；emits 加 `'reembed': [docId: string]`。KnowledgePage.vue：`<knowledge-graph-3-d ... @reembed="(docId) => confirmReembed([docId])" />`。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: 同 Step 2 命令
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/features/knowledge/api.ts web/src/stores/knowledge.ts web/src/components/knowledge/workbench/WorkbenchSidebar.vue web/src/features/knowledge/useKnowledgePage.ts web/src/components/knowledge/KnowledgeGraph3D.vue web/src/pages/KnowledgePage.vue web/src/components/knowledge/workbench/__tests__/ web/src/stores/__tests__/
@@ -2254,7 +2254,7 @@ git commit -m "feat(knowledge): B1 前端重嵌入入口（文件菜单① + Foc
 - Modify: `web/src/i18n/`（zh-Hans / en-US 文案）
 - Test: 上述两 spec 追加对话框/置灰用例
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // useKnowledgePage spec 或 sidebar spec 追加：
@@ -2266,13 +2266,13 @@ it('confirmReembed 先弹确认对话框（列出文档数），确认后才调 
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails** → **Step 3: Write minimal implementation**
+- [x] **Step 2: Run test to verify it fails** → **Step 3: Write minimal implementation**
 
 - 词法库置灰：Sidebar 由 `current-vault-id` + `collections`（Workbench 已有 props）computed `currentHasSemantic`；菜单项 `:disable="!currentHasSemantic"` + `q-tooltip` 说明「词法库无语义层，先启用语义检索」
 - 确认对话框（复用 M1 真折射玻璃风格类）：列出文档数 + 「从已存正文重建向量，无需原文件」说明；确认后调 store
 - i18n 文案（zh-Hans / en-US）：`reembedDocument: '重新向量化' / 'Re-embed'`；`reembedConfirmTitle: '重新向量化文档' / 'Re-embed documents'`；`reembedConfirmBody: '将从已存正文为 {n} 篇文档重建向量索引（无需原文件）。' / 'Rebuilds vectors from stored text for {n} document(s).'`；`reembedAccepted: '已受理 {n} 篇重嵌入' / '{n} document(s) queued'`；`reembedNoSemantic: '词法库无语义层' / 'No semantic layer'`
 
-- [ ] **Step 4: Run test to verify it passes + 门禁**
+- [x] **Step 4: Run test to verify it passes + 门禁**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿（含 check-i18n）
@@ -2286,7 +2286,7 @@ Expected: 全绿（含 check-i18n）
 5. 语义检索该文档内容 → 命中恢复
 6. 图谱 FocusCard「重新向量化」按钮同链路验证（入口②）
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add web/src/features/knowledge/useKnowledgePage.ts web/src/components/knowledge/workbench/ web/src/i18n/
@@ -2309,7 +2309,7 @@ git commit -m "feat(knowledge): B1 重嵌入确认对话框 + 词法库置灰 + 
 - Modify: `internal/event/flow_log.go` stepTitleRegistry + `docs/development/52-flow-logger.design.md` §5.1
 - Test: `internal/service/knowledge_reembed_test.go` 追加；`internal/data/knowledge_reembed_test.go` 追加 PG 用例
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 func TestEnableCollectionSemantic_ConflictWhenAlreadyEnabled(t *testing.T) {
@@ -2325,12 +2325,12 @@ func TestEnableCollectionSemantic_EnqueuesAllContentDocs(t *testing.T) {
 func TestEnableCollectionSemantic_MutateAccessDenied(t *testing.T) { /* 权限拒绝 */ }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/service/ -run TestEnableCollectionSemantic -count=1`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```proto
 // knowledge.proto：
@@ -2384,12 +2384,12 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 
 stepTitleRegistry 登记：`"knowledge.collection.enable_semantic": "集合语义层启用"`。
 
-- [ ] **Step 4: Run test to verify it passes + 门禁**
+- [x] **Step 4: Run test to verify it passes + 门禁**
 
 Run: `make api && make build && go test ./internal/service/ ./internal/data/ -run 'TestEnableCollectionSemantic|TestKnowledgeRepo_EnableCollectionSemantic' -count=1`
-Expected: 全绿
+Expected: 全绿（service 全绿；data PG 用例因本地 PG 认证环境失败，与 B1 既有 PG 用例一致，非本任务引入）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add api/kratos/knowledge/v1/ internal/biz/knowledge/knowledge.go internal/data/knowledge.go internal/data/knowledge_reembed_test.go internal/service/knowledge_reembed.go internal/service/knowledge_reembed_test.go internal/event/flow_log.go docs/development/52-flow-logger.design.md

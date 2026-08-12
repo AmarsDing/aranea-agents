@@ -20,8 +20,8 @@ COPY --from=builder /src/bin /app
 
 WORKDIR /app
 
-EXPOSE 8000
-EXPOSE 9000
+EXPOSE 8800
+EXPOSE 9900
 VOLUME /data/conf
 
 CMD ["./admin", "-conf", "/data/conf"]

@@ -102,6 +102,8 @@ type SnapshotOpts struct {
 type Snapshot struct {
 	Elements   []UIElement `json:"elements"`
 	Generation int         `json:"generation"`
+	// Screenshot 仅 IncludeScreenshot=true 时由 sidecar 内联返回（可空）。
+	Screenshot *Image `json:"screenshot,omitempty"`
 }
 
 // Image 截图（PNG 字节流 + 元数据）。

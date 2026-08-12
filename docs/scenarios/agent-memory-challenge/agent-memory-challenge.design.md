@@ -180,7 +180,7 @@ Search(query, user_id, top_k=100, options)
 | 服务 | 镜像/构建 | 说明 |
 |------|-----------|------|
 | `db` | `pgvector/pgvector:pg16` | Postgres + pgvector，健康检查后启动 app |
-| `memoryeval` | 根 `Dockerfile` 构建（`make build` 自动含 `bin/memoryeval`），`command: ["./memoryeval"]` 覆盖 CMD | 评测适配层服务，暴露 9100 |
+| `memoryeval` | 根 `Dockerfile` 构建（`make build` 自动含 `bin/memoryeval`），`command: ["./memoryeval"]` 覆盖 CMD | 评测适配层服务，暴露 8910 |
 
 ### 8.3 环境变量（运行说明必须包含）
 

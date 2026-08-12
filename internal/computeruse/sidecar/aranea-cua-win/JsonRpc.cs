@@ -155,7 +155,7 @@ public sealed class Dispatcher
             case "device.info":
                 return _capture.GetDeviceInfo();
             case "perception.snapshot":
-                return _uia.Snapshot(GetString(p, "windowTitle"), GetInt(p, "maxElements", 500));
+                return Snapshot(p);
             case "perception.screenshot":
                 return Screenshot(p);
             case "action.invoke":
@@ -182,7 +182,18 @@ public sealed class Dispatcher
         }
     }
 
-    /// <summary>解析截图参数并执行</summary>
+    /// <summary>解析快照参数并执行；includeScreenshot=true 时内联主屏截图（F2）</summary>
+    private object Snapshot(JsonElement? p)
+    {
+        var result = _uia.Snapshot(GetString(p, "windowTitle"), GetInt(p, "maxElements", 500));
+        if (GetBool(p, "includeScreenshot"))
+        {
+            result.Screenshot = _capture.Screenshot(null, null, null, null, 1.0);
+        }
+        return result;
+    }
+
+    /// <summary>解析截图参数并执行；zoom≠1 时缩放位图（F1）</summary>
     private object Screenshot(JsonElement? p)
     {
         int? x = null, y = null, w = null, h = null;
@@ -193,7 +204,7 @@ public sealed class Dispatcher
             w = RequireInt(region, "w");
             h = RequireInt(region, "h");
         }
-        return _capture.Screenshot(x, y, w, h);
+        return _capture.Screenshot(x, y, w, h, GetDouble(p, "zoom", 1.0));
     }
 
     /// <summary>解析拖拽参数并执行</summary>
@@ -232,6 +243,18 @@ public sealed class Dispatcher
     internal static int GetInt(JsonElement? p, string name, int def)
     {
         return TryGet(p, name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : def;
+    }
+
+    /// <summary>取可选布尔参数（缺省/非 true 均为 false）</summary>
+    internal static bool GetBool(JsonElement? p, string name)
+    {
+        return TryGet(p, name, out var v) && v.ValueKind == JsonValueKind.True;
+    }
+
+    /// <summary>取带默认值浮点参数</summary>
+    internal static double GetDouble(JsonElement? p, string name, double def)
+    {
+        return TryGet(p, name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : def;
     }
 
     /// <summary>取必选整型参数</summary>

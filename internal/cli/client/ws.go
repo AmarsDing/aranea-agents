@@ -30,7 +30,7 @@ type Envelope struct {
 
 // WSClient dials the Aranea WebSocket endpoint.
 type WSClient struct {
-	Base  string // e.g. "http://localhost:8000"
+	Base  string // e.g. "http://localhost:8800"
 	Token string
 	Debug bool
 }

@@ -85,6 +85,12 @@ func (g *Gateway) Snapshot(ctx context.Context, opts bizcomputeruse.SnapshotOpts
 	var res struct {
 		Elements   []elementDTO `json:"elements"`
 		Generation int          `json:"generation"`
+		Screenshot *struct {
+			PNGBase64   string  `json:"pngBase64"`
+			Width       int     `json:"width"`
+			Height      int     `json:"height"`
+			ScaleFactor float64 `json:"scaleFactor"`
+		} `json:"screenshot"`
 	}
 	if err := g.call(ctx, "perception.snapshot", params, &res); err != nil {
 		return bizcomputeruse.Snapshot{}, err
@@ -96,6 +102,16 @@ func (g *Gateway) Snapshot(ctx context.Context, opts bizcomputeruse.SnapshotOpts
 	}
 	for _, dto := range res.Elements {
 		snap.Elements = append(snap.Elements, dto.toBiz(res.Generation))
+	}
+	// F2：includeScreenshot=true 时 sidecar 内联返回截图子对象。
+	if res.Screenshot != nil {
+		png, err := base64.StdEncoding.DecodeString(res.Screenshot.PNGBase64)
+		if err != nil {
+			return bizcomputeruse.Snapshot{}, fmt.Errorf("computeruse: 快照截图 base64 解码失败: %w", err)
+		}
+		snap.Screenshot = &bizcomputeruse.Image{
+			PNG: png, Width: res.Screenshot.Width, Height: res.Screenshot.Height, ScaleFactor: res.Screenshot.ScaleFactor,
+		}
 	}
 	return snap, nil
 }

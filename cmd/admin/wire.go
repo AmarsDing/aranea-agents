@@ -26,9 +26,9 @@ import (
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
-	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
@@ -3018,7 +3018,7 @@ func provideA2APublicBaseInput(c *conf.Server) a2apkg.PublicBaseURLInput {
 	if c != nil {
 		configURL = c.GetA2APublicBaseUrl()
 	}
-	addr := ":8000"
+	addr := ":8800"
 	if c != nil && c.GetHttp() != nil && strings.TrimSpace(c.GetHttp().GetAddr()) != "" {
 		addr = strings.TrimSpace(c.GetHttp().GetAddr())
 	}

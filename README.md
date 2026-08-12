@@ -853,15 +853,15 @@ go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 # go run -tags pgvector ./cmd/admin -conf ./configs
 ```
 
-本地账号：**`dev` / `dev`** · 健康检查：`curl http://localhost:8000/healthz`
+本地账号：**`dev` / `dev`** · 健康检查：`curl http://localhost:8800/healthz`
 
-WebSocket 走 HTTP 同端口 `ws://localhost:8000/v1/ws`（前端 dev 代理为 `ws://localhost:9001/v1/ws`）。
+WebSocket 走 HTTP 同端口 `ws://localhost:8800/v1/ws`（前端 dev 代理为 `ws://localhost:9301/v1/ws`）。
 
 ### 启动前端
 
 ```bash
 cd web && npm install && npm run dev
-# 浏览器打开 http://localhost:9001（:9000 为 gRPC，勿混用）
+# 浏览器打开 http://localhost:9301（:9900 为 gRPC，勿混用）
 ```
 
 ### 构建 CLI 工具
@@ -874,7 +874,7 @@ make cli
 go build -o aranea ./cmd/aranea
 
 # 使用 CLI
-./aranea login --endpoint http://localhost:8000 --token dev
+./aranea login --endpoint http://localhost:8800 --token dev
 ./aranea agent list
 ./aranea chat --agent spirit "你好，帮我分析一下市场趋势"
 ```
@@ -894,7 +894,7 @@ docker compose -f docker-compose.eval.yml build
 EVAL_MEMORY_TOKEN=<memory-system-key> docker compose -f docker-compose.eval.yml up -d
 
 # 健康检查
-curl http://localhost:9100/healthz
+curl http://localhost:8910/healthz
 ```
 
 ### 端点契约
@@ -915,12 +915,12 @@ curl http://localhost:9100/healthz
 | `EVAL_MEMORY_TOKEN` | 是 | Memory System Key（经申请表提交，勿入仓库） |
 | `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` | 否 | OpenAI 兼容 Embedding 端点；**未配置时自动降级为关键词混合召回，契约保持可用** |
 | `EMBEDDING_PROVIDER` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` | 否 | 默认 `openai` / `text-embedding-3-small` / `1536` |
-| `EVAL_HTTP_ADDR` | 否 | 监听地址，默认 `:9100` |
+| `EVAL_HTTP_ADDR` | 否 | 监听地址，默认 `:8910` |
 
 ### Smoke 自测
 
 ```bash
-./test/agent-memory-challenge/smoke.sh http://localhost:9100 "$EVAL_MEMORY_TOKEN"
+./test/agent-memory-challenge/smoke.sh http://localhost:8910 "$EVAL_MEMORY_TOKEN"
 ```
 
 覆盖：健康检查、鉴权 401、参数校验 400、双用户写入、幂等重复 Add、召回正确性与 user 隔离断言、空 scope 返回 `data:[]`。

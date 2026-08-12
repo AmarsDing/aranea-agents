@@ -5142,8 +5142,11 @@ type StepV2 struct {
 	IsFinal         bool                   `protobuf:"varint,20,opt,name=is_final,json=isFinal,proto3" json:"is_final,omitempty"`
 	StartedAt       string                 `protobuf:"bytes,21,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	CompletedAt     string                 `protobuf:"bytes,22,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 75 review S3：高危动作标记（敏感词命中确认门）。REST 重载路径必须携带，
+	// 否则页面刷新后 confirm 卡高危徽标丢失（WS 路径已有，见 ws_v2_wire.go）。
+	Danger        bool `protobuf:"varint,23,opt,name=danger,proto3" json:"danger,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StepV2) Reset() {
@@ -5328,6 +5331,13 @@ func (x *StepV2) GetCompletedAt() string {
 		return x.CompletedAt
 	}
 	return ""
+}
+
+func (x *StepV2) GetDanger() bool {
+	if x != nil {
+		return x.Danger
+	}
+	return false
 }
 
 // --- TeamStage ---
@@ -7822,7 +7832,7 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\x06status\x18\v \x01(\tR\x06status\x12\x1d\n" +
 	"\n" +
 	"started_at\x18\f \x01(\tR\tstartedAt\x12!\n" +
-	"\fcompleted_at\x18\r \x01(\tR\vcompletedAt\"\x9c\x05\n" +
+	"\fcompleted_at\x18\r \x01(\tR\vcompletedAt\"\xb4\x05\n" +
 	"\x06StepV2\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\aturn_id\x18\x02 \x01(\tR\x06turnId\x12\x17\n" +
@@ -7851,7 +7861,8 @@ const file_kratos_session_v1_session_proto_rawDesc = "" +
 	"\bis_final\x18\x14 \x01(\bR\aisFinal\x12\x1d\n" +
 	"\n" +
 	"started_at\x18\x15 \x01(\tR\tstartedAt\x12!\n" +
-	"\fcompleted_at\x18\x16 \x01(\tR\vcompletedAt\"\xd6\x03\n" +
+	"\fcompleted_at\x18\x16 \x01(\tR\vcompletedAt\x12\x16\n" +
+	"\x06danger\x18\x17 \x01(\bR\x06danger\"\xd6\x03\n" +
 	"\vTeamStageV2\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x17\n" +

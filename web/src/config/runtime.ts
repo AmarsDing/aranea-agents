@@ -40,9 +40,9 @@ export async function loadRuntimeConfig(): Promise<void> {
  * 新能力请通过 **proto + `web/src/services`** 以 Kratos 方式接入。
  *
  * **开发环境**：`backendUrl` 留空则 `kratosApi` 走同源 `/v1`（`quasar.config` 代理到后端），登录 Cookie 与页面同站；
- * 开发时页面在 `http://localhost:9001`（Quasar），API 走同源 `/v1` 代理到 `:8000`。
- * 若写成 `http://127.0.0.1:8000` 而页面在 `http://localhost:9001`，浏览器视其为跨站，**默认 SameSite=Lax 的 Cookie 不会随 XHR 带上**，会出现大量 401。
- * **勿访问 `:9000`**：该端口为后端 gRPC，不是 Web UI。
+ * 开发时页面在 `http://localhost:9301`（Vite），API 走同源 `/v1` 代理到 `:8800`。
+ * 若写成 `http://127.0.0.1:8800` 而页面在 `http://localhost:9301`，浏览器视其为跨站，**默认 SameSite=Lax 的 Cookie 不会随 XHR 带上**，会出现大量 401。
+ * **勿访问 `:9900`**：该端口为后端 gRPC，不是 Web UI。
  */
 export function getBackendOrigin(): string {
   if (runtimeConfig.backendUrl && runtimeConfig.backendUrl.trim().length > 0) {
@@ -51,7 +51,7 @@ export function getBackendOrigin(): string {
   if (import.meta.env.DEV) {
     return '';
   }
-  // Production build: same-origin (nginx / admin 反代) — admin HTTP 默认 :8000，勿写死 :8080。
+  // Production build: same-origin (nginx / admin 反代) — admin HTTP 默认 :8800。
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
   }
@@ -88,7 +88,7 @@ export function isWsSameOriginAsPage(): boolean {
  * True when the page is served from a local HTTP origin (127.0.0.1 / localhost / ::1).
  * In the Tauri desktop app, the Rust side starts an embedded loopback HTTP server
  * so the page origin is `http://127.0.0.1:PORT/` — same-site as the backend at
- * `http://127.0.0.1:8000`. This means SameSite=Lax session cookies are sent
+ * `http://127.0.0.1:8800`. This means SameSite=Lax session cookies are sent
  * with XHR/fetch/WS requests even though JS cannot read the HttpOnly cookie.
  */
 export function isLocalHttpOrigin(): boolean {

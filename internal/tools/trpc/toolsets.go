@@ -88,7 +88,7 @@ type ToolsetConfig struct {
 	// CodingBridge enables the coding agent bridge ToolSet (coding_dispatch_task /
 	// coding_check_task / coding_cancel_task). Requires CodingBridgeSvc; when nil
 	// the flag is pruned so agents never see a tool with no backend (76-coding-agent-bridge).
-	CodingBridge    bool
+	CodingBridge   bool
 	CodingBridgeSvc codingbridge.BridgeService
 }
 

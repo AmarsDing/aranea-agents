@@ -1,6 +1,12 @@
 // web/src/features/session/__tests__/v2Api.spec.ts
-import { describe, it, expect } from 'vitest';
-import { decodeBytesJson } from '../v2Api';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const mockGet = vi.fn();
+vi.mock('../../../services', () => ({
+  kratosApi: { get: (...args: unknown[]) => mockGet(...args) },
+}));
+
+import { decodeBytesJson, listStepsV2 } from '../v2Api';
 
 describe('decodeBytesJson', () => {
   it('returns null for null/undefined/empty', () => {
@@ -46,5 +52,31 @@ describe('decodeBytesJson', () => {
   it('returns null for invalid base64 and invalid JSON', () => {
     expect(decodeBytesJson('!!!not-base64!!!')).toBeNull();
     expect(decodeBytesJson('{invalid json}')).toBeNull();
+  });
+});
+
+// 75 review S3：confirm 步骤的高危标记 Danger 必须在 REST 重载路径保留——
+// WS 事件路径已带 Danger（ws_v2_wire.go），页面刷新走 listStepsV2 时不得丢失，
+// 否则高危徽标在重载后静默消失。
+describe('listStepsV2 — mapStep danger 映射', () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+  });
+
+  it('maps danger=true from REST payload to Step.Danger', async () => {
+    mockGet.mockResolvedValue({
+      data: { steps: [{ id: 's1', kind: 'confirm', status: 'running', danger: true }] },
+    });
+    const steps = await listStepsV2('sess-1');
+    expect(steps).toHaveLength(1);
+    expect(steps[0].Danger).toBe(true);
+  });
+
+  it('danger absent defaults to undefined', async () => {
+    mockGet.mockResolvedValue({
+      data: { steps: [{ id: 's1', kind: 'confirm', status: 'running' }] },
+    });
+    const steps = await listStepsV2('sess-1');
+    expect(steps[0].Danger).toBeUndefined();
   });
 });
