@@ -1516,7 +1516,7 @@ props 加 `focused-doc-id: string`、`can-reembed: boolean`；emits 加 `'reembe
 
 简化：`focus-change` 在 KnowledgeGraph3D 监听并更新局部 `focusedDocId`；关闭卡片 = 调 Canvas 的 clearFocus——经由 `$emit('select-node', '')` 触发 KnowledgePage 清除选中，同时 KnowledgeGraph3D 内部将 focusedDocId 置 ''。**注意保持与既有 select-node 链路兼容**：focusedDocId 是独立局部状态，不与 selectedNodeId 耦合。
 
-- [ ] **Step 3: 门禁 + 运行时验证（R3）**
+- [x] **Step 3: 门禁 + 运行时验证（R3）**（注：运行时浏览器验证由协调员执行）
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿
