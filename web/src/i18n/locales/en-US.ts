@@ -3091,6 +3091,7 @@ export default {
     graphLegendNodes: 'Node types',
     graphLegendEdges: 'Edge types',
     graphLegendUntyped: 'Untyped',
+    graphLegendEmpty: 'No groups',
     graphNeighborhoodHint: 'Neighborhood: {name} · {hops} hops',
     graphNeighborhoodHops: 'Neighborhood hops',
     graphFocusNeighborhood: 'Focus neighborhood',

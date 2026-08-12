@@ -3111,6 +3111,7 @@ export default {
     graphLegendNodes: '节点类型',
     graphLegendEdges: '边类型',
     graphLegendUntyped: '未分类',
+    graphLegendEmpty: '暂无分组',
     graphNeighborhoodHint: '邻域：{name} · {hops} 跳',
     graphNeighborhoodHops: '邻域跳数',
     graphFocusNeighborhood: '聚焦邻域',
