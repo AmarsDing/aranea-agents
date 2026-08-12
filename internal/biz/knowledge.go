@@ -44,9 +44,11 @@ var (
 	ErrKnowledgeQueryRequired          = knowledge.ErrQueryRequired
 	ErrKnowledgeDimensionMismatch      = knowledge.ErrDimensionMismatch
 	ErrKnowledgeEmbeddingEmpty         = knowledge.ErrEmbeddingEmpty
-	KnowledgeEmbedConfigured           = knowledge.EmbedConfigured
-	ApplyKnowledgeEmbedPatch           = knowledge.ApplyEmbedPatch
-	KnowledgeHashContent               = knowledge.HashContent
+	// ErrKnowledgeCollectionSemanticConflict 语义层已被并发请求绑定（B2 守卫式 UPDATE 未生效）。
+	ErrKnowledgeCollectionSemanticConflict = knowledge.ErrCollectionSemanticConflict
+	KnowledgeEmbedConfigured               = knowledge.EmbedConfigured
+	ApplyKnowledgeEmbedPatch               = knowledge.ApplyEmbedPatch
+	KnowledgeHashContent                   = knowledge.HashContent
 )
 
 // ProvideKnowledgeUsecase 是生产 Wire provider：在 NewUsecaseFromRepo 之上

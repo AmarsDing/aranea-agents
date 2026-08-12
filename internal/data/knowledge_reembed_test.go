@@ -95,3 +95,66 @@ func TestKnowledgeRepo_ListDocumentsPendingReembed(t *testing.T) {
 		t.Fatalf("pending doc content_text = %q, want %q（重嵌入依赖正文字段）", got[1].ContentText, "hello world")
 	}
 }
+
+// ── B2 集合语义层单向启用：EnableCollectionSemantic 守卫式 UPDATE ────────────
+// 词法集合（embedding_model=''）首次启用绑定全局 embedder 模型/维度；
+// 守卫 WHERE embedding_model='' 保证并发/重复调用下仅首个请求生效（返 bool）。
+
+// TestKnowledgeRepo_EnableCollectionSemantic 覆盖：
+// - 首次启用 → true，行绑定 model/dim
+// - 重复启用（已绑定）→ false，行保持不变（守卫不命中，防并发双绑）
+// - 不存在集合 → false, nil（service 层已先做存在性检查，false 统一表示未生效）
+func TestKnowledgeRepo_EnableCollectionSemantic(t *testing.T) {
+	db := testhelper.SetupTestPGRaw(t)
+	db.SetMaxOpenConns(1)
+	var schema string
+	if err := db.QueryRow(`SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatalf("current_schema: %v", err)
+	}
+	if _, err := db.Exec(`SET search_path TO ` + schema + `, public`); err != nil {
+		t.Fatalf("set search_path: %v", err)
+	}
+	d := &Data{rawDB: db, readDB: db, pg: db, pgRead: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}
+	if err := EnsureKnowledgeSchema(context.Background(), db, 3); err != nil {
+		t.Fatalf("ensure knowledge schema: %v", err)
+	}
+	repo := &knowledgeRepo{data: d, lg: loggateway.NewNoop()}
+	ctx := context.Background()
+
+	// 词法集合（无语义层）。
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "c-lex", Name: "lex", EmbeddingModel: "", Dim: 1536}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 首次启用 → true，行绑定 model/dim。
+	ok, err := repo.EnableCollectionSemantic(ctx, "c-lex", "text-embedding-3-small", 1536)
+	if err != nil || !ok {
+		t.Fatalf("first enable = (%v, %v), want (true, nil)", ok, err)
+	}
+	col, err := repo.GetCollection(ctx, "c-lex")
+	if err != nil {
+		t.Fatalf("GetCollection: %v", err)
+	}
+	if col.EmbeddingModel != "text-embedding-3-small" || col.Dim != 1536 {
+		t.Fatalf("bound = (%q, %d), want (text-embedding-3-small, 1536)", col.EmbeddingModel, col.Dim)
+	}
+
+	// 重复启用 → false（守卫 WHERE embedding_model='' 不命中），行保持首次绑定值。
+	ok, err = repo.EnableCollectionSemantic(ctx, "c-lex", "other-model", 768)
+	if err != nil || ok {
+		t.Fatalf("re-enable = (%v, %v), want (false, nil)", ok, err)
+	}
+	col, err = repo.GetCollection(ctx, "c-lex")
+	if err != nil {
+		t.Fatalf("GetCollection after re-enable: %v", err)
+	}
+	if col.EmbeddingModel != "text-embedding-3-small" || col.Dim != 1536 {
+		t.Fatalf("after re-enable = (%q, %d), want unchanged (text-embedding-3-small, 1536)", col.EmbeddingModel, col.Dim)
+	}
+
+	// 不存在集合 → false, nil（RowsAffected=0 与「已启用」同语义：未生效）。
+	ok, err = repo.EnableCollectionSemantic(ctx, "c-missing", "m", 3)
+	if err != nil || ok {
+		t.Fatalf("missing enable = (%v, %v), want (false, nil)", ok, err)
+	}
+}

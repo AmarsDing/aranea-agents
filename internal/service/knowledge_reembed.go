@@ -86,6 +86,76 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 	return &v1.ReembedDocumentsResponse{AcceptedCount: int32(len(docs)), SkippedCount: int32(skipped)}, nil
 }
 
+// EnableCollectionSemantic B2：词法集合（embedding_model 为空）单向启用语义层——
+// 绑定当前全局 embedder 的 model/dim（守卫式 UPDATE，并发/重复调用 → Conflict，
+// 不可改绑/清空），随后全集合有正文文档进入 B1 同一串行重嵌入管线
+// （启用后全部 chunks 缺失，恰为 ListDocumentsPendingReembed 集合）。
+func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1.EnableCollectionSemanticRequest) (*v1.EnableCollectionSemanticResponse, error) {
+	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
+	}
+	// 单向启用：已有 embedding_model 则拒绝（防改绑/清空）。
+	if strings.TrimSpace(col.EmbeddingModel) != "" {
+		return nil, apierror.Conflict("KNOWLEDGE", "semantic layer already enabled")
+	}
+	if s.embedderAdmin == nil {
+		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
+	}
+	_, _, model, dim, configured, _ := s.embedderAdmin.Config()
+	if !configured {
+		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
+	}
+	if err := s.uc.EnableCollectionSemantic(ctx, col.ID, model, dim); err != nil {
+		return nil, err
+	}
+
+	// 全集合有正文文档入队（复用 B1 同一串行管线；chunks 缺失/NULL 即 pending）。
+	docs, err := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.EnableCollectionSemanticResponse{
+		EnqueuedDocs:   int32(len(docs)),
+		EmbeddingModel: model,
+		Dim:            int32(dim),
+	}
+	if len(docs) == 0 {
+		return resp, nil
+	}
+
+	// 流程日志：语义层启用批次开始；完成在 goroutine 末尾发射（共用同一 emitter）。
+	flow := s.knowledgeFlow(ctx)
+	flow.LogStart("knowledge.collection.enable_semantic", "集合语义层启用",
+		event.P("collection_id", col.ID),
+		event.P("embedding_model", model),
+		event.P("dim", dim),
+		event.P("doc_count", len(docs)))
+
+	embedder := s.embedder
+	uc := s.uc
+	reembedCtx := appctx.Ctx()
+	safego.Go(reembedCtx, "knowledge-enable-semantic", func() {
+		s.lg.Info("knowledge enable-semantic worker started", // K7 启动
+			loggateway.StepID("knowledge.collection.enable_semantic"),
+			loggateway.Str("collection_id", col.ID),
+			loggateway.Int("doc_count", len(docs)))
+		defer s.lg.Info("knowledge enable-semantic worker exited", // K7 退出
+			loggateway.StepID("knowledge.collection.enable_semantic"),
+			loggateway.Str("collection_id", col.ID))
+		for _, doc := range docs {
+			s.reembedOneDocument(reembedCtx, uc, embedder, col, doc, 0, 0, flow)
+		}
+		flow.LogDone("knowledge.collection.enable_semantic", "集合语义层启用",
+			event.P("collection_id", col.ID),
+			event.P("doc_count", len(docs)))
+	})
+	return resp, nil
+}
+
 // reembedOneDocument 单文档串行管线：DeleteChunksByDocument → indexing+WS →
 // BuildIndexedChunks(content_text) → InsertChunks → indexed+WS。失败置 error 由调用方继续下一篇。
 // 不触发 RebuildBlockIndex（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）。

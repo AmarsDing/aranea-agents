@@ -117,6 +117,9 @@ type CollectionRepo interface {
 	UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
 	// UpdateCollectionSyncState 回写 vault 同步状态与最近一次同步完成时间（P1-3 轮询）。
 	UpdateCollectionSyncState(ctx context.Context, id, state string, lastSyncAt time.Time) error
+	// EnableCollectionSemantic 空语义层单向启用（B2）：守卫式 UPDATE，仅当集合
+	// embedding_model 仍为空时绑定 model/dim；返回 bool=是否生效（false=并发已绑定/不存在）。
+	EnableCollectionSemantic(ctx context.Context, id, model string, dim int) (bool, error)
 }
 
 // DocumentSyncMeta 同步镜像元数据（Vault 同步 modified 事件回写，P1-3）。
@@ -198,6 +201,8 @@ var (
 	ErrEmbeddingEmpty         = apierror.BadRequest("KNOWLEDGE", "embedding is empty")
 	// ErrMoveDimensionMismatch 目标库与源库 dim 不一致，禁止跨库移动（向量维度不兼容）。
 	ErrMoveDimensionMismatch = apierror.Conflict("KNOWLEDGE", "target collection embedding dimension differs; re-ingest the document instead of moving")
+	// ErrCollectionSemanticConflict 语义层已被并发请求绑定（B2 守卫式 UPDATE 未生效）。
+	ErrCollectionSemanticConflict = apierror.Conflict("KNOWLEDGE", "semantic layer already enabled")
 )
 
 // DefaultCollectionName 是 US-14「上传免预选」的兜底知识库名称（懒创建，按 name 复用）。
@@ -326,6 +331,25 @@ func (u *Usecase) GetCollection(ctx context.Context, id string) (Collection, err
 		return Collection{}, ErrIDRequired
 	}
 	return u.collections.GetCollection(ctx, id)
+}
+
+// EnableCollectionSemantic 空语义层单向启用（B2）：透传守卫式 UPDATE；
+// 未生效（并发已绑定）→ ErrCollectionSemanticConflict。
+func (u *Usecase) EnableCollectionSemantic(ctx context.Context, id, model string, dim int) error {
+	if err := u.requireRepo(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(id) == "" {
+		return ErrIDRequired
+	}
+	ok, err := u.collections.EnableCollectionSemantic(ctx, id, model, dim)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrCollectionSemanticConflict
+	}
+	return nil
 }
 
 // ListCollections returns all collections visible in the workspace.

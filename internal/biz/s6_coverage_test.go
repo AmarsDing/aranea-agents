@@ -121,6 +121,16 @@ func (m *memKnowledgeRepo) ListDocuments(_ context.Context, _ string, _, _ int) 
 func (m *memKnowledgeRepo) ListDocumentsPendingReembed(context.Context, string) ([]biz.KnowledgeDocument, error) {
 	return nil, nil
 }
+func (m *memKnowledgeRepo) EnableCollectionSemantic(_ context.Context, id, model string, dim int) (bool, error) {
+	c, ok := m.collections[id]
+	if !ok || c.EmbeddingModel != "" {
+		return false, nil
+	}
+	c.EmbeddingModel = model
+	c.Dim = dim
+	m.collections[id] = c
+	return true, nil
+}
 func (m *memKnowledgeRepo) DeleteDocument(_ context.Context, id string) error {
 	delete(m.documents, id)
 	return nil

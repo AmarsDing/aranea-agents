@@ -267,3 +267,114 @@ func TestReembedDocuments_PipelineReembedsFromContentText(t *testing.T) {
 		t.Fatalf("ReplaceDocBlocks 被调用 %d 次：重嵌入禁止触发 RebuildBlockIndex", n)
 	}
 }
+
+// ── B2 EnableCollectionSemantic 测试替身与用例 ──────────────────────────────
+
+// semanticStubEmbedder 实现 Embedder + EmbedderAdmin（configured 可切换，无网络）。
+type semanticStubEmbedder struct {
+	model      string
+	dim        int
+	configured bool
+}
+
+func (s semanticStubEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i := range texts {
+		v := make([]float32, s.dim)
+		for j := range v {
+			v[j] = 0.1 * float32(j+1)
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
+func (s semanticStubEmbedder) Dim() int { return s.dim }
+
+func (s semanticStubEmbedder) Config() (string, string, string, int, bool, bool) {
+	return "openai", "https://embed.example.com", s.model, s.dim, s.configured, true
+}
+
+func (semanticStubEmbedder) Update(string, string, string, string, int) {}
+
+func newSemanticService(repo *reembedRepo, emb semanticStubEmbedder) (*KnowledgeService, *reembedBlockSpy) {
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	spy := &reembedBlockSpy{}
+	uc.SetBlockIndexRepos(spy, nil)
+	return &KnowledgeService{uc: uc, embedder: emb, embedderAdmin: emb, lg: loggateway.NewNoop()}, spy
+}
+
+// 已启用语义层的集合（embedding_model 非空）→ CONFLICT（单向启用，禁止重绑）。
+func TestEnableCollectionSemantic_ConflictWhenAlreadyEnabled(t *testing.T) {
+	repo := newReembedRepo()
+	seedReembedCollection(t, repo, "c-sem", "ws-1", "already-model")
+	svc, _ := newSemanticService(repo, semanticStubEmbedder{model: "m", dim: 3, configured: true})
+
+	_, err := svc.EnableCollectionSemantic(reembedTenantCtx(), &v1.EnableCollectionSemanticRequest{CollectionId: "c-sem"})
+	require.Error(t, err)
+	if !apierror.IsCode(err, apierror.CodeConflict) {
+		t.Fatalf("err = %v, want CONFLICT", err)
+	}
+}
+
+// 全局 embedder 未配置（configured=false）→ BAD_REQUEST（无法确定绑定模型/维度）。
+func TestEnableCollectionSemantic_BadRequestWhenEmbedderNotConfigured(t *testing.T) {
+	repo := newReembedRepo()
+	seedReembedCollection(t, repo, "c-lex", "ws-1", "")
+	svc, _ := newSemanticService(repo, semanticStubEmbedder{model: "m", dim: 3, configured: false})
+
+	_, err := svc.EnableCollectionSemantic(reembedTenantCtx(), &v1.EnableCollectionSemanticRequest{CollectionId: "c-lex"})
+	require.Error(t, err)
+	if !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("err = %v, want BAD_REQUEST", err)
+	}
+}
+
+// 词法库启用：绑定全局 embedder model/dim，全部有正文文档入队重嵌入（复用 B1 串行管线）。
+func TestEnableCollectionSemantic_EnqueuesAllContentDocs(t *testing.T) {
+	repo := newReembedRepo()
+	seedReembedCollection(t, repo, "c-lex", "ws-1", "")
+	seedReembedDocument(t, repo, "d1", "c-lex", "语义层启用正文一", "error")
+	seedReembedDocument(t, repo, "d2", "c-lex", "语义层启用正文二", "indexed")
+	seedReembedDocument(t, repo, "d3", "c-lex", "语义层启用正文三", "pending")
+	seedReembedDocument(t, repo, "d-empty", "c-lex", "", "error") // 无正文不入队
+	svc, _ := newSemanticService(repo, semanticStubEmbedder{model: "text-embedding-3-small", dim: 3, configured: true})
+
+	resp, err := svc.EnableCollectionSemantic(reembedTenantCtx(), &v1.EnableCollectionSemanticRequest{CollectionId: "c-lex"})
+	require.NoError(t, err)
+	if resp.GetEnqueuedDocs() != 3 {
+		t.Fatalf("enqueued = %d, want 3", resp.GetEnqueuedDocs())
+	}
+	if resp.GetEmbeddingModel() != "text-embedding-3-small" || resp.GetDim() != 3 {
+		t.Fatalf("binding = (%q, %d), want (text-embedding-3-small, 3)", resp.GetEmbeddingModel(), resp.GetDim())
+	}
+	// 集合行已绑定语义层（守卫式 UPDATE 生效）。
+	col, getErr := repo.GetCollection(context.Background(), "c-lex")
+	require.NoError(t, getErr)
+	if col.EmbeddingModel != "text-embedding-3-small" || col.Dim != 3 {
+		t.Fatalf("collection binding = (%q, %d), want (text-embedding-3-small, 3)", col.EmbeddingModel, col.Dim)
+	}
+	// 后台串行管线收敛：3 篇文档终态 indexed（复用 B1 reembedOneDocument）。
+	require.Eventually(t, func() bool {
+		for _, id := range []string{"d1", "d2", "d3"} {
+			d, e := repo.GetDocument(context.Background(), id)
+			if e != nil || d.Status != "indexed" || d.ChunkCount == 0 {
+				return false
+			}
+		}
+		return true
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
+// 共享词法库（workspace 空）对租户 caller 只读（fail-closed）→ NOT_FOUND（防存在性泄漏）。
+func TestEnableCollectionSemantic_MutateAccessDenied(t *testing.T) {
+	repo := newReembedRepo()
+	seedReembedCollection(t, repo, "c-shared", "", "")
+	svc, _ := newSemanticService(repo, semanticStubEmbedder{model: "m", dim: 3, configured: true})
+
+	_, err := svc.EnableCollectionSemantic(reembedTenantCtx(), &v1.EnableCollectionSemanticRequest{CollectionId: "c-shared"})
+	require.Error(t, err)
+	if !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("err = %v, want NOT_FOUND", err)
+	}
+}

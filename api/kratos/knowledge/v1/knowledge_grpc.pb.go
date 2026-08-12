@@ -31,6 +31,7 @@ const (
 	KnowledgeService_MoveDocument_FullMethodName               = "/kratos.knowledge.v1.KnowledgeService/MoveDocument"
 	KnowledgeService_MoveDocumentToDir_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/MoveDocumentToDir"
 	KnowledgeService_ReembedDocuments_FullMethodName           = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
+	KnowledgeService_EnableCollectionSemantic_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/EnableCollectionSemantic"
 	KnowledgeService_UpdateDocumentContent_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 	KnowledgeService_ListVaultTree_FullMethodName              = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
 	KnowledgeService_CreateVaultDir_FullMethodName             = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDir"
@@ -75,6 +76,11 @@ type KnowledgeServiceClient interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(ctx context.Context, in *ReembedDocumentsRequest, opts ...grpc.CallOption) (*ReembedDocumentsResponse, error)
+	// EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+	// collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+	// conflict when already enabled) and enqueues all content documents into the
+	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+	EnableCollectionSemantic(ctx context.Context, in *EnableCollectionSemanticRequest, opts ...grpc.CallOption) (*EnableCollectionSemanticResponse, error)
 	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -246,6 +252,16 @@ func (c *knowledgeServiceClient) ReembedDocuments(ctx context.Context, in *Reemb
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReembedDocumentsResponse)
 	err := c.cc.Invoke(ctx, KnowledgeService_ReembedDocuments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) EnableCollectionSemantic(ctx context.Context, in *EnableCollectionSemanticRequest, opts ...grpc.CallOption) (*EnableCollectionSemanticResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EnableCollectionSemanticResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_EnableCollectionSemantic_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -456,6 +472,11 @@ type KnowledgeServiceServer interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
+	// EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+	// collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+	// conflict when already enabled) and enqueues all content documents into the
+	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+	EnableCollectionSemantic(context.Context, *EnableCollectionSemanticRequest) (*EnableCollectionSemanticResponse, error)
 	// UpdateDocumentContent saves editor body back to the vault file (G2-B5):
 	// frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
 	// backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -555,6 +576,9 @@ func (UnimplementedKnowledgeServiceServer) MoveDocumentToDir(context.Context, *M
 }
 func (UnimplementedKnowledgeServiceServer) ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReembedDocuments not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) EnableCollectionSemantic(context.Context, *EnableCollectionSemanticRequest) (*EnableCollectionSemanticResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method EnableCollectionSemantic not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) UpdateDocumentContent(context.Context, *UpdateDocumentContentRequest) (*UpdateDocumentContentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateDocumentContent not implemented")
@@ -825,6 +849,24 @@ func _KnowledgeService_ReembedDocuments_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KnowledgeServiceServer).ReembedDocuments(ctx, req.(*ReembedDocumentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_EnableCollectionSemantic_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnableCollectionSemanticRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).EnableCollectionSemantic(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_EnableCollectionSemantic_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).EnableCollectionSemantic(ctx, req.(*EnableCollectionSemanticRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1203,6 +1245,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReembedDocuments",
 			Handler:    _KnowledgeService_ReembedDocuments_Handler,
+		},
+		{
+			MethodName: "EnableCollectionSemantic",
+			Handler:    _KnowledgeService_EnableCollectionSemantic_Handler,
 		},
 		{
 			MethodName: "UpdateDocumentContent",

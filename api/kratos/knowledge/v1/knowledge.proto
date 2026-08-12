@@ -425,6 +425,19 @@ message ReembedDocumentsResponse {
   int32 skipped_count = 2;   // 跳过数（content_text 空 / 正在 indexing / vault 文档走 sync 自愈）
 }
 
+// EnableCollectionSemanticRequest enables the semantic layer on a lexical-only
+// collection (B2: one-way binding; embedding_model empty -> bound to the current
+// global embedder, then all content documents are re-embedded via the B1 pipeline).
+message EnableCollectionSemanticRequest {
+  string collection_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message EnableCollectionSemanticResponse {
+  int32 enqueued_docs = 1;    // 进入重嵌入队列的文档数
+  string embedding_model = 2; // 绑定的模型名（当前全局 embedder）
+  int32 dim = 3;
+}
+
 // MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
 // Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
 message MoveDocumentRequest {
@@ -577,6 +590,16 @@ service KnowledgeService {
   rpc ReembedDocuments(ReembedDocumentsRequest) returns (ReembedDocumentsResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/collections/{collection_id}/documents:reembed"
+      body: "*"
+    };
+  }
+  // EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+  // collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+  // conflict when already enabled) and enqueues all content documents into the
+  // B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+  rpc EnableCollectionSemantic(EnableCollectionSemanticRequest) returns (EnableCollectionSemanticResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/collections/{collection_id}:enable-semantic"
       body: "*"
     };
   }

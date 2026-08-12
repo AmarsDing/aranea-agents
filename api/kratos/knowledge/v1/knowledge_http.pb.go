@@ -25,6 +25,7 @@ const OperationKnowledgeServiceCreateVaultDir = "/kratos.knowledge.v1.KnowledgeS
 const OperationKnowledgeServiceCreateVaultDocument = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
 const OperationKnowledgeServiceDeleteCollection = "/kratos.knowledge.v1.KnowledgeService/DeleteCollection"
 const OperationKnowledgeServiceDeleteDocument = "/kratos.knowledge.v1.KnowledgeService/DeleteDocument"
+const OperationKnowledgeServiceEnableCollectionSemantic = "/kratos.knowledge.v1.KnowledgeService/EnableCollectionSemantic"
 const OperationKnowledgeServiceGetCollection = "/kratos.knowledge.v1.KnowledgeService/GetCollection"
 const OperationKnowledgeServiceGetDocumentContent = "/kratos.knowledge.v1.KnowledgeService/GetDocumentContent"
 const OperationKnowledgeServiceGetEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
@@ -60,6 +61,11 @@ type KnowledgeServiceHTTPServer interface {
 	CreateVaultDocument(context.Context, *CreateVaultDocumentRequest) (*KnowledgeDocument, error)
 	DeleteCollection(context.Context, *DeleteCollectionRequest) (*emptypb.Empty, error)
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
+	// EnableCollectionSemantic EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+	// collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+	// conflict when already enabled) and enqueues all content documents into the
+	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+	EnableCollectionSemantic(context.Context, *EnableCollectionSemanticRequest) (*EnableCollectionSemanticResponse, error)
 	GetCollection(context.Context, *GetCollectionRequest) (*KnowledgeCollection, error)
 	GetDocumentContent(context.Context, *GetDocumentContentRequest) (*DocumentContent, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -143,6 +149,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/documents/{id}/move", _KnowledgeService_MoveDocument0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/documents/{id}/move_to_dir", _KnowledgeService_MoveDocumentToDir0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/collections/{collection_id}/documents:reembed", _KnowledgeService_ReembedDocuments0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/collections/{collection_id}:enable-semantic", _KnowledgeService_EnableCollectionSemantic0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/documents/{id}/content", _KnowledgeService_UpdateDocumentContent0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/tree", _KnowledgeService_ListVaultTree0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/dirs", _KnowledgeService_CreateVaultDir0_HTTP_Handler(srv))
@@ -405,6 +412,31 @@ func _KnowledgeService_ReembedDocuments0_HTTP_Handler(srv KnowledgeServiceHTTPSe
 			return err
 		}
 		reply := out.(*ReembedDocumentsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_EnableCollectionSemantic0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in EnableCollectionSemanticRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceEnableCollectionSemantic)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.EnableCollectionSemantic(ctx, req.(*EnableCollectionSemanticRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*EnableCollectionSemanticResponse)
 		return ctx.Result(200, reply)
 	}
 }
@@ -852,6 +884,11 @@ type KnowledgeServiceHTTPClient interface {
 	CreateVaultDocument(ctx context.Context, req *CreateVaultDocumentRequest, opts ...http.CallOption) (rsp *KnowledgeDocument, err error)
 	DeleteCollection(ctx context.Context, req *DeleteCollectionRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// EnableCollectionSemantic EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+	// collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+	// conflict when already enabled) and enqueues all content documents into the
+	// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+	EnableCollectionSemantic(ctx context.Context, req *EnableCollectionSemanticRequest, opts ...http.CallOption) (rsp *EnableCollectionSemanticResponse, err error)
 	GetCollection(ctx context.Context, req *GetCollectionRequest, opts ...http.CallOption) (rsp *KnowledgeCollection, err error)
 	GetDocumentContent(ctx context.Context, req *GetDocumentContentRequest, opts ...http.CallOption) (rsp *DocumentContent, err error)
 	GetEmbedderConfig(ctx context.Context, req *GetEmbedderConfigRequest, opts ...http.CallOption) (rsp *EmbedderConfig, err error)
@@ -993,6 +1030,23 @@ func (c *KnowledgeServiceHTTPClientImpl) DeleteDocument(ctx context.Context, in 
 	opts = append(opts, http.Operation(OperationKnowledgeServiceDeleteDocument))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// EnableCollectionSemantic EnableCollectionSemantic one-way enables the semantic layer on a lexical-only
+// collection (B2): binds the current global embedder model/dim (guarded UPDATE,
+// conflict when already enabled) and enqueues all content documents into the
+// B1 re-embed pipeline. CodeBadRequest when the embedder is not configured.
+func (c *KnowledgeServiceHTTPClientImpl) EnableCollectionSemantic(ctx context.Context, in *EnableCollectionSemanticRequest, opts ...http.CallOption) (*EnableCollectionSemanticResponse, error) {
+	var out EnableCollectionSemanticResponse
+	pattern := "/v1/knowledge/collections/{collection_id}:enable-semantic"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceEnableCollectionSemantic))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

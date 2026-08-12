@@ -87,6 +87,23 @@ func (m *us14MemRepo) UpdateCollectionSyncState(_ context.Context, id, state str
 	return nil
 }
 
+// EnableCollectionSemantic 守卫语义同 data 层：仅当集合仍为空语义层才绑定（B2）。
+func (m *us14MemRepo) EnableCollectionSemantic(_ context.Context, id, model string, dim int) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.collections[id]
+	if !ok {
+		return false, biz.ErrNotFound
+	}
+	if strings.TrimSpace(c.EmbeddingModel) != "" {
+		return false, nil
+	}
+	c.EmbeddingModel = model
+	c.Dim = dim
+	m.collections[id] = c
+	return true, nil
+}
+
 func (m *us14MemRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
