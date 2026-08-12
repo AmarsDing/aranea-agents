@@ -30,6 +30,16 @@
         @node-click="$emit('select-node', $event)"
         @background-click="$emit('select-node', '')"
         @node-dblclick="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
+        @focus-change="(id: string) => (focusedDocId = id)"
+      />
+      <!-- M4：聚焦节点信息卡（真折射玻璃浮层，画布右侧） -->
+      <FocusCard
+        v-if="focusedNode"
+        :node="focusedNode"
+        :can-reembed="canReembed"
+        @open-in-explorer="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
+        @reembed="(docId: string) => $emit('reembed-node', docId)"
+        @close="onFocusClose"
       />
       <!-- 画布工具条（右上浮动）：适应视图 + 图例 + HUD 开关 + 返回全局 -->
       <div v-if="nodes.length && !error" class="knowledge-graph__toolbar">
@@ -338,6 +348,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
+import FocusCard from './graph3d/FocusCard.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
@@ -415,6 +426,8 @@ const emit = defineEmits<{
   'merge-entities': [payload: { keeperId: number; mergeeId: number }];
   /** SP2-8：全屏覆盖模式开关。 */
   'update:fullscreen': [value: boolean];
+  /** M4：FocusCard「重新向量化」（B1 入口②，API 接线在 B1-T4）。 */
+  'reembed-node': [docId: string];
 }>();
 
 const { t } = useI18n();
@@ -459,10 +472,35 @@ const collectionOptions = computed(() =>
 );
 
 /** 画布实例（工具条「适应视图」）。 */
-const canvasRef = ref<{ zoomToFit: (ms?: number) => void } | null>(null);
+const canvasRef = ref<{ zoomToFit: (ms?: number) => void; clearFocus: () => void } | null>(null);
 
 function fitView() {
   canvasRef.value?.zoomToFit();
+}
+
+// ---------- M4：聚焦锁定信息卡（FocusCard） ----------
+
+/** 聚焦节点 docId（独立局部状态，不与 selectedNodeId 耦合；Canvas focus-change 驱动）。 */
+const focusedDocId = ref('');
+
+/** FocusCard 节点数据（标题/doc_type/度数/路径）；节点不在当前裁剪集内时卸载卡片。 */
+const focusedNode = computed(() => {
+  if (!focusedDocId.value) return null;
+  const n = props.nodes.find((x) => x.doc_id === focusedDocId.value);
+  if (!n) return null;
+  return { docId: n.doc_id, name: n.name, relPath: n.rel_path, docType: n.doc_type, degree: n.degree };
+});
+
+/** B1 入口②置灰逻辑：当前集合有语义层（embedding_model 非空）才可重新向量化。 */
+const canReembed = computed(() => {
+  const c = props.collections.find((x) => x.id === props.collectionId);
+  return Boolean(c?.embedding_model);
+});
+
+/** 关闭卡片 = 解除 Canvas 聚焦锁定（clearFocus 回抛 focus-change '' 同步 focusedDocId）。 */
+function onFocusClose() {
+  focusedDocId.value = '';
+  canvasRef.value?.clearFocus();
 }
 
 // ---------- M2：布局切换（力导向/星系盘，localStorage 持久化，刷新保持） ----------

@@ -2,9 +2,22 @@
   <!-- M4 聚焦节点信息卡：真折射玻璃（M1），画布右侧浮层，可收起。
        操作：在编辑器打开（open-in-explorer 既有链路）+ 重新向量化（B1 入口②，emit 由上层接线 RPC）。 -->
   <div class="kg3d-focus-card" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
-    <GlassPanel strong refract :title="collapsed ? node.name : t('knowledgePage.graphFocusCardTitle')" icon="my_location">
+    <GlassPanel
+      strong
+      refract
+      :title="collapsed ? node.name : t('knowledgePage.graphFocusCardTitle')"
+      icon="my_location"
+    >
       <template #header-actions>
-        <q-btn flat dense round size="xs" :icon="collapsed ? 'expand_more' : 'expand_less'" data-test="focus-collapse" @click="collapsed = !collapsed" />
+        <q-btn
+          flat
+          dense
+          round
+          size="xs"
+          :icon="collapsed ? 'expand_more' : 'expand_less'"
+          data-test="focus-collapse"
+          @click="collapsed = !collapsed"
+        />
         <q-btn flat dense round size="xs" icon="close" data-test="focus-close" @click="$emit('close')" />
       </template>
       <div v-if="!collapsed" data-test="focus-body" class="kg3d-focus-card__body">
@@ -15,10 +28,25 @@
         </div>
         <div class="kg3d-focus-card__path">{{ node.relPath }}</div>
         <div class="kg3d-focus-card__actions">
-          <q-btn dense outline size="sm" icon="open_in_new" :label="t('knowledgePage.graphOpenInEditor')" data-test="focus-open"
-                 @click="$emit('open-in-explorer', { docId: node.docId, relPath: node.relPath })" />
-          <q-btn dense outline size="sm" icon="psychology" :label="t('knowledgePage.graphReembed')" data-test="focus-reembed"
-                 :disable="!canReembed" @click="$emit('reembed', node.docId)" />
+          <q-btn
+            dense
+            outline
+            size="sm"
+            icon="open_in_new"
+            :label="t('knowledgePage.graphOpenInEditor')"
+            data-test="focus-open"
+            @click="$emit('open-in-explorer', { docId: node.docId, relPath: node.relPath })"
+          />
+          <q-btn
+            dense
+            outline
+            size="sm"
+            icon="psychology"
+            :label="t('knowledgePage.graphReembed')"
+            data-test="focus-reembed"
+            :disable="!canReembed"
+            @click="$emit('reembed', node.docId)"
+          />
         </div>
       </div>
     </GlassPanel>

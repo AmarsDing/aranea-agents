@@ -25,6 +25,7 @@ import { easeInOutQuad } from '../../../features/knowledge/graph3d/particleMath'
 import {
   GraphInteraction,
   isClickMovement,
+  nHop,
   oneHop,
   wheelZoomFactor,
 } from '../../../features/knowledge/graph3d/interaction';
@@ -74,6 +75,8 @@ const emit = defineEmits<{
   'background-click': [];
   /** 双击节点 =「在浏览中打开」（D-4，沿用 G4 跨 tab 定位链路）。 */
   'node-dblclick': [payload: { docId: string; relPath: string }];
+  /** M4：聚焦锁定变化（''=解除）。 */
+  'focus-change': [docId: string];
 }>();
 
 const { t } = useI18n();
@@ -310,6 +313,11 @@ function rebuildGraph(): void {
 
   interaction.setHover(null);
   interaction.setSelected(m.docIdToIndex.get(props.selectedNodeId) ?? null);
+  // M4：数据重建后节点索引失效，聚焦锁定一并复位（通知上层卸载 FocusCard）
+  if (interaction.focused !== null) {
+    interaction.clearFocus();
+    emit('focus-change', '');
+  }
 
   engine = new GraphEngine(
     m,
@@ -410,6 +418,22 @@ function handleSettled(): void {
 /** 邻居集驱动 NodeLayer 提亮 / EdgeLayer 脉冲 / ParticleLayer 发射 / ReticleLayer 瞄准具（D-1）。 */
 function applyHighlight(): void {
   if (!model || !nodeLayer || !edgeLayer) return;
+  // M4 聚焦锁定：BFS N 跳 dim（优先级高于 hover，锁定态 hover 不覆盖）
+  const focused = interaction.focused;
+  if (focused !== null) {
+    const { nodes, edges } = nHop(model.edges, model.edgeCount, focused, interaction.focusHops);
+    nodeLayer.setHighlight(nodes);
+    edgeLayer.setHighlight(edges);
+    particleLayer.setSource(null, []);
+    if (reticle) {
+      const sel = interaction.selected;
+      reticle.setHover(null, 0);
+      reticle.setSelected(sel, sel !== null ? nodeLayer.nodeSize(sel) : 0);
+    }
+    labelVis.extraVisible = new Set([focused]);
+    requestRender();
+    return;
+  }
   const active = interaction.active;
   if (active === null) {
     nodeLayer.setHighlight(null);
@@ -543,10 +567,14 @@ function onPointerUp(ev: PointerEvent): void {
     const idx = pickAt();
     if (idx !== null) {
       interaction.setSelected(idx);
+      interaction.setFocus(idx, 2); // M4：单击锁定聚焦（2 跳 dim）
       emit('node-click', model.docIds[idx]);
+      emit('focus-change', model.docIds[idx]);
     } else {
       interaction.setSelected(null);
+      interaction.clearFocus(); // M4：单击空白解除聚焦锁定
       emit('background-click');
+      emit('focus-change', '');
     }
     applyHighlight();
   }
@@ -844,7 +872,15 @@ watch(
   },
 );
 
-defineExpose({ zoomToFit });
+/** M4：解除聚焦锁定（FocusCard 关闭按钮经 KnowledgeGraph3D 调用）。 */
+function clearFocusLock(): void {
+  if (interaction.focused === null) return;
+  interaction.clearFocus();
+  applyHighlight();
+  emit('focus-change', '');
+}
+
+defineExpose({ zoomToFit, clearFocus: clearFocusLock });
 </script>
 
 <style lang="scss" scoped>
