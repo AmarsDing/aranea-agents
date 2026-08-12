@@ -90,6 +90,16 @@
                   <q-item-section avatar><q-icon name="download" size="18px" /></q-item-section>
                   <q-item-section>{{ t('knowledgePage.workbench.fileDownload') }}</q-item-section>
                 </q-item>
+                <!-- B1 入口①：文档重嵌入（词法库无语义层时置灰，T5 补 tooltip） -->
+                <q-item
+                  clickable
+                  data-test="file-reembed"
+                  :disable="!currentHasSemantic"
+                  @click="$emit('file-action', 'reembed', f)"
+                >
+                  <q-item-section avatar><q-icon name="psychology" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.reembedDocument') }}</q-item-section>
+                </q-item>
                 <q-separator />
                 <q-item clickable class="kb-sidebar__menu-danger" @click="$emit('file-action', 'delete', f)">
                   <q-item-section avatar><q-icon name="delete_outline" size="18px" /></q-item-section>
@@ -113,29 +123,34 @@
 <script setup lang="ts">
 // SP2 §SP2-1 左栏：Vault 树 + 当前目录文件列表（Obsidian 文件资源管理器语义）。
 // SP2-8：文件行操作菜单（移动/下载/删除）+ 行拖拽 + 列表 drop 到当前目录。
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlassPanel from '../effects/GlassPanel.vue';
 import KnowledgeVaultTree from '../KnowledgeVaultTree.vue';
 import { isValidDropTarget, type DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
-import type { VaultTreeNode } from '../../../features/knowledge/types';
+import type { KnowledgeCollection, VaultTreeNode } from '../../../features/knowledge/types';
 
-const props = defineProps<{
-  nodes: VaultQTreeNode[];
-  selectedKey: string | null;
-  expandedKeys: string[];
-  loading: boolean;
-  error: string;
-  dragFile: DragFileRef | null;
-  /** 当前目录文件（explorer.currentFiles） */
-  files: VaultTreeNode[];
-  /** 工作台当前活动文档（高亮） */
-  activeDocId: string;
-  /** SP2-8：当前库 id + 目录 prefix（文件列表 drop 合法性判定） */
-  currentVaultId: string;
-  currentPrefix: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    nodes: VaultQTreeNode[];
+    selectedKey: string | null;
+    expandedKeys: string[];
+    loading: boolean;
+    error: string;
+    dragFile: DragFileRef | null;
+    /** 当前目录文件（explorer.currentFiles） */
+    files: VaultTreeNode[];
+    /** 工作台当前活动文档（高亮） */
+    activeDocId: string;
+    /** SP2-8：当前库 id + 目录 prefix（文件列表 drop 合法性判定） */
+    currentVaultId: string;
+    currentPrefix: string;
+    /** B1：集合列表（按 currentVaultId 查语义层标记，驱动重嵌入菜单置灰） */
+    collections?: KnowledgeCollection[];
+  }>(),
+  { collections: () => [] },
+);
 
 const emit = defineEmits<{
   'select-node': [key: string];
@@ -159,6 +174,12 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/** B1：当前集合有语义层（embedding_model 非空）才可重新向量化；词法库置灰。 */
+const currentHasSemantic = computed(() => {
+  const c = props.collections.find((x) => x.id === props.currentVaultId);
+  return Boolean(c?.embedding_model);
+});
 
 function iconOf(f: VaultTreeNode): string {
   const p = f.path.toLowerCase();

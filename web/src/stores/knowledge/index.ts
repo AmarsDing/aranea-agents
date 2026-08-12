@@ -17,6 +17,7 @@ import {
   moveDocument,
   moveDocumentToDir,
   promoteDocuments,
+  reembedDocuments as reembedDocumentsApi,
   searchKnowledge,
   getEmbedderConfig,
   updateEmbedderConfig,
@@ -200,6 +201,17 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     invalidateTree(collectionId);
   }
 
+  // B1：文档重嵌入受理（从已存正文重建向量，无需原文件）；docIds 空 = 全库待重建文档。
+  // 受理后文档状态经摄取 WS 实时刷新，此处不触碰本地缓存。
+  async function reembedDocuments(
+    collectionId: string,
+    docIds?: string[],
+    chunkSize?: number,
+    chunkOverlap?: number,
+  ): Promise<{ accepted_count: number; skipped_count: number }> {
+    return reembedDocumentsApi(collectionId, docIds, chunkSize, chunkOverlap);
+  }
+
   // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
   async function moveDoc(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
     return moveDocument(id, targetCollectionId);
@@ -267,6 +279,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     addVaultDir,
     addVaultDocument,
     removeDocument,
+    reembedDocuments,
     moveDoc,
     moveDocToDir,
     promoteDocs,

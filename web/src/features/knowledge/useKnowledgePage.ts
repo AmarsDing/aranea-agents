@@ -279,6 +279,20 @@ export function useKnowledgePage() {
   /** SP2-8：文档删除广播（工作台据此关闭对应标签页，FR-SP2-2）。 */
   const removedDocId = ref('');
 
+  /** B1：文档重嵌入受理（入口① 文件行菜单 / 入口② 图谱 FocusCard 共用）。
+   *  从已存正文重建向量（无需原文件）；受理后状态经摄取 WS 实时刷新（零新订阅）。
+   *  T5 将在此包 $q.dialog 确认层。 */
+  function confirmReembed(docIds: string[]) {
+    if (!selectedId.value || !docIds.length) return;
+    void knowledgeStore
+      .reembedDocuments(selectedId.value, docIds)
+      .then((r) => {
+        $q.notify({ type: 'positive', message: t('knowledgePage.reembedAccepted', { n: r.accepted_count }) });
+        void loadDocuments();
+      })
+      .catch((e) => $q.notify({ type: 'negative', message: friendlyError(e) }));
+  }
+
   function confirmDeleteDocument(doc: KnowledgeDocument) {
     $q.dialog({
       title: '删除文档',
@@ -726,6 +740,7 @@ export function useKnowledgePage() {
     confirmDeleteCollection,
     submitIngest,
     confirmDeleteDocument,
+    confirmReembed,
     downloadDocument,
     uploadTasks,
     enqueueUploadFiles,

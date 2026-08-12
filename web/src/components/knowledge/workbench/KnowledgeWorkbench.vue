@@ -33,6 +33,7 @@
           :active-doc-id="workbench.activeTabId.value"
           :current-vault-id="currentVaultId"
           :current-prefix="currentPrefix"
+          :collections="collections"
           @select-node="$emit('select-node', $event)"
           @update:expanded-keys="$emit('update:expanded-keys', $event)"
           @lazy-load="$emit('lazy-load', $event)"

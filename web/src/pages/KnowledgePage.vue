@@ -99,6 +99,7 @@
       @focus-neighborhood="onGraphFocusNeighborhood"
       @reset-global-view="graph.resetGlobalView"
       @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
+      @reembed-node="(docId: string) => confirmReembed([docId])"
     />
 
     <!-- 设置浮层（SP2-8）：Embedder 配置；kb-portal 在 body 重挂深空令牌 -->
@@ -204,6 +205,7 @@ const {
   submitCreateCollection,
   submitIngest,
   confirmDeleteDocument,
+  confirmReembed,
   downloadDocument,
   uploadTasks,
   removeUploadTask,
@@ -270,11 +272,12 @@ function resolveWorkbenchDoc(node: VaultTreeNode): KnowledgeDocument {
   return { id: node.doc_id, source: node.name, rel_path: node.path, collection_id: selectedId.value } as KnowledgeDocument;
 }
 
-/** 侧栏文件行操作（移动跨库 / 下载原文 / 删除），复用既有对话框与逻辑。 */
+/** 侧栏文件行操作（移动跨库 / 下载原文 / 重嵌入 / 删除），复用既有对话框与逻辑。 */
 function onFileAction(action: string, node: VaultTreeNode) {
   const doc = resolveWorkbenchDoc(node);
   if (action === 'move') openMoveDialog(doc);
   else if (action === 'download') void downloadDocument(doc);
+  else if (action === 'reembed') confirmReembed([node.doc_id]);
   else if (action === 'delete') confirmDeleteDocument(doc);
 }
 

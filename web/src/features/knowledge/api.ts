@@ -231,6 +231,28 @@ export async function deleteDocument(id: string): Promise<void> {
   await svc.DeleteDocument({ id });
 }
 
+/** reembedDocuments 文档重嵌入受理（B1）：从已存正文重建向量索引（无需原文件），
+ *  修复 reconcileEmbeddingDim 清空 embedding 的 UI 上传文档；vault 文档由 vault_sync 自愈（后端跳过）。 */
+export async function reembedDocuments(
+  collectionId: string,
+  docIds?: string[],
+  chunkSize?: number,
+  chunkOverlap?: number,
+): Promise<{ accepted_count: number; skipped_count: number }> {
+  const r = asRecord(
+    await svc.ReembedDocuments({
+      collectionId,
+      docIds: docIds ?? [],
+      chunkSize: chunkSize ?? 0,
+      chunkOverlap: chunkOverlap ?? 0,
+    }),
+  );
+  return {
+    accepted_count: pickI32(r, 'accepted_count', 'acceptedCount'),
+    skipped_count: pickI32(r, 'skipped_count', 'skippedCount'),
+  };
+}
+
 // US-14：文档跨库移动（默认库收件箱 → 分类库归档）；目标库 dim 不一致时后端拒绝。
 export async function moveDocument(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
   const raw = await svc.MoveDocument({ id, targetCollectionId });
