@@ -3090,6 +3090,10 @@ export default {
     graphNeighborhoodHops: 'Neighborhood hops',
     graphFocusNeighborhood: 'Focus neighborhood',
     graphFocusNeedSelection: 'Select a node in the graph or list first',
+    graphFocusCardTitle: 'Focus node',
+    graphFocusDegree: 'Degree {n}',
+    graphOpenInEditor: 'Open in editor',
+    graphReembed: 'Re-embed',
     graphEntityGovernance: 'Entity Governance',
     mergeSource: {
       norm: 'Normalized conflict',

@@ -3110,6 +3110,10 @@ export default {
     graphNeighborhoodHops: '邻域跳数',
     graphFocusNeighborhood: '聚焦邻域',
     graphFocusNeedSelection: '先在图中或列表中选择一个节点',
+    graphFocusCardTitle: '聚焦节点',
+    graphFocusDegree: '度数 {n}',
+    graphOpenInEditor: '在编辑器打开',
+    graphReembed: '重新向量化',
     graphEntityGovernance: '实体治理',
     mergeSource: {
       norm: '归一化冲突',
