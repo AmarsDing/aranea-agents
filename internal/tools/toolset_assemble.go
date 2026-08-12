@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
 	documentpkg "aranea-agents/internal/tools/document"
@@ -317,6 +318,12 @@ func (ac *assembleContext) assembleSessionTools() {
 	// companion via the process-wide bridge singleton (design 74 §6).
 	if ac.enabled["client"] && ac.cfg.Session.ClientBridge != nil {
 		ac.out.ToolSets = append(ac.out.ToolSets, clientbridge.NewToolSet(ac.cfg.Session.ClientBridge))
+	}
+
+	// Coding agent bridge: dispatch/check/cancel external coding CLI tasks
+	// (design 76 §13). Tools read session from the invocation context.
+	if ac.enabled["coding"] && ac.cfg.Session.CodingBridge != nil {
+		ac.out.ToolSets = append(ac.out.ToolSets, codingbridge.NewToolSet(ac.cfg.Session.CodingBridge))
 	}
 }
 

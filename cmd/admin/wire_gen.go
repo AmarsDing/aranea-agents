@@ -21,6 +21,7 @@ import (
 	"aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/biz/backgroundjob"
+	"aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/biz/cron"
 	"aranea-agents/internal/biz/ecosystem"
 	"aranea-agents/internal/biz/evaluation"
@@ -331,7 +332,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	messageReader := provideM71MessageReader(activityLister)
 	globalMessageSearcher := data.NewGlobalMessageSearchRepo(dataData)
 	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge)
+	computerUseAuditRepo := data.NewComputerUseAuditRepo(dataData, loggatewayLogger)
+	computerUseUsecase := service.ProvideComputerUseUsecase(flowLogWriter, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, computerUseAuditRepo, loggatewayLogger)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
@@ -349,7 +352,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, loggatewayLogger)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, loggatewayLogger)
 	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
@@ -549,6 +552,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus, publishGate)
 	skillCuratorService := service.NewSkillCuratorService(skillIntelligenceUsecase, loggatewayLogger)
 	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, loggatewayLogger)
+	evolutionService := service.NewEvolutionService(unifiedEvolutionRepo, loggatewayLogger)
 	selfImprovementRunRepo := data.NewSelfImprovementRunRepo(dataData, loggatewayLogger)
 	repoSandboxRunner := provideRepoSandboxRunner(selfImprovement, loggatewayLogger)
 	siApplier := provideSIApplier(repoSandboxRunner, loggatewayLogger)
@@ -578,7 +582,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	twinOpenAPICompatService := service.NewTwinOpenAPICompatService(agentUsecase, graphUsecase, memoryAdminUsecase, usageUsecase, monitorUsecase, llmProviderModelUsecase, loggatewayLogger)
 	runtimeProfileService := service.NewRuntimeProfileService(runtimeProfileUsecase)
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, evolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -1077,6 +1081,7 @@ func provideRuntimeTooling(
 	deptMailbox *biz.DeptMailboxUsecase,
 	sessionSearch *biz.SessionSearchUsecase,
 	clientBridge *clientbridge.Bridge,
+	computerUseUC *computeruse.ComputerUseUsecase,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -1089,6 +1094,7 @@ func provideRuntimeTooling(
 		KnowledgeUC:                 knowledgeUC,
 		CodeExecFactory:             codeExecFactory,
 		KanbanBridge:                kanbanBridge,
+		ComputerUseUC:               computerUseUC,
 		DebugRecorder:               debugRecorder,
 		OrganizationUC:              orgUC,
 		ToolResultGate:              toolResultGate,
@@ -1212,6 +1218,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagent.Service,
 	kanbanBridge kanban.Bridge,
+	computerUseUC *computeruse.ComputerUseUsecase,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
 	skillUC *biz.SkillUsecase,
@@ -1241,6 +1248,7 @@ func provideRunnerConfig(
 		OutboundRouter:  outboundRouter,
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
+		ComputerUseUC:   computerUseUC,
 		A2AEnabled:      a2aUC != nil,
 
 		SessionChildLookup: &sessionChildLookupAdapter{sessions: sessions},

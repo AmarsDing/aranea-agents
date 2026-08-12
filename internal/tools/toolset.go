@@ -27,6 +27,7 @@ import (
 	trpcemail "trpc.group/trpc-go/trpc-agent-go/tool/email"
 
 	"aranea-agents/internal/tools/clientbridge"
+	"aranea-agents/internal/tools/codingbridge"
 	deliverabletools "aranea-agents/internal/tools/deliverable"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
@@ -537,6 +538,10 @@ type SessionConfig struct {
 	// ClientBridge is the process-wide client tool bridge singleton. Optional:
 	// when nil, the "client" ToolSet is skipped even if enabled.
 	ClientBridge *clientbridge.Bridge
+	// CodingBridge exposes coding agent bridge dispatch/check/cancel tools.
+	// Optional: when nil, the "coding" ToolSet is skipped even if enabled
+	// (76-coding-agent-bridge).
+	CodingBridge codingbridge.BridgeService
 }
 
 // AssemblyConfig holds all configuration for tool assembly.

@@ -3,6 +3,7 @@ package agent
 import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	bizmedia "aranea-agents/internal/biz/media"
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/knowledge"
@@ -61,6 +62,10 @@ type TRPCToolAssemblyDeps struct {
 	// the surrounding build context); passing a stale or mismatched result
 	// will produce incorrect tool keys.
 	CachedEffectiveTools *biz.AgentEffectiveTools
+	// ComputerUseUC enables the computer_use_* desktop automation toolset
+	// (75-computer-use). Optional: when nil, computer-use tools are pruned
+	// from assembly even if enabled in effective tool keys.
+	ComputerUseUC *bizcu.ComputerUseUsecase
 }
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.

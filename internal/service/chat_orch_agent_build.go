@@ -146,6 +146,7 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			AwaitHook:            d.awaitCoord.MakeAwaitReplyFunc(ctx, sessionID, p.RunID),
 			CustomTools:          customTools,
 			KanbanBridge:         d.rt.KanbanBridge,
+			ComputerUseUC:        d.rt.ComputerUseUC,
 			MediaProviders:       d.td.ReadDeps.MediaProviders,
 			ArtifactWriter:       d.td.Persist.ArtifactUC,
 			CachedEffectiveTools: cachedEffTools,

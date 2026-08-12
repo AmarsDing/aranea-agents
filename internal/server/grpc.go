@@ -8,14 +8,17 @@ import (
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
+	agentbridgev1 "aranea-agents/api/kratos/agentbridge/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
+	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -101,6 +104,8 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	modelcatalogv1.RegisterModelCatalogServiceServer(srv, s.ModelCatalog)
 	teamv1.RegisterTeamServiceServer(srv, s.Teams)
 	chatv1.RegisterChatServiceServer(srv, s.Chat)
+	computerusev1.RegisterComputerUseServiceServer(srv, s.ComputerUse)
+	agentbridgev1.RegisterAgentBridgeServiceServer(srv, s.AgentBridge)
 	graphv1.RegisterGraphServiceServer(srv, s.Graph)
 	artifactv1.RegisterArtifactServiceServer(srv, s.Artifact)
 	knowledgev1.RegisterKnowledgeServiceServer(srv, s.Knowledge)
@@ -115,6 +120,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *gr
 	skillintlv1.RegisterSkillIntelligenceServiceServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceServer(srv, s.SkillDedup)
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceServer(srv, s.SkillEvoSuggestion)
+	evolutionv1.RegisterEvolutionServiceServer(srv, s.Evolution)
 	packv1.RegisterPackServiceServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceServer(srv, s.RuntimeProfile)
 	if s.LearningLoop != nil {

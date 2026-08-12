@@ -22,6 +22,7 @@ import (
 	"aranea-agents/internal/data/ent/codingproject"
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
+	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/deptleadmessage"
@@ -1563,6 +1564,60 @@ func init() {
 	compiledteamDescID := compiledteamFields[0].Descriptor()
 	// compiledteam.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	compiledteam.IDValidator = compiledteamDescID.Validators[0].(func(string) error)
+	computeruseauditFields := schema.ComputerUseAudit{}.Fields()
+	_ = computeruseauditFields
+	// computeruseauditDescSessionID is the schema descriptor for session_id field.
+	computeruseauditDescSessionID := computeruseauditFields[0].Descriptor()
+	// computeruseaudit.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	computeruseaudit.SessionIDValidator = computeruseauditDescSessionID.Validators[0].(func(string) error)
+	// computeruseauditDescAgentKey is the schema descriptor for agent_key field.
+	computeruseauditDescAgentKey := computeruseauditFields[1].Descriptor()
+	// computeruseaudit.AgentKeyValidator is a validator for the "agent_key" field. It is called by the builders before save.
+	computeruseaudit.AgentKeyValidator = computeruseauditDescAgentKey.Validators[0].(func(string) error)
+	// computeruseauditDescTarget is the schema descriptor for target field.
+	computeruseauditDescTarget := computeruseauditFields[3].Descriptor()
+	// computeruseaudit.DefaultTarget holds the default value on creation for the target field.
+	computeruseaudit.DefaultTarget = computeruseauditDescTarget.Default.(string)
+	// computeruseauditDescPath is the schema descriptor for path field.
+	computeruseauditDescPath := computeruseauditFields[4].Descriptor()
+	// computeruseaudit.DefaultPath holds the default value on creation for the path field.
+	computeruseaudit.DefaultPath = computeruseauditDescPath.Default.(string)
+	// computeruseaudit.PathValidator is a validator for the "path" field. It is called by the builders before save.
+	computeruseaudit.PathValidator = computeruseauditDescPath.Validators[0].(func(string) error)
+	// computeruseauditDescAction is the schema descriptor for action field.
+	computeruseauditDescAction := computeruseauditFields[5].Descriptor()
+	// computeruseaudit.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	computeruseaudit.ActionValidator = computeruseauditDescAction.Validators[0].(func(string) error)
+	// computeruseauditDescResult is the schema descriptor for result field.
+	computeruseauditDescResult := computeruseauditFields[7].Descriptor()
+	// computeruseaudit.DefaultResult holds the default value on creation for the result field.
+	computeruseaudit.DefaultResult = computeruseauditDescResult.Default.(string)
+	// computeruseaudit.ResultValidator is a validator for the "result" field. It is called by the builders before save.
+	computeruseaudit.ResultValidator = computeruseauditDescResult.Validators[0].(func(string) error)
+	// computeruseauditDescError is the schema descriptor for error field.
+	computeruseauditDescError := computeruseauditFields[8].Descriptor()
+	// computeruseaudit.DefaultError holds the default value on creation for the error field.
+	computeruseaudit.DefaultError = computeruseauditDescError.Default.(string)
+	// computeruseauditDescDurationMs is the schema descriptor for duration_ms field.
+	computeruseauditDescDurationMs := computeruseauditFields[9].Descriptor()
+	// computeruseaudit.DefaultDurationMs holds the default value on creation for the duration_ms field.
+	computeruseaudit.DefaultDurationMs = computeruseauditDescDurationMs.Default.(int64)
+	// computeruseauditDescConfirmedBy is the schema descriptor for confirmed_by field.
+	computeruseauditDescConfirmedBy := computeruseauditFields[10].Descriptor()
+	// computeruseaudit.DefaultConfirmedBy holds the default value on creation for the confirmed_by field.
+	computeruseaudit.DefaultConfirmedBy = computeruseauditDescConfirmedBy.Default.(string)
+	// computeruseaudit.ConfirmedByValidator is a validator for the "confirmed_by" field. It is called by the builders before save.
+	computeruseaudit.ConfirmedByValidator = computeruseauditDescConfirmedBy.Validators[0].(func(string) error)
+	// computeruseauditDescDanger is the schema descriptor for danger field.
+	computeruseauditDescDanger := computeruseauditFields[11].Descriptor()
+	// computeruseaudit.DefaultDanger holds the default value on creation for the danger field.
+	computeruseaudit.DefaultDanger = computeruseauditDescDanger.Default.(bool)
+	// computeruseauditDescScreenshotRef is the schema descriptor for screenshot_ref field.
+	computeruseauditDescScreenshotRef := computeruseauditFields[12].Descriptor()
+	// computeruseaudit.DefaultScreenshotRef holds the default value on creation for the screenshot_ref field.
+	computeruseaudit.DefaultScreenshotRef = computeruseauditDescScreenshotRef.Default.(string)
+	// computeruseaudit.ScreenshotRefValidator is a validator for the "screenshot_ref" field. It is called by the builders before save.
+	computeruseaudit.ScreenshotRefValidator = computeruseauditDescScreenshotRef.Validators[0].(func(string) error)
 	crontaskFields := schema.CronTask{}.Fields()
 	_ = crontaskFields
 	// crontaskDescTaskKey is the schema descriptor for task_key field.

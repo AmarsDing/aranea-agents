@@ -6,10 +6,12 @@ import (
 
 	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/clientbridge"
+	computerusepkg "aranea-agents/internal/tools/computeruse"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
@@ -77,6 +79,11 @@ type ToolsetConfig struct {
 	ClientBridgeSvc *clientbridge.Bridge
 	Browser         *browser.PlaywrightMCPConfig
 	BrowserEnabled  bool
+	// ComputerUse enables the desktop GUI automation toolset (computer_use_*).
+	// Requires ComputerUseUC; when nil the flag is pruned so agents never see
+	// a tool whose sidecar backend is unavailable (75-computer-use).
+	ComputerUse   bool
+	ComputerUseUC *bizcu.ComputerUseUsecase
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -218,6 +225,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.Kanban {
 		for _, t := range kanbanpkg.NewToolset(cfg.KanbanBridge) {
+			customTools = append(customTools, t)
+		}
+	}
+	if cfg.ComputerUse && cfg.ComputerUseUC != nil {
+		for _, t := range computerusepkg.NewToolset(cfg.ComputerUseUC) {
 			customTools = append(customTools, t)
 		}
 	}

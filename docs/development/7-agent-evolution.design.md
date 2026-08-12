@@ -305,6 +305,8 @@ L3 建议的物理存储为 `unified_evolution_suggestions` 表（raw SQL DDL，
 | `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot`、`apply_payload`（apply 实际写入内容；空 = 通知类建议不可应用） |
 | `status` | `pending` / `applied` / `rejected` / `rolled_back`（原样保留） |
 
+> P3 M5 起，trigger 产出的建议另在 metadata 写 `dims` 键（维度标签，如 `dims.tools` 工具名集合），供平台级多样性聚合观测（`EvolutionService.GetEvolutionDiversityOverview` → `GET /v1/evolution/diversity-overview`）。L3 视图不消费该键。详见 [20-skill.design.md](./20-skill.design.md) §6.12。
+
 迁移 `20261111` 逐行 backfill（主键预检幂等）legacy `evolution_suggestions` 后 DROP 该表。
 
 ### 4.2 指标查询实现

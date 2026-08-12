@@ -26,6 +26,7 @@ import (
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/biz/evaluation"
@@ -482,6 +483,7 @@ func provideRuntimeTooling(
 	deptMailbox *biz.DeptMailboxUsecase,
 	sessionSearch *biz.SessionSearchUsecase,
 	clientBridge *clientbridge.Bridge,
+	computerUseUC *bizcu.ComputerUseUsecase,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -494,6 +496,7 @@ func provideRuntimeTooling(
 		KnowledgeUC:                 knowledgeUC,
 		CodeExecFactory:             codeExecFactory,
 		KanbanBridge:                kanbanBridge,
+		ComputerUseUC:               computerUseUC,
 		DebugRecorder:               debugRecorder,
 		OrganizationUC:              orgUC,
 		ToolResultGate:              toolResultGate,
@@ -622,6 +625,7 @@ func provideRunnerConfig(
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
 	kanbanBridge kanbanpkg.Bridge,
+	computerUseUC *bizcu.ComputerUseUsecase,
 	a2aUC *biz.A2AUsecase,
 	sessions *biz.SessionUsecase,
 	skillUC *biz.SkillUsecase,
@@ -651,6 +655,7 @@ func provideRunnerConfig(
 		OutboundRouter:  outboundRouter,
 		SubAgentService: subAgentSvc,
 		KanbanBridge:    kanbanBridge,
+		ComputerUseUC:   computerUseUC,
 		A2AEnabled:      a2aUC != nil,
 		// SessionChildLookup resolves member agent session IDs for child_session_id
 		// in session activities. Uses SessionUsecase.ListChildSessions to look up

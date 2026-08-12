@@ -190,6 +190,8 @@ func domainForStepID(stepID string) event.TraceDomain {
 		return event.TraceDomainA2A
 	case strings.HasPrefix(stepID, "client_tool."):
 		return event.TraceDomainClientTool
+	case strings.HasPrefix(stepID, "computeruse."):
+		return event.TraceDomainComputerUse
 	default:
 		return event.TraceDomainSystem
 	}

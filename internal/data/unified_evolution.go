@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ var (
 	_ biz.UnifiedEvolutionExpirationWriter = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionReader           = (*UnifiedEvolutionRepo)(nil)
 	_ biz.UnifiedEvolutionWriter           = (*UnifiedEvolutionRepo)(nil)
+	_ biz.UnifiedEvolutionDiversityReader  = (*UnifiedEvolutionRepo)(nil)
 )
 
 func NewUnifiedEvolutionRepo(data *Data, lg loggateway.Logger) *UnifiedEvolutionRepo {
@@ -363,6 +365,113 @@ func (r *UnifiedEvolutionRepo) ExpireOlderThan(ctx context.Context, cutoff time.
 		return 0, nil
 	}
 	return int(affected), nil
+}
+
+// defaultDiversityTopTools 是 GetDiversityOverview 在 topTools <= 0 时的默认截断。
+const defaultDiversityTopTools = 5
+
+// GetDiversityOverview 聚合 since 以来的建议：按 trigger_source 分桶统计
+// count + MAX(created_at)，并统计每桶 dims.tools 频次 TopN。
+//
+// 分桶用纯 SQL GROUP BY；工具频次在 Go 侧解析 metadata.dims.tools 统计——
+// 建议表是人工审阅量级，且单一代码路径避免 jsonb_array_elements/json_each
+// 双方言分叉。metadata 缺失/无 dims/解析失败的行被容忍（best-effort 观测）。
+func (r *UnifiedEvolutionRepo) GetDiversityOverview(ctx context.Context, since time.Time, topTools int) ([]biz.EvolutionDiversitySourceStat, error) {
+	if topTools <= 0 {
+		topTools = defaultDiversityTopTools
+	}
+	sinceStr := since.UTC().Format(time.RFC3339)
+
+	bucketQ := r.data.Dialect().RenumberPlaceholders(`SELECT trigger_source, COUNT(*), MAX(created_at)
+		FROM unified_evolution_suggestions
+		WHERE created_at >= ?
+		GROUP BY trigger_source
+		ORDER BY COUNT(*) DESC, trigger_source ASC`)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, bucketQ, sinceStr)
+	if err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	var stats []biz.EvolutionDiversitySourceStat
+	for rows.Next() {
+		var st biz.EvolutionDiversitySourceStat
+		var latest string
+		if err := rows.Scan(&st.TriggerSource, &st.Count, &latest); err != nil {
+			rows.Close()
+			return nil, entErrToBizErr(err, "UNIFIED_EVO")
+		}
+		if t, perr := time.Parse(time.RFC3339, latest); perr == nil {
+			st.LatestAt = t
+		}
+		stats = append(stats, st)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	if len(stats) == 0 {
+		return stats, nil
+	}
+
+	toolQ := r.data.Dialect().RenumberPlaceholders(`SELECT trigger_source, metadata
+		FROM unified_evolution_suggestions
+		WHERE created_at >= ? AND metadata IS NOT NULL AND metadata <> ''`)
+	mrows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, toolQ, sinceStr)
+	if err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	freq := map[string]map[string]int{}
+	for mrows.Next() {
+		var source, metadataStr string
+		if err := mrows.Scan(&source, &metadataStr); err != nil {
+			mrows.Close()
+			return nil, entErrToBizErr(err, "UNIFIED_EVO")
+		}
+		var meta struct {
+			Dims *biz.EvolutionDims `json:"dims"`
+		}
+		if json.Unmarshal([]byte(metadataStr), &meta) != nil || meta.Dims == nil {
+			continue
+		}
+		for _, tool := range meta.Dims.Tools {
+			tool = strings.TrimSpace(tool)
+			if tool == "" {
+				continue
+			}
+			fm := freq[source]
+			if fm == nil {
+				fm = map[string]int{}
+				freq[source] = fm
+			}
+			fm[tool]++
+		}
+	}
+	mrows.Close()
+	if err := mrows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+
+	for i := range stats {
+		fm := freq[stats[i].TriggerSource]
+		if len(fm) == 0 {
+			continue
+		}
+		tools := make([]string, 0, len(fm))
+		for tool := range fm {
+			tools = append(tools, tool)
+		}
+		// 频次降序；同频次按工具名字典序，保证聚合结果稳定可断言。
+		sort.Slice(tools, func(a, b int) bool {
+			if fm[tools[a]] != fm[tools[b]] {
+				return fm[tools[a]] > fm[tools[b]]
+			}
+			return tools[a] < tools[b]
+		})
+		if len(tools) > topTools {
+			tools = tools[:topTools]
+		}
+		stats[i].TopTools = tools
+	}
+	return stats, nil
 }
 
 // ── Scan helpers ─────────────────────────────────────────────────────────────

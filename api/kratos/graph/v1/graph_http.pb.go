@@ -129,8 +129,8 @@ func RegisterGraphServiceHTTPServer(s *http.Server, srv GraphServiceHTTPServer) 
 	r.GET("/v1/graphs/{graph_id}/versions", _GraphService_ListGraphVersions0_HTTP_Handler(srv))
 	r.POST("/v1/graphs/{graph_id}/rollback", _GraphService_RollbackGraphVersion0_HTTP_Handler(srv))
 	r.POST("/v1/graphs/{graph_id}/save-template", _GraphService_SaveGraphAsTemplate0_HTTP_Handler(srv))
-	r.GET("/v1/graph/executions/{execution_id}/tasks", _GraphService_ListTasks0_HTTP_Handler(srv))
-	r.GET("/v1/graph/tasks/{task_id}", _GraphService_GetTask0_HTTP_Handler(srv))
+	r.GET("/v1/graph/executions/{execution_id}/tasks", _GraphService_ListTasks1_HTTP_Handler(srv))
+	r.GET("/v1/graph/tasks/{task_id}", _GraphService_GetTask1_HTTP_Handler(srv))
 	r.POST("/v1/graph/tasks/{task_id}/claim", _GraphService_ClaimTask0_HTTP_Handler(srv))
 	r.POST("/v1/graph/tasks/{task_id}/submit", _GraphService_SubmitTaskResult0_HTTP_Handler(srv))
 	r.POST("/v1/graph/tasks/{task_id}/heartbeat", _GraphService_Heartbeat0_HTTP_Handler(srv))
@@ -696,7 +696,7 @@ func _GraphService_SaveGraphAsTemplate0_HTTP_Handler(srv GraphServiceHTTPServer)
 	}
 }
 
-func _GraphService_ListTasks0_HTTP_Handler(srv GraphServiceHTTPServer) func(ctx http.Context) error {
+func _GraphService_ListTasks1_HTTP_Handler(srv GraphServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListTasksRequest
 		if err := ctx.BindQuery(&in); err != nil {
@@ -718,7 +718,7 @@ func _GraphService_ListTasks0_HTTP_Handler(srv GraphServiceHTTPServer) func(ctx 
 	}
 }
 
-func _GraphService_GetTask0_HTTP_Handler(srv GraphServiceHTTPServer) func(ctx http.Context) error {
+func _GraphService_GetTask1_HTTP_Handler(srv GraphServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetTaskRequest
 		if err := ctx.BindQuery(&in); err != nil {

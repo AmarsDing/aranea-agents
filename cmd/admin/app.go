@@ -57,6 +57,7 @@ func newApp(
 	vaultSyncSup *knowledge.VaultSyncSupervisor,
 	embedder *knowledge.MultiProviderEmbedder,
 	gateCards *service.ChannelGateCards,
+	agentBridgeSvc *service.AgentBridgeService,
 ) *kratos.App {
 	// startupBegin approximates the start of the P1 migration window: NewData
 	// (which launches the P1 goroutine) runs immediately before newApp inside
@@ -132,6 +133,15 @@ func newApp(
 				if knowledgeSvc != nil {
 					safego.Go(consumerCtx, "startup.knowledge_link_index", func() {
 						_ = knowledgeSvc.LoadKnowledgeLinkIndex(consumerCtx)
+					})
+				}
+				// 76：编程桥接活跃任务恢复——服务重启后残留的 dispatched/running
+				// 任务全部标记 failed（reason=service_restart），幂等。
+				if agentBridgeSvc != nil {
+					safego.Go(consumerCtx, "startup.agentbridge_recover", func() {
+						if err := agentBridgeSvc.RecoverActiveTasks(consumerCtx); err != nil {
+							lg.Warn("agentbridge active-task recovery failed", loggateway.StepID("startup.agentbridge_recover"), loggateway.Err(err))
+						}
 					})
 				}
 				startReadinessDependentServices(consumerCtx, guard, orchCache, sideConsumers, sessions, eventInfra, pipeline, loggingSinks, spiritUC, vaultSyncSup, graphBuildDeps, chatSvc, embedder, gateCards, lg)

@@ -53,4 +53,6 @@ const (
 	DomainChatQueueFull       = "CHAT_QUEUE_FULL"
 	DomainChatRunEnded        = "CHAT_RUN_ENDED"
 	DomainChatEnqueueRejected = "CHAT_ENQUEUE_REJECTED"
+	DomainAgentBridge         = "AGENT_BRIDGE"
+	DomainComputerUse         = "COMPUTER_USE"
 )

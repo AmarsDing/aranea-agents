@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/base64"
-	"sort"
 	"strings"
 	"sync"
 	"testing"

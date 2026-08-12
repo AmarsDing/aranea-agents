@@ -108,10 +108,15 @@ func (t *PatternTrigger) Check(ctx context.Context, agentID string) ([]UnifiedEv
 			continue
 		}
 
-		metadata, _ := json.Marshal(map[string]string{
-			"pattern_hash": hash,
-			"pattern_desc": p.Description,
-		})
+		// M5 dims：工具名集合来自 pattern 描述解析（确定性信号）。
+		var dimTools []string
+		for _, rec := range toolHistory {
+			dimTools = append(dimTools, rec.ToolName)
+		}
+		metadata, _ := json.Marshal(withDimsTools(map[string]any{
+			EvoMetaPatternHash: hash,
+			EvoMetaPatternDesc: p.Description,
+		}, dimTools))
 
 		suggestions = append(suggestions, UnifiedEvolutionSuggestion{
 			ID:              newAgentCatalogID(),

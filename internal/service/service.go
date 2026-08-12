@@ -75,6 +75,8 @@ var ProviderSet = wire.NewSet(
 	NewGraphService,
 	WireGraphTaskRuntime,
 	NewKanbanToolBridge,
+	ProvideComputerUseUsecase,
+	NewComputerUseService,
 	NewArtifactService,
 	// P1-1: 提供 sessionWorkspaceLookup 适配器，让 wire 自动注入到
 	// ArtifactService 做 IDOR 防护。
@@ -148,6 +150,8 @@ var ProviderSet = wire.NewSet(
 	NewSkillCuratorService,
 	NewSandboxRunner,
 	NewSkillEvolutionSuggestionService,
+	// P3 M5: 平台级进化多样性观测（统一建议表聚合视图）。
+	NewEvolutionService,
 	// Server adapter wrappers: lazily wire trpc-agent-go framework servers
 	// (AG-UI, OpenAI session, A2A extension) to per-session Runners built
 	// via OpenAIRunnerBuilder (implemented by *ChatService).

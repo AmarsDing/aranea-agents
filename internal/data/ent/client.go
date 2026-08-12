@@ -30,6 +30,7 @@ import (
 	"aranea-agents/internal/data/ent/codingproject"
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
+	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/deptleadmessage"
@@ -168,6 +169,8 @@ type Client struct {
 	CodingTask *CodingTaskClient
 	// CompiledTeam is the client for interacting with the CompiledTeam builders.
 	CompiledTeam *CompiledTeamClient
+	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
+	ComputerUseAudit *ComputerUseAuditClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -370,6 +373,7 @@ func (c *Client) init() {
 	c.CodingProject = NewCodingProjectClient(c.config)
 	c.CodingTask = NewCodingTaskClient(c.config)
 	c.CompiledTeam = NewCompiledTeamClient(c.config)
+	c.ComputerUseAudit = NewComputerUseAuditClient(c.config)
 	c.CronTask = NewCronTaskClient(c.config)
 	c.CronTaskRun = NewCronTaskRunClient(c.config)
 	c.DeptLeadMessage = NewDeptLeadMessageClient(c.config)
@@ -567,6 +571,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		CodingProject:              NewCodingProjectClient(cfg),
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
+		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DeptLeadMessage:            NewDeptLeadMessageClient(cfg),
@@ -691,6 +696,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		CodingProject:              NewCodingProjectClient(cfg),
 		CodingTask:                 NewCodingTaskClient(cfg),
 		CompiledTeam:               NewCompiledTeamClient(cfg),
+		ComputerUseAudit:           NewComputerUseAuditClient(cfg),
 		CronTask:                   NewCronTaskClient(cfg),
 		CronTaskRun:                NewCronTaskRunClient(cfg),
 		DeptLeadMessage:            NewDeptLeadMessageClient(cfg),
@@ -810,28 +816,29 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.CronTask, c.CronTaskRun, c.DeptLeadMessage,
-		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
-		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
-		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
+		c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
+		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
+		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
+		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Use(hooks...)
 	}
@@ -845,28 +852,29 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AgentTemplate, c.AllocationPlan, c.AvatarAsset, c.BackgroundJob,
 		c.BorrowRequest, c.BudgetAlert, c.ChannelInboundReceipt, c.ChannelRuntimeLease,
 		c.ChannelTurnJob, c.CircuitBreakerState, c.CodingAgent, c.CodingProject,
-		c.CodingTask, c.CompiledTeam, c.CronTask, c.CronTaskRun, c.DeptLeadMessage,
-		c.EvalCase, c.EvalCaseResult, c.EvalDataset, c.EvalGateConfig, c.EvalRun,
-		c.EvalRunPreference, c.EventDeliveryOutbox, c.ExperienceReport,
-		c.FailurePattern, c.FederationAuditLog, c.FederationOrg, c.FederationPolicy,
-		c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition, c.GraphExecution,
-		c.GraphNodeV2, c.GraphStageV2, c.GraphTask, c.GraphTaskComment,
-		c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog, c.GraphTaskRun,
-		c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel, c.MediaProvider,
-		c.MemberSessionV2, c.ModelPricingRule, c.ModelTokenUsageHourly,
-		c.Orchestration, c.OrchestrationStep, c.Organization, c.PatchOutcome,
-		c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel, c.PlatformChannelCredential,
-		c.PlatformChannelDelivery, c.PlatformChannelPeerSession, c.PlatformHook,
-		c.PlatformMCPServer, c.PlatformMCPUserCredential, c.PlatformPlugin,
-		c.PlatformSkill, c.PlatformTool, c.ResourceAccessAudit, c.SchemaMigration,
-		c.SelfCheckReport, c.SelfImprovementRun, c.Session, c.SessionMetrics,
-		c.SessionParticipant, c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime,
-		c.SessionTurn, c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag,
-		c.SkillVersion, c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan,
-		c.TaskV2, c.Team, c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2,
-		c.ToolAgentOverride, c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit,
-		c.ToolInvocationParam, c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2,
-		c.UsageQuota, c.UserEmbeddingSetting,
+		c.CodingTask, c.CompiledTeam, c.ComputerUseAudit, c.CronTask, c.CronTaskRun,
+		c.DeptLeadMessage, c.EvalCase, c.EvalCaseResult, c.EvalDataset,
+		c.EvalGateConfig, c.EvalRun, c.EvalRunPreference, c.EventDeliveryOutbox,
+		c.ExperienceReport, c.FailurePattern, c.FederationAuditLog, c.FederationOrg,
+		c.FederationPolicy, c.FlowLogEvent, c.GatewayWebhook, c.GraphDefinition,
+		c.GraphExecution, c.GraphNodeV2, c.GraphStageV2, c.GraphTask,
+		c.GraphTaskComment, c.GraphTaskEvent, c.GraphTaskLink, c.GraphTaskLog,
+		c.GraphTaskRun, c.HealRecord, c.KnowledgeLinkUsed, c.LlmProviderModel,
+		c.MediaProvider, c.MemberSessionV2, c.ModelPricingRule,
+		c.ModelTokenUsageHourly, c.Orchestration, c.OrchestrationStep, c.Organization,
+		c.PatchOutcome, c.PlanBoardV2, c.PlanStepV2, c.PlatformChannel,
+		c.PlatformChannelCredential, c.PlatformChannelDelivery,
+		c.PlatformChannelPeerSession, c.PlatformHook, c.PlatformMCPServer,
+		c.PlatformMCPUserCredential, c.PlatformPlugin, c.PlatformSkill, c.PlatformTool,
+		c.ResourceAccessAudit, c.SchemaMigration, c.SelfCheckReport,
+		c.SelfImprovementRun, c.Session, c.SessionMetrics, c.SessionParticipant,
+		c.SessionRun, c.SessionRunCheckpoint, c.SessionRuntime, c.SessionTurn,
+		c.SessionV2, c.SkillImportJob, c.SkillInvocation, c.SkillTag, c.SkillVersion,
+		c.StepV2, c.SystemSetting, c.TaskDeadLetter, c.TaskPlan, c.TaskV2, c.Team,
+		c.TeamRun, c.TeamRunStep, c.TeamRunV2, c.TeamStageV2, c.ToolAgentOverride,
+		c.ToolGrant, c.ToolInvocation, c.ToolInvocationAudit, c.ToolInvocationParam,
+		c.ToolResultBlob, c.ToolResultReplacement, c.TurnV2, c.UsageQuota,
+		c.UserEmbeddingSetting,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -913,6 +921,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.CodingTask.mutate(ctx, m)
 	case *CompiledTeamMutation:
 		return c.CompiledTeam.mutate(ctx, m)
+	case *ComputerUseAuditMutation:
+		return c.ComputerUseAudit.mutate(ctx, m)
 	case *CronTaskMutation:
 		return c.CronTask.mutate(ctx, m)
 	case *CronTaskRunMutation:
@@ -3614,6 +3624,139 @@ func (c *CompiledTeamClient) mutate(ctx context.Context, m *CompiledTeamMutation
 		return (&CompiledTeamDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CompiledTeam mutation op: %q", m.Op())
+	}
+}
+
+// ComputerUseAuditClient is a client for the ComputerUseAudit schema.
+type ComputerUseAuditClient struct {
+	config
+}
+
+// NewComputerUseAuditClient returns a client for the ComputerUseAudit from the given config.
+func NewComputerUseAuditClient(c config) *ComputerUseAuditClient {
+	return &ComputerUseAuditClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `computeruseaudit.Hooks(f(g(h())))`.
+func (c *ComputerUseAuditClient) Use(hooks ...Hook) {
+	c.hooks.ComputerUseAudit = append(c.hooks.ComputerUseAudit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `computeruseaudit.Intercept(f(g(h())))`.
+func (c *ComputerUseAuditClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ComputerUseAudit = append(c.inters.ComputerUseAudit, interceptors...)
+}
+
+// Create returns a builder for creating a ComputerUseAudit entity.
+func (c *ComputerUseAuditClient) Create() *ComputerUseAuditCreate {
+	mutation := newComputerUseAuditMutation(c.config, OpCreate)
+	return &ComputerUseAuditCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ComputerUseAudit entities.
+func (c *ComputerUseAuditClient) CreateBulk(builders ...*ComputerUseAuditCreate) *ComputerUseAuditCreateBulk {
+	return &ComputerUseAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ComputerUseAuditClient) MapCreateBulk(slice any, setFunc func(*ComputerUseAuditCreate, int)) *ComputerUseAuditCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ComputerUseAuditCreateBulk{err: fmt.Errorf("calling to ComputerUseAuditClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ComputerUseAuditCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ComputerUseAuditCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ComputerUseAudit.
+func (c *ComputerUseAuditClient) Update() *ComputerUseAuditUpdate {
+	mutation := newComputerUseAuditMutation(c.config, OpUpdate)
+	return &ComputerUseAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ComputerUseAuditClient) UpdateOne(_m *ComputerUseAudit) *ComputerUseAuditUpdateOne {
+	mutation := newComputerUseAuditMutation(c.config, OpUpdateOne, withComputerUseAudit(_m))
+	return &ComputerUseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ComputerUseAuditClient) UpdateOneID(id int) *ComputerUseAuditUpdateOne {
+	mutation := newComputerUseAuditMutation(c.config, OpUpdateOne, withComputerUseAuditID(id))
+	return &ComputerUseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ComputerUseAudit.
+func (c *ComputerUseAuditClient) Delete() *ComputerUseAuditDelete {
+	mutation := newComputerUseAuditMutation(c.config, OpDelete)
+	return &ComputerUseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ComputerUseAuditClient) DeleteOne(_m *ComputerUseAudit) *ComputerUseAuditDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ComputerUseAuditClient) DeleteOneID(id int) *ComputerUseAuditDeleteOne {
+	builder := c.Delete().Where(computeruseaudit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ComputerUseAuditDeleteOne{builder}
+}
+
+// Query returns a query builder for ComputerUseAudit.
+func (c *ComputerUseAuditClient) Query() *ComputerUseAuditQuery {
+	return &ComputerUseAuditQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeComputerUseAudit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ComputerUseAudit entity by its id.
+func (c *ComputerUseAuditClient) Get(ctx context.Context, id int) (*ComputerUseAudit, error) {
+	return c.Query().Where(computeruseaudit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ComputerUseAuditClient) GetX(ctx context.Context, id int) *ComputerUseAudit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ComputerUseAuditClient) Hooks() []Hook {
+	return c.hooks.ComputerUseAudit
+}
+
+// Interceptors returns the client interceptors.
+func (c *ComputerUseAuditClient) Interceptors() []Interceptor {
+	return c.inters.ComputerUseAudit
+}
+
+func (c *ComputerUseAuditClient) mutate(ctx context.Context, m *ComputerUseAuditMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ComputerUseAuditCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ComputerUseAuditUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ComputerUseAuditUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ComputerUseAuditDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ComputerUseAudit mutation op: %q", m.Op())
 	}
 }
 
@@ -15190,10 +15333,10 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		CronTask, CronTaskRun, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
-		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
-		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		ComputerUseAudit, CronTask, CronTaskRun, DeptLeadMessage, EvalCase,
+		EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun, EvalRunPreference,
+		EventDeliveryOutbox, ExperienceReport, FailurePattern, FederationAuditLog,
+		FederationOrg, FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
 		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
 		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
 		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,
@@ -15215,10 +15358,10 @@ type (
 		AgentTemplate, AllocationPlan, AvatarAsset, BackgroundJob, BorrowRequest,
 		BudgetAlert, ChannelInboundReceipt, ChannelRuntimeLease, ChannelTurnJob,
 		CircuitBreakerState, CodingAgent, CodingProject, CodingTask, CompiledTeam,
-		CronTask, CronTaskRun, DeptLeadMessage, EvalCase, EvalCaseResult, EvalDataset,
-		EvalGateConfig, EvalRun, EvalRunPreference, EventDeliveryOutbox,
-		ExperienceReport, FailurePattern, FederationAuditLog, FederationOrg,
-		FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
+		ComputerUseAudit, CronTask, CronTaskRun, DeptLeadMessage, EvalCase,
+		EvalCaseResult, EvalDataset, EvalGateConfig, EvalRun, EvalRunPreference,
+		EventDeliveryOutbox, ExperienceReport, FailurePattern, FederationAuditLog,
+		FederationOrg, FederationPolicy, FlowLogEvent, GatewayWebhook, GraphDefinition,
 		GraphExecution, GraphNodeV2, GraphStageV2, GraphTask, GraphTaskComment,
 		GraphTaskEvent, GraphTaskLink, GraphTaskLog, GraphTaskRun, HealRecord,
 		KnowledgeLinkUsed, LlmProviderModel, MediaProvider, MemberSessionV2,

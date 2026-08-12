@@ -748,6 +748,42 @@ var (
 			},
 		},
 	}
+	// ComputerUseAuditColumns holds the columns for the "computer_use_audit" table.
+	ComputerUseAuditColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "session_id", Type: field.TypeString, Size: 64},
+		{Name: "agent_key", Type: field.TypeString, Size: 256},
+		{Name: "step_index", Type: field.TypeInt},
+		{Name: "target", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "path", Type: field.TypeString, Size: 16, Default: "a11y"},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "params", Type: field.TypeJSON, Nullable: true},
+		{Name: "result", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "duration_ms", Type: field.TypeInt64, Default: 0},
+		{Name: "confirmed_by", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "danger", Type: field.TypeBool, Default: false},
+		{Name: "screenshot_ref", Type: field.TypeString, Size: 512, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// ComputerUseAuditTable holds the schema information for the "computer_use_audit" table.
+	ComputerUseAuditTable = &schema.Table{
+		Name:       "computer_use_audit",
+		Columns:    ComputerUseAuditColumns,
+		PrimaryKey: []*schema.Column{ComputerUseAuditColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "computeruseaudit_session_id",
+				Unique:  false,
+				Columns: []*schema.Column{ComputerUseAuditColumns[1]},
+			},
+			{
+				Name:    "computeruseaudit_agent_key",
+				Unique:  false,
+				Columns: []*schema.Column{ComputerUseAuditColumns[2]},
+			},
+		},
+	}
 	// CronTaskColumns holds the columns for the "cron_task" table.
 	CronTaskColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
@@ -3811,6 +3847,7 @@ var (
 		CodingProjectsTable,
 		CodingTasksTable,
 		CompiledTeamsTable,
+		ComputerUseAuditTable,
 		CronTaskTable,
 		CronTaskRunTable,
 		DeptLeadMessagesTable,
@@ -3954,6 +3991,9 @@ func init() {
 	}
 	CompiledTeamsTable.Annotation = &entsql.Annotation{
 		Table: "compiled_teams",
+	}
+	ComputerUseAuditTable.Annotation = &entsql.Annotation{
+		Table: "computer_use_audit",
 	}
 	CronTaskTable.Annotation = &entsql.Annotation{
 		Table: "cron_task",

@@ -542,6 +542,8 @@ internal/cronrunner/jobs/
 | `knowledge.entity.merge` | ok / error | 知识实体合并 |
 | `knowledge.block.promote` | info / ok / error | 知识块晋升 |
 | `knowledge.rebuild_index` | info / ok / error | 知识块索引重建 |
+| `knowledge.reembed.start` | info / — | 文档重嵌入开始 |
+| `knowledge.reembed.done` | ok / error | 文档重嵌入完成 |
 
 #### A2A 联邦（`domain=a2a`，2026-07-29 补齐 P0）
 

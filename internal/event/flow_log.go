@@ -239,6 +239,8 @@ var stepTitleRegistry = map[string]string{
 	"knowledge.entity.merge":   "知识实体合并",
 	"knowledge.block.promote":  "知识块晋升",
 	"knowledge.rebuild_index":  "知识块索引重建",
+	"knowledge.reembed.start":  "文档重嵌入开始",
+	"knowledge.reembed.done":   "文档重嵌入完成",
 	"a2a.invoke.start":         "A2A 联邦调用开始",
 	"a2a.invoke.governance":    "A2A 治理链检查",
 	"a2a.invoke.remote":        "A2A 远端调用",
@@ -295,6 +297,23 @@ var stepTitleRegistry = map[string]string{
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",
 	"client_tool.timeout": "客户端工具执行超时",
+	// coding agent bridge（M76）：与 internal/service/agentbridge.go 实际发射对齐
+	"agentbridge.task.dispatch":  "派发编程任务",
+	"agentbridge.task.done":      "编程任务完成",
+	"agentbridge.task.failed":    "编程任务失败",
+	"agentbridge.task.cancelled": "编程任务取消",
+	"agentbridge.process.spawn":  "启动编程 Agent 进程",
+	"agentbridge.process.exit":   "编程 Agent 进程退出",
+	"agentbridge.probe.degraded": "编程工具探测降级",
+	// computer use（M75）：与 internal/biz/computeruse/usecase.go 实际发射对齐
+	"computeruse.session.start":      "桌面会话已创建",
+	"computeruse.session.done":       "桌面会话已结束",
+	"computeruse.act":                "执行桌面动作",
+	"computeruse.act.done":           "桌面动作完成",
+	"computeruse.act.error":          "桌面动作失败",
+	"computeruse.grounding.fallback": "元素定位降级视觉兜底",
+	"computeruse.budget.exceeded":    "桌面会话预算耗尽",
+	"computeruse.killswitch":         "桌面会话已急停",
 }
 
 func stepTitle(stepID string) string {

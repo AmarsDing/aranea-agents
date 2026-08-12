@@ -451,6 +451,23 @@ export type DeleteDocumentRequest = {
   id: string | undefined;
 };
 
+// ReembedDocumentsRequest re-chunks and re-embeds documents from their stored
+// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+export type ReembedDocumentsRequest = {
+  //
+  // Behaviors: REQUIRED
+  collectionId: string | undefined;
+  docIds: string[] | undefined;
+  chunkSize: number | undefined;
+  chunkOverlap: number | undefined;
+};
+
+export type ReembedDocumentsResponse = {
+  acceptedCount: number | undefined;
+  skippedCount: number | undefined;
+};
+
 // MoveDocumentRequest moves a document (with its chunks) to another collection (US-14).
 // Rejected with CodeConflict when the target collection dim differs (vector incompatibility).
 export type MoveDocumentRequest = {
@@ -565,6 +582,10 @@ export interface KnowledgeService {
   // inbound explicit links rebuild. Name clash -> CodeConflict unless
   // conflict_policy=overwrite|rename. Vault documents only (rel_path required).
   MoveDocumentToDir(request: MoveDocumentToDirRequest): Promise<KnowledgeDocument>;
+  // ReembedDocuments re-chunks and re-embeds documents from their stored
+  // content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
+  // reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
+  ReembedDocuments(request: ReembedDocumentsRequest): Promise<ReembedDocumentsResponse>;
   // UpdateDocumentContent saves editor body back to the vault file (G2-B5):
   // frontmatter preserved, CAS via base_hash; conflict still writes (disk copy
   // backed up to trash) and returns conflict=true. Triggers immediate reindex.
@@ -838,6 +859,26 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "MoveDocumentToDir",
       }) as Promise<KnowledgeDocument>;
+    },
+    ReembedDocuments(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.collectionId) {
+        throw new Error("missing required field request.collection_id");
+      }
+      const path = `v1/knowledge/collections/${request.collectionId}/documents:reembed`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ReembedDocuments",
+      }) as Promise<ReembedDocumentsResponse>;
     },
     UpdateDocumentContent(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.id) {

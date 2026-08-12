@@ -11,14 +11,17 @@ import (
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
+	agentbridgev1 "aranea-agents/api/kratos/agentbridge/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
 	chatv1 "aranea-agents/api/kratos/chat/v1"
+	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
 	cronv1 "aranea-agents/api/kratos/cron/v1"
 	ecosystemv1 "aranea-agents/api/kratos/ecosystem/v1"
 	evaluationv1 "aranea-agents/api/kratos/evaluation/v1"
+	evolutionv1 "aranea-agents/api/kratos/evolution/v1"
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
@@ -135,6 +138,8 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	modelcatalogv1.RegisterModelCatalogServiceHTTPServer(srv, s.ModelCatalog)
 	teamv1.RegisterTeamServiceHTTPServer(srv, s.Teams)
 	chatv1.RegisterChatServiceHTTPServer(srv, s.Chat)
+	computerusev1.RegisterComputerUseServiceHTTPServer(srv, s.ComputerUse)
+	agentbridgev1.RegisterAgentBridgeServiceHTTPServer(srv, s.AgentBridge)
 	graphv1.RegisterGraphServiceHTTPServer(srv, s.Graph)
 	artifactv1.RegisterArtifactServiceHTTPServer(srv, s.Artifact)
 	knowledgev1.RegisterKnowledgeServiceHTTPServer(srv, s.Knowledge)
@@ -149,6 +154,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	skillintlv1.RegisterSkillIntelligenceServiceHTTPServer(srv, s.SkillIntel)
 	skilldedupv1.RegisterSkillDedupServiceHTTPServer(srv, s.SkillDedup)
 	skillevosuggv1.RegisterSkillEvolutionSuggestionServiceHTTPServer(srv, s.SkillEvoSuggestion)
+	evolutionv1.RegisterEvolutionServiceHTTPServer(srv, s.Evolution)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 	runtimeprofilev1.RegisterRuntimeProfileServiceHTTPServer(srv, s.RuntimeProfile)
 	if s.LearningLoop != nil {

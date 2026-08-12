@@ -63,6 +63,13 @@ const (
 	// MonitorEventTypeSkillFilesystemImported signals that a skill was imported
 	// from an external source into the local filesystem.
 	MonitorEventTypeSkillFilesystemImported MonitorEventType = "skill.filesystem.imported"
+
+	// MonitorEventTypeComputerUseStep carries one desktop-automation step
+	// audit summary (75-computer-use). SessionID scopes the computer-use
+	// session; Metadata carries step_index/target/path/action/result/
+	// duration_ms/danger/confirmed_by/error. Reliability: Informational —
+	// the audit table (computer_use_audit) is the durable record.
+	MonitorEventTypeComputerUseStep MonitorEventType = "computeruse.step"
 )
 
 // MonitorEvent is the unified transport for monitor-channel events.

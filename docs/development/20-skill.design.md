@@ -865,6 +865,16 @@ Data 侧关键实现：
 - **蒸馏器**（`internal/service/agent_case_skill_distiller.go` `AgentCaseSkillDistiller`，实现 `biz.CaseSkillDistiller`）：复用 `MemoryLLMExtractor.callModel` 通道（`ConsolidateInput{AgentID}` 仅作 provider 路由，无会话上下文）；`buildCaseDistillDigest` 把 Case 渲染为带 `[SUCCESS]/[FAILURE]` 大写结局、goal/approach/pitfalls/tools 信号的摘要；prompt 要求只固化多条经验中反复出现的共性模式、无共性输出空对象；`parseCaseDistillResponse` 容忍 markdown fence，name 归一化为 `[a-z0-9-]` slug（纯非 ASCII 名折叠为空 → 按提取失败跳过），body 低于 10 runes 视为敷衍输出跳过。
 - **Wire 装配**：`NewAgentCaseSkillDistiller` 绑定 `biz.CaseSkillDistiller`（service.ProviderSet）；`NewMemoryAgentCaseStore` 同实例追加绑定 `biz.AgentCaseRecaller`（data.ProviderSet）；`provideSkillEvolutionOrchestrator` 注入二者并 `RegisterTrigger(NewCaseDistillTrigger(agents, caseRecaller, caseDistiller, lg))`。distiller 为 nil（LLM 通道不可用）时 trigger 整体 no-op。
 
+**进化元数据维度与多样性观测（P3 M5，EverMind GSME 启发）**：
+
+- **定位**：各 trigger 产出建议时在 Metadata 写入确定性可得的维度标签（`dims` 键），供平台级多样性聚合观测搜索塌缩——某 trigger_source 桶长期无新建议即信号。维度只取确定信号（当前仅工具名集合），不做 LLM 推断（贵且不稳定，塌缩观测只需稳定可聚合的标签）。
+- **维度模型**（`internal/biz/skill_evolution_dims.go`）：`EvolutionDims{Tools []string}`，经 `EvoMetaDims="dims"` 键写入 Metadata（JSON object，全字段 omitempty——无信号的维度缺席，聚合端按键存在性过滤）。`normalizeToolNames` 归一化（trim/去空/去重/字典序排序，保证聚合稳定）；`withDimsTools` 在归一化后非空时才写键，避免 `{}` 噪声。
+- **写入点**：`PatternTrigger`（从候选 pattern 的 toolHistory 提取工具名）与 `CaseDistillTrigger`（聚合所有来源 Case 的 `ToolsUsed` 并集）。后续新增 trigger 产出建议时应在 Metadata 写 dims。
+- **聚合端口**：`biz.UnifiedEvolutionDiversityReader.GetDiversityOverview(ctx, since, topTools)`（Stability:evolving），返回 `[]EvolutionDiversitySourceStat`（trigger_source / count / latest_at / top_tools）。
+- **data 实现**（`UnifiedEvolutionRepo.GetDiversityOverview`）：分桶用纯 SQL `GROUP BY trigger_source`（count + MAX(created_at)，count 降序 + source 字典序 tie-break）；dims.tools 频次在 Go 侧解析 metadata 统计——建议表是人工审阅量级，单一代码路径避免 `jsonb_array_elements`/`json_each` 双方言分叉；metadata 缺失/无 dims/解析失败的行被容忍（best-effort）。`topTools<=0` 默认 5；空窗口返回空切片而非错误。
+- **API**（平台级 proto `api/kratos/evolution/v1/evolution.proto`，区别于单 target 视角的 AgentService/SkillEvolutionSuggestionService）：`EvolutionService.GetEvolutionDiversityOverview` → `GET /v1/evolution/diversity-overview`，`since` 缺省默认最近 24h。service 实现 `internal/service/evolution.go`（只读、无写路径，reader 未装配返回 Unavailable）。
+- **Wire 装配**：data.ProviderSet 中 `NewUnifiedEvolutionRepo` 追加 `wire.Bind(biz.UnifiedEvolutionDiversityReader, *UnifiedEvolutionRepo)`；`service.NewEvolutionService` 进 service.ProviderSet；HTTP/gRPC 双注册（`internal/server/http.go`/`grpc.go`）。
+
 ---
 
 ## 七、运行时层

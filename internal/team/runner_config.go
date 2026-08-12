@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
@@ -55,7 +56,10 @@ type RunnerConfig struct {
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
 	KanbanBridge    kanbanpkg.Bridge
-	A2AEnabled      bool
+	// ComputerUseUC enables the computer_use_* toolset in team member builds
+	// (75-computer-use). Optional; nil prunes the toolset.
+	ComputerUseUC *bizcu.ComputerUseUsecase
+	A2AEnabled    bool
 	// SessionChildLookup resolves member agent session IDs for child_session_id
 	// in session activities. Optional; when nil, falls back to team session ID.
 	SessionChildLookup SessionChildLookup

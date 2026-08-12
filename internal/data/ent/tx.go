@@ -52,6 +52,8 @@ type Tx struct {
 	CodingTask *CodingTaskClient
 	// CompiledTeam is the client for interacting with the CompiledTeam builders.
 	CompiledTeam *CompiledTeamClient
+	// ComputerUseAudit is the client for interacting with the ComputerUseAudit builders.
+	ComputerUseAudit *ComputerUseAuditClient
 	// CronTask is the client for interacting with the CronTask builders.
 	CronTask *CronTaskClient
 	// CronTaskRun is the client for interacting with the CronTaskRun builders.
@@ -374,6 +376,7 @@ func (tx *Tx) init() {
 	tx.CodingProject = NewCodingProjectClient(tx.config)
 	tx.CodingTask = NewCodingTaskClient(tx.config)
 	tx.CompiledTeam = NewCompiledTeamClient(tx.config)
+	tx.ComputerUseAudit = NewComputerUseAuditClient(tx.config)
 	tx.CronTask = NewCronTaskClient(tx.config)
 	tx.CronTaskRun = NewCronTaskRunClient(tx.config)
 	tx.DeptLeadMessage = NewDeptLeadMessageClient(tx.config)

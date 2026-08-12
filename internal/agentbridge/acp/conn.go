@@ -67,6 +67,10 @@ type Conn struct {
 	done     chan struct{}
 	closeOnce sync.Once
 	readErr  error // 读循环终结错误（EOF 等），用于 pending 失败信息
+
+	// handlerMu 保护 onReq/onNotify 的运行期切换（SetHandler）：
+	// 会话级 handler 在 Start 后、Prompt 前由 Client.SetHandler 注入。
+	handlerMu sync.RWMutex
 }
 
 // NewConn 创建连接并启动读循环。onReq/onNotify 可为 nil（丢弃对应入站消息）。
@@ -81,6 +85,22 @@ func NewConn(r io.Reader, w io.Writer, onReq RequestHandler, onNotify NotifyHand
 	}
 	go c.readLoop()
 	return c
+}
+
+// SetHandlers 运行期替换入站 handler（nil 表示丢弃对应入站消息）。
+// 会话级 handler 在 Start 时未知（cwd 未确定），由 Client.SetHandler 在
+// Prompt 前注入；读循环经 handlerMu 读取，保证切换安全。
+func (c *Conn) SetHandlers(onReq RequestHandler, onNotify NotifyHandler) {
+	c.handlerMu.Lock()
+	defer c.handlerMu.Unlock()
+	c.onReq = onReq
+	c.onNotify = onNotify
+}
+
+func (c *Conn) getHandlers() (RequestHandler, NotifyHandler) {
+	c.handlerMu.RLock()
+	defer c.handlerMu.RUnlock()
+	return c.onReq, c.onNotify
 }
 
 // Call 发起一次 JSON-RPC 调用并等待响应。响应 result 原样返回。
@@ -187,16 +207,18 @@ func (c *Conn) dispatch(line []byte) {
 		return // 畸形行跳过，不断流
 	}
 
+	_, onNotify := c.getHandlers()
+	onReq, _ := c.getHandlers()
 	switch {
 	case f.Method == MethodSessionUpdate && len(f.ID) == 0:
-		if c.onNotify == nil {
+		if onNotify == nil {
 			return
 		}
 		var n SessionNotification
 		if err := json.Unmarshal(f.Params, &n); err != nil {
 			return
 		}
-		c.onNotify(context.Background(), n)
+		onNotify(context.Background(), n)
 
 	case f.Method == MethodRequestPermission && len(f.ID) > 0:
 		var req PermissionRequestParams
@@ -204,7 +226,7 @@ func (c *Conn) dispatch(line []byte) {
 			c.respondError(f.ID, -32602, "invalid params")
 			return
 		}
-		if c.onReq == nil {
+		if onReq == nil {
 			c.respondError(f.ID, -32601, "permission not supported")
 			return
 		}
@@ -212,7 +234,7 @@ func (c *Conn) dispatch(line []byte) {
 		// 后续 session/update 全部积压在管道里。
 		id := f.ID
 		go func() {
-			result, err := c.onReq(context.Background(), req)
+			result, err := onReq(context.Background(), req)
 			if err != nil {
 				c.respondError(id, -32603, err.Error())
 				return

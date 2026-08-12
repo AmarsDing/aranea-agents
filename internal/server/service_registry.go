@@ -48,8 +48,10 @@ type ServiceRegistry struct {
 	SkillDedup         *service.SkillDedupService
 	Pack               *service.PackService
 	SkillEvoSuggestion *service.SkillEvolutionSuggestionService
-	SelfImprovement    *service.SelfImprovementService
-	EcosystemPreset    *service.EcosystemPresetService
+	// Evolution 是统一进化建议的平台级观测 service（P3 M5 多样性聚合）。
+	Evolution       *service.EvolutionService
+	SelfImprovement *service.SelfImprovementService
+	EcosystemPreset *service.EcosystemPresetService
 	// Compat service wrappers: lazily wire trpc-agent-go framework servers.
 	AGUICompat    *service.AGUICompatService
 	OpenAISession *service.OpenAISessionCompatService
@@ -59,6 +61,10 @@ type ServiceRegistry struct {
 	// RuntimeProfileService manages per-agent runtime configuration profiles.
 	RuntimeProfile *service.RuntimeProfileService
 	LearningLoop   *service.LearningLoopService
+	// ComputerUse exposes desktop-automation kill/steps/status endpoints (75).
+	ComputerUse *service.ComputerUseService
+	// AgentBridge exposes coding-agent bridge management endpoints (76).
+	AgentBridge *service.AgentBridgeAPI
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -102,6 +108,7 @@ func NewServiceRegistry(
 	skillDedup *service.SkillDedupService,
 	packSvc *service.PackService,
 	skillEvoSuggestion *service.SkillEvolutionSuggestionService,
+	evolution *service.EvolutionService,
 	selfImprovement *service.SelfImprovementService,
 	ecosystemPresetSvc *service.EcosystemPresetService,
 	aguiCompat *service.AGUICompatService,
@@ -110,6 +117,8 @@ func NewServiceRegistry(
 	twinOpenAPI *service.TwinOpenAPICompatService,
 	runtimeProfile *service.RuntimeProfileService,
 	learningLoop *service.LearningLoopService,
+	computerUse *service.ComputerUseService,
+	agentBridge *service.AgentBridgeAPI,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:              admin,
@@ -150,6 +159,7 @@ func NewServiceRegistry(
 		SkillDedup:         skillDedup,
 		Pack:               packSvc,
 		SkillEvoSuggestion: skillEvoSuggestion,
+		Evolution:          evolution,
 		SelfImprovement:    selfImprovement,
 		EcosystemPreset:    ecosystemPresetSvc,
 		AGUICompat:         aguiCompat,
@@ -158,5 +168,7 @@ func NewServiceRegistry(
 		TwinOpenAPI:        twinOpenAPI,
 		RuntimeProfile:     runtimeProfile,
 		LearningLoop:       learningLoop,
+		ComputerUse:        computerUse,
+		AgentBridge:        agentBridge,
 	}
 }

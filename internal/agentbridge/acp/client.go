@@ -71,6 +71,23 @@ func Start(ctx context.Context, opt SpawnOptions, h SessionHandler) (*Client, er
 // Proc 暴露底层子进程（监控/恢复用）。
 func (c *Client) Proc() *Process { return c.proc }
 
+// SetHandler 运行期注入会话级 handler（Start 时 cwd 未定，handler 未知）。
+// 必须在 Prompt 前调用；nil 恢复为丢弃入站消息。
+func (c *Client) SetHandler(h SessionHandler) {
+	if h == nil {
+		c.conn.SetHandlers(nil, nil)
+		return
+	}
+	c.conn.SetHandlers(
+		func(ctx context.Context, req PermissionRequestParams) (PermissionResult, error) {
+			return h.OnPermission(ctx, req)
+		},
+		func(ctx context.Context, n SessionNotification) {
+			h.OnUpdate(ctx, n)
+		},
+	)
+}
+
 // NewSession 建立 ACP 会话，cwd 为 agent 工作目录。
 func (c *Client) NewSession(ctx context.Context, cwd string) (string, error) {
 	res, err := c.conn.Call(ctx, MethodSessionNew, NewSessionParams{CWD: cwd, MCPServers: []any{}})

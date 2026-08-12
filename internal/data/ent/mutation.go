@@ -23,6 +23,7 @@ import (
 	"aranea-agents/internal/data/ent/codingproject"
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
+	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/deptleadmessage"
@@ -148,6 +149,7 @@ const (
 	TypeCodingProject              = "CodingProject"
 	TypeCodingTask                 = "CodingTask"
 	TypeCompiledTeam               = "CompiledTeam"
+	TypeComputerUseAudit           = "ComputerUseAudit"
 	TypeCronTask                   = "CronTask"
 	TypeCronTaskRun                = "CronTaskRun"
 	TypeDeptLeadMessage            = "DeptLeadMessage"
@@ -26646,6 +26648,1125 @@ func (m *CompiledTeamMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CompiledTeamMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CompiledTeam edge %s", name)
+}
+
+// ComputerUseAuditMutation represents an operation that mutates the ComputerUseAudit nodes in the graph.
+type ComputerUseAuditMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int
+	session_id     *string
+	agent_key      *string
+	step_index     *int
+	addstep_index  *int
+	target         *string
+	_path          *string
+	action         *string
+	params         *map[string]interface{}
+	result         *string
+	error          *string
+	duration_ms    *int64
+	addduration_ms *int64
+	confirmed_by   *string
+	danger         *bool
+	screenshot_ref *string
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*ComputerUseAudit, error)
+	predicates     []predicate.ComputerUseAudit
+}
+
+var _ ent.Mutation = (*ComputerUseAuditMutation)(nil)
+
+// computeruseauditOption allows management of the mutation configuration using functional options.
+type computeruseauditOption func(*ComputerUseAuditMutation)
+
+// newComputerUseAuditMutation creates new mutation for the ComputerUseAudit entity.
+func newComputerUseAuditMutation(c config, op Op, opts ...computeruseauditOption) *ComputerUseAuditMutation {
+	m := &ComputerUseAuditMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeComputerUseAudit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withComputerUseAuditID sets the ID field of the mutation.
+func withComputerUseAuditID(id int) computeruseauditOption {
+	return func(m *ComputerUseAuditMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ComputerUseAudit
+		)
+		m.oldValue = func(ctx context.Context) (*ComputerUseAudit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ComputerUseAudit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withComputerUseAudit sets the old ComputerUseAudit of the mutation.
+func withComputerUseAudit(node *ComputerUseAudit) computeruseauditOption {
+	return func(m *ComputerUseAuditMutation) {
+		m.oldValue = func(context.Context) (*ComputerUseAudit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ComputerUseAuditMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ComputerUseAuditMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ComputerUseAuditMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ComputerUseAuditMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ComputerUseAudit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *ComputerUseAuditMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *ComputerUseAuditMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *ComputerUseAuditMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetAgentKey sets the "agent_key" field.
+func (m *ComputerUseAuditMutation) SetAgentKey(s string) {
+	m.agent_key = &s
+}
+
+// AgentKey returns the value of the "agent_key" field in the mutation.
+func (m *ComputerUseAuditMutation) AgentKey() (r string, exists bool) {
+	v := m.agent_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAgentKey returns the old "agent_key" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldAgentKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAgentKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAgentKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAgentKey: %w", err)
+	}
+	return oldValue.AgentKey, nil
+}
+
+// ResetAgentKey resets all changes to the "agent_key" field.
+func (m *ComputerUseAuditMutation) ResetAgentKey() {
+	m.agent_key = nil
+}
+
+// SetStepIndex sets the "step_index" field.
+func (m *ComputerUseAuditMutation) SetStepIndex(i int) {
+	m.step_index = &i
+	m.addstep_index = nil
+}
+
+// StepIndex returns the value of the "step_index" field in the mutation.
+func (m *ComputerUseAuditMutation) StepIndex() (r int, exists bool) {
+	v := m.step_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStepIndex returns the old "step_index" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldStepIndex(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStepIndex is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStepIndex requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStepIndex: %w", err)
+	}
+	return oldValue.StepIndex, nil
+}
+
+// AddStepIndex adds i to the "step_index" field.
+func (m *ComputerUseAuditMutation) AddStepIndex(i int) {
+	if m.addstep_index != nil {
+		*m.addstep_index += i
+	} else {
+		m.addstep_index = &i
+	}
+}
+
+// AddedStepIndex returns the value that was added to the "step_index" field in this mutation.
+func (m *ComputerUseAuditMutation) AddedStepIndex() (r int, exists bool) {
+	v := m.addstep_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetStepIndex resets all changes to the "step_index" field.
+func (m *ComputerUseAuditMutation) ResetStepIndex() {
+	m.step_index = nil
+	m.addstep_index = nil
+}
+
+// SetTarget sets the "target" field.
+func (m *ComputerUseAuditMutation) SetTarget(s string) {
+	m.target = &s
+}
+
+// Target returns the value of the "target" field in the mutation.
+func (m *ComputerUseAuditMutation) Target() (r string, exists bool) {
+	v := m.target
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTarget returns the old "target" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldTarget(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTarget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTarget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTarget: %w", err)
+	}
+	return oldValue.Target, nil
+}
+
+// ResetTarget resets all changes to the "target" field.
+func (m *ComputerUseAuditMutation) ResetTarget() {
+	m.target = nil
+}
+
+// SetPath sets the "path" field.
+func (m *ComputerUseAuditMutation) SetPath(s string) {
+	m._path = &s
+}
+
+// Path returns the value of the "path" field in the mutation.
+func (m *ComputerUseAuditMutation) Path() (r string, exists bool) {
+	v := m._path
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPath returns the old "path" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldPath(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPath is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPath requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPath: %w", err)
+	}
+	return oldValue.Path, nil
+}
+
+// ResetPath resets all changes to the "path" field.
+func (m *ComputerUseAuditMutation) ResetPath() {
+	m._path = nil
+}
+
+// SetAction sets the "action" field.
+func (m *ComputerUseAuditMutation) SetAction(s string) {
+	m.action = &s
+}
+
+// Action returns the value of the "action" field in the mutation.
+func (m *ComputerUseAuditMutation) Action() (r string, exists bool) {
+	v := m.action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAction returns the old "action" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldAction(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAction: %w", err)
+	}
+	return oldValue.Action, nil
+}
+
+// ResetAction resets all changes to the "action" field.
+func (m *ComputerUseAuditMutation) ResetAction() {
+	m.action = nil
+}
+
+// SetParams sets the "params" field.
+func (m *ComputerUseAuditMutation) SetParams(value map[string]interface{}) {
+	m.params = &value
+}
+
+// Params returns the value of the "params" field in the mutation.
+func (m *ComputerUseAuditMutation) Params() (r map[string]interface{}, exists bool) {
+	v := m.params
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldParams returns the old "params" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldParams(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldParams is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldParams requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldParams: %w", err)
+	}
+	return oldValue.Params, nil
+}
+
+// ClearParams clears the value of the "params" field.
+func (m *ComputerUseAuditMutation) ClearParams() {
+	m.params = nil
+	m.clearedFields[computeruseaudit.FieldParams] = struct{}{}
+}
+
+// ParamsCleared returns if the "params" field was cleared in this mutation.
+func (m *ComputerUseAuditMutation) ParamsCleared() bool {
+	_, ok := m.clearedFields[computeruseaudit.FieldParams]
+	return ok
+}
+
+// ResetParams resets all changes to the "params" field.
+func (m *ComputerUseAuditMutation) ResetParams() {
+	m.params = nil
+	delete(m.clearedFields, computeruseaudit.FieldParams)
+}
+
+// SetResult sets the "result" field.
+func (m *ComputerUseAuditMutation) SetResult(s string) {
+	m.result = &s
+}
+
+// Result returns the value of the "result" field in the mutation.
+func (m *ComputerUseAuditMutation) Result() (r string, exists bool) {
+	v := m.result
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResult returns the old "result" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldResult(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResult is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResult requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResult: %w", err)
+	}
+	return oldValue.Result, nil
+}
+
+// ResetResult resets all changes to the "result" field.
+func (m *ComputerUseAuditMutation) ResetResult() {
+	m.result = nil
+}
+
+// SetError sets the "error" field.
+func (m *ComputerUseAuditMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *ComputerUseAuditMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *ComputerUseAuditMutation) ResetError() {
+	m.error = nil
+}
+
+// SetDurationMs sets the "duration_ms" field.
+func (m *ComputerUseAuditMutation) SetDurationMs(i int64) {
+	m.duration_ms = &i
+	m.addduration_ms = nil
+}
+
+// DurationMs returns the value of the "duration_ms" field in the mutation.
+func (m *ComputerUseAuditMutation) DurationMs() (r int64, exists bool) {
+	v := m.duration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDurationMs returns the old "duration_ms" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldDurationMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDurationMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDurationMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDurationMs: %w", err)
+	}
+	return oldValue.DurationMs, nil
+}
+
+// AddDurationMs adds i to the "duration_ms" field.
+func (m *ComputerUseAuditMutation) AddDurationMs(i int64) {
+	if m.addduration_ms != nil {
+		*m.addduration_ms += i
+	} else {
+		m.addduration_ms = &i
+	}
+}
+
+// AddedDurationMs returns the value that was added to the "duration_ms" field in this mutation.
+func (m *ComputerUseAuditMutation) AddedDurationMs() (r int64, exists bool) {
+	v := m.addduration_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDurationMs resets all changes to the "duration_ms" field.
+func (m *ComputerUseAuditMutation) ResetDurationMs() {
+	m.duration_ms = nil
+	m.addduration_ms = nil
+}
+
+// SetConfirmedBy sets the "confirmed_by" field.
+func (m *ComputerUseAuditMutation) SetConfirmedBy(s string) {
+	m.confirmed_by = &s
+}
+
+// ConfirmedBy returns the value of the "confirmed_by" field in the mutation.
+func (m *ComputerUseAuditMutation) ConfirmedBy() (r string, exists bool) {
+	v := m.confirmed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConfirmedBy returns the old "confirmed_by" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldConfirmedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConfirmedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConfirmedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConfirmedBy: %w", err)
+	}
+	return oldValue.ConfirmedBy, nil
+}
+
+// ResetConfirmedBy resets all changes to the "confirmed_by" field.
+func (m *ComputerUseAuditMutation) ResetConfirmedBy() {
+	m.confirmed_by = nil
+}
+
+// SetDanger sets the "danger" field.
+func (m *ComputerUseAuditMutation) SetDanger(b bool) {
+	m.danger = &b
+}
+
+// Danger returns the value of the "danger" field in the mutation.
+func (m *ComputerUseAuditMutation) Danger() (r bool, exists bool) {
+	v := m.danger
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDanger returns the old "danger" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldDanger(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDanger is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDanger requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDanger: %w", err)
+	}
+	return oldValue.Danger, nil
+}
+
+// ResetDanger resets all changes to the "danger" field.
+func (m *ComputerUseAuditMutation) ResetDanger() {
+	m.danger = nil
+}
+
+// SetScreenshotRef sets the "screenshot_ref" field.
+func (m *ComputerUseAuditMutation) SetScreenshotRef(s string) {
+	m.screenshot_ref = &s
+}
+
+// ScreenshotRef returns the value of the "screenshot_ref" field in the mutation.
+func (m *ComputerUseAuditMutation) ScreenshotRef() (r string, exists bool) {
+	v := m.screenshot_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScreenshotRef returns the old "screenshot_ref" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldScreenshotRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScreenshotRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScreenshotRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScreenshotRef: %w", err)
+	}
+	return oldValue.ScreenshotRef, nil
+}
+
+// ResetScreenshotRef resets all changes to the "screenshot_ref" field.
+func (m *ComputerUseAuditMutation) ResetScreenshotRef() {
+	m.screenshot_ref = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ComputerUseAuditMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ComputerUseAuditMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ComputerUseAudit entity.
+// If the ComputerUseAudit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ComputerUseAuditMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ComputerUseAuditMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the ComputerUseAuditMutation builder.
+func (m *ComputerUseAuditMutation) Where(ps ...predicate.ComputerUseAudit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ComputerUseAuditMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ComputerUseAuditMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ComputerUseAudit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ComputerUseAuditMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ComputerUseAuditMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ComputerUseAudit).
+func (m *ComputerUseAuditMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ComputerUseAuditMutation) Fields() []string {
+	fields := make([]string, 0, 14)
+	if m.session_id != nil {
+		fields = append(fields, computeruseaudit.FieldSessionID)
+	}
+	if m.agent_key != nil {
+		fields = append(fields, computeruseaudit.FieldAgentKey)
+	}
+	if m.step_index != nil {
+		fields = append(fields, computeruseaudit.FieldStepIndex)
+	}
+	if m.target != nil {
+		fields = append(fields, computeruseaudit.FieldTarget)
+	}
+	if m._path != nil {
+		fields = append(fields, computeruseaudit.FieldPath)
+	}
+	if m.action != nil {
+		fields = append(fields, computeruseaudit.FieldAction)
+	}
+	if m.params != nil {
+		fields = append(fields, computeruseaudit.FieldParams)
+	}
+	if m.result != nil {
+		fields = append(fields, computeruseaudit.FieldResult)
+	}
+	if m.error != nil {
+		fields = append(fields, computeruseaudit.FieldError)
+	}
+	if m.duration_ms != nil {
+		fields = append(fields, computeruseaudit.FieldDurationMs)
+	}
+	if m.confirmed_by != nil {
+		fields = append(fields, computeruseaudit.FieldConfirmedBy)
+	}
+	if m.danger != nil {
+		fields = append(fields, computeruseaudit.FieldDanger)
+	}
+	if m.screenshot_ref != nil {
+		fields = append(fields, computeruseaudit.FieldScreenshotRef)
+	}
+	if m.created_at != nil {
+		fields = append(fields, computeruseaudit.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ComputerUseAuditMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case computeruseaudit.FieldSessionID:
+		return m.SessionID()
+	case computeruseaudit.FieldAgentKey:
+		return m.AgentKey()
+	case computeruseaudit.FieldStepIndex:
+		return m.StepIndex()
+	case computeruseaudit.FieldTarget:
+		return m.Target()
+	case computeruseaudit.FieldPath:
+		return m.Path()
+	case computeruseaudit.FieldAction:
+		return m.Action()
+	case computeruseaudit.FieldParams:
+		return m.Params()
+	case computeruseaudit.FieldResult:
+		return m.Result()
+	case computeruseaudit.FieldError:
+		return m.Error()
+	case computeruseaudit.FieldDurationMs:
+		return m.DurationMs()
+	case computeruseaudit.FieldConfirmedBy:
+		return m.ConfirmedBy()
+	case computeruseaudit.FieldDanger:
+		return m.Danger()
+	case computeruseaudit.FieldScreenshotRef:
+		return m.ScreenshotRef()
+	case computeruseaudit.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ComputerUseAuditMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case computeruseaudit.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case computeruseaudit.FieldAgentKey:
+		return m.OldAgentKey(ctx)
+	case computeruseaudit.FieldStepIndex:
+		return m.OldStepIndex(ctx)
+	case computeruseaudit.FieldTarget:
+		return m.OldTarget(ctx)
+	case computeruseaudit.FieldPath:
+		return m.OldPath(ctx)
+	case computeruseaudit.FieldAction:
+		return m.OldAction(ctx)
+	case computeruseaudit.FieldParams:
+		return m.OldParams(ctx)
+	case computeruseaudit.FieldResult:
+		return m.OldResult(ctx)
+	case computeruseaudit.FieldError:
+		return m.OldError(ctx)
+	case computeruseaudit.FieldDurationMs:
+		return m.OldDurationMs(ctx)
+	case computeruseaudit.FieldConfirmedBy:
+		return m.OldConfirmedBy(ctx)
+	case computeruseaudit.FieldDanger:
+		return m.OldDanger(ctx)
+	case computeruseaudit.FieldScreenshotRef:
+		return m.OldScreenshotRef(ctx)
+	case computeruseaudit.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ComputerUseAudit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ComputerUseAuditMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case computeruseaudit.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case computeruseaudit.FieldAgentKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAgentKey(v)
+		return nil
+	case computeruseaudit.FieldStepIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStepIndex(v)
+		return nil
+	case computeruseaudit.FieldTarget:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTarget(v)
+		return nil
+	case computeruseaudit.FieldPath:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPath(v)
+		return nil
+	case computeruseaudit.FieldAction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAction(v)
+		return nil
+	case computeruseaudit.FieldParams:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetParams(v)
+		return nil
+	case computeruseaudit.FieldResult:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResult(v)
+		return nil
+	case computeruseaudit.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	case computeruseaudit.FieldDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDurationMs(v)
+		return nil
+	case computeruseaudit.FieldConfirmedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConfirmedBy(v)
+		return nil
+	case computeruseaudit.FieldDanger:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDanger(v)
+		return nil
+	case computeruseaudit.FieldScreenshotRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScreenshotRef(v)
+		return nil
+	case computeruseaudit.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ComputerUseAudit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ComputerUseAuditMutation) AddedFields() []string {
+	var fields []string
+	if m.addstep_index != nil {
+		fields = append(fields, computeruseaudit.FieldStepIndex)
+	}
+	if m.addduration_ms != nil {
+		fields = append(fields, computeruseaudit.FieldDurationMs)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ComputerUseAuditMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case computeruseaudit.FieldStepIndex:
+		return m.AddedStepIndex()
+	case computeruseaudit.FieldDurationMs:
+		return m.AddedDurationMs()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ComputerUseAuditMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case computeruseaudit.FieldStepIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddStepIndex(v)
+		return nil
+	case computeruseaudit.FieldDurationMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDurationMs(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ComputerUseAudit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ComputerUseAuditMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(computeruseaudit.FieldParams) {
+		fields = append(fields, computeruseaudit.FieldParams)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ComputerUseAuditMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ComputerUseAuditMutation) ClearField(name string) error {
+	switch name {
+	case computeruseaudit.FieldParams:
+		m.ClearParams()
+		return nil
+	}
+	return fmt.Errorf("unknown ComputerUseAudit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ComputerUseAuditMutation) ResetField(name string) error {
+	switch name {
+	case computeruseaudit.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case computeruseaudit.FieldAgentKey:
+		m.ResetAgentKey()
+		return nil
+	case computeruseaudit.FieldStepIndex:
+		m.ResetStepIndex()
+		return nil
+	case computeruseaudit.FieldTarget:
+		m.ResetTarget()
+		return nil
+	case computeruseaudit.FieldPath:
+		m.ResetPath()
+		return nil
+	case computeruseaudit.FieldAction:
+		m.ResetAction()
+		return nil
+	case computeruseaudit.FieldParams:
+		m.ResetParams()
+		return nil
+	case computeruseaudit.FieldResult:
+		m.ResetResult()
+		return nil
+	case computeruseaudit.FieldError:
+		m.ResetError()
+		return nil
+	case computeruseaudit.FieldDurationMs:
+		m.ResetDurationMs()
+		return nil
+	case computeruseaudit.FieldConfirmedBy:
+		m.ResetConfirmedBy()
+		return nil
+	case computeruseaudit.FieldDanger:
+		m.ResetDanger()
+		return nil
+	case computeruseaudit.FieldScreenshotRef:
+		m.ResetScreenshotRef()
+		return nil
+	case computeruseaudit.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ComputerUseAudit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ComputerUseAuditMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ComputerUseAuditMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ComputerUseAuditMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ComputerUseAuditMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ComputerUseAuditMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ComputerUseAuditMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ComputerUseAuditMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ComputerUseAudit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ComputerUseAuditMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ComputerUseAudit edge %s", name)
 }
 
 // CronTaskMutation represents an operation that mutates the CronTask nodes in the graph.

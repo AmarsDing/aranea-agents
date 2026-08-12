@@ -14,6 +14,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	biza2a "aranea-agents/internal/biz/a2a"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data/artifactfs"
 	"aranea-agents/internal/data/ent"
@@ -120,6 +121,9 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.AgentCaseReader), new(*memoryAgentCaseRepo)),
 	wire.Bind(new(biz.AgentCaseWriter), new(*memoryAgentCaseRepo)),
 	wire.Bind(new(biz.AgentCaseRecaller), new(*memoryAgentCaseRepo)),
+	// 75 M1.4: Computer Use 审计落库（bizcu.AuditStore 端口）。
+	NewComputerUseAuditRepo,
+	wire.Bind(new(bizcu.AuditStore), new(*ComputerUseAuditRepo)),
 	NewMemoryFactIndexMaintainerAdapter,
 	NewMemoryEpisodeDecayerAdapter,
 	NewMemoryFactDecayerAdapter,
@@ -154,6 +158,8 @@ var ProviderSet = wire.NewSet(
 	NewSkillMergeRepo,
 	NewFailurePatternRepo,
 	NewUnifiedEvolutionRepo,
+	// P3 M5: 平台级进化多样性聚合只读端口（GetDiversityOverview）。
+	wire.Bind(new(biz.UnifiedEvolutionDiversityReader), new(*UnifiedEvolutionRepo)),
 	NewSelfImprovementRunRepo,
 	wire.Bind(new(biz.SelfImprovementRunReader), new(*SelfImprovementRunRepo)),
 	wire.Bind(new(biz.SelfImprovementRunWriter), new(*SelfImprovementRunRepo)),
@@ -190,6 +196,10 @@ var ProviderSet = wire.NewSet(
 	NewDeptLeadMessageRepo,
 	NewResourceAccessAuditRepo,
 	NewGlobalMessageSearchRepo,
+	// 76: coding agent bridge（agent/project/task，构造函数直接返回 biz 接口）。
+	NewCodingAgentRepo,
+	NewCodingProjectRepo,
+	NewCodingTaskRepo,
 )
 
 // Data: Postgres is the only supported primary database (Ent CRUD + pgvector

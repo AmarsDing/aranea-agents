@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/debug"
@@ -75,6 +76,9 @@ type RuntimeTooling struct {
 	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
 	// client_open_url) in chat-turn agent builds. Nil prunes the ToolSet.
 	ClientBridge *clientbridge.Bridge
+	// ComputerUseUC enables the computer_use_* desktop automation toolset
+	// (75-computer-use). Nil prunes the toolset from agent builds.
+	ComputerUseUC *bizcu.ComputerUseUsecase
 	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
 	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
 	ParallelToolExecutor *tools.ParallelToolExecutor

@@ -1,0 +1,149 @@
+syntax = "proto3";
+
+package kratos.agentbridge.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/agentbridge/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.agentbridge.v1";
+
+// CodingAgent 是已注册的外部编程 CLI（ACP stdio 子进程配置）。
+message CodingAgent {
+  string id = 1;
+  string agent_key = 2;     // claude_code / codex / codebuddy
+  string display_name = 3;
+  string command = 4;
+  repeated string args = 5;
+  map<string, string> env = 6; // 响应中密钥值掩码（设计 §12）
+  bool enabled = 7;
+  bool last_probe_ok = 8;
+  string last_probe_error = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message UpsertAgentRequest {
+  string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string display_name = 2;
+  string command = 3 [(google.api.field_behavior) = REQUIRED];
+  repeated string args = 4;
+  map<string, string> env = 5;
+  bool enabled = 6;
+}
+
+message ListAgentsResponse {
+  repeated CodingAgent items = 1;
+}
+
+message ProbeAgentRequest {
+  string agent_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ProbeAgentResponse {
+  bool ok = 1;
+  string error = 2;
+}
+
+// CodingProject 是可派发任务的本机项目目录（cwd 白名单）。
+message CodingProject {
+  string id = 1;
+  string name = 2;
+  string path = 3;
+  string description = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message UpsertProjectRequest {
+  string name = 1 [(google.api.field_behavior) = REQUIRED];
+  string path = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+}
+
+message ListProjectsResponse {
+  repeated CodingProject items = 1;
+}
+
+message DeleteProjectRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CodingTask 是一次外部编程 agent 任务执行记录。
+message CodingTask {
+  string id = 1;
+  string session_id = 2;
+  string agent_key = 3;
+  string project_name = 4;
+  string prompt = 5;
+  string status = 6; // dispatched/running/awaiting_approval/cancelling/done/failed/cancelled
+  string summary = 7;
+  string error = 8;
+  int32 progress_count = 9;
+  string created_at = 10;
+  string completed_at = 11;
+}
+
+message ListTasksRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 limit = 2;
+}
+
+message ListTasksResponse {
+  repeated CodingTask items = 1;
+}
+
+message GetTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CancelTaskRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service AgentBridgeService {
+  // 工具注册管理（删除经 enabled=false，M1 不提供物理删除）
+  rpc UpsertAgent(UpsertAgentRequest) returns (CodingAgent) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/agents"
+      body: "*"
+    };
+  }
+  rpc ListAgents(google.protobuf.Empty) returns (ListAgentsResponse) {
+    option (google.api.http) = {get: "/v1/agentbridge/agents"};
+  }
+  rpc ProbeAgent(ProbeAgentRequest) returns (ProbeAgentResponse) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/agents/probe"
+      body: "*"
+    };
+  }
+  // 项目目录注册管理
+  rpc UpsertProject(UpsertProjectRequest) returns (CodingProject) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/projects"
+      body: "*"
+    };
+  }
+  rpc ListProjects(google.protobuf.Empty) returns (ListProjectsResponse) {
+    option (google.api.http) = {get: "/v1/agentbridge/projects"};
+  }
+  rpc DeleteProject(DeleteProjectRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/agentbridge/projects/{id}"};
+  }
+  // 任务查询/取消
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse) {
+    option (google.api.http) = {get: "/v1/agentbridge/tasks"};
+  }
+  rpc GetTask(GetTaskRequest) returns (CodingTask) {
+    option (google.api.http) = {get: "/v1/agentbridge/tasks/{id}"};
+  }
+  rpc CancelTask(CancelTaskRequest) returns (CodingTask) {
+    option (google.api.http) = {
+      post: "/v1/agentbridge/tasks/{id}/cancel"
+      body: "*"
+    };
+  }
+}

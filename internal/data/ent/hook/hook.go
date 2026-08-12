@@ -236,6 +236,18 @@ func (f CompiledTeamFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompiledTeamMutation", m)
 }
 
+// The ComputerUseAuditFunc type is an adapter to allow the use of ordinary
+// function as ComputerUseAudit mutator.
+type ComputerUseAuditFunc func(context.Context, *ent.ComputerUseAuditMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ComputerUseAuditFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ComputerUseAuditMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ComputerUseAuditMutation", m)
+}
+
 // The CronTaskFunc type is an adapter to allow the use of ordinary
 // function as CronTask mutator.
 type CronTaskFunc func(context.Context, *ent.CronTaskMutation) (ent.Value, error)

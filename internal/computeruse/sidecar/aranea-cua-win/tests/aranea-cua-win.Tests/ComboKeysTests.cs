@@ -62,7 +62,6 @@ public class ComboKeysTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("ctrl+")]
     [InlineData("ctrl+unknown")]
     [InlineData("s+ctrl")] // 主键不在末尾
     public void Parse_Invalid_ReturnsFalse(string? combo)

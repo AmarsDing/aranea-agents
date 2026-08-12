@@ -43,7 +43,7 @@
 
 ## 4. Phase 划分与任务清单
 
-### Phase M1.1 — Windows sidecar（CDP + FlaUI）⏳
+### Phase M1.1 — Windows sidecar（CDP + FlaUI）✅
 
 | # | 任务 | 验收 |
 |---|------|------|
@@ -53,7 +53,7 @@
 | 4 | action.invoke/click/type/key/wheel/drag + window.list/focus + app.launch | 驱动记事本：打开→输入→Ctrl+S |
 | 5 | sidecar manifest per-monitor DPI aware；stderr 诊断日志 | 125% 缩放下坐标一致 |
 
-### Phase M1.2 — Go 核心 + 工具注册 ⏳
+### Phase M1.2 — Go 核心 + 工具注册 ✅
 
 | # | 任务 | 验收 |
 |---|------|------|
@@ -62,7 +62,7 @@
 | 3 | tools/computeruse 5 工具 + Registry + seed + AssemblyConfig 装配 | `go test ./internal/tools/...` 绿；种子含 5 条目 |
 | 4 | service 层 + proto（kill/steps/status） | `make api && make wire && make build` 绿 |
 
-### Phase M1.3 — 视觉兜底 ⏳
+### Phase M1.3 — 视觉兜底 ✅
 
 | # | 任务 | 验收 |
 |---|------|------|

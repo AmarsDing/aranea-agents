@@ -2000,7 +2000,7 @@ git commit -m "feat(knowledge): B1 ListDocumentsPendingReembed 待重嵌入文�
 - **不触发** `RebuildBlockIndex`（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）
 - K7 进程日志：goroutine 启动/每文档 done/退出/panic 各一条
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```go
 // internal/service/knowledge_reembed_test.go
@@ -2026,12 +2026,12 @@ func TestReembedDocuments_PipelineReembedsFromContentText(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `go test ./internal/service/ -run TestReembedDocuments -count=1`
 Expected: FAIL（`ReembedDocuments` 未实现）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `internal/event/flow_log.go` stepTitleRegistry 登记（紧随 `knowledge.ingest.*` 区）：
 
@@ -2137,7 +2137,7 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `go test ./internal/service/ -run TestReembedDocuments -count=1`
 Expected: PASS（5 tests）

@@ -63,6 +63,9 @@ type CodingTask func(*sql.Selector)
 // CompiledTeam is the predicate function for compiledteam builders.
 type CompiledTeam func(*sql.Selector)
 
+// ComputerUseAudit is the predicate function for computeruseaudit builders.
+type ComputerUseAudit func(*sql.Selector)
+
 // CronTask is the predicate function for crontask builders.
 type CronTask func(*sql.Selector)
 

@@ -22,6 +22,7 @@ import (
 	"aranea-agents/internal/data/ent/codingproject"
 	"aranea-agents/internal/data/ent/codingtask"
 	"aranea-agents/internal/data/ent/compiledteam"
+	"aranea-agents/internal/data/ent/computeruseaudit"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
 	"aranea-agents/internal/data/ent/deptleadmessage"
@@ -196,6 +197,7 @@ func checkColumn(t, c string) error {
 			codingproject.Table:              codingproject.ValidColumn,
 			codingtask.Table:                 codingtask.ValidColumn,
 			compiledteam.Table:               compiledteam.ValidColumn,
+			computeruseaudit.Table:           computeruseaudit.ValidColumn,
 			crontask.Table:                   crontask.ValidColumn,
 			crontaskrun.Table:                crontaskrun.ValidColumn,
 			deptleadmessage.Table:            deptleadmessage.ValidColumn,

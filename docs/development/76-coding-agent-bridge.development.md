@@ -1,6 +1,6 @@
 # 76 编程 Agent 桥接（Coding Agent Bridge）开发计划
 
-> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 待启动
+> 开发计划 ｜ 2026-08-12 ｜ 状态：M1 进行中（M1-1~9 已完成）
 > 需求见 [76-coding-agent-bridge.md](./76-coding-agent-bridge.md) ｜ 设计见 [76-coding-agent-bridge.design.md](./76-coding-agent-bridge.design.md)
 
 ---
@@ -43,15 +43,15 @@
 
 | # | 任务 | 验证 | 状态 |
 |---|------|------|------|
-| M1-1 | ACP 类型与 NDJSON 帧编解码（`acp/types.go` + `acp/conn.go`） | 单测：帧读写、JSON-RPC 请求/响应/通知路由、挂起请求表、畸形行容错 | 📋 |
-| M1-2 | 子进程管理（`acp/process.go`）：spawn/stdout pipe/Wait 监视/进程组 kill | 单测（fake 子进程脚本）+ Windows 进程组终止验证 | 📋 |
-| M1-3 | ACP Client（`acp/client.go`）：initialize/session/new/prompt/cancel | 集成测：fake ACP server（Go 实现的 stdin/stdout mock agent）全方法覆盖 | 📋 |
-| M1-4 | Ent Schema：coding_agents / coding_projects / coding_tasks + `go generate` + DDL 迁移注册 | Schema 编译 + 迁移幂等性测试（testhelper.SetupTestPG） | 📋 |
-| M1-5 | data 层三个 Repo + `entErrToBizErr` 翻译 | data 层测试（独立 PG schema） | 📋 |
-| M1-6 | biz 任务状态机（`task_state_machine.go`） | 单测：合法/非法转换全枚举 | 📋 |
-| M1-7 | biz AgentBridgeUsecase：派发/取消/项目消歧（mock ACPSession 端口） | 单测：消歧三分支、并发上限、错误路径 | 📋 |
-| M1-8 | service AgentBridgeService：事件聚合限流（5s 窗口）+ 进度事件发射 | 单测：限流窗口、事件负载 | 📋 |
-| M1-9 | codingbridge 三工具（dispatch/check/cancel）注册进 tools registry | 单测：工具入参校验、返回结构 | 📋 |
+| M1-1 | ACP 类型与 NDJSON 帧编解码（`acp/types.go` + `acp/conn.go`） | 单测：帧读写、JSON-RPC 请求/响应/通知路由、挂起请求表、畸形行容错 | ✅ |
+| M1-2 | 子进程管理（`acp/process.go`）：spawn/stdout pipe/Wait 监视/进程组 kill | 单测（fake 子进程脚本）+ Windows 进程组终止验证 | ✅ |
+| M1-3 | ACP Client（`acp/client.go`）：initialize/session/new/prompt/cancel | 集成测：fake ACP server（Go 实现的 stdin/stdout mock agent）全方法覆盖 | ✅ |
+| M1-4 | Ent Schema：coding_agents / coding_projects / coding_tasks + `go generate` + DDL 迁移注册 | Schema 编译 + 迁移幂等性测试（testhelper.SetupTestPG） | ✅ |
+| M1-5 | data 层三个 Repo + `entErrToBizErr` 翻译 | data 层测试（独立 PG schema，8/8 全绿） | ✅ |
+| M1-6 | biz 任务状态机（`task_state_machine.go`） | 单测：合法/非法转换全枚举 | ✅ |
+| M1-7 | biz AgentBridgeUsecase：派发/取消/项目消歧（mock ACPSession 端口） | 单测：消歧三分支、并发上限、错误路径（15/15 全绿） | ✅ |
+| M1-8 | service AgentBridgeService：事件聚合限流（5s 窗口）+ 进度事件发射 | 单测：限流窗口、事件负载（6/6 全绿） | ✅ |
+| M1-9 | codingbridge 三工具（dispatch/check/cancel）注册进 tools registry | 单测：工具入参校验、返回结构（11/11 全绿） | ✅ |
 | M1-10 | proto + service 管理 API（agent/project CRUD、task 查询/取消） | `make api` 编译 + service 层测试 | 📋 |
 | M1-11 | Wire 装配 + 启动恢复钩子（RecoverActiveTasks） | `make wire && go build ./cmd/admin` | 📋 |
 | M1-12 | 流程日志 step 登记（flow_log.go stepTitleRegistry + 52 文档 §5.1 同步） | 登记检查 | 📋 |

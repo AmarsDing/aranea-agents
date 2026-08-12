@@ -126,6 +126,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	cfg.OutboundRouter = deps.OutboundRouter
 	cfg.SubAgentService = deps.SubAgentService
 	cfg.ClientBridgeSvc = deps.ClientBridge
+	cfg.ComputerUseUC = deps.ComputerUseUC
 
 	lg.Info("工具构建：SubAgentService 检查",
 		loggateway.StepID("agent.subagent_check"),

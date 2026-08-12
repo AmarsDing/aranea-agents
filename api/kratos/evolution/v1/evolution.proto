@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package kratos.evolution.v1;
+
+option go_package = "aranea-agents/api/kratos/evolution/v1;v1";
+option java_package = "api.kratos.evolution.v1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// EvolutionService 是统一进化建议（unified_evolution_suggestions）的平台级
+// 观测入口：跨 target（agent/skill/persona/...）的聚合视图，区别于
+// AgentService / SkillEvolutionSuggestionService 的单 target 视角。
+service EvolutionService {
+  // GetEvolutionDiversityOverview 平台级进化多样性聚合观测（P3 M5）：
+  // 按 trigger_source 分桶，统计窗口内建议数、最近建议时间、dims.tools
+  // 频次 TopN。某桶长期停滞即搜索塌缩信号。
+  rpc GetEvolutionDiversityOverview(GetEvolutionDiversityOverviewRequest) returns (GetEvolutionDiversityOverviewResponse) {
+    option (google.api.http) = {get: "/v1/evolution/diversity-overview"};
+  }
+}
+
+message GetEvolutionDiversityOverviewRequest {
+  // 观测窗口起点（含）；缺省时后端给默认值（最近 24h）。
+  google.protobuf.Timestamp since = 1;
+  // 每桶 dims.tools 频次 TopN 截断；<=0 由后端给默认值。
+  int32 top_tools = 2;
+}
+
+message EvolutionDiversityBucket {
+  string trigger_source = 1;
+  // 窗口内建议数。
+  int32 count = 2;
+  // 窗口内最近建议时间；长期停滞即塌缩信号。
+  google.protobuf.Timestamp latest_at = 3;
+  // dims.tools 频次 TopN（同频次按工具名字典序，保证稳定）。
+  repeated string top_tools = 4;
+}
+
+message GetEvolutionDiversityOverviewResponse {
+  // 按 count 降序、trigger_source 字典序 tie-break。
+  repeated EvolutionDiversityBucket buckets = 1;
+}

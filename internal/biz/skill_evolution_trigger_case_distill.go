@@ -99,15 +99,17 @@ func (t *CaseDistillTrigger) Check(ctx context.Context, agentID string) ([]Unifi
 	}
 
 	caseIDs := make([]string, 0, len(cases))
+	var dimTools []string // M5 dims：跨 Case 工具并集（确定性信号）
 	for _, c := range cases {
 		if id := c.ID; id != "" {
 			caseIDs = append(caseIDs, id)
 		}
+		dimTools = append(dimTools, c.ToolsUsed...)
 	}
-	metadata, _ := json.Marshal(map[string]any{
+	metadata, _ := json.Marshal(withDimsTools(map[string]any{
 		EvoMetaSourceCaseIDs: caseIDs,
 		"case_count":         len(cases),
-	})
+	}, dimTools))
 
 	return []UnifiedEvolutionSuggestion{{
 		ID:              newAgentCatalogID(),

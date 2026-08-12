@@ -139,6 +139,12 @@ test/.gocache*
 !/test/agent-memory-challenge/
 /test/agent-memory-challenge/*
 !/test/agent-memory-challenge/smoke.sh
+!/test/cua-win-smoke/
+/test/cua-win-smoke/*
+!/test/cua-win-smoke/smoke.ps1
+# .NET sidecar（internal/computeruse）构建产物
+/internal/computeruse/**/obj/
+/internal/computeruse/**/bin/
 # Python 缓存
 __pycache__/
 *.pyc
