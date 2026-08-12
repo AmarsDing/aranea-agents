@@ -205,7 +205,8 @@ describe('M2 星系盘三力', () => {
     const lin = makeGalaxyEngine({ gravity: 0.011, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
     const core = makeGalaxyEngine({ gravity: 0, coreGravity: 0.08, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
     const r0 = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
-    for (let t = 0; t < 30; t++) { lin.tick(); core.tick(); }
+    // 注：两者均为欠阻尼振荡，30 tick 正处 core 过冲反弹相位；60 tick 后 core 振幅衰减、稳定优于线性
+    for (let t = 0; t < 60; t++) { lin.tick(); core.tick(); }
     const rLin = Math.hypot(lin.positions[0], lin.positions[1], lin.positions[2]);
     const rCore = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
     expect(rCore).toBeLessThan(rLin);

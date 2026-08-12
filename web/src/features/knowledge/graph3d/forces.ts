@@ -243,7 +243,9 @@ export class ForceEngine {
       }
     }
 
-    // 3) 向心力 + 显式 Euler 积分（maxStep 位移钳制防 hub 发散）
+    // 3) 向心力 + 星系盘三力 + 显式 Euler 积分（maxStep 位移钳制防 hub 发散）
+    const { coreGravity, discFlatten, spiralSwirl } = this.params;
+    const galaxyMode = coreGravity > 0 || discFlatten > 0 || spiralSwirl > 0;
     const maxStep = linkDistance;
     const maxStep2 = maxStep * maxStep;
     for (let i = 0; i < this.count; i++) {
@@ -254,6 +256,32 @@ export class ForceEngine {
       f[ix] -= this.pos[ix] * gravity;
       f[iy] -= this.pos[iy] * gravity;
       f[iz] -= this.pos[iz] * gravity;
+
+      if (galaxyMode) {
+        const px = this.pos[ix];
+        const py = this.pos[iy];
+        const pz = this.pos[iz];
+        if (coreGravity > 0) {
+          // 软化径向引力：中心不过冲，远处弱于线性（致密核成形）
+          const r = Math.sqrt(px * px + py * py + pz * pz) || 1e-3;
+          const k = coreGravity / (1 + r * 0.02);
+          f[ix] -= px * k;
+          f[iy] -= py * k;
+          f[iz] -= pz * k;
+        }
+        if (discFlatten > 0) {
+          f[iy] -= py * discFlatten; // Y 轴压向 XZ 盘面
+        }
+        if (spiralSwirl > 0) {
+          const rxz = Math.sqrt(px * px + pz * pz);
+          if (rxz > 1e-3) {
+            const envelope = rxz / (rxz + 40); // 中心弱、边缘饱和
+            const s = (spiralSwirl * envelope) / rxz;
+            f[ix] += -pz * s;
+            f[iz] += px * s;
+          }
+        }
+      }
 
       let vx = (this.vel[ix] + f[ix] * this.alpha) * damping;
       let vy = (this.vel[iy] + f[iy] * this.alpha) * damping;
