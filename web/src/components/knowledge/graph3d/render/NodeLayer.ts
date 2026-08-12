@@ -18,6 +18,7 @@ const NODE_VERTEX = `
   uniform sampler2D uPosTex;
   uniform float uTexW;
   uniform float uPointScale;
+  uniform float uRevealT;
   attribute float aSize;
   attribute vec3 aColor;
   attribute float aEmph;
@@ -31,7 +32,9 @@ const NODE_VERTEX = `
     gl_Position = projectionMatrix * mv;
     float px = aSize * uPointScale / max(-mv.z, 1.0);
     gl_PointSize = clamp(px, 1.6, 56.0);
+    gl_PointSize *= (0.2 + 0.8 * uRevealT); // M3 创世绽放：收拢 → 全尺寸
     vFade = clamp(px / 2.2, 0.35, 1.0); // 亚像素淡出防抖
+    vFade *= uRevealT; // M3 创世绽放：透明 → 全显现
     vColor = aColor;
     vEmph = aEmph;
   }`;
@@ -77,6 +80,7 @@ export class NodeLayer {
         uPosTex: { value: null },
         uTexW: { value: 1 },
         uPointScale: { value: 540 },
+        uRevealT: { value: 1 },
       },
       vertexShader: NODE_VERTEX,
       fragmentShader: NODE_FRAGMENT,
@@ -100,6 +104,11 @@ export class NodeLayer {
   /** 点像素缩放 = viewportHeightPx·0.5 / tan(fov/2)（resize 时调用）。 */
   setPointScale(scale: number): void {
     this.material.uniforms.uPointScale.value = scale;
+  }
+
+  /** M3 创世绽放：0=收拢于核心，1=完全显现（默认 1 无动画）。 */
+  setRevealT(t: number): void {
+    this.material.uniforms.uRevealT.value = t;
   }
 
   /** 基础色（3N RGB float，palette 注入）。 */

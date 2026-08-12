@@ -138,6 +138,11 @@ let intersectionObserver: IntersectionObserver | null = null;
 /** 布局收敛后待执行的 zoomToFit（首载/代际变化）。 */
 let pendingFit = true;
 
+// ---- M3 创世绽放（genesis reveal，非响应式） ----
+/** 创世进度：0=收拢于核心，1=完全显现（默认 1 无动画；LOW 档恒 1）。 */
+let revealT = 1;
+let genesisStart = 0;
+
 // ---- hover 拾取合并（RAF 内每帧最多一次射线） ----
 let hoverDirty = false;
 let lastPickX = 0;
@@ -206,6 +211,13 @@ function initScene(el: HTMLElement): boolean {
   controls.autoRotate = props.autoRotate;
   controls.autoRotateSpeed = 0.6;
   controls.addEventListener('change', requestRender);
+  // M3：用户拖拽接管 → 创世动画立即完成（镜头让位手控）
+  controls.addEventListener('start', () => {
+    if (revealT < 1) {
+      revealT = 1;
+      nodeLayer?.setRevealT(1);
+    }
+  });
 
   backdrop = new BackdropLayer(renderer); // 构造内一次性烘焙星云
   scene.add(backdrop.group);
@@ -308,6 +320,15 @@ function rebuildGraph(): void {
   engine.start();
   // M2：初始布局为星系盘时，启动后即切预设（setParams+reheat；须 start 后调用，启动前 setParams 为空操作）
   if (currentLayout === 'galaxy') engine.setLayout('galaxy');
+  // M3 创世绽放：LOW 档跳过（uniform 直接 1）
+  if (QUALITY_SPECS[tier].label !== 'LOW') {
+    revealT = 0;
+    genesisStart = performance.now();
+    nodeLayer?.setRevealT(0);
+  } else {
+    revealT = 1;
+    nodeLayer?.setRevealT(1);
+  }
   requestRender();
 }
 
@@ -356,6 +377,7 @@ function disposeGraph(): void {
   posTex?.dispose();
   posTex = null;
   particleLayer.setSource(null, []);
+  revealT = 1; // M3：重置创世进度（防残留动画状态）
   drag.active = false;
   drag.index = -1;
 }
@@ -623,6 +645,12 @@ function frame(now: number): void {
     doHoverPick();
   }
   if (tween.active) stepTween(now);
+  // M3 创世绽放推进：1.2s 内 revealT 0→1，期间持续保活渲染
+  if (revealT < 1) {
+    revealT = Math.min(1, (performance.now() - genesisStart) / 1200);
+    nodeLayer?.setRevealT(revealT);
+    requestRender();
+  }
   if (controls?.autoRotate) {
     controls.update();
     requestRender();

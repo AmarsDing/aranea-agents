@@ -90,3 +90,18 @@ describe('NodeLayer v2', () => {
     l.dispose();
   });
 });
+
+describe('NodeLayer（M3 reveal）', () => {
+  it('uRevealT 默认 1（无动画时全显现）', () => {
+    const layer = new NodeLayer(4);
+    expect((layer.points.material as { uniforms: { uRevealT: { value: number } } }).uniforms.uRevealT.value).toBe(1);
+    layer.dispose();
+  });
+
+  it('setRevealT 更新 uRevealT uniform', () => {
+    const layer = new NodeLayer(4);
+    layer.setRevealT(0.3);
+    expect((layer.points.material as { uniforms: { uRevealT: { value: number } } }).uniforms.uRevealT.value).toBe(0.3);
+    layer.dispose();
+  });
+});
