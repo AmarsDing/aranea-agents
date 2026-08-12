@@ -63,8 +63,10 @@ const props = withDefaults(
     autoRotate?: boolean;
     /** HUD：标签开关（G5-E 接线）。 */
     showLabels?: boolean;
+    /** M2：布局模式（力导向/星系盘）。 */
+    layout?: 'force' | 'galaxy';
   }>(),
-  { autoRotate: false, showLabels: true },
+  { autoRotate: false, showLabels: true, layout: 'force' },
 );
 
 const emit = defineEmits<{
@@ -112,6 +114,8 @@ const particleLayer = new ParticleLayer();
 let engine: GraphEngine | null = null;
 let model: GraphModel | null = null;
 const interaction = new GraphInteraction();
+/** M2：当前布局模式（决定边层细分/曲率 + 物理三力预设；初始取 prop 支持刷新后恢复星系盘）。 */
+let currentLayout: 'force' | 'galaxy' = props.layout;
 const labelVis: LabelVisibility = { maxDistance: 600, minDegree: LABEL_MIN_DEGREE, extraVisible: new Set() };
 
 // ---- 画质 governor 状态（FPS EMA + 连续低/高帧计数） ----
@@ -277,17 +281,8 @@ function rebuildGraph(): void {
   nodeLayer.setSizes(m.degree, NODE_SIZE_BASE, NODE_SIZE_SCALE, sizeMult);
   scene.add(nodeLayer.points);
 
-  // 边基础色（边类型色，层内乘 rest/hover 系数）
-  const edgeColors = new Float32Array(m.edgeCount * 3);
-  for (let e = 0; e < m.edgeCount; e++) {
-    const [r, g, b] = hexToRgbFloat(graphLinkColor(m.edgeTypes[e]));
-    edgeColors[e * 3] = r;
-    edgeColors[e * 3 + 1] = g;
-    edgeColors[e * 3 + 2] = b;
-  }
-  edgeLayer = new EdgeLayer(m.edges, edgeColors);
-  edgeLayer.setPositionTexture(posTex.texture, posTex.width);
-  scene.add(edgeLayer.object);
+  // 边层（M2：按布局选细分段数/曲率；颜色与位置纹理接线在 rebuildEdges 内）
+  rebuildEdges();
 
   reticle = new ReticleLayer();
   reticle.setPositionTexture(posTex.texture, posTex.width);
@@ -311,7 +306,34 @@ function rebuildGraph(): void {
   );
   pendingFit = true;
   engine.start();
+  // M2：初始布局为星系盘时，启动后即切预设（setParams+reheat；须 start 后调用，启动前 setParams 为空操作）
+  if (currentLayout === 'galaxy') engine.setLayout('galaxy');
   requestRender();
+}
+
+/** M2：边层重建（布局切换联动）——dispose 旧层 → 按 currentLayout 新建（星系盘 8 段弧线/力导向直线）→ 恢复位置纹理与高亮。 */
+function rebuildEdges(): void {
+  if (!scene || !model || !posTex) return;
+  // 仅「替换存活层」（布局切换）时恢复高亮；初次重建沿用旧行为（全新层零高亮，interaction 随后重置）
+  const replacing = edgeLayer !== null;
+  if (edgeLayer) {
+    scene.remove(edgeLayer.object);
+    edgeLayer.dispose();
+  }
+  const m = model;
+  // 边基础色（边类型色，层内乘 rest/hover 系数）
+  const edgeColors = new Float32Array(m.edgeCount * 3);
+  for (let e = 0; e < m.edgeCount; e++) {
+    const [r, g, b] = hexToRgbFloat(graphLinkColor(m.edgeTypes[e]));
+    edgeColors[e * 3] = r;
+    edgeColors[e * 3 + 1] = g;
+    edgeColors[e * 3 + 2] = b;
+  }
+  edgeLayer = new EdgeLayer(m.edges, edgeColors, currentLayout === 'galaxy' ? 8 : 1);
+  edgeLayer.setCurvature(currentLayout === 'galaxy' ? 0.18 : 0);
+  edgeLayer.setPositionTexture(posTex.texture, posTex.width);
+  scene.add(edgeLayer.object);
+  if (replacing) applyHighlight(); // 恢复高亮状态
 }
 
 function disposeGraph(): void {
@@ -778,6 +800,18 @@ watch(
   () => props.showLabels,
   (v) => {
     labelLayer?.setLabelsEnabled(v);
+    requestRender();
+  },
+);
+
+// M2：布局切换——边层重建（弧线/直线）+ 物理参数预设 morph（相机不动，pendingFit 不重置）
+watch(
+  () => props.layout,
+  (v) => {
+    if (v === currentLayout) return;
+    currentLayout = v;
+    rebuildEdges();
+    engine?.setLayout(v);
     requestRender();
   },
 );

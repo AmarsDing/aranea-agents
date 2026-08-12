@@ -487,7 +487,7 @@ git commit -m "feat(knowledge): M2 星系盘三力（coreGravity/discFlatten/spi
 
 **设计**：布局切换 = `setParams(预设)` + `reheat()`（alpha 归 1，物理重新收敛 → 自然 morph，非坐标插值）。Worker/主线程两路径自动兼容（`setParams`/`reheat` 消息已存在，无需新协议消息；`InitMessage.params` 为 `ForceParams` 类型自动携带新字段——M2-T1 已扩展接口，Worker 构造透传不变）。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 在 `engine.spec.ts` 追加：
 
@@ -534,12 +534,12 @@ git commit -m "feat(knowledge): M2 星系盘三力（coreGravity/discFlatten/spi
   });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/engine.spec.ts`
 Expected: FAIL（`e.setLayout is not a function`）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `engine.ts` 改动：
 
@@ -560,12 +560,12 @@ export type GraphLayout = 'force' | 'galaxy';
 
 注：测试用 `workerFactory: () => null` 会走 `startFallback()` 主线程路径（factory 返回 null → `w` 为 falsy）。若既有 engine.spec 构造方式不同，沿用其模式。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/engine.spec.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/features/knowledge/graph3d/engine.ts web/src/features/knowledge/graph3d/__tests__/engine.spec.ts
@@ -582,7 +582,7 @@ git commit -m "feat(knowledge): M2 GraphEngine.setLayout 布局切换（alpha �
 
 **设计**：每顶点携带 `aNodeA`/`aNodeB`（两端点索引）+ `aT`（插值参数）；顶点着色器 `mix/bezier` 统一：`curvature=0` 退化直线（力导向，segments=1，行为不变），星系盘 `curvature>0` + segments=8（弧线沿盘面弯曲）。贝塞尔控制点 = 中点 + XZ 平面法向偏移。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // EdgeLayer.spec.ts（若文件不存在则新建，沿用渲染层既有 spec 模式；无 WebGL 上下文，仅测几何构造）
@@ -620,12 +620,12 @@ describe('EdgeLayer（M2 曲线）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/render/__tests__/EdgeLayer.spec.ts`
 Expected: FAIL（构造函数不接受第三参 / `aNodeA` 属性不存在 / `setCurvature` 未定义）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `EdgeLayer.ts` 改造（要点——保持既有 highlight/pulse 逻辑不变）：
 
@@ -675,12 +675,12 @@ const EDGE_VERTEX = `
 
 片元着色器与 setHighlight 等其余逻辑保持不变（`vT` 语义不变）。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/render/__tests__/EdgeLayer.spec.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/src/components/knowledge/graph3d/render/EdgeLayer.ts web/src/components/knowledge/graph3d/render/__tests__/EdgeLayer.spec.ts
@@ -703,7 +703,7 @@ git commit -m "feat(knowledge): M2 EdgeLayer 曲线连线（贝塞尔 curvature�
 - HUD 按钮沿用 `kg-hud__switch` 模式（参照 autoRotate/showLabels，KnowledgeGraph3D.vue 第 43-56 行）。
 - 持久化：`localStorage['kg3d-layout']`，KnowledgePage 初始化读取。
 
-- [ ] **Step 1: Canvas 接线**
+- [x] **Step 1: Canvas 接线**
 
 ```typescript
 // props 增加
@@ -753,7 +753,7 @@ watch(
 );
 ```
 
-- [ ] **Step 2: HUD + 页面接线 + i18n**
+- [x] **Step 2: HUD + 页面接线 + i18n**
 
 KnowledgeGraph3D.vue：props 加 `layout: string`；emits 加 `'update:layout': [v: string]`；HUD 工具条（autoRotate 按钮旁）加：
 
@@ -784,14 +784,15 @@ watch(graphLayout, (v) => {
 
 i18n（zh-Hans：`graphLayoutForce: '力导向'`、`graphLayoutGalaxy: '星系盘'`；en-US：`Force-directed` / `Galaxy`）。
 
-- [ ] **Step 3: 门禁 + 运行时验证（R3）**
+- [x] **Step 3: 门禁 + 运行时验证（R3）**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿
+实际：pnpm test 230 文件/1735 用例全绿；pnpm build 成功；pnpm lint ESLint 0 error（check-i18n 报 34 处硬编码中文均为并行会话 WIP 文件，本任务零新增违规）。运行时验证为浏览器人工项，转协调员执行。
 
 运行时：知识库图谱 → HUD 切换「星系盘」→ 确认：节点物理 morph 成盘（非瞬移）、弧线边显现、标签不重叠恶化、FPS governor 不掉档；切回力导向恢复；刷新页面布局选择保持。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```powershell
 git add web/src/components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue web/src/components/knowledge/KnowledgeGraph3D.vue web/src/pages/KnowledgePage.vue web/src/i18n/

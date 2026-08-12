@@ -3077,6 +3077,8 @@ export default {
     graphBackToGlobal: 'Back to global',
     graphAutoRotate: 'Auto-rotate',
     graphShowLabels: 'Show labels',
+    graphLayoutForce: 'Force-directed',
+    graphLayoutGalaxy: 'Galaxy',
     graphQualityTier: 'Quality {tier}',
     graphFitView: 'Fit view',
     graphExitFullscreen: 'Exit fullscreen',

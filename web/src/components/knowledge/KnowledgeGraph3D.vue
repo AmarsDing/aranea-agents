@@ -26,6 +26,7 @@
         :generation="generation"
         :auto-rotate="autoRotate"
         :show-labels="showLabels"
+        :layout="layout"
         @node-click="$emit('select-node', $event)"
         @background-click="$emit('select-node', '')"
         @node-dblclick="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
@@ -54,6 +55,17 @@
         >
           {{ t('knowledgePage.graphShowLabels') }}
           <span class="kg-hud__bracket">[ {{ showLabels ? 'ON' : 'OFF' }} ]</span>
+        </button>
+        <button
+          type="button"
+          class="kg-hud__switch"
+          :class="{ 'kg-hud__switch--on': layout === 'galaxy' }"
+          @click="toggleLayout"
+        >
+          <q-icon name="blur_circular" size="13px" />
+          <span>{{
+            layout === 'galaxy' ? t('knowledgePage.graphLayoutGalaxy') : t('knowledgePage.graphLayoutForce')
+          }}</span>
         </button>
         <q-btn
           flat
@@ -451,6 +463,24 @@ const canvasRef = ref<{ zoomToFit: (ms?: number) => void } | null>(null);
 
 function fitView() {
   canvasRef.value?.zoomToFit();
+}
+
+// ---------- M2：布局切换（力导向/星系盘，localStorage 持久化，刷新保持） ----------
+
+const layout = ref<'force' | 'galaxy'>(
+  typeof localStorage !== 'undefined' && localStorage.getItem('kg3d-layout') === 'galaxy' ? 'galaxy' : 'force',
+);
+
+watch(layout, (v) => {
+  try {
+    localStorage.setItem('kg3d-layout', v);
+  } catch {
+    /* 隐私模式忽略 */
+  }
+});
+
+function toggleLayout() {
+  layout.value = layout.value === 'galaxy' ? 'force' : 'galaxy';
 }
 
 /** 节点图例：doc_type 按频次降序取前 8，色板与画布一致。 */

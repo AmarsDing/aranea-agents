@@ -3097,6 +3097,8 @@ export default {
     graphBackToGlobal: '返回全局',
     graphAutoRotate: '自动旋转',
     graphShowLabels: '显示标签',
+    graphLayoutForce: '力导向',
+    graphLayoutGalaxy: '星系盘',
     graphQualityTier: '画质 {tier}',
     graphFitView: '适应视图',
     graphExitFullscreen: '退出全屏',
