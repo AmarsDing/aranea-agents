@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
@@ -122,6 +123,11 @@ type TRPCSkillDeps struct {
 	SkillUC         biz.TeamSkillLookup
 	SkillDBRepo     trpcskill.Repository
 	CodeExecFactory *localexec.Factory
+	// SkillHealthProvider feeds historical performance (success rate / avg
+	// duration) into the Layer B ranking fusion branch of
+	// ResolveSkillSlugsDetailed (R1, 2026-08-13). Optional: when nil, the
+	// branch is skipped and ranking stays keyword/embedding only.
+	SkillHealthProvider skillrecommend.HealthMetricsProvider
 }
 
 // TRPCExtensionDeps documents cross-cutting / optional extensions on TRPCBuilderDeps.

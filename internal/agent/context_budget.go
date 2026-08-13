@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -39,19 +40,35 @@ const (
 // contextBudgetCtxKey carries the per-request ContextBudget.
 type contextBudgetCtxKey struct{}
 
+// contextBudgetTopToolsLimit caps how many per-tool schema sizes the ledger
+// keeps (N6): the largest few declarations dominate tools_schema, so the
+// tail is noise.
+const contextBudgetTopToolsLimit = 5
+
+// ContextBudgetToolSize is one tool's marshaled declaration size within a
+// request (N6 per-tool observation).
+type ContextBudgetToolSize struct {
+	Name      string
+	Chars     int
+	EstTokens int
+}
+
 // ContextBudget accumulates per-category injected chars for one request.
 type ContextBudget struct {
 	chars      map[string]int
 	recorded   map[string]bool
 	toolsCount int
+	topTools   []ContextBudgetToolSize
 }
 
 // ContextBudgetSnapshot is the turn-end readout: per-category chars and
-// estimated tokens, plus the tools count and the estimated total input.
+// estimated tokens, plus the tools count, the top-N largest tool schemas,
+// and the estimated total input.
 type ContextBudgetSnapshot struct {
 	Chars         map[string]int
 	EstTokens     map[string]int
 	ToolsCount    int
+	TopTools      []ContextBudgetToolSize
 	EstTotalInput int
 }
 
@@ -97,6 +114,21 @@ func (b *ContextBudget) SetToolsCount(n int) {
 	b.toolsCount = n
 }
 
+// SetTopTools stores the largest per-tool schema sizes (N6). Callers pass
+// the full per-tool list; the budget keeps only the top-N by chars.
+func (b *ContextBudget) SetTopTools(sizes []ContextBudgetToolSize) {
+	sort.Slice(sizes, func(i, j int) bool {
+		if sizes[i].Chars != sizes[j].Chars {
+			return sizes[i].Chars > sizes[j].Chars
+		}
+		return sizes[i].Name < sizes[j].Name
+	})
+	if len(sizes) > contextBudgetTopToolsLimit {
+		sizes = sizes[:contextBudgetTopToolsLimit]
+	}
+	b.topTools = sizes
+}
+
 // Snapshot returns the per-category chars and estimated tokens.
 // est_tokens 口径：chars/3.5 向上取整。
 func (b *ContextBudget) Snapshot() ContextBudgetSnapshot {
@@ -104,6 +136,7 @@ func (b *ContextBudget) Snapshot() ContextBudgetSnapshot {
 		Chars:      make(map[string]int, len(b.chars)),
 		EstTokens:  make(map[string]int, len(b.chars)),
 		ToolsCount: b.toolsCount,
+		TopTools:   b.topTools,
 	}
 	for cat, chars := range b.chars {
 		snap.Chars[cat] = chars
@@ -137,6 +170,7 @@ func newContextBudgetToolsBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		totalChars := 0
+		toolSizes := make([]ContextBudgetToolSize, 0, len(args.Request.Tools))
 		for _, t := range args.Request.Tools {
 			d := t.Declaration()
 			if d == nil {
@@ -144,10 +178,18 @@ func newContextBudgetToolsBeforeHook() callbacks.Callback {
 			}
 			if raw, err := json.Marshal(d); err == nil {
 				totalChars += len(raw)
+				// N6: keep the per-tool breakdown so the ledger can name the
+				// schemas that dominate tools_schema (aggregate alone cannot).
+				toolSizes = append(toolSizes, ContextBudgetToolSize{
+					Name:      d.Name,
+					Chars:     len(raw),
+					EstTokens: estimateTokens(len(raw)),
+				})
 			}
 		}
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryToolsSchema, totalChars)
 		b.SetToolsCount(len(args.Request.Tools))
+		b.SetTopTools(toolSizes)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -231,4 +273,3 @@ func newContextBudgetHistoryBeforeHook() *callbacks.BeforeModelHookFunc {
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
-

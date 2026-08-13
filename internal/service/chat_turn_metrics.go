@@ -151,6 +151,15 @@ func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsag
 	if p.PromptTok > 0 {
 		fields = append(fields, loggateway.Float64("cache_hit_ratio", float64(p.CachedTok)/float64(p.PromptTok)))
 	}
+	// N6: name the top-5 largest tool schemas so operators can see WHICH
+	// tools dominate tools_schema_tokens (the aggregate alone cannot).
+	if len(snap.TopTools) > 0 {
+		tops := make([]map[string]any, 0, len(snap.TopTools))
+		for _, tt := range snap.TopTools {
+			tops = append(tops, map[string]any{"name": tt.Name, "est_tokens": tt.EstTokens})
+		}
+		fields = append(fields, loggateway.Any("top_tool_schemas", tops))
+	}
 	m.lg.Info("context budget ledger", fields...)
 }
 

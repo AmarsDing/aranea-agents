@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	// DefaultCacheHitRatioLowThreshold is the low-water mark for the weighted
-	// prompt-cache hit ratio (design 29-token §9.4): static prefixes usually
-	// cover 60-80% of the prompt, so a weighted ratio below 0.5 means the
-	// prefix is being busted or fell outside the cache TTL.
+	// DefaultCacheHitRatioLowThreshold is the low-water mark for the median
+	// (P50) per-turn prompt-cache hit ratio (design 29-token §9.4): static
+	// prefixes usually cover 60-80% of the prompt, so a median ratio below
+	// 0.5 means the prefix is being busted or fell outside the cache TTL.
 	DefaultCacheHitRatioLowThreshold = 0.5
 	// cacheHitRatioLowMinSamples is the minimum sample count a
 	// (provider, model) group needs before its hit ratio is alert-eligible.
@@ -28,8 +28,8 @@ const (
 	cacheHitRatioLowThresholdEnv = "MONITOR_LLM_CACHE_HIT_RATIO_THRESHOLD"
 )
 
-// CacheHitRatioBreach describes one (provider, model) group whose weighted
-// cache hit ratio fell below the low-water threshold.
+// CacheHitRatioBreach describes one (provider, model) group whose median
+// per-turn cache hit ratio fell below the low-water threshold.
 type CacheHitRatioBreach struct {
 	Provider string
 	Model    string
@@ -38,10 +38,10 @@ type CacheHitRatioBreach struct {
 }
 
 // CacheHitRatioLowMetric fires when any (provider, model) group has enough
-// samples in the window and its weighted cache hit ratio is below the
-// threshold. The metric value is the number of breaching groups (count
-// semantics), so the standard alert state machine (fire when value >= rule
-// threshold) applies unchanged with rule threshold 1.
+// samples in the window and its median (P50) per-turn cache hit ratio is
+// below the threshold. The metric value is the number of breaching groups
+// (count semantics), so the standard alert state machine (fire when value >=
+// rule threshold) applies unchanged with rule threshold 1.
 type CacheHitRatioLowMetric struct {
 	stats     usage.CacheHitRatioStatsRepo
 	threshold float64
@@ -73,7 +73,7 @@ func (m *CacheHitRatioLowMetric) Catalog() AlertMetricInfo {
 	return AlertMetricInfo{
 		Key:  m.Key(),
 		Name: "LLM cache hit ratio low",
-		Description: fmt.Sprintf("Number of (provider, model) groups whose weighted prompt-cache hit ratio fell below %.2f within the window (at least %d samples each). Fires when at least one group breaches.",
+		Description: fmt.Sprintf("Number of (provider, model) groups whose median (P50) per-turn prompt-cache hit ratio fell below %.2f within the window (at least %d samples each). Fires when at least one group breaches.",
 			DefaultCacheHitRatioLowThreshold, cacheHitRatioLowMinSamples),
 		Unit:                 "count",
 		DefaultWindowMinutes: 60,
@@ -109,7 +109,7 @@ func (m *CacheHitRatioLowMetric) BreachDetails() (string, map[string]any) {
 		return "", nil
 	}
 	worst := breaches[0]
-	summary := fmt.Sprintf("%s: %d group(s) below %.2f — worst %s/%s hit ratio %.2f (n=%d)",
+	summary := fmt.Sprintf("%s: %d group(s) below %.2f — worst %s/%s p50 hit ratio %.2f (n=%d)",
 		m.Key(), len(breaches), m.threshold, worst.Provider, worst.Model, worst.Ratio, worst.Samples)
 	list := make([]map[string]any, 0, len(breaches))
 	for _, b := range breaches {
@@ -120,35 +120,23 @@ func (m *CacheHitRatioLowMetric) BreachDetails() (string, map[string]any) {
 	return summary, map[string]any{"breaches": list, "hit_ratio_threshold": m.threshold}
 }
 
-// findCacheHitRatioBreaches rolls (provider, model, agent_key) groups up to
-// (provider, model) and returns breaching groups sorted by ascending ratio.
+// findCacheHitRatioBreaches returns (provider, model) groups whose P50
+// per-turn hit ratio is below threshold, sorted by ascending ratio.
+//
+// N7 (2026-08-13 链路审查): the alert keys on the median per-turn ratio, not
+// the token-weighted ratio. Compaction turns rewrite history into a fresh
+// prompt that busts the cache; their large token counts dominate the weighted
+// ratio and would false-positive whenever compression fires. P50 reflects the
+// typical turn and is robust to those outliers. The repo aggregates one row
+// per (provider, model) with the P50 computed at that grain in SQL.
 func findCacheHitRatioBreaches(stats []usage.CacheHitRatioStat, threshold float64, minSamples int) []CacheHitRatioBreach {
-	type agg struct {
-		samples int
-		prompt  int64
-		cached  int64
-	}
-	type groupKey struct{ provider, model string }
-	groups := make(map[groupKey]*agg, len(stats))
-	for _, s := range stats {
-		k := groupKey{s.Provider, s.Model}
-		g := groups[k]
-		if g == nil {
-			g = &agg{}
-			groups[k] = g
-		}
-		g.samples += s.Samples
-		g.prompt += s.PromptTok
-		g.cached += s.CachedTok
-	}
 	var out []CacheHitRatioBreach
-	for k, g := range groups {
-		if g.samples < minSamples || g.prompt <= 0 {
+	for _, s := range stats {
+		if s.Samples < minSamples {
 			continue
 		}
-		ratio := float64(g.cached) / float64(g.prompt)
-		if ratio < threshold {
-			out = append(out, CacheHitRatioBreach{Provider: k.provider, Model: k.model, Samples: g.samples, Ratio: ratio})
+		if s.P50Ratio < threshold {
+			out = append(out, CacheHitRatioBreach{Provider: s.Provider, Model: s.Model, Samples: s.Samples, Ratio: s.P50Ratio})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

@@ -11,18 +11,21 @@ import (
 const MinCacheablePromptTokens = 1024
 
 // CacheHitRatioStat aggregates prompt-cache efficiency for one
-// (provider, model, agent_key) group over a time window.
+// (provider, model) group over a time window.
 type CacheHitRatioStat struct {
 	Provider string
 	Model    string
-	AgentKey string
 	// Samples is the number of turns with prompt_tokens >= MinCacheablePromptTokens.
 	Samples   int
 	PromptTok int64
 	CachedTok int64
-	// WeightedRatio = CachedTok / PromptTok (0 when PromptTok == 0).
+	// WeightedRatio = CachedTok / PromptTok (0 when PromptTok == 0). Diagnostic
+	// only: a single huge cache-busted turn (e.g. post-compaction history
+	// rewrite) dominates it, so alerting must not key on it.
 	WeightedRatio float64
-	// P50Ratio is the median per-turn cached/prompt ratio.
+	// P50Ratio is the median per-turn cached/prompt ratio. The
+	// llm.cache_hit_ratio_low alert keys on it: it reflects the typical turn
+	// and is robust to compaction outliers (N7, 2026-08-13 链路审查).
 	P50Ratio float64
 }
 
@@ -32,7 +35,9 @@ type CacheHitRatioStat struct {
 // Stability:evolving
 type CacheHitRatioStatsRepo interface {
 	// CacheHitRatioStats aggregates usage rows within the trailing window by
-	// (provider, model, agent_key). Turns with prompt_tokens below
-	// MinCacheablePromptTokens and team_turn reconciliation rows are excluded.
+	// (provider, model). The P50 is computed at this grain directly in SQL —
+	// per-agent_key percentiles cannot be merged correctly afterwards.
+	// Turns with prompt_tokens below MinCacheablePromptTokens and team_turn
+	// reconciliation rows are excluded.
 	CacheHitRatioStats(ctx context.Context, window time.Duration) ([]CacheHitRatioStat, error)
 }

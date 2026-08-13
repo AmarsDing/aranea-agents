@@ -971,15 +971,17 @@ LIMIT 50;
 
 ### 9.3 G1-A 聚合查询
 
-- 新增只读查询 `CacheHitRatioStats(ctx, window, groupBy)`：按 `(provider, model, agent_key)` 聚合 `sum(cached)/sum(prompt)`、P50/P95 单轮 ratio、样本数。
-- 数据源：turn_usage 表，纯 SQL 聚合，无新表。
-- **防误报**：`prompt_tokens < 1024`（provider 最小缓存长度）的样本不参与聚合。
+- 只读查询 `CacheHitRatioStats(ctx, window)`：按 `(provider, model)` 聚合 `sum(cached)/sum(prompt)`（加权 ratio，仅诊断用）、P50 单轮 ratio、样本数。
+- **聚合粒度**（N7 修订，2026-08-13）：P50 必须在 `(provider, model)` 粒度由 SQL `percentile_cont` 直接计算——按 agent_key 先分组算出的分位数无法在 Go 侧正确合并。
+- 数据源：`model_token_usage_events` 表，纯 SQL 聚合，无新表。
+- **防误报**：`prompt_tokens < 1024`（provider 最小缓存长度）的样本不参与聚合；team_turn 对账行不参与聚合。
 - 阶段 0 只提供 biz 查询 + 进程日志输出，前端指标卡后补。
 
 ### 9.4 G1-B 告警规则 `llm.cache_hit_ratio_low`
 
-- 触发条件：滑动窗口（1h）内同一 `(provider, model)` 样本数 ≥20 且 `sum(cached)/sum(prompt) < 阈值`。
-- **阈值默认 0.5**（已确认）：静态前缀（system+tools）通常占 prompt 60-80%，全命中应 ≥0.6；<0.5 说明前缀被击穿或 TTL 外。阈值入 system_setting 可配。
+- 触发条件：滑动窗口（1h）内同一 `(provider, model)` 样本数 ≥20 且 **P50（单轮命中率中位数）< 阈值**。
+- **为何用 P50 而非加权值**（N7 修订，2026-08-13）：压缩级联默认开启后，压缩轮次会把历史重写为新前缀导致缓存击穿，其巨大 token 量主导加权 ratio（sum(cached)/sum(prompt)），每次压缩都会误报；P50 反映典型轮次，对压缩离群鲁棒。加权 ratio 保留在聚合结果中仅作诊断。
+- **阈值默认 0.5**（已确认）：静态前缀（system+tools）通常占 prompt 60-80%，全命中应 ≥0.6；<0.5 说明前缀被击穿或 TTL 外。阈值可用环境变量 `MONITOR_LLM_CACHE_HIT_RATIO_THRESHOLD` 覆盖。
 - 级别 Warn（不阻断），走既有 DomainEvent/Monitor 通道（复用 runner.error_rate 同套机制）。
 
 ### 9.5 G1-C CI 缓存击穿回归测试

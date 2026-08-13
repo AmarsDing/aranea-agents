@@ -108,7 +108,7 @@ func TestCacheHitRatioLowMetric_Evaluate_ThresholdBoundary(t *testing.T) {
 	m2 := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
 			cacheHitGroup("deepseek", "deepseek-chat", 30, 30000, 12000),
-	},
+		},
 	})
 	v, err = m2.Evaluate(context.Background(), time.Hour)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestCacheHitRatioLowMetric_EnvThresholdOverride(t *testing.T) {
 	m := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
 			cacheHitGroup("deepseek", "deepseek-chat", 30, 30000, 12000),
-	},
+		},
 	})
 	v, err := m.Evaluate(context.Background(), time.Hour)
 	if err != nil {

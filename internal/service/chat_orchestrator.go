@@ -28,6 +28,7 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
+	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/ctxuser"
@@ -90,6 +91,21 @@ type RuntimeTooling struct {
 	ResourceAccess *biz.ResourceAccessUsecase
 	DeptMailbox    *biz.DeptMailboxUsecase
 	SessionSearch  *biz.SessionSearchUsecase
+	// SkillHealth feeds historical performance metrics (success rate / avg
+	// duration) into skill Layer B ranking fusion (R1, 2026-08-13). Nil
+	// disables the dynamic ranking branch; ranking stays keyword/embedding.
+	SkillHealth *SkillHealthMetricsAdapter
+}
+
+// skillHealthProvider normalizes the adapter to the interface consumed by
+// TRPCSkillDeps, mapping a nil adapter to a nil interface so the
+// `opts.HealthProvider != nil` guard in ResolveSkillSlugsDetailed is not
+// defeated by a typed-nil.
+func (rt RuntimeTooling) skillHealthProvider() skillrecommend.HealthMetricsProvider {
+	if rt.SkillHealth == nil {
+		return nil
+	}
+	return rt.SkillHealth
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.

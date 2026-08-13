@@ -171,9 +171,10 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			PluginManager: d.rt.PluginManager,
 		},
 		TRPCSkillDeps: chatagent.TRPCSkillDeps{
-			SkillUC:         d.td.ReadDeps.SkillUC,
-			SkillDBRepo:     d.rt.SkillDBRepo,
-			CodeExecFactory: d.rt.CodeExecFactory,
+			SkillUC:             d.td.ReadDeps.SkillUC,
+			SkillDBRepo:         d.rt.SkillDBRepo,
+			CodeExecFactory:     d.rt.CodeExecFactory,
+			SkillHealthProvider: d.rt.skillHealthProvider(),
 		},
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:     d.rt.OrganizationUC,

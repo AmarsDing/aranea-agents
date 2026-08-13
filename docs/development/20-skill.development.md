@@ -145,6 +145,31 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 测试 | 新增 `TestInstallSkillSkipKeepSeparateDeduplicatesCandidateAcrossGroups`（一 candidate 跨 3 组只发 1 条 decision）；`internal/pkginstall` 全量测试通过 | ✅ |
 | 生产验证 | 阿里云运维技能批量安装（11 个 alibabacloud-*）：修复前 3 个因该 bug 反复失败并留墓碑，修复后全部 published+enabled | ✅ |
 
+### 3.9 已完成（P9：Prompt 前缀稳定与路由链路性能优化，2026-08-13）
+
+背景：系统性审查发现 skill 链路 7 类问题（S1 prompt 缓存不稳定 / S2 路由放大 / S3 语义瑕疵 / S4-S7 可观测性与性能缺口），形成 F1-F5 修复方案（框架只读红线 #27 下全部在产品层落地）。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| F1 静态 overview | `skillruntime.NewAgentVisibilityFilter` 退化为 Layer A-only：构造时一次性解析策略为内存集合，删除 filterCache/lastGood/InvalidateCache；框架 `Available skills:` overview 会话内字节稳定，prompt 缓存前缀可命中 | ✅ |
+| F2 候选确定性排序 | `data/skill.go` 三个 List 查询（Candidates/Keys/Refs）加 `ORDER BY skill_key ASC`，候选序 byte-stable | ✅ |
+| F3 路由记忆化 | `resolveAndWriteSkillState` 将 `ResolveResult` 缓存于 invocation state（`aranea.skill_resolve_memo`），tool-call 循环内每次模型调用不再重复候选 DB 查询 + embedding/健康度查询；瞬态错误不缓存 | ✅ |
+| F4 健康度缓存 | `SkillHealthMetricsAdapter` 进程内缓存（TTL 5min / 上限 1024 / 错误不缓存），排名热路径 DB 聚合查询下线 | ✅ |
+| F5 overview 预算计量 | `ContextBudgetCategorySkillOverview` + BeforeModel hook 镜像框架 overview 渲染计量（repo 内存快照，零额外 DB 查询）；`chat.context_budget` 日志新增 `skill_overview_tokens` 字段 | ✅ |
+| 验证 | build/vet 干净；`internal/agent`、`internal/tools/skillruntime`、`internal/service -run Skill` 全过；fmtcheck 通过（本次改动文件）；`internal/data -run Skill` 失败均为 PG 未运行（connection refused at setup），与本次改动无关 | ✅ |
+
+### 3.10 已完成（P10：链路复查修复 R1–R3，2026-08-13）
+
+背景：P9 落地后对 skill 链路做系统性复查，发现 3 个遗留问题并修复（R1 动态排名死代码 / R2 全模式落库 / R3 Path 热路径 DB 放大）。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| R1 动态排名链路接线 | `ResolveSkillSlugsDetailed` 的历史表现融合分支（`applyRankResults`）此前因 `HealthProvider` 从未注入而是死代码。Wire 单例 `NewSkillHealthMetricsAdapter`（backed by `SkillIntelligenceRepo`）同时注入 `RuntimeTooling.SkillHealth`（chat/a2a/openai_compat 三处 `TRPCSkillDeps.SkillHealthProvider`）与 `SkillService.skillHealth`（Preview 与生产路径一致）；装配侧 `skillHealthProvider()` 归一化 typed-nil | ✅ |
+| R2 routed_slugs 全模式落库 | `resolveAndWriteSkillState` 移除 progressive 分流参数，两种模式均无条件写 `aranea.skill_routed_slugs` + selection reasons——此前 full-profile 模式无路由可观测性，健康指标无法关联 routed vs run | ✅ |
+| R3 Path() dir 缓存 | `DBRepositoryAdapter` 双惰性缓存提取为 `skillRepoCaches` 子管理器（AS-COG-01 合规），reload/Invalidate 原子交换；`Path()` 同快照期零 DB 查询（此前每次 `skill_load`/`skill_run` 各 2 次查询）；空路径缓存、错误不缓存 | ✅ |
+| 回归测试 | `TestResolveSkillSlugsDetailed_HealthProviderFusion`（低成功率候选被反超）/ `_NilHealthProviderSkipsFusion`（nil 时字母序兜底）；`TestResolveAndWriteSkillState_WiresHealthProvider` / `_RoutedSlugsPersistedInFullProfile`；`TestDBRepositoryAdapter_PathCachesDir` / `_PathDirCacheDropsOnInvalidate` | ✅ |
+| 验证 | `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go vet` 改动包干净；`internal/agent`、`internal/skill/...`、`internal/tools/skillruntime`、`internal/tools/skillrecommend`、`internal/service -run Skill` 全绿；`make wire` 重新生成 wire_gen.go（adapter 单例双注入点） | ✅ |
+
 ---
 
 ## 4. 开发阶段
@@ -335,7 +360,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/service/skill_evolution_suggestion.go` | 进化建议服务 | ✅ |
 | `internal/service/skill_curator.go` | 策展服务 | ✅ |
 | `internal/service/skill_dedup.go` | 去重服务 | ✅ |
-| `internal/service/skill_health_metrics_adapter.go` | 健康指标适配器 | ✅ |
+| `internal/service/skill_health_metrics_adapter.go` | 健康指标适配器（P9/F4：进程内缓存 TTL 5min/1024 条/错误不缓存） | ✅ |
 | `internal/service/skills_butler_adapter.go` | 管家适配器 | ✅ |
 
 ### 8.3 Biz 层（用例 + 端口）
@@ -364,7 +389,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | 文件 | 说明 | 状态 |
 |------|------|------|
-| `internal/data/skill.go` | Ent 仓储与聚合 | ✅ |
+| `internal/data/skill.go` | Ent 仓储与聚合（P9/F2：三个 List 查询加 `ORDER BY skill_key ASC` 确定性排序） | ✅ |
 | `internal/data/skill_merge.go` | 合并 Data 层（事务内 4 步操作） | ✅ |
 | `internal/data/skill_dedup.go` | 去重 Data 层（含 SkillSimilarityEngine 集成） | ✅ |
 | `internal/data/skill_intelligence.go` | 健康指标聚合（含 AvgTokenUsage/FeedbackScore） | ✅ |
@@ -410,7 +435,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | 文件 | 说明 | 状态 |
 |------|------|------|
-| `internal/tools/skillruntime/` | 运行时装配入口（toolset / resolve / filter / runtime） | ✅ |
+| `internal/tools/skillruntime/` | 运行时装配入口（toolset / resolve / filter / runtime）；P9/F1：filter 退化为 Layer A-only（静态 overview） | ✅ |
 | `internal/tools/skillrouter/` | 意图路由与分类（detect / taxonomy） | ✅ |
 | `internal/tools/skills_butler/` | Skill 管家（registry / recommend / analyze / optimize / evolve） | ✅ |
 | `internal/tools/skillrecommend/` | Skill 推荐（rank / rank_feedback / health_provider） | ✅ |
@@ -419,8 +444,17 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | 文件 | 说明 | 状态 |
 |------|------|------|
-| `internal/agent/trpc_build.go` | Agent 构建中 Skill 装配（`buildSkillDeps`） | ✅ |
-| `internal/agent/skill_guidance_inject.go` | Prompt 注入方式 C（BeforeModelHook + `BatchGetSkillGuidance`） | ✅ |
+| `internal/agent/trpc_build.go` | Agent 构建中 Skill 装配（`buildSkillDeps`）；P9/F5：向 callback chain 透传 skillRepo/skillFilter | ✅ |
+| `internal/agent/skill_guidance_inject.go` | Prompt 注入方式 C（BeforeModelHook + `BatchGetSkillGuidance`）；P9/F3：路由结果 per-invocation 记忆化；P10/R1：透传 HealthProvider；P10/R2：routed slugs 全模式落库 | ✅ |
+| `internal/agent/builder_deps.go` | P10/R1：`TRPCSkillDeps.SkillHealthProvider` 字段（`skillrecommend.HealthMetricsProvider`） | ✅ |
+| `internal/agent/context_budget.go` | P9/F5：`ContextBudgetCategorySkillOverview` + overview 计量 hook（镜像框架渲染，零额外 DB 查询） | ✅ |
+| `internal/agent/callback_chain.go` | P9/F5：`buildCallbackChainOptions` 注册 skill_overview 计量 hook | ✅ |
+| `internal/service/chat_turn_metrics.go` | P9/F5：`chat.context_budget` 日志新增 `skill_overview_tokens` 字段 | ✅ |
+| `internal/service/chat_orchestrator.go` | P10/R1：`RuntimeTooling.SkillHealth` + `skillHealthProvider()` typed-nil 归一化 | ✅ |
+| `internal/service/chat_orch_agent_build.go` / `a2a_endpoint.go` / `openai_compat.go` | P10/R1：三处 `TRPCSkillDeps` 注入 `SkillHealthProvider` | ✅ |
+| `internal/service/skill.go` | P10/R1：`SkillService.skillHealth` 注入，`PreviewSkillRuntime` 接通动态排名（预览=生产路径） | ✅ |
+| `internal/skill/trpc/db_repository.go` | P10/R3：`skillRepoCaches` 子管理器（bodies+dirs 原子交换），`Path()` dir 缓存 | ✅ |
+| `cmd/admin/wire.go` | P10/R1：`service.NewSkillHealthMetricsAdapter` 单例 provider；`provideRuntimeTooling` 注入 | ✅ |
 
 ### 8.9 前端
 
@@ -451,7 +485,9 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/service/skill_intelligence_integration_test.go` | 智能分析集成测试 | ✅ |
 | `internal/service/skill_evolution_test.go` | 进化服务测试 | ✅ |
 | `internal/service/skill_curator_test.go` | 策展服务测试 | ✅ |
-| `internal/agent/skill_guidance_inject_test.go` | Prompt 注入测试 | ✅ |
+| `internal/agent/skill_guidance_inject_test.go` | Prompt 注入测试（含 P9/F3 路由记忆化 + N4 guidance cue 记忆化回归） | ✅ |
+| `internal/agent/context_budget_test.go` | P9/F5：skill_overview 计量 hook 测试 | ✅ |
+| `internal/service/skill_health_metrics_adapter_test.go` | P9/F4：健康度缓存（命中/过期/错误不缓存/容量上限）测试 | ✅ |
 | `internal/tools/cli_admin/skill_install_from_url_test.go` | CLI 安装测试 | ✅ |
 | `internal/cli/client/skill_test.go` | CLI 客户端测试 | ✅ |
 | `internal/data/skill_tag_repo_test.go` | 标签字典 Data 层测试（聚合/重写/合并/孤儿/删除语义） | ✅ |

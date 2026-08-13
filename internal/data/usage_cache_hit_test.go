@@ -73,16 +73,18 @@ func TestCacheHitRatioStats_Aggregates(t *testing.T) {
 	inWindow2 := now.Add(-20 * time.Minute).Format(time.RFC3339)
 	outside := now.Add(-2 * time.Hour).Format(time.RFC3339)
 
-	// Group A (deepseek/deepseek-chat/agent-a): two in-window samples.
+	// Group A (deepseek/deepseek-chat): two in-window samples spread across
+	// two agent_keys — the query aggregates at (provider, model) grain, so
+	// both roll into one group.
 	// weighted = (1000+2000)/(2000+2000) = 0.75; per-turn ratios 0.5 and 1.0
 	// -> percentile_cont(0.5) interpolates to 0.75.
 	insertCacheHitRow(t, r, "a1", inWindow, "deepseek", "deepseek-chat", "agent-a", "chat_turn", 2000, 1000)
-	insertCacheHitRow(t, r, "a2", inWindow2, "deepseek", "deepseek-chat", "agent-a", "chat_turn", 2000, 2000)
+	insertCacheHitRow(t, r, "a2", inWindow2, "deepseek", "deepseek-chat", "agent-b", "chat_turn", 2000, 2000)
 	// Below the provider minimum cacheable prompt length: excluded.
 	insertCacheHitRow(t, r, "a3", inWindow, "deepseek", "deepseek-chat", "agent-a", "chat_turn", 500, 0)
 	// Outside the window: excluded.
 	insertCacheHitRow(t, r, "a4", outside, "deepseek", "deepseek-chat", "agent-a", "chat_turn", 4000, 4000)
-	// Group B (openai/gpt-4o/agent-b): single sample, exactly at the boundary.
+	// Group B (openai/gpt-4o): single sample, exactly at the boundary.
 	insertCacheHitRow(t, r, "b1", inWindow, "openai", "gpt-4o", "agent-b", "chat_turn", 1024, 512)
 	// team_turn rows are run-level reconciliation only: excluded from aggregates.
 	insertCacheHitRow(t, r, "t1", inWindow, "openai", "gpt-4o", "agent-b", "team_turn", 99999, 99999)
@@ -95,13 +97,13 @@ func TestCacheHitRatioStats_Aggregates(t *testing.T) {
 		t.Fatalf("len(stats) = %d, want 2: %+v", len(stats), stats)
 	}
 
-	// ORDER BY provider, model, agent_key: deepseek group first.
+	// ORDER BY provider, model: deepseek group first.
 	a := stats[0]
-	if a.Provider != "deepseek" || a.Model != "deepseek-chat" || a.AgentKey != "agent-a" {
-		t.Errorf("group A key = %s/%s/%s, want deepseek/deepseek-chat/agent-a", a.Provider, a.Model, a.AgentKey)
+	if a.Provider != "deepseek" || a.Model != "deepseek-chat" {
+		t.Errorf("group A key = %s/%s, want deepseek/deepseek-chat", a.Provider, a.Model)
 	}
 	if a.Samples != 2 {
-		t.Errorf("group A Samples = %d, want 2 (sub-1024 and out-of-window rows excluded)", a.Samples)
+		t.Errorf("group A Samples = %d, want 2 (sub-1024 and out-of-window rows excluded, agent keys merged)", a.Samples)
 	}
 	if a.PromptTok != 4000 || a.CachedTok != 3000 {
 		t.Errorf("group A tokens = %d/%d, want 4000/3000", a.PromptTok, a.CachedTok)
@@ -114,8 +116,8 @@ func TestCacheHitRatioStats_Aggregates(t *testing.T) {
 	}
 
 	b := stats[1]
-	if b.Provider != "openai" || b.Model != "gpt-4o" || b.AgentKey != "agent-b" {
-		t.Errorf("group B key = %s/%s/%s, want openai/gpt-4o/agent-b", b.Provider, b.Model, b.AgentKey)
+	if b.Provider != "openai" || b.Model != "gpt-4o" {
+		t.Errorf("group B key = %s/%s, want openai/gpt-4o", b.Provider, b.Model)
 	}
 	if b.Samples != 1 {
 		t.Errorf("group B Samples = %d, want 1 (team_turn excluded)", b.Samples)

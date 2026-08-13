@@ -9,6 +9,7 @@ import (
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // TestRecordContextBudget_NoCollectorNoop covers the nil-collector contract:
@@ -281,5 +282,125 @@ func TestContextBudgetHistoryHook_NilRequest(t *testing.T) {
 	}
 	if b.has(ContextBudgetCategoryHistory) {
 		t.Fatal("history recorded for nil request, want skipped")
+	}
+}
+
+// ── N6: per-tool top-5 schema observation ───────────────────────────────────
+
+// sizedDeclTool is a trpctool.Tool whose marshaled declaration size is
+// tunable via a padded description, so tests can rank tools by chars.
+type sizedDeclTool struct {
+	name string
+	desc string
+}
+
+func (s sizedDeclTool) Declaration() *trpctool.Declaration {
+	return &trpctool.Declaration{Name: s.name, Description: s.desc}
+}
+
+// TestContextBudgetToolsHook_RecordsTopTools covers the N6 observation: the
+// ledger keeps the 5 largest tool schemas (name + est tokens) sorted by
+// marshaled chars descending, so operators can see WHICH tools dominate
+// tools_schema instead of only the aggregate. Tool-loop re-entry must not
+// overwrite the first measurement.
+func TestContextBudgetToolsHook_RecordsTopTools(t *testing.T) {
+	hook := newContextBudgetToolsBeforeHook()
+	bm, ok := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	if !ok {
+		t.Fatal("hook does not implement HandleBeforeModel")
+	}
+
+	ctx, b := WithContextBudget(context.Background())
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Tools: map[string]trpctool.Tool{
+				"alpha": sizedDeclTool{name: "alpha", desc: strings.Repeat("a", 100)},
+				"beta":  sizedDeclTool{name: "beta", desc: strings.Repeat("b", 500)},
+				"gamma": sizedDeclTool{name: "gamma", desc: strings.Repeat("c", 300)},
+				"delta": sizedDeclTool{name: "delta", desc: strings.Repeat("d", 200)},
+				"eps":   sizedDeclTool{name: "eps", desc: strings.Repeat("e", 50)},
+				"zeta":  sizedDeclTool{name: "zeta", desc: strings.Repeat("z", 10)},
+			},
+		},
+	}
+	if _, err := bm.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("first call err = %v", err)
+	}
+	snap := b.Snapshot()
+	if got := snap.ToolsCount; got != 6 {
+		t.Fatalf("ToolsCount = %d, want 6", got)
+	}
+	if len(snap.TopTools) != 5 {
+		t.Fatalf("len(TopTools) = %d, want 5 (largest of 6)", len(snap.TopTools))
+	}
+	wantOrder := []string{"beta", "gamma", "delta", "alpha", "eps"}
+	for i, name := range wantOrder {
+		if snap.TopTools[i].Name != name {
+			t.Fatalf("TopTools[%d].Name = %q, want %q (sorted by chars desc)", i, snap.TopTools[i].Name, name)
+		}
+	}
+	for i := 1; i < len(snap.TopTools); i++ {
+		if snap.TopTools[i-1].Chars < snap.TopTools[i].Chars {
+			t.Fatalf("TopTools not sorted desc: %+v", snap.TopTools)
+		}
+		if snap.TopTools[i].EstTokens != estimateTokens(snap.TopTools[i].Chars) {
+			t.Fatalf("TopTools[%d] EstTokens = %d, want estimateTokens(%d)",
+				i, snap.TopTools[i].EstTokens, snap.TopTools[i].Chars)
+		}
+	}
+
+	// Tool-loop re-entry with a different set: first measurement wins.
+	args.Request.Tools = map[string]trpctool.Tool{
+		"huge": sizedDeclTool{name: "huge", desc: strings.Repeat("x", 5000)},
+	}
+	if _, err := bm.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("second call err = %v", err)
+	}
+	snap = b.Snapshot()
+	if len(snap.TopTools) != 5 || snap.TopTools[0].Name != "beta" {
+		t.Fatalf("TopTools after re-entry = %+v, want first measurement (beta…) kept", snap.TopTools)
+	}
+}
+
+// TestContextBudgetToolsHook_FewerThanFiveTools lists all tools when the
+// request carries fewer than the top-5 limit.
+func TestContextBudgetToolsHook_FewerThanFiveTools(t *testing.T) {
+	hook := newContextBudgetToolsBeforeHook()
+	bm := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	ctx, b := WithContextBudget(context.Background())
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Tools: map[string]trpctool.Tool{
+				"solo": sizedDeclTool{name: "solo", desc: "only tool"},
+				"nil":  sizedDeclTool{name: "nil"},
+			},
+		},
+	}
+	if _, err := bm.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("call err = %v", err)
+	}
+	snap := b.Snapshot()
+	if len(snap.TopTools) != 2 {
+		t.Fatalf("len(TopTools) = %d, want 2", len(snap.TopTools))
+	}
+}
+
+// TestContextBudgetToolsHook_BareContextNoop covers the nil-collector
+// contract for the tools hook.
+func TestContextBudgetToolsHook_BareContextNoop(t *testing.T) {
+	hook := newContextBudgetToolsBeforeHook()
+	bm := hook.(interface {
+		HandleBeforeModel(context.Context, *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error)
+	})
+	if _, err := bm.HandleBeforeModel(context.Background(), &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{Tools: map[string]trpctool.Tool{
+			"solo": sizedDeclTool{name: "solo"},
+		}},
+	}); err != nil {
+		t.Fatalf("bare ctx call err = %v", err)
 	}
 }

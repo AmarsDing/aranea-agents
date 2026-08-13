@@ -748,3 +748,77 @@ func slugsOf(cs []biz.SkillRuntimeCandidate) []string {
 	}
 	return out
 }
+
+// fakeHealthProvider implements skillrecommend.HealthMetricsProvider with
+// per-slug success rates and a call counter proving the fusion branch ran.
+type fakeHealthProvider struct {
+	rates map[string]float64
+	calls int
+}
+
+func (f *fakeHealthProvider) GetRecentSuccessRate(_ context.Context, slug string, _ int) (float64, error) {
+	f.calls++
+	return f.rates[slug], nil
+}
+
+func (f *fakeHealthProvider) GetRecentAvgDuration(_ context.Context, _ string, _ int) (float64, error) {
+	return 0, nil
+}
+
+// TestResolveSkillSlugsDetailed_HealthProviderFusion covers R1 (2026-08-13):
+// with a non-nil HealthProvider, historical performance must be fused into
+// the final order — a low-success candidate that would otherwise win on
+// lexicographic tie-break must drop below the high-success one.
+func TestResolveSkillSlugsDetailed_HealthProviderFusion(t *testing.T) {
+	resolver := &mockSkillResolver{
+		candidates: []biz.SkillRuntimeCandidate{
+			// No intent/tag/embedding signals → both score 0 and the
+			// pre-fusion order is purely lexicographic: aaa-skill first.
+			makeCandidate("aaa-skill", "AAA", "desc", nil, nil),
+			makeCandidate("zzz-skill", "ZZZ", "desc", nil, nil),
+		},
+	}
+	provider := &fakeHealthProvider{rates: map[string]float64{
+		"aaa-skill": 0.1,  // historically failing
+		"zzz-skill": 0.95, // historically reliable
+	}}
+	opts := &SkillToolsetOptions{Runtime: &mockRuntime{json: `{}`}, HealthProvider: provider}
+
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Slugs) != 2 {
+		t.Fatalf("expected 2 slugs, got %d", len(result.Slugs))
+	}
+	if result.Slugs[0] != "zzz-skill" {
+		t.Errorf("expected zzz-skill first after health fusion, got %v", result.Slugs)
+	}
+	if provider.calls == 0 {
+		t.Error("health provider was never queried — fusion branch not wired")
+	}
+	// Fusion appends the rank snapshot to the reason for observability.
+	if got := result.Reasons["zzz-skill"]; got == "enabled and published" {
+		t.Errorf("reason for zzz-skill lacks rank snapshot: %q", got)
+	}
+}
+
+// TestResolveSkillSlugsDetailed_NilHealthProviderSkipsFusion pins the
+// pre-R1 behavior: without a provider the lexicographic tie-break decides.
+func TestResolveSkillSlugsDetailed_NilHealthProviderSkipsFusion(t *testing.T) {
+	resolver := &mockSkillResolver{
+		candidates: []biz.SkillRuntimeCandidate{
+			makeCandidate("aaa-skill", "AAA", "desc", nil, nil),
+			makeCandidate("zzz-skill", "ZZZ", "desc", nil, nil),
+		},
+	}
+	opts := &SkillToolsetOptions{Runtime: &mockRuntime{json: `{}`}}
+
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Slugs) != 2 || result.Slugs[0] != "aaa-skill" {
+		t.Errorf("expected lexicographic order [aaa-skill zzz-skill], got %v", result.Slugs)
+	}
+}

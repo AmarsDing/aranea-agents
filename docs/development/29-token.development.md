@@ -576,7 +576,7 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | WP-2b | Declaration 静态前置条件 + 429 增强 | ✅ | synthesize_results 描述补前置条件（spirit_tools.go + builtin_tools_seed.go 同步）；subagents_spawn 描述内联并发上限（进程级固定值，字节稳定）；429 错误带排序后的活跃 run id 列表（保留 deterministic 关键词子串，不误触发重试） |
 | WP-2c | retry_reflect 结构化限流归类 deterministic | ✅ | isDeterministicToolError 按 error CODE 识别 apierror.CodeRateLimit（子代理并发上限、配额窗口）——反射重试无法解除并发 cap，原始错误已带可执行指引，不再消耗重试预算；纯字符串 "rate limit exceeded" 第三方错误保持可重试。新增 TestIsDeterministicToolError_StructuredRateLimit（含 wrapped 链） |
 | WP-3 | todo_write 59 次空 error 归因 | ✅ 无需修复 | 全部为 2026-06-07~06-15 历史 stuck-timeout 看门狗记录（event_bus/trpc 两路径，error_message 列未填、output_preview 含 stuckTimeout 标记），近 2 个月无新增——路径已自愈 |
-| WP-4 | Tool RAG 修订为两段式缓存安全设计 | 📋 设计待实施 | 见 §14.4 |
+| WP-4 | Tool RAG 修订为两段式缓存安全设计 | ✅ 已实现（2026-08-13） | 见 §14.4 |
 
 ### 14.3 验收
 
@@ -584,13 +584,16 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 2. ✅ 最终全量验证（2026-08-13）：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go test ./internal/agent/ ./internal/tools/... ./internal/plugin/trpc/ -count=1` 全部 ok（36 个包，含此前因 mock 缺方法失败的 internal/tools/knowledge——已补 EnableCollectionSemantic）。
 3. ✅ 系统性复审（2026-08-13）：前缀区残留扫描确认仅 static runtime cue（会话内字节稳定）与压缩截断标记（仅在截断时触发，历史已被重写、前缀本就失效，不构成每轮击穿）使用 insertAfterLastSystem；memory/knowledge/skill/reply reminder/intent/dynamic runtime cue 全部位于消息末尾尾部区。无新增问题。
 4. ⏳ 生产回归口径（下次部署后观测）：spirit 缓存命中率 0.533 → 预期 ≥0.9（0.000 样本消失）；synthesize_results 失败率 71.7% → 预期趋近 0（拦截不计失败）；subagents_spawn 429 失败占比下降。
+5. ✅ WP-4 验证（2026-08-13）：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go test ./internal/tools/deferred/... ./internal/tools/ -count=1 -v` 全绿（含新增 27 例：SplitCoreResidentTools 6、ToolLoadTool 7、RenderCatalogCue 7、registry_map 7）；`go test ./internal/agent/... -count=1` 全绿（8 包）；`go vet` 干净。均先红后绿（TDD）。
 
-### 14.4 WP-4 两段式工具加载设计（阶段 1 T-003 修订，待实施）
+### 14.4 WP-4 两段式工具加载设计（阶段 1 T-003 修订，✅ 已实现 2026-08-13）
 
-- **核心常驻集**：tools 块只放 `tool_invocation_stats` 识别的高频核心工具（会话内字节稳定）。
-- **静态目录 cue**：长尾工具以「工具名 + 一句话描述」清单注入（按 key 排序、无动态状态），模型经 `tool_load` 元工具按需把完整 schema 加载进**消息流尾部**（Cursor 动态加载实测 -46.9% tokens）。
+- **核心常驻集**：tools 块只放高频核心工具（会话内字节稳定）。`SplitCoreResidentTools`（internal/tools/deferred/split.go）按 profile（spirit/coding/chat_only + 默认兜底）把有效工具 key 分为核心集与延迟集，两侧均排序保证确定性。
+- **静态目录 cue**：延迟工具以「工具名 + 一句话描述」清单注入（`RenderCatalogCue`，internal/tools/deferred/catalog_cue.go），按 category → name 双层排序、无动态状态，经 BeforeModel hook（internal/agent/tool_catalog_cue.go）**append 到消息末尾尾部区**（遵守 P-1 缓存不可侵犯），并计入 `ContextBudgetCategoryToolsSchema` 台账。
+- **tool_load 元工具**（internal/tools/deferred/tool_load.go）：模型按需激活延迟工具——校验在 catalog 内 → `manager.Activate` 惰性解析真实工具 → `Discover` 标记，返回成功消息 + 工具描述；重复激活/未知工具/空名均返回结构化失败（不 panic、不污染消息流）。
+- **集成路径**：`buildToolsetsForAgent`（tool_assembly.go）——`ToolsDeferredJSON` 手动配置优先；否则自动分离（`SplitCoreResidentTools` + `RegistryNamesForBizKeys` biz key → registry 名映射，registry_map.go）。`AssembleToolsets`（toolset_assemble.go）把延迟工具注册进 catalog 并挂 `tool_search`/`tool_load` 两个元工具；`toolset.go` 从 enabled 集中删除延迟项，防止 builtin/search/claudecode 装配器重复注册。
 - Tool RAG 检索结果只影响「目录 cue 中标注哪些为推荐」，不改变 tools 块内容——规避 M1 矛盾。
-- 验收基准沿用：tools_schema_tokens -80%、工具选择金标集准确率 ≥90%。
+- 验收基准沿用：tools_schema_tokens -80%、工具选择金标集准确率 ≥90%（待生产回归观测）。
 
 ### 14.5 改动文件（本迭代）
 
@@ -604,3 +607,54 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - `internal/plugin/trpc/retry_reflect.go`（WP-2c CodeRateLimit 确定性分类）
 - `internal/plugin/trpc/retry_reflect_test.go`（WP-2c 新增测试）
 - `internal/tools/knowledge/tool_more_test.go`（mock 补 EnableCollectionSemantic，修复并行会话接口演进导致的构建失败）
+- `internal/tools/deferred/split.go`（WP-4 核心/延迟分离）+ `split_test.go`
+- `internal/tools/deferred/tool_load.go`（WP-4 tool_load 元工具）+ `tool_load_test.go`
+- `internal/tools/deferred/catalog_cue.go`（WP-4 静态目录 cue 渲染）+ `catalog_cue_test.go`
+- `internal/tools/deferred/registry_map.go`（WP-4 biz key → registry 名映射）+ `registry_map_test.go`
+- `internal/tools/deferred/tool_search.go`（WP-4 补 Catalog() 访问器）
+- `internal/agent/tool_catalog_cue.go`（WP-4 BeforeModel hook 注入目录 cue）
+- `internal/agent/tool_assembly.go`（WP-4 自动分离集成）
+- `internal/agent/callback_chain.go`（WP-4 注册目录 cue hook）
+- `internal/tools/toolset_assemble.go`（WP-4 挂 tool_search/tool_load 元工具）
+- `internal/tools/toolset.go`（WP-4 enabled 集删除延迟项防重复注册）
+
+## 15. 第二轮全链路深入审查与修复（2026-08-13，N1~N8）
+
+背景：阶段 0（§13）与 WP-1~WP-4（§14）完成后，对「指令输入 → 意图识别 → 工具链加载 → 知识库加载 → 记忆加载 → LLM 响应」整条链路做第二轮深入审查，发现 8 项提升点（N1~N8），经评审后全部修复。
+
+### 15.1 发现与修复状态
+
+| # | 发现 | 修复 | 状态 |
+|---|------|------|------|
+| N1 | skill guidance 注入位置不当：半静态 skill 指引经 insertAfterLastSystem 钉在前缀区，穿透前缀缓存 | 移到动态层，与 memory/knowledge cue 对齐 append 到消息末尾尾部区（遵守 §14 P-1 缓存不可侵犯） | ✅ |
+| N2 | 历史无上限增长：压缩级联（ContextCompaction/MemoryCompact/SessionSummary）默认关闭，存量行保持旧值 | 默认开启（agent_defaults.go + ent schema 默认值）+ 数据迁移翻转存量行（compression_default_on_migrate.go） | ✅ |
+| N3 | context_budget 台账 history 盲区：非 system 消息 token 不计入台账，无法观测历史膨胀 | 新增 `ContextBudgetCategoryHistory` + `newContextBudgetHistoryBeforeHook`（每请求去重），注册进 callback_chain；service 台账日志补 history_tokens | ✅ |
+| N4 | full-profile 路径 BatchGetSkillGuidance 每轮查库：工具循环内同一 invocation 重复 DB 调用放大 | per-invocation memoize（`skillGuidanceCueMemoStateKey`），工具循环内仅首次查库 | ✅ |
+| N5 | 意图产物消费率低：分解 prompt 未携带 SuccessCriteria/SearchHints，子任务契约与成功标准脱节 | task_planner_impl.go 分解 prompt 补 SuccessCriteria/SearchHints | ✅ |
+| N6 | DeferredTools 机制空转风险：无法回答「哪些工具 schema 最大」——聚合 tools_schema_tokens 看不出单个工具占比 | 台账增加 per-tool top-5 schema 观测（ContextBudgetToolSize + SetTopTools，按 chars 降序取前 5）；service 台账日志输出 `top_tool_schemas`（name + est_tokens）。**范围调整**：先做观测定位真大工具，再决定是否配置 deferred loading | ✅ |
+| N7 | 压缩与缓存告警交互误报：压缩轮次把历史重写为新前缀击穿缓存，其巨大 token 量主导加权 ratio（sum(cached)/sum(prompt)），每次压缩都误报 | 告警改 key P50 单轮命中率中位数（对压缩离群鲁棒）；SQL 聚合粒度从 agent_key 调整为 (provider, model)，P50 由 `percentile_cont` 在正确粒度直接计算；加权 ratio 保留仅作诊断。详见 29-token.design.md §9.3/§9.4 | ✅ |
+| N8 | RebuildMemoryInjectForCompaction 死代码：其设计的「原地打补丁」场景不成立——MemoryInject 是 BeforeModel hook（priority 5），在框架压缩与 Aranea 紧急压缩（priority 3）之后才执行，压缩轮次会用最新数据重建完整 cue；memory-inject 消息是请求级装饰不持久化，框架重建的 request 不残留旧 cue；若接入框架 tail-processor 槽位会与本 hook 双重注入 | 删除函数及测试（memory_inject.go 留 NOTE 说明为何无需该入口） | ✅ |
+
+### 15.2 验收
+
+1. ✅ TDD：N3/N6 新增观测均先写失败测试（context_budget_test.go：history 记录、top-5 排序与截断、bare ctx no-op）再实现；N8 删除后清理孤儿测试。
+2. ✅ 全量验证（2026-08-13）：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go test ./internal/agent/ -count=1`（28.1s）、`go test ./internal/biz/monitor/ ./internal/biz/usage/ -count=1`、`go test ./internal/service/ -run TestChatTurnMetrics -count=1 -v`（5 例）、`go test ./internal/data/ -run CacheHit -count=1 -v`（真 PG，2 例）全部 PASS；`go vet` 相关 5 包干净。
+3. ⏳ 生产回归口径（下次部署后观测）：台账 `top_tool_schemas` 输出可用于定位 DeferredTools 配置目标；N7 告警在压缩开启后不再误报（压缩日加权 ratio 暴跌但 P50 稳定）。
+
+### 15.3 改动文件（本迭代）
+
+- `internal/agent/context_budget.go`（N3 history 类目 + N6 top-tools 观测）
+- `internal/agent/context_budget_test.go`（N3/N6 测试）
+- `internal/agent/callback_chain.go`（N3 注册 history hook）
+- `internal/agent/skill_guidance_inject.go`（N1 注入位置 + N4 memoize）
+- `internal/agent/memory_inject.go`（N8 删除死代码，留 NOTE）
+- `internal/agent/prompt_prefix_position_test.go`（N8 清理孤儿测试）
+- `internal/agent/task_planner_impl.go`（N5 分解 prompt 补 SuccessCriteria/SearchHints）
+- `internal/biz/agent_defaults.go`（N2 压缩级联默认开）
+- `internal/data/ent/schema/agent_runtime_setting.go`（N2 schema 默认值）
+- `internal/data/compression_default_on_migrate.go`（N2 存量行迁移）
+- `internal/biz/usage/cache_hit.go`（N7 CacheHitRatioStat 去 AgentKey + P50Ratio）
+- `internal/data/usage_cache_hit.go`（N7 SQL 聚合粒度调整）
+- `internal/biz/monitor/alert_metric_cache_hit.go`（N7 告警改 key P50Ratio）
+- `internal/service/chat_turn_metrics.go`（N3 history_tokens + N6 top_tool_schemas 日志字段）
+- `docs/development/29-token.design.md`（N7 §9.3/§9.4 修订说明）

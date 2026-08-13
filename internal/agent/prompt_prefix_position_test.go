@@ -161,21 +161,6 @@ func (f fakeSkillLookup) RecordInvocation(context.Context, biz.SkillInvocationWr
 
 // fakeProfileCardReader is reused from composite_prompt_test.go.
 
-// fakeL1AdminStore satisfies biz.SessionAdminStore via a nil embedded
-// interface; only the two L1 row readers exercised by L1MemoryCue are
-// overridden.
-type fakeL1AdminStore struct {
-	biz.SessionAdminStore
-	taskRows [][]byte
-}
-
-func (f fakeL1AdminStore) ListL1TaskRows(context.Context, string, string, string, string) ([][]byte, error) {
-	return f.taskRows, nil
-}
-func (f fakeL1AdminStore) ListL1FieldRows(context.Context, string, bool, ...string) ([][]byte, error) {
-	return nil, nil
-}
-
 // fakeKnowledgeRepos satisfies the collection/document/chunk repo triple via
 // nil embedded interfaces; only ListCollections is exercised by
 // buildKnowledgeCue (Usecase.requireRepo demands all three non-nil).
@@ -267,28 +252,6 @@ func TestMemoryInjectHook_AppendsCueAtEnd(t *testing.T) {
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 	msgs := runBeforeModelHook(t, hook, ctx)
 	assertCueAtEnd(t, msgs, "用户档案")
-}
-
-func TestRebuildMemoryInjectForCompaction_AppendsCueAtEnd(t *testing.T) {
-	ag := biz.Agent{
-		ID: "ag-1",
-		Settings: &biz.AgentRuntimeSettings{
-			MemoryEnabled: true,
-			L1Enabled:     true,
-			L0InjectL1:    true,
-		},
-	}
-	deps := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{
-		MemoryAdmin: fakeL1AdminStore{taskRows: [][]byte{[]byte(`{"id":"t1","task_title":"测试任务"}`)}},
-	}}
-	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
-	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
-	req := &trpcmodel.Request{Messages: []trpcmodel.Message{
-		trpcmodel.NewSystemMessage(prefixTestBaseSystem),
-		trpcmodel.NewUserMessage("你好"),
-	}}
-	RebuildMemoryInjectForCompaction(ctx, deps, ag, req)
-	assertCueAtEnd(t, req.Messages, "L1 working memory")
 }
 
 func TestKnowledgeCueHook_AppendsCueAtEnd(t *testing.T) {

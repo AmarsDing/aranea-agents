@@ -80,7 +80,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		result := resolveAndWriteSkillState(ctx, ag.Settings, deps, false)
+		result := resolveAndWriteSkillState(ctx, ag.Settings, deps)
 		if result == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -176,7 +176,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		result := resolveAndWriteSkillState(ctx, ag.Settings, deps, true)
+		result := resolveAndWriteSkillState(ctx, ag.Settings, deps)
 		if result == nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -200,14 +200,15 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 }
 
 // resolveAndWriteSkillState resolves routed skill slugs and writes them to
-// invocation state. When progressive is true, routed slugs are stored under
-// skillRoutedSlugsStateKey so the invocation recorder can persist them for
-// health metrics. Returns nil when no skills are resolved or on error.
+// invocation state. Routed slugs are stored under skillRoutedSlugsStateKey in
+// both load modes (R2, 2026-08-13): the invocation recorder persists them for
+// health metrics regardless of how guidance is injected. Returns nil when no
+// skills are resolved or on error.
 //
 // The result is memoized per invocation (skillResolveMemoStateKey): routing
 // inputs are invariant within one invocation, and errors are NOT memoized so
 // a transient failure does not suppress routing for the rest of the turn.
-func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
+func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps) *skillruntime.ResolveResult {
 	inv, invOK := trpcagent.InvocationFromContext(ctx)
 	if invOK && inv != nil {
 		if cached, ok := inv.GetState(skillResolveMemoStateKey); ok {
@@ -215,12 +216,17 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 				if len(result.Slugs) == 0 {
 					return nil
 				}
-				writeSkillRouteState(inv, result, progressive)
+				writeSkillRouteState(inv, result)
 				return result
 			}
 		}
 	}
 	opts := &skillruntime.SkillToolsetOptions{UserQuery: skillruntime.TurnQueryFromContext(ctx)}
+	// R1: wire historical-performance ranking. Nil provider → fusion branch
+	// skipped inside ResolveSkillSlugsDetailed.
+	if deps.SkillHealthProvider != nil {
+		opts.HealthProvider = deps.SkillHealthProvider
+	}
 	// Avoid typed-nil interface: only set Runtime if runtime is non-nil,
 	// otherwise the nil *biz.AgentRuntimeSettings creates a non-nil interface
 	// wrapping a nil pointer, causing panic in ResolveSkillSlugsDetailed.
@@ -246,18 +252,14 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 	if len(result.Slugs) == 0 {
 		return nil
 	}
-	writeSkillRouteState(inv, result, progressive)
+	writeSkillRouteState(inv, result)
 	return result
 }
 
-// writeSkillRouteState records routed slugs (progressive only, for health
-// metrics persistence) and selection reasons into invocation state.
-func writeSkillRouteState(inv *trpcagent.Invocation, result *skillruntime.ResolveResult, progressive bool) {
-	if progressive {
-		// skillRoutedSlugsStateKey is read by the invocation recorder
-		// to persist routed_slugs for health metrics.
-		inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
-	}
+// writeSkillRouteState records routed slugs (for health-metrics persistence
+// by the invocation recorder) and selection reasons into invocation state.
+func writeSkillRouteState(inv *trpcagent.Invocation, result *skillruntime.ResolveResult) {
+	inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 }
 

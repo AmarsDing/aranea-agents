@@ -26,9 +26,9 @@ import (
 	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
-	bizcu "aranea-agents/internal/biz/computeruse"
 	a2abiz "aranea-agents/internal/biz/a2a"
 	"aranea-agents/internal/biz/backgroundjob"
+	bizcu "aranea-agents/internal/biz/computeruse"
 	"aranea-agents/internal/biz/evaluation"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
@@ -472,6 +472,7 @@ func provideRuntimeTooling(
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
+	skillHealth *service.SkillHealthMetricsAdapter,
 	knowledgeRetriever *knowledge.Retriever,
 	knowledgeRouter *knowledge.AdaptiveRouter,
 	knowledgeFederatedRetriever *knowledge.FederatedRetriever,
@@ -496,6 +497,7 @@ func provideRuntimeTooling(
 		PluginRT:                    pluginRT,
 		PluginManager:               pluginMgr,
 		SkillDBRepo:                 skillDBRepo,
+		SkillHealth:                 skillHealth,
 		KnowledgeRetriever:          knowledgeRetriever,
 		KnowledgeRouter:             knowledgeRouter,
 		KnowledgeFederatedRetriever: knowledgeFederatedRetriever,
@@ -3440,6 +3442,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideToolUsecaseWithDeps,
 		provideChatServiceDeps,
 		provideRuntimeTooling,
+		// R1: shared skill health-metrics adapter (singleton) — consumed by
+		// provideRuntimeTooling (turn routing) and NewSkillService (preview),
+		// backed by biz.SkillHealthAggregator (SkillIntelligenceRepo).
+		service.NewSkillHealthMetricsAdapter,
 		provideTeamOrchestrationDeps,
 		provideRunnerConfig,
 		// M71: agent resource sharing (memberfs/deptmail/sessionaccess)

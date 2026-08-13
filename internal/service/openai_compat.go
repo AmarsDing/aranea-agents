@@ -173,9 +173,10 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 			PluginManager: s.orch.rt().PluginManager,
 		},
 		TRPCSkillDeps: chatagent.TRPCSkillDeps{
-			SkillUC:         s.orch.td().ReadDeps.SkillUC,
-			SkillDBRepo:     s.orch.rt().SkillDBRepo,
-			CodeExecFactory: s.orch.rt().CodeExecFactory,
+			SkillUC:             s.orch.td().ReadDeps.SkillUC,
+			SkillDBRepo:         s.orch.rt().SkillDBRepo,
+			CodeExecFactory:     s.orch.rt().CodeExecFactory,
+			SkillHealthProvider: s.orch.rt().skillHealthProvider(),
 		},
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
 			Organization:     s.orch.rt().OrganizationUC,

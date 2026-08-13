@@ -17,11 +17,12 @@ import (
 // 其余方法被调用即 panic（暴露测试路径偏差）。
 type stubSkillRepo struct {
 	bizskill.Repo
-	mu         sync.Mutex
-	candidates []bizskill.RuntimeCandidate
-	err        error
-	blockCh    chan struct{} // 非 nil 时 List 阻塞直至 channel 关闭
-	calls      atomic.Int32
+	mu              sync.Mutex
+	candidates      []bizskill.RuntimeCandidate
+	err             error
+	blockCh         chan struct{} // 非 nil 时 List 阻塞直至 channel 关闭
+	calls           atomic.Int32
+	storageDirCalls atomic.Int32
 }
 
 func (s *stubSkillRepo) ListEnabledPublishedSkillCandidates(_ context.Context) ([]bizskill.RuntimeCandidate, error) {
@@ -74,12 +75,56 @@ func (s *stubSkillRepo) GetLatestSkillMarkdown(_ context.Context, _ string) (str
 	return "# body", nil
 }
 
+// GetSkillStorageDir 桩：Path() 链路（R3 dir 缓存断言计数）。
+func (s *stubSkillRepo) GetSkillStorageDir(_ context.Context, id string) (string, error) {
+	s.storageDirCalls.Add(1)
+	return "/dir/" + id, nil
+}
+
 func newStubUsecase(repo bizskill.Repo) *biz.SkillUsecase {
 	return biz.NewSkillUsecase(repo, nil)
 }
 
 func cand(slug string) bizskill.RuntimeCandidate {
 	return bizskill.RuntimeCandidate{Slug: slug, Name: slug, Description: "desc " + slug}
+}
+
+// TestDBRepositoryAdapter_PathCachesDir covers R3 (2026-08-13): Path() runs
+// on the skill_load/skill_run hot path; the resolved storage dir must be
+// cached per slug so repeated calls within one snapshot cost zero DB queries.
+func TestDBRepositoryAdapter_PathCachesDir(t *testing.T) {
+	repo := &stubSkillRepo{candidates: []bizskill.RuntimeCandidate{cand("skill-a")}}
+	adapter := NewDBRepositoryAdapter(newStubUsecase(repo), time.Hour, loggateway.NewNoop())
+
+	dir1, err := adapter.Path("skill-a")
+	if err != nil || dir1 != "/dir/id-skill-a" {
+		t.Fatalf("first Path = %q, %v", dir1, err)
+	}
+	dir2, err := adapter.Path("skill-a")
+	if err != nil || dir2 != dir1 {
+		t.Fatalf("second Path = %q, %v", dir2, err)
+	}
+	if got := repo.storageDirCalls.Load(); got != 1 {
+		t.Fatalf("GetSkillStorageDir calls = %d, want 1 (dir cached per slug)", got)
+	}
+}
+
+// TestDBRepositoryAdapter_PathDirCacheDropsOnInvalidate：dir 缓存必须随
+// Invalidate 与正文缓存一起清空 —— skill 更新可能变更其存储目录。
+func TestDBRepositoryAdapter_PathDirCacheDropsOnInvalidate(t *testing.T) {
+	repo := &stubSkillRepo{candidates: []bizskill.RuntimeCandidate{cand("skill-a")}}
+	adapter := NewDBRepositoryAdapter(newStubUsecase(repo), time.Hour, loggateway.NewNoop())
+
+	if _, err := adapter.Path("skill-a"); err != nil {
+		t.Fatalf("first Path err = %v", err)
+	}
+	adapter.Invalidate()
+	if _, err := adapter.Path("skill-a"); err != nil {
+		t.Fatalf("post-Invalidate Path err = %v", err)
+	}
+	if got := repo.storageDirCalls.Load(); got != 2 {
+		t.Fatalf("GetSkillStorageDir calls = %d, want 2 (dir cache dropped on Invalidate)", got)
+	}
 }
 
 // TestDBRepositoryAdapter_ColdStartCacheEffective：回归测试 —— 冷启动首次加载后

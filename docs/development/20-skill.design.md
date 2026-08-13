@@ -886,7 +886,7 @@ Data 侧关键实现：
 流程：
 1. `ListEnabledPublishedSkillKeys()` 确认存在已启用 + 已发布 Skill
 2. 优先 `SkillDBRepo`（`DBRepositoryAdapter`）；否则 `FSRepositoryAdapter`
-3. `skillruntime.NewAgentVisibilityFilter(SkillUC, ag.Settings)` — Layer A/B，按 invocation 读取 turn query
+3. `skillruntime.NewAgentVisibilityFilter(ag.Settings)` — **Layer A-only**（P9/F1，2026-08-13）：构造时一次性解析 `skill_runtime_json` 为内存集合，overview 注入仅按 allowed/denied 过滤，**不再按 turn query 走 Layer B**——保证框架 `Available skills:` overview 块在会话内字节稳定（prompt 缓存前缀命中前提）；Layer B 动态路由结果改由 guidance hook 以尾部 system message 注入（见 §7.6）
 4. `CodeExecutor`（local / docker，`CODE_EXECUTOR_BACKEND`；产出物经 `artifact_executor.go`）
 5. `WithSkills` + `WithSkillFilter` + `WithSkillToolProfile(SkillToolProfileFull)`
 
@@ -916,6 +916,18 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 - **Embedding 语义精排**（可选）：`SkillUsecase.ScoreByEmbedding(query, candidates)` → 余弦相似度融合评分
 - 排序后取 `MaxSkillsInToolset`，返回 `ResolveResult{Slugs, Reasons}`
 
+**候选确定性排序**（P9/F2，2026-08-13）：`ListEnabledPublishedSkillCandidates`/`Keys`/`Refs` 三个 data 层查询均加 `ORDER BY skill_key ASC`——候选序 byte-stable 是 overview 渲染序与路由分确定性、进而 prompt 缓存命中的前提。
+
+**路由结果 per-invocation 记忆化**（P9/F3，2026-08-13）：`resolveAndWriteSkillState` 将 `ResolveResult` 缓存于 invocation state（`aranea.skill_resolve_memo`）。BeforeModel hook 在 tool-call 循环中每次模型调用都触发，而路由输入（turn query + agent 策略）在单次 invocation 内不变——记忆化后每次 invocation 仅 1 次候选 DB 查询（及 embedding/健康度查询）；瞬态错误不缓存，下次调用重试。
+
+**健康度查询进程内缓存**（P9/F4，2026-08-13）：`SkillHealthMetricsAdapter`（`internal/service/skill_health_metrics_adapter.go`）对 `GetHealthMetrics(skillID, days)` 做 TTL=5min、上限 1024 条的内存缓存——单轮排名对每个候选各查 2 次（成功率 + 平均耗时），连续 turn 重复同一聚合；错误不缓存。
+
+**动态排名链路接线**（P10/R1，2026-08-13）：上述 adapter 经 Wire 单例装配（`service.NewSkillHealthMetricsAdapter`，backed by `biz.SkillHealthAggregator` = `SkillIntelligenceRepo`），同时注入两处——`RuntimeTooling.SkillHealth`（turn 路由：chat / a2a / openai_compat 三处 `TRPCSkillDeps.SkillHealthProvider`）与 `SkillService.skillHealth`（`PreviewSkillRuntime` 预览与生产路径一致）。`resolveAndWriteSkillState` 将 provider 透传至 `SkillToolsetOptions.HealthProvider`，激活 `ResolveSkillSlugsDetailed` 的历史表现融合分支（`applyRankResults`：rank 分与 keyword/embedding 分 60/40 融合，trigger 命中候选跳过）；nil provider 时分支跳过，排名保持 keyword/embedding。装配侧经 `RuntimeTooling.skillHealthProvider()` 归一化 typed-nil，防止 `opts.HealthProvider != nil` 守卫被 nil 指针接口击穿。
+
+**Routed slugs 全模式落库**（P10/R2，2026-08-13）：`resolveAndWriteSkillState` 不再按 progressive/full-profile 分流写状态——两种模式均无条件写 `aranea.skill_routed_slugs` + `aranea.skill_selection_reasons`，invocation recorder 据此持久化路由结果供健康指标关联「routed vs run」。
+
+**Path() dir 缓存**（P10/R3，2026-08-13）：`DBRepositoryAdapter` 的两个惰性缓存（正文 bodies + 存储目录 dirs）提取为 `skillRepoCaches` 子管理器（AS-COG-01：单 struct 不堆叠 2+ sync.Map），整体指针在 reload/Invalidate 时原子交换。框架在每次 `skill_load`/`skill_run` 都解析存储目录，未缓存时每次 2 次 DB 查询（`GetBySlug` + `GetStorageDir`）；缓存后同快照期内零查询。空路径（DB-only skill）可缓存；错误不缓存，下次调用重试。
+
 **运行时缓存主动失效**（P0）：`DBRepositoryAdapter` 快照（摘要 + 已加载正文）默认 TTL 2min。`SkillUsecase` 持有 `RuntimeCacheInvalidator` 端口（DI 时由 `NewSkillDBRepository` 注入 adapter 自身），在 `ToggleEnabled` / `Delete` / `RollbackVersion` / `Publish` / `UpsertSkillFromDisk(ContentChanged)` / `Patch` 成功后调用 `InvalidateSkillRuntimeCache()`，使启用状态与正文变更秒级生效；未注入时退化为纯 TTL 兜底。
 
 ### 7.3 意图路由与分类
@@ -930,7 +942,7 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 文件：`internal/skill/trpc/`
 
 - `repository.go`：`FSRepositoryAdapter` — 磁盘 FS → `trpcskill.Repository`
-- `db_repository.go`：`DBRepositoryAdapter` — DB + TTL 缓存 → `trpcskill.Repository`
+- `db_repository.go`：`DBRepositoryAdapter` — DB + TTL 缓存 → `trpcskill.Repository`（含 R3 `skillRepoCaches` 子管理器：正文 + 存储目录双缓存原子交换）
 - `filter.go`：`NewFilteredRepository(base, allowedSlugs)` → `trpcskill.ContextRepository`
 - `tools.go`：`BuildSkillTools()` 产出 4 个内置 Skill 工具（Load / Run / ListDocs / SelectDocs）
 - `executor.go`：`CodeExecutor` 适配（local / docker）；`artifact_executor.go`：产出物 `WrapWithArtifactSave`
@@ -949,13 +961,16 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 
 文件：`internal/agent/skill_guidance_inject.go`
 
-在 `productCallbackChain` 中注册 `newSkillGuidanceBeforeHook`（priority=5），仅 `SkillsUseFullProfile` 模式下启用。
+在 `productCallbackChain` 中注册 `newSkillGuidanceBeforeHook`（priority=5，LayerDynamic）。两种模式：
 
-流程：
-1. `ResolveSkillSlugsDetailed` 获取当前 turn 的 skill slugs
-2. `BatchGetSkillGuidance(slugs)` 批量获取 skill markdown（2 条 SQL：按 skill_key 查 Skill + 按 skill_id 查最新 Version）
+- **Progressive**（`skill_load_mode=progressive`，优先生效，task/complete prompt 模式均可用）：注入紧凑的 `## Routed Skills` 列表，引导 LLM 用 `skill_load` 按需加载
+- **Full Profile**（仅 `complete` prompt 模式）：注入渲染后的完整 guidance（`## Available Skills`）
+
+流程（Full Profile）：
+1. `resolveAndWriteSkillState` 获取当前 turn 的 skill slugs（结果 per-invocation 记忆化，见 §7.2 F3）
+2. `BatchGetSkillGuidance(slugs)` 批量获取 skill markdown（2 条 SQL：按 skill_key 查 Skill + 按 skill_id 查最新 Version）；渲染后的 cue 亦 per-invocation 记忆化（`aranea.skill_guidance_cue_memo`，空结果缓存、瞬态错误不缓存）
 3. `manifest.Parse` 解析 frontmatter → `render.SkillGuidance` 渲染指导内容
-4. 拼接为 system message 注入 `args.Request.Messages` 头部
+4. 拼接为 system message **追加到 `args.Request.Messages` 尾部**（P9/N1：`[system + history + user]` 保持单调增长前缀，路由变化不再使整段会话历史的 prompt 缓存前缀失效）
 5. 截断保护：`maxSkillGuidanceChars=4000`；`written==0` 时不注入
 
 ### 7.7 Embedding 语义精排
@@ -1298,6 +1313,8 @@ export async function deleteSkillTagApi(name: string): Promise<number>
 属性：`skill.id`、`skill.slug`、`skill.version`、`agent.id`、`session.id`、`activation.source`、`token.cost`。
 
 磁盘同步建议补充：`skill.fs.scan`、`skill.fs.synced`、`skill.fs.error`（日志或指标）。
+
+**上下文预算计量**（P9/F5，2026-08-13）：`chat.context_budget` 进程日志新增 `skill_overview_tokens` 类别（`ContextBudgetCategorySkillOverview`，`internal/agent/context_budget.go`）——镜像框架 `Available skills:` overview 渲染（header + `- name: description` 行，应用 Layer A filter）计量其 rune 数，摘要从 repo 内存快照读取，零额外 DB 查询；与 `skill_guidance_tokens`（动态路由 cue）分列。刻意排除项：capability/tooling 指导块与 `(dir: [sN]/...)` 后缀（后者每 skill 每请求需 1 次 Path 查询，计量本身会成为热路径负担）。
 
 ---
 

@@ -316,43 +316,14 @@ func lastUserMessageText(messages []trpcmodel.Message) string {
 	return ""
 }
 
-// RebuildMemoryInjectForCompaction re-executes the MemoryInject hook after
-// context-compaction rebuild. It updates the L1 cue in the system messages
-// without affecting other hooks' cache breakpoint positions.
-//
-// When L0 context compaction fires, the framework rebuilds the request from
-// the session summary + tail events. The L1 session summary may have been
-// updated by the compression itself, but the old MemoryInject TextBlock still
-// contains the pre-compaction L1 cue. This function re-runs only the L1 cue
-// resolution and patches the existing MemoryInject system message in-place.
-func RebuildMemoryInjectForCompaction(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, req *trpcmodel.Request) {
-	if req == nil {
-		return
-	}
-	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
-	if !policy.MasterEnabled || !policy.InjectL1 {
-		return
-	}
-	result := buildRuntimeMemoryCue(ctx, deps, ag, req.Messages)
-	if result.L1Cue == "" {
-		return
-	}
-
-	// P2-04: apply unified prompt budget on compaction rebuild too.
-	newCue := memoryInjectCueContent(result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars))
-	for i, msg := range req.Messages {
-		if isMemoryInjectMessage(msg) {
-			req.Messages[i] = trpcmodel.NewSystemMessage(newCue)
-			return
-		}
-	}
-
-	// If no existing MemoryInject message found (edge case: first turn after
-	// compaction with no prior inject), append a new one at the END of the
-	// message list (P2 TTFT: keep the cacheable prefix intact).
-	sys := trpcmodel.NewSystemMessage(newCue)
-	req.Messages = append(req.Messages, sys)
-}
+// NOTE (N8, 2026-08-13 链路审查): 压缩后无需单独的 memory 重建入口——
+// MemoryInject 是 BeforeModel hook（priority 5），在框架压缩
+// （llmflow.maybeCompactContextBeforeLLM）与 Aranea 紧急压缩 hook
+// （priority 3）之后才执行，压缩轮次会用最新 L1/L2/L3/L4 数据重建完整 cue
+// 并追加到消息尾部。memory-inject 消息是请求级装饰，从不持久化为 session
+// event，框架重建的 request 不会残留旧 cue。原
+// RebuildMemoryInjectForCompaction 的"原地打补丁"场景不成立，且若接入框架
+// tail-processor 槽位会与本 hook 双重注入，已删除。
 
 // ── memory_recalled transparency notice (R4) ─────────────────────────────
 

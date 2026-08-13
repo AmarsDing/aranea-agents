@@ -26,17 +26,21 @@ type SkillService struct {
 	uc       *biz.SkillUsecase
 	agentUC  *biz.AgentUsecase
 	healthUC *biz.SkillHealthUsecase
-	fs       biz.SkillFilesystem
-	import_  *importer.Engine
-	gate     *evaluation.PublishGate
-	lg       loggateway.Logger
+	// skillHealth feeds historical-performance ranking in PreviewSkillRuntime
+	// (R1, 2026-08-13) so the preview matches the production routing path.
+	// Nil disables the dynamic ranking branch in the preview.
+	skillHealth *SkillHealthMetricsAdapter
+	fs          biz.SkillFilesystem
+	import_     *importer.Engine
+	gate        *evaluation.PublishGate
+	lg          loggateway.Logger
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, gate *evaluation.PublishGate, lg loggateway.Logger) *SkillService {
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, skillHealth *SkillHealthMetricsAdapter, fs biz.SkillFilesystem, importEng *importer.Engine, gate *evaluation.PublishGate, lg loggateway.Logger) *SkillService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, fs: fs, import_: importEng, gate: gate, lg: lg}
+	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, skillHealth: skillHealth, fs: fs, import_: importEng, gate: gate, lg: lg}
 }
 
 // assertSkillAccess 校验 caller 是否可访问指定 skill（P2-B IDOR 防护）。
@@ -477,6 +481,12 @@ func (s *SkillService) PreviewSkillRuntime(ctx context.Context, req *v1.PreviewS
 			return nil, err
 		}
 		opts := &skillruntime.SkillToolsetOptions{Runtime: &runtime, UserQuery: userQuery}
+		// R1: preview must reflect the production routing path, including
+		// historical-performance fusion. Typed-nil guard: a nil adapter would
+		// produce a non-nil interface and panic inside lookup.
+		if s.skillHealth != nil {
+			opts.HealthProvider = s.skillHealth
+		}
 		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, s.uc, opts, s.lg)
 		if err != nil {
 			return nil, err

@@ -20,6 +20,24 @@ type dbSkillEntry struct {
 	slug    string
 }
 
+// skillRepoCaches groups the adapter's lazily-populated per-slug caches so
+// they swap atomically as one unit on reload/Invalidate, and keeps the
+// adapter at a single cache field (AS-COG-01: 2+ sync.Map fields must be
+// extracted into a sub-manager).
+type skillRepoCaches struct {
+	bodies *sync.Map // slug → *trpcskill.Skill (Get)
+	// dirs caches Path() outcomes (R3, 2026-08-13): the framework resolves
+	// the storage dir on every skill_load/skill_run, and each uncached call
+	// costs two DB queries (GetBySlug + GetStorageDir). "" means the skill
+	// has no storage path (DB-only) — a cacheable fact, unlike errors which
+	// are never stored so transient failures retry on the next call.
+	dirs *sync.Map // slug → string
+}
+
+func newSkillRepoCaches() *skillRepoCaches {
+	return &skillRepoCaches{bodies: &sync.Map{}, dirs: &sync.Map{}}
+}
+
 // dbQueryTimeout is the maximum duration for a single DB query performed by
 // the adapter. The framework's skill.Repository interface does not accept a
 // context, so we use context.Background() with an internal timeout to prevent
@@ -52,10 +70,10 @@ type DBRepositoryAdapter struct {
 	// 首次加载后 loaded 永远零值导致 TTL 永不生效（缓存形同虚设）。
 	invalidateGen uint64
 
-	// skillCache holds lazily-loaded *trpcskill.Skill keyed by slug.
-	// Pointer so the entire map can be swapped atomically under mu.
-	// Readers must call loadSkillCache() to get the current pointer.
-	skillCache *sync.Map // string → *trpcskill.Skill
+	// caches holds lazily-populated per-slug data (bodies + storage dirs).
+	// Pointer so the whole holder can be swapped atomically under mu.
+	// Readers must call loadCaches() to get the current pointer.
+	caches *skillRepoCaches
 }
 
 var _ trpcskill.Repository = (*DBRepositoryAdapter)(nil)
@@ -67,21 +85,21 @@ func NewDBRepositoryAdapter(uc *biz.SkillUsecase, ttl time.Duration, lg loggatew
 		ttl = 2 * time.Minute
 	}
 	return &DBRepositoryAdapter{
-		uc:         uc,
-		ttl:        ttl,
-		lg:         lg,
-		index:      make(map[string]int),
-		skillCache: &sync.Map{},
+		uc:     uc,
+		ttl:    ttl,
+		lg:     lg,
+		index:  make(map[string]int),
+		caches: newSkillRepoCaches(),
 	}
 }
 
-// loadSkillCache returns the current skillCache pointer.
+// loadCaches returns the current caches pointer.
 // The pointer itself is immutable once read — only the map contents change
 // via concurrent-safe sync.Map operations. Swaps happen under mu.
-func (r *DBRepositoryAdapter) loadSkillCache() *sync.Map {
+func (r *DBRepositoryAdapter) loadCaches() *skillRepoCaches {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.skillCache
+	return r.caches
 }
 
 // queryCtx returns a context with an internal timeout for DB queries.
@@ -112,9 +130,9 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 	r.refreshIfStale(ctx)
 	key := canonicalSlug(name)
 
-	// Fast path: check skillCache (no lock needed, sync.Map is concurrent-safe).
-	cache := r.loadSkillCache()
-	if cached, ok := cache.Load(key); ok {
+	// Fast path: check bodies cache (no lock needed, sync.Map is concurrent-safe).
+	cache := r.loadCaches()
+	if cached, ok := cache.bodies.Load(key); ok {
 		return cached.(*trpcskill.Skill), nil
 	}
 
@@ -144,7 +162,7 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 	// swapped it while we were loading the body. Writing to a stale orphaned
 	// sync.Map is safe but wasteful (the entry would be invisible to future Gets).
 	if body != "" {
-		r.loadSkillCache().Store(key, sk)
+		r.loadCaches().bodies.Store(key, sk)
 	}
 	return sk, nil
 }
@@ -164,6 +182,14 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 	slug := r.entries[idx].slug
 	r.mu.RUnlock()
 
+	// R3: per-slug dir cache — Path() runs on the skill_load/skill_run hot
+	// path and each uncached call costs two DB queries. Cached outcomes are
+	// dropped together with the body cache on reload/Invalidate.
+	caches := r.loadCaches()
+	if dir, ok := caches.dirs.Load(key); ok {
+		return dir.(string), nil
+	}
+
 	// Resolve dir from DB on demand (dir is not part of the immutable snapshot).
 	dirCtx, dirCancel := r.queryCtx()
 	defer dirCancel()
@@ -177,14 +203,21 @@ func (r *DBRepositoryAdapter) Path(name string) (string, error) {
 			loggateway.StepID("skill.trpc"),
 			loggateway.Str("slug", slug),
 			loggateway.Err(err))
-		return "", nil // Graceful degradation
+		return "", nil // Graceful degradation; error NOT cached, retried next call
 	}
 	if sk.ID == "" {
+		r.loadCaches().dirs.Store(key, "")
 		return "", nil
 	}
 	storageCtx, storageCancel := r.queryCtx()
 	defer storageCancel()
-	dir, _ := r.uc.GetStorageDir(storageCtx, sk.ID)
+	dir, dirErr := r.uc.GetStorageDir(storageCtx, sk.ID)
+	if dirErr != nil {
+		// Preserve the historical swallow-the-error behavior, but do not
+		// cache the outcome — a transient failure must retry on the next call.
+		return "", nil
+	}
+	r.loadCaches().dirs.Store(key, dir)
 	return dir, nil
 }
 
@@ -193,7 +226,7 @@ func (r *DBRepositoryAdapter) Invalidate() {
 	r.mu.Lock()
 	r.loaded = time.Time{}
 	r.invalidateGen++
-	r.skillCache = &sync.Map{}
+	r.caches = newSkillRepoCaches()
 	r.mu.Unlock()
 }
 
@@ -295,7 +328,7 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 		index[slug] = len(entries)
 		entries = append(entries, e)
 	}
-	// Swap entries, index, and skillCache atomically under write lock.
+	// Swap entries, index, and caches atomically under write lock.
 	// Preserve the "invalidated" state: if Invalidate() was called while we
 	// were fetching (generation changed), the data we fetched may predate the
 	// invalidation — install it but stay stale so the next access re-fetches.
@@ -307,7 +340,7 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 	} else {
 		r.loaded = time.Now()
 	}
-	r.skillCache = &sync.Map{}
+	r.caches = newSkillRepoCaches()
 	r.reloading = false
 	r.mu.Unlock()
 }

@@ -309,6 +309,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	l1AdminReader := provideL1AdminReader(sessionAdminStore)
 	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, loggatewayLogger)
 	sessionCompressor := session2.NewCompressor(compressorConfig)
+	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
+	skillHealthMetricsAdapter := service.NewSkillHealthMetricsAdapter(skillIntelligenceRepo)
 	sparseSearcher := data.NewKnowledgeSparseSearcherFromData(dataData)
 	hybridRetriever := service.NewKnowledgeHybridRetriever(retriever, sparseSearcher, loggatewayLogger)
 	webResearchTester := service.ProvideWebResearchTester(loggatewayLogger)
@@ -341,13 +343,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
 	skillAutoCreator := provideSkillAutoCreator(dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
 	skillRegistrationPort := provideSkillRegistrationPort(skillUsecase)
-	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
 	skillScoringUsecase := biz.NewSkillScoringUsecase(skillIntelligenceRepo, loggatewayLogger)
 	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
 	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
@@ -445,7 +446,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
 	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
 	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
-	skillService := service.NewSkillService(skillUsecase, agentUsecase, skillHealthUsecase, skillFilesystem, engine, publishGate, loggatewayLogger)
+	skillService := service.NewSkillService(skillUsecase, agentUsecase, skillHealthUsecase, skillHealthMetricsAdapter, skillFilesystem, engine, publishGate, loggatewayLogger)
 	toolService := service.NewToolService(toolUsecase, agentUsecase, monitorUsecase)
 	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
 	serviceSessionService := service.NewSessionService(sessionUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
@@ -1077,6 +1078,7 @@ func provideRuntimeTooling(
 	pluginRT *plugintrpc.Runtime,
 	pluginMgr *plugintrpc.Manager,
 	skillDBRepo skill.Repository,
+	skillHealth *service.SkillHealthMetricsAdapter,
 	knowledgeRetriever *knowledge.Retriever,
 	knowledgeRouter *knowledge.AdaptiveRouter,
 	knowledgeFederatedRetriever *knowledge.FederatedRetriever,
@@ -1101,6 +1103,7 @@ func provideRuntimeTooling(
 		PluginRT:                    pluginRT,
 		PluginManager:               pluginMgr,
 		SkillDBRepo:                 skillDBRepo,
+		SkillHealth:                 skillHealth,
 		KnowledgeRetriever:          knowledgeRetriever,
 		KnowledgeRouter:             knowledgeRouter,
 		KnowledgeFederatedRetriever: knowledgeFederatedRetriever,

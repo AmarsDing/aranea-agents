@@ -120,11 +120,11 @@ func TestResolveAndWriteSkillState_MemoizedPerInvocation(t *testing.T) {
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	first := resolveAndWriteSkillState(ctx, nil, deps, true)
+	first := resolveAndWriteSkillState(ctx, nil, deps)
 	if first == nil || len(first.Slugs) != 1 || first.Slugs[0] != "skill-a" {
 		t.Fatalf("first call = %#v, want [skill-a]", first)
 	}
-	second := resolveAndWriteSkillState(ctx, nil, deps, true)
+	second := resolveAndWriteSkillState(ctx, nil, deps)
 	if second == nil || len(second.Slugs) != 1 || second.Slugs[0] != "skill-a" {
 		t.Fatalf("second call = %#v, want [skill-a]", second)
 	}
@@ -146,16 +146,71 @@ func TestResolveAndWriteSkillState_ErrorNotMemoized(t *testing.T) {
 	inv := trpcagent.NewInvocation()
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
 
-	if got := resolveAndWriteSkillState(ctx, nil, deps, true); got != nil {
+	if got := resolveAndWriteSkillState(ctx, nil, deps); got != nil {
 		t.Fatalf("first call should fail, got %#v", got)
 	}
 	// Transient error must not be cached: the next call retries and succeeds.
-	got := resolveAndWriteSkillState(ctx, nil, deps, true)
+	got := resolveAndWriteSkillState(ctx, nil, deps)
 	if got == nil || len(got.Slugs) != 1 {
 		t.Fatalf("second call should succeed after transient error, got %#v", got)
 	}
 	if uc.calls != 2 {
 		t.Errorf("resolver called %d times, want 2 (error not memoized)", uc.calls)
+	}
+}
+
+// TestResolveAndWriteSkillState_RoutedSlugsPersistedInFullProfile covers R2
+// (2026-08-13 复查): routed slugs must be persisted to invocation state in
+// BOTH modes — gating on progressive left full-profile agents without
+// routing observability (health metrics could not correlate routed vs run).
+func TestResolveAndWriteSkillState_RoutedSlugsPersistedInFullProfile(t *testing.T) {
+	uc := &countingSkillLookup{}
+	deps := TRPCBuilderDeps{TRPCSkillDeps: TRPCSkillDeps{SkillUC: uc}}
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	result := resolveAndWriteSkillState(ctx, nil, deps) // full-profile mode caller
+	if result == nil || len(result.Slugs) != 1 {
+		t.Fatalf("resolve = %#v, want [skill-a]", result)
+	}
+	raw, ok := inv.GetState(skillRoutedSlugsStateKey)
+	if !ok {
+		t.Fatal("routed slugs state missing in full-profile mode (R2)")
+	}
+	if slugs := raw.([]string); len(slugs) != 1 || slugs[0] != "skill-a" {
+		t.Errorf("routed slugs = %v, want [skill-a]", slugs)
+	}
+}
+
+// countingHealthProvider proves the fusion branch received the provider
+// wired through TRPCSkillDeps (R1, 2026-08-13).
+type countingHealthProvider struct{ calls int }
+
+func (p *countingHealthProvider) GetRecentSuccessRate(_ context.Context, _ string, _ int) (float64, error) {
+	p.calls++
+	return 0.9, nil
+}
+
+func (p *countingHealthProvider) GetRecentAvgDuration(_ context.Context, _ string, _ int) (float64, error) {
+	return 0, nil
+}
+
+// TestResolveAndWriteSkillState_WiresHealthProvider covers R1: the provider
+// in TRPCSkillDeps must reach ResolveSkillSlugsDetailed so the historical-
+// performance fusion branch actually runs on the turn routing path.
+func TestResolveAndWriteSkillState_WiresHealthProvider(t *testing.T) {
+	uc := &countingSkillLookup{}
+	provider := &countingHealthProvider{}
+	deps := TRPCBuilderDeps{TRPCSkillDeps: TRPCSkillDeps{SkillUC: uc, SkillHealthProvider: provider}}
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	result := resolveAndWriteSkillState(ctx, nil, deps)
+	if result == nil || len(result.Slugs) != 1 {
+		t.Fatalf("resolve = %#v, want [skill-a]", result)
+	}
+	if provider.calls == 0 {
+		t.Error("SkillHealthProvider never queried — R1 wiring broken")
 	}
 }
 
