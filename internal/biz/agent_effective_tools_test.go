@@ -20,6 +20,19 @@ func TestComputePolicyAllowedSet_shellAlias(t *testing.T) {
 	}
 }
 
+// 回归（BUG-1）：allow 列表直接写 canonical key 或运行时名必须生效。
+// 此前 NormalizeToolPolicyKey("shell_exec") 单向映射到幻影 key exec_command，
+// 且 allow 传播只做 alias→canon，导致 allowedSet 里没有 shell_exec，
+// allowed["shell_exec"] 永远为 false —— 写 canonical key 静默失效。
+func TestComputePolicyAllowedSet_shellExecCanonicalKey(t *testing.T) {
+	for _, input := range []string{"shell_exec", "exec_command"} {
+		m := computePolicyAllowedSet("read_only", []string{input}, nil)
+		if !m["shell_exec"] {
+			t.Fatalf("allow %q must enable shell_exec; got keys %v", input, m)
+		}
+	}
+}
+
 func TestEffectiveToolState_optInWhenCatalogDisabled(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "full"}
 	trow := Tool{Key: "shell_exec", Enabled: false}

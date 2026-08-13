@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -256,6 +257,29 @@ func (m *mockEvolutionStoreBridge) UpdateStatus(_ context.Context, id string, st
 		return nil
 	}
 	return nil
+}
+
+func (m *mockEvolutionStoreBridge) UpdateStatusCAS(ctx context.Context, id string, from []string, to string, actor string, reason string) (bool, error) {
+	if m.err != nil {
+		return false, m.err
+	}
+	for i := range m.suggestions {
+		if m.suggestions[i].ID != id {
+			continue
+		}
+		allowed := false
+		for _, f := range from {
+			if string(m.suggestions[i].Status) == f {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false, nil
+		}
+		return true, m.UpdateStatus(ctx, id, to, actor, reason)
+	}
+	return false, nil
 }
 
 func (m *mockEvolutionStoreBridge) UpdateDraftBody(_ context.Context, id string, draft string) error {
@@ -1019,6 +1043,28 @@ func (s *recordingUnifiedStore) UpdateStatus(_ context.Context, id, status, _, _
 	s.statusSeq[id] = append(s.statusSeq[id], status)
 	return nil
 }
+func (s *recordingUnifiedStore) UpdateStatusCAS(_ context.Context, id string, from []string, to string, _, _ string) (bool, error) {
+	if s.statusErr != nil {
+		return false, s.statusErr
+	}
+	row, ok := s.byID[id]
+	if !ok {
+		return false, nil
+	}
+	allowed := false
+	for _, f := range from {
+		if row.Status == f {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return false, nil
+	}
+	row.Status = to
+	s.statusSeq[id] = append(s.statusSeq[id], to)
+	return true, nil
+}
 func (s *recordingUnifiedStore) UpdateDraftBody(_ context.Context, id, draft string) error {
 	if s.draftBodyErr != nil {
 		return s.draftBodyErr
@@ -1301,5 +1347,105 @@ func TestRunCuratorFlow_NoTrigger(t *testing.T) {
 	}
 	if suggestion != nil {
 		t.Errorf("expected nil suggestion for healthy skill, got type=%q", suggestion.Type)
+	}
+}
+
+// ── Approve/Reject state machine guards (AS-FSM-01) ───────────────────────────
+
+func TestApproveSuggestion_PendingSucceeds(t *testing.T) {
+	store := &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
+		{ID: "sug-p", SkillID: "skill-1", Status: EvoSuggestionPending, LifecycleStatus: EvoLifecycleDraft, CreatedAt: time.Now().UTC()},
+	}}
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+	if err := uc.ApproveSuggestion(context.Background(), "sug-p", "admin"); err != nil {
+		t.Fatalf("approve pending should succeed: %v", err)
+	}
+	if store.suggestions[0].Status != EvoSuggestionApproved {
+		t.Errorf("expected status=approved, got %q", store.suggestions[0].Status)
+	}
+}
+
+func TestApproveSuggestion_NonPendingRejected(t *testing.T) {
+	for _, status := range []EvolutionSuggestionStatus{EvoSuggestionApproved, EvoSuggestionRejected, EvoSuggestionApplied, "expired"} {
+		store := &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
+			{ID: "sug-x", SkillID: "skill-1", Status: status, LifecycleStatus: EvoLifecycleDraft, CreatedAt: time.Now().UTC()},
+		}}
+		uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+		if err := uc.ApproveSuggestion(context.Background(), "sug-x", "admin"); err == nil {
+			t.Errorf("approve from status=%q should fail", status)
+		}
+		if store.suggestions[0].Status != status {
+			t.Errorf("status=%q must remain unchanged after rejected approve, got %q", status, store.suggestions[0].Status)
+		}
+	}
+}
+
+func TestRejectSuggestion_NonPendingRejected(t *testing.T) {
+	for _, status := range []EvolutionSuggestionStatus{EvoSuggestionApproved, EvoSuggestionRejected, EvoSuggestionApplied, "expired"} {
+		store := &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
+			{ID: "sug-x", SkillID: "skill-1", Status: status, LifecycleStatus: EvoLifecycleDraft, CreatedAt: time.Now().UTC()},
+		}}
+		uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+		if err := uc.RejectSuggestion(context.Background(), "sug-x", "admin", "reason"); err == nil {
+			t.Errorf("reject from status=%q should fail", status)
+		}
+		if store.suggestions[0].Status != status {
+			t.Errorf("status=%q must remain unchanged after rejected reject, got %q", status, store.suggestions[0].Status)
+		}
+	}
+}
+
+func TestApproveSuggestion_NotFound(t *testing.T) {
+	store := &mockEvolutionStoreBridge{}
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+	if err := uc.ApproveSuggestion(context.Background(), "sug-missing", "admin"); err == nil {
+		t.Fatal("approve of missing suggestion should fail")
+	}
+}
+
+func TestRejectSuggestion_PendingSucceeds(t *testing.T) {
+	store := &mockEvolutionStoreBridge{suggestions: []SkillEvolutionSuggestion{
+		{ID: "sug-p", SkillID: "skill-1", Status: EvoSuggestionPending, LifecycleStatus: EvoLifecycleDraft, CreatedAt: time.Now().UTC()},
+	}}
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+	if err := uc.RejectSuggestion(context.Background(), "sug-p", "admin", "not useful"); err != nil {
+		t.Fatalf("reject pending should succeed: %v", err)
+	}
+	if store.suggestions[0].Status != EvoSuggestionRejected {
+		t.Errorf("expected status=rejected, got %q", store.suggestions[0].Status)
+	}
+	if store.suggestions[0].RejectedBy != "admin" || store.suggestions[0].RejectionReason != "not useful" {
+		t.Errorf("expected rejected_by/rejection_reason recorded, got %q/%q",
+			store.suggestions[0].RejectedBy, store.suggestions[0].RejectionReason)
+	}
+}
+
+// casConflictStore simulates a lost race: reads see a pending row, but the CAS
+// write reports zero rows affected (state changed between read and write).
+type casConflictStore struct {
+	UnifiedEvolutionStore
+	row *UnifiedEvolutionSuggestion
+}
+
+func (c *casConflictStore) GetByID(_ context.Context, _ string) (*UnifiedEvolutionSuggestion, error) {
+	return c.row, nil
+}
+
+func (c *casConflictStore) UpdateStatusCAS(_ context.Context, _ string, _ []string, _ string, _ string, _ string) (bool, error) {
+	return false, nil
+}
+
+func TestApproveSuggestion_ConcurrentConflict(t *testing.T) {
+	store := &casConflictStore{row: &UnifiedEvolutionSuggestion{ID: "sug-race", Status: "pending"}}
+	uc := NewSkillIntelligenceUsecase(nil, nil, store, nil, loggateway.NewNoop())
+
+	err := uc.ApproveSuggestion(context.Background(), "sug-race", "admin")
+	if !apierror.IsCode(err, apierror.CodeConflict) {
+		t.Fatalf("expected CodeConflict on lost CAS race, got %v", err)
 	}
 }

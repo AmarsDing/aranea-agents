@@ -1,10 +1,15 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -81,5 +86,32 @@ func skillOutcome(status string) string {
 		return "failure"
 	default:
 		return "partial"
+	}
+}
+
+// 参数质量信号必须转化为 aranea_tool_args_guard_total{tool,outcome} 计数，
+// 否则"哪个工具的 schema 在诱导模型产出坏参数"无从观测。
+func TestRecordToolInvocation_ArgsGuardOutcomeMetrics(t *testing.T) {
+	cases := []struct {
+		name    string
+		q       toolArgsQuality
+		outcome string
+	}{
+		{"repaired increments repaired outcome", toolArgsQuality{Repaired: true}, "repaired"},
+		{"invalid increments invalid outcome", toolArgsQuality{Invalid: true}, "invalid"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			deps := TRPCBuilderDeps{}
+			deps.ToolUC = &fakeToolLookup{}
+			tool := "recorder_guard_metric_" + c.outcome
+			ctx := context.WithValue(context.Background(), toolArgsQualityKey{}, c.q)
+			counter := metrics.ToolArgsGuardTotal.WithLabelValues(tool, c.outcome)
+			before := testutil.ToFloat64(counter)
+			recordToolInvocationAfter(ctx, &trpctool.AfterToolArgs{ToolName: tool, ToolCallID: "tc-" + c.outcome}, biz.Agent{ID: "agent-x"}, deps)
+			if delta := testutil.ToFloat64(counter) - before; delta != 1 {
+				t.Fatalf("counter delta: want 1, got %v", delta)
+			}
+		})
 	}
 }

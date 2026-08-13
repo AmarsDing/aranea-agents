@@ -141,6 +141,12 @@ func (s *stubUnifiedEvolutionStore) Create(context.Context, biz.UnifiedEvolution
 func (s *stubUnifiedEvolutionStore) UpdateStatus(context.Context, string, string, string, string) error {
 	return s.stubSuggestionWriter.err
 }
+func (s *stubUnifiedEvolutionStore) UpdateStatusCAS(ctx context.Context, id string, _ []string, to string, actor string, reason string) (bool, error) {
+	if err := s.stubSuggestionWriter.UpdateStatus(ctx, id, biz.EvolutionSuggestionStatus(to), actor, reason); err != nil {
+		return false, err
+	}
+	return true, nil
+}
 func (s *stubUnifiedEvolutionStore) UpdateMetadataKey(context.Context, string, string, string) error {
 	return s.stubSuggestionWriter.err
 }

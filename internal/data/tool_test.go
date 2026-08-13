@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -327,5 +328,33 @@ func TestToolWhereClause_Abnormal(t *testing.T) {
 	whereOff, _ := toolWhereClause(biz.ToolListQuery{})
 	if strings.Contains(whereOff, "tool_invocations") {
 		t.Fatalf("abnormal off must not reference tool_invocations: %s", whereOff)
+	}
+}
+
+// 参数质量信号必须落进 metadata_json（args_repaired / args_invalid），
+// 供 GetToolQualityStats 聚合"参数一次合法率"；空信号保持 "{}" 不污染。
+func TestInvocationMetaJSON_ArgsQualityFlags(t *testing.T) {
+	raw := invocationMetaJSON(biz.ToolInvocationWrite{ToolCallID: "tc1", ArgsRepaired: true, ArgsInvalid: true})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("unmarshal: %v (raw=%s)", err, raw)
+	}
+	if m["args_repaired"] != true || m["args_invalid"] != true || m["tool_call_id"] != "tc1" {
+		t.Fatalf("metadata mismatch: %v", m)
+	}
+	if got := invocationMetaJSON(biz.ToolInvocationWrite{}); got != "{}" {
+		t.Fatalf("empty write must yield {}, got %s", got)
+	}
+	// 仅 repaired 单信号
+	raw = invocationMetaJSON(biz.ToolInvocationWrite{ArgsRepaired: true})
+	var m2 map[string]any
+	if err := json.Unmarshal([]byte(raw), &m2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m2["args_repaired"] != true {
+		t.Fatalf("args_repaired missing: %v", m2)
+	}
+	if _, ok := m2["args_invalid"]; ok {
+		t.Fatalf("args_invalid must be omitted when false: %v", m2)
 	}
 }

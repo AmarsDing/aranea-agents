@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/apierror"
@@ -15,14 +14,6 @@ type txClientKey struct{}
 type rawTxKey struct{}
 
 func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	// #region debug-point data.tx.trace
-	// DEBUG ONLY: timing trace to identify which step inside ExecInTx hangs.
-	// (uses Info because smoke.yaml logging.level=info filters Debug)
-	t0 := time.Now()
-	tl := d.lg.With(loggateway.StepID("data.tx.trace"))
-	tl.Info("enter ExecInTx", loggateway.Bool("nested", ctx.Value(txClientKey{}) != nil))
-	defer func() { tl.Info("exit ExecInTx", loggateway.Duration(time.Since(t0).Milliseconds())) }()
-	// #endregion debug-point
 	if d == nil || d.entClient == nil {
 		return fn(ctx)
 	}
@@ -48,13 +39,7 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	} else {
 		detached, detachedCancel = context.WithCancel(context.Background())
 	}
-	// #region debug-point data.tx.trace
-	tl.Info("before d.entClient.Tx(detached)", loggateway.Duration(time.Since(t0).Milliseconds()))
-	// #endregion debug-point
 	tx, err := d.entClient.Tx(detached)
-	// #region debug-point data.tx.trace
-	tl.Info("after d.entClient.Tx(detached)", loggateway.Duration(time.Since(t0).Milliseconds()), loggateway.Err(err))
-	// #endregion debug-point
 	if err != nil {
 		detachedCancel()
 		d.lg.Error("transaction begin failed", loggateway.StepID("data.tx"), loggateway.Err(err))
@@ -64,18 +49,12 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	// the in-progress transaction and reuse it.
 	txCtx := context.WithValue(detached, txClientKey{}, tx)
 	txCtx = context.WithValue(txCtx, rawTxKey{}, tx)
-	// #region debug-point data.tx.trace
-	tl.Info("before fn(txCtx)", loggateway.Duration(time.Since(t0).Milliseconds()))
-	// #endregion debug-point
 	if err := fn(txCtx); err != nil {
 		_ = tx.Rollback()
 		detachedCancel()
 		d.lg.Warn("transaction rolled back", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
-	// #region debug-point data.tx.trace
-	tl.Info("after fn(txCtx) - caller ctx err", loggateway.Duration(time.Since(t0).Milliseconds()), loggateway.Err(ctx.Err()))
-	// #endregion debug-point
 	// If the caller's context was cancelled while the transaction was running,
 	// roll back instead of committing a result nobody will read.
 	if ctx.Err() != nil {
@@ -84,18 +63,12 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 		d.lg.Warn("transaction rolled back (caller context cancelled)", loggateway.StepID("data.tx"), loggateway.Err(ctx.Err()))
 		return ctx.Err()
 	}
-	// #region debug-point data.tx.trace
-	tl.Info("before tx.Commit", loggateway.Duration(time.Since(t0).Milliseconds()))
-	// #endregion debug-point
 	if err := tx.Commit(); err != nil {
 		detachedCancel()
 		d.lg.Error("transaction commit failed", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
 	detachedCancel()
-	// #region debug-point data.tx.trace
-	tl.Info("after tx.Commit", loggateway.Duration(time.Since(t0).Milliseconds()))
-	// #endregion debug-point
 	return nil
 }
 

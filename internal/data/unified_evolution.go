@@ -267,7 +267,12 @@ func (r *UnifiedEvolutionRepo) GetByID(ctx context.Context, id string) (*biz.Uni
 // Metadata merge uses the dialect-aware JSON helpers (JSONBBase + JSONSetMulti)
 // so it works on both SQLite TEXT and Postgres jsonb columns.
 func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, status string, actor string, reason string) error {
-	d := r.data.Dialect()
+	_, err := r.updateStatus(ctx, id, status, actor, reason, nil)
+	return err
+}
+
+// buildStatusUpdate generates the SET clause / args for a status transition.
+func (r *UnifiedEvolutionRepo) buildStatusUpdate(d Dialect, status, actor, reason string) ([]string, []any) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	setClauses := []string{"status = ?"}
 	args := []any{status}
@@ -291,14 +296,39 @@ func (r *UnifiedEvolutionRepo) UpdateStatus(ctx context.Context, id string, stat
 		setClauses = append(setClauses, "applied_at = ?")
 		args = append(args, now)
 	}
+	return setClauses, args
+}
+
+// updateStatus executes the status update with an optional status precondition.
+// from is nil for unconditional updates (UpdateStatus); non-nil for CAS (UpdateStatusCAS).
+func (r *UnifiedEvolutionRepo) updateStatus(ctx context.Context, id, status, actor, reason string, from []string) (int64, error) {
+	d := r.data.Dialect()
+	setClauses, args := r.buildStatusUpdate(d, status, actor, reason)
 	q := `UPDATE unified_evolution_suggestions SET ` + strings.Join(setClauses, ", ") + ` WHERE id = ?`
 	args = append(args, id)
-
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, d.RenumberPlaceholders(q), args...)
-	if err != nil {
-		return entErrToBizErr(err, "UNIFIED_EVO")
+	if len(from) > 0 {
+		ph := make([]string, len(from))
+		for i, s := range from {
+			ph[i] = "?"
+			args = append(args, s)
+		}
+		q += ` AND status IN (` + strings.Join(ph, ", ") + `)`
 	}
-	return nil
+
+	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, d.RenumberPlaceholders(q), args...)
+	if err != nil {
+		return 0, entErrToBizErr(err, "UNIFIED_EVO")
+	}
+	affected, _ := result.RowsAffected()
+	return affected, nil
+}
+
+func (r *UnifiedEvolutionRepo) UpdateStatusCAS(ctx context.Context, id string, from []string, to string, actor string, reason string) (bool, error) {
+	affected, err := r.updateStatus(ctx, id, to, actor, reason, from)
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 // UpdateMetadataKey sets a single JSON-string key in the metadata column,

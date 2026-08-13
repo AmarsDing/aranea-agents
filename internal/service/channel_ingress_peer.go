@@ -95,7 +95,7 @@ func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRo
 	if err != nil {
 		return func() {}
 	}
-	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret", h.lg)
+	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 	if err != nil || strings.TrimSpace(sec) == "" {
 		return func() {}
 	}

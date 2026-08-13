@@ -1,3 +1,5 @@
+// TECH-DEBT(COG): file_lines=1162, 上限=500（AS-COG-01）—— 待按职责拆分：
+// 查询（SearchAgents/extras）/ 写入（Create/Update/Delete）/ prompt 文件持久化 子文件。
 package data
 
 import (
@@ -1104,6 +1106,8 @@ func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) e
 	return r.data.ExecInTx(ctx, fn)
 }
 
+// ReorderAgents is a stub: manual ordering is not persisted (P3, LIST-07).
+// Implementation requires a sort_order column migration + proto RPC + frontend wiring.
 func (r *agentRepo) ReorderAgents(ctx context.Context, ids []string) error {
 	return nil
 }

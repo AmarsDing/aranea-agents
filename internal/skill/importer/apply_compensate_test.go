@@ -31,6 +31,8 @@ type stubSkillRepo struct {
 	storageDirs map[string]string
 	// appendedInputs records every AppendImportedVersion call (overwrite path).
 	appendedInputs []skill.ImportVersionInput
+	// failOnAppend causes AppendImportedVersion to fail (overwrite DB-failure injection).
+	failOnAppend bool
 	// archivedIDs records every ArchiveSkill call (merge retire path).
 	archivedIDs []string
 	// derivedFrom records SetSkillDerivedFrom calls: skill ID → source IDs.
@@ -70,6 +72,9 @@ func (r *stubSkillRepo) GetSkillStorageDir(_ context.Context, id string) (string
 
 func (r *stubSkillRepo) AppendImportedVersion(_ context.Context, in skill.ImportVersionInput) (skill.Skill, error) {
 	r.appendedInputs = append(r.appendedInputs, in)
+	if r.failOnAppend {
+		return skill.Skill{}, errors.New("simulated append failure")
+	}
 	return skill.Skill{ID: in.SkillID}, nil
 }
 

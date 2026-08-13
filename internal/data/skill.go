@@ -669,36 +669,30 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 }
 
 func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {
-	now := nowRFC3339()
 	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	n, err := tx.PlatformSkill.Update().
-		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
-		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Save(ctx)
+	// B1 fix: physical delete. Soft-delete tombstones blocked same-slug
+	// re-creation because skill_key has a full-table unique index (no status
+	// filter). Delete versions first to maintain referential integrity; any
+	// failure rolls back the whole tx so skill + versions stay atomic.
+	if _, vErr := tx.SkillVersion.Delete().
+		Where(skillversion.SkillIDEQ(id)).
+		Exec(ctx); vErr != nil {
+		return entErrToBizErr(vErr, apierror.DomainSkill)
+	}
+
+	n, err := tx.PlatformSkill.Delete().
+		Where(platformskill.IDEQ(id)).
+		Exec(ctx)
 	if err != nil {
 		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	if n == 0 {
-		return apierror.NotFound(apierror.DomainSkill, "skill not found or already deleted")
-	}
-
-	// Mark associated versions as deleted to prevent orphan access.
-	// B-10 fix: version deletion failure must be fatal to maintain referential
-	// integrity. Returning the error triggers tx.Rollback() via defer, so the
-	// skill soft-delete is also rolled back — keeping skill + versions atomic.
-	if _, vErr := tx.SkillVersion.Update().
-		Where(skillversion.SkillIDEQ(id)).
-		SetStatus("deleted").
-		SetUpdatedAt(now).
-		Save(ctx); vErr != nil {
-		return entErrToBizErr(vErr, apierror.DomainSkill)
+		return apierror.NotFound(apierror.DomainSkill, "skill not found")
 	}
 
 	return entErrToBizErr(tx.Commit(), apierror.DomainSkill)

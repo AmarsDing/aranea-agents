@@ -922,11 +922,38 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 // applyOverwrite executes the overwrite_duplicate path: writes the candidate
 // files into the existing skill's storage directory and appends a new version
 // (parent = current latest) while refreshing name/description/tags.
+//
+// S1 fix (disk consistency): the existing directory is backed up before any
+// write. If the DB append fails, the original on-disk content is restored —
+// otherwise the filesystem watcher would sync the half-applied new files as
+// an unintended version even though the import reported failure.
 func (e *Engine) applyOverwrite(ctx context.Context, p skillCreateParams) (biz.Skill, error) {
+	backupDir := p.targetDir + ".overwrite-backup"
+	_ = os.RemoveAll(backupDir) // clear stale backup left by a crashed run
+	backedUp := false
+	if _, statErr := os.Stat(p.targetDir); statErr == nil {
+		if err := os.Rename(p.targetDir, backupDir); err != nil {
+			return biz.Skill{}, fmt.Errorf("backup existing skill dir: %w", err)
+		}
+		backedUp = true
+	}
+	restore := func() {
+		_ = os.RemoveAll(p.targetDir)
+		if backedUp {
+			if err := os.Rename(backupDir, p.targetDir); err != nil {
+				e.lg.Warn("applyOverwrite: failed to restore disk after DB failure",
+					loggateway.StepID("skill.import"),
+					loggateway.Str("dir", p.targetDir),
+					loggateway.Err(err))
+			}
+		}
+	}
+
 	if _, err := writeSkillFiles(p.targetDir, p.files); err != nil {
+		restore()
 		return biz.Skill{}, err
 	}
-	return e.repo.AppendImportedVersion(ctx, biz.SkillImportVersionInput{
+	skill, err := e.repo.AppendImportedVersion(ctx, biz.SkillImportVersionInput{
 		SkillID:     p.updateSkillID,
 		Name:        p.name,
 		Description: p.description,
@@ -934,6 +961,12 @@ func (e *Engine) applyOverwrite(ctx context.Context, p skillCreateParams) (biz.S
 		Tags:        p.tags,
 		Triggers:    manifest.Parse(p.body).Triggers,
 	})
+	if err != nil {
+		restore()
+		return biz.Skill{}, err
+	}
+	_ = os.RemoveAll(backupDir)
+	return skill, nil
 }
 
 func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metrics biz.SkillSimilarityMetrics) {

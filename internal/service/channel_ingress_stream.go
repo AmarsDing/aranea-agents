@@ -9,6 +9,24 @@ import (
 	"aranea-agents/internal/channel/preview"
 )
 
+// handleStreamQueuedOutcome 统一处理 turn 被排队（前面有活跃 run）的流式路径收尾：
+// 发送 queued ACK + 记录 queued delivery，并标记 turnQueued。
+func (h *ChannelIngress) handleStreamQueuedOutcome(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, result biz.TurnResult, turnQueued *bool) error {
+	pendingID := strings.TrimSpace(result.PendingID)
+	if pendingID == "" && h.chat != nil {
+		pendingID = h.chat.LastPendingMessageID(sessionID)
+	}
+	if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+		return err
+	}
+	h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
+	if turnQueued != nil {
+		*turnQueued = true
+	}
+	return nil
+}
+
 func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, turnInput biz.TurnInput, contentPreview *string, previewMessageID *string, turnQueued *bool) error {
 	meta := ev.OutboundMeta
 	if meta == nil {
@@ -44,37 +62,13 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	result, err := h.runNativeTurnWithBusyRetry(ctx, chRow, platform, turnInput)
 	if err != nil {
 		if isTurnMessageQueued(err) || result.Outcome == biz.TurnOutcomeQueued {
-			pendingID := strings.TrimSpace(result.PendingID)
-			if pendingID == "" && h.chat != nil {
-				pendingID = h.chat.LastPendingMessageID(sessionID)
-			}
-			if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
-				h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
-				return err
-			}
-			h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
-			if turnQueued != nil {
-				*turnQueued = true
-			}
-			return nil
+			return h.handleStreamQueuedOutcome(ctx, chRow, ev, platform, ltCfg, sessionID, result, turnQueued)
 		}
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err
 	}
 	if result.Outcome == biz.TurnOutcomeQueued {
-		pendingID := strings.TrimSpace(result.PendingID)
-		if pendingID == "" && h.chat != nil {
-			pendingID = h.chat.LastPendingMessageID(sessionID)
-		}
-		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
-			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
-			return err
-		}
-		h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
-		if turnQueued != nil {
-			*turnQueued = true
-		}
-		return nil
+		return h.handleStreamQueuedOutcome(ctx, chRow, ev, platform, ltCfg, sessionID, result, turnQueued)
 	}
 	_ = interrupted // admission may have cancelled prior run; preview still valid
 

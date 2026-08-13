@@ -19,6 +19,8 @@ import (
 )
 
 // ChannelIngress bridges external channel webhooks to in-process chat turns.
+// TECH-DEBT(COG): struct fields=17, 上限=15 —— 后续可拆分为 InboundAcceptor /
+// TurnExecutor / DeliveryCoordinator 三个子管理器以降低认知复杂度（AS-COG-01）。
 type ChannelIngress struct {
 	channels       *biz.ChannelUsecase
 	turnJobs       *biz.ChannelTurnJobUsecase
@@ -236,7 +238,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "credentials", http.StatusInternalServerError)
 			return nil
 		}
-		encryptKey, err := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key", h.lg)
+		encryptKey, err := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key")
 		if err != nil {
 			h.lg.Warn("encrypt_key 凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
@@ -259,7 +261,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
-		verTok, err := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token", h.lg)
+		verTok, err := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token")
 		if err != nil {
 			h.lg.Warn("verification_token 凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
@@ -345,7 +347,7 @@ func (h *ChannelIngress) Close() {
 	}
 }
 
-func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string, lg loggateway.Logger) (string, error) {
+func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string) (string, error) {
 	key = strings.TrimSpace(key)
 	for _, c := range creds {
 		if !strings.EqualFold(strings.TrimSpace(c.CredentialKey), key) {
@@ -363,7 +365,7 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 // loadRequiredCredential resolves a credential and fails closed when missing/unresolved.
 // Callers should return HTTP 403 when ok is false.
 func (h *ChannelIngress) loadRequiredCredential(ctx context.Context, channelID string, creds []biz.ChannelCredential, key string) (string, bool) {
-	val, err := resolveCredentialPlain(ctx, h.channels, creds, key, h.lg)
+	val, err := resolveCredentialPlain(ctx, h.channels, creds, key)
 	if err != nil || strings.TrimSpace(val) == "" {
 		h.lg.Warn("channel credential missing or unresolved",
 			loggateway.StepID("channel.credential.resolve_fail"),

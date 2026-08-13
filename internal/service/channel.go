@@ -654,7 +654,7 @@ func (s *ChannelService) testFeishuLive(ctx context.Context, configJSON string, 
 
 // testSlackLive performs a live slack auth.test.
 func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
@@ -666,7 +666,7 @@ func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, c
 
 // testTelegramLive performs a live telegram getMe test.
 func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
@@ -678,11 +678,11 @@ func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string
 
 // testWechatILinkLive performs a live wechat_ilink getconfig probe (read-only).
 func (s *ChannelService) testWechatILinkLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured，请先扫码登录"}
 	}
-	baseURL, _ := resolveCredentialPlain(ctx, s.uc, creds, "baseurl", s.lg)
+	baseURL, _ := resolveCredentialPlain(ctx, s.uc, creds, "baseurl")
 	if err := wechatilink.TestConnection(ctx, lark.DefaultHTTPClient(), baseURL, token, s.lg); err != nil {
 		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
 	}

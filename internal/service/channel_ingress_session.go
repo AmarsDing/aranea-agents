@@ -209,10 +209,23 @@ func (h *ChannelIngress) shouldSkipTurnErrorReply(ctx context.Context, chRow biz
 	phase := h.chat.ActiveSessionRunPhase(ctx, sessionID)
 	switch phase {
 	case biz.SessionRunPhaseDurable:
+		h.lg.Warn("跳过超时错误回复：session 存在 durable run，等待其自行投递结果",
+			loggateway.StepID("channel.turn.error_reply_skipped"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("run_phase", string(phase)),
+			loggateway.Err(execErr),
+		)
 		return true
 	default:
 	}
 	if h.chat.HasActiveRun(sessionID) {
+		h.lg.Warn("跳过超时错误回复：session 存在活跃 run，等待其自行投递结果",
+			loggateway.StepID("channel.turn.error_reply_skipped"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(execErr),
+		)
 		return true
 	}
 	return false

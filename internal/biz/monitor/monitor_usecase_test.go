@@ -1355,6 +1355,55 @@ func TestEvaluateAlerts_ZeroTotalDoesNotAutoRecover(t *testing.T) {
 	}
 }
 
+func TestEvaluateAlerts_RegistryNoDataDoesNotAutoRecover(t *testing.T) {
+	// Registry path: empty data window signals NoData; the state machine must
+	// not interpret it as value=0 and falsely recover a firing alert.
+	recoveredCalled := false
+	notifyCalled := false
+	repo := &mockRepo{
+		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
+			return []monitor.AlertRule{
+				{
+					ID:              "r1",
+					MetricKey:       "runner.error_rate",
+					Threshold:       0.5,
+					WindowMinutes:   60,
+					Enabled:         true,
+					CooldownMinutes: 60,
+					FiringState:     monitor.AlertFiringStateFiring,
+				},
+			}, nil
+		},
+		countMonitorEventsSinceFn: func(context.Context, string, string, string, string) (int32, error) {
+			return 0, nil
+		},
+		insertMonitorEventFn: func(context.Context, monitor.EventWrite) error {
+			return nil
+		},
+		updateAlertFiringStateFn: func(_ context.Context, _ string, state monitor.AlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
+			if state == monitor.AlertFiringStateRecovered {
+				recoveredCalled = true
+			}
+			return nil
+		},
+	}
+	notifier := &mockNotifier{
+		notifyFn: func(context.Context, monitor.AlertRule, map[string]any) {
+			notifyCalled = true
+		},
+	}
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
+	uc.EvaluateAlerts(context.Background())
+	if recoveredCalled {
+		t.Error("Firing alert should NOT auto-recover when metric reports NoData")
+	}
+	if notifyCalled {
+		t.Error("Notify should not be called when metric reports NoData")
+	}
+}
+
 func TestEvaluateAlerts_RegistryMetric(t *testing.T) {
 	notifyCalled := false
 	repo := &mockRepo{

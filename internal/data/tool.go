@@ -295,7 +295,7 @@ func (r *toolRepo) ListToolCatalogEntries(ctx context.Context, keys []string) ([
 		where += ` AND t.workspace_id IN (?, ?)`
 		args = append(args, ids[0], ids[1])
 	}
-	q := `SELECT t.tool_key, t.config_json, t.default_config_json, t.requires_confirmation FROM tools t WHERE ` + where
+	q := `SELECT t.tool_key, t.config_json, t.default_config_json, t.requires_confirmation, t.metadata_json FROM tools t WHERE ` + where
 	rows, err := client.QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
 		return nil, entErrToBizErr(err, "TOOL")
@@ -304,7 +304,7 @@ func (r *toolRepo) ListToolCatalogEntries(ctx context.Context, keys []string) ([
 	var out []biz.ToolCatalogEntry
 	for rows.Next() {
 		var e biz.ToolCatalogEntry
-		if err := rows.Scan(&e.Key, &e.ConfigJSON, &e.DefaultConfigJSON, &e.RequiresConfirmation); err != nil {
+		if err := rows.Scan(&e.Key, &e.ConfigJSON, &e.DefaultConfigJSON, &e.RequiresConfirmation, &e.MetadataJSON); err != nil {
 			return nil, entErrToBizErr(err, "TOOL")
 		}
 		out = append(out, e)
@@ -698,6 +698,12 @@ func invocationMetaJSON(in biz.ToolInvocationWrite) string {
 	}
 	if in.ChunkCount > 0 {
 		m["chunk_count"] = in.ChunkCount
+	}
+	if in.ArgsRepaired {
+		m["args_repaired"] = true
+	}
+	if in.ArgsInvalid {
+		m["args_invalid"] = true
 	}
 	if len(m) == 0 {
 		return "{}"

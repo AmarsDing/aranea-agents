@@ -39,6 +39,9 @@ type taskPlannerImpl struct {
 	// P3 测试钩子——生产为 nil，注入默认实现；测试可替换。
 	retryBackoffFn func(attempt int) time.Duration
 	llmAttemptFn   decomposeAttemptFn
+	// maxDecomposeAttempts 限制瞬时故障重试上限（F8/Y3）：<=0 时用默认值 5。
+	// 无限重试会让 turn 永远卡在「规划中」并持续烧 LLM 调用。
+	maxDecomposeAttempts int
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。

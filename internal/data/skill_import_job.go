@@ -27,11 +27,11 @@ func NewSkillImportJobRepo(data *Data, lg loggateway.Logger) *SkillImportJobRepo
 func (r *SkillImportJobRepo) Create(ctx context.Context, job biz.SkillImportJob) error {
 	candidatesJSON, err := json.Marshal(job.Candidates)
 	if err != nil {
-		return entErrToBizErr(err, "SKILL_IMPORT")
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	conflictGroupsJSON, err := json.Marshal(job.ConflictGroups)
 	if err != nil {
-		return entErrToBizErr(err, "SKILL_IMPORT")
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	builder := r.data.RW().Write(ctx).SkillImportJob.Create().
 		SetID(job.JobID).
@@ -79,11 +79,11 @@ func (r *SkillImportJobRepo) UpdateStatus(ctx context.Context, jobID string, sta
 func (r *SkillImportJobRepo) UpdateCandidates(ctx context.Context, jobID string, candidates []biz.SkillImportCandidate, conflictGroups []biz.SkillConflictGroup) error {
 	candidatesJSON, err := json.Marshal(candidates)
 	if err != nil {
-		return entErrToBizErr(err, "SKILL_IMPORT")
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	conflictGroupsJSON, err := json.Marshal(conflictGroups)
 	if err != nil {
-		return entErrToBizErr(err, "SKILL_IMPORT")
+		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	_, err = r.data.RW().Write(ctx).SkillImportJob.UpdateOneID(jobID).
 		SetCandidatesJSON(rawToMap(candidatesJSON)).

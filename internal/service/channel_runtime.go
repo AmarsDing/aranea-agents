@@ -28,7 +28,7 @@ func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, le
 		return nil
 	}
 	lookup := func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
-		return resolveCredentialPlain(ctx, channels, creds, key, lg)
+		return resolveCredentialPlain(ctx, channels, creds, key)
 	}
 	mgr := runtime.NewManager(channels, ingress, lookup, lg, router)
 	if leases != nil {

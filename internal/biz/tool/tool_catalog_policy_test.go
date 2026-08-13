@@ -37,7 +37,7 @@ func TestMergeToolConfigMaps(t *testing.T) {
 			want:        map[string]any{"api_key": "abc", "timeout": float64(30)},
 		},
 		{
-			name:        "overlapping keys default wins",
+			name:        "overlapping keys second arg (overlay) wins",
 			baseJSON:    `{"api_key": "base", "timeout": 10}`,
 			defaultJSON: `{"api_key": "default"}`,
 			want:        map[string]any{"api_key": "default", "timeout": float64(10)},
@@ -134,6 +134,24 @@ func TestMergeJSONMapInto(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPropagateAllowAliases_shellExecCanonical(t *testing.T) {
+	m := map[string]bool{"shell_exec": true}
+	PropagateAllowAliases(m)
+	if !m["exec_command"] {
+		t.Fatalf("shell_exec allow must propagate to exec_command; got %v", m)
+	}
+}
+
+func TestPropagateAllowAliases_execCommandInput(t *testing.T) {
+	// exec_command is a runtime tool name (not catalog key); users may write
+	// it in allow JSON, and the propagation must fill the canonical key too.
+	m := map[string]bool{"exec_command": true}
+	PropagateAllowAliases(m)
+	if !m["shell_exec"] {
+		t.Fatalf("exec_command allow must propagate back to shell_exec; got %v", m)
 	}
 }
 

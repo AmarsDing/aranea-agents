@@ -101,7 +101,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, toRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useQuasar } from 'quasar';
 import type { AlertMetricInfo, MonitorAlertRule } from '../../features/monitor/types';
 import MonitorAlertMetricCatalog from './MonitorAlertMetricCatalog.vue';
 import MonitorAlertRuleCard from './MonitorAlertRuleCard.vue';
@@ -113,6 +112,8 @@ const props = defineProps<{
   loading: boolean;
   saving: boolean;
   metricsLoading: boolean;
+  /** 破坏性操作确认由 Page/composable 层承载（红线 #4），组件只在确认通过后修改本地状态。 */
+  confirmRemove: (ruleName: string) => Promise<boolean>;
 }>();
 
 const emit = defineEmits<{
@@ -121,7 +122,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 
 const editableRules = ref<MonitorAlertRule[]>([]);
 
@@ -163,23 +163,13 @@ function addRule() {
   });
 }
 
-function removeRule(idx: number) {
+async function removeRule(idx: number) {
   const rule = editableRules.value[idx];
+  if (!rule) return;
   // 已持久化的规则（有 id）删除后需点保存才生效，先确认避免误删。
   // 未保存的新规则（无 id）仅存在于本地，直接移除。
-  if (!rule?.id) {
-    editableRules.value.splice(idx, 1);
-    return;
-  }
-  $q.dialog({
-    title: t('monitorPage.alerts.removeConfirmTitle'),
-    message: t('monitorPage.alerts.removeConfirmMessage', { name: rule.name || rule.id }),
-    cancel: { label: t('common.cancel'), flat: true, noCaps: true },
-    ok: { label: t('monitorPage.alerts.rule.delete'), noCaps: true, color: 'negative' },
-    persistent: true,
-  }).onOk(() => {
-    editableRules.value.splice(idx, 1);
-  });
+  if (rule.id && !(await props.confirmRemove(rule.name || rule.id))) return;
+  editableRules.value.splice(idx, 1);
 }
 
 function onSave() {
@@ -192,7 +182,7 @@ function onSave() {
 
 <style scoped>
 .monitor-alert-rule-item {
-  border-bottom: 1px solid var(--q-color-grey-3, #e0e0e0);
+  border-bottom: 1px solid var(--color-border-soft);
 }
 
 .monitor-alert-rule-item--first {

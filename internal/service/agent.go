@@ -1,3 +1,5 @@
+// TECH-DEBT(COG): file_lines=1059, 上限=500（AS-COG-01）—— 待按职责拆分：
+// prompt 文件管理 / 工具策略 / 模板与复制 子文件，参照 chat_orchestrator_turn.go 拆分模式。
 package service
 
 import (

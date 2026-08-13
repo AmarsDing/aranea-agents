@@ -23,9 +23,12 @@ const (
 	defaultPersistMaxRetries  = 5
 	defaultPersistBackoff     = 100 * time.Millisecond
 	defaultDeadLetterCapacity = 512
-	// persistEnqueueTimeout 是持久化事件入队的保底等待上限：
-	// 脱离 turn ctx 取消后仍等待该时长，队列持续打满才放弃。
-	persistEnqueueTimeout = 5 * time.Second
+	// defaultPersistEnqueueTimeout 是持久化事件入队的保底等待上限：
+	// 脱离 turn ctx 取消后仍等待该时长，队列持续打满才落死信。
+	defaultPersistEnqueueTimeout = 5 * time.Second
+	// deadLetterErrLogInterval 是死信 Error 日志的限流窗口（见
+	// Sequencer.deadLetterErrThrottle）。
+	deadLetterErrLogInterval = 10 * time.Second
 )
 
 // EventBus is the publish sink for v2 events (fan-out to WS subscribers).
@@ -55,6 +58,12 @@ type Sequencer struct {
 	persistChan  chan persistItem
 	deadLetter   *deadLetterRing
 
+	// deadLetterErrThrottle limits the "persist exhausted retries" Error log.
+	// When the DB is down, every persist-class event exhausts its retries and
+	// would otherwise emit one Error per event for as long as the outage
+	// lasts. Only the log line is throttled — dead-lettering itself is not.
+	deadLetterErrThrottle *loggateway.Throttle
+
 	// P1-R2b: optional durable dead-letter store. When set, dead-lettered
 	// events are also written to the event_dead_letter table and replayed
 	// (startup + periodic) until success or attempt cap.
@@ -66,12 +75,17 @@ type Sequencer struct {
 	publishWG sync.WaitGroup
 	persistWG sync.WaitGroup
 
-	deltaBatchInterval time.Duration
-	persistMaxRetries  int
-	persistBackoff     time.Duration
+	deltaBatchInterval    time.Duration
+	persistMaxRetries     int
+	persistBackoff        time.Duration
+	persistEnqueueTimeout time.Duration
 
 	closed  atomic.Bool
 	closeMu sync.Mutex
+	// pubMu guards the check-closed-then-send critical section in Publish/Flush
+	// against Close closing publishQueue (Y6: send-on-closed-channel panic).
+	// Senders take RLock; Close takes Lock only around the channel close.
+	pubMu sync.RWMutex
 }
 
 type publishTask struct {
@@ -87,14 +101,15 @@ type persistItem struct {
 }
 
 type config struct {
-	publishBuffer      int
-	persistBuffer      int
-	deltaBatchInterval time.Duration
-	persistMaxRetries  int
-	persistBackoff     time.Duration
-	deadLetterCapacity int
-	outbox             biz.EventDeliveryOutboxRepo
-	deadLetterStore    biz.EventDeadLetterRepo
+	publishBuffer         int
+	persistBuffer         int
+	deltaBatchInterval    time.Duration
+	persistMaxRetries     int
+	persistBackoff        time.Duration
+	persistEnqueueTimeout time.Duration
+	deadLetterCapacity    int
+	outbox                biz.EventDeliveryOutboxRepo
+	deadLetterStore       biz.EventDeadLetterRepo
 	// disableReplayLoop keeps the background dead-letter replay worker from
 	// starting. Test-only: tests that drive replayDeadLettersOnce manually
 	// must set this, otherwise the startup sweep races the manual call and
@@ -114,6 +129,14 @@ func WithPersistMaxRetries(n int) Option        { return func(c *config) { c.per
 func WithPersistBackoff(d time.Duration) Option { return func(c *config) { c.persistBackoff = d } }
 func WithDeadLetterCapacity(n int) Option       { return func(c *config) { c.deadLetterCapacity = n } }
 
+// WithPersistEnqueueTimeout overrides how long Publish waits for a persist-class
+// event to enter publishQueue after the caller's ctx is detached (Y5). When the
+// wait expires the event is dead-lettered (durable if a store is configured)
+// instead of being silently dropped.
+func WithPersistEnqueueTimeout(d time.Duration) Option {
+	return func(c *config) { c.persistEnqueueTimeout = d }
+}
+
 // WithEventOutbox injects the durable critical-event outbox (B-06).
 // When set, critical events are written to the outbox after entity persist
 // (WBPF path) and before bus fan-out so WS reconnect can replay by last_event_id.
@@ -124,31 +147,34 @@ func WithEventOutbox(repo biz.EventDeliveryOutboxRepo) Option {
 // NewSequencer constructs a Sequencer and starts its publish + persist workers.
 func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option) *Sequencer {
 	cfg := config{
-		publishBuffer:      defaultPublishBufferSize,
-		persistBuffer:      defaultPersistBufferSize,
-		deltaBatchInterval: defaultDeltaBatchInterval,
-		persistMaxRetries:  defaultPersistMaxRetries,
-		persistBackoff:     defaultPersistBackoff,
-		deadLetterCapacity: defaultDeadLetterCapacity,
+		publishBuffer:         defaultPublishBufferSize,
+		persistBuffer:         defaultPersistBufferSize,
+		deltaBatchInterval:    defaultDeltaBatchInterval,
+		persistMaxRetries:     defaultPersistMaxRetries,
+		persistBackoff:        defaultPersistBackoff,
+		persistEnqueueTimeout: defaultPersistEnqueueTimeout,
+		deadLetterCapacity:    defaultDeadLetterCapacity,
 	}
 	for _, o := range opts {
 		o(&cfg)
 	}
 
 	s := &Sequencer{
-		repoSet:            rs,
-		outbox:             cfg.outbox,
-		bus:                bus,
-		lg:                 lg.With(loggateway.Domain("sequencer_v2")),
-		seqAssigner:        NewDefaultSeqAssigner(),
-		publishQueue:       make(chan publishTask, cfg.publishBuffer),
-		persistChan:        make(chan persistItem, cfg.persistBuffer),
-		deadLetter:         newDeadLetterRing(cfg.deadLetterCapacity),
-		deadLetterStore:    cfg.deadLetterStore,
-		replayDone:         make(chan struct{}),
-		deltaBatchInterval: cfg.deltaBatchInterval,
-		persistMaxRetries:  cfg.persistMaxRetries,
-		persistBackoff:     cfg.persistBackoff,
+		repoSet:               rs,
+		outbox:                cfg.outbox,
+		bus:                   bus,
+		lg:                    lg.With(loggateway.Domain("sequencer_v2")),
+		seqAssigner:           NewDefaultSeqAssigner(),
+		publishQueue:          make(chan publishTask, cfg.publishBuffer),
+		persistChan:           make(chan persistItem, cfg.persistBuffer),
+		deadLetter:            newDeadLetterRing(cfg.deadLetterCapacity),
+		deadLetterErrThrottle: loggateway.NewThrottle(deadLetterErrLogInterval),
+		deadLetterStore:       cfg.deadLetterStore,
+		replayDone:            make(chan struct{}),
+		deltaBatchInterval:    cfg.deltaBatchInterval,
+		persistMaxRetries:     cfg.persistMaxRetries,
+		persistBackoff:        cfg.persistBackoff,
+		persistEnqueueTimeout: cfg.persistEnqueueTimeout,
 	}
 
 	s.publishWG.Add(1)
@@ -178,8 +204,12 @@ func (s *Sequencer) SeqAssigner() SeqAssigner { return s.seqAssigner }
 //     允许丢弃——turn 已结束，残留 delta 无意义。
 //   - 持久化事件（含 task/turn/step 终态）：不受 turn ctx 取消影响，脱离原 ctx
 //     有限等待保底入队；仅当队列持续打满（管道停滞）超过 persistEnqueueTimeout
-//     才放弃并 Error 告警。
+//     才落入死信（Y5：可重放，不再静默丢弃）。
 func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
+	// Y6: hold RLock across the closed-check + channel send so Close cannot
+	// close publishQueue in between (send-on-closed-channel panic).
+	s.pubMu.RLock()
+	defer s.pubMu.RUnlock()
 	if s.closed.Load() {
 		s.lg.Warn("sequencer closed, event dropped", loggateway.Str("kind", string(e.EventKind())))
 		return
@@ -193,13 +223,16 @@ func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 		}
 		return
 	}
-	enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistEnqueueTimeout)
+	enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.persistEnqueueTimeout)
 	defer cancel()
 	select {
 	case s.publishQueue <- publishTask{event: e, persist: true, enqueuedAt: time.Now()}:
 	case <-enqueueCtx.Done():
-		s.lg.Error("persist event enqueue timeout, dropped",
+		// Y5: never silently drop a persist-class event — dead-letter it so the
+		// ring/durable store can replay the entity upsert once the pipe recovers.
+		s.lg.Error("persist event enqueue timeout, sending to dead-letter",
 			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(enqueueCtx.Err()))
+		s.pushDeadLetter(e)
 	}
 }
 
@@ -207,7 +240,7 @@ func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 // (only bus-published; no entity Upsert).
 func (s *Sequencer) shouldPersist(e biz.Event) bool {
 	switch e.(type) {
-	case *biz.StepStreamingEvent, *biz.SystemNoticeEvent, *biz.HeartbeatEvent, *biz.RunStatusEvent:
+	case *biz.StepStreamingEvent, *biz.SystemNoticeEvent, *biz.HeartbeatEvent, *biz.RunStatusEvent, *biz.SkillCatalogEvent:
 		return false
 	default:
 		return true
@@ -222,6 +255,10 @@ func (s *Sequencer) shouldPersist(e biz.Event) bool {
 // establishing a happens-before relationship that eliminates data races
 // between publishLoop and test assertions.
 func (s *Sequencer) Flush(ctx context.Context) error {
+	// Y6: hold RLock for the whole flush so Close cannot close publishQueue
+	// (or persistChan, after publishLoop drains) while markers are in flight.
+	s.pubMu.RLock()
+	defer s.pubMu.RUnlock()
 	if s.closed.Load() {
 		return nil
 	}
@@ -315,13 +352,17 @@ func (s *Sequencer) publishLoop() {
 			}
 			// Handle current event
 			if ev, ok := task.event.(*biz.StepStreamingEvent); ok {
-				// Start a new pending streaming with timer
+				// Start a new pending streaming with timer.
+				// B1 fix: the timer callback must capture a LOCAL channel copy.
+				// Capturing the shared pendingDone variable lets a late-firing
+				// timer close the NEXT event's channel (premature flush) or nil
+				// (panic → publishLoop dies → pipeline silently stalls).
 				pendingStreaming = ev
-				pendingDone = make(chan struct{})
+				done := make(chan struct{})
+				pendingDone = done
 				pendingTimer = time.AfterFunc(s.deltaBatchInterval, func() {
-					close(pendingDone)
+					close(done)
 				})
-				_ = pendingTimer
 				continue
 			}
 			s.processTask(task)
@@ -528,12 +569,30 @@ func (s *Sequencer) persistWithRetry(e biz.Event) {
 			return
 		}
 		lastErr = err
-		// Exponential backoff: 1x, 2x, 4x, 8x, 16x
-		time.Sleep(s.persistBackoff * time.Duration(1<<attempt))
+		// Exponential backoff: 1x, 2x, 4x, 8x, 16x.
+		// Y7: no sleep after the final attempt — the event is about to be
+		// dead-lettered, so the extra backoff only delays the failure signal.
+		if attempt < s.persistMaxRetries-1 {
+			time.Sleep(s.persistBackoff * time.Duration(1<<attempt))
+		}
 	}
-	s.lg.Error("persist exhausted retries, sending to dead-letter",
-		loggateway.Str("kind", string(e.EventKind())), loggateway.Err(lastErr))
+	s.pushDeadLetterThrottledLog(e, lastErr)
 	s.pushDeadLetter(e)
+}
+
+// pushDeadLetterThrottledLog emits the retry-exhaustion Error at most once
+// per deadLetterErrLogInterval. Dead-lettering itself (pushDeadLetter) is
+// never throttled — only the log line is.
+func (s *Sequencer) pushDeadLetterThrottledLog(e biz.Event, lastErr error) {
+	ok, suppressed := s.deadLetterErrThrottle.Allow()
+	if !ok {
+		return
+	}
+	fields := []loggateway.Field{loggateway.Str("kind", string(e.EventKind())), loggateway.Err(lastErr)}
+	if suppressed > 0 {
+		fields = append(fields, loggateway.Int("suppressed", suppressed))
+	}
+	s.lg.Error("persist exhausted retries, sending to dead-letter", fields...)
 }
 
 // Close performs graceful shutdown: close publishQueue → drain publishLoop →
@@ -544,7 +603,10 @@ func (s *Sequencer) Close() error {
 	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	// Y6: wait for in-flight Publish/Flush senders before closing the channel.
+	s.pubMu.Lock()
 	close(s.publishQueue)
+	s.pubMu.Unlock()
 	s.publishWG.Wait()
 	close(s.persistChan)
 	s.persistWG.Wait()
@@ -579,7 +641,15 @@ func (r *deadLetterRing) Push(e biz.Event) {
 	defer r.mu.Unlock()
 	id := deadLetterID(e)
 	if _, ok := r.seen[id]; ok {
-		return // already in dead letter; skip
+		// A5: same entity already dead-lettered — replace the stale entry with
+		// the newest event (aligns with the durable store's upsert semantics;
+		// replay/inspection must see the latest entity state, not an old one).
+		for i, existing := range r.buf {
+			if deadLetterID(existing) == id {
+				r.buf = append(r.buf[:i], r.buf[i+1:]...)
+				break
+			}
+		}
 	}
 	if len(r.buf) >= r.cap {
 		// Evict oldest

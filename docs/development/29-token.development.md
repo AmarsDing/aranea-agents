@@ -658,3 +658,44 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - `internal/biz/monitor/alert_metric_cache_hit.go`（N7 告警改 key P50Ratio）
 - `internal/service/chat_turn_metrics.go`（N3 history_tokens + N6 top_tool_schemas 日志字段）
 - `docs/development/29-token.design.md`（N7 §9.3/§9.4 修订说明）
+
+---
+
+## 16. Deferred 工具加载深度修复（2026-08-13 第二轮，P0/P1/P2 共 8 项）
+
+> 背景：§14 WP-4 实现了两段式工具加载框架（split + catalog cue + tool_load/tool_search + assemble 集成），但第二轮深度审查发现 8 项关键缺陷会导致功能空转或不完整。
+
+### 16.1 发现与修复
+
+| # | 发现 | 修复 | 状态 |
+|---|------|------|------|
+| P0-A | tool_load 返回空 schema：Activate 只标记不返回 InputSchema，模型拿到激活成功但无法构造参数 | Activate 返回完整 Declaration（含 InputSchema），tool_load 将其透传给模型；同时调用 toolsnapshot.InvalidateFromContext 强制刷新 tools 块 | ✅ |
+| P0-B | DeferredCallableTool 是 factory 模式：Declaration 无 InputSchema，Call 内部二次初始化 factory（延迟创建 + 装饰器丢失） | 改 eager-inner 模式：包装已完全装配的工具（含完整 schema + 超时/结果预算/缓存装饰器），Declaration() 始终返回内部工具完整声明 | ✅ |
+| P0-C | DeferredToolManager 用内存 map 存激活状态：进程内全局共享，跨 session 泄漏 | 激活状态存入 session state（`temp:deferred:activated`，JSON []string），per-session 隔离；readActivatedSet/writeActivatedSet 通过 InvocationFromContext 访问 | ✅ |
+| P1-A | tool_search 自动激活工具（Discover）：模型搜到即调，绕过 tool_load 显式激活流程 | 移除 Discover 调用，tool_search 纯检索不激活；模型须显式 tool_load 后才可调用 | ✅ |
+| P1-B | tool_assembly.go 手动配置粒度错误：ToolsDeferredJSON 传 registry 名但 SplitCoreResidentTools 期望 biz key | 手动配置路径增加 RegistryNamesForBizKeys 转换；自动分离路径保持 biz key 粒度 | ✅ |
+| P2-A | aliasTool/confirmationTool 无 InnerTool：filter 无法穿透包装层检查延迟工具激活状态 | aliasTool、confirmationTool、confirmationCallable 均实现 InnerTool()；ToolFilter 递归解包（InnerTool → Original，8 层防循环） | ✅ |
+| P2-B | ToolSet 前缀工具 catalog 名与 LLM 调用名不匹配：catalog 用基础名（read_file）但 LLM 看到运行时名（file_read_file） | catalog 存运行时名（Name）+ 基础名（BaseName）；Activate 同时激活两个名；tool_load 返回 schema 时 Name 覆盖为运行时名 | ✅ |
+| P2-C | assemble 路径 ToolSet 扫描遗漏：只匹配延迟注册表名，未处理 ToolSet 内工具逐个注册 | assembleDeferredTools 扫描所有 ToolSet，名称匹配延迟注册表名时其所有工具均注册为延迟工具（运行时名 = ToolSet名_工具名） | ✅ |
+
+### 16.2 验收
+
+1. ✅ `go build ./internal/tools/... ./internal/agent/...` 通过
+2. ✅ `go test ./internal/tools/deferred/... -count=1 -v` 52 例全绿（catalog_cue 7 + deferred_tool 6 + tool_search 4 + tool_load 7 + integration 7 + registry_map 7 + split 6 + tool_search_test 4 + tool_load_test 4）
+3. ⏳ 生产回归：验证两段式加载在真实 Agent 对话中生效（catalog cue 注入 + tool_load 激活 + 工具调用成功）
+
+### 16.3 改动文件（本迭代）
+
+- `internal/tools/deferred/activation.go`（P0-C 新增：per-session 激活状态管理）
+- `internal/tools/deferred/deferred_tool.go`（P0-B 重构：eager-inner 模式 + InnerTool）
+- `internal/tools/deferred/tool_load.go`（P0-A 返回完整 schema + 快照失效 + 运行时名/基础名双激活）
+- `internal/tools/deferred/tool_search.go`（P1-A 移除 Discover + P2-A 递归解包 filter）
+- `internal/tools/deferred/toolset.go`（P0-B 配套：DeferredToolSet 适配 eager-inner）
+- `internal/tools/deferred/deferred_tool_test.go`（P0-B 重写测试）
+- `internal/tools/deferred/integration_test.go`（P0-C/P2-A/P2-B 重写测试）
+- `internal/tools/deferred/tool_load_test.go`（P0-A/P2-B 重写测试）
+- `internal/tools/deferred/tool_search_test.go`（P1-A 移除 Factory 字段）
+- `internal/tools/toolset_assemble.go`（P2-C ToolSet 扫描 + 运行时名）
+- `internal/tools/runtime_alias.go`（P2-A InnerTool）
+- `internal/tools/trpc/confirmation.go`（P2-A InnerTool）
+- `internal/agent/tool_assembly.go`（P1-B 手动配置粒度修正）

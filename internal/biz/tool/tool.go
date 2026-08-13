@@ -175,6 +175,11 @@ type ToolInvocationWrite struct {
 	ToolCallID    string
 	Streaming     bool
 	ChunkCount    int
+	// ArgsRepaired：模型产出的参数 JSON 经 repair guard 修复后才可解析
+	// （29-token 工具质量度量：repaired 率高 = 该工具 schema 在诱导坏参数）。
+	ArgsRepaired bool
+	// ArgsInvalid：参数 JSON 非法且 repair guard 无法修复（透传后工具层报错）。
+	ArgsInvalid bool
 }
 
 type ToolInvocationParam struct {
@@ -283,6 +288,10 @@ type ToolCatalogEntry struct {
 	ConfigJSON           string
 	DefaultConfigJSON    string
 	RequiresConfirmation bool
+	// MetadataJSON carries tool metadata (e.g. result-cache policy). Used by
+	// the agent cache hooks, which must stay on this cheap indexed lookup
+	// instead of GetTool's aggregation query on every invocation.
+	MetadataJSON string
 }
 
 // Stability:stable

@@ -79,7 +79,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	if err != nil {
 		return err
 	}
-	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url", n.lg)
+	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url")
 	if err != nil || webhookURL == "" {
 		return apierror.BadRequest(apierror.DomainMonitor, "channel has no webhook_url credential")
 	}
@@ -87,12 +87,10 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	if metricKey == "" {
 		metricKey = "unknown"
 	}
-	metricVal := payload["error_rate"]
+	// 上游 evaluateMetricValue 统一以 "value"/"threshold" 键构造 payload。
+	metricVal := payload["value"]
 	if metricVal == nil {
-		metricVal = payload["missing_count"]
-	}
-	if metricVal == nil {
-		metricVal = payload[metricKey]
+		metricVal = "n/a"
 	}
 	text := fmt.Sprintf("[Monitor Alert] %s — %s=%v (rule %s)", rule.Name, metricKey, metricVal, rule.ID)
 	body := map[string]any{"text": text, "alert": payload}

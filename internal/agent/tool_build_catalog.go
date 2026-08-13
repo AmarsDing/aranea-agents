@@ -91,10 +91,11 @@ func loadToolBuildCatalog(ctx context.Context, agentID string, eff map[string]bo
 	return c
 }
 
-// mergedConfigMaps computes per-tool runtime config maps: base = config_json
-// (falling back to default_config_json), overlaid with the agent's config
-// override. Tools missing from the snapshot are skipped (fail-soft), matching
-// the previous per-key GetTool error handling.
+// mergedConfigMaps computes per-tool runtime config maps: default_config_json
+// (fallback) as the base, overlaid with config_json (user config wins on
+// overlapping keys), then the agent's config override on top. Tools missing
+// from the snapshot are skipped (fail-soft), matching the previous per-key
+// GetTool error handling.
 func (c *toolBuildCatalog) mergedConfigMaps(eff map[string]bool) map[string]map[string]any {
 	if c == nil {
 		return nil
@@ -108,11 +109,9 @@ func (c *toolBuildCatalog) mergedConfigMaps(eff map[string]bool) map[string]map[
 		if !ok {
 			continue
 		}
-		base := strings.TrimSpace(e.ConfigJSON)
-		if base == "" {
-			base = strings.TrimSpace(e.DefaultConfigJSON)
-		}
-		merged[key] = biz.MergeToolConfigJSON(base, c.overrides[key].ConfigOverrideJSON)
+		m := biztool.MergeToolConfigMaps(e.DefaultConfigJSON, e.ConfigJSON)
+		biztool.MergeJSONMapInto(m, c.overrides[key].ConfigOverrideJSON)
+		merged[key] = m
 	}
 	return merged
 }

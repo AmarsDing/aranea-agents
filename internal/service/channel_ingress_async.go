@@ -34,23 +34,33 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	platform string,
 	ltCfg biz.ChannelLongTaskConfig,
 ) error {
-	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
+	// Resolve TurnInput once (incl. session) and reuse it for job creation,
+	// avoiding a redundant prepareChannelChatRequest call inside createTurnJob (P1 #3).
+	peerKey, peerErr := h.inboundPeerKey(chRow, ev)
+	var turnInput biz.TurnInput
+	var inputErr error
+	sessionID := ""
+	if peerErr == nil {
+		turnInput, inputErr = h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
+		if inputErr == nil {
+			sessionID = strings.TrimSpace(turnInput.SessionID)
+		}
+	}
+
+	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform, sessionID)
 	if err != nil {
 		return err
 	}
 	ctx = withChannelTurnJobID(ctx, jobID)
 
-	peerKey, err := h.inboundPeerKey(chRow, ev)
-	if err != nil {
-		h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
-		return err
+	if peerErr != nil {
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, peerErr.Error(), "", "")
+		return peerErr
 	}
-	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
-	if err != nil {
-		h.markTurnJobByEvent(ctx, biz.JobEventFail, err.Error(), "", "")
-		return err
+	if inputErr != nil {
+		h.markTurnJobByEvent(ctx, biz.JobEventFail, inputErr.Error(), "", "")
+		return inputErr
 	}
-	sessionID := strings.TrimSpace(turnInput.SessionID)
 	input := strings.TrimSpace(ev.Text)
 	if strings.HasPrefix(strings.ToLower(input), "/async") {
 		input = strings.TrimSpace(input[len("/async"):])

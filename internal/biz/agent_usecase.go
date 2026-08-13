@@ -1,3 +1,5 @@
+// TECH-DEBT(COG): file_lines=963, 上限=500（AS-COG-01）—— 待按职责拆分：
+// CRUD / hydrate 与 legacy 迁移 / prompt 文件 / 批量操作 子文件，参照 biz/session 子 Usecase 分解模式。
 package biz
 
 import (
@@ -479,9 +481,9 @@ func (u *AgentUsecase) create(ctx context.Context, in Agent, skipProviderValidat
 	}
 	files = withFileDefaults(files)
 	// DEV-10 FIXED: ConfigJSON is now a read-only projection of Settings + Files.
-	// It is no longer written to the database; computeConfigJSON / hydrate
-	// generates it on-demand for read paths. The in.ConfigJSON field is
-	// intentionally left empty so the data layer stores no stale snapshot.
+	// It is no longer written to the database; hydrate generates it on-demand
+	// for read paths. The in.ConfigJSON field is intentionally left empty so
+	// the data layer stores no stale snapshot.
 	in.ConfigJSON = ""
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
@@ -711,6 +713,8 @@ func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string)
 	return nil
 }
 
+// ReorderAgents persists a manual ordering of agents.
+// TECH-DEBT: data 层为 stub（不持久化），前端拖拽排序刷新后丢失（P3，见 docs/development/3-agent-list.development.md LIST-07）。
 func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error {
 	return u.position.ReorderAgents(ctx, ids)
 }
@@ -726,33 +730,6 @@ func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (File
 		return FileTokenEstimates{}, err
 	}
 	return estimateTokensForFiles(a.Files), nil
-}
-
-func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string, error) {
-	a, err := u.reader.GetAgentByID(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	settings, err := u.settings.GetAgentRuntimeSettings(ctx, id)
-	if err != nil {
-		if !stderrors.Is(err, shared.ErrNotFound) {
-			return "", err
-		}
-		settings = withSettingDefaults(settingsFromLegacyConfig(a.ConfigJSON))
-		settings.AgentID = id
-	}
-	files, err := u.files.ListAgentPromptFiles(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	cj, err := configJSONFromSettings(withSettingDefaults(settings), files)
-	if err != nil {
-		return "", err
-	}
-	HydrateAgentKind(&a)
-	cj = EmbedAgentKindInConfigJSON(cj, a.AgentKind, a.A2AProxy, u.lg)
-	cj = mergeEvaluationFromLegacy(cj, a.ConfigJSON, u.lg)
-	return cj, nil
 }
 
 func mergeEvaluationFromLegacy(computed, legacy string, lg loggateway.Logger) string {

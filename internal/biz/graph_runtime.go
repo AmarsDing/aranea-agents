@@ -113,7 +113,10 @@ type GraphRuntimeEvent struct {
 	NodeID     string
 	Error      string
 	StepNumber int
-	RawEvent   GraphRawEvent
+	// Retrying marks an intermediate node error emitted while the framework
+	// is retrying the node; consumers must NOT treat it as a terminal failure.
+	Retrying bool
+	RawEvent GraphRawEvent
 }
 
 // GraphExecutionControl provides execution lifecycle methods for a graph runtime.

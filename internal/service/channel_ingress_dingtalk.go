@@ -23,7 +23,7 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	secret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "secret", h.lg)
+	secret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "secret")
 	if err := dingtalk.VerifySign(r.URL.Query().Get("timestamp"), r.URL.Query().Get("sign"), secret); err != nil {
 		h.lg.Warn("钉钉 Webhook 签名验证失败",
 			loggateway.StepID("channel.dingtalk.webhook.verify_fail"),

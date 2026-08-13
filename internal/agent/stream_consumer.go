@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -132,8 +135,26 @@ func V2ProjectMetaFromV1(m ProjectMeta) v2.ProjectMeta {
 	}
 }
 
-func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
+func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result EventStreamResult) {
 	c.consumeStart = time.Now()
+	// Y2: panic 兜底。consume 在投影/处理链路上经过 projector、metrics、
+	// provider 等大量代码，任何一处 panic 若向上穿透，finalize 不会执行——
+	// turn/task 永远停在 running，前端卡死。recover 后按 Cancelled 收尾并
+	// 照常发布终态事件。
+	defer func() {
+		if r := recover(); r != nil {
+			c.lg.Error("stream consume panic recovered",
+				loggateway.StepID("stream.consume_panic"),
+				loggateway.Any("panic", r),
+				loggateway.Str("stack", string(debug.Stack())))
+			c.result.HasError = true
+			c.result.LastError = fmt.Sprintf("stream consumer panic: %v", r)
+			c.canceled = true
+			c.drainEventsAsync(events)
+			c.finalize()
+			result = c.result
+		}
+	}()
 	evIdx := 0
 	for ev := range events {
 		evIdx++
@@ -188,6 +209,10 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStream
 			c.canceled = true
 		}
 		if !c.handleEvent(ev) {
+			// Y1: 早退（doom-loop）必须后台排干 events channel——trpc runner
+			// 生产者 goroutine 仍在写入，不排干会在 buffer 满后永久阻塞泄漏
+			// （LLM 流也持续烧 token）。canceled 已在检测点置位（终态 Cancelled）。
+			c.drainEventsAsync(events)
 			c.finalize()
 			return c.result
 		}
@@ -331,6 +356,9 @@ func (c *turnStreamConsumer) handleEvent(ev *trpcevent.Event) bool {
 				c.result.HasError = true
 				c.result.DoomLoopDetected = true
 				c.result.LastError = "doom loop detected: repetitive LLM output, turn aborted"
+				// Y1: turn 被中止，终态必须是 Cancelled 而非 Completed——
+				// finalize 以 c.canceled 决定 OnTurnEndEnhanced 的终态。
+				c.canceled = true
 				c.lg.Warn("doom loop detected, aborting turn stream",
 					loggateway.StepID("stream.doom_loop"),
 					loggateway.Str("invocation_id", c.projectMeta.InvocationID))
@@ -376,6 +404,17 @@ func (c *turnStreamConsumer) publishContextUsageStep() {
 		"author":                author,
 	}
 	c.v2Projector.EmitSystemEvent(c.turnCtx, biz.ActivityKindNotice, "context_usage", meta)
+}
+
+// drainEventsAsync 在后台排干剩余 trpc 事件。consume 早退（doom-loop /
+// panic recover）后，runner 生产者 goroutine 仍在向 channel 写入；不排干
+// 会在 buffer 满后永久阻塞（goroutine 泄漏 + LLM 流持续消耗）。生产者
+// 完成 run 后关闭 channel，drainer 随之退出。红线 #13：走 safego。
+func (c *turnStreamConsumer) drainEventsAsync(events <-chan *trpcevent.Event) {
+	safego.GoBackground("stream-consumer-drain", func() {
+		for range events {
+		}
+	})
 }
 
 func (c *turnStreamConsumer) finalize() {

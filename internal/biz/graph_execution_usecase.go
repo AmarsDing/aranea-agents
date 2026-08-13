@@ -596,8 +596,13 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 	case DomainEventGraphNodeError:
 		var persistSnap *GraphExecution
 		exec.execMu.Lock()
-		exec.ErrorMessage = e.Error
-		uc.applyExecTransition(exec, GraphExecEventFail)
+		if !e.Retrying {
+			// Final failure (retries exhausted or no retry policy): fail the execution.
+			exec.ErrorMessage = e.Error
+			uc.applyExecTransition(exec, GraphExecEventFail)
+		}
+		// Intermediate retry failures only record the step attempt snapshot;
+		// the retry may still succeed and the graph may complete normally.
 		exec.Steps = upsertGraphStep(exec.Steps, GraphStepSnapshot{
 			NodeID:    e.NodeID,
 			StepIndex: e.StepNumber,
@@ -609,7 +614,9 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		exec.execMu.Unlock()
 		if uc.runEventSink != nil {
 			uc.runEventSink.OnNodeCompleted(exec.ctx, exec.ID, exec.GraphID, e.NodeID, e.StepNumber, "failed", e.Error)
-			uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
+			if !e.Retrying {
+				uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
+			}
 		}
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))

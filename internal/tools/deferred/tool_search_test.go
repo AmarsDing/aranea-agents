@@ -7,9 +7,9 @@ import (
 
 func TestToolSearchTool_SearchByQuery(t *testing.T) {
 	catalog := []DeferredToolEntry{
-		{Name: "arxiv_search", Description: "Search academic papers on arXiv", Category: "search", Factory: nil},
-		{Name: "wikipedia_search", Description: "Search Wikipedia articles", Category: "search", Factory: nil},
-		{Name: "email_send", Description: "Send email messages", Category: "communication", Factory: nil},
+		{Name: "arxiv_search", Description: "Search academic papers on arXiv", Category: "search"},
+		{Name: "wikipedia_search", Description: "Search Wikipedia articles", Category: "search"},
+		{Name: "email_send", Description: "Send email messages", Category: "communication"},
 	}
 	tool := NewToolSearchTool(catalog)
 	result, err := tool.Call(context.Background(), []byte(`{"query": "search"}`))
@@ -27,7 +27,7 @@ func TestToolSearchTool_SearchByQuery(t *testing.T) {
 
 func TestToolSearchTool_NoMatch(t *testing.T) {
 	catalog := []DeferredToolEntry{
-		{Name: "arxiv_search", Description: "Search academic papers", Category: "search", Factory: nil},
+		{Name: "arxiv_search", Description: "Search academic papers", Category: "search"},
 	}
 	tool := NewToolSearchTool(catalog)
 	result, err := tool.Call(context.Background(), []byte(`{"query": "nonexistent"}`))
@@ -48,7 +48,7 @@ func TestToolSearchTool_NoMatch(t *testing.T) {
 
 func TestToolSearchTool_Declaration(t *testing.T) {
 	catalog := []DeferredToolEntry{
-		{Name: "test_tool", Description: "A test tool", Category: "test", Factory: nil},
+		{Name: "test_tool", Description: "A test tool", Category: "test"},
 	}
 	tool := NewToolSearchTool(catalog)
 	decl := tool.Declaration()
@@ -59,8 +59,8 @@ func TestToolSearchTool_Declaration(t *testing.T) {
 
 func TestToolSearchTool_CatalogNames(t *testing.T) {
 	catalog := []DeferredToolEntry{
-		{Name: "tool_a", Description: "A", Category: "test", Factory: nil},
-		{Name: "tool_b", Description: "B", Category: "test", Factory: nil},
+		{Name: "tool_a", Description: "A", Category: "test"},
+		{Name: "tool_b", Description: "B", Category: "test"},
 	}
 	tool := NewToolSearchTool(catalog)
 	names := tool.CatalogNames()

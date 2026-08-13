@@ -16,9 +16,27 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// assertExecutionAccess resolves the execution's graph and enforces the same
+// workspace access check as definition-plane RPCs (B3 IDOR fix). It returns
+// the execution on success so callers can reuse it without a second lookup.
+func (s *GraphService) assertExecutionAccess(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
+	exec, err := s.uc.GetExecution(ctx, executionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertGraphAccess(ctx, exec.GraphID); err != nil {
+		return nil, err
+	}
+	return exec, nil
+}
+
 func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGraphRequest) (*graphv1.ExecuteGraphResponse, error) {
 	if strings.TrimSpace(req.GetGraphId()) == "" {
 		return nil, apierror.BadRequest("GRAPH", "graph_id is required")
+	}
+	// B3: enforce workspace access before starting the run.
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil {
+		return nil, err
 	}
 	var initialState map[string]any
 	if req.InitialState != nil {
@@ -41,6 +59,8 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 	if s.graphTel != nil {
 		s.graphTel.Bind(execID, traceBridge)
 	}
+	// def is used only for the orchestration projector; access was already
+	// verified above, so a reload miss here is non-fatal.
 	def, defErr := s.uc.GetGraph(ctx, req.GraphId)
 	exec, err := s.uc.ExecuteGraph(ctx, req.GraphId, req.SessionId, execID, initialState)
 	if err != nil {
@@ -87,7 +107,7 @@ func (s *GraphService) ExecuteGraph(ctx context.Context, req *graphv1.ExecuteGra
 }
 
 func (s *GraphService) GetGraphExecution(ctx context.Context, req *graphv1.GetGraphExecutionRequest) (*graphv1.GetGraphExecutionResponse, error) {
-	exec, err := s.uc.GetExecution(ctx, req.ExecutionId)
+	exec, err := s.assertExecutionAccess(ctx, req.ExecutionId)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +138,10 @@ func (s *GraphService) GetGraphExecution(ctx context.Context, req *graphv1.GetGr
 }
 
 func (s *GraphService) ListGraphExecutions(ctx context.Context, req *graphv1.ListGraphExecutionsRequest) (*graphv1.ListGraphExecutionsResponse, error) {
+	// B3: enforce workspace access before listing runs.
+	if err := s.assertGraphAccess(ctx, req.GraphId); err != nil {
+		return nil, err
+	}
 	var opts []biz.GraphRunListOption
 	if req.Status != nil && *req.Status != "" {
 		opts = append(opts, biz.GraphRunListOption{Status: *req.Status})
@@ -155,6 +179,9 @@ func (s *GraphService) CancelGraphExecution(ctx context.Context, req *graphv1.Ca
 		loggateway.StepID("graph.cancel"),
 		loggateway.Str("execution_id", req.GetExecutionId()),
 	)
+	if _, err := s.assertExecutionAccess(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	err := s.uc.CancelExecution(ctx, req.ExecutionId)
 	if err != nil {
 		s.lg.Error("graph run cancel failed",
@@ -192,6 +219,9 @@ func (s *GraphService) ResumeGraph(ctx context.Context, req *graphv1.ResumeGraph
 		loggateway.StepID("graph.resume"),
 		loggateway.Str("execution_id", req.GetExecutionId()),
 	)
+	if _, err := s.assertExecutionAccess(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	exec, err := s.uc.ResumeExecution(ctx, req.ExecutionId, resumeValue)
 	if err != nil {
 		s.lg.Error("graph run resume failed",
@@ -237,7 +267,7 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 	// Use step_index to locate the execution step directly. The biz-layer
 	// TimeTravelGetState signature accepts checkpointID/namespace (not stepIndex),
 	// so we resolve the step from the execution and use its OutputState.
-	exec, err := s.uc.GetExecution(ctx, req.ExecutionId)
+	exec, err := s.assertExecutionAccess(ctx, req.ExecutionId)
 	if err != nil {
 		return nil, err
 	}
@@ -261,6 +291,9 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 }
 
 func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListCheckpointsRequest) (*graphv1.ListCheckpointsResponse, error) {
+	if _, err := s.assertExecutionAccess(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	limit := int(req.Limit)
 	if limit <= 0 {
 		limit = 10
@@ -287,6 +320,9 @@ func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListChe
 }
 
 func (s *GraphService) GetStateSnapshot(ctx context.Context, req *graphv1.GetStateSnapshotRequest) (*graphv1.GetStateSnapshotResponse, error) {
+	if _, err := s.assertExecutionAccess(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	result, err := s.uc.GetStateSnapshot(ctx, req.ExecutionId, req.CheckpointId, req.Namespace)
 	if err != nil {
 		return nil, err
@@ -321,6 +357,9 @@ func (s *GraphService) GetStateSnapshot(ctx context.Context, req *graphv1.GetSta
 }
 
 func (s *GraphService) EditState(ctx context.Context, req *graphv1.EditStateRequest) (*graphv1.EditStateResponse, error) {
+	if _, err := s.assertExecutionAccess(ctx, req.ExecutionId); err != nil {
+		return nil, err
+	}
 	var patch map[string]any
 	if req.Patch != nil {
 		patch = req.Patch.AsMap()

@@ -30,7 +30,16 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	// the downstream chat turn (runChatTurnWithInput) share one trace id.
 	ctx, _ = turntrace.EnsureTraceID(ctx)
 
-	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
+	// Resolve TurnInput once (incl. session) and reuse it for both job creation
+	// and downstream execution, avoiding redundant prepareChannelChatRequest /
+	// ensureChannelSession DB calls (P1 #3).
+	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
+	sessionID := ""
+	if turnInputErr == nil {
+		sessionID = strings.TrimSpace(turnInput.SessionID)
+	}
+
+	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform, sessionID)
 	if err != nil {
 		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, err); replyErr != nil {
 			h.lg.Warn("异步回复投递失败",
@@ -43,14 +52,6 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	h.markTurnJobByEvent(ctx, biz.JobEventStart, "", "", "")
 	if jobID != "" {
 		arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, biz.ChannelTurnJobStatusRunning).Inc()
-	}
-
-	// Resolve TurnInput once and pass it downstream to avoid redundant
-	// prepareChannelChatRequest / ensureChannelSession DB calls (P1 #3).
-	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
-	sessionID := ""
-	if turnInputErr == nil {
-		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}
 	h.bindChannelPendingMode(sessionID, chRow.ConfigJSON)
 	defer h.clearChannelPendingMode(sessionID)

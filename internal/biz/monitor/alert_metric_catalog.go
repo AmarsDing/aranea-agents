@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"aranea-agents/pkg/loggateway"
@@ -39,11 +40,14 @@ func (u *Usecase) ListAlertMetricCatalog(ctx context.Context) []AlertMetricCatal
 			window = time.Hour
 		}
 		if v, err := m.Evaluate(ctx, window); err != nil {
-			u.lg.Warn("ListAlertMetricCatalog: evaluate failed",
-				loggateway.StepID("monitor.alert_metric_eval_fail"),
-				loggateway.Str("metric_key", info.Key),
-				loggateway.Err(err),
-			)
+			// NoData is an expected idle-system state, not a failure — stay silent.
+			if !errors.Is(err, ErrAlertMetricNoData) {
+				u.lg.Warn("ListAlertMetricCatalog: evaluate failed",
+					loggateway.StepID("monitor.alert_metric_eval_fail"),
+					loggateway.Str("metric_key", info.Key),
+					loggateway.Err(err),
+				)
+			}
 		} else {
 			entry.CurrentValue = v
 		}

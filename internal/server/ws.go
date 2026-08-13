@@ -61,6 +61,14 @@ type TaskResumer interface {
 	ResumeInterruptedTask(ctx context.Context, sessionID, taskID string) error
 }
 
+// SkillCatalogPusher pushes the session's agent-visible skill catalog to WS
+// clients (design 69 Phase 3). Implemented by *service.ChatService; kept
+// narrow for ISP and testability. Best-effort: implementations must not
+// return an error — failures are logged and swallowed.
+type SkillCatalogPusher interface {
+	PushSkillCatalog(ctx context.Context, sessionID string)
+}
+
 type ChatSender interface {
 	SendChatMessage(ctx context.Context, req *chatv1.SendChatMessageRequest) (*chatv1.SendChatMessageResponse, error)
 	EnqueueUserMessage(ctx context.Context, req *chatv1.EnqueueUserMessageRequest) (*chatv1.EnqueueUserMessageResponse, error)
@@ -99,6 +107,9 @@ type WSServer struct {
 	// resumer handles "resume_task" upstream messages (L3). Optional: nil
 	// rejects resume requests with a ws_error notice.
 	resumer TaskResumer
+	// catalogPusher pushes the agent-visible skill catalog once per chat
+	// session connection (design 69 Phase 3). Optional: nil skips the push.
+	catalogPusher SkillCatalogPusher
 	// clientBridge coordinates client tool invocations (client_open_app /
 	// client_open_url) routed to desktop-companion connections (design 74 §6).
 	// Optional: nil rejects client_tool.result uplinks as no-ops.
@@ -127,6 +138,14 @@ func (s *WSServer) SetTaskResumer(r TaskResumer) {
 		return
 	}
 	s.resumer = r
+}
+
+// SetSkillCatalogPusher wires the skill-catalog push hook (design 69 Phase 3).
+func (s *WSServer) SetSkillCatalogPusher(p SkillCatalogPusher) {
+	if s == nil {
+		return
+	}
+	s.catalogPusher = p
 }
 
 // NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus
@@ -296,6 +315,18 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	// Send connected message
 	s.sendConnected(wc, sessionID, lastEventID)
+
+	// Design 69 Phase 3: push the agent-visible skill catalog once per chat
+	// session connection so the frontend can render the skill entry strip.
+	// Async + best-effort: DB lookups must not delay the WS handshake; the
+	// connection is already registered (store.add above), so the bus fan-out
+	// reaches it. connCtx lives for the connection lifetime — a dropped
+	// connection aborts the push.
+	if !globalMode && !probeMode && s.catalogPusher != nil {
+		safego.Go(wc.connCtx, "ws-skill-catalog-push", func() {
+			s.catalogPusher.PushSkillCatalog(wc.connCtx, sessionID)
+		})
+	}
 
 	s.lg.Info("WebSocket 连接建立",
 		loggateway.StepID("ws.connected"),

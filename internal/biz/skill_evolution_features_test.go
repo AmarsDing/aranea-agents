@@ -738,6 +738,10 @@ func (w *orchStubWriter) UpdateStatus(_ context.Context, id string, status strin
 	w.statusCalls = append(w.statusCalls, id+":"+status)
 	return nil
 }
+func (w *orchStubWriter) UpdateStatusCAS(_ context.Context, id string, _ []string, to string, _ string, _ string) (bool, error) {
+	w.statusCalls = append(w.statusCalls, id+":"+to)
+	return true, nil
+}
 func (w *orchStubWriter) UpdateDraftBody(_ context.Context, _ string, _ string) error { return nil }
 func (w *orchStubWriter) UpdateLifecycleStatus(_ context.Context, _ string, _ string) error {
 	return nil

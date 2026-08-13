@@ -2,6 +2,7 @@ package monitor_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -191,11 +192,46 @@ func TestRunnerErrorRateMetric_Evaluate_RingBufferZeroTotal(t *testing.T) {
 	rb := monitor.NewMetricRingBuffer()
 	m := monitor.NewRunnerErrorRateMetric(nil, rb)
 	val, err := m.Evaluate(context.Background(), 60*time.Minute)
-	if err != nil {
-		t.Fatalf("Evaluate() error: %v", err)
+	if !errors.Is(err, monitor.ErrAlertMetricNoData) {
+		t.Fatalf("Evaluate() error = %v, want ErrAlertMetricNoData (empty window must not read as 0%% error rate)", err)
 	}
 	if val != 0 {
 		t.Errorf("Evaluate() = %.4f, want 0", val)
+	}
+}
+
+func TestRunnerErrorRateMetric_Evaluate_RepoZeroTotal(t *testing.T) {
+	repo := &mockRepo{
+		countMonitorEventsSinceFn: func(context.Context, string, string, string, string) (int32, error) {
+			return 0, nil
+		},
+	}
+	m := monitor.NewRunnerErrorRateMetric(repo, nil)
+	val, err := m.Evaluate(context.Background(), 60*time.Minute)
+	if !errors.Is(err, monitor.ErrAlertMetricNoData) {
+		t.Fatalf("Evaluate() error = %v, want ErrAlertMetricNoData", err)
+	}
+	if val != 0 {
+		t.Errorf("Evaluate() = %.4f, want 0", val)
+	}
+}
+
+func TestRunnerErrorRateMetric_Evaluate_RepoWithData(t *testing.T) {
+	repo := &mockRepo{
+		countMonitorEventsSinceFn: func(_ context.Context, _, status, _, _ string) (int32, error) {
+			if status == "" {
+				return 100, nil
+			}
+			return 25, nil
+		},
+	}
+	m := monitor.NewRunnerErrorRateMetric(repo, nil)
+	val, err := m.Evaluate(context.Background(), 60*time.Minute)
+	if err != nil {
+		t.Fatalf("Evaluate() error: %v", err)
+	}
+	if val != 0.25 {
+		t.Errorf("Evaluate() = %.4f, want 0.25", val)
 	}
 }
 

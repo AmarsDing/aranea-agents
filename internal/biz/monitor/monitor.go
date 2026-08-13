@@ -4,6 +4,7 @@ package monitor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -647,6 +648,13 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 					window = 60 * time.Minute
 				}
 				value, err := m.Evaluate(ctx, window)
+				if errors.Is(err, ErrAlertMetricNoData) {
+					// Empty window: no evidence for any state transition.
+					// Skip silently so a firing alert is not falsely recovered.
+					u.lg.Debug("EvaluateAlerts: no metric data in window, skipping",
+						loggateway.StepID("monitor.alert_eval_no_data"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey))
+					continue
+				}
 				if err != nil {
 					u.lg.Warn("EvaluateAlerts: metric evaluation failed",
 						loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))

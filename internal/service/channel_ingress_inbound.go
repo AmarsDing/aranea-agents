@@ -23,21 +23,22 @@ func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Chann
 	}
 	platform := inboundPlatform(chRow, ev, h.lg)
 
-	// Create TurnJob for governance tracking (P1 #1).
-	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
+	// Resolve TurnInput once (incl. session) and reuse it for both job creation
+	// and downstream execution, avoiding redundant prepareChannelChatRequest /
+	// ensureChannelSession DB calls (P1 #3). TurnJob 用于治理追踪（P1 #1）。
+	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
+	sessionID := ""
+	if turnInputErr == nil {
+		sessionID = strings.TrimSpace(turnInput.SessionID)
+	}
+
+	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform, sessionID)
 	if err != nil {
 		return "", err
 	}
 	h.markTurnJobByEvent(ctx, biz.JobEventStart, "", "", "")
 	if jobID != "" {
 		arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, biz.ChannelTurnJobStatusRunning).Inc()
-	}
-
-	// Resolve TurnInput once (avoids redundant prepareChannelChatRequest in runChatTurnWithOutcome).
-	turnInput, turnInputErr := h.resolveTurnInput(ctx, chRow, platform, ev)
-	sessionID := ""
-	if turnInputErr == nil {
-		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}
 
 	var execErr error

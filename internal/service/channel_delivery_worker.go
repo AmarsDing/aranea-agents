@@ -9,33 +9,12 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/preview"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
-
-func (h *ChannelIngress) runChatTurn(
-	ctx context.Context,
-	chRow biz.Channel,
-	titlePrefix string,
-	peerKey string,
-	peerID string,
-	content string,
-) (reply string, err error) {
-	ev := port.InboundEvent{PeerID: peerID, PeerKey: peerKey, Text: content}
-	platform := strings.TrimSpace(titlePrefix)
-	if platform == "" {
-		platform = biz.ChannelTypeFromConfig(chRow.ConfigJSON)
-	}
-	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
-	if err != nil {
-		return "", err
-	}
-	return result.Reply, nil
-}
 
 func (h *ChannelIngress) enqueueOutboundReply(
 	ctx context.Context,
@@ -272,7 +251,7 @@ func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx contex
 		lg.Warn("wechat app creds config json unmarshal failed", loggateway.StepID("channel.delivery.wechat_config"), loggateway.Err(err))
 	}
 	appID = strings.TrimSpace(env.Config.AppID)
-	appSecret, credErr := resolveCredentialPlain(ctx, channels, creds, "app_secret", lg)
+	appSecret, credErr := resolveCredentialPlain(ctx, channels, creds, "app_secret")
 	if credErr != nil {
 		lg.Warn("wechat app_secret 凭证解析失败", loggateway.StepID("channel.delivery.wechat_credential"), loggateway.Err(credErr))
 	}

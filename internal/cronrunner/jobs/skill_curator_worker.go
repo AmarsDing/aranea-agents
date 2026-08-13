@@ -67,12 +67,9 @@ func (w *CuratorWorker) Start(ctx context.Context) {
 
 func (w *CuratorWorker) runOnce(ctx context.Context) {
 	safego.Go(ctx, "skill.curator", func() {
-		// Expire pending suggestions that have exceeded the TTL.
-		if _, expireErr := w.uc.ExpirePendingSuggestions(ctx); expireErr != nil {
-			w.lg.Warn("curator worker expire pending suggestions failed",
-				loggateway.StepID("skill.curator.expire"), loggateway.Err(expireErr))
-		}
-
+		// Expiration of stale pending suggestions is owned by
+		// EvolutionOrchestratorWorker (orchestrator.ExpirePending → status
+		// 'expired'); the curator only runs the verification half.
 		if err := w.scanAll(ctx); err != nil {
 			w.lg.Warn("curator worker scan failed", loggateway.StepID("skill.curator.scan"), loggateway.Err(err))
 		}

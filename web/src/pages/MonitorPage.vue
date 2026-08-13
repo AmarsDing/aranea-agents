@@ -72,6 +72,7 @@
             :loading="alertRulesLoading"
             :saving="alertRulesSaving"
             :metrics-loading="alertMetricsLoading"
+            :confirm-remove="confirmRemoveAlertRule"
             @reload="loadAlertRules"
             @save="saveAlertRules"
           />
@@ -109,6 +110,7 @@
             @refresh-history="refreshHistory"
             @open-session="(evt) => openChatSession(evt.completionSessionId || evt.sessionId || '')"
             @open-in-runs="openLinkedRun"
+            @notify="notify"
           />
         </q-tab-panel>
         <q-tab-panel name="traces">
@@ -238,5 +240,6 @@ const {
   metricsLoading: alertMetricsLoading,
   load: loadAlertRules,
   save: saveAlertRules,
+  confirmRemoveRule: confirmRemoveAlertRule,
 } = useMonitorAlertRules();
 </script>

@@ -351,9 +351,24 @@ func (u *TeamUsecase) RecoverOrphanedRunningTeams(ctx context.Context) ([]Team, 
 			continue
 		}
 		for _, run := range runs {
-			if _, tErr := u.TransitionRunStatus(ctx, run.ID, TeamRunStatusFailed); tErr != nil {
-				u.lg.Warn("recover orphaned teams: failed to transition team run to failed",
+			// Only orphan pending/running runs. waiting_human/paused runs are
+			// owned by the graph-session HITL recovery channel (RecoverSessions +
+			// completion watch with HITL SLA timeout); force-failing them here
+			// would silently discard human verdicts after restart. Terminal runs
+			// are skipped to avoid Warn noise on every startup.
+			var target string
+			switch run.Status {
+			case TeamRunStatusPending:
+				target = TeamRunStatusCancelled
+			case TeamRunStatusRunning:
+				target = TeamRunStatusFailed
+			default:
+				continue
+			}
+			if _, tErr := u.TransitionRunStatus(ctx, run.ID, target); tErr != nil {
+				u.lg.Warn("recover orphaned teams: failed to transition team run to terminal status",
 					loggateway.Str("team_run_id", run.ID),
+					loggateway.Str("target_status", target),
 					loggateway.Err(tErr),
 				)
 			}

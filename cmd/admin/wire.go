@@ -916,6 +916,12 @@ func provideTaskResumer(svc *service.ChatService) server.TaskResumer {
 	return svc
 }
 
+// provideSkillCatalogPusher binds ChatService as the WS skill-catalog push
+// hook (design 69 Phase 3).
+func provideSkillCatalogPusher(svc *service.ChatService) server.SkillCatalogPusher {
+	return svc
+}
+
 func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, lg loggateway.Logger) *service.MemoryService {
 	enqueue := func(ctx context.Context, id int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
@@ -2877,12 +2883,14 @@ func provideWSServer(
 	sessionAuth server.SessionAuthorizer,
 	outbox biz.EventDeliveryOutboxRepo,
 	resumer server.TaskResumer,
+	catalogPusher server.SkillCatalogPusher,
 	clientBridge *clientbridge.Bridge,
 ) *server.WSServer {
 	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
 	if srv != nil {
 		srv.SetEventOutbox(outbox)
 		srv.SetTaskResumer(resumer)
+		srv.SetSkillCatalogPusher(catalogPusher)
 		srv.SetClientToolBridge(clientBridge)
 	}
 	return srv
@@ -3498,6 +3506,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideRunCanceller,
 		provideChatSender,
 		provideTaskResumer,
+		provideSkillCatalogPusher,
 		provideArtifactRuntimeService,
 		provideArtifactSigner,
 		provideMemoryService,

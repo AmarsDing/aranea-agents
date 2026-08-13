@@ -196,6 +196,9 @@ type ChannelDeliveryRepo interface {
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
 }
 
+// TECH-DEBT(COG): 复合 usecase 方法数>5, 上限=5 —— ChannelUsecase 同时承载 channel
+// CRUD、credential、delivery、health check、peer session、test 执行等职责，
+// 后续应按职责拆分（AS-COG-01 / DB-DEBT-05 同类）。
 type ChannelUsecase struct {
 	reader                 ChannelReader
 	writer                 ChannelWriter

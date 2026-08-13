@@ -122,6 +122,14 @@ func (a *FlowFileAppender) SetMaxBackups(n int) {
 	a.maxBackups = n
 }
 
+// SetWriteMutedUntilForTest overrides the circuit-breaker mute deadline so
+// tests can exercise the half-open probe path without waiting out the window.
+func (a *FlowFileAppender) SetWriteMutedUntilForTest(t time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.writeMutedUntil = t
+}
+
 func (a *FlowFileAppender) PurgeExcessBackupsExposed() int {
 	return a.purgeExcessBackups()
 }

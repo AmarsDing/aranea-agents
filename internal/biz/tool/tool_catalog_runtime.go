@@ -163,7 +163,8 @@ func toolRuntimeStatus(t Tool, platform *WebResearchSetting, readiness WebResear
 }
 
 func toolConfigReady(t Tool, platform *WebResearchSetting, readiness WebResearchReadinessFunc) bool {
-	cfg := MergeToolConfigMaps(t.ConfigJSON, t.DefaultConfigJSON)
+	// fallback 垫底、用户配置优先（BUG-2：此前参数顺序颠倒，默认值覆盖用户配置）。
+	cfg := MergeToolConfigMaps(t.DefaultConfigJSON, t.ConfigJSON)
 	switch t.Key {
 	case "google_search":
 		return configString(cfg, "api_key", "google_api_key") != "" &&

@@ -482,7 +482,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	wsTurnExecutor := provideWSTurnExecutor(chatService, loggatewayLogger)
 	sessionAuthorizer := server.NewSessionAuthorizer(sessionRepo, loggatewayLogger)
 	taskResumer := provideTaskResumer(chatService)
-	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer, bridge)
+	skillCatalogPusher := provideSkillCatalogPusher(chatService)
+	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer, skillCatalogPusher, bridge)
 	wsConnectionCounter := provideWSConnectionCounter(wsServer)
 	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
 	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender, runnerCompletionRepo)
@@ -1501,6 +1502,12 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 
 // provideTaskResumer binds ChatService as the WS resume_task handler (L3).
 func provideTaskResumer(svc *service.ChatService) server.TaskResumer {
+	return svc
+}
+
+// provideSkillCatalogPusher binds ChatService as the WS skill-catalog push
+// hook (design 69 Phase 3).
+func provideSkillCatalogPusher(svc *service.ChatService) server.SkillCatalogPusher {
 	return svc
 }
 
@@ -3372,12 +3379,14 @@ func provideWSServer(
 	sessionAuth server.SessionAuthorizer,
 	outbox biz.EventDeliveryOutboxRepo,
 	resumer server.TaskResumer,
+	catalogPusher server.SkillCatalogPusher,
 	clientBridge *clientbridge.Bridge,
 ) *server.WSServer {
 	srv := server.NewWSServerFromInfra(c, infra, canceller, sender, turnExecutor, runtimeConf, lg, eventBus, sessionAuth)
 	if srv != nil {
 		srv.SetEventOutbox(outbox)
 		srv.SetTaskResumer(resumer)
+		srv.SetSkillCatalogPusher(catalogPusher)
 		srv.SetClientToolBridge(clientBridge)
 	}
 	return srv

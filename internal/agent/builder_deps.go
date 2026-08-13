@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools/cache"
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/deferred"
@@ -143,7 +144,11 @@ type TRPCExtensionDeps struct {
 	// CircuitBreakerRegistry exposes per-tool circuit breakers for admin reset.
 	// Optional: when nil, circuit breaker state is not accessible externally.
 	CircuitBreakerRegistry *biztool.CircuitBreakerRegistry
-	LG                     loggateway.Logger
+	// ResultCache stores results of cache-enabled catalog tools (PERF-1).
+	// Optional: when nil, the agent package's process-wide default instance
+	// (512 entries) is used, preserving the historical cache.Global() behavior.
+	ResultCache *cache.ResultCache
+	LG          loggateway.Logger
 	// Cache version hashes: optional strings computed by the caller.
 	// When non-empty they are folded into the build cache fingerprint so that
 	// tool / skill / MCP changes invalidate the cached agent.

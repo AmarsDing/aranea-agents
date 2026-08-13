@@ -12,6 +12,26 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// toolArgsQualityKey carries the argument-quality outcome from the repair
+// guard (BeforeTool, priority 1) to the invocation recorder (AfterTool) via
+// context — same propagation pattern as toolCallStartKey in
+// tool_invocation_recorder.go. The recorder persists the flags into
+// tool_invocations.metadata_json and bumps aranea_tool_args_guard_total.
+type toolArgsQualityKey struct{}
+
+// toolArgsQuality marks how the model-emitted arguments fared at the guard:
+// Repaired — malformed JSON was salvaged; Invalid — malformed and
+// unrepairable (passed through so the tool surfaces the parse error).
+type toolArgsQuality struct {
+	Repaired bool
+	Invalid  bool
+}
+
+func toolArgsQualityFromContext(ctx context.Context) toolArgsQuality {
+	q, _ := ctx.Value(toolArgsQualityKey{}).(toolArgsQuality)
+	return q
+}
+
 // newToolArgsRepairBeforeHook repairs malformed JSON tool arguments emitted
 // by the model before any downstream guard or the tool itself parses them.
 //
@@ -45,6 +65,12 @@ func newToolArgsRepairBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook 
 		}
 		repaired, changed := repairToolArguments(args.Arguments)
 		if !changed {
+			// 未被修复 = 已合法，或非法且不可修复。后者必须标记，
+			// 否则"参数一次合法率"分母缺失（坏参数被工具层 parse
+			// error 掩盖，无法与业务失败区分）。
+			if !json.Valid(args.Arguments) {
+				ctx = context.WithValue(ctx, toolArgsQualityKey{}, toolArgsQuality{Invalid: true})
+			}
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		// Never log argument content (may contain secrets); sizes + tool name
@@ -56,6 +82,7 @@ func newToolArgsRepairBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook 
 			loggateway.Str("repaired_len", fmt.Sprint(len(repaired))),
 		)
 		args.Arguments = repaired
+		ctx = context.WithValue(ctx, toolArgsQualityKey{}, toolArgsQuality{Repaired: true})
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	})
 }

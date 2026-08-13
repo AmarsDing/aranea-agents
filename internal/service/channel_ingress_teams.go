@@ -27,7 +27,7 @@ func (h *ChannelIngress) handleTeamsWebhook(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 	// app_secret is optional for RS256 (JWKS); required for HS256 paths.
-	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret", h.lg)
+	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret")
 	if err := teams.VerifyRequest(r.Context(), appID, appSecret, r.Header, raw); err != nil {
 		h.lg.Warn("Teams Webhook 签名验证失败",
 			loggateway.StepID("channel.teams.webhook.verify_fail"),

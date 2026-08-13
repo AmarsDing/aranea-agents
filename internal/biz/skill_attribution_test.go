@@ -68,6 +68,9 @@ func (f *fakeUnifiedStore) Create(context.Context, UnifiedEvolutionSuggestion) e
 func (f *fakeUnifiedStore) UpdateStatus(context.Context, string, string, string, string) error {
 	panic("unused")
 }
+func (f *fakeUnifiedStore) UpdateStatusCAS(context.Context, string, []string, string, string, string) (bool, error) {
+	panic("unused")
+}
 func (f *fakeUnifiedStore) UpdateDraftBody(context.Context, string, string) error { panic("unused") }
 func (f *fakeUnifiedStore) UpdateLifecycleStatus(context.Context, string, string) error {
 	panic("unused")

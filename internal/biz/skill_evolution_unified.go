@@ -188,6 +188,12 @@ type UnifiedEvolutionPatternReader interface {
 type UnifiedEvolutionMutationWriter interface {
 	Create(ctx context.Context, suggestion UnifiedEvolutionSuggestion) error
 	UpdateStatus(ctx context.Context, id string, status string, actor string, reason string) error
+	// UpdateStatusCAS atomically transitions a suggestion to `to` only when its
+	// current status is in `from`. Returns ok=false when the precondition does
+	// not hold (state changed concurrently or source state is not allowed).
+	// Callers must validate the transition against UnifiedEvolutionStateMachine
+	// before invoking; this method is the race guard, not the state machine.
+	UpdateStatusCAS(ctx context.Context, id string, from []string, to string, actor string, reason string) (ok bool, err error)
 	UpdateDraftBody(ctx context.Context, id string, draftBody string) error
 	UpdateLifecycleStatus(ctx context.Context, id string, lifecycleStatus string) error
 	UpdateSandboxResult(ctx context.Context, id string, passed bool, result json.RawMessage) error

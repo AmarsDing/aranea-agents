@@ -381,6 +381,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.Error = meta.Error
 		runtimeEvt.StepNumber = meta.StepNumber
+		runtimeEvt.Retrying = meta.Retrying
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
 		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphInterrupt

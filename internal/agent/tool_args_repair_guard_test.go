@@ -79,6 +79,48 @@ func TestToolArgsRepair_trailingGarbageText(t *testing.T) {
 	mustValidObject(t, out)
 }
 
+// 参数质量信号：修复成功必须在 ctx 标记 Repaired，供 AfterTool recorder
+// 落库与计数（29-token WP：工具一次成功率度量闭环）。
+func TestToolArgsRepair_MarksRepairedInContext(t *testing.T) {
+	hook := newToolArgsRepairBeforeHook(nil)
+	bt := &trpctool.BeforeToolArgs{ToolName: "set_deliverable", Arguments: []byte(`{"a":1},`)}
+	res, err := hook.HandleBeforeTool(context.Background(), bt)
+	if err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	q := toolArgsQualityFromContext(res.Context)
+	if !q.Repaired || q.Invalid {
+		t.Fatalf("want Repaired=true Invalid=false, got %+v", q)
+	}
+}
+
+// 不可修复的非法 JSON 必须标记 Invalid（原样透传给工具层报错）。
+func TestToolArgsRepair_MarksInvalidWhenUnrepairable(t *testing.T) {
+	hook := newToolArgsRepairBeforeHook(nil)
+	bt := &trpctool.BeforeToolArgs{ToolName: "read_file", Arguments: []byte(`{"path": `)}
+	res, err := hook.HandleBeforeTool(context.Background(), bt)
+	if err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	q := toolArgsQualityFromContext(res.Context)
+	if q.Repaired || !q.Invalid {
+		t.Fatalf("want Repaired=false Invalid=true, got %+v", q)
+	}
+}
+
+func TestToolArgsRepair_ValidArgsNoMarkers(t *testing.T) {
+	hook := newToolArgsRepairBeforeHook(nil)
+	bt := &trpctool.BeforeToolArgs{ToolName: "read_file", Arguments: []byte(`{"path":"a"}`)}
+	res, err := hook.HandleBeforeTool(context.Background(), bt)
+	if err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	q := toolArgsQualityFromContext(res.Context)
+	if q.Repaired || q.Invalid {
+		t.Fatalf("valid args must not be marked, got %+v", q)
+	}
+}
+
 // 2026-07-25 14:26 incident: raw newline inside a string literal.
 func TestToolArgsRepair_rawNewlineInString(t *testing.T) {
 	in := []byte("{\"summary\":\"line1\nline2\"}")

@@ -615,7 +615,7 @@ func (m *ChannelGateCards) feishuSender(ctx context.Context, channelID string) (
 	if err != nil {
 		return nil, err
 	}
-	sec, err := resolveCredentialPlain(ctx, m.channels, creds, "app_secret", m.lg)
+	sec, err := resolveCredentialPlain(ctx, m.channels, creds, "app_secret")
 	if err != nil {
 		return nil, err
 	}

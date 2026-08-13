@@ -48,6 +48,11 @@ type SkillIntelligenceUsecase struct {
 	reloader     SkillReloader
 	lg           loggateway.Logger
 
+	// AS-FSM-01: suggestion status (unifiedSM) and draft lifecycle (lifecycleSM)
+	// transitions are validated by explicit state machines.
+	unifiedSM   *UnifiedEvolutionStateMachine
+	lifecycleSM *EvolutionLifecycleStateMachine
+
 	unanalyzedReader SkillInvocationUnanalyzedReader
 }
 
@@ -82,6 +87,8 @@ func NewSkillIntelligenceUsecase(
 		unifiedStore: unifiedStore,
 		aggregator:   aggregator,
 		lg:           lg,
+		unifiedSM:    NewUnifiedEvolutionStateMachine(),
+		lifecycleSM:  NewEvolutionLifecycleStateMachine(),
 	}
 	for _, opt := range opts {
 		if opt.Orchestrator != nil {
@@ -164,54 +171,10 @@ func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) 
 
 // ── Skill Evolution Suggestion methods ────────────────────────────────────────
 
-// ExpirePendingSuggestions marks pending evolution suggestions as rejected
-// if they have been pending for more than EvoExpirationDays (7 days).
-// Skill-scoped suggestions only (L2 view); reads/writes the unified store (A6).
-func (uc *SkillIntelligenceUsecase) ExpirePendingSuggestions(ctx context.Context) ([]SkillEvolutionSuggestion, error) {
-	if uc.unifiedStore == nil {
-		return nil, nil
-	}
-
-	// Empty targetID is a wildcard: list pending suggestions across all skills.
-	pending, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), "", "pending", 1000, 0)
-	if err != nil {
-		uc.lg.Warn("ExpirePendingSuggestions: ListPending failed",
-			loggateway.StepID("skill_intelligence.expire"),
-			loggateway.Err(err))
-		return nil, err
-	}
-
-	expirationCutoff := time.Now().UTC().Add(-evoExpirationDuration)
-	var expired []SkillEvolutionSuggestion
-
-	for _, sug := range pending {
-		select {
-		case <-ctx.Done():
-			return expired, ctx.Err()
-		default:
-		}
-		if sug.CreatedAt.Before(expirationCutoff) {
-			if updateErr := uc.unifiedStore.UpdateStatus(ctx, sug.ID, "rejected", "system", "auto-expired: pending for more than 7 days"); updateErr != nil {
-				uc.lg.Warn("ExpirePendingSuggestions: UpdateStatus failed",
-					loggateway.StepID("skill_intelligence.expire"),
-					loggateway.Str("suggestion_id", sug.ID),
-					loggateway.Err(updateErr))
-				continue
-			}
-			view := unifiedToLegacySuggestionPtr(&sug)
-			view.Status = EvoSuggestionRejected
-			expired = append(expired, *view)
-		}
-	}
-
-	if len(expired) > 0 {
-		uc.lg.Info("ExpirePendingSuggestions: expired suggestions",
-			loggateway.StepID("skill_intelligence.expire"),
-			loggateway.Int("count", len(expired)))
-	}
-
-	return expired, nil
-}
+// Expiration of stale pending suggestions is owned by
+// SkillEvolutionOrchestrator.ExpirePending (driven by
+// EvolutionOrchestratorWorker), which sets status='expired' via the unified
+// state machine. The curator worker no longer expires anything itself.
 
 // CheckEvolutionTriggers checks if a skill meets the conditions for generating
 // an evolution suggestion. Returns a new suggestion if triggered, or nil if not.
@@ -907,20 +870,49 @@ func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Contex
 	return uc.unifiedStore.CountByTarget(ctx, "skill", skillID, string(status))
 }
 
-// ApproveSuggestion approves a pending evolution suggestion.
+// ApproveSuggestion approves a pending evolution suggestion. The transition is
+// validated against the unified state machine and persisted via CAS so that
+// only pending → approved can succeed (concurrent or repeated transitions
+// return Conflict instead of silently regressing state).
 func (uc *SkillIntelligenceUsecase) ApproveSuggestion(ctx context.Context, id, approvedBy string) error {
 	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.unifiedStore.UpdateStatus(ctx, id, "approved", approvedBy, "")
+	return uc.transitionSuggestionStatus(ctx, id, UnifiedEvolutionEventApprove, approvedBy, "")
 }
 
-// RejectSuggestion rejects a pending evolution suggestion.
+// RejectSuggestion rejects a pending evolution suggestion. Same state-machine +
+// CAS discipline as ApproveSuggestion.
 func (uc *SkillIntelligenceUsecase) RejectSuggestion(ctx context.Context, id, rejectedBy, reason string) error {
 	if uc.unifiedStore == nil {
 		return apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion writer not available")
 	}
-	return uc.unifiedStore.UpdateStatus(ctx, id, "rejected", rejectedBy, reason)
+	return uc.transitionSuggestionStatus(ctx, id, UnifiedEvolutionEventReject, rejectedBy, reason)
+}
+
+// transitionSuggestionStatus is the shared approve/reject path: read current
+// state → state-machine validation → CAS persistence.
+func (uc *SkillIntelligenceUsecase) transitionSuggestionStatus(ctx context.Context, id string, event UnifiedEvolutionEvent, actor, reason string) error {
+	row, err := uc.unifiedStore.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return apierror.NotFound("SKILL_INTELLIGENCE", "suggestion not found: %s", id)
+	}
+	next, err := uc.unifiedSM.Transition(UnifiedEvolutionState(row.Status), event)
+	if err != nil {
+		return apierror.BadRequest("SKILL_INTELLIGENCE", "invalid suggestion transition from %s on event %s", row.Status, event)
+	}
+	ok, err := uc.unifiedStore.UpdateStatusCAS(ctx, id,
+		[]string{string(UnifiedEvolutionStatePending)}, string(next), actor, reason)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return apierror.Conflict("SKILL_INTELLIGENCE", "suggestion %s status changed concurrently; retry", id)
+	}
+	return nil
 }
 
 // ApplyApprovedSuggestion runs the Reload stage for an approved evolution
@@ -953,11 +945,11 @@ func (uc *SkillIntelligenceUsecase) ApplyApprovedSuggestion(ctx context.Context,
 	if !suggestion.SandboxPassed || strings.TrimSpace(suggestion.DraftSkillBody) == "" {
 		return nil
 	}
-	nextStatus, err := NewUnifiedEvolutionStateMachine().Transition(UnifiedEvolutionState(suggestion.Status), UnifiedEvolutionEventApply)
+	nextStatus, err := uc.unifiedSM.Transition(UnifiedEvolutionState(suggestion.Status), UnifiedEvolutionEventApply)
 	if err != nil {
 		return nil // not in approved state → nothing to apply
 	}
-	nextLifecycle, err := NewEvolutionLifecycleStateMachine().Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
+	nextLifecycle, err := uc.lifecycleSM.Transition(suggestion.LifecycleStatus, EvoLifecycleEventApply)
 	if err != nil {
 		return nil // not in ready state → nothing to apply
 	}

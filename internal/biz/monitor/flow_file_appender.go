@@ -405,11 +405,17 @@ func (a *FlowFileAppender) onMonitorEvent(ev contract.MonitorEvent) {
 	}
 
 	a.mu.Lock()
+	defer a.mu.Unlock()
+	// Circuit breaker covers BOTH open and write failures: a bad dir / full
+	// disk otherwise emits one unthrottled Warn per event (open_fail was a
+	// blind spot — the breaker used to live only in writeRowLocked).
+	if a.writeMutedLocked() {
+		return
+	}
 	target := a.routeFileLocked(ev)
 	if target != nil {
 		a.writeRowLocked(target, row)
 	}
-	a.mu.Unlock()
 }
 
 func (a *FlowFileAppender) routeFileLocked(ev contract.MonitorEvent) *rotatingFile {
@@ -439,10 +445,51 @@ func (a *FlowFileAppender) WriteTraceComplete(row map[string]any) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.writeMutedLocked() {
+		return
+	}
 	target := a.ensureFile(&a.traceFile, "trace")
 	if target != nil {
 		a.writeRowLocked(target, row)
 	}
+}
+
+// writeMutedLocked reports whether file writes are currently muted by the
+// circuit breaker. When the mute window has expired it re-arms the breaker
+// (half-open probe: the next open/write is attempted and re-trips on
+// failure).
+func (a *FlowFileAppender) writeMutedLocked() bool {
+	if a.writeMutedUntil.IsZero() {
+		return false
+	}
+	if time.Now().Before(a.writeMutedUntil) {
+		return true
+	}
+	a.writeMutedUntil = time.Time{}
+	a.writeFailStreak = 0
+	return false
+}
+
+// noteFailureLocked records one open/write failure and trips the circuit
+// breaker after flowFileWriteFailThreshold consecutive failures, reporting
+// whether it just tripped.
+func (a *FlowFileAppender) noteFailureLocked() (tripped bool) {
+	a.writeFailStreak++
+	if a.writeFailStreak >= flowFileWriteFailThreshold {
+		a.writeFailStreak = 0
+		a.writeMutedUntil = time.Now().Add(flowFileWriteMuteDuration)
+		return true
+	}
+	return false
+}
+
+// warnMutedLocked emits the single "writes muted" Warn when the breaker trips.
+func (a *FlowFileAppender) warnMutedLocked(path string, err error) {
+	a.lg.Warn("FlowFileAppender: writes muted after repeated failures",
+		loggateway.StepID("monitor.flow_file.write_muted"),
+		loggateway.Str("path", path),
+		loggateway.Str("mute_duration", flowFileWriteMuteDuration.String()),
+		loggateway.Err(err))
 }
 
 func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotatingFile {
@@ -469,6 +516,11 @@ func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotat
 	fullPath := filepath.Join(a.dir, path)
 	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
+		// P1: open failures feed the same circuit breaker as write failures.
+		if a.noteFailureLocked() {
+			a.warnMutedLocked(fullPath, err)
+			return nil
+		}
 		a.lg.Warn("FlowFileAppender: open failed", loggateway.StepID("monitor.flow_file.open_fail"), loggateway.Str("path", fullPath), loggateway.Err(err))
 		return nil
 	}
@@ -489,27 +541,11 @@ func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) 
 	if rf == nil {
 		return
 	}
-	// Circuit breaker: after repeated consecutive write failures (typically
-	// a full disk), mute writes for a cooldown window. Without this, every
-	// incoming event attempts a write and emits a Warn, sustaining a log
-	// storm for as long as the underlying failure persists.
-	if !a.writeMutedUntil.IsZero() {
-		if time.Now().Before(a.writeMutedUntil) {
-			return
-		}
-		a.writeMutedUntil = time.Time{}
-		a.writeFailStreak = 0
-	}
+	// The circuit breaker mute check lives at the entry points
+	// (onMonitorEvent / WriteTraceComplete); here we only count failures.
 	if err := rf.encoder.Encode(row); err != nil {
-		a.writeFailStreak++
-		if a.writeFailStreak >= flowFileWriteFailThreshold {
-			a.writeFailStreak = 0
-			a.writeMutedUntil = time.Now().Add(flowFileWriteMuteDuration)
-			a.lg.Warn("FlowFileAppender: writes muted after repeated failures",
-				loggateway.StepID("monitor.flow_file.write_muted"),
-				loggateway.Str("path", rf.path),
-				loggateway.Str("mute_duration", flowFileWriteMuteDuration.String()),
-				loggateway.Err(err))
+		if a.noteFailureLocked() {
+			a.warnMutedLocked(rf.path, err)
 			return
 		}
 		a.lg.Warn("FlowFileAppender: write failed", loggateway.StepID("monitor.flow_file.write_fail"), loggateway.Str("path", rf.path), loggateway.Err(err))

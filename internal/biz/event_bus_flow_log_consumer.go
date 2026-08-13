@@ -8,7 +8,15 @@ import (
 	"time"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
+
+// flowLogPersistWarnInterval throttles the Save-failure Warn/FlowError
+// emissions. When the DB is down every incoming flow event fails to persist;
+// unthrottled, each failure would emit a process-log Warn AND a
+// self-referential flow-log error event (which re-enters this consumer and
+// fails again), doubling the storm volume.
+const flowLogPersistWarnInterval = 10 * time.Second
 
 // flowLogPersistConsumer writes flow_log MonitorEvents to flow_log_events.
 //
@@ -23,13 +31,21 @@ type flowLogPersistConsumer struct {
 	flowLogs *FlowLogUsecase
 	logger   SessionLogWriter
 	flowLog  FlowLogWriter
+
+	saveThrottle *loggateway.Throttle
 }
 
 func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, bus contract.MonitorBus, flowLog FlowLogWriter) *flowLogPersistConsumer {
 	if flowLogs == nil || bus == nil {
 		return nil
 	}
-	return &flowLogPersistConsumer{bus: bus, flowLogs: flowLogs, logger: logger, flowLog: flowLog}
+	return &flowLogPersistConsumer{
+		bus:          bus,
+		flowLogs:     flowLogs,
+		logger:       logger,
+		flowLog:      flowLog,
+		saveThrottle: loggateway.NewThrottle(flowLogPersistWarnInterval),
+	}
 }
 
 func (c *flowLogPersistConsumer) Start(ctx context.Context) {
@@ -81,17 +97,35 @@ func (c *flowLogPersistConsumer) handle(ctx context.Context, ev contract.Monitor
 		rec.Message = strings.TrimSpace(ev.Message)
 	}
 	if err := c.flowLogs.Save(ctx, rec); err != nil {
+		// P2: throttle the failure emissions. Only the log lines are
+		// throttled — every record still attempts the Save above, so no
+		// recovery is delayed once the DB comes back.
+		ok, suppressed := c.saveThrottle.Allow()
+		if !ok {
+			return
+		}
+		pairs := []LogPair{{Key: "step_id", Value: rec.StepID}, {Key: "error", Value: err}}
+		if suppressed > 0 {
+			pairs = append(pairs, LogPair{Key: "suppressed_failures", Value: suppressed})
+		}
 		if c.logger != nil {
-			c.logger.LogSessionWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
-				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err})
+			c.logger.LogSessionWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败", pairs...)
 		}
 		// Recursion guard: the emitted flow log re-enters this consumer via the
 		// bus; if it is itself an event_bus.flow_log.persist record, persisting
 		// it would fail again and loop forever. Each failed record may emit at
 		// most one self-referential flow log, which then stops here.
 		if c.flowLog != nil && rec.StepID != "event_bus.flow_log.persist" {
-			c.flowLog.LogFlowError(ctx, rec.SessionID, "event_bus.flow_log.persist", "流程日志落库失败",
-				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err.Error()})
+			// The flow-log payload is JSON-marshaled downstream; an error
+			// value would serialize as "{}", so pass the string form here.
+			flowPairs := make([]LogPair, 0, len(pairs))
+			for _, p := range pairs {
+				if p.Key == "error" {
+					p.Value = err.Error()
+				}
+				flowPairs = append(flowPairs, p)
+			}
+			c.flowLog.LogFlowError(ctx, rec.SessionID, "event_bus.flow_log.persist", "流程日志落库失败", flowPairs...)
 		}
 	}
 }

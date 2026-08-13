@@ -129,23 +129,28 @@ func TestLoadToolBuildCatalog_LoadFailuresFailClosed(t *testing.T) {
 func TestToolBuildCatalog_MergedConfigMaps(t *testing.T) {
 	c := &toolBuildCatalog{
 		entries: map[string]biztool.ToolCatalogEntry{
-			// config_json preferred over default_config_json as base.
+			// config_json wins over default_config_json on overlapping keys.
 			"web_fetch": {Key: "web_fetch", ConfigJSON: `{"ua":"x"}`, DefaultConfigJSON: `{"ua":"d"}`},
-			// default_config_json as base, override wins on the same key.
+			// default_config_json fills keys missing from config_json; override wins on the same key.
 			"read_file": {Key: "read_file", DefaultConfigJSON: `{"max":"10"}`},
+			// empty config_json ("{}") must not suppress fallback keys (BUG-2).
+			"save_file": {Key: "save_file", ConfigJSON: `{}`, DefaultConfigJSON: `{"enc":"utf8"}`},
 		},
 		overrides: map[string]biz.ToolAgentOverride{
 			"read_file": {ToolKey: "read_file", ConfigOverrideJSON: `{"max":"20"}`},
 		},
 	}
-	eff := map[string]bool{"web_fetch": true, "read_file": true, "deleted_tool": true, "off": false}
+	eff := map[string]bool{"web_fetch": true, "read_file": true, "save_file": true, "deleted_tool": true, "off": false}
 
 	merged := c.mergedConfigMaps(eff)
 	if got := merged["web_fetch"]; got["ua"] != "x" {
-		t.Fatalf("web_fetch merged = %v, want ua=x (config_json preferred)", got)
+		t.Fatalf("web_fetch merged = %v, want ua=x (config_json wins)", got)
 	}
 	if got := merged["read_file"]; got["max"] != "20" {
 		t.Fatalf("read_file merged = %v, want max=20 (override wins)", got)
+	}
+	if got := merged["save_file"]; got["enc"] != "utf8" {
+		t.Fatalf("save_file merged = %v, want enc=utf8 (fallback fills gap)", got)
 	}
 	if _, ok := merged["deleted_tool"]; ok {
 		t.Fatal("missing entry must be skipped (fail-soft for configs)")

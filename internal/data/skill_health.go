@@ -32,7 +32,7 @@ func (r *skillHealthRepo) GetSkillHealth(ctx context.Context, skillID string, si
 		).
 		All(ctx)
 	if err != nil {
-		return nil, entErrToBizErr(err, "SKILL_HEALTH")
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
 	dailyBuckets := make(map[string]*dailyBucket)

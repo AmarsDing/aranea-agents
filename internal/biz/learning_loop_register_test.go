@@ -142,6 +142,9 @@ func (m *mockUnifiedWriter) Create(_ context.Context, _ UnifiedEvolutionSuggesti
 func (m *mockUnifiedWriter) UpdateStatus(context.Context, string, string, string, string) error {
 	return nil
 }
+func (m *mockUnifiedWriter) UpdateStatusCAS(context.Context, string, []string, string, string, string) (bool, error) {
+	return false, nil
+}
 func (m *mockUnifiedWriter) UpdateDraftBody(context.Context, string, string) error { return nil }
 func (m *mockUnifiedWriter) UpdateLifecycleStatus(context.Context, string, string) error {
 	return nil

@@ -46,24 +46,20 @@ func channelTurnJobIDFromContext(ctx context.Context) string {
 	return jobID
 }
 
-func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string) (string, context.Context, error) {
+// createTurnJob creates the governance job row for an inbound turn.
+// sessionID 由调用方通过 resolveTurnInput/prepareChannelChatRequest 一次性解析后传入，
+// 避免本函数内部重复调用 prepareChannelChatRequest 造成冗余 DB 往返（P1 #3）。
+func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, sessionID string) (string, context.Context, error) {
 	if h == nil || h.turnJobs == nil {
 		return "", ctx, nil
 	}
+	// 上游 guard（shouldProcessInbound/gateInboundBeforeTurn）已拒绝空 IdempotencyKey。
 	idempotency := strings.TrimSpace(ev.IdempotencyKey)
-	if idempotency == "" {
-		idempotency = biz.InboundIdempotencyKey(platform, ev.IdempotencyKey)
-	}
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		peerKey = strings.TrimSpace(ev.PeerKey)
 	}
-	sessionID := ""
-	if h.channels != nil && h.sessions != nil {
-		if input, perr := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false); perr == nil {
-			sessionID = strings.TrimSpace(input.SessionID)
-		}
-	}
+	sessionID = strings.TrimSpace(sessionID)
 	now := biz.ChannelTurnJobNow()
 	jobID, err := h.turnJobs.CreateAccepted(ctx, biz.ChannelTurnJob{
 		ID:             biz.NewChannelTurnJobID(),
@@ -81,36 +77,6 @@ func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, e
 	ctx = withChannelTurnJob(ctx, jobID, sessionID)
 	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, biz.ChannelTurnJobStatusAccepted)
 	return jobID, ctx, nil
-}
-
-func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previewID, preview string) {
-	if h == nil || h.turnJobs == nil {
-		return
-	}
-	jobID, sessionID := channelTurnJobFromContext(ctx)
-	if jobID == "" {
-		return
-	}
-	// Derive the state machine event from the target status for safe transitions.
-	event, eventErr := biz.ChannelTurnJobEventFromStatus(status)
-	if eventErr != nil {
-		h.lg.Warn("markTurnJob: 无法推导状态机事件，跳过",
-			loggateway.StepID("channel.job.status_derive_failed"),
-			loggateway.Str("job_id", jobID),
-			loggateway.Str("status", status),
-			loggateway.Err(eventErr),
-		)
-		return
-	}
-	if err := h.turnJobs.TransitionByEvent(ctx, jobID, event, errMsg, previewID, preview); err != nil {
-		h.lg.Warn("TurnJob 状态转换失败",
-			loggateway.StepID("channel.job.status_update_failed"),
-			loggateway.Str("job_id", jobID),
-			loggateway.Str("event", event),
-			loggateway.Err(err),
-		)
-	}
-	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
 }
 
 // markTurnJobByEvent transitions a turn job via the state machine event.

@@ -40,7 +40,7 @@ func (r *SkillMergeRepo) GetFullSkillForMerge(ctx context.Context, skillID strin
 		if dataent.IsNotFound(err) {
 			return nil, apierror.NotFound(apierror.DomainSkill, "skill not found")
 		}
-		return nil, entErrToBizErr(err, "SKILL")
+		return nil, entErrToBizErr(err, apierror.DomainSkill)
 	}
 
 	// 获取最新 published 版本的完整内容

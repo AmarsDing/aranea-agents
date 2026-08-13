@@ -17,6 +17,11 @@ import (
 // observerCleanupInterval controls how often stale cooldowns and heal events are pruned.
 const observerCleanupInterval = 5 * time.Minute
 
+// healPersistErrInterval throttles the heal-record persist-failure Error log.
+// When the DB is down, every error flow event produces one failed insert;
+// unthrottled, that is one Error log per event for the whole outage.
+const healPersistErrInterval = 10 * time.Second
+
 // SelfHealObserver is the Phase 2 self-healing implementation with circuit breaker.
 // TODO(debt): DEV-06 — After migration, SelfHealObserver will be the sole heal orchestrator.
 //
@@ -29,6 +34,10 @@ type SelfHealObserver struct {
 	notifier AlertNotifier
 	lg       loggateway.Logger
 	healConf conf.RuntimeSelfHealConfig
+
+	// healErrThrottle limits the persist-failure Error log. Only the log
+	// line is throttled — every record still attempts the insert.
+	healErrThrottle *loggateway.Throttle
 
 	mu         sync.Mutex
 	cooldowns  map[string]time.Time   // ruleID → last alert time
@@ -44,13 +53,14 @@ func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine 
 		return nil, apierror.Internal("MONITOR", "RootCauseEngine is required")
 	}
 	return &SelfHealObserver{
-		repo:       repo,
-		engine:     engine,
-		notifier:   notifier,
-		lg:         lg,
-		healConf:   runtimeConf.SelfHealConfig(),
-		cooldowns:  make(map[string]time.Time),
-		healEvents: make(map[string][]time.Time),
+		repo:            repo,
+		engine:          engine,
+		notifier:        notifier,
+		lg:              lg,
+		healConf:        runtimeConf.SelfHealConfig(),
+		healErrThrottle: loggateway.NewThrottle(healPersistErrInterval),
+		cooldowns:       make(map[string]time.Time),
+		healEvents:      make(map[string][]time.Time),
 	}, nil
 }
 
@@ -322,10 +332,19 @@ func (o *SelfHealObserver) recordObservation(ctx context.Context, record HealRec
 		return
 	}
 	if err := o.repo.InsertHealRecord(ctx, record); err != nil {
-		o.lg.Error("SelfHealObserver: failed to persist heal record",
+		ok, suppressed := o.healErrThrottle.Allow()
+		if !ok {
+			return
+		}
+		fields := []loggateway.Field{
 			loggateway.StepID("monitor.heal_record_persist_fail"),
 			loggateway.Str("rule_id", record.RuleID),
-			loggateway.Err(err))
+			loggateway.Err(err),
+		}
+		if suppressed > 0 {
+			fields = append(fields, loggateway.Int("suppressed", suppressed))
+		}
+		o.lg.Error("SelfHealObserver: failed to persist heal record", fields...)
 	}
 }
 

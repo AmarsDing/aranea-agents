@@ -907,6 +907,70 @@ func TestFlowFileAppender_WriteFailureCircuitBreaker(t *testing.T) {
 	}
 }
 
+// P1: open failures (bad dir / full disk) must feed the same circuit breaker
+// as write failures; otherwise every incoming event emits an unthrottled
+// open_fail Warn for as long as the directory stays unwritable.
+func TestFlowFileAppender_OpenFailureCircuitBreaker(t *testing.T) {
+	// dir points at a regular file → every os.OpenFile beneath it fails.
+	tmp := t.TempDir()
+	fileAsDir := filepath.Join(tmp, "not-a-dir")
+	if err := os.WriteFile(fileAsDir, []byte("x"), 0644); err != nil {
+		t.Fatalf("write error: %v", err)
+	}
+	lg := &warnCountingLogger{}
+	a := monitor.NewFlowFileAppender(fileAsDir, lg)
+
+	ev := func(id string) contract.MonitorEvent {
+		return contract.MonitorEvent{
+			ID:        id,
+			Type:      contract.MonitorEventTypeLog,
+			Timestamp: time.Now().UTC(),
+			Source:    "system",
+			Metadata:  map[string]any{"step_id": "chat.turn"},
+		}
+	}
+	for i := 0; i < 10; i++ {
+		a.OnMonitorEventExposed(ev("ev-" + strconv.Itoa(i)))
+	}
+	if lg.warnCount != 3 {
+		t.Errorf("warn count = %d after 10 open failures, want 3 (2 open_fail + 1 muted, then silent)", lg.warnCount)
+	}
+}
+
+// P1 恢复路径：熔断窗口过期后，下一个事件作为 half-open 探针重试打开文件，
+// 失败时记一条 Warn 并重新计数（不静默、不刷屏）。
+func TestFlowFileAppender_OpenFailureCircuitBreaker_HalfOpenProbe(t *testing.T) {
+	tmp := t.TempDir()
+	fileAsDir := filepath.Join(tmp, "not-a-dir")
+	if err := os.WriteFile(fileAsDir, []byte("x"), 0644); err != nil {
+		t.Fatalf("write error: %v", err)
+	}
+	lg := &warnCountingLogger{}
+	a := monitor.NewFlowFileAppender(fileAsDir, lg)
+
+	ev := contract.MonitorEvent{
+		ID:        "ev",
+		Type:      contract.MonitorEventTypeLog,
+		Timestamp: time.Now().UTC(),
+		Source:    "system",
+		Metadata:  map[string]any{"step_id": "chat.turn"},
+	}
+	for i := 0; i < 3; i++ {
+		a.OnMonitorEventExposed(ev)
+	}
+	if lg.warnCount != 3 {
+		t.Fatalf("warn count at trip = %d, want 3", lg.warnCount)
+	}
+
+	// Expire the mute window → the next event probes the directory again and
+	// its failure is logged once (streak restarts at 1).
+	a.SetWriteMutedUntilForTest(time.Now().Add(-time.Second))
+	a.OnMonitorEventExposed(ev)
+	if lg.warnCount != 4 {
+		t.Errorf("warn count after half-open probe = %d, want 4", lg.warnCount)
+	}
+}
+
 // Fix C: rotated backup files (prefix-date.jsonl.N) are capped at maxBackups
 // per base name; the oldest excess backups are purged by maintenance.
 func TestFlowFileAppender_PurgeExcessBackups(t *testing.T) {

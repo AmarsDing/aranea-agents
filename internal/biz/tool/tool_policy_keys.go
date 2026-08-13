@@ -34,8 +34,10 @@ func NormalizeToolPolicyKey(key string) string {
 	return key
 }
 
-// PropagateAllowAliases copies alias flags to canonical keys (e.g. shell -> shell_exec).
+// PropagateAllowAliases copies alias flags bidirectionally (e.g. shell <-> shell_exec).
 // Repeats until stable to handle chained aliases (shell -> shell_exec -> exec_command).
+// Allow propagation is bidirectional because the alias table defines equivalence
+// classes: granting any name in the class should enable the tool.
 func PropagateAllowAliases(m map[string]bool) {
 	changed := true
 	for changed {
@@ -43,6 +45,10 @@ func PropagateAllowAliases(m map[string]bool) {
 		for alias, canon := range toolPolicyKeyAliases {
 			if m[alias] && !m[canon] {
 				m[canon] = true
+				changed = true
+			}
+			if m[canon] && !m[alias] {
+				m[alias] = true
 				changed = true
 			}
 		}

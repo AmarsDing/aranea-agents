@@ -64,6 +64,9 @@ func adapt(p biz.Plugin, stats StatsRecorder, monitorBus contract.MonitorBus, rt
 	case "model_router":
 		var cfg ModelRouterConfig
 		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
+		// I-1: runtime 条目 config 供 PluginModelSelector 实际路由使用，
+		// 必须编译 regex（遥测路径 NewModelRouterPlugin 已各自编译）。
+		compileModelRouterRules(cfg.Rules, lg)
 		ap.modelRouter = &cfg
 	case "cost_guard":
 		var cfg CostGuardConfig

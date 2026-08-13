@@ -131,7 +131,8 @@ func applyWebResearchEffectiveGate(checker WebResearchReadinessChecker, eff *Age
 		if !ok {
 			continue
 		}
-		cfgMap := MergeToolConfigMaps(tool.ConfigJSON, tool.DefaultConfigJSON)
+		// fallback 垫底、用户配置优先（BUG-2：此前参数顺序颠倒，默认值覆盖用户配置）。
+		cfgMap := MergeToolConfigMaps(tool.DefaultConfigJSON, tool.ConfigJSON)
 		if ov, ok := overrideByKey[ToolKeyWebResearch]; ok && ov != "" {
 			MergeJSONMapInto(cfgMap, ov)
 		}

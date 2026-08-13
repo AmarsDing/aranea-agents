@@ -2,11 +2,19 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"sync"
 	"time"
 )
+
+// ErrAlertMetricNoData is returned by AlertMetric.Evaluate when the window
+// contains no samples at all (e.g. zero runs in the window for a ratio
+// metric). The alert engine must skip the state machine for that tick —
+// absence of data is not evidence of recovery (a firing alert stays firing)
+// nor of breaching. Callers should match with errors.Is.
+var ErrAlertMetricNoData = errors.New("alert metric: no data in window")
 
 type AlertMetric interface {
 	Key() string
@@ -162,7 +170,7 @@ func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Durati
 	if m.rb != nil {
 		wr := m.rb.SumLastN(windowMin)
 		if wr.Total == 0 {
-			return 0, nil
+			return 0, ErrAlertMetricNoData
 		}
 		return float64(wr.Errors) / float64(wr.Total), nil
 	}
@@ -172,7 +180,7 @@ func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Durati
 		return 0, err
 	}
 	if total == 0 {
-		return 0, nil
+		return 0, ErrAlertMetricNoData
 	}
 	errors, err := m.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 	if err != nil {

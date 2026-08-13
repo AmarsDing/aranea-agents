@@ -484,45 +484,6 @@ function mapEvolutionSuggestion(raw: unknown): EvolutionSuggestionView {
   };
 }
 
-export async function listEvolutionSuggestions(params: {
-  skillId?: string;
-  status?: string;
-  page?: number;
-  pageSize?: number;
-}): Promise<PaginatedResponse<EvolutionSuggestionView>> {
-  const svc = createSkillEvolutionSuggestionService();
-  const res = await svc.ListSkillEvolutionSuggestions({
-    skillId: params.skillId || undefined,
-    status: params.status || undefined,
-    page: params.page,
-    pageSize: params.pageSize,
-  });
-  return {
-    items: (res.items ?? []).map(mapEvolutionSuggestion),
-    total: Number(res.total ?? 0),
-    page: Number(res.page ?? params.page ?? 1),
-    page_size: Number(res.pageSize ?? params.pageSize ?? 20),
-  };
-}
-
-export async function approveEvolutionSuggestion(id: string, approvedBy: string): Promise<void> {
-  const svc = createSkillEvolutionSuggestionService();
-  await svc.ApproveSkillEvolutionSuggestion({ id, approvedBy });
-}
-
-export async function rejectEvolutionSuggestion(
-  id: string,
-  rejectedBy: string,
-  rejectionReason?: string,
-): Promise<void> {
-  const svc = createSkillEvolutionSuggestionService();
-  await svc.RejectSkillEvolutionSuggestion({
-    id,
-    rejectedBy,
-    rejectionReason: rejectionReason || undefined,
-  });
-}
-
 export async function triggerCuratorFlow(skillId: string): Promise<EvolutionSuggestionView | null> {
   const svc = createSkillEvolutionSuggestionService();
   const res = await svc.TriggerCuratorFlow({ skillId });
@@ -569,30 +530,6 @@ export async function updateSkill(
     tags: toSkillTags(payload.tags),
   });
   return mapSkill(row);
-}
-
-export async function deleteSkillFile(id: string, path: string): Promise<void> {
-  await createSkillService().DeleteSkillFile({ id, path });
-}
-
-export type SkillRuntimePreview = {
-  resolved_storage_root: string;
-  enabled_published_count: number;
-  enabled_skill_slugs: string[];
-  reasons: Record<string, string>;
-};
-
-export async function previewSkillRuntime(id: string): Promise<SkillRuntimePreview> {
-  const res = await createSkillService().PreviewSkillRuntime({ agentId: id, userQuery: undefined });
-  const r = res as Record<string, unknown>;
-  return {
-    resolved_storage_root: String(r.resolvedStorageRoot ?? r.resolved_storage_root ?? ''),
-    enabled_published_count: Number(r.enabledPublishedCount ?? r.enabled_published_count ?? 0),
-    enabled_skill_slugs: Array.isArray(r.enabledSkillSlugs ?? r.enabled_skill_slugs)
-      ? ((r.enabledSkillSlugs ?? r.enabled_skill_slugs) as string[])
-      : [],
-    reasons: (r.reasons ?? {}) as Record<string, string>,
-  };
 }
 
 export async function getSkillVersions(

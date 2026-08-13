@@ -268,7 +268,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { copyToClipboard, Notify } from 'quasar';
+import { copyToClipboard } from 'quasar';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import { createMonitorEventColumns } from './monitorTableUi';
@@ -301,6 +301,7 @@ const emit = defineEmits<{
   'refresh-history': [];
   'open-session': [event: MonitorViewEvent];
   'open-in-runs': [event: MonitorViewEvent];
+  notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
 }>();
 
 const { t } = useI18n();
@@ -364,7 +365,7 @@ function openDetail(evt: MonitorViewEvent) {
 
 async function copyDetailJson() {
   await copyToClipboard(detailJson.value);
-  Notify.create({ message: t('monitorPage.events.detail.copied'), color: 'positive', position: 'top' });
+  emit('notify', { message: t('monitorPage.events.detail.copied'), type: 'positive' });
 }
 
 function categoryChipColor(category: string): string {
