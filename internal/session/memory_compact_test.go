@@ -59,9 +59,13 @@ func TestTryMemoryCompact_withFacts(t *testing.T) {
 		makeMsg("user", 1, "hello"),
 		makeMsg("assistant", 2, "hi"),
 	}
+	// Facts must meet the ICS gate (>= 0.5) for L2 to be accepted.
 	facts := []biz.MemoryFactEntry{
-		{Statement: "user prefers Go", Scope: "static", Confidence: 0.9},
-		{Statement: "project uses Kratos", Scope: "dynamic", Confidence: 0.8},
+		{Statement: "user wants a Go API", Scope: "intent", Confidence: 0.9},
+		{Statement: "schema drafted", Scope: "state", Confidence: 0.8},
+		{Statement: "chose Kratos", Scope: "decision", Confidence: 0.8},
+		{Statement: "chose Postgres", Scope: "decision", Confidence: 0.8},
+		{Statement: "write tests", Scope: "pending", Confidence: 0.8},
 	}
 	r := tryMemoryCompact(context.Background(), body, &stubMemoryFactReader{facts: facts}, nil, "s1", loggateway.NewNoop())
 	if !r.didCompact {
@@ -78,8 +82,9 @@ func TestTryMemoryCompact_withFacts(t *testing.T) {
 func TestTryMemoryCompact_factWithScope(t *testing.T) {
 	body := []biz.ChatMessage{makeMsg("user", 1, "hello")}
 	facts := []biz.MemoryFactEntry{
-		{Statement: "fact A", Scope: "static", Confidence: 0.9},
-		{Statement: "fact B", Scope: "", Confidence: 0.7},
+		{Statement: "build API", Scope: "intent", Confidence: 0.9},
+		{Statement: "schema done", Scope: "state", Confidence: 0.7},
+		{Statement: "tests pending", Scope: "pending", Confidence: 0.7},
 	}
 	r := tryMemoryCompact(context.Background(), body, &stubMemoryFactReader{facts: facts}, nil, "s1", loggateway.NewNoop())
 	if !r.didCompact {
@@ -602,7 +607,20 @@ func TestTryMemoryCompact_withL1Reader(t *testing.T) {
 		taskRows := [][]byte{
 			mustMarshal(t, map[string]any{"id": "t1", "task_title": "L1 task", "status": "active"}),
 		}
-		l1 := &stubL1AdminReader{taskRows: taskRows}
+		fieldRows := [][]byte{
+			mustMarshal(t, map[string]any{"field_path": "current_state", "value_text": "schema drafted"}),
+			mustMarshal(t, map[string]any{"field_path": "pending_items", "value_text": "write tests"}),
+		}
+		l1 := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {rows: fieldRows},
+			},
+		}
+		// intent(0.25) + state(0.20) + pending(0.10) = 0.55 ≥ ICS gate.
 		r := tryMemoryCompact(ctx, body, nil, l1, "s1", lg)
 		if !r.didCompact {
 			t.Fatal("l1Reader facts should compact")
@@ -615,12 +633,26 @@ func TestTryMemoryCompact_withL1Reader(t *testing.T) {
 	t.Run("both_readers_provide_facts", func(t *testing.T) {
 		facts := []biz.MemoryFactEntry{
 			{Statement: "L3 fact", Scope: "static", Confidence: 0.9},
+			{Statement: "user goal", Scope: "intent", Confidence: 0.9},
 		}
 		reader := &stubMemoryFactReader{facts: facts}
 		taskRows := [][]byte{
 			mustMarshal(t, map[string]any{"id": "t1", "task_title": "L1 task", "status": "active"}),
 		}
-		l1 := &stubL1AdminReader{taskRows: taskRows}
+		fieldRows := [][]byte{
+			mustMarshal(t, map[string]any{"field_path": "current_state", "value_text": "in progress"}),
+			mustMarshal(t, map[string]any{"field_path": "pending_items", "value_text": "deploy"}),
+		}
+		l1 := &stubL1AdminReader{
+			taskRows: taskRows,
+			fieldRows: map[string]struct {
+				rows [][]byte
+				err  error
+			}{
+				"t1": {rows: fieldRows},
+			},
+		}
+		// intent(0.25) + state(0.20) + pending(0.10) + fact(0.05) = 0.60 ≥ ICS gate.
 		r := tryMemoryCompact(ctx, body, reader, l1, "s1", lg)
 		if !r.didCompact {
 			t.Fatal("both readers should compact")

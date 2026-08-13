@@ -80,6 +80,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	// 上下文预算台账（29-token §9.6）：tools_schema 计量。无条件注册——
+	// ctx 无收集器时每次仅一次 ctx 读，与缓存 BUILD 产物共享安全。
+	entries = append(entries, newContextBudgetToolsBeforeHook())
 	if hook := newPromptSnapshotBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}

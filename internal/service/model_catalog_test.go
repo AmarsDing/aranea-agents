@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +19,24 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// requireModelsDevReachable 网络依赖测试离线优雅跳过：models.dev 在本机须代理方可达，
+// 测试进程不走代理时直连重试约 21s 后恒败。3s 探测不可达即 Skip；
+// 联网环境（CI/已注入代理）仍执行真实端到端同步路径。
+func requireModelsDevReachable(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, modelregistry.DefaultPolicy().SourceURL, nil)
+	if err != nil {
+		t.Skipf("probe request build failed: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Skipf("models.dev unreachable (%v), skipping network-dependent test", err)
+	}
+	_ = resp.Body.Close()
+}
 
 type stubRootResolver struct {
 	dir string
@@ -227,6 +246,7 @@ func TestModelCatalogService_UpdateModelCatalogPolicy(t *testing.T) {
 }
 
 func TestModelCatalogService_SyncModelCatalog_Success(t *testing.T) {
+	requireModelsDevReachable(t)
 	uc, dir := newTestUsecase(t)
 	policy := defaultTestPolicy()
 	cat := defaultTestDirectory()
@@ -677,6 +697,7 @@ func TestModelCatalogService_ListCatalogModels_EmptyProvider(t *testing.T) {
 }
 
 func TestModelCatalogService_SyncModelCatalog_DryRunPath(t *testing.T) {
+	requireModelsDevReachable(t)
 	uc, dir := newTestUsecase(t)
 	policy := defaultTestPolicy()
 	cat := defaultTestDirectory()

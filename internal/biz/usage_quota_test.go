@@ -44,8 +44,10 @@ func (s *stubUsageRepo) GetQuota(_ context.Context, _, _ string) (UsageQuota, er
 	}
 	return s.quota, nil
 }
-func (s *stubUsageRepo) SetQuota(context.Context, UsageQuota) (UsageQuota, error) {
-	panic("not implemented")
+func (s *stubUsageRepo) SetQuota(_ context.Context, q UsageQuota) (UsageQuota, error) {
+	s.quota = q
+	s.hasQuota = true
+	return q, nil
 }
 func (s *stubUsageRepo) SumScopeCostInPeriod(_ context.Context, scopeType, _ string, _, _ string) (int64, error) {
 	if scopeType == "agent" {

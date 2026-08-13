@@ -108,6 +108,8 @@ let resizeObserver: ResizeObserver | null = null;
 const stateLabel = computed(() => {
   if (!props.voiceModeOn) return '';
   switch (props.voiceState) {
+    case 'dormant':
+      return t('companion.stateDormant');
     case 'listening':
       return t('companion.stateListening');
     case 'thinking':
@@ -121,9 +123,10 @@ const stateLabel = computed(() => {
   }
 });
 
-/** 麦克风按钮文案（aria-label + tooltip 共用）：置灰时指引配置入口。 */
+/** 麦克风按钮文案（aria-label + tooltip 共用）：置灰时指引配置入口；dormant 态点击 = 唤醒（V10）。 */
 const micAriaLabel = computed(() => {
   if (props.voiceDisabled) return t('companion.voiceUnavailable');
+  if (props.voiceModeOn && props.voiceState === 'dormant') return t('companion.micWake');
   return props.voiceModeOn ? t('companion.micStop') : t('companion.micStart');
 });
 

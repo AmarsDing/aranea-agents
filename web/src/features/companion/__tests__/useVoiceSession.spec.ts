@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createVoiceSessionClient, type VoiceDownstreamHandlers, type VoiceState } from '../voice/useVoiceSession';
+import {
+  createPrerollBuffer,
+  createVoiceSessionClient,
+  shouldUplinkAudio,
+  type VoiceDownstreamHandlers,
+  type VoiceState,
+} from '../voice/useVoiceSession';
 
 class FakeWebSocket {
   static OPEN = 1;
@@ -113,6 +119,19 @@ describe('createVoiceSessionClient — 上行', () => {
     ]);
   });
 
+  it('V10：wake 上行 voice.wake 帧（source ∈ kws/manual/system）', () => {
+    const { client, sockets } = makeClient();
+    client.connect();
+    sockets[0].open();
+    client.wake('kws');
+    client.wake('manual');
+    const types = sockets[0].sent.map((raw) => JSON.parse(raw as string));
+    expect(types).toEqual([
+      { type: 'voice.wake', source: 'kws' },
+      { type: 'voice.wake', source: 'manual' },
+    ]);
+  });
+
   it('sends audio frames as binary only when open', () => {
     const { client, sockets } = makeClient();
     client.connect();
@@ -143,8 +162,9 @@ describe('createVoiceSessionClient — 下行分发', () => {
     sockets[0].open();
     sockets[0].receiveJson({ type: 'voice.state', state: 'listening' });
     sockets[0].receiveJson({ type: 'voice.state', state: 'speaking' });
+    sockets[0].receiveJson({ type: 'voice.state', state: 'dormant' }); // V10 待命态
     sockets[0].receiveJson({ type: 'voice.state', state: 'bogus' });
-    expect(states).toEqual(['listening', 'speaking']);
+    expect(states).toEqual(['listening', 'speaking', 'dormant']);
   });
 
   it('dispatches asr.partial / asr.final / turn.accepted', () => {
@@ -209,5 +229,54 @@ describe('createVoiceSessionClient — 下行分发', () => {
     sockets[0].onmessage?.({ data: 'not-json{{' });
     expect(errors).toEqual([{ code: 'ASR_UNAVAILABLE', retryable: true }]);
     expect(replaced).toBe(1);
+  });
+});
+
+// V10（设计 §16.5）：dormant 门控——仅 listening/thinking/speaking 上行音频，
+// 其余状态（dormant/idle/error/interrupted）帧只进预滚缓冲，音频不出设备。
+describe('shouldUplinkAudio — dormant 门控', () => {
+  it('listening/thinking/speaking 上行', () => {
+    expect(shouldUplinkAudio('listening')).toBe(true);
+    expect(shouldUplinkAudio('thinking')).toBe(true);
+    expect(shouldUplinkAudio('speaking')).toBe(true);
+  });
+
+  it('dormant/idle/error/interrupted 不上行（进预滚缓冲）', () => {
+    expect(shouldUplinkAudio('dormant')).toBe(false);
+    expect(shouldUplinkAudio('idle')).toBe(false);
+    expect(shouldUplinkAudio('error')).toBe(false);
+    expect(shouldUplinkAudio('interrupted')).toBe(false);
+  });
+});
+
+// V10（设计 §16.5）：预滚 ring buffer——dormant 态帧只进缓冲，唤醒后原子 flush，
+// 保证「小媛，查天气」后半句与唤醒词同句完整到达 ASR。
+describe('createPrerollBuffer — 预滚环形缓冲', () => {
+  it('push 后 drain 按 FIFO 返回并清空', () => {
+    const buf = createPrerollBuffer(3);
+    const a = new ArrayBuffer(1);
+    const b = new ArrayBuffer(2);
+    buf.push(a);
+    buf.push(b);
+    expect(buf.drain()).toEqual([a, b]);
+    expect(buf.drain()).toEqual([]); // 已清空
+  });
+
+  it('超容量丢弃最旧帧（环形覆盖）', () => {
+    const buf = createPrerollBuffer(2);
+    const a = new ArrayBuffer(1);
+    const b = new ArrayBuffer(2);
+    const c = new ArrayBuffer(3);
+    buf.push(a);
+    buf.push(b);
+    buf.push(c); // a 被挤出
+    expect(buf.drain()).toEqual([b, c]);
+  });
+
+  it('clear 清空缓冲', () => {
+    const buf = createPrerollBuffer(2);
+    buf.push(new ArrayBuffer(1));
+    buf.clear();
+    expect(buf.drain()).toEqual([]);
   });
 });

@@ -4,8 +4,8 @@
  * 展示组件经本文件引类型（红线 #12），不得从 api.ts / store / composable 引。
  */
 
-/** 语音状态机（服务端 voice.state 广播镜像，前端不做本地推测）。 */
-export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'error';
+/** 语音状态机（服务端 voice.state 广播镜像，前端不做本地推测）。V10 +dormant（待命：本地 KWS 监听，ASR 关闭）。 */
+export type VoiceState = 'idle' | 'dormant' | 'listening' | 'thinking' | 'speaking' | 'interrupted' | 'error';
 
 /** 语音通道错误（voice.error 帧 / 本地采集错误）。 */
 export type VoiceError = {

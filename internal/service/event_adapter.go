@@ -83,6 +83,10 @@ func (a flowLogWriterAdapter) LogFlowError(ctx context.Context, sessionID, stepI
 	a.emitter(ctx, sessionID, stepID).LogError(stepID, message, flowPairs(pairs)...)
 }
 
+func (a flowLogWriterAdapter) LogFlowWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+	a.emitter(ctx, sessionID, stepID).LogWarn(stepID, "", message, flowPairs(pairs)...)
+}
+
 func (a flowLogWriterAdapter) emitter(ctx context.Context, sessionID, stepID string) *event.TraceEmitter {
 	return event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 		Ctx:       ctx,

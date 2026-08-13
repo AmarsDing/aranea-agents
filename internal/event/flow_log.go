@@ -294,6 +294,9 @@ var stepTitleRegistry = map[string]string{
 	"voice.delegation.bind":      "委派任务绑定",
 	"voice.delegation.terminal":  "委派任务终态",
 	"voice.delegation.broadcast": "委派结果播报",
+	"voice.wake.detect":          "语音唤醒",
+	"voice.sleep.exit_word":      "退出词休眠",
+	"voice.sleep.timeout":        "静默休眠",
 	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",

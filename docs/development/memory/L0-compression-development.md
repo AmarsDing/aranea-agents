@@ -34,9 +34,22 @@
 | 手动压缩 API | ✅ | `POST /v1/sessions:compact` + `biz.ManualCompressor` + 前端压缩按钮 |
 | **tail 保留修复** | ✅ | `loadCompressBody` 返回 body+tail 穿透至事务，压缩后快照保留近期轮次（修复 tail 恒为空缺陷） |
 | **递归滚动摘要** | ✅ | LLM 压缩传入 `PriorSummary` 吸收合并历史摘要；事务内 `DeleteSessionSummaries` + 写入单行合并摘要，根治无限拼接 |
-| **摘要质量门** | ✅ | `compress_quality.go`：退化检测（<200 runes vs ≥1000 runes 原文）+ 减量守卫（≥80% 丢弃）+ 错误分类（deterministic/transient） |
-| **压缩失败抑制** | ✅ | `compress_suppress.go`：deterministic sticky（按压缩模型）+ transient minGap 退避；forced 触发绕过 |
-| **双锚点 token 校准** | ✅ | `compress/service.go` 压缩成功路径调用 `llmcontext.RecordAuthoritativeUsage`，共享估算器从 2.5 chars/token 默认值校准到真实比率 |
+| 摘要质量门 | ✅ | `compress_quality.go`：退化检测（<200 runes vs ≥1000 runes 原文）+ 减量守卫（≥80% 丢弃）+ 错误分类（deterministic/transient） |
+| 压缩失败抑制 | ✅ | `compress_suppress.go`：deterministic sticky（按压缩模型）+ transient minGap 退避；forced 触发绕过 |
+| 双锚点 token 校准 | ✅ | `compress/service.go` 压缩成功路径调用 `llmcontext.RecordAuthoritativeUsage`，共享估算器从 2.5 chars/token 默认值校准到真实比率 |
+| **TurnNumber 断链修复（评审 F0）** | ✅ | `biz/session/activity_message_adapter.go` `synthesizeTurnNumbers`：activities 只有 TurnID 无数字轮次，按时间序合成稳定序号，修复压缩体恒为空的致命空转 |
+| **MemoryCompact ICS 质量门（评审 F1）** | ✅ | `memory_compact.go` `memoryCompactMinICS=0.5`：6 维加权覆盖分，低于门控放弃 L2 防稀疏事实替换对话体 |
+| **L3 分块滚动摘要（评审 F2）** | ✅ | `snapshot.go` `splitMessagesForCompress`（`compressChunkMaxRunes=24000`）+ `compressor.go` 逐块 PriorSummary 滚动吸收 |
+| **工具消息进 transcript（评审 F3）** | ✅ | `loadCompressBody` 增返回 toolBody；`renderCompressMessage` 渲染 `TOOL(name): body`（≤1000 runes），消息级截断 ≤8000 runes |
+| **压缩后估值计入 reserved_system（评审 F4）** | ✅ | `estimateCompactedPromptTokens(..., reservedSystem)`：修复 L2→L3 升级决策系统性偏低 |
+| **Section 6 上限 + PromptVersion v3（评审 F5）** | ✅ | `compress/prompt.go` v3：最近 30 条逐字 + 更早压缩为主题列表，防摘要自膨胀触发减量守卫 |
+| **ToolsProfile 驱动保留 token（评审 F6）** | ✅ | `compress_policy.go` `CompressProfile.ToolsProfile`：修复 SnapshotMode 误当 profile 致保留 token 恒 8000 |
+| **ctx 取消静默中止（复审 G1）** | ✅ | `compressor.go` `llmSummarize`：`fail==none && md==""` 区分 ctx 取消，不记抑制、hybrid 不写兜底标记 |
+| **减量守卫计入历史摘要（复审 G2）** | ✅ | `compressor.go`：守卫分母 = totalRunes + priorMerged runes，修复成熟长会话必然误杀 |
+| **cacheHit 全块聚合（复审 G3）** | ✅ | `compressor.go`：逐块 `&&` 聚合，仅全块命中才上报 true |
+| **options_json 工具名转义（复审 G4）** | ✅ | `activity_message_adapter.go` `buildOptionsJSON` 改 `json.Marshal`，特殊字符不再产出非法 JSON |
+| **CAS 冲突/幂等命中不记假成功（复审 G5）** | ✅ | `executeCompression` 返回 `(wrote, err)`；`runCompress` 未写入时保留抑制、不打成功日志 |
+| 压缩读取下推（复审 G6） | ❌ 技术债 | `TECH-DEBT(COMPRESS-IO)`：`ListMessagesAfterTurn` 全量 `ListBySession` 无 turn 下推，长会话每次软触发全表读 |
 | 记忆操作语义化 | ❌ | 只有 ADD |
 | 时间维度 | ❌ | 不存在 |
 | 动态链接 | ❌ | 不存在 |
@@ -114,6 +127,41 @@
 | 1C | 5.5d | 1C-1/1C-3 可与 1B 并行 |
 | 1D | 4.5d | 1D-1/1D-4 可与 1B/1C 并行，1D-5 依赖 1B-6 |
 | **总计** | **~23.5d** | 1B+1C+1D 部分并行后约 **16d** |
+
+---
+
+## 评审修复轮（2026-08-13）
+
+> 系统层面深入评审（对标业界实现 + 前沿论文调研）发现 1 个致命断链 + 5 个质量/精度缺陷。设计详见 `L0-compression.design.md` §1.6。全部按 TDD 实施（失败测试先行），验证：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` ✅ + `go test ./internal/session/... ./internal/compress/...` 全绿（含 `internal/session/trpc` PG 集成测试）。
+
+| # | 任务 | 严重度 | 改动文件 | 状态 |
+|---|------|--------|----------|------|
+| F0 | TurnNumber 断链修复：activities 适配器合成稳定轮次序号 | 致命 | `internal/biz/session/activity_message_adapter.go` | ✅ |
+| F1 | MemoryCompact ICS 质量门（≥0.5 才接受 L2） | 高 | `internal/session/memory_compact.go` | ✅ |
+| F2 | L3 分块滚动摘要（24000 runes/块，PriorSummary 逐块吸收） | 高 | `internal/session/snapshot.go`、`internal/session/compressor.go` | ✅ |
+| F3 | 工具消息渲染进 L3 transcript + 消息级截断 | 高 | `internal/session/compressor.go`、`internal/session/snapshot.go`、`internal/session/compress_policy.go` | ✅ |
+| F4 | 压缩后估值计入 reserved_system | 中 | `internal/session/token_estimate.go` | ✅ |
+| F5 | Section 6 用户消息上限 30 条 + PromptVersion v3 | 中 | `internal/compress/prompt.go` | ✅ |
+| F6 | ToolsProfile 驱动保留 token（修 SnapshotMode-as-profile bug） | 中 | `internal/session/compress_policy.go` | ✅ |
+
+**测试**：`internal/session/compress_pipeline_review_test.go`（F2-F6 失败测试先行）+ `compressor_test.go` / `memory_compact_test.go` 存量用例适配（ICS 门控后 stub 事实需覆盖 intent/state/decision 维度）。
+
+---
+
+## 复审加固轮（2026-08-13，第二轮深入检查）
+
+> F0-F6 落地后第二轮系统复审发现 5 个实现级缺陷（G1-G5）+ 1 项 I/O 技术债（G6）。设计详见 `L0-compression.design.md` §1.7。全部按 TDD 实施（失败测试先行），验证：`go test ./internal/session/ ./internal/biz/session/ -count=1` 全绿。
+
+| # | 任务 | 严重度 | 改动文件 | 状态 |
+|---|------|--------|----------|------|
+| G1 | ctx 取消静默中止（不记抑制、hybrid 不写兜底标记） | 高 | `internal/session/compressor.go` | ✅ |
+| G2 | 减量守卫分母计入被吸收的历史摘要 | 高 | `internal/session/compressor.go` | ✅ |
+| G3 | cacheHit 逐块聚合（部分命中不得谎称整次零调用） | 中 | `internal/session/compressor.go` | ✅ |
+| G4 | `buildOptionsJSON` 改 `json.Marshal` 转义工具名 | 中 | `internal/biz/session/activity_message_adapter.go` | ✅ |
+| G5 | CAS 冲突/幂等命中上报 wrote=false，不记假成功 | 中 | `internal/session/compressor.go`、`compressor_test.go`（4 处调用适配） | ✅ |
+| G6 | 压缩读取路径全量加载 Activity（无 turn 下推） | 低（技术债） | `internal/biz/session/activity_message_adapter.go`（仅 TECH-DEBT 注释登记） | 📋 已登记 |
+
+**测试**：`compress_pipeline_review_test.go` 新增 G1/G2/G3/G5 用例（ctx 取消双策略、守卫计入 prior、部分/全量缓存命中、executeCompression CAS 冲突、runCompress 级抑制保留）；`activity_message_adapter_turn_test.go` 新增 G4 转义往返用例。
 
 ---
 
@@ -212,9 +260,13 @@ Week 10:   阶段三集成测试 + 验收
 
 ### 阶段一
 
-- `internal/session/compressor.go` — 压缩判断链 + L1/L2 分支 + 缓存 sessionID 注入
-- `internal/session/compress_policy.go` — 压缩策略
-- `internal/compress/prompt.go` — 摘要系统提示词（升级为 9 章节）
+- `internal/session/compressor.go` — 压缩判断链 + L1/L2 分支 + 缓存 sessionID 注入 + 分块滚动摘要（F2）+ toolBody 穿透（F3）+ ctx 取消静默/守卫分母/cacheHit 聚合/CAS wrote（G1/G2/G3/G5）
+- `internal/session/snapshot.go` — transcript 渲染截断 + `splitMessagesForCompress` 分块（F2/F3）
+- `internal/session/compress_policy.go` — 压缩策略 + `CompressProfile.ToolsProfile`（F6）+ 工具渲染策略判定（F3）
+- `internal/session/token_estimate.go` — 压缩后估值含 reserved_system（F4）
+- `internal/session/memory_compact.go` — L2 + ICS 质量门（F1）
+- `internal/biz/session/activity_message_adapter.go` — `synthesizeTurnNumbers` 轮次序号合成（F0）+ options_json 转义（G4）+ `TECH-DEBT(COMPRESS-IO)` 登记（G6）
+- `internal/compress/prompt.go` — 摘要系统提示词（9 章节，v3：Section 6 上限 30 条，F5）
 - `internal/compress/service.go` — LLM 摘要服务
 - `internal/compress/cache.go` — LLM 压缩响应缓存（CompressCache + CachingCompressor）
 - `internal/compress/memory_extract.go` — 记忆提取提示词

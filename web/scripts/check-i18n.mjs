@@ -48,6 +48,12 @@ const CJK_REGEX = /[\u4e00-\u9fff]/;
 const SKIP_PATHS = ['i18n/locales/', '__tests__/'];
 const SKIP_FILE_SUFFIXES = ['.spec.ts', '.test.ts', '.spec.vue', '.test.vue'];
 
+/**
+ * 行级豁免标记：含 `i18n-exempt` 的行不计违规——仅用于非 UI 文案的合法 CJK
+ * 字符串（如模型关键词表/协议字面值）。滥用会削弱硬编码中文防线，审查须关注。
+ */
+const EXEMPT_MARKER = 'i18n-exempt';
+
 const LOCALES = [
   { name: 'zh-CN', path: path.resolve(SRC_DIR, 'i18n/locales/zh-CN.ts') },
   { name: 'en-US', path: path.resolve(SRC_DIR, 'i18n/locales/en-US.ts') },
@@ -295,12 +301,14 @@ function countViolations(filePath) {
     const sections = splitVue(content);
     const tplClean = stripHtmlComments(sections.template);
     tplClean.split('\n').forEach((line, idx) => {
+      if (line.includes(EXEMPT_MARKER)) return;
       if (CJK_REGEX.test(line)) {
         violations.push({ line: idx + 1, section: 'template', snippet: line.trim().slice(0, 120) });
       }
     });
     const scrNoBlock = stripBlockComments(sections.script);
     scrNoBlock.split('\n').forEach((line, idx) => {
+      if (line.includes(EXEMPT_MARKER)) return;
       const noConsole = stripConsoleLine(stripLineComment(line));
       if (CJK_REGEX.test(noConsole)) {
         violations.push({ line: idx + 1, section: 'script', snippet: noConsole.trim().slice(0, 120) });
@@ -309,6 +317,7 @@ function countViolations(filePath) {
   } else {
     const noBlock = stripBlockComments(content);
     noBlock.split('\n').forEach((line, idx) => {
+      if (line.includes(EXEMPT_MARKER)) return;
       const noConsole = stripConsoleLine(stripLineComment(line));
       if (CJK_REGEX.test(noConsole)) {
         violations.push({ line: idx + 1, section: 'ts', snippet: noConsole.trim().slice(0, 120) });

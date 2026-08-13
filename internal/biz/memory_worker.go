@@ -67,6 +67,8 @@ type LogPair struct {
 type FlowLogWriter interface {
 	LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 	LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	// LogFlowWarn 记录设计内降级/回退（K3）：Monitor 流程日志渲染为黄色警示而非红色错误。
+	LogFlowWarn(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 	LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 }
 

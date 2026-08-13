@@ -326,6 +326,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	})
 	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
+	// 上下文预算台账（29-token §9.6 任务 0.1）：per-request 收集器挂载在 turn
+	// ctx 上，随 runCtx/llmCtx 传入 runner → BeforeModel 注入 hook 计量；turn 末
+	// 由下方 defer 中的 recordTurnUsage 出口读回发 chat.context_budget 进程日志。
+	ctx, _ = chatagent.WithContextBudget(ctx)
 
 	// P1-7: Start the Wire-injected run heartbeat emitter so the frontend
 	// can detect stale runs within 30s. The stop function is invoked in the

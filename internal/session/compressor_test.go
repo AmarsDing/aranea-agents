@@ -184,7 +184,7 @@ func TestLoadCompressBody_returnsBodyAndTail(t *testing.T) {
 	read := &stubCompressReadDeps{maxSummarized: 0, msgs: makeTimeline(5)}
 	c := newTestCompressor(read)
 
-	body, tail, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
+	body, tail, _, cutoffTurn, err := c.loadCompressBody(context.Background(), biz.Session{}, biz.Agent{}, "sess-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,8 +230,12 @@ func TestExecuteCompression_tailWrittenIntoSnapshot(t *testing.T) {
 		{Role: "user", ContentMarkdown: "recent question 保留", TurnNumber: 2, CreatedAt: "2026-07-20T10:00:00Z"},
 		{Role: "assistant", ContentMarkdown: "recent answer 保留", TurnNumber: 2, CreatedAt: "2026-07-20T10:00:01Z"},
 	}
-	if err := c.executeCompression(context.Background(), sess, ag, body, tail, compressOutcome{level: compressLevelLLM, markdown: "摘要内容"}, "sess-1", "user-1"); err != nil {
+	wrote, err := c.executeCompression(context.Background(), sess, ag, body, tail, compressOutcome{level: compressLevelLLM, markdown: "摘要内容"}, "sess-1", "user-1")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !wrote {
+		t.Fatal("成功写入必须上报 wrote=true")
 	}
 	if write.snapshotJSON == "" {
 		t.Fatal("snapshot 未写入")
@@ -273,7 +277,7 @@ func TestLLMCompress_passesPriorSummaryAndAbsorbs(t *testing.T) {
 		{Role: "user", ContentMarkdown: "新问题", TurnNumber: 6},
 		{Role: "assistant", ContentMarkdown: "新回答", TurnNumber: 6},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if out.level != compressLevelLLM || out.markdown == "" {
 		t.Fatalf("outcome = %+v", out)
 	}
@@ -302,7 +306,7 @@ func TestLLMCompress_hybridLLMSuccessAbsorbsPriors(t *testing.T) {
 		{Role: "user", ContentMarkdown: "新问题", TurnNumber: 6},
 		{Role: "assistant", ContentMarkdown: "新回答", TurnNumber: 6},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, ag, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, ag, body, nil, "sess-1")
 	if out.level != compressLevelLLM || out.markdown == "" {
 		t.Fatalf("outcome = %+v", out)
 	}
@@ -327,7 +331,7 @@ func TestLLMCompress_hybridFallbackMarkerKeepsPriors(t *testing.T) {
 		{Role: "user", ContentMarkdown: "新问题", TurnNumber: 6},
 		{Role: "assistant", ContentMarkdown: "新回答", TurnNumber: 6},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, ag, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, ag, body, nil, "sess-1")
 	if out.level != compressLevelLLM || out.markdown == "" {
 		t.Fatalf("outcome = %+v", out)
 	}
@@ -357,8 +361,12 @@ func TestExecuteCompression_absorbDeletesPriors(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "合并摘要", absorbedPriors: true}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6, CreatedAt: "2026-07-20T11:00:00Z"}}
-	if err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u"); err != nil {
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !wrote {
+		t.Fatal("成功写入必须上报 wrote=true")
 	}
 	if !write.deleted {
 		t.Fatal("旧摘要未被删除")
@@ -396,8 +404,12 @@ func TestExecuteCompression_noAbsorbKeepsAppend(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "新摘要", absorbedPriors: false}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6, CreatedAt: "2026-07-20T11:00:00Z"}}
-	if err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u"); err != nil {
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !wrote {
+		t.Fatal("成功写入必须上报 wrote=true")
 	}
 	if write.deleted {
 		t.Fatal("未吸收时不应删除旧摘要")
@@ -447,7 +459,7 @@ func TestLLMCompress_transientErrorThenSuccess(t *testing.T) {
 		{Role: "user", ContentMarkdown: "问题", TurnNumber: 1},
 		{Role: "assistant", ContentMarkdown: "回答", TurnNumber: 1},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if out.level != compressLevelLLM || out.markdown != "有效摘要" {
 		t.Fatalf("outcome = %+v", out)
 	}
@@ -465,7 +477,7 @@ func TestLLMCompress_deterministicErrorNoRetry(t *testing.T) {
 		{Role: "user", ContentMarkdown: "问题", TurnNumber: 1},
 		{Role: "assistant", ContentMarkdown: "回答", TurnNumber: 1},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if out.level != compressLevelNone || out.fail != compressFailureDeterministic {
 		t.Fatalf("outcome = %+v, want none+deterministic", out)
 	}
@@ -487,7 +499,7 @@ func TestLLMCompress_degenerateSummaryRetried(t *testing.T) {
 		{Role: "user", ContentMarkdown: strings.Repeat("问", 600), TurnNumber: 1},
 		{Role: "assistant", ContentMarkdown: strings.Repeat("答", 600), TurnNumber: 1},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if out.level != compressLevelLLM || utf8.RuneCountInString(out.markdown) != 300 {
 		t.Fatalf("outcome level=%v md_runes=%d", out.level, utf8.RuneCountInString(out.markdown))
 	}
@@ -509,7 +521,7 @@ func TestLLMCompress_reductionGuardDrops(t *testing.T) {
 		{Role: "user", ContentMarkdown: strings.Repeat("问", 990), TurnNumber: 1},
 		{Role: "assistant", ContentMarkdown: strings.Repeat("答", 990), TurnNumber: 1},
 	}
-	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1")
+	out := c.llmCompress(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if out.level != compressLevelNone || out.fail != compressFailureTransient {
 		t.Fatalf("outcome = %+v, want none+transient（减量不足应丢弃）", out)
 	}
@@ -589,10 +601,16 @@ func TestRunCompress_forcedBypassesSuppression(t *testing.T) {
 
 func newCascadeTestCompressor(read *stubCompressReadDeps, fake *scriptedLLMCompressor) *Compressor {
 	return &Compressor{
-		deps:         compressDeps{summaryReader: read},
-		Compress:     fake,
-		memoryReader: &stubMemoryFactReader{facts: []biz.MemoryFactEntry{{Statement: "fact", Scope: "fact"}}},
-		lg:           loggateway.NewNoop(),
+		deps:     compressDeps{summaryReader: read},
+		Compress: fake,
+		// ICS 门控（memoryCompactMinICS=0.5）要求事实集覆盖足够维度：
+		// intent(0.25)+state(0.20)+decision×1(0.10)=0.55 → L2 可产出。
+		memoryReader: &stubMemoryFactReader{facts: []biz.MemoryFactEntry{
+			{Statement: "用户意图", Scope: "intent"},
+			{Statement: "当前状态", Scope: "state"},
+			{Statement: "已做决策", Scope: "decision"},
+		}},
+		lg: loggateway.NewNoop(),
 	}
 }
 
@@ -609,7 +627,7 @@ func TestCompressCascade_summaryRowsExceededForcesLLM(t *testing.T) {
 		{Role: "user", ContentMarkdown: "q6", TurnNumber: 6},
 		{Role: "assistant", ContentMarkdown: "a6", TurnNumber: 6},
 	}
-	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1", 5, 0, 0)
 	if out.level != compressLevelLLM {
 		t.Fatalf("level = %v, want LLM（行数超限应强制 L3）", out.level)
 	}
@@ -629,7 +647,7 @@ func TestCompressCascade_summaryRowsBelowCapKeepsL2(t *testing.T) {
 	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "不应被调用"}}}
 	c := newCascadeTestCompressor(read, fake)
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q6", TurnNumber: 6}}
-	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1", 5, 0, 0)
 	if out.level != compressLevelMemory {
 		t.Fatalf("level = %v, want Memory（行数未超限应走 L2）", out.level)
 	}
@@ -644,7 +662,7 @@ func TestCompressCascade_summaryRowsReadErrorFallsBackToL2(t *testing.T) {
 	fake := &scriptedLLMCompressor{results: []compress.Result{{Markdown: "不应被调用"}}}
 	c := newCascadeTestCompressor(read, fake)
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q6", TurnNumber: 6}}
-	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, "sess-1", 5, 0, 0)
+	out := c.compressCascade(context.Background(), biz.Session{}, biz.Agent{}, body, nil, "sess-1", 5, 0, 0)
 	if out.level != compressLevelMemory {
 		t.Fatalf("level = %v, want Memory（读失败应回退 L2）", out.level)
 	}
@@ -786,14 +804,14 @@ func TestLLMCompress_CacheHitSetsOutcomeFlag(t *testing.T) {
 		{Role: "user", ContentMarkdown: "q6", TurnNumber: 6},
 		{Role: "assistant", ContentMarkdown: "a6", TurnNumber: 6},
 	}
-	first := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, "sess-1")
+	first := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if first.level != compressLevelLLM || first.cacheHit {
 		t.Fatalf("首次应 miss: level=%v cacheHit=%v", first.level, first.cacheHit)
 	}
 	if fake.calls != 1 {
 		t.Fatalf("calls = %d, want 1", fake.calls)
 	}
-	second := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, "sess-1")
+	second := c.llmCompress(ctx, biz.Session{}, biz.Agent{}, body, nil, "sess-1")
 	if second.level != compressLevelLLM || !second.cacheHit {
 		t.Fatalf("第二次应命中: level=%v cacheHit=%v", second.level, second.cacheHit)
 	}
@@ -818,8 +836,12 @@ func TestExecuteCompression_CacheHitInNoticeMetadata(t *testing.T) {
 	sess := biz.Session{ID: "sess-1", CompressVersion: 0, RunnerSnapshotJSON: `{"state":{}}`}
 	outcome := compressOutcome{level: compressLevelLLM, markdown: "合并摘要", cacheHit: true}
 	body := []biz.ChatMessage{{Role: "user", ContentMarkdown: "q", TurnNumber: 6}}
-	if err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u"); err != nil {
+	wrote, err := c.executeCompression(context.Background(), sess, biz.Agent{}, body, nil, outcome, "sess-1", "u")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !wrote {
+		t.Fatal("成功写入必须上报 wrote=true")
 	}
 	if len(bus.events) != 1 {
 		t.Fatalf("应发布 1 条压缩通知事件, got %d", len(bus.events))

@@ -1809,6 +1809,20 @@ func NewSessionCompressionUsecase(
 - **校准路径**：`compress/service.go` → `llmcontext.RecordAuthoritativeUsage(ptok, chars)`
 - **注意**：共享估算器为进程级单例，多模型混用时比率漂移（与 Grok 同语义，接受近似）
 
+### 6.6.4 系统评审加固（2026-08-13，已实现 ✅）
+
+系统层面评审发现 1 个致命断链 + 5 个质量/精度缺陷并全部修复，设计细节见 [`memory/L0-compression.design.md` §1.6](./memory/L0-compression.design.md#16-系统评审加固2026-08-13)：
+
+| # | 修复 | 要点 |
+|---|------|------|
+| F0 | TurnNumber 断链（致命） | messages 表删除后活动流适配器不填 TurnNumber → 压缩体恒为空、子系统空转；`biz/session/activity_message_adapter.go` `synthesizeTurnNumbers` 按 TurnID 时间序合成稳定序号 |
+| F1 | MemoryCompact ICS 质量门 | 覆盖分 < 0.5 放弃 L2，防稀疏记忆事实替换整个对话体（不可恢复的上下文丢失） |
+| F2 | L3 分块滚动摘要 | transcript 超 24000 runes 分块，逐块 PriorSummary 滚动吸收，防压缩调用自身 context overflow |
+| F3 | 工具消息进 transcript | `loadCompressBody` 增返回 toolBody；`TOOL(name): body` 渲染（≤1000 runes），消息级截断 ≤8000 runes；仅 summary 策略渲染 |
+| F4 | 压缩后估值计入 reserved_system | `estimateCompactedPromptTokens` 增加 reservedSystem 参数，修复 L2→L3 升级决策偏低 |
+| F5 | Section 6 上限 + PromptVersion v3 | 用户消息仅最近 30 条逐字，更早压缩为主题列表，防摘要自膨胀触发减量守卫 |
+| F6 | ToolsProfile 驱动保留 token | 修复 SnapshotMode 误当 profile 致保留 token 恒 8000；coding/research/chat_only 恢复 15000/12000/4000 分级 |
+
 ### 6.7 与 Runner 会话持久态的关系
 
 | 方案 | 做法 | 优点 | 风险 |

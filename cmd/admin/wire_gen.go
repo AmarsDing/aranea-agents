@@ -34,6 +34,7 @@ import (
 	"aranea-agents/internal/biz/session"
 	skill3 "aranea-agents/internal/biz/skill"
 	"aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/conf"
@@ -170,7 +171,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
 	memoryCanaryStatus := biz.NewMemoryCanaryStatus()
 	alertMetricRegistry := monitor.NewAlertMetricRegistry()
-	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, traceSpanReader, sequencer, memoryCanaryStatus, alertMetricRegistry, loggatewayLogger)
+	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, traceSpanReader, sequencer, memoryCanaryStatus, alertMetricRegistry, usageRepo, loggatewayLogger)
 	a2aRepo := data.NewA2ARepoFromData(dataData, loggatewayLogger)
 	agentLookup := biz.ProvideA2AAgentLookup(agentRepository)
 	a2aUsecase := a2a.NewUsecase(a2aRepo, a2aRepo, a2aRepo, a2aRepo, agentLookup)
@@ -991,7 +992,7 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithFilesystemHealthReader(fsHealth), biz.WithTraceSpanReader(spanReader), biz.WithRingBuffer(rb), monitor.WithLogger(lg))
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
@@ -1008,6 +1009,10 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRe
 	if canary != nil {
 
 		reg.Register(monitor.NewMemoryCanaryMetric(canary))
+	}
+
+	if ch, ok := usageRepo.(usage.CacheHitRatioStatsRepo); ok && ch != nil {
+		reg.Register(monitor.NewCacheHitRatioLowMetric(ch))
 	}
 	uc.SetRegistry(reg)
 	return uc
@@ -1360,8 +1365,7 @@ func provideChannelNotifierDeps(
 
 func provideChatServiceDeps(
 	runs *runtime.RunRegistry,
-	pendingQueue *runtime.PendingMessageQueue,
-	usage *biz.UsageUsecase,
+	pendingQueue *runtime.PendingMessageQueue, usage2 *biz.UsageUsecase,
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
@@ -1436,13 +1440,13 @@ func provideChatServiceDeps(
 			PendingQueue: pendingQueue,
 			RT:           rtDeps,
 			TurnTimeout:  0,
-			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage, Agents: agents}),
+			Admission:    biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{Quota: usage2, Agents: agents}),
 			StepReader:   stepReader,
 			StepWriter:   stepWriter,
 			TaskV2:       taskV2Repo,
 		},
 		Usage: service.ChatUsageDeps{
-			Usage:        usage,
+			Usage:        usage2,
 			Monitor:      mon,
 			Artifacts:    artifacts,
 			SkillStats:   skillStats,
@@ -1985,13 +1989,12 @@ func provideChannelGateCards(
 	return service.NewChannelGateCards(eventBus, sessions, channels, chat, steps, lg)
 }
 
-func provideChannelIngressAdmission(
-	usage *biz.UsageUsecase,
+func provideChannelIngressAdmission(usage2 *biz.UsageUsecase,
 	agents biz.AgentRepository,
 	channels *biz.ChannelUsecase,
 ) *biz.TurnAdmissionUsecase {
 	uc := biz.NewTurnAdmissionUsecase(biz.TurnAdmissionUsecaseConfig{
-		Quota:  usage,
+		Quota:  usage2,
 		Agents: agents,
 		ChannelConfigResolver: biz.ChannelLongTaskConfigResolverFunc(func(ctx context.Context, sess biz.Session) biz.ChannelLongTaskConfig {
 			meta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON)
@@ -3106,11 +3109,11 @@ func provideA2AGatewayHealthRunner(deps health2.Deps, lg loggateway.Logger) *hea
 	return health2.NewRunner(deps, lg)
 }
 
-func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools2 *biz.ToolUsecase, deliveries biz.HookDeliveryRepo, monitorBus contract.MonitorBus, lg loggateway.Logger) *plugintrpc.Runtime {
+func providePluginRuntime(stats plugintrpc.StatsRecorder, usage2 biz.PluginCostGuardUsageRepo, tools2 *biz.ToolUsecase, deliveries biz.HookDeliveryRepo, monitorBus contract.MonitorBus, lg loggateway.Logger) *plugintrpc.Runtime {
 	rt := plugintrpc.NewRuntime(stats, lg)
 	rt.SetMonitorBus(monitorBus)
-	if usage != nil {
-		rt.SetCostGuardUsageRepo(usage)
+	if usage2 != nil {
+		rt.SetCostGuardUsageRepo(usage2)
 	}
 	if deliveries != nil {
 		rt.SetHookDeliveryRepo(deliveries)

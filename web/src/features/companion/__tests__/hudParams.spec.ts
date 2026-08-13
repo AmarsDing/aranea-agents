@@ -75,6 +75,30 @@ describe('hudParamsFor — 启动过场 boot（待机微光 0.35 → 满功率 1
   });
 });
 
+describe('hudParamsFor — dormant 待命微光（V10 §16.5：低增益慢脉动，青蓝系不变）', () => {
+  it('振幅/流速/环速降低，强度 0.55（boot=1）', () => {
+    const p = hudParamsFor('dormant', 0, 1);
+    expect(p.ampBase).toBeCloseTo(0.06, 5);
+    expect(p.ampGain).toBeCloseTo(0.15, 5);
+    expect(p.noiseSpeedFactor).toBeCloseTo(0.35, 5);
+    expect(p.ringSpeedFactor).toBeCloseTo(0.35, 5);
+    expect(p.intensity).toBeCloseTo(0.55, 5);
+  });
+
+  it('配色保持青蓝系（琥珀/黄禁用，红仅警示）', () => {
+    const p = hudParamsFor('dormant', 0);
+    expect(p.tintA).toBe(TINT_ORB_A);
+    expect(p.tintB).toBe(TINT_ORB_B);
+  });
+
+  it('无收缩/无震动；boot 过场仍生效（0.35 基底 ×0.55）', () => {
+    const p = hudParamsFor('dormant', 0, 0);
+    expect(p.orbScale).toBe(1);
+    expect(p.shakeGain).toBe(0);
+    expect(p.intensity).toBeCloseTo(0.35 * 0.55, 5);
+  });
+});
+
 describe('clampAmplitude', () => {
   it('钳制到 [0, 1]', () => {
     expect(clampAmplitude(0.4)).toBe(0.4);

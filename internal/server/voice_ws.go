@@ -244,6 +244,8 @@ type voiceControlMessage struct {
 	DetectMs   int    `json:"detect_ms"`
 	// Mode 会话模式（空=对话；voice.ModeDictation=听写：终稿仅下行文本不建 Turn）。
 	Mode string `json:"mode"`
+	// Source 唤醒来源（V10，仅 voice.wake 使用）：kws | manual | system。
+	Source string `json:"source"`
 }
 
 func (s *VoiceWSServer) handleControl(sess *voice.Session, msg voiceControlMessage) {
@@ -263,6 +265,8 @@ func (s *VoiceWSServer) handleControl(sess *voice.Session, msg voiceControlMessa
 		sess.Commit()
 	case "voice.barge_in", "voice.cancel": // V1 裁剪 #4：barge_in 复用 cancel 路径
 		sess.Cancel(msg.Type)
+	case "voice.wake": // V10：dormant → listening（KWS 检出/手动点击；非 dormant 幂等忽略）
+		sess.Wake(msg.Source)
 	case "ping":
 		sess.Ping()
 	}

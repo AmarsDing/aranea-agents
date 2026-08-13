@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -33,6 +34,8 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryKnowledgeCue, utf8.RuneCountInString(cue))
 		// P2 TTFT: append the per-turn dynamic cue at the END of the message
 		// list so the [system block + history + user] prefix stays cacheable.
 		sys := trpcmodel.NewSystemMessage(cue)

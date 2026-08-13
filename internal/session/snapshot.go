@@ -2,8 +2,10 @@ package session
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 )
@@ -72,16 +74,115 @@ func mergeSessionSummariesMarkdown(rows []biz.SessionSummary) string {
 	return strings.TrimSpace(b.String())
 }
 
+const (
+	// compressMessageMaxRunes 单条 user/assistant/system 消息在压缩 transcript 中的
+	// 上限——单条超大消息不能溢出整个 chunk（否则分块失效、上下文溢出确定性失败）。
+	compressMessageMaxRunes = 8000
+	// compressToolResultMaxRunes 单条工具结果在压缩 transcript 中的上限
+	// （工具输出体积大、对摘要的信息密度低）。
+	compressToolResultMaxRunes = 1000
+	// compressTruncationMarker 追加在被截断消息体末尾的标记。
+	compressTruncationMarker = "…[truncated]"
+)
+
+// compressChunkMaxRunes 单次 LLM 调用发送的 transcript 渲染上限（rune）。
+// 超限的压缩体按 chunk 逐块摘要，前一块的产出作为下一块的 PriorSummary
+// 滚动吸收（var 而非 const：测试覆盖以强制分块）。
+var compressChunkMaxRunes = 24000
+
 func buildCompressTranscript(msgs []biz.ChatMessage) string {
 	var b strings.Builder
 	for _, m := range msgs {
-		role := strings.ToUpper(strings.TrimSpace(m.Role))
-		b.WriteString(role)
-		b.WriteString(": ")
-		b.WriteString(strings.TrimSpace(m.ContentMarkdown))
+		b.WriteString(renderCompressMessage(m))
 		b.WriteString("\n\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// renderCompressMessage 渲染单条消息为 transcript 行。工具消息渲染为
+// "TOOL(name): body"；所有消息按角色上限截断，防止单条消息溢出 chunk。
+func renderCompressMessage(m biz.ChatMessage) string {
+	role := strings.ToUpper(strings.TrimSpace(m.Role))
+	content := strings.TrimSpace(m.ContentMarkdown)
+	if role == "TOOL" {
+		content = truncateRunes(content, compressToolResultMaxRunes)
+		if name := compressToolName(m.OptionsJSON); name != "" {
+			return "TOOL(" + name + "): " + content
+		}
+		return "TOOL: " + content
+	}
+	content = truncateRunes(content, compressMessageMaxRunes)
+	return role + ": " + content
+}
+
+// compressToolName 从消息 OptionsJSON 中提取工具名（提取失败返回空）。
+func compressToolName(optionsJSON string) string {
+	s := strings.TrimSpace(optionsJSON)
+	if s == "" {
+		return ""
+	}
+	var opts struct {
+		ToolName string `json:"tool_name"`
+	}
+	if err := json.Unmarshal([]byte(s), &opts); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(opts.ToolName)
+}
+
+// truncateRunes 按 rune 数截断并追加截断标记；未超限原样返回。
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + compressTruncationMarker
+}
+
+// splitMessagesForCompress 将压缩体按渲染 rune 数切分为有序 chunk：
+// 当前 chunk 非空且加入下一条会超限时封块；单条超限消息自成一块。
+func splitMessagesForCompress(msgs []biz.ChatMessage, maxRunes int) [][]biz.ChatMessage {
+	if len(msgs) == 0 {
+		return nil
+	}
+	if maxRunes <= 0 {
+		return [][]biz.ChatMessage{msgs}
+	}
+	var chunks [][]biz.ChatMessage
+	var cur []biz.ChatMessage
+	curRunes := 0
+	for _, m := range msgs {
+		n := utf8.RuneCountInString(renderCompressMessage(m)) + 2 // "\n\n" 分隔符
+		if len(cur) > 0 && curRunes+n > maxRunes {
+			chunks = append(chunks, cur)
+			cur = nil
+			curRunes = 0
+		}
+		cur = append(cur, m)
+		curRunes += n
+	}
+	if len(cur) > 0 {
+		chunks = append(chunks, cur)
+	}
+	return chunks
+}
+
+// mergeTranscriptMessages 将工具消息按 (TurnNumber, CreatedAt) 交织进
+// user/assistant 时间线，让摘要看到工具调用发生的实际位置。
+func mergeTranscriptMessages(body, tools []biz.ChatMessage) []biz.ChatMessage {
+	out := make([]biz.ChatMessage, 0, len(body)+len(tools))
+	out = append(out, body...)
+	out = append(out, tools...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].TurnNumber != out[j].TurnNumber {
+			return out[i].TurnNumber < out[j].TurnNumber
+		}
+		return out[i].CreatedAt < out[j].CreatedAt
+	})
+	return out
 }
 
 func timelineUserAssistant(msgs []biz.ChatMessage) []biz.ChatMessage {

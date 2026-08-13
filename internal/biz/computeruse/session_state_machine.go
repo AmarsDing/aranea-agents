@@ -22,7 +22,7 @@ var transitions = map[SessionStatus]map[SessionEvent]SessionStatus{
 	SessionIdle: {
 		EvObserve: SessionObserving,
 		EvGround:  SessionGrounding,
-		EvFail:    SessionFailed, // 预算耗尽（chargeBudget 于 idle 直接判失败）
+		EvFail:    SessionFailed, // 预算耗尽（beginStep 于 idle 直接判失败）
 		EvCancel:  SessionCancelled,
 		EvFinish:  SessionDone,
 	},

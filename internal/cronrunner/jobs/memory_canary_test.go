@@ -103,6 +103,8 @@ func (f *canaryFakeFlowLog) LogFlowStart(ctx context.Context, sessionID, stepID,
 }
 func (f *canaryFakeFlowLog) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
 }
+func (f *canaryFakeFlowLog) LogFlowWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+}
 func (f *canaryFakeFlowLog) LogFlowError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
 	f.errors = append(f.errors, stepID+": "+message)
 }

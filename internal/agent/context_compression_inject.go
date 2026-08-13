@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -100,6 +101,8 @@ func newContextCompressionBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		marker := trpcmodel.NewSystemMessage(buildTruncationMarker(len(evictedMsgs)))
 		args.Request.Messages = insertAfterLastSystem(keepMsgs, marker)
+		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryOtherDynamic, utf8.RuneCountInString(marker.Content))
 		// 5. Store compression metadata for the L0 snapshot hook.
 		storeCompressionMeta(ctx, CompressionMeta{
 			Occurred:     true,

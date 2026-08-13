@@ -853,8 +853,8 @@
 |------|------|
 | **上游依赖** | `service/chat`（ChatSender/WSTurnExecutor，ASR 终稿入口）、`biz`（EventBus/工具配置）、`server`（RunCanceller/SessionAuthorizer）、`internal/event`（流程日志）、System Settings（speech 分组配置） |
 | **下游影响** | `tools`（clientbridge 注册新 ToolSet）、`agent`（确认门 catalog 扩展 client 工具组）、`59-multimodal`（V4 复用 ASR 端口做音频附件 STT）、`63-tts`（可后续共用 SpeechProvider 端口） |
-| **核心导出** | `StreamingASRProvider`/`StreamingTTSProvider`（biz 窄端口）、`VoiceSession` 状态机（idle/listening/thinking/speaking/interrupted/error）、`SentenceChunker` |
-| **共享类型** | `ASREvent`/`TTSAudioChunk`（biz 层，data 适配器单向转换）；`/v1/voice` 帧协议（二进制 PCM + JSON 控制帧，独立于 `/v1/ws`） |
+| **核心导出** | `StreamingASRProvider`/`StreamingTTSProvider`（biz 窄端口）、`VoiceSession` 状态机（idle/dormant/listening/thinking/speaking/interrupted/error，V10 +dormant）、`SentenceChunker` |
+| **共享类型** | `ASREvent`/`TTSAudioChunk`（biz 层，data 适配器单向转换）；`/v1/voice` 帧协议（二进制 PCM + JSON 控制帧，独立于 `/v1/ws`）；V10 +`voice.wake` 上行帧（source=kws/manual/system） |
 | **事件生产** | `client_tool.invoke/result/timeout`（WS 路由事件）；流程日志 `voice.*` step（须登记 stepTitleRegistry + 52-flow-logger §5.1） |
 | **事件消费** | Chat 流式 delta（喂 SentenceChunker）、工具确认门事件 |
 | **数据库** | 无新表（System Settings `speech` 分组；语音留档复用 27-artifact） |
@@ -865,6 +865,7 @@
 - 打断链路必须复用 `RunCanceller.CancelRun`，禁止另建取消通道
 - 客户端工具执行路由目标 = 同 user + 同 session 且 capabilities 含 `desktop_companion` 的 WS 连接；无连接时返回 `DESKTOP_CLIENT_OFFLINE`，禁止静默成功
 - 火山等 Provider SDK 只允许出现在 `internal/data/speech/`；凭据走敏感字段，禁止入日志
+- V10 唤醒/休眠（74 设计 §16）：dormant 态**保持**事件总线订阅与 delegation watcher（委派终态系统唤醒播报），仅延迟 ASR/TTS 预热；语句拦截顺序 = 唤醒词剥离 → 退出词 → 确认词 → Chat 管线；前端 KWS 在采集端门控音频上行（dormant 零上传）
 
 ---
 

@@ -38,6 +38,7 @@ type fakeFlowLogWriter struct {
 
 func (f *fakeFlowLogWriter) LogFlowStart(_ context.Context, _, _, _ string, _ ...biz.LogPair) {}
 func (f *fakeFlowLogWriter) LogFlowDone(_ context.Context, _, _, _ string, _ ...biz.LogPair)  {}
+func (f *fakeFlowLogWriter) LogFlowWarn(_ context.Context, _, _, _ string, _ ...biz.LogPair)  {}
 
 func (f *fakeFlowLogWriter) LogFlowError(_ context.Context, _, stepID, message string, _ ...biz.LogPair) {
 	f.mu.Lock()

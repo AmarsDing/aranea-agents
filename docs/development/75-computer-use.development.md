@@ -126,6 +126,21 @@ E2E 关键证据（2026-08-13 运行）：`act-type path=a11y verify.Changed=tru
 
 **E2E 排障沉淀**：①多次失败运行泄漏的 notepad.exe 会造成全屏 a11y 树同名元素歧义（matcher top1/top2 分差 <0.2 拒绝命中）——测试前须清理残留实例；②RTX 2080 Ti 11GB 同时承载 OmniParser(Florence2/YOLO) 与 qwen2.5vl-cua(5.9GB, 100% GPU) 可行，但首次 VLM 调用含模型加载，须预热或容忍 60s 超时；③Ollama OpenAI 兼容端点不透传 num_ctx，派生 Modelfile 是唯一稳妥的上下文扩容手段（对生产 catalog 路径同样生效）。
 
+### Phase M2.5 — M2 审查修复（2026-08-13）✅
+
+按 `aranea-review` SKILL 全维度复审 M2 变更集：无阻断项；4 条建议（F1-F4）全部 TDD 修复，5 条提示逐条处置。
+
+| # | 发现 | 修复 | 回归测试 |
+|---|------|------|---------|
+| F1 | vlm_direct 粗判坐标在 DPI≠100% 显示器误点（sidecar PerMonitorV2 截图已是物理像素，却又除 ScaleFactor 二次换算） | `directGround` 删除二次换算；设计文档 §3.3 固化坐标语义 | `TestAct_VLMDirectScaledDisplay` |
+| F2 | grounding 降级（设计内回退，K3）误用 error 级流程日志 | `biz.FlowLogWriter` 扩展 `LogFlowWarn`；adapter + 全部 fakes 同步；降级点切换 warn 级 | `TestAct_GroundingFallbackLogsWarn` |
+| F3 | 并发 Act 双计费后一者 transit 失败 → 预算泄漏 | `beginStep` 同锁原子完成「忙/终态检查 + StepsUsed++ + 状态转换」（替代 chargeBudget 两步式）；提取 `rejectBudgetStep` 顺带使 actOne ≤80 行 | `TestBeginStep_ConcurrentNoDoubleCharge` |
+| F4 | SoM 编号正则只取数字，"-1" 无匹配哨兵被提取为候选 1 误选 | `vlmNumberPattern` 允许负号 + `parseVLMNumber` 判负明确失败 | `TestVLMGrounderPick_NegativeSentinel` / `TestParseVLMNumber_Negative` |
+
+提示处置：①actOne 行数超标 → F3 顺带解决；②预算耗尽时被拒审计步 Index 撞号 → F3 顺带解决（Index=stepsUsed+1 单调不撞号，`TestAct_BudgetExceededRejectedStepIndex`）；③verifyAfterAction settle 不感知急停取消 → 接受（400ms 有界延迟，急停最多多等一拍，设计文档 §3.3 已注明）；④resolveVisionLLM 每次 List + 首项优先 → 接受（仅 a11y 未命中的视觉兜底路径触发、低频，优先级由 catalog 排序控制，设计文档 §3.2 已注明）；⑤迁移 20261208 对已存在行不更新 schema → 接受（实测部署库 `computer_use_act` 已含 actions[]；结构性注意已录入设计文档 §3.4——未来 computer_use_* schema 变更走 catalog-patch 迁移）。
+
+改动文件追加：`internal/biz/computeruse/usecase.go`（beginStep/rejectBudgetStep）、`internal/computeruse/vlm.go`（正则+判负）、`internal/biz/memory_worker.go`（FlowLogWriter.LogFlowWarn）、`internal/service/event_adapter.go`（LogFlowWarn 实现）、`internal/cronrunner/jobs/{memory_l1_archive_test,memory_canary_test}.go` + `internal/tools/clientbridge/bridge_test.go`（fakes 补 LogFlowWarn）。
+
 ### Phase P2 — Linux sidecar（后续迭代）
 ### Phase P3 — iOS 模拟器（macOS 宿主 WDA + MCP 托管，后续迭代）
 

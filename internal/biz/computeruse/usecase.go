@@ -309,14 +309,12 @@ func (u *ComputerUseUsecase) actBatch(ctx context.Context, req ActRequest) (ActR
 func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequest) (ActResult, error) {
 	started := u.d.Now()
 
-	// 预算守卫（原子占用一步）。
-	stepsUsed, err := u.chargeBudget(s)
+	// 预算守卫 + 会话占用（原子：忙/终态检查 + 计费 + 状态转换，F3）。
+	stepsUsed, err := u.beginStep(s, EvGround)
 	if err != nil {
-		if u.d.FlowLog != nil {
-			u.d.FlowLog.LogFlowError(ctx, s.ID, StepBudgetExceeded, "会话预算耗尽",
-				biz.LogPair{Key: "steps_used", Value: stepsUsed})
+		if errors.Is(err, ErrBudgetExceeded) {
+			u.rejectBudgetStep(ctx, s, req, stepsUsed, err, started)
 		}
-		u.finishStep(ctx, s, req, Step{Result: StepFailed, Error: err.Error(), Danger: u.d.Policy.IsDanger(req.Target, req.Args)}, started)
 		return ActResult{}, err
 	}
 
@@ -350,10 +348,6 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 			biz.LogPair{Key: "target", Value: req.Target},
 			biz.LogPair{Key: "action", Value: string(req.Action)},
 			biz.LogPair{Key: "danger", Value: danger})
-	}
-
-	if !u.transit(s, EvGround) {
-		return ActResult{}, fmt.Errorf("computeruse: 会话状态 %s 不允许动作", u.statusOf(s))
 	}
 
 	// 禁区检查：前台进程命中黑名单直接拒绝。
@@ -393,6 +387,16 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 			biz.LogPair{Key: "path", Value: string(step.Path)})
 	}
 	return result, nil
+}
+
+// rejectBudgetStep 预算拒绝善后：流程日志 + 审计被拒尝试步
+// （Index = stepsUsed+1 单调递增，不与已执行步撞号）。
+func (u *ComputerUseUsecase) rejectBudgetStep(ctx context.Context, s *Session, req ActRequest, stepsUsed int, err error, started time.Time) {
+	if u.d.FlowLog != nil {
+		u.d.FlowLog.LogFlowError(ctx, s.ID, StepBudgetExceeded, "会话预算耗尽",
+			biz.LogPair{Key: "steps_used", Value: stepsUsed})
+	}
+	u.finishStep(ctx, s, req, Step{Index: stepsUsed + 1, Result: StepFailed, Error: err.Error(), Danger: u.d.Policy.IsDanger(req.Target, req.Args)}, started)
 }
 
 // resolveSession 解析会话：显式 ID > agent 活跃会话 > 自动创建（默认预算）。
@@ -446,11 +450,22 @@ func (u *ComputerUseUsecase) resolveSession(req ActRequest) (*Session, error) {
 	return s, nil
 }
 
-// chargeBudget 原子占用一步预算并返回已用步数；超限时经状态机把会话置 failed
-// （进终态同时解除 agent 活跃映射，下一次 Act 自动重建会话——B2）。
-func (u *ComputerUseUsecase) chargeBudget(s *Session) (int, error) {
+// beginStep 原子开始一步：会话忙/终态检查 + 预算守卫 + StepsUsed++ + 可选状态转换，
+// 全程同一把锁——杜绝并发 Act「双计费后一者 transit 失败」的预算泄漏（F3）。
+// 预算超限时经状态机把会话置 failed（进终态同时解除 agent 活跃映射，下一次 Act 自动重建会话——B2）。
+// ev 为空串表示只占预算不占状态机（Launch 只计费不转换）。
+func (u *ComputerUseUsecase) beginStep(s *Session, ev SessionEvent) (int, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if s.Status == SessionCancelled {
+		return s.StepsUsed, ErrSessionCancelled
+	}
+	if IsTerminal(s.Status) {
+		return s.StepsUsed, ErrSessionTerminal
+	}
+	if s.Status != SessionIdle {
+		return s.StepsUsed, fmt.Errorf("computeruse: 会话忙（%s）", s.Status)
+	}
 	if s.Budget.MaxSteps > 0 && s.StepsUsed >= s.Budget.MaxSteps {
 		u.transitionLocked(s, EvFail)
 		return s.StepsUsed, ErrBudgetExceeded
@@ -461,6 +476,9 @@ func (u *ComputerUseUsecase) chargeBudget(s *Session) (int, error) {
 	}
 	s.StepsUsed++
 	s.UpdatedAt = u.d.Now()
+	if ev != "" {
+		u.transitionLocked(s, ev) // 上方已保证 idle，转换必然合法
+	}
 	return s.StepsUsed, nil
 }
 
@@ -542,7 +560,7 @@ func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, r
 	// 3. SoM 视觉兜底（OmniParser 可用时）：截图 → 解析 → IoU 融合 → VLM 选编号
 	if u.d.Vision != nil && u.d.Grounder != nil && u.d.Vision.Available(ctx) {
 		if u.d.FlowLog != nil {
-			u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 SoM 视觉兜底",
+			u.d.FlowLog.LogFlowWarn(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 SoM 视觉兜底",
 				biz.LogPair{Key: "target", Value: req.Target})
 		}
 		el, verr := u.visionGround(ctx, snap, req.Target)
@@ -561,7 +579,7 @@ func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, r
 	// 4. VLM 坐标直判（vlm_direct：免 OmniParser 的最低精度路径，含 zoom 精化）
 	if u.d.Grounder != nil {
 		if u.d.FlowLog != nil {
-			u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 VLM 坐标直判",
+			u.d.FlowLog.LogFlowWarn(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 VLM 坐标直判",
 				biz.LogPair{Key: "target", Value: req.Target})
 		}
 		pt, derr := u.directGround(ctx, req.Target)
@@ -575,9 +593,9 @@ func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, r
 		return ActResult{Step: *step}, &snap, werr
 	}
 
-	// 5. 全部视觉组件缺失
+	// 5. 全部视觉组件缺失（最终失败由 actOne 的 StepActError 覆盖，此处 warn 记降级链断裂）
 	if u.d.FlowLog != nil {
-		u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中且视觉组件不可用",
+		u.d.FlowLog.LogFlowWarn(ctx, s.ID, StepGroundFall, "a11y 未命中且视觉组件不可用",
 			biz.LogPair{Key: "target", Value: req.Target})
 	}
 	*step = withResult(*step, StepFailed, ErrGroundingFailed)
@@ -694,12 +712,10 @@ func (u *ComputerUseUsecase) directGround(ctx context.Context, target string) (P
 	if err != nil {
 		return Point{}, err
 	}
-	// 粗判点是图像素坐标，换算为物理坐标（截图可能带 DPI 缩放）。
-	scale := full.ScaleFactor
-	if scale <= 0 {
-		scale = 1
-	}
-	phys := Point{X: int(float64(coarse.X) / scale), Y: int(float64(coarse.Y) / scale)}
+	// 粗判点即物理坐标：sidecar 为 PerMonitorV2 DPI aware（app.manifest），
+	// 截图图像素与物理像素 1:1；Image.ScaleFactor 仅信息元数据，禁止再换算
+	// （F1 修复：DPI 150% 下二次换算会把坐标缩到 2/3 处导致误点）。
+	phys := coarse
 
 	region := Rect{X: phys.X - zoomRegionW/2, Y: phys.Y - zoomRegionH/2, W: zoomRegionW, H: zoomRegionH}
 	if region.X < 0 {
@@ -850,7 +866,7 @@ func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args,
 	if err != nil {
 		return Step{}, err
 	}
-	stepsUsed, err := u.chargeBudget(s)
+	stepsUsed, err := u.beginStep(s, "") // Launch 只计费不占状态机
 	if err != nil {
 		return Step{}, err
 	}

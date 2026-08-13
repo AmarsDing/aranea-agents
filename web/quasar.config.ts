@@ -17,6 +17,14 @@ export default configure(() => {
       extendViteConf(viteConf) {
         viteConf.resolve = viteConf.resolve || {};
         viteConf.resolve.alias = viteConf.resolve.alias || {};
+        // dev server 防崩：chokidar 监视 dist 构建产物时一旦文件被杀软/构建锁占用，
+        // EBUSY 会作为未处理 'error' 事件直接打崩进程（实测 watch dist/spa/kws/*.data 崩 dev server）。
+        // dist 为构建产物，dev 模式无需监听。
+        viteConf.server = viteConf.server || {};
+        viteConf.server.watch = {
+          ...viteConf.server.watch,
+          ignored: ["**/dist/**", "**/node_modules/**", "**/.git/**"],
+        };
       }
     },
     devServer: {

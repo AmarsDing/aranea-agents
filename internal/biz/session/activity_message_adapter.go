@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -58,6 +59,11 @@ func (r *ActivityMessageReader) ListMessagesRecent(ctx context.Context, sessionI
 // Note: Activity doesn't have turn_number; this uses TurnID correlation.
 // For now, returns all messages (turn-based filtering is handled at the Activity level).
 func (r *ActivityMessageReader) ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error) {
+	// TECH-DEBT(COMPRESS-IO): 全量加载会话所有 Activity 再内存过滤/转换，
+	// afterTurn 未下推到存储层——长会话每次压缩软触发都全表读一次。
+	// 修复方向：ActivityLister 增加按 turn 范围/游标的分页查询（需 TurnID 单调
+	// 或可排序映射），或 ListBySession 内部加服务端过滤。见
+	// docs/development/memory/L0-compression.development.md 差距清单 G6。
 	acts, err := r.activities.ListBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -159,7 +165,33 @@ func activitiesToChatMessages(acts []ActivityEntry) []ChatMessage {
 	sort.SliceStable(msgs, func(i, j int) bool {
 		return msgs[i].CreatedAt < msgs[j].CreatedAt
 	})
+	synthesizeTurnNumbers(msgs)
 	return msgs
+}
+
+// synthesizeTurnNumbers assigns stable per-turn ordinals from TurnID.
+// Activities carry TurnID but no numeric turn index; the compression pipeline
+// (internal/session) keys its body window on ChatMessage.TurnNumber, which the
+// dropped messages table used to provide. Activities are append-only, so
+// chronological ordinal assignment is stable across compressions: a summarized
+// prefix's turn numbers never shift. Rows without TurnID keep 0 and are
+// excluded from the compression body (prior behavior for unattributed rows).
+func synthesizeTurnNumbers(msgs []ChatMessage) {
+	ordinals := make(map[string]int)
+	next := 0
+	for i := range msgs {
+		tid := strings.TrimSpace(msgs[i].TurnID)
+		if tid == "" {
+			continue
+		}
+		n, ok := ordinals[tid]
+		if !ok {
+			next++
+			n = next
+			ordinals[tid] = n
+		}
+		msgs[i].TurnNumber = n
+	}
 }
 
 // systemInternalNoticeTypes mirrors the frontend SYSTEM_NOTICE_TYPES set
@@ -223,8 +255,13 @@ func activityToChatMessage(a ActivityEntry) (ChatMessage, bool) {
 // Currently minimal; Phase 3 will enrich this with tool/reasoning details.
 func buildOptionsJSON(a ActivityEntry) string {
 	// Preserve tool name for tool messages so the frontend can render tool cards.
+	// 必须经 json.Marshal 转义：字符串拼接遇引号/控制字符会产生非法 JSON。
 	if a.Kind == "action" && a.ToolName != "" {
-		return `{"tool_name":"` + a.ToolName + `"}`
+		raw, err := json.Marshal(map[string]string{"tool_name": a.ToolName})
+		if err != nil {
+			return ""
+		}
+		return string(raw)
 	}
 	return ""
 }

@@ -507,14 +507,48 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 
 | # | 任务 | 层 | 状态 | 证据 |
 |---|------|-----|------|------|
-| 0.1 | ContextBudget 收集器 + 8 处 BeforeModel hook 计量 + `chat.context_budget` 台账日志 | Agent/Service | 📋 | 设计 §9.6 |
-| 0.2 | 前缀字节级稳定回归测试 `prompt_prefix_stability_test.go`（离线） | Agent | 📋 | 设计 §9.5 |
-| 0.3 | `CacheHitRatioStats` 聚合查询（biz 窄接口 + data SQL，排除 prompt<1024 样本） | Biz/Data | 📋 | 设计 §9.3 |
-| 0.4 | `llm.cache_hit_ratio_low` 告警规则（1h 窗、样本≥20、阈值默认 0.5 可配） | Biz/Monitor | 📋 | 设计 §9.4 |
+| 0.1 | ContextBudget 收集器 + 9 处 hook 计量 + `chat.context_budget` 台账日志 | Agent/Service | ✅ | `internal/agent/context_budget.go`、7 测试 PASS；`go build ./cmd/... ./internal/... ./api/... ./pkg/...` exit 0 |
+| 0.2 | 前缀字节级稳定回归测试 `prompt_prefix_stability_test.go`（离线） | Agent | ✅ | 3 用例 PASS；发现整链消息顺序：静态区=[base system, static cue]（N=2），dynamic capability cue 为 LayerSemiStatic |
+| 0.3 | `CacheHitRatioStats` 聚合查询（biz 窄接口 + data SQL，排除 prompt<1024 样本） | Biz/Data | ✅ | `internal/biz/usage/cache_hit.go`、`internal/data/usage_cache_hit.go`；`TestCacheHitRatioStats_Aggregates`/`_Empty` 真 PG PASS（2026-08-13） |
+| 0.4 | `llm.cache_hit_ratio_low` 告警规则（1h 窗、样本≥20、阈值默认 0.5 可配） | Biz/Monitor | ✅ | `internal/biz/monitor/alert_metric_cache_hit.go`；`go test ./internal/biz/monitor -run TestCacheHitRatio` PASS；Wire 装配入告警注册表（2026-08-13） |
+| 0.5 | 运行时验证：重启后端 → 真实对话 → 台账分量合理 | Service | ✅ | 见 §13.1.2 |
+
+### 13.1.1 运行时基线测量（2026-08-13，68 样本，日志 log-2026-08-11~12）
+
+| agent | model | n | avg ratio | p50 | min | avg prompt |
+|---|---|---|---|---|---|---|
+| `__spirit__` | deepseek-v4-flash | 20 | **0.533** | 0.801 | 0.000 | **60,180** |
+| `__voice_butler__` | deepseek-v4-flash | 43 | 0.701 | 0.992 | 0.000 | 17,457 |
+| `__memory__` | deepseek-v4-flash | 5 | 0.995 | 0.995 | 0.991 | 26,303 |
+
+**基线结论**：
+1. `__spirit__` 单轮 prompt 平均 60K token 且命中率均值仅 0.533（大量 0.000/0.07-0.19 样本，命中时也只命中前 ~4-10K）——**缓存击穿真实存在，且 60K 已进入 context rot 区间**（RULER 有效上下文拐点 32-64K），印证 P0-3 与 P2-6 的紧迫性。
+2. `__voice_butler__` 呈双峰分布：~0.99 或 ~0.26（5760/20K，固定断点）或 0——疑似 TTL 过期或前缀在固定位置断裂，待阶段 1 结合 `chat.context_budget` 台账定位。
+3. `__memory__`（sleep-time 提取）0.995 稳定——前缀稳定化机制本身有效，问题集中在 spirit/voice 主链路的动态区。
+4. 告警阈值 0.5 合理性确认：spirit 均值 0.533 恰在阈值线，足以捕捉回归。
+
+### 13.1.2 运行时验证：chat.context_budget 台账（2026-08-13 13:38，任务 0.5）
+
+后端以新构建重启（`bin/admin.exe`，config.local.yaml + PG 便携实例），真实用户对话流量（`__memory__` 离线整理会话 e26c2ef6）下 `bin/logs/aranea-pipeline.log` 产出台账：
+
+```json
+{"step_id":"chat.context_budget","agent_key":"__memory__","run_id":"0bde5c8d-...",
+ "static_prefix_tokens":286,"tools_schema_tokens":21076,"tools_count":53,
+ "memory_l1_tokens":0,"memory_l4_tokens":333,"memory_composite_tokens":465,
+ "knowledge_cue_tokens":184,"skill_guidance_tokens":212,"other_dynamic_tokens":99,
+ "est_total_input":22655,"static_ratio":0.0126,"cache_hit_ratio":0.9947}
+```
+
+**验证结论**：
+1. **字段完整**：9 类分量 + tools_count + static_ratio + cache_hit_ratio 全部产出，与设计 §9.6 一致。
+2. **数值自洽**：各分类求和 = est_total_input（286+21076+184+465+0+333+212+99 = 22655 ✓），无漏计/重复计量。
+3. **与 provider 缓存互证**：cache_hit_ratio=0.9947，与台账稳定区（static_prefix+tools_schema=21362，占 94.3%）吻合——剩余 ~5% 为连续两轮间亦保持稳定的历史/cue 尾部。
+4. **关键量化发现**：`tools_schema_tokens` 占输入 **93%**（21076/22655，53 个工具全量挂载）——工具 schema 膨胀被台账直接量化，为阶段 1 Tool RAG（验收基准：tools_schema_tokens 下降 ≥80%）提供基线。
+5. 注意：static_ratio 仅计量静态前缀区，不含 tools_schema；解读"可缓存占比"时应以 static_prefix+tools_schema 合并口径为准（本样本 94.3% ≈ 实测缓存命中 99.5% 的下界）。
 
 ### 13.2 验收
 
-1. 单测：收集器聚合、告警阈值边界（<1024 排除）、前缀稳定测试灵敏度（人为变动字节应失败）。
-2. `make test` 全绿（排除已知环境失败项）。
-3. 运行时验证：真实对话数轮后 `bin/logs/aranea-pipeline.log` 出现 `chat.context_budget` 分量日志，cache_hit_ratio 与 provider 后台一致。
+1. ✅ 单测：收集器聚合（7 例）、告警阈值边界（<1024 排除，biz/monitor PASS）、前缀稳定测试灵敏度（人为变动字节应失败，3 例 PASS）。
+2. 全量 `make test` 留待阶段 0 收尾统一执行（本次范围内相关包：agent/service/biz/monitor/data 定向测试均 PASS）。
+3. ✅ 运行时验证：见 §13.1.2——台账字段完整、分量求和自洽、cache_hit_ratio 与台账稳定区互证。
 4. 阶段 1 Tool RAG 上线前后同会话 `tools_schema_tokens` 下降 ≥80%（作为该优化项验收基准）。

@@ -65,7 +65,8 @@ export function useUiSounds() {
     () => companion.voiceState,
     (state, prev) => {
       if (!companion.voiceModeOn) return;
-      if (state === 'listening' && prev === 'idle') play('chirp');
+      // chirp = 进入聆听反馈：idle→listening（旧直进）+ dormant→listening（V10 唤醒）
+      if (state === 'listening' && (prev === 'idle' || prev === 'dormant')) play('chirp');
       if (state === 'thinking') {
         engine.startThinkingLoop();
       } else {

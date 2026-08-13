@@ -74,6 +74,12 @@ func (f *fakeFlow) LogFlowDone(_ context.Context, _, stepID, _ string, _ ...LogP
 	f.steps = append(f.steps, "done:"+stepID)
 }
 
+func (f *fakeFlow) LogFlowWarn(_ context.Context, _, stepID, _ string, _ ...LogPair) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steps = append(f.steps, "warn:"+stepID)
+}
+
 func (f *fakeFlow) LogFlowError(_ context.Context, _, stepID, _ string, _ ...LogPair) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

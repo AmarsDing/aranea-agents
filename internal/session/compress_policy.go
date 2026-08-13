@@ -68,7 +68,8 @@ type CompressProfile struct {
 	ReservedTokensResearch int
 	ReservedTokensChatOnly int
 	ReservedTokensDefault  int
-	MaxFieldTextChars      int // MemoryCompact field limit
+	MaxFieldTextChars      int    // MemoryCompact field limit
+	ToolsProfile           string // Agent.ToolsProfile：驱动保留系统 token 估算
 }
 
 // DefaultCompressPolicy returns a CompressPolicy with sensible defaults
@@ -177,6 +178,9 @@ func CompressPolicyFromAgent(ag biz.Agent) CompressPolicy {
 		p.Model.SnapshotMode = v
 	}
 
+	// Profile
+	p.Profile.ToolsProfile = strings.TrimSpace(s.ToolsProfile)
+
 	return p
 }
 
@@ -281,6 +285,18 @@ func filterMessagesForTruncateStrategy(msgs []biz.ChatMessage, strategy string) 
 		out = append(out, m)
 	}
 	return out
+}
+
+// compressStrategyRendersToolResults 报告该策略是否把工具结果渲染进 L3
+// transcript。仅 summary（默认）策略渲染；hybrid / drop_tool_results /
+// drop_oldest 与 filterMessagesForTruncateStrategy 的过滤语义保持一致。
+func compressStrategyRendersToolResults(strategy string) bool {
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "hybrid", "drop_tool_results", "drop_oldest":
+		return false
+	default:
+		return true
+	}
 }
 
 // compressProviderModelPolicy returns the compress provider and model from CompressPolicy.
@@ -407,7 +423,7 @@ func effectiveBudget(contextWindow, reservedSystem int, bufferRatio float64) int
 
 // softTriggerTokensPolicy returns the soft trigger token count using CompressPolicy.
 func softTriggerTokensPolicy(p CompressPolicy, contextWindow int) int {
-	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode) // profile derived from SnapshotMode is not ideal; use ToolsProfile
+	reserved := calculateReservedSystemPolicy(p, p.Profile.ToolsProfile)
 	budget := effectiveBudget(contextWindow, reserved, p.Threshold.BufferRatio)
 	return reserved + int(float64(budget)*p.Threshold.SoftTriggerRatio) + int(float64(contextWindow)*p.Threshold.BufferRatio)
 }
@@ -425,7 +441,7 @@ func softTriggerTokens(ag biz.Agent, contextWindow int) int {
 
 // hardTriggerTokensPolicy returns the hard trigger token count using CompressPolicy.
 func hardTriggerTokensPolicy(p CompressPolicy, contextWindow int) int {
-	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	reserved := calculateReservedSystemPolicy(p, p.Profile.ToolsProfile)
 	budget := effectiveBudget(contextWindow, reserved, p.Threshold.BufferRatio)
 	return reserved + int(float64(budget)*p.Threshold.HardTriggerRatio) + int(float64(contextWindow)*p.Threshold.BufferRatio)
 }
@@ -559,7 +575,7 @@ func (s *AdaptiveBufferState) UpdateAdaptiveBuffer(usedTokens, contextWindow int
 
 // softTriggerTokensWithRatioPolicy returns the soft trigger token count using CompressPolicy and explicit buffer ratio.
 func softTriggerTokensWithRatioPolicy(p CompressPolicy, contextWindow int, bufferRatio float64) int {
-	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	reserved := calculateReservedSystemPolicy(p, p.Profile.ToolsProfile)
 	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
 	return reserved + int(float64(budget)*p.Threshold.SoftTriggerRatio) + int(float64(contextWindow)*bufferRatio)
 }
@@ -577,7 +593,7 @@ func softTriggerTokensWithRatio(ag biz.Agent, contextWindow int, bufferRatio flo
 
 // hardTriggerTokensWithRatioPolicy returns the hard trigger token count using CompressPolicy and explicit buffer ratio.
 func hardTriggerTokensWithRatioPolicy(p CompressPolicy, contextWindow int, bufferRatio float64) int {
-	reserved := calculateReservedSystemPolicy(p, p.Model.SnapshotMode)
+	reserved := calculateReservedSystemPolicy(p, p.Profile.ToolsProfile)
 	budget := effectiveBudget(contextWindow, reserved, bufferRatio)
 	return reserved + int(float64(budget)*p.Threshold.HardTriggerRatio) + int(float64(contextWindow)*bufferRatio)
 }

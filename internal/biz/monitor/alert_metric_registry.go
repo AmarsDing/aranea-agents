@@ -41,6 +41,30 @@ type AlertMetricCatalogProvider interface {
 	Catalog() AlertMetricInfo
 }
 
+// AlertBreachDetailer is an optional interface an AlertMetric can implement
+// to attach a human-readable breach summary and structured details to
+// alert.fired events. Details reflect the most recent Evaluate call.
+type AlertBreachDetailer interface {
+	BreachDetails() (summary string, payload map[string]any)
+}
+
+// breachDetailsOf extracts breach details when metric implements
+// AlertBreachDetailer; nil metrics and non-implementers yield empty values.
+func breachDetailsOf(metric AlertMetric) (string, map[string]any) {
+	if d, ok := metric.(AlertBreachDetailer); ok {
+		return d.BreachDetails()
+	}
+	return "", nil
+}
+
+// appendBreachSummary appends the breach summary to an alert description.
+func appendBreachSummary(desc, summary string) string {
+	if summary == "" {
+		return desc
+	}
+	return desc + " — " + summary
+}
+
 // ListCatalog returns catalog metadata for all registered metrics, sorted
 // by key. Metrics implementing AlertMetricCatalogProvider contribute rich
 // metadata; others fall back to Key/Description with Unit "count".

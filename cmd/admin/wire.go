@@ -379,7 +379,7 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
@@ -403,6 +403,11 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRep
 	if canary != nil {
 		// P0 canary: expose memory closed-loop failure streak to the alert engine.
 		reg.Register(monitor.NewMemoryCanaryMetric(canary))
+	}
+	// 29-token §9.4: low prompt-cache hit ratio (prefix bust) detection.
+	// Narrowed via type assertion to keep the composite usage.Repo untouched.
+	if ch, ok := usageRepo.(bizusage.CacheHitRatioStatsRepo); ok && ch != nil {
+		reg.Register(monitor.NewCacheHitRatioLowMetric(ch))
 	}
 	uc.SetRegistry(reg)
 	return uc

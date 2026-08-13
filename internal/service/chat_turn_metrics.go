@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
@@ -72,6 +73,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 			loggateway.Float64("cache_hit_ratio", float64(p.CachedTok)/float64(p.PromptTok)),
 			loggateway.Duration(p.Latency.Milliseconds()))
 	}
+	m.recordContextBudgetLog(ctx, p)
 	meta := "{}"
 	if p.Emitter != nil {
 		meta = p.Emitter.MetadataJSON()
@@ -104,6 +106,50 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 		)
 	}
 	m.recordRunnerCompletion(ctx, p, traceID)
+}
+
+// recordContextBudgetLog emits the per-turn context budget ledger
+// (29-token.design.md §9.6, 任务 0.1). Process log only — no flow log, no
+// stepTitleRegistry entry. No-op when the turn ctx carries no ContextBudget
+// (non-chat paths) or nothing was recorded (LLM never reached, e.g. early
+// admission failure).
+func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsageParams) {
+	if m == nil {
+		return
+	}
+	budget := chatagent.ContextBudgetFromContext(ctx)
+	if budget == nil {
+		return
+	}
+	snap := budget.Snapshot()
+	if snap.EstTotalInput == 0 && snap.ToolsCount == 0 {
+		return
+	}
+	staticRatio := 0.0
+	if snap.EstTotalInput > 0 {
+		staticRatio = float64(snap.EstTokens[chatagent.ContextBudgetCategoryStaticPrefix]) / float64(snap.EstTotalInput)
+	}
+	fields := []loggateway.Field{
+		loggateway.StepID("chat.context_budget"),
+		loggateway.SessionID(p.SessionID),
+		loggateway.RunID(p.RunID),
+		loggateway.AgentKey(p.AgentKey),
+		loggateway.Int("static_prefix_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryStaticPrefix]),
+		loggateway.Int("tools_schema_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryToolsSchema]),
+		loggateway.Int("tools_count", snap.ToolsCount),
+		loggateway.Int("memory_l1_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryMemoryL1]),
+		loggateway.Int("memory_l4_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryMemoryL4]),
+		loggateway.Int("memory_composite_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryMemoryComposite]),
+		loggateway.Int("knowledge_cue_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryKnowledgeCue]),
+		loggateway.Int("skill_guidance_tokens", snap.EstTokens[chatagent.ContextBudgetCategorySkillGuidance]),
+		loggateway.Int("other_dynamic_tokens", snap.EstTokens[chatagent.ContextBudgetCategoryOtherDynamic]),
+		loggateway.Int("est_total_input", snap.EstTotalInput),
+		loggateway.Float64("static_ratio", staticRatio),
+	}
+	if p.PromptTok > 0 {
+		fields = append(fields, loggateway.Float64("cache_hit_ratio", float64(p.CachedTok)/float64(p.PromptTok)))
+	}
+	m.lg.Info("context budget ledger", fields...)
 }
 
 // recordRunnerCompletion writes the runner.completion monitor event for a

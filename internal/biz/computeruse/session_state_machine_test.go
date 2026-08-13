@@ -20,7 +20,7 @@ func TestTransition_LegalPaths(t *testing.T) {
 		{SessionActing, EvCancel, SessionCancelled},
 		{SessionAwaitingConfirm, EvCancel, SessionCancelled},
 		// 75 review B3：以下转换原本被直赋绕过，现纳入状态机表。
-		{SessionIdle, EvFail, SessionFailed},          // 预算耗尽（chargeBudget 于 idle 判失败）
+		{SessionIdle, EvFail, SessionFailed},          // 预算耗尽（beginStep 于 idle 判失败）
 		{SessionObserving, EvFinish, SessionDone},     // 用户中途结束
 		{SessionGrounding, EvFinish, SessionDone},     // 用户中途结束
 		{SessionActing, EvFinish, SessionDone},        // 用户中途结束

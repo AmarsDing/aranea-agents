@@ -95,6 +95,8 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
 		}
 		cue := truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
+		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(cue))
 		// Prefix stabilization: append after the existing system block.
 		sys := trpcmodel.NewSystemMessage(cue)
 		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
@@ -132,6 +134,8 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		for _, slug := range result.Slugs {
 			b.WriteString(fmt.Sprintf("- %s\n", slug))
 		}
+		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(b.String()))
 		sys := trpcmodel.NewSystemMessage(b.String())
 		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil

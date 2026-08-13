@@ -16,7 +16,11 @@ func roughTokenEstimate(s string) int {
 	return llmcontext.EstimateTokensFromChars(utf8.RuneCountInString(strings.TrimSpace(s)))
 }
 
-func estimateCompactedPromptTokens(mergedSummary string, tail []biz.ChatMessage) int {
+// estimateCompactedPromptTokens 估算压缩后的 prompt token 数。语义必须与压缩前
+// ContextUsedTokens（provider 上报的 prompt_tokens = 系统提示 + 工具 schema + 内容）
+// 一致，因此计入 reservedSystem（不可压缩的系统部分）——否则触发逻辑在下一次
+// 权威更新前一直运行在偏低的估值上（压缩后立刻又软触发的抖动）。
+func estimateCompactedPromptTokens(mergedSummary string, tail []biz.ChatMessage, reservedSystem int) int {
 	var b strings.Builder
 	b.WriteString(mergedSummary)
 	b.WriteString("\n")
@@ -24,5 +28,5 @@ func estimateCompactedPromptTokens(mergedSummary string, tail []biz.ChatMessage)
 		b.WriteString(m.ContentMarkdown)
 		b.WriteString("\n")
 	}
-	return roughTokenEstimate(b.String())
+	return reservedSystem + roughTokenEstimate(b.String())
 }

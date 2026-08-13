@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,6 +72,28 @@ func newVoiceTestServerWithProbe(asr *voiceTestASRSession, probe VoiceStatusProb
 		nil, // confirmer：语音确认拦截在 voice/service 包单测覆盖
 		nil, // archiver：语音留档在 voice/service 包单测覆盖
 		probe,
+	)
+}
+
+// newVoiceTestServerWithTTSErr：TTS 工厂报错——唤醒应答降级 voice.error，
+// 状态机/广播路径不受影响（避免 nil provider 进 TTS scheduler）。
+func newVoiceTestServerWithTTSErr(asr *voiceTestASRSession) *VoiceWSServer {
+	return NewVoiceWSServer(
+		nil,
+		voiceTestExecutor{},
+		nil,
+		func(context.Context) (biz.StreamingASRProvider, biz.ASRSessionConfig, error) {
+			return &voiceTestASRProvider{sess: asr}, biz.ASRSessionConfig{Language: "zh-CN", SampleRate: 16000}, nil
+		},
+		func(context.Context) (biz.StreamingTTSProvider, biz.TTSSessionConfig, error) {
+			return nil, biz.TTSSessionConfig{}, errors.New("tts unavailable")
+		},
+		&voiceTestBus{ch: make(chan biz.Event, 8)},
+		nil,
+		loggateway.NewNoop(),
+		nil,
+		nil,
+		nil,
 	)
 }
 
@@ -150,6 +173,29 @@ func TestVoiceWSSecondConnectionReplacesFirst(t *testing.T) {
 	_ = conn2
 	msg := readVoiceJSON(t, conn1)
 	require.Equal(t, "voice.replaced", msg["type"])
+}
+
+// V10：voice.wake 路由 —— companion 进 dormant 后，wake 帧驱动唤醒
+// （TTS 不可用仅影响「我在」应答降级，状态广播照常在先）。
+func TestVoiceWSWakeRoutesToSession(t *testing.T) {
+	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
+	t.Setenv("DEPLOY_ENV", "test")
+	asr := &voiceTestASRSession{events: make(chan biz.ASREvent, 1)}
+	s := newVoiceTestServerWithTTSErr(asr)
+	srv := httptest.NewServer(http.HandlerFunc(s.handleVoiceWS))
+	defer srv.Close()
+
+	conn := voiceDial(t, srv, "s1")
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage,
+		[]byte(`{"type":"voice.start","mode":"companion","language":"zh-CN","sample_rate":16000}`)))
+	msg := readVoiceJSON(t, conn)
+	require.Equal(t, "voice.state", msg["type"])
+	require.Equal(t, "dormant", msg["state"])
+
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"voice.wake","source":"kws"}`)))
+	msg = readVoiceJSON(t, conn)
+	require.Equal(t, "voice.state", msg["type"])
+	require.Equal(t, "listening", msg["state"])
 }
 
 func TestVoiceWSPingPong(t *testing.T) {

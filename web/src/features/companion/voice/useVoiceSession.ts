@@ -16,12 +16,16 @@ export type { VoiceState } from '../types';
 
 const KNOWN_STATES: ReadonlySet<string> = new Set([
   'idle',
+  'dormant', // V10 待命（本地 KWS 监听，ASR 关闭）
   'listening',
   'thinking',
   'speaking',
   'interrupted',
   'error',
 ]);
+
+/** V10：voice.wake 唤醒来源（设计 §16.3）：KWS 检出 / 手动点击 / 委派系统唤醒。 */
+export type VoiceWakeSource = 'kws' | 'manual' | 'system';
 
 export type VoiceDownstreamHandlers = {
   onState(state: VoiceState): void;
@@ -66,6 +70,8 @@ export type VoiceSessionClient = {
   commit(): void;
   bargeIn(detectMs: number): void;
   cancel(): void;
+  /** V10：dormant → listening 唤醒（后端非 dormant 幂等忽略）。 */
+  wake(source: VoiceWakeSource): void;
   /** 上行音频帧（s16le 16k）；连接未就绪时丢弃（实时音频不排队）。 */
   sendAudio(frame: ArrayBuffer): void;
   readonly connected: boolean;
@@ -212,6 +218,10 @@ export function createVoiceSessionClient(opts: VoiceSessionClientOptions): Voice
       sendJson({ type: 'voice.cancel' });
     },
 
+    wake(source: VoiceWakeSource): void {
+      sendJson({ type: 'voice.wake', source });
+    },
+
     sendAudio(frame: ArrayBuffer): void {
       if (isOpen()) {
         ws!.send(frame);
@@ -235,17 +245,64 @@ import { useCompanionStore } from '../../../stores/companion';
 import { createAudioCapture, type AudioCapture } from './audioCapture';
 import { createPcmPlayer, type PcmPlayer } from './audioPlayback';
 import { createVad, decideVadAction, type Vad } from './vad';
+import { loadWakeWordDetector, type WakeWordDetector } from './wakeWord';
 
 /** barge-in 人声持续阈值（ms），与 vad 默认 speechOnsetMs 一致；上行 detect_ms 语义。 */
 const BARGE_IN_DETECT_MS = 200;
+
+/** companion 会话模式（V10 §16.3）：voice.start 携带，后端 idle→dormant 入口。 */
+export const VOICE_MODE_COMPANION = 'companion';
+
+/**
+ * V10 dormant 门控（设计 §16.5）：仅 listening/thinking/speaking 上行音频帧；
+ * dormant/idle/error/interrupted 帧只进预滚缓冲——待命态音频不出设备。
+ */
+export function shouldUplinkAudio(state: VoiceState): boolean {
+  return state === 'listening' || state === 'thinking' || state === 'speaking';
+}
+
+export type PrerollBuffer = {
+  push(frame: ArrayBuffer): void;
+  /** 按 FIFO 取出全部缓冲帧并清空。 */
+  drain(): ArrayBuffer[];
+  clear(): void;
+};
+
+/**
+ * V10 预滚 ring buffer（设计 §16.5）：dormant 态帧只进缓冲不上行；检出唤醒后
+ * 原子 flush 再续实时流——保证「小媛，查天气」后半句与唤醒词同句完整到达 ASR。
+ * 超容量丢弃最旧帧（环形覆盖）。
+ */
+export function createPrerollBuffer(capacity: number): PrerollBuffer {
+  let frames: ArrayBuffer[] = [];
+  return {
+    push(frame: ArrayBuffer): void {
+      frames.push(frame);
+      if (frames.length > capacity) frames.splice(0, frames.length - capacity);
+    },
+    drain(): ArrayBuffer[] {
+      const out = frames;
+      frames = [];
+      return out;
+    },
+    clear(): void {
+      frames = [];
+    },
+  };
+}
+
+/** 预滚容量：75 帧 × 20ms = 1.5s（设计 §16.5）。 */
+const PREROLL_CAPACITY_FRAMES = 75;
 
 export type UseVoiceSessionReturn = {
   /** listening 态采集侧 FFT 频谱（HUD 频谱环数据源）。 */
   spectrum: ShallowRef<Uint8Array | null>;
   /** speaking 态播放侧振幅 [0,1]（HUD 能量核脉动数据源）。 */
   amplitude: ShallowRef<number>;
-  /** 进入/退出语音模式（麦克风按钮）。 */
+  /** 进入/退出语音模式（麦克风按钮）；dormant 态调用 = 手动唤醒（V10 §16.5）。 */
   toggleVoiceMode(): Promise<void>;
+  /** V10：dormant → listening 唤醒（非 dormant 幂等忽略）。 */
+  wake(source: VoiceWakeSource): void;
   /** 显式取消当前 Turn（voice.cancel）。 */
   cancelTurn(): void;
 };
@@ -278,6 +335,8 @@ export function useVoiceSession(deps: {
   let capture: AudioCapture | null = null;
   let player: PcmPlayer | null = null;
   let vad: Vad | null = null;
+  let kws: WakeWordDetector | null = null;
+  const preroll = createPrerollBuffer(PREROLL_CAPACITY_FRAMES);
   let rafId = 0;
   let fftBuf: Uint8Array<ArrayBuffer> | null = null;
 
@@ -309,24 +368,51 @@ export function useVoiceSession(deps: {
     capture?.stop();
     capture = null;
     vad = null;
+    kws?.dispose();
+    kws = null;
+    preroll.clear();
     player?.stop(50);
+  }
+
+  /** V10：dormant → listening（KWS 检出/手动点击）；非 dormant 幂等忽略。 */
+  function wake(source: VoiceWakeSource): void {
+    if (store.voiceState !== 'dormant') return;
+    client?.wake(source);
+    flushPreroll();
+  }
+
+  /** 预滚 flush：唤醒/状态转可上行后，把 dormant 期间缓冲的帧按序补发。 */
+  function flushPreroll(): void {
+    for (const frame of preroll.drain()) client?.sendAudio(frame);
+  }
+
+  /** V10 dormant 门控：可上行状态直发，否则进预滚缓冲（音频不出设备）。 */
+  function handleVoiceFrame(frame: ArrayBuffer): void {
+    if (shouldUplinkAudio(store.voiceState)) {
+      client?.sendAudio(frame);
+    } else {
+      preroll.push(frame);
+    }
   }
 
   /**
    * VAD 接线（V2-T1）：16k 浮点帧 → VAD → 按状态机镜像决策动作。
    * barge_in：先本地停播（≤300ms 停播实测预算）再上行控制帧，服务端终判。
+   * V10：dormant 态帧喂本地 KWS（唤醒词检出），音频不出设备。
    */
-  function handleVadFrame(frame: Float32Array): void {
-    if (!vad) return;
-    const action = decideVadAction(vad.process(frame), store.voiceState);
-    if (action === 'barge_in') {
-      amplitude.value = 0;
-      player?.stop(50);
-      client?.bargeIn(BARGE_IN_DETECT_MS);
-      vad.reset(); // 防残余人声立即重触发；新 onset 需重新累积 200ms
-    } else if (action === 'commit') {
-      client?.commit();
+  function handlePcm16k(frame: Float32Array): void {
+    if (vad) {
+      const action = decideVadAction(vad.process(frame), store.voiceState);
+      if (action === 'barge_in') {
+        amplitude.value = 0;
+        player?.stop(50);
+        client?.bargeIn(BARGE_IN_DETECT_MS);
+        vad.reset(); // 防残余人声立即重触发；新 onset 需重新累积 200ms
+      } else if (action === 'commit') {
+        client?.commit();
+      }
     }
+    if (store.voiceState === 'dormant') kws?.acceptWaveform(frame);
   }
 
   async function enterVoiceMode(): Promise<void> {
@@ -345,6 +431,11 @@ export function useVoiceSession(deps: {
           if (!store.voiceModeOn && s !== 'idle') return;
           store.setVoiceState(s);
           if (s !== 'speaking') amplitude.value = 0;
+          if (s === 'dormant') {
+            kws?.reset(); // 清残留检测状态，防历史音频误触发
+          } else if (shouldUplinkAudio(s)) {
+            flushPreroll(); // 手动/系统/降级唤醒落 listening：补发预滚缓冲
+          }
         },
         onPartial: (text) => store.setSubtitlePartial(text),
         onFinal: () => store.clearSubtitle(),
@@ -381,13 +472,13 @@ export function useVoiceSession(deps: {
       },
     });
     client.connect();
-    client.startVoice({ sampleRate: VOICE_TARGET_SAMPLE_RATE });
+    client.startVoice({ sampleRate: VOICE_TARGET_SAMPLE_RATE, mode: VOICE_MODE_COMPANION });
 
     try {
       vad = createVad({ sampleRate: VOICE_TARGET_SAMPLE_RATE, speechOnsetMs: BARGE_IN_DETECT_MS });
       capture = createAudioCapture({
-        onVoiceFrame: (frame) => client?.sendAudio(frame),
-        onPcm16k: handleVadFrame,
+        onVoiceFrame: handleVoiceFrame,
+        onPcm16k: handlePcm16k,
       });
       await capture.start();
     } catch {
@@ -398,6 +489,25 @@ export function useVoiceSession(deps: {
       store.setVoiceError({ code: 'MIC_UNAVAILABLE', message: t('companion.micUnavailable'), retryable: true });
       return;
     }
+
+    // V10 KWS 异步加载（16MB wasm+模型，不阻塞进入语音模式）：
+    // 成功 → dormant 态帧喂检测；失败 → 降级自动唤醒（设计 §16.1「进入即聆听」）。
+    const enteredClient = client;
+    void loadWakeWordDetector({ onDetect: () => wake('kws') })
+      .then((detector) => {
+        // 加载期间已退出语音模式/连接被替换：立即释放，不悬挂 wasm 句柄
+        if (client !== enteredClient || !store.voiceModeOn) {
+          detector.dispose();
+          return;
+        }
+        kws = detector;
+      })
+      .catch((err: unknown) => {
+        console.warn('[voice] KWS 加载失败，降级为进入即聆听', err);
+        if (client === enteredClient && store.voiceModeOn) {
+          enteredClient.wake('kws'); // 后端 Wake 非 dormant 幂等，前端状态滞后安全
+        }
+      });
 
     store.setVoiceMode(true);
     visualTick();
@@ -423,11 +533,17 @@ export function useVoiceSession(deps: {
     amplitude,
     async toggleVoiceMode(): Promise<void> {
       if (store.voiceModeOn) {
+        // V10 §16.5：dormant 态点击麦克风 = 手动唤醒（退出需唤醒后再点）
+        if (store.voiceState === 'dormant') {
+          wake('manual');
+          return;
+        }
         exitVoiceMode();
       } else {
         await enterVoiceMode();
       }
     },
+    wake,
     cancelTurn(): void {
       client?.cancel();
     },

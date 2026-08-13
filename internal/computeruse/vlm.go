@@ -22,8 +22,9 @@ const vlmPickTimeout = 60 * time.Second
 // SoM bbox 文本同比例缩放、坐标直判走归一化千分位。
 const vlmImageMaxSide = 1568
 
-// vlmNumberPattern 提取 VLM 回复中的首个整数编号（容忍啰嗦前后缀）。
-var vlmNumberPattern = regexp.MustCompile(`\d+`)
+// vlmNumberPattern 提取 VLM 回复中的首个整数编号（容忍啰嗦前后缀；
+// 允许负号以识别 "-1" 无匹配哨兵——禁止只取数字部分误选候选 1）。
+var vlmNumberPattern = regexp.MustCompile(`-?\d+`)
 
 // vlmCoordPattern 提取 VLM 回复中的首个归一化坐标对（0-1000 千分位；容忍全角逗号/括号；
 // 允许负号以识别 "-1, -1" 无匹配哨兵）。
@@ -179,6 +180,9 @@ func parseVLMNumber(resp string, n int) (int, error) {
 	}
 	if v == 0 {
 		return 0, fmt.Errorf("%w: VLM 判定无匹配元素", bizcu.ErrGroundingFailed)
+	}
+	if v < 0 {
+		return 0, fmt.Errorf("%w: VLM 负号哨兵（无匹配）: %q", bizcu.ErrGroundingFailed, m)
 	}
 	if v < 1 || v > n {
 		return 0, fmt.Errorf("%w: VLM 编号越界: %q（候选 %d 个）", bizcu.ErrGroundingFailed, m, n)

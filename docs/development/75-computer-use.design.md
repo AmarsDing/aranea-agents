@@ -1,6 +1,6 @@
 # M75: Computer Use（桌面 GUI 自动化控制）— 设计文档
 
-> 编号：75 | 状态：已评审（2026-08-12） | 需求：75-computer-use.md
+> 编号：75 | 状态：已评审（2026-08-12 M1.5 三路审查；2026-08-13 M2 全维度复审） | 需求：75-computer-use.md
 > 上游调研：[2026-08-12-research-computer-use.md](../reports/2026-08-12-research-computer-use.md)
 
 ## 0. 架构决策摘要（ADR）
@@ -97,7 +97,7 @@
 idle → observing → grounding → acting → done
   ↘ awaiting_confirm ↗（确认门）   ↘ failed / cancelled(急停/超预算)
 ```
-补充转换（M1.5 审查 B3 后补全）：`EvFinish`（用户中途结束）从任意非终态直达 `done`；`EvFail` 从 `idle` 可达（chargeBudget 预算预检失败）；终态不可再转换，会话复用由 Usecase 重建 idle 处理。
+补充转换（M1.5 审查 B3 后补全）：`EvFinish`（用户中途结束）从任意非终态直达 `done`；`EvFail` 从 `idle` 可达（beginStep 预算预检失败）；终态不可再转换，会话复用由 Usecase 重建 idle 处理。
 
 **Port 接口**（窄接口 + Stability 标注）：
 
@@ -149,7 +149,7 @@ type AuditStore interface {             // 审计落库（data 层实现）
 | `fusion.go` | IoU 融合器：a11y 主表 + vision 补充表，IoU>0.1 去重（UFO² 算法 H2） |
 | `som.go` | SoM 标注器：截图上为候选元素绘制编号框（Go image/draw，ASCII 编号）；`DownscalePNG` 截图降采样（最长边 ≤1568，x/image ApproxBiLinear） |
 | `omniparser.go` | VisionParser HTTP 客户端：POST {base64} → parsed_content[] → UIElement[]（source=vision）；`Available()` 健康检查 + 失败降级标记 |
-| `vlm.go` | VisionGrounder：经 LLM catalog 取多模态模型，SoM 图 + 候选列表 + target → 返回编号；发送图降采样 ≤1568px（prompt bbox 同比例缩放）；单次调用超时 60s（容忍本地模型冷启动）；**无匹配出口**：SoM 选编号输出 0 / 坐标直判输出 "-1, -1" → 明确 ErrGroundingFailed，禁止强制乱选/乱点 |
+| `vlm.go` | VisionGrounder：经 LLM catalog 取多模态模型，SoM 图 + 候选列表 + target → 返回编号；发送图降采样 ≤1568px（prompt bbox 同比例缩放）；单次调用超时 60s（容忍本地模型冷启动）；**无匹配出口**：SoM 选编号输出 0 或负号哨兵（如 "-1"）/ 坐标直判输出 "-1, -1" → 明确 ErrGroundingFailed，禁止强制乱选/乱点（M2 审查 F4：编号解析允许负号并判负，防止 "-1" 被提取为候选 1 误选）。**模型选取规则**：catalog `List` 顺序首个 `enabled && Vision` 模型生效（每次 grounding 实时查询，仅 a11y 未命中时触发，开销可忽略）；多模型并存时把偏好模型排前即可控制优先级 |
 
 ### 3.3 Grounding 决策流（Act 编排）
 
@@ -167,11 +167,17 @@ Act(target)
  4. SoM 失败 → VLM 坐标直判（path=vlm_direct，免 OmniParser 最低精度路径）：
     全屏粗判（归一化千分位坐标）→ 以粗判点为中心 480x360 区域 2x zoom 精判
     （VLM 输出 "-1, -1" = 无匹配 → ErrGroundingFailed 明确报错，不乱点）
+    ※ 坐标语义（M2 审查 F1 修正）：sidecar 为 PerMonitorV2 DPI aware，
+    截图图像素与物理像素 1:1，粗判点直接使用，禁止再除 ScaleFactor
  5. 命中 → 执行（invoke/click/type/key）；dry_run 只 grounding + 返回计划
  6. 执行后验证：settle → re-snapshot → 元素树 hash 比对 + 前台窗口检查，
     结果透出 verify{changed, foreground_before/after}（no_effect 供 LLM 决策）
+    ※ settle 窗口固定 400ms 且不感知急停取消（有界延迟，急停最多多等一拍）
  7. 批量：actions[] 按序 fail-fast，任一步失败即停且错误注明已完成步数
  8. 全程：step 审计落库 + envelope 事件 + 流程日志
+    ※ 降级链日志（M2 审查 F2）：grounding 降级（a11y miss → SoM / vlm_direct）
+    走 `FlowLogWriter.LogFlowWarn`（warn 级，K3）；端口已扩展 LogFlowWarn，
+    实现见 internal/service/event_adapter.go（TraceEmitter.LogWarn）
 ```
 
 ### 3.4 工具集（`internal/tools/computeruse/`）
@@ -185,6 +191,7 @@ Act(target)
 | `computer_use.session` | 会话管理 | false | action=start\|stop\|status，绑定预算 |
 
 - 注册：`toolset.go` Registry() 追加 + `internal/data/builtin_tools_seed.go` 种子（分类 `computeruse`，Tags `["desktop","gui","automation"]`，RiskLevel=high for act/launch）
+- 种子演进注意（M2 审查提示 5 处置）：computer_use_* 种子无 `registryName`（工具集走 AssemblyConfig 装配，不入全局 Registry），`syncBuiltinToolsFromRegistry` 不覆盖——存量库已有行的 schema 不随种子自动演进（INSERT ON CONFLICT DO NOTHING）。未来对 computer_use_* 的 schema 变更须新增 catalog-patch 迁移（参照 `syncBuiltinWebToolCatalogPatches` 模式 + 新 DDL 迁移版本号）。2026-08-13 实测部署库 `computer_use_act` 已含 `actions[]` 批量 schema（20261208 修复的正是"从未种子"缺陷，凡应用该迁移的库均为 fresh insert，天然带全量 schema）
 - 工厂经 `AssemblyConfig` 新增 `ComputerUse *bizcomputeruse.ComputerUseUsecase` 字段装配
 - 确认门：复用现有 tool-grants；敏感词命中（`tool_confirm_gate.go` `computerUseDangerHit`，仅 act/launch 两工具检查入参）时决策链短路为 `policy_danger`——**强制逐次确认，持久/会话授权不生效**；确认卡 Step.Danger=true 渲染「高危」徽标，且前端仅显示「允许本次/拒绝」两按钮（需求 §5.3）
 
@@ -195,7 +202,7 @@ Act(target)
 | 确认门 | 工具 RequiresConfirmation + 确认门 danger 短路（`computerUseDangerHit` 命中敏感词时绕过授权链）+ Usecase 内 `Policy.IsDanger` 标记审计/事件 |
 | 敏感词表 | `internal/biz/computeruse/policy.go` 内置默认表（删除/支付/转账/发送/确认支付/格式化/永久删除…），配置可覆盖 |
 | 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾…）→ act 拒绝 |
-| 预算 | Session.Budget，Act 原子自增 StepsUsed，超限返回预算错误 |
+| 预算 | Session.Budget，`beginStep` 同锁原子完成「忙/终态检查 + StepsUsed 自增 + 状态转换」（M2 审查 F3：杜绝并发 Act 双计费泄漏）；预算被拒的尝试步以 `Index=stepsUsed+1` 落审计，单调不撞号 |
 | 干跑 | req.DryRun=true → 只执行 grounding + SoM 标注返回计划，不注入 |
 | 急停 | `KillSwitch`：context cancel + sidecar 动作队列清空；前端按钮 → API |
 

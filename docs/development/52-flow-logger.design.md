@@ -642,6 +642,9 @@ internal/cronrunner/jobs/
 | `voice.delegation.bind` | ok / — | 委派任务绑定（M74 V9，2026-08-11） |
 | `voice.delegation.terminal` | ok / — | 委派任务终态（M74 V9，2026-08-11） |
 | `voice.delegation.broadcast` | ok / — | 委派结果播报（M74 V9，2026-08-11） |
+| `voice.wake.detect` | ok / — | 语音唤醒（source=kws/manual/system；M74 V10，2026-08-13） |
+| `voice.sleep.exit_word` | ok / — | 退出词休眠（M74 V10，2026-08-13） |
+| `voice.sleep.timeout` | ok / — | 静默休眠（60s 无交互；M74 V10，2026-08-13） |
 
 #### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
 

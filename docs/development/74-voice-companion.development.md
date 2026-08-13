@@ -219,6 +219,20 @@
 | V9-T4 | 前端语音入口改绑语音助手**会话**（Companion 进入语音模式时选中/创建 agent_id 属于 `__voice_butler__` 的会话；退出恢复先前选择——`useVoiceButlerBinding` + `useVoiceSession` resolveSession/onExit 钩子） | ✅ | 前端单测（useVoiceButlerBinding 9 用例绿）；UI 语音入口绑语音助手会话 |
 | V9-T5 | 全链路真机验证：语音委派复杂任务 → 精灵主会话可见执行 → task 终态实时播报；委派期间语音继续陪聊；验证无串话（R3 分流生效） | 📋 | 扩展 voice_chain_probe（委派场景断言）；真机过一遍 |
 
+### Phase V10：语音唤醒与休眠（唤醒词「小媛」，需求 §2.12 / 设计 §16，2026-08-12 设计）
+
+> 目标：companion 语音模式进入即待命（dormant）——本地 KWS 常开检出「小媛」，音频不出设备、云端 ASR 零占用；唤醒进聆听；退出词/60s 静默回待命；待命期委派终态系统唤醒播报。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V10-T1 | **Spike：sherpa-onnx WASM KWS 编译 + 模型验证**——emscripten docker 编译 `build-wasm-simd-kws.sh`；keywords.txt 增加「小媛」+ 叠词「小媛小媛」音素行；最小页面实测检出 | ⏳ | `wasm/kws` 产物（js/wasm/data）可加载；麦克风说「小媛」控制台检出回调触发 |
+| V10-T2 | **状态机 7 态扩展**（`session_state_machine.go`：+StateDormant +EvVoiceStartDormant/EvWake/EvSleepTimeout/EvExitWord + 转换表） | ✅ | TDD：合法/非法转换全表测试 RED→GREEN（`session_state_machine_test.go`） |
+| V10-T3 | **`wake_words.go`**：同音词表 `StripWakeWord`（句首剥离+叠词+标点容错）+ `MatchExitWord` 退出词匹配（复用归一化） | ⏳ | TDD：`wake_words_test.go`（剥离/叠词/非句首不剥/退出词/归一化）RED→GREEN |
+| V10-T4 | **session.go 唤醒/休眠主逻辑**：`Wake(source)` 懒启动 ASR + SleepTimer 60s（活动重置）+ 退出词拦截（先于 confirm）+ 自足 TTS 应答（「我在」/退出确认）+ WS `voice.wake` 路由 + 流程日志 3 step 发射 | ⏳ | TDD：session_test（Wake 懒启动/Timer 重置到期/拦截顺序/自足应答不占 Turn）；voice 包全绿 -race |
+| V10-T5 | **dormant 委派系统唤醒（G1）**：dormant 保持事件订阅与 delegation watcher；委派终态到达且 dormant → EvWake(system) → 自足播报 → SleepTimer 回 dormant | ⏳ | TDD：session_test 委派唤醒用例；-race 通过 |
+| V10-T6 | **前端 KWS 集成**：`voice/wakeWord.ts` 封装（资产入 `web/public/kws/`）+ 预滚 ring buffer + useVoiceSession dormant 门控/wake 帧 + store voiceState +dormant + HUD 微光映射 + KWS 失败自动降级唤醒 | ⏳ | `wakeWord.spec.ts` + `useVoiceSession.spec.ts` 新增用例；pnpm lint/test/build 全绿 |
+| V10-T7 | **全链路真机验证**：进入即待命（抓包零上行）→「小媛」唤醒应答 → 连说指令执行 → 退出词休眠 → 60s 静默休眠 → 待命委派播报 | 📋 | 日志（voice.wake.detect/sleep.* 流程日志）+ UI 实测 |
+
 ## 5. 总验收标准
 
 1. 需求文档 §3 验收总览 13 项按 Phase 逐项达标
@@ -248,4 +262,4 @@
 
 ---
 
-*文档版本：2026-08-09 v1.4 — 新增 Phase V7 HUD TwinSprite 光球复刻（T1-T3）；锚点表新增 HUD TwinSprite 光球；总验收标准补充 V7 验证项；改动文件清单新增 V7 相关文件。v1.3 — ASR 累积回放去重修复（听写无限输入根因，`finalCursor` 游标）；Phase V6 语音听写完成（含真机验证）；HUD V5 拉取模型对齐修复入档。*
+*文档版本：2026-08-13 v1.5 — 新增 Phase V10 语音唤醒与休眠（T1-T7，唤醒词「小媛」本地 KWS + dormant 七态机）。v1.4 — 新增 Phase V7 HUD TwinSprite 光球复刻（T1-T3）；锚点表新增 HUD TwinSprite 光球；总验收标准补充 V7 验证项；改动文件清单新增 V7 相关文件。v1.3 — ASR 累积回放去重修复（听写无限输入根因，`finalCursor` 游标）；Phase V6 语音听写完成（含真机验证）；HUD V5 拉取模型对齐修复入档。*

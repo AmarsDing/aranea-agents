@@ -28,6 +28,8 @@ type (
 	CompletionUsageLinker     = usage.CompletionUsageLinker
 	UsageEnvelopePublisher    = usage.UsageEnvelopePublisher
 	TurnUsageInput            = usage.TurnUsageInput
+	CacheHitRatioStat         = usage.CacheHitRatioStat
+	CacheHitRatioStatsRepo    = usage.CacheHitRatioStatsRepo
 )
 
 const (
@@ -36,6 +38,8 @@ const (
 	UsageKindTeamTurn   = usage.KindTeamTurn
 	QuotaScopeGlobal    = usage.QuotaScopeGlobal
 	GlobalQuotaScopeID  = usage.GlobalQuotaScopeID
+	// MinCacheablePromptTokens mirrors usage.MinCacheablePromptTokens.
+	MinCacheablePromptTokens = usage.MinCacheablePromptTokens
 )
 
 var (

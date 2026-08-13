@@ -107,6 +107,8 @@
 
 ### 阶段 0：度量先行（纯工程，零 LLM 成本）
 
+> **落地状态（2026-08-13）**：✅ 已完成——缓存命中率聚合查询 + `llm.cache_hit_ratio_low` 告警 + `chat.context_budget` 台账（含运行时验证：tools_schema 占输入 93%，已量化为阶段 1 基线）。详见 `docs/development/29-token.development.md` §13。
+
 1. **缓存命中率监控 + 告警**：按 session/agent 聚合 cached_tokens/prompt_tokens 比率，跌破阈值告警；CI 加"双请求缓存击穿回归测试"（第二次请求 cached_tokens ≥ 阈值）。
 2. **上下文预算台账**：每轮记录静态前缀/工具 schema/记忆各层/知识/历史五类 token 分量日志（复用 L1 已有 token_estimate 基础设施）——后续所有优化的验收基准。
 

@@ -163,12 +163,14 @@ runCompress() 判断链
     【新增】6. L2 Memory Compact
     ├── 【新增 2026-07-20】摘要行数 ≥ SummaryMaxRows（默认 3）→ 跳过 L2 强制 L3（LLM 吸收合并，行数归一）
     ├── 读取 L1 工作记忆 + 已提取的记忆事实
+    ├── 【新增 2026-08-13】ICS 覆盖分 < 0.5 → 放弃 L2（硬触发升 L3 / 软触发 defer）（§1.6.2）
     ├── 组装为摘要（结构化 Markdown）
-    ├── 估算压缩后 token 数
+    ├── 估算压缩后 token 数（含 reserved_system，§1.6.5）
     ├── 仍超阈值 → 升级到 L3
     └── 未超 → 执行 L2 压缩，更新快照，返回
     ↓
     7. L3 AutoCompact（现有，升级摘要结构）
+    ├── 【新增 2026-08-13】工具消息渲染进 transcript（§1.6.4）+ 超窗分块滚动摘要（§1.6.3）
     └── 调 LLM 生成 9 章节摘要，CAS + 事务写入
 ```
 
@@ -246,6 +248,8 @@ func (c *Compressor) runMemoryCompact(
 #### 1.2.4 L3 AutoCompact 升级设计
 
 现有 `compressor.go` 的 `runCompress` 逻辑不变，仅升级 `compress/prompt.go` 的系统提示词：
+
+> **⚠️ 提示词已升级至 v3（2026-08-13）**：Section 6 不再无上限逐字保留，仅保留最近 30 条逐字 + 更早的压缩为主题列表（§1.6.6）。下方摘录为 v2 历史版本。
 
 ```go
 const UpgradedSystemPrompt = `You consolidate conversation history for downstream LLM turns.
@@ -512,6 +516,103 @@ ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_enabled INTEGER
 ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_max_entries INTEGER NOT NULL DEFAULT 256;
 ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_ttl_sec INTEGER NOT NULL DEFAULT 600;
 ```
+
+---
+
+### 1.6 系统评审加固（2026-08-13）
+
+> 背景：对压缩子系统做系统层面深入评审（对标业界产品 + 前沿论文）后发现 1 个致命断链 + 5 个质量/精度缺陷。本节记录最终方案的设计；任务清单见 `L0-compression-development.md`「评审修复轮」。
+
+#### 1.6.1 F0：TurnNumber 断链修复（致命）
+
+**问题**：`messages` 表删除后，活动流适配器（`ActivityMessageReader`）只携带 `TurnID`、不填 `TurnNumber`，所有消息 `TurnNumber=0`。压缩体过滤器 `m.TurnNumber > maxSummarized` 恒不匹配 → **压缩体恒为空，整个压缩子系统在生产空转**。
+
+**方案**：`internal/biz/session/activity_message_adapter.go` 新增 `synthesizeTurnNumbers`——按时间序对 `TurnID` 首次出现顺序分配递增序号（同 TurnID 共享同一序号）。activities 是 append-only，序号分配在多次压缩间稳定：已摘要前缀的轮次号永不错位。无 `TurnID` 的行保持 0，沿用既有行为排除出压缩体。
+
+#### 1.6.2 F1：MemoryCompact ICS 质量门
+
+**问题**：`tryMemoryCompact` 只要有事实就用记忆事实替换整个对话体——稀疏事实集（如仅 1 条 intent）会生成近乎空的摘要并持久化，造成**不可恢复的上下文丢失**。
+
+**方案**：引入信息覆盖分（ICS）门控，`memory_compact.go`：
+
+- `compactCoverage` 6 维加权：intent 0.25 / state 0.20 / decisions(≥2) 0.20 / files(≥2) 0.15 / facts(≥3) 0.10 / pending 0.10（计数维半分给 1 条）
+- 阈值 `memoryCompactMinICS = 0.5`：低于门控 → 放弃 L2，硬触发升级 L3 / 软触发 defer，并打 Info 日志（含 ics/min_ics/fact_count）
+
+#### 1.6.3 F2：L3 分块滚动摘要
+
+**问题**：长会话 transcript 可能超出压缩模型自身上下文窗口——压缩调用因 context overflow 失败（确定性错误还会触发 sticky 抑制，永久锁死）。
+
+**方案**：`snapshot.go` 新增 `splitMessagesForCompress`，按渲染后 rune 数切分（`compressChunkMaxRunes = 24000`，包级 var 供测试覆盖）；`compressor.go` `llmSummarize` 逐块调用 LLM，每块把上一块产出的摘要作为 `PriorSummary` 滚动吸收，最终单块产出覆盖全区间的合并摘要。任一块失败即走既有错误分类/抑制路径，不写部分结果。
+
+#### 1.6.4 F3：工具消息进入 transcript
+
+**问题**：`loadCompressBody` 只捞 user/assistant，压缩模型完全看不到工具调用与结果——摘要丢失「做了什么、查到什么」的关键决策依据（原 L1 MicroCompact 即因此从未生效而移除）。
+
+**方案**：
+
+- `loadCompressBody` 增返回 `toolBody`：压缩轮次范围内 `(maxSummarized, cutoffTurn]` 的 `role=tool` 消息
+- `snapshot.go` `renderCompressMessage` 将工具消息渲染为 `TOOL(name): body` 并入时间线；仅 `summary`（默认）策略渲染，`hybrid`/`drop_tool_results`/`drop_oldest` 与 `filterMessagesForTruncateStrategy` 过滤语义保持一致（`compressStrategyRendersToolResults`）
+- 截断防溢出：工具结果单条 ≤ `compressToolResultMaxRunes`(1000) runes，user/assistant/system 单条 ≤ `compressMessageMaxRunes`(8000) runes，截断追加 `…[truncated]` 标记
+
+#### 1.6.5 F4：压缩后估值计入保留系统 token
+
+**问题**：`estimateCompactedPromptTokens` 只算「摘要 + tail」，漏掉 reserved_system（coding profile 下 15000 tokens）→ 压缩后估值系统性偏低，L2→L3 升级决策失真（该升的没升）。
+
+**方案**：`estimateCompactedPromptTokens(mergedSummary, tail, reservedSystem)` 增加 `reservedSystem` 参数，调用方传入 `calculateReservedSystemPolicy(p, p.Profile.ToolsProfile)` 的估值。
+
+#### 1.6.6 F5：Section 6 用户消息上限 + PromptVersion v3
+
+**问题**：9 章节提示词 v2 要求 Section 6 逐字保留**每一条**用户消息——长会话中摘要本身膨胀，减量守卫（≥80% 丢弃）反而更容易丢弃结果。
+
+**方案**：`compress/prompt.go` 升级 `PromptVersion = "v3"`：Section 6 仅逐字保留**最近 30 条**用户消息，更早的压缩为编号主题列表（禁止编造）。缓存键含 PromptVersion，升级自动失效旧缓存。
+
+#### 1.6.7 F6：ToolsProfile 驱动保留 token（SnapshotMode-as-profile bug）
+
+**问题**：`softTriggerTokensPolicy` 等策略函数把 `SnapshotMode`（如 `"summary"`）当 profile 传给 `profileBasedDefaultPolicy` → switch 恒落 default → 保留 token 恒为 8000：coding agent（应 15000）被低估→压缩触发偏晚，chat_only agent（应 4000）被高估→触发偏早。
+
+**方案**：`CompressProfile` 新增 `ToolsProfile` 字段，`CompressPolicyFromAgent` 从 `ag.Settings.ToolsProfile` 填充；全部 `*Policy` 触发阈值函数改用 `p.Profile.ToolsProfile`。`SnapshotMode` 保留在 `CompressModelConfig` 仅作开关语义（`"off"` 且未显式启用 compaction 时禁用压缩）。
+
+---
+
+### 1.7 复审加固（2026-08-13，第二轮深入检查）
+
+> 背景：F0-F6 落地后对压缩子系统做第二轮深入复审，发现 5 个实现级缺陷（G1-G5）+ 1 项 I/O 技术债（G6）。全部按 TDD 实施，任务清单见 `L0-compression-development.md`「复审加固轮」。
+
+#### 1.7.1 G1：ctx 取消静默中止
+
+**问题**：`llmCallWithRetry` 对 ctx 取消显式返回 `fail=none`（"ctx 取消不是压缩失败"），但 `llmSummarize` 分块循环把 `md==""` 一律按瞬态失败处理——进程关闭/压缩超时（8 分钟 detach ctx）会被误记入失败抑制；hybrid 策略下更糟：取消时仍写兜底标记并推进 `to_turn`（写入事务在 detach ctx 上照常提交），**未摘要内容被永久跳过**。
+
+**方案**：分块循环显式区分 `fail==none && md==""`（唯一对应 ctx 取消）→ 直接返回 `level=none, fail=none`：不记抑制、不写兜底标记、不推进覆盖。
+
+#### 1.7.2 G2：减量守卫分母计入被吸收的历史摘要
+
+**问题**：滚动吸收场景下 LLM 产出覆盖 `(prior + body)`，但减量守卫只对比本次 body——成熟长会话（大历史摘要 + 小增量 body）必然误杀：丢弃有效结果 + 误记瞬态失败，上下文无限增长直至硬截断。
+
+**方案**：守卫分母改为 `EstimateTokensFromChars(totalRunes + runes(priorMerged))`（估算器为线性 chars→tokens，合并 rune 数与分别估算等价）。
+
+#### 1.7.3 G3：cacheHit 聚合全块
+
+**问题**：分块循环 `cacheHit = hit` 只保留末块结果——首块未命中、后续块命中时上报 `cache_hit=true`，元数据谎称整次压缩零 LLM 调用，污染监控/计费口径。
+
+**方案**：`cacheHit` 初值 `true`，逐块 `cacheHit = cacheHit && hit` 聚合，仅全块命中才为 true；hybrid 兜底标记路径显式置 false（兜底标记非真实缓存结果）。
+
+#### 1.7.4 G4：options_json 工具名转义
+
+**问题**：`buildOptionsJSON` 用字符串拼接 `{"tool_name":"<name>"}`——ToolName 含引号/反斜杠/控制字符时产出非法 JSON，前端解析失败静默丢失工具卡片。
+
+**方案**：改 `json.Marshal(map[string]string{"tool_name": name})`，失败返回空串（与无工具名语义一致）。
+
+#### 1.7.5 G5：CAS 冲突/幂等命中不得记假成功
+
+**问题**：`executeCompression` 在 CAS 冲突（并发压缩已抢先写入）与幂等命中（同区间摘要已存在）时返回 `nil`，`runCompress` 据此 `suppress.clear` + 打「压缩完成」流程日志——未真实写入却按成功处理，误清既有失败退避记录，误导后续抑制决策。
+
+**方案**：`executeCompression` 改返回 `(wrote bool, err error)`，CAS 冲突/幂等命中均 `wrote=false`；`runCompress` 在 `!wrote` 时直接返回 nil（保留抑制、不打成功日志），仅真实写入才 `suppress.clear` + LogDone。
+
+#### 1.7.6 G6（技术债）：压缩读取路径全量加载 Activity
+
+**问题**：`ActivityMessageReader.ListMessagesAfterTurn` 无 `afterTurn` 下推——每次压缩（含每次软触发评估）都 `ListBySession` 全量读取并转换会话全部 Activity，长会话成本随历史线性增长。
+
+**处置**：本轮只登记不改行为（`TECH-DEBT(COMPRESS-IO)` 注释 + 开发计划差距清单）。修复方向：`ActivityLister` 增加按 turn 范围/游标的分页查询（需 TurnID 单调或可排序映射），或 `ListBySession` 内部服务端过滤。
 
 ---
 

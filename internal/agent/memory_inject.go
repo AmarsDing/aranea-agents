@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -240,6 +241,8 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		if l1 := L1MemoryCue(ctx, deps.MemoryAdmin, ag, policy, sessionID, deps.LG); l1 != nil {
 			result.L1Cue = l1.Cue
 			l1FieldValues = l1.FieldValues
+			// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+			recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryL1, utf8.RuneCountInString(l1.Cue))
 		}
 	}
 
@@ -258,6 +261,8 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		if composite, hits := CompositeMemoryCueWithHits(ctx, deps.MemoryCompositeRecall, ag, policy, rt, sessionID, keyword, 0, proactiveHits); composite != "" {
 			recallParts = append(recallParts, composite)
 			result.RecallHits = hits
+			// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+			recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryComposite, utf8.RuneCountInString(composite))
 			for _, h := range hits {
 				if h.Layer == "L3" && strings.TrimSpace(h.FactID) != "" {
 					result.InjectedFactIDs = append(result.InjectedFactIDs, strings.TrimSpace(h.FactID))
@@ -285,6 +290,8 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		if l4, entityIDs := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword, deps.LG); l4 != "" {
 			recallParts = append(recallParts, l4)
 			result.L4RecalledEntityIDs = entityIDs
+			// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
+			recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryL4, utf8.RuneCountInString(l4))
 		}
 	}
 	if len(recallParts) > 0 {

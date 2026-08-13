@@ -11,8 +11,19 @@ import (
 )
 
 func TestPromptVersion(t *testing.T) {
-	if PromptVersion != "v2" {
-		t.Fatalf("got %q want %q", PromptVersion, "v2")
+	if PromptVersion != "v3" {
+		t.Fatalf("got %q want %q", PromptVersion, "v3")
+	}
+}
+
+// F5: Section 6（逐字用户消息）必须有上限——无上限时长会话中 Section 6 自身
+// 就会撑爆摘要。v3 起仅保留最近 30 条逐字，更早的压缩为主题列表。
+func TestDefaultSystemPrompt_Section6Capped(t *testing.T) {
+	if !strings.Contains(DefaultSystemPrompt, "30") {
+		t.Fatal("Section 6 cap (30 most recent verbatim) missing from system prompt")
+	}
+	if strings.Contains(DefaultSystemPrompt, "List EVERY user message verbatim. Do NOT summarize or omit any.") {
+		t.Fatal("uncapped Section 6 wording still present")
 	}
 }
 

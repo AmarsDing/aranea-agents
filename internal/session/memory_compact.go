@@ -54,6 +54,14 @@ func gradedScoreCount(count, threshold int, weight float64) float64 {
 	return 0
 }
 
+// memoryCompactMinICS is the minimum Information Coverage Score required to
+// accept an L2 memory-fact compaction. Below this floor the memory facts are
+// too sparse to faithfully represent the conversation body — accepting them
+// would replace the body in the persisted snapshot with a near-empty summary
+// (unrecoverable context loss), so the cascade escalates to the LLM
+// compressor (hard trigger) or defers (soft trigger).
+const memoryCompactMinICS = 0.5
+
 func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.MemoryFactReader, l1Reader biz.L1AdminReader, sessionID string, lg loggateway.Logger) memoryCompactResult {
 	if len(body) == 0 {
 		return memoryCompactResult{}
@@ -80,8 +88,18 @@ func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.Me
 		return memoryCompactResult{}
 	}
 
-	// Build coverage from available memory facts.
+	// Build coverage from available memory facts; gate on minimum ICS so a
+	// sparse fact set cannot displace the conversation body.
 	coverage := buildCompactCoverage(facts, body)
+	if coverage.ICS() < memoryCompactMinICS {
+		lg.Info("MemoryCompact: coverage below ICS gate, escalating",
+			loggateway.StepID("session.compress"),
+			loggateway.SessionID(sessionID),
+			loggateway.Any("ics", coverage.ICS()),
+			loggateway.Any("min_ics", memoryCompactMinICS),
+			loggateway.Int("fact_count", len(facts)))
+		return memoryCompactResult{}
+	}
 	md := buildStructuredSummary(facts, coverage)
 
 	from := body[0].TurnNumber

@@ -311,6 +311,26 @@ func TestVLMGrounderPick_NoMatchZero(t *testing.T) {
 	}
 }
 
+// F4 回归：VLM 违规输出负号哨兵（"-1"）时必须判为定位失败，
+// 不得把数字部分提取为候选 1 造成误选（与坐标直判的负号哨兵语义一致）。
+func TestVLMGrounderPick_NegativeSentinel(t *testing.T) {
+	caller := &fakeLLMCaller{resp: "-1"}
+	g := NewVLMGrounder(caller, nil, visionCatalog(), loggateway.NewNoop())
+	_, err := g.Pick(context.Background(), vlmTestImage(t), vlmCandidates(), "不存在的按钮")
+	if !errors.Is(err, bizcu.ErrGroundingFailed) {
+		t.Fatalf("负号哨兵应答应 ErrGroundingFailed, got %v", err)
+	}
+}
+
+// F4 单元级：parseVLMNumber 覆盖负数/负号变体。
+func TestParseVLMNumber_Negative(t *testing.T) {
+	for _, resp := range []string{"-1", "-2", "编号 -3"} {
+		if _, err := parseVLMNumber(resp, 3); !errors.Is(err, bizcu.ErrGroundingFailed) {
+			t.Errorf("parseVLMNumber(%q) err = %v, want ErrGroundingFailed", resp, err)
+		}
+	}
+}
+
 func TestVLMGrounderPick_DownscalesLargeImage(t *testing.T) {
 	caller := &fakeLLMCaller{resp: "1"}
 	g := NewVLMGrounder(caller, nil, visionCatalog(), loggateway.NewNoop())

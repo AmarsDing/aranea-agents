@@ -26,6 +26,12 @@ const AMP_GAIN = 0.38;
 const THINKING_SPEED = 3;
 const THINKING_ORB_SCALE = 0.85;
 
+/** dormant 待命微光（V10 §16.5）：低增益慢脉动，青蓝系不变（琥珀/黄禁用）。 */
+const DORMANT_AMP_BASE = 0.06;
+const DORMANT_AMP_GAIN = 0.15;
+const DORMANT_SPEED = 0.35;
+const DORMANT_INTENSITY = 0.55;
+
 /** 待机（boot=0）强度系数：0.35 微光 → boot=1 满功率。 */
 const BOOT_INTENSITY_BASE = 0.35;
 
@@ -64,17 +70,19 @@ export function clampAmplitude(v: number): number {
 export function hudParamsFor(state: VoiceState, _amplitude: number, boot = 1): HudParams {
   const bootClamped = clampAmplitude(boot);
   const thinking = state === 'thinking';
+  const dormant = state === 'dormant';
   const alert = state === 'interrupted' || state === 'error';
+  const bootIntensity = BOOT_INTENSITY_BASE + (1 - BOOT_INTENSITY_BASE) * bootClamped;
 
   return {
-    ampBase: AMP_BASE,
-    ampGain: AMP_GAIN,
-    noiseSpeedFactor: thinking ? THINKING_SPEED : 1,
+    ampBase: dormant ? DORMANT_AMP_BASE : AMP_BASE,
+    ampGain: dormant ? DORMANT_AMP_GAIN : AMP_GAIN,
+    noiseSpeedFactor: thinking ? THINKING_SPEED : dormant ? DORMANT_SPEED : 1,
     orbScale: thinking ? THINKING_ORB_SCALE : 1,
-    ringSpeedFactor: thinking ? THINKING_SPEED : 1,
+    ringSpeedFactor: thinking ? THINKING_SPEED : dormant ? DORMANT_SPEED : 1,
     tintA: alert ? TINT_RED_A : TINT_ORB_A,
     tintB: alert ? TINT_RED_B : TINT_ORB_B,
-    intensity: BOOT_INTENSITY_BASE + (1 - BOOT_INTENSITY_BASE) * bootClamped,
+    intensity: dormant ? bootIntensity * DORMANT_INTENSITY : bootIntensity,
     shakeGain: state === 'speaking' ? 1 : 0,
   };
 }

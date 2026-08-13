@@ -498,7 +498,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 	defer c.flight.finishCompress()
 
-	body, tail, cutoffTurn, err := c.loadCompressBody(ctx, sess, ag, sessionID)
+	body, tail, toolBody, cutoffTurn, err := c.loadCompressBody(ctx, sess, ag, sessionID)
 	if err != nil || len(body) == 0 {
 		return err
 	}
@@ -514,7 +514,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 
 	// Two-level compression cascade: MemoryCompact → LLM.
-	outcome := c.compressCascade(ctx, sess, ag, body, sessionID, cutoffTurn, usedTokens, hardTok)
+	outcome := c.compressCascade(ctx, sess, ag, body, toolBody, sessionID, cutoffTurn, usedTokens, hardTok)
 	if outcome.level == compressLevelNone || outcome.markdown == "" {
 		if outcome.fail != compressFailureNone {
 			c.suppress.record(sessionID, outcome.fail, compressProviderModelKey(sess, ag), time.Now())
@@ -529,7 +529,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	if err := c.executeCompression(ctx, sess, ag, body, tail, outcome, sessionID, trpcUserID); err != nil {
+	wrote, err := c.executeCompression(ctx, sess, ag, body, tail, outcome, sessionID, trpcUserID)
+	if err != nil {
 		c.suppress.record(sessionID, compressFailureTransient, compressProviderModelKey(sess, ag), time.Now())
 		if flow != nil {
 			flow.LogError("system.session.compress", "会话上下文压缩失败",
@@ -538,6 +539,10 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 				event.P("messages_before", messagesBefore))
 		}
 		return err
+	}
+	if !wrote {
+		// CAS 冲突/幂等命中：未真实写入，保留既有抑制记录、不打成功日志。
+		return nil
 	}
 	c.suppress.clear(sessionID)
 	if flow != nil {
@@ -607,25 +612,26 @@ const (
 
 // loadCompressBody loads and splits messages for compression.
 // Returns the body messages to compress, the tail messages to keep verbatim,
+// the tool messages inside the compressed turn range (for the L3 transcript),
 // and the cutoff turn number.
-func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID string) (body, tail []biz.ChatMessage, cutoffTurn int, err error) {
+func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID string) (body, tail, toolBody []biz.ChatMessage, cutoffTurn int, err error) {
 	maxSummarized, err := c.deps.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	msgs, err := c.deps.messageReader.ListMessagesAfterTurn(ctx, sessionID, maxSummarized)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	timeline := timelineUserAssistant(msgs)
 	if len(timeline) == 0 {
-		return nil, nil, 0, nil
+		return nil, nil, nil, 0, nil
 	}
 
 	_, keepTurns := compressThresholdAndKeep(ag)
 	keepRows := messagesPerTurn * max(1, keepTurns)
 	if len(timeline) <= keepRows {
-		return nil, nil, 0, nil
+		return nil, nil, nil, 0, nil
 	}
 	split := len(timeline) - keepRows
 	cutoffTurn = timeline[split-1].TurnNumber
@@ -636,19 +642,31 @@ func (c *Compressor) loadCompressBody(ctx context.Context, sess biz.Session, ag 
 		}
 	}
 	tail = timeline[split:]
-	return body, tail, cutoffTurn, nil
+	// 压缩轮次范围内的工具消息一并捞出，供 L3 transcript 渲染
+	// （summary 策略），让摘要覆盖"实际执行了什么工具、返回了什么"。
+	for _, m := range msgs {
+		if !strings.EqualFold(strings.TrimSpace(m.Role), "tool") {
+			continue
+		}
+		if m.TurnNumber > maxSummarized && m.TurnNumber <= cutoffTurn {
+			toolBody = append(toolBody, m)
+		}
+	}
+	return body, tail, toolBody, cutoffTurn, nil
 }
 
 // executeCompression performs the CAS-protected transaction to write the compression result,
 // syncs the runtime snapshot, and publishes the compression notice.
-func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, ag biz.Agent, body, tail []biz.ChatMessage, outcome compressOutcome, sessionID, trpcUserID string) error {
+// wrote=false 表示未写入（CAS 冲突/幂等命中）：调用方不得按成功处理
+// （清除失败抑制、打"压缩完成"日志都以真实写入为前提）。
+func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, ag biz.Agent, body, tail []biz.ChatMessage, outcome compressOutcome, sessionID, trpcUserID string) (wrote bool, err error) {
 	fromTurn := body[0].TurnNumber
 	toTurn := body[len(body)-1].TurnNumber
 
 	versionBeforeCAS := sess.CompressVersion
 	oldVersion, casErr := c.deps.compressRepo.TryIncrementCompressVersion(ctx, sessionID)
 	if casErr != nil {
-		return casErr
+		return false, casErr
 	}
 	if oldVersion != versionBeforeCAS {
 		// K5: 压缩版本 CAS 冲突——并发压缩已抢先写入，本次放弃。
@@ -657,7 +675,7 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 			loggateway.SessionID(sessionID),
 			loggateway.Int64("version_expected", versionBeforeCAS),
 			loggateway.Int64("version_actual", oldVersion))
-		return nil
+		return false, nil
 	}
 
 	exists, existsErr := c.deps.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
@@ -668,18 +686,18 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 			loggateway.Err(existsErr))
 	}
 	if exists {
-		return nil
+		return false, nil
 	}
 
 	txMerged, txTail, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, tail, outcome, fromTurn, toTurn)
 	if txErr != nil {
-		return txErr
+		return false, txErr
 	}
 
 	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail)
 	c.postCompressionSync(ctx, sessionID, trpcUserID, ag, sess, fromTurn, toTurn, txMerged, txTail, outcome.cacheHit)
 
-	return nil
+	return true, nil
 }
 
 // compressInTransaction executes the database transaction for compression.
@@ -744,7 +762,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 			SessionDefaultWindow: sess.LastContextWindowTokens,
 			AgentWindow:          ag.ContextWindow,
 		})
-		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs)
+		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs, calculateReservedSystem(ag))
 		if err := c.deps.contextUpdater.UpdateSessionContextAfterCompression(txCtx, sessionID, est, win); err != nil {
 			return err
 		}
@@ -786,7 +804,7 @@ func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUse
 		SessionDefaultWindow: sess.LastContextWindowTokens,
 		AgentWindow:          ag.ContextWindow,
 	})
-	est := estimateCompactedPromptTokens(txMerged, txTail)
+	est := estimateCompactedPromptTokens(txMerged, txTail, calculateReservedSystem(ag))
 	ratio := llmcontext.ContextRatio(est, win)
 	status := llmcontext.ContextStatusForRatio(ratio)
 
@@ -814,7 +832,8 @@ func (c *Compressor) postCompressionSync(ctx context.Context, sessionID, trpcUse
 // compressCascade tries compression levels in order: MemoryCompact → LLM.
 // Returns the outcome (level + markdown + absorb flag). level=compressLevelNone means nothing worked.
 // usedTokens and hardTok control Level 2→3 fallback: LLM is only invoked when usedTokens >= hardTok.
-func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag biz.Agent, body []biz.ChatMessage, sessionID string, cutoffTurn int, usedTokens, hardTok int) compressOutcome {
+// tools carries the tool messages inside the compressed turn range for the L3 transcript.
+func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag biz.Agent, body, tools []biz.ChatMessage, sessionID string, cutoffTurn int, usedTokens, hardTok int) compressOutcome {
 	// Level 2: MemoryCompact (near-zero cost — reuse extracted memory facts + L1 working memory).
 	if memoryCompactEnabled(ag) && (c.memoryReader != nil || c.l1Reader != nil) {
 		// 摘要行数累积上限：达到上限时跳过 L2 强制 L3，由 LLM 吸收合并全部历史摘要
@@ -824,7 +843,7 @@ func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag b
 				loggateway.StepID("session.compress"),
 				loggateway.SessionID(sessionID),
 				loggateway.Int("max_rows", summaryMaxRows(ag)))
-			return c.llmCompress(ctx, sess, ag, body, sessionID)
+			return c.llmCompress(ctx, sess, ag, body, tools, sessionID)
 		}
 		memResult := tryMemoryCompact(ctx, body, c.memoryReader, c.l1Reader, sessionID, c.lg)
 		if memResult.didCompact {
@@ -846,7 +865,7 @@ func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag b
 	}
 
 	// Level 3: LLM compression (full summarization via LLM call).
-	return c.llmCompress(ctx, sess, ag, body, sessionID)
+	return c.llmCompress(ctx, sess, ag, body, tools, sessionID)
 }
 
 // summaryRowsExceeded reports whether the stored rolling-summary row count has
@@ -870,7 +889,9 @@ func (c *Compressor) summaryRowsExceeded(ctx context.Context, ag biz.Agent, sess
 }
 
 // llmCompress performs Level 3 LLM-based compression.
-func (c *Compressor) llmCompress(ctx context.Context, sess biz.Session, ag biz.Agent, body []biz.ChatMessage, sessionID string) compressOutcome {
+// tools 为压缩轮次范围内的工具消息：summary 策略下交织进 transcript，
+// hybrid / drop_tool_results 策略下不喂给 LLM（与过滤语义一致）。
+func (c *Compressor) llmCompress(ctx context.Context, sess biz.Session, ag biz.Agent, body, tools []biz.ChatMessage, sessionID string) compressOutcome {
 	strategy := truncateStrategy(ag)
 	filteredBody := filterMessagesForTruncateStrategy(body, strategy)
 
@@ -882,14 +903,17 @@ func (c *Compressor) llmCompress(ctx context.Context, sess biz.Session, ag biz.A
 			loggateway.Str("truncate_strategy", strategy))
 		return compressOutcome{level: compressLevelLLM, markdown: "[Earlier turns removed per drop_oldest policy]"}
 	}
-	return c.llmSummarize(ctx, sess, ag, filteredBody, strategy, sessionID)
+	transcriptMsgs := filteredBody
+	if compressStrategyRendersToolResults(strategy) && len(tools) > 0 {
+		transcriptMsgs = mergeTranscriptMessages(filteredBody, tools)
+	}
+	return c.llmSummarize(ctx, sess, ag, transcriptMsgs, strategy, sessionID)
 }
 
 // llmSummarize runs the summary-strategy LLM compression flow: recursive
-// prior-summary merge, retry-guarded LLM call, hybrid fallback, reduction guard.
+// prior-summary merge, chunked rolling summarization for oversized transcripts,
+// retry-guarded LLM calls, hybrid fallback, reduction guard.
 func (c *Compressor) llmSummarize(ctx context.Context, sess biz.Session, ag biz.Agent, filteredBody []biz.ChatMessage, strategy, sessionID string) compressOutcome {
-	transcript := buildCompressTranscript(filteredBody)
-	transcriptRunes := utf8.RuneCountInString(transcript)
 	cProv, cMod := compressProviderModel(sess, ag)
 
 	// 递归滚动摘要：历史摘要交给 LLM 吸收合并，防止事后拼接无限增长。
@@ -903,26 +927,69 @@ func (c *Compressor) llmSummarize(ctx context.Context, sess biz.Session, ag biz.
 		}
 	}
 
+	// 分块滚动摘要：超大 transcript 逐块摘要，前一块产出作为下一块的
+	// PriorSummary 滚动吸收——避免单次巨型 transcript 撑爆压缩模型上下文
+	// （上下文溢出 = 确定性失败 → sticky 抑制死锁）。
+	chunks := splitMessagesForCompress(filteredBody, compressChunkMaxRunes)
+	if len(chunks) == 0 {
+		chunks = [][]biz.ChatMessage{{}}
+	}
+
 	t0 := time.Now()
-	md, res, fail, cacheHit := c.llmCallWithRetry(ctx, sessionID, compress.Request{
-		Transcript:   transcript,
-		PriorSummary: priorMerged,
-		Provider:     cProv,
-		Model:        cMod,
-	}, transcriptRunes)
-	if fail == compressFailureDeterministic {
-		return compressOutcome{level: compressLevelNone, fail: compressFailureDeterministic}
+	rolling := priorMerged
+	totalRunes := 0
+	var md string
+	var res compress.Result
+	// cacheHit 聚合全块：仅当每一次 LLM 调用都命中缓存才上报 true
+	// （部分命中谎称整次零 LLM 调用会污染监控/计费口径）。
+	cacheHit := true
+	llmSucceeded := false
+	for _, chunk := range chunks {
+		transcript := buildCompressTranscript(chunk)
+		transcriptRunes := utf8.RuneCountInString(transcript)
+		totalRunes += transcriptRunes
+		var fail compressFailureKind
+		var hit bool
+		md, res, fail, hit = c.llmCallWithRetry(ctx, sessionID, compress.Request{
+			Transcript:   transcript,
+			PriorSummary: rolling,
+			Provider:     cProv,
+			Model:        cMod,
+		}, transcriptRunes)
+		if fail == compressFailureDeterministic {
+			// 任一块确定性失败（上下文溢出/鉴权/参数错误）：整个级联按确定性中止，
+			// 不再发送后续块（重发必然再败）。
+			return compressOutcome{level: compressLevelNone, fail: compressFailureDeterministic}
+		}
+		if md == "" {
+			if fail == compressFailureNone {
+				// ctx 取消（进程关闭/请求超时）不是压缩失败：静默中止——不记失败抑制，
+				// hybrid 策略同样不得写兜底标记（写入事务在 detach ctx 上仍会提交，
+				// 未摘要内容会被永久跳过）。
+				return compressOutcome{level: compressLevelNone, fail: compressFailureNone}
+			}
+			// 瞬态失败（重试耗尽）：hybrid 策略回退兜底标记，其余上抛瞬态失败。
+			if strategy == "hybrid" {
+				md = "[Earlier turns trimmed per hybrid policy]"
+			}
+			if md == "" {
+				return compressOutcome{level: compressLevelNone, fail: compressFailureTransient}
+			}
+			// hybrid 兜底标记不含历史内容：停止分块级联，不吸收旧摘要（防丢数据）。
+			llmSucceeded = false
+			cacheHit = false
+			break
+		}
+		rolling = md
+		cacheHit = cacheHit && hit
+		llmSucceeded = true
 	}
-	llmSucceeded := md != ""
-	if !llmSucceeded && strategy == "hybrid" {
-		md = "[Earlier turns trimmed per hybrid policy]"
-	}
-	if md == "" {
-		return compressOutcome{level: compressLevelNone, fail: compressFailureTransient}
-	}
+
 	// 减量守卫：压缩无实质收益则丢弃（hybrid 兜底标记除外）。
 	if strategy != "hybrid" {
-		bodyTokens := llmcontext.EstimateTokensFromChars(transcriptRunes)
+		// 分母计入被吸收的历史摘要：滚动吸收场景下 LLM 产出覆盖 (prior+body)，
+		// 只比 body 会在成熟长会话中必然误杀（丢弃结果 + 误记瞬态失败）。
+		bodyTokens := llmcontext.EstimateTokensFromChars(totalRunes + utf8.RuneCountInString(priorMerged))
 		mdTokens := llmcontext.EstimateTokensFromChars(utf8.RuneCountInString(md))
 		if !passesReductionGuard(mdTokens, bodyTokens) {
 			c.lg.Warn("压缩减量不足，丢弃结果",
@@ -943,6 +1010,7 @@ func (c *Compressor) llmSummarize(ctx context.Context, sess biz.Session, ag biz.
 		loggateway.Int("completion_tokens", res.CompletionTokens),
 		loggateway.Duration(time.Since(t0).Milliseconds()),
 		loggateway.Str("prompt_ver", res.PromptVersion),
+		loggateway.Int("compress_chunks", len(chunks)),
 		loggateway.Str("truncate_strategy", strategy))
 	return compressOutcome{
 		level:    compressLevelLLM,

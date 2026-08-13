@@ -551,6 +551,11 @@ func DefaultAlertRules() []AlertRule {
 			ID: "default-sequencer-dead-letter", Name: "Sequencer dead-letter backlog",
 			MetricKey: "sequencer.dead_letter_count", Threshold: 1, WindowMinutes: 5, Enabled: true, Severity: "critical",
 		},
+		{
+			// 29-token §9.4 (G1-B): low prompt-cache hit ratio means prefix bust.
+			ID: "default-llm-cache-hit-ratio-low", Name: "LLM cache hit ratio low",
+			MetricKey: "llm.cache_hit_ratio_low", Threshold: 1, WindowMinutes: 60, Enabled: true, Severity: "warning",
+		},
 	}
 }
 
@@ -647,7 +652,7 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 						loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
 					continue
 				}
-				if u.evaluateMetricValue(ctx, rule, value) {
+				if u.evaluateMetricValue(ctx, rule, value, m) {
 					triggeredCount++
 				}
 				continue
@@ -672,9 +677,13 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 }
 
 // evaluateMetricValue applies the alert state machine to one metric sample.
+// metric may be nil; when it implements AlertBreachDetailer the breach
+// summary/details of the most recent Evaluate call are merged into
+// alert.fired event metadata and notifier payloads.
 // Returns true when the rule newly fired (idle/recovered → firing) this call.
-func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64) bool {
+func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64, metric AlertMetric) bool {
 	now := time.Now().UTC()
+	breachSummary, breachPayload := breachDetailsOf(metric)
 
 	// Auto-transition recovered → idle after cooldown expires and metric stays below threshold
 	if rule.FiringState == AlertFiringStateRecovered && value < rule.Threshold {
@@ -721,12 +730,16 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 			return false
 		}
 		u.touchAlertReminder(ctx, rule, now, value)
-		meta, _ := json.Marshal(map[string]any{
+		metaMap := map[string]any{
 			"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "threshold": rule.Threshold, "reminder": true,
-		})
+		}
+		for k, v := range breachPayload {
+			metaMap[k] = v
+		}
+		meta, _ := json.Marshal(metaMap)
 		if err := u.RecordMonitorEvent(ctx, EventWrite{
 			EventKey: "alert.fired", Name: rule.Name,
-			Description: fmt.Sprintf("%s %.2f >= %.2f (reminder)", rule.MetricKey, value, rule.Threshold),
+			Description: appendBreachSummary(fmt.Sprintf("%s %.2f >= %.2f (reminder)", rule.MetricKey, value, rule.Threshold), breachSummary),
 			Status:      strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
 		}); err != nil {
 			u.lg.Warn("RecordMonitorEvent for alert.fired reminder failed",
@@ -745,12 +758,16 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 		return false
 	}
 	u.MarkAlertFiredPersistent(ctx, rule, now, value)
-	meta, _ := json.Marshal(map[string]any{
+	metaMap := map[string]any{
 		"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "threshold": rule.Threshold,
-	})
+	}
+	for k, v := range breachPayload {
+		metaMap[k] = v
+	}
+	meta, _ := json.Marshal(metaMap)
 	if err := u.RecordMonitorEvent(ctx, EventWrite{
 		EventKey: "alert.fired", Name: rule.Name,
-		Description: fmt.Sprintf("%s %.2f >= %.2f", rule.MetricKey, value, rule.Threshold),
+		Description: appendBreachSummary(fmt.Sprintf("%s %.2f >= %.2f", rule.MetricKey, value, rule.Threshold), breachSummary),
 		Status:      strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
 	}); err != nil {
 		u.lg.Warn("RecordMonitorEvent for alert.fired failed",
@@ -760,6 +777,12 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 		"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,
 		"value": value, "threshold": rule.Threshold,
 		"severity": strings.TrimSpace(rule.Severity), "fired_at": now.Format(time.RFC3339),
+	}
+	for k, v := range breachPayload {
+		payload[k] = v
+	}
+	if breachSummary != "" {
+		payload["breach_summary"] = breachSummary
 	}
 	if u.notifier != nil {
 		u.notifier.Notify(ctx, rule, payload)
@@ -829,7 +852,7 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) b
 		return false
 	}
 	rate := float64(errors) / float64(total)
-	return u.evaluateMetricValue(ctx, rule, rate)
+	return u.evaluateMetricValue(ctx, rule, rate, nil)
 }
 
 func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) bool {
@@ -841,7 +864,7 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 		u.lg.Warn("EvaluateAlerts: FilesystemHealthStats failed", loggateway.StepID("monitor.fs_health_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 		return false
 	}
-	return u.evaluateMetricValue(ctx, rule, float64(missing))
+	return u.evaluateMetricValue(ctx, rule, float64(missing), nil)
 }
 
 // ShouldFireAlert checks whether an alert rule should fire now.

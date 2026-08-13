@@ -3,8 +3,12 @@ package computeruse
 import (
 	"context"
 	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"aranea-agents/internal/biz"
 )
 
 // --- fakes ---
@@ -113,6 +117,18 @@ func (a *fakeAudit) ListSteps(_ context.Context, sessionID string) ([]AuditEntry
 type fakeEvents struct{ steps []Step }
 
 func (p *fakeEvents) PublishStep(_ context.Context, s Step) { p.steps = append(p.steps, s) }
+
+// fakeFlowLog 捕获流程日志调用级别（F2：降级必须 warn 而非 error）。
+type fakeFlowLog struct{ warnSteps, errorSteps []string }
+
+func (f *fakeFlowLog) LogFlowStart(_ context.Context, _, stepID, _ string, _ ...biz.LogPair) {}
+func (f *fakeFlowLog) LogFlowDone(_ context.Context, _, stepID, _ string, _ ...biz.LogPair)  {}
+func (f *fakeFlowLog) LogFlowError(_ context.Context, _, stepID, _ string, _ ...biz.LogPair) {
+	f.errorSteps = append(f.errorSteps, stepID)
+}
+func (f *fakeFlowLog) LogFlowWarn(_ context.Context, _, stepID, _ string, _ ...biz.LogPair) {
+	f.warnSteps = append(f.warnSteps, stepID)
+}
 
 func newTestUsecase(gw *fakeGateway, m ElementMatcher) (*ComputerUseUsecase, *fakeAudit, *fakeEvents) {
 	audit := &fakeAudit{}
@@ -428,6 +444,79 @@ func TestAct_BudgetExhaustedSessionDoesNotBlockAgent(t *testing.T) {
 	}
 }
 
+// F3：beginStep 原子性——同一会话并发开始步骤，恰好一个成功、其余忙拒绝，
+// StepsUsed 严格等于成功数（旧 chargeBudget+分离 transit 序列在并发下双计费泄漏：
+// 两者都过 idle 检查与计费，后到者 transit 失败直接返回，预算白扣且无审计）。
+func TestBeginStep_ConcurrentNoDoubleCharge(t *testing.T) {
+	u, _, _ := newTestUsecase(&fakeGateway{}, fakeMatcher{})
+	if _, err := u.StartSession(context.Background(), "agent1", Budget{}); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	s, err := u.resolveSession(ActRequest{AgentKey: "agent1"})
+	if err != nil {
+		t.Fatalf("resolveSession: %v", err)
+	}
+
+	const goroutines = 8
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = u.beginStep(s, EvGround)
+		}(i)
+	}
+	wg.Wait()
+
+	okCount, busyCount := 0, 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			okCount++
+		case strings.Contains(err.Error(), "会话忙"):
+			busyCount++
+		default:
+			t.Errorf("beginStep err = %v, want nil 或会话忙", err)
+		}
+	}
+	if okCount != 1 {
+		t.Errorf("成功数 = %d, want 1", okCount)
+	}
+	if busyCount != goroutines-1 {
+		t.Errorf("忙拒绝数 = %d, want %d", busyCount, goroutines-1)
+	}
+	if s.StepsUsed != 1 {
+		t.Errorf("StepsUsed = %d, want 1（无预算泄漏）", s.StepsUsed)
+	}
+}
+
+// F3 关联：预算耗尽的被拒步审计索引 = stepsUsed+1，单调不重复
+// （旧实现回填 s.StepsUsed，与最后成功步索引撞号）。
+func TestAct_BudgetExceededRejectedStepIndex(t *testing.T) {
+	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
+	u, audit, _ := newTestUsecase(gw, fakeMatcher{hit: &saveButton})
+	ctx := context.Background()
+
+	s, _ := u.StartSession(ctx, "agent1", Budget{MaxSteps: 1, Deadline: time.Now().Add(time.Hour)})
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: s.ID, Target: "保存", Action: ActionInvoke}); err != nil {
+		t.Fatalf("first act err: %v", err)
+	}
+	if _, err := u.Act(ctx, ActRequest{AgentKey: "agent1", SessionID: s.ID, Target: "保存", Action: ActionInvoke}); !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("second act err = %v, want ErrBudgetExceeded", err)
+	}
+	entries, err := audit.ListSteps(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("ListSteps: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("audit entries = %d, want 2（成功 1 + 被拒 1）", len(entries))
+	}
+	if entries[0].Index != 1 || entries[1].Index != 2 {
+		t.Errorf("audit index = [%d, %d], want [1, 2]（被拒步索引单调不重复）", entries[0].Index, entries[1].Index)
+	}
+}
+
 // B1/B3：KillSwitch 与进行中 Act 并发——状态经状态机转换，字段访问全部持锁。
 // go test -race 下验证无数据竞态；功能上动作要么完成要么被取消，不得死锁。
 func TestAct_ConcurrentKillSwitch(t *testing.T) {
@@ -550,6 +639,78 @@ func TestAct_VLMDirectZoomRefinement(t *testing.T) {
 	}
 	if gw.clicked == nil || *gw.clicked != (Point{X: 500, Y: 400}) {
 		t.Errorf("clicked = %v, want {500 400}", gw.clicked)
+	}
+}
+
+// F2：a11y 未命中降级 SoM 是设计内降级，流程日志必须 warn 级（K3），
+// 不得用 error 级把正常 fallback 渲染成故障。
+func TestAct_GroundingFallbackLogsWarn(t *testing.T) {
+	visEl := UIElement{
+		Ref: "g1.v0", Type: "icon", Name: "保存图标",
+		BBox:          Rect{X: 300, Y: 100, W: 40, H: 40},
+		Interactivity: true, Source: "vision", Enabled: true, Generation: 1,
+	}
+	gw := &fakeGateway{snap: Snapshot{Generation: 1}}
+	flow := &fakeFlowLog{}
+	u := NewComputerUseUsecase(Deps{
+		Gateway:  gw,
+		Match:    fakeMatcher{hit: nil},
+		Vision:   &fakeVisionParser{available: true, els: []UIElement{visEl}},
+		Grounder: &fakeGrounder{pickRef: "g1.v0"},
+		FlowLog:  flow,
+		Settle:   func(time.Duration) {},
+	})
+
+	if _, err := u.Act(context.Background(), ActRequest{
+		AgentKey: "agent1", Target: "保存图标", Action: ActionClick,
+	}); err != nil {
+		t.Fatalf("Act err: %v", err)
+	}
+	for _, id := range flow.warnSteps {
+		if id == StepGroundFall {
+			return // 命中：warn 级降级日志
+		}
+	}
+	t.Errorf("StepGroundFall 应以 warn 级记录，warnSteps=%v errorSteps=%v", flow.warnSteps, flow.errorSteps)
+}
+
+// F1 回归：DPI 缩放显示器（ScaleFactor=1.5）下 vlm_direct 不得二次换算。
+// sidecar 为 PerMonitorV2 DPI aware（app.manifest），截图图像素==物理像素，
+// ScaleFactor 仅信息元数据；再除一次会把粗判点缩到 2/3 处导致误点。
+// 数学：全屏 1500x1000 粗判 (750,500) → region(510,320,480,360) zoom2 → zimg 960x720
+// 精判 (480,360) → 物理 (510+480*480/960, 320+360*360/720) = (750,500)。
+func TestAct_VLMDirectScaledDisplay(t *testing.T) {
+	gw := &fakeGateway{
+		snap: Snapshot{Generation: 1},
+		shotFn: func(r *Rect, zoom float64) (Image, error) {
+			if r == nil {
+				return Image{PNG: []byte("full"), Width: 1500, Height: 1000, ScaleFactor: 1.5}, nil
+			}
+			return Image{PNG: []byte("zoom"), Width: int(float64(r.W) * zoom), Height: int(float64(r.H) * zoom), ScaleFactor: 1.5}, nil
+		},
+	}
+	gr := &fakeGrounder{coordFn: func(img Image) (Point, error) {
+		if img.Width == 1500 { // 全屏粗判
+			return Point{X: 750, Y: 500}, nil
+		}
+		return Point{X: 480, Y: 360}, nil // zoom 图精判（中心）
+	}}
+	u := newVisionUsecase(gw, fakeMatcher{hit: nil}, nil, gr)
+
+	res, err := u.Act(context.Background(), ActRequest{
+		AgentKey: "agent1", Target: "某图标", Action: ActionClick,
+	})
+	if err != nil {
+		t.Fatalf("Act err: %v", err)
+	}
+	if res.Step.Path != PathVLMDirect {
+		t.Errorf("path = %s, want vlm_direct", res.Step.Path)
+	}
+	if gw.lastRegion == nil || *gw.lastRegion != (Rect{X: 510, Y: 320, W: 480, H: 360}) {
+		t.Errorf("lastRegion = %+v, want {510 320 480 360}（图像素即物理像素）", gw.lastRegion)
+	}
+	if gw.clicked == nil || *gw.clicked != (Point{X: 750, Y: 500}) {
+		t.Errorf("clicked = %v, want {750 500}（禁止再除 ScaleFactor）", gw.clicked)
 	}
 }
 

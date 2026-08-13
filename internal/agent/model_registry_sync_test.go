@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,6 +15,24 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 )
+
+// requireModelsDevReachable 网络依赖测试离线优雅跳过：models.dev 在本机须代理方可达，
+// 测试进程不走代理时直连重试约 21s 后恒败。3s 探测不可达即 Skip；
+// 联网环境（CI/已注入代理）仍执行真实端到端同步路径。
+func requireModelsDevReachable(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, modelregistry.DefaultPolicy().SourceURL, nil)
+	if err != nil {
+		t.Skipf("probe request build failed: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Skipf("models.dev unreachable (%v), skipping network-dependent test", err)
+	}
+	_ = resp.Body.Close()
+}
 
 type mockStoreProvider struct {
 	store *modelregistry.Store
@@ -193,6 +212,7 @@ func TestModelRegistrySyncAgent_Run_StoreError(t *testing.T) {
 }
 
 func TestModelRegistrySyncAgent_Run_EventsFlow(t *testing.T) {
+	requireModelsDevReachable(t)
 	store, dir := setupTempStore(t)
 	_ = dir
 

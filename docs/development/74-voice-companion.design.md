@@ -81,13 +81,14 @@
 | `voice.commit` | JSON | 手动提交当前语句（PTT 兼容兜底） |
 | `voice.barge_in` | JSON `{detect_ms}` | 前端 VAD 检测到人声（≥200ms 持续）触发打断 |
 | `voice.cancel` | JSON | 显式取消当前 Turn（按钮/热键） |
+| `voice.wake` | JSON `{source}` | 唤醒（V10，§16）：`source ∈ kws/manual/system`；dormant 态受理进 listening |
 | `ping` | JSON | 心跳（复用 pong 约定） |
 
 ### 2.3 下行帧（服务端 → 客户端）
 
 | 帧 | 格式 | 说明 |
 |----|------|------|
-| `voice.state` | JSON `{state}` | 状态机广播：idle/listening/thinking/speaking/interrupted/error |
+| `voice.state` | JSON `{state}` | 状态机广播：idle/dormant(V10)/listening/thinking/speaking/interrupted/error |
 | `asr.partial` | JSON `{text, seq}` | 实时字幕（前端覆盖式渲染） |
 | `asr.final` | JSON `{text, duration_ms}` | 终稿；随即进入 Chat 管线 |
 | `turn.accepted` | JSON `{turn_id}` | 消息已被 Chat 管线接受 |
@@ -752,4 +753,103 @@ Agent 调用 client_open_app
 
 ---
 
-*文档版本：2026-08-11 v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+## 16. 语音唤醒与休眠（Wake Word「小媛」，2026-08-12 设计）
+
+> 需求锚点：§2.12。语音模式进入即待命（dormant）：本地唤醒词检测、音频不出设备、云端 ASR 零占用；检出「小媛」唤醒进聆听；退出词或 60s 静默回待命。对齐业界「离线唤醒 + 在线识别」范式（Alexa/小爱同学同款架构）。
+
+### 16.1 技术选型
+
+| 方案 | 隐私 | 成本 | 延迟 | 结论 |
+|------|------|------|------|------|
+| 服务端 ASR 常开检测唤醒词 | 差（音频全上传） | 高（ASR 长连接 24h 计费） | 高 | 否 |
+| VAD 门控 + 服务端唤醒词判定 | 中（有声段上传） | 中 | 中 | 备选 |
+| **本地 KWS（sherpa-onnx WASM）** | 好（音频不出设备） | 零 | 低（<100ms 检出） | **采用** |
+
+- 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01`（encoder int8 ≈4.8MB，WASM SIMD），浏览器 AudioWorklet 常开喂 16kHz 帧
+- 关键词表（`keywords.txt` 音素序列）：`x iǎo y uán @小媛` + 叠词 `x iǎo y uán x iǎo y uán @小媛小媛`（双音节词误触发率高于四音节，叠词作兜底线）
+- 检出阈值初始 0.7（可配）；静态资产经 `web/public/kws/` 分发，加载一次全局缓存
+- **KWS 加载失败降级**：模型/WASM 加载异常时自动发送 `voice.wake` 进入 listening（退化为现状「进入即聆听」），不阻塞语音模式
+
+### 16.2 状态机扩展（7 态，AS-FSM-01）
+
+新增 `dormant`（待命：语音模式开、本地 KWS 监听、ASR 关闭）。新事件：`wake` / `sleep_timeout` / `exit_word`。
+
+| from \ event | voice_start | voice_start_dormant | wake | sleep_timeout | exit_word | voice_stop | 其余 |
+|---|---|---|---|---|---|---|---|
+| idle | listening（dictation / error 恢复，不变） | **dormant**（companion 默认） | — | — | — | — | — |
+| **dormant** | — | — | **listening** | — | — | idle | 忽略（含迟到 asr/tts 事件） |
+| listening | — | — | — | **dormant** | **dormant** | idle | 照旧 |
+| thinking / speaking | — | — | — | — | — | idle | 照旧（交互中不休眠；sleep_timeout 到期被转换表拒绝即忽略） |
+| interrupted | — | — | — | — | — | idle | 照旧 |
+| error | listening（既有恢复路径，不变） | — | — | — | — | idle | 照旧 |
+
+> 实现注（R4）：`voice_start` 保持 idle/error→listening（dictation + recoverToListening 恢复路径不变）；新增 `voice_start_dormant`（仅 idle→dormant，companion 默认入口）。同事件双目标违背 AS-FSM-01 显式转换表（Transition 签名 from+event→to 无上下文），故拆两事件，`Start` 按 mode 选发。
+
+### 16.3 协议变更（§2 增量）
+
+- 上行新增 `voice.wake` JSON `{source}`——`source ∈ kws | manual | system`（KWS 检出 / 待命态点击麦克风 / 委派系统唤醒）；dormant 态收到即 EvWake
+- 下行 `voice.state` 状态集合 +`dormant`；休眠/唤醒一律以服务端状态广播为准（前端不本地翻转）
+- `voice.start`：`mode=dictation` 仍发 EvVoiceStart 直进 listening；companion 默认发 EvVoiceStartDormant 进 dormant
+- dormant 态前端**不上行音频帧**（门控在采集端）；检出唤醒后将预滚缓冲随实时流续传
+
+### 16.4 后端实现（`internal/voice/`）
+
+**① 唤醒词剥离与退出词匹配（`wake_words.go` 新增）**
+
+- 同音词表：云端 ASR 可能把「小媛」识别为同音字——`{小媛, 小圆, 小袁, 小源, 小园, 小员}`；`StripWakeWord(text)` 剥离句首唤醒词（含叠词与「小媛小媛」连说形态）+ 紧随的逗号/顿号/空格，返回净文本与是否命中
+- 退出词表：`{休息吧, 再见, 退出, 退下吧, 不用了}`；`MatchExitWord(text)` 整句归一化精确匹配（复用 `normalizeConfirmWord` 归一化规则）
+- **拦截顺序（评审确认）**：唤醒词剥离 → 退出词匹配 → 确认词拦截（confirm_words.go）→ Chat 管线。`不用了` 与确认 denyWords 重叠，退出词优先——代价：pending confirm 期间说「不用了」判为休眠而非拒绝（确认卡仍在 UI 可见，可手动处理），语义可接受
+
+**② session.go 扩展**
+
+- `Wake(source string)`：dormant → EvWake → 懒启动 ASR 上游 → 广播 listening；`source` 入流程日志
+- SleepTimer：进 listening 启动 60s 计时；asr.partial / asr.final / barge_in / Turn 活动即重置；到期 EvSleepTimeout → dormant（关闭 ASR 上游，零占用）
+- 退出词命中：自足 TTS 应答确认（「好的，我先休息了」）→ 应答 flush 后 EvExitWord → dormant
+- 自足 TTS 应答（唤醒「我在」/ 退出确认）：复用 §15 委派播报的无主自足 scheduler 机制（不经 Chat Turn，不占消息流）
+- **KWS 无后续内容的单唤醒**：前端检出后上行 `voice.wake`，后端自足应答「我在」；**连续指令形态**：预滚音频续传 → ASR 终稿「小媛，查天气」→ `StripWakeWord` 剥离 → 净文本进既有 Chat 管线（唤醒词不进 Turn）
+
+**③ dormant 委派播报系统唤醒（G1 评审修正）**
+
+dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS 预热）——否则待命期间委派任务终态事件丢失。委派终态到达且当前 dormant：系统 EvWake（`source=system`）→ listening → 走 §15 自足播报 → 播报完按 SleepTimer 规则回 dormant。用户显式交办的动作不被休眠吞掉。
+
+**④ WS 路由（`voice_ws.go`）**：`voice.wake` 帧解析 → `session.Wake(source)`。
+
+### 16.5 前端实现（`web/src/features/companion/`）
+
+- **`voice/wakeWord.ts` 新增**：sherpa-onnx WASM KWS 封装——加载 `/kws/` 静态资产（wasm/data/js + 模型），AudioWorklet 16kHz 帧喂入，检出回调；暴露 `load()` / `start(onDetect)` / `stop()`；加载失败 reject（调用方降级自动唤醒）
+- **预滚 ring buffer**：采集端恒定维护 ~1.5s PCM 环形缓冲；dormant 态帧只进缓冲不上行；检出唤醒后先 flush 缓冲再续实时流——保证「小媛，查天气」后半句与唤醒词同句完整到达 ASR
+- **`useVoiceSession.ts`**：dormant 门控（state≠listening/thinking/speaking 时音频帧不 send）；`wake(source)` 发 `voice.wake`；`voice.state` dormant 映射 store
+- **store + HUD**：`voiceState` union +`"dormant"`；HUD 映射 dormant = 微光呼吸（低 gain 慢脉动，青蓝系不变——琥珀/黄禁用），listening = 点亮（现状样式）；手动唤醒：dormant 态点击麦克风按钮 = `wake("manual")`
+
+### 16.6 流程日志步骤（双轨制，K1/K5）
+
+| step_id | 中文标题 | 时机 |
+|---------|---------|------|
+| `voice.wake.detect` | 语音唤醒 | EvWake 受理（含 source 字段：kws/manual/system） |
+| `voice.sleep.exit_word` | 退出词休眠 | 退出词命中、应答后 EvExitWord |
+| `voice.sleep.timeout` | 静默休眠 | SleepTimer 到期 EvSleepTimeout |
+
+进程日志：`Wake`/`Sleep` 关键路径 Info（K5），KWS 降级 Warn（K3），ASR 上游启停 Debug + 耗时（K6）。
+
+### 16.7 测试策略
+
+- 状态机：7 态合法/非法转换全表（`session_state_machine_test.go`）
+- `wake_words_test.go`：同音词剥离（句首/叠词/带标点/非句首不剥/无命中）、退出词匹配（归一化/重叠词优先级）
+- `session_test.go`：Wake 懒启动 ASR、SleepTimer 重置/到期、退出词拦截顺序（先于 confirm）、dormant 委派系统唤醒播报、自足应答不经 Chat Turn
+- 前端：`wakeWord.spec.ts`（加载失败降级 / 检出回调）、`useVoiceSession.spec.ts`（dormant 门控不上行、wake 帧、预滚 flush）
+- 运行时：真机「小媛」唤醒 / 连说指令 / 退出词 / 60s 静默 / 待命委派播报全链路
+
+### 16.8 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| KWS 模型权重 license 未显式声明（代码 Apache-2.0） | 商用分发前确认权重授权；必要时自训练或换开放权重模型（架构不变，仅换资产） |
+| 双音节唤醒词误触发率高于四音节 | 阈值 0.7 起步可配；叠词「小媛小媛」兜底关键词；误唤醒代价低（说「休息吧」即回待命） |
+| ASR 同音误识别（小圆/小袁…）致剥离失败 | 同音词表覆盖；剥离失败时整句进 Chat 管线（退化为现状，不丢指令） |
+| 退出词与确认词「不用了」重叠 | 拦截顺序退出词优先（§16.4①，评审确认）；确认卡 UI 保留可手动处理 |
+| 预滚缓冲延迟或丢失致指令截断 | 1.5s 环形容量 + wake 后原子 flush；实测校准 |
+| dormant 迟到 ASR/TTS 事件串扰 | 状态机 dormant 行仅受理 wake/voice_stop，其余事件转换表拒绝即忽略 |
+
+---
+
+*文档版本：2026-08-12 v1.7 — 追加 §16 语音唤醒与休眠设计（本地 KWS「小媛」+ dormant 七态机 + 退出词/静默休眠 + dormant 委派系统唤醒）。v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
