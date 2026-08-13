@@ -1137,7 +1137,7 @@ Team 团队历史显示是 Chat UI 的核心子模块，负责在精灵对话中
 | `internal/biz/graph.go` | GraphUsecase.RegisterTeamGraphExecution 委托方法签名扩展 | ✅ 已修复 |
 | `internal/graph/trpc/event_bridge.go` | Graph 事件桥接（graph_stage 事件，EventBridge 新增 spiritSessionID 字段） | ✅ 已修复 |
 | `internal/graph/runtime_replanner.go` | Graph 重规划事件 | ✅ 已修复 |
-| `internal/graph/topology_evolution.go` | 拓扑演化事件（publishTopologyEvolvedEvent） | ✅ 已修复 |
+| ~~`internal/graph/topology_evolution.go`~~ | 拓扑演化事件（publishTopologyEvolvedEvent） | 🗑️ 已移除（S5：insight 生产者从未落地，TargetNode 恒空导致回调不可达，确认死代码后随 wire 装配一并下线） |
 | `internal/graph/adapter/runtime_adapter.go` | trpcGraphRuntime 新增 spiritSessionID 字段，签名扩展 | ✅ 已修复 |
 | `internal/event/activityevent/bus.go` | ActivityEvent Bus（SessionID 兜底规范化） | ✅ 保留 |
 | `internal/data/ent/schema/agent_runtime_setting.go` | AgentRuntimeSetting（含 MaxSessionDepth） | ✅ 已存在 |

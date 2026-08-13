@@ -2270,7 +2270,7 @@ var (
 	// McpServerColumns holds the columns for the "mcp_server" table.
 	McpServerColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 256},
-		{Name: "server_key", Type: field.TypeString, Unique: true, Size: 512},
+		{Name: "server_key", Type: field.TypeString, Size: 512},
 		{Name: "name", Type: field.TypeString, Size: 1024},
 		{Name: "description", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "status", Type: field.TypeString, Default: "active"},
@@ -2289,6 +2289,14 @@ var (
 		Columns:    McpServerColumns,
 		PrimaryKey: []*schema.Column{McpServerColumns[0]},
 		Indexes: []*schema.Index{
+			{
+				Name:    "idx_mcp_server_server_key_active",
+				Unique:  true,
+				Columns: []*schema.Column{McpServerColumns[1]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at = ''::text",
+				},
+			},
 			{
 				Name:    "idx_mcp_server_status_enabled",
 				Unique:  false,
@@ -2326,9 +2334,12 @@ var (
 		PrimaryKey: []*schema.Column{McpServerUserCredentialColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "platformmcpusercredential_mcp_server_id_user_id_credential_key",
+				Name:    "idx_mcp_credential_unique_active",
 				Unique:  true,
 				Columns: []*schema.Column{McpServerUserCredentialColumns[1], McpServerUserCredentialColumns[2], McpServerUserCredentialColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at = ''::text",
+				},
 			},
 		},
 	}

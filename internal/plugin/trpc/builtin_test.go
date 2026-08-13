@@ -1,11 +1,23 @@
 package plugintrpc
 
 import (
+	"slices"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
+
+// GAP-02 回归：DB 种子声明的 CallbackPoints 必须与 chain_adapter 的
+// 实现级声明一致，否则 UI 展示/校验与实际注册回调点漂移。
+func TestBuiltin_SeedCallbackPointsMatchImplementation(t *testing.T) {
+	for _, def := range BuiltinPluginDefs() {
+		impl := BuiltinCallbackPoints(def.Key)
+		if !slices.Equal(def.CallbackPoints, impl) {
+			t.Errorf("plugin %q: seed CallbackPoints %v != implemented %v", def.Key, def.CallbackPoints, impl)
+		}
+	}
+}
 
 func TestBuiltin_AllKeysConstruct(t *testing.T) {
 	keys := []string{

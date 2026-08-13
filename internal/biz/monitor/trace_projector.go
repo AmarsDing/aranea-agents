@@ -35,6 +35,14 @@ type TraceProjector struct {
 	// would otherwise emit one Warn per event, flooding the log pipeline.
 	upsertWarnInterval time.Duration
 	lastUpsertWarnNano atomic.Int64
+
+	// insertWarnThrottle / completionWarnThrottle / usageAggWarnThrottle
+	// throttle the per-failure Warn on the trace-insert, trace-completion
+	// and usage-aggregation paths. When the repo is down, each new trace or
+	// runner completion would otherwise emit one Warn per call.
+	insertWarnThrottle     *loggateway.Throttle
+	completionWarnThrottle *loggateway.Throttle
+	usageAggWarnThrottle   *loggateway.Throttle
 }
 
 type activeTrace struct {
@@ -82,6 +90,10 @@ func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, usageRepo TraceUsag
 		traces:    make(map[string]*activeTrace),
 
 		upsertWarnInterval: defaultUpsertWarnInterval,
+
+		insertWarnThrottle:     loggateway.NewThrottle(defaultUpsertWarnInterval),
+		completionWarnThrottle: loggateway.NewThrottle(defaultUpsertWarnInterval),
+		usageAggWarnThrottle:   loggateway.NewThrottle(defaultUpsertWarnInterval),
 	}
 }
 
@@ -377,8 +389,8 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 	// accurate tokens/cost/provider/model.
 	if p.usageRepo != nil {
 		if agg, err := p.usageRepo.AggregateUsageByTrace(ctx, traceID); err != nil {
-			p.lg.Warn("AggregateUsageByTrace failed",
-				loggateway.StepID("monitor.trace_usage_agg_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+			p.warnRepoOpThrottled(p.usageAggWarnThrottle, "AggregateUsageByTrace failed", err,
+				loggateway.StepID("monitor.trace_usage_agg_fail"), loggateway.Str("trace_id", traceID))
 		} else if agg.CallCount > 0 {
 			if agg.TotalTokens > c.TotalTokens {
 				c.TotalTokens = agg.TotalTokens
@@ -390,9 +402,24 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 	}
 
 	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, c); err != nil {
-		p.lg.Warn("UpdateMonitorTraceCompletion failed",
-			loggateway.StepID("monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+		p.warnRepoOpThrottled(p.completionWarnThrottle, "UpdateMonitorTraceCompletion failed", err,
+			loggateway.StepID("monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID))
 	}
+}
+
+// warnRepoOpThrottled emits a repo-failure Warn at most once per throttle
+// window. When the window resets, the Warn carries the number of failures
+// suppressed since the previous emission so no signal is silently lost.
+func (p *TraceProjector) warnRepoOpThrottled(th *loggateway.Throttle, msg string, err error, fields ...loggateway.Field) {
+	ok, suppressed := th.Allow()
+	if !ok {
+		return
+	}
+	fields = append(fields, loggateway.Err(err))
+	if suppressed > 0 {
+		fields = append(fields, loggateway.Int("suppressed", suppressed))
+	}
+	p.lg.Warn(msg, fields...)
 }
 
 // warnUpsertSpanThrottled emits the per-span upsert-failure Warn at most
@@ -451,8 +478,8 @@ func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, ru
 		Status:    "running",
 	}
 	if err := p.repo.InsertMonitorTrace(ctx, tw); err != nil {
-		p.lg.Warn("InsertMonitorTrace failed",
-			loggateway.StepID("monitor.trace_insert_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+		p.warnRepoOpThrottled(p.insertWarnThrottle, "InsertMonitorTrace failed", err,
+			loggateway.StepID("monitor.trace_insert_fail"), loggateway.Str("trace_id", traceID))
 	}
 }
 

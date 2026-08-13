@@ -42,7 +42,7 @@ func NewLLMUserSimulator(catalog *biz.LlmProviderModelUsecase, rt *provider.Roun
 		}),
 	)
 	simRunner := runner.NewRunner(AppName+"-user-sim", agent)
-	return usersimulation.New(simRunner)
+	return usersimulation.New(&timeoutRunner{Runner: simRunner, timeout: evalLLMCallTimeout})
 }
 
 func intPtr(v int) *int { return &v }
@@ -59,10 +59,17 @@ func resolveUserSimulator(
 	if !cfg.UseUserSimulation && !casesNeedUserSimulation(cases, lg) {
 		return nil
 	}
-	if casesNeedScriptedSimulation(cases, lg) {
+	needScripted := casesNeedScriptedSimulation(cases, lg)
+	wantLLM := cfg.UseUserSimulation || casesNeedLLMSimulation(cases, lg)
+	switch {
+	case needScripted && wantLLM && llmSim != nil:
+		// Mixed dataset: scripted cases replay their script; LLM-marked (or,
+		// under blanket use_user_simulation, all remaining) cases go to the
+		// LLM simulator instead of silently dead-ending.
+		return &hybridSimulator{scripted: &scriptedSimulator{scripts: scriptedScripts(cases, lg)}, llm: llmSim}
+	case needScripted:
 		return newScriptedSimulator(cases, lg)
-	}
-	if llmSim != nil && (cfg.UseUserSimulation || casesNeedLLMSimulation(cases, lg)) {
+	case wantLLM && llmSim != nil:
 		return llmSim
 	}
 	return nil

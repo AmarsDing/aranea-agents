@@ -3,12 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
-	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
+	"aranea-agents/internal/tools/skillruntime"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -200,17 +199,16 @@ func newContextBudgetToolsBeforeHook() callbacks.Callback {
 // count, so it gets its own category separate from skill_guidance (dynamic
 // Layer B cues).
 //
-// The framework is read-only (redline #27) and exposes no overview-size hook,
-// so this re-renders the block by mirroring processor.skills.go's default
-// availableSkillsText: header + "- name: description" lines, with the Layer A
-// visibility filter applied exactly as the framework applies it
-// (skill.NewFilteredRepository). Summaries come from the repo's in-memory
-// snapshot, so metering adds zero DB queries per turn.
+// 批次 B 计量对齐：overviewBudget 必须与 RunOptionWithOverviewBudget 安装的
+// 渲染器同值（OverviewBudgetFromRuntime），计量的是预算截断后的实际注入文本；
+// overviewBudget<=0 = 框架默认全量渲染。渲染逻辑同源复用
+// skillruntime.RenderSkillOverviewBudgeted，Summaries 来自 repo 内存快照，
+// 零额外 DB 查询。
 //
 // Deliberate exclusions (per-build constants, not per-request variables):
 // the capability/tooling guidance blocks and the "(dir: [sN]/...)" suffixes —
 // the latter would cost one Path query per skill per request on the DB repo.
-func newContextBudgetSkillOverviewBeforeHook(repo trpcskill.Repository, filter trpcskill.VisibilityFilter) callbacks.Callback {
+func newContextBudgetSkillOverviewBeforeHook(repo trpcskill.Repository, filter trpcskill.VisibilityFilter, overviewBudget int) callbacks.Callback {
 	if repo == nil {
 		return nil
 	}
@@ -219,15 +217,15 @@ func newContextBudgetSkillOverviewBeforeHook(repo trpcskill.Repository, filter t
 		if b == nil || b.has(ContextBudgetCategorySkillOverview) {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillOverview, skillOverviewBlockChars(ctx, repo, filter))
+		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillOverview, skillOverviewBlockChars(ctx, repo, filter, overviewBudget))
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
 
-// skillOverviewBlockChars mirrors the framework's default availableSkillsText
-// rendering (overview header + one line per visible summary) and returns its
-// rune count. Returns 0 when nothing would be injected.
-func skillOverviewBlockChars(ctx context.Context, repo trpcskill.Repository, filter trpcskill.VisibilityFilter) int {
+// skillOverviewBlockChars renders the overview block through the same budgeted
+// renderer installed on the run (批次 B) and returns its rune count.
+// Returns 0 when nothing would be injected.
+func skillOverviewBlockChars(ctx context.Context, repo trpcskill.Repository, filter trpcskill.VisibilityFilter, overviewBudget int) int {
 	if repo == nil {
 		return 0
 	}
@@ -238,12 +236,7 @@ func skillOverviewBlockChars(ctx context.Context, repo trpcskill.Repository, fil
 	if len(sums) == 0 {
 		return 0
 	}
-	var b strings.Builder
-	b.WriteString("Available skills:\n")
-	for _, s := range sums {
-		fmt.Fprintf(&b, "- %s: %s\n", s.Name, s.Description)
-	}
-	return utf8.RuneCountInString(b.String())
+	return utf8.RuneCountInString(skillruntime.RenderSkillOverviewBudgeted(sums, overviewBudget))
 }
 
 // newContextBudgetHistoryBeforeHook meters the history component (N3): the

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mcpdefaults "aranea-agents/internal/mcp"
@@ -76,13 +77,36 @@ func oauth2CacheKey(tokenURL, clientID string) string {
 	return hex.EncodeToString(h[:])
 }
 
-func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+// mcpRefreshPersistFunc persists a rotated OAuth2 refresh token back to
+// durable storage so a process restart does not resurrect the revoked
+// previous token (strict providers rotate one-time refresh tokens).
+type mcpRefreshPersistFunc func(ctx context.Context, serverKey, refreshToken string) error
+
+// mcpRefreshPersister holds the rotation persistence hook. Wired once at
+// startup by the service layer; the closure owns failure logging.
+var mcpRefreshPersister atomic.Value // stores mcpRefreshPersistFunc
+
+// SetMCPRefreshTokenPersister installs the rotation persistence hook.
+// Pass nil to uninstall (tests).
+func SetMCPRefreshTokenPersister(fn func(ctx context.Context, serverKey, refreshToken string) error) {
+	mcpRefreshPersister.Store(mcpRefreshPersistFunc(fn))
+}
+
+func loadMCPRefreshPersister() mcpRefreshPersistFunc {
+	fn, _ := mcpRefreshPersister.Load().(mcpRefreshPersistFunc)
+	return fn
+}
+
+// ResolveMCPAuthToken resolves the effective bearer token for auth. serverKey
+// identifies the owning MCP server for refresh-token rotation persistence;
+// it may be empty for ad-hoc callers (rotation is then kept in-memory only).
+func ResolveMCPAuthToken(ctx context.Context, serverKey string, auth mcpconfig.AuthConfig) (string, error) {
 	authType := strings.ToLower(strings.TrimSpace(auth.Type))
 	switch authType {
 	case "oauth2", "oauth2_client_credentials":
 		return fetchOAuth2ClientCredentials(ctx, auth)
 	case "oauth2_refresh":
-		return fetchOAuth2RefreshToken(ctx, auth)
+		return fetchOAuth2RefreshToken(ctx, serverKey, auth)
 	case "oauth2_static":
 		token := strings.TrimSpace(auth.AccessToken)
 		if token == "" {
@@ -158,7 +182,7 @@ func fetchOAuth2ClientCredentials(ctx context.Context, auth mcpconfig.AuthConfig
 	return v.(string), nil
 }
 
-func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+func fetchOAuth2RefreshToken(ctx context.Context, serverKey string, auth mcpconfig.AuthConfig) (string, error) {
 	tokenURL := strings.TrimSpace(auth.TokenURL)
 	clientID := strings.TrimSpace(auth.ClientID)
 	if tokenURL == "" || strings.TrimSpace(auth.RefreshToken) == "" {
@@ -230,6 +254,14 @@ func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (st
 		oauth2Cache[cacheKey] = cached
 		maybeEvictOAuth2CacheLocked()
 		oauth2CacheMu.Unlock()
+		if newRefresh != "" && serverKey != "" {
+			// Persist the rotated token outside the cache lock (DB I/O).
+			// Non-fatal on failure: the in-memory cache already holds the
+			// rotated token; the persister closure owns failure logging.
+			if fn := loadMCPRefreshPersister(); fn != nil {
+				_ = fn(ctx, serverKey, newRefresh)
+			}
+		}
 		return token, nil
 	})
 	if err != nil {

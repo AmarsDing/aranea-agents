@@ -1,12 +1,15 @@
 package adapter
 
 import (
+	"context"
 	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/graph"
+	"aranea-agents/pkg/loggateway"
 
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
@@ -134,3 +137,32 @@ func TestSanitizeActivityControlCommand_ClearsControlContent(t *testing.T) {
 		t.Fatalf("fallback_agent=%v", ev2.Activity.Meta["fallback_agent"])
 	}
 }
+
+// S3：RuntimeReplanner.attemptCount（ManagedMap，ttl=0）的 entry 必须在执行流
+// 结束时释放——ReleaseExecution 定义后无任何生产调用方，每个发生过节点失败的
+// 执行永久泄漏一条 entry。forwardEvents 是 Run/Resume 统一的流结束点（defer
+// 必定执行），必须在此释放。
+func TestForwardEvents_ReleasesReplannerOnStreamEnd(t *testing.T) {
+	t.Parallel()
+	spy := &releaseSpyReplanner{}
+	rt := &trpcGraphRuntime{
+		execID:    "exec-s3",
+		lg:        loggateway.NewNoop(),
+		replanner: spy,
+	}
+	eventCh := make(chan *trpcevent.Event)
+	close(eventCh)
+	out := make(chan biz.GraphRuntimeEvent, 1)
+	rt.forwardEvents(eventCh, out, nil)
+	if spy.releasedFor != "exec-s3" {
+		t.Fatalf("ReleaseExecution not called on stream end (releasedFor=%q)", spy.releasedFor)
+	}
+}
+
+type releaseSpyReplanner struct{ releasedFor string }
+
+func (s *releaseSpyReplanner) OnNodeFailure(context.Context, *biz.GraphExecution, string, error) (*graph.ReplanAction, error) {
+	return nil, nil
+}
+
+func (s *releaseSpyReplanner) ReleaseExecution(execID string) { s.releasedFor = execID }

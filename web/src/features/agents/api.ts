@@ -217,6 +217,15 @@ export async function toggleAgentFavorite(id: string): Promise<Agent> {
   return normalizeAgentFromService(res);
 }
 
+export async function batchUpdateAgents(
+  ids: string[],
+  action: { status?: 'active' | 'inactive'; delete?: boolean },
+): Promise<number> {
+  const svc = createAgentService();
+  const res = await svc.BatchUpdateAgents({ ids, status: action.status, delete: action.delete });
+  return Number(res?.affected ?? 0);
+}
+
 export async function getAgentEvolutionMetrics(agentId: string, timeRange: string = '30d'): Promise<EvolutionMetrics> {
   const svc = createAgentService();
   const res = await svc.GetAgentEvolutionMetrics({ agentId, timeRange });

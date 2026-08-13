@@ -83,10 +83,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     eventsTotal.value = result.total;
   }
 
-  async function fetchAuditPage(query: AuditQuery = {}) {
-    return listMonitorAudit(query);
-  }
-
   async function clearAuditLogs(): Promise<number> {
     const deleted = await deleteAuditLogs();
     auditLogs.value = [];
@@ -192,10 +188,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     }
   }
 
-  function clearRuntimeEvents() {
-    events.value = [];
-  }
-
   function setFlowPaused(paused: boolean) {
     flowPaused.value = paused;
   }
@@ -246,7 +238,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     runnerLoading,
     loadAuditLogs,
     loadEvents,
-    fetchAuditPage,
     clearAuditLogs,
     fetchMonitorEvents,
     fetchTraceEvents,
@@ -266,7 +257,6 @@ export const useMonitorStore = defineStore('monitor', () => {
     loadAlertMetrics,
     loadAlertRules,
     saveAlertRules,
-    clearRuntimeEvents,
     clearFlowLogs,
     flowPaused,
     processPaused,

@@ -126,7 +126,9 @@ func (r *alertMonitorRepo) LatencyPercentilesSince(_ context.Context, _ string) 
 func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	repo := &alertMonitorRepo{total: 10, errors: 8}
 	spy := &alertNotifySpy{}
-	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy)
+	reg := NewAlertMetricRegistry()
+	reg.Register(NewRunnerErrorRateMetric(repo, nil))
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy, WithRegistry(reg))
 	ctx := context.Background()
 
 	uc.EvaluateAlerts(ctx)
@@ -142,7 +144,9 @@ func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 func TestEvaluateAlerts_skillFilesystemMissingCount(t *testing.T) {
 	repo := &alertMonitorRepo{}
 	spy := &alertNotifySpy{}
-	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy, WithFilesystemHealthReader(filesystemHealthStub{missing: 3}))
+	reg := NewAlertMetricRegistry()
+	reg.Register(NewSkillFilesystemMissingMetric(filesystemHealthStub{missing: 3}))
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy, WithRegistry(reg))
 	ctx := context.Background()
 
 	rules := []MonitorAlertRule{{

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/pkg/apierror"
 )
 
 // 物理删除语义（B1 修复）：DeleteSkill 必须硬删除 skill + versions 行，
@@ -39,12 +41,20 @@ func TestDeleteSkill_AllowsRecreateSameSlug(t *testing.T) {
 	}
 
 	// 旧版本的版本行必须随 skill 物理删除，不得残留孤儿版本。
-	versions, err := r.ListSkillVersions(ctx, biz.SkillVersionListQuery{SkillID: sk.ID, Limit: 10})
-	if err != nil {
-		t.Fatalf("ListSkillVersions for deleted skill: %v", err)
+	// 物理删除后 skill 行已不存在，ListSkillVersions 按契约返回 NotFound；
+	// 孤儿版本行需直接查 skill_version 表确认。
+	_, err = r.ListSkillVersions(ctx, biz.SkillVersionListQuery{SkillID: sk.ID, Limit: 10})
+	if !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("ListSkillVersions for deleted skill: want NotFound, got %v", err)
 	}
-	if len(versions.Items) != 0 {
-		t.Fatalf("deleted skill still has %d version rows, want 0", len(versions.Items))
+	orphans, oErr := d.RW().Read(ctx).SkillVersion.Query().
+		Where(skillversion.SkillIDEQ(sk.ID)).
+		Count(ctx)
+	if oErr != nil {
+		t.Fatalf("count orphan versions: %v", oErr)
+	}
+	if orphans != 0 {
+		t.Fatalf("deleted skill still has %d version rows, want 0", orphans)
 	}
 }
 

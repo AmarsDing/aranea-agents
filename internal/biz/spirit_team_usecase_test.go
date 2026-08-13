@@ -276,6 +276,26 @@ func (m *memSpiritSessionRepo) UpdateSession(_ context.Context, id string, patch
 	m.items[id] = s
 	return s, nil
 }
+
+func (m *memSpiritSessionRepo) UpdateSessionMetadataKey(_ context.Context, id, key, value string) error {
+	s, ok := m.items[id]
+	if !ok {
+		return fmt.Errorf("not found: %s", id)
+	}
+	meta := map[string]any{}
+	if raw := strings.TrimSpace(s.MetadataJSON); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &meta)
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta[key] = value
+	if b, err := json.Marshal(meta); err == nil {
+		s.MetadataJSON = string(b)
+		m.items[id] = s
+	}
+	return nil
+}
 func (m *memSpiritSessionRepo) RestoreSession(_ context.Context, id string) (Session, error) {
 	s, ok := m.items[id]
 	if !ok {

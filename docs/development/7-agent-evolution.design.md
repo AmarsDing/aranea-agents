@@ -440,13 +440,15 @@ func provideEvolutionOrchestratorWorker(
 ```go
 // internal/cronrunner/jobs/evolution_orchestrator_worker.go
 
-type EvolutionOrchestratorWorker struct { /* interval 默认 2 小时 */ }
+type EvolutionOrchestratorWorker struct { /* interval 默认 2 小时；running atomic.Bool 单飞——上一轮扫描未结束时跳过本 tick */ }
 
 // NewEvolutionOrchestratorWorker 创建 worker，interval ≤ 0 时默认 2 小时；
 // drafter 为 EVO-20 post-pass（nil = 禁用草稿生成）
 func NewEvolutionOrchestratorWorker(interval time.Duration, orch *biz.SkillEvolutionOrchestrator, agents EvolutionAgentLister, skills biz.SkillQueryReader, drafter EvolutionDrafterPort, lg loggateway.Logger) *EvolutionOrchestratorWorker
 
 // Start 阻塞运行直到 ctx 取消，使用 safego.Go 隔离 panic
+// 每 tick 先 ExpirePending 过期超 7 天的 pending 建议（过期收敛唯一入口，
+// CuratorWorker 不再承担过期职责），再跑触发器扫描
 func (w *EvolutionOrchestratorWorker) Start(ctx context.Context)
 ```
 

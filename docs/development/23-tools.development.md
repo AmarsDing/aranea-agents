@@ -313,7 +313,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | TO-6-04 | ToolRegistration Tags | `internal/tools/tool.go` / `toolset.go` | Tags 字段 + RegistryByTag/RegistryByCategory | ✅ |
 | TO-6-05 | kanban Bridge 拆分 | `internal/tools/kanban/bridge.go` | 9 方法 → BridgeReader/Writer/Lifecycle | ✅ |
 | TO-6-06 | 补充单元测试 | `internal/tools/kanban/` / `knowledge/` / `mcpobserve/` | 40+ 用例全部通过 | ✅ |
-| TO-6-07 | ResultCache LRU + 锁保护 | `internal/tools/cache/result_cache.go` | accessedAt + evictLRULocked + globalMu | ✅ |
+| TO-6-07 | ResultCache LRU + 锁保护 | `internal/tools/cache/result_cache.go` | accessedAt + evictLRULocked + 内部 RWMutex | ✅ |
 | TO-6-08 | 修复预存编译错误 | `memory_l4_cascade.go` / `timeline_hydrate.go` / `knowledge/tool.go` | uc.store → 子字段；messageSearchReader；Search 签名 | ✅ |
 
 **Phase 6 验收**：
@@ -458,7 +458,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 14 | ToolRegistration Tags + 查询 | P2 | 6 | — | ✅ `internal/tools/tool.go` RegistryByTag/RegistryByCategory | ✅ |
 | 15 | kanban Bridge 接口拆分 | P2 | 6 | — | ✅ `internal/tools/kanban/bridge.go` BridgeReader/Writer/Lifecycle | ✅ |
 | 16 | 补充单元测试 | P3 | 6 | — | ✅ `internal/tools/kanban/` / `knowledge/` / `mcpobserve/` 40+ 用例 | ✅ |
-| 17 | ResultCache LRU + 锁保护 | P3 | 6 | — | ✅ `internal/tools/cache/result_cache.go` evictLRULocked + globalMu | ✅ |
+| 17 | ResultCache LRU + 锁保护 | P3 | 6 | — | ✅ `internal/tools/cache/result_cache.go` evictLRULocked + 内部 RWMutex | ✅ |
 | 18 | data 层 kerrors 迁移 | **P1** | **7** | — | ✅ `internal/data/tool.go` / `tool_audit.go` 19 处 | ✅ |
 | 19 | Assemble 静默跳过添加日志 | P1 | 7 | — | ✅ `internal/tools/toolset.go` SysLogWarn | ✅ |
 | 20 | KnowledgeReflect 映射补全 | P1 | 7 | — | ✅ `internal/tools/trpc/effective_config.go` | ✅ |
@@ -519,7 +519,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] ToolRegistration Tags 字段 + RegistryByTag/RegistryByCategory
 - [x] kanban Bridge 9 方法拆分为 3 子接口
 - [x] kanban/knowledge/mcpobserve 单元测试 40+ 用例
-- [x] ResultCache LRU 驱逐 + 全局单例锁保护
+- [x] ResultCache LRU 驱逐 + 锁保护（2026-08-14：`cache.Global()`/`SetGlobal()` 已删，agent 层包级私有 `defaultToolResultCache` 单例 + `TRPCBuilderDeps.ResultCache` 可注入）
 - [x] aranea-review 审查通过，无阻断项
 
 ### Phase 7（质量加固）✅
@@ -555,6 +555,19 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] CreateSkillDir 空/不安全 slug 校验（kerrors.BadRequest）
 - [x] testexec/trpc 3 处 fmt.Errorf → kerrors
 - [x] RunHealthChecks 闭包变量捕获修复
+
+### Round 6（2026-08-14 深度评审修复）✅
+
+- [x] BUG-1：`PropagateAllowAliases` 改双向传播（alias↔canon 等价类，循环至稳定覆盖链式别名 shell→shell_exec→exec_command）
+- [x] BUG-2：`MergeToolConfigMaps` 参数顺序修正，`config_json`（用户配置）覆盖 `default_config_json`（默认值）
+- [x] PERF-1：ResultCache 策略解析从每次调用 `GetTool` 聚合查询改为装配期 catalog 快照（`cachePolicyFromSnapshot`）；`cache.Global()`/`SetGlobal()` 删除，`TRPCBuilderDeps.ResultCache` 可注入
+- [x] PERF-2：P95 耗时改 `percentile_cont(0.95) WITHIN GROUP`（Postgres 精确插值分位数，替代 top-5% 均值）
+- [x] PERF-3：`toolSelectSQL` stats/p95/last 子查询加 90 天时间窗（`toolStatsWindowDays`），限制扫描范围
+- [x] CONSISTENCY-1：preview/summary 截断改 rune 安全 `truncateUTF8`（防 PG 22021 invalid byte sequence）
+- [x] CONSISTENCY-2：`tool_invocations` 级联清理补充 `tool_invocation_params`（引用完整性）
+- [x] DEAD-1：`check_progress` 死代码删除（种子表 + `spirit_tools.go` + `plan_executor.go` + `reply_reminder_inject.go`；存量库 `syncRemovedBuiltinToolPatches` 幂等软删；DECISION.md 提示词同步清理）
+- [x] DEAD-2：`FilesystemDirWithDir`/`FilesystemDirFromContext` 死代码删除
+- [x] 门禁：`go build ./internal/... ./api/... ./pkg/...` ✅ / `go vet`（tools 相关包）✅ / `go test`（biz/tool、tools/*、data、agent、service、scenario/system）✅
 
 ---
 
@@ -706,3 +719,15 @@ catalog/策略层：
 - `internal/tools/tool_version_test.go` — 版本锁定解析测试
 - `internal/agent/tool_reminder.go` — Reminder 机制（文件修改 → 测试提醒闭环）
 - `internal/agent/tool_reminder_test.go` — Reminder 收集测试
+
+### Round 6（已实现，2026-08-14 深度评审修复）
+
+- `internal/biz/tool/tool_policy_keys.go` — BUG-1 别名双向传播
+- `internal/biz/agent_tool_bindings.go` — BUG-2 配置合并顺序
+- `internal/agent/tool_result_cache.go` / `internal/tools/cache/result_cache.go` — PERF-1 快照 + DI
+- `internal/data/tool.go` / `internal/data/tool_test.go` — PERF-2/3 + CONSISTENCY-1 truncateUTF8
+- `internal/data/cascade_delete.go` — CONSISTENCY-2 级联清理
+- `internal/data/tool_audit.go` — 审计 summary rune 安全截断
+- `internal/tools/spirit_tools.go` / `internal/service/plan_executor.go` / `internal/agent/reply_reminder_inject.go` / `internal/data/builtin_tools_seed.go` — DEAD-1 check_progress 移除
+- `internal/tools/toolset.go` — DEAD-2 FilesystemDir* 移除
+- `internal/scenario/system/prompts/DECISION.md` / `internal/agent/prompt.go` — 提示词/注释同步清理

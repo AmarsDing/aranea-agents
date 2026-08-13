@@ -1093,17 +1093,17 @@ func NewToolRepo(d *Data) biz.ToolRepo {
 }
 ```
 
-**聚合查询 SQL**（节选）：
+**聚合查询 SQL**（节选，2026-08-14 口径）：
 
 ```go
-func toolSelectSQL() string {
+func toolSelectSQL(d Dialect) string {
+    // d.Greatest 方言适配：Postgres=GREATEST（MAX 仅聚合），SQLite=MAX 标量。
+    // toolSelectPrefixArgs() 提供前导参数：24h cutoff + 3× stats 窗口 cutoff
+    // （toolStatsWindowDays=90，与 biz.ToolAuditRetentionDays 对齐）。
     return `
-        SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
-               t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
-               t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
-               COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
-               COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
-               stats.avg_duration_ms, COALESCE(stats.p95_duration_ms, 0),
+        SELECT t.id, t.tool_key, ...,
+               COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), ...,
+               stats.avg_duration_ms, COALESCE(p95.p95_duration_ms, 0),
                COALESCE(last.started_at, ''), COALESCE(last.status, ''),
                t.created_at, t.updated_at, t.deleted_at
         FROM tools t
@@ -1114,12 +1114,20 @@ func toolSelectSQL() string {
                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
                    SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
-                   AVG(duration_ms) AS avg_duration_ms,
-                   percentile_95(duration_ms) AS p95_duration_ms
+                   AVG(duration_ms) AS avg_duration_ms
             FROM tool_invocations
-            WHERE deleted_at = ''
+            WHERE started_at >= ?          -- PERF-3：90d 统计窗口
             GROUP BY tool_key
         ) stats ON stats.tool_key = t.tool_key
+        LEFT JOIN (
+            -- PERF-2：Postgres 用 percentile_cont(0.95) WITHIN GROUP（精确插值分位数），
+            -- 取代旧"top 5% 均值"近似；SQLite 无有序集聚合，保留 top-5% AVG（仅 dev/CLI）。
+            SELECT tool_key,
+                   percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_duration_ms
+            FROM tool_invocations
+            WHERE started_at >= ?          -- 同一 90d 窗口
+            GROUP BY tool_key
+        ) p95 ON p95.tool_key = t.tool_key
         LEFT JOIN (
             SELECT tool_key, COUNT(1) AS agent_override_count
             FROM tool_agent_overrides
@@ -1127,14 +1135,12 @@ func toolSelectSQL() string {
             GROUP BY tool_key
         ) overrides ON overrides.tool_key = t.tool_key
         LEFT JOIN (
-            SELECT ti.tool_key, ti.started_at, ti.status
-            FROM tool_invocations ti
-            INNER JOIN (
-                SELECT tool_key, MAX(started_at) AS max_started_at
-                FROM tool_invocations
-                WHERE deleted_at = ''
-                GROUP BY tool_key
-            ) latest ON latest.tool_key = ti.tool_key AND latest.max_started_at = ti.started_at
+            SELECT tool_key, started_at, status FROM (
+                SELECT ti.tool_key, ti.started_at, ti.status,
+                       ROW_NUMBER() OVER (PARTITION BY ti.tool_key ORDER BY ti.started_at DESC, ti.id DESC) AS rn
+                FROM tool_invocations ti
+                WHERE ti.started_at >= ?    -- 同一 90d 窗口
+            ) WHERE rn = 1
         ) last ON last.tool_key = t.tool_key`
 }
 ```
@@ -1232,7 +1238,9 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 - `call_agent`、`knowledge_search`、`knowledge_reflect`、`mcp_tool_set`、`mcp_broker`
 - `working_memory_read`、`working_memory_list`、`working_memory_write`、`working_memory_patch`、`working_memory_delete`
 - `model_registry_sync`、`browser`、`read_tool_result`
-- `plan_and_execute`、`check_progress`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`
+- `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph`
+
+> **2026-08-14 移除**：`check_progress` 已从种子表与运行时删除（DEAD-1，系统推送模式 `checkAllTeamsCompleted` → `SynthesizeResults` → `ExecuteTurn` 取代 LLM 轮询）；存量库由 `syncRemovedBuiltinToolPatches` 启动时幂等软删。
 
 > **注意**：`message` 与 `subagents_*`（spawn/list/get/cancel）种子条目已补齐（默认停用，`subagents_cancel` 需确认），分类为 `orchestration` / `session`。
 
@@ -1895,7 +1903,7 @@ var RuntimeToolNameAliases = map[string]string{
 
 **Policy Alias**（`internal/biz/tool/tool_policy_keys.go`）：UI/API/legacy 名 → catalog tool_key 的映射，用于 effective tool 策略计算。
 
-**铁律**：两份 alias map 必须保持一致（TPM-P1-01）。`ValidateRuntimeAliasesAgainstPolicy` 在 Assemble 启动时校验。`PropagateAllowAliases` / `PropagateDenyAliases` 处理链式别名（如 `shell` → `shell_exec` → `exec_command`）。
+**铁律**：两份 alias map 必须保持一致（TPM-P1-01）。`ValidateRuntimeAliasesAgainstPolicy` 在 Assemble 启动时校验。`PropagateAllowAliases` / `PropagateDenyAliases` 处理链式别名（如 `shell` → `shell_exec` → `exec_command`）。**allow 与 deny 均为双向传播**（2026-08-14 BUG-1）：别名表定义的是等价类，给/禁任一名称即给/禁整个类；此前 allow 仅单向（alias→canon），用户写 canonical key（如 `shell_exec`）时传播断裂导致工具不可见。
 
 ---
 
@@ -2962,7 +2970,7 @@ Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRo
 
 | 全局变量 | 保护方式 | 位置 |
 |----------|----------|------|
-| `globalResultCache` | `sync.RWMutex`（`globalMu`） | `internal/tools/cache/result_cache.go` |
+| `defaultToolResultCache` | `ResultCache` 内部锁（包级私有单例，2026-08-14 取代已删除的 `cache.Global()`/`SetGlobal()`；测试经 `TRPCBuilderDeps.ResultCache` 注入隔离实例） | `internal/agent/tool_result_cache.go` |
 | `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
 | `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |
 | `filterCache` 计数器 | `atomic` | `internal/tools/skillruntime/filter.go` |

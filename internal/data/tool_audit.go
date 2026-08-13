@@ -32,10 +32,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 	if source == "" {
 		source = biz.ToolInvocationSourceRuntime
 	}
-	summary := in.ResultSummary
-	if len(summary) > 2000 {
-		summary = summary[:2000]
-	}
+	summary := truncateUTF8(in.ResultSummary, 2000)
 	_, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 		INSERT INTO tool_invocation_audit (
 			id, invocation_id, tool_key, agent_id, user_id, session_id,

@@ -11,11 +11,11 @@ import {
   listMcpUserCredentials,
   upsertMcpUserCredential,
   deleteMcpUserCredential,
-  type PlatformResource,
   type PlatformResourceInput,
   type McpServerListQuery,
 } from '../../features/mcp/api';
 import type {
+  McpServerRow,
   McpServerTestResult,
   McpServerValidateResult,
   McpUserCredential,
@@ -23,7 +23,7 @@ import type {
 } from '../../features/mcp/types';
 
 export const useMcpStore = defineStore('mcp', () => {
-  const servers = ref<PlatformResource[]>([]);
+  const servers = ref<McpServerRow[]>([]);
   const total = ref(0);
   const loading = ref(false);
 

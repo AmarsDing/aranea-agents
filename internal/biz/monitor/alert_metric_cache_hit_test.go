@@ -243,8 +243,7 @@ func TestEvaluateAlerts_CacheHitRatioLowFires(t *testing.T) {
 			cacheHitGroup("deepseek", "deepseek-chat", 25, 50000, 13000),
 		},
 	}))
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
-	uc.SetRegistry(reg)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 
 	uc.EvaluateAlerts(context.Background())
 

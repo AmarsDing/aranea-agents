@@ -16,6 +16,8 @@ import (
 
 // GraphExecutionUsecase handles graph execution lifecycle: run, resume, cancel,
 // checkpoint/time-travel, and in-memory execution cache with GC.
+// TECH-DEBT(COG): file_lines=827, limit=500 (AS-COG-01); split checkpoint/time-travel
+// and GC into sub-files in a future iteration.
 type GraphExecutionUsecase struct {
 	cacheMgr     *GraphCacheManager
 	runRepo      GraphRunRepo
@@ -165,6 +167,14 @@ func (uc *GraphExecutionUsecase) loadExecution(ctx context.Context, executionID 
 		return nil, ErrNotFound
 	}
 	uc.mu.Lock()
+	// S4（双收敛竞态）：GetRun 期间另一 goroutine 可能已完成加载并缓存。
+	// 必须双重检查并共享同一实例——真实 DB repo 每次返回新对象，两个实例
+	// 各有独立 execMu，终态幂等检查（FinalizeTeamGraphExecution）会失效，
+	// 并发 finalize（success/failed）双写 persist 后写覆盖先写。
+	if existing, ok := uc.executions[executionID]; ok {
+		uc.mu.Unlock()
+		return existing, nil
+	}
 	uc.executions[executionID] = persisted
 	// Evict after inserting so the newly loaded execution is considered in
 	// the eviction ranking. evictIfNeeded skips Running/WaitingHuman, so
@@ -173,6 +183,36 @@ func (uc *GraphExecutionUsecase) loadExecution(ctx context.Context, executionID 
 	uc.evictIfNeeded()
 	uc.mu.Unlock()
 	return persisted, nil
+}
+
+// cacheNewExecution inserts a freshly created execution BEFORE SaveRun (S2
+// registration race). With the old save-then-insert order, a concurrent
+// loadExecution landing between SaveRun and the cache insert would cache a
+// second DB-loaded instance; the registration insert then overwrote it,
+// splitting the execution into two objects with independent execMu and
+// breaking terminal-state idempotency (same root cause as S4). Insert-first
+// makes the new instance canonical from birth. Returns false (without
+// overwriting) when the ID is already cached — e.g. a duplicate registration,
+// which the subsequent SaveRun will reject with a conflict.
+func (uc *GraphExecutionUsecase) cacheNewExecution(exec *GraphExecution) bool {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	if _, ok := uc.executions[exec.ID]; ok {
+		return false
+	}
+	uc.evictIfNeeded()
+	uc.executions[exec.ID] = exec
+	return true
+}
+
+// uncacheExecution rolls back cacheNewExecution when the subsequent SaveRun
+// fails. It only removes the entry if it is still the same instance.
+func (uc *GraphExecutionUsecase) uncacheExecution(exec *GraphExecution) {
+	uc.mu.Lock()
+	if cur, ok := uc.executions[exec.ID]; ok && cur == exec {
+		delete(uc.executions, exec.ID)
+	}
+	uc.mu.Unlock()
 }
 
 func (uc *GraphExecutionUsecase) ensureCheckpointRuntime(ctx context.Context, exec *GraphExecution) error {
@@ -228,7 +268,12 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
+	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
+	inserted := uc.cacheNewExecution(exec)
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+		if inserted {
+			uc.uncacheExecution(exec)
+		}
 		if tErr := uc.applyExecTransition(exec, GraphExecEventFail); tErr != nil {
 			uc.lg.Warn("applyExecTransition failed on error path",
 				loggateway.Str("exec_id", execID),
@@ -246,10 +291,6 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
-	uc.mu.Lock()
-	uc.evictIfNeeded()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
 	return exec, nil
 }
 
@@ -278,7 +319,12 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
 
+	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
+	inserted := uc.cacheNewExecution(exec)
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+		if inserted {
+			uc.uncacheExecution(exec)
+		}
 		if tErr := uc.applyExecTransition(exec, GraphExecEventFail); tErr != nil {
 			uc.lg.Warn("applyExecTransition failed on error path",
 				loggateway.Str("exec_id", execID),
@@ -296,10 +342,6 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
-	uc.mu.Lock()
-	uc.evictIfNeeded()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
 	return exec, nil
 }
 
@@ -449,19 +491,19 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), string(GraphExecRunning))
 	exec.SpiritSessionID = strings.TrimSpace(spiritSessionID)
 
+	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
+	inserted := uc.cacheNewExecution(exec)
 	if uc.runRepo != nil {
 		if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
+			if inserted {
+				uc.uncacheExecution(exec)
+			}
 			return err
 		}
 	}
 
 	uc.cacheMgr.SaveCompiledTeam(ctx, teamID, graphID, strings.TrimSpace(sessionID), ct)
 	uc.cacheMgr.SetTeamBuildConfig(execID, ct)
-
-	uc.mu.Lock()
-	uc.evictIfNeeded()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
 	return nil
 }
 
@@ -548,6 +590,8 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	}
 }
 
+// TECH-DEBT(COG): method_lines=91, limit=80 (AS-COG-01); the per-event-type
+// switch should be extracted into small handlers in a future iteration.
 func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
 	switch e.Type {
 	case DomainEventGraphNodeStart:

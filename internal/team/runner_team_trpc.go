@@ -253,7 +253,15 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return userMsg, biz.ChatMessage{}, err
 	}
 
-	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content), utOpts.intentRunOpts...)
+	// 批次 B：以锚点 agent 的 skill runtime policy 安装概览预算渲染器——
+	// graph runtime 会把 root RunOptions 传播到成员 invocation，一次安装全链生效。
+	var anchorSkillRuntime skillruntime.RuntimeSettings
+	if ar.agent.Settings != nil {
+		anchorSkillRuntime = ar.agent.Settings
+	}
+	runOpts := append(teamTurnBaseRunOptions(teamRow.ID, ti.content),
+		skillruntime.RunOptionWithOverviewBudget(anchorSkillRuntime))
+	runOpts = append(runOpts, utOpts.intentRunOpts...)
 	// 2026-08-08 问题3c：DAG 下游团队把上游已完成团队的交付物种子注入
 	// graph 初始 state（deliverable StateField，MergeReducer）。graph runtime
 	// 会把 root RuntimeState 合并进 initialState（graph/trpc/builder.go），

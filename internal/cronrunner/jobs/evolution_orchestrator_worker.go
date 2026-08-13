@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -55,6 +56,7 @@ type EvolutionOrchestratorWorker struct {
 	skills   biz.SkillQueryReader
 	drafter  EvolutionDrafterPort // nil = EVO-20 disabled
 	lg       loggateway.Logger
+	running  atomic.Bool // single-flight: skip a tick while the previous scan is still in flight
 }
 
 // NewEvolutionOrchestratorWorker creates the worker. If interval <= 0, defaults to 2 hours.
@@ -99,6 +101,12 @@ func (w *EvolutionOrchestratorWorker) Start(ctx context.Context) {
 
 func (w *EvolutionOrchestratorWorker) runOnce(ctx context.Context) {
 	safego.Go(ctx, "evolution.orchestrator", func() {
+		if !w.running.CompareAndSwap(false, true) {
+			w.lg.Warn("orchestrator worker: previous scan still running, skipping tick",
+				loggateway.StepID("evo_orchestrator_worker.skip"))
+			return
+		}
+		defer w.running.Store(false)
 		// 1. Expire stale pending suggestions first so cooldown windows open up.
 		if _, err := w.orch.ExpirePending(ctx); err != nil {
 			w.lg.Warn("orchestrator worker: expire pending failed",

@@ -4,8 +4,6 @@ import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
 import { useEcosystemStore } from '../../stores/ecosystem';
-// TECH-DEBT(FD5): file ops bypass store, acceptable for single-use file operations
-import { listSkillFiles, readSkillFile, getSkill } from './api';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -395,8 +393,8 @@ export function useSkillsPage() {
     getSkillImportJob: skillsStore.getSkillImportJob,
     refineSkillConflictGroup: skillsStore.refineSkillConflictGroup,
     applySkillImport: skillsStore.applySkillImport,
-    listSkillFiles,
-    readSkillFile,
+    listSkillFiles: skillsStore.listSkillFiles,
+    readSkillFile: skillsStore.readSkillFile,
     updateSkillFile: skillsStore.updateSkillFile,
     loadSkillHealth: skillsStore.loadSkillHealth,
     notify,

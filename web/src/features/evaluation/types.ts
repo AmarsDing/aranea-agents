@@ -56,6 +56,9 @@ export type AnnotateCaseResultInput = {
   human_pass?: boolean | null;
   human_score?: number | null;
   human_comment?: string;
+  /** 显式清除标注位：proto3 optional + JSON null 无法表达"清除"，须用标志位（优先于值字段） */
+  clear_human_pass?: boolean;
+  clear_human_score?: boolean;
 };
 
 export type CreateDatasetInput = {

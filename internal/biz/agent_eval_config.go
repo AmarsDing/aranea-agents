@@ -3,6 +3,8 @@ package biz
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/internal/biz/evaluation"
 )
 
 // AgentEvalAutoConfig is stored under config_json.evaluation for AfterTurn auto-eval (US-5).
@@ -49,6 +51,9 @@ func ParseAgentEvalAutoConfig(configJSON string) AgentEvalAutoConfig {
 	cfg.DatasetID = strings.TrimSpace(cfg.DatasetID)
 	if cfg.NumRuns <= 0 {
 		cfg.NumRuns = 1
+	}
+	if cfg.NumRuns > evaluation.MaxNumRuns {
+		cfg.NumRuns = evaluation.MaxNumRuns
 	}
 	if cfg.MinIntervalSec <= 0 {
 		cfg.MinIntervalSec = 300

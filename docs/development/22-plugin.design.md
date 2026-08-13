@@ -1,7 +1,7 @@
 # Plugin 插件模块 — 实现设计文档
 
 > **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
-> 对应需求：[22 plugin.md](./22%20plugin.md)
+> 对应需求：[22-plugin.md](./22-plugin.md)
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 
 ---
@@ -307,23 +307,6 @@ type ScopeAgentLookup interface {
     AgentExists(ctx context.Context, id string) error
 }
 
-// SandboxMode controls Phase 4 sandbox isolation.
-type SandboxMode string
-
-const (
-    SandboxNone      SandboxMode = "none"
-    SandboxProcess   SandboxMode = "process"
-    SandboxContainer SandboxMode = "container"
-)
-
-// VersionPolicy pins a plugin rule to a semver range.
-type VersionPolicy struct {
-    PluginID   string
-    MinVersion string
-    MaxVersion string
-    Pinned     string
-}
-
 // CostGuardUsageRepo persists daily token totals for cost_guard.
 type CostGuardUsageRepo interface {
     GetTokens(ctx context.Context, usageDay, scopeKey string) (int, error)
@@ -412,18 +395,12 @@ func (u *Usecase) ListRuns(ctx context.Context, q RunQuery) (RunListResult, erro
 // - Limit 默认 50
 // - 调用 runs.List
 
-func (u *Usecase) DeleteAllRuns(ctx context.Context) (int32, error)
+func (u *Usecase) DeleteAllRuns(ctx context.Context, workspaceID string) (int32, error)
 // - runs 为 nil 时返回 0
-// - 调用 runs.DeleteAll
+// - 调用 runs.DeleteAll；workspaceID 空 = 系统调用（全删），非空 = 租户调用（删共享行 + 自身行，N-B5）
 
 // ValidateJSONSchema 委托 shared.ValidateDocumentAgainstSchema("PLUGIN", schemaJSON, docJSON)
 func ValidateJSONSchema(schemaJSON, docJSON string) error
-
-// NormalizeSandboxMode 根据 riskLevel 返回默认沙箱模式
-func NormalizeSandboxMode(raw string, riskLevel string) SandboxMode
-
-// ResolveVersion 选择 pinned 版本或回退到 latest
-func ResolveVersion(policy VersionPolicy, latest string) string
 ```
 
 ---
@@ -505,6 +482,18 @@ CREATE INDEX IF NOT EXISTS idx_plugin_runs_plugin_key ON plugin_runs(plugin_key)
 CREATE INDEX IF NOT EXISTS idx_plugin_runs_created_at ON plugin_runs(created_at);
 ```
 
+> N-B5 租户隔离（DDL 迁移注册版本 `20261211`，`sql/migrations/20261211_plugin_runs_workspace.sql`，幂等）：
+>
+> ```sql
+> ALTER TABLE plugin_runs ADD COLUMN IF NOT EXISTS workspace_id TEXT NOT NULL DEFAULT '';
+> CREATE INDEX IF NOT EXISTS idx_plugin_runs_workspace ON plugin_runs(workspace_id);
+> ```
+>
+> 语义：`workspace_id=''` = 共享行（所有租户可见）；非空 = 租户私有行。写入侧
+> （`internal/plugin/trpc/stats.go` StatsRecorder 异步批量落库，调用方显式丢弃请求 ctx）
+> 拿不到 workspace，一律写空串（共享语义）；读侧 `List`/`DeleteAll` 按
+> 「空 WorkspaceID = 系统调用不过滤；非空 = 共享行 + 自身行」过滤。
+
 ### 4.3 plugin_cost_guard_usage 表
 
 文件路径：`internal/data/plugin_cost_guard_usage.go`（Raw SQL，无独立 DDL 文件）
@@ -518,9 +507,9 @@ CREATE INDEX IF NOT EXISTS idx_plugin_runs_created_at ON plugin_runs(created_at)
 | `tokens` | INTEGER | 当日累计 token |
 | `updated_at` | TEXT | 更新时间 |
 
-唯一约束：`(usage_day, scope_key)`。
+唯一约束：`(usage_day, scope_key)`（PRIMARY KEY）。
 
-> **注意**：当前代码中未找到该表的 DDL 创建语句，可能存在 TECH-DEBT（表未通过 DDL 迁移注册）。`AddTokens` 使用 `INSERT ... ON CONFLICT DO UPDATE`，依赖该表存在。
+> DDL 迁移：`sql/migrations/20261210_plugin_cost_guard_usage.sql`（注册版本 20261210，GAP-01 已修复）。`AddTokens` 使用 `INSERT ... ON CONFLICT DO UPDATE` 依赖该表。
 
 ### 4.4 Repo 实现
 
@@ -619,9 +608,9 @@ func NewPluginRunRepo(data *Data) biz.PluginRunRepo {
 }
 ```
 
-- `Insert`：Raw SQL `INSERT INTO plugin_runs (...)`，走 `r.data.RWDB().WriteDB(ctx).ExecContext`
-- `List`：Raw SQL 拼接 WHERE 条件（plugin_key/plugin_id/session_id/agent_id/callback_point/status/from/to），走 `r.data.RWDB().ReadDB(ctx).QueryContext`，Limit 默认 50 上限 200
-- `DeleteAll`：Raw SQL `DELETE FROM plugin_runs`
+- `Insert`：Raw SQL `INSERT INTO plugin_runs (...)`（含 workspace_id），走 `r.data.RWDB().WriteDB(ctx).ExecContext`
+- `List`：Raw SQL 拼接 WHERE 条件（workspace 可见性 + plugin_key/plugin_id/session_id/agent_id/callback_point/status/from/to），走 `r.data.RWDB().ReadDB(ctx).QueryContext`，Limit 默认 50 上限 200
+- `DeleteAll`：Raw SQL `DELETE FROM plugin_runs`（带 workspace 可见性 WHERE 过滤，N-B5）
 
 #### 4.4.3 pluginCostGuardUsageRepo
 
@@ -835,7 +824,12 @@ func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRu
 
 ```go
 func (s *PluginService) DeleteAllPluginRuns(ctx context.Context, _ *v1.DeleteAllPluginRunsRequest) (*v1.DeleteAllPluginRunsResponse, error) {
-    count, err := s.uc.DeleteAllRuns(ctx)
+    // N-B5: 系统调用全删；租户调用只删可见行（共享行 + 自身行）。
+    workspaceID := ""
+    if !workspace.IsSystem(ctx) {
+        workspaceID = workspace.IDFromContext(ctx)
+    }
+    count, err := s.uc.DeleteAllRuns(ctx, workspaceID)
     if err != nil {
         return nil, err
     }

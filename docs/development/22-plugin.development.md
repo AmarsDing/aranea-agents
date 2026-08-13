@@ -1,9 +1,7 @@
 # Plugin 插件 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
-> **需求**：[22 plugin.md](./22%20plugin.md) · **设计**：[22 plugin.design.md](./22%20plugin.design.md)
-> **进度真相**：[execution-plan.md](../guides/execution-plan.md)
-> **变更**：[changelog/2026-05-21-Plugin-Phase6.md](../changelog/2026-05-21-Plugin-Phase6.md) · [Review 修复](../changelog/2026-05-21-Plugin-Phase6-Review-Fixes.md)
+> **版本**：2026-08-13 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
+> **需求**：[22-plugin.md](./22-plugin.md) · **设计**：[22-plugin.design.md](./22-plugin.design.md)
 
 ---
 
@@ -54,9 +52,9 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 | 工具确认专用 UI | ✅ | RunStatus await 元数据 + Approve/Deny 按钮 |
 | Scope Agent 校验 | ✅ | `UpdateScope` 通过 `ScopeAgentLookup.AgentExists` 校验 |
 | 种子同步 Bootstrap | ✅ | `NewPluginServiceWithBootstrap` 启动时同步内置插件 |
-| Plugin 沙箱 | ❌ | P3（`SandboxMode` 类型已定义，未接入运行时） |
-| 版本回滚 | ❌ | P3（`VersionPolicy` 类型已定义，未接入运行时） |
-| `plugin_cost_guard_usage` DDL 注册 | ⚠️ | 表被代码引用但未找到 DDL 迁移注册（TECH-DEBT） |
+| Plugin 沙箱 | ❌ | P3 待做（2026-08-13 死代码清理：`SandboxMode` 类型定义已移除，需要时重建） |
+| 版本回滚 | ❌ | P3 待做（2026-08-13 死代码清理：`VersionPolicy` 类型定义已移除，需要时重建） |
+| `plugin_cost_guard_usage` DDL 注册 | ✅ | 迁移 20261210 `plugin_cost_guard_usage_schema` 已注册（GAP-01 修复） |
 
 ---
 
@@ -71,7 +69,7 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 
 **工具确认**：Catalog `requires_confirmation` + Plugin `confirmation_guard` → **Chain ConfirmGate**；有 `AwaitUserReply` 时 mid-turn 审批，前端 `await_kind=tool_confirm` 专用 UI。Runner `confirmation_guard` 仅 telemetry。
 
-> 完整回调编排注释位于 `internal/plugin/trpc/manager.go` 顶部。详细架构设计参见 [22 plugin.design.md](./22%20plugin.design.md) §一、§七、§十一。
+> 完整回调编排注释位于 `internal/plugin/trpc/manager.go` 顶部。详细架构设计参见 [22-plugin.design.md](./22-plugin.design.md) §一、§七、§十一。
 
 ---
 
@@ -81,16 +79,16 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 
 | 编号 | 差距 | 影响 | 优先级 |
 |------|------|------|--------|
-| GAP-01 | `plugin_cost_guard_usage` 表无 DDL 迁移注册 | 服务首次启动可能因表不存在导致 cost_guard 持久化失败 | 高 |
-| GAP-02 | `retry_and_reflect` registry 只注册 `after_tool`，但 `chain_adapter` 声明含 `after_agent` | 回调点声明与实际注册不一致 | 中 |
+| ~~GAP-01~~ | ~~`plugin_cost_guard_usage` 表无 DDL 迁移注册~~ | ✅ 已修复（2026-08-13，迁移 20261210） | — |
+| ~~GAP-02~~ | ~~`retry_and_reflect` registry 只注册 `after_tool`，但 `chain_adapter` 声明含 `after_agent`~~ | ✅ 已修复（2026-08-13，种子声明补齐 `after_agent` + `TestBuiltin_SeedCallbackPointsMatchImplementation` 回归） | — |
 | GAP-03 | `cost_guard` schema 缺少 `admin_bypass` 字段（需求 §2.5 列出） | 管理员绕过功能未实现 | 低 |
 | GAP-04 | `permission_guard` schema 缺少 `confirm_tools` 和 `role_rules` 字段（需求 §2.7 列出） | 基于角色的工具权限规则未实现 | 低 |
 | GAP-05 | `NewPluginServiceWithBootstrap` 构造函数副作用（TECH-DEBT #plugin-bootstrap） | 应在 Wire 图构造后显式调用 | 低 |
 
 ### 4.2 优化建议
 
-- GAP-01：在 `ddl_migration_registry.go` 注册 `plugin_cost_guard_usage` 建表 SQL
-- GAP-02：统一 `retry_and_reflect` 的 registry 回调点与 chain_adapter 声明
+- ~~GAP-01：在 `ddl_migration_registry.go` 注册 `plugin_cost_guard_usage` 建表 SQL~~ ✅（2026-08-13，迁移 20261210 + PG 集成测试）
+- ~~GAP-02：统一 `retry_and_reflect` 的 registry 回调点与 chain_adapter 声明~~ ✅（2026-08-13，种子声明 + 实现一致性回归测试）
 - GAP-03/04：评估是否补全 schema 字段或更新需求文档移除未实现字段
 
 ---
@@ -117,8 +115,8 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 
 ### Phase 4：进阶能力（P3 待做）
 
-- [ ] T16 外部插件沙箱（`SandboxMode` 类型已定义，未接入运行时）
-- [ ] T17 `plugin_versions` + 回滚 API（`VersionPolicy` 类型已定义，未接入运行时）
+- [ ] T16 外部插件沙箱（类型定义已于 2026-08-13 死代码清理移除，实现时重建）
+- [ ] T17 `plugin_versions` + 回滚 API（类型定义已于 2026-08-13 死代码清理移除，实现时重建）
 
 ---
 
@@ -202,5 +200,5 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 | 工具确认与通用 await 混淆 | `await_kind` 区分 reply / tool_confirm；内存 cache + 同步 persist |
 | high_risk 跳过反思 | confirmation_guard **或** catalog `requires_confirmation` |
 | cost_guard 双路径计量 | BeforeModel 与 ModelSelector 共用 `BudgetTrackerForContext` |
-| `plugin_cost_guard_usage` 表 DDL 缺失 | GAP-01：需补 DDL 迁移注册 |
+| ~~`plugin_cost_guard_usage` 表 DDL 缺失~~ | ✅ GAP-01 已修复（迁移 20261210） |
 | 构造函数副作用（Bootstrap） | TECH-DEBT #plugin-bootstrap：应在 Wire 图构造后显式调用 |

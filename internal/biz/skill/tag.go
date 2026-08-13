@@ -42,6 +42,8 @@ type SkillTagWriter interface {
 }
 
 // TagRepo 标签字典读写端口。独立于 Skill Repo 复合接口（DB-N3）。
+//
+// Stability:evolving
 type TagRepo interface {
 	SkillTagReader
 	SkillTagWriter

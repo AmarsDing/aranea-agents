@@ -1,6 +1,6 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-07-29-v5 | **状态**：🟢 核心已通 + **MON-OPT-01~05 ✅ OPT-06 🟡（Registry 有 / DSL 未做）LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅ EVT-R（Events 重设计 P0-P3）✅**；2026-07-16 修复 completion 副作用接线、firing reminder、Runs 列、反压 banner、进程 Tab；2026-07-29 Events 页重设计 + **监控整改**（runner.completion 记录恢复、AlertMetricRegistry 单例合并、自检补齐 7 Checker、Usage 移除跳转面板、ListAlertMetrics 指标目录 API、Alerts 页指标目录 + 规则卡片重设计）；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）、Heal/Diagnose UI
+> **版本**：2026-08-14-v6 | **状态**：🟢 核心已通 + **MON-OPT-01~05 ✅ OPT-06 🟡（Registry 有 / DSL 未做）LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅ 自检/自愈 ✅ EVT-R（Events 重设计 P0-P3）✅**；2026-07-16 修复 completion 副作用接线、firing reminder、Runs 列、反压 banner、进程 Tab；2026-07-29 Events 页重设计 + **监控整改**（runner.completion 记录恢复、AlertMetricRegistry 单例合并、自检补齐 7 Checker、Usage 移除跳转面板、ListAlertMetrics 指标目录 API、Alerts 页指标目录 + 规则卡片重设计）；2026-08-13/14 **深度审查整改**（B1 无流量误恢复修复 `ErrAlertMetricNoData`、B3 Channel 通知 `<nil>` 修复统一 `payload["value"]`、S1 删除 legacy 双轨评估路径、S2 Store 死代码清理、S3 四组件 i18n、S9 hex 硬编码、前端红线 #4 回退上收 Page）；待办为 LOG-02（跨 pkg）、LOOP-01 FR-02/FR-03（P3）、Heal/Diagnose UI
 > **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C / §十 Events 重设计 / 子模块 自检与自愈设计 / 子模块 Monitor 优化设计 / 子模块 Monitor AI 闭环设计）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
@@ -61,11 +61,11 @@
 | LOG-03 P2 biz 层 fmt.Errorf 清理 | ✅ | session_run.go 13 处 + shared.go 1 处 + agent_settings_helpers.go 1 处 → `kerrors` |
 | LOG-03 P2 admin.go log.Infof 修复 | ✅ | → `event.SysLogInfo`（红线 #16） |
 | step_id 注册表扩展 | ✅ | 新增 15 个 step_id（graph/session/task/channel/knowledge 域） |
-| UsecaseOption 构造器注入 | ✅ | `UsecaseOption` 函数选项模式替代 4 个 `Set*`（保留 2 个循环依赖 setter） |
+| UsecaseOption 构造器注入 | ✅ | `UsecaseOption` 函数选项模式替代 `Set*`（2026-08-14 收口后仅剩 `SetEvalWorker` 1 个循环依赖 setter） |
 | RebuildRingBuffer 逐分钟重建 | ✅ | `ensureBucketAt` + 60 桶逐分钟从 DB 重建 |
 | 自检 SelfCheck | ✅ | `SelfCheckScheduler`（5 min）+ `SelfCheckRepairDispatcher`（4 个修复器）+ `SelfChecker` 插件接口 |
-| 自愈 SelfHeal | ✅ | `SelfHealObserver`（事件驱动修复）+ cooldown + 置信度阈值 |
-| 预测性自愈 PredictiveHeal | ✅ | `PredictiveHealUsecase`（系统指标 + 故障模式匹配 + 预防性修复） |
+| 自愈 SelfHeal | ✅ | `SelfHealObserver`（事件驱动观察：诊断包 + 根因分析 + 告警 + HealRecord；修复动作由 Runtime 自愈链路执行，Observer 只观察结果）+ cooldown + 置信度阈值 |
+| 预测性自愈 PredictiveHeal | 🟡 | `PredictiveHealUsecase`（系统指标 + 故障模式匹配）；执行器为 `NoopHealActionHandler`（动作目录未建），Job 默认禁用（`PREDICTIVE_HEAL_JOB_ENABLED=1` 开启），当前为观察模式 |
 | 模式挖掘 PatternMining | ✅ | `PatternMiningUsecase`（故障聚类 + 自动修复模板 + 置信度晋升/停用） |
 | 故障报告 FailureReport | ✅ | `FailureReport` 统一 CI/runtime 错误格式 + `FailureReportParser` 正则识别 |
 | LOOP-01 FR-01 | ✅ | `log.Printf` 红线违规已清零（evolution.go + modelcatalog 已移除） |
@@ -102,6 +102,8 @@
 2. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
 3. **P3 — LOOP-01 FR-02**：清理 cronrunner 剩余 7 处 Kratos `log.Helper`（5 个文件：monitor_alert_cooldown、memory_dead_letter_replayer、provider_health、channel_health、evolution_scanner、channel_delivery）。
 4. **P3 — LOOP-01 FR-03**：补全 stepTitleRegistry 22 个缺失 step_id 注册。
+5. **P2 — PredictiveHeal 真实动作目录**：当前 `NoopHealActionHandler` 观察模式（Job 默认禁用）；建设修复动作目录后接线真实执行器并默认启用。
+6. **P2 — Monitor Usecase 拆分（DEV-05）**：2026-08-13 已删告警 legacy 双轨评估路径（switch 分支 + `WithFilesystemHealthReader`/`WithRingBuffer` option 及字段），评估统一走 `AlertMetricRegistry`；2026-08-14 setter 收口完成——4 个 `Set*` 仅剩 `SetEvalWorker`（worker 持有 uc 循环依赖，唯一保留），`SetRegistry`→构造 option `WithRegistry`，新增 `WithTraceProjector`/`WithFlowFileAppender` option（wire 构造期注入，`provideEventBusSideConsumers` 晚接线块已删），struct 字段按 数据端口/告警域/trace 落盘/横切 分组；顺带重生成 wire_gen.go 修复 S1 后 stale 生成物导致的构建断裂（`biz.WithFilesystemHealthReader` undefined）；后续按 audit/trace/alert/heal 域拆子包。
 
 > **优化项详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) 子模块 Monitor 优化设计（MON-OPT-01~06）。
 
@@ -726,8 +728,8 @@ Monitor 自检与自愈体系：周期性健康检查 + 事件驱动修复 + 预
 | HEAL-01 | SelfChecker 插件接口 + 4 个内置 Checker | P1 | ✅ | TraceProjectorChecker/FlowFileChecker/AlertEvalChecker/EventBusChecker |
 | HEAL-02 | SelfCheckRepairDispatcher + 4 个修复器 | P1 | ✅ | FlowFile/TraceProjector/AlertEval/EventBus Repairer |
 | HEAL-03 | SelfCheckScheduler 周期调度 | P1 | ✅ | 5 min ticker + `SELF_CHECK_INTERVAL` 环境变量 |
-| HEAL-04 | SelfHealObserver 事件驱动修复 | P1 | ✅ | 订阅 FlowLog error/critical + DiagBundle + RootCauseEngine |
-| HEAL-05 | PredictiveHeal 预测性自愈 | P2 | ✅ | SystemMetricsReader + 故障模式匹配 + 置信度 > 0.8 |
+| HEAL-04 | SelfHealObserver 事件驱动观察 | P1 | ✅ | 订阅 FlowLog error/critical + DiagBundle + RootCauseEngine + 告警/记录 |
+| HEAL-05 | PredictiveHeal 预测性自愈 | P2 | 🟡 | SystemMetricsReader + 故障模式匹配 + 置信度 > 0.8；执行器 Noop，观察模式 |
 | HEAL-06 | PatternMining 模式挖掘 | P2 | ✅ | HealRecord 聚类 + 自动修复模板 + 置信度晋升/停用 |
 | HEAL-07 | FailureReport + Parser | P2 | ✅ | 5 种故障类型 + CI/runtime 正则识别 |
 | HEAL-08 | failure_pattern 表 + Repo | P2 | ✅ | FailurePatternReader/Writer + 3 种来源（runtime/ci/mined） |
@@ -740,8 +742,8 @@ Monitor 自检与自愈体系：周期性健康检查 + 事件驱动修复 + 预
 
 - [x] SelfCheck 每 5 分钟执行一次，4 个 Checker 全部运行
 - [x] Checker 检测到异常时自动触发对应 Repairer
-- [x] SelfHealObserver 订阅 FlowLog 错误事件，自动生成诊断包并尝试修复
-- [x] PredictiveHeal 在系统指标异常时执行预防性修复
+- [x] SelfHealObserver 订阅 FlowLog 错误事件，自动生成诊断包、根因分析并按置信度告警（修复动作由 Runtime 自愈链路执行并以 `auto_healed`/`heal_success` 元数据回传）
+- [x] PredictiveHeal 在系统指标异常时匹配故障模式并生成观察记录（当前执行器为 `NoopHealActionHandler`，不产生真实修复动作，Job 默认禁用）
 - [x] PatternMining 从历史修复记录中自动挖掘故障模式
 - [x] FailureReport 统一 CI 和 runtime 错误格式
 - [x] Wire 注入完整，`go build ./cmd/admin` 通过
@@ -754,4 +756,4 @@ Monitor 自检与自愈体系：周期性健康检查 + 事件驱动修复 + 预
 make build && make test
 ```
 
-**手工**：触发一次 Provider 超时 → Monitor Logs 看到错误 → SelfHealObserver 自动生成诊断包 → 根因引擎匹配规则 → 执行修复 → PatternMining 异步聚类。
+**手工**：触发一次 Provider 超时 → Monitor Logs 看到错误 → SelfHealObserver 自动生成诊断包 → 根因引擎匹配规则 → 超置信度阈值告警并记录 HealRecord → PatternMining 异步聚类。

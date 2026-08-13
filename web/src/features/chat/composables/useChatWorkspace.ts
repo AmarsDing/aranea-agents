@@ -52,7 +52,13 @@ import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
 import { useLlmRetryStore } from '../../../stores/chat/llmRetryStore';
 import { useChatEventRouter } from './useChatEventRouter';
-import type { V2WsEnvelope, SystemNoticeEventPayload, RunStatusEventPayload, Task } from '../v2Types';
+import type {
+  V2WsEnvelope,
+  SystemNoticeEventPayload,
+  RunStatusEventPayload,
+  SkillCatalogEventPayload,
+  Task,
+} from '../v2Types';
 import { useAddToEvalDataset } from '../../evaluation/useAddToEvalDataset';
 import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
@@ -146,6 +152,17 @@ export function useChatWorkspace() {
     if (envelope.kind === 'system.heartbeat') {
       // Acknowledged but no side-effect routing needed yet.
       // system.heartbeat carries progress metadata for a future heartbeat display.
+      return;
+    }
+    // Design 69 Phase 3: skill.catalog carries the agent-visible skill list
+    // (pushed once per WS connection setup). Ephemeral UI state — store it
+    // per session in the runtime store for ChatSkillCatalogStrip rendering.
+    if (envelope.kind === 'skill.catalog') {
+      const sid = String(envelope.session_id ?? '').trim();
+      const skills = (envelope.payload as SkillCatalogEventPayload)?.skills;
+      if (sid && Array.isArray(skills)) {
+        runtimeStore.setSkillCatalog(sid, skills);
+      }
       return;
     }
     // Route team/member v2 events to spirit store for left sidebar updates.

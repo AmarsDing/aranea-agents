@@ -2,7 +2,6 @@ package evaluation
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/pkg/safego"
 
@@ -68,16 +67,4 @@ func runnerCompletionEvent(invocationID string) *event.Event {
 			Done:   true,
 		},
 	}
-}
-
-// AgentRunnerFactory creates an AgentRunner for a specific agent ID.
-type AgentRunnerFactory func(agentID string) AgentRunner
-
-// ChatRunnerFactory returns a runner.Runner bound to one agent.
-func ChatRunnerFactory(agentID string, factory AgentRunnerFactory) (runner.Runner, error) {
-	if factory == nil {
-		return nil, fmt.Errorf("agent runner factory is nil")
-	}
-	agentID = fmt.Sprintf("%s", agentID)
-	return NewChatRunnerAdapter(agentID, factory(agentID)), nil
 }

@@ -2,7 +2,7 @@
 
 > 对应需求：[69-skill-loading-optimization.md](./69-skill-loading-optimization.md)
 > 设计文档：[69-skill-loading-optimization.design.md](./69-skill-loading-optimization.design.md)
-> **状态**：Phase 1-3 已实施，代码审查通过（0 阻断项）
+> **状态**：Phase 1-4 已实施（2026-08-14 全量验证通过：后端 build/vet/test + 前端 lint/test/i18n 绿）
 
 ---
 
@@ -59,15 +59,25 @@
 | 4 | Full Profile 注入改用 `ai_optimized` 渲染 | ✅ |
 | 5 | 注入尾部提示"其他可用 Skill 请使用 skill_load 按需加载" | ✅ |
 
-### Phase 3：Skill 入口可见性 (A1 + A2) 🟡 (前端类型补全，集成待后端事件)
+### Phase 3：Skill 入口可见性 (A1 + A2) ✅
 
 | 步骤 | 内容 | 状态 |
 |------|------|------|
 | 1 | 前端补全 `SkillCatalogEntry` / `SkillHint` 类型 | ✅ |
 | 2 | `ChatSkillCatalogStrip.vue` 类型引用已修复 | ✅ |
 | 3 | `ChatSkillHintBar.vue` 类型引用已修复 | ✅ |
-| 4 | 后端 `skill_catalog` WebSocket 事件 | ⏳ 待实施 |
-| 5 | 聊天界面集成 Skill 摘要卡片条 | ⏳ 待后端事件 |
+| 4 | 后端 `skill.catalog` WebSocket 事件（WS 连接建立时推送，Layer A 可见性过滤，best-effort） | ✅ |
+| 5 | 聊天界面集成 Skill 摘要卡片条（`useChatWorkspace` 拦截事件 → `runtimeStore` → `ChatPage` → `ChatSkillCatalogStrip`，点击填充加载指令） | ✅ |
+
+### Phase 4：口径修正 + 概览预算（2026-08-14 批次 A/B）✅
+
+| 步骤 | 内容 | 状态 |
+|------|------|------|
+| 1 | 路由命中率口径修正：`RouteHitRate(X)` = X 被加载去重轮次 / X 被路由去重轮次（按 `activation_id` 去重），取代旧口径（自身记录中非空即计） | ✅ |
+| 2 | `SkillHealthDetail` 新增 `RoutedCount7d/30d` / `LoadedCount7d/30d`，proto + 前端类型同步 | ✅ |
+| 3 | 前端区分「无路由数据」（routed=0 显示 `-`）与「0% 命中率」 | ✅ |
+| 4 | Overview token 预算渲染器：`RuntimePolicy.OverviewMaxChars`（默认 2000 符文，0=不限）+ `RenderSkillOverviewBudgeted`（整行粒度截断 + 剩余计数提示 + 确定性输出） | ✅ |
+| 5 | 装配与计量对齐：`chat_orchestrator_turn_phases` / `runner_team_trpc` 安装渲染器；`context_budget` 计量走同一渲染器 | ✅ |
 
 ---
 
@@ -89,8 +99,10 @@
 | Full Profile 注入优化 | ✅ | `newSkillGuidanceBeforeHook` 使用 `ModeAIOptimized` 渲染 + 尾部提示 |
 | 前端 Catalog 类型 | ✅ | `SkillCatalogEntry` / `SkillHint` 已定义 |
 | 前端 Catalog 组件 | ✅ | `ChatSkillCatalogStrip.vue` / `ChatSkillHintBar.vue` 可编译 |
-| 后端 `skill_catalog` 事件 | ⏳ | 代码中未找到 `skill_catalog` WebSocket 事件实现 |
-| 聊天界面集成 | ⏳ | 待后端事件实施后集成 |
+| 后端 `skill.catalog` 事件 | ✅ | `internal/service/skill_catalog.go`（WS 连接时推送 + Layer A 过滤 + best-effort），6 组测试全过 |
+| 聊天界面集成 | ✅ | `useChatWorkspace` 拦截 → `runtimeStore.setSkillCatalog` → `ChatPage` → `ChatSkillCatalogStrip` |
+| 路由命中率口径 | ✅ | `skill_health.go routeLoadCounts` 按 `activation_id` 去重轮次精确匹配（批次 A） |
+| Overview 预算 | ✅ | `overview_budget.go` 渲染器 + `RuntimePolicy.OverviewMaxChars` + 计量对齐（批次 B） |
 
 ---
 
@@ -102,15 +114,14 @@
 |------|------|------|
 | Phase 1 | 路由命中率可观测性全链路（Schema → State → 持久化 → 聚合 → 前端） | ✅ |
 | Phase 2 | AI 优化渲染 + Full Profile 注入优化 | ✅ |
-| Phase 3 前端 | 类型补全 + 组件可编译 | ✅ |
+| Phase 3 | 类型补全 + 组件 + 后端 `skill.catalog` 事件 + 聊天界面集成 | ✅ |
+| Phase 4 | 路由命中率口径修正（activation_id 去重）+ Overview token 预算渲染器 | ✅ |
+| 批次补充 | `route_hit_rate=0` 语义区分（`routed_count` 字段暴露，前端区分无数据/0%） | ✅ |
 
 ### 5.2 待后续迭代
 
 | 项 | 说明 | 优先级 |
 |----|------|--------|
-| 后端 `skill_catalog` WebSocket 事件 | 会话初始化时发送 Skill 摘要 payload | 中 |
-| 聊天界面集成 Skill 摘要卡片条 | 依赖后端事件 | 中 |
-| `route_hit_rate=0` 语义区分 | 当前无法区分"无数据"与"0%命中率"，需后端暴露 `routed_count` 聚合字段 | 低 |
 | Token 效率指标（C2） | 需精确 Token 计量，依赖 C1 数据后再评估 | 低 |
 | A/B 对比验证（D1/D2） | 依赖 C1/C2 数据积累 | 低 |
 
@@ -143,7 +154,7 @@
 
 ### 6.3 待后续迭代
 
-- 🟡 `route_hit_rate=0` 时无法区分"无数据"和"0%命中率"，需后端暴露 `routed_count` 聚合字段
+- 无（🟡 `route_hit_rate=0` 语义区分已于批次 A 解决：暴露 `routed_count`/`loaded_count` 聚合字段）
 
 ---
 
@@ -163,12 +174,20 @@
 - [x] Full Profile 注入使用 `ai_optimized` 渲染
 - [x] 注入尾部包含 `skill_load` 提示
 
-### Phase 3（部分完成）
+### Phase 3 ✅
 
 - [x] `SkillCatalogEntry` / `SkillHint` 类型已定义
 - [x] `ChatSkillCatalogStrip.vue` / `ChatSkillHintBar.vue` 可编译
-- [ ] 后端 `skill_catalog` WebSocket 事件（待实施）
-- [ ] 聊天界面集成 Skill 摘要卡片条（待后端事件）
+- [x] 后端 `skill.catalog` WebSocket 事件（WS 连接建立时推送，Layer A 过滤，best-effort）
+- [x] 聊天界面集成 Skill 摘要卡片条（点击卡片填充加载指令到 composer）
+
+### Phase 4 ✅
+
+- [x] 路由命中率按 `activation_id` 去重轮次精确匹配（`TestGetSkillHealth_RouteHitRatePreciseMatching`）
+- [x] `SkillHealthDetail` / proto / 前端类型暴露 `routed_count` / `loaded_count`
+- [x] 前端区分「无路由数据」与「0% 命中率」
+- [x] `RenderSkillOverviewBudgeted` 整行粒度截断 + 剩余计数提示 + 确定性输出（5 组测试）
+- [x] chat turn / team run 装配预算渲染器，context budget 计量同口径
 
 ---
 
@@ -187,4 +206,14 @@
 | `internal/data/skill_intelligence.go` | `mapEntSkillInvocationToWrite` 映射新字段 |
 | `internal/skill/render/render.go` | AI 优化渲染模式（`ModeAIOptimized` / `filterDecisionSections` / `isExcludedHeading`） |
 | `web/src/features/skills/types.ts` | 新增 `route_hit_rate` / `routed_count` / `loaded_count` / `SkillCatalogEntry` / `SkillHint` |
-| `web/src/components/skills/SkillHealthCard.vue` | 路由命中率展示 |
+| `web/src/components/skills/SkillHealthCard.vue` | 路由命中率展示（含无数据/0% 区分）+ 健康徽章 i18n |
+| `internal/service/skill_catalog.go` | `PushSkillCatalog`：WS 连接时解析 agent 可见 Skill 并发布 `skill.catalog` 事件（批次 D） |
+| `internal/server/ws.go` / `ws_v2_wire*.go` | `SkillCatalogPusher` 挂载 + `skillCatalogEventWire` 蛇形线协议（批次 D） |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | 拦截 `skill.catalog` 事件写入 `runtimeStore`（批次 D） |
+| `web/src/pages/ChatPage.vue` | `skillCatalog` 透传 + 卡片点击填充加载指令（i18n `chat.loadSkillPrompt`）（批次 D） |
+| `internal/tools/skillruntime/overview_budget.go` | `RenderSkillOverviewBudgeted` + `RunOptionWithOverviewBudget`（批次 B） |
+| `internal/biz/skill/skill.go` | `RuntimePolicy.OverviewMaxChars` + `OverviewBudgetChars()`（批次 B）；发布校验危险模式扫描（批次 C1，见 20-skill） |
+| `internal/agent/context_budget.go` / `callback_chain.go` | 概览块计量与运行时渲染同口径（批次 B） |
+| `internal/team/runner_team_trpc.go` | team run 装配概览预算渲染器（批次 B） |
+| `internal/data/skill_health.go` | `routeLoadCounts` 按 `activation_id` 去重轮次聚合（批次 A） |
+| `api/kratos/skill/v1/skill.proto` | `SkillHealthMetric` 新增 `routed_count_*` / `loaded_count_*`（批次 A） |

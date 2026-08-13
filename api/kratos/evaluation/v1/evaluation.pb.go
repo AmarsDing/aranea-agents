@@ -1359,14 +1359,20 @@ func (x *GetRunResultsResponse) GetTotal() int32 {
 }
 
 type AnnotateCaseResultRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	ResultId      string                 `protobuf:"bytes,2,opt,name=result_id,json=resultId,proto3" json:"result_id,omitempty"`
-	HumanPass     *bool                  `protobuf:"varint,3,opt,name=human_pass,json=humanPass,proto3,oneof" json:"human_pass,omitempty"`
-	HumanScore    *float32               `protobuf:"fixed32,4,opt,name=human_score,json=humanScore,proto3,oneof" json:"human_score,omitempty"`
-	HumanComment  *string                `protobuf:"bytes,5,opt,name=human_comment,json=humanComment,proto3,oneof" json:"human_comment,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	RunId        string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ResultId     string                 `protobuf:"bytes,2,opt,name=result_id,json=resultId,proto3" json:"result_id,omitempty"`
+	HumanPass    *bool                  `protobuf:"varint,3,opt,name=human_pass,json=humanPass,proto3,oneof" json:"human_pass,omitempty"`
+	HumanScore   *float32               `protobuf:"fixed32,4,opt,name=human_score,json=humanScore,proto3,oneof" json:"human_score,omitempty"`
+	HumanComment *string                `protobuf:"bytes,5,opt,name=human_comment,json=humanComment,proto3,oneof" json:"human_comment,omitempty"`
+	// clear_human_pass / clear_human_score explicitly reset the field to
+	// un-annotated (NULL). proto3 optional + JSON null cannot express "clear"
+	// (null is decoded as "field not set"), so explicit flags are required.
+	// A clear flag takes precedence over the corresponding value field.
+	ClearHumanPass  bool `protobuf:"varint,6,opt,name=clear_human_pass,json=clearHumanPass,proto3" json:"clear_human_pass,omitempty"`
+	ClearHumanScore bool `protobuf:"varint,7,opt,name=clear_human_score,json=clearHumanScore,proto3" json:"clear_human_score,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AnnotateCaseResultRequest) Reset() {
@@ -1432,6 +1438,20 @@ func (x *AnnotateCaseResultRequest) GetHumanComment() string {
 		return *x.HumanComment
 	}
 	return ""
+}
+
+func (x *AnnotateCaseResultRequest) GetClearHumanPass() bool {
+	if x != nil {
+		return x.ClearHumanPass
+	}
+	return false
+}
+
+func (x *AnnotateCaseResultRequest) GetClearHumanScore() bool {
+	if x != nil {
+		return x.ClearHumanScore
+	}
+	return false
 }
 
 type GetAgentEvalTrendRequest struct {
@@ -3001,7 +3021,7 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"\x06offset\x18\x03 \x01(\x05R\x06offset\"i\n" +
 	"\x15GetRunResultsResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.kratos.evaluation.v1.EvalCaseResultR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"\x80\x02\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"\xd6\x02\n" +
 	"\x19AnnotateCaseResultRequest\x12\x1b\n" +
 	"\x06run_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x05runId\x12!\n" +
 	"\tresult_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\bresultId\x12\"\n" +
@@ -3009,7 +3029,9 @@ const file_kratos_evaluation_v1_evaluation_proto_rawDesc = "" +
 	"human_pass\x18\x03 \x01(\bH\x00R\thumanPass\x88\x01\x01\x12$\n" +
 	"\vhuman_score\x18\x04 \x01(\x02H\x01R\n" +
 	"humanScore\x88\x01\x01\x12(\n" +
-	"\rhuman_comment\x18\x05 \x01(\tH\x02R\fhumanComment\x88\x01\x01B\r\n" +
+	"\rhuman_comment\x18\x05 \x01(\tH\x02R\fhumanComment\x88\x01\x01\x12(\n" +
+	"\x10clear_human_pass\x18\x06 \x01(\bR\x0eclearHumanPass\x12*\n" +
+	"\x11clear_human_score\x18\a \x01(\bR\x0fclearHumanScoreB\r\n" +
 	"\v_human_passB\x0e\n" +
 	"\f_human_scoreB\x10\n" +
 	"\x0e_human_comment\"p\n" +

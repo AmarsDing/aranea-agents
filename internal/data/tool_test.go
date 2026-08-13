@@ -4,13 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
+
+// floatApproxEq compares floats with a small epsilon: percentile_cont
+// interpolation is floating-point and must not be asserted with ==.
+func floatApproxEq(got, want float64) bool {
+	return math.Abs(got-want) < 1e-6
+}
 
 // newToolTestRepo opens a schema-isolated Postgres backed Data instance with
 // the tools and tool_invocations schemas created (via Ent auto-migration),
@@ -39,7 +48,10 @@ func newToolTestRepo(t *testing.T) (biz.ToolRepo, *Data) {
 //
 // This test exercises the SearchTools path (which includes the p95 LEFT JOIN)
 // with tool_invocations rows present, ensuring the SQL is valid on both SQLite
-// and Postgres (via GREATEST).
+// and Postgres.
+//
+// PERF-2: on Postgres the p95 subquery uses percentile_cont(0.95) WITHIN GROUP
+// (interpolated exact percentile); SQLite keeps the top-5% AVG approximation.
 func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	ctx := context.Background()
 	repo, d := newToolTestRepo(t)
@@ -58,15 +70,14 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	}
 
 	// Seed tool_invocations rows via raw SQL so the p95 subquery has data to
-	// aggregate. The p95 subquery uses ROW_NUMBER() OVER (... ORDER BY
-	// duration_ms DESC) and filters `rn <= GREATEST(1, CAST(total_cnt*0.05 AS INTEGER))`.
-	// With 20 rows, total_cnt*0.05 = 1, so GREATEST(1, 1) = 1 — top 1 row.
-	cutoff := "2026-06-19T00:00:00Z"
+	// aggregate. Timestamps are now-relative so they always fall inside the
+	// 90-day stats window (PERF-3).
+	ts := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 	for i := 0; i < 20; i++ {
 		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
 			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, 'adk', $7)`,
-			fmt.Sprintf("%s-inv-%d", tool.ID, i), tool.Key, tool.ID, "success", cutoff, 100+i*10, cutoff); err != nil {
+			fmt.Sprintf("%s-inv-%d", tool.ID, i), tool.Key, tool.ID, "success", ts, 100+i*10, ts); err != nil {
 			t.Fatalf("insert invocation %d: %v", i, err)
 		}
 	}
@@ -91,11 +102,95 @@ func TestToolRepo_SearchTools_P95Regression(t *testing.T) {
 	if got.InvokeCount != 20 {
 		t.Errorf("InvokeCount = %d, want 20", got.InvokeCount)
 	}
-	// p95 = avg of top-5% rows by duration. With 20 rows, top 5% = 1 row
-	// (GREATEST(1, 1) = 1), threshold = min duration among top-1 = max duration
-	// = 100 + 19*10 = 290. p95 = avg of rows with duration >= 290 = 290.
-	if got.P95DurationMS != 290 {
-		t.Errorf("P95DurationMS = %v, want 290", got.P95DurationMS)
+	// p95 = percentile_cont(0.95) over durations 100,110,...,290 (20 values):
+	// position = 0.95*(20-1) = 18.05 → interpolate between index 18 (280) and
+	// index 19 (290) → 280 + 0.05*10 = 280.5.
+	if !floatApproxEq(got.P95DurationMS, 280.5) {
+		t.Errorf("P95DurationMS = %v, want 280.5", got.P95DurationMS)
+	}
+}
+
+// TestToolRepo_SearchTools_StatsWindow (PERF-3) verifies the 90-day window on
+// toolSelectSQL's stats/p95/last subqueries: invocations older than
+// toolStatsWindowDays must not inflate counts, averages, p95, or the latest
+// invocation marker.
+func TestToolRepo_SearchTools_StatsWindow(t *testing.T) {
+	ctx := context.Background()
+	repo, d := newToolTestRepo(t)
+
+	tool, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key:         "win_tool",
+		DisplayName: "Windowed Tool",
+		Category:    "network",
+		Source:      "builtin",
+		RiskLevel:   "low",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTool: %v", err)
+	}
+
+	// Old rows: 120 days ago — outside the 90-day stats window.
+	oldTS := time.Now().UTC().AddDate(0, 0, -120).Format(time.RFC3339)
+	for i := 0; i < 5; i++ {
+		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
+			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 'adk', $7)`,
+			fmt.Sprintf("%s-old-%d", tool.ID, i), tool.Key, tool.ID, "success", oldTS, 1000, oldTS); err != nil {
+			t.Fatalf("insert old invocation %d: %v", i, err)
+		}
+	}
+	// Recent rows: 1 hour ago — inside the window and inside the 24h window.
+	recentTS := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	for i := 0; i < 10; i++ {
+		status := "success"
+		if i >= 8 {
+			status = "error"
+		}
+		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
+			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 'adk', $7)`,
+			fmt.Sprintf("%s-new-%d", tool.ID, i), tool.Key, tool.ID, status, recentTS, 10+i*10, recentTS); err != nil {
+			t.Fatalf("insert recent invocation %d: %v", i, err)
+		}
+	}
+
+	result, err := repo.SearchTools(ctx, biz.ToolListQuery{Limit: 100, Offset: 0})
+	if err != nil {
+		t.Fatalf("SearchTools failed: %v", err)
+	}
+	var got *biz.Tool
+	for i := range result.Items {
+		if result.Items[i].Key == "win_tool" {
+			got = &result.Items[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("seeded tool win_tool not found in %d results", len(result.Items))
+	}
+	if got.InvokeCount != 10 {
+		t.Errorf("InvokeCount = %d, want 10 (only windowed rows)", got.InvokeCount)
+	}
+	if got.InvokeCount24h != 10 {
+		t.Errorf("InvokeCount24h = %d, want 10", got.InvokeCount24h)
+	}
+	if got.SuccessCount != 8 || got.FailureCount != 2 {
+		t.Errorf("Success/Failure = %d/%d, want 8/2", got.SuccessCount, got.FailureCount)
+	}
+	if got.AvgDurationMS == nil || *got.AvgDurationMS != 55 {
+		t.Errorf("AvgDurationMS = %v, want 55 (windowed rows 10..100)", got.AvgDurationMS)
+	}
+	// percentile_cont(0.95) over 10,20,...,100 (10 values):
+	// position = 0.95*(10-1) = 8.55 → 90 + 0.55*10 = 95.5.
+	if !floatApproxEq(got.P95DurationMS, 95.5) {
+		t.Errorf("P95DurationMS = %v, want 95.5 (old 1000ms rows excluded)", got.P95DurationMS)
+	}
+	if got.LastInvokedAt != recentTS {
+		t.Errorf("LastInvokedAt = %q, want %q (recent row, not old)", got.LastInvokedAt, recentTS)
+	}
+	if got.LastStatus != "error" {
+		t.Errorf("LastStatus = %q, want error", got.LastStatus)
 	}
 }
 
@@ -180,7 +275,8 @@ func TestToolRepo_SearchTools_LatestInvocationDedup(t *testing.T) {
 	}
 
 	// Three invocations sharing the exact same started_at — all tie for MAX.
-	cutoff := "2026-07-27T00:00:00Z"
+	// Now-relative so the rows stay inside the 90-day stats window (PERF-3).
+	cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 	for i := 0; i < 3; i++ {
 		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
 			(id, tool_key, tool_id, status, started_at, duration_ms, source, created_at)
@@ -356,5 +452,46 @@ func TestInvocationMetaJSON_ArgsQualityFlags(t *testing.T) {
 	}
 	if _, ok := m2["args_invalid"]; ok {
 		t.Fatalf("args_invalid must be omitted when false: %v", m2)
+	}
+}
+
+// TestTruncateUTF8 (CONSISTENCY-1) covers rune-safe truncation: naive
+// s[:2000] byte-slicing can split a multi-byte rune, producing invalid UTF-8
+// that Postgres text columns reject (error 22021), losing the whole write.
+func TestTruncateUTF8(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		maxBytes int
+		want     string
+	}{
+		{"empty", "", 10, ""},
+		{"ascii under limit", "hello", 10, "hello"},
+		{"ascii exact limit", "abcde", 5, "abcde"},
+		{"ascii over limit", "hello world", 5, "hello"},
+		{"multi-byte under limit", "中文", 100, "中文"},
+		{"multi-byte split boundary", "ab中", 4, "ab"},
+		{"multi-byte exact boundary", "ab中", 5, "ab中"},
+		{"split at first rune", "中ab", 2, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := truncateUTF8(c.in, c.maxBytes)
+			if got != c.want {
+				t.Fatalf("truncateUTF8(%q, %d) = %q, want %q", c.in, c.maxBytes, got, c.want)
+			}
+			if !utf8.ValidString(got) {
+				t.Fatalf("truncateUTF8(%q, %d) produced invalid UTF-8: %q", c.in, c.maxBytes, got)
+			}
+			if len(got) > c.maxBytes {
+				t.Fatalf("truncateUTF8(%q, %d) = %d bytes, exceeds limit", c.in, c.maxBytes, len(got))
+			}
+		})
+	}
+	// 2000-byte preview limit over 3-byte runes: 1998 bytes, valid UTF-8.
+	long := strings.Repeat("中", 1000) // 3000 bytes
+	got := truncateUTF8(long, 2000)
+	if len(got) != 1998 || !utf8.ValidString(got) {
+		t.Fatalf("truncateUTF8(3000-byte runes, 2000) = %d bytes valid=%v, want 1998 valid", len(got), utf8.ValidString(got))
 	}
 }

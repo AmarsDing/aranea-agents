@@ -1,4 +1,5 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { i18n } from '../../i18n';
 import { useSkillEvolutionStore } from '../../stores/skillEvolution';
 import { useAuthStore } from '../../stores/auth';
 import type { SkillEvolutionView, EvolutionTargetType } from '../skills/types';
@@ -9,6 +10,7 @@ export const statusOptions = [
   { label: '已批准', value: 'approved' },
   { label: '已拒绝', value: 'rejected' },
   { label: '已应用', value: 'applied' },
+  { label: i18n.global.t('evolutionSuggestionsPage.statusExpired'), value: 'expired' },
 ];
 
 export const targetTypeOptions = [
@@ -73,13 +75,29 @@ export function useEvolutionSuggestionListPage() {
     approvingId.value = item.id;
     try {
       await store.approveSuggestion(item.id, auth.displayLabel || 'unknown');
-      setTimeout(() => void loadRows(), 500);
+      schedulePostApprovalRefresh();
     } catch {
       // error is already captured in store.error
     } finally {
       approvingId.value = '';
     }
   }
+
+  // The applier transitions approved → applied asynchronously; poll a few
+  // times so the row settles on its final state without a manual refresh.
+  const APPROVE_POLL_DELAYS_MS = [500, 3000, 8000] as const;
+  const pollTimers: ReturnType<typeof setTimeout>[] = [];
+
+  function schedulePostApprovalRefresh() {
+    for (const delay of APPROVE_POLL_DELAYS_MS) {
+      pollTimers.push(setTimeout(() => void loadRows(), delay));
+    }
+  }
+
+  onBeforeUnmount(() => {
+    for (const timer of pollTimers) clearTimeout(timer);
+    pollTimers.length = 0;
+  });
 
   function openRejectDialog(item: SkillEvolutionView) {
     rejectTarget.value = item;

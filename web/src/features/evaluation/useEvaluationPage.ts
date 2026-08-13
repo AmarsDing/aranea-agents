@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import type {
+  AnnotateCaseResultInput,
   EvalCaseResult,
   EvalFailureGroup,
   EvalRun,
@@ -324,13 +325,18 @@ export function useEvaluationPage() {
     if (!resultsRun.value) return;
     savingResultId.value = row.id;
     try {
-      const updated = await evaluationStore.annotateResult({
+      // 行内三态（unset/pass/fail、空分数）全量落库：null/undefined 走显式清除位，
+      // 否则发送值字段（后端清除位优先于值字段）。
+      const input: AnnotateCaseResultInput = {
         run_id: resultsRun.value.id,
         result_id: row.id,
-        human_pass: row.human_pass,
-        human_score: row.human_score,
         human_comment: row.human_comment,
-      });
+      };
+      if (row.human_pass == null) input.clear_human_pass = true;
+      else input.human_pass = row.human_pass;
+      if (row.human_score == null) input.clear_human_score = true;
+      else input.human_score = row.human_score;
+      const updated = await evaluationStore.annotateResult(input);
       updateResultRow(updated);
       // Annotation directly feeds the judge calibration summary.
       void loadDivergence();

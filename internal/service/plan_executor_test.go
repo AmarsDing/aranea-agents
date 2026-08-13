@@ -479,6 +479,66 @@ func TestPlanExecutor_FailedStepBlocksDownstream(t *testing.T) {
 	}
 }
 
+// TestPlanExecutor_CancelSweepsNonTerminalSteps verifies P1-6: when the run
+// ctx is canceled mid-flight, steps that never reached a terminal state
+// (in-flight running + never-dispatched pending) must be swept to Skipped
+// with an audit event — otherwise they stay running/pending forever in the
+// DB and the UI shows stale non-terminal state after refresh.
+func TestPlanExecutor_CancelSweepsNonTerminalSteps(t *testing.T) {
+	t.Parallel()
+	board := biz.PlanBoard{
+		ID:        "board-cancel",
+		TaskID:    "task-cancel",
+		SessionID: "sess-cancel",
+		Status:    biz.PlanStatusExecuting,
+		Steps: []biz.PlanStep{
+			{ID: "c1", PlanID: "board-cancel", TaskID: "task-cancel", Label: "inflight", Status: biz.PlanStepStatusPending, Version: 1},
+			{ID: "c2", PlanID: "board-cancel", TaskID: "task-cancel", Label: "neverdispatched", DependsOn: []string{"c1"}, Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	seq := &fakeSeq{}
+	orch := newFakeOrchestrator().withSeq(seq)
+	repos := newFakeReposForExecutor()
+	seq.repos = repos
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- pe.Subscribe(ctx, board) }()
+
+	if !orch.waitForCall("c1", 2*time.Second) {
+		t.Fatal("c1 was not dispatched")
+	}
+	// c1 stays in-flight (never completed); cancel the run.
+	cancel()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Subscribe should return ctx.Err() on cancel")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe timed out")
+	}
+
+	repos.mu.Lock()
+	defer repos.mu.Unlock()
+	for _, id := range []string{"c1", "c2"} {
+		step, ok := repos.steps[id]
+		if !ok {
+			t.Errorf("step %s not persisted", id)
+			continue
+		}
+		if step.Status != biz.PlanStepStatusSkipped {
+			t.Errorf("step %s status = %s, want %s (cancel sweep)", id, step.Status, biz.PlanStepStatusSkipped)
+		}
+	}
+	kinds := countingEventKinds(seq.snapshot())
+	if kinds[biz.EventKindPlanStepSkipped] != 2 {
+		t.Errorf("PlanStepSkipped events = %d, want 2 (c1 in-flight + c2 never-dispatched)", kinds[biz.EventKindPlanStepSkipped])
+	}
+}
+
 // TestPlanExecutor_GraphNodeKeepsTeamStageIDAfterComplete verifies GS-1:
 // dispatch writes TeamStageID; terminal update with empty teamStageID must not wipe it.
 func TestPlanExecutor_GraphNodeKeepsTeamStageIDAfterComplete(t *testing.T) {

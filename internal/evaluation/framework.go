@@ -84,9 +84,11 @@ func (b *FrameworkBridge) Execute(
 		numRuns = 1
 	}
 	mrc := b.multiRunCfg
-	if mrc.NumRuns <= 0 {
-		mrc.NumRuns = numRuns
-	}
+	// The bridge default (DefaultMultiRunConfig) sets NumRuns=1, so the old
+	// "only override when <= 0" guard silently dropped every API-provided
+	// num_runs > 1 — MultiRun never activated and pass@k stayed 0. The
+	// per-request value always wins over the bridge default.
+	mrc.NumRuns = numRuns
 	run, err := b.runFactory(cfg.AgentID)
 	if err != nil {
 		return nil, nil, 0, 0, err

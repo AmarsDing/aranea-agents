@@ -10,64 +10,84 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 )
 
-func TestFetchOAuth2ClientCredentials(t *testing.T) {
+func clearOAuth2CacheEntry(tokenURL, clientID string) {
+	oauth2CacheMu.Lock()
+	delete(oauth2Cache, oauth2CacheKey(tokenURL, clientID))
+	oauth2CacheMu.Unlock()
+}
+
+// 轮换场景：provider 返回新 refresh_token 时必须经 persister 回写持久层，
+// 否则进程重启后旧（已撤销）refresh token 导致永久鉴权失败。
+func TestResolveMCPAuthToken_RefreshRotationPersists(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("method %s", r.Method)
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm: %v", err)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-abc"})
+		if got := r.Form.Get("refresh_token"); got != "old-refresh" {
+			t.Errorf("refresh_token sent = %q, want old-refresh", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "at-new",
+			"expires_in":    3600,
+			"refresh_token": "rotated-refresh",
+		})
 	}))
-	// Close idle HTTP/2 connections AFTER the server shuts down so goleak
-	// doesn't flag leftover clientConnReadLoop goroutines from the shared
-	// oauth2HTTPClient. defer runs in LIFO order: srv.Close() runs first,
-	// then CloseIdleConnections() cleans up the now-stale connections.
-	defer oauth2HTTPClient.CloseIdleConnections()
 	defer srv.Close()
+	defer clearOAuth2CacheEntry(srv.URL, "cid")
 
-	tok, err := fetchOAuth2ClientCredentials(context.Background(), mcpconfig.AuthConfig{
-		Type:         "oauth2_client_credentials",
+	var gotKey, gotRefresh string
+	SetMCPRefreshTokenPersister(func(_ context.Context, serverKey, refreshToken string) error {
+		gotKey, gotRefresh = serverKey, refreshToken
+		return nil
+	})
+	defer SetMCPRefreshTokenPersister(nil)
+
+	token, err := ResolveMCPAuthToken(context.Background(), "srv1", mcpconfig.AuthConfig{
+		Type:         "oauth2_refresh",
 		TokenURL:     srv.URL,
 		ClientID:     "cid",
-		ClientSecret: "sec",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tok != "tok-abc" {
-		t.Fatalf("token=%q", tok)
-	}
-}
-
-func TestFetchOAuth2RefreshToken_NoFallback(t *testing.T) {
-	_, err := fetchOAuth2RefreshToken(context.Background(), mcpconfig.AuthConfig{
-		Type:         "oauth2_refresh",
-		AccessToken:  "stale-tok",
-		RefreshToken: "",
-		TokenURL:     "",
-	})
-	if err == nil {
-		t.Fatal("expected error when refresh_token and token_url are empty; should not fallback to stale access_token")
-	}
-}
-
-func TestFetchOAuth2RefreshToken_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "refreshed-tok"})
-	}))
-	defer oauth2HTTPClient.CloseIdleConnections()
-	defer srv.Close()
-
-	tok, err := fetchOAuth2RefreshToken(context.Background(), mcpconfig.AuthConfig{
-		Type:         "oauth2_refresh",
-		TokenURL:     srv.URL,
 		RefreshToken: "old-refresh",
-		ClientID:     "cid",
-		ClientSecret: "sec",
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ResolveMCPAuthToken: %v", err)
 	}
-	if tok != "refreshed-tok" {
-		t.Fatalf("token=%q", tok)
+	if token != "at-new" {
+		t.Fatalf("access token = %q, want at-new", token)
+	}
+	if gotKey != "srv1" || gotRefresh != "rotated-refresh" {
+		t.Fatalf("persister called with (%q, %q), want (srv1, rotated-refresh)", gotKey, gotRefresh)
+	}
+}
+
+// 非轮换场景：provider 不返回新 refresh_token 时不得触发回写。
+func TestResolveMCPAuthToken_RefreshNoRotationNoPersist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "at-plain",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+	defer clearOAuth2CacheEntry(srv.URL, "cid")
+
+	called := false
+	SetMCPRefreshTokenPersister(func(_ context.Context, _, _ string) error {
+		called = true
+		return nil
+	})
+	defer SetMCPRefreshTokenPersister(nil)
+
+	if _, err := ResolveMCPAuthToken(context.Background(), "srv1", mcpconfig.AuthConfig{
+		Type:         "oauth2_refresh",
+		TokenURL:     srv.URL,
+		ClientID:     "cid",
+		RefreshToken: "old-refresh",
+	}); err != nil {
+		t.Fatalf("ResolveMCPAuthToken: %v", err)
+	}
+	if called {
+		t.Fatal("persister must not be called when provider returns no new refresh_token")
 	}
 }

@@ -567,7 +567,7 @@ func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, err
 
 func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (biz.Skill, error) {
 	if id == "" {
-		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill id is required")
 	}
 	if enabled {
 		existing, err := r.data.RW().Read(ctx).PlatformSkill.Query().
@@ -819,7 +819,7 @@ func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, 
 		return "", err
 	}
 	if strings.TrimSpace(metadata.StorageDir) == "" {
-		return "", apierror.Internal("SKILL", "skill storage directory is not configured")
+		return "", apierror.Internal(apierror.DomainSkill, "skill storage directory is not configured")
 	}
 	return metadata.StorageDir, nil
 }
@@ -891,7 +891,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 	in.Description = strings.TrimSpace(in.Description)
 	in.Body = strings.TrimSpace(in.Body)
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
-		return biz.Skill{}, apierror.BadRequest("SKILL", "skill name, slug and body are required")
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill name, slug and body are required")
 	}
 	skillID := fmt.Sprintf("skill_%d", time.Now().UTC().UnixNano())
 	versionID := fmt.Sprintf("skillver_%d", time.Now().UTC().UnixNano())
@@ -945,7 +945,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (biz.Skill, error) {
 	skillKey = strings.TrimSpace(skillKey)
 	if skillKey == "" {
-		return biz.Skill{}, apierror.BadRequest("SKILL", "skill key is required")
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill key is required")
 	}
 	preds := []predicate.PlatformSkill{
 		platformskill.SkillKeyEQ(skillKey),
@@ -1283,7 +1283,7 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error) {
 	skillID = strings.TrimSpace(skillID)
 	if skillID == "" {
-		return "", apierror.BadRequest("SKILL", "skill id is required")
+		return "", apierror.BadRequest(apierror.DomainSkill, "skill id is required")
 	}
 	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID)).
@@ -1413,7 +1413,7 @@ func parseSkillMetadata(lg loggateway.Logger, raw string) skillMetadataEnvelope 
 func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUpdateDraft) (biz.Skill, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill id is required")
 	}
 	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
@@ -1433,12 +1433,12 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
 		storageDir := strings.TrimSpace(md.StorageDir)
 		if storageDir == "" {
-			return biz.Skill{}, apierror.Internal("SKILL", "skill storage directory is not configured")
+			return biz.Skill{}, apierror.Internal(apierror.DomainSkill, "skill storage directory is not configured")
 		}
 		// Validate path is within expected root
 		skillPath := filepath.Join(storageDir, "SKILL.md")
 		if !isPathWithinRoot(storageDir, skillPath) {
-			return biz.Skill{}, apierror.Internal("SKILL", "skill file path escapes storage directory")
+			return biz.Skill{}, apierror.Internal(apierror.DomainSkill, "skill file path escapes storage directory")
 		}
 
 		// B-08 fix: commit DB transaction FIRST, then write filesystem.
@@ -1575,7 +1575,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 func (r *skillRepo) PublishSkill(ctx context.Context, id string, validationStatus string) (biz.Skill, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.Skill{}, apierror.BadRequest("SKILL", "skill id is required")
+		return biz.Skill{}, apierror.BadRequest(apierror.DomainSkill, "skill id is required")
 	}
 	validationStatus = strings.TrimSpace(strings.ToLower(validationStatus))
 	switch validationStatus {
@@ -1643,7 +1643,7 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string, validationStatu
 func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		return apierror.BadRequest("SKILL", "skill slug is required")
+		return apierror.BadRequest(apierror.DomainSkill, "skill slug is required")
 	}
 	// 缓存键契约（同 UpsertSkillFromDisk）：仅在 missing 标志真正翻转时写库
 	// 并 bump updated_at；reconcile 对每个存活 skill 都会调 missing=false，

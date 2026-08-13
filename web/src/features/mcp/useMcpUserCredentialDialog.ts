@@ -1,5 +1,5 @@
-// FB3+FB4 fix: extract credential CRUD + $q.notify from McpUserCredentialDialog.vue
-// into composable so the .vue file only handles template bindings.
+// Credential CRUD + $q.notify extracted from McpUserCredentialDialog.vue into this
+// composable, so the .vue file only handles template bindings.
 import { computed, reactive, ref, watch, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
 import type { McpUserCredential } from './types';

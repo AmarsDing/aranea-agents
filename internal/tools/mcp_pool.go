@@ -29,8 +29,9 @@ import (
 //     在空闲超过 idleTTL 后执行；agent 缓存驱逐因此不再断连。
 //   - Init 在建 entry 时执行一次，失败仅告警不失败（Always-Ready：框架在
 //     Tools() 调用时自动重连）。
-//   - Pool.Close 幂等，关闭全部 entry；关闭后 Acquire 降级为非池化新建，
-//     保证 shutdown 期间的兜底构建仍可用。
+//   - Pool.Close 幂等：空闲 entry 立即关闭，仍被引用的 entry 标记 closing
+//     并延迟到最后一次 release 时关闭（避免 shutdown use-after-close）；
+//     关闭后 Acquire 降级为非池化新建，保证 shutdown 期间的兜底构建仍可用。
 
 const (
 	defaultMCPPoolIdleTTL      = 10 * time.Minute
@@ -43,10 +44,10 @@ type mcpToolSetFactory func(MCPServerConfig) (ToolSet, error)
 
 // mcpPoolEntry is one pooled connection with its reference count.
 type mcpPoolEntry struct {
-	ts          ToolSet
-	refs        int
-	lastIdleAt  time.Time // last time refs dropped to zero
-	initialized bool
+	ts         ToolSet
+	refs       int
+	lastIdleAt time.Time // last time refs dropped to zero
+	closing    bool      // pool closed while referenced: close on last release
 }
 
 // MCPToolSetPool is a process-level pool of live MCP ToolSets keyed by
@@ -181,12 +182,11 @@ func (p *MCPToolSetPool) Acquire(ctx context.Context, cfg MCPServerConfig) (Tool
 	}
 	if p.closed {
 		p.mu.Unlock()
-		if err := ts.Close(); err != nil {
-			p.lg.Warn("MCP 连接关闭失败", loggateway.StepID("tools.mcp.pool_close"), loggateway.Str("server", cfg.Name), loggateway.Err(err))
-		}
+		// Pool closed while connecting: hand the unpooled ToolSet to the
+		// caller unclosed (same ownership as the non-poolable path).
 		return ts, nil
 	}
-	p.entries[key] = &mcpPoolEntry{ts: ts, refs: 1, initialized: true}
+	p.entries[key] = &mcpPoolEntry{ts: ts, refs: 1}
 	p.mu.Unlock()
 
 	p.lg.Info("MCP 连接池新建连接",
@@ -197,18 +197,31 @@ func (p *MCPToolSetPool) Acquire(ctx context.Context, cfg MCPServerConfig) (Tool
 }
 
 // release decrements the reference count for key. Called by the pooled
-// wrapper's Close.
+// wrapper's Close. Entries marked closing (pool closed while referenced) are
+// closed for real once the last reference is released.
 func (p *MCPToolSetPool) release(key string) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	e, ok := p.entries[key]
 	if !ok {
+		p.mu.Unlock()
 		return
 	}
 	e.refs--
-	if e.refs <= 0 {
-		e.refs = 0
-		e.lastIdleAt = time.Now()
+	if e.refs > 0 {
+		p.mu.Unlock()
+		return
+	}
+	e.refs = 0
+	e.lastIdleAt = time.Now()
+	if !e.closing {
+		p.mu.Unlock()
+		return
+	}
+	delete(p.entries, key)
+	ts := e.ts
+	p.mu.Unlock()
+	if err := ts.Close(); err != nil {
+		p.lg.Warn("MCP 延迟关闭失败", loggateway.StepID("tools.mcp.pool_close"), loggateway.Str("pool_key", key[:12]), loggateway.Err(err))
 	}
 }
 
@@ -259,8 +272,10 @@ func (p *MCPToolSetPool) startReaperOnce() {
 	})
 }
 
-// Close stops the reaper and closes every pooled connection. Idempotent.
-// Satisfies io.Closer for LifecycleManager registration.
+// Close stops the reaper and closes every idle pooled connection. Entries
+// still referenced by callers are marked closing and shut down when their
+// last reference is released. Idempotent. Satisfies io.Closer for
+// LifecycleManager registration.
 func (p *MCPToolSetPool) Close() error {
 	p.mu.Lock()
 	if p.closed {
@@ -269,16 +284,34 @@ func (p *MCPToolSetPool) Close() error {
 	}
 	p.closed = true
 	p.cancel()
-	entries := p.entries
-	p.entries = make(map[string]*mcpPoolEntry)
-	p.mu.Unlock()
-
-	for key, e := range entries {
-		if err := e.ts.Close(); err != nil {
-			p.lg.Warn("MCP 连接池关闭连接失败", loggateway.StepID("tools.mcp.pool_close"), loggateway.Str("pool_key", key[:12]), loggateway.Err(err))
+	var victims []struct {
+		key string
+		ts  ToolSet
+	}
+	deferred := 0
+	for key, e := range p.entries {
+		if e.refs == 0 {
+			victims = append(victims, struct {
+				key string
+				ts  ToolSet
+			}{key, e.ts})
+			delete(p.entries, key)
+		} else {
+			e.closing = true
+			deferred++
 		}
 	}
-	p.lg.Info("MCP 连接池已关闭", loggateway.StepID("tools.mcp.pool_close"), loggateway.Int("entries", len(entries)))
+	p.mu.Unlock()
+
+	for _, v := range victims {
+		if err := v.ts.Close(); err != nil {
+			p.lg.Warn("MCP 连接池关闭连接失败", loggateway.StepID("tools.mcp.pool_close"), loggateway.Str("pool_key", v.key[:12]), loggateway.Err(err))
+		}
+	}
+	p.lg.Info("MCP 连接池已关闭",
+		loggateway.StepID("tools.mcp.pool_close"),
+		loggateway.Int("closed", len(victims)),
+		loggateway.Int("deferred", deferred))
 	return nil
 }
 

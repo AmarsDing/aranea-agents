@@ -387,6 +387,10 @@ type SessionWriter interface {
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
 	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
+	// UpdateSessionMetadataKey atomically sets one key in metadata_json via
+	// jsonb_set (S6 swarm CAS): full-document UpdateSession loses concurrent
+	// writes to unrelated metadata keys.
+	UpdateSessionMetadataKey(ctx context.Context, id, key, value string) error
 }
 
 // Stability:stable
@@ -816,6 +820,21 @@ func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionU
 		fields.Title = &v
 	}
 	return uc.sessionWriter.UpdateSession(ctx, id, fields)
+}
+
+// UpdateMetadataKey atomically sets a single metadata_json key (S6 swarm CAS).
+// Key must be a non-empty top-level metadata field name; callers needing
+// multi-key updates must keep using Update (full document).
+func (uc *SessionUsecase) UpdateMetadataKey(ctx context.Context, id, key, value string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return validationErr("session id is required")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return validationErr("metadata key is required")
+	}
+	return uc.sessionWriter.UpdateSessionMetadataKey(ctx, id, key, value)
 }
 
 func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, error) {

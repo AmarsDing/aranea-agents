@@ -51,11 +51,14 @@ func WithDeadLetterReplayLoopDisabled() Option {
 // P1-R2b: when a durable store is configured, the event's entity payload is
 // also upserted into the event_dead_letter table (best-effort, bounded 2s)
 // so the loss survives process restart and can be replayed.
-func (s *Sequencer) pushDeadLetter(e biz.Event) {
-	s.deadLetter.Push(e)
+//
+// Receiver is the persist sub-manager (P1-1 split); the two drop paths call
+// in from Sequencer.processTask / persistWorker.persistWithRetry.
+func (p *persistWorker) pushDeadLetter(e biz.Event) {
+	p.ring.Push(e)
 	metrics.SequencerDeadLetterTotal.WithLabelValues(string(e.EventKind())).Inc()
-	metrics.SequencerDeadLetterSize.Set(float64(s.deadLetter.Len()))
-	if s.deadLetterStore == nil {
+	metrics.SequencerDeadLetterSize.Set(float64(p.ring.Len()))
+	if p.store == nil {
 		return
 	}
 	d := describePersist(e)
@@ -64,7 +67,7 @@ func (s *Sequencer) pushDeadLetter(e biz.Event) {
 	}
 	payload, err := json.Marshal(d.entity)
 	if err != nil {
-		s.lg.Warn("dead-letter payload marshal failed",
+		p.lg.Warn("dead-letter payload marshal failed",
 			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))
 		return
 	}
@@ -79,26 +82,31 @@ func (s *Sequencer) pushDeadLetter(e biz.Event) {
 		PayloadJSON: string(payload),
 		State:       biz.EventDeadLetterStatePending,
 	}
-	if err := s.deadLetterStore.SaveEventDeadLetter(ctx, rec); err != nil {
+	if err := p.store.SaveEventDeadLetter(ctx, rec); err != nil {
 		// Best-effort: the in-memory ring + metrics still record the loss.
-		s.lg.Warn("durable dead-letter save failed",
-			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))
+		// R3: throttled — fires per dead-lettered event while the store is
+		// down, stacking on top of the drop-site log.
+		if ok, suppressed := p.throttles.deadLetterSaveWarn.Allow(); ok {
+			p.lg.Warn("durable dead-letter save failed",
+				stallFields(suppressed,
+					loggateway.Str("kind", string(e.EventKind())), loggateway.Err(err))...)
+		}
 	}
 }
 
 // deadLetterReplayLoop replays durable dead-letters once at startup, then
-// every deadLetterReplayInterval, until Close signals replayDone.
-func (s *Sequencer) deadLetterReplayLoop() {
-	defer s.replayWG.Done()
-	s.replayDeadLettersOnce()
+// every deadLetterReplayInterval, until close signals replayDone.
+func (p *persistWorker) deadLetterReplayLoop() {
+	defer p.replayWG.Done()
+	p.replayDeadLettersOnce()
 	ticker := time.NewTicker(deadLetterReplayInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-s.replayDone:
+		case <-p.replayDone:
 			return
 		case <-ticker.C:
-			s.replayDeadLettersOnce()
+			p.replayDeadLettersOnce()
 		}
 	}
 }
@@ -107,12 +115,12 @@ func (s *Sequencer) deadLetterReplayLoop() {
 // the entity upsert via the shared persist router. Success marks the row
 // replayed; failure increments attempts; rows at the attempt cap (or with
 // undecodable payloads — permanently poisoned) are abandoned.
-func (s *Sequencer) replayDeadLettersOnce() {
+func (p *persistWorker) replayDeadLettersOnce() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	recs, err := s.deadLetterStore.ListPendingEventDeadLetters(ctx, deadLetterReplayBatchSize)
+	recs, err := p.store.ListPendingEventDeadLetters(ctx, deadLetterReplayBatchSize)
 	if err != nil {
-		s.lg.Warn("dead-letter replay: list pending failed", loggateway.Err(err))
+		p.lg.Warn("dead-letter replay: list pending failed", loggateway.Err(err))
 		return
 	}
 	if len(recs) == 0 {
@@ -121,51 +129,51 @@ func (s *Sequencer) replayDeadLettersOnce() {
 	var replayed, failed, abandoned int
 	for _, rec := range recs {
 		if rec.Attempts >= deadLetterMaxReplayAttempt {
-			s.abandonDeadLetter(ctx, rec, "max_attempts_exceeded")
+			p.abandonDeadLetter(ctx, rec, "max_attempts_exceeded")
 			abandoned++
 			continue
 		}
 		entity, decErr := decodePersistEntity(rec.EntityKind, []byte(rec.PayloadJSON))
 		if decErr != nil {
 			// Payload can never succeed — no point retrying.
-			s.abandonDeadLetter(ctx, rec, "decode_failed: "+decErr.Error())
+			p.abandonDeadLetter(ctx, rec, "decode_failed: "+decErr.Error())
 			abandoned++
 			continue
 		}
 		pctx, pcancel := context.WithTimeout(context.Background(), 2*time.Second)
-		applyErr := applyPersist(pctx, s.repoSet, rec.EntityKind, rec.EntityOp, entity)
+		applyErr := applyPersist(pctx, p.repoSet, rec.EntityKind, rec.EntityOp, entity)
 		pcancel()
 		if applyErr == nil {
-			if markErr := s.deadLetterStore.MarkEventDeadLetterReplayed(ctx, rec.ID); markErr != nil {
-				s.lg.Warn("dead-letter replay: mark replayed failed",
+			if markErr := p.store.MarkEventDeadLetterReplayed(ctx, rec.ID); markErr != nil {
+				p.lg.Warn("dead-letter replay: mark replayed failed",
 					loggateway.Str("entity_kind", rec.EntityKind), loggateway.Err(markErr))
 			}
 			metrics.SequencerDeadLetterReplayTotal.WithLabelValues("replayed").Inc()
 			replayed++
 			continue
 		}
-		if incErr := s.deadLetterStore.IncrementEventDeadLetterAttempt(ctx, rec.ID, applyErr.Error()); incErr != nil {
-			s.lg.Warn("dead-letter replay: increment attempt failed",
+		if incErr := p.store.IncrementEventDeadLetterAttempt(ctx, rec.ID, applyErr.Error()); incErr != nil {
+			p.lg.Warn("dead-letter replay: increment attempt failed",
 				loggateway.Str("entity_kind", rec.EntityKind), loggateway.Err(incErr))
 		}
 		metrics.SequencerDeadLetterReplayTotal.WithLabelValues("failed").Inc()
 		failed++
 	}
-	s.lg.Info("dead-letter replay summary",
+	p.lg.Info("dead-letter replay summary",
 		loggateway.Int("replayed", replayed),
 		loggateway.Int("failed", failed),
 		loggateway.Int("abandoned", abandoned),
 		loggateway.Int("total", len(recs)))
 }
 
-func (s *Sequencer) abandonDeadLetter(ctx context.Context, rec biz.EventDeadLetter, reason string) {
-	if err := s.deadLetterStore.MarkEventDeadLetterAbandoned(ctx, rec.ID, reason); err != nil {
-		s.lg.Warn("dead-letter replay: mark abandoned failed",
+func (p *persistWorker) abandonDeadLetter(ctx context.Context, rec biz.EventDeadLetter, reason string) {
+	if err := p.store.MarkEventDeadLetterAbandoned(ctx, rec.ID, reason); err != nil {
+		p.lg.Warn("dead-letter replay: mark abandoned failed",
 			loggateway.Str("entity_kind", rec.EntityKind), loggateway.Err(err))
 		return
 	}
 	metrics.SequencerDeadLetterReplayTotal.WithLabelValues("abandoned").Inc()
-	s.lg.Warn("dead-letter abandoned",
+	p.lg.Warn("dead-letter abandoned",
 		loggateway.Str("kind", rec.EventKind),
 		loggateway.Str("entity_kind", rec.EntityKind),
 		loggateway.Str("reason", reason))

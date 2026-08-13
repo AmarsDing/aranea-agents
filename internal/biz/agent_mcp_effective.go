@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/workspace"
 )
 
 // Tool key constants are now defined in the tool subpackage; re-exported here for backward compatibility.
@@ -125,10 +126,6 @@ func (t *AgentMCPTooling) MCP() *MCPServerUsecase {
 	return t.mcp
 }
 
-func effectiveToolsAllowsMCP(eff AgentEffectiveTools) bool {
-	return effectiveToolsAllowsMCPServers(eff)
-}
-
 func effectiveToolsAllowsMCPServers(eff AgentEffectiveTools) bool {
 	if !eff.ToolsEnabled {
 		return false
@@ -161,11 +158,15 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx context.Context, agentID 
 	if !effectiveToolsAllowsMCPServers(eff) {
 		return nil, nil
 	}
-	// P2-B: Agent runtime sees all MCP servers (no workspace filter at this layer;
-	// workspace visibility is enforced at the admin RPC boundary in service layer).
-	// EffectiveServersForAgent is invoked by chat/team/graph runtime, which already
-	// resolves agent ownership via workspace-scoped agent repo lookups.
-	rows, err := t.mcp.List(ctx, MCPListQuery{})
+	// P2-B 收紧：按调用方 workspace 过滤可见 MCP 服务器（共享 + 自有），
+	// 与 ListMCPServers RPC 的租户可见性一致。此前 runtime 层不过滤，
+	// 租户 Agent 可挂载其他租户的私有 MCP 服务器（跨租户泄漏）。
+	// 系统调用方（cron/prewarm，WithSystemWorkspace）不过滤。
+	q := MCPListQuery{}
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
+	rows, err := t.mcp.List(ctx, q)
 	if err != nil {
 		return nil, err
 	}

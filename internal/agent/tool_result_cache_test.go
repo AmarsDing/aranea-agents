@@ -25,7 +25,7 @@ func TestToolResultCacheHooks_PolicyFromSnapshot(t *testing.T) {
 			"web_fetch": {Key: "web_fetch", MetadataJSON: `{"cache_enabled":true,"cache_ttl_sec":60}`},
 			"plain":     {Key: "plain"},
 		},
-		overrides: map[string]biz.ToolAgentOverride{},
+		overrides: map[string]biztool.ToolAgentOverride{},
 	}
 
 	before := newToolResultCacheBeforeHook(deps, catalog)
@@ -103,8 +103,8 @@ func TestToolResultCacheHooks_DefaultCacheFallback(t *testing.T) {
 	catalog := &toolBuildCatalog{
 		entries: map[string]biztool.ToolCatalogEntry{
 			"web_fetch": {Key: "web_fetch", ConfigJSON: `{"cache_enabled":true,"cache_ttl_sec":60}`},
-		},
-		overrides: map[string]biz.ToolAgentOverride{},
+	},
+	overrides: map[string]biztool.ToolAgentOverride{},
 	}
 	before := newToolResultCacheBeforeHook(deps, catalog)
 	after := newToolResultCacheAfterHook(deps, catalog)

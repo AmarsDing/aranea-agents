@@ -18,25 +18,15 @@ type (
 	PluginRunListResult      = plugin.RunListResult
 	PluginRunRepo            = plugin.RunRepo
 	PluginUsecase            = plugin.Usecase
-	PluginSandboxMode        = plugin.SandboxMode
-	PluginVersionPolicy      = plugin.VersionPolicy
 	PluginCostGuardUsageRepo = plugin.CostGuardUsageRepo
 	ScopeAgentLookup         = plugin.ScopeAgentLookup
 )
 
-const (
-	PluginSandboxNone      = plugin.SandboxNone
-	PluginSandboxProcess   = plugin.SandboxProcess
-	PluginSandboxContainer = plugin.SandboxContainer
-)
-
 var (
-	NewPluginUsecase           = plugin.NewUsecase
-	ValidatePluginJSONSchema   = plugin.ValidateJSONSchema
-	AdminPluginPerms           = plugin.AdminPerms
-	NormalizePluginSandboxMode = plugin.NormalizeSandboxMode
-	ResolvePluginVersion       = plugin.ResolveVersion
-	BuiltinMetaDrifted         = plugin.BuiltinMetaDrifted
+	NewPluginUsecase         = plugin.NewUsecase
+	ValidatePluginJSONSchema = plugin.ValidateJSONSchema
+	AdminPluginPerms         = plugin.AdminPerms
+	BuiltinMetaDrifted       = plugin.BuiltinMetaDrifted
 )
 
 // agentScopeLookup adapts AgentRepository to plugin.ScopeAgentLookup.

@@ -49,4 +49,41 @@ func TestEvalCaseResultAnnotation(t *testing.T) {
 	if len(items) != 1 || items[0].HumanComment != comment {
 		t.Fatalf("list mismatch: %+v", items)
 	}
+
+	// Clear flags reset annotation fields to NULL; untouched fields survive.
+	cleared, err := repo.UpdateCaseResultAnnotation(ctx, runID, "res-1", biz.EvalCaseResultAnnotation{
+		ClearHumanPass:  true,
+		ClearHumanScore: true,
+		AnnotatedBy:     "tester",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.HumanPass != nil || cleared.HumanScore != nil {
+		t.Fatalf("expected cleared annotation, got pass=%v score=%v", cleared.HumanPass, cleared.HumanScore)
+	}
+	persisted, err := repo.GetCaseResult(ctx, runID, "res-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.HumanPass != nil || persisted.HumanScore != nil {
+		t.Fatalf("expected NULL persisted, got pass=%v score=%v", persisted.HumanPass, persisted.HumanScore)
+	}
+	if persisted.HumanComment != comment {
+		t.Fatalf("comment should be untouched by clear flags, got %q", persisted.HumanComment)
+	}
+
+	// A clear flag takes precedence over a value sent in the same patch.
+	fail := false
+	cleared2, err := repo.UpdateCaseResultAnnotation(ctx, runID, "res-1", biz.EvalCaseResultAnnotation{
+		ClearHumanPass: true,
+		HumanPass:      &fail,
+		AnnotatedBy:    "tester",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared2.HumanPass != nil {
+		t.Fatalf("clear flag must win over value, got pass=%v", *cleared2.HumanPass)
+	}
 }

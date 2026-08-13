@@ -3,6 +3,9 @@ import type { PlatformResource } from '../platform/types';
 export type McpTransport = 'stdio' | 'sse' | 'streamable_http';
 export type McpHealthStatus = 'ok' | 'error' | 'unknown' | 'degraded' | string;
 
+/** 健康指示灯色调：healthTone 推导结果，对应 health-dot--* 样式类。 */
+export type McpHealthTone = 'ok' | 'error' | 'degraded' | 'unknown';
+
 export type McpKeyValue = {
   key: string;
   value: string;

@@ -36,6 +36,10 @@ func (PlatformMCPUserCredential) Fields() []ent.Field {
 
 func (PlatformMCPUserCredential) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("mcp_server_id", "user_id", "credential_key").Unique(),
+		// 软删除感知的复合唯一索引：仅约束活跃行，墓碑不再阻塞同 key 重建。
+		// 谓词须写 PG 规范形式（''::text），Atlas diff 为纯文本比对。
+		index.Fields("mcp_server_id", "user_id", "credential_key").Unique().
+			StorageKey("idx_mcp_credential_unique_active").
+			Annotations(entsql.IndexWhere("deleted_at = ''::text")),
 	}
 }

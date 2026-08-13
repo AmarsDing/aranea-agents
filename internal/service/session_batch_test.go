@@ -106,6 +106,9 @@ func (m *batchSessionRepo) UpdateSessionTitle(context.Context, string, string) (
 func (m *batchSessionRepo) UpdateSession(context.Context, string, biz.SessionUpdateFields) (biz.Session, error) {
 	return biz.Session{}, nil
 }
+func (m *batchSessionRepo) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
 func (m *batchSessionRepo) RestoreSession(context.Context, string) (biz.Session, error) {
 	return biz.Session{}, nil
 }

@@ -8,8 +8,8 @@
       class="monitor-log-stream-tabs"
       @update:model-value="$emit('update:subTab', $event)"
     >
-      <q-tab name="flow" icon="timeline" label="流程日志" />
-      <q-tab name="process" icon="terminal" label="进程日志" />
+      <q-tab name="flow" icon="timeline" :label="t('monitorPage.logs.tabFlow')" />
+      <q-tab name="process" icon="terminal" :label="t('monitorPage.logs.tabProcess')" />
     </q-tabs>
     <q-tab-panels :model-value="subTab" animated class="monitor-log-stream-panels">
       <q-tab-panel name="flow" class="q-pa-none">
@@ -23,8 +23,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import FlowLogStream from './FlowLogStream.vue';
 import ProcessLogStream from './ProcessLogStream.vue';
+
+const { t } = useI18n();
 
 defineProps<{
   subTab: 'flow' | 'process';

@@ -69,6 +69,10 @@ func (m *mockSessionRepo) RestoreSession(_ context.Context, _ string) (Session, 
 	return Session{}, nil
 }
 
+func (m *mockSessionRepo) UpdateSessionMetadataKey(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
 func (m *mockSessionRepo) BumpSessionRevision(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }

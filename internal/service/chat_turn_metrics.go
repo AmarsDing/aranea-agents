@@ -7,6 +7,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
@@ -124,6 +125,13 @@ func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsag
 	snap := budget.Snapshot()
 	if snap.EstTotalInput == 0 && snap.ToolsCount == 0 {
 		return
+	}
+	// 台账数据同步观测进 Prometheus 直方图（按 category），否则纯日志无法
+	// 聚合分析各分桶的 token 占比趋势。
+	for cat, tokens := range snap.EstTokens {
+		if tokens > 0 {
+			metrics.ContextBudgetTokens.WithLabelValues(cat).Observe(float64(tokens))
+		}
 	}
 	staticRatio := 0.0
 	if snap.EstTotalInput > 0 {

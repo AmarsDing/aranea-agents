@@ -184,6 +184,12 @@ export type AnnotateCaseResultRequest = {
   humanPass?: boolean;
   humanScore?: number;
   humanComment?: string;
+  // clear_human_pass / clear_human_score explicitly reset the field to
+  // un-annotated (NULL). proto3 optional + JSON null cannot express "clear"
+  // (null is decoded as "field not set"), so explicit flags are required.
+  // A clear flag takes precedence over the corresponding value field.
+  clearHumanPass: boolean | undefined;
+  clearHumanScore: boolean | undefined;
 };
 
 export type GetAgentEvalTrendRequest = {

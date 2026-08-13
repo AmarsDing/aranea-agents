@@ -23,6 +23,9 @@ func (EvalRunPreference) Annotations() []schema.Annotation {
 func (EvalRunPreference) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("dataset_id"),
+		// Y9/Y11: DeleteRun cascades by run_id_a/run_id_b.
+		index.Fields("run_id_a"),
+		index.Fields("run_id_b"),
 	}
 }
 

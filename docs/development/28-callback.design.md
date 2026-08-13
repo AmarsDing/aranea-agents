@@ -2,7 +2,7 @@
 
 > 对应需求：[28 callback.md](./28%20callback.md)  
 > 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md)  
-> 关联模块：[22 plugin.design.md](./22%20plugin.design.md)（内置 Plugin、Runner 注入）
+> 关联模块：[22-plugin.design.md](./22-plugin.design.md)（内置 Plugin、Runner 注入）
 
 ---
 

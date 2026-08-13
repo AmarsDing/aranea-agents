@@ -58,12 +58,12 @@ type (
 var (
 	NewMonitorUsecase               = monitor.NewUsecase
 	DefaultAlertRules               = monitor.DefaultAlertRules
-	WithFilesystemHealthReader      = monitor.WithFilesystemHealthReader
 	WithTraceSpanReader             = monitor.WithTraceSpanReader
-	WithRingBuffer                  = monitor.WithRingBuffer
 	WithEvalWorker                  = monitor.WithEvalWorker
 	WithRegistry                    = monitor.WithRegistry
 	WithLogger                      = monitor.WithLogger
+	WithTraceProjector              = monitor.WithTraceProjector
+	WithFlowFileAppender            = monitor.WithFlowFileAppender
 	NewTraceProjector               = monitor.NewTraceProjector
 	NewFlowFileAppender             = monitor.NewFlowFileAppender
 	NewAlertMetricRegistry          = monitor.NewAlertMetricRegistry

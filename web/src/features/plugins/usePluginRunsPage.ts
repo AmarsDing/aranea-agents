@@ -1,17 +1,26 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import {
-  CALLBACK_POINT_OPTIONS,
   PLUGIN_RUN_KEY_PRESETS,
   PLUGIN_RUN_STATUS_OPTIONS,
   pluginRunsQueryFromRoute,
+  useCallbackPointOptions,
 } from '../callback/constants';
 import type { PluginRun } from './types';
 
-import { PLUGIN_RUN_TABLE_COLUMNS } from './pluginRunsTableUi';
+import { createPluginRunsTableColumns } from './pluginRunsTableUi';
+// TECH-DEBT: runs 数据未入 store，与 plugins 列表模式不一致；观测型短数据暂由 composable 直管
 import { listPluginRuns, deleteAllPluginRuns } from './api';
 
+const RUN_STATUS_I18N_KEYS: Record<string, string> = {
+  success: 'pluginsPage.runs.statusSuccess',
+  blocked: 'pluginsPage.runs.statusBlocked',
+  error: 'pluginsPage.runs.statusError',
+};
+
 export function usePluginRunsPage() {
+  const { t } = useI18n();
   const route = useRoute();
   const router = useRouter();
 
@@ -31,11 +40,16 @@ export function usePluginRunsPage() {
   const detailOpen = ref(false);
   const detailText = ref('');
 
-  const callbackPointOptions = CALLBACK_POINT_OPTIONS;
-  const statusOptions = PLUGIN_RUN_STATUS_OPTIONS;
+  const callbackPointOptions = useCallbackPointOptions();
+  const statusOptions = computed(() =>
+    PLUGIN_RUN_STATUS_OPTIONS.map((o) => ({
+      label: t(RUN_STATUS_I18N_KEYS[o.value] ?? o.value),
+      value: o.value,
+    })),
+  );
   const pluginKeyOptions = ref([...PLUGIN_RUN_KEY_PRESETS.map((p) => p.value)]);
 
-  const columns = PLUGIN_RUN_TABLE_COLUMNS;
+  const columns = computed(() => createPluginRunsTableColumns(t));
 
   function filterPluginKeys(val: string, update: (fn: () => void) => void) {
     update(() => {
@@ -77,7 +91,7 @@ export function usePluginRunsPage() {
       rows.value = data.items;
       total.value = data.total;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载运行记录失败';
+      error.value = err instanceof Error ? err.message : t('pluginsPage.runs.loadFailed');
     } finally {
       loading.value = false;
     }
@@ -134,7 +148,7 @@ export function usePluginRunsPage() {
       total.value = 0;
       page.value = 1;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '清空记录失败';
+      error.value = err instanceof Error ? err.message : t('pluginsPage.runs.clearFailed');
     } finally {
       clearing.value = false;
     }

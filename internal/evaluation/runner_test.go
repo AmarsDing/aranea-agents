@@ -47,6 +47,21 @@ func (f *fakeEvalRepo) runSnapshot(id string) (beval.Run, bool) {
 	return r, ok
 }
 
+// gateRunsSnapshot returns runs with trigger_source="gate" under the lock.
+// Tests must never iterate f.runs directly: the gate's background evaluate
+// goroutine (Y2) writes the map concurrently via UpdateRun.
+func (f *fakeEvalRepo) gateRunsSnapshot() []beval.Run {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]beval.Run, 0, len(f.runs))
+	for _, r := range f.runs {
+		if r.TriggerSource == triggerGate {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 func (f *fakeEvalRepo) CreateDataset(ctx context.Context, d beval.Dataset) (beval.Dataset, error) {
 	if err := ctx.Err(); err != nil {
 		return beval.Dataset{}, err
@@ -224,6 +239,8 @@ func (f *fakeEvalRepo) UpsertGateConfig(_ context.Context, cfg beval.GateConfig)
 	return nil
 }
 
+func (f *fakeEvalRepo) FailStaleRuns(context.Context, time.Time) (int, error) { return 0, nil }
+
 // contentSwitchRunner is a framework runner that answers each user message
 // with a fixed reply, and fails inputs listed in failOn.
 type contentSwitchRunner struct {
@@ -255,6 +272,50 @@ func (c *contentSwitchRunner) Run(_ context.Context, _, _ string, message model.
 func (c *contentSwitchRunner) Close() error { return nil }
 
 var _ runner.Runner = (*contentSwitchRunner)(nil)
+
+// countingRunner wraps contentSwitchRunner and records inference call count.
+type countingRunner struct {
+	contentSwitchRunner
+	n int
+}
+
+func (c *countingRunner) Run(ctx context.Context, userID, sessionID string, message model.Message, opts ...agent.RunOption) (<-chan *event.Event, error) {
+	c.mu.Lock()
+	c.n++
+	c.mu.Unlock()
+	return c.contentSwitchRunner.Run(ctx, userID, sessionID, message, opts...)
+}
+
+func (c *countingRunner) calls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.n
+}
+
+// Regression: FrameworkBridge must honor the per-request NumRuns even when
+// the bridge was constructed with DefaultMultiRunConfig (NumRuns=1). The old
+// "override only when <= 0" guard silently dropped API num_runs > 1, so
+// MultiRun never activated and pass@k stayed 0.
+func TestFrameworkBridgeNumRunsOverridesDefault(t *testing.T) {
+	cr := &countingRunner{contentSwitchRunner: contentSwitchRunner{reply: "fine"}}
+	bridge := NewFrameworkBridge(
+		func(string) (runner.Runner, error) { return cr, nil },
+		nil, nil, nil, DefaultMultiRunConfig(), loggateway.NewNoop(),
+	)
+	ds := beval.Dataset{ID: "ds1"}
+	cases := []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "q1", ExpectedOutput: "fine"}}
+	_, _, _, _, err := bridge.Execute(context.Background(), ds, cases, RunConfig{
+		AgentID: "a1",
+		NumRuns: 3,
+		Metrics: map[string]bool{"exact_match": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cr.calls(); got != 3 {
+		t.Fatalf("expected 3 inference calls for num_runs=3, got %d", got)
+	}
+}
 
 func echoAgent(_ context.Context, _, input string) (string, error) { return input, nil }
 

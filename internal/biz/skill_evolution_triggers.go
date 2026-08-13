@@ -210,24 +210,22 @@ func (t *HealthTrigger) Check(ctx context.Context, skillID string) ([]UnifiedEvo
 	}
 
 	// Condition 3: Same failure tag >= 5 times in 7d
-	if t.aggregator != nil {
-		tagCounts, tagErr := t.aggregator.GetFailureTagCounts(ctx, skillID, since7d)
-		if tagErr != nil {
-			t.lg.Warn("HealthTrigger.Check: GetFailureTagCounts failed",
-				loggateway.StepID("skill_intelligence.evo_trigger"),
-				loggateway.Str("skill_id", skillID),
-				loggateway.Err(tagErr))
-		} else {
-			for _, tc := range tagCounts {
-				if tc.Count >= EvoTriggerSameTagThreshold {
-					triggerTypes = append(triggerTypes, EvolutionActionImprove)
-					triggerReasons = append(triggerReasons, fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
-						tc.Tag, tc.Count, EvoTriggerSameTagThreshold))
-					if priority < 2 {
-						priority = 2
-					}
-					break // one matching tag is enough
+	tagCounts, tagErr := t.aggregator.GetFailureTagCounts(ctx, skillID, since7d)
+	if tagErr != nil {
+		t.lg.Warn("HealthTrigger.Check: GetFailureTagCounts failed",
+			loggateway.StepID("skill_intelligence.evo_trigger"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Err(tagErr))
+	} else {
+		for _, tc := range tagCounts {
+			if tc.Count >= EvoTriggerSameTagThreshold {
+				triggerTypes = append(triggerTypes, EvolutionActionImprove)
+				triggerReasons = append(triggerReasons, fmt.Sprintf("failure tag %q appears %d times in 7d (threshold %d)",
+					tc.Tag, tc.Count, EvoTriggerSameTagThreshold))
+				if priority < 2 {
+					priority = 2
 				}
+				break // one matching tag is enough
 			}
 		}
 	}

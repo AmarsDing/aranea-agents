@@ -1,7 +1,7 @@
 # Plugin 管理 — 产品需求文档
 
 > **版本**：2026-06-06 | **状态**：🟢 Phase 6 已完成；P3 沙箱/版本待做
-> **设计**：[22 plugin.design.md](./22%20plugin.design.md) · **开发计划**：[22-plugin.development.md](./22-plugin.development.md)
+> **设计**：[22-plugin.design.md](./22-plugin.design.md) · **开发计划**：[22-plugin.development.md](./22-plugin.development.md)
 
 ---
 
@@ -514,18 +514,18 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 ## 5. 数据模型
 
 > 数据模型（Plugin / PluginRun / PluginPermissions 等字段定义、Ent Schema、数据库表）属于设计实现细节，已迁移至设计文档：
-> - **Proto 类型定义**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层
-> - **Biz 领域模型**：[22 plugin.design.md](./22%20plugin.design.md) §三 Biz 层
-> - **Ent Schema 与数据库表**：[22 plugin.design.md](./22%20plugin.design.md) §四 Data 层
+> - **Proto 类型定义**：[22-plugin.design.md](./22-plugin.design.md) §二 Proto 层
+> - **Biz 领域模型**：[22-plugin.design.md](./22-plugin.design.md) §三 Biz 层
+> - **Ent Schema 与数据库表**：[22-plugin.design.md](./22-plugin.design.md) §四 Data 层
 
 ---
 
 ## 6. API 契约
 
 > API 契约（HTTP 路径、请求/响应结构、Proto RPC 定义）属于设计实现细节，已迁移至设计文档：
-> - **完整 Proto 定义**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层
-> - **HTTP API 汇总**：[22 plugin.design.md](./22%20plugin.design.md) §二 Proto 层 §2.3
-> - **Service 层 RPC 方法实现**：[22 plugin.design.md](./22%20plugin.design.md) §五 Service 层
+> - **完整 Proto 定义**：[22-plugin.design.md](./22-plugin.design.md) §二 Proto 层
+> - **HTTP API 汇总**：[22-plugin.design.md](./22-plugin.design.md) §二 Proto 层 §2.3
+> - **Service 层 RPC 方法实现**：[22-plugin.design.md](./22-plugin.design.md) §五 Service 层
 
 工具确认审批复用聊天消息通道（`POST /v1/chat/send`），前端发送 `__aranea:tool_confirm:approve` 或 `__aranea:tool_confirm:deny` 结构化消息，后端解析后完成工具确认审批。
 
@@ -546,7 +546,7 @@ Plugin 是运行时回调对象。每个 Plugin 实现 `plugin.Plugin` 接口，
 | 工具确认审批通道 | 复用聊天消息通道 | `__aranea:tool_confirm:approve|deny` 结构化消息 |
 | confirmation_guard Runner 级阻断 | BeforeTool CustomResult 直接阻断 | 不再依赖 Chain ConfirmGate |
 
-> **后端技术设计**（种子同步、热重载、配置校验、Agent 绑定、统计更新等）参见 [22 plugin.design.md](./22%20plugin.design.md)。
+> **后端技术设计**（种子同步、热重载、配置校验、Agent 绑定、统计更新等）参见 [22-plugin.design.md](./22-plugin.design.md)。
 
 ---
 

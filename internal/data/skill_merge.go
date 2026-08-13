@@ -105,7 +105,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 			SetUpdatedAt(now).
 			Save(txCtx)
 		if vErr != nil {
-			return entErrToBizErr(vErr, "SKILL")
+			return entErrToBizErr(vErr, apierror.DomainSkill)
 		}
 		newVersionID = newVersion.ID
 
@@ -114,13 +114,13 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 			Where(platformskill.IDEQ(params.TargetID)).
 			Only(txCtx)
 		if tErr != nil {
-			return entErrToBizErr(tErr, "SKILL")
+			return entErrToBizErr(tErr, apierror.DomainSkill)
 		}
 		md := parseSkillMetadata(r.lg, target.MetadataJSON)
 		md.Tags = stringSliceToSkillTags(params.FusedTags)
 		metaJSON, jErr := json.Marshal(md)
 		if jErr != nil {
-			return entErrToBizErr(jErr, "SKILL")
+			return entErrToBizErr(jErr, apierror.DomainSkill)
 		}
 
 		_, uErr := client.PlatformSkill.UpdateOneID(params.TargetID).
@@ -128,7 +128,7 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 			SetUpdatedAt(now).
 			Save(txCtx)
 		if uErr != nil {
-			return entErrToBizErr(uErr, "SKILL")
+			return entErrToBizErr(uErr, apierror.DomainSkill)
 		}
 
 		// 3. 转移调用记录
@@ -138,18 +138,26 @@ func (r *SkillMergeRepo) ApplyMerge(ctx context.Context, params biz.SkillMergeAp
 			SetSkillID(params.TargetID).
 			Save(txCtx)
 		if trErr != nil {
-			return entErrToBizErr(trErr, "SKILL")
+			return entErrToBizErr(trErr, apierror.DomainSkill)
 		}
 
-		// 4. 废弃源 Skill
+		// 4. 废弃源 Skill（软删墓碑保留审计）。skill_key 为全表唯一索引（无状态
+		// 过滤），墓碑必须释放 slug——追加 deprecated 后缀，否则同名重建/导入
+		// 永久唯一键冲突（批次 C2）。
+		src, sErr := client.PlatformSkill.Get(txCtx, params.SourceID)
+		if sErr != nil {
+			return entErrToBizErr(sErr, apierror.DomainSkill)
+		}
+		releasedKey := fmt.Sprintf("%s--deprecated-%d", src.SkillKey, time.Now().UTC().UnixNano())
 		_, dErr := client.PlatformSkill.UpdateOneID(params.SourceID).
 			SetEnabled(false).
 			SetStatus("deprecated").
 			SetDeletedAt(now).
+			SetSkillKey(releasedKey).
 			SetUpdatedAt(now).
 			Save(txCtx)
 		if dErr != nil {
-			return entErrToBizErr(dErr, "SKILL")
+			return entErrToBizErr(dErr, apierror.DomainSkill)
 		}
 		return nil
 	})

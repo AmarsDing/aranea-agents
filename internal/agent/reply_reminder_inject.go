@@ -36,15 +36,6 @@ func newReplyReminderAfterHook() callbacks.AfterToolHook {
 		if args == nil {
 			return &trpctool.AfterToolResult{}, nil
 		}
-		// Exclude silent orchestration tools (check_progress) from the reply
-		// reminder. These tools are called by the backend polling mechanism and
-		// the LLM should NOT generate a reply after each call — doing so
-		// creates a loop: call check_progress → forced reply → reply mentions
-		// progress → LLM calls check_progress again. The backend poller
-		// handles progress monitoring; the LLM should focus on synthesis.
-		if args.ToolName == "check_progress" {
-			return &trpctool.AfterToolResult{}, nil
-		}
 		inv, ok := trpcagent.InvocationFromContext(ctx)
 		if !ok || inv == nil {
 			return &trpctool.AfterToolResult{}, nil

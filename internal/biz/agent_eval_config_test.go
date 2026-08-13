@@ -11,4 +11,9 @@ func TestParseAgentEvalAutoConfig(t *testing.T) {
 	if ParseAgentEvalAutoConfig("").Enabled {
 		t.Fatal("empty config should be disabled")
 	}
+	// num_runs above the cap is clamped (MultiRun cost guard).
+	clamped := ParseAgentEvalAutoConfig(`{"evaluation":{"auto_after_turn":true,"dataset_id":"ds-1","num_runs":999}}`)
+	if clamped.NumRuns != EvalMaxNumRuns {
+		t.Fatalf("expected num_runs clamped to %d, got %d", EvalMaxNumRuns, clamped.NumRuns)
+	}
 }

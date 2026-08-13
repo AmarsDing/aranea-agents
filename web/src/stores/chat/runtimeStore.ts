@@ -20,10 +20,23 @@ import {
   updatePendingMessage,
 } from '../../features/chat/api';
 import type { ChatOption, RunStatus, PendingMessage, SendMessageOptions } from '../../features/chat/types';
+import type { SkillCatalogEntry } from '../../features/skills/types';
 import type { MessageAck } from '../../realtime/command_channel';
 
 export const useChatRuntimeStore = defineStore('chatRuntime', () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});
+
+  // Design 69 Phase 3: agent-visible skill catalog per session, pushed by the
+  // backend via the skill.catalog v2 event on chat WS connection setup.
+  const skillCatalogBySession = ref<Record<string, SkillCatalogEntry[]>>({});
+
+  function setSkillCatalog(sessionId: string, skills: SkillCatalogEntry[]) {
+    skillCatalogBySession.value[sessionId] = skills;
+  }
+
+  function skillCatalogFor(sessionId: string): SkillCatalogEntry[] {
+    return skillCatalogBySession.value[sessionId] ?? [];
+  }
 
   function setWsConnected(sessionId: string, connected: boolean) {
     wsConnectedBySession.value[sessionId] = connected;
@@ -94,10 +107,14 @@ export const useChatRuntimeStore = defineStore('chatRuntime', () => {
 
   function deleteSessionRuntime(sessionId: string) {
     delete wsConnectedBySession.value[sessionId];
+    delete skillCatalogBySession.value[sessionId];
   }
 
   return {
     wsConnectedBySession,
+    skillCatalogBySession,
+    skillCatalogFor,
+    setSkillCatalog,
     isWsConnected,
     setWsConnected,
     fetchRunStatus,

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -156,6 +157,12 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 	// the dataset changed between runs (scores not directly comparable).
 	run.DatasetHash = hashEvalCases(cases)
 	if err := r.uc.UpdateRun(ctx, run); err != nil {
+		// Y14: a silent return here leaves the row in "pending" until the
+		// startup sweep (Y10) with no trace of what happened — log it (K2).
+		r.lg.Error("evaluation persist running state failed",
+			loggateway.StepID("evaluation.run.persist_running_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
 		return err
 	}
 
@@ -209,8 +216,16 @@ func (r *Runner) executeFramework(
 		}
 	}
 	run.ScoresJSON = normalizeScoresJSON(run.ScoresJSON)
-	for name, avg := range scores {
-		mergeRunScores(&run, name, avg)
+	// Y7: merge in sorted name order — tool_call_accuracy sorts before
+	// tool_trajectory, so the legacy column priority rule in mergeRunScores
+	// sees the accuracy entry deterministically (Go map order is random).
+	scoreNames := make([]string, 0, len(scores))
+	for name := range scores {
+		scoreNames = append(scoreNames, name)
+	}
+	sort.Strings(scoreNames)
+	for _, name := range scoreNames {
+		mergeRunScores(&run, name, scores[name])
 	}
 	run.PassAtK = passAtK
 	run.PassHatK = passHatK
@@ -239,6 +254,12 @@ func (r *Runner) executeFramework(
 			event.P("pass_hat_k", passHatK))
 	}
 	if err := r.uc.UpdateRun(ctx, run); err != nil {
+		// Y14: without this log the row silently stays "running" although the
+		// evaluation finished — indistinguishable from a stuck run (K2).
+		r.lg.Error("evaluation persist completed state failed",
+			loggateway.StepID("evaluation.run.persist_completed_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
 		return err
 	}
 	// P2-2: online quality watch — check the consecutive-drop condition after
@@ -264,7 +285,16 @@ func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error
 	run.Status = "failed"
 	run.ErrorMessage = msg
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)
-	return r.uc.UpdateRun(ctx, run)
+	if err := r.uc.UpdateRun(ctx, run); err != nil {
+		// Y14: the run failed AND persisting that fact failed — the row keeps
+		// showing "running". Log so the sweep cleanup is traceable (K2).
+		r.lg.Error("evaluation persist failed state failed",
+			loggateway.StepID("evaluation.run.persist_failed_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 // meanScore averages per-metric mean scores into a single run-level mean.

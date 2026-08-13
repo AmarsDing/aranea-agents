@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	beval "aranea-agents/internal/biz/evaluation"
@@ -19,6 +20,31 @@ func gateFixture(repo *fakeEvalRepo) (*PublishGate, *captureBus) {
 	runner := NewRunner(uc, echoAgent, nil, loggateway.NewNoop())
 	bus := &captureBus{}
 	return NewPublishGate(uc, runner, bus, loggateway.NewNoop()), bus
+}
+
+// waitBusCount polls the capture bus until want events have arrived or the
+// deadline passes. Gate evaluation runs on a background goroutine (Y2), so
+// tests asserting the advisory outcome must wait for it.
+func waitBusCount(t *testing.T, bus *captureBus, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if bus.count() >= want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d bus events, got %d", want, bus.count())
+}
+
+// lastNoticeMessage returns the Message of the most recent SystemNoticeEvent.
+func lastNoticeMessage(t *testing.T, bus *captureBus) string {
+	t.Helper()
+	ev, ok := bus.last().(*biz.SystemNoticeEvent)
+	if !ok || ev == nil {
+		t.Fatalf("last event is not a SystemNoticeEvent: %T", bus.last())
+	}
+	return ev.Message
 }
 
 func TestPublishGateDisabledIsNoop(t *testing.T) {
@@ -58,18 +84,15 @@ func TestPublishGatePassesWhenScoreAboveFloor(t *testing.T) {
 	}
 	// The gate run must be recorded with the gate trigger source so trend
 	// panels can split it out of manual/after_turn series.
-	gateRuns := 0
-	for _, r := range repo.runs {
-		if r.TriggerSource == triggerGate {
-			gateRuns++
-		}
-	}
-	if gateRuns != 1 {
-		t.Fatalf("expected 1 gate run recorded, got %d", gateRuns)
+	if n := len(repo.gateRunsSnapshot()); n != 1 {
+		t.Fatalf("expected 1 gate run recorded, got %d", n)
 	}
 }
 
-func TestPublishGateBlocksBelowFloor(t *testing.T) {
+// Y2: a below-floor regression must NOT block the publish — Check allows and
+// the breach surfaces as an advisory notification once the background run
+// completes.
+func TestPublishGateAdvisesBelowFloor(t *testing.T) {
 	repo := newFakeEvalRepo()
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{
@@ -80,26 +103,26 @@ func TestPublishGateBlocksBelowFloor(t *testing.T) {
 		Metric: "exact_match", MinScore: 0.8,
 	}
 	gate, bus := gateFixture(repo)
-	err := gate.Check(context.Background(), beval.GateTriggerSkillPublish)
-	if err == nil {
-		t.Fatal("score 0.0 < floor 0.8 must block")
+	if err := gate.Check(context.Background(), beval.GateTriggerSkillPublish); err != nil {
+		t.Fatalf("advisory gate must allow publish, got %v", err)
 	}
-	if !apierror.IsCode(err, apierror.CodeConflict) {
-		t.Fatalf("blocked publish must be Conflict, got %v", err)
-	}
-	if bus.count() != 1 {
-		t.Fatalf("blocked gate must publish one notice, got %d", bus.count())
+	waitBusCount(t, bus, 1)
+	msg := lastNoticeMessage(t, bus)
+	if !strings.Contains(msg, "低于下限") || !strings.Contains(msg, "已放行") {
+		t.Fatalf("expected advisory below-floor notice, got %q", msg)
 	}
 }
 
-func TestPublishGateBlocksOnExcessiveDrop(t *testing.T) {
+// Y2: an excessive drop vs the baseline is likewise advisory — the publish
+// proceeds and admins are notified after the fact.
+func TestPublishGateAdvisesExcessiveDrop(t *testing.T) {
 	repo := newFakeEvalRepo()
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{
 		{ID: "c1", DatasetID: "ds1", Input: "hello", ExpectedOutput: "world"},
 	}
 	// Baseline: a completed run with exact_match 0.9. Gate run scores 0.0;
-	// max_drop 0.2 → 0.0 < 0.9-0.2 → block.
+	// max_drop 0.2 → 0.0 < 0.9-0.2 → advisory breach.
 	repo.runs["base"] = beval.Run{
 		ID: "base", DatasetID: "ds1", AgentID: "a1", Status: "completed",
 		ExactMatchScore: 0.9, CreatedAt: "2026-08-07T00:00:00Z",
@@ -109,18 +132,75 @@ func TestPublishGateBlocksOnExcessiveDrop(t *testing.T) {
 		Metric: "exact_match", MaxDrop: 0.2,
 	}
 	gate, bus := gateFixture(repo)
-	err := gate.Check(context.Background(), beval.GateTriggerPackInstall)
+	if err := gate.Check(context.Background(), beval.GateTriggerPackInstall); err != nil {
+		t.Fatalf("advisory gate must allow install, got %v", err)
+	}
+	waitBusCount(t, bus, 1)
+	msg := lastNoticeMessage(t, bus)
+	if !strings.Contains(msg, "下跌") || !strings.Contains(msg, "已放行") {
+		t.Fatalf("expected advisory drop notice, got %q", msg)
+	}
+}
+
+// Y12: max_drop configured but no completed baseline exists — the drop check
+// would be silently skipped, so this is the one remaining hard block. The
+// gate run launched alongside measures the pre-publish state and becomes the
+// baseline for the retry.
+func TestPublishGateBlocksWithoutBaseline(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
+	repo.cases["ds1"] = []beval.Case{
+		{ID: "c1", DatasetID: "ds1", Input: "hello", ExpectedOutput: "hello"},
+	}
+	repo.gateCfg = beval.GateConfig{
+		Enabled: true, AgentID: "a1", DatasetID: "ds1",
+		Metric: "exact_match", MaxDrop: 0.2,
+	}
+	gate, bus := gateFixture(repo)
+	err := gate.Check(context.Background(), beval.GateTriggerSkillPublish)
 	if err == nil {
-		t.Fatal("drop 0.9 → 0.0 beyond max_drop 0.2 must block")
+		t.Fatal("max_drop without baseline must block (Y12)")
 	}
 	if !apierror.IsCode(err, apierror.CodeConflict) {
-		t.Fatalf("blocked install must be Conflict, got %v", err)
+		t.Fatalf("no-baseline block must be Conflict, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "下跌") {
-		t.Fatalf("expected drop reason in message, got %q", err.Error())
+	if !strings.Contains(err.Error(), "无可用基线") {
+		t.Fatalf("expected baseline reason in message, got %q", err.Error())
 	}
 	if bus.count() != 1 {
-		t.Fatalf("blocked gate must publish one notice, got %d", bus.count())
+		t.Fatalf("block must publish one notice, got %d", bus.count())
+	}
+	if n := len(repo.gateRunsSnapshot()); n != 1 {
+		t.Fatalf("no-baseline block must still launch a baseline run, got %d gate runs", n)
+	}
+}
+
+// A publish burst must not fan out N full-dataset evaluations: while one
+// gate run is pending/running, further publishes pass without launching
+// duplicates (the in-flight run covers the current code state).
+func TestPublishGateDeduplicatesInFlightRun(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
+	repo.cases["ds1"] = []beval.Case{
+		{ID: "c1", DatasetID: "ds1", Input: "hello", ExpectedOutput: "hello"},
+	}
+	repo.runs["inflight"] = beval.Run{
+		ID: "inflight", DatasetID: "ds1", AgentID: "a1", Status: "running",
+		TriggerSource: triggerGate, CreatedAt: "2026-08-07T00:00:00Z",
+	}
+	repo.gateCfg = beval.GateConfig{
+		Enabled: true, AgentID: "a1", DatasetID: "ds1",
+		Metric: "exact_match", MinScore: 0.5,
+	}
+	gate, bus := gateFixture(repo)
+	if err := gate.Check(context.Background(), beval.GateTriggerSkillPublish); err != nil {
+		t.Fatalf("in-flight dedup must allow, got %v", err)
+	}
+	if n := len(repo.gateRunsSnapshot()); n != 1 {
+		t.Fatalf("in-flight gate run must suppress a duplicate launch, got %d gate runs", n)
+	}
+	if bus.count() != 0 {
+		t.Fatalf("dedup must not publish, got %d events", bus.count())
 	}
 }
 

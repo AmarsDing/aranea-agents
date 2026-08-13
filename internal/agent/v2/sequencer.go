@@ -26,9 +26,6 @@ const (
 	// defaultPersistEnqueueTimeout 是持久化事件入队的保底等待上限：
 	// 脱离 turn ctx 取消后仍等待该时长，队列持续打满才落死信。
 	defaultPersistEnqueueTimeout = 5 * time.Second
-	// deadLetterErrLogInterval 是死信 Error 日志的限流窗口（见
-	// Sequencer.deadLetterErrThrottle）。
-	deadLetterErrLogInterval = 10 * time.Second
 )
 
 // EventBus is the publish sink for v2 events (fan-out to WS subscribers).
@@ -47,6 +44,10 @@ type EventBus interface {
 //  2. step.streaming events are NOT persisted (only WS-published); same
 //     StepID + DeltaField within the 16ms batch window are merged.
 //  3. Persist worker: 5x exponential backoff retries + 512-cap dead-letter.
+//
+// P1-1: 持久化职责（persistChan/retry/deadLetter/replay）已拆分为
+// persistWorker 子管理器（sequencer_persist.go + deadletter_replay.go），
+// 日志限流聚合为 sequencerThrottles；本 struct 仅保留发布路径与生命周期字段。
 type Sequencer struct {
 	repoSet     RepoSet
 	outbox      biz.EventDeliveryOutboxRepo // B-06: durable critical-event outbox (optional)
@@ -54,30 +55,15 @@ type Sequencer struct {
 	lg          loggateway.Logger
 	seqAssigner SeqAssigner // shared with Projector (v2-local defaultSeqAssigner; breaks agent→v2 cycle)
 
-	publishQueue chan publishTask
-	persistChan  chan persistItem
-	deadLetter   *deadLetterRing
+	publishQueue       chan publishTask
+	publishWG          sync.WaitGroup
+	deltaBatchInterval time.Duration
 
-	// deadLetterErrThrottle limits the "persist exhausted retries" Error log.
-	// When the DB is down, every persist-class event exhausts its retries and
-	// would otherwise emit one Error per event for as long as the outage
-	// lasts. Only the log line is throttled — dead-lettering itself is not.
-	deadLetterErrThrottle *loggateway.Throttle
+	// persist 是持久化子管理器（P1-1）：persistChan/retry/deadLetter/replay。
+	persist *persistWorker
+	// throttles 聚合 5 个失败链日志限流器（行为从不被限流，仅日志）。
+	throttles *sequencerThrottles
 
-	// P1-R2b: optional durable dead-letter store. When set, dead-lettered
-	// events are also written to the event_dead_letter table and replayed
-	// (startup + periodic) until success or attempt cap.
-	deadLetterStore biz.EventDeadLetterRepo
-	replayDone      chan struct{}
-	replayWG        sync.WaitGroup
-	replayStarted   bool // 仅当后台 replay worker 启动时为 true（Close 据此收尾）
-
-	publishWG sync.WaitGroup
-	persistWG sync.WaitGroup
-
-	deltaBatchInterval    time.Duration
-	persistMaxRetries     int
-	persistBackoff        time.Duration
 	persistEnqueueTimeout time.Duration
 
 	closed  atomic.Bool
@@ -159,21 +145,18 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 		o(&cfg)
 	}
 
+	slg := lg.With(loggateway.Domain("sequencer_v2"))
+	throttles := newSequencerThrottles()
 	s := &Sequencer{
 		repoSet:               rs,
 		outbox:                cfg.outbox,
 		bus:                   bus,
-		lg:                    lg.With(loggateway.Domain("sequencer_v2")),
+		lg:                    slg,
 		seqAssigner:           NewDefaultSeqAssigner(),
 		publishQueue:          make(chan publishTask, cfg.publishBuffer),
-		persistChan:           make(chan persistItem, cfg.persistBuffer),
-		deadLetter:            newDeadLetterRing(cfg.deadLetterCapacity),
-		deadLetterErrThrottle: loggateway.NewThrottle(deadLetterErrLogInterval),
-		deadLetterStore:       cfg.deadLetterStore,
-		replayDone:            make(chan struct{}),
 		deltaBatchInterval:    cfg.deltaBatchInterval,
-		persistMaxRetries:     cfg.persistMaxRetries,
-		persistBackoff:        cfg.persistBackoff,
+		persist:               newPersistWorker(rs, slg, throttles, cfg),
+		throttles:             throttles,
 		persistEnqueueTimeout: cfg.persistEnqueueTimeout,
 	}
 
@@ -182,13 +165,7 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 	// 会静默死亡（事件堆积至 buffer 满后所有发布者阻塞在 ctx.Done）；
 	// safego 提供 recover + PanicHook 告警。
 	safego.GoBackground("sequencer-v2-publish", s.publishLoop)
-	s.persistWG.Add(1)
-	safego.GoBackground("sequencer-v2-persist", s.persistLoop)
-	if s.deadLetterStore != nil && !cfg.disableReplayLoop {
-		s.replayStarted = true
-		s.replayWG.Add(1)
-		safego.GoBackground("sequencer-v2-dl-replay", s.deadLetterReplayLoop)
-	}
+	s.persist.start(cfg.disableReplayLoop)
 	return s
 }
 
@@ -230,9 +207,14 @@ func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 	case <-enqueueCtx.Done():
 		// Y5: never silently drop a persist-class event — dead-letter it so the
 		// ring/durable store can replay the entity upsert once the pipe recovers.
-		s.lg.Error("persist event enqueue timeout, sending to dead-letter",
-			loggateway.Str("kind", string(e.EventKind())), loggateway.Err(enqueueCtx.Err()))
-		s.pushDeadLetter(e)
+		// R1: the Error is throttled (per-event under a stalled pipe); the
+		// dead-letter push is not.
+		if ok, suppressed := s.throttles.enqueueTimeoutErr.Allow(); ok {
+			s.lg.Error("persist event enqueue timeout, sending to dead-letter",
+				stallFields(suppressed,
+					loggateway.Str("kind", string(e.EventKind())), loggateway.Err(enqueueCtx.Err()))...)
+		}
+		s.persist.pushDeadLetter(e)
 	}
 }
 
@@ -240,7 +222,7 @@ func (s *Sequencer) Publish(ctx context.Context, e biz.Event) {
 // (only bus-published; no entity Upsert).
 func (s *Sequencer) shouldPersist(e biz.Event) bool {
 	switch e.(type) {
-	case *biz.StepStreamingEvent, *biz.SystemNoticeEvent, *biz.HeartbeatEvent, *biz.RunStatusEvent, *biz.SkillCatalogEvent:
+	case *biz.StepStreamingEvent, *biz.SystemNoticeEvent, *biz.HeartbeatEvent, *biz.RunStatusEvent:
 		return false
 	default:
 		return true
@@ -275,7 +257,7 @@ func (s *Sequencer) Flush(ctx context.Context) error {
 		// All publish tasks processed. Send persist flush marker.
 		persistFlushCh := make(chan struct{})
 		select {
-		case s.persistChan <- persistItem{flushCh: persistFlushCh}:
+		case s.persist.ch <- persistItem{flushCh: persistFlushCh}:
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(5 * time.Second):
@@ -430,7 +412,7 @@ func (s *Sequencer) processTask(task publishTask) {
 			// and persistLoop never sends back into publishQueue.
 			drainCh := make(chan struct{})
 			select {
-			case s.persistChan <- persistItem{flushCh: drainCh}:
+			case s.persist.ch <- persistItem{flushCh: drainCh}:
 				select {
 				case <-drainCh:
 				case <-time.After(5 * time.Second):
@@ -459,12 +441,17 @@ func (s *Sequencer) processTask(task publishTask) {
 		}
 		// Async persist (non-terminal or terminal fallback).
 		select {
-		case s.persistChan <- persistItem{event: task.event}:
+		case s.persist.ch <- persistItem{event: task.event}:
 		default:
 			// Persist channel full: log + drop to dead-letter.
-			s.lg.Warn("persist channel full, event dropped to dead-letter",
-				loggateway.Str("kind", string(task.event.EventKind())))
-			s.pushDeadLetter(task.event)
+			// R2: the Warn is throttled (per-event while the persist worker is
+			// stuck); the dead-letter push is not.
+			if ok, suppressed := s.throttles.persistFullWarn.Allow(); ok {
+				s.lg.Warn("persist channel full, event dropped to dead-letter",
+					stallFields(suppressed,
+						loggateway.Str("kind", string(task.event.EventKind())))...)
+			}
+			s.persist.pushDeadLetter(task.event)
 		}
 	}
 	if biz.IsCriticalDeliveryEvent(task.event) {
@@ -526,10 +513,15 @@ func (s *Sequencer) insertCriticalOutbox(ctx context.Context, e biz.Event) strin
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := s.outbox.Insert(ctx, row); err != nil {
-		s.lg.Warn("outbox insert failed",
-			loggateway.Str("kind", string(e.EventKind())),
-			loggateway.SessionID(sessionID),
-			loggateway.Err(err))
+		// R4: throttled — fires per critical event while the outbox table is
+		// down. The outbox skip itself is unchanged (best-effort).
+		if ok, suppressed := s.throttles.outboxInsertWarn.Allow(); ok {
+			s.lg.Warn("outbox insert failed",
+				stallFields(suppressed,
+					loggateway.Str("kind", string(e.EventKind())),
+					loggateway.SessionID(sessionID),
+					loggateway.Err(err))...)
+		}
 		return ""
 	}
 	return rowID
@@ -547,56 +539,8 @@ func marshalV2EventEnvelope(e biz.Event, eventID string) ([]byte, error) {
 	return json.Marshal(envelope)
 }
 
-// persistLoop consumes persistChan with retry + dead-letter.
-func (s *Sequencer) persistLoop() {
-	defer s.persistWG.Done()
-	for item := range s.persistChan {
-		if item.flushCh != nil {
-			close(item.flushCh)
-			continue
-		}
-		s.persistWithRetry(item.event)
-	}
-}
-
-func (s *Sequencer) persistWithRetry(e biz.Event) {
-	var lastErr error
-	for attempt := 0; attempt < s.persistMaxRetries; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_, err := persistAction(ctx, s.repoSet, e)
-		cancel()
-		if err == nil {
-			return
-		}
-		lastErr = err
-		// Exponential backoff: 1x, 2x, 4x, 8x, 16x.
-		// Y7: no sleep after the final attempt — the event is about to be
-		// dead-lettered, so the extra backoff only delays the failure signal.
-		if attempt < s.persistMaxRetries-1 {
-			time.Sleep(s.persistBackoff * time.Duration(1<<attempt))
-		}
-	}
-	s.pushDeadLetterThrottledLog(e, lastErr)
-	s.pushDeadLetter(e)
-}
-
-// pushDeadLetterThrottledLog emits the retry-exhaustion Error at most once
-// per deadLetterErrLogInterval. Dead-lettering itself (pushDeadLetter) is
-// never throttled — only the log line is.
-func (s *Sequencer) pushDeadLetterThrottledLog(e biz.Event, lastErr error) {
-	ok, suppressed := s.deadLetterErrThrottle.Allow()
-	if !ok {
-		return
-	}
-	fields := []loggateway.Field{loggateway.Str("kind", string(e.EventKind())), loggateway.Err(lastErr)}
-	if suppressed > 0 {
-		fields = append(fields, loggateway.Int("suppressed", suppressed))
-	}
-	s.lg.Error("persist exhausted retries, sending to dead-letter", fields...)
-}
-
 // Close performs graceful shutdown: close publishQueue → drain publishLoop →
-// close persistChan → drain persistLoop → stop replay worker. Idempotent.
+// close persist channel → drain persistLoop → stop replay worker. Idempotent.
 func (s *Sequencer) Close() error {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
@@ -608,67 +552,9 @@ func (s *Sequencer) Close() error {
 	close(s.publishQueue)
 	s.pubMu.Unlock()
 	s.publishWG.Wait()
-	close(s.persistChan)
-	s.persistWG.Wait()
-	if s.replayStarted {
-		close(s.replayDone)
-		s.replayWG.Wait()
-	}
+	s.persist.close()
 	return nil
 }
 
 // DeadLetterCount returns the number of events that exhausted retries.
-func (s *Sequencer) DeadLetterCount() int { return s.deadLetter.Len() }
-
-// deadLetterRing is a FIFO ring buffer with entity-ID-based dedup.
-type deadLetterRing struct {
-	mu   sync.Mutex
-	buf  []biz.Event
-	cap  int
-	seen map[string]struct{} // dedup by entity ID (extracted from event)
-}
-
-func newDeadLetterRing(capacity int) *deadLetterRing {
-	return &deadLetterRing{
-		buf:  make([]biz.Event, 0, capacity),
-		cap:  capacity,
-		seen: make(map[string]struct{}),
-	}
-}
-
-func (r *deadLetterRing) Push(e biz.Event) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	id := deadLetterID(e)
-	if _, ok := r.seen[id]; ok {
-		// A5: same entity already dead-lettered — replace the stale entry with
-		// the newest event (aligns with the durable store's upsert semantics;
-		// replay/inspection must see the latest entity state, not an old one).
-		for i, existing := range r.buf {
-			if deadLetterID(existing) == id {
-				r.buf = append(r.buf[:i], r.buf[i+1:]...)
-				break
-			}
-		}
-	}
-	if len(r.buf) >= r.cap {
-		// Evict oldest
-		old := r.buf[0]
-		delete(r.seen, deadLetterID(old))
-		r.buf = r.buf[1:]
-	}
-	r.buf = append(r.buf, e)
-	r.seen[id] = struct{}{}
-}
-
-func (r *deadLetterRing) Len() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.buf)
-}
-
-// deadLetterID extracts the entity ID for deduplication.
-// Uses the EntityID() method added to the Event interface (Deviation 7).
-func deadLetterID(e biz.Event) string {
-	return e.EntityID()
-}
+func (s *Sequencer) DeadLetterCount() int { return s.persist.ring.Len() }

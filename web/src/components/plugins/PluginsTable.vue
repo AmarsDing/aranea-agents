@@ -3,7 +3,7 @@
     :shell="shell"
     table-class="plugins-table"
     :rows="rows"
-    :columns="PLUGIN_TABLE_COLUMNS"
+    :columns="tableColumns"
     row-key="id"
     :loading="loading"
     hide-pagination
@@ -12,7 +12,7 @@
   >
     <template #body-cell-name="props">
       <q-td :props="props">
-        <AppRegistryHoverTip :text="props.row.description" empty-label="暂无说明">
+        <AppRegistryHoverTip :text="props.row.description" :empty-label="t('pluginsPage.noDescription')">
           <div class="plugins-table__name-hit min-width-0">
             <div class="app-registry-cell-primary ellipsis">{{ props.row.name }}</div>
             <div class="app-registry-cell-sub ellipsis">{{ props.row.key }}</div>
@@ -32,7 +32,10 @@
 
     <template #body-cell-callbacks="props">
       <q-td :props="props">
-        <AppRegistryHoverTip :text="formatCallbacksSummary(props.row.callback_points)" empty-label="暂无 Callback">
+        <AppRegistryHoverTip
+          :text="formatCallbacksSummary(props.row.callback_points)"
+          :empty-label="t('pluginsPage.noCallbacks')"
+        >
           <div v-if="props.row.callback_points?.length" class="app-registry-chip-wrap plugins-table__callback-chips">
             <span
               v-for="point in visibleCallbackPoints(props.row.callback_points)"
@@ -53,13 +56,15 @@
     <template #body-cell-stats="props">
       <q-td :props="props">
         <div class="plugin-stats-cell min-width-0">
-          <div class="app-registry-cell-primary">{{ props.row.invoke_count }} 次</div>
+          <div class="app-registry-cell-primary">
+            {{ t('pluginsPage.invokeTimes', { count: props.row.invoke_count }) }}
+          </div>
           <div class="plugin-stats-cell__meta">
             <span class="plugin-status-dot" :class="`plugin-status-dot--${lastStatusTone(props.row)}`" />
-            <span class="app-registry-cell-sub ellipsis">{{ lastStatusLabel(props.row) }}</span>
+            <span class="app-registry-cell-sub ellipsis">{{ lastStatusLabel(props.row, t) }}</span>
           </div>
           <div v-if="props.row.error_count || props.row.block_count" class="app-registry-cell-sub ellipsis">
-            阻断 {{ props.row.block_count }} · 错误 {{ props.row.error_count }}
+            {{ t('pluginsPage.statsBlockError', { block: props.row.block_count, error: props.row.error_count }) }}
           </div>
         </div>
       </q-td>
@@ -79,7 +84,7 @@
 
     <template #body-cell-scope="props">
       <q-td :props="props">
-        <span class="plugin-tag plugin-tag--scope ellipsis" :title="scopeTooltip(props.row.scope)">
+        <span class="plugin-tag plugin-tag--scope ellipsis" :title="scopeTooltip(props.row.scope, t)">
           {{ scopeLabel(props.row.scope) }}
         </span>
       </q-td>
@@ -99,7 +104,7 @@
             :aria-label="t('plugins.actionViewRuns')"
             :to="pluginRunsTo(props.row)"
           >
-            <q-tooltip>运行记录</q-tooltip>
+            <q-tooltip>{{ t('plugins.actionViewRuns') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -125,7 +130,7 @@
             :disable="!props.row.permissions?.can_edit_config"
             @click="$emit('editConfig', props.row)"
           >
-            <q-tooltip>编辑配置</q-tooltip>
+            <q-tooltip>{{ t('plugins.actionEditConfig') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -134,12 +139,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import type { Plugin } from '../../features/plugins/types';
 import {
-  PLUGIN_TABLE_COLUMNS,
+  createPluginTableColumns,
   formatCallbacksSummary,
   hiddenCallbackCount,
   lastStatusLabel,
@@ -168,4 +174,6 @@ defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const tableColumns = computed(() => createPluginTableColumns(t));
 </script>

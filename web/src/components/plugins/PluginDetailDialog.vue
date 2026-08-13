@@ -6,11 +6,11 @@
           <div class="app-glass-dialog__title">{{ target?.name }}</div>
           <div class="app-glass-dialog__subtitle">{{ target?.key }}</div>
         </div>
-        <q-btn v-close-popup flat dense round icon="close" aria-label="关闭详情" />
+        <q-btn v-close-popup flat dense round icon="close" :aria-label="t('pluginsPage.detail.close')" />
       </q-card-section>
       <q-separator />
       <q-card-section v-if="target" class="app-dialog-body q-gutter-md">
-        <p class="plugin-detail-desc">{{ target.description || '暂无说明' }}</p>
+        <p class="plugin-detail-desc">{{ target.description || t('pluginsPage.noDescription') }}</p>
 
         <div class="plugin-detail-metrics row q-col-gutter-sm">
           <div v-for="metric in metrics" :key="metric.label" class="col-6 col-sm-4">
@@ -118,8 +118,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Plugin } from '../../features/plugins/types';
-import { formatPluginDate, lastStatusLabel, lastStatusTagClass, prettyJSON, riskTagClass } from './pluginUi';
+import { formatDate } from '../../shared/format';
+import { lastStatusLabel, lastStatusTagClass, prettyJSON, riskTagClass } from './pluginUi';
 
 const props = defineProps<{
   open: boolean;
@@ -138,6 +140,8 @@ defineEmits<{
   bumpSort: [delta: number];
   saveScope: [];
 }>();
+
+const { t } = useI18n();
 
 // 指定 Agent 下拉：数量多（20+）时支持输入过滤（label/value 双向匹配）
 const filteredAgentOptions = ref(props.agentOptions);
@@ -162,14 +166,25 @@ const metrics = computed(() => {
   const target = props.target;
   if (!target) return [];
   return [
-    { label: '类型', value: target.category },
-    { label: '风险', value: target.risk_level, tagClass: riskTagClass(target.risk_level) },
-    { label: '作用域', value: target.scope || 'global' },
-    { label: '排序', value: String(target.sort_order) },
-    { label: '调用次数', value: String(target.invoke_count) },
-    { label: '阻断 / 错误', value: `${target.block_count} / ${target.error_count}` },
-    { label: '最近状态', value: lastStatusLabel(target), tagClass: lastStatusTagClass(target) },
-    { label: '最近调用', value: formatPluginDate(target.last_invoked_at) },
+    { label: t('pluginsPage.detail.metricCategory'), value: target.category },
+    {
+      label: t('pluginsPage.detail.metricRisk'),
+      value: target.risk_level,
+      tagClass: riskTagClass(target.risk_level),
+    },
+    { label: t('pluginsPage.detail.metricScope'), value: target.scope || 'global' },
+    { label: t('pluginsPage.detail.metricSort'), value: String(target.sort_order) },
+    { label: t('pluginsPage.detail.metricInvokeCount'), value: String(target.invoke_count) },
+    {
+      label: t('pluginsPage.detail.metricBlockError'),
+      value: `${target.block_count} / ${target.error_count}`,
+    },
+    {
+      label: t('pluginsPage.detail.metricLastStatus'),
+      value: lastStatusLabel(target, t),
+      tagClass: lastStatusTagClass(target),
+    },
+    { label: t('pluginsPage.detail.metricLastInvoke'), value: formatDate(target.last_invoked_at) },
   ];
 });
 </script>

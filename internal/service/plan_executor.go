@@ -265,43 +265,6 @@ func (e *PlanExecutor) HasActiveRunForSession(sessionID string) bool {
 	return active
 }
 
-// CheckPlanBoardProgress implements tools.PlanBoardOrchFallback (C-18).
-// Returns per-step progress from PlanStep rows keyed by PlanBoard.ID.
-func (e *PlanExecutor) CheckPlanBoardProgress(ctx context.Context, planBoardID string) ([]biz.TaskProgress, error) {
-	planBoardID = strings.TrimSpace(planBoardID)
-	if planBoardID == "" {
-		return nil, fmt.Errorf("plan board id is required")
-	}
-	board, err := e.repos.GetPlanBoard(ctx, planBoardID)
-	if err != nil {
-		return nil, err
-	}
-	steps, err := e.repos.ListPlanStepsByPlan(ctx, planBoardID)
-	if err != nil {
-		// Board exists but steps unavailable — return board-level status only.
-		return []biz.TaskProgress{{
-			Status:   string(board.Status),
-			Progress: planBoardProgressPct(board.Status),
-		}}, nil
-	}
-	if len(steps) == 0 {
-		return []biz.TaskProgress{{
-			Status:   string(board.Status),
-			Progress: planBoardProgressPct(board.Status),
-		}}, nil
-	}
-	out := make([]biz.TaskProgress, 0, len(steps))
-	for _, s := range steps {
-		out = append(out, biz.TaskProgress{
-			SubTaskID:   s.ID,
-			SubTaskName: s.Label,
-			Status:      mapPlanStepStatusToProgress(s.Status),
-			Progress:    planStepProgressPct(s.Status),
-		})
-	}
-	return out, nil
-}
-
 // CancelPlanBoard implements tools.PlanBoardOrchFallback (C-18).
 // Cancels the in-flight DAG run for the given PlanBoard.ID.
 func (e *PlanExecutor) CancelPlanBoard(ctx context.Context, planBoardID string) error {
@@ -323,7 +286,7 @@ func (e *PlanExecutor) CancelPlanBoard(ctx context.Context, planBoardID string) 
 		return fmt.Errorf("plan board %s is already terminal (%s)", planBoardID, board.Status)
 	}
 	// Board exists but no active lease (e.g. not yet subscribed). Best-effort
-	// fail-early via state machine so check_progress sees a terminal status.
+	// fail-early via state machine so observers see a terminal status.
 	newStatus, tErr := e.pbSM.Transition(board.Status, biz.PlanBoardEventFailEarly)
 	if tErr != nil {
 		newStatus, tErr = e.pbSM.Transition(board.Status, biz.PlanBoardEventFail)
@@ -342,47 +305,6 @@ func (e *PlanExecutor) CancelPlanBoard(ctx context.Context, planBoardID string) 
 		e.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(board))
 	}
 	return nil
-}
-
-func planBoardProgressPct(status biz.PlanStatus) float64 {
-	switch status {
-	case biz.PlanStatusCompleted:
-		return 1.0
-	case biz.PlanStatusExecuting:
-		return 0.5
-	case biz.PlanStatusFailed, biz.PlanStatusPartialFailure:
-		return 1.0
-	default:
-		return 0.0
-	}
-}
-
-func planStepProgressPct(status biz.PlanStepStatus) float64 {
-	switch status {
-	case biz.PlanStepStatusCompleted, biz.PlanStepStatusFailed, biz.PlanStepStatusSkipped, biz.PlanStepStatusPartialFailure:
-		return 1.0
-	case biz.PlanStepStatusRunning:
-		return 0.5
-	default:
-		return 0.0
-	}
-}
-
-func mapPlanStepStatusToProgress(status biz.PlanStepStatus) string {
-	switch status {
-	case biz.PlanStepStatusPending:
-		return "pending"
-	case biz.PlanStepStatusRunning:
-		return "running"
-	case biz.PlanStepStatusCompleted:
-		return "completed"
-	case biz.PlanStepStatusFailed, biz.PlanStepStatusPartialFailure:
-		return "failed"
-	case biz.PlanStepStatusSkipped:
-		return "cancelled"
-	default:
-		return string(status)
-	}
 }
 
 var _ tools.PlanBoardOrchFallback = (*PlanExecutor)(nil)
@@ -819,6 +741,13 @@ func (r *dagRun) run(ctx context.Context) error {
 		var cancel context.CancelFunc
 		termCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		// P1-6: sweep steps that never reached a terminal state. In-flight
+		// steps exit dispatch via `<-ctx.Done(): return` without writing a
+		// terminal status, and never-dispatched steps stay pending — both
+		// would otherwise remain running/pending in the DB forever (audit
+		// hole + stale UI after refresh). Runs after the wg barrier, so no
+		// writer remains (same invariant as snapshotStepOutcomes, C-17).
+		r.sweepNonTerminalSteps(termCtx, "run canceled")
 	}
 	// 发布 terminal 事件（无论成功/失败/取消），让前端流程图和计划列表
 	// 在刷新后能正确显示最终状态。失败仅记录日志，不阻断返回。
@@ -1445,11 +1374,43 @@ func (r *dagRun) checkDownstream(ctx context.Context, completedID string) {
 	}
 }
 
+// sweepNonTerminalSteps marks every step that never reached a terminal state
+// as Skipped and publishes a PlanStepSkippedEvent (P1-6, cancel-path audit).
+// Caller must hold the worker WaitGroup barrier (no in-flight writers).
+func (r *dagRun) sweepNonTerminalSteps(ctx context.Context, reason string) {
+	for i := range r.board.Steps {
+		r.mu.Lock()
+		step := &r.board.Steps[i]
+		if step.Status != biz.PlanStepStatusPending && step.Status != biz.PlanStepStatusRunning {
+			r.mu.Unlock()
+			continue
+		}
+		if err := step.Transition(biz.PlanStepStatusSkipped); err != nil {
+			r.mu.Unlock()
+			r.pe.lg.Warn("cancel sweep: transition rejected",
+				loggateway.Str("step_id", step.ID), loggateway.Err(err))
+			continue
+		}
+		now := time.Now()
+		step.CompletedAt = &now
+		step.Version++
+		skipped := *step
+		r.mu.Unlock()
+		if _, err := r.pe.repos.UpsertPlanStep(ctx, skipped); err != nil {
+			r.pe.lg.Error("upsert plan_step (cancel-swept) failed",
+				loggateway.Str("step_id", step.ID), loggateway.Err(err))
+		}
+		r.pe.seq.Publish(ctx, biz.NewPlanStepSkippedEvent(skipped, r.board.SessionID, reason))
+		// GraphNode 映射与 cascadeSkip 一致：skipped → interrupted。
+		r.updateGraphNode(ctx, step.ID, biz.GraphNodeStatusInterrupted, "")
+	}
+}
+
 // cascadeSkip marks all transitive downstream dependents of a failed step as
 // skipped (BFS). Each skipped step publishes a PlanStepSkippedEvent.
 func (r *dagRun) cascadeSkip(ctx context.Context, failedID string) {
-	queue := []string{failedID}
 	visited := make(map[string]bool)
+	queue := []string{failedID}
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]

@@ -1,9 +1,13 @@
 package service
 
 import (
+	"context"
+
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/evaluation"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // ProvideChatService constructs ChatService with a noop AfterTurn hook (real hook attached by ProvideEvaluationRunner).
@@ -54,7 +58,7 @@ func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus
 		if notifier, ok := deps.Team.TeamStarter.(biz.AllTeamsCompletedNotifier); ok {
 			planExec.SetCompletionNotifier(notifier)
 		}
-		// C-18: cancel_orchestration / check_progress fall back to PlanBoard.ID.
+		// C-18: cancel_orchestration falls back to PlanBoard.ID.
 		cs.orch.SetPlanBoardOrch(planExec)
 		// 2026-07-04 问题 4 修复：注入 EventBus 并启动订阅，
 		// 让 PlanExecutor 自动响应 PlanBoardCreatedEvent 触发 DAG 执行。
@@ -110,6 +114,25 @@ func ProvideEvaluationRunner(
 	if chat == nil || turns == nil || evalUC == nil || catalog == nil || sys == nil {
 		return nil
 	}
+	// Y10: one-shot startup sweep for orphan runs. Single-instance deployment:
+	// this provider runs during Wire construction, before the server accepts
+	// traffic, so every pending/running row still in the table belongs to a
+	// dead process (its async executor goroutine died with it). Mark them
+	// failed so the UI stops showing phantom "running" rows.
+	safego.Go(appctx.Ctx(), "eval-stale-run-sweep", func() {
+		n, err := evalUC.FailStaleRuns(context.Background(), 0)
+		if err != nil {
+			lg.Warn("eval stale run sweep failed",
+				loggateway.StepID("evaluation.run.stale_sweep_fail"),
+				loggateway.Err(err))
+			return
+		}
+		if n > 0 {
+			lg.Info("eval stale runs swept on startup",
+				loggateway.StepID("evaluation.run.stale_sweep"),
+				loggateway.Int("swept", n))
+		}
+	})
 	runner := NewEvaluationRunner(evalUC, turns, catalog, sys, lg)
 	// P2-2: online score-drop alert — nil-safe when agents/bus are unavailable.
 	if agents != nil && bus != nil {

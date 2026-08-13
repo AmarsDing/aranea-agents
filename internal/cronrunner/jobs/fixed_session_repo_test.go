@@ -45,6 +45,9 @@ func (fixedSessionRepo) UpdateSessionTitle(context.Context, string, string) (ses
 func (fixedSessionRepo) UpdateSession(context.Context, string, sessionsess.SessionUpdateFields) (sessionsess.Session, error) {
 	return sessionsess.Session{}, errors.New("not implemented")
 }
+func (fixedSessionRepo) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
 func (fixedSessionRepo) RestoreSession(context.Context, string) (sessionsess.Session, error) {
 	return sessionsess.Session{}, errors.New("not implemented")
 }

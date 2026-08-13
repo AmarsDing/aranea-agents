@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -38,13 +39,76 @@ func uniqueToolID(prefix string) string {
 	return fmt.Sprintf("%s_%d_%d", prefix, time.Now().UTC().UnixNano(), toolIDCtr.Add(1))
 }
 
+// truncateUTF8 truncates s to at most maxBytes bytes without splitting a
+// multi-byte UTF-8 rune. Postgres text columns reject invalid UTF-8 (error
+// 22021), so naive s[:n] byte-slicing on preview/summary fields can turn a
+// large CJK payload into a failed INSERT and lose the whole record.
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
+
+// toolStatsWindowDays bounds the tool_invocations scans in toolSelectSQL's
+// stats/p95/last subqueries (PERF-3). tool_invocations has no retention purge
+// (only session-cascade delete), so without a window the admin tool-list query
+// degrades as the table grows. The window is aligned with
+// biz.ToolAuditRetentionDays (90): audit rows and statistics share one
+// "recent history" horizon. Semantic note: InvokeCount/Avg/P95/LastInvokedAt
+// are windowed metrics — a tool with no calls in the window reports zeros and
+// an empty LastInvokedAt.
+const toolStatsWindowDays = 90
+
+// toolSelectPrefixArgs returns the leading args for toolSelectSQL in
+// placeholder order: the 24h cutoff first (stats subquery's invoke_count_24h
+// CASE), then one stats-window cutoff per windowed subquery (stats FROM, p95
+// inner, last inner). Callers append their own WHERE/LIMIT args after these.
+func toolSelectPrefixArgs() []any {
+	now := time.Now().UTC()
+	cutoff24h := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	window := now.AddDate(0, 0, -toolStatsWindowDays).Format(time.RFC3339)
+	return []any{cutoff24h, window, window, window}
+}
+
+// toolP95Subquery returns the per-tool p95 duration subquery (one stats-window
+// placeholder). Postgres uses percentile_cont(0.95) WITHIN GROUP — an exact
+// interpolated percentile (PERF-2), replacing the old "average of the top 5%"
+// approximation which overstated p95 on skewed latencies. SQLite has no
+// ordered-set aggregates, so it keeps the top-5% AVG approximation (dev/CLI
+// only — production is always Postgres).
+func toolP95Subquery(d Dialect) string {
+	if d.IsPostgres() {
+		return `
+			SELECT tool_key,
+			       percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_duration_ms
+			FROM tool_invocations
+			WHERE started_at >= ?
+			GROUP BY tool_key`
+	}
+	topN := d.Greatest("1", "CAST(total_cnt * 0.05 AS INTEGER)")
+	return `
+			SELECT tool_key, AVG(duration_ms) AS p95_duration_ms
+			FROM (
+				SELECT tool_key, duration_ms,
+				       ROW_NUMBER() OVER (PARTITION BY tool_key ORDER BY duration_ms DESC) AS rn,
+				       COUNT(1) OVER (PARTITION BY tool_key) AS total_cnt
+				FROM tool_invocations
+				WHERE started_at >= ?
+			)
+			WHERE rn <= ` + topN + `
+			GROUP BY tool_key`
+}
+
 func toolSelectSQL(d Dialect) string {
 	// d.Greatest emits GREATEST on Postgres (MAX is aggregate-only) and MAX on
 	// SQLite (multi-argument MAX is a scalar function). Using GREATEST
 	// unconditionally breaks SQLite drivers that don't support it (e.g.
 	// glebarez/go-sqlite), and using MAX unconditionally breaks Postgres
 	// (error 42883: function max(integer, integer) does not exist).
-	topN := d.Greatest("1", "CAST(total_cnt * 0.05 AS INTEGER)")
 	return `
 		SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
 		       t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
@@ -63,23 +127,10 @@ func toolSelectSQL(d Dialect) string {
 			       SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
 			       AVG(duration_ms) AS avg_duration_ms
 			FROM tool_invocations
+			WHERE started_at >= ?
 			GROUP BY tool_key
 		) stats ON stats.tool_key = t.tool_key
-		LEFT JOIN (
-			SELECT ti95.tool_key, AVG(ti95.duration_ms) AS p95_duration_ms
-			FROM tool_invocations ti95
-			INNER JOIN (
-				SELECT tool_key, MIN(duration_ms) AS threshold_ms
-				FROM (
-					SELECT tool_key, duration_ms,
-					       ROW_NUMBER() OVER (PARTITION BY tool_key ORDER BY duration_ms DESC) AS rn,
-					       COUNT(1) OVER (PARTITION BY tool_key) AS total_cnt
-					FROM tool_invocations
-				)
-				WHERE rn <= ` + topN + `
-				GROUP BY tool_key
-			) top5 ON top5.tool_key = ti95.tool_key AND ti95.duration_ms >= top5.threshold_ms
-			GROUP BY ti95.tool_key
+		LEFT JOIN (` + toolP95Subquery(d) + `
 		) p95 ON p95.tool_key = t.tool_key
 		LEFT JOIN (
 			SELECT tool_key, COUNT(1) AS agent_override_count
@@ -93,6 +144,7 @@ func toolSelectSQL(d Dialect) string {
 				SELECT ti.tool_key, ti.started_at, ti.status,
 				       ROW_NUMBER() OVER (PARTITION BY ti.tool_key ORDER BY ti.started_at DESC, ti.id DESC) AS rn
 				FROM tool_invocations ti
+				WHERE ti.started_at >= ?
 			)
 			WHERE rn = 1
 		) last ON last.tool_key = t.tool_key`
@@ -205,14 +257,13 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	if client == nil {
 		return biz.ToolListResult{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
-	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	where, args := toolWhereClause(q)
 	var total int
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tools t WHERE `+where), args, &total); err != nil {
 		r.data.lg.Warn("tool search count query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, entErrToBizErr(err, "TOOL")
 	}
-	listArgs := append([]any{cutoff}, args...)
+	listArgs := append(toolSelectPrefixArgs(), args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
 	orderBy := "t.category ASC, t.display_name ASC"
 	switch q.Sort {
@@ -249,9 +300,8 @@ func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error
 	if client == nil {
 		return biz.Tool{}, apierror.Internal("TOOL", "ent client unavailable")
 	}
-	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	where := `(t.id = ? OR t.tool_key = ?) AND t.deleted_at = ''`
-	args := []any{cutoff, idOrKey, idOrKey}
+	args := append(toolSelectPrefixArgs(), idOrKey, idOrKey)
 	// C-25: shared-or-own workspace filter on Get.
 	if ids := workspaceSharedOrOwnIDs(ctx); ids != nil {
 		where += ` AND t.workspace_id IN (?, ?)`
@@ -604,14 +654,8 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 	if source == "" {
 		source = biz.ToolInvocationSourceRuntime
 	}
-	inputPreview := in.InputPreview
-	if len(inputPreview) > 2000 {
-		inputPreview = inputPreview[:2000]
-	}
-	outputPreview := in.OutputPreview
-	if len(outputPreview) > 2000 {
-		outputPreview = outputPreview[:2000]
-	}
+	inputPreview := truncateUTF8(in.InputPreview, 2000)
+	outputPreview := truncateUTF8(in.OutputPreview, 2000)
 	id := uniqueToolID("tinv")
 	if tcid := strings.TrimSpace(in.ToolCallID); tcid != "" {
 		id = "tinv-" + tcid

@@ -28,7 +28,6 @@ type TaskOrchestratorImpl struct {
 	spiritUC        *biz.SpiritTeamUsecase
 	assembler       tools.SpiritTeamAssemblerPort
 	controller      tools.SpiritTeamControllerPort
-	compiler        *DAGToGraphCompiler
 	repo            biz.OrchestrationRepository
 	taskPlanRepo    biz.TaskPlanRepository
 	matcher         biz.AgentMatcherPort
@@ -51,7 +50,6 @@ func NewTaskOrchestratorImpl(
 	spiritUC *biz.SpiritTeamUsecase,
 	assembler tools.SpiritTeamAssemblerPort,
 	controller tools.SpiritTeamControllerPort,
-	compiler *DAGToGraphCompiler,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
 	matcher biz.AgentMatcherPort,
@@ -69,7 +67,6 @@ func NewTaskOrchestratorImpl(
 		spiritUC:        spiritUC,
 		assembler:       assembler,
 		controller:      controller,
-		compiler:        compiler,
 		repo:            repo,
 		taskPlanRepo:    taskPlanRepo,
 		matcher:         matcher,

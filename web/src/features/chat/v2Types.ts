@@ -1,5 +1,7 @@
 // web/src/features/chat/v2Types.ts
 
+import type { SkillCatalogEntry } from '../skills/types';
+
 // === Status / Kind string-literal unions ===
 
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
@@ -298,7 +300,10 @@ export type EventKind =
   // routing to the correct WS client is done server-side via SpiritSessionID().
   | 'system.run_status'
   | 'system.heartbeat'
-  | 'system.notice';
+  | 'system.notice'
+  // Design 69 Phase 3: agent-visible skill catalog pushed once per chat WS
+  // connection setup. Backend struct: biz.SkillCatalogEvent.
+  | 'skill.catalog';
 
 // === Event payload shapes (what's inside envelope.payload) ===
 // Note: since 2026-07-20 the backend maps domain events to explicit wire
@@ -369,6 +374,14 @@ export interface SystemNoticeEventPayload {
   Meta: Record<string, unknown> | null;
 }
 
+// Design 69 Phase 3: skill.catalog payload. NOTE: unlike the PascalCase
+// entity payloads above, this wire type uses snake_case keys (locked by
+// internal/server/ws_v2_wire.go skillCatalogEventWire), matching the
+// SkillCatalogEntry contract in features/skills/types.ts.
+export interface SkillCatalogEventPayload {
+  skills: SkillCatalogEntry[];
+}
+
 // Discriminated union of all v2 events
 export type V2Event =
   | TaskEventPayload
@@ -386,7 +399,8 @@ export type V2Event =
   | GraphNodeEventPayload
   | RunStatusEventPayload
   | HeartbeatEventPayload
-  | SystemNoticeEventPayload;
+  | SystemNoticeEventPayload
+  | SkillCatalogEventPayload;
 
 // === WS envelope ===
 

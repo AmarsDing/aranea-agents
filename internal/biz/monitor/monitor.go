@@ -355,42 +355,39 @@ type FilesystemHealthReader interface {
 //   - rca/     (RootCauseEngine, RootCauseAnalyzer)
 //   - pattern/ (PatternMiningUsecase, FailurePatternRepo)
 type Usecase struct {
+	// --- 数据访问端口 ---
 	auditRepo        AuditRepo
 	eventRepo        EventRepo
 	traceRepo        TraceRepo
 	alertRepo        AlertRepo
 	runnerCompletion RunnerCompletionRepo
-	notifier         AlertNotifier
-	fsHealth         FilesystemHealthReader
 	traceSpanReader  TraceSpanReader
-	lg               loggateway.Logger
-	lastFired        sync.Map // TECH-DEBT(COG): legacy in-memory fallback after MON-OPT-02 DB migration; remove after confirming all rules have LastFiredAt persisted
-	rulesCache       []AlertRule
-	rulesExpire      time.Time
-	rulesMu          sync.RWMutex
-	ringBuffer       *MetricRingBuffer
-	evalWorker       *AlertEvalWorker
-	registry         *AlertMetricRegistry
+
+	// --- 告警域（alert） ---
+	notifier    AlertNotifier
+	registry    *AlertMetricRegistry
+	evalWorker  *AlertEvalWorker // 循环依赖（worker 持有 uc）：唯一保留的 setter 注入
+	lastFired   sync.Map         // TECH-DEBT(COG): legacy in-memory fallback after MON-OPT-02 DB migration; remove after confirming all rules have LastFiredAt persisted
+	rulesCache  []AlertRule
+	rulesExpire time.Time
+	rulesMu     sync.RWMutex
+
+	// --- trace / 日志落盘域 ---
 	traceProjector   *TraceProjector
 	flowFileAppender *FlowFileAppender
-	flowLog          FlowLogWriter
+
+	// --- 横切 ---
+	lg      loggateway.Logger
+	flowLog FlowLogWriter
 }
 
 const rulesCacheTTL = 5 * time.Minute
 
 type UsecaseOption func(*Usecase)
 
-func WithFilesystemHealthReader(r FilesystemHealthReader) UsecaseOption {
-	return func(u *Usecase) { u.fsHealth = r }
-}
-
 // WithTraceSpanReader wires the span read path used by GetMonitorTrace details.
 func WithTraceSpanReader(r TraceSpanReader) UsecaseOption {
 	return func(u *Usecase) { u.traceSpanReader = r }
-}
-
-func WithRingBuffer(rb *MetricRingBuffer) UsecaseOption {
-	return func(u *Usecase) { u.ringBuffer = rb }
 }
 
 func WithEvalWorker(w *AlertEvalWorker) UsecaseOption {
@@ -411,6 +408,16 @@ func WithFlowLogWriter(fl FlowLogWriter) UsecaseOption {
 	return func(u *Usecase) { u.flowLog = fl }
 }
 
+// WithTraceProjector wires the completion → trace close side-effect.
+func WithTraceProjector(p *TraceProjector) UsecaseOption {
+	return func(u *Usecase) { u.traceProjector = p }
+}
+
+// WithFlowFileAppender wires the TRACE-01 trace file sink.
+func WithFlowFileAppender(a *FlowFileAppender) UsecaseOption {
+	return func(u *Usecase) { u.flowFileAppender = a }
+}
+
 func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alert AlertRepo, runner RunnerCompletionRepo, notifier AlertNotifier, opts ...UsecaseOption) *Usecase {
 	uc := &Usecase{auditRepo: audit, eventRepo: event, traceRepo: trace, alertRepo: alert, runnerCompletion: runner, notifier: notifier}
 	for _, opt := range opts {
@@ -422,27 +429,12 @@ func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alert AlertRe
 	return uc
 }
 
+// SetEvalWorker is the ONLY remaining setter: AlertEvalWorker holds a back
+// reference to the Usecase (circular dependency), so it cannot be a
+// construction option. All other dependencies use UsecaseOption.
 func (u *Usecase) SetEvalWorker(w *AlertEvalWorker) {
 	if u != nil {
 		u.evalWorker = w
-	}
-}
-
-func (u *Usecase) SetTraceProjector(p *TraceProjector) {
-	if u != nil {
-		u.traceProjector = p
-	}
-}
-
-func (u *Usecase) SetFlowFileAppender(a *FlowFileAppender) {
-	if u != nil {
-		u.flowFileAppender = a
-	}
-}
-
-func (u *Usecase) SetRegistry(r *AlertMetricRegistry) {
-	if u != nil {
-		u.registry = r
 	}
 }
 
@@ -641,40 +633,37 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 		}
 		ruleCount++
 		metricKey := strings.TrimSpace(rule.MetricKey)
-		if u.registry != nil {
-			if m, ok := u.registry.Get(metricKey); ok {
-				window := time.Duration(rule.WindowMinutes) * time.Minute
-				if window <= 0 {
-					window = 60 * time.Minute
-				}
-				value, err := m.Evaluate(ctx, window)
-				if errors.Is(err, ErrAlertMetricNoData) {
-					// Empty window: no evidence for any state transition.
-					// Skip silently so a firing alert is not falsely recovered.
-					u.lg.Debug("EvaluateAlerts: no metric data in window, skipping",
-						loggateway.StepID("monitor.alert_eval_no_data"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey))
-					continue
-				}
-				if err != nil {
-					u.lg.Warn("EvaluateAlerts: metric evaluation failed",
-						loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
-					continue
-				}
-				if u.evaluateMetricValue(ctx, rule, value, m) {
-					triggeredCount++
-				}
-				continue
-			}
+		if u.registry == nil {
+			// Legacy dual-track switch removed (S1): evaluation only runs via
+			// the metric registry. Nil registry means no metrics can be
+			// evaluated — wire always provides one in production.
+			u.lg.Debug("EvaluateAlerts: no metric registry, skipping rule",
+				loggateway.StepID("monitor.alert_eval_no_registry"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey))
+			continue
 		}
-		switch metricKey {
-		case "runner.error_rate":
-			if u.evaluateRunnerErrorRate(ctx, rule) {
-				triggeredCount++
-			}
-		case "skill.filesystem_missing_count":
-			if u.evaluateSkillFilesystemMissingCount(ctx, rule) {
-				triggeredCount++
-			}
+		m, ok := u.registry.Get(metricKey)
+		if !ok {
+			continue
+		}
+		window := time.Duration(rule.WindowMinutes) * time.Minute
+		if window <= 0 {
+			window = 60 * time.Minute
+		}
+		value, err := m.Evaluate(ctx, window)
+		if errors.Is(err, ErrAlertMetricNoData) {
+			// Empty window: no evidence for any state transition.
+			// Skip silently so a firing alert is not falsely recovered.
+			u.lg.Debug("EvaluateAlerts: no metric data in window, skipping",
+				loggateway.StepID("monitor.alert_eval_no_data"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey))
+			continue
+		}
+		if err != nil {
+			u.lg.Warn("EvaluateAlerts: metric evaluation failed",
+				loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
+			continue
+		}
+		if u.evaluateMetricValue(ctx, rule, value, m) {
+			triggeredCount++
 		}
 	}
 	if u.flowLog != nil {
@@ -819,60 +808,6 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 	u.rulesMu.Unlock()
 
 	return rules
-}
-
-func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) bool {
-	if u == nil || u.eventRepo == nil {
-		return false
-	}
-	window := rule.WindowMinutes
-	if window <= 0 {
-		window = 60
-	}
-
-	var total int32
-	var errors int32
-
-	if u.ringBuffer != nil {
-		wr := u.ringBuffer.SumLastN(window)
-		total = int32(wr.Total)
-		errors = int32(wr.Errors)
-	} else {
-		since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
-		var errTotal error
-		total, errTotal = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
-		if errTotal != nil {
-			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errTotal))
-			return false
-		}
-		var errErrors error
-		errors, errErrors = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
-		if errErrors != nil {
-			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errErrors))
-			return false
-		}
-	}
-
-	if total == 0 {
-		// No data in window — cannot determine error rate.
-		// Do NOT auto-recover; let the state machine persist until
-		// actual metric evaluation provides evidence for transition.
-		return false
-	}
-	rate := float64(errors) / float64(total)
-	return u.evaluateMetricValue(ctx, rule, rate, nil)
-}
-
-func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) bool {
-	if u == nil || u.fsHealth == nil {
-		return false
-	}
-	missing, _, err := u.fsHealth.FilesystemHealthStats(ctx)
-	if err != nil {
-		u.lg.Warn("EvaluateAlerts: FilesystemHealthStats failed", loggateway.StepID("monitor.fs_health_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
-		return false
-	}
-	return u.evaluateMetricValue(ctx, rule, float64(missing), nil)
 }
 
 // ShouldFireAlert checks whether an alert rule should fire now.

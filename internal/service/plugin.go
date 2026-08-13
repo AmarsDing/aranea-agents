@@ -74,6 +74,15 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 			continue
 		}
 		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
+			if apierror.IsCode(err, apierror.CodeConflict) {
+				// 并发 bootstrap（多实例同时启动）种子冲突属良性竞争：
+				// 行已由另一实例创建，降级 Debug 且不发流程错误事件。
+				s.lg.Debug("插件种子已存在（并发 bootstrap）",
+					loggateway.StepID("plugin.seed_conflict"),
+					loggateway.Str("key", def.Key),
+				)
+				continue
+			}
 			s.lg.Warn("插件种子创建失败",
 				loggateway.StepID("plugin.seed_fail"),
 				loggateway.Str("key", def.Key),
@@ -155,21 +164,11 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	})
 }
 
-// assertPluginAccess 校验 caller 是否可读取指定 plugin（P2-B IDOR 防护）。
+// assertPluginMutateAccess 校验 caller 是否可变更指定 plugin（P2-B IDOR 防护）。
 // 跨租户访问返回 NotFound（避免泄露 plugin 存在性）。
-// 共享 plugin（workspace_id=""）对所有租户可读；变更须用 assertPluginMutateAccess。
-func (s *PluginService) assertPluginAccess(ctx context.Context, pluginID string) error {
-	return s.checkPluginAccess(ctx, pluginID, false)
-}
-
-// assertPluginMutateAccess 校验 caller 是否可变更指定 plugin。
 // 内置/共享 plugin（workspace_id=""）是平台级配置，登录管理员可变更
 // （需求 22-plugin §0.3：管理员启停/排序/改配置）；仅租户私有 plugin 做 workspace 写隔离。
 func (s *PluginService) assertPluginMutateAccess(ctx context.Context, pluginID string) error {
-	return s.checkPluginAccess(ctx, pluginID, true)
-}
-
-func (s *PluginService) checkPluginAccess(ctx context.Context, pluginID string, mutate bool) error {
 	if pluginID == "" {
 		return nil
 	}
@@ -180,20 +179,17 @@ func (s *PluginService) checkPluginAccess(ctx context.Context, pluginID string, 
 		}
 		return err
 	}
-	callerWS := workspace.IDFromContext(ctx)
-	if mutate && p.WorkspaceID != "" {
-		// 租户私有 plugin：仅同 workspace 可写。共享 plugin（workspace_id=""）
-		// 为内置平台级配置，不套用共享资源 fail-closed（否则管理页写功能全灭）。
-		err = workspace.AssertWorkspaceMutate(callerWS, p.WorkspaceID)
-	} else {
-		err = workspace.AssertWorkspaceOrShared(callerWS, p.WorkspaceID)
-	}
-	if err != nil {
-		s.lg.Warn("plugin access denied: workspace mismatch",
-			loggateway.StepID("plugin.idor"),
-			loggateway.Str("plugin_id", pluginID),
-			loggateway.Str("caller_ws", callerWS))
-		return apierror.NotFound("PLUGIN", "plugin not found")
+	// 租户私有 plugin：仅同 workspace 可写。共享 plugin（workspace_id=""）
+	// 为内置平台级配置，不套用共享资源 fail-closed（否则管理页写功能全灭）。
+	if p.WorkspaceID != "" {
+		callerWS := workspace.IDFromContext(ctx)
+		if err := workspace.AssertWorkspaceMutate(callerWS, p.WorkspaceID); err != nil {
+			s.lg.Warn("plugin access denied: workspace mismatch",
+				loggateway.StepID("plugin.idor"),
+				loggateway.Str("plugin_id", pluginID),
+				loggateway.Str("caller_ws", callerWS))
+			return apierror.NotFound("PLUGIN", "plugin not found")
+		}
 	}
 	return nil
 }
@@ -337,7 +333,7 @@ func toProtoPluginRun(r biz.PluginRun) *v1.PluginRun {
 
 func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRunsRequest) (*v1.ListPluginRunsResponse, error) {
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
-	result, err := s.uc.ListRuns(ctx, biz.PluginRunQuery{
+	q := biz.PluginRunQuery{
 		PluginKey:     req.GetPluginKey(),
 		PluginID:      req.GetPluginId(),
 		SessionID:     req.GetSessionId(),
@@ -348,7 +344,13 @@ func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRu
 		To:            req.GetTo(),
 		Limit:         limit,
 		Offset:        offset,
-	})
+	}
+	// N-B5: workspace 可见性过滤（与 ListPlugins 同语义），由服务端注入，不接受客户端输入。
+	// 系统调用看全部；租户调用看共享行（workspace_id=''）+ 自身行。
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
+	result, err := s.uc.ListRuns(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -365,7 +367,12 @@ func (s *PluginService) ListPluginRuns(ctx context.Context, req *v1.ListPluginRu
 }
 
 func (s *PluginService) DeleteAllPluginRuns(ctx context.Context, _ *v1.DeleteAllPluginRunsRequest) (*v1.DeleteAllPluginRunsResponse, error) {
-	count, err := s.uc.DeleteAllRuns(ctx)
+	// N-B5: 系统调用全删；租户调用只删可见行（共享行 + 自身行）。
+	workspaceID := ""
+	if !workspace.IsSystem(ctx) {
+		workspaceID = workspace.IDFromContext(ctx)
+	}
+	count, err := s.uc.DeleteAllRuns(ctx, workspaceID)
 	if err != nil {
 		return nil, err
 	}

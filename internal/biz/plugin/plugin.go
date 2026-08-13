@@ -133,6 +133,11 @@ type Run struct {
 	DurationMS    int
 	DetailJSON    string
 	CreatedAt     string
+	// WorkspaceID 是写入侧租户归属（N-B5）。empty = 共享行（所有租户可见）；
+	// non-empty = 租户私有行。当前写入链路（internal/plugin/trpc StatsRecorder
+	// 异步批量落库，调用方显式丢弃请求 ctx）拿不到 workspace，一律写空串
+	// （共享语义）；读侧过滤对存量/新写入均安全（共享行全员可见）。
+	WorkspaceID string
 }
 
 // RunQuery filters plugin run list.
@@ -147,6 +152,10 @@ type RunQuery struct {
 	To            string
 	Limit         int
 	Offset        int
+	// WorkspaceID 按租户可见性过滤（N-B5），由 service 层注入，不接受客户端输入。
+	// empty = 系统调用（看全部）；non-empty = 租户调用
+	// （看 workspace_id='' 共享行 + workspace_id=自身 的行）。
+	WorkspaceID string
 }
 
 // RunListResult is a paginated plugin run list.
@@ -161,7 +170,9 @@ type RunListResult struct {
 type RunRepo interface {
 	Insert(ctx context.Context, run Run) error
 	List(ctx context.Context, q RunQuery) (RunListResult, error)
-	DeleteAll(ctx context.Context) (int32, error)
+	// DeleteAll 按 RunQuery.WorkspaceID 同一可见性语义删除：
+	// empty = 系统调用（全删）；non-empty = 租户调用（删共享行 + 自身行）。
+	DeleteAll(ctx context.Context, workspaceID string) (int32, error)
 }
 
 // ScopeAgentLookup checks whether an agent exists for scope validation.
@@ -176,7 +187,19 @@ type Usecase struct {
 	agents ScopeAgentLookup
 }
 
+// noopScopeAgentLookup skips agent-existence validation for non-global scopes.
+// Substituted by NewUsecase when agents is nil.
+type noopScopeAgentLookup struct{}
+
+func (noopScopeAgentLookup) AgentExists(context.Context, string) error { return nil }
+
+// NewUsecase constructs the plugin Usecase.
+// agents 为 nil 时替换为 noop 实现（AgentExists 恒返回 nil），即跳过 agent 存在性
+// 校验——仅限测试/嵌入场景；生产必须注入真实 ScopeAgentLookup。
 func NewUsecase(repo Repo, runs RunRepo, agents ScopeAgentLookup) *Usecase {
+	if agents == nil {
+		agents = noopScopeAgentLookup{}
+	}
 	return &Usecase{repo: repo, runs: runs, agents: agents}
 }
 
@@ -208,14 +231,7 @@ func (u *Usecase) GetByKey(ctx context.Context, key string) (Plugin, error) {
 	if key == "" {
 		return Plugin{}, apierror.BadRequest("PLUGIN", "key is required")
 	}
-	p, err := u.repo.GetByKey(ctx, key)
-	if err != nil {
-		if errors.Is(err, shared.ErrNotFound) {
-			return Plugin{}, shared.ErrNotFound
-		}
-		return Plugin{}, err
-	}
-	return p, nil
+	return u.repo.GetByKey(ctx, key)
 }
 
 // Get returns a plugin by ID. (P2-B: service-layer IDOR check)
@@ -331,61 +347,20 @@ func (u *Usecase) ListRuns(ctx context.Context, q RunQuery) (RunListResult, erro
 	return u.runs.List(ctx, q)
 }
 
-// DeleteAllRuns deletes all plugin run records and returns the count deleted.
-func (u *Usecase) DeleteAllRuns(ctx context.Context) (int32, error) {
+// DeleteAllRuns deletes plugin run records visible to the given workspace and
+// returns the count deleted. empty workspaceID = 系统调用（全删）；
+// non-empty = 租户调用（删共享行 + 自身行）。
+func (u *Usecase) DeleteAllRuns(ctx context.Context, workspaceID string) (int32, error) {
 	if u == nil || u.runs == nil {
 		return 0, nil
 	}
-	return u.runs.DeleteAll(ctx)
+	return u.runs.DeleteAll(ctx, workspaceID)
 }
 
 // ── Schema validation ─────────────────────────────────────────────────────────
 
 func ValidateJSONSchema(schemaJSON, docJSON string) error {
 	return shared.ValidateDocumentAgainstSchema("PLUGIN", schemaJSON, docJSON)
-}
-
-// ── Sandbox mode ──────────────────────────────────────────────────────────────
-
-// SandboxMode controls Phase 4 sandbox isolation.
-type SandboxMode string
-
-const (
-	SandboxNone      SandboxMode = "none"
-	SandboxProcess   SandboxMode = "process"
-	SandboxContainer SandboxMode = "container"
-)
-
-// VersionPolicy pins a plugin rule to a semver range.
-type VersionPolicy struct {
-	PluginID   string
-	MinVersion string
-	MaxVersion string
-	Pinned     string
-}
-
-// NormalizeSandboxMode returns a supported sandbox mode.
-func NormalizeSandboxMode(raw string, riskLevel string) SandboxMode {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(SandboxNone):
-		return SandboxNone
-	case string(SandboxContainer):
-		return SandboxContainer
-	case string(SandboxProcess):
-		return SandboxProcess
-	}
-	if strings.EqualFold(riskLevel, "high") || strings.EqualFold(riskLevel, "critical") {
-		return SandboxProcess
-	}
-	return SandboxNone
-}
-
-// ResolveVersion picks pinned version or falls back to latest within policy bounds.
-func ResolveVersion(policy VersionPolicy, latest string) string {
-	if v := strings.TrimSpace(policy.Pinned); v != "" {
-		return v
-	}
-	return strings.TrimSpace(latest)
 }
 
 // ── Cost guard ────────────────────────────────────────────────────────────────

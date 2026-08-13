@@ -105,6 +105,9 @@ func (m *ingressSessionRepo) UpdateSessionTitle(context.Context, string, string)
 func (m *ingressSessionRepo) UpdateSession(context.Context, string, biz.SessionUpdateFields) (biz.Session, error) {
 	return biz.Session{}, nil
 }
+func (m *ingressSessionRepo) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
 func (m *ingressSessionRepo) RestoreSession(context.Context, string) (biz.Session, error) {
 	return biz.Session{}, nil
 }

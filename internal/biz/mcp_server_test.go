@@ -85,6 +85,45 @@ func (stubMCPCredRepo) DeleteMCPServerUserCredential(_ context.Context, _, _, _ 
 	return nil
 }
 
+func TestMCPServerUsecase_PersistRotatedRefreshToken(t *testing.T) {
+	repo := &stubMCPRepo{rows: []MCPServer{{
+		ID:  "id1",
+		Key: "srv1",
+		ConfigJSON: `{"transport":"streamable_http","url":"https://mcp.example.com/mcp",` +
+			`"auth":{"type":"oauth2_refresh","token_url":"https://auth.example.com/token","client_id":"cid","refresh_token":"old-refresh"}}`,
+	}}}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+
+	if err := uc.PersistRotatedRefreshToken(context.Background(), "srv1", "new-refresh"); err != nil {
+		t.Fatalf("PersistRotatedRefreshToken: %v", err)
+	}
+	var cfg struct {
+		URL  string `json:"url"`
+		Auth struct {
+			Type         string `json:"type"`
+			RefreshToken string `json:"refresh_token"`
+		} `json:"auth"`
+	}
+	if err := json.Unmarshal([]byte(repo.rows[0].ConfigJSON), &cfg); err != nil {
+		t.Fatalf("stored config not valid JSON: %v", err)
+	}
+	if cfg.Auth.RefreshToken != "new-refresh" {
+		t.Fatalf("refresh_token not persisted: got %q", cfg.Auth.RefreshToken)
+	}
+	if cfg.URL != "https://mcp.example.com/mcp" || cfg.Auth.Type != "oauth2_refresh" {
+		t.Fatalf("unrelated config fields changed: %+v", cfg)
+	}
+}
+
+func TestMCPServerUsecase_PersistRotatedRefreshToken_NotFound(t *testing.T) {
+	repo := &stubMCPRepo{}
+	uc := NewMCPServerUsecase(repo, stubMCPCredRepo{}, nil, mcpMetadataAdapter{}, nil)
+	err := uc.PersistRotatedRefreshToken(context.Background(), "missing", "tok")
+	if err == nil {
+		t.Fatal("expected not-found error for unknown server key")
+	}
+}
+
 func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
 		ID:           "m1",

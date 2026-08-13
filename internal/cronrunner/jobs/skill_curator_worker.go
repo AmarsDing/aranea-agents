@@ -37,6 +37,7 @@ type CuratorWorker struct {
 	dailyMax   int32
 	dailyCount atomic.Int32
 	dailyReset atomic.Int64 // Unix timestamp of last daily reset
+	running    atomic.Bool  // single-flight: skip a tick while the previous scan is still in flight
 }
 
 // NewCuratorWorker creates a CuratorWorker. If interval <= 0, defaults to 2 hours.
@@ -67,6 +68,12 @@ func (w *CuratorWorker) Start(ctx context.Context) {
 
 func (w *CuratorWorker) runOnce(ctx context.Context) {
 	safego.Go(ctx, "skill.curator", func() {
+		if !w.running.CompareAndSwap(false, true) {
+			w.lg.Warn("curator worker: previous scan still running, skipping tick",
+				loggateway.StepID("skill.curator.skip"))
+			return
+		}
+		defer w.running.Store(false)
 		// Expiration of stale pending suggestions is owned by
 		// EvolutionOrchestratorWorker (orchestrator.ExpirePending → status
 		// 'expired'); the curator only runs the verification half.

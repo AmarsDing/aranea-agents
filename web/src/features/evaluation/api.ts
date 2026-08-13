@@ -99,8 +99,12 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
 
 export async function annotateCaseResult(input: AnnotateCaseResultInput): Promise<EvalCaseResult> {
   const body: Record<string, unknown> = {};
-  if (input.human_pass !== undefined) body.human_pass = input.human_pass ?? null;
-  if (input.human_score !== undefined) body.human_score = input.human_score ?? null;
+  // 清除位优先于值字段（与后端语义一致）；JSON null 在 proto3 optional 上被解码为
+  // "字段未设置"，无法表达"清除"，必须走显式 clear 标志。
+  if (input.clear_human_pass) body.clear_human_pass = true;
+  else if (input.human_pass != null) body.human_pass = input.human_pass;
+  if (input.clear_human_score) body.clear_human_score = true;
+  else if (input.human_score != null) body.human_score = input.human_score;
   if (input.human_comment !== undefined) body.human_comment = input.human_comment;
   const raw = await requestHandler({
     path: `v1/evaluation/runs/${encodeURIComponent(input.run_id)}/results/${encodeURIComponent(input.result_id)}/annotation`,

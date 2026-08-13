@@ -68,6 +68,100 @@ func TestTraceProjector_UpsertSpanWarnThrottled(t *testing.T) {
 	}
 }
 
+// P6: when the repo is down, every new trace's InsertMonitorTrace fails.
+// The Warn must be time-window throttled instead of one Warn per trace.
+func TestTraceProjector_InsertTraceWarnThrottled(t *testing.T) {
+	repo := &mockRepo{
+		insertMonitorTraceFn: func(context.Context, monitor.TraceWrite) error {
+			return errors.New("pg down")
+		},
+	}
+	lg := &warnCountingLogger{}
+	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	if p == nil {
+		t.Fatal("NewTraceProjector returned nil")
+	}
+	p.SetRepoWarnIntervalForTest(time.Minute)
+
+	ctx := context.Background()
+	p.EnsureTraceExposed(ctx, "t1", "", "", "", "", "", "", "")
+	p.EnsureTraceExposed(ctx, "t2", "", "", "", "", "", "", "")
+	p.EnsureTraceExposed(ctx, "t3", "", "", "", "", "", "", "")
+	if lg.warnCount != 1 {
+		t.Fatalf("insert warn count within throttle window = %d, want 1", lg.warnCount)
+	}
+
+	p.SetRepoWarnIntervalForTest(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	p.EnsureTraceExposed(ctx, "t4", "", "", "", "", "", "", "")
+	if lg.warnCount != 2 {
+		t.Fatalf("insert warn count after window expiry = %d, want 2", lg.warnCount)
+	}
+}
+
+// P6: when the repo is down, every runner completion's
+// UpdateMonitorTraceCompletion fails. The Warn must be throttled.
+func TestTraceProjector_CompletionWarnThrottled(t *testing.T) {
+	repo := &mockRepo{
+		updateMonitorTraceCompletionFn: func(context.Context, string, monitor.TraceCompletion) error {
+			return errors.New("pg down")
+		},
+	}
+	lg := &warnCountingLogger{}
+	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	if p == nil {
+		t.Fatal("NewTraceProjector returned nil")
+	}
+	p.SetRepoWarnIntervalForTest(time.Minute)
+
+	ctx := context.Background()
+	p.OnRunnerCompletion(ctx, "t1", "ok", 10)
+	p.OnRunnerCompletion(ctx, "t2", "ok", 10)
+	p.OnRunnerCompletion(ctx, "t3", "ok", 10)
+	if lg.warnCount != 1 {
+		t.Fatalf("completion warn count within throttle window = %d, want 1", lg.warnCount)
+	}
+
+	p.SetRepoWarnIntervalForTest(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	p.OnRunnerCompletion(ctx, "t4", "ok", 10)
+	if lg.warnCount != 2 {
+		t.Fatalf("completion warn count after window expiry = %d, want 2", lg.warnCount)
+	}
+}
+
+// P6: when the usage repo is down, every runner completion's
+// AggregateUsageByTrace fails. The Warn must be throttled.
+func TestTraceProjector_UsageAggWarnThrottled(t *testing.T) {
+	repo := &mockRepo{}
+	usage := &mockTraceUsageRepo{
+		aggregateFn: func(context.Context, string) (monitor.UsageAggregate, error) {
+			return monitor.UsageAggregate{}, errors.New("pg down")
+		},
+	}
+	lg := &warnCountingLogger{}
+	p := monitor.NewTraceProjector(repo, lg, usage, &stubMonitorBus{})
+	if p == nil {
+		t.Fatal("NewTraceProjector returned nil")
+	}
+	p.SetRepoWarnIntervalForTest(time.Minute)
+
+	ctx := context.Background()
+	p.OnRunnerCompletion(ctx, "t1", "ok", 10)
+	p.OnRunnerCompletion(ctx, "t2", "ok", 10)
+	p.OnRunnerCompletion(ctx, "t3", "ok", 10)
+	if lg.warnCount != 1 {
+		t.Fatalf("usage-agg warn count within throttle window = %d, want 1", lg.warnCount)
+	}
+
+	p.SetRepoWarnIntervalForTest(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	p.OnRunnerCompletion(ctx, "t4", "ok", 10)
+	if lg.warnCount != 2 {
+		t.Fatalf("usage-agg warn count after window expiry = %d, want 2", lg.warnCount)
+	}
+}
+
 func TestSpanKindFromStep(t *testing.T) {
 	tests := []struct {
 		name   string

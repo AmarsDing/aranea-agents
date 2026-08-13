@@ -180,6 +180,33 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 回归测试 | `TestSkillGuidanceHook_TaskModeNonProgressive_PersistsRoutedSlugs`（TDD：先 RED 确认 nil hook，修复后 GREEN——routed slugs + reasons 落库且消息数不变） | ✅ |
 | 验证 | `internal/agent` 全绿；顺带修复 HEAD 中 monitor 缓存命中率告警并行改动遗留的 `TestDefaultAlertRules` 断言（默认规则 2→3 条，补第 3 条 `default-llm-cache-hit-ratio-low` 断言），`internal/service` 全绿 | ✅ |
 
+### 3.12 已完成（P11：模块深度审查修复 B1/S1–S5，2026-08-14）
+
+背景：对 skills 管理模块做系统性深审（业务逻辑/代码逻辑/架构/死代码），发现 1 个阻断级 bug + 5 个改进项，全部修复并验证。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| B1 软删墓碑阻塞同 slug 重建 | `skillRepo.DeleteSkill` 改为事务内物理删除 skill_version + skill 行（`internal/data/skill.go`），释放 `skill_key` 全表唯一约束；同步更新设计文档 §8.3 删除契约。**已知 caveat**：Delete 不清理磁盘目录，残留目录会被 watcher ≤5min 内以 isNew 复活为 draft（是否并入磁盘清理待决策） | ✅ |
+| S1 overwrite 磁盘一致性 | `applyOverwrite`（`internal/skill/importer/engine.go`）增加 rename 备份/恢复：先备份现有目录 → 写新文件 → DB AppendImportedVersion 失败时回滚磁盘，消除 DB 失败但磁盘已被覆盖的不一致窗口 | ✅ |
+| S2 接口稳定性标注 | `internal/biz/skill` 14 个 port 接口补 `// Stability:evolving`（AS-STA-01） | ✅ |
+| S3 错误域统一 | data 层 skill 相关全部错误改用 `apierror.DomainSkill` 常量（skill.go/skill_merge.go/skill_import_job.go/skill_health.go/unified_evolution.go 共 20+ 处字面量收敛） | ✅ |
+| S4 前端数据流收编 | `useSkillsPage.ts` 直连 API 改为经 store（FL5）；清理 store 未使用的 `listSkillFilesApi`/`readSkillFileApi` 导入 | ✅ |
+| S5 前端死代码删除 | `features/skills/api.ts` 删除 4 个无调用方函数（listEvolutionSuggestions/approveEvolutionSuggestion/rejectEvolutionSuggestion/previewSkillRuntime）；`triggerCuratorFlow` 验证阶段发现活调用链（skillEvolution store ← useEvolutionSuggestionListPage）予以保留 | ✅ |
+| 测试 | 新增 `TestDeleteSkill_AllowsRecreateSameSlug`（物理删除→同 slug 重建→无孤儿版本行，PG 集成）、`TestDeleteSkill_NotFound`、`TestApplyImport_overwriteRestoresDiskOnDBFailure`（S1 回滚） | ✅ |
+| 验证 | `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 绿；`internal/data` TestDeleteSkill* + 存量 TestSkillTagRepo_*（8/8）PG 全过；`internal/skill/importer`、`internal/biz/skill` 全绿；前端 eslint skills 范围 0 警告、`pnpm build` 成功 | ✅ |
+| 遗留技术债（记录在案，未修） | `service/skill.go` 11 个注入字段（AS-COG-01 观察项）；`skill_invocation`/`experience_report` 物理删除后留历史孤儿行（无 FK，仅历史指标，不影响功能） | 📋 |
+
+### 3.13 已完成（P12：发布安全扫描 + 合并墓碑释放 C1/C2，2026-08-14）
+
+背景：skill 加载链路系统级深审的收尾批次——发布校验缺内容安全闸门、合并废弃的墓碑 `skill_key` 永久阻塞同 slug。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| C1 发布校验危险模式扫描 | `evaluatePublishValidation`（`internal/biz/skill/skill.go`）增加正文级正则扫描：block 级（提示注入覆盖指令 / `rm -rf` 根路径 / `curl\|wget …\|sh` 管道执行）命中即阻断；warn 级（`~/.ssh` 等敏感凭据路径、webhook.site 等已知外泄端点）仅提示人工复核。宁漏不误报，仅收录高置信恶意模式 | ✅ |
+| C2 合并墓碑唯一键释放 | `SkillMergeRepo.ApplyMerge`（`internal/data/skill_merge.go`）废弃源 Skill 时同步将 `skill_key` 改名为 `<slug>--deprecated-<unixnano>`——`skill_key` 为全表唯一索引（无状态过滤），不改名则墓碑永久阻塞同 slug 重建/导入（与 P11-B1 删除路径同一约束问题的合并路径补齐） | ✅ |
+| 测试 | 危险模式扫描 block/warn/误报对照用例（`skill_runtime_invalidation_test.go`：BlocksPromptInjection/BlocksDangerousShell/WarnsOnSensitiveReference/CleanBodyNoDangerFlag）；合并墓碑释放后同 slug 重建用例（`skill_merge_test.go`：TestApplyMerge_ReleasesSourceSkillKey） | ✅ |
+| 文档 | 设计文档 §5.5 发布校验补 C1 条目、§6.7 合并补 C2 条目 | ✅ |
+
 ---
 
 ## 4. 开发阶段

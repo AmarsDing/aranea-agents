@@ -120,7 +120,7 @@
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
-import type { McpServerConfig, McpServerMetadata, McpServerRow } from '../../features/mcp/types';
+import type { McpHealthTone, McpServerConfig, McpServerMetadata, McpServerRow } from '../../features/mcp/types';
 import { parseJSON } from '../../features/mcp/utils';
 import { MCP_SERVER_TABLE_COLUMNS } from './mcpServerTableUi';
 
@@ -131,7 +131,7 @@ defineProps<{
   loading: boolean;
   testingId: string;
   togglingId: string;
-  healthTone: (row: McpServerRow) => string;
+  healthTone: (row: McpServerRow) => McpHealthTone;
   healthTooltip: (row: McpServerRow) => string;
 }>();
 

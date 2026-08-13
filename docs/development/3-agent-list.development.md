@@ -12,13 +12,18 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 
 **代码锚点**：
 - `api/kratos/agent/v1/agent.proto` — `ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators`
-- `internal/service/agent.go` — `AgentService.ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators`
-- `internal/biz/agent_usecase.go` — `AgentUsecase.List` / `Delete` / `ToggleFavorite` / `BatchUpdateAgents` / `ReorderAgents`
+- `internal/service/agent.go` — `AgentService.ListAgents` / `DeleteAgent` / `ToggleFavorite` / `ListAgentCreators`
+- `internal/service/agent_template.go` — `AgentService.DuplicateAgent` / `ListAgentTemplates`（2026-08-14 自 agent.go 拆分）
+- `internal/biz/agent_usecase.go` — `AgentUsecase.List` / `Delete` / `ToggleFavorite`
+- `internal/biz/agent_usecase_batch.go` — `AgentUsecase.BatchUpdateAgents` / `ReorderAgents`（2026-08-14 自 agent_usecase.go 拆分）
 - `internal/biz/agent_duplicate.go` — `AgentUsecase.Duplicate`（复制逻辑）
 - `internal/biz/agent_kind.go` — agent kind 归一化（builtin/preset/user）
 - `internal/biz/agent_context.go` — `ResolveListCreatedByFilter`（`mine` / 用户 id 解析）
 - `internal/biz/agent_list_extras.go` — `AgentListExtras`（运行态富化字段）
-- `internal/data/agent_repo.go` — `agentRepo.SearchAgents` / `DeleteAgent` / `ListExtrasForAgents` / `ListAgentCreators` / `ReorderAgents`
+- `internal/data/agent_repo_query.go` — `agentRepo.SearchAgents` / `ListAgentCreators`（2026-08-14 自 agent_repo.go 拆分）
+- `internal/data/agent_repo_write.go` — `agentRepo.DeleteAgent`（同上拆分）
+- `internal/data/agent_list_extras.go` — `agentRepo.ListExtrasForAgents`
+- `internal/data/agent_repo.go` — `agentRepo.ReorderAgents`（stub）
 - `internal/data/ent/schema/agent.go` — `agents` 表 Schema
 - `web/src/pages/AgentsPage.vue` — 页面壳
 - `web/src/features/agents/useAgentsPage.ts` — 列表/筛选/创建组合逻辑
@@ -42,17 +47,17 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Agent 列表 | ✅ | `ListAgents` RPC + 分页（`agent.proto:478`） |
-| 搜索/筛选 | ✅ | `keyword` / `status` / `provider` / `org_node_id` / `created_by`（`mine` 或用户 id）/ `role` / `kind`（`agent_repo.go:509`） |
-| 软删除 | ✅ | `deleted_at` + `status=deleted`（`agent_repo.go:744`） |
+| 搜索/筛选 | ✅ | `keyword` / `status` / `provider` / `org_node_id` / `created_by`（`mine` 或用户 id）/ `role` / `kind`（`agent_repo_query.go:79`） |
+| 软删除 | ✅ | `deleted_at` + `status=deleted`（`agent_repo_write.go:128`） |
 | 收藏切换 | ✅ | `ToggleFavorite` RPC（`agent.proto:499`） |
 | **复制 Agent** | ✅ | `DuplicateAgent` RPC → `POST /v1/agents/{id}/duplicate`；深拷贝 files + `CheckAgentKey`；**副本 `created_by` = 当前用户**（不复用源 Agent） |
 | `last_run_status` / `last_run_at` | ✅ | `ListExtrasForAgents`（批量 session + pending 计数）→ proto 24–25；终态 `runtime.status` 由 `persistRunStatus` 保留 |
 | `pending_evolution_count` | ✅ | evolution_suggestion `pending` 计数 → proto 26 |
 | `created_by` | ✅ | Ent Schema 字段（`internal/data/ent/schema/agent.go:47`，Ent Auto-Migration）；`ResolveListCreatedByFilter`（`mine` / 用户 id） |
-| `BatchUpdateAgents` | 🟡 | biz 层已实现（`agent_usecase.go:909`），尚无 proto RPC |
+| `BatchUpdateAgents` | ✅ | RPC `POST /v1/agents:batchUpdate`（`agent.proto:581`）；biz `agent_usecase_batch.go:119`；service `agent_batch.go`（逐 ID 权限校验 + 缓存失效）；状态转换经 `AgentStateMachine` 校验 |
 | `agent_variant` / `kind` / `source` | ✅ | proto 字段 28–33；kind 归一化 `agent_kind.go`；Schema enum 字段 |
 | `position_key` / `position_id` | ✅ | 分类体系字段；Schema `position_key` + `position_id`（renamed from `taxonomy_position_id`） |
-| `ReorderAgents` | 🟡 | biz/data 层 stub（`return nil`，`agent_repo.go:999`） |
+| `ReorderAgents` | 🟡 | biz/data 层 stub（`return nil`，`agent_repo.go:66`） |
 | `ListAgentCreators` | ✅ | RPC `GET /v1/agents/creators`；返回创建者列表（含「仅我的」首项） |
 
 ### 2.2 前端状态
@@ -69,7 +74,7 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | 列表「复制」 | ✅ | `duplicateAgent`；卡片/菜单入口 |
 | 「进化中」chip | ✅ | `isAgentEvolving` = `self_evolve && pending_evolution_count > 0` |
 | Agent 迁移入口 | 🟡 | `migrationOpen` 对话框占位文案，无导入导出 |
-| 批量操作 | ❌ | 无多选 / `BatchUpdateAgents` RPC |
+| 批量操作 | ✅ | 卡片多选 + 批量工具条（启用/停用/删除）；`stores/agents` `selectedAgentIds` + `batchUpdateListedAgents` → `POST /v1/agents:batchUpdate`；readonly 不可选 |
 | 创建者筛选 | ✅ | `AgentsFiltersCard`；`GET /v1/agents/creators`（「仅我的」`user_id=mine`）；创建成功后 `resetListFiltersAfterCreate` 清空筛选 |
 | KindBadge | ✅ | `KindBadge.vue` — 归属类型徽章（builtin/preset/user） |
 | TaxonomyFilter | ✅ | `TaxonomyFilter.vue` — 替代旧 category filter |
@@ -101,9 +106,9 @@ Agent 管理列表页：展示所有 Agent，支持搜索、筛选、排序、�
 | 1 | `agents.created_by` + Ent | 后端 | P2 | ✅ |
 | 2 | `ListAgents` 增加 `last_run_status` | 后端 | P2 | ✅ |
 | 3 | `DuplicateAgent` proto + Usecase | 后端 | P3 | ✅ |
-| 4 | `BatchUpdateAgents` | 后端 | P3 | ✅ biz；⏳ proto RPC |
+| 4 | `BatchUpdateAgents` | 后端 | P3 | ✅ 2026-08-14（proto RPC + service + 测试 4 例） |
 | 5 | 列表展示运行状态 / 创建者筛选 | 前端 | P2 | ✅ |
-| 6 | 批量操作 UI | 前端 | P3 | ⏳ |
+| 6 | 批量操作 UI | 前端 | P3 | ✅ 2026-08-14（多选 + 批量工具条） |
 | 7 | `agent_variant` / `kind` / `source` proto 字段 | 后端 | P2 | ✅ |
 | 8 | `position_key` 分类体系字段 | 后端 | P2 | ✅ |
 | 9 | KindBadge + TaxonomyFilter 前端组件 | 前端 | P2 | ✅ |

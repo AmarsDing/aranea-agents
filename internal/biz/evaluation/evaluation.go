@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -96,8 +97,18 @@ type CaseResultAnnotation struct {
 	HumanPass    *bool
 	HumanScore   *float32
 	HumanComment *string
-	AnnotatedBy  string
+	// ClearHumanPass / ClearHumanScore reset the field to un-annotated (NULL).
+	// A clear flag takes precedence over the corresponding value pointer.
+	ClearHumanPass  bool
+	ClearHumanScore bool
+	AnnotatedBy     string
 }
+
+// MaxNumRuns caps the per-case repeat count (MultiRun) accepted from API
+// requests and agent auto-eval config. Each run costs one full inference +
+// judge pass per case, so unbounded values would multiply LLM cost without
+// improving pass@k signal beyond ~20 samples.
+const MaxNumRuns = 20
 
 // TrendPoint is one completed run on the agent quality timeline.
 type TrendPoint struct {
@@ -154,6 +165,9 @@ type Repo interface {
 	UpdateRun(ctx context.Context, r Run) error
 	DeleteRun(ctx context.Context, id string) error
 	ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]Run, int, error)
+	// FailStaleRuns marks every non-terminal run created before cutoff as
+	// failed (crash/orphan recovery, Y10). Returns the swept row count.
+	FailStaleRuns(ctx context.Context, cutoff time.Time) (int, error)
 
 	InsertCaseResult(ctx context.Context, r CaseResult) error
 	ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]CaseResult, int, error)
@@ -332,6 +346,14 @@ func (u *Usecase) ListRuns(ctx context.Context, datasetID, agentID string, limit
 // UpdateRun persists run progress/result changes.
 func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
 	return u.repo.UpdateRun(ctx, r)
+}
+
+// FailStaleRuns sweeps non-terminal runs older than olderThan into "failed"
+// (Y10). Called once at startup with olderThan=0: every pending/running row
+// at that point is an orphan from a previous process, because this process
+// has not started any run yet (single-instance deployment).
+func (u *Usecase) FailStaleRuns(ctx context.Context, olderThan time.Duration) (int, error) {
+	return u.repo.FailStaleRuns(ctx, time.Now().Add(-olderThan))
 }
 
 // DeleteRun removes a run and its case results.

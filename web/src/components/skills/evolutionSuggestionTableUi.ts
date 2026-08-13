@@ -1,4 +1,5 @@
 import type { QTableColumn } from 'quasar';
+import { i18n } from '../../i18n';
 import type { SkillEvolutionView } from '../../features/skills/types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 
@@ -102,6 +103,8 @@ export function evoSuggestionStatusLabel(status?: string): string {
       return '已拒绝';
     case 'applied':
       return '已应用';
+    case 'expired':
+      return i18n.global.t('evolutionSuggestionsPage.statusExpired');
     default:
       return status || '—';
   }
@@ -117,6 +120,8 @@ export function evoSuggestionStatusColor(status?: string): string {
       return 'negative';
     case 'applied':
       return 'info';
+    case 'expired':
+      return 'grey';
     default:
       return 'grey';
   }

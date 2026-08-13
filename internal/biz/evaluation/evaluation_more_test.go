@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -195,6 +196,8 @@ func (m *fnMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]R
 func (m *fnMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
 
 func (m *fnMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
+
+func (m *fnMockRepo) FailStaleRuns(_ context.Context, _ time.Time) (int, error) { return 0, nil }
 
 func TestListDatasets(t *testing.T) {
 	tests := []struct {

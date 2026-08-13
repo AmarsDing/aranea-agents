@@ -190,9 +190,7 @@ func TestPushSkillCatalog_BestEffortGuards(t *testing.T) {
 	}}
 	okAgent := stubAgentLookup{agent: biz.Agent{ID: "agent-1"}}
 
-	cases := map[string]struct {
-		svc *ChatService
-	}{
+	cases := map[string]*ChatService{
 		"nil service":        nil,
 		"nil orchestrator":   {},
 		"session not found":  newSkillCatalogTestSvc(notFoundSession, okAgent, stubSkillLookup{candidates: skillCatalogCandidates()}, &capturePublisher{}),
@@ -205,7 +203,7 @@ func TestPushSkillCatalog_BestEffortGuards(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			done := make(chan struct{})
 			go func() {
-				tc.svc.PushSkillCatalog(context.Background(), "sess-x")
+				tc.PushSkillCatalog(context.Background(), "sess-x")
 				close(done)
 			}()
 			select {

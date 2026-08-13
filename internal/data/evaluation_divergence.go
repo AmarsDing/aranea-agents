@@ -26,7 +26,7 @@ func (r *evalRepo) ListJudgeAnnotatedResults(ctx context.Context, datasetID, age
 	args := append([]any{datasetID, agentID, agentID}, wsArgs...)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(q), args...)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "EVAL")
 	}
 	defer rows.Close()
 	var out []biz.EvalJudgeAnnotatedResult
@@ -39,7 +39,7 @@ func (r *evalRepo) ListJudgeAnnotatedResults(ctx context.Context, datasetID, age
 			&res.LLMJudgeScore, &res.ToolCallAccuracy, &res.ErrorMessage, &res.CreatedAt,
 			&humanPass, &humanScore, &res.HumanComment, &res.AnnotatedAt, &res.AnnotatedBy, &res.ScoresJSON,
 			&res.Input, &res.ExpectedOutput); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "EVAL")
 		}
 		res.ExactMatch = em == 1
 		res.ContainsMatch = cm == 1
@@ -53,5 +53,5 @@ func (r *evalRepo) ListJudgeAnnotatedResults(ctx context.Context, datasetID, age
 		}
 		out = append(out, res)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "EVAL")
 }

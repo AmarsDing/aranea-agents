@@ -471,6 +471,12 @@ export type SkillHealthMetric = {
   dailyMetrics: SkillHealthDailyMetric[] | undefined;
   routeHitRate7d: number | undefined;
   routeHitRate30d: number | undefined;
+  // 路由命中率分子/分母（按 activation_id 去重的轮次数）：
+  // 供前端区分「无路由数据」（routed_count=0）与「0% 命中率」（routed>0, loaded=0）。
+  routedCount7d: number | undefined;
+  loadedCount7d: number | undefined;
+  routedCount30d: number | undefined;
+  loadedCount30d: number | undefined;
 };
 
 export type SkillHealthDailyMetric = {

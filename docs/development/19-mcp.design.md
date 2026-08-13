@@ -129,9 +129,10 @@ type MCPServer struct {
 | `List` / `Get` / `Create` / `Update` / `Delete` | CRUD；`List` 接受 `MCPListQuery{WorkspaceID, Search, Limit, Offset}` |
 | `ListPaged` | 管理台注册表分页查询（默认 `Limit=20`，上限 100），返回 `MCPListResult{Items, Total, Limit, Offset}` |
 | `TestMCPServer` | `probe.Evaluate` + 内部 `persistHealth`（写入 `metadata_json`） |
-| `ValidateConfig` | URL 预检（不持久化） |
+| `ValidateConfig` | URL 预检（不持久化）；签名 `ValidateConfig(ctx, configJSON)`，内部始终以 `enabled=true` 评估 |
 | `RecordReconnectMetadata` | `mcpobserve` 回调递增 `reconnect_count` |
 | `MarkHealthAlertEmitted` | `mcp/alert` 回调标记告警已发送 |
+| `PersistRotatedRefreshToken` | OAuth2 refresh token 轮换回写：解密 `config_json` → 替换 `auth.refresh_token` → 重加密 → 更新，防止进程重启后复活已被吊销的旧 token（T5） |
 
 > **注**：`mcp/health` 后台探活通过调用 `TestMCPServer` 间接触发 `persistHealth`，无独立公开 `PersistHealth` 方法。
 
@@ -169,6 +170,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx, agentID) ([]EffectiveMCP
 1. Agent 有效工具含 `mcp_tool_set` 或 `mcp_broker`（`biz.ToolKeyMCPToolSet` / `ToolKeyMCPBroker`）。
 2. 平台行：`enabled` 且 `status=active` 且未软删。
 3. `tools_allow_json` / `tools_deny_json` 中 `mcp:<server_key>` 过滤（`MCPPolicyFromAgentEffectiveTools` + `FilterEffectiveMCPServers`）。
+4. **工作区可见性（R2 收紧）**：非系统调用方按 `workspace.IDFromContext(ctx)` 过滤——仅共享服务器（`workspace_id=""`）+ 本工作区私有服务器生效，与 `ListMCPServers` RPC 租户可见性一致；系统调用方（cron/prewarm，`WithSystemWorkspace`）不过滤。此前 runtime 层不过滤，租户 Agent 可挂载其他租户私有 MCP 服务器（跨租户泄漏）。
 
 ---
 
@@ -192,7 +194,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx, agentID) ([]EffectiveMCP
 | `workspace_id` | owning workspace ID（默认 `""` = 共享/系统内置；P2-B 租户隔离） |
 | `created_at` / `updated_at` / `deleted_at` | 软删除时间戳 |
 
-索引：`idx_mcp_server_status_enabled`（`status`, `enabled`）、`idx_mcp_server_deleted_at`（`deleted_at`）、（`workspace_id`, `enabled`）。
+索引：`idx_mcp_server_server_key_active`（`server_key` 部分唯一索引，`WHERE deleted_at = ''`——R1 修复：列级 UNIQUE 含软删除墓碑行，同 key 软删后重建报 23505；改为仅约束活跃行，新库由 Ent Schema 自动创建，存量库经 DDL 迁移 `20261209_mcp_partial_unique_index` 清理旧约束并补齐）、`idx_mcp_server_status_enabled`（`status`, `enabled`）、`idx_mcp_server_deleted_at`（`deleted_at`）、（`workspace_id`, `enabled`）。
 
 ### 5.2 表：`mcp_server_user_credential`
 
@@ -209,7 +211,7 @@ func (t *AgentMCPTooling) EffectiveServersForAgent(ctx, agentID) ([]EffectiveMCP
 | `metadata_json` | 元数据（默认 `{}`） |
 | `created_at` / `updated_at` / `deleted_at` | 时间戳 |
 
-唯一索引：`(mcp_server_id, user_id, credential_key)`。
+唯一索引：`idx_mcp_credential_unique_active`（`(mcp_server_id, user_id, credential_key)` 部分唯一索引，`WHERE deleted_at = ''`——R1 同因修复，墓碑行不再阻塞同 key 凭据重建）。
 
 ### 5.3 `config_json` 字段（逻辑）
 
@@ -265,6 +267,13 @@ AgentMCPTooling.EffectiveServersForAgent
 
 - `DefaultMCPServerTimeoutSec = mcpdefaults.DefaultRuntimeTimeoutSec`（60）；`timeout_sec` 映射 `ConnectionConfig.Timeout`。
 - `mcpobserve.ObserverForServer` + `WithSessionReconnect`（SSE/Streamable 默认最多 3 次，可配置 `session_reconnect_max`）。
+- `MCPServerConfig.AuthHeaderName` 透传 `auth.header_name`，使用户级凭据注入器（`HeaderInjector`）与静态 auth 路径写入同一 header（T2）。
+
+#### 连接池（`internal/tools/mcp_pool.go`）
+
+- 进程级 ToolSet 池，按 server 配置 key 复用连接；空闲超 `idleTTL`（默认 10min）由 reaper 回收。
+- **关闭语义（T3）**：`Pool.Close` 幂等——空闲 entry 立即关闭；仍被引用的 entry 标记 `closing`，延迟到最后一次 `release` 时关闭（避免 shutdown use-after-close）；`Acquire` 在 pool 已关闭时降级为非池化新建，连接中途遇 Close 则将未入池的 ToolSet 直接交给调用方（所有权与非池化路径一致）。
+- **装配错误路径（T4）**：`tools.Assemble` 任一 phase 失败时调用 `closeAll()` 关闭已装配的全部 ToolSet——池化 MCP 连接归还池引用、非池化连接真实关闭，不再泄漏。
 
 ### 6.3 MCPBroker
 
@@ -289,11 +298,16 @@ AgentMCPTooling.EffectiveServersForAgent
 
 `config_json.auth` 支持：`api_key` / `bearer` / `oauth2_static` / `oauth2_client_credentials` / `oauth2_refresh` → 合并进请求 `headers`。
 
+- **oauth2_static 守卫（T1）**：令牌缺失/校验失败时禁止回退注入同一个（已过期）`access_token`——留空 key 不注入 auth header，让连接/探活显式失败以提示重新配置，避免 401 被掩盖成工具调用失败。
+- **refresh token 轮换回写（T5）**：`oauth2_refresh` 换发成功且 provider 轮换 refresh token 时，经 `SetMCPRefreshTokenPersister` 钩子（service 层 `NewMCPServerService` 装配）调用 `MCPServerUsecase.PersistRotatedRefreshToken` 回写 `config_json`；回写失败非致命（内存缓存已持新 token），由钩子闭包记录告警日志。
+
 ---
 
 ## 七、Service 层
 
-`internal/service/mcp_server.go`：Proto ↔ `biz.MCPServer`；`TestMCPServer` 返回探活结果；`ValidateMCPServer` 返回预检结果（不持久化）；用户凭据 CRUD；CRUD 写 Admin Audit。`patchFromProtoMCPWithDiff` 解决 proto3 零值歧义。
+`internal/service/mcp_server.go`：Proto ↔ `biz.MCPServer`；`TestMCPServer` 返回探活结果；`ValidateMCPServer` 返回预检结果（不持久化）；用户凭据 CRUD；CRUD 写 Admin Audit（含用户凭据 upsert/delete，`AuditVerbCredentials`）。`patchFromProtoMCPWithDiff` 解决 proto3 零值歧义。
+
+> **单次查询守卫（M1）**：`checkMCPServerAccess` 校验权限并返回已读取的 server，`Get`/`Update`/`Delete` 复用该返回值——每个 RPC 只读一次 DB，不再「守卫一次 + 业务再读一次」。IDOR 拒绝时记进程日志 Warn（`mcp.server.access_denied`，含 server_id/caller_workspace/mutate），对外仍返回 NotFound 不泄露存在性（M2）。`UpdateMCPServer` 发射流程日志 `mcp.server.update`（已登记步骤注册表）。
 
 ### 7.1 工作区守卫（P2-B IDOR 防护）
 
@@ -310,7 +324,7 @@ AgentMCPTooling.EffectiveServersForAgent
 
 ## 八、Wire 注入
 
-- `NewMCPServerUsecase` → `NewMCPServerService`
+- `NewMCPServerUsecase` → `NewMCPServerService`（构造函数内装配 `chatagent.SetMCPRefreshTokenPersister` 钩子 → `uc.PersistRotatedRefreshToken`，T5）
 - `NewAgentMCPTooling` → `runtime.PersistenceSet.AgentMCP`
 - `provideMCPHealthRunner` → `main` 启动后台探活
 - MCP 会话重连遥测由框架内部处理（`mcpobserve` 包仅保留辅助函数 `DefaultSessionReconnectMax`/`EffectiveSessionReconnectMax`/`IsRecentReconnect`；框架已移除 `ReconnectObserver`/`ReconnectEvent` 回调，不再需要在 chat 启动时调用 `SetBus`/`SetMetadataRecorder`）
@@ -321,16 +335,19 @@ AgentMCPTooling.EffectiveServersForAgent
 
 ```
 web/src/features/mcp/
-├── api.ts                     — API 客户端（CRUD + validate + 用户凭据）
-├── types.ts                   — McpServerConfig / McpServerMetadata / McpUserCredential / auth
+├── api.ts                     — API 客户端（CRUD + validate + 用户凭据）；list/create/update 返回 McpServerRow 收紧类型
+├── types.ts                   — McpServerRow / McpServerConfig / McpServerMetadata / McpUserCredential / McpHealthTone（'ok'|'error'|'degraded'|'unknown'）/ auth
 ├── utils.ts                   — parseJSON 安全解析
-├── useMcpServersPage.ts       — 页面 composable（rows/search/paging/状态管理）
+├── useMcpServersPage.ts       — 页面 composable（rows/search/paging/状态管理；healthTone 返回 McpHealthTone）
 ├── useMcpServerForm.ts        — 表单 composable（验证/config_json 序列化）
 ├── useMcpUserCredentialDialog.ts — 用户凭据对话框 composable
 ├── McpServerFormDialog.vue    — 创建/编辑对话框
-└── McpUserCredentialDialog.vue — 用户凭据管理对话框
+├── McpUserCredentialDialog.vue — 用户凭据管理对话框
+└── __tests__/                 — useMcpServerForm（buildPayload）/ useMcpServersPage（healthTone/healthTooltip）/ mcpServerListQuery 单测
 web/src/pages/McpServersPage.vue
 ```
+
+表格列宽复用 `features/ui/registryTableColumns` 的 `REGISTRY_COL_W` token（操作列 `actionsWide`），不硬编码像素值。
 
 表单 `name` → API `key`；`display_name` → API `name`；连接字段写入 `config_json`；健康灯读 `metadata_json`；用户凭据通过 `McpUserCredentialDialog` 管理。
 
@@ -440,4 +457,4 @@ web/src/pages/McpServersPage.vue
 
 ---
 
-*文档版本：5.0 — 2026-08-11 同步 P2-B 工作区隔离与本轮修复：`shared` 字段 + 双级守卫语义（§7.1）、`ListMCPServersRequest` 服务端分页/搜索、`workspace_id` 列、内置服务器 UI 只读（徽标 + 禁用编辑/删除/开关）、手动刷新反馈、axiosHandler 后端错误 message 提取。*
+*文档版本：5.1 — 2026-08-14 同步深入评审整改：R1 软删除感知部分唯一索引（§5.1/§5.2）、R2 EffectiveServersForAgent 工作区过滤（§4.4）、M1-M6 单次查询守卫/IDOR 拒绝日志/凭据审计/`mcp.server.update` 流程日志/死代码清理（§七）、T1-T2 oauth2_static 守卫 + AuthHeaderName 透传（§6.5/§6.2）、T3-T4 连接池延迟关闭 + Assemble 错误路径清理（§6.2）、T5 refresh token 轮换回写（§4.2/§6.5/§八）、F1-F4 前端类型收紧与测试（§九）。*

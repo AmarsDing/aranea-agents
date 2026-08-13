@@ -218,6 +218,8 @@ export const useSkillsStore = defineStore('skills', () => {
     getSkillImportJob,
     refineSkillConflictGroup,
     applySkillImport,
+    listSkillFiles,
+    readSkillFile,
     updateSkillFile,
     create,
     update,

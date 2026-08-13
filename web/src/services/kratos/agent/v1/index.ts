@@ -538,6 +538,20 @@ export type DuplicateAgentRequest = {
   id: string | undefined;
 };
 
+// BatchUpdateAgentsRequest is LIST-04 bulk enable/disable/delete.
+// status and delete are mutually exclusive; exactly one must be set.
+export type BatchUpdateAgentsRequest = {
+  //
+  // Behaviors: REQUIRED
+  ids: string[] | undefined;
+  status: string | undefined;
+  delete: boolean | undefined;
+};
+
+export type BatchUpdateAgentsResponse = {
+  affected: number | undefined;
+};
+
 export interface AgentService {
   ListAgents(request: ListAgentsRequest): Promise<ListAgentsResponse>;
   CreateAgent(request: CreateAgentRequest): Promise<Agent>;
@@ -559,6 +573,7 @@ export interface AgentService {
   EditPromptFileByAI(request: EditPromptFileByAIRequest): Promise<EditPromptFileByAIResponse>;
   ListAgentTemplates(request: wellKnownEmpty): Promise<ListAgentTemplatesResponse>;
   DuplicateAgent(request: DuplicateAgentRequest): Promise<Agent>;
+  BatchUpdateAgents(request: BatchUpdateAgentsRequest): Promise<BatchUpdateAgentsResponse>;
   CheckAgentKey(request: CheckAgentKeyRequest): Promise<CheckAgentKeyResponse>;
   GetAgentEvolutionMetrics(request: GetAgentEvolutionMetricsRequest): Promise<EvolutionMetricsResponse>;
   GetAgentEvolutionSuggestions(request: GetAgentEvolutionSuggestionsRequest): Promise<ListEvolutionSuggestionsResponse>;
@@ -939,6 +954,23 @@ export function createAgentServiceClient(
         service: "AgentService",
         method: "DuplicateAgent",
       }) as Promise<Agent>;
+    },
+    BatchUpdateAgents(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/agents:batchUpdate`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "AgentService",
+        method: "BatchUpdateAgents",
+      }) as Promise<BatchUpdateAgentsResponse>;
     },
     CheckAgentKey(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/agent-keys/check`; // eslint-disable-line quotes

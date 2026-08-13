@@ -620,6 +620,10 @@ func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealt
 		DailyMetrics:         dailyMetrics,
 		RouteHitRate_7D:      detail.RouteHitRate7d,
 		RouteHitRate_30D:     detail.RouteHitRate30d,
+		RoutedCount_7D:       int32(detail.RoutedCount7d),
+		LoadedCount_7D:       int32(detail.LoadedCount7d),
+		RoutedCount_30D:      int32(detail.RoutedCount30d),
+		LoadedCount_30D:      int32(detail.LoadedCount30d),
 	}, nil
 }
 

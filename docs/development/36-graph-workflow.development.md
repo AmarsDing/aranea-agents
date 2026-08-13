@@ -146,6 +146,10 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 - 动态任务节点插入（G24）— BabyAGI 模式，需新增 `DynamicNodeInsert` 事件
 - ExecutionSummary Proto 映射（G25）— 可选，当前 WS JSON 方案已可用
 
+### 执行层正确性修复（2026-08-14 ✅）
+
+> 本轮 Team/Graph 编排评审的执行层修复（重试事件语义 B1 / 执行端点 IDOR B3 / 执行实例并发 S2·S4 / replanner 释放 S3 / TopologyEvolver 下线 S5）同时作用于独立 Graph 执行路径，任务表与验证证据统一登记在 [53-team-graph-orchestration.development.md Phase 12](./53-team-graph-orchestration.development.md#phase-12--编排正确性评审修复-已完成2026-08-14)，契约变更见 [53-team-graph-orchestration.design.md §十三](./53-team-graph-orchestration.design.md#十三编排正确性评审修复2026-08-14--已落地)。
+
 ---
 
 ## 4. 历史开发阶段（归档）

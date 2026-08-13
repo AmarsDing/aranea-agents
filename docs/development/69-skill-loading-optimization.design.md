@@ -245,8 +245,8 @@ export type SkillHint = {
 
 | 组件 | 路径 | 状态 |
 |------|------|------|
-| `ChatSkillCatalogStrip.vue` | `web/src/components/chat/ChatSkillCatalogStrip.vue` | 类型引用已修复，可编译；待后端事件集成 |
-| `ChatSkillHintBar.vue` | `web/src/components/chat/ChatSkillHintBar.vue` | 类型引用已修复，可编译；待后端事件集成 |
+| `ChatSkillCatalogStrip.vue` | `web/src/components/chat/ChatSkillCatalogStrip.vue` | 已集成（`ChatMessagePanel` 内，点击填充加载指令到 composer） |
+| `ChatSkillHintBar.vue` | `web/src/components/chat/ChatSkillHintBar.vue` | 类型引用已修复，可编译；`skill_hint` 事件未实施（原方案 A3 已裁剪） |
 
 **`ChatSkillCatalogStrip.vue` 设计**：
 
@@ -263,17 +263,56 @@ export type SkillHint = {
 - 提供"加载"按钮与"关闭"按钮
 - 使用 `hint-fade` transition
 
-### 4.3 后端事件契约（待实施）
+### 4.3 后端事件契约（已实施）
 
-**`skill_catalog` WebSocket 事件**（未实施）：
+**`skill.catalog` WebSocket 事件**（已实现，注意实际事件名为点分 `skill.catalog`）：
 
-- 触发时机：Agent 会话初始化时
-- Payload：`{skills: [{slug, name, description, tags}]}`
-- 数据来源：`skill.SummariesForContext()`，与 `SkillsRequestProcessor.injectOverview()` 同源
+- 触发时机：chat WS 连接建立时（每连接一次，`ws.go` → `SkillCatalogPusher.PushSkillCatalog`）
+- 数据来源：`SkillUC.ListEnabledPublishedSkillCandidates` + Layer A 可见性过滤（`skillruntime.NewAgentVisibilityFilter`，与运行时 overview 同源）
+- Payload（**snake_case**，`ws_v2_wire.go skillCatalogEventWire`，与 v2 其他 PascalCase payload 不同）：`{skills: [{slug, name, description, tags}]}`
+- 可靠性：best-effort——5s 超时，任何失败仅记 warn 日志不发布事件，绝不阻断 WS 连接建立
+- 前端链路：`useChatWorkspace` 拦截事件 → `runtimeStore.setSkillCatalog(sessionId, skills)` → `ChatPage.skillCatalog` → `ChatMessagePanel` → `ChatSkillCatalogStrip`；点击卡片通过 `chat.loadSkillPrompt` i18n 文案填充 composer（不直接发送，用户确认后由 agent 经 `skill_load` 加载）
 
 **`skill_hint` WebSocket 事件**（未实施，原方案 A3 已裁剪）：
 
 - 触发时机：Layer B 路由命中 Skill 时
 - Payload：`{matched_skill: slug, trigger: "关键词", confidence: 0.8}`
 
-> 当前 Phase 3 仅完成前端类型与组件骨架，后端 WebSocket 事件待后续迭代实施。
+---
+
+## 五、Phase 4：路由命中率口径修正 + Overview Token 预算
+
+### 5.1 路由命中率精确口径（批次 A）
+
+**问题**：旧口径 `RouteHitRate(X)` = X 自身调用记录中 `routed_slugs` 非空 / `loaded_slug` 非空——把「路由/加载了**任意** Skill」都计入 X 的分子分母，命中率虚高（多 Skill 场景下趋近 100%）。
+
+**新口径**：以「轮次」为单位按 `activation_id` 去重精确匹配——
+
+```
+RouteHitRate(X) = |{轮次: X ∈ routed_slugs}| 中 X 被实际加载的比例
+              =  count_distinct(activation_id where loaded_slug = X)
+                ─────────────────────────────────────────────────
+                count_distinct(activation_id where X ∈ routed_slugs)
+```
+
+- 信号行 = **任意** Skill 的运行时调用记录（`source=runtime`）中 `routed_slugs` 含 X 或 `loaded_slug = X`（JSON 包含匹配）
+- 同一 `activation_id` 多行（同轮多次工具调用）只计一次；无 `activation_id` 的行以 `row:<id>` 兜底独立成轮
+- 日粒度分桶同口径（`DailyMetric.RoutedCount/LoadedCount`）
+- 实现：`internal/data/skill_health.go routeLoadCounts`；`SkillHealthDetail` 新增 `RoutedCount7d/30d`、`LoadedCount7d/30d`（proto `SkillHealthMetric` 字段 13-16）
+- 前端语义区分：`routed_count = 0` → 显示 `-` + 「暂无路由数据」；`routed_count > 0` → 显示百分比 + `{loaded}/{routed} 加载/路由`
+
+### 5.2 Overview Token 预算渲染器（批次 B）
+
+**问题**：框架默认将「Available skills」概览全量注入 system prompt，大规模 Skill 库下概览块无界膨胀（每轮都付费），且挤占上下文预算。
+
+**设计**：
+
+- `RuntimePolicy.OverviewMaxChars *int`（agent skill runtime JSON，`overview_max_chars`）：`nil` = 默认 2000 符文（约 500-700 tokens，`DefaultOverviewMaxChars`）；显式 `0` = 不限（保留框架默认全量渲染）；`>0` = 预算上限
+- 渲染器 `skillruntime.RenderSkillOverviewBudgeted(sums, maxChars)`：
+  - 头部与框架默认逐字节一致（`"Available skills:\n"`），未截断时输出与框架默认渲染完全相同——**prompt 缓存前缀稳定**
+  - 逐行累计符文数，首条超预算行即停止（整行粒度，不出现半截描述）
+  - 截断时追加 `(N more skills available)` 提示，告知模型集合不完整（引导 `skill_load` 按需加载）
+  - **确定性**：同输入必同字节（缓存前缀稳定的前提）
+- 装配：`RunOptionWithOverviewBudget(runtime)` 生成 request-scoped `agent.WithAvailableSkillsRenderer` RunOption，chat turn（`chat_orchestrator_turn_phases`）与 team run（`runner_team_trpc`）均安装；预算 ≤0 时装空 RunOption（不覆盖框架默认）
+- 计量对齐：`context_budget.skillOverviewBlockChars` 走同一预算渲染器计算符文数，保证上下文预算计量与实际注入字节一致
+- 边界：渲染器只改概览**文本**，不改变实际可用 Skill 集合（模型仍可通过 `skill_load` 加载被截断隐藏的 Skill）

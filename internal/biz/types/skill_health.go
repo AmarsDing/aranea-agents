@@ -39,7 +39,13 @@ type SkillHealthDetail struct {
 	SuccessRate30d      float64       `json:"success_rate_30d"`
 	P95DurationMs30d    int           `json:"p95_duration_ms_30d"`
 	RouteHitRate30d     float64       `json:"route_hit_rate_30d"`
-	DailyMetrics        []DailyMetric `json:"daily_metrics,omitempty"`
+	// RoutedCount/LoadedCount 是路由命中率的分子分母（按 activation_id 去重的轮次数），
+	// 供前端区分「无路由数据」（routed=0）与「0% 命中率」（routed>0, loaded=0）。
+	RoutedCount7d  int `json:"routed_count_7d"`
+	LoadedCount7d  int `json:"loaded_count_7d"`
+	RoutedCount30d int `json:"routed_count_30d"`
+	LoadedCount30d int `json:"loaded_count_30d"`
+	DailyMetrics   []DailyMetric `json:"daily_metrics,omitempty"`
 }
 
 // DailyMetric holds per-day invocation metrics for a single skill.

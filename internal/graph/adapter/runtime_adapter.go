@@ -24,6 +24,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// TECH-DEBT(COG): file_lines=963, limit=500 (AS-COG-01); converter helpers
+// (checkpoint/template/visual) should move to a separate convert file in a
+// future iteration.
 type trpcGraphRuntime struct {
 	agent           *graphtrpc.GraphAgent
 	graph           *trpcgraph.Graph
@@ -41,6 +44,10 @@ type trpcGraphRuntime struct {
 	// AfterNode) injected via StateKeyNodeCallbacks in the runtime state.
 	// Nil when no replanner/evolver is configured.
 	callbacks *trpcgraph.NodeCallbacks
+
+	// replanner is the shared RuntimeReplanner whose per-execution counters
+	// must be released when this runtime's event stream ends (S3).
+	replanner graph.RuntimeReplanner
 
 	cancelMu  sync.Mutex
 	runCancel context.CancelFunc
@@ -155,6 +162,11 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 func (r *trpcGraphRuntime) forwardEvents(eventCh <-chan *trpcevent.Event, out chan<- biz.GraphRuntimeEvent, flow *event.TraceEmitter) {
 	defer func() {
 		r.clearRunCancel()
+		// S3：流结束（done/failed/interrupt/cancel 的统一出口）释放 replan
+		// 计数 entry，防止 ManagedMap 无限增长。Resume 重新 Run 时会重新计数。
+		if r.replanner != nil {
+			r.replanner.ReleaseExecution(r.execID)
+		}
 		close(out)
 	}()
 	var (
@@ -438,9 +450,6 @@ type trpcGraphBuilderFactory struct {
 	// replanner handles node failure analysis and replan decisions (B3).
 	// May be nil when not configured; the OnNodeError callback is skipped.
 	replanner graph.RuntimeReplanner
-	// evolver handles dynamic topology evolution based on execution insights (B4).
-	// May be nil when not configured; the AfterNode callback is skipped.
-	evolver graph.TopologyEvolver
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -453,7 +462,6 @@ func NewGraphBuilderFactory(
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
 	replanner graph.RuntimeReplanner,
-	evolver graph.TopologyEvolver,
 	lg loggateway.Logger,
 ) biz.GraphBuilderFactory {
 	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold, lg)
@@ -466,7 +474,6 @@ func NewGraphBuilderFactory(
 		resolvers:    resolvers,
 		lg:           lg,
 		replanner:    replanner,
-		evolver:      evolver,
 	}
 }
 
@@ -522,6 +529,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 		sessionID:  sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
 		bridge:    graphtrpc.NewEventBridge(f.eventBus, f.monitorBus, sessionID, spiritSessionID, graphID, execID, f.lg),
 		callbacks: f.buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID),
+		replanner: f.replanner,
 	}, nil
 }
 
@@ -531,15 +539,14 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 // rebuild_subgraph). The replan action is logged; actual topology mutation is
 // deferred to a future iteration (the framework does not yet support runtime
 // graph mutation).
-// B4: registers AfterNode callback that invokes the TopologyEvolver to decide
-// whether a dynamic transfer edge should be added based on execution insights.
-// The evolver is only called when a meaningful insight (non-empty source and
-// target) is available; on evolver failure, only a Warn log is emitted and
-// execution continues (degrade gracefully).
-// Returns nil when neither replanner nor evolver is configured, so the runtime
-// skips injecting StateKeyNodeCallbacks into the state.
+// (B4 TopologyEvolver removed in S5: the insight producer never materialized —
+// TargetNode was always empty so the callback was unreachable dead code.)
+// Returns nil when no replanner is configured, so the runtime skips injecting
+// StateKeyNodeCallbacks into the state.
+// TECH-DEBT(COG): method_lines=103, limit=80 (AS-COG-01); per-action callback
+// construction should be extracted into builders in a future iteration.
 func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID, graphID, execID string) *trpcgraph.NodeCallbacks {
-	if f.replanner == nil && f.evolver == nil {
+	if f.replanner == nil {
 		return nil
 	}
 	cb := trpcgraph.NewNodeCallbacks()
@@ -636,70 +643,6 @@ func (f *trpcGraphBuilderFactory) buildNodeCallbacks(sessionID, spiritSessionID,
 				return nil, nil
 			}
 			return out, nil
-		})
-	}
-
-	if f.evolver != nil {
-		evolver := f.evolver
-		lg := f.lg
-		cb.RegisterAfterNode(func(ctx context.Context, cbCtx *trpcgraph.NodeCallbackContext, state trpcgraph.State, result any, nodeErr error) (any, error) {
-			if cbCtx == nil {
-				return nil, nil
-			}
-			// Only evaluate topology evolution after successful node completion.
-			// On node error (nodeErr != nil), the replanner's OnNodeError callback
-			// handles the failure path; invoking the evolver on error would be
-			// noisy and semantically incorrect.
-			if nodeErr != nil {
-				return nil, nil
-			}
-			// Construct a best-effort ExecutionInsight. The evolver requires
-			// non-empty SourceNode and TargetNode; without a TargetNode (which
-			// the framework does not provide via the callback context), the
-			// insight is incomplete and the evolver call is skipped. Future
-			// work: derive TargetNode from the node result or graph topology.
-			sourceNode := cbCtx.NodeID
-			if sourceNode == "" {
-				return nil, nil
-			}
-			// TargetNode is unknown at this layer; skip the evolver call when
-			// we cannot construct a meaningful insight. The evolver remains
-			// wired and ready for future insight producers.
-			insight := graph.ExecutionInsight{
-				SourceNode: sourceNode,
-				Reason:     "post-completion topology check",
-			}
-			if insight.TargetNode == "" {
-				return nil, nil
-			}
-			exec := biz.NewGraphExecution(ctx, execID, graphID, sessionID, "")
-			exec.SpiritSessionID = spiritSessionID
-			edge, evolveErr := evolver.OnExecutionInsight(ctx, exec, insight)
-			if evolveErr != nil {
-				// B4 requirement: on failure, only Warn log, don't block execution.
-				lg.Warn("topology evolver: OnExecutionInsight failed, execution continues",
-					loggateway.StepID("topology.callback_fail"),
-					loggateway.Str("execution_id", execID),
-					loggateway.Str("session_id", sessionID),
-					loggateway.Str("graph_id", graphID),
-					loggateway.Str("source_node", sourceNode),
-					loggateway.Str("target_node", insight.TargetNode),
-					loggateway.Err(evolveErr),
-				)
-				return nil, nil
-			}
-			if edge != nil {
-				lg.Info("topology evolver: edge decided",
-					loggateway.StepID("topology.edge_decided"),
-					loggateway.Str("execution_id", execID),
-					loggateway.Str("session_id", sessionID),
-					loggateway.Str("graph_id", graphID),
-					loggateway.Str("from", edge.From),
-					loggateway.Str("to", edge.To),
-					loggateway.Str("edge_kind", edge.Kind),
-				)
-			}
-			return nil, nil
 		})
 	}
 

@@ -66,7 +66,7 @@
           <div class="col-6">
             <div class="text-caption text-grey-7">7d 路由命中率</div>
             <div
-              v-if="health.route_hit_rate_7d > 0"
+              v-if="health.routed_count_7d > 0"
               class="text-h6"
               :class="hitRateColorClass(health.route_hit_rate_7d)"
             >
@@ -74,13 +74,17 @@
             </div>
             <div v-else class="text-h6 text-grey-6">-</div>
             <div class="text-caption text-grey-7">
-              {{ health.route_hit_rate_7d > 0 ? '加载/路由' : '暂无路由数据' }}
+              {{
+                health.routed_count_7d > 0
+                  ? `${health.loaded_count_7d} / ${health.routed_count_7d} 加载/路由`
+                  : '暂无路由数据'
+              }}
             </div>
           </div>
           <div class="col-6">
             <div class="text-caption text-grey-7">30d 路由命中率</div>
             <div
-              v-if="health.route_hit_rate_30d > 0"
+              v-if="health.routed_count_30d > 0"
               class="text-h6"
               :class="hitRateColorClass(health.route_hit_rate_30d)"
             >
@@ -88,7 +92,11 @@
             </div>
             <div v-else class="text-h6 text-grey-6">-</div>
             <div class="text-caption text-grey-7">
-              {{ health.route_hit_rate_30d > 0 ? '加载/路由' : '暂无路由数据' }}
+              {{
+                health.routed_count_30d > 0
+                  ? `${health.loaded_count_30d} / ${health.routed_count_30d} 加载/路由`
+                  : '暂无路由数据'
+              }}
             </div>
           </div>
         </div>
@@ -108,7 +116,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { SkillHealthMetric } from '../../features/skills/types';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   health: SkillHealthMetric | null;
@@ -135,11 +146,11 @@ const overallColor = computed(() => {
 });
 
 const overallLabel = computed(() => {
-  if (!props.health || hasNoInvocations.value) return '无数据';
+  if (!props.health || hasNoInvocations.value) return t('skillsPage.healthNoData');
   const rate7d = props.health.success_rate_7d;
-  if (rate7d >= 0.95) return '健康';
-  if (rate7d >= 0.8) return '注意';
-  return '异常';
+  if (rate7d >= 0.95) return t('skillsPage.healthGood');
+  if (rate7d >= 0.8) return t('skillsPage.healthWarn');
+  return t('skillsPage.healthBad');
 });
 
 function rateColorClass(rate: number): string {

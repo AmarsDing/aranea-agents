@@ -24,12 +24,18 @@
       :table-columns="tableColumns"
       :is-favorite="isFavorite"
       :get-category-label="taxonomyLabel"
+      :selected-ids="selectedAgentIds"
       @create="openCreate"
       @toggle-favorite="toggleFavorite"
+      @toggle-select="toggleAgentSelected"
       @copy-key="copyAgentKey"
       @delete="confirmDelete"
       @duplicate="duplicateListedAgent"
       @reorder="onReorder"
+      @batch-enable="runBatchSetStatus('active')"
+      @batch-disable="runBatchSetStatus('inactive')"
+      @batch-delete="requestBatchDelete"
+      @clear-selection="clearAgentSelection"
     />
 
     <agents-pagination-bar v-model:page="page" v-model:rows-per-page="rowsPerPage" :total="total" :page-max="pageMax" />
@@ -71,6 +77,29 @@
         <q-card-actions align="right" class="app-actions-bar">
           <q-btn v-close-popup flat rounded no-caps label="取消" />
           <q-btn color="negative" rounded unelevated no-caps label="删除" @click="deleteAgentTarget" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <q-dialog v-model="batchDeleteOpen">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
+        <q-card-section>
+          <div class="text-h6">{{ $t('agentsPage.batch.deleteConfirmTitle') }}</div>
+          <div class="text-body2 text-grey-7 q-mt-sm">
+            {{ $t('agentsPage.batch.deleteConfirmMessage', { n: selectedAgentIds.length }) }}
+          </div>
+        </q-card-section>
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn v-close-popup flat rounded no-caps :label="$t('agentsPage.batch.cancel')" />
+          <q-btn
+            color="negative"
+            rounded
+            unelevated
+            no-caps
+            :loading="batchBusy"
+            :label="$t('agentsPage.batch.delete')"
+            @click="runBatchDelete"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -140,5 +169,13 @@ const {
   openCreate,
   taxonomyLabel,
   onReorder,
+  selectedAgentIds,
+  toggleAgentSelected,
+  clearAgentSelection,
+  batchDeleteOpen,
+  batchBusy,
+  requestBatchDelete,
+  runBatchSetStatus,
+  runBatchDelete,
 } = useAgentsPage();
 </script>

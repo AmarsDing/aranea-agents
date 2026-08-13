@@ -11,7 +11,7 @@ Agent 管理主列表页，支持搜索、筛选（关键字/状态/Provider/业
 
 后端复用 `AgentService` 下的 `ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` RPC，并通过 `ListExtrasForAgents` 富化运行态字段（`last_run_status` / `last_run_at` / `pending_evolution_count`）。
 
-`BatchUpdateAgents` / `ReorderAgents` 在 biz 层已实现（`ReorderAgents` 为 stub），尚无 proto RPC 暴露。
+`BatchUpdateAgents` 已实现并通过 proto RPC 暴露（`POST /v1/agents:batchUpdate`，LIST-04 批量启用/停用/删除）；`ReorderAgents` 仍为 biz stub，尚无 proto RPC 暴露。
 
 ---
 
@@ -116,8 +116,13 @@ service AgentService {
   rpc ListAgentCreators(google.protobuf.Empty) returns (ListAgentCreatorsResponse) {
     option (google.api.http) = {get: "/v1/agents/creators"};
   }
+  rpc BatchUpdateAgents(BatchUpdateAgentsRequest) returns (BatchUpdateAgentsResponse) {
+    option (google.api.http) = {post: "/v1/agents:batchUpdate" body: "*"};
+  }
 }
 ```
+
+`BatchUpdateAgentsRequest`：`ids`（必填）+ `status`（active/inactive）与 `delete` 互斥、必须恰设其一；`BatchUpdateAgentsResponse` 返回 `affected` 条数。
 
 ### 2.3 消息字段说明
 
@@ -801,6 +806,7 @@ function isAgentEvolving(agent: Agent): boolean {
 | PATCH | `/v1/agents/{id}/favorite` | `ToggleFavorite` | 收藏切换 |
 | POST | `/v1/agents/{id}/duplicate` | `DuplicateAgent` | 复制 |
 | GET | `/v1/agents/creators` | `ListAgentCreators` | 创建者列表 |
+| POST | `/v1/agents:batchUpdate` | `BatchUpdateAgents` | 批量启用/停用/删除（status 与 delete 互斥） |
 
 ### 10.2 列表查询参数
 
@@ -845,15 +851,14 @@ function isAgentEvolving(agent: Agent): boolean {
 > 任务清单与进度状态详见 [3-agent-list.development.md §4](./3-agent-list.development.md#4-任务清单)。
 
 **已实现（设计已覆盖）**：
-- Proto：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` RPC
+- Proto：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` / `BatchUpdateAgents` RPC
 - Biz：`AgentUsecase.List` / `Delete` / `ToggleFavorite` / `Duplicate` / `ListAgentCreators` / `BatchUpdateAgents`
 - Data：`SearchAgents`（keyword/status/provider/org_node_id/created_by/role/kind 筛选）/ `ListExtrasForAgents` / `ListAgentCreators`
-- Service：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators`
+- Service：`ListAgents` / `DeleteAgent` / `ToggleFavorite` / `DuplicateAgent` / `ListAgentCreators` / `BatchUpdateAgents`（含逐 ID 变更权限校验 + 缓存失效）
 - Web：`api.ts` / `useAgentsPage.ts` / `AgentsPage.vue` / `AgentsListSection.vue` / `AgentCard.vue` / `KindBadge.vue` / `TaxonomyFilter.vue`
+- Web：批量操作 UI（卡片多选 + 批量启用/停用/删除工具条，`stores/agents` selectedAgentIds）
 - Wire：`NewAgentService` 注入
 
 **待实现（设计未覆盖，需新增设计）**：
-- Proto：`BatchUpdateAgents` RPC（biz 已实现，缺 proto 暴露）
 - Proto：`ReorderAgents` RPC（biz/data 为 stub，需同步实现 data 层持久化 + proto 暴露）
-- 前端：批量操作 UI（多选 + 批量启用/停用/删除）
 - 前端：Agent 迁移导入/导出流程

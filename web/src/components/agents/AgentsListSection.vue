@@ -93,6 +93,9 @@
               :taxonomy-label="getCategoryLabel(agent.taxonomy_position_id)"
               :context-label="formatLastRunContext(agent)"
               :evolving="isAgentEvolving(agent)"
+              selectable
+              :selected="selectedIds.includes(agent.id)"
+              @toggle-select="$emit('toggle-select', $event)"
               @toggle-favorite="$emit('toggle-favorite', $event)"
               @copy-key="$emit('copy-key', $event)"
               @delete="$emit('delete', $event)"
@@ -115,6 +118,13 @@
       <template #body-cell-name="slotProps">
         <q-td :props="slotProps">
           <div class="row items-center no-wrap q-gutter-sm">
+            <q-checkbox
+              v-if="!slotProps.row.readonly"
+              dense
+              :model-value="selectedIds.includes(slotProps.row.id)"
+              :aria-label="t('agentsPage.batch.selectAriaLabel')"
+              @update:model-value="$emit('toggle-select', slotProps.row.id)"
+            />
             <q-btn
               v-if="!slotProps.row.readonly"
               flat
@@ -233,6 +243,52 @@
       </template>
     </AppRegistryTable>
   </section>
+
+  <q-card v-if="selectedIds.length > 0" flat bordered class="agents-batch-bar">
+    <span class="text-body2">{{ t('agentsPage.batch.selected', { n: selectedIds.length }) }}</span>
+    <div class="row items-center q-gutter-xs">
+      <q-btn
+        flat
+        dense
+        rounded
+        no-caps
+        color="positive"
+        icon="play_circle"
+        :label="t('agentsPage.batch.enable')"
+        @click="$emit('batch-enable')"
+      />
+      <q-btn
+        flat
+        dense
+        rounded
+        no-caps
+        color="warning"
+        icon="pause_circle"
+        :label="t('agentsPage.batch.disable')"
+        @click="$emit('batch-disable')"
+      />
+      <q-btn
+        flat
+        dense
+        rounded
+        no-caps
+        color="negative"
+        icon="delete"
+        :label="t('agentsPage.batch.delete')"
+        @click="$emit('batch-delete')"
+      />
+      <q-btn
+        flat
+        dense
+        rounded
+        no-caps
+        color="grey-7"
+        icon="close"
+        :label="t('agentsPage.batch.cancel')"
+        @click="$emit('clear-selection')"
+      />
+    </div>
+  </q-card>
 </template>
 
 <script setup lang="ts">
@@ -259,15 +315,21 @@ const props = defineProps<{
   tableColumns: QTableColumn<Agent>[];
   isFavorite: (id: string) => boolean;
   getCategoryLabel: (taxonomyPositionId: string) => string;
+  selectedIds: string[];
 }>();
 
 const emit = defineEmits<{
   create: [];
   'toggle-favorite': [id: string];
+  'toggle-select': [id: string];
   'copy-key': [key: string];
   delete: [agent: Agent];
   duplicate: [agent: Agent];
   reorder: [ids: string[]];
+  'batch-enable': [];
+  'batch-disable': [];
+  'batch-delete': [];
+  'clear-selection': [];
 }>();
 
 // 内置管家 = system_builtin 且非 dept_lead（与后端 CleanupNonSystemData 的保留规则一致）：
@@ -289,3 +351,18 @@ const draggableUserAgents = computed({
   },
 });
 </script>
+
+<style scoped>
+.agents-batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-radius: 12px;
+}
+</style>

@@ -144,7 +144,7 @@ func TestSequencer_ReplayDeadLettersOnce_Success(t *testing.T) {
 	)
 	t.Cleanup(func() { _ = s.Close() })
 
-	s.replayDeadLettersOnce()
+	s.persist.replayDeadLettersOnce()
 
 	rs.mu.Lock()
 	if len(rs.tasks) != 1 || rs.tasks[0].ID != "t-r1" {
@@ -183,7 +183,7 @@ func TestSequencer_ReplayDeadLettersOnce_TerminalOp(t *testing.T) {
 	)
 	t.Cleanup(func() { _ = s.Close() })
 
-	s.replayDeadLettersOnce()
+	s.persist.replayDeadLettersOnce()
 
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -216,7 +216,7 @@ func TestSequencer_ReplayDeadLettersOnce_FailureIncrementsAttempt(t *testing.T) 
 	)
 	t.Cleanup(func() { _ = s.Close() })
 
-	s.replayDeadLettersOnce()
+	s.persist.replayDeadLettersOnce()
 
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -250,7 +250,7 @@ func TestSequencer_ReplayDeadLettersOnce_AbandonsAtAttemptCap(t *testing.T) {
 	)
 	t.Cleanup(func() { _ = s.Close() })
 
-	s.replayDeadLettersOnce()
+	s.persist.replayDeadLettersOnce()
 
 	rs.mu.Lock()
 	if len(rs.tasks) != 0 {
@@ -285,7 +285,7 @@ func TestSequencer_ReplayDeadLettersOnce_AbandonsUndecodablePayload(t *testing.T
 	)
 	t.Cleanup(func() { _ = s.Close() })
 
-	s.replayDeadLettersOnce()
+	s.persist.replayDeadLettersOnce()
 
 	store.mu.Lock()
 	defer store.mu.Unlock()

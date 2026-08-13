@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	v1 "aranea-agents/api/kratos/mcp_server/v1"
+	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
@@ -35,6 +36,23 @@ func NewMCPServerService(uc *biz.MCPServerUsecase, mon *biz.MonitorUsecase, lg l
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
+	// Wire the OAuth2 refresh-token rotation persistence hook: when a provider
+	// rotates the refresh token, the agent runtime writes it back into the
+	// server's stored config_json so a restart does not resurrect the revoked
+	// token. The closure owns failure logging per the hook contract.
+	chatagent.SetMCPRefreshTokenPersister(func(ctx context.Context, serverKey, refreshToken string) error {
+		if err := uc.PersistRotatedRefreshToken(ctx, serverKey, refreshToken); err != nil {
+			lg.Warn("MCP 轮换 refresh_token 回写失败",
+				loggateway.StepID("mcp.server.token_rotate"),
+				loggateway.Str("server_key", serverKey),
+				loggateway.Err(err))
+			return err
+		}
+		lg.Info("MCP 轮换 refresh_token 已回写",
+			loggateway.StepID("mcp.server.token_rotate"),
+			loggateway.Str("server_key", serverKey))
+		return nil
+	})
 	return &MCPServerService{uc: uc, mon: mon, lg: lg, monitorBus: monitorBus}
 }
 
@@ -80,25 +98,29 @@ func redactMCPConfigURL(configJSON string) string {
 // 跨租户访问返回 NotFound（避免泄露 mcp server 存在性）。
 // 共享 mcp server（workspace_id=""）对所有租户可读；变更须用 assertMCPServerMutateAccess。
 func (s *MCPServerService) assertMCPServerAccess(ctx context.Context, serverID string) error {
-	return s.checkMCPServerAccess(ctx, serverID, false)
+	_, err := s.checkMCPServerAccess(ctx, serverID, false)
+	return err
 }
 
 // assertMCPServerMutateAccess 校验 caller 是否可变更指定 mcp server。
 // 共享 mcp server（workspace_id=""）对租户只读（fail-closed）。
 func (s *MCPServerService) assertMCPServerMutateAccess(ctx context.Context, serverID string) error {
-	return s.checkMCPServerAccess(ctx, serverID, true)
+	_, err := s.checkMCPServerAccess(ctx, serverID, true)
+	return err
 }
 
-func (s *MCPServerService) checkMCPServerAccess(ctx context.Context, serverID string, mutate bool) error {
+// checkMCPServerAccess 校验访问权限并返回已读取的 server，调用方应复用该返回值，
+// 禁止在校验通过后再次 Get（每个 RPC 只读一次）。
+func (s *MCPServerService) checkMCPServerAccess(ctx context.Context, serverID string, mutate bool) (biz.MCPServer, error) {
 	if serverID == "" {
-		return nil
+		return biz.MCPServer{}, nil
 	}
 	srv, err := s.uc.Get(ctx, serverID)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return apierror.NotFound("MCP_SERVER", "mcp server not found")
+			return biz.MCPServer{}, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
-		return err
+		return biz.MCPServer{}, err
 	}
 	callerWS := workspace.IDFromContext(ctx)
 	if mutate {
@@ -107,10 +129,16 @@ func (s *MCPServerService) checkMCPServerAccess(ctx context.Context, serverID st
 		err = workspace.AssertWorkspaceOrShared(callerWS, srv.WorkspaceID)
 	}
 	if err != nil {
-		// TECH-DEBT(P2-B): add Warn log once MCPServerService gets lg field injected via wire.
-		return apierror.NotFound("MCP_SERVER", "mcp server not found")
+		// 进程日志记录 IDOR 拒绝（对外仍返回 NotFound，不泄露存在性）。
+		s.lg.Warn("mcp.server.access_denied",
+			loggateway.StepID("mcp.server.access_denied"),
+			loggateway.Str("server_id", serverID),
+			loggateway.Str("caller_workspace", callerWS),
+			loggateway.Str("mutate", strconv.FormatBool(mutate)),
+			loggateway.Err(err))
+		return biz.MCPServer{}, apierror.NotFound("MCP_SERVER", "mcp server not found")
 	}
-	return nil
+	return srv, nil
 }
 
 func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
@@ -262,37 +290,24 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 }
 
 func (s *MCPServerService) GetMCPServer(ctx context.Context, req *v1.GetMCPServerRequest) (*v1.MCPServer, error) {
-	// P2-B: IDOR guard — reads must use the same workspace assert as mutations.
-	if err := s.assertMCPServerAccess(ctx, req.GetId()); err != nil {
-		return nil, err
-	}
-	m, err := s.uc.Get(ctx, req.GetId())
+	// P2-B: IDOR guard — 校验与读取合并为一次 DB 查询。
+	srv, err := s.checkMCPServerAccess(ctx, req.GetId(), false)
 	if err != nil {
-		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
-		}
 		return nil, err
 	}
-	return toProtoMCP(m), nil
+	return toProtoMCP(srv), nil
 }
 
 func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMCPServerRequest) (*v1.MCPServer, error) {
 	if req.GetMcpServer() == nil {
 		return nil, apierror.BadRequest("MCP_SERVER", "mcp_server body is required")
 	}
-	// P2-B: IDOR guard — verify caller workspace before any mutation.
-	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
-		return nil, err
-	}
-	// Fetch current server to resolve proto3 zero-value ambiguity for bool/int fields.
+	// P2-B: IDOR guard + 取当前值合并为一次 DB 查询。
 	// Proto3 cannot distinguish "field not set" from "set to zero value" (false/0),
 	// so we compare against current: only include a field in the patch when the proto
 	// value differs from the current persisted value.
-	current, err := s.uc.Get(ctx, req.GetId())
+	current, err := s.checkMCPServerAccess(ctx, req.GetId(), true)
 	if err != nil {
-		if apierror.IsCode(err, apierror.CodeNotFound) {
-			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
-		}
 		return nil, err
 	}
 	patch := patchFromProtoMCPWithDiff(req.GetMcpServer(), current)
@@ -301,8 +316,16 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		if apierror.IsCode(err, apierror.CodeNotFound) {
 			return nil, apierror.NotFound("MCP_SERVER", "mcp server not found")
 		}
+		s.logMCPFlow(ctx, "mcp.server.update", "MCP 服务器更新失败", err,
+			event.P("server_id", req.GetId()),
+			event.P("server_key", current.Key))
 		return nil, err
 	}
+	s.logMCPFlow(ctx, "mcp.server.update", fmt.Sprintf("MCP 服务器已更新：%s", out.Name), nil,
+		event.P("server_id", out.ID),
+		event.P("server_key", out.Key),
+		event.P("server_name", out.Name),
+		event.P("url", redactMCPConfigURL(out.ConfigJSON)))
 	invalidateAllAgentBuildCaches()
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbUpdate, "mcp_server"),
@@ -314,28 +337,23 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 }
 
 func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMCPServerRequest) (*emptypb.Empty, error) {
-	// P2-B: IDOR guard — verify caller workspace before deletion.
-	if err := s.assertMCPServerMutateAccess(ctx, req.GetId()); err != nil {
+	// P2-B: IDOR guard + 审计摘要取值合并为一次 DB 查询。
+	srv, err := s.checkMCPServerAccess(ctx, req.GetId(), true)
+	if err != nil {
 		return nil, err
 	}
-	// 先取 key 供审计 detail 使用（best-effort，取不到不阻断删除）。
-	summary := ""
-	serverKey, serverName, serverURL := "", "", ""
-	if m, err := s.uc.Get(ctx, req.GetId()); err == nil {
-		summary = fmt.Sprintf("key=%s", m.Key)
-		serverKey, serverName = m.Key, m.Name
-		serverURL = redactMCPConfigURL(m.ConfigJSON)
-	}
+	summary := fmt.Sprintf("key=%s", srv.Key)
+	serverURL := redactMCPConfigURL(srv.ConfigJSON)
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		s.logMCPFlow(ctx, "mcp.server.remove", "MCP 服务器移除失败", err,
 			event.P("server_id", req.GetId()),
-			event.P("server_key", serverKey))
+			event.P("server_key", srv.Key))
 		return nil, err
 	}
-	s.logMCPFlow(ctx, "mcp.server.remove", fmt.Sprintf("MCP 服务器已移除：%s", serverName), nil,
+	s.logMCPFlow(ctx, "mcp.server.remove", fmt.Sprintf("MCP 服务器已移除：%s", srv.Name), nil,
 		event.P("server_id", req.GetId()),
-		event.P("server_key", serverKey),
-		event.P("server_name", serverName),
+		event.P("server_key", srv.Key),
+		event.P("server_name", srv.Name),
 		event.P("url", serverURL))
 	invalidateAllAgentBuildCaches()
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
@@ -348,7 +366,7 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 }
 
 func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.ValidateMCPServerRequest) (*v1.ValidateMCPServerResponse, error) {
-	res := s.uc.ValidateConfig(ctx, req.GetEnabled(), req.GetConfigJson())
+	res := s.uc.ValidateConfig(ctx, req.GetConfigJson())
 	detailsJSON := "{}"
 	if len(res.Details) > 0 {
 		b, err := json.Marshal(res.Details)
@@ -472,6 +490,12 @@ func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, re
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCredentials, "mcp_server"),
+		Resource:   "mcp_server",
+		ResourceID: req.GetMcpServerId(),
+		Summary:    fmt.Sprintf("user=%s credential_key=%s op=upsert", userID, req.GetCredentialKey()),
+	})
 	return toProtoMCPUserCred(out), nil
 }
 
@@ -488,5 +512,11 @@ func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, re
 		return nil, err
 	}
 	invalidateAllAgentBuildCaches()
+	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
+		Action:     biz.AuditAction(biz.AuditVerbCredentials, "mcp_server"),
+		Resource:   "mcp_server",
+		ResourceID: req.GetMcpServerId(),
+		Summary:    fmt.Sprintf("user=%s credential_key=%s op=delete", userID, req.GetCredentialKey()),
+	})
 	return &emptypb.Empty{}, nil
 }

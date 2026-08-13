@@ -159,6 +159,8 @@ function addRule() {
     min_chars: 0,
     priority: 0,
   });
+  // 立即同步空规则到 modelValue，避免 UI 与上游数据不一致
+  emitRules();
 }
 
 function removeRule(id: string) {

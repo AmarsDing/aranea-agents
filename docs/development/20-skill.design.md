@@ -389,6 +389,10 @@ service SkillService {
 | `POST` | `/v1/skills/:id/duplicate` | 无 | 复制为新草稿 |
 
 > 发布校验（`evaluatePublishValidation`）：结构缺失（name/description/body 为空）→ `block`；description 无触发条件且 frontmatter 未声明 `triggers` → `warn`（P1-4，不阻断，引导补全确定性路由信号）；其余软问题（描述/正文过短）→ `warn`。
+>
+> **危险模式扫描（C1，2026-08-14）**：正文级正则扫描，宁漏不误报——
+> - **block 级**（命中即阻断发布，block message 标注类别）：提示注入覆盖指令（`ignore/disregard ... previous/prior instructions`、`override system prompt`）；破坏性命令（`rm -rf /`·`~`·`$HOME`）；管道执行（`curl/wget ... | bash/sh/zsh`）
+> - **warn 级**（仅提示人工复核）：敏感凭据路径（`~/.ssh`、`~/.aws`、`/etc/passwd`、`/etc/shadow`）、已知外泄端点（`webhook.site`、`requestbin.com`、`pipedream.com`、`burpcollaborator.net`）
 
 ### 5.6 上传导入
 
@@ -697,7 +701,8 @@ type SimilarityMetrics struct {
 
 - **阶段 1**（`SkillContentFuser` 接口）：`append` / `ai_fuse` / `manual_pick` 策略；当前实现 `RuleBasedContentFuser`，基于 `##` 段落标题去重合并。
 - **阶段 2**：融合后的内容需通过校验（如非空、长度限制等），验证失败则拒绝合并。
-- **阶段 3**（`SkillMergeWriter` 接口）：在单个事务内执行 4 步操作：为 target 创建新版本 → 更新 metadata/tags → 转移 source 调用记录 → 废弃源 Skill（状态 → `deprecated`）。
+- **阶段 3**（`SkillMergeWriter` 接口）：在单个事务内执行 4 步操作：为 target 创建新版本 → 更新 metadata/tags → 转移 source 调用记录 → 废弃源 Skill（状态 → `deprecated`，软删墓碑保留审计）。
+  - **墓碑唯一键释放（C2，2026-08-14）**：`skill_key` 为全表唯一索引（无状态过滤），废弃时同步将源 `skill_key` 改名为 `<slug>--deprecated-<unixnano>` 释放 slug——否则墓碑永久阻塞同名重建/导入（`skill_skill_key_key` 冲突）。存量 deprecated 墓碑如需释放可物理清理（连带 `skill_version`）。
 
 **Data 层实现**：`internal/data/skill_merge.go` — `SkillMergeRepo` 实现 `SkillMergeReader` + `SkillMergeWriter`。
 
@@ -727,14 +732,16 @@ type SimilarityMetrics struct {
   - 重复创建时返回 `nil, nil`（幂等）
   - 含 per-action-type 冷却期检查（F9：仅 `pending`/`approved`/`applied` 活跃状态计入冷却窗口——`rejected`/`expired`/`rolled_back` 不阻塞再次触发，见 `UnifiedEvolutionSuggestion.CountsForCooldown`）
 - `Approve` / `Reject`：审批/拒绝进化建议
-- `ExpirePending`：批量过期超过 7 天的 pending 建议
+- `ExpirePending`：批量过期超过 7 天的 pending 建议（status → `expired`）。**过期收敛唯一入口**：仅由 `EvolutionOrchestratorWorker` 每 tick 调用；`CuratorWorker` 只跑验证半区（草稿 + 沙箱 + lifecycle），不再承担过期职责
+
+**审批并发守卫（2026-08 审查修复）**：`SkillIntelligenceUsecase.ApproveSuggestion` / `RejectSuggestion` 先经 `UnifiedEvolutionStateMachine.Transition` 校验转换合法性，再走 `UpdateStatusCAS`（`WHERE status IN ('pending')` 原子前置条件）防并发审批竞态——CAS 未命中返回 Conflict 提示重试
 
 **接口拆分**（符合"接口方法 ≤ 5"规范）：
 
 - `UnifiedEvolutionCheckReader`（3 方法）：`HasPendingForTarget` / `GetLatestByTarget` / `GetLatestByTargetAndAction`
 - `UnifiedEvolutionQueryReader`（5 方法）：`GetByID` / `ListByTarget` / `CountByTarget` / `ListByTargetAndAction` / `CountByTargetAndAction`（AndAction 变体区分同 target_type 的 L1 proposal 与 L3 agent 建议）
 - `UnifiedEvolutionPatternReader`（1 方法）：`GetLatestByPatternHash`（L1 pattern_hash 去重，hash 存于 metadata）
-- `UnifiedEvolutionMutationWriter`（5 方法）：`Create` / `UpdateStatus` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult`
+- `UnifiedEvolutionMutationWriter`（6 方法，超 ≤5 规范 1 个——`UpdateStatusCAS` 为审批并发守卫新增，L1/L3 无条件 `UpdateStatus` 路径仍被占用故保留并存；TECH-DEBT）：`Create` / `UpdateStatus` / `UpdateStatusCAS` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult`
 - `UnifiedEvolutionMetadataWriter`（1 方法）：`UpdateMetadataKey`（单键 JSON 合并，如 L3 `pre_apply_snapshot`）
 - `UnifiedEvolutionExpirationWriter`（1 方法）：`ExpireOlderThan`
 
@@ -1054,9 +1061,9 @@ func BuildSkillTools(cfg SkillToolsetConfig) []trpctool.Tool {
 
 **删除离开（磁盘 → 标记）**
 
-1. 目录被外部删除或移走后，watch 将对应 slug 标记 **`filesystem_missing=true`**（DB 软删记录保留）。
+1. 目录被外部删除或移走后，watch 将对应 slug 标记 **`filesystem_missing=true`**（DB 记录保留）。
 2. 发布 `skill.filesystem.missing`；恢复目录并校验通过后发布 `skill.filesystem.recovered` 并清除标记。
-3. 平台 UI「删除 Skill」为 **软删 DB**，**不**删除磁盘，**不**触发磁盘缺失告警。
+3. 平台 UI「删除 Skill」为 **物理删除 DB**（B1，2026-08-14：skill + skill_version 行同事务硬删，释放 `skill_key` 全表唯一约束，同 slug 可立即重建）；**不**删除磁盘，**不**触发磁盘缺失告警。**已知 caveat**：磁盘目录残留会被 watcher 在下一轮 reconcile（≤5min）以 `isNew` 重新登记为 draft——若需「彻底删除」，须先清空对应磁盘目录再在 UI 删除（磁盘清理是否并入 Delete 流程待决策）。
 
 **通知链路**
 

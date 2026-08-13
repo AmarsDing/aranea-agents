@@ -6,6 +6,15 @@
     :class="['agent-card full-height', { 'agent-card--dark': isDark, 'agent-card--builtin': isBuiltin }]"
   >
     <q-card-section class="agent-card__header">
+      <q-checkbox
+        v-if="selectable"
+        class="agent-card__select"
+        :model-value="selected"
+        dense
+        :aria-label="$t('agentsPage.batch.selectAriaLabel')"
+        @update:model-value="$emit('toggle-select', agent.id)"
+        @click.stop
+      />
       <agent-avatar-q :icon="agent.icon" :alt="agent.display_name" size="40px" avatar-class="agent-card__avatar" />
       <div class="col min-width-0">
         <div class="row items-center no-wrap q-gutter-xs">
@@ -103,10 +112,13 @@ const props = defineProps<{
   taxonomyLabel: string;
   contextLabel: string;
   evolving: boolean;
+  selectable?: boolean;
+  selected?: boolean;
 }>();
 
 defineEmits<{
   'toggle-favorite': [id: string];
+  'toggle-select': [id: string];
   'copy-key': [key: string];
   delete: [agent: Agent];
   duplicate: [agent: Agent];

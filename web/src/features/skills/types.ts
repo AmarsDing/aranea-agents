@@ -255,6 +255,11 @@ export type SkillHealthMetric = {
   p95_duration_ms_30d: number;
   route_hit_rate_7d: number;
   route_hit_rate_30d: number;
+  /** 路由命中率分子/分母（去重轮次）；routed_count=0 表示无路由数据（区别于 0% 命中率）。 */
+  routed_count_7d: number;
+  loaded_count_7d: number;
+  routed_count_30d: number;
+  loaded_count_30d: number;
   daily_metrics: SkillHealthDailyMetric[];
 };
 

@@ -268,7 +268,6 @@
 | L0 快照持久化 | `internal/agent/l0_snapshot_persist.go` | 框架无此功能 | 上下文压缩快照持久化 |
 | Ralph Loop | `internal/agent/ralph_loop.go` | 框架无此功能 | 承诺-验证循环 |
 | Intent Pass | `internal/agent/intent/` | 框架无此功能 | 预 Turn 意图分类 |
-| DAG 图编译 | `internal/agent/dag_graph_compiler.go` | 框架有 `GraphAgent` | 项目使用框架 GraphAgent，自建 DAG 编译层 |
 | Activity 投射 | `internal/agent/activity_projector.go` | 框架无此功能 | 运行时活动投射/发布/持久化 |
 | Prompt 预览 | `internal/agent/prompt_preview.go` | 框架无此功能 | 系统提示预览报告 |
 | Tool Invocation 记录 | `internal/agent/tool_invocation_recorder.go` | 框架无此功能 | 工具调用审计 |

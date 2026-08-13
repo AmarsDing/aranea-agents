@@ -490,6 +490,18 @@ message DuplicateAgentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+// BatchUpdateAgentsRequest is LIST-04 bulk enable/disable/delete.
+// status and delete are mutually exclusive; exactly one must be set.
+message BatchUpdateAgentsRequest {
+  repeated string ids = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2; // optional: active | inactive
+  bool delete = 3;
+}
+
+message BatchUpdateAgentsResponse {
+  int32 affected = 1;
+}
+
 service AgentService {
   rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse) {
     option (google.api.http) = {get: "/v1/agents"};
@@ -565,6 +577,9 @@ service AgentService {
   }
   rpc DuplicateAgent(DuplicateAgentRequest) returns (Agent) {
     option (google.api.http) = {post: "/v1/agents/{id}/duplicate" body: "*"};
+  }
+  rpc BatchUpdateAgents(BatchUpdateAgentsRequest) returns (BatchUpdateAgentsResponse) {
+    option (google.api.http) = {post: "/v1/agents:batchUpdate" body: "*"};
   }
   rpc CheckAgentKey(CheckAgentKeyRequest) returns (CheckAgentKeyResponse) {
     option (google.api.http) = {get: "/v1/agent-keys/check"};

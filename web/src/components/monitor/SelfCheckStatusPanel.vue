@@ -2,41 +2,41 @@
   <q-card flat bordered class="monitor-card q-mb-md">
     <q-card-section class="row items-center">
       <div>
-        <div class="text-h6 text-weight-bold">自检状态</div>
-        <div class="text-caption text-grey-7 q-mt-xs">系统健康自检与自动修复</div>
+        <div class="text-h6 text-weight-bold">{{ t('monitorPage.selfCheck.title') }}</div>
+        <div class="text-caption text-grey-7 q-mt-xs">{{ t('monitorPage.selfCheck.subtitle') }}</div>
       </div>
       <q-space />
       <q-btn
         flat
         rounded
         icon="play_arrow"
-        label="立即自检"
+        :label="t('monitorPage.selfCheck.trigger')"
         :loading="triggering"
         :disable="loading"
         @click="onTrigger"
       />
-      <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="onRefresh" />
+      <q-btn flat rounded icon="refresh" :label="t('monitorPage.selfCheck.refresh')" :loading="loading" @click="onRefresh" />
     </q-card-section>
     <q-separator />
 
     <q-card-section v-if="latestReport">
       <div class="app-metrics-grid q-mb-md">
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">整体状态</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.selfCheck.overallStatus') }}</div>
           <q-chip :color="statusColor(latestReport.overall_status)" text-color="white" dense class="q-mt-xs">
             {{ statusLabel(latestReport.overall_status) }}
           </q-chip>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">检查项</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.selfCheck.checkItems') }}</div>
           <div class="text-h6 text-weight-bold">{{ latestReport.check_results.length }}</div>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">修复动作</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.selfCheck.repairActions') }}</div>
           <div class="text-h6 text-weight-bold">{{ latestReport.repair_actions.length }}</div>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">耗时</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.selfCheck.duration') }}</div>
           <div class="text-h6 text-weight-bold">{{ formatDuration(latestReport.duration_ms) }}</div>
         </div>
       </div>
@@ -59,7 +59,7 @@
       </q-list>
 
       <div v-if="latestReport.repair_actions.length > 0" class="q-mt-md">
-        <div class="text-caption text-grey q-mb-xs">修复动作</div>
+        <div class="text-caption text-grey q-mb-xs">{{ t('monitorPage.selfCheck.repairActions') }}</div>
         <q-list dense separator>
           <q-item v-for="(action, idx) in latestReport.repair_actions" :key="idx">
             <q-item-section side>
@@ -76,7 +76,7 @@
         </q-list>
       </div>
 
-      <div class="text-caption text-grey-7 q-mt-sm">上次自检: {{ formatTime(latestReport.finished_at) }}</div>
+      <div class="text-caption text-grey-7 q-mt-sm">{{ t('monitorPage.selfCheck.lastRun', { time: formatTime(latestReport.finished_at) }) }}</div>
     </q-card-section>
 
     <q-card-section v-else-if="loading">
@@ -84,13 +84,16 @@
     </q-card-section>
 
     <q-card-section v-else>
-      <div class="text-grey text-center q-pa-md">暂无自检报告，点击「立即自检」开始检查</div>
+      <div class="text-grey text-center q-pa-md">{{ t('monitorPage.selfCheck.empty') }}</div>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import type { SelfCheckReport, SelfCheckStatus } from '../../features/monitor/types';
+
+const { t } = useI18n();
 
 defineProps<{
   loading: boolean;
@@ -127,11 +130,11 @@ function statusColor(status: SelfCheckStatus): string {
 function statusLabel(status: SelfCheckStatus): string {
   switch (status) {
     case 'passed':
-      return '通过';
+      return t('monitorPage.selfCheck.status.passed');
     case 'warning':
-      return '警告';
+      return t('monitorPage.selfCheck.status.warning');
     case 'failed':
-      return '失败';
+      return t('monitorPage.selfCheck.status.failed');
     default:
       return status;
   }

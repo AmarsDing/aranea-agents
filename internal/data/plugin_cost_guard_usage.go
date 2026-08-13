@@ -34,7 +34,7 @@ func (r *pluginCostGuardUsageRepo) GetTokens(ctx context.Context, usageDay, scop
 		if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeNotFound {
 			return 0, nil
 		}
-		return 0, err
+		return 0, entErrToBizErr(err, "PLUGIN")
 	}
 	return tokens, nil
 }
@@ -54,7 +54,7 @@ ON CONFLICT(usage_day, scope_key) DO UPDATE SET
   updated_at = excluded.updated_at`),
 		usageDay, scopeKey, delta, now,
 	)
-	return err
+	return entErrToBizErr(err, "PLUGIN")
 }
 
 func normalizeCostGuardScope(scopeKey string) string {

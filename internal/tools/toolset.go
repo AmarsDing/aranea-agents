@@ -40,23 +40,6 @@ import (
 	tmcp "trpc.group/trpc-go/trpc-mcp-go"
 )
 
-type filesystemDirKey struct{}
-
-// FilesystemDirWithDir is DEPRECATED. Use AssemblyConfig.ClaudeCodeDir or
-// AssemblyConfig.FilesystemDir instead. Kept only for backward compatibility;
-// will be removed in a future release.
-func FilesystemDirWithDir(dir string) context.Context {
-	return context.WithValue(context.Background(), filesystemDirKey{}, dir)
-}
-
-// FilesystemDirFromContext is DEPRECATED. Use AssemblyConfig fields instead.
-func FilesystemDirFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(filesystemDirKey{}).(string); ok {
-		return v
-	}
-	return ""
-}
-
 var (
 	registryOnce sync.Once
 	registry     []*ToolRegistration
@@ -461,6 +444,10 @@ type MCPServerConfig struct {
 	// RequireUserCredentials defers auth header resolution to tool-call time
 	// via HeaderInjector / MCPBrokerConfig.HeaderInjector (E2E-P1-08).
 	RequireUserCredentials bool
+	// AuthHeaderName is the configured auth.header_name passthrough so the
+	// per-user credential injector targets the same header the static auth
+	// path would have used (empty = authorization default).
+	AuthHeaderName string
 	// HeaderInjector resolves per-request HTTP headers from Invocation context
 	// for this named server (MCP ToolSet path). Prefer over build-time Headers
 	// when RequireUserCredentials is set.
@@ -627,38 +614,46 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 
 	// Phase 1: registry factories
 	if err := ac.assembleFromRegistry(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 2: builtin toolsets (file, hostexec, document, spreadsheet)
 	if err := ac.assembleBuiltinToolsets(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 3: search tools (geminifetch, google_search)
 	if err := ac.assembleSearchTools(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 4: claudecode with sandbox
 	if err := ac.assembleClaudeCodeToolset(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 5: OpenAPI toolsets
 	if err := ac.assembleOpenAPIToolsets(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 6: agent-as-tool
 	ac.assembleAgentTools()
 	// Phase 7: MCP server and broker
 	if err := ac.assembleMCPTools(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 8: session-scoped tools (memory, custom, message, subagent)
 	ac.assembleSessionTools()
 	// Phase 9: browser
 	if err := ac.assembleBrowserToolset(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 	// Phase 10: blob reader and deferred tools
 	if err := ac.assembleBlobAndResultTools(); err != nil {
+		ac.closeAll()
 		return nil, err
 	}
 

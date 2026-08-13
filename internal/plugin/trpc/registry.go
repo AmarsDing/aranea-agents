@@ -61,7 +61,9 @@ func BuiltinPluginDefs() []BuiltinPluginDef {
 			Description: "工具失败时自动重试与反思策略",
 			Category:    "reliability", RiskLevel: "medium",
 			DefaultEnabled: false, Scope: "global",
-			CallbackPoints: []string{"after_tool"},
+			// GAP-02：Register() 同时注册 AfterAgent（重试计数清理）与 AfterTool，
+			// 种子声明必须与实现一致（存量行由 bootstrap SyncBuiltinMeta 同步）。
+			CallbackPoints: []string{"after_agent", "after_tool"},
 			SortOrder:      120, ConfigSchemaJSON: retryReflectSchema, DefaultConfigJSON: "{}",
 		},
 		{

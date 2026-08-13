@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
@@ -213,6 +214,11 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRunRecord, t0 ti
 	}
 	r.publishTeamRunSummary(ctx, *run)
 	r.recordRunCompletion(ctx, *run, msg, t0)
+	// S1（K2 流程日志覆盖）：失败终态必须发射 LogError 流程日志，让业务用户
+	// 在 Monitor Logs「流程日志」Tab 看到团队任务的失败原因。
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogError("team.run.finish", msg)
+	}
 	r.lg.With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
 }
 

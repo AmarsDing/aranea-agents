@@ -144,7 +144,6 @@ func TestCheckpointRestore_RebuildsGraphAgentState(t *testing.T) {
 		spiritUC:        nil,
 		assembler:       nil,
 		controller:      nil,
-		compiler:        nil,
 		repo:            repo,
 		matcher:         nil,
 		deps:            TRPCBuilderDeps{},

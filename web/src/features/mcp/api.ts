@@ -3,7 +3,7 @@
  * 更新操作先 GET 获取当前状态，merge 后再 PATCH，与 channel 保持一致的全字段替换语义。
  */
 import { createMCPServerService } from '../../services';
-import type { PlatformResource, PlatformResourceInput } from '../platform/types';
+import type { PlatformResourceInput } from '../platform/types';
 import { asRecord, pickBool, pickI32, pickStr } from '../../shared/wireJson';
 import type {
   McpServerRow,
@@ -59,7 +59,7 @@ export type McpServerListResult = {
 };
 
 /** Full catalog (no page params) — pickers / platform resource manager. */
-export async function listMcpServers(): Promise<PlatformResource[]> {
+export async function listMcpServers(): Promise<McpServerRow[]> {
   const res = asRecord(await svc.ListMCPServers({}));
   const items = res.items ?? res.Items;
   return Array.isArray(items) ? items.map(mcpRowToPlatform) : [];
@@ -85,7 +85,7 @@ export async function listMcpServersPaged(query: McpServerListQuery = {}): Promi
   };
 }
 
-export async function createMcpServer(payload: PlatformResourceInput): Promise<PlatformResource> {
+export async function createMcpServer(payload: PlatformResourceInput): Promise<McpServerRow> {
   const row = await svc.CreateMCPServer({
     key: payload.key,
     name: payload.name,
@@ -99,7 +99,7 @@ export async function createMcpServer(payload: PlatformResourceInput): Promise<P
   return mcpRowToPlatform(row);
 }
 
-export async function updateMcpServer(id: string, payload: Partial<PlatformResourceInput>): Promise<PlatformResource> {
+export async function updateMcpServer(id: string, payload: Partial<PlatformResourceInput>): Promise<McpServerRow> {
   const cur = asRecord(await svc.GetMCPServer({ id }));
   const row = await svc.UpdateMCPServer({
     id,

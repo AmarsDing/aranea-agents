@@ -335,7 +335,7 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 // Always passes enabled=true so the probe actually validates the config,
 // regardless of the server's enabled state.
 // Incoming config may be plaintext (pre-create) or already encrypted (re-validate).
-func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, _ bool, configJSON string) MCPTestResult {
+func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, configJSON string) MCPTestResult {
 	if u.prober == nil {
 		return MCPTestResult{OK: false, Status: "unknown", Message: "mcp prober not configured"}
 	}
@@ -357,6 +357,51 @@ func (u *MCPServerUsecase) configJSONForRuntime(ctx context.Context, cfg string)
 // PrepareConfigJSONForRuntime decrypts stored MCP config for tool/connect paths.
 func (u *MCPServerUsecase) PrepareConfigJSONForRuntime(ctx context.Context, cfg string) (string, error) {
 	return u.configJSONForRuntime(ctx, cfg)
+}
+
+// PersistRotatedRefreshToken rewrites auth.refresh_token inside the server's
+// stored config_json after an OAuth2 token rotation, so a process restart
+// does not resurrect the revoked previous token. Decrypt → patch →
+// re-encrypt → update; every other field is preserved.
+func (u *MCPServerUsecase) PersistRotatedRefreshToken(ctx context.Context, serverKey, refreshToken string) error {
+	serverKey = strings.TrimSpace(serverKey)
+	refreshToken = strings.TrimSpace(refreshToken)
+	if serverKey == "" || refreshToken == "" {
+		return apierror.BadRequest("MCP_SERVER", "server_key and refresh_token are required")
+	}
+	row, err := u.repo.GetMCPServerByKey(ctx, serverKey)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(row.ID) == "" {
+		return apierror.NotFound("MCP_SERVER", "mcp server not found")
+	}
+	plain, err := u.configJSONForRuntime(ctx, row.ConfigJSON)
+	if err != nil {
+		return err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(plain), &cfg); err != nil {
+		return apierror.Internal("MCP_SERVER", "config_json parse failed").WithCause(err)
+	}
+	auth, _ := cfg["auth"].(map[string]any)
+	if auth == nil {
+		return apierror.Internal("MCP_SERVER", "config_json has no auth object")
+	}
+	auth["refresh_token"] = refreshToken
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return apierror.Internal("MCP_SERVER", "config_json marshal failed").WithCause(err)
+	}
+	stored := string(raw)
+	if u.crypto != nil {
+		if stored, err = u.crypto.ProcessMCPConfigJSONForStorage(ctx, stored); err != nil {
+			return err
+		}
+	}
+	row.ConfigJSON = stored
+	_, err = u.repo.UpdateMCPServer(ctx, row)
+	return err
 }
 
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) (MCPServer, error) {

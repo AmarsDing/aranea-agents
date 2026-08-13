@@ -37,6 +37,24 @@ type assembleContext struct {
 	lg          loggateway.Logger
 }
 
+// closeAll releases every ToolSet assembled so far. Called on Assemble error
+// paths so pooled MCP connections release their pool references (and
+// non-pooled ones close for real) instead of leaking.
+func (ac *assembleContext) closeAll() {
+	for _, ts := range ac.out.ToolSets {
+		if ts == nil {
+			continue
+		}
+		if err := ts.Close(); err != nil {
+			ac.lg.Warn("tools.Assemble 错误路径清理 ToolSet 失败",
+				loggateway.StepID("tool.assemble.cleanup"),
+				loggateway.Str("toolset", ts.Name()),
+				loggateway.Err(err))
+		}
+	}
+	ac.out.ToolSets = nil
+}
+
 // assembleFromRegistry instantiates tools from the global registry entries.
 func (ac *assembleContext) assembleFromRegistry() error {
 	for _, reg := range Registry() {

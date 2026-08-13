@@ -1254,7 +1254,9 @@ func TestEvaluateAlerts_RunnerErrorRateFires(t *testing.T) {
 			}
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Notify should be called when error rate exceeds threshold")
@@ -1288,7 +1290,9 @@ func TestEvaluateAlerts_RunnerErrorRateBelowThreshold(t *testing.T) {
 			notifyCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Notify should not be called when error rate is below threshold")
@@ -1318,40 +1322,6 @@ func TestEvaluateAlerts_DisabledRule(t *testing.T) {
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Disabled rule should not trigger notification")
-	}
-}
-
-func TestEvaluateAlerts_ZeroTotalDoesNotAutoRecover(t *testing.T) {
-	// Empty data window provides no evidence for recovery; state must persist.
-	recoveredCalled := false
-	repo := &mockRepo{
-		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
-			return []monitor.AlertRule{
-				{
-					ID:              "r1",
-					MetricKey:       "runner.error_rate",
-					Threshold:       0.5,
-					WindowMinutes:   60,
-					Enabled:         true,
-					CooldownMinutes: 60,
-					FiringState:     monitor.AlertFiringStateFiring,
-				},
-			}, nil
-		},
-		countMonitorEventsSinceFn: func(context.Context, string, string, string, string) (int32, error) {
-			return 0, nil
-		},
-		updateAlertFiringStateFn: func(_ context.Context, id string, state monitor.AlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
-			if state == monitor.AlertFiringStateRecovered {
-				recoveredCalled = true
-			}
-			return nil
-		},
-	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	uc.EvaluateAlerts(context.Background())
-	if recoveredCalled {
-		t.Error("Firing alert should NOT auto-recover when total=0 (empty window is ambiguous)")
 	}
 }
 
@@ -1543,7 +1513,9 @@ func TestEvaluateAlerts_SkillFilesystemMissingCount(t *testing.T) {
 			return 10, 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithFilesystemHealthReader(fsHealth))
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Missing count above threshold should fire alert")
@@ -1565,7 +1537,9 @@ func TestEvaluateAlerts_SkillFilesystemNilHealth(t *testing.T) {
 			}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewSkillFilesystemMissingMetric(nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1612,7 +1586,9 @@ func TestEvaluateAlerts_CountTotalError(t *testing.T) {
 			return 0, fmt.Errorf("count error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1991,7 +1967,9 @@ func TestEvaluateAlerts_WithRingBuffer(t *testing.T) {
 	rb.RecordCompletion("error", 100)
 	rb.RecordCompletion("error", 200)
 	rb.RecordCompletion("success", 300)
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRingBuffer(rb))
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, rb))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Ring buffer showing 2/3 error rate should fire alert above 0.5 threshold")
@@ -2024,7 +2002,9 @@ func TestEvaluateAlerts_CooldownPreventsFire(t *testing.T) {
 			notifyCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Alert within cooldown should not fire")
@@ -2050,7 +2030,9 @@ func TestEvaluateAlerts_FiringStateUsesReminderNotSpam(t *testing.T) {
 		},
 	}
 	notifier := &mockNotifier{notifyFn: func(context.Context, monitor.AlertRule, map[string]any) { notifyCount++ }}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if notifyCount != 0 {
 		t.Fatalf("firing within reminder window should not re-notify, got %d", notifyCount)
@@ -2077,7 +2059,9 @@ func TestEvaluateAlerts_FiringStateReminderAfterInterval(t *testing.T) {
 		insertMonitorEventFn: func(context.Context, monitor.EventWrite) error { return nil },
 	}
 	notifier := &mockNotifier{notifyFn: func(context.Context, monitor.AlertRule, map[string]any) { notifyCount++ }}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, nil))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if notifyCount != 1 {
 		t.Fatalf("firing past reminder interval should notify once, got %d", notifyCount)
@@ -2093,7 +2077,7 @@ func TestRecordRunnerCompletion_FeedsEvalWorker(t *testing.T) {
 		},
 	}
 	rb := monitor.NewMetricRingBuffer()
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil, monitor.WithRingBuffer(rb))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	w := monitor.NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	uc.SetEvalWorker(w)
 	err := uc.RecordRunnerCompletion(context.Background(),

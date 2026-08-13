@@ -171,7 +171,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
 	memoryCanaryStatus := biz.NewMemoryCanaryStatus()
 	alertMetricRegistry := monitor.NewAlertMetricRegistry()
-	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, traceSpanReader, sequencer, memoryCanaryStatus, alertMetricRegistry, usageRepo, loggatewayLogger)
+	traceUsageRepo := data.NewMonitorTraceUsageRepo(dataData)
+	traceProjector := provideTraceProjector(traceRepo, traceUsageRepo, infra, loggatewayLogger)
+	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
+	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, traceSpanReader, sequencer, memoryCanaryStatus, alertMetricRegistry, usageRepo, traceProjector, flowFileAppender, loggatewayLogger)
 	a2aRepo := data.NewA2ARepoFromData(dataData, loggatewayLogger)
 	agentLookup := biz.ProvideA2AAgentLookup(agentRepository)
 	a2aUsecase := a2a.NewUsecase(a2aRepo, a2aRepo, a2aRepo, a2aRepo, agentLookup)
@@ -281,8 +284,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
 	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, loggatewayLogger)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
-	topologyEvolver := provideTopologyEvolver(llmProviderModelUsecase, v2Bus, loggatewayLogger)
-	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, topologyEvolver, loggatewayLogger)
+	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger)
 	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
 	compiledTeamRepo := data.NewCompiledTeamRepo(dataData, sessionRuntimeReader)
 	graphExecutionTelemetry := service.NewGraphExecutionTelemetry()
@@ -473,8 +475,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	dbPinger := provideDBPinger(dataData)
-	traceUsageRepo := data.NewMonitorTraceUsageRepo(dataData)
-	traceProjector := provideTraceProjector(traceRepo, traceUsageRepo, infra, loggatewayLogger)
 	alertEvalWorker := provideMonitorAlertEvalWorker(monitorUsecase)
 	eventBusHealthChecker := provideEventBusHealthChecker(infra)
 	runCanceller := provideRunCanceller(chatService)
@@ -485,7 +485,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillCatalogPusher := provideSkillCatalogPusher(chatService)
 	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer, skillCatalogPusher, bridge)
 	wsConnectionCounter := provideWSConnectionCounter(wsServer)
-	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
 	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender, runnerCompletionRepo)
 	eventBusResubscriber := provideEventBusResubscriber()
 	v3 := monitor.ProvideSelfCheckRepairers(flowFileAppender, traceProjector, alertEvalWorker, eventBusResubscriber)
@@ -731,11 +730,6 @@ func provideEventBusSideConsumers(
 	var monitorEventBus contract.MonitorBus
 	if infra != nil {
 		monitorEventBus = infra.MonitorEventBus
-	}
-
-	if monitorUC != nil {
-		monitorUC.SetTraceProjector(traceProj)
-		monitorUC.SetFlowFileAppender(fileAppender)
 	}
 	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitorUC, memWorker, traceProj, fileAppender, usage, logger, flowLogWriter)
 }
@@ -994,9 +988,9 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, traceProj *monitor.TraceProjector, fileAppender *monitor.FlowFileAppender, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
-	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithFilesystemHealthReader(fsHealth), biz.WithTraceSpanReader(spanReader), biz.WithRingBuffer(rb), monitor.WithLogger(lg))
+	uc := biz.NewMonitorUsecase(audit, event2, trace, alert, runner, notifier, biz.WithTraceSpanReader(spanReader), monitor.WithLogger(lg), monitor.WithRegistry(reg), monitor.WithTraceProjector(traceProj), monitor.WithFlowFileAppender(fileAppender))
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
 	uc.SetEvalWorker(w)
 
@@ -1016,7 +1010,6 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event2 biz.MonitorEventRe
 	if ch, ok := usageRepo.(usage.CacheHitRatioStatsRepo); ok && ch != nil {
 		reg.Register(monitor.NewCacheHitRatioLowMetric(ch))
 	}
-	uc.SetRegistry(reg)
 	return uc
 }
 
@@ -1613,31 +1606,6 @@ func provideNL2GraphConverter(lg loggateway.Logger) graph3.NL2GraphConverter {
 // Graph executors to call OnNodeFailure on node errors.
 func provideRuntimeReplanner(eventBus biz.EventBus, lg loggateway.Logger) graph3.RuntimeReplanner {
 	return graph3.NewRuntimeReplanner(eventBus, lg)
-}
-
-// provideTopologyEvolver builds the TopologyEvolver for dynamic graph topology
-// evolution. The LLM model is resolved from TOPOLOGY_EVOLVER_PROVIDER and
-// TOPOLOGY_EVOLVER_MODEL env vars; when unset, the evolver degrades gracefully
-// (returns nil edge, no error) because NewTopologyEvolver accepts a nil LLM.
-// The evolver is integrated into the Graph executor via AfterNode callbacks
-// (B4) and is called when execution insights suggest a new transfer edge.
-func provideTopologyEvolver(
-	catalog *biz.LlmProviderModelUsecase,
-	eventBus biz.EventBus,
-	lg loggateway.Logger,
-) graph3.TopologyEvolver {
-	var llm model.Model
-	prov := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_MODEL"))
-	if prov != "" && mod != "" && catalog != nil {
-		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
-		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
-			llm = m
-		} else {
-			lg.Warn("topology evolver: LLM model build failed, edge decisions will be no-op", loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
-		}
-	}
-	return graph3.NewTopologyEvolver(llm, eventBus, lg)
 }
 
 func provideGraphBuildDeps(
@@ -3743,8 +3711,7 @@ func provideTaskOrchestrator(
 			LG:           lg,
 		},
 	}
-	compiler := agent.NewDAGToGraphCompiler(lg)
-	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(

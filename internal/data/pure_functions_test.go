@@ -316,6 +316,24 @@ func TestPoolStatsDebugEnabled(t *testing.T) {
 	}
 }
 
+// P5: the lazy-seeds trace logs must be off unless explicitly enabled via
+// ARANEA_DEBUG_LAZY_SEEDS=1, otherwise every startup writes 2+N debug lines
+// into the log pipeline.
+func TestLazySeedsDebugEnabled(t *testing.T) {
+	t.Setenv("ARANEA_DEBUG_LAZY_SEEDS", "")
+	if lazySeedsDebugEnabled() {
+		t.Fatal("lazySeedsDebugEnabled() = true with empty env, want false")
+	}
+	t.Setenv("ARANEA_DEBUG_LAZY_SEEDS", "0")
+	if lazySeedsDebugEnabled() {
+		t.Fatal("lazySeedsDebugEnabled() = true with env=0, want false")
+	}
+	t.Setenv("ARANEA_DEBUG_LAZY_SEEDS", "1")
+	if !lazySeedsDebugEnabled() {
+		t.Fatal("lazySeedsDebugEnabled() = false with env=1, want true")
+	}
+}
+
 func TestPlaceholders_Three(t *testing.T) {
 	got := placeholders(3)
 	want := "?,?,?"

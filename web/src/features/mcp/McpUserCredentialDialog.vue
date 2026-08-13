@@ -1,7 +1,4 @@
-// Container: approved — feature-local dialog that manages its own credential CRUD lifecycle. // Unlike pure display
-components, this Container directly uses Store for credential // operations (fetch/save/remove) because the credential
-lifecycle is self-contained // within this dialog and does not need to be orchestrated by the parent Page. // FB3+FB4
-fix: CRUD logic + $q.notify extracted to useMcpUserCredentialDialog composable.
+// Container: approved — feature-local dialog; credential CRUD lives in useMcpUserCredentialDialog composable.
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">

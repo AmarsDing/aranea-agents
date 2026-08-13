@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -129,6 +130,8 @@ func (m *dsMockRepo) ListRunPreferences(_ context.Context, _ string, _ int) ([]R
 func (m *dsMockRepo) GetGateConfig(_ context.Context) (GateConfig, error) { return GateConfig{}, nil }
 
 func (m *dsMockRepo) UpsertGateConfig(_ context.Context, _ GateConfig) error { return nil }
+
+func (m *dsMockRepo) FailStaleRuns(_ context.Context, _ time.Time) (int, error) { return 0, nil }
 
 func TestCreateDataset(t *testing.T) {
 	tests := []struct {

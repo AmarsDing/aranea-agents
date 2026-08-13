@@ -493,9 +493,17 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 	content := strings.TrimSpace(input.Content)
 	durableCtx := admit.durableCtx
 
+	// typed-nil 防护：ag.Settings 为 nil 时必须传 nil interface，
+	// 否则 GetSkillRuntimeJSON() 会 panic（同 trpc_build.go runtimeIface）。
+	var skillRuntime skillruntime.RuntimeSettings
+	if ag.Settings != nil {
+		skillRuntime = ag.Settings
+	}
 	runOpts := durableResumeRunOpts(durableCtx.active, []trpcagent.RunOption{
 		trpcagent.WithRequestID(sessionID),
 		skillruntime.RunOptionWithTurnQuery(content),
+		// 批次 B：按 agent policy 安装概览预算渲染器（显式 0 = 不安装）。
+		skillruntime.RunOptionWithOverviewBudget(skillRuntime),
 	})
 	if input.EntryConfig.AllowStream {
 		runOpts = append(runOpts, trpcagent.WithStream(true))

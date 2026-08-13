@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -317,6 +318,31 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 		return biz.Session{}, entErrToBizErr(err, "SESSION")
 	}
 	return r.GetSessionByID(ctx, id)
+}
+
+// UpdateSessionMetadataKey atomically sets a single top-level key in
+// metadata_json via Postgres jsonb_set (S6 swarm CAS). Unlike UpdateSession,
+// which rewrites the whole document from a stale snapshot and loses concurrent
+// writes to unrelated keys, this touches only the target key. metadata_json is
+// a TEXT column holding a JSON object, so we cast through jsonb.
+func (r *sessionRepo) UpdateSessionMetadataKey(ctx context.Context, id, key, value string) error {
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
+UPDATE sessions
+SET metadata_json = jsonb_set(
+		COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb,
+		ARRAY[$2],
+		to_jsonb($3::text),
+		true
+	)::text,
+	updated_at = $1
+WHERE id = $4 AND deleted_at = ''`, nowRFC3339(), key, value, id)
+	if err != nil {
+		return entErrToBizErr(err, "SESSION")
+	}
+	if n, err := res.RowsAffected(); err == nil && n == 0 {
+		return entErrToBizErr(sql.ErrNoRows, "SESSION")
+	}
+	return nil
 }
 
 func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Session, error) {

@@ -8,8 +8,10 @@ import (
 
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -243,6 +245,111 @@ func TestPluginService_PrivatePlugin_CrossTenantDenied(t *testing.T) {
 	}
 }
 
+// memPluginRunRepo 是内存版 PluginRunRepo，模拟 N-B5 租户可见性语义：
+// 空 workspaceID = 系统调用（全部）；非空 = 共享行 ”+ 自身行。
+type memPluginRunRepo struct {
+	items []biz.PluginRun
+}
+
+func (m *memPluginRunRepo) Insert(_ context.Context, run biz.PluginRun) error {
+	m.items = append(m.items, run)
+	return nil
+}
+
+func (m *memPluginRunRepo) visible(workspaceID string) []biz.PluginRun {
+	out := make([]biz.PluginRun, 0, len(m.items))
+	for _, r := range m.items {
+		if workspaceID == "" || r.WorkspaceID == "" || r.WorkspaceID == workspaceID {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (m *memPluginRunRepo) List(_ context.Context, q biz.PluginRunQuery) (biz.PluginRunListResult, error) {
+	out := m.visible(q.WorkspaceID)
+	return biz.PluginRunListResult{Items: out, Total: int32(len(out)), Limit: q.Limit, Offset: q.Offset}, nil
+}
+
+func (m *memPluginRunRepo) DeleteAll(_ context.Context, workspaceID string) (int32, error) {
+	kept := make([]biz.PluginRun, 0, len(m.items))
+	var deleted int32
+	for _, r := range m.items {
+		if workspaceID == "" || r.WorkspaceID == "" || r.WorkspaceID == workspaceID {
+			deleted++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	m.items = kept
+	return deleted, nil
+}
+
+func newPluginServiceWithRuns(runs ...biz.PluginRun) *service.PluginService {
+	repo := newMemPluginRepo()
+	runRepo := &memPluginRunRepo{items: append([]biz.PluginRun{}, runs...)}
+	return service.NewPluginService(biz.NewPluginUsecase(repo, runRepo, nil), nil, loggateway.NewNoop(), nil)
+}
+
+// N-B5：租户 ListPluginRuns 只能看到共享行 + 本租户行；系统调用看全部。
+func TestPluginService_ListPluginRuns_TenantVisibility(t *testing.T) {
+	svc := newPluginServiceWithRuns(
+		biz.PluginRun{ID: "r-a", PluginKey: "audit_log", WorkspaceID: "ws-a"},
+		biz.PluginRun{ID: "r-b", PluginKey: "audit_log", WorkspaceID: "ws-b"},
+		biz.PluginRun{ID: "r-shared", PluginKey: "audit_log", WorkspaceID: ""},
+	)
+
+	tenantA := workspace.WithContext(context.Background(), "ws-a")
+	resp, err := svc.ListPluginRuns(tenantA, &v1.ListPluginRunsRequest{})
+	if err != nil {
+		t.Fatalf("list runs (tenant ws-a): %v", err)
+	}
+	got := map[string]bool{}
+	for _, it := range resp.GetItems() {
+		got[it.GetId()] = true
+	}
+	if !got["r-a"] || !got["r-shared"] {
+		t.Errorf("tenant ws-a should see own + shared, got %v", got)
+	}
+	if got["r-b"] {
+		t.Errorf("tenant ws-a must not see ws-b run")
+	}
+
+	sysResp, err := svc.ListPluginRuns(workspace.WithSystemWorkspace(context.Background()), &v1.ListPluginRunsRequest{})
+	if err != nil {
+		t.Fatalf("list runs (system): %v", err)
+	}
+	if len(sysResp.GetItems()) != 3 {
+		t.Errorf("system should see all 3 runs, got %d", len(sysResp.GetItems()))
+	}
+}
+
+// N-B5：租户 DeleteAllPluginRuns 只删共享行 + 本租户行；系统调用全删。
+func TestPluginService_DeleteAllPluginRuns_TenantScope(t *testing.T) {
+	svc := newPluginServiceWithRuns(
+		biz.PluginRun{ID: "r-a", PluginKey: "audit_log", WorkspaceID: "ws-a"},
+		biz.PluginRun{ID: "r-b", PluginKey: "audit_log", WorkspaceID: "ws-b"},
+		biz.PluginRun{ID: "r-shared", PluginKey: "audit_log", WorkspaceID: ""},
+	)
+
+	tenantA := workspace.WithContext(context.Background(), "ws-a")
+	resp, err := svc.DeleteAllPluginRuns(tenantA, &v1.DeleteAllPluginRunsRequest{})
+	if err != nil {
+		t.Fatalf("delete all (tenant ws-a): %v", err)
+	}
+	if resp.GetDeletedCount() != 2 {
+		t.Errorf("tenant delete should remove shared+own = 2, got %d", resp.GetDeletedCount())
+	}
+
+	listResp, err := svc.ListPluginRuns(workspace.WithSystemWorkspace(context.Background()), &v1.ListPluginRunsRequest{})
+	if err != nil {
+		t.Fatalf("list after delete: %v", err)
+	}
+	if len(listResp.GetItems()) != 1 || listResp.GetItems()[0].GetId() != "r-b" {
+		t.Errorf("only ws-b run should remain, got %+v", listResp.GetItems())
+	}
+}
+
 // ISSUE-009：内置插件元数据演进（如 schema 增加中文 title/description）必须
 // 在 bootstrap 时同步到已有行；seeder 此前对已有行直接跳过，修复对存量安装
 // 永不生效。同步仅限平台自有字段（name/category/schema/默认值等），保留管理
@@ -283,5 +390,54 @@ func TestPluginService_SeedBuiltin_SyncsMetadata(t *testing.T) {
 	}
 	if got.Scope != "agent-1" {
 		t.Errorf("scope must be preserved, got: %s", got.Scope)
+	}
+}
+
+// captureBus 捕获流程日志事件的 MonitorBus 假实现。
+type captureBus struct{ n int }
+
+func (b *captureBus) Publish(_ context.Context, _ contract.MonitorEvent) { b.n++ }
+
+func (b *captureBus) Subscribe(contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	ch := make(chan contract.MonitorEvent)
+	return ch, func() {}
+}
+
+func (b *captureBus) DropCount() uint64 { return 0 }
+
+// seedFailRepo 模拟 bootstrap 种子 Create 失败场景：GetByKey 恒 NotFound
+// （走 Create 分支），CreatePlugin 返回注入的错误。
+type seedFailRepo struct {
+	*memPluginRepo
+	createErr error
+}
+
+func (r *seedFailRepo) GetByKey(_ context.Context, _ string) (biz.Plugin, error) {
+	return biz.Plugin{}, apierror.NotFound("PLUGIN", "plugin not found")
+}
+
+func (r *seedFailRepo) CreatePlugin(_ context.Context, _ biz.Plugin) (biz.Plugin, error) {
+	return biz.Plugin{}, r.createErr
+}
+
+// A5：并发 bootstrap 种子冲突（CONFLICT）属良性竞争——降级 Debug，不发流程错误事件。
+func TestPluginService_SeedBuiltin_ConflictBenign(t *testing.T) {
+	bus := &captureBus{}
+	repo := &seedFailRepo{memPluginRepo: newMemPluginRepo(), createErr: apierror.Conflict("PLUGIN", "duplicate key")}
+	svc := service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop(), bus)
+	svc.Bootstrap(context.Background())
+	if bus.n != 0 {
+		t.Errorf("conflict seed must not emit flow error events, got %d", bus.n)
+	}
+}
+
+// A5：非冲突种子失败仍须 Warn + 发流程错误事件（不吞真实故障）。
+func TestPluginService_SeedBuiltin_NonConflictEmitsFlowError(t *testing.T) {
+	bus := &captureBus{}
+	repo := &seedFailRepo{memPluginRepo: newMemPluginRepo(), createErr: apierror.BadRequest("PLUGIN", "bad config")}
+	svc := service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop(), bus)
+	svc.Bootstrap(context.Background())
+	if bus.n == 0 {
+		t.Error("non-conflict seed failure should emit flow error events")
 	}
 }

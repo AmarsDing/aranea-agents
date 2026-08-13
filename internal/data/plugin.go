@@ -9,7 +9,6 @@ import (
 	bizplugin "aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformplugin"
-	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -97,7 +96,7 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 	base := r.pluginSearchQuery(ctx, q)
 	total, err := base.Count(ctx)
 	if err != nil {
-		return biz.PluginListResult{}, err
+		return biz.PluginListResult{}, entErrToBizErr(err, "PLUGIN")
 	}
 	rows, err := r.pluginSearchQuery(ctx, q).
 		Order(
@@ -108,7 +107,7 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 		Offset(q.Offset).
 		All(ctx)
 	if err != nil {
-		return biz.PluginListResult{}, err
+		return biz.PluginListResult{}, entErrToBizErr(err, "PLUGIN")
 	}
 	items := make([]biz.Plugin, 0, len(rows))
 	for _, e := range rows {
@@ -127,10 +126,7 @@ func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, erro
 		Where(platformplugin.PluginKeyEQ(key), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return entToBizPlugin(r.data.lg, row), nil
 }
@@ -173,7 +169,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 		SetWorkspaceID(p.WorkspaceID). // P2-B: tenant isolation
 		Save(ctx)
 	if err != nil {
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return entToBizPlugin(r.data.lg, row), nil
 }
@@ -183,10 +179,7 @@ func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, erro
 		Where(platformplugin.IDEQ(id), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return entToBizPlugin(r.data.lg, row), nil
 }
@@ -197,10 +190,7 @@ func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return r.GetPlugin(ctx, id)
 }
@@ -211,10 +201,7 @@ func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJS
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return r.GetPlugin(ctx, id)
 }
@@ -225,10 +212,7 @@ func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder i
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return r.GetPlugin(ctx, id)
 }
@@ -239,10 +223,7 @@ func (r *pluginRepo) UpdatePluginScope(ctx context.Context, id string, scope str
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return r.GetPlugin(ctx, id)
 }
@@ -265,38 +246,27 @@ func (r *pluginRepo) SyncBuiltinMeta(ctx context.Context, p biz.Plugin) (biz.Plu
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
 	if err != nil {
-		if ent.IsNotFound(err) {
-			return biz.Plugin{}, apierror.NotFound(apierror.DomainPlugin, "not found")
-		}
-		return biz.Plugin{}, err
+		return biz.Plugin{}, entErrToBizErr(err, "PLUGIN")
 	}
 	return r.GetPlugin(ctx, p.ID)
 }
 
+// IncrementStats 原子增量计数（P3-6）：单条 UPDATE ... SET count = count + delta，
+// 无读-改-写窗口，多实例/并发调用安全。pluginKey 不存在时静默 no-op（与原语义一致）。
 func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta biz.PluginStatUpdate) error {
 	pluginKey = strings.TrimSpace(pluginKey)
 	if pluginKey == "" {
 		return nil
 	}
-	row, err := r.data.RW().Read(ctx).PlatformPlugin.Query().
+	upd := r.data.RW().Write(ctx).PlatformPlugin.Update().
 		Where(platformplugin.PluginKeyEQ(pluginKey), platformplugin.DeletedAtEQ("")).
-		Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-	status := strings.TrimSpace(delta.LastStatus)
-	if status == "" {
-		status = row.LastStatus
-	}
-	return r.data.RW().Write(ctx).PlatformPlugin.UpdateOne(row).
-		SetInvokeCount(row.InvokeCount + delta.InvokeCount).
-		SetBlockCount(row.BlockCount + delta.BlockDelta).
-		SetErrorCount(row.ErrorCount + delta.ErrorDelta).
-		SetLastStatus(status).
+		AddInvokeCount(delta.InvokeCount).
+		AddBlockCount(delta.BlockDelta).
+		AddErrorCount(delta.ErrorDelta).
 		SetLastInvokedAt(nowRFC3339()).
-		SetUpdatedAt(nowRFC3339()).
-		Exec(ctx)
+		SetUpdatedAt(nowRFC3339())
+	if status := strings.TrimSpace(delta.LastStatus); status != "" {
+		upd = upd.SetLastStatus(status)
+	}
+	return entErrToBizErr(upd.Exec(ctx), "PLUGIN")
 }

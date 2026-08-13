@@ -1457,6 +1457,10 @@ recovered --(冷却结束)--> idle
 
 `recovery_factor` 默认 0.9（阈值 0.25 → 跌到 0.225 以下才算恢复，防抖动）。
 
+**窗口无数据语义（2026-08-13，防误恢复）**：指标评估返回哨兵错误 `ErrAlertMetricNoData`（窗口内 total=0）时，`EvaluateAlerts` 跳过该规则本轮评估，**不做任何状态迁移**——firing 中的规则不会因"无流量"被误判为 recovered 而发恢复通知。仅当窗口内有真实数据且值低于恢复阈值时才允许 firing → recovered。
+
+**通知 payload 契约（2026-08-13）**：`evaluateMetricValue` 统一以 `payload["value"]` 承载当前指标值（另含 `threshold` / 可选 `breach_summary` / `reminder` / `recovered_at`）。出站通知（Webhook / Channel）一律从 `payload["value"]` 取值，禁止按 metric_key 猜测 `error_rate`/`missing_count` 等键名（历史 bug：Channel 通知文本恒为 `<nil>`）。
+
 #### 2.2.3 多实例去重锁
 
 SQLite（单写）：写入前 `BEGIN IMMEDIATE`，读取最新 `last_fired_at` 后判断。
@@ -1808,6 +1812,8 @@ UI：Traces 详情可点 parent → 跳转上一段 trace；Waterfall 跨 trace 
 ## 6. MON-OPT-06：告警规则注册表 + 自定义指标 DSL
 
 ### 6.1 现状与业务问题
+
+> **历史背景**：以下为 Registry 落地前的旧实现（2026-08-13 已随 DEV-05 彻底删除 switch 分支及 `evaluateRunnerErrorRate`/`evaluateSkillFilesystemMissingCount`/`WithFilesystemHealthReader`/`WithRingBuffer`，评估统一走 `AlertMetricRegistry`，见 §6.2.1）。
 
 ```go
 switch strings.TrimSpace(rule.MetricKey) {

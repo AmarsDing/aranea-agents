@@ -527,6 +527,37 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 
 ---
 
+## 十三、编排正确性评审修复（2026-08-14 ✅ 已落地）
+
+> 来源：2026-08-14 Team/Graph 编排全链路评审（3 阻断 B1-B3 + 9 项建议优化）。实施任务表与验证证据见 [53-team-graph-orchestration.development.md Phase 12](./53-team-graph-orchestration.development.md#phase-12--编排正确性评审修复-已完成2026-08-14)。
+
+### 13.1 重试事件语义（B1）
+
+- `biz.GraphRuntimeEvent` 新增 `Retrying bool`：框架节点重试期间发出的中间错误事件（`graph/adapter/runtime_adapter.go::convertTrpcEvent` 从 NodeMeta 透传），消费者不得视为终态失败；`GraphExecutionUsecase.updateExecutionFromRuntimeEvent` 仅对 `Retrying=false` 的节点错误收敛 `GraphExecFailed`。
+
+### 13.2 执行端点 workspace 隔离（B3）
+
+- `GraphService.assertGraphAccess(ctx, graphID)`：graph 定义与执行的全部 RPC 先校验 caller workspace 对目标 graph 可访问（自有或共享），防止跨租户 IDOR 读取/操作他人执行。
+
+### 13.3 执行实例并发契约（S2/S4）
+
+- **注册 insert-first（S2）**：`RegisterTeamGraphExecution` 先 `cacheNewExecution` 占位再 `SaveRun`，持久化失败 `uncacheExecution` 回滚——杜绝注册与并发 `loadExecution` 产生双实例（各自持独立互斥锁导致状态分叉）。
+- **加载双重检查锁（S4）**：`loadExecution` 缓存未命中走持久层后，写锁内二次检查，保证同一 executionID 全局单实例——`FinalizeTeamGraphExecution` 双路径收敛（协调器 + Runner 兜底）在同一实例上幂等合并。
+
+### 13.4 RuntimeReplanner 生命周期（S3）
+
+- `graph.RuntimeReplanner` 接口新增 `ReleaseExecution(execID string)`：`attemptCount` 为 `ManagedMap(ttl=0)` 无自动过期，执行事件流结束（`trpcGraphRuntime.forwardEvents` defer）必须显式释放，防 per-execution 计数无界增长。
+
+### 13.5 swarm active agent 原子更新（S6）
+
+- `SessionWriter.UpdateSessionMetadataKey(ctx, id, key, value)`（`data/session_repo.go`，Postgres `jsonb_set` 单键原子更新）替代读-改-写整本 metadata——消除 `CrossRequestTransfer` 并发切换 active agent 时的 lost-update。
+
+### 13.6 TopologyEvolver 下线（S5）
+
+- 删除 `graph/topology_evolution.go`：洞察生产者从未物化（`TargetNode` 恒空，AfterNode 回调不可达），属死代码；`NewGraphBuilderFactory` 签名同步移除 evolver 参数，Wire `provideTopologyEvolver` 删除。
+
+---
+
 ## 附录：企业级蓝图与 AI 落地指南
 
 > 原 `53-team-graph-orchestration.design.md#附录企业级蓝图与-ai-落地指南` 已并入本文。

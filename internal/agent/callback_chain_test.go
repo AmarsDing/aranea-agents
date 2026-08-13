@@ -15,7 +15,7 @@ func TestBuildCallbackChainOptions_HasAgentAndModelHooks(t *testing.T) {
 		AgentKey: "test",
 		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: false},
 	}
-	opts, _ := buildCallbackChainOptions(context.Background(), ag, TRPCBuilderDeps{}, nil, nil, nil)
+	opts, _ := buildCallbackChainOptions(context.Background(), ag, TRPCBuilderDeps{}, nil, nil, nil, nil)
 	if len(opts) == 0 {
 		t.Fatal("expected callback options")
 	}

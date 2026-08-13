@@ -105,7 +105,6 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "browser", displayName: "浏览器自动化", description: "通过 Playwright MCP 实现浏览器自动化操作（导航、截图、点击、输入等）。", category: "browser", riskLevel: "critical", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{}}`, configSchema: `{"type":"object","properties":{"command":{"type":"string","description":"MCP 启动命令","default":"npx"},"args":{"type":"array","items":{"type":"string"},"description":"MCP 启动参数"},"transport":{"type":"string","enum":["stdio","sse","streamable"],"description":"MCP 传输协议","default":"stdio"},"headless":{"type":"boolean","description":"无头模式","default":true},"vision":{"type":"boolean","description":"启用视觉能力","default":false},"isolated":{"type":"boolean","description":"隔离模式","default":true},"timeout_sec":{"type":"integer","description":"MCP 连接超时（秒）"}}}`, registryName: "browser"},
 	{key: "read_tool_result", displayName: "读取工具结果", description: "通过 blob_id 检索之前持久化的工具结果完整内容。当对话中的工具结果被截断时，使用此工具获取完整输出。", category: "system", riskLevel: "low", enabled: true, readonly: true, registryName: "read_tool_result"},
 	{key: "plan_and_execute", displayName: "规划并执行", description: "规划并执行任务。自动评估复杂度、分配 Agent、启动编排。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"task_prompt":{"type":"string","description":"The task to plan and execute"},"mode":{"type":"string","description":"Execution mode: auto|direct|single|parallel|dag|coordinator (default: auto)"}},"required":["task_prompt"]}`},
-	{key: "check_progress", displayName: "查询编排进度", description: "查询编排执行进度。基于 orchestration_id 查询。已由系统推送模式替代（团队完成后自动触发 Spirit 合成），不再对 LLM 暴露。", category: "spirit", source: "builtin", riskLevel: "low", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{"orchestration_id":{"type":"string","description":"The orchestration ID to check progress for"}},"required":["orchestration_id"]}`},
 	{key: "cancel_orchestration", displayName: "取消编排", description: "取消正在运行的编排。基于 orchestration_id 取消。", category: "spirit", source: "builtin", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"orchestration_id":{"type":"string","description":"The orchestration ID to cancel"}},"required":["orchestration_id"]}`},
 	{key: "synthesize_results", displayName: "合成团队结果", description: "将所有已完成团队的执行结果合成为综合报告。前置条件：所有并行团队均已完成（系统主动通知后调用）。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"strategy":{"type":"string","description":"合成策略","enum":["template","llm","hybrid"]}}}`},
 	{key: "build_orchestration_graph", displayName: "构建编排图", description: "构建 DAG 编排图，定义子任务依赖关系和执行顺序。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"task_description":{"type":"string","description":"任务描述"},"nodes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"agent_key":{"type":"string"},"depends_on":{"type":"array","items":{"type":"string"}}}}},"verification_gates":{"type":"array","items":{"type":"object"}}},"required":["task_description","nodes"]}`},
@@ -174,6 +173,9 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Diale
 	if err := syncBuiltinFilesystemToolCatalogPatches(ctx, client, d); err != nil {
 		lg.Warn("内置文件工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
+	if err := syncRemovedBuiltinToolPatches(ctx, client, d); err != nil {
+		lg.Warn("已移除内置工具清理失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
+	}
 	return nil
 }
 
@@ -236,6 +238,24 @@ func syncBuiltinFilesystemToolCatalogPatches(ctx context.Context, client *ent.Cl
 	updDialect := d.RenumberPlaceholders(upd)
 	if _, err := client.ExecContext(ctx, updDialect, now, "diff_edit", "patch_file"); err != nil {
 		return fmt.Errorf("sync filesystem tools (diff_edit/patch_file): %w", err)
+	}
+	return nil
+}
+
+// syncRemovedBuiltinToolPatches soft-deletes builtin tools whose runtime
+// implementation has been removed (DEAD-1: check_progress). Seed only inserts
+// (ON CONFLICT DO NOTHING), so rows already present in existing DBs would
+// linger in the catalog forever as disabled readonly tombstones. Idempotent.
+func syncRemovedBuiltinToolPatches(ctx context.Context, client *ent.Client, d Dialect) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const upd = `UPDATE tools SET deleted_at = ?, updated_at = ?
+		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
+	updDialect := d.RenumberPlaceholders(upd)
+	if _, err := client.ExecContext(ctx, updDialect, now, now, "check_progress"); err != nil {
+		return fmt.Errorf("soft-delete removed builtin tool %q: %w", "check_progress", err)
 	}
 	return nil
 }

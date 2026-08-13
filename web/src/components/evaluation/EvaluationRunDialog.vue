@@ -29,10 +29,10 @@
           outlined
           type="number"
           min="1"
-          max="10"
+          max="20"
           label="MultiRun 次数"
-          hint="AgentEvaluator 重复运行次数（1–10）"
-          @update:model-value="$emit('update:numRuns', Number($event) || 1)"
+          hint="AgentEvaluator 重复运行次数（1–20，与后端 MaxNumRuns 一致）"
+          @update:model-value="$emit('update:numRuns', Math.min(Math.max(Number($event) || 1, 1), 20))"
         />
         <q-toggle
           :model-value="userSimulation"

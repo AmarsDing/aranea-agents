@@ -12,23 +12,31 @@ export const PLUGIN_CATEGORY_OPTIONS = [
   'routing',
 ].map((value) => ({ label: value, value }));
 
-export const PLUGIN_ENABLED_OPTIONS = [
-  { label: '已启用', value: true },
-  { label: '已停用', value: false },
-] as const;
+type I18nT = (key: string) => string;
+
+export function pluginEnabledOptions(t: I18nT) {
+  return [
+    { label: t('pluginsPage.enabledOptions.enabled'), value: true },
+    { label: t('pluginsPage.enabledOptions.disabled'), value: false },
+  ];
+}
 
 export const CALLBACK_CHIP_LIMIT = 2;
 
 /** PluginsTable 列定义（修改列宽请改此处；schema 变更会自动使拖拽缓存失效） */
-export const PLUGIN_TABLE_COLUMNS: QTableColumn<Plugin>[] = [
-  registryCol<Plugin>('name', 'Plugin', 'name', 'left', REGISTRY_COL_W.nameWide),
-  registryCol<Plugin>('category', '类型 / 风险', 'category', 'center', '15%'),
-  registryCol<Plugin>('callbacks', 'Callback', 'callback_points', 'center', '24%'),
-  registryCol<Plugin>('stats', '运行', 'invoke_count', 'center', '20%'),
-  registryCol<Plugin>('enabled', '启用', 'enabled', 'center', REGISTRY_COL_W.enabled, { sortable: false }),
-  registryCol<Plugin>('scope', '作用域', 'scope', 'center', REGISTRY_COL_W.status),
-  registryColActions<Plugin>(REGISTRY_COL_W.actionsWide),
-];
+export function createPluginTableColumns(t: I18nT): QTableColumn<Plugin>[] {
+  return [
+    registryCol<Plugin>('name', t('pluginsPage.colPlugin'), 'name', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<Plugin>('category', t('pluginsPage.colCategoryRisk'), 'category', 'center', '15%'),
+    registryCol<Plugin>('callbacks', t('pluginsPage.colCallbacks'), 'callback_points', 'center', '24%'),
+    registryCol<Plugin>('stats', t('pluginsPage.colStats'), 'invoke_count', 'center', '20%'),
+    registryCol<Plugin>('enabled', t('pluginsPage.colEnabled'), 'enabled', 'center', REGISTRY_COL_W.enabled, {
+      sortable: false,
+    }),
+    registryCol<Plugin>('scope', t('pluginsPage.colScope'), 'scope', 'center', REGISTRY_COL_W.status),
+    registryColActions<Plugin>(REGISTRY_COL_W.actionsWide),
+  ];
+}
 
 export function scopeLabel(scope?: string) {
   const value = (scope || 'global').trim() || 'global';
@@ -37,9 +45,9 @@ export function scopeLabel(scope?: string) {
   return `${value.slice(0, 12)}…`;
 }
 
-export function scopeTooltip(scope?: string) {
+export function scopeTooltip(scope: string | undefined, t: I18nT) {
   const value = (scope || 'global').trim() || 'global';
-  return value === 'global' ? '全局生效' : value;
+  return value === 'global' ? t('pluginsPage.scopeGlobal') : value;
 }
 
 export function formatCallbacksSummary(points?: string[]) {
@@ -56,25 +64,14 @@ export function hiddenCallbackCount(points?: string[]) {
   return Math.max(0, (points ?? []).length - CALLBACK_CHIP_LIMIT);
 }
 
-export function formatPluginDate(value?: string) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString();
-}
-
-export function riskColor(risk: string) {
-  if (risk === 'high') return 'negative';
-  if (risk === 'medium') return 'warning';
-  return 'positive';
-}
-
 export function riskTagClass(risk: string) {
   if (risk === 'high') return 'plugin-tag--risk-high';
   if (risk === 'medium') return 'plugin-tag--risk-medium';
   return 'plugin-tag--risk-low';
 }
 
-export function lastStatusLabel(plugin: Plugin) {
-  if (!plugin.last_status) return '未调用';
+export function lastStatusLabel(plugin: Plugin, t: I18nT) {
+  if (!plugin.last_status) return t('pluginsPage.statusNotInvoked');
   return plugin.last_status;
 }
 

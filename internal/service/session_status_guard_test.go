@@ -38,6 +38,10 @@ func (s *stubSessionWriter) UpdateSession(_ context.Context, id string, fields b
 	return biz.Session{ID: id}, nil
 }
 
+func (s *stubSessionWriter) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
+
 type stubSessionRepo struct {
 	biz.SessionRepo
 	reader *stubSessionReader

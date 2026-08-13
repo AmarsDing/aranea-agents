@@ -1,18 +1,15 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
 import { usePluginsStore } from '../../stores/plugins';
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
 import type { Plugin } from './types';
-import {
-  PLUGIN_CATEGORY_OPTIONS,
-  PLUGIN_ENABLED_OPTIONS,
-  formatPluginDate,
-  prettyJSON,
-} from '../../components/plugins/pluginUi';
-import { CALLBACK_POINT_OPTIONS } from '../callback/constants';
+import { PLUGIN_CATEGORY_OPTIONS, pluginEnabledOptions, prettyJSON } from '../../components/plugins/pluginUi';
+import { useCallbackPointOptions } from '../callback/constants';
 
 export function usePluginsPage() {
+  const { t } = useI18n();
   const $q = useQuasar();
   const pluginsStore = usePluginsStore();
   const agentsCatalog = useAgentsCatalogStore();
@@ -48,7 +45,7 @@ export function usePluginsPage() {
       JSON.parse(configText.value || '{}');
       return '';
     } catch (err) {
-      return err instanceof Error ? err.message : 'JSON 格式错误';
+      return err instanceof Error ? err.message : t('pluginsPage.config.invalidJson');
     }
   });
 
@@ -76,7 +73,7 @@ export function usePluginsPage() {
         page_size: nextPageSize,
       });
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载 Plugin 失败';
+      error.value = err instanceof Error ? err.message : t('pluginsPage.notifyLoadFailed');
     } finally {
       loading.value = false;
     }
@@ -95,9 +92,17 @@ export function usePluginsPage() {
     togglingId.value = plugin.id;
     try {
       await pluginsStore.toggle(plugin.id, next);
-      $q.notify({ type: 'positive', message: next ? 'Plugin 已启用' : 'Plugin 已停用' });
+      // 带 enabled 筛选时就地更新会让行状态与筛选条件矛盾，改为重载列表
+      if (enabled.value !== null) await loadRows();
+      $q.notify({
+        type: 'positive',
+        message: next ? t('pluginsPage.notifyEnabled') : t('pluginsPage.notifyDisabled'),
+      });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新失败' });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('pluginsPage.notifyUpdateFailed'),
+      });
     } finally {
       togglingId.value = '';
     }
@@ -124,9 +129,9 @@ export function usePluginsPage() {
     try {
       await pluginsStore.setConfig(configTarget.value.id, JSON.stringify(JSON.parse(configText.value)));
       configOpen.value = false;
-      $q.notify({ type: 'positive', message: 'Plugin 配置已保存' });
+      $q.notify({ type: 'positive', message: t('pluginsPage.notifyConfigSaved') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('pluginsPage.notifySaveFailed') });
     } finally {
       savingConfig.value = false;
     }
@@ -141,9 +146,12 @@ export function usePluginsPage() {
       // 更新 detailTarget 为排序后最新数据
       const updated = rows.value.find((r) => r.id === plugin.id);
       if (updated && detailTarget.value?.id === updated.id) detailTarget.value = updated;
-      $q.notify({ type: 'positive', message: '执行顺序已更新' });
+      $q.notify({ type: 'positive', message: t('pluginsPage.notifySortUpdated') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新失败' });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('pluginsPage.notifyUpdateFailed'),
+      });
     } finally {
       bumpingSort.value = false;
     }
@@ -152,7 +160,7 @@ export function usePluginsPage() {
   async function saveScope() {
     if (!detailTarget.value) return;
     if (scopeMode.value === 'agent' && !scopeAgentId.value.trim()) {
-      $q.notify({ type: 'warning', message: '请选择 Agent' });
+      $q.notify({ type: 'warning', message: t('pluginsPage.notifySelectAgent') });
       return;
     }
     savingScope.value = true;
@@ -162,9 +170,9 @@ export function usePluginsPage() {
       // 从 Store 同步最新数据到 detailTarget
       const updated = rows.value.find((r) => r.id === detailTarget.value!.id);
       if (updated) detailTarget.value = updated;
-      $q.notify({ type: 'positive', message: '作用域已保存，下次对话生效' });
+      $q.notify({ type: 'positive', message: t('pluginsPage.notifyScopeSaved') });
     } catch (err) {
-      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('pluginsPage.notifySaveFailed') });
     } finally {
       savingScope.value = false;
     }
@@ -220,10 +228,8 @@ export function usePluginsPage() {
     configError,
     agentOptions,
     categoryOptions: PLUGIN_CATEGORY_OPTIONS,
-    enabledOptions: PLUGIN_ENABLED_OPTIONS,
-    callbackPointOptions: CALLBACK_POINT_OPTIONS,
-    formatDate: formatPluginDate,
-    prettyJSON,
+    enabledOptions: computed(() => pluginEnabledOptions(t)),
+    callbackPointOptions: useCallbackPointOptions(),
     loadRows,
     resetFilters,
     toggleEnabled,

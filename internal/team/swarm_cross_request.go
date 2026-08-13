@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/biz/session"
 )
 
 // applyCrossRequestEntryOverride moves EntryPoint to the last active swarm member
@@ -53,18 +52,7 @@ func writeSwarmActiveAgent(ctx context.Context, sessions biz.SessionTurnManager,
 	if agentKey == "" {
 		return
 	}
-	meta := map[string]any{}
-	if raw := strings.TrimSpace(sess.MetadataJSON); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &meta)
-	}
-	if meta == nil {
-		meta = map[string]any{}
-	}
-	meta[biz.SwarmActiveAgentSessionMeta] = agentKey
-	b, err := json.Marshal(meta)
-	if err != nil {
-		return
-	}
-	metaJSON := string(b)
-	_, _ = sessions.Update(ctx, sess.ID, session.SessionUpdateFields{MetadataJSON: &metaJSON})
+	// S6 CAS：原子更新单个 metadata key（jsonb_set），避免 read-modify-write
+	// 丢失其他子系统对 metadata 的并发更新（lost update）。
+	_ = sessions.UpdateMetadataKey(ctx, sess.ID, biz.SwarmActiveAgentSessionMeta, agentKey)
 }

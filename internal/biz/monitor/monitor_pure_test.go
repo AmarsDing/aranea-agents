@@ -302,10 +302,8 @@ func TestAlertFiringState_Constants(t *testing.T) {
 }
 
 func TestNewUsecase_WithOptions(t *testing.T) {
-	rb := monitor.NewMetricRingBuffer()
 	reg := monitor.NewAlertMetricRegistry()
 	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil,
-		monitor.WithRingBuffer(rb),
 		monitor.WithRegistry(reg),
 	)
 	if u == nil {
@@ -334,18 +332,12 @@ func TestUsecase_EvalWorker_NilUsecase(t *testing.T) {
 	}
 }
 
-func TestUsecase_SetRegistry(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
+func TestUsecase_WithRegistry(t *testing.T) {
 	reg := monitor.NewAlertMetricRegistry()
-	u.SetRegistry(reg)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil, monitor.WithRegistry(reg))
 	if u.Registry() != reg {
-		t.Error("SetRegistry did not set the registry")
+		t.Error("WithRegistry did not set the registry")
 	}
-}
-
-func TestUsecase_SetRegistry_Nil(t *testing.T) {
-	var u *monitor.Usecase
-	u.SetRegistry(nil)
 }
 
 func TestUsecase_Registry_NilUsecase(t *testing.T) {

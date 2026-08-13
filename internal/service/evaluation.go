@@ -29,22 +29,54 @@ func NewEvaluationService(uc *biz.EvalUsecase, runner *evaluation.Runner) *Evalu
 
 // --- Datasets ---
 
+// assertEvalDatasetAccess loads a dataset and verifies the caller may read it.
+// Shared/legacy datasets (workspace="") are readable by every workspace.
+// Returns NotFound on access denial to avoid leaking resource existence (IDOR).
+func (s *EvaluationService) assertEvalDatasetAccess(ctx context.Context, datasetID string) (biz.EvalDataset, error) {
+	d, err := s.uc.GetDataset(ctx, datasetID)
+	if err != nil {
+		return biz.EvalDataset{}, err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), d.Workspace); err != nil {
+		return biz.EvalDataset{}, apierror.NotFound("EVAL", "dataset not found")
+	}
+	return d, nil
+}
+
+// assertEvalDatasetMutate verifies the caller may modify the dataset.
+// Legacy datasets (workspace="") belong to the default workspace — same
+// convention as eval_runs legacy rows (evalRunsWorkspaceFilter).
+func (s *EvaluationService) assertEvalDatasetMutate(ctx context.Context, datasetID string) (biz.EvalDataset, error) {
+	d, err := s.uc.GetDataset(ctx, datasetID)
+	if err != nil {
+		return biz.EvalDataset{}, err
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), d.Workspace); err != nil {
+		return biz.EvalDataset{}, apierror.NotFound("EVAL", "dataset not found")
+	}
+	return d, nil
+}
+
 func (s *EvaluationService) CreateDataset(ctx context.Context, req *v1.CreateDatasetRequest) (*v1.EvalDataset, error) {
 	if strings.TrimSpace(req.GetName()) == "" {
 		return nil, apierror.BadRequest("EVAL", "name is required")
 	}
-	d, err := s.uc.CreateDataset(ctx, biz.EvalDataset{
+	d := biz.EvalDataset{
 		Name:        req.GetName(),
 		Description: req.GetDescription(),
-	})
+	}
+	if !workspace.IsSystem(ctx) {
+		d.Workspace = workspace.IDFromContext(ctx)
+	}
+	created, err := s.uc.CreateDataset(ctx, d)
 	if err != nil {
 		return nil, err
 	}
-	return toProtoDataset(d), nil
+	return toProtoDataset(created), nil
 }
 
 func (s *EvaluationService) GetDataset(ctx context.Context, req *v1.GetDatasetRequest) (*v1.EvalDataset, error) {
-	d, err := s.uc.GetDataset(ctx, req.GetId())
+	d, err := s.assertEvalDatasetAccess(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +84,13 @@ func (s *EvaluationService) GetDataset(ctx context.Context, req *v1.GetDatasetRe
 }
 
 func (s *EvaluationService) ListDatasets(ctx context.Context, req *v1.ListDatasetsRequest) (*v1.ListDatasetsResponse, error) {
-	items, total, err := s.uc.ListDatasets(ctx, "", int(req.GetLimit()), int(req.GetOffset()))
+	// System callers (cron/admin) see all rows; tenants see their own
+	// workspace plus shared/legacy datasets.
+	ws := ""
+	if !workspace.IsSystem(ctx) {
+		ws = workspace.IDFromContext(ctx)
+	}
+	items, total, err := s.uc.ListDatasets(ctx, ws, int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +102,16 @@ func (s *EvaluationService) ListDatasets(ctx context.Context, req *v1.ListDatase
 }
 
 func (s *EvaluationService) DeleteDataset(ctx context.Context, req *v1.DeleteDatasetRequest) (*emptypb.Empty, error) {
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	return &emptypb.Empty{}, s.uc.DeleteDataset(ctx, req.GetId())
 }
 
 func (s *EvaluationService) UpdateDataset(ctx context.Context, req *v1.UpdateDatasetRequest) (*v1.EvalDataset, error) {
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	d, err := s.uc.UpdateDataset(ctx, req.GetId(), req.GetName(), req.GetDescription())
 	if err != nil {
 		return nil, err
@@ -81,6 +125,9 @@ func (s *EvaluationService) UploadCases(ctx context.Context, req *v1.UploadCases
 	}
 	if strings.TrimSpace(req.GetCasesJson()) == "" {
 		return nil, apierror.BadRequest("EVAL", "cases_json is required")
+	}
+	if _, err := s.assertEvalDatasetMutate(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
 	}
 	n, err := s.uc.UploadCases(ctx, req.GetDatasetId(), req.GetCasesJson())
 	if err != nil {
@@ -112,10 +159,24 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if strings.TrimSpace(req.GetAgentId()) == "" {
 		return nil, apierror.BadRequest("EVAL", "agent_id is required")
 	}
+	numRuns := int(req.GetNumRuns())
+	if numRuns < 0 || numRuns > biz.EvalMaxNumRuns {
+		return nil, apierror.BadRequest("EVAL", fmt.Sprintf("num_runs must be between 0 (default) and %d", biz.EvalMaxNumRuns))
+	}
+	// Y6: reject unknown metric keys — a typo used to fall back to the full
+	// default set deep inside the framework, reporting unrequested scores.
+	if err := evaluation.ValidateMetricNames(req.GetMetrics()); err != nil {
+		return nil, apierror.BadRequest("EVAL", err.Error())
+	}
+	// The dataset must be readable by the caller — otherwise a tenant could
+	// run evaluations against another workspace's private dataset (IDOR).
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
 	in := biz.EvalRun{
 		DatasetID: req.GetDatasetId(),
 		AgentID:   req.GetAgentId(),
-		NumRuns:   int(req.GetNumRuns()),
+		NumRuns:   numRuns,
 	}
 	if !workspace.IsSystem(ctx) {
 		in.WorkspaceID = workspace.IDFromContext(ctx)
@@ -125,7 +186,6 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 		return nil, err
 	}
 	if s.runner != nil {
-		numRuns := int(req.GetNumRuns())
 		if numRuns <= 0 {
 			numRuns = 1
 		}
@@ -162,6 +222,9 @@ func (s *EvaluationService) ListRuns(ctx context.Context, req *v1.ListRunsReques
 }
 
 func (s *EvaluationService) GetRunResults(ctx context.Context, req *v1.GetRunResultsRequest) (*v1.GetRunResultsResponse, error) {
+	if _, err := s.assertEvalRunAccess(ctx, req.GetRunId()); err != nil {
+		return nil, err
+	}
 	results, total, err := s.uc.ListCaseResults(ctx, req.GetRunId(), int(req.GetLimit()), int(req.GetOffset()))
 	if err != nil {
 		return nil, err
@@ -179,16 +242,23 @@ func (s *EvaluationService) AnnotateCaseResult(ctx context.Context, req *v1.Anno
 	if runID == "" || resultID == "" {
 		return nil, apierror.BadRequest("EVAL", "run_id and result_id are required")
 	}
+	if _, err := s.assertEvalRunAccess(ctx, runID); err != nil {
+		return nil, err
+	}
 	by := "system"
 	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
 		by = fmt.Sprintf("user:%d", a.UserID)
 	}
 	patch := biz.EvalCaseResultAnnotation{AnnotatedBy: by}
-	if req.HumanPass != nil {
+	if req.GetClearHumanPass() {
+		patch.ClearHumanPass = true
+	} else if req.HumanPass != nil {
 		v := req.GetHumanPass()
 		patch.HumanPass = &v
 	}
-	if req.HumanScore != nil {
+	if req.GetClearHumanScore() {
+		patch.ClearHumanScore = true
+	} else if req.HumanScore != nil {
 		v := req.GetHumanScore()
 		patch.HumanScore = &v
 	}
@@ -258,6 +328,9 @@ func (s *EvaluationService) CompareEvalRuns(ctx context.Context, req *v1.Compare
 
 // GetJudgeDivergence reports judge-vs-human agreement for a dataset (P1-3).
 func (s *EvaluationService) GetJudgeDivergence(ctx context.Context, req *v1.GetJudgeDivergenceRequest) (*v1.GetJudgeDivergenceResponse, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
 	d, err := s.uc.GetJudgeDivergence(ctx, req.GetDatasetId(), req.GetAgentId(), req.GetThreshold(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err
@@ -294,6 +367,9 @@ func (s *EvaluationService) GetJudgeDivergence(ctx context.Context, req *v1.GetJ
 
 // GetFailureGroups groups failed case results of a dataset by error_message (P2-3).
 func (s *EvaluationService) GetFailureGroups(ctx context.Context, req *v1.GetFailureGroupsRequest) (*v1.GetFailureGroupsResponse, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
 	report, err := s.uc.GetFailureGroups(ctx, req.GetDatasetId(), req.GetAgentId(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err
@@ -312,6 +388,9 @@ func (s *EvaluationService) GetFailureGroups(ctx context.Context, req *v1.GetFai
 
 // SubmitRunPreference records one pairwise human judgment (P3-3).
 func (s *EvaluationService) SubmitRunPreference(ctx context.Context, req *v1.SubmitRunPreferenceRequest) (*v1.EvalRunPreference, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
 	createdBy := "system"
 	if a, ok := auth.FromContext(ctx); ok && a.UserID > 0 {
 		createdBy = fmt.Sprintf("user:%d", a.UserID)
@@ -332,6 +411,9 @@ func (s *EvaluationService) SubmitRunPreference(ctx context.Context, req *v1.Sub
 
 // ListRunPreferences lists recorded pairwise judgments for a dataset (P3-3).
 func (s *EvaluationService) ListRunPreferences(ctx context.Context, req *v1.ListRunPreferencesRequest) (*v1.ListRunPreferencesResponse, error) {
+	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
+		return nil, err
+	}
 	items, err := s.uc.ListRunPreferences(ctx, req.GetDatasetId(), int(req.GetLimit()))
 	if err != nil {
 		return nil, err
@@ -354,6 +436,12 @@ func (s *EvaluationService) GetEvalGate(ctx context.Context, _ *v1.GetEvalGateRe
 
 // UpdateEvalGate validates and persists the publish-gate config (P2-1).
 func (s *EvaluationService) UpdateEvalGate(ctx context.Context, req *v1.UpdateEvalGateRequest) (*v1.EvalGateConfig, error) {
+	// Y12: reject unknown gate metric keys at config time. A typo used to
+	// surface only at publish time — the gate then blocked every publish
+	// with "缺少指标 X 得分", and the cause was hard to trace.
+	if err := evaluation.ValidateMetricNames(req.GetMetric()); err != nil {
+		return nil, apierror.BadRequest("EVAL", err.Error())
+	}
 	cfg, err := s.uc.UpdateGateConfig(ctx, biz.EvalGateConfig{
 		Enabled:   req.GetEnabled(),
 		AgentID:   req.GetAgentId(),

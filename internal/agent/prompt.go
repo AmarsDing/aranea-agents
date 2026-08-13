@@ -18,7 +18,7 @@ type Deps struct {
 	Organization           *biz.OrganizationUsecase
 	LG                     loggateway.Logger
 	// CustomToolKeys carries the names of dynamically injected CustomTools
-	// (e.g. plan_and_execute, check_progress) that are NOT in the Registry.
+	// (e.g. plan_and_execute, cancel_orchestration) that are NOT in the Registry.
 	// The Runtime Cue uses this to produce accurate tool availability hints.
 	CustomToolKeys []string
 }

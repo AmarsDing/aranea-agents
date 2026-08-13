@@ -301,6 +301,9 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
 				"reason": "error",
 			})
+			// F9/Y4：v2 壳已发布（Status=planning/running）时必须补终态，
+			// 否则前端计划面板永远停在「规划中」。
+			impl.publishV2BoardFailed(ctx, planID, input)
 		} else if len(subTasks) > 0 {
 			// P-ORCH: decomposition finished — report the subtask count.
 			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
@@ -379,6 +382,8 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
 				"reason": "empty",
 			})
+			// F9/Y4：同失败路径——v2 壳必须收到终态更新。
+			impl.publishV2BoardFailed(ctx, planID, input)
 		}
 
 		// P2：分解完成后增量 Update——填充 subtasks/dag 与最终策略（含降级结果），
@@ -677,12 +682,21 @@ func (impl *taskPlannerImpl) assessComplexity(input biz.PlanInput) biz.Dimension
 	return dims
 }
 
+// 复杂度评估正则——包级预编译（F10：函数内 MustCompile 每次调用重复编译，
+// assessStructural/detectTeamCount 在每次 Plan 调用都会命中）。
+var (
+	sentenceEndersPattern = regexp.MustCompile(`[。！？.!?\n]`)
+	enumPattern           = regexp.MustCompile(`(?:\d+[.、)]\s|[-*]\s)`)
+	teamCountDigitPattern = regexp.MustCompile(`(\d+)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	teamCountCNPattern    = regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)?\s*(?:teams?|团队)`)
+	teamCountENPattern    = regexp.MustCompile(`\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+teams?\b`)
+)
+
 // assessStructural evaluates structural complexity (multiple tasks/questions).
 func assessStructural(userMessage string) float64 {
 	score := 0.0
 	// Count sentence-ending punctuation as proxy for multiple tasks
-	sentenceEnders := regexp.MustCompile(`[。！？.!?\n]`)
-	matches := sentenceEnders.FindAllString(userMessage, -1)
+	matches := sentenceEndersPattern.FindAllString(userMessage, -1)
 	if len(matches) >= 5 {
 		score += 0.5
 	} else if len(matches) >= 3 {
@@ -692,8 +706,7 @@ func assessStructural(userMessage string) float64 {
 	}
 
 	// Check for enumeration patterns (1. 2. 3. or - - -)
-	enumPatterns := regexp.MustCompile(`(?:\d+[.、)]\s|[-*]\s)`)
-	enumMatches := enumPatterns.FindAllString(userMessage, -1)
+	enumMatches := enumPattern.FindAllString(userMessage, -1)
 	if len(enumMatches) >= 3 {
 		score += 0.4
 	} else if len(enumMatches) >= 1 {
@@ -840,8 +853,7 @@ func shouldForceComplex(mode string) bool {
 func detectTeamCount(message string) int {
 	lower := strings.ToLower(message)
 	// 1. 阿拉伯数字 + 量词 + team/团队：例如 "2个团队"、"3支team"、"5 teams"
-	reDigit := regexp.MustCompile(`(\d+)\s*(?:个|支)?\s*(?:teams?|团队)`)
-	if m := reDigit.FindStringSubmatch(lower); len(m) >= 2 {
+	if m := teamCountDigitPattern.FindStringSubmatch(lower); len(m) >= 2 {
 		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 && n <= 20 {
 			return n
 		}
@@ -851,8 +863,7 @@ func detectTeamCount(message string) int {
 		"一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
 		"六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
 	}
-	reCN := regexp.MustCompile(`(一|两|二|三|四|五|六|七|八|九|十)\s*(?:个|支)?\s*(?:teams?|团队)`)
-	if m := reCN.FindStringSubmatch(lower); len(m) >= 2 {
+	if m := teamCountCNPattern.FindStringSubmatch(lower); len(m) >= 2 {
 		if n, ok := cnNumMap[m[1]]; ok && n > 0 {
 			return n
 		}
@@ -862,8 +873,7 @@ func detectTeamCount(message string) int {
 		"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
 		"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 	}
-	reEN := regexp.MustCompile(`\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+teams?\b`)
-	if m := reEN.FindStringSubmatch(lower); len(m) >= 2 {
+	if m := teamCountENPattern.FindStringSubmatch(lower); len(m) >= 2 {
 		if n, ok := enNumMap[m[1]]; ok && n > 0 {
 			return n
 		}
@@ -1007,7 +1017,9 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 // decomposeTaskStream 是 decomposeTask 的流式变体，带 P3 重试可靠性：
 //   - 单次尝试逻辑抽取为 llmDecomposeAttempt（由 llmAttemptFn 注入，生产默认指向该方法）
-//   - 瞬时故障（idle/网络抖动/EOF）按指数退避无限重试，每次重试对前端发 decompose_retry 进度
+//   - 瞬时故障（idle/网络抖动/EOF）按指数退避重试，每次重试对前端发 decompose_retry 进度；
+//     F8/Y3：重试有上限（默认 5 次，含首次尝试），耗尽后返回错误走 decompose_failed 降级——
+//     无限重试会让 turn 永远卡在「规划中」并持续烧 LLM 调用
 //   - 永久性错误（配置缺失/鉴权/上下文溢出）立即熔断不重试
 //   - 父 ctx 取消立即穿透，不等待下一次退避
 //
@@ -1027,8 +1039,13 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 	if backoffFn == nil {
 		backoffFn = defaultDecomposeBackoff
 	}
+	maxAttempts := impl.maxDecomposeAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxDecomposeAttempts
+	}
 
-	for attempt := 1; ; attempt++ {
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, planID, onSubTask)
 		if err == nil {
 			return subTasks, dag, nil
@@ -1040,6 +1057,12 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 		// 父 ctx 取消（被包装为 Retriable 前先判）——立即穿透。
 		if ctx.Err() != nil {
 			return nil, nil, ctx.Err()
+		}
+		lastErr = err
+		// F8/Y3：达到重试上限即熔断，不再退避——事件即将按 decompose_failed
+		// 降级，额外 backoff 只会延迟失败信号。
+		if attempt >= maxAttempts {
+			break
 		}
 
 		// 发布重试进度（attempt 从 2 起——第 1 次就是首次尝试，不算「重试」）。
@@ -1068,6 +1091,13 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 			}
 		}
 	}
+	impl.lg.Warn("任务分解重试耗尽上限，熔断降级",
+		loggateway.StepID(biz.SpiritStepPlannerDecompose),
+		loggateway.Str("spirit_session_id", spiritSessionID),
+		loggateway.Int("max_attempts", maxAttempts),
+		loggateway.Err(lastErr),
+	)
+	return nil, nil, apierror.Internal(apierror.DomainSpirit, "task decompose failed after %d attempts", maxAttempts).WithCause(lastErr)
 }
 
 // llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
@@ -1289,6 +1319,38 @@ func (impl *taskPlannerImpl) publishV2BoardShell(ctx context.Context, planID str
 	}
 	impl.seq.Publish(ctx, biz.NewPlanBoardCreatedEvent(pb))
 	impl.seq.Publish(ctx, biz.NewGraphStageCreatedEvent(gs))
+}
+
+// publishV2BoardFailed 在分解失败/为空时给已发布的 PlanBoard/GraphStage 壳
+// 补发终态事件（F9/Y4 修复）——否则前端计划面板永远停在「规划中」、DAG 块
+// 永远 running。仅在 seq 非 nil（壳已发布）时有效。
+func (impl *taskPlannerImpl) publishV2BoardFailed(ctx context.Context, planID string, input biz.PlanInput) {
+	if impl.seq == nil {
+		return
+	}
+	rootTaskID := string(RootTaskActivityIDFromCtx(ctx))
+	pbID := "pb_" + planID
+	gsID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("aranea.graph_stage.v2:"+pbID)).String()
+	now := time.Now()
+	impl.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(biz.PlanBoard{
+		ID:          pbID,
+		TaskID:      rootTaskID,
+		TurnID:      event.TurnIDFromContext(ctx),
+		SessionID:   input.SpiritSessionID,
+		Status:      biz.PlanStatusFailed,
+		CompletedAt: &now,
+		Version:     2,
+	}))
+	impl.seq.Publish(ctx, biz.NewGraphStageFailedEvent(biz.GraphStage{
+		ID:          gsID,
+		TaskID:      rootTaskID,
+		TurnID:      event.TurnIDFromContext(ctx),
+		SessionID:   input.SpiritSessionID,
+		PlanBoardID: pbID,
+		Status:      biz.GraphStageStatusFailed,
+		CompletedAt: &now,
+		Version:     2,
+	}))
 }
 
 // publishV2PlanStep 在流式分解中每解析出一个 subtask 时发布对应的
@@ -1612,10 +1674,15 @@ func appendClosedLoopPostmortem(userMessage string, subTasks []biz.SubTask) ([]b
 	return updated, &pm, true
 }
 
-// validateSubTaskDAG checks for cycles and invalid references.
+// validateSubTaskDAG checks for duplicate IDs, cycles and invalid references.
 func validateSubTaskDAG(tasks []biz.SubTask) error {
 	idSet := make(map[string]bool, len(tasks))
 	for _, t := range tasks {
+		// F7a/B2：重复 ID 必须拒绝——同名节点互相遮蔽，依赖悬空/错接，
+		// 执行器会静默跑错图。
+		if idSet[t.ID] {
+			return apierror.BadRequest(apierror.DomainSpirit, "duplicate subtask ID %s", t.ID)
+		}
 		idSet[t.ID] = true
 	}
 
@@ -2026,13 +2093,17 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 
 	if plan.StreamPublished {
 		// 流式路径：PlanBoard/GraphStage 壳 + PlanStep/GraphNode 已在 Plan()
-		// 中渐进发布。此处仅更新 PlanSteps（填充 AgentKeys）并发送
-		// PlanBoardUpdatedEvent（携带完整 Steps）。
+		// 中渐进发布。此处更新 PlanSteps（填充 AgentKeys）、补发 GraphNode
+		// 更新（携带截取/清理后的最终 DependsOn——F7b/B2 修复：否则 DAG
+		// 视图永久残留悬挂边）并发送 PlanBoardUpdatedEvent（携带完整 Steps）。
 		pb.Version = 2
 		for _, ps := range planSteps {
 			psUp := ps
 			psUp.Version = 2
 			impl.seq.Publish(ctx, biz.NewPlanStepUpdatedEvent(psUp, spiritSessionID))
+		}
+		for _, gn := range graphNodes {
+			impl.seq.Publish(ctx, biz.NewGraphNodeUpdatedEvent(gn, rootTaskID, spiritSessionID))
 		}
 		impl.seq.Publish(ctx, biz.NewPlanBoardUpdatedEvent(pb))
 	} else {
@@ -2143,6 +2214,10 @@ func isRetriableDecomposeError(err error) bool {
 	// 其他默认瞬时故障：重试有意义（网络抖动、EOF 等）。
 	return true
 }
+
+// defaultMaxDecomposeAttempts 是分解瞬时故障的默认重试上限（含首次尝试）。
+// F8/Y3：上限存在是为了让持续性故障最终走 decompose_failed 降级，而非无限重试。
+const defaultMaxDecomposeAttempts = 5
 
 // defaultDecomposeBackoff 是生产默认的指数退避——attempt 从 1 起。
 // 100ms → 200ms → 400ms → 800ms → 1.6s → 3.2s → 6.4s → 10s（封顶）。

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
 
 func RecoveryThreshold(rule AlertRule) float64 {
@@ -53,6 +54,15 @@ func (p *TraceProjector) HandleExposed(ctx context.Context, ev contract.MonitorE
 
 func (p *TraceProjector) SetUpsertWarnIntervalForTest(d time.Duration) {
 	p.upsertWarnInterval = d
+}
+
+// SetRepoWarnIntervalForTest replaces the insert/completion/usage-agg Warn
+// throttles with fresh ones using the given window, so tests can exercise
+// both the in-window suppression and the post-window re-emission.
+func (p *TraceProjector) SetRepoWarnIntervalForTest(d time.Duration) {
+	p.insertWarnThrottle = loggateway.NewThrottle(d)
+	p.completionWarnThrottle = loggateway.NewThrottle(d)
+	p.usageAggWarnThrottle = loggateway.NewThrottle(d)
 }
 
 func (p *TraceProjector) AddTestTrace(traceID string, createdAt time.Time) {

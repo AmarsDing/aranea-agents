@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
+  batchUpdateAgents as batchUpdateAgentsApi,
   checkAgentKey,
   deleteAgent as deleteAgentApi,
   duplicateAgent,
@@ -36,6 +37,8 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
 
   const checkingModel = ref(false);
   const modelCheckPassed = ref(false);
+
+  const selectedAgentIds = ref<string[]>([]);
 
   const industryNodes = computed(() => taxonomyTree.value.filter((row) => row.level === 'company' && row.enabled));
   const taxonomyPositionOptions = computed(() => flattenTaxonomyPositions(industryNodes.value));
@@ -96,6 +99,33 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   async function removeListedAgent(id: string) {
     await deleteAgentApi(id);
     await loadAgentList();
+  }
+
+  function toggleAgentSelected(id: string) {
+    const idx = selectedAgentIds.value.indexOf(id);
+    if (idx >= 0) {
+      selectedAgentIds.value.splice(idx, 1);
+      return;
+    }
+    const agent = agents.value.find((item) => item.id === id);
+    if (!agent || agent.readonly) return;
+    selectedAgentIds.value.push(id);
+  }
+
+  function clearAgentSelection() {
+    selectedAgentIds.value = [];
+  }
+
+  async function batchUpdateListedAgents(action: {
+    status?: 'active' | 'inactive';
+    delete?: boolean;
+  }): Promise<number> {
+    const ids = [...selectedAgentIds.value];
+    if (ids.length === 0) return 0;
+    const affected = await batchUpdateAgentsApi(ids, action);
+    clearAgentSelection();
+    await loadAgentList();
+    return affected;
   }
 
   async function toggleAgentFavorite(id: string) {
@@ -178,6 +208,10 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     loadAgentsDependencies,
     ensureTaxonomyTree,
     removeListedAgent,
+    selectedAgentIds,
+    toggleAgentSelected,
+    clearAgentSelection,
+    batchUpdateListedAgents,
     toggleAgentFavorite,
     validateCreateModel,
     resetListFiltersAfterCreate,

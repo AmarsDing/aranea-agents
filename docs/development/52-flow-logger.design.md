@@ -447,6 +447,7 @@ internal/cronrunner/jobs/
 | `team.run.graph` | ok | Team GraphAgent 已构建 |
 | `team.intent.merge_fail` | warn | 团队意图合并失败 |
 | `team.intent_anchor_fallback` | warn | 团队意图锚点回退 |
+| `team.compile.unknown_mode_fallback` | warn | 未知编排模式已降级 |
 | `team.usage_record_fail` | warn | 团队成员用量记录失败 |
 | `team.turn.usage` | info | 团队轮次用量 |
 | `team.member.<nodeID>` | ok / warn(skip) / error | 团队成员执行 |
@@ -593,6 +594,7 @@ internal/cronrunner/jobs/
 | `agent.crud.delete` | ok / error | Agent 删除 |
 | `provider.catalog.sync` | ok / error | 模型目录同步 |
 | `mcp.server.add` | ok / error | MCP 服务器添加 |
+| `mcp.server.update` | ok / error | MCP 服务器更新 |
 | `mcp.server.remove` | ok / error | MCP 服务器移除 |
 | `memory.auto.extract` | ok / error | 自动记忆提取 |
 | `memory.auto.case_extract` | ok | Agent Case 经验提取（P3 M2） |

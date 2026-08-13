@@ -17,7 +17,8 @@ type scriptedSimulator struct {
 	scripts map[string][]string
 }
 
-func newScriptedSimulator(cases []biz.EvalCase, lg loggateway.Logger) usersimulation.Simulator {
+// scriptedScripts collects per-case user scripts keyed by case ID.
+func scriptedScripts(cases []biz.EvalCase, lg loggateway.Logger) map[string][]string {
 	scripts := make(map[string][]string)
 	for _, c := range cases {
 		meta := ParseCaseMetadata(c.MetadataJSON, lg)
@@ -25,6 +26,11 @@ func newScriptedSimulator(cases []biz.EvalCase, lg loggateway.Logger) usersimula
 			scripts[c.ID] = meta.UserSimulation.Script
 		}
 	}
+	return scripts
+}
+
+func newScriptedSimulator(cases []biz.EvalCase, lg loggateway.Logger) usersimulation.Simulator {
+	scripts := scriptedScripts(cases, lg)
 	if len(scripts) == 0 {
 		return nil
 	}
@@ -54,6 +60,26 @@ func (c *scriptedConversation) Next(_ context.Context, _ *usersimulation.TurnReq
 
 func (c *scriptedConversation) Close() error { return nil }
 
+// hybridSimulator routes each case to the right simulator (P1 混合模拟):
+// cases with a fixed script replay it; every other case delegates to the LLM
+// simulator. Previously a mixed dataset (some scripted + some LLM cases) got
+// the scripted simulator globally, so LLM-marked cases silently received an
+// immediately-stopping conversation.
+type hybridSimulator struct {
+	scripted *scriptedSimulator
+	llm      usersimulation.Simulator
+}
+
+func (h *hybridSimulator) Start(ctx context.Context, req *usersimulation.StartRequest) (usersimulation.Conversation, error) {
+	if req == nil {
+		return nil, fmt.Errorf("start request is nil")
+	}
+	if script := h.scripted.scripts[req.EvalCaseID]; len(script) > 0 {
+		return &scriptedConversation{script: script}, nil
+	}
+	return h.llm.Start(ctx, req)
+}
+
 func buildConversationScenario(meta CaseMetadata, startingPrompt string) *trpcevalset.ConversationScenario {
 	if !meta.HasUserSimulation() {
 		return nil
@@ -61,7 +87,15 @@ func buildConversationScenario(meta CaseMetadata, startingPrompt string) *trpcev
 	us := meta.UserSimulation
 	maxInv := us.MaxInvocations
 	if maxInv <= 0 {
-		maxInv = len(us.Script) + 1
+		if len(us.Script) > 0 {
+			// Scripted: one invocation per scripted line plus the opening turn.
+			maxInv = len(us.Script) + 1
+		} else {
+			// LLM-driven: the old fallback (len(script)+1) evaluated to 1 for
+			// script-less cases and killed the simulated conversation after a
+			// single turn. Fall back to the metadata default (5).
+			maxInv = meta.UserSimulationMaxInvocations()
+		}
 	}
 	plan := us.ConversationPlan
 	if plan == "" {

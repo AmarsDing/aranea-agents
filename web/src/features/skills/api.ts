@@ -664,17 +664,14 @@ export async function registerUnifiedEvolutionSuggestion(id: string): Promise<vo
 
 function mapProtoEvolutionSuggestionToView(item: Record<string, unknown>): SkillEvolutionView {
   const s = (snake: string, camel: string) => String(item[snake] ?? item[camel] ?? '');
-  const lifecycleStatus = (s('lifecycle_status', 'lifecycleStatus') || 'draft') as SkillEvolutionView['lifecycleStatus'];
+  const lifecycleStatus = (s('lifecycle_status', 'lifecycleStatus') ||
+    'draft') as SkillEvolutionView['lifecycleStatus'];
   // Proto bool defaults to false; use lifecycleStatus to distinguish
   // "not yet validated" from "validation failed" (same semantics as mapEvolutionSuggestion).
   const rawSandboxPassed = item['sandbox_passed'] ?? item['sandboxPassed'];
   const sandboxPassed: boolean | null = (() => {
     if (rawSandboxPassed === true) return true;
-    if (
-      rawSandboxPassed === false &&
-      (lifecycleStatus === 'validating' || lifecycleStatus === 'ready')
-    )
-      return false;
+    if (rawSandboxPassed === false && (lifecycleStatus === 'validating' || lifecycleStatus === 'ready')) return false;
     return null; // not yet validated
   })();
   const rawSandboxResult = item['sandbox_result'] ?? item['sandboxResult'];
@@ -715,11 +712,7 @@ function mapProtoSkillProposalToView(item: Record<string, unknown>): SkillEvolut
   const status = (s('status', 'status') || 'pending') as SkillEvolutionView['status'];
   // 生命周期从提案状态推导：registered→已应用，approved→就绪，其余→草稿
   const lifecycleStatus: SkillEvolutionView['lifecycleStatus'] =
-    status === ('registered' as SkillEvolutionView['status'])
-      ? 'applied'
-      : status === 'approved'
-        ? 'ready'
-        : 'draft';
+    status === ('registered' as SkillEvolutionView['status']) ? 'applied' : status === 'approved' ? 'ready' : 'draft';
   return {
     id: s('id', 'id'),
     targetType: 'agent',

@@ -53,8 +53,6 @@ func TestExecuteOrchestratePhase_EmptyBoardIDFails(t *testing.T) {
 }
 
 type stubOrch struct {
-	progress  []biz.TaskProgress
-	progErr   error
 	cancelErr error
 }
 
@@ -62,7 +60,7 @@ func (s *stubOrch) Orchestrate(context.Context, *biz.TaskPlan, *biz.AllocationPl
 	return nil, nil
 }
 func (s *stubOrch) CheckProgress(context.Context, string) ([]biz.TaskProgress, error) {
-	return s.progress, s.progErr
+	return nil, nil
 }
 func (s *stubOrch) Cancel(context.Context, string) error { return s.cancelErr }
 func (s *stubOrch) Synthesize(context.Context, string) (*biz.SynthesisOutput, error) {
@@ -74,48 +72,16 @@ func (s *stubOrch) RecoverAllInterrupted(context.Context) error { return nil }
 var _ biz.TaskOrchestratorPort = (*stubOrch)(nil)
 
 type stubBoardFallback struct {
-	progress    []biz.TaskProgress
-	progErr     error
 	cancelErr   error
 	cancelCalls int
 }
 
-func (s *stubBoardFallback) CheckPlanBoardProgress(context.Context, string) ([]biz.TaskProgress, error) {
-	return s.progress, s.progErr
-}
 func (s *stubBoardFallback) CancelPlanBoard(context.Context, string) error {
 	s.cancelCalls++
 	return s.cancelErr
 }
 
 var _ PlanBoardOrchFallback = (*stubBoardFallback)(nil)
-
-// TestCheckProgress_FallsBackToPlanBoard (C-18) verifies check_progress uses
-// PlanBoard when orchestrator lookup fails.
-func TestCheckProgress_FallsBackToPlanBoard(t *testing.T) {
-	orch := &stubOrch{progErr: errors.New("orchestration not found")}
-	boards := &stubBoardFallback{
-		progress: []biz.TaskProgress{{SubTaskID: "st-1", Status: "running", Progress: 0.5}},
-	}
-	tool := NewCheckOrchestrationProgressTool(orch, boards, loggateway.NewNoop())
-	raw, err := tool.Call(context.Background(), []byte(`{"orchestration_id":"pb_abc"}`))
-	if err != nil {
-		t.Fatalf("Call: %v", err)
-	}
-	out, ok := raw.(CheckOrchestrationProgressOutput)
-	if !ok {
-		t.Fatalf("got %T", raw)
-	}
-	if out.OrchestrationID != "pb_abc" {
-		t.Fatalf("OrchestrationID = %q, want pb_abc", out.OrchestrationID)
-	}
-	if out.Status != "running" {
-		t.Fatalf("Status = %q, want running", out.Status)
-	}
-	if len(out.Tasks) != 1 || out.Tasks[0].SubTaskID != "st-1" {
-		t.Fatalf("Tasks = %+v", out.Tasks)
-	}
-}
 
 // TestCancel_FallsBackToPlanBoard (C-18) verifies cancel uses PlanBoard when
 // orchestrator.Cancel fails.

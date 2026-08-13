@@ -440,11 +440,21 @@ watch(
   },
 );
 
+// B3: silent run polling replaces the runs array wholesale — watching the array
+// identity wiped the compare selection on every poll tick. Watch the stable ID
+// set instead: prune only selections whose run disappeared, and refresh the
+// kept rows to the latest objects (status/score updates).
 watch(
-  () => props.runs,
+  () => props.runs.map((r) => r.id).join('\n'),
   () => {
-    localSelected.value = [];
-    comparePage.value = 1;
+    const byId = new Map(props.runs.map((r) => [r.id, r]));
+    const kept = localSelected.value.filter((r) => byId.has(r.id)).map((r) => byId.get(r.id)!);
+    if (kept.length !== localSelected.value.length || kept.some((r, i) => r !== localSelected.value[i])) {
+      localSelected.value = kept;
+    }
+    if (comparePage.value > comparePageMax.value) {
+      comparePage.value = comparePageMax.value;
+    }
   },
 );
 

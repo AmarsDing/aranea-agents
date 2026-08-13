@@ -166,6 +166,12 @@ message AnnotateCaseResultRequest {
   optional bool human_pass = 3;
   optional float human_score = 4;
   optional string human_comment = 5;
+  // clear_human_pass / clear_human_score explicitly reset the field to
+  // un-annotated (NULL). proto3 optional + JSON null cannot express "clear"
+  // (null is decoded as "field not set"), so explicit flags are required.
+  // A clear flag takes precedence over the corresponding value field.
+  bool clear_human_pass = 6;
+  bool clear_human_score = 7;
 }
 
 message GetAgentEvalTrendRequest {

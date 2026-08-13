@@ -7,6 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"aranea-agents/internal/tools/skillruntime"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -147,7 +149,7 @@ func TestSkillOverviewBlockChars_Basic(t *testing.T) {
 		{Name: "beta", Description: "second skill"},
 	}}
 	want := "Available skills:\n- alpha: first skill\n- beta: second skill\n"
-	if got := skillOverviewBlockChars(context.Background(), repo, nil); got != utf8.RuneCountInString(want) {
+	if got := skillOverviewBlockChars(context.Background(), repo, nil, 0); got != utf8.RuneCountInString(want) {
 		t.Fatalf("chars = %d, want %d (%q)", got, utf8.RuneCountInString(want), want)
 	}
 }
@@ -161,16 +163,35 @@ func TestSkillOverviewBlockChars_FilterApplied(t *testing.T) {
 		return !strings.EqualFold(s.Name, "beta")
 	}
 	want := "Available skills:\n- alpha: first skill\n"
-	if got := skillOverviewBlockChars(context.Background(), repo, filter); got != utf8.RuneCountInString(want) {
+	if got := skillOverviewBlockChars(context.Background(), repo, filter, 0); got != utf8.RuneCountInString(want) {
 		t.Fatalf("chars = %d, want %d (filter must drop beta)", got, utf8.RuneCountInString(want))
 	}
 }
 
+// TestSkillOverviewBlockChars_BudgetAligned 批次 B 计量对齐：预算截断时计量
+// 必须等于预算渲染器的实际输出（含 "(N more skills available)" 提示）。
+func TestSkillOverviewBlockChars_BudgetAligned(t *testing.T) {
+	sums := []trpcskill.Summary{
+		{Name: "alpha", Description: "first skill"},
+		{Name: "beta", Description: "second skill"},
+	}
+	repo := &fakeSkillBudgetRepo{sums: sums}
+	// 预算恰容 header + 第一行：beta 被省略并追加截断提示。
+	budget := utf8.RuneCountInString("Available skills:\n- alpha: first skill\n")
+	want := skillruntime.RenderSkillOverviewBudgeted(sums, budget)
+	if !strings.Contains(want, "1 more skills available") {
+		t.Fatalf("want fixture truncated render, got %q", want)
+	}
+	if got := skillOverviewBlockChars(context.Background(), repo, nil, budget); got != utf8.RuneCountInString(want) {
+		t.Fatalf("chars = %d, want %d (budget-aligned render %q)", got, utf8.RuneCountInString(want), want)
+	}
+}
+
 func TestSkillOverviewBlockChars_Empty(t *testing.T) {
-	if got := skillOverviewBlockChars(context.Background(), nil, nil); got != 0 {
+	if got := skillOverviewBlockChars(context.Background(), nil, nil, 0); got != 0 {
 		t.Fatalf("nil repo chars = %d, want 0", got)
 	}
-	if got := skillOverviewBlockChars(context.Background(), &fakeSkillBudgetRepo{}, nil); got != 0 {
+	if got := skillOverviewBlockChars(context.Background(), &fakeSkillBudgetRepo{}, nil, 0); got != 0 {
 		t.Fatalf("empty repo chars = %d, want 0", got)
 	}
 }
@@ -182,7 +203,7 @@ func TestSkillOverviewBudgetHook_RecordsOnce(t *testing.T) {
 	repo := &fakeSkillBudgetRepo{sums: []trpcskill.Summary{
 		{Name: "alpha", Description: "first skill"},
 	}}
-	hook := newContextBudgetSkillOverviewBeforeHook(repo, nil)
+	hook := newContextBudgetSkillOverviewBeforeHook(repo, nil, 0)
 	if hook == nil {
 		t.Fatal("hook = nil, want non-nil for non-nil repo")
 	}
@@ -217,7 +238,7 @@ func TestSkillOverviewBudgetHook_RecordsOnce(t *testing.T) {
 }
 
 func TestSkillOverviewBudgetHook_NilRepo(t *testing.T) {
-	if hook := newContextBudgetSkillOverviewBeforeHook(nil, nil); hook != nil {
+	if hook := newContextBudgetSkillOverviewBeforeHook(nil, nil, 0); hook != nil {
 		t.Fatal("hook = non-nil for nil repo, want nil (no registration)")
 	}
 }

@@ -3791,8 +3791,14 @@ type SkillHealthMetric struct {
 	DailyMetrics         []*SkillHealthDailyMetric `protobuf:"bytes,10,rep,name=daily_metrics,json=dailyMetrics,proto3" json:"daily_metrics,omitempty"`
 	RouteHitRate_7D      float64                   `protobuf:"fixed64,11,opt,name=route_hit_rate_7d,json=routeHitRate7d,proto3" json:"route_hit_rate_7d,omitempty"`
 	RouteHitRate_30D     float64                   `protobuf:"fixed64,12,opt,name=route_hit_rate_30d,json=routeHitRate30d,proto3" json:"route_hit_rate_30d,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// 路由命中率分子/分母（按 activation_id 去重的轮次数）：
+	// 供前端区分「无路由数据」（routed_count=0）与「0% 命中率」（routed>0, loaded=0）。
+	RoutedCount_7D  int32 `protobuf:"varint,13,opt,name=routed_count_7d,json=routedCount7d,proto3" json:"routed_count_7d,omitempty"`
+	LoadedCount_7D  int32 `protobuf:"varint,14,opt,name=loaded_count_7d,json=loadedCount7d,proto3" json:"loaded_count_7d,omitempty"`
+	RoutedCount_30D int32 `protobuf:"varint,15,opt,name=routed_count_30d,json=routedCount30d,proto3" json:"routed_count_30d,omitempty"`
+	LoadedCount_30D int32 `protobuf:"varint,16,opt,name=loaded_count_30d,json=loadedCount30d,proto3" json:"loaded_count_30d,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *SkillHealthMetric) Reset() {
@@ -3905,6 +3911,34 @@ func (x *SkillHealthMetric) GetRouteHitRate_7D() float64 {
 func (x *SkillHealthMetric) GetRouteHitRate_30D() float64 {
 	if x != nil {
 		return x.RouteHitRate_30D
+	}
+	return 0
+}
+
+func (x *SkillHealthMetric) GetRoutedCount_7D() int32 {
+	if x != nil {
+		return x.RoutedCount_7D
+	}
+	return 0
+}
+
+func (x *SkillHealthMetric) GetLoadedCount_7D() int32 {
+	if x != nil {
+		return x.LoadedCount_7D
+	}
+	return 0
+}
+
+func (x *SkillHealthMetric) GetRoutedCount_30D() int32 {
+	if x != nil {
+		return x.RoutedCount_30D
+	}
+	return 0
+}
+
+func (x *SkillHealthMetric) GetLoadedCount_30D() int32 {
+	if x != nil {
+		return x.LoadedCount_30D
 	}
 	return 0
 }
@@ -4325,7 +4359,7 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\n" +
 	"version_id\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\tversionId\"8\n" +
 	"\x15GetSkillHealthRequest\x12\x1f\n" +
-	"\bskill_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\askillId\"\xbe\x04\n" +
+	"\bskill_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\askillId\"\xe2\x05\n" +
 	"\x11SkillHealthMetric\x12\x19\n" +
 	"\bskill_id\x18\x01 \x01(\tR\askillId\x120\n" +
 	"\x14total_invocations_7d\x18\x02 \x01(\x05R\x12totalInvocations7d\x12(\n" +
@@ -4339,7 +4373,11 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\rdaily_metrics\x18\n" +
 	" \x03(\v2'.kratos.skill.v1.SkillHealthDailyMetricR\fdailyMetrics\x12)\n" +
 	"\x11route_hit_rate_7d\x18\v \x01(\x01R\x0erouteHitRate7d\x12+\n" +
-	"\x12route_hit_rate_30d\x18\f \x01(\x01R\x0frouteHitRate30d\"\xda\x01\n" +
+	"\x12route_hit_rate_30d\x18\f \x01(\x01R\x0frouteHitRate30d\x12&\n" +
+	"\x0frouted_count_7d\x18\r \x01(\x05R\rroutedCount7d\x12&\n" +
+	"\x0floaded_count_7d\x18\x0e \x01(\x05R\rloadedCount7d\x12(\n" +
+	"\x10routed_count_30d\x18\x0f \x01(\x05R\x0eroutedCount30d\x12(\n" +
+	"\x10loaded_count_30d\x18\x10 \x01(\x05R\x0eloadedCount30d\"\xda\x01\n" +
 	"\x16SkillHealthDailyMetric\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12 \n" +
 	"\vinvocations\x18\x02 \x01(\x05R\vinvocations\x12\x1c\n" +

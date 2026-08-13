@@ -602,32 +602,47 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		case <-time.After(3 * time.Second):
 		}
 		// #region debug-point data.lazy.trace
-		st.lg.Info("lazy_seeds: loop start", loggateway.StepID("data.lazy.trace"), loggateway.Int("seeders", len(st.lazySeeders)))
+		// DEBUG ONLY: per-seeder trace lines. Gated behind
+		// ARANEA_DEBUG_LAZY_SEEDS=1 — in production they add 2+N startup
+		// lines to the log pipeline with no operational value.
+		debugLazy := lazySeedsDebugEnabled()
+		if debugLazy {
+			st.lg.Info("lazy_seeds: loop start", loggateway.StepID("data.lazy.trace"), loggateway.Int("seeders", len(st.lazySeeders)))
+		}
 		// #endregion debug-point
 		for name := range st.lazySeeders {
 			if p1Ctx.Err() != nil {
 				return
 			}
 			// #region debug-point data.lazy.trace
-			seedStart := time.Now()
-			st.lg.Info("lazy_seeds: before SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name))
+			var seedStart time.Time
+			if debugLazy {
+				seedStart = time.Now()
+				st.lg.Info("lazy_seeds: before SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name))
+			}
 			// #endregion debug-point
 			if err := st.SeedLazy(p1Ctx, name); err != nil {
 				if p1Ctx.Err() != nil {
 					return
 				}
 				// #region debug-point data.lazy.trace
-				st.lg.Info("lazy_seeds: SeedLazy returned error", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()), loggateway.Err(err))
+				if debugLazy {
+					st.lg.Info("lazy_seeds: SeedLazy returned error", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()), loggateway.Err(err))
+				}
 				// #endregion debug-point
 				st.lg.Warn("lazy seed failed",
 					loggateway.StepID("data.lazy"), loggateway.Str("seed", name), loggateway.Err(err))
 			}
 			// #region debug-point data.lazy.trace
-			st.lg.Info("lazy_seeds: after SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()))
+			if debugLazy {
+				st.lg.Info("lazy_seeds: after SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()))
+			}
 			// #endregion debug-point
 		}
 		// #region debug-point data.lazy.trace
-		st.lg.Info("lazy_seeds: loop end", loggateway.StepID("data.lazy.trace"))
+		if debugLazy {
+			st.lg.Info("lazy_seeds: loop end", loggateway.StepID("data.lazy.trace"))
+		}
 		// #endregion debug-point
 		st.lg.Info("lazy seeds completed", loggateway.StepID("data.lazy"))
 	})
@@ -676,6 +691,12 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 // enabled. Off by default; set ARANEA_DEBUG_POOL_STATS=1 to enable.
 func poolStatsDebugEnabled() bool {
 	return os.Getenv("ARANEA_DEBUG_POOL_STATS") == "1"
+}
+
+// lazySeedsDebugEnabled reports whether the debug-only lazy-seed trace logs
+// are enabled. Off by default; set ARANEA_DEBUG_LAZY_SEEDS=1 to enable.
+func lazySeedsDebugEnabled() bool {
+	return os.Getenv("ARANEA_DEBUG_LAZY_SEEDS") == "1"
 }
 
 func runStartupStep(name string, fn func() error, lg loggateway.Logger) error {

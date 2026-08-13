@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
@@ -131,6 +132,125 @@ func TestRecordTeamGraphNodeEnd_persistsStepsIncrementally(t *testing.T) {
 	}
 	if persisted.Steps[1].Status != "completed" || persisted.Steps[1].Error != "" {
 		t.Fatalf("upserted step1=%+v", persisted.Steps[1])
+	}
+}
+
+// cloneGraphRunRepo simulates a real DB repo: every GetRun returns a NEW
+// instance (never the cached pointer), exposing the loadExecution double-load
+// race that memGraphRunRepo (shared pointer) cannot.
+type cloneGraphRunRepo struct {
+	memGraphRunRepo
+}
+
+func (m *cloneGraphRunRepo) GetRun(_ context.Context, id string) (*GraphExecution, error) {
+	if exec, ok := m.runs[id]; ok {
+		// 模拟真实 DB repo：每次返回新物化实例（显式字段拷贝，避免复制锁）。
+		return &GraphExecution{
+			ID:              exec.ID,
+			GraphID:         exec.GraphID,
+			SessionID:       exec.SessionID,
+			SpiritSessionID: exec.SpiritSessionID,
+			Status:          exec.Status,
+			CurrentNode:     exec.CurrentNode,
+			LineageID:       exec.LineageID,
+			ErrorMessage:    exec.ErrorMessage,
+			StartedAt:       exec.StartedAt,
+			FinishedAt:      exec.FinishedAt,
+			ctx:             context.Background(),
+		}, nil
+	}
+	return nil, ErrNotFound
+}
+
+// S4（双收敛竞态）：并发 loadExecution（缓存未命中）必须共享同一实例，
+// 否则独立 execMu 使 FinalizeTeamGraphExecution 的终态幂等检查失效。
+func TestLoadExecution_ConcurrentCacheMissSharesInstance(t *testing.T) {
+	repo := &cloneGraphRunRepo{}
+	repo.runs = map[string]*GraphExecution{
+		"exec-race": {ID: "exec-race", Status: string(GraphExecRunning)},
+	}
+	uc := NewGraphExecutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop(), DefaultGraphGCConfig())
+
+	const goroutines = 16
+	results := make(chan *GraphExecution, goroutines)
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			exec, err := uc.loadExecution(context.Background(), "exec-race")
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			results <- exec
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var first *GraphExecution
+	for exec := range results {
+		if first == nil {
+			first = exec
+			continue
+		}
+		if exec != first {
+			t.Fatalf("concurrent loadExecution returned distinct instances (%p vs %p): terminal-state idempotency would be broken", first, exec)
+		}
+	}
+	if first == nil {
+		t.Fatal("no loadExecution result collected")
+	}
+}
+
+// reentrantCloneRunRepo simulates a concurrent loadExecution landing inside
+// the registration race window (S2): SaveRun persists the row, then a
+// re-entrant loadExecution caches a DB-loaded copy BEFORE the registration
+// inserts its own instance into the cache.
+type reentrantCloneRunRepo struct {
+	cloneGraphRunRepo
+	uc   *GraphExecutionUsecase
+	once sync.Once
+	seen *GraphExecution
+}
+
+func (r *reentrantCloneRunRepo) SaveRun(_ context.Context, exec *GraphExecution) error {
+	if r.runs == nil {
+		r.runs = map[string]*GraphExecution{}
+	}
+	r.runs[exec.ID] = exec
+	r.once.Do(func() {
+		r.seen, _ = r.uc.loadExecution(context.Background(), exec.ID)
+	})
+	return nil
+}
+
+// S2（注册竞态）：RegisterTeamGraphExecution 先 SaveRun 后插缓存时，并发
+// loadExecution 在窗口内缓存 DB 加载的实例 B，注册再覆盖为 A——两个实例各有
+// 独立 execMu，与 S4 同源。insert-first 修复后，注册实例从出生即 canonical，
+// 窗口内的 loadExecution 必须命中同一实例。
+func TestRegisterTeamGraphExecution_NoDualInstanceOnConcurrentLoad(t *testing.T) {
+	repo := &reentrantCloneRunRepo{}
+	repo.runs = map[string]*GraphExecution{}
+	uc := NewGraphUsecase(GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})
+	repo.uc = uc.ExecUC()
+	ct := NewCompiledTeam(GraphBuildConfig{
+		Nodes:      []NodeDef{{ID: "member-1", Type: "agent"}},
+		EntryPoint: "member-1", FinishPoint: "member-1",
+	}, nil, nil, nil)
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-s2", "sess-1", "sess-1", "team-1", "run-1", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	if repo.seen == nil {
+		t.Fatal("re-entrant loadExecution did not happen; test setup broken")
+	}
+	got, err := uc.GetExecution(context.Background(), "exec-s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repo.seen != got {
+		t.Fatalf("dual instance split: re-entrant load cached %p but registration cached %p", repo.seen, got)
 	}
 }
 

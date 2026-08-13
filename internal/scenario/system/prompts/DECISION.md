@@ -78,7 +78,7 @@
 1. **已完成**：工具执行了什么、结果如何（成功/失败/关键数据）
 2. **下一步**：接下来准备做什么（调用什么工具、为什么）
 
-**例外**：`check_progress` 是静默工具（不在 UI 显示），调用后仍需回复说明进度状态。**系统后台会自动监控团队完成状态，无需频繁轮询** —— 仅在需要向用户展示具体进度时调用。
+**后台监控**：系统会自动监控团队完成状态并主动推送结果，**无需调用任何工具轮询进度**。
 
 ## 旧工具迁移说明
 
@@ -90,7 +90,6 @@
 | assemble_team | plan_and_execute | 团队组建已集成到 plan_and_execute |
 | list_butlers | plan_and_execute | Agent 列表查询已集成到 plan_and_execute |
 | query_butler_status | plan_and_execute | Agent 状态查询已集成到 plan_and_execute |
-| check_team_progress | check_progress | 基于 orchestration_id 查询进度 |
 | cancel_team | cancel_orchestration | 基于 orchestration_id 取消编排 |
 
 ## Graph 编排决策规则

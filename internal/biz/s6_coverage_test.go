@@ -414,6 +414,10 @@ func (m *memEvalRepo2) UpsertGateConfig(_ context.Context, _ evaluation.GateConf
 	return nil
 }
 
+func (m *memEvalRepo2) FailStaleRuns(_ context.Context, _ time.Time) (int, error) {
+	return 0, nil
+}
+
 func TestEvalUsecase_CreateDataset(t *testing.T) {
 	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
 	d, err := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})

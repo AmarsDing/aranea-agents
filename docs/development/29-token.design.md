@@ -369,6 +369,18 @@ type UsageEnvelopePublisher interface {
 type AlertNotifier interface {
     NotifyBudgetAlert(ctx context.Context, alert BudgetAlert, spentMicroUSD, capMicroUSD int64, utilization float64) error
 }
+
+// 工具调用质量聚合（internal/biz/tool，2026-08-14 新增）：
+// 按工具聚合 tool_invocations 的调用质量，质量标记（args_repaired/args_invalid）
+// 由 tool_args_repair_guard 经 ctx → recorder → metadata_json 写入。
+// 一次合法率 = 1 - (repaired+invalid)/count，衡量模型对工具 schema 的一次性理解准确度。
+type ToolQualityStatsReader interface {
+    GetToolQualityStats(ctx context.Context, agentID string, since time.Time) ([]ToolQualityStat, error)
+}
+
+// Prometheus 指标（metrics/vars.go）：
+//   aranea_tool_args_guard_total{tool,outcome}   — 参数修复护栏结果计数（repaired/invalid）
+//   aranea_context_budget_tokens{category}       — 每轮 context budget 分类 token 分布 Histogram
 ```
 
 ### 3.3 Usecase

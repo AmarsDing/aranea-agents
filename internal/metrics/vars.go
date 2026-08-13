@@ -135,6 +135,24 @@ var (
 		Help: "MCP tool invocations classified at runtime, labelled by tool name and status.",
 	}, []string{"tool", "status"})
 
+	// ToolArgsGuardTotal counts tool-argument quality outcomes detected by the
+	// repair guard (29-token 工具质量度量). outcome ∈ {repaired, invalid}：
+	// repaired = 模型产出的坏 JSON 被 guard 修复；invalid = 坏 JSON 不可修复。
+	// 与 aranea_tool_invocation_total 相除即得各工具的参数一次合法率。
+	ToolArgsGuardTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_tool_args_guard_total",
+		Help: "Tool argument quality outcomes by tool (repaired = salvaged JSON, invalid = unrepairable).",
+	}, []string{"tool", "outcome"})
+
+	// ContextBudgetTokens observes the per-turn context budget ledger
+	// (29-token.design.md §9.6) by category, so static_prefix/tools_schema/
+	// history 等分桶的 token 占比可聚合分析（纯日志无闭环）。
+	ContextBudgetTokens = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_context_budget_tokens",
+		Help:    "Estimated prompt tokens per context budget category per turn.",
+		Buckets: []float64{100, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000},
+	}, []string{"category"})
+
 	// AlertNotifyTotal counts monitor alert outbound delivery attempts.
 	AlertNotifyTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_alert_notify_total",

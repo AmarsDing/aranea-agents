@@ -27,7 +27,7 @@ func (r *evalRepo) ListFailureGroups(ctx context.Context, datasetID, agentID str
 			JOIN eval_runs ru ON ru.id = r.run_id
 			WHERE ru.dataset_id=? AND (?='' OR ru.agent_id=?) AND r.error_message != ''`),
 		[]any{datasetID, agentID, agentID}, &total); err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "EVAL")
 	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		d.RenumberPlaceholders(`SELECT r.error_message, COUNT(*) AS cnt, COUNT(DISTINCT r.run_id) AS run_count, MAX(r.created_at) AS latest_at
@@ -37,18 +37,18 @@ func (r *evalRepo) ListFailureGroups(ctx context.Context, datasetID, agentID str
 			GROUP BY r.error_message ORDER BY cnt DESC, latest_at DESC LIMIT ?`),
 		datasetID, agentID, agentID, limit)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, entErrToBizErr(err, "EVAL")
 	}
 	defer rows.Close()
 	out := make([]biz.EvalFailureGroup, 0)
 	for rows.Next() {
 		var g biz.EvalFailureGroup
 		if err := rows.Scan(&g.ErrorMessage, &g.Count, &g.RunCount, &g.LatestAt); err != nil {
-			return nil, 0, err
+			return nil, 0, entErrToBizErr(err, "EVAL")
 		}
 		out = append(out, g)
 	}
-	return out, total, rows.Err()
+	return out, total, entErrToBizErr(rows.Err(), "EVAL")
 }
 
 // InsertRunPreference persists one pairwise judgment (P3-3).
@@ -61,7 +61,7 @@ func (r *evalRepo) InsertRunPreference(ctx context.Context, p biz.EvalRunPrefere
 		 (id,dataset_id,run_id_a,run_id_b,winner_run_id,comment,created_by,created_at)
 		 VALUES (?,?,?,?,?,?,?,?)`),
 		p.ID, p.DatasetID, p.RunIDA, p.RunIDB, p.WinnerRunID, p.Comment, p.CreatedBy, p.CreatedAt)
-	return err
+	return entErrToBizErr(err, "EVAL")
 }
 
 // ListRunPreferences returns pairwise judgments for a dataset, newest first.
@@ -74,18 +74,18 @@ func (r *evalRepo) ListRunPreferences(ctx context.Context, datasetID string, lim
 			FROM eval_run_preferences WHERE dataset_id=? ORDER BY created_at DESC LIMIT ?`),
 		datasetID, limit)
 	if err != nil {
-		return nil, err
+		return nil, entErrToBizErr(err, "EVAL")
 	}
 	defer rows.Close()
 	out := make([]biz.EvalRunPreference, 0)
 	for rows.Next() {
 		var p biz.EvalRunPreference
 		if err := rows.Scan(&p.ID, &p.DatasetID, &p.RunIDA, &p.RunIDB, &p.WinnerRunID, &p.Comment, &p.CreatedBy, &p.CreatedAt); err != nil {
-			return nil, err
+			return nil, entErrToBizErr(err, "EVAL")
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	return out, entErrToBizErr(rows.Err(), "EVAL")
 }
 
 // evalGateConfigID is the singleton row key for the publish-gate config.
@@ -104,7 +104,7 @@ func (r *evalRepo) GetGateConfig(ctx context.Context) (biz.EvalGateConfig, error
 		if err == sql.ErrNoRows || apierror.IsCode(err, apierror.CodeNotFound) {
 			return biz.EvalGateConfig{Metric: "exact_match"}, nil
 		}
-		return biz.EvalGateConfig{}, err
+		return biz.EvalGateConfig{}, entErrToBizErr(err, "EVAL")
 	}
 	cfg.Enabled = enabled != 0
 	return cfg, nil
@@ -127,5 +127,5 @@ func (r *evalRepo) UpsertGateConfig(ctx context.Context, cfg biz.EvalGateConfig)
 		 ON CONFLICT(id) DO UPDATE SET enabled=?,agent_id=?,dataset_id=?,metric=?,min_score=?,max_drop=?,updated_at=?`),
 		evalGateConfigID, enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, t,
 		enabled, cfg.AgentID, cfg.DatasetID, metric, cfg.MinScore, cfg.MaxDrop, t)
-	return err
+	return entErrToBizErr(err, "EVAL")
 }

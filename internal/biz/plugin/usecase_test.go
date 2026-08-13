@@ -290,3 +290,48 @@ func TestUsecase_ListRuns_DefaultLimit(t *testing.T) {
 		t.Errorf("Limit = %d, want 50", captured.Limit)
 	}
 }
+
+// N-B5：DeleteAllRuns 必须原样透传 workspaceID（空 = 系统全删；非空 = 租户可见范围）。
+func TestUsecase_DeleteAllRuns_PassesWorkspaceID(t *testing.T) {
+	var captured string
+	runs := noOpRunRepo()
+	runs.deleteAllFn = func(_ context.Context, workspaceID string) (int32, error) {
+		captured = workspaceID
+		return 3, nil
+	}
+	u := NewUsecase(noOpRepo(), runs, noOpScopeAgentLookup())
+	n, err := u.DeleteAllRuns(context.Background(), "ws-a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("deleted = %d, want 3", n)
+	}
+	if captured != "ws-a" {
+		t.Errorf("workspaceID = %q, want %q", captured, "ws-a")
+	}
+}
+
+func TestUsecase_DeleteAllRuns_NilUsecase(t *testing.T) {
+	var u *Usecase
+	n, err := u.DeleteAllRuns(context.Background(), "ws-a")
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0, got %d", n)
+	}
+}
+
+// A6：NewUsecase agents 为 nil 时替换为 noop 实现——非 global scope 跳过
+// agent 存在性校验（仅限测试/嵌入场景），UpdateScope 不因 nil 依赖 panic。
+func TestUsecase_UpdateScope_NilAgentsSkipsLookup(t *testing.T) {
+	u := NewUsecase(noOpRepo(), noOpRunRepo(), nil)
+	out, err := u.UpdateScope(context.Background(), "p1", "agent-42")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Scope != "agent-42" {
+		t.Errorf("Scope = %q, want %q", out.Scope, "agent-42")
+	}
+}

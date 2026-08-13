@@ -110,6 +110,29 @@ func (s *stubProposalRepo) UpdateStatus(_ context.Context, id string, status str
 	return nil
 }
 
+// UpdateStatusCAS mirrors UnifiedEvolutionRepo.UpdateStatusCAS: update only when
+// the current status is in from; report whether the transition happened.
+func (s *stubProposalRepo) UpdateStatusCAS(ctx context.Context, id string, from []string, to string, actor string, reason string) (bool, error) {
+	p, ok := s.proposals[id]
+	if !ok {
+		return false, apierror.NotFound("SKILL_EVO", "not found")
+	}
+	allowed := len(from) == 0
+	for _, f := range from {
+		if p.Status == f {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return false, nil
+	}
+	if err := s.UpdateStatus(ctx, id, to, actor, reason); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *stubProposalRepo) filter(targetType, targetID, actionType, status string) []biz.UnifiedEvolutionSuggestion {
 	var result []biz.UnifiedEvolutionSuggestion
 	for _, p := range s.proposals {

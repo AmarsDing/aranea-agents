@@ -12,17 +12,11 @@ import type { Plugin, PluginListQuery } from '../../features/plugins/types';
 export const usePluginsStore = defineStore('plugins', () => {
   const plugins = ref<Plugin[]>([]);
   const total = ref(0);
-  const loading = ref(false);
 
   async function loadPlugins(query?: PluginListQuery) {
-    loading.value = true;
-    try {
-      const result = await listPlugins(query);
-      plugins.value = result.items ?? [];
-      total.value = result.total ?? plugins.value.length;
-    } finally {
-      loading.value = false;
-    }
+    const result = await listPlugins(query);
+    plugins.value = result.items ?? [];
+    total.value = result.total ?? plugins.value.length;
   }
 
   async function toggle(id: string, enabled: boolean) {
@@ -49,5 +43,5 @@ export const usePluginsStore = defineStore('plugins', () => {
     return updated;
   }
 
-  return { plugins, total, loading, loadPlugins, toggle, setConfig, setScope, bumpSort };
+  return { plugins, total, loadPlugins, toggle, setConfig, setScope, bumpSort };
 });

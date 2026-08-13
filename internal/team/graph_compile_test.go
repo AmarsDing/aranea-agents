@@ -6,8 +6,77 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
+
+// S9（K3 降级覆盖）：未知编排模式静默 fallback 为 pipeline，此前无任何日志。
+// 修复后必须发射 warn 流程日志（team.compile.unknown_mode_fallback），让业务
+// 用户在「流程日志」Tab 感知降级。
+func TestGenerateModeEdges_UnknownModeFallbackEmitsWarn(t *testing.T) {
+	monBus := &captureFlowBus{}
+	em := event.NewTraceEmitter(&event.Infra{MonitorEventBus: monBus}, event.TraceContext{
+		TraceID: "tr-s9",
+		Domain:  event.TraceDomainTeam,
+	}, nil)
+	ctx := event.WithTraceEmitter(context.Background(), em)
+
+	nodes := []embeddedGraphNode{
+		{ID: "start", Type: "start"},
+		{ID: "member-0", Type: "agent"},
+		{ID: "member-1", Type: "agent"},
+		{ID: "end", Type: "end"},
+	}
+	// "squenctial" 是拼写错误的未知模式，应 fallback 到 pipeline 拓扑。
+	edges := generateModeEdges(ctx, "squenctial", Definition{}, nodes, loggateway.NewNoop())
+
+	// pipeline 拓扑：member-0 → member-1 链式边（无 transfer 边）。
+	for _, e := range edges {
+		if e.Label == "transfer" {
+			t.Fatalf("unknown mode must fall back to pipeline (no transfer edges), got %+v", edges)
+		}
+	}
+
+	foundWarn := false
+	for _, ev := range monBus.evs {
+		if ev.Type != contract.MonitorEventTypeFlowLog {
+			continue
+		}
+		step, _ := ev.Metadata["step_id"].(string)
+		sev, _ := ev.Metadata["severity"].(string)
+		if step == "team.compile.unknown_mode_fallback" && sev == "warn" {
+			foundWarn = true
+		}
+	}
+	if !foundWarn {
+		t.Fatalf("expected warn flow-log for unknown mode fallback, got %+v", monBus.evs)
+	}
+}
+
+// 合法模式不得触发降级日志。
+func TestGenerateModeEdges_KnownModeNoFallbackWarn(t *testing.T) {
+	monBus := &captureFlowBus{}
+	em := event.NewTraceEmitter(&event.Infra{MonitorEventBus: monBus}, event.TraceContext{
+		TraceID: "tr-s9b",
+		Domain:  event.TraceDomainTeam,
+	}, nil)
+	ctx := event.WithTraceEmitter(context.Background(), em)
+
+	nodes := []embeddedGraphNode{
+		{ID: "start", Type: "start"},
+		{ID: "member-0", Type: "agent"},
+		{ID: "end", Type: "end"},
+	}
+	generateModeEdges(ctx, "sequential", Definition{}, nodes, loggateway.NewNoop())
+
+	for _, ev := range monBus.evs {
+		step, _ := ev.Metadata["step_id"].(string)
+		if step == "team.compile.unknown_mode_fallback" {
+			t.Fatal("known mode must not emit fallback warn")
+		}
+	}
+}
 
 func TestCompileToGraphBuildConfig_sequential(t *testing.T) {
 	def := Definition{

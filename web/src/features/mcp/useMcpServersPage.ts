@@ -2,7 +2,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
-import type { McpServerConfig, McpServerMetadata, McpServerRow } from './types';
+import type { McpHealthTone, McpServerConfig, McpServerMetadata, McpServerRow } from './types';
 import { parseJSON } from './utils';
 import { useMcpStore } from '../../stores/mcp';
 import { useAuthStore } from '../../stores/auth';
@@ -38,7 +38,7 @@ export function useMcpServersPage() {
     return u.name || u.email || credUserId.value;
   });
 
-  const rows = computed(() => servers.value as McpServerRow[]);
+  const rows = computed(() => servers.value);
   const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
   const filteredRows = computed(() => rows.value);
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
@@ -160,7 +160,7 @@ export function useMcpServersPage() {
     });
   }
 
-  function healthTone(row: McpServerRow) {
+  function healthTone(row: McpServerRow): McpHealthTone {
     const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
     if (metadata.health_status === 'ok') return 'ok';
     if (metadata.health_status === 'error') return 'error';

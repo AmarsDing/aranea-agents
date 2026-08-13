@@ -2,7 +2,7 @@
   <q-card flat :bordered="variant === 'monitor'" :class="panelClass">
     <q-card-section class="row items-center">
       <div>
-        <div class="text-h6 text-weight-bold">Runner 指标</div>
+        <div class="text-h6 text-weight-bold">{{ t('monitorPage.runner.title') }}</div>
         <div v-if="scopeHint" class="text-caption text-grey-7 q-mt-xs">{{ scopeHint }}</div>
       </div>
       <q-space />
@@ -13,58 +13,58 @@
         emit-value
         map-options
         :options="windowOptions"
-        label="窗口"
+        :label="t('monitorPage.runner.window')"
         style="min-width: 120px"
         class="q-mr-sm"
         @update:model-value="emit('update:windowMinutes', $event)"
       />
-      <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="emit('refresh')" />
+      <q-btn flat rounded icon="refresh" :label="t('monitorPage.runner.refresh')" :loading="loading" @click="emit('refresh')" />
     </q-card-section>
     <q-separator />
     <q-card-section v-if="metrics" :class="{ 'runner-metrics__body--compact': variant === 'overview' }">
       <div class="app-metrics-grid runner-metrics__grid">
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">总运行次数</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.totalRuns') }}</div>
           <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-primary">{{ metrics.total_runs }}</div>
             <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">错误次数</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.errorRuns') }}</div>
           <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold text-negative">{{ metrics.error_runs }}</div>
             <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">错误率</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.errorRate') }}</div>
           <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.error_rate) }}</div>
             <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div class="app-metrics-grid__item">
-          <div class="text-caption text-grey">成功率</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.successRate') }}</div>
           <q-btn flat dense no-caps class="q-pa-none runner-metrics__drill" @click="emit('drill')">
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
             <q-tooltip>{{ drillHint }}</q-tooltip>
           </q-btn>
         </div>
         <div v-if="metrics.p50_duration_ms != null" class="app-metrics-grid__item">
-          <div class="text-caption text-grey">P50 延迟</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.p50Latency') }}</div>
           <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p50_duration_ms) }}</div>
         </div>
         <div v-if="metrics.p95_duration_ms != null" class="app-metrics-grid__item">
-          <div class="text-caption text-grey">P95 延迟</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.p95Latency') }}</div>
           <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p95_duration_ms) }}</div>
         </div>
         <div v-if="metrics.p99_duration_ms != null" class="app-metrics-grid__item">
-          <div class="text-caption text-grey">P99 延迟</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.p99Latency') }}</div>
           <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p99_duration_ms) }}</div>
         </div>
         <div v-if="metrics.avg_duration_ms != null" class="app-metrics-grid__item">
-          <div class="text-caption text-grey">平均延迟</div>
+          <div class="text-caption text-grey">{{ t('monitorPage.runner.avgLatency') }}</div>
           <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.avg_duration_ms) }}</div>
         </div>
       </div>
@@ -78,7 +78,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { RunnerMetricsSummary } from '../../features/monitor/types';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -100,15 +103,15 @@ const emit = defineEmits<{
 const panelClass = computed(() => (props.variant === 'overview' ? 'overview-panel q-mb-md' : 'monitor-card q-mb-md'));
 
 const drillHint = computed(() =>
-  props.variant === 'overview' ? '点击指标下钻到 Monitor → Runs（Traces）' : '点击指标下钻到 Runs（Traces）列表',
+  props.variant === 'overview' ? t('monitorPage.runner.drillHintOverview') : t('monitorPage.runner.drillHintMonitor'),
 );
 
-const windowOptions = [
-  { label: '15 分钟', value: 15 },
-  { label: '1 小时', value: 60 },
-  { label: '6 小时', value: 360 },
-  { label: '24 小时', value: 1440 },
-];
+const windowOptions = computed(() => [
+  { label: t('monitorPage.runner.windowOption.m15'), value: 15 },
+  { label: t('monitorPage.runner.windowOption.h1'), value: 60 },
+  { label: t('monitorPage.runner.windowOption.h6'), value: 360 },
+  { label: t('monitorPage.runner.windowOption.h24'), value: 1440 },
+]);
 
 function formatPercent(v: number): string {
   if (!Number.isFinite(v)) return '-';

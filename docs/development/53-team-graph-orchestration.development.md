@@ -711,3 +711,54 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 - F4 前端确认弹窗（浏览器实测）：team-owned 图编辑后点保存 → 弹「保存 Team 拓扑」确认框，文案含属主 Team 展示名「V3 修复验证」，取消/确定按钮正常；取消不保存 ✅
 - 说明：未做修改时保存按钮 disabled（`canSave=false`）属预期行为，非弹窗缺陷
 - 回归测试：`internal/biz` 全量通过 ✅
+
+---
+
+## Phase 12 — 编排正确性评审修复（✅ 已完成，2026-08-14）
+
+> 来源：2026-08-14 Team/Graph 编排业务逻辑/架构设计/代码逻辑全链路评审（3 阻断 B1-B3 + 9 项建议优化，全部实施；S 编号为评审原始序号，S7 在方案深化阶段并入 S2/S4 执行实例并发族不单列）。设计契约变更见 [53-team-graph-orchestration.design.md §十三](./53-team-graph-orchestration.design.md#十三编排正确性评审修复2026-08-14--已落地)。
+
+### 阻断项
+
+| ID | 问题 | 修复 | 影响域 | 状态 |
+|----|------|------|--------|------|
+| B1 | Graph 节点重试的中间错误事件被误判终态失败，执行记录误标 Failed | `GraphRuntimeEvent` 新增 `Retrying` 标记，失败收敛守卫 `!e.Retrying` | `biz/graph_runtime.go` · `biz/graph_execution_usecase.go` · `graph/adapter/runtime_adapter.go` | ✅ |
+| B2 | 启动孤儿恢复把 HITL 暂停（waiting_human/paused）的 Team Run 误转 interrupted | `RecoverOrphanedRunningTeams` 仅处理 pending/running | `biz/team_usecase.go` | ✅ |
+| B3 | Graph 执行/定义 RPC 缺 workspace 校验（IDOR） | `GraphService.assertGraphAccess` 全端点前置校验 | `service/graph_definition_service.go` · `service/graph_execution_service.go` | ✅ |
+
+### 建议项
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| S1 | `finishRunErr` 失败路径补 K2 流程日志 | `team/runner_helpers.go` | ✅ |
+| S2 | 执行注册竞态：insert-first（`cacheNewExecution`/`uncacheExecution`） | `biz/graph_execution_usecase.go` | ✅ |
+| S3 | `RuntimeReplanner.ReleaseExecution` 生命周期释放（事件流结束 defer 调用） | `graph/runtime_replanner.go` · `graph/adapter/runtime_adapter.go` | ✅ |
+| S4 | `loadExecution` 双重检查锁（并发缓存未命中共享单实例） | `biz/graph_execution_usecase.go` | ✅ |
+| S5 | TopologyEvolver 死代码下线（含 Wire `provideTopologyEvolver` 移除） | `graph/topology_evolution.go`（删）· `graph/adapter/runtime_adapter.go` · `cmd/admin/wire.go` | ✅ |
+| S6 | swarm active agent CAS：`UpdateSessionMetadataKey`（jsonb_set 原子单键更新）替代读-改-写 | `data/session_repo.go` · `biz/session/usecase.go`（端口）· `team/swarm_cross_request.go` | ✅ |
+| S8 | AS-COG-01 超标 TECH-DEBT 标记：`graph_execution_usecase.go`(file=827) / `updateExecutionFromRuntimeEvent`(91) / `runtime_adapter.go`(file=963) / `buildNodeCallbacks`(103) | 上述两文件注释 | ✅ |
+| S9 | `generateModeEdges` 未知模式补 warn 进程日志 + `team.compile.unknown_mode_fallback` 流程日志（K3 降级覆盖） | `team/graph_compile.go` | ✅ |
+| S10 | 文档同步（本 Phase + 设计 §十三） | 53 三件套 | ✅ |
+
+### 测试覆盖
+
+- `biz/graph_execution_usecase_retry_test.go`（B1：Retrying=true 不收敛 Failed / 末次失败收敛）
+- `biz/team_orphan_recovery_test.go`（B2：waiting_human/paused 跳过恢复）
+- `biz/graph_team_execution_test.go`（S2：reentrant load 不产生双实例；S4：并发缓存未命中共享单实例）
+- `graph/adapter/runtime_adapter_c23_test.go`（S3：事件流结束调用 ReleaseExecution）
+- `team/swarm_graph_safety_test.go`（S6：CAS 并发安全）
+- `team/runner_finish_flow_log_test.go`（S1：失败路径流程日志）
+- `team/graph_compile_test.go`（S9：未知模式降级发射 warn 流程日志 / 合法模式不发射）
+- S6 SQL 运行时探针：`test/orch-fixes-p4/s6_probe.sql`（jsonb_set 保留无关 key / 空 metadata / 软删行不命中）
+- S9 step_id 已登记 `internal/event/flow_log.go` stepTitleRegistry 并同步 [52-flow-logger.design.md §5.1](./52-flow-logger.design.md#51-步骤注册表真相源)
+
+### 验证证据（2026-08-14）
+
+- 各批次目标包 `go build` + `go test -count=1` 通过（B/S 逐项验证）；改动文件 `gofmt` 全通过
+- 最终全量 `go build ./internal/biz` 受并行会话 `internal/biz/evaluation` WIP（缺 `time` import）阻塞——与本改动无关，遵守「不改并行会话文件」纪律未介入
+- **P4 终审复验**（`test/orch-fixes-p4/verify*.log`）：
+  - `go build ./cmd/... ./internal/... ./api/... ./pkg/...` EXIT=0；`cmd/admin` build+vet EXIT=0（含 wire_gen S5 再生成物）
+  - `go vet` 本任务全部包（biz/graph/team/service/data/cmd-admin）EXIT=0；全量 vet 残留 `internal/biz/knowledge`+`internal/knowledge` 测试 mock 缺 `EnableCollectionSemantic`，为并行会话 knowledge 模块 WIP
+  - `go test ./internal/biz -run "Graph|Orphan|RuntimeEvent|Retrying"` EXIT=0（B1×3 / B2 / S2 PASS）；`-run LoadExecution` EXIT=0（S4 PASS）；`./internal/graph/...`、`./internal/team/...`、`./internal/service -run Graph` 全 EXIT=0（S3 / S6 / S9 / B3 PASS）
+  - S6 jsonb_set SQL 经真实 PG 运行时探针验证（unrelated key 保留 / 并发覆写 / 空 metadata / 软删行 0 命中）
+  - 期间并行会话两次造成幻影失败（`PersistRotatedRefreshToken` 未定义、`ResolveMCPAuthToken` 签名变更致 wire_adapters.go 不兼容），重读后确认非本任务范围，对方收口后复验通过

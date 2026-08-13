@@ -128,7 +128,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `composition` | `call_agent`（Agent-as-Tool） | 中风险 |
 | `knowledge` | `knowledge_search` | 低风险 |
 | `browser` | `browser` | critical |
-| `spirit` | `plan_and_execute`、`check_progress`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph` | 低中风险 |
+| `spirit` | `plan_and_execute`、`cancel_orchestration`、`synthesize_results`、`build_orchestration_graph` | 低中风险 |
 
 ### 3.2 内置工具 catalog
 
@@ -183,7 +183,6 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `mcp_tool_set` | MCP 工具集 | integration | medium | 停用 | 挂载已配置的 MCP Server 工具 |
 | `mcp_broker` | MCP Broker | integration | medium | 停用 | 运行时 MCP 发现与调用 |
 | `plan_and_execute` | 规划并执行 | spirit | low | 启用 | 编排式计划与执行 |
-| `check_progress` | 查询编排进度 | spirit | low | 停用 | 已由系统推送模式替代（团队完成后自动触发 Spirit 合成），不再对 LLM 暴露 |
 | `cancel_orchestration` | 取消编排 | spirit | medium | 启用 | 取消正在运行的编排 |
 | `synthesize_results` | 合成团队结果 | spirit | low | 启用 | 将所有已完成团队的执行结果合成为综合报告 |
 | `build_orchestration_graph` | 构建编排图 | spirit | low | 启用 | 构建 DAG 编排图，定义子任务依赖关系 |

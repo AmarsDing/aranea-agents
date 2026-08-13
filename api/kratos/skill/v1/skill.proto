@@ -427,6 +427,12 @@ message SkillHealthMetric {
   repeated SkillHealthDailyMetric daily_metrics = 10;
   double route_hit_rate_7d = 11;
   double route_hit_rate_30d = 12;
+  // 路由命中率分子/分母（按 activation_id 去重的轮次数）：
+  // 供前端区分「无路由数据」（routed_count=0）与「0% 命中率」（routed>0, loaded=0）。
+  int32 routed_count_7d = 13;
+  int32 loaded_count_7d = 14;
+  int32 routed_count_30d = 15;
+  int32 loaded_count_30d = 16;
 }
 
 message SkillHealthDailyMetric {

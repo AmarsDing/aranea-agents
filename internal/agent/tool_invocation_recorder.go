@@ -89,6 +89,17 @@ func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs
 		Streaming:     streaming,
 		ChunkCount:    chunkCount,
 	}
+	// 消费 repair guard（BeforeTool priority 1）经 ctx 传入的参数质量标记：
+	// 落库 metadata_json（P1-4 聚合"参数一次合法率"）+ Prometheus counter。
+	if q := toolArgsQualityFromContext(ctx); q.Repaired || q.Invalid {
+		write.ArgsRepaired = q.Repaired
+		write.ArgsInvalid = q.Invalid
+		outcome := "repaired"
+		if q.Invalid {
+			outcome = "invalid"
+		}
+		metrics.ToolArgsGuardTotal.WithLabelValues(toolKey, outcome).Inc()
+	}
 	recordToolInvocationWrite(ctx, write, args.Result, ag, deps)
 }
 

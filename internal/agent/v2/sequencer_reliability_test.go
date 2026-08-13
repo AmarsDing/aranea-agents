@@ -172,7 +172,7 @@ func TestSequencer_PersistRetrySkipsTrailingSleep(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	start := time.Now()
-	s.persistWithRetry(biz.NewTaskCreatedEvent(biz.Task{ID: "t-fail", SessionID: "s-1", Version: 1}))
+	s.persist.persistWithRetry(biz.NewTaskCreatedEvent(biz.Task{ID: "t-fail", SessionID: "s-1", Version: 1}))
 	elapsed := time.Since(start)
 
 	if elapsed < 280*time.Millisecond {

@@ -1,6 +1,6 @@
 # MCP 协议 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：🟢 Phase 6 已落地；Lifecycle FSM 🟡（状态机 + ApplyHealth 已接入，告警/重连编排可继续收敛）
+> **版本**：2026-08-14 | **状态**：🟢 Phase 6 已落地；Lifecycle FSM 🟡（状态机 + ApplyHealth 已接入，告警/重连编排可继续收敛）；2026-08-14 深入评审整改 ✅（R1/R2/M1-M6/T1-T5/F1-F4）
 > **需求**：[19-mcp.md](./19-mcp.md) · **设计**：[19-mcp.design.md](./19-mcp.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：I4-MCP-01 / I5-MCP-01 ✅
 > **优化计划**：[38-tools-plugin-skill-mcp-optimization.development.md](./38-tools-plugin-skill-mcp-optimization.development.md)
@@ -21,7 +21,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | Data | `internal/data/mcp_server.go`、`mcp_user_credential.go`、`ent/schema/platform_mcp_server.go`、`platform_mcp_user_credential.go` |
 | MCP 子系统 | `internal/mcp/config`、`probe`、`metadata`、`health`、`alert`、`classify`、`defaults` |
 | 运行时装配 | `internal/agent/tool_assembly.go`、`mcp_oauth.go` |
-| 工具运行时 | `internal/tools/toolset.go`、`mcpobserve/` |
+| 工具运行时 | `internal/tools/toolset.go`、`toolset_assemble.go`、`mcp_pool.go`、`mcpobserve/` |
 | Wire | `runtime.PersistenceSet.AgentMCP`、MCP health runner |
 | 前端 | `web/src/features/mcp/`、`McpServersPage.vue` |
 
@@ -56,6 +56,14 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | 内置共享服务器只读 UI | ✅ | 「内置」徽标 + 编辑/删除/启用开关禁用（tooltip 说明）；测试连接对共享行放行（读级守卫） |
 | 手动刷新反馈 | ✅ | `refreshFeedback`：行数 + 最近 `last_health_at` |
 | 后端错误文案透出 | ✅ | `axiosHandler` 提取 Kratos 错误信封 `message` 覆盖 axios 通用文案 |
+| 软删除感知唯一索引 | ✅ | `idx_mcp_server_server_key_active` / `idx_mcp_credential_unique_active` 部分唯一索引（`WHERE deleted_at=''`），同 key 软删后可重建（R1） |
+| 运行时工作区过滤 | ✅ | `EffectiveServersForAgent` 按调用方 workspace 过滤（共享+自有），系统调用方豁免（R2） |
+| oauth2_static 守卫 | ✅ | 令牌失效不再回退注入过期 access_token，显式失败提示重配（T1） |
+| AuthHeaderName 透传 | ✅ | 用户级凭据注入器与静态 auth 写入同一 header（T2） |
+| 连接池关闭安全 | ✅ | 被引用 entry 延迟到最后一次 release 关闭；Assemble 失败 `closeAll()` 清理（T3/T4） |
+| refresh token 轮换回写 | ✅ | `PersistRotatedRefreshToken` + `SetMCPRefreshTokenPersister` 钩子（T5） |
+| 单次查询守卫 + 凭据审计 | ✅ | `checkMCPServerAccess` 返回 server 复用；IDOR 拒绝 Warn 日志；凭据 upsert/delete 写 Admin Audit；`mcp.server.update` 流程日志（M1-M3） |
+| 前端类型与测试 | ✅ | `McpServerRow`/`McpHealthTone` 收紧；`useMcpServerForm`/`useMcpServersPage` 单测 12 例（F3/F4） |
 
 ---
 
@@ -290,3 +298,63 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - [x] 列表请求携带 `page`/`page_size`/`search` query 参数
 - [x] 手动刷新后展示行数 + 最近健康检测时间
 - [x] HTTP 错误提示展示后端 message（如 "mcp server not found"）
+
+---
+
+## 13. 2026-08-14 深入评审整改
+
+> 来源：MCP 管理模块整体深入评审（业务逻辑/代码逻辑/架构设计/死代码），方案经用户评审确认（R2 收紧、T5 回写、全部 🟡 及以上实施）。
+
+### 13.1 修复清单
+
+| # | 问题 | 严重度 | 修复方案 | 状态 |
+|---|------|--------|---------|------|
+| R1 | `mcp_server.server_key` 列级 UNIQUE 与凭据复合唯一索引含软删除墓碑行，同 key 软删后重建报 23505 | 🔴 | 改为部分唯一索引（`WHERE deleted_at=''`）：Ent Schema 声明 + DDL 迁移 `20261209_mcp_partial_unique_index` 清理存量库 + PG 集成测试 | ✅ |
+| M1 | service 守卫与业务重复 `Get`（每 RPC 两次 DB 读） | 🟡 | `checkMCPServerAccess` 返回已读 server，`Get`/`Update`/`Delete` 复用 | ✅ |
+| M2 | IDOR 拒绝静默（TECH-DEBT 注释遗留） | 🟡 | 进程日志 Warn（`mcp.server.access_denied`），对外仍 NotFound | ✅ |
+| M3 | 用户凭据 upsert/delete 未写 Admin Audit | 🟡 | `recordAudit`（`AuditVerbCredentials`） | ✅ |
+| M4 | 死代码：`effectiveToolsAllowsMCP` 无引用包装、`ValidateConfig` 废弃 `enabled` 形参、`toolset.go` 已废弃 `FilesystemDirWithDir/FromContext` | 🟡 | 删除/签名收紧 | ✅ |
+| M5 | `UpdateMCPServer` 缺流程日志（仅有 add/remove） | 🟡 | 发射 `mcp.server.update`（成功/失败双轨），登记步骤注册表 + 52-flow-logger §5.1 | ✅ |
+| M6 | `DeleteMCPServer` 审计摘要 best-effort Get 失败即丢 key/name | 🟡 | 随 M1 单次查询一并解决（守卫返回值直接供审计） | ✅ |
+| R2 | `EffectiveServersForAgent` 不按 workspace 过滤，租户 Agent 可挂载他租户私有 MCP 服务器 | 🔴 | 非系统调用方按 `workspace.IDFromContext` 过滤（共享+自有）；系统调用方豁免 | ✅ |
+| T1 | `oauth2_static` 令牌失效时回退注入同一过期 `access_token`，401 被掩盖 | 🟡 | 守卫：失败留空 key 不注入，Warn 日志提示重配 | ✅ |
+| T2 | 用户级凭据注入器未透传 `auth.header_name`，与静态 auth 路径 header 不一致 | 🟡 | `MCPServerConfig.AuthHeaderName` 全链透传至 `ResolveUserAuthHeaders` | ✅ |
+| T3 | `mcp_pool.Close` 与在用 entry 竞态：被引用 ToolSet 被立即关闭（use-after-close）；Acquire 连接中途遇 Close 双重关闭 | 🟠 | 被引用 entry 标记 `closing` 延迟到最后一次 release 关闭；中途遇 Close 的 ToolSet 直接交调用方 | ✅ |
+| T4 | `tools.Assemble` 任一 phase 失败时已装配 ToolSet 泄漏（池化连接占用池引用） | 🟠 | 错误路径 `closeAll()` 统一关闭/归还 | ✅ |
+| T5 | OAuth2 provider 轮换 refresh token 仅落内存缓存，进程重启复活已吊销旧 token | 🟠 | `PersistRotatedRefreshToken`（解密→patch→重加密→更新）+ `SetMCPRefreshTokenPersister` 钩子（service 装配，失败非致命） | ✅ |
+| F1 | 前端注释问题（SFC 根级多行注释、遗留修复记录注释） | 🟡 | 注释格式化/清理 | ✅ |
+| F2 | `mcpServerTableUi.ts` 操作列硬编码 `100px` | 🟡 | 复用 `REGISTRY_COL_W.actionsWide` token | ✅ |
+| F3 | API/store 返回 `PlatformResource` 泛型需断言；`healthTone` 返回 `string` | 🟡 | 收紧 `McpServerRow` + 新增 `McpHealthTone` 联合类型，消除断言 | ✅ |
+| F4 | MCP 前端关键逻辑缺测试 | 🟡 | `useMcpServerForm`（buildPayload 6 例）+ `useMcpServersPage`（healthTone/Tooltip 6 例） | ✅ |
+
+### 13.2 改动文件清单
+
+**后端**：
+- `internal/data/ent/schema/platform_mcp_server.go` / `platform_mcp_user_credential.go`：部分唯一索引声明（R1）
+- `internal/data/ent/migrate/schema.go`：生成物（R1）
+- `internal/data/ddl_migration_registry.go` + `internal/data/sql/migrations/20261209_mcp_partial_unique_index.sql`：存量库迁移（R1）
+- `internal/service/mcp_server.go`：单次查询守卫、IDOR 日志、凭据审计、`mcp.server.update` 流程日志、T5 钩子装配（M1-M3/M5/M6/T5）
+- `internal/biz/mcp_server.go`：`ValidateConfig` 签名收紧、`PersistRotatedRefreshToken`（M4/T5）
+- `internal/biz/agent_mcp_effective.go`：workspace 过滤 + 死代码删除（R2/M4）
+- `internal/agent/tool_assembly.go`：oauth2_static 守卫、AuthHeaderName 透传（T1/T2）
+- `internal/agent/mcp_oauth.go`：`ResolveMCPAuthToken` 增 serverKey 形参 + 轮换回写钩子（T5）
+- `internal/tools/mcp_pool.go`：closing 延迟关闭语义（T3）
+- `internal/tools/toolset.go` / `toolset_assemble.go`：Assemble 错误路径 `closeAll()`（T4）+ 死代码删除（M4）
+- `internal/event/flow_log.go`：`mcp.server.update` 步骤登记（M5）
+
+**前端**：
+- `web/src/features/mcp/`：`types.ts`（McpServerRow/McpHealthTone）、`api.ts`、`useMcpServersPage.ts`、`useMcpUserCredentialDialog.ts`、`McpUserCredentialDialog.vue`（F1/F3）
+- `web/src/components/mcp/`：`mcpServerTableUi.ts`（F2）、`McpServersTable.vue`（F3）
+- `web/src/stores/mcp/index.ts` + `stores/__tests__/mcp.store.spec.ts`（F3/F4）
+- `web/src/features/mcp/__tests__/useMcpServerForm.spec.ts` / `useMcpServersPage.spec.ts`（F4，新增）
+
+**测试（后端）**：`mcp_server_test.go`（biz/service）、`mcp_oauth_test.go`、`mcp_pool_test.go` 等配套更新
+
+### 13.3 验收标准
+
+- [x] 后端 `go build ./cmd/... ./internal/... ./api/... ./pkg/...` + MCP 相关包 `go test` 通过
+- [x] PG 集成测试验证部分唯一索引（同 key 软删后重建成功）
+- [x] 前端门禁：vitest 25/25（MCP 相关 4 文件）、eslint 0 错误、check-i18n 通过
+- [x] 同 key 软删重建不再报 23505
+- [x] 租户 Agent `EffectiveServersForAgent` 不再返回他租户私有服务器
+- [x] `mcp.server.update` 流程日志在 Monitor「流程日志」可见（有中文标题）

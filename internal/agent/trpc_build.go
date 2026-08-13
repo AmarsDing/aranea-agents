@@ -273,7 +273,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	}
 
 	cbStart := time.Now()
-	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps, gate, skillRepoForBudget, skillFilterForBudget); len(chainOpts) > 0 {
+	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps, gate, catalog, skillRepoForBudget, skillFilterForBudget); len(chainOpts) > 0 {
 		opts = append(opts, chainOpts...)
 		if cbRegistry != nil {
 			deps = deps.WithCircuitBreakerRegistry(cbRegistry)

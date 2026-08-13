@@ -1,9 +1,9 @@
 <template>
   <q-page class="app-standard-page app-registry-page plugins-page">
     <AppPageHero
-      kicker="ADK Runner plugins"
-      title="Plugin 管理"
-      subtitle="配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。"
+      :kicker="t('pluginsPage.kicker')"
+      :title="t('pluginsPage.title')"
+      :subtitle="t('pluginsPage.subtitle')"
     >
       <template #actions>
         <q-btn
@@ -13,7 +13,7 @@
           class="app-outline-btn"
           color="primary"
           icon="history"
-          label="运行记录"
+          :label="t('pluginsPage.btnRuns')"
           to="/plugins/runs"
         />
       </template>
@@ -27,7 +27,7 @@
         outlined
         clearable
         debounce="250"
-        label="搜索 Plugin"
+        :label="t('pluginsPage.search')"
       >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
@@ -39,7 +39,7 @@
         clearable
         emit-value
         map-options
-        label="类型"
+        :label="t('pluginsPage.filterCategory')"
         :options="categoryOptions"
       />
       <q-select
@@ -50,7 +50,7 @@
         clearable
         emit-value
         map-options
-        label="启用状态"
+        :label="t('pluginsPage.filterEnabled')"
         :options="enabledOptions"
       />
       <q-select
@@ -61,19 +61,27 @@
         clearable
         emit-value
         map-options
-        label="Callback"
+        :label="t('pluginsPage.filterCallback')"
         :options="callbackPointOptions"
       />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('pluginsPage.btnReset')" @click="resetFilters" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('pluginsPage.btnRefresh')"
+          :loading="loading"
+          @click="() => loadRows()"
+        />
       </template>
     </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="() => loadRows()" />
+        <q-btn flat dense :label="t('pluginsPage.retry')" class="text-white" @click="() => loadRows()" />
       </template>
     </q-banner>
 
@@ -93,7 +101,7 @@
         :page-max="pageMax"
         :total="total"
         :loading="loading"
-        label="个 Plugin"
+        :label="t('pluginsPage.paginationLabel')"
       />
     </div>
 
@@ -123,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import PluginConfigDialog from '../components/plugins/PluginConfigDialog.vue';
 import PluginDetailDialog from '../components/plugins/PluginDetailDialog.vue';
 import PluginsTable from '../components/plugins/PluginsTable.vue';
@@ -130,6 +139,8 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import { usePluginsPage } from '../features/plugins/usePluginsPage';
+
+const { t } = useI18n();
 
 const {
   rows,

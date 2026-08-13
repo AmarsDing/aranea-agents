@@ -1197,6 +1197,10 @@ func (r *f10SessionRepo) UpdateSession(_ context.Context, id string, fields biz.
 	return biz.Session{}, biz.ErrNotFound
 }
 
+func (r *f10SessionRepo) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
+
 func newF10Starter(team biz.Team, controller *stubSpiritTeamController, sessions []biz.Session, seq *capturingSeq) *TeamStarter {
 	teamUC := biz.NewTeamUsecase(biz.TeamUsecaseOpts{
 		Reader:    &stubTeamReader{teams: map[string]biz.Team{team.ID: team}},

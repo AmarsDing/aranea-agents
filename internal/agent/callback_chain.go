@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/tools/skillruntime"
 
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -17,8 +18,8 @@ import (
 // gate is the per-build shared confirmation gate (nil when nothing is gated).
 // skillRepo/skillFilter feed the skill_overview budget hook (F5); nil when the
 // agent has no skills configured.
-func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
-	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps, gate, skillRepo, skillFilter)
+func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, catalog *toolBuildCatalog, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
+	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps, gate, catalog, skillRepo, skillFilter)
 	if chain == nil {
 		return nil, nil
 	}
@@ -39,11 +40,13 @@ func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuild
 }
 
 func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) *callbacks.Chain {
-	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps, gate, nil, nil)
+	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps, gate, nil, nil, nil)
 	return chain
 }
 
-func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
+// catalog is the per-build tool snapshot (PERF-1) feeding the result-cache
+// hooks; nil disables result caching for the build (fail-soft).
+func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, catalog *toolBuildCatalog, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
 	var entries []callbacks.Callback
 	lg := deps.Logger()
 	entries = append(entries, productChainLifecycleMetrics()...)
@@ -93,7 +96,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// N3：history 计量（最终请求中的非 system 消息）。
 	entries = append(entries, newContextBudgetHistoryBeforeHook())
 	// F5：skill_overview 计量（镜像框架 overview 渲染，零额外 DB 查询）。
-	if hook := newContextBudgetSkillOverviewBeforeHook(skillRepo, skillFilter); hook != nil {
+	// 批次 B 计量对齐：预算与 RunOptionWithOverviewBudget 安装的渲染器同值，
+	// 计量截断后的实际注入文本。typed-nil 防护同 trpc_build.go runtimeIface。
+	var skillRuntime skillruntime.RuntimeSettings
+	if ag.Settings != nil {
+		skillRuntime = ag.Settings
+	}
+	if hook := newContextBudgetSkillOverviewBeforeHook(skillRepo, skillFilter, skillruntime.OverviewBudgetFromRuntime(skillRuntime)); hook != nil {
 		entries = append(entries, hook)
 	}
 	if hook := newPromptSnapshotBeforeHook(ag, deps); hook != nil {
@@ -127,7 +136,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newToolArgsRepairBeforeHook(lg))
 		entries = append(entries, newTodoArgsGuardBeforeHook(lg))
 		entries = append(entries, newToolArgsGuardBeforeHook(lg))
-		entries = append(entries, newToolResultCacheBeforeHook(deps))
+		entries = append(entries, newToolResultCacheBeforeHook(deps, catalog))
 		entries = append(entries, newToolCallTimingBeforeHook())
 		if gate != nil {
 			entries = append(entries, newToolConfirmationBeforeHook(gate, ag, deps))
@@ -142,7 +151,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 			recordToolInvocationAfter(ctx, args, ag, deps)
 			return &trpctool.AfterToolResult{}, nil
 		}))
-		entries = append(entries, newToolResultCacheAfterHook(deps))
+		entries = append(entries, newToolResultCacheAfterHook(deps, catalog))
 		// Side-effect feedback: remind the LLM (via tool results) when files
 		// were modified without a subsequent test run. The BeforeAgent hook
 		// pre-creates a per-invocation ToolReminder so concurrent sessions

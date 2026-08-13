@@ -699,3 +699,45 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - `internal/tools/runtime_alias.go`（P2-A InnerTool）
 - `internal/tools/trpc/confirmation.go`（P2-A InnerTool）
 - `internal/agent/tool_assembly.go`（P1-B 手动配置粒度修正）
+
+## 17. 工具调用质量度量与上下文预算可视化（2026-08-14，P1 共 5 项）
+
+> 背景：对照 trae/cursor/codex 等工具「一次成功、低 token」的表现，立项分析本项目工具调用的 token 消耗与成功率。核心发现：参数修复护栏（tool_args_repair_guard）静默修复 JSON 但不留痕，无法回答「模型一次合法率」；context_budget 台账只落日志不进指标系统，无法聚合观测。本迭代落地质量度量数据通路；消费侧（API/UI 面板）留给下一迭代。
+
+### 17.1 发现与修复
+
+| # | 发现 | 修复 | 状态 |
+|---|------|------|------|
+| Q1 | 参数修复护栏静默工作：repair guard 修复/拒绝 JSON 后无任何记录，工具成功率无法分解为「模型一次合法」vs「护栏补救」 | repair guard BeforeTool hook 经 ctx 写入质量标记（`toolArgsQuality{Repaired,Invalid}`）；invocation recorder 消费并落入 `ToolInvocationWrite.ArgsRepaired/ArgsInvalid` + `aranea_tool_args_guard_total{tool,outcome}` counter | ✅ |
+| Q2 | 质量标记无持久化：tool_invocations 行不含修复标记，事后无法聚合 | `invocationMetaJSON` 将 `args_repaired/args_invalid` 写入 metadata_json（仅 true 时写入，空信号保持 `{}` 不污染） | ✅ |
+| Q3 | 无工具质量聚合查询：回答不了「哪个工具一次合法率最低」 | 新增 `ToolQualityStatsReader` 窄接口（biz/tool）+ `toolQualityStatsRepo`（Raw SQL 聚合，`Dialect.JSONExtract` 双方言提取 metadata_json 标记），输出 ToolQualityStat（总数/成功/失败/修复数/一次合法率/平均耗时） | ✅ |
+| Q4 | context_budget 台账只落日志：无法按 category 聚合观测分布 | 新增 `aranea_context_budget_tokens{category}` Histogram，chat_turn_metrics 台账出口同步 Observe | ✅ |
+| Q5 | preview 截断按字节切 CJK 多字节字符：产生非法 UTF-8，Postgres 22021 拒写整行 | 新增 `truncateUTF8`（rune 边界安全截断），input/output preview 截断统一改走它 | ✅ |
+
+### 17.2 验收
+
+1. ✅ data 层（隔离缓存全量重建 `go test -a`，真实 PG）：`TestToolQualityStatsRepo_AggregatesArgsQuality`（聚合/一次合法率/agent 过滤）、`TestInvocationMetaJSON_ArgsQualityFlags`、`TestTruncateUTF8`（8 子用例）全绿
+2. ✅ agent 层（2026-08-14 02:03 稳定窗口）：19 例全绿——`TestToolArgsRepair_MarksRepairedInContext`/`MarksInvalidWhenUnrepairable`/`ValidArgsNoMarkers`（ctx 标记）、`TestRecordToolInvocation_ArgsGuardOutcomeMetrics`（repaired/invalid 两 counter 子用例），14 例存量 repair 测试无回归
+3. ✅ service 层：`TestRecordContextBudgetLog_ObservesCategoryHistogram`（Histogram 观测）+ `NoBudgetNoObservation`（空预算不观测）全绿
+4. ✅ 全量构建 `go build ./cmd/... ./internal/... ./api/... ./pkg/...` exit 0；`go vet`（agent/service/data/biz/tool/metrics）exit 0；araneactl lint 本迭代文件 0 违规（存量 3 处违规属其他模块：twin_openapi_compat R7、knowledge workbench 2×R-FE1）
+5. ⏳ 消费侧接线：`NewToolQualityStatsRepo` 尚未 Wire 绑定 / 无 RPC 暴露（P2 迭代：质量面板 API + UI）
+
+### 17.3 改动文件（本迭代）
+
+- `internal/agent/tool_args_repair_guard.go`（Q1 ctx 质量标记）
+- `internal/agent/tool_invocation_recorder.go`（Q1 消费标记 + counter）
+- `internal/biz/tool/tool.go`（Q3 ToolInvocationWrite 字段 + ToolQualityStat + ToolQualityStatsReader）
+- `internal/biz/tool_reexport.go`（Q3 再导出）
+- `internal/data/tool.go`（Q2 metadata 映射 + Q5 truncateUTF8）
+- `internal/data/tool_quality_stats_repo.go`（Q3 新增聚合查询）
+- `internal/metrics/vars.go`（Q1 ToolArgsGuardTotal + Q4 ContextBudgetTokens）
+- `internal/service/chat_turn_metrics.go`（Q4 Histogram 观测）
+- 测试：`tool_args_repair_guard_test.go`、`tool_invocation_recorder_test.go`（agent）；`tool_quality_stats_test.go`、`tool_test.go`（data）；`chat_turn_metrics_budget_test.go`（service）
+
+### 17.4 并行会话干扰记录（2026-08-14）
+
+本迭代验证期间另一会话正在跨包重构（agent_usecase 拆分 / data agent_repo_convert 抽取 / service agent_proto 抽取 / ent 重新生成），工作区长时间处于中间态：
+
+- 共享 GOCACHE 混入新旧 ent 对象，导致 `toolinvocation.IDValidator` nil panic 幻影——`go test -a` 强制全量重建后同源码全绿，证实非真实 bug
+- 并行提交遗留 3 处编译破损（其验证只做 `go build`，不覆盖 _test.go）：`tool_result_cache_test.go` 缺/多 `biz` import、`skill_catalog_test.go` map 值类型与匿名 struct 声明不符、`biz/evaluation/evaluation.go` 缺 `time` import——对方重构落定后由本会话顺手修复（各 1-2 行）
+- 教训复核：并行 churn 期间一切编译结论以隔离缓存 + 全量重建为准（`go test -a` 或独立 GOCACHE 子目录）；后台轮询脚本须 `Start-Process` 脱离 AI 终端，否则随终端回收被杀（0xC000013A）

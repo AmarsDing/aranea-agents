@@ -1,13 +1,29 @@
 <template>
   <q-page class="app-standard-page app-registry-page plugin-runs-page">
     <AppPageHero
-      kicker="Callback observability"
-      title="Callback / Plugin 运行记录"
-      :subtitle="'按生命周期点（phase）、Agent、Plugin 与结果筛选；Hook 阻断/错误以 hook:<key> 落库。'"
+      :kicker="t('pluginsPage.runs.kicker')"
+      :title="t('pluginsPage.runs.title')"
+      :subtitle="t('pluginsPage.runs.subtitle')"
     >
       <template #actions>
-        <q-btn outline rounded no-caps color="primary" icon="rule" label="Hook 规则" to="/hooks" />
-        <q-btn outline rounded no-caps color="primary" icon="arrow_back" label="Plugin 管理" to="/plugins" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="rule"
+          :label="t('pluginsPage.runs.btnHookRules')"
+          to="/hooks"
+        />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="arrow_back"
+          :label="t('pluginsPage.runs.btnPlugins')"
+          to="/plugins"
+        />
       </template>
     </AppPageHero>
 
@@ -22,7 +38,7 @@
         fill-input
         hide-selected
         input-debounce="0"
-        label="Plugin Key"
+        :label="t('pluginsPage.runs.filterPluginKey')"
         :options="pluginKeyOptions"
         @filter="filterPluginKeys"
         @update:model-value="onFilterChange"
@@ -34,7 +50,7 @@
         outlined
         clearable
         debounce="350"
-        label="Agent ID"
+        :label="t('pluginsPage.runs.filterAgentId')"
         @update:model-value="onFilterChange"
       />
       <q-select
@@ -45,7 +61,7 @@
         clearable
         emit-value
         map-options
-        label="生命周期点"
+        :label="t('pluginsPage.runs.filterCallbackPoint')"
         :options="callbackPointOptions"
         @update:model-value="onFilterChange"
       />
@@ -57,7 +73,7 @@
         clearable
         emit-value
         map-options
-        label="结果"
+        :label="t('pluginsPage.runs.filterStatus')"
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
@@ -68,7 +84,7 @@
         outlined
         clearable
         type="datetime-local"
-        label="起始时间"
+        :label="t('pluginsPage.runs.filterFrom')"
         @update:model-value="onFilterChange"
       />
       <q-input
@@ -78,18 +94,26 @@
         outlined
         clearable
         type="datetime-local"
-        label="结束时间"
+        :label="t('pluginsPage.runs.filterTo')"
         @update:model-value="onFilterChange"
       />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('pluginsPage.btnReset')" @click="resetFilters" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('pluginsPage.btnRefresh')"
+          :loading="loading"
+          @click="() => loadRows()"
+        />
         <q-btn
           flat
           rounded
           no-caps
           icon="delete_sweep"
-          label="清空记录"
+          :label="t('pluginsPage.runs.btnClear')"
           :loading="clearing"
           :disable="rows.length === 0"
           @click="confirmClear"
@@ -100,7 +124,7 @@
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="() => loadRows()" />
+        <q-btn flat dense :label="t('pluginsPage.retry')" class="text-white" @click="() => loadRows()" />
       </template>
     </q-banner>
 
@@ -125,7 +149,7 @@
               round
               icon="visibility"
               color="primary"
-              aria-label="查看详情"
+              :aria-label="t('pluginsPage.runs.viewDetail')"
               @click="openDetail(props.row)"
             />
           </div>
@@ -151,7 +175,7 @@
       :page-max="pageMax"
       :total="total"
       :loading="loading"
-      label="条运行记录"
+      :label="t('pluginsPage.runs.paginationLabel')"
     />
 
     <PluginRunDetailDialog v-model:open="detailOpen" :text="detailText" />
@@ -160,6 +184,7 @@
 
 <script setup lang="ts">
 import { Dialog } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
@@ -167,6 +192,8 @@ import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 import PluginRunDetailDialog from '../components/plugins/PluginRunDetailDialog.vue';
 import { usePluginRunsPage } from '../features/plugins/usePluginRunsPage';
+
+const { t } = useI18n();
 
 const {
   pluginKey,
@@ -201,10 +228,10 @@ const {
 
 function confirmClear() {
   Dialog.create({
-    title: '确认清空',
-    message: '将删除所有 Callback / Plugin 运行记录，此操作不可撤销。确定继续？',
-    cancel: { label: '取消', flat: true, noCaps: true },
-    ok: { label: '确认清空', color: 'negative', flat: true, noCaps: true },
+    title: t('pluginsPage.runs.confirmClearTitle'),
+    message: t('pluginsPage.runs.confirmClearMessage'),
+    cancel: { label: t('pluginsPage.runs.cancel'), flat: true, noCaps: true },
+    ok: { label: t('pluginsPage.runs.confirmClearOk'), color: 'negative', flat: true, noCaps: true },
     persistent: true,
   }).onOk(() => void clearAll());
 }

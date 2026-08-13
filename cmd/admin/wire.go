@@ -108,11 +108,6 @@ func provideEventBusSideConsumers(
 	if infra != nil {
 		monitorEventBus = infra.MonitorEventBus
 	}
-	// Wire completion side-effects: ring-buffer feed + trace close + TRACE-01 file sink.
-	if monitorUC != nil {
-		monitorUC.SetTraceProjector(traceProj)
-		monitorUC.SetFlowFileAppender(fileAppender)
-	}
 	return biz.NewEventBusSideConsumers(eventBus, monitorEventBus, tools, webhooks, sessions, flowLogs, monitorUC, memWorker, traceProj, fileAppender, usage, logger, flowLogWriter)
 }
 
@@ -379,13 +374,14 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, monitorBus contra
 	return service.NewMonitorAlertNotifier(channels, monitorBus, lg)
 }
 
-func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, spanReader biz.MonitorTraceSpanReader, seq *v2.Sequencer, canary *biz.MemoryCanaryStatus, reg *monitor.AlertMetricRegistry, usageRepo biz.UsageRepo, traceProj *monitor.TraceProjector, fileAppender *monitor.FlowFileAppender, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
-		biz.WithFilesystemHealthReader(fsHealth),
 		biz.WithTraceSpanReader(spanReader),
-		biz.WithRingBuffer(rb),
 		monitor.WithLogger(lg),
+		monitor.WithRegistry(reg),
+		monitor.WithTraceProjector(traceProj),
+		monitor.WithFlowFileAppender(fileAppender),
 	)
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
 	uc.SetEvalWorker(w)
@@ -409,7 +405,6 @@ func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRep
 	if ch, ok := usageRepo.(bizusage.CacheHitRatioStatsRepo); ok && ch != nil {
 		reg.Register(monitor.NewCacheHitRatioLowMetric(ch))
 	}
-	uc.SetRegistry(reg)
 	return uc
 }
 
@@ -1024,34 +1019,6 @@ func provideNL2GraphConverter(lg loggateway.Logger) graph.NL2GraphConverter {
 // Graph executors to call OnNodeFailure on node errors.
 func provideRuntimeReplanner(eventBus biz.EventBus, lg loggateway.Logger) graph.RuntimeReplanner {
 	return graph.NewRuntimeReplanner(eventBus, lg)
-}
-
-// provideTopologyEvolver builds the TopologyEvolver for dynamic graph topology
-// evolution. The LLM model is resolved from TOPOLOGY_EVOLVER_PROVIDER and
-// TOPOLOGY_EVOLVER_MODEL env vars; when unset, the evolver degrades gracefully
-// (returns nil edge, no error) because NewTopologyEvolver accepts a nil LLM.
-// The evolver is integrated into the Graph executor via AfterNode callbacks
-// (B4) and is called when execution insights suggest a new transfer edge.
-func provideTopologyEvolver(
-	catalog *biz.LlmProviderModelUsecase,
-	eventBus biz.EventBus,
-	lg loggateway.Logger,
-) graph.TopologyEvolver {
-	var llm trpcmodel.Model
-	prov := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_PROVIDER"))
-	mod := strings.TrimSpace(os.Getenv("TOPOLOGY_EVOLVER_MODEL"))
-	if prov != "" && mod != "" && catalog != nil {
-		rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
-		if m, err := provider.TRPCModelForProviderModel(context.Background(), catalog, rtTrip, prov, mod, lg); err == nil {
-			llm = m
-		} else {
-			lg.Warn("topology evolver: LLM model build failed, edge decisions will be no-op",
-				loggateway.Str("provider", prov),
-				loggateway.Str("model", mod),
-				loggateway.Err(err))
-		}
-	}
-	return graph.NewTopologyEvolver(llm, eventBus, lg)
 }
 
 func provideGraphBuildDeps(
@@ -3262,8 +3229,7 @@ func provideTaskOrchestrator(
 			LG:           lg,
 		},
 	}
-	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, compiler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(
@@ -3516,7 +3482,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// P1 fix (2026-06-18): Wire previously-orphan graph components into production.
 		provideNL2GraphConverter,
 		provideRuntimeReplanner,
-		provideTopologyEvolver,
 		providePersistenceSet,
 		provideReconsolidationService,
 		provideSessionMemoryResync,

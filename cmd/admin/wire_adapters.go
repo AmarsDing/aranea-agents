@@ -13,6 +13,7 @@ import (
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/llminspect"
+	mcpconfig "aranea-agents/internal/mcp/config"
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	"aranea-agents/internal/server"
@@ -33,7 +34,11 @@ func (a mcpProberAdapter) Evaluate(ctx context.Context, enabled bool, configJSON
 }
 
 func provideMCPProber() biz.MCPProber {
-	return mcpProberAdapter{prober: mcpprobe.NewProber(chatagent.ResolveMCPAuthToken)}
+	// Probe path has no persisted server context: pass an empty serverKey so a
+	// rotation during probing stays in-memory only (no config_json write-back).
+	return mcpProberAdapter{prober: mcpprobe.NewProber(func(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+		return chatagent.ResolveMCPAuthToken(ctx, "", auth)
+	})}
 }
 
 // mcpMetadataAdapter wraps internal/mcp/metadata to implement biz.MCPMetadataEditor.

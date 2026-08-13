@@ -60,6 +60,10 @@ type FailureAnalysis struct {
 // Implementations must be safe for concurrent use across executions.
 type RuntimeReplanner interface {
 	OnNodeFailure(ctx context.Context, exec *biz.GraphExecution, failedNode string, err error) (*ReplanAction, error)
+	// ReleaseExecution drops any per-execution bookkeeping (S3). Must be
+	// called when the execution's event stream ends (Run/Resume forwarder
+	// exit), otherwise per-execution counters leak for the process lifetime.
+	ReleaseExecution(execID string)
 }
 
 // RuntimeReplannerImpl implements RuntimeReplanner using rule-based failure

@@ -331,6 +331,9 @@ func (s *m71StubSessionWriter) UpdateSessionTitle(_ context.Context, id, _ strin
 func (s *m71StubSessionWriter) UpdateSession(_ context.Context, id string, _ biz.SessionUpdateFields) (biz.Session, error) {
 	return biz.Session{ID: id}, nil
 }
+func (s *m71StubSessionWriter) UpdateSessionMetadataKey(context.Context, string, string, string) error {
+	return nil
+}
 func (s *m71StubSessionWriter) RestoreSession(_ context.Context, id string) (biz.Session, error) {
 	return biz.Session{ID: id}, nil
 }

@@ -528,11 +528,13 @@ func mcpToolServerConfig(ctx context.Context, deps TRPCBuilderDeps, s biz.Effect
 		AllowAdHocHTTP:         tools.ProductionAllowAdHocHTTP(sc.AllowAdHocHTTP, platformAllowAdHoc),
 		AdHocTimeoutSec:        normalizeMCPServerTimeout(sc.AdHocTimeoutSec),
 		RequireUserCredentials: sc.RequireUserCredentials,
+		AuthHeaderName:         strings.TrimSpace(sc.Auth.HeaderName),
 	}
 	if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
 		mcpUC := deps.MCPTooling.MCP()
 		serverKey := key
 		staticHeaders := cfg.Headers
+		authHeaderName := cfg.AuthHeaderName
 		cfg.HeaderInjector = func(callCtx context.Context) (map[string]string, error) {
 			uid := sessionUserID(callCtx)
 			if uid == "" {
@@ -540,6 +542,7 @@ func mcpToolServerConfig(ctx context.Context, deps TRPCBuilderDeps, s biz.Effect
 			}
 			bizSC := biz.MCPServerConfig{
 				Headers:                staticHeaders,
+				Auth:                   biz.MCPAuthConfig{HeaderName: authHeaderName},
 				RequireUserCredentials: true,
 			}
 			return mcpUC.ResolveUserAuthHeaders(callCtx, serverKey, uid, bizSC)
@@ -591,6 +594,7 @@ func mcpUserCredentialInjector(deps TRPCBuilderDeps, servers []tooltrpc.MCPServe
 		}
 		bizSC := biz.MCPServerConfig{
 			Headers:                s.Headers,
+			Auth:                   biz.MCPAuthConfig{HeaderName: s.AuthHeaderName},
 			RequireUserCredentials: true,
 		}
 		return mcpUC.ResolveUserAuthHeaders(ctx, s.Name, uid, bizSC)
@@ -650,9 +654,19 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))
 	key := strings.TrimSpace(sc.Auth.APIKey)
 	if strings.HasPrefix(authType, "oauth2") {
-		if token, err := ResolveMCPAuthToken(ctx, sc.Auth); err == nil && token != "" {
+		token, err := ResolveMCPAuthToken(ctx, serverKey, sc.Auth)
+		switch {
+		case err == nil && token != "":
 			key = token
-		} else if strings.TrimSpace(sc.Auth.AccessToken) != "" {
+		case err != nil && authType == "oauth2_static":
+			// oauth2_static 守卫：令牌缺失/已过期时禁止回退使用同一个（已过期）的
+			// access_token——否则过期凭证被静默继续注入，401 被掩盖成工具调用失败。
+			// 留空 key → 不注入 auth header，让连接/探活显式失败以提示重新配置。
+			deps.Logger().Warn("MCP auth: oauth2_static token unavailable, auth header skipped",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("server_key", serverKey),
+				loggateway.Err(err))
+		case strings.TrimSpace(sc.Auth.AccessToken) != "":
 			key = strings.TrimSpace(sc.Auth.AccessToken)
 		}
 	}

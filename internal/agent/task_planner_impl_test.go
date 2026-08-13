@@ -743,7 +743,7 @@ func TestIsRetriableDecomposeError(t *testing.T) {
 	}
 }
 
-// 瞬时故障（停滞）必须无限重试直至成功；每次重试发布 decompose_retry 进度。
+// 瞬时故障（停滞）必须按上限重试直至成功（F8/Y3：上限默认 5 次）；每次重试发布 decompose_retry 进度。
 func TestDecomposeTaskStream_TransientFailure_RetriesUntilSuccess(t *testing.T) {
 	bus := &captureNoticeBus{}
 	attempts := 0

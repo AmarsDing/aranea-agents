@@ -171,6 +171,7 @@ type RunResult struct {
 	Offset int
 }
 
+// Stability:evolving
 type SkillQueryReader interface {
 	SearchSkills(ctx context.Context, q ListQuery) (ListResult, error)
 	SearchSkillInvocations(ctx context.Context, q RunQuery) (RunResult, error)
@@ -195,6 +196,7 @@ type EnabledRef struct {
 	UpdatedAt string
 }
 
+// Stability:evolving
 type SkillRuntimeReader interface {
 	BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error)
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
@@ -209,6 +211,7 @@ type SkillReader interface {
 	SkillRuntimeReader
 }
 
+// Stability:evolving
 type SkillMutationWriter interface {
 	CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error)
 	UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (Skill, error)
@@ -217,6 +220,7 @@ type SkillMutationWriter interface {
 	PatchSkill(ctx context.Context, id string, patch UpdateDraft) (Skill, error)
 }
 
+// Stability:evolving
 type SkillSyncWriter interface {
 	// PublishSkill publishes a draft skill and records validationStatus ("pass"|"warn").
 	PublishSkill(ctx context.Context, id string, validationStatus string) (Skill, error)
@@ -279,6 +283,9 @@ type ImportVersionInput struct {
 	Triggers []string
 }
 
+// Repo 读写全量复合端口，仅用于 Wire 绑定；消费方应依赖窄接口。
+//
+// Stability:evolving
 type Repo interface {
 	SkillReader
 	SkillWriter
@@ -383,6 +390,7 @@ type SkillFilePathResolver interface {
 	SafeFilePath(dir string, relPath string) (root string, absPath string, err error)
 }
 
+// Stability:evolving
 type SkillFileReader interface {
 	SkillFilePathResolver
 	ListFiles(dir string) ([]SkillFileEntry, error)
@@ -391,6 +399,7 @@ type SkillFileReader interface {
 	DirExists(dir string) bool
 }
 
+// Stability:evolving
 type SkillFileWriter interface {
 	SkillFilePathResolver
 	CreateSkillDir(slug string, body string) (dir string, err error)
@@ -405,6 +414,8 @@ type SkillFilesystem interface {
 
 // SkillEmbedder generates text embeddings for semantic skill scoring.
 // Defined here to avoid circular import with parent biz package.
+//
+// Stability:evolving
 type SkillEmbedder interface {
 	EmbedSingle(ctx context.Context, text string) ([]float32, error)
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
@@ -441,6 +452,8 @@ type Usecase struct {
 // RuntimeCacheInvalidator 主动失效面向运行时的 Skill 缓存（trpc Repository
 // 快照 + 已加载正文）。实现方为 internal/skill/trpc.DBRepositoryAdapter。
 // 未注入时所有变更仍依赖快照 TTL（2min）兜底，行为与注入前一致。
+//
+// Stability:evolving
 type RuntimeCacheInvalidator interface {
 	InvalidateSkillRuntimeCache()
 }
@@ -987,6 +1000,21 @@ type RuntimePolicy struct {
 	MaxSkillsInToolset      int     `json:"max_skills_in_toolset"`
 	EmbeddingScoringEnabled bool    `json:"embedding_scoring_enabled"`
 	EmbeddingScoreWeight    float64 `json:"embedding_score_weight"`
+	// OverviewMaxChars 限制注入 system prompt 的「Available skills」概览块符文数：
+	// nil = DefaultOverviewMaxChars；显式 0 = 不限（框架默认全量渲染）；>0 = 预算上限。
+	OverviewMaxChars *int `json:"overview_max_chars"`
+}
+
+// DefaultOverviewMaxChars 是 overview_max_chars 缺省时的概览预算（约 500-700 tokens），
+// 防止大规模 skill 库下概览块无界膨胀。
+const DefaultOverviewMaxChars = 2000
+
+// OverviewBudgetChars 解析生效的概览预算（符文数）。0 = 不限（不安装预算渲染器）。
+func (p RuntimePolicy) OverviewBudgetChars() int {
+	if p.OverviewMaxChars == nil || *p.OverviewMaxChars < 0 {
+		return DefaultOverviewMaxChars
+	}
+	return *p.OverviewMaxChars
 }
 
 // RuntimeCandidate is a lightweight Skill row for routing.
@@ -1016,6 +1044,7 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 		MaxSkillsInToolset      int      `json:"max_skills_in_toolset"`
 		EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
 		EmbeddingScoreWeight    float64  `json:"embedding_score_weight"`
+		OverviewMaxChars        *int     `json:"overview_max_chars"`
 	}
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
 		wire = struct {
@@ -1027,12 +1056,14 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 			MaxSkillsInToolset      int      `json:"max_skills_in_toolset"`
 			EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
 			EmbeddingScoreWeight    float64  `json:"embedding_score_weight"`
+			OverviewMaxChars        *int     `json:"overview_max_chars"`
 		}{}
 	}
 	p := RuntimePolicy{
-		AllowedSlugs: wire.AllowedSlugs,
-		DeniedSlugs:  wire.DeniedSlugs,
-		AllowedTags:  wire.AllowedTags,
+		AllowedSlugs:     wire.AllowedSlugs,
+		DeniedSlugs:      wire.DeniedSlugs,
+		AllowedTags:      wire.AllowedTags,
+		OverviewMaxChars: wire.OverviewMaxChars,
 	}
 	if wire.IntentRoutingEnabled != nil {
 		p.IntentRoutingEnabled = *wire.IntentRoutingEnabled
@@ -1149,6 +1180,26 @@ func isPublishedStatus(status string) bool {
 	}
 }
 
+// 批次 C1：发布校验危险模式扫描。block 级命中即阻断发布。
+// 仅收录高置信恶意模式（宁漏不误报），扩展时同步追加测试用例。
+var dangerBlockPatterns = []struct {
+	label string
+	re    *regexp.Regexp
+}{
+	{"prompt injection", regexp.MustCompile(`(?i)\bignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|messages?)\b`)},
+	{"prompt injection", regexp.MustCompile(`(?i)\bdisregard\s+(all\s+|any\s+|the\s+)?(previous|prior|above)\s+(instructions?|prompts?)\b`)},
+	{"prompt injection", regexp.MustCompile(`(?i)\boverride\s+(the\s+)?system\s+prompt\b`)},
+	{"dangerous command", regexp.MustCompile(`(?i)\brm\s+-[a-z]*r[a-z]*f[a-z]*\s+(/|~|\$HOME)(/|\s|$)`)},
+	{"dangerous command", regexp.MustCompile(`(?i)\b(curl|wget)\b[^|\n]*\|\s*(sudo\s+)?(bash|sh|zsh)\b`)},
+}
+
+// warn 级：敏感凭据路径/已知外泄端点——可能合法引用，仅提示人工复核。
+var dangerWarnPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)~/\.(ssh|aws)\b`),
+	regexp.MustCompile(`/(etc/passwd|etc/shadow)\b`),
+	regexp.MustCompile(`(?i)\b(webhook\.site|requestbin\.com|pipedream\.com|burpcollaborator\.net)\b`),
+}
+
 // evaluatePublishValidation returns pass|warn|block and a block message when blocked.
 // Structural failures block publish; soft issues (e.g. short description) are warn.
 func evaluatePublishValidation(s Skill, body string) (status string, blockMsg string) {
@@ -1165,6 +1216,12 @@ func evaluatePublishValidation(s Skill, body string) (status string, blockMsg st
 	if body == "" {
 		blocks = append(blocks, "SKILL.md body is required")
 	}
+	// 批次 C1：危险模式 block 扫描（正文级，与结构性 block 合并返回）。
+	for _, p := range dangerBlockPatterns {
+		if p.re.MatchString(body) {
+			blocks = append(blocks, "dangerous content blocked: "+p.label)
+		}
+	}
 	if len(blocks) > 0 {
 		return "block", strings.Join(blocks, "; ")
 	}
@@ -1174,6 +1231,12 @@ func evaluatePublishValidation(s Skill, body string) (status string, blockMsg st
 	}
 	if len([]rune(body)) < 40 {
 		warnings++
+	}
+	// 批次 C1：敏感引用 warn 扫描（不阻断，提示复核）。
+	for _, re := range dangerWarnPatterns {
+		if re.MatchString(body) {
+			warnings++
+		}
 	}
 	// P1-4：description 是运行时路由的核心信号之一。无触发条件且 frontmatter
 	// 未声明 triggers 时给出 warn（不 block），引导补全确定性触发信号。

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useMcpStore } from '../mcp';
+import type { McpServerRow } from '../../features/mcp/types';
 
 vi.mock('../../features/mcp/api', () => ({
   listMcpServers: vi.fn().mockResolvedValue([]),
@@ -15,7 +16,7 @@ vi.mock('../../features/mcp/api', () => ({
   deleteMcpUserCredential: vi.fn().mockResolvedValue(undefined),
 }));
 
-const mockServer = (overrides: Record<string, unknown> = {}): any => ({
+const mockServer = (overrides: Partial<McpServerRow> = {}): McpServerRow => ({
   id: 'mcp-1',
   resource: 'mcp-servers',
   key: 'test-server',
@@ -32,6 +33,8 @@ const mockServer = (overrides: Record<string, unknown> = {}): any => ({
   is_system: false,
   config_json: '{}',
   metadata_json: '{}',
+  dept_lead_agent_id: '',
+  dept_lead_config_json: '{}',
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
   deleted_at: '',
@@ -80,7 +83,7 @@ describe('useMcpStore', () => {
     (createMcpServer as ReturnType<typeof vi.fn>).mockResolvedValueOnce(created);
 
     const store = useMcpStore();
-    store.servers = [mockServer({ id: 'mcp-1' })] as any;
+    store.servers = [mockServer({ id: 'mcp-1' })];
 
     const result = await store.addServer({ key: 'new-server', name: 'New Server', config_json: '{}' });
 
@@ -95,7 +98,7 @@ describe('useMcpStore', () => {
     (updateMcpServer as ReturnType<typeof vi.fn>).mockResolvedValueOnce(updated);
 
     const store = useMcpStore();
-    store.servers = [mockServer({ id: 'mcp-1', name: 'Old Server' }), mockServer({ id: 'mcp-2' })] as any;
+    store.servers = [mockServer({ id: 'mcp-1', name: 'Old Server' }), mockServer({ id: 'mcp-2' })];
 
     const result = await store.editServer('mcp-1', { name: 'Updated Server' });
 
@@ -108,7 +111,7 @@ describe('useMcpStore', () => {
     const { deleteMcpServer } = await import('../../features/mcp/api');
 
     const store = useMcpStore();
-    store.servers = [mockServer({ id: 'mcp-1' }), mockServer({ id: 'mcp-2' })] as any;
+    store.servers = [mockServer({ id: 'mcp-1' }), mockServer({ id: 'mcp-2' })];
 
     await store.removeServer('mcp-1');
 

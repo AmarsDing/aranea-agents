@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -139,6 +140,8 @@ func (m *mockRepo) UpsertGateConfig(_ context.Context, cfg GateConfig) error {
 	m.gateCfg = cfg
 	return nil
 }
+
+func (m *mockRepo) FailStaleRuns(_ context.Context, _ time.Time) (int, error) { return 0, nil }
 
 func TestUploadCases(t *testing.T) {
 	t.Run("valid JSON array with cases", func(t *testing.T) {

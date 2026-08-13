@@ -202,6 +202,13 @@
           :ws-connected="wsConnected"
         />
 
+        <!-- Design 69 Phase 3: skill entry strip above the composer. The strip
+             self-hides when the catalog is empty. -->
+        <ChatSkillCatalogStrip
+          v-if="(!panelMode || panelMode === 'spirit') && (composerVisible ?? true) && skillCatalog?.length"
+          :skills="skillCatalog"
+          @load-skill="(slug: string) => emit('load-skill', slug)"
+        />
         <ChatComposer
           v-if="(!panelMode || panelMode === 'spirit') && (composerVisible ?? true)"
           :model-value="modelValue"
@@ -276,6 +283,7 @@ import ChatTeamMemberStrip from './ChatTeamMemberStrip.vue';
 import type { TeamMemberLane } from './ChatTeamMemberStrip.vue';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatComposer from './ChatComposer.vue';
+import ChatSkillCatalogStrip from './ChatSkillCatalogStrip.vue';
 import ChatHeaderPromptBar from './ChatHeaderPromptBar.vue';
 import ChatReasoningDrawer from './ChatReasoningDrawer.vue';
 import TodoKanbanBoard from './TodoKanbanBoard.vue';
@@ -305,6 +313,7 @@ import type { SpiritTeam, SpiritMember } from '../../features/spirit/types';
 import type { ContextualMessage } from '../../features/chat/composables/useContextualLoadingMessage';
 import { EXECUTION_COLLAPSE_CONTROL_KEY } from '../../features/chat/executionCardHelpers';
 import type { Step } from '../../features/chat/v2Types';
+import type { SkillCatalogEntry } from '../../features/skills/types';
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -365,6 +374,8 @@ const props = defineProps<{
   dictating?: boolean;
   /** 听写识别中的部分文本（输入框上方实时字幕）。 */
   dictationPartial?: string;
+  /** Design 69 Phase 3: agent-visible skill catalog shown above the composer. */
+  skillCatalog?: SkillCatalogEntry[];
 }>();
 
 const emit = defineEmits<{
@@ -434,6 +445,8 @@ const emit = defineEmits<{
   'error-relogin': [step: Step];
   'expand-member': [payload: { agentKey: string; agentName?: string; teamId?: string }];
   'enter-session': [sessionId: string];
+  // Design 69 Phase 3: user clicked a skill card in the catalog strip.
+  'load-skill': [slug: string];
   // T5.2/T5.3 / §B.7.2: Forward team-card / agent-card expand events upstream
   // so ChatPage can lazy-load member/child session activities.
   expand: [sessionIds: string[]];

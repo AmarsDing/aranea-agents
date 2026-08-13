@@ -29,6 +29,7 @@ type (
 const (
 	EvalGateTriggerSkillPublish = evaluation.GateTriggerSkillPublish
 	EvalGateTriggerPackInstall  = evaluation.GateTriggerPackInstall
+	EvalMaxNumRuns              = evaluation.MaxNumRuns
 )
 
 // Re-export evaluation constructors and helpers for backward compatibility.

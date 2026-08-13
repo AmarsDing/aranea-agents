@@ -174,28 +174,3 @@ func numberish(v any) int {
 		return 0
 	}
 }
-
-var (
-	globalResultCache = NewResultCache(512)
-	globalMu          sync.RWMutex
-)
-
-// Global returns the process-wide ResultCache instance.
-// Deprecated: Use constructor injection instead of global state.
-// This function will be removed in a future version.
-func Global() *ResultCache {
-	globalMu.RLock()
-	defer globalMu.RUnlock()
-	return globalResultCache
-}
-
-// SetGlobal replaces the process-wide ResultCache instance.
-// Deprecated: Use constructor injection instead of global state.
-// This function will be removed in a future version.
-func SetGlobal(c *ResultCache) {
-	if c != nil {
-		globalMu.Lock()
-		globalResultCache = c
-		globalMu.Unlock()
-	}
-}

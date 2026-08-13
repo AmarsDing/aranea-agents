@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -140,6 +141,15 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	if t != nil {
 		modeEdges = t.BuildEdges(def, agentIDs)
 	} else {
+		// S9（K3 降级覆盖）：未知编排模式静默 fallback 为 pipeline，用户配置了
+		// 无效模式（如拼写错误）却毫无感知。必须打 warn 进程日志 + 流程日志。
+		lg.Warn("未知团队编排模式，降级为 pipeline 拓扑",
+			loggateway.StepID("team.compile.unknown_mode_fallback"),
+			loggateway.Str("mode", mode))
+		if em := event.TraceEmitterFromContext(ctx); em != nil {
+			em.LogWarn("team.compile.unknown_mode_fallback", "未知编排模式已降级",
+				fmt.Sprintf("模式 %q 不支持，已按顺序执行（pipeline）编排", mode))
+		}
 		modeEdges = pipelineTemplate{}.BuildEdges(def, agentIDs)
 	}
 	trimmed := countTransferEdges(modeEdges) > adaptiveTransferEdgeLimit(def)

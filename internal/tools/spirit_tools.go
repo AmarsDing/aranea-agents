@@ -335,7 +335,7 @@ func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, explicitK
 // 且不调用 MarkTeamDispatched，破坏 system-push 模式的 Task 延迟关闭机制。
 //
 // C-18: planBoardID is the canonical orchestration_id (PlanBoard.ID). Must not
-// mint a separate orch_* UUID — check_progress/cancel and PlanExecutor terminal
+// mint a separate orch_* UUID — cancel_orchestration and PlanExecutor terminal
 // events all key off the same ID.
 func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, planBoardID string, deps planAndExecuteDeps) (*biz.OrchestrationHandle, biztypes.OrchestrationStepRecord, error) {
 	start := time.Now().UTC()
@@ -406,109 +406,10 @@ func publishOrchestrationFailed(bus biz.EventBus, ctx context.Context, sessionID
 	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "orchestration_failed", "", meta))
 }
 
-// CheckOrchestrationProgressInput is the input for the check_progress tool.
-type CheckOrchestrationProgressInput struct {
-	OrchestrationID string `json:"orchestration_id" jsonschema:"description=The orchestration ID to check progress for"`
-}
-
-// TaskProgressView is a view of a single task's progress.
-type TaskProgressView struct {
-	SubTaskID   string  `json:"sub_task_id"`
-	SubTaskName string  `json:"sub_task_name"`
-	AgentKey    string  `json:"agent_key"`
-	Status      string  `json:"status"`
-	Progress    float64 `json:"progress"`
-}
-
-// CheckOrchestrationProgressOutput is the output for the check_progress tool.
-type CheckOrchestrationProgressOutput struct {
-	OrchestrationID string             `json:"orchestration_id"`
-	Status          string             `json:"status"`
-	Tasks           []TaskProgressView `json:"tasks"`
-}
-
-// PlanBoardOrchFallback resolves progress/cancel by PlanBoard.ID when the
+// PlanBoardOrchFallback resolves cancel by PlanBoard.ID when the
 // legacy OrchestrationRepository has no row (C-18: canonical ID is PlanBoard.ID).
 type PlanBoardOrchFallback interface {
-	CheckPlanBoardProgress(ctx context.Context, planBoardID string) ([]biz.TaskProgress, error)
 	CancelPlanBoard(ctx context.Context, planBoardID string) error
-}
-
-// NewCheckOrchestrationProgressTool creates the check_progress tool.
-// boards may be nil; when set, a PlanBoard.ID lookup is used if orchestrator.GetByID fails.
-func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, boards PlanBoardOrchFallback, lg loggateway.Logger) *trpcfunction.FunctionTool[CheckOrchestrationProgressInput, CheckOrchestrationProgressOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, input CheckOrchestrationProgressInput) (CheckOrchestrationProgressOutput, error) {
-			orchestrationID := strings.TrimSpace(input.OrchestrationID)
-			if orchestrationID == "" {
-				return CheckOrchestrationProgressOutput{}, apierror.BadRequest(apierror.DomainSpirit, "orchestration_id is required")
-			}
-
-			progress, err := orchestrator.CheckProgress(ctx, orchestrationID)
-			if err != nil && boards != nil {
-				if pbProgress, pbErr := boards.CheckPlanBoardProgress(ctx, orchestrationID); pbErr == nil {
-					progress, err = pbProgress, nil
-				}
-			}
-			if err != nil {
-				return CheckOrchestrationProgressOutput{}, apierror.Internal(apierror.DomainSpirit, "check progress: "+err.Error())
-			}
-
-			views := make([]TaskProgressView, 0, len(progress))
-			for _, p := range progress {
-				views = append(views, TaskProgressView{
-					SubTaskID:   p.SubTaskID,
-					SubTaskName: p.SubTaskName,
-					AgentKey:    p.AgentKey,
-					Status:      p.Status,
-					Progress:    p.Progress,
-				})
-			}
-			return CheckOrchestrationProgressOutput{
-				OrchestrationID: orchestrationID,
-				Status:          deriveOrchestrationStatus(views),
-				Tasks:           views,
-			}, nil
-		},
-		trpcfunction.WithName("check_progress"),
-		trpcfunction.WithDescription("查询编排执行进度。基于 orchestration_id（= PlanBoard.ID）查询。返回编排状态和每个子任务的进度（含 agent_key、status、progress 百分比）。"),
-	)
-}
-
-// deriveOrchestrationStatus infers the overall orchestration status from
-// individual task statuses. This prevents the caller from having to
-// poll indefinitely when the orchestration has already completed or failed.
-func deriveOrchestrationStatus(tasks []TaskProgressView) string {
-	if len(tasks) == 0 {
-		return "pending"
-	}
-	allCompleted := true
-	anyFailed := false
-	anyCancelled := false
-	for _, t := range tasks {
-		switch t.Status {
-		case "failed":
-			anyFailed = true
-			allCompleted = false
-		case "cancelled":
-			anyCancelled = true
-			allCompleted = false
-		case "completed":
-			// ok
-		default:
-			allCompleted = false
-		}
-	}
-	if anyFailed {
-		return "failed"
-	}
-	if anyCancelled {
-		return "cancelled"
-	}
-	if allCompleted {
-		return "completed"
-	}
-	return "running"
 }
 
 // CancelOrchestrationInput is the input for the cancel_orchestration tool.

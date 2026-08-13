@@ -85,7 +85,10 @@ func (s *orchStubStore) Create(_ context.Context, suggestion biz.UnifiedEvolutio
 }
 
 func (s *orchStubStore) UpdateStatus(_ context.Context, _, _, _, _ string) error { return nil }
-func (s *orchStubStore) UpdateDraftBody(_ context.Context, _, _ string) error    { return nil }
+func (s *orchStubStore) UpdateStatusCAS(_ context.Context, _ string, _ []string, _, _, _ string) (bool, error) {
+	return true, nil
+}
+func (s *orchStubStore) UpdateDraftBody(_ context.Context, _, _ string) error { return nil }
 func (s *orchStubStore) UpdateLifecycleStatus(_ context.Context, _, _ string) error {
 	return nil
 }

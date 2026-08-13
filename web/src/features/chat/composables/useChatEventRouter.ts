@@ -121,9 +121,12 @@ export function useChatEventRouter(store: Store) {
       // inboundActivityEventHandler) and never reach this router. The cases
       // are listed here for exhaustiveness and to prevent future regressions
       // if the intercept is removed without re-adding handling.
+      // Design 69 Phase 3: skill.catalog is likewise intercepted upstream
+      // (runtimeStore.setSkillCatalog) — no entity mutation here.
       case 'system.run_status':
       case 'system.heartbeat':
       case 'system.notice':
+      case 'skill.catalog':
         break;
 
       default:

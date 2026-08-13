@@ -277,6 +277,21 @@ var ddlMigrations = []ddlMigration{
 	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog/registry UPDATE），重跑安全；
 	// 顺带把 computer_use_act 的 actions[] 批量参数 schema 带给存量库。
 	{Version: 20261208, Name: "builtin_platform_tools_cua_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261209 mcp_partial_unique_index（MCP 管理模块 R1 修复）：mcp_server.server_key
+	// 列级 UNIQUE 与 mcp_server_user_credential 复合唯一索引均含软删除墓碑行，
+	// 同 key 软删后重建报 23505。改为仅约束活跃行（deleted_at = ''）的部分唯一索引。
+	// 新索引已声明进 Ent Schema（新库自动创建）；本迁移清理存量库旧约束/索引并补齐，
+	// 逐句 IF EXISTS/IF NOT EXISTS 幂等。生产 Schema.Create 不删索引（无 WithDropIndex），
+	// dev 模式 Ent 会先自动删旧建新，本迁移兜底 no-op。
+	{Version: 20261209, Name: "mcp_partial_unique_index", SQL: "sql/migrations/20261209_mcp_partial_unique_index.sql"},
+	// 20261210 plugin_cost_guard_usage_schema（plugin 模块 GAP-01 / I-2）：
+	// cost_guard 日预算持久化表此前无 DDL 注册，全新部署 AddTokens 必败
+	// （fail-closed 路径会持续报 plugin.cost_guard.try_consume_fail_closed）。
+	// 版本须超过目标库 schema_migrations 已记录最大值（20261209）。
+	{Version: 20261210, Name: "plugin_cost_guard_usage_schema", SQL: "sql/migrations/20261210_plugin_cost_guard_usage.sql"},
+	// 20261211 plugin_runs_workspace（N-B5）：plugin_runs 加 workspace_id 列 +
+	// 普通索引，支撑运行审计的租户可见性过滤（空串共享行全员可见，存量行为不变）。
+	{Version: 20261211, Name: "plugin_runs_workspace", SQL: "sql/migrations/20261211_plugin_runs_workspace.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

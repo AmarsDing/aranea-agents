@@ -35,7 +35,7 @@
         autogrow
         dense
         outlined
-        hint="每行一项"
+        :hint="t('pluginsPage.config.arrayLinesHint')"
         @update:model-value="setArrayLines(key, String($event ?? ''))"
       />
       <ModelRouterRulesEditor
@@ -52,7 +52,9 @@
         autogrow
         dense
         outlined
-        hint="JSON 数组"
+        :hint="t('pluginsPage.config.jsonArrayHint')"
+        :error="Boolean(fieldErrors[key])"
+        :error-message="fieldErrors[key]"
         @update:model-value="setJSONField(key, String($event ?? ''))"
       />
       <q-input
@@ -64,12 +66,13 @@
         @update:model-value="setValue(key, $event)"
       />
     </template>
-    <div v-if="!hasProperties" class="text-caption text-grey-7">Schema 无可渲染字段，请使用 JSON 模式编辑</div>
+    <div v-if="!hasProperties" class="text-caption text-grey-7">{{ t('pluginsPage.config.noRenderableFields') }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import ModelRouterRulesEditor, { type ModelRouterRulePayload } from './ModelRouterRulesEditor.vue';
 
 type SchemaProperty = {
@@ -88,8 +91,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
-  validationError: [message: string];
 }>();
+
+const { t } = useI18n();
 
 const schema = computed(() => {
   try {
@@ -166,12 +170,25 @@ function jsonFieldText(key: string): string {
   }
 }
 
+// 数组 JSON 字段的逐字段错误：就地展示（q-input error），不逐键击全局 notify
+const fieldErrors = ref<Record<string, string>>({});
+
 function setJSONField(key: string, text: string) {
   try {
     const parsed = JSON.parse(text || '[]');
+    const next = { ...fieldErrors.value };
+    delete next[key];
+    fieldErrors.value = next;
     setValue(key, parsed);
   } catch {
-    emit('validationError', 'JSON 格式错误');
+    fieldErrors.value = { ...fieldErrors.value, [key]: t('pluginsPage.config.invalidJson') };
   }
 }
+
+/** 保存提交时由父组件调用，汇总当前字段级错误（空串表示通过） */
+function validationSummary(): string {
+  return Object.values(fieldErrors.value).find(Boolean) ?? '';
+}
+
+defineExpose({ validationSummary });
 </script>

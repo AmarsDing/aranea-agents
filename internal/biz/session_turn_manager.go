@@ -19,6 +19,11 @@ type SessionCRUDPort interface {
 	Get(ctx context.Context, id string) (session.Session, error)
 	Create(ctx context.Context, in session.Session) (session.Session, error)
 	Update(ctx context.Context, id string, fields session.SessionUpdateFields) (session.Session, error)
+	// UpdateMetadataKey atomically sets a single key in metadata_json
+	// (Postgres jsonb_set), avoiding the read-modify-write lost-update race
+	// of full-document updates (S6: concurrent swarm transfers must not clobber
+	// unrelated metadata keys written by other subsystems).
+	UpdateMetadataKey(ctx context.Context, id, key, value string) error
 }
 
 // SessionTurnWriterPort covers turn and message mutation operations during a turn.

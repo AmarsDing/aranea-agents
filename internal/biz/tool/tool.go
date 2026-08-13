@@ -324,6 +324,26 @@ type ToolInvocationWriter interface {
 	RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
 }
 
+// ToolQualityStat 按工具聚合的调用质量指标（29-token 工具质量度量）。
+// ArgsFirstPassRate = 1 - (repaired+invalid)/count，衡量模型对 schema 的一次性理解准确度。
+type ToolQualityStat struct {
+	ToolKey           string
+	Count             int
+	SuccessCount      int
+	FailureCount      int
+	RepairedCount     int
+	InvalidCount      int
+	AvgDurationMs     int
+	SuccessRate       float64
+	ArgsFirstPassRate float64
+}
+
+// Stability:evolving
+type ToolQualityStatsReader interface {
+	// GetToolQualityStats 按工具聚合 since 之后的调用质量；agentID 为空表示全部 agent。
+	GetToolQualityStats(ctx context.Context, agentID string, since time.Time) ([]ToolQualityStat, error)
+}
+
 // Stability:stable
 type ToolAuditRepo interface {
 	RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error
