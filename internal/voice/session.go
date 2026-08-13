@@ -218,6 +218,10 @@ type Session struct {
 	utterOverflow bool                     // 当前语句缓冲已截断（超 maxUtterancePCMBytes）
 	chunker       *SentenceChunker
 	scheduler     *TTSScheduler
+	// schedGen 播报序列代际：挂载新调度器/摘除（orphan/打断/错误/拆除）时递增。
+	// OnDrained 闭包捕获挂载时 gen，drain 比对当前 gen——陈旧调度器的在途
+	// drain（摘除竞态窗口）不得再驱动 EvTTSEnd/休眠/委派排空（2026-08-13 F6）。
+	schedGen      uint64
 	pendingTurns  int
 	ttsStarted    bool
 	turnT0        time.Time // 当前 Turn 的 T0（ASR 终稿派发时刻，E 首音频延迟测量）；首帧/取消时复位
@@ -428,6 +432,7 @@ func (s *Session) Cancel(reason string) {
 	s.chunker = nil
 	s.scheduler = nil
 	s.ttsStarted = false
+	s.schedGen++ // F6：使该调度器在途 drain 失效（gen 失配跳过状态转换）
 	s.turnT0 = time.Time{}    // E：打断后迟到的音频帧不产生误导性延迟测量
 	s.stopSpeculationLocked() // C2：打断后残余 partial 不再触发投机
 	s.mu.Unlock()
@@ -445,6 +450,9 @@ func (s *Session) Cancel(reason string) {
 				settled := s.state == StateInterrupted
 				if settled {
 					s.state = StateListening // 过渡态自动回 listening（设计 §5，无需事件）
+					// V10（§16.4②）：settle 即「barge_in 活动重置」——重启静默休眠计时，
+					// 否则打断后持续沉默的会话永不回 dormant（sleepTimer 已随 speaking 停）。
+					s.manageSleepTimerLocked(StateListening)
 				}
 				s.mu.Unlock()
 				if settled {
@@ -674,11 +682,14 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	// 置空）。用户开口优先（barge-in 语义）：锁内摘除、锁外取消。否则其
 	// flush 哨兵 OnDrained 会把 thinking 经 EvTTSEnd（无文本 Turn 合法出口）
 	// 提前拍回 listening，新 turn delta 全丢 + tts.end 缺失。
+	// 注：摘除先于 Cancel 的在途 drain 仍可能到达——由 onTTSDrained 的
+	// schedGen 代际校验拦截（F6），此处摘字段 + 递增代际即可。
 	orphanSch := s.scheduler
 	if orphanSch != nil {
 		s.chunker = nil
 		s.scheduler = nil
 		s.ttsStarted = false
+		s.schedGen++
 	}
 	s.mu.Unlock()
 	if orphanSch != nil {
@@ -1119,12 +1130,14 @@ func (s *Session) ensureTTSLocked() error {
 		}
 	}
 	var sch *TTSScheduler
+	s.schedGen++
+	gen := s.schedGen
 	sch = NewTTSScheduler(TTSSchedulerOpts{
 		Provider:  provider,
 		Config:    cfg,
-		OnAudio:   s.onTTSAudio,
-		OnDrained: func(sleepAfter bool) { s.onTTSDrained(sch, sleepAfter) },
-		OnError:   s.onTTSError,
+		OnAudio:   func(pcm []byte) { s.onTTSAudio(gen, pcm) },
+		OnDrained: func(sleepAfter bool) { s.onTTSDrained(gen, sleepAfter) },
+		OnError:   func(err error) { s.onTTSError(gen, err) },
 		LG:        s.lg,
 	})
 	sch.Start(s.ctx)
@@ -1249,8 +1262,15 @@ func (s *Session) recoverToListening() {
 
 // ---- 内部：TTS 回调 ----
 
-func (s *Session) onTTSAudio(pcm []byte) {
+// onTTSAudio 调度器音频回调。gen 代际校验（F6）：陈旧调度器（orphan/打断
+// 摘除后）的在途音频帧直接丢弃——不得下行、不得消费 ttsStarted/turnT0、
+// 不得触发 EvFirstTTSAudio（否则把新 Turn 的 thinking 提前拍成 speaking）。
+func (s *Session) onTTSAudio(gen uint64, pcm []byte) {
 	s.mu.Lock()
+	if s.schedGen != gen {
+		s.mu.Unlock()
+		return // 陈旧序列在途音频帧
+	}
 	first := !s.ttsStarted
 	if first {
 		s.ttsStarted = true
@@ -1286,14 +1306,17 @@ func (s *Session) onTTSAudio(pcm []byte) {
 	_ = s.down.SendAudio(pcm)
 }
 
-// onTTSDrained flush 任务 drain（Turn/自足播报结束）。sch 身份校验：仅 drain
-// 来自当前调度器才摘除字段——陈旧调度器（其队列中多个 flush 任务的连续
-// drain）不得清掉在播的新调度器，否则后续播报快照丢失（2026-08-13 竞态修复）。
+// onTTSDrained flush 任务 drain（Turn/自足播报结束）。gen 代际校验：仅 drain
+// 属于当前播报序列（schedGen 未变）才摘除字段并驱动状态转换——陈旧调度器的
+// 在途 drain（orphan/打断摘除竞态窗口）不得把新 Turn 的 thinking 经 EvTTSEnd
+// 提前拍回 listening，也不得触发休眠/委派排空（2026-08-13 整体审查 F6，
+// -race 回归测试复现；同序列多 flush 连续 drain 因 gen 不变仍合法）。
 // sleepAfter=true（退出词休眠哨兵）：转 dormant，跳过 EvTTSEnd/委派排空
 // （设计 §16.4②）。
-func (s *Session) onTTSDrained(sch *TTSScheduler, sleepAfter bool) {
+func (s *Session) onTTSDrained(gen uint64, sleepAfter bool) {
 	s.mu.Lock()
-	if s.scheduler == sch {
+	current := s.schedGen == gen
+	if current {
 		s.ttsStarted = false
 		s.chunker = nil
 		s.scheduler = nil
@@ -1301,6 +1324,9 @@ func (s *Session) onTTSDrained(sch *TTSScheduler, sleepAfter bool) {
 	s.mu.Unlock()
 	_ = s.down.SendJSON(map[string]any{"type": "tts.end"})
 	s.flow.LogDone("voice.tts.end", "语音播报结束")
+	if !current {
+		return // 陈旧序列在途 drain：字段已在摘除时清理，跳过状态转换/休眠/排空
+	}
 	if sleepAfter {
 		// V10：退出词应答播报完 → dormant（设计 §16.4②，跳过 EvTTSEnd/drain）。
 		s.enterDormant(EvExitWord, "voice.sleep.exit_word", "退出词休眠")
@@ -1312,13 +1338,18 @@ func (s *Session) onTTSDrained(sch *TTSScheduler, sleepAfter bool) {
 	s.drainDelegationOutbox()
 }
 
-func (s *Session) onTTSError(err error) {
+func (s *Session) onTTSError(gen uint64, err error) {
 	// K3 降级：连续合成失败 → 告知前端退回文字模式，状态回 listening
 	s.flow.LogWarn("voice.provider.fallback", "语音服务降级", "TTS 连续合成失败", event.P("error", err.Error()))
 	s.mu.Lock()
+	if s.schedGen != gen {
+		s.mu.Unlock()
+		return // F6：陈旧调度器的在途错误回调——不摘新序列字段、不驱动状态
+	}
 	s.ttsStarted = false
 	s.chunker = nil
 	s.scheduler = nil
+	s.schedGen++ // F6：使失败调度器的后续在途 drain/audio 失效
 	s.mu.Unlock()
 	_ = s.down.SendJSON(map[string]any{"type": "tts.end"})
 	s.sendError("TTS_UNAVAILABLE", err, true)
@@ -1380,12 +1411,19 @@ func (s *Session) teardown() {
 		s.idleTimer.Stop()
 		s.idleTimer = nil
 	}
+	// V10：拆除即停静默休眠计时——否则 WS 断连（Close 无 voice.stop）后计时器
+	// 对死会话触发 dormant 转换 + 死连接广播。
+	if s.sleepTimer != nil {
+		s.sleepTimer.Stop()
+		s.sleepTimer = nil
+	}
 	s.stopSpeculationLocked() // C2：拆除即停止 partial 稳定追踪
 	asr := s.asr
 	s.asr = nil
 	sch := s.scheduler
 	s.scheduler = nil
 	s.chunker = nil
+	s.schedGen++ // F6：拆除后该调度器的在途 drain 不再驱动状态转换/休眠
 	ttsProv := s.ttsProvider
 	s.ttsProvider = nil
 	s.ttsCfg = biz.TTSSessionConfig{}

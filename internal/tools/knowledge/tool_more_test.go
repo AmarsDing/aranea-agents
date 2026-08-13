@@ -42,6 +42,9 @@ func (m *mockKnowledgeRepo) UpdateCollectionCounts(_ context.Context, _ string, 
 func (m *mockKnowledgeRepo) UpdateCollectionSyncState(_ context.Context, _, _ string, _ time.Time) error {
 	return nil
 }
+func (m *mockKnowledgeRepo) EnableCollectionSemantic(_ context.Context, _, _ string, _ int) (bool, error) {
+	return false, nil
+}
 func (m *mockKnowledgeRepo) CreateDocument(_ context.Context, d biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	return d, nil
 }

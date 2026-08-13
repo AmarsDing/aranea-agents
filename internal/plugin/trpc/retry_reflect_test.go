@@ -3,10 +3,12 @@ package plugintrpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -165,6 +167,23 @@ func TestIsDeterministicToolError(t *testing.T) {
 		if isDeterministicToolError(errors.New(msg)) {
 			t.Errorf("%q must NOT be deterministic (reflection can help)", msg)
 		}
+	}
+}
+
+// WP-2c: structured platform rate limits (subagent concurrency cap, quotas)
+// are produced as apierror CodeRateLimit. Reflect-and-retry cannot fix them —
+// no argument adjustment lifts a process-lifetime concurrency cap — and the
+// raw error already carries actionable guidance, so the plugin must classify
+// them deterministic (propagate untouched, no retry-budget burn). Plain
+// third-party string errors like "rate limit exceeded" stay retriable.
+func TestIsDeterministicToolError_StructuredRateLimit(t *testing.T) {
+	err := apierror.RateLimit(apierror.DomainSubagent, "too many concurrent sub-agents (limit: 4)")
+	if !isDeterministicToolError(err) {
+		t.Fatal("structured CodeRateLimit error must be deterministic")
+	}
+	wrapped := fmt.Errorf("spawn subagent: %w", err)
+	if !isDeterministicToolError(wrapped) {
+		t.Fatal("wrapped CodeRateLimit error must be deterministic")
 	}
 }
 

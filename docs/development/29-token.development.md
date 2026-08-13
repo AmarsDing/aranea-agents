@@ -552,3 +552,55 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 2. 全量 `make test` 留待阶段 0 收尾统一执行（本次范围内相关包：agent/service/biz/monitor/data 定向测试均 PASS）。
 3. ✅ 运行时验证：见 §13.1.2——台账字段完整、分量求和自洽、cache_hit_ratio 与台账稳定区互证。
 4. 阶段 1 Tool RAG 上线前后同会话 `tools_schema_tokens` 下降 ≥80%（作为该优化项验收基准）。
+
+## 14. 工具调用链路综合修复（2026-08-13，WP-1~WP-4）
+
+背景：基于生产库 `tool_invocations`（9507 次调用）+ `model_token_usage_events` + `chat.context_budget` 台账的全量分析（详见 `docs/reports/2026-08-13-research-llm-context-pipeline-optimization.md` 及当次会话分析），总体工具调用失败率 5.1%，其中执行层（hostexec 0.1%、file 类 1-3.5%）已健康，失败大头为编排层（synthesize_results 71.7%、subagents_* 56-67%）；spirit 缓存命中率 0.533 且大量 0.000 样本。
+
+### 14.1 评审结论（原方案 3 个架构矛盾）
+
+| # | 矛盾 | 修正 |
+|---|------|------|
+| M1 | Tool RAG 动态工具集进 tools 块 = 每轮字节级击穿前缀缓存（tools 块在请求最前） | tools 块只放会话内字节稳定的核心集；长尾走两段式（见 §14.4） |
+| M2 | 「Declaration 动态写入当前状态」同样击穿缓存 | 前置条件写静态文本；动态状态走消息末尾 cue 或拦截时结构化返回 |
+| M3 | 缓存 0.533 根因未定位 | 已定位：`DynamicRuntimeCapabilityCue` 内容每轮可变（"Effective tool keys this turn"、条件性 spirit fallback 行）却被 `insertAfterLastSystem` 钉在前缀区（runtime_cue_inject.go），且测试把错误位置 pin 成了「契约」 |
+
+新增架构原则 **P-1 缓存不可侵犯**：请求头部（tools 块 + system + insertAfterLastSystem 区）只允许会话内字节稳定的内容；一切动态内容 append 到消息末尾尾部区。
+
+### 14.2 任务与状态
+
+| # | 任务 | 状态 | 说明 |
+|---|------|------|------|
+| WP-1 | dynamic runtime cue 移到消息末尾（append） | ✅ | runtime_cue_inject.go L74 insertAfterLastSystem→append；测试契约更正（prompt_prefix_position_test.go 头部注释 + TestDynamicRuntimeCueHook_AppendsCueAtEnd）。前缀区收敛为真正字节稳定 |
+| WP-2a | teamCompletionGuard 扩展到 synthesize_results | ✅ | 原只拦 get_team_deliverable；现同前置条件（teams running 时拦截 + 结构化进度提示 "x/y 已完成"），消除 124 次 CONFLICT 失败（每次还省 3 轮 × 60K retry_reflect 重试）。新增 tool_team_completion_guard_test.go 4 例 |
+| WP-2b | Declaration 静态前置条件 + 429 增强 | ✅ | synthesize_results 描述补前置条件（spirit_tools.go + builtin_tools_seed.go 同步）；subagents_spawn 描述内联并发上限（进程级固定值，字节稳定）；429 错误带排序后的活跃 run id 列表（保留 deterministic 关键词子串，不误触发重试） |
+| WP-2c | retry_reflect 结构化限流归类 deterministic | ✅ | isDeterministicToolError 按 error CODE 识别 apierror.CodeRateLimit（子代理并发上限、配额窗口）——反射重试无法解除并发 cap，原始错误已带可执行指引，不再消耗重试预算；纯字符串 "rate limit exceeded" 第三方错误保持可重试。新增 TestIsDeterministicToolError_StructuredRateLimit（含 wrapped 链） |
+| WP-3 | todo_write 59 次空 error 归因 | ✅ 无需修复 | 全部为 2026-06-07~06-15 历史 stuck-timeout 看门狗记录（event_bus/trpc 两路径，error_message 列未填、output_preview 含 stuckTimeout 标记），近 2 个月无新增——路径已自愈 |
+| WP-4 | Tool RAG 修订为两段式缓存安全设计 | 📋 设计待实施 | 见 §14.4 |
+
+### 14.3 验收
+
+1. ✅ `go test ./internal/agent/ -run "TestTeamCompletionGuard|TestDynamicRuntimeCueHook|前缀相关 12 例"` 全绿；WP-1/WP-2a 均先红后绿（TDD）。
+2. ✅ 最终全量验证（2026-08-13）：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go test ./internal/agent/ ./internal/tools/... ./internal/plugin/trpc/ -count=1` 全部 ok（36 个包，含此前因 mock 缺方法失败的 internal/tools/knowledge——已补 EnableCollectionSemantic）。
+3. ✅ 系统性复审（2026-08-13）：前缀区残留扫描确认仅 static runtime cue（会话内字节稳定）与压缩截断标记（仅在截断时触发，历史已被重写、前缀本就失效，不构成每轮击穿）使用 insertAfterLastSystem；memory/knowledge/skill/reply reminder/intent/dynamic runtime cue 全部位于消息末尾尾部区。无新增问题。
+4. ⏳ 生产回归口径（下次部署后观测）：spirit 缓存命中率 0.533 → 预期 ≥0.9（0.000 样本消失）；synthesize_results 失败率 71.7% → 预期趋近 0（拦截不计失败）；subagents_spawn 429 失败占比下降。
+
+### 14.4 WP-4 两段式工具加载设计（阶段 1 T-003 修订，待实施）
+
+- **核心常驻集**：tools 块只放 `tool_invocation_stats` 识别的高频核心工具（会话内字节稳定）。
+- **静态目录 cue**：长尾工具以「工具名 + 一句话描述」清单注入（按 key 排序、无动态状态），模型经 `tool_load` 元工具按需把完整 schema 加载进**消息流尾部**（Cursor 动态加载实测 -46.9% tokens）。
+- Tool RAG 检索结果只影响「目录 cue 中标注哪些为推荐」，不改变 tools 块内容——规避 M1 矛盾。
+- 验收基准沿用：tools_schema_tokens -80%、工具选择金标集准确率 ≥90%。
+
+### 14.5 改动文件（本迭代）
+
+- `internal/agent/runtime_cue_inject.go`（WP-1）
+- `internal/agent/prompt_prefix_position_test.go`（WP-1 测试契约）
+- `internal/agent/tool_team_completion_guard.go`（WP-2a）
+- `internal/agent/tool_team_completion_guard_test.go`（WP-2a 新增测试）
+- `internal/tools/spirit_tools.go`（WP-2b 描述）
+- `internal/data/builtin_tools_seed.go`（WP-2b 种子同步）
+- `internal/tools/subagent/service.go`（WP-2b 描述 + 429 增强）
+- `internal/plugin/trpc/retry_reflect.go`（WP-2c CodeRateLimit 确定性分类）
+- `internal/plugin/trpc/retry_reflect_test.go`（WP-2c 新增测试）
+- `internal/tools/knowledge/tool_more_test.go`（mock 补 EnableCollectionSemantic，修复并行会话接口演进导致的构建失败）

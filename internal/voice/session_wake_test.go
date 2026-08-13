@@ -119,6 +119,44 @@ func TestSessionExitWordRaceStress(t *testing.T) {
 	}
 }
 
+// 回归（2026-08-13 整体审查 F1）：speaking 态 barge-in → interrupted → 自动回
+// listening 后，静默休眠计时必须重启（设计 §16.4②「barge_in / Turn 活动即重置」）。
+// 修复前 settle 直置 state 绕过 manageSleepTimerLocked，沉默会话永不回 dormant。
+func TestSessionBargeInSettleRestartsSleepTimer(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Mode: ModeCompanion})
+	fx.sess.Wake("kws")
+	// 快速进 speaking：终稿 → thinking → delta → TTS 首音频
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
+	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)
+	fx.bus.ch <- biz.NewStepStreamingEvent("sess-1", "task-1", "step-1", "content", "你好呀，我是助手。")
+	require.Eventually(t, func() bool { return fx.down.lastState() == "speaking" }, 2*time.Second, 10*time.Millisecond)
+	// 建链后再缩短休眠窗口（settle 重启时生效；speaking 转换已停原计时，无早发风险）
+	old := sleepTimeout
+	sleepTimeout = 100 * time.Millisecond
+	defer func() { sleepTimeout = old }()
+	// speaking 态打断 → interrupted → 300ms 自动回 listening；此后保持沉默
+	fx.sess.Cancel("voice.barge_in")
+	require.Eventually(t, func() bool { return fx.down.lastState() == "listening" }, 2*time.Second, 10*time.Millisecond)
+	// settle 重启休眠计时 → 到期回 dormant（修复前永停 listening）
+	require.Eventually(t, func() bool { return fx.down.lastState() == "dormant" }, 2*time.Second, 10*time.Millisecond)
+}
+
+// 回归（2026-08-13 整体审查 F2）：teardown 停 sleepTimer——WS 断连（Close 无
+// voice.stop）时 listening 态的休眠计时不得对死会话触发（状态/广播不再变更）。
+func TestSessionCloseStopsSleepTimer(t *testing.T) {
+	old := sleepTimeout
+	sleepTimeout = 60 * time.Millisecond
+	defer func() { sleepTimeout = old }()
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Mode: ModeCompanion})
+	fx.sess.Wake("kws")
+	require.Equal(t, "listening", fx.down.lastState())
+	fx.sess.Close()
+	// 修复前：到期 onSleepTimeout 对死会话转 dormant 并广播；修复后：无变更
+	require.Never(t, func() bool { return fx.down.lastState() == "dormant" }, 300*time.Millisecond, 20*time.Millisecond)
+}
+
 // 连说形态：唤醒词剥离后净文本进 Chat 管线。
 func TestSessionWakeWordStrippedBeforeTurn(t *testing.T) {
 	fx := newSessionFixture(t)

@@ -32,6 +32,13 @@ const skillRoutedSlugsStateKey = "aranea.skill_routed_slugs"
 // recorder can persist it.
 const skillLoadedSlugStateKey = "aranea.skill_loaded_slug"
 
+// skillResolveMemoStateKey memoizes the per-invocation ResolveResult. The
+// BeforeModel hook fires on every model call (tool-call loops), but the
+// routing inputs (turn query, agent policy) are invariant within one
+// invocation — without memoization each model call re-runs the candidates
+// DB query plus embedding/health-metrics queries.
+const skillResolveMemoStateKey = "aranea.skill_resolve_memo"
+
 // skillTokenUsageStateKey is the invocation state key for accumulated token usage.
 const skillTokenUsageStateKey = "aranea.skill_token_usage"
 
@@ -155,7 +162,23 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 // invocation state. When progressive is true, routed slugs are stored under
 // skillRoutedSlugsStateKey so the invocation recorder can persist them for
 // health metrics. Returns nil when no skills are resolved or on error.
+//
+// The result is memoized per invocation (skillResolveMemoStateKey): routing
+// inputs are invariant within one invocation, and errors are NOT memoized so
+// a transient failure does not suppress routing for the rest of the turn.
 func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
+	inv, invOK := trpcagent.InvocationFromContext(ctx)
+	if invOK && inv != nil {
+		if cached, ok := inv.GetState(skillResolveMemoStateKey); ok {
+			if result, ok := cached.(*skillruntime.ResolveResult); ok {
+				if len(result.Slugs) == 0 {
+					return nil
+				}
+				writeSkillRouteState(inv, result, progressive)
+				return result
+			}
+		}
+	}
 	opts := &skillruntime.SkillToolsetOptions{UserQuery: skillruntime.TurnQueryFromContext(ctx)}
 	// Avoid typed-nil interface: only set Runtime if runtime is non-nil,
 	// otherwise the nil *biz.AgentRuntimeSettings creates a non-nil interface
@@ -170,20 +193,31 @@ func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSet
 			loggateway.Err(err))
 		return nil
 	}
+	if !invOK || inv == nil {
+		if len(result.Slugs) == 0 {
+			return nil
+		}
+		return result
+	}
+	// Memoize successful resolutions (including legitimately empty ones) for
+	// the remaining model calls of this invocation.
+	inv.SetState(skillResolveMemoStateKey, result)
 	if len(result.Slugs) == 0 {
 		return nil
 	}
-	inv, ok := trpcagent.InvocationFromContext(ctx)
-	if !ok {
-		return result
-	}
+	writeSkillRouteState(inv, result, progressive)
+	return result
+}
+
+// writeSkillRouteState records routed slugs (progressive only, for health
+// metrics persistence) and selection reasons into invocation state.
+func writeSkillRouteState(inv *trpcagent.Invocation, result *skillruntime.ResolveResult, progressive bool) {
 	if progressive {
 		// skillRoutedSlugsStateKey is read by the invocation recorder
 		// to persist routed_slugs for health metrics.
 		inv.SetState(skillRoutedSlugsStateKey, result.Slugs)
 	}
 	inv.SetState(skillSelectionReasonStateKey, result.Reasons)
-	return result
 }
 
 // newTokenUsageAccumulatorAfterHook returns an AfterModel hook that accumulates

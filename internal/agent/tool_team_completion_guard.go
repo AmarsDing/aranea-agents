@@ -52,8 +52,17 @@ func (h *teamCompletionGuardBeforeHook) HandleBeforeTool(ctx context.Context, ar
 		return &trpctool.BeforeToolResult{}, nil
 	}
 
-	// Only guard the get_team_deliverable tool
-	if args.ToolName != "get_team_deliverable" {
+	// Only guard team-dependent tools. WP-2a: synthesize_results shares the
+	// same precondition as get_team_deliverable (all teams finished) — before
+	// this guard covered it, 71.7% of its production calls failed with
+	// "active teams still running" and burned full-context retries.
+	var action string
+	switch args.ToolName {
+	case "get_team_deliverable":
+		action = "查询交付物"
+	case "synthesize_results":
+		action = "合成结果"
+	default:
 		return &trpctool.BeforeToolResult{}, nil
 	}
 
@@ -72,16 +81,17 @@ func (h *teamCompletionGuardBeforeHook) HandleBeforeTool(ctx context.Context, ar
 	}
 
 	// Teams are still running - block the call and guide the LLM to wait
-	h.lg.Info("blocked get_team_deliverable polling attempt - teams still running",
+	h.lg.Info("blocked team-dependent tool call - teams still running",
 		loggateway.StepID("tool.team_completion_guard"),
+		loggateway.Str("tool", args.ToolName),
 		loggateway.Str("spirit_session_id", spiritSessionID),
 		loggateway.Int("total_teams", result.TotalTeams),
 		loggateway.Int("completed_teams", result.CompletedTeams),
 		loggateway.Int("failed_teams", result.FailedTeams),
 	)
 
-	guidance := fmt.Sprintf("团队仍在执行中（%d/%d 已完成）。请等待系统通知所有团队完成后再查询交付物。系统会在所有团队完成后主动通知您，无需主动轮询。",
-		result.CompletedTeams, result.TotalTeams)
+	guidance := fmt.Sprintf("团队仍在执行中（%d/%d 已完成）。请等待系统通知所有团队完成后再%s。系统会在所有团队完成后主动通知您，无需主动轮询或重试。",
+		result.CompletedTeams, result.TotalTeams, action)
 
 	return &trpctool.BeforeToolResult{
 		CustomResult: guidance,

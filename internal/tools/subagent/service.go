@@ -366,8 +366,17 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		return trpcsubagent.Run{}, apierror.Internal(apierror.DomainSubagent, "runner not configured")
 	}
 	if len(s.running) >= s.maxConcurrent {
+		// WP-2b: surface the active run ids so the caller (LLM) can track them
+		// via subagents_get instead of blind-retrying. Sorted for determinism.
+		// CodeRateLimit is classified deterministic by retry_reflect (WP-2c):
+		// it propagates this error untouched without burning retry budget.
+		active := make([]string, 0, len(s.running))
+		for id := range s.running {
+			active = append(active, id)
+		}
+		sort.Strings(active)
 		s.mu.Unlock()
-		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d)", s.maxConcurrent))
+		return trpcsubagent.Run{}, apierror.RateLimit(apierror.DomainSubagent, fmt.Sprintf("too many concurrent sub-agents (limit: %d); active run ids: [%s] — track them with subagents_get and wait for completion notifications instead of retrying immediately", s.maxConcurrent, strings.Join(active, ", ")))
 	}
 
 	if err := validateSpawnRequest(req); err != nil {
@@ -1099,12 +1108,25 @@ func newCancelTool(svc *Service) *cancelTool {
 }
 
 func (t *spawnTool) Declaration() *trpctool.Declaration {
+	// WP-2b: state the concurrency limit statically so the model can plan
+	// parallelism up-front instead of discovering it via 429 failures
+	// (production: 67% of spawn calls failed). maxConcurrent is fixed for the
+	// process lifetime (env override at startup), so inlining it keeps the
+	// declaration byte-stable within a session.
+	limit := defaultMaxConcurrentSubAgents
+	if t != nil && t.svc != nil && t.svc.maxConcurrent > 0 {
+		limit = t.svc.maxConcurrent
+	}
 	return &trpctool.Declaration{
 		Name: toolSubagentsSpawn,
-		Description: "Spawn one background subagent for the current " +
-			"session. Use this for long-running work, parallelizable " +
-			"work, or independent verification. It returns " +
-			"immediately with a run id.",
+		Description: fmt.Sprintf("Spawn one background subagent for the current "+
+			"session. Use this for long-running work, parallelizable "+
+			"work, or independent verification. It returns "+
+			"immediately with a run id. At most %d subagent runs may be "+
+			"active concurrently; when the limit is reached the call fails "+
+			"with a 429 — do NOT retry immediately; track the active runs "+
+			"with subagents_get and wait for their completion notifications "+
+			"before spawning more.", limit),
 		InputSchema: &trpctool.Schema{
 			Type:     schemaTypeObject,
 			Required: []string{argTask},

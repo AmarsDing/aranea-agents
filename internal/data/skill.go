@@ -1152,6 +1152,10 @@ func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string
 			platformskill.EnabledEQ(true),
 			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
 		).
+		// Deterministic order: results feed the skill overview injected into
+		// the system prompt; byte-stable ordering is required for prompt-cache
+		// hits across turns.
+		Order(platformskill.BySkillKey(entsql.OrderAsc())).
 		Select(platformskill.FieldSkillKey).
 		All(ctx)
 	if err != nil {
@@ -1176,6 +1180,7 @@ func (r *skillRepo) ListEnabledPublishedSkillRefs(ctx context.Context) ([]biz.Sk
 			platformskill.EnabledEQ(true),
 			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
 		).
+		Order(platformskill.BySkillKey(entsql.OrderAsc())).
 		Select(platformskill.FieldSkillKey, platformskill.FieldUpdatedAt).
 		All(ctx)
 	if err != nil {
@@ -1195,6 +1200,9 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 			platformskill.EnabledEQ(true),
 			platformskill.Or(platformskill.StatusEQ("published"), platformskill.StatusEQ("active")),
 		).
+		// Deterministic order: candidates feed routing and the prompt skill
+		// overview; byte-stable ordering is required for prompt-cache hits.
+		Order(platformskill.BySkillKey(entsql.OrderAsc())).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainSkill)

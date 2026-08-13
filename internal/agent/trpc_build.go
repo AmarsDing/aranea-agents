@@ -354,8 +354,9 @@ func emitBuildDoneSummary(lg loggateway.Logger, ag biz.Agent, buildStart time.Ti
 // buildSkillDeps resolves the Skill repository, per-invocation visibility filter, and code executor.
 // EP-BIZ-01: when SkillDBRepo is injected, the DB repo is the primary backend;
 // the local executor falls back to the FS root so skill code files can still be run.
-// Layer A + B routing is applied via skillruntime.AgentVisibilityFilter using
-// agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
+// Layer A (allow/deny) visibility is applied via skillruntime.AgentVisibilityFilter
+// from agent_runtime_settings.skill_runtime_json; Layer B per-turn routing is
+// injected as dynamic guidance cues via skill_guidance_inject.go.
 func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
 	lg := deps.Logger()
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
@@ -405,7 +406,11 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if runtime != nil {
 		runtimeIface = runtime
 	}
-	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtimeIface, deps.Logger(), ag.AgentKey)
+	// Layer A-only visibility filter: keeps the framework skill overview
+	// (system prompt prefix) byte-stable across turns for prompt-cache hits.
+	// Per-turn Layer B routing lives in the progressive guidance injection
+	// path (skill_guidance_inject.go) and never hides skills from the overview.
+	filter := skillruntime.NewAgentVisibilityFilter(runtimeIface)
 
 	execType := ""
 	if runtime != nil {

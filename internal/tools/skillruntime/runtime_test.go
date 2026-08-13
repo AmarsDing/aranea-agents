@@ -29,9 +29,10 @@ func TestTurnQueryFromContext(t *testing.T) {
 	}
 }
 
-func TestAgentVisibilityFilter_nilSkillUC(t *testing.T) {
-	f := NewAgentVisibilityFilter(nil, nil, nil, "")
+func TestAgentVisibilityFilter_nilRuntime(t *testing.T) {
+	// nil runtime → default "{}" policy → no allow/deny lists → allow all.
+	f := NewAgentVisibilityFilter(nil)
 	if !f(context.Background(), trpcskill.Summary{Name: "any"}) {
-		t.Fatal("nil skillUC filter should allow all")
+		t.Fatal("nil runtime filter should allow all")
 	}
 }

@@ -614,7 +614,7 @@ func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.Funct
 			}, nil
 		},
 		trpcfunction.WithName("synthesize_results"),
-		trpcfunction.WithDescription("合成所有已完成团队的执行结果。当所有并行团队完成后调用此工具，将各团队结果整合为综合报告。"),
+		trpcfunction.WithDescription("合成所有已完成团队的执行结果。前置条件：所有并行团队均已完成——系统会在全部完成后主动通知你，收到通知后再调用本工具。若收到“团队仍在执行中”的提示，请耐心等待系统通知，不要重试或轮询。调用后将各团队结果整合为综合报告。"),
 	)
 }
 

@@ -89,11 +89,12 @@ func TestSessionFirstAudioLatencyMeasured(t *testing.T) {
 
 	fx.sess.mu.Lock()
 	t0 := fx.sess.turnT0
+	gen := fx.sess.schedGen
 	fx.sess.mu.Unlock()
 	require.False(t, t0.IsZero(), "ASR final dispatch must record turn T0")
 
 	// 模拟首帧 TTS 音频到达：tts.start 下行且 T0 被消费（复位）。
-	fx.sess.onTTSAudio([]byte{1, 2, 3, 4})
+	fx.sess.onTTSAudio(gen, []byte{1, 2, 3, 4})
 	require.Contains(t, fx.down.typesOf(), "tts.start")
 	fx.sess.mu.Lock()
 	consumed := fx.sess.turnT0.IsZero()

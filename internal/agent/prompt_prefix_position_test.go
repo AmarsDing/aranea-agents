@@ -4,14 +4,19 @@ package agent
 //
 // DeepSeek prompt caching matches tokens from position 0: any per-turn change
 // inside the cached prefix invalidates the whole block. Two-tier contract:
-//   - session-stable cues (static/dynamic runtime cue) append AFTER the
-//     existing system block (insertAfterLastSystem) — never prepend;
-//   - per-turn dynamic cues (memory cue, knowledge cue, skill guidance, reply
-//     reminder, intent context) append at the END of the message list, so the
-//     [system block + history + user] prefix stays monotonically growing and
-//     cacheable. Skill guidance moved to the tail tier (N1 fix): routed slugs
-//     are resolved per turn, so inserting them after the system block
-//     invalidated the entire history prefix on every skill-routing change.
+//   - session-stable cues (static runtime cue) append AFTER the existing
+//     system block (insertAfterLastSystem) — never prepend;
+//   - per-turn dynamic cues (dynamic runtime cue, memory cue, knowledge cue,
+//     skill guidance, reply reminder, intent context) append at the END of the
+//     message list, so the [system block + history + user] prefix stays
+//     monotonically growing and cacheable. Skill guidance moved to the tail
+//     tier (N1 fix): routed slugs are resolved per turn, so inserting them
+//     after the system block invalidated the entire history prefix on every
+//     skill-routing change. Dynamic runtime cue moved to the tail tier
+//     (WP-1 fix): its content ("Effective tool keys this turn", conditional
+//     spirit fallback lines) changes when MCP tools reconnect or tool config
+//     flips mid-session, so pinning it after the system block invalidated the
+//     whole prefix — root cause of spirit cache-hit samples pinned at 0.000.
 
 import (
 	"context"
@@ -198,7 +203,7 @@ func TestStaticRuntimeCueHook_InsertsAfterExistingSystem(t *testing.T) {
 	assertCueAfterBase(t, msgs, "Runtime capability policy")
 }
 
-func TestDynamicRuntimeCueHook_InsertsAfterExistingSystem(t *testing.T) {
+func TestDynamicRuntimeCueHook_AppendsCueAtEnd(t *testing.T) {
 	ag := biz.Agent{
 		ID:               "ag-1",
 		SystemPromptMode: "complete",
@@ -209,7 +214,7 @@ func TestDynamicRuntimeCueHook_InsertsAfterExistingSystem(t *testing.T) {
 	}}
 	hook := newDynamicRuntimeCueBeforeHook(ag, deps)
 	msgs := runBeforeModelHook(t, hook, context.Background())
-	assertCueAfterBase(t, msgs, "Effective tool keys")
+	assertCueAtEnd(t, msgs, "Effective tool keys")
 }
 
 func TestSkillGuidanceFullProfileHook_AppendsCueAtEnd(t *testing.T) {

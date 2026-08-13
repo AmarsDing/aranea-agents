@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -180,11 +181,21 @@ var deterministicErrorKeywords = []string{
 // LLM-adjusted arguments cannot succeed. Case-insensitive substring match on
 // the error chain's message; context.Canceled is deterministic (the invocation
 // is being torn down, retrying is meaningless).
+//
+// Structured platform rate limits (apierror CodeRateLimit — subagent
+// concurrency caps, federation/invoke quotas) are deterministic too: no
+// argument adjustment lifts a concurrency cap or quota window, and the raw
+// error already carries the actionable guidance. Matched by error CODE (not
+// the "rate limit" substring) so plain third-party string errors like
+// "rate limit exceeded" stay retriable.
 func isDeterministicToolError(err error) bool {
 	if err == nil {
 		return false
 	}
 	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	if ae, ok := apierror.From(err); ok && ae.Code == apierror.CodeRateLimit {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
