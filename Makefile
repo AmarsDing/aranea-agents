@@ -161,6 +161,27 @@ archlint:
 smoke:
 	go build -o bin/admin-smoke ./cmd/admin 2>&1 && echo "smoke: build OK" && rm -f bin/admin-smoke
 
+# ---- Docker 部署（参照 TwinMonitor 全量 Docker 化方案，脚本位于 docker/）----
+.PHONY: docker-config docker-build docker-up docker-migrate docker-monitor docker-down
+docker-config:
+	powershell -NoProfile -ExecutionPolicy Bypass -File docker/gen-config.ps1
+
+docker-build:
+	powershell -NoProfile -ExecutionPolicy Bypass -File docker/build-runtime.ps1
+
+docker-up:
+	powershell -NoProfile -ExecutionPolicy Bypass -File docker/dev-up.ps1
+
+docker-migrate:
+	powershell -NoProfile -ExecutionPolicy Bypass -File docker/migrate-data.ps1
+
+docker-monitor:
+	powershell -NoProfile -ExecutionPolicy Bypass -File docker/register-monitor.ps1
+
+docker-down:
+	docker compose -f docker-compose.yaml down
+
+
 .PHONY: release
 # create a release using GoReleaser (requires goreleaser installed)
 release:

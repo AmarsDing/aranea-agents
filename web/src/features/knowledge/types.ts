@@ -144,6 +144,13 @@ export type PromoteResult = {
   cascade_candidates: PromoteCascadeCandidate[];
 };
 
+/** EnableSemanticResult 词法库启用语义层受理结果（B2：绑定的全局 embedder + 重嵌入受理数）。 */
+export type EnableSemanticResult = {
+  enqueued_docs: number;
+  embedding_model: string;
+  dim: number;
+};
+
 export type KnowledgeChunk = {
   id: string;
   doc_id: string;

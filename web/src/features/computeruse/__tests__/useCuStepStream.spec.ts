@@ -1,9 +1,28 @@
 // web/src/features/computeruse/__tests__/useCuStepStream.spec.ts
 // 75 M1.4 任务 4：computeruse.step MonitorEvent → CuStep 视图模型映射 + 去重排序。
-import { describe, it, expect } from 'vitest';
-import { cuStepFromMonitorEvent, upsertCuStep, cuSessionIdFromSteps, type CuStep } from '../useCuStepStream';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { defineComponent, ref, type Ref } from 'vue';
+import { mount, type VueWrapper } from '@vue/test-utils';
+import {
+  cuStepFromMonitorEvent,
+  upsertCuStep,
+  cuSessionIdFromSteps,
+  useCuStepStream,
+  type CuStep,
+} from '../useCuStepStream';
 import type { MonitorEvent } from '../../../realtime/monitorEvent';
 import type { Step } from '../../chat/v2Types';
+import type { UseMonitorStreamOptions } from '../../../realtime/useMonitorStream';
+import { createMonitorStream } from '../../../realtime/useMonitorStream';
+import { createComputerUseService } from '../../../services/index';
+
+vi.mock('../../../realtime/useMonitorStream', () => ({
+  createMonitorStream: vi.fn(),
+}));
+
+vi.mock('../../../services/index', () => ({
+  createComputerUseService: vi.fn(),
+}));
 
 function mkEv(overrides: Partial<MonitorEvent>): MonitorEvent {
   return {
@@ -138,5 +157,95 @@ describe('cuSessionIdFromSteps', () => {
   it('returns empty for empty/no-match steps', () => {
     expect(cuSessionIdFromSteps([])).toBe('');
     expect(cuSessionIdFromSteps([mkStep({ ID: 'a1', ToolName: 'computer_use_act' })])).toBe('');
+  });
+});
+
+// 75 review F3：composable 本体集成测试——WS 订阅 / session 过滤 / kill 状态机 / unmount 清理。
+describe('useCuStepStream composable', () => {
+  let captured: UseMonitorStreamOptions;
+  let disconnectSpy: ReturnType<typeof vi.fn>;
+  let killMock: ReturnType<typeof vi.fn>;
+
+  function withSetup(sessionId: Ref<string>) {
+    let result!: ReturnType<typeof useCuStepStream>;
+    const wrapper: VueWrapper = mount(
+      defineComponent({
+        setup() {
+          result = useCuStepStream(sessionId);
+          return () => null;
+        },
+      }),
+    );
+    return { result, wrapper };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    disconnectSpy = vi.fn();
+    killMock = vi.fn().mockResolvedValue({});
+    vi.mocked(createMonitorStream).mockImplementation((opts) => {
+      captured = opts;
+      return {
+        connected: ref(true),
+        connect: vi.fn(),
+        disconnect: disconnectSpy,
+        enableLog: vi.fn(),
+        subscribe: vi.fn(),
+        unsubscribe: vi.fn(),
+      };
+    });
+    vi.mocked(createComputerUseService).mockReturnValue({
+      KillComputerUseSession: killMock,
+    } as unknown as ReturnType<typeof createComputerUseService>);
+  });
+
+  it('appends steps on computeruse.step events for the bound session', () => {
+    const { result } = withSetup(ref('cu-sess-1'));
+    captured.onMonitorEvent?.(mkEv({ metadata: { step_index: 2, target: 't2', result: 'ok' } }));
+    captured.onMonitorEvent?.(mkEv({ metadata: { step_index: 1, target: 't1', result: 'ok' } }));
+    expect(result.steps.value.map((s) => s.stepIndex)).toEqual([1, 2]);
+  });
+
+  it('ignores events from other sessions', () => {
+    const { result } = withSetup(ref('cu-sess-1'));
+    captured.onMonitorEvent?.(mkEv({ session_id: 'cu-other' }));
+    expect(result.steps.value).toHaveLength(0);
+  });
+
+  it('marks killed when a cancelled step event arrives', () => {
+    const { result } = withSetup(ref('cu-sess-1'));
+    captured.onMonitorEvent?.(mkEv({ metadata: { step_index: 1, result: 'cancelled' } }));
+    expect(result.killState.value).toBe('killed');
+  });
+
+  it('kill transitions to killed on success and calls the API with session id', async () => {
+    const { result } = withSetup(ref('cu-sess-1'));
+    await result.kill();
+    expect(killMock).toHaveBeenCalledWith({ id: 'cu-sess-1' });
+    expect(result.killState.value).toBe('killed');
+  });
+
+  it('kill falls back to active on failure and rethrows', async () => {
+    killMock.mockRejectedValue(new Error('boom'));
+    const { result } = withSetup(ref('cu-sess-1'));
+    await expect(result.kill()).rejects.toThrow('boom');
+    expect(result.killState.value).toBe('active');
+  });
+
+  it('kill is a no-op when session id is empty or already killed', async () => {
+    const { result } = withSetup(ref('  '));
+    await result.kill();
+    expect(killMock).not.toHaveBeenCalled();
+
+    const { result: killed } = withSetup(ref('cu-sess-1'));
+    captured.onMonitorEvent?.(mkEv({ metadata: { step_index: 1, result: 'cancelled' } }));
+    await killed.kill();
+    expect(killMock).not.toHaveBeenCalled();
+  });
+
+  it('disconnects the stream on unmount', () => {
+    const { wrapper } = withSetup(ref('cu-sess-1'));
+    wrapper.unmount();
+    expect(disconnectSpy).toHaveBeenCalledTimes(1);
   });
 });

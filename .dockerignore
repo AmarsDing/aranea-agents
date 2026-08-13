@@ -1,0 +1,15 @@
+# Docker 构建上下文裁剪（runtime 薄镜像与 eval 镜像共用）
+.git
+**/node_modules
+web/dist
+bin
+# runtime 薄镜像唯一需要的构建产物（交叉编译输出）
+!bin/linux
+!bin/linux/admin
+test
+build/release
+build/staging
+.aranea-self-improve
+docs
+competition
+docker/volumes

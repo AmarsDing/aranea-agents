@@ -18,6 +18,7 @@ import {
   moveDocumentToDir,
   promoteDocuments,
   reembedDocuments as reembedDocumentsApi,
+  enableCollectionSemantic as enableCollectionSemanticApi,
   searchKnowledge,
   getEmbedderConfig,
   updateEmbedderConfig,
@@ -36,6 +37,7 @@ import type {
   PromoteResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
+  EnableSemanticResult,
   UpdateEmbedderConfigInput,
   VaultTreeNode,
 } from '../../features/knowledge/types';
@@ -212,6 +214,11 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return reembedDocumentsApi(collectionId, docIds, chunkSize, chunkOverlap);
   }
 
+  // B2：词法库启用语义层（单向绑定全局 embedder）；集合字段由页面侧 loadCollections 刷新。
+  async function enableCollectionSemantic(collectionId: string): Promise<EnableSemanticResult> {
+    return enableCollectionSemanticApi(collectionId);
+  }
+
   // US-14：跨库移动文档；本地缓存由页面侧 reload 刷新（源/目标库计数均变化）。
   async function moveDoc(id: string, targetCollectionId: string): Promise<KnowledgeDocument> {
     return moveDocument(id, targetCollectionId);
@@ -280,6 +287,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     addVaultDocument,
     removeDocument,
     reembedDocuments,
+    enableCollectionSemantic,
     moveDoc,
     moveDocToDir,
     promoteDocs,

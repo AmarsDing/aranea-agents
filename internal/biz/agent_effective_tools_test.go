@@ -139,3 +139,61 @@ func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) 
 		}
 	}
 }
+
+// computer_use_* 工具组：spirit profile 显式 opt-in（seed 默认 enabled=false，
+// 走 registryOptInOnlyKeys 白名单而非全局开启）。
+func TestProfileAllowSet_spiritIncludesComputerUseGroup(t *testing.T) {
+	allowed := profileAllowSet("spirit", nil)
+	for _, key := range []string{
+		"computer_use_observe", "computer_use_screenshot",
+		"computer_use_act", "computer_use_launch", "computer_use_session",
+	} {
+		if !allowed[key] {
+			t.Fatalf("expected %s in spirit allowed set; got keys %v", key, allowed)
+		}
+	}
+}
+
+func TestProfileAllowSet_nonSpiritProfilesExcludeComputerUse(t *testing.T) {
+	for _, profile := range []string{"read_only", "coding", "research", "full"} {
+		allowed := profileAllowSet(profile, nil)
+		if allowed["computer_use_act"] {
+			t.Fatalf("profile %q must not include computer_use_act", profile)
+		}
+	}
+}
+
+func TestApplyRegistryAdminDenials_computerUseOptInNotDenied(t *testing.T) {
+	catalog := []Tool{
+		{Key: "computer_use_act", Enabled: false},
+		{Key: "computer_use_observe", Enabled: false},
+		{Key: "computer_use_screenshot", Enabled: false},
+		{Key: "computer_use_launch", Enabled: false},
+		{Key: "computer_use_session", Enabled: false},
+	}
+	deny := map[string]bool{}
+	applyRegistryAdminDenials(catalog, deny)
+	for _, c := range catalog {
+		if deny[c.Key] {
+			t.Fatalf("opt-in key %s must not be admin-denied; deny=%v", c.Key, deny)
+		}
+	}
+}
+
+func TestBuildAgentEffectiveTools_spiritComputerUseEnabled(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "spirit"}
+	cat := []Tool{
+		{Key: "computer_use_act", DisplayName: "桌面动作", Category: "computeruse", Source: "builtin", Enabled: false},
+	}
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+	for _, it := range eff.Items {
+		if it.ToolKey != "computer_use_act" {
+			continue
+		}
+		if !it.Enabled || it.EffectiveState != "allowed" {
+			t.Fatalf("want computer_use_act allowed under spirit opt-in, got %#v", it)
+		}
+		return
+	}
+	t.Fatal("computer_use_act missing from effective items")
+}

@@ -29,6 +29,7 @@ import type {
   SearchKnowledgeQuery,
   UnlinkedMention,
   EmbedderConfig,
+  EnableSemanticResult,
   UpdateEmbedderConfigInput,
   VaultTreeNode,
 } from './types';
@@ -474,6 +475,17 @@ export async function listCollectionGraph(
 /** rebuildKnowledgeIndex 触发块级派生索引（blocks/refs）流式重建；异步执行，立即返回受理结果。 */
 export async function rebuildKnowledgeIndex(collectionId: string): Promise<void> {
   await svc.RebuildKnowledgeIndex({ id: collectionId });
+}
+
+/** enableCollectionSemantic 词法库一键启用语义层（B2，单向）：绑定当前全局 embedder，
+ *  全部文档经 B1 管线重嵌入；返回受理计数与绑定的模型/dim。 */
+export async function enableCollectionSemantic(collectionId: string): Promise<EnableSemanticResult> {
+  const r = asRecord(await svc.EnableCollectionSemantic({ collectionId }));
+  return {
+    enqueued_docs: pickI32(r, 'enqueued_docs', 'enqueuedDocs'),
+    embedding_model: pickStr(r, 'embedding_model', 'embeddingModel'),
+    dim: pickI32(r, 'dim', 'dim'),
+  };
 }
 
 // ---------- 实体治理（G5-F/G5-G） ----------

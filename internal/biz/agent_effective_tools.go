@@ -64,6 +64,11 @@ var toolGroupsIntegration = []string{"call_agent", "knowledge_search", "mcp_tool
 var toolGroupsSubagent = []string{"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel"}
 var toolGroupsBrowser = []string{"browser"}
 
+var toolGroupsComputerUse = []string{
+	"computer_use_observe", "computer_use_screenshot",
+	"computer_use_act", "computer_use_launch", "computer_use_session",
+}
+
 // syntheticShellExecTool matches internal/data builtin seeds when the tools table has no shell_exec row.
 func syntheticShellExecTool() Tool {
 	return Tool{
@@ -141,6 +146,8 @@ func expandToolGroup(name string, catalog []Tool) []string {
 		return append([]string{}, toolGroupsSubagent...)
 	case "browser":
 		return append([]string{}, toolGroupsBrowser...)
+	case "computeruse":
+		return append([]string{}, toolGroupsComputerUse...)
 	case "cli_admin":
 		return cliAdminKeysFromRegistry(catalog)
 	default:
@@ -203,6 +210,14 @@ var registryOptInOnlyKeys = map[string]bool{
 	"cli_admin_agent_list":             true,
 	"cli_admin_agent_get":              true,
 	"cli_admin_pkg_install_from_url":   true,
+	// computer_use_* are seeded with enabled=false (builtin_tools_seed.go) as
+	// opt-in-only desktop automation tools: catalog row stays off, but an agent
+	// whose profile/allow JSON names group:computeruse (e.g. spirit) can enable them.
+	"computer_use_observe":    true,
+	"computer_use_screenshot": true,
+	"computer_use_act":        true,
+	"computer_use_launch":     true,
+	"computer_use_session":    true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
@@ -227,7 +242,7 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime"},
+	"spirit":       {"plan_and_execute", "cancel_orchestration", "synthesize_results", "get_team_deliverable", "build_orchestration_graph", "memory_search", "group:subagent", "shell_exec", "datetime", "group:computeruse"},
 }
 
 func canonicalToolProfile(profile string) string {

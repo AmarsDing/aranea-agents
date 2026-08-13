@@ -1,0 +1,87 @@
+# Aranea 后端全量 Docker 编排（参照 TwinMonitor 全量 Docker 化设计 §1）
+# 形态：单 runtime 镜像（aranea-runtime:local）+ compose 编排 + 生成式 overlay 配置
+# 中间件：PG(pgvector)/Redis 自带容器，不映射宿主机端口（仅 araneanet 内容器互访）
+# 服务端口：8810(HTTP)/9910(gRPC)/8812(WS) 按 PORT-PLAN 部署版 1:1 映射宿主机
+# 使用：
+#   构建+启动：powershell -ExecutionPolicy Bypass -File docker/dev-up.ps1
+#   仅启动：  docker compose up -d
+#   停止：    docker compose down（加 -v 清空数据卷）
+
+name: aranea
+
+services:
+  postgres:
+    # 与本地 app\env\postgresql 主版本对齐（PG 18），保证 pg_dump/pg_restore 同大版本兼容
+    image: pgvector/pgvector:pg18
+    container_name: aranea-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: aranea
+    volumes:
+      # PG18+ 镜像数据路径改为 pg_ctlcluster 风格：挂载点须在 /var/lib/postgresql，
+      # 实际数据落入其下 data/docker 子目录（docker-library/postgres#1259）
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - araneanet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aranea"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: aranea-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - araneanet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  admin:
+    image: aranea-runtime:local
+    container_name: aranea-admin
+    environment:
+      # 与 app 便携部署版 start-all.ps1 保持一致：DB 中已签发的 JWT/PAT 均由该密钥签名，
+      # 更换会导致既有会话全部失效；生产部署必须改为随机 ≥32 字节密钥
+      KRATOS_AUTH_SECRET: "aranea-portable-dev-secret-32chars!!"
+      DEPLOY_ENV: "dev"
+      DAO_VECTOR_PGVECTOR: "1"
+      TZ: "Asia/Shanghai"
+      # TwinMonitor OpenAPI 兼容门面机器 token（/api/v1/*，自校验 Bearer）；
+      # 与 TwinMonitor aiops ai_aranea_instances.api_token（AES 加密落库）成对；
+      # 生产部署必须更换为随机值并同步轮换 TwinMonitor 侧凭据
+      ARANEA_TWINOPENAPI_TOKEN: "twin_fdfee1b8c9443c5338a781bd9a4e73074916333b631dad51"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8810:8810"   # HTTP（TwinMonitor voice / 前端 dev 代理 / 监控探测入口）
+      - "9910:9910"   # gRPC
+      - "8812:8812"   # WebSocket
+    extra_hosts:
+      # 容器→宿主机回环（host 侧 Ollama embedding、TwinMonitor webhook 回调等）
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./docker/config:/app/conf:ro
+      - ./docker/volumes/logs:/app/logs
+      - ./docker/volumes/data:/app/data
+    networks:
+      - araneanet
+    restart: unless-stopped
+
+networks:
+  araneanet:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

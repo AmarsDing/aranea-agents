@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // MaxConcurrentPerAgent 同 agent_key 活跃任务上限（设计 §10：M1 超限直接拒绝）。
@@ -109,7 +110,7 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 
 	sess, err := u.sessions.Spawn(ctx, agent)
 	if err != nil {
-		u.failTask(task.ID, StatusDispatched, fmt.Sprintf("spawn failed: %v", err))
+		u.failTaskFrom(StatusDispatched, task.ID, fmt.Sprintf("spawn failed: %v", err))
 		u.notifyTerminal(task.ID)
 		return nil, apierror.BadRequest(apierror.DomainAgentBridge,
 			"start agent %s failed: %v", agent.AgentKey, err)
@@ -125,7 +126,7 @@ func (u *AgentBridgeUsecase) Dispatch(ctx context.Context, in DispatchInput) (*D
 	u.lg.Info("agentbridge process spawned",
 		loggateway.Str("task_id", task.ID),
 		loggateway.Str("agent_key", agent.AgentKey))
-	go u.run(task, sess, project.Path, in.Handler)
+	safego.GoBackground("agentbridge.task.run", func() { u.run(task, sess, project.Path, in.Handler) })
 	return &DispatchResult{Task: task}, nil
 }
 
@@ -334,11 +335,7 @@ func (u *AgentBridgeUsecase) transition(id string, from, to TaskStatus, patch Ta
 	return u.tasks.UpdateStatus(context.Background(), id, from, to, patch)
 }
 
-// failTask 将任务从 from 推进 failed（best-effort，不覆盖错误给调用方）。
-func (u *AgentBridgeUsecase) failTask(id string, from TaskStatus, reason string) {
-	u.failTaskFrom(from, id, reason)
-}
-
+// failTaskFrom 将任务从 from 推进 failed（best-effort，不覆盖错误给调用方）。
 func (u *AgentBridgeUsecase) failTaskFrom(from TaskStatus, id, reason string) {
 	now := nowRFC3339()
 	if err := u.transition(id, from, StatusFailed, TaskPatch{Error: &reason, CompletedAt: &now}); err != nil {

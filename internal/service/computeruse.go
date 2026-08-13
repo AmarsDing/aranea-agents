@@ -30,7 +30,8 @@ import (
 const defaultCUASidecarPath = "bin/cua/aranea-cua-win.exe"
 
 // defaultOmniParserURL OmniParser V2 omniparserserver 默认地址（独立部署）。
-const defaultOmniParserURL = "http://127.0.0.1:8100"
+// 端口 8101：8100 被本机 twin aiops.exe 常驻占用。
+const defaultOmniParserURL = "http://127.0.0.1:8101"
 
 // ProvideComputerUseUsecase 构造进程级 Computer Use 用例编排器。
 // flow 可 nil（跳过流程日志）；audit 可 nil（跳过审计落库，M1.4 已接线 Ent repo）；

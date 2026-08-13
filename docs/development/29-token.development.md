@@ -495,3 +495,26 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | `web/src/components/common/AppStatusChip.vue` | **新增** 公共状态标签组件 |
 | `web/src/features/ui/appStatusMeta.ts` | **新增** 状态枚举 → tone/图标/i18n key 元数据 |
 | `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | `common.status.*` 双语词条 |
+
+---
+
+## 13. 缓存命中率护栏与上下文预算台账（阶段 0，2026-08-13 立项）
+
+> 设计：[29-token.design.md §九](./29-token.design.md#九缓存命中率护栏与上下文预算台账阶段-0-设计2026-08-13) ｜ 调研：`docs/reports/2026-08-13-research-llm-context-pipeline-optimization.md`
+> 性质：纯观测性改造，不改注入逻辑；阈值默认 0.5（已确认）。
+
+### 13.1 任务与状态
+
+| # | 任务 | 层 | 状态 | 证据 |
+|---|------|-----|------|------|
+| 0.1 | ContextBudget 收集器 + 8 处 BeforeModel hook 计量 + `chat.context_budget` 台账日志 | Agent/Service | 📋 | 设计 §9.6 |
+| 0.2 | 前缀字节级稳定回归测试 `prompt_prefix_stability_test.go`（离线） | Agent | 📋 | 设计 §9.5 |
+| 0.3 | `CacheHitRatioStats` 聚合查询（biz 窄接口 + data SQL，排除 prompt<1024 样本） | Biz/Data | 📋 | 设计 §9.3 |
+| 0.4 | `llm.cache_hit_ratio_low` 告警规则（1h 窗、样本≥20、阈值默认 0.5 可配） | Biz/Monitor | 📋 | 设计 §9.4 |
+
+### 13.2 验收
+
+1. 单测：收集器聚合、告警阈值边界（<1024 排除）、前缀稳定测试灵敏度（人为变动字节应失败）。
+2. `make test` 全绿（排除已知环境失败项）。
+3. 运行时验证：真实对话数轮后 `bin/logs/aranea-pipeline.log` 出现 `chat.context_budget` 分量日志，cache_hit_ratio 与 provider 后台一致。
+4. 阶段 1 Tool RAG 上线前后同会话 `tools_schema_tokens` 下降 ≥80%（作为该优化项验收基准）。

@@ -8,7 +8,7 @@ const i18n = createI18n({
   legacy: false,
   locale: 'zh-CN',
   missing: (_l, k) => k,
-  messages: { 'zh-CN': {} },
+  messages: { 'zh-CN': { knowledgePage: { graphLegendUntyped: '未分类' } } },
 });
 
 const globalOpts = {
@@ -49,5 +49,13 @@ describe('GraphLegend（M5）', () => {
     expect(w.emitted('lens-enter')).toEqual([['note']]);
     await row.trigger('pointerleave');
     expect(w.emitted('lens-leave')).toBeTruthy();
+  });
+
+  it('空 docType 组名回退为「未分类」（运行时缺陷：空串渲染为空白行）', () => {
+    const w = mount(GraphLegend, {
+      props: { groups: [{ docType: '', color: '#8a93a6', count: 3 }], hiddenGroups: [] },
+      ...globalOpts,
+    });
+    expect(w.find('[data-test="legend-row-"] .kg3d-legend__name').text()).toBe('未分类');
   });
 });

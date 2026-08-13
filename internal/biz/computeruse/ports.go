@@ -50,6 +50,9 @@ type VisionParser interface {
 type VisionGrounder interface {
 	// Pick 从候选元素中为 target 选出最匹配者，返回其 ref；无法判断返回 ErrGroundingFailed。
 	Pick(ctx context.Context, img Image, candidates []UIElement, target string) (ref string, err error)
+	// PickCoordinate VLM 坐标直判（vlm_direct 路径）：返回目标在 img 上的图像素点；
+	// 无法判断返回 ErrGroundingFailed。
+	PickCoordinate(ctx context.Context, img Image, target string) (Point, error)
 }
 
 // AuditStore 审计持久化（data 层 Ent 实现，M1.4）。

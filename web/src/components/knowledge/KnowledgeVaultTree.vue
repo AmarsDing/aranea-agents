@@ -93,6 +93,16 @@
                   </q-item>
                   <template v-if="scope.node.kind === 'vault'">
                     <q-separator />
+                    <!-- B2：仅词法库（无语义层）显示「启用语义检索」 -->
+                    <q-item
+                      v-if="lexicalVaultIds.includes(scope.node.vaultId)"
+                      clickable
+                      data-test="vault-enable-semantic"
+                      @click="emitAction('enable-semantic', scope.node)"
+                    >
+                      <q-item-section avatar><q-icon name="travel_explore" size="18px" /></q-item-section>
+                      <q-item-section>{{ t('knowledgePage.enableSemantic') }}</q-item-section>
+                    </q-item>
                     <q-item clickable @click="emitAction('refresh', scope.node)">
                       <q-item-section avatar><q-icon name="refresh" size="18px" /></q-item-section>
                       <q-item-section>{{ t('knowledgePage.refreshVault') }}</q-item-section>
@@ -142,16 +152,21 @@ import {
 } from '../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
 
-const props = defineProps<{
-  /** 一级节点=库（库融树），目录经 lazy-load。 */
-  nodes: VaultQTreeNode[];
-  selectedKey: string | null;
-  expandedKeys: string[];
-  loading: boolean;
-  error: string;
-  /** G3-F1：拖拽中的文件（非空时目录/库节点变为 drop 目标，合法者发光）。 */
-  dragFile: DragFileRef | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** 一级节点=库（库融树），目录经 lazy-load。 */
+    nodes: VaultQTreeNode[];
+    selectedKey: string | null;
+    expandedKeys: string[];
+    loading: boolean;
+    error: string;
+    /** G3-F1：拖拽中的文件（非空时目录/库节点变为 drop 目标，合法者发光）。 */
+    dragFile: DragFileRef | null;
+    /** B2：词法库（embedding_model 空）vault id 集——根菜单「启用语义检索」可见性（单一事实源在 collections）。 */
+    lexicalVaultIds?: string[];
+  }>(),
+  { lexicalVaultIds: () => [] },
+);
 
 const emit = defineEmits<{
   'select-node': [key: string];

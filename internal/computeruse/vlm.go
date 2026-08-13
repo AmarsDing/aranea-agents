@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,11 +14,20 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// vlmPickTimeout 单次 VLM 定位调用超时。
-const vlmPickTimeout = 30 * time.Second
+// vlmPickTimeout 单次 VLM 定位调用超时（容忍本地模型冷启动加载 + 大图 prefill）。
+const vlmPickTimeout = 60 * time.Second
+
+// vlmImageMaxSide 发送给 VLM 的截图最长边上限：降采样减少视觉 token 与 prefill
+// 耗时（本地 7B 模型上全尺寸截图 prefill 可达数十秒）。grounding 语义不受影响：
+// SoM bbox 文本同比例缩放、坐标直判走归一化千分位。
+const vlmImageMaxSide = 1568
 
 // vlmNumberPattern 提取 VLM 回复中的首个整数编号（容忍啰嗦前后缀）。
 var vlmNumberPattern = regexp.MustCompile(`\d+`)
+
+// vlmCoordPattern 提取 VLM 回复中的首个归一化坐标对（0-1000 千分位；容忍全角逗号/括号；
+// 允许负号以识别 "-1, -1" 无匹配哨兵）。
+var vlmCoordPattern = regexp.MustCompile(`(-?\d{1,4})\s*[,，]\s*(-?\d{1,4})`)
 
 // VisionLLMSettingsGetter 系统设置来源（与 knowledge.RefineLLMSettingsGetter 同签名，
 // service 层装配时由 *biz.SystemSettingUsecase 满足）。
@@ -61,6 +71,11 @@ func (g *VLMGrounder) Pick(ctx context.Context, img bizcu.Image, candidates []bi
 	if err != nil {
 		return "", err
 	}
+	// 降采样发送图；prompt 中 bbox 文本同比例缩放，保持与图像素一致。
+	scale := 1.0
+	if s, f, derr := bizcu.DownscalePNG(annotated, vlmImageMaxSide); derr == nil {
+		annotated, scale = s, f
+	}
 
 	callCtx, cancel := context.WithTimeout(ctx, vlmPickTimeout)
 	defer cancel()
@@ -68,8 +83,9 @@ func (g *VLMGrounder) Pick(ctx context.Context, img bizcu.Image, candidates []bi
 		Provider: provider,
 		Model:    model,
 		System: `你是一名桌面 UI 元素定位助手。截图上已用红色编号框标注候选元素。
-根据用户目标选择最匹配的一个元素。只输出该元素的编号数字，不要任何解释。`,
-		User:   buildVLMPrompt(candidates, target),
+根据用户目标选择最匹配的一个元素。只输出该元素的编号数字，不要任何解释。
+若所有候选都与目标无匹配，输出 0。`,
+		User:   buildVLMPrompt(candidates, target, scale),
 		Images: []biz.LLMImage{{Data: annotated, Format: "png"}},
 	})
 	if err != nil {
@@ -83,26 +99,88 @@ func (g *VLMGrounder) Pick(ctx context.Context, img bizcu.Image, candidates []bi
 	return candidates[n-1].Ref, nil
 }
 
+// PickCoordinate 实现 vlm_direct 路径：VLM 直出目标在截图上的归一化千分位坐标，换算为图像素点。
+func (g *VLMGrounder) PickCoordinate(ctx context.Context, img bizcu.Image, target string) (bizcu.Point, error) {
+	if len(img.PNG) == 0 || img.Width <= 0 || img.Height <= 0 {
+		return bizcu.Point{}, fmt.Errorf("%w: 坐标直判无有效截图", bizcu.ErrGroundingFailed)
+	}
+	provider, model, err := g.resolveVisionLLM(ctx)
+	if err != nil {
+		return bizcu.Point{}, err
+	}
+	// 降采样发送图；归一化坐标与分辨率无关，换算仍按原始宽高。
+	send := img.PNG
+	if s, _, derr := bizcu.DownscalePNG(img.PNG, vlmImageMaxSide); derr == nil {
+		send = s
+	}
+	callCtx, cancel := context.WithTimeout(ctx, vlmPickTimeout)
+	defer cancel()
+	resp, _, err := g.llm.Call(callCtx, biz.LLMCallRequest{
+		Provider: provider,
+		Model:    model,
+		System: `你是一名桌面 UI 元素定位助手。根据用户目标，在截图上找到最匹配的元素。
+输出该中心点的归一化坐标：x 与 y 均为 0-1000 的整数（千分位，左上角为 0,0）。
+只输出 "x, y"，不要任何解释。若截图中没有与目标匹配的元素，输出 "-1, -1"。`,
+		User:   fmt.Sprintf("目标：%s\n只输出归一化坐标 \"x, y\"；无匹配输出 \"-1, -1\"。", target),
+		Images: []biz.LLMImage{{Data: send, Format: "png"}},
+	})
+	if err != nil {
+		return bizcu.Point{}, fmt.Errorf("%w: VLM 调用失败: %v", bizcu.ErrGroundingFailed, err)
+	}
+	return parseNormalizedPoint(resp, img.Width, img.Height)
+}
+
+// parseNormalizedPoint 解析归一化千分位坐标并换算为图像素点；
+// 负值为无匹配哨兵（-1, -1），越界（>1000）报错。
+func parseNormalizedPoint(resp string, w, h int) (bizcu.Point, error) {
+	m := vlmCoordPattern.FindStringSubmatch(resp)
+	if m == nil {
+		return bizcu.Point{}, fmt.Errorf("%w: VLM 回复无坐标: %q", bizcu.ErrGroundingFailed, resp)
+	}
+	nx, _ := strconv.Atoi(m[1])
+	ny, _ := strconv.Atoi(m[2])
+	if nx < 0 || ny < 0 {
+		return bizcu.Point{}, fmt.Errorf("%w: VLM 判定无匹配元素", bizcu.ErrGroundingFailed)
+	}
+	if nx > 1000 || ny > 1000 {
+		return bizcu.Point{}, fmt.Errorf("%w: VLM 坐标越界: %q（应 0-1000）", bizcu.ErrGroundingFailed, m[0])
+	}
+	return bizcu.Point{X: nx * w / 1000, Y: ny * h / 1000}, nil
+}
+
 // buildVLMPrompt 构造候选列表 + 目标的用户提示（编号从 1 开始，与 SoM 标注一致）。
-func buildVLMPrompt(candidates []bizcu.UIElement, target string) string {
+// scale 为发送图降采样因子：bbox 文本同比例缩放，与 VLM 实际所见图像素一致。
+func buildVLMPrompt(candidates []bizcu.UIElement, target string, scale float64) string {
+	if scale <= 0 {
+		scale = 1
+	}
 	var sb strings.Builder
 	sb.WriteString("候选元素：\n")
 	for i, el := range candidates {
 		fmt.Fprintf(&sb, "%d. [%s] %q 位置(%d,%d %dx%d)\n",
-			i+1, el.Type, el.Name, el.BBox.X, el.BBox.Y, el.BBox.W, el.BBox.H)
+			i+1, el.Type, el.Name,
+			int(float64(el.BBox.X)*scale), int(float64(el.BBox.Y)*scale),
+			int(float64(el.BBox.W)*scale), int(float64(el.BBox.H)*scale))
 	}
-	fmt.Fprintf(&sb, "目标：%s\n只输出编号数字。", target)
+	fmt.Fprintf(&sb, "目标：%s\n只输出编号数字；无匹配输出 0。", target)
 	return sb.String()
 }
 
-// parseVLMNumber 从 VLM 回复提取首个整数并校验范围 [1, n]。
+// parseVLMNumber 从 VLM 回复提取首个整数并校验范围：0 = VLM 判定无匹配（明确失败），
+// [1, n] = 候选编号，其余越界报错。
 func parseVLMNumber(resp string, n int) (int, error) {
 	m := vlmNumberPattern.FindString(resp)
 	if m == "" {
 		return 0, fmt.Errorf("%w: VLM 回复无编号: %q", bizcu.ErrGroundingFailed, resp)
 	}
 	var v int
-	if _, err := fmt.Sscanf(m, "%d", &v); err != nil || v < 1 || v > n {
+	if _, err := fmt.Sscanf(m, "%d", &v); err != nil {
+		return 0, fmt.Errorf("%w: VLM 编号解析失败: %q", bizcu.ErrGroundingFailed, m)
+	}
+	if v == 0 {
+		return 0, fmt.Errorf("%w: VLM 判定无匹配元素", bizcu.ErrGroundingFailed)
+	}
+	if v < 1 || v > n {
 		return 0, fmt.Errorf("%w: VLM 编号越界: %q（候选 %d 个）", bizcu.ErrGroundingFailed, m, n)
 	}
 	return v, nil

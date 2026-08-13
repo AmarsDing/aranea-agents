@@ -288,3 +288,40 @@ macOS 宿主 `aranea-cua-ios`（桥接 WDA :8100 + simctl），以 MCP server �
 1. 评审本方案 → 通过后新建 `docs/development/75-computer-use{,.design,.development}.md` 三件套
 2. 按 M1.1-M1.4 实施（TDD），完成后 aranea-review 全栈审查
 3. 真机测试：本机 Windows 实测（日志 + UI 行为验证，遵守修改前必查 R3）
+
+---
+
+## 附录：2026-08-13 二次对标评估与方案实施结论
+
+> 在 M1.1-M1.5 落地后，按"对标市面上最强 CUA 能力"重新评估差距、罗列方案并实施。结论：选定**方案 A（混合架构增强）**并已实施完毕（Phase M2，全量 TDD + 真机 E2E 通过）。
+
+### A.1 差距评估（对标 Claude Computer Use / OpenAI Operator / UFO² / UI-TARS）
+
+| 能力维度 | 市场最佳实践 | 评估前本实现 | 差距 |
+|---------|-------------|-------------|------|
+| grounding 精度 | a11y+视觉混合（UFO² hybrid detection） | a11y 单路径，视觉兜底未接真实组件 | 视觉链路未通（无 OmniParser 实例、无 VLM 模型配置） |
+| 失败安全 | 无匹配明确报错（Anthropic 建议拒绝乱点） | VLM 强制选择——目标不存在时乱选元素乱点 | **安全缺陷**（高危） |
+| 执行可信度 | 动作后验证（settle+re-check）闭环 | 执行后无验证，no_effect 不可知 | 缺验证闭环 |
+| 多步效率 | 批量动作（Claude tool batching） | 单步调用，每步一次全链路 | 多步任务延迟高 |
+| 视觉模型 | 本地+云端双轨（成本/精度弹性） | 未配置任何视觉模型 | 无可用 VLM |
+| 上下文工程 | 截图降采样控制 token | 全尺寸截图直发，Ollama 默认 4096 ctx 直接超限 | 大图调用必败 |
+
+### A.2 方案罗列与评估
+
+| 方案 | 内容 | 评估 |
+|------|------|------|
+| **A 混合架构增强（选定）** | 保持 a11y-first；补齐视觉链路（OmniParser 本机 GPU + 本地/云端双 VLM）、fallback 链、执行后验证、批量动作、无匹配出口 | 与市场最佳架构同构（UFO² 混合检测 + Anthropic 验证闭环）；复用既有代码，增量可控；本地模型牺牲部分精度换零成本/隐私，云端模型随时可切 |
+| B 纯视觉端到端（UI-TARS 自部署） | 弃 a11y，全量视觉 grounding | OSWorld 实测精度仍低于混合方案；7B 级模型每次动作一次推理，延迟与 GPU 成本不可接受；推翻既有 a11y 投入 |
+| C 云端托管 CUA API（Claude Computer Use / Operator） | grounding+执行全托管 | 数据出域（桌面截图含敏感信息，不可接受）；按 token 计费持续成本；与本平台 sidecar 安全模型（禁区/确认门/预算）无法集成 |
+
+### A.3 实施结论（方案 A，Phase M2 全部完成）
+
+- **视觉链路**：OmniParser V2 本机 GPU 部署（`:8101`，HF 离线权重）；VLM 双轨——本地 `ollama/qwen2.5vl-cua`（num_ctx 8192 派生模型）+ 云端 `alibaba-cn/qwen3-vl-plus`（catalog 已建行，待 API key）
+- **grounding fallback 链**：a11y → SoM（OmniParser+IoU 融合+VLM 选编号）→ VLM 坐标直判（zoom 精化），逐级降级各有流程日志
+- **失败安全**：VLM 无匹配出口（SoM 输出 0 / 直判输出 -1,-1 → ErrGroundingFailed），消除"目标不存在时乱点屏幕"缺陷
+- **执行后验证**：settle → re-snapshot → 元素树 hash + 前台窗口检查，verify 透出供 LLM 决策
+- **批量动作**：`computer_use.act` 支持 actions[] 按序 fail-fast，错误注明已完成步数防整体重试
+- **运行时加固**：截图降采样 ≤1568px（视觉 token 减半、prefill 提速）；VLM 超时 60s 容忍本地冷启动
+- **E2E 证据**：记事本场景 a11y/vision 双路径真实命中，批量 2 步全 OK，无匹配明确报错（详见 75-computer-use.development.md Phase M2）
+
+**遗留**：云端 qwen3-vl-plus 启用待用户提供 dashscope API key；UI-TARS 专用 grounding 模型为后续演化方向（方案 B 的可用部分）。

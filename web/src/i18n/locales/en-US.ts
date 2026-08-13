@@ -2949,6 +2949,11 @@ export default {
     reembedConfirmTitle: 'Re-embed documents',
     reembedConfirmBody: 'Rebuilds vectors from stored text for {n} document(s).',
     reembedAccepted: '{n} document(s) queued',
+    enableSemantic: 'Enable semantic search',
+    enableSemanticTitle: 'Enable semantic search',
+    enableSemanticBody:
+      'Binds the current embedder ({model}, {dim} dims) and rebuilds vectors for all documents; lexical search upgrades to hybrid automatically.',
+    enableSemanticAccepted: 'Enabled, {n} document(s) queued for re-embedding',
     vaultSwitcherEmpty: 'Select a vault',
     vaultDeleteAria: 'Delete vault',
     vaultRoot: 'Root',

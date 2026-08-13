@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"sync"
 	"time"
@@ -51,7 +52,7 @@ type ElementMatcher interface {
 type Deps struct {
 	Gateway  DeviceGateway      // sidecar 网关（必需）
 	Match    ElementMatcher     // a11y 匹配器（必需）
-	Vision   VisionParser       // 可 nil：nil 时跳过视觉兜底
+	Vision   VisionParser       // 可 nil：nil 时跳过 SoM 视觉兜底
 	Grounder VisionGrounder     // 可 nil：nil 时跳过视觉兜底
 	Audit    AuditStore         // 可 nil：跳过落库（M1.4 接线）
 	Events   StepEventPublisher // 可 nil：跳过实时事件
@@ -60,6 +61,7 @@ type Deps struct {
 	Lg       loggateway.Logger  // 可 nil：noop
 	Now      func() time.Time   // 可 nil：time.Now（测试注入）
 	NewID    func() string      // 可 nil：内部自增（测试注入）
+	Settle   func(time.Duration) // 可 nil：time.Sleep（动作后验证等待，测试注入 no-op）
 }
 
 // ComputerUseUsecase 桌面 GUI 自动化用例编排。
@@ -80,6 +82,9 @@ func NewComputerUseUsecase(d Deps) *ComputerUseUsecase {
 	}
 	if d.Now == nil {
 		d.Now = time.Now
+	}
+	if d.Settle == nil {
+		d.Settle = time.Sleep
 	}
 	u := &ComputerUseUsecase{
 		d:              d,
@@ -255,15 +260,54 @@ func (u *ComputerUseUsecase) Screenshot(ctx context.Context, region *Rect, zoom 
 }
 
 // Act 语义动作：grounding 编排（a11y 优先，视觉兜底）+ 安全策略 + 预算 + 审计。
+// req.Actions 非空时走批量路径（按序 fail-fast，逐步计费/审计）。
 func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult, error) {
 	if u.d.Gateway == nil || u.d.Match == nil {
 		return ActResult{}, fmt.Errorf("computeruse: gateway/matcher 未配置")
 	}
-	started := u.d.Now()
+	if len(req.Actions) > 0 {
+		return u.actBatch(ctx, req)
+	}
 	s, err := u.resolveSession(req)
 	if err != nil {
 		return ActResult{}, err
 	}
+	return u.actOne(ctx, s, req)
+}
+
+// actBatch 批量动作：会话解析一次，子动作按序执行；任一步失败即停（fail-fast），
+// 已完成步骤保留在 Batch。每步独立计费/状态机/审计（与单步语义一致）。
+func (u *ComputerUseUsecase) actBatch(ctx context.Context, req ActRequest) (ActResult, error) {
+	s, err := u.resolveSession(req)
+	if err != nil {
+		return ActResult{}, err
+	}
+	batch := make([]ActResult, 0, len(req.Actions))
+	for i, sub := range req.Actions {
+		res, aerr := u.actOne(ctx, s, ActRequest{
+			AgentKey:    s.AgentKey,
+			SessionID:   s.ID,
+			Target:      sub.Target,
+			Action:      sub.Action,
+			Args:        sub.Args,
+			DryRun:      req.DryRun,
+			ConfirmedBy: req.ConfirmedBy,
+		})
+		if aerr != nil {
+			// fail-fast：失败步不进 Batch，仅保留失败前已完成的步骤（Step 仍透出失败步供排障）。
+			// 错误携带步位/已完成数：已执行的步骤真实生效，整体重试会重复操作。
+			return ActResult{Step: res.Step, Batch: batch}, fmt.Errorf(
+				"computeruse: 批量动作第 %d/%d 步失败（前 %d 步已执行，请勿整体重试）: %w",
+				i+1, len(req.Actions), len(batch), aerr)
+		}
+		batch = append(batch, res)
+	}
+	return ActResult{Step: batch[len(batch)-1].Step, Batch: batch}, nil
+}
+
+// actOne 单步执行：预算计费 → 状态机 → 禁区检查 → grounding 执行 → 执行后验证 → 审计。
+func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequest) (ActResult, error) {
+	started := u.d.Now()
 
 	// 预算守卫（原子占用一步）。
 	stepsUsed, err := u.chargeBudget(s)
@@ -319,7 +363,19 @@ func (u *ComputerUseUsecase) Act(ctx context.Context, req ActRequest) (ActResult
 		return ActResult{}, err
 	}
 
-	result, gerr := u.groundAndExecute(actCtx, s, req, &step)
+	preFG := u.foregroundTitle(actCtx)
+	result, preSnap, gerr := u.groundAndExecute(actCtx, s, req, &step)
+	if gerr == nil && !req.DryRun {
+		// S4 执行后验证：settle → post-snapshot 对比，hint 同步进审计 params。
+		result.Verify = u.verifyAfterAction(actCtx, req, preSnap, preFG)
+		if result.Verify != nil && result.Verify.Hint != "" {
+			if step.Params == nil {
+				step.Params = map[string]any{}
+			}
+			step.Params["verify_hint"] = result.Verify.Hint
+		}
+		result.Step = step // verify 可能补 params，重新同步副本
+	}
 	u.finishStep(ctx, s, req, step, started)
 	if gerr != nil {
 		u.transit(s, EvFail)
@@ -459,47 +515,73 @@ func (u *ComputerUseUsecase) checkBlockedProcess(ctx context.Context) error {
 	return nil
 }
 
-// groundAndExecute grounding 决策流（设计 §3.3）。
-func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, req ActRequest, step *Step) (ActResult, error) {
+// groundAndExecute grounding 决策流（设计 §3.3 + S3 fallback 链）。
+// 返回动作前快照（可 nil：直行/坐标动作无），供执行后验证对比基线。
+func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, req ActRequest, step *Step) (ActResult, *Snapshot, error) {
 	// 坐标类直行动作（key/坐标 click）无需 grounding。
 	if run, el, direct := u.directAction(ctx, req, step); direct {
-		return u.finishAction(req, step, el, run)
+		res, err := u.finishAction(req, step, el, run)
+		return res, nil, err
 	}
 
 	// 1. 感知
 	snap, err := u.d.Gateway.Snapshot(ctx, SnapshotOpts{MaxElements: 500})
 	if err != nil {
 		*step = withResult(*step, StepFailed, err)
-		return ActResult{Step: *step}, err
+		return ActResult{Step: *step}, nil, err
 	}
 
 	// 2. a11y 快路径
 	hit := u.d.Match.Match(snap.Elements, req.Target)
 	if hit != nil {
 		step.Path = PathA11y
-		return u.executeOnElement(ctx, req, step, *hit, snap.Generation)
+		res, err := u.executeOnElement(ctx, req, step, *hit, snap.Generation)
+		return res, &snap, err
 	}
 
-	// 3. 视觉兜底（M1.3 接线；组件缺失时记录降级并失败）
-	if u.d.Vision == nil || u.d.Grounder == nil || !u.d.Vision.Available(ctx) {
+	// 3. SoM 视觉兜底（OmniParser 可用时）：截图 → 解析 → IoU 融合 → VLM 选编号
+	if u.d.Vision != nil && u.d.Grounder != nil && u.d.Vision.Available(ctx) {
 		if u.d.FlowLog != nil {
-			u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中且视觉组件不可用",
+			u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 SoM 视觉兜底",
 				biz.LogPair{Key: "target", Value: req.Target})
 		}
-		*step = withResult(*step, StepFailed, ErrGroundingFailed)
-		return ActResult{Step: *step}, fmt.Errorf("%w: %q（a11y 未命中，视觉兜底不可用）", ErrGroundingFailed, req.Target)
+		el, verr := u.visionGround(ctx, snap, req.Target)
+		if verr == nil {
+			step.Path = PathVision
+			res, err := u.executeOnElement(ctx, req, step, el, snap.Generation)
+			return res, &snap, err
+		}
+		// SoM 失败不终局：继续降级 VLM 坐标直判（K3 降级日志）。
+		u.d.Lg.Warn("SoM 视觉兜底失败，降级 VLM 坐标直判",
+			loggateway.StepID(StepGroundFall),
+			loggateway.Str("session_id", s.ID),
+			loggateway.Err(verr))
 	}
+
+	// 4. VLM 坐标直判（vlm_direct：免 OmniParser 的最低精度路径，含 zoom 精化）
+	if u.d.Grounder != nil {
+		if u.d.FlowLog != nil {
+			u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中，降级 VLM 坐标直判",
+				biz.LogPair{Key: "target", Value: req.Target})
+		}
+		pt, derr := u.directGround(ctx, req.Target)
+		if derr == nil {
+			step.Path = PathVLMDirect
+			res, err := u.executeAtPoint(ctx, req, step, pt)
+			return res, &snap, err
+		}
+		werr := fmt.Errorf("%w: %q（%v）", ErrGroundingFailed, req.Target, derr)
+		*step = withResult(*step, StepFailed, werr)
+		return ActResult{Step: *step}, &snap, werr
+	}
+
+	// 5. 全部视觉组件缺失
 	if u.d.FlowLog != nil {
-		u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中，降级视觉兜底",
+		u.d.FlowLog.LogFlowError(ctx, s.ID, StepGroundFall, "a11y 未命中且视觉组件不可用",
 			biz.LogPair{Key: "target", Value: req.Target})
 	}
-	el, verr := u.visionGround(ctx, snap, req.Target)
-	if verr != nil {
-		*step = withResult(*step, StepFailed, verr)
-		return ActResult{Step: *step}, verr
-	}
-	step.Path = PathVision
-	return u.executeOnElement(ctx, req, step, el, snap.Generation)
+	*step = withResult(*step, StepFailed, ErrGroundingFailed)
+	return ActResult{Step: *step}, &snap, fmt.Errorf("%w: %q（a11y 未命中，视觉兜底不可用）", ErrGroundingFailed, req.Target)
 }
 
 // directAction 无需 grounding 的动作：key 组合键、纯坐标 click。
@@ -588,6 +670,142 @@ func (u *ComputerUseUsecase) visionGround(ctx context.Context, snap Snapshot, ta
 		}
 	}
 	return UIElement{}, fmt.Errorf("%w: VLM 返回未知 ref %q", ErrGroundingFailed, ref)
+}
+
+// ---------------------------------------------------------------------------
+// S3：vlm_direct 坐标直判（免 OmniParser 的最低精度路径，含 zoom 精化）
+// ---------------------------------------------------------------------------
+
+const (
+	// zoom 精化：以粗判点为中心截取 480x360 物理像素区域 @2x 放大重判。
+	zoomRegionW = 480
+	zoomRegionH = 360
+	zoomFactor  = 2.0
+)
+
+// directGround VLM 坐标直判：全屏截图粗判 → 以粗判点为中心 zoom 精判 → 映射回物理坐标。
+// 精化失败（截图/VLM 解析）不阻断，降级返回粗判点。
+func (u *ComputerUseUsecase) directGround(ctx context.Context, target string) (Point, error) {
+	full, err := u.d.Gateway.Screenshot(ctx, nil, 1.0)
+	if err != nil {
+		return Point{}, err
+	}
+	coarse, err := u.d.Grounder.PickCoordinate(ctx, full, target)
+	if err != nil {
+		return Point{}, err
+	}
+	// 粗判点是图像素坐标，换算为物理坐标（截图可能带 DPI 缩放）。
+	scale := full.ScaleFactor
+	if scale <= 0 {
+		scale = 1
+	}
+	phys := Point{X: int(float64(coarse.X) / scale), Y: int(float64(coarse.Y) / scale)}
+
+	region := Rect{X: phys.X - zoomRegionW/2, Y: phys.Y - zoomRegionH/2, W: zoomRegionW, H: zoomRegionH}
+	if region.X < 0 {
+		region.X = 0
+	}
+	if region.Y < 0 {
+		region.Y = 0
+	}
+	zimg, err := u.d.Gateway.Screenshot(ctx, &region, zoomFactor)
+	if err != nil || zimg.Width <= 0 || zimg.Height <= 0 {
+		return phys, nil
+	}
+	fine, err := u.d.Grounder.PickCoordinate(ctx, zimg, target)
+	if err != nil {
+		return phys, nil
+	}
+	// 精判点（zoom 图像素）映射回物理坐标。
+	return Point{
+		X: region.X + fine.X*region.W/zimg.Width,
+		Y: region.Y + fine.Y*region.H/zimg.Height,
+	}, nil
+}
+
+// executeAtPoint 在物理坐标点上执行动作（vlm_direct 无元素 ref，invoke 降级为 click）。
+func (u *ComputerUseUsecase) executeAtPoint(ctx context.Context, req ActRequest, step *Step, pt Point) (ActResult, error) {
+	return u.finishAction(req, step, nil, func() error {
+		switch req.Action {
+		case ActionClick, ActionInvoke, "":
+			return u.d.Gateway.Click(ctx, pt, strArg(req.Args, "button", "left"), intArg(req.Args, "click_count", 1))
+		case ActionTypeText:
+			text, _ := req.Args["text"].(string)
+			if err := u.d.Gateway.Click(ctx, pt, "left", 1); err != nil {
+				return err
+			}
+			return u.d.Gateway.TypeText(ctx, text)
+		default:
+			return fmt.Errorf("computeruse: 动作 %s 不支持坐标级执行", req.Action)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// S4：执行后验证闭环（settle → post-snapshot 树哈希对比 + 前台窗口）
+// ---------------------------------------------------------------------------
+
+// verifySettleDelay 动作后等待 UI 稳定的时间（测试注入 no-op 跳过）。
+const verifySettleDelay = 400 * time.Millisecond
+
+// verifyAfterAction 执行后验证：settle 等待 UI 稳定 → 重新快照 → 对比动作前基线。
+// preSnap 为 nil（直行/坐标动作无 grounding 基线）时仅回报前台窗口。
+// 验证失败（快照不可达）降级：仅记录告警，不影响已成功动作的结果。
+func (u *ComputerUseUsecase) verifyAfterAction(ctx context.Context, req ActRequest, preSnap *Snapshot, preFG string) *ActionVerify {
+	u.d.Settle(verifySettleDelay)
+	v := &ActionVerify{ForegroundBefore: preFG}
+	v.ForegroundAfter = u.foregroundTitle(ctx)
+	if preSnap == nil {
+		return v // HasBaseline=false：直行/坐标动作
+	}
+	v.HasBaseline = true
+	post, err := u.d.Gateway.Snapshot(ctx, SnapshotOpts{MaxElements: 500})
+	if err != nil {
+		u.d.Lg.Warn("computer-use 执行后验证快照失败，跳过对比",
+			loggateway.StepID(StepAct), loggateway.Err(err))
+		return v
+	}
+	v.Changed = elementTreeHash(preSnap.Elements) != elementTreeHash(post.Elements) ||
+		v.ForegroundAfter != preFG
+	if !v.Changed && needsEffectHint(req.Action) {
+		v.Hint = "no_observable_effect"
+	}
+	return v
+}
+
+// needsEffectHint click/invoke/type 等元素级动作预期产生可见 UI 变化。
+func needsEffectHint(a ActionType) bool {
+	switch a {
+	case ActionClick, ActionInvoke, ActionTypeText, "":
+		return true
+	}
+	return false
+}
+
+// foregroundTitle 当前前台窗口标题（枚举失败/无前台返回 ""）。
+func (u *ComputerUseUsecase) foregroundTitle(ctx context.Context) string {
+	wins, err := u.d.Gateway.ListWindows(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, w := range wins {
+		if w.IsForeground {
+			return w.Title
+		}
+	}
+	return ""
+}
+
+// elementTreeHash 元素树内容哈希：排除 ref/generation（跨快照不稳定），
+// 保留语义内容（名称/类型/位置/可用态），用于动作前后对比。
+func elementTreeHash(elements []UIElement) uint64 {
+	h := fnv.New64a()
+	for _, el := range elements {
+		fmt.Fprintf(h, "%s|%s|%d,%d,%d,%d|%t|%t\n",
+			el.Name, el.Type, el.BBox.X, el.BBox.Y, el.BBox.W, el.BBox.H,
+			el.Enabled, el.Interactivity)
+	}
+	return h.Sum64()
 }
 
 // finishStep 审计落库 + 实时事件（尽力而为，不阻断主流程）。

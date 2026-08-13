@@ -100,6 +100,7 @@
 | `docs/` | 所有文档 | 规范见下文「docs 目录规范」 |
 | `test/` | 测试中间文件 | 按测试名称自建子目录 `test/<test-name>/`；禁止在仓库根或 `_temp/`、`tmp/` 等临时目录堆放排查脚本/中间产物 |
 | `blender/` | Blender 3D 资产与预览 Demo | 机房/机柜/服务器/交换机/UPS/PDU/显示器等 3D 模型（.blend/.glb/.fbx）与 Three.js 预览页；`start.bat` 一键启动本地预览服务（http://localhost:8930/） |
+| `docker/` | Docker 部署资产（2026-08-13 新增） | 全量 Docker 化（参照 TwinMonitor 部署方案）：`Dockerfile.runtime`（alpine 薄镜像）、`gen-config.ps1`（overlay 配置生成，`config/` 为生成物入 git）、`build-runtime.ps1`（本地交叉编译+镜像）、`migrate-data.ps1`（本地 PG→容器迁移）、`dev-up.ps1`（一键构建部署冒烟）、`register-monitor.ps1`（登记进 TwinMonitor 监控：设备 ICMP + 线路 HTTP/TCP 探测，幂等）；`volumes/` 为运行时产物（logs/data/migrate），不入库 |
 
 - 一次性调试/排查脚本、日志、抓包等中间产物：放 `test/<test-name>/`，用完可整目录删除
 - 安装包、zip 等发布产物：放 `build/release/`

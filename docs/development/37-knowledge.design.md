@@ -1928,6 +1928,69 @@ web/src/components/knowledge/graph3d/      ← Vue/three.js 命令式壳
 - 纯函数：`graphUi.ts` 中 `graphContainmentForce`（d3 协议专用）随旧画布删除；配色/排序/过滤/一跳邻居等纯函数保留复用。
 - G4 已知问题条款（containment 防飞散）由自研引擎的向心力 + maxStep 钳制原生覆盖。
 
+#### V12.9 知识库全面升级（M1~M5 + B1/B2，2026-08-12）
+
+> 方案档案：`docs/superpowers/plans/2026-08-12-knowledge-galaxy-liquid-glass.md`（已实施完成；spec：`docs/reports/2026-08-12-plan-knowledge-galaxy-liquid-glass.md`）。
+> 性质：G5 图谱深空版延续——前端纯增量增强既有引擎（GPU 位置纹理管线 / Worker 物理 / lazy-render 均不动），零新 npm 依赖；B1/B2 复用既有摄取管线。**数据表无变更**（无 Ent Schema 变更、无 DDL 迁移）；Proto 新增 2 个 RPC（契约见 V12.9-8）。
+> 需求：[37-knowledge.md §子模块：知识库全面升级（V4 需求）](./37-knowledge.md#子模块知识库全面升级v4-需求2026-08-12)（US-26~US-31、FR-V4-1~7、验收 45~51）。
+
+##### V12.9-1 M1 Liquid Glass 真折射
+
+- `components/knowledge/effects/LiquidGlassDefs.vue`（新增）：SVG filter 单例集中管理——`kb-liquid-refract`（装饰光纹，原 GlassPanel 内联迁移至此，消除多实例重复 id）+ `kb-liquid-bg`（背景真折射：feTurbulence + feDisplacementMap 低频细腻位移）；SVG 本体 0 尺寸、`aria-hidden`。`KnowledgeWorkbench.vue` 根挂载一次，全部 GlassPanel 共享。
+- `GlassPanel.vue` 新增 `refract` prop → `kb-glass-panel--refract` 修饰类；`css/deep-space.sass` 真折射类以 `backdrop-filter: url(#kb-liquid-bg)` 实现，`@supports` 探测失败回退既有 `blur+saturate`（零回归）。仅显式 `refract` 的浮层启用（三个既有浮层：全库搜索/命令面板/设置）。
+- 测试：`LiquidGlassDefs.spec.ts`（双 filter 单例 / feDisplacementMap 存在 / 不可见不占布局）、`GlassPanel.spec.ts`（refract 修饰类 / 防重复 id 回归 / 装饰层保留）。
+
+##### V12.9-2 M2 星系盘物理 + 布局切换
+
+- `graph3d/forces.ts` 新增三力（并入 ForceEngine 同一 tick，三力全 0 时零开销不启用）：`coreGravity`（核心引力 `k/(1+r·0.02)`）、`discFlatten`（Y 轴压向 XZ 盘面）、`spiralSwirl`（绕核涡旋，带包络衰减）；`FORCE_DEFAULTS` 三力为 0（力导向行为不变），`GALAXY_FORCE_PARAMS`（0.08 / 0.12 / 0.02）为星系盘预设。
+- `graph3d/engine.ts` 新增 `setLayout('force' | 'galaxy')`：`setParams(预设)` + reheat（alpha 再加热）——布局切换为物理 morph（节点连续流动重组），**非坐标插值**；Worker 与主线程兜底两路径同一引擎、行为一致。
+- `render/EdgeLayer.ts`：星系盘下边为曲线（segments + curvature uniform）；力导向保持 Obsidian 细直线不回归。
+- `KnowledgeGraph3DCanvas.vue` 新增 `layout` prop；`KnowledgeGraph3D.vue` 顶栏 HUD 布局切换按钮（力导向/星系盘）+ `localStorage('kg3d-layout')` 持久化。
+- 测试：`forces.spec.ts`（三力方向 / 零值不启用）、`engine.spec.ts`（setLayout 预设 + reheat）、EdgeLayer 相关 spec。
+
+##### V12.9-3 M3 电影感镜头（cameraDirector，AS-FSM-01 合规）
+
+- `graph3d/cameraDirector.ts`（新增）：显式状态机——`CameraState = idle | flying | orbiting | cruising | genesis`，`canTransition(from, event)` 合法转换表 + 转换校验（非法转换拒绝返回 false）；genesis 开场运镜驱动 NodeLayer 节点依次显现（reveal）；user-interrupt 事件随时打断运镜回 idle（用户接管镜头）。
+- Canvas 集成：装载后进入 genesis，完成后回 idle；拖拽/缩放等交互接线打断。
+- 测试：`cameraDirector.spec.ts`（状态枚举 / 转换表 / 非法拒绝 / 打断）、NodeLayer reveal 测试。
+
+##### V12.9-4 M4 聚焦模式 + 节点卡
+
+- `graph3d/interaction.ts` 扩展：`nHop(edges, edgeCount, root, n)` BFS（返回节点集 + 两端点均在集内的边集；n=0 仅根节点）+ 聚焦锁定状态。
+- `components/knowledge/graph3d/FocusCard.vue`（新增）：真折射玻璃节点信息卡（GlassPanel refract）；「在浏览器打开」（沿用跨 tab 定位链路）+「重新向量化」按钮（= B1 入口②，见 V12.9-6）；卡片拖动由 pointer 事件实现。
+- Canvas：单击节点 = 锁定聚焦（nHop 邻域保持正常亮度、其余压暗 dim）；点击空白 = 解除（`clearFocus` 经 defineExpose 暴露）。
+- 测试：`interaction.spec.ts`（nHop 矩阵 / 边集语义）、`FocusCard.spec.ts`。
+
+##### V12.9-5 M5 过滤图例 + 透镜
+
+- `graph3d/model.ts` 新增 `filterGraphByGroups(model, hiddenGroups)`：按 doc_type 组过滤，边级联排除（端点被滤则边排除）；**空集合零开销——引用相等直接返回原模型**（过滤管线性能守卫）。
+- `components/knowledge/graph3d/GraphLegend.vue`（新增）：颜色点 + 组名 + 计数；点击 `toggle-group` 切换隐藏（隐藏组行置灰斜体）；悬停发 `lens-enter`/`lens-leave` 透镜事件；空 docType 回退显示 i18n `graphLegendUntyped`（「未分类」）。
+- `KnowledgeGraph3DCanvas.vue` 新增 `setLens(docType | null)`（defineExpose）：组内节点 emph 1.6 / 组外 0.15 压暗；优先级：聚焦锁定（M4）> 透镜 > hover。
+- `KnowledgeGraph3D.vue` 挂载 GraphLegend——**v-if 键定未过滤 legendNodes**（全组隐藏时图例仍保留，提供恢复路径；空态覆盖层同改）；`KnowledgePage.vue` 持有 `graphHiddenGroups` + `localStorage('kg3d-hidden-groups')` 持久化 + `graphRenderNodes/Edges` 过滤管线。
+- 测试：`model.spec.ts` 追加 describe（组过滤 / 边级联 / 空集合引用相等）、`GraphLegend.spec.ts`（5 用例：渲染 / 未分类回退 / toggle / 置灰斜体 / 透镜事件）、`KnowledgeGraph3D.spec.ts`（新建 2 用例：全组隐藏图例不消失陷阱回归）。
+
+##### V12.9-6 B1 文档重嵌入（ReembedDocuments）
+
+- **分层**：Proto 新增 RPC（契约见 V12.9-8）；data 层 `ListDocumentsPendingReembed`（`internal/data/knowledge.go`，chunks embedding IS NULL 或无 chunks 的待重嵌入文档）；biz `DocumentRepo`/Usecase 扩展；service `internal/service/knowledge_reembed.go`（串行重嵌入管线）。
+- **管线**：从已存 `content_text` 重新分块 + 嵌入（复用既有摄取管线 `BuildIndexedChunks` + `DeleteChunksByDocument`），单 goroutine 串行执行，WS 进度复用摄取通道；跳过并计数：content_text 空 / 正在 indexing / Vault 文档（走 vault_sync 自愈）。
+- **流程日志**：step 登记 `knowledge.reembed.start` / `knowledge.reembed.done`（`internal/event/flow_log.go` stepTitleRegistry，同步 `docs/development/52-flow-logger.design.md` §5.1）。
+- **前端**：`features/knowledge/api.ts` / `stores/knowledge` `reembedDocuments`；入口① `WorkbenchSidebar.vue` 文件行右键菜单「重新向量化」（词法库置灰 + `reembedNoSemantic` 提示）；入口② FocusCard 按钮；确认对话框（`reembedConfirmTitle`/`reembedConfirmBody`）+ 受理通知 `reembedAccepted`（「已受理 {n} 篇重嵌入」）。
+
+##### V12.9-7 B2 集合语义层启用（EnableCollectionSemantic）
+
+- **语义**：单向启用（空 → 启用，不可逆不覆盖）——守卫 UPDATE 绑定当前全局 embedder 模型/dim；已启用返回 CodeConflict；embedder 未配置返回 CodeBadRequest；绑定成功后全部内容文档入 B1 重嵌入队列（复用 V12.9-6 管线）。
+- **流程日志**：step 登记 `knowledge.collection.enable_semantic`（`internal/event/flow_log.go`）。
+- **前端**：`KnowledgeVaultTree.vue` vault 根菜单「启用语义检索」（`data-test="vault-enable-semantic"`，仅词法库 `v-if` 渲染）；`useKnowledgePage.ts onTreeNodeAction` 新增 `enable-semantic` 分支 + 确认对话框（展示将绑定的模型名/dim：`enableSemanticTitle`/`enableSemanticBody`）+ 受理通知 `enableSemanticAccepted` + `loadCollections` 刷新；`KnowledgePage.vue` 向树传 `lexical-vault-ids`（collections 中 `embedding_model === ''` 的 id 集）。
+
+##### V12.9-8 API 端点契约（新增 RPC，与 `api/kratos/knowledge/v1/knowledge.proto` 一致）
+
+| RPC | HTTP | 说明 |
+|-----|------|------|
+| `ReembedDocuments` | `POST /v1/knowledge/collections/{collection_id}/documents:reembed` | body：`{doc_ids[], chunk_size, chunk_overlap}`（`doc_ids` 空 = 全集合待重嵌入文档）；返回 `{accepted_count, skipped_count}`（skipped = content_text 空 / indexing 中 / vault 文档走 sync 自愈） |
+| `EnableCollectionSemantic` | `POST /v1/knowledge/collections/{collection_id}:enable-semantic` | 单向启用语义层：绑定当前全局 embedder（已启用 CodeConflict；embedder 未配置 CodeBadRequest）；返回 `{enqueued_docs, embedding_model, dim}`，全部内容文档入 B1 重嵌入队列 |
+
+**数据表变更**：无（无 Ent Schema 变更、无 DDL 迁移）。
+
 ---
 
 ## 子模块：双模块级知识内核（SP1，2026-08-08 评审通过）

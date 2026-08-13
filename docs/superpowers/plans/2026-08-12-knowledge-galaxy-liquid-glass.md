@@ -1542,7 +1542,7 @@ git commit -m "feat(knowledge): M4 聚焦锁定 dim + FocusCard 画布集成"
 
 **设计**：`hiddenGroups: ReadonlySet<string>`（doc_type 集合）→ 过滤 nodes（doc_type 命中即排除）→ 边级联（端点被排除则边排除）→ 输出过滤后的 `GraphNodeInput[]/GraphEdgeInput[]`（在 `buildGraphModel` 之前过滤，引擎零感知）。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // model.spec.ts 追加
@@ -1577,12 +1577,12 @@ git commit -m "feat(knowledge): M4 聚焦锁定 dim + FocusCard 画布集成"
   });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/model.spec.ts`
 Expected: FAIL（`filterGraphByGroups is not exported`）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```typescript
 /** M5：按 doc_type 组过滤（隐藏组节点排除 + 边级联排除）。空集合零开销原样返回。 */
@@ -1599,7 +1599,7 @@ export function filterGraphByGroups(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/features/knowledge/graph3d/__tests__/model.spec.ts`
 Expected: PASS
@@ -1621,7 +1621,7 @@ git commit -m "feat(knowledge): M5 filterGraphByGroups 过滤管线（边级联�
 
 **设计**：图例列出全部 doc_type 组（颜色点 + 组名 + 节点计数）；**点击** = 切换隐藏（emit toggle-group）；**悬停** = 透镜（emit lens-enter/lens-leave，Canvas 临时 dim 其他组——复用 setHighlight：组内节点集 1.6 / 组外 0.15）。隐藏组行置灰 + 斜体。复用 M1 GlassPanel refract。
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 // GraphLegend.spec.ts
@@ -1664,12 +1664,12 @@ describe('GraphLegend（M5）', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/__tests__/GraphLegend.spec.ts`
 Expected: FAIL（模块不存在）
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```vue
 <!-- web/src/components/knowledge/graph3d/GraphLegend.vue -->
@@ -1767,7 +1767,7 @@ const { t } = useI18n();
 
 i18n：`graphLegendTitle: '图例'` / `Legend`；`graphLegendEmpty: '暂无分组'` / `No groups`。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/graph3d/__tests__/GraphLegend.spec.ts`
 Expected: PASS（4 tests）
@@ -1794,7 +1794,7 @@ git commit -m "feat(knowledge): M5 GraphLegend 过滤图例（点击隐藏 + 悬
 - 透镜：`lens-enter(docType)` → Canvas 收到组名 → 该组节点索引集 setHighlight（1.6/0.15 dim）；`lens-leave` → 恢复（回到聚焦/hover 驱动）
 - **互斥纪律**：透镜激活时清除 hover（`interaction.setHover(null)`），透镜优先于 hover 但低于聚焦锁定（聚焦锁定时透镜不生效）
 
-- [ ] **Step 1: Canvas lens 接口**
+- [x] **Step 1: Canvas lens 接口**
 
 ```typescript
 // Canvas expose 或 emits 方案：KnowledgeGraph3D 持有 canvas ref，调 expose 的 setLens(docType|null)
@@ -1822,7 +1822,7 @@ function setLens(docType: string | null): void {
 defineExpose({ setLens });
 ```
 
-- [ ] **Step 2: KnowledgeGraph3D 挂载 + KnowledgePage 接线**
+- [x] **Step 2: KnowledgeGraph3D 挂载 + KnowledgePage 接线**
 
 KnowledgeGraph3D.vue：props 加 `hidden-groups: string[]`；emits 加 `'toggle-group': [docType: string]`；groups computed（从 props.nodes 聚合 + palette 取色）；GraphLegend 挂载（HUD 区域左下）；lens-enter/leave → canvas ref 调 setLens。
 
@@ -1846,7 +1846,7 @@ const graphRenderNodes = computed(() => graphFiltered.value.nodes);
 const graphRenderEdges = computed(() => graphFiltered.value.edges);
 ```
 
-- [ ] **Step 3: 门禁 + 运行时验证（R3）**
+- [x] **Step 3: 门禁 + 运行时验证（R3）**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿
@@ -2277,7 +2277,7 @@ it('confirmReembed 先弹确认对话框（列出文档数），确认后才调 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿（含 check-i18n）
 
-- [ ] **Step 5: 运行时验证（R3 红线，spec §8.4）**
+- [x] **Step 5: 运行时验证（R3 红线，spec §8.4）**
 
 1. 起 dev（`make build` pgvector tag + 前端 dev）
 2. 事故复现：DB 执行 `UPDATE knowledge_chunks SET embedding = NULL WHERE doc_id = '<某 UI 上传文档>'`
@@ -2413,7 +2413,7 @@ git commit -m "feat(knowledge): B2 EnableCollectionSemantic 空语义层单向�
 - 确认对话框（M1 真折射玻璃）：展示将绑定的全局 embedder 模型名/dim（`embedderConfig` store computed）+ 文档数耗时提示 +「启用后词法检索自动升级为混合检索」
 - 启用后 `loadCollections()` 刷新；重嵌入进度复用摄取 WS（文档状态实时流转）
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```typescript
 it('词法库 vault 根菜单显示「启用语义检索」，语义库不显示', () => {
@@ -2424,12 +2424,12 @@ it('enable-semantic action 确认后调 store 并刷新集合', async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd web && pnpm vitest run src/components/knowledge/__tests__/KnowledgeVaultTree.spec.ts`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```vue
 <!-- KnowledgeVaultTree.vue：delete-vault 菜单项之前，v-if="lexicalVaultIds.includes(vaultIdOf(scope.node))" -->
@@ -2462,7 +2462,7 @@ Expected: FAIL
 
 i18n（zh-Hans / en-US）：`enableSemantic: '启用语义检索' / 'Enable semantic search'`；`enableSemanticTitle: '启用语义检索' / 'Enable semantic search'`；`enableSemanticBody: '将绑定当前 Embedder（{model}，{dim} 维）并为全部文档重建向量；启用后词法检索自动升级为混合检索。' / 'Binds current embedder ({model}, {dim}d) and re-embeds all documents; lexical search upgrades to hybrid.'`；`enableSemanticAccepted: '已启用，{n} 篇文档进入重嵌入队列' / 'Enabled; {n} document(s) queued'`。
 
-- [ ] **Step 4: Run test to verify it passes + 门禁**
+- [x] **Step 4: Run test to verify it passes + 门禁**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: 全绿
@@ -2528,9 +2528,9 @@ git commit -m "test(knowledge): C 双布局性能基准（2 万节点/5 万边�
 - Modify: `docs/development/65-module-cross-reference-full.md`（knowledge 模块卡片：新增 RPC/前端组件关联——若该手册含 API/组件清单）
 - 归档说明：本计划与 spec（`docs/reports/2026-08-12-plan-knowledge-galaxy-liquid-glass.md`）保留为方案档案
 
-- [ ] **Step 1: 三件套同步**（按上方 Files 各点；三件套内容边界红线：需求/.md、设计/.design.md、进度/.development.md 不跨类混写）
+- [x] **Step 1: 三件套同步**（按上方 Files 各点；三件套内容边界红线：需求/.md、设计/.design.md、进度/.development.md 不跨类混写）
 
-- [ ] **Step 2: 一致性自检**
+- [x] **Step 2: 一致性自检**
 
 - design.md API 端点表 vs `api/kratos/knowledge/v1/knowledge.proto`（ReembedDocuments / EnableCollectionSemantic）
 - development.md 代码锚点路径全部真实存在（含本计划全部新增文件）

@@ -178,6 +178,13 @@ type ObserveResult struct {
 	Info       DeviceInfo  `json:"info"`
 }
 
+// SubAction 批量动作的单步描述。
+type SubAction struct {
+	Target string
+	Action ActionType
+	Args   map[string]any
+}
+
 // ActRequest 动作请求。
 type ActRequest struct {
 	AgentKey    string
@@ -185,15 +192,29 @@ type ActRequest struct {
 	Target      string // 目标语义描述（如 "保存菜单项"）；坐标动作可空
 	Action      ActionType
 	Args        map[string]any // text/combo/x/y/button/delta/from/to 等
+	Actions     []SubAction    // 批量动作：非空时忽略 Target/Action/Args，按序 fail-fast 执行
 	DryRun      bool           // 干跑：只 grounding + 返回计划，不注入
 	ConfirmedBy string         // 确认门通过后的确认人标识（审计用）
 }
 
 // ActResult 动作结果。
 type ActResult struct {
-	Step    Step        `json:"step"`
-	Plan    *DryRunPlan `json:"plan,omitempty"` // 干跑时的执行计划
-	Element *UIElement  `json:"element,omitempty"`
+	Step    Step          `json:"step"`
+	Plan    *DryRunPlan   `json:"plan,omitempty"`   // 干跑时的执行计划
+	Element *UIElement    `json:"element,omitempty"`
+	Verify  *ActionVerify `json:"verify,omitempty"` // 动作后验证（dry-run 无）
+	Batch   []ActResult   `json:"batch,omitempty"`  // 批量动作：按序每步结果（fail-fast 时含失败步）
+}
+
+// ActionVerify 动作后验证信号（S4 执行后闭环）：
+// settle 后重新快照，对比动作前基线（元素树内容哈希 + 前台窗口）。
+// Changed 仅在 HasBaseline=true 时有效；Hint 给出 LLM 可读的下一步提示。
+type ActionVerify struct {
+	HasBaseline      bool   `json:"has_baseline"`                 // 是否存在动作前基线（直行/坐标动作无）
+	Changed          bool   `json:"changed"`                      // 元素树内容是否变化
+	ForegroundBefore string `json:"foreground_before,omitempty"`  // 动作前前台窗口标题
+	ForegroundAfter  string `json:"foreground_after,omitempty"`   // 动作后前台窗口标题
+	Hint             string `json:"hint,omitempty"`               // no_observable_effect 等
 }
 
 // DryRunPlan 干跑产出的执行计划。

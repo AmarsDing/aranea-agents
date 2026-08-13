@@ -19,6 +19,9 @@ var (
 	noAuthPaths = map[string]struct{}{
 		"/v1/admins/login": {},
 		"/healthz":         {},
+		// Prometheus 抓取端点（TwinMonitor 监控采集，2026-08-13）：指标不含敏感数据，
+		// 与 /healthz 同级公开；若需收紧可改用独立监听端口或 Bearer 抓取。
+		"/metrics": {},
 	}
 	noAuthPathPrefixes = []string{
 		"/v1/a2a/public/",

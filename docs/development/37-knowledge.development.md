@@ -1324,3 +1324,64 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 ### 验收标准（SP2 映射）
 
 对应需求文档验收 30~38：三栏联动与标签页（30）、Live Preview + CAS（31）、wikilink 写作（32）、⌘O/⌘K 键盘全可操作（33）、新建双入口（34）、局部图谱联动（35）、图谱全屏 + 设置浮层（36）、视觉全套 + reduced-motion（37）、lint/test/build 全绿 + 运行时复验（38）。
+
+---
+
+## 子模块：知识库全面升级（V4）Phase 计划
+
+> **状态**：🟡 主体完成（2026-08-12 实施：M1~M5 / B1 / B2 全部 ✅；**C-T1 性能基准 📋 未实施，保持开放**） | **需求**：US-26~US-31 / FR-V4-1~7 / 验收 45~51（[37-knowledge.md §子模块：知识库全面升级（V4 需求）](./37-knowledge.md#子模块知识库全面升级v4-需求2026-08-12)） | **设计**：[37-knowledge.design.md §V12.9](./37-knowledge.design.md#v129-知识库全面升级m1m5--b1b22026-08-12)
+> **方案档案**：`docs/superpowers/plans/2026-08-12-knowledge-galaxy-liquid-glass.md`（spec：`docs/reports/2026-08-12-plan-knowledge-galaxy-liquid-glass.md`，已评审）。
+> **范围**：轨道 A（M1~M5 前端 3D 图谱升级，G5 图谱深空版延续）+ 轨道 B（B1/B2 能力缺口补齐，后端 + 前端）+ 轨道 C（双布局性能基准，未实施）。
+> **数据表变更**：无（无 Ent Schema 变更、无 DDL 迁移）；Proto 新增 2 个 RPC（ReembedDocuments / EnableCollectionSemantic）。
+
+### 代码锚点
+
+| 路径 | 说明 |
+|------|------|
+| `web/src/components/knowledge/effects/LiquidGlassDefs.vue` | M1 新增：SVG 折射滤镜单例（`kb-liquid-refract` + `kb-liquid-bg`），KnowledgeWorkbench 根挂载 |
+| `web/src/components/knowledge/effects/GlassPanel.vue` | M1：新增 `refract` prop（真折射玻璃），内联 filter 迁移 LiquidGlassDefs |
+| `web/src/css/deep-space.sass` | M1：新增真折射修饰类（`@supports` 回退 blur+saturate） |
+| `web/src/components/knowledge/workbench/KnowledgeWorkbench.vue` | M1：根挂载 LiquidGlassDefs；三个既有浮层启用 refract |
+| `web/src/features/knowledge/graph3d/forces.ts` | M2：新增 coreGravity / discFlatten / spiralSwirl 三力 + `GALAXY_FORCE_PARAMS` 预设 |
+| `web/src/features/knowledge/graph3d/engine.ts` | M2：新增 `setLayout`（setParams 预设 + reheat alpha 再加热 morph） |
+| `web/src/components/knowledge/graph3d/render/EdgeLayer.ts` | M2：星系盘曲线边（segments + curvature uniform） |
+| `web/src/features/knowledge/graph3d/cameraDirector.ts` | M3 新增：镜头导演显式状态机（idle/flying/orbiting/cruising/genesis + canTransition 转换表） |
+| `web/src/features/knowledge/graph3d/interaction.ts` | M4：新增 `nHop` BFS + 聚焦锁定状态 |
+| `web/src/components/knowledge/graph3d/FocusCard.vue` | M4 新增：真折射节点详情卡（「在浏览器打开」+「重新向量化」= B1 入口②，pointer 事件拖动） |
+| `web/src/features/knowledge/graph3d/model.ts` | M5：新增 `filterGraphByGroups`（doc_type 组过滤，边级联，空集合引用相等零开销） |
+| `web/src/components/knowledge/graph3d/GraphLegend.vue` | M5 新增：过滤图例（色点/组名/计数/toggle-group/lens 事件/未分类回退/隐藏置灰斜体） |
+| `web/src/components/knowledge/graph3d/KnowledgeGraph3DCanvas.vue` | M2 layout prop；M4 单击锁定 dim / 空白解除；M5 `setLens`（聚焦锁定 > 透镜 > hover） |
+| `web/src/components/knowledge/KnowledgeGraph3D.vue` | M2 顶栏 HUD 布局切换 + `kg3d-layout` 持久化；M5 挂载 GraphLegend（v-if 键定未过滤 legendNodes） |
+| `web/src/pages/KnowledgePage.vue` | M5 `graphHiddenGroups` + `kg3d-hidden-groups` 持久化 + 过滤管线；B2 向树传 `lexical-vault-ids` |
+| `api/kratos/knowledge/v1/knowledge.proto` | B1/B2：新增 `ReembedDocuments` / `EnableCollectionSemantic` 两个 RPC |
+| `internal/service/knowledge_reembed.go` | B1 新增：串行重嵌入管线（复用摄取管线 + WS 进度通道）；B2 复用 |
+| `internal/data/knowledge.go` | B1：`ListDocumentsPendingReembed`（embedding IS NULL 或无 chunks） |
+| `internal/biz/knowledge/knowledge.go` | B1/B2：DocumentRepo / Usecase 扩展 |
+| `internal/event/flow_log.go` | B1/B2：step 登记 `knowledge.reembed.start/done`、`knowledge.collection.enable_semantic` |
+| `web/src/features/knowledge/api.ts` + `web/src/stores/knowledge/index.ts` | B1/B2：`reembedDocuments` / `enableCollectionSemantic` 接线 |
+| `web/src/components/knowledge/workbench/WorkbenchSidebar.vue` | B1 入口①：文件行右键菜单「重新向量化」（词法库置灰提示） |
+| `web/src/components/knowledge/KnowledgeVaultTree.vue` | B2：vault 根菜单「启用语义检索」（`vault-enable-semantic`，仅词法库渲染） |
+| `web/src/features/knowledge/useKnowledgePage.ts` | B1/B2：onTreeNodeAction 新增 reembed / enable-semantic 分支 + 确认对话框 + 受理通知 |
+| `web/src/i18n/locales/zh-CN.ts` / `en-US.ts` | B1/B2/M5 i18n 键（reembed*/enableSemantic*/graphLegendUntyped） |
+
+### 任务清单
+
+| # | 任务 | 状态 | 涉及文件 |
+|---|------|------|----------|
+| M1 | Liquid Glass 真折射：LiquidGlassDefs 单例 + GlassPanel refract prop + deep-space.sass 真折射类 + Workbench 根挂载 + 三浮层启用 | ✅ | 见代码锚点 M1 行；测试 `effects/__tests__/LiquidGlassDefs.spec.ts`、`GlassPanel.spec.ts` |
+| M2 | 星系盘物理 + 布局切换：forces 三力 + engine.setLayout（再加热 morph）+ EdgeLayer 曲线边 + Canvas layout prop + HUD 切换按钮 + localStorage | ✅ | 见代码锚点 M2 行；测试 `graph3d/__tests__/forces.spec.ts`、`engine.spec.ts`、`EdgeLayer.spec.ts` |
+| M3 | 电影感镜头：cameraDirector 显式状态机（AS-FSM-01）+ Canvas 集成（genesis 驱动 NodeLayer reveal + user-interrupt 接线） | ✅ | 见代码锚点 M3 行；测试 `cameraDirector.spec.ts`、`NodeLayer.spec.ts`（reveal） |
+| M4 | 聚焦模式 + 节点卡：interaction nHop BFS + 聚焦锁定 + FocusCard（含 B1 入口②）+ Canvas 单击锁定 dim / 空白解除 | ✅ | 见代码锚点 M4 行；测试 `interaction.spec.ts`、`FocusCard.spec.ts` |
+| M5 | 过滤图例 + 透镜：model.filterGraphByGroups + GraphLegend + Canvas setLens + KnowledgeGraph3D 挂载（键定未过滤 legendNodes）+ KnowledgePage 持久化过滤管线 | ✅（含运行时验证后 2 缺陷修复，见下节） | 见代码锚点 M5 行；测试 `model.spec.ts` 追加 describe、`GraphLegend.spec.ts`（5 用例）、`KnowledgeGraph3D.spec.ts`（新建 2 用例陷阱回归） |
+| B1 | 文档重嵌入：Proto RPC + data ListDocumentsPendingReembed + biz 扩展 + service 串行管线 + 流程日志 step + 前端双入口（文件行菜单 / FocusCard）+ 确认对话框 + 受理通知 | ✅ | 见代码锚点 B1 行；测试 `internal/service/knowledge_reembed_test.go`、`internal/data/knowledge_reembed_test.go`、`useKnowledgePage.reembed.spec.ts` |
+| B2 | 集合语义层单向启用：Proto RPC + 守卫 UPDATE 绑定 embedder + 复用 B1 队列 + 流程日志 step + 前端树菜单（仅词法库）+ 确认对话框（模型/dim）+ 列表刷新 | ✅ | 见代码锚点 B2 行；测试 `KnowledgeVaultTree.spec.ts` 追加、`stores/__tests__/knowledge.spec.ts` 追加、`useKnowledgePage.enableSemantic.spec.ts` |
+| C-T1 | 2 万节点/5 万边双布局（力导向/星系盘）性能基准录制 + 落档测试文档 | 📋 未实施（保持开放） | 计划产物：`test/graph3d-perf/gen-dataset.ts`、`docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（均未创建） |
+
+> **G-3 状态说明**：G5-G 的 G-3（性能基准）**保持 📋 不关闭**——C-T1 未实施，验收 51 同步标注待办；待基准录制落档后一并关闭 G-3 与 C-T1。
+
+### 运行时验证结论（2026-08-13 协调员浏览器实测）
+
+- **实测通过**：M2 布局切换（力导向 ⇄ 星系盘平滑过渡 + 刷新保持）；M4 单击聚焦 + FocusCard（打开文档 / 重新向量化按钮）；M5 图例隐藏/恢复往返；B1 入口①（文件行菜单 → 确认对话框 → 后端受理，README.md 重嵌入至 indexed）；B1 入口②（FocusCard 按钮）；B2 菜单对已有语义层的库正确隐藏（条件渲染符合预期）。
+- **M5 缺陷修复（运行时验证发现，已修复并回归测试）**：
+  1. GraphLegend 空 docType 组名称空白 → 补 i18n `graphLegendUntyped`（「未分类」）回退显示；
+  2. 全部组隐藏后图例自身消失的「陷阱」状态（无恢复路径）→ GraphLegend 与空态覆盖层的 v-if 改键定**未过滤** legendNodes，图例在全隐藏时保留可点回恢复（`KnowledgeGraph3D.spec.ts` 2 用例回归固化）。

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"aranea-agents/pkg/safego"
 )
 
 // RequestHandler 处理 agent 发来的 session/request_permission，需返回审批结论。
@@ -83,7 +85,8 @@ func NewConn(r io.Reader, w io.Writer, onReq RequestHandler, onNotify NotifyHand
 		onNotify: onNotify,
 		done:    make(chan struct{}),
 	}
-	go c.readLoop()
+	// 75 review Y2：读循环经 safego 托管，panic 可恢复并上报 hook
+	safego.GoBackground("acp.conn.readLoop", c.readLoop)
 	return c
 }
 
@@ -233,14 +236,14 @@ func (c *Conn) dispatch(line []byte) {
 		// 审批可能阻塞数分钟（等用户操作），必须异步，否则读循环停摆、
 		// 后续 session/update 全部积压在管道里。
 		id := f.ID
-		go func() {
+		safego.GoBackground("acp.conn.permission", func() {
 			result, err := onReq(context.Background(), req)
 			if err != nil {
 				c.respondError(id, -32603, err.Error())
 				return
 			}
 			_ = c.writeFrame(frame{JSONRPC: "2.0", ID: id, Result: mustMarshal(result)})
-		}()
+		})
 
 	case f.Method == "" && len(f.ID) > 0:
 		key := normalizeID(f.ID)

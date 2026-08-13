@@ -65,4 +65,46 @@ public class CaptureServiceTests
         Assert.True(left.R > 200 && left.B < 100, $"left={left}");
         Assert.True(right.B > 200 && right.R < 100, $"right={right}");
     }
+
+    // 75 review C1：截图 ScaleFactor 必须反映被截显示器的 DPI，而非恒定主屏 DPI
+
+    [Fact]
+    public void PickScaleFactor_PrimaryRegion_ReturnsPrimaryScale()
+    {
+        var displays = new List<DisplayDto>
+        {
+            new() { X = 0, Y = 0, W = 1920, H = 1080, ScaleFactor = 1.0, IsPrimary = true },
+            new() { X = 1920, Y = 0, W = 2560, H = 1440, ScaleFactor = 1.5, IsPrimary = false },
+        };
+        Assert.Equal(1.0, CaptureService.PickScaleFactorForRegion(0, 0, 1920, 1080, displays, 1.0));
+    }
+
+    [Fact]
+    public void PickScaleFactor_SecondaryRegion_ReturnsSecondaryScale()
+    {
+        // 核心 bug 场景：截副屏（DPI 150%）但 ScaleFactor 曾恒为主屏 1.0
+        var displays = new List<DisplayDto>
+        {
+            new() { X = 0, Y = 0, W = 1920, H = 1080, ScaleFactor = 1.0, IsPrimary = true },
+            new() { X = 1920, Y = 0, W = 2560, H = 1440, ScaleFactor = 1.5, IsPrimary = false },
+        };
+        Assert.Equal(1.5, CaptureService.PickScaleFactorForRegion(1920, 0, 2560, 1440, displays, 1.0));
+    }
+
+    [Fact]
+    public void PickScaleFactor_NoHit_FallsBackPrimary()
+    {
+        var displays = new List<DisplayDto>
+        {
+            new() { X = 0, Y = 0, W = 1920, H = 1080, ScaleFactor = 1.0, IsPrimary = true },
+        };
+        // 区域中心在虚拟桌面外（如负坐标盲区）→ 回退主屏缩放
+        Assert.Equal(1.25, CaptureService.PickScaleFactorForRegion(-5000, -5000, 100, 100, displays, 1.25));
+    }
+
+    [Fact]
+    public void PickScaleFactor_EmptyDisplays_FallsBack()
+    {
+        Assert.Equal(1.25, CaptureService.PickScaleFactorForRegion(0, 0, 100, 100, new List<DisplayDto>(), 1.25));
+    }
 }

@@ -12,7 +12,7 @@
         <q-icon name="cloud_off" size="20px" />
         <span>{{ error }}</span>
       </div>
-      <div v-else-if="!nodes.length" class="knowledge-graph__overlay">
+      <div v-else-if="!legendNodes.length" class="knowledge-graph__overlay">
         <q-icon name="hub" size="20px" />
         <span>{{ t('knowledgePage.graphEmpty') }}</span>
       </div>
@@ -41,9 +41,9 @@
         @reembed="(docId: string) => $emit('reembed-node', docId)"
         @close="onFocusClose"
       />
-      <!-- M5：过滤图例（点击隐藏组 / 悬停透镜），HUD 左下（统计行上方） -->
+      <!-- M5：过滤图例（点击隐藏组 / 悬停透镜），HUD 左下（统计行上方）。键定未过滤 legendNodes：全组隐藏时仍保留恢复路径。 -->
       <GraphLegend
-        v-if="nodes.length && !error"
+        v-if="legendNodes.length && !error"
         class="knowledge-graph__legend-panel"
         :groups="legendGroups"
         :hidden-groups="hiddenGroups"

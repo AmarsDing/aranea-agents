@@ -1,0 +1,17 @@
+# Aranea 后端 runtime 薄镜像（参照 TwinMonitor 全量 Docker 化设计 §2）
+# 构建方式：本地交叉编译（GOOS=linux GOARCH=amd64 CGO_ENABLED=0，走本地 gocache）
+#   → alpine 薄镜像仅 COPY 二进制。日常重建仅二进制层变化，秒级完成。
+# 构建入口：docker/build-runtime.ps1（不要直接 docker build，二进制需先在宿主机编译）
+FROM alpine:3.20
+
+# ca-certificates：出站 HTTPS（LLM API 等）；tzdata：时区
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY bin/linux/admin /app/bin/admin
+
+WORKDIR /app
+EXPOSE 8810 9910 8812
+# 配置经 compose 挂载 docker/config → /app/conf（改配置无需重建镜像）
+# 日志/数据挂载 docker/volumes/{logs,data} → /app/{logs,data}
+ENTRYPOINT ["/app/bin/admin"]
+CMD ["-conf", "/app/conf"]

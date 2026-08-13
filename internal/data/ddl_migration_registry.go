@@ -271,6 +271,12 @@ var ddlMigrations = []ddlMigration{
 	// (agent_id, source_session_id) 保证重试幂等。供 M3 召回注入与 M4
 	// case→skill 蒸馏消费。
 	{Version: 20261207, Name: "memory_agent_cases", SQL: "sql/migrations/20261207_memory_agent_cases.sql"},
+	// 20261208 builtin_platform_tools_cua_reseed（75-computer-use + 76-coding-agent-bridge 修复）：
+	// computer_use_*/coding_* 种子在 20260610/20261202 已应用的存量库中从未插入 →
+	// spirit profile（group:computeruse）生效工具计算查无工具行，桌面自动化工具集整体缺席。
+	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog/registry UPDATE），重跑安全；
+	// 顺带把 computer_use_act 的 actions[] 批量参数 schema 带给存量库。
+	{Version: 20261208, Name: "builtin_platform_tools_cua_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

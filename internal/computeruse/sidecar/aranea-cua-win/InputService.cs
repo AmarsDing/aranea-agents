@@ -150,7 +150,7 @@ public sealed class InputService
 
     // ---------- 公开方法 ----------
 
-    /// <summary>坐标级点击（button: left/right/middle，clickCount 次连击）</summary>
+    /// <summary>坐标级点击（button: left/right/middle，clickCount 次连击，钳制 [1,10] 防超长阻塞）</summary>
     public object Click(int x, int y, string button, int clickCount)
     {
         MoveCursor(x, y);
@@ -160,11 +160,13 @@ public sealed class InputService
             "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
             _ => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
         };
-        for (var i = 0; i < Math.Max(1, clickCount); i++)
+        // 75 复审：clickCount 外部传入，上限钳制防止超大值长时间阻塞请求线程
+        var count = Math.Clamp(clickCount, 1, 10);
+        for (var i = 0; i < count; i++)
         {
             SendMouse(down, 0);
             SendMouse(up, 0);
-            if (i + 1 < clickCount) Thread.Sleep(60);
+            if (i + 1 < count) Thread.Sleep(60);
         }
         return new { ok = true };
     }

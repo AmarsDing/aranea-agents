@@ -41,7 +41,7 @@ func NewToolset(uc *bizcu.ComputerUseUsecase) []trpctool.CallableTool {
 			uc: uc, fn: screenshotFn, schema: schemaOf(`{"type":"object","properties":{
 				"region":{"type":"object","properties":{"x":{"type":"integer"},"y":{"type":"integer"},"w":{"type":"integer"},"h":{"type":"integer"}},"description":"可选裁剪区域（物理像素）"},
 				"zoom":{"type":"number","description":"缩放倍率，默认 1.0"}}}`)},
-		&tool{name: ToolAct, desc: "在桌面执行语义动作：给出目标元素的自然语言描述（如“保存菜单项”），系统自动定位并操作。action: invoke(默认，元素直调)|click|type|key。type 需 text 参数；key 需 combo 参数（如 ctrl+s）；dry_run=true 时只返回定位计划不实际操作。高危动作（删除/支付等）会被标记并需人工确认。",
+		&tool{name: ToolAct, desc: "在桌面执行语义动作：给出目标元素的自然语言描述（如“保存菜单项”），系统自动定位并操作。action: invoke(默认，元素直调)|click|type|key。type 需 text 参数；key 需 combo 参数（如 ctrl+s）；dry_run=true 时只返回定位计划不实际操作。高危动作（删除/支付等）会被标记并需人工确认。支持 actions 数组批量执行：多步按序 fail-fast，任一步失败即停且错误会注明已完成步数（请勿整体重试已执行的步骤）。",
 			uc: uc, fn: actFn, schema: schemaOf(`{"type":"object","properties":{
 				"target":{"type":"string","description":"目标元素的自然语言描述；坐标点击时可省略"},
 				"action":{"type":"string","enum":["invoke","click","type","key"],"description":"动作类型，默认 invoke"},
@@ -51,6 +51,17 @@ func NewToolset(uc *bizcu.ComputerUseUsecase) []trpctool.CallableTool {
 				"y":{"type":"integer","description":"action=click 且无 target 时的物理像素 Y"},
 				"button":{"type":"string","enum":["left","right","middle"],"description":"点击按键，默认 left"},
 				"click_count":{"type":"integer","description":"点击次数，默认 1"},
+				"actions":{"type":"array","description":"批量动作：非空时忽略单步参数，按序 fail-fast 执行；每步支持 target/action/text/combo/x/y/button/click_count",
+					"items":{"type":"object","properties":{
+						"target":{"type":"string"},
+						"action":{"type":"string","enum":["invoke","click","type","key"]},
+						"text":{"type":"string"},
+						"combo":{"type":"string"},
+						"x":{"type":"integer"},
+						"y":{"type":"integer"},
+						"button":{"type":"string","enum":["left","right","middle"]},
+						"click_count":{"type":"integer"}},
+						"required":["action"]}},
 				"dry_run":{"type":"boolean","description":"干跑模式：只定位并返回计划，不实际操作"},
 				"session_id":{"type":"string","description":"可选，绑定既有会话；省略时自动复用/创建"},
 				"confirmed_by":{"type":"string","description":"确认门通过后的确认人标识（审计）"}}}`)},
@@ -173,55 +184,73 @@ func screenshotFn(ctx context.Context, uc *bizcu.ComputerUseUsecase, args []byte
 	}, nil
 }
 
-func actFn(ctx context.Context, uc *bizcu.ComputerUseUsecase, args []byte) (any, error) {
-	var in struct {
-		Target      string `json:"target"`
-		Action      string `json:"action"`
-		Text        string `json:"text"`
-		Combo       string `json:"combo"`
-		X           *int   `json:"x"`
-		Y           *int   `json:"y"`
-		Button      string `json:"button"`
-		ClickCount  int    `json:"click_count"`
-		DryRun      bool   `json:"dry_run"`
-		SessionID   string `json:"session_id"`
-		ConfirmedBy string `json:"confirmed_by"`
-	}
-	if err := decode(args, &in); err != nil {
-		return nil, err
-	}
+// actionIn 单步动作参数（顶层单步与 actions[] 子动作同构）。
+type actionIn struct {
+	Target     string `json:"target"`
+	Action     string `json:"action"`
+	Text       string `json:"text"`
+	Combo      string `json:"combo"`
+	X          *int   `json:"x"`
+	Y          *int   `json:"y"`
+	Button     string `json:"button"`
+	ClickCount int    `json:"click_count"`
+}
+
+// toSubAction 归一化为 biz SubAction（action 缺省 invoke）。
+func toSubAction(in actionIn) bizcu.SubAction {
 	action := bizcu.ActionType(strings.TrimSpace(in.Action))
 	if action == "" {
 		action = bizcu.ActionInvoke
 	}
-	actArgs := map[string]any{}
+	args := map[string]any{}
 	if in.Text != "" {
-		actArgs["text"] = in.Text
+		args["text"] = in.Text
 	}
 	if in.Combo != "" {
-		actArgs["combo"] = in.Combo
+		args["combo"] = in.Combo
 	}
 	if in.X != nil {
-		actArgs["x"] = *in.X
+		args["x"] = *in.X
 	}
 	if in.Y != nil {
-		actArgs["y"] = *in.Y
+		args["y"] = *in.Y
 	}
 	if in.Button != "" {
-		actArgs["button"] = in.Button
+		args["button"] = in.Button
 	}
 	if in.ClickCount > 0 {
-		actArgs["click_count"] = in.ClickCount
+		args["click_count"] = in.ClickCount
 	}
-	res, err := uc.Act(ctx, bizcu.ActRequest{
+	return bizcu.SubAction{Target: in.Target, Action: action, Args: args}
+}
+
+func actFn(ctx context.Context, uc *bizcu.ComputerUseUsecase, args []byte) (any, error) {
+	var in struct {
+		actionIn
+		Actions     []actionIn `json:"actions"`
+		DryRun      bool       `json:"dry_run"`
+		SessionID   string     `json:"session_id"`
+		ConfirmedBy string     `json:"confirmed_by"`
+	}
+	if err := decode(args, &in); err != nil {
+		return nil, err
+	}
+	req := bizcu.ActRequest{
 		AgentKey:    agentKeyFromCtx(ctx),
 		SessionID:   in.SessionID,
-		Target:      in.Target,
-		Action:      action,
-		Args:        actArgs,
 		DryRun:      in.DryRun,
 		ConfirmedBy: in.ConfirmedBy,
-	})
+	}
+	if len(in.Actions) > 0 {
+		req.Actions = make([]bizcu.SubAction, 0, len(in.Actions))
+		for _, a := range in.Actions {
+			req.Actions = append(req.Actions, toSubAction(a))
+		}
+	} else {
+		single := toSubAction(in.actionIn)
+		req.Target, req.Action, req.Args = single.Target, single.Action, single.Args
+	}
+	res, err := uc.Act(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +267,26 @@ func actFn(ctx context.Context, uc *bizcu.ComputerUseUsecase, args []byte) (any,
 	}
 	if res.Plan != nil {
 		out["plan"] = res.Plan
+	}
+	if res.Verify != nil {
+		out["verify"] = res.Verify
+	}
+	if len(res.Batch) > 0 {
+		steps := make([]map[string]any, 0, len(res.Batch))
+		for _, b := range res.Batch {
+			s := map[string]any{
+				"step_index":  b.Step.Index,
+				"path":        b.Step.Path,
+				"result":      b.Step.Result,
+				"duration_ms": b.Step.DurationMs,
+				"target":      b.Step.Target,
+			}
+			if b.Verify != nil {
+				s["verify"] = b.Verify
+			}
+			steps = append(steps, s)
+		}
+		out["batch"] = steps
 	}
 	return out, nil
 }

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	bizcu "aranea-agents/internal/biz/computeruse"
+
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // --- fake gateway（实现 biz DeviceGateway 组合接口） ---
@@ -42,6 +44,23 @@ func (f *fakeGW) ListWindows(context.Context) ([]bizcu.WindowInfo, error) { retu
 type hitMatcher struct{ el *bizcu.UIElement }
 
 func (m hitMatcher) Match([]bizcu.UIElement, string) *bizcu.UIElement { return m.el }
+
+// dispatchMatcher 按 target 文本分派命中（批量动作测试）。
+type dispatchMatcher struct{ byTarget map[string]*bizcu.UIElement }
+
+func (m dispatchMatcher) Match(_ []bizcu.UIElement, target string) *bizcu.UIElement {
+	return m.byTarget[target]
+}
+
+// findCallable 按工具名定位 CallableTool。
+func findCallable(tools []trpctool.CallableTool, name string) trpctool.CallableTool {
+	for _, tl := range tools {
+		if tl.Declaration().Name == name {
+			return tl
+		}
+	}
+	return nil
+}
 
 func newTestToolset(t *testing.T) (*fakeGW, []interface {
 	Declaration() interface{ Name() }
@@ -230,6 +249,78 @@ func TestScreenshotTool_Base64(t *testing.T) {
 		if err := json.Unmarshal([]byte(`"`+b64+`"`), &raw); err == nil {
 			_ = raw
 		}
+	}
+}
+
+// 批量 actions[]：两步按序执行，结果带 batch 数组（每步 result/path），顶层 step 为最后一步。
+func TestActTool_BatchActions(t *testing.T) {
+	saveBtn := &bizcu.UIElement{Ref: "g1.e3", Name: "保存", Type: "button",
+		BBox: bizcu.Rect{X: 10, Y: 20, W: 50, H: 20}, Interactivity: true, Enabled: true}
+	editBox := &bizcu.UIElement{Ref: "g1.e7", Name: "编辑框", Type: "edit",
+		BBox: bizcu.Rect{X: 10, Y: 60, W: 200, H: 30}, Interactivity: true, Enabled: true}
+	gw := &fakeGW{snap: bizcu.Snapshot{Elements: []bizcu.UIElement{*saveBtn, *editBox}, Generation: 1}}
+	uc := bizcu.NewComputerUseUsecase(bizcu.Deps{
+		Gateway: gw,
+		Match: dispatchMatcher{byTarget: map[string]*bizcu.UIElement{
+			"保存": saveBtn, "编辑框": editBox,
+		}},
+		Now: time.Now,
+	})
+	act := findCallable(NewToolset(uc), ToolAct)
+	if act == nil {
+		t.Fatal("act tool not found")
+	}
+
+	out, err := act.Call(context.Background(), []byte(`{"actions":[
+		{"target":"保存","action":"click"},
+		{"target":"编辑框","action":"type","text":"hello"}
+	]}`))
+	if err != nil {
+		t.Fatalf("call err: %v", err)
+	}
+	m, ok := out.(map[string]any)
+	if !ok {
+		t.Fatalf("result type %T", out)
+	}
+	batch, ok := m["batch"].([]map[string]any)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("batch = %+v, want 2 steps", m["batch"])
+	}
+	for i, step := range batch {
+		if step["result"] != bizcu.StepOK {
+			t.Errorf("batch[%d].result = %v", i, step["result"])
+		}
+	}
+	if m["session_id"] == "" {
+		t.Error("session_id should be auto-created")
+	}
+}
+
+// 批量 fail-fast：第二步 grounding 失败，错误必须携带已完成步数（防 LLM 整体重试）。
+func TestActTool_BatchFailFast(t *testing.T) {
+	saveBtn := &bizcu.UIElement{Ref: "g1.e3", Name: "保存", Type: "button",
+		BBox: bizcu.Rect{X: 10, Y: 20, W: 50, H: 20}, Interactivity: true, Enabled: true}
+	gw := &fakeGW{snap: bizcu.Snapshot{Elements: []bizcu.UIElement{*saveBtn}, Generation: 1}}
+	uc := bizcu.NewComputerUseUsecase(bizcu.Deps{
+		Gateway: gw,
+		Match:   dispatchMatcher{byTarget: map[string]*bizcu.UIElement{"保存": saveBtn}},
+		Now:     time.Now,
+	})
+	act := findCallable(NewToolset(uc), ToolAct)
+
+	_, err := act.Call(context.Background(), []byte(`{"actions":[
+		{"target":"保存","action":"click"},
+		{"target":"不存在","action":"click"},
+		{"target":"保存","action":"click"}
+	]}`))
+	if err == nil {
+		t.Fatal("want grounding error")
+	}
+	if !strings.Contains(err.Error(), "2/3") {
+		t.Errorf("error should carry failed step position 2/3: %v", err)
+	}
+	if !strings.Contains(err.Error(), "已执行") {
+		t.Errorf("error should warn about completed steps: %v", err)
 	}
 }
 

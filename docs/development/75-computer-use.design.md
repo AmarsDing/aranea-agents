@@ -147,9 +147,9 @@ type AuditStore interface {             // 审计落库（data 层实现）
 | `gateway.go` | 实现 biz.DeviceGateway（组合 client） |
 | `matcher.go` | a11y 模糊匹配器：归一化（小写/去空白/去标点/全半角）→ 精确 → 包含 → 编辑距离 ≤2；候选打分，top1 与 top2 分差 ≥0.2 才判命中 |
 | `fusion.go` | IoU 融合器：a11y 主表 + vision 补充表，IoU>0.1 去重（UFO² 算法 H2） |
-| `som.go` | SoM 标注器：截图上为候选元素绘制编号框（Go image/draw，ASCII 编号） |
+| `som.go` | SoM 标注器：截图上为候选元素绘制编号框（Go image/draw，ASCII 编号）；`DownscalePNG` 截图降采样（最长边 ≤1568，x/image ApproxBiLinear） |
 | `omniparser.go` | VisionParser HTTP 客户端：POST {base64} → parsed_content[] → UIElement[]（source=vision）；`Available()` 健康检查 + 失败降级标记 |
-| `vlm.go` | VisionGrounder：经 LLM catalog 取多模态模型，SoM 图 + 候选列表 + target → 返回编号 |
+| `vlm.go` | VisionGrounder：经 LLM catalog 取多模态模型，SoM 图 + 候选列表 + target → 返回编号；发送图降采样 ≤1568px（prompt bbox 同比例缩放）；单次调用超时 60s（容忍本地模型冷启动）；**无匹配出口**：SoM 选编号输出 0 / 坐标直判输出 "-1, -1" → 明确 ErrGroundingFailed，禁止强制乱选/乱点 |
 
 ### 3.3 Grounding 决策流（Act 编排）
 
@@ -157,16 +157,21 @@ type AuditStore interface {             // 审计落库（data 层实现）
 Act(target)
  1. snapshot := gateway.Snapshot()            （含 generation）
  2. hit := matcher.Match(snapshot.elements, target)
-    命中 → gateway.Invoke(hit.ref)            【a11y 快路径】
- 3. miss → 视觉兜底：
+    命中 → gateway.Invoke(hit.ref)            【a11y 快路径，path=a11y】
+ 3. miss → SoM 视觉兜底（OmniParser 可用时，path=vision）：
     a. img := gateway.Screenshot()
     b. visionEls := omniparser.Available() ? omniparser.Parse(img) : []
     c. merged := fusion.Merge(snapshot.elements, visionEls)   （IoU>0.1）
-    d. som := som.Annotate(img, merged)
-    e. ref := vlm.Pick(som图, merged, target)  （VLM 直判时 candidates=merged 或可空=纯坐标直判）
-    f. 命中 → gateway.Click(center(ref.bbox))  【视觉路径】
- 4. 校验（可选）：局部截图前后比对；失败重试 ≤2，仍失败 → 报告用户
- 5. 全程：step 审计落库 + envelope 事件 + 流程日志
+    d. som := som.Annotate(img, merged) → 降采样 ≤1568px
+    e. ref := vlm.Pick(som图, merged, target)  （VLM 输出 0 = 无匹配 → 继续降级）
+ 4. SoM 失败 → VLM 坐标直判（path=vlm_direct，免 OmniParser 最低精度路径）：
+    全屏粗判（归一化千分位坐标）→ 以粗判点为中心 480x360 区域 2x zoom 精判
+    （VLM 输出 "-1, -1" = 无匹配 → ErrGroundingFailed 明确报错，不乱点）
+ 5. 命中 → 执行（invoke/click/type/key）；dry_run 只 grounding + 返回计划
+ 6. 执行后验证：settle → re-snapshot → 元素树 hash 比对 + 前台窗口检查，
+    结果透出 verify{changed, foreground_before/after}（no_effect 供 LLM 决策）
+ 7. 批量：actions[] 按序 fail-fast，任一步失败即停且错误注明已完成步数
+ 8. 全程：step 审计落库 + envelope 事件 + 流程日志
 ```
 
 ### 3.4 工具集（`internal/tools/computeruse/`）
@@ -248,8 +253,8 @@ Proto：`api/kratos/computeruse/v1/computeruse.proto`（`make api` 生成；服�
 | Windows sidecar | .NET + FlaUI 4.x（目标 net8.0-windows；SDK 不可用时 net7.0-windows） | pywinauto（绑定质量/部署）；Go+go-ole COM（工作量/风险） |
 | CDP 传输 | stdio JSON-RPC 2.0 | gRPC（子进程场景过重） |
 | a11y 匹配 | 自研归一化+编辑距离 | 外部模糊库（需求简单） |
-| 视觉解析 | OmniParser V2（omniparserserver FastAPI，独立部署） | 纯 VLM 直判（精度不足，作为降级路径保留） |
-| VLM | 复用 LLM catalog 多模态模型（Claude/Qwen-VL） | 自部署 UI-TARS（后续演化方向） |
+| 视觉解析 | OmniParser V2（omniparserserver FastAPI，独立部署；本机 GPU `:8101`——8100 被本机常驻进程占用；HF 离线权重预置 `bin/cua/omniparser/`，启动脚本 `start_omniparser.ps1`） | 纯 VLM 直判（精度不足，作为降级路径保留） |
+| VLM | 复用 LLM catalog 多模态模型：本地 `ollama/qwen2.5vl-cua`（qwen2.5vl:7b 派生，Modelfile 固化 num_ctx=8192——Ollama 默认 4096 放不下全屏 SoM 请求）+ 云端 `alibaba-cn/qwen3-vl-plus`（catalog 已建行，待 API key 启用） | 自部署 UI-TARS（后续演化方向） |
 | SoM 标注 | Go image/draw 自绘编号框 | sidecar GDI（保持 sidecar 精简） |
 | 审计存储 | Ent Schema `computer_use_audit`（L1） | DDL 迁移（无索引特性需求，免） |
 

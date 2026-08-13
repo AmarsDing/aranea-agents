@@ -944,3 +944,98 @@ WHERE total_cost_micro_usd > 100000
 ORDER BY total_cost_micro_usd DESC
 LIMIT 50;
 ```
+
+---
+
+## 九、缓存命中率护栏与上下文预算台账（阶段 0 设计，2026-08-13）
+
+> 来源：`docs/reports/2026-08-13-research-llm-context-pipeline-optimization.md` 阶段 0。
+> 性质：**纯观测性改造**——不改任何注入逻辑与 prompt 内容，不引入新依赖/新存储。
+
+### 9.1 目标 / 非目标
+
+- G1：缓存命中率从"每轮一条日志"升级为"可聚合、可告警、可回归"的一等指标。
+- G2：每轮请求的五类 token 分量（静态前缀/工具 schema/记忆/知识/历史）可计量、可追溯，作为阶段 1（Tool RAG / 级联路由 / 记忆预算）优化的验收基准。
+- 非目标：不改注入逻辑；不做 Anthropic cache_control 显式断点（现状依赖 provider 自动前缀缓存，阶段 1 再评估）。
+
+### 9.2 现状盘点
+
+| 环节 | 现状 | 缺口 |
+|---|---|---|
+| 采集 | `cached_tokens` 已由 usage_tap_transport.go 归一化；多轮取 max 语义正确（turn_helpers.go:122） | 无 |
+| 单轮日志 | `chat.turn_usage` 含 `cache_hit_ratio`（chat_turn_metrics.go:72） | 无 |
+| 落库 | turn_usage 表有 CachedTok 列 | 无 |
+| 聚合视图 | ❌ | 按 (provider, model, agent_key) 时间窗聚合 |
+| 告警 | ❌（复用 monitor 告警机制） | 命中率低水位告警 |
+| 回归测试 | ❌ | 缓存击穿 CI 测试 |
+
+### 9.3 G1-A 聚合查询
+
+- 新增只读查询 `CacheHitRatioStats(ctx, window, groupBy)`：按 `(provider, model, agent_key)` 聚合 `sum(cached)/sum(prompt)`、P50/P95 单轮 ratio、样本数。
+- 数据源：turn_usage 表，纯 SQL 聚合，无新表。
+- **防误报**：`prompt_tokens < 1024`（provider 最小缓存长度）的样本不参与聚合。
+- 阶段 0 只提供 biz 查询 + 进程日志输出，前端指标卡后补。
+
+### 9.4 G1-B 告警规则 `llm.cache_hit_ratio_low`
+
+- 触发条件：滑动窗口（1h）内同一 `(provider, model)` 样本数 ≥20 且 `sum(cached)/sum(prompt) < 阈值`。
+- **阈值默认 0.5**（已确认）：静态前缀（system+tools）通常占 prompt 60-80%，全命中应 ≥0.6；<0.5 说明前缀被击穿或 TTL 外。阈值入 system_setting 可配。
+- 级别 Warn（不阻断），走既有 DomainEvent/Monitor 通道（复用 runner.error_rate 同套机制）。
+
+### 9.5 G1-C CI 缓存击穿回归测试
+
+- 位置：`internal/agent/prompt_prefix_stability_test.go`（新增，离线可跑，不依赖真实 LLM）。
+- 方法：
+  1. 固定 agent fixture，走真实 callback 链连续构建同 session 相邻两轮的完整 request messages；
+  2. 断言**静态区前 N 条消息字节级相等**（N = system 主体 + 静态 cue 边界），变动即失败并 diff 定位到具体 hook；
+  3. 断言动态 cue（memory/knowledge/intent）只出现在尾部 append 区。
+- 依据：cached_tokens 是结果，字节级前缀相等是原因；离线测试不受 provider 波动影响。
+- 另保留一个集成档（`*_integration_test.go`，无真实 provider 时 skip）验证端到端 cached_tokens。
+
+### 9.6 G2 上下文预算台账
+
+- **计量点**：不改注入逻辑，在 8 个既有 BeforeModel hook 出口处计量（各 hook 已算出注入字符串）。
+- **收集器**：新增 `ContextBudget`（request context 挂载，per-request 生命周期，单 goroutine 写、turn 末读，无锁）：
+  - 分类：`static_prefix` / `tools_schema` / `memory_l1` / `memory_l4` / `memory_composite` / `knowledge_cue` / `skill_guidance` / `history` / `other_dynamic`
+  - 记 `chars` + `est_tokens`（全库统一一处估算口径，复用 L1 token_estimate）
+- 工具 schema 分量：tool_assembly 出口按 JSON 序列化长度计量（含工具数量）。
+- history 分量：调用前 messages 总量 − system − 各注入分量（减法得出，不重复遍历）。
+- **出口**：turn 结束发进程日志 `chat.context_budget`（Info，每轮一条，含各分量 est_tokens + 占比 + static_ratio + cache_hit_ratio）。只发进程日志不发流程日志，豁免 stepTitleRegistry 登记。
+
+产出形态示例：
+
+```json
+{"step_id":"chat.context_budget","session_id":"...","run_id":"...",
+ "static_prefix_tokens":2100,"tools_schema_tokens":4800,"tools_count":23,
+ "memory_tokens":900,"knowledge_cue_tokens":320,"history_tokens":6400,
+ "est_total_input":14500,"static_ratio":0.14,"cache_hit_ratio":0.61}
+```
+
+### 9.7 改动文件清单（预估）
+
+| 文件 | 改动 |
+|---|---|
+| internal/biz/usage*.go | CacheHitRatioStats 只读查询（窄接口方法） |
+| internal/data/（usage repo） | SQL 聚合实现 + 测试 |
+| internal/biz/monitor*.go | `llm.cache_hit_ratio_low` 告警规则 |
+| internal/agent/context_budget.go（新增） | ContextBudget 收集器 + ctx 挂载 |
+| internal/agent/*_inject.go（8 处） | 各 hook 出口一行计量调用 |
+| internal/agent/tool_assembly.go | schema 字节数计量 |
+| internal/service/chat_turn_metrics.go | 台账日志出口 |
+| internal/agent/prompt_prefix_stability_test.go（新增） | 前缀字节级稳定回归测试 |
+
+### 9.8 验证计划
+
+1. 单测：收集器聚合正确性、告警阈值边界（<1024 样本排除）、前缀稳定测试自身灵敏度（人为注入变动字节应失败）。
+2. 集成：`make test` 全绿（排除已知环境失败项：models.dev 网络依赖 3 项、TestCheckQuota_userScope）。
+3. 运行时验证（R3 红线）：重启后端 → 真实对话数轮 → 读 `bin/logs/aranea-pipeline.log` 确认 `chat.context_budget` 分量合理、cache_hit_ratio 与 provider 后台一致。
+4. 验收基准：阶段 1 Tool RAG 上线前后，同一会话 `tools_schema_tokens` 应下降 ≥80%。
+
+### 9.9 任务拆分（TDD 顺序）
+
+| # | 任务 | 依赖 |
+|---|---|---|
+| 0.1 | ContextBudget 收集器 + 8 hook 计量 + 台账日志 | 无 |
+| 0.2 | 前缀字节级稳定回归测试 | 无（可与 0.1 并行） |
+| 0.3 | CacheHitRatioStats 聚合查询（biz+data） | 无 |
+| 0.4 | `llm.cache_hit_ratio_low` 告警规则 | 0.3 |

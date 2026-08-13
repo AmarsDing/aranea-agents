@@ -9,6 +9,7 @@
         :loading="loading"
         :error="error"
         :drag-file="dragFile"
+        :lexical-vault-ids="lexicalVaultIds"
         @select-node="$emit('select-node', $event)"
         @update:expanded-keys="$emit('update:expanded-keys', $event)"
         @lazy-load="$emit('lazy-load', $event)"
@@ -181,6 +182,9 @@ const currentHasSemantic = computed(() => {
   const c = props.collections.find((x) => x.id === props.currentVaultId);
   return Boolean(c?.embedding_model);
 });
+
+/** B2：词法库（embedding_model 空）id 集 → 树根菜单「启用语义检索」可见性。 */
+const lexicalVaultIds = computed(() => props.collections.filter((c) => !c.embedding_model).map((c) => c.id));
 
 function iconOf(f: VaultTreeNode): string {
   const p = f.path.toLowerCase();

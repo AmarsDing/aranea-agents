@@ -1,5 +1,7 @@
 // web/src/features/session/v2Api.ts
 //
+// TECH-DEBT(COG): file_lines=667, limit=500; 按实体域拆分 v2ApiTasks/v2ApiTurns/v2ApiSteps — 下一迭代处理（75 review F2）
+//
 // v2 entity read API client — calls SessionV2Service HTTP endpoints
 // (GET /v2/sessions/{id}/tasks, /v2/tasks/{id}/turns, /v2/sessions/{id}/steps)
 // and maps proto JSON (camelCase, base64 bytes) to v2Types.ts PascalCase shapes.

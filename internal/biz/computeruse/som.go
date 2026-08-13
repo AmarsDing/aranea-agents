@@ -8,10 +8,36 @@ import (
 	"image/draw"
 	"image/png"
 
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 )
+
+// DownscalePNG 将 PNG 按最长边等比缩小到 maxSide 内（已小于则原样返回）。
+// 返回缩放后 PNG 字节与缩放因子（新/旧；未缩放为 1）。VLM 调用前降采样：
+// 减少视觉 token 数与 prefill 耗时，grounding 语义坐标由归一化/同比例 bbox 保持。
+func DownscalePNG(pngBytes []byte, maxSide int) ([]byte, float64, error) {
+	src, err := png.Decode(bytes.NewReader(pngBytes))
+	if err != nil {
+		return nil, 0, fmt.Errorf("computeruse: 降采样解码失败: %w", err)
+	}
+	b := src.Bounds()
+	w, h := b.Dx(), b.Dy()
+	longest := max(w, h)
+	if longest <= maxSide || maxSide <= 0 {
+		return pngBytes, 1.0, nil
+	}
+	factor := float64(maxSide) / float64(longest)
+	nw, nh := int(float64(w)*factor), int(float64(h)*factor)
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, b, xdraw.Over, nil)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, 0, fmt.Errorf("computeruse: 降采样编码失败: %w", err)
+	}
+	return buf.Bytes(), factor, nil
+}
 
 // SoM（Set-of-Mark）标注样式：红框 + 红底白字编号（白字在红底上对比度最高，
 // 编号置于框左上角，与 VLM prompt 中候选列表序号一一对应）。

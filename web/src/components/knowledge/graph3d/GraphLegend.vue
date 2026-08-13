@@ -16,7 +16,7 @@
         @pointerleave="$emit('lens-leave')"
       >
         <span class="kg3d-legend__dot" :style="{ background: g.color }" />
-        <span class="kg3d-legend__name">{{ g.docType }}</span>
+        <span class="kg3d-legend__name">{{ g.docType || t('knowledgePage.graphLegendUntyped') }}</span>
         <span class="kg3d-legend__count">{{ g.count }}</span>
       </div>
       <div v-if="!groups.length" class="kg3d-legend__empty">{{ t('knowledgePage.graphLegendEmpty') }}</div>

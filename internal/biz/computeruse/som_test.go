@@ -33,6 +33,40 @@ func decode(t *testing.T, b []byte) image.Image {
 	return img
 }
 
+func TestDownscalePNG(t *testing.T) {
+	// 小图不缩放：原样返回 + scale=1。
+	small := newTestImage(t, 100, 80)
+	out, factor, err := DownscalePNG(small.PNG, 1568)
+	if err != nil {
+		t.Fatalf("DownscalePNG small: %v", err)
+	}
+	if factor != 1.0 {
+		t.Fatalf("小图 factor=%v, want 1", factor)
+	}
+	if d := decode(t, out); d.Bounds().Dx() != 100 || d.Bounds().Dy() != 80 {
+		t.Fatalf("小图尺寸被改: %v", d.Bounds())
+	}
+
+	// 大图按最长边缩放：3200x1800 @1568 → 1568x882，factor=0.49。
+	large := newTestImage(t, 3200, 1800)
+	out, factor, err = DownscalePNG(large.PNG, 1568)
+	if err != nil {
+		t.Fatalf("DownscalePNG large: %v", err)
+	}
+	if factor >= 1.0 || factor <= 0.0 {
+		t.Fatalf("大图 factor=%v, want (0,1)", factor)
+	}
+	d := decode(t, out)
+	if d.Bounds().Dx() != 1568 || d.Bounds().Dy() != 882 {
+		t.Fatalf("缩放尺寸=%v, want 1568x882", d.Bounds())
+	}
+
+	// 非法输入报错。
+	if _, _, err = DownscalePNG([]byte("not a png"), 1568); err == nil {
+		t.Fatal("非法 PNG 应报错")
+	}
+}
+
 func TestAnnotateSoM_DrawsBoxes(t *testing.T) {
 	img := newTestImage(t, 100, 100)
 	cands := []UIElement{

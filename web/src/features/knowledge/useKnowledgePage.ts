@@ -536,7 +536,34 @@ export function useKnowledgePage() {
       case 'delete-vault':
         confirmDeleteCollection(node.vaultId);
         break;
+      case 'enable-semantic':
+        confirmEnableSemantic(node.vaultId);
+        break;
     }
+  }
+
+  /** B2：词法库启用语义层——确认对话框展示将绑定的全局 embedder（model/dim），
+   *  确认后受理（全量文档重嵌入经摄取 WS 实时流转）并刷新集合。 */
+  function confirmEnableSemantic(collectionId: string) {
+    const col = collections.value.find((c) => c.id === collectionId);
+    if (!col || col.embedding_model) return; // 已是语义库或未知集合：菜单不该出现，防御兜底
+    $q.dialog({
+      title: t('knowledgePage.enableSemanticTitle'),
+      message: t('knowledgePage.enableSemanticBody', {
+        model: embedderConfig.value?.model ?? '',
+        dim: embedderConfig.value?.dim ?? 0,
+      }),
+      cancel: true,
+      persistent: true,
+    }).onOk(() => {
+      void knowledgeStore
+        .enableCollectionSemantic(collectionId)
+        .then((r) => {
+          $q.notify({ type: 'positive', message: t('knowledgePage.enableSemanticAccepted', { n: r.enqueued_docs }) });
+          return loadCollections();
+        })
+        .catch((e) => $q.notify({ type: 'negative', message: friendlyError(e) }));
+    });
   }
 
   function removeUploadTask(id: string) {

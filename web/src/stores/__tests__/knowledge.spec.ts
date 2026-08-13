@@ -21,12 +21,13 @@ vi.mock('../../features/knowledge/api', () => ({
   moveDocumentToDir: vi.fn(),
   promoteDocuments: vi.fn(),
   reembedDocuments: vi.fn(),
+  enableCollectionSemantic: vi.fn(),
   searchKnowledge: vi.fn(),
   getEmbedderConfig: vi.fn(),
   updateEmbedderConfig: vi.fn(),
 }));
 
-import { reembedDocuments } from '../../features/knowledge/api';
+import { reembedDocuments, enableCollectionSemantic } from '../../features/knowledge/api';
 
 describe('useKnowledgeStore reembedDocuments（B1）', () => {
   beforeEach(() => {
@@ -40,5 +41,24 @@ describe('useKnowledgeStore reembedDocuments（B1）', () => {
     const r = await store.reembedDocuments('col-1', ['doc-1']);
     expect(reembedDocuments).toHaveBeenCalledWith('col-1', ['doc-1'], undefined, undefined);
     expect(r).toEqual({ accepted_count: 1, skipped_count: 0 });
+  });
+});
+
+describe('useKnowledgeStore enableCollectionSemantic（B2）', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+  });
+
+  it('enableCollectionSemantic action 调用 api 并返回受理结果', async () => {
+    vi.mocked(enableCollectionSemantic).mockResolvedValueOnce({
+      enqueued_docs: 7,
+      embedding_model: 'text-embedding-3-small',
+      dim: 1536,
+    });
+    const store = useKnowledgeStore();
+    const r = await store.enableCollectionSemantic('col-lex');
+    expect(enableCollectionSemantic).toHaveBeenCalledWith('col-lex');
+    expect(r).toEqual({ enqueued_docs: 7, embedding_model: 'text-embedding-3-small', dim: 1536 });
   });
 });

@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+
+	"aranea-agents/pkg/safego"
 )
 
 // SpawnOptions 描述一次子进程启动。
@@ -58,14 +60,15 @@ func Spawn(ctx context.Context, opt SpawnOptions) (*Process, error) {
 	}
 
 	p := &Process{cmd: cmd, stdin: stdin, stdout: stdout, done: make(chan struct{})}
-	go func() {
+	// 75 review Y3：等待循环经 safego 托管，panic 可恢复并上报 hook
+	safego.GoBackground("acp.process.wait", func() {
 		err := cmd.Wait()
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 0 {
 			err = nil
 		}
 		p.exitErr = err
 		close(p.done)
-	}()
+	})
 	return p, nil
 }
 

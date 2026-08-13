@@ -2970,6 +2970,11 @@ export default {
     reembedConfirmTitle: '重新向量化文档',
     reembedConfirmBody: '将从已存正文为 {n} 篇文档重建向量索引（无需原文件）。',
     reembedAccepted: '已受理 {n} 篇重嵌入',
+    enableSemantic: '启用语义检索',
+    enableSemanticTitle: '启用语义检索',
+    enableSemanticBody:
+      '将绑定当前 Embedder（{model}，{dim} 维）并为全部文档重建向量；启用后词法检索自动升级为混合检索。',
+    enableSemanticAccepted: '已启用，{n} 篇文档进入重嵌入队列',
     vaultSwitcherEmpty: '选择知识库',
     vaultDeleteAria: '删除知识库',
     vaultRoot: '根目录',

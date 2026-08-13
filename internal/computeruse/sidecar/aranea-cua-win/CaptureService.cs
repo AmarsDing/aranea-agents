@@ -41,8 +41,25 @@ public sealed class CaptureService
     /// <summary>主屏缩放因子（DPI/96）</summary>
     public static double PrimaryScaleFactor() => GetDpiForSystem() / 96.0;
 
-    /// <summary>device.info：平台 + 主屏 + 全部显示器（物理像素）</summary>
-    public DeviceInfoResultDto GetDeviceInfo()
+    /// <summary>
+    /// 75 review C1：选取截图区域中心点所在显示器的缩放因子；未命中/无显示器信息时回退主屏缩放。纯函数，可单测
+    /// </summary>
+    public static double PickScaleFactorForRegion(int x, int y, int w, int h, IReadOnlyList<DisplayDto> displays, double fallbackScale)
+    {
+        var cx = x + w / 2;
+        var cy = y + h / 2;
+        foreach (var d in displays)
+        {
+            if (cx >= d.X && cx < d.X + d.W && cy >= d.Y && cy < d.Y + d.H)
+            {
+                return d.ScaleFactor;
+            }
+        }
+        return fallbackScale;
+    }
+
+    /// <summary>枚举全部显示器（物理像素 + 各屏缩放因子）</summary>
+    private static List<DisplayDto> EnumDisplays()
     {
         var displays = new List<DisplayDto>();
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr hMon, IntPtr hdc, ref RECT rc, IntPtr data) =>
@@ -74,7 +91,12 @@ public sealed class CaptureService
             }
             return true;
         }, IntPtr.Zero);
+        return displays;
+    }
 
+    /// <summary>device.info：平台 + 主屏 + 全部显示器（物理像素）</summary>
+    public DeviceInfoResultDto GetDeviceInfo()
+    {
         return new DeviceInfoResultDto
         {
             Platform = "windows",
@@ -84,7 +106,7 @@ public sealed class CaptureService
                 Height = GetSystemMetrics(1), // SM_CYSCREEN
                 ScaleFactor = PrimaryScaleFactor(),
             },
-            Displays = displays,
+            Displays = EnumDisplays(),
         };
     }
 
@@ -119,7 +141,8 @@ public sealed class CaptureService
                 PngBase64 = Convert.ToBase64String(ms.ToArray()),
                 Width = scaled.Width,
                 Height = scaled.Height,
-                ScaleFactor = PrimaryScaleFactor(),
+                // C1 修复：按截图区域中心点匹配显示器缩放（多屏混合 DPI 时不再恒定主屏）
+                ScaleFactor = PickScaleFactorForRegion(sx, sy, sw, sh, EnumDisplays(), PrimaryScaleFactor()),
             };
         }
         catch (Win32Exception wex)

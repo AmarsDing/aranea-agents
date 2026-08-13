@@ -509,12 +509,12 @@
 |------|------|
 | **上游依赖** | `biz`（Knowledge 类型 + LLMCaller）、`provider`（Embedding/LLM 模型） |
 | **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
-| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex` |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex`；V4：`Usecase.ReembedDocuments/EnableCollectionSemantic`（B1 文档重嵌入 / B2 集合语义层单向启用，串行管线 `service/knowledge_reembed.go`，RPC 契约见 37-knowledge.design.md §V12.9-8） |
 | **共享类型** | `Chunk`、`RetrievalResult`；SP1：`KnowledgeBlock`、`KnowledgeBlockRefEdge`、`GraphDelta`、`BlockBacklink`/`DanglingLink`（service 契约） |
 | **事件生产** | `knowledge_ingest`；SP1：`knowledge.graph.delta`（SystemNotice，Informational，WS-only 不持久化）、`knowledge_rebuild_index`（进度） |
 | **事件消费** | 无 |
 | **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_collections/knowledge_documents + pgvector chunks）；SP1：`knowledge_blocks`（块物化，`anchor` 部分唯一索引 + `promoted_from/to` 谱系）、`knowledge_block_refs`（块级引用边，dst_* SET NULL / collection CASCADE 镜像内存图）；`vault_backend` 维度（local=文件系统真相源 / team=PG 真相源） |
-| **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载） |
+| **前端对应** | KnowledgePage（资源管理器三栏 + 3D 图谱 + 设置）；SP1-I：`KnowledgeDocDetail` 反链分组/dangling 灰显/晋升按钮、`KnowledgePromoteDialog`、`KnowledgeVaultTree`/`KnowledgeGraph3D` team 徽标、`useKnowledgeGraphDeltaWs`（graph.delta 订阅 → `invalidateLinkCaches` + 详情/图谱重载）；V4：`GraphLegend`（M5 图例过滤 + 透镜）、`FocusCard`（M4 节点详情卡，含重嵌入入口）、`LiquidGlassDefs`（M1 真折射滤镜单例）、`KnowledgeVaultTree`「启用语义检索」菜单（B2，仅词法库）、`WorkbenchSidebar` 文件行「重新向量化」菜单（B1） |
 | **改它时注意** | 块/refs 写路径一律整文档重插（不做 diff）；dangling（SET NULL）与边消失（DELETE）必须区分；内存图与 DB 互为镜像（启动 LoadAll 重放 + 写路径 ApplyDocDelta）；新增 wikilink 语法先改 blockparse 纯函数（TDD）再接线；多副本部署需事件广播保持 LinkIndex 一致（另立 ADR） |
 
 ---

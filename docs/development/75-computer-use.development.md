@@ -107,6 +107,25 @@
 | S2 | 步骤流仅消费 WS 实时事件，页面刷新后不回放 | useCuStepStream.ts 加 TECH-DEBT 标注：REST 回补未实现，回补时须复用 `cuStepFromMonitorEvent` 字段映射口径（含 danger/confirmed_by） | 标注约束 |
 | S3 | REST 重载路径丢 danger 标记（页面刷新后 confirm 卡高危徽标丢失） | `session.proto` StepV2 加 `danger=23`；`bizStepToProto` 映射；前端 `v2Api.ts` StepV2Dto/mapStep 映射（WS 路径此前已带） | `TestSessionV2Service_ListSteps_DangerMapping` + v2Api.spec.ts |
 
+### Phase M2 — 对标市场最佳的能力增强（2026-08-13）✅
+
+> 背景：按 `docs/reports/2026-08-12-research-computer-use.md` 二次对标评估选定「方案 A：混合架构增强」——保留 a11y 快路径，补齐视觉链路（本地+云端 VLM、OmniParser 本机 GPU）、执行后验证闭环与批量动作。评估结论已回写该报告附录。
+
+| # | 任务 | 验收 | 状态 |
+|---|------|------|------|
+| 1 | 工具面放开：`computer_use_*` 入 `registryOptInOnlyKeys` + spirit profile `group:computeruse`；存量库 reseed 迁移 `20261208 builtin_platform_tools_cua_reseed`（种子幂等） | spirit 生效工具集含 computeruse 组 | ✅ |
+| 2 | VLM Grounder 模型配置：本地 `ollama/qwen2.5vl-cua`（qwen2.5vl:7b 派生 num_ctx=8192，修复 Ollama 默认 4096 上下文超限）+ 云端 `alibaba-cn/qwen3-vl-plus` catalog 建行 | catalog 视觉模型启用 | ✅（云端待用户提供 dashscope API key 后启用） |
+| 3 | OmniParser V2 本机 GPU 部署（HF 离线权重 + venv + `:8101`，8100 被占改端口；懒加载 PaddleOCR/关 reload 控显存） | `start_omniparser.ps1` 一键起服，`Available()` 通过 | ✅ |
+| 4 | grounding fallback 链补全：SoM 失败降级 VLM 坐标直判（归一化千分位 + 480x360@2x zoom 精化） | TDD 单测绿（PathVLMDirect） | ✅ |
+| 5 | 执行后验证闭环：settle + re-snapshot + 元素树 hash + 前台窗口检查，verify 透出 | TDD 单测绿 | ✅ |
+| 6 | `computer_use.act` 批量动作 `actions[]`：按序 fail-fast、错误注明已完成步数、逐步审计 | TDD 单测绿 | ✅ |
+| 7 | 运行期加固（E2E 驱动）：VLM 超时 30s→60s（冷启动容忍）；发送图降采样 ≤1568px（prompt bbox 同比例缩放）；**无匹配出口**（SoM 输出 0 / 直判输出 -1,-1 → 明确报错，禁止强制乱点） | TDD 单测绿 | ✅ |
+| 8 | 记事本 E2E 运行时验证（`test/cua-reseed`，真实 sidecar+OmniParser+Ollama） | launch/observe/act-type(a11y)/som-dryrun(vision 命中"红叉→关闭")/act-batch(2步)/grounding-miss(双无匹配出口) 全 PASS | ✅ |
+
+E2E 关键证据（2026-08-13 运行）：`act-type path=a11y verify.Changed=true`；`som-dryrun path=vision ResolvedName=关闭 @2863,571`（语义目标"窗口右上角的红叉"经 OmniParser+SoM+qwen2.5vl-cua 正确解析）；`grounding-miss` 经 SoM「VLM 判定无匹配元素」降级直判「无匹配」后明确报错。
+
+**E2E 排障沉淀**：①多次失败运行泄漏的 notepad.exe 会造成全屏 a11y 树同名元素歧义（matcher top1/top2 分差 <0.2 拒绝命中）——测试前须清理残留实例；②RTX 2080 Ti 11GB 同时承载 OmniParser(Florence2/YOLO) 与 qwen2.5vl-cua(5.9GB, 100% GPU) 可行，但首次 VLM 调用含模型加载，须预热或容忍 60s 超时；③Ollama OpenAI 兼容端点不透传 num_ctx，派生 Modelfile 是唯一稳妥的上下文扩容手段（对生产 catalog 路径同样生效）。
+
 ### Phase P2 — Linux sidecar（后续迭代）
 ### Phase P3 — iOS 模拟器（macOS 宿主 WDA + MCP 托管，后续迭代）
 
