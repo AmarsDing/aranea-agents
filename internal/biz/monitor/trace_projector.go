@@ -29,6 +29,12 @@ type TraceProjector struct {
 	// events but hasn't recently).
 	started           atomic.Bool
 	lastEventUnixNano atomic.Int64
+
+	// upsertWarnInterval throttles the per-span upsert-failure Warn. When
+	// the repo is down (e.g. PG connection lost), every span event fails and
+	// would otherwise emit one Warn per event, flooding the log pipeline.
+	upsertWarnInterval time.Duration
+	lastUpsertWarnNano atomic.Int64
 }
 
 type activeTrace struct {
@@ -74,10 +80,16 @@ func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, usageRepo TraceUsag
 		buses:     seen,
 		lg:        lg,
 		traces:    make(map[string]*activeTrace),
+
+		upsertWarnInterval: defaultUpsertWarnInterval,
 	}
 }
 
 const traceActiveTTL = 10 * time.Minute
+
+// defaultUpsertWarnInterval is the default throttle window for the per-span
+// upsert-failure Warn (see TraceProjector.upsertWarnInterval).
+const defaultUpsertWarnInterval = 10 * time.Second
 
 func (p *TraceProjector) Start(ctx context.Context) {
 	if p == nil {
@@ -242,8 +254,7 @@ func (p *TraceProjector) handle(ctx context.Context, ev contract.MonitorEvent) {
 	}
 
 	if err := p.repo.UpsertMonitorTraceSpan(ctx, sw); err != nil {
-		p.lg.Warn("UpsertMonitorTraceSpan failed",
-			loggateway.StepID("monitor.trace_span_upsert_fail"), loggateway.Str("trace_id", traceID), loggateway.Str("span_id", spanID), loggateway.Err(err))
+		p.warnUpsertSpanThrottled(traceID, spanID, err)
 	}
 
 	p.mu.Lock()
@@ -381,6 +392,32 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, c); err != nil {
 		p.lg.Warn("UpdateMonitorTraceCompletion failed",
 			loggateway.StepID("monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+	}
+}
+
+// warnUpsertSpanThrottled emits the per-span upsert-failure Warn at most
+// once per upsertWarnInterval. Span events are the highest-frequency failure
+// path in the projector; without throttling, a dead repo turns every event
+// into a Warn and floods the log pipeline.
+func (p *TraceProjector) warnUpsertSpanThrottled(traceID, spanID string, err error) {
+	interval := p.upsertWarnInterval
+	if interval <= 0 {
+		interval = defaultUpsertWarnInterval
+	}
+	now := time.Now().UnixNano()
+	for {
+		last := p.lastUpsertWarnNano.Load()
+		if last != 0 && now-last < int64(interval) {
+			return
+		}
+		if p.lastUpsertWarnNano.CompareAndSwap(last, now) {
+			p.lg.Warn("UpsertMonitorTraceSpan failed (throttled)",
+				loggateway.StepID("monitor.trace_span_upsert_fail"),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("span_id", spanID),
+				loggateway.Err(err))
+			return
+		}
 	}
 }
 

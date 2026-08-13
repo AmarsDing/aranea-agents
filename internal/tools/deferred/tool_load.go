@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"trpc.group/trpc-go/trpc-agent-go/toolsnapshot"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -13,20 +15,23 @@ type toolLoadInput struct {
 }
 
 type toolLoadOutput struct {
-	Success  bool   `json:"success"`
-	ToolName string `json:"tool_name,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Success     bool                `json:"success"`
+	ToolName    string              `json:"tool_name,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Schema      *trpctool.Declaration `json:"schema,omitempty"`
+	Error       string              `json:"error,omitempty"`
+	Message     string              `json:"message,omitempty"`
 }
 
 // ToolLoadTool 是一个元工具，允许模型按名称直接加载和激活延迟工具。
 //
 // 与 tool_search 的区别：
-//   - tool_search：模型不知道有什么工具 → 搜索发现 → Discover 标记 → 下轮放行
+//   - tool_search：模型不知道有什么工具 → 搜索发现 → 返回匹配列表
 //   - tool_load：模型已从目录 cue 知道工具名 → 直接激活 → 立即可用
 //
 // 设计依据（29-token §14.4 WP-4）：
 // 静态目录 cue 列出所有延迟工具的名称+描述，模型通过 tool_load 按需加载完整 schema。
+// 激活后写入 session state 并触发 LLM 工具快照失效，下一轮请求即能看到新工具。
 type ToolLoadTool struct {
 	tool    trpctool.CallableTool
 	manager *DeferredToolManager
@@ -81,14 +86,14 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 	// 检查工具是否在目录中
 	if !t.manager.IsInCatalog(in.ToolName) {
 		return toolLoadOutput{
-			Success: false,
+			Success:  false,
 			ToolName: in.ToolName,
-			Error:   fmt.Sprintf("tool %q not found in deferred catalog", in.ToolName),
+			Error:    fmt.Sprintf("tool %q not found in deferred catalog", in.ToolName),
 		}, nil
 	}
 
-	// 激活工具（幂等：已激活则直接返回缓存）
-	activatedTool, err := t.manager.Activate(ctx, in.ToolName)
+	// 激活工具（幂等：已激活则直接返回声明）
+	decl, err := t.manager.Activate(ctx, in.ToolName)
 	if err != nil {
 		return toolLoadOutput{
 			Success:  false,
@@ -97,18 +102,20 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 		}, nil
 	}
 
-	// 同时标记为已发现（确保 ToolFilter 放行）
-	t.manager.Discover(in.ToolName)
+	// 触发 LLM 工具快照失效，下一轮请求即能看到新工具
+	toolsnapshot.InvalidateFromContext(ctx)
 
-	decl := activatedTool.Declaration()
+	// 构建结果：返回完整声明供模型立即了解 schema
 	desc := ""
 	if decl != nil {
 		desc = decl.Description
 	}
 
 	return toolLoadOutput{
-		Success:  true,
-		ToolName: in.ToolName,
-		Message:  fmt.Sprintf("Tool %q loaded successfully. %s", in.ToolName, desc),
+		Success:     true,
+		ToolName:    in.ToolName,
+		Description: desc,
+		Schema:      decl,
+		Message:     fmt.Sprintf("Tool %q loaded and activated successfully. You can now call %q directly in subsequent requests.", in.ToolName, in.ToolName),
 	}, nil
 }

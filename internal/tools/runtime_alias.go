@@ -80,6 +80,16 @@ func (a *aliasTool) SkipSummarization() bool {
 	return false
 }
 
+// InnerTool returns the wrapped tool, enabling filter penetration — e.g. the
+// deferred-tool ToolFilter can check the underlying tool's activation state
+// when a deferred tool is wrapped by an alias.
+func (a *aliasTool) InnerTool() trpctool.Tool {
+	if a == nil {
+		return nil
+	}
+	return a.inner
+}
+
 func (a *aliasTool) LongRunning() bool {
 	type longRunner interface{ LongRunning() bool }
 	if l, ok := a.inner.(longRunner); ok {

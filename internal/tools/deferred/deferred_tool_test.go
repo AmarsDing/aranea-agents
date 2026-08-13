@@ -2,164 +2,103 @@ package deferred
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-func TestDeferredCallableTool_LazyResolution(t *testing.T) {
-	resolved := false
-	factory := func(ctx context.Context) (trpctool.Tool, error) {
-		resolved = true
-		return trpcfunction.NewFunctionTool(
-			func(ctx context.Context, _ struct{}) (string, error) {
-				return "hello", nil
-			},
-			trpcfunction.WithName("test_tool"),
-		), nil
-	}
-	decl := &trpctool.Declaration{
-		Name:        "test_tool",
-		Description: "A test tool",
-	}
-	dt := NewDeferredCallableTool(decl, factory, loggateway.NewNoop())
-	if resolved {
-		t.Fatal("factory should not be called on construction")
-	}
-	result, err := dt.Call(context.Background(), []byte(`{}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !resolved {
-		t.Fatal("factory should be called on first Call")
-	}
-	if result != "hello" {
-		t.Fatalf("expected hello, got %v", result)
-	}
+func createTestInnerTool() trpctool.Tool {
+	return trpcfunction.NewFunctionTool(
+		func(ctx context.Context, _ struct{}) (string, error) {
+			return "hello", nil
+		},
+		trpcfunction.WithName("test_tool"),
+		trpcfunction.WithDescription("A test tool"),
+	)
 }
 
 func TestDeferredCallableTool_Declaration(t *testing.T) {
-	decl := &trpctool.Declaration{
-		Name:        "test_tool",
-		Description: "A test tool",
-	}
-	dt := NewDeferredCallableTool(decl, nil, loggateway.NewNoop())
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
+
 	got := dt.Declaration()
+	if got == nil {
+		t.Fatal("expected non-nil declaration")
+	}
 	if got.Name != "test_tool" {
 		t.Fatalf("expected test_tool, got %s", got.Name)
 	}
-}
-
-func TestDeferredCallableTool_ResolveOnce(t *testing.T) {
-	callCount := 0
-	factory := func(ctx context.Context) (trpctool.Tool, error) {
-		callCount++
-		return trpcfunction.NewFunctionTool(
-			func(ctx context.Context, _ struct{}) (string, error) {
-				return "hello", nil
-			},
-			trpcfunction.WithName("test_tool"),
-		), nil
-	}
-	decl := &trpctool.Declaration{Name: "test_tool", Description: "test"}
-	dt := NewDeferredCallableTool(decl, factory, loggateway.NewNoop())
-	dt.Call(context.Background(), []byte(`{}`))
-	dt.Call(context.Background(), []byte(`{}`))
-	if callCount != 1 {
-		t.Fatalf("factory should be called once, called %d times", callCount)
+	if got.Description != "A test tool" {
+		t.Fatalf("expected 'A test tool', got %s", got.Description)
 	}
 }
 
-func TestDeferredCallableTool_FactoryErrorPersisted(t *testing.T) {
-	factoryErr := errors.New("factory exploded")
-	callCount := 0
-	factory := func(ctx context.Context) (trpctool.Tool, error) {
-		callCount++
-		return nil, factoryErr
-	}
-	decl := &trpctool.Declaration{Name: "broken_tool", Description: "test"}
-	dt := NewDeferredCallableTool(decl, factory, loggateway.NewNoop())
+func TestDeferredCallableTool_Call_BlockedBeforeActivation(t *testing.T) {
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
 
-	_, err1 := dt.Call(context.Background(), []byte(`{}`))
-	if err1 == nil {
-		t.Fatal("expected error on first call")
+	_, err := dt.Call(context.Background(), []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error before activation")
 	}
-
-	_, err2 := dt.Call(context.Background(), []byte(`{}`))
-	if err2 == nil {
-		t.Fatal("expected error on second call")
-	}
-	if callCount != 2 {
-		t.Fatalf("factory should be retried on each call after failure, called %d times", callCount)
+	if !strings.Contains(err.Error(), "not activated") {
+		t.Fatalf("expected 'not activated' error, got: %v", err)
 	}
 }
 
-func TestDeferredCallableTool_FactoryRetryOnSuccess(t *testing.T) {
-	factoryErr := errors.New("factory exploded")
-	callCount := 0
-	factory := func(ctx context.Context) (trpctool.Tool, error) {
-		callCount++
-		if callCount == 1 {
-			return nil, factoryErr
-		}
-		return trpcfunction.NewFunctionTool(
-			func(ctx context.Context, _ struct{}) (string, error) {
-				return "hello", nil
-			},
-			trpcfunction.WithName("test_tool"),
-		), nil
-	}
-	decl := &trpctool.Declaration{Name: "retry_tool", Description: "test"}
-	dt := NewDeferredCallableTool(decl, factory, loggateway.NewNoop())
+func TestDeferredCallableTool_Call_AfterActivation(t *testing.T) {
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
 
-	_, err1 := dt.Call(context.Background(), []byte(`{}`))
-	if err1 == nil {
-		t.Fatal("expected error on first call")
-	}
+	ctx := withTestInvocation(context.Background())
+	writeActivatedSet(ctx, "test_tool")
 
-	result, err2 := dt.Call(context.Background(), []byte(`{}`))
-	if err2 != nil {
-		t.Fatalf("expected success on retry, got error: %v", err2)
+	result, err := dt.Call(ctx, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error after activation: %v", err)
 	}
 	if result != "hello" {
 		t.Fatalf("expected hello, got %v", result)
 	}
-	if callCount != 2 {
-		t.Fatalf("factory should be called twice (fail then succeed), called %d times", callCount)
-	}
+}
 
-	result3, err3 := dt.Call(context.Background(), []byte(`{}`))
-	if err3 != nil {
-		t.Fatalf("expected success on third call, got error: %v", err3)
-	}
-	if result3 != "hello" {
-		t.Fatalf("expected hello, got %v", result3)
-	}
-	if callCount != 2 {
-		t.Fatalf("factory should not be called again after success, called %d times", callCount)
+func TestDeferredCallableTool_InnerTool(t *testing.T) {
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
+
+	got := dt.InnerTool()
+	if got != inner {
+		t.Fatal("InnerTool should return the original inner tool")
 	}
 }
 
-// TestDeferredCallableTool_ImplementsDeferredTool verifies that DeferredCallableTool
-// satisfies the framework's DeferredTool interface (P2-9 alignment).
-func TestDeferredCallableTool_ImplementsDeferredTool(t *testing.T) {
-	decl := &trpctool.Declaration{Name: "deferred_tool", Description: "test"}
-	dt := NewDeferredCallableTool(decl, nil, loggateway.NewNoop())
+func TestDeferredCallableTool_ShouldDefer(t *testing.T) {
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
 
-	// Compile-time interface assertion.
-	var _ trpctool.DeferredTool = dt
-
-	// ShouldDefer must always return true for DeferredCallableTool.
 	if !dt.ShouldDefer(context.Background()) {
-		t.Fatal("DeferredCallableTool.ShouldDefer must return true")
+		t.Fatal("ShouldDefer must return true for DeferredCallableTool")
 	}
+}
 
-	// Framework helper must recognize the tool as deferred.
-	if !trpctool.ShouldDefer(context.Background(), dt) {
-		t.Fatal("framework tool.ShouldDefer must return true for DeferredCallableTool")
-	}
+func TestDeferredCallableTool_ImplementsDeferredTool(t *testing.T) {
+	inner := createTestInnerTool()
+	dt := NewDeferredCallableTool(inner, loggateway.NewNoop())
+
+	var _ trpctool.DeferredTool = dt
+}
+
+// withTestInvocation 返回一个携带最小 invocation + session 的 context，
+// 供需要 session state 的测试使用。
+func withTestInvocation(ctx context.Context) context.Context {
+	sess := &trpcsession.Session{}
+	inv := trpcagent.NewInvocation()
+	inv.Session = sess
+	return trpcagent.NewInvocationContext(ctx, inv)
 }

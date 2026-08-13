@@ -43,9 +43,7 @@ func (ac *assembleContext) assembleFromRegistry() error {
 		if !ac.enabled[reg.Name] {
 			continue
 		}
-		if ac.deferredSet[reg.Name] {
-			continue
-		}
+		// WP-4 修复：不再跳过 deferred 工具，全部正常装配。
 		if reg.ToolSetFactory != nil {
 			ts, err := reg.ToolSetFactory(ac.ctx)
 			if err != nil {
@@ -393,97 +391,145 @@ func (ac *assembleContext) assembleBlobAndResultTools() error {
 	return nil
 }
 
-// assembleDeferredTools creates deferred tool entries and their callable wrappers.
+// assembleDeferredTools builds the deferred tool catalog and wraps deferred
+// tools with DeferredCallableTool. All tools are already fully assembled at
+// this point (WP-4 修复版：全量装配 + wrapDeferred)。
+//
+// 流程：
+//  1. 从 cfg.DeferredTools（registry 名称）构建延迟注册表名集合
+//  2. 扫描已装配的 ToolSets 和独立工具，匹配延迟注册表名
+//  3. 构建 catalog（name + description + category）供 tool_search/tool_load
+//  4. 注册工具引用到 manager（供 tool_load 返回完整 schema）
+//  5. 包装延迟 ToolSet（DeferredToolSet）和独立工具（DeferredCallableTool）
 func (ac *assembleContext) assembleDeferredTools() error {
-	var catalog []deferred.DeferredToolEntry
-	registryEntries := Registry()
-	regByName := make(map[string]*ToolRegistration, len(registryEntries))
-	for _, reg := range registryEntries {
-		regByName[reg.Name] = reg
+	if len(ac.cfg.DeferredTools) == 0 {
+		return nil
 	}
+
+	deferredRegNames := make(map[string]bool, len(ac.cfg.DeferredTools))
 	for _, name := range ac.cfg.DeferredTools {
-		reg, ok := regByName[name]
-		if !ok {
-			ac.lg.Warn("tools.assemble.deferred_not_found",
-				loggateway.StepID("tool.assemble.deferred_not_found"),
-				loggateway.Str("tool", name),
-				loggateway.Str("reason", "deferred tool not in registry"))
+		deferredRegNames[name] = true
+	}
+
+	// 第一遍：构建 catalog + 收集工具引用
+	// deferredRuntimeNames：LLM 可见的运行时名（catalog/filter/tool_load 用）
+	// deferredBaseNames：原始声明名（DeferredToolSet/DeferredCallableTool 包装匹配用）
+	var catalog []deferred.DeferredToolEntry
+	deferredRuntimeNames := make(map[string]bool)
+	deferredBaseNames := make(map[string]bool)
+	toolRefs := make(map[string]trpctool.Tool)
+
+	// 扫描 ToolSets：名称匹配延迟注册表名的 ToolSet，其所有工具均为延迟工具
+	//
+	// catalog 使用运行时名（"{toolset}_{tool}"，与框架 NamedTool 前缀约定一致），
+	// 这是 LLM 在 tools block 中看到并调用的名字；BaseName 保留原始声明名，
+	// 供 DeferredCallableTool 激活门禁匹配。
+	for _, ts := range ac.out.ToolSets {
+		if ts == nil || !deferredRegNames[ts.Name()] {
 			continue
 		}
-		if reg.Factory != nil {
+		cat := findRegistryCategory(ts.Name())
+		tsName := ts.Name()
+		for _, t := range ts.Tools(ac.ctx) {
+			if t == nil || t.Declaration() == nil {
+				continue
+			}
+			baseName := t.Declaration().Name
+			runtimeName := baseName
+			if tsName != "" {
+				runtimeName = tsName + "_" + baseName
+			}
+			if deferredRuntimeNames[runtimeName] {
+				continue
+			}
+			deferredRuntimeNames[runtimeName] = true
+			deferredBaseNames[baseName] = true
 			catalog = append(catalog, deferred.DeferredToolEntry{
-				Name:        reg.Name,
-				Description: reg.Description,
-				Category:    reg.Category,
-				Factory:     reg.Factory,
+				Name:        runtimeName,
+				BaseName:    baseName,
+				Description: t.Declaration().Description,
+				Category:    cat,
 			})
-		} else if reg.ToolSetFactory != nil {
-			// Expand ToolSetFactory into individual tool entries so all tools
-			// in the set are accessible, not just the first one.
-			expanded := ac.expandToolSetFactory(reg)
-			catalog = append(catalog, expanded...)
+			toolRefs[runtimeName] = t
 		}
 	}
+
+	// 扫描独立工具：名称匹配延迟注册表名的工具（无 toolset 前缀）
+	for _, t := range ac.out.Tools {
+		if t == nil || t.Declaration() == nil {
+			continue
+		}
+		name := t.Declaration().Name
+		if !deferredRegNames[name] || deferredRuntimeNames[name] {
+			continue
+		}
+		deferredRuntimeNames[name] = true
+		deferredBaseNames[name] = true
+		catalog = append(catalog, deferred.DeferredToolEntry{
+			Name:        name,
+			BaseName:    name,
+			Description: t.Declaration().Description,
+			Category:    findRegistryCategory(name),
+		})
+		toolRefs[name] = t
+	}
+
 	if len(catalog) == 0 {
 		return nil
 	}
 
+	// 创建 manager 和元工具
 	searchTool := deferred.NewToolSearchTool(catalog)
-	loadTool := deferred.NewToolLoadToolWithManager(searchTool.Manager())
+	manager := searchTool.Manager()
+	for name, t := range toolRefs {
+		manager.RegisterTool(name, t)
+	}
+	loadTool := deferred.NewToolLoadToolWithManager(manager)
 	ac.out.Tools = append(ac.out.Tools, searchTool, loadTool)
-	ac.out.DeferredManager = searchTool.Manager()
+	ac.out.DeferredManager = manager
 
-	for _, entry := range catalog {
-		if entry.Factory == nil {
+	// 第二遍：包装延迟 ToolSets 和独立工具。
+	// DeferredToolSet 内部比较的是 inner.Tools() 返回的原始声明名，因此用 baseName。
+	for i, ts := range ac.out.ToolSets {
+		if ts == nil || !deferredRegNames[ts.Name()] {
 			continue
 		}
-		dt := deferred.NewDeferredCallableTool(
-			&trpctool.Declaration{
-				Name:        entry.Name,
-				Description: entry.Description,
-			},
-			entry.Factory,
-			ac.lg,
-		)
-		ac.out.Tools = append(ac.out.Tools, dt)
+		ac.out.ToolSets[i] = deferred.NewDeferredToolSet(ts, deferredBaseNames, ac.lg)
 	}
-	return nil
-}
-
-// expandToolSetFactory eagerly creates the toolset and returns one
-// DeferredToolEntry per tool. This ensures all tools in a toolset are
-// accessible as deferred tools, not just the first one.
-func (ac *assembleContext) expandToolSetFactory(reg *ToolRegistration) []deferred.DeferredToolEntry {
-	ts, err := reg.ToolSetFactory(ac.ctx)
-	if err != nil {
-		ac.lg.Warn("tools.assemble.deferred_toolset_factory_failed",
-			loggateway.StepID("tool.assemble.deferred_toolset_factory_fail"),
-			loggateway.Str("tool", reg.Name),
-			loggateway.Err(err))
-		return nil
-	}
-	if ts == nil {
-		return nil
-	}
-	tools := ts.Tools(ac.ctx)
-	if len(tools) == 0 {
-		return nil
-	}
-	entries := make([]deferred.DeferredToolEntry, 0, len(tools))
-	for _, t := range tools {
+	for i, t := range ac.out.Tools {
 		if t == nil || t.Declaration() == nil {
 			continue
 		}
-		tool := t // capture loop variable
-		decl := tool.Declaration()
-		entries = append(entries, deferred.DeferredToolEntry{
-			Name:        decl.Name,
-			Description: decl.Description,
-			Category:    reg.Category,
-			Factory: func(_ context.Context) (trpctool.Tool, error) {
-				return tool, nil
-			},
-		})
+		if deferredBaseNames[t.Declaration().Name] {
+			ac.out.Tools[i] = deferred.NewDeferredCallableTool(t, ac.lg)
+		}
 	}
-	return entries
+
+	ac.lg.Info("两段式工具加载：延迟工具装配完成",
+		loggateway.StepID("tool.assemble.deferred_done"),
+		loggateway.Int("deferred_count", len(catalog)),
+		loggateway.Int("deferred_toolsets", countDeferredToolSets(ac.out.ToolSets, deferredRegNames)),
+	)
+	return nil
+}
+
+// findRegistryCategory 查找注册表中指定名称的分类。
+func findRegistryCategory(name string) string {
+	for _, reg := range Registry() {
+		if reg.Name == name {
+			return reg.Category
+		}
+	}
+	return ""
+}
+
+// countDeferredToolSets 统计被延迟的 ToolSet 数量。
+func countDeferredToolSets(toolSets []ToolSet, deferredRegNames map[string]bool) int {
+	count := 0
+	for _, ts := range toolSets {
+		if ts != nil && deferredRegNames[ts.Name()] {
+			count++
+		}
+	}
+	return count
 }

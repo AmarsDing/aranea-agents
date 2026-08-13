@@ -3,7 +3,6 @@ package deferred
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -11,20 +10,29 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// DeferredCallableTool 包装一个已完全装配的工具，提供按需激活门禁。
+//
+// eager-inner 模式（WP-4 修复版）：
+//   - Declaration() 始终返回内部工具的完整声明（含 InputSchema），
+//     不再像 factory 模式那样只有名称+描述。
+//   - Call() 在未激活时返回结构化错误（提示先 tool_load），
+//     激活后直接委托给内部工具。
+//   - 内部工具在装配阶段已完全创建并装饰（超时/结果预算/确定性缓存），
+//     不存在 lazy factory 的二次初始化问题。
 type DeferredCallableTool struct {
-	mu       sync.Mutex
-	resolved bool
-	factory  func(ctx context.Context) (trpctool.Tool, error)
-	tool     trpctool.Tool
-	decl     *trpctool.Declaration
-	lg       loggateway.Logger
+	inner trpctool.Tool
+	decl  *trpctool.Declaration
+	lg    loggateway.Logger
 }
 
-func NewDeferredCallableTool(decl *trpctool.Declaration, factory func(ctx context.Context) (trpctool.Tool, error), lg loggateway.Logger) *DeferredCallableTool {
+// NewDeferredCallableTool 创建一个 eager-inner 的延迟工具包装器。
+// inner 必须是已完全装配的工具（含完整 schema 和装饰器）。
+func NewDeferredCallableTool(inner trpctool.Tool, lg loggateway.Logger) *DeferredCallableTool {
+	decl := inner.Declaration()
 	return &DeferredCallableTool{
-		decl:    decl,
-		factory: factory,
-		lg:      lg,
+		inner: inner,
+		decl:  decl,
+		lg:    lg,
 	}
 }
 
@@ -32,48 +40,36 @@ func (d *DeferredCallableTool) Declaration() *trpctool.Declaration {
 	return d.decl
 }
 
-// ShouldDefer implements trpctool.DeferredTool. DeferredCallableTool always
-// defers full loading until the first Call triggers factory resolution,
-// allowing hosts to hide the full declaration until it is explicitly needed.
+// InnerTool 返回内部工具，供 filter 穿透检查。
+// 当 aliasTool 包装 DeferredCallableTool 时，filter 可通过 InnerTool
+// 递归找到被 deferred 的底层工具。
+func (d *DeferredCallableTool) InnerTool() trpctool.Tool {
+	return d.inner
+}
+
+// ShouldDefer implements trpctool.DeferredTool.
+// 返回 true 表示此工具在 LLM tools block 中应被 ToolFilter 隐藏，
+// 直到通过 tool_load 激活。
 func (d *DeferredCallableTool) ShouldDefer(_ context.Context) bool {
 	return true
 }
 
 func (d *DeferredCallableTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
-	if err := d.resolve(ctx); err != nil {
-		return nil, apierror.Internal(apierror.DomainTool, "deferred tool resolution failed: "+err.Error())
+	// 门禁：未激活时拒绝执行，引导模型先 tool_load
+	if !isActivatedForSession(ctx, d.decl.Name) {
+		d.lg.Warn("deferred tool called without activation",
+			loggateway.StepID("tool.deferred.not_activated"),
+			loggateway.Str("tool", d.decl.Name),
+		)
+		return nil, apierror.Forbidden(
+			apierror.DomainTool,
+			fmt.Sprintf("tool %q is not activated. Call tool_load(\"%s\") first to load and activate it.", d.decl.Name, d.decl.Name),
+		)
 	}
-	if callable, ok := d.tool.(trpctool.CallableTool); ok {
+
+	// 已激活：委托给内部工具
+	if callable, ok := d.inner.(trpctool.CallableTool); ok {
 		return callable.Call(ctx, jsonArgs)
 	}
 	return nil, apierror.Internal(apierror.DomainTool, "deferred tool does not implement CallableTool")
-}
-
-func (d *DeferredCallableTool) resolve(ctx context.Context) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.resolved {
-		return nil
-	}
-	tool, err := d.factory(ctx)
-	if err != nil {
-		d.lg.Warn("deferred tool factory failed",
-			loggateway.StepID("tool.deferred.factory_fail"),
-			loggateway.Str("tool", d.decl.Name),
-			loggateway.Err(err),
-		)
-		return err
-	}
-	if tool == nil {
-		nilErr := fmt.Errorf("deferred tool %q: factory returned nil without error", d.decl.Name)
-		d.lg.Warn("deferred tool factory returned nil",
-			loggateway.StepID("tool.deferred.factory_nil"),
-			loggateway.Str("tool", d.decl.Name),
-			loggateway.Err(nilErr),
-		)
-		return nilErr
-	}
-	d.tool = tool
-	d.resolved = true
-	return nil
 }

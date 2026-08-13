@@ -1,10 +1,72 @@
 package monitor_test
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/event/contract"
 )
+
+// stubMonitorBus is a minimal contract.MonitorBus implementation for tests
+// that drive the projector via HandleExposed without a real subscription.
+type stubMonitorBus struct{}
+
+func (b *stubMonitorBus) Publish(context.Context, contract.MonitorEvent) {}
+func (b *stubMonitorBus) Subscribe(contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	ch := make(chan contract.MonitorEvent)
+	return ch, func() {}
+}
+func (b *stubMonitorBus) DropCount() uint64 { return 0 }
+
+// Fix D2: when the trace repo is down (e.g. PG connection lost), the
+// per-span UpsertMonitorTraceSpan Warn must be time-window throttled instead
+// of flooding one Warn per span event.
+func TestTraceProjector_UpsertSpanWarnThrottled(t *testing.T) {
+	repo := &mockRepo{
+		upsertMonitorTraceSpanFn: func(context.Context, monitor.TraceSpanWrite) error {
+			return errors.New("pg down")
+		},
+	}
+	lg := &warnCountingLogger{}
+	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	if p == nil {
+		t.Fatal("NewTraceProjector returned nil")
+	}
+	p.SetUpsertWarnIntervalForTest(time.Minute)
+
+	ev := func(id string) contract.MonitorEvent {
+		return contract.MonitorEvent{
+			ID:        id,
+			Type:      contract.MonitorEventTypeFlowLog,
+			Timestamp: time.Now().UTC(),
+			Source:    "flow",
+			Metadata: map[string]any{
+				"trace_id": "trace-1",
+				"step_id":  "llm.call",
+				"domain":   "chat",
+			},
+		}
+	}
+
+	// First failure warns; subsequent failures within the window are silent.
+	p.HandleExposed(context.Background(), ev("e1"))
+	p.HandleExposed(context.Background(), ev("e2"))
+	p.HandleExposed(context.Background(), ev("e3"))
+	if lg.warnCount != 1 {
+		t.Fatalf("warn count within throttle window = %d, want 1", lg.warnCount)
+	}
+
+	// After the window expires, the next failure warns again.
+	p.SetUpsertWarnIntervalForTest(20 * time.Millisecond)
+	time.Sleep(30 * time.Millisecond)
+	p.HandleExposed(context.Background(), ev("e4"))
+	if lg.warnCount != 2 {
+		t.Fatalf("warn count after window expiry = %d, want 2", lg.warnCount)
+	}
+}
 
 func TestSpanKindFromStep(t *testing.T) {
 	tests := []struct {

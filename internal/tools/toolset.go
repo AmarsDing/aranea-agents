@@ -611,10 +611,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	deferredSet := make(map[string]bool, len(cfg.DeferredTools))
 	for _, name := range cfg.DeferredTools {
 		deferredSet[name] = true
-		// Remove deferred tools from enabled so that builtin/search/claudecode
-		// assemblers skip them. They are only accessible via the deferred catalog
-		// (tool_search / tool_load activation).
-		delete(enabled, name)
+		// WP-4 修复：不再从 enabled 中删除延迟工具。
+		// 所有工具在装配阶段完全创建并装饰，延迟工具通过
+		// DeferredCallableTool 包装 + ToolFilter 隐藏。
 	}
 
 	ac := &assembleContext{

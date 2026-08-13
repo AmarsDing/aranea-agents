@@ -336,12 +336,13 @@ trpc-agent-go agentlog.Logger
 
 日志条目被丢弃 → 尝试记录丢弃事件 → 可能触发更多丢弃 → 无限循环
 
-### 6.2 两层切断
+### 6.2 三层切断
 
 | 层 | 机制 | 说明 |
 |----|------|------|
 | EventBus 丢弃通知 | `loggateway.Logger.Warn` + Prometheus 指标 `arametrics.EventBusDropped` | 丢弃通知经 loggateway Pipeline 走 FileSink/StdoutSink，但 EventBusSink 自身不会回环（EventBusSink 只接收 LogEntry 不接收 Envelope） |
 | EventBusSink 熔断 | 熔断状态转换写 stderr（`fmt.Fprintf(os.Stderr, ...)`） | 熔断事件不经过 Pipeline/EventBus |
+| FlowFileAppender 自反馈切断 | 丢弃 `step_id` 前缀 `monitor.flow_file.` 的回流事件 + 连续 3 次写失败熔断 1 分钟 | Appender 写盘失败 → Warn → EventBusSink → MonitorBus → Appender 再次写盘失败 的无限循环（2026-08-13 磁盘满引发日志风暴后根治，详见 18-monitor.design.md §3.4） |
 
 **EventBus 丢弃通知实现**（`internal/event/bus_adapter.go`）：
 

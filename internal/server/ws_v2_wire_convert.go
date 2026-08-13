@@ -251,6 +251,15 @@ func graphNodeToWire(n biz.GraphNode) graphNodeWire {
 	}
 }
 
+func skillCatalogEntryToWire(e biz.SkillCatalogEntry) skillCatalogEntryWire {
+	return skillCatalogEntryWire{
+		Slug:        e.Slug,
+		Name:        e.Name,
+		Description: e.Description,
+		Tags:        e.Tags,
+	}
+}
+
 func graphStageToWire(gs biz.GraphStage) graphStageWire {
 	return graphStageWire{
 		ID:          gs.ID,
@@ -370,6 +379,8 @@ func v2EventPayloadToWire(e biz.Event) (any, error) {
 		return heartbeatEventWire{Message: ev.Message, Meta: ev.Meta}, nil
 	case *biz.SystemNoticeEvent:
 		return systemNoticeEventWire{NoticeType: ev.NoticeType, Message: ev.Message, Meta: ev.Meta, Seq: ev.Seq}, nil
+	case *biz.SkillCatalogEvent:
+		return skillCatalogEventWire{Skills: mapSlice(ev.Skills, skillCatalogEntryToWire)}, nil
 	// v1 bridge
 	case *biz.ActivityBridgeEvent:
 		return activityBridgeEventWire{Event: ev.Event}, nil

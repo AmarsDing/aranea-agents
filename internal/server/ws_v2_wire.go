@@ -301,6 +301,20 @@ type systemNoticeEventWire struct {
 	Seq        int64          `json:"Seq"`
 }
 
+// skillCatalogEntryWire 使用 snake_case key —— 前端契约见
+// web/src/features/skills/types.ts SkillCatalogEntry（design 69 Phase 3），
+// 与 biz.ActivityEvent 的 snake_case wire 先例一致。
+type skillCatalogEntryWire struct {
+	Slug        string   `json:"slug"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+}
+
+type skillCatalogEventWire struct {
+	Skills []skillCatalogEntryWire `json:"skills"`
+}
+
 // activityBridgeEventWire 包装 v1 ActivityEvent。biz.ActivityEvent 自带
 // snake_case json tag（本身即 wire 定义），故直接复用而非另建镜像类型。
 type activityBridgeEventWire struct {

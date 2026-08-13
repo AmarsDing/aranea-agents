@@ -9,6 +9,7 @@ const (
 	EventKindSystemRunStatus EventKind = "system.run_status"
 	EventKindSystemHeartbeat EventKind = "system.heartbeat"
 	EventKindSystemNotice    EventKind = "system.notice"
+	EventKindSkillCatalog    EventKind = "skill.catalog"
 )
 
 // RunStatusEvent signals a run status change (replaces v1 system-domain run_status ActivityEvent).
@@ -92,6 +93,43 @@ func (e *SystemNoticeEvent) EntityID() string          { return e.sessionID }
 func (e *SystemNoticeEvent) OccurredAt() time.Time     { return e.occurredAt }
 func (e *SystemNoticeEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
 
+// SkillCatalogEntry is one entry of the skill catalog pushed to the chat UI
+// (design 69 Phase 3). Tags carry plain tag names (dimension prefix stripped).
+type SkillCatalogEntry struct {
+	Slug        string
+	Name        string
+	Description string
+	Tags        []string
+}
+
+// SkillCatalogEvent carries the visible skill catalog for a session's agent
+// (design 69 Phase 3). Published once per chat WS connection setup so the
+// frontend can render the skill entry strip above the composer.
+//
+// Delivery is best-effort (Informational, AS-EVT-01): the event is not
+// persisted and not replayed; a reconnect re-pushes it via the WS init path.
+type SkillCatalogEvent struct {
+	sessionID  string
+	Skills     []SkillCatalogEntry
+	occurredAt time.Time
+}
+
+// NewSkillCatalogEvent constructs a SkillCatalogEvent.
+func NewSkillCatalogEvent(sessionID string, skills []SkillCatalogEntry) *SkillCatalogEvent {
+	return &SkillCatalogEvent{
+		sessionID:  sessionID,
+		Skills:     skills,
+		occurredAt: time.Now(),
+	}
+}
+
+func (e *SkillCatalogEvent) EventKind() EventKind      { return EventKindSkillCatalog }
+func (e *SkillCatalogEvent) SpiritSessionID() string   { return e.sessionID }
+func (e *SkillCatalogEvent) TaskID() string            { return "" }
+func (e *SkillCatalogEvent) EntityID() string          { return e.sessionID }
+func (e *SkillCatalogEvent) OccurredAt() time.Time     { return e.occurredAt }
+func (e *SkillCatalogEvent) SetOccurredAt(t time.Time) { e.occurredAt = t }
+
 // EventKindActivityBridge is the bridge event kind for legacy v1 ActivityEvent
 // payloads that have not yet been (or cannot be) mapped to a typed v2 entity
 // event. The bridge preserves the full v1 ActivityEvent shape (Meta/Content/
@@ -146,5 +184,6 @@ var (
 	_ Event = (*RunStatusEvent)(nil)
 	_ Event = (*HeartbeatEvent)(nil)
 	_ Event = (*SystemNoticeEvent)(nil)
+	_ Event = (*SkillCatalogEvent)(nil)
 	_ Event = (*ActivityBridgeEvent)(nil)
 )

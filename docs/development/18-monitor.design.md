@@ -2136,6 +2136,16 @@ type rotatingFile struct {
 | 单文件最大 | 500 MB | `server.monitor.log_max_size_mb` |
 | 保留天数 | 30 天 | `server.monitor.log_retention_days` |
 | 压缩 | gzip（>1 天的文件） | `server.monitor.log_compress` |
+| 单日轮转备份上限 | 10 个/前缀（`maxBackups`，代码常量 `flowFileMaxBackupsDefault`） | 硬编码 |
+
+**故障防护（2026-08-13 日志风暴根治）**：
+
+| 机制 | 实现 | 说明 |
+|------|------|------|
+| 自反馈环切断 | `onMonitorEvent` 丢弃 `step_id` 前缀为 `monitor.flow_file.` 的事件 | Appender 自身的 Warn（write_fail/open_fail/mkdir_fail 等）经 MonitorBus 回流后会再次触发写盘失败→Warn→回流的无限循环；这些日志仍保留在进程日志（aranea-pipeline.log）与 DB 中，丢弃文件副本无信息损失 |
+| 写失败熔断 | 连续 3 次 Encode 失败（`flowFileWriteFailThreshold`）→ 静默期 1 分钟（`flowFileWriteMuteDuration`），期间所有写入与 Warn 均丢弃；熔断解除后自动恢复 | 磁盘满等持续故障下，防止每个事件都产生一条 Warn 形成日志洪峰 |
+| 轮转备份上限 | `purgeExcessBackups` 每前缀每日期最多保留 10 个 `.jsonl.N` 备份，超出删最旧 | 此前 `.jsonl.N` 轮转文件不受保留期清理（后缀过滤遗漏），可无限增长直至撑满磁盘 |
+| 保留期覆盖轮转文件 | `purgeExpiredFiles` 经 `isFlowLogFileName` 匹配 `.jsonl` / `.jsonl.gz` / `.jsonl.N` / `.jsonl.N.gz` | 过期轮转备份与基文件一样按 30 天保留期清理 |
 
 ### 3.5 接入方式
 

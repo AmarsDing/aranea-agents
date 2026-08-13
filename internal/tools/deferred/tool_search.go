@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"aranea-agents/pkg/apierror"
-
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -28,30 +26,41 @@ type toolSearchOutput struct {
 	Suggestion string             `json:"suggestion,omitempty"`
 }
 
+// DeferredToolEntry 描述一个延迟工具的静态元数据。
+// 不再持有 Factory——工具在装配阶段已完全创建，
+// 此条目仅用于 catalog 展示（cue 渲染、tool_search 搜索）。
 type DeferredToolEntry struct {
-	Name        string
+	// Name 是运行时名称（LLM 可见/可调用的名字）。
+	// ToolSet 工具带 "{toolset}_" 前缀（框架 NamedTool 命名约定），
+	// 独立工具等于 BaseName。
+	Name string
+	// BaseName 是工具声明的原始名称（DeferredCallableTool 激活门禁检查的名字）。
+	// 与 Name 相同表示独立工具（无前缀）。
+	BaseName    string
 	Description string
 	Category    string
-	Factory     func(ctx context.Context) (trpctool.Tool, error)
 }
 
+// DeferredToolManager 管理延迟工具的目录和 per-session 激活状态。
+//
+// 去 factory 化（WP-4 修复版）：
+//   - 不再持有 factory 函数，不再负责工具创建
+//   - catalog 仅包含静态元数据（name/description/category）
+//   - tools map 持有已装配的 DeferredCallableTool 引用，供 tool_load 查询完整 schema
+//   - 激活状态存储在 session state（temp:deferred:activated），per-session 隔离
 type DeferredToolManager struct {
 	mu            sync.RWMutex
 	catalog       []DeferredToolEntry
 	catalogIndex  map[string]int // name → index into catalog for O(1) lookup
-	discovered    map[string]bool
-	activated     map[string]trpctool.Tool
-	activateCount map[string]int
+	tools         map[string]trpctool.Tool
 	categoryIndex map[string][]string
 }
 
 func NewDeferredToolManager(catalog []DeferredToolEntry) *DeferredToolManager {
 	m := &DeferredToolManager{
-		catalog:       catalog,
-		catalogIndex:  buildCatalogIndex(catalog),
-		discovered:    make(map[string]bool),
-		activated:     make(map[string]trpctool.Tool),
-		activateCount: make(map[string]int),
+		catalog:      catalog,
+		catalogIndex: buildCatalogIndex(catalog),
+		tools:        make(map[string]trpctool.Tool),
 	}
 	m.categoryIndex = buildCategoryIndex(catalog)
 	return m
@@ -75,55 +84,79 @@ func buildCategoryIndex(catalog []DeferredToolEntry) map[string][]string {
 	return idx
 }
 
-func (m *DeferredToolManager) Activate(ctx context.Context, toolName string) (trpctool.Tool, error) {
+// RegisterTool 注册一个已装配的延迟工具引用。
+// 供 tool_load 在激活后返回完整 schema。
+func (m *DeferredToolManager) RegisterTool(name string, t trpctool.Tool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.tools[name] = t
+}
 
-	if t, ok := m.activated[toolName]; ok {
-		return t, nil
+// GetToolDeclaration 返回已注册工具的完整声明。
+// 供 tool_load 在激活成功后返回给模型。
+func (m *DeferredToolManager) GetToolDeclaration(name string) *trpctool.Declaration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if t, ok := m.tools[name]; ok && t != nil {
+		return t.Declaration()
 	}
+	return nil
+}
+
+// Activate 在当前 session 中激活指定工具。
+// 写入 session state，供 ToolFilter 在后续请求中放行。
+// 返回工具的完整声明（含 InputSchema，Name 为运行时名称），供 tool_load 返回给模型。
+//
+// 同时写入运行时名和基础名：
+//   - 运行时名（如 file_save_file）：filter 在 NamedTool 层直接匹配
+//   - 基础名（如 save_file）：DeferredCallableTool.Call 激活门禁检查的名字
+func (m *DeferredToolManager) Activate(ctx context.Context, toolName string) (*trpctool.Declaration, error) {
+	m.mu.RLock()
 	idx, ok := m.catalogIndex[toolName]
+	var entry DeferredToolEntry
+	if ok {
+		entry = m.catalog[idx]
+	}
+	m.mu.RUnlock()
 	if !ok {
-		return nil, apierror.NotFound(apierror.DomainTool, "deferred tool %q not found in catalog", toolName)
+		return nil, fmt.Errorf("deferred tool %q not found in catalog", toolName)
 	}
-	entry := m.catalog[idx]
-	if entry.Factory == nil {
-		return nil, apierror.Internal(apierror.DomainTool, "deferred tool %q has no factory", toolName)
+
+	// 写入 session state（运行时名 + 基础名，幂等）
+	if !writeActivatedSet(ctx, toolName) {
+		return nil, fmt.Errorf("failed to write activation state for tool %q", toolName)
 	}
-	t, err := entry.Factory(ctx)
-	if err != nil {
-		return nil, apierror.Internal(apierror.DomainTool, "deferred tool factory failed for %q: %v", toolName, err)
+	if entry.BaseName != "" && entry.BaseName != toolName {
+		writeActivatedSet(ctx, entry.BaseName)
 	}
-	m.activated[toolName] = t
-	m.activateCount[toolName]++
-	return t, nil
+
+	// 返回完整声明（Name 覆盖为运行时名，模型按此名调用）
+	decl := m.GetToolDeclaration(toolName)
+	if decl == nil {
+		return nil, fmt.Errorf("deferred tool %q has no registered tool reference", toolName)
+	}
+	if decl.Name != toolName {
+		clone := *decl
+		clone.Name = toolName
+		decl = &clone
+	}
+	return decl, nil
 }
 
-func (m *DeferredToolManager) Discover(toolName string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.discovered[toolName] = true
+// IsActivated 检查工具是否在当前 session 中已激活。
+func (m *DeferredToolManager) IsActivated(ctx context.Context, toolName string) bool {
+	return isActivatedForSession(ctx, toolName)
 }
 
-func (m *DeferredToolManager) IsActivated(toolName string) bool {
+// IsInCatalog 检查工具是否在延迟目录中。
+func (m *DeferredToolManager) IsInCatalog(toolName string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if _, ok := m.activated[toolName]; ok {
-		return true
-	}
-	return m.discovered[toolName]
+	_, ok := m.catalogIndex[toolName]
+	return ok
 }
 
-func (m *DeferredToolManager) ActivatedTools() []trpctool.Tool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	tools := make([]trpctool.Tool, 0, len(m.activated))
-	for _, t := range m.activated {
-		tools = append(tools, t)
-	}
-	return tools
-}
-
+// CatalogNames 返回目录中所有工具名称。
 func (m *DeferredToolManager) CatalogNames() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -134,8 +167,8 @@ func (m *DeferredToolManager) CatalogNames() []string {
 	return names
 }
 
-// Catalog returns a copy of the full catalog entries (name + description + category).
-// Used by the catalog cue renderer to produce the static tool directory.
+// Catalog 返回目录条目的副本。
+// 供 catalog cue 渲染器生成静态工具目录。
 func (m *DeferredToolManager) Catalog() []DeferredToolEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -144,6 +177,7 @@ func (m *DeferredToolManager) Catalog() []DeferredToolEntry {
 	return out
 }
 
+// DeferredToolNames 返回延迟工具名称集合。
 func (m *DeferredToolManager) DeferredToolNames() map[string]bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -154,14 +188,7 @@ func (m *DeferredToolManager) DeferredToolNames() map[string]bool {
 	return names
 }
 
-// IsInCatalog reports whether the named tool exists in the deferred catalog.
-func (m *DeferredToolManager) IsInCatalog(toolName string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, ok := m.catalogIndex[toolName]
-	return ok
-}
-
+// CategoryIndex 返回分类索引。
 func (m *DeferredToolManager) CategoryIndex() map[string][]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -174,30 +201,57 @@ func (m *DeferredToolManager) CategoryIndex() map[string][]string {
 	return result
 }
 
-func (m *DeferredToolManager) ActivateStats() map[string]int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	stats := make(map[string]int, len(m.activateCount))
-	for k, v := range m.activateCount {
-		stats[k] = v
-	}
-	return stats
-}
-
+// ToolFilter 返回一个过滤器，隐藏未激活的延迟工具。
+//
+// 过滤器通过 ctx 中的 invocation 获取 session state，
+// 检查每个延迟工具是否已在当前 session 中激活。
+// 支持多层包装穿透：aliasTool/ToolDecorator/confirmationCallable 等
+// 包装器通过 InnerTool() 或 Original() 暴露内部工具时，
+// 递归解包直到找到延迟工具的规范名称。
 func (m *DeferredToolManager) ToolFilter() trpctool.FilterFunc {
 	deferredNames := m.DeferredToolNames()
-	return func(_ context.Context, t trpctool.Tool) bool {
-		if t == nil || t.Declaration() == nil {
+	return func(ctx context.Context, t trpctool.Tool) bool {
+		name, isDeferred := resolveDeferredName(t, deferredNames)
+		if !isDeferred {
 			return true
 		}
-		name := t.Declaration().Name
-		if !deferredNames[name] {
-			return true
-		}
-		return m.IsActivated(name)
+		return isActivatedForSession(ctx, name)
 	}
 }
 
+// resolveDeferredName 递归解包工具包装链，返回命中的延迟工具规范名称。
+// 解包约定：优先 InnerTool()（deferred/alias 包装器），其次 Original()
+//（ToolDecorator 等框架装饰器约定）。最多解包 8 层防循环。
+func resolveDeferredName(t trpctool.Tool, deferredNames map[string]bool) (string, bool) {
+	for i := 0; i < 8 && t != nil; i++ {
+		decl := t.Declaration()
+		if decl == nil {
+			return "", false
+		}
+		if deferredNames[decl.Name] {
+			return decl.Name, true
+		}
+		t = unwrapTool(t)
+	}
+	return "", false
+}
+
+// unwrapTool 解包一层工具包装器，无法解包时返回 nil。
+func unwrapTool(t trpctool.Tool) trpctool.Tool {
+	if u, ok := t.(interface{ InnerTool() trpctool.Tool }); ok {
+		if inner := u.InnerTool(); inner != nil {
+			return inner
+		}
+	}
+	if u, ok := t.(interface{ Original() trpctool.Tool }); ok {
+		return u.Original()
+	}
+	return nil
+}
+
+// ToolSearchTool 提供延迟工具搜索能力。
+// 搜索仅返回匹配的工具信息，不再自动激活（WP-4 修复版）。
+// 模型需要通过 tool_load 显式激活所需的工具。
 type ToolSearchTool struct {
 	tool    trpctool.CallableTool
 	manager *DeferredToolManager
@@ -211,7 +265,7 @@ func NewToolSearchTool(catalog []DeferredToolEntry) *ToolSearchTool {
 	t.tool = trpcfunction.NewFunctionTool(
 		t.execute,
 		trpcfunction.WithName("tool_search"),
-		trpcfunction.WithDescription("Search and discover available tools. Use this tool when you need a capability not listed in your current tool set. Returns matching tools with their names and descriptions. Discovered tools will be automatically available for use in subsequent requests."),
+		trpcfunction.WithDescription("Search and discover available tools. Use this tool when you need a capability not listed in your current tool set. Returns matching tools with their names and descriptions. To use a discovered tool, call tool_load with the tool name."),
 	)
 	return t
 }
@@ -262,7 +316,6 @@ func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolS
 				},
 				score: score,
 			})
-			t.manager.Discover(entry.Name)
 		}
 	}
 	sort.Slice(scored, func(i, j int) bool {
@@ -282,10 +335,6 @@ func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolS
 		}, nil
 	}
 	return toolSearchOutput{Tools: results}, nil
-}
-
-func (t *ToolSearchTool) FindAndCreate(ctx context.Context, toolName string) (trpctool.Tool, error) {
-	return t.manager.Activate(ctx, toolName)
 }
 
 func (t *ToolSearchTool) CatalogNames() []string {

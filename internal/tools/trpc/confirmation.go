@@ -92,12 +92,24 @@ func (w confirmationTool) Declaration() *trpctool.Declaration {
 	return patchConfirmationDeclaration(w.t.Declaration())
 }
 
+// InnerTool exposes the wrapped tool for filter penetration (deferred-tool
+// activation checks unwrap through confirmation wrappers).
+func (w confirmationTool) InnerTool() trpctool.Tool {
+	return w.t
+}
+
 type confirmationCallable struct {
 	trpctool.CallableTool
 }
 
 func (w confirmationCallable) Declaration() *trpctool.Declaration {
 	return patchConfirmationDeclaration(w.CallableTool.Declaration())
+}
+
+// InnerTool exposes the wrapped tool for filter penetration (deferred-tool
+// activation checks unwrap through confirmation wrappers).
+func (w confirmationCallable) InnerTool() trpctool.Tool {
+	return w.CallableTool
 }
 
 func patchConfirmationDeclaration(d *trpctool.Declaration) *trpctool.Declaration {

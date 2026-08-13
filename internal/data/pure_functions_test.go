@@ -298,6 +298,24 @@ func TestPlaceholders_One(t *testing.T) {
 	}
 }
 
+// Fix D1: the pool stats debug ticker must be off unless explicitly enabled
+// via ARANEA_DEBUG_POOL_STATS=1, otherwise it spams "pool_stats: tick" every
+// 5s in production.
+func TestPoolStatsDebugEnabled(t *testing.T) {
+	t.Setenv("ARANEA_DEBUG_POOL_STATS", "")
+	if poolStatsDebugEnabled() {
+		t.Fatal("poolStatsDebugEnabled() = true with empty env, want false")
+	}
+	t.Setenv("ARANEA_DEBUG_POOL_STATS", "0")
+	if poolStatsDebugEnabled() {
+		t.Fatal("poolStatsDebugEnabled() = true with env=0, want false")
+	}
+	t.Setenv("ARANEA_DEBUG_POOL_STATS", "1")
+	if !poolStatsDebugEnabled() {
+		t.Fatal("poolStatsDebugEnabled() = false with env=1, want true")
+	}
+}
+
 func TestPlaceholders_Three(t *testing.T) {
 	got := placeholders(3)
 	want := "?,?,?"

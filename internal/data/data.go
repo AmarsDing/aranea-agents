@@ -633,39 +633,49 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	})
 
 	// #region debug-point data.pool.trace
-	// DEBUG ONLY: periodic SQLite pool stats dump to identify connection contention.
-	safego.Go(appctx.Ctx(), "debug.pool_stats", func() {
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-p1Ctx.Done():
-				return
-			case <-t.C:
-				if st == nil || st.rawDB == nil || st.readDB == nil {
-					continue
+	// DEBUG ONLY: periodic pool stats dump to identify connection contention.
+	// Gated behind ARANEA_DEBUG_POOL_STATS=1 — in production this would spam
+	// "pool_stats: tick" every 5s into the log pipeline.
+	if poolStatsDebugEnabled() {
+		safego.Go(appctx.Ctx(), "debug.pool_stats", func() {
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-p1Ctx.Done():
+					return
+				case <-t.C:
+					if st == nil || st.rawDB == nil || st.readDB == nil {
+						continue
+					}
+					rw := st.rawDB.Stats()
+					rd := st.readDB.Stats()
+					st.lg.Info("pool_stats: tick",
+						loggateway.StepID("data.pool.trace"),
+						loggateway.Int("raw_open", rw.OpenConnections),
+						loggateway.Int("raw_in_use", rw.InUse),
+						loggateway.Int("raw_idle", rw.Idle),
+						loggateway.Int64("raw_wait_count", rw.WaitCount),
+						loggateway.Duration(rw.WaitDuration.Milliseconds()),
+						loggateway.Int("read_open", rd.OpenConnections),
+						loggateway.Int("read_in_use", rd.InUse),
+						loggateway.Int("read_idle", rd.Idle),
+						loggateway.Int64("read_wait_count", rd.WaitCount),
+						loggateway.Duration(rd.WaitDuration.Milliseconds()),
+					)
 				}
-				rw := st.rawDB.Stats()
-				rd := st.readDB.Stats()
-				st.lg.Info("pool_stats: tick",
-					loggateway.StepID("data.pool.trace"),
-					loggateway.Int("raw_open", rw.OpenConnections),
-					loggateway.Int("raw_in_use", rw.InUse),
-					loggateway.Int("raw_idle", rw.Idle),
-					loggateway.Int64("raw_wait_count", rw.WaitCount),
-					loggateway.Duration(rw.WaitDuration.Milliseconds()),
-					loggateway.Int("read_open", rd.OpenConnections),
-					loggateway.Int("read_in_use", rd.InUse),
-					loggateway.Int("read_idle", rd.Idle),
-					loggateway.Int64("read_wait_count", rd.WaitCount),
-					loggateway.Duration(rd.WaitDuration.Milliseconds()),
-				)
 			}
-		}
-	})
+		})
+	}
 	// #endregion debug-point
 
 	return st, cleanup, nil
+}
+
+// poolStatsDebugEnabled reports whether the debug-only pool stats ticker is
+// enabled. Off by default; set ARANEA_DEBUG_POOL_STATS=1 to enable.
+func poolStatsDebugEnabled() bool {
+	return os.Getenv("ARANEA_DEBUG_POOL_STATS") == "1"
 }
 
 func runStartupStep(name string, fn func() error, lg loggateway.Logger) error {

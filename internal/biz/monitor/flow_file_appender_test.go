@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -758,5 +759,225 @@ func TestFlowFileAppender_OnMonitorEvent_EmptyMessage(t *testing.T) {
 
 	if _, ok := row["_text"]; ok {
 		t.Error("_text should not be present when Message is empty")
+	}
+}
+
+// warnCountingLogger counts Warn calls so tests can assert on log volume.
+type warnCountingLogger struct {
+	warnCount int
+}
+
+func (l *warnCountingLogger) Debug(string, ...loggateway.Field) {}
+func (l *warnCountingLogger) Info(string, ...loggateway.Field)  {}
+func (l *warnCountingLogger) Warn(string, ...loggateway.Field)  { l.warnCount++ }
+func (l *warnCountingLogger) Error(string, ...loggateway.Field) {}
+func (l *warnCountingLogger) With(...loggateway.Field) loggateway.Logger {
+	return l
+}
+
+// Fix A: events emitted by FlowFileAppender itself (step_id prefix
+// "monitor.flow_file.") must be dropped to break the write-fail → Warn →
+// MonitorBus → write-fail self-feedback loop.
+func TestFlowFileAppender_OnMonitorEvent_SkipsSelfOriginatedEvents(t *testing.T) {
+	dir := t.TempDir()
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	defer a.CloseAllFiles()
+
+	selfStepIDs := []string{
+		"monitor.flow_file.write_fail",
+		"monitor.flow_file.open_fail",
+		"monitor.flow_file.mkdir_fail",
+		"monitor.flow_file.write_muted",
+		"monitor.flow_file.maintenance",
+	}
+	for i, stepID := range selfStepIDs {
+		ev := contract.MonitorEvent{
+			ID:        "self-" + strings.Repeat("x", i+1),
+			Type:      contract.MonitorEventTypeLog,
+			Timestamp: time.Now().UTC(),
+			Source:    "system",
+			Message:   "FlowFileAppender: write failed",
+			Metadata:  map[string]any{"step_id": stepID},
+		}
+		a.OnMonitorEventExposed(ev)
+	}
+	a.SyncOpenFilesExposed()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir error: %v", err)
+	}
+	if len(entries) != 0 {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("self-originated events must not create files, got %v", names)
+	}
+}
+
+// Fix A 对照组：非自身产生的 log 事件仍然正常落盘。
+func TestFlowFileAppender_OnMonitorEvent_AcceptsOtherLogEvents(t *testing.T) {
+	dir := t.TempDir()
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	defer a.CloseAllFiles()
+
+	ev := contract.MonitorEvent{
+		ID:        "log-normal",
+		Type:      contract.MonitorEventTypeLog,
+		Timestamp: time.Now().UTC(),
+		Source:    "system",
+		Message:   "some other warning",
+		Metadata:  map[string]any{"step_id": "chat.turn"},
+	}
+	a.OnMonitorEventExposed(ev)
+	a.SyncOpenFilesExposed()
+
+	matches, err := filepath.Glob(filepath.Join(dir, "log-*.jsonl"))
+	if err != nil {
+		t.Fatalf("glob error: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("non-self log event should be written to log-*.jsonl")
+	}
+}
+
+// Fix B: consecutive write failures trip a circuit breaker that mutes both
+// file writes and Warn logs for a cooldown window, preventing log storms when
+// the disk is full / the file is unwritable.
+func TestFlowFileAppender_WriteFailureCircuitBreaker(t *testing.T) {
+	dir := t.TempDir()
+	lg := &warnCountingLogger{}
+	a := monitor.NewFlowFileAppender(dir, lg)
+	defer a.CloseAllFiles()
+
+	badEv := func(id string) contract.MonitorEvent {
+		return contract.MonitorEvent{
+			ID:        id,
+			Type:      contract.MonitorEventTypeFlowLog,
+			Timestamp: time.Now().UTC(),
+			Source:    "chat",
+			// json.Encoder.Encode fails on chan values → deterministic write failure.
+			Metadata: map[string]any{"bad": make(chan int)},
+		}
+	}
+
+	// First threshold-1 failures each emit one Warn; the failure that reaches
+	// the threshold emits exactly one "muted" Warn and opens the circuit.
+	for i := 0; i < 3; i++ {
+		a.OnMonitorEventExposed(badEv("bad-" + strings.Repeat("x", i+1)))
+	}
+	warnsAtTrip := lg.warnCount
+	if warnsAtTrip != 3 {
+		t.Fatalf("warn count at circuit trip = %d, want 3 (2 write_fail + 1 muted)", warnsAtTrip)
+	}
+
+	// While muted, further failures are dropped silently.
+	for i := 0; i < 5; i++ {
+		a.OnMonitorEventExposed(badEv("bad-muted-" + strings.Repeat("x", i+1)))
+	}
+	if lg.warnCount != warnsAtTrip {
+		t.Errorf("warn count after muted failures = %d, want %d (no new warns while muted)", lg.warnCount, warnsAtTrip)
+	}
+
+	// While muted, even valid writes are dropped.
+	goodEv := contract.MonitorEvent{
+		ID:        "good-1",
+		Type:      contract.MonitorEventTypeFlowLog,
+		Timestamp: time.Now().UTC(),
+		Source:    "chat",
+		Metadata:  map[string]any{"key": "value"},
+	}
+	a.OnMonitorEventExposed(goodEv)
+	a.SyncOpenFilesExposed()
+
+	matches, err := filepath.Glob(filepath.Join(dir, "flow-*.jsonl"))
+	if err != nil {
+		t.Fatalf("glob error: %v", err)
+	}
+	if len(matches) == 0 {
+		t.Fatal("flow file should exist (created before circuit opened)")
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+	if len(strings.TrimSpace(string(data))) != 0 {
+		t.Errorf("flow file should be empty (all writes failed or muted), got %q", string(data))
+	}
+}
+
+// Fix C: rotated backup files (prefix-date.jsonl.N) are capped at maxBackups
+// per base name; the oldest excess backups are purged by maintenance.
+func TestFlowFileAppender_PurgeExcessBackups(t *testing.T) {
+	dir := t.TempDir()
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a.SetMaxBackups(5)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	base := "flow-" + today + ".jsonl"
+	if err := os.WriteFile(filepath.Join(dir, base), []byte("base"), 0644); err != nil {
+		t.Fatalf("write base error: %v", err)
+	}
+	for seq := 2; seq <= 12; seq++ {
+		p := filepath.Join(dir, base+"."+strconv.Itoa(seq))
+		if err := os.WriteFile(p, []byte("backup"), 0644); err != nil {
+			t.Fatalf("write backup %d error: %v", seq, err)
+		}
+	}
+
+	purged := a.PurgeExcessBackupsExposed()
+	if purged != 6 {
+		t.Errorf("purged = %d, want 6 (seq 2..7 removed, keeping newest 5)", purged)
+	}
+
+	for seq := 2; seq <= 7; seq++ {
+		p := filepath.Join(dir, base+"."+strconv.Itoa(seq))
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("old backup seq %d should be purged", seq)
+		}
+	}
+	for seq := 8; seq <= 12; seq++ {
+		p := filepath.Join(dir, base+"."+strconv.Itoa(seq))
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("recent backup seq %d should be kept: %v", seq, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, base)); err != nil {
+		t.Error("base file should be kept")
+	}
+}
+
+// Fix C: retention purge also catches rotated backups (.jsonl.N / .jsonl.N.gz),
+// which previously lived forever because the suffix filter missed them.
+func TestFlowFileAppender_PurgeExpiredFiles_RotatedBackups(t *testing.T) {
+	dir := t.TempDir()
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a.SetRetentionDays(1)
+
+	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
+	oldTime := time.Now().UTC().Add(-48 * time.Hour)
+	files := []string{
+		"flow-" + oldDate + ".jsonl.2",
+		"flow-" + oldDate + ".jsonl.3.gz",
+	}
+	for _, name := range files {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("old"), 0644); err != nil {
+			t.Fatalf("write %s error: %v", name, err)
+		}
+		if err := os.Chtimes(p, oldTime, oldTime); err != nil {
+			t.Fatalf("chtimes %s error: %v", name, err)
+		}
+	}
+
+	purged := a.PurgeExpiredFilesExposed()
+	if purged != 2 {
+		t.Errorf("purged = %d, want 2 (rotated backups included in retention)", purged)
+	}
+	for _, name := range files {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("expired rotated backup %s should be purged", name)
+		}
 	}
 }

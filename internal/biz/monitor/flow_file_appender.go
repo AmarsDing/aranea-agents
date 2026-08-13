@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,10 +20,32 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
+const (
+	// flowFileSelfStepPrefix marks log entries emitted by FlowFileAppender
+	// itself. Such events must never be written back to the flow files:
+	// a write failure would otherwise produce a Warn that re-enters this
+	// appender via the MonitorBus and fails again, creating a self-feedback
+	// log storm (observed in production on a full disk).
+	flowFileSelfStepPrefix = "monitor.flow_file."
+
+	// flowFileWriteFailThreshold is the number of consecutive encode failures
+	// that trips the write circuit breaker.
+	flowFileWriteFailThreshold = 3
+	// flowFileWriteMuteDuration is how long writes stay muted after the
+	// circuit breaker trips.
+	flowFileWriteMuteDuration = time.Minute
+	// flowFileMaxBackupsDefault caps rotated backup files (prefix-date.jsonl.N)
+	// kept per base name. Without a cap, size-based rotation produces
+	// unbounded files that retention never matched (suffix filter missed
+	// ".jsonl.N"), eventually filling the disk.
+	flowFileMaxBackupsDefault = 10
+)
+
 type FlowFileAppender struct {
 	dir           string
 	retentionDays int
 	compressAge   time.Duration
+	maxBackups    int
 
 	mu         sync.Mutex
 	flowFile   *rotatingFile
@@ -30,6 +54,10 @@ type FlowFileAppender struct {
 	alertFile  *rotatingFile
 	logFile    *rotatingFile
 	lg         loggateway.Logger
+
+	// Write-failure circuit breaker state (guarded by mu).
+	writeFailStreak int
+	writeMutedUntil time.Time
 }
 
 type rotatingFile struct {
@@ -72,6 +100,7 @@ func NewFlowFileAppender(dir string, lg loggateway.Logger) *FlowFileAppender {
 		dir:           dir,
 		retentionDays: 30,
 		compressAge:   24 * time.Hour,
+		maxBackups:    flowFileMaxBackupsDefault,
 		lg:            lg,
 	}
 }
@@ -140,11 +169,13 @@ func (a *FlowFileAppender) maintenance() {
 	a.syncOpenFiles()
 	compressed := a.compressOldFiles()
 	purged := a.purgeExpiredFiles()
+	backupsPurged := a.purgeExcessBackups()
 	a.purgeTmpFiles()
-	if compressed > 0 || purged > 0 {
+	if compressed > 0 || purged > 0 || backupsPurged > 0 {
 		a.lg.Info("FlowFileAppender maintenance completed",
 			loggateway.StepID("monitor.flow_file.maintenance"),
-			loggateway.Str("compressed", fmt.Sprint(compressed)), loggateway.Str("purged", fmt.Sprint(purged)))
+			loggateway.Str("compressed", fmt.Sprint(compressed)), loggateway.Str("purged", fmt.Sprint(purged)),
+			loggateway.Str("backups_purged", fmt.Sprint(backupsPurged)))
 	}
 }
 
@@ -241,7 +272,7 @@ func (a *FlowFileAppender) purgeExpiredFiles() int {
 	purged := 0
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasSuffix(name, ".jsonl") && !strings.HasSuffix(name, ".jsonl.gz") {
+		if !isFlowLogFileName(name) {
 			continue
 		}
 		info, err := e.Info()
@@ -253,6 +284,69 @@ func (a *FlowFileAppender) purgeExpiredFiles() int {
 		}
 		if os.Remove(filepath.Join(a.dir, name)) == nil {
 			purged++
+		}
+	}
+	return purged
+}
+
+// isFlowLogFileName reports whether name belongs to the flow-log file family:
+// base files (prefix-date.jsonl), compressed archives (.jsonl.gz), and
+// size-rotated backups (.jsonl.N / .jsonl.N.gz). Rotated backups previously
+// escaped retention because the plain ".jsonl"/".jsonl.gz" suffix check
+// missed them, letting them accumulate until the disk filled.
+func isFlowLogFileName(name string) bool {
+	if strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, ".jsonl.gz") {
+		return true
+	}
+	rest := strings.TrimSuffix(name, ".gz")
+	idx := strings.LastIndex(rest, ".jsonl.")
+	if idx < 0 {
+		return false
+	}
+	seq, err := strconv.Atoi(rest[idx+len(".jsonl."):])
+	return err == nil && seq >= 2
+}
+
+// purgeExcessBackups caps the number of size-rotated backup files
+// (prefix-date.jsonl.N, N >= 2) per base name at maxBackups, deleting the
+// oldest excess ones. The base file (no .N suffix) is never touched.
+func (a *FlowFileAppender) purgeExcessBackups() int {
+	if a.dir == "" || a.maxBackups <= 0 {
+		return 0
+	}
+	entries, err := os.ReadDir(a.dir)
+	if err != nil {
+		return 0
+	}
+	// Group rotated backups by base name (e.g. "flow-2026-08-13.jsonl").
+	groups := make(map[string][]int)
+	for _, e := range entries {
+		name := e.Name()
+		rest := strings.TrimSuffix(name, ".gz")
+		idx := strings.LastIndex(rest, ".jsonl.")
+		if idx < 0 {
+			continue
+		}
+		seq, err := strconv.Atoi(rest[idx+len(".jsonl."):])
+		if err != nil || seq < 2 {
+			continue
+		}
+		base := rest[:idx+len(".jsonl")]
+		groups[base] = append(groups[base], seq)
+	}
+	purged := 0
+	for base, seqs := range groups {
+		if len(seqs) <= a.maxBackups {
+			continue
+		}
+		sort.Ints(seqs)
+		for _, seq := range seqs[:len(seqs)-a.maxBackups] {
+			name := fmt.Sprintf("%s.%d", base, seq)
+			if os.Remove(filepath.Join(a.dir, name)) == nil {
+				purged++
+			}
+			// Best-effort cleanup of a compressed sibling if present.
+			os.Remove(filepath.Join(a.dir, name+".gz"))
 		}
 	}
 	return purged
@@ -287,6 +381,15 @@ func (a *FlowFileAppender) purgeTmpFiles() {
 //   - Other Source → flowFile (preserves legacy Channel=anything-else behavior)
 func (a *FlowFileAppender) onMonitorEvent(ev contract.MonitorEvent) {
 	if a == nil || ev.Metadata == nil {
+		return
+	}
+	// Break the self-feedback loop: log entries emitted by this appender
+	// (write/open/mkdir failures, maintenance summaries) ride the MonitorBus
+	// back into this handler. Writing them again would fail again and emit
+	// another Warn, producing an unbounded log storm. They are still
+	// available in the process log (aranea-pipeline.log) and the DB, so
+	// dropping them here loses nothing.
+	if strings.HasPrefix(metaStr(ev.Metadata, "step_id"), flowFileSelfStepPrefix) {
 		return
 	}
 
@@ -386,10 +489,33 @@ func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) 
 	if rf == nil {
 		return
 	}
+	// Circuit breaker: after repeated consecutive write failures (typically
+	// a full disk), mute writes for a cooldown window. Without this, every
+	// incoming event attempts a write and emits a Warn, sustaining a log
+	// storm for as long as the underlying failure persists.
+	if !a.writeMutedUntil.IsZero() {
+		if time.Now().Before(a.writeMutedUntil) {
+			return
+		}
+		a.writeMutedUntil = time.Time{}
+		a.writeFailStreak = 0
+	}
 	if err := rf.encoder.Encode(row); err != nil {
+		a.writeFailStreak++
+		if a.writeFailStreak >= flowFileWriteFailThreshold {
+			a.writeFailStreak = 0
+			a.writeMutedUntil = time.Now().Add(flowFileWriteMuteDuration)
+			a.lg.Warn("FlowFileAppender: writes muted after repeated failures",
+				loggateway.StepID("monitor.flow_file.write_muted"),
+				loggateway.Str("path", rf.path),
+				loggateway.Str("mute_duration", flowFileWriteMuteDuration.String()),
+				loggateway.Err(err))
+			return
+		}
 		a.lg.Warn("FlowFileAppender: write failed", loggateway.StepID("monitor.flow_file.write_fail"), loggateway.Str("path", rf.path), loggateway.Err(err))
 		return
 	}
+	a.writeFailStreak = 0
 }
 
 // Dir returns the flow file directory path.
@@ -408,6 +534,12 @@ func (a *FlowFileAppender) PurgeExpiredFiles() int {
 // CompressOldFiles compresses old flow log files and returns the count compressed.
 func (a *FlowFileAppender) CompressOldFiles() int {
 	return a.compressOldFiles()
+}
+
+// PurgeExcessBackups removes rotated backup files beyond the maxBackups cap
+// and returns the count purged.
+func (a *FlowFileAppender) PurgeExcessBackups() int {
+	return a.purgeExcessBackups()
 }
 
 func (rf *rotatingFile) Close() {

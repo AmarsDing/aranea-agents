@@ -47,6 +47,14 @@ func (p *TraceProjector) EvictStaleTracesExposed() {
 	p.evictStaleTraces()
 }
 
+func (p *TraceProjector) HandleExposed(ctx context.Context, ev contract.MonitorEvent) {
+	p.handle(ctx, ev)
+}
+
+func (p *TraceProjector) SetUpsertWarnIntervalForTest(d time.Duration) {
+	p.upsertWarnInterval = d
+}
+
 func (p *TraceProjector) AddTestTrace(traceID string, createdAt time.Time) {
 	p.mu.Lock()
 	p.traces[traceID] = &activeTrace{
@@ -110,10 +118,18 @@ func (a *FlowFileAppender) SetRetentionDays(days int) {
 	a.retentionDays = days
 }
 
+func (a *FlowFileAppender) SetMaxBackups(n int) {
+	a.maxBackups = n
+}
+
+func (a *FlowFileAppender) PurgeExcessBackupsExposed() int {
+	return a.purgeExcessBackups()
+}
+
 func (a *FlowFileAppender) CloseAllFiles() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile} {
+	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile, a.logFile} {
 		if f != nil {
 			f.Close()
 		}
@@ -124,7 +140,7 @@ func (a *FlowFileAppender) RotatingFilePaths() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var paths []string
-	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile} {
+	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile, a.logFile} {
 		if f != nil && f.file != nil {
 			paths = append(paths, f.currentPath())
 		}

@@ -84,10 +84,11 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		}
 
 		if ag.Settings.ToolsDeferredJSON != "" {
-			// 手动配置优先：ToolsDeferredJSON 显式指定延迟工具列表。
-			var deferred []string
-			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferred); err == nil {
-				cfg.DeferredTools = deferred
+			// 手动配置优先：ToolsDeferredJSON 显式指定延迟工具列表（biz key 粒度），
+			// 需转换为 registry 名称供装配层匹配 ToolSet/工具。
+			var deferredKeys []string
+			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferredKeys); err == nil {
+				cfg.DeferredTools = deferred.RegistryNamesForBizKeys(deferredKeys)
 			}
 		} else {
 			// 自动两段式分离（WP-4）：基于 profile 把有效工具分为核心常驻集和延迟加载集。
