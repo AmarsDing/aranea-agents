@@ -11,7 +11,7 @@ Aranea-Agents 是基于 trpc-agent-go 的企业级多智能体编排平台。以
 
 **核心主旨**：让一个人通过"精灵"（Spirit 动态编排引擎）同时控制 N 家虚拟公司。你只需发号施令，行业专家 Agent 团队自动协作完成从分析、决策到执行的全流程。模拟现实公司的组织架构——分行业、分部门、分岗位，专人专事，让 AI 真正成为你的企业级生产力。
 
-**技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | SQLite（Ent ORM）| Wire（编译期 DI）
+**技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | PostgreSQL（Ent ORM + pgvector）| Wire（编译期 DI）
 
 **核心差异化**：
 - **五层记忆架构**：L0~L4 完整覆盖（会话窗口→工作记忆→情景向量→语义事实→知识图谱），业界最完整的 Agent 记忆系统
@@ -794,7 +794,7 @@ Aranea-Agents 拥有完善的测试基础设施，确保代码质量和功能稳
 **后端测试**：
 - **单元测试**：`go test ./...` 覆盖 biz / service / data 各层
 - **集成测试**：`go test -tags=integration ./...` 覆盖跨模块交互
-- **数据库测试**：SQLite 内存模式 + 真实迁移路径测试
+- **数据库测试**：独立 Postgres schema 集成测试（testhelper）+ 真实迁移路径测试
 - **并发测试**：race detector 检测竞态条件
 - **Mock 策略**：biz 层接口窄化（≤5 方法），便于 mock
 
@@ -805,8 +805,7 @@ Aranea-Agents 拥有完善的测试基础设施，确保代码质量和功能稳
 
 **代码质量**：
 - **Lint**：golangci-lint + ESLint + Stylelint
-- **架构守护**：`make archlint` 验证依赖方向、接口窄化、认知复杂度
-- **边界检查**：`make runtime-boundary` 确保 biz 层不依赖框架运行时
+- **架构守护**：`make archlint` 验证依赖方向（含 biz 层不依赖框架运行时）、接口窄化、认知复杂度
 - **FieldGuide Lint**：验证 prompt 模板质量
 
 **CI/CD**：
@@ -820,9 +819,11 @@ Aranea-Agents 拥有完善的测试基础设施，确保代码质量和功能稳
 
 ### 环境要求
 
-- Go 1.25+ · Node.js 20+ · SQLite 3+
-- PostgreSQL 14+（可选，向量存储）
+- Go 1.26+ · Node.js 20+ · pnpm（前端）
+- PostgreSQL（**必需**，需启用 pgvector 扩展；主程序仅支持 Postgres，SQLite 仅用于 CLI 维护工具与测试）
 - [protoc](https://grpc.io/docs/protoc-installation/)（`make all` 时需要）
+
+> ⚠️ **先启动 Postgres 再启动后端**：主程序启动时会连接 `configs/config.yaml` 中 `data.postgres.source` 的 DSN（默认 `postgres://postgres:123456@127.0.0.1:5432/aranea`），库未就绪将直接 panic（`ping postgres write pool`）。可用环境变量 `DATA__POSTGRES__SOURCE` 覆盖。
 
 ### 一键初始化
 
@@ -853,30 +854,30 @@ go run -tags pgvector ./cmd/admin -conf ./configs/config.yaml
 # go run -tags pgvector ./cmd/admin -conf ./configs
 ```
 
-本地账号：**`dev` / `dev`** · 健康检查：`curl http://localhost:8800/healthz`
+本地账号：模式 A（免登录 bypass）下自动种子 **`dev` / `dev`**；模式 B 全新库首启为 `admin` / `changeme`（见 `configs/config.yaml` `data.initial_admin`）。健康检查：`curl http://localhost:8800/healthz`
 
 WebSocket 走 HTTP 同端口 `ws://localhost:8800/v1/ws`（前端 dev 代理为 `ws://localhost:9301/v1/ws`）。
 
 ### 启动前端
 
 ```bash
-cd web && npm install && npm run dev
+cd web && pnpm install && pnpm dev
 # 浏览器打开 http://localhost:9301（:9900 为 gRPC，勿混用）
 ```
 
 ### 构建 CLI 工具
 
 ```bash
-# 构建 aranea CLI
+# 构建 aranea CLI（输出到 ./bin/）
 make cli
 
-# 或者手动构建
-go build -o aranea ./cmd/aranea
+# 或者手动构建（Windows 加 .exe 后缀）
+go build -o ./bin/aranea ./cmd/aranea
 
-# 使用 CLI
-./aranea login --endpoint http://localhost:8800 --token dev
-./aranea agent list
-./aranea chat --agent spirit "你好，帮我分析一下市场趋势"
+# 使用 CLI（--base-url 为全局持久旗标；login 需用户名/密码）
+./bin/aranea login --base-url http://localhost:8800 --user dev --password dev
+./bin/aranea agent ls
+./bin/aranea chat --agent __spirit__   # 进入交互式 REPL 后输入消息
 ```
 
 ---

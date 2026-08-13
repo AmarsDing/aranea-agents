@@ -39,6 +39,14 @@ const skillLoadedSlugStateKey = "aranea.skill_loaded_slug"
 // DB query plus embedding/health-metrics queries.
 const skillResolveMemoStateKey = "aranea.skill_resolve_memo"
 
+// skillGuidanceCueMemoStateKey memoizes the rendered full-profile guidance
+// cue per invocation (N4, 2026-08-13 链路审查): BatchGetSkillGuidance is a DB
+// query and the manifest render is deterministic given the same slugs, so
+// every tool-loop model call after the first reuses the cached cue. The
+// cached value is a string; "" means "computed, nothing to inject" and IS
+// cached, while transient DB errors are not cached (retried next call).
+const skillGuidanceCueMemoStateKey = "aranea.skill_guidance_cue_memo"
+
 // skillTokenUsageStateKey is the invocation state key for accumulated token usage.
 const skillTokenUsageStateKey = "aranea.skill_token_usage"
 
@@ -76,36 +84,10 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if result == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
-		if err != nil || len(entries) == 0 {
+		cue, ok := fullSkillGuidanceCue(ctx, deps, result.Slugs)
+		if !ok || cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		var b strings.Builder
-		b.WriteString("## Available Skills\n\nThe following skills are routed for this turn. Use the skill_run tool to invoke them, or skill_load to load additional skills.\n\n")
-		totalChars := 0
-		written := 0
-		for _, e := range entries {
-			m := manifest.Parse(e.Guidance)
-			guidance := render.SkillGuidance(m, render.RenderOptions{Mode: render.ModeAIOptimized})
-			entry := fmt.Sprintf("### %s\n%s\n\n", e.Slug, guidance)
-			if totalChars+utf8.RuneCountInString(entry) > maxSkillGuidanceChars {
-				remaining := len(entries) - written
-				if remaining > 0 {
-					b.WriteString(fmt.Sprintf("... and %d more skills (truncated)\n", remaining))
-				}
-				break
-			}
-			b.WriteString(entry)
-			totalChars += utf8.RuneCountInString(entry)
-			written++
-		}
-		if written == 0 {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
-		}
-		if written < len(entries) {
-			b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
-		}
-		cue := truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(cue))
 		// Prefix stabilization: append at the tail so [system + history + user]
@@ -114,6 +96,65 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
+}
+
+// fullSkillGuidanceCue returns the rendered full-profile guidance cue for the
+// routed slugs, memoized per invocation (skillGuidanceCueMemoStateKey).
+// Returns (cue, ok): ok=false on transient DB error — the caller skips
+// injection and retries on the next model call; cue=="" with ok=true means
+// the empty outcome was computed (and cached), skip injection.
+func fullSkillGuidanceCue(ctx context.Context, deps TRPCBuilderDeps, slugs []string) (string, bool) {
+	inv, invOK := trpcagent.InvocationFromContext(ctx)
+	if invOK && inv != nil {
+		if cached, hit := inv.GetState(skillGuidanceCueMemoStateKey); hit {
+			if cue, ok := cached.(string); ok {
+				return cue, true
+			}
+		}
+	}
+	entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, slugs)
+	if err != nil {
+		return "", false
+	}
+	cue := renderSkillGuidanceCue(entries)
+	if invOK && inv != nil {
+		inv.SetState(skillGuidanceCueMemoStateKey, cue)
+	}
+	return cue, true
+}
+
+// renderSkillGuidanceCue renders the "## Available Skills" cue from guidance
+// entries, capped at maxSkillGuidanceChars. Returns "" when nothing renders.
+func renderSkillGuidanceCue(entries []biz.SkillGuidanceEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Available Skills\n\nThe following skills are routed for this turn. Use the skill_run tool to invoke them, or skill_load to load additional skills.\n\n")
+	totalChars := 0
+	written := 0
+	for _, e := range entries {
+		m := manifest.Parse(e.Guidance)
+		guidance := render.SkillGuidance(m, render.RenderOptions{Mode: render.ModeAIOptimized})
+		entry := fmt.Sprintf("### %s\n%s\n\n", e.Slug, guidance)
+		if totalChars+utf8.RuneCountInString(entry) > maxSkillGuidanceChars {
+			remaining := len(entries) - written
+			if remaining > 0 {
+				b.WriteString(fmt.Sprintf("... and %d more skills (truncated)\n", remaining))
+			}
+			break
+		}
+		b.WriteString(entry)
+		totalChars += utf8.RuneCountInString(entry)
+		written++
+	}
+	if written == 0 {
+		return ""
+	}
+	if written < len(entries) {
+		b.WriteString("\n> Other available skills can be loaded on demand using the skill_load tool.\n")
+	}
+	return truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
 }
 
 // newProgressiveSkillGuidanceHook returns a BeforeModel hook that:

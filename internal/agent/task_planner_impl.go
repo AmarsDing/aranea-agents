@@ -1340,6 +1340,15 @@ func buildDecompositionPrompt(userMessage string, artifact *biz.IntentArtifact, 
 			artifact.IntentKind,
 			artifact.RiskFlags,
 		)
+		// N5 (2026-08-13 链路审查): SuccessCriteria/SearchHints 由意图识别产物
+		// 携带，但此前未进入分解 prompt——子任务契约可能与成功标准脱节。
+		// 非空时才追加，保持无意图产物路径的字节稳定。
+		if len(artifact.SuccessCriteria) > 0 {
+			intentContext += fmt.Sprintf("\n- Success criteria: %v", artifact.SuccessCriteria)
+		}
+		if len(artifact.SearchHints) > 0 {
+			intentContext += fmt.Sprintf("\n- Search hints: %v", artifact.SearchHints)
+		}
 	}
 
 	countRule := "Break down complex tasks into 2-6 subtasks."

@@ -3,11 +3,14 @@ package agent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestNewSkillGuidanceBeforeHook_ProgressiveMode(t *testing.T) {
@@ -153,5 +156,142 @@ func TestResolveAndWriteSkillState_ErrorNotMemoized(t *testing.T) {
 	}
 	if uc.calls != 2 {
 		t.Errorf("resolver called %d times, want 2 (error not memoized)", uc.calls)
+	}
+}
+
+// ── N4: full-profile guidance cue memoization ───────────────────────────────
+
+// countingGuidanceLookup counts BatchGetSkillGuidance calls to verify the
+// rendered cue is memoized per invocation (tool-loop model calls must not
+// re-query the DB).
+type countingGuidanceLookup struct {
+	fakeSkillLookup
+	guidanceCalls int
+	failNext      bool
+}
+
+func (m *countingGuidanceLookup) BatchGetSkillGuidance(_ context.Context, _ []string) ([]biz.SkillGuidanceEntry, error) {
+	m.guidanceCalls++
+	if m.failNext {
+		m.failNext = false
+		return nil, errors.New("transient guidance db error")
+	}
+	return m.guidance, nil
+}
+
+func fullProfileGuidanceHookForTest(t *testing.T, uc biz.TeamSkillLookup) callbacks.BeforeModelHook {
+	t.Helper()
+	ag := biz.Agent{
+		ID:               "ag-1",
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{SkillLoadMode: "turn"},
+	}
+	deps := TRPCBuilderDeps{TRPCSkillDeps: TRPCSkillDeps{SkillUC: uc}}
+	cb := newSkillGuidanceBeforeHook(ag, deps)
+	if cb == nil {
+		t.Fatal("hook constructor returned nil; test setup must satisfy its guards")
+	}
+	h, ok := cb.(callbacks.BeforeModelHook)
+	if !ok {
+		t.Fatalf("hook %T does not implement callbacks.BeforeModelHook", cb)
+	}
+	return h
+}
+
+func freshGuidanceArgs() *trpcmodel.BeforeModelArgs {
+	return &trpcmodel.BeforeModelArgs{Request: &trpcmodel.Request{Messages: []trpcmodel.Message{
+		trpcmodel.NewSystemMessage("base system"),
+		trpcmodel.NewUserMessage("你好"),
+	}}}
+}
+
+// TestSkillGuidanceFullProfileHook_MemoizesGuidancePerInvocation fires the
+// full-profile hook twice within one invocation (tool-loop re-entry): the
+// guidance DB query must run once, and both injections must be byte-identical
+// (cache-prefix stability).
+func TestSkillGuidanceFullProfileHook_MemoizesGuidancePerInvocation(t *testing.T) {
+	uc := &countingGuidanceLookup{fakeSkillLookup: fakeSkillLookup{
+		candidates: []biz.SkillRuntimeCandidate{{Slug: "demo-skill", Name: "Demo"}},
+		guidance:   []biz.SkillGuidanceEntry{{Slug: "demo-skill", Guidance: "use the demo skill"}},
+	}}
+	hook := fullProfileGuidanceHookForTest(t, uc)
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	args1 := freshGuidanceArgs()
+	if _, err := hook.HandleBeforeModel(ctx, args1); err != nil {
+		t.Fatalf("first call err = %v", err)
+	}
+	args2 := freshGuidanceArgs()
+	if _, err := hook.HandleBeforeModel(ctx, args2); err != nil {
+		t.Fatalf("second call err = %v", err)
+	}
+
+	if uc.guidanceCalls != 1 {
+		t.Errorf("BatchGetSkillGuidance called %d times, want 1 (memoized per invocation)", uc.guidanceCalls)
+	}
+	last1 := args1.Request.Messages[len(args1.Request.Messages)-1]
+	last2 := args2.Request.Messages[len(args2.Request.Messages)-1]
+	if last1.Role != trpcmodel.RoleSystem || !strings.Contains(last1.Content, "Available Skills") {
+		t.Fatalf("first call tail = role %s content %.40q, want injected guidance cue", last1.Role, last1.Content)
+	}
+	if last1.Content != last2.Content {
+		t.Error("injected cue differs between model calls; memoized cue must be byte-identical")
+	}
+}
+
+// TestSkillGuidanceFullProfileHook_GuidanceErrorNotMemoized: a transient
+// guidance query error skips injection and is NOT memoized — the next model
+// call retries and succeeds.
+func TestSkillGuidanceFullProfileHook_GuidanceErrorNotMemoized(t *testing.T) {
+	uc := &countingGuidanceLookup{failNext: true, fakeSkillLookup: fakeSkillLookup{
+		candidates: []biz.SkillRuntimeCandidate{{Slug: "demo-skill", Name: "Demo"}},
+		guidance:   []biz.SkillGuidanceEntry{{Slug: "demo-skill", Guidance: "use the demo skill"}},
+	}}
+	hook := fullProfileGuidanceHookForTest(t, uc)
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	args1 := freshGuidanceArgs()
+	if _, err := hook.HandleBeforeModel(ctx, args1); err != nil {
+		t.Fatalf("first call err = %v", err)
+	}
+	if len(args1.Request.Messages) != 2 {
+		t.Fatalf("first call injected on transient error, messages = %d, want 2", len(args1.Request.Messages))
+	}
+	args2 := freshGuidanceArgs()
+	if _, err := hook.HandleBeforeModel(ctx, args2); err != nil {
+		t.Fatalf("second call err = %v", err)
+	}
+	if uc.guidanceCalls != 2 {
+		t.Errorf("BatchGetSkillGuidance called %d times, want 2 (error not memoized)", uc.guidanceCalls)
+	}
+	if len(args2.Request.Messages) != 3 {
+		t.Fatalf("second call should inject after retry, messages = %d, want 3", len(args2.Request.Messages))
+	}
+}
+
+// TestSkillGuidanceFullProfileHook_EmptyGuidanceMemoized: an empty guidance
+// result is a legitimate outcome and IS memoized — subsequent model calls
+// skip both the DB query and the injection.
+func TestSkillGuidanceFullProfileHook_EmptyGuidanceMemoized(t *testing.T) {
+	uc := &countingGuidanceLookup{fakeSkillLookup: fakeSkillLookup{
+		candidates: []biz.SkillRuntimeCandidate{{Slug: "demo-skill", Name: "Demo"}},
+	}}
+	hook := fullProfileGuidanceHookForTest(t, uc)
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	for i := 0; i < 2; i++ {
+		args := freshGuidanceArgs()
+		if _, err := hook.HandleBeforeModel(ctx, args); err != nil {
+			t.Fatalf("call %d err = %v", i, err)
+		}
+		if len(args.Request.Messages) != 2 {
+			t.Fatalf("call %d injected with empty guidance, messages = %d, want 2", i, len(args.Request.Messages))
+		}
+	}
+	if uc.guidanceCalls != 1 {
+		t.Errorf("BatchGetSkillGuidance called %d times, want 1 (empty result memoized)", uc.guidanceCalls)
 	}
 }

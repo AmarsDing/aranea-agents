@@ -134,6 +134,16 @@ func (m *DeferredToolManager) CatalogNames() []string {
 	return names
 }
 
+// Catalog returns a copy of the full catalog entries (name + description + category).
+// Used by the catalog cue renderer to produce the static tool directory.
+func (m *DeferredToolManager) Catalog() []DeferredToolEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]DeferredToolEntry, len(m.catalog))
+	copy(out, m.catalog)
+	return out
+}
+
 func (m *DeferredToolManager) DeferredToolNames() map[string]bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -142,6 +152,14 @@ func (m *DeferredToolManager) DeferredToolNames() map[string]bool {
 		names[entry.Name] = true
 	}
 	return names
+}
+
+// IsInCatalog reports whether the named tool exists in the deferred catalog.
+func (m *DeferredToolManager) IsInCatalog(toolName string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.catalogIndex[toolName]
+	return ok
 }
 
 func (m *DeferredToolManager) CategoryIndex() map[string][]string {

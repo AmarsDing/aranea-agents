@@ -429,7 +429,8 @@ func (ac *assembleContext) assembleDeferredTools() error {
 	}
 
 	searchTool := deferred.NewToolSearchTool(catalog)
-	ac.out.Tools = append(ac.out.Tools, searchTool)
+	loadTool := deferred.NewToolLoadToolWithManager(searchTool.Manager())
+	ac.out.Tools = append(ac.out.Tools, searchTool, loadTool)
 	ac.out.DeferredManager = searchTool.Manager()
 
 	for _, entry := range catalog {

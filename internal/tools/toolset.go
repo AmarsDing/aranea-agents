@@ -611,6 +611,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	deferredSet := make(map[string]bool, len(cfg.DeferredTools))
 	for _, name := range cfg.DeferredTools {
 		deferredSet[name] = true
+		// Remove deferred tools from enabled so that builtin/search/claudecode
+		// assemblers skip them. They are only accessible via the deferred catalog
+		// (tool_search / tool_load activation).
+		delete(enabled, name)
 	}
 
 	ac := &assembleContext{

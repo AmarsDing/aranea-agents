@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
@@ -82,9 +84,26 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		}
 
 		if ag.Settings.ToolsDeferredJSON != "" {
+			// 手动配置优先：ToolsDeferredJSON 显式指定延迟工具列表。
 			var deferred []string
 			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferred); err == nil {
 				cfg.DeferredTools = deferred
+			}
+		} else {
+			// 自动两段式分离（WP-4）：基于 profile 把有效工具分为核心常驻集和延迟加载集。
+			// 核心工具直接注册到 tools block（schema 稳定），延迟工具放入 catalog
+			// 以静态目录 cue + tool_load 按需加载。
+			profile := strings.TrimSpace(ag.Settings.ToolsProfile)
+			effKeys := effKeysList(eff)
+			_, deferredKeys := deferred.SplitCoreResidentTools(effKeys, profile)
+			cfg.DeferredTools = deferred.RegistryNamesForBizKeys(deferredKeys)
+			if len(cfg.DeferredTools) > 0 {
+				lg.Info("两段式工具加载：自动分离核心/延迟",
+					loggateway.StepID("agent.tool_build"),
+					loggateway.Str("agent_id", ag.ID),
+					loggateway.Str("profile", profile),
+					loggateway.Int("total_tools", len(effKeys)),
+					loggateway.Int("deferred_tools", len(cfg.DeferredTools)))
 			}
 		}
 	}
@@ -223,6 +242,17 @@ func applyWebResearchPlatformDefaults(ctx context.Context, deps TRPCBuilderDeps,
 	if patched.Ready() {
 		cfg.WebResearchCfg = patched
 	}
+}
+
+// effKeysList 将有效工具键 map 转换为排序后的字符串列表。
+// 用于 SplitCoreResidentTools 的输入。确定性排序保证缓存前缀稳定。
+func effKeysList(eff map[string]bool) []string {
+	keys := make([]string, 0, len(eff))
+	for k := range eff {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func loadEffectiveToolKeys(ctx context.Context, deps TRPCBuilderDeps, agentID string) map[string]bool {

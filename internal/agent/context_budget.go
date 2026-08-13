@@ -3,10 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
+	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
 // Context budget ledger (设计文档 29-token.design.md §9.6, 任务 0.1):
@@ -27,6 +31,8 @@ const (
 	ContextBudgetCategoryMemoryComposite = "memory_composite"
 	ContextBudgetCategoryKnowledgeCue    = "knowledge_cue"
 	ContextBudgetCategorySkillGuidance   = "skill_guidance"
+	ContextBudgetCategorySkillOverview   = "skill_overview"
+	ContextBudgetCategoryHistory         = "history"
 	ContextBudgetCategoryOtherDynamic    = "other_dynamic"
 )
 
@@ -145,3 +151,84 @@ func newContextBudgetToolsBeforeHook() callbacks.Callback {
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
+
+// newContextBudgetSkillOverviewBeforeHook meters the skill_overview component
+// (F5): the per-skill "Available skills:" block the framework's skills
+// processor merges into the system prompt prefix. The block scales with skill
+// count, so it gets its own category separate from skill_guidance (dynamic
+// Layer B cues).
+//
+// The framework is read-only (redline #27) and exposes no overview-size hook,
+// so this re-renders the block by mirroring processor.skills.go's default
+// availableSkillsText: header + "- name: description" lines, with the Layer A
+// visibility filter applied exactly as the framework applies it
+// (skill.NewFilteredRepository). Summaries come from the repo's in-memory
+// snapshot, so metering adds zero DB queries per turn.
+//
+// Deliberate exclusions (per-build constants, not per-request variables):
+// the capability/tooling guidance blocks and the "(dir: [sN]/...)" suffixes —
+// the latter would cost one Path query per skill per request on the DB repo.
+func newContextBudgetSkillOverviewBeforeHook(repo trpcskill.Repository, filter trpcskill.VisibilityFilter) callbacks.Callback {
+	if repo == nil {
+		return nil
+	}
+	return callbacks.NewBeforeModelHook(0, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		b := ContextBudgetFromContext(ctx)
+		if b == nil || b.has(ContextBudgetCategorySkillOverview) {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillOverview, skillOverviewBlockChars(ctx, repo, filter))
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+// skillOverviewBlockChars mirrors the framework's default availableSkillsText
+// rendering (overview header + one line per visible summary) and returns its
+// rune count. Returns 0 when nothing would be injected.
+func skillOverviewBlockChars(ctx context.Context, repo trpcskill.Repository, filter trpcskill.VisibilityFilter) int {
+	if repo == nil {
+		return 0
+	}
+	if filter != nil {
+		repo = trpcskill.NewFilteredRepository(repo, filter)
+	}
+	sums := trpcskill.SummariesForContext(ctx, repo)
+	if len(sums) == 0 {
+		return 0
+	}
+	var b strings.Builder
+	b.WriteString("Available skills:\n")
+	for _, s := range sums {
+		fmt.Fprintf(&b, "- %s: %s\n", s.Name, s.Description)
+	}
+	return utf8.RuneCountInString(b.String())
+}
+
+// newContextBudgetHistoryBeforeHook meters the history component (N3): the
+// non-system messages in the final request — session history plus the current
+// user input. System messages (static prefix + injected cues) are excluded;
+// they are accounted for by their own categories. Per-request dedupe via
+// recordContextBudgetOnce keeps tool-loop re-entries from re-counting: on
+// re-entry the list has grown by tool call/result messages, which are turn
+// noise, not the per-request baseline.
+//
+// Returns the concrete hook type so tests can invoke HandleBeforeModel
+// directly.
+func newContextBudgetHistoryBeforeHook() *callbacks.BeforeModelHookFunc {
+	return callbacks.NewBeforeModelHook(0, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		b := ContextBudgetFromContext(ctx)
+		if b == nil || args == nil || args.Request == nil || b.has(ContextBudgetCategoryHistory) {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		totalChars := 0
+		for _, msg := range args.Request.Messages {
+			if msg.Role == trpcmodel.RoleSystem {
+				continue
+			}
+			totalChars += utf8.RuneCountInString(msg.Content)
+		}
+		recordContextBudgetOnce(ctx, ContextBudgetCategoryHistory, totalChars)
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+

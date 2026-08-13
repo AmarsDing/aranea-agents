@@ -8,14 +8,17 @@ import (
 	biztool "aranea-agents/internal/biz/tool"
 
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // buildCallbackChainOptions wires product-layer Callback Chain into LLMAgent.
 // Runner-level plugins (WithPlugins) handle DB builtins and OnEvent; see plugintrpc/orchestration.go.
 // gate is the per-build shared confirmation gate (nil when nothing is gated).
-func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
-	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps, gate)
+// skillRepo/skillFilter feed the skill_overview budget hook (F5); nil when the
+// agent has no skills configured.
+func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
+	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps, gate, skillRepo, skillFilter)
 	if chain == nil {
 		return nil, nil
 	}
@@ -36,11 +39,11 @@ func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuild
 }
 
 func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) *callbacks.Chain {
-	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps, gate)
+	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps, gate, nil, nil)
 	return chain
 }
 
-func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
+func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, gate *toolConfirmGate, skillRepo trpcskill.Repository, skillFilter trpcskill.VisibilityFilter) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
 	var entries []callbacks.Callback
 	lg := deps.Logger()
 	entries = append(entries, productChainLifecycleMetrics()...)
@@ -49,6 +52,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, hook)
 	}
 	if hook := newDynamicRuntimeCueBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
+	// 静态目录 cue（WP-4）：deferred 工具的「名称+描述」清单，追加到消息末尾。
+	if hook := newToolCatalogCueBeforeHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}
 	if hook := newContextCompressionBeforeHook(ag, deps); hook != nil {
@@ -80,9 +87,15 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
-	// 上下文预算台账（29-token §9.6）：tools_schema 计量。无条件注册——
+	// 上下文预算台账（29-token §9.6）：tools_schema + history 计量。无条件注册——
 	// ctx 无收集器时每次仅一次 ctx 读，与缓存 BUILD 产物共享安全。
 	entries = append(entries, newContextBudgetToolsBeforeHook())
+	// N3：history 计量（最终请求中的非 system 消息）。
+	entries = append(entries, newContextBudgetHistoryBeforeHook())
+	// F5：skill_overview 计量（镜像框架 overview 渲染，零额外 DB 查询）。
+	if hook := newContextBudgetSkillOverviewBeforeHook(skillRepo, skillFilter); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newPromptSnapshotBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}

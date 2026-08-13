@@ -23,16 +23,26 @@ func (s *stubCacheHitStatsRepo) CacheHitRatioStats(context.Context, time.Duratio
 	return s.stats, s.err
 }
 
-func cacheHitGroup(provider, model, agentKey string, samples int, prompt, cached int64) usage.CacheHitRatioStat {
+func cacheHitGroup(provider, model string, samples int, prompt, cached int64) usage.CacheHitRatioStat {
 	ratio := 0.0
 	if prompt > 0 {
 		ratio = float64(cached) / float64(prompt)
 	}
 	return usage.CacheHitRatioStat{
-		Provider: provider, Model: model, AgentKey: agentKey,
+		Provider: provider, Model: model,
 		Samples: samples, PromptTok: prompt, CachedTok: cached,
 		WeightedRatio: ratio, P50Ratio: ratio,
 	}
+}
+
+// cacheHitGroupP50 builds a group whose median per-turn ratio diverges from
+// its token-weighted ratio (e.g. a compaction turn busted the cache on a very
+// large rewritten prompt, sinking the weighted ratio while typical turns stay
+// healthy).
+func cacheHitGroupP50(provider, model string, samples int, prompt, cached int64, p50 float64) usage.CacheHitRatioStat {
+	s := cacheHitGroup(provider, model, samples, prompt, cached)
+	s.P50Ratio = p50
+	return s
 }
 
 func TestCacheHitRatioLowMetric_KeyAndCatalog(t *testing.T) {
@@ -67,7 +77,7 @@ func TestCacheHitRatioLowMetric_Evaluate_InsufficientSamples(t *testing.T) {
 	// Low ratio but only 19 samples: must not breach.
 	m := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 19, 19000, 1000),
+			cacheHitGroup("deepseek", "deepseek-chat", 19, 19000, 1000),
 		},
 	})
 	v, err := m.Evaluate(context.Background(), time.Hour)
@@ -83,7 +93,7 @@ func TestCacheHitRatioLowMetric_Evaluate_ThresholdBoundary(t *testing.T) {
 	// ratio exactly 0.5 is NOT below the default 0.5 threshold.
 	m := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 30, 30000, 15000),
+			cacheHitGroup("deepseek", "deepseek-chat", 30, 30000, 15000),
 		},
 	})
 	v, err := m.Evaluate(context.Background(), time.Hour)
@@ -97,8 +107,8 @@ func TestCacheHitRatioLowMetric_Evaluate_ThresholdBoundary(t *testing.T) {
 	// ratio 0.4 < 0.5: breach.
 	m2 := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 30, 30000, 12000),
-		},
+			cacheHitGroup("deepseek", "deepseek-chat", 30, 30000, 12000),
+	},
 	})
 	v, err = m2.Evaluate(context.Background(), time.Hour)
 	if err != nil {
@@ -109,37 +119,52 @@ func TestCacheHitRatioLowMetric_Evaluate_ThresholdBoundary(t *testing.T) {
 	}
 }
 
-func TestCacheHitRatioLowMetric_Evaluate_RollsUpAgentKeys(t *testing.T) {
-	// Two agent_keys of the same (provider, model), each below the sample
-	// minimum alone (12 < 20); combined they have 24 samples and a low
-	// weighted ratio: the alert is evaluated per (provider, model).
+func TestCacheHitRatioLowMetric_Evaluate_UsesP50NotWeighted(t *testing.T) {
+	// N7 (2026-08-13 链路审查): compaction turns rewrite history into a fresh
+	// prompt that busts the cache; their large token counts dominate the
+	// token-weighted ratio and would false-positive whenever compression
+	// fires. The alert must key on the median per-turn ratio (P50), which is
+	// robust to those outliers.
 	m := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 12, 12000, 2400),
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-b", 12, 12000, 2400),
+			cacheHitGroupP50("deepseek", "deepseek-chat", 30, 300000, 60000, 0.8), // weighted 0.2, p50 0.8
 		},
 	})
 	v, err := m.Evaluate(context.Background(), time.Hour)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if v != 1 {
-		t.Fatalf("Evaluate() = %v, want 1 (rolled up to provider+model)", v)
+	if v != 0 {
+		t.Errorf("Evaluate() = %v, want 0 (P50 0.8 healthy despite weighted 0.2)", v)
 	}
-	_, payload := m.BreachDetails()
+
+	// Inverse: a healthy weighted ratio must not mask a low median.
+	m2 := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
+		stats: []usage.CacheHitRatioStat{
+			cacheHitGroupP50("openai", "gpt-4o", 30, 300000, 270000, 0.3), // weighted 0.9, p50 0.3
+		},
+	})
+	v, err = m2.Evaluate(context.Background(), time.Hour)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v != 1 {
+		t.Fatalf("Evaluate() = %v, want 1 (P50 0.3 below threshold)", v)
+	}
+	_, payload := m2.BreachDetails()
 	breaches, ok := payload["breaches"].([]map[string]any)
 	if !ok || len(breaches) != 1 {
 		t.Fatalf("breaches payload = %v, want 1 entry", payload["breaches"])
 	}
 	b := breaches[0]
-	if b["provider"] != "deepseek" || b["model"] != "deepseek-chat" {
-		t.Errorf("breach key = %v/%v, want deepseek/deepseek-chat", b["provider"], b["model"])
+	if b["provider"] != "openai" || b["model"] != "gpt-4o" {
+		t.Errorf("breach key = %v/%v, want openai/gpt-4o", b["provider"], b["model"])
 	}
-	if b["samples"] != 24 {
-		t.Errorf("breach samples = %v, want 24", b["samples"])
+	if b["samples"] != 30 {
+		t.Errorf("breach samples = %v, want 30", b["samples"])
 	}
-	if ratio, _ := b["hit_ratio"].(float64); ratio < 0.19 || ratio > 0.21 {
-		t.Errorf("breach hit_ratio = %v, want ~0.2", b["hit_ratio"])
+	if ratio, _ := b["hit_ratio"].(float64); ratio != 0.3 {
+		t.Errorf("breach hit_ratio = %v, want P50 0.3", ratio)
 	}
 }
 
@@ -166,8 +191,8 @@ func TestCacheHitRatioLowMetric_EnvThresholdOverride(t *testing.T) {
 	t.Setenv("MONITOR_LLM_CACHE_HIT_RATIO_THRESHOLD", "0.3")
 	m := monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 30, 30000, 12000),
-		},
+			cacheHitGroup("deepseek", "deepseek-chat", 30, 30000, 12000),
+	},
 	})
 	v, err := m.Evaluate(context.Background(), time.Hour)
 	if err != nil {
@@ -215,7 +240,7 @@ func TestEvaluateAlerts_CacheHitRatioLowFires(t *testing.T) {
 	reg := monitor.NewAlertMetricRegistry()
 	reg.Register(monitor.NewCacheHitRatioLowMetric(&stubCacheHitStatsRepo{
 		stats: []usage.CacheHitRatioStat{
-			cacheHitGroup("deepseek", "deepseek-chat", "agent-a", 25, 50000, 13000),
+			cacheHitGroup("deepseek", "deepseek-chat", 25, 50000, 13000),
 		},
 	}))
 	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)

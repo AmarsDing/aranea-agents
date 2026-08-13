@@ -176,6 +176,10 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		opts = append(opts, trpcllmagent.WithPlanner(p))
 	}
 
+	// Hoisted for the skill_overview budget hook (F5): the callback chain is
+	// built later and needs the same repo/filter the framework processor uses.
+	var skillRepoForBudget trpcskill.Repository
+	var skillFilterForBudget trpcskill.VisibilityFilter
 	if deps.SkillUC != nil {
 		skillStart := time.Now()
 		repo, filter, exec, err := buildSkillDeps(ctx, ag, deps)
@@ -183,6 +187,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, nil, err
 		}
+		skillRepoForBudget, skillFilterForBudget = repo, filter
 		skillMs = time.Since(skillStart).Milliseconds()
 		if repo != nil {
 			opts = append(opts, trpcllmagent.WithSkills(repo))
@@ -268,7 +273,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	}
 
 	cbStart := time.Now()
-	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps, gate); len(chainOpts) > 0 {
+	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps, gate, skillRepoForBudget, skillFilterForBudget); len(chainOpts) > 0 {
 		opts = append(opts, chainOpts...)
 		if cbRegistry != nil {
 			deps = deps.WithCircuitBreakerRegistry(cbRegistry)
