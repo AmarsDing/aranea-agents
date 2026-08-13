@@ -123,7 +123,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("reasoning_level").Default("off"),
 		field.String("variables_json").Default("{}"),
 		field.String("model_instructions_json").Default("{}"),
-		field.Bool("context_compaction_enabled").Default(false),
+		field.Bool("context_compaction_enabled").Default(true),
 		field.Bool("memory_compact_enabled").Default(true),
 		field.Bool("tool_result_gate_enabled").Default(true),
 		field.Bool("compress_llm_cache_enabled").Default(true),
@@ -138,7 +138,7 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Bool("compression_buffer_adaptive").Default(true),
 		field.Float("soft_trigger_ratio").Default(0.70),
 		field.Float("hard_trigger_ratio").Default(0.90),
-		field.Bool("session_summary_enabled").Default(false),
+		field.Bool("session_summary_enabled").Default(true),
 		field.String("skill_load_mode").Default("auto"),
 		field.String("code_executor_type").Default("local"),
 		// MaxLLMCalls limits LLM calls per turn (0 = unlimited); maps to llmagent.WithMaxLLMCalls.

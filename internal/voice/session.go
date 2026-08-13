@@ -1,8 +1,8 @@
 package voice
 
-// TECH-DEBT(COG): 文件总行数=1355, 上限=500（AS-COG-01 既有债务，V8/V9
-// 持续加剧）——下一迭代按职责拆分：eventLoop/委派播报 → session_delegation.go，
-// 确认/澄清 → session_confirm.go，ASR 泵 → session_asr.go。
+// TECH-DEBT(COG): 文件总行数=1414, 上限=500（AS-COG-01 既有债务）——2026-08-13 已抽
+// V10 唤醒/休眠 → session_wake.go；下一迭代续拆：eventLoop/委派播报 → session_delegation.go、
+// 确认/澄清 → session_confirm.go、ASR 泵 → session_asr.go。基线已登记（债务只许缩小）。
 
 import (
 	"context"
@@ -167,14 +167,6 @@ const ModeDictation = "dictation"
 // ASR 零占用），检出唤醒词/手动唤醒后进 listening（设计 §16.2）。
 const ModeCompanion = "companion"
 
-// sleepTimeout V10：listening 态静默休眠阈值（需求 §2.12：60s 无交互回待命）。
-// 包级变量（非 const）供测试缩短（ttsSentenceTimeout 同款先例）。
-var sleepTimeout = 60 * time.Second
-
-// V10 自足 TTS 应答文案（不经 Chat Turn，不占消息流）。
-const wakeAckText = "我在"
-const exitAckText = "好的，我先休息了"
-
 // SessionDeps 是语音会话的全部外部依赖。
 type SessionDeps struct {
 	NewASR    ASRProviderFactory
@@ -235,8 +227,7 @@ type Session struct {
 	unsub         func()
 	idleTimer     *time.Timer
 	// V10：companion 静默休眠（listening 60s 无交互 → dormant，设计 §16.4②）。
-	sleepTimer      *time.Timer // listening 态计时；进入 listening 重置、离开停止
-	sleepAfterDrain bool         // 退出词应答播报完后转 dormant（onTTSDrained 消费）
+	sleepTimer *time.Timer // listening 态计时；进入 listening 重置、离开停止
 	// C2 投机意图：partial 稳定追踪（specTimer 500ms 无变化触发投机）。
 	partialText string      // 当前追踪的 partial 归一化文本
 	partialGen  int         // partial 代际（文本变化递增，计时器防陈旧触发）
@@ -340,31 +331,6 @@ func (s *Session) Start(p StartParams) {
 	s.flow.LogStart("voice.session.start", "语音会话开始", event.P("mode", p.Mode))
 	s.lg.Info("voice session started", loggateway.StepID("voice.session.start"), loggateway.Str("mode", p.Mode))
 	s.broadcastState()
-}
-
-// Wake 处理 voice.wake：dormant → listening，懒启动 ASR 上游（V10，设计 §16.4②）。
-// source ∈ kws/manual/system；kws/manual 播自足唤醒应答「我在」，
-// system（委派终态唤醒）不应答——委派播报本身即内容。非 dormant 幂等忽略。
-func (s *Session) Wake(source string) {
-	s.mu.Lock()
-	st := s.state
-	s.mu.Unlock()
-	if st != StateDormant {
-		return
-	}
-	if err := s.transition(EvWake); err != nil {
-		return
-	}
-	if err := s.openASR(); err != nil {
-		// 对齐 Start 错误路径：报 ASR_UNAVAILABLE，停留 listening 由前端重试。
-		s.sendError("ASR_UNAVAILABLE", err, true)
-	}
-	s.flow.LogDone("voice.wake.detect", "语音唤醒", event.P("source", source))
-	s.lg.Info("voice session woken", loggateway.StepID("voice.wake.detect"), loggateway.Str("source", source))
-	s.broadcastState()
-	if source != "system" {
-		s.speakSelfSufficient(wakeAckText, "voice.wake.detect", "语音唤醒应答")
-	}
 }
 
 // dictation 报告当前会话是否为听写模式（params 在 Start 时一次性写入）。
@@ -990,65 +956,7 @@ func (s *Session) enqueueDelegationSpeech(text string) {
 
 // speakDelegation 自足播报（R15）：委派结果/失败通知（流程日志 voice.delegation.broadcast）。
 func (s *Session) speakDelegation(text string) {
-	s.speakSelfSufficient(text, "voice.delegation.broadcast", "委派结果播报")
-}
-
-// speakSelfSufficient 自足播报（R15 机制泛化，V10 唤醒/退出应答复用）：
-// listening 态无活跃 turn/chunker flush 源，必须一次性 ensureTTS → Write →
-// Flush → flush 哨兵（复用 handleTurnCompleted 哨兵逻辑驱动 OnDrained →
-// tts.end）。状态停留 listening：TTS 播放期间用户说话照常进 ASR。
-func (s *Session) speakSelfSufficient(text, stepID, title string) {
-	if err := s.ensureTTS(); err != nil {
-		s.sendError("TTS_UNAVAILABLE", err, true)
-		return
-	}
-	s.mu.Lock()
-	// 自足路径无 turn 起点复位（handleASRFinal），显式清零防陈旧 true 跳哨兵。
-	s.flushEnqueued = false
-	ch := s.chunker
-	s.mu.Unlock()
-	if ch == nil {
-		return
-	}
-	s.flow.LogDone(stepID, title, event.P("chars", len(text)))
-	s.lg.Info("voice self-sufficient speech",
-		loggateway.StepID(stepID), loggateway.Int("chars", len(text)))
-	ch.Write(text)
-	s.flushTTSTail()
-}
-
-// handleExitWord V10：退出词命中 —— 自足 TTS 应答确认，播报完转 dormant
-// （onTTSDrained 消费 sleepAfterDrain）；TTS 不可用降级为立即休眠（不阻塞）。
-func (s *Session) handleExitWord() {
-	s.mu.Lock()
-	if s.state != StateListening {
-		s.mu.Unlock()
-		return // 残余 final（竞态已离 listening），忽略
-	}
-	s.mu.Unlock()
-	// 流程日志统一在 enterDormant 发射（应答后/TTS 降级两路径各一次，此处不重复）。
-	s.lg.Info("voice session exit word matched", loggateway.StepID("voice.sleep.exit_word"))
-	if err := s.ensureTTS(); err != nil {
-		s.sendError("TTS_UNAVAILABLE", err, true)
-		s.enterDormant(EvExitWord, "voice.sleep.exit_word", "退出词休眠（TTS 降级直休眠）")
-		return
-	}
-	s.mu.Lock()
-	s.sleepAfterDrain = true
-	s.mu.Unlock()
-	s.speakSelfSufficient(exitAckText, "voice.sleep.exit_word", "退出词应答")
-}
-
-// enterDormant listening → dormant 公共路径：转换 + 关 ASR 上游 + 广播。
-// 仅 onSleepTimeout / onTTSDrained（退出词应答后）/ handleExitWord 降级调用。
-func (s *Session) enterDormant(ev VoiceEvent, stepID, msg string) {
-	if err := s.transition(ev); err != nil {
-		return
-	}
-	s.closeASRUpstream()
-	s.flow.LogDone(stepID, msg)
-	s.lg.Info("voice session dormant", loggateway.StepID(stepID))
-	s.broadcastState()
+	s.speakSelfSufficient(text, "voice.delegation.broadcast", "委派结果播报", false)
 }
 
 // drainDelegationOutbox 回 listening 时排空委派播报 FIFO：一次播一条，本次
@@ -1189,6 +1097,14 @@ func clarificationSpeech(env *biz.ClarificationEnvelope) string {
 func (s *Session) ensureTTS() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.ensureTTSLocked()
+}
+
+// ensureTTSLocked 懒建 TTS 调度器/切句器（调用方须持有 s.mu）。
+// chunker 闭包捕获 sch 局部变量（非 s.scheduler 字段）：本调度器被
+// drain/Cancel 从会话字段摘除后，在途 chunker 回调仍指向确定实例，
+// 杜绝 nil 解引用与写错调度器（2026-08-13 竞态修复）。
+func (s *Session) ensureTTSLocked() error {
 	if s.chunker != nil {
 		return nil
 	}
@@ -1202,22 +1118,24 @@ func (s *Session) ensureTTS() error {
 			return err
 		}
 	}
-	s.scheduler = NewTTSScheduler(TTSSchedulerOpts{
+	var sch *TTSScheduler
+	sch = NewTTSScheduler(TTSSchedulerOpts{
 		Provider:  provider,
 		Config:    cfg,
 		OnAudio:   s.onTTSAudio,
-		OnDrained: s.onTTSDrained,
+		OnDrained: func(sleepAfter bool) { s.onTTSDrained(sch, sleepAfter) },
 		OnError:   s.onTTSError,
 		LG:        s.lg,
 	})
-	s.scheduler.Start(s.ctx)
+	sch.Start(s.ctx)
+	s.scheduler = sch
 	s.chunker = NewSentenceChunker(func(text string, flush bool) {
 		if flush {
 			s.mu.Lock()
 			s.flushEnqueued = true
 			s.mu.Unlock()
 		}
-		if err := s.scheduler.Enqueue(s.ctx, text, flush); err != nil {
+		if err := sch.Enqueue(s.ctx, text, flush); err != nil {
 			s.lg.Warn("voice tts enqueue failed", loggateway.StepID("voice.tts.enqueue_fail"), loggateway.Err(err))
 		}
 	})
@@ -1368,17 +1286,22 @@ func (s *Session) onTTSAudio(pcm []byte) {
 	_ = s.down.SendAudio(pcm)
 }
 
-func (s *Session) onTTSDrained() {
+// onTTSDrained flush 任务 drain（Turn/自足播报结束）。sch 身份校验：仅 drain
+// 来自当前调度器才摘除字段——陈旧调度器（其队列中多个 flush 任务的连续
+// drain）不得清掉在播的新调度器，否则后续播报快照丢失（2026-08-13 竞态修复）。
+// sleepAfter=true（退出词休眠哨兵）：转 dormant，跳过 EvTTSEnd/委派排空
+// （设计 §16.4②）。
+func (s *Session) onTTSDrained(sch *TTSScheduler, sleepAfter bool) {
 	s.mu.Lock()
-	s.ttsStarted = false
-	s.chunker = nil
-	s.scheduler = nil
-	sleep := s.sleepAfterDrain
-	s.sleepAfterDrain = false
+	if s.scheduler == sch {
+		s.ttsStarted = false
+		s.chunker = nil
+		s.scheduler = nil
+	}
 	s.mu.Unlock()
 	_ = s.down.SendJSON(map[string]any{"type": "tts.end"})
 	s.flow.LogDone("voice.tts.end", "语音播报结束")
-	if sleep {
+	if sleepAfter {
 		// V10：退出词应答播报完 → dormant（设计 §16.4②，跳过 EvTTSEnd/drain）。
 		s.enterDormant(EvExitWord, "voice.sleep.exit_word", "退出词休眠")
 		return
@@ -1416,59 +1339,6 @@ func (s *Session) transition(ev VoiceEvent) error {
 	s.state = to
 	s.manageSleepTimerLocked(to)
 	return nil
-}
-
-// manageSleepTimerLocked V10：companion 静默休眠计时集中管理（设计 §16.4②）。
-// 进入 listening 重置 60s；离开 listening 停止（thinking/speaking 交互中不休眠，
-// dormant/idle 无需计时）。听写/非 companion 模式无 dormant 语义，恒不计时。
-// 调用方须持有 s.mu。
-func (s *Session) manageSleepTimerLocked(to VoiceState) {
-	if s.sleepTimer != nil {
-		s.sleepTimer.Stop()
-		s.sleepTimer = nil
-	}
-	if to != StateListening || s.params.Mode != ModeCompanion {
-		return
-	}
-	s.sleepTimer = time.AfterFunc(sleepTimeout, s.onSleepTimeout)
-}
-
-// resetSleepTimer V10：ASR 活动（partial 流）重置静默休眠计时——用户持续
-// 说话时（state 停留 listening 无转换）不被 60s 到期误休眠。
-func (s *Session) resetSleepTimer() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.state != StateListening || s.params.Mode != ModeCompanion {
-		return
-	}
-	if s.sleepTimer != nil {
-		s.sleepTimer.Stop()
-	}
-	s.sleepTimer = time.AfterFunc(sleepTimeout, s.onSleepTimeout)
-}
-
-// onSleepTimeout V10：静默到期 → dormant（关闭 ASR 上游，零占用）。
-// 竞态窗口内已离开 listening（交互中）时转换表拒绝即忽略。
-func (s *Session) onSleepTimeout() {
-	if err := s.transition(EvSleepTimeout); err != nil {
-		return
-	}
-	s.closeASRUpstream()
-	s.flow.LogDone("voice.sleep.timeout", "静默休眠")
-	s.lg.Info("voice session dormant (sleep timeout)", loggateway.StepID("voice.sleep.timeout"))
-	s.broadcastState()
-}
-
-// closeASRUpstream 关闭并摘除当前 ASR 上游（dormant 零占用；asrPump 的
-// 流终结 CAS 摘表发现已摘除后不重复 Close）。
-func (s *Session) closeASRUpstream() {
-	s.mu.Lock()
-	asr := s.asr
-	s.asr = nil
-	s.mu.Unlock()
-	if asr != nil {
-		_ = asr.Close()
-	}
 }
 
 func (s *Session) broadcastState() {

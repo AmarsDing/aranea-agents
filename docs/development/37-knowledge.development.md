@@ -3,7 +3,7 @@
 > **版本**：2026-07-21 | **状态**：✅ Phase 1-9 已完成（Phase 9 多模态入库：图片经 VisionExtractor 异步提取为 MD；真实视觉模型端到端待环境就位后复验）；✅ Phase 11（US-14 免选择知识库）已完成；Phase 10（GraphRAG 旁路）可选
 > **2026-07-25 新增**：§子模块 Vault 重设计 Phase 计划（P1~P6，含 P4a/P4b 拆分）——Vault 重设计经评审有条件通过，R-1~R-6 已合入设计文档 §V6，待启动实施。
 > **2026-08-07 新增**：§子模块 图谱深空版与实体治理（G5）Phase 计划（G5-A~G5-G）——调研评审通过（`docs/reports/2026-08-07-research-knowledge-graph-oss.md`），V12.8 设计已合入；**2026-08-08：G5-F 实体治理后端（B9~B12）✅ 完成**（详见该节 As-built）。
-> **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 G-2 ✅、治理前端 G-1 ✅、全量静态验证与浏览器运行时复验 G-4 ✅——含复验发现的标签可见性修复；性能基准 G-3 📋）。
+> **2026-08-08 更新**：G5-A~G5-E ✅ 完成；**G5-C 渲染层 v2 重写**（GPU 位置纹理管线替代 InstancedMesh/Raycaster——万级卡顿修复 + 全场景降亮度 + Obsidian 柔光点/细直线/流动光脉冲/HUD 瞄准具科幻视觉 + 自适应画质三档 governor），详见 G5-C As-built；G5-G 🟡（移除清单 G-2 ✅、治理前端 G-1 ✅、全量静态验证与浏览器运行时复验 G-4 ✅——含复验发现的标签可见性修复；性能基准 G-3 ✅ 2026-08-13 落档关闭，G5-G 全部完成）。
 > **2026-08-08 新增**：§子模块 双模块级知识内核（SP1）Phase 计划（SP1-A~SP1-I）——双模统一架构经评审通过（用户裁决：块级双链完整粒度；批准落档三件套），S1~S11 设计已合入设计文档，待启动实施。
 > **2026-08-08 深入评审**：[SP1 三件套评审报告](../reports/2026-08-08-review-sp1-knowledge-blueprint.md)——B-1~B-4 阻断项修订全部合入下列任务；G1~G8 前瞻提案全部采纳，产品路线扩展为 SP1~SP7（见 SP1 节末预告表）。
 > **2026-08-10 检索链路事故根修（TDD，全绿）**：① **向量维度对账**——`EnsureKnowledgeSchema` 尾部新增 `reconcileEmbeddingDim`（`data/knowledge.go`）：embedder 换模型后 PG 列 typmod 不随 `CREATE TABLE IF NOT EXISTS` 修正，新维度插入全被拒（"expected N dimensions"）而应用层按 `collections.dim` 校验反过，语义检索全灭极难定位；对账幂等四步（向量置 NULL + 文档 hash 重置回 pending + 语义层集合 dim 快照同步 + ALTER 列重建 ivfflat），vault 文档下轮 sync 自愈，UX验证库已愈合复验；② **无语义层集合前置降级**（§V5 降级矩阵 #3 落地）——`collectionLacksSemanticLayer`（`search_helpers.go`）判定 `embedding_model` 空时 Retriever/HybridRetriever 直接降级 BM25，消除 dense 恒空静默；③ **中文短查询词法失效根修**——trigram 路 `similarity(content,q)`+`%` 对 2-4 字中文查询相似度稀释永低于阈值，改 `word_similarity(q,content)`+`%>`（`data/knowledge.go`）；新增 `knowledge_dim_reconcile_test.go` + `TestKnowledgeRepo_SearchChunksBM25_ChineseShortQuery` 等回归。详见设计文档 §4.2 维度对账 / §4.3 trigram 选型注 / §5.4、§5.6 降级注。
@@ -945,7 +945,7 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 | **G5-D** | 交互全集 + 粒子流 | FR-G5-4/7 | ✅ |
 | **G5-E** | HUD 操作台换肤 + 新控件 | FR-G5-8、NFR-G5-4 | ✅ |
 | **G5-F** | 实体治理后端（B9~B12） | FR-G5-9/10/11 | ✅ |
-| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | 🟡（G-1/G-2/G-4 ✅；G-3 性能基准 📋，见该节 As-built） |
+| **G5-G** | 治理前端 + 移除清单 + 全量验证 | FR-G5-10、验收 30~37 | ✅（G-1/G-2/G-4 ✅；G-3 性能基准 ✅ 2026-08-13 落档，见该节 As-built） |
 
 ### G5-A：引擎内核（纯 TS）
 
@@ -1043,7 +1043,7 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 |---|------|------|----------|
 | G-1 | HUD「实体治理」分区：合并建议列表（保留名 ← 候选名、来源徽标 norm/embedding、相似度）+ 一键合并 + 重写条数内联反馈；api.ts + store 接线 | ✅ | `KnowledgeGraph3D.vue`、`api.ts`、`useKnowledgeGraph.ts`、`types.ts` |
 | G-2 | 移除清单执行：`3d-force-graph` 从 package.json 移除（新增 `three-spritetext`）；`KnowledgeGraphCanvas.vue` 删除；`graphUi.ts graphContainmentForce` 删除（配色/排序/过滤/一跳邻居纯函数保留复用）；Grep 全局搜索确认零残留引用 | ✅ | `web/package.json`、`KnowledgeGraphCanvas.vue`、`graphUi.ts` |
-| G-3 | 性能基准：2 万节点/5 万边合成数据集交互帧率记录入测试文档；布局收敛静置 CPU/GPU 零占用断言 | 📋 | `docs/testing/`（性能基准记录） |
+| G-3 | 性能基准：2 万节点/5 万边合成数据集交互帧率记录入测试文档；布局收敛静置 CPU/GPU 零占用断言 | ✅ | [perf-2026-08-12-graph3d-dual-layout.md](../testing/reports/perf-2026-08-12-graph3d-dual-layout.md)（三档规模×双布局矩阵；基准过程修复物理调度棘轮 P0） |
 | G-4 | 全量验证：前端 `pnpm lint && pnpm test && pnpm build`；后端 `make api && make wire && make build && make test && make lint`（干净 GOCACHE）；浏览器运行时复验（深空视觉/hover 粒子流/pin/局部图谱/合并治理全链路，对照验收 30~37） | ✅ | — |
 
 验收：验收标准 30~37 全部通过；移除清单零残留；性能基准落档。
@@ -1053,7 +1053,7 @@ P1（Vault 基础）──→ P2（双向同步+摘要卡+关联）──→ P3�
 > - **G-1 治理前端**：`KnowledgeGraph3D.vue` 新增「实体治理」分区（建议列表限高滚动、norm/embedding 来源徽标、embedding 对相似度两位小数、合并按钮防重入、`merged: 重写 N 处提及 · M 条关联` 内联反馈）；`api.ts` 新增 `listEntityMergeSuggestions`/`mergeKnowledgeEntities`（snake/camel 双键映射对齐既有风格）；`useKnowledgeGraph.ts` 新增 `mergeSuggestions`/`merging`/`lastMergeResult` 状态与 `mergeEntities()`——建议只随库加载（与边类型/目录过滤无关），拉取失败降级空列表不置主 error（辅助数据不阻断图谱），合并成功并行重拉图谱与建议；`types.ts` 新增 `EntityMergeSuggestion`/`MergeEntitiesResult`；i18n 键 `knowledgePage.graphEntityGovernance`/`mergeSource.*`/`mergeAction`/`mergeNoSuggestions`/`mergeFeedback`（zh+en）。单测：`useKnowledgeGraph.spec.ts` 新增 2 用例（建议随库加载+失败降级；合并→重拉→反馈置位）。
 > - **G-4 浏览器复验修复（标签可见性）**：复验发现两标签缺陷并修复——① `maxDistance = fitDist × 0.85` 致适应视图后候选标签全隐藏，修为 `fitDist + 半径`（适应视图即全候选可达，拉远按距离渐进隐藏）；② 固定 `minDegree=4` 致小图（最大度数 < 4）无任何标签，新增纯函数 `effectiveMinDegree(maxDegree, base)` 降档到图最大度数（全孤立图钳 1，孤立节点不出标签）；hover/选中 forced 标签豁免距离/度数/开关三重阈值（labels OFF 时悬停/选中仍出标签，已浏览器实证）。`LabelLayer.spec.ts` 新增 `effectiveMinDegree` 3 用例。
 > - **G-4 复验记录**：合并全链路（造数 norm 冲突三元组 OpenAI/OPENAI/" OpenAI " → 建议出现 → 一键合并 → 反馈「重写 1 处提及 · 0 条关联」→ 建议清空 → DB 验 keeper/别名/提及重写与唯一索引完好，测试数据已清理）；标签修复前后对照；labels 开关切换；hover 瞄准具+forced 标签；选中六边形；浅色主题渲染；边类型 chips。对照验收 30~37：30/31/32/33/35/36/37 通过，34 的性能基准部分随 G-3 落档后关闭。
-> - **G-3 遗留**：2 万节点/5 万边合成数据集性能基准与静置零占用断言未做（G5-C v2 管线已实测 1 万节点/2 万边 ≈100FPS、Worker 物理 48ms tick 不阻塞主线程，可作基准起点参考）。
+> - **G-3 关闭（2026-08-13）**：2 万节点/5 万边合成数据集双布局基准已录制落档——[perf-2026-08-12-graph3d-dual-layout.md](../testing/reports/perf-2026-08-12-graph3d-dual-layout.md)。三档（2k/5k/20k）× 双布局全部收敛（20k ≈29s、tick 恒定 ~230 拍），20k LOW 档交互 55-56FPS；基准过程中发现并修复物理调度棘轮 P0（2k 收敛 116s→4.5s），详见报告 §3.1。
 
 ### 依赖关系
 
@@ -1375,9 +1375,9 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | M5 | 过滤图例 + 透镜：model.filterGraphByGroups + GraphLegend + Canvas setLens + KnowledgeGraph3D 挂载（键定未过滤 legendNodes）+ KnowledgePage 持久化过滤管线 | ✅（含运行时验证后 2 缺陷修复，见下节） | 见代码锚点 M5 行；测试 `model.spec.ts` 追加 describe、`GraphLegend.spec.ts`（5 用例）、`KnowledgeGraph3D.spec.ts`（新建 2 用例陷阱回归） |
 | B1 | 文档重嵌入：Proto RPC + data ListDocumentsPendingReembed + biz 扩展 + service 串行管线 + 流程日志 step + 前端双入口（文件行菜单 / FocusCard）+ 确认对话框 + 受理通知 | ✅ | 见代码锚点 B1 行；测试 `internal/service/knowledge_reembed_test.go`、`internal/data/knowledge_reembed_test.go`、`useKnowledgePage.reembed.spec.ts` |
 | B2 | 集合语义层单向启用：Proto RPC + 守卫 UPDATE 绑定 embedder + 复用 B1 队列 + 流程日志 step + 前端树菜单（仅词法库）+ 确认对话框（模型/dim）+ 列表刷新 | ✅ | 见代码锚点 B2 行；测试 `KnowledgeVaultTree.spec.ts` 追加、`stores/__tests__/knowledge.spec.ts` 追加、`useKnowledgePage.enableSemantic.spec.ts` |
-| C-T1 | 2 万节点/5 万边双布局（力导向/星系盘）性能基准录制 + 落档测试文档 | 📋 未实施（保持开放） | 计划产物：`test/graph3d-perf/gen-dataset.ts`、`docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（均未创建） |
+| C-T1 | 2 万节点/5 万边双布局（力导向/星系盘）性能基准录制 + 落档测试文档 | ✅ | [perf-2026-08-12-graph3d-dual-layout.md](../testing/reports/perf-2026-08-12-graph3d-dual-layout.md)；工具 `test/graph3d-perf/`（gen-dataset.ts / run-benchmark.mjs）；原始数据 `results-2026-08-13T0721.json` |
 
-> **G-3 状态说明**：G5-G 的 G-3（性能基准）**保持 📋 不关闭**——C-T1 未实施，验收 51 同步标注待办；待基准录制落档后一并关闭 G-3 与 C-T1。
+> **G-3 状态说明**：G5-G 的 G-3（性能基准）已随 C-T1 落档于 2026-08-13 一并关闭（✅）——基准报告见 C-T1 行链接；验收 34 的性能基准部分同步关闭。
 
 ### 运行时验证结论（2026-08-13 协调员浏览器实测）
 

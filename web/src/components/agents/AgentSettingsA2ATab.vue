@@ -58,11 +58,19 @@
         no-caps
         color="primary"
         icon="cable"
-        label="测试连接"
+        :label="$t('agentSettings.a2aTestConnection')"
         :loading="testing"
         @click="testConnection"
       />
-      <q-btn color="primary" rounded unelevated no-caps label="保存连接" :loading="saving" @click="saveProxy" />
+      <q-btn
+        color="primary"
+        rounded
+        unelevated
+        no-caps
+        :label="$t('agentSettings.a2aSaveConnection')"
+        :loading="saving"
+        @click="saveProxy"
+      />
     </div>
   </section>
 </template>

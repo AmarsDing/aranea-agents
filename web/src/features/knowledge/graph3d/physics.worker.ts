@@ -28,15 +28,21 @@ let running = false;
 
 const TICK_MS = 16;
 
+/**
+ * 下一拍延迟（导出供单测）：只按本拍耗时补到 16ms 节奏。
+ * 红线：禁止把「上一拍间隔 elapsed」计入补偿——elapsed 单向锁存会形成棘轮，
+ * 一次调度抖动（GC/主线程抢占）即把节奏永久抬高（基准实测 2k 节点收敛被拖到 116s）。
+ */
+export function nextTickDelay(costMs: number): number {
+  return Math.max(0, TICK_MS - costMs);
+}
+
 function startLoop(): void {
   if (running) return;
   running = true;
-  let last = performance.now();
   const step = (): void => {
     if (!running || !engine) return;
     const now = performance.now();
-    const elapsed = now - last;
-    last = now;
     engine.tick();
     // 末帧也回传（fast-graph 语义：stopped 前的最终位置不丢）
     const { msg, transfer } = buildTickMessage(engine);
@@ -46,9 +52,8 @@ function startLoop(): void {
       post({ type: 'stopped' });
       return;
     }
-    // 耗时补偿：保持 ~16ms 节奏
-    const delay = Math.max(0, TICK_MS - (performance.now() - now) + (elapsed - TICK_MS));
-    interval = setTimeout(step, delay);
+    // 耗时补偿：保持 ~16ms 节奏（抖动自恢复，不棘轮锁存）
+    interval = setTimeout(step, nextTickDelay(performance.now() - now));
   };
   interval = setTimeout(step, TICK_MS);
 }

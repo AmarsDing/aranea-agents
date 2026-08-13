@@ -104,6 +104,21 @@ func TestSessionExitWordPrecedesConfirm(t *testing.T) {
 	require.Equal(t, 0, fx.exec.callCount())
 }
 
+// 回归（2026-08-13 竞态修复）：唤醒应答 drain 与退出词处理并发交错时，
+// 退出词应答文本不得丢失、且必达 dormant。压测交错窗口（陈旧 drain 置空
+// 会话字段 / sleep 标志被前序 drain 抢消费两条路径）。
+func TestSessionExitWordRaceStress(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		fx := newSessionFixture(t)
+		fx.sess.Start(StartParams{Mode: ModeCompanion})
+		fx.sess.Wake("kws")
+		fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "休息吧"}
+		require.Eventually(t, func() bool { return fx.down.lastState() == "dormant" }, 2*time.Second, 5*time.Millisecond, "iter %d", i)
+		require.True(t, ttsWritesContain(fx, "好的，我先休息了"), "iter %d", i)
+		fx.sess.Close()
+	}
+}
+
 // 连说形态：唤醒词剥离后净文本进 Chat 管线。
 func TestSessionWakeWordStrippedBeforeTurn(t *testing.T) {
 	fx := newSessionFixture(t)

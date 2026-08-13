@@ -11,6 +11,12 @@ vi.mock('quasar', () => ({
   useQuasar: () => ({ notify }),
 }));
 
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string, args?: Record<string, unknown>) => (args ? `${key} ${JSON.stringify(args)}` : key),
+  }),
+}));
+
 vi.mock('../../../stores/agents', () => ({
   useAgentDetailStore: () => reactive({ saving: ref(false), patch }),
 }));

@@ -108,11 +108,11 @@
             <div class="text-h6">${{ microUsdToUsd(check.spent_micro_usd) }}</div>
           </div>
           <div>
-            <div class="text-caption text-grey-7">剩余</div>
+            <div class="text-caption text-grey-7">{{ $t('usageQuota.remaining') }}</div>
             <div class="text-h6">${{ microUsdToUsd(check.remaining_micro_usd) }}</div>
           </div>
           <div v-if="check.quota?.monthly_micro_usd">
-            <div class="text-caption text-grey-7">月上限</div>
+            <div class="text-caption text-grey-7">{{ $t('usageQuota.monthlyLimit') }}</div>
             <div class="text-h6">${{ microUsdToUsd(check.quota.monthly_micro_usd) }}</div>
           </div>
         </div>

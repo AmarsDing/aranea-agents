@@ -4,11 +4,14 @@ package agent
 //
 // DeepSeek prompt caching matches tokens from position 0: any per-turn change
 // inside the cached prefix invalidates the whole block. Two-tier contract:
-//   - session-stable cues (static/dynamic runtime cue, skill guidance) append
-//     AFTER the existing system block (insertAfterLastSystem) — never prepend;
-//   - per-turn dynamic cues (memory cue, knowledge cue, reply reminder, intent
-//     context) append at the END of the message list, so the [system block +
-//     history + user] prefix stays monotonically growing and cacheable.
+//   - session-stable cues (static/dynamic runtime cue) append AFTER the
+//     existing system block (insertAfterLastSystem) — never prepend;
+//   - per-turn dynamic cues (memory cue, knowledge cue, skill guidance, reply
+//     reminder, intent context) append at the END of the message list, so the
+//     [system block + history + user] prefix stays monotonically growing and
+//     cacheable. Skill guidance moved to the tail tier (N1 fix): routed slugs
+//     are resolved per turn, so inserting them after the system block
+//     invalidated the entire history prefix on every skill-routing change.
 
 import (
 	"context"
@@ -209,7 +212,7 @@ func TestDynamicRuntimeCueHook_InsertsAfterExistingSystem(t *testing.T) {
 	assertCueAfterBase(t, msgs, "Effective tool keys")
 }
 
-func TestSkillGuidanceFullProfileHook_InsertsAfterExistingSystem(t *testing.T) {
+func TestSkillGuidanceFullProfileHook_AppendsCueAtEnd(t *testing.T) {
 	ag := biz.Agent{
 		ID:               "ag-1",
 		SystemPromptMode: "complete",
@@ -223,10 +226,10 @@ func TestSkillGuidanceFullProfileHook_InsertsAfterExistingSystem(t *testing.T) {
 	}}
 	hook := newSkillGuidanceBeforeHook(ag, deps)
 	msgs := runBeforeModelHook(t, hook, context.Background())
-	assertCueAfterBase(t, msgs, "Available Skills")
+	assertCueAtEnd(t, msgs, "Available Skills")
 }
 
-func TestProgressiveSkillGuidanceHook_InsertsAfterExistingSystem(t *testing.T) {
+func TestProgressiveSkillGuidanceHook_AppendsCueAtEnd(t *testing.T) {
 	ag := biz.Agent{
 		ID:               "ag-1",
 		SystemPromptMode: "complete",
@@ -239,7 +242,7 @@ func TestProgressiveSkillGuidanceHook_InsertsAfterExistingSystem(t *testing.T) {
 	}}
 	hook := newSkillGuidanceBeforeHook(ag, deps)
 	msgs := runBeforeModelHook(t, hook, context.Background())
-	assertCueAfterBase(t, msgs, "Routed Skills")
+	assertCueAtEnd(t, msgs, "Routed Skills")
 }
 
 func TestMemoryInjectHook_AppendsCueAtEnd(t *testing.T) {

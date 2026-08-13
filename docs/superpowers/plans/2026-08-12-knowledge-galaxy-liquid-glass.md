@@ -2491,11 +2491,11 @@ git commit -m "feat(knowledge): B2 前端语义层启用入口（vault 菜单 + 
 - Create: `docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（基准记录，沿用 reports/ acceptance-* 位置与结构）
 - Modify: `docs/development/37-knowledge.development.md`（G-3 📋→✅，DOC-T1 亦可合并收尾）
 
-- [ ] **Step 1: 合成数据集 + dev 注入**
+- [x] **Step 1: 合成数据集 + dev 注入**
 
 `test/graph3d-perf/gen-dataset.ts`：确定性 seed 生成 20,000 节点 / 50,000 边（doc_type 分布 ≥6 组，度数幂律逼近真实 vault）；输出 JSON 供 dev 控制台注入图谱全屏（`generation` +1 触发重建）。双布局各测一轮：force（FORCE_DEFAULTS）→ HUD 切 galaxy（GALAXY_FORCE_PARAMS 再加热）。
 
-- [ ] **Step 2: 基准矩阵录制**
+- [x] **Step 2: 基准矩阵录制**
 
 | 项 | 指标 | 方法 |
 |----|------|------|
@@ -2504,7 +2504,7 @@ git commit -m "feat(knowledge): B2 前端语义层启用入口（vault 菜单 + 
 | 布局收敛 | alpha 收敛时间（双布局） | engine onSettled 计时 |
 | 静置零占用 | 收敛后 CPU/GPU 零占用断言 | lazy-render 验证（needsRender=false 时无 RAF；Performance 静置 10s 无长任务） |
 
-- [ ] **Step 3: 落档 + G-3 关闭**
+- [x] **Step 3: 落档 + G-3 关闭**
 
 结果写 `docs/testing/reports/perf-2026-08-12-graph3d-dual-layout.md`（环境：CPU/GPU/浏览器版本；矩阵表格；结论与档位建议）；37-knowledge.development.md G-3 行 📋→✅（As-built 引用基准文档路径）。
 

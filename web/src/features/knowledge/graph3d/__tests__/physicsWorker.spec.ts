@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { FORCE_DEFAULTS, ForceEngine } from '../forces';
-import { buildTickMessage } from '../physics.worker';
+import { buildTickMessage, nextTickDelay } from '../physics.worker';
 
 function mkEngine(): ForceEngine {
   return new ForceEngine({
@@ -53,5 +53,30 @@ describe('buildTickMessage（Worker 出向 tick）', () => {
     eng.alpha = 0.42;
     const { msg } = buildTickMessage(eng);
     expect(msg.alpha).toBe(0.42);
+  });
+});
+
+/**
+ * nextTickDelay 棘轮回归（2026-08-13 P0，基准实测 2k 收敛 116s→4.5s）：
+ * 旧实现把「上一拍实际间隔 elapsed」计入补偿，单向锁存形成棘轮——一次 GC/抢占抖动
+ * 即把节奏永久抬高（~425ms/拍）。修复后延迟只由本拍耗时决定，无状态、不锁存。
+ */
+describe('nextTickDelay（反棘轮节奏补偿）', () => {
+  it('本拍耗时 <16ms：补足到 16ms 节奏', () => {
+    expect(nextTickDelay(5)).toBe(11);
+    expect(nextTickDelay(0)).toBe(16);
+    expect(nextTickDelay(15.9)).toBeCloseTo(0.1, 5);
+  });
+
+  it('本拍耗时 ≥16ms：立即下一拍（delay=0，不倒扣）', () => {
+    expect(nextTickDelay(16)).toBe(0);
+    expect(nextTickDelay(400)).toBe(0);
+  });
+
+  it('反棘轮：抖动不影响后续延迟（同输入恒同输出，无状态锁存）', () => {
+    // 模拟一次 400ms 抖动后，后续正常拍的延迟必须与抖动前一致
+    const before = nextTickDelay(5);
+    nextTickDelay(400); // 抖动拍
+    expect(nextTickDelay(5)).toBe(before);
   });
 });

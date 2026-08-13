@@ -108,7 +108,7 @@
             </q-btn>
           </span>
           <q-btn v-else flat dense round icon="delete" color="negative" @click="$emit('delete', props.row)">
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ $t('common.delete') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -117,11 +117,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from '../../features/mcp/types';
 import { parseJSON } from '../../features/mcp/utils';
 import { MCP_SERVER_TABLE_COLUMNS } from './mcpServerTableUi';
+
+const { t } = useI18n();
 
 defineProps<{
   rows: McpServerRow[];
@@ -177,9 +180,9 @@ function healthColor(row: McpServerRow) {
 
 function healthLabel(row: McpServerRow) {
   const status = rowMetadata(row).health_status;
-  if (status === 'ok') return '正常';
-  if (status === 'error') return '异常';
-  if (status === 'degraded') return '退化';
+  if (status === 'ok') return t('mcpPage.statusOk');
+  if (status === 'error') return t('mcpPage.statusError');
+  if (status === 'degraded') return t('mcpPage.statusDegraded');
   return status || '';
 }
 </script>

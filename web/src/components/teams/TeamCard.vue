@@ -109,7 +109,7 @@
                     @click="$emit('remove', team)"
                   >
                     <q-item-section side><q-icon name="delete" size="xs" color="negative" /></q-item-section>
-                    <q-item-section>删除</q-item-section>
+                    <q-item-section>{{ $t('common.delete') }}</q-item-section>
                   </q-item>
                 </template>
               </q-list>

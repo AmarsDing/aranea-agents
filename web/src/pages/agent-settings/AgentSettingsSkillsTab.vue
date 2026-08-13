@@ -307,6 +307,7 @@
 <script setup lang="ts">
 const config = defineModel<AgentRuntimeConfigForm>('config', { required: true });
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AgentToolsSection from '../../components/agents/AgentToolsSection.vue';
 import type { CodeExecutorCapability } from '../../features/monitor/types';
 import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
@@ -324,6 +325,8 @@ const skillLoadModeOptions = [
   { label: 'session（会话内保持）', value: 'session' },
   { label: 'progressive（L0→L1→L2 按需加载）', value: 'progressive' },
 ];
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -387,6 +390,6 @@ const fallbackHint = computed(() => {
     return '';
   }
   const reason = cap.reason ? `（${cap.reason}）` : '';
-  return `当前选择「${selected}」在本环境不可用${reason}，运行时将自动回退到 local 执行器。`;
+  return t('agentSettings.skillsExecutorUnavailable', { selected, reason });
 });
 </script>

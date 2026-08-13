@@ -106,5 +106,12 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		CompressionBufferRatio:    DefaultCompressionBufferRatio,
 		SoftTriggerRatio:          DefaultSoftTriggerRatio,
 		HardTriggerRatio:          DefaultHardTriggerRatio,
+		// N2 (2026-08-13 链路审查): 压缩级联默认开。默认关导致框架摘要消费侧
+		// （AddSessionSummary cutoff）与请求级 compaction 从未生效，历史无上限
+		// 增长（__spirit__ 实测平均 prompt 60K tokens）。存量行由数据迁移
+		// 20260813 compression_default_on 翻转。
+		ContextCompactionEnabled: true,
+		MemoryCompactEnabled:     true,
+		SessionSummaryEnabled:    true,
 	}
 }

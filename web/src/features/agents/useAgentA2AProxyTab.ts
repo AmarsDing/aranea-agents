@@ -1,6 +1,7 @@
 import { reactive, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import type { A2AProxyConfig } from './types';
 import { useAgentDetailStore } from '../../stores/agents';
 import { buildA2AAuthJSON, A2A_AUTH_TYPE_OPTIONS } from '../a2a/authUtils';
@@ -12,6 +13,7 @@ export function useAgentA2AProxyTab(
   onSaved?: () => void,
 ) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const detailStore = useAgentDetailStore();
   const { saving } = storeToRefs(detailStore);
   const showSecret = ref(false);
@@ -99,7 +101,7 @@ export function useAgentA2AProxyTab(
       return '请填写鉴权密钥';
     }
     if (authType === 'mtls' && (!mtls.cert_file.trim() || !mtls.key_file.trim())) {
-      return 'mTLS 需填写 cert_file 与 key_file';
+      return t('agentSettings.a2aMtlsCertFilesRequired');
     }
     return null;
   }
@@ -121,10 +123,16 @@ export function useAgentA2AProxyTab(
         auth_type: authType === 'none' ? undefined : authType,
         auth_config_json: buildAuthConfigJson(),
       });
-      const name = card.display_name || card.agent_id || '远程 Agent';
-      $q.notify({ type: 'positive', message: `连接成功：${name}（${card.capabilities?.length ?? 0} 个能力）` });
+      const name = card.display_name || card.agent_id || t('agentSettings.a2aRemoteAgent');
+      $q.notify({
+        type: 'positive',
+        message: t('agentSettings.a2aConnectSuccess', { name, count: card.capabilities?.length ?? 0 }),
+      });
     } catch (error) {
-      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '连接失败' });
+      $q.notify({
+        type: 'negative',
+        message: error instanceof Error ? error.message : t('agentSettings.a2aConnectFailed'),
+      });
     } finally {
       testing.value = false;
     }

@@ -57,7 +57,11 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	if !SkillsUseFullProfile(ag.SystemPromptMode) {
 		return nil
 	}
-	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	// Routed slugs are resolved per turn from the user query, so this cue is
+	// LayerDynamic and appends at the END of the message list — inserting it
+	// after the system block would invalidate the prompt-cache prefix for the
+	// entire session history on every routing change (N1 fix).
+	return callbacks.NewBeforeModelHook(5, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -97,9 +101,10 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		cue := truncateAtMarkdownBoundary(b.String(), maxSkillGuidanceChars)
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(cue))
-		// Prefix stabilization: append after the existing system block.
+		// Prefix stabilization: append at the tail so [system + history + user]
+		// stays a monotonically growing, cacheable prefix.
 		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
+		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -114,8 +119,12 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 // descriptions but does not distinguish routed ones. This message complements
 // the overview by highlighting routed slugs, guiding the LLM's skill_load
 // decisions. This is the progressive mode's [routed] marker equivalent.
+//
+// Routed slugs change per turn, so this cue is LayerDynamic and appends at
+// the END of the message list (N1 fix: same cache-prefix rationale as the
+// full-profile hook above).
 func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	return callbacks.NewBeforeModelHook(5, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+	return callbacks.NewBeforeModelHook(5, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -137,7 +146,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(b.String()))
 		sys := trpcmodel.NewSystemMessage(b.String())
-		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
+		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

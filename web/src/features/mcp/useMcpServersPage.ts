@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from './types';
 import { parseJSON } from './utils';
 import { useMcpStore } from '../../stores/mcp';
@@ -8,6 +9,7 @@ import { useAuthStore } from '../../stores/auth';
 
 export function useMcpServersPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const mcpStore = useMcpStore();
   const auth = useAuthStore();
   const { user } = storeToRefs(auth);
@@ -172,8 +174,8 @@ export function useMcpServersPage() {
     if (metadata.last_error_message) return metadata.last_error_message;
     if (metadata.health_status === 'ok' && metadata.last_health_at)
       return `最近成功：${formatDate(metadata.last_health_at)}`;
-    if (!row.enabled) return '未启用 / 未检测';
-    return '未检测';
+    if (!row.enabled) return t('mcpPage.notEnabledNotTested');
+    return t('mcpPage.notTested');
   }
 
   function formatDate(value: string) {

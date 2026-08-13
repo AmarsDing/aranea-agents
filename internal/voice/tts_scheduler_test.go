@@ -81,18 +81,50 @@ type schedulerProbe struct {
 	mu      sync.Mutex
 	audios  [][]byte
 	drained int
+	sleeps  int // OnDrained(sleepAfter=true) 次数
 	errs    []error
 }
 
 func (p *schedulerProbe) opts(prov biz.StreamingTTSProvider) TTSSchedulerOpts {
 	return TTSSchedulerOpts{
-		Provider:  prov,
-		Config:    biz.TTSSessionConfig{Voice: "v", SpeedRatio: 1, SampleRate: 16000},
-		OnAudio:   func(pcm []byte) { p.mu.Lock(); p.audios = append(p.audios, pcm); p.mu.Unlock() },
-		OnDrained: func() { p.mu.Lock(); p.drained++; p.mu.Unlock() },
-		OnError:   func(err error) { p.mu.Lock(); p.errs = append(p.errs, err); p.mu.Unlock() },
-		LG:        loggateway.NewNoop(),
+		Provider: prov,
+		Config:   biz.TTSSessionConfig{Voice: "v", SpeedRatio: 1, SampleRate: 16000},
+		OnAudio:  func(pcm []byte) { p.mu.Lock(); p.audios = append(p.audios, pcm); p.mu.Unlock() },
+		OnDrained: func(sleepAfter bool) {
+			p.mu.Lock()
+			p.drained++
+			if sleepAfter {
+				p.sleeps++
+			}
+			p.mu.Unlock()
+		},
+		OnError: func(err error) { p.mu.Lock(); p.errs = append(p.errs, err); p.mu.Unlock() },
+		LG:      loggateway.NewNoop(),
 	}
+}
+
+// 休眠哨兵（V10 退出词）：空文本不触达 provider，按序在应答句之后 drain，
+// OnDrained 携带 sleepAfter=true（设计 §16.4②：休眠严格发生在应答播完之后）。
+func TestSchedulerSleepSentinel(t *testing.T) {
+	prov := &fakeTTSProvider{}
+	probe := &schedulerProbe{}
+	s := NewTTSScheduler(probe.opts(prov))
+	ctx := context.Background()
+	s.Start(ctx)
+	defer s.Cancel()
+
+	require.NoError(t, s.Enqueue(ctx, "好的，我先休息了", true))
+	require.NoError(t, s.EnqueueSleepSentinel(ctx))
+
+	require.Eventually(t, func() bool {
+		probe.mu.Lock()
+		defer probe.mu.Unlock()
+		return probe.drained == 2 && probe.sleeps == 1
+	}, 2*time.Second, 10*time.Millisecond)
+
+	prov.mu.Lock()
+	defer prov.mu.Unlock()
+	require.Len(t, prov.sessions, 1) // 哨兵不触达 provider
 }
 
 func TestSchedulerOrderAndDrained(t *testing.T) {

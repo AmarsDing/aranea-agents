@@ -201,3 +201,5 @@ internal/tools/testexec/executor_more_test.go 601
 internal/tools/toolset.go 765
 internal/tools/trpc/trpc_more_test.go 514
 internal/tools/working_memory/tools.go 579
+internal/voice/session.go 1414
+internal/voice/session_test.go 992

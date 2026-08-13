@@ -43,9 +43,11 @@
 │  internal/server/voice_ws.go（新）    — 语音网关：会话生命周期/帧路由      │
 │  internal/voice/（新包）                                                 │
 │   ├ session.go              — 语音会话编排（ASR↔Chat↔TTS 胶水）           │
+│   ├ session_wake.go         — V10 唤醒/休眠（dormant/退出词/静默计时）     │
 │   ├ session_state_machine.go— 显式状态机（AS-FSM-01）                    │
+│   ├ wake_words.go           — 唤醒词剥离/退出词匹配（同音词表）            │
 │   ├ sentence_chunker.go     — delta 分句器                               │
-│   └ tts_scheduler.go        — TTS 合成调度/背压/取消                     │
+│   └ tts_scheduler.go        — TTS 合成调度/背压/取消/休眠哨兵            │
 │  internal/biz/speech.go（新）         — SpeechProvider 窄端口 + 配置模型   │
 │  internal/data/speech/（新）          — 火山/阿里/OpenAI 适配器            │
 │  internal/tools/clientbridge/（新）   — 客户端工具桥（注册/路由/超时）     │
@@ -767,7 +769,7 @@ Agent 调用 client_open_app
 
 - 模型：`sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01`（encoder int8 ≈4.8MB，WASM SIMD），浏览器 AudioWorklet 常开喂 16kHz 帧
 - 关键词表（`keywords.txt` 音素序列）：`x iǎo y uán @小媛` + 叠词 `x iǎo y uán x iǎo y uán @小媛小媛`（双音节词误触发率高于四音节，叠词作兜底线）
-- 检出阈值初始 0.7（可配）；静态资产经 `web/public/kws/` 分发，加载一次全局缓存
+- 检出阈值 0.25（可配）——spike 实测校准值：0.7 在该模型上全量漏检不可用（`test/kws-spike/verify-kws.js`）；静态资产经 `web/public/kws/` 分发，加载一次全局缓存
 - **KWS 加载失败降级**：模型/WASM 加载异常时自动发送 `voice.wake` 进入 listening（退化为现状「进入即聆听」），不阻塞语音模式
 
 ### 16.2 状态机扩展（7 态，AS-FSM-01）
@@ -800,7 +802,7 @@ Agent 调用 client_open_app
 - 退出词表：`{休息吧, 再见, 退出, 退下吧, 不用了}`；`MatchExitWord(text)` 整句归一化精确匹配（复用 `normalizeConfirmWord` 归一化规则）
 - **拦截顺序（评审确认）**：唤醒词剥离 → 退出词匹配 → 确认词拦截（confirm_words.go）→ Chat 管线。`不用了` 与确认 denyWords 重叠，退出词优先——代价：pending confirm 期间说「不用了」判为休眠而非拒绝（确认卡仍在 UI 可见，可手动处理），语义可接受
 
-**② session.go 扩展**
+**② 会话唤醒/休眠扩展（实现于 `session_wake.go`，2026-08-13 自 session.go 抽离——AS-COG-01 债务控制）**
 
 - `Wake(source string)`：dormant → EvWake → 懒启动 ASR 上游 → 广播 listening；`source` 入流程日志
 - SleepTimer：进 listening 启动 60s 计时；asr.partial / asr.final / barge_in / Turn 活动即重置；到期 EvSleepTimeout → dormant（关闭 ASR 上游，零占用）
@@ -835,7 +837,7 @@ dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS �
 
 - 状态机：7 态合法/非法转换全表（`session_state_machine_test.go`）
 - `wake_words_test.go`：同音词剥离（句首/叠词/带标点/非句首不剥/无命中）、退出词匹配（归一化/重叠词优先级）
-- `session_test.go`：Wake 懒启动 ASR、SleepTimer 重置/到期、退出词拦截顺序（先于 confirm）、dormant 委派系统唤醒播报、自足应答不经 Chat Turn
+- `session_wake_test.go`（11 例）：Wake 懒启动 ASR、SleepTimer 重置/到期、退出词拦截顺序（先于 confirm）、退出词应答后必达 dormant（含 50 轮竞态压测回归 `TestSessionExitWordRaceStress`）、dormant 委派系统唤醒播报、自足应答不经 Chat Turn、唤醒词剥离净文本进 Turn
 - 前端：`wakeWord.spec.ts`（加载失败降级 / 检出回调）、`useVoiceSession.spec.ts`（dormant 门控不上行、wake 帧、预滚 flush）
 - 运行时：真机「小媛」唤醒 / 连说指令 / 退出词 / 60s 静默 / 待命委派播报全链路
 
@@ -844,7 +846,7 @@ dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS �
 | 风险 | 缓解 |
 |------|------|
 | KWS 模型权重 license 未显式声明（代码 Apache-2.0） | 商用分发前确认权重授权；必要时自训练或换开放权重模型（架构不变，仅换资产） |
-| 双音节唤醒词误触发率高于四音节 | 阈值 0.7 起步可配；叠词「小媛小媛」兜底关键词；误唤醒代价低（说「休息吧」即回待命） |
+| 双音节唤醒词误触发率高于四音节 | 阈值 0.25（spike 实测校准）可配；叠词「小媛小媛」兜底关键词；误唤醒代价低（说「休息吧」即回待命） |
 | ASR 同音误识别（小圆/小袁…）致剥离失败 | 同音词表覆盖；剥离失败时整句进 Chat 管线（退化为现状，不丢指令） |
 | 退出词与确认词「不用了」重叠 | 拦截顺序退出词优先（§16.4①，评审确认）；确认卡 UI 保留可手动处理 |
 | 预滚缓冲延迟或丢失致指令截断 | 1.5s 环形容量 + wake 后原子 flush；实测校准 |
@@ -852,4 +854,4 @@ dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS �
 
 ---
 
-*文档版本：2026-08-12 v1.7 — 追加 §16 语音唤醒与休眠设计（本地 KWS「小媛」+ dormant 七态机 + 退出词/静默休眠 + dormant 委派系统唤醒）。v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+*文档版本：2026-08-13 v1.8 — §16 实施校准落档：KWS 阈值 0.7→0.25（spike 实测，0.7 全量漏检）；唤醒/休眠实现抽离 `session_wake.go`（AS-COG-01 债务控制，session.go 1579→1414）；测试归口 `session_wake_test.go`（11 例含竞态压测回归）。2026-08-12 v1.7 — 追加 §16 语音唤醒与休眠设计（本地 KWS「小媛」+ dormant 七态机 + 退出词/静默休眠 + dormant 委派系统唤醒）。v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

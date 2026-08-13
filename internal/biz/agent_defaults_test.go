@@ -12,6 +12,24 @@ func TestDefaultAgentRuntimeSettings_L1HistoryEnabled(t *testing.T) {
 	}
 }
 
+// N2 (2026-08-13 链路审查): 压缩级联必须默认开。审查发现 __spirit__ 平均
+// prompt 60K tokens（context rot 区），根因是 context_compaction_enabled /
+// session_summary_enabled 默认 false：Aranea 压缩后经 EnqueueFrameworkSummary
+// 同步的框架摘要从未被消费（AddSessionSummary=false → 历史不按 cutoff 截断），
+// 框架请求级 compaction 也从未启用，历史无上限增长。
+func TestDefaultAgentRuntimeSettings_CompressionStackOn(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if !s.ContextCompactionEnabled {
+		t.Error("ContextCompactionEnabled should default to true (N2)")
+	}
+	if !s.MemoryCompactEnabled {
+		t.Error("MemoryCompactEnabled should default to true (N2)")
+	}
+	if !s.SessionSummaryEnabled {
+		t.Error("SessionSummaryEnabled should default to true (N2)")
+	}
+}
+
 // FR-12/P2: L2 召回默认开（评审 V7）。回归守卫：新 agent 的 standard 记忆
 // 档位必须包含 L2 召回，否则回到「五个层里两个半在干活」的默认配置。
 func TestDefaultAgentRuntimeSettings_L2RecallEnabled(t *testing.T) {

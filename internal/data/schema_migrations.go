@@ -43,6 +43,10 @@ const (
 	// 存量团队（2026-08-07 根因，详见 team_deliverable_channel_migrate.go）。
 	MigrationTeamDeliverableChannelRepair     = 20260807
 	migrationNameTeamDeliverableChannelRepair = "team_deliverable_channel_repair"
+	// 版本取 20260813：压缩级联默认开（N2 链路审查修复，详见
+	// compression_default_on_migrate.go）。
+	MigrationCompressionDefaultOn     = 20260813
+	migrationNameCompressionDefaultOn = "compression_default_on"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

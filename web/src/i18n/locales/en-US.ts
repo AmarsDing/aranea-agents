@@ -1085,6 +1085,18 @@ export default {
     deletedOk: 'Skill deleted',
     duplicateOk: 'Copied as "{name}"',
     duplicateFailed: 'Copy failed',
+    runDetailTitle: 'Run Details',
+    runDetailVersion: 'Version',
+    runDetailStartedAt: 'Started At',
+    runDetailDuration: ' (took {duration})',
+    runDetailSession: 'Session',
+    runDetailSource: 'Source',
+    runDetailErrorCode: 'Error Code',
+    runDetailErrorMessage: 'Error Message',
+    runDetailInputPreview: 'Input Preview',
+    runDetailInputEmpty: 'No input preview',
+    runDetailOutputPreview: 'Output Preview',
+    runDetailOutputEmpty: 'No output preview',
   },
   a2a: {
     federation: {
@@ -2308,6 +2320,21 @@ export default {
   usageEventsPage: {
     paginationLabel: 'events',
   },
+  usageQuota: {
+    remaining: 'Remaining',
+    monthlyLimit: 'Monthly Limit',
+    saveFailed: 'Save failed',
+    agentNotLoaded: 'Agent not loaded',
+    thresholdSaved: 'Alert threshold saved',
+    saveThresholdFailed: 'Failed to save alert threshold',
+  },
+  mcpPage: {
+    statusOk: 'Normal',
+    statusError: 'Error',
+    statusDegraded: 'Degraded',
+    notTested: 'Not tested',
+    notEnabledNotTested: 'Disabled / Not tested',
+  },
   evaluationPage: {
     uploadCases: 'Upload cases',
     uploadJsonLabel: 'Cases JSON',
@@ -2842,6 +2869,14 @@ export default {
     a2aCapabilitiesLabel: 'Capabilities (one per line, supports name: description)',
     a2aCapabilitiesHint: 'e.g. chat, summarize: Summarize long articles',
     a2aSaveCard: 'Save AgentCard',
+    a2aTestConnection: 'Test Connection',
+    a2aSaveConnection: 'Save Connection',
+    a2aMtlsCertFilesRequired: 'mTLS requires cert_file and key_file',
+    a2aRemoteAgent: 'Remote Agent',
+    a2aConnectSuccess: 'Connected: {name} ({count} capabilities)',
+    a2aConnectFailed: 'Connection failed',
+    skillsExecutorUnavailable:
+      'The selected "{selected}" is unavailable in this environment{reason}; it will fall back to the local executor at runtime.',
     files: {
       notInjected: 'Not injected in current mode',
       removeTooltip: 'Remove this file (takes effect after save)',
@@ -4476,6 +4511,7 @@ export default {
     observatoryResumeFailed: 'Failed to resume execution',
     observatoryGraphAssetNotFound: 'No associated Graph asset found',
     observatoryLoadExecutionFailed: 'Failed to load execution record',
+    editorNoAvailableAgents: 'No available Agents. A Team is composed of Agents — create one on the Agents page first.',
   },
   selfImprovementPage: {
     kicker: 'Platform self-iteration',

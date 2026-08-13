@@ -1,5 +1,6 @@
 import { computed, ref, watch, type Ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import {
   checkUsageQuota,
   getUsageQuota,
@@ -21,6 +22,7 @@ const QUOTA_REASON_TEXT: Record<string, string> = {
 /** Per-agent monthly USD cap; enforced in Chat before each turn (scope_type=agent). */
 export function useAgentUsageQuota(agentId: Ref<string>) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const monthlyUsd = ref<number | null>(null);
   const periodStart = ref('');
   const periodEnd = ref('');
@@ -96,7 +98,7 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
       $q.notify({ type: 'positive', message: '配额已保存' });
       await loadQuota();
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '保存失败';
+      error.value = e instanceof Error ? e.message : t('usageQuota.saveFailed');
       $q.notify({ type: 'negative', message: error.value });
     } finally {
       saving.value = false;
@@ -121,7 +123,7 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
   async function saveAlert() {
     const id = agentId.value.trim();
     if (!id) {
-      $q.notify({ type: 'warning', message: 'Agent 未加载' });
+      $q.notify({ type: 'warning', message: t('usageQuota.agentNotLoaded') });
       return;
     }
     alertSaving.value = true;
@@ -131,10 +133,10 @@ export function useAgentUsageQuota(agentId: Ref<string>) {
         alert_ratio: Math.min(1, Math.max(0.01, alertRatioPct.value / 100)),
         enabled: alertEnabled.value,
       });
-      $q.notify({ type: 'positive', message: '告警阈值已保存' });
+      $q.notify({ type: 'positive', message: t('usageQuota.thresholdSaved') });
       await loadAlert();
     } catch (e) {
-      error.value = e instanceof Error ? e.message : '保存告警失败';
+      error.value = e instanceof Error ? e.message : t('usageQuota.saveThresholdFailed');
       $q.notify({ type: 'negative', message: error.value });
     } finally {
       alertSaving.value = false;

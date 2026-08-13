@@ -28,15 +28,19 @@ var errTTSSentenceTimeout = errors.New("voice: tts sentence idle timeout")
 type sentenceJob struct {
 	text  string
 	flush bool
+	// sleepAfter 仅休眠哨兵携带（V10 退出词，设计 §16.4②）：drain 时经
+	// OnDrained(true) 驱动会话转 dormant。与文本句保序——休眠严格发生在
+	// 已入队应答播报完之后，取代会话级标志（前序 flush drain 会抢消费）。
+	sleepAfter bool
 }
 
 // TTSSchedulerOpts 配置 TTS 调度器。回调均由 worker goroutine 触发。
 type TTSSchedulerOpts struct {
 	Provider  biz.StreamingTTSProvider
 	Config    biz.TTSSessionConfig
-	OnAudio   func(pcm []byte) // f32le 16k 音频 chunk
-	OnDrained func()           // flush 尾句合成完毕（Turn 级播报结束）
-	OnError   func(err error)  // 连续失败中止（K3 降级由会话层处理）
+	OnAudio   func(pcm []byte)      // f32le 16k 音频 chunk
+	OnDrained func(sleepAfter bool) // flush 尾句合成完毕（Turn 级播报结束）；sleepAfter=休眠哨兵
+	OnError   func(err error)       // 连续失败中止（K3 降级由会话层处理）
 	LG        loggateway.Logger
 }
 
@@ -86,6 +90,16 @@ func (s *TTSScheduler) Start(ctx context.Context) {
 
 // Enqueue 入队一句；队列满时阻塞（背压），ctx 取消时返回错误。
 func (s *TTSScheduler) Enqueue(ctx context.Context, text string, flush bool) error {
+	return s.enqueueJob(ctx, sentenceJob{text: text, flush: flush})
+}
+
+// EnqueueSleepSentinel 入队休眠哨兵（V10 退出词）：空文本 flush 任务，不触达
+// provider，按序排在已入队应答句之后，drain 时 OnDrained(true) 驱动 dormant。
+func (s *TTSScheduler) EnqueueSleepSentinel(ctx context.Context) error {
+	return s.enqueueJob(ctx, sentenceJob{flush: true, sleepAfter: true})
+}
+
+func (s *TTSScheduler) enqueueJob(ctx context.Context, job sentenceJob) error {
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
@@ -93,7 +107,7 @@ func (s *TTSScheduler) Enqueue(ctx context.Context, text string, flush bool) err
 	}
 	s.mu.Unlock()
 	select {
-	case s.queue <- sentenceJob{text: text, flush: flush}:
+	case s.queue <- job:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -130,7 +144,7 @@ func (s *TTSScheduler) loop(ctx context.Context) {
 				// 空文本 flush 哨兵（Turn 尾句已在句边界切出时由会话层补入）：
 				// 不触达 provider，仅按序驱动 OnDrained。
 				if job.flush && s.opts.OnDrained != nil {
-					s.opts.OnDrained()
+					s.opts.OnDrained(job.sleepAfter)
 				}
 				continue
 			}
@@ -154,7 +168,7 @@ func (s *TTSScheduler) loop(ctx context.Context) {
 			}
 			failures = 0
 			if job.flush && s.opts.OnDrained != nil {
-				s.opts.OnDrained()
+				s.opts.OnDrained(job.sleepAfter)
 			}
 		}
 	}

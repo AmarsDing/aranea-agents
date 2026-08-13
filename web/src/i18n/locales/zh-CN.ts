@@ -1097,6 +1097,18 @@ export default {
     deletedOk: 'Skill 已删除',
     duplicateOk: '已复制为「{name}」',
     duplicateFailed: '复制失败',
+    runDetailTitle: '运行详情',
+    runDetailVersion: '版本',
+    runDetailStartedAt: '开始时间',
+    runDetailDuration: '（耗时 {duration}）',
+    runDetailSession: '会话',
+    runDetailSource: '来源',
+    runDetailErrorCode: '错误码',
+    runDetailErrorMessage: '错误信息',
+    runDetailInputPreview: '输入摘要',
+    runDetailInputEmpty: '无输入摘要',
+    runDetailOutputPreview: '输出摘要',
+    runDetailOutputEmpty: '无输出摘要',
   },
   a2a: {
     federation: {
@@ -2347,6 +2359,21 @@ export default {
   usageEventsPage: {
     paginationLabel: '条事件',
   },
+  usageQuota: {
+    remaining: '剩余',
+    monthlyLimit: '月上限',
+    saveFailed: '保存失败',
+    agentNotLoaded: 'Agent 未加载',
+    thresholdSaved: '告警阈值已保存',
+    saveThresholdFailed: '保存告警失败',
+  },
+  mcpPage: {
+    statusOk: '正常',
+    statusError: '异常',
+    statusDegraded: '退化',
+    notTested: '未检测',
+    notEnabledNotTested: '未启用 / 未检测',
+  },
   evaluationPage: {
     uploadCases: '上传用例',
     uploadJsonLabel: '用例 JSON',
@@ -2865,6 +2892,13 @@ export default {
     a2aCapabilitiesLabel: 'Capabilities（每行一个能力，支持 name: 描述）',
     a2aCapabilitiesHint: '例如 chat、summarize: 总结长文',
     a2aSaveCard: '保存 AgentCard',
+    a2aTestConnection: '测试连接',
+    a2aSaveConnection: '保存连接',
+    a2aMtlsCertFilesRequired: 'mTLS 需填写 cert_file 与 key_file',
+    a2aRemoteAgent: '远程 Agent',
+    a2aConnectSuccess: '连接成功：{name}（{count} 个能力）',
+    a2aConnectFailed: '连接失败',
+    skillsExecutorUnavailable: '当前选择「{selected}」在本环境不可用{reason}，运行时将自动回退到 local 执行器。',
     files: {
       notInjected: '当前模式不注入',
       removeTooltip: '移除该文件（保存后生效）',
@@ -4436,6 +4470,7 @@ export default {
     observatoryResumeFailed: '恢复执行失败',
     observatoryGraphAssetNotFound: '未找到关联的 Graph 资产',
     observatoryLoadExecutionFailed: '加载执行记录失败',
+    editorNoAvailableAgents: '暂无可用 Agent——Team 由 Agent 组成，请先在 Agent 页创建后再组建团队。',
   },
   selfImprovementPage: {
     kicker: 'Platform self-iteration',

@@ -37,7 +37,7 @@
           empty-label="无输出摘要"
         >
           <q-badge rounded :color="props.row.status === 'success' ? 'positive' : 'negative'">
-            {{ props.row.status === 'success' ? '成功' : '失败' }}
+            {{ props.row.status === 'success' ? $t('common.status.success') : $t('common.status.failed') }}
           </q-badge>
         </AppRegistryHoverTip>
       </q-td>
@@ -48,10 +48,10 @@
   <q-dialog v-model="detailOpen">
     <q-card v-if="detailRow" class="app-dialog-card skill-run-detail-card">
       <q-card-section class="row items-center q-pb-sm">
-        <div class="text-h6">运行详情</div>
+        <div class="text-h6">{{ $t('skillsPage.runDetailTitle') }}</div>
         <q-space />
         <q-badge rounded :color="detailRow.status === 'success' ? 'positive' : 'negative'">
-          {{ detailRow.status === 'success' ? '成功' : '失败' }}
+          {{ detailRow.status === 'success' ? $t('common.status.success') : $t('common.status.failed') }}
         </q-badge>
         <q-btn v-close-popup flat round dense icon="close" class="q-ml-sm" />
       </q-card-section>
@@ -60,24 +60,29 @@
         <div class="skill-run-detail-grid">
           <div class="text-caption text-grey-7">Skill</div>
           <div>{{ skillDisplay(detailRow) }}</div>
-          <div class="text-caption text-grey-7">版本</div>
+          <div class="text-caption text-grey-7">{{ $t('skillsPage.runDetailVersion') }}</div>
           <div>{{ detailRow.skill_version || '-' }}</div>
           <div class="text-caption text-grey-7">Agent</div>
           <div>{{ detailRow.agent_display_name || detailRow.agent_id || '-' }}</div>
-          <div class="text-caption text-grey-7">开始时间</div>
-          <div>{{ formatDate(detailRow.started_at) }}（耗时 {{ formatDuration(detailRow.duration_ms) }}）</div>
-          <div v-if="detailRow.session_id" class="text-caption text-grey-7">会话</div>
+          <div class="text-caption text-grey-7">{{ $t('skillsPage.runDetailStartedAt') }}</div>
+          <div>
+            {{ formatDate(detailRow.started_at)
+            }}{{ $t('skillsPage.runDetailDuration', { duration: formatDuration(detailRow.duration_ms) }) }}
+          </div>
+          <div v-if="detailRow.session_id" class="text-caption text-grey-7">
+            {{ $t('skillsPage.runDetailSession') }}
+          </div>
           <div v-if="detailRow.session_id" class="text-mono">{{ detailRow.session_id }}</div>
-          <div v-if="detailRow.source" class="text-caption text-grey-7">来源</div>
+          <div v-if="detailRow.source" class="text-caption text-grey-7">{{ $t('skillsPage.runDetailSource') }}</div>
           <div v-if="detailRow.source">{{ detailRow.source }}</div>
           <template v-if="detailRow.status !== 'success' && detailRow.error_code">
-            <div class="text-caption text-grey-7">错误码</div>
+            <div class="text-caption text-grey-7">{{ $t('skillsPage.runDetailErrorCode') }}</div>
             <div class="text-negative text-mono">{{ detailRow.error_code }}</div>
           </template>
         </div>
 
         <template v-if="detailRow.status !== 'success' && detailRow.error_message">
-          <div class="text-caption text-grey-7 q-mt-md q-mb-xs">错误信息</div>
+          <div class="text-caption text-grey-7 q-mt-md q-mb-xs">{{ $t('skillsPage.runDetailErrorMessage') }}</div>
           <q-input
             :model-value="detailRow.error_message"
             type="textarea"
@@ -89,9 +94,9 @@
           />
         </template>
 
-        <div class="text-caption text-grey-7 q-mt-md q-mb-xs">输入摘要</div>
+        <div class="text-caption text-grey-7 q-mt-md q-mb-xs">{{ $t('skillsPage.runDetailInputPreview') }}</div>
         <q-input
-          :model-value="detailRow.input_preview || '无输入摘要'"
+          :model-value="detailRow.input_preview || $t('skillsPage.runDetailInputEmpty')"
           type="textarea"
           readonly
           outlined
@@ -100,10 +105,12 @@
           class="skill-run-detail-textarea"
         />
 
-        <div v-if="detailRow.status === 'success'" class="text-caption text-grey-7 q-mt-md q-mb-xs">输出摘要</div>
+        <div v-if="detailRow.status === 'success'" class="text-caption text-grey-7 q-mt-md q-mb-xs">
+          {{ $t('skillsPage.runDetailOutputPreview') }}
+        </div>
         <q-input
           v-if="detailRow.status === 'success'"
-          :model-value="detailRow.output_preview || '无输出摘要'"
+          :model-value="detailRow.output_preview || $t('skillsPage.runDetailOutputEmpty')"
           type="textarea"
           readonly
           outlined
