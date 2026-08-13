@@ -926,6 +926,8 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 
 **Routed slugs 全模式落库**（P10/R2，2026-08-13）：`resolveAndWriteSkillState` 不再按 progressive/full-profile 分流写状态——两种模式均无条件写 `aranea.skill_routed_slugs` + `aranea.skill_selection_reasons`，invocation recorder 据此持久化路由结果供健康指标关联「routed vs run」。
 
+**非 complete 模式路由落库补齐**（P10/Q4，2026-08-13）：`task`/`minimized`/`none` prompt 模式 + 非 progressive load mode 原先 hook 返回 nil，路由不执行、routed slugs 不落库，健康指标在该组合下丢失 routed-vs-run 关联。现注册 route-only BeforeModel hook（priority=5，LayerDynamic）：只调 `resolveAndWriteSkillState` 写 invocation state，**不注入任何 prompt 消息**——task 模式的极简 prompt 契约不受影响；resolve memo 保证单次 invocation 仅一次候选 DB 查询。
+
 **Path() dir 缓存**（P10/R3，2026-08-13）：`DBRepositoryAdapter` 的两个惰性缓存（正文 bodies + 存储目录 dirs）提取为 `skillRepoCaches` 子管理器（AS-COG-01：单 struct 不堆叠 2+ sync.Map），整体指针在 reload/Invalidate 时原子交换。框架在每次 `skill_load`/`skill_run` 都解析存储目录，未缓存时每次 2 次 DB 查询（`GetBySlug` + `GetStorageDir`）；缓存后同快照期内零查询。空路径（DB-only skill）可缓存；错误不缓存，下次调用重试。
 
 **运行时缓存主动失效**（P0）：`DBRepositoryAdapter` 快照（摘要 + 已加载正文）默认 TTL 2min。`SkillUsecase` 持有 `RuntimeCacheInvalidator` 端口（DI 时由 `NewSkillDBRepository` 注入 adapter 自身），在 `ToggleEnabled` / `Delete` / `RollbackVersion` / `Publish` / `UpsertSkillFromDisk(ContentChanged)` / `Patch` 成功后调用 `InvalidateSkillRuntimeCache()`，使启用状态与正文变更秒级生效；未注入时退化为纯 TTL 兜底。
@@ -961,10 +963,11 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 
 文件：`internal/agent/skill_guidance_inject.go`
 
-在 `productCallbackChain` 中注册 `newSkillGuidanceBeforeHook`（priority=5，LayerDynamic）。两种模式：
+在 `productCallbackChain` 中注册 `newSkillGuidanceBeforeHook`（priority=5，LayerDynamic）。三个互斥分支：
 
 - **Progressive**（`skill_load_mode=progressive`，优先生效，task/complete prompt 模式均可用）：注入紧凑的 `## Routed Skills` 列表，引导 LLM 用 `skill_load` 按需加载
 - **Full Profile**（仅 `complete` prompt 模式）：注入渲染后的完整 guidance（`## Available Skills`）
+- **Route-only**（P10/Q4：非 complete prompt 模式 + 非 progressive）：不注入消息，仅 resolve 并落库 routed slugs（健康指标可观测性兜底）
 
 流程（Full Profile）：
 1. `resolveAndWriteSkillState` 获取当前 turn 的 skill slugs（结果 per-invocation 记忆化，见 §7.2 F3）

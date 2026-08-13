@@ -70,7 +70,20 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	// Full Profile mode (non-progressive): inject full skill guidance.
 	// Only active in "complete" prompt mode.
 	if !SkillsUseFullProfile(ag.SystemPromptMode) {
-		return nil
+		// Q4 (2026-08-13 最终复查): non-complete prompt mode + non-progressive
+		// load mode still needs routed slugs persisted for health-metrics
+		// observability (routed-vs-run correlation), but task mode's
+		// minimal-prompt contract forbids injecting any cue. Register a
+		// route-only hook: resolve + write invocation state, never touch
+		// messages. The resolve memo keeps the cost at one DB pass per
+		// invocation.
+		return callbacks.NewBeforeModelHook(5, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+			if args == nil || args.Request == nil {
+				return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+			}
+			resolveAndWriteSkillState(ctx, ag.Settings, deps)
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		})
 	}
 	// Routed slugs are resolved per turn from the user query, so this cue is
 	// LayerDynamic and appends at the END of the message list — inserting it

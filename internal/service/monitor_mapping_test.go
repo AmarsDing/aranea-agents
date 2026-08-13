@@ -513,8 +513,8 @@ func TestNotFoundMonitor(t *testing.T) {
 
 func TestDefaultAlertRules(t *testing.T) {
 	rules := monitor.DefaultAlertRules()
-	if len(rules) != 2 {
-		t.Fatalf("len = %d, want 2", len(rules))
+	if len(rules) != 3 {
+		t.Fatalf("len = %d, want 3", len(rules))
 	}
 	r := rules[0]
 	if r.ID != "default-runner-errors" {
@@ -561,5 +561,26 @@ func TestDefaultAlertRules(t *testing.T) {
 	}
 	if dl.Severity != "critical" {
 		t.Errorf("Severity = %q, want %q", dl.Severity, "critical")
+	}
+
+	// 29-token §9.4 (G1-B): LLM prompt-cache 命中率过低告警。
+	ch := rules[2]
+	if ch.ID != "default-llm-cache-hit-ratio-low" {
+		t.Errorf("ID = %q, want %q", ch.ID, "default-llm-cache-hit-ratio-low")
+	}
+	if ch.MetricKey != "llm.cache_hit_ratio_low" {
+		t.Errorf("MetricKey = %q, want %q", ch.MetricKey, "llm.cache_hit_ratio_low")
+	}
+	if ch.Threshold != 1 {
+		t.Errorf("Threshold = %v, want 1", ch.Threshold)
+	}
+	if ch.WindowMinutes != 60 {
+		t.Errorf("WindowMinutes = %d, want 60", ch.WindowMinutes)
+	}
+	if !ch.Enabled {
+		t.Error("Enabled = false, want true")
+	}
+	if ch.Severity != "warning" {
+		t.Errorf("Severity = %q, want %q", ch.Severity, "warning")
 	}
 }

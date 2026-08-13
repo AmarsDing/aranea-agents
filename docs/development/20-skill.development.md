@@ -170,6 +170,16 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 回归测试 | `TestResolveSkillSlugsDetailed_HealthProviderFusion`（低成功率候选被反超）/ `_NilHealthProviderSkipsFusion`（nil 时字母序兜底）；`TestResolveAndWriteSkillState_WiresHealthProvider` / `_RoutedSlugsPersistedInFullProfile`；`TestDBRepositoryAdapter_PathCachesDir` / `_PathDirCacheDropsOnInvalidate` | ✅ |
 | 验证 | `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 通过；`go vet` 改动包干净；`internal/agent`、`internal/skill/...`、`internal/tools/skillruntime`、`internal/tools/skillrecommend`、`internal/service -run Skill` 全绿；`make wire` 重新生成 wire_gen.go（adapter 单例双注入点） | ✅ |
 
+### 3.11 已完成（P10 续：最终复查修复 Q4，2026-08-13）
+
+背景：R1–R3 落地后做最终系统性复查（工具加载 / prompt 注入 / 缓存链路 / 模式一致性 / 并发生命周期 / 错误降级 6 维度），7 项疑似问题中 6 项经代码级核实为不实，1 项真实存在并修复。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| Q4 非 complete 模式路由落库补齐 | `task`/`minimized`/`none` prompt 模式 + 非 progressive load mode 原先 `newSkillGuidanceBeforeHook` 返回 nil——路由不执行、routed slugs 不落库，健康指标丢失该组合的 routed-vs-run 关联。修复：注册 route-only BeforeModel hook（priority=5，LayerDynamic），只 resolve + 写 invocation state，不注入任何 prompt 消息（task 极简 prompt 契约不变）；resolve memo 保证单 invocation 一次 DB 查询 | ✅ |
+| 回归测试 | `TestSkillGuidanceHook_TaskModeNonProgressive_PersistsRoutedSlugs`（TDD：先 RED 确认 nil hook，修复后 GREEN——routed slugs + reasons 落库且消息数不变） | ✅ |
+| 验证 | `internal/agent` 全绿；顺带修复 HEAD 中 monitor 缓存命中率告警并行改动遗留的 `TestDefaultAlertRules` 断言（默认规则 2→3 条，补第 3 条 `default-llm-cache-hit-ratio-low` 断言），`internal/service` 全绿 | ✅ |
+
 ---
 
 ## 4. 开发阶段
@@ -445,7 +455,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 文件 | 说明 | 状态 |
 |------|------|------|
 | `internal/agent/trpc_build.go` | Agent 构建中 Skill 装配（`buildSkillDeps`）；P9/F5：向 callback chain 透传 skillRepo/skillFilter | ✅ |
-| `internal/agent/skill_guidance_inject.go` | Prompt 注入方式 C（BeforeModelHook + `BatchGetSkillGuidance`）；P9/F3：路由结果 per-invocation 记忆化；P10/R1：透传 HealthProvider；P10/R2：routed slugs 全模式落库 | ✅ |
+| `internal/agent/skill_guidance_inject.go` | Prompt 注入方式 C（BeforeModelHook + `BatchGetSkillGuidance`）；P9/F3：路由结果 per-invocation 记忆化；P10/R1：透传 HealthProvider；P10/R2：routed slugs 全模式落库；P10/Q4：非 complete 模式 route-only hook（只落库不注入） | ✅ |
 | `internal/agent/builder_deps.go` | P10/R1：`TRPCSkillDeps.SkillHealthProvider` 字段（`skillrecommend.HealthMetricsProvider`） | ✅ |
 | `internal/agent/context_budget.go` | P9/F5：`ContextBudgetCategorySkillOverview` + overview 计量 hook（镜像框架渲染，零额外 DB 查询） | ✅ |
 | `internal/agent/callback_chain.go` | P9/F5：`buildCallbackChainOptions` 注册 skill_overview 计量 hook | ✅ |

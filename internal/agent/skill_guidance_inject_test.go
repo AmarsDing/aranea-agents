@@ -216,6 +216,53 @@ func TestResolveAndWriteSkillState_WiresHealthProvider(t *testing.T) {
 
 // ── N4: full-profile guidance cue memoization ───────────────────────────────
 
+// TestSkillGuidanceHook_TaskModeNonProgressive_PersistsRoutedSlugs covers Q4
+// (2026-08-13 最终复查): task prompt mode + non-progressive load mode must
+// still resolve routed slugs and write them to invocation state — otherwise
+// health metrics lose the routed-vs-run correlation for that mode combo.
+// Task mode's minimal-prompt contract is preserved: no message is injected.
+func TestSkillGuidanceHook_TaskModeNonProgressive_PersistsRoutedSlugs(t *testing.T) {
+	ag := biz.Agent{
+		ID:               "ag-1",
+		SystemPromptMode: "task",
+		Settings:         &biz.AgentRuntimeSettings{SkillLoadMode: "turn"},
+	}
+	deps := TRPCBuilderDeps{TRPCSkillDeps: TRPCSkillDeps{
+		SkillUC: fakeSkillLookup{
+			candidates: []biz.SkillRuntimeCandidate{{Slug: "demo-skill", Name: "Demo"}},
+		},
+	}}
+	cb := newSkillGuidanceBeforeHook(ag, deps)
+	if cb == nil {
+		t.Fatal("task + non-progressive returned nil hook — routed slugs never persisted (Q4)")
+	}
+	h, ok := cb.(callbacks.BeforeModelHook)
+	if !ok {
+		t.Fatalf("hook %T does not implement callbacks.BeforeModelHook", cb)
+	}
+	inv := trpcagent.NewInvocation()
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	args := freshGuidanceArgs()
+	if _, err := h.HandleBeforeModel(ctx, args); err != nil {
+		t.Fatalf("hook err = %v", err)
+	}
+	raw, ok := inv.GetState(skillRoutedSlugsStateKey)
+	if !ok {
+		t.Fatal("routed slugs state missing in task + non-progressive mode (Q4)")
+	}
+	if slugs := raw.([]string); len(slugs) != 1 || slugs[0] != "demo-skill" {
+		t.Errorf("routed slugs = %v, want [demo-skill]", slugs)
+	}
+	if _, ok := inv.GetState(skillSelectionReasonStateKey); !ok {
+		t.Error("selection reasons state missing")
+	}
+	// Minimal-prompt contract: the hook must not inject any message.
+	if len(args.Request.Messages) != 2 {
+		t.Errorf("task mode hook injected a message, messages = %d, want 2 (unchanged)", len(args.Request.Messages))
+	}
+}
+
 // countingGuidanceLookup counts BatchGetSkillGuidance calls to verify the
 // rendered cue is memoized per invocation (tool-loop model calls must not
 // re-query the DB).
