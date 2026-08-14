@@ -118,6 +118,77 @@ func TestApplyParallelFailContinue_explicitBranchIDs(t *testing.T) {
 	}
 }
 
+// TestApplyParallelFailContinue_deepBranchIntermediateNodes (Y8)：深度≥3 的
+// 分支（fan-out 后经多跳才汇入 join）中，分支中间节点也必须标记
+// skip-on-failure。否则中间节点失败按默认 retry_then_block 传播，直接中止
+// 整个 run——parallel_fail=continue 形同虚设。branchIDs 口径与编译期
+// compileEmbeddedEdges 一致：join feeders（分支尾节点）。
+func TestApplyParallelFailContinue_deepBranchIntermediateNodes(t *testing.T) {
+	cfg := GraphBuildConfig{
+		FinishPoint: "synth",
+		Nodes: []NodeDef{
+			{ID: "a1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "a2", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "b1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "synth", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+		},
+		Edges: []EdgeDef{
+			{From: "a1", To: "a2"},
+			{From: "a2", To: "synth"},
+			{From: "b1", To: "synth"},
+		},
+	}
+	policy := &TeamFailurePolicy{ParallelFail: ParallelFailContinue}
+	out := ApplyParallelFailContinue(cfg, policy, []string{"a2", "b1"})
+	marked := map[string]string{}
+	for _, n := range out.Nodes {
+		marked[n.ID] = n.FailureAction
+	}
+	for _, id := range []string{"a1", "a2", "b1"} {
+		if marked[id] != FailureOnFailureSkip {
+			t.Fatalf("%s action=%q want skip_on_failure（分支全链路标记）", id, marked[id])
+		}
+	}
+	if marked["synth"] != FailureDefaultRetryThenBlock {
+		t.Fatalf("finish 节点不可标记 skip-on-failure: %q", marked["synth"])
+	}
+}
+
+// TestApplyParallelFailContinue_sharedUpstreamNotMarked (Y8 边界)：可同时
+// 到达 ≥2 个 join feeder 的共享上游节点（fan-out 入口）不得标记
+// skip-on-failure——它承载所有分支，失败必须中止全局而非静默吞掉。
+func TestApplyParallelFailContinue_sharedUpstreamNotMarked(t *testing.T) {
+	cfg := GraphBuildConfig{
+		FinishPoint: "synth",
+		Nodes: []NodeDef{
+			{ID: "entry", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "a1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "b1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+			{ID: "synth", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
+		},
+		Edges: []EdgeDef{
+			{From: "entry", To: "a1"},
+			{From: "entry", To: "b1"},
+			{From: "a1", To: "synth"},
+			{From: "b1", To: "synth"},
+		},
+	}
+	policy := &TeamFailurePolicy{ParallelFail: ParallelFailContinue}
+	out := ApplyParallelFailContinue(cfg, policy, []string{"a1", "b1"})
+	marked := map[string]string{}
+	for _, n := range out.Nodes {
+		marked[n.ID] = n.FailureAction
+	}
+	if marked["entry"] != FailureDefaultRetryThenBlock {
+		t.Fatalf("共享上游 entry 不可标记 skip-on-failure: %q", marked["entry"])
+	}
+	for _, id := range []string{"a1", "b1"} {
+		if marked[id] != FailureOnFailureSkip {
+			t.Fatalf("%s action=%q want skip_on_failure", id, marked[id])
+		}
+	}
+}
+
 func TestFilterVisualizationEdges(t *testing.T) {
 	cfg := GraphBuildConfig{
 		Edges: []EdgeDef{

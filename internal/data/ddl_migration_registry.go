@@ -307,6 +307,11 @@ var ddlMigrations = []ddlMigration{
 	// definition_hash（C1 物化后 resume 的图定义一致性校验）；
 	// team_graph_sessions 增加 spirit_session_id（RecoverSessions 恢复 watch 订阅过滤键）。
 	{Version: 20261214, Name: "graph_execution_spirit_hash", SQL: "sql/migrations/20261214_graph_execution_spirit_hash.sql"},
+	// 20261215 knowledge_citation_counters（29-token P2-2）：
+	// knowledge_chunks 增加 cited_count（助手回复显式引用计数，回填 worker 维护）；
+	// knowledge_chunk_citations(chunk_id, turn_id) 引用去重账本，重叠窗口重扫幂等。
+	// 知识侧无 recalled/injected 计数（检索走工具调用而非 prompt 注入），只追踪 cited 段。
+	{Version: 20261215, Name: "knowledge_citation_counters", SQL: "sql/migrations/20261215_knowledge_citation_counters.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

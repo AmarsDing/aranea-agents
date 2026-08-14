@@ -152,6 +152,16 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS embed_last_tried TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_embed_degraded_idx
 			ON knowledge_documents (collection_id, embed_last_tried) WHERE embed_fail_count > 0`,
+		// --- 29-token P2-2 cited 引用计数（fresh 形态；存量库由迁移 20261215 补列/建表） ---
+		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS cited_count INT NOT NULL DEFAULT 0`,
+		`CREATE TABLE IF NOT EXISTS knowledge_chunk_citations (
+			chunk_id  TEXT NOT NULL,
+			turn_id   TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (chunk_id, turn_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_knowledge_chunk_citations_turn
+			ON knowledge_chunk_citations(turn_id)`,
 		// --- SP1-C 跨库双链解析（fresh 形态；存量库由迁移 20261204 补列） ---
 		// documents.title/aliases：Resolver 文档键（frontmatter 物化）；
 		// links.weight：N-3 投影权重（同文档对块边数聚合）。

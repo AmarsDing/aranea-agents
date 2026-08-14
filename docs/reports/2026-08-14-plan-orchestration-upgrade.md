@@ -2,7 +2,7 @@
 
 > 日期：2026-08-14
 > 类型：调研综合 + 实施计划
-> 状态：待用户评审确认后执行
+> 状态：✅ 全量完成（Batch-1 ~ Batch-6 于 2026-08-14 全部通过门禁；Batch-0 为 P0 收尾批次，其修复已在 P1 门禁中覆盖验证）
 > 关联文档：[11-multi-agent.design.md](../development/11-multi-agent.design.md)、[70-orchestration-longtask-memory.design.md](../development/70-orchestration-longtask-memory.design.md)、[53-team-graph-orchestration.design.md](../development/53-team-graph-orchestration.design.md)
 
 ---
@@ -158,6 +158,7 @@ DeepSeek 首个官方 Agent 运行框架，核心范式是**事件溯源 + 事�
 | ADR-B | 事件溯源不变量作为开发态强制断言（P1-2） | P1 |
 | ADR-C | 模型级联路由策略与总成本核算口径（P2-1） | P2 |
 | ADR-D | 成员 session 挂起/恢复语义（P3-3） | P3 |
+| ADR-E | 评测态 profile 钉住语义与互斥优先级（P3-4） | P3 |
 
 ---
 
@@ -171,7 +172,7 @@ DeepSeek 首个官方 Agent 运行框架，核心范式是**事件溯源 + 事�
 | Batch-3 ✅ | P2-1 + P2-2（模型路由，收益最直接） | agent/event/team 全量绿（agent 27.6s）+ fallback race 绿 + vet 绿（2026-08-14 通过）；新增 model_selector_cascade_test + team_cascade_test + llmcaller_fallback_test（6 用例）。usage 记账回归：分档用量经 FlowLog `team.model_cascade.route` 聚合（ADR-C），未改 usage Schema。ADR 落盘：[ADR-C](./2026-08-14-review-adr-model-cascade.md) |
 | Batch-4 ✅ | P2-3 + P2-4 + P2-5 + P2-6 | agent/service/biz 绿 + build 绿（2026-08-14 通过）；P2-3 inbox 三级语义（steer/inject/followup）、P2-4 project-state JSON 有界注入（team_project_state.go + update_project_state tool + MergeReducer）、P2-5 思考强度路由（ComplexityLevel→ThinkingEffort 映射 + ResolveThinkingEffort + 静态/动态双层）、P2-6 取消原因类型化（CancelReason 枚举 + 父级联子 + orchestrations.cancel_reason 列持久化 + 事件元数据携带） |
 | Batch-5 ✅ | P3-1 + P3-2（观测闭环） | biz 17 用例 + data PG 集成 3 用例绿 + build 绿（2026-08-14 通过）；P3-1 编排轨迹 MAST 标注（orchestration_trace.go 规则链：doom_loop/重复 step 错误/超时/0-team 建立失败/快速失败/兜底，OrchestrationTraceReader 聚合 flow_log 错误+告警+末条错误，wire 注册进 SkillEvolutionOrchestrator，gated on self_improvement.enabled）、P3-2 反哺闭环（FM-1.x/2.x→patch_prompt、FM-3.x→tune_config 经 buildPlatformSuggestion 签名去重落库 pending，ScanOnce 物化 run 待人工评审，闭环集成测试 TestOrchestrationTraceTrigger_ObserveClosedLoop）。设计文档同步：73-self-iteration-v3.design.md D2 触发器表 + 架构图 |
-| Batch-6 | P3-3 + P3-4（架构级，先 ADR 评审） | ADR 评审 + 全量 |
+| Batch-6 ✅ | P3-3 + P3-4（架构级，先 ADR 评审） | team/agent 全量绿（team 0.66s / agent 27.5s）+ build 绿（2026-08-14 通过）；P3-3 TeamRun 图执行挂起/唤醒（SuspendIdleWaits 内存 evict+DB 保留 / ensureSessionResident 按需重建 / CleanupStaleSessions 改按 LastActivityAt 判龄，cleanup ticker 同循环驱动，ADR-D 经代码深潜修正为协调器会话维度），P3-4 评测态 profile（EvalProfileDef 定义 JSON + PinnedModelSelector fail-loud 钉住全成员模型 + WithModelRequestExtraFields 钉 seed/temperature + WithToolFilter 工具白名单，与 model_cascade 互斥 eval 胜出，FlowLog `team.eval_profile.applied` 审计）。ADR 落盘：[ADR-D](./2026-08-14-review-adr-member-session-suspend.md)、[ADR-E](./2026-08-14-review-adr-eval-profile.md)；新增 model_selector_eval_test（4 用例）+ team_eval_profile_test（10 用例） |
 
 每批次遵循：TDD（先失败测试）→ 实现 → 门禁 → 文档同步（三件套状态标记）。
 

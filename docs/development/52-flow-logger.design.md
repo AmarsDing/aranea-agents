@@ -446,6 +446,8 @@ internal/cronrunner/jobs/
 | `team.run.finish` | ok / error | 团队任务结束 |
 | `team.run.attachments` | error | 团队附件装配失败 |
 | `team.run.graph` | ok | Team GraphAgent 已构建 |
+| `team.session.suspended` | ok | 挂起空闲等待会话（P3-3，内存 evict + DB 保留） |
+| `team.session.resumed` | ok | 唤醒挂起会话（P3-3，依赖调用方 ctx emitter） |
 | `team.intent.merge_fail` | warn | 团队意图合并失败 |
 | `team.intent_anchor_fallback` | warn | 团队意图锚点回退 |
 | `team.compile.unknown_mode_fallback` | warn | 未知编排模式已降级 |
@@ -453,10 +455,13 @@ internal/cronrunner/jobs/
 | `team.turn.usage` | info | 团队轮次用量 |
 | `team.member.<nodeID>` | ok / warn(skip) / error | 团队成员执行 |
 | `team.model_cascade.route` | ok | 成员模型级联路由 |
+| `team.eval_profile.applied` | ok | 评测态 profile 生效（P3-4，ADR-E） |
 
 > `team.member.<nodeID>`：图节点级成员执行（start/done/skip/error），发射点 `PublishTeamStepStarted` / `PersistGraphRunStep`；nodeID 后缀隔离并行成员计时，title 经 `stepTitle` 前缀回退解析为 `team.member`。
 >
 > `team.model_cascade.route`：P2-1 模型级联路由决策审计（发射点 `agent.CascadeModelSelector`），字段 `agent_key` / `provider` / `target_model` / `base_model`，run 维度可聚合分档用量；仅团队 run 级 selector 路径发射（ctx 带 TraceEmitter），standalone 构建级路径静默。
+>
+> `team.eval_profile.applied`：P3-4 评测态 profile 生效审计（发射点 `team.Runner.evalProfileRunOptions`，每 run 一次），字段 `provider` / `model` / `tool_allowlist_size` / `extra_model_fields`（键集合，不含值）——回答「哪个 profile 产出哪个 run」；与 `model_cascade` 互斥时胜出并记 warn 进程日志。钉住模型的逐次路由只写进程日志（`agent.eval_profile.pin`），不进流程日志避免每 LLM 调用一条。
 
 #### Knowledge（`domain=knowledge`）
 
@@ -525,6 +530,7 @@ internal/cronrunner/jobs/
 | `graph.node.execute` | ok / error | 图节点执行 |
 | `graph.checkpoint.save` | ok / error | 检查点保存 |
 | `graph.hitl.wait` | info / — | 等待人工确认 |
+| `graph.replan.decided` | ok / — | 图重规划决策（2026-08-14 Y7：replanner 动态改写图拓扑补流程日志轨） |
 
 #### Skill（`domain=skill`，2026-07-29 补齐 P0）
 

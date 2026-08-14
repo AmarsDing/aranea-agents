@@ -1,9 +1,10 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
 import { useSkillsStore } from '../../stores/skills';
 import { useEcosystemStore } from '../../stores/ecosystem';
+import { useListPage } from '../../composables/useListPage';
 
 export function useSkillsPage() {
   const $q = useQuasar();
@@ -22,8 +23,6 @@ export function useSkillsPage() {
   /** 排序：默认按标签升序（用户需求：默认标签排序）。 */
   const sortBy = ref<'tag' | 'name' | ''>('tag');
   const sortOrder = ref<'asc' | 'desc'>('asc');
-  const page = ref(1);
-  const pageSize = ref(20);
   const rows = ref<Skill[]>([]);
   const total = ref(0);
   const loading = ref(false);
@@ -46,8 +45,6 @@ export function useSkillsPage() {
   const metaTarget = ref<Skill | null>(null);
   const metaBody = ref('');
   const metaSaving = ref(false);
-
-  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   /** 标签字典选项源（MetaDialog / FilterBar 共用），首次打开时加载。 */
   const tagOptions = computed(() => skillsStore.tagNameOptions());
@@ -152,6 +149,12 @@ export function useSkillsPage() {
     }
   }
 
+  const { page, pageSize, pageMax } = useListPage({
+    filters: [search, enabled, status, syncOrigin, selectedTags, filesystemMissing, sortBy, sortOrder],
+    total,
+    load: loadRows,
+  });
+
   async function loadRows() {
     loading.value = true;
     error.value = '';
@@ -188,7 +191,7 @@ export function useSkillsPage() {
     sortBy.value = 'tag';
     sortOrder.value = 'asc';
     page.value = 1;
-    void loadRows();
+    // filter watch 会自动触发 loadRows
   }
 
   function filterPendingFilesystem() {
@@ -196,13 +199,13 @@ export function useSkillsPage() {
     status.value = 'draft';
     filesystemMissing.value = null;
     page.value = 1;
-    void loadRows();
+    // filter watch 会自动触发 loadRows
   }
 
   function filterMissingFilesystem() {
     filesystemMissing.value = true;
     page.value = 1;
-    void loadRows();
+    // filter watch 会自动触发 loadRows
   }
 
   async function onPublishSkill(skill: Skill) {
@@ -311,7 +314,6 @@ export function useSkillsPage() {
       await loadRows();
       if (rows.value.length === 0 && page.value > 1) {
         page.value = Math.max(1, page.value - 1);
-        await loadRows();
       }
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
@@ -320,20 +322,9 @@ export function useSkillsPage() {
     }
   }
 
-  watch([search, enabled, status, syncOrigin, selectedTags, filesystemMissing, sortBy, sortOrder], () => {
-    if (page.value === 1) {
-      void loadRows();
-    } else {
-      page.value = 1;
-    }
-  });
-  watch([page, pageSize], () => {
-    void loadRows();
-  });
-
   onMounted(() => {
     ensureTagOptionsLoaded();
-    void loadRows();
+    // loadRows 由 useListPage autoLoad 触发
     // 拉取市场 products 以判定「已发布」状态；失败静默（按钮按未发布展示）。
     void ecosystemStore.load().catch(() => {});
   });

@@ -975,7 +975,10 @@ func (c *TeamGraphRunCoordinator) SuspendIdleWaits(now time.Time, idleThreshold 
 	if idleThreshold <= 0 {
 		idleThreshold = defaultSuspendIdleThreshold
 	}
-	var suspended []string
+	var suspended []struct {
+		execID  string
+		emitter *event.TraceEmitter
+	}
 	c.mu.Lock()
 	for id, sess := range c.sessions {
 		if sess.status != biz.TeamRunStatusWaitingHuman {
@@ -993,13 +996,21 @@ func (c *TeamGraphRunCoordinator) SuspendIdleWaits(now time.Time, idleThreshold 
 			sess.watchStop = nil
 		}
 		delete(c.sessions, id)
-		suspended = append(suspended, id)
+		suspended = append(suspended, struct {
+			execID  string
+			emitter *event.TraceEmitter
+		}{execID: id, emitter: sess.emitter})
 	}
 	c.mu.Unlock()
-	for _, id := range suspended {
+	for _, s := range suspended {
+		// D4 双轨：流程日志 best-effort（emitter 仅存于本进程注册的会话；
+		// 重启恢复/唤醒重建的会话 emitter 为空，仅进程日志）。
+		if s.emitter != nil {
+			s.emitter.Log("team.session.suspended", event.FlowPhaseDone, "挂起空闲等待会话", event.P("exec_id", s.execID))
+		}
 		c.lg.Info("SuspendIdleWaits: suspended idle waiting_human session (DB row retained)",
 			loggateway.StepID("team.session.suspended"),
-			loggateway.Str("exec_id", id))
+			loggateway.Str("exec_id", s.execID))
 	}
 	return len(suspended)
 }
@@ -1036,8 +1047,14 @@ func (c *TeamGraphRunCoordinator) ensureSessionResident(ctx context.Context, exe
 	if dbSess.Status == biz.TeamRunStatusWaitingHuman {
 		c.startCompletionWatch(ctx, sess)
 	}
+	// D4 双轨：流程日志依赖调用方 ctx emitter（task-completion 链路当前无
+	// emitter，故唤醒通常仅进程日志——与 Batch-2 偏差同模式，待调用方补
+	// emitter 后自然生效）。
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.Log("team.session.resumed", event.FlowPhaseDone, "唤醒挂起会话", event.P("exec_id", execID))
+	}
 	c.lg.Info("ensureSessionResident: woke session from DB",
-		loggateway.StepID("team.session.woke"),
+		loggateway.StepID("team.session.resumed"),
 		loggateway.Str("exec_id", execID),
 		loggateway.Str("status", dbSess.Status))
 	return sess

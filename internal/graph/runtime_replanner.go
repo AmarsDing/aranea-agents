@@ -4,9 +4,11 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/pkg/apierror"
@@ -136,6 +138,18 @@ func (r *RuntimeReplannerImpl) OnNodeFailure(
 
 	r.publishReplanEvent(ctx, exec, failedNode, action, analysis)
 	metrics.GraphReplanTotal.WithLabelValues(string(action.Type)).Inc()
+
+	// Y7（双轨覆盖）：replan 动态改写图拓扑，除 system.notice（前端时间线）
+	// 外必须落流程日志——「流程日志」Tab 是业务用户排障「图为何改道」的
+	// 唯一入口。无 emitter 的 ctx（后台路径）跳过，不阻塞决策。
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogDone("graph.replan.decided",
+			fmt.Sprintf("节点 %s 失败后图已重规划（%s）", failedNode, action.Type),
+			event.P("replan_type", string(action.Type)),
+			event.P("failed_node", failedNode),
+			event.P("severity", analysis.Severity),
+			event.P("execution_id", exec.ID))
+	}
 
 	r.lg.Info("runtime replanner: replan action decided",
 		loggateway.StepID("replan.decided"),

@@ -71,6 +71,24 @@ type Definition struct {
 	// 工具（滚动维护 活跃请求/最近变更/里程碑/决策摘要），memory inject 按
 	// 切片预算注入，替代长任务对话历史全量拼接。
 	EnableProjectState bool `json:"enable_project_state,omitempty"`
+	// EvalProfile 评测态 profile（P3-4，ADR-E）：固定模型/工具集/生成参数，
+	// 与生产同内核（run-level option 装配，不 fork 运行时）。随
+	// DefinitionSnapshotJSON 持久化，评测运行自描述、可复现。
+	// 与 ModelCascade 互斥——同时配置时 EvalProfile 胜出（可复现性优先于成本优化）。
+	EvalProfile *EvalProfileDef `json:"eval_profile,omitempty"`
+}
+
+// EvalProfileDef is the team-level evaluation profile (P3-4, ADR-E D1).
+// All sub-fields are independent: empty = that pin is not applied.
+// Provider/Model pin every member invocation (leader included) to one model;
+// ToolAllowlist restricts tool visibility; ExtraModelFields carries
+// provider-level request fields (seed/temperature/reasoning_effort) merged
+// into every model request.
+type EvalProfileDef struct {
+	Provider         string         `json:"provider,omitempty"`
+	Model            string         `json:"model,omitempty"`
+	ToolAllowlist    []string       `json:"tool_allowlist,omitempty"`
+	ExtraModelFields map[string]any `json:"extra_model_fields,omitempty"`
 }
 
 // ModelCascadeDef is the team-level model cascade (tiering) config.

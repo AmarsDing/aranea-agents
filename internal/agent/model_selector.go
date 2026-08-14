@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -223,6 +224,49 @@ func CascadeModelSelector(
 				event.P("agent_key", inv.AgentName), event.P("provider", prov),
 				event.P("target_model", mod), event.P("base_model", baseName))
 		}
+		return m, nil
+	}
+}
+
+// ---------------------------------------------------------------------------
+// P3-4: Eval profile pinned model (ADR-E D2)
+// ---------------------------------------------------------------------------
+
+// PinnedModelSelector routes EVERY invocation (leader and member alike) to the
+// pinned provider/model for reproducible evaluation runs.
+//
+// Fail-loud semantics (deliberate deviation from CascadeModelSelector's
+// conservative nil fallback): when the pinned model cannot be built, the
+// selector returns an error so the run fails fast. An evaluation that silently
+// runs on the wrong model produces plausible-looking but invalid results —
+// worse than a failed run (DSH fail-loud capability seam, ADR-E D2-1).
+//
+// mod empty = pin disabled, returns (nil, nil) so the option assembly can
+// treat it as absent. nil invocation is a no-op.
+func PinnedModelSelector(
+	prov, mod string,
+	catalog biz.TeamModelCatalog,
+	rt *provider.RoundTrip,
+	lg loggateway.Logger,
+) trpcagent.ModelSelector {
+	prov = strings.TrimSpace(prov)
+	mod = strings.TrimSpace(mod)
+	return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
+		if inv == nil || mod == "" {
+			return nil, nil
+		}
+		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod, lg)
+		if err != nil {
+			lg.Error("评测钉住模型构建失败",
+				loggateway.StepID("agent.eval_profile.pin"),
+				loggateway.Str("provider", prov), loggateway.Str("model", mod),
+				loggateway.Str("agent", inv.AgentName), loggateway.Err(err))
+			metrics.ModelRouterFallbackTotal.WithLabelValues("eval_profile_pin").Inc()
+			return nil, fmt.Errorf("eval_profile pinned model %s/%s: %w", prov, mod, err)
+		}
+		lg.Info("评测钉住模型", loggateway.StepID("agent.eval_profile.pin"), loggateway.Phase("done"),
+			loggateway.Str("provider", prov), loggateway.Str("model", mod),
+			loggateway.Str("agent", inv.AgentName))
 		return m, nil
 	}
 }

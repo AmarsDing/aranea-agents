@@ -1,7 +1,8 @@
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
+import { useListPage } from '../../composables/useListPage';
 import {
   buildToolSummaryCards,
   categoryFilterOptions,
@@ -31,8 +32,6 @@ export function useToolsPage() {
   const riskLevel = ref('');
   const enabled = ref<boolean | null>(null);
   const abnormal = ref(false);
-  const page = ref(1);
-  const pageSize = ref(20);
   const error = ref('');
   const selected = ref<Tool[]>([]);
 
@@ -41,7 +40,6 @@ export function useToolsPage() {
   const riskOptions = computed(() => riskLevelOptions());
   const enabledOptions = computed(() => enabledTriStateOptions());
 
-  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
   const summaryCards = computed(() => buildToolSummaryCards(summary.value));
 
   async function loadRows() {
@@ -342,16 +340,12 @@ export function useToolsPage() {
     },
   );
 
-  // 单 watch 合并筛选 + 分页：筛选变化先归一到第 1 页（page 变化复用同一 watch），避免双 watch 重复请求。
-  watch([search, category, source, riskLevel, enabled, abnormal, page, pageSize], (newVals, oldVals) => {
-    const filtersChanged = newVals.slice(0, 6).some((v, i) => v !== oldVals[i]);
-    if (filtersChanged && page.value !== 1) {
-      page.value = 1;
-      return;
-    }
-    void loadRows();
+  // 分页 + 筛选联动：提取为 useListPage 通用逻辑
+  const { page, pageSize, pageMax } = useListPage({
+    filters: [search, category, source, riskLevel, enabled, abnormal],
+    total,
+    load: loadRows,
   });
-  onMounted(loadRows);
 
   return {
     // stores

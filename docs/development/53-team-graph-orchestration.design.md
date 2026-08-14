@@ -90,6 +90,12 @@ pkg/trpc-agent-go/graph · team         ← 框架真相源
   "model_cascade": {
     "member_provider": "openai",
     "member_model": "gpt-4o-mini"
+  },
+  "eval_profile": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "tool_allowlist": ["search_docs", "get_deliverable"],
+    "extra_model_fields": { "seed": 42, "temperature": 0 }
   }
 }
 ```
@@ -97,6 +103,8 @@ pkg/trpc-agent-go/graph · team         ← 框架真相源
 与现有 `definition_json` 向后兼容：`version` 缺省为 1，无 `graph` 时由编译器生成。
 
 **`model_cascade`（P2-1 模型级联，可选）**：存在即启用 Leader/Member 分档路由——synthesizer 与 intent anchor（planner 档）保持各自配置的高档模型，其余成员经 run 级 `ModelSelector`（`agent.CascadeModelSelector`，随 root RunOptions 传播到成员 invocation）路由到成本档模型；`member_model` 为空 = auto 选取目录中最便宜的 ToolCall 可用模型，`member_model` 缺 `member_provider` 视为无效配置并回退 base。路由决策发射流程日志 `team.model_cascade.route`（见 52-flow-logger.design.md §5.1）。
+
+**`eval_profile`（P3-4 评测态 profile，可选，ADR-E）**：存在即启用评测钉住——与生产**同内核**（run-level option 装配于 Team 入口，graph runtime 传播到全部成员 invocation，不 fork 运行时）。三个独立子项：`provider`+`model` 钉住**全成员**（含 leader/synthesizer）调用模型（`agent.PinnedModelSelector`，**fail-loud**：模型构建失败即 run 失败，禁止静默回退——错误模型上的评测结果比失败更糟）；`tool_allowlist` 工具可见性白名单（`WithToolFilter` + `NewIncludeToolNamesFilter`，框架工具不受滤）；`extra_model_fields` 钉住 provider 级请求字段（seed/temperature/reasoning_effort，经 `WithModelRequestExtraFields` 覆盖 model 级字段）。**与 `model_cascade` 互斥**：同时配置时 eval_profile 胜出（可复现性优先于成本优化）+ warn 进程日志。生效时发射流程日志 `team.eval_profile.applied`（每 run 一次，评测审计轨迹）；profile 随 `DefinitionSnapshotJSON` 持久化，评测运行自描述、可复现。覆盖范围：Team 入口即全图覆盖（team_graph runtime 与 DAG 派步团队均收敛于此装配点）；单 agent chat 评测由 evaluation 域既有路径覆盖。
 
 ### 2.2 节点注册表（运行期）
 

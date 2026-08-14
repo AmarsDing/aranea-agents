@@ -1,9 +1,10 @@
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
 import { copyChannelWebhookURL } from '../../components/channels/channelUi';
 import { useChannelsStore } from '../../stores/channels';
+import { useListPage } from '../../composables/useListPage';
 import type { ChannelCredential, ChannelRow } from './types';
 
 export function useChannelsPage() {
@@ -16,8 +17,6 @@ export function useChannelsPage() {
   const search = ref('');
   const typeFilter = ref('');
   const statusFilter = ref('');
-  const page = ref(1);
-  const pageSize = ref(20);
   const togglingId = ref('');
   const testingId = ref('');
   const editorOpen = ref(false);
@@ -34,9 +33,14 @@ export function useChannelsPage() {
     { label: t('channelsPage.statusError'), value: 'error' },
   ]);
 
-  const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);
   const opsChannel = computed(() => rows.value.find((row) => row.id === opsChannelId.value) ?? null);
+
+  const { page, pageSize, pageMax } = useListPage({
+    filters: [search, typeFilter, statusFilter],
+    total,
+    load: loadAll,
+  });
 
   async function loadAll() {
     error.value = '';
@@ -59,26 +63,8 @@ export function useChannelsPage() {
     typeFilter.value = '';
     statusFilter.value = '';
     page.value = 1;
-    void loadAll();
+    // filter watch 会自动触发 loadAll
   }
-
-  let skipNextPageWatch = false;
-  watch([search, typeFilter, statusFilter], () => {
-    if (page.value !== 1) {
-      skipNextPageWatch = true;
-      page.value = 1;
-    }
-    void loadAll();
-  });
-  watch([page, pageSize], () => {
-    if (skipNextPageWatch) {
-      skipNextPageWatch = false;
-      return;
-    }
-    void loadAll();
-  });
-
-  onMounted(() => void loadAll());
 
   function openCreate() {
     editingRow.value = null;

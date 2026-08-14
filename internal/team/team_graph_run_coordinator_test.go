@@ -778,7 +778,7 @@ func TestEnsureSessionResident_RestoresFromDB(t *testing.T) {
 func TestHandleTeamGraphTaskCompleted_WakesSuspendedSession(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{
-		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
+		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
 	}}
 	sessRepo := newMemSessionRepo()
 	coord := NewTeamGraphRunCoordinator(&succeedingResumeBackend{inner: backend}, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
@@ -803,7 +803,7 @@ func TestHandleTeamGraphTaskCompleted_WakesSuspendedSession(t *testing.T) {
 
 	// resume 信号到达 → 唤醒 + 处理。
 	handled, err := coord.HandleTeamGraphTaskCompleted(ctx, &biz.GraphTask{
-		ID:          "task-1",
+		TaskID:      "task-1",
 		ExecutionID: "exec-1",
 		NodeID:      "review-1",
 	}, map[string]any{"approved": true})

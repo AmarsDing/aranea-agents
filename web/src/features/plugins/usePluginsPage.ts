@@ -1,9 +1,10 @@
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { usePluginsStore } from '../../stores/plugins';
 import { useAgentsCatalogStore } from '../../stores/agents/catalog';
+import { useListPage } from '../../composables/useListPage';
 import type { Plugin } from './types';
 import { PLUGIN_CATEGORY_OPTIONS, pluginEnabledOptions, prettyJSON } from '../../components/plugins/pluginUi';
 import { useCallbackPointOptions } from '../callback/constants';
@@ -14,10 +15,6 @@ export function usePluginsPage() {
   const pluginsStore = usePluginsStore();
   const agentsCatalog = useAgentsCatalogStore();
   const { plugins: rows, total } = storeToRefs(pluginsStore);
-
-  const page = ref(1);
-  const pageSize = ref(20);
-  const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
   const search = ref('');
   const category = ref('');
@@ -60,7 +57,13 @@ export function usePluginsPage() {
     }));
   }
 
-  async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
+  const { page, pageSize, pageMax } = useListPage({
+    filters: [search, category, enabled, callbackPoint],
+    total,
+    load: loadRows,
+  });
+
+  async function loadRows() {
     loading.value = true;
     error.value = '';
     try {
@@ -69,8 +72,8 @@ export function usePluginsPage() {
         category: category.value,
         enabled: enabled.value,
         callback_point: callbackPoint.value,
-        page: nextPage,
-        page_size: nextPageSize,
+        page: page.value,
+        page_size: pageSize.value,
       });
     } catch (err) {
       error.value = err instanceof Error ? err.message : t('pluginsPage.notifyLoadFailed');
@@ -85,7 +88,7 @@ export function usePluginsPage() {
     enabled.value = null;
     callbackPoint.value = '';
     page.value = 1;
-    void loadRows(1, pageSize.value);
+    // filter watch 会自动触发 loadRows
   }
 
   async function toggleEnabled(plugin: Plugin, next: boolean) {
@@ -178,22 +181,8 @@ export function usePluginsPage() {
     }
   }
 
-  // 筛选条件变更时：先重置页码，再在 nextTick 后加载（避免竞态）
-  watch([search, category, enabled, callbackPoint], async () => {
-    if (page.value !== 1) {
-      page.value = 1;
-      // page 变更会触发下方 watch，由那边执行 loadRows
-      return;
-    }
-    await nextTick();
-    void loadRows(1, pageSize.value);
-  });
-
-  watch([page, pageSize], () => void loadRows());
-
   onMounted(() => {
-    void loadRows();
-    // 预加载 Agent 目录，供作用域选择器使用
+    // 预加载 Agent 目录，供作用域选择器使用（loadRows 由 useListPage autoLoad 触发）
     void loadAgentOptions();
   });
 

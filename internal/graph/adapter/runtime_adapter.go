@@ -101,6 +101,9 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 			event.P("graph_id", r.graphID),
 			event.P("execution_id", r.execID),
 		)
+		// Y7：run 域 emitter 注入 ctx，节点回调链（replanner 等）经
+		// TraceEmitterFromContext 复用同一 emitter 发流程日志。
+		ctx = event.WithTraceEmitter(ctx, flow)
 	}
 
 	// 全新执行只传 lineage_id；绝不能带 CfgKeyCheckpointID 键——
@@ -237,6 +240,8 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 			event.P("execution_id", r.execID),
 			event.P("lineage_id", lineageID),
 		)
+		// Y7：同 Run——resume 路径的节点回调链也复用 run 域 emitter。
+		ctx = event.WithTraceEmitter(ctx, flow)
 	}
 	runtimeState := trpcgraph.CheckpointRef{
 		LineageID:    lineageID,
