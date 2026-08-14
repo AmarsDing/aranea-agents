@@ -81,6 +81,9 @@ func validateAgentSettings(ctx context.Context, u *AgentUsecase, agent *Agent, s
 	if err := ValidateRalphLoopSettings(settings); err != nil {
 		return err
 	}
+	if err := ValidateSafetyLimitCoupling(settings); err != nil {
+		return err
+	}
 	// 校验 ToolsAllowJSON / ToolsDenyJSON 是有效的 JSON 字符串数组格式。
 	// 注意：allow/deny 列表允许包含 group:* 前缀和未注册的 tool key（设计如此，
 	// 不存在的 key 会被运行时忽略），因此只校验 JSON 格式，不校验 key 存在性。

@@ -228,6 +228,7 @@ var stepTitleRegistry = map[string]string{
 	"chat.runner.rollback":          "Runner 会话回滚",
 	"chat.runner.rollback_boundary": "Runner 回滚边界",
 	"chat.turn.timeout_with_reply":  "超时但已保存回复",
+	"chat.turn.safety_limit_stop":   "触发安全调用上限，降级收尾",
 	"run.start":                     "创建会话运行",
 	"channel.turn.background":       "渠道后台继续执行",
 	// 2026-07-29 日志补齐：P0 核心链路

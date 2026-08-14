@@ -316,3 +316,63 @@ func TestGetSkillRuntimeJSON(t *testing.T) {
 		t.Errorf("GetSkillRuntimeJSON = %q, want %q", got, `{"test":true}`)
 	}
 }
+
+func TestCoupledSafetyLimits(t *testing.T) {
+	tests := []struct {
+		name         string
+		maxLLM       int
+		maxTool      int
+		wantLLM      int
+		wantTool     int
+		wantElevated bool
+	}{
+		{"both unlimited", 0, 0, 0, 0, false},
+		{"only tool limit", 0, 5, 0, 5, false},
+		{"only llm limit", 10, 0, 10, 0, false},
+		{"coupled ok", 20, 5, 20, 5, false},
+		{"minimal ok", 7, 5, 7, 5, false},
+		{"llm equals tool elevated", 5, 5, 7, 5, true},
+		{"llm one above elevated", 6, 5, 7, 5, true},
+		{"llm below elevated", 3, 5, 7, 5, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &biz.AgentRuntimeSettings{MaxLLMCalls: tt.maxLLM, MaxToolIterations: tt.maxTool}
+			gotLLM, gotTool, gotElevated := biz.CoupledSafetyLimits(s)
+			if gotLLM != tt.wantLLM || gotTool != tt.wantTool || gotElevated != tt.wantElevated {
+				t.Fatalf("CoupledSafetyLimits(%d,%d) = (%d,%d,%v), want (%d,%d,%v)",
+					tt.maxLLM, tt.maxTool, gotLLM, gotTool, gotElevated, tt.wantLLM, tt.wantTool, tt.wantElevated)
+			}
+		})
+	}
+}
+
+func TestValidateSafetyLimitCoupling(t *testing.T) {
+	tests := []struct {
+		name    string
+		maxLLM  int
+		maxTool int
+		wantErr bool
+	}{
+		{"both unlimited", 0, 0, false},
+		{"only tool limit", 0, 5, false},
+		{"only llm limit", 10, 0, false},
+		{"llm limit equals tool limit", 5, 5, true},
+		{"llm limit one above tool limit", 6, 5, true},
+		{"llm limit below tool limit", 3, 5, true},
+		{"llm limit with graceful headroom", 7, 5, false},
+		{"llm limit well above", 20, 5, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &biz.AgentRuntimeSettings{MaxLLMCalls: tt.maxLLM, MaxToolIterations: tt.maxTool}
+			err := biz.ValidateSafetyLimitCoupling(s)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for max_llm_calls=%d max_tool_iterations=%d", tt.maxLLM, tt.maxTool)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for max_llm_calls=%d max_tool_iterations=%d: %v", tt.maxLLM, tt.maxTool, err)
+			}
+		})
+	}
+}

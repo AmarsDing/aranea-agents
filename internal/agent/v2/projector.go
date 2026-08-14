@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -471,12 +473,71 @@ func (p *ActivityProjector) OnError(ctx context.Context, errMsg, errType, errCod
 	p.mu.Unlock()
 	p.seq.Publish(ctx, biz.NewStepCreatedEvent(errStep))
 	p.seq.Publish(ctx, biz.NewStepCompletedEvent(errStep))
+	// Safety-limit hard stop (framework MaxLLMCalls StopError killed the turn
+	// before the model could produce a final summary): emit a fallback final
+	// reply step so the user sees a graceful closing message instead of a
+	// bare hard stop.
+	if isSafetyLimitHardStop(errType, errMsg) {
+		p.emitSafetyLimitFallbackReply(ctx, now)
+	}
 	// Emit TaskFailedEvent (carries the Task with status=failed).
 	// Skipped for system-push continuation turns (ParentTaskID set) — the
 	// original Task's state machine is owned by the original user-input turn.
 	if p.meta.ParentTaskID == "" && task != nil {
 		p.seq.Publish(ctx, biz.NewTaskFailedEvent(*task))
 	}
+}
+
+// safetyLimitStopMsgPrefix is the message prefix produced by the vendored
+// framework's Invocation.IncLLMCallCount StopError
+// (pkg/trpc-agent-go/agent/invocation.go). A stop_agent_error carrying this
+// message means the turn was hard-stopped by the MaxLLMCalls safety limit
+// before the model could produce a final summary. Intentional stops (ralph
+// loop completion, plugin/human interrupts) carry different messages.
+const safetyLimitStopMsgPrefix = "max LLM calls"
+
+// safetyLimitFallbackContent is the user-visible closing text of the fallback
+// reply emitted when a safety-limit hard stop prevented a final summary.
+const safetyLimitFallbackContent = "本轮回复已达到 LLM 调用次数安全上限，已提前收尾。以上为本轮已产生的部分内容；如需继续，请发送新消息。"
+
+// isSafetyLimitHardStop reports whether an error routed to OnError is the
+// framework's MaxLLMCalls hard stop (vs. an intentional controlled stop).
+func isSafetyLimitHardStop(errType, errMsg string) bool {
+	return errType == trpcagent.ErrorTypeStopAgentError && strings.HasPrefix(errMsg, safetyLimitStopMsgPrefix)
+}
+
+// emitSafetyLimitFallbackReply emits a completed, final reply step carrying a
+// graceful closing message. The step sorts after the error step via a fresh
+// Seq from the SeqAssigner.
+func (p *ActivityProjector) emitSafetyLimitFallbackReply(ctx context.Context, now time.Time) {
+	n := p.stepCounter.Add(1)
+	stepID := p.meta.TurnID + "-s" + strconv.Itoa(int(n))
+	var seq int64
+	if p.seqAsg != nil {
+		seq = p.seqAsg.NextSeq(p.meta.SpiritSessionID)
+	}
+	step := p.meta.newStep(stepID, biz.StepKindReply, seq)
+	step.Content = safetyLimitFallbackContent
+	step.IsFinal = true
+	step.Status = biz.StepStatusCompleted
+	step.CompletedAt = &now
+	step.Version++
+	p.mu.Lock()
+	p.activeStep[stepID] = &step
+	p.mu.Unlock()
+	p.lg.Warn("safety limit hard stop, fallback final reply emitted",
+		loggateway.StepID("agent.v2.projector.safety_limit_fallback"),
+		loggateway.Str("task_id", p.meta.TaskID),
+		loggateway.Str("step_id", stepID))
+	// K3 降级：流程日志（ctx 无 TraceEmitter 时静默跳过，同 llm_caller 约定）。
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogWarn("chat.turn.safety_limit_stop", "触发安全调用上限，降级收尾",
+			"本轮回复达到 LLM 调用次数安全上限，已生成兜底收尾消息",
+			event.P("task_id", p.meta.TaskID),
+			event.P("fallback_step_id", stepID))
+	}
+	p.seq.Publish(ctx, biz.NewStepCreatedEvent(step))
+	p.seq.Publish(ctx, biz.NewStepCompletedEvent(step))
 }
 
 // OnStuckTools marks all tool_running steps as failed. Called from

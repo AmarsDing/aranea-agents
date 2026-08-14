@@ -313,6 +313,12 @@ func NewAgentUsecase(d AgentUsecaseDeps) *AgentUsecase
 | `ToggleFavorite(ctx, id)` | 切换收藏标记 |
 | `CreateAgentAtomic` / `UpdateAgentAtomic` | 事务化创建/更新（Pack 导入场景） |
 
+#### 持久化边界校验（`validateAgentSettings`）
+
+Create/Update 共用的设置校验链（`internal/biz/agent_usecase_validate.go`）依次执行：provider/model 存在性 → `ValidateCodeExecutorType` → `ValidatePlannerKind` / `ValidatePlannerConfigJSON` → `ValidateRalphLoopSettings` → `ValidateSafetyLimitCoupling` → tools allow/deny JSON 格式。
+
+**安全限额联动规则**（`internal/biz/safety_limit.go`）：当 `max_llm_calls` 与 `max_tool_iterations` 同时配置（>0）时，要求 `max_llm_calls >= max_tool_iterations + 2`（`SafetyLimitGracefulHeadroom`）。余量语义来自框架优雅收尾路径：工具预算耗尽后框架摘掉工具声明引导模型产出总结（+1 次 LLM 调用）；若模型仍发工具调用，框架合成拒绝结果再循环一次（再 +1）。不满足时校验拒绝写入。存量违规数据由 `biz.CoupledSafetyLimits` 在 Agent 构建时（`SafetyLimitAdapter`）防御性抬升 `max_llm_calls` 并打 Warn 进程日志。MaxLLMCalls 硬停（`stop_agent_error` + "max LLM calls … exceeded"）时 v2 projector 发射兜底 final reply step（`emitSafetyLimitFallbackReply`）+ 流程日志 `chat.turn.safety_limit_stop`，保证用户看到优雅收尾而非裸硬停。
+
 ---
 
 ## 四、Data 层

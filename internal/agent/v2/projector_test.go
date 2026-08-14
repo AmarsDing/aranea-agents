@@ -4,11 +4,47 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 )
+
+// stubFlowMonitorBus captures MonitorEvents for flow-log assertions.
+type stubFlowMonitorBus struct {
+	mu  sync.Mutex
+	evs []contract.MonitorEvent
+}
+
+func (b *stubFlowMonitorBus) Publish(_ context.Context, ev contract.MonitorEvent) {
+	b.mu.Lock()
+	b.evs = append(b.evs, ev)
+	b.mu.Unlock()
+}
+
+func (b *stubFlowMonitorBus) Subscribe(_ contract.MonitorSubscribeOptions) (<-chan contract.MonitorEvent, func()) {
+	return nil, func() {}
+}
+
+func (b *stubFlowMonitorBus) DropCount() uint64 { return 0 }
+
+func (b *stubFlowMonitorBus) flowLogStepIDs() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var out []string
+	for _, ev := range b.evs {
+		if ev.Type != contract.MonitorEventTypeFlowLog {
+			continue
+		}
+		if step, _ := ev.Metadata["step_id"].(string); step != "" {
+			out = append(out, step)
+		}
+	}
+	return out
+}
 
 // capturingSequencer collects published events for test assertions.
 type capturingSequencer struct {
@@ -321,6 +357,116 @@ func TestOnError(t *testing.T) {
 	}
 	if failed.Task.Status != biz.TaskStatusFailed {
 		t.Errorf("expected task status=failed, got %s", failed.Task.Status)
+	}
+}
+
+// TestOnError_SafetyLimitHardStop_EmitsFallbackReply verifies that when the
+// turn is hard-stopped by the MaxLLMCalls safety limit (framework StopError
+// surfaced as stop_agent_error), the projector emits a fallback final reply
+// step after the error step, so the user sees a graceful closing message
+// instead of a bare hard stop.
+func TestOnError_SafetyLimitHardStop_EmitsFallbackReply(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.OnError(context.Background(), "max LLM calls (5) exceeded", "stop_agent_error", "")
+
+	// Expect 5 events: error StepCreated + error StepCompleted +
+	// fallback reply StepCreated + fallback reply StepCompleted + TaskFailed
+	if len(capture.events) != 5 {
+		t.Fatalf("expected 5 events, got %d", len(capture.events))
+	}
+
+	errCreated, ok := capture.events[0].(*biz.StepCreatedEvent)
+	if !ok || errCreated.Step.Kind != biz.StepKindError {
+		t.Fatalf("events[0]: expected error StepCreatedEvent, got %T", capture.events[0])
+	}
+
+	replyCreated, ok := capture.events[2].(*biz.StepCreatedEvent)
+	if !ok {
+		t.Fatalf("events[2]: expected StepCreatedEvent, got %T", capture.events[2])
+	}
+	if replyCreated.Step.Kind != biz.StepKindReply {
+		t.Errorf("fallback step kind = %s, want reply", replyCreated.Step.Kind)
+	}
+	if replyCreated.Step.Content == "" {
+		t.Error("fallback reply content must not be empty")
+	}
+
+	replyCompleted, ok := capture.events[3].(*biz.StepCompletedEvent)
+	if !ok {
+		t.Fatalf("events[3]: expected StepCompletedEvent, got %T", capture.events[3])
+	}
+	if replyCompleted.Step.Status != biz.StepStatusCompleted {
+		t.Errorf("fallback reply status = %s, want completed", replyCompleted.Step.Status)
+	}
+	if !replyCompleted.Step.IsFinal {
+		t.Error("fallback reply must be IsFinal=true")
+	}
+
+	if _, ok := capture.events[4].(*biz.TaskFailedEvent); !ok {
+		t.Fatalf("events[4]: expected TaskFailedEvent, got %T", capture.events[4])
+	}
+}
+
+// TestOnError_ControlledStopOtherMessage_NoFallback verifies that intentional
+// stop_agent_error signals (ralph loop completion, plugin/human interrupts)
+// do NOT get a safety-limit fallback reply.
+func TestOnError_ControlledStopOtherMessage_NoFallback(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	p.OnError(context.Background(), "ralph loop completion promise detected", "stop_agent_error", "")
+
+	// Same as a plain error: error StepCreated + StepCompleted + TaskFailed
+	if len(capture.events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(capture.events))
+	}
+	if _, ok := capture.events[2].(*biz.TaskFailedEvent); !ok {
+		t.Fatalf("events[2]: expected TaskFailedEvent, got %T", capture.events[2])
+	}
+}
+
+// TestOnError_SafetyLimitHardStop_EmitsFlowLog verifies the K3 degradation
+// flow log: when a safety-limit hard stop fires and the turn ctx carries a
+// TraceEmitter (production chat path), a chat.turn.safety_limit_stop flow log
+// is published; without an emitter the path silently skips (standalone ctx).
+func TestOnError_SafetyLimitHardStop_EmitsFlowLog(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	bus := &stubFlowMonitorBus{}
+	em := event.NewTraceEmitter(&event.Infra{MonitorEventBus: bus}, event.TraceContext{
+		TraceID: "tr-safety",
+		Domain:  event.TraceDomainChat,
+	}, nil)
+	ctx := event.WithTraceEmitter(context.Background(), em)
+
+	p.OnError(ctx, "max LLM calls (5) exceeded", "stop_agent_error", "")
+
+	found := false
+	for _, id := range bus.flowLogStepIDs() {
+		if id == "chat.turn.safety_limit_stop" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected flow log step chat.turn.safety_limit_stop, got %v", bus.flowLogStepIDs())
+	}
+
+	// Non-safety-limit errors must not emit the step.
+	bus2 := &stubFlowMonitorBus{}
+	em2 := event.NewTraceEmitter(&event.Infra{MonitorEventBus: bus2}, event.TraceContext{
+		TraceID: "tr-safety-2",
+		Domain:  event.TraceDomainChat,
+	}, nil)
+	p2, capture2 := testProjector()
+	capture2.events = nil
+	p2.OnError(event.WithTraceEmitter(context.Background(), em2), "rate limit", "rate_limit", "")
+	for _, id := range bus2.flowLogStepIDs() {
+		if id == "chat.turn.safety_limit_stop" {
+			t.Fatal("non-safety-limit error must not emit chat.turn.safety_limit_stop")
+		}
 	}
 }
 

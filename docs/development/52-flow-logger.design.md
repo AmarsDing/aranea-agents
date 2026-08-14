@@ -429,6 +429,7 @@ internal/cronrunner/jobs/
 | `chat.turn.execute` | done | ok / — | 对话轮次完成 | |
 | `chat.turn.timeout` | error | critical | 对话超时 | |
 | `chat.turn.timeout_with_reply` | error | warn | 超时但已保存回复 | |
+| `chat.turn.safety_limit_stop` | done | warn | 触发安全调用上限，降级收尾 | MaxLLMCalls 硬停时 v2 projector 发射兜底收尾，字段 `task_id`/`fallback_step_id` |
 | `chat.turn.empty_reply` | error | critical | 未收到模型回复 | |
 | `chat.first_byte_timeout` | error | critical | 模型响应过慢 | |
 | `chat.pending_dequeue` | start/done/error | info / ok / error | 处理排队消息 | |

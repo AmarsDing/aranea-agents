@@ -36,16 +36,26 @@ func KnowledgeAdapter(_ context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg 
 // framework llmagent.Option functions that enable framework safety limits.
 // When MaxLLMCalls or MaxToolIterations are configured (> 0), the framework
 // enforces per-turn limits to prevent runaway agent behavior.
-func SafetyLimitAdapter(ag biz.Agent) []llmagent.Option {
+// Legacy rows that violate the coupling invariant (see biz.ValidateSafetyLimitCoupling)
+// are defensively elevated so the turn can still end with a graceful summary.
+func SafetyLimitAdapter(ag biz.Agent, lg loggateway.Logger) []llmagent.Option {
 	if ag.Settings == nil {
 		return nil
 	}
-	var opts []llmagent.Option
-	if ag.Settings.MaxLLMCalls > 0 {
-		opts = append(opts, llmagent.WithMaxLLMCalls(ag.Settings.MaxLLMCalls))
+	maxLLMCalls, maxToolIterations, elevated := biz.CoupledSafetyLimits(ag.Settings)
+	if elevated {
+		lg.Warn("max_llm_calls 低于优雅收尾所需余量，已防御性抬升",
+			loggateway.StepID("agent.safety_limit_elevated"),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Int("max_llm_calls", maxLLMCalls),
+			loggateway.Int("max_tool_iterations", maxToolIterations))
 	}
-	if ag.Settings.MaxToolIterations > 0 {
-		opts = append(opts, llmagent.WithMaxToolIterations(ag.Settings.MaxToolIterations))
+	var opts []llmagent.Option
+	if maxLLMCalls > 0 {
+		opts = append(opts, llmagent.WithMaxLLMCalls(maxLLMCalls))
+	}
+	if maxToolIterations > 0 {
+		opts = append(opts, llmagent.WithMaxToolIterations(maxToolIterations))
 	}
 	return opts
 }
