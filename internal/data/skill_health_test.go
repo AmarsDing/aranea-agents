@@ -77,6 +77,68 @@ func TestGetSkillHealth_RouteHitRatePreciseMatching(t *testing.T) {
 	}
 }
 
+// S5（2026-08-14）：日桶聚合已下推 SQL（GROUP BY date），验证按日分桶的
+// 调用量/成功数/平均时长与按日去重的路由/加载轮次仍然正确。
+func TestGetSkillHealth_DailyBucketsPushedDown(t *testing.T) {
+	d := newTestDataPG(t)
+	r := NewSkillRepo(d)
+	h := NewSkillHealthRepo(d)
+	ctx := context.Background()
+
+	sk, err := r.CreateSkillWithVersion(ctx, biz.SkillCreateInput{
+		Name: "Health D", Slug: "health-d", Body: "# D body",
+	})
+	if err != nil {
+		t.Fatalf("create skill: %v", err)
+	}
+
+	// 同一天两条记录：一成功一失败，时长 100/300 → avg 200；同一 activation
+	// 路由两次须按轮次去重为 1。
+	rows := []biz.SkillInvocationWrite{
+		{SkillID: sk.ID, ActivationID: "act-d1", Outcome: "success", DurationMS: 100,
+			RoutedSlugs: []string{"health-d"}, LoadedSlug: "health-d"},
+		{SkillID: sk.ID, ActivationID: "act-d1", Outcome: "failure", Status: "failed", DurationMS: 300,
+			RoutedSlugs: []string{"health-d"}, LoadedSlug: "health-d"},
+	}
+	for _, w := range rows {
+		w.AgentID = "agent-h"
+		if err := r.RecordSkillInvocation(ctx, w); err != nil {
+			t.Fatalf("RecordSkillInvocation: %v", err)
+		}
+	}
+
+	now := time.Now()
+	detail, err := h.GetSkillHealth(ctx, sk.ID, now.Add(-7*24*time.Hour), now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatalf("GetSkillHealth: %v", err)
+	}
+
+	if detail.TotalInvocations30d != 2 || detail.SuccessCount30d != 1 {
+		t.Errorf("30d inv/succ = %d/%d, want 2/1", detail.TotalInvocations30d, detail.SuccessCount30d)
+	}
+	if len(detail.DailyMetrics) != 1 {
+		t.Fatalf("DailyMetrics len = %d, want 1", len(detail.DailyMetrics))
+	}
+	dm := detail.DailyMetrics[0]
+	if dm.Invocations != 2 || dm.Successes != 1 {
+		t.Errorf("daily inv/succ = %d/%d, want 2/1", dm.Invocations, dm.Successes)
+	}
+	if diff := dm.AvgDurationMs - 200.0; diff > 0.001 || diff < -0.001 {
+		t.Errorf("daily avg duration = %v, want 200", dm.AvgDurationMs)
+	}
+	// 同 activation 两行去重 → 各 1 轮。
+	if dm.RoutedCount != 1 || dm.LoadedCount != 1 {
+		t.Errorf("daily routed/loaded = %d/%d, want 1/1", dm.RoutedCount, dm.LoadedCount)
+	}
+	if detail.RoutedCount30d != 1 || detail.LoadedCount30d != 1 {
+		t.Errorf("30d routed/loaded = %d/%d, want 1/1", detail.RoutedCount30d, detail.LoadedCount30d)
+	}
+	// P95 仍由原始时长分布计算（两条时长 100/300 → idx=int(2*0.95)=1 → 300）。
+	if detail.P95DurationMs30d != 300 {
+		t.Errorf("P95DurationMs30d = %d, want 300", detail.P95DurationMs30d)
+	}
+}
+
 // 无任何路由数据时计数为 0，供前端区分「无数据」与「0% 命中率」。
 func TestGetSkillHealth_NoRouteData(t *testing.T) {
 	d := newTestDataPG(t)

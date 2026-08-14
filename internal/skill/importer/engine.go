@@ -619,6 +619,11 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	}
 
 	var newSkills, appendedVersions int
+	// retireSourceIDs collects the merge retire_sources targets across all
+	// decisions. The actual ArchiveSkill calls are deferred until every
+	// decision has succeeded (see below) so a mid-apply failure never leaves
+	// archived sources behind while compensate() deletes the new skills.
+	var retireSourceIDs []string
 	for _, decision := range in.Decisions {
 		params, skipIDs, err := e.resolveDecision(ctx, job, decision)
 		if err != nil {
@@ -658,12 +663,16 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 				return partialErr(err)
 			}
 		}
-		for _, sourceID := range params.retireSkillIDs {
-			if err := e.repo.ArchiveSkill(ctx, sourceID); err != nil {
-				return partialErr(err)
-			}
-		}
+		retireSourceIDs = append(retireSourceIDs, params.retireSkillIDs...)
 		result.CreatedSkillIDs = append(result.CreatedSkillIDs, created.ID)
+	}
+	// Batch archive all source skills only after every decision succeeded.
+	// This guarantees that a partial failure in the loop above never leaves
+	// archived sources while compensate() deletes the newly created skills.
+	for _, sourceID := range retireSourceIDs {
+		if err := e.repo.ArchiveSkill(ctx, sourceID); err != nil {
+			return partialErr(err)
+		}
 	}
 	result.Message = "import completed"
 
@@ -992,7 +1001,10 @@ func (e *Engine) createImportedSkill(ctx context.Context, p skillCreateParams) (
 // otherwise the filesystem watcher would sync the half-applied new files as
 // an unintended version even though the import reported failure.
 func (e *Engine) applyOverwrite(ctx context.Context, p skillCreateParams) (biz.Skill, error) {
-	backupDir := p.targetDir + ".overwrite-backup"
+	// Backup dir must start with "." so the filesystem watcher's hidden-dir
+	// skip logic (scanAll/refreshChildWatches/slugFromEvent) ignores a stale
+	// backup left behind by a crashed run instead of scanning it as a skill.
+	backupDir := filepath.Join(filepath.Dir(p.targetDir), "."+filepath.Base(p.targetDir)+".overwrite-backup")
 	_ = os.RemoveAll(backupDir) // clear stale backup left by a crashed run
 	backedUp := false
 	if _, statErr := os.Stat(p.targetDir); statErr == nil {

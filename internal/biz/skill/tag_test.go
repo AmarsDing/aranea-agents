@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockTagRepo struct {
@@ -87,7 +88,7 @@ func TestNormalizeTagName(t *testing.T) {
 }
 
 func TestListTags_NilRepo(t *testing.T) {
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	_, err := u.ListTags(context.Background())
 	if err == nil {
 		t.Fatal("expected error when tag repo not configured")
@@ -103,7 +104,7 @@ func TestListTags_Delegates(t *testing.T) {
 		{Name: "domain:sales", Dimension: "domain", Source: "user", UsedCount: 3},
 		{Name: "figma", Dimension: "", Source: "system", UsedCount: 1},
 	}}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	got, err := u.ListTags(context.Background())
 	if err != nil {
@@ -116,7 +117,7 @@ func TestListTags_Delegates(t *testing.T) {
 
 func TestCreateTag_NormalizesInput(t *testing.T) {
 	tr := &mockTagRepo{createResult: TagInfo{Name: "file_type:xlsx", Dimension: "file_type", Source: "user"}}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	got, err := u.CreateTag(context.Background(), "  File_Type:XLSX ")
 	if err != nil {
@@ -132,7 +133,7 @@ func TestCreateTag_NormalizesInput(t *testing.T) {
 
 func TestCreateTag_InvalidFormat(t *testing.T) {
 	tr := &mockTagRepo{}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	_, err := u.CreateTag(context.Background(), "bad tag!")
 	if err == nil {
@@ -149,7 +150,7 @@ func TestCreateTag_InvalidFormat(t *testing.T) {
 
 func TestCreateTag_Conflict(t *testing.T) {
 	tr := &mockTagRepo{createErr: apierror.Conflict("SKILL", "tag already exists")}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	_, err := u.CreateTag(context.Background(), "figma")
 	if err == nil {
@@ -163,7 +164,7 @@ func TestCreateTag_Conflict(t *testing.T) {
 
 func TestRenameTag_InvalidatesCaches(t *testing.T) {
 	tr := &mockTagRepo{renameCount: 5}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
 
@@ -184,7 +185,7 @@ func TestRenameTag_InvalidatesCaches(t *testing.T) {
 
 func TestRenameTag_SameName(t *testing.T) {
 	tr := &mockTagRepo{}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	_, err := u.RenameTag(context.Background(), "figma", " FIGMA ")
 	if err == nil {
@@ -197,7 +198,7 @@ func TestRenameTag_SameName(t *testing.T) {
 
 func TestRenameTag_RepoErrorKeepsCache(t *testing.T) {
 	tr := &mockTagRepo{renameErr: errors.New("db down")}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
 	_, err := u.RenameTag(context.Background(), "a", "b")
@@ -211,7 +212,7 @@ func TestRenameTag_RepoErrorKeepsCache(t *testing.T) {
 
 func TestDeleteTag_InvalidatesCaches(t *testing.T) {
 	tr := &mockTagRepo{deleteCount: 2}
-	u := NewUsecase(newMockRepo(), nil)
+	u := NewUsecase(newMockRepo(), nil, loggateway.NewNoop())
 	u.SetTagRepo(tr)
 	u.embedCache = map[string]embedEntry{"a": {vector: []float32{1}, cachedAt: time.Now()}}
 

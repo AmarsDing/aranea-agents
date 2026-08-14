@@ -199,7 +199,11 @@ func newSkillService(t *testing.T) (*service.SkillService, *memSkillRepo, string
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active", WorkspaceID: workspace.DefaultWorkspaceID}
 	root := t.TempDir()
 	fs := storage.NewSkillFilesystem(func(_ context.Context) string { return root })
-	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, fs, nil, nil, loggateway.NewNoop()), repo, root
+	return service.NewSkillService(service.SkillServiceDeps{
+		UC: biz.NewSkillUsecase(repo, nil, loggateway.NewNoop()),
+		FS: fs,
+		Lg: loggateway.NewNoop(),
+	}), repo, root
 }
 
 func adminCtx() context.Context {

@@ -391,8 +391,8 @@ func (r *SkillIntelligenceRepo) GetFailureStats(ctx context.Context, skillID str
 	sinceStr := since.UTC().Format(time.RFC3339)
 	d := r.data.Dialect()
 
-	// Count total failures.
-	failCountQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`)
+	// Count total failures. 与 GetHealthMetrics 口径一致：只统计真实运行时调用。
+	failCountQuery := d.RenumberPlaceholders(`SELECT COUNT(*) FROM skill_invocation WHERE skill_id = ? AND created_at >= ? AND source = 'runtime' AND outcome != 'success' AND NOT (outcome = '' AND (status = 'completed' OR status = 'success'))`)
 	var failureCount int
 	fRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, failCountQuery, skillID, sinceStr)
 	if err != nil {

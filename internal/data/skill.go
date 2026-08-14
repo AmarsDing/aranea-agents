@@ -855,7 +855,8 @@ func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.Skill
 	if len(skillIDs) > 0 {
 		versions, vErr := c.SkillVersion.Query().
 			Where(skillversion.SkillIDIn(skillIDs...)).
-			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+			// created_at 秒级 TEXT，同秒并列时按 ID 递减兜底（同 GetLatestSkillMarkdown 惯例）。
+			Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 			All(ctx)
 		if vErr != nil {
 			return nil, entErrToBizErr(vErr, apierror.DomainSkill)
@@ -1208,6 +1209,9 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 			tags = parseSkillTags(row.ConfigJSON)
 		}
 		out = append(out, biz.SkillRuntimeCandidate{
+			// SkillID 必须随候选带出：skill_invocation.skill_id 按平台 ID 落库，
+			// 历史健康指标（成功率/延迟融合排序）只能按 ID 查询，用 slug 会匹配 0 行。
+			SkillID:       row.ID,
 			Slug:          row.SkillKey,
 			Name:          row.Name,
 			Description:   row.Description,
@@ -1320,7 +1324,8 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 	}
 	rows, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDIn(skillIDs...)).
-		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		// created_at 秒级 TEXT，同秒并列时按 ID 递减兜底（同 GetLatestSkillMarkdown 惯例）。
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc()), skillversion.ByID(entsql.OrderDesc())).
 		All(ctx)
 	if err != nil {
 		return nil, entErrToBizErr(err, apierror.DomainSkill)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	authpkg "aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockRepo struct {
@@ -275,7 +276,7 @@ func sampleSkill(id, name, slug string) Skill {
 
 func TestList_PaginationDefaults(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.List(context.Background(), ListQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,7 +291,7 @@ func TestList_PaginationDefaults(t *testing.T) {
 
 func TestList_PaginationClampMax(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.List(context.Background(), ListQuery{Limit: 200})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -302,7 +303,7 @@ func TestList_PaginationClampMax(t *testing.T) {
 
 func TestList_PaginationNegativeOffset(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.List(context.Background(), ListQuery{Offset: -5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -326,7 +327,7 @@ func TestList_EnabledValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newMockRepo()
-			u := NewUsecase(r, nil)
+			u := NewUsecase(r, nil, loggateway.NewNoop())
 			_, err := u.List(context.Background(), ListQuery{Enabled: tt.enabled})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("enabled=%q err=%v wantErr=%v", tt.enabled, err, tt.wantErr)
@@ -350,7 +351,7 @@ func TestList_StatusValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newMockRepo()
-			u := NewUsecase(r, nil)
+			u := NewUsecase(r, nil, loggateway.NewNoop())
 			_, err := u.List(context.Background(), ListQuery{Status: tt.status})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("status=%q err=%v wantErr=%v", tt.status, err, tt.wantErr)
@@ -362,7 +363,7 @@ func TestList_StatusValidation(t *testing.T) {
 func TestList_PermissionApplied(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.List(adminCtx(), ListQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -377,7 +378,7 @@ func TestList_PermissionApplied(t *testing.T) {
 
 func TestGet_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Get(context.Background(), "")
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -387,7 +388,7 @@ func TestGet_EmptyID(t *testing.T) {
 func TestGet_RepoCall(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Get(context.Background(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -400,7 +401,7 @@ func TestGet_RepoCall(t *testing.T) {
 func TestGet_PermissionApplied(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Get(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -412,7 +413,7 @@ func TestGet_PermissionApplied(t *testing.T) {
 
 func TestCreate_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Create(nonAdminCtx(), CreateInput{Name: "n", Slug: "s"})
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -421,7 +422,7 @@ func TestCreate_AdminAccessRequired(t *testing.T) {
 
 func TestCreate_NameRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Create(adminCtx(), CreateInput{Slug: "s"})
 	if err == nil {
 		t.Error("expected error for empty name")
@@ -430,7 +431,7 @@ func TestCreate_NameRequired(t *testing.T) {
 
 func TestCreate_SlugRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Create(adminCtx(), CreateInput{Name: "n"})
 	if err == nil {
 		t.Error("expected error for empty slug")
@@ -439,7 +440,7 @@ func TestCreate_SlugRequired(t *testing.T) {
 
 func TestCreate_Success(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Create(adminCtx(), CreateInput{Name: "MySkill", Slug: "my-skill"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -454,7 +455,7 @@ func TestCreate_Success(t *testing.T) {
 
 func TestToggleEnabled_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.ToggleEnabled(nonAdminCtx(), "s1", true)
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -463,7 +464,7 @@ func TestToggleEnabled_AdminAccessRequired(t *testing.T) {
 
 func TestToggleEnabled_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.ToggleEnabled(adminCtx(), "", true)
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -474,7 +475,7 @@ func TestToggleEnabled_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	_, err := u.ToggleEnabled(adminCtx(), "s1", false)
 	if err != nil {
@@ -487,7 +488,7 @@ func TestToggleEnabled_EmbedCacheInvalidation(t *testing.T) {
 
 func TestDuplicate_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Duplicate(nonAdminCtx(), "s1")
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -496,7 +497,7 @@ func TestDuplicate_AdminAccessRequired(t *testing.T) {
 
 func TestDuplicate_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Duplicate(adminCtx(), "")
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -507,7 +508,7 @@ func TestDuplicate_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	_, err := u.Duplicate(adminCtx(), "s1")
 	if err != nil {
@@ -520,7 +521,7 @@ func TestDuplicate_EmbedCacheInvalidation(t *testing.T) {
 
 func TestDelete_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	err := u.Delete(nonAdminCtx(), "s1")
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -529,7 +530,7 @@ func TestDelete_AdminAccessRequired(t *testing.T) {
 
 func TestDelete_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	err := u.Delete(adminCtx(), "")
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -540,7 +541,7 @@ func TestDelete_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	err := u.Delete(adminCtx(), "s1")
 	if err != nil {
@@ -553,7 +554,7 @@ func TestDelete_EmbedCacheInvalidation(t *testing.T) {
 
 func TestPatch_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Patch(nonAdminCtx(), "s1", UpdateDraft{})
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -562,7 +563,7 @@ func TestPatch_AdminAccessRequired(t *testing.T) {
 
 func TestPatch_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Patch(adminCtx(), "", UpdateDraft{})
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -572,7 +573,7 @@ func TestPatch_EmptyID(t *testing.T) {
 func TestPatch_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Old", "old")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Patch(adminCtx(), "s1", UpdateDraft{HasName: true, Name: "New"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -584,7 +585,7 @@ func TestPatch_Success(t *testing.T) {
 
 func TestPublish_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Publish(nonAdminCtx(), "s1")
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -593,7 +594,7 @@ func TestPublish_AdminAccessRequired(t *testing.T) {
 
 func TestPublish_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Publish(adminCtx(), "")
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -608,7 +609,7 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 	r.skills["s1"] = sk
 	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
@@ -624,7 +625,7 @@ func TestPublish_EmbedCacheInvalidation(t *testing.T) {
 
 func TestUpsertSkillFromDisk_EmbedCacheInvalidation(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, &mockEmbedder{})
+	u := NewUsecase(r, &mockEmbedder{}, loggateway.NewNoop())
 	u.embedCache = map[string]embedEntry{"test": {vector: []float32{0.1, 0.2}, cachedAt: time.Now()}}
 	_, _, err := u.UpsertSkillFromDisk(adminCtx(), DiskSyncInput{Name: "Test", Slug: "test", Body: "# Test"})
 	if err != nil {
@@ -637,7 +638,7 @@ func TestUpsertSkillFromDisk_EmbedCacheInvalidation(t *testing.T) {
 
 func TestSearchRuns_PaginationDefaults(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.SearchRuns(context.Background(), RunQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -665,7 +666,7 @@ func TestSearchRuns_StatusValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := newMockRepo()
-			u := NewUsecase(r, nil)
+			u := NewUsecase(r, nil, loggateway.NewNoop())
 			_, err := u.SearchRuns(context.Background(), RunQuery{Status: tt.status})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("status=%q err=%v wantErr=%v", tt.status, err, tt.wantErr)
@@ -677,7 +678,7 @@ func TestSearchRuns_StatusValidation(t *testing.T) {
 func TestSearchRuns_InvocationPermissions(t *testing.T) {
 	r := newMockRepo()
 	r.invocations = []SkillInvocation{{ID: "inv1", SkillID: "s1"}}
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.SearchRuns(adminCtx(), RunQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -693,7 +694,7 @@ func TestSearchRuns_InvocationPermissions(t *testing.T) {
 func TestSearchRuns_InvocationPermissionsNonAdmin(t *testing.T) {
 	r := newMockRepo()
 	r.invocations = []SkillInvocation{{ID: "inv1", SkillID: "s1"}}
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.SearchRuns(nonAdminCtx(), RunQuery{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -708,7 +709,7 @@ func TestSearchRuns_InvocationPermissionsNonAdmin(t *testing.T) {
 
 func TestListVersions_EmptySkillID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.ListVersions(context.Background(), VersionListQuery{})
 	if err == nil {
 		t.Error("expected error for empty skill id")
@@ -717,7 +718,7 @@ func TestListVersions_EmptySkillID(t *testing.T) {
 
 func TestListVersions_PaginationDefaults(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.ListVersions(context.Background(), VersionListQuery{SkillID: "s1"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -732,7 +733,7 @@ func TestListVersions_PaginationDefaults(t *testing.T) {
 
 func TestListVersions_PaginationClamp(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.ListVersions(context.Background(), VersionListQuery{SkillID: "s1", Limit: 500, Offset: -10})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -747,7 +748,7 @@ func TestListVersions_PaginationClamp(t *testing.T) {
 
 func TestRollbackVersion_AdminAccessRequired(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.RollbackVersion(nonAdminCtx(), "s1", "v1")
 	if err == nil {
 		t.Error("expected forbidden for non-admin")
@@ -756,7 +757,7 @@ func TestRollbackVersion_AdminAccessRequired(t *testing.T) {
 
 func TestRollbackVersion_EmptySkillID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.RollbackVersion(adminCtx(), "", "v1")
 	if err == nil {
 		t.Error("expected error for empty skill id")
@@ -765,7 +766,7 @@ func TestRollbackVersion_EmptySkillID(t *testing.T) {
 
 func TestRollbackVersion_EmptyVersionID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.RollbackVersion(adminCtx(), "s1", "")
 	if err == nil {
 		t.Error("expected error for empty version id")
@@ -775,7 +776,7 @@ func TestRollbackVersion_EmptyVersionID(t *testing.T) {
 func TestRollbackVersion_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.RollbackVersion(adminCtx(), "s1", "v1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -787,7 +788,7 @@ func TestRollbackVersion_Success(t *testing.T) {
 
 func TestGetBySkillKey_EmptyKey(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.GetBySkillKey(context.Background(), "")
 	if err == nil {
 		t.Error("expected error for empty key")
@@ -797,7 +798,7 @@ func TestGetBySkillKey_EmptyKey(t *testing.T) {
 func TestGetBySkillKey_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.GetBySkillKey(context.Background(), "test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -809,7 +810,7 @@ func TestGetBySkillKey_Success(t *testing.T) {
 
 func TestGetBySlug_EmptySlug(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.GetBySlug(context.Background(), "")
 	if err == nil {
 		t.Error("expected error for empty slug")
@@ -819,7 +820,7 @@ func TestGetBySlug_EmptySlug(t *testing.T) {
 func TestGetBySlug_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.GetBySlug(context.Background(), "test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -831,7 +832,7 @@ func TestGetBySlug_Success(t *testing.T) {
 
 func TestBatchGetSkillGuidance_EmptySlugs(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.BatchGetSkillGuidance(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -845,7 +846,7 @@ func TestBatchGetSkillGuidance_RepoCall(t *testing.T) {
 	r := newMockRepo()
 	r.batchMD["slug-a"] = map[string]string{"slug-a": "# A guidance"}
 	r.batchMD["slug-b"] = map[string]string{"slug-b": "# B guidance"}
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.BatchGetSkillGuidance(context.Background(), []string{"slug-a", "slug-b"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -859,7 +860,7 @@ func TestBatchGetSkillGuidance_SlugOrdering(t *testing.T) {
 	r := newMockRepo()
 	r.batchMD["alpha"] = map[string]string{"alpha": "# Alpha"}
 	r.batchMD["beta"] = map[string]string{"beta": "# Beta"}
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.BatchGetSkillGuidance(context.Background(), []string{"beta", "alpha"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -877,7 +878,7 @@ func TestBatchGetSkillGuidance_SlugOrdering(t *testing.T) {
 
 func TestScoreByEmbedding_NilEmbedder(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.ScoreByEmbedding(context.Background(), "query", []RuntimeCandidate{{Slug: "a"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -890,7 +891,7 @@ func TestScoreByEmbedding_NilEmbedder(t *testing.T) {
 func TestScoreByEmbedding_EmptyQuery(t *testing.T) {
 	r := newMockRepo()
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	result, err := u.ScoreByEmbedding(context.Background(), "", []RuntimeCandidate{{Slug: "a"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -903,7 +904,7 @@ func TestScoreByEmbedding_EmptyQuery(t *testing.T) {
 func TestScoreByEmbedding_EmptyCandidates(t *testing.T) {
 	r := newMockRepo()
 	emb := &mockEmbedder{}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	result, err := u.ScoreByEmbedding(context.Background(), "query", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -927,7 +928,7 @@ func TestScoreByEmbedding_Success(t *testing.T) {
 			return result, nil
 		},
 	}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	candidates := []RuntimeCandidate{{Slug: "skill-a", Name: "A", Description: "desc"}}
 	scores, err := u.ScoreByEmbedding(context.Background(), "query", candidates)
 	if err != nil {
@@ -954,7 +955,7 @@ func TestScoreByEmbedding_CacheRefresh(t *testing.T) {
 			return result, nil
 		},
 	}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	candidates := []RuntimeCandidate{{Slug: "a", Name: "A", Description: "d"}}
 	if _, err := u.ScoreByEmbedding(context.Background(), "q1", candidates); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -986,7 +987,7 @@ func TestScoreByEmbedding_CacheInvalidation(t *testing.T) {
 			return result, nil
 		},
 	}
-	u := NewUsecase(r, emb)
+	u := NewUsecase(r, emb, loggateway.NewNoop())
 	candidates := []RuntimeCandidate{{Slug: "a", Name: "A", Description: "d"}}
 	if _, err := u.ScoreByEmbedding(context.Background(), "q1", candidates); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1209,7 +1210,7 @@ func TestCosineSimilarity32_KnownValues(t *testing.T) {
 
 func TestGetLatestMarkdown_EmptyID(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.GetLatestMarkdown(context.Background(), "")
 	if err == nil {
 		t.Error("expected error for empty id")
@@ -1219,7 +1220,7 @@ func TestGetLatestMarkdown_EmptyID(t *testing.T) {
 func TestGetLatestMarkdown_Success(t *testing.T) {
 	r := newMockRepo()
 	r.markdown["s1"] = "# Hello"
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	md, err := u.GetLatestMarkdown(context.Background(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1231,7 +1232,7 @@ func TestGetLatestMarkdown_Success(t *testing.T) {
 
 func TestMarkFilesystemMissing_EmptySlug(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	err := u.MarkFilesystemMissing(context.Background(), "", true)
 	if err == nil {
 		t.Error("expected error for empty slug")
@@ -1240,7 +1241,7 @@ func TestMarkFilesystemMissing_EmptySlug(t *testing.T) {
 
 func TestMarkFilesystemMissing_Success(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	err := u.MarkFilesystemMissing(context.Background(), "my-skill", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1249,7 +1250,7 @@ func TestMarkFilesystemMissing_Success(t *testing.T) {
 
 func TestSearchRuns_PaginationClampMax(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.SearchRuns(context.Background(), RunQuery{Limit: 200})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1261,7 +1262,7 @@ func TestSearchRuns_PaginationClampMax(t *testing.T) {
 
 func TestSearchRuns_NegativeOffset(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	result, err := u.SearchRuns(context.Background(), RunQuery{Offset: -5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1274,7 +1275,7 @@ func TestSearchRuns_NegativeOffset(t *testing.T) {
 func TestToggleEnabled_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.ToggleEnabled(adminCtx(), "s1", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1290,7 +1291,7 @@ func TestToggleEnabled_Success(t *testing.T) {
 func TestDuplicate_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Duplicate(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1303,7 +1304,7 @@ func TestDuplicate_Success(t *testing.T) {
 func TestDelete_Success(t *testing.T) {
 	r := newMockRepo()
 	r.skills["s1"] = sampleSkill("s1", "Test", "test")
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	err := u.Delete(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1320,7 +1321,7 @@ func TestPublish_Success(t *testing.T) {
 	sk.Description = "A detailed skill description for publish"
 	r.skills["s1"] = sk
 	r.markdown["s1"] = "# Test Skill\n\nThis body is long enough to pass publish validation checks."
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1336,7 +1337,7 @@ func TestPublish_BlockEmptyBody(t *testing.T) {
 	sk.Status = "draft"
 	sk.Description = "A detailed skill description for publish"
 	r.skills["s1"] = sk
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.Publish(adminCtx(), "s1")
 	if err == nil {
 		t.Fatal("expected block for empty body")
@@ -1348,7 +1349,7 @@ func TestToggleEnabled_RejectDraft(t *testing.T) {
 	sk := sampleSkill("s1", "Test", "test")
 	sk.Status = "draft"
 	r.skills["s1"] = sk
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	_, err := u.ToggleEnabled(adminCtx(), "s1", true)
 	if err == nil {
 		t.Fatal("expected error enabling draft skill")

@@ -2,6 +2,8 @@ package skill
 
 import (
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // fakeDedupInvalidator records InvalidateDedupCache calls.
@@ -49,7 +51,7 @@ func TestDedupCacheInvalidated_OnMutations(t *testing.T) {
 			r := newMockRepo()
 			r.skills["s1"] = sampleSkill("s1", "Test", "test")
 			inv := &fakeDedupInvalidator{}
-			u := NewUsecase(r, nil)
+			u := NewUsecase(r, nil, loggateway.NewNoop())
 			u.SetDedupCacheInvalidator(inv)
 			if err := tc.mutate(u); err != nil {
 				t.Fatalf("mutate failed: %v", err)
@@ -64,7 +66,7 @@ func TestDedupCacheInvalidated_OnMutations(t *testing.T) {
 // Nil invalidator must not panic (optional dependency).
 func TestDedupCacheInvalidation_NilSafe(t *testing.T) {
 	r := newMockRepo()
-	u := NewUsecase(r, nil)
+	u := NewUsecase(r, nil, loggateway.NewNoop())
 	if _, err := u.Create(adminCtx(), CreateInput{Name: "N", Slug: "n"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

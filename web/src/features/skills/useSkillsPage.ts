@@ -1,4 +1,5 @@
 import { computed, onMounted, ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useI18n } from 'vue-i18n';
 import { useQuasar } from 'quasar';
 import type { Skill, SkillFilesystemHealth } from './types';
@@ -23,8 +24,8 @@ export function useSkillsPage() {
   /** 排序：默认按标签升序（用户需求：默认标签排序）。 */
   const sortBy = ref<'tag' | 'name' | ''>('tag');
   const sortOrder = ref<'asc' | 'desc'>('asc');
-  const rows = ref<Skill[]>([]);
-  const total = ref(0);
+  /** 列表数据唯一真相源在 store：rows/total 直接别名 store 状态，行操作由 store action 自行更新。 */
+  const { skills: rows, total } = storeToRefs(skillsStore);
   const loading = ref(false);
   const error = ref('');
   const togglingId = ref('');
@@ -112,13 +113,12 @@ export function useSkillsPage() {
     metaSaving.value = true;
     try {
       if (payload.id) {
-        const updated = await skillsStore.update(payload.id, {
+        await skillsStore.update(payload.id, {
           name: payload.name,
           description: payload.description,
           tags: payload.tags,
           bodyMarkdown: payload.bodyMarkdown,
         });
-        rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
         $q.notify({ type: 'positive', message: 'Skill 已保存' });
       } else {
         await skillsStore.create({
@@ -159,7 +159,7 @@ export function useSkillsPage() {
     loading.value = true;
     error.value = '';
     try {
-      const data = await skillsStore.loadSkills({
+      await skillsStore.loadSkills({
         search: search.value,
         enabled: enabled.value,
         status: status.value,
@@ -171,8 +171,6 @@ export function useSkillsPage() {
         page: page.value,
         page_size: pageSize.value,
       });
-      rows.value = data.items;
-      total.value = data.total;
       await loadFilesystemHealth();
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载 Skill 失败';
@@ -211,8 +209,7 @@ export function useSkillsPage() {
   async function onPublishSkill(skill: Skill) {
     publishingId.value = skill.id;
     try {
-      const updated = await skillsStore.publish(skill.id);
-      rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
+      await skillsStore.publish(skill.id);
       $q.notify({ type: 'positive', message: 'Skill 已启用；如需运行时挂载请再打开「启用」开关' });
     } catch (err) {
       $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '启用失败' });
@@ -281,8 +278,7 @@ export function useSkillsPage() {
   async function onToggleEnabled(skill: Skill, next: boolean) {
     togglingId.value = skill.id;
     try {
-      const updated = await skillsStore.toggle(skill.id, next);
-      rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
+      await skillsStore.toggle(skill.id, next);
       $q.notify({
         type: 'positive',
         message: next ? t('skillsPage.toggleEnabledOk') : t('skillsPage.toggleDisabledOk'),

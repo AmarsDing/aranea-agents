@@ -132,8 +132,9 @@ func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx co
 	// so the background work survives HTTP response delivery.
 	suggestionID := req.GetId()
 	if s.curator != nil || s.sandbox != nil {
-		safego.Go(context.WithoutCancel(ctx), "skill_evo_suggestion.approve.async", func() {
-			s.runPostApproveAsync(context.Background(), suggestionID)
+		bgCtx := context.WithoutCancel(ctx)
+		safego.Go(bgCtx, "skill_evo_suggestion.approve.async", func() {
+			s.runPostApproveAsync(bgCtx, suggestionID)
 		})
 	}
 

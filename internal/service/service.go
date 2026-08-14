@@ -51,6 +51,7 @@ var ProviderSet = wire.NewSet(
 	NewMCPServerService,
 	importer.ProvideEngine,
 	importer.ProvideLLMLister,
+	wire.Struct(new(SkillServiceDeps), "*"),
 	NewSkillService,
 	ProvideSkillResolveRootFn,
 	storage.NewSkillFilesystem,

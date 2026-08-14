@@ -750,15 +750,19 @@ func slugsOf(cs []biz.SkillRuntimeCandidate) []string {
 }
 
 // fakeHealthProvider implements skillrecommend.HealthMetricsProvider with
-// per-slug success rates and a call counter proving the fusion branch ran.
+// per-key success rates and a call counter proving the fusion branch ran.
+// keys records the exact lookup keys so tests can assert whether the provider
+// was queried by platform skill ID (skill_invocation.skill_id 口径) or slug.
 type fakeHealthProvider struct {
 	rates map[string]float64
 	calls int
+	keys  []string
 }
 
-func (f *fakeHealthProvider) GetRecentSuccessRate(_ context.Context, slug string, _ int) (float64, error) {
+func (f *fakeHealthProvider) GetRecentSuccessRate(_ context.Context, key string, _ int) (float64, error) {
 	f.calls++
-	return f.rates[slug], nil
+	f.keys = append(f.keys, key)
+	return f.rates[key], nil
 }
 
 func (f *fakeHealthProvider) GetRecentAvgDuration(_ context.Context, _ string, _ int) (float64, error) {
@@ -800,6 +804,69 @@ func TestResolveSkillSlugsDetailed_HealthProviderFusion(t *testing.T) {
 	// Fusion appends the rank snapshot to the reason for observability.
 	if got := result.Reasons["zzz-skill"]; got == "enabled and published" {
 		t.Errorf("reason for zzz-skill lacks rank snapshot: %q", got)
+	}
+}
+
+// TestResolveSkillSlugsDetailed_HealthProviderQueriedBySkillID covers B1
+// (2026-08-14): skill_invocation.skill_id 列存平台 ID（skill_<unixnano>），
+// 候选带 SkillID 时健康指标必须按 ID 查询，否则永远匹配 0 行，历史排序静默失效。
+// 注意：skillrecommend.DynamicRankFactors（不在 B1 修复范围内）仍会按 slug
+// 查询一次，因此这里断言「ID 查询发生且融合生效」，而非「无 slug 查询」。
+func TestResolveSkillSlugsDetailed_HealthProviderQueriedBySkillID(t *testing.T) {
+	aaa := makeCandidate("aaa-skill", "AAA", "desc", nil, nil)
+	aaa.SkillID = "skill_111"
+	zzz := makeCandidate("zzz-skill", "ZZZ", "desc", nil, nil)
+	zzz.SkillID = "skill_999"
+	resolver := &mockSkillResolver{candidates: []biz.SkillRuntimeCandidate{aaa, zzz}}
+	// 仅按平台 ID 键控：若实现回退用 slug 查询，rates 全部 miss（0 值），
+	// zzz-skill 无法凭借 0.95 成功率反超 aaa-skill。
+	provider := &fakeHealthProvider{rates: map[string]float64{
+		"skill_111": 0.1,
+		"skill_999": 0.95,
+	}}
+	opts := &SkillToolsetOptions{Runtime: &mockRuntime{json: `{}`}, HealthProvider: provider}
+
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Slugs) != 2 || result.Slugs[0] != "zzz-skill" {
+		t.Errorf("expected [zzz-skill aaa-skill] after ID-keyed fusion, got %v", result.Slugs)
+	}
+	// buildRankCandidates 必须按平台 ID 查询（DynamicRankFactors 的 slug 查询是
+	// 已知残留，见测试 doc 注释）。
+	seen := map[string]bool{}
+	for _, key := range provider.keys {
+		seen[key] = true
+	}
+	if !seen["skill_111"] || !seen["skill_999"] {
+		t.Errorf("provider was not queried by platform skill IDs, keys = %v", provider.keys)
+	}
+}
+
+// TestBuildRankCandidates_UsesSkillIDWithSlugFallback 直接单测 B1 修复点：
+// candidate 带 SkillID 时按 ID 查询健康指标；不带（存量调用方）时回退 slug。
+func TestBuildRankCandidates_UsesSkillIDWithSlugFallback(t *testing.T) {
+	scored := []slugScore{
+		{slug: "with-id", skillID: "skill_111"},
+		{slug: "legacy-slug"},
+	}
+	provider := &fakeHealthProvider{rates: map[string]float64{
+		"skill_111":   0.9,
+		"legacy-slug": 0.5,
+	}}
+	out := buildRankCandidates(context.Background(), scored, provider, nil)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(out))
+	}
+	if out[0].HistoricalSuccess != 0.9 {
+		t.Errorf("with-id HistoricalSuccess = %v, want 0.9 (queried by skill ID)", out[0].HistoricalSuccess)
+	}
+	if out[1].HistoricalSuccess != 0.5 {
+		t.Errorf("legacy-slug HistoricalSuccess = %v, want 0.5 (slug fallback)", out[1].HistoricalSuccess)
+	}
+	if len(provider.keys) != 2 || provider.keys[0] != "skill_111" || provider.keys[1] != "legacy-slug" {
+		t.Errorf("query keys = %v, want [skill_111 legacy-slug]", provider.keys)
 	}
 }
 

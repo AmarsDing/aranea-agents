@@ -3,6 +3,8 @@ package skill
 import (
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockRuntimeInvalidator struct{ calls int }
@@ -15,7 +17,7 @@ func TestToggleEnabled_InvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Status: "published", Enabled: false}
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	if _, err := u.ToggleEnabled(adminCtx(), "s1", true); err != nil {
 		t.Fatalf("toggle: %v", err)
@@ -30,7 +32,7 @@ func TestDelete_InvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Status: "published", Enabled: true}
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	if err := u.Delete(adminCtx(), "s1"); err != nil {
 		t.Fatalf("delete: %v", err)
@@ -45,7 +47,7 @@ func TestRollbackVersion_InvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Status: "published", Enabled: true}
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	if _, err := u.RollbackVersion(adminCtx(), "s1", "v1"); err != nil {
 		t.Fatalf("rollback: %v", err)
@@ -59,7 +61,7 @@ func TestRollbackVersion_InvalidatesRuntimeCache(t *testing.T) {
 func TestUpsertSkillFromDisk_ContentChanged_InvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	if _, _, err := u.UpsertSkillFromDisk(adminCtx(), DiskSyncInput{Name: "a", Slug: "a", Body: "x"}); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -75,7 +77,7 @@ func TestPatch_InvalidatesRuntimeCache(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Status: "published", Enabled: true}
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	if _, err := u.Patch(adminCtx(), "s1", UpdateDraft{HasName: true, Name: "New"}); err != nil {
 		t.Fatalf("patch: %v", err)
@@ -92,7 +94,7 @@ func TestPublish_AutoEnablesAndInvalidatesRuntimeCache(t *testing.T) {
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: false, Description: "当需要处理报销流程时使用"}
 	repo.markdown["s1"] = "# a\n\nbody"
 	inv := &mockRuntimeInvalidator{}
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	u.SetRuntimeCacheInvalidator(inv)
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
@@ -114,7 +116,7 @@ func TestPublish_AlreadyEnabled_NoExtraEnableWrite(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Enabled: true, Description: "当需要处理报销流程时使用"}
 	repo.markdown["s1"] = "# a\n\nbody"
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	if _, err := u.Publish(adminCtx(), "s1"); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -159,7 +161,7 @@ func TestPublish_PersistsWarnValidationStatus(t *testing.T) {
 	repo := newMockRepo()
 	repo.skills["s1"] = Skill{ID: "s1", Slug: "a", Name: "A", Status: "draft", Description: "报销单处理助手，覆盖发票审核与打款流程"}
 	repo.markdown["s1"] = publishTestBody
-	u := NewUsecase(repo, nil)
+	u := NewUsecase(repo, nil, loggateway.NewNoop())
 	s, err := u.Publish(adminCtx(), "s1")
 	if err != nil {
 		t.Fatalf("publish: %v", err)

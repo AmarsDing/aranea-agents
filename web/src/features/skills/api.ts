@@ -366,6 +366,10 @@ export async function getSkillHealth(skillId: string): Promise<SkillHealthMetric
     p95_duration_ms_30d: n('p95_duration_ms_30d', 'p95DurationMs30d'),
     route_hit_rate_7d: n('route_hit_rate_7d', 'routeHitRate7d'),
     route_hit_rate_30d: n('route_hit_rate_30d', 'routeHitRate30d'),
+    routed_count_7d: n('routed_count_7d', 'routedCount7d'),
+    loaded_count_7d: n('loaded_count_7d', 'loadedCount7d'),
+    routed_count_30d: n('routed_count_30d', 'routedCount30d'),
+    loaded_count_30d: n('loaded_count_30d', 'loadedCount30d'),
     daily_metrics: dailyMetrics,
   };
 }

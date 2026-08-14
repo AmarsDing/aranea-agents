@@ -726,34 +726,41 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	// B5（行为变更）：owned 图（team_owned metadata + team_id=本 team）级联删；
 	// external/template 图只解绑不删。owned 判定用 metadata 而非 team_id——
 	// ORG-11b 会对所有 linked 图回填 team_id，无法区分。
-	if team.LinkedGraphID != "" && u.graphReader != nil {
-		graphDef, graphErr := u.graphReader.GetDefinition(ctx, team.LinkedGraphID)
-		if graphErr == nil && graphDef != nil {
-			switch {
-			case isTeamOwnedGraph(graphDef) && graphDef.TeamID == team.ID:
-				// Owned Graph: cascade delete along with the team.
-				if u.graphAssets != nil {
-					if deleteErr := u.graphAssets.DeleteOwnedGraph(ctx, team.LinkedGraphID); deleteErr != nil {
-						u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
+	//
+	// Y11：级联（owned 图删除 / external 图解绑）与 team 行删除原子化——
+	// 包裹在同一 ExecInTx 中（D1 对称：保存侧物化+回写已同事务）。级联失败
+	// 不再 best-effort 吞掉：中止整个删除并回滚，杜绝「图已删 team 还在 /
+	// team 已删图成孤儿」的半完成态。txProvider 未装配（单测/离线工具）时
+	// execTeamGraphTx 退化为顺序执行，保持既有行为。
+	return u.execTeamGraphTx(ctx, func(txCtx context.Context) error {
+		if team.LinkedGraphID != "" && u.graphReader != nil {
+			graphDef, graphErr := u.graphReader.GetDefinition(txCtx, team.LinkedGraphID)
+			if graphErr == nil && graphDef != nil {
+				switch {
+				case isTeamOwnedGraph(graphDef) && graphDef.TeamID == team.ID:
+					// Owned Graph: cascade delete along with the team.
+					if u.graphAssets != nil {
+						if deleteErr := u.graphAssets.DeleteOwnedGraph(txCtx, team.LinkedGraphID); deleteErr != nil {
+							return deleteErr
+						}
+					} else if u.graphWriter != nil {
+						if deleteErr := u.graphWriter.DeleteDefinition(txCtx, team.LinkedGraphID); deleteErr != nil {
+							return deleteErr
+						}
 					}
-				} else if u.graphWriter != nil {
-					if deleteErr := u.graphWriter.DeleteDefinition(ctx, team.LinkedGraphID); deleteErr != nil {
-						u.lg.Warn("best-effort delete failed", loggateway.Err(deleteErr))
-					}
-				}
-			default:
-				// External/Template Graph: only clear team_id reference (unbind).
-				if graphDef.TeamID == team.ID && u.graphWriter != nil {
-					graphDef.TeamID = ""
-					if _, updateErr := u.graphWriter.UpdateDefinition(ctx, graphDef); updateErr != nil {
-						u.lg.Warn("best-effort update failed", loggateway.Err(updateErr))
+				default:
+					// External/Template Graph: only clear team_id reference (unbind).
+					if graphDef.TeamID == team.ID && u.graphWriter != nil {
+						graphDef.TeamID = ""
+						if _, updateErr := u.graphWriter.UpdateDefinition(txCtx, graphDef); updateErr != nil {
+							return updateErr
+						}
 					}
 				}
 			}
 		}
-	}
-
-	return u.writer.DeleteTeam(ctx, id)
+		return u.writer.DeleteTeam(txCtx, id)
+	})
 }
 
 func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {

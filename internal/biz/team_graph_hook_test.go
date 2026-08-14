@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -39,11 +40,12 @@ func (s *recTeamWriter) UpdateTeamWhereStatus(_ context.Context, _, _, _ string)
 }
 
 type fakeGraphStore struct {
-	byID    map[string]*GraphDefinition
-	nextID  int
-	created []*GraphDefinition
-	updated []*GraphDefinition
-	deleted []string
+	byID            map[string]*GraphDefinition
+	nextID          int
+	created         []*GraphDefinition
+	updated         []*GraphDefinition
+	deleted         []string
+	failDeleteOwned error // Y11 测试：注入级联删失败
 }
 
 func newFakeGraphStore() *fakeGraphStore {
@@ -74,6 +76,9 @@ func (s *fakeGraphStore) UpdateOwnedGraph(_ context.Context, def *GraphDefinitio
 	return def, nil
 }
 func (s *fakeGraphStore) DeleteOwnedGraph(_ context.Context, id string) error {
+	if s.failDeleteOwned != nil {
+		return s.failDeleteOwned
+	}
 	s.deleted = append(s.deleted, id)
 	delete(s.byID, id)
 	return nil
@@ -656,6 +661,59 @@ func TestTeamGraphHook_DeleteTeamExternalUnbindOnly(t *testing.T) {
 	}
 	if survivor.TeamID != "" {
 		t.Fatalf("external graph must be unbound, TeamID = %q", survivor.TeamID)
+	}
+	if writer.deletedID != "team-1" {
+		t.Fatalf("team not deleted: %q", writer.deletedID)
+	}
+}
+
+// --- Y11：DeleteTeam 级联（owned graph + team 行）原子化 ---
+
+// TestTeamGraphHook_DeleteTeamCascadeAtomicOnFailure (Y11)：owned 图级联删
+// 失败时整个删除必须中止——不得出现「图已删/删失败但 team 行已删」的半完成
+// 态。此前级联删错误被 best-effort 吞掉（Warn），team 照常删除，留下的
+// linked_graph_id 悬空或 owned 图孤儿均无事务兜底。
+func TestTeamGraphHook_DeleteTeamCascadeAtomicOnFailure(t *testing.T) {
+	t.Parallel()
+	store := newFakeGraphStore()
+	store.addExisting(ownedGraphDef("g-1", "team-1"))
+	store.failDeleteOwned = errors.New("graph delete blocked")
+	reader := &stubTeamReader{team: Team{ID: "team-1", Kind: "user", LinkedGraphID: "g-1"}}
+	writer := &recTeamWriter{}
+	tx := &fakeTxProvider{}
+	uc := newHookUsecase(reader, writer, store, &fakeTeamCompiler{cfg: simpleBuildConfig()}, tx)
+
+	err := uc.Delete(context.Background(), "team-1")
+	if err == nil {
+		t.Fatal("级联删失败必须使 Delete 返回错误")
+	}
+	if writer.deletedID != "" {
+		t.Fatalf("级联删失败时 team 行不得删除（原子性），deletedID=%q", writer.deletedID)
+	}
+	if tx.calls != 1 {
+		t.Fatalf("级联 + team 删除须在同一事务内执行，ExecInTx calls=%d", tx.calls)
+	}
+}
+
+// TestTeamGraphHook_DeleteTeamCascadeSameTx (Y11)：成功路径上级联删与 team
+// 行删除必须包裹在同一个 ExecInTx 中（D1 对称：保存侧物化+回写已同事务）。
+func TestTeamGraphHook_DeleteTeamCascadeSameTx(t *testing.T) {
+	t.Parallel()
+	store := newFakeGraphStore()
+	store.addExisting(ownedGraphDef("g-1", "team-1"))
+	reader := &stubTeamReader{team: Team{ID: "team-1", Kind: "user", LinkedGraphID: "g-1"}}
+	writer := &recTeamWriter{}
+	tx := &fakeTxProvider{}
+	uc := newHookUsecase(reader, writer, store, &fakeTeamCompiler{cfg: simpleBuildConfig()}, tx)
+
+	if err := uc.Delete(context.Background(), "team-1"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if tx.calls != 1 {
+		t.Fatalf("级联 + team 删除须在同一事务内执行，ExecInTx calls=%d", tx.calls)
+	}
+	if len(store.deleted) != 1 || store.deleted[0] != "g-1" {
+		t.Fatalf("owned graph must be cascade-deleted, deleted=%v", store.deleted)
 	}
 	if writer.deletedID != "team-1" {
 		t.Fatalf("team not deleted: %q", writer.deletedID)

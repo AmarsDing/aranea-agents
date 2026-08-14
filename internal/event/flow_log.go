@@ -199,6 +199,7 @@ var stepTitleRegistry = map[string]string{
 	"team.run.start":                       "开始团队协作",
 	"team.run.execute":                     "执行团队任务",
 	"team.run.finish":                      "团队任务结束",
+	"team.run.attachments":                 "团队附件装配失败",
 	"team.compile.unknown_mode_fallback":   "未知编排模式已降级",
 	"team.run.graph":                       "构建团队 GraphAgent",
 	"team.session.suspended":               "挂起空闲等待会话",
@@ -207,6 +208,8 @@ var stepTitleRegistry = map[string]string{
 	"team.model_cascade.route":             "成员模型级联路由",
 	"team.eval_profile.applied":            "评测态 profile 生效",
 	"agent.eval_profile.pin":               "评测钉住模型",
+	"spirit.planner.decision":              "策略决策",
+	"spirit.planner.verify":                "计划校验门",
 	"chat.team.invoke":                     "委派团队会话",
 	// 2026-07-29 日志补齐批次 0：已发射但缺标题的 stepID
 	"chat.receive":                  "收到消息",

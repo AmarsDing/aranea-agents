@@ -1,5 +1,12 @@
 <template>
-  <q-dialog :model-value="open" persistent maximized transition-show="slide-up" transition-hide="slide-down">
+  <q-dialog
+    :model-value="open"
+    persistent
+    maximized
+    transition-show="slide-up"
+    transition-hide="slide-down"
+    @update:model-value="$emit('update:open', $event)"
+  >
     <q-card class="app-dialog-card app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between">
         <div class="app-glass-dialog__title">进化建议详情</div>

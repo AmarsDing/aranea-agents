@@ -42,6 +42,13 @@ type taskPlannerImpl struct {
 	// maxDecomposeAttempts 限制瞬时故障重试上限（F8/Y3）：<=0 时用默认值 5。
 	// 无限重试会让 turn 永远卡在「规划中」并持续烧 LLM 调用。
 	maxDecomposeAttempts int
+
+	// P4-G1 计划校验门：能力清单构建器。nil（旧测试构造路径）时校验门
+	// 整体跳过，行为与旧版一致（fail-open）。
+	capBuilder *AgentCapabilityBuilder
+	// P4-G1 测试钩子——校验门违例时的有界重分解函数；生产为 nil 时回退
+	// decomposeTask（同步分解，非流式——修复路径不需要流式中间态）。
+	repairDecomposeFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, level biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error)
 }
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
@@ -52,11 +59,12 @@ type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, eventBus biz.EventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher) biz.TaskPlannerPort {
+// agentReader 为 P4-G1 计划校验门提供能力清单来源；传 nil 时校验门跳过。
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, eventBus biz.EventBus, orchCache *biz.OrchestrationCache, lg loggateway.Logger, plannerSetting PlannerModelLookup, seq v2.SequencerPublisher, agentReader biz.AgentReader) biz.TaskPlannerPort {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &taskPlannerImpl{
+	impl := &taskPlannerImpl{
 		repo:           repo,
 		catalog:        catalog,
 		httpClient:     httpClient,
@@ -66,6 +74,10 @@ func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUs
 		plannerSetting: plannerSetting,
 		seq:            seq,
 	}
+	if agentReader != nil {
+		impl.capBuilder = NewAgentCapabilityBuilder(agentReader, lg)
+	}
+	return impl
 }
 
 // Plan assesses task complexity, optionally decomposes, and outputs a strategy.
@@ -139,6 +151,17 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			)
 			return nil, apierror.Internal(apierror.DomainSpirit, "persist plan").WithCause(err)
 		}
+		// P4-G5：缓存命中也是策略决策——同样落证据链。
+		impl.emitPlannerDecision(ctx, plannerDecision{
+			TraceID:         traceID,
+			DecisionSource:  "memory_cache",
+			Mode:            strings.ToLower(strings.TrimSpace(input.Mode)),
+			Strategy:        strategy,
+			ComplexityLevel: biz.ComplexityComplex,
+			ComplexityScore: memoryHit.DQScore,
+			StrategyReason:  "基于历史编排缓存推荐策略",
+			SpiritSessionID: input.SpiritSessionID,
+		})
 		impl.publishPlanCreated(ctx, saved, input.ChatSessionID)
 		return saved, nil
 	}
@@ -159,6 +182,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			loggateway.Int("team_count", teamCount),
 		)
 	}
+	// P4-G5 决策证据链：decisionSource 记录策略来源——llm_mode（LLM/用户
+	// 显式指定）/ keyword_fallback（关键词回退升级）/ complexity_auto
+	// （六维评分自动评估）/ memory_cache（编排缓存命中）。
+	decisionSource := "complexity_auto"
 	if m := strings.ToLower(strings.TrimSpace(input.Mode)); m == "" || m == "auto" {
 		if detected := detectTeamIntent(input.UserMessage); detected != "" {
 			impl.lg.Info("检测到用户消息中的团队组建意图，自动升级模式",
@@ -169,7 +196,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 				loggateway.Int("team_count", teamCount),
 			)
 			input.Mode = detected
+			decisionSource = "keyword_fallback"
 		}
+	} else {
+		decisionSource = "llm_mode"
 	}
 
 	// Step 1: Assess complexity (six dimensions)
@@ -224,6 +254,22 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("strategy", string(strategy)),
 		loggateway.Str("topology_hint", string(topologyHint)),
 	)
+
+	// P4-G5 决策证据链：策略路由决策落 FlowLog（spirit.planner.decision），
+	// 供 Monitor 流程日志审计 + MAST 失败模式标注消费。决策时刻的策略
+	// 原样记录——后续分解失败/校验门降级走各自已有事件，不回写本条。
+	impl.emitPlannerDecision(ctx, plannerDecision{
+		TraceID:         traceID,
+		DecisionSource:  decisionSource,
+		Mode:            strings.ToLower(strings.TrimSpace(input.Mode)),
+		Strategy:        strategy,
+		ComplexityLevel: complexityLevel,
+		ComplexityScore: complexityScore,
+		TeamCount:       teamCount,
+		KeywordFallback: decisionSource == "keyword_fallback",
+		StrategyReason:  strategyReason,
+		SpiritSessionID: input.SpiritSessionID,
+	})
 
 	// Step 3: Build intent artifact JSON（提前——P2 draft 落库需要）。
 	intentArtifactJSON := "{}"
@@ -306,69 +352,96 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			// 否则前端计划面板永远停在「规划中」。
 			impl.publishV2BoardFailed(ctx, planID, input)
 		} else if len(subTasks) > 0 {
-			// P-ORCH: decomposition finished — report the subtask count.
-			impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
-				"sub_task_count": len(subTasks),
-			})
-			decomposeReason = fmt.Sprintf("分解为 %d 个子任务", len(subTasks))
-			// 2026-07-04 问题 2 修复：当用户明确请求 N 个 team 但 LLM 产生
-			// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
-			// buildDecompositionPrompt 已通过 prompt 硬约束 LLM，但 LLM
-			// 可能不严格遵守。
-			if teamCount > 0 && len(subTasks) > teamCount {
-				impl.lg.Warn("LLM 分解的 subtask 数量超出用户请求的 team 数量，截取前 N 个",
+			// P4-G1 计划校验门：分解成功后、进度上报前做可行性校验。
+			// 违例时有界重分解 1 次；仍违例按分解失败路径降级 direct。
+			// 注意（已知折衷）：流式路径下原始子任务的 PlanStep 已边生成边
+			// 发布，校验门修复后的计划不会重发中间步骤——终态 Board 由
+			// PublishV2Board/失败补发保证一致，中间动画可能保留旧步骤。
+			gate := impl.applyPlanVerifyGate(ctx, subTasks, dag, input, teamCount, complexityLevel)
+			if gate.degraded {
+				impl.lg.Warn("计划校验门未通过，降级为 direct 策略",
 					loggateway.StepID(biz.SpiritStepPlannerDecompose),
 					loggateway.Str("trace_id", traceID),
-					loggateway.Int("requested_team_count", teamCount),
-					loggateway.Int("decomposed_subtask_count", len(subTasks)),
+					loggateway.Str("note", gate.note),
 				)
-				subTasks = subTasks[:teamCount]
-				// 清理截取后悬挂的 DependsOn 引用，避免 DAG 执行失败
-				validIDs := make(map[string]bool, len(subTasks))
-				for _, st := range subTasks {
-					validIDs[st.ID] = true
-				}
-				for i := range subTasks {
-					filtered := subTasks[i].DependsOn[:0]
-					for _, depID := range subTasks[i].DependsOn {
-						if validIDs[depID] {
-							filtered = append(filtered, depID)
-						}
+				strategy = biz.StrategyDirect
+				strategyReason = gate.note
+				decomposeReason = "verify_failed"
+				subTasks = nil
+				dag = nil
+				impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decompose_failed", map[string]any{
+					"reason": "verify_failed",
+					"note":   gate.note,
+				})
+				impl.publishV2BoardFailed(ctx, planID, input)
+			} else {
+				subTasks = gate.subTasks
+				dag = gate.dag
+				gateNote := gate.note
+				// P-ORCH: decomposition finished — report the subtask count.
+				impl.publishOrchestrationProgress(ctx, input.SpiritSessionID, "decomposed", map[string]any{
+					"sub_task_count": len(subTasks),
+				})
+				decomposeReason = fmt.Sprintf("分解为 %d 个子任务%s", len(subTasks), gateNote)
+				// 2026-07-04 问题 2 修复：当用户明确请求 N 个 team 但 LLM 产生
+				// 不符数量的 subtask 时，截取前 N 个或记录警告。这是兜底——
+				// buildDecompositionPrompt 已通过 prompt 硬约束 LLM，但 LLM
+				// 可能不严格遵守。
+				if teamCount > 0 && len(subTasks) > teamCount {
+					impl.lg.Warn("LLM 分解的 subtask 数量超出用户请求的 team 数量，截取前 N 个",
+						loggateway.StepID(biz.SpiritStepPlannerDecompose),
+						loggateway.Str("trace_id", traceID),
+						loggateway.Int("requested_team_count", teamCount),
+						loggateway.Int("decomposed_subtask_count", len(subTasks)),
+					)
+					subTasks = subTasks[:teamCount]
+					// 清理截取后悬挂的 DependsOn 引用，避免 DAG 执行失败
+					validIDs := make(map[string]bool, len(subTasks))
+					for _, st := range subTasks {
+						validIDs[st.ID] = true
 					}
-					subTasks[i].DependsOn = filtered
+					for i := range subTasks {
+						filtered := subTasks[i].DependsOn[:0]
+						for _, depID := range subTasks[i].DependsOn {
+							if validIDs[depID] {
+								filtered = append(filtered, depID)
+							}
+						}
+						subTasks[i].DependsOn = filtered
+					}
+					dag = buildDAGFromSubTasks(subTasks)
+					decomposeReason = fmt.Sprintf("分解为 %d 个子任务（按用户请求截取）", len(subTasks))
+				} else if teamCount > 0 && len(subTasks) < teamCount {
+					impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
+						loggateway.StepID(biz.SpiritStepPlannerDecompose),
+						loggateway.Str("trace_id", traceID),
+						loggateway.Int("requested_team_count", teamCount),
+						loggateway.Int("decomposed_subtask_count", len(subTasks)),
+					)
 				}
-				dag = buildDAGFromSubTasks(subTasks)
-				decomposeReason = fmt.Sprintf("分解为 %d 个子任务（按用户请求截取）", len(subTasks))
-			} else if teamCount > 0 && len(subTasks) < teamCount {
-				impl.lg.Warn("LLM 分解的 subtask 数量少于用户请求的 team 数量",
-					loggateway.StepID(biz.SpiritStepPlannerDecompose),
-					loggateway.Str("trace_id", traceID),
-					loggateway.Int("requested_team_count", teamCount),
-					loggateway.Int("decomposed_subtask_count", len(subTasks)),
-				)
-			}
-			// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
-			// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
-			// teamCount 截取之后，避免被截取丢弃；追加后重建 DAG，流式路径
-			// 补发该节点的 PlanStep/GraphNode 事件。
-			if updated, pm, appended := appendClosedLoopPostmortem(input.UserMessage, subTasks); appended {
-				subTasks = updated
-				dag = buildDAGFromSubTasks(subTasks)
-				if streamPublished {
-					impl.publishV2PlanStep(ctx, *pm, planID, len(subTasks)-1, input)
+				// TS9-GAP-1：闭环类任务（事故/告警/故障）由引擎确定性追加复盘节点，
+				// 不再依赖 LLM 分解时自觉产出——流程控制权在引擎。追加发生在
+				// teamCount 截取之后，避免被截取丢弃；追加后重建 DAG，流式路径
+				// 补发该节点的 PlanStep/GraphNode 事件。
+				if updated, pm, appended := appendClosedLoopPostmortem(input.UserMessage, subTasks); appended {
+					subTasks = updated
+					dag = buildDAGFromSubTasks(subTasks)
+					if streamPublished {
+						impl.publishV2PlanStep(ctx, *pm, planID, len(subTasks)-1, input)
+					}
+					impl.lg.Info("闭环任务自动追加复盘节点",
+						loggateway.StepID(biz.SpiritStepPlannerDecompose),
+						loggateway.Str("trace_id", traceID),
+						loggateway.Str("postmortem_subtask_id", pm.ID),
+					)
 				}
-				impl.lg.Info("闭环任务自动追加复盘节点",
-					loggateway.StepID(biz.SpiritStepPlannerDecompose),
-					loggateway.Str("trace_id", traceID),
-					loggateway.Str("postmortem_subtask_id", pm.ID),
-				)
+				// Strategy is determined solely by the explicit mode (or detected
+				// team intent). We no longer auto-refine based on DAG shape — the
+				// LLM is the decision authority. When mode is empty (no explicit
+				// request and no detected intent), strategy stays "direct" even if
+				// decomposition produced subtasks; the subtasks are logged for
+				// analysis but not executed by the orchestrator.
 			}
-			// Strategy is determined solely by the explicit mode (or detected
-			// team intent). We no longer auto-refine based on DAG shape — the
-			// LLM is the decision authority. When mode is empty (no explicit
-			// request and no detected intent), strategy stays "direct" even if
-			// decomposition produced subtasks; the subtasks are logged for
-			// analysis but not executed by the orchestrator.
 		} else {
 			// 分解调用成功但产出 0 个子任务（典型成因：LLM 流式超时静默返回空，
 			// 由 llmcompat ctx 校验修复兜底）：与失败等价，显式降级 direct 并
@@ -838,6 +911,41 @@ func shouldForceComplex(mode string) bool {
 		return true
 	}
 	return false
+}
+
+// plannerDecision 是 P4-G5 策略决策证据链的记录单元。
+type plannerDecision struct {
+	TraceID         string
+	DecisionSource  string // llm_mode / keyword_fallback / complexity_auto / memory_cache
+	Mode            string
+	Strategy        biz.OrchestrationStrategy
+	ComplexityLevel biz.ComplexityLevel
+	ComplexityScore float64
+	TeamCount       int
+	KeywordFallback bool
+	StrategyReason  string
+	SpiritSessionID string
+}
+
+// emitPlannerDecision 把策略路由决策写入 FlowLog（spirit.planner.decision）。
+// 无 emitter 的 ctx（后台/测试路径）静默跳过。决策时刻的快照原样落盘——
+// 后续分解失败或校验门降级各有专属事件，不回写本条，保证证据链只读追加。
+func (impl *taskPlannerImpl) emitPlannerDecision(ctx context.Context, d plannerDecision) {
+	em := event.TraceEmitterFromContext(ctx)
+	if em == nil {
+		return
+	}
+	em.LogDone("spirit.planner.decision", "策略决策",
+		event.P("decision_source", d.DecisionSource),
+		event.P("mode", d.Mode),
+		event.P("strategy", string(d.Strategy)),
+		event.P("complexity_level", string(d.ComplexityLevel)),
+		event.P("complexity_score", d.ComplexityScore),
+		event.P("team_count", d.TeamCount),
+		event.P("fallback_triggered", d.KeywordFallback),
+		event.P("strategy_reason", d.StrategyReason),
+		event.P("spirit_session_id", d.SpiritSessionID),
+	)
 }
 
 // detectTeamCount extracts the user's explicit team count from the message.

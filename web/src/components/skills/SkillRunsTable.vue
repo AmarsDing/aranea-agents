@@ -36,8 +36,8 @@
           :text="props.row.status === 'success' ? props.row.output_preview : props.row.error_message"
           empty-label="无输出摘要"
         >
-          <q-badge rounded :color="props.row.status === 'success' ? 'positive' : 'negative'">
-            {{ props.row.status === 'success' ? $t('common.status.success') : $t('common.status.failed') }}
+          <q-badge rounded :color="statusMeta(props.row.status).color">
+            {{ $t(statusMeta(props.row.status).labelKey) }}
           </q-badge>
         </AppRegistryHoverTip>
       </q-td>
@@ -50,8 +50,8 @@
       <q-card-section class="row items-center q-pb-sm">
         <div class="text-h6">{{ $t('skillsPage.runDetailTitle') }}</div>
         <q-space />
-        <q-badge rounded :color="detailRow.status === 'success' ? 'positive' : 'negative'">
-          {{ detailRow.status === 'success' ? $t('common.status.success') : $t('common.status.failed') }}
+        <q-badge rounded :color="statusMeta(detailRow.status).color">
+          {{ $t(statusMeta(detailRow.status).labelKey) }}
         </q-badge>
         <q-btn v-close-popup flat round dense icon="close" class="q-ml-sm" />
       </q-card-section>
@@ -137,6 +137,14 @@ defineProps<{
 
 const detailOpen = ref(false);
 const detailRow = ref<SkillInvocation | null>(null);
+
+/** 状态徽标三分（S-1）：success=成功 / pending=执行中 / 其余=失败。
+ * 徽标与详情弹窗共用，避免两处各写一份三元。 */
+function statusMeta(status: string): { color: 'positive' | 'info' | 'negative'; labelKey: string } {
+  if (status === 'success') return { color: 'positive', labelKey: 'common.status.success' };
+  if (status === 'pending') return { color: 'info', labelKey: 'common.status.running' };
+  return { color: 'negative', labelKey: 'common.status.failed' };
+}
 
 function onRowClick(_evt: unknown, row: SkillInvocation) {
   if (!row.permissions?.can_view_detail) return;

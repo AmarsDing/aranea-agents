@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/pkg/apierror"
 	authpkg "aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // SkillTag mirrors admin JSON.
@@ -180,6 +181,7 @@ type SkillQueryReader interface {
 	ListRegisteredSlugs(ctx context.Context) ([]string, error)
 }
 
+// Stability:evolving
 type SkillLookupReader interface {
 	GetSkillByID(ctx context.Context, id string) (Skill, error)
 	GetSkillBySkillKey(ctx context.Context, skillKey string) (Skill, error)
@@ -205,6 +207,7 @@ type SkillRuntimeReader interface {
 	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
 }
 
+// Stability:evolving
 type SkillReader interface {
 	SkillQueryReader
 	SkillLookupReader
@@ -249,6 +252,7 @@ type CreateVersionInput struct {
 	EvolutionReason string
 }
 
+// Stability:evolving
 type SkillWriter interface {
 	SkillMutationWriter
 	SkillSyncWriter
@@ -385,6 +389,7 @@ type SkillFileContent struct {
 	Language string
 }
 
+// Stability:evolving
 type SkillFilePathResolver interface {
 	ResolveRoot(ctx context.Context) string
 	SafeFilePath(dir string, relPath string) (root string, absPath string, err error)
@@ -410,6 +415,7 @@ type SkillFileWriter interface {
 	RemoveSkillDir(dir string) error
 }
 
+// Stability:evolving
 type SkillFilesystem interface {
 	SkillFileReader
 	SkillFileWriter
@@ -434,6 +440,8 @@ type embedEntry struct {
 // mutations. Implemented by biz.SkillDedupUsecase; defined here to avoid a
 // circular import with the parent biz package. Optional: when nil, mutation
 // hooks are skipped.
+//
+// Stability:evolving
 type DedupCacheInvalidator interface {
 	InvalidateDedupCache()
 }
@@ -442,6 +450,7 @@ type DedupCacheInvalidator interface {
 type Usecase struct {
 	repo       Repo
 	embedder   SkillEmbedder
+	lg         loggateway.Logger
 	embedMu    sync.RWMutex
 	embedCache map[string]embedEntry
 	embedTTL   time.Duration
@@ -475,9 +484,13 @@ func (u *Usecase) invalidateRuntimeCache() {
 	}
 }
 
-// NewUsecase constructs a SkillUsecase.
-func NewUsecase(repo Repo, embedder SkillEmbedder) *Usecase {
-	return &Usecase{repo: repo, embedder: embedder, embedCache: make(map[string]embedEntry), embedTTL: 30 * time.Minute}
+// NewUsecase constructs a SkillUsecase. lg 为 nil 时降级为静默 Logger，
+// 保证单测与遗留调用点无需关心日志装配。
+func NewUsecase(repo Repo, embedder SkillEmbedder, lg loggateway.Logger) *Usecase {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &Usecase{repo: repo, embedder: embedder, lg: lg.With(loggateway.Domain("skill")), embedCache: make(map[string]embedEntry), embedTTL: 30 * time.Minute}
 }
 
 // SetDedupCacheInvalidator wires the dedup cache invalidation hook.
@@ -790,6 +803,13 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 		enabledSkill, enableErr := u.repo.UpdateSkillEnabled(ctx, id, true)
 		if enableErr == nil {
 			s = enabledSkill
+		} else {
+			// K3 降级路径：发布成功但自动启用失败。不阻断发布，但必须留痕——
+			// 否则 Skill 停在 published+disabled 状态且无任何线索可查。
+			u.lg.Warn("publish succeeded but auto-enable failed; skill stays disabled",
+				loggateway.StepID("skill.publish.auto_enable_degraded"),
+				loggateway.Str("skill_id", id),
+				loggateway.Err(enableErr))
 		}
 	}
 	u.InvalidateEmbedCacheForSlug(s.Slug)
@@ -1022,6 +1042,9 @@ func (p RuntimePolicy) OverviewBudgetChars() int {
 
 // RuntimeCandidate is a lightweight Skill row for routing.
 type RuntimeCandidate struct {
+	// SkillID 是平台 ID（skill_<unixnano>）。skill_invocation.skill_id 按平台
+	// ID 落库，历史健康指标查询必须用它而非 Slug，否则永远匹配 0 行。
+	SkillID       string
 	Slug          string
 	Name          string
 	Description   string

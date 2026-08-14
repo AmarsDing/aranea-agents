@@ -77,7 +77,7 @@ func (r *evoSkillGetterRepo) GetSkillByID(context.Context, string) (biz.Skill, e
 
 func newSkillSuggestionServiceWithSkill(repo *stubProposalRepo, sk biz.Skill) *SkillEvolutionSuggestionService {
 	uc := biz.NewSkillIntelligenceUsecase(nil, nil, repo, nil, loggateway.NewNoop())
-	skillUC := biz.NewSkillUsecase(&evoSkillGetterRepo{skill: sk}, nil)
+	skillUC := biz.NewSkillUsecase(&evoSkillGetterRepo{skill: sk}, nil, loggateway.NewNoop())
 	return NewSkillEvolutionSuggestionService(uc, nil, nil, skillUC, loggateway.NewNoop())
 }
 

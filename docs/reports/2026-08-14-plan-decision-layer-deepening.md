@@ -95,11 +95,17 @@
 
 ### 建议批次
 
-| 批次 | 内容 | 预估改动面 |
-|------|------|-----------|
-| Batch-7 | G5（证据链，极小）+ G1（计划校验门） | task_planner_impl + FlowLog 注册 |
-| Batch-8 | G2（重规划统一接线，架构级，先 ADR-F） | runtime_replanner + graph executor + failure_recovery |
-| Batch-9 | G3（质量门 verdict）+ G4（Leader 中途纠偏） | runner_team_turn + synthesis + team steer |
+| 批次 | 内容 | 预估改动面 | 状态 |
+|------|------|-----------|------|
+| Batch-7 | G5（证据链，极小）+ G1（计划校验门） | task_planner_impl + FlowLog 注册 | ✅ 完成（2026-08-14） |
+| Batch-8 | G2（重规划统一接线，架构级，先 ADR-F） | runtime_replanner + graph executor + failure_recovery | ⏳ 待实施 |
+| Batch-9 | G3（质量门 verdict）+ G4（Leader 中途纠偏） | runner_team_turn + synthesis + team steer | ⏳ 待实施 |
+
+#### Batch-7 完成记录（2026-08-14）
+
+- **G5 决策证据链**：`taskPlannerImpl.emitPlannerDecision`（[task_planner_impl.go](../internal/agent/task_planner_impl.go)）在策略路由后发射 `spirit.planner.decision` FlowLog，字段含 `decision_source`（llm_mode/keyword_fallback/complexity_auto/memory_cache）/ `mode` / `strategy` / `complexity_score` / `team_count` / `fallback_triggered`；memory 命中路径同样落证据。step 已登记 `stepTitleRegistry` + [52-flow-logger.design.md §5.1](../development/52-flow-logger.design.md)。
+- **G1 计划校验门**：[plan_verifier.go](../internal/agent/plan_verifier.go) `verifyPlanFeasibility`（纯函数，R1 空定义 / R2 能力不可满足 / R3 病态规模>12）+ `applyPlanVerifyGate`（违例 → 反馈写回 prompt 有界重分解恰好 1 次 → 仍违例降级 direct 走 `decompose_failed{reason=verify_failed}`）。fail-open 约束：capBuilder nil 或能力清单构建失败时整体跳过。`NewTaskPlanner` 新增第 9 参 `agentReader biz.AgentReader`（wire 已重生成）。已知折衷：流式路径下修复后计划不重发中间 PlanStep 动画，终态 Board 由既有补发机制保证。
+- **门禁**：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` 绿；`go test ./internal/agent/... ./internal/event/... -count=1` 全绿（新增 13 个用例：G1 纯函数 5 + 门集成 5 + G5 证据链 3）。
 
 ---
 

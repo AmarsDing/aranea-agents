@@ -153,7 +153,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillSimilarityEngine := biz.NewSkillSimilarityEngine(dedupEmbedder, similarityWeights, loggatewayLogger)
 	skillDedupUsecase := biz.NewSkillDedupUsecase(skillDedupRepo, skillSimilarityEngine, loggatewayLogger)
 	tagRepo := data.NewSkillTagRepo(dataData)
-	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo)
+	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo, loggatewayLogger)
 	filesystemHealthReader := provideFilesystemHealthReader(skillUsecase)
 	spanReader := data.NewMonitorTraceSpanReader(dataData)
 	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
@@ -380,7 +380,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
 	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
-	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer)
+	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
 	agentPerformanceRepository := data.NewAgentPerformanceRepo(dataData, loggatewayLogger)
 	agentFactory := provideAgentFactory(agentRepository, agentRepository, agentTemplateRepo, v2Bus, llmProviderModelUsecase, systemSettingUsecase, multiProviderEmbedder, loggatewayLogger)
@@ -451,7 +451,17 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
 	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
 	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
-	skillService := service.NewSkillService(skillUsecase, agentUsecase, skillHealthUsecase, skillHealthMetricsAdapter, skillFilesystem, engine, publishGate, loggatewayLogger)
+	skillServiceDeps := service.SkillServiceDeps{
+		UC:          skillUsecase,
+		AgentUC:     agentUsecase,
+		HealthUC:    skillHealthUsecase,
+		SkillHealth: skillHealthMetricsAdapter,
+		FS:          skillFilesystem,
+		Import:      engine,
+		Gate:        publishGate,
+		Lg:          loggatewayLogger,
+	}
+	skillService := service.NewSkillService(skillServiceDeps)
 	toolService := service.NewToolService(toolUsecase, agentUsecase, monitorUsecase)
 	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
 	serviceSessionService := service.NewSessionService(sessionUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
@@ -1866,8 +1876,8 @@ func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrati
 // invalidation hook (A3 fix: skill mutations must invalidate the 10-min dedup
 // result cache, otherwise merged/deleted skills keep showing in dedup groups).
 // tagRepo 装配标签字典端口（治理重写后全量失效路由 embed 缓存）。
-func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo) *biz.SkillUsecase {
-	u := biz.NewSkillUsecase(repo, embedder)
+func provideSkillUsecase(repo biz.SkillRepo, embedder *knowledge.MultiProviderEmbedder, dedup *biz.SkillDedupUsecase, tagRepo biz.SkillTagRepo, lg loggateway.Logger) *biz.SkillUsecase {
+	u := biz.NewSkillUsecase(repo, embedder, lg)
 	u.SetDedupCacheInvalidator(dedup)
 	u.SetTagRepo(tagRepo)
 	return u
@@ -3626,9 +3636,9 @@ func provideFederationService(uc *a2a.FederationUsecase) *service.FederationServ
 	return service.NewFederationService(uc)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, eventBus biz.EventBus, lg loggateway.Logger, sysUC *biz.SystemSettingUsecase, seq *v2.Sequencer, agentReader biz.AgentReader) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return agent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq)
+	return agent.NewTaskPlanner(repo, catalog, httpClient, eventBus, orchCache, lg, sysUC, seq, agentReader)
 }
 
 func provideAgentAllocator(

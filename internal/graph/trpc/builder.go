@@ -216,7 +216,13 @@ func buildFromResolvedWithNodeAgents(ctx context.Context, rbc *resolvedBuildConf
 	var allAgents []trpcagent.Agent
 	nodeAgents := make(map[string]trpcagent.Agent)
 
-	schema := trpcgraph.NewStateSchema()
+	// Base schema carries the framework's standard agent state keys
+	// (messages/user_input/last_response/node_responses/metadata, ...)
+	// with their proper reducers. Without this, agent-node writes to
+	// e.g. node_responses hit ApplyUpdate's unknown-key branch and the
+	// whole map gets overridden per node, losing earlier node outputs.
+	// Graph-declared StateFields are overlaid afterwards and win.
+	schema := trpcgraph.MessagesStateSchema()
 	for _, sf := range cfg.StateFields {
 		field := trpcgraph.StateField{
 			Reducer:         resolveReducer(sf.Reducer),

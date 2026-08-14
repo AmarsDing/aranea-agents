@@ -463,6 +463,17 @@ internal/cronrunner/jobs/
 >
 > `team.eval_profile.applied`：P3-4 评测态 profile 生效审计（发射点 `team.Runner.evalProfileRunOptions`，每 run 一次），字段 `provider` / `model` / `tool_allowlist_size` / `extra_model_fields`（键集合，不含值）——回答「哪个 profile 产出哪个 run」；与 `model_cascade` 互斥时胜出并记 warn 进程日志。钉住模型的逐次路由只写进程日志（`agent.eval_profile.pin`），不进流程日志避免每 LLM 调用一条。
 
+#### Spirit 规划器（`domain=chat`，P4 决策层深化，2026-08-14）
+
+| step_id | severity | title |
+|---------|----------|-------|
+| `spirit.planner.decision` | ok | 策略决策 |
+| `spirit.planner.verify` | ok / warn | 计划校验门 |
+
+> `spirit.planner.decision`：P4-G5 策略决策证据链（发射点 `taskPlannerImpl.emitPlannerDecision`，每次 Plan 决策恰好一条），字段 `decision_source`（`llm_mode` / `keyword_fallback` / `complexity_auto` / `memory_cache`）/ `mode` / `strategy` / `complexity_level` / `complexity_score` / `team_count` / `fallback_triggered` / `strategy_reason`——回答「这个编排策略是谁、依据什么定的」，供 MAST 失败模式标注消费。记录决策时刻快照；后续分解失败/校验降级各有专属事件，不回写本条（只读追加）。
+>
+> `spirit.planner.verify`：P4-G1 计划校验门（发射点 `taskPlannerImpl.applyPlanVerifyGate`，仅违例时发射，正常路径零开销），字段 `violation_count` / `violation_summary` / `repaired_subtask_count`（修复成功时）——规则层校验 `empty_definition` / `capability_unsatisfiable` / `oversized_plan` 三类违例，违例反馈写回 prompt 有界重分解恰好 1 次（Self-Refine），仍违例降级 direct 并走 `decompose_failed` 进度事件（`reason=verify_failed`）。
+
 #### Knowledge（`domain=knowledge`）
 
 | step_id | severity | title |

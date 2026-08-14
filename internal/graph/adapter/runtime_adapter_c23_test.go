@@ -13,42 +13,14 @@ import (
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
-// C-23 policy under test:
-//   - ReplanRetry → fail-closed (nil, originalErr); ControlCommand stashed in state only.
-//   - ReplanInsertFallback → fail-closed via InterruptError (not fake "[fallback]" text).
-// Soft-recover (returning ControlCommand as AfterNode result) is explicitly rejected.
-
-func TestApplyReplanControl_RetryFailClosedNotSoftRecover(t *testing.T) {
-	t.Parallel()
-	state := trpcgraph.State{}
-	cause := errors.New("transient timeout")
-	action := &graph.ReplanAction{Type: graph.ReplanRetry}
-
-	out, err := applyReplanControl(state, "node-a", cause, action)
-	if err == nil {
-		t.Fatal("retry should return (nil, originalErr), got err=nil")
-	}
-	if !errors.Is(err, cause) {
-		t.Fatalf("want originalErr wrapped/returned, got %v", err)
-	}
-	if out != nil {
-		t.Fatalf("retry must not soft-recover with result %T (%v)", out, out)
-	}
-	stored, ok := state[graph.StateKeyControlCommand]
-	if !ok {
-		t.Fatal("expected ControlCommand stashed in state for observability")
-	}
-	cmd, ok := graph.AsControlCommand(stored)
-	if !ok {
-		t.Fatalf("state value not ControlCommand: %T", stored)
-	}
-	if cmd.Action != graph.ReplanRetry || cmd.NodeID != "node-a" {
-		t.Fatalf("unexpected cmd: %+v", cmd)
-	}
-	if !cmd.AttemptAllowed {
-		t.Fatal("AttemptAllowed should be true when replanner returned an action")
-	}
-}
+// C-23 → ADR-F（G2）演进说明：
+//   - ReplanRetry：C-23 一律 fail-closed；ADR-F 起 agent 节点走 Reflexion 智能
+//     重试（见 runtime_adapter_g2_test.go），仅无执行载体（非 agent 节点）时保持
+//     fail-closed。
+//   - ReplanInsertFallback：保持 fail-closed InterruptError（HITL），本文保留
+//     详细断言。
+//   - ReplanReroute：C-23 传播 (nil,nil)；ADR-F 起退化为 skip（g2 测试覆盖）。
+// Soft-recover（把 ControlCommand 当 AfterNode result 返回）仍被禁止。
 
 func TestApplyReplanControl_InsertFallbackFailClosedInterrupt(t *testing.T) {
 	t.Parallel()
@@ -60,7 +32,7 @@ func TestApplyReplanControl_InsertFallbackFailClosedInterrupt(t *testing.T) {
 		},
 	}
 
-	out, err := applyReplanControl(state, "member-1", errors.New("agent incapable"), action)
+	out, err := applyReplanControl(context.Background(), state, "member-1", errors.New("agent incapable"), action, nil)
 	if out != nil {
 		t.Fatalf("must not soft-recover with result %T", out)
 	}
@@ -91,14 +63,6 @@ func TestApplyReplanControl_InsertFallbackFailClosedInterrupt(t *testing.T) {
 	}
 	if graph.IsControlCommand(out) {
 		t.Fatal("ControlCommand must not be the AfterNode result (would soft-recover)")
-	}
-}
-
-func TestApplyReplanControl_ReroutePropagatesNil(t *testing.T) {
-	t.Parallel()
-	out, err := applyReplanControl(nil, "n", errors.New("blocked"), &graph.ReplanAction{Type: graph.ReplanReroute})
-	if err != nil || out != nil {
-		t.Fatalf("want (nil,nil), got (%v, %v)", out, err)
 	}
 }
 

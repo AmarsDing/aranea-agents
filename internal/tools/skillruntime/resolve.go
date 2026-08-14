@@ -182,9 +182,13 @@ func capScoredSlugs(scored []slugScore, max int, reasons map[string]string) []st
 }
 
 type slugScore struct {
-	slug   string
-	score  int
-	reason string
+	slug string
+	// skillID 是平台 ID（skill_<unixnano>），从 RuntimeCandidate 透传。
+	// 历史健康指标查询（skill_invocation.skill_id 列）必须按平台 ID 匹配；
+	// 为空（存量调用方未带 ID）时回退 slug 查询，保持兼容。
+	skillID string
+	score   int
+	reason  string
 }
 
 func formatSimilarity(sim float64) string {
@@ -430,7 +434,7 @@ func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, 
 			}
 		}
 		reasons[c.Slug] = matchDetail
-		out = append(out, slugScore{slug: c.Slug, score: bestScore, reason: matchDetail})
+		out = append(out, slugScore{slug: c.Slug, skillID: c.SkillID, score: bestScore, reason: matchDetail})
 	}
 	return out
 }
@@ -447,7 +451,13 @@ func buildRankCandidates(ctx context.Context, scored []slugScore, healthProvider
 		if c.SemanticSimilarity > 1.0 {
 			c.SemanticSimilarity = 1.0
 		}
-		successRate, err := healthProvider.GetRecentSuccessRate(ctx, s.slug, 30)
+		// skill_invocation.skill_id 列存平台 ID（skill_<unixnano>），健康指标
+		// 必须按 ID 查询；候选未带 ID（存量调用方）时回退 slug 保持兼容。
+		healthKey := s.skillID
+		if healthKey == "" {
+			healthKey = s.slug
+		}
+		successRate, err := healthProvider.GetRecentSuccessRate(ctx, healthKey, 30)
 		if err != nil {
 			lg.Warn("health metrics unavailable for ranking; using defaults",
 				loggateway.StepID("tool.skillruntime.health_metrics_fail"),
@@ -455,7 +465,7 @@ func buildRankCandidates(ctx context.Context, scored []slugScore, healthProvider
 		} else {
 			c.HistoricalSuccess = successRate
 		}
-		avgDuration, err := healthProvider.GetRecentAvgDuration(ctx, s.slug, 30)
+		avgDuration, err := healthProvider.GetRecentAvgDuration(ctx, healthKey, 30)
 		if err == nil && avgDuration > 0 {
 			c.LatencyInverse = 1.0 / (1.0 + avgDuration/1000.0)
 		}

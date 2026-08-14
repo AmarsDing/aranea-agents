@@ -37,11 +37,25 @@ type SkillService struct {
 	lg          loggateway.Logger
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, skillHealth *SkillHealthMetricsAdapter, fs biz.SkillFilesystem, importEng *importer.Engine, gate *evaluation.PublishGate, lg loggateway.Logger) *SkillService {
+// SkillServiceDeps carries the dependencies of SkillService so the
+// constructor stays within the ≤5-parameter limit (BP7).
+type SkillServiceDeps struct {
+	UC          *biz.SkillUsecase
+	AgentUC     *biz.AgentUsecase
+	HealthUC    *biz.SkillHealthUsecase
+	SkillHealth *SkillHealthMetricsAdapter
+	FS          biz.SkillFilesystem
+	Import      *importer.Engine
+	Gate        *evaluation.PublishGate
+	Lg          loggateway.Logger
+}
+
+func NewSkillService(deps SkillServiceDeps) *SkillService {
+	lg := deps.Lg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, skillHealth: skillHealth, fs: fs, import_: importEng, gate: gate, lg: lg}
+	return &SkillService{uc: deps.UC, agentUC: deps.AgentUC, healthUC: deps.HealthUC, skillHealth: deps.SkillHealth, fs: deps.FS, import_: deps.Import, gate: deps.Gate, lg: lg}
 }
 
 // assertSkillAccess 校验 caller 是否可访问指定 skill（P2-B IDOR 防护）。
@@ -740,6 +754,11 @@ func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) 
 			return "", getErr
 		}
 		dir = filepath.Join(s.fs.ResolveRoot(ctx), current.Slug)
+		s.lg.Warn("skillDir fallback: GetStorageDir failed or returned empty, using slug-based path",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", id),
+			loggateway.Err(err),
+			loggateway.Str("fallback_dir", dir))
 	}
 	if !s.fs.DirExists(dir) {
 		return "", os.ErrNotExist

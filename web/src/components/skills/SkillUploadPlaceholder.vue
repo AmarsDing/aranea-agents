@@ -197,6 +197,7 @@ import {
   skillCandidateIcon as candidateIcon,
   skillCandidateStatusColor as candidateColor,
 } from './skillTableUi';
+import { buildImportDecisions } from '../../features/skills/importDecisions';
 
 const { t } = useI18n();
 
@@ -307,37 +308,13 @@ async function refineGroup(groupId: string) {
 
 async function applyImportResult() {
   if (!job.value) return;
-  const decisions: SkillImportDecision[] = job.value.candidates
-    .filter((candidate) => candidate.validation_status === 'pass')
-    .map((candidate) => ({ candidate_id: candidate.candidate_id, action: 'import_passed' }));
-  decisions.push(
-    ...approvedRiskyCandidateIds.value.map((candidateId) => ({
-      candidate_id: candidateId,
-      action: 'approve_risky_import' as const,
-    })),
+  const decisions = buildImportDecisions(
+    job.value,
+    refineResult.value,
+    approvedRiskyCandidateIds.value,
+    rejectedRiskyCandidateIds.value,
+    keptSeparateCandidateIds.value,
   );
-  decisions.push(
-    ...rejectedRiskyCandidateIds.value.map((candidateId) => ({
-      candidate_id: candidateId,
-      action: 'reject_risky_upload' as const,
-    })),
-  );
-  decisions.push(
-    ...keptSeparateCandidateIds.value.map((candidateId) => ({
-      candidate_id: candidateId,
-      action: 'keep_separate' as const,
-    })),
-  );
-  if (refineResult.value) {
-    decisions.push({
-      group_id: firstRefinedGroup(job.value.conflict_groups, refineResult.value.source_candidate_ids),
-      action: 'merge_group_with_ai',
-      merged_name: refineResult.value.merged_name,
-      merged_description: refineResult.value.merged_description,
-      merged_body: refineResult.value.merged_body,
-      merged_tags: refineResult.value.merged_tags,
-    });
-  }
   applying.value = true;
   error.value = '';
   try {
@@ -397,15 +374,5 @@ function metricItems(metrics: SkillSimilarityMetrics) {
     { label: '风险', value: metrics.conflict_risk },
     { label: '置信', value: percent(metrics.confidence) },
   ];
-}
-
-function firstRefinedGroup(groups: SkillConflictGroup[], candidateIds: string[], refineSourceGroupID?: string) {
-  // Prefer explicit group_id from refine result if available.
-  if (refineSourceGroupID) {
-    const found = groups.find((g) => g.group_id === refineSourceGroupID);
-    if (found) return found.group_id;
-  }
-  // Fallback: match by candidate IDs.
-  return groups.find((group) => group.candidate_ids.some((id) => candidateIds.includes(id)))?.group_id ?? '';
 }
 </script>

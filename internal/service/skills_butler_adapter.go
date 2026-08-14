@@ -194,7 +194,7 @@ func (a skillsButlerRegistrationAdapter) RegisterSkill(ctx context.Context, agen
 	}
 	_, err := a.uc.Create(ctx, biz.SkillCreateInput{
 		Name:     name,
-		Slug:     name,
+		Slug:     biz.NormalizeSkillSlug(name),
 		Body:     skillMD,
 		Triggers: manifest.Parse(skillMD).Triggers,
 	})

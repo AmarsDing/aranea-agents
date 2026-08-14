@@ -69,7 +69,7 @@ func TestTaskPlanner_Plan_DecomposeFailurePublishesFallback(t *testing.T) {
 	repo := &stubTaskPlanRepo{}
 	bus := &captureNoticeBus{}
 	// catalog=nil + httpClient=nil → decomposeTask 必失败，走错误降级分支。
-	impl := NewTaskPlanner(repo, nil, nil, bus, nil, loggateway.NewNoop(), nil, nil)
+	impl := NewTaskPlanner(repo, nil, nil, bus, nil, loggateway.NewNoop(), nil, nil, nil)
 
 	plan, err := impl.Plan(context.Background(), biz.PlanInput{
 		SpiritSessionID: "sp-test",

@@ -175,6 +175,63 @@ func TestApplyImport_mergeGroupWithAI_RetireSources(t *testing.T) {
 	}
 }
 
+// S1: when a merge with retire_sources succeeds but a later decision fails,
+// the source skills must NOT be archived — retirement is deferred until all
+// decisions succeed, so compensate() only removes the newly created skills.
+// (Old behaviour archived sources inside the decision loop, leaving archived
+// sources behind while the merged skill was compensation-deleted.)
+func TestApplyImport_mergeGroupWithAI_RetireDeferredOnLaterFailure(t *testing.T) {
+	existDir1 := writeExistingSkillDir(t, map[string]string{"SKILL.md": "old body 1"})
+	existDir2 := writeExistingSkillDir(t, map[string]string{"SKILL.md": "old body 2"})
+	repo := &stubSkillRepo{
+		storageDirs:  map[string]string{"exist-1": existDir1, "exist-2": existDir2},
+		failOnCreate: 2, // second decision's create fails
+	}
+	eng, root := setupEngineWithTempRoot(t, repo)
+
+	mkCandidate := func(id string) biz.SkillImportCandidate {
+		return biz.SkillImportCandidate{CandidateID: id, Name: "Cand " + id, Slug: "cand-" + id, ValidationStatus: "warn"}
+	}
+	c1, c2 := mkCandidate("c-m1"), mkCandidate("c-m2")
+	eng.jobsMu.Lock()
+	eng.jobs["job-merge-partial"] = &jobState{
+		public: biz.SkillImportJob{
+			JobID:  "job-merge-partial",
+			Status: "completed",
+			ConflictGroups: []biz.SkillConflictGroup{
+				{GroupID: "g1", CandidateIDs: []string{c1.CandidateID}, ExistingSkills: []biz.SkillSimilaritySource{{ID: "exist-1", Name: "Old1", Slug: "old-1"}}},
+				{GroupID: "g2", CandidateIDs: []string{c2.CandidateID}, ExistingSkills: []biz.SkillSimilaritySource{{ID: "exist-2", Name: "Old2", Slug: "old-2"}}},
+			},
+		},
+		candidates: map[string]candidateState{
+			c1.CandidateID: {public: c1, body: "# C1", files: map[string][]byte{"SKILL.md": []byte("# C1")}},
+			c2.CandidateID: {public: c2, body: "# C2", files: map[string][]byte{"SKILL.md": []byte("# C2")}},
+		},
+	}
+	eng.jobsMu.Unlock()
+
+	_, err := eng.ApplyImport(context.Background(), "job-merge-partial", biz.SkillImportApplyRequest{
+		Decisions: []biz.SkillImportDecision{
+			{Action: "merge_group_with_ai", GroupID: "g1", MergedName: "Merged One", MergedBody: "---\nname: Merged One\ndescription: d\n---\nbody1", RetireSources: true},
+			{Action: "merge_group_with_ai", GroupID: "g2", MergedName: "Merged Two", MergedBody: "---\nname: Merged Two\ndescription: d\n---\nbody2"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error from second decision, got nil")
+	}
+	// Core S1 assertion: sources must stay untouched on partial failure.
+	if len(repo.archivedIDs) != 0 {
+		t.Errorf("expected no archived sources on partial failure, got %v", repo.archivedIDs)
+	}
+	// The first decision's merged skill must have been compensation-deleted.
+	if len(repo.deletedIDs) != 1 || repo.deletedIDs[0] != "skill-1" {
+		t.Errorf("expected compensated delete of skill-1, got %v", repo.deletedIDs)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "merged-one")); !os.IsNotExist(statErr) {
+		t.Errorf("expected merged-one dir removed by compensation, stat err = %v", statErr)
+	}
+}
+
 // F7: merge apply without retire_sources leaves the existing skills active.
 func TestApplyImport_mergeGroupWithAI_NoRetire(t *testing.T) {
 	existingDir := writeExistingSkillDir(t, map[string]string{
