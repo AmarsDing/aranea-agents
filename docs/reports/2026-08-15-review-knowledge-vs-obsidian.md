@@ -4,6 +4,8 @@
 > 对象：模块 37 Knowledge 工作台 / 检索 / 写回，相对 **Obsidian 桌面端日常 PKM**（不是相对 Microsoft GraphRAG）
 > 前序：[2026-08-15-review-knowledge-sp7-closeout.md](./2026-08-15-review-knowledge-sp7-closeout.md)
 
+> **评价口径更正（同日）**：产品核心是「给 Agent 长期供粮的知识库」，不是对齐 Obsidian 生态。插件/市场/Canvas/移动端不在合格线内。按累计 / 关联 / 更新三条重评见 [2026-08-15-review-knowledge-working-core.md](./2026-08-15-review-knowledge-working-core.md)。
+
 本报告回答的问题只有一个：**现在能不能达到 Obsidian 的标准。**
 
 结论先写：

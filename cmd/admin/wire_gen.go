@@ -361,7 +361,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
 	testRunReader := provideSelfImprovementTestRunReader(selfImprovement)
 	orchestrationTraceReader := data.NewOrchestrationTraceReader(dataData)
-	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, loggatewayLogger)
+	siTriggerCooldownStore := data.NewSITriggerCooldownStore(dataData)
+	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, siTriggerCooldownStore, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
@@ -2458,9 +2459,18 @@ func provideSkillEvolutionOrchestrator(
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
 	siTraces biz.OrchestrationTraceReader,
+	cooldownStore biz.SITriggerCooldownStore,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
+	if cooldownStore != nil {
+		orch.AttachCooldownStore(cooldownStore)
+		if err := orch.HydrateTriggerCooldowns(context.Background()); err != nil {
+			lg.Warn("orchestrator: cooldown multipliers load failed, starting at 1x",
+				loggateway.StepID("evo_orchestrator.cooldown_hydrate"),
+				loggateway.Err(err))
+		}
+	}
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
 	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))

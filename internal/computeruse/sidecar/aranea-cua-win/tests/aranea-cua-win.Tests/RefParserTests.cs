@@ -45,6 +45,17 @@ public class RefParserTests
         Assert.Equal(42, i);
     }
 
+    [Theory]
+    [InlineData(-1, 3, false)]
+    [InlineData(3, 3, false)]
+    [InlineData(4, 3, true)]
+    [InlineData(0, 0, false)]
+    [InlineData(1, 0, true)]
+    public void ParamGenerationMismatch_DetectsCallerVsRef(int expected, int refGen, bool want)
+    {
+        Assert.Equal(want, RefParser.ParamGenerationMismatch(expected, refGen));
+    }
+
     [Fact]
     public void CrossGeneration_IsDetectable()
     {

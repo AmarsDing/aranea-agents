@@ -1901,9 +1901,18 @@ func provideSkillEvolutionOrchestrator(
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
 	siTraces biz.OrchestrationTraceReader,
+	cooldownStore biz.SITriggerCooldownStore,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
+	if cooldownStore != nil {
+		orch.AttachCooldownStore(cooldownStore)
+		if err := orch.HydrateTriggerCooldowns(context.Background()); err != nil {
+			lg.Warn("orchestrator: cooldown multipliers load failed, starting at 1x",
+				loggateway.StepID("evo_orchestrator.cooldown_hydrate"),
+				loggateway.Err(err))
+		}
+	}
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
 	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
@@ -2201,7 +2210,7 @@ func provideSIGovernanceRouter(
 	if apply != nil {
 		driver = apply
 	}
-	// 日配额优先级：DB 管理配置（P5）> config.yaml > 代码默认。
+	// 日配额优先级：DB 管理配置正数（P5）> config.yaml 正数 > 代码默认 0（关闭 auto-apply）。
 	quota := int32(siConf.SIDailyAutoApplyQuota())
 	if riskRules.DailyAutoQuota > 0 {
 		quota = riskRules.DailyAutoQuota

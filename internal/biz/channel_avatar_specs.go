@@ -28,6 +28,7 @@ func ChannelPlatformAvatarSpecs() []ChannelPlatformAvatarSpec {
 		{"wecom-app", "企微应用", "应", 38, 126, 240, 60},
 		{"openclaw-weixin", "微信 ClawBot", "微", 7, 193, 96, 70},
 		{"wechat", "微信开放平台", "微", 7, 193, 96, 80},
+		{"wechat_ilink", "微信（个人号·iLink）", "微", 7, 193, 96, 85},
 		{"telegram", "Telegram", "T", 38, 165, 228, 90},
 		{"whatsapp", "WhatsApp", "W", 37, 211, 102, 100},
 		{"facebook", "Messenger", "M", 0, 132, 255, 110},

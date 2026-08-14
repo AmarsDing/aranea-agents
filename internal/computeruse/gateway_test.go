@@ -31,14 +31,17 @@ func TestGatewayInfo(t *testing.T) {
 		if req.Method != "device.info" {
 			return nil, &rpcError{Code: -32601, Message: "bad method"}
 		}
-		return json.RawMessage(`{"platform":"windows","screen":{"width":2560,"height":1440,"scaleFactor":1.5}}`), nil
+		return json.RawMessage(`{"platform":"windows","screen":{"width":2560,"height":1440,"scaleFactor":1.5},"virtualScreen":{"x":-1920,"y":0,"width":3840,"height":1440,"scaleFactor":1.5}}`), nil
 	})
 
 	info, err := g.Info(context.Background())
 	if err != nil {
 		t.Fatalf("Info err = %v", err)
 	}
-	want := bizcomputeruse.DeviceInfo{Platform: "windows", ScreenW: 2560, ScreenH: 1440, ScaleFactor: 1.5}
+	want := bizcomputeruse.DeviceInfo{
+		Platform: "windows", ScreenW: 2560, ScreenH: 1440, ScaleFactor: 1.5,
+		VirtualX: -1920, VirtualY: 0, VirtualW: 3840, VirtualH: 1440,
+	}
 	if info != want {
 		t.Errorf("Info = %+v, want %+v", info, want)
 	}
@@ -193,6 +196,9 @@ func TestGatewayInvoke(t *testing.T) {
 	}
 	if params["ref"] != "g12.e42" {
 		t.Errorf("params = %v", params)
+	}
+	if gen, ok := params["generation"].(float64); !ok || gen != 12 {
+		t.Errorf("generation param = %v, want 12", params["generation"])
 	}
 
 	stale = true

@@ -57,16 +57,30 @@ func (g *Gateway) Info(ctx context.Context) (bizcomputeruse.DeviceInfo, error) {
 			Height      int     `json:"height"`
 			ScaleFactor float64 `json:"scaleFactor"`
 		} `json:"screen"`
+		VirtualScreen *struct {
+			X           int     `json:"x"`
+			Y           int     `json:"y"`
+			Width       int     `json:"width"`
+			Height      int     `json:"height"`
+			ScaleFactor float64 `json:"scaleFactor"`
+		} `json:"virtualScreen"`
 	}
 	if err := g.call(ctx, "device.info", nil, &res); err != nil {
 		return bizcomputeruse.DeviceInfo{}, err
 	}
-	return bizcomputeruse.DeviceInfo{
+	info := bizcomputeruse.DeviceInfo{
 		Platform:    res.Platform,
 		ScreenW:     res.Screen.Width,
 		ScreenH:     res.Screen.Height,
 		ScaleFactor: res.Screen.ScaleFactor,
-	}, nil
+	}
+	if vs := res.VirtualScreen; vs != nil {
+		info.VirtualX = vs.X
+		info.VirtualY = vs.Y
+		info.VirtualW = vs.Width
+		info.VirtualH = vs.Height
+	}
+	return info, nil
 }
 
 // Snapshot a11y 快照（perception.snapshot）；generation 回填到每个元素。

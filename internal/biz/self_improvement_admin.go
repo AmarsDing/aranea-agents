@@ -158,8 +158,8 @@ func (uc *SelfImprovementAdminUsecase) OutcomeStats(ctx context.Context) (*SIOut
 
 // ── Risk rules (P5, design §7 UpdateRiskRules) ───────────────────────────────
 
-// GetRiskRules returns the configured risk rules; zero fields mean "inherit
-// code defaults" (the console renders them as the effective defaults). When
+// GetRiskRules returns the configured risk rules. Line-cap / glob zeros
+// inherit code defaults; DailyAutoQuota ≤0 means auto-apply is off. When
 // the repo is not wired the code defaults are returned directly.
 func (uc *SelfImprovementAdminUsecase) GetRiskRules(ctx context.Context) (SIRiskRules, error) {
 	if uc.riskRules == nil {
@@ -197,7 +197,7 @@ func (uc *SelfImprovementAdminUsecase) UpdateRiskRules(ctx context.Context, oper
 // quota non-negative, and every glob is a valid doublestar pattern.
 func validateSIRiskRules(rules SIRiskRules) error {
 	if rules.LowMaxLines < 0 || rules.MediumMaxLines < 0 || rules.DailyAutoQuota < 0 {
-		return apierror.BadRequest("SELF_IMPROVEMENT", "risk rule thresholds must be >= 0 (0 = inherit default)")
+		return apierror.BadRequest("SELF_IMPROVEMENT", "risk rule thresholds must be >= 0 (0 line cap = inherit default; 0 quota disables auto-apply)")
 	}
 	if rules.LowMaxLines > 0 && rules.MediumMaxLines > 0 && rules.LowMaxLines > rules.MediumMaxLines {
 		return apierror.BadRequest("SELF_IMPROVEMENT", "low_max_lines (%d) must be <= medium_max_lines (%d)", rules.LowMaxLines, rules.MediumMaxLines)

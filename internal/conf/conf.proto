@@ -32,7 +32,7 @@ message SelfImprovement {
   }
   message Patch {
     int32 max_diff_lines = 1;          // diff size cap in changed lines (0 = 500)
-    int32 daily_auto_apply_quota = 2;  // auto-apply daily quota (0 = 5)
+    int32 daily_auto_apply_quota = 2;  // auto-apply daily quota (0 = disabled)
     int32 max_attempts = 3;            // patch-verify retry cap (0 = 3)
   }
   message Sandbox {

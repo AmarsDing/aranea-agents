@@ -26,11 +26,69 @@ func DefaultDangerWords() []string {
 	}
 }
 
+// latinWholeWordMax 拉丁危险词不超过此长度时按整词匹配，避免 send 命中 sender。
+const latinWholeWordMax = 5
+
+func latinRuneCount(s string) int {
+	n := 0
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
+			n++
+		} else {
+			return -1 // 含非拉丁字母：走 contains
+		}
+	}
+	return n
+}
+
+func latinTokens(s string) []string {
+	var out []string
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 0 {
+			out = append(out, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range strings.ToLower(s) {
+		if r >= 'a' && r <= 'z' {
+			b.WriteRune(r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	return out
+}
+
+func containsLatinWord(text, word string) bool {
+	w := strings.ToLower(word)
+	for _, tok := range latinTokens(text) {
+		if tok == w {
+			return true
+		}
+	}
+	return false
+}
+
+func dangerWordHit(raw, norm, word string) bool {
+	nw := normalize(word)
+	if nw == "" {
+		return false
+	}
+	if n := latinRuneCount(word); n > 0 && n <= latinWholeWordMax {
+		return containsLatinWord(raw, word)
+	}
+	return strings.Contains(norm, nw)
+}
+
 // DefaultBlockedProcesses 内置进程禁区（密码管理器/银行安全控件）。
 func DefaultBlockedProcesses() []string {
 	return []string{
 		"keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe",
 		"lastpass.exe", "dashlane.exe",
+		"icbccab.exe", "ccbnetpay.exe", "cmb.exe", "cmbc.exe",
+		"entersafe.exe", "watchdata.exe", "unionpay.exe", "aliedit.exe",
 	}
 }
 
@@ -63,14 +121,15 @@ func normalize(s string) string {
 
 // IsDanger 判定目标描述+动作参数文本是否命中高危词。
 func (p Policy) IsDanger(target string, args map[string]any) bool {
-	text := normalize(target)
+	raw := target
 	for _, k := range []string{"text", "combo", "target"} {
 		if v, ok := args[k].(string); ok {
-			text += "|" + normalize(v)
+			raw += " " + v
 		}
 	}
+	norm := normalize(raw)
 	for _, w := range p.dangerWords() {
-		if nw := normalize(w); nw != "" && strings.Contains(text, nw) {
+		if dangerWordHit(raw, norm, w) {
 			return true
 		}
 	}

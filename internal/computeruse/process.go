@@ -55,6 +55,8 @@ type Manager struct {
 	client *Client
 	stopCh chan struct{} // 看门狗停止信号（每轮运行一个）
 	wg     sync.WaitGroup
+
+	onRestart func() // sidecar 被看门狗杀死并尝试重启后回调（不持 mu）
 }
 
 // NewManager 构造进程管理器；path 为 sidecar 可执行文件路径（如 bin/cua/aranea-cua-win.exe）。
@@ -70,6 +72,14 @@ func NewManager(path string, lg loggateway.Logger) *Manager {
 		missThreshold: defaultMissThreshold,
 		stopGrace:     defaultStopGrace,
 	}
+}
+
+// SetOnRestart 注册看门狗重启回调（例如取消进行中的 Computer Use 会话）。
+// fn 在释放 Manager 锁之后同步调用，禁止再调需要持锁的 Manager 方法以免死锁。
+func (m *Manager) SetOnRestart(fn func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.onRestart = fn
 }
 
 // EnsureRunning 幂等确保 sidecar 在运行；非 windows 平台返回明确错误。
@@ -210,10 +220,11 @@ func (m *Manager) watchdog(stopCh chan struct{}) {
 }
 
 // restart 杀死后重新拉起（看门狗调用；失败时保持停止态，等待上层 EnsureRunning 重试）。
+// 只要已杀死旧进程，无论拉起成败都通知上层把进行中会话标 cancelled。
 func (m *Manager) restart() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.handle == nil {
+		m.mu.Unlock()
 		return // Stop 已介入
 	}
 	m.killLocked()
@@ -222,15 +233,38 @@ func (m *Manager) restart() {
 		m.lg.Error("sidecar 重启失败",
 			loggateway.StepID("computeruse.sidecar.restart"),
 			loggateway.Err(err))
+		cb := m.onRestart
+		m.mu.Unlock()
+		m.invokeOnRestart(cb)
 		return
 	}
 	if err := m.startLocked(context.Background(), st); err != nil {
 		m.lg.Error("sidecar 重启失败",
 			loggateway.StepID("computeruse.sidecar.restart"),
 			loggateway.Err(err))
+		cb := m.onRestart
+		m.mu.Unlock()
+		m.invokeOnRestart(cb)
 		return
 	}
 	m.lg.Info("sidecar 已自动重启", loggateway.StepID("computeruse.sidecar.restart"))
+	cb := m.onRestart
+	m.mu.Unlock()
+	m.invokeOnRestart(cb)
+}
+
+func (m *Manager) invokeOnRestart(cb func()) {
+	if cb == nil {
+		return
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			m.lg.Error("sidecar 重启回调 panic",
+				loggateway.StepID("computeruse.sidecar.restart"),
+				loggateway.Any("panic", rec))
+		}
+	}()
+	cb()
 }
 
 // killLocked 强杀当前进程并关闭 client（调用方持锁）。

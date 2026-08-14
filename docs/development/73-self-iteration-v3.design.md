@@ -175,11 +175,11 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 | R4 | CriticReport.risk_level=high 或 is_safe=false | high（强制升级） |
 | R5 | 触发保护文件清单 | reject（不进入分级，直接拒绝） |
 
-通道映射：low→auto、medium→auto+notify、high→approval。每日 auto 配额 5 次，超限一律转 approval（复用 V2 日配额计数模式）。
+通道映射：low→auto、medium→auto+notify、high→approval。每日 auto 配额由 `daily_auto_apply_quota` / `SIRiskRules.DailyAutoQuota` 控制：**0 = 关闭自动应用**（生产 yaml 与代码零值默认）；>0 时超限一律转 approval（复用 V2 日配额计数模式）。D10 建议开启时的配额为 5。
 
 > P3 落地注记（2026-07-30）：Meta Team 编排实现于 `internal/biz/self_improvement_pipeline.go`（D5：Diagnose→Patch→Verify 重试回路→Govern，fail-fast 策略门禁在 Verify 前不消耗沙盒 Gate）；Agent 标识/提示词/结构化输出解析于 `self_improvement_agents.go`；RiskClassifier（R1-R5）于 `self_improvement_risk.go`；Critic G4 + 日配额 10 于 `internal/service/self_improvement_critic.go`；治理路由 `SIGovernanceRouter`（auto/notify 配额 5 超限转 approval、SINotifier/SIApprovalSink 端口）于 `self_improvement_router.go`；过程活动挂载（确定性 ID 两级树 `si-run:<id>` → 阶段子节点，patching/verifying 按 attempt 分叉）与用户介入控制面（pause→ErrSIRunPaused 非终态驻留、skip_retry、rollback=pre-apply 中止→rejected）于 `self_improvement_activity.go`/`self_improvement_control.go`。审批/通知/活动的 service 层适配器与 pause 恢复入口属 wire 级接线，推迟 Phase 4（见 development.md P3 落地偏差）。
 
-> P5 落地注记（2026-07-31）：R1/R2/R3 行数阈值、R3 核心路径 globs、日 auto 配额已可配置化——`SIRiskRules`（0/空 = 继承代码默认）持久化于 `system_settings`，控制台经 GetRiskRules/UpdateRiskRules RPC 读写（见 §七）；分类器 `NewSIRiskClassifierWithRules` 消费归一化规则（`NormalizeSIRiskRules`），日配额优先级 DB 配置 > config.yaml > 代码默认。
+> P5 落地注记（2026-07-31）：R1/R2/R3 行数阈值、R3 核心路径 globs、日 auto 配额已可配置化——`SIRiskRules`（行数/Glob 的 0/空 = 继承代码默认；**DailyAutoQuota ≤0 = 关闭 auto-apply**，不继承 5）持久化于 `system_settings`，控制台经 GetRiskRules/UpdateRiskRules RPC 读写（见 §七）；分类器 `NewSIRiskClassifierWithRules` 消费归一化规则（`NormalizeSIRiskRules`），日配额优先级 DB 正数 > config.yaml 正数 > 代码默认 0。P1-14：触发器冷却倍率另存 `si_trigger_cooldown_multipliers` JSON 列。
 
 ### D7：应用与观察窗（Applier + Watchdog）
 
@@ -196,7 +196,7 @@ Observer(代码节点,非LLM) → Analyst(LLM) → Patcher(LLM) → Verifier(代
 
 - verdict 判定：closed→effective；rolled_back→regressed；verify_failed/rejected/failed→neutral（不计入有效样本）
 - regressed 补丁的 pattern（error_code + 文件特征哈希）写 FailurePattern KB（source=self_improvement、is_active=true、负面标记 negative=true）
-- 触发器自适应：同一 trigger_source 连续 3 次 neutral/regressed → 该触发器冷却期 ×2（内存态 + 配置持久化）
+- 触发器自适应：同一 trigger_source 连续 3 次 neutral/regressed → 该触发器冷却期 ×2（持久化于 `system_settings.si_trigger_cooldown_multipliers`，进程启动 `HydrateTriggerCooldowns`；上限 8×。禁止只放内存——重启会重置冷却并可能立刻再 apply）
 
 ### D9：保护文件清单（与 V2 AFE-06 对齐并扩展）
 
@@ -216,7 +216,7 @@ internal/data/ent/*.go（Ent 生成物，禁手改；允许 go generate 产物�
 |----|------|------|
 | Critic | 10 次/日 | 复用 V2 配额机制 |
 | Patcher | 20 次/日 | 同模式 |
-| 自动应用 | 5 次/日 | 超限转人工 |
+| 自动应用 | 0 次/日（关闭） | 生产与代码零值默认关闭；开启时 D10 建议配额 5，超限转人工 |
 | 观察窗并发 | ≤3 个 observing | 防多补丁指标互相污染归因 |
 
 ---
@@ -406,7 +406,7 @@ self_improvement:
   perf: {latency_factor: 2.0, token_factor: 1.5}
   eval: {regression_threshold: 0.10}
   test_runs_dir: ""             # test_failure 触发器 JSON 轮次目录；空=该信号源惰性
-  patch: {max_diff_lines: 500, daily_auto_apply_quota: 5, max_attempts: 3}
+  patch: {max_diff_lines: 500, daily_auto_apply_quota: 0, max_attempts: 3}  # 0 = 关闭 auto-apply（生产默认）；开发可设 5
   sandbox: {gate_timeouts: {g1: 5m, g2: 10m, g3: 5m}, worktree_root: ".aranea-self-improve", repo_root: ""}  # repo_root 空=进程工作目录
   observe_window: {duration: 24h, error_rate_factor: 1.5, p95_factor: 1.3, max_concurrent_observing: 3}
   watchdog_interval: 5m         # Phase 4 落地新增（原设计硬编码于 worker）
@@ -432,7 +432,7 @@ self_improvement:
 | GetOutcomeStats | GET /api/v1/self-improvement/outcome-stats | 成效统计 | admin |
 | GetStatus | GET /api/v1/self-improvement/status | 功能可用性 + 前置条件自检（master 开关 / DefaultRefineLLM 就绪 / 沙盒 repo_root 有效性）；**不依赖管线 usecase，disabled 时也应答** | admin |
 | GetRiskRules | GET /api/v1/self-improvement/risk-rules | 分级规则读取（configured 原始值 + effective 归一化值双视图） | admin |
-| UpdateRiskRules | PUT /api/v1/self-improvement/risk-rules | 分级规则配置（0/空 = 继承代码默认） | admin |
+| UpdateRiskRules | PUT /api/v1/self-improvement/risk-rules | 分级规则配置（行数/Glob 0/空 = 继承代码默认；日配额 0 = 关闭 auto-apply） | admin |
 
 P1-P4 阶段高风险审批经由既有聊天审批 activity 完成，不落 Proto。
 

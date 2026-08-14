@@ -24,7 +24,10 @@ import (
 // 日配额（D10：自动应用 5 次/日）对 auto/notify 两种自动应用通道统一计数，
 // 超限一律升级为 approval（转人工），复用 V2 日配额计数模式（24h 窗口重置）。
 
-// DefaultSIAutoApplyQuotaPerDay is the D10 default daily auto-apply quota.
+// DefaultSIAutoApplyQuotaPerDay is the D10 recommended daily auto-apply
+// quota when operators explicitly enable auto-apply. Zero-value constructors
+// and production config use 0 (auto-apply off); this constant is not a
+// fallback for unset quota.
 const DefaultSIAutoApplyQuotaPerDay = 5
 
 // SINotifier delivers operator-facing notifications for the notify channel.
@@ -56,7 +59,8 @@ type SIGovernanceRouterDeps struct {
 	Approvals SIApprovalSink // approval 通道必需
 	// ApplyDriver nil → auto/notify 迁移到 applying 后等待外部驱动。
 	ApplyDriver SIApplyDriver
-	// AutoApplyQuotaPerDay ≤0 → DefaultSIAutoApplyQuotaPerDay。
+	// AutoApplyQuotaPerDay ≤0 → auto-apply 关闭（auto/notify 一律转 approval）。
+	// 生产与代码零值默认 0；开启时用正数（D10 建议 DefaultSIAutoApplyQuotaPerDay）。
 	AutoApplyQuotaPerDay int32
 	Lg                   loggateway.Logger
 }
@@ -78,8 +82,8 @@ type SIGovernanceRouter struct {
 // NewSIGovernanceRouter wires the governance router.
 func NewSIGovernanceRouter(deps SIGovernanceRouterDeps) *SIGovernanceRouter {
 	dailyMax := deps.AutoApplyQuotaPerDay
-	if dailyMax <= 0 {
-		dailyMax = DefaultSIAutoApplyQuotaPerDay
+	if dailyMax < 0 {
+		dailyMax = 0
 	}
 	lg := deps.Lg
 	if lg == nil {

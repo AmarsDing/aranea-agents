@@ -677,13 +677,16 @@ func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string
 }
 
 // testWechatILinkLive performs a live wechat_ilink getconfig probe (read-only).
+// getconfig 必传 ilink_user_id（iLink 网关未文档化要求），取自扫码登录时写入的凭据。
 func (s *ChannelService) testWechatILinkLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
 	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured，请先扫码登录"}
 	}
+	ilinkUserID, _ := resolveCredentialPlain(ctx, s.uc, creds, "ilink_user_id")
 	baseURL, _ := resolveCredentialPlain(ctx, s.uc, creds, "baseurl")
-	if err := wechatilink.TestConnection(ctx, lark.DefaultHTTPClient(), baseURL, token, s.lg); err != nil {
+	if err := wechatilink.TestConnection(ctx, lark.DefaultHTTPClient(), baseURL, token, ilinkUserID, s.lg); err != nil {
+		s.lg.Warn("wechat_ilink live test failed", loggateway.Err(err), loggateway.Str("step_id", "channel.wechat_ilink.test_fail"))
 		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
 	}
 	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "wechat_ilink getconfig ok"}

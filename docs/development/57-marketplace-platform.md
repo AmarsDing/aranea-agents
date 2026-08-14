@@ -1,16 +1,26 @@
-# M57 — 公网商城平台（Marketplace Platform, MKT）
+# M57 — 公网商城平台（Marketplace Platform, MKT）（SUPERSEDED）
 
-> **版本**：2026-05-26 · **状态**：📋 需求草案 · **优先级**：P1（M56 之后启动）
-> **背景**：[30-ecosystem.md](./30-ecosystem.md)（站内安装与发现原型）· 本项目已有 `skill / mcp / tools / plugin / agent / team / graph / channel` 等可复用资产
-> **关联**：M30 Ecosystem（升级为本平台的"客户端"）· M53 Team/Graph · M22 Plugin · M20 Skill · M19 MCP · M23 Tools
-> **影响范围**：**新增独立服务** `cmd/marketplace` + `internal/marketplace/*`；本项目作为「安装目标」新增 `internal/installer` 客户端；Web 新增 `web/src/features/marketplace`
-> **红线**：依赖倒置 · `internal/biz` 不 import `pkg/trpc-agent-go` · 商城后端与 Aranea 主项目通过 **gRPC + 公开 schema** 通信，不共享数据库
+> **⚠️ SUPERSEDED（归档 · 禁止开工）**
+>
+> **不要实现本模块。** 本文档是历史规划，不是待办。仓库中 **不存在** `cmd/marketplace`、`internal/marketplace`、`web/src/features/marketplace`；禁止按本文新建独立商城服务。
+>
+> 站内资产发现与安装走 **Ecosystem (M30)**：[`30-ecosystem.md`](./30-ecosystem.md)。本规划与 M30 易混，不要把 `/shop` 或 Ecosystem 当成「未完成的商城骨架」去补公网平台。
+>
+> 权威说明：[`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 编号表与 §1.40。同系列：[设计](./57-marketplace-platform.design.md) · [开发计划](./57-marketplace-platform.development.md)。文件保留以免断链；下文验收清单已归档（非 ⏳/📋 待办）。
+
+> **版本**：2026-05-26 · **状态**：📦 已归档 / SUPERSEDED（原「📋 需求草案」作废） · **优先级**：—（不再排期）
+> **背景**：[30-ecosystem.md](./30-ecosystem.md)（站内安装与发现；**这才是现网能力**）· 本项目已有 `skill / mcp / tools / plugin / agent / team / graph / channel` 等可复用资产
+> **关联**：M30 Ecosystem（现网；**不是**本规划的客户端骨架）· M53 Team/Graph · M22 Plugin · M20 Skill · M19 MCP · M23 Tools
+> **影响范围**：下列路径均为历史规划、**均不存在、禁止创建**：`cmd/marketplace`、`internal/marketplace/*`、`internal/installer`、`web/src/features/marketplace`
+> **红线**：依赖倒置 · `internal/biz` 不 import `pkg/trpc-agent-go` · （规划已归档，不再作为开工依据）
 
 ---
 
 ## 1. 模块定位
 
-M30 Ecosystem 是「**单个 workspace 内的资产浏览与安装**」，所有商品都来自本地或人工预置；这次 M57 要把它推到 **公网多租户商城平台**，使所有用户在本项目上沉淀的 **skill / mcp / tool / plugin / agent / team / channel / knowledge / workflow / company-bundle** 都可以：
+> **历史规划（已归档）**：下文描述的是当年拟建的公网商城，**不是**当前要做的事。现网能力是 M30 Ecosystem。
+
+M30 Ecosystem 是「**单个 workspace 内的资产浏览与安装**」，所有商品都来自本地或人工预置；当年规划的 M57 拟把它推到 **公网多租户商城平台**（**未实现，已 SUPERSEDED**），使所有用户在本项目上沉淀的 **skill / mcp / tool / plugin / agent / team / channel / knowledge / workflow / company-bundle** 都可以：
 
 | 维度 | 描述 |
 |------|------|
@@ -22,7 +32,7 @@ M30 Ecosystem 是「**单个 workspace 内的资产浏览与安装**」，所有
 | **运营**（Operate） | 创作者中心、买家工作台、版本更新、问题反馈、退款 |
 | **治理**（Govern） | 内容审核、安全扫描、抄袭检测、投诉处理、下架 |
 
-**核心定位**：M57 是 Aranea 从「单租户 Agent 平台」走向「**Agent 资产生态网络**」的转折点。M30 退化为 **M57 的官方第一方客户端**（站内一键安装入口）。
+**核心定位（历史）**：当年拟将 M57 作为「Agent 资产生态网络」转折点，并把 M30 退化成 M57 客户端。**现状**：M57 未实现；M30 仍是现网 `/shop`。不要按该演进开工。
 
 ```mermaid
 flowchart LR
@@ -345,7 +355,7 @@ flowchart LR
 | 交易 | ❌ | ✅ |
 | 关系 | 升级为 M57 客户端 | M57 的官方第一方入口 |
 
-**M30 在 M57 上线后的演进**：
+**M30 在 M57 上线后的演进（历史规划 · 已归档，禁止执行）**：
 
 - 保留 `/shop` 路由，但所有数据来自 M57 API
 - 增加「我的购买」「我的安装」「凭据管理」等买家工作台
@@ -355,14 +365,16 @@ flowchart LR
 
 ## 9. 验收标准（DoD）
 
-- ✅ 10 类 Asset 均有 reference bundle 通过完整发布→审核→安装→运行链路
-- ✅ 任意创作者可在 5 分钟内完成首个 Skill 上架
-- ✅ 任意买家可在 30 秒内完成一键安装并通过冒烟测试
-- ✅ 安装失败率 ≤ 2%，且失败时可自动回滚
-- ✅ 商城后端 P99 < 200ms（搜索除外，< 500ms）
-- ✅ 红线 CI：商城后端无 `pkg/trpc-agent-go` import；主项目 `internal/installer` 仅依赖 `api/marketplace/v1`
-- ✅ 安全审计：签名、权限、沙箱、支付通道三方审计通过
-- ✅ 完整 e2e 测试覆盖 publish / install / rating / refund 主路径
+> **已归档**：以下为历史规划目标，**不是**待实现 DoD。禁止按本清单开工。
+
+- 📦 已归档：10 类 Asset 均有 reference bundle 通过完整发布→审核→安装→运行链路
+- 📦 已归档：任意创作者可在 5 分钟内完成首个 Skill 上架
+- 📦 已归档：任意买家可在 30 秒内完成一键安装并通过冒烟测试
+- 📦 已归档：安装失败率 ≤ 2%，且失败时可自动回滚
+- 📦 已归档：商城后端 P99 < 200ms（搜索除外，< 500ms）
+- 📦 已归档：红线 CI：商城后端无 `pkg/trpc-agent-go` import；主项目 `internal/installer` 仅依赖 `api/marketplace/v1`
+- 📦 已归档：安全审计：签名、权限、沙箱、支付通道三方审计通过
+- 📦 已归档：完整 e2e 测试覆盖 publish / install / rating / refund 主路径
 
 ---
 

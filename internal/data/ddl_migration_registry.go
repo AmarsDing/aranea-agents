@@ -317,6 +317,10 @@ var ddlMigrations = []ddlMigration{
 	// ops_* 岗位 effective keys 查无工具行。种子函数幂等
 	// （ON CONFLICT DO NOTHING + catalog/registry UPDATE），重跑安全。
 	{Version: 20261216, Name: "builtin_platform_tools_twinops_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261217 si_trigger_cooldown_multipliers（P1-14）：D8 触发器冷却倍率
+	// 持久化到 system_settings 单例 JSON 列。重启后 Hydrate，避免冷却被
+	// 重置后立刻再 auto-apply。语句天然幂等（AlreadyExistsErr 跳过）。
+	{Version: 20261217, Name: "si_trigger_cooldown_multipliers", SQL: "sql/migrations/20261217_si_trigger_cooldown_multipliers.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

@@ -1,16 +1,24 @@
-# M57 — 公网商城平台（Marketplace Platform）实现设计
+# M57 — 公网商城平台（Marketplace Platform）实现设计（SUPERSEDED）
+
+> **⚠️ SUPERSEDED（归档 · 禁止开工）**
+>
+> **不要实现本模块。** 本文档是历史设计草案，不是待办。下列路径 **均不存在、禁止创建**：`api/marketplace/v1/*.proto`、`cmd/marketplace/`、`internal/marketplace/*`、`internal/installer/`、`pkg/aranea-asset/`、`web/marketplace/`、`web/src/features/marketplace/`。
+>
+> 站内资产发现与安装走 **Ecosystem (M30)**：[`30-ecosystem.md`](./30-ecosystem.md)。本设计与 M30 易混，禁止按本文新建独立商城服务。
+>
+> 权威说明：[`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 编号表与 §1.40。同系列：[需求](./57-marketplace-platform.md) · [开发计划](./57-marketplace-platform.development.md)。文件保留以免断链。
 
 > 对应需求：[57-marketplace-platform.md](./57-marketplace-platform.md)
 > 遵循规范：[AI-DEVELOPMENT-SPECIFICATION.md](../guides/AI-DEVELOPMENT-SPECIFICATION.md) · [project_rules.md](../../.trae/rules/project_rules.md)
-> 版本：2026-05-26 · 状态：📋 设计草案
+> 版本：2026-05-26 · 状态：📦 已归档 / SUPERSEDED（原「📋 设计草案」作废）
 
-> **实现状态说明**：本设计文档描述的是 **规划中的未来实现**。截至 2026-06-17，本文档引用的所有代码路径（`api/marketplace/v1/*.proto`、`cmd/marketplace/`、`internal/marketplace/*`、`internal/installer/`、`pkg/aranea-asset/`、`web/marketplace/`、`web/src/features/marketplace/`）均 **尚未创建**。现有 M30 Ecosystem 模块（`api/kratos/ecosystem/v1/ecosystem.proto`、`internal/biz/ecosystem/`、`internal/data/ecosystem.go`、`internal/service/ecosystem.go`、`web/src/pages/EcosystemPage.vue`）是本设计的前身与未来客户端化目标。
+> **实现状态说明（归档）**：截至 2026-08-15，上列规划路径仍 **不存在**。现有 M30 Ecosystem（`api/kratos/ecosystem/v1/ecosystem.proto`、`internal/biz/ecosystem/`、`internal/data/ecosystem.go`、`internal/service/ecosystem.go`、`web/src/pages/EcosystemPage.vue`）是现网能力；**不要**把 M30 升级成 M57 公网商城。
 
 ---
 
 ## 一、模块全景与代码骨架
 
-### 1.1 仓库分布（规划）
+### 1.1 仓库分布（历史规划 · 下列路径均不存在 · 禁止创建）
 
 | 位置 | 内容 |
 |------|------|
@@ -244,7 +252,7 @@ aranea publish ./dist/my-team-v1.4.2.aranea
 
 ## 三、Proto 设计
 
-> **现状对照**：现有 `api/kratos/ecosystem/v1/ecosystem.proto` 提供 5 个 RPC（ListProducts/GetProduct/PublishProduct/InstallProduct/UninstallProduct），是 M30 的实现。本节描述的 `api/marketplace/v1/*.proto` 是 M57 规划的新 Proto，尚未创建。
+> **现状对照（归档）**：现有 `api/kratos/ecosystem/v1/ecosystem.proto` 是 M30 现网实现。本节 `api/marketplace/v1/*.proto` **不存在、禁止创建**。
 
 ### 3.1 `api/marketplace/v1/catalog.proto`
 
@@ -772,7 +780,7 @@ func RatingWeight(actor ActorContext) float64 {
 
 ### 11.2 主项目内 `/shop`（M30 → M57 客户端化）
 
-> **现状对照**：现有 `web/src/pages/EcosystemPage.vue` 已挂载在 `/shop` 路由（见 `web/src/router/routes.ts:204`），是 M30 的实现。M57 上线后该页面将切换为 M57 客户端。
+> **现状对照（归档）**：现有 `web/src/pages/EcosystemPage.vue` 已挂载在 `/shop`（M30 现网）。**不要**把该页切换成 M57 公网商城客户端。
 
 - 路由 `/shop` 保持，但 API 全部走 `api/marketplace/v1`
 - 新增 `/shop/installs`（我的安装、健康度）
@@ -920,7 +928,7 @@ installer:
 
 ---
 
-## 十八、开放问题（待评审）
+## 十八、开放问题（已归档 · 不再评审）
 
 1. **联邦商城**：是否允许私有商城实例与官方实例互通？v2 再决定。
 2. **AI 推荐**：v1 用规则（同分类 / 同 tag），v2 是否引入向量召回？

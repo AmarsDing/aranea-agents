@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 
 namespace Aranea.Cua.Win;
@@ -159,7 +160,7 @@ public sealed class Dispatcher
             case "perception.screenshot":
                 return Screenshot(p);
             case "action.invoke":
-                return _uia.Invoke(RequireString(p, "ref"));
+                return _uia.Invoke(RequireString(p, "ref"), GetInt(p, "generation", -1));
             case "action.click":
                 return _input.Click(RequireInt(p, "x"), RequireInt(p, "y"),
                     GetString(p, "button") ?? "left", GetInt(p, "clickCount", 1));
@@ -182,13 +183,22 @@ public sealed class Dispatcher
         }
     }
 
-    /// <summary>解析快照参数并执行；includeScreenshot=true 时内联主屏截图（F2）</summary>
+    /// <summary>解析快照参数并执行；includeScreenshot=true 时内联元素并集截图，无元素则虚拟桌面</summary>
     private object Snapshot(JsonElement? p)
     {
         var result = _uia.Snapshot(GetString(p, "windowTitle"), GetInt(p, "maxElements", 500));
         if (GetBool(p, "includeScreenshot"))
         {
-            result.Screenshot = _capture.Screenshot(null, null, null, null, 1.0);
+            var union = CaptureService.UnionElementBounds(result.Elements.Select(e => e.Bbox));
+            if (union.HasValue)
+            {
+                var b = union.Value;
+                result.Screenshot = _capture.Screenshot(b.X, b.Y, b.W, b.H, 1.0);
+            }
+            else
+            {
+                result.Screenshot = _capture.Screenshot(null, null, null, null, 1.0);
+            }
         }
         return result;
     }

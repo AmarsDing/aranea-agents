@@ -50,6 +50,14 @@ export function channelStatusBadgeText(row: ChannelRow): string {
   return row.enabled ? statusText(row) : 'disabled';
 }
 
+/** 徽标颜色与文字同源：文字显示 connected 时颜色必须为 positive，
+ *  避免 DB status=error（测试失败残留）+ 运行时 connected 出现「红字 connected」 */
+export function channelStatusBadgeColor(row: ChannelRow): string {
+  if (!row.enabled) return 'grey';
+  if (isChannelConnected(row)) return 'positive';
+  return statusQuasarColor(row.status);
+}
+
 function statusText(row: ChannelRow): string {
   if (isChannelConnected(row)) return 'connected';
   return row.status || 'unknown';

@@ -129,6 +129,10 @@ type DeviceInfo struct {
 	ScreenW     int     `json:"screen_w"`
 	ScreenH     int     `json:"screen_h"`
 	ScaleFactor float64 `json:"scale_factor"`
+	VirtualX    int     `json:"virtual_x,omitempty"`
+	VirtualY    int     `json:"virtual_y,omitempty"`
+	VirtualW    int     `json:"virtual_w,omitempty"`
+	VirtualH    int     `json:"virtual_h,omitempty"`
 }
 
 // WindowInfo 窗口信息（禁区判定用）。

@@ -127,4 +127,28 @@ public class CaptureServiceTests
         Assert.Equal(100, b.W);
         Assert.Equal(50, b.H);
     }
+
+    [Fact]
+    public void UnionElementBounds_MergesValidBoxes()
+    {
+        var boxes = new[]
+        {
+            new BBoxDto { X = 10, Y = 20, W = 30, H = 40 },
+            new BBoxDto { X = 100, Y = 5, W = 50, H = 10 },
+            new BBoxDto { X = 0, Y = 0, W = 0, H = 0 },
+        };
+        var b = CaptureService.UnionElementBounds(boxes);
+        Assert.NotNull(b);
+        Assert.Equal(10, b!.Value.X);
+        Assert.Equal(5, b.Value.Y);
+        Assert.Equal(140, b.Value.W);
+        Assert.Equal(55, b.Value.H);
+    }
+
+    [Fact]
+    public void UnionElementBounds_Empty_ReturnsNull()
+    {
+        Assert.Null(CaptureService.UnionElementBounds(Array.Empty<BBoxDto>()));
+        Assert.Null(CaptureService.UnionElementBounds(null));
+    }
 }

@@ -4,7 +4,7 @@
 > **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
 > **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
 > **与精简版的关系**：本文件是 `module-cross-reference.md` 的扩展版本，新增日志架构相关模块卡片（§1.12a–1.12h）。
-> **最后校准日期**：2026-08-14（P0-7 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
+> **最后校准日期**：2026-08-15（P0-7 + P1-15 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
 
 ---
 
@@ -29,8 +29,8 @@
 | **13–16** | 架构图曾把 Memory 标成 12–16；仓库无 `13-*.md`…`16-*.md` 记忆三件套 | 不要新建 13–16 记忆模块文档 |
 | **38** | 架构图 MediaProvider；**无三件套**（无 `38-*.md`） | 代码在 `internal/provider/media` + `internal/tools/media`，见 §1.32 |
 | **39** | **文档 39 = Planner**（[`39-planner.md`](./39-planner.md)，`internal/agent/planner`） | **架构图 39 = Observation View**（`web/src/components/chat/observe`，无独立三件套）。改 Planner 勿动观测画布，反之亦然 |
-| **57 Marketplace** | **SUPERSEDED / 未实现**。无 `cmd/marketplace`、`internal/marketplace` | 禁止按 57 三件套新建商城服务。站内发现走 Ecosystem(30) |
-| **63 TTS** | **SUPERSEDED**。独立 TTS 模块未落地；流式 TTS **已并入 Voice(74)** | 禁止实现 `api/kratos/tts` / `internal/biz/tts`。语音合成走 `internal/voice/` + `internal/data/speech/` |
+| **57 Marketplace** | **SUPERSEDED / 未实现**。三件套文首已禁止开工：[`57-marketplace-platform.md`](./57-marketplace-platform.md) / [`.design.md`](./57-marketplace-platform.design.md) / [`.development.md`](./57-marketplace-platform.development.md)。无 `cmd/marketplace`、`internal/marketplace` | 禁止按 57 三件套新建商城服务。站内发现走 Ecosystem(30) |
+| **63 TTS** | **SUPERSEDED**。三件套文首已禁止开工：[`63-tts.md`](./63-tts.md) / [`.design.md`](./63-tts.design.md) / [`.development.md`](./63-tts.development.md)。独立 TTS 未落地；流式 TTS **已并入 Voice(74)** | 禁止实现 `api/kratos/tts` / `internal/biz/tts`。语音合成走 `internal/voice/` + `internal/data/speech/` |
 
 **P0 已修（禁止再当未修债抄进方案）**：裸 goroutine → `safego.Go`；Skill ZIP 导入走 `ImportSkillZip` proto（`skill_import_http.go` 已删）；Channel/Cron `SKIP LOCKED` 多副本；`SessionAdminStore` 已退出生产路径（改 `MemoryLayerPorts`）；Spirit 拆 Assembly/Orchestration/Delivery；`RuntimeTooling` 6 域分组；生产实时通道为 `v2_event` / `monitor_event`（features 禁止 import `realtime/useEnvelopeStream`）。
 
@@ -862,7 +862,7 @@
 | **共享类型** | `SelfImprovementRun`/`PatchOutcome`/`Diagnosis`/`PatcherOutput`/`CriticReport`/`GovernanceDecision`/`MetricsSnapshot`、`SandboxGateResult`、`EvolutionTargetPlatform`、`TriggerSource*` 常量 |
 | **事件生产** | 无领域事件；治理通知/审批请求经 `monitor_events`（service 适配器）；流程经 SIActivitySink（P4 接 monitor events） |
 | **事件消费** | 无 |
-| **数据库** | Postgres（self_improvement_runs / patch_outcomes，Ent Schema；observing 部分索引 20261120）；信号源读 model_token_usage_events / eval_runs |
+| **数据库** | Postgres（self_improvement_runs / patch_outcomes，Ent Schema；observing 部分索引 20261120；system_settings.si_risk_* + si_trigger_cooldown_multipliers）；信号源读 model_token_usage_events / eval_runs |
 | **前端对应** | P5 控制台（Phase 5）；当前经 MonitorPage Events 页可见治理/应用/回滚通知 |
 
 **⚠️ 开发注意（M73）**：
@@ -871,7 +871,7 @@
 3. 合并冲突转人工：`ErrSIMergeConflict`（errors.Is 判定）→ escalate 边 applying→awaiting_governance + approval 通知，禁止直接 failed。
 4. 观察窗并发上限 3 + 同核心路径串行：applied→observing 提升前检查 observing 计数与受影响目录重叠。
 5. 指标快照存 `run.Metadata`（`metrics_before`/`metrics_after`），无新列；KB 负面样本以 `FailurePatternSource=self_improvement` 表达（不加 negative 列）。
-6. 触发器降频：Outcome 归因后同 trigger_source 连续 3 次 neutral/regressed → `SkillEvolutionOrchestrator.SetCooldownScale` ×2（内存态，配置持久化待 Phase 5）。
+6. 触发器降频：Outcome 归因后同 trigger_source 连续 3 次 neutral/regressed → `SkillEvolutionOrchestrator.SetTriggerCooldownMultiplier` ×2（持久化 `system_settings.si_trigger_cooldown_multipliers`，启动 Hydrate，上限 8×）。生产默认 `daily_auto_apply_quota=0`（关闭 auto-apply）；开发配置可显式设 >0。
 7. 沙盒安全：diff 路径校验（拒绝对/反斜杠/`..`）、保护文件 fail-fast 不消耗 Gate、快照回滚指针 `snapshot/<runID>`。
 
 ---
@@ -1022,7 +1022,7 @@
 |------|------|
 | **上游依赖** | sidecar `internal/computeruse/sidecar/aranea-cua-win`；VLM / OmniParser；可选 `ARANEA_CUA_GROUNDER_URL` 专用 grounding |
 | **下游影响** | `agent` RuntimeTooling Bridges；Chat 确认门 |
-| **核心导出** | `internal/computeruse`（`gateway.go`、`client.go`、`vlm.go`、`specialist_grounder.go`）、`internal/biz/computeruse`（usecase + `session_state_machine.go`）、`internal/tools/computeruse`、`internal/service/computeruse.go` |
+| **核心导出** | `internal/computeruse`（`gateway.go`、`client.go`、`process.go` 看门狗重启回调、`vlm.go`、`specialist_grounder.go`）、`internal/biz/computeruse`（usecase + `FailActiveOnSidecarRestart` + 状态机）、`internal/tools/computeruse`、`internal/service/computeruse.go` |
 | **事件生产** | `computeruse.*` FlowLog；步骤可走 `monitor_event`（`computeruse.step`） |
 | **前端对应** | `web/src/features/computeruse/`（`CuStepStream.vue` 聊天气泡 + 历史只读回放；监控页 Desktop 页） |
 
@@ -1044,13 +1044,13 @@
 
 ### 1.40 Marketplace / M57 — **SUPERSEDED（未实现，禁止开工）**
 
-公网商城三件套仍在 [`57-marketplace-platform.md`](./57-marketplace-platform.md)，但 **`cmd/marketplace`、`internal/marketplace`、`web/src/features/marketplace` 均不存在**。不要按该文档创建独立商城服务。站内资产发现/安装走 **Ecosystem(30)**。
+公网商城三件套（文首均已 **SUPERSEDED**）仍保留以免断链：[`57-marketplace-platform.md`](./57-marketplace-platform.md) / [`.design.md`](./57-marketplace-platform.design.md) / [`.development.md`](./57-marketplace-platform.development.md)。**`cmd/marketplace`、`internal/marketplace`、`web/src/features/marketplace` 均不存在**。不要按该文档创建独立商城服务。站内资产发现/安装走 **Ecosystem(30)**。
 
 ---
 
 ### 1.41 TTS / M63 — **SUPERSEDED（能力并入 Voice 74）**
 
-独立 TTS 三件套 [`63-tts.md`](./63-tts.md) 为占位；无 `api/kratos/tts`、无 `internal/biz/tts`。流式 TTS 已在 Voice：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。catalog 里停用的 `tts` 工具种子 **不是** 本模块实现入口。禁止新建独立 TTS 服务。
+独立 TTS 三件套（文首均已 **SUPERSEDED**）仍保留以免断链：[`63-tts.md`](./63-tts.md) / [`.design.md`](./63-tts.design.md) / [`.development.md`](./63-tts.development.md)。无 `api/kratos/tts`、无 `internal/biz/tts`。流式 TTS 已在 Voice：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。catalog 里停用的 `tts` 工具种子 **不是** 本模块实现入口。禁止新建独立 TTS 服务。去向：[Voice M74](./74-voice-companion.md) / [设计](./74-voice-companion.design.md) / [开发计划](./74-voice-companion.development.md)。
 
 ---
 

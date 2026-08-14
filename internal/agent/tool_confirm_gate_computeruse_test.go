@@ -42,6 +42,18 @@ func TestToolConfirmGate_Decide_ComputerUseDangerBypassesGrants(t *testing.T) {
 	if !d.needsConfirm || d.reason != confirmReasonPolicyDanger {
 		t.Fatalf("danger launch decide = (%v,%q), want (true,%q)", d.needsConfirm, d.reason, confirmReasonPolicyDanger)
 	}
+
+	// send 整词命中；sender 不得因子串误伤。
+	d = g.decide(context.Background(), "sess-1", "agent-1", "computer_use_act",
+		[]byte(`{"target":"send email","action":"click"}`))
+	if !d.needsConfirm || d.reason != confirmReasonPolicyDanger {
+		t.Fatalf("send email decide = (%v,%q), want (true,%q)", d.needsConfirm, d.reason, confirmReasonPolicyDanger)
+	}
+	d = g.decide(context.Background(), "sess-1", "agent-1", "computer_use_act",
+		[]byte(`{"target":"sender name field","action":"click"}`))
+	if d.needsConfirm || d.reason != confirmReasonGrantPersisted {
+		t.Fatalf("sender decide = (%v,%q), want (false,%q)", d.needsConfirm, d.reason, confirmReasonGrantPersisted)
+	}
 }
 
 // 非 computer_use 工具不受内容强制确认影响（grant 行为不变）。

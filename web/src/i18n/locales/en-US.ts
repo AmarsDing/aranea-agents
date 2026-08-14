@@ -5055,7 +5055,7 @@ export default {
     diffSummary: '{files} files +{additions}/-{deletions}',
     emptyTitle: 'No self-improvement runs yet',
     emptyHint:
-      'Runs are created automatically when triggers detect platform issues; low-risk patches auto-apply, high-risk ones wait for approval here.',
+      'Runs are created automatically when triggers detect platform issues; low-risk patches auto-apply only when the daily quota is >0 (production default is 0 — all patches wait for approval here).',
     actionView: 'View detail',
     actionApprove: 'Approve',
     actionReject: 'Reject',
@@ -5188,14 +5188,14 @@ export default {
     rules: {
       action: 'Risk rules',
       title: 'Risk-classification rules',
-      subtitle: 'Configurable knobs of the governance router D6 rule set; 0 / empty inherits the code defaults.',
+      subtitle: 'Configurable knobs of the governance router D6 rule set; 0 / empty inherits the code defaults for line caps and globs. Daily quota 0 disables auto-apply.',
       lowMax: 'Low-risk line cap',
       lowMaxHint:
         'A single-file diff with ≤ this many lines and a soft kind classifies as low risk (R1); 0 = default (effective {value})',
       mediumMax: 'Medium-risk line cap',
       mediumMaxHint: 'Above this or hitting a core path classifies as high risk (R3); 0 = default (effective {value})',
       quota: 'Daily auto-apply quota',
-      quotaHint: 'Max low-risk patches auto-applied per day (D10); 0 = default (effective {value})',
+      quotaHint: 'Max low-risk patches auto-applied per day (D10); 0 = auto-apply OFF (production default). Set >0 to enable (effective {value}).',
       globs: 'Core path globs',
       globsHint: 'One doublestar pattern per line; empty = use the default core path set',
       effective: 'Effective values (normalized)',

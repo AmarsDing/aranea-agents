@@ -35,6 +35,7 @@ var simpleIconsSlug = map[string]string{
 	"wecom-app":       "wechat",
 	"openclaw-weixin": "wechat",
 	"wechat":          "wechat",
+	"wechat_ilink":    "wechat",
 	"telegram":        "telegram",
 	"whatsapp":        "whatsapp",
 	"facebook":        "messenger",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -272,9 +273,11 @@ type SkillEvolutionOrchestrator struct {
 	lg          loggateway.Logger
 
 	// cooldownMul holds per-trigger-source cooldown escalations (D8 自适应
-	// 降频：连续非 effective outcomes → 冷却期 ×2，内存态，上限 8×)。
-	cooldownMu  sync.RWMutex
-	cooldownMul map[string]float64
+	// 降频：连续非 effective outcomes → 冷却期 ×2，上限 8×)。内存为热路径；
+	// cooldownStore 非 nil 时跨重启持久化到 system_settings。
+	cooldownMu    sync.RWMutex
+	cooldownMul   map[string]float64
+	cooldownStore SITriggerCooldownStore
 }
 
 func NewSkillEvolutionOrchestrator(
@@ -297,20 +300,61 @@ func (o *SkillEvolutionOrchestrator) RegisterTrigger(trigger EvolutionTrigger) {
 	o.triggers = append(o.triggers, trigger)
 }
 
+// SITriggerCooldownStore persists per-trigger-source cooldown multipliers
+// across process restarts (D8). Empty/missing map = all multipliers 1×.
+// Stability:evolving
+type SITriggerCooldownStore interface {
+	LoadTriggerCooldownMultipliers(ctx context.Context) (map[string]float64, error)
+	SaveTriggerCooldownMultipliers(ctx context.Context, multipliers map[string]float64) error
+}
+
 // siMaxTriggerCooldownMultiplier caps the D8 adaptive cooldown escalation
 // (×2 per consecutive non-effective window, at most 8×).
 const siMaxTriggerCooldownMultiplier = 8.0
 
+// AttachCooldownStore binds the restart-durable store. Call once at
+// construction (before HydrateTriggerCooldowns). nil is a no-op (in-memory).
+func (o *SkillEvolutionOrchestrator) AttachCooldownStore(store SITriggerCooldownStore) {
+	if o == nil {
+		return
+	}
+	o.cooldownStore = store
+}
+
+// HydrateTriggerCooldowns loads persisted multipliers into memory (simulate
+// restart by constructing a new orchestrator and calling this). Missing store
+// or empty payload leaves all sources at 1×.
+func (o *SkillEvolutionOrchestrator) HydrateTriggerCooldowns(ctx context.Context) error {
+	if o == nil || o.cooldownStore == nil {
+		return nil
+	}
+	raw, err := o.cooldownStore.LoadTriggerCooldownMultipliers(ctx)
+	if err != nil {
+		return err
+	}
+	cleaned := sanitizeTriggerCooldownMultipliers(raw)
+	o.cooldownMu.Lock()
+	o.cooldownMul = cleaned
+	n := len(cleaned)
+	o.cooldownMu.Unlock()
+	if n > 0 {
+		o.lg.Info("orchestrator: trigger cooldown multipliers hydrated",
+			loggateway.StepID("evo_orchestrator.cooldown_hydrate"),
+			loggateway.Int("sources", n))
+	}
+	return nil
+}
+
 // SetTriggerCooldownMultiplier multiplies the cooldown of one trigger source
 // by factor (D8 触发器自适应降频). The effective multiplier is capped at
 // siMaxTriggerCooldownMultiplier. factor <= 1 is a no-op. Safe for concurrent
-// use; in-memory only (config persistence deferred, see development.md P4).
+// use. When a cooldown store is attached the map is persisted after each
+// successful escalation (failure is logged, memory still updated).
 func (o *SkillEvolutionOrchestrator) SetTriggerCooldownMultiplier(triggerSource string, factor float64) {
-	if triggerSource == "" || factor <= 1 {
+	if o == nil || triggerSource == "" || factor <= 1 {
 		return
 	}
 	o.cooldownMu.Lock()
-	defer o.cooldownMu.Unlock()
 	if o.cooldownMul == nil {
 		o.cooldownMul = map[string]float64{}
 	}
@@ -323,10 +367,46 @@ func (o *SkillEvolutionOrchestrator) SetTriggerCooldownMultiplier(triggerSource 
 		cur = siMaxTriggerCooldownMultiplier
 	}
 	o.cooldownMul[triggerSource] = cur
+	snapshot := cloneTriggerCooldownMultipliers(o.cooldownMul)
+	store := o.cooldownStore
+	o.cooldownMu.Unlock()
+
 	o.lg.Info("orchestrator: trigger cooldown escalated",
 		loggateway.StepID("evo_orchestrator.cooldown_escalate"),
 		loggateway.Str("trigger_source", triggerSource),
 		loggateway.Str("multiplier", fmt.Sprintf("%.1f", cur)))
+	if store == nil {
+		return
+	}
+	if err := store.SaveTriggerCooldownMultipliers(context.Background(), snapshot); err != nil {
+		o.lg.Warn("orchestrator: persist cooldown multipliers failed",
+			loggateway.StepID("evo_orchestrator.cooldown_persist"),
+			loggateway.Err(err))
+	}
+}
+
+// sanitizeTriggerCooldownMultipliers drops empty keys and non-finite / ≤1
+// values, and caps each remaining multiplier at siMaxTriggerCooldownMultiplier.
+func sanitizeTriggerCooldownMultipliers(in map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		if strings.TrimSpace(k) == "" || math.IsNaN(v) || math.IsInf(v, 0) || v <= 1 {
+			continue
+		}
+		if v > siMaxTriggerCooldownMultiplier {
+			v = siMaxTriggerCooldownMultiplier
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func cloneTriggerCooldownMultipliers(in map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 // triggerCooldownMultiplier returns the effective cooldown multiplier of one

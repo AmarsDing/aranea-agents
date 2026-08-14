@@ -27,7 +27,7 @@ func TestGetConfigSendsILinkUserID(t *testing.T) {
 	defer server.Close()
 
 	c := newClient(server.URL, "tk", loggateway.NewNoop())
-	if err := c.GetConfig(t.Context(), "bot@im.wechat", ""); err != nil {
+	if _, err := c.GetConfig(t.Context(), "bot@im.wechat"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -38,10 +38,10 @@ func TestTestConnection(t *testing.T) {
 	}))
 	defer server.Close()
 
-	if err := TestConnection(t.Context(), server.URL, "tk", "bot@im.wechat", nil); err != nil {
+	if err := TestConnection(t.Context(), nil, server.URL, "tk", "bot@im.wechat", loggateway.NewNoop()); err != nil {
 		t.Fatal(err)
 	}
-	if err := TestConnection(t.Context(), server.URL, "tk", "", nil); err == nil {
+	if err := TestConnection(t.Context(), nil, server.URL, "tk", "", loggateway.NewNoop()); err == nil {
 		t.Fatal("want error for empty ilinkUserID")
 	}
 }

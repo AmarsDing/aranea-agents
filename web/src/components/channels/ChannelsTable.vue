@@ -42,7 +42,7 @@
         <AppRegistryHoverTip :text="channelMetadata(props.row).last_error_message">
           <div class="row items-center no-wrap q-gutter-xs">
             <q-icon v-if="isChannelConnected(props.row)" name="circle" color="positive" size="10px" />
-            <q-badge rounded :color="props.row.enabled ? statusQuasarColor(props.row.status) : 'grey'">
+            <q-badge rounded :color="channelStatusBadgeColor(props.row)">
               {{ channelStatusBadgeText(props.row) }}
             </q-badge>
           </div>
@@ -132,13 +132,13 @@ import {
   catalogLabelForType,
   channelExternalID,
   channelMetadata,
+  channelStatusBadgeColor,
   channelStatusBadgeText,
   channelSupportsWebhook,
   channelType,
   formatChannelDate,
   isChannelConnected,
   receiveMode,
-  statusQuasarColor,
 } from './channelUi';
 
 const { t } = useI18n();

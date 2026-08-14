@@ -53,7 +53,7 @@ func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *b
 	if gurl := os.Getenv("ARANEA_CUA_GROUNDER_URL"); strings.TrimSpace(gurl) != "" {
 		specialist = cuinfra.NewSpecialistGrounder(gurl, lg)
 	}
-	return bizcu.NewComputerUseUsecase(bizcu.Deps{
+	uc := bizcu.NewComputerUseUsecase(bizcu.Deps{
 		Gateway:      cuinfra.NewGateway(mgr, lg),
 		Match:        cuinfra.NewMatcher(),
 		Vision:       cuinfra.NewOmniParserClient(omniURL, lg),
@@ -65,6 +65,8 @@ func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *b
 		Lg:           lg,
 		AuditShotDir: "bin/cua/audit",
 	})
+	mgr.SetOnRestart(uc.FailActiveOnSidecarRestart)
+	return uc
 }
 
 // ---------------------------------------------------------------------------

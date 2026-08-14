@@ -145,7 +145,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 
 **T5.2 落地备注（2026-07-31）**：
 - `provideSelfImprovementAdminUsecase` 已注册进 wire.Build（W6 备注回收），`SelfImprovementService` 经 `NewSelfImprovementService` 注入并注册 HTTP/gRPC（~~feature disabled 时 nil-guard 不注册~~ → T5.5 起改为路由常驻，disabled 返回 503 SELF_IMPROVEMENT）
-- 风险规则链：`SIRiskRules`（biz，0/空继承默认）→ `si_risk_rule_repo.go`（Raw SQL 读写 `system_settings`，迁移 20261121 四列）→ `provideSIRiskRules` 启动加载（失败回退 config/代码默认）→ `NewSIRiskClassifierWithRules`（Pipeline Govern 阶段）+ 治理路由日配额（DB > config > 默认）
+- 风险规则链：`SIRiskRules`（biz；行数/Glob 0/空继承默认，**DailyAutoQuota ≤0 = 关闭 auto-apply**）→ `si_risk_rule_repo.go`（Raw SQL 读写 `system_settings`，迁移 20261121 四列 + 20261217 冷却倍率 JSON）→ `provideSIRiskRules` 启动加载（失败回退 config/代码默认 0）→ `NewSIRiskClassifierWithRules`（Pipeline Govern 阶段）+ 治理路由日配额（DB 正数 > config.yaml 正数 > 代码默认 0）
 - 服务端校验：阈值 ≥0、low ≤ medium（均非零时）、glob 非空且过 doublestar.ValidatePattern；GetRiskRules 返回 configured（原始）+ effective（归一化）双视图
 
 **阶段验收（2026-07-31 通过）**：后端 `make api && make wire && make build` 绿；前端 `pnpm lint && pnpm test && pnpm build` 绿（store 单测覆盖）；竞赛四件套已同步实现口径。
@@ -218,6 +218,12 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 - `cmd/admin/wire.go` + `wire_gen.go`（W6：21 个 provider 接线 + `make wire` 重生成；`provideSelfImprovementAdminUsecase` 备好未注册，P5 消费）
 - `cmd/admin/workers.go`（注册 self_improve_drive/watchdog/outcome 三 worker，`goAfterReady`）
 - `configs/config.yaml`（self_improvement 注释示例补齐 observe_window/watchdog_interval/outcome_interval/drive_interval/stale_timeout/sandbox.repo_root）
+
+**修改（P1-14，2026-08-15）**：冷却倍率跨重启持久化 + 生产默认关闭 auto-apply。
+- `internal/biz/skill_evolution_unified.go`（`SITriggerCooldownStore` + Hydrate/persist）
+- `internal/data/si_trigger_cooldown_repo.go` + DDL `20261217_si_trigger_cooldown_multipliers.sql`
+- `internal/biz/self_improvement_router.go` / `self_improvement_risk.go` / `internal/conf/self_improvement.go`（配额 0 = 关闭 auto-apply）
+- `configs/config.yaml` / `docker/config/config.yaml`（`daily_auto_apply_quota: 0`）；`configs/config.local.yaml` 显式 5（DEV）
 
 ## 6. 验收标准（总）
 

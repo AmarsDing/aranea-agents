@@ -1,23 +1,29 @@
-# 63 TTS（Text-to-Speech）— 设计文档（占位）
+# 63 TTS（Text-to-Speech）— 设计文档（SUPERSEDED）
 
-> **状态**：占位文档（2026-06-17 创建，补全三件套）
+> **⚠️ SUPERSEDED（归档 · 禁止开工）**
+>
+> **不要实现独立 TTS 模块。** 无 `api/kratos/tts`、无 `internal/biz/tts`。禁止按本文候选架构 B/C 新建 `api/kratos/tts/v1/` 服务，也禁止按架构 A 去补 `internal/tools/tts/`。
+>
+> 流式 TTS **已并入 Voice (M74)**：[`74-voice-companion.md`](./74-voice-companion.md) / [设计](./74-voice-companion.design.md) / [开发计划](./74-voice-companion.development.md)。实现入口：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。
+>
+> 权威说明：[`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 编号表与 §1.41。文件保留以免断链。
+
+> **状态**：📦 已归档 / SUPERSEDED（原「占位文档」作废；2026-08-15）
 > **同系列**：需求 → [`63-tts.md`](./63-tts.md)；开发计划 → [`63-tts.development.md`](./63-tts.development.md)
 
 ---
 
 ## 0. 文档导读
 
-本设计文档描述 **TTS 语音合成** 的技术架构、API 契约、数据模型与前端组件设计。当前 TTS 作为独立模块**未规划落地**，本文档为占位，待启动 TTS 功能时补全。
+本设计曾描述独立 TTS 模块的候选架构。**该模块已 SUPERSEDED**：禁止按架构 B/C 新建 `api/kratos/tts/v1/`，禁止按架构 A 补 `internal/tools/tts/`。流式 TTS 在 Voice (M74)：[`74-voice-companion.design.md`](./74-voice-companion.design.md)。
 
-**当前代码现状**（详见开发计划 §1 代码锚点）：
-- 无独立 TTS 服务 proto / biz / data / service 实现
-- 仅存在一个**停用**的 `tts` 内置工具注册项（media 类，opt-in 策略）
+**代码现状**：无独立 TTS proto / biz / data / service。catalog 停用的 `tts` 工具种子 **不是** 实现入口。
 
 ---
 
-## 1. 架构设计（待定）
+## 1. 架构设计（已归档 · 勿按此实现）
 
-> 占位：TTS 功能未启动，以下为未来实现时的候选架构方向，待启动时定稿。
+> **已归档**：以下候选架构 **不是** 待定方案。独立 TTS 不落地；播报管线见 M74。
 
 ### 1.1 候选架构 A：工具化（当前代码已支持）
 
@@ -30,7 +36,7 @@ Agent → tts 工具调用 → TTS Provider API → 语音文件 → Artifact �
 - **优点**：零新增服务层；复用工具策略（allow/deny/profile）
 - **缺点**：仅支持 Agent 主动调用，不支持用户点击「朗读」被动触发
 
-### 1.2 候选架构 B：独立 TTS 服务（未实现）
+### 1.2 候选架构 B：独立 TTS 服务（不存在 · 禁止创建）
 
 新增 `api/kratos/tts/v1/` proto + service / biz / data，支持用户被动触发语音合成。
 
@@ -58,9 +64,9 @@ Agent → tts 工具调用 → TTS Provider API → 语音文件 → Artifact �
 
 ---
 
-## 3. API 契约（待定）
+## 3. API 契约（独立 TTS 不存在 · 禁止创建）
 
-> 占位：当前无 TTS 独立 proto。`tts` 工具的参数 schema 已在种子中定义。
+> **已归档**：无 TTS 独立 proto。禁止补 `api/kratos/tts/v1/`。`tts` 工具种子不是实现入口。
 
 ### 3.1 `tts` 工具参数 schema（已存在）
 
@@ -78,38 +84,38 @@ Agent → tts 工具调用 → TTS Provider API → 语音文件 → Artifact �
 - 来源：`internal/data/builtin_tools_seed.go`（`tts` 行的 `paramsSchema`）
 - 工具元数据：`displayName="文本转语音"`、`category="media"`、`riskLevel="medium"`、`enabled=false`
 
-### 3.2 候选独立 RPC（未实现）
+### 3.2 候选独立 RPC（不存在 · 禁止创建）
 
 | RPC | 方法 | 说明 |
 |-----|------|------|
 | `Synthesize` | `POST /v1/tts:synthesize` | 文本 → 语音（同步或流式） |
 | `ListVoices` | `GET /v1/tts/voices` | 列出可用音色 |
 
-> 待启动时按 `api/kratos/` 既有 proto 约定补全。
+> 禁止按 `api/kratos/` 补独立 TTS proto。语音合成契约见 [`74-voice-companion.design.md`](./74-voice-companion.design.md)。
 
 ---
 
-## 4. 数据模型（待定）
+## 4. 数据模型（已归档）
 
-> 占位：当前无 TTS 独立 Ent Schema。候选方案：
+> **已归档**：无独立 TTS Ent Schema。**不要**新增。配置与留档见 M74 / Artifact 27。
 
 - **TTS 配置存储**：复用 `AgentRuntimeSetting` 的扩展字段，或新增 `tts_config` JSON 字段（见 [`5-agent-setting.md` §8](./5-agent-setting.md#8-tabagent-语音合成tts) 「存储：TTS 配置或沙箱配置扩展，结构由后端约定」）
 - **语音文件存储**：复用 Artifact 模块（[`27-artifact`](./27-artifact.md)）的云存储能力
 
 ---
 
-## 5. 前端组件设计（待定）
+## 5. 前端组件设计（已归档）
 
-> 占位：TTS 前端组件未实现。候选组件：
+> **已归档**：不要按 63 做 Chat「朗读」按钮。播报 UI 在 M74 Companion。
 
 | 组件 | 位置 | 说明 |
 |------|------|------|
 | TTS 配置对话框 | Agent 设置 Tab「Agent」§8 | 见 [`5-agent-setting.md` §8](./5-agent-setting.md#8-tabagent-语音合成tts) |
-| 语音播放器 | Chat 消息操作区 | 「朗读」按钮 + 音频播放控件（未实现） |
+| 语音播放器 | Chat 消息操作区 | 历史候选；**不要实现**。播报在 M74 |
 
 ---
 
-## 6. 技术选型（待定）
+## 6. 技术选型（已归档 · 以 M74 为准）
 
 | 项 | 候选 | 备注 |
 |----|------|------|
@@ -122,7 +128,7 @@ Agent → tts 工具调用 → TTS Provider API → 语音文件 → Artifact �
 
 ## 7. 状态机（无）
 
-当前 TTS 无状态机需求（工具调用为无状态单次请求）。若引入异步合成任务，需补全状态机（pending → synthesizing → ready / failed）。
+当前独立 TTS 无状态机。异步合成任务 **不要** 按 63 补；播报调度见 M74 `tts_scheduler.go`。
 
 ---
 
@@ -130,10 +136,11 @@ Agent → tts 工具调用 → TTS Provider API → 语音文件 → Artifact �
 
 | 模块 | 关系 |
 |------|------|
-| [`23-tools`](./23-tools.design.md) | `tts` 工具注册、策略（opt-in）、分组（media） |
-| [`5-agent-setting`](./5-agent-setting.md) §8 | TTS 配置 UI（交互规格在需求文档） |
-| [`27-artifact`](./27-artifact.md) | 语音文件存储（候选复用） |
+| [`23-tools`](./23-tools.design.md) | catalog `tts` 种子（opt-in）；**不是**实现入口 |
+| [`5-agent-setting`](./5-agent-setting.md) §8 | 历史 UI 规格；配置以 M74 为准 |
+| [`27-artifact`](./27-artifact.md) | 语音文件存储（M74 留档复用） |
+| [`74-voice-companion`](./74-voice-companion.design.md) | **现网 TTS**：流式播报管线 |
 
 ---
 
-*文档版本：2026-06-17 — 占位创建；待 TTS 功能启动时补全架构、API、数据模型、前端组件设计。*
+*文档版本：2026-08-15 — SUPERSEDED 归档；能力在 [`74-voice-companion.design.md`](./74-voice-companion.design.md)。文件保留以免断链。*

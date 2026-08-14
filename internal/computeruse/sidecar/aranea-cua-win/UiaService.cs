@@ -120,11 +120,15 @@ public sealed class UiaService : IDisposable
     }
 
     /// <summary>按 ref 直调元素 Invoke 模式；跨代/失效返回 -32001，不支持 Invoke 返回 -32002</summary>
-    public object Invoke(string refText)
+    public object Invoke(string refText, int expectedGeneration = -1)
     {
         if (!RefParser.TryParse(refText, out var gen, out _))
         {
             throw new CuaException(JsonRpc.ElementNotFound, $"ref 格式非法: {refText}");
+        }
+        if (RefParser.ParamGenerationMismatch(expectedGeneration, gen))
+        {
+            throw new CuaException(JsonRpc.ElementNotFound, $"generation 与 ref 不一致（param={expectedGeneration}，ref 代={gen}）");
         }
         if (gen != _generation)
         {

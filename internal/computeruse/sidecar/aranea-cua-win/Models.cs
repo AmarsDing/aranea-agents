@@ -68,21 +68,25 @@ public sealed class DisplayDto
     public bool IsPrimary { get; set; }
 }
 
-/// <summary>主屏信息</summary>
-public sealed class ScreenDto
-{
-    public int Width { get; set; }
-    public int Height { get; set; }
-    public double ScaleFactor { get; set; }
-}
+    /// <summary>主屏信息（物理像素；VirtualScreen 另含原点）</summary>
+    public sealed class ScreenDto
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public double ScaleFactor { get; set; }
+    }
 
-/// <summary>device.info 返回</summary>
-public sealed class DeviceInfoResultDto
-{
-    public string Platform { get; set; } = "windows";
-    public ScreenDto Screen { get; set; } = new();
-    public List<DisplayDto> Displays { get; set; } = new();
-}
+    /// <summary>device.info 返回</summary>
+    public sealed class DeviceInfoResultDto
+    {
+        public string Platform { get; set; } = "windows";
+        public ScreenDto Screen { get; set; } = new();
+        /// <summary>虚拟桌面（含所有显示器；不改变 Screen 主屏尺寸，避免 VLM 映射错位）</summary>
+        public ScreenDto? VirtualScreen { get; set; }
+        public List<DisplayDto> Displays { get; set; } = new();
+    }
 
 /// <summary>窗口列表项</summary>
 public sealed class WindowDto
@@ -131,4 +135,11 @@ public static class RefParser
 
     /// <summary>生成 ref 文本</summary>
     public static string Format(int generation, int index) => $"g{generation}.e{index}";
+
+    /// <summary>
+    /// Go 传入的 generation 与 ref 内嵌代不一致时视为过期（-32001）。
+    /// expectedGeneration &lt; 0 表示调用方未传，跳过此项。
+    /// </summary>
+    public static bool ParamGenerationMismatch(int expectedGeneration, int refGeneration)
+        => expectedGeneration >= 0 && expectedGeneration != refGeneration;
 }

@@ -48,20 +48,20 @@
 - P1：stdio JSON-RPC 2.0（sidecar 为 Go 核心拉起的子进程，stdin/stdout 通信，stderr 进进程日志）
 - 每行一个 JSON 对象：`{"jsonrpc":"2.0","id":N,"method":"...","params":{...}}` / 响应 `{"id":N,"result":{...}}` 或 `{"id":N,"error":{"code":N,"message":"..."}}`
 - 截图等二进制以 base64 内联于 result（P1 本机数据量可接受）
-- 心跳：Go 核心每 5s 发 `device.ping`，连续 3 次超时判定僵死 → 看门狗终止重启
+- 心跳：Go 核心每 5s 发 `device.ping`，连续 3 次超时判定僵死 → 看门狗终止并重启 sidecar，同时 `FailActiveOnSidecarRestart` 把进行中会话标 cancelled（保持 activeByAgent，禁止自动重建）
 
 ### 2.2 方法集
 
 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|
 | `device.ping` | — | `{ok:true}` | 心跳 |
-| `device.info` | — | `{platform, screen:{width,height,scaleFactor}, displays[]}` | 物理像素与 DPI |
-| `perception.snapshot` | `{windowTitle?, includeScreenshot?, maxElements?}` | `{elements:UIElement[], screenshotRef?, generation:N}` | a11y 元素树（扁平化+ref） |
+| `device.info` | — | `{platform, screen:{width,height,scaleFactor}, virtualScreen:{x,y,width,height,scaleFactor}, displays[]}` | `screen` 仍为主屏（VLM 映射）；`virtualScreen` 为全部显示器并集 |
+| `perception.snapshot` | `{windowTitle?, includeScreenshot?, maxElements?}` | `{elements:UIElement[], screenshot?, generation:N}` | a11y 元素树；`includeScreenshot` 裁元素 bbox 并集，无元素则虚拟桌面 |
 | `perception.screenshot` | `{region?:{x,y,w,h}, zoom?:float}` | `{pngBase64, width, height, scaleFactor}` | 默认虚拟桌面全屏（含所有显示器） |
-| `action.invoke` | `{ref}` | `{ok, via:"invoke"}` | 元素级直调（无坐标）；`IsEnabled=false` → `-32002` |
+| `action.invoke` | `{ref, generation?}` | `{ok, via:"invoke"}` | 元素级直调；`generation` 与 ref 代不一致或跨代 → `-32001`；`IsEnabled=false` → `-32002` |
 | `action.click` | `{x,y,button:"left|right|middle",clickCount}` | `{ok}` | 坐标级（物理像素）；注入前校验前台窗口 |
-| `action.type` | `{text, intervalMs?}` | `{ok}` | 文本注入（SendInput Unicode） |
-| `action.key` | `{combo:"ctrl+s"}` | `{ok}` | 组合键 |
+| `action.type` | `{text, intervalMs?}` | `{ok}` | 文本注入；无前台窗口 → `-32002` |
+| `action.key` | `{combo:"ctrl+s"}` | `{ok}` | 组合键；无前台窗口 → `-32002` |
 | `action.wheel` | `{x,y,delta}` | `{ok}` | 滚轮；注入前校验前台窗口 |
 | `action.drag` | `{from:{x,y},to:{x,y},durationMs?}` | `{ok}` | 拖拽；注入前校验前台窗口 |
 | `window.list` | — | `{windows:[{hwnd,title,processName,isForeground,bounds}]}` | |
@@ -142,7 +142,7 @@ type AuditStore interface {             // 审计落库（data 层实现）
 
 | 文件 | 职责 |
 |------|------|
-| `process.go` | sidecar 子进程拉起/看门狗/自动重启（心跳 5s×3）；K7 进程日志 |
+| `process.go` | sidecar 子进程拉起/看门狗/自动重启（心跳 5s×3）；重启后回调 Usecase 取消进行中会话；K7 进程日志 |
 | `client.go` | CDP stdio JSON-RPC client（id 复用、并发 mux、调用超时 10s/动作 30s） |
 | `gateway.go` | 实现 biz.DeviceGateway（组合 client） |
 | `matcher.go` | a11y 模糊匹配器：归一化（小写/去空白/去标点/全半角）→ 精确 → 包含 → 编辑距离 ≤2；候选打分，top1 与 top2 分差 ≥0.2 才判命中 |
@@ -215,11 +215,11 @@ Act(target)
 | 机制 | 实现位置 |
 |------|---------|
 | 确认门 | 工具 RequiresConfirmation + 确认门 danger 短路（`computerUseDangerHit` 命中敏感词时绕过授权链）+ Usecase 内 `Policy.IsDanger` 标记审计/事件 |
-| 敏感词表 | `internal/biz/computeruse/policy.go` 内置默认表（删除/支付/转账/发送/确认支付/格式化/永久删除…），配置可覆盖 |
-| 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾…）→ act 拒绝；**窗口枚举失败 fail-closed**（视为无法确认禁区，拒绝动作） |
+| 敏感词表 | `internal/biz/computeruse/policy.go` 内置默认表（删除/支付/转账/发送/确认支付/格式化/永久删除…）；拉丁词长度 ≤5（send/pay/erase）按整词匹配，避免 sender/payment 误伤；配置可覆盖 |
+| 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾与网银控件：entersafe/watchdata/unionpay/icbccab/ccbnetpay/aliedit…）→ act 拒绝；**窗口枚举失败 fail-closed**（视为无法确认禁区，拒绝动作） |
 | 预算 | Session.Budget，`beginStep` 同锁原子完成「忙/终态检查 + StepsUsed 自增 + 状态转换」（M2 审查 F3：杜绝并发 Act 双计费泄漏）；预算被拒的尝试步以 `Index=stepsUsed+1` 落审计，单调不撞号；耗尽后保持 activeByAgent，禁止自动重建 |
 | 干跑 | req.DryRun=true → 只执行 grounding + SoM 标注返回计划，不注入 |
-| 急停 | `KillSwitch`：context cancel + 会话 cancelled + 保持映射；**已发出的 sidecar SendInput 无法中途撤回**；前端按钮 → API |
+| 急停 | `KillSwitch`：context cancel + 会话 cancelled + 保持映射；**已发出的 sidecar SendInput 无法中途撤回**；看门狗重启走同一路径；前端按钮 → API |
 
 ### 3.6 数据模型
 
@@ -253,7 +253,7 @@ Act(target)
 ### 3.8 前端设计（P1 最简视图）
 
 - `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent；挂载时 `ListComputerUseSteps` 回补）
-- 聊天气泡内嵌：`TurnContainer.vue` 在 steps 含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时渲染 CuStepStream。运行中 turn 显示急停；历史 turn `readonly`（隐藏急停，审计回放）。路径徽标 i18n：a11y=精确 / vision=视觉 / vlm_direct=视觉直判；`degraded` 徽标=视觉服务降级；急停文案「已被用户终止」
+- 聊天气泡内嵌：`TurnContainer.vue` 在 steps 含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时渲染 CuStepStream。运行中 turn 显示急停；历史 turn `readonly`（隐藏急停，审计回放）。路径徽标 i18n：a11y=绿色「精确」 / vision=视觉 / vlm_direct=视觉直判；`degraded` 徽标=视觉服务降级；急停文案「已被用户终止」
 - 监控页 Desktop 页：输入会话 ID + 只读 `CuStepStream`；sidecar down 横幅消费 `GetComputerUseStatus`
 - ToolsPage 自动展示新工具（种子分类 computeruse，分类筛选项含 computeruse）
 
@@ -286,7 +286,7 @@ Proto：`api/kratos/computeruse/v1/computeruse.proto`（`make api` 生成；服�
 | 无 GPU 机器 OmniParser 8-15s/帧 | 高 | 不进关键路径；默认 VLM 直判路径；OmniParser 指远程 GPU |
 | UIA 盲区（Electron/自绘） | 中 | 视觉兜底 + zoom 裁剪；后续 quirks 记忆 |
 | DPI/多屏坐标错乱 | 中 | sidecar manifest per-monitor V2 aware；协议统一物理像素 |
-| sidecar 崩溃僵死 | 中 | 心跳看门狗 + 自动重启 + 任务失败回落 |
+| sidecar 崩溃僵死 | 中 | 心跳看门狗 + 自动重启 + `FailActiveOnSidecarRestart` 取消进行中会话 |
 | 误操作真实损害 | 高 | 确认门/敏感词/禁区/预算/干跑/急停全量；评测用 VM 快照 |
 | ref 跨代错位点击 | 中 | generation 校验，跨代强制重新感知 |
 

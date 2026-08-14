@@ -15,7 +15,6 @@ const (
 	siDefaultPerfTokenFactor        = 1.5
 	siDefaultEvalThreshold          = 0.10
 	siDefaultMaxDiffLines           = 500
-	siDefaultDailyAutoApplyQuota    = 5
 	siDefaultMaxAttempts            = 3
 	siDefaultGateG1Timeout          = 5 * time.Minute
 	siDefaultGateG2Timeout          = 10 * time.Minute
@@ -104,12 +103,14 @@ func (c *SelfImprovement) SIMaxDiffLines() int {
 	return siDefaultMaxDiffLines
 }
 
-// SIDailyAutoApplyQuota is the daily auto-apply quota (default 5).
+// SIDailyAutoApplyQuota is the daily auto-apply quota. 0 (unset / negative /
+// explicit zero) disables auto-apply — production and code zero-value default.
+// Operators enable auto-apply by setting a positive quota (D10 recommended 5).
 func (c *SelfImprovement) SIDailyAutoApplyQuota() int {
 	if v := int(c.GetPatch().GetDailyAutoApplyQuota()); v > 0 {
 		return v
 	}
-	return siDefaultDailyAutoApplyQuota
+	return 0
 }
 
 // SIMaxAttempts is the patch-verify retry cap (default 3).

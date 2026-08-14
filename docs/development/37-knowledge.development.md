@@ -1434,6 +1434,8 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | 低置信 pending 逐条过门 | ✅ | `writeback_pending.go`；`WritebackReviewDialog.vue` |
 | 写回落点只读解析 | ✅ | `LookupWriteBackHome`；GET `/v1/knowledge/writeback-home` |
 
+本轮回归（2026-08-15）：`go test ./internal/biz/knowledge/ ./internal/knowledge/ ./internal/cronrunner/jobs/ ./internal/event/` 通过。词法金标 `TestKnowledgeRepo_SearchChunksBM25_GoldBilingual` 在 `ARANEA_TEST_PG_DSN=postgres://postgres:123456@127.0.0.1:5432/aranea_test?sslmode=disable` 下通过（2 字「灰度」0 命中，已记录）。前端 `commands.spec.ts` 13 例通过。`go test ./internal/service` 仍因既有 `internal/tools/twinops` 编译失败，与本轮无关。
+
 ### 运行时验证结论（2026-08-13 协调员浏览器实测）
 
 - **实测通过**：M2 布局切换（力导向 ⇄ 星系盘平滑过渡 + 刷新保持）；M4 单击聚焦 + FocusCard（打开文档 / 重新向量化按钮）；M5 图例隐藏/恢复往返；B1 入口①（文件行菜单 → 确认对话框 → 后端受理，README.md 重嵌入至 indexed）；B1 入口②（FocusCard 按钮）；B2 菜单对已有语义层的库正确隐藏（条件渲染符合预期）。

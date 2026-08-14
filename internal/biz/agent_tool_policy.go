@@ -185,6 +185,26 @@ var registryOptInOnlyKeys = map[string]bool{
 	"computer_use_act":        true,
 	"computer_use_launch":     true,
 	"computer_use_session":    true,
+	// twin_*/gns3_*（方案10 TwinOps 工具集，internal/tools/twinops）种子为
+	// enabled=false 的 opt-in-only 工具：白名单岗位经 allow JSON 显式启用；
+	// 不入本表将被 applyRegistryAdminDenials 对全员硬 deny，授权永远不生效。
+	"twin_alarm_query":        true,
+	"twin_alarm_get":          true,
+	"twin_alarm_ack":          true,
+	"twin_alarm_rule_get":     true,
+	"twin_line_status":        true,
+	"twin_line_events":        true,
+	"twin_line_probe":         true,
+	"twin_device_get":         true,
+	"twin_device_search":      true,
+	"twin_device_metrics":     true,
+	"twin_collector_status":   true,
+	"twin_remediation_status": true,
+	"twin_inspection_query":   true,
+	"gns3_health_check":       true,
+	"gns3_exec":               true,
+	"gns3_fault_inject":       true,
+	"gns3_fault_clear":        true,
 }
 
 func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {

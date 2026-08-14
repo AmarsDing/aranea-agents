@@ -18,6 +18,11 @@ func TestPolicy_IsDanger(t *testing.T) {
 		{"press", map[string]any{"combo": "ctrl+s"}, false},
 		{"点 击 删 除", nil, true},     // 空白归一化后仍命中
 		{"DELETE FILE", nil, true}, // 大小写归一化
+		{"send email", nil, true},
+		{"sender name field", nil, false}, // send 不得命中 sender
+		{"resend the form", nil, false},
+		{"pay now", nil, true},
+		{"payment summary", nil, false},
 	}
 	for _, c := range cases {
 		if got := p.IsDanger(c.target, c.args); got != c.want {
@@ -45,6 +50,8 @@ func TestPolicy_IsBlockedProcess(t *testing.T) {
 		{"keepass.exe", true},
 		{"KeePassXC.EXE", true}, // 大小写不敏感
 		{"1password.exe", true},
+		{"icbccab.exe", true},
+		{"EnterSafe.exe", true},
 		{"notepad.exe", false},
 		{"explorer.exe", false},
 	}

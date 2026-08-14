@@ -185,3 +185,47 @@ func TestOrchestrator_CooldownMultiplier_Capped(t *testing.T) {
 		t.Fatalf("factor<=1 不应生效, 实际 %.1f", m)
 	}
 }
+
+type memCooldownStore struct {
+	m map[string]float64
+}
+
+func (s *memCooldownStore) LoadTriggerCooldownMultipliers(_ context.Context) (map[string]float64, error) {
+	out := make(map[string]float64, len(s.m))
+	for k, v := range s.m {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func (s *memCooldownStore) SaveTriggerCooldownMultipliers(_ context.Context, multipliers map[string]float64) error {
+	s.m = make(map[string]float64, len(multipliers))
+	for k, v := range multipliers {
+		s.m[k] = v
+	}
+	return nil
+}
+
+// 冷却写入后新编排器实例（模拟重启）仍读到同一倍率。
+func TestOrchestrator_CooldownMultiplier_PersistsAcrossRestart(t *testing.T) {
+	store := &memCooldownStore{}
+	orch1 := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch1.AttachCooldownStore(store)
+	orch1.SetTriggerCooldownMultiplier(TriggerSourceErrorCluster, 2)
+	orch1.SetTriggerCooldownMultiplier(TriggerSourceErrorCluster, 2) // 4×
+	if m := orch1.triggerCooldownMultiplier(TriggerSourceErrorCluster); m != 4 {
+		t.Fatalf("before restart want 4, got %.1f", m)
+	}
+
+	orch2 := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch2.AttachCooldownStore(store)
+	if err := orch2.HydrateTriggerCooldowns(context.Background()); err != nil {
+		t.Fatalf("HydrateTriggerCooldowns: %v", err)
+	}
+	if m := orch2.triggerCooldownMultiplier(TriggerSourceErrorCluster); m != 4 {
+		t.Fatalf("after restart want 4, got %.1f", m)
+	}
+	if m := orch2.triggerCooldownMultiplier("other"); m != 1 {
+		t.Fatalf("unset source after restart want 1, got %.1f", m)
+	}
+}

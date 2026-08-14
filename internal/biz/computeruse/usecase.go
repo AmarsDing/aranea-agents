@@ -211,6 +211,32 @@ func (u *ComputerUseUsecase) KillSwitch(ctx context.Context, sessionID string) e
 	return nil
 }
 
+// FailActiveOnSidecarRestart sidecar 看门狗重启后取消所有非终态会话。
+// 经 KillSwitch 保持 activeByAgent，禁止自动重建直至显式 session.start（A7/A8）。
+func (u *ComputerUseUsecase) FailActiveOnSidecarRestart() {
+	if u == nil {
+		return
+	}
+	u.mu.Lock()
+	ids := make([]string, 0, len(u.sessions))
+	for id, s := range u.sessions {
+		if s != nil && !IsTerminal(s.Status) {
+			ids = append(ids, id)
+		}
+	}
+	u.mu.Unlock()
+	if len(ids) == 0 {
+		return
+	}
+	u.d.Lg.Warn("sidecar 重启，取消进行中会话",
+		loggateway.StepID("computeruse.sidecar.restart"),
+		loggateway.Int("count", len(ids)))
+	ctx := context.Background()
+	for _, id := range ids {
+		_ = u.KillSwitch(ctx, id)
+	}
+}
+
 // GetSession 查询会话。
 func (u *ComputerUseUsecase) GetSession(_ context.Context, sessionID string) (Session, error) {
 	u.mu.Lock()

@@ -39,8 +39,8 @@ func TestSelfImprovement_NilAndZeroDefaults(t *testing.T) {
 		if got := c.SIMaxDiffLines(); got != 500 {
 			t.Errorf("%s: SIMaxDiffLines = %d, want 500", name, got)
 		}
-		if got := c.SIDailyAutoApplyQuota(); got != 5 {
-			t.Errorf("%s: SIDailyAutoApplyQuota = %d, want 5", name, got)
+		if got := c.SIDailyAutoApplyQuota(); got != 0 {
+			t.Errorf("%s: SIDailyAutoApplyQuota = %d, want 0（默认关闭 auto-apply）", name, got)
 		}
 		if got := c.SIMaxAttempts(); got != 3 {
 			t.Errorf("%s: SIMaxAttempts = %d, want 3", name, got)
@@ -139,8 +139,8 @@ func TestSelfImprovement_PatchAndSandboxNegativeFallsBack(t *testing.T) {
 	if got := c.SIMaxDiffLines(); got != 500 {
 		t.Errorf("SIMaxDiffLines = %d, want 500（负值回退默认）", got)
 	}
-	if got := c.SIDailyAutoApplyQuota(); got != 5 {
-		t.Errorf("SIDailyAutoApplyQuota = %d, want 5", got)
+	if got := c.SIDailyAutoApplyQuota(); got != 0 {
+		t.Errorf("SIDailyAutoApplyQuota = %d, want 0（负值 = 关闭 auto-apply）", got)
 	}
 	if got := c.SIMaxAttempts(); got != 3 {
 		t.Errorf("SIMaxAttempts = %d, want 3", got)

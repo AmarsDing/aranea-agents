@@ -265,6 +265,9 @@ func TestNormalizeSIRiskRules(t *testing.T) {
 	if custom.MediumMaxLines != def.MediumMaxLines || len(custom.CorePathGlobs) != len(def.CorePathGlobs) {
 		t.Errorf("unset fields should inherit defaults: got %+v", custom)
 	}
+	if NormalizeSIRiskRules(SIRiskRules{}).DailyAutoQuota != 0 {
+		t.Error("zero DailyAutoQuota must stay 0 (auto-apply off), not inherit D10 cap")
+	}
 }
 
 func TestSIRiskClassifier_ChannelMapping(t *testing.T) {

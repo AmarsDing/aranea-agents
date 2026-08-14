@@ -170,8 +170,12 @@ E2E 关键证据（2026-08-13 运行）：`act-type path=a11y verify.Changed=tru
 | S3/S9/S12 | `screenshot_ref` 落盘 + 虚拟桌面截图 + `degraded` | AuditShotDir=`bin/cua/audit`；C# 单测 bounds | ✅ |
 | S10 | 视觉路径 `drag` | `executeAtPoint` to_x/to_y | ✅ |
 | S11 | 坐标注入校验前台窗口 | sidecar WindowFromPoint + SetForegroundWindow | ✅ |
-| FE | 路径徽标 i18n、历史只读回放、监控 Desktop 页 | TurnContainer completed 内嵌 readonly；GetComputerUseStatus 横幅 | ✅ |
+| FE | 路径徽标 i18n、历史只读回放、监控 Desktop 页 | TurnContainer completed 内嵌 readonly；GetComputerUseStatus 横幅；a11y 绿徽标「精确」 | ✅ |
 | DOC | 75 三件套 + 交叉参考 | A7 会话语义、focus、fail-closed、retry | ✅ |
+| H1 | 拉丁短词整词匹配 | `send` 不命中 `sender`；`pay` 不命中 `payment` | ✅ |
+| H2 | 银行 U 盾/网银进禁区 | entersafe/watchdata/unionpay/icbccab/ccbnetpay/aliedit | ✅ |
+| H3 | 看门狗重启取消会话 | `Manager.SetOnRestart` → `FailActiveOnSidecarRestart` | ✅ |
+| H4 | TypeText/Key 无前台拒绝；Invoke 校验 generation；snapshot 内联图裁元素并集；device.info 附 virtualScreen | C# 单测 + gateway 映射 | ✅ |
 
 M1.5 B2「failed 解除映射并自动重建」已由本 Phase B3/A7 取代：仅 `SessionDone` 解除映射。
 

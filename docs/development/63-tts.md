@@ -1,15 +1,23 @@
-# 63 TTS（Text-to-Speech）— 需求文档（占位）
+# 63 TTS（Text-to-Speech）— 需求文档（SUPERSEDED）
 
-> **状态**：占位文档（2026-05-17 治理；2026-06-17 重组三件套边界）
+> **⚠️ SUPERSEDED（归档 · 禁止开工）**
+>
+> **不要实现独立 TTS 模块。** 无 `api/kratos/tts`、无 `internal/biz/tts`。禁止新建独立 TTS 服务，也禁止按本文把停用的 `tts` 工具种子补成执行逻辑。
+>
+> 流式 TTS **已并入 Voice (M74)**：[`74-voice-companion.md`](./74-voice-companion.md) / [设计](./74-voice-companion.design.md) / [开发计划](./74-voice-companion.development.md)。实现入口：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。
+>
+> 权威说明：[`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 编号表与 §1.41。文件保留以免断链；下文用户故事 / 功能清单 / 验收框已归档（非 ⏳/❌ 待办）。
+
+> **状态**：📦 已归档 / SUPERSEDED（原「占位文档」作废；2026-08-15）
 > **同系列**：设计 → [`63-tts.design.md`](./63-tts.design.md)；开发计划 → [`63-tts.development.md`](./63-tts.development.md)
 
 ---
 
 ## 0. 文档导读
 
-本 PRD 描述 **TTS 语音合成** 的产品需求与验收准则。技术结构、API 契约、数据模型在设计文档；代码锚点、阶段任务、进度在开发计划。本文档不重复设计/计划内容，只在必要处给出引用。
+本 PRD 曾描述独立 TTS 模块的产品需求。**该模块已 SUPERSEDED**：独立 TTS 未落地；流式 TTS 在 Voice (M74)。下文用户故事与清单仅作历史记录。
 
-**当前状态**：TTS 作为独立模块**未规划落地**，无对应 biz / data / service 实现，proto 中亦无 TTS 服务。此文件保留作未来扩展锚点。代码层面仅存在一个**停用**的 `tts` 内置工具注册项（见开发计划 §1 代码锚点）。
+**代码现状**：无 `api/kratos/tts`、无 `internal/biz/tts` / `internal/data/tts` / `internal/service/tts`。catalog 停用的 `tts` 工具种子 **不是** 实现入口。语音合成走 [`74-voice-companion.md`](./74-voice-companion.md)。
 
 ---
 
@@ -24,7 +32,7 @@ TTS（Text-to-Speech）语音合成：将 Agent 的文本回复转换为语音�
 
 ## 2. 用户故事（User Stories）
 
-> 占位：TTS 功能未启动，以下为未来实现时的候选用户故事框架。
+> **已归档**：以下为历史候选故事，**不是**待实现 backlog。禁止按本清单开工。独立 TTS 不落地；播报走 M74 Voice。
 
 ### 2.1 P2（候选）
 
@@ -56,7 +64,7 @@ TTS（Text-to-Speech）语音合成：将 Agent 的文本回复转换为语音�
 
 ## 3. 功能需求清单
 
-> 占位：以下为未来实现时的候选功能需求，待启动时细化。
+> **已归档**：以下为历史候选需求，**不是**待办。禁止按本清单开工。
 
 | # | 需求 | 优先级 | 备注 |
 |---|------|--------|------|
@@ -81,21 +89,22 @@ TTS（Text-to-Speech）语音合成：将 Agent 的文本回复转换为语音�
 
 ## 5. 验收标准
 
-> 占位：进度状态（✅/❌/⚠️）统一在开发计划 §6 跟踪，本节不重复。
+> **已归档**：进度不以本节为准。语音合成验收见 [`74-voice-companion.development.md`](./74-voice-companion.development.md)。禁止把下列 checkbox 当待办。
 
-- [ ] Agent 回复可转换为语音（FR-1）
-- [ ] 前端可播放语音回复（FR-2）
-- [ ] Agent 设置中可配置 TTS Provider / 音色 / 密钥（FR-3）
-- [ ] `tts` 工具启用后可被 Agent 调用并返回语音文件（FR-4）
+- 📦 已归档：Agent 回复可转换为语音（FR-1）→ 已由 M74 播报管线覆盖
+- 📦 已归档：前端可播放语音回复（FR-2）→ 已由 M74 Companion 覆盖
+- 📦 已归档：Agent 设置中可配置 TTS Provider / 音色 / 密钥（FR-3）→ 见 M74 System Settings speech 分组
+- 📦 已归档：`tts` 工具启用后可被 Agent 调用并返回语音文件（FR-4）→ **不实现**；catalog 种子不是入口
 
 ---
 
-## 6. 显式不做（OUT-OF-SCOPE，当前阶段）
+## 6. 显式不做（OUT-OF-SCOPE）
 
 | # | 项 | 理由 |
 |---|----|------|
-| N1 | 独立 TTS 服务 proto / biz / data | 当前未规划；`tts` 仅作为内置工具占位 |
-| N2 | 实时语音对话（STT + TTS 全双工） | 超出当前产品范围 |
+| N1 | 独立 TTS 服务 proto / biz / data | **SUPERSEDED**；禁止创建。播报走 M74 |
+| N2 | 实时语音对话（STT + TTS 全双工） | 超出 63 范围；语音闭环在 M74 |
+| N3 | 补齐 catalog `tts` 工具执行逻辑 | **禁止**；种子不是实现入口 |
 
 ---
 
@@ -103,9 +112,10 @@ TTS（Text-to-Speech）语音合成：将 Agent 的文本回复转换为语音�
 
 | 模块 | 关系 |
 |------|------|
-| [`5-agent-setting`](./5-agent-setting.md) §8 | Agent 设置 Tab「Agent」中的 TTS 配置 UI（交互规格） |
-| [`23-tools`](./23-tools.md) | `tts` 作为 media 类内置工具的注册与策略（停用态，opt-in） |
+| [`5-agent-setting`](./5-agent-setting.md) §8 | 历史交互规格；语音配置以 M74 为准 |
+| [`23-tools`](./23-tools.md) | catalog `tts` 种子（停用）；**不是**实现入口 |
+| [`74-voice-companion`](./74-voice-companion.md) | **现网 TTS**：流式播报管线 |
 
 ---
 
-*文档版本：2026-06-17 — 占位重组；与设计 [`63-tts.design.md`](./63-tts.design.md)、计划 [`63-tts.development.md`](./63-tts.development.md) 同步。如启动 TTS 功能，请按 [`docs/development/README.md`](./README.md) 三件套规范补全本文档。*
+*文档版本：2026-08-15 — SUPERSEDED 归档；能力在 [`74-voice-companion.md`](./74-voice-companion.md)。文件保留以免断链。*

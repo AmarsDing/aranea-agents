@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -72,6 +73,41 @@ public sealed class CaptureService
         return new ScreenshotBounds(x ?? virtX, y ?? virtY, w ?? virtW, h ?? virtH);
     }
 
+    /// <summary>
+    /// 元素 bbox 并集；无有效框时返回 null（调用方回退虚拟桌面）。
+    /// </summary>
+    public static ScreenshotBounds? UnionElementBounds(IEnumerable<BBoxDto>? boxes)
+    {
+        if (boxes == null)
+        {
+            return null;
+        }
+        var minX = int.MaxValue;
+        var minY = int.MaxValue;
+        var maxX = int.MinValue;
+        var maxY = int.MinValue;
+        var any = false;
+        foreach (var b in boxes)
+        {
+            if (b == null || b.W <= 0 || b.H <= 0)
+            {
+                continue;
+            }
+            any = true;
+            if (b.X < minX) minX = b.X;
+            if (b.Y < minY) minY = b.Y;
+            var right = b.X + b.W;
+            var bottom = b.Y + b.H;
+            if (right > maxX) maxX = right;
+            if (bottom > maxY) maxY = bottom;
+        }
+        if (!any)
+        {
+            return null;
+        }
+        return new ScreenshotBounds(minX, minY, maxX - minX, maxY - minY);
+    }
+
     /// <summary>主屏缩放因子（DPI/96）</summary>
     public static double PrimaryScaleFactor() => GetDpiForSystem() / 96.0;
 
@@ -138,6 +174,14 @@ public sealed class CaptureService
             {
                 Width = GetSystemMetrics(SM_CXSCREEN),
                 Height = GetSystemMetrics(SM_CYSCREEN),
+                ScaleFactor = PrimaryScaleFactor(),
+            },
+            VirtualScreen = new ScreenDto
+            {
+                X = GetSystemMetrics(SM_XVIRTUALSCREEN),
+                Y = GetSystemMetrics(SM_YVIRTUALSCREEN),
+                Width = GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                Height = GetSystemMetrics(SM_CYVIRTUALSCREEN),
                 ScaleFactor = PrimaryScaleFactor(),
             },
             Displays = EnumDisplays(),

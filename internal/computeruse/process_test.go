@@ -191,15 +191,35 @@ func TestManagerWatchdogRestart(t *testing.T) {
 	}
 	defer m.Stop(context.Background())
 
+	var restarts atomic.Int32
+	m.SetOnRestart(func() { restarts.Add(1) })
+
 	// 3 次心跳超时（30ms 间隔 + 50ms 超时）≈ 150ms 内应触发重启，轮询等待
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if atomic.LoadInt32(count) >= 2 {
-			return // 重启成功
+		if atomic.LoadInt32(count) >= 2 && restarts.Load() >= 1 {
+			return // 重启成功且通知了上层
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Errorf("看门狗未触发重启，starter 调用 %d 次", atomic.LoadInt32(count))
+	t.Errorf("看门狗未触发重启，starter 调用 %d 次, onRestart=%d", atomic.LoadInt32(count), restarts.Load())
+}
+
+func TestManagerRestartNotifiesCallback(t *testing.T) {
+	m, _ := newTestManager(t, func(req rpcRequest) (any, *rpcError) {
+		return map[string]any{"ok": true}, nil
+	})
+	if err := m.EnsureRunning(context.Background()); err != nil {
+		t.Fatalf("EnsureRunning err = %v", err)
+	}
+	defer m.Stop(context.Background())
+
+	var n atomic.Int32
+	m.SetOnRestart(func() { n.Add(1) })
+	m.restart()
+	if n.Load() != 1 {
+		t.Fatalf("onRestart calls = %d, want 1", n.Load())
+	}
 }
 
 // TestManagerWatchdogSkipsWhileInFlight 75 review F3：sidecar 单线程顺序执行，

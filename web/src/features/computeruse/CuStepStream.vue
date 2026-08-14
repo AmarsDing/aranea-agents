@@ -213,6 +213,10 @@ onMounted(async () => {
     background: color-mix(in srgb, var(--color-primary) 15%, transparent)
     color: var(--color-primary)
 
+    &--a11y
+      background: color-mix(in srgb, var(--color-success) 15%, transparent)
+      color: var(--color-success)
+
     &--vision,
     &--vlm_direct,
     &--grounder

@@ -41,7 +41,7 @@ func siRouterFixture(channel string, mutate func(*SIGovernanceRouterDeps)) (*SIG
 	deps := SIGovernanceRouterDeps{
 		RunReader: store, RunWriter: store,
 		Notifier: notifier, Approvals: approvals,
-		AutoApplyQuotaPerDay: 5,
+		AutoApplyQuotaPerDay: DefaultSIAutoApplyQuotaPerDay,
 		Lg:                   loggateway.NewNoop(),
 	}
 	if mutate != nil {
@@ -129,6 +129,25 @@ func TestSIGovernanceRouter_AutoQuotaExhaustedEscalatesToApproval(t *testing.T) 
 	}
 }
 
+func TestSIGovernanceRouter_ZeroQuotaDisablesAutoApply(t *testing.T) {
+	router, store, _, approvals := siRouterFixture("auto", func(d *SIGovernanceRouterDeps) {
+		d.AutoApplyQuotaPerDay = 0
+	})
+	channel, err := router.Route(context.Background(), "run-1")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if channel != "approval" {
+		t.Errorf("channel = %q, want approval（配额 0 = 关闭 auto-apply）", channel)
+	}
+	if store.run.Status != RunStatusAwaitingGovernance {
+		t.Errorf("status = %s, want awaiting_governance", store.run.Status)
+	}
+	if len(approvals.submitted) != 1 || approvals.submitted[0] != "run-1" {
+		t.Errorf("approvals = %+v, want run-1", approvals.submitted)
+	}
+}
+
 func TestSIGovernanceRouter_ApprovalChannelStaysWaiting(t *testing.T) {
 	router, store, _, approvals := siRouterFixture("approval", nil)
 	channel, err := router.Route(context.Background(), "run-1")
@@ -212,7 +231,7 @@ func TestSIPipeline_EndToEnd_AutoChannel(t *testing.T) {
 	approvals := &siFakeApprovalSink{}
 	router := NewSIGovernanceRouter(SIGovernanceRouterDeps{
 		RunReader: store, RunWriter: store, Notifier: notifier, Approvals: approvals,
-		AutoApplyQuotaPerDay: 5, Lg: loggateway.NewNoop(),
+		AutoApplyQuotaPerDay: DefaultSIAutoApplyQuotaPerDay, Lg: loggateway.NewNoop(),
 	})
 	channel, err := router.Route(context.Background(), "run-1")
 	if err != nil {

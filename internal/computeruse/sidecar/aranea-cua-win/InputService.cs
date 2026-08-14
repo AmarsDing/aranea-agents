@@ -195,6 +195,17 @@ public sealed class InputService
         }
     }
 
+    /// <summary>无前台窗口时拒绝键盘注入（锁屏/安全桌面）。</summary>
+    public static bool HasForegroundWindow(IntPtr hwnd) => hwnd != IntPtr.Zero;
+
+    internal static void EnsureHasForeground()
+    {
+        if (!HasForegroundWindow(GetForegroundWindow()))
+        {
+            throw new CuaException(JsonRpc.NotInteractable, "当前无前台窗口，拒绝键盘注入");
+        }
+    }
+
     // ---------- 公开方法 ----------
 
     /// <summary>坐标级点击（button: left/right/middle，clickCount 次连击，钳制 [1,10] 防超长阻塞）</summary>
@@ -222,6 +233,7 @@ public sealed class InputService
     /// <summary>Unicode 文本注入（KEYEVENTF_UNICODE，按字符间隔 intervalMs）</summary>
     public object TypeText(string text, int intervalMs)
     {
+        EnsureHasForeground();
         foreach (var ch in text) // char 为单位遍历，代理对由两个 UTF-16 码元分别发送
         {
             var inputs = new[]
@@ -238,6 +250,7 @@ public sealed class InputService
     /// <summary>组合键注入（先按修饰键，点按主键，再逆序释放）</summary>
     public object Key(string combo)
     {
+        EnsureHasForeground();
         if (!ComboKeys.TryParse(combo, out var modifiers, out var key, out var error))
         {
             throw new CuaException(JsonRpc.InternalError, $"组合键解析失败: {error}");

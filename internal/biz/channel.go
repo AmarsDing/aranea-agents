@@ -633,6 +633,9 @@ func (u *ChannelUsecase) CommitChannelTest(ctx context.Context, row Channel, cre
 		Status:       result.Status,
 		PayloadJSON:  string(payload),
 		ErrorMessage: errorMessageForTest(result),
+		// (channel_id, idempotency_key) 有唯一索引：测试记录须携带唯一 idem key，
+		// 否则空串导致同渠道第 2 次起测试历史永不落库
+		IdempotencyKey: "test:" + uuid.NewString(),
 	}); err != nil {
 		u.lg.Warn("add channel delivery failed", loggateway.Err(err), loggateway.Str("channel_id", row.ID))
 	}

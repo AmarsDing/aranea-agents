@@ -379,6 +379,39 @@ func TestAct_KeyDirect(t *testing.T) {
 	}
 }
 
+func TestFailActiveOnSidecarRestart_CancelsNonTerminal(t *testing.T) {
+	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
+	u, _, _ := newTestUsecase(gw, fakeMatcher{hit: &saveButton})
+	ctx := context.Background()
+
+	s, err := u.StartSession(ctx, "agent1", Budget{})
+	if err != nil {
+		t.Fatalf("StartSession err: %v", err)
+	}
+	idle, err := u.StartSession(ctx, "agent2", Budget{})
+	if err != nil {
+		t.Fatalf("StartSession agent2 err: %v", err)
+	}
+	if err := u.StopSession(ctx, idle.ID); err != nil {
+		t.Fatalf("StopSession err: %v", err)
+	}
+
+	u.FailActiveOnSidecarRestart()
+
+	got, _ := u.GetSession(ctx, s.ID)
+	if got.Status != SessionCancelled {
+		t.Errorf("active status = %s, want cancelled", got.Status)
+	}
+	done, _ := u.GetSession(ctx, idle.ID)
+	if done.Status != SessionDone {
+		t.Errorf("already-done status = %s, want done", done.Status)
+	}
+	_, err = u.Act(ctx, ActRequest{AgentKey: "agent1", Target: "保存", Action: ActionInvoke})
+	if !errors.Is(err, ErrSessionCancelled) {
+		t.Errorf("act after sidecar restart err = %v, want ErrSessionCancelled", err)
+	}
+}
+
 func TestKillSwitch_CancelsSession(t *testing.T) {
 	gw := &fakeGateway{snap: Snapshot{Elements: []UIElement{saveButton}, Generation: 1}}
 	u, _, _ := newTestUsecase(gw, fakeMatcher{hit: &saveButton})

@@ -27,14 +27,14 @@ var siRiskCorePathGlobs = []string{
 }
 
 // SIRiskRules is the admin-configurable view of the D6 risk-classification
-// rule set (P5 console, UpdateRiskRules). Zero fields mean "inherit the code
-// default" so a freshly-migrated row (all zeros) behaves exactly like the
-// hardcoded D6 rules.
+// rule set (P5 console, UpdateRiskRules). Line-cap / glob zero fields mean
+// "inherit the code default". DailyAutoQuota ≤0 means auto-apply is off
+// (production default) — it does not inherit the D10 recommended cap of 5.
 type SIRiskRules struct {
 	LowMaxLines    int      // R1 soft-kind single-file diff line cap; ≤0 → 100
 	MediumMaxLines int      // R2/R3 single-file line cap; ≤0 → 300
 	CorePathGlobs  []string // R3 core path globs; empty → default D6 set
-	DailyAutoQuota int32    // D10 daily auto-apply quota; ≤0 → code default/conf
+	DailyAutoQuota int32    // D10 daily auto-apply quota; ≤0 → auto-apply disabled
 }
 
 // DefaultSIRiskRules returns the code-default D6/D10 rule set.
@@ -43,7 +43,7 @@ func DefaultSIRiskRules() SIRiskRules {
 		LowMaxLines:    siRiskLowMaxLines,
 		MediumMaxLines: siRiskMediumMaxLines,
 		CorePathGlobs:  append([]string(nil), siRiskCorePathGlobs...),
-		DailyAutoQuota: DefaultSIAutoApplyQuotaPerDay,
+		DailyAutoQuota: 0, // production / zero-value default: auto-apply off
 	}
 }
 
@@ -60,9 +60,8 @@ func NormalizeSIRiskRules(r SIRiskRules) SIRiskRules {
 	if len(r.CorePathGlobs) == 0 {
 		r.CorePathGlobs = d.CorePathGlobs
 	}
-	if r.DailyAutoQuota <= 0 {
-		r.DailyAutoQuota = d.DailyAutoQuota
-	}
+	// DailyAutoQuota ≤0 stays 0 (auto-apply off). Do not inherit a positive
+	// D10 cap — that would silently re-enable auto-apply after restart.
 	return r
 }
 

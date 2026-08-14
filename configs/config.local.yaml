@@ -95,7 +95,7 @@ logging:
   test_runs_dir: ""               # test-run JSON dir (external cron output); empty = test_failure signal inert
   patch:
     max_diff_lines: 500           # diff size cap in changed lines
-    daily_auto_apply_quota: 5     # auto-apply daily quota (excess 鈫?approval)
+    daily_auto_apply_quota: 5     # DEV: auto-apply ON (explicit quota; production default is 0)
     max_attempts: 3               # patch-verify retry cap
   sandbox:
     gate_timeouts:
