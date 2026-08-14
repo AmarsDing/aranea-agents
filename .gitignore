@@ -3,6 +3,7 @@
 *.exe
 *.exe~
 *.dll
+*.pdb
 # Allow vendored Windows pgvector for portable installer (must match bundled PG major).
 !build/installer/bundled/**/vector.dll
 *.dylib
@@ -145,8 +146,12 @@ test/.gocache*
 /test/cua-win-smoke/*
 !/test/cua-win-smoke/smoke.ps1
 # .NET sidecar（internal/computeruse）构建产物
+# bin/ 已由上方全局规则覆盖；此处再钉死 obj / 发布目录，避免漏网
 /internal/computeruse/**/obj/
 /internal/computeruse/**/bin/
+/internal/computeruse/**/artifacts/
+/internal/computeruse/**/.vs/
+/internal/computeruse/**/TestResults/
 # Python 缓存
 __pycache__/
 *.pyc

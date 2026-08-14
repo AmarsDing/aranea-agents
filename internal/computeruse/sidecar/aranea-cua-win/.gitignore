@@ -1,0 +1,10 @@
+# .NET 构建 / 发布产物（源码、csproj、app.manifest 入库）
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.cache
+TestResults/
