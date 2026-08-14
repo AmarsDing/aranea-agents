@@ -97,6 +97,10 @@ type SpiritTeamController interface {
 	// state deliverable is flipped to failed BEFORE any status transition,
 	// so "no deliverable" can never masquerade as success.
 	HasRealDeliverable(ctx context.Context, team Team) (bool, error)
+	// EvaluateDeliverableQuality backs the runner-side quality gate
+	// (G3/ADR-G): rule-based content-quality verdict (pass/revise/fail) for
+	// a DAG team's own deliverable, consulted after the binary gate passes.
+	EvaluateDeliverableQuality(ctx context.Context, team Team) (QualityGateResult, error)
 	// ListFailedTeamBriefs backs the honest synthesis trigger (2026-07-25
 	// Fix 3): briefs for genuinely failed teams (cancelled excluded),
 	// feeding the summary report with failure reasons and the teams'

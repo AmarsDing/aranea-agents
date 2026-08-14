@@ -456,12 +456,16 @@ internal/cronrunner/jobs/
 | `team.member.<nodeID>` | ok / warn(skip) / error | 团队成员执行 |
 | `team.model_cascade.route` | ok | 成员模型级联路由 |
 | `team.eval_profile.applied` | ok | 评测态 profile 生效（P3-4，ADR-E） |
+| `team.quality_gate.revise` | warn | 交付物质量门打回修订（P4-G3/G4，ADR-G） |
+| `team.quality_gate.bypass` | warn | 交付物质量门降级放行（fail-open） |
 
 > `team.member.<nodeID>`：图节点级成员执行（start/done/skip/error），发射点 `PublishTeamStepStarted` / `PersistGraphRunStep`；nodeID 后缀隔离并行成员计时，title 经 `stepTitle` 前缀回退解析为 `team.member`。
 >
 > `team.model_cascade.route`：P2-1 模型级联路由决策审计（发射点 `agent.CascadeModelSelector`），字段 `agent_key` / `provider` / `target_model` / `base_model`，run 维度可聚合分档用量；仅团队 run 级 selector 路径发射（ctx 带 TraceEmitter），standalone 构建级路径静默。
 >
 > `team.eval_profile.applied`：P3-4 评测态 profile 生效审计（发射点 `team.Runner.evalProfileRunOptions`，每 run 一次），字段 `provider` / `model` / `tool_allowlist_size` / `extra_model_fields`（键集合，不含值）——回答「哪个 profile 产出哪个 run」；与 `model_cascade` 互斥时胜出并记 warn 进程日志。钉住模型的逐次路由只写进程日志（`agent.eval_profile.pin`），不进流程日志避免每 LLM 调用一条。
+>
+> `team.quality_gate.revise` / `team.quality_gate.bypass`：P4-G3 交付物质量门审计（发射点 `team.Runner.qualityGateBlocks`）。`revise` 命中 J2/J3/J4 规则时打回，字段 `verdict` / `revision` / `rule_hits`；`bypass` 在预算耗尽 / judge infra error / 未装配修订通道时 fail-open 放行，字段 `reason`（`budget_exhausted` / `judge_error` / `no_enqueuer` / `enqueue_fail`）——回答「交付物为什么被放行/打回」。
 
 #### Spirit 规划器（`domain=chat`，P4 决策层深化，2026-08-14）
 
@@ -542,6 +546,7 @@ internal/cronrunner/jobs/
 | `graph.checkpoint.save` | ok / error | 检查点保存 |
 | `graph.hitl.wait` | info / — | 等待人工确认 |
 | `graph.replan.decided` | ok / — | 图重规划决策（2026-08-14 Y7：replanner 动态改写图拓扑补流程日志轨） |
+| `graph.replan.applied` | ok / warn | 图重规划落地（2026-08-14 G2/ADR-F：智能重试成功=ok；重试失败/reroute 降级 skip=warn；payload 含 action/node_id/cause） |
 
 #### Skill（`domain=skill`，2026-07-29 补齐 P0）
 

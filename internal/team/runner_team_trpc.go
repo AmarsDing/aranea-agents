@@ -106,6 +106,12 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if uerr := r.runWriter.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
 			r.lg.Warn("graph_execution_id 持久化失败", loggateway.StepID("team.graph_runtime.persist"), loggateway.Err(uerr))
 		}
+		// G2（ADR-F D2）：replanner 计数随 run 收口释放（含 HITL 暂停路径——
+		// 暂停即事件流结束；resume 重跑时重新注入回调并重新计数，与 graph run
+		// 域 Resume 语义对齐）。防 ManagedMap entry 泄漏（A5）。
+		if r.cfg.Replanner != nil {
+			defer r.cfg.Replanner.ReleaseExecution(graphExecID)
+		}
 	}
 
 	plugins := r.resolveTeamPlugins(ctx, ar.agent.ID)
@@ -279,6 +285,14 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// selector；run 级 selector 优先于成员构建级 selector（团队显式管理策略，
 	// 覆盖成员自身的模型路由插件）。
 	runOpts = append(runOpts, r.modelGovernanceRunOptions(ctx, def, sess.ID)...)
+	// G2（ADR-F D2）：team 图执行注入 replanner 全局回调——节点静态声明
+	// （fallback_agent/on_failure=skip）未恢复的失败经 RuntimeReplanner 决策
+	// 落地（Reflexion 重试 / reroute→skip / insert_fallback→HITL）。非 graph
+	// 模式或未配置 replanner 时返回 nil（append nil option 无效，须条件追加）。
+	if opt := r.replanCallbacksRunOption(sess.ID, deriveSpiritSessionID(sess),
+		ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID); opt != nil {
+		runOpts = append(runOpts, opt)
+	}
 	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)

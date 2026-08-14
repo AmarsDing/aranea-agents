@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"aranea-agents/internal/biz"
@@ -122,8 +123,22 @@ func applyReplanControl(
 			return nil, nodeErr
 		}
 		feedback := buildReflexionFeedback(nodeErr)
-		out, rerr := retryExec(ctx, state, nodeID, feedback)
+		// Reflexion 副本：浅拷一层后重写 user_input——callback 拿到的
+		// stateCopy 会经 syncResumeState 进 checkpoint，直接改写会污染恢复点。
+		retryState := make(trpcgraph.State, len(state)+1)
+		for k, v := range state {
+			retryState[k] = v
+		}
+		if cur, _ := retryState[trpcgraph.StateKeyUserInput].(string); cur != "" {
+			retryState[trpcgraph.StateKeyUserInput] = feedback + cur
+		}
+		out, rerr := retryExec(ctx, retryState, nodeID, feedback)
 		if rerr != nil {
+			if errors.Is(rerr, errNotAgentNode) {
+				// 非 agent 节点（function/tool 无 prompt 语义）：fail-closed
+				// 传播原始失败，不用「无法重试」元错误替换真实原因。
+				return nil, nodeErr
+			}
 			if em := event.TraceEmitterFromContext(ctx); em != nil {
 				em.LogWarn("graph.replan.applied", "智能重试失败",
 					fmt.Sprintf("节点 %s 携带失败反馈重试仍未成功", nodeID),
@@ -177,25 +192,21 @@ func applyReplanControl(
 	}
 }
 
+// errNotAgentNode 是 agentNodeRetry 的哨兵错误：节点无法按 agent 解析
+// （function/tool 等无 prompt 语义节点），applyReplanControl 据此 fail-closed
+// 传播原始失败而非「无法重试」元错误。
+var errNotAgentNode = errors.New("replan retry: not a resolvable agent node")
+
 // agentNodeRetry 是生产 retryExec：FindSubAgent 命中判定 agent 节点（未命中
-// = function/tool 等无 prompt 语义节点，返回错误触发 fail-closed），命中则
-// Reflexion 副本重执行。
-func agentNodeRetry(ctx context.Context, state trpcgraph.State, nodeID, feedback string) (any, error) {
+// = 非 agent 节点，哨兵错误触发 fail-closed），命中则重执行。传入的 state 已
+// 是 applyReplanControl 层拼好失败反馈的 Reflexion 副本（原 state 零污染）。
+func agentNodeRetry(ctx context.Context, state trpcgraph.State, nodeID, _ string) (any, error) {
 	parent, _ := state[trpcgraph.StateKeyParentAgent].(trpcagent.Agent)
 	resolver, ok := parent.(interface{ FindSubAgent(string) trpcagent.Agent })
 	if !ok || resolver == nil || resolver.FindSubAgent(nodeID) == nil {
-		return nil, fmt.Errorf("replan retry: node %q is not a resolvable agent node", nodeID)
+		return nil, fmt.Errorf("%w: %q", errNotAgentNode, nodeID)
 	}
-	// Reflexion 副本：浅拷一层后重写 user_input——callback 拿到的 stateCopy
-	// 会经 syncResumeState 进 checkpoint，直接改写会污染恢复点。
-	retryState := make(trpcgraph.State, len(state)+1)
-	for k, v := range state {
-		retryState[k] = v
-	}
-	if cur, _ := retryState[trpcgraph.StateKeyUserInput].(string); cur != "" {
-		retryState[trpcgraph.StateKeyUserInput] = feedback + cur
-	}
-	return trpcgraph.NewAgentNodeFunc(nodeID)(ctx, retryState)
+	return trpcgraph.NewAgentNodeFunc(nodeID)(ctx, state)
 }
 
 // buildReflexionFeedback 把节点失败原因格式化为注入重试 prompt 的反馈文本

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
 
 	"aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
@@ -42,6 +43,18 @@ type Runner struct {
 	// nil keeps legacy behavior (always success). Wired in production to
 	// biz.SpiritTeamController.HasRealDeliverable.
 	deliverableGate func(ctx context.Context, team biz.Team) (bool, error)
+	// qualityGate evaluates deliverable CONTENT quality after the binary gate
+	// passes (G3/ADR-G: verdict pass/revise/fail with bounded revision loop).
+	// Optional: nil keeps binary-only behavior.
+	qualityGate func(ctx context.Context, team biz.Team) (biz.QualityGateResult, error)
+	// revisionEnqueuer delivers the judge feedback as a followup to the team
+	// session (P2-3 roadbed). Optional: nil degrades revise to fail-open pass.
+	revisionEnqueuer func(ctx context.Context, sessionID, content string) error
+	// qualityReviseCount bounds quality-gate revisions per team+session
+	// (maxQualityRevisions). In-memory: process restart resets the budget,
+	// worst case one extra revision chain — acceptable.
+	qualityReviseMu    sync.Mutex
+	qualityReviseCount map[string]int
 	// upstreamSeedFn resolves the cross-team deliverable seed injected into
 	// the graph initial state at DAG downstream team turn start (2026-08-08
 	// 问题3c). Optional: nil skips seeding. Wired in production to

@@ -6246,6 +6246,8 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 4. 合成触发文本与兜底通知必须反映失败团队，禁止虚构"全部成功"
 5. 需求存在阻塞性歧义时 mode=direct 先澄清，禁止组队（DECISION.md 内容守卫测试锁定）
 6. 全文读取永不返回 reply 文本冒充交付物
+7. 质量门修订必须有界（team+session ≤2 轮）；预算耗尽 / 判分 infra 异常 / 修订通道不可用 → fail-open 放行 + warn，不得卡死二元门会放行的交付物（防回归）
+8. 成员中途异常（session interrupted / failed step）必须作为质量门 J4 规则输入——其任务范围可能未被交付物覆盖时打回修订并点名成员（G4 收敛语义）
 
 #### B.10.22.9 测试策略
 
@@ -6255,6 +6257,16 @@ L3 llmColdStart（现有保留）：prompt 中 capabilities 列表附带 mission
 | biz（Fix 7） | `TestReadUpstreamDeliverable_PrefersGraphStateOverReply`：state 全文（600 字未截断 summary + 结构化 keys JSON）优先，reply 文本永不返回；`TestReadUpstreamDeliverable_GraphStateEmpty_FallsBackToEnvelope`：state 空降级信封（Summary + StructuredJSON），SessionID 取信封 |
 | service | `HandleTeamTurnResult` 无真实产出翻转为 failed；诚实触发文本/兜底通知（capturingTurnGateway 补齐 TurnGateway 接口方法） |
 | scenario | `TestDecisionPrompt_RequiresClarificationBeforeTeaming`：DECISION.md 必含「阻塞性歧义/禁止组队/需求不明时组队」 |
+
+#### B.10.22.10 交付物质量门 verdict（P4-G3/G4，ADR-G，2026-08-14）
+
+> 二元门判「有无」，质量门判「内容是否达标」（LLM-as-Judge 规则快路径 v1，LLM judge 为可选后续档）。详见 [ADR-G](../reports/2026-08-14-plan-decision-layer-deepening.md#batch-9-设计定稿adr-g2026-08-14)。
+
+- **biz 判定** `SpiritTeamUsecase.EvaluateDeliverableQuality`（`team_quality_gate.go`）：非 DAG / 无 state 通道 / 空交付物直接 pass；自有交付物（graph state − 上游种子，排除 cognition/ack 保留键）规则判定——J2 充分性（有效文本 <80 runes）/ J3 占位拒答标记 / J4 成员异常（`MemberExecutionEvidence`：interrupted session 或 failed step，G4 Leader 中途纠偏在门侧的收敛落点）。verdict `pass / revise / fail`，infra 读错返回 error 由调用方 fail-open。
+- **runner 集成** `qualityGateBlocks`（`runner_quality_gate.go`，`finalizeTeamRun` 二元门之后、success 转换之前）：revise/fail → 修订预算（team+session 内存计数，上限 `maxQualityRevisions=2`）内 followup 入队（P2-3 `ChatEnqueueKindFollowup` 路基，反馈随当前 turn 结束后作为新 turn 输入）+ run 标 failed；预算耗尽 / judge infra error / 未装配 enqueuer / 入队被拒 → fail-open 放行 + warn。
+- **端口与装配**：`TeamGraphRunFinisherPort.SetQualityGate/SetRevisionEnqueuer`（setter 模式规避 wire 环）；orchestrator 装配经 `teamRunnerWireAdapter` 透传至 `team.Runner`。
+- **FlowLog**：`team.quality_gate.revise`（warn，打回修订，字段 verdict/revision/rule_hits）/ `team.quality_gate.bypass`（warn，fail-open 放行，字段 reason=budget_exhausted/judge_error/no_enqueuer/enqueue_fail），均已登记 `stepTitleRegistry` + [52-flow-logger.design.md §5.1](./52-flow-logger.design.md)。
+- **G4 框架边界**：框架 steer 为 invocation-scoped，graph executor 无 steer 通道，成员运行中 steer 注入不可行——中途纠偏评审点收敛到质量门（J4）；真·中途 steer 需框架级 graph executor steer 队列，另立 ADR。
 
 ### B.10.23 GraphStageBlock 方案A 重写（2026-07-26 已实施；2026-07-27 指针捕获修复）
 

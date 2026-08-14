@@ -332,6 +332,25 @@ type FailurePolicy struct {
 - **与 `parallel_fail: abort` 对比**：任一并行分支未恢复失败即 **整图失败**，无 `_skipped_nodes` 写入。
 - **回归用例**：`internal/graph/trpc/parallel_fail_test.go`（diamond：`member-1`→`member-2`/`member-3`，`member-2`→`member-3` join）验证失败分支 skip 后图仍可 `Done`。
 
+#### 6.2 智能重规划统一接线（G2 / ADR-F，2026-08-14）
+
+静态声明式失败恢复（本节上文）之外，节点失败存在第二条**智能轨**：`graph.RuntimeReplanner`（规则分析 → `ReplanAction{retry/reroute/insert_fallback/rebuild_subgraph}`，per-execution 预算 maxReplanAttempts=3）。
+
+**仲裁顺序**（框架事实 `executor.go mergeNodeCallbacks`：AfterNode per-node 先、global 后）：节点静态声明（`fallback_agent` / `on_failure=skip`）先跑，恢复成功则 `nodeErr==nil`，智能轨自动跳过；仅未声明或恢复失败的失败进入智能轨。
+
+**落地语义**（fail-closed，详见 [ADR-F](../reports/2026-08-14-review-adr-replan-unified-wiring.md)）：
+
+| ReplanAction | 落地 |
+|---|---|
+| `retry`（transient） | **Reflexion 智能重试**（仅 agent 节点）：失败反馈注入 `user_input` 副本后同步重执行；成功即恢复，失败/非 agent 节点传播原始错误 |
+| `insert_fallback` | `InterruptError` HITL 暂停（静态声明场景已由 per-node 轨处理） |
+| `reroute` | 退化为 **skip**（`SkippedNodesStateKey` 标记，框架不支持运行时拓扑改写） |
+| `rebuild_subgraph` / unknown / replanner 异常 | 传播原始错误（fail-closed） |
+
+**接线点**：graph run 域与 team 域共用包级构造 `graphadapter.NewReplanNodeCallbacks`（[replan_callbacks.go](../internal/graph/adapter/replan_callbacks.go)），经 `StateKeyNodeCallbacks` 注入 run 级 RuntimeState；team 域接线见 [runner_replan_wiring.go](../internal/team/runner_replan_wiring.go)，`RunnerConfig.Replanner` 由 wire 注入（与 graph run 域共享同一实例）。replanner 计数随 run/execution 收口 `ReleaseExecution`（含 HITL 暂停路径，resume 重跑时重新计数）。
+
+**观测**：决策落 `graph.replan.decided`，落地结果落 `graph.replan.applied`（ok=重试成功 / warn=重试失败或 reroute 降级 skip）。
+
 ---
 
 ## 七、前端架构

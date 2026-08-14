@@ -398,16 +398,29 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 
 	switch e.Object {
 	case trpcgraph.ObjectTypeGraphNodeStart:
+		// Agent-node helper (state_graph.emitAgentStart/Complete/ErrorEvent)
+		// duplicates the executor's lifecycle events without step metadata.
+		// The executor's event is authoritative (carries StepNumber); dropping
+		// the helper's avoids double step records / double sink notifications.
+		if trpcgraph.NodeEventEmitterFromStateDelta(e.StateDelta) == trpcgraph.NodeEventEmitterAgentHelper {
+			return runtimeEvt
+		}
 		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeStart
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeComplete:
+		if trpcgraph.NodeEventEmitterFromStateDelta(e.StateDelta) == trpcgraph.NodeEventEmitterAgentHelper {
+			return runtimeEvt
+		}
 		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeEnd
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeError:
+		if trpcgraph.NodeEventEmitterFromStateDelta(e.StateDelta) == trpcgraph.NodeEventEmitterAgentHelper {
+			return runtimeEvt
+		}
 		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeError
 		runtimeEvt.NodeID = meta.NodeID

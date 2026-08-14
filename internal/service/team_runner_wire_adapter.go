@@ -58,6 +58,21 @@ func (a *teamRunnerWireAdapter) SetDeliverableGate(fn biz.TeamDeliverableGateFun
 	a.inner.SetDeliverableGate(fn)
 }
 
+func (a *teamRunnerWireAdapter) SetQualityGate(fn biz.TeamQualityGateFunc) {
+	if a.inner == nil || fn == nil {
+		return
+	}
+	// biz.TeamQualityGateFunc 与 Runner 的 qualityGate 参数同签名——直接透传。
+	a.inner.SetQualityGate(fn)
+}
+
+func (a *teamRunnerWireAdapter) SetRevisionEnqueuer(fn biz.TeamRevisionEnqueuerFunc) {
+	if a.inner == nil || fn == nil {
+		return
+	}
+	a.inner.SetRevisionEnqueuer(fn)
+}
+
 func (a *teamRunnerWireAdapter) SetUpstreamDeliverableSeed(fn biz.TeamUpstreamSeedFunc) {
 	if a.inner == nil || fn == nil {
 		return

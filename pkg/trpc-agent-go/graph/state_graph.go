@@ -2915,6 +2915,8 @@ func finalizeAgentNodeOutput(
 		nodeID: streamRes.lastResponse,
 	}
 	upd[userInputKey] = ""
+	// TS10-DEBUG: final per-node output captured into graph state.
+	log.DebugfContext(context.Background(), "ts10dbg: finalize node=%s lastResponse len=%d head=%.40q", nodeID, len(streamRes.lastResponse), streamRes.lastResponse)
 	return upd
 }
 
@@ -3254,6 +3256,8 @@ func updateAgentLastResponseValue(lastResponse *string, lastResponseID *string, 
 		*lastResponseID = ev.Response.ID
 	}
 	*lastResponse = msg.Content
+	// TS10-DEBUG: trace every lastResponse capture (content head + length).
+	log.DebugfContext(context.Background(), "ts10dbg: capture lastResponse len=%d head=%.40q done=%v partial=%v obj=%s", len(msg.Content), msg.Content, ev.Response.Done, ev.Response.IsPartial, ev.Response.Object)
 }
 
 func updateAgentStructuredOutput(res *agentEventStreamResult, ev *event.Event) {

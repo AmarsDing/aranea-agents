@@ -186,6 +186,9 @@ func (s *stubSpiritTeamController) HasRealDeliverable(_ context.Context, _ biz.T
 	s.deliverableGateCalls++
 	return s.hasRealDeliverable, s.hasRealDeliverableErr
 }
+func (s *stubSpiritTeamController) EvaluateDeliverableQuality(_ context.Context, _ biz.Team) (biz.QualityGateResult, error) {
+	return biz.QualityGateResult{Verdict: biz.TeamQualityPass}, nil
+}
 func (s *stubSpiritTeamController) ListFailedTeamBriefs(_ context.Context, _ string) []biz.TeamFailureBrief {
 	return s.failureBriefs
 }

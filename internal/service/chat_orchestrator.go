@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -599,6 +600,22 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 			// 2026-08-08 问题3c：装配上游交付物种子——DAG 下游团队 turn 启动时
 			// 注入 graph 初始 state，成员 get_deliverable 直接读上游 topic。
 			deps.Team.Team.TeamsNative.SetUpstreamDeliverableSeed(deps.Team.Team.SpiritUC.UpstreamDeliverableSeed)
+			// G3+G4（ADR-G 2026-08-14）：装配交付物质量门 + 修订 followup 通道。
+			// 质量门在二元门之后评估内容质量（pass/revise，J2 充分性 / J3 占位
+			// 拒答 / J4 成员异常）；打回反馈经 P2-3 followup 路基入队，当前 turn
+			// 结束后作为新 turn 输入驱动团队修订。拒收（无活动 run/队列满）转为
+			// error → runner 侧 fail-open 放行（不得出现「打回了却没人修」）。
+			deps.Team.Team.TeamsNative.SetQualityGate(deps.Team.Team.SpiritUC.EvaluateDeliverableQuality)
+			deps.Team.Team.TeamsNative.SetRevisionEnqueuer(func(_ context.Context, sessionID, content string) error {
+				accepted, _, _, reason, err := chatUC.EnqueueUserMessageWithKind(sessionID, content, biz.ChatEnqueueKindFollowup, false)
+				if err != nil {
+					return err
+				}
+				if !accepted {
+					return fmt.Errorf("质量门修订 followup 入队被拒: %s", reason)
+				}
+				return nil
+			})
 		}
 		if deps.Team.Team.TeamMediator != nil {
 			deps.Team.Team.TeamsNative.SetMediator(deps.Team.Team.TeamMediator)

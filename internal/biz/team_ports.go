@@ -91,6 +91,19 @@ type TeamGraphRunFinisherPort interface {
 	// SpiritTeamUsecase.UpstreamDeliverableSeed. Nil keeps legacy behavior
 	// (no seed; members fall back to read_upstream_deliverable / digests).
 	SetUpstreamDeliverableSeed(fn TeamUpstreamSeedFunc)
+
+	// SetQualityGate wires the deliverable CONTENT quality gate consulted
+	// after the binary gate passes (G3/ADR-G 2026-08-14): verdict
+	// pass/revise/fail with a bounded revision loop (maxQualityRevisions).
+	// Backed by SpiritTeamUsecase.EvaluateDeliverableQuality. Nil keeps
+	// binary-only behavior.
+	SetQualityGate(fn TeamQualityGateFunc)
+
+	// SetRevisionEnqueuer wires the revision followup channel that delivers
+	// judge feedback to the team session (P2-3 ChatEnqueueKindFollowup
+	// roadbed: consumed as a new turn after the current turn ends). Nil
+	// degrades revise verdicts to fail-open pass.
+	SetRevisionEnqueuer(fn TeamRevisionEnqueuerFunc)
 }
 
 // TeamDeliverableGateFunc reports whether the team produced a real
@@ -102,6 +115,15 @@ type TeamDeliverableGateFunc func(ctx context.Context, team Team) (bool, error)
 // Returns (nil, nil) when the team has no dependencies or no completed
 // upstream deliverables. Mirrors SpiritTeamUsecase.UpstreamDeliverableSeed.
 type TeamUpstreamSeedFunc func(ctx context.Context, team Team) (map[string]any, error)
+
+// TeamQualityGateFunc evaluates deliverable content quality for a DAG team
+// (G3/ADR-G). Mirrors SpiritTeamUsecase.EvaluateDeliverableQuality.
+type TeamQualityGateFunc func(ctx context.Context, team Team) (QualityGateResult, error)
+
+// TeamRevisionEnqueuerFunc enqueues a quality-gate revision followup to the
+// team session (P2-3 followup semantics: consumed as a new turn after the
+// current turn ends).
+type TeamRevisionEnqueuerFunc func(ctx context.Context, sessionID, content string) error
 
 // TeamGraphCoordPort is the biz-level port for the team graph run coordinator.
 // It abstracts the coordinator that manages graph execution steps.

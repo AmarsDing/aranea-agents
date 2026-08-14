@@ -233,6 +233,12 @@ func (r *Runner) finalizeTeamRun(
 			r.finishRunErr(ctx, &run, t0, "团队未通过 set_deliverable 提交真实交付物（无真实产出，运行标记失败）")
 			return run
 		}
+		// G3（ADR-G）：二元门通过后评估交付物内容质量。revise/fail 且修订
+		// 预算内 → followup 打回 + run 标 failed；预算耗尽/判分异常/未装配
+		// 修订通道 → fail-open 放行（防回归：二元门会放行的交付物不被卡死）。
+		if r.qualityGateBlocks(ctx, sess, teamRow, &run, t0, teamEmitter) {
+			return run
+		}
 	}
 	// Transition status through the state machine for consistent validation & timestamps.
 	updatedRun, transitionErr := r.runTransitioner.TransitionRunStatus(ctx, run.ID, biz.TeamRunStatusSuccess)

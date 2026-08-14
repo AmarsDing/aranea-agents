@@ -639,11 +639,15 @@ func provideRunnerConfig(
 	sys biz.SystemSettingRepo,
 	v2ProjectorFactory *v2.ProjectorFactory,
 	teamUC *biz.TeamUsecase,
+	runtimeReplanner graph.RuntimeReplanner,
 	lg loggateway.Logger,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
 		PluginRT:      pluginRT,
 		PluginManager: pluginMgr,
+		// G2（ADR-F D2）：team 图执行的智能重规划兜底——与 graph run 域共享
+		// 同一 RuntimeReplanner 实例（per-execution 计数器隔离）。
+		Replanner: runtimeReplanner,
 		Knowledge: &team.KnowledgeFacade{
 			Retriever:          knowledgeRetriever,
 			Router:             knowledgeRouter,

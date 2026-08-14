@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizcu "aranea-agents/internal/biz/computeruse"
+	"aranea-agents/internal/graph"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
@@ -74,4 +75,9 @@ type RunnerConfig struct {
 	// （linked_graph_id 为空 → 先物化）。生产装配 *biz.TeamUsecase；
 	// nil 时回退直接读 TeamReader（单测/离线工具）。
 	GraphEnsurer biz.TeamGraphAssetEnsurer
+	// Replanner 是 G2 智能重规划兜底（ADR-F）：节点静态恢复（fallback_agent /
+	// on_failure=skip）未覆盖或失败时，全局 replanner AfterNode 决策落地
+	// （Reflexion 重试 / reroute→skip / insert_fallback→HITL）。可选；nil 时
+	// team 图执行保持纯静态路径（现状行为）。
+	Replanner graph.RuntimeReplanner
 }
