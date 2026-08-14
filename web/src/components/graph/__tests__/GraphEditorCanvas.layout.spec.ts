@@ -1,7 +1,6 @@
 // web/src/components/graph/__tests__/GraphEditorCanvas.layout.spec.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
 import GraphEditorCanvas from '../GraphEditorCanvas.vue';
 import { writeGraphNodePosition } from '../../../features/graph/editor/graphLayout';
 

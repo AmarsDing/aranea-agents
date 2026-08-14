@@ -113,28 +113,32 @@ func (r *skillRepo) ArchiveSkill(ctx context.Context, id string) error {
 
 // SetSkillDerivedFrom records merge provenance (source skill IDs) in the
 // skill's metadata JSON under derived_from.
+// R7: 读改写纳入单事务，避免并发 merge 时 provenance 互相覆盖。
 func (r *skillRepo) SetSkillDerivedFrom(ctx context.Context, id string, sourceIDs []string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return apierror.BadRequest(apierror.DomainSkill, "skill id is required")
 	}
-	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
-		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
-		Only(ctx)
-	if err != nil {
-		return entErrToBizErr(err, apierror.DomainSkill)
-	}
-	md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
-	md.DerivedFrom = append([]string(nil), sourceIDs...)
-	metaJSON, err := json.Marshal(md)
-	if err != nil {
-		return entErrToBizErr(err, apierror.DomainSkill)
-	}
-	if err := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
-		SetMetadataJSON(string(metaJSON)).
-		SetUpdatedAt(nowRFC3339()).
-		Exec(ctx); err != nil {
-		return entErrToBizErr(err, apierror.DomainSkill)
-	}
-	return nil
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := EntClientFromCtx(txCtx, r.data.RW().Write(txCtx))
+		e, err := c.PlatformSkill.Query().
+			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
+			Only(txCtx)
+		if err != nil {
+			return entErrToBizErr(err, apierror.DomainSkill)
+		}
+		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
+		md.DerivedFrom = append([]string(nil), sourceIDs...)
+		metaJSON, err := json.Marshal(md)
+		if err != nil {
+			return entErrToBizErr(err, apierror.DomainSkill)
+		}
+		if err := c.PlatformSkill.UpdateOneID(id).
+			SetMetadataJSON(string(metaJSON)).
+			SetUpdatedAt(nowRFC3339()).
+			Exec(txCtx); err != nil {
+			return entErrToBizErr(err, apierror.DomainSkill)
+		}
+		return nil
+	})
 }

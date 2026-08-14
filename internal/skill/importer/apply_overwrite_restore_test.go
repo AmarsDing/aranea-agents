@@ -17,8 +17,8 @@ import (
 
 func TestApplyImport_overwriteRestoresDiskOnDBFailure(t *testing.T) {
 	repo := &stubSkillRepo{
-		byKeySkill:    skill.Skill{ID: "skill-existing", Slug: "dup-skill"},
-		failOnAppend:  true,
+		byKeySkill:   skill.Skill{ID: "skill-existing", Slug: "dup-skill"},
+		failOnAppend: true,
 	}
 	eng, root := setupEngineWithTempRoot(t, repo)
 

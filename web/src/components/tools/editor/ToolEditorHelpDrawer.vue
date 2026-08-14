@@ -9,8 +9,16 @@
   >
     <q-card class="app-dialog-card tool-help-drawer column">
       <q-card-section class="tool-help-drawer__head row items-center justify-between no-wrap">
-        <div class="tool-help-drawer__title">Tool 编辑帮助</div>
-        <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('update:open', false)" />
+        <div class="tool-help-drawer__title">{{ $t('toolsPage.helpDrawer.title') }}</div>
+        <q-btn
+          flat
+          dense
+          round
+          icon="close"
+          class="app-registry-icon-btn"
+          :aria-label="$t('common.close')"
+          @click="$emit('update:open', false)"
+        />
       </q-card-section>
 
       <q-tabs
@@ -22,8 +30,8 @@
         active-color="var(--color-accent)"
         indicator-color="var(--color-accent)"
       >
-        <q-tab name="fields" label="字段速查" no-caps />
-        <q-tab name="concepts" label="概念说明" no-caps />
+        <q-tab name="fields" :label="$t('toolsPage.helpDrawer.tabFields')" no-caps />
+        <q-tab name="concepts" :label="$t('toolsPage.helpDrawer.tabConcepts')" no-caps />
       </q-tabs>
       <q-separator />
 
@@ -64,14 +72,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { TOOL_FIELD_HINT_ENTRIES, TOOL_FIELD_HINTS, TOOL_HELP_SECTIONS } from '../../../features/tools/toolEditorCopy';
+import { computed, ref } from 'vue';
+import { toolFieldHintEntries, toolFieldHints, toolHelpSections } from '../../../features/tools/toolEditorCopy';
 
 defineProps<{ open: boolean }>();
 defineEmits<{ 'update:open': [value: boolean] }>();
 
 const activeTab = ref<'fields' | 'concepts'>('fields');
-const sections = TOOL_HELP_SECTIONS;
-const fieldEntries = TOOL_FIELD_HINT_ENTRIES;
-const fieldHints = TOOL_FIELD_HINTS;
+const sections = computed(() => toolHelpSections());
+const fieldEntries = computed(() => toolFieldHintEntries());
+const fieldHints = computed(() => toolFieldHints());
 </script>

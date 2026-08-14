@@ -3,11 +3,14 @@ package service_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
@@ -16,6 +19,9 @@ import (
 // memSkillRepo is a minimal in-memory SkillRepo.
 type memSkillRepo struct {
 	items map[string]biz.Skill
+	// dirs overrides GetSkillStorageDir per skill id (e.g. pointing at a real
+	// temp dir so disk-cleanup delete paths can be exercised).
+	dirs map[string]string
 }
 
 func newMemSkillRepo() *memSkillRepo {
@@ -66,6 +72,9 @@ func (m *memSkillRepo) DuplicateSkill(_ context.Context, id string) (biz.Skill, 
 }
 
 func (m *memSkillRepo) GetSkillStorageDir(_ context.Context, id string) (string, error) {
+	if d, ok := m.dirs[id]; ok {
+		return d, nil
+	}
 	return "/tmp/skills/" + id, nil
 }
 
@@ -184,10 +193,13 @@ func (m *memSkillRepo) SetSkillDerivedFrom(_ context.Context, _ string, _ []stri
 	return nil
 }
 
-func newSkillService() *service.SkillService {
+func newSkillService(t *testing.T) (*service.SkillService, *memSkillRepo, string) {
+	t.Helper()
 	repo := newMemSkillRepo()
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active", WorkspaceID: workspace.DefaultWorkspaceID}
-	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	root := t.TempDir()
+	fs := storage.NewSkillFilesystem(func(_ context.Context) string { return root })
+	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, fs, nil, nil, loggateway.NewNoop()), repo, root
 }
 
 func adminCtx() context.Context {
@@ -195,7 +207,7 @@ func adminCtx() context.Context {
 }
 
 func TestSkillService_List(t *testing.T) {
-	svc := newSkillService()
+	svc, _, _ := newSkillService(t)
 	ctx := context.Background()
 
 	resp, err := svc.ListSkills(ctx, &v1.ListSkillsRequest{})
@@ -208,7 +220,7 @@ func TestSkillService_List(t *testing.T) {
 }
 
 func TestSkillService_ToggleEnabled(t *testing.T) {
-	svc := newSkillService()
+	svc, _, _ := newSkillService(t)
 	ctx := adminCtx()
 
 	out, err := svc.ToggleSkillEnabled(ctx, &v1.ToggleSkillEnabledRequest{Id: "sk1", Enabled: false})
@@ -221,12 +233,41 @@ func TestSkillService_ToggleEnabled(t *testing.T) {
 }
 
 func TestSkillService_Delete(t *testing.T) {
-	svc := newSkillService()
+	svc, repo, root := newSkillService(t)
 	ctx := adminCtx()
+
+	// 磁盘目录存在时：删除 skill 必须同步清理磁盘（否则 watcher 会把残留
+	// 目录复活成 draft 记录）。
+	dir := filepath.Join(root, "sk1")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo.dirs = map[string]string{"sk1": dir}
 
 	_, err := svc.DeleteSkill(ctx, &v1.DeleteSkillRequest{Id: "sk1"})
 	if err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+	if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+		t.Error("skill disk dir should be removed")
+	}
+	list, _ := svc.ListSkills(ctx, &v1.ListSkillsRequest{})
+	if len(list.GetItems()) != 0 {
+		t.Errorf("expected 0 after delete, got %d", len(list.GetItems()))
+	}
+}
+
+func TestSkillService_Delete_DiskMissingTolerated(t *testing.T) {
+	svc, _, _ := newSkillService(t)
+	ctx := adminCtx()
+
+	// 默认 GetSkillStorageDir 返回不存在的 /tmp/skills/sk1：磁盘缺失不应
+	// 阻塞 DB 删除（filesystem_missing 的 skill 仍须可删）。
+	if _, err := svc.DeleteSkill(ctx, &v1.DeleteSkillRequest{Id: "sk1"}); err != nil {
+		t.Fatalf("delete with missing disk dir: %v", err)
 	}
 	list, _ := svc.ListSkills(ctx, &v1.ListSkillsRequest{})
 	if len(list.GetItems()) != 0 {
@@ -235,7 +276,7 @@ func TestSkillService_Delete(t *testing.T) {
 }
 
 func TestSkillService_DuplicateSkill(t *testing.T) {
-	svc := newSkillService()
+	svc, _, _ := newSkillService(t)
 	ctx := adminCtx()
 
 	copy, err := svc.DuplicateSkill(ctx, &v1.DuplicateSkillRequest{Id: "sk1"})

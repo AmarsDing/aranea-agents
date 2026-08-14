@@ -209,7 +209,7 @@ type FieldRow = {
 };
 type DrawerRow = GroupRow | FieldRow;
 
-const props = defineProps<{
+defineProps<{
   open: boolean;
   isDark: boolean;
 }>();

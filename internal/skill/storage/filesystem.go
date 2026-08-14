@@ -135,6 +135,36 @@ func (f *skillFilesystem) DeleteFile(dir string, relPath string) error {
 	return os.Remove(path)
 }
 
+// RemoveSkillDir deletes a whole skill directory tree. The target must be a
+// direct child of (or at least contained under) the resolved storage root;
+// removing the root itself or anything outside it is rejected. A nonexistent
+// directory is treated as success so delete flows stay idempotent.
+func (f *skillFilesystem) RemoveSkillDir(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return apierror.BadRequest(apierror.DomainSkill, "skill dir is required")
+	}
+	root := f.resolveRootFn(context.Background())
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if absDir == absRoot {
+		return apierror.BadRequest(apierror.DomainSkill, "refusing to remove the skill storage root")
+	}
+	if absDir != absRoot && !strings.HasPrefix(absDir, absRoot+string(os.PathSeparator)) {
+		return apierror.BadRequest(apierror.DomainSkill, "skill dir escapes root directory")
+	}
+	if _, statErr := os.Stat(absDir); os.IsNotExist(statErr) {
+		return nil
+	}
+	return os.RemoveAll(absDir)
+}
+
 func (f *skillFilesystem) RootAccessible(ctx context.Context) bool {
 	root := f.resolveRootFn(ctx)
 	st, err := os.Stat(root)

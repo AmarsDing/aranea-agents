@@ -445,6 +445,10 @@ export type EvolutionMetricsResponse = {
   negativeFeedback: number | undefined;
   toolSuccessSeries: MetricDataPoint[] | undefined;
   retrievalQualitySeries: MetricDataPoint[] | undefined;
+  // S-05: true when metrics are incomplete due to partial query failures.
+  partial: boolean | undefined;
+  // S-08: which sub-queries failed (for observability).
+  partialErrors: string[] | undefined;
 };
 
 export type GetAgentEvolutionSuggestionsRequest = {

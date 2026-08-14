@@ -31,7 +31,7 @@ export function useToolRunsPage() {
   const detailParamsError = ref('');
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
-  const statusOptions = [...toolInvocationStatusOptions];
+  const statusOptions = computed(() => toolInvocationStatusOptions());
 
   // 请求序号守卫：筛选连改/翻页叠加时丢弃过期响应，避免旧数据覆盖新筛选结果。
   let loadSeq = 0;

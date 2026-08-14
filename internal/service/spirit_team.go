@@ -1257,12 +1257,12 @@ func (a *SpiritTeamAssembler) GetMaxParallelTeams(ctx context.Context, spiritSes
 	return a.spiritUC.GetMaxParallelTeams(ctx, spiritSessionID)
 }
 
-func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) error {
+func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string, reason biz.CancelReason) error {
 	team, err := a.spiritUC.GetTeam(ctx, teamID)
 	if err != nil {
 		return err
 	}
-	if err := a.spiritUC.CancelTeam(ctx, teamID); err != nil {
+	if err := a.spiritUC.CancelTeam(ctx, teamID, reason); err != nil {
 		return err
 	}
 	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)

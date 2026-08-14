@@ -155,7 +155,6 @@ const {
   page,
   pageSize,
   total,
-  filteredRows,
   pagedRows,
   pageMax,
   resetFilters,

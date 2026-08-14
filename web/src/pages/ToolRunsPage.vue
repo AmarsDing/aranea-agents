@@ -1,9 +1,9 @@
 <template>
   <q-page class="app-standard-page tool-runs-page">
     <tool-hero-section
-      kicker="Tool observability"
-      title="Tool 调用记录"
-      subtitle="查看工具调用参数摘要、结果摘要、耗时、状态和错误信息。"
+      :kicker="$t('toolsPage.runsPage.kicker')"
+      :title="$t('toolsPage.runsPage.title')"
+      :subtitle="$t('toolsPage.runsPage.subtitle')"
     >
       <template #actions>
         <q-btn
@@ -12,7 +12,7 @@
           no-caps
           class="app-outline-btn"
           icon="arrow_back"
-          label="返回 Tools 管理"
+          :label="$t('toolsPage.runsPage.back')"
           :to="{ name: 'tools' }"
         />
       </template>
@@ -40,7 +40,7 @@
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
+        <q-btn flat dense :label="$t('common.retry')" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
@@ -52,7 +52,7 @@
       :page-max="pageMax"
       :total="total"
       :loading="loading"
-      label="条调用记录"
+      :label="$t('toolsPage.runsPage.pageUnit')"
     />
 
     <tool-run-detail-dialog

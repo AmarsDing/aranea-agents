@@ -9,12 +9,6 @@ import MonitorPage from '../pages/MonitorPage.vue';
 import OverviewPage from '../pages/OverviewPage.vue';
 import UsageEventsPage from '../pages/UsageEventsPage.vue';
 import ResourceManagerPage from '../pages/ResourceManagerPage.vue';
-import EcosystemPage from '../pages/EcosystemPage.vue';
-import ShopAssetPage from '../pages/ShopAssetPage.vue';
-import ShopCreatorPage from '../pages/ShopCreatorPage.vue';
-import ShopMePage from '../pages/ShopMePage.vue';
-import ShopStudioPage from '../pages/ShopStudioPage.vue';
-import ShopPublishPage from '../pages/ShopPublishPage.vue';
 import OrganizationPage from '../pages/OrganizationPage.vue';
 import TeamsPage from '../pages/TeamsPage.vue';
 import SkillsPage from '../pages/SkillsPage.vue';
@@ -253,12 +247,6 @@ export const routes: RouteRecordRaw[] = [
       },
       { path: 'monitor/logs', name: 'monitor-logs', component: MonitorPage },
       { path: 'self-improvement', name: 'self-improvement', component: SelfImprovementPage },
-      { path: 'shop', name: 'shop', component: EcosystemPage },
-      { path: 'shop/a/:slug', name: 'shop-asset', component: ShopAssetPage },
-      { path: 'shop/u/:handle', name: 'shop-creator', component: ShopCreatorPage },
-      { path: 'shop/me', name: 'shop-me', component: ShopMePage },
-      { path: 'shop/studio', name: 'shop-studio', component: ShopStudioPage },
-      { path: 'shop/publish', name: 'shop-publish', component: ShopPublishPage },
       { path: 'settings', name: 'settings', component: SystemSettingsPage, meta: { titleKey: 'menu.settings' } },
       ...(import.meta.env.DEV
         ? [{ path: 'dev/theme-preview', name: 'theme-preview', component: ThemePreviewPage }]

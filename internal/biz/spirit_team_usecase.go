@@ -931,9 +931,13 @@ func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSes
 }
 
 // Domain: Orchestration — cancel team and its timeout timer.
-func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error {
+// reason 是 P2-6 取消原因（空 = user_cancel，保持向后兼容）。
+func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string, reason CancelReason) error {
 	if strings.TrimSpace(teamID) == "" {
 		return apierror.BadRequest("SPIRIT", "team_id is required")
+	}
+	if reason == "" {
+		reason = CancelReasonUser
 	}
 	u.CancelTimeoutTimer(teamID)
 	_, err := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusCancelled)

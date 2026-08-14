@@ -4,7 +4,7 @@
       <q-card-section>
         <div class="text-h6">删除 Skill</div>
         <div class="text-body2 text-grey-7 q-mt-sm">
-          确认删除「{{ skill?.name }}」？此操作会软删除，列表中不再显示。
+          确认删除「{{ skill?.name }}」？此操作不可撤销，将永久删除 Skill 及其磁盘文件。
         </div>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">

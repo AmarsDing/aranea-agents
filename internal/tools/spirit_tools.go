@@ -432,7 +432,7 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, boards Pl
 			if orchestrationID == "" {
 				return CancelOrchestrationOutput{}, apierror.BadRequest(apierror.DomainSpirit, "orchestration_id is required")
 			}
-			err := orchestrator.Cancel(ctx, orchestrationID)
+			err := orchestrator.Cancel(ctx, orchestrationID, biz.CancelReasonUser)
 			if err != nil && boards != nil {
 				if pbErr := boards.CancelPlanBoard(ctx, orchestrationID); pbErr == nil {
 					err = nil
@@ -472,7 +472,7 @@ type SpiritTeamQueryPort interface {
 // SpiritTeamControllerPort controls team lifecycle (cancel, progress check).
 // Stability:evolving
 type SpiritTeamControllerPort interface {
-	CancelTeam(ctx context.Context, teamID string) error
+	CancelTeam(ctx context.Context, teamID string, reason biz.CancelReason) error
 	CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
 }
 

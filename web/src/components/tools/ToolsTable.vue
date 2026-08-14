@@ -3,7 +3,7 @@
     table-class="tools-data-table"
     row-key="id"
     :rows="rows"
-    :columns="TOOL_TABLE_COLUMNS"
+    :columns="columns"
     :loading="loading"
     :pagination="tablePagination"
     :selected="selected"
@@ -35,7 +35,7 @@
             emit-value
             map-options
             :model-value="props.row.risk_level"
-            :options="riskLevelOptions"
+            :options="riskLevelOptions()"
             class="tool-risk-inline-select"
             :loading="busyId === props.row.id"
             @update:model-value="$emit('updateRisk', props.row, String($event ?? 'low'))"
@@ -51,7 +51,7 @@
           </q-select>
         </div>
         <q-badge v-if="props.row.requires_confirmation" rounded color="warning" class="q-ml-xs">
-          需确认
+          {{ policyChip.requires_confirmation.label }}
           <q-tooltip>{{ policyChip.requires_confirmation.tooltip }}</q-tooltip>
         </q-badge>
       </q-td>
@@ -87,13 +87,13 @@
         >
           {{ props.row.agent_override_count }}
         </q-badge>
-        <q-tooltip>有 allow / deny 覆盖的 Agent 数</q-tooltip>
+        <q-tooltip>{{ $t('toolsPage.table.overridesTip') }}</q-tooltip>
       </q-td>
     </template>
 
     <template #body-cell-stats="props">
       <q-td :props="props">
-        <div class="text-weight-medium">{{ props.row.invoke_count }} 次</div>
+        <div class="text-weight-medium">{{ $t('toolsPage.table.invokeTimes', { count: props.row.invoke_count }) }}</div>
         <div class="text-caption app-registry-muted-caption">24h {{ props.row.invoke_count_24h }}</div>
       </q-td>
     </template>
@@ -104,7 +104,7 @@
           {{ formatToolSuccessRate(props.row) }}
         </div>
         <div class="text-caption app-registry-muted-caption">
-          成功 {{ props.row.success_count }} · 失败 {{ props.row.failure_count + props.row.blocked_count }}
+          {{ $t('toolsPage.table.successFailLine', { success: props.row.success_count, failure: props.row.failure_count + props.row.blocked_count }) }}
         </div>
         <div v-if="props.row.invoke_count > 0" class="text-caption" :class="`text-${toolArgsFirstPassRateColor(props.row)}`">
           {{ $t('toolsPage.argsQuality.firstPassShort', { rate: formatToolArgsFirstPassRate(props.row) }) }}
@@ -136,7 +136,7 @@
             {{ formatInvocationWhen(props.row.last_invoked_at) }}
           </div>
         </template>
-        <span v-else class="app-registry-muted-caption">未调用</span>
+        <span v-else class="app-registry-muted-caption">{{ $t('toolsPage.table.notInvoked') }}</span>
       </q-td>
     </template>
 
@@ -150,9 +150,10 @@
             class="app-registry-icon-btn"
             color="primary"
             icon="visibility"
+            :aria-label="$t('toolsPage.table.view')"
             @click="$emit('viewDetail', props.row)"
           >
-            <q-tooltip>查看</q-tooltip>
+            <q-tooltip>{{ $t('toolsPage.table.view') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -161,9 +162,10 @@
             class="app-registry-icon-btn"
             color="primary"
             icon="edit"
+            :aria-label="$t('toolsPage.table.edit')"
             @click="$emit('edit', props.row)"
           >
-            <q-tooltip>编辑</q-tooltip>
+            <q-tooltip>{{ $t('toolsPage.table.edit') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -172,11 +174,12 @@
             class="app-registry-icon-btn"
             color="negative"
             icon="delete"
+            :aria-label="$t('toolsPage.table.remove')"
             :disable="props.row.readonly"
             :loading="busyId === props.row.id"
             @click="$emit('remove', props.row)"
           >
-            <q-tooltip>{{ props.row.readonly ? '内置/只读工具不可删除' : '删除' }}</q-tooltip>
+            <q-tooltip>{{ props.row.readonly ? $t('toolsPage.table.readonlyNoRemove') : $t('toolsPage.table.remove') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -185,11 +188,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import type { Tool } from '../../features/tools/types';
-import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
+import { toolPolicyChipCopy } from '../../features/tools/toolEditorCopy';
 import {
-  TOOL_TABLE_COLUMNS,
+  toolTableColumns,
   formatInvocationDuration,
   formatInvocationWhen,
   formatToolSuccessRate,
@@ -222,7 +226,8 @@ defineEmits<{
 }>();
 
 const tablePagination = { rowsPerPage: 0 };
-const policyChip = TOOL_POLICY_CHIP_COPY;
+const columns = computed(() => toolTableColumns());
+const policyChip = computed(() => toolPolicyChipCopy());
 </script>
 
 <style scoped>

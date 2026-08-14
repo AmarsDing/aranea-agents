@@ -419,6 +419,10 @@ message EvolutionMetricsResponse {
   int32 negative_feedback = 6;
   repeated MetricDataPoint tool_success_series = 7;
   repeated MetricDataPoint retrieval_quality_series = 8;
+  // S-05: true when metrics are incomplete due to partial query failures.
+  bool partial = 9;
+  // S-08: which sub-queries failed (for observability).
+  repeated string partial_errors = 10;
 }
 
 message GetAgentEvolutionSuggestionsRequest {

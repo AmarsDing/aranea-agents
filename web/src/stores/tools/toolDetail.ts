@@ -262,7 +262,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       JSON.parse(schemaJson || '{}');
     } catch (err) {
       const detail = err instanceof Error ? err.message : '';
-      throw new Error(i18n.global.t('toolsPage.detail.invalidSchemaJson', { detail }));
+      throw new Error(i18n.global.t('toolsPage.detail.invalidSchemaJson', { detail }), { cause: err });
     }
     configSaving.value = true;
     try {
@@ -281,7 +281,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       JSON.parse(configJson.value || '{}');
     } catch (err) {
       const detail = err instanceof Error ? err.message : '';
-      throw new Error(i18n.global.t('toolsPage.detail.invalidConfigJson', { detail }));
+      throw new Error(i18n.global.t('toolsPage.detail.invalidConfigJson', { detail }), { cause: err });
     }
     configSaving.value = true;
     try {

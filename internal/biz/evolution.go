@@ -56,6 +56,9 @@ type EvolutionSuggestion struct {
 	// apply (EvoMetaApplyPayload). Notification-only suggestions leave it
 	// empty and are rejected by ApplySuggestion.
 	ApplyPayload string
+	// CreatedFiles lists prompt files created by apply (EvoMetaCreatedFiles);
+	// rollback deletes them since they have no pre-apply state (P1-2).
+	CreatedFiles []string
 	CreatedAt    string
 	AppliedAt    string
 }
@@ -81,6 +84,10 @@ func evolutionViewFromUnified(s *UnifiedEvolutionSuggestion) EvolutionSuggestion
 	if s.AppliedAt != nil {
 		appliedAt = s.AppliedAt.UTC().Format(time.RFC3339)
 	}
+	var createdFiles []string
+	if raw := s.MetaString(EvoMetaCreatedFiles); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &createdFiles)
+	}
 	return EvolutionSuggestion{
 		ID:               s.ID,
 		AgentID:          s.TargetID,
@@ -91,6 +98,7 @@ func evolutionViewFromUnified(s *UnifiedEvolutionSuggestion) EvolutionSuggestion
 		DiffPreview:      s.MetaString(EvoMetaDiffPreview),
 		PreApplySnapshot: s.MetaString(EvoMetaPreApplySnapshot),
 		ApplyPayload:     s.MetaString(EvoMetaApplyPayload),
+		CreatedFiles:     createdFiles,
 		CreatedAt:        s.CreatedAt.UTC().Format(time.RFC3339),
 		AppliedAt:        appliedAt,
 	}
@@ -376,6 +384,11 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 				Body:      "# IDENTITY\n\n## Persona\n\n" + payload,
 				SortOrder: 30,
 			})
+			// P1-2: record apply-created files so rollback can delete them
+			// (snapshot restore alone leaves the new file behind).
+			if metaErr := uc.store.UpdateMetadataKey(ctx, suggestionID, EvoMetaCreatedFiles, `["IDENTITY.md"]`); metaErr != nil {
+				uc.lg.Warn("failed to record apply-created files", loggateway.StepID("evolution.apply"), loggateway.Err(metaErr))
+			}
 		}
 		return uc.applyAndMark(ctx, agentID, suggestionID, files)
 	case "prompt":
@@ -513,11 +526,25 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 	if err := json.Unmarshal([]byte(s.PreApplySnapshot), &snapshot); err != nil {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "invalid pre-apply snapshot data")
 	}
+	// P1-2: files created by apply (recorded in EvoMetaCreatedFiles) must be
+	// deleted on rollback — they have no pre-apply state to restore.
+	createdByApply := map[string]bool{}
+	for _, n := range s.CreatedFiles {
+		createdByApply[n] = true
+	}
 	// Load current files and restore from snapshot.
 	files, err := uc.agents.ListAgentPromptFiles(ctx, agentID)
 	if err != nil {
 		return EvolutionSuggestion{}, err
 	}
+	kept := files[:0]
+	for _, f := range files {
+		if createdByApply[f.Name] {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	files = kept
 	for i, f := range files {
 		if content, ok := snapshot[f.Name]; ok {
 			files[i].Body = content

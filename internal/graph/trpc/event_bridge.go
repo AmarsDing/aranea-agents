@@ -241,6 +241,26 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *biz.ActivityEvent {
 		if meta.Duration > 0 {
 			ev.Activity.Meta["duration_ns"] = meta.Duration.Nanoseconds()
 		}
+		// N3: surface graph-level fatal errors (max steps / panic / executeGraph
+		// failure) so the team watch can finalize the run instead of waiting
+		// for the watch timeout.
+		if meta.Error != "" {
+			ev.Activity.Meta["error"] = meta.Error
+			ev.Activity.Meta["error_type"] = "graph_execution_error"
+			ev.Activity.Content = meta.Error
+		}
+		// N2/Y1: surface HITL interrupt fields — the Pregel interrupt is the
+		// only reachable carrier (checkpoint interrupt events require
+		// StreamModeCheckpoints which is not enabled).
+		if meta.InterruptKey != "" {
+			ev.Activity.Meta["interrupt_key"] = meta.InterruptKey
+			ev.Activity.Meta["node_id"] = meta.NodeID
+			ev.Activity.Meta["lineage_id"] = meta.LineageID
+			ev.Activity.Meta["checkpoint_id"] = meta.CheckpointID
+			if meta.InterruptValue != nil {
+				ev.Activity.Meta["interrupt_value"] = meta.InterruptValue
+			}
+		}
 
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
 		meta := b.extractPregelMeta(e)

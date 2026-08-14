@@ -7,7 +7,7 @@ import {
   toolEditorJsonKeys,
   validateToolJsonFields,
 } from '../../components/tools/toolUi';
-import { TOOL_CREATE_TEMPLATES } from '../../features/tools/toolEditorCopy';
+import { toolCreateTemplates } from '../../features/tools/toolEditorCopy';
 import type { Tool, ToolUpsertInput } from '../../features/tools/types';
 import { i18n } from '../../i18n';
 import { useToolsStore } from './index';
@@ -44,7 +44,7 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
   const jsonErrors = reactive<Record<string, string>>({});
   const form = reactive<ToolUpsertInput>(blankToolForm());
   const originalForm = ref<ToolUpsertInput>(blankToolForm());
-  const riskOptions = riskLevelOptions;
+  const riskOptions = computed(() => riskLevelOptions());
   const selectedTemplate = ref('blank');
 
   const dirty = computed(() => {
@@ -60,7 +60,7 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
 
   function applyTemplate(templateId: string) {
     selectedTemplate.value = templateId;
-    const tpl = TOOL_CREATE_TEMPLATES.find((t) => t.id === templateId);
+    const tpl = toolCreateTemplates().find((t) => t.id === templateId);
     if (!tpl?.apply) return;
     assignForm({ ...blankToolForm(), ...tpl.apply });
   }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAuthToken, setAuthToken } from '../../services/authToken';
+import { setAuthToken } from '../../services/authToken';
 
 /**
  * P2 (mobile): buildWsUrl falls back to the persisted auth token when the

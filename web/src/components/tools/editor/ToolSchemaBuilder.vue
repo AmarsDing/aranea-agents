@@ -6,15 +6,30 @@
         <p class="app-registry-muted-caption q-mb-none q-mt-xs">{{ hint }}</p>
       </div>
       <div class="row q-gutter-xs col-auto">
-        <q-btn flat dense no-caps size="sm" label="添加字段" icon="add" :disable="readonly" @click="addRow" />
-        <q-btn flat dense no-caps size="sm" :label="showJson ? '字段视图' : 'JSON'" @click="toggleJson" />
+        <q-btn
+          flat
+          dense
+          no-caps
+          size="sm"
+          :label="$t('toolsPage.schemaBuilder.addField')"
+          icon="add"
+          :disable="readonly"
+          @click="addRow"
+        />
+        <q-btn
+          flat
+          dense
+          no-caps
+          size="sm"
+          :label="showJson ? $t('toolsPage.schemaBuilder.fieldView') : 'JSON'"
+          @click="toggleJson"
+        />
       </div>
     </div>
 
     <div v-if="!showJson" class="column q-gutter-sm">
       <q-banner rounded dense class="settings-info-banner">
-        字段视图仅支持扁平 <code>object.properties</code>（string / number / integer / boolean）。 嵌套
-        object、array、oneOf 等请切换到 JSON 模式编辑，切回字段视图可能丢失复杂结构。
+        {{ $t('toolsPage.schemaBuilder.bannerPre') }}<code>object.properties</code>{{ $t('toolsPage.schemaBuilder.bannerPost') }}
       </q-banner>
       <div v-for="(row, idx) in rows" :key="row.key || `row-${idx}`" class="tool-schema-builder__field-card">
         <div class="app-form-field-grid app-form-field-grid--2col">
@@ -22,7 +37,7 @@
             :model-value="row.key"
             dense
             outlined
-            label="字段 Key"
+            :label="$t('toolsPage.schemaBuilder.fieldKey')"
             :readonly="readonly"
             @update:model-value="updateRow(idx, { key: String($event ?? '') })"
           />
@@ -32,7 +47,7 @@
             outlined
             emit-value
             map-options
-            label="类型"
+            :label="$t('toolsPage.schemaBuilder.fieldType')"
             :readonly="readonly"
             :disable="readonly"
             :options="typeOptions"
@@ -42,13 +57,13 @@
             :model-value="row.title"
             dense
             outlined
-            label="标题"
+            :label="$t('toolsPage.schemaBuilder.fieldTitle')"
             :readonly="readonly"
             @update:model-value="updateRow(idx, { title: String($event ?? '') })"
           />
           <q-toggle
             :model-value="row.required"
-            label="必填"
+            :label="$t('toolsPage.schemaBuilder.fieldRequired')"
             dense
             :disable="readonly"
             @update:model-value="updateRow(idx, { required: Boolean($event) })"
@@ -58,7 +73,7 @@
             :model-value="row.description"
             dense
             outlined
-            label="描述"
+            :label="$t('toolsPage.schemaBuilder.fieldDesc')"
             :readonly="readonly"
             @update:model-value="updateRow(idx, { description: String($event ?? '') })"
           />
@@ -68,16 +83,25 @@
             :model-value="row.enumValues"
             dense
             outlined
-            label="枚举（逗号分隔，可选）"
+            :label="$t('toolsPage.schemaBuilder.fieldEnum')"
             :readonly="readonly"
             @update:model-value="updateRow(idx, { enumValues: String($event ?? '') })"
           />
         </div>
         <div v-if="!readonly" class="row justify-end q-mt-xs">
-          <q-btn flat dense round icon="delete" size="sm" class="app-registry-icon-btn" @click="removeRow(idx)" />
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete"
+            size="sm"
+            class="app-registry-icon-btn"
+            :aria-label="$t('toolsPage.schemaBuilder.removeField')"
+            @click="removeRow(idx)"
+          />
         </div>
       </div>
-      <div v-if="!rows.length" class="app-registry-muted-caption">暂无字段；无参工具可留空对象 {}。</div>
+      <div v-if="!rows.length" class="app-registry-muted-caption">{{ $t('toolsPage.schemaBuilder.empty') }}</div>
     </div>
 
     <q-input
@@ -96,7 +120,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   buildSchemaFromFields,
   emptySchemaField,
@@ -118,12 +143,14 @@ const showJson = ref(false);
 const rows = ref<SchemaFieldRow[]>([]);
 const dirty = ref(false);
 
-const typeOptions = [
-  { label: '字符串', value: 'string' },
-  { label: '数字', value: 'number' },
-  { label: '整数', value: 'integer' },
-  { label: '布尔', value: 'boolean' },
-];
+const { t } = useI18n();
+
+const typeOptions = computed(() => [
+  { label: t('toolsPage.schemaBuilder.typeString'), value: 'string' },
+  { label: t('toolsPage.schemaBuilder.typeNumber'), value: 'number' },
+  { label: t('toolsPage.schemaBuilder.typeInteger'), value: 'integer' },
+  { label: t('toolsPage.schemaBuilder.typeBoolean'), value: 'boolean' },
+]);
 
 function syncRowsFromJson(json: string) {
   rows.value = parseSchemaFields(json);

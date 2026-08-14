@@ -32,6 +32,30 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// generationConfigForAgent 构建主运行时 GenerationConfig（P2-5）：Stream 恒开；
+// agent 静态推理策略（reasoning_mode=custom 时的 reasoning_level）映射为思考
+// 强度参数——off→ThinkingEnabled=false、low/medium/high/max→ReasoningEffort。
+// 默认（provider_default/未配置/非法档）不注入任何 thinking 字段，保留 provider
+// 服务端默认——存量 agent 零行为变化。单次调用的复杂度覆盖走旁路 caller 的
+// LLMCallRequest.ThinkingEffort（biz.ResolveThinkingEffort），与此静态档分层。
+func generationConfigForAgent(ag biz.Agent) trpcmodel.GenerationConfig {
+	cfg := trpcmodel.GenerationConfig{Stream: true}
+	if ag.Settings == nil {
+		return cfg
+	}
+	rc := ag.Settings.GetReasoning()
+	switch eff := biz.StaticThinkingEffort(rc.Mode, rc.Level); eff {
+	case "":
+		// 跟随厂商：不注入。
+	case biz.ThinkingEffortOff:
+		disabled := false
+		cfg.ThinkingEnabled = &disabled
+	default:
+		cfg.ReasoningEffort = &eff
+	}
+	return cfg
+}
+
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	a, _, err := buildTRPCLLMAgentWithToolSets(ctx, ag, deps, lg)
 	return a, err
@@ -169,7 +193,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		trpcllmagent.WithInstruction(sys),
 		trpcllmagent.WithDescription(IdentityDescriptionForAgent(ag, files)),
 		trpcllmagent.WithChannelBufferSize(256),
-		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
+		trpcllmagent.WithGenerationConfig(generationConfigForAgent(ag)),
 	)
 
 	var pipeline *a2ui.Pipeline
@@ -481,6 +505,11 @@ func buildTRPCRuntimeOptions(s *biz.AgentRuntimeSettings, skipRuntimeModelSelect
 
 	if s.SessionSummaryEnabled {
 		opts = append(opts, trpcllmagent.WithAddSessionSummary(true))
+		// P0-B: inject the summary as a user message (tail append area) instead
+		// of the framework default "system" mode, which merges the summary into
+		// system[0]. The summary changes after every compression, so merging it
+		// into the static prefix byte-breaks the provider prompt cache.
+		opts = append(opts, trpcllmagent.WithSessionSummaryInjectionMode(trpcllmagent.SessionSummaryInjectionUser))
 	}
 
 	if s.MemoryEnabled && s.MemoryMaxResults > 0 {

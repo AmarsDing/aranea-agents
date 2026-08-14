@@ -335,6 +335,40 @@ func TestRollbackSuggestion_CASConflict(t *testing.T) {
 	}
 }
 
+// ── P1-2: rollback deletes files created by apply ───────────────────────────
+
+func TestRollbackSuggestion_DeletesApplyCreatedFile(t *testing.T) {
+	// Agent starts with no IDENTITY.md; apply creates one.
+	row := applyGuardRow("persona", "优化沟通风格", "内容。", "回复先给结论。")
+	store := &applyGuardStore{row: row}
+	agents := &applyGuardAgentRepo{files: []biz.AgentPromptFile{
+		{AgentID: "agent-1", Name: "AGENTS_CORE.md", Body: "# Core\n\n原始系统提示。", SortOrder: 10},
+	}}
+	uc := newApplyGuardUsecase(store, agents)
+
+	// Apply: creates IDENTITY.md.
+	if _, err := uc.ApplySuggestion(context.Background(), "agent-1", "sug-1"); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(agents.files) != 2 {
+		t.Fatalf("apply should create IDENTITY.md, got %d files", len(agents.files))
+	}
+
+	// Rollback: IDENTITY.md must be removed, AGENTS_CORE.md restored.
+	if _, err := uc.RollbackSuggestion(context.Background(), "agent-1", "sug-1"); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if len(agents.files) != 1 {
+		t.Fatalf("rollback should delete apply-created IDENTITY.md, got %d files: %v", len(agents.files), agents.files)
+	}
+	if agents.files[0].Name != "AGENTS_CORE.md" {
+		t.Fatalf("remaining file = %q, want AGENTS_CORE.md", agents.files[0].Name)
+	}
+	if agents.files[0].Body != "# Core\n\n原始系统提示。" {
+		t.Fatalf("AGENTS_CORE.md body = %q, want original", agents.files[0].Body)
+	}
+}
+
 // ── Round-trip: view conversion must preserve the payload ───────────────────
 
 func TestEvolutionSuggestionViewRoundTrip_PreservesApplyPayload(t *testing.T) {

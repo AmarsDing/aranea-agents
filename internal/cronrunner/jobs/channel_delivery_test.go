@@ -20,19 +20,16 @@ func (f *fakePendingDeliveryProcessor) ProcessPending(_ context.Context, _ int) 
 	return f.err
 }
 
-// blockingPendingDeliveryProcessor blocks until released, simulating a slow batch.
+// blockingPendingDeliveryProcessor blocks until the test releases it,
+// simulating a slow batch.
 type blockingPendingDeliveryProcessor struct {
-	entered  atomic.Int32
-	release  chan struct{}
-	released atomic.Bool
+	entered atomic.Int32
+	release chan struct{}
 }
 
 func (f *blockingPendingDeliveryProcessor) ProcessPending(_ context.Context, _ int) error {
 	f.entered.Add(1)
-	if f.released.CompareAndSwap(false, true) {
-		close(f.release)
-	}
-	<-f.release
+	<-f.release // block until the test closes release
 	return nil
 }
 
@@ -61,8 +58,11 @@ func TestChannelDeliveryWorker_SingleFlightSkipsOverlap(t *testing.T) {
 		t.Fatalf("ProcessPending entered %d times, want 1 (single-flight)", got)
 	}
 
+	// Release the in-flight run and wait for it to finish.
+	close(proc.release)
 	<-done
-	// After completion a new run may proceed.
+	// After completion a new run may proceed (release is already closed, so it
+	// does not block).
 	w.processOnce(context.Background())
 	if got := proc.entered.Load(); got != 2 {
 		t.Fatalf("ProcessPending entered %d times after release, want 2", got)

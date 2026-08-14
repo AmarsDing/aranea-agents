@@ -123,103 +123,14 @@ export function useChatWorkspace() {
     createSubmitHandlers,
   } = awaitReply;
 
-  // Phase 2 v2: Activity store + event router for the new v2 event pipeline.
+  // Phase 2 v2: Activity store for the new v2 event pipeline.
   const activityStore = useChatActivityStore();
-  const eventRouter = useChatEventRouter(activityStore);
-  const llmRetryStore = useLlmRetryStore();
 
-  // v2 WS event handler — dispatched by the stream manager's onV2Event callback.
-  const handleV2Event = (envelope: V2WsEnvelope) => {
-    // B-06: advance WS cursor from durable outbox event_id when present.
-    const cursorEventId = String(envelope.event_id ?? '').trim();
-    const cursorSessionId = String(envelope.session_id ?? '').trim();
-    if (cursorEventId && cursorSessionId) {
-      noteChannelWsEnvelope(cursorSessionId, cursorEventId);
-    }
-    // Phase 3b-D Task 12: intercept v2 system-domain events for side-effect
-    // routing. Entity events (task/turn/step/team_stage/etc.) go to the v2
-    // event router → activityV2Store. System events need side-effect routing
-    // (metrics refresh, spirit store updates, run-status application) that the
-    // store cannot provide.
-    if (envelope.kind === 'system.notice') {
-      handleV2SystemNotice(envelope.payload as SystemNoticeEventPayload);
-      return;
-    }
-    if (envelope.kind === 'system.run_status') {
-      handleV2RunStatus(envelope.payload as RunStatusEventPayload);
-      return;
-    }
-    if (envelope.kind === 'system.heartbeat') {
-      // Acknowledged but no side-effect routing needed yet.
-      // system.heartbeat carries progress metadata for a future heartbeat display.
-      return;
-    }
-    // Design 69 Phase 3: skill.catalog carries the agent-visible skill list
-    // (pushed once per WS connection setup). Ephemeral UI state — store it
-    // per session in the runtime store for ChatSkillCatalogStrip rendering.
-    if (envelope.kind === 'skill.catalog') {
-      const sid = String(envelope.session_id ?? '').trim();
-      const skills = (envelope.payload as SkillCatalogEventPayload)?.skills;
-      if (sid && Array.isArray(skills)) {
-        runtimeStore.setSkillCatalog(sid, skills);
-      }
-      return;
-    }
-    // Route team/member v2 events to spirit store for left sidebar updates.
-    // The v2 event router (below) also receives these for activityV2Store
-    // rendering — both paths run in parallel.
-    routeTeamEventToSpiritStore(envelope);
-    eventRouter.dispatch(envelope);
-
-    // LLM retry banner lifecycle: any sign of stream progress (tokens flowing
-    // again, a new turn starting, or a terminal step/turn/task event) means
-    // the retry loop ended — clear the transient "reconnecting" state.
-    switch (envelope.kind) {
-      case 'step.streaming':
-      case 'step.completed':
-      case 'step.failed':
-      case 'turn.started':
-      case 'turn.completed':
-      case 'turn.failed':
-      case 'task.completed':
-      case 'task.failed': {
-        const sid = String(envelope.session_id ?? '').trim() || selectedSessionForUi.value?.id;
-        if (sid) llmRetryStore.clear(sid);
-        break;
-      }
-    }
-
-    // Robust fallback: when the backend completes a turn but the terminal
-    // run_status is missing/late, task.completed/failed still resets sending
-    // so the composer does not stay stuck on "停止生成".
-    if ((envelope.kind === 'task.completed' || envelope.kind === 'task.failed') && sender.sending.value) {
-      sender.markSendingDone();
-    }
-  };
-
-  /**
-   * Route v2 team_stage and member_session events to the spirit store so the
-   * left sidebar agent list updates in real-time. Without this, the spirit
-   * store only refreshes on session switch (loadSpiritTeams API), leaving the
-   * agent list empty after team assembly and member statuses stale.
-   */
-  function routeTeamEventToSpiritStore(envelope: V2WsEnvelope) {
-    const p = envelope.payload as unknown as Record<string, unknown>;
-    switch (envelope.kind) {
-      case 'team_stage.created':
-      case 'team_stage.updated':
-      case 'team_stage.completed':
-      case 'team_stage.failed':
-        if (p.TeamStage) spiritStore.upsertTeamFromV2TeamStage(p.TeamStage as never);
-        break;
-      case 'member_session.created':
-      case 'member_session.updated':
-        if (p.MemberSession) spiritStore.updateMemberFromV2MemberSession(p.MemberSession as never);
-        break;
-      default:
-        break;
-    }
-  }
+  // v2 WS event handler — late-bound to useChatV2EventHandlers below: the
+  // handlers need sender/followUp/streamManager which are created later, while
+  // streamManager captures this closure at creation. WS events only arrive
+  // after setup completes, so the assignment always happens before invocation.
+  let handleV2Event: (envelope: V2WsEnvelope) => void = () => {};
 
   // Phase B-2: per-spirit-session recursive tree cache for SessionTreeSidebar.
   const sessionTree = useSessionTree();

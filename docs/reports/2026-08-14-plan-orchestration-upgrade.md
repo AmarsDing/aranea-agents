@@ -169,7 +169,7 @@ DeepSeek 首个官方 Agent 运行框架，核心范式是**事件溯源 + 事�
 | Batch-1 ✅ | P1-1 + P1-5 + P1-6（纯内部重构，零契约变化） | agent+v2 全量 race 绿（agent 29.8s / v2 5.8s）+ service 绿 + `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 绿（2026-08-14 通过） |
 | Batch-2 ✅ | P1-2 + P1-3 + P1-4（行为边界显式化） | v2 全量 race 绿 + agent(27.4s)/callbacks/subagent 绿 + build 绿（2026-08-14 通过）；新增 invariant_check.go 15 个单测 + decision_test + delegation_depth_test。偏差记录：P1-2 FlowLog warn 支路暂缓——v2 层无 FlowLogWriter 端口（红线 3），先仅进程日志观察误报率 |
 | Batch-3 ✅ | P2-1 + P2-2（模型路由，收益最直接） | agent/event/team 全量绿（agent 27.6s）+ fallback race 绿 + vet 绿（2026-08-14 通过）；新增 model_selector_cascade_test + team_cascade_test + llmcaller_fallback_test（6 用例）。usage 记账回归：分档用量经 FlowLog `team.model_cascade.route` 聚合（ADR-C），未改 usage Schema。ADR 落盘：[ADR-C](./2026-08-14-review-adr-model-cascade.md) |
-| Batch-4 | P2-3 + P2-4 + P2-5 + P2-6 | 同上 |
+| Batch-4 ✅ | P2-3 + P2-4 + P2-5 + P2-6 | agent/service/biz 绿 + build 绿（2026-08-14 通过）；P2-3 inbox 三级语义（steer/inject/followup）、P2-4 project-state JSON 有界注入（team_project_state.go + update_project_state tool + MergeReducer）、P2-5 思考强度路由（ComplexityLevel→ThinkingEffort 映射 + ResolveThinkingEffort + 静态/动态双层）、P2-6 取消原因类型化（CancelReason 枚举 + 父级联子 + orchestrations.cancel_reason 列持久化 + 事件元数据携带） |
 | Batch-5 | P3-1 + P3-2（观测闭环） | 同上 |
 | Batch-6 | P3-3 + P3-4（架构级，先 ADR 评审） | ADR 评审 + 全量 |
 

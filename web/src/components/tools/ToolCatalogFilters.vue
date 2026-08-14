@@ -7,7 +7,7 @@
       outlined
       clearable
       debounce="350"
-      placeholder="搜索 Tool 名称、Key、描述..."
+      :placeholder="$t('toolsPage.filters.searchPlaceholder')"
       @update:model-value="$emit('update:search', String($event ?? ''))"
     >
       <template #prepend><q-icon name="search" /></template>
@@ -20,7 +20,7 @@
       clearable
       emit-value
       map-options
-      label="分类"
+      :label="$t('toolsPage.filters.category')"
       :options="categoryOptions"
       @update:model-value="$emit('update:category', String($event ?? ''))"
     />
@@ -32,7 +32,7 @@
       clearable
       emit-value
       map-options
-      label="来源"
+      :label="$t('toolsPage.filters.source')"
       :options="sourceOptions"
       @update:model-value="$emit('update:source', String($event ?? ''))"
     />
@@ -44,7 +44,7 @@
       clearable
       emit-value
       map-options
-      label="风险"
+      :label="$t('toolsPage.filters.risk')"
       :options="riskOptions"
       @update:model-value="$emit('update:riskLevel', String($event ?? ''))"
     />
@@ -56,7 +56,7 @@
       clearable
       emit-value
       map-options
-      label="启用状态"
+      :label="$t('toolsPage.filters.enabled')"
       :options="enabledOptions"
       @update:model-value="$emit('update:enabled', $event ?? null)"
     />
@@ -64,10 +64,10 @@
       :model-value="abnormal"
       dense
       color="warning"
-      label="仅看异常"
+      :label="$t('toolsPage.filters.abnormalOnly')"
       @update:model-value="$emit('update:abnormal', Boolean($event))"
     >
-      <q-tooltip>仅显示最近一次调用以错误 / 阻断收尾的工具</q-tooltip>
+      <q-tooltip>{{ $t('toolsPage.filters.abnormalTip') }}</q-tooltip>
     </q-toggle>
     <template #actions>
       <q-btn
@@ -75,7 +75,7 @@
         rounded
         no-caps
         icon="restart_alt"
-        label="重置"
+        :label="$t('toolsPage.filters.reset')"
         class="app-entity-toolbar-btn"
         @click="$emit('reset')"
       />
@@ -84,7 +84,7 @@
         rounded
         no-caps
         icon="refresh"
-        label="刷新"
+        :label="$t('toolsPage.filters.refresh')"
         class="app-entity-toolbar-btn"
         :loading="loading"
         @click="$emit('refresh')"

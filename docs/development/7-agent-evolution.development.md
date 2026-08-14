@@ -1,6 +1,7 @@
 # Agent 进化 — 开发计划
 
-> **版本**：2026-06-17 | **状态**：✅ API + 指标 + Scanner + 状态机 + Rollback；🟡 趋势图 / diff / 护栏运行时未通
+> **版本**：2026-08-14 | **状态**：✅ API + 指标 + Scanner + 状态机 + Rollback；🟡 趋势图 / diff / 护栏运行时未通
+> **2026-08-14 加固轮**：P0-1 `unified_evolution_suggestions` 增 `workspace_id` 列（IDOR 修复）· P1-2 Rollback 删除 apply 新建文件 · P1-3 指标响应 `partial`/`partial_errors` · P1-4 diversity 端点 admin 鉴权 · P2-5 `skill_evolution_loop.go` 死代码拆分为 `skill_gate_verifier.go`
 > **需求**：[7 agent-evolution.md](./7%20agent-evolution.md) · **设计**：[7 agent-evolution.design.md](./7-agent-evolution.design.md)
 > **进化深化设计**：[phase3-进化能力/实施进度.md](./phase3-进化能力/实施进度.md)（06 P0 Curator/Reload ✅ · 07 P1 Delta 协议与归因 ✅ · 08 P2 验证强化与触发扩展 ✅）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-BIZ-07
@@ -65,6 +66,11 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | `ApplySuggestion` type=skill | ✅ | 写入 `unified_evolution_suggestions` 表（扫描器生成，A6 收敛） |
 | 状态机（AS-FSM-01） | ✅ | `EvolutionStateMachine`（`internal/biz/evolution_state_machine.go`）；4 状态 3 转换 |
 | Rollback 建议 | ✅ | `RollbackSuggestion`（`internal/biz/evolution.go`）+ `PreApplySnapshot`（metadata JSON）恢复 prompt files |
+| 工作区隔离（P0-1 IDOR 修复） | ✅ | `workspace_id` 列（迁移 `20261212_unified_evolution_workspace.sql`：backfill 自宿主表 + 索引 + RLS）；service 层 5 个 L3 端点（`assertAgentAccess`/`assertAgentMutateAccess`）+ 5 个 skill 端点（`workspace.AssertWorkspaceOrShared`）断言工作区 |
+| Rollback 清理 apply 新建文件（P1-2） | ✅ | `ApplySuggestion` 记录 metadata `created_files`（`EvoMetaCreatedFiles`）；`RollbackSuggestion` 恢复快照前过滤 apply 新建文件 |
+| 指标 partial 透传（P1-3） | ✅ | proto `EvolutionMetricsResponse.partial/partial_errors`（字段 9/10）；service 透传 `biz.Partial`/`PartialErrors` |
+| diversity 端点 admin 鉴权（P1-4） | ✅ | `EvolutionService.GetEvolutionDiversityOverview` 经 `assertSystemCaller`（`internal/service/evolution.go`）限制 admin/system 调用方 |
+| Gate 代码拆分（P2-5） | ✅ | `skill_evolution_loop.go` 已删除；`GateVerifier` + 9 维验证 + `EvoExpirationDays`/`SkillReloader` 迁至 `internal/biz/skill_gate_verifier.go`（测试 `skill_gate_verifier_test.go`） |
 | 跨流水线去重 | ✅ | `AgentConfigTrigger` 内 type+title 去重 + `SkillEvolutionOrchestrator` 统一 pending 检查（legacy `EvolutionCoordinator` 已删除） |
 | Apply 后失效缓存 | ✅ | `invalidateAgentBuildCache(req.GetAgentId())`（`internal/service/agent_evolution.go:65`） |
 | Learning Loop API | ✅ | observation/pattern/proposal CRUD + run |
@@ -132,6 +138,11 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | EVO-20 | P1 | 通知类建议内容低质（无 diff_preview、文案重复）→ LLM 生成具体修改草稿并设置 `apply_payload` 解锁 apply | ✅ 2026-08-08 |
 | EVO-21 | P1 | 拒绝原因未持久化（reject 无审计线索）→ proto 增 `reason` 字段，`RejectSuggestion` 写入 metadata `rejection_reason`，前端拒绝弹窗收集原因 | ✅ 2026-08-11 |
 | EVO-22 | P1 | 建议无详情查看入口（内容/diff 不可见）→ 新增详情弹窗（元信息 + 内容 + `diff_preview` 预览） | ✅ 2026-08-11 |
+| EVO-23 | P0 | `unified_evolution_suggestions` 无工作区隔离（IDOR：跨租户可读/写建议）→ 增 `workspace_id` 列（迁移 `20261212`，backfill 自 skill/agents 宿主表 + 索引 + RLS）；data 层 `Create` 空值时自宿主表派生、List/Count 按 workspace 过滤；service 层 5+5 端点断言工作区 | ✅ 2026-08-14 |
+| EVO-24 | P1 | Rollback 不清理 apply 新建的 prompt 文件（无快照可恢复，残留磁盘）→ `EvoMetaCreatedFiles` 记录新建文件名，`RollbackSuggestion` 过滤后再恢复快照 | ✅ 2026-08-14 |
+| EVO-25 | P1 | 指标部分子查询失败与「无数据」不可区分 → proto `EvolutionMetricsResponse` 增 `partial`/`partial_errors`，service 透传 biz 字段 | ✅ 2026-08-14 |
+| EVO-26 | P1 | `GetEvolutionDiversityOverview` 无调用方限制 → `assertSystemCaller` 鉴权（admin/system） | ✅ 2026-08-14 |
+| EVO-27 | P2 | `skill_evolution_loop.go` 死代码（loop/runner/observer/evolver 未接线）→ 拆分 `skill_gate_verifier.go`（GateVerifier + 9 维验证），删除死代码与 loop 测试 | ✅ 2026-08-14 |
 
 ---
 
@@ -153,6 +164,10 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 - [ ] 护栏运行时参与扫描
 - [ ] `evo_auto_apply` 自动应用 pending 建议
 - [x] 前端 Rollback UI 入口
+- [x] `unified_evolution_suggestions` 按 `workspace_id` 隔离（迁移 `20261212` backfill + RLS；service 层断言工作区，跨租户访问拒绝）
+- [x] `RollbackSuggestion` 过滤 apply 新建文件（`EvoMetaCreatedFiles`）后再恢复快照
+- [x] 指标响应携带 `partial`/`partial_errors`（部分子查询失败可与「无数据」区分）
+- [x] `GetEvolutionDiversityOverview` 仅 admin/system 调用方可用
 
 ---
 
@@ -211,6 +226,8 @@ Agent 自我进化：运行指标、改进建议、应用/拒绝/回滚；运行
 | Store | `internal/data/unified_evolution.go` → `UpdateMetadataKey`（快照写入 metadata JSON，A6） |
 
 `ApplySuggestion` 在写入 prompt files 前调用 `savePreApplySnapshot` 保存 `map[filename]content` JSON 快照（经 `store.UpdateMetadataKey` 写入 unified 行 metadata 的 `pre_apply_snapshot` key）；`RollbackSuggestion` 解码快照并恢复文件内容。注入 `EvolutionTxProvider` 时，文件替换 + 状态更新包裹在单事务中（红线 #24）。
+
+**P1-2（2026-08-14）**：`ApplySuggestion` 另将 apply 新建的 prompt 文件名记入 metadata `created_files`（`EvoMetaCreatedFiles`，视图字段 `EvolutionSuggestion.CreatedFiles`）；`RollbackSuggestion` 恢复快照前先过滤这些 apply 新建文件（无快照可恢复，需删除而非还原），避免残留。
 
 ---
 

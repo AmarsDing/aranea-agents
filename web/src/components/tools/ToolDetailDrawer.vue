@@ -21,8 +21,16 @@
           <div class="tool-detail-drawer__subtitle app-registry-muted-caption">{{ tool.key }}</div>
         </div>
         <div class="tool-detail-drawer__head-actions row q-gutter-xs">
-          <q-btn flat dense round icon="edit" class="app-registry-icon-btn" @click="onEdit">
-            <q-tooltip>编辑</q-tooltip>
+          <q-btn
+            flat
+            dense
+            round
+            icon="edit"
+            class="app-registry-icon-btn"
+            :aria-label="t('toolsPage.detail.edit')"
+            @click="onEdit"
+          >
+            <q-tooltip>{{ t('toolsPage.detail.edit') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -32,12 +40,21 @@
             color="negative"
             class="app-registry-icon-btn"
             :disable="tool.readonly"
+            :aria-label="tool.readonly ? t('toolsPage.detail.readonlyNoRemove') : t('toolsPage.detail.remove')"
             @click="$emit('remove-tool', tool)"
           >
-            <q-tooltip>{{ tool.readonly ? '内置/只读工具不可删除' : '删除' }}</q-tooltip>
+            <q-tooltip>{{ tool.readonly ? t('toolsPage.detail.readonlyNoRemove') : t('toolsPage.detail.remove') }}</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('close')">
-            <q-tooltip>关闭</q-tooltip>
+          <q-btn
+            flat
+            dense
+            round
+            icon="close"
+            class="app-registry-icon-btn"
+            :aria-label="t('toolsPage.detail.close')"
+            @click="$emit('close')"
+          >
+            <q-tooltip>{{ t('toolsPage.detail.close') }}</q-tooltip>
           </q-btn>
         </div>
       </div>
@@ -45,7 +62,7 @@
 
       <div class="tool-detail-drawer__meta">
         <q-chip dense :color="tool.enabled ? 'positive' : 'grey'" text-color="white">
-          {{ tool.enabled ? '已启用' : '已停用' }}
+          {{ tool.enabled ? t('toolsPage.detail.enabled') : t('toolsPage.detail.disabled') }}
         </q-chip>
         <q-chip dense :color="riskQuasarColor(tool.risk_level)" text-color="white">
           {{ riskLabel(tool.risk_level) }}
@@ -77,8 +94,8 @@
         no-caps
         @update:model-value="$emit('update:activeTab', $event)"
       >
-        <q-tab name="overview" label="概览" />
-        <q-tab name="config" label="配置" />
+        <q-tab name="overview" :label="t('toolsPage.detail.tabOverview')" />
+        <q-tab name="config" :label="t('toolsPage.detail.tabConfig')" />
         <q-tab name="agents" :label="agentTabLabel" />
       </q-tabs>
 
@@ -90,27 +107,27 @@
         >
           <q-tab-panel name="overview" class="q-pa-none">
             <q-banner rounded class="app-registry-detail-banner q-mb-md">
-              {{ tool.description || '暂无描述' }}
+              {{ tool.description || t('toolsPage.detail.noDescription') }}
             </q-banner>
 
             <div class="tool-detail-metrics q-mb-md">
               <div class="tool-detail-metrics__card">
                 <div class="tool-detail-metrics__value">{{ tool.invoke_count }}</div>
-                <div class="tool-detail-metrics__label">总调用</div>
+                <div class="tool-detail-metrics__label">{{ t('toolsPage.detail.metricTotal') }}</div>
               </div>
               <div class="tool-detail-metrics__card">
                 <div class="tool-detail-metrics__value" :class="successRateClass">{{ successRate }}</div>
-                <div class="tool-detail-metrics__label">成功率</div>
+                <div class="tool-detail-metrics__label">{{ t('toolsPage.detail.metricSuccessRate') }}</div>
               </div>
               <div class="tool-detail-metrics__card">
                 <div class="tool-detail-metrics__value">{{ tool.success_count }}</div>
-                <div class="tool-detail-metrics__label">成功</div>
+                <div class="tool-detail-metrics__label">{{ t('toolsPage.detail.metricSuccess') }}</div>
               </div>
               <div class="tool-detail-metrics__card">
                 <div class="tool-detail-metrics__value" :class="tool.failure_count > 0 ? 'text-negative' : ''">
                   {{ tool.failure_count }}
                 </div>
-                <div class="tool-detail-metrics__label">失败</div>
+                <div class="tool-detail-metrics__label">{{ t('toolsPage.detail.metricFailure') }}</div>
               </div>
               <div class="tool-detail-metrics__card">
                 <div class="tool-detail-metrics__value" :class="`text-${toolArgsFirstPassRateColor(tool)}`">
@@ -126,17 +143,17 @@
             </div>
 
             <div class="row q-col-gutter-sm text-body2 q-mb-md">
-              <div class="col-6"><span class="text-weight-medium">Key：</span>{{ tool.key }}</div>
-              <div class="col-6"><span class="text-weight-medium">分类：</span>{{ tool.category }}</div>
-              <div class="col-6"><span class="text-weight-medium">来源：</span>{{ tool.source }}</div>
-              <div class="col-6"><span class="text-weight-medium">风险：</span>{{ riskLabel(tool.risk_level) }}</div>
+              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelKey') }}</span>{{ tool.key }}</div>
+              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelCategory') }}</span>{{ tool.category }}</div>
+              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelSource') }}</span>{{ tool.source }}</div>
+              <div class="col-6"><span class="text-weight-medium">{{ t('toolsPage.detail.labelRisk') }}</span>{{ riskLabel(tool.risk_level) }}</div>
             </div>
 
-            <q-expansion-item dense-toggle default-opened label="参数 Schema" class="q-mb-md">
+            <q-expansion-item dense-toggle default-opened :label="t('toolsPage.detail.paramsSchema')" class="q-mb-md">
               <div class="q-pt-sm">
-                <p class="app-registry-muted-caption">LLM 调用此工具时可传的参数（JSON Schema）。</p>
+                <p class="app-registry-muted-caption">{{ t('toolsPage.detail.paramsSchemaHint') }}</p>
                 <tool-json-block :text="prettyParamsSchema" />
-                <q-expansion-item v-if="hasResultSchema" dense-toggle label="返回结构" class="q-mt-sm">
+                <q-expansion-item v-if="hasResultSchema" dense-toggle :label="t('toolsPage.detail.resultSchema')" class="q-mt-sm">
                   <tool-json-block class="q-mt-sm" :text="prettyResultSchema" />
                 </q-expansion-item>
               </div>
@@ -144,8 +161,8 @@
 
             <q-card v-if="tool.source !== 'mcp'" flat bordered class="q-mb-md tool-detail-test-card">
               <q-card-section class="q-pb-sm">
-                <div class="text-subtitle2">在线测试</div>
-                <div class="text-caption text-grey-7">单次调用验证（默认超时 30s，写入 tool_test 调用记录）。</div>
+                <div class="text-subtitle2">{{ t('toolsPage.detail.testTitle') }}</div>
+                <div class="text-caption text-grey-7">{{ t('toolsPage.detail.testSubtitle') }}</div>
               </q-card-section>
               <q-card-section class="q-pt-none q-gutter-sm">
                 <q-input
@@ -154,7 +171,7 @@
                   dense
                   outlined
                   autogrow
-                  label="参数 JSON"
+                  :label="t('toolsPage.detail.testArgsLabel')"
                   @update:model-value="$emit('update:testArgsJson', String($event ?? '{}'))"
                 />
                 <div class="row q-gutter-sm items-center">
@@ -164,7 +181,7 @@
                     dense
                     outlined
                     type="number"
-                    label="超时 (秒)"
+                    :label="t('toolsPage.detail.testTimeoutLabel')"
                     :min="1"
                     :max="120"
                     @update:model-value="$emit('update:testTimeoutSec', Number($event) || 30)"
@@ -173,7 +190,7 @@
                     no-caps
                     unelevated
                     class="app-registry-primary-btn"
-                    label="运行测试"
+                    :label="t('toolsPage.detail.testRun')"
                     icon="play_arrow"
                     :loading="testRunning"
                     @click="$emit('run-test')"
@@ -201,7 +218,7 @@
               </q-card-section>
             </q-card>
 
-            <q-expansion-item dense-toggle label="最近调用记录" class="q-mb-md">
+            <q-expansion-item dense-toggle :label="t('toolsPage.detail.recentRuns')" class="q-mb-md">
               <div class="q-pt-sm">
                 <div v-if="runsLoading" class="text-center q-pa-md">
                   <q-spinner-dots size="28px" />
@@ -227,13 +244,13 @@
                       </q-item-section>
                     </q-item>
                   </q-list>
-                  <div v-else class="text-caption q-pa-sm">暂无调用记录</div>
+                  <div v-else class="text-caption q-pa-sm">{{ t('toolsPage.detail.noRuns') }}</div>
                   <q-btn
                     flat
                     no-caps
                     class="app-registry-accent-btn q-mt-sm"
                     icon="history"
-                    label="查看全部调用记录"
+                    :label="t('toolsPage.detail.viewAllRuns')"
                     :to="{ name: 'tool-runs', query: { tool_key: tool.key } }"
                   />
                 </template>
@@ -512,7 +529,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
+import { toolPolicyChipCopy } from '../../features/tools/toolEditorCopy';
 import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary';
 import type { ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
@@ -587,7 +604,7 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const policyChip = TOOL_POLICY_CHIP_COPY;
+const policyChip = computed(() => toolPolicyChipCopy());
 
 const { t } = useI18n();
 

@@ -191,6 +191,16 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
 		return nil, err
 	}
+	// An empty dataset would produce a "completed" run with zero scores —
+	// that row then pollutes the trend series and can be picked up as the
+	// publish gate's baseline, triggering spurious drop alerts.
+	cases, err := s.uc.ListCases(ctx, req.GetDatasetId())
+	if err != nil {
+		return nil, err
+	}
+	if len(cases) == 0 {
+		return nil, apierror.BadRequest("EVAL", "dataset has no cases")
+	}
 	// EVAL-13: without a runner the run would sit in "pending" until the next
 	// process restart sweep (Y10) — fail fast instead of creating a zombie.
 	if s.runner == nil {

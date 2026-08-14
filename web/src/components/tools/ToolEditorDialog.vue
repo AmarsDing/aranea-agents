@@ -25,7 +25,7 @@
       <div class="tool-editor-shell__body">
         <aside class="tool-editor-aside">
           <div class="tool-editor-aside__nav">
-            <div class="tool-editor-aside__nav-title">配置步骤</div>
+            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.navTitle') }}</div>
             <div
               v-for="(section, idx) in navSections"
               :key="section.id"
@@ -42,7 +42,7 @@
           </div>
 
           <div class="tool-editor-aside__validation">
-            <div class="tool-editor-aside__nav-title">校验状态</div>
+            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.validationTitle') }}</div>
             <div
               v-for="check in validationChecks"
               :key="check.key"
@@ -67,7 +67,9 @@
               >
                 {{ line }}
               </div>
-              <div v-if="diffLines.length > 6" class="text-caption text-grey">…还有 {{ diffLines.length - 6 }} 项</div>
+              <div v-if="diffLines.length > 6" class="text-caption text-grey">
+                {{ t('toolsPage.editor.diffMore', { count: diffLines.length - 6 }) }}
+              </div>
             </div>
           </div>
         </aside>
@@ -79,9 +81,9 @@
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">1</div>
                   <div>
-                    <h3 class="tool-editor-section__title">基础信息</h3>
+                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.basicTitle') }}</h3>
                     <p class="tool-editor-section__desc">
-                      填写工具的名称和用途说明，让团队成员一眼理解这个工具做什么。
+                      {{ t('toolsPage.editor.basicDesc') }}
                     </p>
                   </div>
                 </div>
@@ -103,14 +105,14 @@
                 <div class="app-form-field-grid app-form-field-grid--2col">
                   <tool-field-hint-input
                     :model-value="form.key"
-                    label="工具标识 (Key)"
+                    :label="t('toolsPage.editor.fieldKey')"
                     :hint="hints.key"
                     :disable="Boolean(editingId)"
                     @update:model-value="$emit('patch-form', { key: $event })"
                   />
                   <tool-field-hint-input
                     :model-value="form.display_name"
-                    label="显示名称"
+                    :label="t('toolsPage.editor.fieldName')"
                     :hint="hints.display_name"
                     @update:model-value="$emit('patch-form', { display_name: $event })"
                   />
@@ -121,7 +123,7 @@
                     outlined
                     autogrow
                     type="textarea"
-                    label="描述"
+                    :label="t('toolsPage.editor.fieldDesc')"
                     :hint="hints.description"
                     @update:model-value="$emit('patch-form', { description: String($event ?? '') })"
                   />
@@ -129,7 +131,7 @@
                     :model-value="form.category"
                     dense
                     outlined
-                    label="分类"
+                    :label="t('toolsPage.editor.fieldCategory')"
                     :hint="hints.category"
                     @update:model-value="$emit('patch-form', { category: String($event ?? 'custom') })"
                   />
@@ -140,7 +142,7 @@
                     outlined
                     emit-value
                     map-options
-                    label="来源"
+                    :label="t('toolsPage.editor.fieldSource')"
                     :hint="hints.source"
                     :options="sourceOptions"
                     @update:model-value="$emit('patch-form', { source: String($event ?? 'external') })"
@@ -151,7 +153,7 @@
                     dense
                     outlined
                     readonly
-                    label="来源"
+                    :label="t('toolsPage.editor.fieldSource')"
                     :hint="hints.source"
                   />
                   <q-select
@@ -160,9 +162,9 @@
                     outlined
                     emit-value
                     map-options
-                    label="风险级别"
+                    :label="t('toolsPage.editor.fieldRisk')"
                     :hint="hints.risk_level"
-                    :options="riskLevelOptions"
+                    :options="riskOptions"
                     @update:model-value="$emit('patch-form', { risk_level: String($event ?? 'low') })"
                   />
                 </div>
@@ -172,14 +174,13 @@
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">2</div>
                   <div>
-                    <h3 class="tool-editor-section__title">运行策略</h3>
-                    <p class="tool-editor-section__desc">控制工具的启用状态、访问权限和运行时行为。</p>
+                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.policyTitle') }}</h3>
+                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.policyDesc') }}</p>
                   </div>
                 </div>
 
                 <q-banner v-if="registryLocked" rounded class="settings-warning-banner q-mb-sm">
-                  内置 / 只读工具：「需确认 / 流式 / 并发」由代码 registry
-                  维护，保存后重启可能被同步覆盖。日常启停请用列表页开关。
+                  {{ t('toolsPage.editor.registryBanner') }}
                 </q-banner>
 
                 <tool-policy-toggle-list
@@ -189,9 +190,10 @@
                 />
 
                 <q-banner rounded dense class="settings-info-banner q-mt-sm">
-                  Agent 级并行、流式、重试在
-                  <router-link :to="{ name: 'agents' }" class="text-primary">Agent 列表</router-link>
-                  进入对应 Agent → 能力 Tab 配置；此处为 Tool 目录级标记。
+                  {{ t('toolsPage.editor.agentConfigPre')
+                  }}<router-link :to="{ name: 'agents' }" class="text-primary">{{
+                    t('toolsPage.editor.agentConfigLink')
+                  }}</router-link>{{ t('toolsPage.editor.agentConfigPost') }}
                 </q-banner>
               </section>
 
@@ -199,30 +201,29 @@
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">3</div>
                   <div>
-                    <h3 class="tool-editor-section__title">调用参数</h3>
-                    <p class="tool-editor-section__desc">定义 AI 调用此工具时需要传递的参数结构。</p>
+                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.paramsTitle') }}</h3>
+                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.paramsDesc') }}</p>
                     <p class="tool-editor-section__desc-detail">
-                      <strong>何时配置：</strong>想让 AI 知道该传什么信息给工具（搜索关键词、文件路径等）。
-                      <strong>配置后：</strong>AI 按参数结构生成调用请求，缺少必填参数时会自动补充或向用户询问。
+                      <strong>{{ t('toolsPage.editor.paramsWhen') }}</strong>{{ t('toolsPage.editor.paramsWhenText') }}
+                      <strong>{{ t('toolsPage.editor.paramsAfter') }}</strong>{{ t('toolsPage.editor.paramsAfterText') }}
                     </p>
                   </div>
                 </div>
                 <tool-schema-builder
                   :model-value="form.parameters_schema_json"
-                  title="调用参数定义"
+                  :title="t('toolsPage.editor.paramsBuilderTitle')"
                   :hint="hints.parameters_schema_json"
                   :readonly="schemaReadonly"
                   @update:model-value="$emit('patch-form', { parameters_schema_json: $event })"
                 />
-                <q-expansion-item dense-toggle label="返回结构说明（可选）" class="q-mt-md">
+                <q-expansion-item dense-toggle :label="t('toolsPage.editor.resultExpLabel')" class="q-mt-md">
                   <div class="q-pt-sm">
                     <p class="tool-editor-section__desc-detail">
-                      定义工具返回数据的结构，供 AI 根据返回结果做后续决策（如判断搜索是否有结果）。
-                      不配置不影响工具运行，但 AI 无法预知返回格式。
+                      {{ t('toolsPage.editor.resultDesc') }}
                     </p>
                     <tool-schema-builder
                       :model-value="form.result_schema_json"
-                      title="返回结构定义"
+                      :title="t('toolsPage.editor.resultBuilderTitle')"
                       :hint="hints.result_schema_json"
                       :readonly="schemaReadonly"
                       @update:model-value="$emit('patch-form', { result_schema_json: $event })"
@@ -235,13 +236,13 @@
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">4</div>
                   <div>
-                    <h3 class="tool-editor-section__title">管理员配置</h3>
+                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.configTitle') }}</h3>
                     <p class="tool-editor-section__desc">
-                      配置工具运行所需的密钥、超时等参数。AI 不可见，仅管理员可编辑。
+                      {{ t('toolsPage.editor.configDesc') }}
                     </p>
                     <p class="tool-editor-section__desc-detail">
-                      <strong>何时配置：</strong>工具需要 API Key、连接地址、超时时间等运行时参数时。
-                      <strong>配置后：</strong>工具调用时自动携带这些配置值，无需 AI 传递敏感信息。
+                      <strong>{{ t('toolsPage.editor.configWhen') }}</strong>{{ t('toolsPage.editor.configWhenText') }}
+                      <strong>{{ t('toolsPage.editor.configAfter') }}</strong>{{ t('toolsPage.editor.configAfterText') }}
                     </p>
                   </div>
                 </div>
@@ -249,17 +250,16 @@
                 <q-expansion-item
                   dense-toggle
                   :default-opened="!hasConfigSchema"
-                  label="配置项定义（管理员维护）"
+                  :label="t('toolsPage.editor.configSchemaExpLabel')"
                   class="q-mb-md"
                 >
                   <div class="q-pt-sm">
                     <p class="tool-editor-section__desc-detail">
-                      定义此工具接受哪些配置项（如 api_key、timeout）。首次创建工具或需要新增配置项时修改；
-                      已有配置项的工具通常无需改动此区域。
+                      {{ t('toolsPage.editor.configSchemaDesc') }}
                     </p>
                     <tool-schema-builder
                       :model-value="form.config_schema_json"
-                      title="配置项定义"
+                      :title="t('toolsPage.editor.configSchemaBuilderTitle')"
                       :hint="hints.config_schema_json"
                       :readonly="schemaReadonly"
                       @update:model-value="$emit('patch-form', { config_schema_json: $event })"
@@ -267,11 +267,12 @@
                   </div>
                 </q-expansion-item>
 
-                <div class="tool-editor-section__subtitle">当前配置值</div>
+                <div class="tool-editor-section__subtitle">{{ t('toolsPage.editor.currentConfig') }}</div>
                 <q-banner v-if="form.key === 'web_research'" rounded dense class="settings-info-banner q-mb-sm">
-                  API Key 留空时使用
-                  <router-link :to="{ name: 'settings' }" class="text-primary">系统设置 → Web 研究</router-link>
-                  或环境变量 TAVILY_API_KEY。
+                  {{ t('toolsPage.editor.webResearchPre')
+                  }}<router-link :to="{ name: 'settings' }" class="text-primary">{{
+                    t('toolsPage.editor.webResearchLink')
+                  }}</router-link>{{ t('toolsPage.editor.webResearchPost') }}
                 </q-banner>
                 <template v-if="hasConfigSchema">
                   <tool-schema-form
@@ -288,7 +289,7 @@
                   autogrow
                   dense
                   class="app-field-long"
-                  label="配置 JSON"
+                  :label="t('toolsPage.editor.configJsonLabel')"
                   :hint="hints.config_json"
                   :readonly="schemaReadonly"
                   :error="Boolean(jsonErrors.config_json)"
@@ -296,7 +297,7 @@
                   @update:model-value="$emit('patch-form', { config_json: String($event ?? '{}') })"
                 />
                 <q-banner v-if="extraConfigKeys.length" rounded class="settings-warning-banner q-mt-sm">
-                  以下字段不在配置 Schema 中，保存时可能被后端拒绝：{{ extraConfigKeys.join(', ') }}
+                  {{ t('toolsPage.editor.extraKeysBanner', { keys: extraConfigKeys.join(', ') }) }}
                 </q-banner>
               </section>
 
@@ -304,18 +305,18 @@
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">5</div>
                   <div>
-                    <h3 class="tool-editor-section__title">高级选项</h3>
-                    <p class="tool-editor-section__desc">出厂默认配置和元数据，通常无需修改。</p>
+                    <h3 class="tool-editor-section__title">{{ t('toolsPage.editor.advancedTitle') }}</h3>
+                    <p class="tool-editor-section__desc">{{ t('toolsPage.editor.advancedDesc') }}</p>
                     <p class="tool-editor-section__desc-detail">
-                      <strong>何时配置：</strong>需要为新工具设定默认配置值，或添加供其他系统读取的扩展信息时。
-                      <strong>配置后：</strong>新 Agent 绑定此工具时会继承出厂默认配置。
+                      <strong>{{ t('toolsPage.editor.advancedWhen') }}</strong>{{ t('toolsPage.editor.advancedWhenText') }}
+                      <strong>{{ t('toolsPage.editor.advancedAfter') }}</strong>{{ t('toolsPage.editor.advancedAfterText') }}
                     </p>
                   </div>
                 </div>
                 <q-banner v-if="registryLocked" rounded dense class="settings-info-banner q-mb-sm">
-                  只读内置工具：高级 JSON 可查看；修改可能在重启后被 registry 覆盖。
+                  {{ t('toolsPage.editor.advancedRegistryBanner') }}
                 </q-banner>
-                <q-expansion-item dense-toggle label="出厂默认配置">
+                <q-expansion-item dense-toggle :label="t('toolsPage.editor.defaultConfigExp')">
                   <div class="q-pt-sm column q-gutter-sm">
                     <ul v-if="defaultDiffLines.length" class="app-registry-muted-caption q-pl-md q-ma-none">
                       <li v-for="(line, i) in defaultDiffLines" :key="i">{{ line }}</li>
@@ -327,7 +328,7 @@
                       autogrow
                       dense
                       class="app-field-long"
-                      label="默认配置 JSON"
+                      :label="t('toolsPage.editor.defaultConfigLabel')"
                       :readonly="registryLocked"
                       :error="Boolean(jsonErrors.default_config_json)"
                       :error-message="jsonErrors.default_config_json"
@@ -339,12 +340,12 @@
                       dense
                       no-caps
                       size="sm"
-                      label="从当前配置复制"
+                      :label="t('toolsPage.editor.copyFromCurrent')"
                       @click="$emit('patch-form', { default_config_json: form.config_json })"
                     />
                   </div>
                 </q-expansion-item>
-                <q-expansion-item dense-toggle label="扩展元数据">
+                <q-expansion-item dense-toggle :label="t('toolsPage.editor.metadataExp')">
                   <div class="q-pt-sm">
                     <q-input
                       :model-value="form.metadata_json"
@@ -353,7 +354,7 @@
                       autogrow
                       dense
                       class="app-field-long"
-                      label="元数据 JSON"
+                      :label="t('toolsPage.editor.metadataLabel')"
                       :readonly="registryLocked"
                       :error="Boolean(jsonErrors.metadata_json)"
                       :error-message="jsonErrors.metadata_json"
@@ -361,7 +362,7 @@
                     />
                   </div>
                 </q-expansion-item>
-                <q-expansion-item dense-toggle label="Raw JSON（全部 Schema）">
+                <q-expansion-item dense-toggle :label="t('toolsPage.editor.rawExp')">
                   <div class="q-pt-sm column q-gutter-sm">
                     <q-input
                       v-for="field in rawFields"
@@ -385,13 +386,13 @@
           </div>
 
           <div class="tool-editor-main__footer">
-            <q-btn outline no-caps label="取消" @click="tryClose" />
+            <q-btn outline no-caps :label="t('toolsPage.editor.cancel')" @click="tryClose" />
             <q-btn
               no-caps
               unelevated
               class="app-registry-primary-btn"
               icon="save"
-              label="保存"
+              :label="t('toolsPage.editor.save')"
               :loading="saving"
               @click="$emit('save')"
             />
@@ -407,7 +408,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
+import { toolCreateTemplates, toolFieldHints, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import type { ToolUpsertInput } from '../../features/tools/types';
 import { toolEditorJsonKeys, validateToolJsonFields, riskLevelOptions, sourceSuggestions, diffToolFormLines } from './toolUi';
@@ -464,17 +465,18 @@ watch(
   },
 );
 
-const hints = TOOL_FIELD_HINTS;
-const templates = TOOL_CREATE_TEMPLATES;
-const sourceOptions = sourceSuggestions;
+const hints = computed(() => toolFieldHints());
+const templates = computed(() => toolCreateTemplates());
+const sourceOptions = computed(() => sourceSuggestions());
+const riskOptions = computed(() => riskLevelOptions());
 
-const navSections = [
-  { id: 'basic', label: '基础信息', hint: '名称、分类、描述', icon: 'info' },
-  { id: 'policy', label: '运行策略', hint: '启用、确认、流式', icon: 'policy' },
-  { id: 'params', label: '调用参数', hint: 'AI 传递的参数', icon: 'data_object' },
-  { id: 'config', label: '管理员配置', hint: '密钥、超时等', icon: 'tune' },
-  { id: 'advanced', label: '高级选项', hint: '默认值、元数据', icon: 'more_horiz' },
-];
+const navSections = computed(() => [
+  { id: 'basic', label: t('toolsPage.editor.navBasic'), hint: t('toolsPage.editor.navBasicHint'), icon: 'info' },
+  { id: 'policy', label: t('toolsPage.editor.navPolicy'), hint: t('toolsPage.editor.navPolicyHint'), icon: 'policy' },
+  { id: 'params', label: t('toolsPage.editor.navParams'), hint: t('toolsPage.editor.navParamsHint'), icon: 'data_object' },
+  { id: 'config', label: t('toolsPage.editor.navConfig'), hint: t('toolsPage.editor.navConfigHint'), icon: 'tune' },
+  { id: 'advanced', label: t('toolsPage.editor.navAdvanced'), hint: t('toolsPage.editor.navAdvancedHint'), icon: 'more_horiz' },
+]);
 
 const registryLocked = computed(() => isRegistryLockedTool(props.form));
 const schemaReadonly = computed(() => registryLocked.value);
@@ -518,16 +520,16 @@ const validationChecks = computed(() => {
       label: t('toolsPage.editor.checkRequired'),
       ok: Boolean(props.form.key.trim() && props.form.display_name.trim()),
     },
-    { key: 'json', label: 'JSON 格式', ok: Object.keys(errors).length === 0 },
-    { key: 'extra', label: '多余配置字段', ok: extraConfigKeys.value.length === 0 },
+    { key: 'json', label: t('toolsPage.editor.checkJson'), ok: Object.keys(errors).length === 0 },
+    { key: 'extra', label: t('toolsPage.editor.checkExtra'), ok: extraConfigKeys.value.length === 0 },
   ];
 });
 
-const rawFields = [
-  { key: 'parameters_schema_json' as const, label: '参数 Schema JSON' },
-  { key: 'result_schema_json' as const, label: '返回 Schema JSON' },
-  { key: 'config_schema_json' as const, label: '配置 Schema JSON' },
-];
+const rawFields = computed(() => [
+  { key: 'parameters_schema_json' as const, label: t('toolsPage.editor.rawParams') },
+  { key: 'result_schema_json' as const, label: t('toolsPage.editor.rawResult') },
+  { key: 'config_schema_json' as const, label: t('toolsPage.editor.rawConfig') },
+]);
 
 const scrollSpySuppressUntil = ref(0);
 let scrollSpyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -554,10 +556,11 @@ function onScroll() {
   const scroller = scrollContainer.value;
   if (!scroller) return;
   const scrollerTop = scroller.getBoundingClientRect().top;
-  for (let i = navSections.length - 1; i >= 0; i--) {
-    const el = document.getElementById(`section-${navSections[i].id}`);
+  const sections = navSections.value;
+  for (let i = sections.length - 1; i >= 0; i--) {
+    const el = document.getElementById(`section-${sections[i].id}`);
     if (el && el.getBoundingClientRect().top - scrollerTop - 32 <= 0) {
-      activeSection.value = navSections[i].id;
+      activeSection.value = sections[i].id;
       break;
     }
   }

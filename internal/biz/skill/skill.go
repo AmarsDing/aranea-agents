@@ -405,6 +405,9 @@ type SkillFileWriter interface {
 	CreateSkillDir(slug string, body string) (dir string, err error)
 	WriteFile(dir string, relPath string, content string) error
 	DeleteFile(dir string, relPath string) error
+	// RemoveSkillDir recursively removes a skill directory. It refuses to
+	// delete the root skill storage dir itself or any path outside of it.
+	RemoveSkillDir(dir string) error
 }
 
 type SkillFilesystem interface {

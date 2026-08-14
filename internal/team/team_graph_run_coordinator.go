@@ -493,6 +493,23 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 	if execID != "" && execID != sess.execID {
 		return false, false, ""
 	}
+	// Y1/N3: a HITL interrupt arrives as a graph_stage "step" notice carrying
+	// interrupt metadata (the Pregel interrupt is the only reachable carrier —
+	// checkpoint interrupt events require StreamModeCheckpoints which is not
+	// enabled). Mark the run waiting_human instead of silently dropping it;
+	// otherwise the run stays "running" until the watch times out.
+	if metaString(meta, "interrupt_key") != "" {
+		nodeID := metaString(meta, "node_id")
+		lineageID := metaString(meta, "lineage_id")
+		if err := c.MarkTeamGraphInterrupt(ctx, sess.execID, nodeID, lineageID); err != nil {
+			c.lg.Warn("handleGraphWatchNotice: MarkTeamGraphInterrupt failed",
+				loggateway.StepID("team.graph.interrupt_mark_fail"),
+				loggateway.Str("exec_id", sess.execID),
+				loggateway.Str("node_id", nodeID),
+				loggateway.Err(err))
+		}
+		return false, false, ""
+	}
 	stepCtx := sess.stepContext()
 	stage := notice.NoticeType
 	isNodeEnd := stage == "node_end"
@@ -534,6 +551,15 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 	}
 	if mode == graphWatchStepsOnly {
 		return false, false, ""
+	}
+	// N3: a graph-level fatal error (Pregel error: max steps / panic /
+	// executeGraph failure) arrives as a graph_stage "step" notice carrying an
+	// error key. Finalize as failed immediately instead of waiting for the
+	// watch timeout.
+	if stage == "step" {
+		if errText := metaString(meta, "error"); errText != "" {
+			return true, true, errText
+		}
 	}
 	switch stage {
 	case "node_error":

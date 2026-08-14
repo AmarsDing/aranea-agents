@@ -88,6 +88,7 @@ func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs
 		ToolCallID:    args.ToolCallID,
 		Streaming:     streaming,
 		ChunkCount:    chunkCount,
+		ParamsJSON:    paramsJSONFromToolArgs(args.Arguments),
 	}
 	// 消费 repair guard（BeforeTool priority 1）经 ctx 传入的参数质量标记：
 	// 落库 metadata_json（P1-4 聚合"参数一次合法率"）+ Prometheus counter。
@@ -105,6 +106,18 @@ func recordToolInvocationAfter(ctx context.Context, args *trpctool.AfterToolArgs
 
 func previewFromToolArgs(args []byte) string {
 	return preview.RedactAndTruncate(string(args), 2000)
+}
+
+// toolParamsJSONMaxLen bounds the redacted params JSON persisted to
+// tool_invocation_params (larger budget than input_preview so the
+// 「参数详情」Tab can show near-complete arguments).
+const toolParamsJSONMaxLen = 8000
+
+// paramsJSONFromToolArgs builds the redacted params JSON for the
+// tool_invocation_params sidecar row. Reuses the exact same redaction chain
+// as input_preview (preview.RedactAndTruncate) — no separate redactor.
+func paramsJSONFromToolArgs(args []byte) string {
+	return preview.RedactAndTruncate(string(args), toolParamsJSONMaxLen)
 }
 
 func previewFromToolResult(result any) string {
@@ -181,18 +194,36 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 	}
 
 	safego.Go(ctx, "recordToolInvocation", func() {
-		bg := context.Background()
+		// 硬超时：DB 故障时后台 goroutine 不得无限期挂起（此前裸
+		// context.Background() 无退出时限）。
+		bg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		lg := deps.Logger()
 		// 流程日志发射器复用运行上下文中的 TraceEmitter（生产 Turn 必然携带，
 		// 见上方 CompleteToolCall 用法）；测试/非 Turn 场景为 nil 时仅保留进程 Warn。
+		// 注意：后台落库完成时 Turn 可能已结束，仅在原 ctx 仍存活时发射，
+		// 避免向已完结的 Turn 乱序追加流程日志。
 		flowEm := event.TraceEmitterFromContext(ctx)
 		if deps.ToolUC != nil {
 			if err := deps.ToolUC.RecordToolInvocation(bg, write); err != nil {
 				lg.Warn("工具调用记录失败", loggateway.StepID("agent.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
-				if flowEm != nil {
+				if flowEm != nil && ctx.Err() == nil {
 					flowEm.LogError("system.tool.record_fail", "工具调用记录失败",
 						event.P("tool", write.ToolKey),
 						event.P("error", err.Error()))
+				}
+			}
+			// 旁车写入脱敏后的参数行（tool_invocation_params），驱动
+			// GET /v1/tools/runs/{invocation_id}/params「参数详情」Tab。
+			// 同一 ToolCallID 重复记录由 data 层 upsert 去重。
+			if tcid := strings.TrimSpace(write.ToolCallID); tcid != "" && write.ParamsJSON != "" {
+				if err := deps.ToolUC.RecordToolInvocationParams(bg, biz.ToolInvocationParamWrite{
+					InvocationID:     tcid,
+					ToolKey:          write.ToolKey,
+					ParamsJSON:       write.ParamsJSON,
+					RedactionApplied: true,
+				}); err != nil {
+					lg.Warn("工具调用参数记录失败", loggateway.StepID("agent.tool.record_params_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 				}
 			}
 			auditWrite := biz.ToolInvocationAuditWrite{

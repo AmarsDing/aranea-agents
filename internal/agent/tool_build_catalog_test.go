@@ -40,6 +40,10 @@ func (f *fakeToolLookup) ListToolAgentOverridesByAgent(_ context.Context, _ stri
 	return f.overrides, f.overridesErr
 }
 
+func (f *fakeToolLookup) RecordToolInvocationParams(_ context.Context, _ biztool.ToolInvocationParamWrite) error {
+	return nil
+}
+
 func (f *fakeToolLookup) RecordToolInvocation(_ context.Context, _ biztool.ToolInvocationWrite) error {
 	return nil
 }

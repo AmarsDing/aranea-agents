@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	v1 "aranea-agents/api/kratos/tool/v1"
+	"aranea-agents/internal/biz"
 	biztool "aranea-agents/internal/biz/tool"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -45,7 +48,22 @@ func (f *fakeGrantStore) DeleteToolGrant(_ context.Context, agentID, toolKey str
 
 func newToolGrantTestService(store *fakeGrantStore) *ToolService {
 	uc := biztool.NewToolUsecase(nil, nil, loggateway.NewNoop(), biztool.WithToolGrantStore(store))
-	return NewToolService(uc, nil, nil)
+	// A2 access checks call agents.Get — inject a real AgentUsecase over stubs
+	// (nil would panic). The reader serves the agents used by these tests.
+	agents := biz.NewAgentUsecase(biz.AgentUsecaseDeps{
+		Reader:   &batchAgentReader{agents: map[string]biz.Agent{"agent-1": {ID: "agent-1"}}},
+		Settings: batchSettingsRepo{},
+		Files:    batchFilesRepo{},
+		Lg:       loggateway.NewNoop(),
+	})
+	return NewToolService(uc, agents, nil)
+}
+
+// toolGrantCtx scopes calls as the system workspace: production callers reach
+// these endpoints post-auth, and the batch-test convention uses the system
+// bypass to keep fixtures workspace-agnostic.
+func toolGrantCtx() context.Context {
+	return workspace.WithSystemWorkspace(context.Background())
 }
 
 func TestToolService_ListToolGrants(t *testing.T) {
@@ -56,7 +74,7 @@ func TestToolService_ListToolGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := newToolGrantTestService(store)
-	resp, err := svc.ListToolGrants(context.Background(), &v1.ListToolGrantsRequest{AgentId: "agent-1"})
+	resp, err := svc.ListToolGrants(toolGrantCtx(), &v1.ListToolGrantsRequest{AgentId: "agent-1"})
 	if err != nil {
 		t.Fatalf("ListToolGrants err = %v", err)
 	}
@@ -71,12 +89,17 @@ func TestToolService_ListToolGrants(t *testing.T) {
 
 func TestToolService_ListToolGrantsEmpty(t *testing.T) {
 	svc := newToolGrantTestService(newFakeGrantStore())
-	resp, err := svc.ListToolGrants(context.Background(), &v1.ListToolGrantsRequest{AgentId: "agent-x"})
+	// Known agent with no grants → empty list.
+	resp, err := svc.ListToolGrants(toolGrantCtx(), &v1.ListToolGrantsRequest{AgentId: "agent-1"})
 	if err != nil {
 		t.Fatalf("ListToolGrants err = %v", err)
 	}
 	if len(resp.GetItems()) != 0 {
 		t.Fatalf("items = %d, want 0", len(resp.GetItems()))
+	}
+	// Unknown agent → NotFound (A2 access gate).
+	if _, err := svc.ListToolGrants(toolGrantCtx(), &v1.ListToolGrantsRequest{AgentId: "agent-x"}); !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("unknown agent err = %v, want NotFound", err)
 	}
 }
 
@@ -88,7 +111,7 @@ func TestToolService_DeleteToolGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := newToolGrantTestService(store)
-	if _, err := svc.DeleteToolGrant(context.Background(), &v1.DeleteToolGrantRequest{AgentId: "agent-1", ToolKey: "bash"}); err != nil {
+	if _, err := svc.DeleteToolGrant(toolGrantCtx(), &v1.DeleteToolGrantRequest{AgentId: "agent-1", ToolKey: "bash"}); err != nil {
 		t.Fatalf("DeleteToolGrant err = %v", err)
 	}
 	has, err := store.HasToolGrant(context.Background(), "agent-1", "bash")
@@ -96,7 +119,7 @@ func TestToolService_DeleteToolGrant(t *testing.T) {
 		t.Fatalf("after delete has = (%v,%v), want (false,nil)", has, err)
 	}
 	// Idempotent: deleting again must not fail.
-	if _, err := svc.DeleteToolGrant(context.Background(), &v1.DeleteToolGrantRequest{AgentId: "agent-1", ToolKey: "bash"}); err != nil {
+	if _, err := svc.DeleteToolGrant(toolGrantCtx(), &v1.DeleteToolGrantRequest{AgentId: "agent-1", ToolKey: "bash"}); err != nil {
 		t.Fatalf("second DeleteToolGrant err = %v", err)
 	}
 }

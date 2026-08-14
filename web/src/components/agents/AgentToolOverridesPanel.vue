@@ -2,9 +2,9 @@
   <q-card flat bordered class="capability-card">
     <q-card-section class="row items-center justify-between">
       <div>
-        <div class="text-subtitle2">工具覆盖</div>
+        <div class="text-subtitle2">{{ $t('toolsPage.agentTools.panelTitle') }}</div>
         <div class="text-caption text-grey-7">
-          按工具粒度覆盖启用、模式、需确认与配置 JSON（运行时与 Tools 详情页一致）。
+          {{ $t('toolsPage.agentTools.panelSubtitle') }}
         </div>
       </div>
       <div class="row items-center q-gutter-sm">
@@ -16,7 +16,7 @@
           :placeholder="$t('agentSettings.toolOverrideSearchPlaceholder')"
           style="min-width: 220px"
         />
-        <q-btn flat dense no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat dense no-caps icon="refresh" :label="$t('common.refresh')" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
     <q-separator />
@@ -26,7 +26,7 @@
       </div>
       <template v-else>
         <q-banner v-if="!toolsEnabled" rounded class="settings-warning-banner q-mb-sm">
-          Agent 工具总开关已关闭；以下矩阵为策略计算结果，运行时不注入工具。
+          {{ $t('toolsPage.agentTools.masterOff') }}
         </q-banner>
         <AppRegistryTable
           :shell="false"
@@ -53,7 +53,7 @@
           <template #body-cell-effective_state="props">
             <q-td :props="props">
               <q-badge
-                :color="props.row.enabled ? 'positive' : 'grey'"
+                :color="props.row.effective_state === 'allowed' ? 'positive' : 'grey'"
                 :label="effectiveStateLabel(props.row.effective_state)"
               />
             </q-td>
@@ -61,21 +61,31 @@
           <template #body-cell-requires_confirmation="props">
             <q-td :props="props">
               <q-icon v-if="props.row.effective_requires_confirmation" name="warning" color="warning" size="xs" />
-              <span v-if="props.row.effective_requires_confirmation" class="q-ml-xs">需确认</span>
+              <span v-if="props.row.effective_requires_confirmation" class="q-ml-xs">{{
+                $t('toolsPage.agentTools.requiresConfirmation')
+              }}</span>
               <span v-else class="text-grey-6">—</span>
             </q-td>
           </template>
           <template #body-cell-override="props">
             <q-td :props="props">
               <span v-if="props.row.override">{{ modeLabel(props.row.override.mode) }}</span>
-              <span v-else class="text-grey-6">无</span>
+              <span v-else class="text-grey-6">{{ $t('toolsPage.agentTools.none') }}</span>
             </q-td>
           </template>
           <template #body-cell-actions="props">
             <q-td :props="props">
               <div class="app-registry-cell-actions">
-                <q-btn flat dense round icon="edit" size="sm" @click="$emit('edit', props.row)">
-                  <q-tooltip>{{ props.row.override ? '编辑覆盖' : '添加覆盖' }}</q-tooltip>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="edit"
+                  size="sm"
+                  :aria-label="props.row.override ? $t('toolsPage.agentTools.editOverride') : $t('toolsPage.agentTools.addOverride')"
+                  @click="$emit('edit', props.row)"
+                >
+                  <q-tooltip>{{ props.row.override ? $t('toolsPage.agentTools.editOverride') : $t('toolsPage.agentTools.addOverride') }}</q-tooltip>
                 </q-btn>
                 <q-btn
                   v-if="props.row.override"
@@ -84,9 +94,10 @@
                   round
                   icon="delete"
                   size="sm"
+                  :aria-label="$t('toolsPage.agentTools.removeTitle')"
                   @click="$emit('request-remove', props.row)"
                 >
-                  <q-tooltip>删除覆盖</q-tooltip>
+                  <q-tooltip>{{ $t('toolsPage.agentTools.removeTitle') }}</q-tooltip>
                 </q-btn>
               </div>
             </q-td>
@@ -110,12 +121,14 @@
     <q-dialog :model-value="confirmRemoveOpen" persistent @update:model-value="$emit('cancel-remove')">
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section>
-          <div class="text-h6">删除覆盖</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">确定删除 {{ pendingRemoveRow?.tool_key }} 的 Agent 覆盖？</div>
+          <div class="text-h6">{{ $t('toolsPage.agentTools.removeTitle') }}</div>
+          <div class="text-body2 text-grey-7 q-mt-sm">
+            {{ $t('toolsPage.agentTools.removeMessage', { key: pendingRemoveRow?.tool_key }) }}
+          </div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat rounded no-caps label="取消" @click="$emit('cancel-remove')" />
-          <q-btn color="negative" rounded unelevated no-caps label="删除" @click="$emit('confirm-remove')" />
+          <q-btn flat rounded no-caps :label="$t('common.cancel')" @click="$emit('cancel-remove')" />
+          <q-btn color="negative" rounded unelevated no-caps :label="$t('common.delete')" @click="$emit('confirm-remove')" />
         </q-card-actions>
       </q-card>
     </q-dialog>

@@ -771,8 +771,14 @@
 | **共享类型** | `EvolutionMetrics`（工具成功率/检索质量）、`EvolutionSuggestion`（persona/prompt/skill 类型，legacy 字段存 metadata JSON） |
 | **事件生产** | 无直接生产 |
 | **事件消费** | 无 |
-| **数据库** | Postgres（指标查询 tool_invocations 等；建议存 unified_evolution_suggestions，A6 物理收敛，legacy evolution_suggestions 已 DROP） |
+| **数据库** | Postgres（指标查询 tool_invocations 等；建议存 unified_evolution_suggestions，A6 物理收敛，legacy evolution_suggestions 已 DROP；2026-08-14 P0-1 增 `workspace_id` 列 + RLS，迁移 `20261212`） |
 | **前端对应** | AgentEvolutionPanel（Agent 详情页"演化"Tab） |
+
+**⚠️ 开发注意**：
+- **P0-1 工作区隔离（2026-08-14）**：`unified_evolution_suggestions.workspace_id`（空串 = 平台级共享，所有租户可见）；data 层 `Create` 空值时自宿主表（skill/agents）派生，List/Count 按 workspace 过滤；service 层 L3 五端点（`agent_evolution.go`，`assertAgentAccess`/`assertAgentMutateAccess`）与 L1/L2 五端点（`skill_evolution_suggestion.go`，`workspace.AssertWorkspaceOrShared`）均断言工作区，防跨租户 IDOR
+- **P1-2**：`ApplySuggestion` 将 apply 新建文件名写入 metadata `created_files`（`EvoMetaCreatedFiles`），`RollbackSuggestion` 先过滤这些文件再恢复快照
+- **P1-3**：`EvolutionMetricsResponse` 增 `partial`/`partial_errors`（指标部分子查询失败标记）；**P1-4**：`EvolutionService.GetEvolutionDiversityOverview` 经 `assertSystemCaller` 限制 admin/system 调用方
+- **P2-5 文件拆分**：`internal/biz/skill_evolution_loop.go` 已删除；`GateVerifier` + 全部 9 维验证 + `EvoExpirationDays`/`SkillReloader` 迁至 `internal/biz/skill_gate_verifier.go`（测试 `skill_gate_verifier_test.go`）；`SkillEvolutionLoop`/`SkillTaskRunner`/`SkillObserver`/`SkillEvolver` 等未接线死代码一并删除
 
 ---
 

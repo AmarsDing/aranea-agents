@@ -1,19 +1,21 @@
 import { ref } from 'vue';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import type { Tool } from './types';
 import { useToolsStore } from '../../stores/tools';
 import { parseKratosApiError } from '../../utils/kratosError';
 
 export function useToolToggle(onChanged: () => void | Promise<void>) {
   const $q = useQuasar();
+  const { t } = useI18n();
   const toolsStore = useToolsStore();
   const busyId = ref('');
 
   async function toggleEnabled(tool: Tool, value: boolean) {
     if (value && (tool.risk_level === 'high' || tool.risk_level === 'critical')) {
       $q.dialog({
-        title: '高风险工具确认',
-        message: `即将启用高风险工具「${tool.display_name}」（风险等级：${tool.risk_level}）。此操作可能带来安全风险，请确认您已了解相关风险。`,
+        title: t('toolsPage.toggle.highRiskTitle'),
+        message: t('toolsPage.toggle.highRiskMessage', { name: tool.display_name, level: tool.risk_level }),
         cancel: true,
         persistent: true,
       }).onOk(async () => {
@@ -22,7 +24,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
           await toolsStore.toggle(tool.id || tool.key, value, 'I_UNDERSTAND_RISK');
           await onChanged();
         } catch (err) {
-          $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '操作失败' });
+          $q.notify({ type: 'negative', message: parseKratosApiError(err).message || t('toolsPage.toggle.actionFailed') });
         } finally {
           busyId.value = '';
         }
@@ -34,7 +36,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
       await toolsStore.toggle(tool.id || tool.key, value);
       await onChanged();
     } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '操作失败' });
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || t('toolsPage.toggle.actionFailed') });
     } finally {
       busyId.value = '';
     }
@@ -42,12 +44,12 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
 
   function removeTool(tool: Tool) {
     if (tool.readonly) {
-      $q.notify({ type: 'warning', message: `「${tool.display_name}」为内置/只读工具，不可删除` });
+      $q.notify({ type: 'warning', message: t('toolsPage.toggle.readonlyNoRemove', { name: tool.display_name }) });
       return;
     }
     $q.dialog({
-      title: '删除 Tool',
-      message: `确认删除 ${tool.display_name}（${tool.key}）？`,
+      title: t('toolsPage.toggle.removeTitle'),
+      message: t('toolsPage.toggle.removeMessage', { name: tool.display_name, key: tool.key }),
       cancel: true,
       persistent: true,
     }).onOk(async () => {
@@ -56,7 +58,7 @@ export function useToolToggle(onChanged: () => void | Promise<void>) {
         await toolsStore.remove(tool.id || tool.key);
         await onChanged();
       } catch (err) {
-        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '删除失败' });
+        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || t('toolsPage.toggle.removeFailed') });
       } finally {
         busyId.value = '';
       }

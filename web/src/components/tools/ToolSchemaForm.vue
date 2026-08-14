@@ -86,6 +86,7 @@
                 icon="close"
                 size="sm"
                 class="app-registry-icon-btn"
+                :aria-label="$t('toolsPage.schemaForm.removeItem')"
                 @click="removeArrayItem(key, idx)"
               />
             </div>
@@ -94,7 +95,7 @@
               dense
               no-caps
               icon="add"
-              label="添加"
+              :label="$t('toolsPage.schemaForm.add')"
               size="sm"
               class="app-registry-accent-btn"
               @click="addArrayItem(key)"
@@ -113,7 +114,7 @@
         @update:model-value="setValue(key, $event)"
       />
     </template>
-    <div v-if="!hasProperties" class="text-caption">Schema 无可渲染属性，请使用 JSON 编辑</div>
+    <div v-if="!hasProperties" class="text-caption">{{ $t('toolsPage.schemaForm.empty') }}</div>
   </div>
 </template>
 

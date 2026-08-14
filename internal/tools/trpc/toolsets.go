@@ -28,51 +28,52 @@ import (
 type ReplyFunc = serviceawaitreply.ReplyFunc
 
 type ToolsetConfig struct {
-	Filesystem       bool
-	FilesystemDir    string
-	ShellExec        bool
-	ShellExecDir     string
-	ShellExecEnv     map[string]string
-	WebFetch         bool
-	WebSearch        bool
-	WebResearch      bool
-	WebResearchCfg   webresearchpkg.Config
-	GeminiFetch      bool
-	GeminiModel      string
-	GoogleSearch     bool
-	GoogleAPIKey     string
-	GoogleCX         string
-	ArxivSearch      bool
-	Wikipedia        bool
-	Email            bool
-	Todo             bool
-	AwaitReply       bool
-	AwaitHook        ReplyFunc
-	ClaudeCode       bool
-	ClaudeCodeDir    string
-	OpenAPISpecs     []OpenAPISpecConfig
-	WorkspaceExec    bool
-	AgentTools       []AgentToolConfig
-	MCPServers       []MCPServerConfig
-	MCPBroker        *MCPBrokerConfig
-	CustomTools      []trpctool.Tool
-	KnowledgeSearch  bool
-	KnowledgeReflect bool
-	CallAgent        bool
-	Kanban           bool
-	KanbanBridge     kanbanpkg.Bridge
-	MemoryEnabled    bool
-	MemoryTools      []trpctool.Tool
-	DeferredTools    []string
-	BlobReader       biz.ToolResultBlobReader
-	ReadDocument     bool
-	ReadSpreadsheet  bool
-	WorkingMemory    bool
-	Datetime         bool
-	Message          bool
-	OutboundRouter   *outbound.Router
-	SubAgent         bool
-	SubAgentService  *subagenttool.Service
+	Filesystem        bool
+	FilesystemDir     string
+	ShellExec         bool
+	ShellExecDir      string
+	ShellExecEnv      map[string]string
+	WebFetch          bool
+	WebSearch         bool
+	WebResearch       bool
+	WebResearchCfg    webresearchpkg.Config
+	GeminiFetch       bool
+	GeminiModel       string
+	GoogleSearch      bool
+	GoogleAPIKey      string
+	GoogleCX          string
+	ArxivSearch       bool
+	Wikipedia         bool
+	Email             bool
+	Todo              bool
+	AwaitReply        bool
+	AwaitHook         ReplyFunc
+	ClaudeCode        bool
+	ClaudeCodeDir     string
+	OpenAPISpecs      []OpenAPISpecConfig
+	WorkspaceExec     bool
+	AgentTools        []AgentToolConfig
+	MCPServers        []MCPServerConfig
+	MCPBroker         *MCPBrokerConfig
+	MCPBrokerFallback *MCPBrokerConfig
+	CustomTools       []trpctool.Tool
+	KnowledgeSearch   bool
+	KnowledgeReflect  bool
+	CallAgent         bool
+	Kanban            bool
+	KanbanBridge      kanbanpkg.Bridge
+	MemoryEnabled     bool
+	MemoryTools       []trpctool.Tool
+	DeferredTools     []string
+	BlobReader        biz.ToolResultBlobReader
+	ReadDocument      bool
+	ReadSpreadsheet   bool
+	WorkingMemory     bool
+	Datetime          bool
+	Message           bool
+	OutboundRouter    *outbound.Router
+	SubAgent          bool
+	SubAgentService   *subagenttool.Service
 	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
 	// client_open_url). Requires ClientBridgeSvc; when nil the flag is pruned
 	// so agents never see a tool that would always fail offline.
@@ -88,7 +89,7 @@ type ToolsetConfig struct {
 	// CodingBridge enables the coding agent bridge ToolSet (coding_dispatch_task /
 	// coding_check_task / coding_cancel_task). Requires CodingBridgeSvc; when nil
 	// the flag is pruned so agents never see a tool with no backend (76-coding-agent-bridge).
-	CodingBridge   bool
+	CodingBridge    bool
 	CodingBridgeSvc codingbridge.BridgeService
 }
 
@@ -206,6 +207,11 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		b := tools.MCPBrokerConfig(*cfg.MCPBroker)
 		mcpBroker = &b
 	}
+	var mcpBrokerFallback *tools.MCPBrokerConfig
+	if cfg.MCPBrokerFallback != nil {
+		b := tools.MCPBrokerConfig(*cfg.MCPBrokerFallback)
+		mcpBrokerFallback = &b
+	}
 
 	customTools := make([]tools.Tool, len(cfg.CustomTools))
 	for i, t := range cfg.CustomTools {
@@ -272,8 +278,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		OpenAPISpecs: openAPISpecs,
 		AgentTools:   agentTools,
 		MCP: tools.MCPConfig{
-			Servers: mcpServers,
-			Broker:  mcpBroker,
+			Servers:        mcpServers,
+			Broker:         mcpBroker,
+			BrokerFallback: mcpBrokerFallback,
 		},
 		Session: tools.SessionConfig{
 			MemoryEnabled:   cfg.MemoryEnabled,

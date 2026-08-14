@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 )
 
 // P3 M3: Agent Case 召回注入。Case 是 Agent 视角的任务经验（goal/approach/
@@ -85,9 +86,5 @@ func formatAgentCaseLine(c biz.AgentCase) string {
 }
 
 func truncateCaseField(s string) string {
-	s = strings.TrimSpace(s)
-	if runes := []rune(s); len(runes) > caseFieldMaxRunes {
-		return string(runes[:caseFieldMaxRunes]) + "…"
-	}
-	return s
+	return strutil.TruncateRunesEllipsis(strings.TrimSpace(s), caseFieldMaxRunes)
 }

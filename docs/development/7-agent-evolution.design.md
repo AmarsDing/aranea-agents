@@ -14,6 +14,8 @@ Agent 设置页「进化」Tab：进化开关、指标看板、建议列表、�
 
 > **A6 物理收敛**：L3 建议的物理存储已从 legacy `evolution_suggestions` 表（Ent Schema，已删除）收敛到统一的 `unified_evolution_suggestions` 表（raw SQL DDL，详见 [20-skill.design.md](./20-skill.design.md) §6.8）。legacy 专有字段（`type`/`title`/`diff_preview`/`pre_apply_snapshot`）保留在 unified 行的 `metadata` JSON 列中，biz 层通过 `evolutionViewFromUnified` 重建 L3 视图，对外 proto 契约不变。迁移 `20261111` 完成逐行 backfill（主键预检幂等）后 DROP 三张 legacy 表。
 
+> **2026-08-14 加固轮**：P0-1 `unified_evolution_suggestions` 新增 `workspace_id` 列（迁移 `20261212_unified_evolution_workspace.sql`：backfill 自 skill/agents 宿主表 + 索引 + RLS），修复跨租户 IDOR；P1-2 Rollback 删除 apply 新建文件（metadata `created_files`）；P1-3 `EvolutionMetricsResponse` 增 `partial`/`partial_errors`；P1-4 `GetEvolutionDiversityOverview` 加 admin/system 鉴权；P2-5 `internal/biz/skill_evolution_loop.go` 死代码拆分——`GateVerifier` 及全部 9 维验证迁至 `skill_gate_verifier.go`（`EvoExpirationDays`/`SkillReloader` 随迁保留），`SkillEvolutionLoop`/`SkillTaskRunner`/`SkillObserver`/`SkillEvolver` 等未接线死代码删除。
+
 ---
 
 ## 二、Proto 层
@@ -70,6 +72,10 @@ message EvolutionMetricsResponse {
   int32 negative_feedback = 6;
   repeated MetricDataPoint tool_success_series = 7;
   repeated MetricDataPoint retrieval_quality_series = 8;
+  // S-05（P1-3）：部分子查询失败导致指标不完整时置 true，
+  // 调用方可区分「无数据」与「数据不完整」
+  bool partial = 9;
+  repeated string partial_errors = 10;
 }
 
 message GetAgentEvolutionSuggestionsRequest {
@@ -168,6 +174,7 @@ type EvolutionSuggestion struct {
     Status           string // "pending" | "applied" | "rejected" | "rolled_back"
     DiffPreview      string
     PreApplySnapshot string // JSON-encoded map[filename]content，用于 Rollback
+    CreatedFiles     []string // apply 新建的 prompt 文件名（metadata created_files，P1-2）；Rollback 时过滤删除
     CreatedAt        string
     AppliedAt        string
 }
@@ -246,11 +253,12 @@ func ProvideEvolutionUsecase(
   - 校验状态机转换 `Pending → Applied`
   - **apply payload 门（2026-08-07 P0-2）**：`type=persona`/`prompt` 要求 metadata `apply_payload` 非空，否则拒绝（`BadRequest`，提示"该建议为指标通知，不包含可应用的修改内容"）。现存全部生产者（`AgentConfigTrigger` 指标通知、编排优化通知）只生成通知文本，不携带 payload——防止通知文本被写入 prompt 文件腐蚀配置。存量行无该键，默认拒绝，免迁移；未来 LLM 草稿生成器设置 payload 即解锁 apply
   - 保存 `PreApplySnapshot`（应用前的 prompt files 快照，经 `store.UpdateMetadataKey` 写入 metadata）
+  - 记录 `created_files`（`EvoMetaCreatedFiles`，P1-2）：apply 新建的 prompt 文件名列表写入 metadata，供 Rollback 过滤删除
   - `type=persona`：将 payload 写入 `IDENTITY.md` 的 `## Persona` 段（PGO V2 后替代 SOUL.md，保留 SOUL.md 作为遗留兜底）
   - `type=prompt`：将 payload 写入 `AGENTS_CORE.md` 或首匹配 `AGENTS*.md` 文件
   - 注入 txProvider 时，prompt files 替换 + 状态更新在单事务中执行（红线 #24）
 - `RejectSuggestion(ctx, agentID, suggestionID)` — 拒绝建议，状态机转换 `Pending → Rejected`
-- `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，从 `PreApplySnapshot` 恢复 prompt files（同样支持事务包裹）
+- `RollbackSuggestion(ctx, agentID, suggestionID)` — 回滚建议，状态机转换 `Applied → RolledBack`，先过滤 `CreatedFiles` 记录的 apply 新建文件（无快照可恢复，删除而非还原），再从 `PreApplySnapshot` 恢复 prompt files（同样支持事务包裹）
 
 > **A6 变更**：`ScanAll` / `ScanAgent` 已从 `EvolutionUsecase` 移除，L3 自动扫描逻辑移植到 `AgentConfigTrigger`（见 §3.5 与 §7.2）；legacy `EvolutionCoordinator` / orchestrator 委托字段随之删除。
 
@@ -302,10 +310,12 @@ L3 建议的物理存储为 `unified_evolution_suggestions` 表（raw SQL DDL，
 | `action_type` | `evolve_agent` |
 | `trigger_source` | `agent_config`（`unifiedFromEvolutionView` 固定；自动扫描与 `CreateSuggestion` 消费者——精灵团队完成学习、任务编排 DQ 反馈——均走此值） |
 | `draft_body` | legacy `content` |
-| `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot`、`apply_payload`（apply 实际写入内容；空 = 通知类建议不可应用） |
+| `metadata` JSON | `legacy_type`（persona/skill/prompt）、`title`、`diff_preview`、`pre_apply_snapshot`、`apply_payload`（apply 实际写入内容；空 = 通知类建议不可应用）、`created_files`（apply 新建文件名，P1-2） |
 | `status` | `pending` / `applied` / `rejected` / `rolled_back`（原样保留） |
 
-> P3 M5 起，trigger 产出的建议另在 metadata 写 `dims` 键（维度标签，如 `dims.tools` 工具名集合），供平台级多样性聚合观测（`EvolutionService.GetEvolutionDiversityOverview` → `GET /v1/evolution/diversity-overview`）。L3 视图不消费该键。详见 [20-skill.design.md](./20-skill.design.md) §6.12。
+> P3 M5 起，trigger 产出的建议另在 metadata 写 `dims` 键（维度标签，如 `dims.tools` 工具名集合），供平台级多样性聚合观测（`EvolutionService.GetEvolutionDiversityOverview` → `GET /v1/evolution/diversity-overview`，P1-4 起仅 admin/system 调用方）。L3 视图不消费该键。详见 [20-skill.design.md](./20-skill.design.md) §6.12。
+
+> **P0-1 工作区隔离（2026-08-14）**：表新增 `workspace_id` 列（`TEXT NOT NULL DEFAULT ''`；空串 = 共享/平台级行，所有租户可见）。迁移 `20261212_unified_evolution_workspace.sql` 自宿主表 backfill（skill 目标取 `skill.workspace_id`，agent 目标取 `agents.workspace_id`；宿主已删除的行保持共享语义，不丢数据），建 `idx_ues_workspace` 索引并启用 RLS 策略 `tenant_workspace_isolation`（与 `20261011_tenant_rls_phase1` 同策略：ENABLE only，无 FORCE）。fresh schema `internal/data/sql/unified_evolution.sql` 同步。biz `UnifiedEvolutionSuggestion.WorkspaceID` 承载该列；data 层 `Create` 在 workspace 为空时自宿主表派生，List/Count 按 workspace 过滤。
 
 迁移 `20261111` 逐行 backfill（主键预检幂等）legacy `evolution_suggestions` 后 DROP 该表。
 
@@ -368,6 +378,10 @@ func (s *AgentService) RollbackEvolutionSuggestion(ctx, req) (*v1.EvolutionSugge
 `AgentService` 通过 `evoUC *biz.EvolutionUsecase` 字段持有 usecase（见 `internal/service/agent.go`）。
 
 **关键设计**：`ApplyEvolutionSuggestion` 在应用建议后调用 `invalidateAgentBuildCache(req.GetAgentId())` 失效 Agent 构建缓存，避免下次加载 Agent 时使用过期的 prompt files。`RejectEvolutionSuggestion` 将可选 `reason` 持久化到建议 metadata 的 `rejection_reason` 供审计；`RollbackEvolutionSuggestion` 仅允许 `applied` 状态回滚，恢复 apply 前快照（snapshot）后同样失效构建缓存。
+
+**工作区鉴权（P0-1，2026-08-14）**：上述 5 个 L3 端点均先经工作区断言——读路径 `assertAgentAccess`、写路径 `assertAgentMutateAccess`（按 agent 归属 workspace 校验调用方）；skill 侧 5 个建议端点（`internal/service/skill_evolution_suggestion.go`：List/Get/Approve/Reject/TriggerCuratorFlow）经 `workspace.AssertWorkspaceOrShared` 断言，跨租户访问一律拒绝（IDOR 防护）。
+
+**其他**：`GetAgentEvolutionMetrics` 将 `biz.EvolutionMetrics.Partial`/`PartialErrors` 透传到 proto `partial`/`partial_errors`（P1-3）；平台级 `EvolutionService.GetEvolutionDiversityOverview` 经 `assertSystemCaller`（`internal/service/evolution.go`）限制 admin/system 调用方（P1-4）。
 
 ---
 

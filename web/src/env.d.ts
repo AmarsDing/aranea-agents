@@ -6,6 +6,3 @@ declare module '*.vue' {
   const component: DefineComponent<{}, {}, unknown>;
   export default component;
 }
-
-// vue-virtual-scroller does not ship TypeScript declarations.
-declare module 'vue-virtual-scroller';

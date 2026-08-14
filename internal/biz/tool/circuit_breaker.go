@@ -265,7 +265,13 @@ func (cb *CircuitBreaker) restoreFromEntry(entry CircuitBreakerStateEntry) {
 	cb.state = CircuitState(entry.State)
 	cb.failures = entry.FailureCount
 	cb.successes = entry.SuccessCount
-	cb.halfOpenProbes = entry.HalfOpenProbes
+	// Do not restore in-flight probe claims: they belonged to the dead process
+	// and their RecordSuccess/RecordFailure will never arrive. probeClaimedAt is
+	// not persisted, so restoring halfOpenProbes would leave the HalfOpen reclaim
+	// path in Allow() (which requires a non-zero claim timestamp) unable to fire,
+	// deadlocking the breaker in half_open with Allow() permanently false.
+	cb.halfOpenProbes = 0
+	cb.probeClaimedAt = time.Time{}
 	cb.lastFailureTime = entry.LastFailureTime
 }
 

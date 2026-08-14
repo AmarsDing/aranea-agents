@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -257,6 +258,29 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 	s.lg.Info("delete skill",
 		loggateway.StepID("service.skill"),
 		loggateway.Str("skill_id", req.GetId()))
+	// Resolve the on-disk dir BEFORE the DB row disappears; after uc.Delete
+	// the metadata lookup would fail. Missing dir (os.ErrNotExist) is fine —
+	// the DB delete must still proceed.
+	dir, dirErr := s.skillDir(ctx, req.GetId())
+	if dirErr != nil && !errors.Is(dirErr, os.ErrNotExist) {
+		s.lg.Warn("delete skill: resolve disk dir failed, DB delete continues",
+			loggateway.StepID("service.skill"),
+			loggateway.Str("skill_id", req.GetId()),
+			loggateway.Err(dirErr))
+	}
+	if dir != "" {
+		// Remove disk first: a failure here aborts the whole delete and keeps
+		// the DB row, so the skill never ends up "DB gone but dir resurrected
+		// as draft by the watcher". The reverse order cannot fully roll back.
+		if rmErr := s.fs.RemoveSkillDir(dir); rmErr != nil {
+			s.lg.Error("delete skill: remove disk dir failed",
+				loggateway.StepID("service.skill"),
+				loggateway.Str("skill_id", req.GetId()),
+				loggateway.Str("dir", dir),
+				loggateway.Err(rmErr))
+			return nil, apierror.Wrap(rmErr, apierror.CodeInternal, apierror.DomainSkill)
+		}
+	}
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		s.lg.Error("delete skill failed",
 			loggateway.StepID("service.skill"),

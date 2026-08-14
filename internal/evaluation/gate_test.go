@@ -225,6 +225,62 @@ func TestPublishGateAllowsWithinDropTolerance(t *testing.T) {
 	}
 }
 
+// Regression: the baseline re-fetch after the gate run completes must exclude
+// runs created AFTER the gate run — a newer run measures newer code and can
+// never be the pre-publish baseline. Without the notAfter filter, the newest
+// completed run (highest in the CreatedAt-descending list) would win.
+func TestScanRunsExcludesRunsYoungerThanGateRun(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.runs["old"] = beval.Run{
+		ID: "old", DatasetID: "ds1", AgentID: "a1", Status: "completed",
+		ExactMatchScore: 0.5, CreatedAt: "2026-08-07T00:00:00Z",
+	}
+	repo.runs["newer"] = beval.Run{
+		ID: "newer", DatasetID: "ds1", AgentID: "a1", Status: "completed",
+		ExactMatchScore: 0.9, CreatedAt: "2026-08-08T00:00:00Z",
+	}
+	cfg := beval.GateConfig{AgentID: "a1", DatasetID: "ds1", Metric: "exact_match"}
+	gate, _ := gateFixture(repo)
+
+	// Gate run created between the two: baseline must be the older run.
+	_, baseline, hasBaseline, err := gate.scanRuns(context.Background(), cfg, "2026-08-07T12:00:00Z")
+	if err != nil {
+		t.Fatalf("scanRuns: %v", err)
+	}
+	if !hasBaseline || baseline != 0.5 {
+		t.Fatalf("notAfter must exclude the newer run, got baseline=%v has=%v", baseline, hasBaseline)
+	}
+
+	// Boundary: a run created exactly AT notAfter qualifies (strictly-greater
+	// comparison) — the gate run's own second is only excluded via excludeID.
+	_, baseline, hasBaseline, err = gate.scanRuns(context.Background(), cfg, "2026-08-08T00:00:00Z")
+	if err != nil {
+		t.Fatalf("scanRuns: %v", err)
+	}
+	if !hasBaseline || baseline != 0.9 {
+		t.Fatalf("run at exactly notAfter must qualify, got baseline=%v has=%v", baseline, hasBaseline)
+	}
+
+	// Same-second tie: the run at notAfter is skipped when its ID is excluded,
+	// falling through to the older run.
+	_, baseline, hasBaseline, err = gate.scanRuns(context.Background(), cfg, "2026-08-08T00:00:00Z", "newer")
+	if err != nil {
+		t.Fatalf("scanRuns: %v", err)
+	}
+	if !hasBaseline || baseline != 0.5 {
+		t.Fatalf("excludeID must skip the same-second run, got baseline=%v has=%v", baseline, hasBaseline)
+	}
+
+	// No notAfter (the Check-time baseline-existence probe): newest wins.
+	_, baseline, hasBaseline, err = gate.scanRuns(context.Background(), cfg, "")
+	if err != nil {
+		t.Fatalf("scanRuns: %v", err)
+	}
+	if !hasBaseline || baseline != 0.9 {
+		t.Fatalf("empty notAfter must pick the newest completed run, got baseline=%v has=%v", baseline, hasBaseline)
+	}
+}
+
 func TestPublishGateUpdateConfigValidation(t *testing.T) {
 	repo := newFakeEvalRepo()
 	uc := beval.NewUsecase(repo, loggateway.NewNoop())

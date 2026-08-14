@@ -14,6 +14,7 @@ import (
 
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -668,18 +669,9 @@ func sanitizeOffloadName(name string) string {
 //   - "head": keep the tail (end), truncate the head
 //   - "middle": keep both head and tail halves, truncate the middle
 func sliceForMode(data []byte, target int, mode string) []byte {
-	if target >= len(data) {
-		return data
-	}
-	switch mode {
-	case "head":
-		return data[len(data)-target:]
-	case "middle":
-		half := target / 2
-		return append(append([]byte{}, data[:half]...), data[len(data)-half:]...)
-	default: // "tail"
-		return data[:target]
-	}
+	// P1-3：切点对齐 rune 边界，避免 CJK 多字节字符被切成非法 UTF-8
+	// （序列化成 JSON envelope 后产生 U+FFFD 污染模型输入）。
+	return strutil.SliceBytesRuneSafe(data, target, mode)
 }
 
 func (d *ToolDecorator) toolName() string {

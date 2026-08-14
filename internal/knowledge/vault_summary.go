@@ -13,6 +13,7 @@ import (
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 )
 
 const (
@@ -216,11 +217,7 @@ func sanitizeSummaryTags(tags []string) []string {
 	return out
 }
 
-// truncateRunes 按 rune 截断（避免截断多字节字符）。
+// truncateRunes 按 rune 截断（避免截断多字节字符）。P1-3：委托 strutil。
 func truncateRunes(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max])
+	return strutil.TruncateRunes(s, max)
 }

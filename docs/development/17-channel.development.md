@@ -197,10 +197,12 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 
 **行为**：
 
-- 意外断线：`runSupervised` 指数退避重连（1s → 5m）
+- 意外断线：`runSupervised` 指数退避重连（1s → 5m）；**仅当一次连接稳定运行 ≥1min 才重置退避**（CH-R1，2026-08-14），快速失败循环保持指数增长，避免打爆平台 API
 - CRUD / 凭据变更：`ChannelService.reloadRuntime()` → fingerprint reconcile（含 `CredentialsRevision`）
 - 定期兜底：启动后每 **2 分钟** `Manager.Reload()`（可配置/关闭）
 - **fingerprint 不含 `UpdatedAt`**（2026-05-22）：避免健康检查 metadata 更新触发双 WebSocket；替换连接器前等待旧实例 `done`
+- **ChannelDeliveryWorker 单飞**（CH-R2，2026-08-14）：`atomic.Bool` CAS 跳过重叠 tick，防止同一 pending 批次被并发处理导致重复发送；单实例假设已标 `TODO(multi-instance)`
+- **ChannelTurnJobSweeper 三职能**（2026-08-14 补全）：① queued 超 30min → timeout；② async_queued 超 2min 未触达 → 按 graph/cron 实际状态恢复（超 24h 强制 timeout）；③ **启动对账**（CH-P1）：进程启动时把 `updated_at < processStart` 的 accepted/running 残留 job 标记 failed（上一进程崩溃遗留，周期扫描不覆盖这两种状态）
 
 **入站门控（2026-05-22）**：
 
@@ -1440,6 +1442,57 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 ---
 
+## 17.11 Phase P — 深度评审整改（2026-08-14）
+
+> **范围**：channel 管理模块整体深度评审（业务逻辑 / 代码逻辑 / 架构设计 / 死代码），覆盖 biz / service / data / cronrunner / channel runtime / 前端 channels。
+
+### P.1 任务板
+
+| # | 级别 | 任务 | 状态 | 说明 |
+|---|------|------|------|------|
+| CH-B1 | 阻断 | TurnJob 状态机补 `async_queued → completed/failed/cancelled`（plain complete/fail/cancel 事件）规则 | ✅ | `biz/channel_turn_job_state_machine.go`；此前 async watcher 与 CancelRunningForSession 发出的转换恒失败，job 永久滞留 async_queued |
+| CH-B2 | 阻断 | turn 超时场景终态持久化改用 `context.WithoutCancel` + 10s 兜底 | ✅ | `service/channel_ingress_execute.go` `turnTerminalPersistCtx`；此前 turn ctx 已取消时终态写库必失败 |
+| CH-R1 | 建议 | 重连退避仅在稳定运行 ≥1min 后重置 | ✅ | `channel/runtime/supervisor.go` `runtimeStableRunThreshold`；此前快速失败循环每轮重置退避，打爆平台 API |
+| CH-R2 | 建议 | ChannelDeliveryWorker 单飞（`atomic.Bool` CAS） | ✅ | `cronrunner/jobs/channel_delivery.go`；重叠 tick 不再并发处理同一 pending 批次（重复发送） |
+| CH-R3 | 建议 | 凭据解密 fail-closed：AES key 缺失/非法时返回错误而非密文 | ✅ | `biz/credential_crypto.go`；此前密文会被当明文凭据发给平台并泄漏进上游 auth 错误日志 |
+| CH-R4 | 建议 | `updateTestMetadata` 防御 `metadata_json = "null"` 导致的 nil map panic | ✅ | `biz/channel.go` |
+| CH-N1 | 提示 | 删除死代码 `DeletePeerBindingsBySessionID`（biz/repo/测试 mock 全链） | ✅ | 无调用方 |
+| CH-N2 | 提示 | 删除前端 5 个纯 re-export shim（`channelPlatformFields.ts` / `channelIconUi.ts` / `channelRoutingUtils.ts` / `channelLongTaskDefaults.ts` / `channelJsonUtils.ts`） | ✅ | 全库 grep 确认无引用；build/vitest 验证 |
+| CH-N3 | 提示 | `web/src/features/channels/CHANNEL_PAGE_ISSUES.md` 滞留报告迁移 | ✅ | → `docs/reports/2026-05-29-review-channel-page.md` |
+| CH-P1 | 可选兜底 | sweeper 启动对账：`updated_at < processStart` 的 accepted/running job → failed | ✅ | `cronrunner/jobs/channel_turn_job_sweeper.go` `sweepStartupInterrupted`；进程崩溃残留的非终态 job 此前永无清理路径（周期 sweeper 只扫 queued/async_queued） |
+| CH-P2 | 提示 | 清理 `useChannelsPage` 恒等 `filteredRows`（服务端分页遗留）+ 页面解构 | ✅ | 消除 eslint unused warning |
+
+### P.2 关键设计
+
+- **startup reconcile 安全性**：`processStart` 在 wire 构造期记录（早于 ready gate 开放流量），新进程自建 job 的 `updated_at` 恒 ≥ processStart，过滤条件天然防误杀；Start 在 `goAfterReady`（`safego.Go` 包裹）内同步执行一次，错误仅降级不阻塞启动。单实例假设与 delivery worker 一致（已标 `TODO(multi-instance)`）。
+- **状态机规则归属**：async watcher 与 `CancelRunningForSession` 对 async_queued 状态发 plain `complete`/`fail`/`cancel` 事件（而非 `async_*` 事件），状态机按实际发射事件补规则，不改调用方语义。
+- **测试修复**：`TestChannelDeliveryWorker_SingleFlightSkipsOverlap` 原阻塞实现（processor 首次调用自行 close release）存在时序竞态，改为测试控制释放时机。
+
+### P.3 验证结果
+
+| 验证项 | 结果 |
+|--------|------|
+| `go vet ./internal/cronrunner/jobs/... ./internal/channel/... ./internal/biz/` | ✅ |
+| `go build ./cmd/... ./internal/... ./api/... ./pkg/...` | ✅ |
+| `go test ./internal/cronrunner/jobs/...` | ✅（含 3 个新 startup reconcile 测试 + 修复的单飞测试） |
+| `go test ./internal/channel/...` | ✅ 17/17 包 |
+| `go test ./internal/biz/ -run "TestChannel\|TestCredential\|TestTransitionChannelTurnJob\|TestPeerSession"` | ✅ |
+| `go test ./internal/service/ -run "TestChannel\|TestIngress\|TestTurnJob"` | ✅ |
+| `go test ./internal/data/ -run TestChannel`（PG 集成，`ARANEA_TEST_PG_DSN`） | ✅ |
+| `cd web && pnpm test` | ✅ 245 文件 / 1829 测试 |
+| `cd web && pnpm build` | ✅ |
+| `cd web && pnpm lint` | 🟡 2 个 error 为 tools 模块并行会话基线（`stores/tools/toolDetail.ts`），channel 范围 0 error / 0 warning |
+
+### P.4 剩余技术债务 / 提示项
+
+| # | 项 | 说明 |
+|---|----|------|
+| CH-D1 | multi-instance 认领 | delivery worker / sweeper 单飞与 startup reconcile 均假设单实例；多实例需 `SKIP LOCKED` 原子认领或 lease（代码内 TODO 已标） |
+| CH-D2 | sweeper K7 日志 | `ChannelTurnJobSweeper.Start` 启动/退出各缺一条进程日志（既有代码，本轮未改） |
+| CH-D3 | HooksPage / WebhooksPage 同款 `filteredRows` 未用解构 | 与 CH-P2 同模式，属 hook/webhook 模块范围，未顺手改 |
+
+---
+
 ## 18. 文档修订记录
 
 | 版本 | 日期 | 说明 |
@@ -1462,6 +1515,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 1.16 | 2026-06-11 | §17.9 Phase N 全栈架构审查修复：R06 ChannelRepo 上帝接口拆分 + R07 inflight TTL；S16-S26 共 11 项建议修复（配置解析迁 biz 层、context.WithoutCancel、TOCTOU 文档+日志、错误日志、init() 清理、Store TECH-DEBT 升级、前端 domain/channel 层、locale TECH-DEBT、语义色修复） |
 | 1.17 | 2026-06-17 | 三件套内容边界重组：移除子模块「Channel 全量迁移计划」（W0–W6 任务已全部完成，进度汇总并入 §2 现状评估与 §4 路线图）；移除子模块「Channel Chat 外部参考借鉴手册」（独立文档 `17-channel-external-reference-playbook.md`，任务卡 CH-BOR-* 已在 §13 Phase G 落地）；接收从 `.design.md` 迁移的「当前实现状态」与「新增平台优先级」（已并入 §2 与 §16） |
 | 1.18 | 2026-08-12 | §17.10 Phase O：微信个人号 iLink 渠道接入（O-01–O-19 ✅）：扫码登录 RPC + 长轮询 starter + 群聊门控 + context_token 链路 + Markdown 降级 + 媒体/Typing 原语；平台矩阵 13→14；§2/§3 同步 |
+| 1.19 | 2026-08-14 | §17.11 Phase P 深度评审整改：CH-B1/B2 阻断修复（状态机 async_queued 终态规则 + 终态持久化 WithoutCancel）、CH-R1–R4（退避稳定阈值/投递单飞/解密 fail-closed/nil map）、CH-N1–N3 死代码与 shim 清理、CH-P1 sweeper 启动对账；§6 Runtime 运维同步 |
 
 
 ---

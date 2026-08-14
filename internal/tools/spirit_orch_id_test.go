@@ -62,7 +62,7 @@ func (s *stubOrch) Orchestrate(context.Context, *biz.TaskPlan, *biz.AllocationPl
 func (s *stubOrch) CheckProgress(context.Context, string) ([]biz.TaskProgress, error) {
 	return nil, nil
 }
-func (s *stubOrch) Cancel(context.Context, string) error { return s.cancelErr }
+func (s *stubOrch) Cancel(context.Context, string, biz.CancelReason) error { return s.cancelErr }
 func (s *stubOrch) Synthesize(context.Context, string) (*biz.SynthesisOutput, error) {
 	return nil, nil
 }

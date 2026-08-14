@@ -142,10 +142,10 @@ func MergeMaskedToolConfig(existingJSON, incomingJSON, schemaJSON string) string
 		return incomingJSON
 	}
 	var oldCfg, newCfg map[string]any
-	if err := json.Unmarshal(existing, &oldCfg); err != nil {
+	if err := json.Unmarshal([]byte(existing), &oldCfg); err != nil {
 		return incomingJSON
 	}
-	if err := json.Unmarshal(incoming, &newCfg); err != nil {
+	if err := json.Unmarshal([]byte(incoming), &newCfg); err != nil {
 		return incomingJSON
 	}
 	props := passwordFormatProps(schemaJSON)

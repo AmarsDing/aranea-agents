@@ -106,6 +106,15 @@ func (m *vaultSyncMemRepo) UpdateCollectionSyncState(_ context.Context, id, stat
 	m.collections[id] = c
 	return nil
 }
+func (m *vaultSyncMemRepo) EnableCollectionSemantic(_ context.Context, id, model string, dim int) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := m.collections[id]
+	c.EmbeddingModel = model
+	c.Dim = dim
+	m.collections[id] = c
+	return true, nil
+}
 func (m *vaultSyncMemRepo) CreateDocument(_ context.Context, d bizknowledge.Document) (bizknowledge.Document, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

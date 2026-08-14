@@ -1,4 +1,5 @@
 /** Lightweight JSON Schema object builder for Tool parameters/config definitions. */
+import { i18n } from '../../i18n';
 
 export type SchemaFieldType = 'string' | 'number' | 'integer' | 'boolean';
 
@@ -86,24 +87,25 @@ export function configExtraKeys(configJson: string, schemaJson: string): string[
 
 /** Shallow diff labels for default vs current config. */
 export function configDiffSummary(currentJson: string, defaultJson: string): string[] {
+  const t = i18n.global.t;
   let current: Record<string, unknown>;
   let defaults: Record<string, unknown>;
   try {
     current = JSON.parse(currentJson || '{}') as Record<string, unknown>;
   } catch {
-    return ['当前配置 JSON 无效'];
+    return [t('toolsPage.jsonDiff.invalidCurrent')];
   }
   try {
     defaults = JSON.parse(defaultJson || '{}') as Record<string, unknown>;
   } catch {
-    return ['默认配置 JSON 无效'];
+    return [t('toolsPage.jsonDiff.invalidDefault')];
   }
   const lines: string[] = [];
   const keys = new Set([...Object.keys(current), ...Object.keys(defaults)]);
   for (const k of keys) {
     const a = JSON.stringify(current[k]);
     const b = JSON.stringify(defaults[k]);
-    if (a !== b) lines.push(`${k}: 默认 ${b ?? '—'} → 当前 ${a ?? '—'}`);
+    if (a !== b) lines.push(t('toolsPage.jsonDiff.line', { key: k, old: b ?? '—', cur: a ?? '—' }));
   }
-  return lines.length ? lines : ['与出厂默认一致'];
+  return lines.length ? lines : [t('toolsPage.jsonDiff.same')];
 }

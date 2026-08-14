@@ -327,6 +327,72 @@ func TestTeamGraphRunCoordinator_MarkInterruptUpdatesDB(t *testing.T) {
 	}
 }
 
+// Y1/N3: a HITL interrupt arrives at the watch as a graph_stage "step" notice
+// carrying interrupt metadata (the Pregel interrupt is the only reachable
+// carrier). The watch must mark the team run waiting_human — today the notice
+// is silently dropped and the run stays running until the watch times out.
+func TestHandleGraphWatchNotice_Interrupt_MarksWaitingHuman(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+	ctx := context.Background()
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	sess := coord.session("exec-1")
+
+	notice := biz.NewSystemNoticeEvent("sess-1", "step", "", map[string]any{
+		"activity_kind": string(biz.ActivityKindGraphStage),
+		"execution_id":  "exec-1",
+		"interrupt_key": "hitl",
+		"node_id":       "review-1",
+		"lineage_id":    "lineage-1",
+	})
+	done, failed, _ := coord.handleGraphWatchNotice(ctx, sess, notice, graphWatchStepsAndFinalize)
+	if done || failed {
+		t.Fatalf("interrupt must not finalize the watch: done=%v failed=%v", done, failed)
+	}
+	run, err := repo.GetTeamRunByID(ctx, "run-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != biz.TeamRunStatusWaitingHuman {
+		t.Fatalf("team run must transition to waiting_human on interrupt, got %q", run.Status)
+	}
+}
+
+// N3: a graph-level fatal error (Pregel error: max steps / panic) arrives as a
+// graph_stage "step" notice carrying an error key. In finalize mode the watch
+// must converge the run to failed immediately instead of waiting for the
+// 30-minute watch timeout.
+func TestHandleGraphWatchNotice_PregelError_ReturnsFailed(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+	ctx := context.Background()
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	sess := coord.session("exec-1")
+
+	notice := biz.NewSystemNoticeEvent("sess-1", "step", "graph execution exceeded max steps", map[string]any{
+		"activity_kind": string(biz.ActivityKindGraphStage),
+		"execution_id":  "exec-1",
+		"error":         "graph execution exceeded max steps",
+	})
+	done, failed, errMsg := coord.handleGraphWatchNotice(ctx, sess, notice, graphWatchStepsAndFinalize)
+	if !done || !failed {
+		t.Fatalf("pregel error must finalize as failed: done=%v failed=%v", done, failed)
+	}
+	if errMsg == "" {
+		t.Fatal("errMsg must carry the pregel error")
+	}
+}
+
 func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 	backend := newCoordTestBackend()
 	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}

@@ -46,6 +46,17 @@ func cascadeDeleteByAgent(ctx context.Context, d *Data, agentID string) error {
 		return err
 	}
 
+	// Hard-delete session-less tool_invocations (+ params) attributed to this
+	// agent. Session-owned rows are retained with the soft-deleted session
+	// (same retention semantics as messages) and are cleaned up by
+	// cascadeDeleteBySession when the session itself is deleted.
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocation_params WHERE invocation_id IN (SELECT id FROM tool_invocations WHERE agent_id = ? AND session_id = '')`), agentID); err != nil {
+		return err
+	}
+	if _, err := execer.ExecContext(ctx, d.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocations WHERE agent_id = ? AND session_id = ''`), agentID); err != nil {
+		return err
+	}
+
 	return nil
 }
 

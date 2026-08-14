@@ -1,9 +1,9 @@
 <template>
   <q-page class="app-standard-page tool-audits-page">
     <tool-hero-section
-      kicker="Tool governance"
-      title="工具调用审计"
-      subtitle="结构化审计谁在何时调用了什么工具；默认保留 90 天。"
+      :kicker="$t('toolsPage.auditsPage.kicker')"
+      :title="$t('toolsPage.auditsPage.title')"
+      :subtitle="$t('toolsPage.auditsPage.subtitle')"
     >
       <template #actions>
         <q-btn
@@ -12,7 +12,7 @@
           no-caps
           class="tool-audits-outline-btn"
           icon="arrow_back"
-          label="返回 Tools 管理"
+          :label="$t('toolsPage.auditsPage.back')"
           :to="{ name: 'tools' }"
         />
       </template>
@@ -36,7 +36,7 @@
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
+        <q-btn flat dense :label="$t('common.retry')" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
@@ -48,7 +48,7 @@
       :page-max="pageMax"
       :total="total"
       :loading="loading"
-      label="条审计记录"
+      :label="$t('toolsPage.auditsPage.pageUnit')"
     />
   </q-page>
 </template>

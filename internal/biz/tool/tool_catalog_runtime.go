@@ -69,7 +69,10 @@ var registryBackedToolKeys = map[string]struct{}{
 	"shell_exec": {}, "web_fetch": {}, ToolKeyWebResearch: {}, "duckduckgo_search": {}, "gemini_web_fetch": {},
 	"google_search": {}, "arxiv_search": {}, "wikipedia_search": {},
 	"send_email": {}, "todo_write": {}, "await_user_reply": {},
-	"claude_code": {}, "workspace_exec": {},
+	"claude_code": {},
+	// workspace_exec 不在此列：运行时尚未实现，装配路径
+	// （trpc.PruneUnconfiguredToolFlags）对其一律强制关闭并 Warn，
+	// catalog 必须报 registered_only 与运行时行为保持一致（批次 4 D5）。
 }
 
 // spiritOrchestrationToolKeys are orchestration tools injected via CustomTools path
@@ -104,11 +107,6 @@ func CheckerToReadinessFunc(c WebResearchReadinessChecker) WebResearchReadinessF
 		return nil
 	}
 	return c.IsReady
-}
-
-// EnrichToolRuntimeFields fills RuntimeStatus and RuntimeKind for API responses.
-func EnrichToolRuntimeFields(t *Tool) {
-	EnrichToolRuntimeFieldsWithPlatform(t, nil, nil)
 }
 
 // EnrichToolRuntimeFieldsWithPlatform applies tool runtime fields using optional platform web research settings.

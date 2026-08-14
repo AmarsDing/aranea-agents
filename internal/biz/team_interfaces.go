@@ -45,6 +45,7 @@ type TeamToolLookup interface {
 	ListToolCatalogEntries(ctx context.Context, keys []string) ([]tool.ToolCatalogEntry, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]tool.ToolAgentOverride, error)
 	RecordToolInvocation(ctx context.Context, in tool.ToolInvocationWrite) error
+	RecordToolInvocationParams(ctx context.Context, in tool.ToolInvocationParamWrite) error
 	RecordToolInvocationAudit(ctx context.Context, in tool.ToolInvocationAuditWrite) error
 	// HasToolGrant reports whether a persisted "always allow" grant exists
 	// for the (agentID, toolKey) pair. Used by the confirmation decision

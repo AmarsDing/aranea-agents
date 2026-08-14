@@ -59,6 +59,7 @@ func Registry() []*ToolRegistration {
 					// assembleFromRegistry to skip this entry.
 					return nil, nil
 				},
+				AssembledElsewhere:  true,
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
 				SupportsConcurrency: true,
@@ -77,6 +78,7 @@ func Registry() []*ToolRegistration {
 					// Placeholder: actual assembly happens in assembleBuiltinToolsets().
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
@@ -102,10 +104,12 @@ func Registry() []*ToolRegistration {
 				Category:    "web",
 				Tags:        []string{"web", "fetch", "gemini"},
 				Factory: func(ctx context.Context) (Tool, error) {
+					// Placeholder: actual assembly happens in assembleSearchTools().
 					return nil, nil
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
+				AssembledElsewhere: true,
+				EnabledByDefault:   false,
+				RiskLevel:          "medium",
 			},
 			{
 				Name:        "duckduckgo",
@@ -129,11 +133,13 @@ func Registry() []*ToolRegistration {
 				Category:    "search",
 				Tags:        []string{"search", "web", "google"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					// Placeholder: actual assembly happens in assembleSearchTools().
 					return nil, nil
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
-				Group:            "web_search",
+				AssembledElsewhere: true,
+				EnabledByDefault:   false,
+				RiskLevel:          "medium",
+				Group:              "web_search",
 				Examples: []ToolUseExample{
 					{UserQuery: "search Google for latest research papers on transformers", ToolName: "google_search", Explanation: "Google Custom Search with API key"},
 				},
@@ -178,8 +184,10 @@ func Registry() []*ToolRegistration {
 				Category:    "communication",
 				Tags:        []string{"communication", "outbound", "channel", "message"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					// Placeholder: actual assembly happens in assembleSessionTools().
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "high",
 				RequiresConfirmation: true,
@@ -216,6 +224,7 @@ func Registry() []*ToolRegistration {
 					// applies config overrides (base dir, readonly, sandbox, etc.).
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
@@ -230,8 +239,11 @@ func Registry() []*ToolRegistration {
 				Category:    "execution",
 				Tags:        []string{"exec", "workspace", "code"},
 				Factory: func(ctx context.Context) (Tool, error) {
+					// NOT YET IMPLEMENTED: the assembly path (BuildToolsets) prunes
+					// this key before it reaches the registry factory.
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
@@ -317,8 +329,10 @@ func Registry() []*ToolRegistration {
 				Category:    "browser",
 				Tags:        []string{"browser", "web", "automation", "playwright"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					// Placeholder: actual assembly happens in assembleBrowserToolset().
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
@@ -347,11 +361,13 @@ func Registry() []*ToolRegistration {
 				Category:    "system",
 				Tags:        []string{"system", "tool-result", "retrieval"},
 				Factory: func(ctx context.Context) (Tool, error) {
+					// Placeholder: actual assembly happens in assembleBlobAndResultTools().
 					return nil, nil
 				},
-				EnabledByDefault: true,
-				RiskLevel:        "low",
-				Deferred:         true,
+				AssembledElsewhere: true,
+				EnabledByDefault:   true,
+				RiskLevel:          "low",
+				Deferred:           true,
 			},
 			{
 				Name:             "working_memory",
@@ -381,6 +397,7 @@ func Registry() []*ToolRegistration {
 					// which injects the process-wide clientbridge.Bridge singleton.
 					return nil, nil
 				},
+				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "medium",
 				RequiresConfirmation: true,
@@ -407,8 +424,9 @@ func Registry() []*ToolRegistration {
 					// media.NewGenerateImageTool etc. and injected at the Agent level.
 					return nil, nil
 				},
-				EnabledByDefault: true,
-				RiskLevel:        "medium",
+				AssembledElsewhere: true,
+				EnabledByDefault:   true,
+				RiskLevel:          "medium",
 			},
 		}
 	})
@@ -512,6 +530,11 @@ type ClaudeCodeConfig struct {
 type MCPConfig struct {
 	Servers []MCPServerConfig
 	Broker  *MCPBrokerConfig
+	// BrokerFallback is a standby broker config used by P1-2 schema
+	// governance: when direct-mode declarations exceed the aggregate budget,
+	// assembly drops the direct toolsets and mounts broker tools built from
+	// this config. Carries the same HeaderInjector semantics as Broker.
+	BrokerFallback *MCPBrokerConfig
 }
 
 // SessionConfig holds configuration for session-scoped tools (memory, custom, message, subagent, blob).

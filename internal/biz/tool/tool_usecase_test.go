@@ -20,6 +20,7 @@ type mockRepo struct {
 	searchToolInvocations           func(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
 	getToolInvocationParams         func(ctx context.Context, invocationID string) (ToolInvocationParam, error)
 	recordToolInvocation            func(ctx context.Context, in ToolInvocationWrite) error
+	recordToolInvocationParams      func(ctx context.Context, in ToolInvocationParamWrite) error
 	recordToolInvocationAudit       func(ctx context.Context, in ToolInvocationAuditWrite) error
 	searchToolInvocationAudits      func(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
 	purgeToolInvocationAuditsBefore func(ctx context.Context, cutoffRFC3339 string) (int64, error)
@@ -103,6 +104,13 @@ func (m *mockRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 func (m *mockRepo) RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error {
 	if m.recordToolInvocation != nil {
 		return m.recordToolInvocation(ctx, in)
+	}
+	return nil
+}
+
+func (m *mockRepo) RecordToolInvocationParams(ctx context.Context, in ToolInvocationParamWrite) error {
+	if m.recordToolInvocationParams != nil {
+		return m.recordToolInvocationParams(ctx, in)
 	}
 	return nil
 }

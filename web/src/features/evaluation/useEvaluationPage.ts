@@ -46,6 +46,15 @@ export function useEvaluationPage() {
   );
   const savingResultId = ref('');
 
+  // Monotonic guards for async state writes: prevent stale API responses
+  // from clobbering newer state when the user switches datasets/agents/pages
+  // quickly or when overlapping refreshes are in flight.
+  let divergenceSeq = 0;
+  let failureGroupsSeq = 0;
+  let preferencesSeq = 0;
+  let trendSeq = 0;
+  let caseResultsSeq = 0;
+
   const trendAgentId = ref('');
   const trendPoints = ref<EvalTrendPoint[]>([]);
   const trendLoading = ref(false);
@@ -187,21 +196,24 @@ export function useEvaluationPage() {
   }
 
   async function loadDivergence() {
+    const seq = ++divergenceSeq;
     if (!selectedDatasetId.value) {
       divergence.value = null;
       return;
     }
     divergenceLoading.value = true;
     try {
-      divergence.value = await evaluationStore.loadJudgeDivergence(selectedDatasetId.value, {
+      const res = await evaluationStore.loadJudgeDivergence(selectedDatasetId.value, {
         agent_id: trendAgentId.value || undefined,
       });
+      if (seq !== divergenceSeq) return; // stale — a newer request owns the state
+      divergence.value = res;
     } catch (e) {
       // Divergence is an auxiliary panel — never notify, just degrade to empty.
       console.warn('[evaluation] load judge divergence failed:', e);
-      divergence.value = null;
+      if (seq === divergenceSeq) divergence.value = null;
     } finally {
-      divergenceLoading.value = false;
+      if (seq === divergenceSeq) divergenceLoading.value = false;
     }
   }
 
@@ -249,6 +261,7 @@ export function useEvaluationPage() {
         if (selectedDatasetId.value === ds.id) {
           selectedDatasetId.value = '';
           runs.value = [];
+          runsTotal.value = 0; // keep pagination consistent with the cleared list
         }
         await loadDatasets();
         $q.notify({ type: 'positive', message: '已删除' });
@@ -349,20 +362,25 @@ export function useEvaluationPage() {
   }
 
   async function loadTrend() {
+    const seq = ++trendSeq;
     if (!trendAgentId.value) return;
     trendLoading.value = true;
     try {
-      trendPoints.value = await evaluationStore.loadAgentTrend({
+      const res = await evaluationStore.loadAgentTrend({
         agent_id: trendAgentId.value,
         dataset_id: selectedDatasetId.value || undefined,
         limit: 20,
       });
+      if (seq !== trendSeq) return; // stale — agent/dataset switched mid-flight
+      trendPoints.value = res;
       // The divergence panel shares the trend agent as its filter.
       void loadDivergence();
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载趋势失败' });
+      if (seq === trendSeq) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载趋势失败' });
+      }
     } finally {
-      trendLoading.value = false;
+      if (seq === trendSeq) trendLoading.value = false;
     }
   }
 
@@ -379,6 +397,7 @@ export function useEvaluationPage() {
 
   // P2-3: failure groups follow the trend agent filter (online vs manual runs).
   async function loadFailureGroups() {
+    const seq = ++failureGroupsSeq;
     if (!selectedDatasetId.value) {
       failureGroups.value = [];
       failureGroupsTotal.value = 0;
@@ -389,33 +408,39 @@ export function useEvaluationPage() {
       const res = await evaluationStore.loadFailureGroups(selectedDatasetId.value, {
         agent_id: trendAgentId.value || undefined,
       });
+      if (seq !== failureGroupsSeq) return;
       failureGroups.value = res.groups;
       failureGroupsTotal.value = res.total_failed;
     } catch (e) {
       // Auxiliary panel — degrade to empty instead of notifying.
       console.warn('[evaluation] load failure groups failed:', e);
-      failureGroups.value = [];
-      failureGroupsTotal.value = 0;
+      if (seq === failureGroupsSeq) {
+        failureGroups.value = [];
+        failureGroupsTotal.value = 0;
+      }
     } finally {
-      failureGroupsLoading.value = false;
+      if (seq === failureGroupsSeq) failureGroupsLoading.value = false;
     }
   }
 
   // P3-3: pairwise preference — challengeRow is a non-baseline comparison row;
   // the baseline is always comparisons[0] (backend sorts by created_at asc).
   async function loadPreferences() {
+    const seq = ++preferencesSeq;
     if (!selectedDatasetId.value) {
       preferences.value = [];
       return;
     }
     preferencesLoading.value = true;
     try {
-      preferences.value = await evaluationStore.loadPreferences(selectedDatasetId.value);
+      const res = await evaluationStore.loadPreferences(selectedDatasetId.value);
+      if (seq !== preferencesSeq) return;
+      preferences.value = res;
     } catch (e) {
       console.warn('[evaluation] load preferences failed:', e);
-      preferences.value = [];
+      if (seq === preferencesSeq) preferences.value = [];
     } finally {
-      preferencesLoading.value = false;
+      if (seq === preferencesSeq) preferencesLoading.value = false;
     }
   }
 
@@ -492,6 +517,7 @@ export function useEvaluationPage() {
   }
 
   async function loadCaseResults() {
+    const seq = ++caseResultsSeq;
     if (!resultsRun.value) return;
     resultsLoading.value = true;
     try {
@@ -506,6 +532,7 @@ export function useEvaluationPage() {
         limit,
         offset: (page - 1) * limit,
       });
+      if (seq !== caseResultsSeq) return; // stale — another run's dialog took over
       caseResults.value = res.items;
       caseResultsTotal.value = res.total;
       if (resultsPage.value > resultsPageMax.value) {
@@ -514,13 +541,16 @@ export function useEvaluationPage() {
           limit,
           offset: (resultsPage.value - 1) * limit,
         });
+        if (seq !== caseResultsSeq) return;
         caseResults.value = res.items;
         caseResultsTotal.value = res.total;
       }
     } catch (e) {
-      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载结果失败' });
+      if (seq === caseResultsSeq) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载结果失败' });
+      }
     } finally {
-      resultsLoading.value = false;
+      if (seq === caseResultsSeq) resultsLoading.value = false;
     }
   }
 
@@ -553,6 +583,12 @@ export function useEvaluationPage() {
     exportingResults.value = true;
     try {
       const res = await evaluationStore.loadRunResults(run.id, { limit: 5000, offset: 0 });
+      if (res.total > res.items.length) {
+        $q.notify({
+          type: 'warning',
+          message: t('evaluationPage.exportTruncated', { exported: res.items.length, total: res.total }),
+        });
+      }
       if (format === 'csv') {
         exportEvalRunCsv(run, res.items);
       } else {

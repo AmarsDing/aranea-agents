@@ -96,6 +96,8 @@ func TestConsumeRuntimeEvents_RetryThenSuccess_CompletesExecution(t *testing.T) 
 	eventCh := make(chan GraphRuntimeEvent, 3)
 	eventCh <- GraphRuntimeEvent{Type: DomainEventGraphNodeError, NodeID: "node-1", Error: "transient", StepNumber: 1, Retrying: true}
 	eventCh <- GraphRuntimeEvent{Type: DomainEventGraphNodeEnd, NodeID: "node-1", StepNumber: 2}
+	// N1 contract: the framework emits an explicit done event on success.
+	eventCh <- GraphRuntimeEvent{Type: DomainEventGraphDone}
 	close(eventCh)
 
 	uc.consumeRuntimeEvents(eventCh, exec, exec.ID, exec.GraphID, exec.SessionID, nil)

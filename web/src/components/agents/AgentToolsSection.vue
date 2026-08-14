@@ -2,9 +2,9 @@
   <div v-if="agentId" class="agent-tools-section">
     <div class="row items-center justify-between q-mb-sm">
       <p class="agent-tools-section__hint q-ma-none">
-        按工具粒度覆盖启用、模式、需确认与配置 JSON；生效结果受上方「平台工具策略」总开关影响。
+        {{ $t('toolsPage.agentTools.sectionSubtitle') }}
       </p>
-      <q-btn flat rounded dense no-caps icon="open_in_new" label="全局 Tools" :to="{ name: 'tools' }" />
+      <q-btn flat rounded dense no-caps icon="open_in_new" :label="$t('toolsPage.agentTools.globalTools')" :to="{ name: 'tools' }" />
     </div>
 
     <agent-tool-overrides-panel

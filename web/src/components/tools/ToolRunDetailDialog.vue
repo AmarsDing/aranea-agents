@@ -16,37 +16,37 @@
       <q-separator />
 
       <q-tabs v-model="tab" dense align="left" active-color="primary" indicator-color="primary">
-        <q-tab name="params" label="参数" />
-        <q-tab name="output" label="输出" />
-        <q-tab name="error" label="错误" />
-        <q-tab name="context" label="上下文" />
+        <q-tab name="params" :label="t('toolsPage.runDetail.tabParams')" />
+        <q-tab name="output" :label="t('toolsPage.runDetail.tabOutput')" />
+        <q-tab name="error" :label="t('toolsPage.runDetail.tabError')" />
+        <q-tab name="context" :label="t('toolsPage.runDetail.tabContext')" />
       </q-tabs>
       <q-separator />
 
       <q-tab-panels v-model="tab" animated class="tool-run-detail-panels">
         <q-tab-panel name="params">
           <q-banner dense rounded class="tool-run-detail-tip q-mb-sm">
-            参数已脱敏，hash 仅用于排查重复调用，不能还原原文。
+            {{ t('toolsPage.runDetail.redactionTip') }}
           </q-banner>
           <div v-if="paramsLoading" class="row items-center q-gutter-sm">
             <q-spinner-dots size="24px" color="primary" />
-            <span class="muted-caption">加载参数详情…</span>
+            <span class="muted-caption">{{ t('toolsPage.runDetail.loadingParams') }}</span>
           </div>
           <q-banner v-else-if="paramsError" dense rounded class="app-page-error-banner">
             {{ paramsError }}
           </q-banner>
           <template v-else>
             <div v-if="params?.redaction_applied" class="q-mb-sm">
-              <q-badge rounded color="warning">已脱敏</q-badge>
+              <q-badge rounded color="warning">{{ t('toolsPage.runDetail.redacted') }}</q-badge>
             </div>
             <pre class="tool-run-detail-json">{{ prettyJSON(params?.params_json || '{}') }}</pre>
-            <div class="text-caption muted-caption q-mt-sm">input hash：{{ invocation.input_hash || '—' }}</div>
+            <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.inputHash') }}{{ invocation.input_hash || '—' }}</div>
           </template>
         </q-tab-panel>
 
         <q-tab-panel name="output">
           <pre class="tool-run-detail-json">{{ prettyJSON(invocation.output_preview || '{}') }}</pre>
-          <div class="text-caption muted-caption q-mt-sm">output hash：{{ invocation.output_hash || '—' }}</div>
+          <div class="text-caption muted-caption q-mt-sm">{{ t('toolsPage.runDetail.outputHash') }}{{ invocation.output_hash || '—' }}</div>
         </q-tab-panel>
 
         <q-tab-panel name="error">
@@ -56,7 +56,7 @@
             </div>
             <pre class="tool-run-detail-json">{{ invocation.error_message || '—' }}</pre>
           </template>
-          <div v-else class="muted-caption">本次调用无错误。</div>
+          <div v-else class="muted-caption">{{ t('toolsPage.runDetail.noError') }}</div>
           <template v-if="metadataPretty">
             <div class="text-subtitle2 q-mt-md q-mb-xs">metadata</div>
             <pre class="tool-run-detail-json">{{ metadataPretty }}</pre>
@@ -78,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ToolInvocation, ToolInvocationParamDetail } from '../../features/tools/types';
 import {
   formatInvocationDuration,
@@ -99,6 +100,7 @@ defineEmits<{
   'update:open': [value: boolean];
 }>();
 
+const { t } = useI18n();
 const tab = ref('params');
 
 const metadataPretty = computed(() => {
@@ -117,10 +119,10 @@ const contextItems = computed(() => {
     { label: 'agent', value: r.agent_display_name || r.agent_key || r.agent_id },
     { label: 'user_id', value: r.user_id },
     { label: 'source', value: r.source },
-    { label: '开始时间', value: formatInvocationWhen(r.started_at) },
-    { label: '结束时间', value: formatInvocationWhen(r.ended_at) },
-    { label: '耗时', value: formatInvocationDuration(r.duration_ms) },
-    { label: 'streaming', value: r.streaming ? `是（${r.chunk_count ?? 0} chunks）` : '否' },
+    { label: t('toolsPage.runDetail.startedAt'), value: formatInvocationWhen(r.started_at) },
+    { label: t('toolsPage.runDetail.endedAt'), value: formatInvocationWhen(r.ended_at) },
+    { label: t('toolsPage.runDetail.duration'), value: formatInvocationDuration(r.duration_ms) },
+    { label: 'streaming', value: r.streaming ? t('toolsPage.runDetail.streamingYes', { count: r.chunk_count ?? 0 }) : t('toolsPage.runDetail.streamingNo') },
   ];
 });
 </script>

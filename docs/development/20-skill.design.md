@@ -418,6 +418,13 @@ service SkillService {
 
 `POST /v1/skills/import/:job_id/conflict-groups/:group_id/refine` — AI 炼化冲突组，返回 `SkillRefineResult`。
 
+**安全约束（2026-08-14 P13）**：
+
+- **鉴权**：import 相关 RPC（`GetSkillImportJob`/`ApplySkillImport`/`RefineSkillImportConflict`）要求 admin 权限（`assertImportAdmin`），与 multipart 上传端点一致；skill 读写端点经 `assertSkillAccess` 做 workspace 隔离（IDOR 防护）。
+- **ZIP 上限**：单包文件数 ≤ 200（`maxImportFiles`）、解压总大小 ≤ 100MB（`maxImportTotalBytes`），超限分别返回 `ErrTooManyFiles`/`ErrTotalSizeExceeded`（防 ZIP 炸弹）。
+- **状态机**：`ApplyImport` CAS 到 `applying` 后任何失败路径经 `context.Background()` 回滚为 `completed` 并记录原因，杜绝任务卡死；refine 阶段内存 job 丢失时从 DB + tempDir 重建（`jobStateFromDB`）。
+- **清理**：终态导入任务由 `SkillImportJobStore.DeleteOldJobs` 批量清理（`Engine.CleanupOldJobs` 于 inspect 入口触发）。
+
 ### 5.7 运行记录
 
 `GET /v1/skill-runs?skill_id=&agent_id=&session_id=&status=&from=&to=&page=1&page_size=20`
@@ -1360,7 +1367,7 @@ internal/
 │   ├── skill_intelligence.go   # 健康指标聚合（含 AvgTokenUsage/FeedbackScore）
 │   ├── skill_health.go         # 健康 Data 层
 │   ├── skill_invocation_stats.go # 调用统计 Data 层
-│   ├── skill_import_job.go     # 导入任务 Data 层
+│   ├── skill_import_job_store.go # 导入任务 Data 层（含 DeleteOldJobs 终态任务批量清理）
 │   ├── skill_evolution_schema.go # legacy `skill_proposals` DDL（仅作迁移 20261111 backfill 来源，backfill 后 DROP；A6 起不承载读写）
 │   ├── unified_evolution.go    # 统一进化 Data 层（raw SQL + 读写分离；A6 起承载全部四类建议读写，legacy skill_evolution.go / skill_evolution_suggestion.go 已删除）
 │   └── unified_evolution_schema.go # 统一进化 Schema

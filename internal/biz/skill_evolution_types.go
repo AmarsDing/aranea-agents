@@ -11,8 +11,8 @@ const (
 	SkillProposalStatusRegistered SkillProposalStatus = "registered"
 )
 
-// SkillProposal represents an evolution proposal from the SkillEvolutionLoop,
-// used for creating NEW skills from detected patterns.
+// SkillProposal represents an evolution proposal from the skill evolution
+// pipeline, used for creating NEW skills from detected patterns.
 //
 // Deprecated: Use UnifiedEvolutionSuggestion with ActionType=create_skill instead.
 // SkillProposal will be removed in a future release once all callers are migrated.

@@ -399,6 +399,29 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 		runtimeEvt.Type = biz.DomainEventGraphInterrupt
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
+	case trpcgraph.ObjectTypeGraphPregelStep:
+		meta := graphtrpc.ExtractPregelMeta(e, lg)
+		switch {
+		case meta.Error != "":
+			// N1: framework fatal (panic / max steps / executeGraph failure)
+			// must surface as an execution-level failure, not be dropped.
+			runtimeEvt.Type = biz.DomainEventGraphExecutionError
+			runtimeEvt.Error = meta.Error
+			runtimeEvt.StepNumber = meta.StepNumber
+		case meta.InterruptKey != "" && meta.NodeID != "":
+			// N2: HITL interrupt — the only reachable carrier when
+			// StreamModeCheckpoints is not enabled.
+			runtimeEvt.Type = biz.DomainEventGraphInterrupt
+			runtimeEvt.NodeID = meta.NodeID
+			runtimeEvt.StepNumber = meta.StepNumber
+		}
+		// Plain step progress events carry no domain meaning.
+	case trpcgraph.ObjectTypeGraphExecution:
+		// N1: explicit framework completion — the only signal allowed to
+		// converge an execution to Completed (done-driven terminal check).
+		if e.Response != nil && e.Response.Done {
+			runtimeEvt.Type = biz.DomainEventGraphDone
+		}
 	}
 
 	return runtimeEvt

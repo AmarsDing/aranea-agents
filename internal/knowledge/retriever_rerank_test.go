@@ -39,6 +39,9 @@ func (s *stubKnowledgeRepo) UpdateCollectionCounts(context.Context, string, int,
 func (s *stubKnowledgeRepo) UpdateCollectionSyncState(context.Context, string, string, time.Time) error {
 	return nil
 }
+func (s *stubKnowledgeRepo) EnableCollectionSemantic(context.Context, string, string, int) (bool, error) {
+	return true, nil
+}
 func (s *stubKnowledgeRepo) CreateDocument(context.Context, biz.KnowledgeDocument) (biz.KnowledgeDocument, error) {
 	return biz.KnowledgeDocument{}, nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/strutil"
 )
 
 // Pinned preference injection (FR-M3): active preference/constraint facts are
@@ -59,9 +60,7 @@ func PinnedPreferenceCueWithIDs(ctx context.Context, lister biz.MemoryPreference
 		if stmt == "" {
 			continue
 		}
-		if runes := []rune(stmt); len(runes) > pinnedPreferenceItemMaxRunes {
-			stmt = string(runes[:pinnedPreferenceItemMaxRunes]) + "…"
-		}
+		stmt = strutil.TruncateRunesEllipsis(stmt, pinnedPreferenceItemMaxRunes)
 		kind, _ := m["fact_kind"].(string)
 		prefix := "PREFERENCE"
 		if kind == "constraint" {
@@ -99,9 +98,7 @@ func ProfileCardCue(ctx context.Context, reader biz.MemoryProfileCardReader, age
 	if content == "" {
 		return ""
 	}
-	if runes := []rune(content); len(runes) > profileCardMaxRunes {
-		content = string(runes[:profileCardMaxRunes]) + "…"
-	}
+	content = strutil.TruncateRunesEllipsis(content, profileCardMaxRunes)
 	return "## 用户档案（长期记忆摘要，始终生效）\n" + content
 }
 

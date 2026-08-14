@@ -9,40 +9,49 @@ import {
   registryColEnabled,
 } from '../../features/ui/registryTableColumns';
 
-/** ToolsTable 列定义 */
-export const TOOL_TABLE_COLUMNS: QTableColumn<Tool>[] = [
-  registryCol<Tool>('name', 'Tool', 'display_name', 'left', REGISTRY_COL_W.nameWide),
-  registryCol<Tool>('category', '分类 / 来源', 'category', 'left', REGISTRY_COL_W.category),
-  registryCol<Tool>('runtime', '运行时', 'runtime_status', 'left', REGISTRY_COL_W.status),
-  registryColEnabled<Tool>(),
-  registryCol<Tool>('overrides', '覆盖', 'agent_override_count', 'center', REGISTRY_COL_W.narrow),
-  registryCol<Tool>('stats', '使用频率', 'invoke_count', 'left', REGISTRY_COL_W.status),
-  registryCol<Tool>('success_rate', '成功率', (row) => row.success_count, 'left', REGISTRY_COL_W.status),
-  registryCol<Tool>('duration', '耗时', (row) => row.p95_duration_ms, 'left', REGISTRY_COL_W.status),
-  registryCol<Tool>('last', '最近调用', 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide),
-  registryCol<Tool>('risk', '风险', 'risk_level', 'left', REGISTRY_COL_W.status),
-  registryColActions<Tool>(),
-];
+/** ToolsTable 列定义（函数形式，随 locale 取值） */
+export function toolTableColumns(): QTableColumn<Tool>[] {
+  const t = i18n.global.t;
+  return [
+    registryCol<Tool>('name', t('toolsPage.columns.tool'), 'display_name', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<Tool>('category', t('toolsPage.columns.categorySource'), 'category', 'left', REGISTRY_COL_W.category),
+    registryCol<Tool>('runtime', t('toolsPage.columns.runtime'), 'runtime_status', 'left', REGISTRY_COL_W.status),
+    registryColEnabled<Tool>(t('toolsPage.columns.enabled')),
+    registryCol<Tool>('overrides', t('toolsPage.columns.overrides'), 'agent_override_count', 'center', REGISTRY_COL_W.narrow),
+    registryCol<Tool>('stats', t('toolsPage.columns.stats'), 'invoke_count', 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>('success_rate', t('toolsPage.columns.successRate'), (row) => row.success_count, 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>('duration', t('toolsPage.columns.duration'), (row) => row.p95_duration_ms, 'left', REGISTRY_COL_W.status),
+    registryCol<Tool>('last', t('toolsPage.columns.last'), 'last_invoked_at', 'left', REGISTRY_COL_W.timeWide),
+    registryCol<Tool>('risk', t('toolsPage.columns.risk'), 'risk_level', 'left', REGISTRY_COL_W.status),
+    registryColActions<Tool>(REGISTRY_COL_W.actions, t('toolsPage.columns.actions')),
+  ];
+}
 
-/** ToolRunsTable 列定义 */
-export const TOOL_RUNS_TABLE_COLUMNS: QTableColumn<ToolInvocation>[] = [
-  registryCol<ToolInvocation>('tool', 'Tool', 'tool_key', 'left', REGISTRY_COL_W.nameWide),
-  registryCol<ToolInvocation>('agent', 'Agent', 'agent_id', 'left', REGISTRY_COL_W.agent),
-  registryCol<ToolInvocation>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-  registryCol<ToolInvocation>('session_id', 'Session', 'session_id', 'left', REGISTRY_COL_W.session),
-  registryCol<ToolInvocation>('time', '时间 / 耗时', 'started_at', 'left', REGISTRY_COL_W.time),
-  registryColActions<ToolInvocation>(REGISTRY_COL_W.narrow, '操作'),
-];
+/** ToolRunsTable 列定义（函数形式，随 locale 取值） */
+export function toolRunsTableColumns(): QTableColumn<ToolInvocation>[] {
+  const t = i18n.global.t;
+  return [
+    registryCol<ToolInvocation>('tool', t('toolsPage.columns.tool'), 'tool_key', 'left', REGISTRY_COL_W.nameWide),
+    registryCol<ToolInvocation>('agent', t('toolsPage.columns.agent'), 'agent_id', 'left', REGISTRY_COL_W.agent),
+    registryCol<ToolInvocation>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol<ToolInvocation>('session_id', t('toolsPage.columns.session'), 'session_id', 'left', REGISTRY_COL_W.session),
+    registryCol<ToolInvocation>('time', t('toolsPage.columns.timeDuration'), 'started_at', 'left', REGISTRY_COL_W.time),
+    registryColActions<ToolInvocation>(REGISTRY_COL_W.narrow, t('toolsPage.columns.actions')),
+  ];
+}
 
-/** ToolAuditsTable 列定义 */
-export const TOOL_AUDITS_TABLE_COLUMNS: QTableColumn<ToolInvocationAudit>[] = [
-  registryCol<ToolInvocationAudit>('tool', 'Tool / Action', 'tool_key', 'left', REGISTRY_COL_W.name),
-  registryCol<ToolInvocationAudit>('actor', 'Agent / User', 'agent_id', 'left', REGISTRY_COL_W.agent),
-  registryCol<ToolInvocationAudit>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
-  registryCol<ToolInvocationAudit>('time', '时间', 'created_at', 'left', REGISTRY_COL_W.timeWide),
-];
+/** ToolAuditsTable 列定义（函数形式，随 locale 取值） */
+export function toolAuditsTableColumns(): QTableColumn<ToolInvocationAudit>[] {
+  const t = i18n.global.t;
+  return [
+    registryCol<ToolInvocationAudit>('tool', t('toolsPage.columns.toolAction'), 'tool_key', 'left', REGISTRY_COL_W.name),
+    registryCol<ToolInvocationAudit>('actor', t('toolsPage.columns.actor'), 'agent_id', 'left', REGISTRY_COL_W.agent),
+    registryCol<ToolInvocationAudit>('status', t('toolsPage.columns.status'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol<ToolInvocationAudit>('time', t('toolsPage.columns.time'), 'created_at', 'left', REGISTRY_COL_W.timeWide),
+  ];
+}
 
-/** 列表筛选：分类（与常见 builtin/schema 对齐） */
+/** 列表筛选：分类（与常见 builtin/schema 对齐；值为英文枚举，无需 i18n） */
 export const categoryFilterOptions = [
   'system',
   'web',
@@ -56,44 +65,58 @@ export const categoryFilterOptions = [
   'custom',
 ].map((value) => ({ label: value, value }));
 
-/** 新建 Tool 时的来源提示（非枚举：仍为自由文本） */
-export const sourceSuggestions = [
-  { value: 'builtin', label: 'builtin', caption: '平台内置' },
-  { value: 'mcp', label: 'mcp', caption: 'MCP 暴露' },
-  { value: 'system', label: 'system', caption: '系统级' },
-  { value: 'external', label: 'external', caption: '外部注册' },
-];
+/** 新建 Tool 时的来源提示（非枚举：仍为自由文本；函数形式随 locale 取值） */
+export function sourceSuggestions(): { value: string; label: string; caption: string }[] {
+  const t = i18n.global.t;
+  return [
+    { value: 'builtin', label: 'builtin', caption: t('toolsPage.options.sourceBuiltin') },
+    { value: 'mcp', label: 'mcp', caption: t('toolsPage.options.sourceMcp') },
+    { value: 'system', label: 'system', caption: t('toolsPage.options.sourceSystem') },
+    { value: 'external', label: 'external', caption: t('toolsPage.options.sourceExternal') },
+  ];
+}
 
-/** 列表「来源」筛选选项（与 sourceSuggestions 对齐） */
-export const sourceFilterOptions = sourceSuggestions.map(({ value, label }) => ({ label, value }));
+/** 列表「来源」筛选选项（与 sourceSuggestions 对齐；label 为英文枚举值） */
+export function sourceFilterOptions(): { label: string; value: string }[] {
+  return sourceSuggestions().map(({ value, label }) => ({ label, value }));
+}
 
-export const riskLevelOptions = [
-  { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
-  { label: '高', value: 'high' },
-  { label: '严重', value: 'critical' },
-];
+export function riskLevelOptions(): { label: string; value: string }[] {
+  const t = i18n.global.t;
+  return [
+    { label: t('toolsPage.options.riskLow'), value: 'low' },
+    { label: t('toolsPage.options.riskMedium'), value: 'medium' },
+    { label: t('toolsPage.options.riskHigh'), value: 'high' },
+    { label: t('toolsPage.options.riskCritical'), value: 'critical' },
+  ];
+}
 
 /** 列表「启用」三态筛选 */
-export const enabledTriStateOptions = [
-  { label: '已启用', value: true },
-  { label: '已禁用', value: false },
-];
+export function enabledTriStateOptions(): { label: string; value: boolean }[] {
+  const t = i18n.global.t;
+  return [
+    { label: t('toolsPage.options.enabledOn'), value: true },
+    { label: t('toolsPage.options.enabledOff'), value: false },
+  ];
+}
 
 /** 调用记录状态（与后端 `tool_invocations.status` 对齐） */
-export const toolInvocationStatusOptions = [
-  { label: '成功', value: 'success' },
-  { label: '错误', value: 'error' },
-  { label: '失败', value: 'failed' }, // i18n-exempt: status enum label aligned with runtime recorder
-  { label: '阻断', value: 'blocked' },
-  { label: '取消', value: 'cancelled' },
-];
+export function toolInvocationStatusOptions(): { label: string; value: string }[] {
+  const t = i18n.global.t;
+  return [
+    { label: t('toolsPage.invocationStatus.success'), value: 'success' },
+    { label: t('toolsPage.invocationStatus.error'), value: 'error' },
+    { label: t('toolsPage.invocationStatus.failed'), value: 'failed' },
+    { label: t('toolsPage.invocationStatus.blocked'), value: 'blocked' },
+    { label: t('toolsPage.invocationStatus.cancelled'), value: 'cancelled' },
+  ];
+}
 
-const RISK_LABELS: Record<string, string> = {
-  low: '低',
-  medium: '中',
-  high: '高',
-  critical: '严重',
+const RISK_LABEL_KEYS: Record<string, string> = {
+  low: 'riskLow',
+  medium: 'riskMedium',
+  high: 'riskHigh',
+  critical: 'riskCritical',
 };
 
 /** Quasar 色名；语义对齐 UX §2 success / warning / danger，避免昼间霓虹 */
@@ -108,13 +131,15 @@ export function riskQuasarColor(value: string): string {
 }
 
 export function riskLabel(value: string): string {
-  return RISK_LABELS[value] ?? value;
+  const key = RISK_LABEL_KEYS[value];
+  return key ? i18n.global.t(`toolsPage.options.${key}`) : value;
 }
 
 export function runtimeStatusLabel(value?: string): string {
-  if (!value || value === 'available') return '可用';
-  if (value === 'registered_only') return '仅注册';
-  if (value === 'disabled') return '禁用';
+  const t = i18n.global.t;
+  if (!value || value === 'available') return t('toolsPage.runtimeStatus.available');
+  if (value === 'registered_only') return t('toolsPage.runtimeStatus.registeredOnly');
+  if (value === 'disabled') return t('toolsPage.runtimeStatus.disabled');
   return value;
 }
 
@@ -128,16 +153,17 @@ export function runtimeKindHint(tool: Pick<Tool, 'supports_streaming'>): string 
   return tool.supports_streaming ? 'streaming' : 'function';
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  success: '成功',
-  error: '错误',
-  blocked: '阻断',
-  cancelled: '取消',
-  failed: '失败',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  success: 'success',
+  error: 'error',
+  blocked: 'blocked',
+  cancelled: 'cancelled',
+  failed: 'failed',
 };
 
 export function toolInvocationStatusLabel(value: string): string {
-  return STATUS_LABELS[value] ?? value;
+  const key = STATUS_LABEL_KEYS[value];
+  return key ? i18n.global.t(`toolsPage.invocationStatus.${key}`) : value;
 }
 
 export function toolInvocationStatusColor(value: string): string {
@@ -164,14 +190,15 @@ export function toolInvocationStatusIcon(value: string): string {
 
 /** 汇总卡片数据（Tools 列表 API summary） */
 export function buildToolSummaryCards(summary: ToolSummary) {
+  const t = i18n.global.t;
   return [
-    { label: '总工具', value: String(summary.total_tools), hint: '已注册 Tool' },
-    { label: '已启用', value: String(summary.enabled_tools), hint: '全局启用' },
-    { label: '高风险启用', value: String(summary.high_risk_enabled), hint: 'high / critical' },
+    { label: t('toolsPage.summary.total'), value: String(summary.total_tools), hint: t('toolsPage.summary.totalHint') },
+    { label: t('toolsPage.summary.enabled'), value: String(summary.enabled_tools), hint: t('toolsPage.summary.enabledHint') },
+    { label: t('toolsPage.summary.highRisk'), value: String(summary.high_risk_enabled), hint: t('toolsPage.summary.highRiskHint') },
     {
-      label: '24h 调用',
+      label: t('toolsPage.summary.calls24h'),
       value: String(summary.calls_24h),
-      hint: `失败率 ${formatFailureRatePercent(summary.failure_rate_24h)}`,
+      hint: t('toolsPage.summary.failureRateHint', { rate: formatFailureRatePercent(summary.failure_rate_24h) }),
     },
   ];
 }
@@ -238,11 +265,12 @@ export function prettyJSON(raw: string): string {
 
 /** 粗略 Schema 体量提示（字符长度 → 估算行复杂度） */
 export function schemaSizeHint(json: string): string {
+  const t = i18n.global.t;
   const len = (json || '').trim().length;
-  if (len === 0) return '空';
-  if (len < 120) return '轻量';
-  if (len < 2000) return '中等';
-  return '较大';
+  if (len === 0) return t('toolsPage.schemaSize.empty');
+  if (len < 120) return t('toolsPage.schemaSize.light');
+  if (len < 2000) return t('toolsPage.schemaSize.medium');
+  return t('toolsPage.schemaSize.large');
 }
 
 export function formatInvocationDuration(ms?: number): string {
@@ -284,7 +312,7 @@ export function validateToolJsonFields(
     try {
       JSON.parse(fields[key] || '{}');
     } catch (err) {
-      errors[key] = err instanceof Error ? err.message : 'JSON 格式错误';
+      errors[key] = err instanceof Error ? err.message : i18n.global.t('toolsPage.invalidJsonFallback');
     }
   }
   return errors;

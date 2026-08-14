@@ -254,7 +254,12 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 
 	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def), nil, nil)
 
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, sessionID, graphID, execID, initialState)
+	// 异步执行必须脱离请求生命周期：HTTP/gRPC handler 返回后请求 ctx 会被取消，
+	// 若直接传给 BuildAndRun，executor 的事件流随请求结束被 cancel 提前关闭，
+	// consumeRuntimeEvents 会把"零节点执行"误判为 completed（steps=null）。
+	// 取消语义由 runtime 自带的 runCancel 承担（CancelExecution 路径）。
+	runCtx := context.WithoutCancel(ctx)
+	runtime, eventCh, err := uc.factory.BuildAndRun(runCtx, cfg, sessionID, sessionID, graphID, execID, initialState)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.SpiritSessionID = sessionID
@@ -305,7 +310,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		graphID = "compiled-graph"
 	}
 
-	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, sessionID, graphID, execID, initialState)
+	// 同 ExecuteGraph：脱离请求生命周期，避免 handler 返回后事件流被提前关闭。
+	runCtx := context.WithoutCancel(ctx)
+	runtime, eventCh, err := uc.factory.BuildAndRun(runCtx, cfg, sessionID, sessionID, graphID, execID, initialState)
 	if err != nil {
 		failedExec := NewGraphExecution(context.Background(), execID, graphID, sessionID, string(GraphExecFailed))
 		failedExec.SpiritSessionID = sessionID
@@ -542,7 +549,11 @@ func (uc *GraphExecutionUsecase) MarkTeamGraphInterrupt(ctx context.Context, exe
 // ---------------------------------------------------------------------------
 
 func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string, onComplete func()) {
+	sawDone := false
 	for e := range eventCh {
+		if e.Type == DomainEventGraphDone {
+			sawDone = true
+		}
 		uc.updateExecutionFromRuntimeEvent(exec, e)
 	}
 
@@ -550,17 +561,26 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	var wasEvicted bool
 	var persistCtx context.Context
 	completed := false
+	failMsg := ""
 	exec.execMu.Lock()
-	// Only mark as completed if still running and not already in a terminal state
-	// (e.g., cancelled by GC eviction, failed by node error, or interrupted).
-	// If the execution was evicted (GC cancelled the runtime), the channel closes
-	// prematurely and Status may still be "running" — we must not override that
-	// to "completed" since the execution was actually cancelled.
+	// Terminal convergence is done-driven (N1): only an explicit framework
+	// completion event may complete the execution. If the stream ends while
+	// still running without a done event (fatal graph error whose Pregel
+	// error event was the last on the wire, or premature termination),
+	// fail-closed instead of reporting a false success.
+	// Evicted executions (GC cancelled the runtime) close the channel
+	// prematurely and must not be overridden either.
 	if exec.Status == string(GraphExecRunning) && !exec.evicted {
-		uc.applyExecTransition(exec, GraphExecEventComplete)
 		now := time.Now()
+		if sawDone {
+			uc.applyExecTransition(exec, GraphExecEventComplete)
+			completed = true
+		} else {
+			exec.ErrorMessage = "graph execution stream terminated without completion event"
+			uc.applyExecTransition(exec, GraphExecEventFail)
+			failMsg = exec.ErrorMessage
+		}
 		exec.FinishedAt = &now
-		completed = true
 	}
 	persistSnap = exec.SnapshotForPersist()
 	wasEvicted = exec.evicted
@@ -570,6 +590,9 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 
 	if completed && uc.runEventSink != nil {
 		uc.runEventSink.OnRunCompleted(persistCtx, execID, graphID, time.Since(startedAt).Milliseconds())
+	}
+	if failMsg != "" && uc.runEventSink != nil {
+		uc.runEventSink.OnRunFailed(persistCtx, execID, graphID, failMsg)
 	}
 
 	if !wasEvicted {
@@ -664,6 +687,25 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		}
 		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
+		}
+	case DomainEventGraphExecutionError:
+		// N1: graph-level fatal (Pregel error: panic / max steps / executeGraph
+		// failure). Fail the execution regardless of node-level progress.
+		var persistSnap *GraphExecution
+		exec.execMu.Lock()
+		if ParseGraphExecutionState(exec.Status) == GraphExecRunning {
+			exec.ErrorMessage = e.Error
+			uc.applyExecTransition(exec, GraphExecEventFail)
+			now := time.Now()
+			exec.FinishedAt = &now
+		}
+		persistSnap = exec.SnapshotForPersist()
+		exec.execMu.Unlock()
+		if uc.runEventSink != nil {
+			uc.runEventSink.OnRunFailed(exec.ctx, exec.ID, exec.GraphID, e.Error)
+		}
+		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
+			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for execution_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphInterrupt:
 		var persistSnap *GraphExecution

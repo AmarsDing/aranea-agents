@@ -36,7 +36,6 @@ export function useChannelsPage() {
 
   const pageMax = computed(() => Math.max(1, Math.ceil(Math.max(0, total.value) / pageSize.value)));
   const pagedRows = computed(() => rows.value);
-  const filteredRows = computed(() => rows.value);
   const opsChannel = computed(() => rows.value.find((row) => row.id === opsChannelId.value) ?? null);
 
   async function loadAll() {
@@ -169,7 +168,6 @@ export function useChannelsPage() {
   return {
     t,
     catalog,
-    filteredRows,
     pagedRows,
     page,
     pageSize,

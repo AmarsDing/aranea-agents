@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/skill_evolution_suggestion/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
@@ -23,6 +24,8 @@ type SkillEvolutionSuggestionService struct {
 	uc      *biz.SkillIntelligenceUsecase
 	curator *SkillCuratorService
 	sandbox *SandboxRunner
+	// skillUC 用于 P0-1c IDOR 断言（读取宿主 skill 归属 workspace）。
+	skillUC *biz.SkillUsecase
 	lg      loggateway.Logger
 }
 
@@ -30,15 +33,60 @@ func NewSkillEvolutionSuggestionService(
 	uc *biz.SkillIntelligenceUsecase,
 	curator *SkillCuratorService,
 	sandbox *SandboxRunner,
+	skillUC *biz.SkillUsecase,
 	lg loggateway.Logger,
 ) *SkillEvolutionSuggestionService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillEvolutionSuggestionService{uc: uc, curator: curator, sandbox: sandbox, lg: lg}
+	return &SkillEvolutionSuggestionService{uc: uc, curator: curator, sandbox: sandbox, skillUC: skillUC, lg: lg}
+}
+
+// assertSkillAccess 校验 caller 是否可访问指定 skill（P0-1c IDOR 防护）。
+// 语义与 SkillService.assertSkillAccess 一致：跨租户访问返回 NotFound
+// （避免泄露 skill 存在性）；系统 caller（cron/admin）绕过；空 workspace_id
+// 的 skill 视为全局共享。
+func (s *SkillEvolutionSuggestionService) assertSkillAccess(ctx context.Context, skillID string) error {
+	if skillID == "" {
+		return nil
+	}
+	sk, err := s.skillUC.Get(ctx, skillID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("SKILL", "skill not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspaceOrShared(workspace.IDFromContext(ctx), sk.WorkspaceID); err != nil {
+		s.lg.Warn("skill evolution suggestion access denied: workspace mismatch",
+			loggateway.StepID("skill_evo_suggestion.idor"),
+			loggateway.Str("skill_id", skillID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("SKILL", "skill not found")
+	}
+	return nil
+}
+
+// assertSuggestionAccess 读取建议并断言 caller 可访问其宿主 skill。
+// 建议不存在或跨租户均返回 NotFound。
+func (s *SkillEvolutionSuggestionService) assertSuggestionAccess(ctx context.Context, suggestionID string) (*biz.SkillEvolutionSuggestion, error) {
+	suggestion, err := s.uc.GetEvolutionSuggestion(ctx, suggestionID)
+	if err != nil {
+		return nil, err
+	}
+	if suggestion == nil {
+		return nil, apierror.NotFound("SKILL_EVO_SUGGESTION", "suggestion %s not found", suggestionID)
+	}
+	if err := s.assertSkillAccess(ctx, suggestion.SkillID); err != nil {
+		return nil, err
+	}
+	return suggestion, nil
 }
 
 func (s *SkillEvolutionSuggestionService) ListSkillEvolutionSuggestions(ctx context.Context, req *v1.ListSkillEvolutionSuggestionsRequest) (*v1.ListSkillEvolutionSuggestionsResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+		return nil, err
+	}
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	status := biz.EvolutionSuggestionStatus(req.GetStatus())
 	suggestions, err := s.uc.ListEvolutionSuggestions(ctx, req.GetSkillId(), status, limit, offset)
@@ -61,12 +109,9 @@ func (s *SkillEvolutionSuggestionService) ListSkillEvolutionSuggestions(ctx cont
 }
 
 func (s *SkillEvolutionSuggestionService) GetSkillEvolutionSuggestion(ctx context.Context, req *v1.GetSkillEvolutionSuggestionRequest) (*v1.GetSkillEvolutionSuggestionResponse, error) {
-	suggestion, err := s.uc.GetEvolutionSuggestion(ctx, req.GetId())
+	suggestion, err := s.assertSuggestionAccess(ctx, req.GetId())
 	if err != nil {
 		return nil, err
-	}
-	if suggestion == nil {
-		return nil, apierror.NotFound("SKILL_EVO_SUGGESTION", "suggestion %s not found", req.GetId())
 	}
 	return &v1.GetSkillEvolutionSuggestionResponse{
 		Suggestion: toProtoEvolutionSuggestion(*suggestion, s.lg),
@@ -74,6 +119,9 @@ func (s *SkillEvolutionSuggestionService) GetSkillEvolutionSuggestion(ctx contex
 }
 
 func (s *SkillEvolutionSuggestionService) ApproveSkillEvolutionSuggestion(ctx context.Context, req *v1.ApproveSkillEvolutionSuggestionRequest) (*v1.ApproveSkillEvolutionSuggestionResponse, error) {
+	if _, err := s.assertSuggestionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.ApproveSuggestion(ctx, req.GetId(), req.GetApprovedBy()); err != nil {
 		return nil, err
 	}
@@ -138,6 +186,9 @@ func (s *SkillEvolutionSuggestionService) suggestionHasDraft(ctx context.Context
 }
 
 func (s *SkillEvolutionSuggestionService) RejectSkillEvolutionSuggestion(ctx context.Context, req *v1.RejectSkillEvolutionSuggestionRequest) (*v1.RejectSkillEvolutionSuggestionResponse, error) {
+	if _, err := s.assertSuggestionAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.RejectSuggestion(ctx, req.GetId(), req.GetRejectedBy(), req.GetRejectionReason()); err != nil {
 		return nil, err
 	}
@@ -147,6 +198,9 @@ func (s *SkillEvolutionSuggestionService) RejectSkillEvolutionSuggestion(ctx con
 // TriggerCuratorFlow runs the full Curator Agent semi-automatic evolution
 // pipeline for a skill: trigger detection → draft generation → sandbox verification.
 func (s *SkillEvolutionSuggestionService) TriggerCuratorFlow(ctx context.Context, req *v1.TriggerCuratorFlowRequest) (*v1.TriggerCuratorFlowResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+		return nil, err
+	}
 	if s.curator == nil {
 		return nil, apierror.Unavailable("SKILL_EVO_SUGGESTION", "curator service not available")
 	}

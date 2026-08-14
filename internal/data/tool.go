@@ -9,13 +9,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformtool"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 )
 
 type toolRepo struct {
@@ -43,14 +43,9 @@ func uniqueToolID(prefix string) string {
 // multi-byte UTF-8 rune. Postgres text columns reject invalid UTF-8 (error
 // 22021), so naive s[:n] byte-slicing on preview/summary fields can turn a
 // large CJK payload into a failed INSERT and lose the whole record.
+// P1-3：核心逻辑委托 strutil.TruncateBytesRuneSafe。
 func truncateUTF8(s string, maxBytes int) string {
-	if len(s) <= maxBytes {
-		return s
-	}
-	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
-		maxBytes--
-	}
-	return s[:maxBytes]
+	return strutil.TruncateBytesRuneSafe(s, maxBytes)
 }
 
 // toolStatsWindowDays bounds the tool_invocations scans in toolSelectSQL's
@@ -694,6 +689,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 	}
 	_, err := client.ToolInvocation.Create().
 		SetID(id).
+		SetInvocationID(strings.TrimSpace(in.ToolCallID)).
 		SetToolKey(strings.TrimSpace(in.ToolKey)).
 		SetAgentID(strings.TrimSpace(in.AgentID)).
 		SetAgentKey(strings.TrimSpace(in.AgentKey)).
@@ -889,6 +885,40 @@ func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, 
 		WHERE tool_key = ? AND agent_id = ? AND deleted_at = ''`),
 		now, now, toolKey, agentID,
 	)
+	return entErrToBizErr(err, "TOOL")
+}
+
+// RecordToolInvocationParams writes the redacted params row for one
+// invocation. Upsert semantics: the row id is derived from invocation_id
+// ("tinvp-<invocation_id>") and conflicts are ignored, so re-recording the
+// same invocation (streaming chunk updates, retries) never produces
+// duplicate rows.
+func (r *toolRepo) RecordToolInvocationParams(ctx context.Context, in biz.ToolInvocationParamWrite) error {
+	invocationID := strings.TrimSpace(in.InvocationID)
+	if invocationID == "" {
+		return nil
+	}
+	client := r.data.RW().Write(ctx)
+	if client == nil {
+		return apierror.Internal("TOOL", "ent client unavailable")
+	}
+	id := "tinvp-" + invocationID
+	if len(id) > 200 {
+		id = id[:200]
+	}
+	paramsJSON := strings.TrimSpace(in.ParamsJSON)
+	if paramsJSON == "" {
+		paramsJSON = "{}"
+	}
+	_, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+		INSERT INTO tool_invocation_params (id, invocation_id, tool_key, params_json, redaction_applied, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO NOTHING`),
+		id, invocationID, strings.TrimSpace(in.ToolKey), paramsJSON, in.RedactionApplied, nowRFC3339(),
+	)
+	if err != nil {
+		r.data.lg.Warn("tool invocation params write failed", loggateway.StepID("data.tool.invocation_params_write"), loggateway.Err(err))
+	}
 	return entErrToBizErr(err, "TOOL")
 }
 

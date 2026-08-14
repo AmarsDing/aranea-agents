@@ -32,7 +32,7 @@ function makeDeps(over: Partial<WorkbenchDeps> = {}): WorkbenchDeps {
       raw_content: '',
       base_hash: `hash-${id}`,
     })),
-    updateDocumentContent: vi.fn(async (id: string, content: string) => ({
+    updateDocumentContent: vi.fn(async (id: string, _content: string) => ({
       document: doc({ id }),
       conflict: false,
     })),

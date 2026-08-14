@@ -1,9 +1,9 @@
 <template>
   <q-page class="app-standard-page app-registry-page tools-page">
     <tool-hero-section
-      kicker="Tool registry"
-      title="Tools 管理"
-      subtitle="统一管理 Tool 元数据、运行时绑定、风险策略、配置 Schema 与调用记录。"
+      :kicker="$t('toolsPage.hero.kicker')"
+      :title="$t('toolsPage.hero.title')"
+      :subtitle="$t('toolsPage.hero.subtitle')"
     >
       <template #actions>
         <q-btn
@@ -12,7 +12,7 @@
           no-caps
           class="app-outline-btn"
           icon="policy"
-          label="审计日志"
+          :label="$t('toolsPage.hero.audits')"
           :to="{ name: 'tool-audits' }"
         />
         <q-btn
@@ -21,7 +21,7 @@
           no-caps
           class="app-outline-btn"
           icon="history"
-          label="调用记录"
+          :label="$t('toolsPage.hero.runs')"
           :to="{ name: 'tool-runs' }"
         />
         <q-btn
@@ -30,7 +30,7 @@
           unelevated
           class="app-accent-btn"
           icon="add"
-          label="新建 Tool"
+          :label="$t('toolsPage.hero.create')"
           @click="editorStore.openCreate()"
         />
       </template>
@@ -63,7 +63,7 @@
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
+        <q-btn flat dense :label="$t('common.retry')" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
@@ -81,19 +81,19 @@
     />
 
     <div v-if="selected.length" class="tools-batch-bar q-pa-sm">
-      <span class="text-caption q-mr-md">已选 {{ selected.length }} 项</span>
+      <span class="text-caption q-mr-md">{{ $t('toolsPage.list.selectedCount', { count: selected.length }) }}</span>
       <q-btn
         flat
         dense
         no-caps
         icon="toggle_on"
-        label="批量启用"
+        :label="$t('toolsPage.list.batchEnable')"
         size="sm"
         class="app-registry-accent-btn"
         @click="batchToggle(true)"
       />
-      <q-btn flat dense no-caps icon="toggle_off" label="批量停用" size="sm" @click="batchToggle(false)" />
-      <q-btn flat dense no-caps icon="delete" label="批量删除" size="sm" color="negative" @click="batchRemove" />
+      <q-btn flat dense no-caps icon="toggle_off" :label="$t('toolsPage.list.batchDisable')" size="sm" @click="batchToggle(false)" />
+      <q-btn flat dense no-caps icon="delete" :label="$t('toolsPage.list.batchRemove')" size="sm" color="negative" @click="batchRemove" />
     </div>
 
     <AppRegistryPagination
@@ -102,7 +102,7 @@
       :page-max="pageMax"
       :total="total"
       :loading="loading"
-      label="个 Tool"
+      :label="$t('toolsPage.list.pageUnit')"
     />
 
     <tool-detail-drawer

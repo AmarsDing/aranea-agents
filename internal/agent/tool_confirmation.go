@@ -165,6 +165,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					EndedAt:      time.Now().UTC().Format(time.RFC3339),
 					Source:       biz.ToolInvocationSourceRuntime,
 					ToolCallID:   args.ToolCallID,
+					ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 				}, nil, h.ag, h.deps)
 				// P1-3: 超时是显式 Reject（CustomResult 短路），不是回调错误——
 				// 用户未响应≠拦截器故障，error 路径会触发框架 Errorf 误报。
@@ -202,9 +203,9 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			EndedAt:      time.Now().UTC().Format(time.RFC3339),
 			Source:       biz.ToolInvocationSourceRuntime,
 			ToolCallID:   args.ToolCallID,
+			ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 		}, nil, h.ag, h.deps)
-		// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路，模型直接看到
-		// 拒绝消息），不走 error——error 语义保留给拦截器自身故障，且 error
+		// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路），不走 error——error 语义保留给拦截器自身故障，且 error
 		// 路径会触发框架 "Before tool callback failed" Errorf 误报。
 		return callbacks.Reject(fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
 	}
@@ -220,6 +221,7 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		EndedAt:      time.Now().UTC().Format(time.RFC3339),
 		Source:       biz.ToolInvocationSourceRuntime,
 		ToolCallID:   args.ToolCallID,
+		ParamsJSON:   paramsJSONFromToolArgs(args.Arguments),
 	}, nil, h.ag, h.deps)
 	// P1-3: 无回复通道 = 显式 Reject（环境能力不满足，非拦截器故障）。
 	return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil

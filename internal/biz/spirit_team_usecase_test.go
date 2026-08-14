@@ -775,7 +775,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	})
 
 	// Cancel should succeed (pending → cancelled is valid)
-	err := uc.CancelTeam(ctx, result.Team.ID)
+	err := uc.CancelTeam(ctx, result.Team.ID, CancelReasonUser)
 	if err != nil {
 		t.Fatalf("CancelTeam should succeed for pending team: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	_, _ = teamUC.TransitionStatus(ctx, team2.Team.ID, TeamStatusRunning)
 	_, _ = teamUC.TransitionStatus(ctx, team2.Team.ID, TeamStatusCompleted)
 
-	err = uc.CancelTeam(ctx, team2.Team.ID)
+	err = uc.CancelTeam(ctx, team2.Team.ID, CancelReasonUser)
 	if err == nil {
 		t.Error("CancelTeam should fail for completed team (terminal state)")
 	}

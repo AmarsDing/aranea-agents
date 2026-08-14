@@ -42,7 +42,7 @@
           clearable
           emit-value
           map-options
-          label="状态"
+          :label="$t('toolsPage.filters.status')"
           :options="statusOptions"
           @update:model-value="onStatus($event)"
         />
@@ -53,7 +53,7 @@
           dense
           outlined
           clearable
-          label="开始时间 ISO"
+          :label="$t('toolsPage.filters.fromIso')"
           @update:model-value="onFrom($event)"
         />
       </div>
@@ -62,13 +62,13 @@
           :model-value="hasError"
           dense
           color="negative"
-          label="仅看错误"
+          :label="$t('toolsPage.filters.errorOnly')"
           @update:model-value="onHasError($event)"
         >
-          <q-tooltip>仅显示状态为错误的调用</q-tooltip>
+          <q-tooltip>{{ $t('toolsPage.filters.errorOnlyTip') }}</q-tooltip>
         </q-toggle>
-        <q-btn flat rounded icon="restart_alt" label="重置" @click="$emit('reset')" />
-        <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat rounded icon="restart_alt" :label="$t('toolsPage.filters.reset')" @click="$emit('reset')" />
+        <q-btn flat rounded icon="refresh" :label="$t('toolsPage.filters.refresh')" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </tool-glass-panel>

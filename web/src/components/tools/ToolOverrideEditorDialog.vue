@@ -2,14 +2,24 @@
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="row items-center justify-between">
-        <div class="text-h6">{{ editing ? '编辑 Agent 覆盖' : '添加 Agent 覆盖' }}</div>
-        <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />
+        <div class="text-h6">
+          {{ editing ? t('toolsPage.overrideDialog.editTitle') : t('toolsPage.overrideDialog.addTitle') }}
+        </div>
+        <q-btn
+          flat
+          dense
+          round
+          icon="close"
+          class="app-dialog-icon-btn"
+          :aria-label="t('common.close')"
+          @click="$emit('update:open', false)"
+        />
       </q-card-section>
       <q-separator />
       <q-card-section class="q-gutter-sm">
         <q-select
           :model-value="form.agent_id"
-          label="Agent"
+          :label="t('toolsPage.overrideDialog.agentLabel')"
           dense
           outlined
           :options="agentOptions"
@@ -21,25 +31,25 @@
         />
         <q-select
           :model-value="form.mode"
-          label="模式"
+          :label="t('toolsPage.overrideDialog.modeLabel')"
           dense
           outlined
-          :options="modeOptions"
+          :options="modeOpts"
           emit-value
           map-options
           @update:model-value="emitFormPatch({ mode: String($event ?? 'inherit') })"
         />
         <q-toggle
           :model-value="form.requires_confirmation"
-          label="需要确认"
+          :label="t('toolsPage.overrideDialog.confirmLabel')"
           @update:model-value="emitFormPatch({ requires_confirmation: Boolean($event) })"
         />
         <div class="text-caption text-grey-7">
-          此开关只能追加确认：工具全局已设为「需确认」时，此处无法豁免（两者任一开启即需确认）。
+          {{ t('toolsPage.overrideDialog.confirmHint') }}
         </div>
         <q-input
           :model-value="form.config_override_json"
-          label="配置覆盖 JSON"
+          :label="t('toolsPage.overrideDialog.configLabel')"
           type="textarea"
           dense
           outlined
@@ -50,12 +60,12 @@
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
+        <q-btn flat no-caps :label="t('common.cancel')" @click="$emit('update:open', false)" />
         <q-btn
           no-caps
           unelevated
           class="app-dialog-accent-btn"
-          label="保存"
+          :label="t('common.save')"
           :loading="saving"
           :disable="Boolean(configJsonError)"
           @click="$emit('save')"
@@ -66,7 +76,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { overrideModeOptions } from './toolUi';
 import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
 
 const props = defineProps<{
@@ -84,11 +96,8 @@ const emit = defineEmits<{
   'update:form': [value: ToolOverrideForm];
 }>();
 
-const modeOptions = [
-  { label: '继承 (inherit)', value: 'inherit' },
-  { label: '允许 (allow)', value: 'allow' },
-  { label: '拒绝 (deny)', value: 'deny' },
-];
+const { t } = useI18n();
+const modeOpts = computed(() => overrideModeOptions());
 
 const configJsonError = ref('');
 
@@ -101,7 +110,7 @@ function onConfigJsonInput(val: string) {
     JSON.parse(val || '{}');
     configJsonError.value = '';
   } catch (err) {
-    configJsonError.value = err instanceof Error ? err.message : 'JSON 格式错误';
+    configJsonError.value = err instanceof Error ? err.message : t('toolsPage.invalidJsonFallback');
   }
   emitFormPatch({ config_override_json: val });
 }

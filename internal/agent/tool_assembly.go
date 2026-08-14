@@ -62,6 +62,15 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 				}
 			}
 		}
+		// P1-2: 直连模式挂载 server 但未显式启用 broker 时，预建一份备用
+		// broker 配置——装配层 schema 治理发现 declaration 总量超预算时
+		// 用它降级（schema 按需拉取），避免直接丢失全部 MCP 能力。
+		if len(cfg.MCPServers) > 0 && cfg.MCPBroker == nil {
+			if fallback := buildMCPBrokerFromServers(cfg.MCPServers, platformAllowAdHoc); fallback != nil {
+				fallback.HeaderInjector = mcpUserCredentialInjector(deps, cfg.MCPServers)
+				cfg.MCPBrokerFallback = fallback
+			}
+		}
 
 		// Knowledge tools require both the Usecase (for availability check) and
 		// the Retriever (for actual search). Without a Retriever, the tools would

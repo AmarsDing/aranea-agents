@@ -1,4 +1,7 @@
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+// TECH-DEBT: 域内 composable 直连 api（绕过 tools store）——store.fetchCatalog 语义是分页目录，
+// 此处需要的是 key/name 轻量清单；待 store 提供轻量 catalog 方法后切换（红线 #4 豁免项）。
 import { listTools } from '../tools/api';
 import { toolGroupOptions, type AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
@@ -15,6 +18,7 @@ const defaultNativeToolKeys = [
 
 /** Tool catalog loading and select options for Agent settings. */
 export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
+  const { t } = useI18n();
   const catalogTools = ref<{ key: string; display_name: string }[]>([]);
   const loadingCatalogTools = ref(false);
 
@@ -42,7 +46,7 @@ export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
       byKey.set(g.value, { label: g.label, value: g.value });
     }
     for (const k of defaultNativeToolKeys) {
-      byKey.set(k, { label: `${k} · 内置`, value: k });
+      byKey.set(k, { label: t('toolsPage.agentTools.catalogBuiltin', { key: k }), value: k });
     }
     for (const t of catalogTools.value) {
       const label = t.display_name && t.display_name !== t.key ? `${t.display_name} (${t.key})` : t.key;
@@ -52,7 +56,7 @@ export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
     for (const raw of extra) {
       const key = String(raw ?? '').trim();
       if (key && !byKey.has(key)) {
-        byKey.set(key, { label: `${key} · 已保存`, value: key });
+        byKey.set(key, { label: t('toolsPage.agentTools.catalogSaved', { key }), value: key });
       }
     }
     return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));

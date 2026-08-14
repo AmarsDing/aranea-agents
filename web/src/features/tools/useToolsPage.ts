@@ -37,9 +37,9 @@ export function useToolsPage() {
   const selected = ref<Tool[]>([]);
 
   const categoryOptions = categoryFilterOptions;
-  const sourceOptions = sourceFilterOptions;
-  const riskOptions = riskLevelOptions;
-  const enabledOptions = enabledTriStateOptions;
+  const sourceOptions = computed(() => sourceFilterOptions());
+  const riskOptions = computed(() => riskLevelOptions());
+  const enabledOptions = computed(() => enabledTriStateOptions());
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
   const summaryCards = computed(() => buildToolSummaryCards(summary.value));

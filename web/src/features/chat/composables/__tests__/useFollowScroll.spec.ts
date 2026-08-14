@@ -99,7 +99,7 @@ describe('useFollowScroll', () => {
 
   it('容器内非空选区 → 转 UNFOLLOWED 保护复制', async () => {
     const node = {} as Node;
-    const { el, contentSignature, following } = setup({ contains: (n: Node) => n === node });
+    const { contentSignature, following } = setup({ contains: (n: Node) => n === node });
     vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false, anchorNode: node } as Selection);
     contentSignature.value = 'b';
     await nextTick();

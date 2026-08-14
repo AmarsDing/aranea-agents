@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -130,7 +131,23 @@ func (r *Runner) RunSync(ctx context.Context, run biz.EvalRun, metrics string, n
 	return final, err
 }
 
-func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) error {
+func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) (err error) {
+	// A panic anywhere in the evaluation path (framework, agent runtime, repo)
+	// must not strand the row in "running": safego recovers the goroutine but
+	// the row would stay active until the next restart's stale-run sweep (Y10),
+	// and the polling UI would spin on it forever. Convert the panic into a
+	// normal failed run — the terminal write keeps every consumer consistent.
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.lg.Error("evaluation run panicked",
+				loggateway.StepID("evaluation.run.panic"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Str("dataset_id", run.DatasetID),
+				loggateway.Str("panic", fmt.Sprintf("%v", rec)),
+				loggateway.Str("stack", string(debug.Stack())))
+			err = r.failRun(ctx, run, fmt.Sprintf("evaluation panicked: %v", rec))
+		}
+	}()
 	cases, err := r.uc.ListCases(ctx, run.DatasetID)
 	if err != nil {
 		r.lg.Error("evaluation load cases failed",
@@ -194,6 +211,11 @@ func (r *Runner) executeFramework(
 		return r.failRun(ctx, run, err.Error())
 	}
 	caseErrs := make([]string, 0)
+	// Progress persistence is throttled to one write per second: the per-case
+	// UpdateRun exists only to keep CompletedCases fresh for the polling UI,
+	// and the terminal write (completed/failed) always persists the final
+	// counters. 100 cases must not mean 100 UPDATEs.
+	lastProgressPersist := time.Time{}
 	for i := range results {
 		results[i].RunID = run.ID
 		if msg := strings.TrimSpace(results[i].ErrorMessage); msg != "" {
@@ -205,14 +227,18 @@ func (r *Runner) executeFramework(
 			// the database — count it as a case error so the run fails instead
 			// of reporting "completed" with dropped results.
 			caseErrs = append(caseErrs, fmt.Sprintf("case %s: persist result: %v", results[i].CaseID, err))
-		} else {
-			// Only count cases whose results were actually persisted; otherwise
-			// CompletedCases would diverge from the persisted CaseResult rows
-			// and the run would report "completed" with an inflated count.
-			run.CompletedCases++
+			continue
 		}
-		if err := r.uc.UpdateRun(ctx, run); err != nil {
-			r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+		// Only count cases whose results were actually persisted; otherwise
+		// CompletedCases would diverge from the persisted CaseResult rows
+		// and the run would report "completed" with an inflated count.
+		run.CompletedCases++
+		if time.Since(lastProgressPersist) >= time.Second {
+			if err := r.uc.UpdateRun(ctx, run); err != nil {
+				r.lg.Warn("failed to update evaluation run", loggateway.Err(err), loggateway.Str("run_id", run.ID))
+			} else {
+				lastProgressPersist = time.Now()
+			}
 		}
 	}
 	run.ScoresJSON = normalizeScoresJSON(run.ScoresJSON)

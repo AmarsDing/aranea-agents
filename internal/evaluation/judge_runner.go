@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
@@ -56,7 +57,7 @@ func (t *timeoutRunner) Run(
 	// Forward events so cancel fires exactly when the upstream stream ends
 	// (or the deadline hits and the framework stops reading).
 	out := make(chan *event.Event, 16)
-	go func() {
+	safego.Go(ctx, "eval-timeout-runner", func() {
 		defer cancel()
 		defer close(out)
 		for ev := range ch {
@@ -66,14 +67,14 @@ func (t *timeoutRunner) Run(
 				// Keep draining until upstream observes cancellation and
 				// closes ch; abandoning the read here could leak the
 				// upstream producer goroutine.
-				go func() {
+				safego.Go(ctx, "eval-timeout-drain", func() {
 					for range ch {
 					}
-				}()
+				})
 				return
 			}
 		}
-	}()
+	})
 	return out, nil
 }
 

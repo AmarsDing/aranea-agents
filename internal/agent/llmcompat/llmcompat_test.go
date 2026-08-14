@@ -360,3 +360,126 @@ func TestMergeProviderConfigJSON_ThinkingDisabled(t *testing.T) {
 		t.Fatalf("provider_type = %q, want deepseek", cfg.ProviderType)
 	}
 }
+
+// ─── P2-5 思考强度路由：ThinkingEffort → 框架 GenerationConfig ───────────────
+//
+// ThinkingEffort 是调用方的按次路由决策（biz.ResolveThinkingEffort 已归一化），
+// 优先级高于 catalog config_json 的静态 thinking_disabled：显式 effort 获胜；
+// "off" 映射 ThinkingEnabled=false；其余档位只注入 reasoning_effort，不动
+// thinking 开关（保留 provider 服务端默认 enabled 行为）。
+
+func TestThinkingFieldsFromConfig(t *testing.T) {
+	cases := []struct {
+		name          string
+		effort        string
+		disabled      bool
+		wantEnabled   *bool
+		wantEffort    string // "" = 不注入 reasoning_effort
+	}{
+		{"empty_default", "", false, nil, ""},
+		{"empty_disabled", "", true, boolPtrForTest(false), ""},
+		{"off_maps_disabled", "off", false, boolPtrForTest(false), ""},
+		{"off_still_disabled_when_cfg_disabled", "off", true, boolPtrForTest(false), ""},
+		{"high_injects_effort", "high", false, nil, "high"},
+		{"max_normalized", " MAX ", false, nil, "max"},
+		{"low_injects_effort", "low", false, nil, "low"},
+		// 显式 effort 覆盖静态 thinking_disabled（与 P2-1 显式路由优先同约）。
+		{"effort_overrides_disabled", "high", true, nil, "high"},
+		// 非法档回落：等同未设置（保留 disabled 静态配置）。
+		{"garbage_default", "turbo", false, nil, ""},
+		{"garbage_falls_back_to_disabled", "turbo", true, boolPtrForTest(false), ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := ProviderAPIConfig{ThinkingEffort: tc.effort, ThinkingDisabled: tc.disabled}
+			enabled, effort := thinkingFieldsFromConfig(cfg)
+			if tc.wantEnabled == nil {
+				if enabled != nil {
+					t.Fatalf("thinkingEnabled = %v, want nil", *enabled)
+				}
+			} else {
+				if enabled == nil || *enabled != *tc.wantEnabled {
+					t.Fatalf("thinkingEnabled = %v, want %v", enabled, *tc.wantEnabled)
+				}
+			}
+			if tc.wantEffort == "" {
+				if effort != nil {
+					t.Fatalf("reasoningEffort = %q, want nil", *effort)
+				}
+			} else {
+				if effort == nil || *effort != tc.wantEffort {
+					t.Fatalf("reasoningEffort = %v, want %q", effort, tc.wantEffort)
+				}
+			}
+		})
+	}
+}
+
+func boolPtrForTest(v bool) *bool { return &v }
+
+// 显式 effort 注入 reasoning_effort 请求字段（DeepSeek v4：high/max 原生，
+// low/medium 服务端映射 high——框架注释已述，本层只做透传）。
+func TestCallOpenAICompatChatStream_ThinkingEffort_InjectsReasoningEffort(t *testing.T) {
+	var body []byte
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, &body)
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingEffort: "high"}
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(body), `"reasoning_effort"`) || !strings.Contains(string(body), `"high"`) {
+		t.Fatalf("request body missing reasoning_effort injection: %s", string(body))
+	}
+	// 显式 effort 不得同时注入 thinking 开关（保留 provider 默认）。
+	if strings.Contains(string(body), `"thinking"`) {
+		t.Fatalf("request body must not contain thinking toggle when effort set: %s", string(body))
+	}
+}
+
+// effort=off 与 thinking_disabled 等价：DeepSeek variant 注入 thinking.disabled。
+func TestCallOpenAICompatChatStream_ThinkingEffortOff_MapsThinkingDisabled(t *testing.T) {
+	var body []byte
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, &body)
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key", ThinkingEffort: "off"}
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(body), `"thinking"`) || !strings.Contains(string(body), `"disabled"`) {
+		t.Fatalf("effort=off must inject thinking.disabled: %s", string(body))
+	}
+}
+
+// catalog 静态 thinking_disabled=true 被调用方显式 effort 覆盖（P2-1 同约：
+// 显式路由策略优先于静态配置）。
+func TestCallOpenAICompatChatStream_ThinkingEffort_OverridesThinkingDisabled(t *testing.T) {
+	var body []byte
+	chunks := []string{
+		`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`,
+	}
+	srv := sseServer(t, chunks, &body)
+
+	cfg := ProviderAPIConfig{ProviderType: "deepseek", APIBaseURL: srv.URL, APIKey: "test-key",
+		ThinkingDisabled: true, ThinkingEffort: "max"}
+	_, _, _, _, err := CallOpenAICompatChatStream(context.Background(), srv.Client(), cfg, "deepseek-v4-flash",
+		[]OpenAICompatMessage{{Role: "user", Content: "hi"}}, StreamCallbacks{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(body), `"reasoning_effort"`) {
+		t.Fatalf("explicit effort must inject reasoning_effort: %s", string(body))
+	}
+	if strings.Contains(string(body), `"disabled"`) {
+		t.Fatalf("explicit effort must override thinking_disabled: %s", string(body))
+	}
+}

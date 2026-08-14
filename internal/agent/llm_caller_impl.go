@@ -56,6 +56,8 @@ func (c *OpenAICompatLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest
 	if p := strings.TrimSpace(req.Provider); p != "" {
 		cfg.ProviderType = p
 	}
+	// P2-5：透传思考强度路由决策（归一化/校验在 llmcompat 映射层完成）。
+	cfg.ThinkingEffort = req.ThinkingEffort
 	modelName := strings.TrimSpace(req.Model)
 	text, _, promptTok, completionTok, err := CallOpenAICompatChat(ctx, c.hc, cfg, modelName, msgs)
 	if err != nil {
@@ -124,6 +126,9 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 	if err != nil {
 		return "", 0, err
 	}
+	// P2-5：透传思考强度路由决策（按次调用维度，主模型与降级候选同档——
+	// effort 属于任务而非模型）。
+	cfg.ThinkingEffort = req.ThinkingEffort
 	msgs := buildMessages(req.System, req.User, req.Images...)
 	modelName := strings.TrimSpace(req.Model)
 	text, _, promptTok, completionTok, err := fn(ctx, c.hc, cfg, modelName, msgs)
@@ -141,6 +146,7 @@ func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (st
 	if !cfgOK {
 		return "", 0, err
 	}
+	fbCfg.ThinkingEffort = req.ThinkingEffort
 	// K3 降级：流程日志（ctx 无 TraceEmitter 时静默跳过，同 cascade 约定）。
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		em.LogWarn("chat.llm.fallback", "模型降级重试", err.Error(),

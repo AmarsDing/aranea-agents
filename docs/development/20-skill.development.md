@@ -207,6 +207,26 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 测试 | 危险模式扫描 block/warn/误报对照用例（`skill_runtime_invalidation_test.go`：BlocksPromptInjection/BlocksDangerousShell/WarnsOnSensitiveReference/CleanBodyNoDangerFlag）；合并墓碑释放后同 slug 重建用例（`skill_merge_test.go`：TestApplyMerge_ReleasesSourceSkillKey） | ✅ |
 | 文档 | 设计文档 §5.5 发布校验补 C1 条目、§6.7 合并补 C2 条目 | ✅ |
 
+### 3.14 已完成（P13：skills 管理模块深度评审整改，2026-08-14）
+
+背景：对 skills 管理模块（biz/service/data/importer/前端）的系统级深审，发现 3 阻断 + 7 建议 + 5 提示共 15 项问题，全部修复。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| B1 前端整页崩溃 | `stores/skills/index.ts` 返回的 `listSkillFiles`/`readSkillFile` 未导入（运行时空引用），改为导入 API 并包装为 store action；补 store 冒烟测试 3 例 | ✅ |
+| B2 编辑元数据崩溃 | `useSkillsPage.ts` 直接调用未导入的 `getSkill`，改为 `skillsStore.loadSkill(id)`（FL5 数据流经 store） | ✅ |
+| B3 ApplyImport 状态机泄漏 | CAS 到 `applying` 后校验失败不回滚，job 永久卡死；现失败路径经 `context.Background()` 回滚为 `completed` 并记录原因 | ✅ |
+| R1 Import RPC 鉴权 | `GetSkillImportJob`/`ApplySkillImport`/`RefineSkillImportConflict` 补 `assertImportAdmin`（与 multipart 上传端点一致） | ✅ |
+| R2 读端点 IDOR | `GetSkill` 等 14 处读/写端点补 `assertSkillAccess`（workspace 隔离校验） | ✅ |
+| R3 ZIP 炸弹防护 | `maxImportFiles=200` + `maxImportTotalBytes=100MB`（var 以便测试下调）；新增 `ErrTooManyFiles`/`ErrTotalSizeExceeded` | ✅ |
+| R4 导入任务清理 | `SkillImportJobStore.DeleteOldJobs` 批量清理终态旧任务；`Engine.CleanupOldJobs` 在 inspect 入口触发 | ✅ |
+| R5 死代码删除 | `internal/data/skill_import_job.go`（156 行，已被 store 取代）删除 | ✅ |
+| R6 refine DB 回退 | refine 冲突时内存 job 丢失可从 DB 重建（`jobStateFromDB` + `restoreCandidateFiles` 从 tempDir 恢复正文/文件/标签） | ✅ |
+| R7 并发写防护 | `SetSkillDerivedFrom` 包入 `Data.ExecInTx`，防并发覆盖 | ✅ |
+| P1 LLM 超时 | refine/相似度调用补 `context.WithTimeout`（`similarityCallTimeout`） | ✅ |
+| 测试 | `inspect_zip_limits_test.go`（TooManyFiles/TotalSizeExceeded）；`skills.store.spec.ts` 3 例；存量 PG 集成测试全绿 | ✅ |
+| 验证 | `go build/vet` 绿；`internal/skill/...`、`internal/biz{,/skill}`、`internal/data`（SkillImport）、`internal/service`（Skill）全绿；前端 vitest 245 文件 1829 用例全绿、`quasar build` 成功、eslint 0 警告、check-i18n OK | ✅ |
+
 ---
 
 ## 4. 开发阶段
@@ -432,7 +452,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `internal/data/skill_intelligence.go` | 健康指标聚合（含 AvgTokenUsage/FeedbackScore） | ✅ |
 | `internal/data/skill_health.go` | 健康 Data 层 | ✅ |
 | `internal/data/skill_invocation_stats.go` | 调用统计 Data 层 | ✅ |
-| `internal/data/skill_import_job.go` | 导入任务 Data 层 | ✅ |
+| `internal/data/skill_import_job_store.go` | 导入任务 Data 层（含 `DeleteOldJobs` 终态任务批量清理） | ✅ |
 | `internal/data/skill_evolution_schema.go` | legacy `skill_proposals` DDL（仅作迁移 20261111 backfill 来源，backfill 后 DROP；A6 起不再承载读写） | ✅ |
 | `internal/data/unified_evolution.go` | 统一进化 Data 层（raw SQL + 读写分离；A6 起承载全部四类建议读写，legacy `skill_evolution.go` / `skill_evolution_suggestion.go` 已删除） | ✅ |
 | `internal/data/unified_evolution_schema.go` | 统一进化 Schema | ✅ |

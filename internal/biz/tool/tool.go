@@ -54,16 +54,16 @@ type Tool struct {
 	// RepairedCount = model-emitted args were malformed but salvageable;
 	// InvalidCount = malformed and unrepairable. The args first-pass rate
 	// (模型对 schema 的一次性理解准确度) is 1 - (repaired+invalid)/InvokeCount.
-	RepairedCount        int
-	InvalidCount         int
-	AvgDurationMS        *float64
-	P95DurationMS        float64
-	LastInvokedAt        string
-	LastStatus           string
-	CreatedAt            string
-	UpdatedAt            string
-	DeletedAt            string
-	Permissions          ToolPermissions
+	RepairedCount int
+	InvalidCount  int
+	AvgDurationMS *float64
+	P95DurationMS float64
+	LastInvokedAt string
+	LastStatus    string
+	CreatedAt     string
+	UpdatedAt     string
+	DeletedAt     string
+	Permissions   ToolPermissions
 	// WorkspaceID is the owning workspace ID for tenant isolation (P2-B).
 	// empty = shared/legacy (visible to all workspaces, e.g., system builtins);
 	// non-empty = tenant-private (visible only to owning workspace).
@@ -187,6 +187,10 @@ type ToolInvocationWrite struct {
 	ArgsRepaired bool
 	// ArgsInvalid：参数 JSON 非法且 repair guard 无法修复（透传后工具层报错）。
 	ArgsInvalid bool
+	// ParamsJSON 是脱敏后的完整调用参数（recorder 经 preview.RedactAndTruncate
+	// 生成），供 tool_invocation_params 旁车写入；repo.RecordToolInvocation
+	// 本身不消费本字段。
+	ParamsJSON string
 }
 
 type ToolInvocationParam struct {
@@ -196,6 +200,15 @@ type ToolInvocationParam struct {
 	ParamsJSON       string
 	RedactionApplied bool
 	CreatedAt        string
+}
+
+// ToolInvocationParamWrite is the write model for tool_invocation_params.
+// One row per invocation_id (upsert semantics at the data layer).
+type ToolInvocationParamWrite struct {
+	InvocationID     string
+	ToolKey          string
+	ParamsJSON       string
+	RedactionApplied bool
 }
 
 type ToolAgentOverride struct {
@@ -336,6 +349,9 @@ type ToolInvocationReader interface {
 // Stability:stable
 type ToolInvocationWriter interface {
 	RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
+	// RecordToolInvocationParams upserts the redacted params row for one
+	// invocation (tool_invocation_params); empty InvocationID is a no-op.
+	RecordToolInvocationParams(ctx context.Context, in ToolInvocationParamWrite) error
 }
 
 // ToolQualityStat 按工具聚合的调用质量指标（29-token 工具质量度量）。

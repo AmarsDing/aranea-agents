@@ -736,7 +736,12 @@ func (o *TaskOrchestratorImpl) CheckProgress(ctx context.Context, orchestrationI
 }
 
 // Cancel cancels the orchestration and all associated teams.
-func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID string) error {
+// reason 是 P2-6 取消原因（空 = user_cancel，保持向后兼容）。
+// 父级联子：编排取消时，所有子 team 以 parent_cancel 级联取消。
+func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID string, reason biz.CancelReason) error {
+	if reason == "" {
+		reason = biz.CancelReasonUser
+	}
 	handle, err := o.repo.GetByID(ctx, orchestrationID)
 	if err != nil {
 		return apierror.NotFound(apierror.DomainSpirit, "orchestration not found")
@@ -746,19 +751,30 @@ func (o *TaskOrchestratorImpl) Cancel(ctx context.Context, orchestrationID strin
 		return apierror.BadRequest(apierror.DomainSpirit, "only pending or running orchestrations can be cancelled")
 	}
 
+	// P2-6 父级联子：编排取消时，所有子 team 以 parent_cancel 级联取消。
+	// 子 team 的 CancelReason 覆盖为 Parent（无论调用方传入什么），确保
+	// 事件 meta 能区分「用户直接取消 team」vs「编排取消级联 team」。
+	childReason := biz.CancelReasonParent
+	if reason == biz.CancelReasonUser {
+		// 用户显式取消编排时，子 team 也标记为 user_cancel 更符合直觉。
+		childReason = biz.CancelReasonUser
+	}
+
 	// Cancel all teams.
 	for _, teamID := range handle.TeamIDs {
 		if o.controller != nil {
-			if cancelErr := o.controller.CancelTeam(ctx, teamID); cancelErr != nil {
+			if cancelErr := o.controller.CancelTeam(ctx, teamID, childReason); cancelErr != nil {
 				o.lg.Warn("TaskOrchestrator: failed to cancel team",
 					loggateway.StepID(biz.SpiritStepOrchestratorExecute),
 					loggateway.Str("team_id", teamID),
+					loggateway.Str("cancel_reason", string(childReason)),
 					loggateway.Err(cancelErr),
 				)
 			}
 		}
 	}
 
+	handle.CancelReason = reason
 	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCancelled); tErr != nil {
 		return tErr
 	}
@@ -1525,6 +1541,9 @@ func (o *TaskOrchestratorImpl) publishOrchestrationInterrupted(ctx context.Conte
 		"spirit_session_id": spiritSessionID,
 		"status":            string(handle.Status),
 		"notice_type":       "warning",
+	}
+	if handle.CancelReason != "" {
+		meta["cancel_reason"] = string(handle.CancelReason)
 	}
 	o.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(spiritSessionID, "orchestration_interrupted", "任务编排已中断", meta))
 }

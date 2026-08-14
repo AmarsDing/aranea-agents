@@ -226,7 +226,7 @@ Webhook 路由在 `internal/server/http.go`，不进 Proto。
 
 - `channel.config_json` — `Text` 默认 `"{}"`；存放 routing / access / streaming / long-task 配置
 - `channel_credential.secret_ref` — `String` 默认 `""`；支持 `enc:` / `env:` 前缀
-- `channel_turn_job.status` — `String` 默认 `"accepted"`；状态机见 §12.5
+- `channel_turn_job.status` — `String` 默认 `"accepted"`；状态机见 §11.5
 - `channel_peer_session.peer_key` — `String` 默认 `""` MaxLen 1024；空表示 `dm_scope=main`
 
 ---
@@ -470,11 +470,11 @@ web/src/stores/channels/
 | `CHANNEL_HEALTH_DISABLED=1` | 关闭健康扫描 |
 | `CHANNEL_RUNTIME_DISABLED=1` | 关闭长连接 Runtime |
 | `CHANNEL_RUNTIME_RELOAD_INTERVAL` | 定期 Reload 间隔（默认 `2m`；`0`/`off` 关闭） |
-| `ARANEA_CREDENTIAL_KEY` | 凭据加密 |
+| `ARANEA_CREDENTIAL_KEY` | 凭据加密（fail-closed：key 缺失/非法时解密返回错误，绝不回退密文当明文，CH-R3） |
 
 Webhook 默认：`/webhooks/{channel_key}`。
 
-> **Runtime 运维细节**（重连策略、fingerprint、指标）：见 [17-channel.development.md §6 Runtime 运维](./17-channel-development.md#6-runtime-运维)。
+> **Runtime 运维细节**（重连策略、fingerprint、指标）：见 [17-channel.development.md §6 Runtime 运维](./17-channel.development.md#6-runtime-运维)。
 
 ---
 
@@ -560,10 +560,31 @@ ChannelTurnWorker / safego
 | `session_id` | string | 绑定 Session |
 | `peer_id` / `peer_key` | string | IM 对端 |
 | `idempotency_key` | string UNIQUE(channel_id, key) | 与 receipt 对齐 |
-| `status` | enum | accepted / running / completed / failed / timeout / cancelled |
+| `status` | enum | accepted / running / queued / completed / failed / timeout / cancelled / async_queued |
 | `preview_message_id` | string nullable | 飞书流式消息 ID |
 | `error_message` | text nullable | |
 | `started_at` / `finished_at` | timestamp | |
+
+**状态机**（`internal/biz/channel_turn_job_state_machine.go`，AS-FSM-01）：
+
+| From \ Event | start | queue | dequeue | complete | fail | timeout | cancel | async_queue | async_start/fail/cancel |
+|---|---|---|---|---|---|---|---|---|---|
+| accepted | running | queued | — | — | — | — | cancelled | async_queued | — |
+| running | — | queued | — | completed | failed | timeout | cancelled | async_queued | — |
+| queued | — | — | running | — | — | timeout | cancelled | — | — |
+| async_queued | — | — | — | completed¹ | failed¹ | timeout | cancelled¹ | — | running / failed / cancelled |
+
+¹ CH-B1（2026-08-14）：进程内 async watcher（`completeAsyncTargetWatch` / `failAsyncTargetWatch`）与 `CancelRunningForSession` 对仍处于 `async_queued` 的 job 发射 plain `complete`/`fail`/`cancel` 事件；缺失这三条规则时转换恒失败、job 永久滞留 async_queued。
+
+**卡死恢复**（`internal/cronrunner/jobs/channel_turn_job_sweeper.go`，2min 周期）：
+
+| 职能 | 规则 |
+|------|------|
+| queued 超时 | `updated_at` 超 30min → `timeout` |
+| async_queued 恢复 | 超 2min 未触达 → 按 async target（graph execution / cron run）实际状态转终态；仍运行则 touch `updated_at`；超 24h 强制 `timeout` |
+| 启动对账（CH-P1） | 进程启动一次性：`updated_at < processStart` 的 accepted/running → `failed`（上一进程崩溃残留，周期扫描不覆盖） |
+
+**终态持久化**（CH-B2）：`channel_ingress_execute.go` defer 中的终态写库 / 错误回复 / run-status 发布使用 `context.WithoutCancel(turn ctx)` + 10s 超时（`turnTerminalPersistCtx`）——turn 超时恰好取消 ctx 时，终态仍能落库。
 
 SQL 增量：`docs/sql/04_channel.sql`（或新编号文件）；Ent schema 与 migration 随 Phase E1。
 
@@ -903,7 +924,7 @@ sequenceDiagram
 | 执行 | `service/channel_ingress_execute.go` | Turn Job；timeout ctx |
 | IM Preview | `service/channel_turn_preview.go` | Transcript + 心跳 + Tool Card |
 | 流式 | `lark/stream_outbound.go` `StreamSender` | POST 首条 → PATCH；tenant token 缓存 |
-| 重连 | `channel/runtime/supervisor.go` | 指数退避 1s→5m（**应用层**） |
+| 重连 | `channel/runtime/supervisor.go` | 指数退避 1s→5m（**应用层**）；稳定运行 ≥1min 才重置退避（CH-R1） |
 
 ### 12.4 飞书特殊处理对照
 

@@ -110,11 +110,9 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	if err != nil {
 		return AgentEffectiveTools{}, err
 	}
-	settings, err = u.settings.GetAgentRuntimeSettings(ctx, agentID)
-	if err != nil {
-		return AgentEffectiveTools{}, err
-	}
-	settings = withSettingDefaults(settings)
+	// No re-read after upsert: `settings` already holds the persisted values
+	// (runtimeSettingsForEffective applied defaults; we mutated the tool columns
+	// in place), so a second GetAgentRuntimeSettings would be a redundant query.
 
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {

@@ -3298,8 +3298,12 @@ type EvolutionMetricsResponse struct {
 	NegativeFeedback       int32                  `protobuf:"varint,6,opt,name=negative_feedback,json=negativeFeedback,proto3" json:"negative_feedback,omitempty"`
 	ToolSuccessSeries      []*MetricDataPoint     `protobuf:"bytes,7,rep,name=tool_success_series,json=toolSuccessSeries,proto3" json:"tool_success_series,omitempty"`
 	RetrievalQualitySeries []*MetricDataPoint     `protobuf:"bytes,8,rep,name=retrieval_quality_series,json=retrievalQualitySeries,proto3" json:"retrieval_quality_series,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// S-05: true when metrics are incomplete due to partial query failures.
+	Partial bool `protobuf:"varint,9,opt,name=partial,proto3" json:"partial,omitempty"`
+	// S-08: which sub-queries failed (for observability).
+	PartialErrors []string `protobuf:"bytes,10,rep,name=partial_errors,json=partialErrors,proto3" json:"partial_errors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EvolutionMetricsResponse) Reset() {
@@ -3384,6 +3388,20 @@ func (x *EvolutionMetricsResponse) GetToolSuccessSeries() []*MetricDataPoint {
 func (x *EvolutionMetricsResponse) GetRetrievalQualitySeries() []*MetricDataPoint {
 	if x != nil {
 		return x.RetrievalQualitySeries
+	}
+	return nil
+}
+
+func (x *EvolutionMetricsResponse) GetPartial() bool {
+	if x != nil {
+		return x.Partial
+	}
+	return false
+}
+
+func (x *EvolutionMetricsResponse) GetPartialErrors() []string {
+	if x != nil {
+		return x.PartialErrors
 	}
 	return nil
 }
@@ -4495,7 +4513,7 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"time_range\x18\x02 \x01(\tR\ttimeRange\";\n" +
 	"\x0fMetricDataPoint\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value\"\xaf\x03\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value\"\xf0\x03\n" +
 	"\x18EvolutionMetricsResponse\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1d\n" +
 	"\n" +
@@ -4505,7 +4523,10 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x0etotal_episodes\x18\x05 \x01(\x05R\rtotalEpisodes\x12+\n" +
 	"\x11negative_feedback\x18\x06 \x01(\x05R\x10negativeFeedback\x12P\n" +
 	"\x13tool_success_series\x18\a \x03(\v2 .kratos.agent.v1.MetricDataPointR\x11toolSuccessSeries\x12Z\n" +
-	"\x18retrieval_quality_series\x18\b \x03(\v2 .kratos.agent.v1.MetricDataPointR\x16retrievalQualitySeries\"^\n" +
+	"\x18retrieval_quality_series\x18\b \x03(\v2 .kratos.agent.v1.MetricDataPointR\x16retrievalQualitySeries\x12\x18\n" +
+	"\apartial\x18\t \x01(\bR\apartial\x12%\n" +
+	"\x0epartial_errors\x18\n" +
+	" \x03(\tR\rpartialErrors\"^\n" +
 	"#GetAgentEvolutionSuggestionsRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"\x9d\x02\n" +

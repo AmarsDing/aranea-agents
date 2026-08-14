@@ -96,8 +96,15 @@ export const useEvaluationStore = defineStore('evaluation', () => {
     return run;
   }
 
+  // Monotonic request guard for loadRuns: when the user switches datasets or
+  // pages quickly (or a silent poll overlaps a manual load), an older response
+  // must not clobber state owned by a newer request.
+  let loadRunsSeq = 0;
+
   async function loadRuns(params: ListRunsParams = {}): Promise<ListRunsResult> {
+    const seq = ++loadRunsSeq;
     const result = await listRuns(params);
+    if (seq !== loadRunsSeq) return result; // stale — a newer request owns the state
     runs.value = result.items;
     runsTotal.value = result.total;
     return result;

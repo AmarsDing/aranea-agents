@@ -77,7 +77,7 @@ func (g *PublishGate) Check(ctx context.Context, trigger string) error {
 		return nil
 	}
 
-	runs, _, hasBaseline, err := g.scanRuns(ctx, cfg)
+	runs, _, hasBaseline, err := g.scanRuns(ctx, cfg, "")
 	if err != nil {
 		// Baseline query failed: fail open (cannot distinguish "no runs" from
 		// a storage error; blocking here would be a false positive).
@@ -154,9 +154,10 @@ func (g *PublishGate) evaluate(ctx context.Context, cfg beval.GateConfig, runID 
 	}
 	// Baseline is re-fetched after the run completes: runs launched between
 	// Check and now (including this gate run itself, which is terminal by
-	// now) must not become their own baseline — scanRuns filters to completed
-	// runs with an older created_at implicitly by excluding this run's ID.
-	_, baseline, hasBaseline, err := g.scanRuns(ctx, cfg, run.ID)
+	// now) must not become their own baseline — scanRuns filters them out by
+	// creation time (notAfter = this run's created_at) plus an explicit ID
+	// exclusion for same-second ties.
+	_, baseline, hasBaseline, err := g.scanRuns(ctx, cfg, run.CreatedAt, run.ID)
 	if err != nil {
 		g.lg.Warn("eval gate: reload baseline failed",
 			loggateway.StepID("evaluation.gate.baseline_fail"),
@@ -192,9 +193,11 @@ func (g *PublishGate) evaluate(ctx context.Context, cfg beval.GateConfig, runID 
 // scanRuns lists recent runs for the gated agent+dataset and extracts the
 // newest completed run's metric score as the baseline. Manual/after_turn/gate
 // runs all qualify — the baseline is simply "the last known good quality
-// point". excludeID skips one run (the just-finished gate run must never be
-// its own baseline).
-func (g *PublishGate) scanRuns(ctx context.Context, cfg beval.GateConfig, excludeID ...string) (runs []beval.Run, baseline float32, hasBaseline bool, err error) {
+// point". notAfter excludes runs created after the given RFC3339 timestamp
+// (a run younger than the gate run measures newer code and can never be its
+// baseline); excludeID additionally skips specific runs (same-second ties,
+// the just-finished gate run itself).
+func (g *PublishGate) scanRuns(ctx context.Context, cfg beval.GateConfig, notAfter string, excludeID ...string) (runs []beval.Run, baseline float32, hasBaseline bool, err error) {
 	runs, _, err = g.uc.ListRuns(ctx, cfg.DatasetID, cfg.AgentID, gateBaselineScan, 0)
 	if err != nil {
 		return nil, 0, false, err
@@ -205,6 +208,10 @@ func (g *PublishGate) scanRuns(ctx context.Context, cfg beval.GateConfig, exclud
 	}
 	for _, r := range runs {
 		if r.Status != "completed" || excluded[r.ID] {
+			continue
+		}
+		// RFC3339 UTC timestamps compare lexicographically.
+		if notAfter != "" && r.CreatedAt > notAfter {
 			continue
 		}
 		if score, ok := beval.RunMetricScore(r, cfg.Metric); ok {

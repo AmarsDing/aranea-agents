@@ -28,6 +28,9 @@ func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.Get
 	if strings.TrimSpace(req.GetAgentId()) == "" {
 		return nil, apierror.BadRequest(apierror.DomainAgent, "agent_id is required")
 	}
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	m, err := s.evoUC.GetEvolutionMetrics(ctx, req.GetAgentId(), req.GetTimeRange())
 	if err != nil {
 		return nil, err
@@ -39,6 +42,10 @@ func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.Get
 		RetrievalQuality: m.RetrievalQuality,
 		TotalEpisodes:    int32(m.TotalEpisodes),
 		NegativeFeedback: int32(m.NegativeFeedback),
+		// S-05/S-08: surface partial-failure state so callers can distinguish
+		// "no data" from "some sub-queries failed".
+		Partial:       m.Partial,
+		PartialErrors: m.PartialErrors,
 	}
 	for _, p := range m.ToolSuccessSeries {
 		resp.ToolSuccessSeries = append(resp.ToolSuccessSeries, &v1.MetricDataPoint{Date: p.Date, Value: p.Value})
@@ -50,6 +57,9 @@ func (s *AgentService) GetAgentEvolutionMetrics(ctx context.Context, req *v1.Get
 }
 
 func (s *AgentService) GetAgentEvolutionSuggestions(ctx context.Context, req *v1.GetAgentEvolutionSuggestionsRequest) (*v1.ListEvolutionSuggestionsResponse, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	items, err := s.evoUC.GetEvolutionSuggestions(ctx, req.GetAgentId(), req.GetStatus())
 	if err != nil {
 		return nil, err
@@ -62,6 +72,9 @@ func (s *AgentService) GetAgentEvolutionSuggestions(ctx context.Context, req *v1
 }
 
 func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.ApplyEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	result, err := s.evoUC.ApplySuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
 	if err != nil {
 		return nil, err
@@ -73,6 +86,9 @@ func (s *AgentService) ApplyEvolutionSuggestion(ctx context.Context, req *v1.App
 }
 
 func (s *AgentService) RejectEvolutionSuggestion(ctx context.Context, req *v1.RejectEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	result, err := s.evoUC.RejectSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId(), req.GetReason())
 	if err != nil {
 		return nil, err
@@ -81,6 +97,9 @@ func (s *AgentService) RejectEvolutionSuggestion(ctx context.Context, req *v1.Re
 }
 
 func (s *AgentService) RollbackEvolutionSuggestion(ctx context.Context, req *v1.RollbackEvolutionSuggestionRequest) (*v1.EvolutionSuggestion, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	result, err := s.evoUC.RollbackSuggestion(ctx, req.GetAgentId(), req.GetSuggestionId())
 	if err != nil {
 		return nil, err

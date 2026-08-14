@@ -346,6 +346,36 @@ func TestFrameworkBridgeNumRunsOverridesDefault(t *testing.T) {
 	}
 }
 
+// Regression: a panic mid-evaluation (agent factory/framework) must not
+// strand the row in "running" — safego recovers the goroutine, but without
+// the execute() panic guard the row stayed active until the next restart's
+// stale sweep and the polling UI spun on it forever.
+func TestRunnerPanicMarksRunFailed(t *testing.T) {
+	repo := newFakeEvalRepo()
+	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
+	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "q1", ExpectedOutput: "a1"}}
+	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	bridge := NewFrameworkBridge(
+		func(string) (runner.Runner, error) { panic("agent factory boom") },
+		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
+	)
+	r := NewRunner(uc, bridge, loggateway.NewNoop())
+	run, err := uc.CreateRun(context.Background(), beval.Run{DatasetID: "ds1", AgentID: "a1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	final, err := r.RunSync(context.Background(), run, "exact_match", 1)
+	if !errors.Is(err, errEvalRunFailed) {
+		t.Fatalf("panicked run must surface errEvalRunFailed, got %v", err)
+	}
+	if final.Status != "failed" {
+		t.Fatalf("panicked run must be marked failed, got %q", final.Status)
+	}
+	if !strings.Contains(final.ErrorMessage, "panicked") {
+		t.Fatalf("error message must record the panic, got %q", final.ErrorMessage)
+	}
+}
+
 func waitRunTerminal(t *testing.T, repo *fakeEvalRepo, runID string) beval.Run {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

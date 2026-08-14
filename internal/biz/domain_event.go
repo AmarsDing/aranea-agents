@@ -15,6 +15,12 @@ const (
 	DomainEventGraphNodeEnd     DomainEventType = "graph_node_end"
 	DomainEventGraphNodeError   DomainEventType = "graph_node_error"
 	DomainEventGraphInterrupt   DomainEventType = "graph_interrupt"
+	// DomainEventGraphExecutionError is a graph-level fatal error (Pregel
+	// error: panic / max steps / executeGraph failure) — N1.
+	DomainEventGraphExecutionError DomainEventType = "graph_execution_error"
+	// DomainEventGraphDone is the explicit framework completion event; it is
+	// the ONLY signal allowed to converge an execution to Completed — N1.
+	DomainEventGraphDone DomainEventType = "graph_done"
 	DomainEventTextDelta        DomainEventType = "text_delta"
 	DomainEventToolCall         DomainEventType = "tool_call"
 	DomainEventToolResult       DomainEventType = "tool_result"

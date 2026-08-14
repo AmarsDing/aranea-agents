@@ -111,7 +111,6 @@ import { useChannelsPage } from '../features/channels/useChannelsPage';
 const {
   t,
   catalog,
-  filteredRows,
   pagedRows,
   page,
   pageSize,

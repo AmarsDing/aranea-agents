@@ -405,6 +405,23 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 
 **排期建议**：faithfulness 先行（工作量中），context_precision 后置。
 
+### 6.18 第三轮深扫加固（2026-08-14）
+
+**后端**：
+
+1. **执行 panic 守卫（高）**：`Runner.execute` 顶部 `defer recover`——框架/agent 运行时 panic 时 safego 只恢复 goroutine，run 行曾永远卡 `running`（前端 3s 轮询不停、趋势/门禁基线读到假活跃行，直到下次重启 Y10 清扫）。现转换为 `failed` 终态落库 + 哨兵错误返回，一处覆盖 manual/after_turn/gate 全部执行路径；回归测试 `TestRunnerPanicMarksRunFailed`。
+2. **门禁基线时间过滤**：`scanRuns(notAfter, excludeID...)` 排除创建于 gate run 之后的 run（更新的 run 测的是更新的代码，不能作为发布前基线），RFC3339 UTC 字典序比较；同秒平局由 excludeID 兜底；回归测试 `TestScanRunsExcludesRunsYoungerThanGateRun`。
+3. **空数据集拒跑**：`RunEvaluation` 在创建 run 前校验用例数——空数据集产生的零分 "completed" 行会污染趋势序列并被门禁选为基线。
+4. **进度持久化节流**：每用例 `UpdateRun` 节流为 1 次/秒（仅为轮询 UI 保鲜），终态写始终落库；`InsertCaseResult` 失败计入 case 错误使 run 失败而非静默丢行。
+5. judge/user-sim 超时装饰器内 2 处裸 `go func()` 改为 `safego.Go`（K7 约定）。
+
+**前端**：
+
+6. **陈旧响应守卫**（loadRuns 之外补齐同类竞态）：`loadTrend`/`loadDivergence`/`loadFailureGroups`/`loadPreferences`/`loadCaseResults` 增加单调递增序列号，快速切换数据集/Agent/结果对话框时旧响应不再覆盖新状态。
+7. 删除当前数据集时同步清零 `runsTotal`（分页总数残留）；结果导出超过 5000 条上限时 warning 提示截断（`evaluationPage.exportTruncated`）。
+
+**记录不修**：连跌告警对持续新低重复触发（设计意图，频率受 min_interval 约束）；趋势指标 0 与"未计算"不可区分（需 nullable score，超出本轮范围）。
+
 ---
 
 ## 七、前端

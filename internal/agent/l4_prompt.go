@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/strutil"
 )
 
 const (
@@ -137,22 +138,17 @@ func formatL4JSONBlock(title string, raw []byte, maxChars int) string {
 	return fmt.Sprintf("## %s\n```json\n%s\n```", title, body)
 }
 
+// safeTruncate 保留 maxChars<=0 原样返回的边界语义；核心截断走
+// strutil.TruncateRunesEllipsis（P1-3 rune 口径统一）。
 func safeTruncate(s string, maxChars int) string {
 	if maxChars <= 0 {
 		return s
 	}
-	runes := []rune(s)
-	if len(runes) <= maxChars {
-		return s
-	}
-	return string(runes[:maxChars]) + "…"
+	return strutil.TruncateRunesEllipsis(s, maxChars)
 }
 
 func truncateText(s string, maxChars int) string {
-	if maxChars <= 0 {
-		return ""
-	}
-	return safeTruncate(s, maxChars)
+	return strutil.TruncateRunesEllipsis(s, maxChars)
 }
 
 func floatVal(v any) float64 {

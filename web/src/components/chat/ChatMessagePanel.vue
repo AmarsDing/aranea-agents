@@ -304,7 +304,6 @@ import type {
   Message,
   ConfirmStepPayload,
   SubmitClarificationPayload,
-  TOOL_CONFIRM_REPLY,
 } from '../../features/chat/types';
 import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
 import type { ArtifactMeta } from '../../features/artifact/types';

@@ -42,6 +42,12 @@ type ToolRegistration struct {
 	Deferred             bool
 	Examples             []ToolUseExample
 	Group                string
+	// AssembledElsewhere marks placeholder entries whose factory intentionally
+	// returns nil because the real assembly happens in a later phase
+	// (assembleBuiltinToolsets / assembleSearchTools / assembleSessionTools /
+	// agent-level injection). assembleFromRegistry skips these silently instead
+	// of emitting a spurious factory_nil Warn on every agent build.
+	AssembledElsewhere bool
 	// BehaviorVersion identifies the tool's behavior contract version. When a
 	// tool's behavior changes incompatibly, register a new ToolRegistration
 	// with an incremented BehaviorVersion instead of replacing the old one, so

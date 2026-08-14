@@ -314,23 +314,24 @@ func lastUserMessageText(messages []trpcmodel.Message) string {
 			continue
 		}
 		if t := strings.TrimSpace(messages[i].Content); t != "" {
-			if len(t) > 120 {
-				return safeTruncate(t, 120)
-			}
+			// P1-1: no truncation here — cleanRecallQuery owns the 120-rune
+			// budget (truncating here would cut off the tail question before
+			// segmentation, defeating question-last packing).
 			return t
 		}
 	}
 	return ""
 }
 
-// NOTE (N8, 2026-08-13 链路审查): 压缩后无需单独的 memory 重建入口——
-// MemoryInject 是 BeforeModel hook（priority 5），在框架压缩
-// （llmflow.maybeCompactContextBeforeLLM）与 Aranea 紧急压缩 hook
-// （priority 3）之后才执行，压缩轮次会用最新 L1/L2/L3/L4 数据重建完整 cue
-// 并追加到消息尾部。memory-inject 消息是请求级装饰，从不持久化为 session
-// event，框架重建的 request 不会残留旧 cue。原
-// RebuildMemoryInjectForCompaction 的"原地打补丁"场景不成立，且若接入框架
-// tail-processor 槽位会与本 hook 双重注入，已删除。
+// NOTE (N8, 2026-08-13 链路审查；2026-08-14 P0-A 更新): 压缩后无需单独的
+// memory 重建入口——MemoryInject 是 BeforeModel hook（priority 5），在框架压缩
+// （llmflow.maybeCompactContextBeforeLLM）之后执行；Aranea 终审压缩闸门
+// （priority 9，注入后计数）会在 memory/knowledge cue 注入后对整条请求做
+// token 口径截断，极端溢出时按降级链丢弃尾部 cue。压缩轮次会用最新
+// L1/L2/L3/L4 数据重建完整 cue 并追加到消息尾部。memory-inject 消息是
+// 请求级装饰，从不持久化为 session event，框架重建的 request 不会残留旧
+// cue。原 RebuildMemoryInjectForCompaction 的"原地打补丁"场景不成立，且若
+// 接入框架 tail-processor 槽位会与本 hook 双重注入，已删除。
 
 // ── memory_recalled transparency notice (R4) ─────────────────────────────
 

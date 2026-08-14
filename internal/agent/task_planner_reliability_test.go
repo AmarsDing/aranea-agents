@@ -89,11 +89,11 @@ func TestDecomposeTaskStream_TransientFailure_StopsAtMaxAttempts(t *testing.T) {
 		retryBackoffFn:       func(int) time.Duration { return time.Millisecond },
 		maxDecomposeAttempts: 4,
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ biz.ComplexityLevel, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		attempts++
 		return nil, nil, retriableDecomposeErr()
 	}
-	_, _, err := impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p0", "tp_p0", nil)
+	_, _, err := impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p0", "tp_p0", "", nil)
 	if err == nil {
 		t.Fatal("expected exhaustion error after max attempts, got nil (infinite retry)")
 	}
@@ -110,11 +110,11 @@ func TestDecomposeTaskStream_DefaultMaxAttemptsIs5(t *testing.T) {
 		lg:             loggateway.NewNoop(),
 		retryBackoffFn: func(int) time.Duration { return time.Millisecond },
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ biz.ComplexityLevel, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		attempts++
 		return nil, nil, retriableDecomposeErr()
 	}
-	_, _, _ = impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p0", "tp_p0", nil)
+	_, _, _ = impl.decomposeTaskStream(context.Background(), "msg", nil, 0, "spirit-p0", "tp_p0", "", nil)
 	if attempts != 5 {
 		t.Fatalf("attempts = %d, want default 5", attempts)
 	}
@@ -140,7 +140,7 @@ func TestPlan_DecomposeFailure_PublishesBoardTerminal(t *testing.T) {
 		retryBackoffFn:       func(int) time.Duration { return time.Millisecond },
 		maxDecomposeAttempts: 1, // 首次即熔断（永久性错误）
 	}
-	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+	impl.llmAttemptFn = func(_ context.Context, _ string, _ *biz.IntentArtifact, _ int, _, _ string, _ biz.ComplexityLevel, _ func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 		return nil, nil, &decomposeConfigError{err: errors.New("no provider/model configured")}
 	}
 

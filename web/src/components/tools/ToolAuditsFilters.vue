@@ -35,13 +35,13 @@
         clearable
         emit-value
         map-options
-        label="状态"
+        :label="$t('toolsPage.filters.status')"
         :options="statusOptions"
         @update:model-value="onStatus($event)"
       />
       <div class="app-actions-bar app-actions-bar--start">
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="$emit('reset')" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="$t('toolsPage.filters.reset')" @click="$emit('reset')" />
+        <q-btn flat rounded no-caps icon="refresh" :label="$t('toolsPage.filters.refresh')" :loading="loading" @click="$emit('refresh')" />
       </div>
     </q-card-section>
   </tool-glass-panel>

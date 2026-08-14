@@ -107,8 +107,9 @@ func aliasNameOrUnknown(a *aliasTool) string {
 
 // ValidateRuntimeAliasesAgainstPolicy returns an error if any alias key appears
 // in both RuntimeToolNameAliases and biz.PolicyAliases() but points at different
-// canonical targets. Call this once at wire/init time so drift is caught early
-// (TPM-P1-01).
+// canonical targets. Assemble calls this on every agent build (not just once at
+// wire/init time); the check is a cheap in-memory map diff, so repeated calls
+// are fine and drift is caught at the first affected build (TPM-P1-01).
 func ValidateRuntimeAliasesAgainstPolicy() error {
 	policy := biztool.PolicyAliases()
 	for alias, runtimeCanon := range RuntimeToolNameAliases {
@@ -124,6 +125,27 @@ func ValidateRuntimeAliasesAgainstPolicy() error {
 	return nil
 }
 
+// aliasExpandableToolSetNames are the runtime Name() values of the builtin
+// ToolSets assembled by Assemble. Every canonical target in
+// alias.RuntimeToolNameAliases is a builtin tool declaration name, so
+// expanding any other ToolSet (MCP servers, browser, openapi — named after
+// user config) can never resolve an alias. Skipping them avoids a
+// tools/list network roundtrip per agent build (MCP ToolSet.Tools refreshes
+// over the wire when its cache is stale).
+var aliasExpandableToolSetNames = map[string]bool{
+	"file":           true, // trpc file toolset (default name "file")
+	"hostexec":       true, // trpc hostexec toolset (defaultToolSetName)
+	"claudecode":     true, // trpc claudecode composite toolset
+	"google":         true, // trpc google search toolset (Name() == "google")
+	"arxiv_search":   true,
+	"wikipedia":      true,
+	"email":          true,
+	"working_memory": true,
+	"deliverable":    true,
+	"client":         true, // clientbridge.ToolSetName
+	"coding":         true, // codingbridge.ToolSetName
+}
+
 // ApplyRuntimeNameAliases registers alias declarations for tools already mounted.
 func ApplyRuntimeNameAliases(ctx context.Context, out *AssembledToolsets) {
 	if out == nil {
@@ -131,7 +153,7 @@ func ApplyRuntimeNameAliases(ctx context.Context, out *AssembledToolsets) {
 	}
 	byName := make(map[string]Tool)
 	for _, ts := range out.ToolSets {
-		if ts == nil {
+		if ts == nil || !aliasExpandableToolSetNames[ts.Name()] {
 			continue
 		}
 		for _, t := range ts.Tools(ctx) {

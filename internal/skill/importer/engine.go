@@ -35,10 +35,11 @@ const maxSkillFileBytes = 2 * 1024 * 1024
 // maxImportTotalBytes caps the total uncompressed size. Together with
 // maxSkillFileBytes these close the zip-bomb vector (high-ratio archives with
 // many small files that individually pass the per-file limit).
-const (
-	maxImportFiles      = 200
-	maxImportTotalBytes = 100 * 1024 * 1024
-)
+const maxImportFiles = 200
+
+// maxImportTotalBytes is a var (not const) so tests can lower it — same
+// pattern as similarityCallTimeout.
+var maxImportTotalBytes int64 = 100 * 1024 * 1024
 
 type SkillImportRepo interface {
 	CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error)
@@ -378,7 +379,7 @@ func (e *Engine) evictExpiredLocked() {
 }
 
 func (e *Engine) RefineConflictGroup(ctx context.Context, jobID string, groupID string, in biz.SkillRefineRequest) (biz.SkillRefineResult, error) {
-	_, group, candidates, err := e.conflictGroupContext(jobID, groupID)
+	_, group, candidates, err := e.conflictGroupContext(ctx, jobID, groupID)
 	if err != nil {
 		return biz.SkillRefineResult{}, err
 	}
@@ -387,7 +388,10 @@ func (e *Engine) RefineConflictGroup(ctx context.Context, jobID string, groupID 
 		return biz.SkillRefineResult{}, err
 	}
 	prompt := buildRefinePrompt(group, candidates, strings.TrimSpace(in.Instructions))
-	raw, err := completeChat(ctx, cfg, prompt)
+	// P1: refine 的 LLM 调用与 similarity 路径一致加超时，防止 provider 挂起导致 RPC 悬挂。
+	chatCtx, cancel := context.WithTimeout(ctx, similarityCallTimeout)
+	defer cancel()
+	raw, err := completeChat(chatCtx, cfg, prompt)
 	if err != nil {
 		return biz.SkillRefineResult{}, err
 	}
@@ -532,18 +536,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 				}
 				return biz.SkillImportApplyResult{}, ErrImportJobNotFound
 			}
-			job = &jobState{
-				public:     *dbJob,
-				candidates: make(map[string]candidateState),
-				createdAt:  time.Now(),
-			}
-			for _, c := range dbJob.Candidates {
-				cs := candidateState{public: c}
-				if dbJob.TempDir != "" {
-					e.restoreCandidateFiles(dbJob.TempDir, c.CandidateID, &cs)
-				}
-				job.candidates[c.CandidateID] = cs
-			}
+			job = e.jobStateFromDB(dbJob)
 			// Validate that candidate data survived the restart.
 			// If TempDir was empty or files were lost, candidates will have
 			// no body and no files, which would silently create broken skills.
@@ -721,12 +714,29 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 	return result, nil
 }
 
-func (e *Engine) conflictGroupContext(jobID string, groupID string) (*jobState, biz.SkillConflictGroup, []candidateState, error) {
+func (e *Engine) conflictGroupContext(ctx context.Context, jobID string, groupID string) (*jobState, biz.SkillConflictGroup, []candidateState, error) {
+	trimmed := strings.TrimSpace(jobID)
 	e.jobsMu.RLock()
-	job := e.jobs[strings.TrimSpace(jobID)]
+	job := e.jobs[trimmed]
 	e.jobsMu.RUnlock()
+	if job == nil && e.store != nil {
+		// DB fallback (survives restarts) — same restore path as ApplyImport.
+		dbJob, dbErr := e.store.Get(ctx, trimmed)
+		if dbErr != nil {
+			e.lg.Warn("conflictGroupContext: DB lookup failed",
+				loggateway.StepID("skill.import.db_lookup"),
+				loggateway.Str("job_id", trimmed),
+				loggateway.Err(dbErr))
+		} else if dbJob != nil {
+			job = e.jobStateFromDB(dbJob)
+		}
+	}
 	if job == nil {
 		return nil, biz.SkillConflictGroup{}, nil, ErrImportJobNotFound
+	}
+	// 仅 completed 状态可炼化：applying/applied 的 job 再 refine 无意义且浪费 LLM 调用。
+	if job.public.Status != "completed" {
+		return nil, biz.SkillConflictGroup{}, nil, validationError("import job is not refinable (status: " + job.public.Status + ")")
 	}
 	for _, group := range job.public.ConflictGroups {
 		if group.GroupID != groupID {
@@ -1481,6 +1491,25 @@ func (e *Engine) persistCandidateFiles(job *jobState) {
 		}
 	}
 	job.public.TempDir = tempDir
+}
+
+// jobStateFromDB rebuilds an in-memory jobState from a DB-persisted job,
+// restoring candidate body/files/tags from the temp directory. Shared by
+// ApplyImport and conflictGroupContext so both follow the same restore path.
+func (e *Engine) jobStateFromDB(dbJob *biz.SkillImportJob) *jobState {
+	job := &jobState{
+		public:     *dbJob,
+		candidates: make(map[string]candidateState),
+		createdAt:  time.Now(),
+	}
+	for _, c := range dbJob.Candidates {
+		cs := candidateState{public: c}
+		if dbJob.TempDir != "" {
+			e.restoreCandidateFiles(dbJob.TempDir, c.CandidateID, &cs)
+		}
+		job.candidates[c.CandidateID] = cs
+	}
+	return job
 }
 
 // restoreCandidateFiles reads body, files, and tags from the temp directory

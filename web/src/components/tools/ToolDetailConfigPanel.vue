@@ -1,19 +1,19 @@
 <template>
   <div class="tool-detail-config-panel">
     <p class="app-registry-muted-caption q-ma-none">
-      修改全局配置（API Key、超时等）；须符合 config_schema。Agent 级覆盖在「Agent」Tab。
+      {{ $t('toolsPage.configPanel.hint') }}
     </p>
 
     <q-banner v-if="tool?.key === 'web_research'" rounded dense class="settings-info-banner">
-      API Key 留空时使用
-      <router-link :to="{ name: 'settings' }" class="text-primary">系统设置 → Web 研究</router-link>。
+      {{ $t('toolsPage.configPanel.webResearchPre') }}
+      <router-link :to="{ name: 'settings' }" class="text-primary">{{ $t('toolsPage.configPanel.webResearchLink') }}</router-link>{{ $t('toolsPage.configPanel.webResearchPost') }}
     </q-banner>
 
     <q-expansion-item
       dense-toggle
       :default-opened="false"
-      label="配置结构定义 (config_schema)"
-      caption="定义该工具接受哪些配置项，通常由管理员维护"
+      :label="$t('toolsPage.configPanel.schemaLabel')"
+      :caption="$t('toolsPage.configPanel.schemaCaption')"
       header-class="text-subtitle2"
       class="q-mb-md"
     >
@@ -26,7 +26,7 @@
           autogrow
           dense
           class="app-field-long q-mt-sm"
-          label="编辑配置结构 (JSON)"
+          :label="$t('toolsPage.configPanel.schemaEditLabel')"
           @update:model-value="onSchemaEdit(String($event ?? '{}'))"
         />
         <q-banner v-if="schemaParseError" rounded class="settings-warning-banner q-mt-sm">
@@ -38,7 +38,7 @@
           dense
           no-caps
           icon="save"
-          label="应用 Schema 变更"
+          :label="$t('toolsPage.configPanel.schemaApply')"
           class="app-registry-accent-btn q-mt-sm"
           @click="$emit('update:configSchemaJson', schemaEditJson)"
         />
@@ -46,7 +46,7 @@
     </q-expansion-item>
 
     <section class="tool-editor-section">
-      <div class="text-subtitle2 q-mb-sm">配置值</div>
+      <div class="text-subtitle2 q-mb-sm">{{ $t('toolsPage.configPanel.valuesTitle') }}</div>
       <template v-if="hasConfigSchema">
         <tool-schema-form
           :schema-json="tool!.config_schema_json"
@@ -62,19 +62,19 @@
         autogrow
         dense
         class="app-field-long"
-        label="配置 JSON"
+        :label="$t('toolsPage.configPanel.configJsonLabel')"
         @update:model-value="$emit('update:configJson', String($event ?? '{}'))"
       />
 
       <q-banner v-if="extraKeys.length" rounded class="settings-warning-banner q-mt-sm">
-        Schema 未声明字段：{{ extraKeys.join(', ') }}
+        {{ $t('toolsPage.configPanel.undeclaredKeys', { keys: extraKeys.join(', ') }) }}
       </q-banner>
     </section>
 
     <q-expansion-item
       v-if="tool?.default_config_json && tool.default_config_json !== '{}'"
       dense-toggle
-      label="出厂默认配置"
+      :label="$t('toolsPage.configPanel.defaultConfig')"
       class="q-mt-md"
     >
       <div class="q-pt-sm">
@@ -90,7 +90,7 @@
         no-caps
         unelevated
         class="app-registry-primary-btn"
-        label="保存配置"
+        :label="$t('toolsPage.configPanel.save')"
         icon="save"
         :loading="saving"
         :disable="!tool?.id"
@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import { prettyJSON } from './toolUi';
 import type { Tool } from '../../features/tools/types';
@@ -115,6 +116,8 @@ const props = defineProps<{
 }>();
 
 defineEmits<{ save: []; 'update:configJson': [value: string]; 'update:configSchemaJson': [value: string] }>();
+
+const { t } = useI18n();
 
 const hasConfigSchema = computed(() => {
   try {
@@ -159,7 +162,7 @@ function onSchemaEdit(val: string) {
     JSON.parse(val || '{}');
     schemaParseError.value = '';
   } catch (err) {
-    schemaParseError.value = err instanceof Error ? err.message : 'JSON 格式错误';
+    schemaParseError.value = err instanceof Error ? err.message : t('toolsPage.invalidJsonFallback');
   }
 }
 

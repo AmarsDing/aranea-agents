@@ -69,7 +69,9 @@ func (ac *assembleContext) assembleFromRegistry() error {
 			}
 			if ts != nil {
 				ac.out.ToolSets = append(ac.out.ToolSets, ts)
-			} else {
+			} else if !reg.AssembledElsewhere {
+				// 未标记 AssembledElsewhere 却返回 nil 才是真异常；占位条目
+				// 的实际装配在后续 phase，静默跳过（见 ToolRegistration 注释）。
 				ac.lg.Warn("tools.assemble.factory_nil",
 					loggateway.StepID("tool.assemble.factory_nil"),
 					loggateway.Str("tool", reg.Name),
@@ -82,7 +84,7 @@ func (ac *assembleContext) assembleFromRegistry() error {
 			}
 			if t != nil {
 				ac.out.Tools = append(ac.out.Tools, t)
-			} else {
+			} else if !reg.AssembledElsewhere {
 				ac.lg.Warn("tools.assemble.factory_nil",
 					loggateway.StepID("tool.assemble.factory_nil"),
 					loggateway.Str("tool", reg.Name),
@@ -270,6 +272,18 @@ func (ac *assembleContext) assembleAgentTools() {
 
 // assembleMCPTools creates MCP server and broker tools.
 func (ac *assembleContext) assembleMCPTools() error {
+	// Collect acquired toolsets locally first: P1-2 schema governance below
+	// may decide to drop them (degrade to broker), and error paths must
+	// release pool references for anything not committed to ac.out.
+	// mcpSets is nil-ed on every committed path; the deferred release only
+	// fires for early error returns.
+	var mcpSets []ToolSet
+	defer func() {
+		for _, ts := range mcpSets {
+			_ = ts.Close() // pooled wrapper: decrements ref count
+		}
+	}()
+
 	for _, mcpCfg := range ac.cfg.MCP.Servers {
 		// Route through the process-level pool: identical connection configs
 		// share one live MCP session across agent builds, so a build-cache
@@ -295,11 +309,62 @@ func (ac *assembleContext) assembleMCPTools() error {
 						loggateway.Err(initErr))
 				}
 			}
-			ac.out.ToolSets = append(ac.out.ToolSets, ts)
+			mcpSets = append(mcpSets, ts)
 		}
 	}
 
-	if ac.enabled["mcpbroker"] && ac.cfg.MCP.Broker != nil {
+	brokerAdded := false
+	if len(mcpSets) > 0 {
+		// P1-2 MCP schema 治理：截断 + 总预算；超预算降级 broker。
+		gov := GovernMCPServerToolSets(ac.ctx, mcpSets, ac.lg)
+		if gov.TruncatedCount > 0 {
+			ac.lg.Info("MCP schema 治理：截断超长 declaration",
+				loggateway.Domain("tools.mcp"),
+				loggateway.Int("tool_count", gov.ToolCount),
+				loggateway.Int("truncated_count", gov.TruncatedCount),
+				loggateway.Int("total_chars", gov.TotalChars))
+		}
+		if gov.Degraded {
+			brokerCfg := ac.cfg.MCP.Broker
+			if brokerCfg == nil {
+				brokerCfg = ac.cfg.MCP.BrokerFallback
+			}
+			if brokerCfg != nil {
+				// 释放直连 toolset 的池引用，改用 broker（schema 按需拉取）。
+				// K3 降级：进程日志 Warn。tools 层无 FlowLogWriter 端口（红线 3），
+				// 与 v2 invariant_check 同先例，流程日志支路暂缓。
+				for _, ts := range gov.Kept {
+					_ = ts.Close()
+				}
+				mcpSets = nil
+				brokerTools, err := buildMCPBrokerTools(*brokerCfg)
+				if err != nil {
+					return apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())
+				}
+				ac.out.Tools = append(ac.out.Tools, brokerTools...)
+				brokerAdded = true
+				ac.lg.Warn("MCP schema 总量超预算，直连模式降级为 broker",
+					loggateway.Domain("tools.mcp"),
+					loggateway.Int("tool_count", gov.ToolCount),
+					loggateway.Int("total_chars", gov.TotalChars),
+					loggateway.Int("budget_chars", mcpSchemaTotalBudgetChars))
+			} else {
+				// 无 broker 可降级：保留截断后的直连工具（best-effort）。
+				ac.lg.Warn("MCP schema 总量超预算且无 broker 配置，保留截断后的直连工具",
+					loggateway.Domain("tools.mcp"),
+					loggateway.Int("tool_count", gov.ToolCount),
+					loggateway.Int("total_chars", gov.TotalChars),
+					loggateway.Int("budget_chars", mcpSchemaTotalBudgetChars))
+				ac.out.ToolSets = append(ac.out.ToolSets, gov.Kept...)
+				mcpSets = nil
+			}
+		} else {
+			ac.out.ToolSets = append(ac.out.ToolSets, gov.Kept...)
+			mcpSets = nil
+		}
+	}
+
+	if !brokerAdded && ac.enabled["mcpbroker"] && ac.cfg.MCP.Broker != nil {
 		brokerTools, err := buildMCPBrokerTools(*ac.cfg.MCP.Broker)
 		if err != nil {
 			return apierror.Internal(apierror.DomainTool, "mcpbroker: "+err.Error())

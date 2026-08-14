@@ -46,7 +46,8 @@ type taskPlannerImpl struct {
 
 // decomposeAttemptFn 是单次 LLM 分解尝试的签名——供 P3 重试循环调用。
 // planID 用于生成跨尝试确定性的 subtask 全局 ID（见 planStepID）。
-type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error)
+// level 是 P2-5 思考强度路由的任务复杂度（空 = 不覆盖静态配置）。
+type decomposeAttemptFn func(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, level biz.ComplexityLevel, onSubTask func(biz.SubTask, int)) ([]biz.SubTask, *biz.PlanTaskDAG, error)
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
@@ -279,12 +280,12 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 			onSubTask := func(st biz.SubTask, index int) {
 				impl.publishV2PlanStep(ctx, st, planID, index, input)
 			}
-			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, planID, onSubTask)
+			subTasks, dag, err = impl.decomposeTaskStream(ctx, input.UserMessage, input.IntentArtifact, teamCount, input.SpiritSessionID, planID, complexityLevel, onSubTask)
 			if err == nil && len(subTasks) > 0 {
 				streamPublished = true
 			}
 		} else {
-			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount)
+			subTasks, dag, err = impl.decomposeTask(ctx, input.UserMessage, input.IntentArtifact, teamCount, complexityLevel)
 		}
 		stopHeartbeat()
 		if err != nil {
@@ -954,7 +955,8 @@ func detectTeamIntent(message string) string {
 // decomposeTask uses LLM to decompose a complex task into subtasks (T1.6).
 // teamCount > 0 时将作为硬约束传给 LLM，要求生成恰好 N 个 subtask（每个
 // subtask 在 orchestrateDAG 中对应一个 team）。teamCount = 0 时使用默认范围。
-func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+// level 是 P2-5 思考强度路由的任务复杂度（空 = 不覆盖静态配置）。
+func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, level biz.ComplexityLevel) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
 		return nil, nil, apierror.Internal(apierror.DomainSpirit, "LLM catalog or HTTP client not configured")
 	}
@@ -982,6 +984,12 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	// P2-5：按任务复杂度路由 thinking effort（显式复杂度覆盖静态配置）。
+	// 任务分解本身是规划类工作，复杂度来自外层 Plan() 的六维评估。
+	if eff := biz.ResolveThinkingEffort(cfg.ThinkingEffort, level); eff != "" {
+		cfg.ThinkingEffort = eff
+	}
 
 	msgs := []OpenAICompatMessage{
 		{Role: "system", Content: prompt},
@@ -1030,7 +1038,7 @@ func (impl *taskPlannerImpl) decomposeTask(ctx context.Context, userMessage stri
 // 重试时新尝试重发的 PlanStep/GraphNode 事件与旧尝试同 ID，前端按 ID 合并去重，
 // 计划面板不出现重复步骤。残余边界：重试后子任务数少于旧尝试已发布数时，多余步骤
 // 残留（同 prompt 下结构稳定，罕见）——视为可接受。
-func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, level biz.ComplexityLevel, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	attemptFn := impl.llmAttemptFn
 	if attemptFn == nil {
 		attemptFn = impl.llmDecomposeAttempt
@@ -1046,7 +1054,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, planID, onSubTask)
+		subTasks, dag, err := attemptFn(ctx, userMessage, artifact, teamCount, spiritSessionID, planID, level, onSubTask)
 		if err == nil {
 			return subTasks, dag, nil
 		}
@@ -1102,7 +1110,7 @@ func (impl *taskPlannerImpl) decomposeTaskStream(ctx context.Context, userMessag
 
 // llmDecomposeAttempt 是 decomposeTaskStream 的单次尝试实现——负责一次完整的
 // LLM 流式调用 + 解析。任何错误都会被上层重试循环分类处理。
-func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
+func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessage string, artifact *biz.IntentArtifact, teamCount int, spiritSessionID, planID string, level biz.ComplexityLevel, onSubTask func(st biz.SubTask, index int)) ([]biz.SubTask, *biz.PlanTaskDAG, error) {
 	prompt := buildDecompositionPrompt(userMessage, artifact, teamCount)
 
 	setting := biz.PlannerModelSetting{Mode: biz.PlannerModelModeInherit}
@@ -1124,6 +1132,12 @@ func (impl *taskPlannerImpl) llmDecomposeAttempt(ctx context.Context, userMessag
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	// P2-5：按任务复杂度路由 thinking effort（显式复杂度覆盖静态配置）。
+	// 任务分解本身是规划类工作，复杂度来自外层 Plan() 的六维评估。
+	if eff := biz.ResolveThinkingEffort(cfg.ThinkingEffort, level); eff != "" {
+		cfg.ThinkingEffort = eff
+	}
 
 	msgs := []OpenAICompatMessage{
 		{Role: "system", Content: prompt},

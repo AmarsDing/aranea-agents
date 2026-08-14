@@ -297,6 +297,11 @@ var ddlMigrations = []ddlMigration{
 	// （skill/agents）backfill + RLS 策略（同 20261011 模板，ENABLE only）。
 	// 含 RLS 语句，Postgres-only，经 Func 守卫跳过其他方言。
 	{Version: 20261212, Name: "unified_evolution_workspace", Func: ddlUnifiedEvolutionWorkspace},
+	// 20261213 tool_invocation_time_indexes（tools 模块 C2 修复）：
+	// tool_invocations.started_at 与 tool_invocation_audit.created_at 的
+	// 单列索引，支撑 24h 汇总、List 查询、ORDER BY created_at DESC、批量清理
+	// 的时间范围扫描。复合索引 (tool_key, started_at) 不覆盖纯 started_at 过滤。
+	{Version: 20261213, Name: "tool_invocation_time_indexes", SQL: "sql/migrations/20261213_tool_invocation_time_indexes.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

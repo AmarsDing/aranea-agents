@@ -503,6 +503,53 @@ func TestDeleteFile_NonexistentFile(t *testing.T) {
 	}
 }
 
+func TestRemoveSkillDir(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "my-skill")
+	if err := os.MkdirAll(filepath.Join(dir, "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "core", "x.py"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fs := newTestFS(root)
+	if err := fs.RemoveSkillDir(dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("skill dir should be removed")
+	}
+}
+
+func TestRemoveSkillDir_NonexistentDirTolerated(t *testing.T) {
+	root := t.TempDir()
+	fs := newTestFS(root)
+	if err := fs.RemoveSkillDir(filepath.Join(root, "ghost")); err != nil {
+		t.Fatalf("nonexistent dir should be tolerated, got: %v", err)
+	}
+}
+
+func TestRemoveSkillDir_RejectsRootItself(t *testing.T) {
+	root := t.TempDir()
+	fs := newTestFS(root)
+	if err := fs.RemoveSkillDir(root); err == nil {
+		t.Fatal("expected error when removing the skill root itself")
+	}
+}
+
+func TestRemoveSkillDir_RejectsOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	fs := newTestFS(root)
+	if err := fs.RemoveSkillDir(outside); err == nil {
+		t.Fatal("expected error for dir outside root")
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatal("outside dir must remain untouched")
+	}
+}
+
 func TestRootAccessible_ExistingDir(t *testing.T) {
 	dir := t.TempDir()
 	fs := newTestFS(dir)

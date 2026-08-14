@@ -25,7 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { TOOL_POLICY_TOGGLES, type ToolPolicyToggleId } from '../../../features/tools/toolEditorCopy';
+import { computed } from 'vue';
+import { toolPolicyToggles, type ToolPolicyToggleId } from '../../../features/tools/toolEditorCopy';
 import type { ToolUpsertInput } from '../../../features/tools/types';
 
 const props = defineProps<{
@@ -35,7 +36,7 @@ const props = defineProps<{
 
 defineEmits<{ 'patch-form': [p: Record<string, unknown>] }>();
 
-const toggles = TOOL_POLICY_TOGGLES;
+const toggles = computed(() => toolPolicyToggles());
 
 function isDisabled(id: ToolPolicyToggleId): boolean {
   // 「全局启用」始终可改（日常启停入口）；其余目录标记在内置/只读工具上由 registry 维护。

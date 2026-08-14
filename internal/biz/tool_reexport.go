@@ -17,6 +17,7 @@ type (
 	ToolInvocation           = tool.ToolInvocation
 	ToolInvocationWrite      = tool.ToolInvocationWrite
 	ToolInvocationParam      = tool.ToolInvocationParam
+	ToolInvocationParamWrite = tool.ToolInvocationParamWrite
 	ToolAgentOverride        = tool.ToolAgentOverride
 	ToolAgentOverrideInput   = tool.ToolAgentOverrideInput
 	ToolRunQuery             = tool.ToolRunQuery

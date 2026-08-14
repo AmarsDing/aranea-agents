@@ -170,9 +170,6 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Diale
 	if err := syncBuiltinWebToolCatalogPatches(ctx, client, d); err != nil {
 		lg.Warn("内置 Web 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
-	if err := syncBuiltinFilesystemToolCatalogPatches(ctx, client, d); err != nil {
-		lg.Warn("内置文件工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
-	}
 	if err := syncRemovedBuiltinToolPatches(ctx, client, d); err != nil {
 		lg.Warn("已移除内置工具清理失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
@@ -180,64 +177,44 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, d Diale
 }
 
 // syncBuiltinWebToolCatalogPatches updates catalog metadata for existing DBs (seed uses ON CONFLICT DO NOTHING).
+// The enabled flag is intentionally NOT patched here: it is a user setting, and
+// re-applying the seed default on every boot would silently undo an operator's
+// explicit enable/disable choice. The seed INSERT still sets the initial value.
 func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
 	if client == nil {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	const upd = `UPDATE tools SET
-		enabled = ?, description = ?, parameters_schema_json = ?, config_schema_json = ?, updated_at = ?
+		description = ?, parameters_schema_json = ?, config_schema_json = ?, updated_at = ?
 		WHERE tool_key = ? AND source = 'builtin' AND deleted_at = ''`
 	updDialect := d.RenumberPlaceholders(upd)
 	patches := []struct {
 		key, desc, params, config string
-		enabled                   int
 	}{
 		{
-			key:     "duckduckgo_search",
-			enabled: 0,
-			desc:    "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。",
-			params:  `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`,
-			config:  "{}",
+			key:    "duckduckgo_search",
+			desc:   "DuckDuckGo Instant Answer（百科/定义类查询；非通用网页搜索）。",
+			params: `{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"}},"required":["query"]}`,
+			config: "{}",
 		},
 		{
-			key:     "web_research",
-			enabled: 1,
-			desc:    "使用 Tavily 或 SerpAPI 搜索网络并返回多源摘要与正文片段。API Key 优先 Agent 工具配置，否则使用系统设置（设置 → Web 研究）或环境变量 TAVILY_API_KEY。",
-			params:  `{"type":"object","properties":{"query":{"type":"string","description":"自然语言搜索问题"}},"required":["query"]}`,
-			config:  webResearchConfigSchema,
+			key:    "web_research",
+			desc:   "使用 Tavily 或 SerpAPI 搜索网络并返回多源摘要与正文片段。API Key 优先 Agent 工具配置，否则使用系统设置（设置 → Web 研究）或环境变量 TAVILY_API_KEY。",
+			params: `{"type":"object","properties":{"query":{"type":"string","description":"自然语言搜索问题"}},"required":["query"]}`,
+			config: webResearchConfigSchema,
 		},
 		{
-			key:     "web_fetch",
-			enabled: 1,
-			desc:    "并行抓取多个 URL 并提取 Markdown/文本。",
-			params:  `{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表"}},"required":["urls"]}`,
-			config:  "{}",
+			key:    "web_fetch",
+			desc:   "并行抓取多个 URL 并提取 Markdown/文本。",
+			params: `{"type":"object","properties":{"urls":{"type":"array","items":{"type":"string"},"description":"要抓取的 URL 列表"}},"required":["urls"]}`,
+			config: "{}",
 		},
 	}
 	for _, p := range patches {
-		if _, err := client.ExecContext(ctx, updDialect, p.enabled, p.desc, p.params, p.config, now, p.key); err != nil {
+		if _, err := client.ExecContext(ctx, updDialect, p.desc, p.params, p.config, now, p.key); err != nil {
 			return fmt.Errorf("sync web tool %q: %w", p.key, err)
 		}
-	}
-	return nil
-}
-
-// syncBuiltinFilesystemToolCatalogPatches enables diff_edit/patch_file on existing DBs.
-// These tools were previously seeded as enabled=false while their runtime implementations
-// were pending; now that diffedit.go/patchfile.go are registered in the file ToolSet,
-// flip existing rows to enabled=1. Seed uses ON CONFLICT DO NOTHING, so existing rows
-// need an explicit UPDATE.
-func syncBuiltinFilesystemToolCatalogPatches(ctx context.Context, client *ent.Client, d Dialect) error {
-	if client == nil {
-		return nil
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	const upd = `UPDATE tools SET enabled = 1, updated_at = ?
-		WHERE tool_key IN (?, ?) AND source = 'builtin' AND deleted_at = ''`
-	updDialect := d.RenumberPlaceholders(upd)
-	if _, err := client.ExecContext(ctx, updDialect, now, "diff_edit", "patch_file"); err != nil {
-		return fmt.Errorf("sync filesystem tools (diff_edit/patch_file): %w", err)
 	}
 	return nil
 }

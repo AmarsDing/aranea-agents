@@ -37,12 +37,31 @@ describe('useSkillsStore', () => {
   it('instantiates and exposes all actions (smoke: catches unresolved identifiers)', () => {
     const store = useSkillsStore();
     const actions = [
-      'loadSkills', 'loadSkillRuns', 'toggle', 'publish', 'duplicate', 'remove',
-      'loadFilesystemHealth', 'loadSkillHealth', 'loadSkill', 'uploadSkillZip',
-      'getSkillImportJob', 'refineSkillConflictGroup', 'applySkillImport',
-      'listSkillFiles', 'readSkillFile', 'updateSkillFile', 'create', 'update',
-      'loadVersions', 'rollbackVersion',
-      'loadSkillTags', 'createTag', 'renameTag', 'deleteTag', 'invalidateSkillTags',
+      'loadSkills',
+      'loadSkillRuns',
+      'toggle',
+      'publish',
+      'duplicate',
+      'remove',
+      'loadFilesystemHealth',
+      'loadSkillHealth',
+      'loadSkill',
+      'uploadSkillZip',
+      'getSkillImportJob',
+      'refineSkillConflictGroup',
+      'applySkillImport',
+      'listSkillFiles',
+      'readSkillFile',
+      'updateSkillFile',
+      'create',
+      'update',
+      'loadVersions',
+      'rollbackVersion',
+      'loadSkillTags',
+      'createTag',
+      'renameTag',
+      'deleteTag',
+      'invalidateSkillTags',
     ] as const;
     for (const name of actions) {
       expect(typeof store[name], `store.${name} should be a function`).toBe('function');

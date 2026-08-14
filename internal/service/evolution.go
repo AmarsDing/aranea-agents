@@ -6,7 +6,9 @@ import (
 
 	v1 "aranea-agents/api/kratos/evolution/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
 	"aranea-agents/pkg/loggateway"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,7 +33,24 @@ func NewEvolutionService(diversity biz.UnifiedEvolutionDiversityReader, lg logga
 	return &EvolutionService{diversity: diversity, lg: lg}
 }
 
+// assertSystemCaller returns Forbidden unless the caller is a system
+// principal or an admin. The diversity overview aggregates evolution trigger
+// stats across ALL workspaces — it is platform-level telemetry, not
+// tenant-scoped data (P1-4).
+func (s *EvolutionService) assertSystemCaller(ctx context.Context) error {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	if a, ok := auth.FromContext(ctx); ok && a.HasAdminAccess() {
+		return nil
+	}
+	return apierror.Forbidden("EVOLUTION", "system or admin privileges required")
+}
+
 func (s *EvolutionService) GetEvolutionDiversityOverview(ctx context.Context, req *v1.GetEvolutionDiversityOverviewRequest) (*v1.GetEvolutionDiversityOverviewResponse, error) {
+	if err := s.assertSystemCaller(ctx); err != nil {
+		return nil, err
+	}
 	if s.diversity == nil {
 		return nil, apierror.Unavailable("EVOLUTION", "diversity reader not configured")
 	}

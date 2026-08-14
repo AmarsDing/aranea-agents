@@ -51,6 +51,11 @@ type ProviderAPIConfig struct {
 	// 显式关闭推理段（注入 thinking.type=disabled）。默认 false = 不注入该字段，
 	// 保留 provider 服务端默认行为。
 	ThinkingDisabled bool `json:"thinking_disabled"`
+	// ThinkingEffort 是按次调用的思考强度路由决策（P2-5，off/low/medium/high/max）。
+	// 不来自 config_json（json:"-"），由调用方按 biz.ResolveThinkingEffort 设置。
+	// 显式 effort 优先于 ThinkingDisabled；"off" 映射 ThinkingEnabled=false，其余
+	// 档位注入 reasoning_effort 且不动 thinking 开关。
+	ThinkingEffort string `json:"-"`
 }
 
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
@@ -145,11 +150,13 @@ func CallOpenAICompatChat(ctx context.Context, hc *http.Client, cfg ProviderAPIC
 	if err != nil {
 		return "", "", 0, 0, err
 	}
+	thinkingEnabled, reasoningEffort := thinkingFieldsFromConfig(cfg)
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
 			Temperature:     float64Ptr(0.7),
-			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
+			ThinkingEnabled: thinkingEnabled,
+			ReasoningEffort: reasoningEffort,
 		},
 	}
 	respCh, err := m.GenerateContent(ctx, req)
@@ -181,12 +188,14 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	if err != nil {
 		return "", "", 0, 0, err
 	}
+	thinkingEnabled, reasoningEffort := thinkingFieldsFromConfig(cfg)
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
 			Temperature:     float64Ptr(0.7),
 			Stream:          true,
-			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
+			ThinkingEnabled: thinkingEnabled,
+			ReasoningEffort: reasoningEffort,
 		},
 	}
 	respCh, err := m.GenerateContent(ctx, req)
@@ -308,15 +317,30 @@ func trpcCompatModel(cfg ProviderAPIConfig, hc *http.Client, modelName string) (
 	return provider.WrapModelWithMetrics(m, providerName, modelName), nil
 }
 
-// thinkingEnabledFromConfig 将 cfg.ThinkingDisabled 映射为框架的
-// GenerationConfig.ThinkingEnabled：仅在显式禁用时返回 *false；默认返回 nil，
-// 请求体不携带 thinking 字段（保留 provider 服务端默认）。
-func thinkingEnabledFromConfig(cfg ProviderAPIConfig) *bool {
-	if !cfg.ThinkingDisabled {
-		return nil
+// thinkingFieldsFromConfig 将（cfg.ThinkingEffort, cfg.ThinkingDisabled）映射为
+// 框架 GenerationConfig 的（ThinkingEnabled, ReasoningEffort）：
+//   - 显式 effort="off"        → ThinkingEnabled=*false（等价 thinking_disabled）
+//   - 显式 effort=low/medium/high/max → ReasoningEffort=&v（不动 thinking 开关，
+//     保留 provider 服务端默认 enabled 行为；DeepSeek 服务端把 low/medium 映射
+//     为 high——见框架 request.go 注释，本层只透传归一化档位）
+//   - 未给 effort              → 回落 ThinkingDisabled 静态配置
+//   - 两者皆无                 → (nil, nil)，请求体不携带 thinking 相关字段
+//
+// 显式 effort 优先于 ThinkingDisabled（与 P2-1「显式路由策略覆盖静态配置」同约）。
+func thinkingFieldsFromConfig(cfg ProviderAPIConfig) (thinkingEnabled *bool, reasoningEffort *string) {
+	switch strings.ToLower(strings.TrimSpace(cfg.ThinkingEffort)) {
+	case "off":
+		disabled := false
+		return &disabled, nil
+	case "low", "medium", "high", "max":
+		v := strings.ToLower(strings.TrimSpace(cfg.ThinkingEffort))
+		return nil, &v
 	}
-	disabled := false
-	return &disabled
+	if cfg.ThinkingDisabled {
+		disabled := false
+		return &disabled, nil
+	}
+	return nil, nil
 }
 
 func extractFromTRPCResponse(resp *trpcmodel.Response, _ string) (text string, reasoning string, promptTok, completionTok int, err error) {
@@ -374,11 +398,13 @@ func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg Pro
 		}
 		toolDecls[name] = &staticToolDecl{decl: decl}
 	}
+	thinkingEnabled, reasoningEffort := thinkingFieldsFromConfig(cfg)
 	req := &trpcmodel.Request{
 		Messages: openAICompatToTRPCMessages(messages),
 		GenerationConfig: trpcmodel.GenerationConfig{
 			Temperature:     float64Ptr(0.7),
-			ThinkingEnabled: thinkingEnabledFromConfig(cfg),
+			ThinkingEnabled: thinkingEnabled,
+			ReasoningEffort: reasoningEffort,
 		},
 		Tools: toolDecls,
 	}

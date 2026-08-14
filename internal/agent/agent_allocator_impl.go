@@ -899,6 +899,19 @@ func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.Su
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
+	// P2-5：按子任务预估复杂度路由 thinking effort。
+	// EstimatedComplexity >= 0.6 → complex, >= 0.3 → moderate, else simple
+	// （与 Plan() 六维评估的 ComplexityLevel 映射同区间）。
+	level := biz.ComplexitySimple
+	if subTask.EstimatedComplexity >= 0.6 {
+		level = biz.ComplexityComplex
+	} else if subTask.EstimatedComplexity >= 0.3 {
+		level = biz.ComplexityModerate
+	}
+	if eff := biz.ResolveThinkingEffort(cfg.ThinkingEffort, level); eff != "" {
+		cfg.ThinkingEffort = eff
+	}
+
 	msgs := []OpenAICompatMessage{
 		{Role: "system", Content: prompt},
 		{Role: "user", Content: fmt.Sprintf("Select the best agent for this subtask:\n\nName: %s\nDescription: %s\nRequired Capabilities: %v", subTask.Name, subTask.Description, subTask.RequiredCapabilities)},
@@ -1107,6 +1120,11 @@ func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPla
 
 	var cfg ProviderAPIConfig
 	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	// P2-5：按计划复杂度路由 thinking effort（来自外层 Plan() 的六维评估）。
+	if eff := biz.ResolveThinkingEffort(cfg.ThinkingEffort, taskPlan.ComplexityLevel); eff != "" {
+		cfg.ThinkingEffort = eff
+	}
 
 	msgs := []OpenAICompatMessage{
 		{Role: "system", Content: prompt},

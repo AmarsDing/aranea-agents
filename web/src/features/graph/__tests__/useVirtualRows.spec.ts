@@ -10,7 +10,7 @@ function makeRows(n: number) {
 describe('useVirtualRows - fixed row height windowing (R2-6)', () => {
   it('renders only viewport + buffer rows', async () => {
     const rows = ref(makeRows(512));
-    const { containerRef, visibleRows, totalHeight, onScroll, measure } = useVirtualRows({
+    const { containerRef, visibleRows, totalHeight, measure } = useVirtualRows({
       rows,
       rowHeight: 32,
       buffer: 5,
