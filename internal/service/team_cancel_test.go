@@ -19,6 +19,8 @@ type cancelTeamRunRepo struct {
 	// teamByID configures GetTeamByID. Inject tests use this to satisfy the
 	// "team exists" check; default (zero value) returns ErrNotFound.
 	teamByID map[string]biz.Team
+	// deadLetters configures GetTaskDeadLetter for IDOR tests.
+	deadLetters map[string]biz.TaskDeadLetter
 }
 
 // TeamReader stubs
@@ -135,6 +137,12 @@ func (r *cancelTeamRunRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDea
 }
 func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
+}
+func (r *cancelTeamRunRepo) GetTaskDeadLetter(_ context.Context, id string) (biz.TaskDeadLetter, error) {
+	if dl, ok := r.deadLetters[id]; ok {
+		return dl, nil
+	}
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
 }
 
 // testRunRegistry is a minimal stub implementing biz.RunRegistryPort for tests.

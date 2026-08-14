@@ -75,37 +75,6 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	return mr, nil
 }
 
-func RunTRPCUserTurn(
-	ctx context.Context,
-	r trpcrunner.Runner,
-	userID string,
-	sessionID string,
-	content string,
-	lg loggateway.Logger,
-	opts ...trpcagent.RunOption,
-) (<-chan *trpcevent.Event, error) {
-	if r == nil {
-		return nil, errors.New("trpc runtime: runner is nil")
-	}
-	userID = strings.TrimSpace(userID)
-	sessionID = strings.TrimSpace(sessionID)
-	if userID == "" {
-		return nil, errors.New("trpc runtime: user id is required")
-	}
-	if sessionID == "" {
-		return nil, errors.New("trpc runtime: session id is required")
-	}
-	if lg == nil {
-		lg = loggateway.NewNoop()
-	}
-	lg.Info("TRPC 用户 Turn 启动", loggateway.StepID("agent.user_turn"), loggateway.Str("session_id", sessionID), loggateway.Str("user_id", userID))
-	ch, err := r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)
-	if err != nil {
-		lg.Error("TRPC 用户 Turn 启动失败", loggateway.StepID("agent.user_turn_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("user_id", userID), loggateway.Err(err))
-	}
-	return ch, err
-}
-
 // RunTRPCUserTurnMsg runs a turn with a pre-built user message (multimodal attachments).
 func RunTRPCUserTurnMsg(ctx context.Context, r trpcrunner.Runner, userID, sessionID string, msg trpcmodel.Message, opts ...trpcagent.RunOption) (<-chan *trpcevent.Event, error) {
 	if r == nil {
@@ -125,14 +94,6 @@ func RunTRPCUserTurnMsg(ctx context.Context, r trpcrunner.Runner, userID, sessio
 	return r.Run(ctx, userID, sessionID, msg, opts...)
 }
 
-func CancelTRPCRun(r trpcrunner.Runner, requestID string) bool {
-	mr, ok := r.(trpcrunner.ManagedRunner)
-	if !ok {
-		return false
-	}
-	return mr.Cancel(requestID)
-}
-
 func TRPCRunStatus(r trpcrunner.Runner, requestID string) (trpcrunner.RunStatus, bool) {
 	mr, ok := r.(trpcrunner.ManagedRunner)
 	if !ok {
@@ -141,6 +102,3 @@ func TRPCRunStatus(r trpcrunner.Runner, requestID string) (trpcrunner.RunStatus,
 	return mr.RunStatus(requestID)
 }
 
-func EnqueueTRPCUserMessage(r trpcrunner.Runner, requestID string, content string) error {
-	return trpcrunner.EnqueueUserMessage(r, requestID, trpcmodel.NewUserMessage(content))
-}

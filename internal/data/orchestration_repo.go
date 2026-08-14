@@ -201,6 +201,151 @@ func scanOrchestrationFromRows(rows *sql.Rows) (*biz.OrchestrationHandle, error)
 	return &handle, nil
 }
 
+// ── OrchestrationTraceReader (P3-1, MAST 标注信号源) ────────────────────────
+
+var _ biz.OrchestrationTraceReader = (*orchestrationTraceReader)(nil)
+
+// orchestrationTraceReader implements biz.OrchestrationTraceReader: reads
+// terminal orchestrations and enriches them with flow_log_events error/warn
+// aggregates grouped by trace_id.
+type orchestrationTraceReader struct {
+	data *Data
+}
+
+// NewOrchestrationTraceReader implements biz.OrchestrationTraceReader.
+// Logger is unnecessary: queries are small and windowed.
+func NewOrchestrationTraceReader(d *Data) biz.OrchestrationTraceReader {
+	return &orchestrationTraceReader{data: d}
+}
+
+func (r *orchestrationTraceReader) ListTerminalOrchestrationTraces(ctx context.Context, since time.Time, limit int) ([]biz.OrchestrationTrace, error) {
+	if limit <= 0 {
+		limit = biz.SIDefaultTraceScanLimit
+	}
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, spirit_session_id, trace_id, strategy, status, cancel_reason,
+			team_ids_json, created_at, updated_at
+		 FROM orchestrations
+		 WHERE status IN ('failed','cancelled','interrupted') AND updated_at >= ?
+		 ORDER BY updated_at DESC
+		 LIMIT ?`), since.UTC().Format(time.RFC3339), limit)
+	if err != nil {
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
+	}
+	defer rows.Close()
+
+	var traces []biz.OrchestrationTrace
+	idxByTraceID := map[string][]int{}
+	for rows.Next() {
+		var t biz.OrchestrationTrace
+		var teamIDsJSON, createdAt, updatedAt string
+		if err := rows.Scan(&t.OrchestrationID, &t.SpiritSessionID, &t.TraceID, &t.Strategy,
+			&t.Status, &t.CancelReason, &teamIDsJSON, &createdAt, &updatedAt); err != nil {
+			return nil, entErrToBizErr(err, "ORCHESTRATION")
+		}
+		var teamIDs []string
+		if err := json.Unmarshal([]byte(teamIDsJSON), &teamIDs); err == nil {
+			t.TeamCount = len(teamIDs)
+		}
+		created, err1 := time.Parse(time.RFC3339, createdAt)
+		updated, err2 := time.Parse(time.RFC3339, updatedAt)
+		if err1 == nil && err2 == nil {
+			t.DurationMS = updated.Sub(created).Milliseconds()
+			t.UpdatedAt = updated
+		}
+		if t.TraceID != "" {
+			idxByTraceID[t.TraceID] = append(idxByTraceID[t.TraceID], len(traces))
+		}
+		traces = append(traces, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, entErrToBizErr(err, "ORCHESTRATION")
+	}
+	if len(traces) == 0 || len(idxByTraceID) == 0 {
+		return traces, nil
+	}
+	if err := r.aggregateFlowLogSignals(ctx, traces, idxByTraceID); err != nil {
+		return nil, err
+	}
+	return traces, nil
+}
+
+// aggregateFlowLogSignals fills ErrorSteps/WarnCount/LastError from
+// flow_log_events for the given trace IDs. error+critical count as errors;
+// the LastError scan relies on idx_flow_log_trace_created(trace_id, created_at)
+// with first-row-wins over a DESC ordering.
+func (r *orchestrationTraceReader) aggregateFlowLogSignals(ctx context.Context, traces []biz.OrchestrationTrace, idxByTraceID map[string][]int) error {
+	traceIDs := make([]string, 0, len(idxByTraceID))
+	for id := range idxByTraceID {
+		traceIDs = append(traceIDs, id)
+	}
+	placeholders := r.data.Dialect().Placeholders(len(traceIDs))
+	args := make([]any, len(traceIDs))
+	for i, id := range traceIDs {
+		args[i] = id
+	}
+
+	// Q1: per-step error/warn counts.
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, fmt.Sprintf(
+		`SELECT trace_id, step_id, severity, COUNT(*)
+		 FROM flow_log_events
+		 WHERE trace_id IN (%s) AND severity IN ('error','critical','warn')
+		 GROUP BY trace_id, step_id, severity`, placeholders), args...)
+	if err != nil {
+		return entErrToBizErr(err, "ORCHESTRATION")
+	}
+	err = func() error {
+		defer rows.Close()
+		for rows.Next() {
+			var traceID, stepID, severity string
+			var count int
+			if err := rows.Scan(&traceID, &stepID, &severity, &count); err != nil {
+				return entErrToBizErr(err, "ORCHESTRATION")
+			}
+			for _, i := range idxByTraceID[traceID] {
+				if severity == "warn" {
+					traces[i].WarnCount += count
+					continue
+				}
+				if traces[i].ErrorSteps == nil {
+					traces[i].ErrorSteps = map[string]int{}
+				}
+				traces[i].ErrorSteps[stepID] += count
+			}
+		}
+		return rows.Err()
+	}()
+	if err != nil {
+		return entErrToBizErr(err, "ORCHESTRATION")
+	}
+
+	// Q2: last error message per trace (first row wins under DESC ordering).
+	lastRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, fmt.Sprintf(
+		`SELECT trace_id, message
+		 FROM flow_log_events
+		 WHERE trace_id IN (%s) AND severity IN ('error','critical')
+		 ORDER BY created_at DESC`, placeholders), args...)
+	if err != nil {
+		return entErrToBizErr(err, "ORCHESTRATION")
+	}
+	defer lastRows.Close()
+	seen := map[string]bool{}
+	for lastRows.Next() {
+		var traceID, message string
+		if err := lastRows.Scan(&traceID, &message); err != nil {
+			return entErrToBizErr(err, "ORCHESTRATION")
+		}
+		if seen[traceID] {
+			continue
+		}
+		seen[traceID] = true
+		for _, i := range idxByTraceID[traceID] {
+			traces[i].LastError = message
+		}
+	}
+	return entErrToBizErr(lastRows.Err(), "ORCHESTRATION")
+}
+
 // EnsureOrchestrationSchema creates the orchestrations table if it does not exist.
 // Called during DDL migration.
 func EnsureOrchestrationSchema(ctx context.Context, db *sql.DB, d Dialect, lg loggateway.Logger) error {

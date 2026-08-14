@@ -129,6 +129,9 @@ func (m *memTeamRepoB) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLett
 func (m *memTeamRepoB) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (m *memTeamRepoB) GetTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
+}
 func (m *memTeamRepoB) CreateTeamRunStep(_ context.Context, s biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return s, nil
 }

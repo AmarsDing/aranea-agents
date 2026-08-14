@@ -147,6 +147,9 @@ func (m *memSpiritTeamRepo) ListTaskDeadLetters(_ context.Context, _ TaskDeadLet
 func (m *memSpiritTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (TaskDeadLetter, error) {
 	return TaskDeadLetter{}, nil
 }
+func (m *memSpiritTeamRepo) GetTaskDeadLetter(_ context.Context, _ string) (TaskDeadLetter, error) {
+	return TaskDeadLetter{}, ErrNotFound
+}
 func (m *memSpiritTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) (TeamRunStep, error) {
 	return s, nil
 }

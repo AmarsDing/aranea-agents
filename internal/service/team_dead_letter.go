@@ -41,6 +41,15 @@ func (s *TeamService) ListTaskDeadLetters(ctx context.Context, req *v1.ListTaskD
 	if sessionID == "" && teamID == "" {
 		return nil, apierror.BadRequest("TEAM", "session_id or team_id is required")
 	}
+	if teamID != "" {
+		if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
+			return nil, err
+		}
+	} else if sessionID != "" {
+		if err := s.assertSpiritSessionAccess(ctx, sessionID); err != nil { // N5: IDOR
+			return nil, err
+		}
+	}
 	items, err := s.uc.ListTaskDeadLetters(ctx, biz.TaskDeadLetterListFilter{
 		SessionID: sessionID,
 		TeamID:    teamID,
@@ -67,6 +76,9 @@ func (s *TeamService) ResolveTaskDeadLetter(ctx context.Context, req *v1.Resolve
 	if id == "" {
 		return nil, apierror.BadRequest("TEAM", "id is required")
 	}
+	if err := s.assertDeadLetterAccess(ctx, id); err != nil { // N5: IDOR
+		return nil, err
+	}
 	item, err := s.uc.ResolveTaskDeadLetter(ctx, id)
 	if err != nil {
 		return nil, err
@@ -82,6 +94,9 @@ func (s *TeamService) ListSpiritTeams(ctx context.Context, req *v1.ListSpiritTea
 	spiritSessionID := strings.TrimSpace(req.GetSpiritSessionId())
 	if spiritSessionID == "" {
 		return nil, apierror.BadRequest("TEAM", "spirit_session_id is required")
+	}
+	if err := s.assertSpiritSessionAccess(ctx, spiritSessionID); err != nil { // N5: IDOR
+		return nil, err
 	}
 	teams, err := s.uc.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
@@ -175,12 +190,18 @@ func toProtoSpiritTeamView(t *biz.Team, run *biz.TeamRunRecord) *v1.SpiritTeamVi
 
 // SynthesizeResults merges results from multiple teams (B-4).
 func (s *TeamService) SynthesizeResults(ctx context.Context, req *v1.SynthesizeResultsRequest) (*v1.SynthesizeResultsResponse, error) {
-	if s == nil || s.synthesis == nil {
+	if s == nil {
 		return nil, apierror.Internal("TEAM", "synthesis service not configured")
 	}
 	spiritSessionID := strings.TrimSpace(req.GetSpiritSessionId())
 	if spiritSessionID == "" {
 		return nil, apierror.BadRequest("TEAM", "spirit_session_id is required")
+	}
+	if err := s.assertSpiritSessionAccess(ctx, spiritSessionID); err != nil { // N5: IDOR
+		return nil, err
+	}
+	if s.synthesis == nil {
+		return nil, apierror.Internal("TEAM", "synthesis service not configured")
 	}
 	output, err := s.synthesis.SynthesizeResults(ctx, spiritSessionID, req.GetStrategy())
 	if err != nil {
@@ -215,6 +236,9 @@ func (s *TeamService) ArchiveTeam(ctx context.Context, req *v1.ArchiveTeamReques
 	if teamID == "" {
 		return nil, apierror.BadRequest("TEAM", "team_id is required")
 	}
+	if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
+		return nil, err
+	}
 	team, err := s.uc.TransitionStatus(ctx, teamID, biz.TeamStatusArchived)
 	if err != nil {
 		return nil, err
@@ -233,6 +257,9 @@ func (s *TeamService) RetryTeam(ctx context.Context, req *v1.RetryTeamRequest) (
 	teamID := strings.TrimSpace(req.GetTeamId())
 	if teamID == "" {
 		return nil, apierror.BadRequest("TEAM", "team_id is required")
+	}
+	if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
+		return nil, err
 	}
 	team, err := s.uc.RetryTeam(ctx, teamID)
 	if err != nil {

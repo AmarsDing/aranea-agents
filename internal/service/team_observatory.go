@@ -127,6 +127,9 @@ func toProtoAgentNodeState(n biz.AgentNodeState) *v1.AgentNodeStateView {
 }
 
 func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeamRunObservatoryRequest) (*v1.GetTeamRunObservatoryResponse, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetRunId()); err != nil { // N5: IDOR
+		return nil, err
+	}
 	obs, err := s.uc.GetRunObservatory(ctx, req.GetRunId())
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -151,6 +154,9 @@ func (s *TeamService) GetTeamRunObservatory(ctx context.Context, req *v1.GetTeam
 }
 
 func (s *TeamService) GetTeamRunObservatoryTimeline(ctx context.Context, req *v1.GetTeamRunObservatoryTimelineRequest) (*v1.GetTeamRunObservatoryTimelineResponse, error) {
+	if err := s.assertRunTeamAccess(ctx, req.GetRunId()); err != nil { // N5: IDOR
+		return nil, err
+	}
 	run, err := s.uc.GetRun(ctx, req.GetRunId())
 	if err != nil {
 		return nil, mapTeamErr(err)

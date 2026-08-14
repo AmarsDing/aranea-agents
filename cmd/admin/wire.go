@@ -1856,6 +1856,7 @@ func provideSkillEvolutionOrchestrator(
 	siConf *conf.SelfImprovement,
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
+	siTraces biz.OrchestrationTraceReader,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
@@ -1872,6 +1873,8 @@ func provideSkillEvolutionOrchestrator(
 		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))
 		orch.RegisterTrigger(biz.NewEvalRegressionTrigger(siSignals, siConf.SIEvalRegressionThreshold(), lg))
 		orch.RegisterTrigger(biz.NewTestFailureTrigger(siTestRuns, 0, 0, lg))
+		// P3-1 编排轨迹 MAST 标注：终态编排 + flow-log 错误聚合 → 失败模式聚类建议。
+		orch.RegisterTrigger(biz.NewOrchestrationTraceTrigger(siTraces, 0, 0, lg))
 	}
 	return orch
 }
@@ -2986,11 +2989,6 @@ func providePlanExecutor(
 // assembler 和 starter 通过 ProvideChatService 后注入（打破 Wire 循环）。
 func provideTeamOrchestrator(lg loggateway.Logger) *service.RealTeamOrchestrator {
 	return service.NewRealTeamOrchestrator(lg)
-}
-
-// provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.
-func provideTeamOrchestratorStub() service.TeamOrchestrator {
-	return service.NewStubTeamOrchestrator()
 }
 
 func provideA2APublicBaseInput(c *conf.Server) a2apkg.PublicBaseURLInput {

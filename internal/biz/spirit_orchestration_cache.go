@@ -479,13 +479,3 @@ func ExtractTaskPattern(desc string) string {
 	}
 	return prefix + ":" + desc
 }
-
-func FormatTopologyReason(topology TopologyType, cached bool, dag *TaskDAG) string {
-	if cached {
-		return fmt.Sprintf("基于历史编排缓存推荐拓扑: %s", topology)
-	}
-	if dag != nil {
-		return fmt.Sprintf("基于任务 DAG 分析选择拓扑: %s (节点=%d, 根=%d)", topology, len(dag.Nodes), len(dag.Roots))
-	}
-	return fmt.Sprintf("默认拓扑: %s", topology)
-}

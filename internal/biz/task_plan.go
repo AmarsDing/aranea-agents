@@ -114,7 +114,6 @@ type SubTask struct {
 }
 
 // PlanTaskDAG represents the dependency graph of subtasks within a TaskPlan.
-// This is distinct from the existing TaskDAG used for team orchestration.
 type PlanTaskDAG struct {
 	Nodes   []SubTask `json:"nodes"`
 	RootIDs []string  `json:"root_ids"` // nodes with no dependencies

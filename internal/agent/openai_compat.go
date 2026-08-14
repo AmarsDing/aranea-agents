@@ -21,6 +21,3 @@ func CallOpenAICompatChatStream(ctx context.Context, hc *http.Client, cfg Provid
 	return llmcompat.CallOpenAICompatChatStream(ctx, hc, cfg, modelName, messages, callbacks)
 }
 
-func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, tools []map[string]any) (text string, toolCalls []OpenAICompatToolCallResult, promptTok, completionTok int, err error) {
-	return llmcompat.CallOpenAICompatChatWithTools(ctx, hc, cfg, modelName, messages, tools)
-}

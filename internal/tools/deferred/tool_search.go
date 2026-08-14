@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+
+	"aranea-agents/internal/metrics"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
@@ -283,31 +286,17 @@ func (t *ToolSearchTool) Call(ctx context.Context, jsonArgs []byte) (any, error)
 }
 
 func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolSearchOutput, error) {
-	tokens := strings.Fields(strings.ToLower(in.Query))
+	queryLower := strings.ToLower(in.Query)
+	tokens := strings.Fields(queryLower)
 	type scoredResult struct {
 		result toolSearchResult
 		score  int
 	}
 	var scored []scoredResult
 	for _, entry := range t.manager.catalog {
-		nameLower := strings.ToLower(entry.Name)
-		descLower := strings.ToLower(entry.Description)
-		catLower := strings.ToLower(entry.Category)
-		score := 0
-		for _, token := range tokens {
-			if nameLower == token {
-				score += 10
-			} else if strings.Contains(nameLower, token) {
-				score += 5
-			}
-			if strings.Contains(catLower, token) {
-				score += 3
-			}
-			if strings.Contains(descLower, token) {
-				score += 2
-			}
-		}
-		if score > 0 {
+		// P1-4：与语义预激活共享同一打分逻辑，保证「搜索看到的」与
+		// 「推荐的」一致。
+		if score := scoreEntryAgainstQuery(entry, queryLower, tokens); score > 0 {
 			scored = append(scored, scoredResult{
 				result: toolSearchResult{
 					Name:        entry.Name,
@@ -328,6 +317,8 @@ func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolS
 	for i, s := range scored {
 		results[i] = s.result
 	}
+	// P1-4 漏斗度量（发现段）：搜索调用按是否有结果分桶。
+	metrics.DeferredToolSearchTotal.WithLabelValues(strconv.FormatBool(len(results) > 0)).Inc()
 	if len(results) == 0 {
 		return toolSearchOutput{
 			Tools:      []toolSearchResult{},

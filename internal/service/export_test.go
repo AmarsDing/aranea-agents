@@ -145,7 +145,6 @@ var (
 	ObservatoryPayloadMaxBytes   = observatoryPayloadMaxBytes
 	TruncateObservatoryPayload   = truncateObservatoryPayload
 	PickTitleModel               = biz.PickTitleModel
-	ErrString                    = errString
 	ChatIngressRecordingEnabled  = chatIngressRecordingEnabled
 	ChatIngressRecordingDisabled = chatIngressRecordingDisabled
 	EnvInt                       = envInt

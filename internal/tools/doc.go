@@ -100,7 +100,6 @@ package tools
 //	  file             — File operation ToolSet (filesystem)
 //	  hostexec         — Host command execution ToolSet (execution)
 //	  httpfetch        — HTTP web page fetch tool (web)
-//	  claudefetch      — Claude web fetch tool (web, framework stub)
 //	  geminifetch      — Gemini web fetch tool (web)
 //	  duckduckgo       — DuckDuckGo web search tool (search)
 //	  google_search    — Google Custom Search ToolSet (search)
@@ -111,7 +110,7 @@ package tools
 //	  todo             — Todo management tool (productivity)
 //	  await_user_reply — Mark agent as waiting for user reply (interaction)
 //	  claudecode       — Claude Code ToolSet (coding)
-//	  workspace_exec   — Workspace execution tools (execution)
+//	  workspace_exec   — Workspace execution tools (execution, NOT YET IMPLEMENTED)
 //	  openapi          — OpenAPI spec ToolSet (integration)
 //	  agent            — Agent-as-Tool for delegation/composition (composition)
 //	  mcp              — MCP ToolSet: connect to MCP servers (integration)
@@ -126,6 +125,10 @@ package tools
 //	  read_spreadsheet — Read tabular files (XLSX, CSV) (media)
 //	  read_tool_result — Retrieve persisted tool result by blob_id (system)
 //	  working_memory   — Working memory tools for task-scoped fields (memory)
+//	  deliverable      — Cross-agent deliverable handoff tools (team)
+//	  client           — Client tool bridge ToolSet (interaction)
+//	  datetime         — Current date/time/timezone tool (system)
+//	  media            — Media generation tools (media)
 //
 // Framework tool sub-packages not in registry (integrated differently):
 //	  function/   — FunctionTool[I,O] — used by custom/ tools

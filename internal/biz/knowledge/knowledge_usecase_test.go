@@ -31,6 +31,10 @@ type mockRepo struct {
 	chunkSearchFn func(ctx context.Context, q SearchQuery, emb []float32) ([]Chunk, error)
 }
 
+func (m *mockRepo) EnableCollectionSemantic(context.Context, string, string, int) (bool, error) {
+	return false, nil
+}
+
 func (m *mockRepo) CreateCollection(ctx context.Context, c Collection) (Collection, error) {
 	return m.collCreateFn(ctx, c)
 }

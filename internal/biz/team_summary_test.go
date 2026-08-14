@@ -139,3 +139,6 @@ func (r *runSummaryRepo) ListTaskDeadLetters(_ context.Context, _ TaskDeadLetter
 func (r *runSummaryRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (TaskDeadLetter, error) {
 	return TaskDeadLetter{}, nil
 }
+func (r *runSummaryRepo) GetTaskDeadLetter(_ context.Context, _ string) (TaskDeadLetter, error) {
+	return TaskDeadLetter{}, ErrNotFound
+}

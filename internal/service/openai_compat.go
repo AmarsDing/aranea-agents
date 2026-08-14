@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"net/http"
 	"strings"
-	"sync"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/conf"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
@@ -16,110 +13,16 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
-	trpcopenai "trpc.group/trpc-go/trpc-agent-go/server/openai"
 )
 
 // OpenAIRunnerBuilder builds a trpc-agent-go Runner suitable for the
-// OpenAI-compatible endpoint. Extracted from *ChatService so that
-// OpenAICompatService depends on a narrow interface, not a concrete type.
+// OpenAI-compatible endpoints (session compat / AG-UI / A2A extension).
 type OpenAIRunnerBuilder interface {
 	BuildOpenAIRunner(ctx context.Context, agentKey string) (trpcrunner.Runner, func(), error)
 }
 
 // Compile-time check that *ChatService satisfies OpenAIRunnerBuilder.
 var _ OpenAIRunnerBuilder = (*ChatService)(nil)
-
-type OpenAICompatService struct {
-	chat   OpenAIRunnerBuilder
-	conf   *conf.OpenAI
-	mu     sync.RWMutex
-	server *trpcopenai.Server
-	closer func()
-}
-
-func NewOpenAICompatService(chat OpenAIRunnerBuilder, c *conf.Server) *OpenAICompatService {
-	oc := &OpenAICompatService{chat: chat}
-	if c != nil && c.Openai != nil && c.Openai.Enable {
-		oc.conf = c.Openai
-	}
-	return oc
-}
-
-func (s *OpenAICompatService) Enabled() bool {
-	return s.conf != nil && s.conf.Enable
-}
-
-func (s *OpenAICompatService) Handler(ctx context.Context) (http.Handler, error) {
-	if err := s.ensureServer(ctx); err != nil {
-		return nil, err
-	}
-	return s.server.Handler(), nil
-}
-
-func (s *OpenAICompatService) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closer != nil {
-		s.closer()
-		s.closer = nil
-	}
-	if s.server != nil {
-		s.server.Close()
-		s.server = nil
-	}
-	return nil
-}
-
-func (s *OpenAICompatService) ensureServer(ctx context.Context) error {
-	s.mu.RLock()
-	if s.server != nil {
-		s.mu.RUnlock()
-		return nil
-	}
-	s.mu.RUnlock()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.server != nil {
-		return nil
-	}
-
-	agentKey := s.defaultAgentKey()
-	runner, closeRunner, err := s.chat.BuildOpenAIRunner(ctx, agentKey)
-	if err != nil {
-		return err
-	}
-
-	basePath := "/v1"
-	if s.conf.BasePath != "" {
-		basePath = s.conf.BasePath
-	}
-	modelName := "gpt-3.5-turbo"
-	if s.conf.ModelName != "" {
-		modelName = s.conf.ModelName
-	}
-
-	srv, err := trpcopenai.New(
-		trpcopenai.WithRunner(runner),
-		trpcopenai.WithBasePath(basePath),
-		trpcopenai.WithModelName(modelName),
-	)
-	if err != nil {
-		closeRunner()
-		return err
-	}
-
-	s.server = srv
-	s.closer = closeRunner
-	return nil
-}
-
-func (s *OpenAICompatService) defaultAgentKey() string {
-	if s.conf.DefaultAgentKey != "" {
-		return s.conf.DefaultAgentKey
-	}
-	return "default"
-}
 
 func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (trpcrunner.Runner, func(), error) {
 	if s == nil || s.orch == nil {

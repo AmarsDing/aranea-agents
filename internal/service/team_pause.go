@@ -35,6 +35,9 @@ func (s *TeamService) PauseTeamRun(ctx context.Context, req *v1.PauseTeamRunRequ
 	if runID == "" {
 		return nil, apierror.BadRequest("TEAM", "id is required")
 	}
+	if err := s.assertRunTeamMutateAccess(ctx, runID); err != nil { // N5: IDOR
+		return nil, err
+	}
 	run, err := s.uc.GetRun(ctx, runID)
 	if err != nil {
 		return nil, mapTeamErr(err)
@@ -86,6 +89,9 @@ func (s *TeamService) UnpauseTeamRun(ctx context.Context, req *v1.UnpauseTeamRun
 	runID := strings.TrimSpace(req.GetId())
 	if runID == "" {
 		return nil, apierror.BadRequest("TEAM", "id is required")
+	}
+	if err := s.assertRunTeamMutateAccess(ctx, runID); err != nil { // N5: IDOR
+		return nil, err
 	}
 	run, err := s.uc.GetRun(ctx, runID)
 	if err != nil {
@@ -218,6 +224,9 @@ func (s *TeamService) InjectTeamMessage(ctx context.Context, req *v1.InjectTeamM
 	}
 	if s.runs == nil {
 		return nil, apierror.Internal("TEAM", "run registry not configured")
+	}
+	if err := s.assertTeamMutateAccess(ctx, teamID); err != nil { // N5: IDOR
+		return nil, err
 	}
 
 	// Verify team exists.

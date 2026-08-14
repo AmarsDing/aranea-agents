@@ -845,6 +845,20 @@ func (r *TeamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 	return out, nil
 }
 
+// GetTaskDeadLetter fetches a dead letter by id (N5 IDOR: service-layer
+// workspace check needs the owning team before mutating).
+func (r *TeamRepo) GetTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return biz.TaskDeadLetter{}, apierror.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
+	}
+	row, err := r.data.RW().Read(ctx).TaskDeadLetter.Get(ctx, id)
+	if err != nil {
+		return biz.TaskDeadLetter{}, entErrToBizErr(err, "TEAM")
+	}
+	return entTaskDeadLetterToBiz(row), nil
+}
+
 func (r *TeamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {

@@ -77,6 +77,7 @@ type OrchestrationStepRepo interface {
 type TaskDeadLetterRepo interface {
 	CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
 	ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
+	GetTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
 	ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
 }
 
@@ -1043,6 +1044,15 @@ func (uc *TeamUsecase) ResolveTaskDeadLetter(ctx context.Context, id string) (Ta
 		return TaskDeadLetter{}, ErrNotFound
 	}
 	return uc.deadLetter.ResolveTaskDeadLetter(ctx, id)
+}
+
+// GetTaskDeadLetter fetches a dead letter by id (N5 IDOR: the service layer
+// needs the owning team before mutating).
+func (uc *TeamUsecase) GetTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error) {
+	if uc == nil || uc.deadLetter == nil {
+		return TaskDeadLetter{}, ErrNotFound
+	}
+	return uc.deadLetter.GetTaskDeadLetter(ctx, id)
 }
 
 func boolPtr(v bool) *bool { return &v }

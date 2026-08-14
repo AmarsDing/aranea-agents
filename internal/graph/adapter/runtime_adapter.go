@@ -102,10 +102,12 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 		)
 	}
 
-	runtimeState := trpcgraph.CheckpointRef{
-		LineageID:    lineageID,
-		CheckpointID: "",
-	}.ToRuntimeState()
+	// 全新执行只传 lineage_id；绝不能带 CfgKeyCheckpointID 键——
+	// executor 以"键存在"作为 resume 信号（Resume 路径才需要），
+	// 新 lineage 下 resume-from-latest 必然 ErrCheckpointNotFound。
+	runtimeState := map[string]any{
+		trpcgraph.CfgKeyLineageID: lineageID,
+	}
 
 	for k, v := range initialState {
 		runtimeState[k] = v

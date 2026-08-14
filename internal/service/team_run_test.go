@@ -109,6 +109,9 @@ func (r *summaryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadL
 func (r *summaryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (r *summaryTeamRepo) GetTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
+}
 
 func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 	repo := &summaryTeamRepo{

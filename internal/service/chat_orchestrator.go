@@ -288,8 +288,6 @@ func (o *ChatOrchestrator) team() TeamOrchestrationDeps   { return o.teamExecDep
 func (o *ChatOrchestrator) chJobs() ChannelTurnJobDeps    { return o.channelDeps.ChJobs }
 func (o *ChatOrchestrator) chNotify() ChannelNotifierDeps { return o.channelDeps.ChNotify }
 
-func (o *ChatOrchestrator) usage() *biz.UsageUsecase                   { return o.usageDeps.Usage }
-func (o *ChatOrchestrator) monitor() *biz.MonitorUsecase               { return o.usageDeps.Monitor }
 func (o *ChatOrchestrator) artifacts() *biz.ArtifactUsecase            { return o.usageDeps.Artifacts }
 func (o *ChatOrchestrator) skillStats() biz.SkillInvocationStatsReader { return o.usageDeps.SkillStats }
 func (o *ChatOrchestrator) expAnalytics() *biz.ExperienceAnalyticsUsecase {
@@ -309,8 +307,6 @@ func (o *ChatOrchestrator) skillEvo() *biz.SkillEvolutionUsecase { return o.evoD
 func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase     { return o.evoDeps.Evolution }
 
 func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase             { return o.infraDeps.A2AUC }
-func (o *ChatOrchestrator) mcpServers() *biz.MCPServerUsecase  { return o.infraDeps.MCPServers }
-func (o *ChatOrchestrator) orchCache() *biz.OrchestrationCache { return o.infraDeps.OrchCache }
 func (o *ChatOrchestrator) outboundRouter() *outbound.Router   { return o.infraDeps.OutboundRouter }
 func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
 	return o.infraDeps.SubAgentService
@@ -830,21 +826,6 @@ func (o *ChatOrchestrator) setRunStatus(ctx context.Context, sessionID, runID, s
 	}
 }
 
-func (o *ChatOrchestrator) setRunStatusWithAwait(ctx context.Context, sessionID, runID, status, errMsg string, await *AwaitStatusMeta) {
-	if err := o.runStatus().SetRunStatusWithAwait(ctx, sessionID, runID, status, errMsg, await); err != nil {
-		o.lg().Warn("set run status with await failed",
-			loggateway.StepID("chat.set_run_status"),
-			loggateway.Str("session_id", sessionID),
-			loggateway.Str("run_id", runID),
-			loggateway.Str("status", status),
-			loggateway.Err(err))
-	}
-}
-
-func (o *ChatOrchestrator) publishRunStatus(sessionID, runID, status, errMsg string) {
-	o.runStatus().PublishRunStatus(sessionID, runID, status, errMsg)
-}
-
 // publishTurnTimeoutNotification pushes a timeout alert via WS so the user knows
 // the turn is taking longer than expected, without failing the turn.
 func (o *ChatOrchestrator) publishTurnTimeoutNotification(ctx context.Context, sessionID, runID string, timeout time.Duration) {
@@ -877,17 +858,6 @@ func (o *ChatOrchestrator) AttachNativeTurnAfterHook(hook biz.NativeTurnAfterHoo
 	o.core.TD.AfterTurn = hook
 }
 
-// SetTaskOrchestrator sets the TaskOrchestratorPort on the TeamOrchestrationDeps.
-//
-// Deprecated: TaskOrchestrator is now backfilled via provideChatServiceDeps in wire.go.
-// This method is retained for potential ad-hoc use but is no longer called by Wire.
-func (o *ChatOrchestrator) SetTaskOrchestrator(orch biz.TaskOrchestratorPort) {
-	if o == nil {
-		return
-	}
-	o.teamExecDeps.Team.TaskOrchestrator = orch
-}
-
 // AwaitChannel operations delegate to awaitCoord.
 func (o *ChatOrchestrator) RegisterAwaitChannel(sessionID string, ch biz.AwaitChannel) {
 	o.awaitCoord().RegisterAwaitChannel(sessionID, ch)
@@ -905,51 +875,13 @@ func (o *ChatOrchestrator) TrySendAwaitChannel(sessionID string, msg biz.AwaitRe
 	return o.awaitCoord().TrySendAwaitChannel(sessionID, msg)
 }
 
-// persistRunStatus delegates to the runStatus sub-manager.
-func (o *ChatOrchestrator) persistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
-	return o.runStatus().PersistRunStatus(ctx, sessionID, runID, status, errMsg)
-}
-
 // hydrateRunStatusFromSession delegates to the runStatus sub-manager.
 func (o *ChatOrchestrator) hydrateRunStatusFromSession(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
 	return o.runStatus().HydrateRunStatusFromSession(ctx, sessionID)
 }
 
-func (o *ChatOrchestrator) persistAwaitMarkers(ctx context.Context, sessionID, runID string, await AwaitStatusMeta, syncWrite bool) {
-	o.runStatus().PersistAwaitMarkers(ctx, sessionID, runID, await, syncWrite)
-}
-
-func (o *ChatOrchestrator) setAwaitMetaCache(sessionID string, meta biz.ChatAwaitMeta) {
-	o.runStatus().SetAwaitMetaCache(sessionID, meta)
-}
-
-func (o *ChatOrchestrator) getAwaitMetaCache(sessionID string) (biz.ChatAwaitMeta, bool) {
-	return o.runStatus().GetAwaitMetaCache(sessionID)
-}
-
-func (o *ChatOrchestrator) clearAwaitMetaCache(sessionID string) {
-	o.runStatus().ClearAwaitMetaCache(sessionID)
-}
-
 func (o *ChatOrchestrator) resolveAwaitMeta(ctx context.Context, sessionID, status string) biz.ChatAwaitMeta {
 	return o.runStatus().ResolveAwaitMeta(ctx, sessionID, status)
-}
-
-func (o *ChatOrchestrator) clearAwaitingRunStateSync(ctx context.Context, sessionID string) error {
-	return o.runStatus().ClearAwaitingRunStateSync(ctx, sessionID)
-}
-
-func (o *ChatOrchestrator) clearAwaitingRunState(ctx context.Context, sessionID string) {
-	o.runStatus().ClearAwaitingRunState(ctx, sessionID)
-}
-
-// tryBeginResume delegates to the awaitCoord sub-manager.
-func (o *ChatOrchestrator) tryBeginResume(sessionID string) bool {
-	return o.awaitCoord().TryBeginResume(sessionID)
-}
-
-func (o *ChatOrchestrator) endResume(sessionID string) {
-	o.awaitCoord().EndResume(sessionID)
 }
 
 func (o *ChatOrchestrator) Close() {
@@ -983,27 +915,9 @@ func (o *ChatOrchestrator) sweepStaleMaps() {
 	o.awaitCoord().Sweep()
 }
 
-// publishAwaitResumed delegates to the awaitCoord sub-manager.
-func (o *ChatOrchestrator) publishAwaitResumed(sessionID, runID string) {
-	o.awaitCoord().PublishAwaitResumed(sessionID, runID)
-}
-
-// sessionAwaitingUser delegates to the awaitCoord sub-manager.
-func (o *ChatOrchestrator) sessionAwaitingUser(ctx context.Context, sessionID string) (persistedRunStatus, bool) {
-	if coord := o.awaitCoord(); coord != nil {
-		return coord.SessionAwaitingUser(ctx, sessionID)
-	}
-	return persistedRunStatus{}, false
-}
-
 // canResumeAwait delegates to the awaitCoord sub-manager.
 func (o *ChatOrchestrator) canResumeAwait(ctx context.Context, sessionID string) (runID string, ok bool) {
 	return o.awaitCoord().CanResumeAwait(ctx, sessionID)
-}
-
-// hasPendingAwaitUserReplyRoute delegates to the awaitCoord sub-manager.
-func (o *ChatOrchestrator) hasPendingAwaitUserReplyRoute(ctx context.Context, sessionID string) bool {
-	return o.awaitCoord().HasPendingAwaitUserReplyRoute(ctx, sessionID)
 }
 
 func (o *ChatOrchestrator) sessionRuntime() *araneasession.Runtime {

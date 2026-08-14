@@ -360,7 +360,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentCaseSkillDistiller := service.NewAgentCaseSkillDistiller(memoryLLMExtractor)
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
 	testRunReader := provideSelfImprovementTestRunReader(selfImprovement)
-	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, loggatewayLogger)
+	orchestrationTraceReader := data.NewOrchestrationTraceReader(dataData)
+	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
 	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
@@ -2405,6 +2406,7 @@ func provideSkillEvolutionOrchestrator(
 	siConf *conf.SelfImprovement,
 	siSignals *data.SelfImprovementSignalRepo,
 	siTestRuns biz.TestRunReader,
+	siTraces biz.OrchestrationTraceReader,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
 	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
@@ -2420,6 +2422,8 @@ func provideSkillEvolutionOrchestrator(
 		orch.RegisterTrigger(biz.NewPerfBottleneckTrigger(siSignals, siConf.SIPerfLatencyFactor(), siConf.SIPerfTokenFactor(), lg))
 		orch.RegisterTrigger(biz.NewEvalRegressionTrigger(siSignals, siConf.SIEvalRegressionThreshold(), lg))
 		orch.RegisterTrigger(biz.NewTestFailureTrigger(siTestRuns, 0, 0, lg))
+
+		orch.RegisterTrigger(biz.NewOrchestrationTraceTrigger(siTraces, 0, 0, lg))
 	}
 	return orch
 }
@@ -3481,11 +3485,6 @@ func providePlanExecutor(
 // assembler 和 starter 通过 ProvideChatService 后注入（打破 Wire 循环）。
 func provideTeamOrchestrator(lg loggateway.Logger) *service.RealTeamOrchestrator {
 	return service.NewRealTeamOrchestrator(lg)
-}
-
-// provideTeamOrchestratorStub returns the Phase 1 no-op TeamOrchestrator.
-func provideTeamOrchestratorStub() service.TeamOrchestrator {
-	return service.NewStubTeamOrchestrator()
 }
 
 func provideA2APublicBaseInput(c *conf.Server) a2a2.PublicBaseURLInput {

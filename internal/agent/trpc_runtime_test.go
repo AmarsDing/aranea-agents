@@ -61,9 +61,9 @@ func TestNewTRPCRunnerAndRunUserTurn(t *testing.T) {
 	}
 	defer r.Close()
 
-	events, err := RunTRPCUserTurn(context.Background(), r, "user-1", "session-1", "hi", nil)
+	events, err := RunTRPCUserTurnMsg(context.Background(), r, "user-1", "session-1", trpcmodel.NewUserMessage("hi"))
 	if err != nil {
-		t.Fatalf("RunTRPCUserTurn() error = %v", err)
+		t.Fatalf("RunTRPCUserTurnMsg() error = %v", err)
 	}
 
 	var sawReply, sawCompletion bool
@@ -87,17 +87,17 @@ func TestNewTRPCRunnerAndRunUserTurn(t *testing.T) {
 	}
 }
 
-func TestRunTRPCUserTurnValidatesRequiredIDs(t *testing.T) {
+func TestRunTRPCUserTurnMsgValidatesRequiredIDs(t *testing.T) {
 	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{})
 	if err != nil {
 		t.Fatalf("NewTRPCRunner() error = %v", err)
 	}
 	defer r.Close()
 
-	if _, err := RunTRPCUserTurn(context.Background(), r, "", "session-1", "hi", nil); err == nil {
+	if _, err := RunTRPCUserTurnMsg(context.Background(), r, "", "session-1", trpcmodel.NewUserMessage("hi")); err == nil {
 		t.Fatal("expected missing user id error")
 	}
-	if _, err := RunTRPCUserTurn(context.Background(), r, "user-1", "", "hi", nil); err == nil {
+	if _, err := RunTRPCUserTurnMsg(context.Background(), r, "user-1", "", trpcmodel.NewUserMessage("hi")); err == nil {
 		t.Fatal("expected missing session id error")
 	}
 }
@@ -116,32 +116,3 @@ func TestNewTRPCRunnerReturnsManagedRunner(t *testing.T) {
 	}
 }
 
-func TestCancelTRPCRun(t *testing.T) {
-	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: sessiontrpc.NewInMemorySessionService(),
-	})
-	if err != nil {
-		t.Fatalf("NewTRPCRunner() error = %v", err)
-	}
-	defer r.Close()
-
-	result := CancelTRPCRun(r, "nonexistent-request")
-	if result {
-		t.Fatal("expected false for nonexistent request")
-	}
-}
-
-func TestEnqueueTRPCUserMessage(t *testing.T) {
-	r, err := NewTRPCRunner(staticTRPCAgent{name: "assistant", reply: "hello"}, TRPCRunnerDeps{
-		SessionService: sessiontrpc.NewInMemorySessionService(),
-	})
-	if err != nil {
-		t.Fatalf("NewTRPCRunner() error = %v", err)
-	}
-	defer r.Close()
-
-	err = EnqueueTRPCUserMessage(r, "nonexistent-request", "test message")
-	if err != nil {
-		t.Logf("EnqueueTRPCUserMessage on non-running request: %v (expected)", err)
-	}
-}

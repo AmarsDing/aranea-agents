@@ -82,6 +82,9 @@ func (r *compileTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadL
 func (r *compileTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (r *compileTeamRepo) GetTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
+}
 func (r *compileTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }

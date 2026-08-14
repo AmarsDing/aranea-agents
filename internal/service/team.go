@@ -137,6 +137,55 @@ func (s *TeamService) checkRunTeamAccess(ctx context.Context, runID string, muta
 	return s.checkTeamAccess(ctx, run.TeamID, mutate)
 }
 
+// assertSpiritSessionAccess 验证 caller 是否可访问目标 spirit session（N5 IDOR 防护）。
+// session 是 tenant-owned 私有数据（AssertWorkspace：空 resourceWS = default workspace，私有）。
+// 系统 caller 绕过（cron/admin 后台任务）；失败返回 NotFound（不泄露存在性）。
+func (s *TeamService) assertSpiritSessionAccess(ctx context.Context, sessionID string) error {
+	if sessionID == "" || workspace.IsSystem(ctx) {
+		return nil
+	}
+	if s.sessions == nil {
+		return apierror.NotFound("TEAM", "session not found")
+	}
+	sess, err := s.sessions.Get(ctx, sessionID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("TEAM", "session not found")
+		}
+		return err
+	}
+	if err := workspace.AssertWorkspace(workspace.IDFromContext(ctx), sess.WorkspaceID); err != nil {
+		s.lg.Warn("spirit session access denied: workspace mismatch",
+			loggateway.StepID("team.idor"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("caller_ws", workspace.IDFromContext(ctx)))
+		return apierror.NotFound("TEAM", "session not found")
+	}
+	return nil
+}
+
+// assertDeadLetterAccess 验证 caller 是否可变更目标死信（N5 IDOR 防护）。
+// 死信通过 TeamID 归属 team，再校验 team 的 workspace（变更语义，fail-closed）。
+func (s *TeamService) assertDeadLetterAccess(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	dl, err := s.uc.GetTaskDeadLetter(ctx, id)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound("TEAM", "task dead letter not found")
+		}
+		return err
+	}
+	if dl.TeamID != "" {
+		return s.checkTeamAccess(ctx, dl.TeamID, true)
+	}
+	if dl.SessionID != "" {
+		return s.assertSpiritSessionAccess(ctx, dl.SessionID)
+	}
+	return nil
+}
+
 func toProtoTeam(t biz.Team) *v1.Team {
 	return &v1.Team{
 		Id:                 t.ID,

@@ -96,6 +96,9 @@ func (r *observatoryTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskD
 func (r *observatoryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (r *observatoryTeamRepo) GetTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
+}
 func (r *observatoryTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }

@@ -4,7 +4,6 @@ import { useQuasar } from 'quasar';
 import { useRoute } from 'vue-router';
 import type { SessionView, TeamRow } from '../../../components/chat/types';
 import type { Agent } from '../../agents/types';
-import type { CompressStatus } from '../../session/types';
 import type { SpiritPanelMode } from '../../spirit/types';
 import type { ConfirmStepPayload, SubmitClarificationPayload } from '../types';
 import { useAppStore } from '../../../stores/app';
@@ -13,7 +12,6 @@ import { useChatMessageStore } from '../../../stores/chat/messageStore';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import { useChatConversationStore } from '../../../stores/chat/conversationStore';
 import { useSpiritTeamStore } from '../../../stores/spirit';
-import { cancelRunningToolMessages } from '../activityToolCall';
 import { confirmActivity, confirmActivityGrant, submitClarification } from '../api';
 import { useChatRunStatus } from './useChatRunStatus';
 import { useChatStreamManager } from './useChatStreamManager';
@@ -36,7 +34,7 @@ import { useChatSettingsDialog } from './useChatSettingsDialog';
 import { useChatDialogs } from './useChatDialogs';
 import { useChatComposerActions } from './useChatComposerActions';
 import { joinDictationText, useVoiceDictation } from './useVoiceDictation';
-import { favoriteSessionIDs, toggleFavoriteSession, emitSessionMutation } from '../../../stores/sessionSync';
+import { favoriteSessionIDs, toggleFavoriteSession } from '../../../stores/sessionSync';
 import { agentNeedsSettingsHydration, hydrateAgentSettings } from '../agentPlannerSettings';
 import { parseChannelSessionMeta } from '../channelSessionMeta';
 
@@ -50,20 +48,12 @@ import { useReasoningSidebar } from './useReasoningSidebar';
 import { useContextualLoadingMessage } from './useContextualLoadingMessage';
 import { useStatusPulse } from './useStatusPulse';
 import { useChatActivityStore } from '../../../stores/chat/activityV2Store';
-import { useLlmRetryStore } from '../../../stores/chat/llmRetryStore';
-import { useChatEventRouter } from './useChatEventRouter';
-import type {
-  V2WsEnvelope,
-  SystemNoticeEventPayload,
-  RunStatusEventPayload,
-  SkillCatalogEventPayload,
-  Task,
-} from '../v2Types';
+import { useChatV2EventHandlers } from './useChatV2EventHandlers';
+import { useChatStallWatchdog } from './useChatStallWatchdog';
+import { useChatCompressPolling } from './useChatCompressPolling';
+import type { V2WsEnvelope, Task } from '../v2Types';
 import { useAddToEvalDataset } from '../../evaluation/useAddToEvalDataset';
-import { noteChannelWsEnvelope } from '../channelWsCursor';
 import { useSessionTree } from './useSessionTree';
-import { SESSION_RUN_STATUS } from '../sessionRunStatus';
-import { runStatusFromV2Payload } from '../activityRunStatus';
 
 /**
  * Phase B-3: Resolve which session ID should be active given the current
@@ -268,7 +258,12 @@ export function useChatWorkspace() {
 
   const streamManager = useChatStreamManager({
     runtimeStore,
-    onV2Event: handleV2Event,
+    // Wrapper closure (not `onV2Event: handleV2Event`): the manager captures
+    // this callback once at creation, while the real handler is late-bound
+    // below once sender/followUp exist. The closure re-reads the binding at
+    // call time, so late assignment takes effect. WS events only arrive
+    // after setup completes, so the assignment always happens before invocation.
+    onV2Event: (envelope) => handleV2Event(envelope),
     refreshRunStatus: refreshRunStatusForUi,
     // B-06: after WS reconnect, re-fetch authoritative v2 entity snapshot.
     // Server also replays missed critical outbox frames via last_event_id;
@@ -516,99 +511,17 @@ export function useChatWorkspace() {
 
   watch(sender.sending, (val) => followUp.watchSending(val));
 
-  /**
-   * Apply run status from a v2 system.run_status payload (follow-up queue,
-   * runStatus ref, tool-message cancellation on terminal statuses).
-   */
-  function applyV2RunStatusSideEffects(payload: RunStatusEventPayload) {
-    followUp.onRunStatusV2(payload);
-    applyFromV2RunStatus(payload);
-    const rs = runStatusFromV2Payload(payload);
-    if (rs?.status === 'cancelled' || rs?.status === 'failed') {
-      const sid = selectedSessionForUi.value?.id;
-      if (sid) {
-        messageStore.setMessages(sid, cancelRunningToolMessages(messageStore.getMessages(sid)));
-      }
-    }
-  }
-
-  /**
-   * Route v2 system.notice events to side-effects without AF conversion.
-   */
-  function handleV2SystemNotice(payload: SystemNoticeEventPayload) {
-    const sid = selectedSessionForUi.value?.id;
-    if (!sid) return;
-    const noticeType = String(payload.NoticeType ?? '').trim();
-    if (!noticeType) return;
-    const meta: Record<string, unknown> = {
-      ...(payload.Meta ?? {}),
-      notice_type: noticeType,
-      message: payload.Message,
-    };
-
-    if (noticeType === 'metrics_updated') {
-      sessionStore.fetchAndReconcileSession(sid);
-    }
-    if (noticeType === 'session_status_changed') {
-      const status = typeof meta.status === 'string' ? meta.status : '';
-      const statusReason = typeof meta.status_reason === 'string' ? meta.status_reason : '';
-      const statusChangedAt = typeof meta.status_changed_at === 'string' ? meta.status_changed_at : '';
-      if (status) {
-        emitSessionMutation({ type: 'status_changed', id: sid, status, statusReason, statusChangedAt });
-      }
-    }
-    // Transient reconnect signal from the provider retry transport — surfaced
-    // as a dedicated banner (not an activity node) and cleared on stream resume.
-    if (noticeType === 'llm_retry') {
-      llmRetryStore.noteRetry(sid, meta);
-    }
-    spiritStore.handleSystemNotice(noticeType, meta);
-    contextualLoading.onSpiritNoticeType(noticeType);
-  }
-
-  /**
-   * Route v2 system.run_status events to side-effects without AF conversion.
-   */
-  function handleV2RunStatus(payload: RunStatusEventPayload) {
-    // Patch MemberSession card when pause/resume publishes chat_session_id
-    // (MemberSessionUpdatedEvent is the primary path; this covers race/late WS).
-    const chatSessionId = String(payload.Meta?.chat_session_id ?? '').trim();
-    const status = String(payload.Status ?? payload.Meta?.status ?? '').trim();
-    if (chatSessionId && (status === 'paused' || status === 'running')) {
-      for (const ms of activityStore.memberSessions.values()) {
-        if (ms.SessionID === chatSessionId && ms.Status !== status) {
-          activityStore.upsertMemberSession({ ...ms, Status: status as typeof ms.Status });
-          break;
-        }
-      }
-    }
-    const sid = selectedSessionForUi.value?.id;
-    if (!sid) return;
-    applyV2RunStatusSideEffects(payload);
-    // Terminal run statuses end any in-flight retry loop — clear the banner.
-    const runStatus = String(payload.Status ?? payload.Meta?.status ?? '').trim();
-    if (
-      runStatus === SESSION_RUN_STATUS.COMPLETED ||
-      runStatus === SESSION_RUN_STATUS.FAILED ||
-      runStatus === SESSION_RUN_STATUS.CANCELLED ||
-      runStatus === SESSION_RUN_STATUS.IDLE
-    ) {
-      llmRetryStore.clear(sid);
-      // 2026-08-06: pre-orchestration phases (routing/…/starting) set the
-      // loading line on every turn; direct-answer turns have no
-      // orchestration.completed event, so terminal run status is the only
-      // reliable clearing point for them.
-      contextualLoading.clearMessage();
-    }
-    const rs = runStatusFromV2Payload(payload);
-    if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
-      if (sessionStore.entityKind === 'team') {
-        streamManager.ensureTeamStream(sid);
-      } else {
-        streamManager.ensureChatStream(sid);
-      }
-    }
-  }
+  // v2 system/entity event side-effect handlers (extracted composable).
+  // Late-binds the placeholder declared above; streamManager invokes through
+  // a wrapper closure, so this assignment takes effect for all WS events.
+  handleV2Event = useChatV2EventHandlers({
+    selectedSessionId: () => selectedSessionForUi.value?.id,
+    sender,
+    followUp,
+    applyFromV2RunStatus,
+    contextualLoading,
+    streamManager,
+  }).handleV2Event;
 
   const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam, onGroupReorder } = useChatSidebarOrder(
     displayAgents,
@@ -712,67 +625,11 @@ export function useChatWorkspace() {
     }
   });
 
-  // ── Long-running stall detection ──
+  // ── Long-running stall detection (extracted composable) ──
   // When run is in 'running' status but no events arrive for 5 minutes,
-  // prompt the user with a "seems stuck, stop?" notification.
-  const STALL_NOTIFY_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-  let stallNotifyTimer: ReturnType<typeof setTimeout> | null = null;
-  let stallNotified = false;
-
-  function clearStallNotifyTimer() {
-    if (stallNotifyTimer != null) {
-      clearTimeout(stallNotifyTimer);
-      stallNotifyTimer = null;
-    }
-  }
-
-  function resetStallNotifyTimer() {
-    clearStallNotifyTimer();
-    stallNotified = false;
-    if (runStatus.value === 'running') {
-      stallNotifyTimer = setTimeout(() => {
-        stallNotified = true;
-        $q.notify({
-          type: 'warning',
-          message: t('chat.runLongStallWarning', '似乎没有进展，是否停止？'),
-          actions: [
-            {
-              label: t('chat.stop', '停止'),
-              color: 'negative',
-              handler: () => stopStreaming(),
-            },
-            {
-              label: t('chat.wait', '继续等待'),
-              color: 'grey',
-              handler: () => {},
-            },
-          ],
-          timeout: 15_000,
-        });
-      }, STALL_NOTIFY_TIMEOUT_MS);
-    }
-  }
-
-  // Start/stop stall timer based on runStatus
-  watch(runStatus, (newVal) => {
-    if (newVal === 'running') {
-      resetStallNotifyTimer();
-    } else {
-      clearStallNotifyTimer();
-      stallNotified = false;
-    }
-  });
-
-  // Reset stall timer whenever we receive a run activity event
-  const origTouchRunActivity = sender.touchRunActivity.bind(sender);
-  sender.touchRunActivity = () => {
-    origTouchRunActivity();
-    if (stallNotified) {
-      resetStallNotifyTimer();
-    } else if (runStatus.value === 'running' && stallNotifyTimer != null) {
-      resetStallNotifyTimer();
-    }
-  };
+  // prompts "seems stuck, stop?". The composable wraps sender.touchRunActivity
+  // to reset the timer on every run activity event.
+  const { clearStallNotifyTimer } = useChatStallWatchdog({ runStatus, sender, stopStreaming });
 
   const sessionRevision = computed(() => {
     const sid = selectedSessionForUi.value?.id;
@@ -1025,62 +882,11 @@ export function useChatWorkspace() {
     $q.notify({ type: 'info', message: t('chat.errorBlock.removeAttachmentHint') });
   }
 
-  // --- Compress status polling ---
-  const compressStatus = computed<CompressStatus>(() => sessionStore.compressStatus);
-  let compressPollTimer: ReturnType<typeof setInterval> | null = null;
-  let compressNormalSince: number | null = null;
-  const COMPRESS_POLL_INTERVAL_MS = 5_000;
-  const COMPRESS_NORMAL_COOLDOWN_MS = 10_000;
-
-  async function pollCompressStatus() {
-    const sid = selectedSessionForUi.value?.id;
-    if (!sid) {
-      // No session selected (e.g. navigated away from chat): stop the timer
-      // instead of spinning a no-op interval forever.
-      stopCompressPolling();
-      return;
-    }
-    await sessionStore.fetchCompressStatus(sid);
-    // The stop-condition must be evaluated here, after every poll, rather
-    // than in a watch on compressStatus: a watch only fires on value change,
-    // so a steady 'normal' never re-triggers it and the cooldown check below
-    // would never run again — polling continued forever (5s interval kept the
-    // network busy, which starved browser-tool readiness on the chat page).
-    if (sessionStore.compressStatus === 'normal') {
-      if (!compressNormalSince) {
-        compressNormalSince = Date.now();
-      }
-      if (Date.now() - compressNormalSince >= COMPRESS_NORMAL_COOLDOWN_MS) {
-        stopCompressPolling();
-      }
-    } else {
-      compressNormalSince = null;
-    }
-  }
-
-  function startCompressPolling() {
-    stopCompressPolling();
-    void pollCompressStatus();
-    compressPollTimer = setInterval(() => {
-      void pollCompressStatus();
-    }, COMPRESS_POLL_INTERVAL_MS);
-  }
-
-  function stopCompressPolling() {
-    if (compressPollTimer) {
-      clearInterval(compressPollTimer);
-      compressPollTimer = null;
-    }
-    compressNormalSince = null;
-  }
-
-  // Restart polling if the status ever flips to non-normal while the timer
-  // is stopped (defensive: today only pollCompressStatus updates the status,
-  // but a future WS push path would need this to resume polling).
-  watch(compressStatus, (status) => {
-    if (status !== 'normal' && !compressPollTimer) {
-      startCompressPolling();
-    }
+  // --- Compress status polling (extracted composable) ---
+  // Polls every 5s while compression is in progress; auto-stops after the
+  // status stays 'normal' for a 10s cooldown to avoid idle network spin.
+  const { compressStatus, startCompressPolling, stopCompressPolling } = useChatCompressPolling({
+    selectedSessionId: () => selectedSessionForUi.value?.id,
   });
 
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;

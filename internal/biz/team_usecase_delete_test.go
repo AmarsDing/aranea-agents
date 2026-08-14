@@ -113,6 +113,9 @@ func (s *stubTaskDeadLetterRepo) ListTaskDeadLetters(context.Context, TaskDeadLe
 func (s *stubTaskDeadLetterRepo) ResolveTaskDeadLetter(context.Context, string) (TaskDeadLetter, error) {
 	return TaskDeadLetter{}, nil
 }
+func (s *stubTaskDeadLetterRepo) GetTaskDeadLetter(context.Context, string) (TaskDeadLetter, error) {
+	return TaskDeadLetter{}, ErrNotFound
+}
 
 // --- tests ---
 

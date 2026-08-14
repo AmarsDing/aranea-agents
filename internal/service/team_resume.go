@@ -9,6 +9,9 @@ import (
 )
 
 func (s *TeamService) ResumeTeamRunExecution(ctx context.Context, req *v1.ResumeTeamRunExecutionRequest) (*v1.ResumeTeamRunExecutionResponse, error) {
+	if err := s.assertRunTeamMutateAccess(ctx, req.GetRunId()); err != nil { // N5: IDOR
+		return nil, err
+	}
 	run, err := s.uc.GetRun(ctx, req.GetRunId())
 	if err != nil {
 		return nil, mapTeamErr(err)

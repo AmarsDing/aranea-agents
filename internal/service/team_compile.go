@@ -18,6 +18,9 @@ func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamG
 	if teamID == "" {
 		return nil, apierror.BadRequest("TEAM", "team_id is required")
 	}
+	if err := s.assertTeamAccess(ctx, teamID); err != nil { // N5: IDOR
+		return nil, err
+	}
 	rawDef := strings.TrimSpace(req.GetDefinitionJson())
 	if rawDef == "" {
 		t, err := s.uc.Get(ctx, teamID)

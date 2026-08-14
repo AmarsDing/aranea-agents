@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -12,61 +11,6 @@ import (
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
-
-// OpenAICompatLLMCaller implements biz.LLMCaller using CallOpenAICompatChat
-// with a statically-configured ProviderAPIConfig. Mainly for tests and
-// fixed-credential scenarios; production code uses DynamicLLMCaller.
-// PGO-3-BIZ-01.
-type OpenAICompatLLMCaller struct {
-	cfg ProviderAPIConfig
-	hc  *http.Client
-}
-
-// NewOpenAICompatLLMCaller creates a caller from a biz.LLMCallerConfig.
-func NewOpenAICompatLLMCaller(cfg biz.LLMCallerConfig) *OpenAICompatLLMCaller {
-	timeout := time.Duration(cfg.TimeoutSec) * time.Second
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-	return &OpenAICompatLLMCaller{
-		cfg: ProviderAPIConfig{
-			ProviderType: cfg.Provider,
-			APIBaseURL:   cfg.BaseURL,
-			APIKey:       cfg.APIKey,
-		},
-		hc: &http.Client{Timeout: timeout},
-	}
-}
-
-// NewOpenAICompatLLMCallerFromProviderConfig creates a caller directly from ProviderAPIConfig.
-func NewOpenAICompatLLMCallerFromProviderConfig(cfg ProviderAPIConfig, timeoutSec int) *OpenAICompatLLMCaller {
-	timeout := time.Duration(timeoutSec) * time.Second
-	if timeout <= 0 {
-		timeout = 60 * time.Second
-	}
-	return &OpenAICompatLLMCaller{cfg: cfg, hc: &http.Client{Timeout: timeout}}
-}
-
-// Call implements biz.LLMCaller. If req.Provider is set it overrides cfg.ProviderType
-// so PromptRefiner's decision wins (B-1 fix). The model name is taken from req.Model
-// (B-4 fix) — previously empty string was passed.
-func (c *OpenAICompatLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (string, int, error) {
-	msgs := buildMessages(req.System, req.User, req.Images...)
-	cfg := c.cfg
-	if p := strings.TrimSpace(req.Provider); p != "" {
-		cfg.ProviderType = p
-	}
-	// P2-5：透传思考强度路由决策（归一化/校验在 llmcompat 映射层完成）。
-	cfg.ThinkingEffort = req.ThinkingEffort
-	modelName := strings.TrimSpace(req.Model)
-	text, _, promptTok, completionTok, err := CallOpenAICompatChat(ctx, c.hc, cfg, modelName, msgs)
-	if err != nil {
-		return "", 0, err
-	}
-	return text, promptTok + completionTok, nil
-}
-
-var _ biz.LLMCaller = (*OpenAICompatLLMCaller)(nil)
 
 // ─── DynamicLLMCaller ────────────────────────────────────────────────────────
 

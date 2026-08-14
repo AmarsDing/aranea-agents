@@ -153,6 +153,29 @@ var (
 		Buckets: []float64{100, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000},
 	}, []string{"category"})
 
+	// DeferredToolSearchTotal counts deferred-catalog tool_search calls by
+	// whether any tool matched (has_results ∈ {true, false}). P1-4 漏斗发现段。
+	DeferredToolSearchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_deferred_tool_search_total",
+		Help: "Deferred tool search calls by whether the query matched any catalog entry.",
+	}, []string{"has_results"})
+
+	// DeferredToolActivationTotal counts tool_load outcomes by tool name
+	// (outcome ∈ {success, not_found, failed}). P1-4 漏斗激活段；与
+	// aranea_tool_invocation_total 按 tool 相除即得「激活→使用」转化率。
+	DeferredToolActivationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_deferred_tool_activation_total",
+		Help: "Deferred tool activation (tool_load) outcomes by tool name.",
+	}, []string{"tool", "outcome"})
+
+	// DeferredCatalogRecommendTotal counts catalog-cue renders by whether the
+	// current user query produced semantic recommendations (matched ∈
+	// {true, false}). P1-4 预激活覆盖率：推荐区非空的轮次占比。
+	DeferredCatalogRecommendTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_deferred_catalog_recommend_total",
+		Help: "Catalog cue renders by whether query-matched recommendations were shown.",
+	}, []string{"matched"})
+
 	// AlertNotifyTotal counts monitor alert outbound delivery attempts.
 	AlertNotifyTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_alert_notify_total",

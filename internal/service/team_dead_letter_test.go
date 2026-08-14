@@ -116,6 +116,15 @@ func (r *deadLetterTeamRepo) ResolveTaskDeadLetter(_ context.Context, id string)
 	return biz.TaskDeadLetter{}, biz.ErrNotFound
 }
 
+func (r *deadLetterTeamRepo) GetTaskDeadLetter(_ context.Context, id string) (biz.TaskDeadLetter, error) {
+	for _, item := range r.items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return biz.TaskDeadLetter{}, biz.ErrNotFound
+}
+
 func TestTeamService_ListTaskDeadLetters_requiresScope(t *testing.T) {
 	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: &deadLetterTeamRepo{}, Writer: &deadLetterTeamRepo{}, RunReader: &deadLetterTeamRepo{}, RunWriter: &deadLetterTeamRepo{}, StepRepo: &deadLetterTeamRepo{}, DeadLetter: &deadLetterTeamRepo{}, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{})

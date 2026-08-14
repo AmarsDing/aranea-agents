@@ -15,10 +15,3 @@ type sessionRunTurnBinding struct {
 	runtimeRunID string
 	ltCfg        biz.ChannelLongTaskConfig
 }
-
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}

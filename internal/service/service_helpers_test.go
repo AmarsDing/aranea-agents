@@ -1,7 +1,6 @@
 package service_test
 
 import (
-	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -132,24 +131,6 @@ func TestPickTitleModel(t *testing.T) {
 			t.Fatal("expected ok=false for empty slice")
 		}
 	})
-}
-
-func TestErrString(t *testing.T) {
-	tests := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{"nil error", nil, ""},
-		{"non nil error", errors.New("something failed"), "something failed"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := service.ErrString(tt.err); got != tt.want {
-				t.Errorf("errString() = %q, want %q", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestChatIngressRecording(t *testing.T) {

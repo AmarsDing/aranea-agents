@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"aranea-agents/internal/metrics"
+
 	"trpc.group/trpc-go/trpc-agent-go/toolsnapshot"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -85,6 +87,8 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 
 	// 检查工具是否在目录中
 	if !t.manager.IsInCatalog(in.ToolName) {
+		// P1-4 漏斗度量（激活段）：未找到目标工具。
+		metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "not_found").Inc()
 		return toolLoadOutput{
 			Success:  false,
 			ToolName: in.ToolName,
@@ -95,12 +99,14 @@ func (t *ToolLoadTool) execute(ctx context.Context, in toolLoadInput) (toolLoadO
 	// 激活工具（幂等：已激活则直接返回声明）
 	decl, err := t.manager.Activate(ctx, in.ToolName)
 	if err != nil {
+		metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "failed").Inc()
 		return toolLoadOutput{
 			Success:  false,
 			ToolName: in.ToolName,
 			Error:    fmt.Sprintf("failed to activate tool %q: %v", in.ToolName, err),
 		}, nil
 	}
+	metrics.DeferredToolActivationTotal.WithLabelValues(in.ToolName, "success").Inc()
 
 	// 触发 LLM 工具快照失效，下一轮请求即能看到新工具
 	toolsnapshot.InvalidateFromContext(ctx)

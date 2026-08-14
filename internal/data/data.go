@@ -149,6 +149,7 @@ var ProviderSet = wire.NewSet(
 	NewSpiritTransactor,
 	NewTaskPlanRepo,
 	NewOrchestrationRepo,
+	NewOrchestrationTraceReader,
 	NewAllocationPlanRepo,
 	NewAgentPerformanceRepo,
 	NewSelfCheckReportRepo,
