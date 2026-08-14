@@ -137,7 +137,9 @@ func TestTeamService_ListAndResolveTaskDeadLetters(t *testing.T) {
 	repo := &deadLetterTeamRepo{items: []biz.TaskDeadLetter{{
 		ID: "dl-1", SessionID: "sess-1", Status: biz.TaskDeadLetterStatusPending, SourceType: "team_run",
 	}}}
-	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil)
+	// N5: ListTaskDeadLetters/ResolveTaskDeadLetter 现在做 IDOR 校验，需要 session 归属信息。
+	sessionUC := biz.NewSessionUsecase(&f10SessionRepo{sessions: []biz.Session{{ID: "sess-1"}}}, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	svc := NewTeamService(biz.NewTeamUsecase(biz.TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()}), nil, nil, sessionUC, nil, nil, nil, loggateway.NewNoop(), nil, nil, nil, nil, nil, nil, nil, nil)
 	resp, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{
 		SessionId: "sess-1",
 		Status:    biz.TaskDeadLetterStatusPending,

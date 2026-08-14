@@ -84,10 +84,104 @@ func waitForNotices(t *testing.T, bus *teeRecordingBus, want int) []biz.Event {
 	return bus.snapshot()
 }
 
+// Y3: an interrupt-carrying Pregel step (the only reachable HITL carrier —
+// checkpoint interrupt events require StreamModeCheckpoints) must NOT be
+// dropped by the high-frequency filter: the tee must synchronously invoke
+// onInterrupt inline (before the stream ends, so the pause mark lands before
+// the runner finalizes the team run) AND publish the graph_stage notice for
+// the coordinator watch.
+func TestTeeGraphStageNotices_PregelInterrupt_MarksInlineAndPublishes(t *testing.T) {
+	bus := &teeRecordingBus{}
+	in := make(chan *trpcevent.Event, 8)
+	var (
+		intMu        sync.Mutex
+		gotNode      string
+		gotLineage   string
+		calledBefore bool // callback fired before the tee output closed
+	)
+	onInterrupt := func(nodeID, lineageID string) {
+		intMu.Lock()
+		defer intMu.Unlock()
+		gotNode, gotLineage = nodeID, lineageID
+		calledBefore = true
+	}
+	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", onInterrupt, loggateway.NewNoop())
+
+	interruptEv := trpcgraph.NewPregelInterruptEvent(
+		trpcgraph.WithPregelEventInvocationID("inv-1"),
+		trpcgraph.WithPregelEventStepNumber(3),
+		trpcgraph.WithPregelEventNodeID("review-1"),
+		trpcgraph.WithPregelEventInterruptKey("hitl"),
+		trpcgraph.WithPregelEventLineageID("lineage-1"),
+	)
+	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
+		feedIn <- interruptEv
+		close(in)
+	})
+
+	if len(forwarded) != 1 {
+		t.Fatalf("forwarded %d events, want 1 (tee must not drop the interrupt event)", len(forwarded))
+	}
+	// drainTee returned → tee output closed. The inline mark must already have
+	// happened (synchronous, in the tee goroutine, before close).
+	intMu.Lock()
+	if !calledBefore {
+		t.Fatal("onInterrupt was not invoked synchronously before the stream ended")
+	}
+	if gotNode != "review-1" {
+		t.Errorf("onInterrupt nodeID = %q, want %q", gotNode, "review-1")
+	}
+	if gotLineage != "lineage-1" {
+		t.Errorf("onInterrupt lineageID = %q, want %q", gotLineage, "lineage-1")
+	}
+	intMu.Unlock()
+
+	notices := waitForNotices(t, bus, 1)
+	if len(notices) != 1 {
+		t.Fatalf("published %d notices for the interrupt, want 1", len(notices))
+	}
+	notice := notices[0].(*biz.SystemNoticeEvent)
+	if got := metaString(notice.Meta, "interrupt_key"); got != "hitl" {
+		t.Errorf("notice interrupt_key = %q, want hitl", got)
+	}
+	if got := metaString(notice.Meta, "node_id"); got != "review-1" {
+		t.Errorf("notice node_id = %q, want review-1", got)
+	}
+}
+
+// Y3: plain Pregel step progress (no interrupt key) must stay filtered — no
+// notice, no callback (bus traffic bounded, 限流红线).
+func TestTeeGraphStageNotices_PlainPregelStep_StaysFiltered(t *testing.T) {
+	bus := &teeRecordingBus{}
+	in := make(chan *trpcevent.Event, 8)
+	called := false
+	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", func(string, string) { called = true }, loggateway.NewNoop())
+
+	stepEv := trpcgraph.NewPregelStepEvent(
+		trpcgraph.WithPregelEventInvocationID("inv-1"),
+		trpcgraph.WithPregelEventStepNumber(1),
+		trpcgraph.WithPregelEventPhase(trpcgraph.PregelPhaseExecution),
+	)
+	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
+		feedIn <- stepEv
+		close(in)
+	})
+	if len(forwarded) != 1 {
+		t.Fatalf("forwarded %d events, want 1 (tee must not drop)", len(forwarded))
+	}
+	time.Sleep(50 * time.Millisecond)
+	if called {
+		t.Error("onInterrupt must not fire for a plain pregel step")
+	}
+	if got := len(bus.snapshot()); got != 0 {
+		t.Fatalf("published %d notices for a plain pregel step, want 0", got)
+	}
+}
+
 func TestTeeGraphStageNotices_PublishesNodeLifecycle(t *testing.T) {
 	bus := &teeRecordingBus{}
 	in := make(chan *trpcevent.Event, 8)
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", loggateway.NewNoop())
+	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
 
 	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
 		feedIn <- teeNodeEvent(t, trpcgraph.ObjectTypeGraphNodeStart, "member-1")
@@ -131,7 +225,7 @@ func TestTeeGraphStageNotices_PublishesNodeLifecycle(t *testing.T) {
 func TestTeeGraphStageNotices_FiltersHighFrequencyEvents(t *testing.T) {
 	bus := &teeRecordingBus{}
 	in := make(chan *trpcevent.Event, 8)
-	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", loggateway.NewNoop())
+	out := teeGraphStageNotices(in, bus, "sess-1", "spirit-1", "graph-1", "exec-1", nil, loggateway.NewNoop())
 
 	forwarded := drainTee(t, in, out, func(feedIn chan<- *trpcevent.Event) {
 		feedIn <- &trpcevent.Event{Response: &model.Response{Object: trpcgraph.ObjectTypeGraphPregelStep}}
@@ -153,11 +247,11 @@ func TestTeeGraphStageNotices_FiltersHighFrequencyEvents(t *testing.T) {
 
 func TestTeeGraphStageNotices_PassthroughWhenNilBusOrEmptyExec(t *testing.T) {
 	in := make(chan *trpcevent.Event)
-	if got := teeGraphStageNotices(in, nil, "s", "sp", "g", "exec-1", loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
+	if got := teeGraphStageNotices(in, nil, "s", "sp", "g", "exec-1", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
 		t.Error("nil bus: expected passthrough (same channel)")
 	}
 	bus := &teeRecordingBus{}
-	if got := teeGraphStageNotices(in, bus, "s", "sp", "g", "", loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
+	if got := teeGraphStageNotices(in, bus, "s", "sp", "g", "", nil, loggateway.NewNoop()); got != (<-chan *trpcevent.Event)(in) {
 		t.Error("empty execID: expected passthrough (same channel)")
 	}
 }

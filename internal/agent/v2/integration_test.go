@@ -10,8 +10,8 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// recordingBus captures all Publish calls in order. Implements biz.EventBus
-// (via NewEventBusAdapter) so the Sequencer can use it as its publish sink.
+// recordingBus captures all Publish calls in order. It directly satisfies the
+// local EventBus interface so the Sequencer can use it as its publish sink.
 // Subscribe is a no-op (returns a never-delivering channel) — we verify via
 // the recorded Publish calls, not via subscriber delivery.
 //
@@ -56,7 +56,7 @@ func TestEndToEnd_V2Pipeline(t *testing.T) {
 	rs := &fakeRepoSet{}
 	v2Bus := &recordingBus{}
 
-	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
+	seq := NewSequencer(rs, v2Bus, loggateway.NewNoop(),
 		WithPublishBuffer(64),
 		WithPersistBuffer(64),
 		WithDeltaBatchInterval(time.Millisecond*2),
@@ -126,7 +126,7 @@ func TestEndToEnd_FIFOOrdering(t *testing.T) {
 	rs := &fakeRepoSet{}
 	v2Bus := &recordingBus{}
 
-	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
+	seq := NewSequencer(rs, v2Bus, loggateway.NewNoop(),
 		WithPublishBuffer(64),
 		WithPersistBuffer(64),
 		WithDeltaBatchInterval(time.Millisecond*2),
@@ -201,7 +201,7 @@ func TestEndToEnd_CancelledTurnMarksCancelledStatus(t *testing.T) {
 	rs := &fakeRepoSet{}
 	v2Bus := &recordingBus{}
 
-	seq := NewSequencer(rs, NewEventBusAdapter(v2Bus), loggateway.NewNoop(),
+	seq := NewSequencer(rs, v2Bus, loggateway.NewNoop(),
 		WithPublishBuffer(64),
 		WithPersistBuffer(64),
 		WithDeltaBatchInterval(time.Millisecond*2),

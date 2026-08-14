@@ -15,6 +15,7 @@ func EnsureTeamGraphSessionSchema(ctx context.Context, db *sql.DB) error {
   team_run_id TEXT NOT NULL DEFAULT '',
   team_id TEXT NOT NULL DEFAULT '',
   session_id TEXT NOT NULL DEFAULT '',
+  spirit_session_id TEXT NOT NULL DEFAULT '',
   input_preview TEXT NOT NULL DEFAULT '',
   definition_json TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'running',

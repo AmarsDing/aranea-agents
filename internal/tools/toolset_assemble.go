@@ -606,6 +606,59 @@ func findRegistryCategory(name string) string {
 	return ""
 }
 
+// dedupFlatToolNames enforces earlier-wins over the flat tool list. Duplicate
+// declaration names (e.g. two CustomTools injected by different layers) must
+// not reach the model twice — most LLM APIs reject duplicate tool names.
+// The first occurrence wins and later flat duplicates are dropped with a Warn.
+//
+// Cross collisions between flat tools and ToolSet members are detected (Warn
+// only) for the cheap static toolsets in aliasExpandableToolSetNames; MCP and
+// other dynamic toolsets are not enumerated here because their Tools() call
+// may trigger a network roundtrip.
+func (ac *assembleContext) dedupFlatToolNames() {
+	if len(ac.out.Tools) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, len(ac.out.Tools))
+	kept := make([]Tool, 0, len(ac.out.Tools))
+	for _, t := range ac.out.Tools {
+		if t == nil || t.Declaration() == nil {
+			kept = append(kept, t)
+			continue
+		}
+		name := t.Declaration().Name
+		if _, dup := seen[name]; dup {
+			ac.lg.Warn("tools.assemble.duplicate_tool_name",
+				loggateway.StepID("tool.assemble.duplicate_tool_name"),
+				loggateway.Str("tool", name),
+				loggateway.Str("resolution", "kept first occurrence, dropped later flat duplicate"))
+			continue
+		}
+		seen[name] = struct{}{}
+		kept = append(kept, t)
+	}
+	ac.out.Tools = kept
+
+	for _, ts := range ac.out.ToolSets {
+		if ts == nil || !aliasExpandableToolSetNames[ts.Name()] {
+			continue
+		}
+		for _, t := range ts.Tools(ac.ctx) {
+			if t == nil || t.Declaration() == nil {
+				continue
+			}
+			name := t.Declaration().Name
+			if _, ok := seen[name]; ok {
+				ac.lg.Warn("tools.assemble.duplicate_tool_name",
+					loggateway.StepID("tool.assemble.duplicate_tool_name"),
+					loggateway.Str("tool", name),
+					loggateway.Str("toolset", ts.Name()),
+					loggateway.Str("resolution", "flat tool shadows toolset member on the model surface"))
+			}
+		}
+	}
+}
+
 // countDeferredToolSets 统计被延迟的 ToolSet 数量。
 func countDeferredToolSets(toolSets []ToolSet, deferredRegNames map[string]bool) int {
 	count := 0

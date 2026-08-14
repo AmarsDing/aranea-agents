@@ -773,16 +773,17 @@ func (c *TeamGraphRunCoordinator) persistSession(ctx context.Context, sess *team
 	}
 	now := agent.RFC3339Now()
 	dbSess := biz.TeamGraphSession{
-		ExecID:         sess.execID,
-		TeamRunID:      sess.teamRunID,
-		TeamID:         sess.teamID,
-		SessionID:      sess.sessionID,
-		InputPreview:   sess.inputPreview,
-		DefinitionJSON: sess.definitionJSON,
-		Status:         status,
-		RegisteredAt:   now,
-		LastActivityAt: now,
-		UpdatedAt:      now,
+		ExecID:          sess.execID,
+		TeamRunID:       sess.teamRunID,
+		TeamID:          sess.teamID,
+		SessionID:       sess.sessionID,
+		SpiritSessionID: sess.spiritSessionID,
+		InputPreview:    sess.inputPreview,
+		DefinitionJSON:  sess.definitionJSON,
+		Status:          status,
+		RegisteredAt:    now,
+		LastActivityAt:  now,
+		UpdatedAt:       now,
 	}
 	if existing, err := c.sessionRepo.GetSession(ctx, sess.execID); err == nil {
 		dbSess.CreatedAt = existing.CreatedAt
@@ -861,9 +862,13 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 			execID:         dbSess.ExecID,
 			inputPreview:   dbSess.InputPreview,
 			definitionJSON: dbSess.DefinitionJSON,
-			stepDedup:      newGraphStepDedup(),
-			nodeStarts:     newGraphNodeStartTracker(),
-			registeredAt:   time.Now(),
+			// Y5: restore the watch subscription filter key — without it a
+			// recovered waiting_human session silently drops every graph_stage
+			// notice (EventSubscribeOptions.SpiritSessionID mismatch).
+			spiritSessionID: dbSess.SpiritSessionID,
+			stepDedup:       newGraphStepDedup(),
+			nodeStarts:      newGraphNodeStartTracker(),
+			registeredAt:    time.Now(),
 		}
 		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.agentKeyFn, c.lg)
 		sess.obsReg = reg

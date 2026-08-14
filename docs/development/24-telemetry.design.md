@@ -12,7 +12,7 @@ OpenTelemetry 遥测集成：Trace / Metrics / Langfuse / 应用内 Trace 投影
 
 **设计原则**：
 
-- **四轨并行**：Prometheus 直出（`internal/metrics`）+ OTLP 导出（`internal/telemetry` + trpc `telemetry/metric`）+ 应用内 Trace 投影（`TraceEmitter` + `turntrace.Bridge`）+ Langfuse 导出（`internal/telemetry/langfuse.go`）
+- **三轨并行**：Prometheus 直出（`internal/metrics`）+ OTLP 导出（`internal/telemetry` + trpc `telemetry/metric`）+ 应用内 Trace 投影（`TraceEmitter` + `turntrace.Bridge`）。~~Langfuse 导出（`internal/telemetry/langfuse.go`）~~已删除——从未接入 Wire（零生产引用），2026-08-14 死代码清理移除
 - **环境变量驱动**：`OTEL_EXPORTER_OTLP_ENDPOINT` 未设置时 OTLP 全部 noop，零配置零开销
 - **协议可配**：`OTEL_EXPORTER_OTLP_PROTOCOL` 支持 `http`（默认）和 `grpc`
 - **采样可配**：`OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` 控制 HTTP 导出采样（gRPC 路径暂未接入）

@@ -289,7 +289,21 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	// node_start/node_end 到不了 coordinator 的 step watch，per-member
 	// team_run_steps 不持久化。tee 框架事件流，把图节点生命周期以 graph_stage
 	// system notice 重发到 EventBus（watch 按 spiritSessionID + execution_id 过滤）。
-	events = teeGraphStageNotices(events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, r.lg)
+	// Y3: HITL interrupt 经 tee 内联同步标记（先于流结束），避免 async bus
+	// 握手与 run 收尾竞态（DeferTeamRunSuccessIfHITL 读到陈旧 Running 把暂停误判完成）。
+	var onGraphInterrupt func(nodeID, lineageID string)
+	if r.mediator != nil && graphExecID != "" {
+		onGraphInterrupt = func(nodeID, lineageID string) {
+			if err := r.mediator.MarkTeamGraphInterrupt(context.Background(), graphExecID, nodeID, lineageID); err != nil {
+				r.lg.Warn("team graph: inline interrupt mark failed",
+					loggateway.StepID("team.graph.interrupt_mark_fail"),
+					loggateway.Str("exec_id", graphExecID),
+					loggateway.Str("node_id", nodeID),
+					loggateway.Err(err))
+			}
+		}
+	}
+	events = teeGraphStageNotices(events, r.td.Pipeline.EventBus, sess.ID, deriveSpiritSessionID(sess), ResolveLinkedGraphID(teamRow.LinkedGraphID, teamRow.DefinitionJSON), graphExecID, onGraphInterrupt, r.lg)
 	events = event.WrapFrameworkEventsWithOtel(events, teamEmitter, teamBridge, teamBridge)
 
 	// Phase 7: Consume stream (streamOpts already has the pre-created projector)

@@ -301,3 +301,72 @@ func TestOrchestrationTraceTrigger_SignatureCarriesMode(t *testing.T) {
 		t.Error("pattern_hash should mirror trigger signature for pending dedup")
 	}
 }
+
+// ── P3-2 反哺闭环集成 ────────────────────────────────────────────────────────
+
+// 编排 bad case → MAST 聚类建议落库（pending 待人工评审）→ observe 物化 run。
+// 验证 trigger → orchestrator.CheckAndCreate → ScanOnce 全链路：
+// FM-1.3 集群 → patch_prompt 建议 + run；FM-3.1 集群 → tune_config 建议 + run。
+func TestOrchestrationTraceTrigger_ObserveClosedLoop(t *testing.T) {
+	reader := &mockOrchestrationTraceReader{traces: []OrchestrationTrace{
+		{OrchestrationID: "bad-1", Status: string(OrchestrationStatusCancelled), CancelReason: string(CancelReasonDoomLoop)},
+		{OrchestrationID: "bad-2", Status: string(OrchestrationStatusCancelled), CancelReason: string(CancelReasonDoomLoop)},
+		{OrchestrationID: "bad-3", Status: string(OrchestrationStatusFailed), Strategy: string(StrategyCoordinator), TeamCount: 2, DurationMS: 2_000},
+		// 用户取消不入闭环（非系统失败）。
+		{OrchestrationID: "user-1", Status: string(OrchestrationStatusCancelled), CancelReason: string(CancelReasonUser)},
+	}}
+	writer := &orchStubWriter{}
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, writer, loggateway.NewNoop())
+	orch.RegisterTrigger(NewOrchestrationTraceTrigger(reader, 0, 0, loggateway.NewNoop()))
+
+	suggestions := &siStubSuggestionReader{created: &writer.created}
+	runs := newSIStubRunStore()
+	uc := NewSelfImprovementObserveUsecase(orch, suggestions, runs, runs, loggateway.NewNoop())
+
+	created, err := uc.ScanOnce(context.Background())
+	if err != nil {
+		t.Fatalf("ScanOnce: %v", err)
+	}
+	// 2 个 MAST 集群（FM-1.3 x2、FM-3.1 x1）→ 2 建议 + 2 run。
+	if len(writer.created) != 2 {
+		t.Fatalf("orchestrator created = %d, want 2", len(writer.created))
+	}
+	if created != 2 {
+		t.Fatalf("runs created = %d, want 2", created)
+	}
+
+	byMode := map[string]UnifiedEvolutionSuggestion{}
+	for _, s := range writer.created {
+		mode, _ := siTestMeta(t, s)["mast_mode"].(string)
+		byMode[mode] = s
+		// 建议必须 pending（先人工评审后应用），且以 platform 为目标。
+		if s.Status != string(UnifiedEvolutionStatePending) {
+			t.Errorf("suggestion status = %q, want pending", s.Status)
+		}
+		if s.TargetType != EvolutionTargetPlatform {
+			t.Errorf("target type = %q, want platform", s.TargetType)
+		}
+		// 每个建议必须物化出 run，且 run 标注 trigger_source 供后续阶段路由。
+		run := runs.bySuggestion[s.ID]
+		if run == nil {
+			t.Fatalf("no run materialized for suggestion %q (mode %s)", s.ID, mode)
+		}
+		if run.Status != RunStatusDetected {
+			t.Errorf("run.Status = %q, want detected", run.Status)
+		}
+		if run.TriggerSource != TriggerSourceOrchestrationTrace {
+			t.Errorf("run.TriggerSource = %q, want %q", run.TriggerSource, TriggerSourceOrchestrationTrace)
+		}
+	}
+	// 反哺动作映射：规范类 → patch_prompt；验证类 → tune_config。
+	if s, ok := byMode[string(MASTStepRepetition)]; !ok || s.ActionType != EvolutionActionPatchPrompt {
+		t.Errorf("FM-1.3 should route to patch_prompt, got %q", s.ActionType)
+	}
+	if s, ok := byMode[string(MASTPrematureTermination)]; !ok || s.ActionType != EvolutionActionTuneConfig {
+		t.Errorf("FM-3.1 should route to tune_config, got %q", s.ActionType)
+	}
+	// 高置信集群（doom_loop 0.95 / count=2）应升优先级。
+	if s, ok := byMode[string(MASTStepRepetition)]; ok && s.Priority < 2 {
+		t.Errorf("FM-1.3 cluster priority = %d, want >= 2", s.Priority)
+	}
+}

@@ -121,6 +121,71 @@ func TestASROpenSendsFullClientRequest(t *testing.T) {
 	require.Equal(t, float64(16000), audio["rate"])
 }
 
+// readRequestCorpusHotwords 从 full client request 帧提取 request.corpus.context
+// 中的热词表（V11-T4）。SAUC bigmodel 官方参数：corpus.context 为 JSON 字符串，
+// 格式 {"hotwords":[{"word":"..."}]}。
+func readRequestCorpusHotwords(t *testing.T, f volcFrame) []string {
+	t.Helper()
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(f.payload, &body))
+	req, ok := body["request"].(map[string]any)
+	require.True(t, ok, "full client request must contain request object")
+	corpus, ok := req["corpus"].(map[string]any)
+	require.True(t, ok, "request must contain corpus object (hotwords injection)")
+	ctxStr, ok := corpus["context"].(string)
+	require.True(t, ok, "corpus.context must be a JSON string")
+	var ctx struct {
+		Hotwords []struct {
+			Word string `json:"word"`
+		} `json:"hotwords"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(ctxStr), &ctx))
+	words := make([]string, 0, len(ctx.Hotwords))
+	for _, h := range ctx.Hotwords {
+		words = append(words, h.Word)
+	}
+	return words
+}
+
+// TestASROpenInjectsDefaultHotwords 默认热词表（拦截链识别增强）随 full client
+// request 注入 request.corpus.context：唤醒词同音表 + 退出词 + 确认词，去重。
+func TestASROpenInjectsDefaultHotwords(t *testing.T) {
+	conn := newFakeWSConn()
+	p := newTestASRProvider(conn)
+	pushServerAck(t, conn)
+	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
+	require.NoError(t, err)
+	defer sess.Close()
+
+	f := mustReadFrame(t, conn)
+	words := readRequestCorpusHotwords(t, f)
+	require.Contains(t, words, "小媛")  // 唤醒词（对应 internal/voice wakeWords）
+	require.Contains(t, words, "休息吧") // 退出词（exitWords）
+	require.Contains(t, words, "好的")   // 确认批准词（approveWords）
+	require.Contains(t, words, "算了")   // 确认否认词（denyWords）
+	// 「不用了」同现于 exitWords/denyWords，默认表必须去重（boost 重复无意义）。
+	seen := map[string]int{}
+	for _, w := range words {
+		seen[w]++
+	}
+	require.Equal(t, 1, seen["不用了"], "hotwords must be deduplicated")
+}
+
+// TestASROpenHotwordsOverride biz.ASRProviderConfig.Hotwords 非空时覆盖默认表
+// （预留配置通道，暂不接 DB/UI）。
+func TestASROpenHotwordsOverride(t *testing.T) {
+	conn := newFakeWSConn()
+	p := newTestASRProvider(conn)
+	p.(*volcASRProvider).cfg.Hotwords = []string{"自定义热词"}
+	pushServerAck(t, conn)
+	sess, err := p.Open(context.Background(), biz.ASRSessionConfig{SampleRate: 16000})
+	require.NoError(t, err)
+	defer sess.Close()
+
+	f := mustReadFrame(t, conn)
+	require.Equal(t, []string{"自定义热词"}, readRequestCorpusHotwords(t, f))
+}
+
 func TestASRWriteAndFinishSeq(t *testing.T) {
 	conn := newFakeWSConn()
 	p := newTestASRProvider(conn)

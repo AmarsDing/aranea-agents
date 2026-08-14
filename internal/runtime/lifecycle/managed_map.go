@@ -1,14 +1,11 @@
-// Package lifecycle 提供统一的生命周期管理抽象：LifecycleManager、GoroutinePool、
-// ManagedMap、ManagedCache、DeadLetterQueue。
+// Package lifecycle 提供统一的生命周期管理抽象：LifecycleManager、ManagedMap、
+// DeadLetterQueue。
 //
 // 设计目标（对应 docs/reports/2026-06-18-review-issues-and-solutions.md 方案 A）：
 //   - ManagedMap：替代裸 sync.Map + 手写 mutex，提供原子 LoadOrStore / UpdateOrStore，
 //     内置可选 TTL 清理与终态清理，根治 TOCTOU 与 map 无限增长问题（A1/A5/A6）。
-//   - GoroutinePool：多模式 goroutine 启动（Go 请求级 + GoBackground 进程级），
-//     强制 ctx 传播，根治泄漏（A2）。
 //   - LifecycleManager：统一注册/销毁进程级资源（A3）。
 //   - DeadLetterQueue：失败消息死信缓冲（A4）。
-//   - ManagedCache：带 TTL 的缓存，随 LifecycleManager 生命周期管理。
 package lifecycle
 
 import (

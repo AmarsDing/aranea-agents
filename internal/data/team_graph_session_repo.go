@@ -33,7 +33,7 @@ func (r *teamGraphSessionRepo) writeDB(ctx context.Context) execer {
 }
 
 const teamGraphSessionSelectSQL = `
-SELECT exec_id, team_run_id, team_id, session_id, input_preview, definition_json,
+SELECT exec_id, team_run_id, team_id, session_id, spirit_session_id, input_preview, definition_json,
   status, registered_at, last_activity_at, created_at, updated_at
 FROM team_graph_sessions`
 
@@ -42,7 +42,7 @@ func scanTeamGraphSessionRow(scanner interface {
 }) (biz.TeamGraphSession, error) {
 	var s biz.TeamGraphSession
 	err := scanner.Scan(
-		&s.ExecID, &s.TeamRunID, &s.TeamID, &s.SessionID,
+		&s.ExecID, &s.TeamRunID, &s.TeamID, &s.SessionID, &s.SpiritSessionID,
 		&s.InputPreview, &s.DefinitionJSON,
 		&s.Status, &s.RegisteredAt, &s.LastActivityAt,
 		&s.CreatedAt, &s.UpdatedAt,
@@ -70,20 +70,21 @@ func (r *teamGraphSessionRepo) SaveSession(ctx context.Context, sess biz.TeamGra
 	}
 	_, err := db.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
 INSERT INTO team_graph_sessions
-  (exec_id, team_run_id, team_id, session_id, input_preview, definition_json,
+  (exec_id, team_run_id, team_id, session_id, spirit_session_id, input_preview, definition_json,
    status, registered_at, last_activity_at, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(exec_id) DO UPDATE SET
   team_run_id=excluded.team_run_id,
   team_id=excluded.team_id,
   session_id=excluded.session_id,
+  spirit_session_id=excluded.spirit_session_id,
   input_preview=excluded.input_preview,
   definition_json=excluded.definition_json,
   status=excluded.status,
   registered_at=excluded.registered_at,
   last_activity_at=excluded.last_activity_at,
   updated_at=excluded.updated_at`),
-		sess.ExecID, sess.TeamRunID, sess.TeamID, sess.SessionID,
+		sess.ExecID, sess.TeamRunID, sess.TeamID, sess.SessionID, sess.SpiritSessionID,
 		sess.InputPreview, sess.DefinitionJSON,
 		sess.Status, sess.RegisteredAt, sess.LastActivityAt,
 		sess.CreatedAt, sess.UpdatedAt,

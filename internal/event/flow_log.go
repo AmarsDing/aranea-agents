@@ -306,6 +306,7 @@ var stepTitleRegistry = map[string]string{
 	"voice.wake.detect":          "语音唤醒",
 	"voice.sleep.exit_word":      "退出词休眠",
 	"voice.sleep.timeout":        "静默休眠",
+	"voice.asr.filtered":         "噪声终稿过滤",
 	// client tool bridge（M74 V2-T3）：与 internal/tools/clientbridge 实际发射对齐
 	"client_tool.invoke":  "调用客户端工具",
 	"client_tool.result":  "客户端工具执行完成",

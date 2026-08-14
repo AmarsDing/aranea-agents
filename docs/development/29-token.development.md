@@ -741,3 +741,50 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - 共享 GOCACHE 混入新旧 ent 对象，导致 `toolinvocation.IDValidator` nil panic 幻影——`go test -a` 强制全量重建后同源码全绿，证实非真实 bug
 - 并行提交遗留 3 处编译破损（其验证只做 `go build`，不覆盖 _test.go）：`tool_result_cache_test.go` 缺/多 `biz` import、`skill_catalog_test.go` map 值类型与匿名 struct 声明不符、`biz/evaluation/evaluation.go` 缺 `time` import——对方重构落定后由本会话顺手修复（各 1-2 行）
 - 教训复核：并行 churn 期间一切编译结论以隔离缓存 + 全量重建为准（`go test -a` 或独立 GOCACHE 子目录）；后台轮询脚本须 `Start-Process` 脱离 AI 终端，否则随终端回收被杀（0xC000013A）
+
+## 18. 提示词注入链路全链路优化（2026-08-14，P0 止血 / P1 命中率与 token / P2 度量闭环）
+
+> 背景：立项分析「指令输入 → 工具链加载 → 知识库加载 → 记忆加载 → LLM 响应」全链路的业务逻辑、命中率与 token 消耗，并对照业界方案（Hermes 式分层上下文、工具检索/RAG-MCP 等前沿做法）形成方案。用户确认全批实施（P0+P1+P2）。核心结论：注入链多点各自为政（截断口径不一、无统一终审闸门）、session summary 污染 system[0] 破坏前缀缓存、MCP schema 无总量预算、deferred 工具纯静态目录发现率不可观测、召回 query 带寒暄噪声。
+
+### 18.1 发现与修复
+
+| # | 发现 | 修复 | 状态 |
+|---|------|------|------|
+| P0-A+D | 压缩闸门在注入前估算、按 rune 截断、marker 落点错位：cue 注入后真实超限无人兜底，rune 口径与 token 口径偏差大 | 终审 hook 统一压缩闸门（internal/agent/context_compression_inject.go）：注入后计数、token 口径截断（target factor 0.9）+ 截后复验、marker 落点修正（snapToSafeBoundary + insertMarkerAfterHead） | ✅ |
+| P0-B | session summary 注入 system[0]：每轮变化的摘要污染可缓存前缀，前缀缓存全失效 | summary 改以 user 消息注入尾部 append 区（trpc_build.go），system[0] 保持会话内字节稳定 | ✅ |
+| P0-C | 请求级硬上限缺失：极端溢出时无降级路径，直接超窗报错 | 降级链：超限先丢尾部动态 cue（catalog/memory/knowledge 可重建），再截历史，最后复验；每步落流程/进程日志 | ✅ |
+| P1-1 | 召回 query 原样进检索：寒暄前缀/多问题标点污染关键词，命中率低 | recall_keyword.go：cleanRecallQuery 去寒暄/ filler 前缀；多查询扩展（问号分段、question-last 打包，≤4 段）；120 rune 预算截尾；lastUserMessageText 不再预截断（预算归 cleanRecallQuery 所有） | ✅ |
+| P1-2 | MCP 工具 schema 无治理：单工具 declaration 可数千 token，多 server 叠加无总量预算，直连注入失控 | mcp_schema_govern.go：单 declaration 软上限 2400 chars（截 description/剥 OutputSchema/schema 节点 description+enum 截断）；总量硬预算 16000 chars（≈4.6K token）；超预算自动降级 broker 模式（mcp_list_servers/mcp_list_tools/mcp_inspect_tools/mcp_call），无显式 broker 配置时生成 fallback；ToolSet 包装治理（governMCPToolIfNeeded）；toolset_assemble 集成 + brokerAdded 去重 | ✅ |
+| P1-3 | 截断口径各自为政：多处本地副本、byte/rune 混用，工具结果 byte 切 CJK 产出 U+FFFD 污染模型输入 | pkg/strutil 单一阈值链：TruncateRunesEllipsis（prompt 注入链字段/块级统一入口）+ SliceBytesRuneSafe（tail/head/middle 三模式 rune 边界安全）； decorator.go sliceForMode、case_prompt、l4_prompt、plugin/trpc、knowledge、data 各截断点全部改走 strutil，本地副本删除 | ✅ |
+| P1-4 | deferred 工具发现率不可观测：静态目录 cue 全量平铺，模型漏看无兜底；「搜索→激活→使用」漏斗无度量 | 语义预激活：catalog_rank.go 按当前用户 query 对 catalog 排序，Top-3 以「推荐区」提升进 cue（推荐区在目录分组前；无匹配时与静态版字节一致；cue 在消息尾部、前缀缓存之外，动态渲染零缓存成本）；tool_search 改共享同一打分器；≥3 runes 子串护栏防短虚词噪声（"me" 误中 "runtime"）。漏斗度量：`aranea_deferred_tool_search_total{has_results}`（发现）+ `aranea_deferred_tool_activation_total{tool,outcome}`（激活）+ `aranea_deferred_catalog_recommend_total{matched}`（预激活覆盖率），使用段复用 `aranea_tool_invocation_total{tool,status}` | ✅ |
+| P2-1 | context_budget 台账无法跨 turn 聚合观测 | 持久化 S2 已完成（§17 Q4 Histogram）；剩跨 turn 聚合 API | ⏳ |
+| P2-2 | 知识/记忆 cue 的 cited 引用无回采追踪，命中率闭环缺最后一公里 | cited 回采 + 引用追踪 | ⏳ |
+
+### 18.2 验收
+
+1. ✅ P0-A+D：`context_compression_inject_test.go` 终审闸门用例（注入后计数/token 截断/复验/marker 落点/降级链丢尾部 cue）全绿，先红后绿
+2. ✅ P0-B：`trpc_build_runtime_options_test.go` 断言 summary 以 user 模式注入尾部 append 区
+3. ✅ P1-1：`recall_keyword_test.go` 寒暄清洗/多问题分段保留/120 rune 预算用例全绿
+4. ✅ P1-2：`mcp_schema_govern_test.go` 软上限截断/嵌套 schema 治理/总量预算降级/Kept 包装/broker 去重用例全绿
+5. ✅ P1-3：`pkg/strutil` 单测（rune 省略号/三模式 rune 边界切片/CJK 不碎）+ 各迁移点包测试全绿；knowledge 桩补齐 `EnableCollectionSemantic` 后 data/knowledge 构建恢复
+6. ✅ P1-4（TDD 先红后绿）：`catalog_rank_test.go` 9 例（排序/子词匹配/短词护栏/limit/确定性/推荐区渲染/无推荐=静态字节一致）+ `funnel_metrics_test.go` 2 例（search/activation counter delta）+ `tool_catalog_cue_test.go` 4 例（推荐注入/无匹配静态/nil 安全）全绿；deferred 存量 52 例无回归
+7. ✅ 全量构建 `go build ./cmd/... ./internal/... ./api/... ./pkg/...` exit 0；`go vet`（deferred/agent/metrics）exit 0；agent 8 包、tools 包全量测试 exit 0
+8. ⏳ P2-1/P2-2 待实施
+
+### 18.3 改动文件（本迭代）
+
+- `internal/agent/context_compression_inject.go`（P0-A/C/D 终审闸门+降级链）+ `context_compression_inject_test.go`
+- `internal/agent/trpc_build.go`（P0-B summary 尾部注入）+ `trpc_build_runtime_options_test.go`
+- `internal/agent/recall_keyword.go`（P1-1 清洗+多查询扩展）+ `recall_keyword_test.go`、`internal/agent/memory_inject.go`（lastUserMessageText 让位）
+- `internal/tools/mcp_schema_govern.go`（P1-2 治理核心）+ `mcp_schema_govern_test.go`、`internal/tools/toolset_assemble.go`（集成+去重）
+- `pkg/strutil/strutil.go`（P1-3 单阈值链）+ 迁移点：`internal/tools/decorator.go`、`internal/agent/case_prompt.go`、`internal/agent/l4_prompt.go` 等
+- `internal/tools/deferred/catalog_rank.go`（P1-4 排序+推荐渲染）+ `catalog_rank_test.go`、`funnel_metrics_test.go`
+- `internal/tools/deferred/tool_search.go`（共享打分器+发现段 counter）、`tool_load.go`（激活段 counter）
+- `internal/agent/tool_catalog_cue.go`（动态推荐渲染+覆盖率 counter）+ `tool_catalog_cue_test.go`
+- `internal/metrics/vars.go`（DeferredToolSearchTotal / DeferredToolActivationTotal / DeferredCatalogRecommendTotal）
+
+### 18.4 P1-4 已知限制与后续方向
+
+- 预激活排序为纯关键词/子串匹配：纯中文 query 对英文工具名/描述无效。后续可复用知识库 embedding 基础设施做语义召回（需评估 per-turn 同步 embedding 的延迟成本，~50-200ms）
+- 「激活未使用」的 per-session 观测需 PromQL 差集近似；精确闭环依赖 P2-2 引用追踪
+- 并行会话干扰：本迭代期间另一会话持续重构 service/agent 包（git status 可见大量非本任务 WIP），`llm_caller_impl.go` 曾出现瞬时 import 破损（重读已落定）；门禁结论以退出码 + 落盘日志为准（终端回显被并行输出污染）

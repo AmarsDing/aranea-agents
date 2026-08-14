@@ -247,8 +247,9 @@ import { createPcmPlayer, type PcmPlayer } from './audioPlayback';
 import { createVad, decideVadAction, type Vad } from './vad';
 import { loadWakeWordDetector, type WakeWordDetector } from './wakeWord';
 
-/** barge-in 人声持续阈值（ms），与 vad 默认 speechOnsetMs 一致；上行 detect_ms 语义。 */
-const BARGE_IN_DETECT_MS = 200;
+/** barge-in 人声持续阈值（ms），与 vad 默认 bargeInOnsetMs 一致；上行 detect_ms 语义。
+ *  V11-T2（设计 §17.3）：450ms（非 200ms），短促背景人声不再误打断。 */
+const BARGE_IN_DETECT_MS = 450;
 
 /** companion 会话模式（V10 §16.3）：voice.start 携带，后端 idle→dormant 入口。 */
 export const VOICE_MODE_COMPANION = 'companion';
@@ -475,7 +476,8 @@ export function useVoiceSession(deps: {
     client.startVoice({ sampleRate: VOICE_TARGET_SAMPLE_RATE, mode: VOICE_MODE_COMPANION });
 
     try {
-      vad = createVad({ sampleRate: VOICE_TARGET_SAMPLE_RATE, speechOnsetMs: BARGE_IN_DETECT_MS });
+      // V11-T2：speechOnsetMs 保持默认 200（仅武装判停）；bargeInOnsetMs=450 才触发打断
+      vad = createVad({ sampleRate: VOICE_TARGET_SAMPLE_RATE, bargeInOnsetMs: BARGE_IN_DETECT_MS });
       capture = createAudioCapture({
         onVoiceFrame: handleVoiceFrame,
         onPcm16k: handlePcm16k,

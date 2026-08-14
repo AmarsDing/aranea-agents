@@ -31,8 +31,6 @@ type AIRefineService struct {
 }
 
 // NewAIRefineService wires the service with a biz.Refiner strategy.
-// When PromptIter is configured, the refiner is a PromptIterAdapter that
-// delegates to the framework engine; otherwise it falls back to PromptRefiner.
 func NewAIRefineService(refiner biz.Refiner) *AIRefineService {
 	return &AIRefineService{
 		refiner: refiner,

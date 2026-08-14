@@ -2,6 +2,10 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -182,4 +186,67 @@ func WithActivityEmitter(ctx context.Context, e ActivityEmitter) context.Context
 func ActivityEmitterFromContext(ctx context.Context) ActivityEmitter {
 	e, _ := ctx.Value(activityEmitterKey{}).(ActivityEmitter)
 	return e
+}
+
+// --- shared meta helpers (used by other biz files) ---
+
+func metaString(meta map[string]any, key string) string {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case json.Number:
+		return t.String()
+	default:
+		return strings.TrimSpace(fmt.Sprint(t))
+	}
+}
+
+func metaBool(meta map[string]any, key string) bool {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return false
+	}
+	switch t := v.(type) {
+	case bool:
+		return t
+	case string:
+		return strings.EqualFold(strings.TrimSpace(t), "true") || strings.TrimSpace(t) == "1"
+	default:
+		return false
+	}
+}
+
+// metaInt reads an integer value from a meta map. Handles int, int64, float64,
+// json.Number, and string representations.
+func metaInt(meta map[string]any, key string) int {
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch t := v.(type) {
+	case int:
+		return t
+	case int64:
+		return int(t)
+	case float64:
+		return int(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(n)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0
+		}
+		return n
+	default:
+		return 0
+	}
 }

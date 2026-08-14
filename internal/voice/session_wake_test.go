@@ -126,6 +126,15 @@ func TestSessionBargeInSettleRestartsSleepTimer(t *testing.T) {
 	fx := newSessionFixture(t)
 	fx.sess.Start(StartParams{Mode: ModeCompanion})
 	fx.sess.Wake("kws")
+	// 等唤醒应答「我在」播报完全落定（tts.end + 回 listening）再送终稿：
+	// 应答首音频与终稿处理存在已知竞态（V11-F1：onTTSAudio 的 gen 校验与
+	// EvFirstTTSAudio 转换分属两个临界区，应答音频可能把 thinking 抢拍为
+	// speaking），不定居则 thinking 断言失稳。本测试关注 barge-in settle，
+	// 不覆盖该竞态。
+	require.Eventually(t, func() bool { return ttsWritesContain(fx, "我在") }, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "tts.end") >= 0 && fx.down.lastState() == "listening"
+	}, 2*time.Second, 10*time.Millisecond)
 	// 快速进 speaking：终稿 → thinking → delta → TTS 首音频
 	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 800}
 	require.Eventually(t, func() bool { return fx.down.lastState() == "thinking" }, 2*time.Second, 10*time.Millisecond)

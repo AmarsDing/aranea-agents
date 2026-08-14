@@ -43,6 +43,27 @@ class PcmForwarder extends AudioWorkletProcessor {
 registerProcessor('pcm-forwarder', PcmForwarder);
 `;
 
+/**
+ * V11-T1（设计 §17.2）：getUserMedia 采集约束。
+ * voiceIsolation（Chrome 118+ ML 人声隔离，压制背景人声）与 autoGainControl
+ * 为增量抗干扰约束；不支持的浏览器按 WebIDL 静默忽略未知基础约束，零风险降级。
+ * TS DOM lib 未含 voiceIsolation 字段，故以扩展类型声明（不 cast any）。
+ */
+interface CompanionAudioConstraints extends MediaTrackConstraints {
+  voiceIsolation?: boolean;
+}
+
+export function captureAudioConstraints(): MediaTrackConstraints {
+  const c: CompanionAudioConstraints = {
+    channelCount: 1,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    voiceIsolation: true,
+  };
+  return c;
+}
+
 export function createAudioCapture(options: AudioCaptureOptions): AudioCapture {
   let stream: MediaStream | null = null;
   let ctx: AudioContext | null = null;
@@ -75,9 +96,8 @@ export function createAudioCapture(options: AudioCaptureOptions): AudioCapture {
       if (ctx) return;
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
+          ...captureAudioConstraints(),
           echoCancellation: options.echoCancellation ?? true,
-          noiseSuppression: true,
         },
       });
       ctx = new AudioContext();

@@ -233,6 +233,33 @@
 | V10-T6 | **前端 KWS 集成**：`voice/wakeWord.ts` 封装（资产入 `web/public/kws/`）+ 预滚 ring buffer + useVoiceSession dormant 门控/wake 帧 + store voiceState +dormant + HUD 微光映射 + KWS 失败自动降级唤醒 | ⏳ | `wakeWord.spec.ts` + `useVoiceSession.spec.ts` 新增用例；pnpm lint/test/build 全绿 |
 | V10-T7 | **全链路真机验证**：进入即待命（抓包零上行）→「小媛」唤醒应答 → 连说指令执行 → 退出词休眠 → 60s 静默休眠 → 待命委派播报 | 📋 | 日志（voice.wake.detect/sleep.* 流程日志）+ UI 实测 |
 
+### Phase V11：语音抗干扰 P0（需求 §2.13 / 设计 §17，2026-08-14 设计）
+
+> 目标：他人说话/电视/杂音不再白建 Turn、不再误打断播报。四层：L1 采集人声隔离 + L2 VAD 分级 onset + L3 噪声终稿过滤 + L4 ASR 热词。
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V11-T1 | **采集约束增强**（`audioCapture.ts`：+`autoGainControl:true` +`voiceIsolation:true` ML 人声隔离） | ⏳ | TDD：`audioCapture.spec.ts` 契约测试（约束传入 getUserMedia）RED→GREEN；不支持的浏览器静默降级 |
+| V11-T2 | **VAD 分级 onset**（`vad.ts`：+`bargeInOnsetMs` 默认 450 + `speech_barge_in` 事件；`decideVadAction` 契约改写；useVoiceSession `BARGE_IN_DETECT_MS`=450） | ⏳ | TDD：`vad.spec.ts`（450ms 才发 speech_barge_in / speech_sustained 不再打断）+ `vadAction.spec.ts` 改写 RED→GREEN |
+| V11-T3 | **噪声终稿过滤**（`internal/voice/utterance_filter.go` 新增：F1 语气词表 / F2 单 rune / F3 <300ms 且 ≤2 rune；handleASRFinal 确认词拦截后插入；step `voice.asr.filtered` 双登记） | ✅ | TDD：`utterance_filter_test.go` 表驱动 + session 集成例（「嗯」终稿不建 Turn 停留 listening）RED→GREEN；voice 包全绿 |
+| V11-T4 | **ASR 热词注入**（`volcengine_asr.go` full client request `request.corpus.context` hotwords：唤醒同音表+退出词+确认词去重 40 词；`biz.ASRProviderConfig` 预留 `Hotwords` 字段，非空覆盖默认表） | ✅ | TDD：`volcengine_asr_test.go` 断言请求 JSON 含 corpus.context hotwords（默认表含小媛/休息吧/好的/算了且去重、Hotwords 覆盖生效）RED→GREEN；speech/voice 包全绿 |
+| V11-T5 | **全链路真机验证**：旁人短促插话不打断播报；「嗯」类终稿不产生消息；voiceIsolation 生效（Chrome DevTools constraints 可见） | 📋 | `logs/aranea-pipeline.log` 见 voice.asr.filtered 流程日志 + UI 实测 |
+
+> **V11-F1 已知问题（2026-08-14 验证期发现，未修）**：`onTTSAudio` 的 schedGen 校验与 `EvFirstTTSAudio` 状态转换分属两个临界区（TOCTOU）——唤醒应答「我在」首音频可在 handleASRFinal 完成 `listening→thinking` 转换与摘除调度器之间把状态抢拍为 `speaking`（终稿 Turn 仍派发，但 thinking 广播被跳过；更糟的交错下 `speaking+EvASRFinal` 非法导致终稿被丢弃）。触发窗口仅唤醒后应答播报的数百毫秒内。V11 范围内仅将受影响测试（`TestSessionBargeInSettleRestartsSleepTimer`）改为先等应答落定再送终稿（测试确定性修复，非生产修复）。生产修复候选：gen 校验与状态转换并入同一临界区；或自足播报不驱动 EvFirstTTSAudio（对齐 speakSelfSufficient「状态停留 listening」文档语义）——需评审后单独任务处理。
+
+### Phase V12：神经 VAD（Silero WASM，设计 §17.6）📋 预留
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V12-T1 | `@ricky0123/vad-web` 集成（资产 `web/public/vad/` 分发）：`isSpeechFrame` 能量判定 → 人声概率判定；20ms→32ms 帧重缓冲；能量 VAD 保留为加载失败降级 | 📋 | `vad.spec.ts` 概率判定用例；降级路径用例；pnpm lint/test/build 全绿 |
+
+### Phase V13：声纹门控（Speaker Verification，设计 §17.7）📋 预留
+
+| # | 任务 | 状态 | 验收 |
+|---|------|------|------|
+| V13-T1 | **Spike**：前端 WASM（sherpa-onnx speaker embedding）vs 后端 ONNX（onnxruntime_go native 依赖，Docker/交叉编译影响）选型评审 | 📋 | spike 报告 + ADR |
+| V13-T2 | 机主声纹注册流程（设置页 3 段 5s 录音 → embedding 存储）+ 门控点 A（终稿 utterance 声纹比对丢弃非机主 Turn）+ 门控点 B（barge-in 前声纹确认） | 📋 | 非机主声音不建 Turn 不打断；未注册用户自动跳过门控 |
+
 ## 5. 总验收标准
 
 1. 需求文档 §3 验收总览 13 项按 Phase 逐项达标

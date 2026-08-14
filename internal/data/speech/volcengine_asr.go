@@ -36,6 +36,26 @@ type volcASRProvider struct {
 	ackTimeout time.Duration
 }
 
+// defaultASRHotwords 默认热词表（V11-T4，设计 §17.5）：「识别增强」用途，
+// 与 internal/voice 的文本匹配词表解耦演进。对应关系：
+//
+//	唤醒词同音表 = voice.wakeWords；退出词 = voice.exitWords；
+//	确认词 = voice.approveWords + voice.denyWords（「不用了」两表同现，已去重）。
+//
+// SAUC 双向流式 corpus.context 上限 100 token，词表保持 ≤40 短词；
+// cfg.Hotwords 非空时整体覆盖本表。
+var defaultASRHotwords = []string{
+	// 唤醒词同音表
+	"小媛", "小圆", "小袁", "小源", "小园", "小员",
+	// 退出词
+	"休息吧", "再见", "退出", "退下吧", "不用了",
+	// 确认批准词
+	"好的", "好", "好吧", "好呀", "嗯", "行", "可以", "确认", "同意", "批准", "允许", "执行",
+	"打开吧", "开吧", "ok", "okay", "yes", "yeah", "sure",
+	// 确认否认词
+	"算了", "取消", "拒绝", "不要", "别", "不行", "不用", "先别", "no", "nope", "cancel",
+}
+
 func newVolcASRProvider(cfg biz.ASRProviderConfig, lg loggateway.Logger) biz.StreamingASRProvider {
 	return &volcASRProvider{cfg: cfg, dial: gorillaDialer, lg: lg, ackTimeout: defaultASRAckTimeout}
 }
@@ -60,6 +80,11 @@ func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (bi
 		events: make(chan biz.ASREvent, 16),
 		done:   make(chan struct{}),
 		lg:     p.lg,
+		// V11-T4 热词注入：cfg.Hotwords 非空覆盖默认表。
+		hotwords: p.cfg.Hotwords,
+	}
+	if len(s.hotwords) == 0 {
+		s.hotwords = defaultASRHotwords
 	}
 	// 真机校准（2026-08-08）：bigmodel 端点把 full client request 计入序号空间
 	// （autoAssignedSequence 校验严格连续）。full request 显式 seq=1，音频帧从 2 续号。
@@ -135,6 +160,7 @@ type volcASRSession struct {
 	closeOnce sync.Once
 	seq       atomic.Int32
 	lg        loggateway.Logger
+	hotwords  []string
 	// finalCursor 是已发射 Final 的 definite 语句游标（utterances 累积去重）。
 	// SAUC 服务端每帧响应都携带全量 utterances 列表，已 definite 的语句会持续
 	// 回放；无去重时同一终稿被无限重复发射（真机事故 2026-08-09：听写模式
@@ -143,15 +169,29 @@ type volcASRSession struct {
 }
 
 func (s *volcASRSession) sendFullClientRequest(sc biz.ASRSessionConfig) error {
+	req := map[string]any{
+		"model_name":      "bigmodel",
+		"enable_punc":     true,
+		"enable_itn":      true,
+		"show_utterances": true,
+	}
+	// V11-T4：SAUC bigmodel 热词直传，官方参数 request.corpus.context（JSON 字符串），
+	// 格式 {"hotwords":[{"word":"..."}]}。双向流式上限 100 token，默认表 ≤40 短词。
+	if len(s.hotwords) > 0 {
+		list := make([]map[string]string, 0, len(s.hotwords))
+		for _, w := range s.hotwords {
+			list = append(list, map[string]string{"word": w})
+		}
+		ctxJSON, err := json.Marshal(map[string]any{"hotwords": list})
+		if err != nil {
+			return fmt.Errorf("marshal hotwords context: %w", err)
+		}
+		req["corpus"] = map[string]any{"context": string(ctxJSON)}
+	}
 	body := map[string]any{
-		"user":  map[string]any{"uid": "aranea"},
-		"audio": map[string]any{"format": "pcm", "rate": sc.SampleRate, "bits": 16, "channel": 1},
-		"request": map[string]any{
-			"model_name":      "bigmodel",
-			"enable_punc":     true,
-			"enable_itn":      true,
-			"show_utterances": true,
-		},
+		"user":    map[string]any{"uid": "aranea"},
+		"audio":   map[string]any{"format": "pcm", "rate": sc.SampleRate, "bits": 16, "channel": 1},
+		"request": req,
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

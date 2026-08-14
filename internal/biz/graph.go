@@ -191,6 +191,12 @@ type GraphExecution struct {
 	GraphID         string
 	SessionID       string
 	SpiritSessionID string // cross-session aggregation key (root spirit session); equals SessionID for direct spirit runs
+	// DefinitionHash is the SHA256 of the GraphBuildConfig the execution
+	// started with (Y4). Resume compares it against the config resolved from
+	// the CURRENT definition; a mismatch means the graph was edited after the
+	// checkpoint was written and resuming would route stale state through a
+	// changed topology. Empty for legacy rows (pre-20261214) — check skipped.
+	DefinitionHash  string
 	Status          string
 	CurrentNode     string
 	LineageID       string
@@ -203,9 +209,14 @@ type GraphExecution struct {
 	runtime         GraphRuntime
 	StartedAt       time.Time
 	FinishedAt      *time.Time
-	execMu          sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
+	execMu          sync.RWMutex    // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt, streamGen
 	evicted         bool            // set by GC before removing from map; not persisted
 	ctx             context.Context // detached context preserving trace info for background DB writes
+	// streamGen identifies the active event-stream generation (Y2). Run/Resume
+	// increment it before spawning a consumer; a stale consumer (older gen)
+	// must not converge terminal state or apply status-mutating events, or the
+	// old stream ending would falsely fail the new, still-running stream.
+	streamGen int64
 }
 
 // NewGraphExecution creates a GraphExecution with mandatory ctx initialization.
@@ -240,19 +251,37 @@ func (e *GraphExecution) SetEvicted() {
 	e.execMu.Unlock()
 }
 
+// NextStreamGen increments and returns the stream generation (Y2). Call before
+// spawning a new consumeRuntimeEvents goroutine and pass the value to it.
+func (e *GraphExecution) NextStreamGen() int64 {
+	e.execMu.Lock()
+	defer e.execMu.Unlock()
+	e.streamGen++
+	return e.streamGen
+}
+
+// IsCurrentStream reports whether gen is still the active stream generation.
+func (e *GraphExecution) IsCurrentStream(gen int64) bool {
+	e.execMu.RLock()
+	defer e.execMu.RUnlock()
+	return e.streamGen == gen
+}
+
 // SnapshotForPersist returns a deep copy of the execution safe for
 // out-of-lock DB writes. Caller must hold execMu (or RLock) while calling.
 func (e *GraphExecution) SnapshotForPersist() *GraphExecution {
 	snap := &GraphExecution{
-		ID:           e.ID,
-		GraphID:      e.GraphID,
-		SessionID:    e.SessionID,
-		Status:       e.Status,
-		CurrentNode:  e.CurrentNode,
-		LineageID:    e.LineageID,
-		ErrorMessage: e.ErrorMessage,
-		StartedAt:    e.StartedAt,
-		FinishedAt:   e.FinishedAt,
+		ID:              e.ID,
+		GraphID:         e.GraphID,
+		SessionID:       e.SessionID,
+		SpiritSessionID: e.SpiritSessionID,
+		DefinitionHash:  e.DefinitionHash,
+		Status:          e.Status,
+		CurrentNode:     e.CurrentNode,
+		LineageID:       e.LineageID,
+		ErrorMessage:    e.ErrorMessage,
+		StartedAt:       e.StartedAt,
+		FinishedAt:      e.FinishedAt,
 	}
 	if e.Steps != nil {
 		snap.Steps = make([]GraphStepSnapshot, len(e.Steps))

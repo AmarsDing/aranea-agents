@@ -731,3 +731,16 @@ catalog/策略层：
 - `internal/tools/spirit_tools.go` / `internal/service/plan_executor.go` / `internal/agent/reply_reminder_inject.go` / `internal/data/builtin_tools_seed.go` — DEAD-1 check_progress 移除
 - `internal/tools/toolset.go` — DEAD-2 FilesystemDir* 移除
 - `internal/scenario/system/prompts/DECISION.md` / `internal/agent/prompt.go` — 提示词/注释同步清理
+
+### Round 6 补充（2026-08-14 装配层提示级清理）
+
+- `internal/tools/toolset.go` — deliverable 注册项改 `AssembledElsewhere` 占位（生产挂载路径收敛为 team 层 CustomTools 契约注入，消除 set/get/ack_deliverable 同名重复挂载的潜在风险）；`buildMCPToolSet` 补充 error 返回值语义注释
+- `internal/tools/toolset_assemble.go` — 新增 `dedupFlatToolNames`（Assemble Phase 11）：扁平工具同名 earlier-wins 去重 + Warn；扁平工具 vs 静态 ToolSet 成员同名交叉检测（仅 Warn；MCP 等动态 ToolSet 不枚举避免网络往返）
+- `internal/tools/toolset_more_test.go` — `TestAssemble_duplicateCustomToolNames` / `TestAssemble_deliverableNotMountedFromRegistry` 回归用例
+- 验证：`go build ./internal/tools/... ./internal/agent/... ./internal/team/...` ✅ / `go vet ./internal/tools/...` ✅ / `go test ./internal/tools/ -count=1`（全量）✅ / deliverable、deferred、agent（Build/Tool 相关）✅；`internal/team` 测试包编译失败为存量问题（`parity_run_e2e_test.go` 缺 `GetTaskDeadLetter`，与本批无关）
+
+### Round 6 补充二（2026-08-14 实施后 review 修复）
+
+- `internal/tools/toolset.go` — `placeholderToolSetFactory`/`placeholderToolFactory` 接入全部 11 处 AssembledElsewhere 占位注册项（file/hostexec/google_search/message/claudecode/browser/deliverable/client + geminifetch/workspace_exec/read_tool_result），消除"helper 已定义未接线"的死代码状态；各条目占位原因注释保留在字段上方
+- `internal/tools/decorator.go` — streamableToolDecorator 流代理 goroutine 由裸 `go func()` 改 `safego.Go(streamCtx, "tools.stream_proxy", ...)`（红线 #13：panic recovery）
+- 验证：独立 GOCACHE 下 `go build ./internal/tools` ✅ / `go vet`（tools/agent/biz/tool/data）✅ / `go test ./internal/tools/ -count=1` 全量 ✅ / biz/tool、deferred、deliverable、cache、trpc、agent(Tool)、data(Tool,PG) ✅

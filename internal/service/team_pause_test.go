@@ -168,7 +168,7 @@ func TestUnpauseTeamRun_NotPausedRejected(t *testing.T) {
 func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 	repo := &cancelTeamRunRepo{
 		teamByID: map[string]biz.Team{
-			"team-A": {ID: "team-A"},
+			"team-A": {ID: "team-A", WorkspaceID: "ws-a"},
 		},
 		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-A": {
@@ -183,7 +183,7 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 	svc, _, unsub := newPauseTestService(t, repo, reg)
 	defer unsub()
 
-	resp, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
+	resp, err := svc.InjectTeamMessage(wsCtx("ws-a"), &v1.InjectTeamMessageRequest{
 		TeamId:  "team-A",
 		Message: "please prioritize the second analysis",
 	})
@@ -206,7 +206,7 @@ func TestInjectTeamMessage_RoutesToActiveRunSession(t *testing.T) {
 
 func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 	repo := &cancelTeamRunRepo{
-		teamByID: map[string]biz.Team{"team-B": {ID: "team-B"}},
+		teamByID: map[string]biz.Team{"team-B": {ID: "team-B", WorkspaceID: "ws-a"}},
 		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-B": {
 				{ID: "run-paused", SessionID: "sess-paused", Status: biz.TeamRunStatusPaused, CreatedAt: "2026-06-01T00:00:00Z"},
@@ -219,7 +219,7 @@ func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 	svc, _, unsub := newPauseTestService(t, repo, reg)
 	defer unsub()
 
-	resp, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
+	resp, err := svc.InjectTeamMessage(wsCtx("ws-a"), &v1.InjectTeamMessageRequest{
 		TeamId:  "team-B",
 		Message: "resume with revised scope",
 	})
@@ -236,7 +236,7 @@ func TestInjectTeamMessage_PrefersPausedRunWhenNoRunning(t *testing.T) {
 
 func TestInjectTeamMessage_NoActiveRunRejected(t *testing.T) {
 	repo := &cancelTeamRunRepo{
-		teamByID: map[string]biz.Team{"team-C": {ID: "team-C"}},
+		teamByID: map[string]biz.Team{"team-C": {ID: "team-C", WorkspaceID: "ws-a"}},
 		teamRunsByTeamID: map[string][]biz.TeamRunRecord{
 			"team-C": {
 				{ID: "run-done", SessionID: "sess-done", Status: biz.TeamRunStatusSuccess, CreatedAt: "2026-01-01T00:00:00Z"},
@@ -247,7 +247,7 @@ func TestInjectTeamMessage_NoActiveRunRejected(t *testing.T) {
 	svc, _, unsub := newPauseTestService(t, repo, reg)
 	defer unsub()
 
-	_, err := svc.InjectTeamMessage(context.Background(), &v1.InjectTeamMessageRequest{
+	_, err := svc.InjectTeamMessage(wsCtx("ws-a"), &v1.InjectTeamMessageRequest{
 		TeamId:  "team-C",
 		Message: "do something",
 	})

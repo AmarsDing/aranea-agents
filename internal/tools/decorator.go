@@ -14,6 +14,7 @@ import (
 
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -310,12 +311,12 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 		lg = loggateway.NewNoop()
 	}
 
-	go func() {
+	safego.Go(streamCtx, "tools.stream_proxy", func() {
 		defer cancel()
 		defer innerReader.Close()
 		defer writer.Close()
 		s.proxyStreamLoop(streamCtx, innerReader, writer, budget, toolName, lg)
-	}()
+	})
 
 	return reader, nil
 }

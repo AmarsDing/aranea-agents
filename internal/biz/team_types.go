@@ -486,6 +486,10 @@ type TeamGraphSession struct {
 	TeamRunID      string `json:"team_run_id"`
 	TeamID         string `json:"team_id"`
 	SessionID      string `json:"session_id"`
+	// SpiritSessionID is the watch subscription filter key
+	// (EventSubscribeOptions.SpiritSessionID). Persisted (Y5) so
+	// RecoverSessions can rebuild the step watch after a restart.
+	SpiritSessionID string `json:"spirit_session_id"`
 	InputPreview   string `json:"input_preview"`
 	DefinitionJSON string `json:"definition_json"`
 	Status         string `json:"status"`

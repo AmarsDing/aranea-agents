@@ -49,7 +49,6 @@ Agent-to-Agent：平台内 `call_agent`、Admin Invoke、LLM **公开 Endpoint**
 │  remote_client.go     — FetchRemoteAgentCard、MTLSHTTPClient、│
 │                          ClientAuthOptions                    │
 │  remote_invoke.go     — InvokeRemoteRegistry                  │
-│  graph_resume.go      — BuildGraphResumeMetadata              │
 │  capability_metadata.go — CapabilityMetadata                  │
 │  invoke_workspace.go  — ValidateAdminInvokeWorkspace          │
 │  public_base_url.go   — ResolvePublicBaseURL                  │

@@ -651,6 +651,7 @@ internal/cronrunner/jobs/
 | `voice.wake.detect` | ok / — | 语音唤醒（source=kws/manual/system；M74 V10，2026-08-13） |
 | `voice.sleep.exit_word` | ok / — | 退出词休眠（M74 V10，2026-08-13） |
 | `voice.sleep.timeout` | ok / — | 静默休眠（60s 无交互；M74 V10，2026-08-13） |
+| `voice.asr.filtered` | info / — | 噪声终稿过滤（语气词/单字碎片/极短含混音丢弃不建 Turn；M74 V11-T3，2026-08-14） |
 
 #### Client Tool 客户端工具桥（M74 V2-T3，2026-08-08）
 

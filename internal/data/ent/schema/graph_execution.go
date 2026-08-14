@@ -23,6 +23,12 @@ func (GraphExecution) Fields() []ent.Field {
 		field.String("id").MaxLen(64).Unique().Immutable(),
 		field.String("graph_id").MaxLen(64),
 		field.String("session_id").MaxLen(64).Default(""),
+		// spirit_session_id: 跨会话聚合键（root spirit session），Y5 持久化——
+		// 重启恢复后 resume 仍需正确的会话归属。
+		field.String("spirit_session_id").MaxLen(64).Default(""),
+		// definition_hash: 执行启动时 GraphBuildConfig 的 SHA256（Y4）——
+		// resume 前与当前定义比对，不一致拒绝恢复。
+		field.String("definition_hash").MaxLen(64).Default(""),
 		field.String("status").MaxLen(32).Default("running"),
 		field.String("current_node").MaxLen(128).Default(""),
 		field.String("lineage_id").MaxLen(128).Default(""),

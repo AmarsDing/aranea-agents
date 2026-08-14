@@ -390,6 +390,8 @@ func (r *graphRunRepo) SaveRun(ctx context.Context, exec *biz.GraphExecution) er
 		SetID(exec.ID).
 		SetGraphID(exec.GraphID).
 		SetSessionID(exec.SessionID).
+		SetSpiritSessionID(exec.SpiritSessionID).
+		SetDefinitionHash(exec.DefinitionHash).
 		SetStatus(exec.Status).
 		SetCurrentNode(exec.CurrentNode).
 		SetLineageID(exec.LineageID).
@@ -483,6 +485,8 @@ func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) 
 		SetCurrentNode(exec.CurrentNode).
 		SetLineageID(exec.LineageID).
 		SetErrorMessage(exec.ErrorMessage).
+		SetSpiritSessionID(exec.SpiritSessionID).
+		SetDefinitionHash(exec.DefinitionHash).
 		SetCurrentStateJSON(string(currentStateJSON)).
 		SetStepsJSON(string(stepsJSON))
 
@@ -501,14 +505,16 @@ func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) 
 
 func entGraphRunToBiz(row *ent.GraphExecution, lg loggateway.Logger) *biz.GraphExecution {
 	exec := &biz.GraphExecution{
-		ID:           row.ID,
-		GraphID:      row.GraphID,
-		SessionID:    row.SessionID,
-		Status:       row.Status,
-		CurrentNode:  row.CurrentNode,
-		LineageID:    row.LineageID,
-		ErrorMessage: row.ErrorMessage,
-		StartedAt:    row.StartedAt,
+		ID:              row.ID,
+		GraphID:         row.GraphID,
+		SessionID:       row.SessionID,
+		SpiritSessionID: row.SpiritSessionID,
+		DefinitionHash:  row.DefinitionHash,
+		Status:          row.Status,
+		CurrentNode:     row.CurrentNode,
+		LineageID:       row.LineageID,
+		ErrorMessage:    row.ErrorMessage,
+		StartedAt:       row.StartedAt,
 	}
 	if row.FinishedAt != nil {
 		fa := *row.FinishedAt

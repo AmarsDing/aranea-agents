@@ -1054,3 +1054,42 @@ LIMIT 50;
 | 0.2 | 前缀字节级稳定回归测试 | 无（可与 0.1 并行） |
 | 0.3 | CacheHitRatioStats 聚合查询（biz+data） | 无 |
 | 0.4 | `llm.cache_hit_ratio_low` 告警规则 | 0.3 |
+
+## 十、提示词注入链截断阈值链（2026-08-14，P1-3 统一）
+
+> 背景：注入链各环曾各自实现截断（本地副本、byte/rune 混用），工具结果按 byte 切 CJK 多字节字符产出 U+FFFD 污染模型输入。P1-3 将截断收敛为**单阈值链**：实现统一在 `pkg/strutil`，各环只持有阈值常量。
+
+### 10.1 统一实现（pkg/strutil，唯一入口）
+
+| 函数 | 语义 | 适用 |
+|------|------|------|
+| `TruncateRunesEllipsis(s, maxRunes)` | rune 口径截断 + `…` 省略号；`maxRunes<=0` 返回 `""`；短串原样返回 | prompt 注入链一切字段/块级截断 |
+| `SliceBytesRuneSafe(data, target, mode)` | byte 预算切片，切点对齐 UTF-8 rune 边界；mode ∈ `tail`（保头）/`head`（保尾）/`middle`（保首尾） | 工具结果等 byte 预算场景 |
+| `TruncateBytesRuneSafe(data, maxBytes)` | 单模式 byte 截断的便捷包装 | 仅需 tail 模式的 byte 截断 |
+
+**红线**：prompt 注入链禁止再写本地截断副本；新增截断点必须从上表选型。
+
+### 10.2 阈值链（按注入顺序）
+
+| 环 | 位置 | 阈值 | 口径 |
+|---|------|------|------|
+| 召回关键词 | `internal/agent/recall_keyword.go` | 120 runes（≤4 子查询段，question-last 打包） | rune |
+| 记忆 L1 字段 | `internal/biz/agent_memory_runtime_policy.go` | `L1FieldMaxChars` 默认 8192 | char |
+| memory_recalled 透明通知行 | `internal/agent/memory_inject.go` | `memoryRecalledMaxLineRunes` 120 | rune |
+| L4 persona | `internal/biz/agent_memory_runtime_policy.go` | `L4PersonaMaxChars` 默认 1500 | char |
+| 复合 prompt | `internal/agent/composite_prompt.go` | profile card 1200 runes；pinned preference item 200 runes | rune |
+| case 字段 | `internal/agent/case_prompt.go` | `caseFieldMaxRunes` 120 | rune |
+| 知识 cue | `internal/agent/knowledge_inject.go` | `knowledgeCueMaxChars` 1500 | char |
+| MCP 工具 description | `internal/tools/mcp_schema_govern.go` | `mcpToolDescriptionMaxRunes` 300 | rune |
+| MCP schema 节点 description | 同上 | `mcpSchemaNodeDescMaxRunes` 120 | rune |
+| MCP 单 declaration 软上限 | 同上 | `mcpToolDeclSoftCapChars` 2400（超限触发上述字段截断 + 剥 OutputSchema） | char（JSON 序列化） |
+| MCP declaration 总量硬预算 | 同上 | `mcpSchemaTotalBudgetChars` 16000（≈4.6K token；超预算降级 broker 四工具） | char |
+| 工具结果 | `internal/tools/decorator.go` `ResultBudget` | 默认 10KB tail；browser_screenshot 100KB / browser_snapshot 50KB | byte（切点 rune 边界安全） |
+| 终审压缩闸门 | `internal/agent/context_compression_inject.go` | `window × 触发比 × truncationTargetFactor(0.9)`，截后复验；仍超限走降级链（丢尾部动态 cue → 截历史） | **token**（全链唯一 token 口径点） |
+
+### 10.3 口径约定
+
+1. **字段/块级截断一律 rune 口径**（`TruncateRunesEllipsis`）：面向模型可读性，CJK 与 ASCII 等权。
+2. **byte 预算只用于工具结果**（`SliceBytesRuneSafe`）：序列化体积控制，切点必须 rune 边界安全，禁止裸 byte slice。
+3. **token 口径只出现在终审闸门**：各注入环不各自估算 token（估算口径全库唯一，见 §9.6），避免多口径漂移。
+4. 新增截断环必须在本表登记阈值与口径（DOC-SYNC-8 同级要求）。

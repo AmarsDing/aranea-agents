@@ -362,7 +362,7 @@ func stripCodeFence(s string) string {
 }
 
 // Refiner is the interface for prompt refinement strategies.
-// Both PromptRefiner and the agent-layer PromptIterAdapter satisfy this interface.
+// PromptRefiner satisfies this interface.
 type Refiner interface {
 	Refine(ctx context.Context, req RefineRequest) (*RefineResult, error)
 }

@@ -633,6 +633,45 @@ func TestSessionVoiceConfirmSkipsNonVocabUtterance(t *testing.T) {
 	require.Equal(t, 0, fx.conf.callCount())
 }
 
+// ---- V11-T3：噪声终稿过滤（设计 §17.4）----
+
+// 语气词终稿不建 Turn、不进 Chat 管线、状态停留 listening；正常语句不受影响。
+func TestSessionNoiseFinalFiltered(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "嗯", DurationMs: 900}
+	// asr.final 仍下行（字幕），但不得出现 turn.accepted、不得派发执行
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "asr.final") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // 留窗口防异步漏派
+	require.Equal(t, 0, fx.exec.callCount())
+	require.Equal(t, -1, indexOf(fx.down.typesOf(), "turn.accepted"))
+	require.Equal(t, "listening", fx.down.lastState())
+
+	// 正常语句照常建 Turn（回归）
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "帮我打开微信", DurationMs: 1200}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+}
+
+// 极短含混音（<300ms 且 ≤2 字）同样被过滤；时长未知（0）时宁留不杀。
+func TestSessionNoiseFinalTooShortFiltered(t *testing.T) {
+	fx := newSessionFixture(t)
+	fx.sess.Start(StartParams{Language: "zh-CN", SampleRate: 16000})
+
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好", DurationMs: 200}
+	require.Eventually(t, func() bool {
+		return indexOf(fx.down.typesOf(), "asr.final") >= 0
+	}, 2*time.Second, 10*time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
+	require.Equal(t, 0, fx.exec.callCount())
+
+	// 同文本但时长未知：照建 Turn（durationMs=0 不启用 F3）
+	fx.asr.events <- biz.ASREvent{Type: biz.ASREventFinal, Text: "你好"}
+	require.Eventually(t, func() bool { return fx.exec.callCount() == 1 }, 2*time.Second, 10*time.Millisecond)
+}
+
 // ---- V2-T6：语音留档 ----
 
 type archiveCall struct {

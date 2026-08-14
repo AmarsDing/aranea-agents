@@ -16,7 +16,7 @@ Agent-to-Agent：同工作区 `call_agent`、Admin Invoke、LLM **A2A Endpoint**
 
 | 包 / 文件 | 职责 |
 |-----------|------|
-| `internal/a2a/` | 协议桥接：tool、invoker、remote_client、remote_invoke、callee_resolve、card_validate、graph_resume、capability_metadata、invoke_workspace、public_base_url、public_base_store |
+| `internal/a2a/` | 协议桥接：tool、invoker、remote_client、remote_invoke、callee_resolve、card_validate、capability_metadata、invoke_workspace、public_base_url、public_base_store（graph_resume 已删除） |
 | `internal/a2a/health/` | 网关健康 Cron：Runner、probeAll/One、Prometheus 指标 |
 | `internal/a2a/trpc/` | trpc-agent-go 包装：agent、server、registry（`PublicPathPrefix`）、auth |
 | `internal/biz/a2a.go` | 别名层（A2AUsecase = a2a.Usecase 等；含 RetryPolicy/AgentLookup 别名） |
@@ -81,7 +81,7 @@ internal/service/chat_orchestrator_turn_dispatch → internal/a2a (InjectRunCont
 | 公开 URL 配置 | ✅ | env > 系统设置 DB > yaml > derived；`GET /v1/a2a/config` |
 | 远程 registry Invoke | ✅ | `remote_invoke.go` + invoker 路由 |
 | GatewayDiscover 联邦 | ✅ | `GET /v1/a2a/gateway/discover`（含 `check_health`） |
-| Graph resume metadata | ✅ | `graph_resume.go` |
+| ~~Graph resume metadata~~ | 已删除 | ~~`graph_resume.go`~~（TEST_ONLY 僵尸实现，2026-08-14 死代码清理） |
 | Proxy/Endpoint 流式 | ✅ | `enable_streaming` / AgentCard streaming |
 | `/a2a` 运维页 | ✅ | Discover / Audit / Invoke / 远程 / Gateway / Banner |
 | 网关健康 Cron | ✅ | `internal/a2a/health/runner.go`；默认 10 分钟；`A2A_HEALTH_INTERVAL` 调间隔；`A2A_HEALTH_DISABLED=1` 禁用 |

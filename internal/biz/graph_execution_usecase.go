@@ -272,6 +272,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 	exec.SpiritSessionID = sessionID
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
+	// Y4: record the definition identity this execution runs against; Resume
+	// rejects when the graph was edited after the checkpoint was written.
+	exec.DefinitionHash = ComputeGraphBuildConfigHash(cfg)
 
 	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
 	inserted := uc.cacheNewExecution(exec)
@@ -292,8 +295,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		return nil, e
 	}
 
+	streamGen := exec.NextStreamGen()
 	safego.GoBackground("graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
+		uc.consumeRuntimeEvents(eventCh, exec, streamGen, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
 	return exec, nil
@@ -325,6 +329,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 	exec.SpiritSessionID = sessionID
 	exec.runtime = runtime
 	exec.LineageID = runtime.GetLineageID()
+	// Y4: record the definition identity this execution runs against; Resume
+	// rejects when the graph was edited after the checkpoint was written.
+	exec.DefinitionHash = ComputeGraphBuildConfigHash(cfg)
 
 	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
 	inserted := uc.cacheNewExecution(exec)
@@ -345,8 +352,9 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		return nil, e
 	}
 
+	streamGen := exec.NextStreamGen()
 	safego.GoBackground("graph.consumeEvents", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
+		uc.consumeRuntimeEvents(eventCh, exec, streamGen, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
 	return exec, nil
@@ -433,6 +441,27 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 		return nil, err
 	}
 
+	// Y4: the graph definition must be identical to the one the execution
+	// started with. After C1 the team graph is a real asset — editing it
+	// re-materializes the definition, and resuming a stale checkpoint against
+	// a changed topology routes checkpointed state through wrong nodes/edges.
+	// Legacy rows (empty hash, pre-20261214) skip the check.
+	exec.execMu.RLock()
+	storedHash := exec.DefinitionHash
+	exec.execMu.RUnlock()
+	if storedHash != "" {
+		if currentHash := ComputeGraphBuildConfigHash(ct.GraphBuildConfig); currentHash != storedHash {
+			exec.execMu.Lock()
+			uc.applyExecTransition(exec, GraphExecEventInterrupt)
+			exec.execMu.Unlock()
+			uc.lg.Warn("graph: resume rejected, definition changed since checkpoint",
+				loggateway.StepID("graph.resume_hash_mismatch"),
+				loggateway.Str("execution_id", executionID),
+				loggateway.Str("graph_id", exec.GraphID))
+			return nil, apierror.Conflict(apierror.DomainGraph, "graph definition changed since this execution paused; start a new execution instead of resuming")
+		}
+	}
+
 	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.SpiritSessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
 		// Roll back status on failure (running → waiting_human via interrupt semantics).
@@ -452,8 +481,12 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	exec.InterruptNode = ""
 	exec.interruptMu.Unlock()
 
+	// Y2: bump the stream generation BEFORE spawning the new consumer. Any
+	// still-draining stale consumer (old runtime cancel is async) observes the
+	// generation mismatch and skips terminal convergence + status mutations.
+	streamGen := exec.NextStreamGen()
 	safego.GoBackground("graph.consumeEvents(resume)", func() {
-		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID, func() { uc.notifyExecComplete(exec) })
+		uc.consumeRuntimeEvents(eventCh, exec, streamGen, executionID, exec.GraphID, exec.SessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
 	var persistSnap *GraphExecution
@@ -497,6 +530,12 @@ func (uc *GraphExecutionUsecase) RegisterTeamGraphExecution(ctx context.Context,
 	}
 	exec := NewGraphExecution(context.Background(), execID, graphID, strings.TrimSpace(sessionID), string(GraphExecRunning))
 	exec.SpiritSessionID = strings.TrimSpace(spiritSessionID)
+	// Y4: record the definition identity for the resume consistency check.
+	// The hash covers the build config that actually runs (ct.GraphBuildConfig),
+	// identical in form to what BuildConfigForExecution resolves on resume.
+	if ct != nil {
+		exec.DefinitionHash = ComputeGraphBuildConfigHash(ct.GraphBuildConfig)
+	}
 
 	// S2：insert-first，使 exec 从出生即 canonical（见 cacheNewExecution）。
 	inserted := uc.cacheNewExecution(exec)
@@ -548,13 +587,17 @@ func (uc *GraphExecutionUsecase) MarkTeamGraphInterrupt(ctx context.Context, exe
 // Runtime event processing
 // ---------------------------------------------------------------------------
 
-func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, execID, graphID, sessionID string, onComplete func()) {
+// consumeRuntimeEvents drains the runtime event stream and converges terminal
+// state. gen is the stream generation captured at spawn time (Y2): when a
+// newer stream (Resume) has taken over, this stale consumer skips terminal
+// convergence, persistence, and completion callbacks.
+func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, exec *GraphExecution, gen int64, execID, graphID, sessionID string, onComplete func()) {
 	sawDone := false
 	for e := range eventCh {
 		if e.Type == DomainEventGraphDone {
 			sawDone = true
 		}
-		uc.updateExecutionFromRuntimeEvent(exec, e)
+		uc.updateExecutionFromRuntimeEvent(exec, gen, e)
 	}
 
 	var persistSnap *GraphExecution
@@ -563,6 +606,17 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	completed := false
 	failMsg := ""
 	exec.execMu.Lock()
+	if exec.streamGen != gen {
+		// Y2: a newer stream has taken over (Resume). This stale consumer must
+		// not converge terminal state — otherwise the old stream ending without
+		// a done event would falsely fail the new, still-running stream.
+		exec.execMu.Unlock()
+		uc.lg.Debug("graph: stale stream consumer exits without terminal convergence",
+			loggateway.StepID("graph.stream_stale"),
+			loggateway.Str("execution_id", execID),
+			loggateway.Int64("gen", gen))
+		return
+	}
 	// Terminal convergence is done-driven (N1): only an explicit framework
 	// completion event may complete the execution. If the stream ends while
 	// still running without a done event (fatal graph error whose Pregel
@@ -615,7 +669,7 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 
 // TECH-DEBT(COG): method_lines=91, limit=80 (AS-COG-01); the per-event-type
 // switch should be extracted into small handlers in a future iteration.
-func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e GraphRuntimeEvent) {
+func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, gen int64, e GraphRuntimeEvent) {
 	switch e.Type {
 	case DomainEventGraphNodeStart:
 		exec.execMu.Lock()
@@ -663,6 +717,11 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 	case DomainEventGraphNodeError:
 		var persistSnap *GraphExecution
 		exec.execMu.Lock()
+		if exec.streamGen != gen {
+			// Y2: stale stream — must not fail the newer stream's execution.
+			exec.execMu.Unlock()
+			return
+		}
 		if !e.Retrying {
 			// Final failure (retries exhausted or no retry policy): fail the execution.
 			exec.ErrorMessage = e.Error
@@ -693,6 +752,11 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		// failure). Fail the execution regardless of node-level progress.
 		var persistSnap *GraphExecution
 		exec.execMu.Lock()
+		if exec.streamGen != gen {
+			// Y2: stale stream — must not fail the newer stream's execution.
+			exec.execMu.Unlock()
+			return
+		}
 		if ParseGraphExecutionState(exec.Status) == GraphExecRunning {
 			exec.ErrorMessage = e.Error
 			uc.applyExecTransition(exec, GraphExecEventFail)
@@ -709,11 +773,16 @@ func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExec
 		}
 	case DomainEventGraphInterrupt:
 		var persistSnap *GraphExecution
+		exec.execMu.Lock()
+		if exec.streamGen != gen {
+			// Y2: stale stream's late interrupt must not pause the newer stream.
+			exec.execMu.Unlock()
+			return
+		}
 		exec.interruptMu.Lock()
 		exec.interrupted = true
 		exec.InterruptNode = e.NodeID
 		exec.interruptMu.Unlock()
-		exec.execMu.Lock()
 		uc.applyExecTransition(exec, GraphExecEventInterrupt)
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()

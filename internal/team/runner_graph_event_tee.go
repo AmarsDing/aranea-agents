@@ -31,10 +31,23 @@ import (
 // custom node events) are filtered to keep bus traffic bounded (限流红线).
 // Events are always forwarded downstream unchanged; notices are published
 // bus-only (no persist), matching the standalone graph path behavior.
+//
+// Y3 (HITL pause race): an interrupt-carrying Pregel step — the only
+// reachable HITL carrier (checkpoint interrupt events require
+// StreamModeCheckpoints) — must NOT be dropped by the filter, and the pause
+// mark must happen SYNCHRONOUSLY in this tee goroutine via onInterrupt,
+// before the stream ends. The async bus handoff (notice → coordinator watch
+// goroutine → MarkTeamGraphInterrupt) races with run finalization: once
+// ConsumeWithFirstByteGuard returns, the runner calls
+// DeferTeamRunSuccessIfHITL and would read a stale Running status, completing
+// a run that actually paused. The inline mark lands first; the watch-path
+// mark stays as an idempotent fallback (MarkTeamGraphInterrupt early-returns
+// when already waiting_human). onInterrupt may be nil (tests/passthrough).
 func teeGraphStageNotices(
 	in <-chan *trpcevent.Event,
 	bus biz.EventBus,
 	sessionID, spiritSessionID, graphID, execID string,
+	onInterrupt func(nodeID, lineageID string),
 	lg loggateway.Logger,
 ) <-chan *trpcevent.Event {
 	if in == nil || bus == nil || execID == "" {
@@ -46,17 +59,36 @@ func teeGraphStageNotices(
 		defer close(out)
 		for ev := range in {
 			out <- ev
-			if !isGraphStageNoticeSource(ev) {
+			if !isGraphStageNoticeSource(ev) && !isPregelInterruptCarrier(ev, lg) {
 				continue
 			}
 			aev := bridge.ConvertEvent(ev)
 			if aev == nil {
 				continue
 			}
+			if onInterrupt != nil {
+				if key := metaString(aev.Activity.Meta, "interrupt_key"); key != "" {
+					onInterrupt(
+						metaString(aev.Activity.Meta, "node_id"),
+						metaString(aev.Activity.Meta, "lineage_id"),
+					)
+				}
+			}
 			bus.Publish(context.Background(), graphtrpc.ActivityEventToSystemNotice(*aev))
 		}
 	})
 	return out
+}
+
+// isPregelInterruptCarrier reports whether the event is a Pregel step
+// carrying an HITL interrupt (interrupt key + node id). Plain pregel steps
+// stay filtered by the caller (high-frequency progress, no domain meaning).
+func isPregelInterruptCarrier(ev *trpcevent.Event, lg loggateway.Logger) bool {
+	if ev == nil || ev.Response == nil || ev.Response.Object != trpcgraph.ObjectTypeGraphPregelStep {
+		return false
+	}
+	meta := graphtrpc.ExtractPregelMeta(ev, lg)
+	return meta.InterruptKey != "" && meta.NodeID != ""
 }
 
 // isGraphStageNoticeSource reports whether the framework event carries graph

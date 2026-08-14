@@ -28,7 +28,6 @@ import (
 
 	"aranea-agents/internal/tools/clientbridge"
 	"aranea-agents/internal/tools/codingbridge"
-	deliverabletools "aranea-agents/internal/tools/deliverable"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	workingmemory "aranea-agents/internal/tools/working_memory"
 
@@ -45,6 +44,15 @@ var (
 	registry     []*ToolRegistration
 )
 
+// placeholderToolSetFactory is shared by registry entries whose real assembly
+// happens in a later phase (AssembledElsewhere=true). Returning nil,nil
+// signals assembleFromRegistry to skip the entry silently.
+func placeholderToolSetFactory(context.Context) (ToolSet, error) { return nil, nil }
+
+// placeholderToolFactory is the Tool-variant counterpart of
+// placeholderToolSetFactory.
+func placeholderToolFactory(context.Context) (Tool, error) { return nil, nil }
+
 func Registry() []*ToolRegistration {
 	registryOnce.Do(func() {
 		registry = []*ToolRegistration{
@@ -53,12 +61,9 @@ func Registry() []*ToolRegistration {
 				Description: "File operation ToolSet (read, write, search, replace, list)",
 				Category:    "filesystem",
 				Tags:        []string{"filesystem", "read", "write", "search"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleBuiltinToolsets()
-					// which applies FilesystemDir config. Returning nil,nil signals
-					// assembleFromRegistry to skip this entry.
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleBuiltinToolsets()
+				// which applies FilesystemDir config.
+				ToolSetFactory:      placeholderToolSetFactory,
 				AssembledElsewhere:  true,
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
@@ -74,10 +79,8 @@ func Registry() []*ToolRegistration {
 				Description: "Host command execution ToolSet (shell, bash, powershell)",
 				Category:    "execution",
 				Tags:        []string{"shell", "exec", "command"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleBuiltinToolsets().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleBuiltinToolsets().
+				ToolSetFactory:       placeholderToolSetFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -103,10 +106,8 @@ func Registry() []*ToolRegistration {
 				Description: "Gemini web fetch tool (Gemini-powered page extraction)",
 				Category:    "web",
 				Tags:        []string{"web", "fetch", "gemini"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					// Placeholder: actual assembly happens in assembleSearchTools().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleSearchTools().
+				Factory:            placeholderToolFactory,
 				AssembledElsewhere: true,
 				EnabledByDefault:   false,
 				RiskLevel:          "medium",
@@ -132,10 +133,8 @@ func Registry() []*ToolRegistration {
 				Description: "Google Custom Search ToolSet",
 				Category:    "search",
 				Tags:        []string{"search", "web", "google"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleSearchTools().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleSearchTools().
+				ToolSetFactory:     placeholderToolSetFactory,
 				AssembledElsewhere: true,
 				EnabledByDefault:   false,
 				RiskLevel:          "medium",
@@ -183,10 +182,8 @@ func Registry() []*ToolRegistration {
 				Description: "Send text and optional files through registered channels (outbound messaging)",
 				Category:    "communication",
 				Tags:        []string{"communication", "outbound", "channel", "message"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleSessionTools().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleSessionTools().
+				ToolSetFactory:       placeholderToolSetFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "high",
@@ -219,11 +216,9 @@ func Registry() []*ToolRegistration {
 				Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
 				Category:    "coding",
 				Tags:        []string{"coding", "ide", "claude"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Actual assembly happens in assembleClaudeCodeToolset() which
-					// applies config overrides (base dir, readonly, sandbox, etc.).
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleClaudeCodeToolset()
+				// which applies config overrides (base dir, readonly, sandbox, etc.).
+				ToolSetFactory:       placeholderToolSetFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -238,11 +233,9 @@ func Registry() []*ToolRegistration {
 				Description: "Workspace execution tools (exec, write_stdin, kill_session) — NOT YET IMPLEMENTED",
 				Category:    "execution",
 				Tags:        []string{"exec", "workspace", "code"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					// NOT YET IMPLEMENTED: the assembly path (BuildToolsets) prunes
-					// this key before it reaches the registry factory.
-					return nil, nil
-				},
+				// NOT YET IMPLEMENTED: the assembly path (BuildToolsets) prunes
+				// this key before it reaches the registry factory.
+				Factory:              placeholderToolFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -328,10 +321,8 @@ func Registry() []*ToolRegistration {
 				Description: "Browser automation tool (navigate, snapshot, screenshot, click, type, etc.) via Playwright MCP",
 				Category:    "browser",
 				Tags:        []string{"browser", "web", "automation", "playwright"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleBrowserToolset().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleBrowserToolset().
+				ToolSetFactory:       placeholderToolSetFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -360,10 +351,8 @@ func Registry() []*ToolRegistration {
 				Description: "Retrieve the full content of a previously persisted tool result by its blob_id",
 				Category:    "system",
 				Tags:        []string{"system", "tool-result", "retrieval"},
-				Factory: func(ctx context.Context) (Tool, error) {
-					// Placeholder: actual assembly happens in assembleBlobAndResultTools().
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleBlobAndResultTools().
+				Factory:            placeholderToolFactory,
 				AssembledElsewhere: true,
 				EnabledByDefault:   true,
 				RiskLevel:          "low",
@@ -379,24 +368,30 @@ func Registry() []*ToolRegistration {
 				RiskLevel:        "low",
 			},
 			{
-				Name:             "deliverable",
-				Description:      "Cross-agent deliverable handoff tools (set_deliverable, get_deliverable) for structured output passing via graph state",
-				Category:         "team",
-				Tags:             []string{"team", "deliverable", "handoff", "a2a"},
-				ToolSetFactory:   func(ctx context.Context) (ToolSet, error) { return deliverabletools.ToolSet{}, nil },
-				EnabledByDefault: false,
-				RiskLevel:        "low",
+				Name:        "deliverable",
+				Description: "Cross-agent deliverable handoff tools (set_deliverable, get_deliverable) for structured output passing via graph state",
+				Category:    "team",
+				Tags:        []string{"team", "deliverable", "handoff", "a2a"},
+				// Placeholder: the production mount path is the team runtime,
+				// which injects contract-aware tools via CustomTools
+				// (team/trpc_build.go deliverableToolsForDef). Mounting the
+				// uncontracted ToolSet here too would duplicate declaration
+				// names (set/get/ack_deliverable) for deliverable-enabled team
+				// members, and solo agents have no graph state to merge the
+				// tools' StateDelta into — the tools are no-ops outside teams.
+				ToolSetFactory:     placeholderToolSetFactory,
+				AssembledElsewhere: true,
+				EnabledByDefault:   false,
+				RiskLevel:          "low",
 			},
 			{
 				Name:        "client",
 				Description: "Client tool bridge ToolSet (open_app, open_url) — executes on the user's desktop companion, not the server",
 				Category:    "interaction",
 				Tags:        []string{"client", "desktop", "companion"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Placeholder: actual assembly happens in assembleSessionTools()
-					// which injects the process-wide clientbridge.Bridge singleton.
-					return nil, nil
-				},
+				// Placeholder: actual assembly happens in assembleSessionTools()
+				// which injects the process-wide clientbridge.Bridge singleton.
+				ToolSetFactory:       placeholderToolSetFactory,
 				AssembledElsewhere:   true,
 				EnabledByDefault:     false,
 				RiskLevel:            "medium",
@@ -680,6 +675,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		return nil, err
 	}
 
+	// Phase 11: earlier-wins dedup over flat tools + cross-collision detection
+	// against cheap static toolsets (no MCP enumeration — see dedupFlatToolNames).
+	ac.dedupFlatToolNames()
+
 	ApplyDisambiguationHints(ac.out.Tools)
 	for _, ts := range ac.out.ToolSets {
 		ApplyDisambiguationHints(ts.Tools(ctx))
@@ -730,6 +729,10 @@ func mcpTimeoutDuration(timeoutSec int) time.Duration {
 	return parseDurationSec(timeoutSec)
 }
 
+// buildMCPToolSet builds one MCP ToolSet for cfg. The error return exists for
+// mcpToolSetFactory signature compatibility (test injection); construction
+// itself never fails today — connection errors surface later at Init/Tools
+// time and are handled with Always-Ready degrade semantics (see mcp_pool.go).
 func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	connCfg := cfg.ToConnectionConfig()
 

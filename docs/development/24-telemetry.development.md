@@ -8,7 +8,7 @@
 
 ## 1. 模块定位
 
-基于 OpenTelemetry + Prometheus + Langfuse 的可观测性：传输层 Trace、业务 Metrics、Chat/Team/Graph Run 的 FlowLog/Usage spans 投影。
+基于 OpenTelemetry + Prometheus 的可观测性：传输层 Trace、业务 Metrics、Chat/Team/Graph Run 的 FlowLog/Usage spans 投影。
 
 **代码锚点**：
 
@@ -16,7 +16,6 @@
 |----|------|
 | OTLP 初始化 | `internal/telemetry/telemetry.go` |
 | 采样器 | `internal/telemetry/sampler.go` |
-| Langfuse 运行时 | `internal/telemetry/langfuse.go` |
 | 传输中间件 | `internal/server/http.go`、`internal/server/grpc.go` |
 | Prometheus | `internal/metrics/vars.go`、`internal/metrics/callback.go` |
 | OTel Turn Bridge | `internal/telemetry/turntrace/bridge.go` |
@@ -48,7 +47,7 @@
 | Jaeger 里能否看到 LLM/Tool 细粒度 Span？ | ✅ | `turntrace.Bridge` → `llm.call` / `tool.call` 子 Span |
 | Graph / Team 执行是否有 OTel Span？ | ✅ | `graph.execute` / `team.run` 根 Span + 子 Span |
 | 高负载下 Trace 采样如何控制？ | ✅ HTTP / ❌ gRPC | `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`（HTTP only） |
-| Langfuse Trace 是否可导出？ | 🔴 未接入 Wire | `internal/telemetry/langfuse.go` 构造函数已就绪，但 `wireApp` 未注册 |
+| Langfuse Trace 是否可导出？ | 已移除 | `internal/telemetry/langfuse.go` 从未接入 Wire（零生产引用），2026-08-14 死代码清理删除 |
 | 运维在 UI 看单次运行瀑布图？ | ✅ | `TraceList` + `TraceWaterfall` |
 
 ### 2.2 组件实现状态
@@ -72,7 +71,7 @@
 | Team usage spans 投影 | ✅ | turn + member metadata |
 | Trace 采样策略 | ✅ HTTP / ❌ gRPC | `sampler.go` + `OTEL_TRACES_SAMPLER*`（HTTP only） |
 | OTel ↔ usage 关联 | ✅ root + child | `otel_trace_id` / `otel_root_span_id` + 各 span `otel_id` |
-| Langfuse 导出 | 🔴 未接入 Wire | `langfuse.go` 构造函数已就绪，`wireApp` 未注册 `NewLangfuseRuntime` |
+| Langfuse 导出 | 已移除 | `langfuse.go` 从未接入 Wire（零生产引用），2026-08-14 死代码清理删除 |
 | OTel ↔ usage span ID 同步 | ✅ | `SyncOtelSpanIDs` → `span_collector.go` |
 
 ---
@@ -124,7 +123,7 @@
 | 11 | Graph 执行 OTel Span | P2 | EP-OBS-06 | ✅ |
 | 12 | Trace 采样策略（HTTP `sampler.go`） | P3 | — | ✅ |
 | 13 | Span 语义 / Team parity | P2 | — | ✅ |
-| 14 | Langfuse 导出（`langfuse.go` + Wire 注入） | P3 | — | 🔴 构造函数已就绪，未接入 `wireApp` |
+| 14 | ~~Langfuse 导出（`langfuse.go` + Wire 注入）~~ | P3 | — | 已关闭：从未接入 Wire，文件 2026-08-14 死代码清理删除 |
 | 15 | OTel ↔ usage span ID 同步（`SyncOtelSpanIDs`） | P3 | — | ✅ |
 
 ---

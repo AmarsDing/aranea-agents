@@ -302,6 +302,11 @@ var ddlMigrations = []ddlMigration{
 	// 单列索引，支撑 24h 汇总、List 查询、ORDER BY created_at DESC、批量清理
 	// 的时间范围扫描。复合索引 (tool_key, started_at) 不覆盖纯 started_at 过滤。
 	{Version: 20261213, Name: "tool_invocation_time_indexes", SQL: "sql/migrations/20261213_tool_invocation_time_indexes.sql"},
+	// 20261214 graph_execution_spirit_hash: Y4/Y5 恢复路径正确性——
+	// graph_executions 增加 spirit_session_id（重启后 resume 的会话归属）与
+	// definition_hash（C1 物化后 resume 的图定义一致性校验）；
+	// team_graph_sessions 增加 spirit_session_id（RecoverSessions 恢复 watch 订阅过滤键）。
+	{Version: 20261214, Name: "graph_execution_spirit_hash", SQL: "sql/migrations/20261214_graph_execution_spirit_hash.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

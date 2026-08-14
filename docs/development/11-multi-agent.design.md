@@ -560,7 +560,7 @@ Graph 路径要点：
 - `agent_keys.go`：Agent Key 解析
 - `llm_catalog.go`：LLM 目录
 - `usage_tokens.go` / `usage_record.go`：Usage 记录
-- `safety_adapter.go` / `export_adapter.go` / `compiler_adapter.go`：适配器
+- `safety_adapter.go` / `compiler_adapter.go`：适配器（`export_adapter.go` 已删除——零生产引用，2026-08-14 死代码清理）
 
 成员 Agent 经 `chatagent.BuildTRPCAgent(Cached)` 构建，deps 含 `PluginsForAgent`、有效工具集。
 

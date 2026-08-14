@@ -854,4 +854,99 @@ dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS �
 
 ---
 
-*文档版本：2026-08-13 v1.8 — §16 实施校准落档：KWS 阈值 0.7→0.25（spike 实测，0.7 全量漏检）；唤醒/休眠实现抽离 `session_wake.go`（AS-COG-01 债务控制，session.go 1579→1414）；测试归口 `session_wake_test.go`（11 例含竞态压测回归）。2026-08-12 v1.7 — 追加 §16 语音唤醒与休眠设计（本地 KWS「小媛」+ dormant 七态机 + 退出词/静默休眠 + dormant 委派系统唤醒）。v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*
+## 17. 语音抗干扰（Noise Rejection，2026-08-14 设计）
+
+> 需求锚点：§2.13。真机问题：他人说话/电视/环境杂音严重干扰语音精灵——背景人声被 ASR 识别白建 Turn（烧 token + 莫名回复）、播报被旁人短促插话误打断。根因：全链路只有「能量」一个判据，无任何一层做声源鉴别或语义相关性判断。
+
+### 17.1 干扰穿透点与分层防御映射
+
+| 穿透点 | 现状（V11 前） | V11 防御层 |
+|--------|--------------|-----------|
+| listening 态他人说话被识别白建 Turn | 仅过滤空文本，任何非空终稿都建 Turn | L3 噪声终稿过滤（§17.4）+ L4 ASR 热词（§17.5） |
+| speaking/thinking 态他人短促人声误触发 barge-in | 能量+ZCR VAD，200ms onset 即打断 | L2 VAD 分级 onset（§17.3） |
+| 采集端背景人声/电平漂移 | 浏览器 AEC + NS（NS 对人声无效） | L1 采集约束人声隔离（§17.2） |
+| 噪声/音乐被误判为人声 | 能量 VAD 不区分声源 | V12 Silero 神经 VAD（§17.6 预留） |
+| 无法区分机主 vs 其他人 | 无 | V13 声纹门控（§17.7 预留） |
+
+### 17.2 L1 采集约束（V11-T1，`audioCapture.ts`）
+
+getUserMedia 约束增量：`autoGainControl: true`（稳定输入电平，VAD/ASR 受益）+ `voiceIsolation: true`（Chrome 118+ ML 人声隔离，直接压制背景人声；WebView2 为 Chromium 内核可用）。
+
+- **兼容性**：未知约束按 WebIDL 静默忽略（仅 `exact` 高级约束才抛 OverconstrainedError），Safari/Firefox 零风险降级
+- TS DOM lib 未含 `voiceIsolation` 字段，用扩展类型断言，不 cast any
+
+### 17.3 L2 VAD 分级 onset（V11-T2，`vad.ts`）
+
+**事件模型变更**：VAD 由单 onset 改为双阈值——
+
+| 事件 | 触发 | 用途 |
+|------|------|------|
+| `speech_sustained` | 持续人声 ≥ `speechOnsetMs`（200ms，不变） | 仅武装判停计时（silence hangover），**不再触发 barge-in** |
+| `speech_barge_in`（新增） | 持续人声 ≥ `bargeInOnsetMs`（默认 450ms，可配） | speaking/thinking 态触发 barge_in；listening 态忽略 |
+
+- `decideVadAction` 契约：`barge_in` 仅由 `speech_barge_in` 在 speaking/thinking 态产生；`silence_timeout` 在 listening 态发 commit（不变）
+- **NFR2 修订（评审裁决）**：「人声检测→停播 ≤300ms」→「持续人声确认 450ms → 停播 ≤300ms」。用 200ms 打断延迟换误打断率下降（火山官方 InterruptSpeechDuration 按说话时长打断同款策略）；`bargeInOnsetMs` 参数化，真机嫌慢可调回
+- 行为推论：speaking 态 <450ms 背景人声不再停播；其音频仍上行（ASR 终稿在非 listening 态被状态机拒绝，天然不建 Turn）
+- useVoiceSession 侧 `BARGE_IN_DETECT_MS` 常量同步为 450（上行 detect_ms 语义）
+
+### 17.4 L3 无意义终稿过滤（V11-T3，`internal/voice/utterance_filter.go` 新增）
+
+**拦截链位置**（handleASRFinal，仅 companion 模式；dictation 已在前面 return 不受影响）：
+
+```
+唤醒词剥离 → 退出词匹配 → 确认词拦截 → 【噪声过滤（新）】→ 建 Chat Turn
+```
+
+**过滤规则**（`FilterNoiseFinal(text, durationMs) (drop bool, reason string)`，归一化复用 `normalizeConfirmWord`）：
+
+| # | 规则 | 例 |
+|---|------|----|
+| F1 | 语气词表整句命中 | 嗯/嗯嗯/啊/呃/哦/噢/唉/哎/喂/那个/hmm/emm |
+| F2 | 单 rune 碎片 | 背景音识别出的单字 |
+| F3 | `durationMs>0 && <300ms && ≤2 rune` | 极短含混音 |
+
+- **与确认词的重叠裁决**：「嗯」在 approveWords 中——有待决确认时先被 confirm 拦截（return，到不了过滤器）；无待决确认时被 F1 丢弃（目标行为）
+- 被过滤终稿：不建 Turn、状态停留 listening；流程日志 `voice.asr.filtered`（新 step，登记 stepTitleRegistry + 52-flow-logger §5.1）带 reason/text_len/duration_ms；进程日志 Info（K3）
+- AS-COG-01：过滤逻辑独立文件，session.go 只加一处调用
+
+### 17.5 L4 ASR 热词增强（V11-T4，`volcengine_asr.go`）
+
+full client request `request.corpus.context` 注入热词（SAUC bigmodel 官方参数，JSON 字符串；双向流式上限 100 token，超出自动截断）：
+
+```json
+{"hotwords": [{"word":"小媛"},{"word":"小圆"},{"word":"休息吧"},{"word":"好的"}, ...]}
+```
+
+- 词表内容 = 唤醒词同音表 + 退出词 + 确认词（提升拦截链源头识别率）；默认表去重后 40 短词（「不用了」同现退出/否认表，去重一次）
+- 放置：`data/speech` 包级 `defaultASRHotwords`（注释标注与 `internal/voice` 词表对应关系；热词是「识别增强」用途，与「文本匹配」词表解耦演进）；`biz.ASRProviderConfig` 预留 `Hotwords []string` 字段（暂不接 DB/UI，YAGNI），非空时覆盖默认表
+- seedasr 2.0（`volc.seedasr.sauc.duration`）：ResourceID 已有 env/DB 配置通道，账号开通后改配置即切换，代码零改动
+
+> 实施校准（2026-08-14）：初稿误写 `request.context`/≤200 token，以官方文档为准修正为 `request.corpus.context`/双向流式 100 token（docs.volcengine.com 6561/1354869 协议表）。
+
+### 17.6 V12 预留：Silero 神经 VAD
+
+- `@ricky0123/vad-web`（onnxruntime-web WASM + silero_vad.onnx ~2MB），资产经 `web/public/vad/` 分发（KWS 同款模式）
+- 集成点：替代 `vad.ts` 的 `isSpeechFrame` 能量判定为人声概率判定（onFrameProcessed 回调取 probability）；frame 重缓冲 20ms→32ms（512 样本窗）
+- 能量 VAD 保留为加载失败降级路径（KWS 降级同款模式）
+- 收益边界：Silero 区分人声/非人声（噪声/音乐鲁棒），**不区分说话人**——他人人声问题归 V13
+
+### 17.7 V13 预留：声纹门控（Speaker Verification）
+
+- **门控点 A（防白建 Turn）**：`handleASRFinal` 对 utterance PCM（现有留档缓冲 `takeUtteranceBuffer`）提取 speaker embedding，与机主注册声纹余弦相似度 < 阈值（典型 0.6）→ 丢弃
+- **门控点 B（防误打断）**：speaking 态 barge-in 前对 onset 累积音频过声纹比对
+- **Spike 决策点**：前端 WASM（sherpa-onnx speaker embedding，与 KWS 同栈）vs 后端 ONNX（onnxruntime_go 需 native 动态库，影响 Docker 镜像/交叉编译）——需单独评审部署形态
+- 机主注册流程：设置页引导录 3 段 5s 语音；未注册用户门控自动跳过（优雅降级）
+
+### 17.8 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| voiceIsolation 浏览器不支持 | 未知约束 WebIDL 静默忽略；实测矩阵（Chrome/Edge/WebView2） |
+| 450ms 确认窗拉长真实打断体感 | 参数化 `bargeInOnsetMs`，真机可调回 300ms；NFR2 已修订 |
+| 过滤误杀真实短指令 | 规则保守（F1 整句精确匹配/F2 单字/F3 双保险时长+字数）；全部丢弃记流程日志可回溯调表 |
+| 热词 boost 提高误识别倾向 | 词表 ≤30 词远低上限；命中后仍走既有拦截链，不误建 Turn |
+| 噪声环境 partial 活动反复重置 SleepTimer 致不休眠 | 已知限制（现状行为，V11 不扩大）；V12 神经 VAD 后评估 |
+
+---
+
+*文档版本：2026-08-14 v1.9 — 追加 §17 语音抗干扰设计（L1 采集人声隔离 / L2 VAD 分级 onset 450ms / L3 噪声终稿过滤 / L4 ASR 热词；V12 神经 VAD、V13 声纹门控预留）；NFR2 修订为「持续人声确认 450ms + 停播 ≤300ms」。2026-08-13 v1.8 — §16 实施校准落档：KWS 阈值 0.7→0.25（spike 实测，0.7 全量漏检）；唤醒/休眠实现抽离 `session_wake.go`（AS-COG-01 债务控制，session.go 1579→1414）；测试归口 `session_wake_test.go`（11 例含竞态压测回归）。2026-08-12 v1.7 — 追加 §16 语音唤醒与休眠设计（本地 KWS「小媛」+ dormant 七态机 + 退出词/静默休眠 + dormant 委派系统唤醒）。v1.6 — §15.4.1 补充评审落档（R10-R15）：task_id 内容匹配绑定（ExecuteTurn 阻塞、TurnResult 无 TaskID）、Registry Wire 单例双向注入、chat_only profile + CustomTools 绕行、intent_pass_enabled 默认 true 须显式写 false、委派播报 TTS 自足 flush + 正忙 FIFO 排队。v1.5 — §15 代码级评审落档（§15.4.1 R1-R9）：事件订阅三路分流修正（V2Bus 全量广播不过滤）、工具装配改 orchestrator 条件注入、前端改绑语音助手**会话**（非 agent_key）、播报触发 TurnCompleted→TaskCompleted。v1.4 — 追加 §15 语音助手前台模式设计（同级双助手：语音前台委派 + 精灵后台执行 + 完成实时播报）。v1.3 — 追加 §14 语音快速通道延迟优化（根因评审结论 + P0 已实现项 + P1/P2 待办）。v1.2 — §7.4 v3：HUD 视觉完全复刻 TwinSprite 光球（ADR-D12，替代 D11 反应堆 3D 场景；DOM 全息化/音效引擎沿用）；ADR 表 +D12。v1.1 — 追加 V6 语音听写模式设计（§13）+ voice.start 协议 mode 字段（§2.2）。*

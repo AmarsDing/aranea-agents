@@ -34,15 +34,15 @@ export function useChatStallWatchdog(deps: {
         stallNotified = true;
         $q.notify({
           type: 'warning',
-          message: t('chat.runLongStallWarning', '似乎没有进展，是否停止？'),
+          message: t('chat.runLongStallWarning'),
           actions: [
             {
-              label: t('chat.stop', '停止'),
+              label: t('chat.stop'),
               color: 'negative',
               handler: () => deps.stopStreaming(),
             },
             {
-              label: t('chat.wait', '继续等待'),
+              label: t('chat.wait'),
               color: 'grey',
               handler: () => {},
             },

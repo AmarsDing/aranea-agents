@@ -14,7 +14,8 @@
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ① Observe 感知（biz，EvolutionTrigger 插件，复用统一编排器）                  │
 │   ErrorClusterTrigger / PerfBottleneckTrigger / EvalRegressionTrigger /   │
-│   TestFailureTrigger → UnifiedEvolutionSuggestion(target_type=platform)   │
+│   TestFailureTrigger / OrchestrationTraceTrigger（P3-1 MAST 标注）        │
+│   → UnifiedEvolutionSuggestion(target_type=platform)                      │
 │        ↓                                                                  │
 │ ② Diagnose 归因（Meta Team · Analyst Agent）                               │
 │   FailureReport + trace/指标快照 + 源码只读工具 → Diagnosis(JSON)           │
@@ -72,7 +73,7 @@
 
 理由：复用成熟的 pending 去重（`HasPendingForTarget`）、per-action-type 冷却（`EvoTriggerCooldownHours`）、审批状态机，避免另起一套建议生命周期。**闭环执行状态**（diagnosing/patching/verifying/...）不进建议表，由新表 `self_improvement_runs` 承载（见 D3）。
 
-### D2：四类触发器，信号源各司其职
+### D2：五类触发器，信号源各司其职
 
 | 触发器 | TargetType/ActionType | 信号源 | 触发条件（默认，可配置） |
 |--------|----------------------|--------|--------------------------|
@@ -80,6 +81,7 @@
 | PerfBottleneckTrigger | platform / patch_code 或 tune_config | monitor trace/usage 指标 | 步骤 P95 超基线 2× 或 token 超基线 50% |
 | EvalRegressionTrigger | platform / patch_code 或 patch_prompt | 33-evaluation 基线 | 基准分数退化 >10% |
 | TestFailureTrigger | platform / patch_code | 测试运行结果（cron 全量测试） | 同一测试连续 2 轮失败 |
+| OrchestrationTraceTrigger（P3-1） | platform / patch_prompt 或 tune_config | 终态编排（orchestrations）+ flow_log_events 错误聚合 | MAST 14 失败模式规则链标注，24h 窗口聚类（每模式一条建议，签名去重）；FM-1.x/2.x→patch_prompt、FM-3.x→tune_config（P3-2 反哺映射） |
 
 所有触发器实现 `EvolutionTrigger` 接口，Check() 产出 `UnifiedEvolutionSuggestion`，证据快照写入 metadata（JSON）。触发器只感知、不行动——行动由 Meta Team 执行。
 

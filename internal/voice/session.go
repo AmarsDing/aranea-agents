@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
@@ -662,6 +663,20 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 		if s.tryResolveVoiceConfirm(text, decision) {
 			return
 		}
+	}
+	// V11-T3 噪声终稿过滤（设计 §17.4）：语气词/单字碎片/极短含混音不建
+	// Turn——旁人说话、电视对白被识别后不再白烧 LLM token。PCM 缓冲随
+	// takeUtteranceBuffer 已取出，此处直接丢弃（与其他不进 Chat 的分支一致）。
+	if drop, reason := FilterNoiseFinal(text, ev.DurationMs); drop {
+		s.lg.Info("voice asr final filtered as noise",
+			loggateway.StepID("voice.asr.filtered"),
+			loggateway.SessionID(s.sessionID),
+			loggateway.Str("reason", reason),
+			loggateway.Int("text_len", utf8.RuneCountInString(text)),
+			loggateway.Int("duration_ms", ev.DurationMs))
+		s.flow.LogSkip("voice.asr.filtered", "噪声终稿已丢弃",
+			event.P("reason", reason), event.P("duration_ms", ev.DurationMs))
+		return
 	}
 	s.mu.Lock()
 	if _, err := Transition(s.state, EvASRFinal); err != nil {

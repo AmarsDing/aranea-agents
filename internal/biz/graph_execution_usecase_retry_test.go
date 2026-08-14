@@ -49,7 +49,7 @@ func TestUpdateExecutionFromRuntimeEvent_RetryingNodeError_KeepsRunning(t *testi
 	uc := newTestGraphExecUsecase(repo)
 	exec := NewGraphExecution(context.Background(), "exec-retry", "graph-1", "sess-1", string(GraphExecRunning))
 
-	uc.updateExecutionFromRuntimeEvent(exec, GraphRuntimeEvent{
+	uc.updateExecutionFromRuntimeEvent(exec, 0, GraphRuntimeEvent{
 		Type:       DomainEventGraphNodeError,
 		NodeID:     "node-1",
 		Error:      "transient llm timeout",
@@ -72,7 +72,7 @@ func TestUpdateExecutionFromRuntimeEvent_FinalNodeError_FailsExecution(t *testin
 	uc := newTestGraphExecUsecase(repo)
 	exec := NewGraphExecution(context.Background(), "exec-final", "graph-1", "sess-1", string(GraphExecRunning))
 
-	uc.updateExecutionFromRuntimeEvent(exec, GraphRuntimeEvent{
+	uc.updateExecutionFromRuntimeEvent(exec, 0, GraphRuntimeEvent{
 		Type:       DomainEventGraphNodeError,
 		NodeID:     "node-1",
 		Error:      "permanent failure",
@@ -100,7 +100,7 @@ func TestConsumeRuntimeEvents_RetryThenSuccess_CompletesExecution(t *testing.T) 
 	eventCh <- GraphRuntimeEvent{Type: DomainEventGraphDone}
 	close(eventCh)
 
-	uc.consumeRuntimeEvents(eventCh, exec, exec.ID, exec.GraphID, exec.SessionID, nil)
+	uc.consumeRuntimeEvents(eventCh, exec, 0, exec.ID, exec.GraphID, exec.SessionID, nil)
 
 	if got := exec.GetStatus(); got != string(GraphExecCompleted) {
 		t.Errorf("retry-then-success must complete: Status = %q, want %q", got, GraphExecCompleted)

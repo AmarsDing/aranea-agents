@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/apierror"
 )
 
 // parityMemRepo captures team_run_steps and supports minimal team narrow interfaces for E2E harness.
@@ -96,6 +97,9 @@ func (m *parityMemRepo) ListTaskDeadLetters(context.Context, biz.TaskDeadLetterL
 }
 func (m *parityMemRepo) ResolveTaskDeadLetter(context.Context, string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
+}
+func (m *parityMemRepo) GetTaskDeadLetter(context.Context, string) (biz.TaskDeadLetter, error) {
+	return biz.TaskDeadLetter{}, apierror.NotFound(apierror.DomainTeam, "dead letter not found")
 }
 func (m *parityMemRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil

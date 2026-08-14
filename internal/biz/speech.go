@@ -94,6 +94,9 @@ type ASRProviderConfig struct {
 	AccessKey  string // sensitive，禁止入日志
 	ResourceID string
 	Language   string
+	// Hotwords ASR 热词直传表（V11-T4）：非空时覆盖 Provider 默认表。
+	// 预留配置通道，暂不接 DB/UI（YAGNI）。
+	Hotwords []string
 }
 
 func (c ASRProviderConfig) Validate() error {

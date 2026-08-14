@@ -20,6 +20,7 @@ import (
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 
 	"github.com/google/uuid"
 )
@@ -120,11 +121,23 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
-	inv := &trpcagent.Invocation{
-		RunOptions: trpcagent.RunOptions{
+	// Invocation 必须经 NewInvocation 构造（初始化 noticeMu/noticeChannels，
+	// 裸 &Invocation{} 会触发 "noticeMu is uninitialized" 且事件通知链断裂）。
+	// 用户输入必须走 invocation.Message——GraphAgent.createInitialState 只从
+	// invocation.Message 派生 StateKeyUserInput（agent 节点用户消息来源），
+	// 放 initialState["input"] 里不会被消费，会导致 LLM 请求空 messages 秒回。
+	invOpts := []trpcagent.InvocationOptions{
+		trpcagent.WithInvocationRunOptions(trpcagent.RunOptions{
 			RuntimeState: runtimeState,
-		},
+		}),
 	}
+	if input, ok := initialState["input"].(string); ok && input != "" {
+		invOpts = append(invOpts, trpcagent.WithInvocationMessage(trpcmodel.Message{
+			Role:    trpcmodel.RoleUser,
+			Content: input,
+		}))
+	}
+	inv := trpcagent.NewInvocation(invOpts...)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	r.setRunCancel(cancel)
@@ -241,11 +254,10 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
-	inv := &trpcagent.Invocation{
-		RunOptions: trpcagent.RunOptions{
-			RuntimeState: runtimeState,
-		},
-	}
+	// 同 Run：NewInvocation 构造以初始化 noticeMu/通知链（见 Run 注释）。
+	inv := trpcagent.NewInvocation(trpcagent.WithInvocationRunOptions(trpcagent.RunOptions{
+		RuntimeState: runtimeState,
+	}))
 
 	runCtx, cancel := context.WithCancel(ctx)
 	r.setRunCancel(cancel)

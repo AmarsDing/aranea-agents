@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"time"
 )
 
@@ -72,4 +73,15 @@ func (ct *CompiledTeam) RoleForNode(nodeID string) (RoleInfo, bool) {
 func ComputeDefinitionHash(definitionJSON string) string {
 	h := sha256.Sum256([]byte(definitionJSON))
 	return hex.EncodeToString(h[:])
+}
+
+// ComputeGraphBuildConfigHash returns the SHA256 hex digest of a graph build
+// config (Y4). Marshal failures return "" (caller treats empty as "unknown"
+// and skips the resume consistency check, same as legacy rows).
+func ComputeGraphBuildConfigHash(cfg GraphBuildConfig) string {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return ""
+	}
+	return ComputeDefinitionHash(string(raw))
 }

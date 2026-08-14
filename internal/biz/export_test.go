@@ -40,23 +40,6 @@ var (
 	MetaString                  = metaString
 	MetaBool                    = metaBool
 	MetaInt                     = metaInt
-	CopyContentToActivity       = copyContentToActivity
-	CopyContentFromActivity     = copyContentFromActivity
-	CopyStateDeltaToActivity    = copyStateDeltaToActivity
-	CopyStateDeltaFromActivity  = copyStateDeltaFromActivity
-	CopyErrorToActivity         = copyErrorToActivity
-	CopyErrorFromActivity       = copyErrorFromActivity
-	CopyUsageToActivity         = copyUsageToActivity
-	CopyUsageFromActivity       = copyUsageFromActivity
-	CopyToolCallToActivity      = copyToolCallToActivity
-	CopyToolCallFromActivity    = copyToolCallFromActivity
-	CopyGraphNodeToActivity     = copyGraphNodeToActivity
-	CopyGraphNodeFromActivity   = copyGraphNodeFromActivity
-	DomainEventToActivityEvent  = domainEventToActivityEvent
-	ActivityEventToDomainEvent  = activityEventToDomainEvent
-	ApplyActivityCorrelation    = applyActivityCorrelation
-	StoreActivityCorrelation    = storeActivityCorrelation
-	DomainEventKindStatus       = domainEventKindStatus
 	CanonicalTurnSource         = canonicalTurnSource
 	EntryPointFromTurnSource    = entryPointFromTurnSource
 

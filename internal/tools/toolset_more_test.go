@@ -116,6 +116,49 @@ func TestAssemble_customTools(t *testing.T) {
 	}
 }
 
+// TestAssemble_duplicateCustomToolNames guards the earlier-wins dedup: two
+// flat tools with the same declaration name must collapse to the first one
+// instead of reaching the model twice (most LLM APIs reject duplicate names).
+func TestAssemble_duplicateCustomToolNames(t *testing.T) {
+	first := &mockToolForAlias{decl: &Declaration{Name: "dup_tool", Description: "first"}}
+	second := &mockToolForAlias{decl: &Declaration{Name: "dup_tool", Description: "second"}}
+	out, err := Assemble(context.Background(), AssemblyConfig{
+		Session: SessionConfig{CustomTools: []Tool{first, second}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	count := 0
+	for _, tool := range out.Tools {
+		if d := tool.Declaration(); d != nil && d.Name == "dup_tool" {
+			count++
+			if d.Description != "first" {
+				t.Fatalf("expected earlier-wins, got description %q", d.Description)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 dup_tool after dedup, got %d", count)
+	}
+}
+
+// TestAssemble_deliverableNotMountedFromRegistry guards the deliverable
+// placeholder contract: the registry entry must not mount the uncontracted
+// ToolSet — team runtime injects contract-aware tools via CustomTools.
+func TestAssemble_deliverableNotMountedFromRegistry(t *testing.T) {
+	out, err := Assemble(context.Background(), AssemblyConfig{
+		EnabledTools: []string{"deliverable"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, ts := range out.ToolSets {
+		if ts != nil && ts.Name() == "deliverable" {
+			t.Fatal("deliverable ToolSet must not be mounted from the registry (assembled elsewhere)")
+		}
+	}
+}
+
 func TestAssemble_arxivSearchEnabled(t *testing.T) {
 	out, err := Assemble(context.Background(), AssemblyConfig{
 		EnabledTools: []string{"arxiv_search"},

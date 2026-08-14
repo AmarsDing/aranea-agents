@@ -13,6 +13,7 @@ import (
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcgraphcheckpoint "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/inmemory"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -447,6 +448,14 @@ func (a *GraphAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan
 	// This mirrors the framework's graphagent.createInitialState (line 499):
 	//   initialState[graph.StateKeyParentAgent] = ga
 	initialState[trpcgraph.StateKeyParentAgent] = a
+	// 同 framework graphagent.createInitialState (line 484-493)：把用户消息
+	// 播种为 user_input——agent 节点的用户消息来源（executor.go inputKey）。
+	// 缺失会导致节点 LLM 请求 messages 为空、秒回空结果。
+	if inv != nil && inv.Message.Content != "" && inv.Message.Role == trpcmodel.RoleUser {
+		if _, ok := initialState[trpcgraph.StateKeyUserInput]; !ok {
+			initialState[trpcgraph.StateKeyUserInput] = inv.Message.Content
+		}
+	}
 	return a.executor.Execute(ctx, initialState, inv)
 }
 

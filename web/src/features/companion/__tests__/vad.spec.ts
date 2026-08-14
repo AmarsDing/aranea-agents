@@ -50,8 +50,29 @@ describe('createVad', () => {
     expect(vad.speaking).toBe(true);
     // 10th frame crosses 200ms
     expect(feed(vad, speechFrame(), 1)).toEqual(['speech_sustained']);
-    // sustained must not re-fire while speech continues
+    // sustained must not re-fire while speech continues (至 440ms 仍未到 450ms 打断阈)
+    expect(feed(vad, speechFrame(), 12)).toEqual([]);
+  });
+
+  // V11-T2（设计 §17.3）：双阈值——speech_sustained 武装判停；speech_barge_in
+  // 才允许打断。短促背景人声（<450ms）不再触发打断。
+  it('emits speech_barge_in only when voice persists >= barge-in threshold (450ms)', () => {
+    const vad = createVad({ sampleRate: RATE, frameMs: FRAME_MS });
+    feed(vad, speechFrame(), 10); // 200ms → speech_sustained
+    // 至 440ms 仍无打断事件
+    expect(feed(vad, speechFrame(), 12)).toEqual([]);
+    // 第 23 帧（460ms）越过 450ms → speech_barge_in
+    expect(feed(vad, speechFrame(), 1)).toEqual(['speech_barge_in']);
+    // 不打断二次触发
     expect(feed(vad, speechFrame(), 20)).toEqual([]);
+  });
+
+  it('short background chatter (300ms) fires onset but never barge-in', () => {
+    const vad = createVad({ sampleRate: RATE, frameMs: FRAME_MS });
+    // 15 帧 = 300ms：越过 onset（200ms）但未到打断阈（450ms）
+    expect(feed(vad, speechFrame(), 15)).toEqual(['speech_sustained']);
+    // 插话结束 → 静默，不应出现 speech_barge_in
+    expect(feed(vad, silenceFrame(), 10)).toEqual([]);
   });
 
   it('does not fire onset for a short burst below threshold', () => {
@@ -94,6 +115,16 @@ describe('createVad', () => {
     expect(events).toContain('speech_sustained');
   });
 
+  it('re-arms barge-in after a speech gap reset', () => {
+    const vad = createVad({ sampleRate: RATE, frameMs: FRAME_MS });
+    feed(vad, speechFrame(), 23); // 460ms → barge-in fired
+    feed(vad, silenceFrame(), 36); // 说完 → silence_timeout
+    feed(vad, speechFrame(), 10); // 新语句 onset 200ms
+    // 新语句持续到 450ms 应再次发 speech_barge_in
+    const events = feed(vad, speechFrame(), 13);
+    expect(events).toEqual(['speech_barge_in']);
+  });
+
   it('reset() clears all state', () => {
     const vad = createVad({ sampleRate: RATE, frameMs: FRAME_MS });
     feed(vad, speechFrame(), 9);
@@ -109,8 +140,10 @@ describe('createVad', () => {
       frameMs: FRAME_MS,
       speechOnsetMs: 100,
       silenceHangoverMs: 200,
+      bargeInOnsetMs: 300,
     });
     expect(feed(vad, speechFrame(), 5)).toEqual(['speech_sustained']); // 100ms
+    expect(feed(vad, speechFrame(), 10)).toEqual(['speech_barge_in']); // 累计 300ms
     expect(feed(vad, silenceFrame(), 10)).toEqual(['silence_timeout']); // 200ms
   });
 });
