@@ -1051,6 +1051,7 @@ export default {
       btnClear: '清空记录',
       paginationLabel: '条运行记录',
       viewDetail: '查看详情',
+      detailTitle: '运行详情',
       confirmClearTitle: '确认清空',
       confirmClearMessage: '将删除所有 Callback / Plugin 运行记录，此操作不可撤销。确定继续？',
       confirmClearOk: '确认清空',

@@ -19,8 +19,12 @@ func TestTodoArgsGuard_stripsTodosFromNonTodoWrite(t *testing.T) {
 	if err != nil || res == nil {
 		t.Fatalf("hook failed: %v", err)
 	}
+	// P1-3: 剥离结果经 ModifiedArguments 返回（框架唯一写回通道）。
+	if res.ModifiedArguments == nil {
+		t.Fatal("stripped args must be returned via ModifiedArguments")
+	}
 	var out map[string]json.RawMessage
-	if err := json.Unmarshal(btArgs.Arguments, &out); err != nil {
+	if err := json.Unmarshal(res.ModifiedArguments, &out); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := out["todos"]; ok {

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/alias"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -116,7 +117,8 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 	var pluginCfg plugintrpc.ConfirmationGuardConfig
 	hasPlugin := false
 	if deps.PluginManager != nil {
-		if cfg, ok := deps.PluginManager.ConfirmationGuardConfigForAgent(ag.ID); ok {
+		// N-B1：按调用方工作区过滤，杜绝跨租户 guard 配置泄漏。
+		if cfg, ok := deps.PluginManager.ConfirmationGuardConfigForAgent(ag.ID, workspace.IDFromContext(ctx)); ok {
 			pluginCfg = cfg
 			hasPlugin = true
 		}

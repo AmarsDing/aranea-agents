@@ -171,12 +171,14 @@ func (s filesystemHealthStub) FilesystemHealthStats(_ context.Context) (int, int
 
 func TestShouldFireAlert_respectsCooldown(t *testing.T) {
 	uc := NewMonitorUsecase(nil, nil, nil, nil, nil, nil)
-	rule := MonitorAlertRule{ID: "x", CooldownMinutes: 30}
 	now := time.Now()
+	rule := MonitorAlertRule{ID: "x", CooldownMinutes: 30}
 	if !uc.ShouldFireAlert(rule, now) {
 		t.Fatal("first fire should be allowed")
 	}
-	uc.MarkAlertFired(rule.ID, now)
+	// MON-OPT-02: cooldown is DB-persisted via LastFiredAt (in-memory
+	// MarkAlertFired fallback removed in D-1).
+	rule.LastFiredAt = &now
 	if uc.ShouldFireAlert(rule, now.Add(5*time.Minute)) {
 		t.Fatal("should be in cooldown")
 	}

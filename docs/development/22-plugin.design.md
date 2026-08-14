@@ -902,20 +902,25 @@ func NewRuntime(stats StatsRecorder, lg loggateway.Logger) *Runtime
 // Apply 替换活跃插件集（仅实例化 enabled + 已知 key 的插件）
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin)
 
-// PluginsForAgent 返回匹配 agent scope 的活跃插件（scope="global" 或 scope==agentID）
-func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin
+// PluginsForAgent 返回匹配 agent scope 且工作区可见的活跃插件；
+// 租户自有插件覆盖 shared 同 key 插件（R-7 去重，防重复注册）
+func (rt *Runtime) PluginsForAgent(agentID, workspaceID string) []trpcplugin.Plugin
 
 // Plugins 返回所有活跃插件（无 scope 过滤，旧接口）
 func (rt *Runtime) Plugins() []trpcplugin.Plugin
 
+// 三个 config getter 均按工作区可见性过滤（N-B1）：本租户插件优先于
+// shared，其他租户分区不可见；system/空 workspaceID 为 shared 优先 + 其余
+// 分区按 ID 排序（确定性，不受 map 迭代序影响）。
+
 // ModelRouterConfigForAgent 返回 model_router 配置（启用且 scope 匹配时）
-func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool)
+func (rt *Runtime) ModelRouterConfigForAgent(agentID, workspaceID string) (ModelRouterConfig, bool)
 
 // CostGuardConfigForAgent 返回 cost_guard 配置（启用且 scope 匹配时）
-func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool)
+func (rt *Runtime) CostGuardConfigForAgent(agentID, workspaceID string) (CostGuardConfig, bool)
 
 // ConfirmationGuardConfigForAgent 返回 confirmation_guard 配置（启用且 scope 匹配时）
-func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool)
+func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID, workspaceID string) (ConfirmationGuardConfig, bool)
 
 // SetBus 注入事件总线并初始化 Hook 日志桥接
 // ⚠️ ADR-03 Phase 5 后：legacy event.Bus (SessionBus) 已删除，此 API 已下线。
@@ -943,12 +948,14 @@ func (rt *Runtime) StartBackgroundWorkers()
 // Close 停止后台 worker（hook retry / stats batch / budgets reset）
 func (rt *Runtime) Close()
 
-// CostGuardBudgetTracker 返回全局预算追踪器（legacy，优先用 CostGuardBudgetTrackerForAgent）
-func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker
+// BudgetTrackerForContext 按请求 ctx 解析预算桶 "{workspace}:{agent}"（N-B2：
+// BeforeModel 回调与 ModelSelector 共用同一桶）；nil Runtime 返回 nil，
+// tracker 全部方法对 nil 接收器为 no-op（R-1）
+func (rt *Runtime) BudgetTrackerForContext(ctx context.Context) *CostGuardBudgetTracker
 ```
 
 线程安全保证：
-- `Apply()` 使用写锁替换整个 `active` 切片。
+- `Apply()` 使用写锁按工作区分区替换；R-3 纪元守卫丢弃乱序到达的陈旧快照。
 - `Plugins()` / `PluginsForAgent()` 使用读锁返回快照副本。
 - 并发安全，无需额外同步。
 
@@ -1892,9 +1899,11 @@ type ModelRouterRule struct {
 
 `CostGuardBudgetRegistry`（`internal/plugin/trpc/cost_guard_registry.go`）管理多个 `CostGuardBudgetTracker`：
 
-- scope 为 `global` 时，按 `agent_id` 创建独立 tracker（`BudgetTrackerForContext`）。
+- 分桶键为 `{workspace}:{agent}`（E2E-P1-11：多租户共享 Agent 不共用预算桶）。
 - 每个 Agent 有独立的日预算消耗追踪。
-- BeforeModel 回调和 ModelSelector 共用同一个 `BudgetTrackerForContext`，避免双路径计量。
+- BeforeModel 回调和 ModelSelector 共用同一个 `BudgetTrackerForContext`（N-B2：selector 的 tracker 按请求 ctx 解析，不再 build 时固化到构建者桶），避免双路径计量。
+- R-2 分桶淘汰：分桶数超软上限（1024）时淘汰 idle 超过 48h 的桶；淘汰前 `Close()` 冲刷未持久化计数，新桶建时从 DB 重载当日用量，语义不丢。
+- R-4 跨日回滚守卫：`TryConsume` 失败回滚仅在仍是同一天时执行，防止跨日误减新日额度。
 
 ### 17.3 与 ModelSelector 的关系
 

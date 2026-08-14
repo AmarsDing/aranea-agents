@@ -695,34 +695,9 @@ func (r *orchStubCheckReader) GetLatestByTargetAndAction(_ context.Context, _, _
 	return r.latestByAction[actionType], nil
 }
 
-type orchStubQueryReader struct {
-	byID map[string]*UnifiedEvolutionSuggestion
-}
-
-func (r *orchStubQueryReader) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
-	s, ok := r.byID[id]
-	if !ok {
-		return nil, apierror.NotFound("EVO", "suggestion not found")
-	}
-	return s, nil
-}
-func (r *orchStubQueryReader) ListByTarget(_ context.Context, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
-	return nil, nil
-}
-func (r *orchStubQueryReader) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
-	return 0, nil
-}
-func (r *orchStubQueryReader) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
-	return nil, nil
-}
-func (r *orchStubQueryReader) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
-	return 0, nil
-}
-
 type orchStubWriter struct {
 	created      []UnifiedEvolutionSuggestion
 	createErr    error
-	statusCalls  []string
 	expireCalls  int
 	expireResult int
 }
@@ -734,12 +709,10 @@ func (w *orchStubWriter) Create(_ context.Context, s UnifiedEvolutionSuggestion)
 	w.created = append(w.created, s)
 	return nil
 }
-func (w *orchStubWriter) UpdateStatus(_ context.Context, id string, status string, _ string, _ string) error {
-	w.statusCalls = append(w.statusCalls, id+":"+status)
+func (w *orchStubWriter) UpdateStatus(_ context.Context, _ string, _ string, _ string, _ string) error {
 	return nil
 }
-func (w *orchStubWriter) UpdateStatusCAS(_ context.Context, id string, _ []string, to string, _ string, _ string) (bool, error) {
-	w.statusCalls = append(w.statusCalls, id+":"+to)
+func (w *orchStubWriter) UpdateStatusCAS(_ context.Context, _ string, _ []string, _ string, _ string, _ string) (bool, error) {
 	return true, nil
 }
 func (w *orchStubWriter) UpdateDraftBody(_ context.Context, _ string, _ string) error { return nil }
@@ -791,7 +764,7 @@ func newTriggerSuggestion(actionType EvolutionActionType) UnifiedEvolutionSugges
 func TestOrchestrator_CheckAndCreate_PendingExists_SkipsAll(t *testing.T) {
 	check := &orchStubCheckReader{hasPending: true}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -810,7 +783,7 @@ func TestOrchestrator_CheckAndCreate_PendingExists_SkipsAll(t *testing.T) {
 func TestOrchestrator_CheckAndCreate_CreatesFromMatchingTrigger(t *testing.T) {
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	sug := newTriggerSuggestion(EvolutionActionImprove)
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{sug}}
 	orch.RegisterTrigger(tr)
@@ -831,7 +804,7 @@ func TestOrchestrator_CheckAndCreate_CreatesFromMatchingTrigger(t *testing.T) {
 func TestOrchestrator_CheckAndCreate_SkipsMismatchedTargetType(t *testing.T) {
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetAgent, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionEvolve)}}
 	orch.RegisterTrigger(tr)
 
@@ -848,7 +821,7 @@ func TestOrchestrator_CheckAndCreate_SkipsMismatchedTargetType(t *testing.T) {
 func TestOrchestrator_CheckAndCreate_TriggerError_ContinuesWithOthers(t *testing.T) {
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	bad := &stubTrigger{targetType: EvolutionTargetSkill, err: errors.New("trigger boom")}
 	good := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(bad)
@@ -870,7 +843,7 @@ func TestOrchestrator_CheckAndCreate_CooldownActive_Skips(t *testing.T) {
 		string(EvolutionActionImprove): recent,
 	}}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -890,7 +863,7 @@ func TestOrchestrator_CheckAndCreate_CooldownExpired_Creates(t *testing.T) {
 		string(EvolutionActionImprove): old,
 	}}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -910,7 +883,7 @@ func TestOrchestrator_CheckAndCreate_CooldownPerActionType(t *testing.T) {
 		string(EvolutionActionImprove): recent, // improve 在冷却期
 	}}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionCreate)}} // create 不在冷却期
 	orch.RegisterTrigger(tr)
 
@@ -927,7 +900,7 @@ func TestOrchestrator_CheckAndCreate_CooldownPerActionType(t *testing.T) {
 func TestOrchestrator_CheckAndCreate_DuplicateKey_Tolerated(t *testing.T) {
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{createErr: errors.New("UNIQUE constraint failed: idx_ues_pending_target")}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -943,7 +916,7 @@ func TestOrchestrator_CheckAndCreate_DuplicateKey_Tolerated(t *testing.T) {
 func TestOrchestrator_CheckAndCreate_WriterError_Propagates(t *testing.T) {
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{createErr: errors.New("disk io error")}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -953,65 +926,10 @@ func TestOrchestrator_CheckAndCreate_WriterError_Propagates(t *testing.T) {
 	}
 }
 
-func TestOrchestrator_Approve_FromPending(t *testing.T) {
-	query := &orchStubQueryReader{byID: map[string]*UnifiedEvolutionSuggestion{
-		"sug-1": {ID: "sug-1", Status: "pending"},
-	}}
-	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, query, writer, loggateway.NewNoop())
-	if err := orch.Approve(context.Background(), "sug-1", "user:1"); err != nil {
-		t.Fatalf("Approve: %v", err)
-	}
-	if len(writer.statusCalls) != 1 || writer.statusCalls[0] != "sug-1:approved" {
-		t.Errorf("statusCalls = %v, want [sug-1:approved]", writer.statusCalls)
-	}
-}
-
-// 状态机守卫：非 pending 状态（如已 approved）不得再次 approve。
-func TestOrchestrator_Approve_FromApproved_Rejected(t *testing.T) {
-	query := &orchStubQueryReader{byID: map[string]*UnifiedEvolutionSuggestion{
-		"sug-1": {ID: "sug-1", Status: "approved"},
-	}}
-	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, query, writer, loggateway.NewNoop())
-	err := orch.Approve(context.Background(), "sug-1", "user:1")
-	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
-		t.Errorf("err = %v, want BadRequest for non-pending approve", err)
-	}
-	if len(writer.statusCalls) != 0 {
-		t.Error("UpdateStatus must not be called on illegal transition")
-	}
-}
-
-func TestOrchestrator_Reject_FromPending(t *testing.T) {
-	query := &orchStubQueryReader{byID: map[string]*UnifiedEvolutionSuggestion{
-		"sug-1": {ID: "sug-1", Status: "pending"},
-	}}
-	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, query, writer, loggateway.NewNoop())
-	if err := orch.Reject(context.Background(), "sug-1", "user:1", "不适用"); err != nil {
-		t.Fatalf("Reject: %v", err)
-	}
-	if len(writer.statusCalls) != 1 || writer.statusCalls[0] != "sug-1:rejected" {
-		t.Errorf("statusCalls = %v, want [sug-1:rejected]", writer.statusCalls)
-	}
-}
-
-func TestOrchestrator_Reject_FromExpired_Rejected(t *testing.T) {
-	query := &orchStubQueryReader{byID: map[string]*UnifiedEvolutionSuggestion{
-		"sug-1": {ID: "sug-1", Status: "expired"},
-	}}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, query, &orchStubWriter{}, loggateway.NewNoop())
-	err := orch.Reject(context.Background(), "sug-1", "user:1", "x")
-	if !isAPIErrorCode(err, apierror.CodeBadRequest) {
-		t.Errorf("err = %v, want BadRequest for expired reject", err)
-	}
-}
-
 // CreateSuggestion 对 DB 唯一约束冲突静默成功（并发安全兜底）。
 func TestOrchestrator_CreateSuggestion_DuplicateKey_Swallowed(t *testing.T) {
 	writer := &orchStubWriter{createErr: errors.New("duplicate entry")}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, writer, loggateway.NewNoop())
 	if err := orch.CreateSuggestion(context.Background(), newTriggerSuggestion(EvolutionActionImprove)); err != nil {
 		t.Errorf("duplicate key must return nil, got %v", err)
 	}
@@ -1019,7 +937,7 @@ func TestOrchestrator_CreateSuggestion_DuplicateKey_Swallowed(t *testing.T) {
 
 func TestOrchestrator_CreateSuggestion_OtherError_Propagates(t *testing.T) {
 	writer := &orchStubWriter{createErr: errors.New("connection reset")}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, writer, loggateway.NewNoop())
 	if err := orch.CreateSuggestion(context.Background(), newTriggerSuggestion(EvolutionActionImprove)); err == nil {
 		t.Error("non-duplicate error must propagate")
 	}
@@ -1027,7 +945,7 @@ func TestOrchestrator_CreateSuggestion_OtherError_Propagates(t *testing.T) {
 
 func TestOrchestrator_ExpirePending_Delegates(t *testing.T) {
 	writer := &orchStubWriter{expireResult: 3}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, writer, loggateway.NewNoop())
 	n, err := orch.ExpirePending(context.Background())
 	if err != nil {
 		t.Fatalf("ExpirePending: %v", err)

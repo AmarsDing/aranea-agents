@@ -243,11 +243,9 @@ type EvolutionTrigger interface {
 // SkillEvolutionOrchestrator 统一进化编排器
 type SkillEvolutionOrchestrator struct {
 	checkReader UnifiedEvolutionCheckReader
-	queryReader UnifiedEvolutionQueryReader
 	writer      UnifiedEvolutionWriter
 	triggers    []EvolutionTrigger
-	triggersMu  sync.RWMutex                  // protects triggers for concurrent RegisterTrigger calls
-	unifiedSM   *UnifiedEvolutionStateMachine // AS-FSM-01: validates status transitions
+	triggersMu  sync.RWMutex // protects triggers for concurrent RegisterTrigger calls
 	lg          loggateway.Logger
 
 	// cooldownMul holds per-trigger-source cooldown escalations (D8 自适应
@@ -258,15 +256,12 @@ type SkillEvolutionOrchestrator struct {
 
 func NewSkillEvolutionOrchestrator(
 	checkReader UnifiedEvolutionCheckReader,
-	queryReader UnifiedEvolutionQueryReader,
 	writer UnifiedEvolutionWriter,
 	lg loggateway.Logger,
 ) *SkillEvolutionOrchestrator {
 	return &SkillEvolutionOrchestrator{
 		checkReader: checkReader,
-		queryReader: queryReader,
 		writer:      writer,
-		unifiedSM:   NewUnifiedEvolutionStateMachine(),
 		lg:          lg,
 	}
 }
@@ -404,38 +399,6 @@ func (o *SkillEvolutionOrchestrator) CheckAndCreate(ctx context.Context, targetT
 		}
 	}
 	return created, nil
-}
-
-// Approve 审批建议
-func (o *SkillEvolutionOrchestrator) Approve(ctx context.Context, id string, approvedBy string) error {
-	s, err := o.queryReader.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if s == nil {
-		return apierror.NotFound("EVO_ORCHESTRATOR", "suggestion not found")
-	}
-	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
-	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventApprove); err != nil {
-		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be approved, current status: "+s.Status)
-	}
-	return o.writer.UpdateStatus(ctx, id, "approved", approvedBy, "")
-}
-
-// Reject 拒绝建议
-func (o *SkillEvolutionOrchestrator) Reject(ctx context.Context, id string, rejectedBy string, reason string) error {
-	s, err := o.queryReader.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if s == nil {
-		return apierror.NotFound("EVO_ORCHESTRATOR", "suggestion not found")
-	}
-	// AS-FSM-01: validate transition via state machine instead of direct string comparison.
-	if _, err := o.unifiedSM.Transition(ParseUnifiedEvolutionState(s.Status), UnifiedEvolutionEventReject); err != nil {
-		return apierror.BadRequest("EVO_ORCHESTRATOR", "only pending suggestions can be rejected, current status: "+s.Status)
-	}
-	return o.writer.UpdateStatus(ctx, id, "rejected", rejectedBy, reason)
 }
 
 // ExpirePending 过期 pending 建议（超过 7 天）

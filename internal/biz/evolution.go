@@ -416,12 +416,25 @@ func (uc *EvolutionUsecase) ApplySuggestion(ctx context.Context, agentID string,
 // (red line #24). Without a txProvider, the writes execute sequentially
 // (legacy behavior for tests and offline tooling).
 func (uc *EvolutionUsecase) applyAndMark(ctx context.Context, agentID, suggestionID string, files []AgentPromptFile) (EvolutionSuggestion, error) {
+	// markApplied transitions pending→applied atomically: a concurrent reject /
+	// expire tick winning the race makes the CAS miss, surfacing Conflict
+	// instead of silently resurrecting the row to applied (B-1).
+	markApplied := func(c context.Context) error {
+		ok, err := uc.store.UpdateStatusCAS(c, suggestionID, []string{EvolutionStatusPending}, EvolutionStatusApplied, "", "")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apierror.Conflict("EVOLUTION", "suggestion %s status changed concurrently; retry", suggestionID)
+		}
+		return nil
+	}
 	if uc.txProvider != nil {
 		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
 			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
 				return err
 			}
-			return uc.store.UpdateStatus(txCtx, suggestionID, EvolutionStatusApplied, "", "")
+			return markApplied(txCtx)
 		})
 		if err != nil {
 			return EvolutionSuggestion{}, err
@@ -431,7 +444,7 @@ func (uc *EvolutionUsecase) applyAndMark(ctx context.Context, agentID, suggestio
 	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusApplied, "", ""); err != nil {
+	if err := markApplied(ctx); err != nil {
 		return EvolutionSuggestion{}, err
 	}
 	return uc.GetSuggestionByID(ctx, suggestionID)
@@ -458,8 +471,14 @@ func (uc *EvolutionUsecase) RejectSuggestion(ctx context.Context, agentID string
 	if _, err := uc.evolutionSM.Transition(ParseEvolutionState(s.Status), EvolutionEventReject); err != nil {
 		return EvolutionSuggestion{}, apierror.BadRequest("EVOLUTION", "invalid status transition from "+s.Status+" to rejected")
 	}
-	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRejected, "", reason); err != nil {
+	// CAS guard (B-1): a concurrent apply/expire winning the race surfaces as
+	// Conflict instead of being overwritten back to rejected.
+	ok, err := uc.store.UpdateStatusCAS(ctx, suggestionID, []string{EvolutionStatusPending}, EvolutionStatusRejected, "", reason)
+	if err != nil {
 		return EvolutionSuggestion{}, err
+	}
+	if !ok {
+		return EvolutionSuggestion{}, apierror.Conflict("EVOLUTION", "suggestion %s status changed concurrently; retry", suggestionID)
 	}
 	return uc.GetSuggestionByID(ctx, suggestionID)
 }
@@ -506,13 +525,24 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 	}
 	// Wrap file replacement + status update in a transaction when a txProvider
 	// is configured so a status-update failure rolls back the file restore
-	// (red line #24).
+	// (red line #24). The status write carries a CAS precondition on 'applied'
+	// so a concurrent retry/transition surfaces as Conflict (B-1).
+	markRolledBack := func(c context.Context) error {
+		ok, err := uc.store.UpdateStatusCAS(c, suggestionID, []string{EvolutionStatusApplied}, EvolutionStatusRolledBack, "", "")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return apierror.Conflict("EVOLUTION", "suggestion %s status changed concurrently; retry", suggestionID)
+		}
+		return nil
+	}
 	if uc.txProvider != nil {
 		err := uc.txProvider.ExecInTx(ctx, func(txCtx context.Context) error {
 			if _, err := uc.agents.ReplaceAgentPromptFiles(txCtx, agentID, files); err != nil {
 				return err
 			}
-			return uc.store.UpdateStatus(txCtx, suggestionID, EvolutionStatusRolledBack, "", "")
+			return markRolledBack(txCtx)
 		})
 		if err != nil {
 			return EvolutionSuggestion{}, err
@@ -522,7 +552,7 @@ func (uc *EvolutionUsecase) RollbackSuggestion(ctx context.Context, agentID stri
 	if _, err := uc.agents.ReplaceAgentPromptFiles(ctx, agentID, files); err != nil {
 		return EvolutionSuggestion{}, err
 	}
-	if err := uc.store.UpdateStatus(ctx, suggestionID, EvolutionStatusRolledBack, "", ""); err != nil {
+	if err := markRolledBack(ctx); err != nil {
 		return EvolutionSuggestion{}, err
 	}
 	return uc.GetSuggestionByID(ctx, suggestionID)

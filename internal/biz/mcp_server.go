@@ -107,6 +107,9 @@ type MCPServerWriter interface {
 	CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
 	UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
 	DeleteMCPServer(ctx context.Context, id string) error
+	// UpdateMCPServerConfigJSON patches only config_json (+ updated_at). Used by token
+	// rotation writeback so it never clobbers concurrent field-level metadata writes.
+	UpdateMCPServerConfigJSON(ctx context.Context, id string, configJSON string) error
 }
 
 type MCPServerMetadataWriter interface {
@@ -288,6 +291,36 @@ func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (TestMC
 	return TestMCPServerResult{Result: result, Server: updated}, persistErr
 }
 
+// RefreshEnabledHealth reprobes all enabled MCP servers (up to limit) so
+// their persisted health status reflects current connectivity. Per-server
+// probe failures are not fatal: an unreachable server simply gets its health
+// status updated by TestMCPServer. An error is returned only when the server
+// list cannot be read. Used by the monitor heal action catalog (reconnect).
+func (u *MCPServerUsecase) RefreshEnabledHealth(ctx context.Context, limit int) (int, error) {
+	if u == nil || u.repo == nil {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	// System caller (WorkspaceID=""): sees all servers.
+	servers, err := u.repo.ListMCPServers(ctx, MCPListQuery{Limit: limit})
+	if err != nil {
+		return 0, err
+	}
+	probed := 0
+	for _, s := range servers {
+		if !s.Enabled {
+			continue
+		}
+		if _, err := u.TestMCPServer(ctx, s.ID); err != nil {
+			continue // per-server failure is recorded in its health status
+		}
+		probed++
+	}
+	return probed, nil
+}
+
 // RecordReconnectMetadata updates last_reconnect_at and reconnect_count for the server key.
 func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKey string, at time.Time) error {
 	if u == nil || u.repo == nil {
@@ -399,9 +432,9 @@ func (u *MCPServerUsecase) PersistRotatedRefreshToken(ctx context.Context, serve
 			return err
 		}
 	}
-	row.ConfigJSON = stored
-	_, err = u.repo.UpdateMCPServer(ctx, row)
-	return err
+	// Field-level write: a full-row update would clobber concurrent health/metadata
+	// writes (UpdateMCPServerMetadata) with the stale snapshot read above.
+	return u.repo.UpdateMCPServerConfigJSON(ctx, row.ID, stored)
 }
 
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) (MCPServer, error) {

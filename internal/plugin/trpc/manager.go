@@ -63,28 +63,24 @@ func NewManager(rt *Runtime, hooks *biz.HookResolver, lg loggateway.Logger) *Man
 	return m
 }
 
-// ConfirmationGuardConfigForAgent returns confirmation_guard config when enabled for the agent.
-func (m *Manager) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool) {
+// ConfirmationGuardConfigForAgent returns confirmation_guard config when
+// enabled for the agent within workspace visibility (N-B1).
+func (m *Manager) ConfirmationGuardConfigForAgent(agentID, workspaceID string) (ConfirmationGuardConfig, bool) {
 	if m == nil || m.rt == nil {
 		return ConfirmationGuardConfig{}, false
 	}
-	return m.rt.ConfirmationGuardConfigForAgent(agentID)
+	return m.rt.ConfirmationGuardConfigForAgent(agentID, workspaceID)
 }
 
-// CostGuardBudgetTrackerForAgent returns scope-aware cost_guard budget tracker.
-func (m *Manager) CostGuardBudgetTrackerForAgent(agentID string) *CostGuardBudgetTracker {
+// BudgetTrackerForContext returns the cost_guard budget tracker resolved from
+// the invocation context (workspace + agent) — the single bucket the runtime
+// cost_guard plugin also consumes (N-B2). nil Manager/Runtime 返回 nil，
+// tracker 全部方法对 nil 接收器为 no-op（R-1：不再构造泄漏的临时 tracker）。
+func (m *Manager) BudgetTrackerForContext(ctx context.Context) *CostGuardBudgetTracker {
 	if m == nil || m.rt == nil {
-		return NewCostGuardBudgetTracker(m.lg)
+		return nil
 	}
-	return m.rt.CostGuardBudgetTrackerForAgent(agentID)
-}
-
-// CostGuardBudgetTracker returns the global budget tracker.
-func (m *Manager) CostGuardBudgetTracker() *CostGuardBudgetTracker {
-	if m == nil || m.rt == nil {
-		return NewCostGuardBudgetTracker(m.lg)
-	}
-	return m.rt.CostGuardBudgetTracker()
+	return m.rt.BudgetTrackerForContext(ctx)
 }
 
 // SetAgentKeyResolver sets optional agent_key → agent_id lookup for hook on_event scoping.
@@ -149,20 +145,22 @@ func (m *Manager) MergeChain(ctx context.Context, agentID, agentKey string, base
 	return base.Append(entries...)
 }
 
-// ModelRouterConfigForAgent returns model_router config when enabled for the agent.
-func (m *Manager) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
+// ModelRouterConfigForAgent returns model_router config when enabled for the
+// agent within workspace visibility (N-B1).
+func (m *Manager) ModelRouterConfigForAgent(agentID, workspaceID string) (ModelRouterConfig, bool) {
 	if m == nil || m.rt == nil {
 		return ModelRouterConfig{}, false
 	}
-	return m.rt.ModelRouterConfigForAgent(agentID)
+	return m.rt.ModelRouterConfigForAgent(agentID, workspaceID)
 }
 
-// CostGuardConfigForAgent returns cost_guard config when enabled for the agent.
-func (m *Manager) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
+// CostGuardConfigForAgent returns cost_guard config when enabled for the
+// agent within workspace visibility (N-B1).
+func (m *Manager) CostGuardConfigForAgent(agentID, workspaceID string) (CostGuardConfig, bool) {
 	if m == nil || m.rt == nil {
 		return CostGuardConfig{}, false
 	}
-	return m.rt.CostGuardConfigForAgent(agentID)
+	return m.rt.CostGuardConfigForAgent(agentID, workspaceID)
 }
 
 // Plugins returns DB-backed runner plugins (without the event bridge).

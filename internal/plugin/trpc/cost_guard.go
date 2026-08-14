@@ -42,11 +42,10 @@ func (c *CostGuardPlugin) Register(r *trpcplugin.Registry) {
 
 func (c *CostGuardPlugin) budget(ctx context.Context) *CostGuardBudgetTracker {
 	if c == nil || c.rt == nil {
-		lg := c.base.lg
-		if lg == nil {
-			lg = loggateway.NewNoop()
-		}
-		return NewCostGuardBudgetTracker(lg)
+		// R-1：nil tracker 的全部方法均为 no-op（TryConsume/WouldExceed/
+		// AddOverBudget/Close 都有 nil 守卫）；不再构造带 goroutine 的
+		// 临时 tracker——旧实现每次调用泄漏 persist/retry 两个 worker。
+		return nil
 	}
 	return c.rt.BudgetTrackerForContext(ctx)
 }

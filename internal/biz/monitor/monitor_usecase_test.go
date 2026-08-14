@@ -595,30 +595,6 @@ func TestReplaceAlertRules_ValidationRejectsInvalidRules(t *testing.T) {
 	}
 }
 
-func TestReplaceAlertRules_DeletesStaleLastFired(t *testing.T) {
-	repo := &mockRepo{
-		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
-			return []monitor.AlertRule{{ID: "old1"}, {ID: "old2"}}, nil
-		},
-		replaceAlertRulesFn: func(context.Context, []monitor.AlertRule) error {
-			return nil
-		},
-	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	uc.MarkAlertFired("old1", time.Now())
-	uc.MarkAlertFired("old2", time.Now())
-
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("old1")})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	rule := monitor.AlertRule{ID: "old2", CooldownMinutes: 60}
-	if uc.ShouldFireAlert(rule, time.Now()) != true {
-		t.Error("old2 lastFired should have been deleted")
-	}
-}
-
 func TestReplaceAlertRules_RepoError(t *testing.T) {
 	repo := &mockRepo{
 		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
@@ -632,27 +608,6 @@ func TestReplaceAlertRules_RepoError(t *testing.T) {
 	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("r1")})
 	if err == nil {
 		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestReplaceAlertRules_ListOldRulesError(t *testing.T) {
-	replaceCalled := false
-	repo := &mockRepo{
-		listAlertRulesFn: func(context.Context) ([]monitor.AlertRule, error) {
-			return nil, fmt.Errorf("list error")
-		},
-		replaceAlertRulesFn: func(context.Context, []monitor.AlertRule) error {
-			replaceCalled = true
-			return nil
-		},
-	}
-	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
-	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{validAlertRule("r1")})
-	if err != nil {
-		t.Fatalf("should not fail when ListAlertRules fails, got: %v", err)
-	}
-	if !replaceCalled {
-		t.Error("ReplaceAlertRules should still be called")
 	}
 }
 

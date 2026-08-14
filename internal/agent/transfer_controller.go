@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	// transferMaxDepth is the maximum allowed agent transfer nesting depth.
-	transferMaxDepth = 3
-
 	// transferTargetTimeout is the timeout applied to each target agent run.
 	transferTargetTimeout = 120 * time.Second
 )
+
+// Transfer depth shares the unified delegation bound (P1-4):
+// maxDelegateDepth() (env ARANEA_MAX_DELEGATE_DEPTH, default 3), same as
+// the agent-as-tool channel, so both delegation paths enforce one limit.
 
 // TransferControllerImpl implements trpcagent.TransferController with depth
 // limiting, target timeout, and transfer event logging.
@@ -53,17 +54,17 @@ func (c *TransferControllerImpl) OnTransfer(
 		loggateway.Int("depth", newDepth),
 	)
 
-	if newDepth > transferMaxDepth {
+	if limit := maxDelegateDepth(); newDepth > limit {
 		c.lg.Warn("Agent transfer 深度超限，已拒绝",
 			loggateway.StepID("agent.transfer_depth_exceeded"),
 			loggateway.Str("from_agent", fromAgent),
 			loggateway.Str("to_agent", toAgent),
 			loggateway.Int("depth", newDepth),
-			loggateway.Int("max_depth", transferMaxDepth),
+			loggateway.Int("max_depth", limit),
 		)
 		return 0, apierror.Forbidden(apierror.DomainAgent,
 			"transfer depth %d exceeds max %d: %s → %s",
-			newDepth, transferMaxDepth, fromAgent, toAgent)
+			newDepth, limit, fromAgent, toAgent)
 	}
 
 	return transferTargetTimeout, nil

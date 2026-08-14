@@ -9,8 +9,9 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// runRepairHook executes the repair hook and returns the (possibly mutated)
-// arguments afterwards.
+// runRepairHook executes the repair hook and returns the effective arguments
+// afterwards: ModifiedArguments when the hook rewrote them (P1-3 — the only
+// channel the framework writes back), else the original passthrough args.
 func runRepairHook(t *testing.T, toolName string, raw []byte) []byte {
 	t.Helper()
 	hook := newToolArgsRepairBeforeHook(nil)
@@ -18,6 +19,9 @@ func runRepairHook(t *testing.T, toolName string, raw []byte) []byte {
 	res, err := hook.HandleBeforeTool(context.Background(), bt)
 	if err != nil || res == nil {
 		t.Fatalf("hook failed: res=%v err=%v", res, err)
+	}
+	if res.ModifiedArguments != nil {
+		return res.ModifiedArguments
 	}
 	return bt.Arguments
 }
@@ -91,6 +95,26 @@ func TestToolArgsRepair_MarksRepairedInContext(t *testing.T) {
 	q := toolArgsQualityFromContext(res.Context)
 	if !q.Repaired || q.Invalid {
 		t.Fatalf("want Repaired=true Invalid=false, got %+v", q)
+	}
+}
+
+// P1-3 / B-NEW：修复后的参数必须经 BeforeToolResult.ModifiedArguments 返回——
+// 这是框架唯一写回 toolCall.Function.Arguments 的通道
+// （internal/flow/processor/functioncall.go runBeforeToolCallbacks）。
+// 仅原地改 args.Arguments 不会到达工具执行（2026-07-25 事故修复的执行路径
+// 在此前一值为空，属潜伏 bug）。
+func TestToolArgsRepair_RewriteReachesFramework(t *testing.T) {
+	hook := newToolArgsRepairBeforeHook(nil)
+	bt := &trpctool.BeforeToolArgs{ToolName: "set_deliverable", Arguments: []byte(`{"a":1},`)}
+	res, err := hook.HandleBeforeTool(context.Background(), bt)
+	if err != nil {
+		t.Fatalf("hook: %v", err)
+	}
+	if res == nil || res.ModifiedArguments == nil {
+		t.Fatal("repaired args must be returned via ModifiedArguments to reach tool execution")
+	}
+	if !json.Valid(res.ModifiedArguments) {
+		t.Fatalf("ModifiedArguments not valid JSON: %s", res.ModifiedArguments)
 	}
 }
 

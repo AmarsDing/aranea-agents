@@ -22,6 +22,32 @@ func TestTruncateRunes(t *testing.T) {
 	}
 }
 
+// P1-4：嵌套派生必须 fail-loud 拒绝（深度上限 = 1，产品设计硬约束）。
+// 子代理 run 的 ctx 带 runtimeStateSubagentRun 标记；带标记的 ctx 再调
+// subagents_spawn 必须返回 BadRequest，不得静默放行或截断。
+func TestSpawnTool_NestedSpawnRejected(t *testing.T) {
+	tool := newSpawnTool(&Service{})
+	inv := trpcagent.NewInvocation()
+	inv.RunOptions.RuntimeState = map[string]any{runtimeStateSubagentRun: true}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+	_, err := tool.Call(ctx, []byte(`{"task":"nested"}`))
+	if err == nil {
+		t.Fatal("nested spawn must be rejected")
+	}
+	if !strings.Contains(err.Error(), "nested subagent spawn is not supported") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// P1-4 对照组：非嵌套 ctx 不得被深度守卫拦截（后续参数校验错误属正常路径）。
+func TestSpawnTool_NonNestedCtxPassesDepthGuard(t *testing.T) {
+	tool := newSpawnTool(&Service{})
+	_, err := tool.Call(context.Background(), []byte(`{"task":"x"}`))
+	if err != nil && strings.Contains(err.Error(), "nested subagent spawn") {
+		t.Fatalf("non-nested ctx wrongly blocked by depth guard: %v", err)
+	}
+}
+
 func TestTruncateRunes_NoLimit(t *testing.T) {
 	if got := truncateRunes("hello", 0); got != "hello" {
 		t.Fatalf("expected hello, got %q", got)

@@ -167,7 +167,7 @@ DeepSeek 首个官方 Agent 运行框架，核心范式是**事件溯源 + 事�
 |------|------|------|
 | Batch-0 | P0 门禁收尾（等并行会话 mcp_oauth 落地后全量 race+test） | `go test ./internal/agent/ ./internal/agent/v2/ -race` 绿 |
 | Batch-1 ✅ | P1-1 + P1-5 + P1-6（纯内部重构，零契约变化） | agent+v2 全量 race 绿（agent 29.8s / v2 5.8s）+ service 绿 + `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 绿（2026-08-14 通过） |
-| Batch-2 | P1-2 + P1-3 + P1-4（行为边界显式化） | 同上 + 新单测 |
+| Batch-2 ✅ | P1-2 + P1-3 + P1-4（行为边界显式化） | v2 全量 race 绿 + agent(27.4s)/callbacks/subagent 绿 + build 绿（2026-08-14 通过）；新增 invariant_check.go 15 个单测 + decision_test + delegation_depth_test。偏差记录：P1-2 FlowLog warn 支路暂缓——v2 层无 FlowLogWriter 端口（红线 3），先仅进程日志观察误报率 |
 | Batch-3 | P2-1 + P2-2（模型路由，收益最直接） | 同上 + usage 记账回归 |
 | Batch-4 | P2-3 + P2-4 + P2-5 + P2-6 | 同上 |
 | Batch-5 | P3-1 + P3-2（观测闭环） | 同上 |

@@ -538,18 +538,18 @@
 
 ### 1.15 评估系统 (`internal/evaluation/`)
 
-**职责**：LLM Judge 评估框架（数据集 → 运行 → 评分 → 统计）。
+**职责**：Agent 输出质量评估框架（Dataset → Case → Run → Result；8 种指标 + LLM-as-Judge + MultiRun + UserSim）。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Evaluation 类型）、`agent`（构建评估 Agent） |
-| **下游影响** | `service/evaluation`（Evaluation API） |
-| **核心导出** | `Runner`、`Scores`、`LLMJudge` |
-| **共享类型** | `EvaluationRun`、`EvaluationResult` |
+| **上游依赖** | `biz`（Evaluation 类型）、`agent`（构建评估 Agent）、`pkg/trpc-agent-go`（AgentEvaluator，经 FrameworkBridge） |
+| **下游影响** | `service/evaluation`（Evaluation API）、发布流程（PublishGate 异步 advisory，Phase 8 Y2） |
+| **核心导出** | `Runner`、`FrameworkBridge`、`LLMJudge`、`PublishGate`、`ScoreDropAlerter`、UserSimulator（scripted/LLM） |
+| **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference` |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz EvalUsecase 访问 |
-| **前端对应** | EvaluationPage |
+| **数据库** | 通过 biz EvalUsecase 访问（eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config/eval_run_preferences；workspace 隔离 + 级联删除，Phase 8 B4/Y11） |
+| **前端对应** | EvaluationPage（`features/evaluation/` + `stores/evaluation/`） |
 
 ---
 

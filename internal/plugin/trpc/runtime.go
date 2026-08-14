@@ -2,8 +2,11 @@ package plugintrpc
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event/contract"
@@ -39,6 +42,11 @@ type Runtime struct {
 	resolveAgent   AgentKeyResolver
 	catalogConfirm CatalogConfirmChecker
 	lg             loggateway.Logger
+
+	// R-3：Apply 纪元。并发热重载（系统全量 vs 租户增量、慢 DB List vs
+	// 快 List）可能乱序提交；提交时若已有更新纪元落盘则丢弃陈旧快照。
+	applySeq   atomic.Int64
+	appliedSeq atomic.Int64
 }
 
 func NewRuntime(stats StatsRecorder, lg loggateway.Logger) *Runtime {
@@ -85,6 +93,9 @@ func (rt *Runtime) Close() {
 	defer rt.mu.Unlock()
 	if rt.retryWorker != nil {
 		rt.retryWorker.Stop()
+		// N-B3：Stop 信号现在可靠，Close 有界等待 loop 退出，避免 in-flight
+		// 重试被硬切（超时仍继续关闭，不阻塞进程退出）。
+		rt.retryWorker.Wait(3 * time.Second)
 	}
 	if c, ok := rt.stats.(interface{ Close() }); ok {
 		c.Close()
@@ -130,14 +141,6 @@ func (rt *Runtime) SetToolUsecase(tools *biz.ToolUsecase) {
 	})
 }
 
-// CostGuardBudgetTracker returns the global budget tracker (legacy; prefer CostGuardBudgetTrackerForAgent).
-func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
-	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker(rt.lg)
-	}
-	return rt.budgets.TrackerForScope("global")
-}
-
 func (rt *Runtime) SetMonitorBus(monitorBus contract.MonitorBus) {
 	rt.mu.Lock()
 	rt.monitorBus = monitorBus
@@ -155,6 +158,8 @@ func (rt *Runtime) SetMonitorBus(monitorBus contract.MonitorBus) {
 // in the batch (plus clears the caller's partition when empty), so two workspaces
 // cannot overwrite each other.
 func (rt *Runtime) Apply(ctx context.Context, plugins []biz.Plugin) {
+	// R-3：领取纪元（入口处，快照生成前）；提交时若已有更新纪元落盘则丢弃。
+	seq := rt.applySeq.Add(1)
 	rt.mu.RLock()
 	monitorBus := rt.monitorBus
 	stats := rt.stats
@@ -185,6 +190,14 @@ func (rt *Runtime) Apply(ctx context.Context, plugins []biz.Plugin) {
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
+	if seq < rt.appliedSeq.Load() {
+		rt.lg.Warn("丢弃过期的插件热重载快照",
+			loggateway.StepID("plugin.runtime.stale_apply"),
+			loggateway.Int64("seq", seq),
+			loggateway.Int64("applied_seq", rt.appliedSeq.Load()))
+		return
+	}
+	rt.appliedSeq.Store(seq)
 	if rt.activeByWS == nil {
 		rt.activeByWS = make(map[string][]runtimeEntry)
 	}
@@ -242,12 +255,27 @@ func (rt *Runtime) entriesVisibleTo(workspaceID string) []runtimeEntry {
 
 // PluginsForAgent returns active plugins for the agent within workspace visibility (C-06).
 // Shared plugins (workspace="") are always included; tenant plugins only when workspaceID matches.
+// R-7：同 key 去重——租户自有插件覆盖 shared 同 key 插件，避免重复注册
+// （同一 BeforeModel/BeforeTool 被挂两次）。
 func (rt *Runtime) PluginsForAgent(agentID, workspaceID string) []trpcplugin.Plugin {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
+	workspaceID = strings.TrimSpace(workspaceID)
 	entries := rt.entriesVisibleTo(workspaceID)
+	var ownKeys map[string]bool
+	if workspaceID != "" && workspaceID != workspace.SystemWorkspaceID {
+		for _, e := range rt.activeByWS[workspaceID] {
+			if ownKeys == nil {
+				ownKeys = make(map[string]bool)
+			}
+			ownKeys[e.key] = true
+		}
+	}
 	out := make([]trpcplugin.Plugin, 0, len(entries))
 	for _, e := range entries {
+		if e.workspaceID == "" && ownKeys[e.key] {
+			continue // 租户同 key 插件覆盖 shared
+		}
 		if PluginMatchesScope(e.scope, agentID) {
 			out = append(out, e.plugin)
 		}
@@ -255,18 +283,50 @@ func (rt *Runtime) PluginsForAgent(agentID, workspaceID string) []trpcplugin.Plu
 	return out
 }
 
-// ModelRouterConfigForAgent returns model_router config when the plugin is enabled for the agent.
-func (rt *Runtime) ModelRouterConfigForAgent(agentID string) (ModelRouterConfig, bool) {
+// configEntriesFor returns entries visible to workspaceID in deterministic
+// priority order (N-B1): the caller's own workspace partition first (tenant
+// config overrides shared on key conflict), then shared ("") entries.
+// System / empty workspaceID (admin / legacy callers) sees shared first, then
+// every other partition sorted by workspace ID — map iteration order must
+// never decide which tenant's config wins.
+func (rt *Runtime) configEntriesFor(workspaceID string) []runtimeEntry {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID != "" && workspaceID != workspace.SystemWorkspaceID {
+		own := rt.activeByWS[workspaceID]
+		shared := rt.activeByWS[""]
+		out := make([]runtimeEntry, 0, len(own)+len(shared))
+		out = append(out, own...)
+		out = append(out, shared...)
+		return out
+	}
+	shared := rt.activeByWS[""]
+	rest := make([]string, 0, len(rt.activeByWS))
+	for wsID := range rt.activeByWS {
+		if wsID != "" {
+			rest = append(rest, wsID)
+		}
+	}
+	sort.Strings(rest)
+	out := make([]runtimeEntry, 0, len(shared))
+	out = append(out, shared...)
+	for _, wsID := range rest {
+		out = append(out, rt.activeByWS[wsID]...)
+	}
+	return out
+}
+
+// ModelRouterConfigForAgent returns model_router config when the plugin is
+// enabled for the agent within workspace visibility (N-B1). The caller's own
+// workspace plugin overrides a shared plugin of the same key.
+func (rt *Runtime) ModelRouterConfigForAgent(agentID, workspaceID string) (ModelRouterConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, entries := range rt.activeByWS {
-		for _, e := range entries {
-			if e.key != "model_router" || e.modelRouter == nil {
-				continue
-			}
-			if PluginMatchesScope(e.scope, agentID) {
-				return *e.modelRouter, true
-			}
+	for _, e := range rt.configEntriesFor(workspaceID) {
+		if e.key != "model_router" || e.modelRouter == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.modelRouter, true
 		}
 	}
 	return ModelRouterConfig{}, false
@@ -284,35 +344,33 @@ func (rt *Runtime) SetCostGuardUsageRepo(repo biz.PluginCostGuardUsageRepo) {
 	}
 }
 
-// CostGuardConfigForAgent returns cost_guard config when the plugin is enabled for the agent.
-func (rt *Runtime) CostGuardConfigForAgent(agentID string) (CostGuardConfig, bool) {
+// CostGuardConfigForAgent returns cost_guard config when the plugin is
+// enabled for the agent within workspace visibility (N-B1).
+func (rt *Runtime) CostGuardConfigForAgent(agentID, workspaceID string) (CostGuardConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, entries := range rt.activeByWS {
-		for _, e := range entries {
-			if e.key != "cost_guard" || e.costGuard == nil {
-				continue
-			}
-			if PluginMatchesScope(e.scope, agentID) {
-				return *e.costGuard, true
-			}
+	for _, e := range rt.configEntriesFor(workspaceID) {
+		if e.key != "cost_guard" || e.costGuard == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.costGuard, true
 		}
 	}
 	return CostGuardConfig{}, false
 }
 
-// ConfirmationGuardConfigForAgent returns confirmation_guard config when enabled for the agent.
-func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationGuardConfig, bool) {
+// ConfirmationGuardConfigForAgent returns confirmation_guard config when
+// enabled for the agent within workspace visibility (N-B1).
+func (rt *Runtime) ConfirmationGuardConfigForAgent(agentID, workspaceID string) (ConfirmationGuardConfig, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
-	for _, entries := range rt.activeByWS {
-		for _, e := range entries {
-			if e.key != "confirmation_guard" || e.confirmationGuard == nil {
-				continue
-			}
-			if PluginMatchesScope(e.scope, agentID) {
-				return *e.confirmationGuard, true
-			}
+	for _, e := range rt.configEntriesFor(workspaceID) {
+		if e.key != "confirmation_guard" || e.confirmationGuard == nil {
+			continue
+		}
+		if PluginMatchesScope(e.scope, agentID) {
+			return *e.confirmationGuard, true
 		}
 	}
 	return ConfirmationGuardConfig{}, false

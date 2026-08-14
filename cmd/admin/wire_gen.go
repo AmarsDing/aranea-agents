@@ -628,10 +628,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	deps2 := provideA2AGatewayHealthRunnerDeps(a2aUsecase)
 	runner2 := provideA2AGatewayHealthRunner(deps2, loggatewayLogger)
 	learningLoopScanner := provideLearningLoopScanner(learningLoopUsecase, loggatewayLogger)
-	providerHealthScanner := provideProviderHealthScanner(llmProviderModelUsecase, logger)
-	channelHealthScanner := provideChannelHealthScanner(channelUsecase, logger)
+	providerHealthScanner := provideProviderHealthScanner(llmProviderModelUsecase, loggatewayLogger, flowLogWriter)
+	channelHealthScanner := provideChannelHealthScanner(channelUsecase, loggatewayLogger, flowLogWriter)
 	channelDeliveryWorker := provideChannelDeliveryWorker(channelUsecase, channelIngress, loggatewayLogger)
-	jobsChannelDeliveryWorker := provideChannelDeliveryScanner(channelDeliveryWorker, logger)
+	jobsChannelDeliveryWorker := provideChannelDeliveryScanner(channelDeliveryWorker, loggatewayLogger, flowLogWriter)
 	sessionRunDurableWorker := provideSessionRunDurableWorker(sessionRunUsecase, chatService, chatService, loggatewayLogger)
 	recoveryWorker := provideRecoveryWorker(sessionRunUsecase, checkpointSaver, chatService, loggatewayLogger)
 	backgroundjobRepo := data.NewBackgroundJobRepo(dataData)
@@ -640,8 +640,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	toolAuditCleanup := provideToolAuditCleanup(toolUsecase, loggatewayLogger)
 	flowLogCleanup := provideFlowLogCleanup(flowlogUsecase, loggatewayLogger)
 	monitorEventsCleanup := provideMonitorEventsCleanup(eventRepo, loggatewayLogger)
-	monitorAlertCooldownCleanup := provideMonitorAlertCooldownCleanup(monitorUsecase, logger)
-	autoHealTTLCleanup := provideAutoHealTTLCleanup(healRecordRepo, loggatewayLogger, logger)
+	autoHealTTLCleanup := provideAutoHealTTLCleanup(healRecordRepo, loggatewayLogger, flowLogWriter)
 	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, traceUsageRepo, loggatewayLogger)
 	memoryEpisodeDecayer := data.NewMemoryEpisodeDecayerAdapter(dataData)
 	memoryL2DecayWorker := provideMemoryL2DecayWorker(memoryEpisodeDecayer, agentUsecase, loggatewayLogger)
@@ -696,7 +695,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	}
 	selfImproveOutcomeWorker := provideSelfImproveOutcomeWorker(selfImprovement, selfImprovementOutcomeUsecase, loggatewayLogger)
 	failurePatternSyncJob := provideFailurePatternSyncJob(rootCauseEngine, failurePatternReadWriter, failurePatternReadWriter, loggatewayLogger)
-	predictiveHealUsecase := providePredictiveHealUsecase(monitorUsecase, failurePatternReadWriter, healRecordRepo, loggatewayLogger)
+	predictiveHealUsecase := providePredictiveHealUsecase(monitorUsecase, failurePatternReadWriter, healRecordRepo, llmProviderModelUsecase, mcpServerUsecase, loggatewayLogger)
 	predictiveHealJob := providePredictiveHealJob(predictiveHealUsecase, loggatewayLogger)
 	patternMiningUsecase := providePatternMiningUsecase(healRecordRepo, failurePatternReadWriter, failurePatternReadWriter, loggatewayLogger)
 	patternMiningJob := providePatternMiningJob(patternMiningUsecase, loggatewayLogger)
@@ -704,7 +703,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, monitorAlertCooldownCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -1904,18 +1903,18 @@ func provideLearningLoopScanner(loop *biz.LearningLoopUsecase, lg loggateway.Log
 	return jobs.NewLearningLoopScanner(0, loop, lg)
 }
 
-func provideProviderHealthScanner(uc *biz.LlmProviderModelUsecase, logger log.Logger) *jobs.ProviderHealthScanner {
+func provideProviderHealthScanner(uc *biz.LlmProviderModelUsecase, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.ProviderHealthScanner {
 	if strings.TrimSpace(os.Getenv("PROVIDER_HEALTH_DISABLED")) == "1" {
 		return nil
 	}
-	return jobs.NewProviderHealthScanner(0, uc, logger)
+	return jobs.NewProviderHealthScanner(0, uc, lg, flowLog)
 }
 
-func provideChannelHealthScanner(uc *biz.ChannelUsecase, logger log.Logger) *jobs.ChannelHealthScanner {
+func provideChannelHealthScanner(uc *biz.ChannelUsecase, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.ChannelHealthScanner {
 	if strings.TrimSpace(os.Getenv("CHANNEL_HEALTH_DISABLED")) == "1" {
 		return nil
 	}
-	return jobs.NewChannelHealthScanner(0, uc, logger)
+	return jobs.NewChannelHealthScanner(0, uc, lg, flowLog)
 }
 
 func provideTeamCompiler(
@@ -2266,12 +2265,8 @@ func provideMonitorEventsCleanup(repo biz.MonitorEventRepo, lg loggateway.Logger
 	return jobs.NewMonitorEventsCleanup(0, repo, lg)
 }
 
-func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
-	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
-}
-
-func provideAutoHealTTLCleanup(repo monitor.HealRecordRepo, lg loggateway.Logger, logger log.Logger) *jobs.AutoHealTTLCleanup {
-	return jobs.NewAutoHealTTLCleanup(0, 0, repo, lg, logger)
+func provideAutoHealTTLCleanup(repo monitor.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.AutoHealTTLCleanup {
+	return jobs.NewAutoHealTTLCleanup(0, 0, repo, lg, flowLog)
 }
 
 func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWorker {
@@ -2410,7 +2405,7 @@ func provideSkillEvolutionOrchestrator(
 	siTestRuns biz.TestRunReader,
 	lg loggateway.Logger,
 ) *biz.SkillEvolutionOrchestrator {
-	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, unifiedRepo, lg)
+	orch := biz.NewSkillEvolutionOrchestrator(unifiedRepo, unifiedRepo, lg)
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
 	orch.RegisterTrigger(biz.NewHealthTrigger(aggregator, scorer, lg))
 	orch.RegisterTrigger(biz.NewAgentConfigTrigger(agents, metricsRepo, unifiedRepo, lg))
@@ -3020,13 +3015,16 @@ func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monito
 	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
 }
 
-// providePredictiveHealUsecase wires the predictive-heal usecase with a
-// NoopHealActionHandler: no real action catalog exists yet, so executions are
-// observe-only. The job is therefore disabled by default — see
-// providePredictiveHealJob / jobs.PredictiveHealJobEnabled (S1).
-func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
+// providePredictiveHealUsecase wires the predictive-heal usecase with the real
+// action catalog: retry → provider health refresh (LlmProviderModelUsecase),
+// reconnect → MCP health refresh (MCPServerUsecase). The confidence gate is
+// metric-driven (base × signal), so actions only fire on real metric signals;
+// both executors are idempotent read-only probes. See jobs.PredictiveHealJobEnabled.
+func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, providerUC *biz.LlmProviderModelUsecase, mcpUC *biz.MCPServerUsecase, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
 	metricsReader := monitor.NewMonitorSystemMetricsReader(uc)
-	handler := &monitor.NoopHealActionHandler{}
+	handler := monitor.NewCatalogHealActionHandler(lg).
+		BindRetry(providerUC).
+		BindReconnect(mcpUC)
 	return monitor.NewPredictiveHealUsecase(metricsReader, patternReader, handler, healRepo, lg)
 }
 
@@ -3054,11 +3052,11 @@ func provideSpiritTeamUsecase(teamUC *biz.TeamUsecase, sessionUC *biz.SessionUse
 	return biz.NewSpiritTeamUsecase(teamUC, sessionUC, agentUC, lg, biz.WithSpiritTransactor(transactor), biz.WithOrchestrationCache(orchCache), biz.WithEvolutionSuggestionCreator(evolutionUC), biz.WithVerificationGateExecutor(gateExecutor), biz.WithDeptLeadMgr(deptLeadMgr), biz.WithSpiritStepReader(stepReader), biz.WithSpiritTeamRunStatsReader(runStatsReader), biz.WithGraphDeliverableReader(service.NewGraphDeliverableReader(sessionRT)))
 }
 
-func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
+func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.ChannelDeliveryWorker {
 	if strings.TrimSpace(os.Getenv("CHANNEL_DELIVERY_DISABLED")) == "1" {
 		return nil
 	}
-	return jobs.NewChannelDeliveryWorker(0, worker, logger)
+	return jobs.NewChannelDeliveryWorker(0, worker, lg, flowLog)
 }
 
 func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
@@ -3160,7 +3158,6 @@ type wireOut struct {
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorEventsCleanup        *jobs.MonitorEventsCleanup
-	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
 	AutoHealTTLCleanup          *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
@@ -3216,7 +3213,6 @@ func provideWireOut(
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
 	monitorEventsCleanup *jobs.MonitorEventsCleanup,
-	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
 	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
 	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
@@ -3266,7 +3262,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		ToolAuditCleanup:        toolAuditCleanup,
-		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup:          flowLogCleanup, MonitorEventsCleanup: monitorEventsCleanup, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL1Archive: memoryL1Archive, ChannelTurnJobSweeper: channelTurnJobSweeper, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,

@@ -17,6 +17,7 @@ import (
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
@@ -145,16 +146,19 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	hasPluginCostGuard := false
 	var modelSelectors []trpcagent.ModelSelector
 	if deps.PluginManager != nil {
-		if routerCfg, ok := deps.PluginManager.ModelRouterConfigForAgent(ag.ID); ok {
+		// N-B1：插件配置按调用方工作区过滤，杜绝跨租户配置泄漏。
+		pluginWsID := workspace.IDFromContext(ctx)
+		if routerCfg, ok := deps.PluginManager.ModelRouterConfigForAgent(ag.ID, pluginWsID); ok {
 			hasPluginModelRouter = true
 			modelSelectors = append(modelSelectors,
 				PluginModelSelector(prov, mod, deps.ModelCatalog, deps.RT, routerCfg, lg),
 			)
 		}
-		if cgCfg, ok := deps.PluginManager.CostGuardConfigForAgent(ag.ID); ok {
+		if cgCfg, ok := deps.PluginManager.CostGuardConfigForAgent(ag.ID, pluginWsID); ok {
 			hasPluginCostGuard = true
 			modelSelectors = append(modelSelectors,
-				PluginCostGuardSelector(prov, mod, deps.ModelCatalog, deps.RT, cgCfg, deps.PluginManager.CostGuardBudgetTrackerForAgent(ag.ID), lg),
+				// N-B2：tracker 按请求 ctx 解析，与运行时 cost_guard 插件共用同一预算桶。
+				PluginCostGuardSelector(prov, mod, deps.ModelCatalog, deps.RT, cgCfg, deps.PluginManager.BudgetTrackerForContext, lg),
 			)
 		}
 	}
@@ -525,6 +529,10 @@ func buildModelSelector(selector string, prov, mod string, catalog biz.TeamModel
 		return QualityAwareModelSelector(prov, mod, catalog, rt, lg)
 	case "latency-aware":
 		return LatencyAwareModelSelector(prov, mod, catalog, rt, lg)
+	case "cascade":
+		// P2-1：standalone agent 的 cascade 模式 = 自我降为成本档
+		// （无 leader 集合——团队场景的分档经 RunOption selector 注入）。
+		return CascadeModelSelector(nil, "", "", catalog, rt, lg)
 	case "auto", "default", "":
 		return nil // defer to framework default
 	default:

@@ -1,14 +1,16 @@
 package adapter
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	loggateway "aranea-agents/pkg/loggateway"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
+	a2alog "trpc.group/trpc-go/trpc-a2a-go/log"
 	agentlog "trpc.group/trpc-go/trpc-agent-go/log"
 )
 
@@ -104,4 +106,68 @@ func (a *RuntimeLogAdapter) With(fields ...loggateway.Field) *RuntimeLogAdapter 
 		base:  newBase,
 		fatal: a.fatal,
 	}
+}
+
+// runtimeTraceFields extracts the OTel span context from ctx as structured
+// fields. Returns nil when the context carries no valid span context.
+func runtimeTraceFields(ctx context.Context) []loggateway.Field {
+	if ctx == nil {
+		return nil
+	}
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return nil
+	}
+	return []loggateway.Field{
+		loggateway.TraceID(sc.TraceID().String()),
+		loggateway.Str("span_id", sc.SpanID().String()),
+	}
+}
+
+// InstallRuntimeLogContextFuncs replaces the agentlog *Context package-level
+// function variables so context-aware framework logs are routed through the
+// adapter with OTel trace_id/span_id extracted from the context (the stock
+// implementations silently drop the context). It also bridges the trpc-a2a-go
+// package logger, which the framework's init() had bound to the pre-replacement
+// zap logger and would otherwise bypass the loggateway Pipeline.
+//
+// Call once during startup after agentlog.Default/ContextDefault are replaced.
+func InstallRuntimeLogContextFuncs(a *RuntimeLogAdapter) {
+	agentlog.DebugContext = func(ctx context.Context, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Debug(args...)
+	}
+	agentlog.DebugfContext = func(ctx context.Context, format string, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Debugf(format, args...)
+	}
+	agentlog.InfoContext = func(ctx context.Context, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Info(args...)
+	}
+	agentlog.InfofContext = func(ctx context.Context, format string, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Infof(format, args...)
+	}
+	agentlog.WarnContext = func(ctx context.Context, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Warn(args...)
+	}
+	agentlog.WarnfContext = func(ctx context.Context, format string, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Warnf(format, args...)
+	}
+	agentlog.ErrorContext = func(ctx context.Context, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Error(args...)
+	}
+	agentlog.ErrorfContext = func(ctx context.Context, format string, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Errorf(format, args...)
+	}
+	agentlog.FatalContext = func(ctx context.Context, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Fatal(args...)
+	}
+	agentlog.FatalfContext = func(ctx context.Context, format string, args ...any) {
+		a.With(runtimeTraceFields(ctx)...).Fatalf(format, args...)
+	}
+	agentlog.TracefContext = func(ctx context.Context, format string, args ...any) {
+		if !agentlog.IsTraceEnabled() {
+			return
+		}
+		a.With(runtimeTraceFields(ctx)...).Debugf("[TRACE] "+format, args...)
+	}
+	a2alog.Default = a
 }

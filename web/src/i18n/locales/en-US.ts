@@ -1038,6 +1038,7 @@ export default {
       btnClear: 'Clear all',
       paginationLabel: 'runs',
       viewDetail: 'View details',
+      detailTitle: 'Run details',
       confirmClearTitle: 'Confirm clear',
       confirmClearMessage: 'This deletes all callback/plugin run records and cannot be undone. Continue?',
       confirmClearOk: 'Clear all',

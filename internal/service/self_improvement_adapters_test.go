@@ -381,7 +381,7 @@ func TestSIKBNegativePatternSink_ExistingIncrementsFail(t *testing.T) {
 // ── SIOrchestratorFeedbackSink ───────────────────────────────────────────────
 
 func TestSIOrchestratorFeedbackSink_Escalates(t *testing.T) {
-	orch := biz.NewSkillEvolutionOrchestrator(nil, nil, nil, loggateway.NewNoop())
+	orch := biz.NewSkillEvolutionOrchestrator(nil, nil, loggateway.NewNoop())
 	sink := NewSIOrchestratorFeedbackSink(orch)
 	if err := sink.EscalateTriggerCooldown(context.Background(), biz.TriggerSourceErrorCluster, 2); err != nil {
 		t.Fatalf("EscalateTriggerCooldown: %v", err)

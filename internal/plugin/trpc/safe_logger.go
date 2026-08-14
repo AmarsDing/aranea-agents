@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/appctx"
@@ -36,6 +37,49 @@ type PluginSafeLogger struct {
 	pluginName string
 	monitorBus contract.MonitorBus
 	lg         loggateway.Logger
+}
+
+// R-6：MonitorEvent 发布从「每次写日志 spawn 一个 goroutine」改为共享
+// 有界队列 + 单 worker。旧实现高频日志下 goroutine 流失控（每条日志一个
+// goroutine 且各自阻塞在 MonitorBus.Publish）。队列满时丢弃（监控日志为
+// Informational）并计数限流告警。
+type monitorLogEntry struct {
+	bus contract.MonitorBus
+	ev  contract.MonitorEvent
+}
+
+const monitorLogQueueSize = 256
+
+var (
+	monitorLogCh      = make(chan monitorLogEntry, monitorLogQueueSize)
+	monitorLogOnce    sync.Once
+	monitorLogDropped atomic.Int64
+)
+
+func startMonitorLogWorker() {
+	monitorLogOnce.Do(func() {
+		safego.Go(appctx.Ctx(), "plugin-monitor-log-worker", func() {
+			for entry := range monitorLogCh {
+				entry.bus.Publish(context.Background(), entry.ev)
+			}
+		})
+	})
+}
+
+// publishMonitorEvent enqueues the event for the shared worker; drops with a
+// throttled warning when the queue is saturated.
+func (l *PluginSafeLogger) publishMonitorEvent(ev contract.MonitorEvent) {
+	startMonitorLogWorker()
+	select {
+	case monitorLogCh <- monitorLogEntry{bus: l.monitorBus, ev: ev}:
+	default:
+		if n := monitorLogDropped.Add(1); n == 1 || n%100 == 0 {
+			l.lg.Warn("plugin monitor log queue saturated, events dropped",
+				loggateway.StepID("plugin.safe_logger.dropped"),
+				loggateway.Str("plugin", l.pluginName),
+				loggateway.Int64("dropped_total", n))
+		}
+	}
 }
 
 func NewPluginSafeLogger(pluginName string, monitorBus contract.MonitorBus, lg loggateway.Logger) *PluginSafeLogger {
@@ -104,8 +148,5 @@ func (l *PluginSafeLogger) write(level, msg string, attrs ...any) {
 	ev.Level = level
 	ev.Message = buf.String()
 	ev.Metadata = map[string]any{"level": level, "source": l.pluginName}
-	mb := l.monitorBus
-	safego.Go(appctx.Ctx(), "plugin-log-"+l.pluginName, func() {
-		mb.Publish(context.Background(), ev)
-	})
+	l.publishMonitorEvent(ev)
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -35,6 +36,10 @@ type applyGuardStore struct {
 	statusUpdate string
 	statusActor  string
 	statusReason string
+	// casForceMiss simulates a concurrent transition winning the race between
+	// the usecase's read and the atomic UPDATE: UpdateStatusCAS returns
+	// ok=false so tests can assert the Conflict mapping (B-1).
+	casForceMiss bool
 }
 
 func (s *applyGuardStore) Create(_ context.Context, suggestion biz.UnifiedEvolutionSuggestion) error {
@@ -53,6 +58,31 @@ func (s *applyGuardStore) UpdateStatus(_ context.Context, _ string, status strin
 	s.statusReason = reason
 	s.row.Status = status
 	return nil
+}
+
+// UpdateStatusCAS mirrors the repo's atomic precondition: ok=false when the
+// row's current status is not in `from`, or when casForceMiss is set.
+func (s *applyGuardStore) UpdateStatusCAS(_ context.Context, _ string, from []string, status string, actor string, reason string) (bool, error) {
+	if s.casForceMiss {
+		return false, nil
+	}
+	if len(from) > 0 {
+		match := false
+		for _, f := range from {
+			if s.row.Status == f {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return false, nil
+		}
+	}
+	s.statusUpdate = status
+	s.statusActor = actor
+	s.statusReason = reason
+	s.row.Status = status
+	return true, nil
 }
 
 func (s *applyGuardStore) UpdateMetadataKey(_ context.Context, _ string, key string, value string) error {
@@ -242,6 +272,66 @@ func TestRejectSuggestion_NonPendingRejected(t *testing.T) {
 
 	if _, err := uc.RejectSuggestion(context.Background(), "agent-1", "sug-1", "r"); err == nil {
 		t.Fatal("rejecting an applied suggestion must fail")
+	}
+}
+
+// ── B-1: CAS miss（GetByID 与原子 UPDATE 之间并发转换抢先）必须映射为 ──────
+// ── Conflict，禁止静默覆盖对方状态 ─────────────────────────────────────────
+
+func TestApplySuggestion_CASConflict(t *testing.T) {
+	store := &applyGuardStore{row: applyGuardRow("persona", "优化沟通风格", "内容。", "payload")}
+	store.casForceMiss = true
+	agents := &applyGuardAgentRepo{files: []biz.AgentPromptFile{
+		{AgentID: "agent-1", Name: "IDENTITY.md", Body: "# IDENTITY\n\n## Persona\n\n旧 persona。", SortOrder: 30},
+	}}
+	uc := newApplyGuardUsecase(store, agents)
+
+	_, err := uc.ApplySuggestion(context.Background(), "agent-1", "sug-1")
+	if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeConflict {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
+	}
+	if store.row.Status != biz.EvolutionStatusPending {
+		t.Errorf("row status must remain untouched on CAS miss, got %s", store.row.Status)
+	}
+}
+
+func TestRejectSuggestion_CASConflict(t *testing.T) {
+	store := &applyGuardStore{row: applyGuardRow("prompt", "工具成功率偏低", "内容。", "")}
+	store.casForceMiss = true
+	uc := newApplyGuardUsecase(store, &applyGuardAgentRepo{})
+
+	_, err := uc.RejectSuggestion(context.Background(), "agent-1", "sug-1", "不适用")
+	if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeConflict {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
+	}
+	if store.row.Status != biz.EvolutionStatusPending {
+		t.Errorf("row status must remain untouched on CAS miss, got %s", store.row.Status)
+	}
+}
+
+func TestRollbackSuggestion_CASConflict(t *testing.T) {
+	row := applyGuardRow("persona", "t", "c", "payload")
+	row.Status = biz.EvolutionStatusApplied
+	meta := map[string]string{}
+	if err := json.Unmarshal(row.Metadata, &meta); err != nil {
+		t.Fatalf("unmarshal row metadata: %v", err)
+	}
+	snap, _ := json.Marshal(map[string]string{"IDENTITY.md": "# IDENTITY\n\n## Persona\n\n旧 persona。"})
+	meta[biz.EvoMetaPreApplySnapshot] = string(snap)
+	row.Metadata, _ = json.Marshal(meta)
+
+	store := &applyGuardStore{row: row, casForceMiss: true}
+	agents := &applyGuardAgentRepo{files: []biz.AgentPromptFile{
+		{AgentID: "agent-1", Name: "IDENTITY.md", Body: "# IDENTITY\n\n## Persona\n\n新 persona。", SortOrder: 30},
+	}}
+	uc := newApplyGuardUsecase(store, agents)
+
+	_, err := uc.RollbackSuggestion(context.Background(), "agent-1", "sug-1")
+	if ae, ok := apierror.From(err); !ok || ae.Code != apierror.CodeConflict {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
+	}
+	if store.row.Status != biz.EvolutionStatusApplied {
+		t.Errorf("row status must remain untouched on CAS miss, got %s", store.row.Status)
 	}
 }
 

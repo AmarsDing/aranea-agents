@@ -57,7 +57,8 @@ func newToolArgsGuardBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook {
 				loggateway.Err(err))
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
-		args.Arguments = b
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
+		// P1-3: 清洗结果必须经 ModifiedArguments 返回，框架才会写回
+		// 实际执行的 toolCall.Function.Arguments（原地改 args.Arguments 无效）。
+		return &trpctool.BeforeToolResult{Context: ctx, ModifiedArguments: b}, nil
 	})
 }

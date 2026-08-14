@@ -81,9 +81,13 @@ func newToolArgsRepairBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook 
 			loggateway.Str("orig_len", fmt.Sprint(len(args.Arguments))),
 			loggateway.Str("repaired_len", fmt.Sprint(len(repaired))),
 		)
-		args.Arguments = repaired
+		// P1-3: 修复结果必须经 ModifiedArguments 返回——框架写回
+		// toolCall.Function.Arguments 的唯一通道
+		// （pkg/trpc-agent-go/internal/flow/processor/functioncall.go:1722）。
+		// 原地改 args.Arguments 不会到达工具执行（潜伏 bug，
+		// 2026-07-25 事故修复路径此前一值为空）。
 		ctx = context.WithValue(ctx, toolArgsQualityKey{}, toolArgsQuality{Repaired: true})
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
+		return &trpctool.BeforeToolResult{Context: ctx, ModifiedArguments: repaired}, nil
 	})
 }
 

@@ -43,14 +43,14 @@ func predictiveHealIntervalFromEnv() time.Duration {
 }
 
 // PredictiveHealJobEnabled reports whether the predictive heal job should run.
-// Default is DISABLED: the wired HealActionHandler is NoopHealActionHandler
-// (cmd/admin/wire.go providePredictiveHealUsecase), so a running job only
-// produces misleading "applied" HealRecords without performing any real
-// action (S1: zombie feature). Set PREDICTIVE_HEAL_JOB_ENABLED=1 to opt in
-// once a real action handler is wired.
+// Default is ENABLED: the wired HealActionHandler is the real action catalog
+// (CatalogHealActionHandler — provider/MCP health refresh probes, both
+// idempotent read-only operations), and the confidence gate is metric-driven
+// so actions only fire on real metric signals with a 30-minute per-type
+// cooldown. Set PREDICTIVE_HEAL_JOB_ENABLED=0 to opt out.
 func PredictiveHealJobEnabled() bool {
 	raw := strings.TrimSpace(strings.ToLower(os.Getenv("PREDICTIVE_HEAL_JOB_ENABLED")))
-	return raw == "1" || raw == "true" || raw == "yes"
+	return raw != "0" && raw != "false" && raw != "no"
 }
 
 // Start runs the predictive heal job loop until ctx is cancelled.

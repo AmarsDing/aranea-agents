@@ -716,7 +716,7 @@ type SimilarityMetrics struct {
 |---------|------|----------|
 | `PatternTrigger` | 工具调用 Pattern | 从高频工具调用组合中检测新 Skill 需求，返回所有匹配 pattern |
 | `HealthTrigger` | 健康指标 | 检测 30d 失败率 > 30% 或 score < 60；依赖 `SkillScorer` 窄接口 |
-| `AgentConfigTrigger` | Agent 配置 | 预留扩展点（当前返回 nil） |
+| `AgentConfigTrigger` | Agent 配置（L3） | 评估 Agent 30d 指标（工具成功率 / 检索质量 / 负反馈）是否越阈，产出 evolve 建议；L3 opt-in 门控（未开启进化或低于最小信号量时返回 nil）；`queryReader` 按 (type+title) 对 pending 去重 |
 | `SuccessTrigger` | 成功沉淀（P2 F3） | 检测 30d 成功率 ≥ 0.85 且调用量 ≥ `EvoTriggerMinInvocations` 且当前正文含规则块；与 health 共用 `(skill, improve_skill)` 冷却槽；产出「固化强化」型（非修复型）delta，禁删 `helpful>0` 规则 |
 
 **Gate 验证维度**（`GateVerifier`，`internal/biz/skill_evolution_loop.go`，共 9 维）：functional（sandbox + 数据集回放，P2 F1 扩展为 AB 对照棘轮——draft 通过率不得劣于当前正文基线，基线不可得时仅查绝对阈值 0.6）、security、performance、style、effectiveness（P1：harmful≥3 规则不得原样保留）、drift（P2 F2：删 helpful≥3 规则 / 删除比例 >50% / 臃肿双条件 >1.5× 且 >+5 → 拒绝）、trigger_accuracy（P2 F4：`{Name|Slug}__trigger` 黄金集确定性回归，复用 `skillruntime.MatchTrigger`，棘轮 + 绝对下限 0.8）、paired_regression（P3 M1：逐 case 配对判定——baseline 下通过的 case 在 draft 下不得失败，win 不抵 regression，reason 携带 win/loss/tie 计数供审批审计）、no_op_change（P3 M1：draft 与 baseline 输出在所有可比 case 上逐字节一致 → 无可测量效果，拒绝空转版本/审批周期；任一侧 LLM 调用失败的空 hash case 不参与等价比较）。统一降级语义：依赖未配置 / 数据缺失（含 per-case 数据不可用）时跳过不阻断。P3 M1 起 AB 回放在一次 Verify 中仅执行一次，供 functional / paired_regression / no_op_change 三维共用（functional 基线检查失败时不触发回放，非法 draft 不烧 LLM 调用）；per-case 数据由 `SkillReplayResult.CaseResults`（`CaseVerdict{CaseID, Passed, OutputHash}`，trim 后 sha256）承载，见 `service.SkillReplayRunner.replayCases`。P2 维度详见 [phase3-进化能力/08](./phase3-进化能力/08-P2-进化验证强化与触发扩展.design.md)。
@@ -731,17 +731,18 @@ type SimilarityMetrics struct {
   - 不存在则创建，DB UNIQUE 约束兜底（多实例并发安全）
   - 重复创建时返回 `nil, nil`（幂等）
   - 含 per-action-type 冷却期检查（F9：仅 `pending`/`approved`/`applied` 活跃状态计入冷却窗口——`rejected`/`expired`/`rolled_back` 不阻塞再次触发，见 `UnifiedEvolutionSuggestion.CountsForCooldown`）
-- `Approve` / `Reject`：审批/拒绝进化建议
 - `ExpirePending`：批量过期超过 7 天的 pending 建议（status → `expired`）。**过期收敛唯一入口**：仅由 `EvolutionOrchestratorWorker` 每 tick 调用；`CuratorWorker` 只跑验证半区（草稿 + 沙箱 + lifecycle），不再承担过期职责
 
-**审批并发守卫（2026-08 审查修复）**：`SkillIntelligenceUsecase.ApproveSuggestion` / `RejectSuggestion` 先经 `UnifiedEvolutionStateMachine.Transition` 校验转换合法性，再走 `UpdateStatusCAS`（`WHERE status IN ('pending')` 原子前置条件）防并发审批竞态——CAS 未命中返回 Conflict 提示重试
+> 注：Orchestrator 不提供审批接口（2026-08-14 起删除 `Approve`/`Reject` 死代码）——审批统一在 usecase 层完成（L1 `SkillEvolutionUsecase.ApproveProposal`/`RejectProposal`、L2 `SkillIntelligenceUsecase.ApproveSuggestion`/`RejectSuggestion`、L3 `EvolutionUsecase` apply/reject/rollback），编排器只负责触发创建与过期。
+
+**审批并发守卫（2026-08 审查修复）**：所有层级的状态转换均先经 `UnifiedEvolutionStateMachine.Transition` 校验转换合法性，再走 `UpdateStatusCAS`（`WHERE status IN (...)` 原子前置条件）防并发竞态——CAS 未命中返回 Conflict 提示重试。覆盖：L1 `ApproveProposal`/`RejectProposal`/`RegisterApproved`、L2 `ApproveSuggestion`/`RejectSuggestion`、L3 `applyAndMark`/`RejectSuggestion`/`RollbackSuggestion`。
 
 **接口拆分**（符合"接口方法 ≤ 5"规范）：
 
 - `UnifiedEvolutionCheckReader`（3 方法）：`HasPendingForTarget` / `GetLatestByTarget` / `GetLatestByTargetAndAction`
 - `UnifiedEvolutionQueryReader`（5 方法）：`GetByID` / `ListByTarget` / `CountByTarget` / `ListByTargetAndAction` / `CountByTargetAndAction`（AndAction 变体区分同 target_type 的 L1 proposal 与 L3 agent 建议）
 - `UnifiedEvolutionPatternReader`（1 方法）：`GetLatestByPatternHash`（L1 pattern_hash 去重，hash 存于 metadata）
-- `UnifiedEvolutionMutationWriter`（6 方法，超 ≤5 规范 1 个——`UpdateStatusCAS` 为审批并发守卫新增，L1/L3 无条件 `UpdateStatus` 路径仍被占用故保留并存；TECH-DEBT）：`Create` / `UpdateStatus` / `UpdateStatusCAS` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult`
+- `UnifiedEvolutionMutationWriter`（6 方法，超 ≤5 规范 1 个——`UpdateStatusCAS` 为审批并发守卫新增；无条件 `UpdateStatus` 仅残留于 L2 `ApplyApprovedSuggestion`（Reload 成功后落 applied，已经双状态机校验），故保留并存；TECH-DEBT）：`Create` / `UpdateStatus` / `UpdateStatusCAS` / `UpdateDraftBody` / `UpdateLifecycleStatus` / `UpdateSandboxResult`
 - `UnifiedEvolutionMetadataWriter`（1 方法）：`UpdateMetadataKey`（单键 JSON 合并，如 L3 `pre_apply_snapshot`）
 - `UnifiedEvolutionExpirationWriter`（1 方法）：`ExpireOlderThan`
 

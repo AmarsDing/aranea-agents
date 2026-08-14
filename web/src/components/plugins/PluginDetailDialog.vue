@@ -28,7 +28,7 @@
             dense
             no-caps
             icon="arrow_upward"
-            label="上移顺序"
+            :label="t('pluginsPage.detail.moveUp')"
             :loading="bumpingSort"
             @click="$emit('bumpSort', -10)"
           />
@@ -37,25 +37,25 @@
             dense
             no-caps
             icon="arrow_downward"
-            label="下移顺序"
+            :label="t('pluginsPage.detail.moveDown')"
             :loading="bumpingSort"
             @click="$emit('bumpSort', 10)"
           />
         </div>
 
-        <q-expansion-item dense-toggle label="Agent 绑定">
+        <q-expansion-item dense-toggle :label="t('pluginsPage.detail.agentBinding')">
           <div class="q-gutter-sm">
             <q-radio
               :model-value="scopeMode"
               val="global"
-              label="全局生效"
+              :label="t('pluginsPage.detail.scopeGlobal')"
               :disable="!target.permissions?.can_edit_config"
               @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')"
             />
             <q-radio
               :model-value="scopeMode"
               val="agent"
-              label="指定 Agent"
+              :label="t('pluginsPage.detail.scopeAgent')"
               :disable="!target.permissions?.can_edit_config"
               @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')"
             />
@@ -71,7 +71,7 @@
               hide-selected
               fill-input
               input-debounce="0"
-              label="选择 Agent"
+              :label="t('pluginsPage.detail.selectAgent')"
               :disable="!target.permissions?.can_edit_config"
               @filter="filterAgentOptions"
               @update:model-value="$emit('update:scopeAgentId', String($event ?? ''))"
@@ -81,7 +81,7 @@
               rounded
               unelevated
               no-caps
-              label="保存作用域"
+              :label="t('pluginsPage.detail.saveScope')"
               :loading="savingScope"
               :disable="!target.permissions?.can_edit_config"
               @click="$emit('saveScope')"
@@ -89,26 +89,28 @@
           </div>
         </q-expansion-item>
 
-        <q-expansion-item dense-toggle default-opened label="Callback">
+        <q-expansion-item dense-toggle default-opened :label="t('pluginsPage.detail.callbacks')">
           <div class="app-registry-chip-wrap">
             <span v-for="point in target.callback_points" :key="point" class="plugin-tag plugin-tag--callback">{{
               point
             }}</span>
-            <span v-if="!target.callback_points?.length" class="text-grey-7">暂无 Callback</span>
+            <span v-if="!target.callback_points?.length" class="text-grey-7">{{ t('pluginsPage.noCallbacks') }}</span>
           </div>
         </q-expansion-item>
 
-        <q-expansion-item dense-toggle label="配置 JSON">
-          <pre class="app-code-block app-code-block--compact">{{ prettyJSON(target.config_json, '暂无配置') }}</pre>
-        </q-expansion-item>
-        <q-expansion-item dense-toggle label="默认配置">
+        <q-expansion-item dense-toggle :label="t('pluginsPage.detail.configJson')">
           <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target.default_config_json, '暂无默认配置')
+            prettyJSON(target.config_json, t('pluginsPage.detail.noConfig'))
           }}</pre>
         </q-expansion-item>
-        <q-expansion-item dense-toggle label="配置 Schema">
+        <q-expansion-item dense-toggle :label="t('pluginsPage.detail.defaultConfig')">
           <pre class="app-code-block app-code-block--compact">{{
-            prettyJSON(target.config_schema_json, '暂无 Schema')
+            prettyJSON(target.default_config_json, t('pluginsPage.detail.noDefaultConfig'))
+          }}</pre>
+        </q-expansion-item>
+        <q-expansion-item dense-toggle :label="t('pluginsPage.detail.configSchema')">
+          <pre class="app-code-block app-code-block--compact">{{
+            prettyJSON(target.config_schema_json, t('pluginsPage.detail.noSchema'))
           }}</pre>
         </q-expansion-item>
       </q-card-section>

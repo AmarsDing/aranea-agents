@@ -1,6 +1,6 @@
 # Evaluation 评估 — 开发计划
 
-> **版本**：2026-06-06 | **状态**：🟢 全部完成（所有 Phase 已交付，差距已关闭）
+> **版本**：2026-08-14 | **状态**：🟢 全部完成（Phase 1-8 已交付；Phase 8 深度评审整改 16 项全绿）
 > **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33-evaluation.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01 ✅, EP-RT-08 ✅, EP-BIZ-04 ✅, EVAL-02 ✅
 
@@ -188,6 +188,10 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - **Phase 5**：✅ 多轮/UserSim/pass@k + 扩展指标 + LLM UserSim + tool_trajectory + 趋势对比前端 + Eval LLM 系统配置
 - **Phase 6（评估飞轮，2026-08-08）**：✅ P1-1 对话→用例一键转化 + P1-2 负反馈采集与待审查转用例 + P1-3 judge 分歧统计 + P3-2 用例级 rubric（提前）+ judge 解析链修复（中立 instruction / llm_rubric_response / verdict 日志）+ 移动端缺口修复（MobileTasksPage 事件绑定 + MobileLayout 渲染 AddEvalCaseDialog）。**退出验证门 3/3 已运行时实证通过（2026-08-08 13:20 终验）**，方案与实证证据见 `test/dogfood-eval/report.md`
 - **Phase 7（质量守护 + 深度能力，即路线图 Phase 2/3，2026-08-08）**：✅ P2-1 发布质量门禁 + P2-2 在线评估看板（采样率/连跌告警/趋势拆分）+ P2-3 失败归组（SQL 版）+ P3-3 Pairwise 偏好裁决 + P3-4 红队用例包 + P3-5 数据集版本快照；P3-1 RAG 指标 spike 完成（结论：可行，推荐 Aranea 侧后处理路径，实施未排期，详见设计文档 §6.16）。**运行时实证（退出验证门）待补**，实施要点见 `test/dogfood-eval/report.md`「Phase 2/3 实施记录」
+- **Phase 8（全模块深度评审整改，2026-08-14）**：✅ 4B + 12Y 共 16 项修复（详见 §5 任务 28-31 与 §9 整改清单）：
+  - **P0 阻断**：B1 `num_runs` API 值被默认值覆盖（framework bridge 直接采用 API 值）+ 上限校验（`EvalMaxNumRuns=20`）；B2 人工标注无法清除（proto3 optional 不收 JSON null → 新增 `clear_human_pass`/`clear_human_score` 显式清除位，proto+service+repo+前端贯通）；B3 前端轮询刷新覆盖用户勾选；B4 workspace 隔离/IDOR（`assertEvalDatasetAccess`/`assertEvalDatasetMutate` + ListDatasets/ListTrendPoints/GetRunsByIDs 工作区过滤）
+  - **P1 正确性**：Y1 LLM UserSim 无脚本用例 max_invocations 默认 5（原 `len(script)+1`=1 提前结束多轮）；Y4 混合数据集 `hybridSimulator` 按用例路由脚本/LLM 模拟器；Y5 judge/sim LLM 调用 2min 超时包装（`timeoutRunner`，防 provider 断连致 run 永久 running）；Y6 未知指标名 `ValidateMetricNames` 白名单校验；Y10 启动清扫 `FailStaleRuns`（孤儿 pending/running 标记 failed）；Y7 tool 列确定性（`tool_call_accuracy` 优先于 `tool_trajectory` 写 legacy 列 + 按指标名排序合并）；Y2 门禁异步化（advisory 模式：回归运行后台执行、in-flight 去重、阈值越界仅通知不阻断）；Y12 gate 严格化（配置时校验指标名 + max_drop 无基线时硬阻断并自动启动基线评估）
+  - **P2 质量**：Y3/Y13 死代码清除（`scoresFromJSON`/`marshalScoresMap`/`ChatRunnerFactory`/`AgentRunnerFactory`）；Y8 data 层错误翻译（三个评估 repo 文件全部裸 err 经 `entErrToBizErr(err,"EVAL")`，红线 DB-R5）；Y9 `eval_run_preferences` 补 `run_id_a`/`run_id_b` 索引；Y11 DeleteDataset/DeleteRun 级联删除 preferences 孤儿行；Y14 runner 持久化失败补 Error 日志（K2）
 
 ---
 
@@ -222,6 +226,10 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | 25 | P3-4 红队用例包（`redteam.go` mergeAttackSuccessRate + `internal/evaluation/testdata/` 预制用例集） | P3 | ✅ |
 | 26 | P3-5 数据集版本快照（`dataset_hash.go` + `ent/schema/eval_run.go` dataset_hash + DDL 迁移注册 + 对比变更提示） | P3 | ✅ |
 | 27 | P3-1 RAG 指标 spike（结论见设计文档 §6.16：可行，推荐 Aranea 侧后处理路径） | P3 | ✅ spike 完成（实施未排期） |
+| 28 | P0 阻断修复（B1 num_runs 生效+上限 / B2 标注清除位 proto+service+repo+前端 / B3 轮询清勾选 / B4 workspace/IDOR） | P0 | ✅ |
+| 29 | P1 正确性修复（Y1 UserSim 默认轮次 / Y4 混合模拟器 / Y5 LLM 超时 / Y6 指标名校验 / Y10 启动清扫 / Y7 tool 列确定性 / Y2 门禁异步化 / Y12 gate 严格化） | P1 | ✅ |
+| 30 | P2 质量修复（Y3/Y13 死代码 / Y8 错误翻译 / Y9 索引 / Y11 级联 / Y14 Warn 日志） | P2 | ✅ |
+| 31 | 门禁异步化测试重写（`gate_test.go`：below-floor/drop advisory + 无基线阻断 + in-flight 去重；`runner_test.go` Y7 回归） | P1 | ✅ |
 
 ---
 
@@ -267,3 +275,58 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | N2 | medium | 团队会话转用例无法 replay：团队任务转录的 expected_output 是团队状态文本而非答案文本，连续运行 actual 为空且无 error | ① 转化入口识别 team 任务并提示「团队任务不适用单 Agent 评估」或自动提取 deliverable 摘要作 expected；② 评估 inference 对空输出用例记 error 而非静默 0 分 |
 | N3 | low | 趋势面板只统计 completed 运行 → 全 failed 数据集「暂无已完成运行记录」；A/B 对比列表混入 failed 运行 | 对比列表过滤 failed；趋势可选择展示 failed 点（带标记） |
 | N4 | low | exact_match 对对话式输出恒 0（句末标点/Markdown 加粗导致不精确相等）——指标语义严格而非 bug | 结果/启动对话框对 exact_match 加适用性提示（短答案场景），或默认勾选 contains_match |
+
+---
+
+## 9. Phase 8 深度评审整改清单（2026-08-14）
+
+> 评审范围：biz / data / service / internal/evaluation / 前端 / Schema 全层。以下编号为评审报告原始编号。
+> 验证：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` ✅ · `make wire` ✅ · `go test ./internal/evaluation ./internal/biz/evaluation ./internal/service ./internal/data`（PG 实库）✅ · 前端 lint/test/build ✅
+
+### P0 阻断（4 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| B1 | `num_runs>1` 被静默忽略（framework bridge 仅在 ≤0 时赋值，默认值 1 覆盖 API 值），pass@k 失真；且无上限可被恶意放大 LLM 成本 | bridge 直接采用 API 值；`biz.EvalMaxNumRuns=20` 上限 + RunEvaluation 入参校验 + agent 自动评估配置 clamp；回归测试 `TestFrameworkBridgeNumRunsOverridesDefault` | `internal/evaluation/framework.go`、`internal/biz/evaluation/`、`internal/service/evaluation.go` |
+| B2 | 人工标注无法清除：proto3 optional + JSON null 被 protojson 视为「未设置」，清除语义丢失 | proto 新增 `clear_human_pass`/`clear_human_score` 显式布尔位，service/repo/前端贯通 | `api/kratos/evaluation/v1/evaluation.proto`、`internal/service/evaluation.go`、`internal/data/evaluation.go`、前端 Results 对话框 |
+| B3 | 前端轮询刷新运行列表时覆盖用户已勾选的对比选择 | 轮询合并时保留既有勾选状态 | `web/src/features/evaluation/` |
+| B4 | workspace 隔离缺失（IDOR）：跨工作区可读/改他人数据集与运行 | service 层 `assertEvalDatasetAccess`/`assertEvalDatasetMutate`（拒绝一律 404 防存在性探测）；data 层 ListDatasets/ListTrendPoints/GetRunsByIDs 加工作区过滤 | `internal/service/evaluation.go`、`internal/data/evaluation.go` |
+
+### P1 正确性（8 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| Y1 | 无脚本用例 LLM UserSim `max_invocations=len(script)+1=1`，多轮对话首轮即结束 | 改用 `meta.UserSimulationMaxInvocations()`（默认 5） | `internal/evaluation/`（scenario 构建） |
+| Y2 | 发布门禁同步跑全量评估，发布请求超时/被取消后续跑写「执行失败」假拦截 | 门禁改异步 advisory：后台启动回归运行 + in-flight 去重 + 阈值越界仅通知不阻断 | `internal/evaluation/gate.go` |
+| Y4 | 混合数据集（脚本+LLM 用例）只用脚本模拟器，LLM 用例被静默脚本化 | `hybridSimulator` 按用例 metadata 路由 | `internal/evaluation/scripted_simulator.go` |
+| Y5 | judge/simulator LLM 调用无超时，provider 断连致 run 永久 running | `timeoutRunner` 2min 超时包装，超时用例记 failed | `internal/evaluation/`（judge_runner/llm_simulator） |
+| Y6 | 未知指标名静默忽略，拼写错误退化为默认指标 | `ValidateMetricNames` 白名单校验，未知指标报错 | `internal/evaluation/metrics.go` |
+| Y7 | `tool_call_accuracy` 与 `tool_trajectory` 同写 legacy 列，map 迭代序决定终值（非确定） | 列写入优先级：accuracy 在 scores map 中存在即赢（与顺序无关）；run 合并按指标名排序迭代；回归测试 | `internal/evaluation/scores.go`、`internal/evaluation/runner.go` |
+| Y10 | 进程重启后孤儿 run 滞留 pending/running | `FailStaleRuns` 启动清扫（created_at 早于阈值的 pending/running 标记 failed） | `internal/data/evaluation.go`、启动装配 |
+| Y12 | gate 配置不校验指标名，发布期才暴露；max_drop 无基线时 drop 检查被静默跳过 | UpsertGateConfig 校验指标名；max_drop 无完成基线 → 硬阻断（Conflict）并后台启动基线评估 | `internal/evaluation/gate.go`、`internal/biz/evaluation/governance.go` |
+
+### P2 质量（5 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| Y3/Y13 | 死代码：`scoresFromJSON`/`marshalScoresMap`（scores.go）、`ChatRunnerFactory`/`AgentRunnerFactory`（chat_runner.go） | 删除 | `internal/evaluation/scores.go`、`internal/evaluation/chat_runner.go` |
+| Y8 | data 层评估 repo 大量裸 err 直返，违反红线 DB-R5（唯一约束等无法翻译为 Conflict） | `evaluation.go`/`evaluation_governance.go`/`evaluation_divergence.go` 全部错误出口经 `entErrToBizErr(err,"EVAL")`（事务方法在 `ExecInTx` 调用点统一包装；scan 辅助函数内部包装；已有 apierror 透传不受影响） | `internal/data/evaluation*.go` |
+| Y9 | `eval_run_preferences` 缺 `run_id_a`/`run_id_b` 索引，级联删除全表扫 | Ent Schema 补两个字段索引 | `internal/data/ent/schema/eval_run_preference.go` |
+| Y11 | DeleteDataset/DeleteRun 不删 preferences，残留指向已删 run 的孤儿行 | 两个删除事务内补 preferences 级联 DELETE | `internal/data/evaluation.go` |
+| Y14 | runner `UpdateRun` 失败静默返回，run 滞留 pending 无迹可查 | 补 Error 日志（step `evaluation.run.persist_running_fail`，K2） | `internal/evaluation/runner.go` |
+
+### 终审残留项（2026-08-14 终审，非阻塞）
+
+| # | 级别 | 问题 | 处置 |
+|---|------|------|------|
+| R1 | 提示 | `EvaluationAnalyticsPanel.vue` 模板 7 处 slot 变量 `props` 遮蔽 defineProps（vue/no-template-shadow 警告）+ 1 处 prettier 警告；ResultsDialog 已用 `slotProps` 命名可参照 | 下轮前端治理统一改名 |
+| R2 | 提示 | `EvaluationFeedbackPanel.vue` 面板组件内直接 `$q.notify`（L132），与监控模块「Notify 归 Page 层」整改先例不一致 | 下轮随反馈面板迭代上移 |
+| R3 | 技术债务 | `mappers.ts` 与 `api.ts` 重复定义 mapDataset/mapRun（ISSUES.md #9 已登记） | 统一为单一 mapper 文件时处理 |
+| R4 | 技术债务 | 评估模块 8 个前端文件共 68 处硬编码中文由 `i18n-baseline.json` 豁免管控，新增字符串受门禁拦截 | 按基线逐步治理，禁止新增 |
+| R5 | 测试缺口 | Service 层单测、Runner 组件测试（after_turn/framework/llm_judge/chat_runner）缺失（§6 验收未勾项） | 纳入后续测试补齐计划 |
+
+### 文档同步（2026-08-14）
+
+- `33-evaluation.md`：US-13 验收标准改写为异步 advisory 语义（Y2/Y12）；US-6 补「可清除标注」（B2）
+- `33-evaluation.design.md`：§6.10 门禁重构、级联删除更正、§6.17 Phase 8 可靠性与隔离
+- `65-module-cross-reference-full.md`：§1.15 评估卡片更新（核心导出/共享类型/ workspace 隔离与级联删除）

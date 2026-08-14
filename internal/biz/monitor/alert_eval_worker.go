@@ -53,16 +53,12 @@ func (w *AlertEvalWorker) Start(ctx context.Context) {
 	w.rebuildFromDB(ctx)
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
-	cleanupTicker := time.NewTicker(time.Hour)
-	defer cleanupTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			w.evaluate(ctx)
-		case <-cleanupTicker.C:
-			w.usecase.CleanupStaleLastFired(time.Now(), 24*time.Hour)
 		}
 	}
 }

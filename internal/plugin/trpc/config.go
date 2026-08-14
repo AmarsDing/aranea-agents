@@ -27,6 +27,9 @@ func parsePluginConfig(configJSON, defaultJSON string, dest any, lg loggateway.L
 			for k, v := range overlay {
 				merged[k] = v
 			}
+		} else {
+			// R-5：管理员非法 JSON 不得静默 fail-open（guard 类插件会以默认配置运行）。
+			lg.Warn("解析 plugin config 失败，回退默认配置", loggateway.StepID("plugin.trpc.config"), loggateway.Err(err))
 		}
 	}
 	if len(merged) == 0 {

@@ -132,7 +132,7 @@ type MCPServer struct {
 | `ValidateConfig` | URL 预检（不持久化）；签名 `ValidateConfig(ctx, configJSON)`，内部始终以 `enabled=true` 评估 |
 | `RecordReconnectMetadata` | `mcpobserve` 回调递增 `reconnect_count` |
 | `MarkHealthAlertEmitted` | `mcp/alert` 回调标记告警已发送 |
-| `PersistRotatedRefreshToken` | OAuth2 refresh token 轮换回写：解密 `config_json` → 替换 `auth.refresh_token` → 重加密 → 更新，防止进程重启后复活已被吊销的旧 token（T5） |
+| `PersistRotatedRefreshToken` | OAuth2 refresh token 轮换回写：解密 `config_json` → 替换 `auth.refresh_token` → 重加密 → **字段级写**（`UpdateMCPServerConfigJSON` 仅写 `config_json`+`updated_at`，不覆盖并发健康元数据，RV-01），防止进程重启后复活已被吊销的旧 token（T5） |
 
 > **注**：`mcp/health` 后台探活通过调用 `TestMCPServer` 间接触发 `persistHealth`，无独立公开 `PersistHealth` 方法。
 

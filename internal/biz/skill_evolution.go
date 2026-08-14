@@ -262,9 +262,16 @@ func (uc *SkillEvolutionUsecase) ApproveProposal(ctx context.Context, id string,
 	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be approved")
 	}
-	// UpdateStatus merges metadata.approved_at for the view layer (A6).
-	if err := uc.store.UpdateStatus(ctx, id, string(next), approvedBy, ""); err != nil {
+	// UpdateStatusCAS merges metadata.approved_at for the view layer (A6) and
+	// atomically guards the precondition: a concurrent transition (reject /
+	// expire tick) winning the race surfaces as Conflict instead of being
+	// silently overwritten (B-1).
+	ok, err := uc.store.UpdateStatusCAS(ctx, id, []string{string(p.Status)}, string(next), approvedBy, "")
+	if err != nil {
 		return SkillProposal{}, err
+	}
+	if !ok {
+		return SkillProposal{}, apierror.Conflict("SKILL_EVO", "proposal %s status changed concurrently; retry", id)
 	}
 	return uc.getProposalView(ctx, id)
 }
@@ -282,9 +289,14 @@ func (uc *SkillEvolutionUsecase) RejectProposal(ctx context.Context, id string, 
 	if terr != nil {
 		return SkillProposal{}, apierror.BadRequest("SKILL_EVO", "only pending proposals can be rejected")
 	}
-	// UpdateStatus merges metadata.rejected_by for the view layer (A6).
-	if err := uc.store.UpdateStatus(ctx, id, string(next), rejectedBy, ""); err != nil {
+	// UpdateStatusCAS merges metadata.rejected_by for the view layer (A6);
+	// CAS miss => concurrent transition won, surface Conflict (B-1).
+	ok, err := uc.store.UpdateStatusCAS(ctx, id, []string{string(p.Status)}, string(next), rejectedBy, "")
+	if err != nil {
 		return SkillProposal{}, err
+	}
+	if !ok {
+		return SkillProposal{}, apierror.Conflict("SKILL_EVO", "proposal %s status changed concurrently; retry", id)
 	}
 	return uc.getProposalView(ctx, id)
 }
@@ -320,9 +332,14 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 		return SkillProposal{}, regErr
 	}
 	// 'registered' is an L1 view status stored verbatim (not a unified SM state);
-	// the repo performs a plain status update for it.
-	if err := uc.store.UpdateStatus(ctx, id, string(next), "", ""); err != nil {
+	// the repo performs the status update with a CAS precondition on the status
+	// read above so a concurrent transition surfaces as Conflict (B-1).
+	ok, err := uc.store.UpdateStatusCAS(ctx, id, []string{string(p.Status)}, string(next), "", "")
+	if err != nil {
 		return SkillProposal{}, err
+	}
+	if !ok {
+		return SkillProposal{}, apierror.Conflict("SKILL_EVO", "proposal %s status changed concurrently; retry", id)
 	}
 	return uc.getProposalView(ctx, id)
 }

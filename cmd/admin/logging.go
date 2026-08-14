@@ -98,6 +98,9 @@ func initLogging(bc *conf.Bootstrap, logger log.Logger) (loggateway.Logger, logp
 		rla := adapter.NewRuntimeLogAdapter(gw)
 		agentlog.Default = rla
 		agentlog.ContextDefault = rla
+		// Route *Context helpers through the adapter with OTel trace fields,
+		// and bridge the trpc-a2a-go package logger (LOG-02).
+		adapter.InstallRuntimeLogContextFuncs(rla)
 	}
 
 	return lg, pipeline, loggingSinks

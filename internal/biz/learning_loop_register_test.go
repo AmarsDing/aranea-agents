@@ -180,7 +180,7 @@ func TestRegisterKnowledge_CreateSuggestionFailureDoesNotMarkApplied(t *testing.
 
 	// Orchestrator writer that simulates a DB failure (non-conflict).
 	writer := &mockUnifiedWriter{createErr: errors.New("db connection lost")}
-	orch := NewSkillEvolutionOrchestrator(nil, nil, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(nil, writer, loggateway.NewNoop())
 
 	uc := &LearningLoopUsecase{
 		proposals:    propRW,
@@ -214,7 +214,7 @@ func TestRegisterKnowledge_CreateSuggestionSuccessMarksApplied(t *testing.T) {
 	}
 	propRW := newMockProposalRW(proposal)
 	writer := &mockUnifiedWriter{createErr: nil}
-	orch := NewSkillEvolutionOrchestrator(nil, nil, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(nil, writer, loggateway.NewNoop())
 
 	uc := &LearningLoopUsecase{
 		proposals:    propRW,
@@ -411,7 +411,7 @@ func TestRegisterKnowledge_CASPreventsConcurrentTransition(t *testing.T) {
 		stored.Status = ProposalStatusRejected // concurrent Reject won
 	}
 	writer := &mockUnifiedWriter{createErr: nil}
-	orch := NewSkillEvolutionOrchestrator(nil, nil, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(nil, writer, loggateway.NewNoop())
 
 	uc := &LearningLoopUsecase{
 		proposals:    propRW,

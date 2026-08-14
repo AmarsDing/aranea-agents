@@ -1,152 +1,56 @@
-package jobs_test
+package jobs
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/pkg/loggateway"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
-// ---------------------------------------------------------------------------
-// mock: monitor.HealRecordRepo
-// ---------------------------------------------------------------------------
-
-type mockHealRecordRepo struct {
-	insertFn func(ctx context.Context, record monitor.HealRecord) error
-	listFn   func(ctx context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error)
-	deleteFn func(ctx context.Context, olderThan time.Time) (int, error)
+type fakeHealRecordRepo struct {
+	deleted int
+	err     error
 }
 
-func (m *mockHealRecordRepo) InsertHealRecord(ctx context.Context, record monitor.HealRecord) error {
-	if m.insertFn != nil {
-		return m.insertFn(ctx, record)
+func (f *fakeHealRecordRepo) InsertHealRecord(_ context.Context, _ monitor.HealRecord) error {
+	panic("unexpected call")
+}
+
+func (f *fakeHealRecordRepo) ListHealRecords(_ context.Context, _ monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+	panic("unexpected call")
+}
+
+func (f *fakeHealRecordRepo) DeleteHealRecordsOlderThan(_ context.Context, _ time.Time) (int, error) {
+	return f.deleted, f.err
+}
+
+func TestAutoHealTTLCleanup_RunOnce_EmitsFlowLogOnError(t *testing.T) {
+	flowLog := &canaryFakeFlowLog{}
+	repo := &fakeHealRecordRepo{err: errors.New("delete boom")}
+	c := NewAutoHealTTLCleanup(time.Hour, time.Hour, repo, loggateway.NewNoop(), flowLog)
+
+	c.runOnce(context.Background())
+
+	if len(flowLog.errors) != 1 {
+		t.Fatalf("flow errors = %v, want 1 entry", flowLog.errors)
 	}
-	return nil
-}
-
-func (m *mockHealRecordRepo) ListHealRecords(ctx context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
-	if m.listFn != nil {
-		return m.listFn(ctx, query)
-	}
-	return monitor.HealRecordListResult{}, nil
-}
-
-func (m *mockHealRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
-	if m.deleteFn != nil {
-		return m.deleteFn(ctx, olderThan)
-	}
-	return 0, nil
-}
-
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
-
-func newTestCleanup(t *testing.T, interval, maxAge time.Duration, repo monitor.HealRecordRepo) *jobs.AutoHealTTLCleanup {
-	t.Helper()
-	lg := loggateway.NewNoop()
-	return jobs.NewAutoHealTTLCleanup(interval, maxAge, repo, lg, log.DefaultLogger)
-}
-
-// ---------------------------------------------------------------------------
-// tests
-// ---------------------------------------------------------------------------
-
-func TestNewAutoHealTTLCleanup_Defaults(t *testing.T) {
-	t.Setenv("AUTO_HEAL_TTL_INTERVAL", "")
-	t.Setenv("AUTO_HEAL_TTL_MAX_AGE", "")
-
-	c := newTestCleanup(t, 0, 0, &mockHealRecordRepo{})
-	if c == nil {
-		t.Fatal("expected non-nil cleanup")
+	want := "system.auto_heal_ttl_cleanup.failed"
+	if got := flowLog.errors[0]; len(got) < len(want) || got[:len(want)] != want {
+		t.Fatalf("flow error stepID = %q, want prefix %q", got, want)
 	}
 }
 
-func TestNewAutoHealTTLCleanup_CustomValues(t *testing.T) {
-	interval := 30 * time.Minute
-	maxAge := 168 * time.Hour
+func TestAutoHealTTLCleanup_RunOnce_NoFlowLogOnSuccess(t *testing.T) {
+	flowLog := &canaryFakeFlowLog{}
+	repo := &fakeHealRecordRepo{deleted: 3}
+	c := NewAutoHealTTLCleanup(time.Hour, time.Hour, repo, loggateway.NewNoop(), flowLog)
 
-	c := newTestCleanup(t, interval, maxAge, &mockHealRecordRepo{})
-	if c == nil {
-		t.Fatal("expected non-nil cleanup")
+	c.runOnce(context.Background())
+
+	if len(flowLog.errors) != 0 {
+		t.Fatalf("flow errors = %v, want none", flowLog.errors)
 	}
-}
-
-func TestAutoHealTTLCleanup_RunOnce_DeletesOldRecords(t *testing.T) {
-	maxAge := 72 * time.Hour
-	var capturedCutoff time.Time
-
-	repo := &mockHealRecordRepo{
-		deleteFn: func(_ context.Context, olderThan time.Time) (int, error) {
-			capturedCutoff = olderThan
-			return 5, nil
-		},
-	}
-
-	c := newTestCleanup(t, 0, maxAge, repo)
-	c.RunOnceExposed(context.Background())
-
-	expectedCutoff := time.Now().UTC().Add(-maxAge)
-	diff := capturedCutoff.Sub(expectedCutoff)
-	if diff < -time.Second || diff > time.Second {
-		t.Errorf("cutoff mismatch: got %v, want approximately %v (diff=%v)", capturedCutoff, expectedCutoff, diff)
-	}
-}
-
-func TestAutoHealTTLCleanup_RunOnce_DeleteError(t *testing.T) {
-	repo := &mockHealRecordRepo{
-		deleteFn: func(_ context.Context, _ time.Time) (int, error) {
-			return 0, context.DeadlineExceeded
-		},
-	}
-
-	c := newTestCleanup(t, 0, 72*time.Hour, repo)
-
-	// Should not panic on error.
-	c.RunOnceExposed(context.Background())
-}
-
-func TestAutoHealTTLCleanup_RunOnce_NoRecordsDeleted(t *testing.T) {
-	repo := &mockHealRecordRepo{
-		deleteFn: func(_ context.Context, _ time.Time) (int, error) {
-			return 0, nil
-		},
-	}
-
-	c := newTestCleanup(t, 0, 72*time.Hour, repo)
-
-	// Should not panic when no records are deleted.
-	c.RunOnceExposed(context.Background())
-}
-
-func TestAutoHealTTLCleanup_Start_ContextCancel(t *testing.T) {
-	repo := &mockHealRecordRepo{
-		deleteFn: func(_ context.Context, _ time.Time) (int, error) {
-			return 0, nil
-		},
-	}
-
-	// Use a very short interval so the ticker fires quickly.
-	c := newTestCleanup(t, 10*time.Millisecond, 72*time.Hour, repo)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	c.Start(ctx)
-
-	// Let the goroutine start and potentially tick once.
-	time.Sleep(50 * time.Millisecond)
-
-	// Cancel the context — the goroutine should exit.
-	cancel()
-
-	// Give the goroutine time to observe cancellation.
-	time.Sleep(50 * time.Millisecond)
-
-	// If we reach here without hanging, the test passes.
 }

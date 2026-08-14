@@ -14,7 +14,9 @@ import (
 )
 
 type stubMCPRepo struct {
-	rows []MCPServer
+	rows              []MCPServer
+	fullUpdateCalled  bool
+	configPatchCalled bool
 }
 
 func (s *stubMCPRepo) ListMCPServers(_ context.Context, _ MCPListQuery) ([]MCPServer, error) {
@@ -39,6 +41,7 @@ func (s *stubMCPRepo) CreateMCPServer(_ context.Context, m MCPServer) (MCPServer
 }
 
 func (s *stubMCPRepo) UpdateMCPServer(_ context.Context, m MCPServer) (MCPServer, error) {
+	s.fullUpdateCalled = true
 	for i := range s.rows {
 		if s.rows[i].ID == m.ID {
 			s.rows[i] = m
@@ -46,6 +49,17 @@ func (s *stubMCPRepo) UpdateMCPServer(_ context.Context, m MCPServer) (MCPServer
 		}
 	}
 	return m, nil
+}
+
+func (s *stubMCPRepo) UpdateMCPServerConfigJSON(_ context.Context, id string, configJSON string) error {
+	s.configPatchCalled = true
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].ConfigJSON = configJSON
+			return nil
+		}
+	}
+	return nil
 }
 
 func (s *stubMCPRepo) DeleteMCPServer(_ context.Context, _ string) error { return nil }
@@ -87,8 +101,10 @@ func (stubMCPCredRepo) DeleteMCPServerUserCredential(_ context.Context, _, _, _ 
 
 func TestMCPServerUsecase_PersistRotatedRefreshToken(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
-		ID:  "id1",
-		Key: "srv1",
+		ID:           "id1",
+		Key:          "srv1",
+		Status:       "active",
+		MetadataJSON: `{"health_status":"ok","last_health_at":"2026-08-14T00:00:00Z"}`,
 		ConfigJSON: `{"transport":"streamable_http","url":"https://mcp.example.com/mcp",` +
 			`"auth":{"type":"oauth2_refresh","token_url":"https://auth.example.com/token","client_id":"cid","refresh_token":"old-refresh"}}`,
 	}}}
@@ -112,6 +128,19 @@ func TestMCPServerUsecase_PersistRotatedRefreshToken(t *testing.T) {
 	}
 	if cfg.URL != "https://mcp.example.com/mcp" || cfg.Auth.Type != "oauth2_refresh" {
 		t.Fatalf("unrelated config fields changed: %+v", cfg)
+	}
+	// RV-01: token 回写必须走字段级写，禁止全行写（避免覆盖并发健康元数据）。
+	if repo.fullUpdateCalled {
+		t.Fatal("PersistRotatedRefreshToken must not use full-row UpdateMCPServer")
+	}
+	if !repo.configPatchCalled {
+		t.Fatal("PersistRotatedRefreshToken must use field-level UpdateMCPServerConfigJSON")
+	}
+	if repo.rows[0].MetadataJSON != `{"health_status":"ok","last_health_at":"2026-08-14T00:00:00Z"}` {
+		t.Fatalf("metadata_json clobbered: %s", repo.rows[0].MetadataJSON)
+	}
+	if repo.rows[0].Status != "active" {
+		t.Fatalf("status clobbered: %s", repo.rows[0].Status)
 	}
 }
 

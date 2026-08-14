@@ -24,7 +24,7 @@ func TestOrchestrator_CheckAndCreate_RejectedLatest_DoesNotCooldown(t *testing.T
 		string(EvolutionActionImprove): recent,
 	}}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 	orch.RegisterTrigger(tr)
 
@@ -48,7 +48,7 @@ func TestOrchestrator_CheckAndCreate_ActiveLatest_StillCooldowns(t *testing.T) {
 				string(EvolutionActionImprove): recent,
 			}}
 			writer := &orchStubWriter{}
-			orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+			orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 			tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{newTriggerSuggestion(EvolutionActionImprove)}}
 			orch.RegisterTrigger(tr)
 
@@ -142,7 +142,7 @@ func TestOrchestrator_CooldownMultiplier_ExtendsWindow(t *testing.T) {
 		string(EvolutionActionImprove): old,
 	}}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	tr := &stubTrigger{targetType: EvolutionTargetSkill, suggestions: []UnifiedEvolutionSuggestion{sug}}
 	orch.RegisterTrigger(tr)
 
@@ -169,7 +169,7 @@ func TestOrchestrator_CooldownMultiplier_ExtendsWindow(t *testing.T) {
 
 // 乘数叠加上限 8×。
 func TestOrchestrator_CooldownMultiplier_Capped(t *testing.T) {
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
 	for i := 0; i < 5; i++ { // 2^5=32 → 应封顶 8
 		orch.SetTriggerCooldownMultiplier(TriggerSourceErrorCluster, 2)
 	}

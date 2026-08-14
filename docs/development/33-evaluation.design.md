@@ -101,7 +101,7 @@ evaluation.Runner (async goroutine)
 | DELETE | `/v1/evaluation/runs/{id}` | DeleteRun | 删除运行（级联 results） |
 | GET | `/v1/evaluation/runs` | ListRuns | 列出运行 |
 | GET | `/v1/evaluation/runs/{run_id}/results` | GetRunResults | 逐用例结果 |
-| PATCH | `/v1/evaluation/runs/{run_id}/results/{result_id}/annotation` | AnnotateCaseResult | 人工标注 |
+| PATCH | `/v1/evaluation/runs/{run_id}/results/{result_id}/annotation` | AnnotateCaseResult | 人工标注（Phase 8 新增 `clear_human_pass`/`clear_human_score` 显式清除位——proto3 optional 不接收 JSON null，B2） |
 | GET | `/v1/evaluation/agents/{agent_id}/trend` | GetAgentEvalTrend | Agent 分数趋势 |
 | POST | `/v1/evaluation/runs/compare` | CompareEvalRuns | A/B 或多 run 对比 |
 | GET | `/v1/evaluation/datasets/{dataset_id}/judge-divergence` | GetJudgeDivergence | judge/人工分歧统计（P1-3，query：agent_id/threshold/limit） |
@@ -118,7 +118,7 @@ evaluation.Runner (async goroutine)
 | dataset_id | string | 是 | 评估数据集 ID |
 | agent_id | string | 是 | 被评估的 Agent ID |
 | metrics | string | 否 | 逗号分隔指标键名，空值运行 4 种核心指标；扩展见 §6.5 |
-| num_runs | int32 | 否 | 每用例重复次数（AgentEvaluator MultiRun，默认 1） |
+| num_runs | int32 | 否 | 每用例重复次数（AgentEvaluator MultiRun，默认 1，上限 `EvalMaxNumRuns=20`，Phase 8 B1：API 值直传框架，原默认值覆盖缺陷已修复） |
 | use_user_simulation | bool | 否 | 启用 UserSimulation（脚本或 LLM） |
 
 ---
@@ -183,7 +183,7 @@ P2/P3 新增 2 张表 + 1 个列：
 | `EvalRun` | `eval_runs` | ← dataset / → results（P3-5 新增 `dataset_hash` 列） |
 | `EvalCaseResult` | `eval_case_results` | ← run / ← case |
 | `EvalGateConfig` | `eval_gate_config`（P2-1，单例行） | — |
-| `EvalRunPreference` | `eval_run_preference`（P3-3） | — |
+| `EvalRunPreference` | `eval_run_preference`（P3-3 建 `dataset_id` 索引；Phase 8 补 `run_id_a`/`run_id_b` 索引，Y9） | — |
 
 > Ent Schema 与 Raw SQL `EnsureEvalSchema` 并存：Ent Schema 作为类型映射真相源，运行期建表由 `EnsureEvalSchema` 完成（含 ALTER 兼容旧库）。
 
@@ -193,8 +193,8 @@ P2/P3 新增 2 张表 + 1 个列：
 
 ### 5.4 级联删除
 
-- `DeleteDataset`：事务内先删 `eval_cases`，再删 `eval_datasets`
-- `DeleteRun`：事务内先删 `eval_case_results`，再删 `eval_runs`
+- `DeleteDataset`：事务内依次删 `eval_run_preferences`（按 dataset_id，Y11）→ `eval_case_results`（按 run 子查询）→ `eval_runs` → `eval_cases` → `eval_datasets`
+- `DeleteRun`：事务内先删 `eval_run_preferences`（按 run_id_a/run_id_b 两侧，Y11）→ `eval_case_results` → `eval_runs`
 
 ### 5.5 用例上传格式
 
@@ -344,10 +344,11 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 - 快照写入侧容错：`context_json` 宽容解析，坏 JSON 静默忽略（反馈持久化永不因快照失败）；input/output 快照按 2000 runes 截断（`feedbackContextSnapshotMaxRunes`）
 - 复用的 chat.proto 契约定点见 [1-chat.design.md](./1-chat.design.md)（`SubmitMessageFeedback` RPC + `context_json` 字段）
 
-### 6.10 发布质量门禁（P2-1）
+### 6.10 发布质量门禁（P2-1；Phase 8 重构为异步 advisory）
 
-- **配置**：`eval_gate_config` 单例表（单行）；biz `GateConfig`（`internal/biz/evaluation/governance.go`），data 实现 `internal/data/evaluation_governance.go`；API `GET/PUT /v1/evaluation/gate`
-- **判定流程**：`PublishGate.Check(ctx, trigger)`（`internal/evaluation/gate.go`）——加载单例配置（未启用直接放行）→ `Runner.RunSync` 同步跑配置的数据集 → 双阈值判定：分数 < `min_score`，或相对最新 completed 基线跌幅 > `max_drop`，命中任一即阻断并发布通知事件
+- **配置**：`eval_gate_config` 单例表（单行）；biz `GateConfig`（`internal/biz/evaluation/governance.go`），data 实现 `internal/data/evaluation_governance.go`；API `GET/PUT /v1/evaluation/gate`；`PUT` 校验指标名白名单（Y12）
+- **判定流程（2026-08-14 Y2/Y12 重构）**：`PublishGate.Check(ctx, trigger)`（`internal/evaluation/gate.go`）——加载单例配置（未启用直接放行）→ in-flight 去重（已有 pending/running 的 gate run 则直接放行，防发布风暴扇出 N 份全量评估的 LLM 成本）→ **后台异步启动回归运行**（不再随发布请求同步执行——旧实现请求被取消后写成「执行失败」假拦截）→ 阈值越界（低于 `min_score` / 较基线跌幅超 `max_drop`）仅以通知事件 advisory 透出，**不阻断发布**
+- **唯一硬阻断（Y12）**：配置了 `max_drop` 但无任何 completed 基线运行时，返回 Conflict「无可用基线」——drop 检查否则被静默跳过；同时后台已启动的 gate run 即成为重试时的基线
 - **注入点**：`internal/service/chat_wire.go` `ProvidePublishGate` 装配；消费方为 skill 发布（`internal/service/skill.go`）与 pack 安装（`internal/service/pack.go`）——均 nil-safe，门禁不可用时不阻断主流程
 - **前端**：`EvaluationGateDialog.vue` 配置对话框（开关 / Agent / 数据集 / 指标 / min_score / max_drop）+ 评估页入口
 
@@ -384,7 +385,7 @@ TaskCard 👍/👎 → SubmitMessageFeedback（chat.proto，context_json 快照 
 - **对比透出**：`CompareEvalRuns` 对比响应每行携带 `dataset_hash`（proto `EvalRun` 字段 20、对比消息字段 15）
 - **前端**：参与对比的 runs 间 hash 不一致时 q-banner 提示「数据集已变更，分数不可直接比较」
 
-### 6.16 RAG 指标 spike 结论（P3-1，已验证可行 / 实施未排期）
+### 6.17 Phase 8 可靠性与隔离加固（2026-08-14）
 
 **结论：可行。推荐 Aranea 侧后处理路径**（不改 vendored 框架，与 `redteam.go` 同模式）：executeFramework 提取 knowledge_search chunks → 存 EvalCaseResult 扩展字段 → faithfulness 用既有 judge runner 打分合并进 run scores。
 

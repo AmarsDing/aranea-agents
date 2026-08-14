@@ -17,19 +17,25 @@ import (
 )
 
 // PluginCostGuardSelector switches to fallback when blocked_models or budget limits require routing.
+//
+// trackerFor resolves the budget tracker per invocation from ctx (N-B2): the
+// agent build is cached and shared across workspaces, so baking a tracker at
+// build time would pin the selector to the builder's bucket while the runtime
+// cost_guard plugin consumes the per-request "{workspace}:{agent}" bucket —
+// split accounting. Resolving per call keeps both on the same bucket.
 func PluginCostGuardSelector(
 	baseProv, baseMod string,
 	catalog biz.TeamModelCatalog,
 	rt *provider.RoundTrip,
 	cfg plugintrpc.CostGuardConfig,
-	tracker *plugintrpc.CostGuardBudgetTracker,
+	trackerFor func(ctx context.Context) *plugintrpc.CostGuardBudgetTracker,
 	lg loggateway.Logger,
 ) trpcagent.ModelSelector {
 	baseProv = strings.TrimSpace(baseProv)
 	baseMod = strings.TrimSpace(baseMod)
 	return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
 		est := plugintrpc.EstimateInvocationTokens(inv)
-		target := plugintrpc.ResolveCostGuardTarget(baseMod, cfg, est, tracker)
+		target := plugintrpc.ResolveCostGuardTarget(baseMod, cfg, est, trackerFor(ctx))
 		if target == "" || target == baseMod {
 			return nil, nil
 		}
@@ -122,6 +128,123 @@ func lastUserPromptFromSession(inv *trpcagent.Invocation) string {
 		}
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// P2-1: Model cascade routing (leader/member tiered selection)
+// ---------------------------------------------------------------------------
+
+// CascadeModelSelector routes team member invocations to the cost-tier model
+// while leader/planner invocations (leaderAgentKeys, matched against
+// Invocation.AgentName == agent key) keep their configured high-tier model.
+//
+// Tier semantics (Ensemble QSP 实证 + HiClaw fallback 启示）：
+//   - leader/planner/synthesizer：保持 base 模型（高档），selector 返回 nil。
+//   - member/executor：路由到成本档模型——显式配置 (memberProv, memberMod)，
+//     或 memberMod 为空时 auto 选取目录中最便宜的 ToolCall 可用模型。
+//
+// 保守语义：目标解析/构建失败、目标 == 当前 base、invocation 缺少 base 模型名
+// 时一律返回 (nil, nil) 保持 base，绝不因级联配置错误阻断运行。
+//
+// 注意：run-level selector（RunOption）在框架内优先于 build-level selector，
+// 且二者不链式——团队级联是显式管理策略，覆盖成员自身的模型路由插件。
+func CascadeModelSelector(
+	leaderAgentKeys []string,
+	memberProv, memberMod string,
+	catalog biz.TeamModelCatalog,
+	rt *provider.RoundTrip,
+	lg loggateway.Logger,
+) trpcagent.ModelSelector {
+	leaders := make(map[string]struct{}, len(leaderAgentKeys))
+	for _, k := range leaderAgentKeys {
+		if k = strings.TrimSpace(k); k != "" {
+			leaders[k] = struct{}{}
+		}
+	}
+	memberProv = strings.TrimSpace(memberProv)
+	memberMod = strings.TrimSpace(memberMod)
+	return func(ctx context.Context, inv *trpcagent.Invocation) (trpcmodel.Model, error) {
+		if inv == nil {
+			return nil, nil
+		}
+		if _, ok := leaders[inv.AgentName]; ok {
+			return nil, nil // leader/planner 保持高档 base
+		}
+		baseName := ""
+		if inv.Model != nil {
+			baseName = strings.TrimSpace(inv.Model.Info().Name)
+		}
+		prov, mod := memberProv, memberMod
+		if mod != "" && prov == "" {
+			// 显式 member_model 必须配 member_provider，否则配置无效。
+			lg.Warn("级联配置缺少 member_provider，保持基础模型",
+				loggateway.StepID("agent.model_cascade.route"),
+				loggateway.Str("member_model", mod), loggateway.Str("agent", inv.AgentName))
+			return nil, nil
+		}
+		if mod == "" {
+			// auto：目录内最便宜的 ToolCall 可用模型（成员执行需要工具能力）。
+			// 不排除 base——若 base 已是最便宜档，下方 mod == baseName 的 no-op
+			// 检查负责保持；排除 base 会把成员升级到次便宜模型，违背降本语义。
+			if catalog == nil {
+				return nil, nil
+			}
+			models, err := catalog.List(ctx)
+			if err != nil {
+				lg.Warn("级联 auto 目录查询失败", loggateway.StepID("agent.model_cascade.route"), loggateway.Err(err))
+				return nil, nil
+			}
+			pm, ok := CheapestCapableModel(models, "")
+			if !ok {
+				return nil, nil
+			}
+			prov, mod = pm.Provider, pm.Model
+		}
+		if mod == baseName {
+			return nil, nil // no-op：目标即当前 base
+		}
+		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod, lg)
+		if err != nil {
+			lg.Warn("级联目标模型构建失败，保持基础模型",
+				loggateway.StepID("agent.model_cascade.route"),
+				loggateway.Str("provider", prov), loggateway.Str("target", mod),
+				loggateway.Str("base", baseName), loggateway.Str("agent", inv.AgentName), loggateway.Err(err))
+			metrics.ModelRouterFallbackTotal.WithLabelValues("cascade_catalog").Inc()
+			return nil, nil
+		}
+		lg.Info("级联路由成员模型", loggateway.StepID("agent.model_cascade.route"), loggateway.Phase("done"),
+			loggateway.Str("provider", prov), loggateway.Str("target", mod),
+			loggateway.Str("base", baseName), loggateway.Str("agent", inv.AgentName))
+		return m, nil
+	}
+}
+
+// CheapestCapableModel returns the enabled, ToolCall-capable model with the
+// lowest input+output price (USD per 1M tokens) from the catalog list.
+// excludeModel 跳过指定模型名（通常是调用方自身 base，避免 no-op 自路由）。
+// 无定价信息（modelPricing 解析失败）的行不参与比价。
+func CheapestCapableModel(models []biz.ProviderModel, excludeModel string) (biz.ProviderModel, bool) {
+	excludeModel = strings.TrimSpace(excludeModel)
+	var best biz.ProviderModel
+	bestTotal := 0.0
+	found := false
+	for _, m := range models {
+		if !m.Enabled || m.Model == excludeModel {
+			continue
+		}
+		if !provider.CapabilitiesForProviderModel(m).ToolCall {
+			continue
+		}
+		inCost, outCost, ok := modelPricing(m)
+		if !ok {
+			continue
+		}
+		total := inCost + outCost
+		if !found || total < bestTotal {
+			best, bestTotal, found = m, total, true
+		}
+	}
+	return best, found
 }
 
 // ---------------------------------------------------------------------------

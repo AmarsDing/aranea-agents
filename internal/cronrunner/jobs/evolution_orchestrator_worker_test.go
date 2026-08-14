@@ -253,7 +253,7 @@ func (s *drafterSpy) wasCalled(agentID string) bool {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func newTestOrchestrator(store *orchStubStore, triggers ...biz.EvolutionTrigger) *biz.SkillEvolutionOrchestrator {
-	orch := biz.NewSkillEvolutionOrchestrator(store, store, store, loggateway.NewNoop())
+	orch := biz.NewSkillEvolutionOrchestrator(store, store, loggateway.NewNoop())
 	for _, tr := range triggers {
 		orch.RegisterTrigger(tr)
 	}

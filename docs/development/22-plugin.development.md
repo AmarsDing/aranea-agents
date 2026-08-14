@@ -202,3 +202,52 @@ Plugin 是 Runner 层运行时回调扩展（治理 / 调试 / 风控）。与 S
 | cost_guard 双路径计量 | BeforeModel 与 ModelSelector 共用 `BudgetTrackerForContext` |
 | ~~`plugin_cost_guard_usage` 表 DDL 缺失~~ | ✅ GAP-01 已修复（迁移 20261210） |
 | 构造函数副作用（Bootstrap） | TECH-DEBT #plugin-bootstrap：应在 Wire 图构造后显式调用 |
+
+---
+
+## 9. 整体评审修复批次（2026-08-14，✅ 已完成）
+
+整体深入评审发现 6 阻断级（N-B1~N-B6）+ 12 推荐级（R 系列），已全部修复并通过回归测试。
+
+### 阻断级
+
+| # | 问题 | 修复 |
+|---|------|------|
+| N-B1 | 三个 config getter 遍历全工作区 map，跨租户配置泄漏且选中结果受 map 迭代序影响 | getter 增加 `workspaceID` 参数，经 `configEntriesFor` 过滤（本租户 > shared；system 确定性 shared 优先 + 分区按 ID 排序）；调用点（trpc_build / tool_confirm_gate / ToolMatchesConfirmationGuard）传 `workspace.IDFromContext(ctx)` |
+| N-B2 | build 时固化的预算 tracker 桶（`default:{agent}`）与运行时桶（`{ws}:{agent}`）分裂计量 | `PluginCostGuardSelector` 改为按请求 ctx 解析 tracker（`Manager.BudgetTrackerForContext`），两条路径共用同一桶 |
+| N-B3 | HookDeliveryRetryWorker 非缓冲 channel 致 Stop 信号在 retryStale 期间丢失、goroutine 泄漏 | close(stop) 广播 + sync.Once 幂等 + done 通道有界 Wait |
+| N-B4 | nil 接收器路径解引用（fallbackBudgetTracker / runtime / cost_guard budget） | 显式接口类型声明 + nil 守卫（后由 R-1 进一步收口为 nil 兜底） |
+| N-B5 | （批次 A/B 已修，见 §8 风险表与 git 记录） | — |
+| N-B6 | （批次 A/B 已修） | — |
+
+### 推荐级（本批）
+
+| # | 问题 | 修复 |
+|---|------|------|
+| R-1 | 兜底路径每次调用 `NewCostGuardBudgetTracker`，泄漏 persist/retry 两个 worker goroutine | 兜底统一返回 nil（tracker 全部方法 nil 接收器 no-op），删除 `fallbackBudgetTracker` |
+| R-2 | `byScope` 分桶（`{ws}:{agent}`）无界增长 | 软上限 1024 + idle>48h 淘汰；淘汰前 Close 冲刷，新桶从 DB 重载 |
+| R-3 | 并发热重载乱序提交，陈旧快照覆盖新配置 | `applySeq`/`appliedSeq` 纪元守卫，陈旧 Apply 丢弃 + Warn 日志 |
+| R-4 | `TryConsume` 失败回滚在跨日窗口误减新日额度 | 回滚仅在 `t.day == 捕获日` 时执行（`rollbackReservation`） |
+| R-5 | 管理员非法 config JSON 静默 fail-open（guard 插件按默认配置运行） | 解析失败 Warn 日志后回退默认配置 |
+| R-6 | PluginSafeLogger 每条日志 spawn 一个 goroutine 发布 MonitorEvent | 共享有界队列（256）+ 单 worker；满则丢弃并计数限流告警 |
+| R-7 | 租户与 shared 同 key 插件同时返回，重复注册回调 | `PluginsForAgent` 按 key 去重，租户自有覆盖 shared |
+
+### 回归测试
+
+`internal/plugin/trpc/runtime_r_series_test.go`（R-1/R-2/R-3/R-4/R-6/R-7 共 6 项）、`runtime_workspace_test.go::TestRuntime_ConfigGetters_workspaceIsolation`（N-B1）、`hook_retry_worker_test.go`（N-B3）。全部 PASS；`internal/plugin/...`、`internal/agent/...`、`internal/data`（PG）测试全绿。
+
+### 改动文件（本批）
+
+| 文件 | 改动 |
+|------|------|
+| `internal/plugin/trpc/runtime.go` | N-B1 configEntriesFor + 三 getter 签名、R-3 纪元、R-7 去重、删 legacy `CostGuardBudgetTracker()` |
+| `internal/plugin/trpc/manager.go` | getter 签名透传、`BudgetTrackerForContext`、删 `CostGuardBudgetTracker{,ForAgent}` |
+| `internal/plugin/trpc/cost_guard_registry.go` | R-1 nil 兜底、R-2 分桶淘汰、N-B1（ToolMatchesConfirmationGuard）、删 `CostGuardBudgetTrackerForAgent` |
+| `internal/plugin/trpc/cost_guard_budget.go` | R-4 rollbackReservation 跨日守卫、lastUsedUnix |
+| `internal/plugin/trpc/cost_guard.go` | R-1 budget() nil 兜底 |
+| `internal/plugin/trpc/safe_logger.go` | R-6 有界队列 + 单 worker |
+| `internal/plugin/trpc/hook_retry_worker.go` | N-B3 Stop 广播 + 幂等 + Wait |
+| `internal/plugin/trpc/config.go` | R-5 解析失败告警 |
+| `internal/agent/model_selector.go` | N-B2 tracker 按 ctx 解析 |
+| `internal/agent/trpc_build.go` | N-B1/N-B2 调用点 |
+| `internal/agent/tool_confirm_gate.go` | N-B1 调用点 |

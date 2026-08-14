@@ -121,7 +121,7 @@ func TestPredictiveHealUsecase_NilDeps(t *testing.T) {
 func TestPredictiveHealUsecase_LowConfidence_NoAction(t *testing.T) {
 	reader := &mockSystemMetricsReader{
 		metrics: monitor.SystemMetrics{
-			ProviderLatencyMs: 500,
+			ProviderLatencyMs: 1600, // Weak signal (>1500): keeps confidence low but non-zero
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
@@ -521,5 +521,114 @@ func TestPredictiveHealUsecase_InactivePatternSkipped(t *testing.T) {
 	}
 	if handler.calls.Load() != 0 {
 		t.Error("HandleFixAction should not be called for inactive patterns")
+	}
+}
+
+// Runtime-synced patterns carry the root-cause rule ID as Type (e.g.
+// "rc-provider-timeout"). The confidence gate must normalize these IDs to the
+// metric family so that a strong metric signal can fire the action.
+func TestPredictiveHealUsecase_RuleIDTypeNormalized(t *testing.T) {
+	reader := &mockSystemMetricsReader{
+		metrics: monitor.SystemMetrics{
+			ProviderLatencyMs: 5000, // Strong signal
+			MemoryUsagePct:    60,
+			SessionBacklog:    5,
+		},
+	}
+	patternReader := &mockFailurePatternReaderForPredictive{
+		patterns: []monitor.FailurePattern{
+			{
+				ID:         "fp-rt-rc-provider-timeout",
+				Type:       "rc-provider-timeout", // synced runtime rule ID form
+				Confidence: 0.9,
+				IsActive:   true,
+				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+			},
+		},
+	}
+	handler := &mockHealHandlerForPredictive{}
+	repo := &mockHealRecordRepo{}
+
+	uc := newTestPredictiveHealUsecase(reader, patternReader, handler, repo)
+
+	records, _ := uc.PredictAndHeal(context.Background())
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Status != string(monitor.HealStatusApplied) {
+		t.Errorf("Status = %q, want %q", records[0].Status, monitor.HealStatusApplied)
+	}
+	if handler.calls.Load() != 1 {
+		t.Errorf("HandleFixAction called %d times, want 1", handler.calls.Load())
+	}
+}
+
+// A pattern in a known metric family with no metric signal must not fire and
+// must not even produce an audit record — predictions require a signal basis.
+func TestPredictiveHealUsecase_NoMetricSignal_NoRecord(t *testing.T) {
+	reader := &mockSystemMetricsReader{
+		metrics: monitor.SystemMetrics{
+			ProviderLatencyMs: 200, // No signal
+			MemoryUsagePct:    40,
+			SessionBacklog:    3,
+		},
+	}
+	patternReader := &mockFailurePatternReaderForPredictive{
+		patterns: []monitor.FailurePattern{
+			{
+				ID:         "fp-rt-rc-provider-timeout",
+				Type:       "rc-provider-timeout",
+				Confidence: 0.9, // High base must NOT fire without a metric signal
+				IsActive:   true,
+				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+			},
+		},
+	}
+	handler := &mockHealHandlerForPredictive{}
+	repo := &mockHealRecordRepo{}
+
+	uc := newTestPredictiveHealUsecase(reader, patternReader, handler, repo)
+
+	records, _ := uc.PredictAndHeal(context.Background())
+	if len(records) != 0 {
+		t.Errorf("expected 0 records without metric signal, got %d", len(records))
+	}
+	if handler.calls.Load() != 0 {
+		t.Error("HandleFixAction should not be called without metric signal")
+	}
+}
+
+// Patterns whose type maps to no metric family (e.g. MCP connection failure)
+// cannot be predicted from system metrics and must be skipped silently.
+func TestPredictiveHealUsecase_NoMetricFamily_NoRecord(t *testing.T) {
+	reader := &mockSystemMetricsReader{
+		metrics: monitor.SystemMetrics{
+			ProviderLatencyMs: 5000,
+			MemoryUsagePct:    90,
+			SessionBacklog:    50,
+		},
+	}
+	patternReader := &mockFailurePatternReaderForPredictive{
+		patterns: []monitor.FailurePattern{
+			{
+				ID:         "fp-rt-rc-mcp-connection-failure",
+				Type:       "rc-mcp-connection-failure",
+				Confidence: 0.9,
+				IsActive:   true,
+				FixAction:  monitor.FixAction{Type: "reconnect", MaxAttempts: 3},
+			},
+		},
+	}
+	handler := &mockHealHandlerForPredictive{}
+	repo := &mockHealRecordRepo{}
+
+	uc := newTestPredictiveHealUsecase(reader, patternReader, handler, repo)
+
+	records, _ := uc.PredictAndHeal(context.Background())
+	if len(records) != 0 {
+		t.Errorf("expected 0 records for pattern without metric family, got %d", len(records))
+	}
+	if handler.calls.Load() != 0 {
+		t.Error("HandleFixAction should not be called for pattern without metric family")
 	}
 }

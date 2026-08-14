@@ -124,7 +124,7 @@ func TestSIObserve_MaterializesRunForPendingPlatformSuggestion(t *testing.T) {
 	}
 	check := &orchStubCheckReader{}
 	writer := &orchStubWriter{}
-	orch := NewSkillEvolutionOrchestrator(check, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(check, writer, loggateway.NewNoop())
 	orch.RegisterTrigger(trigger)
 
 	suggestions := &siStubSuggestionReader{created: &writer.created}
@@ -177,7 +177,7 @@ func TestSIObserve_SkipsSuggestionWithExistingRun(t *testing.T) {
 	})
 	before := runs.createCalls
 
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
 	uc := NewSelfImprovementObserveUsecase(orch, suggestions, runs, runs, loggateway.NewNoop())
 
 	created, err := uc.ScanOnce(context.Background())
@@ -198,7 +198,7 @@ func TestSIObserve_IgnoresNonPlatformSuggestions(t *testing.T) {
 		{ID: "sug-s1", TargetType: EvolutionTargetSkill, TargetID: "skill-1", Status: string(UnifiedEvolutionStatePending)},
 	}}
 	runs := newSIStubRunStore()
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
 	uc := NewSelfImprovementObserveUsecase(orch, suggestions, runs, runs, loggateway.NewNoop())
 
 	created, err := uc.ScanOnce(context.Background())
@@ -221,7 +221,7 @@ func TestSIObserve_ScanErrorStillMaterializes(t *testing.T) {
 		},
 	}
 	writer := &orchStubWriter{createErr: errors.New("db down")}
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, writer, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, writer, loggateway.NewNoop())
 	orch.RegisterTrigger(trigger)
 
 	suggestions := &siStubSuggestionReader{pending: []UnifiedEvolutionSuggestion{
@@ -250,7 +250,7 @@ func TestSIObserve_RunCreateErrorReturnsError(t *testing.T) {
 	}}
 	runs := newSIStubRunStore()
 	runs.createErr = apierror.Internal("SI", "insert failed")
-	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubQueryReader{}, &orchStubWriter{}, loggateway.NewNoop())
+	orch := NewSkillEvolutionOrchestrator(&orchStubCheckReader{}, &orchStubWriter{}, loggateway.NewNoop())
 	uc := NewSelfImprovementObserveUsecase(orch, suggestions, runs, runs, loggateway.NewNoop())
 
 	created, err := uc.ScanOnce(context.Background())

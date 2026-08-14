@@ -3,6 +3,9 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
@@ -13,7 +16,35 @@ import (
 	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 )
 
-const maxAgentDelegationDepth = 3
+const (
+	// envMaxDelegateDepth overrides the delegation depth limit at startup
+	// (P1-4). Process-lifetime fixed, matching the subagent maxConcurrent
+	// env semantics (ARANEA_SUBAGENT_MAX_CONCURRENCY).
+	envMaxDelegateDepth = "ARANEA_MAX_DELEGATE_DEPTH"
+	// defaultMaxDelegateDepth bounds agent-as-tool / transfer delegation
+	// nesting. Spirit→member→agent-tool chains stay ≤3 deep; anything
+	// deeper is almost always a model loop and must fail loud.
+	defaultMaxDelegateDepth = 3
+)
+
+// maxDelegateDepth resolves the effective delegation depth limit once per
+// process (env override, else default). Shared by BuildAgentAsTool and the
+// transfer controller so both channels enforce the same bound.
+var maxDelegateDepth = resolveMaxDelegateDepth
+
+// resolveMaxDelegateDepth reads ARANEA_MAX_DELEGATE_DEPTH; falls back to
+// defaultMaxDelegateDepth when unset, unparsable, or < 1.
+func resolveMaxDelegateDepth() int {
+	v := strings.TrimSpace(os.Getenv(envMaxDelegateDepth))
+	if v == "" {
+		return defaultMaxDelegateDepth
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 1 {
+		return defaultMaxDelegateDepth
+	}
+	return n
+}
 
 type delegationDepthKey struct{}
 
@@ -35,8 +66,8 @@ func delegationDepthFromCtx(ctx context.Context) int {
 // and wraps it with agenttool.NewTool so Spirit can invoke it directly.
 func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TRPCBuilderDeps, lg loggateway.Logger, taskDesc string, capabilities []string) (trpctool.Tool, error) {
 	depth := delegationDepthFromCtx(ctx)
-	if depth >= maxAgentDelegationDepth {
-		return nil, apierror.BadRequest(apierror.DomainSpirit, "agent delegation depth %d exceeds limit %d, refusing recursive delegation", depth, maxAgentDelegationDepth)
+	if limit := maxDelegateDepth(); depth >= limit {
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "agent delegation depth %d exceeds limit %d, refusing recursive delegation", depth, limit)
 	}
 
 	match, err := matcher.MatchAgent(ctx, taskDesc, capabilities)

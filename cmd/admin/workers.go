@@ -47,7 +47,6 @@ type backgroundWorkersConfig struct {
 	ToolAuditCleanup            BackgroundStarter
 	FlowLogCleanup              BackgroundStarter
 	MonitorEventsCleanup        BackgroundStarter
-	MonitorAlertCooldownCleanup BackgroundStarter
 	AutoHealTTLCleanup          BackgroundStarter
 	MonitorAlertEvalWorker      BackgroundStarter
 	MonitorTraceBackfillWorker  BackgroundStarter
@@ -102,7 +101,6 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		ToolAuditCleanup:            out.ToolAuditCleanup,
 		FlowLogCleanup:              out.FlowLogCleanup,
 		MonitorEventsCleanup:        out.MonitorEventsCleanup,
-		MonitorAlertCooldownCleanup: out.MonitorAlertCooldownCleanup,
 		AutoHealTTLCleanup:          out.AutoHealTTLCleanup,
 		MonitorAlertEvalWorker:      out.MonitorAlertEvalWorker,
 		MonitorTraceBackfillWorker:  out.MonitorTraceBackfillWorker,
@@ -284,11 +282,6 @@ func startBackgroundWorkers(
 	if cfg.MonitorEventsCleanup != nil {
 		goAfterReady("monitor_events_cleanup", func() { cfg.MonitorEventsCleanup.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "monitor events cleanup scheduled", "interval", "24h", "retention", jobs.MonitorEventsRetention.String())
-	}
-
-	if cfg.MonitorAlertCooldownCleanup != nil {
-		goAfterReady("monitor_alert_cooldown", func() { cfg.MonitorAlertCooldownCleanup.Start(ctx) })
-		logger.Log(log.LevelInfo, "msg", "monitor alert cooldown cleanup scheduled", "interval", "1h", "maxAge", "24h")
 	}
 
 	if cfg.AutoHealTTLCleanup != nil {

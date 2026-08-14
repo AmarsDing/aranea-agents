@@ -364,13 +364,10 @@ type Usecase struct {
 	traceSpanReader  TraceSpanReader
 
 	// --- 告警域（alert） ---
-	notifier    AlertNotifier
-	registry    *AlertMetricRegistry
-	evalWorker  *AlertEvalWorker // 循环依赖（worker 持有 uc）：唯一保留的 setter 注入
-	lastFired   sync.Map         // TECH-DEBT(COG): legacy in-memory fallback after MON-OPT-02 DB migration; remove after confirming all rules have LastFiredAt persisted
-	rulesCache  []AlertRule
-	rulesExpire time.Time
-	rulesMu     sync.RWMutex
+	notifier   AlertNotifier
+	registry   *AlertMetricRegistry
+	evalWorker *AlertEvalWorker // 循环依赖（worker 持有 uc）：唯一保留的 setter 注入
+	rulesCache alertRulesCache
 
 	// --- trace / 日志落盘域 ---
 	traceProjector   *TraceProjector
@@ -382,6 +379,37 @@ type Usecase struct {
 }
 
 const rulesCacheTTL = 5 * time.Minute
+
+// alertRulesCache bundles the in-memory alert-rule cache state (singleflight
+// against the alert repo; invalidated on every rule/state mutation).
+type alertRulesCache struct {
+	mu     sync.RWMutex
+	rules  []AlertRule
+	expire time.Time
+}
+
+func (c *alertRulesCache) get() []AlertRule {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.rules != nil && time.Now().Before(c.expire) {
+		return c.rules
+	}
+	return nil
+}
+
+func (c *alertRulesCache) set(rules []AlertRule) {
+	c.mu.Lock()
+	c.rules = rules
+	c.expire = time.Now().Add(rulesCacheTTL)
+	c.mu.Unlock()
+}
+
+func (c *alertRulesCache) invalidate() {
+	c.mu.Lock()
+	c.rules = nil
+	c.expire = time.Time{}
+	c.mu.Unlock()
+}
 
 type UsecaseOption func(*Usecase)
 
@@ -577,7 +605,7 @@ func validateAlertRule(r AlertRule) error {
 	return nil
 }
 
-// ReplaceAlertRules replaces all alert rules and cleans up lastFired entries for deleted rules.
+// ReplaceAlertRules replaces all alert rules.
 func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) error {
 	if u == nil || u.alertRepo == nil {
 		return nil
@@ -588,34 +616,12 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 		}
 	}
 
-	oldRules, listErr := u.alertRepo.ListAlertRules(ctx)
-	if listErr != nil {
-		u.lg.Warn("ReplaceAlertRules: ListAlertRules failed", loggateway.StepID("monitor.alert_rules_list_fail"), loggateway.Err(listErr))
-	}
-	oldIDs := make(map[string]struct{}, len(oldRules))
-	for _, r := range oldRules {
-		oldIDs[r.ID] = struct{}{}
-	}
-
 	if err := u.alertRepo.ReplaceAlertRules(ctx, rules); err != nil {
 		return err
 	}
 
 	// Invalidate rules cache
-	u.rulesMu.Lock()
-	u.rulesCache = nil
-	u.rulesExpire = time.Time{}
-	u.rulesMu.Unlock()
-
-	newIDs := make(map[string]struct{}, len(rules))
-	for _, r := range rules {
-		newIDs[r.ID] = struct{}{}
-	}
-	for id := range oldIDs {
-		if _, exists := newIDs[id]; !exists {
-			u.lastFired.Delete(id)
-		}
-	}
+	u.rulesCache.invalidate()
 	return nil
 }
 
@@ -788,13 +794,9 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 }
 
 func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
-	u.rulesMu.RLock()
-	if u.rulesCache != nil && time.Now().Before(u.rulesExpire) {
-		rules := u.rulesCache
-		u.rulesMu.RUnlock()
+	if rules := u.rulesCache.get(); rules != nil {
 		return rules
 	}
-	u.rulesMu.RUnlock()
 
 	rules, err := u.alertRepo.ListAlertRules(ctx)
 	if err != nil {
@@ -802,11 +804,7 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 		return nil
 	}
 
-	u.rulesMu.Lock()
-	u.rulesCache = rules
-	u.rulesExpire = time.Now().Add(rulesCacheTTL)
-	u.rulesMu.Unlock()
-
+	u.rulesCache.set(rules)
 	return rules
 }
 
@@ -828,14 +826,6 @@ func (u *Usecase) ShouldFireAlert(rule AlertRule, now time.Time) bool {
 	// DB-persisted path (MON-OPT-02): use rule.LastFiredAt if available.
 	if rule.LastFiredAt != nil && now.Sub(*rule.LastFiredAt) < cooldownDur {
 		return false
-	}
-	// Legacy in-memory fallback (pre-OPT-02 data or repo not wired).
-	if rule.LastFiredAt == nil {
-		if v, ok := u.lastFired.Load(rule.ID); ok {
-			if last, ok := v.(time.Time); ok && now.Sub(last) < cooldownDur {
-				return false
-			}
-		}
 	}
 	return true
 }
@@ -862,30 +852,18 @@ func (u *Usecase) touchAlertReminder(ctx context.Context, rule AlertRule, now ti
 	if u == nil || u.alertRepo == nil {
 		return
 	}
-	u.lastFired.Store(rule.ID, now)
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
 		u.lg.Warn("touchAlertReminder: DB update failed",
 			loggateway.StepID("monitor.alert_reminder_db_fail"),
 			loggateway.Str("rule_id", rule.ID),
 			loggateway.Err(err))
 	}
-	u.rulesMu.Lock()
-	u.rulesExpire = time.Time{}
-	u.rulesMu.Unlock()
+	u.rulesCache.invalidate()
 }
 
-// MarkAlertFired records the firing event both in-memory (fast path) and in the DB
-// (persistent path, MON-OPT-02). Failures are logged but do not abort the alert.
-func (u *Usecase) MarkAlertFired(ruleID string, now time.Time) {
-	if u == nil {
-		return
-	}
-	u.lastFired.Store(ruleID, now)
-}
-
-// MarkAlertFiredPersistent is the DB-backed version called by evaluateRunner* after
-// the alert.fired event is published (MON-OPT-02). It also advances the state machine
-// from idle/recovered → firing.
+// MarkAlertFiredPersistent is the DB-backed mark called after the alert.fired
+// event is published (MON-OPT-02). It also advances the state machine from
+// idle/recovered → firing.
 func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, now time.Time, metricValue float64) {
 	if u == nil || u.alertRepo == nil {
 		return
@@ -906,14 +884,11 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 		loggateway.Str("severity", strings.TrimSpace(rule.Severity)),
 		loggateway.Str("from", string(rule.FiringState)),
 		loggateway.Str("to", string(next)))
-	u.lastFired.Store(rule.ID, now)
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, &now, metricValue, nil); err != nil {
 		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	// Invalidate rules cache so next evaluation round reads fresh DB state.
-	u.rulesMu.Lock()
-	u.rulesExpire = time.Time{}
-	u.rulesMu.Unlock()
+	u.rulesCache.invalidate()
 }
 
 // MarkAlertRecovered transitions a firing alert to recovered and persists it (MON-OPT-02).
@@ -940,9 +915,7 @@ func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now ti
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
 		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
-	u.rulesMu.Lock()
-	u.rulesExpire = time.Time{}
-	u.rulesMu.Unlock()
+	u.rulesCache.invalidate()
 }
 
 // MarkAlertReset transitions a recovered alert back to idle after cooldown expires.
@@ -968,9 +941,7 @@ func (u *Usecase) MarkAlertReset(ctx context.Context, rule AlertRule) {
 	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, next, nil, 0, nil); err != nil {
 		u.lg.Warn("MarkAlertReset: DB update failed", loggateway.StepID("monitor.mark_reset_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
-	u.rulesMu.Lock()
-	u.rulesExpire = time.Time{}
-	u.rulesMu.Unlock()
+	u.rulesCache.invalidate()
 }
 
 // recoveryThreshold returns the value below which a firing alert is considered recovered.
@@ -980,18 +951,6 @@ func recoveryThreshold(rule AlertRule) float64 {
 		f = defaultRecoveryFactor
 	}
 	return rule.Threshold * f
-}
-
-func (u *Usecase) CleanupStaleLastFired(now time.Time, maxAge time.Duration) {
-	if u == nil || maxAge <= 0 {
-		return
-	}
-	u.lastFired.Range(func(key, value any) bool {
-		if t, ok := value.(time.Time); ok && now.Sub(t) > maxAge {
-			u.lastFired.Delete(key)
-		}
-		return true
-	})
 }
 
 // GetMonitorEvent returns one monitor event by ID.

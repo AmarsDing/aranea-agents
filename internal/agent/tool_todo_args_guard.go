@@ -40,9 +40,11 @@ func newTodoArgsGuardBeforeHook(lg loggateway.Logger) callbacks.BeforeToolHook {
 				loggateway.Str("tool", args.ToolName),
 			)
 		}
-		// NOTE: This hook mutates args.Arguments in-place.
-		// It must execute before other hooks that read Arguments (e.g. system-args guard at priority 3).
-		args.Arguments = b
-		return &trpctool.BeforeToolResult{Context: ctx}, nil
+		// P1-3: 剥离结果经 ModifiedArguments 返回——框架收到后会更新
+		// args.Arguments 再传给链上的下一个 hook（tool/callbacks.go
+		// processBeforeToolResult:358），优先级 2→3 的顺序契约不变；
+		// 同时这也是写回 toolCall.Function.Arguments 的唯一通道，
+		// 原地改 args.Arguments 不会到达工具执行。
+		return &trpctool.BeforeToolResult{Context: ctx, ModifiedArguments: b}, nil
 	})
 }

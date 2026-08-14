@@ -64,6 +64,10 @@ type Sequencer struct {
 	// throttles 聚合 5 个失败链日志限流器（行为从不被限流，仅日志）。
 	throttles *sequencerThrottles
 
+	// invariant 是 P1-2 事件溯源不变量开发态断言器，仅在
+	// ARANEA_ORCH_INVARIANT=1 时非 nil（生产零开销）。
+	invariant *invariantChecker
+
 	persistEnqueueTimeout time.Duration
 
 	closed  atomic.Bool
@@ -158,6 +162,11 @@ func NewSequencer(rs RepoSet, bus EventBus, lg loggateway.Logger, opts ...Option
 		persist:               newPersistWorker(rs, slg, throttles, cfg),
 		throttles:             throttles,
 		persistEnqueueTimeout: cfg.persistEnqueueTimeout,
+	}
+	if invariantCheckEnabled() {
+		s.invariant = newInvariantChecker(slg)
+		slg.Info("orchestration invariant assertion enabled (dev mode, log-only)",
+			loggateway.Str("env", envOrchInvariant))
 	}
 
 	s.publishWG.Add(1)
@@ -367,6 +376,9 @@ func canMergeStreaming(a, b *biz.StepStreamingEvent) bool {
 
 // flushStreaming publishes the merged streaming event to bus only (no persist).
 func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
+	if s.invariant != nil {
+		s.invariant.check(ev)
+	}
 	// P3 fix: assign a session-scoped monotonic DeltaSeq at the single flush
 	// point (publishLoop is single-goroutine, so assignment is race-free) so
 	// the frontend can dedup redelivered deltas by sequence instead of content
@@ -393,6 +405,9 @@ func (s *Sequencer) flushStreaming(ev *biz.StepStreamingEvent) {
 // Non-terminal events (created/updated/streaming) keep the original async
 // persist + sync publish flow for low latency.
 func (s *Sequencer) processTask(task publishTask) {
+	if s.invariant != nil {
+		s.invariant.check(task.event)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if task.persist {
@@ -558,3 +573,13 @@ func (s *Sequencer) Close() error {
 
 // DeadLetterCount returns the number of events that exhausted retries.
 func (s *Sequencer) DeadLetterCount() int { return s.persist.ring.Len() }
+
+// InvariantViolationCount returns the number of event-lineage invariant
+// violations detected so far (P1-2). Returns 0 when the dev-mode assertion
+// is disabled (ARANEA_ORCH_INVARIANT unset).
+func (s *Sequencer) InvariantViolationCount() int64 {
+	if s.invariant == nil {
+		return 0
+	}
+	return s.invariant.violations()
+}

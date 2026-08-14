@@ -326,6 +326,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | F2 | `mcpServerTableUi.ts` 操作列硬编码 `100px` | 🟡 | 复用 `REGISTRY_COL_W.actionsWide` token | ✅ |
 | F3 | API/store 返回 `PlatformResource` 泛型需断言；`healthTone` 返回 `string` | 🟡 | 收紧 `McpServerRow` + 新增 `McpHealthTone` 联合类型，消除断言 | ✅ |
 | F4 | MCP 前端关键逻辑缺测试 | 🟡 | `useMcpServerForm`（buildPayload 6 例）+ `useMcpServersPage`（healthTone/Tooltip 6 例） | ✅ |
+| RV-01 | `PersistRotatedRefreshToken` 全行写与健康探活字段级写存在 last-write-wins 窗口（整体评审发现） | 🟡 | 新增 `MCPServerWriter.UpdateMCPServerConfigJSON` 字段级写（仅 `config_json`+`updated_at`），usecase 改走该方法；biz 测试断言禁止全行写 + 元数据不被覆盖 | ✅ |
 
 ### 13.2 改动文件清单
 
@@ -336,6 +337,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - `internal/service/mcp_server.go`：单次查询守卫、IDOR 日志、凭据审计、`mcp.server.update` 流程日志、T5 钩子装配（M1-M3/M5/M6/T5）
 - `internal/biz/mcp_server.go`：`ValidateConfig` 签名收紧、`PersistRotatedRefreshToken`（M4/T5）
 - `internal/biz/agent_mcp_effective.go`：workspace 过滤 + 死代码删除（R2/M4）
+- `internal/data/mcp_server.go`：`UpdateMCPServerConfigJSON` 字段级写（RV-01）
 - `internal/agent/tool_assembly.go`：oauth2_static 守卫、AuthHeaderName 透传（T1/T2）
 - `internal/agent/mcp_oauth.go`：`ResolveMCPAuthToken` 增 serverKey 形参 + 轮换回写钩子（T5）
 - `internal/tools/mcp_pool.go`：closing 延迟关闭语义（T3）
@@ -358,3 +360,4 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - [x] 同 key 软删重建不再报 23505
 - [x] 租户 Agent `EffectiveServersForAgent` 不再返回他租户私有服务器
 - [x] `mcp.server.update` 流程日志在 Monitor「流程日志」可见（有中文标题）
+- [x] token 回写走字段级写，biz 测试断言元数据/状态不被覆盖（RV-01）

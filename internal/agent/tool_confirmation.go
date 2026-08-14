@@ -166,8 +166,12 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 					Source:       biz.ToolInvocationSourceRuntime,
 					ToolCallID:   args.ToolCallID,
 				}, nil, h.ag, h.deps)
-				return nil, fmt.Errorf("%s: 工具 \"%s\" 的确认请求在 %s 内未收到用户响应（超时）。这不代表用户拒绝，只是暂时没有回应。不要立即重试该工具；请先询问用户是否仍要执行该操作。", errToolConfirmationRequired, toolKey, effectiveConfirmTimeout)
+				// P1-3: 超时是显式 Reject（CustomResult 短路），不是回调错误——
+				// 用户未响应≠拦截器故障，error 路径会触发框架 Errorf 误报。
+				return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 的确认请求在 %s 内未收到用户响应（超时）。这不代表用户拒绝，只是暂时没有回应。不要立即重试该工具；请先询问用户是否仍要执行该操作。", errToolConfirmationRequired, toolKey, effectiveConfirmTimeout)).BeforeToolResult(ctx), nil
 			}
+			// 回复通道自身故障属基础设施错误，保留 error 语义（框架按拦截器
+			// 故障处理）。
 			return nil, fmt.Errorf("%s: awaiting user confirmation failed: %w", errToolConfirmationRequired, err)
 		}
 		if toolConfirmApproved(reply) {
@@ -199,7 +203,10 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 			Source:       biz.ToolInvocationSourceRuntime,
 			ToolCallID:   args.ToolCallID,
 		}, nil, h.ag, h.deps)
-		return nil, fmt.Errorf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)
+		// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路，模型直接看到
+		// 拒绝消息），不走 error——error 语义保留给拦截器自身故障，且 error
+		// 路径会触发框架 "Before tool callback failed" Errorf 误报。
+		return callbacks.Reject(fmt.Sprintf("%s: 用户拒绝了工具 \"%s\" 的执行。这是用户的明确决定，不是系统故障。禁止重试相同或等价的工具调用；请直接向用户说明该操作已被取消，并询问接下来如何处理。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
 	}
 
 	recordToolInvocationWrite(ctx, biz.ToolInvocationWrite{
@@ -214,7 +221,8 @@ func (h *toolConfirmationBeforeHook) HandleBeforeTool(ctx context.Context, args 
 		Source:       biz.ToolInvocationSourceRuntime,
 		ToolCallID:   args.ToolCallID,
 	}, nil, h.ag, h.deps)
-	return nil, fmt.Errorf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)
+	// P1-3: 无回复通道 = 显式 Reject（环境能力不满足，非拦截器故障）。
+	return callbacks.Reject(fmt.Sprintf("%s: 工具 \"%s\" 需要用户确认后才能执行，但当前运行环境无法向用户发起确认请求（无回复通道）。该工具本次不可执行，不要重试；请向用户说明情况，并请用户在支持确认的会话中重新发起该操作。", errToolConfirmationRequired, toolKey)).BeforeToolResult(ctx), nil
 }
 
 // toolConfirmSessionID extracts the session ID from the invocation context.

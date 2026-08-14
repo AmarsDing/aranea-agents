@@ -23,6 +23,10 @@ type mockUnifiedEvolutionStore struct {
 	UnifiedEvolutionStore
 	UnifiedEvolutionPatternReader
 	rows map[string]UnifiedEvolutionSuggestion
+	// casForceMiss simulates a concurrent transition winning the race between
+	// the usecase's GetByID and the atomic UPDATE: UpdateStatusCAS returns
+	// ok=false so tests can assert the Conflict mapping.
+	casForceMiss bool
 }
 
 func newMockUnifiedEvolutionStore() *mockUnifiedEvolutionStore {
@@ -94,6 +98,37 @@ func (m *mockUnifiedEvolutionStore) Create(_ context.Context, s UnifiedEvolution
 // UpdateStatus mirrors the real repo's metadata merge semantics so the L1
 // view layer can reconstruct approved_by/at and rejected_by (A6).
 func (m *mockUnifiedEvolutionStore) UpdateStatus(_ context.Context, id string, status string, actor string, reason string) error {
+	return m.applyStatusMeta(id, status, actor, reason)
+}
+
+// UpdateStatusCAS mirrors the repo's atomic precondition: ok=false when the
+// row's current status is not in `from` (a concurrent transition won), or when
+// casForceMiss is set. Successful CAS applies the same metadata merge as
+// UpdateStatus.
+func (m *mockUnifiedEvolutionStore) UpdateStatusCAS(_ context.Context, id string, from []string, status string, actor string, reason string) (bool, error) {
+	if m.casForceMiss {
+		return false, nil
+	}
+	row, ok := m.rows[id]
+	if !ok {
+		return false, apierror.NotFound("SKILL_EVO", "proposal not found")
+	}
+	if len(from) > 0 {
+		match := false
+		for _, f := range from {
+			if row.Status == f {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return false, nil
+		}
+	}
+	return true, m.applyStatusMeta(id, status, actor, reason)
+}
+
+func (m *mockUnifiedEvolutionStore) applyStatusMeta(id string, status string, actor string, reason string) error {
 	row, ok := m.rows[id]
 	if !ok {
 		return apierror.NotFound("SKILL_EVO", "proposal not found")
@@ -276,6 +311,65 @@ func TestSkillEvolutionUsecase_RejectProposal(t *testing.T) {
 	}
 	if result.RejectedBy != "admin" {
 		t.Errorf("expected rejected_by=admin, got %s", result.RejectedBy)
+	}
+}
+
+// B-1: CAS miss (concurrent transition won between GetByID and the atomic
+// UPDATE) must surface as Conflict, never as a silent overwrite.
+func TestSkillEvolutionUsecase_ApproveProposal_CASConflict(t *testing.T) {
+	repo := newMockUnifiedEvolutionStore()
+	repo.casForceMiss = true
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+
+	repo.seed(SkillProposal{
+		ID:        "p1",
+		AgentID:   "a1",
+		Status:    SkillProposalStatusPending,
+		CreatedAt: time.Now().UTC(),
+	})
+
+	_, err := uc.ApproveProposal(context.Background(), "p1", "user1")
+	if !isAPIErrorCode(err, apierror.CodeConflict) {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
+	}
+	if repo.rows["p1"].Status != string(UnifiedEvolutionStatePending) {
+		t.Errorf("row status must remain untouched on CAS miss, got %s", repo.rows["p1"].Status)
+	}
+}
+
+func TestSkillEvolutionUsecase_RejectProposal_CASConflict(t *testing.T) {
+	repo := newMockUnifiedEvolutionStore()
+	repo.casForceMiss = true
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, nil, loggateway.NewNoop())
+
+	repo.seed(SkillProposal{
+		ID:     "p1",
+		Status: SkillProposalStatusPending,
+	})
+
+	_, err := uc.RejectProposal(context.Background(), "p1", "admin")
+	if !isAPIErrorCode(err, apierror.CodeConflict) {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
+	}
+}
+
+func TestSkillEvolutionUsecase_RegisterApproved_CASConflict(t *testing.T) {
+	repo := newMockUnifiedEvolutionStore()
+	registrar := &mockSkillRegistrar{existing: make(map[string]bool)}
+	uc := NewSkillEvolutionUsecase(repo, repo, nil, nil, nil, registrar, loggateway.NewNoop())
+
+	repo.seed(SkillProposal{
+		ID:        "p1",
+		AgentID:   "a1",
+		SkillName: "my-skill",
+		SkillMD:   "---\nname: my-skill\n---\nbody",
+		Status:    SkillProposalStatusApproved,
+	})
+	repo.casForceMiss = true
+
+	_, err := uc.RegisterApproved(context.Background(), "p1")
+	if !isAPIErrorCode(err, apierror.CodeConflict) {
+		t.Fatalf("expected Conflict on CAS miss, got %v", err)
 	}
 }
 

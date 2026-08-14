@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 type PendingDeliveryProcessor interface {
@@ -16,14 +16,15 @@ type PendingDeliveryProcessor interface {
 type ChannelDeliveryWorker struct {
 	interval time.Duration
 	worker   PendingDeliveryProcessor
-	log      *log.Helper
+	lg       loggateway.Logger
+	flowLog  biz.FlowLogWriter
 }
 
-func NewChannelDeliveryWorker(interval time.Duration, worker PendingDeliveryProcessor, logger log.Logger) *ChannelDeliveryWorker {
+func NewChannelDeliveryWorker(interval time.Duration, worker PendingDeliveryProcessor, lg loggateway.Logger, flowLog biz.FlowLogWriter) *ChannelDeliveryWorker {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
-	return &ChannelDeliveryWorker{interval: interval, worker: worker, log: log.NewHelper(logger)}
+	return &ChannelDeliveryWorker{interval: interval, worker: worker, lg: lg, flowLog: flowLog}
 }
 
 // Start blocks until ctx is cancelled.
@@ -46,8 +47,18 @@ func (w *ChannelDeliveryWorker) Start(ctx context.Context) {
 
 func (w *ChannelDeliveryWorker) runOnce(ctx context.Context) {
 	safego.Go(ctx, "channel.delivery", func() {
-		if err := w.worker.ProcessPending(ctx, 50); err != nil && w.log != nil {
-			w.log.Warnf("channel delivery: %v", err)
-		}
+		w.processOnce(ctx)
 	})
+}
+
+func (w *ChannelDeliveryWorker) processOnce(ctx context.Context) {
+	if err := w.worker.ProcessPending(ctx, 50); err != nil {
+		w.lg.Warn("channel delivery failed",
+			loggateway.StepID("system.channel_delivery.failed"),
+			loggateway.Err(err))
+		if w.flowLog != nil {
+			w.flowLog.LogFlowError(context.Background(), "", "system.channel_delivery.failed",
+				"渠道投递失败", biz.LogPair{Key: "error", Value: err.Error()})
+		}
+	}
 }

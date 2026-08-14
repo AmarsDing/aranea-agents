@@ -117,7 +117,7 @@
             :disable="!props.row.permissions?.can_view"
             @click="$emit('viewDetail', props.row)"
           >
-            <q-tooltip>查看详情</q-tooltip>
+            <q-tooltip>{{ t('plugins.actionViewDetail') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat

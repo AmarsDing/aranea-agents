@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -62,6 +63,9 @@ type CostGuardBudgetTracker struct {
 	retryCh   chan costGuardPersistEntry
 	retryDone chan struct{}
 	retryWg   sync.WaitGroup
+
+	// lastUsedUnix 记录 registry 最近一次命中时间（R-2：idle 分桶淘汰依据）。
+	lastUsedUnix atomic.Int64
 }
 
 type CostGuardBudgetOption func(*CostGuardBudgetTracker)
@@ -170,18 +174,29 @@ func (t *CostGuardBudgetTracker) TryConsume(budget, add int) bool {
 	if t.persistSync(entry) {
 		return true
 	}
-	t.mu.Lock()
-	t.tokens -= add
-	if t.tokens < 0 {
-		t.tokens = 0 // safety guard against concurrent rollbacks
-	}
-	t.mu.Unlock()
+	t.rollbackReservation(day, add)
 	t.lg.Error("cost_guard TryConsume fail-closed: persist path exhausted, reservation rolled back",
 		loggateway.StepID("plugin.cost_guard.try_consume_fail_closed"),
 		loggateway.Str("scope", scope),
 		loggateway.Str("day", day),
 		loggateway.Int("delta", add))
 	return false
+}
+
+// rollbackReservation undoes an in-memory TryConsume reservation after the
+// persist path failed. R-4：仅在仍是同一天时回滚。若在 persist 尝试期间已
+// 跨日，另一 goroutine 的 ensureDayLocked 已把 t.tokens 重置为新日计数，
+// 此时回滚会误减新日额度（旧日的内存计数随日切已作废，无需回滚）。
+func (t *CostGuardBudgetTracker) rollbackReservation(day string, add int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.day != day {
+		return
+	}
+	t.tokens -= add
+	if t.tokens < 0 {
+		t.tokens = 0 // safety guard against concurrent rollbacks
+	}
 }
 
 func (t *CostGuardBudgetTracker) AddOverBudget(add int) {

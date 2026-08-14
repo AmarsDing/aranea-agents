@@ -157,6 +157,13 @@ func (r *mcpServerRepo) UpdateMCPServerMetadata(ctx context.Context, id string, 
 	return entErrToBizErr(update.Exec(ctx), apierror.DomainMCP)
 }
 
+func (r *mcpServerRepo) UpdateMCPServerConfigJSON(ctx context.Context, id string, configJSON string) error {
+	return entErrToBizErr(r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(id).
+		SetConfigJSON(configJSON).
+		SetUpdatedAt(nowRFC3339()).
+		Exec(ctx), apierror.DomainMCP)
+}
+
 func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
 	now := nowRFC3339()
 	if m.CreatedAt == "" {

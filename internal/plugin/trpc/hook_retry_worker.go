@@ -2,6 +2,8 @@ package plugintrpc
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -24,6 +26,13 @@ type HookDeliveryRetryWorker struct {
 	lg       loggateway.Logger
 	hookConf conf.RuntimeHookConfig
 	stop     chan struct{}
+	done     chan struct{} // loop 退出时关闭（N-B3：Stop 后可等待，回归测试可观测）
+	// N-B3: once 守卫 + close(stop) 广播语义。此前 Stop 用无缓冲 channel
+	// 非阻塞发送，loop 正在 retryStale（可达 RetryQueryTimeout）时信号必丢，
+	// worker 永久存活。close 无丢失窗口且天然幂等。
+	startOnce sync.Once
+	stopOnce  sync.Once
+	started   atomic.Bool
 }
 
 // NewHookDeliveryRetryWorker creates a retry worker. notifier must be the same
@@ -36,26 +45,48 @@ func NewHookDeliveryRetryWorker(runtimeConf *conf.Runtime, repo biz.HookDelivery
 		lg:       lg,
 		hookConf: runtimeConf.HookConfig(),
 		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 }
 
 // Start launches the background polling loop. Call Stop to shut it down cleanly.
 func (w *HookDeliveryRetryWorker) Start() {
-	safego.Go(appctx.Ctx(), "hook.delivery.retry_worker", w.loop)
+	w.startOnce.Do(func() {
+		w.started.Store(true)
+		safego.Go(appctx.Ctx(), "hook.delivery.retry_worker", w.loop)
+	})
 }
 
-// Stop signals the polling loop to exit.
+// Stop signals the polling loop to exit. Safe to call multiple times; the
+// signal is never lost even while the loop is inside retryStale.
 func (w *HookDeliveryRetryWorker) Stop() {
 	if w == nil {
 		return
 	}
+	w.stopOnce.Do(func() {
+		close(w.stop)
+	})
+}
+
+// Wait blocks until the loop exits or timeout elapses. Returns true when the
+// loop has exited (or was never started). Used by Runtime.Close for bounded
+// graceful shutdown.
+func (w *HookDeliveryRetryWorker) Wait(timeout time.Duration) bool {
+	if w == nil || !w.started.Load() {
+		return true
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
-	case w.stop <- struct{}{}:
-	default:
+	case <-w.done:
+		return true
+	case <-timer.C:
+		return false
 	}
 }
 
 func (w *HookDeliveryRetryWorker) loop() {
+	defer close(w.done)
 	ticker := time.NewTicker(w.hookConf.RetryPollInterval)
 	defer ticker.Stop()
 	for {

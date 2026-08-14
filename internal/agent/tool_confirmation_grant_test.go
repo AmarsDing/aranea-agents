@@ -164,9 +164,15 @@ func TestToolConfirmationHook_DenyStillBlocks(t *testing.T) {
 	ctx := grantTestCtx("sess-1", func(context.Context) (string, error) {
 		return serviceawaitreply.ReplyDeny, nil
 	})
-	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
-	if err == nil || !strings.Contains(err.Error(), errToolConfirmationRequired) {
-		t.Fatalf("deny err = %v, want %s", err, errToolConfirmationRequired)
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	// P1-3: 用户拒绝是显式 Reject 决策（CustomResult 短路），不是回调错误——
+	// error 语义保留给拦截器自身故障。
+	if err != nil {
+		t.Fatalf("deny must not surface as a callback error, got %v", err)
+	}
+	msg, ok := res.CustomResult.(string)
+	if !ok || !strings.Contains(msg, errToolConfirmationRequired) {
+		t.Fatalf("deny CustomResult = %v, want string containing %s", res.CustomResult, errToolConfirmationRequired)
 	}
 }
 
@@ -189,9 +195,12 @@ func TestToolConfirmationHook_GrantDoesNotLeakAcrossAgents(t *testing.T) {
 	ctx := grantTestCtx("sess-1", func(context.Context) (string, error) {
 		return serviceawaitreply.ReplyDeny, nil
 	})
-	_, err := h2.HandleBeforeTool(ctx, bashToolArgs("call-1"))
-	if err == nil {
-		t.Fatal("agent-2 must not inherit agent-1's persisted grant")
+	res2, err2 := h2.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err2 != nil {
+		t.Fatalf("deny must not surface as a callback error, got %v", err2)
+	}
+	if res2 == nil || res2.CustomResult == nil {
+		t.Fatal("agent-2 must not inherit agent-1's persisted grant (expect explicit Reject)")
 	}
 }
 
@@ -201,6 +210,7 @@ func TestToolConfirmationHook_GrantDoesNotLeakAcrossAgents(t *testing.T) {
 // from a retriable system failure, and must be told not to retry.
 // The errToolConfirmationRequired prefix must be preserved because
 // tool_invocation_recorder identifies confirmation errors by it.
+// P1-3: the message is delivered via CustomResult (explicit Reject).
 func TestToolConfirmationHook_DenyMessageIsSemantic(t *testing.T) {
 	gate := &toolConfirmGate{
 		catalog:       map[string]confirmCatalogEntry{"bash": {requiresConfirm: true}},
@@ -210,11 +220,14 @@ func TestToolConfirmationHook_DenyMessageIsSemantic(t *testing.T) {
 	ctx := grantTestCtx("sess-1", func(context.Context) (string, error) {
 		return serviceawaitreply.ReplyDeny, nil
 	})
-	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
-	if err == nil {
-		t.Fatal("deny must return an error")
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err != nil {
+		t.Fatalf("deny must not surface as a callback error, got %v", err)
 	}
-	msg := err.Error()
+	msg, ok := res.CustomResult.(string)
+	if !ok {
+		t.Fatalf("deny CustomResult = %v, want string", res.CustomResult)
+	}
 	if !strings.Contains(msg, errToolConfirmationRequired) {
 		t.Fatalf("prefix lost: %q", msg)
 	}
@@ -239,11 +252,14 @@ func TestToolConfirmationHook_UnavailableMessageIsSemantic(t *testing.T) {
 	}
 	h := newToolConfirmationBeforeHook(gate, biz.Agent{ID: "agent-1"}, TRPCBuilderDeps{})
 	ctx := grantTestCtx("sess-1", nil) // no reply func → unavailable path
-	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
-	if err == nil {
-		t.Fatal("unavailable path must return an error")
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err != nil {
+		t.Fatalf("unavailable path must not surface as a callback error, got %v", err)
 	}
-	msg := err.Error()
+	msg, ok := res.CustomResult.(string)
+	if !ok {
+		t.Fatalf("unavailable CustomResult = %v, want string", res.CustomResult)
+	}
 	if !strings.Contains(msg, errToolConfirmationRequired) {
 		t.Fatalf("prefix lost: %q", msg)
 	}
@@ -267,11 +283,14 @@ func TestToolConfirmationHook_TimeoutMessageIsSemantic(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	})
-	_, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
-	if err == nil {
-		t.Fatal("timeout path must return an error")
+	res, err := h.HandleBeforeTool(ctx, bashToolArgs("call-1"))
+	if err != nil {
+		t.Fatalf("timeout path must not surface as a callback error, got %v", err)
 	}
-	msg := err.Error()
+	msg, ok := res.CustomResult.(string)
+	if !ok {
+		t.Fatalf("timeout CustomResult = %v, want string", res.CustomResult)
+	}
 	if !strings.Contains(msg, errToolConfirmationRequired) {
 		t.Fatalf("prefix lost: %q", msg)
 	}

@@ -72,6 +72,13 @@ func (r *fakeMCPRepo) UpdateMCPServerMetadata(_ context.Context, id, metadataJSO
 	return nil
 }
 
+func (r *fakeMCPRepo) UpdateMCPServerConfigJSON(_ context.Context, id, configJSON string) error {
+	s := r.servers[id]
+	s.ConfigJSON = configJSON
+	r.servers[id] = s
+	return nil
+}
+
 type fakeMCPProber struct{}
 
 func (fakeMCPProber) Evaluate(_ context.Context, _ bool, _ string) biz.MCPTestResult {

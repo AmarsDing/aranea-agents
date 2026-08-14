@@ -6,11 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 // AutoHealTTLCleanup periodically removes resolved heal records that are
@@ -26,7 +25,7 @@ type AutoHealTTLCleanup struct {
 	maxAge   time.Duration
 	repo     monitor.HealRecordRepo
 	lg       loggateway.Logger
-	log      *log.Helper
+	flowLog  biz.FlowLogWriter
 }
 
 func defaultHealTTLInterval() time.Duration {
@@ -49,7 +48,8 @@ func defaultHealTTLMaxAge() time.Duration {
 
 // NewAutoHealTTLCleanup creates the cleanup worker.
 // Pass interval/maxAge ≤ 0 to use environment-variable defaults.
-func NewAutoHealTTLCleanup(interval, maxAge time.Duration, repo monitor.HealRecordRepo, lg loggateway.Logger, logger log.Logger) *AutoHealTTLCleanup {
+// flowLog may be nil; when set, cleanup failures are also emitted as flow logs.
+func NewAutoHealTTLCleanup(interval, maxAge time.Duration, repo monitor.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *AutoHealTTLCleanup {
 	if interval <= 0 {
 		interval = defaultHealTTLInterval()
 	}
@@ -61,7 +61,7 @@ func NewAutoHealTTLCleanup(interval, maxAge time.Duration, repo monitor.HealReco
 		maxAge:   maxAge,
 		repo:     repo,
 		lg:       lg,
-		log:      log.NewHelper(logger),
+		flowLog:  flowLog,
 	}
 }
 
@@ -87,8 +87,12 @@ func (c *AutoHealTTLCleanup) runOnce(ctx context.Context) {
 	deleted, err := c.repo.DeleteHealRecordsOlderThan(ctx, cutoff)
 	if err != nil {
 		c.lg.Error("AutoHealTTLCleanup: failed to delete old records",
-			loggateway.StepID("auto_heal_ttl_cleanup_fail"),
+			loggateway.StepID("system.auto_heal_ttl_cleanup.failed"),
 			loggateway.Err(err))
+		if c.flowLog != nil {
+			c.flowLog.LogFlowError(context.Background(), "", "system.auto_heal_ttl_cleanup.failed",
+				"自愈记录清理失败", biz.LogPair{Key: "error", Value: err.Error()})
+		}
 		return
 	}
 	if deleted > 0 {

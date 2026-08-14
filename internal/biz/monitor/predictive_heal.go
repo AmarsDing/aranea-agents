@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -159,52 +160,80 @@ func (uc *PredictiveHealUsecase) PredictAndHeal(ctx context.Context) ([]HealReco
 	return records, nil
 }
 
-// calculateConfidence computes the prediction confidence for a given pattern
-// based on how well current system metrics match the pattern's preconditions.
-// Returns 0 if the pattern does not match current metrics at all.
+// calculateConfidence computes the prediction confidence for a given pattern.
+// Confidence is metric-driven: the pattern's base confidence is scaled by the
+// current metric signal strength for its family. A pattern with no metric
+// signal (s == 0) or no metric family returns 0 and is skipped silently —
+// predictions require a signal basis, base confidence alone never fires.
 func (uc *PredictiveHealUsecase) calculateConfidence(pattern FailurePattern, metrics SystemMetrics) float64 {
-	baseConfidence := pattern.Confidence
-	if baseConfidence <= 0 {
+	base := pattern.Confidence
+	if base <= 0 {
 		return 0
 	}
-
-	boost := 0.0
-
-	// Pattern type → metric matching
-	switch pattern.Type {
-	case "provider_timeout":
-		// High latency is a strong signal for upcoming provider timeouts
-		if metrics.ProviderLatencyMs > 3000 {
-			boost += 0.15
-		} else if metrics.ProviderLatencyMs > 1500 {
-			boost += 0.05
-		}
-		if metrics.SessionBacklog > 20 {
-			boost += 0.05
-		}
-	case "memory_pressure":
-		// High memory usage is a strong signal for memory pressure
-		if metrics.MemoryUsagePct > 85 {
-			boost += 0.15
-		} else if metrics.MemoryUsagePct > 70 {
-			boost += 0.05
-		}
-	case "session_overload":
-		// High session backlog signals session overload
-		if metrics.SessionBacklog > 30 {
-			boost += 0.15
-		} else if metrics.SessionBacklog > 15 {
-			boost += 0.05
-		}
-	default:
-		// Unknown pattern types get no metric boost but still use base confidence
+	family := canonicalPatternFamily(pattern.Type)
+	if family == "" {
+		return 0
 	}
-
-	confidence := baseConfidence + boost
+	s := metricSignal(family, metrics)
+	if s <= 0 {
+		return 0
+	}
+	confidence := base * s
 	if confidence > 1.0 {
 		confidence = 1.0
 	}
 	return confidence
+}
+
+// canonicalPatternFamily normalizes a pattern type to its metric family.
+// Runtime-synced patterns carry root-cause rule IDs ("rc-provider-timeout");
+// CI/mined patterns may already use the family name ("provider_timeout").
+// Returns "" when the pattern type has no metric family (not predictable).
+func canonicalPatternFamily(patternType string) string {
+	t := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(patternType)), "rc-")
+	t = strings.ReplaceAll(t, "-", "_")
+	switch t {
+	case "provider_timeout", "provider_rate_limit", "memory_pressure", "session_overload":
+		return t
+	}
+	return ""
+}
+
+// metricSignal scores how strongly current metrics indicate the pattern
+// family: 0 = no signal (prediction has no basis), 1 = strong signal.
+func metricSignal(family string, m SystemMetrics) float64 {
+	switch family {
+	case "provider_timeout":
+		// High latency is a strong signal for upcoming provider timeouts
+		s := 0.0
+		if m.ProviderLatencyMs > 3000 {
+			s = 1.0
+		} else if m.ProviderLatencyMs > 1500 {
+			s = 0.5
+		}
+		if s > 0 && m.SessionBacklog > 20 {
+			s += 0.2
+			if s > 1.0 {
+				s = 1.0
+			}
+		}
+		return s
+	case "provider_rate_limit", "session_overload":
+		// High session backlog signals overload / upcoming rate limiting
+		if m.SessionBacklog > 30 {
+			return 1.0
+		} else if m.SessionBacklog > 15 {
+			return 0.5
+		}
+	case "memory_pressure":
+		// High memory usage is a strong signal for memory pressure
+		if m.MemoryUsagePct > 85 {
+			return 1.0
+		} else if m.MemoryUsagePct > 70 {
+			return 0.5
+		}
+	}
+	return 0
 }
 
 // checkCooldown returns true if the action type can be applied (not in cooldown).

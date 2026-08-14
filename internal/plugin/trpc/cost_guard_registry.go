@@ -4,10 +4,20 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
+)
+
+const (
+	// R-2：分桶数软上限与 idle 淘汰 TTL。byScope 以 "{workspace}:{agent}"
+	// 为键，多租户 + 多 agent 下会无界增长；超过软上限时淘汰 idle 超过
+	// TTL 的分桶（Close 会先冲刷未持久化计数，新桶建时 ensureDayLocked
+	// 会从 DB 重新加载当日用量，语义不丢）。
+	costGuardMaxScopes    = 1024
+	costGuardScopeIdleTTL = 48 * time.Hour
 )
 
 type CostGuardBudgetRegistry struct {
@@ -72,11 +82,12 @@ func normalizeCostGuardScopeKey(scope string) string {
 
 func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudgetTracker {
 	if r == nil {
-		return NewCostGuardBudgetTracker(loggateway.NewNoop())
+		return nil // R-1：nil 即 no-op，不再构造泄漏的临时 tracker
 	}
 	key := normalizeCostGuardScopeKey(scope)
 	r.mu.RLock()
 	if t, ok := r.byScope[key]; ok && t != nil {
+		t.lastUsedUnix.Store(time.Now().Unix())
 		r.mu.RUnlock()
 		return t
 	}
@@ -84,16 +95,40 @@ func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudget
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if t, ok := r.byScope[key]; ok && t != nil {
+		t.lastUsedUnix.Store(time.Now().Unix())
 		return t
 	}
+	r.evictIdleLocked(time.Now())
 	var opts []CostGuardBudgetOption
 	opts = append(opts, WithScopeKey(key))
 	if r.repo != nil {
 		opts = append(opts, WithUsageRepo(r.repo))
 	}
 	t := NewCostGuardBudgetTracker(r.lg, opts...)
+	t.lastUsedUnix.Store(time.Now().Unix())
 	r.byScope[key] = t
 	return t
+}
+
+// evictIdleLocked removes trackers idle longer than costGuardScopeIdleTTL
+// when the bucket count exceeds the soft cap. Must be called with r.mu held.
+// Evicted trackers are Closed so pending persists flush before drop.
+func (r *CostGuardBudgetRegistry) evictIdleLocked(now time.Time) {
+	if len(r.byScope) <= costGuardMaxScopes {
+		return
+	}
+	cutoff := now.Add(-costGuardScopeIdleTTL).Unix()
+	for key, t := range r.byScope {
+		if t == nil || t.lastUsedUnix.Load() < cutoff {
+			if t != nil {
+				t.Close()
+			}
+			delete(r.byScope, key)
+			r.lg.Info("cost_guard 分桶 idle 淘汰",
+				loggateway.StepID("plugin.cost_guard.scope_evict"),
+				loggateway.Str("scope", key))
+		}
+	}
 }
 
 // CostGuardScopeForAgent returns the budget bucket key for an agent turn.
@@ -139,7 +174,7 @@ func (rt *Runtime) CostGuardScopeForAgentInWorkspace(workspaceID, agentID string
 // BudgetTrackerForContext returns the scope-aware tracker for the current invocation agent.
 func (rt *Runtime) BudgetTrackerForContext(ctx context.Context) *CostGuardBudgetTracker {
 	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker(loggateway.NewNoop())
+		return nil // R-1：nil 即 no-op
 	}
 	ws := workspace.IDFromContext(ctx)
 	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgentInWorkspace(ws, rt.platformAgentIDFromContext(ctx)))
@@ -166,7 +201,8 @@ func (rt *Runtime) ToolMatchesConfirmationGuard(ctx context.Context, toolName st
 	if rt == nil {
 		return false
 	}
-	cfg, ok := rt.ConfirmationGuardConfigForAgent(rt.platformAgentIDFromContext(ctx))
+	// N-B1：按调用方工作区过滤，杜绝跨租户 guard 配置泄漏。
+	cfg, ok := rt.ConfirmationGuardConfigForAgent(rt.platformAgentIDFromContext(ctx), workspace.IDFromContext(ctx))
 	if !ok {
 		return false
 	}
@@ -185,12 +221,4 @@ func (rt *Runtime) platformAgentIDFromContext(ctx context.Context) string {
 		}
 	}
 	return agentID
-}
-
-// CostGuardBudgetTrackerForAgent returns the scope-aware tracker for cost_guard.
-func (rt *Runtime) CostGuardBudgetTrackerForAgent(agentID string) *CostGuardBudgetTracker {
-	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker(loggateway.NewNoop())
-	}
-	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgent(agentID))
 }
