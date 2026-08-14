@@ -19,7 +19,7 @@ func TestRunnerManagerNil(t *testing.T) {
 }
 
 func TestMemorySetWithAdminOnly(t *testing.T) {
-	ms := MemorySet{Admin: nil}
+	ms := MemorySet{}
 	if ms.Available() {
 		t.Fatal("TRPC nil should not be available")
 	}

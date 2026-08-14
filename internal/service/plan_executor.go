@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -93,6 +94,10 @@ type PlanExecutor struct {
 	// 修复 TS9-BUG-1：用户可见的 plan 状态此前永远滞留 confirmed。
 	// 可选依赖：nil 时跳过传播（测试 / v1-only 部署）。
 	taskPlans taskPlanStatusUpdater
+	// subStop 取消 StartSubscription 的事件循环并立刻从 EventBus 摘除订阅
+	// （V2Bus 的 cancel 只摘 fan-out，channel 永不关闭）。Start 写入、Stop 调用；
+	// 生产路径为 ProvideChatService → ChatService.Close 串行。
+	subStop func()
 }
 
 // boardRunLease holds the cancel func for an in-flight PlanBoard DAG run (C-18).
@@ -340,22 +345,59 @@ func (e *PlanExecutor) NotifyTeamCompletion(teamID, teamRunID string, success bo
 //   - Created/Updated + planning + steps：启动 DAG（lease 去重）；
 //   - Updated + 非 planning：执行器自身发布的 executing/terminal 事件，跳过。
 func (e *PlanExecutor) StartSubscription() {
-	if e.bus == nil {
+	if e == nil || e.bus == nil {
 		return
 	}
-	ch, cancel := e.bus.Subscribe(biz.EventSubscribeOptions{})
+	if e.subStop != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(appctx.Ctx())
+	ch, unsub := e.bus.Subscribe(biz.EventSubscribeOptions{})
+	e.subStop = func() {
+		unsub()
+		cancel()
+	}
 	e.lg.Info("PlanExecutor 开始订阅 PlanBoard 事件")
-	go func() {
-		defer cancel()
-		for ev := range ch {
-			switch pbEv := ev.(type) {
-			case *biz.PlanBoardCreatedEvent:
-				e.handleBoardReady(pbEv.PlanBoard, true)
-			case *biz.PlanBoardUpdatedEvent:
-				e.handleBoardReady(pbEv.PlanBoard, false)
+	// V2Bus 永不关闭 subscriber channel（cancel 只从 fan-out 摘除），
+	// 必须用 ctx.Done() 退出循环，不能 range ch（红线 #23）。
+	safego.Go(ctx, "plan_executor.subscribe", func() {
+		defer unsub()
+		defer e.lg.Info("PlanExecutor 订阅已退出")
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case ev, ok := <-ch:
+				if !ok {
+					return
+				}
+				switch pbEv := ev.(type) {
+				case *biz.PlanBoardCreatedEvent:
+					e.handleBoardReady(pbEv.PlanBoard, true)
+				case *biz.PlanBoardUpdatedEvent:
+					e.handleBoardReady(pbEv.PlanBoard, false)
+				}
 			}
 		}
-	}()
+	})
+}
+
+// Stop 停止 PlanBoard 事件订阅并取消在途 DAG lease，与 StartSubscription 对称。
+// 接到 ChatService.Close（kratos AfterStop）。幂等、nil-safe。
+func (e *PlanExecutor) Stop() {
+	if e == nil {
+		return
+	}
+	if e.subStop != nil {
+		e.subStop()
+		e.subStop = nil
+	}
+	e.running.Range(func(_, value any) bool {
+		if lease, ok := value.(*boardRunLease); ok && lease.cancel != nil {
+			lease.cancel()
+		}
+		return true
+	})
 }
 
 // handleBoardReady 按流式空壳契约处理 PlanBoard Created/Updated 事件。
@@ -404,19 +446,21 @@ func (e *PlanExecutor) handleBoardReady(board biz.PlanBoard, isCreated bool) {
 	// 注入 ctx，让下游 buildTeamProjectMeta / publishV2TeamRunAndMemberSessions
 	// / publishV2TeamRunCompletion 都能拿到正确的 rootTaskID（之前为空字符串
 	// 导致 MemberSession.TaskID 为空，前端 getMemberSessionSteps 返回空数组）。
-	go func(b biz.PlanBoard, runCtx context.Context, cancel context.CancelFunc) {
+	b := board
+	safego.Go(runCtx, "plan_executor.dag."+b.ID, func() {
 		defer e.running.Delete(b.ID) // C-20: release lease on exit
 		defer cancel()
+		ctx := runCtx
 		if b.TaskID != "" {
-			runCtx = agent.ContextWithRootTaskActivityID(
-				runCtx, agent.RootTaskActivityID(b.TaskID))
+			ctx = agent.ContextWithRootTaskActivityID(
+				ctx, agent.RootTaskActivityID(b.TaskID))
 		}
-		if err := e.Subscribe(runCtx, b); err != nil {
+		if err := e.Subscribe(ctx, b); err != nil {
 			e.lg.Warn("PlanExecutor.Subscribe 失败",
 				loggateway.Str("plan_board_id", b.ID),
 				loggateway.Err(err))
 		}
-	}(board, runCtx, cancel)
+	})
 }
 
 // armShellTimeout 为流式空壳 PlanBoard 登记超时兜底看门狗：shellTimeout 后
@@ -721,7 +765,10 @@ func (r *dagRun) run(ctx context.Context) error {
 	}
 	// Wait for all goroutines (root + downstream) to finish.
 	done := make(chan struct{})
-	go func() { r.wg.Wait(); close(done) }()
+	safego.Go(ctx, "plan_executor.wg_wait."+r.board.ID, func() {
+		r.wg.Wait()
+		close(done)
+	})
 	var runErr error
 	select {
 	case <-done:

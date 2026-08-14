@@ -1,7 +1,7 @@
 /**
  * Shared Graph execution types — the single source of truth for graph
- * node/execution state used by both chat (useEnvelopeStream) and
- * graph runtime (graphExecutionProjection).
+ * node/execution state used by graph runtime (useGraphStream) and
+ * graphExecutionProjection.
  *
  * Previously these types lived in features/chat/useEnvelopeStream.ts;
  * they have been lifted to this shared location so that the graph

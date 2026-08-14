@@ -50,10 +50,11 @@ L0 Context Package（每轮 ephemeral）
 ```go
 // internal/runtime/memory_set.go
 type MemorySet struct {
-    TRPC     trpcmemory.Service      // Runner 注入
-    Admin    biz.SessionAdminStore   // L0–L4 观测/治理 API（组合 L0/L1/L2/L3/L4 子接口）
-    L2Recall biz.MemoryL2Recaller    // prompt 注入 L2 recall（usecase 层 embed + store rerank）
-    L3Recall biz.MemoryL3Recaller    // prompt 注入 L3 recall
+    TRPC              trpcmemory.Service      // Runner 注入
+    biz.MemoryLayerPorts                      // L0–L4 窄接口（ISP；SessionAdminStore 已退出生产路径）
+    AdminUsecase      *biz.MemoryAdminUsecase // memory/v1 治理
+    L2Recall          biz.MemoryL2Recaller    // prompt 注入 L2 recall
+    L3Recall          biz.MemoryL3Recaller    // prompt 注入 L3 recall
 }
 ```
 
@@ -1015,7 +1016,7 @@ Wire：`provideFactIndexSync` 注入 AutoMemoryWorker、`MemoryAdminUsecase`、`
 
 **Auto-memory 失败策略**：任一 `UpsertFactRow` 失败 → job 返回 error → 指数退避重试；episode 仅在全部 fact 成功且 `added > 0` 时写入。
 
-**Admin 端口拆分**（渐进）：`SessionAdminStore` = `L0AdminReader` + `L1AdminReader` + `L2RecallStore` + `L3FactAdminStore` + `L4GraphAdminStore`；typed `RecallHit` 在 biz 层引入，JSON `[][]byte` 逐步替换。
+**Admin 端口拆分**（已落地）：生产路径（Wire / `MemorySet` / agent builder）注入 `MemoryLayerPorts` 上的 L0–L4 窄接口（`L0AdminStore` / `L1AdminReader` / `L1TaskWriter` / `L1FieldWriter` / `L3FactReader` / `L3FactWriter` / `L4EntityStore` 等），不再依赖聚合类型 `SessionAdminStore`（保留 Deprecated，仅测试/适配器编译期检查）。`MemoryAdminUsecase` 依赖 `MemoryAdminDeps`。typed `RecallHit` 在 biz 层引入，JSON `[][]byte` 逐步替换。
 
 文件：`internal/data/pgvector/`（可选 Postgres）
 
@@ -1184,10 +1185,11 @@ func (EvolutionProposal) Fields() []ent.Field {
 // internal/memory/trpc/sqlite_adapter.go
 func NewSQLiteMemoryService(store *sessionmemory.Store) trpcmemory.Service
 
-// internal/biz/memory_runtime_set.go
-type RuntimeSet struct {
-    TRPC  trpcmemory.Service   // Runner load_memory / preload_memory
-    Admin SessionAdminStore    // MemoryAdminUsecase / memory/v1 API
+// internal/runtime/memory_set.go
+type MemorySet struct {
+    TRPC              trpcmemory.Service      // Runner load_memory / preload_memory
+    biz.MemoryLayerPorts                      // L0–L4 窄接口；SessionAdminStore 已退出生产路径
+    AdminUsecase      *MemoryAdminUsecase     // memory/v1 API
 }
 ```
 

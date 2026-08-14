@@ -3,7 +3,6 @@ package client_test
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -238,23 +237,22 @@ func TestImportSkillZip(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/skills/import" {
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 		}
-		if err := r.ParseMultipartForm(1 << 20); err != nil {
-			t.Errorf("ParseMultipartForm: %v", err)
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
-		f, hdr, err := r.FormFile("file")
-		if err != nil {
-			t.Errorf("FormFile: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+		var got struct {
+			File     []byte `json:"file"`
+			Filename string `json:"filename"`
 		}
-		defer f.Close()
-		data, _ := io.ReadAll(f)
-		if hdr.Filename != "skills.zip" || string(data) != "zip-bytes" {
-			t.Errorf("unexpected upload: name=%q body=%q", hdr.Filename, string(data))
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if got.Filename != "skills.zip" || string(got.File) != "zip-bytes" {
+			t.Errorf("unexpected upload: name=%q body=%q", got.Filename, string(got.File))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"job_id":"job-1"}`))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"jobId":"job-1"}`))
 	}))
 	defer srv.Close()
 	c := client.NewClient(srv.URL, "tok", "dev", false, nil)

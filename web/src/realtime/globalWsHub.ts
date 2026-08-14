@@ -9,7 +9,6 @@
 
 import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
 import { createWsTransport, type MonitorBackpressurePayload, type WsTransport } from './ws-transport';
-import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
 import type { V2WsEnvelope } from '../features/chat/v2Types';
 
@@ -17,8 +16,6 @@ export type GlobalWsConsumer = {
   id: string;
   channels: Set<string>;
   logEnabled: boolean;
-  /** Activity-First (AF): called when an activity_event message arrives. */
-  onActivityEvent?: (ev: ActivityEvent) => void;
   /** Monitor channel: called when a monitor_event message arrives. */
   onMonitorEvent?: (event: MonitorEvent) => void;
   /** MON-OPT-04 backpressure notification. */
@@ -64,14 +61,7 @@ function ensureHubTransport(): WsTransport {
   transport = createWsTransport({
     sessionId: GLOBAL_WS_SESSION_ID,
     logEnabled: false,
-    onActivityEvent: (ev) => {
-      // Activity-First (AF): dispatch to all consumers that have opted in.
-      for (const c of consumers.values()) {
-        c.onActivityEvent?.(ev);
-      }
-    },
     onMonitorEvent: (event) => {
-      // Monitor channel: dispatch to all consumers that have opted in.
       for (const c of consumers.values()) {
         c.onMonitorEvent?.(event);
       }
@@ -125,7 +115,6 @@ export function acquireGlobalWsConsumer(
     id,
     channels,
     logEnabled: opts.logEnabled,
-    onActivityEvent: opts.onActivityEvent,
     onMonitorEvent: opts.onMonitorEvent,
     onBackpressure: opts.onBackpressure,
     onV2Event: opts.onV2Event,

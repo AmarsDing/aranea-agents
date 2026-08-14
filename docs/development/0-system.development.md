@@ -1,11 +1,11 @@
 # System 系统 — 架构健康度诊断与综合开发计划
 
-> **版本**：2026-06-17（Agent 优化）| **状态**：M0–M3 ✅；M4 进行中（Monitor/Token/Quota/MCP 部分已通；Channel/Ecosystem/Telemetry UI 待补）  
+> **版本**：2026-06-17（Agent 优化）| **状态**：进度文档**冻结**（P0-7 / 2026-08-14）  
 > **系统总览**：[0-system-diagram.md](./0-system-diagram.md)  
 > **模块索引**：[README.md](./README.md)  
-> **进度真相**：本文档（0-system.development.md）即为系统级进度真相源
+> **进度真相（冻结）**：本文档不再作为 2026-08 之后的模块状态真相源。开发前必读与模块现状以 [`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 为准（最后校准 2026-08-14）。
 >
-> **文档性质**：开发计划（模块定位、代码锚点、现状评估、差距与优化、Phase 划分、任务清单、验收标准、改动文件清单）。架构设计、Proto/API 契约、模块关系见 [0-system-diagram.md](./0-system-diagram.md)。
+> **文档性质**：开发计划（历史 Phase / 任务清单）。架构与交叉影响见 [0-system-diagram.md](./0-system-diagram.md) 与 [65](./65-module-cross-reference-full.md)。
 
 ## 1. 目标
 
@@ -64,7 +64,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 
 | 关系 | 当前状态 | 健康度 | 风险 | 重构方向 |
 |------|----------|--------|------|----------|
-| `server -> service` | 大体成立 | 良好 | `service/skill_import_http.go` 旁路 proto service | Skill Import 迁入 proto + `SkillService` |
+| `server -> service` | 成立 | 良好 | Skill Import 已迁入 proto + `SkillService` | 保持 proto 注册，禁止新的 `srv.Route` 业务旁路 |
 | `service -> biz` | 大体成立 | 中等 | `service` 还直接拿部分 data store | Store 访问经 biz 或 infra 端口 |
 | `service -> runtime adapter` | 成立 | 良好 | ChatService 直接管理 Runner 生命周期 | 引入 RunnerManager |
 | `biz -> data` | 通过 Repo 接口 | 良好 | Data import biz 是 Kratos 常见实现方式 | 保持，不让 biz 反向 import data |
@@ -135,7 +135,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 4 | Memory 端口统一 | 收敛 `SessionAdminStore` 直连，定稿 L0-L4 与 MemoryService 主从 | service/agent 不直接 import data store |
 | 5 | Data 运行时绑定上移 | trpc session / graph checkpoint provider 移出 data 主 provider | data 保持 Ent/SQL Repo 边界 |
 | 6 | Provider 拆环 | 抽 `internal/llminspect` 或 biz 端口接口 | `biz` 与 `provider` 不再概念互绑 |
-| 7 | Skill Import service 化 | 导入 API 进入 proto + `SkillService` | server 不直接依赖 importer |
+| 7 | ✅ Skill Import service 化 | 导入 API 进入 proto + `SkillService` | server 不直接依赖 importer；无 `srv.Route` 旁路 |
 
 ### Phase 2：核心积木闭环
 

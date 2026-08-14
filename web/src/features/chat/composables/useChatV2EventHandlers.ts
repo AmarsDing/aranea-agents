@@ -67,7 +67,7 @@ export function useChatV2EventHandlers(deps: {
     }
     // Design 69 Phase 3: skill.catalog carries the agent-visible skill list
     // (pushed once per WS connection setup). Ephemeral UI state — store it
-    // per session in the runtime store for ChatSkillCatalogStrip rendering.
+    // per session in the runtime store for the composer skill picker.
     if (envelope.kind === 'skill.catalog') {
       const sid = String(envelope.session_id ?? '').trim();
       const skills = (envelope.payload as SkillCatalogEventPayload)?.skills;

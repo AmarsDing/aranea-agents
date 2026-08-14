@@ -656,6 +656,29 @@ func ResolveModelForRunOption(ctx context.Context, deps TRPCBuilderDeps, prov, m
 	return provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
 }
 
+// ResolveAgentBuildModel resolves the same model that the cached agent build
+// uses (agent's own provider/model, falling back to the system default when
+// unset or unavailable). Business-layer wrappers around the built agent (e.g.
+// the graph agent-node summary fallback) use it so auxiliary LLM calls run on
+// the same model as the agent itself.
+func ResolveAgentBuildModel(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcmodel.Model, error) {
+	prov := strings.TrimSpace(ag.Provider)
+	mod := strings.TrimSpace(ag.Model)
+	if prov == "" || mod == "" {
+		prov, mod = resolveBuildDefaultModel(ctx, deps, lg)
+	}
+	if prov == "" || mod == "" {
+		return nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
+	}
+	m, err := provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, prov, mod, lg)
+	if err != nil && errors.Is(err, biz.ErrProviderModelNotFound) {
+		if fbProv, fbMod := resolveBuildDefaultModel(ctx, deps, lg); fbProv != "" && fbMod != "" {
+			m, err = provider.TRPCModelForProviderModel(ctx, deps.ModelCatalog, deps.RT, fbProv, fbMod, lg)
+		}
+	}
+	return m, err
+}
+
 // isToolPipeEligible determines whether a tool should receive the result_filter
 // capability from ToolPipe Extension. Only tools that produce large or structured
 // output benefit from filtering; framework-managed tools (todo, memory, skill_*)

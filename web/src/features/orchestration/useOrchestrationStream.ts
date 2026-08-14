@@ -1,12 +1,12 @@
 import { ref } from 'vue';
-import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { createV2EventStream } from '../../realtime/useV2EventStream';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 import { agentNodeStateFromMetadata, type AgentNodeState, type OrchestrationAgentStatusMetadata } from './types';
 
 export function useOrchestrationStream(sessionId: string, runId: string) {
   const nodes = ref(new Map<string, AgentNodeState>());
   const connected = ref(false);
-  let stream: ReturnType<typeof createEnvelopeStream> | null = null;
+  let stream: ReturnType<typeof createV2EventStream> | null = null;
 
   function seed(items: AgentNodeState[]) {
     const next = new Map<string, AgentNodeState>();
@@ -43,7 +43,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
   }
 
   if (sessionId.trim() && runId.trim()) {
-    stream = createEnvelopeStream({
+    stream = createV2EventStream({
       sessionId,
       channels: ['team', 'graph', 'monitor'],
       autoConnect: false,

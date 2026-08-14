@@ -194,6 +194,10 @@ type ChannelDeliveryRepo interface {
 	// The unique constraint is on (channel_id, idempotency_key).
 	AddDeliveryIfNotExists(ctx context.Context, d ChannelDelivery) (ChannelDelivery, bool, error)
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
+	// ClaimPendingDeliveries atomically claims due outbound rows for one worker
+	// instance (pending / due retry / sending whose lease expired). Multi-instance
+	// safe via Postgres FOR UPDATE SKIP LOCKED + status CAS.
+	ClaimPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
 }
 
 // TECH-DEBT(COG): 复合 usecase 方法数>5, 上限=5 —— ChannelUsecase 同时承载 channel

@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
@@ -116,5 +118,82 @@ func TestChannelTurnJobUpdateStatusQueued(t *testing.T) {
 	}
 	if got.FinishedAt == "" {
 		t.Fatal("expected finished_at for queued state")
+	}
+}
+
+func TestChannelTurnJobTransitionIfStale_ConcurrentOnlyOneWins(t *testing.T) {
+	ctx := context.Background()
+	repo := newChannelTurnJobTestRepo(t)
+	stale := time.Now().UTC().Add(-31 * time.Minute).Format(time.RFC3339)
+	id, err := repo.Create(ctx, biz.ChannelTurnJob{
+		ID:             "job-claim-1",
+		ChannelID:      "ch-1",
+		IdempotencyKey: "idem-claim-1",
+		Status:         biz.ChannelTurnJobStatusRunning,
+		CreatedAt:      stale,
+		UpdatedAt:      stale,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutoff := time.Now().UTC().Add(-30 * time.Minute).Format(time.RFC3339)
+
+	const n = 8
+	var mu sync.Mutex
+	var wins int
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			ok, err := repo.TransitionIfStale(ctx, id, biz.ChannelTurnJobStatusRunning, biz.ChannelTurnJobStatusFailed,
+				"lease expired", "", "", cutoff)
+			if err != nil {
+				t.Errorf("TransitionIfStale: %v", err)
+				return
+			}
+			if ok {
+				mu.Lock()
+				wins++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if wins != 1 {
+		t.Fatalf("concurrent TransitionIfStale wins = %d, want 1", wins)
+	}
+	got, err := repo.GetByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != biz.ChannelTurnJobStatusFailed {
+		t.Fatalf("status = %q, want failed", got.Status)
+	}
+}
+
+func TestChannelTurnJobTransitionIfStale_FreshLeaseNotClaimed(t *testing.T) {
+	ctx := context.Background()
+	repo := newChannelTurnJobTestRepo(t)
+	now := biz.ChannelTurnJobNow()
+	id, err := repo.Create(ctx, biz.ChannelTurnJob{
+		ID:             "job-fresh",
+		ChannelID:      "ch-1",
+		IdempotencyKey: "idem-fresh",
+		Status:         biz.ChannelTurnJobStatusRunning,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutoff := time.Now().UTC().Add(-30 * time.Minute).Format(time.RFC3339)
+	ok, err := repo.TransitionIfStale(ctx, id, biz.ChannelTurnJobStatusRunning, biz.ChannelTurnJobStatusFailed,
+		"lease expired", "", "", cutoff)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Fatal("fresh running job must not be claimed by expired-lease cutoff")
 	}
 }

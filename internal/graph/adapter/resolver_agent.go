@@ -74,7 +74,18 @@ func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string
 	deps.SkillVersionHash = chatagent.ComputeSkillVersionHash(r.fetchEnabledSkillRefs(ctx))
 	deps.MCPVersionHash = chatagent.ComputeMCPVersionHash(r.fetchEffectiveMCPServers(ctx, ag.ID))
 
-	return chatagent.BuildTRPCAgentCached(ctx, ag, deps, r.lg)
+	built, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, r.lg)
+	if err != nil {
+		return nil, err
+	}
+	// 业务层优雅收尾（2026-08-14 用户批准，不动 vendored 框架）：框架在
+	// MaxToolIterations 硬停时不再给 LLM 收尾机会，节点 output 只剩中间叙述。
+	// 包装一层：检测到工具上限终止事件后追加一次无工具总结调用，保证节点
+	// 产出完整报告。模型与 agent 构建所用一致；解析失败则不包装（行为同前）。
+	if mdl, merr := chatagent.ResolveAgentBuildModel(ctx, ag, deps, r.lg); merr == nil && mdl != nil {
+		return newSummaryFallbackAgent(built, mdl, r.lg), nil
+	}
+	return built, nil
 }
 
 func (r *CatalogAgentResolver) fetchEffectiveTools(ctx context.Context, agentID string) (*biz.AgentEffectiveTools, error) {

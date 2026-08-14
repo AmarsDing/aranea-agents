@@ -9,7 +9,7 @@ export const KRATOS_API_DEFAULT_TIMEOUT_MS = 30_000;
 export const KRATOS_API_LONG_TIMEOUT_MS = 120_000;
 
 /**
- * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：`SkillService`（proto HTTP + multipart ZIP on **`RegisterSkillImportMultipart`**）。
+ * **`kratosApi`**：`requestHandler` + `create*Service()` → **`/v1/...`**（含 **`memory/v1`**）；**`chat`**：`ChatServiceHTTPServer`（**`/v1/chat/*`**）；**`skills/import*`**：`SkillService`（proto HTTP，ZIP 为 JSON bytes）。
  *
  * {@link syncHttpClients} 在 **`loadRuntimeConfig`** 之后刷新 **`kratosApi`** 的 **`baseURL`**（见 **`getBackendOrigin()`**）。
  */

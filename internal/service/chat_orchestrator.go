@@ -7,29 +7,20 @@ import (
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
-	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
-	bizcu "aranea-agents/internal/biz/computeruse"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
-	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/graph"
-	"aranea-agents/internal/knowledge"
 	"aranea-agents/internal/outbound"
-	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/lifecycle"
 	"aranea-agents/internal/runtime/turn"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/tools"
-	"aranea-agents/internal/tools/clientbridge"
-	"aranea-agents/internal/tools/codingbridge"
-	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/security"
-	"aranea-agents/internal/tools/skillrecommend"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/ctxuser"
@@ -37,7 +28,6 @@ import (
 	"aranea-agents/pkg/safego"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
-	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -55,59 +45,6 @@ type sessionStateTransitor interface {
 
 // Compile-time check: *biz.TurnLifecycleUsecase satisfies sessionStateTransitor.
 var _ sessionStateTransitor = (*biz.TurnLifecycleUsecase)(nil)
-
-// RuntimeTooling groups plugin, skill, knowledge, and code-execution dependencies
-// that are injected into every agent turn build. Moving these out of the flat
-// ChatOrchestratorDeps reduces the Wire parameter count and makes the
-// responsibility boundary explicit.
-type RuntimeTooling struct {
-	PluginRT                    *plugintrpc.Runtime
-	PluginManager               *plugintrpc.Manager
-	SkillDBRepo                 trpcskill.Repository
-	KnowledgeRetriever          *knowledge.Retriever
-	KnowledgeRouter             *knowledge.AdaptiveRouter
-	KnowledgeFederatedRetriever *knowledge.FederatedRetriever
-	KnowledgeEvaluator          *knowledge.RetrievalEvaluator
-	KnowledgeUC                 *biz.KnowledgeUsecase
-	CodeExecFactory             *localexec.Factory
-	KanbanBridge                kanbanpkg.Bridge
-	DebugRecorder               *debug.RecorderFactory
-	OrganizationUC              *biz.OrganizationUsecase
-	ToolResultGate              *biz.ToolResultGate
-	OutboundRouter              *outbound.Router
-	SubAgentService             *subagenttool.Service
-	// ClientBridge enables the client tool bridge ToolSet (client_open_app /
-	// client_open_url) in chat-turn agent builds. Nil prunes the ToolSet.
-	ClientBridge *clientbridge.Bridge
-	// ComputerUseUC enables the computer_use_* desktop automation toolset
-	// (75-computer-use). Nil prunes the toolset from agent builds.
-	ComputerUseUC *bizcu.ComputerUseUsecase
-	// CodingBridgeSvc enables the coding agent bridge ToolSet (coding_dispatch_task /
-	// coding_check_task / coding_cancel_task). Nil prunes the toolset (76-coding-agent-bridge).
-	CodingBridgeSvc codingbridge.BridgeService
-	// ParallelToolExecutor enables batch tool call parallelism (B5 integration).
-	// Nil when ARANEA_PARALLEL_AUTO is disabled; callers fall back to serial execution.
-	ParallelToolExecutor *tools.ParallelToolExecutor
-	// M71: agent resource sharing usecases (assembled per-agent via CustomToolFunc).
-	ResourceAccess *biz.ResourceAccessUsecase
-	DeptMailbox    *biz.DeptMailboxUsecase
-	SessionSearch  *biz.SessionSearchUsecase
-	// SkillHealth feeds historical performance metrics (success rate / avg
-	// duration) into skill Layer B ranking fusion (R1, 2026-08-13). Nil
-	// disables the dynamic ranking branch; ranking stays keyword/embedding.
-	SkillHealth *SkillHealthMetricsAdapter
-}
-
-// skillHealthProvider normalizes the adapter to the interface consumed by
-// TRPCSkillDeps, mapping a nil adapter to a nil interface so the
-// `opts.HealthProvider != nil` guard in ResolveSkillSlugsDetailed is not
-// defeated by a typed-nil.
-func (rt RuntimeTooling) skillHealthProvider() skillrecommend.HealthMetricsProvider {
-	if rt.SkillHealth == nil {
-		return nil
-	}
-	return rt.SkillHealth
-}
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
 // These are only used when a session is owned by a team or when graph execution
@@ -307,8 +244,8 @@ func (o *ChatOrchestrator) graphExec() biz.GraphExecutor     { return o.teamExec
 func (o *ChatOrchestrator) skillEvo() *biz.SkillEvolutionUsecase { return o.evoDeps.SkillEvo }
 func (o *ChatOrchestrator) evolution() *biz.EvolutionUsecase     { return o.evoDeps.Evolution }
 
-func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase             { return o.infraDeps.A2AUC }
-func (o *ChatOrchestrator) outboundRouter() *outbound.Router   { return o.infraDeps.OutboundRouter }
+func (o *ChatOrchestrator) a2aUC() *biz.A2AUsecase           { return o.infraDeps.A2AUC }
+func (o *ChatOrchestrator) outboundRouter() *outbound.Router { return o.infraDeps.OutboundRouter }
 func (o *ChatOrchestrator) subAgentService() *subagenttool.Service {
 	return o.infraDeps.SubAgentService
 }

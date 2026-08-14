@@ -51,26 +51,26 @@ var qualityPlaceholderMarkers = []string{
 // EvaluateDeliverableQuality 对 DAG 团队的自有交付物（graph state − 上游种子）
 // 做规则化质量判定。非 DAG 团队 / 无 state 交付通道 / 空交付物（二元门职责）
 // 直接 pass；infra 读错返回 error（调用方 fail-open）。
-func (u *SpiritTeamUsecase) EvaluateDeliverableQuality(ctx context.Context, team Team) (QualityGateResult, error) {
+func (d *SpiritDelivery) EvaluateDeliverableQuality(ctx context.Context, team Team) (QualityGateResult, error) {
 	if team.DagNodeID == "" {
 		return QualityGateResult{Verdict: TeamQualityPass}, nil
 	}
-	anchor, ok := u.stateDeliverableChannel(team)
+	anchor, ok := d.stateDeliverableChannel(team)
 	if !ok {
 		return QualityGateResult{Verdict: TeamQualityPass}, nil
 	}
-	teamSessionID, err := u.resolveTeamMainSessionID(ctx, team.ID)
+	teamSessionID, err := d.resolveTeamMainSessionID(ctx, team.ID)
 	if err != nil {
 		return QualityGateResult{}, err
 	}
 	if teamSessionID == "" {
 		return QualityGateResult{Verdict: TeamQualityPass}, nil
 	}
-	stateDeliv, err := u.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
+	stateDeliv, err := d.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
 	if err != nil {
 		return QualityGateResult{}, err
 	}
-	seed, serr := u.UpstreamDeliverableSeed(ctx, team)
+	seed, serr := d.UpstreamDeliverableSeed(ctx, team)
 	if serr != nil {
 		return QualityGateResult{}, serr
 	}
@@ -84,8 +84,8 @@ func (u *SpiritTeamUsecase) EvaluateDeliverableQuality(ctx context.Context, team
 
 	// J4：成员中途异常证据（pi-agentteam「Leader 评审验收」语义在门侧落地——
 	// 框架无成员级 steer，中途纠偏收敛到本评审点，见 ADR-G）。
-	for _, child := range u.listMemberChildSessions(ctx, teamSessionID) {
-		failed, reason := u.MemberExecutionEvidence(ctx, child.ID)
+	for _, child := range d.listMemberChildSessions(ctx, teamSessionID) {
+		failed, reason := d.MemberExecutionEvidence(ctx, child.ID)
 		if !failed {
 			continue
 		}
@@ -108,10 +108,10 @@ func (u *SpiritTeamUsecase) EvaluateDeliverableQuality(ctx context.Context, team
 
 // listMemberChildSessions 列出团队 session 的成员子 session；读取失败按无
 // 成员处理（保守：infra 读错不得制造误判打回）。
-func (u *SpiritTeamUsecase) listMemberChildSessions(ctx context.Context, teamSessionID string) []Session {
-	children, err := u.sessionUC.ListChildSessions(ctx, teamSessionID)
+func (d *SpiritDelivery) listMemberChildSessions(ctx context.Context, teamSessionID string) []Session {
+	children, err := d.sessionUC.ListChildSessions(ctx, teamSessionID)
 	if err != nil {
-		u.lg.Warn("质量门：读取成员子 session 失败，按无成员证据处理",
+		d.lg.Warn("质量门：读取成员子 session 失败，按无成员证据处理",
 			loggateway.StepID("spirit.quality_gate.children_err"),
 			loggateway.Str("team_session_id", teamSessionID),
 			loggateway.Err(err),

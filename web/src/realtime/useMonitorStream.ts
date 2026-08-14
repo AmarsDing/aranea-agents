@@ -1,19 +1,12 @@
 /**
- * Monitor stream composable — a thin wrapper around createEnvelopeStream
- * that exposes a clean API for monitor-channel events (log, flow_log, mcp,
- * alert) via the `onMonitorEvent` callback.
+ * Monitor stream factory — typed `monitor_event` subscription.
  *
- * The backend now sends monitor events as `monitor_event?` on the WS
- * protocol's "monitor" channel (replacing the legacy envelope-based
- * dispatch for log/flow_log/mcp/alert). This factory is the preferred
- * entry point for monitor features; it delegates transport concerns to
- * `createEnvelopeStream` until the legacy envelope stream is removed.
- *
- * Features that need to consume team/chat runtime events (which still
- * flow as envelopes) should use `createEnvelopeStream` directly.
+ * The backend sends monitor events as `monitor_event` on `/v1/ws`
+ * (log, flow_log, mcp, alert, computeruse.step). Features that consume
+ * typed v2 chat/team/graph notices should use `createV2EventStream`.
  */
 import type { Ref } from 'vue';
-import { createEnvelopeStream } from './useEnvelopeStream';
+import { createWsSessionStream } from './createWsSessionStream';
 import type { MonitorEvent } from './monitorEvent';
 import type { MonitorBackpressurePayload } from './ws-transport';
 
@@ -39,9 +32,9 @@ export type UseMonitorStreamReturn = {
 
 /** Factory for monitor-channel streams; safe to call outside component `setup()`. */
 export function createMonitorStream(opts: UseMonitorStreamOptions): UseMonitorStreamReturn {
-  const stream = createEnvelopeStream({
+  const stream = createWsSessionStream({
     sessionId: opts.sessionId,
-    channels: opts.channels,
+    channels: opts.channels ?? ['monitor', 'system'],
     autoConnect: opts.autoConnect,
     logEnabled: opts.logEnabled,
     onConnected: () => opts.onConnected?.(),

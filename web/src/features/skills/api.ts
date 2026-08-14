@@ -6,7 +6,6 @@ import {
   kratosApi,
 } from '../../services';
 import axios from 'axios';
-import { KRATOS_API_LONG_TIMEOUT_MS } from '../../services/axiosHandler';
 import type {
   PaginatedResponse,
   Skill,
@@ -31,7 +30,7 @@ import type {
   EvolutionActionType,
 } from './types';
 
-// ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON）。
+// ZIP 导入走 SkillService.ImportSkillZip（POST /v1/skills/import）；轮询/apply/refine 仍用 kratosApi。
 // 管理列表、启停、文件编辑、运行记录等已接 Kratos `skill/v1`。
 
 function mapSkillTag(raw: unknown): SkillTag {
@@ -295,14 +294,27 @@ export async function listSkillRuns(query: SkillRunQuery = {}): Promise<Paginate
   };
 }
 
+function fileToBase64Payload(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = reader.result as string;
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadSkillZip(file: File): Promise<{ job_id: string }> {
-  const form = new FormData();
-  form.append('file', file);
-  // multipart 直连 kratosApi（不经 requestHandler 白名单），必须显式给长超时：
-  // 导入要对每个已有 Skill 做 LLM 相似度检查，30s 默认超时会中断大库导入（FN-1）。
-  const { data } = await kratosApi.post('/v1/skills/import', form, { timeout: KRATOS_API_LONG_TIMEOUT_MS });
-  const d = data as Record<string, unknown>;
-  return { job_id: String(d.job_id ?? d.jobId ?? '') };
+  const zipB64 = await fileToBase64Payload(file);
+  const res = await createSkillService().ImportSkillZip({
+    file: zipB64,
+    filename: file.name,
+  });
+  const r = res as Record<string, unknown>;
+  return { job_id: String(r.job_id ?? r.jobId ?? '') };
 }
 
 export async function getSkillImportJob(jobId: string): Promise<SkillImportJob> {

@@ -15,6 +15,7 @@ import (
 const (
 	ChannelDeliveryStatusPending   = "pending"
 	ChannelDeliveryStatusRetry     = "retry"
+	ChannelDeliveryStatusSending   = "sending"
 	ChannelDeliveryStatusDelivered = "delivered"
 	ChannelDeliveryStatusError     = "error"
 	ChannelOutboundTextKind        = "outbound_text"
@@ -22,6 +23,9 @@ const (
 	MaxOutboundAttempts            = 3
 	outboundRetryBaseDelay         = 5 * time.Second
 	outboundRetryMaxDelay          = 5 * time.Minute
+	// OutboundDeliveryLease is how long a sending claim is exclusive. Crashed
+	// workers' rows become reclaimable after this window so they cannot stick.
+	OutboundDeliveryLease = 5 * time.Minute
 )
 
 // ChannelOutboundPayload is stored in channel_delivery.payload_json for async outbound sends.
@@ -109,6 +113,15 @@ func (u *ChannelUsecase) ListPendingOutboundDeliveries(ctx context.Context, limi
 	return u.deliveries.ListPendingDeliveries(ctx, limit)
 }
 
+// ClaimPendingOutboundDeliveries atomically claims due outbound rows so only
+// one admin replica will send each delivery. See ChannelDeliveryRepo.ClaimPendingDeliveries.
+func (u *ChannelUsecase) ClaimPendingOutboundDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error) {
+	if u == nil || u.deliveries == nil {
+		return nil, nil
+	}
+	return u.deliveries.ClaimPendingDeliveries(ctx, limit)
+}
+
 // MarkOutboundAttempt records send result and schedules retry when needed.
 func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDelivery, sendErr error) (deadLetter bool, err error) {
 	var payload ChannelOutboundPayload
@@ -158,7 +171,7 @@ func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDel
 // IsOutboundDeliveryReady reports whether a pending/retry row may be attempted now.
 // Returns false for rows with corrupt payloads — they should be marked as error by the caller.
 func (u *ChannelUsecase) IsOutboundDeliveryReady(row ChannelDelivery) bool {
-	if row.Status == ChannelDeliveryStatusPending {
+	if row.Status == ChannelDeliveryStatusPending || row.Status == ChannelDeliveryStatusSending {
 		return true
 	}
 	var payload ChannelOutboundPayload

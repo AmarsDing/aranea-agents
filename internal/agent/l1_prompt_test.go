@@ -66,7 +66,7 @@ func TestFieldTokenEstimate(t *testing.T) {
 }
 
 // --- Test 2: L1MemoryCue budget filter logic ---
-// Since L1MemoryCue requires a biz.SessionAdminStore mock (large composed interface),
+// Since L1MemoryCue requires a biz.L1AdminReader (narrow port; no SessionAdminStore),
 // we test the budget filter logic by exercising the internal helpers and
 // verifying the cumulative budget truncation algorithm directly.
 

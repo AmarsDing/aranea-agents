@@ -329,6 +329,13 @@ message SkillImportJob {
   string message = 7;
 }
 
+message ImportSkillZipRequest {
+  // ZIP bytes. HTTP JSON uses proto3 base64; multipart/form-data field "file"
+  // is accepted by the Kratos RequestDecoder (same URL).
+  bytes file = 1 [(google.api.field_behavior) = REQUIRED];
+  string filename = 2;
+}
+
 message ImportSkillZipResponse {
   string job_id = 1;
 }
@@ -511,11 +518,8 @@ service SkillService {
   rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
     option (google.api.http) = {get: "/v1/skill-runs"};
   }
-  // ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-  // The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-  // because proto cannot express multipart uploads. This RPC declaration exists solely
-  // to include the endpoint in the generated OpenAPI spec.
-  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse) {
+  // ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+  rpc ImportSkillZip(ImportSkillZipRequest) returns (ImportSkillZipResponse) {
     option (google.api.http) = {
       post: "/v1/skills/import"
       body: "*"

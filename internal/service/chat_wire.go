@@ -30,6 +30,7 @@ import (
 func ProvideChatService(deps ChatOrchestratorDeps, planExec *PlanExecutor, v2Bus biz.EventBus, realOrch *RealTeamOrchestrator, agentReader biz.AgentReader, graphProj *GraphOrchestrationProjector, mbWaker biz.MailboxWaker) *ChatService {
 	deps.Turn.AfterTurn = biz.NoopNativeTurnAfter{}
 	cs := NewChatService(deps)
+	cs.planExec = planExec
 	// Backfill turnGateway into TeamStarter to break the Wire cycle:
 	// ChatService → TeamStarterPort → TurnGateway → ChatService.
 	// TeamStarter needs TurnGateway for the system-push pattern

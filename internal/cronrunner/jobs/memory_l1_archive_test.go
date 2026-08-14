@@ -115,39 +115,6 @@ func (m *mockL1ExpiredFieldCleaner) DeleteExpiredL1Fields(ctx context.Context) (
 	return 0, nil
 }
 
-// compositeStore embeds all SessionAdminStore sub-interfaces except
-// L1AdminReader (whose GetL1TaskRow/GetL1FieldRow overlap with L1TaskWriter/
-// L1FieldWriter and cause ambiguous selector errors). The 2 non-overlapping
-// L1AdminReader methods are stubbed manually. Only the 3 interfaces the worker
-// actually uses (L1IdleTaskReader, L1TaskWriter, L1ExpiredFieldCleaner) are
-// populated; the rest remain nil and are never called.
-type compositeStore struct {
-	biz.L0AdminStore
-	biz.L1TaskWriter
-	biz.L1FieldWriter
-	biz.L1IdleTaskReader
-	biz.L1ExpiredFieldCleaner
-	biz.L2EpisodeWriter
-	biz.L2RecallStore
-	biz.L3FactReader
-	biz.L3FactWriter
-	biz.L3FactReviewStore
-	biz.L3ConflictStore
-	biz.PIIReviewStore
-	biz.L4EntityStore
-	biz.L4EvolutionStore
-}
-
-// ListL1TaskRows stubs the L1AdminReader method (not used by the worker).
-func (c *compositeStore) ListL1TaskRows(_ context.Context, _, _, _, _ string) ([][]byte, error) {
-	return nil, nil
-}
-
-// ListL1FieldRows stubs the L1AdminReader method (not used by the worker).
-func (c *compositeStore) ListL1FieldRows(_ context.Context, _ string, _ bool, _ ...string) ([][]byte, error) {
-	return nil, nil
-}
-
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
@@ -160,13 +127,8 @@ func newTestWorker(t *testing.T, interval time.Duration, idleReader biz.L1IdleTa
 
 func newTestWorkerWithFlowLog(t *testing.T, interval time.Duration, idleReader biz.L1IdleTaskReader, writer biz.L1TaskWriter, cleaner biz.L1ExpiredFieldCleaner) (*jobs.MemoryL1ArchiveWorker, *fakeFlowLogWriter) {
 	t.Helper()
-	store := &compositeStore{
-		L1IdleTaskReader:      idleReader,
-		L1TaskWriter:          writer,
-		L1ExpiredFieldCleaner: cleaner,
-	}
 	flowLog := &fakeFlowLogWriter{}
-	return jobs.NewMemoryL1ArchiveWorker(interval, store, nil, loggateway.NewNoop(), flowLog), flowLog
+	return jobs.NewMemoryL1ArchiveWorker(interval, idleReader, writer, cleaner, nil, loggateway.NewNoop(), flowLog), flowLog
 }
 
 func taskJSON(id, sessionID, agentID string) []byte {
@@ -713,7 +675,7 @@ func TestMemoryL1ArchiveDisabled_DefaultNotDisabled(t *testing.T) {
 
 func TestMemoryL1Archive_Start_NilStoreReturns(t *testing.T) {
 	// A worker constructed with a nil store should return immediately from Start.
-	w := jobs.NewMemoryL1ArchiveWorker(0, nil, nil, loggateway.NewNoop(), nil)
+	w := jobs.NewMemoryL1ArchiveWorker(0, nil, nil, nil, nil, loggateway.NewNoop(), nil)
 	if w == nil {
 		t.Fatal("expected non-nil worker")
 	}

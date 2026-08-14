@@ -4,7 +4,7 @@
  * with Meta.filter_key = graph/{graphId}/{execId}.
  */
 import { ref } from 'vue';
-import { useEnvelopeStream } from '../../../realtime/useEnvelopeStream';
+import { useV2EventStream } from '../../../realtime/useV2EventStream';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../../chat/v2Types';
 import type {
   GraphExecutionState,
@@ -206,7 +206,7 @@ export function useGraphStream(sessionId: string, graphId: string, execId: strin
     }
   }
 
-  const stream = useEnvelopeStream({
+  const stream = useV2EventStream({
     sessionId,
     channels: ['chat', 'graph', 'system'],
     onV2Event: handleV2Event,

@@ -14,8 +14,11 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 )
 
-// sessionAdminStoreAdapter composes all memory shim repos to implement biz.SessionAdminStore.
-type sessionAdminStoreAdapter struct {
+// MemoryAdminAdapter composes all memory shim repos. It implements the
+// fine-grained L0–L4 biz ports and the deprecated SessionAdminStore (tests /
+// compile-time check only). Production code must consume the narrow interfaces
+// (via NewMemoryLayerPorts / MemoryAdminDeps), not biz.SessionAdminStore.
+type MemoryAdminAdapter struct {
 	*l0SnapshotRepo
 	*l1WorkingMemoryRepo
 	*l2EpisodeRepo
@@ -23,20 +26,45 @@ type sessionAdminStoreAdapter struct {
 	*l4EntityRepo
 }
 
-// Compile-time interface check.
-var _ biz.SessionAdminStore = (*sessionAdminStoreAdapter)(nil)
+var (
+	_ biz.SessionAdminStore = (*MemoryAdminAdapter)(nil)
+	_ biz.MemoryAdminDeps   = (*MemoryAdminAdapter)(nil)
+	_ biz.L1SchemaReader    = (*MemoryAdminAdapter)(nil)
+	_ biz.L3FactWriter      = (*MemoryAdminAdapter)(nil)
+)
 
-// NewSessionAdminStoreAdapter creates a SessionAdminStore by composing all shim repos.
-func NewSessionAdminStoreAdapter(data *Data, vs vector.VectorStore) biz.SessionAdminStore {
+// NewSessionAdminStoreAdapter creates the L0–L4 shim adapter.
+// The return type is the concrete adapter (not biz.SessionAdminStore) so
+// production Wire can assign it to narrow ports including L1SchemaReader.
+func NewSessionAdminStoreAdapter(data *Data, vs vector.VectorStore) *MemoryAdminAdapter {
 	if data == nil {
 		return nil
 	}
-	return &sessionAdminStoreAdapter{
+	return &MemoryAdminAdapter{
 		l0SnapshotRepo:      newL0SnapshotRepo(data),
 		l1WorkingMemoryRepo: newL1WorkingMemoryRepo(data),
 		l2EpisodeRepo:       newL2EpisodeRepo(data, vs),
 		l3FactRepo:          newL3FactRepo(data, vs),
 		l4EntityRepo:        newL4EntityRepo(data),
+	}
+}
+
+// NewMemoryLayerPorts maps one adapter instance onto the ISP DTO used by
+// MemorySet / agent builder. Returns a zero value when data is nil.
+func NewMemoryLayerPorts(data *Data, vs vector.VectorStore) biz.MemoryLayerPorts {
+	a := NewSessionAdminStoreAdapter(data, vs)
+	if a == nil {
+		return biz.MemoryLayerPorts{}
+	}
+	return biz.MemoryLayerPorts{
+		L0Admin:    a,
+		L1Reader:   a,
+		L1Tasks:    a,
+		L1Fields:   a,
+		L1Schema:   a,
+		L3Reader:   a,
+		L3Writer:   a,
+		L4Entities: a,
 	}
 }
 

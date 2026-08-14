@@ -33,6 +33,8 @@ type ChatService struct {
 	taskV2     biz.TaskV2Repo
 	stepReader biz.StepV2Reader
 	lg         loggateway.Logger
+	// planExec 由 ProvideChatService 后注入；Close 时 Stop 订阅 goroutine。
+	planExec *PlanExecutor
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
@@ -61,7 +63,7 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	// Register session resolver for outbound target resolution.
 	// When an agent calls the message tool without explicit channel/target,
 	// the resolver looks up the session's channel metadata to infer the target.
-	if deps.Turn.RT.OutboundRouter != nil && deps.Turn.Sessions != nil {
+	if deps.Turn.RT.Extensions.OutboundRouter != nil && deps.Turn.Sessions != nil {
 		outbound.RegisterSessionResolver(func(sessionID string) (outbound.DeliveryTarget, bool) {
 			ctx := context.Background()
 			session, err := deps.Turn.Sessions.Get(ctx, sessionID)
@@ -79,10 +81,10 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 		})
 	}
 	// Start SubAgentService lifecycle + Mode B agent-card projection.
-	if deps.Turn.RT.SubAgentService != nil {
-		deps.Turn.RT.SubAgentService.SetModeBStartedHook(svc.publishModeBMemberSession)
-		deps.Turn.RT.SubAgentService.SetModeBFinishedHook(svc.finishModeBMemberSession)
-		deps.Turn.RT.SubAgentService.Start(context.Background())
+	if deps.Turn.RT.Extensions.SubAgentService != nil {
+		deps.Turn.RT.Extensions.SubAgentService.SetModeBStartedHook(svc.publishModeBMemberSession)
+		deps.Turn.RT.Extensions.SubAgentService.SetModeBFinishedHook(svc.finishModeBMemberSession)
+		deps.Turn.RT.Extensions.SubAgentService.Start(context.Background())
 	}
 	return svc
 }
@@ -173,9 +175,12 @@ func (s *ChatService) assertSessionAccess(ctx context.Context, sessionID string)
 // orchestrator lifecycle resources.
 func (s *ChatService) Close() error {
 	var firstErr error
+	if s.planExec != nil {
+		s.planExec.Stop()
+	}
 	if s.orch != nil {
-		if s.orch.rt().SubAgentService != nil {
-			if err := s.orch.rt().SubAgentService.Close(); err != nil && firstErr == nil {
+		if s.orch.rt().Extensions.SubAgentService != nil {
+			if err := s.orch.rt().Extensions.SubAgentService.Close(); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		}

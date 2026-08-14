@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 const (
@@ -71,7 +72,7 @@ func (s *TTSScheduler) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
 	s.wg.Add(1)
-	go func() {
+	safego.Go(ctx, "voice.tts_scheduler", func() {
 		defer s.wg.Done()
 		s.lg.Info("voice tts scheduler worker started (K7)",
 			loggateway.StepID("voice.tts.worker_start"))
@@ -85,7 +86,7 @@ func (s *TTSScheduler) Start(ctx context.Context) {
 				loggateway.StepID("voice.tts.worker_exit"))
 		}()
 		s.loop(ctx)
-	}()
+	})
 }
 
 // Enqueue 入队一句；队列满时阻塞（背压），ctx 取消时返回错误。

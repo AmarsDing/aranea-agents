@@ -4,19 +4,14 @@ import { useQuasar } from 'quasar';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../../stores/auth';
 import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
-import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import { createChatStream, createTeamStream } from '../useEnvelopeStream';
+import type { WsSessionStream } from '../../../realtime/createWsSessionStream';
 import type { WsUpstream } from '../../../realtime/ws-transport';
-import type { ActivityEvent } from '../../../realtime/activityEvent';
 import type { V2WsEnvelope } from '../v2Types';
 import { getChannelWsCursor } from '../channelWsCursor';
 
 export type StreamManagerDeps = {
   runtimeStore: ReturnType<typeof useChatRuntimeStore>;
-  /**
-   * Optional legacy ActivityEvent callback. Chat does not pass this —
-   * timeline rendering is v2-only via onV2Event.
-   */
-  onActivityEvent?: (ev: ActivityEvent) => void;
   /** v2 chat events: dispatched when a v2_event WS envelope arrives. */
   onV2Event?: (envelope: V2WsEnvelope) => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
@@ -32,9 +27,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   const $q = useQuasar();
   const router = useRouter();
 
-  let chatStream: UseEnvelopeStreamReturn | null = null;
+  let chatStream: WsSessionStream | null = null;
   let chatStreamSessionId: string | null = null;
-  let teamStream: UseEnvelopeStreamReturn | null = null;
+  let teamStream: WsSessionStream | null = null;
   let teamStreamSessionId: string | null = null;
 
   /** True while reconnect snapshot hydrate is in flight (B-06). */
@@ -101,7 +96,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         auth.sessionChecked = true;
         router.push({ name: 'login' });
       },
-      onActivityEvent: deps.onActivityEvent,
       onV2Event: deps.onV2Event,
     });
 
@@ -152,7 +146,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         deps.runtimeStore.setWsConnected(sessionId, false);
         needsHydrateAfterReconnect.set(sessionId, true);
       },
-      onActivityEvent: deps.onActivityEvent,
       onV2Event: deps.onV2Event,
     });
 
@@ -161,7 +154,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     return teamStream;
   }
 
-  function sendChatViaWs(stream: UseEnvelopeStreamReturn, upstream: WsUpstream): void {
+  function sendChatViaWs(stream: WsSessionStream, upstream: WsUpstream): void {
     stream.connect();
     const transport = stream.transport.value;
     if (!transport) {
@@ -171,7 +164,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     // by enqueuing to businessQueue (never dropped) and flushing on ws.onopen.
     // This guarantees the backend WS subscription (setupEventSubscription runs
     // after handshake) is ready before the user_message is delivered, so the
-    // subsequent ActivityEvents flow back through the same WS.
+    // subsequent v2_event frames flow back through the same WS.
     // Do NOT throw on !transport.connected — that would force HTTP fallback
     // and create a subscription race (HTTP delivers immediately but the WS
     // subscription isn't set up yet, so emitted events are missed → UI blank

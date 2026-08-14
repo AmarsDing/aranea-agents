@@ -448,6 +448,19 @@ type Definition struct {
 - 默认 Team（`IsDefault=true`）不可删除
 - UpdateSwarmMembers：仅 swarm / adaptive
 
+### 3.8 Spirit 编排拆分（DEV-09，2026-08-14 P0-5a）
+
+`SpiritTeamUsecase` 为对外 facade（service / Wire / `SpiritTeamController` 签名不变），实现拆到三个协作对象：
+
+| 类型 | 文件 | 职责 | 字段数（AS-COG-01 ≤15） |
+|------|------|------|-------------------------|
+| `SpiritTeamUsecase` | `internal/biz/spirit_team_usecase.go` | 薄 facade：构造 + 委托 | 3 |
+| `SpiritAssembly` | `internal/biz/spirit_assembly.go` | 组队 / 成员 session / 部门注入 | 7 |
+| `SpiritOrchestration` | `internal/biz/spirit_orchestration.go` | DAG 调度 / 超时 / 完成 / 返工 | 13 |
+| `SpiritDelivery` | `internal/biz/spirit_delivery.go` | 交付物读写 / 契约 / 质量门 / 成员证据 | 9 |
+
+依赖方向：`Assembly → Orchestration → Delivery`（单向）。超时 `sync.Map` 已提取为 `teamTimeoutRegistry`。Chat `RuntimeTooling` 不在本拆分范围。
+
 ---
 
 ## 四、Data 层
@@ -781,6 +794,8 @@ Graph 路径要点：
 | `internal/biz/team_graph_linked_test.go` | Linked graph |
 | `internal/biz/graph_team_execution_test.go` | Graph 执行 |
 | `internal/biz/spirit_team_usecase_test.go` | Spirit 集成 |
+| `internal/biz/spirit_team_deliverable_test.go` | 交付物桥 / 上游注入 |
+| `internal/biz/team_quality_gate_test.go` | 交付物质量门 |
 | `internal/biz/team_state_machine_test.go` | Team 状态机 |
 | `internal/biz/team_run_state_machine_test.go` | TeamRun 状态机 |
 

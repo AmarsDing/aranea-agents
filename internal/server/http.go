@@ -83,6 +83,8 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 			servermw.APIToKratos(),
 			validate.Middleware(),
 		),
+		// Skill ZIP import accepts JSON bytes or legacy multipart/form-data.
+		kratoshttp.RequestDecoder(service.DecodeSkillImportRequest),
 		// Ensure all JSON responses declare charset=utf-8 to prevent
 		// encoding misinterpretation on Windows (e.g. GBK default).
 		kratoshttp.ResponseEncoder(utf8ResponseEncoder),
@@ -102,7 +104,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, voiceSrv
 	// Custom routes MUST be registered before proto services so that exact
 	// paths (e.g. /v1/artifacts/download) take priority over wildcard
 	// patterns (e.g. /v1/artifacts/{id}).
-	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI)
+	registerCustomRoutes(srv, s.ChannelIngress, s.Artifact, s.Knowledge, s.A2APublic, s.SystemSetting, s.EcosystemPreset, s.AGUICompat, s.OpenAISession, s.A2AExtension, s.TwinOpenAPI)
 	registerProtoServices(srv, s)
 	registerCompatibilityRedirects(srv)
 	registerInfrastructureRoutes(srv, readiness)
@@ -171,14 +173,12 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /webhooks/{channel_key}: third-party webhook callbacks with varying path segments
 //   - /v1/artifacts/download: signed download with direct response writer access
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
-//   - skill import multipart: file upload handling
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
 func registerCustomRoutes(
 	srv *kratoshttp.Server,
 	channelIngress *service.ChannelIngress,
-	skillSvc *service.SkillService,
 	artifactSvc *service.ArtifactService,
 	knowledgeSvc *service.KnowledgeService,
 	a2aPublic *a2atrpc.EndpointRegistry,
@@ -196,9 +196,6 @@ func registerCustomRoutes(
 	if channelIngress != nil {
 		auth.RegisterWebhookPath("/webhooks/")
 		srv.Route("/").POST("/webhooks/{channel_key}", channelIngress.FeishuWebhookHTTP())
-	}
-	if skillSvc != nil {
-		skillSvc.RegisterSkillImportMultipart(srv)
 	}
 	if artifactSvc != nil {
 		auth.RegisterNoAuthPath("/v1/artifacts/download")

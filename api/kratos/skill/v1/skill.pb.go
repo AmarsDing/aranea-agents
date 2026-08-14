@@ -2983,6 +2983,60 @@ func (x *SkillImportJob) GetMessage() string {
 	return ""
 }
 
+type ImportSkillZipRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ZIP bytes. HTTP JSON uses proto3 base64; multipart/form-data field "file"
+	// is accepted by the Kratos RequestDecoder (same URL).
+	File          []byte `protobuf:"bytes,1,opt,name=file,proto3" json:"file,omitempty"`
+	Filename      string `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportSkillZipRequest) Reset() {
+	*x = ImportSkillZipRequest{}
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportSkillZipRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportSkillZipRequest) ProtoMessage() {}
+
+func (x *ImportSkillZipRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportSkillZipRequest.ProtoReflect.Descriptor instead.
+func (*ImportSkillZipRequest) Descriptor() ([]byte, []int) {
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *ImportSkillZipRequest) GetFile() []byte {
+	if x != nil {
+		return x.File
+	}
+	return nil
+}
+
+func (x *ImportSkillZipRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
 type ImportSkillZipResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
@@ -2992,7 +3046,7 @@ type ImportSkillZipResponse struct {
 
 func (x *ImportSkillZipResponse) Reset() {
 	*x = ImportSkillZipResponse{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[41]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3004,7 +3058,7 @@ func (x *ImportSkillZipResponse) String() string {
 func (*ImportSkillZipResponse) ProtoMessage() {}
 
 func (x *ImportSkillZipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[41]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3017,7 +3071,7 @@ func (x *ImportSkillZipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportSkillZipResponse.ProtoReflect.Descriptor instead.
 func (*ImportSkillZipResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{41}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ImportSkillZipResponse) GetJobId() string {
@@ -3036,7 +3090,7 @@ type GetSkillImportJobRequest struct {
 
 func (x *GetSkillImportJobRequest) Reset() {
 	*x = GetSkillImportJobRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[42]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3048,7 +3102,7 @@ func (x *GetSkillImportJobRequest) String() string {
 func (*GetSkillImportJobRequest) ProtoMessage() {}
 
 func (x *GetSkillImportJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[42]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3061,7 +3115,7 @@ func (x *GetSkillImportJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSkillImportJobRequest.ProtoReflect.Descriptor instead.
 func (*GetSkillImportJobRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{42}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetSkillImportJobRequest) GetJobId() string {
@@ -3089,7 +3143,7 @@ type SkillImportDecision struct {
 
 func (x *SkillImportDecision) Reset() {
 	*x = SkillImportDecision{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[43]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3101,7 +3155,7 @@ func (x *SkillImportDecision) String() string {
 func (*SkillImportDecision) ProtoMessage() {}
 
 func (x *SkillImportDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[43]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3114,7 +3168,7 @@ func (x *SkillImportDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillImportDecision.ProtoReflect.Descriptor instead.
 func (*SkillImportDecision) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{43}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SkillImportDecision) GetCandidateId() string {
@@ -3183,7 +3237,7 @@ type ApplySkillImportRequest struct {
 
 func (x *ApplySkillImportRequest) Reset() {
 	*x = ApplySkillImportRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[44]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3195,7 +3249,7 @@ func (x *ApplySkillImportRequest) String() string {
 func (*ApplySkillImportRequest) ProtoMessage() {}
 
 func (x *ApplySkillImportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[44]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3208,7 +3262,7 @@ func (x *ApplySkillImportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplySkillImportRequest.ProtoReflect.Descriptor instead.
 func (*ApplySkillImportRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{44}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ApplySkillImportRequest) GetJobId() string {
@@ -3236,7 +3290,7 @@ type SkillImportApplyResult struct {
 
 func (x *SkillImportApplyResult) Reset() {
 	*x = SkillImportApplyResult{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[45]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3248,7 +3302,7 @@ func (x *SkillImportApplyResult) String() string {
 func (*SkillImportApplyResult) ProtoMessage() {}
 
 func (x *SkillImportApplyResult) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[45]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3261,7 +3315,7 @@ func (x *SkillImportApplyResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillImportApplyResult.ProtoReflect.Descriptor instead.
 func (*SkillImportApplyResult) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{45}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SkillImportApplyResult) GetCreatedSkillIds() []string {
@@ -3298,7 +3352,7 @@ type RefineSkillImportConflictRequest struct {
 
 func (x *RefineSkillImportConflictRequest) Reset() {
 	*x = RefineSkillImportConflictRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[46]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3310,7 +3364,7 @@ func (x *RefineSkillImportConflictRequest) String() string {
 func (*RefineSkillImportConflictRequest) ProtoMessage() {}
 
 func (x *RefineSkillImportConflictRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[46]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3323,7 +3377,7 @@ func (x *RefineSkillImportConflictRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RefineSkillImportConflictRequest.ProtoReflect.Descriptor instead.
 func (*RefineSkillImportConflictRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{46}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RefineSkillImportConflictRequest) GetJobId() string {
@@ -3375,7 +3429,7 @@ type SkillRefineResult struct {
 
 func (x *SkillRefineResult) Reset() {
 	*x = SkillRefineResult{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[47]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3387,7 +3441,7 @@ func (x *SkillRefineResult) String() string {
 func (*SkillRefineResult) ProtoMessage() {}
 
 func (x *SkillRefineResult) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[47]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3400,7 +3454,7 @@ func (x *SkillRefineResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillRefineResult.ProtoReflect.Descriptor instead.
 func (*SkillRefineResult) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{47}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *SkillRefineResult) GetMergedName() string {
@@ -3462,7 +3516,7 @@ type SkillVersionDetail struct {
 
 func (x *SkillVersionDetail) Reset() {
 	*x = SkillVersionDetail{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[48]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3474,7 +3528,7 @@ func (x *SkillVersionDetail) String() string {
 func (*SkillVersionDetail) ProtoMessage() {}
 
 func (x *SkillVersionDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[48]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3487,7 +3541,7 @@ func (x *SkillVersionDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillVersionDetail.ProtoReflect.Descriptor instead.
 func (*SkillVersionDetail) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{48}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SkillVersionDetail) GetId() string {
@@ -3564,7 +3618,7 @@ type GetSkillVersionsRequest struct {
 
 func (x *GetSkillVersionsRequest) Reset() {
 	*x = GetSkillVersionsRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[49]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3576,7 +3630,7 @@ func (x *GetSkillVersionsRequest) String() string {
 func (*GetSkillVersionsRequest) ProtoMessage() {}
 
 func (x *GetSkillVersionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[49]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3589,7 +3643,7 @@ func (x *GetSkillVersionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSkillVersionsRequest.ProtoReflect.Descriptor instead.
 func (*GetSkillVersionsRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{49}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetSkillVersionsRequest) GetSkillId() string {
@@ -3625,7 +3679,7 @@ type GetSkillVersionsResponse struct {
 
 func (x *GetSkillVersionsResponse) Reset() {
 	*x = GetSkillVersionsResponse{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[50]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3637,7 +3691,7 @@ func (x *GetSkillVersionsResponse) String() string {
 func (*GetSkillVersionsResponse) ProtoMessage() {}
 
 func (x *GetSkillVersionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[50]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3650,7 +3704,7 @@ func (x *GetSkillVersionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSkillVersionsResponse.ProtoReflect.Descriptor instead.
 func (*GetSkillVersionsResponse) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{50}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GetSkillVersionsResponse) GetItems() []*SkillVersionDetail {
@@ -3691,7 +3745,7 @@ type RollbackSkillVersionRequest struct {
 
 func (x *RollbackSkillVersionRequest) Reset() {
 	*x = RollbackSkillVersionRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[51]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3703,7 +3757,7 @@ func (x *RollbackSkillVersionRequest) String() string {
 func (*RollbackSkillVersionRequest) ProtoMessage() {}
 
 func (x *RollbackSkillVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[51]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3716,7 +3770,7 @@ func (x *RollbackSkillVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackSkillVersionRequest.ProtoReflect.Descriptor instead.
 func (*RollbackSkillVersionRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{51}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *RollbackSkillVersionRequest) GetSkillId() string {
@@ -3742,7 +3796,7 @@ type GetSkillHealthRequest struct {
 
 func (x *GetSkillHealthRequest) Reset() {
 	*x = GetSkillHealthRequest{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[52]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3754,7 +3808,7 @@ func (x *GetSkillHealthRequest) String() string {
 func (*GetSkillHealthRequest) ProtoMessage() {}
 
 func (x *GetSkillHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[52]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3767,7 +3821,7 @@ func (x *GetSkillHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSkillHealthRequest.ProtoReflect.Descriptor instead.
 func (*GetSkillHealthRequest) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{52}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *GetSkillHealthRequest) GetSkillId() string {
@@ -3803,7 +3857,7 @@ type SkillHealthMetric struct {
 
 func (x *SkillHealthMetric) Reset() {
 	*x = SkillHealthMetric{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[53]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3815,7 +3869,7 @@ func (x *SkillHealthMetric) String() string {
 func (*SkillHealthMetric) ProtoMessage() {}
 
 func (x *SkillHealthMetric) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[53]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3828,7 +3882,7 @@ func (x *SkillHealthMetric) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillHealthMetric.ProtoReflect.Descriptor instead.
 func (*SkillHealthMetric) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{53}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SkillHealthMetric) GetSkillId() string {
@@ -3957,7 +4011,7 @@ type SkillHealthDailyMetric struct {
 
 func (x *SkillHealthDailyMetric) Reset() {
 	*x = SkillHealthDailyMetric{}
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[54]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3969,7 +4023,7 @@ func (x *SkillHealthDailyMetric) String() string {
 func (*SkillHealthDailyMetric) ProtoMessage() {}
 
 func (x *SkillHealthDailyMetric) ProtoReflect() protoreflect.Message {
-	mi := &file_kratos_skill_v1_skill_proto_msgTypes[54]
+	mi := &file_kratos_skill_v1_skill_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3982,7 +4036,7 @@ func (x *SkillHealthDailyMetric) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillHealthDailyMetric.ProtoReflect.Descriptor instead.
 func (*SkillHealthDailyMetric) Descriptor() ([]byte, []int) {
-	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{54}
+	return file_kratos_skill_v1_skill_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SkillHealthDailyMetric) GetDate() string {
@@ -4294,7 +4348,10 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"candidates\x18\x05 \x03(\v2%.kratos.skill.v1.SkillImportCandidateR\n" +
 	"candidates\x12L\n" +
 	"\x0fconflict_groups\x18\x06 \x03(\v2#.kratos.skill.v1.SkillConflictGroupR\x0econflictGroups\x12\x18\n" +
-	"\amessage\x18\a \x01(\tR\amessage\"/\n" +
+	"\amessage\x18\a \x01(\tR\amessage\"M\n" +
+	"\x15ImportSkillZipRequest\x12\x18\n" +
+	"\x04file\x18\x01 \x01(\fB\x04\xe2A\x01\x02R\x04file\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\"/\n" +
 	"\x16ImportSkillZipResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"7\n" +
 	"\x18GetSkillImportJobRequest\x12\x1b\n" +
@@ -4384,7 +4441,7 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\tsuccesses\x18\x03 \x01(\x05R\tsuccesses\x12&\n" +
 	"\x0favg_duration_ms\x18\x04 \x01(\x01R\ravgDurationMs\x12!\n" +
 	"\frouted_count\x18\x05 \x01(\x05R\vroutedCount\x12!\n" +
-	"\floaded_count\x18\x06 \x01(\x05R\vloadedCount2\xea\x19\n" +
+	"\floaded_count\x18\x06 \x01(\x05R\vloadedCount2\xfa\x19\n" +
 	"\fSkillService\x12i\n" +
 	"\n" +
 	"ListSkills\x12\".kratos.skill.v1.ListSkillsRequest\x1a#.kratos.skill.v1.ListSkillsResponse\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
@@ -4403,8 +4460,8 @@ const file_kratos_skill_v1_skill_proto_rawDesc = "" +
 	"\fGetSkillFile\x12$.kratos.skill.v1.GetSkillFileRequest\x1a!.kratos.skill.v1.SkillFileContent\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/skills/{id}/file\x12~\n" +
 	"\x0fUpdateSkillFile\x12'.kratos.skill.v1.UpdateSkillFileRequest\x1a!.kratos.skill.v1.SkillFileContent\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\x1a\x14/v1/skills/{id}/file\x12{\n" +
 	"\x0fDeleteSkillFile\x12'.kratos.skill.v1.DeleteSkillFileRequest\x1a\x16.google.protobuf.Empty\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/skills/{id}/files:delete\x12v\n" +
-	"\rListSkillRuns\x12%.kratos.skill.v1.ListSkillRunsRequest\x1a&.kratos.skill.v1.ListSkillRunsResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/skill-runs\x12o\n" +
-	"\x0eImportSkillZip\x12\x16.google.protobuf.Empty\x1a'.kratos.skill.v1.ImportSkillZipResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/skills/import\x12\x83\x01\n" +
+	"\rListSkillRuns\x12%.kratos.skill.v1.ListSkillRunsRequest\x1a&.kratos.skill.v1.ListSkillRunsResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/skill-runs\x12\x7f\n" +
+	"\x0eImportSkillZip\x12&.kratos.skill.v1.ImportSkillZipRequest\x1a'.kratos.skill.v1.ImportSkillZipResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/skills/import\x12\x83\x01\n" +
 	"\x11GetSkillImportJob\x12).kratos.skill.v1.GetSkillImportJobRequest\x1a\x1f.kratos.skill.v1.SkillImportJob\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/skills/import/{job_id}\x12\x92\x01\n" +
 	"\x10ApplySkillImport\x12(.kratos.skill.v1.ApplySkillImportRequest\x1a'.kratos.skill.v1.SkillImportApplyResult\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/skills/import/{job_id}/apply\x12\xbb\x01\n" +
 	"\x19RefineSkillImportConflict\x121.kratos.skill.v1.RefineSkillImportConflictRequest\x1a\".kratos.skill.v1.SkillRefineResult\"G\x82\xd3\xe4\x93\x02A:\x01*\"</v1/skills/import/{job_id}/conflict-groups/{group_id}/refine\x12\x8f\x01\n" +
@@ -4429,7 +4486,7 @@ func file_kratos_skill_v1_skill_proto_rawDescGZIP() []byte {
 	return file_kratos_skill_v1_skill_proto_rawDescData
 }
 
-var file_kratos_skill_v1_skill_proto_msgTypes = make([]protoimpl.MessageInfo, 56)
+var file_kratos_skill_v1_skill_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_kratos_skill_v1_skill_proto_goTypes = []any{
 	(*SkillTag)(nil),                         // 0: kratos.skill.v1.SkillTag
 	(*SkillTagInfo)(nil),                     // 1: kratos.skill.v1.SkillTagInfo
@@ -4472,22 +4529,23 @@ var file_kratos_skill_v1_skill_proto_goTypes = []any{
 	(*SkillSimilaritySource)(nil),            // 38: kratos.skill.v1.SkillSimilaritySource
 	(*SkillConflictGroup)(nil),               // 39: kratos.skill.v1.SkillConflictGroup
 	(*SkillImportJob)(nil),                   // 40: kratos.skill.v1.SkillImportJob
-	(*ImportSkillZipResponse)(nil),           // 41: kratos.skill.v1.ImportSkillZipResponse
-	(*GetSkillImportJobRequest)(nil),         // 42: kratos.skill.v1.GetSkillImportJobRequest
-	(*SkillImportDecision)(nil),              // 43: kratos.skill.v1.SkillImportDecision
-	(*ApplySkillImportRequest)(nil),          // 44: kratos.skill.v1.ApplySkillImportRequest
-	(*SkillImportApplyResult)(nil),           // 45: kratos.skill.v1.SkillImportApplyResult
-	(*RefineSkillImportConflictRequest)(nil), // 46: kratos.skill.v1.RefineSkillImportConflictRequest
-	(*SkillRefineResult)(nil),                // 47: kratos.skill.v1.SkillRefineResult
-	(*SkillVersionDetail)(nil),               // 48: kratos.skill.v1.SkillVersionDetail
-	(*GetSkillVersionsRequest)(nil),          // 49: kratos.skill.v1.GetSkillVersionsRequest
-	(*GetSkillVersionsResponse)(nil),         // 50: kratos.skill.v1.GetSkillVersionsResponse
-	(*RollbackSkillVersionRequest)(nil),      // 51: kratos.skill.v1.RollbackSkillVersionRequest
-	(*GetSkillHealthRequest)(nil),            // 52: kratos.skill.v1.GetSkillHealthRequest
-	(*SkillHealthMetric)(nil),                // 53: kratos.skill.v1.SkillHealthMetric
-	(*SkillHealthDailyMetric)(nil),           // 54: kratos.skill.v1.SkillHealthDailyMetric
-	nil,                                      // 55: kratos.skill.v1.PreviewSkillRuntimeResponse.ReasonsEntry
-	(*emptypb.Empty)(nil),                    // 56: google.protobuf.Empty
+	(*ImportSkillZipRequest)(nil),            // 41: kratos.skill.v1.ImportSkillZipRequest
+	(*ImportSkillZipResponse)(nil),           // 42: kratos.skill.v1.ImportSkillZipResponse
+	(*GetSkillImportJobRequest)(nil),         // 43: kratos.skill.v1.GetSkillImportJobRequest
+	(*SkillImportDecision)(nil),              // 44: kratos.skill.v1.SkillImportDecision
+	(*ApplySkillImportRequest)(nil),          // 45: kratos.skill.v1.ApplySkillImportRequest
+	(*SkillImportApplyResult)(nil),           // 46: kratos.skill.v1.SkillImportApplyResult
+	(*RefineSkillImportConflictRequest)(nil), // 47: kratos.skill.v1.RefineSkillImportConflictRequest
+	(*SkillRefineResult)(nil),                // 48: kratos.skill.v1.SkillRefineResult
+	(*SkillVersionDetail)(nil),               // 49: kratos.skill.v1.SkillVersionDetail
+	(*GetSkillVersionsRequest)(nil),          // 50: kratos.skill.v1.GetSkillVersionsRequest
+	(*GetSkillVersionsResponse)(nil),         // 51: kratos.skill.v1.GetSkillVersionsResponse
+	(*RollbackSkillVersionRequest)(nil),      // 52: kratos.skill.v1.RollbackSkillVersionRequest
+	(*GetSkillHealthRequest)(nil),            // 53: kratos.skill.v1.GetSkillHealthRequest
+	(*SkillHealthMetric)(nil),                // 54: kratos.skill.v1.SkillHealthMetric
+	(*SkillHealthDailyMetric)(nil),           // 55: kratos.skill.v1.SkillHealthDailyMetric
+	nil,                                      // 56: kratos.skill.v1.PreviewSkillRuntimeResponse.ReasonsEntry
+	(*emptypb.Empty)(nil),                    // 57: google.protobuf.Empty
 }
 var file_kratos_skill_v1_skill_proto_depIdxs = []int32{
 	1,  // 0: kratos.skill.v1.ListSkillTagsResponse.items:type_name -> kratos.skill.v1.SkillTagInfo
@@ -4501,7 +4559,7 @@ var file_kratos_skill_v1_skill_proto_depIdxs = []int32{
 	10, // 8: kratos.skill.v1.GetSkillResponse.skill:type_name -> kratos.skill.v1.Skill
 	0,  // 9: kratos.skill.v1.CreateSkillRequest.tags:type_name -> kratos.skill.v1.SkillTag
 	0,  // 10: kratos.skill.v1.UpdateSkillRequest.tags:type_name -> kratos.skill.v1.SkillTag
-	55, // 11: kratos.skill.v1.PreviewSkillRuntimeResponse.reasons:type_name -> kratos.skill.v1.PreviewSkillRuntimeResponse.ReasonsEntry
+	56, // 11: kratos.skill.v1.PreviewSkillRuntimeResponse.reasons:type_name -> kratos.skill.v1.PreviewSkillRuntimeResponse.ReasonsEntry
 	35, // 12: kratos.skill.v1.SkillImportCandidate.warnings:type_name -> kratos.skill.v1.SkillImportIssue
 	35, // 13: kratos.skill.v1.SkillImportCandidate.blocks:type_name -> kratos.skill.v1.SkillImportIssue
 	37, // 14: kratos.skill.v1.SkillConflictGroup.metrics:type_name -> kratos.skill.v1.SkillSimilarityMetrics
@@ -4509,12 +4567,12 @@ var file_kratos_skill_v1_skill_proto_depIdxs = []int32{
 	36, // 16: kratos.skill.v1.SkillImportJob.candidates:type_name -> kratos.skill.v1.SkillImportCandidate
 	39, // 17: kratos.skill.v1.SkillImportJob.conflict_groups:type_name -> kratos.skill.v1.SkillConflictGroup
 	0,  // 18: kratos.skill.v1.SkillImportDecision.merged_tags:type_name -> kratos.skill.v1.SkillTag
-	43, // 19: kratos.skill.v1.ApplySkillImportRequest.decisions:type_name -> kratos.skill.v1.SkillImportDecision
+	44, // 19: kratos.skill.v1.ApplySkillImportRequest.decisions:type_name -> kratos.skill.v1.SkillImportDecision
 	0,  // 20: kratos.skill.v1.SkillRefineResult.merged_tags:type_name -> kratos.skill.v1.SkillTag
-	48, // 21: kratos.skill.v1.GetSkillVersionsResponse.items:type_name -> kratos.skill.v1.SkillVersionDetail
-	54, // 22: kratos.skill.v1.SkillHealthMetric.daily_metrics:type_name -> kratos.skill.v1.SkillHealthDailyMetric
+	49, // 21: kratos.skill.v1.GetSkillVersionsResponse.items:type_name -> kratos.skill.v1.SkillVersionDetail
+	55, // 22: kratos.skill.v1.SkillHealthMetric.daily_metrics:type_name -> kratos.skill.v1.SkillHealthDailyMetric
 	12, // 23: kratos.skill.v1.SkillService.ListSkills:input_type -> kratos.skill.v1.ListSkillsRequest
-	56, // 24: kratos.skill.v1.SkillService.GetSkillFilesystemHealth:input_type -> google.protobuf.Empty
+	57, // 24: kratos.skill.v1.SkillService.GetSkillFilesystemHealth:input_type -> google.protobuf.Empty
 	27, // 25: kratos.skill.v1.SkillService.GetSkill:input_type -> kratos.skill.v1.GetSkillRequest
 	29, // 26: kratos.skill.v1.SkillService.CreateSkill:input_type -> kratos.skill.v1.CreateSkillRequest
 	30, // 27: kratos.skill.v1.SkillService.UpdateSkill:input_type -> kratos.skill.v1.UpdateSkillRequest
@@ -4528,14 +4586,14 @@ var file_kratos_skill_v1_skill_proto_depIdxs = []int32{
 	22, // 35: kratos.skill.v1.SkillService.UpdateSkillFile:input_type -> kratos.skill.v1.UpdateSkillFileRequest
 	32, // 36: kratos.skill.v1.SkillService.DeleteSkillFile:input_type -> kratos.skill.v1.DeleteSkillFileRequest
 	25, // 37: kratos.skill.v1.SkillService.ListSkillRuns:input_type -> kratos.skill.v1.ListSkillRunsRequest
-	56, // 38: kratos.skill.v1.SkillService.ImportSkillZip:input_type -> google.protobuf.Empty
-	42, // 39: kratos.skill.v1.SkillService.GetSkillImportJob:input_type -> kratos.skill.v1.GetSkillImportJobRequest
-	44, // 40: kratos.skill.v1.SkillService.ApplySkillImport:input_type -> kratos.skill.v1.ApplySkillImportRequest
-	46, // 41: kratos.skill.v1.SkillService.RefineSkillImportConflict:input_type -> kratos.skill.v1.RefineSkillImportConflictRequest
-	49, // 42: kratos.skill.v1.SkillService.GetSkillVersions:input_type -> kratos.skill.v1.GetSkillVersionsRequest
-	51, // 43: kratos.skill.v1.SkillService.RollbackSkillVersion:input_type -> kratos.skill.v1.RollbackSkillVersionRequest
-	52, // 44: kratos.skill.v1.SkillService.GetSkillHealth:input_type -> kratos.skill.v1.GetSkillHealthRequest
-	56, // 45: kratos.skill.v1.SkillService.ListSkillTags:input_type -> google.protobuf.Empty
+	41, // 38: kratos.skill.v1.SkillService.ImportSkillZip:input_type -> kratos.skill.v1.ImportSkillZipRequest
+	43, // 39: kratos.skill.v1.SkillService.GetSkillImportJob:input_type -> kratos.skill.v1.GetSkillImportJobRequest
+	45, // 40: kratos.skill.v1.SkillService.ApplySkillImport:input_type -> kratos.skill.v1.ApplySkillImportRequest
+	47, // 41: kratos.skill.v1.SkillService.RefineSkillImportConflict:input_type -> kratos.skill.v1.RefineSkillImportConflictRequest
+	50, // 42: kratos.skill.v1.SkillService.GetSkillVersions:input_type -> kratos.skill.v1.GetSkillVersionsRequest
+	52, // 43: kratos.skill.v1.SkillService.RollbackSkillVersion:input_type -> kratos.skill.v1.RollbackSkillVersionRequest
+	53, // 44: kratos.skill.v1.SkillService.GetSkillHealth:input_type -> kratos.skill.v1.GetSkillHealthRequest
+	57, // 45: kratos.skill.v1.SkillService.ListSkillTags:input_type -> google.protobuf.Empty
 	3,  // 46: kratos.skill.v1.SkillService.CreateSkillTag:input_type -> kratos.skill.v1.CreateSkillTagRequest
 	4,  // 47: kratos.skill.v1.SkillService.RenameSkillTag:input_type -> kratos.skill.v1.RenameSkillTagRequest
 	6,  // 48: kratos.skill.v1.SkillService.DeleteSkillTag:input_type -> kratos.skill.v1.DeleteSkillTagRequest
@@ -4548,19 +4606,19 @@ var file_kratos_skill_v1_skill_proto_depIdxs = []int32{
 	34, // 55: kratos.skill.v1.SkillService.PreviewSkillRuntime:output_type -> kratos.skill.v1.PreviewSkillRuntimeResponse
 	10, // 56: kratos.skill.v1.SkillService.ToggleSkillEnabled:output_type -> kratos.skill.v1.Skill
 	10, // 57: kratos.skill.v1.SkillService.DuplicateSkill:output_type -> kratos.skill.v1.Skill
-	56, // 58: kratos.skill.v1.SkillService.DeleteSkill:output_type -> google.protobuf.Empty
+	57, // 58: kratos.skill.v1.SkillService.DeleteSkill:output_type -> google.protobuf.Empty
 	19, // 59: kratos.skill.v1.SkillService.ListSkillFiles:output_type -> kratos.skill.v1.ListSkillFilesResponse
 	21, // 60: kratos.skill.v1.SkillService.GetSkillFile:output_type -> kratos.skill.v1.SkillFileContent
 	21, // 61: kratos.skill.v1.SkillService.UpdateSkillFile:output_type -> kratos.skill.v1.SkillFileContent
-	56, // 62: kratos.skill.v1.SkillService.DeleteSkillFile:output_type -> google.protobuf.Empty
+	57, // 62: kratos.skill.v1.SkillService.DeleteSkillFile:output_type -> google.protobuf.Empty
 	26, // 63: kratos.skill.v1.SkillService.ListSkillRuns:output_type -> kratos.skill.v1.ListSkillRunsResponse
-	41, // 64: kratos.skill.v1.SkillService.ImportSkillZip:output_type -> kratos.skill.v1.ImportSkillZipResponse
+	42, // 64: kratos.skill.v1.SkillService.ImportSkillZip:output_type -> kratos.skill.v1.ImportSkillZipResponse
 	40, // 65: kratos.skill.v1.SkillService.GetSkillImportJob:output_type -> kratos.skill.v1.SkillImportJob
-	45, // 66: kratos.skill.v1.SkillService.ApplySkillImport:output_type -> kratos.skill.v1.SkillImportApplyResult
-	47, // 67: kratos.skill.v1.SkillService.RefineSkillImportConflict:output_type -> kratos.skill.v1.SkillRefineResult
-	50, // 68: kratos.skill.v1.SkillService.GetSkillVersions:output_type -> kratos.skill.v1.GetSkillVersionsResponse
+	46, // 66: kratos.skill.v1.SkillService.ApplySkillImport:output_type -> kratos.skill.v1.SkillImportApplyResult
+	48, // 67: kratos.skill.v1.SkillService.RefineSkillImportConflict:output_type -> kratos.skill.v1.SkillRefineResult
+	51, // 68: kratos.skill.v1.SkillService.GetSkillVersions:output_type -> kratos.skill.v1.GetSkillVersionsResponse
 	10, // 69: kratos.skill.v1.SkillService.RollbackSkillVersion:output_type -> kratos.skill.v1.Skill
-	53, // 70: kratos.skill.v1.SkillService.GetSkillHealth:output_type -> kratos.skill.v1.SkillHealthMetric
+	54, // 70: kratos.skill.v1.SkillService.GetSkillHealth:output_type -> kratos.skill.v1.SkillHealthMetric
 	2,  // 71: kratos.skill.v1.SkillService.ListSkillTags:output_type -> kratos.skill.v1.ListSkillTagsResponse
 	1,  // 72: kratos.skill.v1.SkillService.CreateSkillTag:output_type -> kratos.skill.v1.SkillTagInfo
 	5,  // 73: kratos.skill.v1.SkillService.RenameSkillTag:output_type -> kratos.skill.v1.RenameSkillTagResponse
@@ -4584,7 +4642,7 @@ func file_kratos_skill_v1_skill_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_skill_v1_skill_proto_rawDesc), len(file_kratos_skill_v1_skill_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   56,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

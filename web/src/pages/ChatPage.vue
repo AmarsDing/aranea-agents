@@ -108,7 +108,9 @@
         :dictating="composer.dictating"
         :dictation-partial="composer.dictationPartial"
         :skill-catalog="skillCatalog"
-        @load-skill="onLoadSkill"
+        :selected-skill-slugs="composer.selectedSkillSlugs"
+        @toggle-skill="composer.toggleSkill"
+        @clear-skills="composer.clearSkills"
         @enqueue-message="composer.onEnqueueWhileRunning"
         @update:dialog-mode="composer.onModeChange"
         @update:model-provider="composer.onProviderChange"
@@ -322,15 +324,6 @@ const skillCatalog = computed(() => {
   return sid ? runtimeStore.skillCatalogFor(sid) : [];
 });
 
-/**
- * Design 69 Phase 3: skill card click → fill the composer with a load request
- * (NOT sent) so the user confirms; the agent then loads it via skill_load.
- */
-function onLoadSkill(slug: string) {
-  const text = layout.t('chat.loadSkillPrompt', { slug });
-  const current = composer.inputText.trimEnd();
-  composer.inputText = current ? `${current}\n${text}` : text;
-}
 const { locate } = useScrollToActivity();
 const uiConfig = useUiConfigStore();
 const blockedStatus = useBlockedStatus(computed(() => session.v2Tasks));

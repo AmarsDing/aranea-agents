@@ -294,7 +294,7 @@ func providePersistenceSet(
 	if d != nil {
 		mem = rt.MemorySet{
 			TRPC:              memSvc,
-			Admin:             data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
+			MemoryLayerPorts:  data.NewMemoryLayerPorts(d, d.VectorStore()),
 			AdminUsecase:      adminUC,
 			ActionLogWriter:   data.NewMemoryActionLogWriter(d),
 			L2Recall:          l2Recall,

@@ -9,13 +9,15 @@
 > - ADR-03 统一总线架构（已归档，设计内容已并入本文档）
 > - Chat 模块重构方案（已归档，设计内容已并入本文档）
 
+> **P0-6（2026-08-14）**：生产 WS 下行已收敛为 `v2_event`（`biz.EventBus` → `WSV2Subscriber`）+ `monitor_event`（`MonitorEventBus` → monitor pump）。前端 Graph/Teams/Knowledge/Orchestration 走 `createV2EventStream` / `useV2EventStream`；Monitor 日志走 `createMonitorStream`；Chat 主路径走 `createChatStream`（内部仍是 v2）。`useEnvelopeStream` 的 `activity_event` 分支已删除，该文件仅为隔离兼容别名，生产 features 禁止 import。
+>
 > **架构迁移状态（2026-06-27）**：legacy 3 Bus（SessionBus + MonitorBus + ActivityBus，均传输 `Envelope`）+ `EventProjector` + `EventBuffer` + `EventStore` + `EventWAL`（WBPF）架构**已彻底删除**。当前实际架构为：
-> - `ActivityEventBus`（`biz.ActivityEventBus`）：传输 `biz.ActivityEvent`，承载所有 chat + system 事件（Domain=chat 持久化，Domain=system 仅推送 WS）
+> - `biz.EventBus`（v2）：传输 typed Event（Task/Turn/Step/Team/Graph/`system.*`）→ WS `v2_event`
 > - `MonitorEventBus`（`contract.MonitorBus`）：传输 `contract.MonitorEvent`，承载高频监控事件（log/flow_log/mcp/alert）
 > - 活类型 `EnvelopeError`/`EnvelopeTokenUsage` + 5 个 `ErrorCode*` 常量提取到 `internal/event/contract/envelope_types.go`
 > - legacy `contract/envelope.go`/`bus.go`/`reliability.go`/`buffer.go`/`wal.go`/`event_store.go` 已删除
 >
-> 本文档描述的为 **AF v2 当前架构**（单一 Activity + 双 Bus + 并行异步持久化）。
+> 下文部分章节仍保留 ADR-02/ADR-03 历史 ActivityEvent 描述；**以本节 P0-6 口径与交叉参考 §1.12 为准**。
 
 ---
 
@@ -60,20 +62,20 @@ trpc-agent-go Runner
          │                              │
          ▼                              ▼
    前端 WsTransport                前端 WsTransport
-   + activityEventPump            + monitorEventPump
-   + useEnvelopeStream            + useMonitorStream
-   + useActivityTimeline          + globalWsHub
-   + ActivityStream.vue
+   + WSV2Subscriber               + monitorEventPump
+   + useV2EventStream             + createMonitorStream
+   + createChatStream             + globalWsHub
+   + SessionPanelV2
 ```
 
 **双 Bus 隔离**（`internal/event/infra.go`）：
 
 | Bus | 传输类型 | 承载事件 | 持久化 |
 |-----|---------|---------|--------|
-| `ActivityEventBus` | `biz.ActivityEvent` | chat 业务事件（Domain=chat）+ system 通知事件（Domain=system） | chat 持久化，system 不持久化 |
+| `biz.EventBus`（v2） | typed Event（Task/Turn/Step/Team/Graph/`system.*`） | 聊天与跨域业务事件 | v2 实体表 + 关键事件 outbox |
 | `MonitorEventBus` | `contract.MonitorEvent` | 高频监控事件（log / flow_log / mcp.* / alert.*） | 不持久化（FlowLog 持久化由独立 consumer 处理） |
 
-**已删除的 legacy Bus**：SessionBus（传输 Envelope）、旧 Envelope-based MonitorBus、ActivityBus（v2 双总线期）、`event.Bus` 接口、`contract.Bus` 接口、`RouteChannel` 路由机制。
+v1 `ActivityEventBus` 生产路径已退役。**已删除的 legacy Bus**：SessionBus（传输 Envelope）、旧 Envelope-based MonitorBus、ActivityBus（v2 双总线期）、`event.Bus` 接口、`contract.Bus` 接口、`RouteChannel` 路由机制。
 
 ---
 
@@ -625,14 +627,14 @@ ListDeadLetterActivities(sessionID string) ([]Activity, error)
 
 统一 WebSocket 网关，端点 `/v1/ws`。
 
-**2 pump 架构**（ADR-03 D5）：
+**2 pump 架构**（ADR-03 D5 之后 + P0-6）：
 
-| Pump | 订阅 Bus | 下行字段 |
-|------|---------|---------|
-| activityEventPump | `ActivityEventBus` | `activity_event?` |
-| monitorEventPump | `MonitorEventBus` | `monitor_event?` |
+| Pump | 订阅 Bus | 下行 |
+|------|---------|------|
+| WSV2Subscriber | `biz.EventBus`（v2） | 独立帧 `{ type: "v2_event", kind, payload }` |
+| monitorEventPump | `MonitorEventBus` | `wsDownstream.monitor_event` |
 
-**已删除的 pump**：~~`envelopeEventPump`~~（legacy SessionBus 订阅，ADR-03 Blocker F 删除）
+**已删除的 pump**：~~`envelopeEventPump`~~（legacy SessionBus）、~~`activityEventPump`~~（v1 `activity_event?` 生产路径已退役）
 
 **连接参数**：
 | 参数 | 说明 |
@@ -646,8 +648,10 @@ ListDeadLetterActivities(sessionID string) ([]Activity, error)
 **下行消息格式**：
 ```json
 {
-  "direction": "server_to_client",
-  "activity_event": { ... }
+  "type": "v2_event",
+  "kind": "task.created",
+  "session_id": "...",
+  "payload": { }
 }
 ```
 
@@ -656,7 +660,8 @@ ListDeadLetterActivities(sessionID string) ([]Activity, error)
 ```json
 {
   "direction": "server_to_client",
-  "monitor_event": { ... }
+  "channel": "monitor",
+  "monitor_event": { }
 }
 ```
 
@@ -705,22 +710,16 @@ WebSocket 传输层，职责：
 - 服务器关机通知
 - **WS 重连后触发 API Backfill**：调用 `ListActivities` RPC 拉取断连期间的 Activity（替代 legacy `lastEventId` replay + `sync_request`）
 
-### 11.3 useEnvelopeStream（保留命名，内部消费 ActivityEvent）
+### 11.3 useV2EventStream / createMonitorStream
 
-`web/src/realtime/useEnvelopeStream.ts`
+`web/src/realtime/useV2EventStream.ts` · `web/src/realtime/useMonitorStream.ts` · `web/src/realtime/createWsSessionStream.ts`
 
-Vue composable，封装 WsTransport + ActivityEvent 路由：
-- `onActivityKind(kind, handler)` — 按 ActivityKind 注册回调
-- `onActivityEvent(eventType, handler)` — 按 ActivityEventType 注册回调
-- `onMonitorEvent(type, handler)` — 按 MonitorEventType 注册回调
-- `subscribe(channel)` / `unsubscribe(channel)` — 动态订阅/取消
-- `enableLog(enabled)` — 开关日志
-- `cancel()` — 取消运行
+Vue / 工厂封装 WsTransport + globalWsHub：
+- `createV2EventStream` / `useV2EventStream` — Graph / Teams / Knowledge / Orchestration / Chat 订阅 `v2_event`
+- `createMonitorStream` — Monitor / Computer-Use 订阅 `monitor_event`
+- `createChatStream` / `createTeamStream`（`features/chat/useEnvelopeStream.ts`）— Chat 发送路径，内部走 `createV2EventStream`
 
-**Chat 域衍生 composable**（`web/src/features/chat/useEnvelopeStream.ts`）：
-- `createChatStream(sessionId)` / `useChatStream(sessionId)` — 聚合 chat Activity 事件
-- `createTeamStream(sessionId, teamId?)` / `useTeamStream(...)` — 聚合 team_stage Activity 事件
-- `useMonitorStream(sessionId)` — Monitor 事件流
+`web/src/realtime/useEnvelopeStream.ts` 仅为隔离兼容别名（无 `activity_event` 分支），**生产 features 禁止 import**。
 
 ### 11.4 useActivityTimeline（API Backfill + 缓存）
 
@@ -971,13 +970,15 @@ Activity 树由 `parent_activity_id` 在线推导，不新增后端 API。
 | `web/src/realtime/ws-transport.ts` | WsTransport（心跳/重连/pending 队列/API Backfill 触发） |
 | `web/src/realtime/activityEvent.ts` | ActivityEvent TypeScript 类型定义 |
 | `web/src/realtime/monitorEvent.ts` | MonitorEvent TypeScript 类型定义 |
-| `web/src/realtime/useEnvelopeStream.ts` | useChatStream / useTeamStream / useMonitorStream（保留命名，内部消费 ActivityEvent） |
+| `web/src/realtime/useV2EventStream.ts` | typed `v2_event` 订阅（Graph/Teams/Knowledge/Orchestration/Chat） |
+| `web/src/realtime/createWsSessionStream.ts` | WS 会话连接工厂（无 activity_event） |
+| `web/src/realtime/useEnvelopeStream.ts` | 隔离兼容别名（生产 features 禁止 import） |
 | `web/src/realtime/useMonitorStream.ts` | Monitor 事件流订阅 |
 | `web/src/realtime/globalWsHub.ts` | 全局 WS 连接管理 |
 | `web/src/realtime/command_channel.ts` | 上行命令（cancel/enqueue/subscribe/enable_log） |
 | `web/src/realtime/graphState.ts` | Graph 节点状态聚合 |
 | `web/src/realtime/timeout_model.ts` | 超时/重连策略 |
-| `web/src/features/chat/useEnvelopeStream.ts` | Chat/Team/Monitor 衍生 composable |
+| `web/src/features/chat/useEnvelopeStream.ts` | `createChatStream` / `createTeamStream`（内部 `createV2EventStream`） |
 | `web/src/features/chat/useActivityTimeline.ts` | API Backfill + 缓存（ensureActivitiesLoaded） |
 | `web/src/features/chat/useTaskDeadLetters.ts` | ListDeadLetterActivities RPC 调用 |
 | `web/src/features/chat/useChatBackgroundJobs.ts` | Chat 后台任务（API Backfill 触发） |

@@ -28,7 +28,7 @@ var memoryEditToolNames = map[string]bool{
 // (which calls syncFactIndexBestEffort), so no separate IndexSyncer
 // injection is needed.
 func newMemoryEditContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	if deps.MemoryAdmin == nil {
+	if deps.L3Reader == nil || deps.L3Writer == nil {
 		return nil
 	}
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
@@ -50,11 +50,8 @@ func newMemoryEditContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 		if agentID == "" {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
-		// deps.MemoryAdmin (biz.SessionAdminStore) satisfies both FactReader
-		// (via L3FactReader.GetFactRowsByIDs) and FactWriter (via
-		// L3FactWriter.UpsertFactRow).
-		ctx = memory.WithL3FactReader(ctx, deps.MemoryAdmin)
-		ctx = memory.WithL3FactWriter(ctx, deps.MemoryAdmin)
+		ctx = memory.WithL3FactReader(ctx, deps.L3Reader)
+		ctx = memory.WithL3FactWriter(ctx, deps.L3Writer)
 		ctx = memory.WithEditAgentID(ctx, agentID)
 		if uid := strings.TrimSpace(inv.Session.UserID); uid != "" {
 			ctx = memory.WithEditUserID(ctx, uid)

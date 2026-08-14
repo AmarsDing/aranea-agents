@@ -17,7 +17,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 层级 | 路径 |
 |------|------|
 | Proto | `api/kratos/skill/v1/skill.proto` — SkillService **22 RPC** |
-| Service | `internal/service/skill.go`（19 RPC）· `skill_import.go`（4 RPC）· `skill_import_http.go`（multipart 挂载） |
+| Service | `internal/service/skill.go`（19 RPC）· `skill_import.go`（4 RPC，含 ImportSkillZip） |
 | Biz | `internal/biz/skill/` — `skill.go` · `skill_import.go` · `skill_runtime.go`；`internal/biz/skill_*.go`（相似度/合并/进化/智能/去重/健康） |
 | Data | `internal/data/skill*.go`（仓储 + 合并 + 去重 + 智能 + 进化 + 统一进化） |
 | 桥接 | `internal/skill/trpc/` — Repository / Filter / Tools / Executor / `artifact_executor` |
@@ -33,7 +33,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 项 | 状态 | 证据 |
 |----|------|------|
 | Skill CRUD + 文件读写 | ✅ | 22 RPC；列表/详情/创建/更新/发布/启用/复制/删除/文件/运行记录/预览/版本历史/回滚/健康指标/磁盘健康 |
-| ZIP 导入 + 冲突 + AI 炼化 | ✅ | proto 声明 4 端点；`POST /v1/skills/import` multipart 由 `RegisterSkillImportMultipart` |
+| ZIP 导入 + 冲突 + AI 炼化 | ✅ | proto `ImportSkillZip` + Get/Apply/Refine；`POST /v1/skills/import` 走标准 Kratos HTTP |
 | Layer A + B 路由 | ✅ | `ResolveSkillSlugsDetailed` + `NewAgentVisibilityFilter`；turn query 经 `RunOptionWithTurnQuery` 注入 RuntimeState |
 | trpc-agent-go 桥接 | ✅ | `DBRepositoryAdapter` / `FSRepositoryAdapter` + `WithSkills` / `WithSkillFilter` |
 | 文件监听与同步 | ✅ | `watch.Runner`：fsnotify + debounce + `filesystem_missing` + reconcile ticker |
@@ -429,8 +429,7 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 文件 | 说明 | 状态 |
 |------|------|------|
 | `internal/service/skill.go` | 23 RPC 适配（CRUD/发布/预览/版本/回滚/健康/磁盘健康 + 标签字典 4 RPC） | ✅ |
-| `internal/service/skill_import.go` | 导入 biz 桥接（4 RPC） | ✅ |
-| `internal/service/skill_import_http.go` | multipart POST `/v1/skills/import` 挂载 | ✅ |
+| `internal/service/skill_import.go` | 导入 biz 桥接（4 RPC，含 ImportSkillZip） | ✅ |
 | `internal/service/skill_intelligence.go` | 智能分析服务 | ✅ |
 | `internal/service/skill_evolution.go` | 进化服务 | ✅ |
 | `internal/service/skill_evolution_suggestion.go` | 进化建议服务 | ✅ |

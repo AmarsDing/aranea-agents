@@ -55,7 +55,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | server | `internal/server/ws_sync_request.go` | T3.4 sync_request 上行处理 + revision-based 重放（EventStoreLister 窄接口） |
 | service | `internal/service/event.go` | 回放 API Service（`GET /v1/events`） |
 | proto | `api/kratos/event/v1/event.proto` | EventService.ListEvents Proto 契约 |
-| 前端 | `web/src/realtime/envelope.ts` + `ws-transport.ts` + `useEnvelopeStream.ts` | 🟡 前端 Envelope 类型 + WS 传输 + composable（待迁移到 ActivityEvent，任务 8） |
+| 前端 | `web/src/realtime/ws-transport.ts` + `useV2EventStream.ts` + `useMonitorStream.ts` | ✅ P0-6：typed `v2_event` / `monitor_event` hooks；`useEnvelopeStream` 隔离兼容别名 |
 | 前端 | `web/src/realtime/event_replay.ts` | T3.4 RevisionTracker + buildSyncRequest + requestSyncReplay |
 | 前端 | `web/src/components/monitor/RealtimeEvents.vue` | Monitor Events Tab |
 | 前端 | `web/src/components/chat/SessionTimelineDialog.vue` | Chat Trace + Envelope 双 Tab |

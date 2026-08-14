@@ -61,11 +61,8 @@ type SkillServiceHTTPServer interface {
 	GetSkillHealth(context.Context, *GetSkillHealthRequest) (*SkillHealthMetric, error)
 	GetSkillImportJob(context.Context, *GetSkillImportJobRequest) (*SkillImportJob, error)
 	GetSkillVersions(context.Context, *GetSkillVersionsRequest) (*GetSkillVersionsResponse, error)
-	// ImportSkillZip ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-	// The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-	// because proto cannot express multipart uploads. This RPC declaration exists solely
-	// to include the endpoint in the generated OpenAPI spec.
-	ImportSkillZip(context.Context, *emptypb.Empty) (*ImportSkillZipResponse, error)
+	// ImportSkillZip ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+	ImportSkillZip(context.Context, *ImportSkillZipRequest) (*ImportSkillZipResponse, error)
 	ListSkillFiles(context.Context, *ListSkillFilesRequest) (*ListSkillFilesResponse, error)
 	ListSkillRuns(context.Context, *ListSkillRunsRequest) (*ListSkillRunsResponse, error)
 	// ListSkillTags 标签字典：治理 + 预建 + 实时使用计数。
@@ -450,7 +447,7 @@ func _SkillService_ListSkillRuns0_HTTP_Handler(srv SkillServiceHTTPServer) func(
 
 func _SkillService_ImportSkillZip0_HTTP_Handler(srv SkillServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
-		var in emptypb.Empty
+		var in ImportSkillZipRequest
 		if err := ctx.Bind(&in); err != nil {
 			return err
 		}
@@ -459,7 +456,7 @@ func _SkillService_ImportSkillZip0_HTTP_Handler(srv SkillServiceHTTPServer) func
 		}
 		http.SetOperation(ctx, OperationSkillServiceImportSkillZip)
 		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
-			return srv.ImportSkillZip(ctx, req.(*emptypb.Empty))
+			return srv.ImportSkillZip(ctx, req.(*ImportSkillZipRequest))
 		})
 		out, err := h(ctx, &in)
 		if err != nil {
@@ -710,11 +707,8 @@ type SkillServiceHTTPClient interface {
 	GetSkillHealth(ctx context.Context, req *GetSkillHealthRequest, opts ...http.CallOption) (rsp *SkillHealthMetric, err error)
 	GetSkillImportJob(ctx context.Context, req *GetSkillImportJobRequest, opts ...http.CallOption) (rsp *SkillImportJob, err error)
 	GetSkillVersions(ctx context.Context, req *GetSkillVersionsRequest, opts ...http.CallOption) (rsp *GetSkillVersionsResponse, err error)
-	// ImportSkillZip ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-	// The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-	// because proto cannot express multipart uploads. This RPC declaration exists solely
-	// to include the endpoint in the generated OpenAPI spec.
-	ImportSkillZip(ctx context.Context, req *emptypb.Empty, opts ...http.CallOption) (rsp *ImportSkillZipResponse, err error)
+	// ImportSkillZip ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+	ImportSkillZip(ctx context.Context, req *ImportSkillZipRequest, opts ...http.CallOption) (rsp *ImportSkillZipResponse, err error)
 	ListSkillFiles(ctx context.Context, req *ListSkillFilesRequest, opts ...http.CallOption) (rsp *ListSkillFilesResponse, err error)
 	ListSkillRuns(ctx context.Context, req *ListSkillRunsRequest, opts ...http.CallOption) (rsp *ListSkillRunsResponse, err error)
 	// ListSkillTags 标签字典：治理 + 预建 + 实时使用计数。
@@ -908,11 +902,8 @@ func (c *SkillServiceHTTPClientImpl) GetSkillVersions(ctx context.Context, in *G
 	return &out, nil
 }
 
-// ImportSkillZip ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-// The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-// because proto cannot express multipart uploads. This RPC declaration exists solely
-// to include the endpoint in the generated OpenAPI spec.
-func (c *SkillServiceHTTPClientImpl) ImportSkillZip(ctx context.Context, in *emptypb.Empty, opts ...http.CallOption) (*ImportSkillZipResponse, error) {
+// ImportSkillZip ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+func (c *SkillServiceHTTPClientImpl) ImportSkillZip(ctx context.Context, in *ImportSkillZipRequest, opts ...http.CallOption) (*ImportSkillZipResponse, error) {
 	var out ImportSkillZipResponse
 	pattern := "/v1/skills/import"
 	path := binding.EncodeURL(pattern, in, false)

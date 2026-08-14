@@ -14,7 +14,7 @@ import { useAppStore } from '../../../stores/app';
 import type { Task } from '../v2Types';
 import { checkBackendHealth, getServerHeartbeatState } from '../../heartbeat/useServerHeartbeat';
 import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/types';
-import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import type { WsSessionStream } from '../../../realtime/createWsSessionStream';
 import type { WsUpstream } from '../../../realtime/ws-transport';
 import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
@@ -46,7 +46,7 @@ type SendStrategy = {
     provider: string,
     model: string,
   ) => WsUpstream;
-  ensureStream: (sessionId: string) => UseEnvelopeStreamReturn;
+  ensureStream: (sessionId: string) => WsSessionStream;
   httpFallbackKeys: { agentKey: string | undefined; teamId: string | undefined };
   errorLabel: string;
 };
@@ -70,9 +70,9 @@ export type SenderDeps = {
       }
     | undefined
   >;
-  ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
-  ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
-  sendChatViaWs: (stream: UseEnvelopeStreamReturn, upstream: WsUpstream) => void;
+  ensureChatStream: (sessionId: string) => WsSessionStream;
+  ensureTeamStream: (sessionId: string) => WsSessionStream;
+  sendChatViaWs: (stream: WsSessionStream, upstream: WsUpstream) => void;
   onNewSession: (title?: string) => Promise<void>;
   makeSessionTitle: (content: string) => string;
   refreshRunStatus: () => Promise<void>;

@@ -61,6 +61,9 @@ func (r *countingRepo) AddDelivery(_ context.Context, d biz.ChannelDelivery) (bi
 func (r *countingRepo) ListPendingDeliveries(_ context.Context, limit int) ([]biz.ChannelDelivery, error) {
 	return nil, nil
 }
+func (r *countingRepo) ClaimPendingDeliveries(_ context.Context, limit int) ([]biz.ChannelDelivery, error) {
+	return nil, nil
+}
 func (r *countingRepo) UpdateDelivery(_ context.Context, d biz.ChannelDelivery) error { return nil }
 func (r *countingRepo) AddDeliveryIfNotExists(_ context.Context, d biz.ChannelDelivery) (biz.ChannelDelivery, bool, error) {
 	return d, true, nil

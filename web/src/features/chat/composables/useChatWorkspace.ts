@@ -102,6 +102,23 @@ export function useChatWorkspace() {
   const inputText = ref('');
   const sessionDrafts = reactive(new Map<string, string>());
 
+  // Skill 选择器（chat 输入框）：当前已选中的 skill slug 列表。
+  // 发送时由 composerActions 注入加载提示；发送成功/会话切换时清空。
+  const selectedSkillSlugs = ref<string[]>([]);
+
+  function toggleSkill(slug: string) {
+    const idx = selectedSkillSlugs.value.indexOf(slug);
+    if (idx >= 0) {
+      selectedSkillSlugs.value = selectedSkillSlugs.value.filter((s) => s !== slug);
+    } else {
+      selectedSkillSlugs.value = [...selectedSkillSlugs.value, slug];
+    }
+  }
+
+  function clearSkills() {
+    selectedSkillSlugs.value = [];
+  }
+
   const awaitReply = useAwaitReply();
   const {
     isAwaitingUser,
@@ -602,6 +619,8 @@ export function useChatWorkspace() {
     notify: (opts) => $q.notify(opts),
     t,
     sessionDrafts,
+    inputText,
+    selectedSkillSlugs,
   });
 
   const isRunnerActive = computed(
@@ -925,6 +944,8 @@ export function useChatWorkspace() {
       if (prevSid) {
         sessionDrafts.set(prevSid, inputText.value);
       }
+      // 会话切换：已选 skill 不跨会话保留
+      selectedSkillSlugs.value = [];
       if (!sid) {
         onSessionSwitch(undefined);
         isAwaitingUser.value = false;
@@ -1171,6 +1192,9 @@ export function useChatWorkspace() {
       modeOpts,
       provOpts,
       attachments,
+      selectedSkillSlugs,
+      toggleSkill,
+      clearSkills,
       sending: sender.sending,
       inputDisabled: sender.inputDisabled,
       pendingMessages,

@@ -262,7 +262,7 @@ service SkillService {
   rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
     option (google.api.http) = { get: "/v1/skill-runs" };
   }
-  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse) {
+  rpc ImportSkillZip(ImportSkillZipRequest) returns (ImportSkillZipResponse) {
     option (google.api.http) = { post: "/v1/skills/import" body: "*" };
   }
   rpc GetSkillImportJob(GetSkillImportJobRequest) returns (SkillImportJob) {
@@ -302,13 +302,13 @@ service SkillService {
 }
 ```
 
-### 5.2 ZIP 导入 multipart 端点
+### 5.2 ZIP 导入 HTTP 端点
 
-文件：`internal/service/skill_import_http.go`（由 `internal/server/http.go` 挂载）
+由 `SkillService.ImportSkillZip` 标准 proto HTTP 绑定（`POST /v1/skills/import`）。请求体为 JSON `{ "file": "<base64>", "filename": "x.zip" }`；兼容 `multipart/form-data` 字段 `file`（Kratos `RequestDecoder`，非 `srv.Route` 旁路）。
 
 | 端点 | 方法 | 用途 |
 |------|------|------|
-| `/v1/skills/import` | POST | 上传 ZIP（multipart；`ImportSkillZip` RPC 占位用于 OpenAPI） |
+| `/v1/skills/import` | POST | 上传 ZIP（`ImportSkillZip` RPC） |
 | `/v1/skills/import/{job_id}` | GET | 轮询导入状态 |
 | `/v1/skills/import/{job_id}/apply` | POST | 应用导入结果 |
 | `/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine` | POST | AI 炼化冲突组 |
@@ -398,9 +398,10 @@ service SkillService {
 
 `POST /v1/skills/import`
 
-- 请求：`multipart/form-data`，字段名 `file`。
+- 请求：JSON `{ "file": "<base64 ZIP>", "filename": "skill.zip" }`（`ImportSkillZipRequest`）；兼容 `multipart/form-data` 字段 `file`。
 - 后端行为：接收 zip 后写入临时目录，解压并严格校验 Skill 编写规范；通过校验后生成导入任务，不直接入库。
-- 响应：`{ "job_id": "job_01" }`
+- 响应：`{ "job_id": "job_01" }`（proto JSON 亦可能为 `jobId`）。
+- 鉴权：admin（`assertImportAdmin`），与 Get/Apply/Refine 相同。走标准 Kratos 中间件（tracing / recovery / 错误编码器），不再经 `srv.Route` 旁路。
 
 `GET /v1/skills/import/:job_id` — 轮询导入状态，返回 `SkillImportJob`（含 `candidates`、`conflict_groups`）。
 
@@ -420,7 +421,7 @@ service SkillService {
 
 **安全约束（2026-08-14 P13）**：
 
-- **鉴权**：import 相关 RPC（`GetSkillImportJob`/`ApplySkillImport`/`RefineSkillImportConflict`）要求 admin 权限（`assertImportAdmin`），与 multipart 上传端点一致；skill 读写端点经 `assertSkillAccess` 做 workspace 隔离（IDOR 防护）。
+- **鉴权**：import 相关 RPC（`ImportSkillZip`/`GetSkillImportJob`/`ApplySkillImport`/`RefineSkillImportConflict`）要求 admin 权限（`assertImportAdmin`）；skill 读写端点经 `assertSkillAccess` 做 workspace 隔离（IDOR 防护）。
 - **ZIP 上限**：单包文件数 ≤ 200（`maxImportFiles`）、解压总大小 ≤ 100MB（`maxImportTotalBytes`），超限分别返回 `ErrTooManyFiles`/`ErrTotalSizeExceeded`（防 ZIP 炸弹）。
 - **状态机**：`ApplyImport` CAS 到 `applying` 后任何失败路径经 `context.Background()` 回滚为 `completed` 并记录原因，杜绝任务卡死；refine 阶段内存 job 丢失时从 DB + tempDir 重建（`jobStateFromDB`）。
 - **清理**：终态导入任务由 `SkillImportJobStore.DeleteOldJobs` 批量清理（`Engine.CleanupOldJobs` 于 inspect 入口触发）。
@@ -1111,7 +1112,7 @@ func BuildSkillTools(cfg SkillToolsetConfig) []trpctool.Tool {
 
 ### 9.2 HTTP 路由
 
-业务逻辑在 `internal/service/skill_import.go`；multipart 挂载见 §5.2。
+业务逻辑在 `internal/service/skill_import.go`（`ImportSkillZip` RPC）；HTTP 绑定见 §5.2。
 
 ### 9.3 导入状态机
 
@@ -1231,7 +1232,7 @@ export async function deleteSkillTagApi(name: string): Promise<number>
 
 ### 11.1 Service 层
 
-文件：`internal/service/skill.go`（23 方法：19 Skill + 4 标签字典）+ `internal/service/skill_import.go`（4 方法）+ `internal/service/skill_import_http.go`（multipart 挂载）
+文件：`internal/service/skill.go`（23 方法：19 Skill + 4 标签字典）+ `internal/service/skill_import.go`（4 方法：Import/Get/Apply/Refine）
 
 薄适配层，职责：
 - Proto Request → Biz DTO 转换
@@ -1387,8 +1388,7 @@ internal/
 │   └── skillrecommend/         # Skill 推荐（rank / rank_feedback / health_provider）
 ├── service/
 │   ├── skill.go                # 薄适配（23 RPC：19 Skill + 4 标签字典）
-│   ├── skill_import.go         # 导入用例桥接（4 RPC）
-│   ├── skill_import_http.go    # multipart POST /v1/skills/import
+│   ├── skill_import.go         # 导入用例桥接（4 RPC，含 ImportSkillZip）
 │   ├── skill_intelligence.go   # 智能分析服务
 │   ├── skill_evolution.go      # 进化服务
 │   ├── skill_evolution_suggestion.go # 进化建议服务
@@ -1408,8 +1408,7 @@ internal/
 ```text
 api/kratos/skill/v1/skill.proto          → HTTP 契约（26 RPC）
 internal/service/skill.go                → 适配层（23 RPC：19 Skill + 4 标签字典）
-internal/service/skill_import.go         → 导入 biz 桥接（4 RPC）
-internal/service/skill_import_http.go    → multipart POST /v1/skills/import
+internal/service/skill_import.go         → 导入 biz 桥接（4 RPC，含 ImportSkillZip）
 internal/biz/skill/skill.go              → 用例与 SkillReader/SkillWriter/Repo 端口
 internal/biz/skill/tag.go                → 标签字典端口（SkillTagReader/SkillTagWriter/TagRepo）+ normalizeTagName
 internal/data/skill_tag_repo.go          → 标签字典 Data 层（Ent + 事务重写 + 实时使用聚合）

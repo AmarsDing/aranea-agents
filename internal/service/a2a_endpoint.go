@@ -76,13 +76,13 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		TRPCToolAssemblyDeps: chatagent.TRPCToolAssemblyDeps{
 			ToolUC:        s.orch.td().ReadDeps.ToolUC,
 			MCPTooling:    s.orch.td().Persist.AgentMCP,
-			KanbanBridge:  s.orch.rt().KanbanBridge,
-			ComputerUseUC: s.orch.rt().ComputerUseUC,
+			KanbanBridge:  s.orch.rt().Bridges.Kanban,
+			ComputerUseUC: s.orch.rt().Bridges.ComputerUse,
 		},
 		TRPCMemoryKnowledgeDeps: chatagent.TRPCMemoryKnowledgeDeps{
 			HasMemory:              s.orch.td().Persist.Memory.Available(),
 			MemoryService:          s.orch.td().Persist.Memory.TRPC,
-			MemoryAdmin:            s.orch.td().Persist.Memory.Admin,
+			MemoryLayerPorts:       s.orch.td().Persist.Memory.MemoryLayerPorts,
 			MemoryActionLogWriter:  s.orch.td().Persist.Memory.ActionLogWriter,
 			ManualCompressor:       biz.ManualCompressorFromNative(s.orch.td().Compress),
 			MemoryL2Recall:         s.orch.td().Persist.Memory.L2Recall,
@@ -91,20 +91,20 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			MemoryPreferenceLister: s.orch.td().Persist.Memory.PreferenceLister,
 			MemoryReconsolidator:   s.orch.td().Persist.Memory.Reconsolidator,
 			AgentCaseRecaller:      s.orch.td().Persist.Memory.AgentCaseRecaller,
-			KnowledgeRetriever:     s.orch.rt().KnowledgeRetriever,
+			KnowledgeRetriever:     s.orch.rt().Knowledge.Retriever,
 		},
 		TRPCPluginDeps: chatagent.TRPCPluginDeps{
-			PluginManager: s.orch.rt().PluginManager,
+			PluginManager: s.orch.rt().Plugin.Manager,
 		},
 		TRPCSkillDeps: chatagent.TRPCSkillDeps{
 			SkillUC:             s.orch.td().ReadDeps.SkillUC,
-			SkillDBRepo:         s.orch.rt().SkillDBRepo,
-			CodeExecFactory:     s.orch.rt().CodeExecFactory,
-			SkillHealthProvider: s.orch.rt().skillHealthProvider(),
+			SkillDBRepo:         s.orch.rt().Skill.DBRepo,
+			CodeExecFactory:     s.orch.rt().Skill.CodeExecFactory,
+			SkillHealthProvider: s.orch.rt().Skill.healthProvider(),
 		},
 		TRPCExtensionDeps: chatagent.TRPCExtensionDeps{
-			Organization:     s.orch.rt().OrganizationUC,
-			ToolResultGate:   s.orch.rt().ToolResultGate,
+			Organization:     s.orch.rt().Extensions.Organization,
+			ToolResultGate:   s.orch.rt().Extensions.ToolResultGate,
 			SubAgentService:  s.orch.subAgentService(),
 			OutboundRouter:   s.orch.outboundRouter(),
 			A2AEnabled:       s.orch.a2aUC() != nil,
@@ -122,10 +122,10 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	deps.CustomTools = append(deps.CustomTools, s.orch.memoryRememberTools(ag)...)
 	var plugins []trpcplugin.Plugin
 	wsID := workspace.IDFromContext(ctx)
-	if s.orch.rt().PluginManager != nil {
-		plugins = s.orch.rt().PluginManager.RunnerPluginsForAgent(ag.ID, wsID)
-	} else if s.orch.rt().PluginRT != nil {
-		plugins = s.orch.rt().PluginRT.PluginsForAgent(ag.ID, wsID)
+	if s.orch.rt().Plugin.Manager != nil {
+		plugins = s.orch.rt().Plugin.Manager.RunnerPluginsForAgent(ag.ID, wsID)
+	} else if s.orch.rt().Plugin.RT != nil {
+		plugins = s.orch.rt().Plugin.RT.PluginsForAgent(ag.ID, wsID)
 	}
 	deps.Plugins = plugins
 

@@ -78,7 +78,7 @@ func TestNeuronEntityFields_VerifyScanOutput(t *testing.T) {
 		t.Fatalf("insert entity: %v", err)
 	}
 
-	// Query using the production scan path (l4EntityRepo.ListEntityRows via SessionAdminStore).
+	// Query using the production scan path (l4EntityRepo.ListEntityRows via L4EntityStore).
 	store := data.NewSessionAdminStoreAdapter(d, nil)
 	rows, _, err := store.ListEntityRows(ctx, "agent", "agent-1", "", "", "", "active", "", 10, 0)
 	if err != nil {

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"sort"
@@ -235,16 +234,12 @@ func candidateRequiresRiskApproval(candidate biz.SkillImportCandidate) bool {
 	return false
 }
 
-func (e *Engine) Import(ctx context.Context, file multipart.File, header *multipart.FileHeader) (biz.SkillImportJob, error) {
-	if file == nil || header == nil {
+func (e *Engine) ImportZip(ctx context.Context, filename string, data []byte) (biz.SkillImportJob, error) {
+	if strings.TrimSpace(filename) == "" || len(data) == 0 {
 		return biz.SkillImportJob{}, validationError("skill zip file is required")
 	}
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
+	if !strings.HasSuffix(strings.ToLower(filename), ".zip") {
 		return biz.SkillImportJob{}, validationError("skill upload must be a .zip file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, MaxZipBytes+1))
-	if err != nil {
-		return biz.SkillImportJob{}, err
 	}
 	if len(data) > MaxZipBytes {
 		return biz.SkillImportJob{}, validationError("skill zip must be <= 20MB")
@@ -254,8 +249,8 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 		// File count is only known after the zip is inspected; it is reported
 		// with the skill.import.validate done event instead.
 		flow.LogStart("skill.import.start", "Skill 包导入开始",
-			event.P("package", header.Filename),
-			event.P("source", "multipart_upload"),
+			event.P("package", filename),
+			event.P("source", "zip_upload"),
 			event.P("size_bytes", len(data)))
 	}
 	job := &jobState{
@@ -270,7 +265,7 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 		candidates: map[string]candidateState{},
 		createdAt:  time.Now(),
 	}
-	if err = e.inspectSkillZip(ctx, data, job); err != nil {
+	if err := e.inspectSkillZip(ctx, data, job); err != nil {
 		job.public.Status = "failed"
 		job.public.ValidationStatus = "block"
 		job.public.Message = err.Error()

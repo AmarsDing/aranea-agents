@@ -18,6 +18,7 @@ func TestPlanExecutor_StartSubscription_LeaseDedupesSameBoard(t *testing.T) {
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	// Allow subscriber goroutine to register.
 	time.Sleep(20 * time.Millisecond)
 
@@ -65,6 +66,7 @@ func TestPlanExecutor_StartSubscription_EmptyShellTakesNoLease(t *testing.T) {
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	time.Sleep(20 * time.Millisecond)
 
 	board := biz.PlanBoard{
@@ -105,5 +107,97 @@ func TestPlanExecutor_Subscribe_SkipsTerminalBoard(t *testing.T) {
 	}
 	if orch.waitForCall("s1", 50*time.Millisecond) {
 		t.Fatal("must not orchestrate terminal board")
+	}
+}
+
+func TestPlanExecutor_StartSubscription_StopUnsubscribes(t *testing.T) {
+	repos := newFakeReposForExecutor()
+	seq := &fakeSeq{repos: repos}
+	orch := newFakeOrchestrator().withSeq(seq)
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	bus := event.NewV2Bus()
+	pe.SetEventBus(bus)
+	pe.StartSubscription()
+	time.Sleep(20 * time.Millisecond)
+	pe.Stop()
+	time.Sleep(20 * time.Millisecond)
+
+	board := biz.PlanBoard{
+		ID:        "board-after-stop",
+		TaskID:    "task-after-stop",
+		SessionID: "sess-after-stop",
+		Status:    biz.PlanStatusPlanning,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "board-after-stop", TaskID: "task-after-stop", Label: "step1", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	bus.Publish(context.Background(), biz.NewPlanBoardCreatedEvent(board))
+	if orch.waitForCall("s1", 200*time.Millisecond) {
+		t.Fatal("must not dispatch PlanBoard events after Stop")
+	}
+}
+
+func TestPlanExecutor_StopCancelsInFlightDag(t *testing.T) {
+	repos := newFakeReposForExecutor()
+	seq := &fakeSeq{repos: repos}
+	orch := newFakeOrchestrator().withSeq(seq)
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	bus := event.NewV2Bus()
+	pe.SetEventBus(bus)
+	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
+	time.Sleep(20 * time.Millisecond)
+
+	board := biz.PlanBoard{
+		ID:        "board-inflight",
+		TaskID:    "task-inflight",
+		SessionID: "sess-inflight",
+		Status:    biz.PlanStatusPlanning,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "board-inflight", TaskID: "task-inflight", Label: "step1", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	bus.Publish(context.Background(), biz.NewPlanBoardCreatedEvent(board))
+	if !orch.waitForCall("s1", 2*time.Second) {
+		t.Fatal("expected in-flight DAG to start")
+	}
+	if _, ok := pe.running.Load(board.ID); !ok {
+		t.Fatal("expected execution lease while DAG waits on completion")
+	}
+	pe.Stop()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := pe.running.Load(board.ID); !ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("Stop must cancel in-flight DAG lease so Subscribe exits")
+}
+
+func TestChatService_CloseStopsPlanExecutor(t *testing.T) {
+	repos := newFakeReposForExecutor()
+	seq := &fakeSeq{repos: repos}
+	orch := newFakeOrchestrator().withSeq(seq)
+	pe := NewPlanExecutor(repos, orch, seq, loggateway.NewNoop())
+	bus := event.NewV2Bus()
+	pe.SetEventBus(bus)
+	pe.StartSubscription()
+	svc := &ChatService{planExec: pe, lg: loggateway.NewNoop()}
+	if err := svc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	board := biz.PlanBoard{
+		ID:        "board-chat-close",
+		TaskID:    "task-chat-close",
+		SessionID: "sess-chat-close",
+		Status:    biz.PlanStatusPlanning,
+		Steps: []biz.PlanStep{
+			{ID: "s1", PlanID: "board-chat-close", TaskID: "task-chat-close", Label: "step1", Status: biz.PlanStepStatusPending, Version: 1},
+		},
+	}
+	bus.Publish(context.Background(), biz.NewPlanBoardCreatedEvent(board))
+	if orch.waitForCall("s1", 200*time.Millisecond) {
+		t.Fatal("ChatService.Close must stop PlanExecutor subscription")
 	}
 }

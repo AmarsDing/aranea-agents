@@ -2,10 +2,10 @@
 
 > 本文档是当前项目的系统级"真理库"。AI 在实现任何模块前，应先阅读 `docs/development/README.md`，再阅读本文确认模块位置、依赖方向和运行时边界，最后读取对应模块的需求、设计与开发计划。
 >
-> **更新时间**：2026-06-17  
+> **更新时间**：2026-08-14（P0-7：职责矩阵编号与事件口径对齐交叉参考；进度清单仍见 development 冻结说明）  
 > **基线**：Kratos v2 负责传输与 DI，`pkg/trpc-agent-go` 负责 Agent 运行时。OpenClaw 只作为产品化装配参考，不复制其单体 `app.go`、HTML Admin 或渠道栈。
 >
-> **文档性质**：设计文档（架构设计、代码分层、模块关系、序列图）。开发进度、任务清单、状态标记见 [0-system.development.md](./0-system.development.md)。
+> **文档性质**：设计文档（架构设计、代码分层、模块关系、序列图）。**模块现状与交叉影响以 [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) 为准**（2026-08-14 校准）。[0-system.development.md](./0-system.development.md) 进度文档已冻结。
 
 ## 一、系统定位
 
@@ -35,7 +35,6 @@ flowchart TB
   subgraph Service["服务桥接层"]
     ChatSvc["ChatService"]
     DomainSvc["Agent / Session / Team / Tool / Skill / Graph / ... Service"]
-    ImportRoute["Skill Import custom route (待收敛)"]
   end
 
   subgraph Biz["领域层"]
@@ -96,7 +95,7 @@ flowchart TB
 
 | 边界 | 允许 | 禁止 | 当前健康度 |
 |------|------|------|------------|
-| `internal/server` | 注册 proto service、WS、少量基础设施路由 | 直接调用 Runner / Agent / LLM | 基本健康；`service/skill_import_http.go` 仍绕过 proto service |
+| `internal/server` | 注册 proto service、WS、少量基础设施路由 | 直接调用 Runner / Agent / LLM | 健康；Skill Import 已迁入 `SkillService` proto HTTP |
 | `internal/service` | proto ↔ biz 映射；组装 `trpc-agent-go` 运行时；投影事件 | 直接承载大量业务状态机 | 中等；运行控制已抽 `internal/runtime.RunRegistry`，待 RunnerManager 统一入口 |
 | `internal/biz` | 领域模型、Usecase、Repo 接口、运行时端口接口 | import `pkg/trpc-agent-go`、import `internal/agent/team/trpc` | 健康；未发现 trpc 直接导入 |
 | `internal/data` | Repo 实现、Ent / SQL / pgvector | 过多运行时框架绑定 | 中等；`data.go` 绑定 trpc session / graph checkpoint |
@@ -118,26 +117,34 @@ flowchart TB
 | 编排 | Graph(36) | 确定性工作流、Checkpoint、HITL、Task | `internal/graph`、`internal/service/graph.go` |
 | 能力 | Tools(23) | 工具目录、Agent 绑定、运行时挂载 | `internal/tools`、`internal/tools/trpc` |
 | 能力 | MCP(19) | 外部 MCP Server、Broker、健康探活 | `internal/mcp/*`、`agent/tool_assembly`、`tools/toolset` |
-| 能力 | Skill(20) | Skill 包、导入、运行时工具、CodeExecutor | `internal/skill`、`internal/service/skill_import.go`、`internal/service/skill_import_http.go` |
+| 能力 | Skill(20) | Skill 包、导入、运行时工具、CodeExecutor | `internal/skill`、`internal/service/skill_import.go` |
 | 能力 | Plugin(22) / Callback(28) | Runner 横切插件、Agent/Tool/Model 回调 | `internal/plugin/trpc`、`internal/agent/callbacks` |
-| 记忆知识 | Memory(12-16) | L0-L4、trpc MemoryService、MemoryWorker | `internal/data/memory_admin_adapter.go`（SessionAdminStoreAdapter）、`internal/memory/trpc`、`internal/runtime/memory_set.go`（MemorySet） |
+| 记忆知识 | Memory（文档在 `memory/`，**不是**编号 12） | L0-L4、trpc MemoryService、MemoryWorker | `internal/runtime/memory_set.go`（`MemorySet` + **`MemoryLayerPorts`**）；`SessionAdminStore` 已退出生产路径。12 是 Model Catalog |
 | 记忆知识 | Knowledge(37) | 文档摄取、chunk、embedding、检索工具 | `internal/knowledge`、`internal/biz/knowledge.go` |
 | 文件 | Artifact(27) | 产物存储、版本、Runner 注入 | `internal/artifact/trpc`、`internal/data/artifactfs` |
 | 自动化 | Cron(21) | 定时触发 Agent / Team | `internal/cronrunner`、`internal/service/cron.go` |
 | 接入 | Channel(17) | 外部 IM 接入、Webhook、投递 | `internal/channel`、`internal/service/channel_ingress.go` |
-| 观测 | Event(34) | ActivityEvent、MonitorEvent、ActivityEventBus、MonitorEventBus、WS 2 pump | `internal/event`、`internal/server/ws.go` |
+| 观测 | Event(34) | v2 EventBus → WS `v2_event`；MonitorEventBus → `monitor_event` | `internal/event`、`internal/server/ws.go` / `ws_v2_subscriber.go` |
 | 观测 | Monitor(18) / Telemetry(24) / Token(29) | Audit、Events、Logs、Usage、metrics、OTLP | `internal/metrics`、`internal/telemetry`、`internal/biz/usage.go` |
 | 互通 | A2A(26) | 对外 A2A、call_agent、远程互通 | `internal/a2a`、`api/kratos/a2a` |
 | 评测 | Evaluation(33) | EvalSet、Runner、LLM Judge、结果 | `internal/evaluation` |
 | 平台 | Ecosystem(30) | 市场、模板、扩展发现 | `web/src/pages/EcosystemPage.vue` |
 | 媒体 | MediaProvider(38) | 文生图/文生视频/图生视频；独立 Provider 体系（非 LLM），支持 Qwen / ComfyUI 本地 | `internal/provider/media`、`internal/tools/media` |
-| 观测 | Observation View(39) | Chat UI 内 ComfyUI 风格成员节点实时观测画布；Vue Flow DAG + 节点级媒体预览 | `web/src/components/chat/observe`、`web/src/stores/chat/nodeOutputStore.ts` |
+| 观测 | Observation View（**架构图 39**；文档 39 是 Planner） | Chat UI 内 ComfyUI 风格成员节点实时观测画布；Vue Flow DAG + 节点级媒体预览 | `web/src/components/chat/observe`、`web/src/stores/chat/nodeOutputStore.ts`。Planner 代码：`internal/agent/planner` |
+| 语音 | Voice(74) | 流式 ASR/TTS + `/v1/voice` + 客户端工具桥（已落地，非规划中） | `internal/voice/`、`internal/server/voice_ws.go`、`web/src/features/companion/` |
+| 桌面 | Computer Use(75) | 本机 GUI 自动化（Windows sidecar） | `internal/computeruse/`、`internal/biz/computeruse/` |
+| 编程桥 | Coding Bridge(76) | 外部编程 CLI Agent（ACP） | `internal/agentbridge/`、`internal/service/agentbridge.go` |
+| 接入 | CLI(25) / Auth(31) | `aranea` CLI；JWT/Cookie 鉴权 | `internal/cli/`、`cmd/aranea`；`pkg/auth/`、`internal/service/admin.go` |
+
+> **编号冲突（与 65 交叉参考一致）**：12 = Model Catalog，**不是** Memory。文档 39 = Planner（`internal/agent/planner`）；架构图 39 = Observation View（前端 `chat/observe`）。57 Marketplace / 63 独立 TTS 为 SUPERSEDED（TTS 并入 Voice 74）。
 
 ## 五、核心运行链路
 
 ### 5.1 单 Agent 对话
 
-> **ADR-02 + ADR-03 后**：trpc `event.Event` 经 `ActivityProjector` 投影为 `biz.ActivityEvent`（Domain=chat），由 `ActivityEventSequencer` 并行异步持久化到 `activities` 表 + 同步 publish 到 `ActivityEventBus`；WS 通过 `activityEventPump` 推送 `activity_event?` 给前端。Envelope/EventBuffer/ChatMessage 已删除。
+> **ADR-02 + ADR-03 后（P0-6）**：聊天业务事件经 v2 Sequencer → `biz.EventBus` → `WSV2Subscriber` 推送 `v2_event`；监控事件经 `MonitorEventBus` → monitor pump 推送 `monitor_event`。v1 `activity_event` / ActivityEventBus 生产路径已退役。Envelope/EventBuffer/ChatMessage 已删除。
+>
+> 下方历史时序图仍出现 ActivityProjector / `activity_event` 字样，**仅作旧链路示意**；生产路径以上一段为准，详见 [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) §1.12 / §2.6。
 
 ```mermaid
 sequenceDiagram
@@ -204,7 +211,7 @@ flowchart TB
 
 ### 5.4 Channel 与 Cron 入口
 
-Channel 将外部 IM（飞书 WS/Webhook 等）标准化为入站事件，经 **路由** 选定 **Agent 或 Team**，通过 `channel_peer_session` 绑定 **Session**，再与 Web Chat 共用 `ChatService.RunNativeTurn*`。出站仅回发助手文本（或流式 PATCH）；实时 ActivityEvent 走 ActivityEventBus，监控事件（log/flow_log）走 MonitorEventBus，供 Web/Monitor 按 `session_id` 订阅。详见 [17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md)。
+Channel 将外部 IM（飞书 WS/Webhook 等）标准化为入站事件，经 **路由** 选定 **Agent 或 Team**，通过 `channel_peer_session` 绑定 **Session**，再与 Web Chat 共用 `ChatService.RunNativeTurn*`。出站仅回发助手文本（或流式 PATCH）。实时业务事件走 **v2 EventBus → `/v1/ws` `v2_event`**；监控（log/flow_log）走 MonitorEventBus → `monitor_event`。详见 [17-channel.design.md](./17-channel.design.md)。
 
 ```mermaid
 flowchart LR
@@ -254,10 +261,10 @@ flowchart TB
   Turn --> MemorySvc["trpc memory.Service"]
   Turn --> L0["L0 Context Compression"]
   MemorySvc --> Adapter["internal/memory/trpc/sqlite_adapter.go（Postgres 适配，历史命名）"]
-  Adapter --> Store["internal/data/memory_admin_adapter.go (SessionAdminStoreAdapter)"]
-  Store --> L1["L1 Working"]
-  Store --> L2["L2 Episodic"]
-  Store --> L4["L4 Persistent (planned)"]
+  Adapter --> Ports["MemoryLayerPorts（L0–L4 窄接口；SessionAdminStore 已退出生产路径）"]
+  Ports --> L1["L1 Working"]
+  Ports --> L2["L2 Episodic"]
+  Ports --> L4["L4 Persistent"]
   Turn --> Knowledge["Knowledge / pgvector L3"]
   Knowledge --> Tool["knowledge_search tool"]
   Auto["AutoMemory Queue"] --> Cron["cronrunner auto_memory job"]
@@ -267,40 +274,39 @@ flowchart TB
 
 ## 八、WebSocket 与事件架构
 
-> **统一总线架构（ADR-03 Phase 5 已完成，2026-06-27）**：legacy Envelope Bus / SessionBus / MonitorBus 已全部删除。当前为 2 bus 架构：`ActivityEventBus`（传输 `biz.ActivityEvent`，承载 chat + system 事件）+ `MonitorEventBus`（传输 `contract.MonitorEvent`，承载监控事件）。详见 ADR-03。
+> **当前生产路径（P0-6，2026-08-14）**：2 bus。聊天/图/团队/知识经 v2 Sequencer → `biz.EventBus` → `WSV2Subscriber` 推送 **`v2_event`**；监控经 `MonitorEventBus` 推送 **`monitor_event`**。v1 ActivityEventBus / `activity_event` / Envelope 生产路径已退役。下图若仍出现 Activity 字样，视为历史投影名，实现以 65 §1.12 为准。
 
 ```mermaid
 flowchart LR
-  TRPC["trpc event.Event"] --> Projector["ActivityProjector / FlowTracker"]
-  Projector --> AE["biz.ActivityEvent (Domain=chat/system)"]
+  TRPC["trpc event.Event"] --> Projector["v2 projector / FlowTracker"]
+  Projector --> V2["typed v2 Event (Task/Turn/Step/system.*)"]
   Projector --> ME["contract.MonitorEvent (log/flow_log/mcp/alert)"]
-  AE --> AEBus["ActivityEventBus"]
+  V2 --> V2Bus["biz.EventBus"]
   ME --> MEBus["MonitorEventBus"]
-  AEBus --> WS["WSServer (activityEventPump)"]
-  MEBus --> WS2["WSServer (monitorEventPump)"]
-  AEBus --> Consumer["Typed Consumers (callback/flow_log/usage_rollup/user_feedback)"]
-  WS --> Client["Chat / Team / Graph"]
+  V2Bus --> WS["WSServer (v2_event pump)"]
+  MEBus --> WS2["WSServer (monitor_event pump)"]
+  WS --> Client["Chat / Team / Graph / Knowledge"]
   WS2 --> Monitor["Monitor"]
 ```
 
-当前实时传输主通道是 `/v1/ws`。独立 Chat SSE `/v1/chat/messages/stream` 与独立 SSE 端口已经从主链路移除；文档中仍出现的 SSE 表述应改为“历史兼容概念”或“外部协议 SSE（如 A2A/MCP）”，不得写作当前 Chat/Team 主通道。
+当前实时传输主通道是 `/v1/ws`（业务 `v2_event` + 监控 `monitor_event`）。独立 Chat SSE `/v1/chat/messages/stream` 已从主链路移除。语音音频走独立 `/v1/voice`。
 
 ## 九、架构健康度诊断
 
-> 本节描述架构层面的问题与康复方向，作为架构评估。具体优先级、任务排期与开发状态见 [0-system.development.md](./0-system.development.md)。
+> 本节描述架构层面的问题与康复方向。**模块是否已修、当前锚点以 [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) 为准**。[0-system.development.md](./0-system.development.md) 进度清单已冻结。
 
 | 编号 | 问题 | 影响 | 康复方向 |
 |------|------|------|----------|
-| AH-01 | 系统级总览、执行计划曾为空 | AI 缺少真理库，容易读错旧需求 | 本文 + `0-system.development.md` + `execution-plan.md` 作为总基线 |
+| AH-01 | 系统级总览、执行计划曾为空 | AI 缺少真理库，容易读错旧需求 | 模块现状以 `65-module-cross-reference-full.md` 为准；本文描述分层与职责 |
 | AH-02 | `ChatService` 曾承载 Gateway 状态机 | 并发、取消、排队逻辑难复用 | `RunRegistry` + `RunnerManager` + `ChatUsecase`；Chat/Team/Cron/Channel 共用 `RunGateway`；出站 Webhook；`PendingMessageQueue` 仍在 Service |
-| AH-03 | `service/agent` 直连 `SessionAdminStore` | 记忆读写双路径，schema 变化风险高 | 下沉到 `biz.MemoryUsecase` 或定义 infra 端口 |
+| AH-03 | `service/agent` 曾直连 `SessionAdminStore` | 记忆读写双路径 | ✅ P0-4：生产改 `MemoryLayerPorts`；`SessionAdminStore` 仅测试/适配器编译期检查 |
 | AH-04 | `internal/data` 绑定 trpc session / graph checkpoint | Data 层测试和替换存储受运行时影响 | 将框架 adapter provider 上移到 `internal/runtime` / Wire |
-| AH-05 | `service/skill_import_http.go` 绕过 proto service | 鉴权、观测、API 契约分叉 | 扩展 `skill.proto`，迁入 `SkillService` |
+| AH-05 | `service/skill_import_http.go` 曾绕过 proto service | 鉴权、观测、API 契约曾分叉 | ✅ 已修复：`ImportSkillZip` 走 `skill.proto` + `SkillService`；删除 `srv.Route` 旁路 |
 | AH-06 | `biz` 与 `provider` 形成双向依赖 | LLM inspect 与模型目录边界不稳 | 抽 `internal/llminspect` 或 biz 端口接口 |
 | AH-07 | Runner 生命周期 | Artifact/Ingestor 已挂；GetRunStatus 对齐 ManagedRunner | `setRunStatus` / `StopGeneration` 与 `ChatUsecase.SetRunStatus` 双路径；ManagedRunner Cancel 未统一写 registry 终态 |
 | AH-08 | 前端 store/API/mapper 三套风格并存 | UI 迭代易重复、测试不能覆盖真实 mapper | 统一 feature 模板、抽 `mappers.ts`、删除空转 store |
 | AH-09 | Knowledge / Evaluation / Artifact / A2A / **Gateway Webhook** 有 API 无管理页 | 模块闭环不完整 | 按模块补路由、页面和导航，或文档降级为 API-only（Gateway Webhook CRUD 当前 API-only） |
-| AH-10 | Monitor/Message/Team 旧 SSE 口径残留 + Envelope 通用信封残留 | AI 可能实现错误传输链路（误用 Envelope/EventBus/EventProjector/EventBuffer） | ✅ ADR-02 + ADR-03 已完成：legacy Envelope/SessionBus/MonitorBus 全部删除；统一为 `ActivityEvent`（chat+system）+ `MonitorEvent`（log/flow_log/mcp/alert）双类型；2 bus/2 pump 架构（`ActivityEventBus` + `MonitorEventBus`）；`EventProjector` → `ActivityProjector`；`EventBuffer` replay 由 `ListActivities` RPC 替代；`messages`/`event_store`/`event_wal` 表已 DROP；详见 ADR-03 |
+| AH-10 | 旧 SSE / Envelope / ActivityEvent 口径残留 | AI 可能实现错误传输链路 | ✅ P0-6：生产为 `v2_event`（chat/graph/team/knowledge）+ `monitor_event`；features 禁止 `useEnvelopeStream`。历史 mermaid 中的 Activity* 仅示意 |
 
 ## 十、AI 开发读取顺序
 
@@ -315,7 +321,7 @@ flowchart LR
 
 - `pkg/trpc-agent-go` 是 Runner / Agent / Session / Memory / Tool / Event / Plugin / Team / Graph / A2A / Evaluation 的框架真相源。
 - `internal/service` 是传输到运行时的桥点；`internal/biz` 不 import `trpc-agent-go`。
-- `/v1/ws` 是 Chat / Team / Graph / Monitor 的实时主通道。
+- `/v1/ws` 是 Chat / Team / Graph / Knowledge / Monitor 的实时主通道（业务 `v2_event` + 监控 `monitor_event`）；语音音频走 `/v1/voice`。
 - Agent / Team 主运行链路已可用；Graph 核心已可用；Tools/MCP/Skill/Plugin 基础已可用。
 - 最大架构债不是"缺少模块"，而是横切状态机、记忆双轨、Data 运行时耦合、前端模式分裂和旧文档口径漂移。
 

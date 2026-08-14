@@ -19,10 +19,9 @@ type ChannelDeliveryWorker struct {
 	worker   PendingDeliveryProcessor
 	lg       loggateway.Logger
 	flowLog  biz.FlowLogWriter
-	// running enforces single-flight: overlapping ticks must not process the
-	// same pending batch concurrently, otherwise duplicate IM sends occur
-	// (CH-R2). TODO(multi-instance): atomic claim (SKIP LOCKED) in the repo
-	// when the delivery worker runs on more than one instance.
+	// running enforces single-flight inside one process so overlapping ticks
+	// do not process the same claimed batch twice. Cross-replica exclusivity
+	// is ClaimPendingDeliveries (SKIP LOCKED + sending lease), not this flag.
 	running atomic.Bool
 }
 

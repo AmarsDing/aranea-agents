@@ -380,3 +380,53 @@ func (r *channelTurnJobRepo) ListStaleByStatus(ctx context.Context, status, befo
 	}
 	return out, nil
 }
+
+// TransitionIfStale atomically transitions a stale job. Multi-instance safe:
+// only the UPDATE that still sees fromStatus and updated_at < staleBefore wins.
+func (r *channelTurnJobRepo) TransitionIfStale(ctx context.Context, id, fromStatus, toStatus, errMsg, previewMsgID, contentPreview, staleBefore string) (bool, error) {
+	db := r.data.RWDB().WriteDB(ctx)
+	if db == nil {
+		return false, apierror.Internal("CHANNEL_TURN_JOB", "repository unavailable")
+	}
+	id = strings.TrimSpace(id)
+	fromStatus = strings.TrimSpace(fromStatus)
+	staleBefore = strings.TrimSpace(staleBefore)
+	if id == "" || fromStatus == "" || staleBefore == "" {
+		return false, apierror.BadRequest("CHANNEL_TURN_JOB", "id, from status, and stale cutoff are required")
+	}
+	now := biz.ChannelTurnJobNow()
+	toStatus = biz.NormalizeChannelTurnJobStatus(toStatus)
+	startPlaceholders, startArgs := buildSQLInPlaceholders(biz.ChannelTurnJobStartStatuses)
+	finishPlaceholders, finishArgs := buildSQLInPlaceholders(biz.ChannelTurnJobFinishStatuses)
+	query := r.data.Dialect().RenumberPlaceholders(fmt.Sprintf(`
+UPDATE channel_turn_job SET
+  status=?,
+  error_message=CASE WHEN ? != '' THEN ? ELSE error_message END,
+  preview_message_id=CASE WHEN ? != '' THEN ? ELSE preview_message_id END,
+  content_preview=CASE WHEN ? != '' THEN ? ELSE content_preview END,
+  started_at=CASE WHEN started_at='' AND ? IN (%s) THEN ? ELSE started_at END,
+  finished_at=CASE WHEN ? IN (%s) THEN ? ELSE finished_at END,
+  updated_at=?
+WHERE id=? AND status=? AND updated_at <= ?`, startPlaceholders, finishPlaceholders))
+	args := []any{
+		toStatus,
+		errMsg, errMsg,
+		previewMsgID, previewMsgID,
+		contentPreview, contentPreview,
+		toStatus,
+	}
+	args = append(args, startArgs...)
+	args = append(args, now)
+	args = append(args, toStatus)
+	args = append(args, finishArgs...)
+	args = append(args, now, now, id, fromStatus, staleBefore)
+	res, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}

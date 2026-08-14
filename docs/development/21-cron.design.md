@@ -40,6 +40,8 @@ internal/cronrunner/execute.go         ← executeTask / finalizeRun / lockTask 
 internal/cronrunner/schedule.go        ← config_json / metadata_json 解析 + next_run_at 计算
 internal/cronrunner/errors.go          ← schedule 解析错误
 internal/cronrunner/seed_model_registry.go  ← 模型注册表同步种子任务
+internal/cronrunner/jobs/channel_delivery.go ← Channel 出站投递扫描（多实例 SKIP LOCKED 认领）
+internal/cronrunner/jobs/channel_turn_job_sweeper.go ← Channel TurnJob 卡死恢复（TransitionIfStale）
         ↓
 cmd/admin/wire.go                      ← provideCronRunnerDeps + provideCronRunner
 cmd/admin/workers.go                   ← CronRunner.Start 启动
@@ -768,6 +770,13 @@ func provideCronRunner(deps cronrunner.Deps, lg loggateway.Logger) *cronrunner.R
 - `cronrunner.ProviderSet → NewRunner`
 
 **启动**：`cmd/admin/workers.go` 中 `goAfterReady("cron", func() { cfg.CronRunner.Start(ctx, interval) })`，`interval = cronrunner.DefaultInterval()`；随进程 ctx 取消退出。
+
+**Channel 附属 jobs（同进程 cronrunner/jobs，多实例认领）**：
+
+- `ChannelDeliveryWorker`：`ClaimPendingDeliveries` 用 Postgres `FOR UPDATE SKIP LOCKED` 把 `pending` / 到期 `retry` / 租约过期 `sending` 认领为 `sending`（租约 5min）。同进程 `atomic.Bool` 只防重叠 tick。
+- `ChannelTurnJobSweeper`：queued / async_queued / accepted·running 的终态写入走 `TransitionIfStale`（`UPDATE ... WHERE status=? AND updated_at<=?`）。accepted/running 租约 30min，**不是** `processStart`——重启副本不得失败仍在跑的 peer job。
+
+详情见 [17-channel.design.md](./17-channel.design.md) §4.3 / §11.5。
 
 ---
 

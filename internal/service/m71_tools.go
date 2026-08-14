@@ -23,22 +23,22 @@ func (o *ChatOrchestrator) memberFSDeptMailTools(ag biz.Agent) []trpctool.Tool {
 		return nil
 	}
 	var out []trpctool.Tool
-	if o.rt().ResourceAccess != nil {
-		out = append(out, memberfs.RegisterAll(o.rt().ResourceAccess, ag.ID, o.lg())...)
+	if o.rt().Sharing.ResourceAccess != nil {
+		out = append(out, memberfs.RegisterAll(o.rt().Sharing.ResourceAccess, ag.ID, o.lg())...)
 	}
-	if o.rt().DeptMailbox != nil {
-		out = append(out, deptmail.RegisterAll(o.rt().DeptMailbox, ag.ID, o.lg())...)
+	if o.rt().Sharing.DeptMailbox != nil {
+		out = append(out, deptmail.RegisterAll(o.rt().Sharing.DeptMailbox, ag.ID, o.lg())...)
 	}
 	return out
 }
 
 // sessionAccessTools assembles sessionaccess (3 tools) for the spirit agent.
 func (o *ChatOrchestrator) sessionAccessTools(ag biz.Agent) []trpctool.Tool {
-	if o == nil || o.rt().SessionSearch == nil {
+	if o == nil || o.rt().Sharing.SessionSearch == nil {
 		return nil
 	}
 	if strings.TrimSpace(ag.AgentKey) != biz.SpiritAgentKey {
 		return nil
 	}
-	return sessionaccess.RegisterAll(o.rt().SessionSearch, ag.ID, o.lg())
+	return sessionaccess.RegisterAll(o.rt().Sharing.SessionSearch, ag.ID, o.lg())
 }

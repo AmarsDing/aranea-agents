@@ -26,6 +26,7 @@ func TestPlanExecutor_StartSubscription_StreamingShellWaitsForSteps(t *testing.T
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	time.Sleep(20 * time.Millisecond)
 
 	shell := biz.PlanBoard{
@@ -76,6 +77,7 @@ func TestPlanExecutor_StartSubscription_SkipsNonPlanningUpdated(t *testing.T) {
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	time.Sleep(20 * time.Millisecond)
 
 	board := biz.PlanBoard{
@@ -111,6 +113,7 @@ func TestPlanExecutor_StartSubscription_ShellTimeoutFails(t *testing.T) {
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	time.Sleep(20 * time.Millisecond)
 
 	shell := biz.PlanBoard{
@@ -154,6 +157,7 @@ func TestPlanExecutor_StartSubscription_ShellTimeoutSkippedWhenStepsArrive(t *te
 	bus := event.NewV2Bus()
 	pe.SetEventBus(bus)
 	pe.StartSubscription()
+	t.Cleanup(pe.Stop)
 	time.Sleep(20 * time.Millisecond)
 
 	shell := biz.PlanBoard{

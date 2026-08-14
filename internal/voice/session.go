@@ -525,10 +525,10 @@ func (s *Session) openASR() error {
 	s.asrDriver = cfg.Driver
 	s.sampleRate = cfg.SampleRate
 	s.wg.Add(1)
-	go func() {
+	safego.Go(s.ctx, "voice.asr_pump", func() {
 		defer s.wg.Done()
 		s.asrPump(sess)
-	}()
+	})
 	return nil
 }
 
@@ -720,7 +720,7 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	// 与 WS 用户消息一致：turn 存活独立于连接（appctx），传播 userID。
 	turnCtx := ctxuser.WithUserID(appctx.Ctx(), s.userID)
 	s.wg.Add(1)
-	go func() {
+	safego.Go(turnCtx, "voice.execute_turn", func() {
 		defer s.wg.Done()
 		// C2 L3 判定：final 文本与投机 partial 一致则注入产物复用
 		// （允许有界等待在途投机完成；失配/超时/失败原样返回走常规意图路径）。
@@ -732,7 +732,7 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 		}); err != nil {
 			s.handleTurnFailure(err)
 		}
-	}()
+	})
 }
 
 // archiveUtterance 将终稿语句 PCM 封装为 WAV 并送留档端口（V2-T6）。
@@ -832,10 +832,10 @@ func (s *Session) startEventLoop() {
 	s.unsub = unsub
 	s.mu.Unlock()
 	s.wg.Add(1)
-	go func() {
+	safego.Go(s.ctx, "voice.event_loop", func() {
 		defer s.wg.Done()
 		s.eventLoop(ch)
-	}()
+	})
 }
 
 func (s *Session) eventLoop(ch <-chan biz.Event) {

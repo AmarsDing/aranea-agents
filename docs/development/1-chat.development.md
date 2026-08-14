@@ -24,8 +24,10 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - `internal/server/ws_message_handler.go` — WS 上行消息分发
 - `internal/biz/chat_usecase.go` — Follow-up Queue 编排
 - `internal/biz/event.go` / `event_system.go` — v2 Event 接口 + `system.notice` / `system.run_status`
-- `internal/service/chat.go` — ChatService 薄传输桥
+- `internal/service/chat.go` — ChatService 薄传输桥（`Close` 调用 `PlanExecutor.Stop`）
+- `internal/service/plan_executor.go` — PlanExecutor.StartSubscription / Stop（PlanBoard 事件订阅与 DAG lease 生命周期）
 - `internal/service/chat_orchestrator.go` — ChatOrchestrator 编排核心
+- `internal/service/chat_runtime_tooling.go` — RuntimeTooling 按域分组（Knowledge/Skill/Plugin/Bridges/Sharing/Extensions，AS-COG-01）
 - `internal/agent/stream_consumer.go` — turn 流消费
 - `internal/agent/v2/projector.go` — **唯一**投影器：trpc event → Task/Turn/Step…
 - `internal/agent/v2/sequencer.go` — FIFO 发布；`step.streaming` 仅 WS（flush 时分配会话级单调 `DeltaSeq`，前端按序号去重，替代原内容指纹方案）；终态 WBPF + outbox + dead-letter
@@ -312,6 +314,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 67 | **P-ORCH.4** 确认链路验证（ConfirmActivity RPC 复用 + session 状态流转 + 拒绝降级） | P1 | 🟡 单测覆盖，运行时端到端待验证 |
 | 68 | **P-ORCH.5** Allocate 两阶段并行化（Phase A 并行匹配 + Phase B 串行 factory） | P2 | ✅ 2026-07-18 |
 | 69 | **P-REPORT** 任务执行总结（2026-07-24 重构：移除报告卡片 UI，改为 system-push 触发精灵 LLM 输出 Markdown 总结回复 + 取消守卫 + CAS 防重 + 兜底 notice） | P1 | ✅ 2026-07-24（运行时端到端已验证） |
+| 70 | **P0-5b** 收窄 Chat `RuntimeTooling`：24 平铺字段按域拆为 6 分组（Knowledge/Skill/Plugin/Bridges/Sharing/Extensions），薄 `RuntimeTooling` 字段数 = 6 | P0 | ✅ 2026-08-14 |
 
 ### T8 UI 树形重构（2026-07-01 新增）
 
@@ -1744,3 +1747,24 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 前端：`web/src/components/chat/ReplyBlock.vue`（synthesis 徽章）、`web/src/components/chat/__tests__/StepBlocks.spec.ts`、`web/src/components/chat/v2/GraphTeamNode.vue`（状态行 + 视觉/动效）、`web/src/components/chat/v2/graphTeamNodeUi.ts`（GTN_STATUS_ROW_H + graphTeamNodeStatusText）、`web/src/components/chat/v2/__tests__/GraphTeamNode.spec.ts`（+5 用例）、`web/src/components/chat/v2/MemberSessionDialog.vue`（lg 尺寸）、`web/src/components/chat/v2/MemberSessionPanel.vue`（canInject 终态扩展 + 任务指令块）、`web/src/stores/chat/activityV2Store.ts`（ensureMemberStepsLoaded 同载 tasks）、`web/src/features/chat/composables/useChatSender.ts`（USER_INPUT_HARD_LIMIT_CHARS）、`web/src/pages/ChatPage.vue`（发送前校验）、`web/src/i18n/locales/zh-CN.ts` / `en-US.ts`（synthesisBadge / memberInstruction / inputTooLong / skillImport.keepSeparate*）、`web/src/components/skills/SkillUploadPlaceholder.vue`（keep-separate 按钮 i18n 化，T11）
 
 文档：`docs/development/1-chat.md`（A.4.2 / A.4.4 / §4.4 / R.2 / R.3 FR-9）、`1-chat.design.md`（B.10.17.4-5 / B.10.23.1/3/4/5 / B.10.24）、`1-chat.development.md`（本章节）
+
+---
+
+## P0-5b RuntimeTooling 按域收窄（2026-08-14）
+
+> **范围**：把 `RuntimeTooling` 从 24 平铺字段拆成 6 个具名域分组，满足 AS-COG-01（struct ≤15）。对外工具装配 / 开关 / biz 调用不变。不拆 `TeamOrchestrationDeps`、不拆 `ChatOrchestrator` 其余字段。
+> **设计**：[1-chat.design.md §8.2 RuntimeTooling](./1-chat.design.md)
+
+### 任务清单
+
+| # | 任务 | 状态 |
+|---|------|------|
+| T1 | 按真实共注入/共 nil-check 聚类为 Knowledge/Skill/Plugin/Bridges/Sharing/Extensions | ✅ 2026-08-14 |
+| T2 | 薄 `RuntimeTooling`（6 字段）+ 调用点改为 `rt.Knowledge.xxx`；`provideRuntimeTooling` 同步 | ✅ 2026-08-14 |
+| T3 | 文档同步（design §8.2、本块、65 交叉参考 Chat 卡片） | ✅ 2026-08-14 |
+
+### 改动文件清单
+
+新建：`internal/service/chat_runtime_tooling.go`、`internal/service/chat_runtime_tooling_test.go`
+
+修改：`internal/service/chat_orchestrator.go`、`chat_orch_agent_build.go`、`chat.go`、`a2a_endpoint.go`、`openai_compat.go`、`chat_orchestrator_turn_phases.go`、`chat_orchestrator_turn_pipeline.go`、`chat_orchestrator_turn_metrics.go`、`m71_tools.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`、`docs/development/1-chat.design.md`、`1-chat.development.md`、`65-module-cross-reference-full.md`

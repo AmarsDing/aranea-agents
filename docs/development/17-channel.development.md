@@ -201,8 +201,8 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 - CRUD / 凭据变更：`ChannelService.reloadRuntime()` → fingerprint reconcile（含 `CredentialsRevision`）
 - 定期兜底：启动后每 **2 分钟** `Manager.Reload()`（可配置/关闭）
 - **fingerprint 不含 `UpdatedAt`**（2026-05-22）：避免健康检查 metadata 更新触发双 WebSocket；替换连接器前等待旧实例 `done`
-- **ChannelDeliveryWorker 单飞**（CH-R2，2026-08-14）：`atomic.Bool` CAS 跳过重叠 tick，防止同一 pending 批次被并发处理导致重复发送；单实例假设已标 `TODO(multi-instance)`
-- **ChannelTurnJobSweeper 三职能**（2026-08-14 补全）：① queued 超 30min → timeout；② async_queued 超 2min 未触达 → 按 graph/cron 实际状态恢复（超 24h 强制 timeout）；③ **启动对账**（CH-P1）：进程启动时把 `updated_at < processStart` 的 accepted/running 残留 job 标记 failed（上一进程崩溃遗留，周期扫描不覆盖这两种状态）
+- **ChannelDeliveryWorker 单飞**（CH-R2，2026-08-14）：`atomic.Bool` CAS 跳过重叠 tick；**多实例认领**（CH-D1 / P0-3，2026-08-14）：`ClaimPendingDeliveries` 以 `FOR UPDATE SKIP LOCKED` 把到期行 CAS 为 `sending`，租约 5min 后可回收
+- **ChannelTurnJobSweeper 三职能**（2026-08-14 补全 + P0-3）：① queued 超 30min → timeout；② async_queued 超 2min 未触达 → 按 graph/cron 实际状态恢复（超 24h 强制 timeout）；③ **accepted/running 租约**（取代 CH-P1 `processStart`）：`updated_at` 超 30min → failed，`TransitionIfStale` 保证多副本只改一次
 
 **入站门控（2026-05-22）**：
 
@@ -1459,12 +1459,12 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | CH-N1 | 提示 | 删除死代码 `DeletePeerBindingsBySessionID`（biz/repo/测试 mock 全链） | ✅ | 无调用方 |
 | CH-N2 | 提示 | 删除前端 5 个纯 re-export shim（`channelPlatformFields.ts` / `channelIconUi.ts` / `channelRoutingUtils.ts` / `channelLongTaskDefaults.ts` / `channelJsonUtils.ts`） | ✅ | 全库 grep 确认无引用；build/vitest 验证 |
 | CH-N3 | 提示 | `web/src/features/channels/CHANNEL_PAGE_ISSUES.md` 滞留报告迁移 | ✅ | → `docs/reports/2026-05-29-review-channel-page.md` |
-| CH-P1 | 可选兜底 | sweeper 启动对账：`updated_at < processStart` 的 accepted/running job → failed | ✅ | `cronrunner/jobs/channel_turn_job_sweeper.go` `sweepStartupInterrupted`；进程崩溃残留的非终态 job 此前永无清理路径（周期 sweeper 只扫 queued/async_queued） |
+| CH-P1 | 可选兜底 | sweeper 启动对账：accepted/running 残留 → failed | ✅ | 初版用 `processStart` cutoff（单实例）；P0-3 改为 30min `updated_at` 租约 + `TransitionIfStale`（`sweepStaleRunning`，周期扫描） |
 | CH-P2 | 提示 | 清理 `useChannelsPage` 恒等 `filteredRows`（服务端分页遗留）+ 页面解构 | ✅ | 消除 eslint unused warning |
 
 ### P.2 关键设计
 
-- **startup reconcile 安全性**：`processStart` 在 wire 构造期记录（早于 ready gate 开放流量），新进程自建 job 的 `updated_at` 恒 ≥ processStart，过滤条件天然防误杀；Start 在 `goAfterReady`（`safego.Go` 包裹）内同步执行一次，错误仅降级不阻塞启动。单实例假设与 delivery worker 一致（已标 `TODO(multi-instance)`）。
+- **running 租约安全性**（P0-3）：accepted/running 以 `updated_at` 超过 30min 为 cutoff（`sweepStaleRunning`），不再用 `processStart`。重启副本不会失败 peer 仍在跑的 job；死进程残留由任一副本在租约到期后 `TransitionIfStale` 回收。
 - **状态机规则归属**：async watcher 与 `CancelRunningForSession` 对 async_queued 状态发 plain `complete`/`fail`/`cancel` 事件（而非 `async_*` 事件），状态机按实际发射事件补规则，不改调用方语义。
 - **测试修复**：`TestChannelDeliveryWorker_SingleFlightSkipsOverlap` 原阻塞实现（processor 首次调用自行 close release）存在时序竞态，改为测试控制释放时机。
 
@@ -1487,7 +1487,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 
 | # | 项 | 说明 |
 |---|----|------|
-| CH-D1 | multi-instance 认领 | delivery worker / sweeper 单飞与 startup reconcile 均假设单实例；多实例需 `SKIP LOCKED` 原子认领或 lease（代码内 TODO 已标） |
+| CH-D1 | multi-instance 认领 | ✅ delivery `ClaimPendingDeliveries`（SKIP LOCKED + `sending` 租约）与 sweeper `TransitionIfStale`（running 30min 租约）；P0-3 2026-08-14 |
 | CH-D2 | sweeper K7 日志 | `ChannelTurnJobSweeper.Start` 启动/退出各缺一条进程日志（既有代码，本轮未改） |
 | CH-D3 | HooksPage / WebhooksPage 同款 `filteredRows` 未用解构 | 与 CH-P2 同模式，属 hook/webhook 模块范围，未顺手改 |
 
@@ -1516,6 +1516,7 @@ go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/
 | 1.17 | 2026-06-17 | 三件套内容边界重组：移除子模块「Channel 全量迁移计划」（W0–W6 任务已全部完成，进度汇总并入 §2 现状评估与 §4 路线图）；移除子模块「Channel Chat 外部参考借鉴手册」（独立文档 `17-channel-external-reference-playbook.md`，任务卡 CH-BOR-* 已在 §13 Phase G 落地）；接收从 `.design.md` 迁移的「当前实现状态」与「新增平台优先级」（已并入 §2 与 §16） |
 | 1.18 | 2026-08-12 | §17.10 Phase O：微信个人号 iLink 渠道接入（O-01–O-19 ✅）：扫码登录 RPC + 长轮询 starter + 群聊门控 + context_token 链路 + Markdown 降级 + 媒体/Typing 原语；平台矩阵 13→14；§2/§3 同步 |
 | 1.19 | 2026-08-14 | §17.11 Phase P 深度评审整改：CH-B1/B2 阻断修复（状态机 async_queued 终态规则 + 终态持久化 WithoutCancel）、CH-R1–R4（退避稳定阈值/投递单飞/解密 fail-closed/nil map）、CH-N1–N3 死代码与 shim 清理、CH-P1 sweeper 启动对账；§6 Runtime 运维同步 |
+| 1.20 | 2026-08-14 | P0-3：闭合 CH-D1 多实例认领（delivery SKIP LOCKED + TurnJob `TransitionIfStale` 租约） |
 
 
 ---

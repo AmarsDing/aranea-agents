@@ -64,7 +64,7 @@ foreach ($p in 8810, 9910, 8812) {
        Where-Object { $_.OwningProcess -ne 0 } | Select-Object -First 1
   if ($c) {
     $proc = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
-    if ($proc.ProcessName -match 'com\.docker|vpnkit') { continue }   # Docker 端口映射代理
+    if ($proc.ProcessName -match 'com\.docker|vpnkit|wslrelay') { continue }   # Docker 端口映射代理（wslrelay = WSL2 后端的 localhost 转发）
     throw "端口 $p 被占用：$($proc.ProcessName)(PID $($c.OwningProcess))。若是本地 aranea-server.exe，请先停止（切换）"
   }
 }

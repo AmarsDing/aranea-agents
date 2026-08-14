@@ -357,6 +357,15 @@ export type SkillImportJob = {
   message: string | undefined;
 };
 
+export type ImportSkillZipRequest = {
+  // ZIP bytes. HTTP JSON uses proto3 base64; multipart/form-data field "file"
+  // is accepted by the Kratos RequestDecoder (same URL).
+  //
+  // Behaviors: REQUIRED
+  file: string | undefined;
+  filename: string | undefined;
+};
+
 export type ImportSkillZipResponse = {
   jobId: string | undefined;
 };
@@ -504,11 +513,8 @@ export interface SkillService {
   UpdateSkillFile(request: UpdateSkillFileRequest): Promise<SkillFileContent>;
   DeleteSkillFile(request: DeleteSkillFileRequest): Promise<wellKnownEmpty>;
   ListSkillRuns(request: ListSkillRunsRequest): Promise<ListSkillRunsResponse>;
-  // ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-  // The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-  // because proto cannot express multipart uploads. This RPC declaration exists solely
-  // to include the endpoint in the generated OpenAPI spec.
-  ImportSkillZip(request: wellKnownEmpty): Promise<ImportSkillZipResponse>;
+  // ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+  ImportSkillZip(request: ImportSkillZipRequest): Promise<ImportSkillZipResponse>;
   GetSkillImportJob(request: GetSkillImportJobRequest): Promise<SkillImportJob>;
   ApplySkillImport(request: ApplySkillImportRequest): Promise<SkillImportApplyResult>;
   RefineSkillImportConflict(request: RefineSkillImportConflictRequest): Promise<SkillRefineResult>;

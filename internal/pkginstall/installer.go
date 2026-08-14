@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -240,7 +238,7 @@ func (ins *Installer) installMCPServer(client *http.Client, spec MCPServerSpec) 
 	return StepResult{Resource: resource, Action: "created"}
 }
 
-// installSkill uploads a skill zip via multipart to POST /v1/skills/import,
+// installSkill uploads a skill zip via POST /v1/skills/import (proto JSON),
 // then drives the two-phase import (poll job → apply decisions) to completion.
 func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec SkillSpec) StepResult {
 	resource := "skill:" + spec.URL
@@ -286,69 +284,37 @@ func (ins *Installer) installSkill(client *http.Client, pkgDir string, spec Skil
 		return StepResult{Resource: resource, Action: "error", Message: "skill spec requires url or path"}
 	}
 
-	f, err := os.Open(zipPath)
+	data, err := os.ReadFile(zipPath)
 	if err != nil {
 		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
 	}
-	defer f.Close()
-	if st, err := f.Stat(); err == nil {
-		const maxSkillZipBytes = int64(100 << 20)
-		if st.Size() > maxSkillZipBytes {
-			return StepResult{Resource: resource, Action: "error", Message: "skill zip exceeds 100 MB limit"}
-		}
+	const maxSkillZipBytes = 100 << 20
+	if len(data) > maxSkillZipBytes {
+		return StepResult{Resource: resource, Action: "error", Message: "skill zip exceeds 100 MB limit"}
 	}
 
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	fw, err := w.CreateFormFile("file", filepath.Base(zipPath))
+	body, status, err := ins.doJSON(client, http.MethodPost, "/v1/skills/import", map[string]any{
+		"file":     data,
+		"filename": filepath.Base(zipPath),
+	})
 	if err != nil {
 		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
 	}
-	if _, err := io.Copy(fw, f); err != nil {
-		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
-	}
-	_ = w.WriteField("source", "cli_url")
-	_ = w.WriteField("source_url", spec.URL)
-	if spec.Ref != "" {
-		_ = w.WriteField("source_ref", spec.Ref)
-	}
-	if spec.Subpath != "" {
-		_ = w.WriteField("source_subpath", spec.Subpath)
-	}
-	if err := w.Close(); err != nil {
-		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
-	}
-
-	req, err := http.NewRequest(http.MethodPost, ins.APIURL+"/v1/skills/import", &buf)
-	if err != nil {
-		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
-	}
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	if ins.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+ins.Token)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return StepResult{Resource: resource, Action: "error", Message: err.Error()}
-	}
-	defer resp.Body.Close()
-	var respBuf bytes.Buffer
-	_, _ = respBuf.ReadFrom(resp.Body)
-	if resp.StatusCode >= 300 {
+	if status >= 300 {
 		return StepResult{Resource: resource, Action: "error", Status: SkillStatusFailed,
-			Message: fmt.Sprintf("upload skill: HTTP %d: %s", resp.StatusCode, errorBodyMessage(respBuf.Bytes()))}
+			Message: fmt.Sprintf("upload skill: HTTP %d: %s", status, errorBodyMessage(body))}
 	}
 	// Upload only creates an import job; installation finishes via apply.
 	var upload struct {
 		JobID string `json:"jobId"`
 	}
-	normalized, err := normalizeJSONKeys(respBuf.Bytes())
+	normalized, err := normalizeJSONKeys(body)
 	if err == nil {
 		err = json.Unmarshal(normalized, &upload)
 	}
 	if err != nil || upload.JobID == "" {
 		return StepResult{Resource: resource, Action: "error", Status: SkillStatusFailed,
-			Message: fmt.Sprintf("upload skill: cannot parse job_id from response: %s", errorBodyMessage(respBuf.Bytes()))}
+			Message: fmt.Sprintf("upload skill: cannot parse job_id from response: %s", errorBodyMessage(body))}
 	}
 	return ins.completeSkillImport(client, resource, spec.Decision, upload.JobID)
 }

@@ -91,14 +91,9 @@ export function isTeamRuntimeActivityEvent(ev: ActivityEvent): boolean {
 }
 
 /**
- * Map a WS {@link ActivityEvent} to a {@link TeamRunEvent}; returns `null` for
- * events that are not part of the team-run lifecycle.
- *
- * Team events arrive as `activity_event` payloads on the WS "chat" channel
- * with `activity.kind === 'team_stage'` and a `activity.stage` value drawn
- * from {@link TEAM_RUNTIME_ACTIVITY_STAGES}. The legacy `intent_pass` /
- * `transfer` notices and `runner_completion` session events are also mapped
- * here so existing TeamRunEvent consumers keep working.
+ * Map a synthetic {@link ActivityEvent} (from `activityEventFromSystemNotice`)
+ * to a {@link TeamRunEvent}; returns `null` for events that are not part of
+ * the team-run lifecycle. WS subscription itself is typed `v2_event`.
  */
 export function teamRunEventFromActivityEvent(ev: ActivityEvent, defaultTeamID = ''): TeamRunEvent | null {
   const activity = ev.activity;

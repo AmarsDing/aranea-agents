@@ -208,7 +208,7 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:              r.td.Persist.Memory.Available(),
 			MemoryService:          r.td.Persist.Memory.TRPC,
-			MemoryAdmin:            r.td.Persist.Memory.Admin,
+			MemoryLayerPorts:       r.td.Persist.Memory.MemoryLayerPorts,
 			MemoryActionLogWriter:  r.td.Persist.Memory.ActionLogWriter,
 			ManualCompressor:       biz.ManualCompressorFromNative(r.td.Compress),
 			MemoryL2Recall:         r.td.Persist.Memory.L2Recall,

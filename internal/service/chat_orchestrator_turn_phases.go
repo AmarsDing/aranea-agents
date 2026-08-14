@@ -460,17 +460,17 @@ func (o *ChatOrchestrator) prepareRunContext(
 		runCtx = chatagent.WithVoiceFastPath(runCtx)
 	}
 	runCtx = o.injectA2AContext(runCtx, ag.ID)
-	if o.rt().KnowledgeRetriever != nil {
-		runCtx = knowledgetool.WithRetriever(runCtx, o.rt().KnowledgeRetriever)
+	if o.rt().Knowledge.Retriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, o.rt().Knowledge.Retriever)
 	}
-	if o.rt().KnowledgeRouter != nil {
-		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt().KnowledgeRouter)
+	if o.rt().Knowledge.Router != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt().Knowledge.Router)
 	}
-	if o.rt().KnowledgeFederatedRetriever != nil {
-		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt().KnowledgeFederatedRetriever)
+	if o.rt().Knowledge.FederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt().Knowledge.FederatedRetriever)
 	}
-	if o.rt().KnowledgeEvaluator != nil {
-		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt().KnowledgeEvaluator)
+	if o.rt().Knowledge.Evaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt().Knowledge.Evaluator)
 	}
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
@@ -925,10 +925,10 @@ func (o *ChatOrchestrator) buildTurnRunner(
 
 	var plugins []trpcplugin.Plugin
 	wsID := workspace.IDFromContext(ctx)
-	if o.rt().PluginManager != nil {
-		plugins = o.rt().PluginManager.RunnerPluginsForAgent(ag.ID, wsID)
-	} else if o.rt().PluginRT != nil {
-		plugins = o.rt().PluginRT.PluginsForAgent(ag.ID, wsID)
+	if o.rt().Plugin.Manager != nil {
+		plugins = o.rt().Plugin.Manager.RunnerPluginsForAgent(ag.ID, wsID)
+	} else if o.rt().Plugin.RT != nil {
+		plugins = o.rt().Plugin.RT.PluginsForAgent(ag.ID, wsID)
 	}
 	emitter.LogDone("chat.plugins_load", "插件已加载", event.P("plugin_count", len(plugins)))
 	deps.Plugins = plugins

@@ -201,8 +201,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryL2Recaller := provideMemoryL2Recall(dataData, memoryUsecase, loggatewayLogger)
 	memoryL3Recaller := provideMemoryL3Recall(dataData, memoryUsecase, loggatewayLogger)
 	memoryCompositeRecaller := provideMemoryCompositeRecall(dataData, memoryService, memoryL2Recaller, memoryL3Recaller, memoryUsecase, loggatewayLogger)
-	sessionAdminStore := provideSessionAdminStore(dataData)
-	memoryAdminDeps := provideMemoryAdminDeps(sessionAdminStore)
+	memoryAdminDeps := provideMemoryAdminDeps(dataData)
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
 	l4Reconsolidator := provideReconsolidationService(dataData, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
@@ -305,12 +304,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionRuntime := session2.NewRuntime(sessionService, loggatewayLogger)
 	compressReadDeps := session2.ProvideCompressReadDepsAdapter(sessionRepo, activityLister)
 	compressWriteDeps := session2.ProvideCompressWriteDepsAdapter(sessionRepo)
-	memoryResync := provideSessionMemoryResync(persistenceSet)
+	memoryResync := provideSessionMemoryResync(memoryAdminDeps)
 	client := session2.NewCompressHTTPClient()
 	llmService := compress.NewLLMService(llmProviderModelUsecase, client, loggatewayLogger)
 	compressor := service.ProvideCompressor(llmService, loggatewayLogger)
 	memoryFactReader := data.NewMemoryFactReader(dataData)
-	l1AdminReader := provideL1AdminReader(sessionAdminStore)
+	l1AdminReader := provideL1AdminReader(memoryAdminDeps)
 	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, loggatewayLogger)
 	sessionCompressor := session2.NewCompressor(compressorConfig)
 	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
@@ -507,7 +506,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	monitorService := service.NewMonitorService(monitorUsecase, processLogEnabledProvider, flowLogService, codeExecutorService, diagBundleGenerator, selfHealUsecase, selfHealObserver, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
 	l4CascadeUsecase := provideL4CascadeUsecase(dataData, memoryFactIndexSyncer, loggatewayLogger)
 	memoryWorkerStats := biz.NewMemoryWorkerStats()
-	serviceMemoryService := provideMemoryService(persistenceSet, memoryUsecase, memoryFactIndexSyncer, l4CascadeUsecase, systemSettingUsecase, memoryJobDeadLetterRepo, memoryJobQueue, memoryJobQueue, memoryWorkerStats, dataData, loggatewayLogger)
+	serviceMemoryService := provideMemoryService(persistenceSet, l4CascadeUsecase, systemSettingUsecase, memoryJobDeadLetterRepo, memoryJobQueue, memoryJobQueue, memoryWorkerStats, dataData, loggatewayLogger)
 	publicBaseURLInput := provideA2APublicBaseInput(confServer)
 	publicBaseURLStore := providePublicBaseURLStore(publicBaseURLInput, systemSettingRepo, loggatewayLogger)
 	a2AEndpointBuilder := service.NewA2AEndpointBuilder(chatService)
@@ -657,7 +656,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, traceUsageRepo, loggatewayLogger)
 	memoryEpisodeDecayer := data.NewMemoryEpisodeDecayerAdapter(dataData)
 	memoryL2DecayWorker := provideMemoryL2DecayWorker(memoryEpisodeDecayer, agentUsecase, loggatewayLogger)
-	memoryL1ArchiveWorker := provideMemoryL1ArchiveWorker(sessionAdminStore, agentUsecase, flowLogWriter, loggatewayLogger)
+	memoryL1ArchiveWorker := provideMemoryL1ArchiveWorker(memoryAdminDeps, agentUsecase, flowLogWriter, loggatewayLogger)
 	channelTurnJobSweeper := provideChannelTurnJobSweeper(channelTurnJobRepo, graphUsecase, cronTriggerGateway, loggatewayLogger)
 	memoryFactDecayer := data.NewMemoryFactDecayerAdapter(dataData)
 	memoryL3DecayWorker := provideMemoryL3DecayWorker(memoryFactDecayer, agentUsecase, loggatewayLogger)
@@ -1107,29 +1106,41 @@ func provideRuntimeTooling(
 	codingBridgeSvc codingbridge.BridgeService,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
-		PluginRT:                    pluginRT,
-		PluginManager:               pluginMgr,
-		SkillDBRepo:                 skillDBRepo,
-		SkillHealth:                 skillHealth,
-		KnowledgeRetriever:          knowledgeRetriever,
-		KnowledgeRouter:             knowledgeRouter,
-		KnowledgeFederatedRetriever: knowledgeFederatedRetriever,
-		KnowledgeEvaluator:          knowledgeEvaluator,
-		KnowledgeUC:                 knowledgeUC,
-		CodeExecFactory:             codeExecFactory,
-		KanbanBridge:                kanbanBridge,
-		ComputerUseUC:               computerUseUC,
-		DebugRecorder:               debugRecorder,
-		OrganizationUC:              orgUC,
-		ToolResultGate:              toolResultGate,
-		OutboundRouter:              outboundRouter,
-		SubAgentService:             subAgentSvc,
-		ParallelToolExecutor:        parallelExec,
-		ResourceAccess:              resourceAccess,
-		DeptMailbox:                 deptMailbox,
-		SessionSearch:               sessionSearch,
-		ClientBridge:                clientBridge,
-		CodingBridgeSvc:             codingBridgeSvc,
+		Knowledge: service.KnowledgeTools{
+			Retriever:          knowledgeRetriever,
+			Router:             knowledgeRouter,
+			FederatedRetriever: knowledgeFederatedRetriever,
+			Evaluator:          knowledgeEvaluator,
+			Usecase:            knowledgeUC,
+		},
+		Skill: service.SkillRuntime{
+			DBRepo:          skillDBRepo,
+			Health:          skillHealth,
+			CodeExecFactory: codeExecFactory,
+		},
+		Plugin: service.PluginRuntime{
+			RT:      pluginRT,
+			Manager: pluginMgr,
+		},
+		Bridges: service.ToolBridges{
+			Kanban:      kanbanBridge,
+			ComputerUse: computerUseUC,
+			Coding:      codingBridgeSvc,
+			Client:      clientBridge,
+		},
+		Sharing: service.WorkspaceSharing{
+			ResourceAccess: resourceAccess,
+			DeptMailbox:    deptMailbox,
+			SessionSearch:  sessionSearch,
+		},
+		Extensions: service.TurnExtensions{
+			Organization:         orgUC,
+			ToolResultGate:       toolResultGate,
+			OutboundRouter:       outboundRouter,
+			SubAgentService:      subAgentSvc,
+			DebugRecorder:        debugRecorder,
+			ParallelToolExecutor: parallelExec,
+		},
 	}
 }
 
@@ -1520,7 +1531,7 @@ func provideSkillCatalogPusher(svc *service.ChatService) server.SkillCatalogPush
 	return svc
 }
 
-func provideMemoryService(persist runtime.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue trpcmem.AutoMemoryQueue, queueStats *trpcmem.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, lg loggateway.Logger) *service.MemoryService {
+func provideMemoryService(persist runtime.PersistenceSet, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue trpcmem.AutoMemoryQueue, queueStats *trpcmem.MemoryJobQueue, workerStats *biz.MemoryWorkerStats, d *data.Data, lg loggateway.Logger) *service.MemoryService {
 	enqueue := func(ctx context.Context, id2 int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id2, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
 			queue.Enqueue(trpcmem.AutoMemoryJobRequest{
@@ -1532,10 +1543,8 @@ func provideMemoryService(persist runtime.PersistenceSet, vec *biz.MemoryUsecase
 			})
 		})
 	}
-	memoryAdminUC := biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
-	memoryAdminUC.SetMemoryCenterReaders(data.NewL2EpisodeAdminReader(d, d.VectorStore()), data.NewL4RelationAdminReader(d))
 	return service.NewMemoryService(service.MemoryServiceConfig{
-		Admin:               memoryAdminUC,
+		Admin:               persist.Memory.AdminUsecase,
 		Cascade:             cascade,
 		SysUC:               sysUC,
 		DeadLetterRepo:      deadLetterRepo,
@@ -1585,11 +1594,14 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 	})
 }
 
-func provideSessionMemoryResync(persist runtime.PersistenceSet) session2.MemoryResync {
-	return persist.Memory.Admin
+func provideSessionMemoryResync(admin biz.MemoryAdminDeps) session2.MemoryResync {
+	if admin == nil {
+		return nil
+	}
+	return admin
 }
 
-func provideL1AdminReader(admin biz.SessionAdminStore) biz.L1AdminReader {
+func provideL1AdminReader(admin biz.MemoryAdminDeps) biz.L1AdminReader {
 	if admin == nil {
 		return nil
 	}
@@ -1667,7 +1679,7 @@ func provideGraphBuildDeps(
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
 			MemoryService:           persist.Memory.TRPC,
-			MemoryAdmin:             persist.Memory.Admin,
+			MemoryLayerPorts:        persist.Memory.MemoryLayerPorts,
 			MemoryActionLogWriter:   persist.Memory.ActionLogWriter,
 			MemoryL2Recall:          persist.Memory.L2Recall,
 			MemoryL3Recall:          persist.Memory.L3Recall,
@@ -1748,7 +1760,7 @@ func provideTRPCBuilderDeps(
 		TRPCMemoryKnowledgeDeps: agent.TRPCMemoryKnowledgeDeps{
 			HasMemory:               persist.Memory.Available(),
 			MemoryService:           persist.Memory.TRPC,
-			MemoryAdmin:             persist.Memory.Admin,
+			MemoryLayerPorts:        persist.Memory.MemoryLayerPorts,
 			MemoryActionLogWriter:   persist.Memory.ActionLogWriter,
 			MemoryL2Recall:          persist.Memory.L2Recall,
 			MemoryL3Recall:          persist.Memory.L3Recall,
@@ -2032,21 +2044,15 @@ func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.Ag
 	return jobs.NewMemoryL2DecayWorker(0, decayer, agents, lg)
 }
 
-func provideSessionAdminStore(d *data.Data) biz.SessionAdminStore {
+func provideMemoryAdminDeps(d *data.Data) biz.MemoryAdminDeps {
 	return data.NewSessionAdminStoreAdapter(d, d.VectorStore())
 }
 
-// provideMemoryAdminDeps extracts the narrower MemoryAdminDeps interface from SessionAdminStore.
-// SessionAdminStore embeds MemoryAdminDeps, so the cast is always safe.
-func provideMemoryAdminDeps(admin biz.SessionAdminStore) biz.MemoryAdminDeps {
-	return admin
-}
-
-func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, flowLog biz.FlowLogWriter, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
+func provideMemoryL1ArchiveWorker(admin biz.MemoryAdminDeps, agents *biz.AgentUsecase, flowLog biz.FlowLogWriter, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
 	if jobs.MemoryL1ArchiveDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg, flowLog)
+	return jobs.NewMemoryL1ArchiveWorker(0, admin, admin, admin, agents, lg, flowLog)
 }
 
 func provideChannelTurnJobSweeper(

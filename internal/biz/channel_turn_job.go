@@ -78,6 +78,10 @@ type ChannelTurnJobRepo interface {
 	Create(ctx context.Context, job ChannelTurnJob) (string, error)
 	UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error
 	UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error
+	// TransitionIfStale atomically moves a job from fromStatus to toStatus only
+	// when updated_at is still older than staleBefore. Returns claimed=false when
+	// another instance already won the row or the job was refreshed.
+	TransitionIfStale(ctx context.Context, id, fromStatus, toStatus, errMsg, previewMsgID, contentPreview, staleBefore string) (claimed bool, err error)
 }
 
 // ChannelTurnJobListQuery filters jobs for chat background panel (M55 CC-D-01).

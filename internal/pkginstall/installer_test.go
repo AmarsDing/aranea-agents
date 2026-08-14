@@ -2,6 +2,7 @@ package pkginstall
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,24 +26,26 @@ func TestInstallSkillFromURLSubpathZipsTempPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/skills/import":
-			mr, err := r.MultipartReader()
-			if err != nil {
-				t.Errorf("MultipartReader() error = %v", err)
-				http.Error(w, "bad multipart", http.StatusBadRequest)
+			if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", ct)
+			}
+			var got struct {
+				File     []byte `json:"file"`
+				Filename string `json:"filename"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+				t.Errorf("decode body: %v", err)
+				http.Error(w, "bad json", http.StatusBadRequest)
 				return
 			}
-			for {
-				part, err := mr.NextPart()
-				if err != nil {
-					break
-				}
-				if part.FormName() == "file" && part.FileName() != "" {
-					sawFile = true
-				}
+			if len(got.File) == 0 || got.Filename == "" {
+				t.Errorf("missing file payload: name=%q size=%d", got.Filename, len(got.File))
+			} else {
+				sawFile = true
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"job_id":"j1"}`))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jobId":"j1"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/skills/import/j1":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"jobId":"j1","status":"completed","validationStatus":"pass","candidates":[{"candidateId":"c1","name":"S","slug":"s","validationStatus":"pass"}],"conflictGroups":[]}`))

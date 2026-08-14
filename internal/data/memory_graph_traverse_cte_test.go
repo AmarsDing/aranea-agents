@@ -8,9 +8,9 @@ import (
 	"aranea-agents/internal/data"
 )
 
-// asTraverser casts the SessionAdminStore to biz.L4GraphTraverser. The
+// asTraverser casts the L0–L4 adapter to biz.L4GraphTraverser. The
 // underlying *l4EntityRepo implements both interfaces.
-func asTraverser(t *testing.T, store biz.SessionAdminStore) biz.L4GraphTraverser {
+func asTraverser(t *testing.T, store biz.L4EntityStore) biz.L4GraphTraverser {
 	t.Helper()
 	tr, ok := store.(biz.L4GraphTraverser)
 	if !ok {

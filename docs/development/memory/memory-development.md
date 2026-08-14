@@ -27,7 +27,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 ### 1.2 主从关系（已定稿）
 
 - **Runner**：`MemorySet.TRPC` = `memtrpc.NewMemoryService(L3FactReader, L3FactWriter, …)`
-- **治理**：`MemorySet.Admin` = `SessionAdminStore`（L0–L4 子接口组合；细粒度端口渐进采用）
+- **治理**：`MemorySet` 嵌入 `biz.MemoryLayerPorts`（L0–L4 窄接口 ISP）；`AdminUsecase` = `MemoryAdminUsecase`（`MemoryAdminDeps`）。`SessionAdminStore` 已退出生产路径（仅测试/适配器编译期检查保留 Deprecated 类型）。
 - **Prompt 注入**：`MemorySet.L2Recall` / `L3Recall` / `CompositeRecall` = recall usecases
 - **L3 索引**：`data.NewMemoryFactIndexSync` → pgvector（可选）+ `memory_facts.embedding_blob`
 - **可选 pgvector**：`MemoryUsecase`；trpc Search 可选轨，**非** prompt 主路径
@@ -81,7 +81,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | LLM 提取管道 | ✅ MVP（LLM→启发式链 + fallback 指标） |
 | AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron + Wire Sink 连通 |
 | Auto-memory upsert 失败重试 | ✅ 任一 fact/episode upsert 失败 → 事务失败 → job 可重试/死信（`memory_maintenance_adapter`） |
-| SessionAdminStore 子接口拆分 | 🟡 L0–L4 接口已拆；typed RecallHit 渐进 |
+| SessionAdminStore 退出生产路径 | ✅ Wire / MemorySet / agent builder 注入 L0–L4 窄接口；聚合类型仅测试保留 |
 | Memory Center 前端 | ✅ Cascade Tab + Knowledge/Session/Debug/WorkerStatus/DeadLetter/PlatformSettings 已接入；Graph Tab 需 feature flag；Store action 全覆盖（31 RPC → Store 封装）；前后端契约对齐（types.ts + api.ts wire key = proto snake_case） |
 | 存储三写收敛 | ✅ facts 权威 + legacy backfill + pgvector 索引 |
 | L0 压缩优化（阶段二/三） | ❌ 记忆演化 + Agent 自主压缩 |

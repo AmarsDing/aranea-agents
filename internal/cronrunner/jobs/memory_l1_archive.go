@@ -70,10 +70,10 @@ type MemoryL1ArchiveWorker struct {
 }
 
 // NewMemoryL1ArchiveWorker creates a worker that archives idle L1 tasks and
-// cleans up expired fields. The store must implement L1IdleTaskReader,
-// L1TaskWriter, and L1ExpiredFieldCleaner (SessionAdminStore satisfies all
-// three). flowLog is the optional dead-letter alarm channel (nil-safe).
-func NewMemoryL1ArchiveWorker(interval time.Duration, store biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger, flowLog biz.FlowLogWriter) *MemoryL1ArchiveWorker {
+// cleans up expired fields. store/writer/cleaner are the three L1 ports the
+// worker actually uses (ISP). flowLog is the optional dead-letter alarm
+// channel (nil-safe).
+func NewMemoryL1ArchiveWorker(interval time.Duration, store biz.L1IdleTaskReader, writer biz.L1TaskWriter, cleaner biz.L1ExpiredFieldCleaner, agents *biz.AgentUsecase, lg loggateway.Logger, flowLog biz.FlowLogWriter) *MemoryL1ArchiveWorker {
 	if interval <= 0 {
 		interval = memoryL1ArchiveDefaultInterval
 	}
@@ -83,8 +83,8 @@ func NewMemoryL1ArchiveWorker(interval time.Duration, store biz.SessionAdminStor
 	return &MemoryL1ArchiveWorker{
 		interval: interval,
 		store:    store,
-		writer:   store,
-		cleaner:  store,
+		writer:   writer,
+		cleaner:  cleaner,
 		agents:   agents,
 		flowLog:  flowLog,
 		lg:       lg,

@@ -21,8 +21,9 @@ import type {
 } from './types';
 
 export type { CodeExecutorCapability } from './types';
-import { useEnvelopeStream } from '../../realtime/useEnvelopeStream';
 import { createMonitorStream } from '../../realtime/useMonitorStream';
+import { createV2EventStream } from '../../realtime/useV2EventStream';
+import type { WsSessionStream } from '../../realtime/createWsSessionStream';
 import type { MonitorEvent } from '../../realtime/monitorEvent';
 import { flowSeverityToLevel, monitorLogLineFromFlowEvent } from './flow';
 import { normalizeLogLevel } from './utils';
@@ -187,7 +188,7 @@ export async function getMonitorLogs(): Promise<MonitorLogSnapshot> {
 
 type MonitorWsSub = {
   close: () => void;
-  connected: ReturnType<typeof useEnvelopeStream>['connected'];
+  connected: WsSessionStream['connected'];
   enableLog?: (enabled: boolean) => void;
 };
 
@@ -263,7 +264,7 @@ export function subscribeMonitorRuntimeEventsWs(
   onConnected?: () => void,
   onDisconnected?: () => void,
 ): MonitorWsSub {
-  const stream = useEnvelopeStream({
+  const stream = createV2EventStream({
     sessionId: resolveMonitorSessionId(sessionId),
     channels: ['monitor', 'team', 'system'],
     autoConnect: false,

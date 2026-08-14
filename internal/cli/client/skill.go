@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 
@@ -143,39 +142,11 @@ func (c *Client) DeleteSkillFile(ctx context.Context, id, path string) error {
 	return c.Do(ctx, http.MethodPost, "/v1/skills/"+id+"/files:delete", req, nil)
 }
 
-// ImportSkillZip calls POST /v1/skills/import with a multipart/form-data ZIP
-// upload (form field "file"). The endpoint is registered manually on the
-// server (not proto codegen) and responds with plain JSON {"job_id": "..."}.
+// ImportSkillZip calls POST /v1/skills/import with proto JSON (ZIP bytes + filename).
 func (c *Client) ImportSkillZip(ctx context.Context, filename string, data []byte) (*skillv1.ImportSkillZipResponse, error) {
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	part, err := mw.CreateFormFile("file", filename)
-	if err != nil {
-		return nil, fmt.Errorf("build multipart: %w", err)
-	}
-	if _, err := part.Write(data); err != nil {
-		return nil, fmt.Errorf("write multipart: %w", err)
-	}
-	if err := mw.Close(); err != nil {
-		return nil, fmt.Errorf("close multipart: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/v1/skills/import", &buf)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.UA)
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
-	httpResp, err := c.Doer.Do(req)
-	if err != nil {
-		return nil, wrapNetErr(err)
-	}
-	defer httpResp.Body.Close()
+	req := &skillv1.ImportSkillZipRequest{File: data, Filename: filename}
 	resp := &skillv1.ImportSkillZipResponse{}
-	if err := decode(httpResp, resp); err != nil {
+	if err := c.Do(ctx, http.MethodPost, "/v1/skills/import", req, resp); err != nil {
 		return nil, err
 	}
 	return resp, nil

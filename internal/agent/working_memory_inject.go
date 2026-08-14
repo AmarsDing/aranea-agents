@@ -16,7 +16,7 @@ import (
 // L1TaskWriter, L1FieldWriter, L1AdminReader, sessionID, and agentID into the tool execution
 // context for working_memory.* tools.
 func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
-	if deps.MemoryAdmin == nil {
+	if !deps.HasWorkingMemory() {
 		return nil
 	}
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
@@ -41,16 +41,14 @@ func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callb
 		if sessID == "" || agentID == "" {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
-		// Inject L1TaskWriter, L1FieldWriter and L1AdminReader into context
-		ctx = working_memory.WithL1TaskWriter(ctx, deps.MemoryAdmin)
-		ctx = working_memory.WithL1FieldWriter(ctx, deps.MemoryAdmin)
-		ctx = working_memory.WithL1Reader(ctx, deps.MemoryAdmin)
+		ctx = working_memory.WithL1TaskWriter(ctx, deps.L1Tasks)
+		ctx = working_memory.WithL1FieldWriter(ctx, deps.L1Fields)
+		ctx = working_memory.WithL1Reader(ctx, deps.L1Reader)
 		ctx = working_memory.WithSessionID(ctx, sessID)
 		ctx = working_memory.WithAgentID(ctx, agentID)
 		ctx = working_memory.WithL1HistoryEnabled(ctx, ag.Settings != nil && ag.Settings.L1HistoryEnabled)
-		// Inject L1SchemaReader and L1DefaultSchemaID for schema validation
-		if schemaReader, ok := deps.MemoryAdmin.(biz.L1SchemaReader); ok {
-			ctx = working_memory.WithL1SchemaReader(ctx, schemaReader)
+		if deps.L1Schema != nil {
+			ctx = working_memory.WithL1SchemaReader(ctx, deps.L1Schema)
 		}
 		if ag.Settings != nil && ag.Settings.L1DefaultSchemaID != "" {
 			ctx = working_memory.WithL1DefaultSchemaID(ctx, ag.Settings.L1DefaultSchemaID)

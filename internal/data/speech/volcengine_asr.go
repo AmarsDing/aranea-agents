@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -99,7 +100,7 @@ func (p *volcASRProvider) Open(ctx context.Context, sc biz.ASRSessionConfig) (bi
 		_ = conn.Close()
 		return nil, err
 	}
-	go s.readPump()
+	safego.Go(ctx, "volc.asr.read_pump", s.readPump)
 	return s, nil
 }
 
@@ -117,10 +118,10 @@ func (p *volcASRProvider) waitServerAck(ctx context.Context, conn wsConn) error 
 		timeout = defaultASRAckTimeout
 	}
 	ch := make(chan ackResult, 1)
-	go func() {
+	safego.Go(ctx, "volc.asr.wait_ack", func() {
 		f, err := readFirstServerFrame(conn)
 		ch <- ackResult{f, err}
-	}()
+	})
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {

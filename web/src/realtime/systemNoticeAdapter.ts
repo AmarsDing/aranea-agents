@@ -1,8 +1,7 @@
 /**
- * Reverse-map v2 system.notice → synthetic ActivityEvent for non-chat
- * consumers that still speak the ActivityEvent contract (graph / orchestration /
- * knowledge / background jobs). Backend ActivityEventToSystemNotice is the
- * forward map (internal/graph/trpc/event_bridge.go).
+ * Reverse-map v2 system.notice → synthetic ActivityEvent for in-process
+ * mappers that still speak the ActivityEvent contract (e.g. team-run
+ * observatory). Not used by WS transport.
  */
 import type { Activity, ActivityEvent, ActivityEventType, ActivityKind, ActivityStatus } from './activityEvent';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../features/chat/v2Types';

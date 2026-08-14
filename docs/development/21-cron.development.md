@@ -49,6 +49,8 @@ Cron 定时任务：支持 Agent/Team/ModelRegistrySync 按计划自动执行，
 | `internal/cronrunner/schedule.go` | config_json / metadata_json 解析 + next_run_at 计算 + retryPlan |
 | `internal/cronrunner/errors.go` | schedule 解析错误（errRunAtRequired 等） |
 | `internal/cronrunner/seed_model_registry.go` | SeedModelRegistrySyncTask（注入模型注册表同步种子任务） |
+| `internal/cronrunner/jobs/channel_delivery.go` | Channel 出站投递扫描；多实例 `ClaimPendingDeliveries`（SKIP LOCKED） |
+| `internal/cronrunner/jobs/channel_turn_job_sweeper.go` | Channel TurnJob 卡死恢复；`TransitionIfStale` + running 租约 |
 | `internal/cronrunner/dispatch_test.go` | dispatch 单元测试 |
 | `internal/cronrunner/execute_test.go` | execute 单元测试 |
 | `internal/cronrunner/retry_test.go` | retry 单元测试 |

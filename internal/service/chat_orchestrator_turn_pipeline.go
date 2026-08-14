@@ -168,7 +168,7 @@ func (p *turnPhases) gateTurnUserInput(ctx context.Context, sessionID, content s
 		return "", apierror.BadRequest("CHAT_INPUT",
 			"user input %d chars exceeds hard limit %d", n, biz.UserInputHardLimitChars)
 	}
-	gate := p.rt().ToolResultGate
+	gate := p.rt().Extensions.ToolResultGate
 	if gate == nil || utf8.RuneCountInString(content) <= biz.ToolResultSizeThreshold {
 		return content, nil
 	}

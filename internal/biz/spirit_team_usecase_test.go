@@ -1060,7 +1060,7 @@ func TestBuildSpiritTeamDefinitionJSON_NoGates_NoVerificationGatesKey(t *testing
 // set_deliverable topic per contract entry, so members never invent topic
 // names (12:33: spirit guessed pdf_install_result vs xlsx_install_result).
 func TestDeliverableProtocolSuffix_ExplicitTopicInstruction(t *testing.T) {
-	u := &SpiritTeamUsecase{}
+	u := NewSpiritTeamUsecase(nil, nil, nil, loggateway.NewNoop())
 	team := Team{
 		DagNodeID: "node-1",
 		Deliverables: DeliverableContractsToJSON([]DeliverableContract{
@@ -1102,7 +1102,7 @@ func TestListTeamDeliverableDigests(t *testing.T) {
 	}
 
 	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: repo, Writer: repo, RunReader: repo, RunWriter: repo, StepRepo: repo, DeadLetter: repo, Lg: loggateway.NewNoop()})
-	uc := &SpiritTeamUsecase{teamUC: teamUC, lg: loggateway.NewNoop()}
+	uc := NewSpiritTeamUsecase(teamUC, nil, nil, loggateway.NewNoop())
 
 	digests := uc.ListTeamDeliverableDigests(context.Background(), "spirit-1")
 	if len(digests) != 3 {

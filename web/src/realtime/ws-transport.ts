@@ -9,17 +9,16 @@
  */
 
 import { buildWsUrl } from '../config/runtime';
-import type { ActivityEvent } from './activityEvent';
 import type { MonitorEvent } from './monitorEvent';
-import type { SystemNoticeEventPayload, V2WsEnvelope } from '../features/chat/v2Types';
-import { activityEventFromSystemNotice } from './systemNoticeAdapter';
+import type { V2WsEnvelope } from '../features/chat/v2Types';
 
 /**
  * WS downstream message shape. The single source of truth for what the
  * backend sends over `/v1/ws`. Carries one of:
- * - control messages (connected/pong/server_shutdown/replay_*)
+ * - control messages (connected/pong/server_shutdown/monitor.backpressure)
  * - monitor_event for monitor channel
- * Chat business events arrive as separate `v2_event` frames (not WsDownstream).
+ * Chat / graph / team / knowledge business events arrive as separate
+ * `v2_event` frames (not WsDownstream). There is no activity_event field.
  */
 export type WsDownstream = {
   direction: 'server_to_client';
@@ -112,16 +111,8 @@ export type WsTransportOptions = {
    */
   socketFactory?: (url: string) => WebSocket;
   /**
-   * Activity-First (AF): called when a downstream message carries an
-   * activity_event payload (business-semantic Activity lifecycle event).
-   * This replaces the legacy activity_start/delta/done/child_start envelopes
-   * for chat events.
-   */
-  onActivityEvent?: (ev: ActivityEvent) => void;
-  /**
    * Monitor channel: called when a downstream message carries a
-   * monitor_event payload (log, flow_log, mcp, alert). This replaces
-   * the legacy envelope-based dispatch for monitor events.
+   * monitor_event payload (log, flow_log, mcp, alert).
    */
   onMonitorEvent?: (event: MonitorEvent) => void;
   /**
@@ -218,11 +209,6 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
         if (raw.type === 'v2_event') {
           const envelope = raw as unknown as V2WsEnvelope;
           opts.onV2Event?.(envelope);
-          // Compat: adapt system.notice → synthetic ActivityEvent for non-chat
-          // consumers that still use onActivityEvent (graph/orchestration/knowledge).
-          if (envelope.kind === 'system.notice' && opts.onActivityEvent) {
-            opts.onActivityEvent(activityEventFromSystemNotice(envelope, envelope.payload as SystemNoticeEventPayload));
-          }
           return;
         }
 

@@ -204,7 +204,7 @@ Webhook 路由在 `internal/server/http.go`，不进 Proto。
 | `channel_turn_job.go` | Turn Job 实体、Repo 接口、状态机、`ParseChannelLongTaskConfig` |
 | `channel_turn_errors.go` | `ChannelTurnErrorKind` 类型 + 分类常量 + `FormatChannelTurnErrorMessage` |
 | `channel_turn_outcome.go` | `TurnOutcome` 枚举（ok / queued / rejected / error） |
-| `channel_delivery.go` | 出站 payload 序列化（`marshalOutboundPayload`）、delivery Repo 接口 |
+| `channel_delivery.go` | 出站 payload 序列化（`marshalOutboundPayload`）、delivery Repo 接口、`ClaimPendingOutboundDeliveries` |
 | `channel_peer_session.go` | peer → session 绑定 |
 | `channel_inbound_receipt.go` | 入站幂等 receipt |
 | `channel_im_render.go` | `ChannelIMRenderPolicy` 配置解析、legacy `progress_mode` 映射 |
@@ -216,7 +216,7 @@ Webhook 路由在 `internal/server/http.go`，不进 Proto。
 |----|------------|------|
 | `channel` | `PlatformChannel` | 实例主表（`config_json` / `metadata_json` / `status` / `enabled`） |
 | `channel_credential` | `PlatformChannelCredential` | `secret_ref`（enc:/env:）；`(channel_id, credential_key)` 唯一 |
-| `channel_delivery` | `PlatformChannelDelivery` | 出站队列（含 `idempotency_key` 唯一索引） |
+| `channel_delivery` | `PlatformChannelDelivery` | 出站队列（`idempotency_key` 唯一；`status=pending/retry/sending/delivered/error`；多实例 `ClaimPendingDeliveries`） |
 | `channel_peer_session` | `PlatformChannelPeerSession` | peer → session（`(channel_id, peer_key)` 唯一） |
 | `channel_turn_job` | `ChannelTurnJob` | Turn Job 审计（`(channel_id, idempotency_key)` 唯一） |
 | `channel_inbound_receipt` | `ChannelInboundReceipt` | 入站幂等（`(channel_id, idempotency_key)` 唯一） |
@@ -227,6 +227,12 @@ Webhook 路由在 `internal/server/http.go`，不进 Proto。
 - `channel.config_json` — `Text` 默认 `"{}"`；存放 routing / access / streaming / long-task 配置
 - `channel_credential.secret_ref` — `String` 默认 `""`；支持 `enc:` / `env:` 前缀
 - `channel_turn_job.status` — `String` 默认 `"accepted"`；状态机见 §11.5
+- `channel_delivery.status` — `pending` / `retry` / `sending`（认领中，租约 5min） / `delivered` / `error`；无新列，租约时钟用 `updated_at`
+
+**多实例认领（P0-3）**：
+
+- 出站：`ClaimPendingDeliveries` 在事务内 `SELECT ... FOR UPDATE SKIP LOCKED`，把到期行 CAS 为 `sending`。进程崩溃后 `updated_at` 超过 `OutboundDeliveryLease`（5min）的 `sending` 行可被其他副本回收。进程内 `atomic.Bool` 单飞只防同进程重叠 tick，不能替代 DB 认领。
+- TurnJob sweeper：`TransitionIfStale`（`UPDATE ... WHERE id=? AND status=? AND updated_at<=?`）保证同一行只有一个副本改终态。`accepted`/`running` 按 30min `updated_at` 租约回收，**禁止**用本进程 `processStart` 当 cutoff（重启实例会误杀仍在跑的 peer job）。
 - `channel_peer_session.peer_key` — `String` 默认 `""` MaxLen 1024；空表示 `dm_scope=main`
 
 ---
@@ -580,9 +586,9 @@ ChannelTurnWorker / safego
 
 | 职能 | 规则 |
 |------|------|
-| queued 超时 | `updated_at` 超 30min → `timeout` |
-| async_queued 恢复 | 超 2min 未触达 → 按 async target（graph execution / cron run）实际状态转终态；仍运行则 touch `updated_at`；超 24h 强制 `timeout` |
-| 启动对账（CH-P1） | 进程启动一次性：`updated_at < processStart` 的 accepted/running → `failed`（上一进程崩溃残留，周期扫描不覆盖） |
+| queued 超时 | `updated_at` 超 30min → `timeout`（`TransitionIfStale` 原子认领） |
+| async_queued 恢复 | 超 2min 未触达 → 按 async target（graph execution / cron run）实际状态转终态；仍运行则 touch `updated_at`；超 24h 强制 `timeout`。终态写入走 `TransitionIfStale` |
+| accepted/running 租约（CH-D1） | `updated_at` 超 30min → `failed`。周期扫描 + 启动首次 `runOnce` 共用；cutoff 是租约而非 `processStart`，多副本不会误杀 peer 的 in-flight job |
 
 **终态持久化**（CH-B2）：`channel_ingress_execute.go` defer 中的终态写库 / 错误回复 / run-status 发布使用 `context.WithoutCancel(turn ctx)` + 10s 超时（`turnTerminalPersistCtx`）——turn 超时恰好取消 ctx 时，终态仍能落库。
 
@@ -1045,3 +1051,4 @@ Hermes 优先 **union_id** 作用户隔离；Aranea 当前 PeerID 顺序为 open
 | 1.1 | 2026-05-24 | §十四 Hermes Agent 对照：消息流转、飞书 WS/心跳/分批/Reaction、借鉴项 F-01–F-11 |
 | 1.2 | 2026-06-06 | §一 实现状态更新：13 平台全部 bundled ✅；§二 Runtime 补 mattermost；§六 平台矩阵 10→13 行，状态全部 ✅；§九 ChannelRuntimeManager ✅；§十一 优先级全部完成 |
 | 1.3 | 2026-06-17 | 三件套内容边界重组：§一 当前实现状态表迁移至 `.development.md §2`；§十一 新增平台优先级迁移至 `.development.md §4/§16`；§一 增补「与 MuseBot/Aranea 架构差异」表（从 `.md` 迁入）；§四 增补 API 端点表与 Ent Schema 表；§五 增补入站门禁/幂等代码锚点（从 `.md` 迁入）；§五.3 增补流式出站平台实现表；子模块「Channel Agent Team 集成设计」移除（独立文档 `17-channel-agent-team-integration.design.md`）；章节编号统一（原 §十二 长任务 → §十一；原 §十四 Hermes → §十二） |
+| 1.4 | 2026-08-14 | P0-3 多实例认领：`channel_delivery.status=sending` + SKIP LOCKED；TurnJob sweeper `TransitionIfStale` + 30min running 租约（取代 processStart 启动对账） |

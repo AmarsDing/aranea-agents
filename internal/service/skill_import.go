@@ -3,14 +3,19 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"time"
 
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/apierror"
 	authpkg "aranea-agents/pkg/auth"
 
-	"google.golang.org/protobuf/types/known/emptypb"
+	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
 func (s *SkillService) importEngine() (*importer.Engine, error) {
@@ -20,8 +25,7 @@ func (s *SkillService) importEngine() (*importer.Engine, error) {
 	return s.import_, nil
 }
 
-// assertImportAdmin 与 multipart 上传端点（skill_import_http.go）保持一致的
-// admin 门控：job 查询/应用/AI 炼化均要求管理员权限。
+// assertImportAdmin gates ZIP import RPCs behind admin access.
 func (s *SkillService) assertImportAdmin(ctx context.Context) error {
 	a, ok := authpkg.FromContext(ctx)
 	if !ok || a == nil {
@@ -33,9 +37,68 @@ func (s *SkillService) assertImportAdmin(ctx context.Context) error {
 	return nil
 }
 
-// ImportSkillZip is not bound to HTTP (multipart upload uses RegisterSkillImportMultipart).
-func (s *SkillService) ImportSkillZip(context.Context, *emptypb.Empty) (*v1.ImportSkillZipResponse, error) {
-	return nil, apierror.NotFound("SKILL_IMPORT", "use POST /v1/skills/import with multipart file field")
+// DecodeSkillImportRequest lets POST /v1/skills/import accept both proto JSON
+// (bytes file + filename) and legacy multipart/form-data field "file".
+// Other RPCs fall through to the default Kratos decoder.
+func DecodeSkillImportRequest(r *http.Request, v any) error {
+	if req, ok := v.(*v1.ImportSkillZipRequest); ok {
+		ct := r.Header.Get("Content-Type")
+		if strings.HasPrefix(ct, "multipart/form-data") {
+			return bindImportSkillZipMultipart(r, req)
+		}
+	}
+	return kratoshttp.DefaultRequestDecoder(r, v)
+}
+
+func bindImportSkillZipMultipart(r *http.Request, req *v1.ImportSkillZipRequest) error {
+	if err := r.ParseMultipartForm(int64(importer.MaxZipBytes)); err != nil {
+		return err
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, importer.MaxZipBytes+1))
+	if err != nil {
+		return err
+	}
+	req.File = data
+	if name := strings.TrimSpace(r.FormValue("filename")); name != "" {
+		req.Filename = name
+	} else if header != nil {
+		req.Filename = header.Filename
+	}
+	return nil
+}
+
+func (s *SkillService) ImportSkillZip(ctx context.Context, req *v1.ImportSkillZipRequest) (*v1.ImportSkillZipResponse, error) {
+	start := time.Now()
+	defer func() {
+		metrics.SkillImportDuration.WithLabelValues("upload").Observe(time.Since(start).Seconds())
+	}()
+	if err := s.assertImportAdmin(ctx); err != nil {
+		metrics.SkillImportTotal.WithLabelValues("upload", "forbidden").Inc()
+		return nil, err
+	}
+	eng, err := s.importEngine()
+	if err != nil {
+		metrics.SkillImportTotal.WithLabelValues("upload", "error").Inc()
+		return nil, err
+	}
+	filename := strings.TrimSpace(req.GetFilename())
+	data := req.GetFile()
+	if filename == "" || len(data) == 0 {
+		metrics.SkillImportTotal.WithLabelValues("upload", "bad_request").Inc()
+		return nil, apierror.BadRequest("SKILL_IMPORT", "skill zip file is required")
+	}
+	job, err := eng.ImportZip(ctx, filename, data)
+	if err != nil {
+		metrics.SkillImportTotal.WithLabelValues("upload", "error").Inc()
+		return nil, apierror.BadRequest("SKILL_IMPORT", err.Error())
+	}
+	metrics.SkillImportTotal.WithLabelValues("upload", "success").Inc()
+	return &v1.ImportSkillZipResponse{JobId: job.JobID}, nil
 }
 
 func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillImportJobRequest) (*v1.SkillImportJob, error) {

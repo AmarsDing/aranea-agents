@@ -159,7 +159,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	if !policy.MasterEnabled || !policy.AnyInject() {
 		return nil
 	}
-	hasDep := (policy.InjectL1 || policy.InjectL4) && deps.MemoryAdmin != nil
+	hasDep := (policy.InjectL1 && deps.L1Reader != nil) || (policy.InjectL4 && deps.L4Entities != nil)
 	hasDep = hasDep || (policy.RecallL2 && deps.MemoryL2Recall != nil)
 	hasDep = hasDep || (policy.InjectL3 && deps.MemoryL3Recall != nil)
 	hasDep = hasDep || (policy.RecallL2 && policy.InjectL3 && deps.MemoryCompositeRecall != nil)
@@ -238,7 +238,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 	// L1: session summary (changes after compression rebuild)
 	var l1FieldValues []string
 	if policy.InjectL1 {
-		if l1 := L1MemoryCue(ctx, deps.MemoryAdmin, ag, policy, sessionID, deps.LG); l1 != nil {
+		if l1 := L1MemoryCue(ctx, deps.L1Reader, ag, policy, sessionID, deps.LG); l1 != nil {
 			result.L1Cue = l1.Cue
 			l1FieldValues = l1.FieldValues
 			// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
@@ -294,7 +294,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		recallParts = append(recallParts, caseCue)
 	}
 	if policy.InjectL4 {
-		if l4, entityIDs := L4MemoryCue(ctx, deps.MemoryAdmin, ag, policy, keyword, deps.LG); l4 != "" {
+		if l4, entityIDs := L4MemoryCue(ctx, deps.L4Entities, ag, policy, keyword, deps.LG); l4 != "" {
 			recallParts = append(recallParts, l4)
 			result.L4RecalledEntityIDs = entityIDs
 			// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。

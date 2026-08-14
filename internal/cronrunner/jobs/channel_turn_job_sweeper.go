@@ -18,6 +18,11 @@ const (
 	turnJobAsyncRecoveryMinAge    = 2 * time.Minute
 	turnJobAsyncMaxAge            = 24 * time.Hour
 	turnJobSweeperBatchLimit      = 100
+	// turnJobRunningStaleTimeout is the lease for accepted/running jobs.
+	// A live turn must finish (or refresh updated_at) within this window;
+	// after it, any replica may fail the row as a dead-process leftover.
+	// Must be longer than biz.DefaultTurnTimeout (5m) / agent DefaultTurnTimeout (10m).
+	turnJobRunningStaleTimeout = 30 * time.Minute
 )
 
 // ExecutionStatusReader queries async execution status for recovery (narrow port).
@@ -30,9 +35,9 @@ type ExecutionStatusReader interface {
 //  1. Queued jobs that exceeded the queue timeout → Timeout (prevents permanent stuck queue).
 //  2. AsyncQueued jobs whose watch goroutine was lost (process restart) → recovered by
 //     checking the actual async target (graph/cron) status and transitioning accordingly.
-//  3. Startup reconcile (once, before the first sweep): Accepted/Running jobs whose
-//     updated_at predates this process start belong to a dead process — their in-memory
-//     execution goroutine is gone and no watcher will ever finish them → Failed.
+//  3. Accepted/Running jobs whose updated_at exceeded the running lease → Failed.
+//     This covers both startup leftovers and a peer replica that died without restarting.
+//     Transitions use TransitionIfStale so two replicas cannot both mutate the same row.
 //
 // This sweeper is the safety net for P0 issues #8 (Queued timeout) and #9 (AsyncQueued recovery).
 // It can be disabled via CHANNEL_TURN_JOB_SWEEPER_DISABLED env var.
@@ -43,14 +48,6 @@ type ChannelTurnJobSweeper struct {
 	graphExec     ExecutionStatusReader
 	cron          biz.CronTriggerGateway
 	lg            loggateway.Logger
-	// processStart is captured at construction (wire build, before the ready gate
-	// opens traffic). The startup reconcile only touches jobs with
-	// updated_at < processStart, so jobs created by the current process are never
-	// matched — this makes the reconcile safe even though Start runs after the
-	// ready gate.
-	// TODO(multi-instance): with more than one instance this must become
-	// claim/lease-based; a restarting instance would otherwise fail peers' jobs.
-	processStart time.Time
 }
 
 // NewChannelTurnJobSweeper creates a sweeper for stuck ChannelTurnJob recovery.
@@ -77,7 +74,6 @@ func NewChannelTurnJobSweeper(
 		graphExec:     graphExec,
 		cron:          cron,
 		lg:            lg,
-		processStart:  time.Now().UTC(),
 	}
 }
 
@@ -87,7 +83,6 @@ func (w *ChannelTurnJobSweeper) Start(ctx context.Context) {
 	}
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
-	w.sweepStartupInterrupted(ctx)
 	w.runOnce(ctx)
 	for {
 		select {
@@ -99,54 +94,11 @@ func (w *ChannelTurnJobSweeper) Start(ctx context.Context) {
 	}
 }
 
-// sweepStartupInterrupted fails Accepted/Running jobs whose updated_at predates
-// this process start (startup reconcile 兜底). Their execution goroutine died
-// with the previous process, so without this pass they would stay non-terminal
-// forever — the periodic sweeper only scans Queued/AsyncQueued.
-//
-// The processStart cutoff makes this safe to run after the ready gate: jobs
-// created by the current process always have updated_at >= processStart
-// (the sweeper is constructed during wire build, before traffic is served).
-// Runs once per process; errors only degrade this pass, never block startup.
-func (w *ChannelTurnJobSweeper) sweepStartupInterrupted(ctx context.Context) {
-	cutoff := w.processStart.Format(time.RFC3339Nano)
-	for _, status := range []string{biz.ChannelTurnJobStatusAccepted, biz.ChannelTurnJobStatusRunning} {
-		jobs, err := w.jobs.ListStaleByStatus(ctx, status, cutoff, turnJobSweeperBatchLimit)
-		if err != nil {
-			w.lg.Warn("TurnJob sweeper: 启动对账扫描失败",
-				loggateway.StepID("channel.turn_job_sweeper.startup_scan_failed"),
-				loggateway.Str("status", status),
-				loggateway.Err(err),
-			)
-			continue
-		}
-		var failed int
-		for _, job := range jobs {
-			errMsg := "turn execution interrupted by process restart (startup reconcile)"
-			if err := w.jobs.UpdateStatus(ctx, job.ID, biz.ChannelTurnJobStatusFailed, errMsg, "", ""); err != nil {
-				w.lg.Warn("TurnJob sweeper: 启动对账转换失败",
-					loggateway.StepID("channel.turn_job_sweeper.startup_transition_failed"),
-					loggateway.Str("job_id", job.ID),
-					loggateway.Err(err),
-				)
-				continue
-			}
-			failed++
-		}
-		if failed > 0 {
-			w.lg.Info("TurnJob sweeper: 启动对账完成",
-				loggateway.StepID("channel.turn_job_sweeper.startup_done"),
-				loggateway.Str("status", status),
-				loggateway.Int("failed", failed),
-			)
-		}
-	}
-}
-
 func (w *ChannelTurnJobSweeper) runOnce(ctx context.Context) {
 	safego.Go(ctx, "channel.turn_job_sweeper", func() {
 		w.sweepQueuedTimeouts(ctx)
 		w.sweepAsyncQueuedRecovery(ctx)
+		w.sweepStaleRunning(ctx)
 	})
 }
 
@@ -154,6 +106,49 @@ func (w *ChannelTurnJobSweeper) runOnce(ctx context.Context) {
 func (w *ChannelTurnJobSweeper) RunOnceExposed(ctx context.Context) {
 	w.sweepQueuedTimeouts(ctx)
 	w.sweepAsyncQueuedRecovery(ctx)
+	w.sweepStaleRunning(ctx)
+}
+
+// sweepStaleRunning fails Accepted/Running jobs whose updated_at exceeded the
+// running lease. Live peers finish within DefaultTurnTimeout; a restarting
+// replica therefore cannot fail a peer's in-flight job. Dead-process leftovers
+// become reclaimable after the lease and are transitioned with TransitionIfStale.
+func (w *ChannelTurnJobSweeper) sweepStaleRunning(ctx context.Context) {
+	cutoff := time.Now().UTC().Add(-turnJobRunningStaleTimeout).Format(time.RFC3339)
+	for _, status := range []string{biz.ChannelTurnJobStatusAccepted, biz.ChannelTurnJobStatusRunning} {
+		jobs, err := w.jobs.ListStaleByStatus(ctx, status, cutoff, turnJobSweeperBatchLimit)
+		if err != nil {
+			w.lg.Warn("TurnJob sweeper: running 租约扫描失败",
+				loggateway.StepID("channel.turn_job_sweeper.running_scan_failed"),
+				loggateway.Str("status", status),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		var failed int
+		for _, job := range jobs {
+			errMsg := "turn execution interrupted (running lease expired)"
+			claimed, err := w.jobs.TransitionIfStale(ctx, job.ID, job.Status, biz.ChannelTurnJobStatusFailed, errMsg, "", "", cutoff)
+			if err != nil {
+				w.lg.Warn("TurnJob sweeper: running 租约转换失败",
+					loggateway.StepID("channel.turn_job_sweeper.running_transition_failed"),
+					loggateway.Str("job_id", job.ID),
+					loggateway.Err(err),
+				)
+				continue
+			}
+			if claimed {
+				failed++
+			}
+		}
+		if failed > 0 {
+			w.lg.Info("TurnJob sweeper: running 租约回收完成",
+				loggateway.StepID("channel.turn_job_sweeper.running_done"),
+				loggateway.Str("status", status),
+				loggateway.Int("failed", failed),
+			)
+		}
+	}
 }
 
 // sweepQueuedTimeouts transitions queued jobs that exceeded the queue timeout to Timeout.
@@ -171,7 +166,8 @@ func (w *ChannelTurnJobSweeper) sweepQueuedTimeouts(ctx context.Context) {
 	var recovered int
 	for _, job := range jobs {
 		errMsg := "queued turn job timed out (sweeper recovery)"
-		if err := w.jobs.UpdateStatus(ctx, job.ID, biz.ChannelTurnJobStatusTimeout, errMsg, "", ""); err != nil {
+		claimed, err := w.jobs.TransitionIfStale(ctx, job.ID, biz.ChannelTurnJobStatusQueued, biz.ChannelTurnJobStatusTimeout, errMsg, "", "", cutoff)
+		if err != nil {
 			w.lg.Warn("TurnJob sweeper: queued 超时转换失败",
 				loggateway.StepID("channel.turn_job_sweeper.queued_timeout_failed"),
 				loggateway.Str("job_id", job.ID),
@@ -179,7 +175,9 @@ func (w *ChannelTurnJobSweeper) sweepQueuedTimeouts(ctx context.Context) {
 			)
 			continue
 		}
-		recovered++
+		if claimed {
+			recovered++
+		}
 	}
 	if recovered > 0 {
 		w.lg.Info("TurnJob sweeper: queued 超时清理完成",
@@ -317,22 +315,29 @@ func (w *ChannelTurnJobSweeper) recoverCronAsyncJob(ctx context.Context, job biz
 	}
 }
 
-// transitionAsyncJob uses UpdateStatus directly because the sweeper operates on jobs
-// that may have been stuck since before the current process started — the state machine
-// validation in TransitionByEvent would require loading the job first, but we already have it.
+// transitionAsyncJob uses TransitionIfStale so two replicas cannot both complete
+// or timeout the same async_queued row. The listed job's updated_at is the CAS token.
 // The state machine consistency is guaranteed by the transition rules we follow:
 //   - AsyncQueued → Completed (via async completion)
 //   - AsyncQueued → Failed (via async_fail)
 //   - AsyncQueued → Cancelled (via async_cancel)
 //   - AsyncQueued → Timeout (via timeout)
 func (w *ChannelTurnJobSweeper) transitionAsyncJob(ctx context.Context, job biz.ChannelTurnJob, targetStatus, errMsg, preview string) {
-	if err := w.jobs.UpdateStatus(ctx, job.ID, targetStatus, errMsg, "", preview); err != nil {
+	cutoff := job.UpdatedAt
+	if strings.TrimSpace(cutoff) == "" {
+		cutoff = time.Now().UTC().Format(time.RFC3339)
+	}
+	claimed, err := w.jobs.TransitionIfStale(ctx, job.ID, biz.ChannelTurnJobStatusAsyncQueued, targetStatus, errMsg, "", preview, cutoff)
+	if err != nil {
 		w.lg.Warn("TurnJob sweeper: async job 状态转换失败",
 			loggateway.StepID("channel.turn_job_sweeper.async_transition_failed"),
 			loggateway.Str("job_id", job.ID),
 			loggateway.Str("target_status", targetStatus),
 			loggateway.Err(err),
 		)
+		return
+	}
+	if !claimed {
 		return
 	}
 	w.lg.Info("TurnJob sweeper: async job 已恢复",

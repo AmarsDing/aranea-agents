@@ -47,6 +47,23 @@
           <q-tooltip>{{ compactToggleLabel }}</q-tooltip>
         </q-btn>
 
+        <!-- 已选 skill 标签（输入框上方，仅 ✕ 可删，防误删） -->
+        <div v-if="selectedSkillEntries.length && !compactMode" class="chat-skill-chips row q-gutter-xs">
+          <q-chip
+            v-for="skill in selectedSkillEntries"
+            :key="skill.slug"
+            removable
+            dense
+            square
+            class="chat-skill-chip"
+            icon="auto_awesome"
+            @remove="$emit('toggle-skill', skill.slug)"
+          >
+            {{ skill.name || skill.slug }}
+            <q-tooltip>{{ skill.description || skill.slug }}</q-tooltip>
+          </q-chip>
+        </div>
+
         <!-- 附件缩略图（输入框上方，精简模式隐藏） -->
         <div v-if="attachments.length && !compactMode" class="chat-attachments row q-gutter-xs">
           <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
@@ -146,6 +163,13 @@
         <div v-show="!compactMode" class="composer-bottom-bar row items-center justify-end no-wrap">
           <!-- 右侧操作按钮 -->
           <div class="composer-actions row items-center no-wrap q-gutter-x-sm">
+            <ChatSkillPicker
+              v-if="skillCatalog?.length"
+              :skills="skillCatalog"
+              :selected-slugs="selectedSkillSlugs ?? []"
+              @toggle="(slug: string) => $emit('toggle-skill', slug)"
+              @clear="$emit('clear-skills')"
+            />
             <span class="composer-btn-wrapper">
               <q-btn
                 unelevated
@@ -192,7 +216,7 @@
               v-else
               unelevated
               color="accent"
-              :disable="!modelValue.trim()"
+              :disable="!modelValue.trim() && !(selectedSkillSlugs?.length)"
               :aria-label="t('chat.send')"
               class="composer-btn composer-btn--filled"
               @click="$emit('send')"
@@ -210,7 +234,9 @@
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChatEnqueueMessage from './ChatEnqueueMessage.vue';
+import ChatSkillPicker from './ChatSkillPicker.vue';
 import type { ChatAttachment } from './types';
+import type { SkillCatalogEntry } from '../../features/skills/types';
 import { artifactMaxSizeHint } from '../../features/artifact/limits';
 
 type Option = { label: string; value: string; caption?: string };
@@ -236,6 +262,10 @@ const props = defineProps<{
   dictating?: boolean;
   /** 听写识别中的部分文本（输入框上方实时字幕）。 */
   dictationPartial?: string;
+  /** 当前 agent 可用 skill 目录（后端 skill.catalog 事件推送）。 */
+  skillCatalog?: SkillCatalogEntry[];
+  /** skill 选择器已选中的 slug 列表（chips 区展示）。 */
+  selectedSkillSlugs?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -251,9 +281,18 @@ const emit = defineEmits<{
   'paste-file': [file: File];
   'paste-unsupported': [];
   'new-session': [];
+  'toggle-skill': [slug: string];
+  'clear-skills': [];
 }>();
 
 const { t } = useI18n();
+
+/** 选中 slug → catalog entry（chips 显示名称/简介；目录未到时回退 slug） */
+const selectedSkillEntries = computed<SkillCatalogEntry[]>(() => {
+  const slugs = props.selectedSkillSlugs ?? [];
+  const catalog = props.skillCatalog ?? [];
+  return slugs.map((slug) => catalog.find((s) => s.slug === slug) ?? { slug, name: '', description: '', tags: [] });
+});
 
 /** 精简模式：只保留输入框 + 切换按钮，隐藏选择器/附件/底部工具条，通过回车发送 */
 const compactMode = ref(false);

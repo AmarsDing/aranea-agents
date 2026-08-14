@@ -35,6 +35,7 @@
 | `internal/agent/task_orchestrator_impl.go` | 任务编排 | 接入 NL2Graph + RuntimeReplanner |
 | `internal/biz/graph_execution_usecase.go` | Graph 执行（状态机绕过） | 接入状态机 |
 | `internal/tools/spirit_tools.go` | Spirit 工具 | 增强 plan_and_execute |
+| `internal/biz/spirit_team_usecase.go` | Spirit 编排 facade（DEV-09） | 已拆 `SpiritAssembly` / `SpiritOrchestration` / `SpiritDelivery`；超时 `teamTimeoutRegistry`；对外 API 兼容 |
 | `internal/team/template_registry.go` | Team 模板 | 增加拓扑演化 |
 | `internal/memory/trpc/sqlite_adapter.go` | Memory 框架适配 | 增加 Bi-temporal/Ebbinghaus |
 | `internal/biz/memory_l3_fused_recall.go` | L3 记忆召回 | 增加主动召回 |

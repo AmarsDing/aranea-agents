@@ -138,8 +138,8 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		if deps.MemoryService != nil {
 			cfg.MemoryTools = filterMemoryTools(deps.MemoryService.Tools())
 		}
-		// Auto-enable working_memory tools when memory is enabled and MemoryAdmin is wired
-		if deps.MemoryAdmin != nil {
+		// Auto-enable working_memory tools when L1 write/read ports are wired
+		if deps.HasWorkingMemory() {
 			cfg.WorkingMemory = true
 		}
 		// Register the compact tool when ManualCompressor is wired.

@@ -39,37 +39,16 @@ describe('ws-transport v2_event', () => {
     transport.disconnect();
   });
 
-  it('does NOT dispatch v2_event to onActivityEvent', () => {
+  it('does not synthesize activity_event from v2_event frames', () => {
     const mock = new MockWS();
-    const onActivityEvent = vi.fn();
     const onV2Event = vi.fn();
+    const onMonitorEvent = vi.fn();
     const transport = createWsTransport({
       sessionId: 's1',
       url: 'ws://localhost',
       socketFactory: () => mock as unknown as WebSocket,
-      onActivityEvent,
       onV2Event,
-    });
-    transport.connect();
-
-    const v2Msg = JSON.stringify({ type: 'v2_event', kind: 'task.created', payload: {} });
-    mock.onmessage!({ data: v2Msg });
-
-    expect(onActivityEvent).not.toHaveBeenCalled();
-    expect(onV2Event).toHaveBeenCalledTimes(1);
-    transport.disconnect();
-  });
-
-  it('adapts system.notice to onActivityEvent for non-chat consumers', () => {
-    const mock = new MockWS();
-    const onActivityEvent = vi.fn();
-    const onV2Event = vi.fn();
-    const transport = createWsTransport({
-      sessionId: 's1',
-      url: 'ws://localhost',
-      socketFactory: () => mock as unknown as WebSocket,
-      onActivityEvent,
-      onV2Event,
+      onMonitorEvent,
     });
     transport.connect();
 
@@ -82,8 +61,6 @@ describe('ws-transport v2_event', () => {
         Message: '',
         Meta: {
           activity_kind: 'graph_stage',
-          activity_status: 'running',
-          activity_event: 'created',
           filter_key: 'graph/g1/e1',
           node_id: 'n1',
         },
@@ -92,12 +69,8 @@ describe('ws-transport v2_event', () => {
     mock.onmessage!({ data: v2Msg });
 
     expect(onV2Event).toHaveBeenCalledTimes(1);
-    expect(onActivityEvent).toHaveBeenCalledTimes(1);
-    const adapted = onActivityEvent.mock.calls[0][0];
-    expect(adapted.activity.kind).toBe('graph_stage');
-    expect(adapted.activity.stage).toBe('node_start');
-    expect(adapted.activity.session_id).toBe('s1');
-    expect(adapted.activity.meta.filter_key).toBe('graph/g1/e1');
+    expect(onV2Event.mock.calls[0][0].kind).toBe('system.notice');
+    expect(onMonitorEvent).not.toHaveBeenCalled();
     transport.disconnect();
   });
 });

@@ -77,9 +77,11 @@ type TRPCToolAssemblyDeps struct {
 
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.
 type TRPCMemoryKnowledgeDeps struct {
-	HasMemory             bool
-	MemoryService         trpcmemory.Service
-	MemoryAdmin           biz.SessionAdminStore
+	HasMemory     bool
+	MemoryService trpcmemory.Service
+	// MemoryLayerPorts holds independent L0–L4 persistence ports (ISP).
+	// Replaces the deprecated SessionAdminStore MemoryAdmin field.
+	biz.MemoryLayerPorts
 	MemoryActionLogWriter biz.MemoryActionLogWriter
 	MemoryL2Recall        biz.MemoryL2Recaller
 	MemoryL3Recall        biz.MemoryL3Recaller

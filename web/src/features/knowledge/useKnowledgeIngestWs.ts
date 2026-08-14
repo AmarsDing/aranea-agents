@@ -1,12 +1,12 @@
 import { onUnmounted, ref, watch } from 'vue';
-import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { createV2EventStream } from '../../realtime/useV2EventStream';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {
   const connected = ref(false);
-  let stream: ReturnType<typeof createEnvelopeStream> | null = null;
+  let stream: ReturnType<typeof createV2EventStream> | null = null;
 
   function disconnect() {
     stream?.disconnect();
@@ -33,7 +33,7 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
       onProgress();
     }
 
-    stream = createEnvelopeStream({
+    stream = createV2EventStream({
       sessionId: GLOBAL_WS_SESSION_ID,
       channels: ['chat', 'system'],
       autoConnect: false,

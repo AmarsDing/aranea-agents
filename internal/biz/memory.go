@@ -46,7 +46,7 @@ func NewMemoryUsecase(repo MemoryRepo, embedder EmbeddingService) *MemoryUsecase
 }
 
 // Remember embeds text and persists it for agent (single default partition; no UserID scope).
-// Prefer UpsertFactRow on SessionAdminStore + SyncFactIndex; Remember remains for legacy callers.
+// Prefer UpsertFactRow on L3FactWriter + SyncFactIndex; Remember remains for legacy callers.
 func (uc *MemoryUsecase) Remember(ctx context.Context, agentID, text string) error {
 	return uc.RememberWithUser(ctx, agentID, "", text)
 }

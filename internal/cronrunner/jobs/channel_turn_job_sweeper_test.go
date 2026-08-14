@@ -48,6 +48,20 @@ func (s *sweeperJobRepo) UpdateAsyncTarget(_ context.Context, id, targetType, ta
 	return nil
 }
 
+func (s *sweeperJobRepo) TransitionIfStale(_ context.Context, id, fromStatus, toStatus, errMsg, previewMsgID, contentPreview, staleBefore string) (bool, error) {
+	j, ok := s.jobs[id]
+	if !ok || j.Status != fromStatus {
+		return false, nil
+	}
+	if staleBefore != "" && j.UpdatedAt > staleBefore {
+		return false, nil
+	}
+	if err := s.UpdateStatus(context.Background(), id, toStatus, errMsg, previewMsgID, contentPreview); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *sweeperJobRepo) GetByIdempotency(_ context.Context, _, _ string) (biz.ChannelTurnJob, error) {
 	return biz.ChannelTurnJob{}, nil
 }
@@ -410,11 +424,11 @@ func TestSweeper_GraphExecNil(t *testing.T) {
 	}
 }
 
-// TestSweeper_StartupReconcile_InterruptedJobs verifies that Accepted/Running
-// jobs predating the process start are failed by the startup reconcile.
-func TestSweeper_StartupReconcile_InterruptedJobs(t *testing.T) {
-	accepted := staleJob("job-acc", biz.ChannelTurnJobStatusAccepted, "", "", 10*time.Minute)
-	running := staleJob("job-run", biz.ChannelTurnJobStatusRunning, "", "", 10*time.Minute)
+// TestSweeper_StaleRunning_InterruptedJobs verifies that Accepted/Running
+// jobs older than the running lease are failed (multi-instance safe).
+func TestSweeper_StaleRunning_InterruptedJobs(t *testing.T) {
+	accepted := staleJob("job-acc", biz.ChannelTurnJobStatusAccepted, "", "", 31*time.Minute)
+	running := staleJob("job-run", biz.ChannelTurnJobStatusRunning, "", "", 31*time.Minute)
 	repo := newSweeperTestRepo(accepted, running)
 	repo.listStaleFn = func(status, _ string) []biz.ChannelTurnJob {
 		switch status {
@@ -428,63 +442,84 @@ func TestSweeper_StartupReconcile_InterruptedJobs(t *testing.T) {
 	}
 
 	w := newSweeper(repo, nil, nil)
-	w.sweepStartupInterrupted(context.Background())
+	w.RunOnceExposed(context.Background())
 
-	if len(repo.updates) != 2 {
-		t.Fatalf("expected 2 updates, got %d", len(repo.updates))
-	}
+	var failed int
 	for _, upd := range repo.updates {
-		if upd.status != biz.ChannelTurnJobStatusFailed {
-			t.Errorf("expected job %s → failed, got %s", upd.id, upd.status)
+		if upd.status == biz.ChannelTurnJobStatusFailed {
+			failed++
+			if upd.errMsg == "" {
+				t.Errorf("expected non-empty error message for job %s", upd.id)
+			}
 		}
-		if upd.errMsg == "" {
-			t.Errorf("expected non-empty error message for job %s", upd.id)
-		}
+	}
+	if failed != 2 {
+		t.Fatalf("expected 2 failed transitions, got %d (updates=%d)", failed, len(repo.updates))
 	}
 }
 
-// TestSweeper_StartupReconcile_CutoffIsProcessStart verifies the reconcile
-// passes the construction-time processStart as the staleness cutoff, so jobs
-// created by the current process (updated_at >= processStart) are never matched.
-func TestSweeper_StartupReconcile_CutoffIsProcessStart(t *testing.T) {
+// TestSweeper_StaleRunning_CutoffIsRunningLease verifies the reconcile
+// passes now-lease as the staleness cutoff, so a peer's in-flight job
+// (updated_at within the last 30min) is never matched.
+func TestSweeper_StaleRunning_CutoffIsRunningLease(t *testing.T) {
 	repo := newSweeperTestRepo()
 	var cutoffs []string
-	repo.listStaleFn = func(_, beforeUpdatedAt string) []biz.ChannelTurnJob {
-		cutoffs = append(cutoffs, beforeUpdatedAt)
+	repo.listStaleFn = func(status, beforeUpdatedAt string) []biz.ChannelTurnJob {
+		if status == biz.ChannelTurnJobStatusAccepted || status == biz.ChannelTurnJobStatusRunning {
+			cutoffs = append(cutoffs, beforeUpdatedAt)
+		}
 		return nil
 	}
 
-	before := time.Now().UTC()
+	before := time.Now().UTC().Add(-turnJobRunningStaleTimeout)
 	w := newSweeper(repo, nil, nil)
-	after := time.Now().UTC()
-	w.sweepStartupInterrupted(context.Background())
+	w.RunOnceExposed(context.Background())
+	after := time.Now().UTC().Add(-turnJobRunningStaleTimeout)
 
 	if len(cutoffs) != 2 { // accepted + running scans
 		t.Fatalf("expected 2 scans, got %d", len(cutoffs))
 	}
 	for _, raw := range cutoffs {
-		cutoff, err := time.Parse(time.RFC3339Nano, raw)
+		cutoff, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			t.Fatalf("cutoff %q not parseable: %v", raw, err)
 		}
-		if cutoff.Before(before) || cutoff.After(after) {
-			t.Errorf("cutoff %v outside processStart window [%v, %v]", cutoff, before, after)
+		if cutoff.Before(before.Add(-2*time.Second)) || cutoff.After(after.Add(2*time.Second)) {
+			t.Errorf("cutoff %v outside running-lease window [%v, %v]", cutoff, before, after)
 		}
 	}
 }
 
-// TestSweeper_StartupReconcile_NoStaleJobs verifies that with no interrupted
+// TestSweeper_StaleRunning_NoStaleJobs verifies that with no interrupted
 // jobs the reconcile performs no writes.
-func TestSweeper_StartupReconcile_NoStaleJobs(t *testing.T) {
+func TestSweeper_StaleRunning_NoStaleJobs(t *testing.T) {
 	repo := newSweeperTestRepo()
 	repo.listStaleFn = func(_, _ string) []biz.ChannelTurnJob {
 		return nil
 	}
 
 	w := newSweeper(repo, nil, nil)
-	w.sweepStartupInterrupted(context.Background())
+	w.RunOnceExposed(context.Background())
 
 	if len(repo.updates) != 0 {
 		t.Fatalf("expected 0 updates, got %d", len(repo.updates))
+	}
+}
+
+func TestSweeper_StaleRunning_SecondInstanceLosesClaim(t *testing.T) {
+	job := staleJob("job-run", biz.ChannelTurnJobStatusRunning, "", "", 31*time.Minute)
+	repo := newSweeperTestRepo(job)
+	repo.listStaleFn = func(status, _ string) []biz.ChannelTurnJob {
+		if status != biz.ChannelTurnJobStatusRunning {
+			return nil
+		}
+		return []biz.ChannelTurnJob{job}
+	}
+	w := newSweeper(repo, nil, nil)
+	w.RunOnceExposed(context.Background())
+	n := len(repo.updates)
+	w.RunOnceExposed(context.Background())
+	if len(repo.updates) != n {
+		t.Fatalf("second instance should not reclaim already-failed job, updates %d → %d", n, len(repo.updates))
 	}
 }

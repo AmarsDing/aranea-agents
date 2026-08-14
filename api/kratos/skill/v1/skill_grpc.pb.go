@@ -67,11 +67,8 @@ type SkillServiceClient interface {
 	UpdateSkillFile(ctx context.Context, in *UpdateSkillFileRequest, opts ...grpc.CallOption) (*SkillFileContent, error)
 	DeleteSkillFile(ctx context.Context, in *DeleteSkillFileRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ListSkillRuns(ctx context.Context, in *ListSkillRunsRequest, opts ...grpc.CallOption) (*ListSkillRunsResponse, error)
-	// ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-	// The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-	// because proto cannot express multipart uploads. This RPC declaration exists solely
-	// to include the endpoint in the generated OpenAPI spec.
-	ImportSkillZip(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ImportSkillZipResponse, error)
+	// ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+	ImportSkillZip(ctx context.Context, in *ImportSkillZipRequest, opts ...grpc.CallOption) (*ImportSkillZipResponse, error)
 	GetSkillImportJob(ctx context.Context, in *GetSkillImportJobRequest, opts ...grpc.CallOption) (*SkillImportJob, error)
 	ApplySkillImport(ctx context.Context, in *ApplySkillImportRequest, opts ...grpc.CallOption) (*SkillImportApplyResult, error)
 	RefineSkillImportConflict(ctx context.Context, in *RefineSkillImportConflictRequest, opts ...grpc.CallOption) (*SkillRefineResult, error)
@@ -244,7 +241,7 @@ func (c *skillServiceClient) ListSkillRuns(ctx context.Context, in *ListSkillRun
 	return out, nil
 }
 
-func (c *skillServiceClient) ImportSkillZip(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ImportSkillZipResponse, error) {
+func (c *skillServiceClient) ImportSkillZip(ctx context.Context, in *ImportSkillZipRequest, opts ...grpc.CallOption) (*ImportSkillZipResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ImportSkillZipResponse)
 	err := c.cc.Invoke(ctx, SkillService_ImportSkillZip_FullMethodName, in, out, cOpts...)
@@ -373,11 +370,8 @@ type SkillServiceServer interface {
 	UpdateSkillFile(context.Context, *UpdateSkillFileRequest) (*SkillFileContent, error)
 	DeleteSkillFile(context.Context, *DeleteSkillFileRequest) (*emptypb.Empty, error)
 	ListSkillRuns(context.Context, *ListSkillRunsRequest) (*ListSkillRunsResponse, error)
-	// ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
-	// The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
-	// because proto cannot express multipart uploads. This RPC declaration exists solely
-	// to include the endpoint in the generated OpenAPI spec.
-	ImportSkillZip(context.Context, *emptypb.Empty) (*ImportSkillZipResponse, error)
+	// ImportSkillZip uploads a Skill ZIP at POST /v1/skills/import.
+	ImportSkillZip(context.Context, *ImportSkillZipRequest) (*ImportSkillZipResponse, error)
 	GetSkillImportJob(context.Context, *GetSkillImportJobRequest) (*SkillImportJob, error)
 	ApplySkillImport(context.Context, *ApplySkillImportRequest) (*SkillImportApplyResult, error)
 	RefineSkillImportConflict(context.Context, *RefineSkillImportConflictRequest) (*SkillRefineResult, error)
@@ -445,7 +439,7 @@ func (UnimplementedSkillServiceServer) DeleteSkillFile(context.Context, *DeleteS
 func (UnimplementedSkillServiceServer) ListSkillRuns(context.Context, *ListSkillRunsRequest) (*ListSkillRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSkillRuns not implemented")
 }
-func (UnimplementedSkillServiceServer) ImportSkillZip(context.Context, *emptypb.Empty) (*ImportSkillZipResponse, error) {
+func (UnimplementedSkillServiceServer) ImportSkillZip(context.Context, *ImportSkillZipRequest) (*ImportSkillZipResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ImportSkillZip not implemented")
 }
 func (UnimplementedSkillServiceServer) GetSkillImportJob(context.Context, *GetSkillImportJobRequest) (*SkillImportJob, error) {
@@ -770,7 +764,7 @@ func _SkillService_ListSkillRuns_Handler(srv interface{}, ctx context.Context, d
 }
 
 func _SkillService_ImportSkillZip_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
+	in := new(ImportSkillZipRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -782,7 +776,7 @@ func _SkillService_ImportSkillZip_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: SkillService_ImportSkillZip_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SkillServiceServer).ImportSkillZip(ctx, req.(*emptypb.Empty))
+		return srv.(SkillServiceServer).ImportSkillZip(ctx, req.(*ImportSkillZipRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

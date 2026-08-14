@@ -4,6 +4,7 @@
 > **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
 > **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
 > **与精简版的关系**：本文件是 `module-cross-reference.md` 的扩展版本，新增日志架构相关模块卡片（§1.12a–1.12h）。
+> **最后校准日期**：2026-08-14（P0-7 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
 
 ---
 
@@ -15,6 +16,23 @@
 4. 检查 **共享契约**：你修改的类型/事件是否被其他模块消费？
 5. 检查 **事件契约**：你新增/修改的事件类型是否在消费方处理？
 6. 检查 **前端对应**：后端改动是否需要前端同步？
+
+---
+
+## 编号冲突与幽灵模块（先读）
+
+文档编号 ≠ 交叉参考卡片序号（§1.1…）。改模块前用下表对齐，禁止按架构图「12–16 = Memory」或「39 = Observation」去改 Planner / Catalog。
+
+| 编号 | 文档 / 代码真相 | 常见误读 |
+|------|----------------|----------|
+| **12** | Model Catalog：[`12-model-catalog.md`](./12-model-catalog.md)；代码 `internal/modelregistry/` | **不是 Memory**。记忆文档在 [`memory/`](./memory/)（L0–L4），无独立 `12-memory.md` |
+| **13–16** | 架构图曾把 Memory 标成 12–16；仓库无 `13-*.md`…`16-*.md` 记忆三件套 | 不要新建 13–16 记忆模块文档 |
+| **38** | 架构图 MediaProvider；**无三件套**（无 `38-*.md`） | 代码在 `internal/provider/media` + `internal/tools/media`，见 §1.32 |
+| **39** | **文档 39 = Planner**（[`39-planner.md`](./39-planner.md)，`internal/agent/planner`） | **架构图 39 = Observation View**（`web/src/components/chat/observe`，无独立三件套）。改 Planner 勿动观测画布，反之亦然 |
+| **57 Marketplace** | **SUPERSEDED / 未实现**。无 `cmd/marketplace`、`internal/marketplace` | 禁止按 57 三件套新建商城服务。站内发现走 Ecosystem(30) |
+| **63 TTS** | **SUPERSEDED**。独立 TTS 模块未落地；流式 TTS **已并入 Voice(74)** | 禁止实现 `api/kratos/tts` / `internal/biz/tts`。语音合成走 `internal/voice/` + `internal/data/speech/` |
+
+**P0 已修（禁止再当未修债抄进方案）**：裸 goroutine → `safego.Go`；Skill ZIP 导入走 `ImportSkillZip` proto（`skill_import_http.go` 已删）；Channel/Cron `SKIP LOCKED` 多副本；`SessionAdminStore` 已退出生产路径（改 `MemoryLayerPorts`）；Spirit 拆 Assembly/Orchestration/Delivery；`RuntimeTooling` 6 域分组；生产实时通道为 `v2_event` / `monitor_event`（features 禁止 import `realtime/useEnvelopeStream`）。
 
 ---
 
@@ -89,6 +107,8 @@
 
 ### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go` + `internal/data/memory_shim_*.go` + `internal/tools/working_memory/`)
 
+> **编号**：记忆 **不是** 模块 12–16。12 是 Model Catalog。需求/设计/计划在 [`docs/development/memory/`](./memory/)（入口 [`memory/README.md`](./memory/README.md)）。生产端口是 `MemoryLayerPorts`（P0-4），不是 `SessionAdminStore`。
+
 **职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个框架记忆工具 + 6 个 working_memory 工具 + 自动提取 + Memory 管理 API 传输桥点。
 
 | 维度 | 内容 |
@@ -111,7 +131,7 @@
 - **Service 层禁止直接依赖 data 层 store 具体类型**（原 `sessionmemory.Store` 已折叠为 `internal/data/memory_shim_*.go`），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`/`L3FactWriter` 等）+ data 层适配器桥接
 - Memory Admin RPC 须经 `authorizeMemoryScope`（`internal/service/memory_scope.go`）做 scope/workspace ACL；trpc `Add/Update/Delete/Clear` 须经 `assertL3WriteAllowed` 尊重 `WriteL3Facts`
 - `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
-- `SessionAdminStore` 是向后兼容的组合接口（38 方法），新代码应依赖细粒度子接口（`L1TaskWriter`/`L1FieldWriter`/`L1AdminReader`/`L2ConsolidationStore`/`L3ConflictStore`/`PIIReviewStore`/`L4EntityStore`/`L4EvolutionStore` 等）
+- `SessionAdminStore` 已 Deprecated **并退出生产路径**（Wire / `MemorySet` / agent builder 不再以该聚合类型为依赖字段）。生产注入 `MemoryLayerPorts` 上的 L0–L4 窄接口（`L0AdminStore`/`L1AdminReader`/`L1TaskWriter`/`L1FieldWriter`/`L3FactReader`/`L3FactWriter`/`L4EntityStore`/`L1SchemaReader` 等）；`MemoryAdminUsecase` 依赖 `MemoryAdminDeps`。类型保留供测试与 data 适配器编译期检查。
 - 新增 biz 端口接口时，需同步创建 data 层适配器 + 更新 `cmd/admin/wire.go` 绑定
 - L1→L2 桥接：`EndL1Task` 自动归档 + 创建 L2 Episode（`archiveAndCreateEpisode`），L1 Archive Worker 定时扫描空闲任务
 - L2 Consolidation：Episode 有 pending/consolidated 状态，`MemoryL2ConsolidateWorker` 负责 pending→consolidated 转换
@@ -173,6 +193,7 @@
 **⚠️ 开发注意**：
 - **最关键的模块**：修改 ChatService 的任何方法签名，可能影响 Channel/Cron/A2A/WS/DurableWorker
 - 新增 Turn 入口点时，必须同步更新 `TurnEntryPointConfig` 和 `ChatOrchestrator.ExecuteTurn` 的准入逻辑
+- **P0-5b（2026-08-14）**：`RuntimeTooling` 为薄分组（6 字段：Knowledge/Skill/Plugin/Bridges/Sharing/Extensions），不再平铺 24 依赖；改工具装配注入时同步 `chat_runtime_tooling.go` + `provideRuntimeTooling` + chat/a2a/openai 三处 `TRPCBuilderDeps` 路径
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
 - 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 - 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
@@ -203,6 +224,7 @@
 - ChannelIngress 不 import proto 包（`chatv1`/`cronv1`），入站 Turn 输入使用 `biz.TurnInput`（Phase K 修复 K-06）
 - `ChannelService`/`ChannelIngress` 不直接持有任何 biz Repo 接口（`ChannelPeerSessionRepo`/`ChannelInboundReceiptRepo`/`AgentRepository`/`TeamRepository`），全部通过 `ChannelUsecase` Facade 方法访问（Phase K 修复 K-09；Phase L 修复 J-10）
 - 入站消息处理链：`ProcessInbound` → 路由匹配 → `ExecuteTurn` → 事件流 → 出站投递
+- 多副本下出站投递与 TurnJob sweeper **不是单实例**：`ClaimPendingDeliveries`（SKIP LOCKED + `sending` 租约）与 `TransitionIfStale`（`updated_at` 租约）保证同一行只被一个实例抢走；docker 多副本按此计
 
 ---
 
@@ -296,17 +318,17 @@
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | 无（基础设施层，不依赖业务模块） |
-| **下游影响** | chat/channel/team/graph/monitor/memory/plugin 依赖 v2 EventBus 和/或 MonitorEventBus |
+| **下游影响** | chat/channel/team/graph/knowledge/orchestration/monitor/memory/plugin 依赖 v2 EventBus 和/或 MonitorEventBus |
 | **核心导出** | `Infra`（MonitorEventBus）、`biz.EventBus` / EventKind、`MonitorBus`（contract）、`MonitorEvent`、`FlowLog`、`loggateway.Logger` |
 | **共享类型** | v2 Event（Task/Turn/Step/Team/Graph/system.*）、`MonitorEvent` |
 | **事件生产** | 不生产业务事件（只提供基础设施；投影在 `agent/v2`） |
 | **事件消费** | Bus 是传输层；WS 经 `ws_v2_subscriber` 推送 |
 | **数据库** | FlowLogRepo；v2 实体表（tasks/turns/steps/…）；`activities` 已 DROP（20261012）；FE 历史走 listStepsV2 |
-| **前端对应** | ChatPage（`v2_event` → activityV2Store）、MonitorPage（`monitor_event`） |
+| **前端对应** | Chat / Graph / Teams / Knowledge / Orchestration：`v2_event`（`useV2EventStream` / `createV2EventStream`）；Monitor：`monitor_event`（`createMonitorStream`）。`realtime/useEnvelopeStream.ts` 仅为隔离兼容别名，**生产 features 禁止 import** |
 
 **⚠️ 开发注意**：
-- 新增聊天事件用 typed v2 EventKind，禁止再引入 `ActivityBridgeEvent` / `activity_event`
-- 监控事件走 `MonitorEvent`，与聊天总线分离
+- 新增聊天/图/团队/知识事件用 typed v2 EventKind，经 `biz.EventBus` → WS `v2_event`；禁止再引入 `ActivityBridgeEvent` / `activity_event`
+- 监控事件走 `MonitorEvent` → `monitor_event`，与聊天总线分离
 - 修改 Sequencer 投递策略时，回归 WS 实时性与终态 WBPF/outbox
 - 详见 [1-chat.design.md](./1-chat.design.md) §三、[34-event-system.development.md](./34-event-system.development.md)
 
@@ -323,7 +345,7 @@
 | **核心导出** | `NewFlowTracker()`、`LogStart()`、`LogDone()`、`LogSkip()`、`LogWarn()`、`LogError()`、`LogCritical()`、`Log()`、`FinishRoot()`、`SetOtelRefs()`、`CompleteToolCall()`、`SyncOtelSpanIDs()`、`MetadataJSON()`、`TraceID()`、`RunID()`、`SpanCollector()`、`UsageAggregator()`、`FlowContextState()` |
 | **实现接口** | 无（直接被 Service 层使用） |
 | **共享类型** | `Pair`（键值对，用于 extra 参数）、`FlowPhase`/`FlowSeverity` 常量 |
-| **事件生产** | `EnvelopeTypeFlowLog`（通过 `emit` → Infra.Publish → MonitorBus） |
+| **事件生产** | `contract.MonitorEvent`（`FlowTracker.emit` → MonitorEventBus；不再走 Envelope / SessionBus） |
 | **事件消费** | 无 |
 | **数据库** | 无直接访问（FlowLog 条目通过 Buffer → FlowLogRepo 持久化） |
 | **前端对应** | MonitorPage（Flow Log 展示） |
@@ -445,12 +467,12 @@
 | **事件生产** | 无 |
 | **事件消费** | 无 |
 | **数据库** | 无 |
-| **前端对应** | 无（timing 数据嵌入 FlowLog Envelope 的 metadata） |
+| **前端对应** | 无（timing 数据嵌入 FlowLog / MonitorEvent 的 metadata） |
 
 **⚠️ 开发注意**：
 - `TakeTiming` 是破坏性读取：返回计时后删除对应 stepID，同一 stepID 只能 Take 一次
 - 内部使用 `sync.Mutex` 保护 `timers` map，并发安全
-- 修改 `FlowTiming` 结构时，需同步 FlowLog Envelope 的 metadata 解析
+- 修改 `FlowTiming` 结构时，需同步 FlowLog / MonitorEvent 的 metadata 解析
 
 ---
 
@@ -684,16 +706,16 @@
 
 ---
 
-### 1.21 Spirit 动态编排 (`internal/biz/spirit_team_usecase.go` + `internal/biz/spirit_synthesis.go` + `internal/biz/spirit_task_dag.go`)
+### 1.21 Spirit 动态编排 (`internal/biz/spirit_team_usecase.go` + `spirit_assembly.go` + `spirit_orchestration.go` + `spirit_delivery.go` + `spirit_synthesis.go` + `spirit_task_dag.go`)
 
 **职责**：动态组装 Team 并行执行任务，综合结果。
 
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（TeamStarterPort 端口、TaskDAG、SynthesisEngine）、`team`（Team 运行） |
-| **下游影响** | `service/spirit_synthesis`（SpiritSynthesisService 调用 SpiritTeamUsecase） |
-| **核心导出** | `SpiritTeamUsecase`、`SynthesisEngine`（template/prompt/hybrid 三策略）、`TaskDAG`（依赖验证/环检测/拓扑排序） |
-| **实现接口** | `biz.TeamStarterPort`（Wire 绑定到 TeamStarter） |
+| **下游影响** | `service/spirit_synthesis`（SpiritSynthesisService 调用 SpiritTeamUsecase facade） |
+| **核心导出** | `SpiritTeamUsecase`（facade）、`SpiritAssembly` / `SpiritOrchestration` / `SpiritDelivery`（DEV-09）、`SynthesisEngine`（template/prompt/hybrid 三策略）、`TaskDAG`（依赖验证/环检测/拓扑排序） |
+| **实现接口** | `biz.TeamStarterPort`（Wire 绑定到 TeamStarter）；`biz.SpiritTeamController` 仍由 `*SpiritTeamUsecase` 满足 |
 | **共享类型** | `SpiritTeamConfig`、`SynthesisResult`、`TaskDAG`、`DAGNode` |
 | **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed` |
 | **事件消费** | 无 |
@@ -703,7 +725,8 @@
 **⚠️ 开发注意**：
 - Spirit 模式是 Team 的上层编排，不替代 Team，而是动态创建和调度多个 Team
 - 修改 `TeamStarterPort` 接口时，需同步更新 `service/team.go` 的 `TeamStarter` 实现
-- 6 种 Spirit EnvelopeType 被前端 `useSpiritTeamStore` 和 `useOrchestrationStore` 消费
+- Spirit 进度经 **v2_event**（`system.notice` / team 相关 kind）到达前端 `useSpiritTeamStore`（`web/src/stores/spirit/index.ts`）与 orchestration store；禁止再走 `activity_event`
+- **DEV-09（2026-08-14 P0-5a）**：`SpiritTeamUsecase` 为薄 facade（3 字段），实现在 Assembly / Orchestration / Delivery；依赖单向 Assembly→Orchestration→Delivery；超时 `sync.Map` 已提取为 `teamTimeoutRegistry`。Wire 仍 `NewSpiritTeamUsecase`。Chat RuntimeTooling 不在本拆分范围
 - **任务执行总结（B.10.17，2026-07-24 重构）**：全部团队终态后 `TeamStarter.checkAllTeamsCompleted` 经 `turnGateway.ExecuteTurn` 向精灵会话注入 `synthesisSummaryTrigger`（system-push，四节结构 prompt 契约），精灵以普通 reply step 输出 Markdown 总结（天然持久化，刷新可恢复）；存在 cancelled 团队时跳过；`synthesisTriggered` CAS 防重；注入失败时发布兜底 notice「所有团队已完成」。初版 ExecutionReportCard 报告卡片链路（信封/publisher/组件/i18n）已全量移除
 
 ---
@@ -851,27 +874,181 @@
 
 ---
 
-### 1.29 语音伴侣 / M74（`internal/voice/` + `internal/server/voice_ws.go` + `internal/biz/speech.go` + `internal/data/speech/` + `internal/tools/clientbridge/`，规划中）
+### 1.29 语音伴侣 / M74（已落地）
 
-**职责**：语音 I/O 形态（级联流式管线：流式 ASR → 现有 Chat Turn 管线 → 分句流式 TTS）+ 客户端工具桥（Agent 工具在用户桌面本机执行）。编排内核零改动。详见 [`74-voice-companion.design.md`](./74-voice-companion.design.md)。
+**代码锚点**：`internal/voice/`（`session.go`、`session_state_machine.go`、`tts_scheduler.go`、`sentence_chunker.go`、`wake_words.go`）、`internal/server/voice_ws.go`、`internal/biz/speech.go`、`internal/data/speech/`、`internal/tools/clientbridge/`。三件套：[`74-voice-companion.md`](./74-voice-companion.md) / [`.design.md`](./74-voice-companion.design.md) / [`.development.md`](./74-voice-companion.development.md)。
+
+**职责**：语音 I/O 形态（流式 ASR → 现有 Chat Turn → 分句流式 TTS）+ 客户端工具桥。编排内核零改动。独立 TTS 模块 63 **已 SUPERSEDED**，能力并入本模块。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `service/chat`（ChatSender/WSTurnExecutor，ASR 终稿入口）、`biz`（EventBus/工具配置）、`server`（RunCanceller/SessionAuthorizer）、`internal/event`（流程日志）、System Settings（speech 分组配置） |
-| **下游影响** | `tools`（clientbridge 注册新 ToolSet）、`agent`（确认门 catalog 扩展 client 工具组）、`59-multimodal`（V4 复用 ASR 端口做音频附件 STT）、`63-tts`（可后续共用 SpeechProvider 端口） |
-| **核心导出** | `StreamingASRProvider`/`StreamingTTSProvider`（biz 窄端口）、`VoiceSession` 状态机（idle/dormant/listening/thinking/speaking/interrupted/error，V10 +dormant）、`SentenceChunker` |
-| **共享类型** | `ASREvent`/`TTSAudioChunk`（biz 层，data 适配器单向转换）；`/v1/voice` 帧协议（二进制 PCM + JSON 控制帧，独立于 `/v1/ws`）；V10 +`voice.wake` 上行帧（source=kws/manual/system） |
-| **事件生产** | `client_tool.invoke/result/timeout`（WS 路由事件）；流程日志 `voice.*` step（须登记 stepTitleRegistry + 52-flow-logger §5.1） |
-| **事件消费** | Chat 流式 delta（喂 SentenceChunker）、工具确认门事件 |
-| **数据库** | 无新表（System Settings `speech` 分组；语音留档复用 27-artifact） |
-| **前端对应** | `/companion` 路由（见 §2.7）；System Settings「语音服务」Tab（V2） |
+| **上游依赖** | `service/chat`（ChatSender/WSTurnExecutor，ASR 终稿入口）、`biz`（EventBus/工具配置）、`server`（RunCanceller/SessionAuthorizer）、`internal/event`（流程日志）、System Settings（speech 分组） |
+| **下游影响** | `tools`（clientbridge ToolSet）、`agent`（确认门 client 工具组）、多模态音频附件可复用 ASR 端口 |
+| **核心导出** | `StreamingASRProvider`/`StreamingTTSProvider`（`internal/biz/speech.go`）、`VoiceSession` 状态机（idle/dormant/listening/thinking/speaking/interrupted/error）、`SentenceChunker` |
+| **共享类型** | `ASREvent`/`TTSAudioChunk`；`/v1/voice` 帧协议（二进制 PCM + JSON 控制帧，独立于 `/v1/ws`）；`voice.wake` 上行帧 |
+| **事件生产** | `client_tool.invoke/result/timeout`（经 `/v1/ws`）；流程日志 `voice.*` step |
+| **事件消费** | Chat 流式 delta（喂 SentenceChunker）、工具确认门 |
+| **数据库** | 无新表（System Settings `speech` 分组；留档复用 Artifact 27） |
+| **前端对应** | `/companion`（§2.7）：`web/src/pages/CompanionPage.vue`、`web/src/features/companion/`、`web/src/stores/companion.ts` |
 
 **⚠️ 开发注意**：
-- 语音网关仅做 ASR↔Chat↔TTS 胶水，禁止在 `internal/voice/` 内复制编排逻辑；Turn 生命周期以 Chat 管线为准
-- 打断链路必须复用 `RunCanceller.CancelRun`，禁止另建取消通道
-- 客户端工具执行路由目标 = 同 user + 同 session 且 capabilities 含 `desktop_companion` 的 WS 连接；无连接时返回 `DESKTOP_CLIENT_OFFLINE`，禁止静默成功
-- 火山等 Provider SDK 只允许出现在 `internal/data/speech/`；凭据走敏感字段，禁止入日志
-- V10 唤醒/休眠（74 设计 §16）：dormant 态**保持**事件总线订阅与 delegation watcher（委派终态系统唤醒播报），仅延迟 ASR/TTS 预热；语句拦截顺序 = 唤醒词剥离 → 退出词 → 确认词 → Chat 管线；前端 KWS 在采集端门控音频上行（dormant 零上传）
+- 语音网关只做 ASR↔Chat↔TTS 胶水，禁止在 `internal/voice/` 复制编排逻辑
+- 打断必须复用 `RunCanceller.CancelRun`
+- 客户端工具路由 = 同 user + 同 session 且 capabilities 含 `desktop_companion`；无连接返回 `DESKTOP_CLIENT_OFFLINE`
+- Provider SDK 只允许出现在 `internal/data/speech/`
+- dormant 态保持事件总线订阅与 delegation watcher，仅延迟 ASR/TTS 预热；前端 KWS 门控音频上行
+
+---
+
+### 1.30 Skill 仓库 / M20（`internal/skill/` + `internal/service/skill.go`）
+
+**职责**：Skill 包存储、运行时工具、ZIP 导入、watch/reconcile。三件套：[`20-skill.md`](./20-skill.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（SkillUsecase）、`skill/importer`（ZIP 引擎）、`pkg/auth`（导入需 admin） |
+| **下游影响** | `agent`（技能过滤/渐进加载）、`tools`、CLI `aranea skill import` |
+| **核心导出** | `SkillService`；**`ImportSkillZip`**（`api/kratos/skill/v1/skill.proto` + `internal/service/skill_import.go`） |
+| **事件生产** | 导入任务进度（经既有 Skill/Job 通道） |
+| **数据库** | skills / skill_versions（Ent） |
+| **前端对应** | SkillsPage（`web/src/features/skills/api.ts`） |
+
+**⚠️ 开发注意（P0-2 / AH-05 已修）**：ZIP 导入走 proto `ImportSkillZip` + `SkillService` 鉴权。`internal/service/skill_import_http.go` **已删除**，禁止再加 `srv.Route` 旁路。
+
+---
+
+### 1.31 Artifact 制品 / M27（`internal/artifact/` + `internal/service/artifact.go`）
+
+**职责**：会话制品存储、版本、签名下载、Runner 注入。三件套：[`27-artifact.md`](./27-artifact.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz` Artifact 端口、`internal/data/artifactfs` |
+| **下游影响** | Runner（`WithArtifactService`）、媒体工具产出落盘、Voice 留档 |
+| **核心导出** | `internal/artifact/trpc`、`ArtifactService` |
+| **数据库** | artifacts（Ent）+ 文件系统 / 对象存储 |
+| **前端对应** | ArtifactsPage |
+
+---
+
+### 1.32 Admin / Auth / M31（`pkg/auth/` + `internal/service/admin.go`）
+
+**职责**：JWT/Cookie/PAT 登录、HTTP/gRPC/WS 鉴权、Admin CRUD。三件套：[`31-admin-auth.md`](./31-admin-auth.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `pkg/auth`（token/cookie/middleware）、`internal/workspace`（JWT `workspace_id`） |
+| **下游影响** | 全部 HTTP/gRPC/WS；CLI `aranea login` |
+| **核心导出** | `pkg/auth.Auth`、`FromContext`、`HasAdminAccess`；`POST /v1/admins/login` |
+| **数据库** | `admins` |
+| **前端对应** | LoginPage、`useAuthStore` |
+
+---
+
+### 1.33 CLI / M25（`internal/cli/` + `cmd/aranea/main.go`）
+
+**职责**：终端客户端 `aranea`：只走公开 HTTP `/v1/*` 与 WS `/v1/ws`，不 import `internal/biz` / Runner。三件套：[`25-cli.md`](./25-cli.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | 后端公开 API（含 `ImportSkillZip`） |
+| **下游影响** | 无（终端消费者） |
+| **核心导出** | `internal/cli/client/*`、`internal/cli/cmd/*` |
+| **前端对应** | 无 |
+
+---
+
+### 1.34 Gateway 运行编排 / M35（`internal/runtime/gateway.go` + `run_registry.go` + `pending_queue.go`）
+
+**职责**：Chat/Team/Cron/Channel/WS 共用的会话运行编排（`RunGateway`：cancel / status / enqueue）。与 Runner(40) 边界：Gateway = 编排闸门，Runner = 装配生命周期。三件套：[`35-gateway.md`](./35-gateway.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `internal/runtime.RunRegistry`（实现 `RunGateway`） |
+| **下游影响** | ChatService、WS、Channel、Cron |
+| **核心导出** | `RunGateway` 接口、`PendingMessageQueue` |
+| **前端对应** | Chat 待发送队列（`run_status` / `message_queued`） |
+
+---
+
+### 1.35 Runner 运行器 / M40（`internal/runtime/runner_manager.go` + `internal/agent/trpc_runtime.go`）
+
+**职责**：ManagedRunner / SteerableRunner 装配、AgentFactory、Plugin/Artifact 注入。三件套：[`40-runner.md`](./40-runner.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `internal/agent` Builder、`plugin/trpc`、`artifact` |
+| **下游影响** | Chat/Team/Cron/Channel 经 `RunnerManager` |
+| **核心导出** | `RunnerManager`、`RunRegistry` |
+| **前端对应** | Monitor Runner 指标；Chat 运行控制 |
+
+---
+
+### 1.36 Media Provider（架构图 38 / **无三件套**）
+
+**职责**：文生图 / 文生视频 / 图生视频；独立于 LLM Provider(9)。**没有** `38-*.md` 三件套，以代码为准。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | 媒体 Provider 配置；产出落 Artifact(27) |
+| **下游影响** | Chat 工具 `generate_image` / `generate_video` / `image_to_video` |
+| **核心导出** | `internal/provider/media`（`registry.go`、`qwen.go`、`comfyui_local.go`）、`internal/tools/media/` |
+| **前端对应** | Observation View 节点媒体预览（架构图 39，见 §2.8） |
+
+---
+
+### 1.37 Planner / M39（文档编号 39；**勿与架构图 Observation View 混淆**）
+
+**职责**：按 Agent `plannerKind`（`""` / `builtin` / `react` / `a2ui`）选择 trpc planner。三件套：[`39-planner.md`](./39-planner.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz.AgentRuntimeSettings`、`pkg/trpc-agent-go/planner` |
+| **下游影响** | `internal/agent`（`BuildTRPCLLMAgent` → `planner.Select`） |
+| **核心导出** | `internal/agent/planner`（`selector.go`、`build.go`、`config.go`） |
+| **前端对应** | AgentSettingsPage 规划模式 |
+
+**⚠️ 撞号**：改 Planner 只动 `internal/agent/planner`。Chat 内 ComfyUI 风格观测画布是架构图模块 39（§2.8），代码在 `web/src/components/chat/observe`，**没有** `39-observation` 文档。
+
+---
+
+### 1.38 Computer Use / M75（已落地，Windows 优先）
+
+**职责**：桌面 GUI 自动化（a11y 优先 + 视觉兜底）。三件套：[`75-computer-use.md`](./75-computer-use.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | sidecar `internal/computeruse/sidecar/aranea-cua-win`；VLM / OmniParser |
+| **下游影响** | `agent` RuntimeTooling Bridges；Chat 确认门 |
+| **核心导出** | `internal/computeruse`（`gateway.go`、`client.go`、`vlm.go`）、`internal/biz/computeruse`（usecase + `session_state_machine.go`）、`internal/tools/computeruse`、`internal/service/computeruse.go` |
+| **事件生产** | `computeruse.*` FlowLog；步骤可走 `monitor_event`（`computeruse.step`） |
+| **前端对应** | `web/src/features/computeruse/`（`CuStepStream.vue`） |
+
+---
+
+### 1.39 Coding Agent Bridge / M76（已落地）
+
+**职责**：桥接外部编程 CLI Agent（ACP：Claude Code / Codex 等）。三件套：[`76-coding-agent-bridge.md`](./76-coding-agent-bridge.md)。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `internal/agentbridge/acp`（进程/连接）、Voice/Chat 确认中继 |
+| **下游影响** | `tools/codingbridge`、RuntimeTooling Bridges |
+| **核心导出** | `internal/biz/agentbridge`（`task_state_machine.go`）、`internal/service/agentbridge.go`、`api/kratos/agentbridge/v1` |
+| **事件生产** | `agentbridge.task.*` / `agentbridge.process.*` FlowLog |
+| **前端对应** | 管理 API + Chat/Companion 确认卡；无独立 `features/agentbridge` 页面 |
+
+---
+
+### 1.40 Marketplace / M57 — **SUPERSEDED（未实现，禁止开工）**
+
+公网商城三件套仍在 [`57-marketplace-platform.md`](./57-marketplace-platform.md)，但 **`cmd/marketplace`、`internal/marketplace`、`web/src/features/marketplace` 均不存在**。不要按该文档创建独立商城服务。站内资产发现/安装走 **Ecosystem(30)**。
+
+---
+
+### 1.41 TTS / M63 — **SUPERSEDED（能力并入 Voice 74）**
+
+独立 TTS 三件套 [`63-tts.md`](./63-tts.md) 为占位；无 `api/kratos/tts`、无 `internal/biz/tts`。流式 TTS 已在 Voice：`internal/voice/tts_scheduler.go`、`internal/data/speech/volcengine_tts.go`。catalog 里停用的 `tts` 工具种子 **不是** 本模块实现入口。禁止新建独立 TTS 服务。
 
 ---
 
@@ -917,7 +1094,7 @@
 |------|------|
 | **Store** | `useGraphStore`（图列表 + 编辑 + 执行 + 检查点 + 任务 + 模板） |
 | **Composable** | `useGraphEditorPage`（编辑器编排 + 合并校验）、`useGraphRunPage`（运行态编排）、`useGraphExecutionsPage`（执行历史 + 服务端过滤）、`useGraphLocalValidation`（8 种前端实时校验，区分 error/warning）、`useGraphUndoRedo`（22 种命令双栈撤销重做）、`useSnapGuide`（节点拖拽对齐）、`useConditionalRoutes`（条件边路由）、`useGraphExecutionStream`（WS 事件流）、`useGraphRunTasks`（任务看板）、`useGraphRunHitl`（HITL 交互）、`useGraphTimeTravel`（检查点时间旅行） |
-| **WS 事件消费** | graph_node_start/end/error、graph_step、graph_execution_done、graph_task_status、checkpoint |
+| **WS 事件消费** | `v2_event` `system.notice`（NoticeType=node_start/end/error/step/execution_done/graph_task_status/checkpoint）；`useV2EventStream` |
 | **后端对应** | GraphService（CRUD + 执行 + 任务 + 检查点 + 模板） |
 | **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`EdgeDef`、`ConditionalEdgeDef`、`StateFieldDef`、`Task`、`CheckpointInfo`、`ValidationError`、`ValidationWarning` |
 
@@ -937,7 +1114,7 @@
 | 维度 | 内容 |
 |------|------|
 | **Store 拆分** | `useTeamsStore`（列表）、`useTeamsPageStore`（页面状态） |
-| **WS 事件消费** | team_run_started/finished/failed、team_step_started/finished、member_message_*、team_summary |
+| **WS 事件消费** | `v2_event` `team_run.*` / `member_session.*` / team `system.notice`；`createV2EventStream` |
 | **后端对应** | TeamService（CRUD + 运行） |
 | **共享类型** | `Team`、`TeamRun`、`TeamRunStep` |
 
@@ -950,7 +1127,7 @@
 | 维度 | 内容 |
 |------|------|
 | **Store** | `useMonitorStore`（日志 + 告警 + Trace + 运行时指标） |
-| **WS 事件消费** | flow_log、log、alert_notify、mcp_health_alert（通过 globalWsHub session_id=*） |
+| **WS 事件消费** | `monitor_event`（flow_log、log、alert_notify、mcp_health_alert）via `createMonitorStream`；运行时 Team 事件走 `createV2EventStream` |
 | **后端对应** | MonitorService + EventService |
 | **跨 Store 依赖** | `listChannels`（从 channels/api 获取告警渠道选项） |
 
@@ -958,38 +1135,50 @@
 
 ### 2.6 实时通信层 (`realtime/`)
 
-**涉及文件**：`ws-transport.ts`、`globalWsHub.ts`、Activity/Monitor 流消费 hooks（legacy `useEnvelopeStream` / `envelope.ts` 已按 ADR-03 退役或收窄）
+**涉及文件**：`ws-transport.ts`、`globalWsHub.ts`、`createWsSessionStream.ts`、`useV2EventStream.ts`、`useMonitorStream.ts`。`realtime/useEnvelopeStream.ts` **仅为隔离兼容别名**（re-export typed session stream），**生产 features 禁止 import**。Chat 域 `features/chat/useEnvelopeStream.ts` 是 `createChatStream`/`createTeamStream` 的 v2 包装，不是 Envelope 主路径。
 
 | 维度 | 内容 |
 |------|------|
 | **核心导出** | WS 传输、全局 hub、`v2_event` / `monitor_event` 分发 |
-| **消费方** | Chat（v2 会话流）、Monitor（日志流）、Teams/Graph/Orchestration（typed v2 或 system.notice） |
+| **消费方** | Chat（`createChatStream` → `v2_event`）、Monitor（`createMonitorStream` → `monitor_event`）、Teams/Graph/Knowledge/Orchestration（`createV2EventStream` / `useV2EventStream`） |
 | **后端对应** | WSServer + `biz.EventBus`（v2）+ `contract.MonitorEventBus` |
 
 **⚠️ 开发注意**：
-- 聊天业务事件走 typed v2 EventKind；监控走 `MonitorEvent`。禁止新增 `activity_event` / bridge。
+- 聊天 / 图 / 团队 / 知识走 typed `v2_event`；监控走 `monitor_event`。禁止新增 `activity_event` / bridge。
 - `globalWsHub` 引用计数：`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对
 - WS 重连 hydrate 用 v2 REST（`/v2/sessions/...`），不走 EventBuffer replay
 
 ---
 
-### 2.7 语音伴侣域（M74，规划中）
+### 2.7 语音伴侣域（M74，已落地）
 
-**涉及文件**（待创建）：`pages/CompanionPage.vue`、`features/companion/`（`stores/companion.ts`、`voice/`（audioCapture/vad/audioPlayback/useVoiceSession）、`hud/HudScene.ts`、`components/`（HudCanvas/CompanionChatPanel/HoloConfirmCard））；`web/src-tauri/src/`（`client_tools.rs`/`whitelist.rs`）
+**涉及文件**：`web/src/pages/CompanionPage.vue`、`web/src/stores/companion.ts`、`web/src/features/companion/`（`voice/audioCapture.ts`、`vad.ts`、`audioPlayback.ts`、`useVoiceSession.ts`、`wakeWord.ts`、`hud/HudScene.ts`）、`web/src/components/companion/`（`HudCanvas.vue`、`CompanionChatPanel.vue`、`HoloConfirmCard.vue`）；Tauri `web/src-tauri/src/client_tools.rs`、`whitelist.rs`。
 
 | 维度 | 内容 |
 |------|------|
-| **Store** | `companion store`（voiceState/实时字幕/HUD 状态/确认卡队列）；聊天数据仍归 chat 域 stores（单一数据源，禁止复制消息状态） |
-| **WS 通道** | 双连接并存：`/v1/ws`（v2_event + client_tool 桥）+ `/v1/voice`（PCM 音频 + 语音事件） |
-| **Composable** | `useVoiceSession`（语音会话生命周期 + 状态机镜像）；发送复用 `useChatSender`（ASR 终稿与打字同路径） |
-| **原生集成** | Tauri `invoke()` 调 `client_tools.rs` 执行 open_app/open_url/screenshot；白名单在 Rust 侧强制（不信任 JS 入参） |
-| **后端对应** | §1.29 语音伴侣（voice gateway + clientbridge） |
+| **Store** | `web/src/stores/companion.ts`（voiceState/字幕/HUD/确认卡）；聊天数据仍归 chat 域 stores |
+| **WS 通道** | 双连接：`/v1/ws`（`v2_event` + client_tool）+ `/v1/voice`（PCM + 语音控制帧） |
+| **Composable** | `useVoiceSession`（镜像服务端状态机）；ASR 终稿复用 chat 发送路径 |
+| **原生集成** | Tauri `invoke()` → `client_tools.rs`（open_app/open_url）；白名单在 Rust 侧强制 |
+| **后端对应** | §1.29 |
 
 **⚠️ 开发注意**：
-- 语音字幕为 companion store transient 状态，禁止直接写入消息流；终稿经 useChatSender 转正
-- HUD 状态以服务端 `voice.state` 广播为准，禁止前端本地推测状态机
-- 新增 `three` 依赖（仅 `/companion` 路由按需加载，避免增大主包）
-- 播报音频经 AnalyserNode 驱动 HUD 跳动；barge_in 时播放队列 50ms 淡出清空
+- 字幕为 companion store transient，禁止写入消息流；终稿经 chat sender 转正
+- HUD 以服务端 `voice.state` 为准，禁止前端本地推测状态机
+- `three` 仅 `/companion` 按需加载
+
+---
+
+### 2.8 Observation View（架构图编号 39；**不是**文档 39 Planner）
+
+**涉及文件**：`web/src/components/chat/observe/`（`ObservationCanvas.vue`、`ObservationPanel.vue`、`ObserveNode.vue`、`NodeMediaPreview.vue`）、`web/src/stores/chat/nodeOutputStore.ts`。
+
+| 维度 | 内容 |
+|------|------|
+| **职责** | Chat UI 内成员节点实时观测画布（Vue Flow + 媒体预览） |
+| **WS 事件消费** | `v2_event`（与 Chat/Graph 同通道） |
+| **后端对应** | 无独立 proto；消费 Chat/Team/Graph/Media 产出 |
+| **文档** | **无** `39-observation` 三件套。Planner 三件套是 [`39-planner.md`](./39-planner.md)（§1.37） |
 
 ---
 
@@ -1031,7 +1220,7 @@
 | `TurnInput` | `biz/turn_input.go` | ChatService、ChannelIngress、CronService、A2AService、WSServer（通过 `WSTurnInput` 本地类型 + adapter 转换） |
 | `TurnResult` | `biz/turn_input.go` | ChatOrchestrator、ChannelIngress |
 | `NativeTurnResult` | `biz/native_turn_result.go` | ChatOrchestrator、ChannelIngress |
-| ~~`Envelope` / `EnvelopeType`~~ | legacy（ADR-03 后收窄） | 新代码用 `ActivityEvent` / `MonitorEvent`；前端勿再扩 `EnvelopeType` |
+| ~~`Envelope` / `ActivityEvent` / `activity_event`~~ | 已删除生产路径（P0-6） | 聊天/图/团队/知识用 typed v2 EventKind → WS `v2_event`；监控用 `MonitorEvent` → `monitor_event`。禁止再扩 EnvelopeType |
 | `Agent` | `biz/agent_types.go` | AgentUsecase、ChatOrchestrator、Team、A2A、前端 |
 | `Tool` | `biz/tool/tool.go` | ToolUsecase、ChatOrchestrator、前端 |
 | `GraphDefinition` | `biz/graph.go` | GraphUsecase、GraphService、Team、前端 |
@@ -1042,6 +1231,8 @@
 | `SelfImprovementRun` / `PatchOutcome` | `biz/self_improvement_types.go` | M73 usecase 全组、data Repo、P5 控制台前端 |
 
 ### 3.3 修改事件类型时
+
+> WS 生产通道：聊天/图/团队/知识 = `v2_event`；监控 = `monitor_event`。下表「事件名」是业务语义，不是 EnvelopeType。
 
 | 新增/修改的事件 | 生产者 | 消费者 | 前端处理 |
 |---------------|--------|--------|---------|
@@ -1110,6 +1301,9 @@
 | TaxonomyService | taxonomy/v1 | createTaxonomyService | — | — |
 | FlowLogService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
 | CodeExecutorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
+| ComputerUseService | computeruse/v1 | — | — | Chat + `features/computeruse/CuStepStream.vue` |
+| AgentBridgeService | agentbridge/v1 | — | — | Chat/Companion 确认卡 + 管理 API |
+| Voice（无独立 proto service） | `/v1/voice` WS | — | `stores/companion.ts` | CompanionPage |
 | OpenAICompatService | — | — | — | — |
 | PersistentTurnService | — | — | — | — |
 
@@ -1155,17 +1349,16 @@
 
 **关联模块**：channel → biz(NativeTurnGateway) → service/chat → event → 前端 ChannelsPage
 
-### 场景 4：新增一个 Envelope 事件类型
+### 场景 4：新增一个实时事件类型（v2 / Monitor，禁止 Envelope）
 
 | 步骤 | 模块 | 文件 |
 |------|------|------|
-| 1. 添加 EnvelopeType 常量 | event | `internal/event/envelope.go` |
-| 2. 生产者发布事件 | 对应 Service | 在事件流循环中 Infra.Publish() |
-| 3. 消费者处理事件 | 对应 Consumer | Bus.Subscribe() 或 WS 推送 |
-| 4. 前端类型定义 | 前端 | `web/src/realtime/envelope.ts` |
-| 5. 前端事件处理 | 前端 | 对应 Store/Composable 的 dispatcher.onType() |
+| 1. 聊天/图/团队/知识 | 加 typed v2 EventKind | `internal/biz` EventBus + projector；WS 经 `ws_v2_subscriber.go` 推 `v2_event` |
+| 2. 监控/FlowLog | 加 `MonitorEvent` | `contract.MonitorEventBus` → `createMonitorStream` |
+| 3. 前端 | 对应 store | Chat：`activityV2Store`；Graph/Teams/Knowledge：`useV2EventStream`；Monitor：`useMonitorStore` |
+| 4. **禁止** | Envelope | 不要改 `envelope.go` / `realtime/envelope.ts` / `activity_event`（生产路径已删） |
 
-**关联模块**：event → 生产者 Service → 消费者 → 前端 realtime → 前端 Store
+**关联模块**：biz.EventBus 或 MonitorEventBus → WS → 前端 `realtime/`（`useV2EventStream` / `useMonitorStream`，不是 `useEnvelopeStream`）
 
 ### 场景 5：修改 TurnInput 结构体
 

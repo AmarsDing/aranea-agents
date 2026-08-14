@@ -1,7 +1,7 @@
 import { onMounted, onUnmounted, type Ref } from 'vue';
 import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../globalWsHub';
 import type { ActivityEvent } from '../../../realtime/activityEvent';
-import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import type { WsSessionStream } from '../../../realtime/createWsSessionStream';
 import type { useAppStore } from '../../../stores/app';
 import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
 import type { useChatMessageStore } from '../../../stores/chat/messageStore';
@@ -39,15 +39,13 @@ export type ChatInboundSyncDeps = {
   selectedSessionId: Ref<string | undefined>;
   wsReplaying?: Ref<boolean>;
   onSpiritActivityEvent?: (ev: ActivityEvent) => void;
-  /** Activity-First (AF): route new ActivityEvent messages to the timeline. */
-  onActivityEvent?: (ev: ActivityEvent) => void;
   isChatRoute?: () => boolean;
   shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
   onHydrateError?: (sessionId: string, message: string) => void;
   focusChannelSession?: (sessionId: string, agentId: string, options?: ChannelFocusOptions) => void | Promise<void>;
-  ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
-  ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
+  ensureChatStream: (sessionId: string) => WsSessionStream;
+  ensureTeamStream: (sessionId: string) => WsSessionStream;
   loadTeamSessions?: (teamId: string) => Promise<void>;
 };
 
@@ -422,7 +420,6 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     hubId = acquireGlobalWsConsumer({
       channels: ['chat'],
       logEnabled: false,
-      onActivityEvent: deps.onActivityEvent ? (ev) => deps.onActivityEvent!(ev) : undefined,
       // E2E-P1-06: global WS now receives v2 terminal events; refresh session
       // list badges/ordering when a background turn completes.
       onV2Event: (envelope) => {

@@ -44,6 +44,7 @@ internal/service/chat_orch_run_status.go            ← RunStatus 管理
 internal/service/chat_orch_pending_queue.go         ← Pending Queue 编排
 internal/service/chat_orch_await.go                 ← AwaitUserReply 编排
 internal/service/chat_orch_agent_build.go           ← Agent 构建
+internal/service/chat_runtime_tooling.go            ← RuntimeTooling 按域分组（AS-COG-01）
 internal/service/chat_run_gateway.go                ← Biz 适配器 + publishMessageQueuedToBus
 internal/service/chat_native.go                      ← 原生对话入口（HTTP unary + WS 上行复用）+ hydratedAgent
 internal/service/chat_enqueue.go                     ← EnqueueUserMessage RPC
@@ -830,6 +831,7 @@ internal/service/
 ├── chat_orch_pending_queue.go       ← Pending Queue 编排
 ├── chat_orch_await.go               ← AwaitUserReply 编排
 ├── chat_orch_agent_build.go         ← Agent 构建
+├── chat_runtime_tooling.go          ← RuntimeTooling 按域分组（Knowledge/Skill/Plugin/Bridges/Sharing/Extensions）
 ├── chat_run_gateway.go              ← Biz 适配器 + publishMessageQueuedToBus
 ├── chat_native.go                   ← 原生对话入口（admission + team/agent 路由）
 ├── chat_enqueue.go                  ← EnqueueUserMessage RPC
@@ -869,6 +871,21 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService
 ```
 
 `ChatService` 仅做协议桥接，所有编排逻辑下沉到 `ChatOrchestrator`。`PendingMessageQueue` 由 `internal/runtime/pending_queue.go` 提供，`RunRegistry` 由 `internal/runtime/run_registry.go` 提供，均通过 `ChatOrchestrator` 持有。
+
+#### RuntimeTooling 按域分组（AS-COG-01，P0-5b，2026-08-14）
+
+`RuntimeTooling` 是 turn 构建注入的薄分组（6 字段 = 分组数），不再平铺 24 个依赖。`ChatOrchestrator` 仍只持有 `core.RT`（一个 `RuntimeTooling`），不把 24 字段摊到 Orchestrator 上。各分组按真实共注入 / 共 nil-check 聚类，字段均独立 optional（nil = 跳过装配，行为不变）：
+
+| 分组 | 字段数 | 聚类依据 |
+|------|--------|----------|
+| `KnowledgeTools` | 5 | turn 上下文注入 Retriever/Router/Federated/Evaluator；`Usecase` 进入 `TRPCMemoryKnowledgeDeps` |
+| `SkillRuntime` | 3 | 一起装入 `TRPCSkillDeps`（DBRepo + Health 排名 + CodeExecFactory）；`healthProvider()` 归一化 typed-nil |
+| `PluginRuntime` | 2 | `Manager` 优先、`RT` 回退，三处 runner plugin 加载同构 |
+| `ToolBridges` | 4 | nil 即剪枝的 ToolSet：kanban / computer_use / coding_* / client_open_* |
+| `WorkspaceSharing` | 3 | M71 CustomToolFunc：memberfs + deptmail + sessionaccess |
+| `TurnExtensions` | 6 | 非 ToolSet 的 turn 附加：Org / ToolResultGate / Outbound / SubAgent + Wire 持有的 DebugRecorder / ParallelToolExecutor |
+
+构造入口：`cmd/admin/wire.go` `provideRuntimeTooling`。调用点走 `rt.Knowledge.Retriever` 这类路径，不再 24 平铺。`OutboundRouter` / `SubAgentService` 仍同时存在于 `ChatInfraDeps`（既有双持有，本轮不收敛）。
 
 #### Follow-up Queue（对话阶段连续发送）
 
@@ -1280,7 +1297,7 @@ type ToolCallSnapshot struct {
 - `makeAwaitReplyFunc` 注入 service await-reply tool，工具阻塞时将状态置为 `awaiting_user`
 - `AwaitUserReply` 向 `awaitChans` 投递人工回复，恢复正在等待的 run
 - 单 Agent 和 Team 路径均通过 `makeAwaitReplyFunc` 注入 AwaitHook；Team Runner 通过 `SetAwaitHookProvider` 注入，`runCtx` 注入 `serviceawaitreply.WithReplyFunc`
-- 前端：`useEnvelopeStream` / `useChatStreamManager` / `useChatRunStatus` 消费 WS；`useChatWorkspace` 轮询 `GetRunStatus` 并在 `awaiting_user` 时展示提交回复横幅（`ChatMessagePanel` + `AwaitUserReply` RPC）
+- 前端：`createChatStream` / `useChatStreamManager` / `useChatRunStatus` 消费 `v2_event`；`useChatWorkspace` 轮询 `GetRunStatus` 并在 `awaiting_user` 时展示提交回复横幅（`ChatMessagePanel` + `AwaitUserReply` RPC）
 - 当前状态通过 `state_json` 持久化；`awaitChans` 仍为进程内结构，服务重启后 awaiting_user 状态可通过 `PendingAwaitUserReplyRoute` 恢复；`resumeInFlight` 防双 turn
 
 ### 8.15 Session 标题自动生成
@@ -2153,7 +2170,7 @@ export type ToolUseEvent = {
 };
 ```
 
-> **⚠️ 废弃提示**：历史 `SendMessageStreamCallbacks` 类型来自 SSE API，当前 Chat 页面主路径使用 `useEnvelopeStream` / `useChatStreamManager` 消费 WS Envelope。该类型仅作为向后兼容保留，后续应删除或迁移残留 SSE callback 类型，避免误导新开发者。
+> **⚠️ 废弃提示**：历史 `SendMessageStreamCallbacks` 类型来自 SSE API，当前 Chat 页面主路径使用 `createChatStream` / `useChatStreamManager` 消费 WS `v2_event`。该类型仅作为向后兼容保留，后续应删除或迁移残留 SSE callback 类型，避免误导新开发者。
 
 ### 11.4 API 调用
 
@@ -2174,7 +2191,7 @@ export async function submitMessageFeedback(messageId: string, sessionId: string
 export async function confirmActivity(sessionId: string, activityId: string, approved: boolean): Promise<ConfirmActivityResponse>
 ```
 
-> **⚠️ 废弃提示**：历史 `sendMessageStream()` 函数基于 SSE 实现，当前 Chat 页面主路径使用 WS `useEnvelopeStream` 消费实时事件。该函数不应在新代码中使用。
+> **⚠️ 废弃提示**：历史 `sendMessageStream()` 函数基于 SSE 实现，当前 Chat 页面主路径使用 WS `createChatStream` 消费 `v2_event`。该函数不应在新代码中使用。
 
 ### 11.5 组件设计
 
@@ -4379,6 +4396,8 @@ PlanExecutor.StartSubscription 接收 PlanBoardCreatedEvent
           └─ agentKeys = step.AgentKeys（主路径）
           └─ fallback: resolveAgentKeys(ctx)（仅 step.AgentKeys 为空时）
           └─ AssembleTeam(agentKeys)  ← 使用 LLM 分配的 agent
+
+PlanExecutor.Stop（`ChatService.Close` / kratos AfterStop）取消订阅 ctx 与在途 DAG lease；V2Bus 不关闭 channel，订阅循环必须走 `ctx.Done()`。
 ```
 
 **关键接口变更**：

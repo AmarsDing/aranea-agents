@@ -62,7 +62,7 @@ func l0SnapshotHookActive(ag biz.Agent) bool {
 }
 
 func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
-	if deps.MemoryAdmin == nil {
+	if deps.L0Admin == nil {
 		return nil
 	}
 	return callbacks.NewAfterModelHook(10, func(ctx context.Context, args *trpcmodel.AfterModelArgs) (*trpcmodel.AfterModelResult, error) {
@@ -79,7 +79,7 @@ func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 		if args != nil && args.Response != nil && args.Response.Usage != nil {
 			actual = args.Response.Usage.PromptTokens
 		}
-		if err := deps.MemoryAdmin.UpdateL0SnapshotActual(ctx, pending.ID, pending.SessionID, actual, pending.Window); err != nil {
+		if err := deps.L0Admin.UpdateL0SnapshotActual(ctx, pending.ID, pending.SessionID, actual, pending.Window); err != nil {
 			deps.Logger().Warn("L0 快照 actual 更新失败",
 				loggateway.StepID("agent.l0.snapshot"),
 				loggateway.Str("snapshot_id", pending.ID),
@@ -92,7 +92,7 @@ func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 }
 
 func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message, callIndex int) {
-	if deps.MemoryAdmin == nil || !l0SnapshotHookActive(ag) {
+	if deps.L0Admin == nil || !l0SnapshotHookActive(ag) {
 		return
 	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
@@ -197,7 +197,7 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 			in.SummaryTokenEstimate = estTokensFromChars(utf8.RuneCountInString(compMeta.SummaryText))
 		}
 	}
-	if err := deps.MemoryAdmin.InsertL0AssemblySnapshot(ctx, in); err != nil {
+	if err := deps.L0Admin.InsertL0AssemblySnapshot(ctx, in); err != nil {
 		deps.Logger().Warn("L0 快照落库失败",
 			loggateway.StepID("agent.l0.snapshot"),
 			loggateway.Str("session_id", sessionID),

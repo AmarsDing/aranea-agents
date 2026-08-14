@@ -16,8 +16,10 @@ export interface ComposerActionDeps {
   runStatus: Ref<string>;
   selectedSessionId: Ref<string | undefined>;
   notify: (opts: { type: string; message: string }) => void;
-  t: (key: string, fallback?: string) => string;
+  t: (key: string, fallbackOrNamed?: string | Record<string, unknown>) => string;
   sessionDrafts: Map<string, string>;
+  inputText: Ref<string>;
+  selectedSkillSlugs: Ref<string[]>;
 }
 
 export function useChatComposerActions(deps: ComposerActionDeps) {
@@ -33,12 +35,27 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
     notify,
     t,
     sessionDrafts,
+    inputText,
+    selectedSkillSlugs,
   } = deps;
 
   async function onSend() {
     const sid = selectedSessionId.value;
+    // Skill picker：发送前把选中技能的加载提示拼到输入框尾部（透明注入，
+    // 气泡可见）。发送被接受（sender 清空输入框）后清空选中；失败保留。
+    const slugs = selectedSkillSlugs.value;
+    if (slugs.length > 0) {
+      const prompt = t('chat.loadSkillPrompt', { slug: slugs.join(', ') });
+      const raw = inputText.value.trimEnd();
+      if (!raw.includes(prompt)) {
+        inputText.value = raw ? `${raw}\n${prompt}` : prompt;
+      }
+    }
     await sender.onSend();
     if (sid) sessionDrafts.delete(sid);
+    if (slugs.length > 0 && !inputText.value.trim()) {
+      selectedSkillSlugs.value = [];
+    }
   }
 
   function dismissFailedMessage(messageId: string) {

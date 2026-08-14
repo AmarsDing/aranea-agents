@@ -120,7 +120,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 	if w == nil || w.channels == nil || w.ingress == nil {
 		return nil
 	}
-	items, err := w.channels.ListPendingOutboundDeliveries(ctx, limit)
+	items, err := w.channels.ClaimPendingOutboundDeliveries(ctx, limit)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ import type {
   TeamRunMemberSummary as WireTeamRunMemberSummary,
 } from '../../services/kratos/team/v1/index';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
-import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { createV2EventStream } from '../../realtime/useV2EventStream';
 import { teamRunEventFromV2Event } from './teamRunEventFromV2Event';
 
 /** Session id alias that triggers admin-wide monitoring (maps to GLOBAL_WS_SESSION_ID). */
@@ -274,16 +274,15 @@ export async function resumeTeamRunExecution(
 }
 
 /**
- * Team run events over `WS /v1/ws`.
+ * Team run events over `WS /v1/ws` as typed `v2_event`.
  * Pass a real chat `sessionId` for session-scoped runs, or `GLOBAL_WS_SESSION_ID` (`*`) for admin-wide monitoring.
  *
- * Primary path: typed v2 `team_run.*` / `member_session.*` / team-related
- * `system.notice`. Compat: transport may also adapt system.notice → ActivityEvent.
+ * Kinds: `team_run.*` / `member_session.*` / team-related `system.notice`.
  */
 export function subscribeTeamRunEventsWs(sessionId: string, teamID: string, onEvent: (event: TeamRunEvent) => void) {
   const effectiveSession =
     sessionId.trim() === '' || sessionId === TEAM_MONITOR_SESSION_ALIAS ? GLOBAL_WS_SESSION_ID : sessionId;
-  const stream = createEnvelopeStream({
+  const stream = createV2EventStream({
     sessionId: effectiveSession,
     channels: ['team', 'monitor', 'system'],
     autoConnect: false,

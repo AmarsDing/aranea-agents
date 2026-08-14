@@ -16,7 +16,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 |------|------|
 | Proto | `api/kratos/team/v1/team.proto`（24 RPC） |
 | Service | `internal/service/team.go` + `team_observatory.go` + `team_compile.go` + `team_compile_view.go` + `team_resume.go` + `team_dead_letter.go` + `team_orchestration_spec.go` + `team_run_registry_adapter.go` + `team_runner_wire_adapter.go` + `team_turn_hooks.go` |
-| Biz | `internal/biz/team_usecase.go` · `team_types.go` · `team_summary.go` · `team_state_machine.go` · `team_run_state_machine.go` · `team_ports.go` · `team_interfaces.go` · `team_fallback.go` · `team_compiler.go` · `team_graph.go` · `team_graph_constants.go` · `team_graph_plugin.go` · `team_graph_knowledge.go` · `team_agent_ports.go` |
+| Biz | `internal/biz/team_usecase.go` · `team_types.go` · `team_summary.go` · `team_state_machine.go` · `team_run_state_machine.go` · `team_ports.go` · `team_interfaces.go` · `team_fallback.go` · `team_compiler.go` · `team_graph.go` · `team_graph_constants.go` · `team_graph_plugin.go` · `team_graph_knowledge.go` · `team_agent_ports.go` · `spirit_team_usecase.go`（facade）· `spirit_assembly.go` · `spirit_orchestration.go` · `spirit_delivery.go` |
 | Data | `internal/data/team_repo.go` · `team_graph_session_repo.go` · `team_graph_session_schema.go` |
 | Schema | `internal/data/ent/schema/team.go` · `team_run.go` · `team_run_step.go` · `orchestration.go` · `orchestration_step.go` · `task_dead_letter.go` |
 | Runtime | `internal/team/`（55+ 文件；graph_compile / graph_runtime / runner / status_projector / summary / state_machine 等） |
@@ -308,6 +308,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 ### Phase 9（部分完成）
 
 - [x] ListSpiritTeams / SynthesizeResults / ArchiveTeam / RetryTeam 后端 RPC
+- [x] DEV-09 SpiritTeamUsecase 拆为 Assembly / Orchestration / Delivery（P0-5a，2026-08-14）：facade 3 字段；`sync.Map` → `teamTimeoutRegistry`；对外 API 兼容
 - [ ] 前端 UI 入口（TEAM-17）
 
 ### 待验收

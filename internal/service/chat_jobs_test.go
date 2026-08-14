@@ -64,6 +64,9 @@ func (s *chatJobsRepoStub) ListActiveBySession(_ context.Context, channelID, ses
 func (s *chatJobsRepoStub) ListStaleByStatus(_ context.Context, status, beforeUpdatedAt string, limit int) ([]biz.ChannelTurnJob, error) {
 	return nil, nil
 }
+func (s *chatJobsRepoStub) TransitionIfStale(context.Context, string, string, string, string, string, string, string) (bool, error) {
+	return false, nil
+}
 
 func TestChatService_ListChatBackgroundJobs_validation(t *testing.T) {
 	svc := service.NewChatService(service.ChatOrchestratorDeps{

@@ -102,6 +102,9 @@ func (s *channelRepoStub) AddDelivery(_ context.Context, d ChannelDelivery) (Cha
 func (s *channelRepoStub) ListPendingDeliveries(_ context.Context, limit int) ([]ChannelDelivery, error) {
 	return nil, nil
 }
+func (s *channelRepoStub) ClaimPendingDeliveries(_ context.Context, limit int) ([]ChannelDelivery, error) {
+	return nil, nil
+}
 
 func (s *channelRepoStub) UpdateDelivery(_ context.Context, d ChannelDelivery) error {
 	return nil

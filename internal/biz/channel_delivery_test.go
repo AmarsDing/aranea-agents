@@ -40,6 +40,9 @@ func (s *deliveryRepoStub) AddDelivery(_ context.Context, d ChannelDelivery) (Ch
 func (s *deliveryRepoStub) ListPendingDeliveries(_ context.Context, limit int) ([]ChannelDelivery, error) {
 	return nil, nil
 }
+func (s *deliveryRepoStub) ClaimPendingDeliveries(_ context.Context, limit int) ([]ChannelDelivery, error) {
+	return nil, nil
+}
 func (s *deliveryRepoStub) UpdateDelivery(_ context.Context, d ChannelDelivery) error {
 	s.last = d
 	return nil
@@ -71,6 +74,9 @@ func TestIsOutboundDeliveryReady(t *testing.T) {
 
 	if !uc.IsOutboundDeliveryReady(ChannelDelivery{Status: ChannelDeliveryStatusPending}) {
 		t.Fatal("pending should be ready")
+	}
+	if !uc.IsOutboundDeliveryReady(ChannelDelivery{Status: ChannelDeliveryStatusSending}) {
+		t.Fatal("sending (claimed) should be ready")
 	}
 	if !uc.IsOutboundDeliveryReady(ChannelDelivery{
 		Status:      ChannelDeliveryStatusRetry,

@@ -1,5 +1,5 @@
 import { onUnmounted } from 'vue';
-import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { createV2EventStream } from '../../realtime/useV2EventStream';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
 import { parseGraphDeltaMeta, type KnowledgeGraphDelta } from './graphDelta';
@@ -10,7 +10,7 @@ import { parseGraphDeltaMeta, type KnowledgeGraphDelta } from './graphDelta';
  * 反链/悬空链缓存并重载受影响视图。页面级单订阅（KnowledgePage 挂载期间存活）。
  */
 export function useKnowledgeGraphDeltaWs(onDelta: (delta: KnowledgeGraphDelta) => void) {
-  let stream: ReturnType<typeof createEnvelopeStream> | null = null;
+  let stream: ReturnType<typeof createV2EventStream> | null = null;
 
   function applyV2(envelope: V2WsEnvelope) {
     if (envelope.kind !== 'system.notice') return;
@@ -21,7 +21,7 @@ export function useKnowledgeGraphDeltaWs(onDelta: (delta: KnowledgeGraphDelta) =
     onDelta(delta);
   }
 
-  stream = createEnvelopeStream({
+  stream = createV2EventStream({
     sessionId: GLOBAL_WS_SESSION_ID,
     channels: ['chat', 'system'],
     autoConnect: true,

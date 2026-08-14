@@ -47,6 +47,29 @@ func (s *turnJobRepoStub) UpdateAsyncTarget(_ context.Context, id, targetType, t
 	return nil
 }
 
+func (s *turnJobRepoStub) TransitionIfStale(_ context.Context, id, fromStatus, toStatus, errMsg, previewMsgID, contentPreview, _ string) (bool, error) {
+	for k, job := range s.jobs {
+		if job.ID == id {
+			if NormalizeChannelTurnJobStatus(job.Status) != NormalizeChannelTurnJobStatus(fromStatus) {
+				return false, nil
+			}
+			job.Status = NormalizeChannelTurnJobStatus(toStatus)
+			if errMsg != "" {
+				job.ErrorMessage = errMsg
+			}
+			if previewMsgID != "" {
+				job.PreviewMessageID = previewMsgID
+			}
+			if contentPreview != "" {
+				job.ContentPreview = contentPreview
+			}
+			s.jobs[k] = job
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *turnJobRepoStub) GetByIdempotency(_ context.Context, channelID, idempotencyKey string) (ChannelTurnJob, error) {
 	return s.jobs[channelID+":"+idempotencyKey], nil
 }

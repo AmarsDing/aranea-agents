@@ -102,5 +102,5 @@ func (o *ChatOrchestrator) bumpSessionRevision(ctx context.Context, sessionID st
 
 // buildUserMessage constructs a trpcmodel.Message from content and attachment IDs.
 func (o *ChatOrchestrator) buildUserMessage(ctx context.Context, sessionID, content string, attachmentIDs []string) (trpcmodel.Message, error) {
-	return chatagent.BuildUserMessageFromArtifacts(ctx, o.artifacts(), o.rt().ToolResultGate, sessionID, content, attachmentIDs)
+	return chatagent.BuildUserMessageFromArtifacts(ctx, o.artifacts(), o.rt().Extensions.ToolResultGate, sessionID, content, attachmentIDs)
 }
