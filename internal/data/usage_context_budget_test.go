@@ -5,9 +5,14 @@ import (
 	"fmt"
 	"testing"
 
+	bizusage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
+
+func bizUsageQueryRange(start, end string) bizusage.Query {
+	return bizusage.Query{StartDate: start, EndDate: end}
+}
 
 // PG-backed integration test for the P2-1 context_budget cross-turn
 // aggregation (29-token.development.md §18). Requires the test Postgres

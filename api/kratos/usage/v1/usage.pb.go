@@ -2387,6 +2387,332 @@ func (x *ListAllModelsBreakdownResponse) GetPageSize() int32 {
 	return 0
 }
 
+// ContextBudgetComposition is the per-turn average token composition of the
+// persisted context budget ledger (usage events metadata_json.context_budget).
+// category_avg_est_tokens averages over ALL sampled turns (a turn that did not
+// inject a category counts 0), so the values sum to ≈ avg_est_total_input and
+// per-category share = category_avg_est_tokens[c] / avg_est_total_input.
+type ContextBudgetComposition struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Samples              int32                  `protobuf:"varint,1,opt,name=samples,proto3" json:"samples,omitempty"` // turns carrying context_budget metadata
+	AvgEstTotalInput     float64                `protobuf:"fixed64,2,opt,name=avg_est_total_input,json=avgEstTotalInput,proto3" json:"avg_est_total_input,omitempty"`
+	AvgToolsCount        float64                `protobuf:"fixed64,3,opt,name=avg_tools_count,json=avgToolsCount,proto3" json:"avg_tools_count,omitempty"`
+	CategoryAvgEstTokens map[string]float64     `protobuf:"bytes,4,rep,name=category_avg_est_tokens,json=categoryAvgEstTokens,proto3" json:"category_avg_est_tokens,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ContextBudgetComposition) Reset() {
+	*x = ContextBudgetComposition{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextBudgetComposition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextBudgetComposition) ProtoMessage() {}
+
+func (x *ContextBudgetComposition) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextBudgetComposition.ProtoReflect.Descriptor instead.
+func (*ContextBudgetComposition) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ContextBudgetComposition) GetSamples() int32 {
+	if x != nil {
+		return x.Samples
+	}
+	return 0
+}
+
+func (x *ContextBudgetComposition) GetAvgEstTotalInput() float64 {
+	if x != nil {
+		return x.AvgEstTotalInput
+	}
+	return 0
+}
+
+func (x *ContextBudgetComposition) GetAvgToolsCount() float64 {
+	if x != nil {
+		return x.AvgToolsCount
+	}
+	return 0
+}
+
+func (x *ContextBudgetComposition) GetCategoryAvgEstTokens() map[string]float64 {
+	if x != nil {
+		return x.CategoryAvgEstTokens
+	}
+	return nil
+}
+
+type ContextBudgetAgentStats struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	AgentId       string                    `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	AgentKey      string                    `protobuf:"bytes,2,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
+	Composition   *ContextBudgetComposition `protobuf:"bytes,3,opt,name=composition,proto3" json:"composition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContextBudgetAgentStats) Reset() {
+	*x = ContextBudgetAgentStats{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextBudgetAgentStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextBudgetAgentStats) ProtoMessage() {}
+
+func (x *ContextBudgetAgentStats) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextBudgetAgentStats.ProtoReflect.Descriptor instead.
+func (*ContextBudgetAgentStats) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ContextBudgetAgentStats) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ContextBudgetAgentStats) GetAgentKey() string {
+	if x != nil {
+		return x.AgentKey
+	}
+	return ""
+}
+
+func (x *ContextBudgetAgentStats) GetComposition() *ContextBudgetComposition {
+	if x != nil {
+		return x.Composition
+	}
+	return nil
+}
+
+type ContextBudgetTrendPoint struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	DateKey       string                    `protobuf:"bytes,1,opt,name=date_key,json=dateKey,proto3" json:"date_key,omitempty"`
+	Composition   *ContextBudgetComposition `protobuf:"bytes,2,opt,name=composition,proto3" json:"composition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContextBudgetTrendPoint) Reset() {
+	*x = ContextBudgetTrendPoint{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextBudgetTrendPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextBudgetTrendPoint) ProtoMessage() {}
+
+func (x *ContextBudgetTrendPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextBudgetTrendPoint.ProtoReflect.Descriptor instead.
+func (*ContextBudgetTrendPoint) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ContextBudgetTrendPoint) GetDateKey() string {
+	if x != nil {
+		return x.DateKey
+	}
+	return ""
+}
+
+func (x *ContextBudgetTrendPoint) GetComposition() *ContextBudgetComposition {
+	if x != nil {
+		return x.Composition
+	}
+	return nil
+}
+
+// ContextBudgetToolSchemaStat aggregates one tool's schema size across the
+// turns where it appeared in the per-turn top_tools list (N6 观测).
+type ContextBudgetToolSchemaStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ToolName      string                 `protobuf:"bytes,1,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	Appearances   int32                  `protobuf:"varint,2,opt,name=appearances,proto3" json:"appearances,omitempty"`
+	AvgEstTokens  float64                `protobuf:"fixed64,3,opt,name=avg_est_tokens,json=avgEstTokens,proto3" json:"avg_est_tokens,omitempty"`
+	MaxEstTokens  float64                `protobuf:"fixed64,4,opt,name=max_est_tokens,json=maxEstTokens,proto3" json:"max_est_tokens,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ContextBudgetToolSchemaStat) Reset() {
+	*x = ContextBudgetToolSchemaStat{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContextBudgetToolSchemaStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContextBudgetToolSchemaStat) ProtoMessage() {}
+
+func (x *ContextBudgetToolSchemaStat) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContextBudgetToolSchemaStat.ProtoReflect.Descriptor instead.
+func (*ContextBudgetToolSchemaStat) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ContextBudgetToolSchemaStat) GetToolName() string {
+	if x != nil {
+		return x.ToolName
+	}
+	return ""
+}
+
+func (x *ContextBudgetToolSchemaStat) GetAppearances() int32 {
+	if x != nil {
+		return x.Appearances
+	}
+	return 0
+}
+
+func (x *ContextBudgetToolSchemaStat) GetAvgEstTokens() float64 {
+	if x != nil {
+		return x.AvgEstTokens
+	}
+	return 0
+}
+
+func (x *ContextBudgetToolSchemaStat) GetMaxEstTokens() float64 {
+	if x != nil {
+		return x.MaxEstTokens
+	}
+	return 0
+}
+
+type GetContextBudgetStatsResponse struct {
+	state   protoimpl.MessageState    `protogen:"open.v1"`
+	Overall *ContextBudgetComposition `protobuf:"bytes,1,opt,name=overall,proto3" json:"overall,omitempty"`
+	// Per-agent breakdown, sorted by avg_est_total_input desc (capped at 50).
+	Agents []*ContextBudgetAgentStats `protobuf:"bytes,2,rep,name=agents,proto3" json:"agents,omitempty"`
+	// Per-day composition trend, sorted by date_key asc.
+	Trends []*ContextBudgetTrendPoint `protobuf:"bytes,3,rep,name=trends,proto3" json:"trends,omitempty"`
+	// Largest tool schemas across turns, sorted by avg_est_tokens desc (capped at 20).
+	TopTools      []*ContextBudgetToolSchemaStat `protobuf:"bytes,4,rep,name=top_tools,json=topTools,proto3" json:"top_tools,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetContextBudgetStatsResponse) Reset() {
+	*x = GetContextBudgetStatsResponse{}
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetContextBudgetStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetContextBudgetStatsResponse) ProtoMessage() {}
+
+func (x *GetContextBudgetStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kratos_usage_v1_usage_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetContextBudgetStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetContextBudgetStatsResponse) Descriptor() ([]byte, []int) {
+	return file_kratos_usage_v1_usage_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetContextBudgetStatsResponse) GetOverall() *ContextBudgetComposition {
+	if x != nil {
+		return x.Overall
+	}
+	return nil
+}
+
+func (x *GetContextBudgetStatsResponse) GetAgents() []*ContextBudgetAgentStats {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
+func (x *GetContextBudgetStatsResponse) GetTrends() []*ContextBudgetTrendPoint {
+	if x != nil {
+		return x.Trends
+	}
+	return nil
+}
+
+func (x *GetContextBudgetStatsResponse) GetTopTools() []*ContextBudgetToolSchemaStat {
+	if x != nil {
+		return x.TopTools
+	}
+	return nil
+}
+
 var File_kratos_usage_v1_usage_proto protoreflect.FileDescriptor
 
 const file_kratos_usage_v1_usage_proto_rawDesc = "" +
@@ -2649,7 +2975,32 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\x05items\x18\x01 \x03(\v2\".kratos.usage.v1.UsageBreakdownRowR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize2\xb4\x0e\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xd0\x02\n" +
+	"\x18ContextBudgetComposition\x12\x18\n" +
+	"\asamples\x18\x01 \x01(\x05R\asamples\x12-\n" +
+	"\x13avg_est_total_input\x18\x02 \x01(\x01R\x10avgEstTotalInput\x12&\n" +
+	"\x0favg_tools_count\x18\x03 \x01(\x01R\ravgToolsCount\x12z\n" +
+	"\x17category_avg_est_tokens\x18\x04 \x03(\v2C.kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntryR\x14categoryAvgEstTokens\x1aG\n" +
+	"\x19CategoryAvgEstTokensEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\x9e\x01\n" +
+	"\x17ContextBudgetAgentStats\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x1b\n" +
+	"\tagent_key\x18\x02 \x01(\tR\bagentKey\x12K\n" +
+	"\vcomposition\x18\x03 \x01(\v2).kratos.usage.v1.ContextBudgetCompositionR\vcomposition\"\x81\x01\n" +
+	"\x17ContextBudgetTrendPoint\x12\x19\n" +
+	"\bdate_key\x18\x01 \x01(\tR\adateKey\x12K\n" +
+	"\vcomposition\x18\x02 \x01(\v2).kratos.usage.v1.ContextBudgetCompositionR\vcomposition\"\xa8\x01\n" +
+	"\x1bContextBudgetToolSchemaStat\x12\x1b\n" +
+	"\ttool_name\x18\x01 \x01(\tR\btoolName\x12 \n" +
+	"\vappearances\x18\x02 \x01(\x05R\vappearances\x12$\n" +
+	"\x0eavg_est_tokens\x18\x03 \x01(\x01R\favgEstTokens\x12$\n" +
+	"\x0emax_est_tokens\x18\x04 \x01(\x01R\fmaxEstTokens\"\xb3\x02\n" +
+	"\x1dGetContextBudgetStatsResponse\x12C\n" +
+	"\aoverall\x18\x01 \x01(\v2).kratos.usage.v1.ContextBudgetCompositionR\aoverall\x12@\n" +
+	"\x06agents\x18\x02 \x03(\v2(.kratos.usage.v1.ContextBudgetAgentStatsR\x06agents\x12@\n" +
+	"\x06trends\x18\x03 \x03(\v2(.kratos.usage.v1.ContextBudgetTrendPointR\x06trends\x12I\n" +
+	"\ttop_tools\x18\x04 \x03(\v2,.kratos.usage.v1.ContextBudgetToolSchemaStatR\btopTools2\xc3\x0f\n" +
 	"\fUsageService\x12k\n" +
 	"\x10GetUsageOverview\x12\x1b.kratos.usage.v1.UsageQuery\x1a\x1e.kratos.usage.v1.UsageOverview\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/usage/overview\x12r\n" +
 	"\x0fListUsageTrends\x12\x1b.kratos.usage.v1.UsageQuery\x1a(.kratos.usage.v1.ListUsageTrendsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/usage/trends\x12r\n" +
@@ -2664,7 +3015,8 @@ const file_kratos_usage_v1_usage_proto_rawDesc = "" +
 	"\x0eSetBudgetAlert\x12&.kratos.usage.v1.SetBudgetAlertRequest\x1a\x1c.kratos.usage.v1.BudgetAlert\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/usage/budget-alerts\x12}\n" +
 	"\x11ExportUsageEvents\x12\x1b.kratos.usage.v1.UsageQuery\x1a*.kratos.usage.v1.ExportUsageEventsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/usage/events/export\x12\x8a\x01\n" +
 	"\x10PurgeUsageEvents\x12(.kratos.usage.v1.PurgeUsageEventsRequest\x1a).kratos.usage.v1.PurgeUsageEventsResponse\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/usage/events/purge\x12\xa1\x01\n" +
-	"\x16ListAllModelsBreakdown\x12..kratos.usage.v1.ListAllModelsBreakdownRequest\x1a/.kratos.usage.v1.ListAllModelsBreakdownResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/all-models-breakdownB=\n" +
+	"\x16ListAllModelsBreakdown\x12..kratos.usage.v1.ListAllModelsBreakdownRequest\x1a/.kratos.usage.v1.ListAllModelsBreakdownResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/all-models-breakdown\x12\x8c\x01\n" +
+	"\x15GetContextBudgetStats\x12\x1b.kratos.usage.v1.UsageQuery\x1a..kratos.usage.v1.GetContextBudgetStatsResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/usage/context-budget-statsB=\n" +
 	"\x13api.kratos.usage.v1P\x01Z$aranea-agents/api/kratos/usage/v1;v1b\x06proto3"
 
 var (
@@ -2679,7 +3031,7 @@ func file_kratos_usage_v1_usage_proto_rawDescGZIP() []byte {
 	return file_kratos_usage_v1_usage_proto_rawDescData
 }
 
-var file_kratos_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_kratos_usage_v1_usage_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_kratos_usage_v1_usage_proto_goTypes = []any{
 	(*UsageQuery)(nil),                     // 0: kratos.usage.v1.UsageQuery
 	(*UsageSummary)(nil),                   // 1: kratos.usage.v1.UsageSummary
@@ -2706,6 +3058,12 @@ var file_kratos_usage_v1_usage_proto_goTypes = []any{
 	(*PurgeUsageEventsResponse)(nil),       // 22: kratos.usage.v1.PurgeUsageEventsResponse
 	(*ListAllModelsBreakdownRequest)(nil),  // 23: kratos.usage.v1.ListAllModelsBreakdownRequest
 	(*ListAllModelsBreakdownResponse)(nil), // 24: kratos.usage.v1.ListAllModelsBreakdownResponse
+	(*ContextBudgetComposition)(nil),       // 25: kratos.usage.v1.ContextBudgetComposition
+	(*ContextBudgetAgentStats)(nil),        // 26: kratos.usage.v1.ContextBudgetAgentStats
+	(*ContextBudgetTrendPoint)(nil),        // 27: kratos.usage.v1.ContextBudgetTrendPoint
+	(*ContextBudgetToolSchemaStat)(nil),    // 28: kratos.usage.v1.ContextBudgetToolSchemaStat
+	(*GetContextBudgetStatsResponse)(nil),  // 29: kratos.usage.v1.GetContextBudgetStatsResponse
+	nil,                                    // 30: kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
 }
 var file_kratos_usage_v1_usage_proto_depIdxs = []int32{
 	1,  // 0: kratos.usage.v1.UsageOverview.today:type_name -> kratos.usage.v1.UsageSummary
@@ -2724,39 +3082,48 @@ var file_kratos_usage_v1_usage_proto_depIdxs = []int32{
 	5,  // 13: kratos.usage.v1.ListUsageEventsResponse.items:type_name -> kratos.usage.v1.TokenUsageEvent
 	16, // 14: kratos.usage.v1.CheckUsageQuotaResponse.quota:type_name -> kratos.usage.v1.UsageQuota
 	3,  // 15: kratos.usage.v1.ListAllModelsBreakdownResponse.items:type_name -> kratos.usage.v1.UsageBreakdownRow
-	0,  // 16: kratos.usage.v1.UsageService.GetUsageOverview:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 17: kratos.usage.v1.UsageService.ListUsageTrends:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 18: kratos.usage.v1.UsageService.ListTopModels:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 19: kratos.usage.v1.UsageService.ListTopAgents:input_type -> kratos.usage.v1.UsageQuery
-	0,  // 20: kratos.usage.v1.UsageService.ListUsageEvents:input_type -> kratos.usage.v1.UsageQuery
-	5,  // 21: kratos.usage.v1.UsageService.RecordTokenUsageEvent:input_type -> kratos.usage.v1.TokenUsageEvent
-	17, // 22: kratos.usage.v1.UsageService.GetUsageQuota:input_type -> kratos.usage.v1.GetUsageQuotaRequest
-	18, // 23: kratos.usage.v1.UsageService.SetUsageQuota:input_type -> kratos.usage.v1.SetUsageQuotaRequest
-	19, // 24: kratos.usage.v1.UsageService.CheckUsageQuota:input_type -> kratos.usage.v1.CheckUsageQuotaRequest
-	9,  // 25: kratos.usage.v1.UsageService.ListBudgetAlerts:input_type -> kratos.usage.v1.ListBudgetAlertsRequest
-	11, // 26: kratos.usage.v1.UsageService.SetBudgetAlert:input_type -> kratos.usage.v1.SetBudgetAlertRequest
-	0,  // 27: kratos.usage.v1.UsageService.ExportUsageEvents:input_type -> kratos.usage.v1.UsageQuery
-	21, // 28: kratos.usage.v1.UsageService.PurgeUsageEvents:input_type -> kratos.usage.v1.PurgeUsageEventsRequest
-	23, // 29: kratos.usage.v1.UsageService.ListAllModelsBreakdown:input_type -> kratos.usage.v1.ListAllModelsBreakdownRequest
-	7,  // 30: kratos.usage.v1.UsageService.GetUsageOverview:output_type -> kratos.usage.v1.UsageOverview
-	13, // 31: kratos.usage.v1.UsageService.ListUsageTrends:output_type -> kratos.usage.v1.ListUsageTrendsResponse
-	14, // 32: kratos.usage.v1.UsageService.ListTopModels:output_type -> kratos.usage.v1.ListBreakdownResponse
-	14, // 33: kratos.usage.v1.UsageService.ListTopAgents:output_type -> kratos.usage.v1.ListBreakdownResponse
-	15, // 34: kratos.usage.v1.UsageService.ListUsageEvents:output_type -> kratos.usage.v1.ListUsageEventsResponse
-	5,  // 35: kratos.usage.v1.UsageService.RecordTokenUsageEvent:output_type -> kratos.usage.v1.TokenUsageEvent
-	16, // 36: kratos.usage.v1.UsageService.GetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
-	16, // 37: kratos.usage.v1.UsageService.SetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
-	20, // 38: kratos.usage.v1.UsageService.CheckUsageQuota:output_type -> kratos.usage.v1.CheckUsageQuotaResponse
-	10, // 39: kratos.usage.v1.UsageService.ListBudgetAlerts:output_type -> kratos.usage.v1.ListBudgetAlertsResponse
-	8,  // 40: kratos.usage.v1.UsageService.SetBudgetAlert:output_type -> kratos.usage.v1.BudgetAlert
-	12, // 41: kratos.usage.v1.UsageService.ExportUsageEvents:output_type -> kratos.usage.v1.ExportUsageEventsResponse
-	22, // 42: kratos.usage.v1.UsageService.PurgeUsageEvents:output_type -> kratos.usage.v1.PurgeUsageEventsResponse
-	24, // 43: kratos.usage.v1.UsageService.ListAllModelsBreakdown:output_type -> kratos.usage.v1.ListAllModelsBreakdownResponse
-	30, // [30:44] is the sub-list for method output_type
-	16, // [16:30] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	30, // 16: kratos.usage.v1.ContextBudgetComposition.category_avg_est_tokens:type_name -> kratos.usage.v1.ContextBudgetComposition.CategoryAvgEstTokensEntry
+	25, // 17: kratos.usage.v1.ContextBudgetAgentStats.composition:type_name -> kratos.usage.v1.ContextBudgetComposition
+	25, // 18: kratos.usage.v1.ContextBudgetTrendPoint.composition:type_name -> kratos.usage.v1.ContextBudgetComposition
+	25, // 19: kratos.usage.v1.GetContextBudgetStatsResponse.overall:type_name -> kratos.usage.v1.ContextBudgetComposition
+	26, // 20: kratos.usage.v1.GetContextBudgetStatsResponse.agents:type_name -> kratos.usage.v1.ContextBudgetAgentStats
+	27, // 21: kratos.usage.v1.GetContextBudgetStatsResponse.trends:type_name -> kratos.usage.v1.ContextBudgetTrendPoint
+	28, // 22: kratos.usage.v1.GetContextBudgetStatsResponse.top_tools:type_name -> kratos.usage.v1.ContextBudgetToolSchemaStat
+	0,  // 23: kratos.usage.v1.UsageService.GetUsageOverview:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 24: kratos.usage.v1.UsageService.ListUsageTrends:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 25: kratos.usage.v1.UsageService.ListTopModels:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 26: kratos.usage.v1.UsageService.ListTopAgents:input_type -> kratos.usage.v1.UsageQuery
+	0,  // 27: kratos.usage.v1.UsageService.ListUsageEvents:input_type -> kratos.usage.v1.UsageQuery
+	5,  // 28: kratos.usage.v1.UsageService.RecordTokenUsageEvent:input_type -> kratos.usage.v1.TokenUsageEvent
+	17, // 29: kratos.usage.v1.UsageService.GetUsageQuota:input_type -> kratos.usage.v1.GetUsageQuotaRequest
+	18, // 30: kratos.usage.v1.UsageService.SetUsageQuota:input_type -> kratos.usage.v1.SetUsageQuotaRequest
+	19, // 31: kratos.usage.v1.UsageService.CheckUsageQuota:input_type -> kratos.usage.v1.CheckUsageQuotaRequest
+	9,  // 32: kratos.usage.v1.UsageService.ListBudgetAlerts:input_type -> kratos.usage.v1.ListBudgetAlertsRequest
+	11, // 33: kratos.usage.v1.UsageService.SetBudgetAlert:input_type -> kratos.usage.v1.SetBudgetAlertRequest
+	0,  // 34: kratos.usage.v1.UsageService.ExportUsageEvents:input_type -> kratos.usage.v1.UsageQuery
+	21, // 35: kratos.usage.v1.UsageService.PurgeUsageEvents:input_type -> kratos.usage.v1.PurgeUsageEventsRequest
+	23, // 36: kratos.usage.v1.UsageService.ListAllModelsBreakdown:input_type -> kratos.usage.v1.ListAllModelsBreakdownRequest
+	0,  // 37: kratos.usage.v1.UsageService.GetContextBudgetStats:input_type -> kratos.usage.v1.UsageQuery
+	7,  // 38: kratos.usage.v1.UsageService.GetUsageOverview:output_type -> kratos.usage.v1.UsageOverview
+	13, // 39: kratos.usage.v1.UsageService.ListUsageTrends:output_type -> kratos.usage.v1.ListUsageTrendsResponse
+	14, // 40: kratos.usage.v1.UsageService.ListTopModels:output_type -> kratos.usage.v1.ListBreakdownResponse
+	14, // 41: kratos.usage.v1.UsageService.ListTopAgents:output_type -> kratos.usage.v1.ListBreakdownResponse
+	15, // 42: kratos.usage.v1.UsageService.ListUsageEvents:output_type -> kratos.usage.v1.ListUsageEventsResponse
+	5,  // 43: kratos.usage.v1.UsageService.RecordTokenUsageEvent:output_type -> kratos.usage.v1.TokenUsageEvent
+	16, // 44: kratos.usage.v1.UsageService.GetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
+	16, // 45: kratos.usage.v1.UsageService.SetUsageQuota:output_type -> kratos.usage.v1.UsageQuota
+	20, // 46: kratos.usage.v1.UsageService.CheckUsageQuota:output_type -> kratos.usage.v1.CheckUsageQuotaResponse
+	10, // 47: kratos.usage.v1.UsageService.ListBudgetAlerts:output_type -> kratos.usage.v1.ListBudgetAlertsResponse
+	8,  // 48: kratos.usage.v1.UsageService.SetBudgetAlert:output_type -> kratos.usage.v1.BudgetAlert
+	12, // 49: kratos.usage.v1.UsageService.ExportUsageEvents:output_type -> kratos.usage.v1.ExportUsageEventsResponse
+	22, // 50: kratos.usage.v1.UsageService.PurgeUsageEvents:output_type -> kratos.usage.v1.PurgeUsageEventsResponse
+	24, // 51: kratos.usage.v1.UsageService.ListAllModelsBreakdown:output_type -> kratos.usage.v1.ListAllModelsBreakdownResponse
+	29, // 52: kratos.usage.v1.UsageService.GetContextBudgetStats:output_type -> kratos.usage.v1.GetContextBudgetStatsResponse
+	38, // [38:53] is the sub-list for method output_type
+	23, // [23:38] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_kratos_usage_v1_usage_proto_init() }
@@ -2770,7 +3137,7 @@ func file_kratos_usage_v1_usage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kratos_usage_v1_usage_proto_rawDesc), len(file_kratos_usage_v1_usage_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

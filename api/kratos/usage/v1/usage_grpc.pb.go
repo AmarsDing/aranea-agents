@@ -33,6 +33,7 @@ const (
 	UsageService_ExportUsageEvents_FullMethodName      = "/kratos.usage.v1.UsageService/ExportUsageEvents"
 	UsageService_PurgeUsageEvents_FullMethodName       = "/kratos.usage.v1.UsageService/PurgeUsageEvents"
 	UsageService_ListAllModelsBreakdown_FullMethodName = "/kratos.usage.v1.UsageService/ListAllModelsBreakdown"
+	UsageService_GetContextBudgetStats_FullMethodName  = "/kratos.usage.v1.UsageService/GetContextBudgetStats"
 )
 
 // UsageServiceClient is the client API for UsageService service.
@@ -56,6 +57,10 @@ type UsageServiceClient interface {
 	// ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
 	// for the full-model consumption overview table. Server-side pagination/sort/search.
 	ListAllModelsBreakdown(ctx context.Context, in *ListAllModelsBreakdownRequest, opts ...grpc.CallOption) (*ListAllModelsBreakdownResponse, error)
+	// GetContextBudgetStats aggregates the per-turn context budget ledger
+	// (metadata_json.context_budget) across turns: overall composition, per-agent
+	// breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+	GetContextBudgetStats(ctx context.Context, in *UsageQuery, opts ...grpc.CallOption) (*GetContextBudgetStatsResponse, error)
 }
 
 type usageServiceClient struct {
@@ -206,6 +211,16 @@ func (c *usageServiceClient) ListAllModelsBreakdown(ctx context.Context, in *Lis
 	return out, nil
 }
 
+func (c *usageServiceClient) GetContextBudgetStats(ctx context.Context, in *UsageQuery, opts ...grpc.CallOption) (*GetContextBudgetStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetContextBudgetStatsResponse)
+	err := c.cc.Invoke(ctx, UsageService_GetContextBudgetStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UsageServiceServer is the server API for UsageService service.
 // All implementations must embed UnimplementedUsageServiceServer
 // for forward compatibility.
@@ -227,6 +242,10 @@ type UsageServiceServer interface {
 	// ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
 	// for the full-model consumption overview table. Server-side pagination/sort/search.
 	ListAllModelsBreakdown(context.Context, *ListAllModelsBreakdownRequest) (*ListAllModelsBreakdownResponse, error)
+	// GetContextBudgetStats aggregates the per-turn context budget ledger
+	// (metadata_json.context_budget) across turns: overall composition, per-agent
+	// breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+	GetContextBudgetStats(context.Context, *UsageQuery) (*GetContextBudgetStatsResponse, error)
 	mustEmbedUnimplementedUsageServiceServer()
 }
 
@@ -278,6 +297,9 @@ func (UnimplementedUsageServiceServer) PurgeUsageEvents(context.Context, *PurgeU
 }
 func (UnimplementedUsageServiceServer) ListAllModelsBreakdown(context.Context, *ListAllModelsBreakdownRequest) (*ListAllModelsBreakdownResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListAllModelsBreakdown not implemented")
+}
+func (UnimplementedUsageServiceServer) GetContextBudgetStats(context.Context, *UsageQuery) (*GetContextBudgetStatsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetContextBudgetStats not implemented")
 }
 func (UnimplementedUsageServiceServer) mustEmbedUnimplementedUsageServiceServer() {}
 func (UnimplementedUsageServiceServer) testEmbeddedByValue()                      {}
@@ -552,6 +574,24 @@ func _UsageService_ListAllModelsBreakdown_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UsageService_GetContextBudgetStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UsageQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UsageServiceServer).GetContextBudgetStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UsageService_GetContextBudgetStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UsageServiceServer).GetContextBudgetStats(ctx, req.(*UsageQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UsageService_ServiceDesc is the grpc.ServiceDesc for UsageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -614,6 +654,10 @@ var UsageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAllModelsBreakdown",
 			Handler:    _UsageService_ListAllModelsBreakdown_Handler,
+		},
+		{
+			MethodName: "GetContextBudgetStats",
+			Handler:    _UsageService_GetContextBudgetStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

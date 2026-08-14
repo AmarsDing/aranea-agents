@@ -21,6 +21,7 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationUsageServiceCheckUsageQuota = "/kratos.usage.v1.UsageService/CheckUsageQuota"
 const OperationUsageServiceExportUsageEvents = "/kratos.usage.v1.UsageService/ExportUsageEvents"
+const OperationUsageServiceGetContextBudgetStats = "/kratos.usage.v1.UsageService/GetContextBudgetStats"
 const OperationUsageServiceGetUsageOverview = "/kratos.usage.v1.UsageService/GetUsageOverview"
 const OperationUsageServiceGetUsageQuota = "/kratos.usage.v1.UsageService/GetUsageQuota"
 const OperationUsageServiceListAllModelsBreakdown = "/kratos.usage.v1.UsageService/ListAllModelsBreakdown"
@@ -37,6 +38,10 @@ const OperationUsageServiceSetUsageQuota = "/kratos.usage.v1.UsageService/SetUsa
 type UsageServiceHTTPServer interface {
 	CheckUsageQuota(context.Context, *CheckUsageQuotaRequest) (*CheckUsageQuotaResponse, error)
 	ExportUsageEvents(context.Context, *UsageQuery) (*ExportUsageEventsResponse, error)
+	// GetContextBudgetStats GetContextBudgetStats aggregates the per-turn context budget ledger
+	// (metadata_json.context_budget) across turns: overall composition, per-agent
+	// breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+	GetContextBudgetStats(context.Context, *UsageQuery) (*GetContextBudgetStatsResponse, error)
 	GetUsageOverview(context.Context, *UsageQuery) (*UsageOverview, error)
 	GetUsageQuota(context.Context, *GetUsageQuotaRequest) (*UsageQuota, error)
 	// ListAllModelsBreakdown ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
@@ -70,6 +75,7 @@ func RegisterUsageServiceHTTPServer(s *http.Server, srv UsageServiceHTTPServer) 
 	r.GET("/v1/usage/events/export", _UsageService_ExportUsageEvents0_HTTP_Handler(srv))
 	r.POST("/v1/usage/events/purge", _UsageService_PurgeUsageEvents0_HTTP_Handler(srv))
 	r.GET("/v1/usage/all-models-breakdown", _UsageService_ListAllModelsBreakdown0_HTTP_Handler(srv))
+	r.GET("/v1/usage/context-budget-stats", _UsageService_GetContextBudgetStats0_HTTP_Handler(srv))
 }
 
 func _UsageService_GetUsageOverview0_HTTP_Handler(srv UsageServiceHTTPServer) func(ctx http.Context) error {
@@ -359,9 +365,32 @@ func _UsageService_ListAllModelsBreakdown0_HTTP_Handler(srv UsageServiceHTTPServ
 	}
 }
 
+func _UsageService_GetContextBudgetStats0_HTTP_Handler(srv UsageServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UsageQuery
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUsageServiceGetContextBudgetStats)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetContextBudgetStats(ctx, req.(*UsageQuery))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetContextBudgetStatsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 type UsageServiceHTTPClient interface {
 	CheckUsageQuota(ctx context.Context, req *CheckUsageQuotaRequest, opts ...http.CallOption) (rsp *CheckUsageQuotaResponse, err error)
 	ExportUsageEvents(ctx context.Context, req *UsageQuery, opts ...http.CallOption) (rsp *ExportUsageEventsResponse, err error)
+	// GetContextBudgetStats GetContextBudgetStats aggregates the per-turn context budget ledger
+	// (metadata_json.context_budget) across turns: overall composition, per-agent
+	// breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+	GetContextBudgetStats(ctx context.Context, req *UsageQuery, opts ...http.CallOption) (rsp *GetContextBudgetStatsResponse, err error)
 	GetUsageOverview(ctx context.Context, req *UsageQuery, opts ...http.CallOption) (rsp *UsageOverview, err error)
 	GetUsageQuota(ctx context.Context, req *GetUsageQuotaRequest, opts ...http.CallOption) (rsp *UsageQuota, err error)
 	// ListAllModelsBreakdown ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
@@ -405,6 +434,22 @@ func (c *UsageServiceHTTPClientImpl) ExportUsageEvents(ctx context.Context, in *
 	pattern := "/v1/usage/events/export"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationUsageServiceExportUsageEvents))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetContextBudgetStats GetContextBudgetStats aggregates the per-turn context budget ledger
+// (metadata_json.context_budget) across turns: overall composition, per-agent
+// breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+func (c *UsageServiceHTTPClientImpl) GetContextBudgetStats(ctx context.Context, in *UsageQuery, opts ...http.CallOption) (*GetContextBudgetStatsResponse, error) {
+	var out GetContextBudgetStatsResponse
+	pattern := "/v1/usage/context-budget-stats"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationUsageServiceGetContextBudgetStats))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

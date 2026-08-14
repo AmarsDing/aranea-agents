@@ -129,6 +129,48 @@ func toProtoBudgetAlert(a biz.BudgetAlert) *v1.BudgetAlert {
 	}
 }
 
+// P2-1：context_budget 跨 turn 聚合（biz → proto）。
+func toProtoContextBudgetComposition(c biz.ContextBudgetComposition) *v1.ContextBudgetComposition {
+	cats := make(map[string]float64, len(c.CategoryAvgEstTokens))
+	for k, v := range c.CategoryAvgEstTokens {
+		cats[k] = v
+	}
+	return &v1.ContextBudgetComposition{
+		Samples:              int32(c.Samples),
+		AvgEstTotalInput:     c.AvgEstTotalInput,
+		AvgToolsCount:        c.AvgToolsCount,
+		CategoryAvgEstTokens: cats,
+	}
+}
+
+func toProtoContextBudgetStats(s biz.ContextBudgetStats) *v1.GetContextBudgetStatsResponse {
+	out := &v1.GetContextBudgetStatsResponse{
+		Overall: toProtoContextBudgetComposition(s.ContextBudgetComposition),
+	}
+	for _, a := range s.Agents {
+		out.Agents = append(out.Agents, &v1.ContextBudgetAgentStats{
+			AgentId:     a.AgentID,
+			AgentKey:    a.AgentKey,
+			Composition: toProtoContextBudgetComposition(a.ContextBudgetComposition),
+		})
+	}
+	for _, p := range s.Trends {
+		out.Trends = append(out.Trends, &v1.ContextBudgetTrendPoint{
+			DateKey:     p.DateKey,
+			Composition: toProtoContextBudgetComposition(p.ContextBudgetComposition),
+		})
+	}
+	for _, t := range s.TopTools {
+		out.TopTools = append(out.TopTools, &v1.ContextBudgetToolSchemaStat{
+			ToolName:     t.ToolName,
+			Appearances:  int32(t.Appearances),
+			AvgEstTokens: t.AvgEstTokens,
+			MaxEstTokens: t.MaxEstTokens,
+		})
+	}
+	return out
+}
+
 func toProtoUsageSummary(s biz.UsageSummary) *v1.UsageSummary {
 	return &v1.UsageSummary{
 		CallCount:          int32(s.CallCount),

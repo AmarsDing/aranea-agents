@@ -1910,7 +1910,7 @@ web/src/components/knowledge/graph3d/      ← Vue/three.js 命令式壳
 | B11 | `rpc ListEntityMergeSuggestions(collection_id)` | 归一化冲突组（name 不同 name_norm 相同——迁移期可能存在）+ 配置 embedding 时高相似对（实体名 embedding 余弦：≥0.90 标 auto 候选、0.80-0.90 标 suggest；embedding 未配置仅返回 norm 组，对齐 NFR-15）；orphan 语义不适用（实体全部来自字典表） |
 | B12 | `knowledge_entity_aliases` 表 | `(collection_id, alias_norm, entity_id)`：合并时 mergee 的 name/name_norm 落为 keeper 别名；后续抽取先精确 name_norm → 再别名命中 keeper——合并效果跨同步持久 |
 
-- **解析管线**（`vault_entity.go` 抽取落库路径）：归一化 → 精确 name_norm → 别名 → （embedding ≥0.90 自动合并入别名表）→ 新建条目。0.80-0.90 不自动动数据，仅入建议（B11 实时计算，不落队列表——YAGNI）。
+- **解析管线**（~~`vault_entity.go`~~ 抽取落库路径——该文件为 TEST_ONLY 僵尸实现，2026-08-14 已删除；以下管线契约保留，重新实现抽取器时遵循）：归一化 → 精确 name_norm → 别名 → （embedding ≥0.90 自动合并入别名表）→ 新建条目。0.80-0.90 不自动动数据，仅入建议（B11 实时计算，不落队列表——YAGNI）。
 - **触点收窄**：归一化只在 `ReplaceDocEntities` 入口与 B10 合并写路径生效；`FindEntityCooccurrences` 查询改按 entity_id 关联（已无 name 字符串比对）。
 - **迁移幂等**：DDL 迁移 SQL 幂等（IF NOT EXISTS）；回填 `name_norm` 用 DB 侧 `lower(nfc)` 不可行（PG 无 NFC）——回填走 Go 数据迁移（L3 数据迁移体系），冲突组按 id 最小者为 keeper 自动合并并落别名。
 

@@ -240,9 +240,11 @@ func TestKnowledgeSearchTool(t *testing.T) {
 	t.Run("no result", func(t *testing.T) {
 		kb := stubKnowledge{}
 		searchTool := NewKnowledgeSearchTool(kb)
-		_, err := searchTool.(ctool.CallableTool).Call(context.Background(), marshalArgs(t, "hello"))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "no relevant information found")
+		res, err := searchTool.(ctool.CallableTool).Call(context.Background(), marshalArgs(t, "hello"))
+		require.NoError(t, err)
+		rsp := res.(*KnowledgeSearchResponse)
+		require.Empty(t, rsp.Documents)
+		require.Contains(t, rsp.Message, "No relevant information found")
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -444,9 +446,11 @@ func TestAgenticFilterSearchTool(t *testing.T) {
 		kb := stubKnowledge{}
 		searchTool := NewAgenticFilterSearchTool(kb, agenticFilterInfo)
 		filter := &searchfilter.UniversalFilterCondition{Field: "category", Operator: "eq", Value: "documentation"}
-		_, err := searchTool.(ctool.CallableTool).Call(context.Background(), marshalArgsWithFilter(t, "hello", filter))
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "no relevant information found")
+		res, err := searchTool.(ctool.CallableTool).Call(context.Background(), marshalArgsWithFilter(t, "hello", filter))
+		require.NoError(t, err)
+		rsp := res.(*KnowledgeSearchResponse)
+		require.Empty(t, rsp.Documents)
+		require.Contains(t, rsp.Message, "No relevant information found")
 	})
 
 	t.Run("success with single filter", func(t *testing.T) {

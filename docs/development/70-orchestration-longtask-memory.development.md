@@ -2063,8 +2063,8 @@ func (r *ConflictResolver) ResolveConflict(
 **目标**：FR-11.6 / FR-11.7 / FR-11.8 / FR-10.10 / AC-12
 
 **文件**：
-- `internal/memory/knowledge_memory_bridge.go`（新增 — KnowledgeMemoryBridge 实现）
-- `internal/memory/knowledge_memory_bridge_test.go`（新增 — 17 测试）
+- ~~`internal/memory/knowledge_memory_bridge.go`（新增 — KnowledgeMemoryBridge 实现）~~（已删除 2026-08-14：TEST_ONLY 僵尸，生产未接线）
+- ~~`internal/memory/knowledge_memory_bridge_test.go`（新增 — 17 测试）~~（同步删除）
 - `internal/biz/memory_l4.go`（修改 — 新增 L4KnowledgeBridgeStore 接口）
 - `internal/data/memory_shim_l4.go`（修改 — l4EntityRepo 实现 FindBySourceCollection，复用 AdjustConfidence，新增 compile-time check）
 
@@ -2177,8 +2177,8 @@ func (s *KnowledgeMemoryBridge) OnTaskFeedback(
 - `internal/memory/reconsolidation_test.go` — 单元测试
 - `internal/memory/conflict_resolver.go` — 冲突消解
 - `internal/memory/conflict_resolver_test.go` — 单元测试
-- `internal/memory/knowledge_memory_bridge.go` — 知识库协同
-- `internal/memory/knowledge_memory_bridge_test.go` — 单元测试
+- ~~`internal/memory/knowledge_memory_bridge.go` — 知识库协同~~（已删除 2026-08-14：TEST_ONLY 僵尸，生产未接线）
+- ~~`internal/memory/knowledge_memory_bridge_test.go` — 单元测试~~（同步删除）
 
 **后端修改文件**：
 - `internal/data/ddl_migration_registry.go` — 注册 20261005 迁移

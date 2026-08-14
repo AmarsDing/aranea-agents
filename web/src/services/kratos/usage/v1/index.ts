@@ -268,6 +268,48 @@ export type ListAllModelsBreakdownResponse = {
   pageSize: number | undefined;
 };
 
+// ContextBudgetComposition is the per-turn average token composition of the
+// persisted context budget ledger (usage events metadata_json.context_budget).
+// category_avg_est_tokens averages over ALL sampled turns (a turn that did not
+// inject a category counts 0), so the values sum to ≈ avg_est_total_input and
+// per-category share = category_avg_est_tokens[c] / avg_est_total_input.
+export type ContextBudgetComposition = {
+  samples: number | undefined;
+  avgEstTotalInput: number | undefined;
+  avgToolsCount: number | undefined;
+  categoryAvgEstTokens: { [key: string]: number } | undefined;
+};
+
+export type ContextBudgetAgentStats = {
+  agentId: string | undefined;
+  agentKey: string | undefined;
+  composition: ContextBudgetComposition | undefined;
+};
+
+export type ContextBudgetTrendPoint = {
+  dateKey: string | undefined;
+  composition: ContextBudgetComposition | undefined;
+};
+
+// ContextBudgetToolSchemaStat aggregates one tool's schema size across the
+// turns where it appeared in the per-turn top_tools list (N6 观测).
+export type ContextBudgetToolSchemaStat = {
+  toolName: string | undefined;
+  appearances: number | undefined;
+  avgEstTokens: number | undefined;
+  maxEstTokens: number | undefined;
+};
+
+export type GetContextBudgetStatsResponse = {
+  overall: ContextBudgetComposition | undefined;
+  // Per-agent breakdown, sorted by avg_est_total_input desc (capped at 50).
+  agents: ContextBudgetAgentStats[] | undefined;
+  // Per-day composition trend, sorted by date_key asc.
+  trends: ContextBudgetTrendPoint[] | undefined;
+  // Largest tool schemas across turns, sorted by avg_est_tokens desc (capped at 20).
+  topTools: ContextBudgetToolSchemaStat[] | undefined;
+};
+
 export interface UsageService {
   GetUsageOverview(request: UsageQuery): Promise<UsageOverview>;
   ListUsageTrends(request: UsageQuery): Promise<ListUsageTrendsResponse>;
@@ -286,6 +328,10 @@ export interface UsageService {
   // ListAllModelsBreakdown returns a paginated, searchable, sortable breakdown of all models
   // for the full-model consumption overview table. Server-side pagination/sort/search.
   ListAllModelsBreakdown(request: ListAllModelsBreakdownRequest): Promise<ListAllModelsBreakdownResponse>;
+  // GetContextBudgetStats aggregates the per-turn context budget ledger
+  // (metadata_json.context_budget) across turns: overall composition, per-agent
+  // breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+  GetContextBudgetStats(request: UsageQuery): Promise<GetContextBudgetStatsResponse>;
 }
 
 type RequestType = {
@@ -804,6 +850,59 @@ export function createUsageServiceClient(
         service: "UsageService",
         method: "ListAllModelsBreakdown",
       }) as Promise<ListAllModelsBreakdownResponse>;
+    },
+    GetContextBudgetStats(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/usage/context-budget-stats`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.range) {
+        queryParams.push(`range=${encodeURIComponent(request.range.toString())}`)
+      }
+      if (request.startDate) {
+        queryParams.push(`startDate=${encodeURIComponent(request.startDate.toString())}`)
+      }
+      if (request.endDate) {
+        queryParams.push(`endDate=${encodeURIComponent(request.endDate.toString())}`)
+      }
+      if (request.providerCode) {
+        queryParams.push(`providerCode=${encodeURIComponent(request.providerCode.toString())}`)
+      }
+      if (request.modelApiId) {
+        queryParams.push(`modelApiId=${encodeURIComponent(request.modelApiId.toString())}`)
+      }
+      if (request.agentId) {
+        queryParams.push(`agentId=${encodeURIComponent(request.agentId.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      if (request.granularity) {
+        queryParams.push(`granularity=${encodeURIComponent(request.granularity.toString())}`)
+      }
+      if (request.teamId) {
+        queryParams.push(`teamId=${encodeURIComponent(request.teamId.toString())}`)
+      }
+      if (request.usageKind) {
+        queryParams.push(`usageKind=${encodeURIComponent(request.usageKind.toString())}`)
+      }
+      if (request.offset) {
+        queryParams.push(`offset=${encodeURIComponent(request.offset.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "UsageService",
+        method: "GetContextBudgetStats",
+      }) as Promise<GetContextBudgetStatsResponse>;
     },
   };
 }

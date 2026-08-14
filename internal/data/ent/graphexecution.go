@@ -21,6 +21,10 @@ type GraphExecution struct {
 	GraphID string `json:"graph_id,omitempty"`
 	// SessionID holds the value of the "session_id" field.
 	SessionID string `json:"session_id,omitempty"`
+	// SpiritSessionID holds the value of the "spirit_session_id" field.
+	SpiritSessionID string `json:"spirit_session_id,omitempty"`
+	// DefinitionHash holds the value of the "definition_hash" field.
+	DefinitionHash string `json:"definition_hash,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// CurrentNode holds the value of the "current_node" field.
@@ -45,7 +49,7 @@ func (*GraphExecution) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case graphexecution.FieldID, graphexecution.FieldGraphID, graphexecution.FieldSessionID, graphexecution.FieldStatus, graphexecution.FieldCurrentNode, graphexecution.FieldLineageID, graphexecution.FieldErrorMessage, graphexecution.FieldCurrentStateJSON, graphexecution.FieldStepsJSON:
+		case graphexecution.FieldID, graphexecution.FieldGraphID, graphexecution.FieldSessionID, graphexecution.FieldSpiritSessionID, graphexecution.FieldDefinitionHash, graphexecution.FieldStatus, graphexecution.FieldCurrentNode, graphexecution.FieldLineageID, graphexecution.FieldErrorMessage, graphexecution.FieldCurrentStateJSON, graphexecution.FieldStepsJSON:
 			values[i] = new(sql.NullString)
 		case graphexecution.FieldStartedAt, graphexecution.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -81,6 +85,18 @@ func (_m *GraphExecution) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field session_id", values[i])
 			} else if value.Valid {
 				_m.SessionID = value.String
+			}
+		case graphexecution.FieldSpiritSessionID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field spirit_session_id", values[i])
+			} else if value.Valid {
+				_m.SpiritSessionID = value.String
+			}
+		case graphexecution.FieldDefinitionHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field definition_hash", values[i])
+			} else if value.Valid {
+				_m.DefinitionHash = value.String
 			}
 		case graphexecution.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -172,6 +188,12 @@ func (_m *GraphExecution) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("session_id=")
 	builder.WriteString(_m.SessionID)
+	builder.WriteString(", ")
+	builder.WriteString("spirit_session_id=")
+	builder.WriteString(_m.SpiritSessionID)
+	builder.WriteString(", ")
+	builder.WriteString("definition_hash=")
+	builder.WriteString(_m.DefinitionHash)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

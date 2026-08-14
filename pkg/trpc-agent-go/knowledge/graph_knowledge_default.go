@@ -142,7 +142,9 @@ func (gk *BuiltinGraphKnowledge) Search(
 		return nil, err
 	}
 	if len(seeds) == 0 {
-		return nil, errors.New("no relevant information found")
+		// 空结果返回空 SearchResult 而非错误：由上层工具转换为正常空响应，
+		// LLM 可继续基于自身知识回答，避免工具报错引发的重试循环。
+		return &SearchResult{Documents: []*Result{}}, nil
 	}
 
 	docResults := make([]*Result, 0, len(seeds))

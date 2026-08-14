@@ -965,12 +965,12 @@ func TestBuiltinGraphKnowledge_SearchEmptyResults(t *testing.T) {
 		WithGraphVectorStore(&emptyResultVectorStore{}),
 		WithGraphEmbedder(stubGraphEmbedder{}),
 	)
-	_, err := gk.Search(context.Background(), &SearchRequest{Query: "test"})
-	if err == nil {
-		t.Fatal("expected error for empty search results")
+	res, err := gk.Search(context.Background(), &SearchRequest{Query: "test"})
+	if err != nil {
+		t.Fatalf("empty search results should not error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "no relevant information found") {
-		t.Fatalf("error = %v, want 'no relevant information found'", err)
+	if res == nil || len(res.Documents) != 0 {
+		t.Fatalf("expected empty documents, got %+v", res)
 	}
 }
 
@@ -980,12 +980,12 @@ func TestBuiltinGraphKnowledge_SearchNilVectorStoreResult(t *testing.T) {
 		WithGraphVectorStore(&nilResultVectorStore{}),
 		WithGraphEmbedder(stubGraphEmbedder{}),
 	)
-	_, err := gk.Search(context.Background(), &SearchRequest{Query: "test"})
-	if err == nil {
-		t.Fatal("expected error for nil search result")
+	res, err := gk.Search(context.Background(), &SearchRequest{Query: "test"})
+	if err != nil {
+		t.Fatalf("nil search result should not error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "no relevant information found") {
-		t.Fatalf("error = %v, want 'no relevant information found'", err)
+	if res == nil || len(res.Documents) != 0 {
+		t.Fatalf("expected empty documents, got %+v", res)
 	}
 }
 

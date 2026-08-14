@@ -56,6 +56,34 @@ func (_u *GraphExecutionUpdate) SetNillableSessionID(v *string) *GraphExecutionU
 	return _u
 }
 
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (_u *GraphExecutionUpdate) SetSpiritSessionID(v string) *GraphExecutionUpdate {
+	_u.mutation.SetSpiritSessionID(v)
+	return _u
+}
+
+// SetNillableSpiritSessionID sets the "spirit_session_id" field if the given value is not nil.
+func (_u *GraphExecutionUpdate) SetNillableSpiritSessionID(v *string) *GraphExecutionUpdate {
+	if v != nil {
+		_u.SetSpiritSessionID(*v)
+	}
+	return _u
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (_u *GraphExecutionUpdate) SetDefinitionHash(v string) *GraphExecutionUpdate {
+	_u.mutation.SetDefinitionHash(v)
+	return _u
+}
+
+// SetNillableDefinitionHash sets the "definition_hash" field if the given value is not nil.
+func (_u *GraphExecutionUpdate) SetNillableDefinitionHash(v *string) *GraphExecutionUpdate {
+	if v != nil {
+		_u.SetDefinitionHash(*v)
+	}
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *GraphExecutionUpdate) SetStatus(v string) *GraphExecutionUpdate {
 	_u.mutation.SetStatus(v)
@@ -218,6 +246,16 @@ func (_u *GraphExecutionUpdate) check() error {
 			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.session_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SpiritSessionID(); ok {
+		if err := graphexecution.SpiritSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "spirit_session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.spirit_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefinitionHash(); ok {
+		if err := graphexecution.DefinitionHashValidator(v); err != nil {
+			return &ValidationError{Name: "definition_hash", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.definition_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := graphexecution.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.status": %w`, err)}
@@ -253,6 +291,12 @@ func (_u *GraphExecutionUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.SessionID(); ok {
 		_spec.SetField(graphexecution.FieldSessionID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SpiritSessionID(); ok {
+		_spec.SetField(graphexecution.FieldSpiritSessionID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefinitionHash(); ok {
+		_spec.SetField(graphexecution.FieldDefinitionHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(graphexecution.FieldStatus, field.TypeString, value)
@@ -325,6 +369,34 @@ func (_u *GraphExecutionUpdateOne) SetSessionID(v string) *GraphExecutionUpdateO
 func (_u *GraphExecutionUpdateOne) SetNillableSessionID(v *string) *GraphExecutionUpdateOne {
 	if v != nil {
 		_u.SetSessionID(*v)
+	}
+	return _u
+}
+
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (_u *GraphExecutionUpdateOne) SetSpiritSessionID(v string) *GraphExecutionUpdateOne {
+	_u.mutation.SetSpiritSessionID(v)
+	return _u
+}
+
+// SetNillableSpiritSessionID sets the "spirit_session_id" field if the given value is not nil.
+func (_u *GraphExecutionUpdateOne) SetNillableSpiritSessionID(v *string) *GraphExecutionUpdateOne {
+	if v != nil {
+		_u.SetSpiritSessionID(*v)
+	}
+	return _u
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (_u *GraphExecutionUpdateOne) SetDefinitionHash(v string) *GraphExecutionUpdateOne {
+	_u.mutation.SetDefinitionHash(v)
+	return _u
+}
+
+// SetNillableDefinitionHash sets the "definition_hash" field if the given value is not nil.
+func (_u *GraphExecutionUpdateOne) SetNillableDefinitionHash(v *string) *GraphExecutionUpdateOne {
+	if v != nil {
+		_u.SetDefinitionHash(*v)
 	}
 	return _u
 }
@@ -504,6 +576,16 @@ func (_u *GraphExecutionUpdateOne) check() error {
 			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.session_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SpiritSessionID(); ok {
+		if err := graphexecution.SpiritSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "spirit_session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.spirit_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.DefinitionHash(); ok {
+		if err := graphexecution.DefinitionHashValidator(v); err != nil {
+			return &ValidationError{Name: "definition_hash", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.definition_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := graphexecution.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.status": %w`, err)}
@@ -556,6 +638,12 @@ func (_u *GraphExecutionUpdateOne) sqlSave(ctx context.Context) (_node *GraphExe
 	}
 	if value, ok := _u.mutation.SessionID(); ok {
 		_spec.SetField(graphexecution.FieldSessionID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SpiritSessionID(); ok {
+		_spec.SetField(graphexecution.FieldSpiritSessionID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefinitionHash(); ok {
+		_spec.SetField(graphexecution.FieldDefinitionHash, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(graphexecution.FieldStatus, field.TypeString, value)

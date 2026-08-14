@@ -240,3 +240,16 @@ func (s *UsageService) ListAllModelsBreakdown(ctx context.Context, req *v1.ListA
 		PageSize: result.PageSize,
 	}, nil
 }
+
+// GetContextBudgetStats serves the P2-1 cross-turn context budget aggregation
+// (29-token.development.md §18). Reuses UsageQuery filters; workspace scoping
+// follows the same rule as other analytics RPCs.
+func (s *UsageService) GetContextBudgetStats(ctx context.Context, req *v1.UsageQuery) (*v1.GetContextBudgetStatsResponse, error) {
+	q := fromProtoUsageQuery(req)
+	q.WorkspaceID = s.resolveWorkspaceID(ctx)
+	stats, err := s.uc.ContextBudgetStats(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return toProtoContextBudgetStats(stats), nil
+}

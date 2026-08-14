@@ -8,7 +8,7 @@
 
 ## 1. 模块概述
 
-OpenTelemetry 遥测集成：Trace / Metrics / Langfuse / 应用内 Trace 投影，覆盖传输层与 Chat/Team/Graph Run 热路径。
+OpenTelemetry 遥测集成：Trace / Metrics / 应用内 Trace 投影，覆盖传输层与 Chat/Team/Graph Run 热路径。
 
 **设计原则**：
 
@@ -70,15 +70,7 @@ cmd/admin/main.go
 
 支持的采样策略：`always_on` / `parentbased_always_on` / `always_off` / `parentbased_always_off` / `traceidratio` / `parentbased_traceidratio`。仅 HTTP 路径生效。
 
-**`internal/telemetry/langfuse.go`** — Langfuse 运行时：
-
-| 函数/方法 | 职责 |
-|-----------|------|
-| `NewLangfuseRuntime(conf, lg)` | 从 `conf.Bootstrap.Langfuse` 读取配置，启动 Langfuse |
-| `Enabled()` | Langfuse 是否启用 |
-| `Shutdown(ctx)` | 优雅关闭 |
-
-> **设计意图**：`LangfuseRuntime` 构造函数签名已就绪，设计为通过 Wire 注入、独立于 OTLP 生命周期。当前接入状态见开发计划 §2。
+~~**`internal/telemetry/langfuse.go`** — Langfuse 运行时~~（已删除 2026-08-14：构造函数虽就绪但从未接入 `wireApp`，零生产引用，属 TEST_ONLY 僵尸实现；如需 Langfuse 导出请参考 `docs/development/phase4-生产级增强/06-Langfuse可观测性.md` 重新实现并接线 Wire）
 
 ### 4.2 Kratos 传输层中间件
 

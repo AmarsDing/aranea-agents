@@ -43,6 +43,34 @@ func (_c *GraphExecutionCreate) SetNillableSessionID(v *string) *GraphExecutionC
 	return _c
 }
 
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (_c *GraphExecutionCreate) SetSpiritSessionID(v string) *GraphExecutionCreate {
+	_c.mutation.SetSpiritSessionID(v)
+	return _c
+}
+
+// SetNillableSpiritSessionID sets the "spirit_session_id" field if the given value is not nil.
+func (_c *GraphExecutionCreate) SetNillableSpiritSessionID(v *string) *GraphExecutionCreate {
+	if v != nil {
+		_c.SetSpiritSessionID(*v)
+	}
+	return _c
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (_c *GraphExecutionCreate) SetDefinitionHash(v string) *GraphExecutionCreate {
+	_c.mutation.SetDefinitionHash(v)
+	return _c
+}
+
+// SetNillableDefinitionHash sets the "definition_hash" field if the given value is not nil.
+func (_c *GraphExecutionCreate) SetNillableDefinitionHash(v *string) *GraphExecutionCreate {
+	if v != nil {
+		_c.SetDefinitionHash(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *GraphExecutionCreate) SetStatus(v string) *GraphExecutionCreate {
 	_c.mutation.SetStatus(v)
@@ -192,6 +220,14 @@ func (_c *GraphExecutionCreate) defaults() {
 		v := graphexecution.DefaultSessionID
 		_c.mutation.SetSessionID(v)
 	}
+	if _, ok := _c.mutation.SpiritSessionID(); !ok {
+		v := graphexecution.DefaultSpiritSessionID
+		_c.mutation.SetSpiritSessionID(v)
+	}
+	if _, ok := _c.mutation.DefinitionHash(); !ok {
+		v := graphexecution.DefaultDefinitionHash
+		_c.mutation.SetDefinitionHash(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := graphexecution.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -234,6 +270,22 @@ func (_c *GraphExecutionCreate) check() error {
 	if v, ok := _c.mutation.SessionID(); ok {
 		if err := graphexecution.SessionIDValidator(v); err != nil {
 			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.session_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SpiritSessionID(); !ok {
+		return &ValidationError{Name: "spirit_session_id", err: errors.New(`ent: missing required field "GraphExecution.spirit_session_id"`)}
+	}
+	if v, ok := _c.mutation.SpiritSessionID(); ok {
+		if err := graphexecution.SpiritSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "spirit_session_id", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.spirit_session_id": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DefinitionHash(); !ok {
+		return &ValidationError{Name: "definition_hash", err: errors.New(`ent: missing required field "GraphExecution.definition_hash"`)}
+	}
+	if v, ok := _c.mutation.DefinitionHash(); ok {
+		if err := graphexecution.DefinitionHashValidator(v); err != nil {
+			return &ValidationError{Name: "definition_hash", err: fmt.Errorf(`ent: validator failed for field "GraphExecution.definition_hash": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Status(); !ok {
@@ -320,6 +372,14 @@ func (_c *GraphExecutionCreate) createSpec() (*GraphExecution, *sqlgraph.CreateS
 	if value, ok := _c.mutation.SessionID(); ok {
 		_spec.SetField(graphexecution.FieldSessionID, field.TypeString, value)
 		_node.SessionID = value
+	}
+	if value, ok := _c.mutation.SpiritSessionID(); ok {
+		_spec.SetField(graphexecution.FieldSpiritSessionID, field.TypeString, value)
+		_node.SpiritSessionID = value
+	}
+	if value, ok := _c.mutation.DefinitionHash(); ok {
+		_spec.SetField(graphexecution.FieldDefinitionHash, field.TypeString, value)
+		_node.DefinitionHash = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(graphexecution.FieldStatus, field.TypeString, value)
@@ -426,6 +486,30 @@ func (u *GraphExecutionUpsert) SetSessionID(v string) *GraphExecutionUpsert {
 // UpdateSessionID sets the "session_id" field to the value that was provided on create.
 func (u *GraphExecutionUpsert) UpdateSessionID() *GraphExecutionUpsert {
 	u.SetExcluded(graphexecution.FieldSessionID)
+	return u
+}
+
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (u *GraphExecutionUpsert) SetSpiritSessionID(v string) *GraphExecutionUpsert {
+	u.Set(graphexecution.FieldSpiritSessionID, v)
+	return u
+}
+
+// UpdateSpiritSessionID sets the "spirit_session_id" field to the value that was provided on create.
+func (u *GraphExecutionUpsert) UpdateSpiritSessionID() *GraphExecutionUpsert {
+	u.SetExcluded(graphexecution.FieldSpiritSessionID)
+	return u
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (u *GraphExecutionUpsert) SetDefinitionHash(v string) *GraphExecutionUpsert {
+	u.Set(graphexecution.FieldDefinitionHash, v)
+	return u
+}
+
+// UpdateDefinitionHash sets the "definition_hash" field to the value that was provided on create.
+func (u *GraphExecutionUpsert) UpdateDefinitionHash() *GraphExecutionUpsert {
+	u.SetExcluded(graphexecution.FieldDefinitionHash)
 	return u
 }
 
@@ -604,6 +688,34 @@ func (u *GraphExecutionUpsertOne) SetSessionID(v string) *GraphExecutionUpsertOn
 func (u *GraphExecutionUpsertOne) UpdateSessionID() *GraphExecutionUpsertOne {
 	return u.Update(func(s *GraphExecutionUpsert) {
 		s.UpdateSessionID()
+	})
+}
+
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (u *GraphExecutionUpsertOne) SetSpiritSessionID(v string) *GraphExecutionUpsertOne {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.SetSpiritSessionID(v)
+	})
+}
+
+// UpdateSpiritSessionID sets the "spirit_session_id" field to the value that was provided on create.
+func (u *GraphExecutionUpsertOne) UpdateSpiritSessionID() *GraphExecutionUpsertOne {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.UpdateSpiritSessionID()
+	})
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (u *GraphExecutionUpsertOne) SetDefinitionHash(v string) *GraphExecutionUpsertOne {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.SetDefinitionHash(v)
+	})
+}
+
+// UpdateDefinitionHash sets the "definition_hash" field to the value that was provided on create.
+func (u *GraphExecutionUpsertOne) UpdateDefinitionHash() *GraphExecutionUpsertOne {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.UpdateDefinitionHash()
 	})
 }
 
@@ -966,6 +1078,34 @@ func (u *GraphExecutionUpsertBulk) SetSessionID(v string) *GraphExecutionUpsertB
 func (u *GraphExecutionUpsertBulk) UpdateSessionID() *GraphExecutionUpsertBulk {
 	return u.Update(func(s *GraphExecutionUpsert) {
 		s.UpdateSessionID()
+	})
+}
+
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (u *GraphExecutionUpsertBulk) SetSpiritSessionID(v string) *GraphExecutionUpsertBulk {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.SetSpiritSessionID(v)
+	})
+}
+
+// UpdateSpiritSessionID sets the "spirit_session_id" field to the value that was provided on create.
+func (u *GraphExecutionUpsertBulk) UpdateSpiritSessionID() *GraphExecutionUpsertBulk {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.UpdateSpiritSessionID()
+	})
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (u *GraphExecutionUpsertBulk) SetDefinitionHash(v string) *GraphExecutionUpsertBulk {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.SetDefinitionHash(v)
+	})
+}
+
+// UpdateDefinitionHash sets the "definition_hash" field to the value that was provided on create.
+func (u *GraphExecutionUpsertBulk) UpdateDefinitionHash() *GraphExecutionUpsertBulk {
+	return u.Update(func(s *GraphExecutionUpsert) {
+		s.UpdateDefinitionHash()
 	})
 }
 

@@ -136,7 +136,7 @@ RunGate(ctx, workspaceDir, gate, scope) → GateResult{gate, passed, output, dur
 - **超时与资源**：每 Gate 独立超时（G1 5min / G2 10min / G3 5min），子进程组杀绝，输出截断 64KB 入报告
 - **生产隔离**：沙盒只读配置副本，测试走独立 PG schema（testhelper 模式）；禁止访问生产外部服务（环境变量白名单注入）
 
-> P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限（golangci-lint 包级接线推迟 Phase 3）；web 侧 gate（pnpm）未进 Runner，`DeriveAffectedScopes` 已输出 web 范围标志，Phase 3 随 Meta Team 集成接入；进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`；Patcher 工具集（patcher_fs_read/patcher_fs_write/patcher_git_diff，worktree 作用域限定）实现于 `internal/tools/patcherfs/`。
+> P2 落地注记（2026-07-30）：G3 以 `go vet <pkgs>` 为确定性下限（golangci-lint 包级接线推迟 Phase 3）；web 侧 gate（pnpm）未进 Runner，`DeriveAffectedScopes` 已输出 web 范围标志，Phase 3 随 Meta Team 集成接入；进程组杀绝沿用项目惯例 `exec.CommandContext`（Windows 无进程组语义）。diff 解析/受影响包推导/保护清单（doublestar glob）/500 行规模上限/SEL-08 敏感信息检测实现于 `internal/biz/self_improvement_patch.go`；Patcher 工具集（patcher_fs_read/patcher_fs_write/patcher_git_diff，worktree 作用域限定）实现于 ~~`internal/tools/patcherfs/`~~（已删除 2026-08-14：零生产引用，TEST_ONLY 僵尸实现）。
 >
 > **G5（eval 基线）延期未接线**：Pipeline 实际只执行 G1-G3（+G4 Critic 在治理前）；为保持控制台透明，G1-G3 全过后显式落一条 `g5_eval` passed/skipped 记录（Output 注明 deferred），而非静默缺失。G5 真实执行（eval baseline 对比进沙盒）待后续迭代。
 

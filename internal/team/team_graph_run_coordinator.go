@@ -29,19 +29,28 @@ const sessionMaxAge = 2 * time.Hour
 
 const defaultCleanupInterval = 10 * time.Minute
 
+// defaultSuspendIdleThreshold is the P3-3 (ADR-D) idle window after which a
+// waiting_human session is suspended: evicted from memory while its DB row is
+// retained (status unchanged) so a later resume signal can wake it.
+const defaultSuspendIdleThreshold = 30 * time.Minute
+
 type CoordinatorConfig struct {
 	WatchTimeout    time.Duration
 	HITLSLATimeout  time.Duration
 	SessionMaxAge   time.Duration
 	CleanupInterval time.Duration
+	// SuspendIdleThreshold gates SuspendIdleWaits (P3-3); <=0 falls back to
+	// defaultSuspendIdleThreshold.
+	SuspendIdleThreshold time.Duration
 }
 
 func DefaultCoordinatorConfig() CoordinatorConfig {
 	return CoordinatorConfig{
-		WatchTimeout:    defaultGraphWatchTimeout,
-		HITLSLATimeout:  defaultHITLSLATimeout,
-		SessionMaxAge:   sessionMaxAge,
-		CleanupInterval: defaultCleanupInterval,
+		WatchTimeout:         defaultGraphWatchTimeout,
+		HITLSLATimeout:       defaultHITLSLATimeout,
+		SessionMaxAge:        sessionMaxAge,
+		CleanupInterval:      defaultCleanupInterval,
+		SuspendIdleThreshold: defaultSuspendIdleThreshold,
 	}
 }
 
@@ -92,6 +101,12 @@ type teamGraphRunSession struct {
 	obsReg        biz.OrchestrationRegistry
 	obsStore      *biz.OrchestrationStatusStore
 	registeredAt  time.Time
+	// status mirrors the TeamRun status (P3-3 / ADR-D): SuspendIdleWaits only
+	// evicts waiting_human sessions — running sessions have inflight steps.
+	status string
+	// lastActivityAt is the suspend/stale aging basis (D3): registration time
+	// is only the fallback for sessions with no recorded activity yet.
+	lastActivityAt time.Time
 }
 
 type graphWatchMode int
@@ -157,6 +172,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		return err
 	}
 	execID = strings.TrimSpace(execID)
+	now := time.Now()
 	sess := &teamGraphRunSession{
 		teamRunID:       strings.TrimSpace(teamRunID),
 		teamID:          strings.TrimSpace(teamID),
@@ -164,27 +180,20 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		spiritSessionID: strings.TrimSpace(spiritSessionID),
 		// S-3: capture the run-dimension at registration; the finisher's ctx
 		// (resume/finalize path) never carries RootTaskActivityID.
-		rootTaskID:   string(agent.RootTaskActivityIDFromCtx(ctx)),
-		execID:       execID,
-		emitter:      event.TraceEmitterFromContext(ctx),
-		stepDedup:    newGraphStepDedup(),
-		nodeStarts:   newGraphNodeStartTracker(),
-		registeredAt: time.Now(),
+		rootTaskID:     string(agent.RootTaskActivityIDFromCtx(ctx)),
+		execID:         execID,
+		emitter:        event.TraceEmitterFromContext(ctx),
+		stepDedup:      newGraphStepDedup(),
+		nodeStarts:     newGraphNodeStartTracker(),
+		registeredAt:   now,
+		status:         biz.TeamRunStatusRunning,
+		lastActivityAt: now,
 	}
 	if c.teamRunReader != nil {
 		if run, err := c.teamRunReader.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
 			sess.inputPreview = strings.TrimSpace(run.InputPreview)
 			sess.definitionJSON = strings.TrimSpace(run.DefinitionSnapshotJSON)
-			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.agentKeyFn, c.lg)
-			// 归因与执行图同源（C1）：优先用真实执行的 CompiledTeam 构建映射，
-			// def 派生仅作 ct 缺失/无 agent 成员节点时的回退。
-			if m, idx, r, ok := buildAttributionFromCompiledTeam(ct, run.DefinitionSnapshotJSON, c.agentKeyFn); ok {
-				memberByNode, stepSortIndex, reg = m, idx, r
-			}
-			sess.obsReg = reg
-			sess.obsStore = biz.NewOrchestrationStatusStore(reg)
-			sess.memberByNode = memberByNode
-			sess.stepSortIndex = stepSortIndex
+			sess.restoreAttribution(ct, c.agentKeyFn, c.lg)
 		}
 	}
 	c.mu.Lock()
@@ -267,7 +276,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		ctx, span = bridge.StartChild(ctx, "graph.execute.resume")
 		defer turntrace.EndChild(span, nil)
 	}
-	sess := c.session(task.ExecutionID)
+	sess := c.ensureSessionResident(ctx, task.ExecutionID)
 	if sess == nil {
 		return false, nil
 	}
@@ -375,7 +384,7 @@ func (c *TeamGraphRunCoordinator) StartGraphStepWatch(ctx context.Context, execI
 }
 
 func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *teamGraphRunSession, mode graphWatchMode) context.CancelFunc {
-	if c == nil || c.eventBus == nil || sess == nil {
+	if c == nil || sess == nil {
 		return func() {}
 	}
 	c.stopWatch(sess.execID)
@@ -392,6 +401,12 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 	sess.watchStop = cancel
 	c.sessions[sess.execID] = sess
 	c.mu.Unlock()
+	// P3-3: the watch lifecycle handle (watchStop) is assigned even without an
+	// EventBus so woken sessions are observably watched; only the goroutine is
+	// event-driven.
+	if c.eventBus == nil {
+		return cancel
+	}
 
 	safego.Go(watchCtx, "team.graph.run.watch", func() {
 		defer cancel()
@@ -493,6 +508,9 @@ func (c *TeamGraphRunCoordinator) handleGraphWatchNotice(ctx context.Context, se
 	if execID != "" && execID != sess.execID {
 		return false, false, ""
 	}
+	// P3-3 (D3): a graph_stage notice addressed to this session is activity —
+	// it must reset the suspend/stale aging clock.
+	c.touchSessionActivity(sess.execID)
 	// Y1/N3: a HITL interrupt arrives as a graph_stage "step" notice carrying
 	// interrupt metadata (the Pregel interrupt is the only reachable carrier —
 	// checkpoint interrupt events require StreamModeCheckpoints which is not
@@ -707,7 +725,10 @@ func (c *TeamGraphRunCoordinator) evictSession(execID string) {
 	c.deleteSessionFromDB(execID)
 }
 
-// CleanupStaleSessions removes sessions older than sessionMaxAge (e.g. after process restart).
+// CleanupStaleSessions removes sessions whose last activity is older than
+// sessionMaxAge (P3-3 / ADR-D D3: aging basis is lastActivityAt, falling back
+// to registeredAt for sessions with no recorded activity — a session registered
+// long ago but still receiving events is NOT stale).
 // DB deletion is performed outside the lock to avoid blocking concurrent access.
 func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 	if c == nil {
@@ -725,7 +746,14 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 	}
 	c.mu.Lock()
 	for id, sess := range c.sessions {
-		if !sess.registeredAt.IsZero() && now.Sub(sess.registeredAt) > maxAge {
+		last := sess.lastActivityAt
+		if last.IsZero() {
+			last = sess.registeredAt
+		}
+		if last.IsZero() {
+			continue
+		}
+		if age := now.Sub(last); age > maxAge {
 			if sess.watchStop != nil {
 				sess.watchStop()
 				sess.watchStop = nil
@@ -734,7 +762,7 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 			stale = append(stale, struct {
 				execID string
 				age    time.Duration
-			}{execID: id, age: now.Sub(sess.registeredAt)})
+			}{execID: id, age: age})
 		}
 	}
 	c.mu.Unlock()
@@ -799,7 +827,13 @@ func (c *TeamGraphRunCoordinator) persistSession(ctx context.Context, sess *team
 }
 
 func (c *TeamGraphRunCoordinator) updateSessionStatus(ctx context.Context, execID, status string) {
-	if c == nil || c.sessionRepo == nil {
+	if c == nil {
+		return
+	}
+	// P3-3: mirror the transition into the in-memory session (suspend gate +
+	// activity aging) regardless of DB availability.
+	c.setSessionActivity(execID, status)
+	if c.sessionRepo == nil {
 		return
 	}
 	if err := c.sessionRepo.UpdateSessionStatus(ctx, execID, status); err != nil {
@@ -823,6 +857,22 @@ func (c *TeamGraphRunCoordinator) deleteSessionFromDB(execID string) {
 			loggateway.Str("exec_id", execID),
 			loggateway.Err(err))
 	}
+}
+
+// restoreAttribution rebuilds the observability/attribution maps from the
+// persisted definition, preferring the actually-executed CompiledTeam (C1:
+// attribution shares the execution graph's source; def-derived maps are only
+// the fallback when ct is nil or has no agent member nodes). Shared by
+// registration, RecoverSessions, and the P3-3 wake path (restoreSession).
+func (s *teamGraphRunSession) restoreAttribution(ct *biz.CompiledTeam, agentKeyFn func(agentID string) string, lg loggateway.Logger) {
+	reg, memberByNode, stepSortIndex := buildResumeSessionContext(s.definitionJSON, s.inputPreview, agentKeyFn, lg)
+	if m, idx, r, ok := buildAttributionFromCompiledTeam(ct, s.definitionJSON, agentKeyFn); ok {
+		memberByNode, stepSortIndex, reg = m, idx, r
+	}
+	s.obsReg = reg
+	s.obsStore = biz.NewOrchestrationStatusStore(reg)
+	s.memberByNode = memberByNode
+	s.stepSortIndex = stepSortIndex
 }
 
 // RecoverSessions rebuilds in-memory sessions from DB after process restart (BL-04b).
@@ -855,26 +905,7 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 	}
 	recovered := 0
 	for _, dbSess := range active {
-		sess := &teamGraphRunSession{
-			teamRunID:      dbSess.TeamRunID,
-			teamID:         dbSess.TeamID,
-			sessionID:      dbSess.SessionID,
-			execID:         dbSess.ExecID,
-			inputPreview:   dbSess.InputPreview,
-			definitionJSON: dbSess.DefinitionJSON,
-			// Y5: restore the watch subscription filter key — without it a
-			// recovered waiting_human session silently drops every graph_stage
-			// notice (EventSubscribeOptions.SpiritSessionID mismatch).
-			spiritSessionID: dbSess.SpiritSessionID,
-			stepDedup:       newGraphStepDedup(),
-			nodeStarts:      newGraphNodeStartTracker(),
-			registeredAt:    time.Now(),
-		}
-		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.agentKeyFn, c.lg)
-		sess.obsReg = reg
-		sess.obsStore = biz.NewOrchestrationStatusStore(reg)
-		sess.memberByNode = memberByNode
-		sess.stepSortIndex = stepSortIndex
+		sess := c.restoreSession(dbSess)
 		c.mu.Lock()
 		c.sessions[dbSess.ExecID] = sess
 		c.mu.Unlock()
@@ -886,6 +917,150 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 	c.lg.Warn("RecoverSessions: recovered sessions from DB",
 		loggateway.StepID("team.session.recovered"),
 		loggateway.Int("recovered", recovered))
+}
+
+// ---------------------------------------------------------------------------
+// P3-3 / ADR-D: TeamRun graph execution suspend / wake
+// ---------------------------------------------------------------------------
+
+// restoreSession rebuilds an in-memory session from its DB row. Shared by
+// RecoverSessions (process restart) and ensureSessionResident (wake path).
+// The rebuilt session carries no emitter/rootTaskID (absent from the DB row);
+// step persistence degrades gracefully without them.
+func (c *TeamGraphRunCoordinator) restoreSession(dbSess biz.TeamGraphSession) *teamGraphRunSession {
+	sess := &teamGraphRunSession{
+		teamRunID:      dbSess.TeamRunID,
+		teamID:         dbSess.TeamID,
+		sessionID:      dbSess.SessionID,
+		execID:         dbSess.ExecID,
+		inputPreview:   dbSess.InputPreview,
+		definitionJSON: dbSess.DefinitionJSON,
+		// Y5: restore the watch subscription filter key — without it a
+		// recovered waiting_human session silently drops every graph_stage
+		// notice (EventSubscribeOptions.SpiritSessionID mismatch).
+		spiritSessionID: dbSess.SpiritSessionID,
+		status:          dbSess.Status,
+		stepDedup:       newGraphStepDedup(),
+		nodeStarts:      newGraphNodeStartTracker(),
+		registeredAt:    parseSessionActivityTime(dbSess.RegisteredAt),
+		lastActivityAt:  parseSessionActivityTime(dbSess.LastActivityAt),
+	}
+	// ct is unavailable on this path: def-derived attribution is the
+	// documented fallback (C1), identical to the pre-P3-3 RecoverSessions.
+	sess.restoreAttribution(nil, c.agentKeyFn, c.lg)
+	return sess
+}
+
+// parseSessionActivityTime parses an RFC3339 DB timestamp; empty/invalid
+// falls back to now (activity timestamps are aging hints, not correctness).
+func parseSessionActivityTime(s string) time.Time {
+	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(s)); err == nil {
+		return t
+	}
+	return time.Now()
+}
+
+// SuspendIdleWaits evicts idle waiting_human sessions from memory (P3-3 /
+// ADR-D D1). The DB row is preserved with its status unchanged, so a later
+// resume signal wakes the session via ensureSessionResident. Running sessions
+// (inflight steps) and recently active sessions are never suspended. Driven by
+// the existing cleanup ticker in provider.go — no new background task.
+func (c *TeamGraphRunCoordinator) SuspendIdleWaits(now time.Time, idleThreshold time.Duration) int {
+	if c == nil {
+		return 0
+	}
+	if idleThreshold <= 0 {
+		idleThreshold = c.cfg.SuspendIdleThreshold
+	}
+	if idleThreshold <= 0 {
+		idleThreshold = defaultSuspendIdleThreshold
+	}
+	var suspended []string
+	c.mu.Lock()
+	for id, sess := range c.sessions {
+		if sess.status != biz.TeamRunStatusWaitingHuman {
+			continue
+		}
+		last := sess.lastActivityAt
+		if last.IsZero() {
+			last = sess.registeredAt
+		}
+		if last.IsZero() || now.Sub(last) <= idleThreshold {
+			continue
+		}
+		if sess.watchStop != nil {
+			sess.watchStop()
+			sess.watchStop = nil
+		}
+		delete(c.sessions, id)
+		suspended = append(suspended, id)
+	}
+	c.mu.Unlock()
+	for _, id := range suspended {
+		c.lg.Info("SuspendIdleWaits: suspended idle waiting_human session (DB row retained)",
+			loggateway.StepID("team.session.suspended"),
+			loggateway.Str("exec_id", id))
+	}
+	return len(suspended)
+}
+
+// ensureSessionResident returns the in-memory session, rebuilding it from the
+// DB when absent (P3-3 / ADR-D D2 wake path). Returns nil when neither memory
+// nor DB holds the session (caller keeps the "not ours" contract). A memory
+// hit is a zero-cost pointer return; a DB hit re-registers the session and
+// restarts the completion watch for waiting_human sessions.
+func (c *TeamGraphRunCoordinator) ensureSessionResident(ctx context.Context, execID string) *teamGraphRunSession {
+	if c == nil {
+		return nil
+	}
+	execID = strings.TrimSpace(execID)
+	if sess := c.session(execID); sess != nil {
+		return sess
+	}
+	if c.sessionRepo == nil {
+		return nil
+	}
+	dbSess, err := c.sessionRepo.GetSession(ctx, execID)
+	if err != nil {
+		return nil
+	}
+	sess := c.restoreSession(dbSess)
+	c.mu.Lock()
+	// Double-checked insert: a concurrent wake may have restored it already.
+	if existing := c.sessions[execID]; existing != nil {
+		c.mu.Unlock()
+		return existing
+	}
+	c.sessions[execID] = sess
+	c.mu.Unlock()
+	if dbSess.Status == biz.TeamRunStatusWaitingHuman {
+		c.startCompletionWatch(ctx, sess)
+	}
+	c.lg.Info("ensureSessionResident: woke session from DB",
+		loggateway.StepID("team.session.woke"),
+		loggateway.Str("exec_id", execID),
+		loggateway.Str("status", dbSess.Status))
+	return sess
+}
+
+// touchSessionActivity records last-activity for suspend/stale aging (P3-3 D3).
+func (c *TeamGraphRunCoordinator) touchSessionActivity(execID string) {
+	c.mu.Lock()
+	if sess := c.sessions[strings.TrimSpace(execID)]; sess != nil {
+		sess.lastActivityAt = time.Now()
+	}
+	c.mu.Unlock()
+}
+
+// setSessionActivity mirrors a status transition into the in-memory session
+// and bumps last-activity (P3-3 D1/D3).
+func (c *TeamGraphRunCoordinator) setSessionActivity(execID, status string) {
+	c.mu.Lock()
+	if sess := c.sessions[strings.TrimSpace(execID)]; sess != nil {
+		sess.status = status
+		sess.lastActivityAt = time.Now()
+	}
+	c.mu.Unlock()
 }
 
 // BuildTaskResumeValue builds the resume payload for graph checkpoint continuation.

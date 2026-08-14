@@ -406,7 +406,7 @@ func (o *ChatOrchestrator) prePlanningGate(ctx, input) (Strategy, error) {
 **行为契约补充（2026-07-27，会话 d78029b9 孤儿 notice 排查修复）**：
 
 1. **续跑 turn 跳过门控** — `runPrePlanningGate` 对 `ParentTaskID` 非空的续跑 turn（synthesis 总结 turn / 澄清续答 turn）直接放行，与 `runClarificationGate` 同款防循环。复杂度在根 turn 已评估，续跑重评会重复发布门控 notice（单会话实测 7 对重复 = 2 根 turn + 2 澄清续跑 + 3 总结 turn），且 forcedPlanning 系统提示注入 synthesis turn 会强制其再走规划路径。
-2. **门控 notice 挂接 Task** — `biz.PlanInput` 新增 `TaskID` 字段，由 `runPrePlanningGate` 从 ctx 取 `RootTaskActivityIDFromCtx`（turn 入口预解析的根 Task ID）填入；`publishPlanningPhase` 落 `Step.TaskID`。此前 notice 无 TaskID/TurnID 是 session 级孤儿步骤（前端 `getTaskOrphanSteps` 只认 TaskID，孤儿永不渲染且污染数据）；挂接后 notice 经 TaskCard orphanNoticeSteps 渲染为任务 footer。ctx 缺失时 TaskID 为空，退化为 session 级（行为同修复前，不阻断）。存量孤儿经 `cmd/cleanup_orphan_notices` 一次性清理。
+2. **门控 notice 挂接 Task** — `biz.PlanInput` 新增 `TaskID` 字段，由 `runPrePlanningGate` 从 ctx 取 `RootTaskActivityIDFromCtx`（turn 入口预解析的根 Task ID）填入；`publishPlanningPhase` 落 `Step.TaskID`。此前 notice 无 TaskID/TurnID 是 session 级孤儿步骤（前端 `getTaskOrphanSteps` 只认 TaskID，孤儿永不渲染且污染数据）；挂接后 notice 经 TaskCard orphanNoticeSteps 渲染为任务 footer。ctx 缺失时 TaskID 为空，退化为 session 级（行为同修复前，不阻断）。存量孤儿经 ~~`cmd/cleanup_orphan_notices`~~ 一次性清理（工具已执行完毕，2026-08-14 随死代码清理删除）。
 
 **事件可靠性分级（AS-EVT-01）**：规划时间线事件（`planning_phase_start/progress/done`）归类为 **Informational** 级别（尽力而为，不持久化），因为它们仅用于前端时间线可见性，不影响业务状态一致性。
 

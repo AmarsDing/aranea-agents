@@ -274,6 +274,48 @@ message ListAllModelsBreakdownResponse {
   int32 page_size = 4;
 }
 
+// ContextBudgetComposition is the per-turn average token composition of the
+// persisted context budget ledger (usage events metadata_json.context_budget).
+// category_avg_est_tokens averages over ALL sampled turns (a turn that did not
+// inject a category counts 0), so the values sum to ≈ avg_est_total_input and
+// per-category share = category_avg_est_tokens[c] / avg_est_total_input.
+message ContextBudgetComposition {
+  int32 samples = 1;                    // turns carrying context_budget metadata
+  double avg_est_total_input = 2;
+  double avg_tools_count = 3;
+  map<string, double> category_avg_est_tokens = 4;
+}
+
+message ContextBudgetAgentStats {
+  string agent_id = 1;
+  string agent_key = 2;
+  ContextBudgetComposition composition = 3;
+}
+
+message ContextBudgetTrendPoint {
+  string date_key = 1;
+  ContextBudgetComposition composition = 2;
+}
+
+// ContextBudgetToolSchemaStat aggregates one tool's schema size across the
+// turns where it appeared in the per-turn top_tools list (N6 观测).
+message ContextBudgetToolSchemaStat {
+  string tool_name = 1;
+  int32 appearances = 2;
+  double avg_est_tokens = 3;
+  double max_est_tokens = 4;
+}
+
+message GetContextBudgetStatsResponse {
+  ContextBudgetComposition overall = 1;
+  // Per-agent breakdown, sorted by avg_est_total_input desc (capped at 50).
+  repeated ContextBudgetAgentStats agents = 2;
+  // Per-day composition trend, sorted by date_key asc.
+  repeated ContextBudgetTrendPoint trends = 3;
+  // Largest tool schemas across turns, sorted by avg_est_tokens desc (capped at 20).
+  repeated ContextBudgetToolSchemaStat top_tools = 4;
+}
+
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
     option (google.api.http) = {get: "/v1/usage/overview"};
@@ -331,5 +373,11 @@ service UsageService {
   // for the full-model consumption overview table. Server-side pagination/sort/search.
   rpc ListAllModelsBreakdown(ListAllModelsBreakdownRequest) returns (ListAllModelsBreakdownResponse) {
     option (google.api.http) = {get: "/v1/usage/all-models-breakdown"};
+  }
+  // GetContextBudgetStats aggregates the per-turn context budget ledger
+  // (metadata_json.context_budget) across turns: overall composition, per-agent
+  // breakdown, per-day trend, and largest tool schemas. P2-1 (29-token §18).
+  rpc GetContextBudgetStats(UsageQuery) returns (GetContextBudgetStatsResponse) {
+    option (google.api.http) = {get: "/v1/usage/context-budget-stats"};
   }
 }

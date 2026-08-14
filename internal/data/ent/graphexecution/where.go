@@ -74,6 +74,16 @@ func SessionID(v string) predicate.GraphExecution {
 	return predicate.GraphExecution(sql.FieldEQ(FieldSessionID, v))
 }
 
+// SpiritSessionID applies equality check predicate on the "spirit_session_id" field. It's identical to SpiritSessionIDEQ.
+func SpiritSessionID(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEQ(FieldSpiritSessionID, v))
+}
+
+// DefinitionHash applies equality check predicate on the "definition_hash" field. It's identical to DefinitionHashEQ.
+func DefinitionHash(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEQ(FieldDefinitionHash, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.GraphExecution {
 	return predicate.GraphExecution(sql.FieldEQ(FieldStatus, v))
@@ -242,6 +252,136 @@ func SessionIDEqualFold(v string) predicate.GraphExecution {
 // SessionIDContainsFold applies the ContainsFold predicate on the "session_id" field.
 func SessionIDContainsFold(v string) predicate.GraphExecution {
 	return predicate.GraphExecution(sql.FieldContainsFold(FieldSessionID, v))
+}
+
+// SpiritSessionIDEQ applies the EQ predicate on the "spirit_session_id" field.
+func SpiritSessionIDEQ(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEQ(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDNEQ applies the NEQ predicate on the "spirit_session_id" field.
+func SpiritSessionIDNEQ(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldNEQ(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDIn applies the In predicate on the "spirit_session_id" field.
+func SpiritSessionIDIn(vs ...string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldIn(FieldSpiritSessionID, vs...))
+}
+
+// SpiritSessionIDNotIn applies the NotIn predicate on the "spirit_session_id" field.
+func SpiritSessionIDNotIn(vs ...string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldNotIn(FieldSpiritSessionID, vs...))
+}
+
+// SpiritSessionIDGT applies the GT predicate on the "spirit_session_id" field.
+func SpiritSessionIDGT(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldGT(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDGTE applies the GTE predicate on the "spirit_session_id" field.
+func SpiritSessionIDGTE(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldGTE(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDLT applies the LT predicate on the "spirit_session_id" field.
+func SpiritSessionIDLT(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldLT(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDLTE applies the LTE predicate on the "spirit_session_id" field.
+func SpiritSessionIDLTE(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldLTE(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDContains applies the Contains predicate on the "spirit_session_id" field.
+func SpiritSessionIDContains(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldContains(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDHasPrefix applies the HasPrefix predicate on the "spirit_session_id" field.
+func SpiritSessionIDHasPrefix(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldHasPrefix(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDHasSuffix applies the HasSuffix predicate on the "spirit_session_id" field.
+func SpiritSessionIDHasSuffix(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldHasSuffix(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDEqualFold applies the EqualFold predicate on the "spirit_session_id" field.
+func SpiritSessionIDEqualFold(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEqualFold(FieldSpiritSessionID, v))
+}
+
+// SpiritSessionIDContainsFold applies the ContainsFold predicate on the "spirit_session_id" field.
+func SpiritSessionIDContainsFold(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldContainsFold(FieldSpiritSessionID, v))
+}
+
+// DefinitionHashEQ applies the EQ predicate on the "definition_hash" field.
+func DefinitionHashEQ(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEQ(FieldDefinitionHash, v))
+}
+
+// DefinitionHashNEQ applies the NEQ predicate on the "definition_hash" field.
+func DefinitionHashNEQ(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldNEQ(FieldDefinitionHash, v))
+}
+
+// DefinitionHashIn applies the In predicate on the "definition_hash" field.
+func DefinitionHashIn(vs ...string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldIn(FieldDefinitionHash, vs...))
+}
+
+// DefinitionHashNotIn applies the NotIn predicate on the "definition_hash" field.
+func DefinitionHashNotIn(vs ...string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldNotIn(FieldDefinitionHash, vs...))
+}
+
+// DefinitionHashGT applies the GT predicate on the "definition_hash" field.
+func DefinitionHashGT(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldGT(FieldDefinitionHash, v))
+}
+
+// DefinitionHashGTE applies the GTE predicate on the "definition_hash" field.
+func DefinitionHashGTE(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldGTE(FieldDefinitionHash, v))
+}
+
+// DefinitionHashLT applies the LT predicate on the "definition_hash" field.
+func DefinitionHashLT(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldLT(FieldDefinitionHash, v))
+}
+
+// DefinitionHashLTE applies the LTE predicate on the "definition_hash" field.
+func DefinitionHashLTE(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldLTE(FieldDefinitionHash, v))
+}
+
+// DefinitionHashContains applies the Contains predicate on the "definition_hash" field.
+func DefinitionHashContains(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldContains(FieldDefinitionHash, v))
+}
+
+// DefinitionHashHasPrefix applies the HasPrefix predicate on the "definition_hash" field.
+func DefinitionHashHasPrefix(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldHasPrefix(FieldDefinitionHash, v))
+}
+
+// DefinitionHashHasSuffix applies the HasSuffix predicate on the "definition_hash" field.
+func DefinitionHashHasSuffix(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldHasSuffix(FieldDefinitionHash, v))
+}
+
+// DefinitionHashEqualFold applies the EqualFold predicate on the "definition_hash" field.
+func DefinitionHashEqualFold(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldEqualFold(FieldDefinitionHash, v))
+}
+
+// DefinitionHashContainsFold applies the ContainsFold predicate on the "definition_hash" field.
+func DefinitionHashContainsFold(v string) predicate.GraphExecution {
+	return predicate.GraphExecution(sql.FieldContainsFold(FieldDefinitionHash, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

@@ -45074,6 +45074,8 @@ type GraphExecutionMutation struct {
 	id                 *string
 	graph_id           *string
 	session_id         *string
+	spirit_session_id  *string
+	definition_hash    *string
 	status             *string
 	current_node       *string
 	lineage_id         *string
@@ -45262,6 +45264,78 @@ func (m *GraphExecutionMutation) OldSessionID(ctx context.Context) (v string, er
 // ResetSessionID resets all changes to the "session_id" field.
 func (m *GraphExecutionMutation) ResetSessionID() {
 	m.session_id = nil
+}
+
+// SetSpiritSessionID sets the "spirit_session_id" field.
+func (m *GraphExecutionMutation) SetSpiritSessionID(s string) {
+	m.spirit_session_id = &s
+}
+
+// SpiritSessionID returns the value of the "spirit_session_id" field in the mutation.
+func (m *GraphExecutionMutation) SpiritSessionID() (r string, exists bool) {
+	v := m.spirit_session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSpiritSessionID returns the old "spirit_session_id" field's value of the GraphExecution entity.
+// If the GraphExecution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GraphExecutionMutation) OldSpiritSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSpiritSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSpiritSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSpiritSessionID: %w", err)
+	}
+	return oldValue.SpiritSessionID, nil
+}
+
+// ResetSpiritSessionID resets all changes to the "spirit_session_id" field.
+func (m *GraphExecutionMutation) ResetSpiritSessionID() {
+	m.spirit_session_id = nil
+}
+
+// SetDefinitionHash sets the "definition_hash" field.
+func (m *GraphExecutionMutation) SetDefinitionHash(s string) {
+	m.definition_hash = &s
+}
+
+// DefinitionHash returns the value of the "definition_hash" field in the mutation.
+func (m *GraphExecutionMutation) DefinitionHash() (r string, exists bool) {
+	v := m.definition_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDefinitionHash returns the old "definition_hash" field's value of the GraphExecution entity.
+// If the GraphExecution object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GraphExecutionMutation) OldDefinitionHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefinitionHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefinitionHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefinitionHash: %w", err)
+	}
+	return oldValue.DefinitionHash, nil
+}
+
+// ResetDefinitionHash resets all changes to the "definition_hash" field.
+func (m *GraphExecutionMutation) ResetDefinitionHash() {
+	m.definition_hash = nil
 }
 
 // SetStatus sets the "status" field.
@@ -45599,12 +45673,18 @@ func (m *GraphExecutionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GraphExecutionMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 12)
 	if m.graph_id != nil {
 		fields = append(fields, graphexecution.FieldGraphID)
 	}
 	if m.session_id != nil {
 		fields = append(fields, graphexecution.FieldSessionID)
+	}
+	if m.spirit_session_id != nil {
+		fields = append(fields, graphexecution.FieldSpiritSessionID)
+	}
+	if m.definition_hash != nil {
+		fields = append(fields, graphexecution.FieldDefinitionHash)
 	}
 	if m.status != nil {
 		fields = append(fields, graphexecution.FieldStatus)
@@ -45642,6 +45722,10 @@ func (m *GraphExecutionMutation) Field(name string) (ent.Value, bool) {
 		return m.GraphID()
 	case graphexecution.FieldSessionID:
 		return m.SessionID()
+	case graphexecution.FieldSpiritSessionID:
+		return m.SpiritSessionID()
+	case graphexecution.FieldDefinitionHash:
+		return m.DefinitionHash()
 	case graphexecution.FieldStatus:
 		return m.Status()
 	case graphexecution.FieldCurrentNode:
@@ -45671,6 +45755,10 @@ func (m *GraphExecutionMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldGraphID(ctx)
 	case graphexecution.FieldSessionID:
 		return m.OldSessionID(ctx)
+	case graphexecution.FieldSpiritSessionID:
+		return m.OldSpiritSessionID(ctx)
+	case graphexecution.FieldDefinitionHash:
+		return m.OldDefinitionHash(ctx)
 	case graphexecution.FieldStatus:
 		return m.OldStatus(ctx)
 	case graphexecution.FieldCurrentNode:
@@ -45709,6 +45797,20 @@ func (m *GraphExecutionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSessionID(v)
+		return nil
+	case graphexecution.FieldSpiritSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSpiritSessionID(v)
+		return nil
+	case graphexecution.FieldDefinitionHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDefinitionHash(v)
 		return nil
 	case graphexecution.FieldStatus:
 		v, ok := value.(string)
@@ -45829,6 +45931,12 @@ func (m *GraphExecutionMutation) ResetField(name string) error {
 		return nil
 	case graphexecution.FieldSessionID:
 		m.ResetSessionID()
+		return nil
+	case graphexecution.FieldSpiritSessionID:
+		m.ResetSpiritSessionID()
+		return nil
+	case graphexecution.FieldDefinitionHash:
+		m.ResetDefinitionHash()
 		return nil
 	case graphexecution.FieldStatus:
 		m.ResetStatus()

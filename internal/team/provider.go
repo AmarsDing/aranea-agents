@@ -24,6 +24,9 @@ func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teamRunReader biz.
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {
+			// P3-3 (ADR-D): suspend idle waiting_human sessions first (memory
+			// evict, DB retained), then hard-clean sessions stale beyond maxAge.
+			coord.SuspendIdleWaits(time.Now(), coord.cfg.SuspendIdleThreshold)
 			coord.CleanupStaleSessions()
 		}
 	})

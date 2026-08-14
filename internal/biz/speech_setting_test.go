@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"aranea-agents/pkg/apierror"
@@ -44,7 +45,7 @@ func TestApplySpeechPatch_EmptyPreserves(t *testing.T) {
 		ArchiveUserAudio: boolPtr(true),
 	}
 	out := ApplySpeechPatch(cur, SpeechSetting{}, false, false)
-	if out != cur {
+	if !reflect.DeepEqual(out, cur) {
 		t.Fatalf("empty patch must preserve everything, got %#v", out)
 	}
 }

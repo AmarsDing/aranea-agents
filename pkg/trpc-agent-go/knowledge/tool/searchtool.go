@@ -483,7 +483,12 @@ func convertSearchResults(
 	includeContent bool,
 ) (*KnowledgeSearchResponse, error) {
 	if result == nil || len(result.Documents) == 0 {
-		return nil, errors.New("no relevant information found")
+		// 空结果不是工具错误：返回正常响应让 LLM 获知知识库无相关内容，
+		// 继续基于自身知识回答，避免工具报错引发的重试循环。
+		return &KnowledgeSearchResponse{
+			Documents: []*DocumentResult{},
+			Message:   "No relevant information found in the knowledge base.",
+		}, nil
 	}
 
 	documents := make([]*DocumentResult, 0, len(result.Documents))

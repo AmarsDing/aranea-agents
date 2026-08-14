@@ -694,7 +694,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | `internal/biz/task_planner.go` | `PlanInput` 新增 `TaskID` 字段 |
 | `internal/service/pre_planning_gate.go` | `publishPlanningPhase` 增加 taskID 参数，落 `Step.TaskID` |
 | `internal/service/pre_planning_gate_test.go` | 新增续跑跳过 + TaskID 挂接用例 |
-| `cmd/cleanup_orphan_notices/main.go` | 新建：存量孤儿 notice 清理工具 |
+| ~~`cmd/cleanup_orphan_notices/main.go`~~ | 存量孤儿 notice 清理工具（一次性，已执行 318 条清零；2026-08-14 随死代码清理删除） |
 
 ---
 

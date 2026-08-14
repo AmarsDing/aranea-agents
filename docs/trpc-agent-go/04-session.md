@@ -162,7 +162,7 @@
 | 自建功能 | 实现位置 | 替代框架功能 | 自建原因 |
 |---------|---------|-------------|---------|
 | **完整压缩管道**（4 级：none/micro_compact/memory_compact/llm_compact） | `internal/session/compressor.go`、`internal/session/memory_compact.go` | 框架仅提供 `Summary`（LLM 单级摘要） | 框架 Summary 是简单的 LLM 摘要，项目需要多级压缩策略 + 快照重写 + 记忆提取 |
-| **Session 状态机**（5 状态 6 事件） | `internal/biz/session/session_state_machine.go` | 框架无状态机 | 框架 Session 无生命周期状态管理，项目需要 idle/running/completed/interrupted/awaiting_confirmation |
+| **Session 状态机**（5 状态 6 事件） | `internal/biz/session/status_machine.go`（~~`session_state_machine.go`~~ 已删除 2026-08-14，TEST_ONLY 僵尸） | 框架无状态机 | 框架 Session 无生命周期状态管理，项目需要 idle/running/completed/interrupted/awaiting_confirmation |
 | **SessionRun 生命周期**（Phase 状态机 + Durable Checkpoint） | `internal/biz/session_run.go`、`session_run_phase_machine.go`、`session_run_checkpoint.go` | 框架无对应功能 | 框架 Runner 无 Run 实体概念，项目需要 Run 级别的持久化、恢复、升级 |
 | **SessionRun Durable Worker**（5s 轮询恢复） | `internal/service/session_run_durable_worker.go` | 框架无对应功能 | Durable Run 恢复是项目特有需求 |
 | **SessionLockManager**（进程内 per-session 互斥锁） | `internal/biz/session_lock.go` | 框架无锁机制 | 框架 Session 无并发控制，项目需要防止同一 Session 并发 Run |

@@ -104,7 +104,7 @@
 | **SpanCollector/UsageAggregator** | `internal/event/span_collector.go`、`usage_aggregator.go` | 框架无内置 | 框架无 Span/Usage 聚合，项目需 LLM/Tool Span 追踪和用量聚合 | ✅ 纯数据层已委托框架 tracing
 | **EventBusConsumer（主消费者）** | `internal/biz/event_bus_consumer.go` | 框架无内置 | 框架无多消费者编排，项目需 buffer/persist/runnerCompletion/stateDelta 处理 |
 | **EventBusSideConsumers（旁路消费者）** | `internal/biz/event_bus_side_consumers.go` | 框架无内置 | 框架无旁路消费，项目需 toolCall/callback/messageStore/flowLog 等独立消费 |
-| **DomainEvent 适配层** | `internal/biz/domain_event.go`、`domain_event_adapter.go` | 框架无内置 | 将 Envelope 转换为 biz 层 DomainEvent，解耦事件传输与业务逻辑 |
+| **DomainEvent 适配层** | `internal/biz/domain_event.go`（~~`domain_event_adapter.go`~~ 已删除 2026-08-14，ADR-03 Blocker C bridge 移除后仅剩 TEST_ONLY 引用） | 框架无内置 | 将 Envelope 转换为 biz 层 DomainEvent，解耦事件传输与业务逻辑 |
 | **EventBusSink（日志管线桥接）** | `pkg/logpipeline/eventbus_sink.go` | 框架无内置 | 将日志条目转为 Envelope 发布到 EventBus，含熔断器保护 |
 | **频道路由** | `internal/event/contract/envelope.go` | 框架无内置 | 框架无频道概念，项目按事件类型路由到 monitor/team/graph/knowledge/chat 频道 |
 | **SessionRevisionBumper** | `internal/event/session_revision.go` | 框架无内置 | Session 版本号递增 + 发布 run_status envelope |

@@ -1066,6 +1066,16 @@ var (
 				Unique:  false,
 				Columns: []*schema.Column{EvalRunPreferencesColumns[1]},
 			},
+			{
+				Name:    "evalrunpreference_run_id_a",
+				Unique:  false,
+				Columns: []*schema.Column{EvalRunPreferencesColumns[2]},
+			},
+			{
+				Name:    "evalrunpreference_run_id_b",
+				Unique:  false,
+				Columns: []*schema.Column{EvalRunPreferencesColumns[3]},
+			},
 		},
 	}
 	// EventDeliveryOutboxColumns holds the columns for the "event_delivery_outbox" table.
@@ -1384,6 +1394,8 @@ var (
 		{Name: "id", Type: field.TypeString, Unique: true, Size: 64},
 		{Name: "graph_id", Type: field.TypeString, Size: 64},
 		{Name: "session_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "spirit_session_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "definition_hash", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "running"},
 		{Name: "current_node", Type: field.TypeString, Size: 128, Default: ""},
 		{Name: "lineage_id", Type: field.TypeString, Size: 128, Default: ""},
@@ -1407,17 +1419,17 @@ var (
 			{
 				Name:    "graphexecution_lineage_id",
 				Unique:  false,
-				Columns: []*schema.Column{GraphExecutionsColumns[5]},
+				Columns: []*schema.Column{GraphExecutionsColumns[7]},
 			},
 			{
 				Name:    "graphexecution_status",
 				Unique:  false,
-				Columns: []*schema.Column{GraphExecutionsColumns[3]},
+				Columns: []*schema.Column{GraphExecutionsColumns[5]},
 			},
 			{
 				Name:    "graphexecution_graph_id_status_started_at",
 				Unique:  false,
-				Columns: []*schema.Column{GraphExecutionsColumns[1], GraphExecutionsColumns[3], GraphExecutionsColumns[9]},
+				Columns: []*schema.Column{GraphExecutionsColumns[1], GraphExecutionsColumns[5], GraphExecutionsColumns[11]},
 			},
 		},
 	}

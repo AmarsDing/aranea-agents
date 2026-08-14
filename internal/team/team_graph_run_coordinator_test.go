@@ -406,6 +406,8 @@ func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 	}
 	sess := coord.session("exec-1")
 	sess.registeredAt = time.Now().Add(-3 * time.Hour)
+	// D3：判龄基准为 lastActivityAt——超龄会话须同时回拨最后活动时间。
+	sess.lastActivityAt = time.Now().Add(-3 * time.Hour)
 
 	coord.CleanupStaleSessions()
 
@@ -656,5 +658,196 @@ func TestTeamGraphRunCoordinator_CleanupStale_LeavesActiveSessions(t *testing.T)
 	coord.CleanupStaleSessions()
 	if _, err := sessRepo.GetSession(ctx, "exec-1"); err != nil {
 		t.Fatal("fresh session should not be cleaned up")
+	}
+}
+
+// ── P3-3 / ADR-D：TeamRun 图执行挂起/唤醒 ────────────────────────────────────
+
+// 挂起：waiting_human + 空闲超阈值 → 内存 evict + DB 行保留（状态不变）；
+// running 会话与未超阈值会话不受影响。
+func TestSuspendIdleWaits_SuspendsOnlyIdleWaitingHuman(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{
+		"run-idle":    {ID: "run-idle", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
+		"run-fresh":   {ID: "run-fresh", TeamID: "team-1", SessionID: "sess-2", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
+		"run-running": {ID: "run-running", TeamID: "team-1", SessionID: "sess-3", Status: biz.TeamRunStatusRunning, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
+	}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+	ctx := context.Background()
+
+	for _, tc := range []struct{ execID, runID, sessID string }{
+		{"exec-idle", "run-idle", "sess-1"},
+		{"exec-fresh", "run-fresh", "sess-2"},
+		{"exec-running", "run-running", "sess-3"},
+	} {
+		if err := coord.RegisterTeamGraphExecution(ctx, tc.execID, tc.sessID, tc.sessID, "team-1", tc.runID, "", ct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	// exec-idle：waiting_human 且最后活动 1h 前；exec-fresh：waiting_human 但刚活动；
+	// exec-running：running 且最后活动 1h 前。
+	coord.sessions["exec-idle"].status = biz.TeamRunStatusWaitingHuman
+	coord.sessions["exec-idle"].lastActivityAt = now.Add(-time.Hour)
+	coord.sessions["exec-fresh"].status = biz.TeamRunStatusWaitingHuman
+	coord.sessions["exec-fresh"].lastActivityAt = now
+	coord.sessions["exec-running"].status = biz.TeamRunStatusRunning
+	coord.sessions["exec-running"].lastActivityAt = now.Add(-time.Hour)
+
+	suspended := coord.SuspendIdleWaits(now, 30*time.Minute)
+	if suspended != 1 {
+		t.Fatalf("suspended = %d, want 1 (仅 exec-idle)", suspended)
+	}
+	if coord.session("exec-idle") != nil {
+		t.Error("exec-idle 应从内存 evict")
+	}
+	// DB 行必须保留且状态不变（可唤醒）。
+	dbSess, err := sessRepo.GetSession(ctx, "exec-idle")
+	if err != nil {
+		t.Fatalf("挂起会话 DB 行必须保留: %v", err)
+	}
+	if dbSess.Status != biz.TeamRunStatusRunning {
+		// RegisterTeamGraphExecution 初始持久化为 running；挂起不改写状态。
+		t.Errorf("挂起不改写 DB 状态, got %q", dbSess.Status)
+	}
+	if coord.session("exec-fresh") == nil {
+		t.Error("exec-fresh 未超阈值，不应挂起")
+	}
+	if coord.session("exec-running") == nil {
+		t.Error("exec-running 非 waiting_human，不应挂起")
+	}
+}
+
+// 挂起幂等：重复调用无副作用。
+func TestSuspendIdleWaits_Idempotent(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	if n := coord.SuspendIdleWaits(time.Now(), time.Minute); n != 0 {
+		t.Fatalf("空协调器挂起数 = %d, want 0", n)
+	}
+	if n := coord.SuspendIdleWaits(time.Now(), time.Minute); n != 0 {
+		t.Fatalf("重复调用挂起数 = %d, want 0", n)
+	}
+}
+
+// 唤醒：内存 miss 时从 DB 重建 waiting_human 会话（含 watch 重启），
+// 内存命中时原样返回，DB miss 返回 nil。
+func TestEnsureSessionResident_RestoresFromDB(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{}}
+	sessRepo := newMemSessionRepo()
+	sessRepo.SaveSession(context.Background(), biz.TeamGraphSession{
+		ExecID:         "exec-1",
+		TeamRunID:      "run-1",
+		TeamID:         "team-1",
+		SessionID:      "sess-1",
+		Status:         biz.TeamRunStatusWaitingHuman,
+		DefinitionJSON: `{"members":[{"agent_id":"a1","name":"Agent1"}],"mode":"pipeline"}`,
+	})
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ctx := context.Background()
+
+	// DB miss → nil。
+	if s := coord.ensureSessionResident(ctx, "exec-ghost"); s != nil {
+		t.Error("DB miss 应返回 nil")
+	}
+	// 内存 miss + DB 命中 waiting_human → 重建 + watch 启动。
+	s := coord.ensureSessionResident(ctx, "exec-1")
+	if s == nil {
+		t.Fatal("应从 DB 唤醒 exec-1")
+	}
+	if s.teamRunID != "run-1" {
+		t.Errorf("teamRunID = %q, want run-1", s.teamRunID)
+	}
+	if s.watchStop == nil {
+		t.Error("waiting_human 唤醒后必须重启 completion watch")
+	}
+	// 内存命中 → 同一指针原样返回（不重复重建）。
+	if again := coord.ensureSessionResident(ctx, "exec-1"); again != s {
+		t.Error("内存命中应返回既有会话指针")
+	}
+}
+
+// 唤醒集成：被挂起的会话收到 HITL resume 信号时按需重建并继续 resume 流程
+// （此前内存 miss 直接 return false，resume 信号丢失）。fixture 对齐生产语义：
+// 挂起只 evict 协调器内存会话，graph execution 行保留（waiting_human）。
+func TestHandleTeamGraphTaskCompleted_WakesSuspendedSession(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{
+		"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman, DefinitionSnapshotJSON: `{"members":[{"agent_id":"a1"}],"mode":"pipeline"}`},
+	}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(&succeedingResumeBackend{inner: backend}, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}, nil, nil, nil)
+	ctx := context.Background()
+
+	// 注册 + HITL 中断 → waiting_human（graph execution 行随之建立）。
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "sess-1", "team-1", "run-1", "", ct); err != nil {
+		t.Fatal(err)
+	}
+	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
+		t.Fatal(err)
+	}
+	// 挂起：内存 evict，DB 行与 graph execution 保留。
+	coord.sessions["exec-1"].lastActivityAt = time.Now().Add(-time.Hour)
+	if n := coord.SuspendIdleWaits(time.Now(), 30*time.Minute); n != 1 {
+		t.Fatalf("suspended = %d, want 1", n)
+	}
+	if coord.session("exec-1") != nil {
+		t.Fatal("挂起后内存应无会话")
+	}
+
+	// resume 信号到达 → 唤醒 + 处理。
+	handled, err := coord.HandleTeamGraphTaskCompleted(ctx, &biz.GraphTask{
+		ID:          "task-1",
+		ExecutionID: "exec-1",
+		NodeID:      "review-1",
+	}, map[string]any{"approved": true})
+	if err != nil {
+		t.Fatalf("HandleTeamGraphTaskCompleted: %v", err)
+	}
+	if !handled {
+		t.Fatal("挂起会话的 resume 信号必须被唤醒处理（此前静默丢失）")
+	}
+	if coord.session("exec-1") == nil {
+		t.Fatal("唤醒后会话应驻留内存")
+	}
+}
+
+// D3：stale 判龄基准为 lastActivityAt（回退 registeredAt）——注册早但最近活跃的
+// 会话不被误清；最后活动超龄的会话才清理。
+func TestCleanupStaleSessions_AgesByLastActivity(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRunRepoCoord{runs: map[string]biz.TeamRunRecord{}}
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, repo, repo, nil, nil, sessRepo, nil, loggateway.NewNoop())
+	ct := biz.NewCompiledTeam(biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "n1", Type: "agent"}}}, nil, nil, nil)
+	ctx := context.Background()
+
+	for _, id := range []string{"exec-active", "exec-stale"} {
+		if err := coord.RegisterTeamGraphExecution(ctx, id, "sess-"+id, "sess-"+id, "team-1", "run-"+id, "", ct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	coord.mu.Lock()
+	// exec-active：注册 3h 前（超 maxAge 2h），但 5min 前仍有活动 → 存活。
+	coord.sessions["exec-active"].registeredAt = time.Now().Add(-3 * time.Hour)
+	coord.sessions["exec-active"].lastActivityAt = time.Now().Add(-5 * time.Minute)
+	// exec-stale：注册 30min 前，但最后活动 3h 前（挂起后无人问津）→ 清理。
+	coord.sessions["exec-stale"].registeredAt = time.Now().Add(-30 * time.Minute)
+	coord.sessions["exec-stale"].lastActivityAt = time.Now().Add(-3 * time.Hour)
+	coord.mu.Unlock()
+
+	coord.CleanupStaleSessions()
+
+	if coord.session("exec-active") == nil {
+		t.Error("exec-active 最近有活动，不应按注册时间误清")
+	}
+	if coord.session("exec-stale") != nil {
+		t.Error("exec-stale 最后活动超龄，应被清理")
 	}
 }

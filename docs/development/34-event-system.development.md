@@ -47,7 +47,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | biz | `internal/biz/event_bus_tool_call_consumer.go` | ToolCall 记录 consumer |
 | biz | `internal/biz/event_bus_message_store_consumer.go` | 消息存储 consumer |
 | biz | `internal/biz/event_store.go` | EventStoreUsecase（List / PurgeExpired / Exists） |
-| biz | `internal/biz/domain_event.go` + `domain_event_adapter.go` | DomainEvent 领域模型 + EventBus 适配 |
+| biz | `internal/biz/domain_event.go` | DomainEvent 领域模型（~~`domain_event_adapter.go`~~ 已删除：ADR-03 Blocker C bridge 移除后仅剩 TEST_ONLY 引用，2026-08-14 清理） |
 | biz | `internal/biz/session/state.go` + `state_usecase.go` | SessionUsecase.ApplyStateDelta / GetSessionState / SaveSessionState |
 | data | `internal/data/session_state_repo.go` | Session State 持久化（json_set / json_remove） |
 | data | `internal/data/event_store_repo.go` + `ent/schema/event_store.go` | event_store 表 Repo + Schema |
@@ -76,7 +76,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | 5 | ~~事件可靠性分级（AS-EVT-01）~~ | 已删除（Blocker G）：`contract/reliability.go` 仅被自身测试调用 |
 | 6 | Typed Consumer 拆分（4 typed consumer） | `event_bus_callback_consumer.go`/`flow_log_consumer.go`/`usage_rollup_consumer.go`/`user_feedback_consumer.go`（Blocker B 从旧 `event_bus_consumer.go` 拆分） |
 | 7 | EventBusSideConsumers 旁路 typed consumer | `event_bus_side_consumers.go` + typed consumer 文件 |
-| 8 | DomainEvent 适配（biz 领域事件双向桥接） | `domain_event.go` + `domain_event_adapter.go` |
+| 8 | DomainEvent 适配（biz 领域事件双向桥接） | `domain_event.go`（~~`domain_event_adapter.go`~~ 已删除 2026-08-14） |
 | 9 | Session State Delta（ApplyStateDelta） | `session/state_usecase.go` + `data/session_state_repo.go` |
 | 10 | ~~事件缓冲与重放（Buffer + Replay）~~ | 已删除（Blocker G）：`buffer.go` 环形缓冲在 Blocker A 后无读取者 |
 | 11 | WebSocket 传输（`/v1/ws`，2 pump） | `internal/server/ws.go` + `ws_*.go`（monitorEventPump + activityEventPump） |
@@ -129,7 +129,7 @@ Event 事件系统：基于事件总线的发布/订阅机制，支持系统内�
 | # | 状态 | 项 |
 |---|------|-----|
 | O1 | ✅ | 删除未挂载 `monitor/EventTimeline.vue` |
-| O4 | ✅ | domain_event_adapter 丢弃 SysLogWarn |
+| O4 | ✅ | domain_event_adapter 丢弃 SysLogWarn（文件已删除 2026-08-14） |
 | O5 | ✅ | event_persist_handler 独立 SRP |
 | O7 | ✅ | Chat Inspector vs Monitor 分工已定（设计 §13.1） |
 | O8 | ✅ | ListEvents 会话存在性校验（SessionUsecase.Get） |

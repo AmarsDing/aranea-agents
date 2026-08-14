@@ -171,7 +171,7 @@ V3 将平台自身全量代码作为进化对象，由平台内 Meta Team 执行
 **新增（Phase 2 已落地）**：
 - `internal/biz/self_improvement_patch.go`（diff 解析/受影响包推导/保护清单/规模上限/敏感信息检测）+ `_test.go`（含 T2.1 端口契约测试）
 - `internal/service/repo_sandbox_runner.go`（worktree 沙盒 + ApplyDiff + G1-G3）+ `_test.go`（fixture 仓库集成测试）
-- `internal/tools/patcherfs/patcherfs.go`（patcher_fs_read/patcher_fs_write/patcher_git_diff）+ `_test.go`
+- ~~`internal/tools/patcherfs/patcherfs.go`（patcher_fs_read/patcher_fs_write/patcher_git_diff）+ `_test.go`~~（已删除 2026-08-14：零生产引用，TEST_ONLY 僵尸实现）
 
 **修改（Phase 2 已落地）**：
 - `internal/biz/self_improvement_repo.go`（新增 `RepoSandbox` 端口，T2.1）

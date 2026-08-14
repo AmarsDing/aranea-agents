@@ -223,7 +223,7 @@ P2/P3 新增 2 张表 + 1 个列：
 - `session_user_id` / `session_state`：覆盖 SessionInput 默认值（UserID 默认 `"eval"`，State 默认空）
 - `source` / `task_id` / `session_id`：溯源元数据（P1-1 对话→用例一键转化写入 `source="chat"` + 来源任务/会话 ID；不参与执行语义，仅供回溯）
 
-> **框架版本说明（2026-08-08）**：`trpc-agent-go/evaluation` 模块经 `go.mod` replace 到 vendored 副本（`pkg/trpc-agent-go/evaluation`）——发布版 v1.9.0 的 `EvalCase` 无用例级 `Rubrics` 字段。切换带来一处 API 迁移：`promptiter/engine.RunRequest.TrainEvalSetIDs/ValidationEvalSetIDs` → `Train/Validation []EvalSetInput`（`internal/agent/prompt_iter_adapter.go`）。
+> **框架版本说明（2026-08-08）**：`trpc-agent-go/evaluation` 模块经 `go.mod` replace 到 vendored 副本（`pkg/trpc-agent-go/evaluation`）——发布版 v1.9.0 的 `EvalCase` 无用例级 `Rubrics` 字段。切换带来一处 API 迁移：`promptiter/engine.RunRequest.TrainEvalSetIDs/ValidationEvalSetIDs` → `Train/Validation []EvalSetInput`（~~`internal/agent/prompt_iter_adapter.go`~~，已删除 2026-08-14：TEST_ONLY 僵尸实现，生产走 `biz.PromptRefiner`）。
 
 ---
 

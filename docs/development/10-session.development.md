@@ -34,7 +34,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `usecase.go` | 677 | SessionUsecase 主入口 + SessionRepo 聚合接口（17 子接口） |
 | `status.go` | 26 | SessionStatus 枚举 + SessionStatusReason + IsProtectedStatus |
 | `status_machine.go` | 48 | SessionStatusMachine 实现（合法转换表） |
-| `session_state_machine.go` | 111 | 状态机集成（TransitionStatus 等） |
+| ~~`session_state_machine.go`~~ | — | 已删除：TEST_ONLY 僵尸实现（生产仅经 `status_machine.go` 驱动），2026-08-14 死代码清理 |
 | `compression.go` | 68 | SessionCompressionUsecase（窄接口：CompressRepo/ContextUpdater/SummaryReader/SummaryWriter） |
 | `batch.go` | 252 | cutoff 解析、scope 扫描、批量命中 |
 | `export.go` | 117 | Session 导出（Markdown/JSON） |
@@ -170,7 +170,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | **摘要质量门** | ✅ | `compress_quality.go`：退化检测 + 减量守卫 + 错误分类（纯函数） |
 | **压缩失败抑制** | ✅ | `compress_suppress.go`：deterministic sticky + transient 退避 |
 | **双锚点 token 校准** | ✅ | `compress/service.go` → `llmcontext.RecordAuthoritativeUsage`，校准共享估算器 |
-| Session 状态机（5 状态） | ✅ | `status_machine.go` + `session_state_machine.go` |
+| Session 状态机（5 状态） | ✅ | `status_machine.go`（~~`session_state_machine.go`~~ 已删除，TEST_ONLY 僵尸） |
 | SessionRuntime / SessionMetrics 拆分表 | ✅ | 高频字段拆出，减少写放大 |
 | session_participants 增量写 | 🟡 | 表 + 读时 Sync；Team 详情 Tab；**无 turn 增量写** |
 | session_run_steps | ❌ | F5 未建表 |

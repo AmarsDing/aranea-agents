@@ -30,6 +30,13 @@ type (
 	TurnUsageInput            = usage.TurnUsageInput
 	CacheHitRatioStat         = usage.CacheHitRatioStat
 	CacheHitRatioStatsRepo    = usage.CacheHitRatioStatsRepo
+	ContextBudgetStats        = usage.ContextBudgetStats
+	ContextBudgetComposition  = usage.ContextBudgetComposition
+	ContextBudgetAgentStats   = usage.ContextBudgetAgentStats
+	ContextBudgetTrendPoint   = usage.ContextBudgetTrendPoint
+	ContextBudgetToolStat     = usage.ContextBudgetToolStat
+	ContextBudgetGrain        = usage.ContextBudgetGrain
+	ContextBudgetStatsRepo    = usage.ContextBudgetStatsRepo
 )
 
 const (

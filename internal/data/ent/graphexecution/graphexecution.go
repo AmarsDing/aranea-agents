@@ -15,6 +15,10 @@ const (
 	FieldGraphID = "graph_id"
 	// FieldSessionID holds the string denoting the session_id field in the database.
 	FieldSessionID = "session_id"
+	// FieldSpiritSessionID holds the string denoting the spirit_session_id field in the database.
+	FieldSpiritSessionID = "spirit_session_id"
+	// FieldDefinitionHash holds the string denoting the definition_hash field in the database.
+	FieldDefinitionHash = "definition_hash"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldCurrentNode holds the string denoting the current_node field in the database.
@@ -40,6 +44,8 @@ var Columns = []string{
 	FieldID,
 	FieldGraphID,
 	FieldSessionID,
+	FieldSpiritSessionID,
+	FieldDefinitionHash,
 	FieldStatus,
 	FieldCurrentNode,
 	FieldLineageID,
@@ -67,6 +73,14 @@ var (
 	DefaultSessionID string
 	// SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
 	SessionIDValidator func(string) error
+	// DefaultSpiritSessionID holds the default value on creation for the "spirit_session_id" field.
+	DefaultSpiritSessionID string
+	// SpiritSessionIDValidator is a validator for the "spirit_session_id" field. It is called by the builders before save.
+	SpiritSessionIDValidator func(string) error
+	// DefaultDefinitionHash holds the default value on creation for the "definition_hash" field.
+	DefaultDefinitionHash string
+	// DefinitionHashValidator is a validator for the "definition_hash" field. It is called by the builders before save.
+	DefinitionHashValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -105,6 +119,16 @@ func ByGraphID(opts ...sql.OrderTermOption) OrderOption {
 // BySessionID orders the results by the session_id field.
 func BySessionID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSessionID, opts...).ToFunc()
+}
+
+// BySpiritSessionID orders the results by the spirit_session_id field.
+func BySpiritSessionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSpiritSessionID, opts...).ToFunc()
+}
+
+// ByDefinitionHash orders the results by the definition_hash field.
+func ByDefinitionHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefinitionHash, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.
