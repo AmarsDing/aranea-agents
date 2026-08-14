@@ -227,6 +227,25 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 测试 | `inspect_zip_limits_test.go`（TooManyFiles/TotalSizeExceeded）；`skills.store.spec.ts` 3 例；存量 PG 集成测试全绿 | ✅ |
 | 验证 | `go build/vet` 绿；`internal/skill/...`、`internal/biz{,/skill}`、`internal/data`（SkillImport）、`internal/service`（Skill）全绿；前端 vitest 245 文件 1829 用例全绿、`quasar build` 成功、eslint 0 警告、check-i18n OK | ✅ |
 
+### 3.15 已完成（P14：删除同步清盘 + 整体深入评审整改，2026-08-14）
+
+背景：应用户要求「删除 skill 同步清理磁盘」，解除 §3.12 B1 的已知 caveat（残留目录被 watcher 复活）；随后对模块做整体深入评审（biz/service/data/importer/watch/前端），发现 3 阻断 + 18 建议共 21 项，全部修复。19 项 🟢 提示记录在案未修。
+
+| 项 | 内容 | 状态 |
+|----|------|------|
+| D1 删除同步清盘 | `SkillFileWriter.RemoveSkillDir`（`internal/skill/storage/filesystem.go`：拒删存储根/越界路径、容忍不存在）；`DeleteSkill` 改「先盘后库」——盘删失败中止并保留 DB 行，杜绝「DB 已删但残留目录被 watcher 复活为 draft」；`SkillDeleteDialog.vue` 文案改「不可撤销，将永久删除 Skill 及其磁盘文件」（与 P11-B1 物理删除一致） | ✅ |
+| B1 历史排序静默失效 | `RuntimeCandidate` 增 `SkillID` 字段；`buildRankCandidates`（`internal/tools/skillruntime/resolve.go`）按平台 ID 查 `skill_invocation`（原按 slug 恒 0 行，动态排名从未生效且无报错），空 ID 回退 slug 兼容存量调用 | ✅ |
+| B2 健康卡路由命中率失效 | `getSkillHealth` mapper 漏 `routed_count_7d/loaded_count_7d/routed_count_30d/loaded_count_30d` 4 字段（proto 早已返回），SkillHealthCard 路由命中率恒显「-」；已补全 | ✅ |
+| B3 进化详情弹窗关不掉 | `EvolutionSuggestionDetailDialog.vue` 的 q-dialog 补 `@update:model-value` 转发 `update:open`（受控断链，persistent 下只能跳路由离开） | ✅ |
+| R1 导入合并补偿闭环 | merge-retire 的 `ArchiveSkill` 延后到全部 decision 成功后批量执行（`internal/skill/importer/engine.go`），中途失败不再留下「源已归档+新建被补偿删除」的两头落空 | ✅ |
+| R2 reconcile 事件洪泛治理 | reporter 对 `(eventKey, slug)` 做 1 小时落库去重（仅 monitor_events/admin_audit 去重，bus 实时可见性保留；`internal/skill/watch/reporter.go`）；overwrite 备份目录改 `.` 前缀使 scanAll 天然跳过 | ✅ |
+| R3 统计口径收敛 | `GetFailureStats`/`skill_invocation_stats` 补 `source='runtime'` 过滤并与 `types.IsSuccess` 语义对齐；`BatchGetSkillMarkdownBySlugs`/`ListSkillSimilaritySources` 最新版本选取补 `ByID` 倒序兜底（同秒并列不确定） | ✅ |
+| R4 健康查询性能 | `GetSkillHealth` 日桶聚合下推 SQL、`routeLoadCounts` 改 `COUNT(DISTINCT activation_id)`，不再 30 天全量拉行（含大 JSON 列）进内存；顺带修复 `dailyQuery` 5 占位符仅传 4 实参的潜伏 bug | ✅ |
+| R5 biz/service 改进 | Publish 自动启用失败补 Warn 降级日志（`Usecase` 构造注入 `loggateway.Logger`，`NewUsecase(repo, embedder, lg)`）；`skillDir` 回退命中补 Warn；butler `RegisterSkill` 用 `NormalizeSkillSlug`；`NewSkillService` 8 参改 `SkillServiceDeps` 单参（BP7，wire.Struct 登记）；进化建议异步后处理 ctx 断裂修复（`context.WithoutCancel` 捕获传递）；6 个 port 接口补 `// Stability:evolving` | ✅ |
+| R6 前端结构 | `useSkillsPage` 双数据源消除（storeToRefs 直消费 store，删 3 处手动行同步）；新建 `useSkillTagsPage.ts` 下沉标签页逻辑（Page script 180→31 行）；`buildImportDecisions` 纯函数抽出至 `importDecisions.ts`；`SkillRunsTable` pending 三分态（不再渲染成失败）；`SkillStatsHoverChart` 改用既有 `--shadow-entity-panel` token | ✅ |
+| 测试 | data：B1 贯通（候选 ID→非零指标，`skill_candidate_id_test.go`）、日桶下推（`skill_health_test.go`）；skillruntime：按 ID 查询 + slug 回退断言；importer：retire 延后失败路径；watch：去重窗口 + 备份目录跳过；service：删除同步清盘 2 例（盘存在同删/盘缺失容忍）；前端：api.spec 3 例、useSkillsPage.spec 3 例、importDecisions.spec 6 例 | ✅ |
+| 验证 | `go build ./cmd/... ./internal/... ./api/... ./pkg/...` 绿；`internal/biz/skill`、`internal/skill/...`、`internal/tools/skillruntime`、`internal/service`、`internal/data`（PG 集成）全绿；前端 eslint 0 错、vitest 249 文件 1858 用例全绿、`quasar build` 成功 | ✅ |
+
 ---
 
 ## 4. 开发阶段
@@ -525,7 +544,8 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | `web/src/components/skills/SkillTable.vue` 等 | 表格/筛选/统计/编辑/上传/删除/运行记录/告警/健康卡片 | ✅ |
 | `web/src/features/skills/api.ts` | 前端 API 函数清单 | ✅ |
 | `web/src/features/skills/types.ts` | TypeScript 类型定义 | ✅ |
-| `web/src/features/skills/useSkillsPage.ts` 等 | Composable hooks | ✅ |
+| `web/src/features/skills/useSkillsPage.ts` 等 | Composable hooks（含 P14 新增 `useSkillTagsPage.ts`：标签页逻辑下沉） | ✅ |
+| `web/src/features/skills/importDecisions.ts` | P14 新增：导入 decisions 组装纯函数（自 SkillUploadPlaceholder 抽出） | ✅ |
 | `web/src/stores/skills/index.ts` | Pinia store | ✅ |
 
 ### 8.10 测试文件

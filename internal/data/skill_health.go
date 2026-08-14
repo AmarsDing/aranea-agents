@@ -215,7 +215,7 @@ WHERE si.created_at >= ? AND si.source = 'runtime' AND ` + signalFilter)
 FROM skill_invocation si
 WHERE si.created_at >= ? AND si.source = 'runtime' AND ` + signalFilter + `
 GROUP BY substr(si.created_at, 1, 10)`)
-	dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, dailyQuery, slug, slug, since30dStr, slug)
+	dRows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, dailyQuery, slug, slug, since30dStr, slug, slug)
 	if err != nil {
 		return 0, 0, 0, 0, entErrToBizErr(err, apierror.DomainSkill)
 	}

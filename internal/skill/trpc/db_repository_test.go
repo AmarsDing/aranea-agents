@@ -82,7 +82,7 @@ func (s *stubSkillRepo) GetSkillStorageDir(_ context.Context, id string) (string
 }
 
 func newStubUsecase(repo bizskill.Repo) *biz.SkillUsecase {
-	return biz.NewSkillUsecase(repo, nil)
+	return biz.NewSkillUsecase(repo, nil, loggateway.NewNoop())
 }
 
 func cand(slug string) bizskill.RuntimeCandidate {
