@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -93,6 +94,8 @@ type DynamicLLMCaller struct {
 	catalog LLMCredentialResolver
 	sys     LLMRefineConfigResolver
 	hc      *http.Client
+	// callFn 是可注入的底层调用（测试替身）；nil 时使用 CallOpenAICompatChat。
+	callFn func(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage) (string, string, int, int, error)
 }
 
 // NewDynamicLLMCaller wires a DynamicLLMCaller for use in Wire.
@@ -107,18 +110,88 @@ func NewDynamicLLMCaller(sys LLMRefineConfigResolver, catalog LLMCredentialResol
 }
 
 // Call honors req.Provider + req.Model and resolves matching credentials.
+//
+// P2-2 fallback：主模型调用失败（网络/5xx/鉴权等任一侧信道错误）时，在目录内
+// 选同 provider 的下一个 enabled 模型降级重试一次——PromptRefiner / 意图识别等
+// 旁路调用没有 HA 包装，单次故障即整轮失败；候选自身失败不再递归（避免隐性
+// 级联放大延迟与成本）。调用方 ctx 已取消/超时不降级（用户已放弃）。
 func (c *DynamicLLMCaller) Call(ctx context.Context, req biz.LLMCallRequest) (string, int, error) {
+	fn := c.callFn
+	if fn == nil {
+		fn = CallOpenAICompatChat
+	}
 	cfg, err := c.resolveCredentials(ctx, req.Provider, req.Model)
 	if err != nil {
 		return "", 0, err
 	}
 	msgs := buildMessages(req.System, req.User, req.Images...)
 	modelName := strings.TrimSpace(req.Model)
-	text, _, promptTok, completionTok, err := CallOpenAICompatChat(ctx, c.hc, cfg, modelName, msgs)
-	if err != nil {
+	text, _, promptTok, completionTok, err := fn(ctx, c.hc, cfg, modelName, msgs)
+	if err == nil {
+		return text, promptTok + completionTok, nil
+	}
+	if ctx.Err() != nil {
 		return "", 0, err
 	}
+	fb, ok := c.fallbackCandidate(ctx, req.Provider, modelName)
+	if !ok {
+		return "", 0, err
+	}
+	fbCfg, cfgOK := c.decryptedCatalogConfig(ctx, fb.Provider, fb.Model)
+	if !cfgOK {
+		return "", 0, err
+	}
+	// K3 降级：流程日志（ctx 无 TraceEmitter 时静默跳过，同 cascade 约定）。
+	if em := event.TraceEmitterFromContext(ctx); em != nil {
+		em.LogWarn("chat.llm.fallback", "模型降级重试", err.Error(),
+			event.P("provider", strings.TrimSpace(req.Provider)),
+			event.P("primary_model", modelName),
+			event.P("fallback_model", fb.Model))
+	}
+	text, _, promptTok, completionTok, fbErr := fn(ctx, c.hc, fbCfg, fb.Model, msgs)
+	if fbErr != nil {
+		return "", 0, fbErr
+	}
 	return text, promptTok + completionTok, nil
+}
+
+// fallbackCandidate 选择降级候选：同 provider、enabled、非主模型，取目录序首个。
+func (c *DynamicLLMCaller) fallbackCandidate(ctx context.Context, providerName, primaryModel string) (biz.ProviderModel, bool) {
+	providerName = strings.TrimSpace(providerName)
+	if c.catalog == nil || providerName == "" {
+		return biz.ProviderModel{}, false
+	}
+	models, err := c.catalog.List(ctx)
+	if err != nil {
+		return biz.ProviderModel{}, false
+	}
+	for i := range models {
+		m := models[i]
+		if !m.Enabled || m.Provider != providerName {
+			continue
+		}
+		if primaryModel != "" && m.Model == primaryModel {
+			continue
+		}
+		return m, true
+	}
+	return biz.ProviderModel{}, false
+}
+
+// decryptedCatalogConfig 重新按行拉取解密后的运行时配置（List 行已脱敏，
+// api_key 被剥离——见 sanitizeProviderModelForAPI）。
+func (c *DynamicLLMCaller) decryptedCatalogConfig(ctx context.Context, providerName, modelName string) (ProviderAPIConfig, bool) {
+	row, err := c.catalog.GetByProviderAndModel(ctx, providerName, modelName)
+	if err != nil {
+		return ProviderAPIConfig{}, false
+	}
+	var cfg ProviderAPIConfig
+	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	cfg.ProviderType = row.Provider
+	if strings.TrimSpace(cfg.APIBaseURL) == "" {
+		return ProviderAPIConfig{}, false
+	}
+	return cfg, true
 }
 
 // resolveCredentials returns a ProviderAPIConfig with BaseURL + APIKey for
@@ -159,17 +232,7 @@ func (c *DynamicLLMCaller) resolveCredentials(ctx context.Context, provider, mod
 	// decryptedConfig re-fetches the row to obtain the decrypted runtime
 	// config (List rows carry no api_key — see sanitizeProviderModelForAPI).
 	decryptedConfig := func(m *biz.ProviderModel) (ProviderAPIConfig, bool) {
-		row, err := c.catalog.GetByProviderAndModel(ctx, m.Provider, m.Model)
-		if err != nil {
-			return ProviderAPIConfig{}, false
-		}
-		var cfg ProviderAPIConfig
-		MergeProviderConfigJSON(row.ConfigJSON, &cfg)
-		cfg.ProviderType = row.Provider
-		if strings.TrimSpace(cfg.APIBaseURL) == "" {
-			return ProviderAPIConfig{}, false
-		}
-		return cfg, true
+		return c.decryptedCatalogConfig(ctx, m.Provider, m.Model)
 	}
 
 	// Strategy 1: exact provider+model match.

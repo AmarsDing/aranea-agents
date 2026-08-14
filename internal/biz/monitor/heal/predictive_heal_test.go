@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -14,47 +15,47 @@ import (
 
 // mockSystemMetricsReader captures metric reads for test assertions.
 type mockSystemMetricsReader struct {
-	metrics monitor.SystemMetrics
+	metrics heal.SystemMetrics
 	err     error
 }
 
-func (m *mockSystemMetricsReader) ReadSystemMetrics(_ context.Context) (monitor.SystemMetrics, error) {
+func (m *mockSystemMetricsReader) ReadSystemMetrics(_ context.Context) (heal.SystemMetrics, error) {
 	if m.err != nil {
-		return monitor.SystemMetrics{}, m.err
+		return heal.SystemMetrics{}, m.err
 	}
 	return m.metrics, nil
 }
 
 // mockFailurePatternReaderForPredictive captures pattern reads for test assertions.
 type mockFailurePatternReaderForPredictive struct {
-	patterns []monitor.FailurePattern
+	patterns []heal.FailurePattern
 	err      error
 }
 
-func (m *mockFailurePatternReaderForPredictive) ListActive(_ context.Context) ([]monitor.FailurePattern, error) {
+func (m *mockFailurePatternReaderForPredictive) ListActive(_ context.Context) ([]heal.FailurePattern, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
 	return m.patterns, nil
 }
 
-func (m *mockFailurePatternReaderForPredictive) ListBySource(_ context.Context, _ monitor.FailurePatternSource) ([]monitor.FailurePattern, error) {
+func (m *mockFailurePatternReaderForPredictive) ListBySource(_ context.Context, _ heal.FailurePatternSource) ([]heal.FailurePattern, error) {
 	return m.ListActive(nil)
 }
 
-func (m *mockFailurePatternReaderForPredictive) GetByPatternHash(_ context.Context, _ string) (*monitor.FailurePattern, error) {
+func (m *mockFailurePatternReaderForPredictive) GetByPatternHash(_ context.Context, _ string) (*heal.FailurePattern, error) {
 	return nil, nil
 }
 
 // mockHealHandlerForPredictive records fix action calls for test assertions.
 type mockHealHandlerForPredictive struct {
 	calls      atomic.Int32
-	lastAction monitor.FixAction
+	lastAction heal.FixAction
 	lastMeta   map[string]any
 	shouldErr  bool
 }
 
-func (h *mockHealHandlerForPredictive) HandleFixAction(_ context.Context, action monitor.FixAction, meta map[string]any) error {
+func (h *mockHealHandlerForPredictive) HandleFixAction(_ context.Context, action heal.FixAction, meta map[string]any) error {
 	h.calls.Add(1)
 	h.lastAction = action
 	h.lastMeta = meta
@@ -76,15 +77,15 @@ func newTestPredictiveHealUsecase(
 	reader *mockSystemMetricsReader,
 	patternReader *mockFailurePatternReaderForPredictive,
 	handler *mockHealHandlerForPredictive,
-	healRepo monitor.HealRecordRepo,
-) *monitor.PredictiveHealUsecase {
-	return monitor.NewPredictiveHealUsecase(reader, patternReader, handler, healRepo, loggateway.NewNoop())
+	healRepo heal.HealRecordRepo,
+) *heal.PredictiveHealUsecase {
+	return heal.NewPredictiveHealUsecase(reader, patternReader, handler, healRepo, loggateway.NewNoop())
 }
 
 // --- tests ---
 
 func TestPredictiveHealUsecase_NilReceiver(t *testing.T) {
-	var uc *monitor.PredictiveHealUsecase
+	var uc *heal.PredictiveHealUsecase
 	records, err := uc.PredictAndHeal(context.Background())
 	if err == nil {
 		t.Error("nil receiver should return error")
@@ -101,39 +102,39 @@ func TestPredictiveHealUsecase_NilDeps(t *testing.T) {
 	repo := &mockHealRecordRepo{}
 
 	// nil metrics reader
-	if monitor.NewPredictiveHealUsecase(nil, patternReader, handler, repo, loggateway.NewNoop()) != nil {
+	if heal.NewPredictiveHealUsecase(nil, patternReader, handler, repo, loggateway.NewNoop()) != nil {
 		t.Error("nil metrics reader should return nil")
 	}
 	// nil pattern reader
-	if monitor.NewPredictiveHealUsecase(reader, nil, handler, repo, loggateway.NewNoop()) != nil {
+	if heal.NewPredictiveHealUsecase(reader, nil, handler, repo, loggateway.NewNoop()) != nil {
 		t.Error("nil pattern reader should return nil")
 	}
 	// nil handler
-	if monitor.NewPredictiveHealUsecase(reader, patternReader, nil, repo, loggateway.NewNoop()) != nil {
+	if heal.NewPredictiveHealUsecase(reader, patternReader, nil, repo, loggateway.NewNoop()) != nil {
 		t.Error("nil handler should return nil")
 	}
 	// nil repo
-	if monitor.NewPredictiveHealUsecase(reader, patternReader, handler, nil, loggateway.NewNoop()) != nil {
+	if heal.NewPredictiveHealUsecase(reader, patternReader, handler, nil, loggateway.NewNoop()) != nil {
 		t.Error("nil repo should return nil")
 	}
 }
 
 func TestPredictiveHealUsecase_LowConfidence_NoAction(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 1600, // Weak signal (>1500): keeps confidence low but non-zero
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-low-conf",
 				Type:       "provider_timeout",
 				Confidence: 0.5, // Below 0.8 threshold
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -151,8 +152,8 @@ func TestPredictiveHealUsecase_LowConfidence_NoAction(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
-	if records[0].Status != string(monitor.HealStatusSkippedLowConfidence) {
-		t.Errorf("Status = %q, want %q", records[0].Status, monitor.HealStatusSkippedLowConfidence)
+	if records[0].Status != string(heal.HealStatusSkippedLowConfidence) {
+		t.Errorf("Status = %q, want %q", records[0].Status, heal.HealStatusSkippedLowConfidence)
 	}
 	// Handler should NOT be called
 	if handler.calls.Load() != 0 {
@@ -162,20 +163,20 @@ func TestPredictiveHealUsecase_LowConfidence_NoAction(t *testing.T) {
 
 func TestPredictiveHealUsecase_HighConfidence_ActionApplied(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000, // High latency
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.9, // Above 0.8 threshold
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}},
 			},
 		},
 	}
@@ -192,8 +193,8 @@ func TestPredictiveHealUsecase_HighConfidence_ActionApplied(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
-	if records[0].Status != string(monitor.HealStatusApplied) {
-		t.Errorf("Status = %q, want %q", records[0].Status, monitor.HealStatusApplied)
+	if records[0].Status != string(heal.HealStatusApplied) {
+		t.Errorf("Status = %q, want %q", records[0].Status, heal.HealStatusApplied)
 	}
 	if records[0].Confidence < 0.8 {
 		t.Errorf("Confidence = %.2f, want >= 0.8", records[0].Confidence)
@@ -211,20 +212,20 @@ func TestPredictiveHealUsecase_HighConfidence_ActionApplied(t *testing.T) {
 
 func TestPredictiveHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -235,7 +236,7 @@ func TestPredictiveHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 
 	// First call should succeed
 	records1, _ := uc.PredictAndHeal(context.Background())
-	if len(records1) != 1 || records1[0].Status != string(monitor.HealStatusApplied) {
+	if len(records1) != 1 || records1[0].Status != string(heal.HealStatusApplied) {
 		t.Fatalf("first call: Status = %q, want applied", records1[0].Status)
 	}
 
@@ -244,8 +245,8 @@ func TestPredictiveHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 	if len(records2) != 1 {
 		t.Fatalf("second call: expected 1 record, got %d", len(records2))
 	}
-	if records2[0].Status != string(monitor.HealStatusSkippedCooldown) {
-		t.Errorf("second call: Status = %q, want %q", records2[0].Status, monitor.HealStatusSkippedCooldown)
+	if records2[0].Status != string(heal.HealStatusSkippedCooldown) {
+		t.Errorf("second call: Status = %q, want %q", records2[0].Status, heal.HealStatusSkippedCooldown)
 	}
 	// Handler should only be called once (from first call)
 	if handler.calls.Load() != 1 {
@@ -255,20 +256,20 @@ func TestPredictiveHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 
 func TestPredictiveHealUsecase_CooldownExpires(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -279,7 +280,7 @@ func TestPredictiveHealUsecase_CooldownExpires(t *testing.T) {
 
 	// First call
 	records1, _ := uc.PredictAndHeal(context.Background())
-	if records1[0].Status != string(monitor.HealStatusApplied) {
+	if records1[0].Status != string(heal.HealStatusApplied) {
 		t.Fatalf("first call: Status = %q, want applied", records1[0].Status)
 	}
 
@@ -291,8 +292,8 @@ func TestPredictiveHealUsecase_CooldownExpires(t *testing.T) {
 	if len(records3) != 1 {
 		t.Fatalf("third call: expected 1 record, got %d", len(records3))
 	}
-	if records3[0].Status != string(monitor.HealStatusApplied) {
-		t.Errorf("third call after cooldown: Status = %q, want %q", records3[0].Status, monitor.HealStatusApplied)
+	if records3[0].Status != string(heal.HealStatusApplied) {
+		t.Errorf("third call after cooldown: Status = %q, want %q", records3[0].Status, heal.HealStatusApplied)
 	}
 	if handler.calls.Load() != 2 {
 		t.Errorf("HandleFixAction called %d times, want 2", handler.calls.Load())
@@ -300,28 +301,28 @@ func TestPredictiveHealUsecase_CooldownExpires(t *testing.T) {
 }
 
 func TestPredictiveHealUsecase_AuditRecordCreated(t *testing.T) {
-	var insertedRecords []monitor.HealRecord
+	var insertedRecords []heal.HealRecord
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, record monitor.HealRecord) error {
+		insertFn: func(_ context.Context, record heal.HealRecord) error {
 			insertedRecords = append(insertedRecords, record)
 			return nil
 		},
 	}
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -342,8 +343,8 @@ func TestPredictiveHealUsecase_AuditRecordCreated(t *testing.T) {
 	if ir.TriggerType != "predictive" {
 		t.Errorf("inserted TriggerType = %q, want %q", ir.TriggerType, "predictive")
 	}
-	if ir.Status != string(monitor.HealStatusApplied) {
-		t.Errorf("inserted Status = %q, want %q", ir.Status, monitor.HealStatusApplied)
+	if ir.Status != string(heal.HealStatusApplied) {
+		t.Errorf("inserted Status = %q, want %q", ir.Status, heal.HealStatusApplied)
 	}
 	if ir.RuleID != "fp-provider-timeout" {
 		t.Errorf("inserted RuleID = %q, want %q", ir.RuleID, "fp-provider-timeout")
@@ -355,14 +356,14 @@ func TestPredictiveHealUsecase_AuditRecordCreated(t *testing.T) {
 
 func TestPredictiveHealUsecase_NoMatchingPatterns(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 100, // Normal metrics
 			MemoryUsagePct:    40,
 			SessionBacklog:    2,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{}, // No patterns
+		patterns: []heal.FailurePattern{}, // No patterns
 	}
 	handler := &mockHealHandlerForPredictive{}
 	repo := &mockHealRecordRepo{}
@@ -385,20 +386,20 @@ func TestPredictiveHealUsecase_NoMatchingPatterns(t *testing.T) {
 
 func TestPredictiveHealUsecase_FixActionFailed(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -411,34 +412,34 @@ func TestPredictiveHealUsecase_FixActionFailed(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
-	if records[0].Status != string(monitor.HealStatusFailed) {
-		t.Errorf("Status = %q, want %q", records[0].Status, monitor.HealStatusFailed)
+	if records[0].Status != string(heal.HealStatusFailed) {
+		t.Errorf("Status = %q, want %q", records[0].Status, heal.HealStatusFailed)
 	}
 }
 
 func TestPredictiveHealUsecase_MultiplePatterns(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    90, // High memory
 			SessionBacklog:    50, // High backlog
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-provider-timeout",
 				Type:       "provider_timeout",
 				Confidence: 0.85,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 			{
 				ID:         "fp-memory-pressure",
 				Type:       "memory_pressure",
 				Confidence: 0.6, // Below threshold even with metric boost (0.6+0.15=0.75 < 0.8)
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "fallback", MaxAttempts: 1},
+				FixAction:  heal.FixAction{Type: "fallback", MaxAttempts: 1},
 			},
 		},
 	}
@@ -457,9 +458,9 @@ func TestPredictiveHealUsecase_MultiplePatterns(t *testing.T) {
 	appliedCount := 0
 	skippedCount := 0
 	for _, r := range records {
-		if r.Status == string(monitor.HealStatusApplied) {
+		if r.Status == string(heal.HealStatusApplied) {
 			appliedCount++
-		} else if r.Status == string(monitor.HealStatusSkippedLowConfidence) {
+		} else if r.Status == string(heal.HealStatusSkippedLowConfidence) {
 			skippedCount++
 		}
 	}
@@ -476,7 +477,7 @@ func TestPredictiveHealUsecase_MetricsReaderError(t *testing.T) {
 		err: errPredictiveFixFailed,
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{},
+		patterns: []heal.FailurePattern{},
 	}
 	handler := &mockHealHandlerForPredictive{}
 	repo := &mockHealRecordRepo{}
@@ -491,20 +492,20 @@ func TestPredictiveHealUsecase_MetricsReaderError(t *testing.T) {
 
 func TestPredictiveHealUsecase_InactivePatternSkipped(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-inactive",
 				Type:       "provider_timeout",
 				Confidence: 0.9,
 				IsActive:   false, // Inactive
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -529,20 +530,20 @@ func TestPredictiveHealUsecase_InactivePatternSkipped(t *testing.T) {
 // metric family so that a strong metric signal can fire the action.
 func TestPredictiveHealUsecase_RuleIDTypeNormalized(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000, // Strong signal
 			MemoryUsagePct:    60,
 			SessionBacklog:    5,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-rt-rc-provider-timeout",
 				Type:       "rc-provider-timeout", // synced runtime rule ID form
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -555,8 +556,8 @@ func TestPredictiveHealUsecase_RuleIDTypeNormalized(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(records))
 	}
-	if records[0].Status != string(monitor.HealStatusApplied) {
-		t.Errorf("Status = %q, want %q", records[0].Status, monitor.HealStatusApplied)
+	if records[0].Status != string(heal.HealStatusApplied) {
+		t.Errorf("Status = %q, want %q", records[0].Status, heal.HealStatusApplied)
 	}
 	if handler.calls.Load() != 1 {
 		t.Errorf("HandleFixAction called %d times, want 1", handler.calls.Load())
@@ -567,20 +568,20 @@ func TestPredictiveHealUsecase_RuleIDTypeNormalized(t *testing.T) {
 // must not even produce an audit record — predictions require a signal basis.
 func TestPredictiveHealUsecase_NoMetricSignal_NoRecord(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 200, // No signal
 			MemoryUsagePct:    40,
 			SessionBacklog:    3,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-rt-rc-provider-timeout",
 				Type:       "rc-provider-timeout",
 				Confidence: 0.9, // High base must NOT fire without a metric signal
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "retry", MaxAttempts: 2},
+				FixAction:  heal.FixAction{Type: "retry", MaxAttempts: 2},
 			},
 		},
 	}
@@ -602,20 +603,20 @@ func TestPredictiveHealUsecase_NoMetricSignal_NoRecord(t *testing.T) {
 // cannot be predicted from system metrics and must be skipped silently.
 func TestPredictiveHealUsecase_NoMetricFamily_NoRecord(t *testing.T) {
 	reader := &mockSystemMetricsReader{
-		metrics: monitor.SystemMetrics{
+		metrics: heal.SystemMetrics{
 			ProviderLatencyMs: 5000,
 			MemoryUsagePct:    90,
 			SessionBacklog:    50,
 		},
 	}
 	patternReader := &mockFailurePatternReaderForPredictive{
-		patterns: []monitor.FailurePattern{
+		patterns: []heal.FailurePattern{
 			{
 				ID:         "fp-rt-rc-mcp-connection-failure",
 				Type:       "rc-mcp-connection-failure",
 				Confidence: 0.9,
 				IsActive:   true,
-				FixAction:  monitor.FixAction{Type: "reconnect", MaxAttempts: 3},
+				FixAction:  heal.FixAction{Type: "reconnect", MaxAttempts: 3},
 			},
 		},
 	}

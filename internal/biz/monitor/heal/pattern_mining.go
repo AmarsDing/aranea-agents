@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import (
 	"context"
@@ -319,21 +319,4 @@ func MinedPatternHash(errorCode, normalizedStack string) string {
 	h.Write([]byte{0})
 	h.Write([]byte(normalizedStack))
 	return fmt.Sprintf("sha256:%x", h.Sum(nil))[:48]
-}
-
-// metaStrFromMap extracts a string value from a map[string]any, similar to metaStr
-// but works with HealRecord.Metadata directly.
-func metaStrFromMap(m map[string]any, key string) string {
-	if m == nil {
-		return ""
-	}
-	v, ok := m[key]
-	if !ok {
-		return ""
-	}
-	s, ok := v.(string)
-	if !ok {
-		return ""
-	}
-	return s
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
@@ -215,6 +216,13 @@ func CascadeModelSelector(
 		lg.Info("级联路由成员模型", loggateway.StepID("agent.model_cascade.route"), loggateway.Phase("done"),
 			loggateway.Str("provider", prov), loggateway.Str("target", mod),
 			loggateway.Str("base", baseName), loggateway.Str("agent", inv.AgentName))
+		// 分档用量审计轨迹：流程日志记录每次级联路由决策（run 维度可聚合）。
+		// ctx 无 TraceEmitter（standalone 构建级路径）时静默跳过。
+		if em := event.TraceEmitterFromContext(ctx); em != nil {
+			em.LogDone("team.model_cascade.route", "成员模型级联路由",
+				event.P("agent_key", inv.AgentName), event.P("provider", prov),
+				event.P("target_model", mod), event.P("base_model", baseName))
+		}
 		return m, nil
 	}
 }

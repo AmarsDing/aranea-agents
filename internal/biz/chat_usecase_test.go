@@ -67,6 +67,7 @@ type stubChatPendingQueue struct{}
 func (stubChatPendingQueue) List(string) []PendingQueueEntry    { return nil }
 func (stubChatPendingQueue) Enqueue(_, _ string) string         { return "" }
 func (stubChatPendingQueue) EnqueueFollowup(_, _ string) string { return "" }
+func (stubChatPendingQueue) EnqueueInject(_, _ string) string   { return "" }
 func (stubChatPendingQueue) Dequeue(string) (PendingQueueEntry, bool) {
 	return PendingQueueEntry{}, false
 }

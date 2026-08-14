@@ -58,6 +58,7 @@ func (a *pendingQueueAdapter) List(sessionID string) []biz.PendingQueueEntry {
 			Content:   e.Content,
 			Status:    e.Status,
 			CreatedAt: e.CreatedAt,
+			Kind:      e.Kind,
 		}
 	}
 	return out
@@ -71,6 +72,10 @@ func (a *pendingQueueAdapter) EnqueueFollowup(sessionID, content string) string 
 	return a.PendingMessageQueue.EnqueueFollowup(sessionID, content, "\n")
 }
 
+func (a *pendingQueueAdapter) EnqueueInject(sessionID, content string) string {
+	return a.PendingMessageQueue.EnqueueInject(sessionID, content)
+}
+
 func (a *pendingQueueAdapter) Dequeue(sessionID string) (biz.PendingQueueEntry, bool) {
 	e, ok := a.PendingMessageQueue.Dequeue(sessionID)
 	if !ok {
@@ -81,6 +86,7 @@ func (a *pendingQueueAdapter) Dequeue(sessionID string) (biz.PendingQueueEntry, 
 		Content:   e.Content,
 		Status:    e.Status,
 		CreatedAt: e.CreatedAt,
+		Kind:      e.Kind,
 	}, true
 }
 
@@ -94,6 +100,7 @@ func (a *pendingQueueAdapter) Peek(sessionID string) (biz.PendingQueueEntry, boo
 		Content:   e.Content,
 		Status:    e.Status,
 		CreatedAt: e.CreatedAt,
+		Kind:      e.Kind,
 	}, true
 }
 

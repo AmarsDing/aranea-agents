@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"aranea-agents/internal/biz/monitor"
+
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -39,14 +40,14 @@ func (l *errorCountingLogger) errorCount() int {
 func TestSelfHealObserver_PersistFailureLogThrottled(t *testing.T) {
 	var insertCalls int
 	repo := &mockHealRecordRepo{
-		insertFn: func(context.Context, monitor.HealRecord) error {
+		insertFn: func(context.Context, heal.HealRecord) error {
 			insertCalls++
 			return errors.New("db down")
 		},
 	}
 	lg := &errorCountingLogger{}
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
-	o, err := monitor.NewSelfHealObserver(nil, repo, engine, nil, lg)
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
+	o, err := heal.NewSelfHealObserver(nil, repo, engine, nil, lg)
 	if err != nil {
 		t.Fatalf("NewSelfHealObserver: %v", err)
 	}

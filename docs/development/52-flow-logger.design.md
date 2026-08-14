@@ -423,6 +423,7 @@ internal/cronrunner/jobs/
 | `chat.user_msg_persist` | done/error | ok / error | 保存用户消息 | |
 | `chat.intent.pass` | done/skip/error | ok / info / warn | 意图识别 | |
 | `chat.llm.invoke` | start/done/error | info / ok / error | 调用语言模型 | 原 `chat.llm_call` |
+| `chat.llm.fallback` | warn | warn | 模型降级重试 | P2-2：DynamicLLMCaller 主模型失败后降级一次，字段 `provider`/`primary_model`/`fallback_model` |
 | `chat.stream.consume` | done/error | ok / error | 处理模型输出 | |
 | `chat.assistant_msg_persist` | done/error | ok / error | 保存助手回复 | |
 | `chat.turn.execute` | done | ok / — | 对话轮次完成 | |
@@ -451,8 +452,11 @@ internal/cronrunner/jobs/
 | `team.usage_record_fail` | warn | 团队成员用量记录失败 |
 | `team.turn.usage` | info | 团队轮次用量 |
 | `team.member.<nodeID>` | ok / warn(skip) / error | 团队成员执行 |
+| `team.model_cascade.route` | ok | 成员模型级联路由 |
 
 > `team.member.<nodeID>`：图节点级成员执行（start/done/skip/error），发射点 `PublishTeamStepStarted` / `PersistGraphRunStep`；nodeID 后缀隔离并行成员计时，title 经 `stepTitle` 前缀回退解析为 `team.member`。
+>
+> `team.model_cascade.route`：P2-1 模型级联路由决策审计（发射点 `agent.CascadeModelSelector`），字段 `agent_key` / `provider` / `target_model` / `base_model`，run 维度可聚合分档用量；仅团队 run 级 selector 路径发射（ctx 带 TraceEmitter），standalone 构建级路径静默。
 
 #### Knowledge（`domain=knowledge`）
 

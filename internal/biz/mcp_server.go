@@ -187,15 +187,18 @@ func (u *MCPServerUsecase) Create(ctx context.Context, in MCPServer) (MCPServer,
 // MCPServerUpdate is a partial-update DTO where nil fields mean "do not change".
 // This solves proto3 zero-value ambiguity: bool false and int 0 cannot be
 // distinguished from "field not set" in proto3, so pointer nil is used instead.
+//
+// status and metadata_json are deliberately absent: they are system-managed
+// (health runner / reconnect bookkeeping / delete) and must never be written
+// by an admin update — otherwise a stale form snapshot rolls back concurrent
+// field-level health writes (UpdateMCPServerMetadata).
 type MCPServerUpdate struct {
-	Key          *string
-	Name         *string
-	Description  *string
-	Status       *string
-	Enabled      *bool
-	SortOrder    *int
-	ConfigJSON   *string
-	MetadataJSON *string
+	Key         *string
+	Name        *string
+	Description *string
+	Enabled     *bool
+	SortOrder   *int
+	ConfigJSON  *string
 }
 
 func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServerUpdate) (MCPServer, error) {
@@ -215,9 +218,6 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 	}
 	if patch.Description != nil {
 		merged.Description = *patch.Description
-	}
-	if patch.Status != nil {
-		merged.Status = *patch.Status
 	}
 	if patch.Enabled != nil {
 		merged.Enabled = *patch.Enabled
@@ -240,9 +240,6 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 			}
 		}
 		merged.ConfigJSON = mergedCfg
-	}
-	if patch.MetadataJSON != nil {
-		merged.MetadataJSON = *patch.MetadataJSON
 	}
 	if strings.TrimSpace(merged.Key) == "" {
 		return MCPServer{}, apierror.BadRequest("MCP_SERVER", "key cannot be empty")
@@ -478,9 +475,9 @@ func validateMCPConfigURLs(configJSON string) error {
 			return err
 		}
 		if argsRaw, ok := cfg["args"].([]any); ok {
-			for i, a := range argsRaw {
+			for _, a := range argsRaw {
 				s, _ := a.(string)
-				if err := validateMCPStdioArg(s, i); err != nil {
+				if err := validateMCPStdioArg(s); err != nil {
 					return err
 				}
 			}
@@ -525,7 +522,7 @@ func validateMCPStdioCommand(cmd string) error {
 	return nil
 }
 
-func validateMCPStdioArg(arg string, index int) error {
+func validateMCPStdioArg(arg string) error {
 	arg = strings.TrimSpace(arg)
 	if arg == "" {
 		return nil
@@ -536,6 +533,5 @@ func validateMCPStdioArg(arg string, index int) error {
 	if strings.ContainsAny(arg, ";&|$`\n\r") {
 		return apierror.BadRequest("MCP_SERVER", "mcp stdio args must not contain shell metacharacters")
 	}
-	_ = index
 	return nil
 }

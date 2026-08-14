@@ -59,6 +59,9 @@ type ChatPendingQueue interface {
 	List(sessionID string) []PendingQueueEntry
 	Enqueue(sessionID, content string) string
 	EnqueueFollowup(sessionID, content string) string
+	// EnqueueInject 追加静默上下文条目（P2-3 inject 级）：不单独唤醒 turn，
+	// 仅随下一条 followup 作为上下文前缀合入。
+	EnqueueInject(sessionID, content string) string
 	Dequeue(sessionID string) (PendingQueueEntry, bool)
 	Peek(sessionID string) (PendingQueueEntry, bool)
 	Remove(sessionID, entryID string) bool
@@ -73,6 +76,9 @@ type PendingQueueEntry struct {
 	Content   string
 	Status    string
 	CreatedAt string
+	// Kind 注入级别（P2-3）："" / ChatEnqueueKindFollowup = 追问；
+	// ChatEnqueueKindInject = 静默上下文。空值兼容旧快照。
+	Kind string
 }
 
 type ChatAwaitMeta struct {
@@ -90,6 +96,19 @@ const (
 	ChatEnqueueRejectNone        = ""
 	ChatEnqueueRejectNoActiveRun = "no_active_run"
 	ChatEnqueueRejectQueueFull   = "queue_full"
+)
+
+// P2-3 Inbox 三级注入语义（DSH followup/steer/inject 对齐）。
+const (
+	// ChatEnqueueKindSteer 用户插话（默认）：优先经框架 steer 队列在下一
+	// step 边界消费；活动 runner 不支持 steer 时回落为 followup 排队。
+	ChatEnqueueKindSteer = "steer"
+	// ChatEnqueueKindFollowup 显式追问：跳过 steer 直接入 pending 队列，
+	// 当前 turn 结束后作为新 turn 输入。
+	ChatEnqueueKindFollowup = "followup"
+	// ChatEnqueueKindInject 系统上下文静默排队：不要求活动 run、不尝试
+	// steer、不单独唤醒 turn，仅随下一条 followup 作为上下文前缀合入。
+	ChatEnqueueKindInject = "inject"
 )
 
 type ChatRunStatusPersister interface {
@@ -271,20 +290,43 @@ func (uc *ChatUsecase) PeekPendingMessage(sessionID string) (PendingQueueEntry, 
 }
 
 func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollowup bool) (accepted, queued bool, pendingID, rejectReason string, err error) {
+	return uc.EnqueueUserMessageWithKind(sessionID, content, ChatEnqueueKindSteer, mergeFollowup)
+}
+
+// EnqueueUserMessageWithKind 按注入级别（P2-3）路由入队：
+//   - steer（默认）：活动 run 优先经框架 steer（下一 step 边界消费），不支持
+//     时回落 followup 排队；
+//   - followup：跳过 steer 直接排队，当前 turn 结束后作为新 turn 输入；
+//   - inject：静默上下文——不要求活动 run、不尝试 steer，仅排队等待随下一条
+//     followup 合入（见 SplitLeadingInjects / MergeInjectContext）。
+func (uc *ChatUsecase) EnqueueUserMessageWithKind(sessionID, content, kind string, mergeFollowup bool) (accepted, queued bool, pendingID, rejectReason string, err error) {
 	unlock := uc.locker.Lock(sessionID)
 	defer unlock()
+
+	// inject 级：静默排队，无活动 run 也接受（不唤醒语义本身即"不打扰"）。
+	if kind == ChatEnqueueKindInject {
+		pid := uc.pending.EnqueueInject(sessionID, content)
+		if pid == "" {
+			return false, false, "", ChatEnqueueRejectQueueFull, nil
+		}
+		uc.publisher.PublishMessageQueued(sessionID)
+		return true, true, pid, "", nil
+	}
 
 	if !uc.runs.HasActive(sessionID) {
 		return false, false, "", ChatEnqueueRejectNoActiveRun, nil
 	}
 
-	enqueued, enqueueErr := uc.runs.EnqueueUserMessage(sessionID, content)
-	if enqueueErr != nil {
-		return false, false, "", "", enqueueErr
-	}
-	if enqueued {
-		uc.publisher.PublishMessageQueued(sessionID)
-		return true, false, "", "", nil
+	// followup 级：显式追问，跳过 steer 保证成为独立新 turn。
+	if kind != ChatEnqueueKindFollowup {
+		enqueued, enqueueErr := uc.runs.EnqueueUserMessage(sessionID, content)
+		if enqueueErr != nil {
+			return false, false, "", "", enqueueErr
+		}
+		if enqueued {
+			uc.publisher.PublishMessageQueued(sessionID)
+			return true, false, "", "", nil
+		}
 	}
 
 	var pid string
@@ -298,6 +340,34 @@ func (uc *ChatUsecase) EnqueueUserMessage(sessionID, content string, mergeFollow
 	}
 	uc.publisher.PublishMessageQueued(sessionID)
 	return true, true, pid, "", nil
+}
+
+// SplitLeadingInjects 将队列头部连续的 inject 条目与其后的第一条 followup
+// 切分出来：injects 为按序的上下文内容，followup 为承载它们的条目，leadCount
+// 为头部 inject 条数（= 需要额外出队的条数）。无 followup（仅 inject 或空
+// 队列）时 ok=false——inject 不单独唤醒 turn，保持排队。
+//
+// 无 Kind 的旧条目按 followup 处理（空 Kind 兼容）。
+func SplitLeadingInjects(entries []PendingQueueEntry) (injects []string, followup PendingQueueEntry, leadCount int, ok bool) {
+	for i, e := range entries {
+		if e.Kind == ChatEnqueueKindInject {
+			injects = append(injects, e.Content)
+			continue
+		}
+		return injects, e, i, true
+	}
+	return nil, PendingQueueEntry{}, 0, false
+}
+
+// injectContextHeader 是 inject 上下文合入 turn 输入时的包裹标记。
+const injectContextHeader = "[系统上下文补充]"
+
+// MergeInjectContext 将 inject 上下文内容作为前缀合入 followup 输入。
+func MergeInjectContext(injects []string, content string) string {
+	if len(injects) == 0 {
+		return content
+	}
+	return injectContextHeader + "\n" + strings.Join(injects, "\n") + "\n\n" + content
 }
 
 func (uc *ChatUsecase) RegisterAwaitChannel(sessionID string, ch AwaitChannel) {

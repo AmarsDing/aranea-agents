@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -212,8 +213,8 @@ func (s *SIMonitorActivitySink) EmitSIActivity(ctx context.Context, a biz.SIActi
 // siFailurePatternKB is the narrow FailurePattern KB surface the negative
 // pattern sink needs (data.FailurePatternReadWriter satisfies it).
 type siFailurePatternKB interface {
-	GetByPatternHash(ctx context.Context, hash string) (*bizmonitor.FailurePattern, error)
-	Create(ctx context.Context, pattern bizmonitor.FailurePattern) error
+	GetByPatternHash(ctx context.Context, hash string) (*heal.FailurePattern, error)
+	Create(ctx context.Context, pattern heal.FailurePattern) error
 	IncrementFail(ctx context.Context, id string) error
 }
 
@@ -249,13 +250,13 @@ func (s *SIKBNegativePatternSink) RecordNegativePattern(ctx context.Context, rec
 		return s.kb.IncrementFail(ctx, existing.ID)
 	}
 	now := time.Now().UTC()
-	return s.kb.Create(ctx, bizmonitor.FailurePattern{
+	return s.kb.Create(ctx, heal.FailurePattern{
 		ID:           uuid.NewString(),
-		Source:       bizmonitor.FailurePatternSource("self_improvement"),
+		Source:       heal.FailurePatternSource("self_improvement"),
 		Type:         rec.TriggerSource,
 		PatternHash:  rec.PatternHash,
 		PatternRegex: rec.PatternRegex,
-		FixAction:    bizmonitor.FixAction{Type: "log_only"},
+		FixAction:    heal.FixAction{Type: "log_only"},
 		Confidence:   0.1,
 		FailCount:    1,
 		Version:      1,

@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import "github.com/google/uuid"
 

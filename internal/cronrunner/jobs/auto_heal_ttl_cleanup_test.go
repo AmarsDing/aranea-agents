@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -15,11 +15,11 @@ type fakeHealRecordRepo struct {
 	err     error
 }
 
-func (f *fakeHealRecordRepo) InsertHealRecord(_ context.Context, _ monitor.HealRecord) error {
+func (f *fakeHealRecordRepo) InsertHealRecord(_ context.Context, _ heal.HealRecord) error {
 	panic("unexpected call")
 }
 
-func (f *fakeHealRecordRepo) ListHealRecords(_ context.Context, _ monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+func (f *fakeHealRecordRepo) ListHealRecords(_ context.Context, _ heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 	panic("unexpected call")
 }
 

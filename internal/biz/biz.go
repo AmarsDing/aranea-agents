@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/internal/biz/session"
 
 	"aranea-agents/pkg/apierror"
@@ -89,6 +90,7 @@ var ProviderSet = wire.NewSet(
 	NewDefaultKnowledgeProvider,
 	NewDefaultPluginProvider,
 	monitor.WireProviderSet,
+	heal.WireProviderSet,
 	session.SessionMetricsProviderSet,
 	session.SessionCompressionProviderSet,
 	ProvideAgentExistenceChecker,

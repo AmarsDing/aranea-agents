@@ -1,20 +1,21 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
 	"testing"
 
-	"aranea-agents/internal/biz/monitor"
+
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestRootCauseEngine_ImplementsRootCauseAnalyzer(t *testing.T) {
 	// Compile-time check: *RootCauseEngine must satisfy RootCauseAnalyzer
-	var _ monitor.RootCauseAnalyzer = (*monitor.RootCauseEngine)(nil)
+	var _ heal.RootCauseAnalyzer = (*heal.RootCauseEngine)(nil)
 }
 
 func TestRootCauseAnalyzer_Analyze_DelegatesToEvaluate(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	// Test: Analyze returns the first result from Evaluate
@@ -31,7 +32,7 @@ func TestRootCauseAnalyzer_Analyze_DelegatesToEvaluate(t *testing.T) {
 }
 
 func TestRootCauseAnalyzer_Analyze_NoMatch(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	result, err := engine.Analyze(ctx, "unknown.step", "error", nil, nil)
@@ -44,7 +45,7 @@ func TestRootCauseAnalyzer_Analyze_NoMatch(t *testing.T) {
 }
 
 func TestRootCauseAnalyzer_Analyze_NilReceiver(t *testing.T) {
-	var engine *monitor.RootCauseEngine
+	var engine *heal.RootCauseEngine
 	ctx := context.Background()
 
 	result, err := engine.Analyze(ctx, "llm.call", "error", nil, nil)

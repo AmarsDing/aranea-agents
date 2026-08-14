@@ -55,6 +55,9 @@ type noopPendingQueueManager struct{}
 func (noopPendingQueueManager) EnqueueUserMessage(string, string) (bool, bool, string, string, error) {
 	return false, false, "", "", nil
 }
+func (noopPendingQueueManager) EnqueueUserMessageWithKind(string, string, string) (bool, bool, string, string, error) {
+	return false, false, "", "", nil
+}
 func (noopPendingQueueManager) CancelPendingMessage(string, string) bool { return false }
 func (noopPendingQueueManager) UpdatePendingMessage(string, string, string) bool {
 	return false

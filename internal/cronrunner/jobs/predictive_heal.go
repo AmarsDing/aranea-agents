@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -16,13 +16,13 @@ import (
 // knowledge base, and executes preventive actions when confidence exceeds 0.8.
 type PredictiveHealJob struct {
 	interval time.Duration
-	uc       *bizmonitor.PredictiveHealUsecase
+	uc       *heal.PredictiveHealUsecase
 	lg       loggateway.Logger
 }
 
 // NewPredictiveHealJob creates a new predictive heal periodic job.
 // Pass interval ≤ 0 to use the environment-variable default or 5 minutes.
-func NewPredictiveHealJob(interval time.Duration, uc *bizmonitor.PredictiveHealUsecase, lg loggateway.Logger) *PredictiveHealJob {
+func NewPredictiveHealJob(interval time.Duration, uc *heal.PredictiveHealUsecase, lg loggateway.Logger) *PredictiveHealJob {
 	if interval <= 0 {
 		interval = predictiveHealIntervalFromEnv()
 	}
@@ -84,7 +84,7 @@ func (j *PredictiveHealJob) runOnce(ctx context.Context) {
 		applied := 0
 		skipped := 0
 		for _, r := range records {
-			if r.Status == string(bizmonitor.HealStatusApplied) {
+			if r.Status == string(heal.HealStatusApplied) {
 				applied++
 			} else {
 				skipped++

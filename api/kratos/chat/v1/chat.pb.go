@@ -1630,9 +1630,15 @@ func (x *AwaitUserReplyResponse) GetAccepted() bool {
 }
 
 type EnqueueUserMessageRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Content   string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	// kind 是注入级别（P2-3 三级注入语义）：
+	//
+	//	"" / "steer" = 用户插话，优先经框架 steer 队列在下一 step 边界消费；
+	//	"followup"   = 显式追问，跳过 steer 直接入 pending 队列；
+	//	"inject"     = 系统上下文静默排队，不单独唤醒 turn。
+	Kind          string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1677,6 +1683,13 @@ func (x *EnqueueUserMessageRequest) GetSessionId() string {
 func (x *EnqueueUserMessageRequest) GetContent() string {
 	if x != nil {
 		return x.Content
+	}
+	return ""
+}
+
+func (x *EnqueueUserMessageRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
 	}
 	return ""
 }
@@ -3638,11 +3651,12 @@ const file_kratos_chat_v1_chat_proto_rawDesc = "" +
 	"\x05reply\x18\x03 \x01(\tB\x04\xe2A\x01\x02R\x05replyB\t\n" +
 	"\a_run_id\"4\n" +
 	"\x16AwaitUserReplyResponse\x12\x1a\n" +
-	"\baccepted\x18\x01 \x01(\bR\baccepted\"`\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"t\n" +
 	"\x19EnqueueUserMessageRequest\x12#\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\tsessionId\x12\x1e\n" +
-	"\acontent\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\acontent\"o\n" +
+	"\acontent\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\acontent\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\"o\n" +
 	"\x1aEnqueueUserMessageResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x16\n" +
 	"\x06queued\x18\x02 \x01(\bR\x06queued\x12\x1d\n" +

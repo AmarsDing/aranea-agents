@@ -10,6 +10,8 @@ import (
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
+	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // --- fakes -----------------------------------------------------------------
@@ -57,6 +59,7 @@ func (r *fakeMCPRepo) CreateMCPServer(_ context.Context, m biz.MCPServer) (biz.M
 }
 
 func (r *fakeMCPRepo) UpdateMCPServer(_ context.Context, m biz.MCPServer) (biz.MCPServer, error) {
+	r.servers[m.ID] = m
 	return m, nil
 }
 
@@ -101,6 +104,32 @@ func (fakeMCPMetaEdit) MarkHealthAlert(m map[string]any, _ time.Time) map[string
 
 func newTestMCPServerService(repo *fakeMCPRepo) *service.MCPServerService {
 	uc := biz.NewMCPServerUsecase(repo, nil, fakeMCPProber{}, fakeMCPMetaEdit{}, nil)
+	return service.NewMCPServerService(uc, nil, nil, nil)
+}
+
+// fakeMCPCredRepo records user-credential writes for assertions.
+type fakeMCPCredRepo struct {
+	upserted []biz.MCPServerUserCredential
+	deleted  bool
+}
+
+func (r *fakeMCPCredRepo) ListMCPServerUserCredentials(_ context.Context, _, _ string) ([]biz.MCPServerUserCredential, error) {
+	return nil, nil
+}
+
+func (r *fakeMCPCredRepo) UpsertMCPServerUserCredential(_ context.Context, cred biz.MCPServerUserCredential) (biz.MCPServerUserCredential, error) {
+	r.upserted = append(r.upserted, cred)
+	return cred, nil
+}
+
+func (r *fakeMCPCredRepo) DeleteMCPServerUserCredential(_ context.Context, _, _, _ string) error {
+	r.deleted = true
+	return nil
+}
+
+func newTestMCPCredentialService(repo *fakeMCPRepo, credRepo *fakeMCPCredRepo) *service.MCPServerService {
+	crypto := biz.NewCredentialCrypto(func(context.Context) ([]byte, error) { return make([]byte, 32), nil }, loggateway.NewNoop())
+	uc := biz.NewMCPServerUsecase(repo, credRepo, fakeMCPProber{}, fakeMCPMetaEdit{}, crypto)
 	return service.NewMCPServerService(uc, nil, nil, nil)
 }
 
@@ -213,5 +242,125 @@ func TestMCPServerService_ListMCPServers_UnpaginatedByDefault(t *testing.T) {
 	}
 	if !res.GetItems()[0].GetShared() {
 		t.Error("shared server must carry Shared=true in list response")
+	}
+}
+
+// Regression (2026-08-14 N1): upserting a per-user credential on a
+// shared/built-in server (workspace_id="") 404'd for every HTTP caller
+// because the RPC used the mutate-level IDOR guard, which fail-closes on
+// shared resources — while the UI credentials button is enabled for exactly
+// those rows (require_user_credentials). User credentials are the caller's
+// own data (resolveMCPCredentialUserID binds non-admins to their own
+// user_id), not the shared server's config, so the read-level guard is the
+// correct classification — same as TestMCPServer.
+func TestMCPServerService_UpsertCredential_SharedServerAllowedForTenant(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"shared-1": {ID: "shared-1", Key: "playwright", Name: "Playwright", Enabled: true, WorkspaceID: ""},
+	}}
+	credRepo := &fakeMCPCredRepo{}
+	svc := newTestMCPCredentialService(repo, credRepo)
+
+	ctx := auth.NewContext(workspace.WithContext(context.Background(), "default"), &auth.Auth{UserID: 42, Access: "user"})
+	_, err := svc.UpsertMCPServerUserCredential(ctx, &mcpv1.UpsertMCPServerUserCredentialRequest{
+		McpServerId:   "shared-1",
+		CredentialKey: "authorization",
+		Secret:        "sk-test",
+	})
+	if err != nil {
+		t.Fatalf("tenant upserting own credential on shared server must succeed, got %v", err)
+	}
+	if len(credRepo.upserted) != 1 {
+		t.Fatalf("credential must be persisted, upserted=%d", len(credRepo.upserted))
+	}
+	if got := credRepo.upserted[0].UserID; got != "42" {
+		t.Errorf("credential must bind to the caller's own user_id, got %q", got)
+	}
+}
+
+func TestMCPServerService_DeleteCredential_SharedServerAllowedForTenant(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"shared-1": {ID: "shared-1", Key: "playwright", Name: "Playwright", Enabled: true, WorkspaceID: ""},
+	}}
+	credRepo := &fakeMCPCredRepo{}
+	svc := newTestMCPCredentialService(repo, credRepo)
+
+	ctx := auth.NewContext(workspace.WithContext(context.Background(), "default"), &auth.Auth{UserID: 42, Access: "user"})
+	_, err := svc.DeleteMCPServerUserCredential(ctx, &mcpv1.DeleteMCPServerUserCredentialRequest{
+		McpServerId:   "shared-1",
+		CredentialKey: "authorization",
+	})
+	if err != nil {
+		t.Fatalf("tenant deleting own credential on shared server must succeed, got %v", err)
+	}
+	if !credRepo.deleted {
+		t.Fatal("credential delete must reach the repo")
+	}
+}
+
+// Cross-tenant guard must still hold on the read-level classification:
+// a tenant cannot configure credentials on another tenant's PRIVATE server
+// (the workspace-scoped Get already hides it → NotFound).
+func TestMCPServerService_UpsertCredential_CrossTenantRejected(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"priv-1": {ID: "priv-1", Key: "priv", Enabled: true, WorkspaceID: "ws-owner"},
+	}}
+	credRepo := &fakeMCPCredRepo{}
+	svc := newTestMCPCredentialService(repo, credRepo)
+
+	ctx := auth.NewContext(workspace.WithContext(context.Background(), "ws-attacker"), &auth.Auth{UserID: 42, Access: "user"})
+	_, err := svc.UpsertMCPServerUserCredential(ctx, &mcpv1.UpsertMCPServerUserCredentialRequest{
+		McpServerId:   "priv-1",
+		CredentialKey: "authorization",
+		Secret:        "sk-test",
+	})
+	if err == nil {
+		t.Fatal("cross-tenant credential upsert must be rejected")
+	}
+	if !apierror.IsCode(err, apierror.CodeNotFound) {
+		t.Fatalf("cross-tenant upsert must surface as NotFound (existence hidden), got %v", err)
+	}
+	if len(credRepo.upserted) != 0 {
+		t.Fatal("rejected upsert must not reach the repo")
+	}
+}
+
+// Regression (2026-08-14 N2): Update must not write the system-managed
+// metadata_json/status columns. The admin form round-trips the row snapshot
+// (status + metadata_json read at dialog-open time), so a full-row update
+// rolls back every health-probe/reconnect bookkeeping write made while the
+// operator was editing. Those two fields are owned by the health runner /
+// metadata writer paths only.
+func TestMCPServerService_UpdateMCPServer_IgnoresSystemManagedFields(t *testing.T) {
+	repo := &fakeMCPRepo{servers: map[string]biz.MCPServer{
+		"s1": {
+			ID: "s1", Key: "k1", Name: "old", Enabled: true, WorkspaceID: "default",
+			Status:       "error",
+			MetadataJSON: `{"health_status":"error","reconnect_count":3}`,
+		},
+	}}
+	svc := newTestMCPServerService(repo)
+
+	ctx := auth.NewContext(workspace.WithContext(context.Background(), "default"), &auth.Auth{UserID: 1, Access: "admin"})
+	_, err := svc.UpdateMCPServer(ctx, &mcpv1.UpdateMCPServerRequest{
+		Id: "s1",
+		McpServer: &mcpv1.MCPServer{
+			Name:         "renamed",
+			Enabled:      true,
+			Status:       "active", // stale form snapshot — must be ignored
+			MetadataJson: `{}`,     // stale form snapshot — must be ignored
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateMCPServer: %v", err)
+	}
+	got := repo.servers["s1"]
+	if got.Name != "renamed" {
+		t.Errorf("name not updated: %q", got.Name)
+	}
+	if got.Status != "error" {
+		t.Errorf("status is system-managed and must not be overwritten by update, got %q", got.Status)
+	}
+	if got.MetadataJSON != `{"health_status":"error","reconnect_count":3}` {
+		t.Errorf("metadata_json must survive admin update, got %q", got.MetadataJSON)
 	}
 }

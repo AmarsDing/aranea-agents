@@ -241,9 +241,9 @@ type RunnerMetricsSummary struct {
 }
 
 // Usecase orchestrates monitoring sub-domains.
-// TODO(debt): DEV-05 — remaining splits: heal/ (SelfHealUsecase, SelfHealObserver,
-// PredictiveHealUsecase), rca/ (RootCauseEngine, RootCauseAnalyzer),
-// pattern/ (PatternMiningUsecase, FailurePatternRepo). Done: alert/, trace/.
+// DEV-05 done: alert/ (engine, state machine, worker), trace/ (projector,
+// flow file appender), heal/ (self-heal, observer, predictive heal, RCA
+// engine, pattern mining, failure knowledge base, diag bundle).
 type Usecase struct {
 	// --- 数据访问端口 ---
 	auditRepo        AuditRepo

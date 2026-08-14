@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -13,14 +13,14 @@ type healRecordRepo struct {
 	data *Data
 }
 
-var _ bizmonitor.HealRecordRepo = (*healRecordRepo)(nil)
+var _ heal.HealRecordRepo = (*healRecordRepo)(nil)
 
 // NewHealRecordRepo creates a new HealRecordRepo backed by raw SQL.
-func NewHealRecordRepo(d *Data) bizmonitor.HealRecordRepo {
+func NewHealRecordRepo(d *Data) heal.HealRecordRepo {
 	return &healRecordRepo{data: d}
 }
 
-func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor.HealRecord) error {
+func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record heal.HealRecord) error {
 	if r == nil || r.data == nil {
 		return apierror.Internal("HEAL_RECORD", "database not configured")
 	}
@@ -57,9 +57,9 @@ func (r *healRecordRepo) InsertHealRecord(ctx context.Context, record bizmonitor
 	return err
 }
 
-func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.HealRecordQuery) (bizmonitor.HealRecordListResult, error) {
+func (r *healRecordRepo) ListHealRecords(ctx context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 	if r == nil || r.data == nil {
-		return bizmonitor.HealRecordListResult{}, apierror.Internal("HEAL_RECORD", "database not configured")
+		return heal.HealRecordListResult{}, apierror.Internal("HEAL_RECORD", "database not configured")
 	}
 
 	limit := query.Limit
@@ -84,16 +84,16 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 
 	var total int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
-		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
+		return heal.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
 	if err != nil {
-		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
+		return heal.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 	defer rows.Close()
 
-	var items []bizmonitor.HealRecord
+	var items []heal.HealRecord
 	for rows.Next() {
 		var (
 			id, ruleID, triggerType, traceID, sessionID, stepID string
@@ -105,16 +105,16 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		)
 		if err := rows.Scan(&id, &ruleID, &triggerType, &traceID, &sessionID, &stepID,
 			&fixActionType, &confidence, &status, &runtimeAutoHealed, &runtimeHealAttempts, &reason, &createdAt, &metadataJSON); err != nil {
-			return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
+			return heal.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 		}
 		var metadata map[string]any
 		if metadataJSON != "" && metadataJSON != "{}" {
 			_ = json.Unmarshal([]byte(metadataJSON), &metadata)
 		}
-		items = append(items, bizmonitor.HealRecord{
+		items = append(items, heal.HealRecord{
 			ID: id, RuleID: ruleID, TriggerType: triggerType,
 			TraceID: traceID, SessionID: sessionID, StepID: stepID,
-			FixAction:           bizmonitor.FixAction{Type: fixActionType},
+			FixAction:           heal.FixAction{Type: fixActionType},
 			Confidence:          confidence,
 			Status:              status,
 			RuntimeAutoHealed:   runtimeAutoHealed,
@@ -125,10 +125,10 @@ func (r *healRecordRepo) ListHealRecords(ctx context.Context, query bizmonitor.H
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return bizmonitor.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
+		return heal.HealRecordListResult{}, entErrToBizErr(err, "HEAL_RECORD")
 	}
 
-	return bizmonitor.HealRecordListResult{Items: items, Total: total}, nil
+	return heal.HealRecordListResult{Items: items, Total: total}, nil
 }
 
 func (r *healRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
@@ -146,7 +146,7 @@ func (r *healRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderTh
 	return int(n), nil
 }
 
-func healRecordWhere(q bizmonitor.HealRecordQuery) (string, []any) {
+func healRecordWhere(q heal.HealRecordQuery) (string, []any) {
 	var conds []string
 	var args []any
 	if q.RuleID != "" {

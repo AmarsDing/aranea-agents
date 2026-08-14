@@ -742,6 +742,13 @@ func (o *ChatOrchestrator) EnqueueUserMessage(sessionID, content string) (accept
 	return o.pendingQ().EnqueueUserMessage(sessionID, content)
 }
 
+// EnqueueUserMessageWithKind enqueues with an explicit injection level (P2-3:
+// steer / followup / inject). Callers that do not care should use
+// EnqueueUserMessage (defaults to steer-first auto behavior).
+func (o *ChatOrchestrator) EnqueueUserMessageWithKind(sessionID, content, kind string) (accepted, queued bool, pendingID, rejectReason string, err error) {
+	return o.pendingQ().EnqueueUserMessageWithKind(sessionID, content, kind)
+}
+
 // SetSessionPendingMergeFollowup toggles followup merge for pending queue enqueues (CH-BOR-01).
 func (o *ChatOrchestrator) SetSessionPendingMergeFollowup(sessionID string, merge bool) {
 	o.pendingQ().SetSessionPendingMergeFollowup(sessionID, merge)

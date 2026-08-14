@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/pkg/apierror"
 
 	"github.com/google/uuid"
@@ -30,13 +31,13 @@ type DiagBundle struct {
 
 // DiagBundleGenerator generates diagnostic bundles for self-heal and RCA.
 type DiagBundleGenerator struct {
-	eventRepo     EventRepo
-	traceRepo     TraceRepo
+	eventRepo     monitor.EventRepo
+	traceRepo     monitor.TraceRepo
 	engine        *RootCauseEngine
-	selfCheckRepo SelfCheckReportRepo
+	selfCheckRepo monitor.SelfCheckReportRepo
 }
 
-func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, engine *RootCauseEngine) *DiagBundleGenerator {
+func NewDiagBundleGenerator(eventRepo monitor.EventRepo, traceRepo monitor.TraceRepo, engine *RootCauseEngine) *DiagBundleGenerator {
 	if eventRepo == nil || traceRepo == nil || engine == nil {
 		return nil
 	}
@@ -44,7 +45,7 @@ func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, engine *Ro
 }
 
 // SetSelfCheckRepo injects the self-check report repo for diagnostic snapshots.
-func (g *DiagBundleGenerator) SetSelfCheckRepo(repo SelfCheckReportRepo) {
+func (g *DiagBundleGenerator) SetSelfCheckRepo(repo monitor.SelfCheckReportRepo) {
 	if g != nil {
 		g.selfCheckRepo = repo
 	}
@@ -88,7 +89,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 
 	if sessionID != "" || traceID != "" {
 		// Fetch runner.completion events with SQL-level filtering
-		completionEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
+		completionEvents, err := g.eventRepo.ListMonitorEvents(ctx, monitor.EventsQuery{
 			Limit:     diagBundleMaxCompletionEvents,
 			Offset:    0,
 			EventType: "runner.completion",
@@ -112,7 +113,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 			}
 		}
 		// Fetch alert events with SQL-level filtering
-		alertEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
+		alertEvents, err := g.eventRepo.ListMonitorEvents(ctx, monitor.EventsQuery{
 			Limit:     diagBundleMaxAlertEvents,
 			Offset:    0,
 			EventType: "alert",
@@ -157,7 +158,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 
 	var usageData map[string]any
 	var usageRows []map[string]any
-	usageEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
+	usageEvents, err := g.eventRepo.ListMonitorEvents(ctx, monitor.EventsQuery{
 		Limit:     diagBundleMaxUsageEvents,
 		Offset:    0,
 		EventType: "usage",
@@ -254,26 +255,4 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 		RootCauses:  rootCauseResults,
 		Total:       total,
 	}, nil
-}
-
-func parseMetadataJSON(raw string) map[string]any {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	var m map[string]any
-	if json.Unmarshal([]byte(raw), &m) != nil {
-		return nil
-	}
-	return m
-}
-
-func nonEmpty(ss ...string) []string {
-	var out []string
-	for _, s := range ss {
-		if strings.TrimSpace(s) != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }

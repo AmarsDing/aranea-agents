@@ -33,6 +33,7 @@ import (
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	bizmedia "aranea-agents/internal/biz/media"
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	bizsession "aranea-agents/internal/biz/session"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
@@ -1707,7 +1708,7 @@ func provideMonitorEventsCleanup(repo biz.MonitorEventRepo, lg loggateway.Logger
 	return jobs.NewMonitorEventsCleanup(0, repo, lg)
 }
 
-func provideAutoHealTTLCleanup(repo monitor.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.AutoHealTTLCleanup {
+func provideAutoHealTTLCleanup(repo heal.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *jobs.AutoHealTTLCleanup {
 	return jobs.NewAutoHealTTLCleanup(0, 0, repo, lg, flowLog)
 }
 
@@ -1747,7 +1748,7 @@ func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCom
 	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, usageRepo, lg)
 }
 
-func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *monitor.RootCauseEngine) *biz.DiagBundleGenerator {
+func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, engine *heal.RootCauseEngine) *biz.DiagBundleGenerator {
 	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, engine)
 }
 
@@ -1757,8 +1758,8 @@ func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger)
 	return biz.NewSelfHealUsecase(diag, nil, lg)
 }
 
-func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
-	return monitor.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
+func provideSelfHealObserver(runtimeConf *conf.Runtime, repo biz.HealRecordRepo, engine *heal.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
+	return heal.NewSelfHealObserver(runtimeConf, repo, engine, notifier, lg)
 }
 
 // provideLLMSkillEvolver assembles the LLM-backed SkillDraftEvolver (P0
@@ -2491,7 +2492,7 @@ func provideSelfCheckJob(scheduler *monitor.SelfCheckScheduler, lg loggateway.Lo
 	return jobs.NewSelfCheckJob(0, scheduler, lg)
 }
 
-func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monitor.FailurePatternWriter, reader monitor.FailurePatternReader, lg loggateway.Logger) *jobs.FailurePatternSyncJob {
+func provideFailurePatternSyncJob(engine *heal.RootCauseEngine, writer heal.FailurePatternWriter, reader heal.FailurePatternReader, lg loggateway.Logger) *jobs.FailurePatternSyncJob {
 	return jobs.NewFailurePatternSyncJob(0, engine, writer, reader, lg)
 }
 
@@ -2500,26 +2501,26 @@ func provideFailurePatternSyncJob(engine *monitor.RootCauseEngine, writer monito
 // reconnect → MCP health refresh (MCPServerUsecase). The confidence gate is
 // metric-driven (base × signal), so actions only fire on real metric signals;
 // both executors are idempotent read-only probes. See jobs.PredictiveHealJobEnabled.
-func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader monitor.FailurePatternReader, healRepo monitor.HealRecordRepo, providerUC *biz.LlmProviderModelUsecase, mcpUC *biz.MCPServerUsecase, lg loggateway.Logger) *monitor.PredictiveHealUsecase {
-	metricsReader := monitor.NewMonitorSystemMetricsReader(uc)
-	handler := monitor.NewCatalogHealActionHandler(lg).
+func providePredictiveHealUsecase(uc *biz.MonitorUsecase, patternReader heal.FailurePatternReader, healRepo heal.HealRecordRepo, providerUC *biz.LlmProviderModelUsecase, mcpUC *biz.MCPServerUsecase, lg loggateway.Logger) *heal.PredictiveHealUsecase {
+	metricsReader := heal.NewMonitorSystemMetricsReader(uc)
+	handler := heal.NewCatalogHealActionHandler(lg).
 		BindRetry(providerUC).
 		BindReconnect(mcpUC)
-	return monitor.NewPredictiveHealUsecase(metricsReader, patternReader, handler, healRepo, lg)
+	return heal.NewPredictiveHealUsecase(metricsReader, patternReader, handler, healRepo, lg)
 }
 
-func providePredictiveHealJob(uc *monitor.PredictiveHealUsecase, lg loggateway.Logger) *jobs.PredictiveHealJob {
+func providePredictiveHealJob(uc *heal.PredictiveHealUsecase, lg loggateway.Logger) *jobs.PredictiveHealJob {
 	if !jobs.PredictiveHealJobEnabled() {
 		return nil
 	}
 	return jobs.NewPredictiveHealJob(0, uc, lg)
 }
 
-func providePatternMiningUsecase(healRepo monitor.HealRecordRepo, patternReader monitor.FailurePatternReader, patternWriter monitor.FailurePatternWriter, lg loggateway.Logger) *monitor.PatternMiningUsecase {
-	return monitor.NewPatternMiningUsecase(healRepo, patternReader, patternWriter, lg)
+func providePatternMiningUsecase(healRepo heal.HealRecordRepo, patternReader heal.FailurePatternReader, patternWriter heal.FailurePatternWriter, lg loggateway.Logger) *heal.PatternMiningUsecase {
+	return heal.NewPatternMiningUsecase(healRepo, patternReader, patternWriter, lg)
 }
 
-func providePatternMiningJob(uc *monitor.PatternMiningUsecase, lg loggateway.Logger) *jobs.PatternMiningJob {
+func providePatternMiningJob(uc *heal.PatternMiningUsecase, lg loggateway.Logger) *jobs.PatternMiningJob {
 	return jobs.NewPatternMiningJob(0, uc, lg)
 }
 
@@ -2678,9 +2679,9 @@ type wireOut struct {
 	CronRepo                    biz.CronRepo
 	SkillIntelligence           *biz.SkillIntelligenceUsecase
 	FailurePatternSyncJob       *jobs.FailurePatternSyncJob
-	PredictiveHealUsecase       *monitor.PredictiveHealUsecase
+	PredictiveHealUsecase       *heal.PredictiveHealUsecase
 	PredictiveHealJob           *jobs.PredictiveHealJob
-	PatternMiningUsecase        *monitor.PatternMiningUsecase
+	PatternMiningUsecase        *heal.PatternMiningUsecase
 	PatternMiningJob            *jobs.PatternMiningJob
 	PathBExtractor              *biz.PathBExtractor
 	// WSV2Subscriber forwards v2 Events to WS clients. Owned by wireOut so
@@ -2740,9 +2741,9 @@ func provideWireOut(
 	siWatchdogWorker *jobs.SelfImproveWatchdogWorker,
 	siOutcomeWorker *jobs.SelfImproveOutcomeWorker,
 	failurePatternSyncJob *jobs.FailurePatternSyncJob,
-	predictiveHealUsecase *monitor.PredictiveHealUsecase,
+	predictiveHealUsecase *heal.PredictiveHealUsecase,
 	predictiveHealJob *jobs.PredictiveHealJob,
-	patternMiningUsecase *monitor.PatternMiningUsecase,
+	patternMiningUsecase *heal.PatternMiningUsecase,
 	patternMiningJob *jobs.PatternMiningJob,
 	pathBExtractor *biz.PathBExtractor,
 	wsV2Sub *server.WSV2Subscriber,
@@ -3704,9 +3705,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		providePatternMiningJob,
 		provideSpiritTeamUsecase,
 		provideVerificationGateExecutor,
-		wire.Bind(new(monitor.FailurePatternReader), new(*data.FailurePatternReadWriter)),
-		wire.Bind(new(monitor.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
-		wire.Bind(new(monitor.RootCauseAnalyzer), new(*monitor.RootCauseEngine)),
+		wire.Bind(new(heal.FailurePatternReader), new(*data.FailurePatternReadWriter)),
+		wire.Bind(new(heal.FailurePatternWriter), new(*data.FailurePatternReadWriter)),
+		wire.Bind(new(heal.RootCauseAnalyzer), new(*heal.RootCauseEngine)),
 		provideWSTurnExecutor,
 		// Kanban bridge binding
 		wire.Bind(new(kanbanpkg.Bridge), new(*service.KanbanToolBridge)),

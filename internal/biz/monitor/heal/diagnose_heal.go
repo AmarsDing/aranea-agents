@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import (
 	"context"
@@ -50,7 +50,9 @@ type SelfCheckResult struct {
 
 // DiagnoseAndHeal runs the diagnose-and-heal workflow, preferring the observer
 // (new path) and falling back to the legacy SelfHealUsecase (deprecated).
-func (u *Usecase) DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserver, legacy *SelfHealUsecase, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagnoseAndHealResult, error) {
+// DEV-05: converted from a monitor.Usecase method to a free function — the
+// receiver was never used; the workflow only needs the two heal components.
+func DiagnoseAndHeal(ctx context.Context, observer *SelfHealObserver, legacy *SelfHealUsecase, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagnoseAndHealResult, error) {
 	// Prefer SelfHealObserver (new path)
 	if observer != nil {
 		rec, err := observer.DiagnoseAndObserve(ctx,

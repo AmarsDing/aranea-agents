@@ -233,6 +233,11 @@ export type EnqueueUserMessageRequest = {
   //
   // Behaviors: REQUIRED
   content: string | undefined;
+  // kind 是注入级别（P2-3 三级注入语义）：
+  // "" / "steer" = 用户插话，优先经框架 steer 队列在下一 step 边界消费；
+  // "followup"   = 显式追问，跳过 steer 直接入 pending 队列；
+  // "inject"     = 系统上下文静默排队，不单独唤醒 turn。
+  kind: string | undefined;
 };
 
 export type EnqueueUserMessageResponse = {

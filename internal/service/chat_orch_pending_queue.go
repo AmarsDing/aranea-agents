@@ -10,6 +10,8 @@ import (
 // Stability:evolving
 type PendingQueueWriter interface {
 	EnqueueUserMessage(sessionID, content string) (accepted, queued bool, pendingID, rejectReason string, err error)
+	// EnqueueUserMessageWithKind 按注入级别（P2-3：steer/followup/inject）入队。
+	EnqueueUserMessageWithKind(sessionID, content, kind string) (accepted, queued bool, pendingID, rejectReason string, err error)
 	CancelPendingMessage(sessionID, pendingID string) bool
 	UpdatePendingMessage(sessionID, pendingID, content string) bool
 }
@@ -60,6 +62,11 @@ var _ pendingQueueManager = (*chatPendingQueueManager)(nil)
 // EnqueueUserMessage enqueues a user message, respecting the merge-followup flag.
 func (m *chatPendingQueueManager) EnqueueUserMessage(sessionID, content string) (accepted, queued bool, pendingID, rejectReason string, err error) {
 	return m.chatUC.EnqueueUserMessage(sessionID, content, m.SessionPendingMergeFollowup(sessionID))
+}
+
+// EnqueueUserMessageWithKind enqueues with an explicit injection level (P2-3).
+func (m *chatPendingQueueManager) EnqueueUserMessageWithKind(sessionID, content, kind string) (accepted, queued bool, pendingID, rejectReason string, err error) {
+	return m.chatUC.EnqueueUserMessageWithKind(sessionID, content, kind, m.SessionPendingMergeFollowup(sessionID))
 }
 
 // DequeuePendingMessage dequeues the next pending message.

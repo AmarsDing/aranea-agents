@@ -29,6 +29,10 @@ type PendingMessage struct {
 	Status    string `json:"status"`
 	CreatedAt string `json:"created_at"`
 	Priority  int    `json:"priority,omitempty"` // 0=normal, 1=high priority
+	// Kind 是注入级别（P2-3 三级注入语义）："" / "followup" = 追问（turn 结束后
+	// 作为新 turn 输入）；"inject" = 静默上下文（不单独唤醒 turn，仅随下一条
+	// followup 作为上下文前缀合入）。空值兼容旧快照。
+	Kind string `json:"kind,omitempty"`
 }
 
 // PendingMessageQueue stores per-session follow-up message queues (Follow-up Queue / Cursor-style).
@@ -96,6 +100,35 @@ func (q *PendingMessageQueue) Enqueue(sessionID, content string) string {
 	return id
 }
 
+// EnqueueInject appends a silent context entry (P2-3 inject level): it never
+// wakes a turn by itself and is only consumed as context merged into the next
+// followup dispatch. Otherwise identical to Enqueue (same FIFO position,
+// capacity cap, and snapshot persistence).
+func (q *PendingMessageQueue) EnqueueInject(sessionID, content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	id := uuid.NewString()
+	entry := PendingMessage{
+		ID:        id,
+		Content:   content,
+		Status:    "pending",
+		CreatedAt: time.Now().Format(time.RFC3339),
+		Kind:      "inject",
+	}
+	q.mu.Lock()
+	queue := q.queues[sessionID]
+	if len(queue) >= MaxPendingPerSession {
+		q.mu.Unlock()
+		return ""
+	}
+	q.queues[sessionID] = append(queue, entry)
+	q.mu.Unlock()
+	q.writeThrough()
+	return id
+}
+
 // EnqueueFollowup merges content into the last pending entry when one exists (CH-BOR-01).
 func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator string) string {
 	content = strings.TrimSpace(content)
@@ -115,6 +148,8 @@ func (q *PendingMessageQueue) EnqueueFollowup(sessionID, content, separator stri
 			merged += separator
 		}
 		merged += content
+		// 合并后的条目回到 followup 级（Kind 置空）：用户追问文本合入 inject
+		// 条目时不得继承其静默语义，否则用户消息会被意外吞掉。
 		queue[last] = PendingMessage{
 			ID:        queue[last].ID,
 			Content:   merged,
@@ -214,6 +249,7 @@ func (q *PendingMessageQueue) Update(sessionID, entryID, newContent string) bool
 				Status:    e.Status,
 				CreatedAt: e.CreatedAt,
 				Priority:  e.Priority,
+				Kind:      e.Kind,
 			}
 			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			return true
@@ -255,6 +291,7 @@ func (q *PendingMessageQueue) SetPriority(sessionID, pendingID string, priority 
 				Status:    e.Status,
 				CreatedAt: e.CreatedAt,
 				Priority:  priority,
+				Kind:      e.Kind,
 			}
 			q.queues[sessionID] = append([]PendingMessage(nil), queue...)
 			return nil

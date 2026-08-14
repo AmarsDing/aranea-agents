@@ -271,6 +271,14 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if seed := r.resolveUpstreamDeliverableSeed(ctx, teamRow); len(seed) > 0 {
 		runOpts = append(runOpts, trpcagent.MergeRuntimeState(map[string]any{biz.DeliverableStateKey: seed}))
 	}
+	// P2-1 模型级联：definition 配置 model_cascade 时安装 run 级
+	// ModelSelector——leader（synthesizer/意图锚点）保持高档 base，其余成员
+	// 路由到成本档。agent-node 克隆父 RunOptions，成员 invocation 以各自
+	// AgentName 应用 selector；run 级 selector 优先于成员构建级 selector
+	// （级联是团队显式管理策略，覆盖成员自身的模型路由插件）。
+	if opt := r.cascadeRunOption(ctx, def, sess.ID); opt != nil {
+		runOpts = append(runOpts, opt)
+	}
 	events, err := agent.RunTRPCUserTurnMsg(runCtx, runner, uid, sess.ID, userTurnMsg, runOpts...)
 	if err != nil {
 		logTeamRunError(teamEmitter, "team.run.execute", err.Error(), mode)

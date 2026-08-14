@@ -265,8 +265,8 @@ export function createSpiritService() {
     // enqueueUserMessage enqueues a user message to a session's pending queue
     // (POST /v1/chat/enqueue). Used by MemberSessionPanel input bar to inject
     // messages to individual sub-agent sessions.
-    enqueueUserMessage(sessionId: string, content: string) {
-      return kratosApi.post('/v1/chat/enqueue', { session_id: sessionId, content });
+    enqueueUserMessage(sessionId: string, content: string, kind?: 'steer' | 'followup' | 'inject') {
+      return kratosApi.post('/v1/chat/enqueue', { session_id: sessionId, content, kind });
     },
   };
 }

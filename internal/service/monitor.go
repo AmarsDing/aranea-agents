@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -398,7 +399,7 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 }
 
 func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAndHealRequest) (*v1.DiagnoseAndHealResponse, error) {
-	result, err := s.uc.DiagnoseAndHeal(ctx, s.selfHealObserver, s.selfHeal,
+	result, err := heal.DiagnoseAndHeal(ctx, s.selfHealObserver, s.selfHeal,
 		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
 		in.GetTriggerType(), in.GetContextMinutes(),
 	)
@@ -414,7 +415,7 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		Confidence:           result.Confidence,
 		FixActionType:        result.FixAction.Type,
 		FixActionMaxAttempts: int32(result.FixAction.MaxAttempts),
-		FixActionParamsJson:  monitor.DiagnoseAndHealFixParamsJSON(result),
+		FixActionParamsJson:  heal.DiagnoseAndHealFixParamsJSON(result),
 		RuntimeAutoHealed:    result.RuntimeAutoHealed,
 		RuntimeHealAttempts:  int32(result.RuntimeHealAttempts),
 		CreatedAt:            result.CreatedAt,

@@ -166,17 +166,19 @@ func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
 // the current persisted server. For string fields, non-empty proto values are included.
 // For bool/int fields, only values that differ from current are included — this resolves
 // proto3 zero-value ambiguity where false/0 could mean "not set" or "explicitly set to zero".
+//
+// proto status/metadata_json are intentionally NOT mapped: both are system-managed
+// (health runner, reconnect bookkeeping, delete) and the admin form round-trips a
+// stale snapshot of them; writing them back would roll back concurrent health writes.
 func patchFromProtoMCPWithDiff(pb *v1.MCPServer, cur biz.MCPServer) biz.MCPServerUpdate {
 	if pb == nil {
 		return biz.MCPServerUpdate{}
 	}
 	patch := biz.MCPServerUpdate{
-		Key:          strPtrIfNonEmpty(pb.GetKey()),
-		Name:         strPtrIfNonEmpty(pb.GetName()),
-		Description:  strPtrIfNonEmpty(pb.GetDescription()),
-		Status:       strPtrIfNonEmpty(pb.GetStatus()),
-		ConfigJSON:   strPtrIfNonEmpty(pb.GetConfigJson()),
-		MetadataJSON: strPtrIfNonEmpty(pb.GetMetadataJson()),
+		Key:         strPtrIfNonEmpty(pb.GetKey()),
+		Name:        strPtrIfNonEmpty(pb.GetName()),
+		Description: strPtrIfNonEmpty(pb.GetDescription()),
+		ConfigJSON:  strPtrIfNonEmpty(pb.GetConfigJson()),
 	}
 	// For bool/int: only set if value differs from current (proto3 zero-value ambiguity).
 	if pb.GetEnabled() != cur.Enabled {
@@ -473,8 +475,14 @@ func (s *MCPServerService) ListMCPServerUserCredentials(ctx context.Context, req
 }
 
 func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, req *v1.UpsertMCPServerUserCredentialRequest) (*v1.MCPServerUserCredential, error) {
-	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
-	if err := s.assertMCPServerMutateAccess(ctx, req.GetMcpServerId()); err != nil {
+	// P2-B: IDOR guard — read-level is sufficient here. A user credential is the
+	// caller's own data (resolveMCPCredentialUserID binds non-admins to their own
+	// user_id), not the server's config; the mutate-level guard would fail-close
+	// on shared/built-in servers (workspace_id="") and make per-user credentials
+	// unusable for exactly the rows that require them (require_user_credentials).
+	// Cross-tenant private servers stay hidden: the workspace-scoped Get inside
+	// the guard returns NotFound for them.
+	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
 		return nil, err
 	}
 	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())
@@ -500,8 +508,8 @@ func (s *MCPServerService) UpsertMCPServerUserCredential(ctx context.Context, re
 }
 
 func (s *MCPServerService) DeleteMCPServerUserCredential(ctx context.Context, req *v1.DeleteMCPServerUserCredentialRequest) (*emptypb.Empty, error) {
-	// P2-B: IDOR guard — verify caller workspace on parent mcp server.
-	if err := s.assertMCPServerMutateAccess(ctx, req.GetMcpServerId()); err != nil {
+	// P2-B: IDOR guard — read-level, same rationale as UpsertMCPServerUserCredential.
+	if err := s.assertMCPServerAccess(ctx, req.GetMcpServerId()); err != nil {
 		return nil, err
 	}
 	userID, err := resolveMCPCredentialUserID(ctx, req.GetUserId())

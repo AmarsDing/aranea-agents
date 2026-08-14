@@ -1,17 +1,19 @@
-package monitor
+package heal
 
 import (
 	"context"
+
+	"aranea-agents/internal/biz/monitor"
 )
 
 // MonitorSystemMetricsReader reads system metrics from the monitor Usecase.
 // It adapts the Usecase's GetRunnerMetrics method to the SystemMetricsReader interface.
 type MonitorSystemMetricsReader struct {
-	uc *Usecase
+	uc *monitor.Usecase
 }
 
 // NewMonitorSystemMetricsReader creates a new SystemMetricsReader backed by the monitor Usecase.
-func NewMonitorSystemMetricsReader(uc *Usecase) *MonitorSystemMetricsReader {
+func NewMonitorSystemMetricsReader(uc *monitor.Usecase) *MonitorSystemMetricsReader {
 	return &MonitorSystemMetricsReader{uc: uc}
 }
 

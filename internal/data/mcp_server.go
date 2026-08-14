@@ -191,17 +191,21 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 	return entToBizMCP(saved), nil
 }
 
+// UpdateMCPServer writes only the admin-editable columns. status and
+// metadata_json are system-managed (health runner / reconnect bookkeeping /
+// delete) and go through UpdateMCPServerMetadata / DeleteMCPServer — writing
+// them here would clobber concurrent field-level health writes with the stale
+// snapshot the caller read before merging (same class as the RV-01 token
+// writeback clobber, fixed by UpdateMCPServerConfigJSON).
 func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
 	m.UpdatedAt = nowRFC3339()
 	saved, err := r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(m.ID).
 		SetServerKey(m.Key).
 		SetName(m.Name).
 		SetDescription(m.Description).
-		SetStatus(m.Status).
 		SetEnabled(m.Enabled).
 		SetSortOrder(m.SortOrder).
 		SetConfigJSON(m.ConfigJSON).
-		SetMetadataJSON(m.MetadataJSON).
 		SetUpdatedAt(m.UpdatedAt).
 		Save(ctx)
 	if err != nil {

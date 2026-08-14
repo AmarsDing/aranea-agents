@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -29,7 +30,7 @@ func TestParseMetadataJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.ParseMetadataJSON(tt.raw)
+			got := heal.ParseMetadataJSON(tt.raw)
 			if tt.wantNil {
 				if got != nil {
 					t.Errorf("ParseMetadataJSON(%q) = %v, want nil", tt.raw, got)
@@ -65,7 +66,7 @@ func TestNonEmpty(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.NonEmpty(tt.args...)
+			got := heal.NonEmpty(tt.args...)
 			if len(got) != tt.want {
 				t.Errorf("NonEmpty() returned %d items, want %d; got %v", len(got), tt.want, got)
 			}
@@ -74,7 +75,7 @@ func TestNonEmpty(t *testing.T) {
 }
 
 func TestNonEmpty_Values(t *testing.T) {
-	got := monitor.NonEmpty("hello", "", "world", "  ")
+	got := heal.NonEmpty("hello", "", "world", "  ")
 	if len(got) != 2 {
 		t.Fatalf("NonEmpty() = %v, want 2 items", got)
 	}
@@ -87,14 +88,14 @@ func TestNonEmpty_Values(t *testing.T) {
 }
 
 func TestNewDiagBundleGenerator_NilRepo(t *testing.T) {
-	g := monitor.NewDiagBundleGenerator(nil, nil, nil)
+	g := heal.NewDiagBundleGenerator(nil, nil, nil)
 	if g != nil {
 		t.Error("NewDiagBundleGenerator(nil) should return nil")
 	}
 }
 
 func TestDiagBundleGenerator_Generate_NilGenerator(t *testing.T) {
-	var g *monitor.DiagBundleGenerator
+	var g *heal.DiagBundleGenerator
 	_, err := g.Generate(context.Background(), "trace-1", "sess-1", "run-1", "step-1", "manual", 5)
 	if err == nil {
 		t.Error("nil generator should return error")
@@ -102,12 +103,12 @@ func TestDiagBundleGenerator_Generate_NilGenerator(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_DefaultContextMinutes(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -121,12 +122,12 @@ func TestDiagBundleGenerator_Generate_DefaultContextMinutes(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_NegativeContextMinutes(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", -10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -137,7 +138,7 @@ func TestDiagBundleGenerator_Generate_NegativeContextMinutes(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			// Simulate EventType + SessionID/TraceID filtering like the data layer does
 			allItems := []monitor.PlatformRow{
@@ -151,7 +152,7 @@ func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 					continue
 				}
 				if query.SessionID != "" || query.TraceID != "" {
-					parsed := monitor.ParseMetadataJSON(item.MetadataJSON)
+					parsed := heal.ParseMetadataJSON(item.MetadataJSON)
 					matched := false
 					if parsed != nil {
 						if query.TraceID != "" {
@@ -174,7 +175,7 @@ func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 			return monitor.ListResult{Items: filtered, Total: int32(len(filtered))}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -199,7 +200,7 @@ func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_WithTraceID(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -215,7 +216,7 @@ func TestDiagBundleGenerator_Generate_WithTraceID(t *testing.T) {
 			}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "trace-1", "", "", "", "auto", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -229,12 +230,12 @@ func TestDiagBundleGenerator_Generate_WithTraceID(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_WithStepID(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "run-1", "tool-step-1", "error", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -245,12 +246,12 @@ func TestDiagBundleGenerator_Generate_WithStepID(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_NoStepID_NoRootCauses(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -261,12 +262,12 @@ func TestDiagBundleGenerator_Generate_NoStepID_NoRootCauses(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_ManifestStructure(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "trace-1", "sess-1", "run-1", "step-1", "manual", 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -315,7 +316,7 @@ func TestDiagBundleGenerator_Generate_ManifestStructure(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_UsageRecords(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			if query.Limit == 50 {
 				return monitor.ListResult{
@@ -329,7 +330,7 @@ func TestDiagBundleGenerator_Generate_UsageRecords(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "trace-1", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -349,12 +350,12 @@ func TestDiagBundleGenerator_Generate_UsageRecords(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_ListEventsError(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, fmt.Errorf("db error")
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("should not return error on list failure, got: %v", err)
@@ -368,7 +369,7 @@ func TestDiagBundleGenerator_Generate_ListEventsError(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_TriggerMetadataExtraction(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -378,7 +379,7 @@ func TestDiagBundleGenerator_Generate_TriggerMetadataExtraction(t *testing.T) {
 			}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "tool-step-1", "error", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -389,12 +390,12 @@ func TestDiagBundleGenerator_Generate_TriggerMetadataExtraction(t *testing.T) {
 }
 
 func TestDiagBundleGenerator_Generate_EmptySessionAndTrace(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, query monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	g := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	bundle, err := g.Generate(context.Background(), "", "", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

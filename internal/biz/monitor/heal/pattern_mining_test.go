@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,27 +6,27 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
 // --- mocks for PatternMiningUsecase ---
 
 type mockPatternMiningHealRepo struct {
-	records []monitor.HealRecord
+	records []heal.HealRecord
 	err     error
 }
 
-func (m *mockPatternMiningHealRepo) InsertHealRecord(_ context.Context, _ monitor.HealRecord) error {
+func (m *mockPatternMiningHealRepo) InsertHealRecord(_ context.Context, _ heal.HealRecord) error {
 	return nil
 }
 
-func (m *mockPatternMiningHealRepo) ListHealRecords(_ context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+func (m *mockPatternMiningHealRepo) ListHealRecords(_ context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 	if m.err != nil {
-		return monitor.HealRecordListResult{}, m.err
+		return heal.HealRecordListResult{}, m.err
 	}
 	// Filter by status if specified
-	var filtered []monitor.HealRecord
+	var filtered []heal.HealRecord
 	for _, r := range m.records {
 		if query.Status != "" && r.Status != query.Status {
 			continue
@@ -36,7 +36,7 @@ func (m *mockPatternMiningHealRepo) ListHealRecords(_ context.Context, query mon
 	if query.Limit > 0 && len(filtered) > query.Limit {
 		filtered = filtered[:query.Limit]
 	}
-	return monitor.HealRecordListResult{Items: filtered, Total: len(m.records)}, nil
+	return heal.HealRecordListResult{Items: filtered, Total: len(m.records)}, nil
 }
 
 func (m *mockPatternMiningHealRepo) DeleteHealRecordsOlderThan(_ context.Context, _ time.Time) (int, error) {
@@ -44,16 +44,16 @@ func (m *mockPatternMiningHealRepo) DeleteHealRecordsOlderThan(_ context.Context
 }
 
 type mockPatternMiningPatternReader struct {
-	patterns []monitor.FailurePattern
-	byHash   map[string]*monitor.FailurePattern
+	patterns []heal.FailurePattern
+	byHash   map[string]*heal.FailurePattern
 	err      error
 }
 
-func (m *mockPatternMiningPatternReader) ListBySource(_ context.Context, source monitor.FailurePatternSource) ([]monitor.FailurePattern, error) {
+func (m *mockPatternMiningPatternReader) ListBySource(_ context.Context, source heal.FailurePatternSource) ([]heal.FailurePattern, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	var result []monitor.FailurePattern
+	var result []heal.FailurePattern
 	for _, p := range m.patterns {
 		if p.Source == source {
 			result = append(result, p)
@@ -62,7 +62,7 @@ func (m *mockPatternMiningPatternReader) ListBySource(_ context.Context, source 
 	return result, nil
 }
 
-func (m *mockPatternMiningPatternReader) GetByPatternHash(_ context.Context, hash string) (*monitor.FailurePattern, error) {
+func (m *mockPatternMiningPatternReader) GetByPatternHash(_ context.Context, hash string) (*heal.FailurePattern, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -74,7 +74,7 @@ func (m *mockPatternMiningPatternReader) GetByPatternHash(_ context.Context, has
 	return nil, nil
 }
 
-func (m *mockPatternMiningPatternReader) ListActive(_ context.Context) ([]monitor.FailurePattern, error) {
+func (m *mockPatternMiningPatternReader) ListActive(_ context.Context) ([]heal.FailurePattern, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -82,12 +82,12 @@ func (m *mockPatternMiningPatternReader) ListActive(_ context.Context) ([]monito
 }
 
 type mockPatternMiningPatternWriter struct {
-	created []monitor.FailurePattern
-	updated []monitor.FailurePattern
+	created []heal.FailurePattern
+	updated []heal.FailurePattern
 	err     error
 }
 
-func (m *mockPatternMiningPatternWriter) Create(_ context.Context, pattern monitor.FailurePattern) error {
+func (m *mockPatternMiningPatternWriter) Create(_ context.Context, pattern heal.FailurePattern) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -95,7 +95,7 @@ func (m *mockPatternMiningPatternWriter) Create(_ context.Context, pattern monit
 	return nil
 }
 
-func (m *mockPatternMiningPatternWriter) Update(_ context.Context, pattern monitor.FailurePattern) error {
+func (m *mockPatternMiningPatternWriter) Update(_ context.Context, pattern heal.FailurePattern) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -112,20 +112,20 @@ func (m *mockPatternMiningPatternWriter) Deactivate(_ context.Context, _ string)
 // --- helpers ---
 
 func newTestPatternMiningUsecase(
-	healRepo monitor.HealRecordRepo,
-	patternReader monitor.FailurePatternReader,
-	patternWriter monitor.FailurePatternWriter,
-) *monitor.PatternMiningUsecase {
-	return monitor.NewPatternMiningUsecase(healRepo, patternReader, patternWriter, loggateway.NewNoop())
+	healRepo heal.HealRecordRepo,
+	patternReader heal.FailurePatternReader,
+	patternWriter heal.FailurePatternWriter,
+) *heal.PatternMiningUsecase {
+	return heal.NewPatternMiningUsecase(healRepo, patternReader, patternWriter, loggateway.NewNoop())
 }
 
 // makeAppliedHealRecord creates a HealRecord with status "applied" for testing.
-func makeAppliedHealRecord(ruleID, errorCode, stackTrace string, fixAction monitor.FixAction) monitor.HealRecord {
-	return monitor.HealRecord{
+func makeAppliedHealRecord(ruleID, errorCode, stackTrace string, fixAction heal.FixAction) heal.HealRecord {
+	return heal.HealRecord{
 		ID:          fmt.Sprintf("hr-%s-%d", errorCode, time.Now().UnixNano()),
 		RuleID:      ruleID,
 		TriggerType: "auto",
-		Status:      string(monitor.HealStatusApplied),
+		Status:      string(heal.HealStatusApplied),
 		FixAction:   fixAction,
 		Confidence:  0.8,
 		CreatedAt:   time.Now().Format(time.RFC3339),
@@ -137,12 +137,12 @@ func makeAppliedHealRecord(ruleID, errorCode, stackTrace string, fixAction monit
 }
 
 // makeFailedHealRecord creates a HealRecord with status "failed" for testing.
-func makeFailedHealRecord(ruleID, errorCode, stackTrace string, fixAction monitor.FixAction) monitor.HealRecord {
-	return monitor.HealRecord{
+func makeFailedHealRecord(ruleID, errorCode, stackTrace string, fixAction heal.FixAction) heal.HealRecord {
+	return heal.HealRecord{
 		ID:          fmt.Sprintf("hr-fail-%s-%d", errorCode, time.Now().UnixNano()),
 		RuleID:      ruleID,
 		TriggerType: "auto",
-		Status:      string(monitor.HealStatusFailed),
+		Status:      string(heal.HealStatusFailed),
 		FixAction:   fixAction,
 		Confidence:  0.8,
 		CreatedAt:   time.Now().Format(time.RFC3339),
@@ -156,12 +156,12 @@ func makeFailedHealRecord(ruleID, errorCode, stackTrace string, fixAction monito
 // --- tests ---
 
 func TestPatternMiningUsecase_NilReceiver(t *testing.T) {
-	var uc *monitor.PatternMiningUsecase
+	var uc *heal.PatternMiningUsecase
 	result, err := uc.Mine(context.Background())
 	if err == nil {
 		t.Error("nil receiver should return error")
 	}
-	if result != (monitor.PatternMiningResult{}) {
+	if result != (heal.PatternMiningResult{}) {
 		t.Error("nil receiver should return zero result")
 	}
 }
@@ -171,21 +171,21 @@ func TestPatternMiningUsecase_NilDeps(t *testing.T) {
 	reader := &mockPatternMiningPatternReader{}
 	writer := &mockPatternMiningPatternWriter{}
 
-	if monitor.NewPatternMiningUsecase(nil, reader, writer, loggateway.NewNoop()) != nil {
+	if heal.NewPatternMiningUsecase(nil, reader, writer, loggateway.NewNoop()) != nil {
 		t.Error("nil healRepo should return nil")
 	}
-	if monitor.NewPatternMiningUsecase(healRepo, nil, writer, loggateway.NewNoop()) != nil {
+	if heal.NewPatternMiningUsecase(healRepo, nil, writer, loggateway.NewNoop()) != nil {
 		t.Error("nil patternReader should return nil")
 	}
-	if monitor.NewPatternMiningUsecase(healRepo, reader, nil, loggateway.NewNoop()) != nil {
+	if heal.NewPatternMiningUsecase(healRepo, reader, nil, loggateway.NewNoop()) != nil {
 		t.Error("nil patternWriter should return nil")
 	}
 }
 
 func TestPatternMiningUsecase_ClusteringSimilarFailureModes(t *testing.T) {
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
@@ -209,8 +209,8 @@ func TestPatternMiningUsecase_ClusteringSimilarFailureModes(t *testing.T) {
 	}
 
 	p := writer.created[0]
-	if p.Source != monitor.FailurePatternSourceMined {
-		t.Errorf("Source = %q, want %q", p.Source, monitor.FailurePatternSourceMined)
+	if p.Source != heal.FailurePatternSourceMined {
+		t.Errorf("Source = %q, want %q", p.Source, heal.FailurePatternSourceMined)
 	}
 	if p.Confidence != 0.5 {
 		t.Errorf("Confidence = %.2f, want 0.5", p.Confidence)
@@ -227,9 +227,9 @@ func TestPatternMiningUsecase_ClusteringSimilarFailureModes(t *testing.T) {
 }
 
 func TestPatternMiningUsecase_InsufficientData_NoTemplate(t *testing.T) {
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2}
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2}
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42", fixAction),
 			// Only 2 successful fixes, need >= 3
@@ -255,13 +255,13 @@ func TestPatternMiningUsecase_InsufficientData_NoTemplate(t *testing.T) {
 
 func TestPatternMiningUsecase_ConfidencePromotion(t *testing.T) {
 	// Existing mined pattern with 3 successful verifications should get confidence 0.8
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
 	// The normalized stack trace from "runtime/llm.go:42\nruntime/llm.go:100" is "runtime/llm.go\nruntime/llm.go"
-	hash := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
+	hash := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
 
-	existingPattern := &monitor.FailurePattern{
+	existingPattern := &heal.FailurePattern{
 		ID:           "fp-mined-1",
-		Source:       monitor.FailurePatternSourceMined,
+		Source:       heal.FailurePatternSourceMined,
 		Type:         "TIMEOUT",
 		PatternHash:  hash,
 		PatternRegex: "TIMEOUT",
@@ -276,14 +276,14 @@ func TestPatternMiningUsecase_ConfidencePromotion(t *testing.T) {
 	}
 
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
 		},
 	}
 	reader := &mockPatternMiningPatternReader{
-		byHash: map[string]*monitor.FailurePattern{hash: existingPattern},
+		byHash: map[string]*heal.FailurePattern{hash: existingPattern},
 	}
 	writer := &mockPatternMiningPatternWriter{}
 
@@ -317,12 +317,12 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 	// Pattern with fail_count > success_count * 2 should be deactivated
 	// After update: success_count = 1 + 3 = 4, fail_count = 10 + 0 = 10
 	// 10 > 4 * 2 = 8 → true, should be deactivated
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2}
-	hash := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2}
+	hash := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
 
-	existingPattern := &monitor.FailurePattern{
+	existingPattern := &heal.FailurePattern{
 		ID:           "fp-mined-bad",
-		Source:       monitor.FailurePatternSourceMined,
+		Source:       heal.FailurePatternSourceMined,
 		Type:         "TIMEOUT",
 		PatternHash:  hash,
 		PatternRegex: "TIMEOUT",
@@ -337,7 +337,7 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 	}
 
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
@@ -351,7 +351,7 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 		},
 	}
 	reader := &mockPatternMiningPatternReader{
-		byHash: map[string]*monitor.FailurePattern{hash: existingPattern},
+		byHash: map[string]*heal.FailurePattern{hash: existingPattern},
 	}
 	writer := &mockPatternMiningPatternWriter{}
 
@@ -376,11 +376,11 @@ func TestPatternMiningUsecase_AutoDisable(t *testing.T) {
 }
 
 func TestPatternMiningUsecase_MultipleClusters(t *testing.T) {
-	fixRetry := monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
-	fixReconnect := monitor.FixAction{Type: "reconnect", MaxAttempts: 3, Params: map[string]any{"backoff_ms": 3000}}
+	fixRetry := heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 2000}}
+	fixReconnect := heal.FixAction{Type: "reconnect", MaxAttempts: 3, Params: map[string]any{"backoff_ms": 3000}}
 
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			// Cluster 1: TIMEOUT errors
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixRetry),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixRetry),
@@ -411,12 +411,12 @@ func TestPatternMiningUsecase_MultipleClusters(t *testing.T) {
 
 func TestPatternMiningUsecase_VersionIncrement(t *testing.T) {
 	// Existing mined pattern with same hash → version increment
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2}
-	hash := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2}
+	hash := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
 
-	existingPattern := &monitor.FailurePattern{
+	existingPattern := &heal.FailurePattern{
 		ID:           "fp-mined-v1",
-		Source:       monitor.FailurePatternSourceMined,
+		Source:       heal.FailurePatternSourceMined,
 		Type:         "TIMEOUT",
 		PatternHash:  hash,
 		PatternRegex: "TIMEOUT",
@@ -431,14 +431,14 @@ func TestPatternMiningUsecase_VersionIncrement(t *testing.T) {
 	}
 
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
 		},
 	}
 	reader := &mockPatternMiningPatternReader{
-		byHash: map[string]*monitor.FailurePattern{hash: existingPattern},
+		byHash: map[string]*heal.FailurePattern{hash: existingPattern},
 	}
 	writer := &mockPatternMiningPatternWriter{}
 
@@ -489,9 +489,9 @@ func TestPatternMiningUsecase_NoRecords(t *testing.T) {
 }
 
 func TestPatternMiningUsecase_OnlyAppliedRecordsCount(t *testing.T) {
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2}
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2}
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42", fixAction),
 			makeFailedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42", fixAction),
@@ -515,12 +515,12 @@ func TestPatternMiningUsecase_OnlyAppliedRecordsCount(t *testing.T) {
 
 func TestPatternMiningUsecase_ConfidencePromotion_RequiresThreeSuccesses(t *testing.T) {
 	// Pattern with only 2 successes should NOT be promoted yet
-	fixAction := monitor.FixAction{Type: "retry", MaxAttempts: 2}
-	hash := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
+	fixAction := heal.FixAction{Type: "retry", MaxAttempts: 2}
+	hash := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go\nruntime/llm.go")
 
-	existingPattern := &monitor.FailurePattern{
+	existingPattern := &heal.FailurePattern{
 		ID:           "fp-mined-2succ",
-		Source:       monitor.FailurePatternSourceMined,
+		Source:       heal.FailurePatternSourceMined,
 		Type:         "TIMEOUT",
 		PatternHash:  hash,
 		PatternRegex: "TIMEOUT",
@@ -535,14 +535,14 @@ func TestPatternMiningUsecase_ConfidencePromotion_RequiresThreeSuccesses(t *test
 	}
 
 	healRepo := &mockPatternMiningHealRepo{
-		records: []monitor.HealRecord{
+		records: []heal.HealRecord{
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:100", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:101", fixAction),
 			makeAppliedHealRecord("rc-provider-timeout", "TIMEOUT", "runtime/llm.go:42\nruntime/llm.go:102", fixAction),
 		},
 	}
 	reader := &mockPatternMiningPatternReader{
-		byHash: map[string]*monitor.FailurePattern{hash: existingPattern},
+		byHash: map[string]*heal.FailurePattern{hash: existingPattern},
 	}
 	writer := &mockPatternMiningPatternWriter{}
 
@@ -564,9 +564,9 @@ func TestPatternMiningUsecase_ConfidencePromotion_RequiresThreeSuccesses(t *test
 }
 
 func TestMinedPatternHash_Deterministic(t *testing.T) {
-	h1 := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go:42")
-	h2 := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go:42")
-	h3 := monitor.MinedPatternHash("TIMEOUT", "runtime/llm.go:99")
+	h1 := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go:42")
+	h2 := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go:42")
+	h3 := heal.MinedPatternHash("TIMEOUT", "runtime/llm.go:99")
 
 	if h1 != h2 {
 		t.Error("same inputs should produce same hash")

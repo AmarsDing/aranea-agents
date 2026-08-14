@@ -105,6 +105,7 @@ var stepTitleRegistry = map[string]string{
 	"chat.user_msg_persist":                "保存用户消息",
 	"chat.intent.pass":                     "意图识别",
 	"chat.llm.invoke":                      "调用语言模型",
+	"chat.llm.fallback":                    "模型降级重试",
 	"chat.stream.consume":                  "处理模型输出",
 	"chat.assistant_msg_persist":           "保存助手回复",
 	"chat.turn.execute":                    "对话轮次",
@@ -201,6 +202,7 @@ var stepTitleRegistry = map[string]string{
 	"team.compile.unknown_mode_fallback":   "未知编排模式已降级",
 	"team.run.graph":                       "构建团队 GraphAgent",
 	"team.member":                          "团队成员执行",
+	"team.model_cascade.route":             "成员模型级联路由",
 	"chat.team.invoke":                     "委派团队会话",
 	// 2026-07-29 日志补齐批次 0：已发射但缺标题的 stepID
 	"chat.receive":                  "收到消息",

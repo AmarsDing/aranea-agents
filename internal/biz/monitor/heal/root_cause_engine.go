@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import (
 	"aranea-agents/internal/biz/types"

@@ -311,10 +311,12 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			// (outside lock) and HasActive check (inside lock), and avoids the
 			// dequeue-requeue pattern that lost the message's original position.
 			unlock := o.lockSession(sessionID)
-			entry, ok := o.chatUC.PeekPendingMessage(sessionID)
+			// P2-3 inject 级：头部连续 inject 条目不单独唤醒 turn，仅作为上下文
+			// 前缀合入其后的第一条 followup。仅剩 inject 时保持排队直接返回。
+			_, _, leadInjects, ok := biz.SplitLeadingInjects(o.chatUC.GetPendingMessages(sessionID))
 			if !ok {
 				unlock()
-				return // queue empty
+				return // queue empty or only silent inject entries
 			}
 			if o.runs.HasActive(sessionID) {
 				// Another turn is active (e.g. user used "send now" to
@@ -328,8 +330,28 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			// we hold the session lock, and the only dequeue path for this
 			// session is this loop (recursive processPendingQueue calls are
 			// suppressed by loopCtx via contextWithPendingLoop).
-			entry, ok = o.chatUC.DequeuePendingMessage(sessionID)
-			if !ok {
+			//
+			// P2-3：依次出队 leadInjects 条 inject + 第一条 followup。inject
+			// 内容以实际出队条目为准（List 快照与出队之间无锁 Remove/Update
+			// 可能并发改队列；逐条校验 kind，意外遇到非 inject 即按 followup
+			// 派发，已收集的 inject 仍随其合入——与"上下文跟下一条走"一致）。
+			var injects []string
+			var entry biz.PendingQueueEntry
+			dispatched := false
+			for i := 0; i <= leadInjects; i++ {
+				e, deqOK := o.chatUC.DequeuePendingMessage(sessionID)
+				if !deqOK {
+					break
+				}
+				if i < leadInjects && e.Kind == biz.ChatEnqueueKindInject {
+					injects = append(injects, e.Content)
+					continue
+				}
+				entry = e
+				dispatched = true
+				break
+			}
+			if !dispatched {
 				unlock()
 				o.lg().Warn("dequeue pending message failed after peek",
 					loggateway.StepID("chat.pending_queue.dequeue_fail"),
@@ -345,7 +367,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			o.runs.SetPendingCancel(sessionID, cancel)
 			unlock()
 
-			pendingContent := entry.Content
+			pendingContent := biz.MergeInjectContext(injects, entry.Content)
 			pendingEntryID := entry.ID
 			pendingEmitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 				Ctx:       bgCtx,
@@ -358,6 +380,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理",
 				event.P("entry_id", pendingEntryID),
 				event.P("content_len", len(pendingContent)),
+				event.P("inject_count", len(injects)),
 				event.P("depth", depth))
 
 			pendingInput := biz.TurnInput{

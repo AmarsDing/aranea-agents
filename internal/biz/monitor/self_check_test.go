@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/internal/biz/types"
 	"aranea-agents/pkg/loggateway"
 )
@@ -437,7 +438,7 @@ func TestSelfCheckUnhealthyCountMetric_NilScheduler(t *testing.T) {
 // --- Task 7.3: RootCauseCondition.SelfCheckStatus matching unit test ---
 
 func TestRootCauseCondition_SelfCheckStatus_Match(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	// The rc-self-check-failure rule should match when metadata contains self_check_status=failed
 	results := engine.Evaluate(context.Background(), "", "", map[string]any{
 		"self_check_status": "failed",
@@ -456,7 +457,7 @@ func TestRootCauseCondition_SelfCheckStatus_Match(t *testing.T) {
 }
 
 func TestRootCauseCondition_SelfCheckStatus_NoMatch(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	// Should not match when self_check_status is not "failed"
 	results := engine.Evaluate(context.Background(), "", "", map[string]any{
 		"self_check_status": "warning",
@@ -470,7 +471,7 @@ func TestRootCauseCondition_SelfCheckStatus_NoMatch(t *testing.T) {
 }
 
 func TestRootCauseCondition_SelfCheckStatus_NoMetadata(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	results := engine.Evaluate(context.Background(), "", "", nil)
 	for _, r := range results {
 		if r.RuleID == "rc-self-check-failure" {

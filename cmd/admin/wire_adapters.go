@@ -8,7 +8,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	bizsession "aranea-agents/internal/biz/session"
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
@@ -316,19 +316,19 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	return err
 }
 
-// provideBizRootCauseAdapter bridges monitor.RootCauseAnalyzer to biz.RootCauseAnalyzer.
-func provideBizRootCauseAdapter(rca monitor.RootCauseAnalyzer) biz.RootCauseAnalyzer {
+// provideBizRootCauseAdapter bridges heal.RootCauseAnalyzer to biz.RootCauseAnalyzer.
+func provideBizRootCauseAdapter(rca heal.RootCauseAnalyzer) biz.RootCauseAnalyzer {
 	return &skillIntelligenceRCAAdapter{inner: rca}
 }
 
-// skillIntelligenceRCAAdapter bridges monitor.RootCauseAnalyzer to biz.RootCauseAnalyzer.
+// skillIntelligenceRCAAdapter bridges heal.RootCauseAnalyzer to biz.RootCauseAnalyzer.
 type skillIntelligenceRCAAdapter struct {
-	inner monitor.RootCauseAnalyzer
+	inner heal.RootCauseAnalyzer
 }
 
 func (a *skillIntelligenceRCAAdapter) AnalyzeInvocationFailure(ctx context.Context, inv biz.SkillInvocationWrite) (*biz.RootCauseAnalysisResult, error) {
-	report := &monitor.FailureReport{
-		Type:      monitor.FailureTypeRuntime,
+	report := &heal.FailureReport{
+		Type:      heal.FailureTypeRuntime,
 		Source:    "runtime",
 		Job:       "skill",
 		ErrorCode: inv.ErrorCode,

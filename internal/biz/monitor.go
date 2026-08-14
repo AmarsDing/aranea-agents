@@ -1,6 +1,9 @@
 package biz
 
-import "aranea-agents/internal/biz/monitor"
+import (
+	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
+)
 
 type FilesystemHealthReader = monitor.FilesystemHealthReader
 
@@ -37,22 +40,22 @@ type (
 	RunnerCompletionRow         = monitor.RunnerCompletionRow
 	AlertMetricRegistry         = monitor.AlertMetricRegistry
 	AlertMetric                 = monitor.AlertMetric
-	DiagBundleGenerator         = monitor.DiagBundleGenerator
+	DiagBundleGenerator         = heal.DiagBundleGenerator
 	UsecaseOption               = monitor.UsecaseOption
-	SelfHealUsecase             = monitor.SelfHealUsecase
-	SelfHealObserver            = monitor.SelfHealObserver
-	HealActionHandler           = monitor.HealActionHandler
-	HealRecordRepo              = monitor.HealRecordRepo
-	HealRecord                  = monitor.HealRecord
-	HealRecordQuery             = monitor.HealRecordQuery
-	HealRecordListResult        = monitor.HealRecordListResult
-	HealStats                   = monitor.HealStats
-	FixAction                   = monitor.FixAction
-	DiagnoseAndHealResult       = monitor.DiagnoseAndHealResult
-	RootCauseConditionResult    = monitor.RootCauseConditionResult
-	AutoHealedResult            = monitor.AutoHealedResult
-	HealAttemptsResult          = monitor.HealAttemptsResult
-	SelfCheckResult             = monitor.SelfCheckResult
+	SelfHealUsecase             = heal.SelfHealUsecase
+	SelfHealObserver            = heal.SelfHealObserver
+	HealActionHandler           = heal.HealActionHandler
+	HealRecordRepo              = heal.HealRecordRepo
+	HealRecord                  = heal.HealRecord
+	HealRecordQuery             = heal.HealRecordQuery
+	HealRecordListResult        = heal.HealRecordListResult
+	HealStats                   = heal.HealStats
+	FixAction                   = heal.FixAction
+	DiagnoseAndHealResult       = heal.DiagnoseAndHealResult
+	RootCauseConditionResult    = heal.RootCauseConditionResult
+	AutoHealedResult            = heal.AutoHealedResult
+	HealAttemptsResult          = heal.HealAttemptsResult
+	SelfCheckResult             = heal.SelfCheckResult
 )
 
 var (
@@ -69,10 +72,10 @@ var (
 	NewAlertMetricRegistry          = monitor.NewAlertMetricRegistry
 	NewRunnerErrorRateMetric        = monitor.NewRunnerErrorRateMetric
 	NewSkillFilesystemMissingMetric = monitor.NewSkillFilesystemMissingMetric
-	NewDiagBundleGenerator          = monitor.NewDiagBundleGenerator
+	NewDiagBundleGenerator          = heal.NewDiagBundleGenerator
 	MergeRunnerCompletionUsagePatch = monitor.MergeRunnerCompletionUsagePatch
-	NewSelfHealUsecase              = monitor.NewSelfHealUsecase
-	NewSelfHealObserver             = monitor.NewSelfHealObserver
+	NewSelfHealUsecase              = heal.NewSelfHealUsecase
+	NewSelfHealObserver             = heal.NewSelfHealObserver
 )
 
 var (

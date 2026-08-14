@@ -1,10 +1,11 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
 	"testing"
 
-	"aranea-agents/internal/biz/monitor"
+
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -13,7 +14,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestNewFailureReport(t *testing.T) {
-	fr := monitor.NewFailureReport()
+	fr := heal.NewFailureReport()
 	if fr == nil {
 		t.Fatal("NewFailureReport() = nil, want non-nil")
 	}
@@ -28,14 +29,14 @@ func TestNewFailureReport(t *testing.T) {
 func TestFailureReport_TypeConstants(t *testing.T) {
 	tests := []struct {
 		name string
-		got  monitor.FailureType
+		got  heal.FailureType
 		want string
 	}{
-		{"lint", monitor.FailureTypeLint, "lint_error"},
-		{"test", monitor.FailureTypeTest, "test_failure"},
-		{"build", monitor.FailureTypeBuild, "build_failure"},
-		{"proto_sync", monitor.FailureTypeProtoSync, "proto_sync"},
-		{"runtime", monitor.FailureTypeRuntime, "runtime_error"},
+		{"lint", heal.FailureTypeLint, "lint_error"},
+		{"test", heal.FailureTypeTest, "test_failure"},
+		{"build", heal.FailureTypeBuild, "build_failure"},
+		{"proto_sync", heal.FailureTypeProtoSync, "proto_sync"},
+		{"runtime", heal.FailureTypeRuntime, "runtime_error"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,14 +58,14 @@ internal/service/cli_admin_tools.go:42:5: undefined: SomeSymbol
 internal/service/cli_admin_tools.go:58:10: cannot use x (type string) as type int in assignment
 make: *** [Makefile:23: build] Error 1`
 
-	reports := monitor.ParseCILogs(logs, "build")
+	reports := heal.ParseCILogs(logs, "build")
 	if len(reports) < 1 {
 		t.Fatalf("ParseCILogs() returned %d reports, want at least 1", len(reports))
 	}
 
 	fr := reports[0]
-	if fr.Type != monitor.FailureTypeBuild {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeBuild)
+	if fr.Type != heal.FailureTypeBuild {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeBuild)
 	}
 	if fr.Source != "ci" {
 		t.Errorf("Source = %q, want %q", fr.Source, "ci")
@@ -91,14 +92,14 @@ FAIL
 coverage: 80.0% of statements
 make: *** [Makefile:30: test] Error 1`
 
-	reports := monitor.ParseCILogs(logs, "test")
+	reports := heal.ParseCILogs(logs, "test")
 	if len(reports) < 1 {
 		t.Fatalf("ParseCILogs() returned %d reports, want at least 1", len(reports))
 	}
 
 	fr := reports[0]
-	if fr.Type != monitor.FailureTypeTest {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeTest)
+	if fr.Type != heal.FailureTypeTest {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeTest)
 	}
 	if fr.File == "" {
 		t.Error("File is empty, want parsed file path from test failure")
@@ -112,14 +113,14 @@ func TestParseCILogs_LintError(t *testing.T) {
 	logs := `internal/biz/monitor/monitor.go:100:1: exported function NewUsecase should have comment or be unexported (golint)
 internal/service/handler.go:30:5: should not use dot imports (golint)`
 
-	reports := monitor.ParseCILogs(logs, "lint")
+	reports := heal.ParseCILogs(logs, "lint")
 	if len(reports) < 1 {
 		t.Fatalf("ParseCILogs() returned %d reports, want at least 1", len(reports))
 	}
 
 	fr := reports[0]
-	if fr.Type != monitor.FailureTypeLint {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeLint)
+	if fr.Type != heal.FailureTypeLint {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeLint)
 	}
 	if fr.File == "" {
 		t.Error("File is empty, want parsed file path from lint error")
@@ -130,19 +131,19 @@ func TestParseCILogs_ProtoSync(t *testing.T) {
 	logs := `Proto generated files are out of date. Run "make api" to regenerate.
 make: *** [Makefile:10: proto-check] Error 1`
 
-	reports := monitor.ParseCILogs(logs, "proto-check")
+	reports := heal.ParseCILogs(logs, "proto-check")
 	if len(reports) < 1 {
 		t.Fatalf("ParseCILogs() returned %d reports, want at least 1", len(reports))
 	}
 
 	fr := reports[0]
-	if fr.Type != monitor.FailureTypeProtoSync {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeProtoSync)
+	if fr.Type != heal.FailureTypeProtoSync {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeProtoSync)
 	}
 }
 
 func TestParseCILogs_EmptyInput(t *testing.T) {
-	reports := monitor.ParseCILogs("", "build")
+	reports := heal.ParseCILogs("", "build")
 	if len(reports) != 0 {
 		t.Errorf("ParseCILogs('') returned %d reports, want 0", len(reports))
 	}
@@ -151,7 +152,7 @@ func TestParseCILogs_EmptyInput(t *testing.T) {
 func TestParseCILogs_NoMatch(t *testing.T) {
 	logs := `all good, no errors here
 make: Nothing to be done for 'build'.`
-	reports := monitor.ParseCILogs(logs, "build")
+	reports := heal.ParseCILogs(logs, "build")
 	if len(reports) != 0 {
 		t.Errorf("ParseCILogs() returned %d reports for clean logs, want 0", len(reports))
 	}
@@ -162,7 +163,7 @@ func TestParseCILogs_MultipleBuildErrors(t *testing.T) {
 internal/service/bar.go:20:3: cannot use x as type int
 internal/biz/baz.go:30:8: too many arguments in call to Func`
 
-	reports := monitor.ParseCILogs(logs, "build")
+	reports := heal.ParseCILogs(logs, "build")
 	if len(reports) < 3 {
 		t.Errorf("ParseCILogs() returned %d reports, want at least 3 for multiple build errors", len(reports))
 	}
@@ -180,12 +181,12 @@ aranea-agents/internal/biz/monitor.(*RootCauseEngine).Analyze(0xc0001a2000, {0x1
 aranea-agents/internal/service.(*AdminService).DoWork(...)
 	/aranea-agents/internal/service/admin.go:50 +0x88`
 
-	fr := monitor.ParseRuntimeError(errMsg, "admin-service")
+	fr := heal.ParseRuntimeError(errMsg, "admin-service")
 	if fr == nil {
 		t.Fatal("ParseRuntimeError() = nil, want non-nil")
 	}
-	if fr.Type != monitor.FailureTypeRuntime {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeRuntime)
+	if fr.Type != heal.FailureTypeRuntime {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeRuntime)
 	}
 	if fr.Source != "runtime" {
 		t.Errorf("Source = %q, want %q", fr.Source, "runtime")
@@ -202,7 +203,7 @@ aranea-agents/internal/service.(*AdminService).DoWork(...)
 }
 
 func TestParseRuntimeError_EmptyInput(t *testing.T) {
-	fr := monitor.ParseRuntimeError("", "service")
+	fr := heal.ParseRuntimeError("", "service")
 	if fr != nil {
 		t.Errorf("ParseRuntimeError('') = %+v, want nil", fr)
 	}
@@ -211,12 +212,12 @@ func TestParseRuntimeError_EmptyInput(t *testing.T) {
 func TestParseRuntimeError_GenericError(t *testing.T) {
 	errMsg := `connection refused: dial tcp 127.0.0.1:8080: connection refused`
 
-	fr := monitor.ParseRuntimeError(errMsg, "mcp-connector")
+	fr := heal.ParseRuntimeError(errMsg, "mcp-connector")
 	if fr == nil {
 		t.Fatal("ParseRuntimeError() = nil, want non-nil for generic error")
 	}
-	if fr.Type != monitor.FailureTypeRuntime {
-		t.Errorf("Type = %q, want %q", fr.Type, monitor.FailureTypeRuntime)
+	if fr.Type != heal.FailureTypeRuntime {
+		t.Errorf("Type = %q, want %q", fr.Type, heal.FailureTypeRuntime)
 	}
 	if fr.Message == "" {
 		t.Error("Message is empty, want error text")
@@ -228,11 +229,11 @@ func TestParseRuntimeError_GenericError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRootCauseEngine_AnalyzeFromReport(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
-	report := monitor.NewFailureReport()
-	report.Type = monitor.FailureTypeBuild
+	report := heal.NewFailureReport()
+	report.Type = heal.FailureTypeBuild
 	report.Source = "ci"
 	report.File = "internal/service/cli_admin_tools.go"
 	report.Line = 42
@@ -249,11 +250,11 @@ func TestRootCauseEngine_AnalyzeFromReport(t *testing.T) {
 }
 
 func TestRootCauseEngine_AnalyzeFromReport_RuntimeError(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
-	report := monitor.NewFailureReport()
-	report.Type = monitor.FailureTypeRuntime
+	report := heal.NewFailureReport()
+	report.Type = heal.FailureTypeRuntime
 	report.Source = "runtime"
 	report.Job = "mcp-connector"
 	report.Message = "connection refused: dial tcp 127.0.0.1:8080"
@@ -269,7 +270,7 @@ func TestRootCauseEngine_AnalyzeFromReport_RuntimeError(t *testing.T) {
 }
 
 func TestRootCauseEngine_AnalyzeFromReport_NilReport(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	result, err := engine.AnalyzeFromReport(ctx, nil)

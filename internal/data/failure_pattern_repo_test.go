@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 )
 
 func createFailurePatternTable(t *testing.T, d *Data) {
@@ -50,16 +50,16 @@ func TestFailurePatternRepo_CreateAndGetByHash(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Second)
-	fixAction := bizmonitor.FixAction{
+	fixAction := heal.FixAction{
 		Type:        "retry",
 		MaxAttempts: 2,
 		Params:      map[string]any{"backoff_ms": 2000},
 	}
 	fixActionJSON, _ := json.Marshal(fixAction)
 
-	pattern := bizmonitor.FailurePattern{
+	pattern := heal.FailurePattern{
 		ID:           "fp-test-1",
-		Source:       bizmonitor.FailurePatternSourceRuntime,
+		Source:       heal.FailurePatternSourceRuntime,
 		Type:         "provider_timeout",
 		PatternHash:  "sha256:abc123",
 		PatternRegex: `(?i)(timeout|timed out)`,
@@ -89,7 +89,7 @@ func TestFailurePatternRepo_CreateAndGetByHash(t *testing.T) {
 	if got.ID != "fp-test-1" {
 		t.Errorf("expected id fp-test-1, got %s", got.ID)
 	}
-	if got.Source != bizmonitor.FailurePatternSourceRuntime {
+	if got.Source != heal.FailurePatternSourceRuntime {
 		t.Errorf("expected source runtime, got %s", got.Source)
 	}
 	if got.PatternHash != "sha256:abc123" {
@@ -114,18 +114,18 @@ func TestFailurePatternRepo_ListBySource(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	for i, src := range []bizmonitor.FailurePatternSource{
-		bizmonitor.FailurePatternSourceRuntime,
-		bizmonitor.FailurePatternSourceRuntime,
-		bizmonitor.FailurePatternSourceCI,
+	for i, src := range []heal.FailurePatternSource{
+		heal.FailurePatternSourceRuntime,
+		heal.FailurePatternSourceRuntime,
+		heal.FailurePatternSourceCI,
 	} {
-		pattern := bizmonitor.FailurePattern{
+		pattern := heal.FailurePattern{
 			ID:           "fp-" + string(src) + "-" + string(rune('a'+i)),
 			Source:       src,
 			Type:         "test_type",
 			PatternHash:  "hash-" + string(rune('a'+i)),
 			PatternRegex: `test`,
-			FixAction:    bizmonitor.FixAction{Type: "log_only"},
+			FixAction:    heal.FixAction{Type: "log_only"},
 			Confidence:   0.5,
 			CreatedAt:    now,
 			UpdatedAt:    now,
@@ -135,7 +135,7 @@ func TestFailurePatternRepo_ListBySource(t *testing.T) {
 		}
 	}
 
-	patterns, err := repo.ListBySource(ctx, bizmonitor.FailurePatternSourceRuntime)
+	patterns, err := repo.ListBySource(ctx, heal.FailurePatternSourceRuntime)
 	if err != nil {
 		t.Fatalf("list by source: %v", err)
 	}
@@ -153,14 +153,14 @@ func TestFailurePatternRepo_ListActive(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Create one active, one inactive
-	active := bizmonitor.FailurePattern{
-		ID: "fp-active", Source: bizmonitor.FailurePatternSourceRuntime, Type: "t1",
-		PatternHash: "hash-active", PatternRegex: `test`, FixAction: bizmonitor.FixAction{Type: "retry"},
+	active := heal.FailurePattern{
+		ID: "fp-active", Source: heal.FailurePatternSourceRuntime, Type: "t1",
+		PatternHash: "hash-active", PatternRegex: `test`, FixAction: heal.FixAction{Type: "retry"},
 		Confidence: 0.9, IsActive: true, CreatedAt: now, UpdatedAt: now,
 	}
-	inactive := bizmonitor.FailurePattern{
-		ID: "fp-inactive", Source: bizmonitor.FailurePatternSourceRuntime, Type: "t2",
-		PatternHash: "hash-inactive", PatternRegex: `test`, FixAction: bizmonitor.FixAction{Type: "log_only"},
+	inactive := heal.FailurePattern{
+		ID: "fp-inactive", Source: heal.FailurePatternSourceRuntime, Type: "t2",
+		PatternHash: "hash-inactive", PatternRegex: `test`, FixAction: heal.FixAction{Type: "log_only"},
 		Confidence: 0.3, IsActive: false, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, active); err != nil {
@@ -189,9 +189,9 @@ func TestFailurePatternRepo_IncrementSuccess(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Second)
-	pattern := bizmonitor.FailurePattern{
-		ID: "fp-inc", Source: bizmonitor.FailurePatternSourceMined, Type: "test",
-		PatternHash: "hash-inc", PatternRegex: `test`, FixAction: bizmonitor.FixAction{Type: "retry"},
+	pattern := heal.FailurePattern{
+		ID: "fp-inc", Source: heal.FailurePatternSourceMined, Type: "test",
+		PatternHash: "hash-inc", PatternRegex: `test`, FixAction: heal.FixAction{Type: "retry"},
 		Confidence: 0.5, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, pattern); err != nil {
@@ -221,9 +221,9 @@ func TestFailurePatternRepo_IncrementFail(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Second)
-	pattern := bizmonitor.FailurePattern{
-		ID: "fp-fail", Source: bizmonitor.FailurePatternSourceMined, Type: "test",
-		PatternHash: "hash-fail", PatternRegex: `test`, FixAction: bizmonitor.FixAction{Type: "retry"},
+	pattern := heal.FailurePattern{
+		ID: "fp-fail", Source: heal.FailurePatternSourceMined, Type: "test",
+		PatternHash: "hash-fail", PatternRegex: `test`, FixAction: heal.FixAction{Type: "retry"},
 		Confidence: 0.5, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, pattern); err != nil {
@@ -250,9 +250,9 @@ func TestFailurePatternRepo_Deactivate(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Second)
-	pattern := bizmonitor.FailurePattern{
-		ID: "fp-deact", Source: bizmonitor.FailurePatternSourceMined, Type: "test",
-		PatternHash: "hash-deact", PatternRegex: `test`, FixAction: bizmonitor.FixAction{Type: "retry"},
+	pattern := heal.FailurePattern{
+		ID: "fp-deact", Source: heal.FailurePatternSourceMined, Type: "test",
+		PatternHash: "hash-deact", PatternRegex: `test`, FixAction: heal.FixAction{Type: "retry"},
 		Confidence: 0.5, IsActive: true, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, pattern); err != nil {
@@ -279,9 +279,9 @@ func TestFailurePatternRepo_Update(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Second)
-	pattern := bizmonitor.FailurePattern{
-		ID: "fp-update", Source: bizmonitor.FailurePatternSourceRuntime, Type: "test",
-		PatternHash: "hash-update", PatternRegex: `old_regex`, FixAction: bizmonitor.FixAction{Type: "retry"},
+	pattern := heal.FailurePattern{
+		ID: "fp-update", Source: heal.FailurePatternSourceRuntime, Type: "test",
+		PatternHash: "hash-update", PatternRegex: `old_regex`, FixAction: heal.FixAction{Type: "retry"},
 		Confidence: 0.5, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, pattern); err != nil {

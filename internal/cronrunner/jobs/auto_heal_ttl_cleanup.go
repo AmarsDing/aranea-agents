@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -23,7 +23,7 @@ import (
 type AutoHealTTLCleanup struct {
 	interval time.Duration
 	maxAge   time.Duration
-	repo     monitor.HealRecordRepo
+	repo     heal.HealRecordRepo
 	lg       loggateway.Logger
 	flowLog  biz.FlowLogWriter
 }
@@ -49,7 +49,7 @@ func defaultHealTTLMaxAge() time.Duration {
 // NewAutoHealTTLCleanup creates the cleanup worker.
 // Pass interval/maxAge ≤ 0 to use environment-variable defaults.
 // flowLog may be nil; when set, cleanup failures are also emitted as flow logs.
-func NewAutoHealTTLCleanup(interval, maxAge time.Duration, repo monitor.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *AutoHealTTLCleanup {
+func NewAutoHealTTLCleanup(interval, maxAge time.Duration, repo heal.HealRecordRepo, lg loggateway.Logger, flowLog biz.FlowLogWriter) *AutoHealTTLCleanup {
 	if interval <= 0 {
 		interval = defaultHealTTLInterval()
 	}

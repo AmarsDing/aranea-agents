@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -325,15 +326,15 @@ func TestSIMonitorApprovalSink_IdempotentPerRun(t *testing.T) {
 // ── SIKBNegativePatternSink ──────────────────────────────────────────────────
 
 type siFakePatternKB struct {
-	byHash     map[string]*bizmonitor.FailurePattern
-	created    []bizmonitor.FailurePattern
+	byHash     map[string]*heal.FailurePattern
+	created    []heal.FailurePattern
 	incrementd []string
 }
 
-func (f *siFakePatternKB) GetByPatternHash(_ context.Context, hash string) (*bizmonitor.FailurePattern, error) {
+func (f *siFakePatternKB) GetByPatternHash(_ context.Context, hash string) (*heal.FailurePattern, error) {
 	return f.byHash[hash], nil
 }
-func (f *siFakePatternKB) Create(_ context.Context, p bizmonitor.FailurePattern) error {
+func (f *siFakePatternKB) Create(_ context.Context, p heal.FailurePattern) error {
 	f.created = append(f.created, p)
 	return nil
 }
@@ -343,7 +344,7 @@ func (f *siFakePatternKB) IncrementFail(_ context.Context, id string) error {
 }
 
 func TestSIKBNegativePatternSink_CreateNew(t *testing.T) {
-	kb := &siFakePatternKB{byHash: map[string]*bizmonitor.FailurePattern{}}
+	kb := &siFakePatternKB{byHash: map[string]*heal.FailurePattern{}}
 	sink := NewSIKBNegativePatternSink(kb, loggateway.NewNoop())
 	rec := biz.SINegativePatternRecord{RunID: "run-1", TriggerSource: biz.TriggerSourceErrorCluster, PatternHash: "h1", PatternRegex: "x.go"}
 	if err := sink.RecordNegativePattern(context.Background(), rec); err != nil {
@@ -362,7 +363,7 @@ func TestSIKBNegativePatternSink_CreateNew(t *testing.T) {
 }
 
 func TestSIKBNegativePatternSink_ExistingIncrementsFail(t *testing.T) {
-	kb := &siFakePatternKB{byHash: map[string]*bizmonitor.FailurePattern{
+	kb := &siFakePatternKB{byHash: map[string]*heal.FailurePattern{
 		"h1": {ID: "p1", PatternHash: "h1"},
 	}}
 	sink := NewSIKBNegativePatternSink(kb, loggateway.NewNoop())

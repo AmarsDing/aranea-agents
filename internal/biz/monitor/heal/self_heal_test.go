@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,18 +6,19 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
 // mockHealHandler records fix action calls for test assertions.
 type mockHealHandler struct {
 	calls      atomic.Int32
-	lastAction monitor.FixAction
+	lastAction heal.FixAction
 	lastMeta   map[string]any
 	shouldErr  bool
 }
 
-func (h *mockHealHandler) HandleFixAction(_ context.Context, action monitor.FixAction, meta map[string]any) error {
+func (h *mockHealHandler) HandleFixAction(_ context.Context, action heal.FixAction, meta map[string]any) error {
 	h.calls.Add(1)
 	h.lastAction = action
 	h.lastMeta = meta
@@ -34,24 +35,24 @@ type errMarker struct{ msg string }
 func (e *errMarker) Error() string { return e.msg }
 
 func TestNewSelfHealUsecase_NilDeps(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
 
-	if monitor.NewSelfHealUsecase(nil, handler, loggateway.NewNoop()) != nil {
+	if heal.NewSelfHealUsecase(nil, handler, loggateway.NewNoop()) != nil {
 		t.Error("NewSelfHealUsecase(nil diag) should return nil")
 	}
-	if monitor.NewSelfHealUsecase(diag, nil, loggateway.NewNoop()) != nil {
+	if heal.NewSelfHealUsecase(diag, nil, loggateway.NewNoop()) != nil {
 		t.Error("NewSelfHealUsecase(nil handler) should return nil")
 	}
 }
 
 func TestSelfHealUsecase_NilReceiver(t *testing.T) {
-	var uc *monitor.SelfHealUsecase
+	var uc *heal.SelfHealUsecase
 	_, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "tool-1", "auto", 5)
 	if err == nil {
 		t.Error("nil receiver should return error")
@@ -59,14 +60,14 @@ func TestSelfHealUsecase_NilReceiver(t *testing.T) {
 }
 
 func TestSelfHealUsecase_NoRootCauses(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "", "manual", 5)
 	if err != nil {
@@ -78,7 +79,7 @@ func TestSelfHealUsecase_NoRootCauses(t *testing.T) {
 }
 
 func TestSelfHealUsecase_LowConfidenceSkipped(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -89,9 +90,9 @@ func TestSelfHealUsecase_LowConfidenceSkipped(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "session-check", "auto", 5)
 	if err != nil {
@@ -104,7 +105,7 @@ func TestSelfHealUsecase_LowConfidenceSkipped(t *testing.T) {
 }
 
 func TestSelfHealUsecase_AppliedFix(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -115,9 +116,9 @@ func TestSelfHealUsecase_AppliedFix(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "mcp-connect", "auto_error_event", 5)
 	if err != nil {
@@ -138,7 +139,7 @@ func TestSelfHealUsecase_AppliedFix(t *testing.T) {
 }
 
 func TestSelfHealUsecase_FixActionFailed(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -149,9 +150,9 @@ func TestSelfHealUsecase_FixActionFailed(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{shouldErr: true}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "mcp-connect", "auto", 5)
 	if err != nil {
@@ -163,7 +164,7 @@ func TestSelfHealUsecase_FixActionFailed(t *testing.T) {
 }
 
 func TestSelfHealUsecase_CooldownPreventsRepeat(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -174,9 +175,9 @@ func TestSelfHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	// First heal should succeed
 	rec1, _ := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "mcp-connect", "auto", 5)
@@ -192,14 +193,14 @@ func TestSelfHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 }
 
 func TestSelfHealUsecase_ListHealRecords(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	// Generate a record
 	uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "", "manual", 5)
@@ -214,7 +215,7 @@ func TestSelfHealUsecase_ListHealRecords(t *testing.T) {
 }
 
 func TestSelfHealUsecase_ProviderTimeoutRetry(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -225,9 +226,9 @@ func TestSelfHealUsecase_ProviderTimeoutRetry(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, err := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "llm-call", "auto", 5)
 	if err != nil {
@@ -245,7 +246,7 @@ func TestSelfHealUsecase_ProviderTimeoutRetry(t *testing.T) {
 }
 
 func TestSelfHealUsecase_RateLimitRetry(t *testing.T) {
-	repo := &mockRepo{
+	repo := &mockEventTraceRepo{
 		listMonitorEventsFn: func(_ context.Context, _ monitor.EventsQuery) (monitor.ListResult, error) {
 			return monitor.ListResult{
 				Items: []monitor.PlatformRow{
@@ -256,9 +257,9 @@ func TestSelfHealUsecase_RateLimitRetry(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, repo, monitor.NewRootCauseEngine(loggateway.NewNoop()))
+	diag := heal.NewDiagBundleGenerator(repo, repo, heal.NewRootCauseEngine(loggateway.NewNoop()))
 	handler := &mockHealHandler{}
-	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
+	uc := heal.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
 	rec, _ := uc.DiagnoseAndHeal(context.Background(), "", "s1", "", "llm-call", "auto", 5)
 	if rec.Status != "applied" {

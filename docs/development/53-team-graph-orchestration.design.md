@@ -86,11 +86,17 @@ pkg/trpc-agent-go/graph · team         ← 框架真相源
   "failure_policy": {
     "default": "retry_then_block",
     "retry": { "max_attempts": 3 }
+  },
+  "model_cascade": {
+    "member_provider": "openai",
+    "member_model": "gpt-4o-mini"
   }
 }
 ```
 
 与现有 `definition_json` 向后兼容：`version` 缺省为 1，无 `graph` 时由编译器生成。
+
+**`model_cascade`（P2-1 模型级联，可选）**：存在即启用 Leader/Member 分档路由——synthesizer 与 intent anchor（planner 档）保持各自配置的高档模型，其余成员经 run 级 `ModelSelector`（`agent.CascadeModelSelector`，随 root RunOptions 传播到成员 invocation）路由到成本档模型；`member_model` 为空 = auto 选取目录中最便宜的 ToolCall 可用模型，`member_model` 缺 `member_provider` 视为无效配置并回退 base。路由决策发射流程日志 `team.model_cascade.route`（见 52-flow-logger.design.md §5.1）。
 
 ### 2.2 节点注册表（运行期）
 

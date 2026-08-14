@@ -51,8 +51,7 @@ func (r *mcpServerRepo) ListMCPServerUserCredentials(ctx context.Context, mcpSer
 // UpsertMCPServerUserCredential atomically finds-or-creates a user credential
 // inside a transaction. The read-then-write sequence is wrapped in ExecInTx so
 // that two concurrent upserts for the same (server, user, key) tuple cannot
-// both observe "not found" and race into a unique-constraint violation: the
-// transaction serializes the read and the write on the SQLite write connection.
+// both observe "not found" and race into a unique-constraint violation.
 func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred biz.MCPServerUserCredential) (biz.MCPServerUserCredential, error) {
 	var out biz.MCPServerUserCredential
 	txErr := r.data.ExecInTx(ctx, func(txCtx context.Context) error {

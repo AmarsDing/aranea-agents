@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,29 +6,30 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
 // --- mock: HealRecordRepo ---
 
 type mockHealRecordRepo struct {
-	insertFn func(ctx context.Context, record monitor.HealRecord) error
-	listFn   func(ctx context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error)
+	insertFn func(ctx context.Context, record heal.HealRecord) error
+	listFn   func(ctx context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error)
 	deleteFn func(ctx context.Context, olderThan time.Time) (int, error)
 }
 
-func (m *mockHealRecordRepo) InsertHealRecord(ctx context.Context, record monitor.HealRecord) error {
+func (m *mockHealRecordRepo) InsertHealRecord(ctx context.Context, record heal.HealRecord) error {
 	if m.insertFn != nil {
 		return m.insertFn(ctx, record)
 	}
 	return nil
 }
 
-func (m *mockHealRecordRepo) ListHealRecords(ctx context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+func (m *mockHealRecordRepo) ListHealRecords(ctx context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 	if m.listFn != nil {
 		return m.listFn(ctx, query)
 	}
-	return monitor.HealRecordListResult{}, nil
+	return heal.HealRecordListResult{}, nil
 }
 
 func (m *mockHealRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
@@ -40,9 +41,9 @@ func (m *mockHealRecordRepo) DeleteHealRecordsOlderThan(ctx context.Context, old
 
 // --- helpers ---
 
-func newTestObserver(repo monitor.HealRecordRepo, notifier *AlertNotifierCapture) *monitor.SelfHealObserver {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
-	o, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+func newTestObserver(repo heal.HealRecordRepo, notifier *AlertNotifierCapture) *heal.SelfHealObserver {
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
+	o, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 	if err != nil {
 		panic(err)
 	}
@@ -81,24 +82,24 @@ func errorMeta(stepID string, extra ...map[string]any) map[string]any {
 // --- tests ---
 
 func TestNewSelfHealObserver_NilDeps(t *testing.T) {
-	engine := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	engine := heal.NewRootCauseEngine(loggateway.NewNoop())
 	repo := &mockHealRecordRepo{}
 	notifier := &AlertNotifierCapture{}
 
 	// nil repo
-	_, err := monitor.NewSelfHealObserver(nil, nil, engine, notifier, loggateway.NewNoop())
+	_, err := heal.NewSelfHealObserver(nil, nil, engine, notifier, loggateway.NewNoop())
 	if err == nil {
 		t.Error("nil repo should return error")
 	}
 
 	// nil engine
-	_, err = monitor.NewSelfHealObserver(nil, repo, nil, notifier, loggateway.NewNoop())
+	_, err = heal.NewSelfHealObserver(nil, repo, nil, notifier, loggateway.NewNoop())
 	if err == nil {
 		t.Error("nil engine should return error")
 	}
 
 	// normal
-	o, err := monitor.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
+	o, err := heal.NewSelfHealObserver(nil, repo, engine, notifier, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("normal params should succeed, got: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestNewSelfHealObserver_NilDeps(t *testing.T) {
 }
 
 func TestSelfHealObserver_NilReceiver(t *testing.T) {
-	var o *monitor.SelfHealObserver
+	var o *heal.SelfHealObserver
 
 	// ObserveFlowLogEvent should not panic
 	o.ObserveFlowLogEvent(context.Background(), map[string]any{"flow_phase": "error"})
@@ -123,7 +124,7 @@ func TestSelfHealObserver_NilReceiver(t *testing.T) {
 	}
 
 	// ListHealRecords should return zero value
-	result, err := o.ListHealRecords(context.Background(), monitor.HealRecordQuery{})
+	result, err := o.ListHealRecords(context.Background(), heal.HealRecordQuery{})
 	if err != nil {
 		t.Fatalf("nil receiver ListHealRecords should return nil error, got: %v", err)
 	}
@@ -135,7 +136,7 @@ func TestSelfHealObserver_NilReceiver(t *testing.T) {
 func TestSelfHealObserver_ObserveFlowLogEvent_NonErrorPhase(t *testing.T) {
 	insertCalled := false
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, _ monitor.HealRecord) error {
+		insertFn: func(_ context.Context, _ heal.HealRecord) error {
 			insertCalled = true
 			return nil
 		},
@@ -156,7 +157,7 @@ func TestSelfHealObserver_ObserveFlowLogEvent_NonErrorPhase(t *testing.T) {
 func TestSelfHealObserver_ObserveFlowLogEvent_EmptyStepID(t *testing.T) {
 	insertCalled := false
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, _ monitor.HealRecord) error {
+		insertFn: func(_ context.Context, _ heal.HealRecord) error {
 			insertCalled = true
 			return nil
 		},
@@ -175,7 +176,7 @@ func TestSelfHealObserver_ObserveFlowLogEvent_EmptyStepID(t *testing.T) {
 }
 
 func TestSelfHealObserver_ObserveFlowLogEvent_NilMeta(t *testing.T) {
-	var o *monitor.SelfHealObserver
+	var o *heal.SelfHealObserver
 	// Should not panic
 	o.ObserveFlowLogEvent(context.Background(), nil)
 
@@ -187,9 +188,9 @@ func TestSelfHealObserver_ObserveFlowLogEvent_NilMeta(t *testing.T) {
 }
 
 func TestSelfHealObserver_AutoHealSuccess(t *testing.T) {
-	var inserted monitor.HealRecord
+	var inserted heal.HealRecord
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, record monitor.HealRecord) error {
+		insertFn: func(_ context.Context, record heal.HealRecord) error {
 			inserted = record
 			return nil
 		},
@@ -305,9 +306,9 @@ func TestSelfHealObserver_AutoHealSuccess_ResetsWindow(t *testing.T) {
 }
 
 func TestSelfHealObserver_RootCauseAnalysis_HighConfidence(t *testing.T) {
-	var insertedRecords []monitor.HealRecord
+	var insertedRecords []heal.HealRecord
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, record monitor.HealRecord) error {
+		insertFn: func(_ context.Context, record heal.HealRecord) error {
 			insertedRecords = append(insertedRecords, record)
 			return nil
 		},
@@ -354,7 +355,7 @@ func TestSelfHealObserver_RootCauseAnalysis_LowConfidence(t *testing.T) {
 func TestSelfHealObserver_RootCauseAnalysis_NoCauses(t *testing.T) {
 	insertCalled := false
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, _ monitor.HealRecord) error {
+		insertFn: func(_ context.Context, _ heal.HealRecord) error {
 			insertCalled = true
 			return nil
 		},
@@ -396,9 +397,9 @@ func TestSelfHealObserver_Cooldown(t *testing.T) {
 }
 
 func TestSelfHealObserver_DiagnoseAndObserve_NoCauses(t *testing.T) {
-	var inserted monitor.HealRecord
+	var inserted heal.HealRecord
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, record monitor.HealRecord) error {
+		insertFn: func(_ context.Context, record heal.HealRecord) error {
 			inserted = record
 			return nil
 		},
@@ -420,9 +421,9 @@ func TestSelfHealObserver_DiagnoseAndObserve_NoCauses(t *testing.T) {
 }
 
 func TestSelfHealObserver_DiagnoseAndObserve_HighConfidence(t *testing.T) {
-	var inserted monitor.HealRecord
+	var inserted heal.HealRecord
 	repo := &mockHealRecordRepo{
-		insertFn: func(_ context.Context, record monitor.HealRecord) error {
+		insertFn: func(_ context.Context, record heal.HealRecord) error {
 			inserted = record
 			return nil
 		},
@@ -448,9 +449,9 @@ func TestSelfHealObserver_DiagnoseAndObserve_HighConfidence(t *testing.T) {
 
 func TestSelfHealObserver_GetHealStats(t *testing.T) {
 	repo := &mockHealRecordRepo{
-		listFn: func(_ context.Context, _ monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
-			return monitor.HealRecordListResult{
-				Items: []monitor.HealRecord{
+		listFn: func(_ context.Context, _ heal.HealRecordQuery) (heal.HealRecordListResult, error) {
+			return heal.HealRecordListResult{
+				Items: []heal.HealRecord{
 					{Status: "observed_healed", RuleID: "r1"},
 					{Status: "observed_healed", RuleID: "r2"},
 					{Status: "observed_failed", RuleID: "r3"},
@@ -485,12 +486,12 @@ func TestSelfHealObserver_GetHealStats(t *testing.T) {
 }
 
 func TestSelfHealObserver_ListHealRecords(t *testing.T) {
-	want := monitor.HealRecordListResult{
-		Items: []monitor.HealRecord{{ID: "h1"}, {ID: "h2"}},
+	want := heal.HealRecordListResult{
+		Items: []heal.HealRecord{{ID: "h1"}, {ID: "h2"}},
 		Total: 2,
 	}
 	repo := &mockHealRecordRepo{
-		listFn: func(_ context.Context, query monitor.HealRecordQuery) (monitor.HealRecordListResult, error) {
+		listFn: func(_ context.Context, query heal.HealRecordQuery) (heal.HealRecordListResult, error) {
 			if query.Limit != 10 {
 				t.Errorf("Limit = %d, want 10", query.Limit)
 			}
@@ -500,7 +501,7 @@ func TestSelfHealObserver_ListHealRecords(t *testing.T) {
 	notifier := &AlertNotifierCapture{}
 	o := newTestObserver(repo, notifier)
 
-	result, err := o.ListHealRecords(context.Background(), monitor.HealRecordQuery{Limit: 10})
+	result, err := o.ListHealRecords(context.Background(), heal.HealRecordQuery{Limit: 10})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -510,7 +511,7 @@ func TestSelfHealObserver_ListHealRecords(t *testing.T) {
 }
 
 // statusesOf returns the statuses of the given records for error messages.
-func statusesOf(records []monitor.HealRecord) []string {
+func statusesOf(records []heal.HealRecord) []string {
 	s := make([]string, len(records))
 	for i, r := range records {
 		s[i] = r.Status

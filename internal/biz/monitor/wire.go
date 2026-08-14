@@ -65,7 +65,6 @@ func ProvideSelfCheckRepairers(
 // WireProviderSet exports all monitor sub-package Wire providers.
 var WireProviderSet = wire.NewSet(
 	NewAlertMetricRegistry,
-	NewRootCauseEngine,
 	ProvideSelfCheckers,
 	ProvideSelfCheckRepairers,
 )

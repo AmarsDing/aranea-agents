@@ -1,23 +1,23 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
 	"encoding/json"
 	"testing"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewRootCauseEngine(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	if e == nil {
 		t.Fatal("NewRootCauseEngine() = nil, want non-nil")
 	}
 }
 
 func TestRootCauseEngine_Evaluate_NilReceiver(t *testing.T) {
-	var e *monitor.RootCauseEngine
+	var e *heal.RootCauseEngine
 	got := e.Evaluate(context.Background(), "llm.call", "error", nil)
 	if got != nil {
 		t.Fatalf("nil.Evaluate() = %v, want nil", got)
@@ -25,7 +25,7 @@ func TestRootCauseEngine_Evaluate_NilReceiver(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	tests := []struct {
@@ -204,7 +204,7 @@ func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_Confidence(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{"error_code": "429"})
@@ -222,7 +222,7 @@ func TestRootCauseEngine_Evaluate_Confidence(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_MultipleMatches(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{
@@ -235,7 +235,7 @@ func TestRootCauseEngine_Evaluate_MultipleMatches(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_MetadataPassedThrough(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 	meta := map[string]any{"error_code": "429", "detail": "test"}
 
@@ -249,7 +249,7 @@ func TestRootCauseEngine_Evaluate_MetadataPassedThrough(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_WildcardStepID(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	tests := []struct {
@@ -277,7 +277,7 @@ func TestRootCauseEngine_Evaluate_WildcardStepID(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_ErrorCodeFallback(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{
@@ -295,7 +295,7 @@ func TestRootCauseEngine_Evaluate_ErrorCodeFallback(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_ErrorMessageFallback(t *testing.T) {
-	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
+	e := heal.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{
@@ -313,26 +313,26 @@ func TestRootCauseEngine_Evaluate_ErrorMessageFallback(t *testing.T) {
 }
 
 func TestRootCauseResultsToJSON_Empty(t *testing.T) {
-	got := monitor.RootCauseResultsToJSON(nil)
+	got := heal.RootCauseResultsToJSON(nil)
 	if got != "[]" {
 		t.Errorf("RootCauseResultsToJSON(nil) = %q, want %q", got, "[]")
 	}
 
-	got2 := monitor.RootCauseResultsToJSON([]monitor.RootCauseResult{})
+	got2 := heal.RootCauseResultsToJSON([]heal.RootCauseResult{})
 	if got2 != "[]" {
 		t.Errorf("RootCauseResultsToJSON(empty) = %q, want %q", got2, "[]")
 	}
 }
 
 func TestRootCauseResultsToJSON_WithResults(t *testing.T) {
-	results := []monitor.RootCauseResult{
+	results := []heal.RootCauseResult{
 		{RuleID: "rc-1", Name: "Test", RootCause: "cause", FixSuggest: "fix", Severity: "high", Confidence: 0.8},
 	}
-	got := monitor.RootCauseResultsToJSON(results)
+	got := heal.RootCauseResultsToJSON(results)
 	if got == "" || got == "[]" {
 		t.Fatalf("RootCauseResultsToJSON() = %q, want non-empty JSON", got)
 	}
-	var parsed []monitor.RootCauseResult
+	var parsed []heal.RootCauseResult
 	if err := json.Unmarshal([]byte(got), &parsed); err != nil {
 		t.Fatalf("RootCauseResultsToJSON() produced invalid JSON: %v", err)
 	}
@@ -348,12 +348,12 @@ func TestRootCauseResultsToJSON_WithResults(t *testing.T) {
 }
 
 func TestRootCauseResultsToJSON_MultipleResults(t *testing.T) {
-	results := []monitor.RootCauseResult{
+	results := []heal.RootCauseResult{
 		{RuleID: "rc-1", Name: "A", Confidence: 0.7},
 		{RuleID: "rc-2", Name: "B", Confidence: 0.9},
 	}
-	got := monitor.RootCauseResultsToJSON(results)
-	var parsed []monitor.RootCauseResult
+	got := heal.RootCauseResultsToJSON(results)
+	var parsed []heal.RootCauseResult
 	if err := json.Unmarshal([]byte(got), &parsed); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestMatchStepID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.MatchStepID(tt.pattern, tt.stepID)
+			got := heal.MatchStepID(tt.pattern, tt.stepID)
 			if got != tt.want {
 				t.Errorf("MatchStepID(%q, %q) = %v, want %v", tt.pattern, tt.stepID, got, tt.want)
 			}
@@ -392,55 +392,55 @@ func TestMatchStepID(t *testing.T) {
 func TestMatchPrerequisite(t *testing.T) {
 	tests := []struct {
 		name string
-		pre  monitor.Prerequisite
+		pre  heal.Prerequisite
 		meta map[string]any
 		want bool
 	}{
 		{
 			name: "step_id_match",
-			pre:  monitor.Prerequisite{StepID: "llm.call"},
+			pre:  heal.Prerequisite{StepID: "llm.call"},
 			meta: map[string]any{"step_id": "llm.call"},
 			want: true,
 		},
 		{
 			name: "step_id_no_match",
-			pre:  monitor.Prerequisite{StepID: "llm.call"},
+			pre:  heal.Prerequisite{StepID: "llm.call"},
 			meta: map[string]any{"step_id": "tool.exec"},
 			want: false,
 		},
 		{
 			name: "phase_match_case_insensitive",
-			pre:  monitor.Prerequisite{Phase: "error"},
+			pre:  heal.Prerequisite{Phase: "error"},
 			meta: map[string]any{"flow_phase": "Error"},
 			want: true,
 		},
 		{
 			name: "phase_no_match",
-			pre:  monitor.Prerequisite{Phase: "error"},
+			pre:  heal.Prerequisite{Phase: "error"},
 			meta: map[string]any{"flow_phase": "done"},
 			want: false,
 		},
 		{
 			name: "both_match",
-			pre:  monitor.Prerequisite{StepID: "llm.call", Phase: "error"},
+			pre:  heal.Prerequisite{StepID: "llm.call", Phase: "error"},
 			meta: map[string]any{"step_id": "llm.call", "flow_phase": "error"},
 			want: true,
 		},
 		{
 			name: "nil_metadata",
-			pre:  monitor.Prerequisite{StepID: "llm.call"},
+			pre:  heal.Prerequisite{StepID: "llm.call"},
 			meta: nil,
 			want: false,
 		},
 		{
 			name: "empty_prerequisite",
-			pre:  monitor.Prerequisite{},
+			pre:  heal.Prerequisite{},
 			meta: map[string]any{},
 			want: true,
 		},
 		{
 			name: "nil_metadata_empty_pre",
-			pre:  monitor.Prerequisite{},
+			pre:  heal.Prerequisite{},
 			meta: nil,
 			want: true,
 		},
@@ -448,7 +448,7 @@ func TestMatchPrerequisite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.MatchPrerequisite(tt.pre, tt.meta)
+			got := heal.MatchPrerequisite(tt.pre, tt.meta)
 			if got != tt.want {
 				t.Errorf("MatchPrerequisite() = %v, want %v", got, tt.want)
 			}
@@ -456,7 +456,7 @@ func TestMatchPrerequisite(t *testing.T) {
 	}
 }
 
-func ruleIDs(results []monitor.RootCauseResult) []string {
+func ruleIDs(results []heal.RootCauseResult) []string {
 	ids := make([]string, len(results))
 	for i, r := range results {
 		ids[i] = r.RuleID

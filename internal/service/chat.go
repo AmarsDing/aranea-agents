@@ -420,8 +420,16 @@ func (s *ChatService) EnqueueUserMessage(ctx context.Context, req *chatv1.Enqueu
 	if content == "" {
 		return nil, apierror.BadRequest(apierror.DomainChat, "content is required")
 	}
+	// P2-3 三级注入语义：""/"steer"=插话（下一 step 边界），"followup"=显式
+	// 追问（排队新 turn），"inject"=静默上下文（不唤醒）。非法 kind 在边界拒掉。
+	kind := strings.ToLower(strings.TrimSpace(req.GetKind()))
+	switch kind {
+	case "", biz.ChatEnqueueKindSteer, biz.ChatEnqueueKindFollowup, biz.ChatEnqueueKindInject:
+	default:
+		return nil, apierror.BadRequest(apierror.DomainChat, "invalid kind: must be steer|followup|inject")
+	}
 
-	accepted, queued, pendingID, _, err := s.orch.EnqueueUserMessage(sessionID, content)
+	accepted, queued, pendingID, _, err := s.orch.EnqueueUserMessageWithKind(sessionID, content, kind)
 	if err != nil {
 		return nil, err
 	}

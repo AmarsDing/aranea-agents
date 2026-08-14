@@ -1,4 +1,4 @@
-package monitor_test
+package heal_test
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"aranea-agents/internal/biz/monitor"
+
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -40,9 +41,9 @@ func (m *mockMCPRefresher) RefreshEnabledHealth(_ context.Context, _ int) (int, 
 
 func TestCatalogHealActionHandler_Retry_CallsProber(t *testing.T) {
 	prober := &mockProviderProber{}
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
 
-	action := monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 1}}
+	action := heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 1}}
 	if err := h.HandleFixAction(context.Background(), action, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,9 +54,9 @@ func TestCatalogHealActionHandler_Retry_CallsProber(t *testing.T) {
 
 func TestCatalogHealActionHandler_Retry_RetriesOnError(t *testing.T) {
 	prober := &mockProviderProber{errs: []error{errors.New("boom"), nil}}
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
 
-	action := monitor.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 1}}
+	action := heal.FixAction{Type: "retry", MaxAttempts: 2, Params: map[string]any{"backoff_ms": 1}}
 	if err := h.HandleFixAction(context.Background(), action, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -66,9 +67,9 @@ func TestCatalogHealActionHandler_Retry_RetriesOnError(t *testing.T) {
 
 func TestCatalogHealActionHandler_Retry_ExhaustsAttempts(t *testing.T) {
 	prober := &mockProviderProber{errs: []error{errors.New("boom"), errors.New("boom"), errors.New("boom")}}
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober)
 
-	action := monitor.FixAction{Type: "retry", MaxAttempts: 3, Params: map[string]any{"backoff_ms": 1}}
+	action := heal.FixAction{Type: "retry", MaxAttempts: 3, Params: map[string]any{"backoff_ms": 1}}
 	if err := h.HandleFixAction(context.Background(), action, nil); err == nil {
 		t.Fatal("expected error after exhausting attempts")
 	}
@@ -78,9 +79,9 @@ func TestCatalogHealActionHandler_Retry_ExhaustsAttempts(t *testing.T) {
 }
 
 func TestCatalogHealActionHandler_Retry_NoProberBound(t *testing.T) {
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop())
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop())
 
-	action := monitor.FixAction{Type: "retry", MaxAttempts: 1}
+	action := heal.FixAction{Type: "retry", MaxAttempts: 1}
 	if err := h.HandleFixAction(context.Background(), action, nil); err == nil {
 		t.Fatal("expected error when no prober is bound")
 	}
@@ -88,9 +89,9 @@ func TestCatalogHealActionHandler_Retry_NoProberBound(t *testing.T) {
 
 func TestCatalogHealActionHandler_Reconnect_CallsRefresher(t *testing.T) {
 	refresher := &mockMCPRefresher{probed: 5}
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop()).BindReconnect(refresher)
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop()).BindReconnect(refresher)
 
-	action := monitor.FixAction{Type: "reconnect", MaxAttempts: 3}
+	action := heal.FixAction{Type: "reconnect", MaxAttempts: 3}
 	if err := h.HandleFixAction(context.Background(), action, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -100,9 +101,9 @@ func TestCatalogHealActionHandler_Reconnect_CallsRefresher(t *testing.T) {
 }
 
 func TestCatalogHealActionHandler_Reconnect_NoRefresherBound(t *testing.T) {
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop())
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop())
 
-	action := monitor.FixAction{Type: "reconnect", MaxAttempts: 1}
+	action := heal.FixAction{Type: "reconnect", MaxAttempts: 1}
 	if err := h.HandleFixAction(context.Background(), action, nil); err == nil {
 		t.Fatal("expected error when no refresher is bound")
 	}
@@ -111,10 +112,10 @@ func TestCatalogHealActionHandler_Reconnect_NoRefresherBound(t *testing.T) {
 func TestCatalogHealActionHandler_RecordOnlyActions(t *testing.T) {
 	prober := &mockProviderProber{}
 	refresher := &mockMCPRefresher{}
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober).BindReconnect(refresher)
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop()).BindRetry(prober).BindReconnect(refresher)
 
 	for _, typ := range []string{"fallback", "log_only"} {
-		action := monitor.FixAction{Type: typ, MaxAttempts: 1}
+		action := heal.FixAction{Type: typ, MaxAttempts: 1}
 		if err := h.HandleFixAction(context.Background(), action, nil); err != nil {
 			t.Fatalf("%s: unexpected error: %v", typ, err)
 		}
@@ -125,17 +126,17 @@ func TestCatalogHealActionHandler_RecordOnlyActions(t *testing.T) {
 }
 
 func TestCatalogHealActionHandler_UnknownAction_Fails(t *testing.T) {
-	h := monitor.NewCatalogHealActionHandler(loggateway.NewNoop())
+	h := heal.NewCatalogHealActionHandler(loggateway.NewNoop())
 
-	action := monitor.FixAction{Type: "explode", MaxAttempts: 1}
+	action := heal.FixAction{Type: "explode", MaxAttempts: 1}
 	if err := h.HandleFixAction(context.Background(), action, nil); err == nil {
 		t.Fatal("expected error for unknown action type")
 	}
 }
 
 func TestCatalogHealActionHandler_NilSafe(t *testing.T) {
-	var h *monitor.CatalogHealActionHandler
-	if err := h.HandleFixAction(context.Background(), monitor.FixAction{Type: "retry"}, nil); err == nil {
+	var h *heal.CatalogHealActionHandler
+	if err := h.HandleFixAction(context.Background(), heal.FixAction{Type: "retry"}, nil); err == nil {
 		t.Fatal("expected error on nil receiver")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/apierror"
 )
 
@@ -13,10 +13,10 @@ type failurePatternRepo struct {
 	data *Data
 }
 
-var _ bizmonitor.FailurePatternReader = (*failurePatternRepo)(nil)
-var _ bizmonitor.FailurePatternWriter = (*failurePatternRepo)(nil)
-var _ bizmonitor.FailurePatternReader = (*FailurePatternReadWriter)(nil)
-var _ bizmonitor.FailurePatternWriter = (*FailurePatternReadWriter)(nil)
+var _ heal.FailurePatternReader = (*failurePatternRepo)(nil)
+var _ heal.FailurePatternWriter = (*failurePatternRepo)(nil)
+var _ heal.FailurePatternReader = (*FailurePatternReadWriter)(nil)
+var _ heal.FailurePatternWriter = (*FailurePatternReadWriter)(nil)
 
 // FailurePatternReadWriter combines FailurePatternReader and FailurePatternWriter.
 // Used as a Wire binding target since the concrete repo implements both interfaces.
@@ -29,7 +29,7 @@ func NewFailurePatternRepo(d *Data) *FailurePatternReadWriter {
 	return &FailurePatternReadWriter{failurePatternRepo: &failurePatternRepo{data: d}}
 }
 
-func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.FailurePattern) error {
+func (r *failurePatternRepo) Create(ctx context.Context, pattern heal.FailurePattern) error {
 	if r == nil || r.data == nil {
 		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
@@ -60,7 +60,7 @@ func (r *failurePatternRepo) Create(ctx context.Context, pattern bizmonitor.Fail
 	return err
 }
 
-func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.FailurePattern) error {
+func (r *failurePatternRepo) Update(ctx context.Context, pattern heal.FailurePattern) error {
 	if r == nil || r.data == nil {
 		return apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
@@ -90,7 +90,7 @@ func (r *failurePatternRepo) Update(ctx context.Context, pattern bizmonitor.Fail
 	return err
 }
 
-func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor.FailurePatternSource) ([]bizmonitor.FailurePattern, error) {
+func (r *failurePatternRepo) ListBySource(ctx context.Context, source heal.FailurePatternSource) ([]heal.FailurePattern, error) {
 	if r == nil || r.data == nil {
 		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
@@ -109,7 +109,7 @@ func (r *failurePatternRepo) ListBySource(ctx context.Context, source bizmonitor
 	return scanFailurePatterns(rows)
 }
 
-func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) (*bizmonitor.FailurePattern, error) {
+func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) (*heal.FailurePattern, error) {
 	if r == nil || r.data == nil {
 		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
@@ -135,7 +135,7 @@ func (r *failurePatternRepo) GetByPatternHash(ctx context.Context, hash string) 
 	return &patterns[0], nil
 }
 
-func (r *failurePatternRepo) ListActive(ctx context.Context) ([]bizmonitor.FailurePattern, error) {
+func (r *failurePatternRepo) ListActive(ctx context.Context) ([]heal.FailurePattern, error) {
 	if r == nil || r.data == nil {
 		return nil, apierror.Internal("FAILURE_PATTERN", "database not configured")
 	}
@@ -193,8 +193,8 @@ func scanFailurePatterns(rows interface {
 	Close() error
 	Next() bool
 	Scan(dest ...any) error
-}) ([]bizmonitor.FailurePattern, error) {
-	var patterns []bizmonitor.FailurePattern
+}) ([]heal.FailurePattern, error) {
+	var patterns []heal.FailurePattern
 	for rows.Next() {
 		var (
 			id, source, fpType, patternHash, patternRegex string
@@ -209,16 +209,16 @@ func scanFailurePatterns(rows interface {
 			return nil, entErrToBizErr(err, "FAILURE_PATTERN")
 		}
 
-		var fixAction bizmonitor.FixAction
+		var fixAction heal.FixAction
 		if err := json.Unmarshal([]byte(fixActionJSON), &fixAction); err != nil {
-			fixAction = bizmonitor.FixAction{Type: "log_only"}
+			fixAction = heal.FixAction{Type: "log_only"}
 		}
 
 		createdAt, _ := time.Parse(time.RFC3339Nano, createdAtStr)
 		updatedAt, _ := time.Parse(time.RFC3339Nano, updatedAtStr)
 
-		patterns = append(patterns, bizmonitor.FailurePattern{
-			ID: id, Source: bizmonitor.FailurePatternSource(source), Type: fpType,
+		patterns = append(patterns, heal.FailurePattern{
+			ID: id, Source: heal.FailurePatternSource(source), Type: fpType,
 			PatternHash: patternHash, PatternRegex: patternRegex, FixAction: fixAction,
 			Confidence: confidence, SuccessCount: successCount, FailCount: failCount,
 			Version: version, IsActive: isActive, CreatedAt: createdAt, UpdatedAt: updatedAt,

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -16,13 +16,13 @@ import (
 // generates mined fix templates for the failure_pattern knowledge base.
 type PatternMiningJob struct {
 	interval time.Duration
-	uc       *bizmonitor.PatternMiningUsecase
+	uc       *heal.PatternMiningUsecase
 	lg       loggateway.Logger
 }
 
 // NewPatternMiningJob creates a new pattern mining periodic job.
 // Pass interval ≤ 0 to use the environment-variable default or 24 hours.
-func NewPatternMiningJob(interval time.Duration, uc *bizmonitor.PatternMiningUsecase, lg loggateway.Logger) *PatternMiningJob {
+func NewPatternMiningJob(interval time.Duration, uc *heal.PatternMiningUsecase, lg loggateway.Logger) *PatternMiningJob {
 	if interval <= 0 {
 		interval = patternMiningIntervalFromEnv()
 	}

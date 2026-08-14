@@ -1,4 +1,4 @@
-package monitor
+package heal
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz/monitor/alert"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
@@ -31,7 +32,7 @@ const healPersistErrInterval = 10 * time.Second
 type SelfHealObserver struct {
 	repo     HealRecordRepo
 	engine   *RootCauseEngine
-	notifier AlertNotifier
+	notifier alert.AlertNotifier
 	lg       loggateway.Logger
 	healConf conf.RuntimeSelfHealConfig
 
@@ -45,7 +46,7 @@ type SelfHealObserver struct {
 }
 
 // NewSelfHealObserver creates a new SelfHealObserver. // WIRE: needs *conf.Runtime
-func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
+func NewSelfHealObserver(runtimeConf *conf.Runtime, repo HealRecordRepo, engine *RootCauseEngine, notifier alert.AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
 	if repo == nil {
 		return nil, apierror.Internal("MONITOR", "HealRecordRepo is required")
 	}
@@ -374,7 +375,7 @@ func (o *SelfHealObserver) fireAlert(ctx context.Context, ruleID, stepID, sessio
 
 	// Notify via AlertNotifier
 	if o.notifier != nil {
-		o.notifier.Notify(ctx, AlertRule{
+		o.notifier.Notify(ctx, alert.AlertRule{
 			ID:       ruleID,
 			Name:     "Self-heal alert: " + ruleID,
 			Severity: severity,
@@ -417,7 +418,7 @@ func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, ste
 
 	// Notify via AlertNotifier
 	if o.notifier != nil {
-		o.notifier.Notify(ctx, AlertRule{
+		o.notifier.Notify(ctx, alert.AlertRule{
 			ID:       ruleID,
 			Name:     "Circuit breaker open: " + ruleID,
 			Severity: severity,

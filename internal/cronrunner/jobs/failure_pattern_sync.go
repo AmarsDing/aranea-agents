@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/heal"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -24,9 +24,9 @@ import (
 //	FAILURE_PATTERN_SYNC_FILE     — path to patterns.jsonl; default ".auto-fix/patterns.jsonl"
 type FailurePatternSyncJob struct {
 	interval     time.Duration
-	engine       *bizmonitor.RootCauseEngine
-	writer       bizmonitor.FailurePatternWriter
-	reader       bizmonitor.FailurePatternReader
+	engine       *heal.RootCauseEngine
+	writer       heal.FailurePatternWriter
+	reader       heal.FailurePatternReader
 	patternsFile string
 	lg           loggateway.Logger
 }
@@ -35,7 +35,7 @@ type FailurePatternSyncJob struct {
 type ciPatternEntry struct {
 	Type         string               `json:"type"`
 	PatternRegex string               `json:"pattern_regex"`
-	FixAction    bizmonitor.FixAction `json:"fix_action"`
+	FixAction    heal.FixAction `json:"fix_action"`
 }
 
 func defaultFailurePatternSyncInterval() time.Duration {
@@ -58,9 +58,9 @@ func defaultFailurePatternSyncFile() string {
 // Pass interval ≤ 0 to use environment-variable defaults.
 func NewFailurePatternSyncJob(
 	interval time.Duration,
-	engine *bizmonitor.RootCauseEngine,
-	writer bizmonitor.FailurePatternWriter,
-	reader bizmonitor.FailurePatternReader,
+	engine *heal.RootCauseEngine,
+	writer heal.FailurePatternWriter,
+	reader heal.FailurePatternReader,
 	lg loggateway.Logger,
 ) *FailurePatternSyncJob {
 	if interval <= 0 {
@@ -129,7 +129,7 @@ func (j *FailurePatternSyncJob) syncRuntimeRules(ctx context.Context) int {
 			}
 		}
 
-		hash := patternHash(string(bizmonitor.FailurePatternSourceRuntime), rule.ID, patternRegex)
+		hash := patternHash(string(heal.FailurePatternSourceRuntime), rule.ID, patternRegex)
 
 		existing, err := j.reader.GetByPatternHash(ctx, hash)
 		if err != nil {
@@ -143,9 +143,9 @@ func (j *FailurePatternSyncJob) syncRuntimeRules(ctx context.Context) int {
 			continue // already synced
 		}
 
-		pattern := bizmonitor.FailurePattern{
+		pattern := heal.FailurePattern{
 			ID:           fmt.Sprintf("fp-rt-%s", rule.ID),
-			Source:       bizmonitor.FailurePatternSourceRuntime,
+			Source:       heal.FailurePatternSourceRuntime,
 			Type:         rule.ID,
 			PatternHash:  hash,
 			PatternRegex: patternRegex,
@@ -217,7 +217,7 @@ func (j *FailurePatternSyncJob) syncCIPatterns(ctx context.Context) int {
 			continue
 		}
 
-		hash := patternHash(string(bizmonitor.FailurePatternSourceCI), entry.Type, entry.PatternRegex)
+		hash := patternHash(string(heal.FailurePatternSourceCI), entry.Type, entry.PatternRegex)
 
 		existing, err := j.reader.GetByPatternHash(ctx, hash)
 		if err != nil {
@@ -232,12 +232,12 @@ func (j *FailurePatternSyncJob) syncCIPatterns(ctx context.Context) int {
 
 		fixAction := entry.FixAction
 		if fixAction.Type == "" {
-			fixAction = bizmonitor.FixAction{Type: "log_only"}
+			fixAction = heal.FixAction{Type: "log_only"}
 		}
 
-		pattern := bizmonitor.FailurePattern{
+		pattern := heal.FailurePattern{
 			ID:           fmt.Sprintf("fp-ci-%d", lineNum),
-			Source:       bizmonitor.FailurePatternSourceCI,
+			Source:       heal.FailurePatternSourceCI,
 			Type:         entry.Type,
 			PatternHash:  hash,
 			PatternRegex: entry.PatternRegex,
