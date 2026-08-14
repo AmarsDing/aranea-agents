@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
@@ -79,6 +80,7 @@ func (m *chatTurnMetrics) RecordTurnUsage(ctx context.Context, p TurnUsageParams
 	if p.Emitter != nil {
 		meta = p.Emitter.MetadataJSON()
 	}
+	meta = mergeContextBudgetMetadata(ctx, meta)
 	traceID := ""
 	if p.Emitter != nil {
 		traceID = p.Emitter.TraceID()
@@ -169,6 +171,46 @@ func (m *chatTurnMetrics) recordContextBudgetLog(ctx context.Context, p TurnUsag
 		fields = append(fields, loggateway.Any("top_tool_schemas", tops))
 	}
 	m.lg.Info("context budget ledger", fields...)
+}
+
+// mergeContextBudgetMetadata merges the per-turn context budget snapshot into
+// usage.metadata_json under the "context_budget" key (S2, 29-token.design.md
+// §9.6). The process log / Prometheus histogram are point-in-time signals;
+// persisting the ledger enables DB-side aggregation of token composition
+// across turns (e.g. avg tools_schema_tokens per agent over time).
+// Passthrough when no budget is mounted (non-chat paths) or nothing was
+// recorded (LLM never reached); existing metadata keys are preserved.
+func mergeContextBudgetMetadata(ctx context.Context, meta string) string {
+	budget := chatagent.ContextBudgetFromContext(ctx)
+	if budget == nil {
+		return meta
+	}
+	snap := budget.Snapshot()
+	if snap.EstTotalInput == 0 && snap.ToolsCount == 0 {
+		return meta
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(meta), &payload); err != nil || payload == nil {
+		payload = map[string]any{}
+	}
+	cb := map[string]any{
+		"est_tokens":      snap.EstTokens,
+		"est_total_input": snap.EstTotalInput,
+		"tools_count":     snap.ToolsCount,
+	}
+	if len(snap.TopTools) > 0 {
+		tops := make([]map[string]any, 0, len(snap.TopTools))
+		for _, tt := range snap.TopTools {
+			tops = append(tops, map[string]any{"name": tt.Name, "est_tokens": tt.EstTokens})
+		}
+		cb["top_tools"] = tops
+	}
+	payload["context_budget"] = cb
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return meta
+	}
+	return string(raw)
 }
 
 // recordRunnerCompletion writes the runner.completion monitor event for a

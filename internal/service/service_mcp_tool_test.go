@@ -106,15 +106,15 @@ func TestPatchFromProtoMCPWithDiff(t *testing.T) {
 				Enabled: true, SortOrder: 3, ConfigJson: `{"x":1}`, MetadataJson: `{"y":2}`,
 			},
 			current: biz.MCPServer{Enabled: false, SortOrder: 0},
+			// status/metadata_json are system-managed and deliberately absent from
+			// MCPServerUpdate — the patch must ignore them even when present in proto.
 			want: biz.MCPServerUpdate{
-				Key:          strPtr("k"),
-				Name:         strPtr("n"),
-				Description:  strPtr("d"),
-				Status:       strPtr("active"),
-				Enabled:      boolPtr(true),
-				SortOrder:    intPtr(3),
-				ConfigJSON:   strPtr(`{"x":1}`),
-				MetadataJSON: strPtr(`{"y":2}`),
+				Key:         strPtr("k"),
+				Name:        strPtr("n"),
+				Description: strPtr("d"),
+				Enabled:     boolPtr(true),
+				SortOrder:   intPtr(3),
+				ConfigJSON:  strPtr(`{"x":1}`),
 			},
 		},
 		{
@@ -166,12 +166,6 @@ func TestPatchFromProtoMCPWithDiff(t *testing.T) {
 			}
 			if !ptrEqualStr(got.Description, tt.want.Description) {
 				t.Errorf("Description = %v, want %v", got.Description, tt.want.Description)
-			}
-			if !ptrEqualStr(got.Status, tt.want.Status) {
-				t.Errorf("Status = %v, want %v", got.Status, tt.want.Status)
-			}
-			if !ptrEqualStr(got.MetadataJSON, tt.want.MetadataJSON) {
-				t.Errorf("MetadataJSON = %v, want %v", got.MetadataJSON, tt.want.MetadataJSON)
 			}
 		})
 	}

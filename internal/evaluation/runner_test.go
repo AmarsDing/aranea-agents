@@ -95,19 +95,16 @@ func (f *fakeEvalRepo) UpdateDataset(_ context.Context, id, _, _ string) (beval.
 	return f.datasets[id], nil
 }
 
-func (f *fakeEvalRepo) UpdateDatasetCaseCount(context.Context, string, int) error { return nil }
-
-func (f *fakeEvalRepo) InsertCases(_ context.Context, cases []beval.Case) error {
+func (f *fakeEvalRepo) InsertCasesWithCountUpdate(_ context.Context, datasetID string, cases []beval.Case) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, c := range cases {
 		f.cases[c.DatasetID] = append(f.cases[c.DatasetID], c)
 	}
+	ds := f.datasets[datasetID]
+	ds.CaseCount += len(cases)
+	f.datasets[datasetID] = ds
 	return nil
-}
-
-func (f *fakeEvalRepo) InsertCasesWithCountUpdate(ctx context.Context, _ string, cases []beval.Case) error {
-	return f.InsertCases(ctx, cases)
 }
 
 func (f *fakeEvalRepo) ListCases(ctx context.Context, datasetID string) ([]beval.Case, error) {

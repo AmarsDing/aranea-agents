@@ -106,6 +106,13 @@
         <div class="text-caption app-registry-muted-caption">
           成功 {{ props.row.success_count }} · 失败 {{ props.row.failure_count + props.row.blocked_count }}
         </div>
+        <div v-if="props.row.invoke_count > 0" class="text-caption" :class="`text-${toolArgsFirstPassRateColor(props.row)}`">
+          一次合法 {{ formatToolArgsFirstPassRate(props.row) }}
+          <q-tooltip>
+            参数一次合法率 = 1 − (修复成功 {{ props.row.repaired_count }} + 不可修复 {{ props.row.invalid_count }}) / 调用
+            {{ props.row.invoke_count }}（90 天窗口）。偏低说明模型常写错参数，多耗一轮修复交互。
+          </q-tooltip>
+        </div>
       </q-td>
     </template>
 
@@ -187,6 +194,7 @@ import {
   formatInvocationDuration,
   formatInvocationWhen,
   formatToolSuccessRate,
+  formatToolArgsFirstPassRate,
   riskLevelOptions,
   riskQuasarColor,
   runtimeKindHint,
@@ -195,6 +203,7 @@ import {
   toolInvocationStatusColor,
   toolInvocationStatusLabel,
   toolSuccessRateColor,
+  toolArgsFirstPassRateColor,
 } from './toolUi';
 
 defineProps<{

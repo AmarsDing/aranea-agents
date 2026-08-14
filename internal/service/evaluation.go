@@ -27,6 +27,24 @@ func NewEvaluationService(uc *biz.EvalUsecase, runner *evaluation.Runner) *Evalu
 	return &EvaluationService{uc: uc, runner: runner}
 }
 
+// inFlightScanLimit caps the recent-run scan behind the EVAL-08 in-flight
+// dedup check (same order of magnitude as the gate's baseline scan).
+const inFlightScanLimit = 20
+
+// assertSystemCaller returns Forbidden unless the caller is a system
+// principal or an admin. The publish gate is a platform-global singleton —
+// letting any tenant reconfigure it would change publish behavior for every
+// workspace (EVAL-04).
+func (s *EvaluationService) assertSystemCaller(ctx context.Context) error {
+	if workspace.IsSystem(ctx) {
+		return nil
+	}
+	if a, ok := auth.FromContext(ctx); ok && a.HasAdminAccess() {
+		return nil
+	}
+	return apierror.Forbidden("EVAL", "system or admin privileges required")
+}
+
 // --- Datasets ---
 
 // assertEvalDatasetAccess loads a dataset and verifies the caller may read it.
@@ -173,6 +191,24 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if _, err := s.assertEvalDatasetAccess(ctx, req.GetDatasetId()); err != nil {
 		return nil, err
 	}
+	// EVAL-13: without a runner the run would sit in "pending" until the next
+	// process restart sweep (Y10) — fail fast instead of creating a zombie.
+	if s.runner == nil {
+		return nil, apierror.Unavailable("EVAL", "evaluation runner is not available")
+	}
+	// EVAL-08: one in-flight run per (dataset, agent). Each run fans out one
+	// inference (+ judge call) per case, so an unguarded double-click or a
+	// retry loop multiplies LLM cost for an identical result.
+	runs, err := s.uc.ListRuns(ctx, req.GetDatasetId(), req.GetAgentId(), inFlightScanLimit, 0)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range runs {
+		if r.Status == "pending" || r.Status == "running" {
+			return nil, apierror.Conflict("EVAL",
+				fmt.Sprintf("an evaluation run is already in flight for this dataset+agent (run_id=%s)", r.ID))
+		}
+	}
 	in := biz.EvalRun{
 		DatasetID: req.GetDatasetId(),
 		AgentID:   req.GetAgentId(),
@@ -185,12 +221,10 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	if err != nil {
 		return nil, err
 	}
-	if s.runner != nil {
-		if numRuns <= 0 {
-			numRuns = 1
-		}
-		s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation())
+	if numRuns <= 0 {
+		numRuns = 1
 	}
+	s.runner.Start(ctx, run, req.GetMetrics(), numRuns, req.GetUseUserSimulation())
 	return toProtoRun(run), nil
 }
 
@@ -435,7 +469,11 @@ func (s *EvaluationService) GetEvalGate(ctx context.Context, _ *v1.GetEvalGateRe
 }
 
 // UpdateEvalGate validates and persists the publish-gate config (P2-1).
+// The config is a platform-global singleton → system/admin only (EVAL-04).
 func (s *EvaluationService) UpdateEvalGate(ctx context.Context, req *v1.UpdateEvalGateRequest) (*v1.EvalGateConfig, error) {
+	if err := s.assertSystemCaller(ctx); err != nil {
+		return nil, err
+	}
 	// Y12: reject unknown gate metric keys at config time. A typo used to
 	// surface only at publish time — the gate then blocked every publish
 	// with "缺少指标 X 得分", and the cause was hard to trace.

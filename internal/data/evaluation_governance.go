@@ -16,26 +16,33 @@ import (
 // ListFailureGroups groups failed case results of one dataset by
 // error_message (P2-3). Returns the groups (count desc, capped by limit)
 // plus the total number of failed results regardless of the cap.
+// EVAL-03: the join must carry the run workspace filter — shared datasets
+// (workspace="") are readable by every tenant, and without it one tenant's
+// failed runs (error text included) leak into another tenant's grouping.
 func (r *evalRepo) ListFailureGroups(ctx context.Context, datasetID, agentID string, limit int) ([]biz.EvalFailureGroup, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 	d := r.data.Dialect()
+	wsClause, wsArgs := evalRunsWorkspaceFilter(ctx)
+	baseWhere := `ru.dataset_id=? AND (?='' OR ru.agent_id=?) AND r.error_message != ''` + wsClause
+	baseArgs := append([]any{datasetID, agentID, agentID}, wsArgs...)
 	var total int
 	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		d.RenumberPlaceholders(`SELECT COUNT(*) FROM eval_case_results r
 			JOIN eval_runs ru ON ru.id = r.run_id
-			WHERE ru.dataset_id=? AND (?='' OR ru.agent_id=?) AND r.error_message != ''`),
-		[]any{datasetID, agentID, agentID}, &total); err != nil {
+			WHERE `+baseWhere),
+		baseArgs, &total); err != nil {
 		return nil, 0, entErrToBizErr(err, "EVAL")
 	}
+	queryArgs := append(append([]any{}, baseArgs...), limit)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		d.RenumberPlaceholders(`SELECT r.error_message, COUNT(*) AS cnt, COUNT(DISTINCT r.run_id) AS run_count, MAX(r.created_at) AS latest_at
 			FROM eval_case_results r
 			JOIN eval_runs ru ON ru.id = r.run_id
-			WHERE ru.dataset_id=? AND (?='' OR ru.agent_id=?) AND r.error_message != ''
+			WHERE `+baseWhere+`
 			GROUP BY r.error_message ORDER BY cnt DESC, latest_at DESC LIMIT ?`),
-		datasetID, agentID, agentID, limit)
+		queryArgs...)
 	if err != nil {
 		return nil, 0, entErrToBizErr(err, "EVAL")
 	}

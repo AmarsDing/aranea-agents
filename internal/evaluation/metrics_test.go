@@ -40,22 +40,3 @@ func TestJudgeInstructionDoesNotImposeOutputFormat(t *testing.T) {
 		t.Fatalf("judge instruction must not force a JSON {score} format: %q", judgeSystemInstruction)
 	}
 }
-
-func TestScoreToolCallAccuracy(t *testing.T) {
-	t.Parallel()
-	if got := scoreToolCallAccuracy("", "output"); got != 0 {
-		t.Fatalf("empty meta: %v", got)
-	}
-	meta := `{"expected_tools":["get_weather","search"]}`
-	got := scoreToolCallAccuracy(meta, "called get_weather tool")
-	if got != 0.5 {
-		t.Fatalf("expected 0.5, got %v", got)
-	}
-}
-
-func TestBoolToFloat(t *testing.T) {
-	t.Parallel()
-	if boolToFloat(true) != 1 || boolToFloat(false) != 0 {
-		t.Fatal("boolToFloat mismatch")
-	}
-}

@@ -194,6 +194,83 @@ func TestToolRepo_SearchTools_StatsWindow(t *testing.T) {
 	}
 }
 
+// TestToolRepo_SearchTools_ArgsQualityAndFailedStatus covers two gaps in the
+// tool-list stats subquery:
+//
+//	S0: runtime failures are recorded with status='failed' (see
+//	    tool_invocation_recorder.go), but the stats/summary subqueries only
+//	    counted status='error' — making runtime failures invisible in the
+//	    tools list. The aggregate must count both.
+//	S1: args quality markers (args_repaired/args_invalid in metadata_json,
+//	    written by the repair guard) must surface as per-tool RepairedCount /
+//	    InvalidCount so the UI can show the args first-pass rate.
+func TestToolRepo_SearchTools_ArgsQualityAndFailedStatus(t *testing.T) {
+	ctx := context.Background()
+	repo, d := newToolTestRepo(t)
+
+	tool, err := repo.CreateTool(ctx, biz.ToolUpsertInput{
+		Key:         "quality_tool",
+		DisplayName: "Quality Tool",
+		Category:    "network",
+		Source:      "builtin",
+		RiskLevel:   "low",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("CreateTool: %v", err)
+	}
+
+	recentTS := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	// 10 windowed rows: 6 success + 4 runtime-style 'failed'; among all rows
+	// 2 carry args_repaired and 1 carries args_invalid.
+	for i := 0; i < 10; i++ {
+		status := "success"
+		if i >= 6 {
+			status = "failed"
+		}
+		meta := "{}"
+		switch i {
+		case 0, 1:
+			meta = `{"args_repaired":true}`
+		case 2:
+			meta = `{"args_invalid":true}`
+		}
+		if _, err := d.rawDB.ExecContext(ctx, `INSERT INTO tool_invocations
+			(id, tool_key, tool_id, status, started_at, duration_ms, source, metadata_json, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 'trpc', $7, $8)`,
+			fmt.Sprintf("%s-q-%d", tool.ID, i), tool.Key, tool.ID, status, recentTS, 10, meta, recentTS); err != nil {
+			t.Fatalf("insert invocation %d: %v", i, err)
+		}
+	}
+
+	result, err := repo.SearchTools(ctx, biz.ToolListQuery{Limit: 100, Offset: 0})
+	if err != nil {
+		t.Fatalf("SearchTools failed: %v", err)
+	}
+	var got *biz.Tool
+	for i := range result.Items {
+		if result.Items[i].Key == "quality_tool" {
+			got = &result.Items[i]
+			break
+		}
+	}
+	if got == nil {
+		t.Fatalf("seeded tool quality_tool not found in %d results", len(result.Items))
+	}
+	if got.SuccessCount != 6 {
+		t.Errorf("SuccessCount = %d, want 6", got.SuccessCount)
+	}
+	if got.FailureCount != 4 {
+		t.Errorf("FailureCount = %d, want 4 (status='failed' runtime rows must count)", got.FailureCount)
+	}
+	if got.RepairedCount != 2 {
+		t.Errorf("RepairedCount = %d, want 2", got.RepairedCount)
+	}
+	if got.InvalidCount != 1 {
+		t.Errorf("InvalidCount = %d, want 1", got.InvalidCount)
+	}
+}
+
 // TestToolRepo_ToolAgentOverride_BoolScanRegression is a regression test for
 // scanToolAgentOverrides scanning Postgres boolean columns into int variables.
 // With any override row present, every override list query failed with:

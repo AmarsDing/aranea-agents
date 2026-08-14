@@ -74,6 +74,8 @@ func bizToolToProto(t biz.Tool) *v1.Tool {
 		FailureCount:         int32(t.FailureCount),
 		BlockedCount:         int32(t.BlockedCount),
 		AgentOverrideCount:   int32(t.AgentOverrideCount),
+		RepairedCount:        int32(t.RepairedCount),
+		InvalidCount:         int32(t.InvalidCount),
 		LastInvokedAt:        t.LastInvokedAt,
 		LastStatus:           t.LastStatus,
 		CreatedAt:            t.CreatedAt,

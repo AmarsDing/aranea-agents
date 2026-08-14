@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -26,30 +27,26 @@ var (
 		Name: "aranea_eval_runs_total",
 		Help: "Total number of evaluation runs started.",
 	}, []string{"status"})
-
-	evalCaseDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "aranea_eval_case_duration_seconds",
-		Help:    "Time to evaluate one case.",
-		Buckets: prometheus.DefBuckets,
-	})
 )
 
-// AgentRunner is the function signature used to run one evaluation case.
-// It returns the agent's output for a given input string.
-type AgentRunner func(ctx context.Context, agentID, input string) (string, error)
+// errEvalRunFailed marks "the evaluation ran and failed" (case errors,
+// framework failure) as opposed to an infrastructure error (persistence
+// failure etc.). failRun wraps it so Start/RunSync callers can distinguish
+// the two: a failed run is a valid terminal outcome with the reason
+// persisted on the row, not an execution error.
+var errEvalRunFailed = errors.New("evaluation run failed")
 
 // Runner executes an evaluation run asynchronously.
 type Runner struct {
 	uc          *biz.EvalUsecase
-	agent       AgentRunner
 	framework   *FrameworkBridge
 	monitorBus  contract.MonitorBus
 	dropAlerter *ScoreDropAlerter
 	lg          loggateway.Logger
 }
 
-func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
-	return &Runner{uc: uc, agent: agent, framework: framework, lg: lg}
+func NewRunner(uc *biz.EvalUsecase, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
+	return &Runner{uc: uc, framework: framework, lg: lg}
 }
 
 // WithMonitorBus wires the typed monitor bus for flow-log emission (chainable).
@@ -106,7 +103,11 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 	execCtx := context.WithoutCancel(ctx)
 	safego.Go(appctx.Ctx(), "eval-runner", func() {
 		if err := r.execute(execCtx, run, metrics, numRuns, useUserSimulation); err != nil {
-			evalRunsTotal.WithLabelValues("error").Inc()
+			if errors.Is(err, errEvalRunFailed) {
+				evalRunsTotal.WithLabelValues("failed").Inc()
+			} else {
+				evalRunsTotal.WithLabelValues("error").Inc()
+			}
 		} else {
 			evalRunsTotal.WithLabelValues("completed").Inc()
 		}
@@ -168,11 +169,10 @@ func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, n
 
 	wantMetrics := parseMetrics(metrics)
 
-	if r.framework != nil && r.agent != nil {
-		return r.executeFramework(ctx, run, ds, cases, wantMetrics, numRuns, useUserSimulation)
+	if r.framework == nil {
+		return r.failRun(ctx, run, "evaluation framework not configured; inject a FrameworkBridge via evaluation.NewRunner")
 	}
-
-	return r.executeLegacy(ctx, run, cases, wantMetrics)
+	return r.executeFramework(ctx, run, ds, cases, wantMetrics, numRuns, useUserSimulation)
 }
 
 func (r *Runner) executeFramework(
@@ -294,7 +294,10 @@ func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error
 			loggateway.Err(err))
 		return err
 	}
-	return nil
+	// EVAL-02: surface the failure to callers (gate breach wording, Start
+	// metrics). The reason is already persisted on the row, so the wrapped
+	// sentinel carries no extra payload beyond the message.
+	return fmt.Errorf("%w: %s", errEvalRunFailed, msg)
 }
 
 // meanScore averages per-metric mean scores into a single run-level mean.

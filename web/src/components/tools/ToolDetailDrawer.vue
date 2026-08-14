@@ -112,6 +112,18 @@
                 </div>
                 <div class="tool-detail-metrics__label">失败</div>
               </div>
+              <div class="tool-detail-metrics__card">
+                <div class="tool-detail-metrics__value" :class="`text-${toolArgsFirstPassRateColor(tool)}`">
+                  {{ formatToolArgsFirstPassRate(tool) }}
+                </div>
+                <div class="tool-detail-metrics__label">
+                  一次合法率
+                  <q-tooltip>
+                    参数一次合法率 = 1 − (修复成功 {{ tool.repaired_count }} + 不可修复 {{ tool.invalid_count }}) / 调用
+                    {{ tool.invoke_count }}（90 天窗口）
+                  </q-tooltip>
+                </div>
+              </div>
             </div>
 
             <div class="row q-col-gutter-sm text-body2 q-mb-md">
@@ -510,6 +522,8 @@ import {
   toolProfileLabel,
   bindingReasonLabel,
   overrideModeLabel,
+  formatToolArgsFirstPassRate,
+  toolArgsFirstPassRateColor,
 } from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';

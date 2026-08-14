@@ -49,6 +49,13 @@ type Tool struct {
 	FailureCount         int
 	BlockedCount         int
 	AgentOverrideCount   int
+	// RepairedCount/InvalidCount aggregate the repair-guard markers in
+	// tool_invocations.metadata_json over the same stats window:
+	// RepairedCount = model-emitted args were malformed but salvageable;
+	// InvalidCount = malformed and unrepairable. The args first-pass rate
+	// (模型对 schema 的一次性理解准确度) is 1 - (repaired+invalid)/InvokeCount.
+	RepairedCount        int
+	InvalidCount         int
 	AvgDurationMS        *float64
 	P95DurationMS        float64
 	LastInvokedAt        string

@@ -84,6 +84,8 @@ function kratosToolToLegacy(t: KratosTool): Tool {
     failure_count: t.failureCount ?? 0,
     blocked_count: t.blockedCount ?? 0,
     agent_override_count: t.agentOverrideCount ?? 0,
+    repaired_count: t.repairedCount ?? 0,
+    invalid_count: t.invalidCount ?? 0,
     avg_duration_ms: t.avgDurationMs ?? null,
     p95_duration_ms: t.p95DurationMs ?? 0,
     last_invoked_at: t.lastInvokedAt ?? '',

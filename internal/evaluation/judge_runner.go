@@ -82,7 +82,7 @@ func (t *timeoutRunner) Run(
 // that produces structured {score, reason} output compatible with the framework's
 // llm_final_response evaluator.
 //
-// Model resolution follows the same precedence as NewLLMJudge:
+// Model resolution precedence:
 // env KRATOS_EVAL_JUDGE_* → system_settings → env KRATOS_EVAL_SIM_* → catalog mini/flash.
 func NewJudgeRunner(
 	catalog *biz.LlmProviderModelUsecase,

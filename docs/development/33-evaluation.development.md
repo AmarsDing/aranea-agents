@@ -1,6 +1,6 @@
 # Evaluation 评估 — 开发计划
 
-> **版本**：2026-08-14 | **状态**：🟢 全部完成（Phase 1-8 已交付；Phase 8 深度评审整改 16 项全绿）
+> **版本**：2026-08-14 | **状态**：🟢 全部完成（Phase 1-8 已交付；Phase 8 深度评审整改 16 项全绿；第二轮深度评审整改 9 项全绿，见 §10）
 > **需求**：[33 evaluation.md](./33%20evaluation.md) · **设计**：[33 evaluation.design.md](./33-evaluation.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-DATA-01 ✅, EP-RT-08 ✅, EP-BIZ-04 ✅, EVAL-02 ✅
 
@@ -330,3 +330,38 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - `33-evaluation.md`：US-13 验收标准改写为异步 advisory 语义（Y2/Y12）；US-6 补「可清除标注」（B2）
 - `33-evaluation.design.md`：§6.10 门禁重构、级联删除更正、§6.17 Phase 8 可靠性与隔离
 - `65-module-cross-reference-full.md`：§1.15 评估卡片更新（核心导出/共享类型/ workspace 隔离与级联删除）
+
+---
+
+## 10. 第二轮深度评审整改清单（2026-08-14）
+
+> 评审范围：biz / data / service / internal/evaluation 全层复查（Phase 8 整改后的二次评审）。
+> 编号为评审报告原始编号（EVAL-xx），跳号项为评审阶段合并/判定为非问题项。
+
+### 阻断（2 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| EVAL-01 | AfterTurn 自动评估丢失 workspace：后台 goroutine 继承的 ctx 未传递工作区，创建的 run `workspace_id` 为空 → 租户列表不可见 + 跨租户统计泄漏 | `context.WithoutCancel(ctx)` 解耦生命周期 + 按 ctx 显式设置 `WorkspaceID` | `internal/evaluation/after_turn.go` |
+| EVAL-02 | 评估执行失败与得分不达标混同：`failRun` 只落库不返回错误，门禁/Prometheus 把执行失败误计为低分完成 | `errEvalRunFailed` 哨兵错误，`Start` 中 `errors.Is` 区分 `failed`（执行失败）/`error`（内部错误）/`completed` 标签 | `internal/evaluation/runner.go` |
+
+### 建议（6 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| EVAL-03 | `ListFailureGroups` 治理查询缺 workspace 过滤（跨租户泄漏失败分组） | 补 `evalRunsWorkspaceFilter` | `internal/data/evaluation_governance.go` |
+| EVAL-04 | `UpdateEvalGate` 无鉴权：任意租户可改写平台全局发布门禁 | `assertSystemCaller`（system 主体或 admin） | `internal/service/evaluation.go` |
+| EVAL-05 | Legacy 执行路径为生产死代码（旧 runner/LLM judge 双轨残留） | 删除 `runner_legacy.go`、`llm_judge.go` 及 `metrics.go` 遗留计算 | `internal/evaluation/` |
+| EVAL-06 | Repo 死方法 `InsertCases`/`UpdateDatasetCaseCount`：无生产调用方，分离写法破坏 case_count 原子性 | 接口与实现删除，统一 `InsertCasesWithCountUpdate` | `internal/biz/evaluation/evaluation.go`、`internal/data/evaluation.go` |
+| EVAL-07 | `EnsureEvalSchema` ALTER 迁移循环全吞错误：非「列已存在」错误（权限/连接/语法）静默丢失，schema 静默不一致直至运行时查询失败 | 签名加 `Dialect` 参数；仅 `AlreadyExistsErr` 视为幂等成功，其余错误经 `entErrToBizErr` 上报阻断启动迁移 | `internal/data/evaluation.go`、`ddl_migration_registry.go` |
+| EVAL-08 | 手动 `RunEvaluation` 无 in-flight 去重：并发点击/重试产生重复 run | 创建前扫描近 20 条（`inFlightScanLimit`）pending/running → Conflict | `internal/service/evaluation.go` |
+
+### 提示（1 项）
+
+| # | 问题 | 修复 | 关键文件 |
+|---|------|------|---------|
+| EVAL-13 | `runner==nil`（未装配）时 `RunEvaluation` 照常创建 run，永久滞留 pending | runner 为 nil 直接返回 Unavailable | `internal/service/evaluation.go` |
+
+### 文档同步（第二轮，2026-08-14）
+
+- `33-evaluation.development.md`：追加本清单（§10）

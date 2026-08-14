@@ -33,8 +33,8 @@ type FailurePatternSyncJob struct {
 
 // ciPatternEntry represents a single line in patterns.jsonl.
 type ciPatternEntry struct {
-	Type         string               `json:"type"`
-	PatternRegex string               `json:"pattern_regex"`
+	Type         string         `json:"type"`
+	PatternRegex string         `json:"pattern_regex"`
 	FixAction    heal.FixAction `json:"fix_action"`
 }
 

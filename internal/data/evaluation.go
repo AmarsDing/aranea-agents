@@ -28,7 +28,7 @@ func NewEvalRepo(data *Data, lg loggateway.Logger) biz.EvalRepo {
 }
 
 // EnsureEvalSchema creates the evaluation tables when they do not exist.
-func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
+func EnsureEvalSchema(ctx context.Context, db *sql.DB, d Dialect) error {
 	if db == nil {
 		return nil
 	}
@@ -135,7 +135,12 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE eval_runs ADD COLUMN dataset_hash TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, s := range migrations {
-		_, _ = db.ExecContext(ctx, s) // best-effort for existing DBs
+		// EVAL-07: only "column already exists" is benign on re-run. Any other
+		// error (permission, connection, syntax) must surface here — swallowing
+		// it leaves the schema silently diverged until a runtime query fails.
+		if _, err := db.ExecContext(ctx, s); err != nil && !d.AlreadyExistsErr(err) {
+			return entErrToBizErr(err, "EVAL")
+		}
 	}
 	return nil
 }
@@ -235,28 +240,7 @@ func (r *evalRepo) UpdateDataset(ctx context.Context, id, name, description stri
 	return r.GetDataset(ctx, id)
 }
 
-func (r *evalRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error {
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`UPDATE eval_datasets SET case_count=case_count+?, updated_at=? WHERE id=?`), delta, now(), id)
-	return entErrToBizErr(err, "EVAL")
-}
-
 // --- Cases ---
-
-func (r *evalRepo) InsertCases(ctx context.Context, cases []biz.EvalCase) error {
-	insertSQL := r.data.Dialect().RenumberPlaceholders(`INSERT INTO eval_cases (id,dataset_id,input,expected_output,metadata_json) VALUES (?,?,?,?,?)`)
-	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
-		for _, c := range cases {
-			if _, err := e.ExecContext(txCtx, insertSQL,
-				c.ID, c.DatasetID, c.Input, c.ExpectedOutput, c.MetadataJSON); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return entErrToBizErr(err, "EVAL")
-}
 
 // InsertCasesWithCountUpdate inserts cases and bumps dataset.case_count in a
 // single transaction so the two writes cannot diverge. The dataset's case_count

@@ -126,7 +126,7 @@ type MCPServer struct {
 
 | 方法 | 说明 |
 |------|------|
-| `List` / `Get` / `Create` / `Update` / `Delete` | CRUD；`List` 接受 `MCPListQuery{WorkspaceID, Search, Limit, Offset}` |
+| `List` / `Get` / `Create` / `Update` / `Delete` | CRUD；`List` 接受 `MCPListQuery{WorkspaceID, Search, Limit, Offset}`；`Update` 经 `MCPServerUpdate` 部分更新 DTO（nil = 不改），**刻意不含 `status`/`metadata_json`**——两者由系统管理（health runner / 重连簿记 / 删除），repo 仅写字段级 admin 可编辑列，避免陈旧表单快照回滚并发健康写入（同 RV-01 类） |
 | `ListPaged` | 管理台注册表分页查询（默认 `Limit=20`，上限 100），返回 `MCPListResult{Items, Total, Limit, Offset}` |
 | `TestMCPServer` | `probe.Evaluate` + 内部 `persistHealth`（写入 `metadata_json`） |
 | `ValidateConfig` | URL 预检（不持久化）；签名 `ValidateConfig(ctx, configJSON)`，内部始终以 `enabled=true` 评估 |
@@ -315,10 +315,12 @@ AgentMCPTooling.EffectiveServersForAgent
 
 | 守卫 | 语义 | 适用 RPC |
 |------|------|---------|
-| `assertMCPServerAccess` | **读级**：共享服务器（`workspace_id=""`）对所有租户放行；租户私有仅 owning workspace | `GetMCPServer`、`TestMCPServer`、`ListMCPServerUserCredentials` |
-| `assertMCPServerMutateAccess` | **变更级**：共享服务器对租户调用方 fail-closed（仅系统工作区可变更） | `UpdateMCPServer`、`DeleteMCPServer`、凭据写/删 |
+| `assertMCPServerAccess` | **读级**：共享服务器（`workspace_id=""`）对所有租户放行；租户私有仅 owning workspace | `GetMCPServer`、`TestMCPServer`、`ListMCPServerUserCredentials`、凭据写/删 |
+| `assertMCPServerMutateAccess` | **变更级**：共享服务器对租户调用方 fail-closed（仅系统工作区可变更） | `UpdateMCPServer`、`DeleteMCPServer` |
 
 > **为什么 `TestMCPServer` 用读级守卫**：探活不变更租户配置，仅刷新系统健康簿记元数据（`health_status`/`last_health_at`）——与后台 health runner 对共享服务器的写入语义一致。若用变更级守卫，内置服务器（如 playwright）的「测试连接」按钮会对所有租户 404，而它们恰恰是运维最需要探测的对象。回归测试：`TestMCPServerService_TestMCPServer_SharedServerAllowedForTenant`。
+>
+> **为什么凭据写/删用读级守卫（N1）**：用户凭据是调用方自己的数据（`resolveMCPCredentialUserID` 将非管理员绑定到自身 user_id），不是服务器配置；变更级守卫会对共享/内置服务器（`workspace_id=""`）fail-closed，使每用户凭据在恰恰需要它们的行（`require_user_credentials`）上不可用。跨租户私有服务器仍不可见：守卫内的工作区作用域 Get 对其返回 NotFound。回归测试：`TestMCPServerService_UpsertCredential_SharedServerAllowedForTenant` / `TestMCPServerService_UpsertCredential_CrossTenantRejected`。
 
 ---
 

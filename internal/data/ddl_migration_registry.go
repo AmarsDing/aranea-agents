@@ -489,7 +489,7 @@ func ddlCredentialEncryptionKey(ctx context.Context, rawDB *sql.DB, entClient *e
 }
 
 func ddlEvalSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
-	return EnsureEvalSchema(ctx, rawDB)
+	return EnsureEvalSchema(ctx, rawDB, d)
 }
 
 func ddlA2ASchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {

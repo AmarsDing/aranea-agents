@@ -29,6 +29,9 @@ export type Tool = {
   failure_count: number;
   blocked_count: number;
   agent_override_count: number;
+  /** 修复守卫标记聚合（90 天统计窗口）：repaired=参数畸形但修复成功，invalid=畸形且不可修复。 */
+  repaired_count: number;
+  invalid_count: number;
   avg_duration_ms: number | null;
   p95_duration_ms: number;
   last_invoked_at?: string;

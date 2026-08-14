@@ -138,7 +138,7 @@ func ProvideEvaluationRunner(
 	if agents != nil && bus != nil {
 		runner.WithDropAlerter(evaluation.NewScoreDropAlerter(evalUC, evalAgentConfigReader{agents: agents}, bus, lg))
 	}
-	chat.AttachNativeTurnAfterHook(NewEvaluationAfterTurnTrigger(evalUC, runner))
+	chat.AttachNativeTurnAfterHook(NewEvaluationAfterTurnTrigger(evalUC, runner, lg))
 	return runner
 }
 

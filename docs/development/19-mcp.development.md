@@ -327,6 +327,8 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | F3 | API/store 返回 `PlatformResource` 泛型需断言；`healthTone` 返回 `string` | 🟡 | 收紧 `McpServerRow` + 新增 `McpHealthTone` 联合类型，消除断言 | ✅ |
 | F4 | MCP 前端关键逻辑缺测试 | 🟡 | `useMcpServerForm`（buildPayload 6 例）+ `useMcpServersPage`（healthTone/Tooltip 6 例） | ✅ |
 | RV-01 | `PersistRotatedRefreshToken` 全行写与健康探活字段级写存在 last-write-wins 窗口（整体评审发现） | 🟡 | 新增 `MCPServerWriter.UpdateMCPServerConfigJSON` 字段级写（仅 `config_json`+`updated_at`），usecase 改走该方法；biz 测试断言禁止全行写 + 元数据不被覆盖 | ✅ |
+| N1 | `UpsertMCPServerUserCredential`/`DeleteMCPServerUserCredential` 误用变更级 IDOR 守卫，对共享/内置服务器 fail-closed，导致租户无法管理自己的凭据 | 🔴（回归 2026-08-14） | 改读级守卫 `assertMCPServerAccess`；用户凭据是 caller 自己的数据，非服务器配置；跨租户仍不可见（守卫内 Get 对私有服务器返回 NotFound） | ✅ |
+| N2 | `UpdateMCPServer` 全行写覆盖 `status`/`metadata_json`，与后台 health runner 字段级写竞态，陈旧表单快照回滚并发健康写入 | 🔴（回归 2026-08-14） | `MCPServerUpdate` DTO 刻意排除 `status`/`metadata_json`；`UpdateMCPServer` repo 仅写字段级 admin 可编辑列；service 侧 `patchFromProtoMCPWithDiff` 不再映射两者；新增回归测试 `UpdateMCPServer_IgnoresSystemManagedFields` | ✅ |
 
 ### 13.2 改动文件清单
 
@@ -361,3 +363,5 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - [x] 租户 Agent `EffectiveServersForAgent` 不再返回他租户私有服务器
 - [x] `mcp.server.update` 流程日志在 Monitor「流程日志」可见（有中文标题）
 - [x] token 回写走字段级写，biz 测试断言元数据/状态不被覆盖（RV-01）
+- [x] 租户可在共享/内置服务器上 upsert/delete 自己的用户凭据（N1 回归测试通过）
+- [x] `UpdateMCPServer` 不再写 `status`/`metadata_json`，N2 回归测试通过（`UpdateMCPServer_IgnoresSystemManagedFields`）

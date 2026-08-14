@@ -15,10 +15,10 @@
 | 层 | 路径 |
 |----|------|
 | Proto | `api/kratos/monitor/v1/monitor.proto` |
-| Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle、self_check、self_heal、self_check_repair、self_check_scheduler、predictive_heal、pattern_mining、failure_pattern_repo、failure_report、audit_record）、`runner_completion.go` |
-| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go`、`internal/data/audit_action_migrate.go`（审计 action 规范化迁移 20260729）、`internal/data/monitor_trace_backfill_migrate.go`（假 interrupted 修复迁移 20261115） |
+| Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（根包：monitor、self_check、self_check_repair、self_check_scheduler、checker_builtins、checker_runner_flow、audit_record、alert_metric_registry、alert_metric_catalog、alert_eval_worker / metric_ring_buffer / alert_state_machine / trace_projector / flow_file_appender 等 facade 别名文件；**子包（DEV-05 2026-08-14）**：`alert/`（engine、state_machine、worker、ring_buffer、registry、metric_*）、`trace/`（projector、flow_file_appender、model、utils）、`heal/`（self_heal、self_heal_observer、predictive_heal、pattern_mining、root_cause_engine、root_cause_analyzer、failure_pattern_repo、failure_report、failure_report_parser、diag_bundle、heal_action_catalog、diagnose_heal、system_metrics_reader））、`runner_completion.go` |
+| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go`、`internal/data/audit_action_migrate.go`（审计 action 规范化迁移 20260729）、`internal/data/monitor_trace_backfill_migrate.go`（假 interrupted 修复迁移 20261115）、`internal/data/heal_record_repo.go`、`internal/data/failure_pattern_repo.go`（heal 子包端口实现） |
 | Service | `internal/service/monitor.go`、`monitor_notify.go`、`monitor_flow_log.go`、`audit_meta.go`（审计 IP/UA 元数据提取） |
-| Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go`、`internal/cronrunner/jobs/monitor_events_cleanup.go`（EVT-R P3：monitor_events 30 天保留） |
+| Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go`、`internal/cronrunner/jobs/monitor_events_cleanup.go`（EVT-R P3：monitor_events 30 天保留）、`auto_heal_ttl_cleanup.go`、`failure_pattern_sync.go`、`pattern_mining.go`、`predictive_heal.go`（heal 域周期任务） |
 | 用量 | `internal/biz/usage.go`、`internal/service/turn_usage.go`、`chat_usage_ingress.go` |
 | FlowLog | `internal/biz/flowlog/`、`internal/data/flow_log_repo.go` |
 | 前端 | `web/src/pages/MonitorPage.vue`、`web/src/features/monitor/*`、`web/src/components/monitor/*` |
@@ -65,12 +65,13 @@
 | RebuildRingBuffer 逐分钟重建 | ✅ | `ensureBucketAt` + 60 桶逐分钟从 DB 重建 |
 | 自检 SelfCheck | ✅ | `SelfCheckScheduler`（5 min）+ `SelfCheckRepairDispatcher`（4 个修复器）+ `SelfChecker` 插件接口 |
 | 自愈 SelfHeal | ✅ | `SelfHealObserver`（事件驱动观察：诊断包 + 根因分析 + 告警 + HealRecord；修复动作由 Runtime 自愈链路执行，Observer 只观察结果）+ cooldown + 置信度阈值 |
-| 预测性自愈 PredictiveHeal | 🟡 | `PredictiveHealUsecase`（系统指标 + 故障模式匹配）；执行器为 `NoopHealActionHandler`（动作目录未建），Job 默认禁用（`PREDICTIVE_HEAL_JOB_ENABLED=1` 开启），当前为观察模式 |
+| 预测性自愈 PredictiveHeal | ✅ | `PredictiveHealUsecase`（系统指标 + 故障模式匹配）；2026-08-14 批次 C 落地真实动作目录 `CatalogHealActionHandler`（retry→provider 探测重试 / reconnect→MCP 健康刷新，幂等只读），Job 仍默认禁用（`PREDICTIVE_HEAL_JOB_ENABLED=1` 开启） |
 | 模式挖掘 PatternMining | ✅ | `PatternMiningUsecase`（故障聚类 + 自动修复模板 + 置信度晋升/停用） |
 | 故障报告 FailureReport | ✅ | `FailureReport` 统一 CI/runtime 错误格式 + `FailureReportParser` 正则识别 |
 | LOOP-01 FR-01 | ✅ | `log.Printf` 红线违规已清零（evolution.go + modelcatalog 已移除） |
-| LOOP-01 FR-02 | 🟡 | cronrunner Kratos `log.Helper` 从 29 处降至 7 处（5 个文件残留） |
-| LOOP-01 FR-03 | ❌ | stepTitleRegistry 22 个 step_id 未注册 |
+| LOOP-01 FR-02 | ✅ | 2026-08-14 批次 A：cronrunner Kratos `log.Helper` 残留 5 文件全部清零（统一 `loggateway.Logger`） |
+| LOOP-01 FR-03 | ✅ | 2026-08-14 批次 A：stepTitleRegistry 22 个缺失 step_id 全部补注册（含错误路径 FlowLog 补全），同步 52-flow-logger.design.md §5.1 |
+| DEV-05 Usecase 子包拆分 | ✅ | 2026-08-14 批次 D：`monitor/alert`（Engine/状态机/Worker/RingBuffer/Registry）+ `monitor/trace`（Projector/FlowFileAppender）+ `monitor/heal`（自愈/PredictiveHeal/PatternMining/RCA/FailurePattern/DiagBundle）三子包落地；`DiagnoseAndHeal` 自由函数化；循环依赖经窄接口反转解决；根包 facade 别名兼容；wire 重生成 |
 | Completion→RingBuffer/TraceClose 接线 | ✅ | 2026-07-16：`RecordRunnerCompletion` → `evalWorker.OnCompletion` + `traceProjector.OnRunnerCompletion` + TRACE-01 `WriteTraceComplete` |
 | Firing 态 reminder（防出站轰炸） | ✅ | 2026-07-16：firing 期间按 `reminder_minutes`（默认 30）提醒，不再非法重入 `threshold_exceeded` |
 | Trace backfill 关闭 running 行 | ✅ | 2026-07-16：`UpdateMonitorTraceCompletion` 覆盖 INSERT OR IGNORE 已有行 |
@@ -99,11 +100,11 @@
 ## 3. 差距与优化（P2+）
 
 1. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名。（原「Events 服务端 `hide_linked_completions`」已于 2026-08-11 完成，见 §4 dogfood 修复表）
-2. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
-3. **P3 — LOOP-01 FR-02**：清理 cronrunner 剩余 7 处 Kratos `log.Helper`（5 个文件：monitor_alert_cooldown、memory_dead_letter_replayer、provider_health、channel_health、evolution_scanner、channel_delivery）。
-4. **P3 — LOOP-01 FR-03**：补全 stepTitleRegistry 22 个缺失 step_id 注册。
-5. **P2 — PredictiveHeal 真实动作目录**：当前 `NoopHealActionHandler` 观察模式（Job 默认禁用）；建设修复动作目录后接线真实执行器并默认启用。
-6. **P2 — Monitor Usecase 拆分（DEV-05）**：2026-08-13 已删告警 legacy 双轨评估路径（switch 分支 + `WithFilesystemHealthReader`/`WithRingBuffer` option 及字段），评估统一走 `AlertMetricRegistry`；2026-08-14 setter 收口完成——4 个 `Set*` 仅剩 `SetEvalWorker`（worker 持有 uc 循环依赖，唯一保留），`SetRegistry`→构造 option `WithRegistry`，新增 `WithTraceProjector`/`WithFlowFileAppender` option（wire 构造期注入，`provideEventBusSideConsumers` 晚接线块已删），struct 字段按 数据端口/告警域/trace 落盘/横切 分组；顺带重生成 wire_gen.go 修复 S1 后 stale 生成物导致的构建断裂（`biz.WithFilesystemHealthReader` undefined）；后续按 audit/trace/alert/heal 域拆子包。
+2. ~~**P2 — LOG-02**~~：✅ 2026-08-14 批次 B 收窄收口——运行时日志已经 RuntimeLogAdapter 桥接进 Pipeline（JSON），实际交付 context trace_id 注入 + a2a-go 日志桥接；zap Encoder 全量替换不再执行。
+3. ~~**P3 — LOOP-01 FR-02**~~：✅ 2026-08-14 批次 A 完成，cronrunner `log.Helper` 清零。
+4. ~~**P3 — LOOP-01 FR-03**~~：✅ 2026-08-14 批次 A 完成，22 个 step_id 全部注册。
+5. ~~**P2 — PredictiveHeal 真实动作目录**~~：✅ 2026-08-14 批次 C 完成，`CatalogHealActionHandler` 接线 retry/reconnect 真实执行器（幂等只读探测）；Job 默认禁用策略保留。
+6. ~~**P2 — Monitor Usecase 拆分（DEV-05）**~~：✅ 2026-08-14 批次 D 完成——alert/trace/heal 三子包拆分落地（前置：2026-08-13 删 legacy 双轨评估、2026-08-14 setter 收口 4→1 + COG 字段分组 17→13 + 删 `lastFired` sync.Map/冷却 job）；`DiagnoseAndHeal` 自由函数化；facade 别名兼容；wire 重生成验证通过。
 
 > **优化项详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) 子模块 Monitor 优化设计（MON-OPT-01~06）。
 
@@ -243,12 +244,12 @@
 | ID | 任务 | 优先级 | 状态 | 关键实现 |
 |----|------|--------|------|----------|
 | LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
-| LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR |
+| LOG-02 | 框架层 zap 日志结构化 | P2 | ✅（收窄收口） | 2026-08-14 批次 B：运行时日志经 RuntimeLogAdapter 桥接 Pipeline（JSON），交付 context trace_id 注入 + a2a-go 桥接；zap Encoder 替换不再执行 |
 | LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 | P0 红线修复 9 处；P1 补全 Graph/Session/Knowledge；P2 biz 层 fmt.Errorf 全量清理 + admin.go log.Infof |
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` **12** 条内置规则 + 置信度评分（与设计 RC-001 清单 taxonomy 不完全相同，以代码为准） |
-| LOOP-01 | 系统调试日志闭环 | P2 | 🟡 FR-01 ✅ FR-02 🟡 FR-03 ❌ | FR-01 已完成；FR-02 剩余 7 处 cronrunner `log.Helper`；FR-03 22 个 step_id 未注册 |
+| LOOP-01 | 系统调试日志闭环 | P2 | ✅ FR-01/FR-02/FR-03 全部完成 | FR-01 `log.Printf` 清零；FR-02 cronrunner `log.Helper` 清零（2026-08-14 批次 A）；FR-03 22 个 step_id 全注册（2026-08-14 批次 A） |
 
 > **AI 闭环详细设计**：见 [18 monitor.design.md](./18%20monitor.design.md) 子模块 Monitor AI 闭环设计。
 
@@ -314,10 +315,10 @@ cd web && pnpm lint && pnpm test && pnpm build
 | 5 | 方案 C Runs/Events + correlation | P1 | ✅ |
 | 6 | `ListFlowLogs` HTTP 历史 | P2 | ✅ `FlowLogService.ListFlowLogs` |
 | 7 | Tab 命名 `traces`→`runs`、服务端 completion 过滤 | P2 | ❌ |
-| 8 | LOG-02 框架层 zap 结构化 | P2 | ❌（跨 pkg 修改） |
+| 8 | LOG-02 框架层 zap 结构化 | P2 | ✅（2026-08-14 批次 B 收窄收口） |
 | 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 |
-| 10 | LOOP-01 FR-02 cronrunner `log.Helper` 残留清理 | P3 | 🟡 7 处残留 |
-| 11 | LOOP-01 FR-03 stepTitleRegistry 22 个 step_id 注册 | P3 | ❌ |
+| 10 | LOOP-01 FR-02 cronrunner `log.Helper` 残留清理 | P3 | ✅（2026-08-14 批次 A） |
+| 11 | LOOP-01 FR-03 stepTitleRegistry 22 个 step_id 注册 | P3 | ✅（2026-08-14 批次 A） |
 | 12 | 自检/自愈/模式挖掘 | P2 | ✅ |
 
 ---
@@ -355,8 +356,11 @@ cd web && pnpm lint && pnpm test && pnpm build
 - [x] 模式挖掘 PatternMining 故障聚类 + 自动修复模板
 - [x] 故障报告 FailureReport 统一 CI/runtime 错误格式
 - [x] LOOP-01 FR-01 `log.Printf` 红线违规清零
-- [ ] LOOP-01 FR-02 cronrunner `log.Helper` 残留清理（7 处）
-- [ ] LOOP-01 FR-03 stepTitleRegistry 22 个 step_id 注册
+- [x] LOOP-01 FR-02 cronrunner `log.Helper` 残留清理（2026-08-14 批次 A 清零）
+- [x] LOOP-01 FR-03 stepTitleRegistry 22 个 step_id 注册（2026-08-14 批次 A）
+- [x] LOG-02 框架层日志结构化（2026-08-14 批次 B 收窄收口：context trace_id 注入 + a2a-go 桥接）
+- [x] PredictiveHeal 真实动作目录（2026-08-14 批次 C：`CatalogHealActionHandler` retry/reconnect 执行器接线）
+- [x] DEV-05 Monitor Usecase 子包拆分（2026-08-14 批次 D：alert/trace/heal 三子包 + facade 兼容）
 
 ---
 
@@ -367,7 +371,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 - **方案 C**：`trace_id` / `usage_event_id` 缺失时仍落库 completion，Events 仅降级展示。
 - **Runs 列表**以 `recordTurnUsage` 为准，与 `CHAT_RECORD_RUNNER_USAGE` 环境变量无关。
 - 前端跳转遵守 [frontend-guide.md](../guides/frontend-guide.md) — `useMonitorRunNavigation` 编排，组件不直连 router。
-- **LOG-02** 跨 `pkg/trpc-agent-go` 修改，需独立 PR，不在本迭代范围。
+- **LOG-02** 已于 2026-08-14 批次 B 收窄收口（见 §3 优化项 2），原「跨 pkg 独立 PR」约束不再适用。
 
 
 ---
@@ -593,7 +597,7 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 ## 子模块：Monitor AI 闭环 2026-05-28 开发计划
 
 > **关联**：[`18 monitor.md`](./18%20monitor.md) · [`18 monitor.design.md`](./18%20monitor.design.md) 子模块 Monitor AI 闭环设计 · [`18-monitor-optimization-2026-05-26.md`](./18-monitor-optimization-2026-05-26.md) · [`52-flow-logger.design.md`](./52-flow-logger.design.md) · 代码 Review [`2026-05-26-Monitor-Code-Review.md`](../review/2026-05-26-Monitor-Code-Review.md)
-> **状态**：🟢 Phase A~D 已落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅ LOG-03 ✅ P0/P1/P2 ✅ 自检/自愈 ✅）；LOG-02（跨 pkg）待实施；LOOP-01 FR-01 ✅ FR-02 🟡 FR-03 ❌
+> **状态**：🟢 Phase A~D 已落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅ LOG-03 ✅ P0/P1/P2 ✅ 自检/自愈 ✅）；LOG-02 ✅（2026-08-14 批次 B 收窄收口）；LOOP-01 FR-01/FR-02/FR-03 ✅（2026-08-14 批次 A）
 > **创建**：2026-05-28
 
 ---
@@ -615,7 +619,7 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 | 差距编号 | 描述 | 影响 | 关联 | 状态 |
 |----------|------|------|------|------|
 | **GAP-01** | FlowLog 无文件落盘 | ✅ LOG-01 已落地 | ✅ | ✅ |
-| **GAP-02** | 框架层 zap 日志无结构化输出 | ❌ AI 无法解析 stdout 彩色文本 | 新增（LOG-02） | ❌ |
+| **GAP-02** | 框架层 zap 日志无结构化输出 | ✅ 运行时日志经 RuntimeLogAdapter 桥接 Pipeline（JSON 落盘），批次 B 补 context trace_id 注入 | 新增（LOG-02） | ✅（收窄收口） |
 | **GAP-03** | 部分关键路径仍用 slog 而非 FlowLog | ✅ LOG-03 P0/P1/P2 已完成 | ✅ | ✅ |
 | **GAP-04** | `monitor_traces` 表无写入路径 | ✅ MON-OPT-05 已落地 | ✅ | ✅ |
 | **GAP-05** | 无诊断包自动聚合 | ✅ DIAG-01 已落地 | ✅ | ✅ |
@@ -632,27 +636,27 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 | ID | 任务 | 优先级 | 状态 | 关键实现 |
 |----|------|--------|------|----------|
 | LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理；路由规则按 EnvelopeType 分发到 flow/system/trace/alert 文件 |
-| LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR；目标：ConsoleEncoder → JSONEncoder + context 注入 trace_id |
+| LOG-02 | 框架层 zap 日志结构化 | P2 | ✅（2026-08-14 批次 B 收窄收口） | 运行时日志经 RuntimeLogAdapter 桥接 Pipeline（JSON 落盘）+ context trace_id 注入 + a2a-go 桥接；原 ConsoleEncoder→JSONEncoder 全量替换方案不再执行 |
 | LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 | P0 红线修复 9 处（Graph/Task/Channel/Admin 域）；P1 补全 Graph/Session/Knowledge；P2 biz 层 fmt.Errorf 全量清理（15 处 → kerrors）+ admin.go log.Infof |
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `RecordRunnerCompletion` → `FlowFileAppender.WriteTraceComplete` → `trace-*.jsonl`（2026-07-16 接通） |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC；自动触发规则（critical FlowLog / 告警 firing / 手动） |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分（直接匹配 0.4 + 前置条件 0.3 + 时间关联 0.2 + 频率关联 0.1） |
-| LOOP-01 | 系统调试日志闭环 | P2 | 🟡 FR-01 ✅ FR-02 🟡 FR-03 ❌ | FR-01 `log.Printf` 红线违规清零；FR-02 剩余 7 处 cronrunner `log.Helper`（5 个文件）；FR-03 22 个 step_id 未注册 |
+| LOOP-01 | 系统调试日志闭环 | P2 | ✅ | FR-01 `log.Printf` 红线违规清零；FR-02 cronrunner `log.Helper` 清零（2026-08-14 批次 A）；FR-03 22 个 step_id 全注册（2026-08-14 批次 A） |
 
-### 1.1 LOOP-01 FR-02 残留清单
+### 1.1 LOOP-01 FR-02 残留清单（✅ 2026-08-14 批次 A 已全部清零，以下为历史记录）
 
 | 文件 | 行号 | 说明 |
 |------|------|------|
 | `internal/cronrunner/jobs/memory_dead_letter_replayer.go` | 68, 94 | 2 处 `w.log.*` |
-| `internal/cronrunner/jobs/monitor_alert_cooldown.go` | 96 | 1 处 `w.log.*` |
+| `internal/cronrunner/jobs/monitor_alert_cooldown.go` | 96 | 1 处 `w.log.*`（注：该冷却 job 已随 DEV-05 D-1 删除） |
 | `internal/cronrunner/jobs/provider_health.go` | 49 | 1 处 `w.log.*` |
 | `internal/cronrunner/jobs/channel_health.go` | 49 | 1 处 `w.log.*` |
 | `internal/cronrunner/jobs/evolution_scanner.go` | 49 | 1 处 `w.log.*` |
 | `internal/cronrunner/jobs/channel_delivery.go` | 50 | 1 处 `w.log.*` |
 
-### 1.2 LOOP-01 FR-03 待注册 step_id
+### 1.2 LOOP-01 FR-03 待注册 step_id（✅ 2026-08-14 批次 A 已全部注册）
 
-`internal/event/flow_log.go` 中 `stepTitleRegistry` 共 22 个 step_id 未注册中文标题（详见代码）。
+`internal/event/flow_log.go` 中 `stepTitleRegistry` 原 22 个未注册 step_id 已补齐中文标题，并同步 [52-flow-logger.design.md §5.1](./52-flow-logger.design.md) 步骤注册表。
 
 ---
 
@@ -660,11 +664,11 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 
 | 阶段 | 内容 | 依赖 | 状态 |
 |------|------|------|------|
-| **Phase A** | LOG-01 文件落盘 + LOG-02 zap 结构化 | MON-OPT-01 | LOG-01 ✅ / LOG-02 ❌ |
+| **Phase A** | LOG-01 文件落盘 + LOG-02 zap 结构化 | MON-OPT-01 | LOG-01 ✅ / LOG-02 ✅（批次 B 收窄收口） |
 | **Phase B** | LOG-03 路径补全（P1 部分）+ TRACE-01 Trace 文件落盘 | MON-OPT-05 | ✅ |
 | **Phase C** | DIAG-01 诊断包生成 API + 自动触发 | Phase A + B | ✅ |
 | **Phase D** | DIAG-02 根因引擎（12 条内置规则）+ LOG-03 P2 部分 | Phase C | ✅（5 条内置规则） |
-| **Phase E** | LOOP-01 闭环工作流 + AI Prompt 模板 | Phase D | 🟡 FR-01 ✅ FR-02/03 待办 |
+| **Phase E** | LOOP-01 闭环工作流 + AI Prompt 模板 | Phase D | ✅ FR-01/FR-02/FR-03 全部完成 |
 
 ---
 
@@ -697,7 +701,7 @@ Monitor 已实现六大 Tab（Audit / Alerts / Events / Runs / Usage / Logs）�
 
 > **版本**：2026-06-06 | **状态**：✅ 已实现
 > **需求**：[18 monitor.md](./18%20monitor.md) §0.2 自检与自愈 · **设计**：[18 monitor.design.md](./18%20monitor.design.md) 子模块 自检与自愈设计
-> **代码锚点**：`internal/biz/monitor/self_check*.go`、`self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`
+> **代码锚点**：`internal/biz/monitor/self_check*.go`（自检）；`internal/biz/monitor/heal/`（`self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`，DEV-05 迁入 heal 子包）
 
 ---
 
@@ -729,7 +733,7 @@ Monitor 自检与自愈体系：周期性健康检查 + 事件驱动修复 + 预
 | HEAL-02 | SelfCheckRepairDispatcher + 4 个修复器 | P1 | ✅ | FlowFile/TraceProjector/AlertEval/EventBus Repairer |
 | HEAL-03 | SelfCheckScheduler 周期调度 | P1 | ✅ | 5 min ticker + `SELF_CHECK_INTERVAL` 环境变量 |
 | HEAL-04 | SelfHealObserver 事件驱动观察 | P1 | ✅ | 订阅 FlowLog error/critical + DiagBundle + RootCauseEngine + 告警/记录 |
-| HEAL-05 | PredictiveHeal 预测性自愈 | P2 | 🟡 | SystemMetricsReader + 故障模式匹配 + 置信度 > 0.8；执行器 Noop，观察模式 |
+| HEAL-05 | PredictiveHeal 预测性自愈 | P2 | ✅ | SystemMetricsReader + 故障模式匹配 + 置信度 > 0.8；2026-08-14 批次 C 落地 `CatalogHealActionHandler` 真实执行器（retry/reconnect，幂等只读） |
 | HEAL-06 | PatternMining 模式挖掘 | P2 | ✅ | HealRecord 聚类 + 自动修复模板 + 置信度晋升/停用 |
 | HEAL-07 | FailureReport + Parser | P2 | ✅ | 5 种故障类型 + CI/runtime 正则识别 |
 | HEAL-08 | failure_pattern 表 + Repo | P2 | ✅ | FailurePatternReader/Writer + 3 种来源（runtime/ci/mined） |
@@ -743,7 +747,7 @@ Monitor 自检与自愈体系：周期性健康检查 + 事件驱动修复 + 预
 - [x] SelfCheck 每 5 分钟执行一次，4 个 Checker 全部运行
 - [x] Checker 检测到异常时自动触发对应 Repairer
 - [x] SelfHealObserver 订阅 FlowLog 错误事件，自动生成诊断包、根因分析并按置信度告警（修复动作由 Runtime 自愈链路执行并以 `auto_healed`/`heal_success` 元数据回传）
-- [x] PredictiveHeal 在系统指标异常时匹配故障模式并生成观察记录（当前执行器为 `NoopHealActionHandler`，不产生真实修复动作，Job 默认禁用）
+- [x] PredictiveHeal 在系统指标异常时匹配故障模式并执行预防性动作（2026-08-14 批次 C 起为 `CatalogHealActionHandler` 真实执行器：retry→provider 探测重试 / reconnect→MCP 健康刷新，幂等只读；Job 默认禁用）
 - [x] PatternMining 从历史修复记录中自动挖掘故障模式
 - [x] FailureReport 统一 CI 和 runtime 错误格式
 - [x] Wire 注入完整，`go build ./cmd/admin` 通过

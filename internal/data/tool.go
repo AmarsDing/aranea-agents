@@ -109,12 +109,28 @@ func toolSelectSQL(d Dialect) string {
 	// unconditionally breaks SQLite drivers that don't support it (e.g.
 	// glebarez/go-sqlite), and using MAX unconditionally breaks Postgres
 	// (error 42883: function max(integer, integer) does not exist).
+	//
+	// Status semantics: the runtime recorder writes 'failed' for tool errors
+	// (tool_invocation_recorder.go), while legacy paths (a2a/testexec) wrote
+	// 'error'. failure_count must cover both or runtime failures vanish from
+	// the tools list.
+	//
+	// Args quality (args_repaired/args_invalid booleans in metadata_json,
+	// written by the repair guard): SQLite json_extract yields integer 1 for
+	// JSON true; Postgres ->> yields text 'true'.
+	repairedExpr := d.JSONExtract("metadata_json", "args_repaired")
+	invalidExpr := d.JSONExtract("metadata_json", "args_invalid")
+	trueLiteral := "'true'"
+	if d.IsSQLite() {
+		trueLiteral = "1"
+	}
 	return `
 		SELECT t.id, t.tool_key, t.display_name, t.description, t.category, t.source, t.risk_level,
 		       t.enabled, t.readonly, t.requires_confirmation, t.supports_streaming, t.supports_concurrency,
 		       t.parameters_schema_json, t.result_schema_json, t.config_schema_json, t.config_json, t.default_config_json, t.metadata_json,
 		       COALESCE(stats.invoke_count, 0), COALESCE(stats.invoke_count_24h, 0), COALESCE(stats.success_count, 0),
 		       COALESCE(stats.failure_count, 0), COALESCE(stats.blocked_count, 0), COALESCE(overrides.agent_override_count, 0),
+		       COALESCE(stats.repaired_count, 0), COALESCE(stats.invalid_count, 0),
 		       stats.avg_duration_ms, COALESCE(p95.p95_duration_ms, 0), COALESCE(last.started_at, ''), COALESCE(last.status, ''),
 		       t.created_at, t.updated_at, t.deleted_at, t.workspace_id
 		FROM tools t
@@ -123,8 +139,10 @@ func toolSelectSQL(d Dialect) string {
 			       COUNT(1) AS invoke_count,
 			       SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) AS invoke_count_24h,
 			       SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
-			       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
+			       SUM(CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END) AS failure_count,
 			       SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+			       SUM(CASE WHEN ` + repairedExpr + ` = ` + trueLiteral + ` THEN 1 ELSE 0 END) AS repaired_count,
+			       SUM(CASE WHEN ` + invalidExpr + ` = ` + trueLiteral + ` THEN 1 ELSE 0 END) AS invalid_count,
 			       AVG(duration_ms) AS avg_duration_ms
 			FROM tool_invocations
 			WHERE started_at >= ?
@@ -181,14 +199,15 @@ func toolWhereClause(q biz.ToolListQuery) (string, []any) {
 		args = append(args, q.Enabled == "true")
 	}
 	if q.Abnormal {
-		// 仅看异常：最近一次调用（按 started_at/id 倒序首行）以 error/blocked 收尾。
+		// 仅看异常：最近一次调用（按 started_at/id 倒序首行）以失败/阻塞收尾。
+		// 'failed' 为运行时口径，'error' 为遗留口径（a2a/testexec）。
 		// 相关子查询只依赖 t.tool_key，COUNT 查询（无 join）与列表查询均可复用。
 		where = append(where, `COALESCE((
 			SELECT ti.status FROM tool_invocations ti
 			WHERE ti.tool_key = t.tool_key
 			ORDER BY ti.started_at DESC, ti.id DESC
 			LIMIT 1
-		), '') IN ('error', 'blocked')`)
+		), '') IN ('failed', 'error', 'blocked')`)
 	}
 	return strings.Join(where, " AND "), args
 }
@@ -204,6 +223,7 @@ func scanBizTool(rows *sql.Rows) ([]biz.Tool, error) {
 			&item.Enabled, &item.Readonly, &item.RequiresConfirmation, &item.SupportsStreaming, &item.SupportsConcurrency,
 			&item.ParametersSchemaJSON, &item.ResultSchemaJSON, &item.ConfigSchemaJSON, &item.ConfigJSON, &item.DefaultConfigJSON, &item.MetadataJSON,
 			&item.InvokeCount, &item.InvokeCount24h, &item.SuccessCount, &item.FailureCount, &item.BlockedCount, &item.AgentOverrideCount,
+			&item.RepairedCount, &item.InvalidCount,
 			&avg, &p95, &item.LastInvokedAt, &item.LastStatus,
 			&item.CreatedAt, &item.UpdatedAt, &item.DeletedAt, &item.WorkspaceID,
 		); err != nil {
@@ -235,12 +255,12 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 	var success24h, failed24h, blocked24h int
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`
-		SELECT
-		  COALESCE(COUNT(1), 0),
-		  COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END), 0),
-		  COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0)
-		FROM tool_invocations WHERE started_at >= ?`),
+	SELECT
+	  COALESCE(COUNT(1), 0),
+	  COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0),
+	  COALESCE(SUM(CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END), 0),
+	  COALESCE(SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END), 0)
+	FROM tool_invocations WHERE started_at >= ?`),
 		[]any{cutoff},
 		&s.Calls24h, &success24h, &failed24h, &blocked24h); err != nil {
 		return biz.ToolSummary{}, entErrToBizErr(err, "TOOL")

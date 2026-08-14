@@ -10,6 +10,7 @@ import { statusOptions } from '../../components/agents/agentUi';
 import { useAgentsPageStore } from '../../stores/agents';
 import { useAppStore } from '../../stores/app';
 import { useAvatarCatalogStore } from '../../stores/avatar';
+import { useAgentBatch } from './useAgentBatch';
 
 export type CreateAgentForm = {
   agent_key: string;
@@ -57,7 +58,6 @@ export function useAgentsPage() {
     pageMax,
     providerOptions,
     tableColumns,
-    selectedAgentIds,
   } = storeToRefs(pageStore);
 
   const taxonomyLabel = pageStore.taxonomyLabel;
@@ -366,55 +366,6 @@ export function useAgentsPage() {
     deleteOpen.value = true;
   }
 
-  const batchDeleteOpen = ref(false);
-  const batchBusy = ref(false);
-
-  function toggleAgentSelected(id: string) {
-    pageStore.toggleAgentSelected(id);
-  }
-
-  function clearAgentSelection() {
-    pageStore.clearAgentSelection();
-  }
-
-  function requestBatchDelete() {
-    if (selectedAgentIds.value.length === 0) return;
-    batchDeleteOpen.value = true;
-  }
-
-  async function runBatchSetStatus(status: 'active' | 'inactive') {
-    if (batchBusy.value) return;
-    batchBusy.value = true;
-    try {
-      const affected = await pageStore.batchUpdateListedAgents({ status });
-      $q.notify({ type: 'positive', message: t('agentsPage.batch.statusOk', { n: affected }) });
-    } catch (error) {
-      $q.notify({
-        type: 'negative',
-        message: error instanceof Error ? error.message : t('agentsPage.batch.failed'),
-      });
-    } finally {
-      batchBusy.value = false;
-    }
-  }
-
-  async function runBatchDelete() {
-    batchDeleteOpen.value = false;
-    if (batchBusy.value) return;
-    batchBusy.value = true;
-    try {
-      const affected = await pageStore.batchUpdateListedAgents({ delete: true });
-      $q.notify({ type: 'positive', message: t('agentsPage.batch.deleteOk', { n: affected }) });
-    } catch (error) {
-      $q.notify({
-        type: 'negative',
-        message: error instanceof Error ? error.message : t('agentsPage.batch.failed'),
-      });
-    } finally {
-      batchBusy.value = false;
-    }
-  }
-
   async function deleteAgentTarget() {
     if (!deleteTarget.value) return;
     try {
@@ -450,6 +401,7 @@ export function useAgentsPage() {
   }
 
   return {
+    ...useAgentBatch(),
     isDark,
     agents,
     keyword,
@@ -503,13 +455,5 @@ export function useAgentsPage() {
     deleteAgentTarget,
     duplicateListedAgent,
     onReorder,
-    selectedAgentIds,
-    toggleAgentSelected,
-    clearAgentSelection,
-    batchDeleteOpen,
-    batchBusy,
-    requestBatchDelete,
-    runBatchSetStatus,
-    runBatchDelete,
   };
 }

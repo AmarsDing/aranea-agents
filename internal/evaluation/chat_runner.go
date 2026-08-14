@@ -11,6 +11,10 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
+// AgentRunner is the function signature used to run one evaluation case.
+// It returns the agent's output for a given input string.
+type AgentRunner func(ctx context.Context, agentID, input string) (string, error)
+
 // chatRunnerAdapter implements runner.Runner by delegating to AgentRunner.
 type chatRunnerAdapter struct {
 	agentID string

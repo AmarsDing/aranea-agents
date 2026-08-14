@@ -16,7 +16,7 @@ import (
 func TestEvalDeleteCascade(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
-	if err := EnsureEvalSchema(ctx, db); err != nil {
+	if err := EnsureEvalSchema(ctx, db, DialectPostgres); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
@@ -25,7 +25,7 @@ func TestEvalDeleteCascade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.InsertCases(ctx, []biz.EvalCase{
+	if err := repo.InsertCasesWithCountUpdate(ctx, ds.ID, []biz.EvalCase{
 		{ID: "c1", DatasetID: ds.ID, Input: "q", ExpectedOutput: "a"},
 	}); err != nil {
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestEvalDeleteCascade(t *testing.T) {
 func TestEvalDeleteRun(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
-	if err := EnsureEvalSchema(ctx, db); err != nil {
+	if err := EnsureEvalSchema(ctx, db, DialectPostgres); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
@@ -97,7 +97,7 @@ func TestEvalDeleteRun(t *testing.T) {
 func TestEvalUpdateDataset(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
-	if err := EnsureEvalSchema(ctx, db); err != nil {
+	if err := EnsureEvalSchema(ctx, db, DialectPostgres); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())
@@ -120,7 +120,7 @@ func TestEvalUpdateDataset(t *testing.T) {
 func TestEvalInsertCasesWithCountUpdateAtomic(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
-	if err := EnsureEvalSchema(ctx, db); err != nil {
+	if err := EnsureEvalSchema(ctx, db, DialectPostgres); err != nil {
 		t.Fatal(err)
 	}
 	// Set up a real ent.Client so ExecInTx actually opens a transaction

@@ -33,6 +33,10 @@ export type Tool = {
   failureCount: number | undefined;
   blockedCount: number | undefined;
   agentOverrideCount: number | undefined;
+  // repaired_count/invalid_count：修复守卫标记聚合（90 天统计窗口）。
+  // 参数一次合法率 = 1 - (repaired_count + invalid_count) / invoke_count。
+  repairedCount: number | undefined;
+  invalidCount: number | undefined;
   avgDurationMs?: number;
   p95DurationMs: number | undefined;
   lastInvokedAt: string | undefined;

@@ -95,15 +95,19 @@ type Tool struct {
 	FailureCount         int32                  `protobuf:"varint,24,opt,name=failure_count,json=failureCount,proto3" json:"failure_count,omitempty"`
 	BlockedCount         int32                  `protobuf:"varint,25,opt,name=blocked_count,json=blockedCount,proto3" json:"blocked_count,omitempty"`
 	AgentOverrideCount   int32                  `protobuf:"varint,26,opt,name=agent_override_count,json=agentOverrideCount,proto3" json:"agent_override_count,omitempty"`
-	AvgDurationMs        *float64               `protobuf:"fixed64,27,opt,name=avg_duration_ms,json=avgDurationMs,proto3,oneof" json:"avg_duration_ms,omitempty"`
-	P95DurationMs        float64                `protobuf:"fixed64,33,opt,name=p95_duration_ms,json=p95DurationMs,proto3" json:"p95_duration_ms,omitempty"`
-	LastInvokedAt        string                 `protobuf:"bytes,28,opt,name=last_invoked_at,json=lastInvokedAt,proto3" json:"last_invoked_at,omitempty"`
-	LastStatus           string                 `protobuf:"bytes,29,opt,name=last_status,json=lastStatus,proto3" json:"last_status,omitempty"`
-	CreatedAt            string                 `protobuf:"bytes,30,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt            string                 `protobuf:"bytes,31,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Permissions          *ToolPermissions       `protobuf:"bytes,32,opt,name=permissions,proto3" json:"permissions,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// repaired_count/invalid_count：修复守卫标记聚合（90 天统计窗口）。
+	// 参数一次合法率 = 1 - (repaired_count + invalid_count) / invoke_count。
+	RepairedCount int32            `protobuf:"varint,34,opt,name=repaired_count,json=repairedCount,proto3" json:"repaired_count,omitempty"`
+	InvalidCount  int32            `protobuf:"varint,35,opt,name=invalid_count,json=invalidCount,proto3" json:"invalid_count,omitempty"`
+	AvgDurationMs *float64         `protobuf:"fixed64,27,opt,name=avg_duration_ms,json=avgDurationMs,proto3,oneof" json:"avg_duration_ms,omitempty"`
+	P95DurationMs float64          `protobuf:"fixed64,33,opt,name=p95_duration_ms,json=p95DurationMs,proto3" json:"p95_duration_ms,omitempty"`
+	LastInvokedAt string           `protobuf:"bytes,28,opt,name=last_invoked_at,json=lastInvokedAt,proto3" json:"last_invoked_at,omitempty"`
+	LastStatus    string           `protobuf:"bytes,29,opt,name=last_status,json=lastStatus,proto3" json:"last_status,omitempty"`
+	CreatedAt     string           `protobuf:"bytes,30,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     string           `protobuf:"bytes,31,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Permissions   *ToolPermissions `protobuf:"bytes,32,opt,name=permissions,proto3" json:"permissions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Tool) Reset() {
@@ -314,6 +318,20 @@ func (x *Tool) GetBlockedCount() int32 {
 func (x *Tool) GetAgentOverrideCount() int32 {
 	if x != nil {
 		return x.AgentOverrideCount
+	}
+	return 0
+}
+
+func (x *Tool) GetRepairedCount() int32 {
+	if x != nil {
+		return x.RepairedCount
+	}
+	return 0
+}
+
+func (x *Tool) GetInvalidCount() int32 {
+	if x != nil {
+		return x.InvalidCount
 	}
 	return 0
 }
@@ -3133,7 +3151,7 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\x19kratos/tool/v1/tool.proto\x12\x0ekratos.tool.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"0\n" +
 	"\x0fToolPermissions\x12\x1d\n" +
 	"\n" +
-	"can_manage\x18\x01 \x01(\bR\tcanManage\"\x80\n" +
+	"can_manage\x18\x01 \x01(\bR\tcanManage\"\xcc\n" +
 	"\n" +
 	"\x04Tool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
@@ -3164,7 +3182,9 @@ const file_kratos_tool_v1_tool_proto_rawDesc = "" +
 	"\rsuccess_count\x18\x17 \x01(\x05R\fsuccessCount\x12#\n" +
 	"\rfailure_count\x18\x18 \x01(\x05R\ffailureCount\x12#\n" +
 	"\rblocked_count\x18\x19 \x01(\x05R\fblockedCount\x120\n" +
-	"\x14agent_override_count\x18\x1a \x01(\x05R\x12agentOverrideCount\x12+\n" +
+	"\x14agent_override_count\x18\x1a \x01(\x05R\x12agentOverrideCount\x12%\n" +
+	"\x0erepaired_count\x18\" \x01(\x05R\rrepairedCount\x12#\n" +
+	"\rinvalid_count\x18# \x01(\x05R\finvalidCount\x12+\n" +
 	"\x0favg_duration_ms\x18\x1b \x01(\x01H\x00R\ravgDurationMs\x88\x01\x01\x12&\n" +
 	"\x0fp95_duration_ms\x18! \x01(\x01R\rp95DurationMs\x12&\n" +
 	"\x0flast_invoked_at\x18\x1c \x01(\tR\rlastInvokedAt\x12\x1f\n" +

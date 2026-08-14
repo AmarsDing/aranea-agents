@@ -10,15 +10,15 @@ import (
 var ErrAlertMetricNoData = alert.ErrAlertMetricNoData
 
 type (
-	AlertMetric                 = alert.AlertMetric
-	AlertMetricInfo             = alert.AlertMetricInfo
-	AlertMetricCatalogProvider  = alert.AlertMetricCatalogProvider
-	AlertBreachDetailer         = alert.AlertBreachDetailer
-	AlertMetricRegistry         = alert.AlertMetricRegistry
-	RunnerErrorRateMetric       = alert.RunnerErrorRateMetric
+	AlertMetric                  = alert.AlertMetric
+	AlertMetricInfo              = alert.AlertMetricInfo
+	AlertMetricCatalogProvider   = alert.AlertMetricCatalogProvider
+	AlertBreachDetailer          = alert.AlertBreachDetailer
+	AlertMetricRegistry          = alert.AlertMetricRegistry
+	RunnerErrorRateMetric        = alert.RunnerErrorRateMetric
 	SkillFilesystemMissingMetric = alert.SkillFilesystemMissingMetric
-	DeadLetterCountReader       = alert.DeadLetterCountReader
-	SequencerDeadLetterMetric   = alert.SequencerDeadLetterMetric
+	DeadLetterCountReader        = alert.DeadLetterCountReader
+	SequencerDeadLetterMetric    = alert.SequencerDeadLetterMetric
 	// FilesystemHealthReader supplies live skill filesystem health for alerts.
 	FilesystemHealthReader = alert.FilesystemHealthReader
 )

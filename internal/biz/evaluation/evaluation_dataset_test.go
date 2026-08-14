@@ -50,14 +50,6 @@ func (m *dsMockRepo) UpdateDataset(ctx context.Context, id, name, desc string) (
 	return Dataset{}, nil
 }
 
-func (m *dsMockRepo) UpdateDatasetCaseCount(_ context.Context, _ string, _ int) error {
-	return nil
-}
-
-func (m *dsMockRepo) InsertCases(_ context.Context, _ []Case) error {
-	return nil
-}
-
 func (m *dsMockRepo) InsertCasesWithCountUpdate(_ context.Context, _ string, _ []Case) error {
 	return nil
 }

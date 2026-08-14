@@ -18,7 +18,6 @@ type mockRepo struct {
 	cases             []Case
 	runs              []Run
 	insertCasesErr    error
-	updateCaseCountFn func(ctx context.Context, id string, delta int) error
 	getRunsByIDsRuns  []Run
 	getRunsByIDsErr   error
 	judgeAnnotated    []JudgeAnnotatedResult
@@ -47,23 +46,9 @@ func (m *mockRepo) UpdateDataset(_ context.Context, _, _, _ string) (Dataset, er
 	return Dataset{}, nil
 }
 
-func (m *mockRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error {
-	if m.updateCaseCountFn != nil {
-		return m.updateCaseCountFn(ctx, id, delta)
-	}
-	return nil
-}
-
-func (m *mockRepo) InsertCases(_ context.Context, cases []Case) error {
+func (m *mockRepo) InsertCasesWithCountUpdate(_ context.Context, _ string, cases []Case) error {
 	m.cases = append(m.cases, cases...)
 	return m.insertCasesErr
-}
-
-func (m *mockRepo) InsertCasesWithCountUpdate(ctx context.Context, _ string, cases []Case) error {
-	if err := m.InsertCases(ctx, cases); err != nil {
-		return err
-	}
-	return m.UpdateDatasetCaseCount(ctx, "", 0)
 }
 
 func (m *mockRepo) ListCases(_ context.Context, _ string) ([]Case, error) {

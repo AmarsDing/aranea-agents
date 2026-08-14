@@ -7,7 +7,7 @@
   >
     <q-card-section class="agent-card__header">
       <q-checkbox
-        v-if="selectable"
+        v-if="selectable && !isBuiltin"
         class="agent-card__select"
         :model-value="selected"
         dense

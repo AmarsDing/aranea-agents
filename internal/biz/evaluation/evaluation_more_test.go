@@ -17,8 +17,6 @@ type fnMockRepo struct {
 	listDatasetsFn               func(context.Context, string, int, int) ([]Dataset, int, error)
 	deleteDatasetFn              func(context.Context, string) error
 	updateDatasetFn              func(context.Context, string, string, string) (Dataset, error)
-	updateDatasetCaseCountFn     func(context.Context, string, int) error
-	insertCasesFn                func(context.Context, []Case) error
 	insertCasesWithCountUpdateFn func(context.Context, string, []Case) error
 	listCasesFn                  func(context.Context, string) ([]Case, error)
 	createRunFn                  func(context.Context, Run) (Run, error)
@@ -69,30 +67,11 @@ func (m *fnMockRepo) UpdateDataset(ctx context.Context, id, name, desc string) (
 	return Dataset{}, nil
 }
 
-func (m *fnMockRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error {
-	if m.updateDatasetCaseCountFn != nil {
-		return m.updateDatasetCaseCountFn(ctx, id, delta)
-	}
-	return nil
-}
-
-func (m *fnMockRepo) InsertCases(ctx context.Context, cases []Case) error {
-	if m.insertCasesFn != nil {
-		return m.insertCasesFn(ctx, cases)
-	}
-	return nil
-}
-
 func (m *fnMockRepo) InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []Case) error {
 	if m.insertCasesWithCountUpdateFn != nil {
 		return m.insertCasesWithCountUpdateFn(ctx, datasetID, cases)
 	}
-	// Default behavior: delegate to the two underlying functions so the mock
-	// mirrors the previous non-atomic behavior unless a test overrides it.
-	if err := m.InsertCases(ctx, cases); err != nil {
-		return err
-	}
-	return m.UpdateDatasetCaseCount(ctx, datasetID, len(cases))
+	return nil
 }
 
 func (m *fnMockRepo) ListCases(ctx context.Context, datasetID string) ([]Case, error) {

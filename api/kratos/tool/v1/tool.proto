@@ -41,6 +41,10 @@ message Tool {
   int32 failure_count = 24;
   int32 blocked_count = 25;
   int32 agent_override_count = 26;
+  // repaired_count/invalid_count：修复守卫标记聚合（90 天统计窗口）。
+  // 参数一次合法率 = 1 - (repaired_count + invalid_count) / invoke_count。
+  int32 repaired_count = 34;
+  int32 invalid_count = 35;
   optional double avg_duration_ms = 27;
   double p95_duration_ms = 33;
   string last_invoked_at = 28;

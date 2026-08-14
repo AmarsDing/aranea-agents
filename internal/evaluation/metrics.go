@@ -1,12 +1,8 @@
 package evaluation
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
-
-	"aranea-agents/internal/biz"
 )
 
 // metricSet holds which metrics to compute for a run.
@@ -71,114 +67,4 @@ func parseMetrics(raw string) metricSet {
 		}
 	}
 	return result
-}
-
-// legacyCaseScores holds per-case metric outcomes for the legacy runner path.
-type legacyCaseScores struct {
-	ExactMatch       bool
-	ContainsMatch    bool
-	ToolCallAccuracy float32
-}
-
-// scoreLegacyCase computes selected metrics for one case (legacy runner, no framework).
-// Note: LLM Judge is not available in the legacy path. Use the framework path for LLM Judge.
-func scoreLegacyCase(
-	_ context.Context,
-	c biz.EvalCase,
-	actual string,
-	want metricSet,
-) legacyCaseScores {
-	var out legacyCaseScores
-	if want[MetricExactMatch] {
-		out.ExactMatch = strings.EqualFold(strings.TrimSpace(actual), strings.TrimSpace(c.ExpectedOutput))
-	}
-	if want[MetricContainsMatch] {
-		out.ContainsMatch = strings.Contains(strings.ToLower(actual), strings.ToLower(c.ExpectedOutput))
-	}
-	if want[MetricToolCallAccuracy] {
-		out.ToolCallAccuracy = scoreToolCallAccuracy(c.MetadataJSON, actual)
-	}
-	return out
-}
-
-// legacyAgg accumulates run-level metric averages for the legacy path.
-type legacyAgg struct {
-	exact    aggBucket
-	contains aggBucket
-	tool     aggBucket
-}
-
-type aggBucket struct {
-	sum   float32
-	count float32
-}
-
-func (a *legacyAgg) add(sc legacyCaseScores, want metricSet) {
-	if want[MetricExactMatch] {
-		a.exact.sum += boolToFloat(sc.ExactMatch)
-		a.exact.count++
-	}
-	if want[MetricContainsMatch] {
-		a.contains.sum += boolToFloat(sc.ContainsMatch)
-		a.contains.count++
-	}
-	if want[MetricToolCallAccuracy] {
-		a.tool.sum += sc.ToolCallAccuracy
-		a.tool.count++
-	}
-}
-
-func (a *legacyAgg) finalize(run *biz.EvalRun) {
-	if a.exact.count > 0 {
-		run.ExactMatchScore = a.exact.sum / a.exact.count
-	}
-	if a.contains.count > 0 {
-		run.ContainsMatchScore = a.contains.sum / a.contains.count
-	}
-	if a.tool.count > 0 {
-		run.ToolCallAccuracy = a.tool.sum / a.tool.count
-	}
-}
-
-// avg returns the mean of the per-metric means (metrics with no scored cases
-// are excluded). Returns 0 when nothing was scored.
-func (a *legacyAgg) avg() float32 {
-	var sum, n float32
-	for _, b := range []aggBucket{a.exact, a.contains, a.tool} {
-		if b.count > 0 {
-			sum += b.sum / b.count
-			n++
-		}
-	}
-	if n == 0 {
-		return 0
-	}
-	return sum / n
-}
-
-// scoreToolCallAccuracy checks if expected tools (metadata_json.expected_tools) appear in output.
-func scoreToolCallAccuracy(metadataJSON, actual string) float32 {
-	if metadataJSON == "" {
-		return 0
-	}
-	var meta struct {
-		ExpectedTools []string `json:"expected_tools"`
-	}
-	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil || len(meta.ExpectedTools) == 0 {
-		return 0
-	}
-	hit := 0
-	for _, tool := range meta.ExpectedTools {
-		if strings.Contains(actual, tool) {
-			hit++
-		}
-	}
-	return float32(hit) / float32(len(meta.ExpectedTools))
-}
-
-func boolToFloat(b bool) float32 {
-	if b {
-		return 1
-	}
-	return 0
 }

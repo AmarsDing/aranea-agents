@@ -188,6 +188,34 @@ export function toolSuccessRateColor(tool: Pick<Tool, 'invoke_count' | 'success_
   return rate < threshold ? 'negative' : 'positive';
 }
 
+/** 参数一次合法率（0~1）：1 − (repaired+invalid)/invoke，衡量模型对 schema 的一次性理解准确度；无调用返回 null。 */
+export function toolArgsFirstPassRate(
+  tool: Pick<Tool, 'invoke_count' | 'repaired_count' | 'invalid_count'>,
+): number | null {
+  if (!tool.invoke_count || tool.invoke_count <= 0) return null;
+  const bad = tool.repaired_count + tool.invalid_count;
+  if (bad <= 0) return 1;
+  return Math.max(0, 1 - bad / tool.invoke_count);
+}
+
+export function formatToolArgsFirstPassRate(
+  tool: Pick<Tool, 'invoke_count' | 'repaired_count' | 'invalid_count'>,
+): string {
+  const rate = toolArgsFirstPassRate(tool);
+  if (rate == null) return '—';
+  return `${(rate * 100).toFixed(1)}%`;
+}
+
+/** 一次合法率低于阈值（默认 95%）且有调用量时标黄——参数畸形会多耗一轮修复交互。 */
+export function toolArgsFirstPassRateColor(
+  tool: Pick<Tool, 'invoke_count' | 'repaired_count' | 'invalid_count'>,
+  threshold = 0.95,
+): string {
+  const rate = toolArgsFirstPassRate(tool);
+  if (rate == null) return 'grey';
+  return rate < threshold ? 'warning' : 'positive';
+}
+
 export function prettyJSON(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw || '{}'), null, 2);

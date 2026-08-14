@@ -122,15 +122,15 @@ type TracesQuery struct {
 // DEV-05: trace domain models live in the trace subpackage; these aliases
 // keep the historical monitor.* API surface intact.
 type (
-	TraceWrite        = trace.TraceWrite
-	TraceSpanWrite    = trace.TraceSpanWrite
-	TraceSpan         = trace.TraceSpan
-	TraceCompletion   = trace.TraceCompletion
-	UsageAggregate    = trace.UsageAggregate
-	TraceUsageRepo    = trace.UsageRepo
-	TraceSpanReader   = trace.SpanReader
-	TraceProjector    = trace.TraceProjector
-	FlowFileAppender  = trace.FlowFileAppender
+	TraceWrite       = trace.TraceWrite
+	TraceSpanWrite   = trace.TraceSpanWrite
+	TraceSpan        = trace.TraceSpan
+	TraceCompletion  = trace.TraceCompletion
+	UsageAggregate   = trace.UsageAggregate
+	TraceUsageRepo   = trace.UsageRepo
+	TraceSpanReader  = trace.SpanReader
+	TraceProjector   = trace.TraceProjector
+	FlowFileAppender = trace.FlowFileAppender
 )
 
 var (

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,5 +50,44 @@ func TestRecordContextBudgetLog_NoBudgetNoObservation(t *testing.T) {
 	m.recordContextBudgetLog(context.Background(), TurnUsageParams{SessionID: "s1"})
 	if after := histogramSampleCount(t, h); after != before {
 		t.Fatalf("no-budget path must not observe, delta=%d", after-before)
+	}
+}
+
+// S2：context budget 快照必须合并进 usage.metadata_json（context_budget 键），
+// 否则台账只存在于进程日志/Prometheus，无法跨 turn 做 DB 侧聚合分析。
+func TestMergeContextBudgetMetadata_MergesSnapshot(t *testing.T) {
+	ctx, _ := chatagent.WithContextBudget(context.Background())
+	chatagent.RecordContextBudget(ctx, chatagent.ContextBudgetCategoryToolsSchema, 3500)
+
+	meta := mergeContextBudgetMetadata(ctx, `{"trace_id":"t1"}`)
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(meta), &payload); err != nil {
+		t.Fatalf("merged metadata not valid JSON: %v", err)
+	}
+	if payload["trace_id"] != "t1" {
+		t.Fatalf("existing keys must be preserved, got %v", payload)
+	}
+	cb, ok := payload["context_budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("context_budget key missing: %s", meta)
+	}
+	est, ok := cb["est_tokens"].(map[string]any)
+	if !ok || est[chatagent.ContextBudgetCategoryToolsSchema] != float64(1000) {
+		t.Fatalf("est_tokens.tools_schema: want 1000 (3500 chars / 3.5), got %v", cb["est_tokens"])
+	}
+	if cb["est_total_input"] != float64(1000) {
+		t.Fatalf("est_total_input: want 1000, got %v", cb["est_total_input"])
+	}
+}
+
+// 无台账或台账为空时原样透传，不污染 metadata。
+func TestMergeContextBudgetMetadata_NoBudgetPassthrough(t *testing.T) {
+	meta := `{"trace_id":"t1"}`
+	if got := mergeContextBudgetMetadata(context.Background(), meta); got != meta {
+		t.Fatalf("no-budget path must pass through, got %s", got)
+	}
+	ctx, _ := chatagent.WithContextBudget(context.Background())
+	if got := mergeContextBudgetMetadata(ctx, meta); got != meta {
+		t.Fatalf("empty-budget path must pass through, got %s", got)
 	}
 }

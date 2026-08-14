@@ -65,5 +65,5 @@ func NewEvaluationRunner(
 		llmUserSim = sim
 	}
 	framework := evaluation.NewFrameworkBridge(runFactory, judgeRunner, callbacks, llmUserSim, evaluation.DefaultMultiRunConfig(), lg)
-	return evaluation.NewRunner(uc, agentRunner, framework, lg)
+	return evaluation.NewRunner(uc, framework, lg)
 }

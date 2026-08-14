@@ -12,7 +12,7 @@ import (
 func TestEvalCaseResultAnnotation(t *testing.T) {
 	db := testhelper.SetupTestPGRaw(t)
 	ctx := context.Background()
-	if err := EnsureEvalSchema(ctx, db); err != nil {
+	if err := EnsureEvalSchema(ctx, db, DialectPostgres); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop(), dialect: DialectPostgres}, loggateway.NewNoop())

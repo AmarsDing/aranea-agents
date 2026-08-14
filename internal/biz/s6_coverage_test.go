@@ -251,21 +251,12 @@ func (m *memEvalRepo2) DeleteDataset(_ context.Context, id string) error {
 	delete(m.datasets, id)
 	return nil
 }
-func (m *memEvalRepo2) UpdateDatasetCaseCount(_ context.Context, id string, delta int) error {
-	d := m.datasets[id]
-	d.CaseCount += delta
-	m.datasets[id] = d
-	return nil
-}
-func (m *memEvalRepo2) InsertCases(_ context.Context, cases []biz.EvalCase) error {
+func (m *memEvalRepo2) InsertCasesWithCountUpdate(_ context.Context, datasetID string, cases []biz.EvalCase) error {
 	m.cases = append(m.cases, cases...)
+	d := m.datasets[datasetID]
+	d.CaseCount += len(cases)
+	m.datasets[datasetID] = d
 	return nil
-}
-func (m *memEvalRepo2) InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []biz.EvalCase) error {
-	if err := m.InsertCases(ctx, cases); err != nil {
-		return err
-	}
-	return m.UpdateDatasetCaseCount(ctx, datasetID, len(cases))
 }
 func (m *memEvalRepo2) ListCases(_ context.Context, _ string) ([]biz.EvalCase, error) {
 	return m.cases, nil

@@ -276,29 +276,47 @@ type MonitorListResult struct {
 
 ### 3.2 Usecase
 
+> **DEV-05（2026-08-14 完成）**：`internal/biz/monitor` 已按域拆分为三个子包，根包保留 facade 别名维持消费方兼容：
+>
+> | 子包 | 职责 | 主要文件 |
+> |------|------|----------|
+> | `monitor/alert` | 告警域：规则 CRUD、指标评估、状态机、评估 Worker、RingBuffer、Registry | `engine.go`、`state_machine.go`、`worker.go`、`ring_buffer.go`、`registry.go`、`metric_*.go` |
+> | `monitor/trace` | trace 投影与日志落盘：TraceProjector、FlowFileAppender、spans 工具 | `projector.go`、`flow_file_appender.go`、`model.go`、`utils.go` |
+> | `monitor/heal` | 自愈域：SelfHealObserver/Usecase、PredictiveHeal（动作目录执行器）、PatternMining、RootCauseEngine、FailurePattern 知识库、DiagBundle | `self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`、`root_cause_*.go`、`failure_*.go`、`diag_bundle.go`、`heal_action_catalog.go`、`diagnose_heal.go`（`DiagnoseAndHeal` 自由函数） |
+>
+> 循环依赖解法：`alert.Engine` 反向依赖窄接口（`EventCounter`/`EventSink`/`FlowLogger`），由根包 Usecase 适配注入；`DiagnoseAndHeal` 从 Usecase 方法改为自由函数（receiver 从未被使用）。
+>
+> Wire：`monitor.WireProviderSet`（Registry/自检装配）+ `heal.WireProviderSet`（RootCauseEngine），均在 `biz.go` 聚合。
+
 ```go
 type Usecase struct {
+    // --- 数据访问端口 ---
     auditRepo        AuditRepo
     eventRepo        EventRepo
     traceRepo        TraceRepo
     alertRepo        AlertRepo
     runnerCompletion RunnerCompletionRepo
-    notifier         AlertNotifier
-    fsHealth         FilesystemHealthReader
-    lg               loggateway.Logger
-    lastFired        sync.Map
-    rulesCache       []AlertRule
-    rulesExpire      time.Time
-    rulesMu          sync.RWMutex
-    ringBuffer       *MetricRingBuffer
-    evalWorker       *AlertEvalWorker
-    registry         *AlertMetricRegistry
+    traceSpanReader  TraceSpanReader
+
+    // --- 告警域（alert 子包） ---
+    notifier   AlertNotifier
+    registry   *AlertMetricRegistry
+    evalWorker *AlertEvalWorker // 循环依赖（worker 持有 engine）：唯一保留的 setter 注入
+    engine     *alert.Engine    // 告警域实现主体（规则 CRUD/状态机/评估）
+
+    // --- trace / 日志落盘域（trace 子包） ---
+    traceProjector   *TraceProjector
+    flowFileAppender *FlowFileAppender
+
+    // --- 横切 ---
+    lg      loggateway.Logger
+    flowLog FlowLogWriter
 }
 
 type UsecaseOption func(*Usecase)
 ```
 
-构造函数：`NewUsecase(audit, event, trace, alert, runner, notifier, ...UsecaseOption)` — 6 个必选依赖 + 可选注入。
+构造函数：`NewUsecase(audit, event, trace, alert, runner, notifier, ...UsecaseOption)` — 6 个必选依赖 + 可选注入。告警触发状态持久化于 `monitor_alert_rules.last_fired_at`/`firing_state`（DB 真相源），进程内不再保留 `lastFired` sync.Map 与规则缓存字段。
 
 ```go
 func (u *Usecase) ListAuditLogs(ctx, query AuditQuery) (AuditListResult, error)
@@ -1150,7 +1168,7 @@ event.SysLogInfo("memory.l4_decay", "decay completed",
 
 > **版本**：2026-06-06
 > **需求**：[18 monitor.md](./18%20monitor.md) §0.2 自检与自愈
-> **代码锚点**：`internal/biz/monitor/self_check*.go`、`self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`
+> **代码锚点**：`internal/biz/monitor/self_check*.go`（自检）；`internal/biz/monitor/heal/`（`self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`，DEV-05 迁入 heal 子包）
 
 > 实现进度见 [18-monitor.development.md §子模块 自检与自愈](./18-monitor.development.md)。
 
@@ -1185,6 +1203,10 @@ PredictiveHealUsecase（预测性自愈）
     ├── 读取系统指标（provider 延迟、内存使用率、会话积压）
     ├── 匹配活跃故障模式（FailurePattern）
     └── 置信度 > 0.8 时执行预防性修复
+        （2026-08-14 批次 C：`CatalogHealActionHandler` 真实动作目录——
+         retry → LlmProviderModelUsecase 健康探测重试；
+         reconnect → MCPServerUsecase 连接健康刷新；均为幂等只读探测，
+         wire 经 providePredictiveHealUsecase 装配 BindRetry/BindReconnect）
 
 PatternMiningUsecase（模式挖掘）
     ├── 从历史 HealRecord 聚类相似故障
@@ -2182,6 +2204,8 @@ func newFlowFileAppender(infra *event.Infra, cfg *conf.Monitor) *FlowFileAppende
 ---
 
 ## 4. LOG-02：框架层 zap 日志结构化
+
+> **状态（2026-08-14 批次 B，收窄收口）**：✅ 已落地收窄方案——框架层运行时日志本就已经 `RuntimeLogAdapter` 桥接进 loggateway Pipeline（JSON 落盘 `aranea-pipeline.log`），故不做 zap Console→JSON Encoder 全量替换；实际交付为 **context trace_id 注入**（TraceContext 提取函数注入日志字段）+ **a2a-go 日志桥接**。本节 §4.2~4.4 为原始全量方案存档，未实施。
 
 ### 4.1 目标
 

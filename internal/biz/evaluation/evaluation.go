@@ -149,14 +149,12 @@ type Repo interface {
 	ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]Dataset, int, error)
 	DeleteDataset(ctx context.Context, id string) error
 	UpdateDataset(ctx context.Context, id, name, description string) (Dataset, error)
-	UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error
 
-	InsertCases(ctx context.Context, cases []Case) error
 	// InsertCasesWithCountUpdate inserts cases and bumps dataset.case_count in a
-	// single transaction. Use this instead of separate InsertCases +
-	// UpdateDatasetCaseCount calls when the two writes must be atomic
-	// (e.g. UploadCases). Without atomicity, a failure between the two writes
-	// would leave case_count diverged from the actual row count in eval_cases.
+	// single transaction. The two writes must stay atomic — a failure between
+	// them would leave case_count diverged from the actual row count in
+	// eval_cases (EVAL-06: the former separate InsertCases +
+	// UpdateDatasetCaseCount pair was removed; it had no production caller).
 	InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []Case) error
 	ListCases(ctx context.Context, datasetID string) ([]Case, error)
 
