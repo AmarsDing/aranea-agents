@@ -105,7 +105,8 @@ import (
 
 // wireApp init kratos application.
 func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime, selfImprovement *conf.SelfImprovement, debugRecorder *conf.DebugRecorder, logger log.Logger, loggatewayLogger loggateway.Logger, pipeline logpipeline.Pipeline, arg []*conf.LoggingSink) (wireOut, func(), error) {
-	dataData, cleanup, err := data.NewData(confData, loggatewayLogger)
+	reranker := knowledge.NewMemoryReranker(loggatewayLogger)
+	dataData, cleanup, err := data.NewData(confData, loggatewayLogger, reranker)
 	if err != nil {
 		return wireOut{}, nil, err
 	}

@@ -51,6 +51,8 @@ internal/
 │   ├── ingest.go                 # 分块+向量化流水线（IngestParams.ApplyDefaults）
 │   ├── retriever.go              # 检索器（embed + search + optional rerank + TaskTypeEmbedder）
 │   ├── reranker_factory.go       # env → trpc reranker（topk/cohere/infinity）
+│   ├── memory_rerank_adapter.go  # trpc reranker → biz.Reranker（Memory L2/L3；AH-04 从 data 上移）
+│   ├── memory_rerank_factory.go  # KRATOS_MEMORY_RERANKER → NewMemoryReranker（Wire 注入 data）
 │   ├── query_rewriter.go         # 查询重写（HyDE/Decomposition/MultiQuery）
 │   ├── hybrid_retriever.go       # 混合检索（Dense+Sparse+RRF 融合）
 │   ├── adaptive_router.go        # 自适应检索路由（查询复杂度分类）
@@ -957,6 +959,8 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 环境变量 `KRATOS_KNOWLEDGE_RERANKER`：`off` | `topk` | `cohere` | `infinity`。
 Wire 经 `NewKnowledgeRetriever` 装配；配置错误时 SysLog 警告并禁用 rerank。
 
+**Memory 召回桥接（AH-04）**：`NewMemoryReranker`（`memory_rerank_factory.go`）按 `KRATOS_MEMORY_RERANKER=cohere|infinity` 包装同一工厂为 `biz.Reranker`（`KnowledgeRerankerAdapter`）。Wire 注入 `data.NewData`；data 只持有接口、不 import trpc knowledge/reranker。默认仍为 `biz.CrossEncoderReranker`（bigram Jaccard）。出错回退保持 bigram-only Jaccard（与 Knowledge 检索 rerank 降级路径独立）。
+
 ---
 
 ## 六、Agent 集成
@@ -1567,7 +1571,7 @@ Agent 执行轨迹
 | `internal/service/knowledge_advanced.go` | Advanced RAG 组件 Wire 工厂（6 个 Provider） |
 | `internal/service/knowledge_embedder.go` | Embedder Wire + DB 回落（EP-KN-01） |
 | `internal/service/knowledge_retriever.go` | Retriever Wire（KN-01） |
-| `internal/knowledge/*.go` | 内部包：chunker/embedder/ingest/retriever/query_rewriter/hybrid_retriever/adaptive_router/retrieval_evaluator/federated_retriever/search_helpers/llm_resolver/ocr/html_text/chunk_strategy/document_extract/readers_import/reranker_factory |
+| `internal/knowledge/*.go` | 内部包：chunker/embedder/ingest/retriever/query_rewriter/hybrid_retriever/adaptive_router/retrieval_evaluator/federated_retriever/search_helpers/llm_resolver/ocr/html_text/chunk_strategy/document_extract/readers_import/reranker_factory/memory_rerank_adapter/memory_rerank_factory |
 | `internal/tools/knowledge/tool.go` | knowledge_search + knowledge_reflect 工具 |
 | `internal/agent/knowledge_inject.go` | Plan-Then-Retrieve BeforeModel 钩子 |
 | `internal/agent/tool_assembly.go` | KnowledgeSearch/KnowledgeReflect 装配 |

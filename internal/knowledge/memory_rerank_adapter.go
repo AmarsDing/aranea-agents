@@ -1,4 +1,4 @@
-package data
+package knowledge
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 )
 
 // KnowledgeRerankerAdapter wraps a trpc-agent-go knowledge reranker
-// to implement the biz.Reranker interface.
+// to implement the biz.Reranker interface used by memory L2/L3 recall.
 // It delegates scoring to the knowledge reranker's Rerank API,
 // falling back to bigram Jaccard on error or empty results.
 type KnowledgeRerankerAdapter struct {
@@ -41,7 +41,7 @@ func (a *KnowledgeRerankerAdapter) Score(query, passage string) float64 {
 	)
 	if err != nil {
 		a.lg.Warn("knowledge reranker error, falling back to jaccard",
-			loggateway.StepID("data.reranker"), loggateway.Err(err))
+			loggateway.StepID("knowledge.memory_reranker"), loggateway.Err(err))
 		return fallbackJaccard(query, passage)
 	}
 	if len(results) == 0 {
@@ -52,6 +52,8 @@ func (a *KnowledgeRerankerAdapter) Score(query, passage string) float64 {
 
 // fallbackJaccard computes bigram Jaccard similarity with normalized inputs,
 // used when the knowledge reranker is unavailable or errors out.
+// Kept as a bigram-only path (no unigram fallback) so CE-error scoring
+// stays identical to the former data-layer adapter.
 func fallbackJaccard(query, passage string) float64 {
 	return bigramJaccard(
 		strings.ToLower(strings.TrimSpace(query)),
@@ -59,8 +61,6 @@ func fallbackJaccard(query, passage string) float64 {
 	)
 }
 
-// bigramJaccard computes bigram Jaccard similarity between two strings.
-// Duplicated from biz layer to avoid data→biz dependency for a pure utility.
 func bigramJaccard(a, b string) float64 {
 	if a == "" || b == "" {
 		return 0

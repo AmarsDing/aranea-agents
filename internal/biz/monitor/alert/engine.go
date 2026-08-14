@@ -63,9 +63,11 @@ type LogPair struct {
 	Value any
 }
 
-// FlowLogger is the narrow flow-log (流程日志) port the engine needs.
-// The root monitor package adapts its FlowLogWriter to this interface.
-type FlowLogger interface {
+// FlowLogWriter is the narrow user-visible flow-log port the engine needs.
+// This is not the deleted event.WithFlowLogger / NewFlowLogger aliases
+// (those were ctx helpers around TraceEmitter). The root monitor package
+// adapts its FlowLogWriter to this interface.
+type FlowLogWriter interface {
 	LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 }
 
@@ -113,7 +115,7 @@ type Engine struct {
 	notifier AlertNotifier
 	registry *AlertMetricRegistry
 	sink     EventSink
-	flowLog  FlowLogger
+	flowLog  FlowLogWriter
 	lg       loggateway.Logger
 
 	rulesCache alertRulesCache
@@ -132,8 +134,8 @@ func WithEventSink(s EventSink) EngineOption {
 	return func(e *Engine) { e.sink = s }
 }
 
-// WithFlowLogger wires the user-visible flow log port (nil-safe).
-func WithFlowLogger(fl FlowLogger) EngineOption {
+// WithFlowLogWriter wires the user-visible flow log port (nil-safe).
+func WithFlowLogWriter(fl FlowLogWriter) EngineOption {
 	return func(e *Engine) { e.flowLog = fl }
 }
 

@@ -474,7 +474,7 @@ func (p *ActivityProjector) EmitSystemEvent(ctx context.Context, kind biz.Activi
 | `internal/event/flow_log.go` | FlowLogEntry 数据结构、`FlowLogSchemaVersion = "flow_log/v1"`、stepTitleRegistry |
 | `internal/event/flow_tracker.go` | FlowTracker：LogStart/LogDone/LogError + emit `MonitorEventTypeFlowLog` 到 MonitorEventBus |
 | `internal/event/trace_emitter.go` | TraceEmitter = FlowTracker + ObserveFrameworkEvent（不再持有 Bus 参数，emit 对 nil infra 安全） |
-| `internal/event/flow_context.go` | FlowContext（步骤计时）+ `WithTraceEmitter` / `TraceEmitterFromContext`（含 Deprecated `WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` 别名） |
+| `internal/event/flow_context.go` | `WithTraceEmitter` / `TraceEmitterFromContext` / `NewTraceEmitterForRun`（`WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` 别名已删除） |
 
 - Monitor 业务日志主类型为 **`flow_log`**（`schema_version: flow_log/v1`），非全局 `slog` 桥接
 - **`slog_bridge.go` 已删除**；`LOG_BRIDGE_ENABLED` 已废弃

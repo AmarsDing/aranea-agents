@@ -98,7 +98,7 @@ flowchart TB
 | `internal/server` | 注册 proto service、WS、少量基础设施路由 | 直接调用 Runner / Agent / LLM | 健康；Skill Import 已迁入 `SkillService` proto HTTP |
 | `internal/service` | proto ↔ biz 映射；组装 `trpc-agent-go` 运行时；投影事件 | 直接承载大量业务状态机 | 中等；运行控制已抽 `internal/runtime.RunRegistry`，待 RunnerManager 统一入口 |
 | `internal/biz` | 领域模型、Usecase、Repo 接口、运行时端口接口 | import `pkg/trpc-agent-go`、import `internal/agent/team/trpc` | 健康；未发现 trpc 直接导入 |
-| `internal/data` | Repo 实现、Ent / SQL / pgvector | 过多运行时框架绑定 | 中等；`data.go` 绑定 trpc session / graph checkpoint |
+| `internal/data` | Repo 实现、Ent / SQL / pgvector | 过多运行时框架绑定 | 中等；`data.go` 仍绑定 trpc session / graph checkpoint。Memory reranker 已上移 `internal/knowledge`（AH-04 窄修） |
 | `internal/agent/team/graph/tools/provider/*/trpc` | 框架适配、Builder、Runner、ToolSet、Plugin、Memory bridge | 复制 `pkg/trpc-agent-go` 内部实现 | 健康 |
 | `web/src` | `pages -> features/stores -> services` | 领域类型散落到 components；store/API 双轨长期并存 | 中等；需统一 feature 模板 |
 
@@ -313,7 +313,7 @@ flowchart LR
 | AH-01 | 系统级总览、执行计划曾为空 | AI 缺少真理库，容易读错旧需求 | 模块现状以 `65-module-cross-reference-full.md` 为准；本文描述分层与职责 |
 | AH-02 | `ChatService` 曾承载 Gateway 状态机 | 并发、取消、排队逻辑难复用 | `RunRegistry` + `RunnerManager` + `ChatUsecase`；Chat/Team/Cron/Channel 共用 `RunGateway`；出站 Webhook；`PendingMessageQueue` 仍在 Service |
 | AH-03 | `service/agent` 曾直连 `SessionAdminStore` | 记忆读写双路径 | ✅ P0-4：生产改 `MemoryLayerPorts`；`SessionAdminStore` 仅测试/适配器编译期检查 |
-| AH-04 | `internal/data` 绑定 trpc session / graph checkpoint | Data 层测试和替换存储受运行时影响 | 将框架 adapter provider 上移到 `internal/runtime` / Wire |
+| AH-04 | `internal/data` 绑定 trpc session / graph checkpoint | Data 层测试和替换存储受运行时影响 | Memory reranker 已上移 `internal/knowledge`（`NewMemoryReranker` → Wire → `data.NewData` 注入 `biz.Reranker`）。剩余：将 session / graph checkpoint adapter provider 上移到 `internal/runtime` / Wire |
 | AH-05 | `service/skill_import_http.go` 曾绕过 proto service | 鉴权、观测、API 契约曾分叉 | ✅ 已修复：`ImportSkillZip` 走 `skill.proto` + `SkillService`；删除 `srv.Route` 旁路 |
 | AH-06 | `biz` 与 `provider` 形成双向依赖 | LLM inspect 与模型目录边界不稳 | 抽 `internal/llminspect` 或 biz 端口接口 |
 | AH-07 | Runner 生命周期 | Artifact/Ingestor 已挂；GetRunStatus 对齐 ManagedRunner | `setRunStatus` / `StopGeneration` 与 `ChatUsecase.SetRunStatus` 双路径；ManagedRunner Cancel 未统一写 registry 终态 |

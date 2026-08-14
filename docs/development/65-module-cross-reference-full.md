@@ -138,6 +138,7 @@
 - L3 冲突检测：`DetectFactConflicts` 启发式否定词检测 + `IncrementConflictCount`，best-effort 日志
 - L3 PII 审核：`PIIReviewStore` 提供 list/approve/reject API
 - `memory_butler_analyze_quality` 的 `redundancy_score` / `inactive_count` / `predictable_count` 由 L3 fact 行实时计算（trigram Jaccard 或 overlap 近重复占比 / `last_used_at` 否则 `created_at` 超过 30 天 / 近重复对中的较弱项）；返回 0 表示算出来没有，不是占位。`ListFactRows` JSON 不含 `embedding_blob`，生产装配未注入 Embedder，`selective_remember`/`deduplicate` 仍用字符串相似度
+- **L2/L3 rerank（AH-04）**：`biz.Reranker` 由 `knowledge.NewMemoryReranker` 构造（`KRATOS_MEMORY_RERANKER`），Wire 注入 `data.NewData`；data 只调用 `d.Reranker()` 打分，不 import trpc knowledge/reranker。默认 lexical Jaccard；`cohere`/`infinity` 走 `KnowledgeRerankerAdapter`
 
 ---
 
@@ -439,6 +440,7 @@
 - `With()` 返回新实例（immutable 模式），不修改原始 adapter
 - 框架运行时日志通过此适配器自动进入 loggateway Pipeline，无需额外处理
 - 修改 `agentlog.Logger` 接口时，需同步更新此适配器
+- 进程日志入口仅为 `loggateway.Logger` + `With()`；`event.WithFlowLogger` / `NewFlowLogger` / `FlowLoggerFromContext` **已删除**（P2-17），勿再引入兼容别名。流程日志 ctx 用 `WithTraceEmitter` / `TraceEmitterFromContext`
 
 ---
 
@@ -464,6 +466,7 @@
 - `Close()` 会取消 context + 关闭 channel + 等待 goroutine 退出 + 关闭 Sink
 - Sink.Write panic 会被 recover，不影响 SinkGroup 主循环
 - 修改 `Sink` 接口时，需检查所有 SinkGroup 消费方
+- 进程日志管道组件；与已删除的 `event.WithFlowLogger` / `NewFlowLogger` 别名无关（P2-17）
 
 ---
 
@@ -487,6 +490,7 @@
 - `TakeTiming` 是破坏性读取：返回计时后删除对应 stepID，同一 stepID 只能 Take 一次
 - 内部使用 `sync.Mutex` 保护 `timers` map，并发安全
 - 修改 `FlowTiming` 结构时，需同步 FlowLog / MonitorEvent 的 metadata 解析
+- 本文件是步骤计时状态机，**不是**已删除的 `event.WithFlowLogger` 别名；ctx 传播在 `flow_context.go`（`WithTraceEmitter`）
 
 ---
 
@@ -544,8 +548,8 @@
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（Knowledge 类型 + LLMCaller）、`provider`（Embedding/LLM 模型） |
-| **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
-| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex`；V4：`Usecase.ReembedDocuments/EnableCollectionSemantic`；**2026-08-15**：`GraphExpander` + Retrieve-Then-Generate + `AutolinkWikiMentions` + `WriteBackSessionFacts`（SP7 G2）+ `BackfillOutgoingAutolinks`（显式 POST autolink-backfill，**不**挂 RebuildKnowledgeIndex）+ 确认成链 custom HTTP + `LookupWriteBackHome` / GET writeback-home + `AgentMemoryProjector`（G1，覆盖写 `agents/{id}.md`）+ `CollectionHealthSnapshot` / `ListCollectionExperts`（G8/G7，专家打写回落点）+ pending 写回过门（逐条 `fact_ids`） |
+| **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API）、`data`（经 Wire 注入 `biz.Reranker`，Memory L2/L3 召回打分） |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`、`NewMemoryReranker`（`biz.Reranker`，AH-04 从 data 上移）；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex`；V4：`Usecase.ReembedDocuments/EnableCollectionSemantic`；**2026-08-15**：`GraphExpander` + Retrieve-Then-Generate + `AutolinkWikiMentions` + `WriteBackSessionFacts`（SP7 G2）+ `BackfillOutgoingAutolinks`（显式 POST autolink-backfill，**不**挂 RebuildKnowledgeIndex）+ 确认成链 custom HTTP + `LookupWriteBackHome` / GET writeback-home + `AgentMemoryProjector`（G1，覆盖写 `agents/{id}.md`）+ `CollectionHealthSnapshot` / `ListCollectionExperts`（G8/G7，专家打写回落点）+ pending 写回过门（逐条 `fact_ids`） |
 | **共享类型** | `Chunk`、`RetrievalResult`；SP1：`KnowledgeBlock`、`KnowledgeBlockRefEdge`、`GraphDelta`、`BlockBacklink`/`DanglingLink`（service 契约） |
 | **事件生产** | `knowledge_ingest`；SP1：`knowledge.graph.delta`（SystemNotice，Informational，WS-only 不持久化）、`knowledge_rebuild_index`（进度） |
 | **事件消费** | 无 |

@@ -49,7 +49,7 @@
 |------|------|
 | 红线 #16 | 禁止 `log/slog`，统一使用 `pkg/loggateway.Logger` |
 | Global() deprecated | 新代码必须通过构造注入 `loggateway.Logger`，禁止使用 `loggateway.Global()` |
-| CtxFlowLog* | 遗留 API（`WithFlowLogger`/`FlowLoggerFromContext`/`NewFlowLogger`），新代码使用 `loggateway.Logger` + `With()` |
+| CtxFlowLog* / FlowLogger 别名 | **已删除**（`WithFlowLogger`/`FlowLoggerFromContext`/`NewFlowLogger`）。进程日志用 `loggateway.Logger` + `With()`；流程日志 ctx 传播用 `WithTraceEmitter` / `TraceEmitterFromContext`，创建用 `NewTraceEmitterForRun` |
 | 运行时日志 | trpc-agent-go 运行时日志已通过 RuntimeLogAdapter 桥接到 Pipeline |
 | 构造注入 | struct 通过 `lg loggateway.Logger` 参数注入，用 `lg.With()` 预设字段 |
 | 结构化字段 | 使用 `loggateway.StepID`/`SessionID`/`RunID`/`Err` 等，禁止拼接字符串到 msg |

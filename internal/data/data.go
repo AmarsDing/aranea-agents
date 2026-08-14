@@ -218,7 +218,9 @@ type Data struct {
 	rwDB        *ReadWriteDB
 	vectorDim   int
 	vectorStore vector.VectorStore
-	reranker    biz.Reranker
+	// reranker is injected (knowledge.NewMemoryReranker). Data does not
+	// construct or import the trpc knowledge reranker (AH-04).
+	reranker biz.Reranker
 	readiness   *ReadinessGate
 	lazySeeders map[string]*LazySeeder
 	p1Cancel    context.CancelFunc
@@ -431,7 +433,7 @@ func entSQLDebugEnabled() bool {
 // Postgres is the only supported primary database. SQLite remains only in the
 // legacy offline migration tool (cmd/migrate-sqlite-to-postgres). Tests use
 // isolated Postgres schemas via testhelper.SetupTestPG.
-func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
+func NewData(c *conf.Data, lg loggateway.Logger, rr biz.Reranker) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
 	var readClient *ent.Client
@@ -526,7 +528,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
 	pgDSNForData := postgresVectorDSN(c)
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: newMemoryReranker(lg), readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second, dialect: activeDialect, pgDSN: pgDSNForData}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, pgRead: pgRead, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, reranker: rr, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg, txTimeout: 30 * time.Second, dialect: activeDialect, pgDSN: pgDSNForData}
 
 	safego.Go(appctx.Ctx(), "startup.p1", func() {
 		defer close(p1Done)

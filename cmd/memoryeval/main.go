@@ -59,7 +59,7 @@ func main() {
 	d, cleanup, err := data.NewData(&conf.Data{
 		Driver:   "postgres",
 		Postgres: &conf.Data_Postgres{Source: pgSource, VectorDim: int32(vectorDim)},
-	}, lg)
+	}, lg, knowledge.NewMemoryReranker(lg))
 	if err != nil {
 		lg.Error("init data failed", loggateway.StepID("memoryeval.startup"), loggateway.Err(err))
 		os.Exit(1)

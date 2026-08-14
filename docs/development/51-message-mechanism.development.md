@@ -45,7 +45,7 @@ Message 消息：基于 **Activity-First（AF）架构** 的统一事件模型�
 | Activity Meta | `internal/agent/activity_meta.go` + `activity_meta_resolver.go` | ProjectMeta（SpiritSessionID/ParentSessionID/RootSessionID） |
 | Activity 序列化 | `internal/agent/activity_event_sequencer.go` | processTask 并行异步 + persist worker + retry + dead-letter |
 | Flow Tracker | `internal/event/flow_tracker.go` | FlowLog v2（MonitorEvent 发布到 MonitorEventBus） |
-| Flow Context | `internal/event/flow_context.go` | FlowLogger（Deprecated，新代码用 loggateway.Logger） |
+| Flow Context | `internal/event/flow_context.go` | TraceEmitter ctx 传播（FlowLogger 别名已删除；进程日志用 loggateway.Logger） |
 | Trace Emitter | `internal/event/trace_emitter.go` | TraceEmitter（不再持有 Bus 参数，emit 对 nil infra 安全） |
 | Flow Log | `internal/event/flow_log.go` | FlowLog v2 持久化 |
 | Session Revision | `internal/event/session_revision.go` | SessionRevisionBumper 接口 + BumpSessionRevision（仅 bump 半边，publish 已删除） |

@@ -18,7 +18,7 @@
 ### 2.1 已完成
 
 - loggateway + logpipeline 基础设施搭建
-- loggateway 全量迁移（log/slog 清零、CtxFlowLog*/SysLog* deprecated）
+- loggateway 全量迁移（log/slog 清零；CtxFlowLog* / `WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` **已删除**；SysLog* 调用归零）
 - LogPipeline 异步分发 + SinkGroup 隔离 + 三态熔断器
 - RuntimeLogAdapter 桥接 trpc-agent-go 运行时日志
 - 配置驱动 Sink 注册（SinkFactory）
@@ -127,10 +127,11 @@
 
 - [x] 枚举所有 `CtxFlowLog*` 使用点（54 处）
 - [x] 替换为 `lg.With(loggateway.SessionID(...), loggateway.StepID(...))` 模式
-- [x] `CtxFlowLog*` 函数标记 deprecated（`internal/event/flow_context.go`）
+- [x] `CtxFlowLog*` 函数已删除（`internal/event/flow_context.go` 仅保留 TraceEmitter ctx 传播）
 - [x] 验证调用归零
+- [x] P2-17：删除 `WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` 兼容别名（无生产/测试调用）
 
-**验证**: `grep -r "CtxFlowLog" internal/` 应仅剩 deprecated 定义
+**验证**: `grep -rE "CtxFlowLog|WithFlowLogger|FlowLoggerFromContext|NewFlowLogger" internal/` 应无 event 包别名定义或调用
 
 ---
 
@@ -312,7 +313,7 @@
 | `internal/event/usage_aggregator.go` | UsageAggregator（用量聚合，桥接 trpc-agent-go 事件流） | ✅ |
 | `internal/event/trace_emitter.go` | TraceEmitter（v2 embedding wrapper，嵌入 FlowTracker + ObserveFrameworkEvent + EmitProgress） | ✅ |
 | `internal/event/flow_log.go` | FlowLogEntry 数据模型 + stepTitleRegistry（约 80 个 step_id 中文标题） | ✅ |
-| `internal/event/flow_context.go` | CtxFlowLog* 快捷函数（已 deprecated，`WithFlowLogger`/`FlowLoggerFromContext`/`NewFlowLogger`） | ✅ deprecated |
+| `internal/event/flow_context.go` | `WithTraceEmitter` / `TraceEmitterFromContext` / `NewTraceEmitterForRun`（CtxFlowLog* 与 FlowLogger 别名已删除） | ✅ |
 | `internal/event/infra.go` | Infra 双总线路由（SessionBus + MonitorBus，split/dual 模式，WAL WBPF） | ✅ |
 | `internal/event/bus.go` | EventBus 类型别名 + NewBus | ✅ |
 | `internal/event/bus_adapter.go` | busAdapter（framework bus 桥接 + DropLogger 走 loggateway.Warn） | ✅ |
@@ -364,8 +365,9 @@
 | P1 | 迁移 Kratos log.NewHelper（原 78 处，残留 7 处 cronrunner） | 🟡 基本完成 |
 | P2 | 迁移 FlowLog SysLog*（262 处 → 调用归零） | ✅ 已完成 |
 | P3 | 迁移 CtxFlowLog* + TraceEmitter（54 处 → 调用归零） | ✅ 已完成 |
+| P2-17 | 删除 FlowLogger 别名（`WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger`） | ✅ 已完成 |
 
-P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxFlowLog*/FlowLog* 函数已标记 deprecated。
+P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*。P2-17：别名已删除而非继续 Deprecated；流程日志 ctx 用 `WithTraceEmitter`，创建用 `NewTraceEmitterForRun`。
 
 ### 7.2 LogPipeline 渐进式实施
 
@@ -479,7 +481,7 @@ P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxF
 - `internal/event/usage_aggregator.go` — UsageAggregator
 - `internal/event/trace_emitter.go` — TraceEmitter embedding wrapper
 - `internal/event/flow_log.go` — FlowLogEntry + stepTitleRegistry
-- `internal/event/flow_context.go` — CtxFlowLog* deprecated
+- `internal/event/flow_context.go` — TraceEmitter ctx 传播（FlowLogger 别名已删除）
 - `internal/event/infra.go` — Infra 双总线路由
 - `internal/event/bus.go` — EventBus 类型别名
 - `internal/event/bus_adapter.go` — busAdapter + DropLogger

@@ -40,6 +40,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `internal/knowledge/document_extract.go` — PDF/DOCX/HTML 文本提取
 - `internal/knowledge/readers_import.go` — trpc reader 注册
 - `internal/knowledge/reranker_factory.go` — env Reranker（KN-01）
+- `internal/knowledge/memory_rerank_adapter.go` / `memory_rerank_factory.go` — Memory `biz.Reranker` 桥接（AH-04，从 data 上移；Wire 注入 `data.NewData`）
 - `internal/service/knowledge_embedder.go` — Embedder Wire（env + DB）
 - `api/kratos/system_setting/v1/system_setting.proto` — `KnowledgeEmbedSettings`
 - `internal/service/knowledge_retriever.go` — Retriever Wire

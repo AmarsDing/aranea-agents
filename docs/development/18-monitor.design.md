@@ -284,7 +284,7 @@ type MonitorListResult struct {
 > | `monitor/trace` | trace 投影与日志落盘：TraceProjector、FlowFileAppender、spans 工具 | `projector.go`、`flow_file_appender.go`、`model.go`、`utils.go` |
 > | `monitor/heal` | 自愈域：SelfHealObserver/Usecase、PredictiveHeal（动作目录执行器）、PatternMining、RootCauseEngine、FailurePattern 知识库、DiagBundle | `self_heal*.go`、`predictive_heal.go`、`pattern_mining.go`、`root_cause_*.go`、`failure_*.go`、`diag_bundle.go`、`heal_action_catalog.go`、`diagnose_heal.go`（`DiagnoseAndHeal` 自由函数） |
 >
-> 循环依赖解法：`alert.Engine` 反向依赖窄接口（`EventCounter`/`EventSink`/`FlowLogger`），由根包 Usecase 适配注入；`DiagnoseAndHeal` 从 Usecase 方法改为自由函数（receiver 从未被使用）。
+> 循环依赖解法：`alert.Engine` 反向依赖窄接口（`EventCounter`/`EventSink`/`FlowLogWriter`），由根包 Usecase 适配注入；`DiagnoseAndHeal` 从 Usecase 方法改为自由函数（receiver 从未被使用）。`alert.FlowLogWriter` / `WithFlowLogWriter` 是告警包自己的流程日志端口，**不是**已删除的 `event.WithFlowLogger` 别名。
 >
 > Wire：`monitor.WireProviderSet`（Registry/自检装配）+ `heal.WireProviderSet`（RootCauseEngine），均在 `biz.go` 聚合。
 

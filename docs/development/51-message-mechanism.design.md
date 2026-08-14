@@ -1063,7 +1063,7 @@ message Monitor {
 |------|------|------|
 | Turn | `internal/event/trace_emitter.go` | `NewTraceEmitterForRun` → `emitter.Log*` |
 | 系统 | `internal/event/flow_log.go` | `SysLog*` / `SessionSysLog*` |
-| 上下文 | `internal/event/flow_context.go` | `CtxFlowLogWarn/Done/Error`（遗留 API，新代码使用 `loggateway.Logger`） |
+| 上下文 | `internal/event/flow_context.go` | `WithTraceEmitter` / `TraceEmitterFromContext`（进程日志用 `loggateway.Logger`；FlowLogger 别名已删除） |
 
 `internal/event/slog_bridge.go` **已删除**（2026-05-20）。详见 [52-flow-logger.design.md](./52-flow-logger.design.md)。
 
@@ -1218,7 +1218,7 @@ message Monitor {
 | `internal/event/activityevent/bus.go` | `ActivityEventBus` 实现（传输 `biz.ActivityEvent`） |
 | `internal/event/infra.go` | `Infra`：仅 `MonitorEventBus`（`contract.MonitorBus`）+ `lg` + `InfraProviderSet` |
 | `internal/event/trace_emitter.go` | Flow Log v2 + UsageAggregator 桥接 |
-| `internal/event/flow_context.go` | `CtxFlowLog*` 上下文辅助（遗留 API，新代码用 `loggateway.Logger`） |
+| `internal/event/flow_context.go` | `WithTraceEmitter` / `TraceEmitterFromContext` / `NewTraceEmitterForRun`（FlowLogger 别名已删除） |
 | `internal/event/flow_log.go` | `SysLog*` / `SessionSysLog*` 系统流程日志 |
 | `internal/event/flow_tracker.go` | `FlowTracker` 流程追踪（发布到 `MonitorEventBus`） |
 | `internal/event/session_revision.go` | `SessionRevisionBumper` 接口 + `BumpSessionRevision`（仅 bump 半边，publish 半边已删） |

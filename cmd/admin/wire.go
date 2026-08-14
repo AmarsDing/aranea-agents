@@ -3776,6 +3776,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// Knowledge embedder bindings
 		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
+		// AH-04: memory L2/L3 reranker is a knowledge adapter, injected into data.NewData.
+		knowledge.NewMemoryReranker,
 		// Knowledge vault sync（P1-3 生产装配）
 		provideVaultSyncSupervisor,
 		provideKnowledgeVaultFiler,

@@ -316,7 +316,7 @@ func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alertRepo Ale
 	uc.engine = alert.NewEngine(alertRepo, event, notifier,
 		alert.WithRegistry(uc.registry),
 		alert.WithEventSink(alertEventSink{uc: uc}),
-		alert.WithFlowLogger(alertFlowLogger{w: uc.flowLog}),
+		alert.WithFlowLogWriter(alertFlowLogWriter{w: uc.flowLog}),
 		alert.WithLogger(uc.lg),
 	)
 	return uc
@@ -345,11 +345,11 @@ func (s alertEventSink) RecordAlertEvent(ctx context.Context, key, name, descrip
 	})
 }
 
-// alertFlowLogger adapts the monitor FlowLogWriter port to the alert
-// package's narrow FlowLogger port (LogPair type translation).
-type alertFlowLogger struct{ w FlowLogWriter }
+// alertFlowLogWriter adapts the monitor FlowLogWriter port to the alert
+// package's narrow FlowLogWriter port (LogPair type translation).
+type alertFlowLogWriter struct{ w FlowLogWriter }
 
-func (a alertFlowLogger) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...alert.LogPair) {
+func (a alertFlowLogWriter) LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...alert.LogPair) {
 	if a.w == nil {
 		return
 	}

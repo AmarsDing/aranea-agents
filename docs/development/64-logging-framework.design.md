@@ -684,7 +684,7 @@ agent, provider, team, cron, a2a, plugin
 | `internal/event/usage_aggregator.go` | UsageAggregator 用量聚合 |
 | `internal/event/trace_emitter.go` | TraceEmitter embedding wrapper |
 | `internal/event/flow_log.go` | FlowLogEntry + stepTitleRegistry |
-| `internal/event/flow_context.go` | CtxFlowLog* 快捷函数（已 deprecated） |
+| `internal/event/flow_context.go` | `WithTraceEmitter` / `TraceEmitterFromContext` / `NewTraceEmitterForRun`（FlowLogger 别名与 CtxFlowLog* 已删除） |
 | `internal/event/infra.go` | Infra 双总线路由 |
 | `internal/event/bus.go` | EventBus 类型别名 + NewBus |
 | `internal/event/bus_adapter.go` | busAdapter（framework bus 桥接 + DropLogger） |

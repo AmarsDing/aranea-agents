@@ -218,7 +218,7 @@ func (ft *FlowTracker) UsageAggregator() *UsageAggregator
 ```
 
 上下文传播：`WithTraceEmitter` / `TraceEmitterFromContext`（`flow_context.go`）。  
-兼容别名（Deprecated）：`WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` → 均委托至 `TraceEmitter` 等价 API，新代码应使用 `loggateway.Logger` + `With()`。
+进程日志：注入的 `loggateway.Logger` + `With()`。`WithFlowLogger` / `FlowLoggerFromContext` / `NewFlowLogger` **已删除**（P2-17），勿再引入兼容别名。
 
 框架事件包装：
 
@@ -353,7 +353,7 @@ internal/event/
   flow_log.go           # FlowLogEntry schema + stepTitleRegistry + normalizeStepID
   flow_tracker.go       # FlowTracker: Log* 方法 + emit + severity 推导
   trace_emitter.go      # TraceEmitter (embeds FlowTracker) + EmitProgress
-  flow_context.go       # ctx 传播 + Deprecated NewFlowLogger 别名
+  flow_context.go       # ctx 传播：WithTraceEmitter / TraceEmitterFromContext / NewTraceEmitterForRun
   framework_events.go   # WrapFrameworkEvents / WrapFrameworkEventsWithOtel
   infra.go              # Infra + BindInfra (替代 SetGlobalBus)
   envelope.go           # EnvelopeTypeFlowLog 常量

@@ -25,32 +25,6 @@ func TraceEmitterFromContext(ctx context.Context) *TraceEmitter {
 	return em
 }
 
-// WithFlowLogger is an alias for WithTraceEmitter (v2).
-//
-// Deprecated: Use loggateway.Logger + With() for structured logging.
-func WithFlowLogger(ctx context.Context, e *TraceEmitter) context.Context {
-	return WithTraceEmitter(ctx, e)
-}
-
-// FlowLoggerFromContext is an alias for TraceEmitterFromContext (v2).
-//
-// Deprecated: Use loggateway.Logger + With() for structured logging.
-func FlowLoggerFromContext(ctx context.Context) *TraceEmitter {
-	return TraceEmitterFromContext(ctx)
-}
-
-// NewFlowLogger creates a v2 TraceEmitter (name kept for call-site stability).
-//
-// Deprecated: Use loggateway.Logger + With() for structured logging.
-func NewFlowLogger(sessionID, agentKey string, lg loggateway.Logger, infra *Infra) *TraceEmitter {
-	tc := NewTraceContext(context.Background(), TraceOpts{
-		SessionID: sessionID,
-		AgentKey:  agentKey,
-		Domain:    TraceDomainChat,
-	})
-	return NewTraceEmitter(infra, tc, lg)
-}
-
 // TraceEmitterOpts configures a run-scoped TraceEmitter.
 type TraceEmitterOpts struct {
 	Ctx       context.Context

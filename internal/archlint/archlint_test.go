@@ -37,6 +37,51 @@ func TestBizNotDependOnTrpcAgentGo(t *testing.T) {
 	}
 }
 
+// TestDataNotImportTrpcKnowledge verifies AH-04 (narrow):
+// data must not import trpc-agent-go knowledge / reranker packages.
+// Broader data→trpc (session / graph checkpoint) remains separate AH-04 debt.
+func TestDataNotImportTrpcKnowledge(t *testing.T) {
+	const prefix = "trpc.group/trpc-go/trpc-agent-go/knowledge"
+	repoRoot := filepath.Join("..", "..")
+	dataDir := filepath.Join(repoRoot, "internal", "data")
+	fset := token.NewFileSet()
+
+	err := filepath.WalkDir(dataDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			rel := filepath.ToSlash(mustRel(t, repoRoot, path))
+			if rel == "internal/data/ent" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if perr != nil {
+			t.Errorf("parse %s: %v", path, perr)
+			return nil
+		}
+		rel := filepath.ToSlash(mustRel(t, repoRoot, path))
+		for _, imp := range f.Imports {
+			p, uerr := strconv.Unquote(imp.Path.Value)
+			if uerr != nil {
+				continue
+			}
+			if p == prefix || strings.HasPrefix(p, prefix+"/") {
+				t.Errorf("data must not import trpc knowledge/reranker: %s imports %s", rel, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk internal/data: %v", err)
+	}
+}
+
 // TestServiceNotDirectlyAccessData verifies AS-FIT-01 P0 invariant:
 // service layer must NOT directly import the data layer.
 // Service should go through biz (use cases) instead.
