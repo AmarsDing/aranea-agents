@@ -63,13 +63,15 @@ func (r *alertMonitorRepo) GetMonitorTrace(ctx context.Context, id string) (Moni
 }
 
 func (r *alertMonitorRepo) ListAlertRules(ctx context.Context) ([]MonitorAlertRule, error) {
-	if len(r.rules) > 0 {
-		return r.rules, nil
+	if len(r.rules) == 0 {
+		// Materialize the default rule so UpdateAlertFiringState mutations
+		// persist across evaluations (MON-OPT-02: firing state is DB-backed).
+		r.rules = []MonitorAlertRule{{
+			ID: "r1", Name: "test", MetricKey: "runner.error_rate",
+			Threshold: 0.5, WindowMinutes: 60, Enabled: true, CooldownMinutes: 60,
+		}}
 	}
-	return []MonitorAlertRule{{
-		ID: "r1", Name: "test", MetricKey: "runner.error_rate",
-		Threshold: 0.5, WindowMinutes: 60, Enabled: true, CooldownMinutes: 60,
-	}}, nil
+	return r.rules, nil
 }
 
 func (r *alertMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []MonitorAlertRule) error {
@@ -77,7 +79,15 @@ func (r *alertMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []Monito
 	return nil
 }
 
-func (r *alertMonitorRepo) UpdateAlertFiringState(_ context.Context, _ string, _ MonitorAlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
+func (r *alertMonitorRepo) UpdateAlertFiringState(_ context.Context, id string, state MonitorAlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error {
+	for i := range r.rules {
+		if r.rules[i].ID == id {
+			r.rules[i].FiringState = state
+			r.rules[i].LastFiredAt = lastFiredAt
+			r.rules[i].LastFiredValue = lastFiredValue
+			r.rules[i].RecoveredAt = recoveredAt
+		}
+	}
 	return nil
 }
 

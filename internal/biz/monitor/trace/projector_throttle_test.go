@@ -1,4 +1,4 @@
-package monitor_test
+package trace_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/trace"
 	"aranea-agents/internal/event/contract"
 )
 
@@ -25,13 +25,13 @@ func (b *stubMonitorBus) DropCount() uint64 { return 0 }
 // per-span UpsertMonitorTraceSpan Warn must be time-window throttled instead
 // of flooding one Warn per span event.
 func TestTraceProjector_UpsertSpanWarnThrottled(t *testing.T) {
-	repo := &mockRepo{
-		upsertMonitorTraceSpanFn: func(context.Context, monitor.TraceSpanWrite) error {
+	repo := &mockTraceWriter{
+		upsertMonitorTraceSpanFn: func(context.Context, trace.TraceSpanWrite) error {
 			return errors.New("pg down")
 		},
 	}
 	lg := &warnCountingLogger{}
-	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	p := trace.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
 	if p == nil {
 		t.Fatal("NewTraceProjector returned nil")
 	}
@@ -71,13 +71,13 @@ func TestTraceProjector_UpsertSpanWarnThrottled(t *testing.T) {
 // P6: when the repo is down, every new trace's InsertMonitorTrace fails.
 // The Warn must be time-window throttled instead of one Warn per trace.
 func TestTraceProjector_InsertTraceWarnThrottled(t *testing.T) {
-	repo := &mockRepo{
-		insertMonitorTraceFn: func(context.Context, monitor.TraceWrite) error {
+	repo := &mockTraceWriter{
+		insertMonitorTraceFn: func(context.Context, trace.TraceWrite) error {
 			return errors.New("pg down")
 		},
 	}
 	lg := &warnCountingLogger{}
-	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	p := trace.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
 	if p == nil {
 		t.Fatal("NewTraceProjector returned nil")
 	}
@@ -102,13 +102,13 @@ func TestTraceProjector_InsertTraceWarnThrottled(t *testing.T) {
 // P6: when the repo is down, every runner completion's
 // UpdateMonitorTraceCompletion fails. The Warn must be throttled.
 func TestTraceProjector_CompletionWarnThrottled(t *testing.T) {
-	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(context.Context, string, monitor.TraceCompletion) error {
+	repo := &mockTraceWriter{
+		updateMonitorTraceCompletionFn: func(context.Context, string, trace.TraceCompletion) error {
 			return errors.New("pg down")
 		},
 	}
 	lg := &warnCountingLogger{}
-	p := monitor.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
+	p := trace.NewTraceProjector(repo, lg, nil, &stubMonitorBus{})
 	if p == nil {
 		t.Fatal("NewTraceProjector returned nil")
 	}
@@ -133,14 +133,14 @@ func TestTraceProjector_CompletionWarnThrottled(t *testing.T) {
 // P6: when the usage repo is down, every runner completion's
 // AggregateUsageByTrace fails. The Warn must be throttled.
 func TestTraceProjector_UsageAggWarnThrottled(t *testing.T) {
-	repo := &mockRepo{}
-	usage := &mockTraceUsageRepo{
-		aggregateFn: func(context.Context, string) (monitor.UsageAggregate, error) {
-			return monitor.UsageAggregate{}, errors.New("pg down")
+	repo := &mockTraceWriter{}
+	usage := &mockUsageRepo{
+		aggregateFn: func(context.Context, string) (trace.UsageAggregate, error) {
+			return trace.UsageAggregate{}, errors.New("pg down")
 		},
 	}
 	lg := &warnCountingLogger{}
-	p := monitor.NewTraceProjector(repo, lg, usage, &stubMonitorBus{})
+	p := trace.NewTraceProjector(repo, lg, usage, &stubMonitorBus{})
 	if p == nil {
 		t.Fatal("NewTraceProjector returned nil")
 	}
@@ -197,7 +197,7 @@ func TestSpanKindFromStep(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.SpanKindFromStep(tt.stepID, tt.domain)
+			got := trace.SpanKindFromStep(tt.stepID, tt.domain)
 			if got != tt.want {
 				t.Errorf("SpanKindFromStep(%q, %q) = %q, want %q", tt.stepID, tt.domain, got, tt.want)
 			}
@@ -224,7 +224,7 @@ func TestMetaStr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.MetaStr(tt.m, tt.key)
+			got := trace.MetaStr(tt.m, tt.key)
 			if got != tt.want {
 				t.Errorf("MetaStr() = %q, want %q", got, tt.want)
 			}
@@ -249,7 +249,7 @@ func TestCoalesceStr(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := monitor.CoalesceStr(tt.a, tt.b)
+			got := trace.CoalesceStr(tt.a, tt.b)
 			if got != tt.want {
 				t.Errorf("CoalesceStr(%q, %q) = %q, want %q", tt.a, tt.b, got, tt.want)
 			}

@@ -1,4 +1,4 @@
-package monitor
+package alert
 
 import (
 	"context"
@@ -9,42 +9,12 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// workerTestRepo implements the narrow alert ports (AlertRepo + EventCounter)
+// the engine needs for worker tests.
 type workerTestRepo struct {
 	mu                   sync.Mutex
 	listAlertRulesCalled bool
 	countCalled          int
-}
-
-func (r *workerTestRepo) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error) {
-	return AuditListResult{}, nil
-}
-
-func (r *workerTestRepo) InsertAuditLog(ctx context.Context, entry AuditLog) error {
-	return nil
-}
-
-func (r *workerTestRepo) DeleteAuditLogs(ctx context.Context) (int, error) {
-	return 0, nil
-}
-
-func (r *workerTestRepo) InsertMonitorEvent(ctx context.Context, ev EventWrite) error {
-	return nil
-}
-
-func (r *workerTestRepo) ListMonitorEvents(ctx context.Context, query EventsQuery) (ListResult, error) {
-	return ListResult{}, nil
-}
-
-func (r *workerTestRepo) GetMonitorEvent(ctx context.Context, id string) (PlatformRow, error) {
-	return PlatformRow{}, nil
-}
-
-func (r *workerTestRepo) ListMonitorTraces(ctx context.Context, query TracesQuery) (ListResult, error) {
-	return ListResult{}, nil
-}
-
-func (r *workerTestRepo) GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error) {
-	return PlatformRow{}, nil
 }
 
 func (r *workerTestRepo) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
@@ -67,50 +37,6 @@ func (r *workerTestRepo) CountMonitorEventsSince(ctx context.Context, eventKey, 
 	r.countCalled++
 	r.mu.Unlock()
 	return 5, nil
-}
-
-func (r *workerTestRepo) DeleteMonitorEventsOlderThan(ctx context.Context, olderThan time.Time) (int, error) {
-	return 0, nil
-}
-
-func (r *workerTestRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
-	return 0, nil
-}
-
-func (r *workerTestRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (float64, float64, float64, error) {
-	return 0, 0, 0, nil
-}
-
-func (r *workerTestRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error) {
-	return false, nil
-}
-
-func (r *workerTestRepo) PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error) {
-	return false, nil
-}
-
-func (r *workerTestRepo) InsertMonitorTrace(ctx context.Context, tw TraceWrite) error {
-	return nil
-}
-
-func (r *workerTestRepo) UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpanWrite) error {
-	return nil
-}
-
-func (r *workerTestRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID string, c TraceCompletion) error {
-	return nil
-}
-
-func (r *workerTestRepo) InterruptStaleTraces(ctx context.Context, olderThan time.Time) (int64, error) {
-	return 0, nil
-}
-
-func (r *workerTestRepo) EnsureTraceSchema(ctx context.Context) error {
-	return nil
-}
-
-func (r *workerTestRepo) ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error) {
-	return nil, nil
 }
 
 func TestEvalIntervalFromEnv_Default(t *testing.T) {
@@ -176,26 +102,26 @@ func TestEvalIntervalFromEnv_MinutesFormat(t *testing.T) {
 	}
 }
 
-func TestAlertEvalWorker_Evaluate_CallsUsecase(t *testing.T) {
+func TestAlertEvalWorker_Evaluate_CallsEngine(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
+	engine := NewEngine(repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	w := NewAlertEvalWorker(engine, rb, loggateway.NewNoop())
 	w.ready.Store(true)
 	w.evaluate(context.Background())
 	repo.mu.Lock()
 	wasCalled := repo.listAlertRulesCalled
 	repo.mu.Unlock()
 	if !wasCalled {
-		t.Error("evaluate should call usecase.EvaluateAlerts which calls ListAlertRules")
+		t.Error("evaluate should call engine.EvaluateAlerts which calls ListAlertRules")
 	}
 }
 
 func TestAlertEvalWorker_Evaluate_NotReady(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
+	engine := NewEngine(repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	w := NewAlertEvalWorker(engine, rb, loggateway.NewNoop())
 	w.ready.Store(false)
 	w.evaluate(context.Background())
 	repo.mu.Lock()
@@ -208,9 +134,9 @@ func TestAlertEvalWorker_Evaluate_NotReady(t *testing.T) {
 
 func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
+	engine := NewEngine(repo, repo, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	w := NewAlertEvalWorker(engine, rb, loggateway.NewNoop())
 	w.rebuildFromDB(context.Background())
 	time.Sleep(200 * time.Millisecond)
 	if !w.ready.Load() {
@@ -226,8 +152,8 @@ func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 
 func TestAlertEvalWorker_RebuildFromDB_NilBuffer(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
-	w := NewAlertEvalWorker(uc, nil, loggateway.NewNoop())
+	engine := NewEngine(repo, repo, nil)
+	w := NewAlertEvalWorker(engine, nil, loggateway.NewNoop())
 	w.rebuildFromDB(context.Background())
 	time.Sleep(200 * time.Millisecond)
 	if !w.ready.Load() {
@@ -237,18 +163,18 @@ func TestAlertEvalWorker_RebuildFromDB_NilBuffer(t *testing.T) {
 
 func TestNewAlertEvalWorker_SetsInterval(t *testing.T) {
 	t.Setenv("MONITOR_ALERT_EVAL_INTERVAL", "15s")
-	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
+	engine := NewEngine(nil, nil, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	w := NewAlertEvalWorker(engine, rb, loggateway.NewNoop())
 	if w.interval != 15*time.Second {
 		t.Errorf("interval = %v, want %v", w.interval, 15*time.Second)
 	}
 }
 
 func TestNewAlertEvalWorker_DefaultInterval(t *testing.T) {
-	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
+	engine := NewEngine(nil, nil, nil)
 	rb := NewMetricRingBuffer()
-	w := NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
+	w := NewAlertEvalWorker(engine, rb, loggateway.NewNoop())
 	if w.interval != defaultEvalInterval {
 		t.Errorf("interval = %v, want %v", w.interval, defaultEvalInterval)
 	}

@@ -1,4 +1,4 @@
-package monitor
+package trace
 
 // TraceSpansRaw extracts the spans array from a trace config map.
 func TraceSpansRaw(config map[string]any) []any {

@@ -1,4 +1,4 @@
-package monitor_test
+package trace_test
 
 import (
 	"context"
@@ -6,35 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/trace"
 	"aranea-agents/pkg/loggateway"
 )
 
-// mockTraceUsageRepo implements monitor.TraceUsageRepo for tests.
-type mockTraceUsageRepo struct {
-	aggregateFn func(ctx context.Context, traceID string) (monitor.UsageAggregate, error)
-	calls       []string
-}
-
-func (m *mockTraceUsageRepo) AggregateUsageByTrace(ctx context.Context, traceID string) (monitor.UsageAggregate, error) {
-	m.calls = append(m.calls, traceID)
-	if m.aggregateFn != nil {
-		return m.aggregateFn(ctx, traceID)
-	}
-	return monitor.UsageAggregate{}, nil
-}
-
-func newTestTraceProjectorWithUsage(repo monitor.TraceRepo, usage monitor.TraceUsageRepo) *monitor.TraceProjector {
-	return monitor.NewTraceProjector(repo, loggateway.NewNoop(), usage, newMockBus())
+func newTestTraceProjectorWithUsage(repo trace.Writer, usage trace.UsageRepo) *trace.TraceProjector {
+	return trace.NewTraceProjector(repo, loggateway.NewNoop(), usage, &stubMonitorBus{})
 }
 
 // When usage events exist for the trace, completion must backfill tokens/cost
 // from the usage aggregate (the authoritative cost source) and provider/model
 // when the in-memory trace lacks them.
 func TestTraceProjector_OnRunnerCompletion_BackfillsUsageAggregate(t *testing.T) {
-	var got monitor.TraceCompletion
-	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, traceID string, c monitor.TraceCompletion) error {
+	var got trace.TraceCompletion
+	repo := &mockTraceWriter{
+		updateMonitorTraceCompletionFn: func(_ context.Context, traceID string, c trace.TraceCompletion) error {
 			if traceID != "trace-agg" {
 				t.Errorf("traceID = %q, want %q", traceID, "trace-agg")
 			}
@@ -42,12 +28,12 @@ func TestTraceProjector_OnRunnerCompletion_BackfillsUsageAggregate(t *testing.T)
 			return nil
 		},
 	}
-	usage := &mockTraceUsageRepo{
-		aggregateFn: func(_ context.Context, traceID string) (monitor.UsageAggregate, error) {
+	usage := &mockUsageRepo{
+		aggregateFn: func(_ context.Context, traceID string) (trace.UsageAggregate, error) {
 			if traceID != "trace-agg" {
 				t.Errorf("aggregate traceID = %q, want %q", traceID, "trace-agg")
 			}
-			return monitor.UsageAggregate{
+			return trace.UsageAggregate{
 				TotalTokens:  1234,
 				TotalCostUsd: 0.0567,
 				Provider:     "openai",
@@ -84,14 +70,14 @@ func TestTraceProjector_OnRunnerCompletion_BackfillsUsageAggregate(t *testing.T)
 // When no usage events exist (CallCount == 0), completion keeps the in-memory
 // token count and leaves provider/model empty for the repo-side COALESCE.
 func TestTraceProjector_OnRunnerCompletion_EmptyUsageKeepsInMemory(t *testing.T) {
-	var got monitor.TraceCompletion
-	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, c monitor.TraceCompletion) error {
+	var got trace.TraceCompletion
+	repo := &mockTraceWriter{
+		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, c trace.TraceCompletion) error {
 			got = c
 			return nil
 		},
 	}
-	usage := &mockTraceUsageRepo{} // zero aggregate
+	usage := &mockUsageRepo{} // zero aggregate
 	p := newTestTraceProjectorWithUsage(repo, usage)
 	p.AddTestTrace("trace-empty", time.Now())
 
@@ -109,8 +95,8 @@ func TestTraceProjector_OnRunnerCompletion_EmptyUsageKeepsInMemory(t *testing.T)
 // in-memory values.
 func TestTraceProjector_OnRunnerCompletion_AggregateErrorTolerated(t *testing.T) {
 	called := false
-	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, c monitor.TraceCompletion) error {
+	repo := &mockTraceWriter{
+		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, c trace.TraceCompletion) error {
 			called = true
 			if c.Status != "ok" {
 				t.Errorf("Status = %q, want ok", c.Status)
@@ -118,9 +104,9 @@ func TestTraceProjector_OnRunnerCompletion_AggregateErrorTolerated(t *testing.T)
 			return nil
 		},
 	}
-	usage := &mockTraceUsageRepo{
-		aggregateFn: func(context.Context, string) (monitor.UsageAggregate, error) {
-			return monitor.UsageAggregate{}, fmt.Errorf("db down")
+	usage := &mockUsageRepo{
+		aggregateFn: func(context.Context, string) (trace.UsageAggregate, error) {
+			return trace.UsageAggregate{}, fmt.Errorf("db down")
 		},
 	}
 	p := newTestTraceProjectorWithUsage(repo, usage)
@@ -135,8 +121,8 @@ func TestTraceProjector_OnRunnerCompletion_AggregateErrorTolerated(t *testing.T)
 // Nil usage repo keeps the legacy behaviour (no aggregation).
 func TestTraceProjector_OnRunnerCompletion_NilUsageRepo(t *testing.T) {
 	called := false
-	repo := &mockRepo{
-		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, _ monitor.TraceCompletion) error {
+	repo := &mockTraceWriter{
+		updateMonitorTraceCompletionFn: func(_ context.Context, _ string, _ trace.TraceCompletion) error {
 			called = true
 			return nil
 		},

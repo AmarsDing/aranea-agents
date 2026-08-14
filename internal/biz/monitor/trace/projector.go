@@ -1,4 +1,4 @@
-package monitor
+package trace
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 )
 
 type TraceProjector struct {
-	repo      TraceRepo
-	usageRepo TraceUsageRepo
+	repo      Writer
+	usageRepo UsageRepo
 	buses     []contract.MonitorBus
 	lg        loggateway.Logger
 
@@ -59,7 +59,7 @@ type activeTrace struct {
 	costUsd   float64
 }
 
-func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, usageRepo TraceUsageRepo, buses ...contract.MonitorBus) *TraceProjector {
+func NewTraceProjector(repo Writer, lg loggateway.Logger, usageRepo UsageRepo, buses ...contract.MonitorBus) *TraceProjector {
 	if repo == nil {
 		return nil
 	}

@@ -1,4 +1,4 @@
-package monitor
+package trace
 
 import (
 	"compress/gzip"

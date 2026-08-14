@@ -61,6 +61,19 @@ type Definition struct {
 	// (MDC) governing topic writes via set_deliverable. Only meaningful with
 	// EnableStateDeliverable=true.
 	DeliverableContract *biz.MemberDeliverableContract `json:"deliverable_contract,omitempty"`
+	// ModelCascade enables leader/member model tiering (P2-1). Presence turns
+	// the feature on: leader/planner members (synthesizer + intent anchor)
+	// keep their configured high-tier model; other members route to the cost
+	// tier via a run-level ModelSelector propagated to member invocations.
+	ModelCascade *ModelCascadeDef `json:"model_cascade,omitempty"`
+}
+
+// ModelCascadeDef is the team-level model cascade (tiering) config.
+// MemberModel empty = auto-select the cheapest ToolCall-capable catalog model.
+// MemberModel set without MemberProvider is invalid and falls back to base.
+type ModelCascadeDef struct {
+	MemberProvider string `json:"member_provider,omitempty"`
+	MemberModel    string `json:"member_model,omitempty"`
 }
 
 type SwarmConfigDef struct {

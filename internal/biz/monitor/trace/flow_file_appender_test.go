@@ -1,4 +1,4 @@
-package monitor_test
+package trace_test
 
 import (
 	"compress/gzip"
@@ -13,14 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/biz/monitor/trace"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewFlowFileAppender_NonEmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	if a == nil {
 		t.Fatal("NewFlowFileAppender returned nil")
 	}
@@ -30,7 +30,7 @@ func TestNewFlowFileAppender_NonEmptyDir(t *testing.T) {
 }
 
 func TestNewFlowFileAppender_EmptyDir(t *testing.T) {
-	a := monitor.NewFlowFileAppender("", loggateway.NewNoop())
+	a := trace.NewFlowFileAppender("", loggateway.NewNoop())
 	if a == nil {
 		t.Fatal("NewFlowFileAppender returned nil")
 	}
@@ -45,7 +45,7 @@ func TestNewFlowFileAppender_EmptyDir(t *testing.T) {
 
 func TestNewFlowFileAppender_StartCancelledContext(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	a.Start(ctx, nil)
@@ -53,13 +53,13 @@ func TestNewFlowFileAppender_StartCancelledContext(t *testing.T) {
 }
 
 func TestNewFlowFileAppender_StartNilAppender(t *testing.T) {
-	var a *monitor.FlowFileAppender
+	var a *trace.FlowFileAppender
 	a.Start(context.Background(), nil)
 }
 
 func TestFlowFileAppender_OnMonitorEvent_FlowLog(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -109,7 +109,7 @@ func TestFlowFileAppender_OnMonitorEvent_FlowLog(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_SystemLog(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	// Source="flow" routes to systemFile (preserves legacy Channel="monitor" behavior;
@@ -137,7 +137,7 @@ func TestFlowFileAppender_OnMonitorEvent_SystemLog(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_AlertNotify(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -162,7 +162,7 @@ func TestFlowFileAppender_OnMonitorEvent_AlertNotify(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_MCPHealthAlert(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -187,7 +187,7 @@ func TestFlowFileAppender_OnMonitorEvent_MCPHealthAlert(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_NilMetadata(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -210,7 +210,7 @@ func TestFlowFileAppender_OnMonitorEvent_NilMetadata(t *testing.T) {
 }
 
 func TestFlowFileAppender_OnMonitorEvent_NilAppender(t *testing.T) {
-	var a *monitor.FlowFileAppender
+	var a *trace.FlowFileAppender
 	ev := contract.MonitorEvent{
 		ID:       "env-nil-appender",
 		Type:     contract.MonitorEventTypeFlowLog,
@@ -221,7 +221,7 @@ func TestFlowFileAppender_OnMonitorEvent_NilAppender(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_UnknownType(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -245,7 +245,7 @@ func TestFlowFileAppender_OnMonitorEvent_UnknownType(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_RoutesToCorrectFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	now := time.Now().UTC()
@@ -278,7 +278,7 @@ func TestFlowFileAppender_OnMonitorEvent_RoutesToCorrectFiles(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Hour)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -340,7 +340,7 @@ func TestFlowFileAppender_CompressOldFiles(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_SkipExistingGz(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -369,7 +369,7 @@ func TestFlowFileAppender_CompressOldFiles_SkipExistingGz(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 
 	compressed := a.CompressOldFilesExposed()
@@ -380,7 +380,7 @@ func TestFlowFileAppender_CompressOldFiles_EmptyDir(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_ZeroCompressAge(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -397,7 +397,7 @@ func TestFlowFileAppender_CompressOldFiles_ZeroCompressAge(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -434,7 +434,7 @@ func TestFlowFileAppender_PurgeExpiredFiles(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_JsonlToo(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -461,7 +461,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_JsonlToo(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_ZeroRetention(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -478,7 +478,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_ZeroRetention(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	purged := a.PurgeExpiredFilesExposed()
@@ -489,7 +489,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_EmptyDir(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_NonJsonlIgnored(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -515,7 +515,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_NonJsonlIgnored(t *testing.T) {
 
 func TestFlowFileAppender_PurgeTmpFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	tmpPath := filepath.Join(dir, "flow-2025-01-01.jsonl.gz.tmp")
 	if err := os.WriteFile(tmpPath, []byte("tmp data"), 0644); err != nil {
@@ -540,14 +540,14 @@ func TestFlowFileAppender_PurgeTmpFiles(t *testing.T) {
 
 func TestFlowFileAppender_PurgeTmpFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	a.PurgeTmpFilesExposed()
 }
 
 func TestFlowFileAppender_PurgeTmpFiles_MultipleTmpFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	tmp1 := filepath.Join(dir, "flow-2025-01-01.jsonl.gz.tmp")
 	tmp2 := filepath.Join(dir, "alert-2025-01-01.jsonl.gz.tmp")
@@ -570,7 +570,7 @@ func TestFlowFileAppender_PurgeTmpFiles_MultipleTmpFiles(t *testing.T) {
 
 func TestFlowFileAppender_SyncOpenFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -587,14 +587,14 @@ func TestFlowFileAppender_SyncOpenFiles(t *testing.T) {
 
 func TestFlowFileAppender_SyncOpenFiles_NoOpenFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	a.SyncOpenFilesExposed()
 }
 
 func TestFlowFileAppender_Maintenance(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 	a.SetRetentionDays(1)
 	defer a.CloseAllFiles()
@@ -622,7 +622,7 @@ func TestFlowFileAppender_Maintenance(t *testing.T) {
 
 func TestFlowFileAppender_MultipleMonitorEvents(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	now := time.Now().UTC()
@@ -661,7 +661,7 @@ func TestFlowFileAppender_MultipleMonitorEvents(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_ContentFields(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	// Use a fixed timestamp to make _ts assertion deterministic. The new
@@ -721,7 +721,7 @@ func TestFlowFileAppender_OnMonitorEvent_ContentFields(t *testing.T) {
 
 func TestFlowFileAppender_OnMonitorEvent_EmptyMessage(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	// When Message is empty, the appender omits the _text field (mirrors the
@@ -762,25 +762,12 @@ func TestFlowFileAppender_OnMonitorEvent_EmptyMessage(t *testing.T) {
 	}
 }
 
-// warnCountingLogger counts Warn calls so tests can assert on log volume.
-type warnCountingLogger struct {
-	warnCount int
-}
-
-func (l *warnCountingLogger) Debug(string, ...loggateway.Field) {}
-func (l *warnCountingLogger) Info(string, ...loggateway.Field)  {}
-func (l *warnCountingLogger) Warn(string, ...loggateway.Field)  { l.warnCount++ }
-func (l *warnCountingLogger) Error(string, ...loggateway.Field) {}
-func (l *warnCountingLogger) With(...loggateway.Field) loggateway.Logger {
-	return l
-}
-
 // Fix A: events emitted by FlowFileAppender itself (step_id prefix
 // "monitor.flow_file.") must be dropped to break the write-fail → Warn →
 // MonitorBus → write-fail self-feedback loop.
 func TestFlowFileAppender_OnMonitorEvent_SkipsSelfOriginatedEvents(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	selfStepIDs := []string{
@@ -819,7 +806,7 @@ func TestFlowFileAppender_OnMonitorEvent_SkipsSelfOriginatedEvents(t *testing.T)
 // Fix A 对照组：非自身产生的 log 事件仍然正常落盘。
 func TestFlowFileAppender_OnMonitorEvent_AcceptsOtherLogEvents(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ev := contract.MonitorEvent{
@@ -848,7 +835,7 @@ func TestFlowFileAppender_OnMonitorEvent_AcceptsOtherLogEvents(t *testing.T) {
 func TestFlowFileAppender_WriteFailureCircuitBreaker(t *testing.T) {
 	dir := t.TempDir()
 	lg := &warnCountingLogger{}
-	a := monitor.NewFlowFileAppender(dir, lg)
+	a := trace.NewFlowFileAppender(dir, lg)
 	defer a.CloseAllFiles()
 
 	badEv := func(id string) contract.MonitorEvent {
@@ -918,7 +905,7 @@ func TestFlowFileAppender_OpenFailureCircuitBreaker(t *testing.T) {
 		t.Fatalf("write error: %v", err)
 	}
 	lg := &warnCountingLogger{}
-	a := monitor.NewFlowFileAppender(fileAsDir, lg)
+	a := trace.NewFlowFileAppender(fileAsDir, lg)
 
 	ev := func(id string) contract.MonitorEvent {
 		return contract.MonitorEvent{
@@ -946,7 +933,7 @@ func TestFlowFileAppender_OpenFailureCircuitBreaker_HalfOpenProbe(t *testing.T) 
 		t.Fatalf("write error: %v", err)
 	}
 	lg := &warnCountingLogger{}
-	a := monitor.NewFlowFileAppender(fileAsDir, lg)
+	a := trace.NewFlowFileAppender(fileAsDir, lg)
 
 	ev := contract.MonitorEvent{
 		ID:        "ev",
@@ -975,7 +962,7 @@ func TestFlowFileAppender_OpenFailureCircuitBreaker_HalfOpenProbe(t *testing.T) 
 // per base name; the oldest excess backups are purged by maintenance.
 func TestFlowFileAppender_PurgeExcessBackups(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetMaxBackups(5)
 
 	today := time.Now().UTC().Format("2006-01-02")
@@ -1016,7 +1003,7 @@ func TestFlowFileAppender_PurgeExcessBackups(t *testing.T) {
 // which previously lived forever because the suffix filter missed them.
 func TestFlowFileAppender_PurgeExpiredFiles_RotatedBackups(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
+	a := trace.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
