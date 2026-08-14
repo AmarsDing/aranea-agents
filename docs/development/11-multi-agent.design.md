@@ -62,16 +62,18 @@ pkg/trpc-agent-go/team            ← 框架 Team / Swarm 真相源
 
 ### 编排模式映射
 
-| Definition `mode` | Graph 编译产物 | 说明 |
-|-------------------|---------------|------|
-| `sequential` | `CompileToGraphBuildConfig` → 线性图 | 顺序链，事件传递给下一成员 |
-| `parallel` | `CompileToGraphBuildConfig` → 并行图 | 并行 worker，需 synthesizer 成员或 `synthesizer_agent_id` |
-| `coordinator` | `CompileToGraphBuildConfig` → 星形图 | 首成员为 coordinator，其余为 AgentTool |
-| `critic_loop` | `CompileToGraphBuildConfig` → 循环图 | 生成-评审循环 + `escalationFunc` |
-| `swarm` | `CompileToGraphBuildConfig` → 全连接图 | 成员间 `transfer_to_agent` |
-| `adaptive` | 与 swarm 相同编译路径 | 与 swarm 相同构建路径，UI 面向用户的 Swarm 别名 |
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
 
-前端 `modeOptions` 展示 `adaptive` 而非 `swarm`；API / 校验层两者均合法。
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
 
 ### 核心执行流
 
@@ -441,7 +443,7 @@ type Definition struct {
 
 ### 3.7 校验规则
 
-- `mode` ∈ sequential / parallel / coordinator / critic_loop / swarm / adaptive
+- `mode` ∈ sequential / parallel / coordinator / critic_loop / swarm / adaptive（共 6 个；见上文「编排模式映射」）
 - 至少一个 enabled member；member `agent_id` 非空
 - parallel：需 synthesizer 成员或 `synthesizer_agent_id`
 - critic_loop：需 generator + critic 成员
@@ -788,7 +790,7 @@ Graph 路径要点：
 | `internal/biz/team_usecase_delete_test.go` | 删除逻辑 |
 | `internal/biz/team_types_test.go` | 类型/状态转换 |
 | `internal/biz/team_summary_test.go` | Summary 聚合 |
-| `internal/biz/team_modes_test.go` | 六种 mode |
+| `internal/biz/team_modes_test.go` | 六种合法 mode + 拒绝 graph/native/custom/preset |
 | `internal/biz/team_fallback_test.go` | Fallback 策略 |
 | `internal/biz/team_graph_function_resolver_test.go` | Function 节点解析 |
 | `internal/biz/team_graph_linked_test.go` | Linked graph |

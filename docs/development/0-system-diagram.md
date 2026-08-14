@@ -113,7 +113,7 @@ flowchart TB
 | 核心运行 | Session(10) | 会话、消息、标题、压缩、trpc session 适配 | `internal/biz/session/usecase.go`、`internal/session/trpc` |
 | 核心运行 | Provider(9) | 模型目录、厂商配置、HA、Inspect | `internal/provider`、`internal/biz/llm_provider_model.go` |
 | 编排 | Agent(2-8) | 创建、列表、分类、设置、文件、进化、标题、头像 | `internal/biz/agent_*`、`web/src/pages/AgentSettingsPage.vue` |
-| 编排 | Team(11) | 多 Agent 编排、五种模式、运行轨迹 | `internal/team`、`internal/service/team.go` |
+| 编排 | Team(11) | 多 Agent 编排、**6 种合法 mode**（swarm/adaptive 共用 Swarm）、运行轨迹 | `internal/team`、`internal/service/team.go` |
 | 编排 | Graph(36) | 确定性工作流、Checkpoint、HITL、Task | `internal/graph`、`internal/service/graph.go` |
 | 能力 | Tools(23) | 工具目录、Agent 绑定、运行时挂载 | `internal/tools`、`internal/tools/trpc` |
 | 能力 | MCP(19) | 外部 MCP Server、Broker、健康探活 | `internal/mcp/*`、`agent/tool_assembly`、`tools/toolset` |
@@ -176,7 +176,20 @@ sequenceDiagram
 
 ### 5.2 Team 对话
 
-> **M53 Phase 7**：Team Run 默认经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；Native `BuildTRPCTeam` 仅 `ARANEA_TEAM_NATIVE=1` 应急。详见 [53-team-graph-orchestration-development.md](./53-team-graph-orchestration-development.md)。
+> **M53 Phase 7**：Team Run 默认经 `CompileToGraphRuntimeConfig` → `GraphAgent` 执行；Native `BuildTRPCTeam` 仅 `ARANEA_TEAM_NATIVE=1` 应急。详见 [53-team-graph-orchestration.development.md](./53-team-graph-orchestration.development.md)。
+
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
 
 ```mermaid
 flowchart LR

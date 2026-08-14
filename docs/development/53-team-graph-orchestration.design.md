@@ -277,18 +277,24 @@ func CompileToGraphBuildConfig(def Definition) (graph.GraphBuildConfig, error)
 
 对称于前端 `buildGraphFromDefinition()`（`web/src/components/teams/teamUtils.ts`）。
 
-**编译路径（统一）**：不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`。模板注册表（`template_registry.go`）提供 5 个内置模板。
+**编译路径（统一）**：不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`。模板注册表（`template_registry.go`）提供 **5 个内置模板**（`swarm` 编译归一为 `adaptive` 模板）。
 
 ### 5.2 映射表
 
-| mode | 拓扑 | Graph 模板 ID |
-|------|------|---------------|
-| sequential | 链式 | pipeline |
-| parallel | fan-out / join | parallel_review |
-| coordinator | 星形 + AgentTool 边 | dispatch |
-| critic_loop | generate→critic→router | review_loop |
-| adaptive/swarm | entry + transfer 边 | dispatch |
-| graph | linked 或内嵌 | — |
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
+
+模板 ID 对照（5 个模板 ≠ 6 个 mode）：`sequential`→pipeline，`parallel`→parallel_review，`coordinator`→dispatch，`critic_loop`→review_loop，`adaptive`/`swarm`→adaptive。
 
 Member → `NodeDef{type: agent, agent_name: agent_key}`。
 
@@ -652,7 +658,8 @@ Runner E2E：EP-TEST-TG-01（Team sequential Run + WS status 序列）。
 │  OrchestrationSpec v2（唯一真相源，biz 类型）                       │
 │  - members[]                                                     │
 │  - mode (sequential / parallel / coordinator / critic_loop /     │
-│         adaptive / custom)                                       │
+│         swarm / adaptive)                                        │
+│  - source: preset / custom / linked_external                     │
 │  - graph: { nodes[], edges[], conditional_edges[], entry_point } │
 │  - linked_graph_id?                                              │
 │  - failure_policy { retry, skip, fallback_agent, circuit }       │

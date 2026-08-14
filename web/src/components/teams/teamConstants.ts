@@ -14,7 +14,11 @@ export const teamStatusMap: Record<string, { label: string; color: string }> = {
   active: { label: '活跃', color: 'positive' },
 };
 
-/** 编排模式中文映射（UI 展示用；value 保持后端枚举） */
+/**
+ * 编排模式中文映射（UI 展示用；value 保持后端枚举）。
+ * 合法 API 值共 6 个（sequential / parallel / coordinator / critic_loop / swarm / adaptive）。
+ * swarm 与 adaptive 共用 Swarm 运行时，均展示为「群智」。
+ */
 export const teamModeMap: Record<string, string> = {
   sequential: '顺序',
   parallel: '并行',
@@ -78,6 +82,7 @@ export function teamRunStatusLabel(status?: string): string {
 
 // ADR-08 A3：mode 下拉即模板选择器——description 展示在选项 caption，
 // 选中后由派生链路（deriveMemberRolesForMode → rebuild/compile）重新生成 graph。
+// UI 展示 5 项：adaptive 代表 Swarm（swarm 仍为合法 API 值，不单独出现在下拉以免重复「群智」）。
 export const modeOptions = [
   { label: '顺序', value: 'sequential', description: '成员按顺序依次执行，上一步输出作为下一步上下文。' },
   { label: '并行', value: 'parallel', description: '成员并行产出，排序最后的启用成员负责汇总。' },

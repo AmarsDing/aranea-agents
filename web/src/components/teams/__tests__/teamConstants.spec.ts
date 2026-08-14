@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   teamStatusMap,
+  teamModeMap,
   modeOptions,
   statusOptions,
   roleOptions,
@@ -23,14 +24,17 @@ describe('teamConstants', () => {
     }
   });
 
-  it('modeOptions includes 5 modes', () => {
+  it('modeOptions shows 5 UI templates; adaptive stands in for swarm', () => {
     expect(modeOptions).toHaveLength(5);
     const values = modeOptions.map((o) => o.value);
-    expect(values).toContain('sequential');
-    expect(values).toContain('parallel');
-    expect(values).toContain('coordinator');
-    expect(values).toContain('critic_loop');
-    expect(values).toContain('adaptive');
+    expect(values).toEqual(['sequential', 'parallel', 'coordinator', 'critic_loop', 'adaptive']);
+    expect(values).not.toContain('swarm');
+  });
+
+  it('teamModeMap covers all 6 legal API modes', () => {
+    expect(Object.keys(teamModeMap).sort()).toEqual(
+      ['adaptive', 'coordinator', 'critic_loop', 'parallel', 'sequential', 'swarm'].sort(),
+    );
   });
 
   it('statusOptions covers all backend statuses', () => {

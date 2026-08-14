@@ -8,7 +8,20 @@
 
 ## 1. 模块定位
 
-Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_loop / swarm / adaptive），Agent 间协作、运行观测与 Chat 集成。Graph 为唯一执行路径（Native 已完全移除）。
+Multi-Agent 编排：Team **6 种合法 mode**（sequential / parallel / coordinator / critic_loop / swarm / adaptive；swarm 与 adaptive 共用 Swarm 运行时），Agent 间协作、运行观测与 Chat 集成。Graph 为唯一执行路径（Native 已完全移除）。
+
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
 
 **代码锚点**：
 
@@ -31,7 +44,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 
 | 项 | 状态 |
 |----|------|
-| Team CRUD + 六种 mode 运行时 | ✅ |
+| Team CRUD + 六种合法 mode 运行时（swarm/adaptive 共用 Swarm） | ✅ |
 | RunTeamTest / CancelTeamRun | ✅ |
 | team_step_started / team_step_finished | ✅ |
 | GetTeamRunSummary RPC | ✅ |
@@ -99,7 +112,7 @@ Multi-Agent 编排：Team 模式（sequential / parallel / coordinator / critic_
 
 ### Phase 1–2（✅）— 核心编排与运行管理
 
-历史迭代已完成 Team CRUD、六种 mode 运行时、Chat 集成、WS 事件推送。
+历史迭代已完成 Team CRUD、六种合法 mode 运行时（swarm/adaptive 共用 Swarm）、Chat 集成、WS 事件推送。
 
 ### Phase 3（✅ 2026-05-21）— 产品闭环
 

@@ -9,6 +9,19 @@
 
 Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Kanban 看板、编译器与 Graph 运行时收敛。
 
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
+
 **代码锚点**：
 
 | 层级 | 路径 | 阶段 |
@@ -29,7 +42,7 @@ Team 与 Graph 编排融合：统一 OrchestrationSpec、Agent 状态观测、Ka
 
 | 项 | 状态 | 证据 |
 |----|------|------|
-| Team 六种 mode 运行时 | ✅ | `internal/team/trpc_build.go`（Native 路径已移除） |
+| Team 六种合法 mode 运行时（swarm/adaptive 共用 Swarm） | ✅ | `internal/team/trpc_build.go`（Native 路径已移除） |
 | Team 前端 graph 预览 | ✅ | Observatory / Compile 统一 `BuildCompileSnapshot` |
 | Graph Vue Flow + Run 页 | ✅ | `GraphEditorPage` / `GraphRunPage` |
 | Graph EventBridge | ✅ | `internal/graph/trpc/event_bridge.go` |

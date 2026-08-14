@@ -10,7 +10,7 @@
 核心目标：
 
 - 用户在 UI 中创建 Team，并为 Team 绑定多个 Agent
-- 支持多种编排模式：顺序、并行、主控分派、生成-评审闭环、群智协作（Swarm / Adaptive）
+- 支持多种编排模式：顺序、并行、主控分派、生成-评审闭环、群智协作（**6 个合法 mode**：sequential / parallel / coordinator / critic_loop / swarm / adaptive）
 - Team 可像单个 Agent 一样在 Chat 中发起会话并运行
 - 编排过程可追踪：展示每个子 Agent 的输入、输出、状态、耗时、错误和成本
 - 支持 Swarm 动态成员管理、Team 结构导出、运行测试与取消
@@ -34,8 +34,19 @@
 
 **编排运行时**
 
-- 五种后端编排模式：`sequential` / `parallel` / `coordinator` / `critic_loop` / `swarm`
-- 前端 UI 以 `adaptive` 对应后端 Swarm 运行时（与 `swarm` 共用构建路径）
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
+
 - Graph 为默认执行路径（Native 应急路径已移除）
 - Swarm 安全限制：MaxHandoffs / NodeTimeout / RepetitiveHandoff / CrossRequestTransfer
 - MemberToolConfig：StreamInner / InnerTextMode / HistoryScope / SkipSummarization
@@ -160,7 +171,7 @@ Spirit 会话中列出关联 Team（ListSpiritTeams），并将多个 Team 的�
 
 编排配置：
 
-- `mode`：sequential / parallel / coordinator / critic_loop / **adaptive**（UI）↔ swarm 运行时
+- `mode`：六种合法值 sequential / parallel / coordinator / critic_loop / swarm / **adaptive**（UI 下拉展示 adaptive；与 swarm 共用 Swarm 运行时）
 - `max_concurrency`、`timeout_seconds`
 - `synthesizer_agent_id`（parallel）
 - `critic_loop.max_iterations`、`critic_loop.score_threshold`
@@ -263,7 +274,7 @@ A2A 协议配置：
 
 ### 编排运行
 
-- 五种后端编排模式可执行（含 adaptive ↔ Swarm）
+- 六种合法 mode 可执行（swarm / adaptive 共用 Swarm 运行时）
 - 每次运行记录 run 与 step 摘要
 - 子 Agent 失败时最终结果含失败说明
 - SwarmConfig / MemberToolConfig / CriticLoop ScoreThreshold

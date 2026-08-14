@@ -39,6 +39,18 @@ func TestTeamOrchestrationModeRejected(t *testing.T) {
 	}
 }
 
+func TestTeamOrchestrationModeRejectsEngineAndSourceNames(t *testing.T) {
+	// graph/native are runtime_engine; custom/preset are graph source — not modes.
+	for _, mode := range []string{"graph", "native", "custom", "preset"} {
+		t.Run(mode, func(t *testing.T) {
+			err := validateTeamDefinition(`{"version":1,"mode":"` + mode + `","members":[]}`)
+			if err == nil {
+				t.Fatalf("expected error for non-mode value %q", mode)
+			}
+		})
+	}
+}
+
 func TestTeamCriticLoopRequiresRoles(t *testing.T) {
 	err := validateTeamDefinition(`{"version":1,"mode":"critic_loop","members":[{"agent_id":"a1","role":"generator","enabled":true}]}`)
 	if err == nil {

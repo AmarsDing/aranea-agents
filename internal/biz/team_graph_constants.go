@@ -1,6 +1,8 @@
 package biz
 
-// Team mode constants.
+// Team mode constants — six legal API values (validateTeamDefinition whitelist).
+// swarm and adaptive share the Swarm runtime; compile normalizes swarm → adaptive.
+// graph/native are runtime_engine; preset/custom are graph source — not modes.
 const (
 	TeamModeSequential  = "sequential"
 	TeamModeParallel    = "parallel"

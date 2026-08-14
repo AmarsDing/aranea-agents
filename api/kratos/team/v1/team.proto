@@ -290,6 +290,9 @@ message FailurePolicySpec {
 
 message OrchestrationSpec {
   int32 version = 1;
+  // Legal values (six): sequential | parallel | coordinator | critic_loop | swarm | adaptive.
+  // swarm and adaptive share the Swarm runtime. Not a mode: graph/native (runtime_engine),
+  // preset/custom (graph source).
   string mode = 2;
   repeated OrchestrationMember members = 3;
   EmbeddedGraph graph = 4;

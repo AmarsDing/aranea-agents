@@ -96,7 +96,8 @@ export type TeamDefinition = {
   /** 关联 persisted graph 资产 id（M53 linked_graph） */
   linked_graph_id?: string;
   failure_policy?: TeamFailurePolicy;
-  mode: 'sequential' | 'parallel' | 'coordinator' | 'critic_loop' | 'adaptive' | string;
+  /** 6 legal API values; swarm and adaptive share Swarm runtime. */
+  mode: 'sequential' | 'parallel' | 'coordinator' | 'critic_loop' | 'swarm' | 'adaptive' | string;
   max_concurrency?: number;
   timeout_seconds?: number;
   /** coordinator / adaptive：外圈 LoopAgent 迭代上限；0 表示后端默认 3 */

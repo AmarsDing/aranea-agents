@@ -231,7 +231,20 @@
 
 ### 1.8 Team 多 Agent (`internal/team/`)
 
-**职责**：Team 编排，6 种模式（Sequential/Parallel/Coordinator/CriticLoop/Swarm/Adaptive）。
+**职责**：Team 编排，**6 种合法 mode**（sequential / parallel / coordinator / critic_loop / swarm / adaptive）。
+
+**合法 mode 共 6 个**（真相源：`internal/biz/team_graph_constants.go`，`validateTeamDefinition` 白名单）。全部经 `CompileToGraphBuildConfig` 编译为 GraphAgent。
+
+| mode | 拓扑 | 说明 |
+|------|------|------|
+| `sequential` | 线性链 | 成员依次执行 |
+| `parallel` | 并行 + 汇总 | 需 synthesizer 或 `synthesizer_agent_id` |
+| `coordinator` | 星形 | 首成员为 coordinator |
+| `critic_loop` | 生成-评审循环 | 需 generator + critic |
+| `swarm` | 全连接 Swarm | API 合法值；编译时归一为 `adaptive` |
+| `adaptive` | 与 swarm 相同 | API 合法值；UI 下拉展示此项（「群智」） |
+
+`graph` / `native` 是 `runtime_engine`，`preset` / `custom` 是图来源 `source`，均不是 mode。UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm）。
 
 | 维度 | 内容 |
 |------|------|
@@ -1119,6 +1132,7 @@
 | **WS 事件消费** | `v2_event` `team_run.*` / `member_session.*` / team `system.notice`；`createV2EventStream` |
 | **后端对应** | TeamService（CRUD + 运行） |
 | **共享类型** | `Team`、`TeamRun`、`TeamRunStep` |
+| **编排 mode** | 6 个合法值（见 §1.8 表）；UI `modeOptions` 展示 5 项（`adaptive` 代表 Swarm） |
 
 ---
 
