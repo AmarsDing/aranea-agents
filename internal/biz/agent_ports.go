@@ -7,6 +7,7 @@ import "context"
 // of reaching into internal/agent internals.
 //
 // Implementations live in internal/agent. Wire binding in internal/service.
+// Stability:evolving
 type AgentRuntimeBuilder interface {
 	// BuildAgent constructs a runtime agent from a biz Agent model.
 	BuildAgent(ctx context.Context, agent Agent) (AgentRuntime, error)
@@ -15,6 +16,7 @@ type AgentRuntimeBuilder interface {
 // AgentRuntime is the biz-level handle for a built agent runtime.
 // The concrete type is framework-specific; this interface exposes
 // only what biz-level consumers need.
+// Stability:evolving
 type AgentRuntime interface {
 	// AgentID returns the agent's unique identifier.
 	AgentID() string
@@ -25,6 +27,7 @@ type AgentRuntime interface {
 // of reaching into internal/tools internals.
 //
 // Implementations live in internal/tools. Wire binding in internal/service.
+// Stability:evolving
 type ToolsetAssembler interface {
 	// AssembleForAgent builds the toolset for a given agent configuration.
 	AssembleForAgent(ctx context.Context, agent Agent, overrides ToolOverrides) (ToolsetResult, error)
@@ -53,6 +56,7 @@ type ToolsetResult struct {
 // of reaching into internal/provider internals.
 //
 // Implementations live in internal/provider. Wire binding in internal/service.
+// Stability:evolving
 type ModelResolverPort interface {
 	// ResolveModel resolves a provider/model pair into a biz ModelInfo.
 	ResolveModel(ctx context.Context, providerName, modelName string) (ModelInfo, error)
@@ -75,6 +79,7 @@ type ModelInfo struct {
 
 // AgentBuildRunner constructs the trpc-agent-go runner for a single agent turn.
 // This is the "build" hook in the TurnExecutor lifecycle.
+// Stability:evolving
 type AgentBuildRunner interface {
 	// BuildRunner constructs a callable agent runner from the given agent and session.
 	BuildRunner(ctx context.Context, agent Agent, sessionID string, input TurnInput) (AgentRunnerHandle, error)
@@ -82,6 +87,7 @@ type AgentBuildRunner interface {
 
 // AgentRunnerHandle is the biz-level handle for a built agent runner.
 // It abstracts the trpc-agent-go Runner so biz doesn't import it.
+// Stability:evolving
 type AgentRunnerHandle interface {
 	// Run executes the agent turn and returns the assistant message content.
 	Run(ctx context.Context) (AgentTurnOutput, error)
@@ -106,12 +112,14 @@ type ToolUseEventRef struct {
 
 // AgentPersistTurnRecord persists the turn result for an agent session.
 // This is the "persist" hook in the TurnExecutor lifecycle.
+// Stability:evolving
 type AgentPersistTurnRecord interface {
 	PersistAgentTurn(ctx context.Context, sessionID string, userMsg, assistantMsg ChatMessage) error
 }
 
 // AgentProjectRuntimeEvent emits runtime events (envelopes) for an agent turn.
 // This is the "project events" hook in the TurnExecutor lifecycle.
+// Stability:evolving
 type AgentProjectRuntimeEvent interface {
 	ProjectAgentEvents(ctx context.Context, sessionID, runID string, outcome TurnOutcome, assistantMsg ChatMessage) error
 }
@@ -132,6 +140,7 @@ type AgentMatch struct {
 // Defined in biz to avoid import cycles (internal/agent → internal/tools → internal/biz).
 //
 // Implementations live in internal/agent. Wire binding in internal/service.
+// Stability:evolving
 type AgentMatcherPort interface {
 	MatchAgent(ctx context.Context, taskDescription string, requiredCapabilities []string) (*AgentMatch, error)
 }

@@ -117,6 +117,7 @@ type EvolutionEventInsert struct {
 }
 
 // L0AdminStore lists and persists L0 assembly snapshots.
+// Stability:evolving
 type L0AdminStore interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID, agentID string, limit int32) ([][]byte, error)
 	GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error)
@@ -125,6 +126,7 @@ type L0AdminStore interface {
 }
 
 // L1AdminReader lists L1 working-memory tasks and fields.
+// Stability:evolving
 type L1AdminReader interface {
 	ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error)
 	ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool, requestingAgentID ...string) ([][]byte, error)
@@ -170,6 +172,7 @@ type L1FieldInsert struct {
 }
 
 // L1TaskWriter exposes L1 task write operations.
+// Stability:evolving
 type L1TaskWriter interface {
 	StartL1Task(ctx context.Context, in L1TaskInsert) ([]byte, error)
 	EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
@@ -183,6 +186,7 @@ type L1TaskWriter interface {
 }
 
 // L1FieldWriter exposes L1 field write operations.
+// Stability:evolving
 type L1FieldWriter interface {
 	UpsertL1Field(ctx context.Context, in L1FieldInsert) ([]byte, error)
 	DeleteL1Field(ctx context.Context, taskID, fieldPath string) error
@@ -202,6 +206,7 @@ type L1FieldWriter interface {
 // The retry branch keeps archive failures inside the scan set so they are
 // retried instead of silently lost. retryCutoff (minutes-scale) avoids racing
 // the synchronous end+archive path in MemoryAdminUsecase.EndL1Task.
+// Stability:evolving
 type L1IdleTaskReader interface {
 	ListIdleL1Tasks(ctx context.Context, idleCutoffRFC3339, retryCutoffRFC3339 string) ([][]byte, error)
 }
@@ -209,22 +214,26 @@ type L1IdleTaskReader interface {
 // L1ExpiredFieldCleaner batch-deletes expired L1 fields (where expires_at != ”
 // and expires_at < now). Used by the auto-archive worker for periodic cleanup
 // so expired fields don't accumulate in the database.
+// Stability:evolving
 type L1ExpiredFieldCleaner interface {
 	DeleteExpiredL1Fields(ctx context.Context) (int, error)
 }
 
 // L1SchemaReader reads L1 schema definitions from memory_l1_schemas.
+// Stability:evolving
 type L1SchemaReader interface {
 	GetL1SchemaRow(ctx context.Context, schemaID string) ([]byte, error)
 }
 
 // L2EpisodeWriter inserts L2 episodes (used by L1 archive hook).
+// Stability:evolving
 type L2EpisodeWriter interface {
 	InsertL1ArchiveEpisode(ctx context.Context, in L1ArchiveEpisodeInsert) error
 }
 
 // RecentMessageLister lists recent messages for a session (used by Path B extraction).
 // Implementations convert from the storage-level message type to ConsolidateMessage.
+// Stability:evolving
 type RecentMessageLister interface {
 	ListRecentMessages(ctx context.Context, sessionID string, limit int) ([]ConsolidateMessage, error)
 }
@@ -249,6 +258,7 @@ type L1ArchiveEpisodeInsert struct {
 }
 
 // L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.
+// Stability:evolving
 type L2RecallStore interface {
 	ListEpisodeRowsForRecall(ctx context.Context, agentID, sessionID string, limit int32) ([][]byte, error)
 	RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
@@ -280,6 +290,7 @@ type L4RelationAdminReader interface {
 }
 
 // L3FactReader exposes read operations for semantic facts.
+// Stability:evolving
 type L3FactReader interface {
 	// ListFactRows lists facts with AND-combined optional filters. scopeType/
 	// scopeID select the namespace (L3.md §1.3 five-level scope); agentID
@@ -297,6 +308,7 @@ type L3FactReader interface {
 }
 
 // L3FactWriter exposes write operations for semantic facts.
+// Stability:evolving
 type L3FactWriter interface {
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 	DeleteFactRow(ctx context.Context, factID string) error
@@ -336,12 +348,14 @@ type DecayScoreWriter interface {
 // L3FactAdminStore manages semantic facts and L3 recall.
 //
 // Deprecated: Use L3FactReader and L3FactWriter directly instead.
+// Stability:evolving
 type L3FactAdminStore interface {
 	L3FactReader
 	L3FactWriter
 }
 
 // PIIReviewStore manages PII-flagged fact review.
+// Stability:evolving
 type PIIReviewStore interface {
 	ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
 	ApprovePIIFact(ctx context.Context, factID string) error
@@ -349,6 +363,7 @@ type PIIReviewStore interface {
 }
 
 // L4EntityStore exposes L4 entity and graph operations.
+// Stability:evolving
 type L4EntityStore interface {
 	ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error)
 	NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error)
@@ -358,6 +373,7 @@ type L4EntityStore interface {
 }
 
 // L4EvolutionStore exposes L4 evolution operations.
+// Stability:evolving
 type L4EvolutionStore interface {
 	EvolutionProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	EvolutionEventRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
@@ -366,6 +382,7 @@ type L4EvolutionStore interface {
 }
 
 // L3ConflictStore manages L3 fact conflict detection.
+// Stability:evolving
 type L3ConflictStore interface {
 	IncrementConflictCount(ctx context.Context, factID string) (int32, error)
 	// ListConflictingFacts lists facts with conflict_count > 0. scopeType/scopeID
@@ -396,6 +413,7 @@ type MemoryPreferenceLister interface {
 // Unlike SessionAdminStore, this does not include L2RecallStore or L3FactWriter
 // (which are injected via separate fields). This narrows the interface to only
 // what MemoryAdminUsecase actually needs.
+// Stability:evolving
 type MemoryAdminDeps interface {
 	L0AdminStore
 	L1AdminReader
@@ -440,6 +458,7 @@ func (p MemoryLayerPorts) HasWorkingMemory() bool {
 // L1AdminReader, L1TaskWriter, L3FactReader, L3FactWriter, L4EntityStore, …)
 // or MemoryLayerPorts / MemoryAdminDeps. Retained only for tests and the
 // data-layer adapter compile-time check.
+// Stability:evolving
 type SessionAdminStore interface {
 	MemoryAdminDeps
 	L2RecallStore

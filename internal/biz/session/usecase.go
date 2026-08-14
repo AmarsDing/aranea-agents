@@ -519,6 +519,7 @@ type SessionRepo interface {
 }
 
 // AgentLookup checks agent existence (decoupled from biz.AgentRepository).
+// Stability:evolving
 type AgentLookup interface {
 	GetAgentByID(ctx context.Context, id string) (struct{}, error)
 }
@@ -531,6 +532,7 @@ type TeamLookup interface {
 
 // SessionStatusPublisher emits session status change events to realtime observers (WS).
 // Implemented in service layer; injected via constructor.
+// Stability:evolving
 type SessionStatusPublisher interface {
 	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
 }
@@ -550,6 +552,7 @@ type LogPair struct {
 // biz.FlowLogWriter; the service layer adapts its ProvideFlowLogWriter output
 // to this interface. Nil-safe: callers must nil-check before use (tests may
 // pass nil).
+// Stability:evolving
 type FlowLogWriter interface {
 	LogFlowStart(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 	LogFlowDone(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)

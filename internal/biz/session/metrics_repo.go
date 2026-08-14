@@ -3,23 +3,27 @@ package session
 import "context"
 
 // SessionMetricsReader reads session metrics from the session_metrics table.
+// Stability:evolving
 type SessionMetricsReader interface {
 	GetSessionMetrics(ctx context.Context, sessionID string) (*SessionMetrics, error)
 	ListSessionMetricsByIDs(ctx context.Context, ids []string) (map[string]*SessionMetrics, error)
 }
 
 // SessionMetricsWriter writes session metrics to the session_metrics table.
+// Stability:evolving
 type SessionMetricsWriter interface {
 	UpsertSessionMetrics(ctx context.Context, sessionID string, delta *SessionMetricsDelta) error
 	ApplyMetricsDelta(ctx context.Context, d *SessionMetricsDelta) error
 }
 
 // SessionRuntimeReader reads session runtime state from the session_runtime table.
+// Stability:stable
 type SessionRuntimeReader interface {
 	GetSessionRuntime(ctx context.Context, sessionID string) (*SessionRuntime, error)
 }
 
 // SessionRuntimeWriter writes session runtime state to the session_runtime table.
+// Stability:stable
 type SessionRuntimeWriter interface {
 	UpsertSessionRuntime(ctx context.Context, sessionID string, runtime *SessionRuntime) error
 	TransitionSessionStatus(ctx context.Context, sessionID string, currentStatus string, newStatus string, statusReason string, statusChangedAt string) error

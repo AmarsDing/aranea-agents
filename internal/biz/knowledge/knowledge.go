@@ -109,6 +109,7 @@ type SearchQuery struct {
 }
 
 // Repo is the persistence interface for knowledge base operations.
+// Stability:evolving
 type CollectionRepo interface {
 	CreateCollection(ctx context.Context, c Collection) (Collection, error)
 	GetCollection(ctx context.Context, id string) (Collection, error)
@@ -131,6 +132,7 @@ type DocumentSyncMeta struct {
 	DocType     string
 }
 
+// Stability:evolving
 type DocumentRepo interface {
 	CreateDocument(ctx context.Context, d Document) (Document, error)
 	GetDocument(ctx context.Context, id string) (Document, error)
@@ -153,12 +155,14 @@ type DocumentRepo interface {
 	MoveDocument(ctx context.Context, id, targetCollectionID string) (Document, error)
 }
 
+// Stability:evolving
 type ChunkRepo interface {
 	InsertChunks(ctx context.Context, chunks []Chunk) error
 	DeleteChunksByDocument(ctx context.Context, docID string) error
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
 }
 
+// Stability:evolving
 type Repo interface {
 	CollectionRepo
 	DocumentRepo
@@ -166,6 +170,7 @@ type Repo interface {
 }
 
 // SparseSearcher is the interface for BM25/full-text search over knowledge chunks.
+// Stability:evolving
 type SparseSearcher interface {
 	SearchChunksBM25(ctx context.Context, q SearchQuery) ([]Chunk, error)
 }
@@ -173,6 +178,7 @@ type SparseSearcher interface {
 // KnowledgeEmbedder generates text embeddings using a remote API and exposes
 // runtime configuration for the admin UI. The concrete HTTP implementation
 // lives in the data layer; biz depends only on this interface.
+// Stability:evolving
 type KnowledgeEmbedder interface {
 	// Embed returns a single embedding vector for the input text.
 	Embed(ctx context.Context, text string) ([]float32, error)

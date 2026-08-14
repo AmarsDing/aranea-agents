@@ -126,6 +126,7 @@ type ChannelTestResult struct {
 // ChannelLiveTester performs live connectivity tests for a specific channel type.
 // Implementations are registered per channel type and called by ChannelService after
 // the structural EvaluateChannelTest passes.
+// Stability:evolving
 type ChannelLiveTester interface {
 	TestLive(ctx context.Context, configJSON string, credentials []ChannelCredential) ChannelTestResult
 }
@@ -155,6 +156,7 @@ type ChannelListResult struct {
 	Offset int
 }
 
+// Stability:evolving
 type ChannelReader interface {
 	List(ctx context.Context) ([]Channel, error)
 	ListPaged(ctx context.Context, q ChannelListQuery) (ChannelListResult, error)

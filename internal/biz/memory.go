@@ -19,6 +19,7 @@ type AgentMemory struct {
 }
 
 // MemoryRepo abstracts durable agent vector memory backed by Postgres pgvector.
+// Stability:evolving
 type MemoryRepo interface {
 	Insert(ctx context.Context, m *AgentMemory) error
 	FindSimilar(ctx context.Context, agentID string, query []float32, topK int) ([]*AgentMemory, error)
@@ -27,6 +28,7 @@ type MemoryRepo interface {
 }
 
 // EmbeddingService turns text into a dense vector aligned with data.postgres.vector_dim.
+// Stability:evolving
 type EmbeddingService interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }

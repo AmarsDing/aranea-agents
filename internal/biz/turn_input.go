@@ -88,6 +88,7 @@ func (t TurnTimeouts) Resolved() TurnTimeouts {
 // ChannelTurnGateway is the complete Chat surface that Channel ingress needs.
 // Channel only depends on this interface instead of the full ChatService,
 // ensuring it never imports proto types or reaches Chat internals.
+// Stability:evolving
 type ChannelTurnGateway interface {
 	TurnGateway
 	TurnControlGateway
@@ -100,6 +101,7 @@ type ChannelTurnGateway interface {
 type NativeTurnGateway = ChannelTurnGateway
 
 // PendingQueueGateway is the narrow interface for pending message queue operations.
+// Stability:evolving
 type PendingQueueGateway interface {
 	// TryEnqueueUserMessage enqueues a user message into the active turn's pending queue.
 	TryEnqueueUserMessage(sessionID, content string) (bool, error)

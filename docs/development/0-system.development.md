@@ -1,11 +1,13 @@
 # System 系统 — 架构健康度诊断与综合开发计划
 
-> **版本**：2026-06-17（Agent 优化）| **状态**：进度文档**冻结**（P0-7 / 2026-08-14）  
+> **版本**：2026-08-15（P2-19 小幅刷新）| **状态**：进度文档**冻结**（P0-7）；本轮只校正会教错的进度句，**不是**第二份交叉参考  
 > **系统总览**：[0-system-diagram.md](./0-system-diagram.md)  
 > **模块索引**：[README.md](./README.md)  
-> **进度真相（冻结）**：本文档不再作为 2026-08 之后的模块状态真相源。开发前必读与模块现状以 [`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 为准（最后校准 2026-08-14）。
+> **进度真相**：详细进度与模块现状以 [`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md) 为准（最后校准 2026-08-15）。本文保留历史 Phase / 任务清单；正文若与 65 冲突，以 65 为准。
 >
 > **文档性质**：开发计划（历史 Phase / 任务清单）。架构与交叉影响见 [0-system-diagram.md](./0-system-diagram.md) 与 [65](./65-module-cross-reference-full.md)。
+>
+> **2026-08-15 禁止再当未做**（对照 65）：AH-05 Skill ZIP 导入已走 `ImportSkillZip` proto（旁路已删）；AH-04 Memory reranker 已上移 `internal/knowledge`；生产实时通道为 `v2_event` / `monitor_event`（v1 ActivityEvent / Envelope 已退役）；独立 TTS(63) **SUPERSEDED**，流式 TTS 已并入 **Voice(74) 已落地**；CLI `aranea`（`cmd/aranea` + `internal/cli`）已有代码，不是文档占位。M1–M5 / 2026-05 路线图是历史快照，**不要把 M4 标成进行中**。
 
 ## 1. 目标
 
@@ -28,10 +30,10 @@
 | Agent | Builder 汇聚 Provider / Tool / Skill / Memory / Callback；`TRPC*Deps` 分组类型已落地 | 保持 Builder；`AgentSettingsPage` 拆分、列表运行态聚合 |
 | Session | 框架 session 与业务 session 边界需更清晰 | Session transcript 与业务索引分工定稿 |
 | Memory | 框架 MemoryService 与 Aranea L0-L4 双轨 | L0-L4 作为 MemoryService 的产品实现 |
-| Tool/MCP | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 认证/重连/Broker 默认发现仍待闭环 | 工具能力矩阵已通主路径；MCP 工程化待补 |
-| Event | ✅ `/v1/ws` + ActivityKind（chat/system）+ MonitorEventType；Consumer 已拆 + P3 侧效订阅（Tool/Callback/MessageStore/FlowLog）；ADR-03 Phase 5 完成 Envelope Bus 删除 | SSE 仅限 A2A/MCP |
-| Plugin/Callback | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化：UpdateScope、运行记录表、`model_router` 真改模型 |
-| Team/Graph | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点、ExecutionSummary 待补 | 编排输出统一 ActivityEvent；Graph 节点类型补全 |
+| Tool/MCP | ✅ ToolOverride/requires_confirmation/调用统计/TestTool/MCP 默认超时60s 已落地；MCP 工程化细节见 65 | 工具能力矩阵已通主路径 |
+| Event | ✅ 生产通道 `/v1/ws`：`v2_event`（chat/graph/team/knowledge）+ `monitor_event`；v1 ActivityEvent / Envelope 已退役（P0-6） | SSE 仅限 A2A/MCP 等外部协议；口径见 65 §1.12 |
+| Plugin/Callback | 9 内置插件 + Chain+Hook+OnEvent ✅；治理类插件多为策略/记录层 | 产品化缺口见 65，勿当主链路未通 |
+| Team/Graph | Team member_* WS + 前端分栏 ✅；Graph LLM/Tool 节点与 `graph_execution_done` 已接线（GRAPH-01/02、65 §1.9 含 GraphExecutionsPage） | 编排输出走 v2 EventKind，不是 ActivityEvent |
 | Evaluation/A2A | ✅ Phase 5：FrameworkBridge、扩展指标、LLM UserSim、趋势/A/B、Eval LLM 系统配置；A2A Invoke + 联邦 Gateway | 质量门禁产品化、A2A Phase 4 Cron/限流 |
 
 OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。吸收三件事：
@@ -50,28 +52,28 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 等级 | 模块 | 判断 | 问题 | 目标边界 |
 |------|------|------|------|----------|
 | 清晰 | `internal/biz` | 领域模型、Usecase、Repo 接口明确 | 少量领域与 provider inspect 概念交叉 | 只定义业务规则和端口 |
-| 清晰 | `internal/event` | ActivityEvent/MonitorEvent 双类型、ActivityEventBus/MonitorEventBus 双总线、TraceEmitter 职责单一 | — | ADR-03 后 2 bus/2 pump；Bus 只管发布订阅；持久化在 ActivityEventSequencer，副作用在 biz handler |
+| 清晰 | `internal/event` | v2 `biz.EventBus` + MonitorEventBus；TraceEmitter 职责单一 | — | 2 bus / 2 pump（`v2_event` + `monitor_event`）；见 65 §1.12 |
 | 清晰 | `internal/graph` | Graph runtime adapter 与 biz 端口较清楚 | Data 层 checkpoint 绑定框架 | adapter 管框架，data 管存储 |
 | 中等 | `internal/service` | 本应是 proto ↔ biz/runtime 桥 | `ChatUsecase` 已编排入队/排队/await；`PendingMessageQueue` 实现仍在 Service；`setRunStatus` 与 Webhook 触发留 Service | PendingQueue 下沉 runtime；终态通知可经 EventBus 解耦 |
 | 中等 | `internal/agent` | 构建 Agent / Runner 的正确位置 | ✅ `TRPCBuilderDeps` + `TRPC*Deps` 分组（`builder_deps.go`） | 巨型设置页拆分、列表 `last_run_status` |
 | 中等 | `internal/tools` | 工具注册与装配合理 | Tool catalog、runtime mount、统计闭环分散 | Catalog / Policy / Runtime / Invocation 分层 |
 | 中等 | `internal/memory*` | 产品 L0-L4 与框架 MemoryService 都合理 | 双轨未定主从，service/agent 直连 store | L0-L4 是产品模型，MemoryService 是 Runner 适配口 |
-| 清晰 | Gateway / RunRegistry | `RunRegistry` + `RunnerManager` + `RunGateway` 已通 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | 取消路径与 WS `run_status` 完全对齐 |
+| 清晰 | Gateway / RunRegistry | `RunRegistry` + `RunnerManager` + `RunGateway` 已通 | SYS-02 取消路径已对齐（见 §8.2） | 保持 Chat/Team/Cron/Channel 共用 `RunGateway` |
 | 不清晰 | Frontend store/features | 部分域有 store，部分 page 直连 API，mapper 三套 | AI 难判断新逻辑放哪里 | 统一 feature 模板和 store 策略 |
-| 不完整 | TTS | 文档有目标，代码几乎无后端闭环 | 容易被误认为已可用 | 标注占位或补需求/设计/API |
+| 已落地 | Voice(74) / TTS | 独立 TTS(63) **SUPERSEDED**；流式 ASR/TTS 已并入 Voice | 禁止按 63 三件套开工独立 TTS 服务 | 语音走 `internal/voice/` + `/v1/voice`，见 65 §1.29 / §1.41 |
 
 ### 3.2 模块间关联与耦合
 
 | 关系 | 当前状态 | 健康度 | 风险 | 重构方向 |
 |------|----------|--------|------|----------|
-| `server -> service` | 成立 | 良好 | Skill Import 已迁入 proto + `SkillService` | 保持 proto 注册，禁止新的 `srv.Route` 业务旁路 |
+| `server -> service` | 成立 | 良好 | **AH-05 已修**：Skill ZIP 导入走 `ImportSkillZip` proto + `SkillService`（旁路已删） | 保持 proto 注册，禁止新的 `srv.Route` 业务旁路 |
 | `service -> biz` | 大体成立 | 中等 | `service` 还直接拿部分 data store | Store 访问经 biz 或 infra 端口 |
-| `service -> runtime adapter` | 成立 | 良好 | ChatService 直接管理 Runner 生命周期 | 引入 RunnerManager |
+| `service -> runtime adapter` | 成立 | 良好 | `RunnerManager` 已落地（65 §1.35） | 保持经 `RunGateway` / RunnerManager，不在 Service 再堆生命周期 |
 | `biz -> data` | 通过 Repo 接口 | 良好 | Data import biz 是 Kratos 常见实现方式 | 保持，不让 biz 反向 import data |
 | `biz <-> provider` | 存在概念双向依赖 | 偏弱 | 模型 inspect 与模型目录边界不稳 | 抽 `internal/llminspect` 或 biz 端口 |
-| `data -> trpc runtime` | 存在 | 偏弱 | Data 层绑定 graph/session 框架类型 | provider 上移到 runtime/wire |
+| `data -> trpc runtime` | 部分残留 | 偏弱 | **AH-04 reranker 已上移** `internal/knowledge`；剩余 session / graph checkpoint adapter 见 65 / 图 AH-04 | 勿再把 reranker 当 data 层未修债 |
 | `agent/team/tools -> biz` | 构建运行时需要领域配置 | 可接受 | Builder 编译面较大 | 用 Catalog DTO 稳定依赖 |
-| `event -> consumers` | EventBusConsumer + EventBusSideConsumers | 良好 | 成员消息与 Runner 汇总语义需产品持续对齐 | 保持按 ActivityKind 扩展（ADR-03 后 Envelope 已删除） |
+| `event -> consumers` | v2 EventBus + MonitorEventBus | 良好 | 成员消息与 Runner 汇总语义需产品持续对齐 | 按 v2 EventKind 扩展；禁止再引入 `activity_event` / Envelope |
 | `frontend pages -> features/stores` | 混合 | 偏弱 | 页面巨型化、store 空转 | 统一 page -> composable/store -> api |
 
 ### 3.3 模块功能完整度
@@ -79,14 +81,14 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 闭环等级 | 模块 | 已有能力 | 缺口 | 为什么影响组合 |
 |----------|------|----------|------|----------------|
 | 闭环较好 | Chat、Agent、Provider、Session、Cron、Graph 核心 | 可创建、运行、持久化、展示 | 运行控制、细粒度事件仍可增强 | 已能作为其他模块入口 |
-| 半闭环 | Team | RunTeamTest、CancelTeamRun、member_agent_key WS ActivityEvent、前端成员分栏 ✅ | 结构化汇总、跨 Team 编排可观测性 | 作为编排积木需统一 summary ActivityEvent |
-| 闭环较好 | Tools/MCP/Skill | Override、confirmation、统计、TestTool、MCP 60s 超时、OAuth2、Broker 挂载 ✅ | 生产级重连策略、Broker 默认发现文档化 | MCP 稳定性与运维可观测 |
-| 半闭环 | Memory | RuntimeSet 端口统一；L4 prompt 注入；MemoryWorker；AutoMemory 图写入 ✅ | 冲突检测、级联更新、衰减算法 | 长期语义记忆治理 |
+| 半闭环 | Team | RunTeamTest、CancelTeamRun、member WS、前端成员分栏、`team_summary` ✅（TEAM-01） | 跨 Team 编排可观测性细节见 65 | 事件走 v2 EventKind，不是 ActivityEvent |
+| 闭环较好 | Tools/MCP/Skill | Override、confirmation、统计、TestTool、MCP 60s 超时、OAuth2、Broker 挂载；**AH-05 ImportSkillZip proto** ✅ | 生产级重连等见 65 | MCP 稳定性与运维可观测 |
+| 半闭环 | Memory | RuntimeSet / `MemoryLayerPorts` 已统一；L4 注入；MemoryWorker；AutoMemory；冲突/级联/衰减 MVP ✅（MEM-01） | 后续治理见 65，勿当主路径未做 | 长期语义记忆治理 |
 | 半闭环 | Plugin/Callback | 9 内置 + Chain+Hook+OnEvent + Schema/Scope ✅ | 产品化配置、运行记录、Audit 查询体验 | 横切治理可配置化 |
 | 半闭环 | Monitor/Telemetry/Token | Audit 落库、Usage 事件、Quota MVP、Provider 指标 ✅ | Dashboard、业务 Span UI、告警规则 | 运营闭环 |
 | 核心可用 | Evaluation | Phase 5 ✅：4+扩展指标、UserSim、pass@k、AfterTurn、趋势/A/B、Eval LLM 系统配置 | 质量门禁与迭代闭环产品化 |
 | 半闭环 | A2A | Invoke 派发、call_agent、admin 鉴权、管理页 ✅ | 远程发现、A2A Server 暴露、流式、Graph 恢复 | 跨工作区与标准协议互通 |
-| 半闭环 | Knowledge | 管理页、Embedder UI、摄取 WS、EnsureKnowledgeSchema ✅ | Rerank/OCR、PG 多租户稳定性 | 检索质量与工程化 |
+| 半闭环 | Knowledge | 管理页、Embedder UI、摄取 WS、EnsureKnowledgeSchema；**AH-04 Rerank 已上移** ✅ | 其余缺口见 65，勿把 reranker 当未做 | 检索质量与工程化 |
 | 闭环较好 | Artifact | Preview、签名下载、Chat 制品面板、CodeExecutor Docker 产出物→Artifact 🟡 | 对话内附件引用、跨会话制品检索；Local/OutputSpec 产出物 | 与 Chat 多模态联动 |
 | 半闭环 | Ecosystem | proto + service/biz/data + 前端页面 ✅ | 安装流程产品化、市场模型 | 不再是纯 mock |
 
@@ -105,9 +107,9 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 2. 运行时能力只通过 `pkg/trpc-agent-go` 公开 API 集成，不复制框架内部实现。
 3. `internal/service` 是桥，不是状态机仓库；复杂运行控制下沉到 RunnerManager / Usecase。
 4. `internal/biz` 不 import `trpc-agent-go`；`internal/server` 不 import Agent runtime。
-5. 实时主通道是 `/v1/ws` + ActivityEvent + MonitorEvent（ADR-03 后 2 bus/2 pump）；SSE 只可用于外部协议明确要求的 A2A/MCP 等。
+5. 实时主通道是 `/v1/ws`：业务 `v2_event` + 监控 `monitor_event`（P0-6）；SSE 只可用于外部协议明确要求的 A2A/MCP 等。语音音频走 `/v1/voice`。
 6. 前端新增域统一 `features/<domain>/{api,types,mappers,composables,ui}`，store 策略必须明确。
-7. 文档状态优先级：`0-system-diagram.md` + 本计划 + `execution-plan.md` > 模块 development > design > 历史需求正文。
+7. 文档状态优先级：`65-module-cross-reference-full.md` > `0-system-diagram.md` > 本计划（历史基线）> 模块 development。`execution-plan.md` 已是 stub，不再当进度板。
 
 ## 6. 综合开发路线图
 
@@ -132,10 +134,10 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 1 | ✅ Gateway 状态机独立 | `RunRegistry` + `RunnerManager` + `ChatUsecase`；出站 Webhook Phase 3 ✅ | Chat/Team/Cron/Channel 共用 `RunGateway`；`GatewayService` 管理回调配置 |
 | 2 | ✅ Runner 生命周期统一 | 单 Agent / Team / Cron / Channel 共用 `RunGateway`（`RunRegistry`）入口 | cancel/status/enqueue 行为一致；Cron/Channel 经 `RunNativeTurnUnary`/`RunCronTurn` 接入 |
 | 3 | ✅ Runner 框架能力补齐 | ArtifactService（`provideArtifactRuntimeService`）、SessionIngestor（`BizSessionIngestor`）、AgentFactory（`BizAgentFactoryOptions`）、AwaitUserReplyRouting（`AwaitHook` 配置时启用）均已注入；RalphLoop 为 OpenClaw 侧能力，Aranea 不复制 | `40-runner-development.md` P1/P2 已验收 |
-| 4 | Memory 端口统一 | 收敛 `SessionAdminStore` 直连，定稿 L0-L4 与 MemoryService 主从 | service/agent 不直接 import data store |
-| 5 | Data 运行时绑定上移 | trpc session / graph checkpoint provider 移出 data 主 provider | data 保持 Ent/SQL Repo 边界 |
-| 6 | Provider 拆环 | 抽 `internal/llminspect` 或 biz 端口接口 | `biz` 与 `provider` 不再概念互绑 |
-| 7 | ✅ Skill Import service 化 | 导入 API 进入 proto + `SkillService` | server 不直接依赖 importer；无 `srv.Route` 旁路 |
+| 4 | ✅ Memory 端口统一 | 生产改 `MemoryLayerPorts`；`SessionAdminStore` 已退出生产路径（P0-4 / AH-03） | service/agent 不以 `SessionAdminStore` 为生产依赖；见 65 §1.4 |
+| 5 | 🟡 Data 运行时绑定上移 | **AH-04 reranker 已上移** knowledge；剩余 session / graph checkpoint adapter 见 65 / 图 AH-04 | 勿再把 reranker 当未修 |
+| 6 | Provider 拆环 | 抽 `internal/llminspect` 或 biz 端口接口（AH-06，见 65 / 图） | `biz` 与 `provider` 不再概念互绑 |
+| 7 | ✅ Skill Import service 化 | **AH-05**：导入 API 进入 proto + `SkillService`；`skill_import_http.go` 已删 | server 不直接依赖 importer；无 `srv.Route` 旁路 |
 
 ### Phase 2：核心积木闭环
 
@@ -143,11 +145,11 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 
 | 顺序 | 模块 | 开发内容 | 验收 |
 |------|------|----------|------|
-| 1 | Team | RunTeamTest 端到端、member_* WS、结构化汇总、A2A call_agent | Team 可作为可观测编排积木 |
-| 2 | Tools/MCP | ToolOverride 生效、MCP timeout、调用统计、Broker 默认发现、重连验证 | 工具策略影响真实运行且可观测 |
+| 1 | ✅ Team | RunTeamTest 端到端、member_* WS、结构化汇总（TEAM-01） | Team 可作为可观测编排积木；细节见 65 |
+| 2 | Tools/MCP | ToolOverride 生效、MCP timeout、调用统计；其余工程化见 65 | 工具策略影响真实运行且可观测 |
 | 3 | ✅ Plugin/Callback | Agent/Model/Tool 全链路挂载，Hook 与 Plugin 分工定稿，9 内置插件均有实现 | 横切治理覆盖完整 turn ✅；产品化配置/AuditLog 可观测待扩展（P2）|
-| 4 | Memory | L4、MemoryWorker、冲突检测、级联更新、衰减 | 记忆可作为跨会话上下文底座 |
-| 5 | Graph | LLM/Tool 节点、Input/OutputMapper、ExecutionSummary | Graph 可组合 Agent/Tool/Memory |
+| 4 | ✅ Memory（主路径） | L4、MemoryWorker、冲突/级联/衰减 MVP（MEM-01） | 记忆可作为跨会话上下文底座；后续治理见 65 |
+| 5 | ✅ Graph（主路径） | LLM/Tool 节点已接线（GRAPH-01）；`graph_execution_done` + GraphExecutionsPage（GRAPH-02 / 65 §1.9） | Graph 可组合 Agent/Tool/Memory |
 
 ### Phase 3：用户闭环与前端治理
 
@@ -160,7 +162,7 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 3 | Mapper 抽取 | Knowledge / Artifact / Evaluation / A2A mapper 独立可测 | 测试引用真实 mapper |
 | 4 | Store 策略收敛 | 选择 `page -> store -> api` 或 `page -> api` | 删除或标记空转 store |
 | 5 | 巨型文件拆分 | `useChatWorkspace.ts`、`AgentSettingsPage.vue` | 单文件职责可读 |
-| 6 | 🟡 补页面 | Knowledge/Artifact/Evaluation/A2A/Hooks 页面已创建路由已接入；页面内仍有列表+弹窗+逻辑混写，需按 `page-to-components` 规则抽组件 | API/store 模块有用户入口 ✅；组件拆分待补 |
+| 6 | ✅ 补页面 | Knowledge/Artifact/Evaluation/A2A/Hooks 路由已接入；FE-01 三页拆分 ✅ | 用户入口已有；余下 store/mapper 见 65 |
 
 ### Phase 4：平台运营与生态
 
@@ -169,17 +171,17 @@ OpenClaw 在 `pkg/trpc-agent-go/openclaw` 中完整存在，可直接对照。�
 | 顺序 | 模块 | 开发内容 | 验收 |
 |------|------|----------|------|
 | 1 | Monitor/Telemetry/Token | Dashboard、业务 Span、采样、Quota、告警 | 可从失败定位到 agent/tool/model/cost |
-| 2 | Channel | 多平台适配、投递、签名、重试、状态页 | Webhook 与出站消息闭环 |
-| 3 | Evaluation | 框架 EvalSet 对齐、前端页面、回归趋势 | 可复现实验和质量门禁 |
+| 2 | ✅ Channel（主路径） | Webhook 入站 + 出站投递已验收（CH-01/02） | 更多平台适配器见 65，勿当主闭环未做 |
+| 3 | ✅ Evaluation（主路径） | EvalSet / LLMJudge / 前端 / 趋势 A/B / AfterTurn Phase 5 ✅ | 质量门禁产品化见 65 |
 | 4 | A2A | 标准 `server/a2a` 或内部工具边界定稿 | 互通协议清晰 |
-| 5 | Ecosystem | 后端 API、模板/插件/Skill 市场、安装流程 | 不再是纯 mock |
-| 6 | CLI / TTS | 按产品目标补齐需求、API、运行时和 UI | 不再是占位能力 |
+| 5 | Ecosystem | 后端 API、模板/插件/Skill 市场、安装流程 | 不再是纯 mock（安装产品化见 65；Marketplace 57 SUPERSEDED） |
+| 6 | CLI / Voice | CLI `aranea` 已落地（65 §1.33）；独立 TTS **SUPERSEDED**，语音走 Voice(74) | 禁止按 TTS 63 补独立服务；CLI 多余文档合并见后续 P2-20 |
 
 ## 7. AI 自主任务拆解蓝图
 
 AI 接到任何模块任务时，必须按以下顺序拆解：
 
-1. 读取 `docs/README.md`、`0-system-diagram.md`、本计划、`execution-plan.md`。
+1. 读取 `docs/README.md`、[`65-module-cross-reference-full.md`](./65-module-cross-reference-full.md)、`0-system-diagram.md`。本计划与 `execution-plan.md` 为历史基线，**进度以 65 为准**。
 2. 定位模块五面：Contract、Domain、Runtime、Persistence、UI/Operate（定义见 [0-system-diagram.md §十二](./0-system-diagram.md)）。
 3. 判断任务类型：边界修复、能力闭环、UI 闭环、观测闭环、文档口径。
 4. 写出变更影响半径：会触碰哪些 proto、service、biz、data、runtime adapter、web feature。
@@ -203,17 +205,17 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 ## 8. 待优化项总览
 
-> **用法**：AI 拆任务时先读本节，再进入对应 `*-development.md`。已完成项不重复展开，仅列**仍影响组合能力或生产可用性**的缺口。  
-> **真相源**：[execution-plan.md](../guides/execution-plan.md) · 模块细节见 [README-development.md](./README-development.md)。
+> **用法**：AI 拆任务时先读 [65](./65-module-cross-reference-full.md)，再进入对应 `*-development.md`。已完成项不重复展开。  
+> **真相源**：模块现状以 [65-module-cross-reference-full.md](./65-module-cross-reference-full.md) 为准。`execution-plan.md` 已是 stub。本节为历史待办快照，与 65 冲突时以 65 为准。
 
 ### 8.1 按优先级汇总
 
 | 优先级 | 含义 | 条目数 | 下一迭代建议入口 |
 |--------|------|--------|------------------|
 | **P0** | 架构红线或主链路口径错误 | 0（已清零） | — |
-| **P1** | 核心积木仍不完整，阻塞组合 | 6 | Graph 节点、Team 汇总、Plugin 产品化、Evaluation 高级能力 |
-| **P2** | 主路径可用，生产/体验/治理不足 | 12 | 前端治理、Memory 图治理、MCP 稳定性、Knowledge Rerank |
-| **P3** | 平台运营、生态、占位能力 | 8 | Channel、Ecosystem、Telemetry UI、Chat 多模态 |
+| **P1** | 核心积木仍不完整，阻塞组合 | 见 65 | **勿再把** Graph 节点 / Team 汇总 / Channel / Evaluation Phase 5 当 P1 入口（已验收） |
+| **P2** | 主路径可用，生产/体验/治理不足 | 见 65 | 前端治理、MCP 稳定性等以 65 为准；**Knowledge Rerank（AH-04）已做** |
+| **P3** | 平台运营、生态 | 见 65 | Ecosystem / Telemetry；**Voice/TTS 与 CLI 不是占位未做** |
 
 ### 8.2 系统级与架构边界
 
@@ -221,7 +223,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 |----|----------|--------|------|------|----------|
 | SYS-01 | `PendingMessageQueue` 仍在 Service 层 | P2 | 入队/排队已委托 `ChatUsecase` | 队列实现下沉 runtime | [35-gateway-development.md](./35-gateway-development.md) Phase 2 |
 | SYS-02 | `StopGeneration` 未统一 `publishRunStatus(cancelled)` | P2 | ✅ `chat_stop_generation_test` | — | [1-chat-development.md](./1-chat-development.md) |
-| SYS-03 | `EventBusConsumer` 职责聚合（Usage/Buffer/StateDelta/Persist） | P2 | ✅ buffer/runner/state/persist 四 handler | P3 独立 ToolCall 订阅 | [34-event-development.md](./34-event-development.md) · [message-development.md](./message-development.md) |
+| SYS-03 | 旧 EventBusConsumer 职责聚合 | P2 | ✅ **Event v2 已落地**（P0-6）：生产为 `v2_event` / `monitor_event`；v1 Activity/Envelope 已退役 | 勿再按 ActivityEvent 拆消费者；细节见 65 §1.12 | [34-event-system.development.md](./34-event-system.development.md) |
 | SYS-04 | 核心模块五面（Contract/Domain/Runtime/Persistence/UI）未全建档 | P2 | Chat/Agent/Runner 较完整 | Graph/Channel/Ecosystem 补全五面表 | 本文 §4 |
 | SYS-05 | 前端 `features` 与 `stores` 双路径并存 | P2 | 新模块 page 直连 api + store 空转 | 统一 `page → composable/store → api` 策略 | [frontend-guide.md](../guides/frontend-guide.md) |
 | SYS-06 | 巨型文件可读性 | P2 | `useChatWorkspace` 已薄；`AgentSettingsPage` 等仍大 | `page-to-components` 拆分 | `web/.cursor/rules/page-to-components.mdc` |
@@ -234,18 +236,18 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | CHAT-02 | `awaiting_user` / RunStatus 进程重启可恢复 | P3 | `state_json` + resume 新 turn ✅ | mid-turn goroutine 恢复（非本期） | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-03 | 模型选项单一真相源 | P3 | Platform 优先 + `GetChatOptions` 回退 | 长期统一一处配置源 | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-04 | `tool_result` 部分路径缺稳定 `tool_call_id` | P2 | 前端用 `env.id` 回退合并 | Projector 保证 id 一致 | [message-development.md](./message-development.md) |
-| CHAT-05 | Chat / WS 关键路径单测 | P2 | service 层部分覆盖 | `TestChat*` / envelope 投影回归 | [1-chat-development.md](./1-chat-development.md) |
+| CHAT-05 | Chat / WS 关键路径单测 | P2 | service 层部分覆盖 | `TestChat*` / v2 投影回归（勿再写 envelope） | [1-chat-development.md](./1-chat-development.md) |
 | CHAT-06 | 新 UI 文案 i18n | P3 | 工具卡片/Reasoning/回放横幅硬编码或缺 locale | `zh-CN` / `en` 键补全 | `web/src/locales/` |
 
-**近期已完成（不再列入待办）**：WS 主通道 ✅ · `run_status` ActivityEvent ✅ · 工具结构化卡片 ✅ · Reasoning 折叠 ✅ · Team 成员分栏 ✅ · ListActivities RPC 重连 ✅ · Monitor/Team 全局 `session_id=*` ✅。
+**近期已完成（不再列入待办）**：WS 主通道 ✅ · 生产 `v2_event` / `monitor_event`（P0-6）✅ · 工具结构化卡片 ✅ · Reasoning 折叠 ✅ · Team 成员分栏 ✅ · 历史 hydrate 走 listStepsV2（`activities` 已 DROP）✅。
 
 ### 8.4 Team / Graph / Runner
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
-| TEAM-01 | Team 结构化汇总 ActivityEvent | P1 | ✅ `team_summary` WS | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
+| TEAM-01 | Team 结构化汇总 | P1 | ✅ `team_summary`（v2 EventKind，不是 ActivityEvent） | — | [11-multi-agent-development.md](./11-multi-agent-development.md) |
 | GRAPH-01 | Graph LLM / Tool 节点 | P1 | ✅ builder 接线 | — | [36-graph-development.md](./36-graph-development.md) |
-| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | ✅ `graph_execution_done` metadata | 前端 Graph 运行记录页待补 | [36-graph-development.md](./36-graph-development.md) |
+| GRAPH-02 | ExecutionSummary / 运行记录 UI | P2 | ✅ `graph_execution_done` + **GraphExecutionsPage**（65 §1.9） | 细节见 65，勿标前端待补 | [36-graph-development.md](./36-graph-development.md) |
 | RUN-01 | 独立 `CancelRun` RPC（可选） | P3 | `StopGeneration` + WS `cancel` 已通 | 与 Chat proto 解耦的通用取消 RPC | [40-runner-development.md](./40-runner-development.md) |
 
 ### 8.5 Tools / MCP / Plugin / Callback
@@ -263,7 +265,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 |----|----------|--------|------|------|----------|
 | MEM-01 | L4 图冲突检测与级联更新 | P2 | ✅ 冲突/级联/衰减 MVP | 冲突策略、级联、衰减 | [memory/memory-development.md](./memory/memory-development.md) |
 | MEM-02 | MemoryWorker 与多租户 Session 边界 | P2 | TurnMemoryWorker 30s 去重已有 | 工作区级隔离与失败重试 | [memory/memory-development.md](./memory/memory-development.md) |
-| KN-01 | Rerank / OCR 规划与实现 | P2 | Rerank ✅（`KRATOS_KNOWLEDGE_RERANKER`）；OCR 待补 | OCR + rerank fallback FlowLog ✅ | [37-knowledge-development.md](./37-knowledge-development.md) |
+| KN-01 | Rerank / OCR | P2 | **AH-04 Rerank ✅**（`knowledge.NewMemoryReranker` / `KRATOS_MEMORY_RERANKER` 与 Knowledge reranker）；其余见 65 | 勿把 reranker 当未做 | [37-knowledge-development.md](./37-knowledge-development.md) |
 | KN-02 | Knowledge PG 多租户与稳定性 | P2 | `EnsureKnowledgeSchema` 启动调用已有 | 无 PG 时降级策略文档化 + 压测 | [37-knowledge-development.md](./37-knowledge-development.md) |
 
 ### 8.7 Evaluation / A2A / Artifact
@@ -278,7 +280,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | A2A-02 | A2A Server 暴露 + 流式 SSE | P3 | admin Invoke 已有 | 标准 `server/a2a` 或框架 a2aagent | [26-a2a-development.md](./26-a2a-development.md) |
 | ART-01 | Chat 多模态引用制品 | P3 | 用户/Assistant/Team 消息气泡 + Vision 附件 ✅ | 流式上传 >10 MB | [27-artifact-development.md](./27-artifact-development.md) |
 
-### 8.8 平台运营与占位模块
+### 8.8 平台运营与生态
 
 | ID | 待优化项 | 优先级 | 现状 | 目标 | 关联文档 |
 |----|----------|--------|------|------|----------|
@@ -286,9 +288,9 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | CH-02 | Channel 出站投递与适配器 | P1 | ✅ | 更多平台适配器 | [17-channel-development.md](./17-channel-development.md) |
 | MON-01 | Monitor Dashboard 与告警规则 | P2 | 告警 ✅；概览 `/overview` ECharts + Usage Tab 去重 ✅ | latency 聚合、Phase 4 自动刷新 | [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | TEL-01 | Telemetry 业务 Span / OTel UI | P3 | 指标部分已有 | 链路 UI 与采样配置 | [24-telemetry-development.md](./24-telemetry-development.md) |
-| ECO-01 | Ecosystem 后端与市场模型 | P3 | proto + service/biz/data + 前端页面 ✅ | 安装流程产品化、市场模型 | [30-ecosystem-development.md](./30-ecosystem-development.md) |
-| CLI-01 | CLI 产品化（非 OpenClaw 复制） | P3 | 文档占位 | 需求 + API + 分发 | [25-cli-development.md](./25-cli-development.md) |
-| TTS-01 | TTS 运行时闭环 | P3 | 几乎无后端 | 标注 API-only 或补实现 | [tts-development.md](./tts-development.md) |
+| ECO-01 | Ecosystem 后端与市场模型 | P3 | proto + service/biz/data + 前端页面 ✅ | 安装流程产品化；Marketplace 57 SUPERSEDED | [30-ecosystem-development.md](./30-ecosystem-development.md) |
+| CLI-01 | CLI 产品化 | P3 | **已有代码**：`cmd/aranea` + `internal/cli/`（65 §1.33），不是文档占位 | 多余 CLI 文档合并见后续 P2-20；勿当未落地 | [25-cli.md](./25-cli.md) |
+| TTS-01 | 独立 TTS 运行时 | — | **SUPERSEDED**：能力并入 **Voice(74) 已落地** | 禁止实现 `api/kratos/tts` / `internal/biz/tts`；见 65 §1.29 / §1.41 | [74-voice-companion.md](./74-voice-companion.md) |
 
 ### 8.11 Agent 全家桶（2–8 / 50）
 
@@ -322,7 +324,7 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 |----|----------|--------|------|------|----------|
 | FE-01 | `KnowledgePage` / `EvaluationPage` / `A2APage` 组件拆分 | P2 | ✅ 三页均 <300 行 | 弹窗/表格抽独立组件 | `page-to-components.mdc` |
 | FE-02 | feature mapper 单测 | P2 | A2A mapper 单测 ✅ | knowledge/evaluation mapper 回归 | 各 `features/*/mappers` |
-| FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 ActivityEvent 类型 | `web/src/features/chat/` |
+| FE-03 | 减少 `as any`（Chat/Team stream） | P3 | 部分 mapper 有 any | 严格 v2 EventKind 类型 | `web/src/features/chat/` |
 
 ### 8.10 开发顺序总表（里程碑视角）
 
@@ -333,8 +335,8 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | P1 | Evaluation EvalSet + LLMJudge、A2A Invoke、Artifact 预览 | ✅ | M3 |
 | P1 | Chat 工具卡片 / Reasoning / run_status WS / Team UX | ✅ | 2026-05-19 迭代 |
 | P1 | Team 结构化汇总、Graph LLM/Tool 节点、Channel 投递 | ✅ | 迭代 2–5 已验收 |
-| P2 | 前端治理、Memory 图治理、Plugin 产品化、MCP 稳定性 | 🚧 | 见 §8.5–§8.9 |
-| P3 | 多模态、RunStatus 持久化、Ecosystem/Telemetry/CLI/TTS | ⏳ | 见 §8.3、§8.8 |
+| P2 | 前端治理、Memory 图治理、Plugin 产品化、MCP 稳定性 | 见 65 | Memory 冲突/级联 MVP 与 Rerank 已做；勿按旧 🚧 全开 |
+| P3 | 多模态、Ecosystem/Telemetry | 见 65 | **Voice(74) 已落地**；CLI 已有代码；独立 TTS SUPERSEDED |
 
 ## 9. 系统级验收标准
 
@@ -344,12 +346,14 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 - [x] Chat / Team / Graph / Monitor 实时主链路统一为 `/v1/ws`（Monitor/Team 全局 `session_id=*`；旧 SSE 主链路已清理）。
 - [x] Runner 可统一处理 status、cancel、enqueue、artifact、session ingest（RunRegistry + RunnerManager 已通）。
 - [x] Memory L0-L4 与框架 MemoryService 主从关系清晰（`runtime.MemorySet` 已统一端口）。
-- [ ] 每个核心模块都有明确五面定义（Graph/Channel 仍缺 UI 或 Runtime 面定稿；Ecosystem 已有五面但市场模型待补）。
+- [ ] 每个核心模块都有明确五面定义（缺口见 65，勿把 Graph/Channel 当无 UI）。
 - [ ] `internal/service` 不承载复杂运行状态机（await/pending 仍在 ChatService；可接受短期存在）。
 - [ ] 前端新增模块遵循统一 feature 模板，mapper 有真实单测。
-- [ ] API-only 模块文档标注（TTS/CLI 需在 README 标占位）。
+- [x] 独立 TTS **SUPERSEDED**（并入 Voice 74）；CLI `aranea` 已落地（65 §1.33）。勿在 README 把二者标成占位未做。
 
-## 11. 代码质量评价（2026-05-19）
+## 11. 代码质量评价（2026-05-19 快照）
+
+> **2026-08-15**：本节是历史评价，不是当前缺口清单。Event v2、Voice、Skill Import proto、Rerank 上移等已修项见文首与 65。下文 Top 7 已按现状改写。
 
 ### 11.1 后端
 
@@ -375,15 +379,15 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 
 ### 11.3 总结与优先修复建议
 
-> 完整待办表见 **§8 待优化项总览**。以下为下一迭代 Top 7：
+> 完整待办表见 **§8 待优化项总览**（与 65 冲突时以 65 为准）。以下条目 **1–3 / 5–6 已验收，勿再当下一迭代 P1**：
 
-1. **P1 — Channel 投递闭环**：Webhook 入站 + 出站 delivery + 至少一种平台适配器（EP-BIZ-08）。
-2. **P1 — Graph LLM/Tool 节点**：补节点类型与 ExecutionSummary，使 Graph 可作为编排积木。
-3. **P1 — Team 结构化汇总**：统一 summary ActivityEvent，便于 Monitor 与下游自动化。
-4. **P2 — 前端治理**：Knowledge/Evaluation/A2A 页面 `page-to-components`；store 策略二选一；mapper 单测。
-5. **P2 — Memory 图治理**：L4 冲突检测、级联更新、衰减（AutoMemory 写入已有）。
-6. **P2 — Plugin 产品化**：UpdateScope、运行记录、`model_router` 真改模型。
-7. **P3 — Chat 多模态与 RunStatus 持久化**：附件 Vision 闭环；重启后 `awaiting_user` 可恢复。
+1. **已完成 — Channel 投递闭环**：Webhook 入站 + 出站 delivery（CH-01/02）。
+2. **已完成 — Graph LLM/Tool 节点**：builder 接线 + ExecutionSummary / GraphExecutionsPage（GRAPH-01/02）。
+3. **已完成 — Team 结构化汇总**：`team_summary`（TEAM-01）；事件为 v2 EventKind。
+4. **P2 — 前端治理**：store 策略与 mapper 单测仍见 65；Knowledge/Evaluation/A2A 页拆分（FE-01）已 ✅。
+5. **已完成（MVP）— Memory 图治理**：冲突/级联/衰减 MVP（MEM-01）；后续见 65。
+6. **部分完成 — Plugin 产品化**：UpdateScope / 运行记录 / `model_router` 主路径已有（PLG-01/02）；余量见 65。
+7. **P3 — Chat 多模态**：附件 Vision 主路径已有（ART-01）；流式大附件等见 65。**语音不是缺口**：Voice(74) 已落地。
 
 ## 10. 交付拆分建议
 
@@ -394,27 +398,28 @@ AI 接到任何模块任务时，必须按以下顺序拆解：
 | 3 | `PR-Runner-Control` | ✅ 已完成 | EnqueueUserMessage / StopGeneration+WS cancel / RunStatus 对齐 |
 | 4 | `PR-Memory-Boundary` | ✅ 已完成 | Memory 端口统一；`runtime.MemorySet` + SessionAdminStore |
 | 5 | `PR-Boundary-Cleanup` | ✅ 已完成 | Data provider 上移、Provider 拆环、Skill Import service 化 |
-| 6 | `PR-Team-Observability` | ✅ 已完成 | RunTeamTest、CancelTeamRun、member_agent_key WS ActivityEvent |
+| 6 | `PR-Team-Observability` | ✅ 已完成 | RunTeamTest、CancelTeamRun、member WS、`team_summary`（v2） |
 | 7 | `PR-Plugin-Callback` | ✅ 已完成 | 9 内置插件实现、Chain+Hook+OnEvent、种子+Schema+Scope 过滤 |
 | 8 | `PR-Tools-MCP-Core` | ✅ 已完成 | ToolOverride/confirmation/统计/TestTool/默认timeout |
 | 9 | `PR-Knowledge-Artifact-Pages` | ✅ 已完成 | KnowledgePage/ArtifactsPage/路由/侧栏；EvalPage/A2APage/HooksPage |
 | 10 | `PR-Evaluation-Runtime` | ✅ 已完成 | EvalSet 对齐、LLMJudge、异步 Runner |
 | 11 | `PR-A2A-Invoke` | ✅ 已完成 | Invoke 派发、call_agent、admin 鉴权 |
 | 12 | `PR-Artifact-Preview` | ✅ 已完成 | Preview、签名下载、Chat 制品面板 |
-| 12b | `PR-Chat-UX-WS` | ✅ 已完成 | 工具卡片、Reasoning、run_status WS、Team 分栏、replay 提示 |
-| 13 | `PR-MCP-Engineering` | 🟡 部分完成 | OAuth2/Broker/timeout ✅；重连可观测待补 |
-| 14 | `PR-Memory-L4` | 🟡 部分完成 | L4 注入 + Worker + AutoMemory ✅；冲突/级联待补 |
-| 15 | `PR-Frontend-Foundation` | 🚧 待做 | page-to-components；store 策略；mapper 单测 |
-| 16 | `PR-Platform-Ops` | 🚧 进行中 | Quota/Usage/Audit ✅；Channel/Ecosystem/Telemetry UI 待补 |
+| 12b | `PR-Chat-UX-WS` | ✅ 已完成 | 工具卡片、Reasoning、run_status、Team 分栏；生产通道已迁 `v2_event` |
+| 13 | `PR-MCP-Engineering` | 🟡 部分完成 | OAuth2/Broker/timeout ✅；重连可观测见 65 |
+| 14 | `PR-Memory-L4` | ✅ 主路径完成 | L4 注入 + Worker + AutoMemory + 冲突/级联/衰减 MVP（MEM-01）；余量见 65 |
+| 15 | `PR-Frontend-Foundation` | 🟡 部分完成 | FE-01 三页拆分 ✅；store 策略 / mapper 单测见 65 |
+| 16 | `PR-Platform-Ops` | 🟡 部分完成 | Quota/Usage/Audit ✅；Channel ✅；Ecosystem/Telemetry 余量见 65。**Voice 已落地，勿列入待补 TTS** |
 
 
 ---
 
 ## 子模块：System 优化路线图 2026-05-26
 
-> **版本**：2026-05-26 · **状态**：📋 路线图草案 · **范围**：当前所有 5 份独立优化计划的统一执行序列
-> **目的**：把分散在 5 个模块（Memory · Monitor · Tools/Plugin/Skill/MCP · Channel/Chat/Agent-Team · Team Graph）的 ~150 个优化项排成 **可顺序实施 / 可灰度回滚 / 可独立 ship** 的全局路线
-> **真相源**：本文档是**单一执行序列**真相源；每个 Wave 内部细节回到对应需求/开发文档
+> **版本**：2026-05-26 · **状态**：📋 **历史快照**（不是 2026-08 执行序列）  
+> **2026-08-15**：本节 ~150 项排期**不再是进度真相**。开发前读 [65](./65-module-cross-reference-full.md)。Event 口径已是 `v2_event` / `monitor_event`，文内 ActivityEvent 字样仅历史。  
+> **范围**：当时 5 份独立优化计划的统一执行序列  
+> **目的**：把分散在 5 个模块的优化项排成可顺序实施的全局路线（**归档，勿按本表开工**）
 
 ---
 
@@ -815,7 +820,8 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 
 ## 子模块：总览与路线图
 
-> 基于 2026-05-31 全景评估，综合 OpenClaw / Hermes / trpc-agent-go 框架全量对比分析。
+> 基于 2026-05-31 全景评估的**历史快照**。  
+> **2026-08-15**：规模数字、框架利用率、五阶段「紧急缺口」与 M1–M5 **不是当前进度**。Evaluation / Channel / Graph / Voice 等多项已落地；独立 TTS 与 Marketplace 已 SUPERSEDED。对照 [65](./65-module-cross-reference-full.md) 与 [0-system-diagram.md](./0-system-diagram.md)。**不要把 M4 标成进行中。**
 
 ---
 
@@ -874,7 +880,7 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 
 ### Phase 1：补齐框架能力缺口（优先级 🔴 紧急）
 
-> 目标：将框架已有但项目未集成的核心能力全部打通
+> **2026-08-15**：下表是 2026-05-31 规划。Evaluation、Artifact、工具可靠性等多项已落地，**勿按「紧急未做」开工**。RalphLoop 仍为 OpenClaw 侧能力（见本文 §2）。现状见 65。
 
 | # | 模块 | 框架对应 | 预期收益 |
 |---|------|---------|---------|
@@ -1019,10 +1025,12 @@ Lane E（Team）    : TG-Q-01/02/05（P1 速胜）→ 04/03 → 07/08/09
 
 ## 五、关键里程碑
 
+> **2026-08-15**：下表是 2026-05-31 规划，不是实施状态。Postgres 已是生产主库（见 66 / 图）；**M4 勿标「进行中」**。当前主链路可运行，模块现状见 65。
+
 | 里程碑 | 预期阶段 | 标志性成果 |
 |--------|---------|-----------|
 | M1: 框架对齐完成 | Phase 1 结束 | 框架能力利用率从 55% 提升到 80% |
 | M2: 自主规划上线 | Phase 2 结束 | Agent 可自主规划并执行复杂任务 |
 | M3: 进化闭环跑通 | Phase 3 结束 | Agent 可从经验中学习并创建新技能 |
-| M4: 生产就绪 | Phase 4 结束 | Postgres + 云存储 + 完整可观测性 |
+| M4: 生产就绪 | Phase 4 结束 | Postgres + 云存储 + 完整可观测性（**规划项，非 2026-08 进行中状态**） |
 | M5: 生态成型 | Phase 5 结束 | 行业市场 + 联邦网络 + 评估认证 |

@@ -43,12 +43,14 @@ type MCPTestResult struct {
 
 // MCPProber abstracts MCP server connectivity testing so biz does not
 // depend on internal/mcp/probe directly.
+// Stability:evolving
 type MCPProber interface {
 	Evaluate(ctx context.Context, enabled bool, configJSON string) MCPTestResult
 }
 
 // MCPMetadataEditor abstracts metadata_json manipulation so biz does not
 // depend on internal/mcp/metadata directly.
+// Stability:evolving
 type MCPMetadataEditor interface {
 	Parse(raw string) map[string]any
 	Marshal(m map[string]any) (string, error)
@@ -96,6 +98,7 @@ type MCPListResult struct {
 	Offset int
 }
 
+// Stability:evolving
 type MCPServerReader interface {
 	ListMCPServers(ctx context.Context, q MCPListQuery) ([]MCPServer, error)
 	ListMCPServersPaged(ctx context.Context, q MCPListQuery) (MCPListResult, error)
@@ -103,6 +106,7 @@ type MCPServerReader interface {
 	GetMCPServerByKey(ctx context.Context, key string) (MCPServer, error)
 }
 
+// Stability:evolving
 type MCPServerWriter interface {
 	CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
 	UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
@@ -112,10 +116,12 @@ type MCPServerWriter interface {
 	UpdateMCPServerConfigJSON(ctx context.Context, id string, configJSON string) error
 }
 
+// Stability:evolving
 type MCPServerMetadataWriter interface {
 	UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error
 }
 
+// Stability:evolving
 type MCPServerRepo interface {
 	MCPServerReader
 	MCPServerWriter

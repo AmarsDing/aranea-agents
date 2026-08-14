@@ -10,6 +10,7 @@ import (
 // reaching into team.Runner internals.
 //
 // Implementations live in internal/team. Wire binding in internal/service.
+// Stability:evolving
 type TeamTurnRuntime interface {
 	// ExecuteTurn runs a single team turn and returns the result.
 	ExecuteTurn(ctx context.Context, input TeamTurnInput) (TeamTurnResult, error)
@@ -188,6 +189,7 @@ type RunStatusEntry struct {
 //
 // Implementations live in internal/service (WS projection, metrics).
 // Wire binding in internal/service.
+// Stability:evolving
 type TeamRunObserver interface {
 	// OnTeamRunStarted is called when a team run begins.
 	OnTeamRunStarted(ctx context.Context, run TeamRunRecord)
@@ -207,12 +209,14 @@ type TeamRunObserver interface {
 
 // TeamBuildRunner constructs the runtime for a single team turn.
 // This is the "build" hook in the TurnExecutor lifecycle for team sessions.
+// Stability:evolving
 type TeamBuildRunner interface {
 	// BuildTeamRunner constructs a callable team runner for the given session.
 	BuildTeamRunner(ctx context.Context, session Session, input TurnInput) (TeamRunnerHandle, error)
 }
 
 // TeamRunnerHandle is the biz-level handle for a built team runner.
+// Stability:evolving
 type TeamRunnerHandle interface {
 	// Run executes the team turn and returns the result.
 	Run(ctx context.Context) (TeamTurnOutput, error)
@@ -230,12 +234,14 @@ type TeamTurnOutput struct {
 
 // TeamPersistTurnRecord persists the turn result for a team session.
 // This is the "persist" hook in the TurnExecutor lifecycle for team sessions.
+// Stability:evolving
 type TeamPersistTurnRecord interface {
 	PersistTeamTurn(ctx context.Context, sessionID, teamID string, userMsg, assistantMsg ChatMessage, tokenIn, tokenOut int) error
 }
 
 // TeamProjectRuntimeEvent emits runtime events (envelopes) for a team turn.
 // This is the "project events" hook in the TurnExecutor lifecycle for team sessions.
+// Stability:evolving
 type TeamProjectRuntimeEvent interface {
 	ProjectTeamEvents(ctx context.Context, sessionID, runID string, outcome TurnOutcome, assistantMsg ChatMessage) error
 }

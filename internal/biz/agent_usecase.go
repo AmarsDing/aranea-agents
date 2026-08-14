@@ -105,6 +105,7 @@ type AgentRepository interface {
 }
 
 // ProviderModelPairValidator validates that a provider+model pair exists in the catalog.
+// Stability:evolving
 type ProviderModelPairValidator interface {
 	ValidatePair(ctx context.Context, provider, model string) (bool, string, error)
 }

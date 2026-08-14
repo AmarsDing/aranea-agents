@@ -392,44 +392,52 @@ func (s *AgentRuntimeSettings) ApplyRalphLoop(cfg RalphLoopCfg) {
 // not the entire AgentRuntimeSettings struct.
 
 // IdentityReader provides read access to identity/routing settings.
+// Stability:evolving
 type IdentityReader interface {
 	GetIdentity() IdentityCfg
 }
 
 // ReasoningReader provides read access to reasoning strategy settings.
+// Stability:evolving
 type ReasoningReader interface {
 	GetReasoning() ReasoningCfg
 }
 
 // MemoryReader provides read access to memory (L0-L4) settings.
+// Stability:evolving
 type MemoryReader interface {
 	GetMemory() MemoryCfg
 }
 
 // ToolsReader provides read access to tool configuration settings.
+// Stability:evolving
 type ToolsReader interface {
 	GetTools() ToolsCfg
 }
 
 // SkillsReader provides read access to skill and code executor settings.
+// Stability:evolving
 type SkillsReader interface {
 	GetSkills() SkillsCfg
 	GetCodeExecutor() CodeExecutorCfg
 }
 
 // EvolutionReader provides read access to evolution, ralph loop, and dream settings.
+// Stability:evolving
 type EvolutionReader interface {
 	GetEvolution() EvolutionCfg
 	GetRalphLoop() RalphLoopCfg
 }
 
 // ContextReader provides read access to context compression and planner settings.
+// Stability:evolving
 type ContextReader interface {
 	GetContext() ContextCfg
 }
 
 // RuntimeSettingsReader is the aggregate read interface combining all sub-domains.
 // Use this when you need access to multiple sub-domains.
+// Stability:evolving
 type RuntimeSettingsReader interface {
 	IdentityReader
 	ReasoningReader
@@ -441,6 +449,7 @@ type RuntimeSettingsReader interface {
 }
 
 // RuntimeSettingsWriter is the aggregate write interface for all sub-domains.
+// Stability:evolving
 type RuntimeSettingsWriter interface {
 	ApplyIdentity(IdentityCfg)
 	ApplyReasoning(ReasoningCfg)

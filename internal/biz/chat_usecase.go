@@ -43,6 +43,7 @@ type ChatRunStatus struct {
 	UpdatedAt time.Time
 }
 
+// Stability:evolving
 type ChatRunGateway interface {
 	HasActive(sessionID string) bool
 	Cancel(sessionID, reason string) (stopped bool, runID string)
@@ -51,10 +52,12 @@ type ChatRunGateway interface {
 	GetStatus(sessionID string) (ChatRunStatus, bool)
 }
 
+// Stability:evolving
 type ChatSessionLocker interface {
 	Lock(sessionID string) func()
 }
 
+// Stability:evolving
 type ChatPendingQueue interface {
 	List(sessionID string) []PendingQueueEntry
 	Enqueue(sessionID, content string) string
@@ -111,12 +114,14 @@ const (
 	ChatEnqueueKindInject = "inject"
 )
 
+// Stability:evolving
 type ChatRunStatusPersister interface {
 	PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error
 	PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta ChatAwaitMeta)
 	ClearAwaitingRunState(ctx context.Context, sessionID string)
 }
 
+// Stability:evolving
 type ChatEventPublisher interface {
 	PublishRunStatus(sessionID, runID, status, errMsg string)
 	PublishMessageQueued(sessionID string)

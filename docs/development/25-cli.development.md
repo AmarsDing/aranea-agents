@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 开发计划（Dev Plan, 2026-05-27）
 
 > **版本**：3.1（取代 `25-cli-development.md` v2.0）
-> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；设计 → [`25-cli.design.md`](./25-cli.design.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
+> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；设计 → [`25-cli.design.md`](./25-cli.design.md)
 > **任务 ID 约定**：`CLI-XX` 前缀；每条 ≤1 天（≤8h），含明确 DoD 与可执行验收信号；多步动作拆分到 `CLI-XX.N` 子任务。
 > **执行者**：AI agent / 工程师；每个任务都给出"AI 落地提示词"（在 §6 集中），可直接喂给 cursor-agent / claude code。
 
@@ -49,6 +49,17 @@
 | 配置错误脱敏 | **已实现** | `internal/cli/config/config.go::sanitizeConfigError`：配置解析错误信息经 `preview.RedactAndTruncate` 脱敏，防止 API key/token 泄漏到错误输出（2026-07-20 Grok Build 借鉴） |
 
 > 结论：P0 核心任务（CLI-01~13）已基本完成（R12 lint 已上线、quickstart 已落地）；P1 部分任务（CLI-20/21/22/23/27）已实现（CLI-27 全部 7 类资源完成）；主要缺口为 `tool.error` envelope、`SystemInfoResponse` 字段补齐、CLI-28/29/30。
+
+### 1.0 无关 cmd（勿与 `aranea` 混淆）
+
+从历史实施方案并入。下列**不是**本模块、禁止改 `cmd/aranea` 时顺带重构：
+
+| 项 | 路径 |
+|----|------|
+| 开发者 lint / fmtcheck | `cmd/araneactl/`（含 R12） |
+| 一次性/运维小工具 | `cmd/fetch-channel-icons`、`cmd/checkdb`、`cmd/checkteam`、`cmd/memoryeval`、`cmd/migrate-sqlite-to-postgres` |
+
+> P2-20：原 [`25-cli-implementation.md`](./25-cli-implementation.md) 已 SUPERSEDED，正本为三件套。勿再改 implementation 文件。
 
 ### 1.1 后端契约（BE-1~BE-6）实现状态
 
@@ -571,9 +582,9 @@ P1
 你是 Aranea-Agents 项目的实施 AI。本次只完成任务 {ID}: {TITLE}。
 
 【必读】
-1) docs/需求/25-cli-PRD-2026-05-27.md  —— 产品需求与验收准则（重点 §6 关键流程 + §9 R# 验收）
-2) docs/需求/25-cli-design-2026-05-27.md —— 技术设计（重点 §2 目录结构 + §3 类型契约 + §13 红线）
-3) docs/需求/25-cli-development-plan-2026-05-27.md —— 本计划（找 {ID} 的 DoD/依赖/新增文件清单）
+1) docs/development/25-cli.md  —— 产品需求与验收准则（重点 §6 关键流程 + §9 R# 验收）
+2) docs/development/25-cli.design.md —— 技术设计（重点 §2 目录结构 + §3 类型契约 + §13 红线）
+3) docs/development/25-cli.development.md —— 本计划（找 {ID} 的 DoD/依赖/新增文件清单）
 4) AGENTS.md + .cursor/rules/trpc-agent-framework-first.mdc + docs/AGENT_RUNTIME_BOUNDARY.md
 5) （视任务）相关 proto： api/kratos/<svc>/v1/*.proto；相关 service： internal/service/...
 
@@ -635,9 +646,9 @@ P1
 - 手工：./bin/aranea <子命令> --debug ...（贴关键输出截图）
 
 ## 相关文档
-- PRD: docs/需求/25-cli-PRD-2026-05-27.md (US-XX, R-XX)
-- 设计: docs/需求/25-cli-design-2026-05-27.md (§X.Y)
-- 计划: docs/需求/25-cli-development-plan-2026-05-27.md (CLI-XX)
+- PRD: docs/development/25-cli.md (US-XX, R-XX)
+- 设计: docs/development/25-cli.design.md (§X.Y)
+- 计划: docs/development/25-cli.development.md (CLI-XX)
 ```
 
 ---

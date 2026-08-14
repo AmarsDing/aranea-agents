@@ -129,7 +129,7 @@ flowchart TB
 | 互通 | A2A(26) | 对外 A2A、call_agent、远程互通 | `internal/a2a`、`api/kratos/a2a` |
 | 评测 | Evaluation(33) | EvalSet、Runner、LLM Judge、结果 | `internal/evaluation` |
 | 平台 | Ecosystem(30) | 市场、模板、扩展发现 | `web/src/pages/EcosystemPage.vue` |
-| 媒体 | MediaProvider(38) | 文生图/文生视频/图生视频；独立 Provider 体系（非 LLM），支持 Qwen / ComfyUI 本地 | `internal/provider/media`、`internal/tools/media` |
+| 媒体 | MediaProvider(38) | 文生图/文生视频/图生视频；独立 Provider 体系（非 LLM），支持 Qwen / ComfyUI 本地。三件套 [`38-media.md`](./38-media.md) | `internal/provider/media`、`internal/tools/media` |
 | 观测 | Observation View（**架构图 39**；文档 39 是 Planner） | Chat UI 内 ComfyUI 风格成员节点实时观测画布；Vue Flow DAG + 节点级媒体预览 | `web/src/components/chat/observe`、`web/src/stores/chat/nodeOutputStore.ts`。Planner 代码：`internal/agent/planner` |
 | 语音 | Voice(74) | 流式 ASR/TTS + `/v1/voice` + 客户端工具桥（已落地，非规划中） | `internal/voice/`、`internal/server/voice_ws.go`、`web/src/features/companion/` |
 | 桌面 | Computer Use(75) | 本机 GUI 自动化（Windows sidecar） | `internal/computeruse/`、`internal/biz/computeruse/` |

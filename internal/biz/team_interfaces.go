@@ -14,6 +14,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // TeamUsageQuerier captures the subset of UsageUsecase needed by the team Runner.
+// Stability:evolving
 type TeamUsageQuerier interface {
 	RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error)
 }
@@ -21,6 +22,7 @@ type TeamUsageQuerier interface {
 // TeamSessionManager captures the subset of SessionUsecase needed by the team Runner.
 // Superseded by SessionTurnWriterPort + SessionTurnExtrasPort in SessionTurnManager.
 // Kept for the Runner's own session field (non-TurnDeps path).
+// Stability:evolving
 type TeamSessionManager interface {
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 	AccumulateMetricsDelta(delta session.SessionMetricsDelta)
@@ -28,6 +30,7 @@ type TeamSessionManager interface {
 
 // TeamAgentLookup captures the subset of AgentUsecase needed by the team Runner
 // and agent.TRPCBuilderDeps.
+// Stability:evolving
 type TeamAgentLookup interface {
 	Get(ctx context.Context, id string) (Agent, error)
 	GetEffectiveTools(ctx context.Context, agentID string) (AgentEffectiveTools, error)
@@ -38,6 +41,7 @@ type TeamAgentLookup interface {
 
 // TeamToolLookup captures the subset of ToolUsecase needed by the team Runner
 // (pass-through) and agent.TRPCBuilderDeps.
+// Stability:evolving
 type TeamToolLookup interface {
 	GetTool(ctx context.Context, id string) (tool.Tool, error)
 	// ListToolCatalogEntries batch-loads lightweight build-time catalog rows
@@ -57,6 +61,7 @@ type TeamToolLookup interface {
 
 // TeamModelCatalog captures the subset of LlmProviderModelUsecase needed by the
 // team Runner and agent.TRPCBuilderDeps.
+// Stability:evolving
 type TeamModelCatalog interface {
 	GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
 	List(ctx context.Context) ([]ProviderModel, error)
@@ -65,6 +70,7 @@ type TeamModelCatalog interface {
 // TeamSkillLookup captures the subset of SkillUsecase needed by the team Runner
 // (pass-through) and agent.TRPCBuilderDeps. It also satisfies
 // skillruntime.SkillResolver so it can be used directly in visibility filters.
+// Stability:evolving
 type TeamSkillLookup interface {
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
 	ListEnabledPublishedSkillRefs(ctx context.Context) ([]SkillEnabledRef, error)
@@ -77,6 +83,7 @@ type TeamSkillLookup interface {
 
 // CLIAdminSkillLister captures the subset of SkillUsecase needed by the
 // cli_admin tool adapters in internal/service.
+// Stability:evolving
 type CLIAdminSkillLister interface {
 	List(ctx context.Context, q SkillListQuery) (SkillListResult, error)
 	Get(ctx context.Context, id string) (Skill, error)
@@ -87,6 +94,7 @@ type CLIAdminSkillLister interface {
 
 // CLIAdminAgentLister captures the subset of AgentUsecase needed by the
 // cli_admin tool adapters in internal/service.
+// Stability:evolving
 type CLIAdminAgentLister interface {
 	List(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 	Get(ctx context.Context, id string) (Agent, error)

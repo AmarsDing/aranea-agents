@@ -12,6 +12,7 @@ import (
 // 实现说明：本接口要求方法 SpiritSessionID() 和 TaskID()，因此各事件 struct
 // 的对应字段使用小写名（taskID / spiritSessionID）以避免 Go "field and method
 // with the same name" 编译错误。同包构造可使用字面量；跨包构造需通过工厂函数。
+// Stability:stable
 type Event interface {
 	EventKind() EventKind
 	SpiritSessionID() string

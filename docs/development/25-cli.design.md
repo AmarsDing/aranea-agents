@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 设计文档（Design, 2026-05-27）
 
 > **版本**：3.1（取代 `25 cli.design.md` v2.0）
-> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
+> **同系列**：需求 → [`25-cli.md`](./25-cli.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)
 > **规范基线**：`docs/guides/AI-DEVELOPMENT-SPECIFICATION.md` · `.cursor/rules/trpc-agent-framework-first.mdc` · `docs/AGENT_RUNTIME_BOUNDARY.md`
 
 ---
@@ -67,6 +67,14 @@ internal/cli/client/ │  pkg/safego
 
 > **必须**禁止：CLI 二进制 import `internal/biz`、`internal/data`、`internal/agent`、`internal/server`、`internal/service`、`pkg/trpc-agent-go`。
 > 系统管家 Agent / `cli_admin_*` 工具集**只**在后端实现；CLI 不参与种子。
+
+### 1.2a 与其它 `cmd/` 的边界
+
+| 二进制 | 关系 |
+|--------|------|
+| `cmd/aranea` | 本模块：终端用户 CLI |
+| `cmd/araneactl` | 开发者 lint / fmtcheck；共存，互不替代 |
+| `cmd/fetch-channel-icons`、`cmd/checkdb`、`cmd/checkteam`、`cmd/memoryeval`、`cmd/migrate-sqlite-to-postgres` 等 | 一次性/运维小工具，**禁止**并入 `aranea` |
 
 ### 1.3 入口路由
 
@@ -853,6 +861,33 @@ func (c *CLIConfig) OverrideFromEnv() {
 ```
 
 `OverrideFromFlags` 接受 cobra 已解析的 flag 值，最后调用，覆盖 env 与 file。
+
+### 8.4 配置文件示例（TOML）
+
+与 §3.3 类型一一对应；缺字段时 Load 填默认，不报错。
+
+```toml
+[backend]
+base_url     = "http://127.0.0.1:8080"
+token        = ""
+workspace_id = ""              # 预留，本期无效
+
+[ui]
+output   = "text"              # text | json（P1: yaml | table）
+color    = "auto"              # auto | always | never
+
+[skill]
+default_decision = "ask"       # ask | skip | keep | refine
+max_zip_mb       = 100
+keep_temp        = false
+
+[chat]
+default_agent = "__system_admin__"
+auto_resume   = true
+
+[telemetry]
+enabled = false
+```
 
 ---
 

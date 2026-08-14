@@ -15,6 +15,7 @@ import (
 // TeamTurnRunnerFactory builds and runs a team turn via the agent runtime.
 // This is the primary port through which the team package executes turns,
 // eliminating the direct dependency on agent.RunTRPCUserTurn and related helpers.
+// Stability:evolving
 type TeamTurnRunnerFactory interface {
 	// NewTurnRunner creates a turn runner from the compiled root agent and config.
 	NewTurnRunner(ctx context.Context, input TeamTurnRunnerInput) (TeamTurnRunnerHandle, error)
@@ -37,6 +38,7 @@ type TeamTurnRunnerInput struct {
 }
 
 // TeamTurnRunnerHandle manages the lifecycle of a team turn execution.
+// Stability:evolving
 type TeamTurnRunnerHandle interface {
 	// Run executes the turn and returns the stream result.
 	Run(ctx context.Context) (TeamStreamResult, error)
@@ -58,6 +60,7 @@ type TeamStreamResult struct {
 
 // TeamAgentHelper provides utility functions from the agent package that
 // the team runner needs, without requiring a direct import.
+// Stability:evolving
 type TeamAgentHelper interface {
 	// RFC3339Now returns the current time in RFC3339 format.
 	RFC3339Now() string

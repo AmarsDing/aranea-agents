@@ -1,7 +1,7 @@
 # 25 Aranea CLI — 需求文档（PRD, 2026-05-27）
 
 > **版本**：3.1（取代 `25 cli.md` v2.0）
-> **同系列**：设计 → [`25-cli.design.md`](./25-cli.design.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)；上层方案 → [`25-cli-implementation.md`](./25-cli-implementation.md)
+> **同系列**：设计 → [`25-cli.design.md`](./25-cli.design.md)；开发计划 → [`25-cli.development.md`](./25-cli.development.md)
 > **范围**：终端可执行二进制 `aranea`；不包括 `cmd/araneactl/`（开发者 lint/fmtcheck 工具链，与本 PRD 共存）。
 
 ---
@@ -29,7 +29,7 @@ Aranea CLI 是与后端 `cmd/admin` **完全异构**的终端控制台：
 
 ### 1.1 与原方案的关键差异（必须对齐）
 
-为避免使用过期细节落地，本 PRD 对原 `25 cli.md`（v2.0）做以下勘误与收窄；详细差异说明见 [`25-cli-implementation.md` §0](./25-cli-implementation.md)。
+为避免使用过期细节落地，本 PRD 对原 `25 cli.md`（v2.0）做以下勘误与收窄；与旧设计的对照见 [`25-cli.design.md` §12](./25-cli.design.md#12-与既有方案的差异回顾实施前-review-用)。
 
 | # | 项 | 原方案 | 本 PRD |
 |---|----|--------|--------|

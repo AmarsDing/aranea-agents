@@ -24,6 +24,7 @@ type SessionParticipant struct {
 }
 
 // SessionParticipantRepository persists derived participant rows for a session.
+// Stability:evolving
 type SessionParticipantRepository interface {
 	SyncFromSession(ctx context.Context, sess Session, messages []ChatMessage) error
 	ListBySession(ctx context.Context, sessionID string) ([]SessionParticipant, error)

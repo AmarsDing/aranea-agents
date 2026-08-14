@@ -32,6 +32,7 @@ type TurnResult struct {
 
 // TurnAdmissionDecider determines whether a new turn should be admitted,
 // enqueued, or rejected when a session already has an active run.
+// Stability:evolving
 type TurnAdmissionDecider interface {
 	Decide(hasActiveRun bool, hasRunner bool) TurnAdmissionDecision
 }
@@ -47,6 +48,7 @@ const (
 
 // SessionLocker provides session-level mutual exclusion for turn execution.
 // Implementations must be reentrant-safe for the same session.
+// Stability:evolving
 type SessionLocker interface {
 	// LockSession acquires a lock for the given session. Returns an unlock function.
 	LockSession(sessionID string) (unlock func())
@@ -55,6 +57,7 @@ type SessionLocker interface {
 // PendingQueueManager manages the pending message queue for a session.
 // When a turn is admitted while another is running, the message is enqueued
 // and processed after the active run completes.
+// Stability:evolving
 type PendingQueueManager interface {
 	// Enqueue adds a user message to the pending queue.
 	Enqueue(ctx context.Context, sessionID, content string) (accepted bool, pendingID string, rejectReason string, err error)
@@ -67,6 +70,7 @@ type PendingQueueManager interface {
 }
 
 // RunRegistry tracks active runs and provides cancellation.
+// Stability:evolving
 type RunRegistry interface {
 	// HasActive reports whether a session has an in-flight run.
 	HasActive(sessionID string) bool
@@ -80,6 +84,7 @@ type RunRegistry interface {
 }
 
 // TurnTracer provides structured tracing for turn lifecycle events.
+// Stability:evolving
 type TurnTracer interface {
 	// StartTrace begins a trace for a turn.
 	StartTrace(ctx context.Context, sessionID, flowName, description string, params ...TraceParam) TurnTraceSpan
@@ -92,6 +97,7 @@ type TraceParam struct {
 }
 
 // TurnTraceSpan represents an in-progress trace span for a turn.
+// Stability:evolving
 type TurnTraceSpan interface {
 	Log(phase, description string, params ...TraceParam)
 	LogDone(phase, description string, params ...TraceParam)
@@ -100,6 +106,7 @@ type TurnTraceSpan interface {
 }
 
 // TurnUsageRecorder records token usage and quota checks for a turn.
+// Stability:evolving
 type TurnUsageRecorder interface {
 	// CheckQuotas verifies that the user/session has sufficient quota before a turn.
 	CheckQuotas(ctx context.Context, agentID, userID string) error
@@ -109,6 +116,7 @@ type TurnUsageRecorder interface {
 
 // TurnPersistenceHook persists turn results (messages, metadata) after execution.
 // Agent and Team runtimes implement this to handle their own persistence format.
+// Stability:evolving
 type TurnPersistenceHook interface {
 	// PersistTurnRecord saves the turn result to the data store.
 	PersistTurnRecord(ctx context.Context, sessionID string, result TurnResult) error
@@ -116,6 +124,7 @@ type TurnPersistenceHook interface {
 
 // TurnEventProjector projects runtime events into UI-consumable envelopes.
 // Both Agent and Team runtimes implement this to emit domain-specific events.
+// Stability:evolving
 type TurnEventProjector interface {
 	// ProjectEvents emits envelopes for the turn lifecycle (start, progress, completion, error).
 	ProjectEvents(ctx context.Context, sessionID, runID string, result TurnResult) error
@@ -131,6 +140,7 @@ type TurnEventProjector interface {
 //
 // Implementations live in internal/service (ChatOrchestrator implements this).
 // Wire binding happens in internal/service.
+// Stability:evolving
 type TurnExecutor interface {
 	// Execute runs a single turn (agent or team) and returns a classified result.
 	Execute(ctx context.Context, input TurnInput) (TurnResult, error)

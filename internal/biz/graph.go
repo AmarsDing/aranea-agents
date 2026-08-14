@@ -153,6 +153,7 @@ const (
 // GraphExecutor is the biz-level port for executing graphs from other modules.
 // Consumers (Channel, Cron) depend on this interface instead of *GraphService,
 // following the dependency inversion principle. Wire binds it in service layer.
+// Stability:evolving
 type GraphExecutor interface {
 	ExecuteGraphByID(ctx context.Context, graphID, sessionID string, initialState map[string]any) (executionID string, err error)
 	ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID string, cfg GraphBuildConfig, initialState map[string]any) (executionID string, err error)
@@ -387,6 +388,7 @@ type GraphRepo interface {
 	GraphWriter
 }
 
+// Stability:evolving
 type GraphRunRepo interface {
 	SaveRun(ctx context.Context, exec *GraphExecution) error
 	GetRun(ctx context.Context, id string) (*GraphExecution, error)

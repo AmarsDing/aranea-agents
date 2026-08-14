@@ -4,7 +4,7 @@
 > **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
 > **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
 > **与精简版的关系**：本文件是 `module-cross-reference.md` 的扩展版本，新增日志架构相关模块卡片（§1.12a–1.12h）。
-> **最后校准日期**：2026-08-15（P0-7 + P1-15 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
+> **最后校准日期**：2026-08-15（P0-7 + P1-15 + P2-20 + P2-22 AS-STA-01 与当前仓库对齐）。系统进度文档 [`0-system.development.md`](./0-system.development.md) 已冻结，**模块现状以本文为准**。
 
 ---
 
@@ -19,6 +19,26 @@
 
 ---
 
+## 接口稳定性分级（AS-STA-01）
+
+biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告一致，**禁止发明第三套标记**：
+
+| 等级 | 标注 | 含义 | 变更规则 |
+|------|------|------|---------|
+| Stable | `// Stability:stable` | 长期契约，生产依赖不可破坏兼容 | 新增方法不需 ADR；修改/删除方法必须 ADR |
+| Evolving | `// Stability:evolving` | 活跃开发中，可能变 | 破坏性变更需 ADR；新增方法不需 |
+| Internal | `// Stability:internal` | 包内/测试用，不对外 | 自由变更，不需 ADR |
+
+**默认策略**：未标注的导出 port **默认 Evolving**。多数接口应标 Evolving，不要一律标 Stable。
+
+**何时 Stable**：仅长期契约——Workspace/Organization 租户隔离、Session 状态机与核心读写口、v2 `Event` 接口与事件名、已拆分的核心实体 Repo（Agent/Team/Graph 定义、Channel 交付等）。
+
+**覆盖范围**：优先标注交叉参考后端官方模块的模块边界口（Agent / Chat / Session / Memory / Event / Team / Graph / Channel / Knowledge / Skill / MCP）。包内窄辅助口、未导出接口可不标。
+
+**残留（默认 Evolving，不另开债）**：Monitor heal / pack importer / learning-loop 细端口 / `repo_ports_v2` 组合口 / Cron / Plugin / Usage / Admin 等本轮未逐条标注的导出接口。新增跨模块 port 时按上表补标。
+
+---
+
 ## 编号冲突与幽灵模块（先读）
 
 文档编号 ≠ 交叉参考卡片序号（§1.1…）。改模块前用下表对齐，禁止按架构图「12–16 = Memory」或「39 = Observation」去改 Planner / Catalog。
@@ -27,7 +47,7 @@
 |------|----------------|----------|
 | **12** | Model Catalog：[`12-model-catalog.md`](./12-model-catalog.md)；代码 `internal/modelregistry/` | **不是 Memory**。记忆文档在 [`memory/`](./memory/)（L0–L4），无独立 `12-memory.md` |
 | **13–16** | 架构图曾把 Memory 标成 12–16；仓库无 `13-*.md`…`16-*.md` 记忆三件套 | 不要新建 13–16 记忆模块文档 |
-| **38** | 架构图 MediaProvider；**无三件套**（无 `38-*.md`） | 代码在 `internal/provider/media` + `internal/tools/media`，见 §1.32 |
+| **38** | 架构图 MediaProvider；三件套 [`38-media.md`](./38-media.md) | 代码在 `internal/provider/media` + `internal/tools/media`，见 §1.36 |
 | **39** | **文档 39 = Planner**（[`39-planner.md`](./39-planner.md)，`internal/agent/planner`） | **架构图 39 = Observation View**（`web/src/components/chat/observe`，无独立三件套）。改 Planner 勿动观测画布，反之亦然 |
 | **57 Marketplace** | **SUPERSEDED / 未实现**。三件套文首已禁止开工：[`57-marketplace-platform.md`](./57-marketplace-platform.md) / [`.design.md`](./57-marketplace-platform.design.md) / [`.development.md`](./57-marketplace-platform.development.md)。无 `cmd/marketplace`、`internal/marketplace` | 禁止按 57 三件套新建商城服务。站内发现走 Ecosystem(30) |
 | **63 TTS** | **SUPERSEDED**。三件套文首已禁止开工：[`63-tts.md`](./63-tts.md) / [`.design.md`](./63-tts.design.md) / [`.development.md`](./63-tts.development.md)。独立 TTS 未落地；流式 TTS **已并入 Voice(74)** | 禁止实现 `api/kratos/tts` / `internal/biz/tts`。语音合成走 `internal/voice/` + `internal/data/speech/` |
@@ -966,7 +986,7 @@
 
 ### 1.33 CLI / M25（`internal/cli/` + `cmd/aranea/main.go`）
 
-**职责**：终端客户端 `aranea`：只走公开 HTTP `/v1/*` 与 WS `/v1/ws`，不 import `internal/biz` / Runner。三件套：[`25-cli.md`](./25-cli.md)。
+**职责**：终端客户端 `aranea`：只走公开 HTTP `/v1/*` 与 WS `/v1/ws`，不 import `internal/biz` / Runner。三件套：[`25-cli.md`](./25-cli.md) / [`.design.md`](./25-cli.design.md) / [`.development.md`](./25-cli.development.md)。勿改已 SUPERSEDED 的 `25-cli-implementation.md`。
 
 | 维度 | 内容 |
 |------|------|
@@ -1003,16 +1023,17 @@
 
 ---
 
-### 1.36 Media Provider（架构图 38 / **无三件套**）
+### 1.36 Media Provider（架构图 38 / M38）
 
-**职责**：文生图 / 文生视频 / 图生视频；独立于 LLM Provider(9)。**没有** `38-*.md` 三件套，以代码为准。
+**职责**：文生图 / 文生视频 / 图生视频；独立于 LLM Provider(9)。三件套：[`38-media.md`](./38-media.md) / [`.design.md`](./38-media.design.md) / [`.development.md`](./38-media.development.md)。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | 媒体 Provider 配置；产出落 Artifact(27) |
-| **下游影响** | Chat 工具 `generate_image` / `generate_video` / `image_to_video` |
-| **核心导出** | `internal/provider/media`（`registry.go`、`qwen.go`、`comfyui_local.go`）、`internal/tools/media/` |
-| **前端对应** | Observation View 节点媒体预览（架构图 39，见 §2.8） |
+| **上游依赖** | `media_providers` 目录（`biz/media.ProviderReader`）；产出落 Artifact(27) |
+| **下游影响** | Chat/Team 工具 `generate_image` / `generate_video` / `image_to_video` |
+| **核心导出** | `internal/provider/media`（`provider.go`、`registry.go`、`qwen.go`、`comfyui_local.go`、`persist.go`）、`internal/tools/media/`、`internal/agent/tool_assembly_media.go` |
+| **数据库** | `media_providers` |
+| **前端对应** | Observation View 节点媒体预览（架构图 39，见 §2.8）；`web/src/features/chat/mediaTypes.ts` / `useMediaUrl.ts` |
 
 ---
 

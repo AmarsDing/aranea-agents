@@ -5,6 +5,7 @@ import "context"
 // TurnExecutorGateway is the narrow interface for turn execution operations.
 // Consumers that only need to execute turns (e.g. WSServer) depend on this
 // instead of the full TurnGateway.
+// Stability:evolving
 type TurnExecutorGateway interface {
 	ExecuteTurn(ctx context.Context, input TurnInput) (TurnResult, error)
 	RunNativeTurn(ctx context.Context, input TurnInput) (ChatMessage, ChatMessage, error)
@@ -14,6 +15,7 @@ type TurnExecutorGateway interface {
 // TurnRunControlGateway is the narrow interface for run lifecycle control.
 // Consumers that only need to check/cancel runs (e.g. DurableWorker) depend
 // on this instead of the full TurnGateway.
+// Stability:evolving
 type TurnRunControlGateway interface {
 	HasActiveRun(sessionID string) bool
 	CancelRun(ctx context.Context, sessionID string) bool
@@ -23,6 +25,7 @@ type TurnRunControlGateway interface {
 
 // TurnGateway composes TurnExecutorGateway + TurnRunControlGateway for
 // consumers that need both execution and run control (e.g. ChannelTurnGateway).
+// Stability:evolving
 type TurnGateway interface {
 	TurnExecutorGateway
 	TurnRunControlGateway
@@ -30,6 +33,7 @@ type TurnGateway interface {
 
 // TurnControlGateway extends TurnGateway with run control operations needed
 // by Channel card actions and session run management.
+// Stability:evolving
 type TurnControlGateway interface {
 	TurnGateway
 
@@ -57,10 +61,12 @@ type TurnControlGateway interface {
 
 // PendingMessageGateway is the narrow interface for pending message operations.
 // Split from ChatService so that consumers only depend on what they need.
+// Stability:evolving
 type DurableResumeGateway interface {
 	ResumeDurableSessionRun(ctx context.Context, sessionRunID string) error
 }
 
+// Stability:evolving
 type PendingMessageGateway interface {
 	// EnqueueUserMessage adds a user message to the pending queue.
 	EnqueueUserMessage(ctx context.Context, sessionID, content string) (accepted bool, pendingID string, rejectReason string, err error)

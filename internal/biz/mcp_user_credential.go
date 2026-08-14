@@ -44,6 +44,7 @@ type MCPServerUserCredentialInput struct {
 	Status        string
 }
 
+// Stability:evolving
 type MCPServerUserCredentialRepo interface {
 	ListMCPServerUserCredentials(ctx context.Context, mcpServerID, userID string) ([]MCPServerUserCredential, error)
 	UpsertMCPServerUserCredential(ctx context.Context, cred MCPServerUserCredential) (MCPServerUserCredential, error)
