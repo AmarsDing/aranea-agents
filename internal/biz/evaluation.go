@@ -19,10 +19,13 @@ type (
 	EvalFailureGroupReport   = evaluation.FailureGroupReport
 	EvalRunPreference        = evaluation.RunPreference
 	EvalGateConfig           = evaluation.GateConfig
-	EvalRepo                 = evaluation.Repo
-	EvalUsecase              = evaluation.Usecase
-	EvalScores               = evaluation.Scores
-	EvalLLMSetting           = evaluation.LLMSetting
+	// EvalRepo is the deprecated composed evaluation persistence port.
+	// Production uses EvalStores (see evaluation.Stores).
+	EvalRepo       = evaluation.Repo
+	EvalStores     = evaluation.Stores
+	EvalUsecase    = evaluation.Usecase
+	EvalScores     = evaluation.Scores
+	EvalLLMSetting = evaluation.LLMSetting
 )
 
 // Re-export evaluation gate trigger constants.
@@ -35,6 +38,7 @@ const (
 // Re-export evaluation constructors and helpers for backward compatibility.
 var (
 	NewEvalUsecase     = evaluation.NewUsecase
+	EvalStoresFrom     = evaluation.StoresFrom
 	ParseEvalScores    = evaluation.ParseScores
 	MarshalEvalScores  = evaluation.MarshalScores
 	ApplyEvalLLMPatch  = evaluation.ApplyLLMPatch

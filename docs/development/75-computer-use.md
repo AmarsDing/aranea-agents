@@ -78,7 +78,7 @@
 | A4 | 视觉兜底 | 对 Electron/自绘应用（a11y 盲区），视觉路径落点在目标 bbox 内命中率 ≥95%，端到端 P95 < 3.5s（VLM 直判） |
 | A5 | 确认门 | act 首次弹出确认卡四按钮全通；敏感词目标强制逐次确认；grant_persisted 后非敏感目标免确认 |
 | A6 | 禁区 | 密码管理器窗口前置时 act 被拒绝并说明原因 |
-| A7 | 预算 | 超过 max_steps 自动终止并在 Chat 中说明 |
+| A7 | 预算 | 超过 max_steps 自动终止并在 Chat 中说明；禁止自动重建会话，须显式 `session.start` |
 | A8 | 急停 | 任务执行中点击急停，下一步动作不再注入 |
 | A9 | 审计 | 每次 act 在审计表有完整记录；监控页步骤流可回放 |
 | A10 | 双轨日志 | session.start/act/fallback/error 等流程日志步骤齐全，进程日志含 sidecar 启停 |

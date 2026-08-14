@@ -12,6 +12,10 @@
     @keydown="onKeydown"
   >
     <template v-if="items.length">
+      <div v-if="citations.length" class="kb-search__cites">
+        <div class="kb-search__cites-title">{{ t('knowledgePage.workbench.search.citations') }}</div>
+        <div v-for="c in citations" :key="c.docId" class="kb-search__cites-item ellipsis">{{ c.name }}</div>
+      </div>
       <button
         v-for="(it, i) in items"
         :key="it.chunk.id"
@@ -40,7 +44,7 @@
 <script setup lang="ts">
 // SearchPanel（Ctrl+Shift+F，P1-3）：全库全文搜索浮层。
 // 纯受控组件：检索在容器（KnowledgeWorkbench）执行，本组件只渲染结果与键盘导航。
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import PaletteModal from './PaletteModal.vue';
 import type { KnowledgeChunk } from '../../../features/knowledge/types';
@@ -68,6 +72,17 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const citations = computed(() => {
+  const seen = new Set<string>();
+  const out: { docId: string; name: string }[] = [];
+  for (const it of props.items) {
+    if (seen.has(it.docId)) continue;
+    seen.add(it.docId);
+    out.push({ docId: it.docId, name: it.name });
+  }
+  return out;
+});
 
 const activeIndex = ref(0);
 
@@ -108,6 +123,28 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <style lang="sass" scoped>
+.kb-search__cites
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  padding: 4px 10px 8px
+  align-items: center
+
+  &-title
+    font-size: 11px
+    color: var(--kb-text-dim)
+    text-transform: uppercase
+    letter-spacing: 0.06em
+    margin-right: 4px
+
+  &-item
+    font-size: 11.5px
+    padding: 1px 8px
+    border-radius: 999px
+    border: 1px solid var(--kb-glass-border)
+    color: var(--kb-text-primary)
+    max-width: 160px
+
 .kb-search__item
   display: flex
   flex-direction: column

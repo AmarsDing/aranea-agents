@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	computerusev1 "aranea-agents/api/kratos/computeruse/v1"
@@ -48,15 +49,21 @@ func ProvideComputerUseUsecase(flow biz.FlowLogWriter, llm biz.LLMCaller, sys *b
 		omniURL = defaultOmniParserURL
 	}
 	mgr := cuinfra.NewManager(path, lg)
+	var specialist bizcu.VisionGrounder
+	if gurl := os.Getenv("ARANEA_CUA_GROUNDER_URL"); strings.TrimSpace(gurl) != "" {
+		specialist = cuinfra.NewSpecialistGrounder(gurl, lg)
+	}
 	return bizcu.NewComputerUseUsecase(bizcu.Deps{
-		Gateway:  cuinfra.NewGateway(mgr, lg),
-		Match:    cuinfra.NewMatcher(),
-		Vision:   cuinfra.NewOmniParserClient(omniURL, lg),
-		Grounder: cuinfra.NewVLMGrounder(llm, sys, catalog, lg),
-		Audit:    audit,
-		Events:   cuinfra.NewStepEventPublisher(monitorBus),
-		FlowLog:  flow,
-		Lg:       lg,
+		Gateway:      cuinfra.NewGateway(mgr, lg),
+		Match:        cuinfra.NewMatcher(),
+		Vision:       cuinfra.NewOmniParserClient(omniURL, lg),
+		Grounder:     cuinfra.NewVLMGrounder(llm, sys, catalog, lg),
+		Specialist:   specialist,
+		Audit:        audit,
+		Events:       cuinfra.NewStepEventPublisher(monitorBus),
+		FlowLog:      flow,
+		Lg:           lg,
+		AuditShotDir: "bin/cua/audit",
 	})
 }
 
@@ -134,20 +141,22 @@ func stepToProto(st bizcu.AuditEntry) *computerusev1.ComputerUseStep {
 		}
 	}
 	return &computerusev1.ComputerUseStep{
-		Id:          st.ID,
-		SessionId:   st.SessionID,
-		AgentKey:    st.AgentKey,
-		StepIndex:   int32(st.Index),
-		Target:      st.Target,
-		Path:        string(st.Path),
-		Action:      string(st.Action),
-		ParamsJson:  paramsJSON,
-		Result:      string(st.Result),
-		Error:       st.Error,
-		DurationMs:  st.DurationMs,
-		ConfirmedBy: st.ConfirmedBy,
-		Danger:      st.Danger,
-		CreatedAt:   st.CreatedAt.UTC().Format(time.RFC3339),
+		Id:            st.ID,
+		SessionId:     st.SessionID,
+		AgentKey:      st.AgentKey,
+		StepIndex:     int32(st.Index),
+		Target:        st.Target,
+		Path:          string(st.Path),
+		Action:        string(st.Action),
+		ParamsJson:    paramsJSON,
+		Result:        string(st.Result),
+		Error:         st.Error,
+		DurationMs:    st.DurationMs,
+		ConfirmedBy:   st.ConfirmedBy,
+		Danger:        st.Danger,
+		CreatedAt:     st.CreatedAt.UTC().Format(time.RFC3339),
+		ScreenshotRef: st.ScreenshotRef,
+		Degraded:      st.Degraded,
 	}
 }
 

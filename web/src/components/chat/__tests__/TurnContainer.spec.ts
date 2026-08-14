@@ -109,9 +109,8 @@ describe('TurnContainer.visibleSteps — empty reply filtering', () => {
   });
 });
 
-// 75 M1.4 任务 4（设计 §3.8）：运行中的 turn 含 computer_use 工具会话时，
-// 聊天气泡尾部内嵌 CuStepStream（实时步骤卡片 + 急停）；历史 turn 不渲染
-// （急停按钮对死会话无意义，审计回放走监控页 steps API）。
+// 75：运行中的 turn 含 computer_use 工具会话时内嵌 CuStepStream（实时 + 急停）；
+// 历史 turn 同样内嵌，但 readonly（急停隐藏，审计回放走 ListComputerUseSteps）。
 describe('TurnContainer — CuStepStream embedding', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
@@ -127,7 +126,7 @@ describe('TurnContainer — CuStepStream embedding', () => {
   function mountWithStream(turn: Turn) {
     return mount(TurnContainer, {
       props: { turn },
-      global: { stubs: { CuStepStream: { template: '<div class="cu-stream-stub" :data-session="sessionId" />', props: ['sessionId'] } } },
+      global: { stubs: { CuStepStream: { template: '<div class="cu-stream-stub" :data-session="sessionId" :data-readonly="String(readonly)" />', props: ['sessionId', 'readonly'] } } },
     });
   }
 
@@ -138,13 +137,17 @@ describe('TurnContainer — CuStepStream embedding', () => {
     const stub = wrapper.find('.cu-stream-stub');
     expect(stub.exists()).toBe(true);
     expect(stub.attributes('data-session')).toBe('cu-sess-1');
+    expect(stub.attributes('data-readonly')).toBe('false');
   });
 
-  it('does not embed for completed turns (historical replay via audit API)', () => {
+  it('embeds readonly CuStepStream for completed turns (historical replay)', () => {
     const store = useChatActivityStore();
     store.upsertStep(cuActionStep());
     const wrapper = mountWithStream(mkTurn({ Status: 'completed' }));
-    expect(wrapper.find('.cu-stream-stub').exists()).toBe(false);
+    const stub = wrapper.find('.cu-stream-stub');
+    expect(stub.exists()).toBe(true);
+    expect(stub.attributes('data-session')).toBe('cu-sess-1');
+    expect(stub.attributes('data-readonly')).toBe('true');
   });
 
   it('does not embed when no computer_use session exists in steps', () => {

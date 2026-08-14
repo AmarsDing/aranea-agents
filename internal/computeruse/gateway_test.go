@@ -251,6 +251,44 @@ func TestGatewayActions(t *testing.T) {
 	if keyParams["combo"] != "ctrl+s" {
 		t.Errorf("key params = %v", keyParams)
 	}
+
+	if err := g.Wheel(ctx, bizcomputeruse.Point{X: 40, Y: 50}, -120); err != nil {
+		t.Fatalf("Wheel err = %v", err)
+	}
+	req = <-received
+	if req.Method != "action.wheel" {
+		t.Errorf("wheel method = %q", req.Method)
+	}
+	var wheelParams struct {
+		X     int `json:"x"`
+		Y     int `json:"y"`
+		Delta int `json:"delta"`
+	}
+	if err := json.Unmarshal(req.Params, &wheelParams); err != nil {
+		t.Fatalf("wheel unmarshal: %v", err)
+	}
+	if wheelParams.X != 40 || wheelParams.Y != 50 || wheelParams.Delta != -120 {
+		t.Errorf("wheel params = %+v", wheelParams)
+	}
+
+	if err := g.Drag(ctx, bizcomputeruse.Point{X: 1, Y: 2}, bizcomputeruse.Point{X: 8, Y: 9}, 250); err != nil {
+		t.Fatalf("Drag err = %v", err)
+	}
+	req = <-received
+	if req.Method != "action.drag" {
+		t.Errorf("drag method = %q", req.Method)
+	}
+	var dragParams struct {
+		From       map[string]int `json:"from"`
+		To         map[string]int `json:"to"`
+		DurationMs int            `json:"durationMs"`
+	}
+	if err := json.Unmarshal(req.Params, &dragParams); err != nil {
+		t.Fatalf("drag unmarshal: %v", err)
+	}
+	if dragParams.From["x"] != 1 || dragParams.To["x"] != 8 || dragParams.DurationMs != 250 {
+		t.Errorf("drag params = %+v", dragParams)
+	}
 }
 
 // TestGatewayController 窗口/应用控制。

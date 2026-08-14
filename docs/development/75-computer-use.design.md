@@ -13,6 +13,9 @@
 | ADR-CU-04 | iOS 仅承诺模拟器（P3） | 真机需 macOS+Xcode 签名链路，复杂度与收益不匹配（用户确认） | 真机不支持 |
 | ADR-CU-05 | OmniParser 独立 HTTP 服务（标准组件） | Python/torch 栈隔离、GPU 弹性调度；许可不作选型约束（用户决策） | 部署多一个服务 |
 | ADR-CU-06 | CDP 传输：P1 stdio JSON-RPC；P3 回环/局域网 HTTP | sidecar 子进程免端口管理、天然单机隔离；iOS 跨主机必须 HTTP | 两种传输实现 |
+| ADR-CU-07 | 工具动作面补齐 `wheel`/`drag`/`wait`（对齐 Claude computer_20250124） | sidecar 已有滚轮/拖拽；wait 为 Usecase 计时（≤10s，计入预算），不进 sidecar | hold_key/mouse_down 暂缓 |
+| ADR-CU-08 | 专用 GUI grounding 模型为 fallback 链可选一级 | HTTP 插件（`ARANEA_CUA_GROUNDER_URL`），不替换 a11y；无 URL 则跳过 | 与 OmniParser/7B VL 争 GPU |
+| ADR-CU-09 | 长程可靠性用会话约束账本 + must_reobserve + ask_user | 对标 OSWorld 2.0 主失败模式；第一期只回灌原始 goal，不用 bBoN | 会话仍纯内存 |
 
 ## 1. 总体架构
 
@@ -54,15 +57,15 @@
 | `device.ping` | — | `{ok:true}` | 心跳 |
 | `device.info` | — | `{platform, screen:{width,height,scaleFactor}, displays[]}` | 物理像素与 DPI |
 | `perception.snapshot` | `{windowTitle?, includeScreenshot?, maxElements?}` | `{elements:UIElement[], screenshotRef?, generation:N}` | a11y 元素树（扁平化+ref） |
-| `perception.screenshot` | `{region?:{x,y,w,h}, zoom?:float}` | `{pngBase64, width, height, scaleFactor}` | 物理像素 PNG |
-| `action.invoke` | `{ref}` | `{ok, via:"invoke"}` | 元素级直调（无坐标） |
-| `action.click` | `{x,y,button:"left|right|middle",clickCount}` | `{ok}` | 坐标级（物理像素） |
+| `perception.screenshot` | `{region?:{x,y,w,h}, zoom?:float}` | `{pngBase64, width, height, scaleFactor}` | 默认虚拟桌面全屏（含所有显示器） |
+| `action.invoke` | `{ref}` | `{ok, via:"invoke"}` | 元素级直调（无坐标）；`IsEnabled=false` → `-32002` |
+| `action.click` | `{x,y,button:"left|right|middle",clickCount}` | `{ok}` | 坐标级（物理像素）；注入前校验前台窗口 |
 | `action.type` | `{text, intervalMs?}` | `{ok}` | 文本注入（SendInput Unicode） |
 | `action.key` | `{combo:"ctrl+s"}` | `{ok}` | 组合键 |
-| `action.wheel` | `{x,y,delta}` | `{ok}` | 滚轮 |
-| `action.drag` | `{from:{x,y},to:{x,y},durationMs?}` | `{ok}` | 拖拽 |
+| `action.wheel` | `{x,y,delta}` | `{ok}` | 滚轮；注入前校验前台窗口 |
+| `action.drag` | `{from:{x,y},to:{x,y},durationMs?}` | `{ok}` | 拖拽；注入前校验前台窗口 |
 | `window.list` | — | `{windows:[{hwnd,title,processName,isForeground,bounds}]}` | |
-| `window.focus` | `{titleRegex 或 hwnd}` | `{ok, hwnd}` | |
+| `window.focus` | `{titleRegex 或 hwnd}` | `{ok, hwnd}` | 置前失败或 `GetForegroundWindow` 不匹配 → `-32002` |
 | `app.launch` | `{target, args?, workDir?}` | `{ok, pid}` | target=路径或注册应用名 |
 
 ### 2.3 统一元素模型（UIElement）
@@ -103,17 +106,13 @@ idle → observing → grounding → acting → done
 
 ```go
 // Stability:evolving
-type DeviceGateway interface {          // 与 sidecar 通信
-    Info(ctx) (DeviceInfo, error)
-    Snapshot(ctx, SnapshotOpts) (Snapshot, error)
-    Screenshot(ctx, region, zoom) (Image, error)
-    Invoke(ctx, ref) error
-    Click(ctx, p Point, btn string, n int) error
-    TypeText(ctx, text string) error
-    Key(ctx, combo string) error
-    FocusWindow(ctx, titleRegex string) error
-    Launch(ctx, target string) (int, error)
-} // 注：超 5 方法，按 DB-N3 拆分为 DevicePerceiver / DeviceActor 两个窄接口，DeviceGateway 仅作组合
+type DeviceGateway interface {          // 组合窄接口，实现端一次性实现
+    DevicePerceiver
+    DeviceActor                         // Invoke/Click/TypeText/Key
+    DevicePointer                       // Wheel/Drag（M3.1 ADR-CU-07）
+    DeviceController                    // FocusWindow/Launch/ListWindows
+}
+// Wait 在 Usecase 内实现（可取消 sleep，上限 10s），不进 sidecar
 
 // Stability:evolving
 type VisionParser interface {           // OmniParser / VLM 直判统一抽象
@@ -121,8 +120,9 @@ type VisionParser interface {           // OmniParser / VLM 直判统一抽象
     Parse(ctx, img Image) ([]UIElement, error)   // OmniParser
 }
 // Stability:evolving
-type VisionGrounder interface {         // VLM 语义定位
+type VisionGrounder interface {         // VLM 语义定位 + 专用模型共用
     Pick(ctx, img Image, candidates []UIElement, target string) (ref string, err error)
+    PickCoordinate(ctx, img Image, target string) (Point, error)
 }
 // Stability:evolving
 type AuditStore interface {             // 审计落库（data 层实现）
@@ -150,6 +150,7 @@ type AuditStore interface {             // 审计落库（data 层实现）
 | `som.go` | SoM 标注器：截图上为候选元素绘制编号框（Go image/draw，ASCII 编号）；`DownscalePNG` 截图降采样（最长边 ≤1568，x/image ApproxBiLinear） |
 | `omniparser.go` | VisionParser HTTP 客户端：POST {base64} → parsed_content[] → UIElement[]（source=vision）；`Available()` 健康检查 + 失败降级标记 |
 | `vlm.go` | VisionGrounder：经 LLM catalog 取多模态模型，SoM 图 + 候选列表 + target → 返回编号；发送图降采样 ≤1568px（prompt bbox 同比例缩放）；单次调用超时 60s（容忍本地模型冷启动）；**无匹配出口**：SoM 选编号输出 0 或负号哨兵（如 "-1"）/ 坐标直判输出 "-1, -1" → 明确 ErrGroundingFailed，禁止强制乱选/乱点（M2 审查 F4：编号解析允许负号并判负，防止 "-1" 被提取为候选 1 误选）。**模型选取规则**：catalog `List` 顺序首个 `enabled && Vision` 模型生效（每次 grounding 实时查询，仅 a11y 未命中时触发，开销可忽略）；多模型并存时把偏好模型排前即可控制优先级 |
+| `specialist_grounder.go` | 专用 GUI grounding HTTP 客户端（M3.2 ADR-CU-08）：`POST {base}/ground` `{image_base64,target,width,height}` → `{x,y}`；负坐标=无匹配。环境变量 `ARANEA_CUA_GROUNDER_URL` 为空则 `Deps.Specialist=nil`，该级跳过 |
 
 ### 3.3 Grounding 决策流（Act 编排）
 
@@ -164,20 +165,33 @@ Act(target)
     c. merged := fusion.Merge(snapshot.elements, visionEls)   （IoU>0.1）
     d. som := som.Annotate(img, merged) → 降采样 ≤1568px
     e. ref := vlm.Pick(som图, merged, target)  （VLM 输出 0 = 无匹配 → 继续降级）
- 4. SoM 失败 → VLM 坐标直判（path=vlm_direct，免 OmniParser 最低精度路径）：
+ 3.5 SoM 失败 → 专用 grounding 模型（path=grounder，ADR-CU-08，URL 未配则跳过）：
+    screenshot → POST /ground → 物理像素点 → click/wheel 等坐标动作
+ 4. 专用模型失败/未配 → VLM 坐标直判（path=vlm_direct，免 OmniParser 最低精度路径）：
     全屏粗判（归一化千分位坐标）→ 以粗判点为中心 480x360 区域 2x zoom 精判
     （VLM 输出 "-1, -1" = 无匹配 → ErrGroundingFailed 明确报错，不乱点）
     ※ 坐标语义（M2 审查 F1 修正）：sidecar 为 PerMonitorV2 DPI aware，
     截图图像素与物理像素 1:1，粗判点直接使用，禁止再除 ScaleFactor
- 5. 命中 → 执行（invoke/click/type/key）；dry_run 只 grounding + 返回计划
+ 5. 命中 → 执行（invoke/click/type/key/wheel/drag/focus）；wait 为 Usecase 可取消等待（≤10s，计入预算）
+    dry_run 只 grounding + 返回计划；focus 走 `window.focus`（title_regex 或 target）
+    vlm_direct / grounder 坐标路径支持 drag（起点=定位点，终点=to_x/to_y）
  6. 执行后验证：settle → re-snapshot → 元素树 hash 比对 + 前台窗口检查，
     结果透出 verify{changed, foreground_before/after}（no_effect 供 LLM 决策）
-    ※ settle 窗口固定 400ms 且不感知急停取消（有界延迟，急停最多多等一拍）
+    ※ settle 前/后若 ctx 已取消（急停）则跳过对比，避免无意义等待
+    ※ 验证无效果时同会话自动重试 ≤2（每次计费并落 `retry` 审计步），仍无效果再置 must_reobserve
+    ※ must_reobserve（M3.3 ADR-CU-09）：HasBaseline && !changed 且动作预期有效果
+      → 会话置位；下一次写动作（含 launch）返回 ErrMustReobserve，仅允许 observe/screenshot/wait
  7. 批量：actions[] 按序 fail-fast，任一步失败即停且错误注明已完成步数
  8. 全程：step 审计落库 + envelope 事件 + 流程日志
-    ※ 降级链日志（M2 审查 F2）：grounding 降级（a11y miss → SoM / vlm_direct）
+    ※ 降级链日志（M2 审查 F2）：grounding 降级（a11y miss → SoM / grounder / vlm_direct）
     走 `FlowLogWriter.LogFlowWarn`（warn 级，K3）；端口已扩展 LogFlowWarn，
     实现见 internal/service/event_adapter.go（TraceEmitter.LogWarn）
+    ※ ask_user：同 Agent 连续 2 次 grounding 失败（`groundFailsByAgent` 跨会话累计）
+      → ActResult.AskUser=true + Suggestion；工具层对该错误返回结构化 JSON（非 throw）
+    ※ 约束账本：StartSession/Observe/Act 可带 goal；第一期整段回灌 constraints[]，不做 LLM 抽取
+    ※ 可恢复失败（grounding/禁区/动作错误）回 idle，不进 failed，不解除/重建会话
+    ※ 预算耗尽 / 急停进终态并**保持** activeByAgent，禁止自动重建（须显式 session.start）
+    ※ path=vlm_direct 的步骤标记 degraded=true（审计/事件/步骤流徽标）
 ```
 
 ### 3.4 工具集（`internal/tools/computeruse/`）
@@ -191,9 +205,10 @@ Act(target)
 | `computer_use.session` | 会话管理 | false | action=start\|stop\|status，绑定预算 |
 
 - 注册：`toolset.go` Registry() 追加 + `internal/data/builtin_tools_seed.go` 种子（分类 `computeruse`，Tags `["desktop","gui","automation"]`，RiskLevel=high for act/launch）
-- 种子演进注意（M2 审查提示 5 处置）：computer_use_* 种子无 `registryName`（工具集走 AssemblyConfig 装配，不入全局 Registry），`syncBuiltinToolsFromRegistry` 不覆盖——存量库已有行的 schema 不随种子自动演进（INSERT ON CONFLICT DO NOTHING）。未来对 computer_use_* 的 schema 变更须新增 catalog-patch 迁移（参照 `syncBuiltinWebToolCatalogPatches` 模式 + 新 DDL 迁移版本号）。2026-08-13 实测部署库 `computer_use_act` 已含 `actions[]` 批量 schema（20261208 修复的正是"从未种子"缺陷，凡应用该迁移的库均为 fresh insert，天然带全量 schema）
+- 种子演进注意（M2 审查提示 5 处置）：computer_use_* 种子无 `registryName`（工具集走 AssemblyConfig 装配，不入全局 Registry），`syncBuiltinToolsFromRegistry` 不覆盖——存量库已有行的 schema 不随种子自动演进（INSERT ON CONFLICT DO NOTHING）。M3 起 `syncBuiltinComputerUseToolCatalogPatches` 在每次启动把 observe/screenshot/act/session 的 description+schema 刷到存量行（不改 enabled）。action enum 含 `invoke|click|type|key|wheel|drag|wait|focus`。
 - 工厂经 `AssemblyConfig` 新增 `ComputerUse *bizcomputeruse.ComputerUseUsecase` 字段装配
-- 确认门：复用现有 tool-grants；敏感词命中（`tool_confirm_gate.go` `computerUseDangerHit`，仅 act/launch 两工具检查入参）时决策链短路为 `policy_danger`——**强制逐次确认，持久/会话授权不生效**；确认卡 Step.Danger=true 渲染「高危」徽标，且前端仅显示「允许本次/拒绝」两按钮（需求 §5.3）
+- 确认门：复用现有 tool-grants；敏感词命中（`tool_confirm_gate.go` `computerUseDangerHit`，扫描顶层 target/text/combo **以及** `actions[]` 子动作）或 Observe 注入打标（`InjectionSuspected(AgentKey)`）时决策链短路为强制确认——**持久/会话授权不生效**；确认卡 Step.Danger=true 渲染「高危」徽标，且前端仅显示「允许本次/拒绝」两按钮（需求 §5.3）
+- `observe` / `screenshot` / `session status` 返回 `session_id`（无活跃会话时为空串）
 
 ### 3.5 安全模型实现点
 
@@ -201,10 +216,10 @@ Act(target)
 |------|---------|
 | 确认门 | 工具 RequiresConfirmation + 确认门 danger 短路（`computerUseDangerHit` 命中敏感词时绕过授权链）+ Usecase 内 `Policy.IsDanger` 标记审计/事件 |
 | 敏感词表 | `internal/biz/computeruse/policy.go` 内置默认表（删除/支付/转账/发送/确认支付/格式化/永久删除…），配置可覆盖 |
-| 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾…）→ act 拒绝 |
-| 预算 | Session.Budget，`beginStep` 同锁原子完成「忙/终态检查 + StepsUsed 自增 + 状态转换」（M2 审查 F3：杜绝并发 Act 双计费泄漏）；预算被拒的尝试步以 `Index=stepsUsed+1` 落审计，单调不撞号 |
+| 进程禁区 | sidecar `window.list` 前台进程名 ∈ 黑名单（keepass/1password/银行 U 盾…）→ act 拒绝；**窗口枚举失败 fail-closed**（视为无法确认禁区，拒绝动作） |
+| 预算 | Session.Budget，`beginStep` 同锁原子完成「忙/终态检查 + StepsUsed 自增 + 状态转换」（M2 审查 F3：杜绝并发 Act 双计费泄漏）；预算被拒的尝试步以 `Index=stepsUsed+1` 落审计，单调不撞号；耗尽后保持 activeByAgent，禁止自动重建 |
 | 干跑 | req.DryRun=true → 只执行 grounding + SoM 标注返回计划，不注入 |
-| 急停 | `KillSwitch`：context cancel + sidecar 动作队列清空；前端按钮 → API |
+| 急停 | `KillSwitch`：context cancel + 会话 cancelled + 保持映射；**已发出的 sidecar SendInput 无法中途撤回**；前端按钮 → API |
 
 ### 3.6 数据模型
 
@@ -217,30 +232,29 @@ Act(target)
 | agent_key | string | Agent |
 | step_index | int | 步序号 |
 | target | text | 目标描述 |
-| path | enum(a11y/vision/vlm_direct) | grounding 路径 |
-| action | string | invoke/click/type/key/launch… |
+| path | enum(a11y/vision/vlm_direct/grounder) | grounding 路径 |
+| action | string | invoke/click/type/key/focus/launch… |
 | params | json | 动作参数 |
 | result | enum(ok/retry/failed/cancelled) | |
 | error | text, 可空 | |
 | duration_ms | int64 | |
 | confirmed_by | string, 可空 | 确认人（确认门） |
 | danger | bool | 高危标记 |
-| screenshot_ref | string, 可空 | 截图存储引用（文件路径） |
+| screenshot_ref | string, 可空 | 审计截图文件路径（`bin/cua/audit/{session}-{index}.png`，AuditShotDir 空则不落） |
 | created_at | time | |
 
 ### 3.7 事件与日志
 
-- **实时事件**：`computeruse.step` MonitorEvent（`internal/event/contract/monitor_event.go`，ADR-03 双总线迁移后不再新增 Envelope 类型）。payload=Step 摘要（Metadata：step_index/target/path/action/result/duration_ms/danger/confirmed_by/error）；发布端口 `bizcu.StepEventPublisher`，适配器 `internal/computeruse/step_events.go` 走 MonitorBus → WS monitor pump。可靠性 Informational——持久化以 `computer_use_audit` 表为准（每步同步落库）
+- **实时事件**：`computeruse.step` MonitorEvent（`internal/event/contract/monitor_event.go`，ADR-03 双总线迁移后不再新增 Envelope 类型）。payload=Step 摘要（Metadata：step_index/target/path/action/result/duration_ms/danger/confirmed_by/error/degraded/screenshot_ref）；发布端口 `bizcu.StepEventPublisher`，适配器 `internal/computeruse/step_events.go` 走 MonitorBus → WS monitor pump。可靠性 Informational——持久化以 `computer_use_audit` 表为准（每步同步落库）
 - **流程日志 step_id**（登记 stepTitleRegistry + 52 号文档 §5.1；domain=computeruse 已注册 TraceDomain 并接入 `domainForStepID`）：
   `computeruse.session.start` / `computeruse.session.done` / `computeruse.act` / `computeruse.grounding.fallback`（降级 warn）/ `computeruse.act.done` / `computeruse.act.error` / `computeruse.budget.exceeded` / `computeruse.killswitch`
 - **进程日志**：loggateway 构造注入；K7：sidecar 启停/panic/看门狗各一条；K2 错误含 `loggateway.Err`
 
 ### 3.8 前端设计（P1 最简视图）
 
-- `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent）
-- 聊天气泡内嵌：`TurnContainer.vue` 在 **turn.Status=running** 且 steps 中含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时，气泡尾部渲染 CuStepStream——步骤卡片（目标/路径徽标/耗时/结果/失败原因）；头部急停按钮 → `POST /v1/computeruse/sessions/{id}/kill`。历史 turn 不渲染（急停对死会话无意义，审计回放走监控页 steps API）
-- **容器白名单（M1.5 审查 S1）**：CuStepStream 仅允许嵌入 TurnContainer（聊天气泡尾部）；监控页等其他场景复用前须过 UX 评审（实时事件流+急停按钮的展示语境与气泡内不同）
-- **TECH-DEBT（M1.5 审查 S2）**：步骤流仅消费 WS 实时事件，页面刷新后不回放（审计数据仍可经 ListComputerUseSteps 查询）；后续补齐 REST 回补时须复用 `cuStepFromMonitorEvent` 字段映射口径（含 danger/confirmed_by），避免双份映射漂移
+- `web/src/features/computeruse/`：步骤流组件 `CuStepStream.vue`（订阅 WS monitor 通道的 `computeruse.step` MonitorEvent；挂载时 `ListComputerUseSteps` 回补）
+- 聊天气泡内嵌：`TurnContainer.vue` 在 steps 含 computeruse 会话（`cuSessionIdFromSteps` 提取 ToolResult.session_id）时渲染 CuStepStream。运行中 turn 显示急停；历史 turn `readonly`（隐藏急停，审计回放）。路径徽标 i18n：a11y=精确 / vision=视觉 / vlm_direct=视觉直判；`degraded` 徽标=视觉服务降级；急停文案「已被用户终止」
+- 监控页 Desktop 页：输入会话 ID + 只读 `CuStepStream`；sidecar down 横幅消费 `GetComputerUseStatus`
 - ToolsPage 自动展示新工具（种子分类 computeruse，分类筛选项含 computeruse）
 
 ### 3.9 API（service 层）
@@ -251,7 +265,7 @@ Act(target)
 | `/v1/computeruse/sessions/{id}/steps` | GET | 审计步骤查询（监控页） |
 | `/v1/computeruse/status` | GET | sidecar/OmniParser 健康状态 |
 
-Proto：`api/kratos/computeruse/v1/computeruse.proto`（`make api` 生成；服务实现走 service 层调 biz Usecase）。
+Proto：`api/kratos/computeruse/v1/computeruse.proto`（`make api` 生成；服务实现走 service 层调 biz Usecase）。`ComputerUseStep` 含 `screenshot_ref=15`、`degraded=16`。
 
 ## 4. 技术选型
 

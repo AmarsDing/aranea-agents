@@ -79,7 +79,7 @@ func trendPointsDescending(scores ...float32) []beval.TrendPoint {
 func TestScoreDropAlerterSkipsNonAfterTurnRuns(t *testing.T) {
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: trendPointsDescending(0.5, 0.7, 0.9)}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 3, AlertMetric: "llm_as_judge",
 	}}, bus, loggateway.NewNoop())
 
@@ -92,7 +92,7 @@ func TestScoreDropAlerterSkipsNonAfterTurnRuns(t *testing.T) {
 func TestScoreDropAlerterDisabledBelowTwoDrops(t *testing.T) {
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: trendPointsDescending(0.5, 0.7)}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 0,
 	}}, bus, loggateway.NewNoop())
 
@@ -106,7 +106,7 @@ func TestScoreDropAlerterFiresOnConsecutiveDrops(t *testing.T) {
 	// newest-first: 0.40 < 0.55 < 0.80 → 3 consecutive drops (each newer run lower).
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: trendPointsDescending(0.40, 0.55, 0.80)}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 3, AlertMetric: "llm_as_judge",
 	}}, bus, loggateway.NewNoop())
 
@@ -127,7 +127,7 @@ func TestScoreDropAlerterSilentWhenNotMonotonic(t *testing.T) {
 	// newest-first: 0.70 > 0.55 → the newest run improved, no alert.
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: trendPointsDescending(0.70, 0.55, 0.80)}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 3, AlertMetric: "llm_as_judge",
 	}}, bus, loggateway.NewNoop())
 
@@ -140,7 +140,7 @@ func TestScoreDropAlerterSilentWhenNotMonotonic(t *testing.T) {
 func TestScoreDropAlerterSilentWithInsufficientPoints(t *testing.T) {
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: trendPointsDescending(0.40, 0.55)}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 3, AlertMetric: "llm_as_judge",
 	}}, bus, loggateway.NewNoop())
 
@@ -158,7 +158,7 @@ func TestScoreDropAlerterUsesConfiguredMetric(t *testing.T) {
 	}
 	repo := &fakeTrendRepo{fakeEvalRepo: newFakeEvalRepo(), points: pts}
 	bus := &captureBus{}
-	a := NewScoreDropAlerter(beval.NewUsecase(repo, loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
+	a := NewScoreDropAlerter(beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop()), fakeConfigReader{cfg: biz.AgentEvalAutoConfig{
 		Enabled: true, DatasetID: "ds1", AlertConsecutiveDrops: 3, AlertMetric: "exact_match",
 	}}, bus, loggateway.NewNoop())
 

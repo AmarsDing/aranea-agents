@@ -8,12 +8,13 @@
  * 可靠性：事件为 Informational 级（尽力而为），持久化以
  * computer_use_audit 表为准（ListComputerUseSteps 可回补）。
  */
-import { ref, onUnmounted, type Ref } from 'vue';
+import { ref, watch, onUnmounted, type Ref } from 'vue';
 import { createMonitorStream } from '../../realtime/useMonitorStream';
 import type { MonitorEvent } from '../../realtime/monitorEvent';
 import type { Step } from '../chat/v2Types';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import { createComputerUseService } from '../../services/index';
+import type { ComputerUseStep } from '../../services/kratos/computeruse/v1';
 
 /** CuStep 步骤流视图模型（字段对齐 step_events.go Metadata）。 */
 export interface CuStep {
@@ -24,6 +25,8 @@ export interface CuStep {
   result: string;
   durationMs: number;
   danger: boolean;
+  degraded: boolean;
+  screenshotRef: string;
   confirmedBy: string;
   error: string;
   timestamp: string;
@@ -54,9 +57,29 @@ export function cuStepFromMonitorEvent(ev: MonitorEvent): CuStep | null {
     result: metadataStr(md, 'result'),
     durationMs: metadataNum(md, 'duration_ms'),
     danger: md.danger === true,
+    degraded: md.degraded === true,
+    screenshotRef: metadataStr(md, 'screenshot_ref'),
     confirmedBy: metadataStr(md, 'confirmed_by'),
     error: metadataStr(md, 'error'),
     timestamp: ev.timestamp,
+  };
+}
+
+/** cuStepFromAudit 把 ListComputerUseSteps 的审计行映射为 CuStep（与 WS 口径一致）。 */
+export function cuStepFromAudit(item: ComputerUseStep): CuStep {
+  return {
+    stepIndex: item.stepIndex ?? 0,
+    target: item.target ?? '',
+    path: item.path ?? '',
+    action: item.action ?? '',
+    result: item.result ?? '',
+    durationMs: item.durationMs ?? 0,
+    danger: item.danger === true,
+    degraded: item.degraded === true,
+    screenshotRef: item.screenshotRef ?? '',
+    confirmedBy: item.confirmedBy ?? '',
+    error: item.error ?? '',
+    timestamp: item.createdAt ?? '',
   };
 }
 
@@ -105,6 +128,30 @@ export function useCuStepStream(sessionId: Ref<string>) {
       if (step.result === 'cancelled') killState.value = 'killed';
     },
   });
+
+  async function replayFromAudit(id: string): Promise<void> {
+    const sid = id.trim();
+    if (!sid) return;
+    try {
+      const resp = await createComputerUseService().ListComputerUseSteps({ id: sid });
+      const items = resp.items ?? [];
+      let next = steps.value.slice();
+      for (const it of items) {
+        next = upsertCuStep(next, cuStepFromAudit(it));
+      }
+      steps.value = next;
+      if (next.some((s) => s.result === 'cancelled') && killState.value !== 'killing') {
+        killState.value = 'killed';
+      }
+    } catch (err) {
+      // REST 回补失败不阻断 WS 实时路径（Informational 级）。
+      console.warn('computeruse steps replay failed', err);
+    }
+  }
+
+  watch(sessionId, (id) => {
+    void replayFromAudit(id);
+  }, { immediate: true });
 
   async function kill(): Promise<void> {
     const id = sessionId.value.trim();

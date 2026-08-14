@@ -10,7 +10,7 @@ import (
 type getBotQRCodeResp struct {
 	Ret              int    `json:"ret"`
 	QRCode           string `json:"qrcode"`
-	QRCodeImgContent string `json:"qrcode_img_content"` // data:image/png;base64,...
+	QRCodeImgContent string `json:"qrcode_img_content"` // 扫码内容（当前为 liteapp URL，需自行编码成二维码图），非图片 data URL
 	ErrCode          int    `json:"errcode"`
 	ErrMsg           string `json:"errmsg"`
 }

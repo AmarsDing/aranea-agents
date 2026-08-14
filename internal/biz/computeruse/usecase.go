@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,8 @@ const (
 	StepGroundFall     = "computeruse.grounding.fallback"
 	StepBudgetExceeded = "computeruse.budget.exceeded"
 	StepKillSwitch     = "computeruse.killswitch"
+	// StepInjectionDetected 屏幕内容注入检出（M77）：warn 级（设计内安全防线触发，非系统故障）。
+	StepInjectionDetected = "computeruse.injection.detected"
 )
 
 // 业务错误（供 service/工具层判定）。
@@ -33,12 +37,16 @@ var (
 	ErrGroundingFailed  = errors.New("computeruse: 目标元素定位失败")
 	ErrBlockedProcess   = errors.New("computeruse: 前台进程在禁区内，拒绝动作")
 	ErrSessionNotFound  = errors.New("computeruse: 会话不存在")
+	ErrMustReobserve    = errors.New("computeruse: 上一步无可见效果，请先 observe/screenshot/wait 再执行写动作")
 )
 
 // 默认会话预算：50 步 / 30 分钟。
 const (
 	defaultMaxSteps = 50
 	defaultDeadline = 30 * time.Minute
+	maxWait         = 10 * time.Second
+	askUserAfter    = 2
+	maxVerifyRetry  = 2
 )
 
 // ElementMatcher a11y 元素模糊匹配器（internal/computeruse.Matcher 实现）。
@@ -50,18 +58,21 @@ type ElementMatcher interface {
 
 // Deps Usecase 依赖聚合（构造注入；可 nil 的依赖已在字段注明）。
 type Deps struct {
-	Gateway  DeviceGateway      // sidecar 网关（必需）
-	Match    ElementMatcher     // a11y 匹配器（必需）
-	Vision   VisionParser       // 可 nil：nil 时跳过 SoM 视觉兜底
-	Grounder VisionGrounder     // 可 nil：nil 时跳过视觉兜底
-	Audit    AuditStore         // 可 nil：跳过落库（M1.4 接线）
-	Events   StepEventPublisher // 可 nil：跳过实时事件
-	FlowLog  biz.FlowLogWriter  // 可 nil：跳过流程日志
-	Policy   Policy             // 值类型，零值=安全默认
-	Lg       loggateway.Logger  // 可 nil：noop
-	Now      func() time.Time   // 可 nil：time.Now（测试注入）
-	NewID    func() string      // 可 nil：内部自增（测试注入）
-	Settle   func(time.Duration) // 可 nil：time.Sleep（动作后验证等待，测试注入 no-op）
+	Gateway      DeviceGateway       // sidecar 网关（必需）
+	Match        ElementMatcher      // a11y 匹配器（必需）
+	Vision       VisionParser        // 可 nil：nil 时跳过 SoM 视觉兜底
+	Grounder     VisionGrounder      // 可 nil：nil 时跳过视觉兜底
+	Specialist   VisionGrounder      // 可 nil：专用 GUI grounding（M3.2），插在 SoM 与 vlm_direct 之间
+	Audit        AuditStore          // 可 nil：跳过落库（M1.4 接线）
+	Events       StepEventPublisher  // 可 nil：跳过实时事件
+	FlowLog      biz.FlowLogWriter   // 可 nil：跳过流程日志
+	Policy       Policy              // 值类型，零值=安全默认
+	Guard        InjectionGuard      // 值类型，零值=安全默认（M77 屏幕内容注入检测）
+	Lg           loggateway.Logger   // 可 nil：noop
+	Now          func() time.Time    // 可 nil：time.Now（测试注入）
+	NewID        func() string       // 可 nil：内部自增（测试注入）
+	Settle       func(time.Duration) // 可 nil：time.Sleep（动作后验证等待，测试注入 no-op）
+	AuditShotDir string              // 可空：空则不落审计截图文件
 }
 
 // ComputerUseUsecase 桌面 GUI 自动化用例编排。
@@ -72,7 +83,13 @@ type ComputerUseUsecase struct {
 	sessions       map[string]*Session // sessionID → session
 	activeByAgent  map[string]string   // agentKey → 活跃 sessionID
 	sessionCancels map[string]context.CancelFunc
-	idSeq          int
+	// suspectedByAgent agentKey → 屏幕内容注入打标（M77；每次 Observe 全量刷新，
+	// 命中后该 Agent 后续写动作强制 danger 升级；内存态不落库，ADR-77-02）。
+	suspectedByAgent map[string]bool
+	// groundFailsByAgent 跨会话累计 grounding 失败次数（失败会话进终态会重建，
+	// 计数不能只挂在 Session 上，否则 ask_user 永远达不到阈值）。
+	groundFailsByAgent map[string]int
+	idSeq              int
 }
 
 // NewComputerUseUsecase 构造。
@@ -87,10 +104,12 @@ func NewComputerUseUsecase(d Deps) *ComputerUseUsecase {
 		d.Settle = time.Sleep
 	}
 	u := &ComputerUseUsecase{
-		d:              d,
-		sessions:       map[string]*Session{},
-		activeByAgent:  map[string]string{},
-		sessionCancels: map[string]context.CancelFunc{},
+		d:                  d,
+		sessions:           map[string]*Session{},
+		activeByAgent:      map[string]string{},
+		sessionCancels:     map[string]context.CancelFunc{},
+		suspectedByAgent:   map[string]bool{},
+		groundFailsByAgent: map[string]int{},
 	}
 	if d.NewID == nil {
 		d.NewID = u.nextID
@@ -162,7 +181,8 @@ func (u *ComputerUseUsecase) StopSession(ctx context.Context, sessionID string) 
 	return nil
 }
 
-// KillSwitch 急停：取消进行中动作 + 会话置 cancelled。
+// KillSwitch 急停：取消进行中动作 + 会话置 cancelled，保持 activeByAgent 禁止自动重建。
+// 已发出的 sidecar SendInput 无法中途撤回，急停只阻断后续步骤与 settle 验证。
 func (u *ComputerUseUsecase) KillSwitch(ctx context.Context, sessionID string) error {
 	u.mu.Lock()
 	s, ok := u.sessions[sessionID]
@@ -200,6 +220,24 @@ func (u *ComputerUseUsecase) GetSession(_ context.Context, sessionID string) (Se
 		return Session{}, ErrSessionNotFound
 	}
 	return *s, nil
+}
+
+// BindGoal 将会话约束原文写入（仅当现 Goal 为空）。空 goal 为 no-op。
+func (u *ComputerUseUsecase) BindGoal(sessionID, goal string) error {
+	goal = strings.TrimSpace(goal)
+	if goal == "" {
+		return nil
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	s, ok := u.sessions[sessionID]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	if s.Goal == "" {
+		s.Goal = goal
+	}
+	return nil
 }
 
 // ListSteps 审计步骤查询。
@@ -240,12 +278,167 @@ func (u *ComputerUseUsecase) Observe(ctx context.Context, req ObserveRequest) (O
 		return ObserveResult{}, err
 	}
 	info, _ := u.d.Gateway.Info(ctx)
+
+	// M77 注入检测：扫描屏幕文本，命中即打标（每次 Observe 全量刷新该 Agent 标记）。
+	// 只打标不篡改：元素清单原样透出（红线）。
+	hits := u.d.Guard.Scan(snap.Elements)
+	suspected := len(hits) > 0
+	u.mu.Lock()
+	u.suspectedByAgent[req.AgentKey] = suspected
+	u.mu.Unlock()
+	if suspected && u.d.FlowLog != nil {
+		u.d.FlowLog.LogFlowWarn(ctx, "", StepInjectionDetected, "屏幕内容疑似注入，后续写动作将强制人工确认",
+			biz.LogPair{Key: "agent_key", Value: req.AgentKey},
+			biz.LogPair{Key: "hits", Value: len(hits)},
+			biz.LogPair{Key: "first_pattern", Value: hits[0].Pattern},
+			biz.LogPair{Key: "first_ref", Value: hits[0].Ref},
+			biz.LogPair{Key: "first_snippet", Value: hits[0].Snippet})
+	}
+
+	constraints := u.touchObserve(req.AgentKey, req.Goal)
 	return ObserveResult{
-		Summary:    summarizeElements(snap.Elements),
-		Elements:   snap.Elements,
-		Generation: snap.Generation,
-		Info:       info,
+		Summary:            summarizeElements(snap.Elements),
+		Elements:           snap.Elements,
+		Generation:         snap.Generation,
+		Info:               info,
+		SessionID:          u.ActiveSessionID(req.AgentKey),
+		InjectionSuspected: suspected,
+		InjectionHits:      hits,
+		Constraints:        constraints,
 	}, nil
+}
+
+// InjectionSuspected 供确认门查询屏幕注入打标（按 AgentKey，与工具层一致）。
+func (u *ComputerUseUsecase) InjectionSuspected(agentKey string) bool {
+	return u.injectionSuspectedOf(agentKey)
+}
+
+// ActiveSessionID 返回该 Agent 当前活跃会话；无则空串。
+func (u *ComputerUseUsecase) ActiveSessionID(agentKey string) string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.activeByAgent[agentKey]
+}
+
+// injectionSuspectedOf 锁内读注入打标（M1.5-B1 锁纪律：共享状态必须经 u.mu）。
+func (u *ComputerUseUsecase) injectionSuspectedOf(agentKey string) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.suspectedByAgent[agentKey]
+}
+
+func (u *ComputerUseUsecase) rememberGoal(s *Session, goal string) {
+	goal = strings.TrimSpace(goal)
+	if s == nil || goal == "" {
+		return
+	}
+	u.mu.Lock()
+	if s.Goal == "" {
+		s.Goal = goal
+	}
+	u.mu.Unlock()
+}
+
+func (u *ComputerUseUsecase) constraintsOf(s *Session) []string {
+	if s == nil {
+		return nil
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if s.Goal == "" {
+		return nil
+	}
+	return []string{s.Goal}
+}
+
+func (u *ComputerUseUsecase) mustReobserveOf(s *Session) bool {
+	if s == nil {
+		return false
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return s.MustReobserve
+}
+
+func (u *ComputerUseUsecase) setMustReobserve(s *Session, v bool) {
+	if s == nil {
+		return
+	}
+	u.mu.Lock()
+	s.MustReobserve = v
+	u.mu.Unlock()
+}
+
+func (u *ComputerUseUsecase) noteGroundFail(s *Session) (ask bool, suggestion string) {
+	key := ""
+	if s != nil {
+		key = s.AgentKey
+	}
+	if key == "" {
+		return false, ""
+	}
+	u.mu.Lock()
+	s.GroundFails++
+	u.groundFailsByAgent[key]++
+	n := u.groundFailsByAgent[key]
+	u.mu.Unlock()
+	if n < askUserAfter {
+		return false, ""
+	}
+	return true, "连续两次未能定位目标，请向用户确认目标控件/窗口是否可见，或改用 API/文件/CLI。"
+}
+
+func (u *ComputerUseUsecase) resetGroundFails(s *Session) {
+	if s == nil {
+		return
+	}
+	u.mu.Lock()
+	s.GroundFails = 0
+	delete(u.groundFailsByAgent, s.AgentKey)
+	u.mu.Unlock()
+}
+
+// touchObserve 为 observe 绑定约束并清除 must_reobserve（会话空闲时）。
+func (u *ComputerUseUsecase) touchObserve(agentKey, goal string) []string {
+	goal = strings.TrimSpace(goal)
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	sid := u.activeByAgent[agentKey]
+	var s *Session
+	if sid != "" {
+		s = u.sessions[sid]
+	}
+	if s == nil || IsTerminal(s.Status) {
+		if agentKey == "" {
+			return nil
+		}
+		now := u.d.Now()
+		s = &Session{
+			ID:        u.d.NewID(),
+			AgentKey:  agentKey,
+			Status:    SessionIdle,
+			Budget:    Budget{MaxSteps: defaultMaxSteps, Deadline: now.Add(defaultDeadline)},
+			CreatedAt: now,
+			UpdatedAt: now,
+			Goal:      goal,
+		}
+		u.sessions[s.ID] = s
+		u.activeByAgent[agentKey] = s.ID
+		if s.Goal == "" {
+			return nil
+		}
+		return []string{s.Goal}
+	}
+	if goal != "" && s.Goal == "" {
+		s.Goal = goal
+	}
+	if s.Status == SessionIdle {
+		s.MustReobserve = false
+	}
+	if s.Goal == "" {
+		return nil
+	}
+	return []string{s.Goal}
 }
 
 // Screenshot 桌面截图（免确认）。
@@ -257,6 +450,14 @@ func (u *ComputerUseUsecase) Screenshot(ctx context.Context, region *Rect, zoom 
 		zoom = 1.0
 	}
 	return u.d.Gateway.Screenshot(ctx, region, zoom)
+}
+
+// MarkReobserved 截图/观察后允许再次写动作（清除 must_reobserve）。
+func (u *ComputerUseUsecase) MarkReobserved(agentKey string) {
+	if strings.TrimSpace(agentKey) == "" {
+		return
+	}
+	_ = u.touchObserve(agentKey, "")
 }
 
 // Act 语义动作：grounding 编排（a11y 优先，视觉兜底）+ 安全策略 + 预算 + 审计。
@@ -308,6 +509,14 @@ func (u *ComputerUseUsecase) actBatch(ctx context.Context, req ActRequest) (ActR
 // actOne 单步执行：预算计费 → 状态机 → 禁区检查 → grounding 执行 → 执行后验证 → 审计。
 func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequest) (ActResult, error) {
 	started := u.d.Now()
+	u.rememberGoal(s, req.Goal)
+
+	if req.Action != ActionWait && u.mustReobserveOf(s) {
+		return ActResult{Constraints: u.constraintsOf(s)}, ErrMustReobserve
+	}
+	if req.Action == ActionWait {
+		u.setMustReobserve(s, false)
+	}
 
 	// 预算守卫 + 会话占用（原子：忙/终态检查 + 计费 + 状态转换，F3）。
 	stepsUsed, err := u.beginStep(s, EvGround)
@@ -330,7 +539,8 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 		u.mu.Unlock()
 	}()
 
-	danger := u.d.Policy.IsDanger(req.Target, req.Args)
+	// M77：注入命中会话的写动作无条件升级高危（与敏感词并联，逻辑或；ADR-77-04）。
+	danger := u.d.Policy.IsDanger(req.Target, req.Args) || u.injectionSuspectedOf(s.AgentKey)
 	step := Step{
 		SessionID:   s.ID,
 		AgentKey:    s.AgentKey,
@@ -350,9 +560,9 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 			biz.LogPair{Key: "danger", Value: danger})
 	}
 
-	// 禁区检查：前台进程命中黑名单直接拒绝。
+	// 禁区检查：前台进程命中黑名单或窗口枚举失败均拒绝（fail-closed）。
 	if err := u.checkBlockedProcess(actCtx); err != nil {
-		u.transit(s, EvFail)
+		u.transit(s, EvStepDone)
 		u.finishStep(ctx, s, req, withResult(step, StepFailed, err), started)
 		return ActResult{}, err
 	}
@@ -360,7 +570,6 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 	preFG := u.foregroundTitle(actCtx)
 	result, preSnap, gerr := u.groundAndExecute(actCtx, s, req, &step)
 	if gerr == nil && !req.DryRun {
-		// S4 执行后验证：settle → post-snapshot 对比，hint 同步进审计 params。
 		result.Verify = u.verifyAfterAction(actCtx, req, preSnap, preFG)
 		if result.Verify != nil && result.Verify.Hint != "" {
 			if step.Params == nil {
@@ -368,11 +577,44 @@ func (u *ComputerUseUsecase) actOne(ctx context.Context, s *Session, req ActRequ
 			}
 			step.Params["verify_hint"] = result.Verify.Hint
 		}
-		result.Step = step // verify 可能补 params，重新同步副本
+		result.Step = step
+		for retries := 0; result.Verify != nil && result.Verify.HasBaseline && !result.Verify.Changed && needsEffectHint(req.Action) && retries < maxVerifyRetry; retries++ {
+			idx, rerr := u.chargeRetry(s)
+			if rerr != nil {
+				break
+			}
+			retryRec := step
+			retryRec.Index = idx
+			retryRec.Result = StepRetry
+			retryRec.Error = result.Verify.Hint
+			u.finishStep(ctx, s, req, retryRec, started)
+			result, preSnap, gerr = u.groundAndExecute(actCtx, s, req, &step)
+			if gerr != nil {
+				break
+			}
+			result.Verify = u.verifyAfterAction(actCtx, req, preSnap, preFG)
+			if result.Verify != nil && result.Verify.Hint != "" {
+				if step.Params == nil {
+					step.Params = map[string]any{}
+				}
+				step.Params["verify_hint"] = result.Verify.Hint
+			}
+			result.Step = step
+		}
+		if result.Verify != nil && result.Verify.HasBaseline && !result.Verify.Changed && needsEffectHint(req.Action) {
+			u.setMustReobserve(s, true)
+		}
 	}
-	u.finishStep(ctx, s, req, step, started)
+	if gerr != nil && errors.Is(gerr, ErrGroundingFailed) {
+		result.AskUser, result.Suggestion = u.noteGroundFail(s)
+	} else if gerr == nil {
+		u.resetGroundFails(s)
+	}
+	result.Constraints = u.constraintsOf(s)
+	step = u.finishStep(ctx, s, req, step, started)
+	result.Step = step
 	if gerr != nil {
-		u.transit(s, EvFail)
+		u.transit(s, EvStepDone)
 		if u.d.FlowLog != nil {
 			u.d.FlowLog.LogFlowError(ctx, s.ID, StepActError, "桌面动作失败",
 				biz.LogPair{Key: "target", Value: req.Target},
@@ -452,7 +694,7 @@ func (u *ComputerUseUsecase) resolveSession(req ActRequest) (*Session, error) {
 
 // beginStep 原子开始一步：会话忙/终态检查 + 预算守卫 + StepsUsed++ + 可选状态转换，
 // 全程同一把锁——杜绝并发 Act「双计费后一者 transit 失败」的预算泄漏（F3）。
-// 预算超限时经状态机把会话置 failed（进终态同时解除 agent 活跃映射，下一次 Act 自动重建会话——B2）。
+// 预算超限时经状态机把会话置 failed，并保持 activeByAgent 映射以禁止自动重建（A7）。
 // ev 为空串表示只占预算不占状态机（Launch 只计费不转换）。
 func (u *ComputerUseUsecase) beginStep(s *Session, ev SessionEvent) (int, error) {
 	u.mu.Lock()
@@ -482,6 +724,24 @@ func (u *ComputerUseUsecase) beginStep(s *Session, ev SessionEvent) (int, error)
 	return s.StepsUsed, nil
 }
 
+// chargeRetry 验证失败自动重试计费（同会话，不改状态机；超预算则停止重试）。
+func (u *ComputerUseUsecase) chargeRetry(s *Session) (int, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if s.Status == SessionCancelled {
+		return s.StepsUsed, ErrSessionCancelled
+	}
+	if s.Budget.MaxSteps > 0 && s.StepsUsed >= s.Budget.MaxSteps {
+		return s.StepsUsed, ErrBudgetExceeded
+	}
+	if !s.Budget.Deadline.IsZero() && u.d.Now().After(s.Budget.Deadline) {
+		return s.StepsUsed, ErrBudgetExceeded
+	}
+	s.StepsUsed++
+	s.UpdatedAt = u.d.Now()
+	return s.StepsUsed, nil
+}
+
 // transit 状态机转换（非法转换记 warn 不阻断，防状态卡死）。
 func (u *ComputerUseUsecase) transit(s *Session, ev SessionEvent) bool {
 	u.mu.Lock()
@@ -489,8 +749,8 @@ func (u *ComputerUseUsecase) transit(s *Session, ev SessionEvent) bool {
 	return u.transitionLocked(s, ev)
 }
 
-// transitionLocked 状态机转换（调用方须持 u.mu）。进入终态时解除 agent 活跃映射：
-// failed/cancelled/done 会话不得继续占据 activeByAgent，否则 agent 被永久阻塞（B2）。
+// transitionLocked 状态机转换（调用方须持 u.mu）。正常结束解除 agent 活跃映射；
+// 预算耗尽/急停保持映射，禁止自动重建会话（A7）。
 func (u *ComputerUseUsecase) transitionLocked(s *Session, ev SessionEvent) bool {
 	to, err := Transition(s.Status, ev)
 	if err != nil {
@@ -504,7 +764,11 @@ func (u *ComputerUseUsecase) transitionLocked(s *Session, ev SessionEvent) bool 
 	s.Status = to
 	s.UpdatedAt = u.d.Now()
 	if IsTerminal(to) && u.activeByAgent[s.AgentKey] == s.ID {
-		delete(u.activeByAgent, s.AgentKey)
+		// 仅正常结束解除映射，允许下一任务自动建会话。
+		// 预算耗尽/急停保持映射，禁止自动重建（A7）。
+		if to == SessionDone {
+			delete(u.activeByAgent, s.AgentKey)
+		}
 	}
 	return true
 }
@@ -520,10 +784,7 @@ func (u *ComputerUseUsecase) statusOf(s *Session) SessionStatus {
 func (u *ComputerUseUsecase) checkBlockedProcess(ctx context.Context) error {
 	wins, err := u.d.Gateway.ListWindows(ctx)
 	if err != nil {
-		// 窗口枚举失败不阻断（降级），仅告警。
-		u.d.Lg.Warn("computer-use 窗口枚举失败，禁区检查跳过",
-			loggateway.StepID(StepAct), loggateway.Err(err))
-		return nil
+		return fmt.Errorf("%w: 窗口枚举失败，无法确认禁区: %v", ErrBlockedProcess, err)
 	}
 	for _, w := range wins {
 		if w.IsForeground && u.d.Policy.IsBlockedProcess(w.ProcessName) {
@@ -570,10 +831,28 @@ func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, r
 			return res, &snap, err
 		}
 		// SoM 失败不终局：继续降级 VLM 坐标直判（K3 降级日志）。
-		u.d.Lg.Warn("SoM 视觉兜底失败，降级 VLM 坐标直判",
+		u.d.Lg.Warn("SoM 视觉兜底失败，继续降级",
 			loggateway.StepID(StepGroundFall),
 			loggateway.Str("session_id", s.ID),
 			loggateway.Err(verr))
+	}
+
+	// 3.5 专用 GUI grounding 模型（M3.2）
+	if u.d.Specialist != nil {
+		if u.d.FlowLog != nil {
+			u.d.FlowLog.LogFlowWarn(ctx, s.ID, StepGroundFall, "a11y/SoM 未命中，降级专用 grounding 模型",
+				biz.LogPair{Key: "target", Value: req.Target})
+		}
+		pt, serr := u.specialistGround(ctx, req.Target)
+		if serr == nil {
+			step.Path = PathGrounder
+			res, err := u.executeAtPoint(ctx, req, step, pt)
+			return res, &snap, err
+		}
+		u.d.Lg.Warn("专用 grounding 失败，降级 VLM 坐标直判",
+			loggateway.StepID(StepGroundFall),
+			loggateway.Str("session_id", s.ID),
+			loggateway.Err(serr))
 	}
 
 	// 4. VLM 坐标直判（vlm_direct：免 OmniParser 的最低精度路径，含 zoom 精化）
@@ -604,9 +883,30 @@ func (u *ComputerUseUsecase) groundAndExecute(ctx context.Context, s *Session, r
 
 // directAction 无需 grounding 的动作：key 组合键、纯坐标 click。
 // 返回 direct=true 表示本函数处理该动作；run 延迟到 finishAction 判定干跑后执行。
-// wheel/drag 不在 P1 暴露（biz port 未定义，CDP 能力保留）。
+// wheel/drag/wait 在 P1 由 DirectAction 或元素级执行；Wait 不进 sidecar。
 func (u *ComputerUseUsecase) directAction(ctx context.Context, req ActRequest, step *Step) (run func() error, el *UIElement, direct bool) {
 	switch req.Action {
+	case ActionFocus:
+		title := strArg(req.Args, "title_regex", "")
+		if strings.TrimSpace(title) == "" {
+			title = req.Target
+		}
+		if strings.TrimSpace(title) == "" {
+			return func() error { return fmt.Errorf("computeruse: focus 需要 title_regex 或 target") }, nil, true
+		}
+		step.Path = PathA11y
+		return func() error { return u.d.Gateway.FocusWindow(ctx, title) }, nil, true
+	case ActionWait:
+		ms := intArg(req.Args, "ms", 0)
+		if ms <= 0 {
+			return func() error { return fmt.Errorf("computeruse: wait 动作缺少正数 ms 参数") }, nil, true
+		}
+		d := time.Duration(ms) * time.Millisecond
+		if d > maxWait {
+			d = maxWait
+		}
+		step.Path = PathA11y
+		return func() error { return waitCancelable(ctx, d) }, nil, true
 	case ActionKey:
 		combo, _ := req.Args["combo"].(string)
 		if strings.TrimSpace(combo) == "" {
@@ -623,6 +923,28 @@ func (u *ComputerUseUsecase) directAction(ctx context.Context, req ActRequest, s
 			}, nil, true
 		}
 		return nil, nil, false // 有 target：走 grounding
+	case ActionWheel:
+		x, xok := asInt(req.Args["x"])
+		y, yok := asInt(req.Args["y"])
+		if xok && yok && strings.TrimSpace(req.Target) == "" {
+			delta := intArg(req.Args, "delta", 120)
+			step.Path = PathA11y
+			return func() error { return u.d.Gateway.Wheel(ctx, Point{X: x, Y: y}, delta) }, nil, true
+		}
+		return nil, nil, false
+	case ActionDrag:
+		fx, fok := asInt(req.Args["from_x"])
+		fy, yok := asInt(req.Args["from_y"])
+		tx, tok := asInt(req.Args["to_x"])
+		ty, tyok := asInt(req.Args["to_y"])
+		if fok && yok && tok && tyok {
+			dur := intArg(req.Args, "duration_ms", 300)
+			step.Path = PathA11y
+			return func() error {
+				return u.d.Gateway.Drag(ctx, Point{X: fx, Y: fy}, Point{X: tx, Y: ty}, dur)
+			}, nil, true
+		}
+		return nil, nil, false
 	}
 	return nil, nil, false
 }
@@ -641,6 +963,15 @@ func (u *ComputerUseUsecase) executeOnElement(ctx context.Context, req ActReques
 				return err
 			}
 			return u.d.Gateway.TypeText(ctx, text)
+		case ActionWheel:
+			return u.d.Gateway.Wheel(ctx, el.BBox.Center(), intArg(req.Args, "delta", 120))
+		case ActionDrag:
+			tx, tok := asInt(req.Args["to_x"])
+			ty, tyok := asInt(req.Args["to_y"])
+			if !tok || !tyok {
+				return fmt.Errorf("computeruse: drag 需要 to_x/to_y")
+			}
+			return u.d.Gateway.Drag(ctx, el.BBox.Center(), Point{X: tx, Y: ty}, intArg(req.Args, "duration_ms", 300))
 		default:
 			return fmt.Errorf("computeruse: 动作 %s 不支持元素级执行", req.Action)
 		}
@@ -751,6 +1082,15 @@ func (u *ComputerUseUsecase) executeAtPoint(ctx context.Context, req ActRequest,
 				return err
 			}
 			return u.d.Gateway.TypeText(ctx, text)
+		case ActionWheel:
+			return u.d.Gateway.Wheel(ctx, pt, intArg(req.Args, "delta", 120))
+		case ActionDrag:
+			tx, tok := asInt(req.Args["to_x"])
+			ty, tyok := asInt(req.Args["to_y"])
+			if !tok || !tyok {
+				return fmt.Errorf("computeruse: drag 需要 to_x/to_y")
+			}
+			return u.d.Gateway.Drag(ctx, pt, Point{X: tx, Y: ty}, intArg(req.Args, "duration_ms", 300))
 		default:
 			return fmt.Errorf("computeruse: 动作 %s 不支持坐标级执行", req.Action)
 		}
@@ -768,11 +1108,17 @@ const verifySettleDelay = 400 * time.Millisecond
 // preSnap 为 nil（直行/坐标动作无 grounding 基线）时仅回报前台窗口。
 // 验证失败（快照不可达）降级：仅记录告警，不影响已成功动作的结果。
 func (u *ComputerUseUsecase) verifyAfterAction(ctx context.Context, req ActRequest, preSnap *Snapshot, preFG string) *ActionVerify {
+	if ctx.Err() != nil {
+		return &ActionVerify{ForegroundBefore: preFG}
+	}
 	u.d.Settle(verifySettleDelay)
+	if ctx.Err() != nil {
+		return &ActionVerify{ForegroundBefore: preFG}
+	}
 	v := &ActionVerify{ForegroundBefore: preFG}
 	v.ForegroundAfter = u.foregroundTitle(ctx)
-	if preSnap == nil {
-		return v // HasBaseline=false：直行/坐标动作
+	if preSnap == nil || len(preSnap.Elements) == 0 {
+		return v // HasBaseline=false：直行/坐标动作或空树，不触发重试
 	}
 	v.HasBaseline = true
 	post, err := u.d.Gateway.Snapshot(ctx, SnapshotOpts{MaxElements: 500})
@@ -792,7 +1138,7 @@ func (u *ComputerUseUsecase) verifyAfterAction(ctx context.Context, req ActReque
 // needsEffectHint click/invoke/type 等元素级动作预期产生可见 UI 变化。
 func needsEffectHint(a ActionType) bool {
 	switch a {
-	case ActionClick, ActionInvoke, ActionTypeText, "":
+	case ActionClick, ActionInvoke, ActionTypeText, ActionWheel, ActionDrag, "":
 		return true
 	}
 	return false
@@ -824,8 +1170,29 @@ func elementTreeHash(elements []UIElement) uint64 {
 	return h.Sum64()
 }
 
+func (u *ComputerUseUsecase) persistAuditScreenshot(ctx context.Context, step Step) string {
+	if u.d.AuditShotDir == "" || u.d.Gateway == nil || step.Result == StepDryRun {
+		return ""
+	}
+	img, err := u.d.Gateway.Screenshot(ctx, nil, 1)
+	if err != nil || len(img.PNG) == 0 {
+		return ""
+	}
+	if err := os.MkdirAll(u.d.AuditShotDir, 0o755); err != nil {
+		u.d.Lg.Warn("computer-use 审计截图目录创建失败", loggateway.StepID(StepAct), loggateway.Err(err))
+		return ""
+	}
+	name := fmt.Sprintf("%s-%d.png", step.SessionID, step.Index)
+	path := filepath.Join(u.d.AuditShotDir, name)
+	if err := os.WriteFile(path, img.PNG, 0o644); err != nil {
+		u.d.Lg.Warn("computer-use 审计截图写入失败", loggateway.StepID(StepAct), loggateway.Err(err))
+		return ""
+	}
+	return path
+}
+
 // finishStep 审计落库 + 实时事件（尽力而为，不阻断主流程）。
-func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req ActRequest, step Step, started time.Time) {
+func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req ActRequest, step Step, started time.Time) Step {
 	step.SessionID = s.ID
 	step.AgentKey = s.AgentKey
 	if step.Index == 0 {
@@ -843,6 +1210,10 @@ func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req Act
 	if step.Result == "" {
 		step.Result = StepFailed
 	}
+	step.Degraded = step.Path == PathVLMDirect
+	if step.ScreenshotRef == "" {
+		step.ScreenshotRef = u.persistAuditScreenshot(ctx, step)
+	}
 	if u.d.Audit != nil {
 		if err := u.d.Audit.RecordStep(ctx, step); err != nil {
 			u.d.Lg.Warn("computer-use 审计落库失败",
@@ -854,6 +1225,7 @@ func (u *ComputerUseUsecase) finishStep(ctx context.Context, s *Session, req Act
 	if u.d.Events != nil {
 		u.d.Events.PublishStep(ctx, step)
 	}
+	return step
 }
 
 // Launch 启动应用（确认门在工具层）。
@@ -866,6 +1238,9 @@ func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args,
 	if err != nil {
 		return Step{}, err
 	}
+	if u.mustReobserveOf(s) {
+		return Step{}, ErrMustReobserve
+	}
 	stepsUsed, err := u.beginStep(s, "") // Launch 只计费不占状态机
 	if err != nil {
 		return Step{}, err
@@ -874,7 +1249,7 @@ func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args,
 		SessionID: s.ID, AgentKey: agentKey, Index: stepsUsed,
 		Target: target, Action: ActionLaunch, Path: PathA11y,
 		Params:      map[string]any{"target": target, "args": args},
-		Danger:      u.d.Policy.IsDanger(target, map[string]any{"target": target}),
+		Danger:      u.d.Policy.IsDanger(target, map[string]any{"target": target}) || u.injectionSuspectedOf(agentKey),
 		ConfirmedBy: confirmedBy, CreatedAt: started,
 	}
 	pid, lerr := u.d.Gateway.Launch(ctx, target, args, workDir)
@@ -884,7 +1259,7 @@ func (u *ComputerUseUsecase) Launch(ctx context.Context, agentKey, target, args,
 		step.Result = StepOK
 		step.Params["pid"] = pid
 	}
-	u.finishStep(ctx, s, ActRequest{AgentKey: agentKey, Target: target, Action: ActionLaunch}, step, started)
+	step = u.finishStep(ctx, s, ActRequest{AgentKey: agentKey, Target: target, Action: ActionLaunch}, step, started)
 	return step, lerr
 }
 
@@ -947,4 +1322,26 @@ func asInt(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+func waitCancelable(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+func (u *ComputerUseUsecase) specialistGround(ctx context.Context, target string) (Point, error) {
+	img, err := u.d.Gateway.Screenshot(ctx, nil, 1.0)
+	if err != nil {
+		return Point{}, err
+	}
+	return u.d.Specialist.PickCoordinate(ctx, img, target)
 }

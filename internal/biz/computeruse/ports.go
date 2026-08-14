@@ -21,6 +21,13 @@ type DeviceActor interface {
 	Key(ctx context.Context, combo string) error
 }
 
+// DevicePointer 指针级动作（滚轮/拖拽）。Wait 在 Usecase 内实现，不进 sidecar。
+// Stability:evolving
+type DevicePointer interface {
+	Wheel(ctx context.Context, p Point, delta int) error
+	Drag(ctx context.Context, from, to Point, durationMs int) error
+}
+
 // DeviceController 窗口/应用控制。
 // Stability:evolving
 type DeviceController interface {
@@ -35,6 +42,7 @@ type DeviceController interface {
 type DeviceGateway interface {
 	DevicePerceiver
 	DeviceActor
+	DevicePointer
 	DeviceController
 }
 

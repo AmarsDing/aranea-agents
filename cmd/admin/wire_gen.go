@@ -321,7 +321,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	roundTrip := provideRefineLLMRoundTrip()
 	dynamicLLMCaller := agent.NewDynamicLLMCaller(systemSettingUsecase, llmProviderModelUsecase, roundTrip)
 	queryRewriter := service.NewKnowledgeQueryRewriter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, loggatewayLogger)
+	graphExpander := service.NewKnowledgeGraphExpander(knowledgeRepo, loggatewayLogger)
+	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, graphExpander, loggatewayLogger)
 	federatedRetriever := service.NewKnowledgeFederatedRetriever(adaptiveRouter, retriever, knowledgeUsecase, loggatewayLogger)
 	retrievalEvaluator := service.NewKnowledgeRetrievalEvaluator(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	taskRepo := data.NewTaskRepo(dataData)
@@ -407,7 +408,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, monitorBus, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
 	agentMatcherPort := agent.NewAgentMatcher(agentRepository, loggatewayLogger)
-	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
+	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
 	skillEvolutionUsecase := provideSkillEvolutionUsecase(unifiedEvolutionRepo, patternReadWriter, agentRepository, skillAutoCreator, skillRegistrationPort, skillEvolutionOrchestrator, loggatewayLogger)
 	skillInvocationStatsReader := data.NewSkillInvocationStatsRepo(dataData)
 	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, skillRepo, teamRepo, teamRepo, usageRepo, memoryAdminUsecase, sessionRepo, toolRepo, loggatewayLogger)
@@ -446,8 +447,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	llmLister := importer.ProvideLLMLister(llmProviderModelUsecase)
 	skillImportJobStore := data.NewSkillImportJobStore(dataData)
 	engine := importer.ProvideEngine(skillRepo, llmLister, systemSettingRepo, skillImportJobStore, monitorBus, loggatewayLogger)
-	evaluationRepo := data.NewEvalRepoFromData(dataData)
-	evaluationUsecase := evaluation.NewUsecase(evaluationRepo, loggatewayLogger)
+	evaluationStores := data.NewEvalStoresFromData(dataData)
+	evaluationUsecase := evaluation.NewUsecase(evaluationStores, loggatewayLogger)
 	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
 	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
 	skillServiceDeps := service.SkillServiceDeps{
@@ -630,7 +631,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, loggatewayLogger)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -1822,27 +1823,44 @@ func provideAutoMemoryWorker(
 	caseExtractor biz.AgentCaseExtractor,
 	caseReader biz.AgentCaseReader,
 	caseWriter biz.AgentCaseWriter,
+	writeBack biz.KnowledgeWriteBack,
+	uc *biz.KnowledgeUsecase,
+	d *data.Data,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
+	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
+		ks.SetAgentMemoryProjector(knowledge2.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
+	}
+	var review biz.KnowledgeWriteBackReview
+	if q, ok := writeBack.(biz.KnowledgeWriteBackReview); ok {
+		review = q
+	}
+	var proj biz.KnowledgeAgentMemoryProjector
+	if p, ok := writeBack.(biz.KnowledgeAgentMemoryProjector); ok {
+		proj = p
+	}
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
-		RuntimeConf:    runtimeConf,
-		Interval:       0,
-		Sessions:       sessions,
-		Agents:         agents,
-		Writer:         writer,
-		IndexSync:      factSync,
-		EpisodeSync:    episodeSync,
-		L4:             l4,
-		Consolidator:   biz.DefaultMemoryConsolidator(extractor),
-		Queue:          queue,
-		DeadLetterSink: deadLetterSink,
-		Stats:          workerStats,
-		MonitorBus:     monitorBus,
-		FactPipeline:   factPipeline,
-		CaseExtractor:  caseExtractor,
-		CaseReader:     caseReader,
-		CaseWriter:     caseWriter,
-		Logger:         lg,
+		RuntimeConf:     runtimeConf,
+		Interval:        0,
+		Sessions:        sessions,
+		Agents:          agents,
+		Writer:          writer,
+		IndexSync:       factSync,
+		EpisodeSync:     episodeSync,
+		L4:              l4,
+		Consolidator:    biz.DefaultMemoryConsolidator(extractor),
+		Queue:           queue,
+		DeadLetterSink:  deadLetterSink,
+		Stats:           workerStats,
+		MonitorBus:      monitorBus,
+		FactPipeline:    factPipeline,
+		CaseExtractor:   caseExtractor,
+		CaseReader:      caseReader,
+		CaseWriter:      caseWriter,
+		WriteBack:       writeBack,
+		ReviewQueue:     review,
+		MemoryProjector: proj,
+		Logger:          lg,
 	})
 }
 
@@ -3709,6 +3727,7 @@ func provideTaskOrchestrator(
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
+	allocPlanRepo biz.AllocationPlanRepository,
 	matcher biz.AgentMatcherPort,
 	catalog *biz.LlmProviderModelUsecase,
 	agentUC *biz.AgentUsecase,
@@ -3744,7 +3763,7 @@ func provideTaskOrchestrator(
 			LG:           lg,
 		},
 	}
-	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	return agent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, allocPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(

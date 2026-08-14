@@ -4415,6 +4415,7 @@ PlanExecutor.Stop（`ChatService.Close` / kratos AfterStop）取消订阅 ctx �
 - `PlanStep.AgentKeys` 为空时（如 direct strategy），`RealTeamOrchestrator` fallback 到 `resolveAgentKeys(ctx)` 查 DB
 - `PlanBoardCreatedEvent` 携带的 `PlanBoard.Steps[].AgentKeys` 必须与 `allocPlan.Allocations` 一致（匹配规则：`alloc.SubTaskID == SubTask.ID == PlanStep.ID`）
 - `TaskOrchestratorImpl.Orchestrate` 不再被 `plan_and_execute` 调用，但 `CheckProgress`/`Cancel`/`RecoverAllInterrupted` 仍被使用，struct 保留
+- **P1-10（2026-08-15）**：`RecoverAllInterrupted` 从 `task_plans` / `allocation_plans` 装回 Phase 1/2 规划；`plan_and_execute` 经 `RecoveredPlanConsumer` 续跑原计划。分解中途空 SubTasks 的 draft **不恢复**（见 [70.design.md §3.5.1](./70-orchestration-longtask-memory.design.md)）
 
 **回滚方案**：恢复 `executeOrchestratePhase` 调用 `deps.orchestrator.Orchestrate`，移除 `PublishV2Board` 调用，恢复 `publishPlanCreated` 内部调用 `publishV2PlanBoard`。`PlanStep.AgentKeys` 字段可保留（向后兼容）。
 
@@ -5481,6 +5482,7 @@ type DeliverableRef struct {
 - 终态事件路由：`task.completed`/`task.failed` 走 `CompleteTaskTerminal`（version 自 DB +1，忽略事件 version）——解决续跑 CAS 推高 version 后 synthesis `OnTurnEnd` 硬编码 `Version=2` 被 `UpsertTask` 的 `VersionLT` guard 拒绝、task 永远 running 的问题；已终态任务幂等不覆盖，`interrupted` 可覆盖（恢复占位态，非真终态）
 - 启动通知：`SessionStatusGuard` 按 session 发布 `task_interrupted` 系统 notice（仅对存在可续跑任务的 session）
 - 轨迹注入：`InterruptedResumeUserContent(task.UserMessage, trace)` 把原消息 + 紧凑执行轨迹拼为 content；`ListStepsByTask` 失败降级为空轨迹（plain rerun）不阻塞续跑
+- **P1-10 规划恢复（2026-08-15）**：启动 `RecoverAllInterrupted` 把可恢复 `TaskPlan`（及已有 `AllocationPlan`）装入 orchestrator；L3 续跑再次调用 `plan_and_execute` 时按 spirit session + 原 user message 消费该 plan，不再重新 LLM 分解。不覆盖：分解中途空 SubTasks draft、已终态 plan、无 plan 行的 handle（skip + `reason=` 日志，不返回“已恢复”空 plan）
 
 **前端入口（L3-F4，2026-07-22 ✅）**：
 
@@ -5708,8 +5710,8 @@ const StatusReasonClarification = "clarification"
 |----|------|
 | 端点 | `POST /v1/chat/clarifications/{step_id}`，body：`{ "answers": [{ "selected": [...], "other": "..." }] }`（answers 可为空数组 = 全部按推荐执行） |
 | 守卫 | Step.Kind==clarify 且 Status==awaiting_input，否则 `CodeConflict`；CAS 更新防并发 |
-| 续跑 | 更新 Step → Session 回 running → 同 turn 继续 PrePlanning；注入消息格式：每问一行「Q: … / A: …（未答：按推荐 …）」；续跑输入解析见 `resolveResumeInput`（内存 pending 优先，缺失时从信封 `original_input` 惰性重建） |
-| 自由回复 | 等待态下用户直发消息视为自由回答（已实现）：`Execute` 统一入口（Web/WS/Channel/Cron/A2A）首行调 `resolveClarificationFreeText`；判据为内存 pending + step 仍 awaiting_input；命中则按推荐填充空作答、回写 `free_text`、完成 step、恢复 running，输入重写为「澄清上下文 + 原始需求」（基于 pending 存储的原输入，保留 AgentKey 等字段）；非等待态/处理失败原样透传 |
+| 续跑 | 更新 Step → Session 回 running → 同 turn 继续 PrePlanning；注入消息格式：每问一行「Q: … / A: …（未答：按推荐 …）」；续跑输入解析见 `resolveResumeInput`（进程内 cache 优先，缺失时从信封 `original_input` + Step.AuthorAgentKey 惰性重建）。cache 缺失且信封无 `original_input` 时 `FAILED_PRECONDITION`，step 不收口 |
+| 自由回复 | 等待态下用户直发消息视为自由回答（已实现）：`Execute` → `runNativeAgentTurnBody`（Sessions.Get 之后）调 `resolveClarificationFreeTextHint`；判据为进程内 cache **或** 会话 `awaiting_confirmation(reason=clarification)` + 持久化 `clarify` Step 仍 `awaiting_input`；命中则按推荐填充空作答、回写 `free_text`、完成 step、恢复 running，输入重写为「澄清上下文 + 原始需求」（cache 命中保留完整 TurnInput；重建路径用信封 `original_input` + Step.AuthorAgentKey）；非等待态/处理失败原样透传 |
 
 #### B.10.18.4 前端设计
 
@@ -5736,7 +5738,7 @@ const StatusReasonClarification = "clarification"
 | 重复提交 | CAS 守卫返回 409，前端提示「已提交」 |
 | 提交时 Session 已非等待态 | 409，不续跑 |
 | clarification_enabled=false | 门直接透传 |
-| 重启恢复 | clarify step awaiting_input 持久化 → 前端 hydration 重新渲染可作答卡片；提交时 step CAS 仍有效，续跑输入由 `resolveResumeInput` 从信封 `original_input` 惰性重建（内存 pendingClarifications 重启即失）。自由回复路径重启后 pending 缺失，消息降级为普通新 turn |
+| 重启恢复 | clarify step awaiting_input 持久化 → 前端 hydration 重新渲染可作答卡片；提交时 step CAS 仍有效，续跑输入由 `resolveResumeInput` 从信封 `original_input` 惰性重建（进程内 `clarificationPendingCache` 仅热路径，重启/其他副本即失）。自由回复同样从会话状态 + 信封重建，不再降级为新 turn。缺 `original_input`：SubmitClarification 返回 `FAILED_PRECONDITION` 且不收口 step；自由回复透传为普通消息 |
 | 问题数上限 | 超过 5 问截断（防 LLM 过度生成），记 warn |
 
 #### B.10.18.6 测试策略

@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/internal/tools"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 
@@ -29,7 +30,7 @@ type TaskOrchestratorImpl struct {
 	assembler       tools.SpiritTeamAssemblerPort
 	controller      tools.SpiritTeamControllerPort
 	repo            biz.OrchestrationRepository
-	taskPlanRepo    biz.TaskPlanRepository
+	plans           *planStore
 	matcher         biz.AgentMatcherPort
 	deps            TRPCBuilderDeps
 	synthesis       tools.SpiritSynthesisPort
@@ -52,6 +53,7 @@ func NewTaskOrchestratorImpl(
 	controller tools.SpiritTeamControllerPort,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
+	allocPlanRepo biz.AllocationPlanRepository,
 	matcher biz.AgentMatcherPort,
 	deps TRPCBuilderDeps,
 	synthesis tools.SpiritSynthesisPort,
@@ -68,7 +70,7 @@ func NewTaskOrchestratorImpl(
 		assembler:       assembler,
 		controller:      controller,
 		repo:            repo,
-		taskPlanRepo:    taskPlanRepo,
+		plans:           newPlanStore(taskPlanRepo, allocPlanRepo),
 		matcher:         matcher,
 		deps:            deps,
 		synthesis:       synthesis,
@@ -957,6 +959,10 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 		loggateway.StepID(biz.SpiritStepOrchestratorRecover),
 		loggateway.Str("orchestration_id", orchestrationID),
 	)
+
+	// P1-10: reload persisted Phase 1/2 plans so resume continues the original
+	// plan instead of re-running LLM decomposition.
+	o.restorePlansForHandle(ctx, handle)
 	return nil
 }
 
@@ -1011,27 +1017,31 @@ func (o *TaskOrchestratorImpl) restoreGraphFromCheckpoint(ctx context.Context, h
 }
 
 // RecoverAllInterrupted finds all interrupted orchestrations and attempts recovery.
-// TODO(debt): DEV-07 — Phase 1/2 interruption recovery not implemented. Only OrchestrationHandle
-// is recovered, not draft TaskPlan/AllocationPlan.
-// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-07
+// P1-10: also reloads persisted Phase 1 (TaskPlan) / Phase 2 (AllocationPlan)
+// rows into the orchestrator so a subsequent plan_and_execute continues the
+// original plan instead of generating a new one.
 func (o *TaskOrchestratorImpl) RecoverAllInterrupted(ctx context.Context) error {
-	handles, err := o.repo.ListByStatus(ctx, biz.OrchestrationStatusInterrupted)
+	sysCtx := workspace.WithSystemWorkspace(ctx)
+
+	handles, err := o.repo.ListByStatus(sysCtx, biz.OrchestrationStatusInterrupted)
 	if err != nil {
 		return apierror.Internal(apierror.DomainSpirit, "list interrupted orchestrations").WithCause(err)
 	}
 
 	if len(handles) == 0 {
-		return nil
+		o.lg.Info("TaskOrchestrator: no interrupted orchestrations; restoring orphaned plans",
+			loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+		)
+	} else {
+		o.lg.Info("TaskOrchestrator: recovering interrupted orchestrations",
+			loggateway.StepID(biz.SpiritStepOrchestratorRecover),
+			loggateway.Int("count", len(handles)),
+		)
 	}
-
-	o.lg.Info("TaskOrchestrator: recovering interrupted orchestrations",
-		loggateway.StepID(biz.SpiritStepOrchestratorRecover),
-		loggateway.Int("count", len(handles)),
-	)
 
 	var failedCount int
 	for _, h := range handles {
-		if err := o.Recover(ctx, h.ID); err != nil {
+		if err := o.Recover(sysCtx, h.ID); err != nil {
 			failedCount++
 			o.lg.Warn("TaskOrchestrator: failed to recover orchestration",
 				loggateway.StepID(biz.SpiritStepOrchestratorRecover),
@@ -1049,6 +1059,8 @@ func (o *TaskOrchestratorImpl) RecoverAllInterrupted(ctx context.Context) error 
 			loggateway.Int("failed", failedCount),
 		)
 	}
+
+	o.restoreOrphanedPlans(sysCtx)
 	return nil
 }
 
@@ -1167,10 +1179,10 @@ func (o *TaskOrchestratorImpl) learnFromOrchestration(ctx context.Context, handl
 // resolvePrimaryDomainPath 取 handle 对应 plan 的主导域（首个非空 subtask
 // DomainPath）。查询失败或无域返回空——调用方回退旧 key 行为（B.10.21.7）。
 func (o *TaskOrchestratorImpl) resolvePrimaryDomainPath(ctx context.Context, handle *biz.OrchestrationHandle) string {
-	if o.taskPlanRepo == nil || handle.TaskPlanID == "" {
+	if o.plans == nil || handle.TaskPlanID == "" {
 		return ""
 	}
-	plan, err := o.taskPlanRepo.GetByID(ctx, handle.TaskPlanID)
+	plan, err := o.plans.getTaskPlan(ctx, handle.TaskPlanID)
 	if err != nil || plan == nil {
 		if err != nil {
 			o.lg.Warn("在线学习: 查询 TaskPlan 失败，跳过领域配方记录",

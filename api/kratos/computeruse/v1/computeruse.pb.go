@@ -31,7 +31,7 @@ type ComputerUseStep struct {
 	AgentKey      string                 `protobuf:"bytes,3,opt,name=agent_key,json=agentKey,proto3" json:"agent_key,omitempty"`
 	StepIndex     int32                  `protobuf:"varint,4,opt,name=step_index,json=stepIndex,proto3" json:"step_index,omitempty"`
 	Target        string                 `protobuf:"bytes,5,opt,name=target,proto3" json:"target,omitempty"`
-	Path          string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`     // a11y|vision|vlm_direct
+	Path          string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`     // a11y|vision|vlm_direct|grounder
 	Action        string                 `protobuf:"bytes,7,opt,name=action,proto3" json:"action,omitempty"` // invoke|click|type|key|launch...
 	ParamsJson    string                 `protobuf:"bytes,8,opt,name=params_json,json=paramsJson,proto3" json:"params_json,omitempty"`
 	Result        string                 `protobuf:"bytes,9,opt,name=result,proto3" json:"result,omitempty"` // ok|retry|failed|cancelled|dry_run
@@ -40,6 +40,8 @@ type ComputerUseStep struct {
 	ConfirmedBy   string                 `protobuf:"bytes,12,opt,name=confirmed_by,json=confirmedBy,proto3" json:"confirmed_by,omitempty"`
 	Danger        bool                   `protobuf:"varint,13,opt,name=danger,proto3" json:"danger,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ScreenshotRef string                 `protobuf:"bytes,15,opt,name=screenshot_ref,json=screenshotRef,proto3" json:"screenshot_ref,omitempty"`
+	Degraded      bool                   `protobuf:"varint,16,opt,name=degraded,proto3" json:"degraded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -170,6 +172,20 @@ func (x *ComputerUseStep) GetCreatedAt() string {
 		return x.CreatedAt
 	}
 	return ""
+}
+
+func (x *ComputerUseStep) GetScreenshotRef() string {
+	if x != nil {
+		return x.ScreenshotRef
+	}
+	return ""
+}
+
+func (x *ComputerUseStep) GetDegraded() bool {
+	if x != nil {
+		return x.Degraded
+	}
+	return false
 }
 
 type KillComputerUseSessionRequest struct {
@@ -429,7 +445,7 @@ var File_kratos_computeruse_v1_computeruse_proto protoreflect.FileDescriptor
 
 const file_kratos_computeruse_v1_computeruse_proto_rawDesc = "" +
 	"\n" +
-	"'kratos/computeruse/v1/computeruse.proto\x12\x15kratos.computeruse.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\x8a\x03\n" +
+	"'kratos/computeruse/v1/computeruse.proto\x12\x15kratos.computeruse.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xcd\x03\n" +
 	"\x0fComputerUseStep\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
@@ -450,7 +466,9 @@ const file_kratos_computeruse_v1_computeruse_proto_rawDesc = "" +
 	"\fconfirmed_by\x18\f \x01(\tR\vconfirmedBy\x12\x16\n" +
 	"\x06danger\x18\r \x01(\bR\x06danger\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x0e \x01(\tR\tcreatedAt\"5\n" +
+	"created_at\x18\x0e \x01(\tR\tcreatedAt\x12%\n" +
+	"\x0escreenshot_ref\x18\x0f \x01(\tR\rscreenshotRef\x12\x1a\n" +
+	"\bdegraded\x18\x10 \x01(\bR\bdegraded\"5\n" +
 	"\x1dKillComputerUseSessionRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"W\n" +
 	"\x1eKillComputerUseSessionResponse\x12\x1d\n" +

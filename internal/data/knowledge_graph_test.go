@@ -102,3 +102,46 @@ func TestKnowledgeRepo_ListCollectionLinks(t *testing.T) {
 		t.Fatalf("c2 links = %+v", got)
 	}
 }
+
+func TestKnowledgeRepo_ListChunksByDocuments(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	seedCollectionLinks(t, repo)
+	ctx := context.Background()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(repo.InsertChunks(ctx, []bizknowledge.Chunk{
+		{ID: "k1a", DocID: "d1", CollectionID: "c1", Content: "d1 first", ChunkIndex: 0},
+		{ID: "k1b", DocID: "d1", CollectionID: "c1", Content: "d1 second", ChunkIndex: 1},
+		{ID: "k1c", DocID: "d1", CollectionID: "c1", Content: "d1 third", ChunkIndex: 2},
+		{ID: "k2a", DocID: "d2", CollectionID: "c1", Content: "d2 first", ChunkIndex: 0},
+		{ID: "k2b", DocID: "d2", CollectionID: "c1", Content: "d2 second", ChunkIndex: 1},
+	}))
+
+	got, err := repo.ListChunksByDocuments(ctx, "c1", []string{"d1", "d2"}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("chunks = %d, want 4: %+v", len(got), got)
+	}
+	// limitPerDoc=2 必须丢掉 d1 的第三块。
+	ids := map[string]bool{}
+	for _, ch := range got {
+		ids[ch.ID] = true
+	}
+	if ids["k1c"] {
+		t.Fatalf("chunk_index 2 must be truncated: %+v", got)
+	}
+	if !ids["k1a"] || !ids["k1b"] || !ids["k2a"] || !ids["k2b"] {
+		t.Fatalf("expected first two chunks per doc, got %+v", got)
+	}
+
+	got, err = repo.ListChunksByDocuments(ctx, "c1", nil, 2)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("empty docIDs = (%v, %v), want empty", got, err)
+	}
+}

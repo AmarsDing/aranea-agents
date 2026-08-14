@@ -86,6 +86,7 @@
           @open-doc-id="openDocById"
           @expand-graph="(docId: string) => $emit('open-graph', docId)"
           @jump-outline="jumpOutline"
+          @apply-autolink="onApplyAutolinkFromPanel"
         />
       </div>
     </div>
@@ -119,6 +120,16 @@
       @update:open="searchOpen = $event"
       @update:query="searchQuery = $event"
       @pick="onSearchPick"
+    />
+
+    <WritebackReviewDialog
+      v-model:open="pendingOpen"
+      :items="pendingItems"
+      :home-name="pendingHome.name"
+      :home-is-current="!pendingHome.redirected"
+      :loading="pendingApplying"
+      @submit="onApplyPending"
+      @switch-home="onSwitchPendingHome"
     />
 
     <!-- 脏关闭确认（SP2-8：kb-portal——q-dialog teleport 到 body 后重挂深空令牌） -->
@@ -167,10 +178,19 @@ import WorkbenchSidePanels from './WorkbenchSidePanels.vue';
 import QuickSwitcher from './QuickSwitcher.vue';
 import CommandPalette from './CommandPalette.vue';
 import SearchPanel, { type SearchItem } from './SearchPanel.vue';
+import WritebackReviewDialog from '../WritebackReviewDialog.vue';
 import {
+  applyOutgoingAutolink,
+  applyWriteBackPending,
+  backfillAutolinkIndex,
   createVaultDir,
   createVaultDocument,
+  getCollectionHealth,
+  getWriteBackHome,
+  listCollectionExperts,
   listRecentLinkUses,
+  listWriteBackPending,
+  previewOutgoingAutolink,
   recordLinkUse,
   rebuildKnowledgeIndex,
   searchKnowledge,
@@ -181,7 +201,12 @@ import { parseOutline } from '../../../features/knowledge/outline';
 import type { KnowledgeWorkbench as Workbench } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
-import type { KnowledgeCollection, KnowledgeDocument, VaultTreeNode } from '../../../features/knowledge/types';
+import type {
+  KnowledgeCollection,
+  KnowledgeDocument,
+  PendingWriteBackItem,
+  VaultTreeNode,
+} from '../../../features/knowledge/types';
 
 const props = defineProps<{
   workbench: Workbench;
@@ -412,7 +437,7 @@ const commandItems = computed<CommandItem[]>(() => {
     def,
     title: t(`knowledgePage.workbench.commands.${def.id}`),
     disabled: !active
-      ? (['save', 'toggle-mode', 'close-tab', 'promote'] as CommandId[]).includes(def.id)
+      ? (['save', 'toggle-mode', 'close-tab', 'promote', 'apply-autolink'] as CommandId[]).includes(def.id)
       : (def.id === 'save' || def.id === 'toggle-mode') && !active.editable,
   }));
 });
@@ -457,6 +482,179 @@ function createFolder() {
   });
 }
 
+async function onApplyAutolinkFromPanel() {
+  const active = props.workbench.activeTab.value;
+  if (!active) return;
+  try {
+    const prev = await previewOutgoingAutolink(active.docId);
+    if (prev.unchanged || prev.replacements <= 0) {
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.autolinkNone') });
+      return;
+    }
+    $q.dialog({
+      title: t('knowledgePage.workbench.commands.apply-autolink'),
+      message: t('knowledgePage.workbench.autolinkConfirm', { n: prev.replacements }),
+      cancel: true,
+      class: 'kb-portal',
+    }).onOk(async () => {
+      try {
+        const res = await applyOutgoingAutolink(active.docId);
+        $q.notify({
+          type: 'positive',
+          message: t('knowledgePage.workbench.autolinkDone', { n: res.replacements }),
+        });
+        emit('refresh-tree');
+      } catch (e) {
+        $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+      }
+    });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+type WriteBackTarget = { id: string; name: string; redirected: boolean };
+
+async function resolveWriteBackTarget(): Promise<WriteBackTarget | null> {
+  try {
+    const home = await getWriteBackHome();
+    if (!home.found || !home.collection_id) {
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.writebackHomeMissing') });
+      return null;
+    }
+    return {
+      id: home.collection_id,
+      name: home.name,
+      redirected: home.collection_id !== props.currentVaultId,
+    };
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    return null;
+  }
+}
+
+function offerSwitchHome(home: WriteBackTarget) {
+  if (!home.redirected) return;
+  $q.notify({
+    type: 'info',
+    timeout: 8000,
+    message: t('knowledgePage.workbench.writebackHomeHint', { name: home.name }),
+    actions: [{ label: t('knowledgePage.workbench.writebackHomeSwitch'), handler: () => emit('switch-vault', home.id) }],
+  });
+}
+
+async function showKnowledgeHealth() {
+  if (!props.currentVaultId) return;
+  try {
+    const h = await getCollectionHealth(props.currentVaultId);
+    let message = t('knowledgePage.workbench.healthSummary', {
+      docs: h.document_count,
+      edges: h.edge_count,
+      explicit: h.explicit_edges,
+      orphan: Math.round(h.orphan_rate * 100),
+      dangling: h.dangling_count,
+    });
+    const home = await getWriteBackHome().catch(() => null);
+    if (home?.found && home.collection_id && home.collection_id !== props.currentVaultId) {
+      message += ` · ${t('knowledgePage.workbench.healthWritebackElsewhere', { name: home.name })}`;
+    }
+    $q.notify({ type: 'info', timeout: 8000, message });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+async function showKnowledgeExperts() {
+  const home = await resolveWriteBackTarget();
+  if (!home) return;
+  try {
+    const items = await listCollectionExperts(home.id);
+    if (!items.length) {
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.expertsEmpty') });
+      offerSwitchHome(home);
+      return;
+    }
+    const lines = items
+      .slice(0, 8)
+      .map((e) => `${e.agent_id || e.user_id} (${e.fact_count})`)
+      .join('\n');
+    const message = home.redirected
+      ? `${t('knowledgePage.workbench.expertsFromHome', { name: home.name })}\n${lines}`
+      : lines;
+    $q.dialog({
+      title: t('knowledgePage.workbench.commands.list-experts'),
+      message,
+      class: 'kb-portal',
+    });
+    offerSwitchHome(home);
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+const pendingOpen = ref(false);
+const pendingItems = ref<PendingWriteBackItem[]>([]);
+const pendingHome = ref<WriteBackTarget>({ id: '', name: '', redirected: false });
+const pendingApplying = ref(false);
+
+async function reviewWriteBackPending() {
+  const home = await resolveWriteBackTarget();
+  if (!home) return;
+  try {
+    const items = await listWriteBackPending(home.id);
+    if (!items.length) {
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.pendingEmpty') });
+      offerSwitchHome(home);
+      return;
+    }
+    pendingHome.value = home;
+    pendingItems.value = items;
+    pendingOpen.value = true;
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+function onSwitchPendingHome() {
+  if (pendingHome.value.id) emit('switch-vault', pendingHome.value.id);
+}
+
+async function onApplyPending(factIds: string[]) {
+  if (!pendingHome.value.id || factIds.length === 0) return;
+  pendingApplying.value = true;
+  try {
+    const res = await applyWriteBackPending(pendingHome.value.id, factIds);
+    pendingOpen.value = false;
+    $q.notify({
+      type: 'positive',
+      message: t('knowledgePage.workbench.pendingDone', { n: res.appended }),
+    });
+    emit('refresh-tree');
+    offerSwitchHome(pendingHome.value);
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    pendingApplying.value = false;
+  }
+}
+
+function confirmBackfillAutolink() {
+  if (!props.currentVaultId) return;
+  $q.dialog({
+    title: t('knowledgePage.workbench.commands.backfill-autolink'),
+    message: t('knowledgePage.workbench.backfillAutolinkConfirm'),
+    cancel: true,
+    class: 'kb-portal',
+  }).onOk(async () => {
+    try {
+      await backfillAutolinkIndex(props.currentVaultId);
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.backfillStarted') });
+    } catch (e) {
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}
+
 async function runCommand(id: CommandId) {
   recordCommandMru(id);
   const active = props.workbench.activeTab.value;
@@ -485,11 +683,26 @@ async function runCommand(id: CommandId) {
         $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
       }
       break;
+    case 'backfill-autolink':
+      confirmBackfillAutolink();
+      break;
     case 'ingest-text':
       emit('ingest-text');
       break;
     case 'promote':
       if (active) emit('promote-active', active.docId);
+      break;
+    case 'apply-autolink':
+      void onApplyAutolinkFromPanel();
+      break;
+    case 'knowledge-health':
+      void showKnowledgeHealth();
+      break;
+    case 'list-experts':
+      void showKnowledgeExperts();
+      break;
+    case 'review-writeback':
+      void reviewWriteBackPending();
       break;
     case 'close-tab':
       if (active) props.workbench.closeTab(active.docId);

@@ -52,9 +52,9 @@ func newSelectiveRememberTool(deps Deps) trpctool.Tool {
 			if existing == "" {
 				continue
 			}
-			// Simplified redundancy check: if the new content is a substring of an existing
-			// fact or vice versa with high overlap, consider it redundant.
-			// TODO(P1): Replace with embedding-based cosine similarity (threshold 0.85).
+			// String overlap check (substring). Embedding cosine is not wired:
+			// ListFactRows JSON omits embedding_blob, and production
+			// memoryButlerTools() does not inject Deps.Embedder.
 			if contentLower == existing {
 				return selectiveRememberOutput{Remembered: false, Reason: "redundant with existing memory"}, nil
 			}

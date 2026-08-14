@@ -79,7 +79,7 @@ type ClarificationGateDecision struct {
 //  1. UpsertTask 幂等建任务（Task 先于 Run 存在）
 //  2. 发布 StepCreatedEvent：Kind=clarify，Status=awaiting_input，Content=澄清问题 JSON 信封
 //  3. Session → awaiting_confirmation（reason=clarification）
-//  4. 存储 pendingClarification 供后续恢复
+//  4. 存储 pendingClarification 供同进程热路径恢复（信封为跨进程真相源）
 //  5. turn 挂起（RunTurn 返回空回复，不报错）
 //
 // Stability:internal
@@ -154,9 +154,9 @@ func (o *ChatOrchestrator) runClarificationGate(
 		Kind:          "clarification",
 		Questions:     questions,
 		Answers:       nil,           // 发布时无答案
-		OriginalInput: input.Content, // 持久化原始输入，服务重启后可惰性重建续跑
+		OriginalInput: input.Content, // 持久化原始输入，重启/多副本后可重建续跑
 	}
-	// 持久化意图产物：服务重启后 pendingClarifications 丢失，续跑从信封恢复，
+	// 持久化意图产物：进程内 cache 丢失后续跑从信封恢复，
 	// 避免重跑 Intent Pass LLM。序列化失败不阻断澄清（产物复用是优化而非正确性依赖）。
 	if intentArt != nil {
 		if artJSON, err := json.Marshal(intentArt); err == nil {
@@ -201,7 +201,7 @@ func (o *ChatOrchestrator) runClarificationGate(
 	// 3. Session → awaiting_confirmation（reason=clarification）
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonClarification)
 
-	// 4. 存储 pendingClarification 供后续恢复（含 Intent 产物，续跑复用）
+	// 4. 存储 pendingClarification 供同进程热路径恢复（含 Intent 产物，续跑复用）
 	o.pendingClarifications.Store(sessionID, pendingClarification{
 		Input:     input,
 		StepID:    stepID,

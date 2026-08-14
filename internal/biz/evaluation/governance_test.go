@@ -59,7 +59,7 @@ func TestSubmitRunPreferenceValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewUsecase(tt.repo, nil)
+			uc := NewUsecase(StoresFrom(tt.repo), nil)
 			p, err := uc.SubmitRunPreference(context.Background(), tt.in)
 			if tt.wantErr {
 				if err == nil {
@@ -85,14 +85,14 @@ func TestSubmitRunPreferenceValidation(t *testing.T) {
 
 func TestUpdateGateConfigValidation(t *testing.T) {
 	t.Run("enabled without agent or dataset rejected", func(t *testing.T) {
-		uc := NewUsecase(&mockRepo{}, nil)
+		uc := NewUsecase(StoresFrom(&mockRepo{}), nil)
 		if _, err := uc.UpdateGateConfig(context.Background(), GateConfig{Enabled: true}); err == nil {
 			t.Fatal("expected error, got nil")
 		}
 	})
 	t.Run("scores clamped to [0,1] and metric defaulted", func(t *testing.T) {
 		repo := &mockRepo{}
-		uc := NewUsecase(repo, nil)
+		uc := NewUsecase(StoresFrom(repo), nil)
 		cfg, err := uc.UpdateGateConfig(context.Background(), GateConfig{
 			Enabled:   true,
 			AgentID:   "agent-1",
@@ -112,7 +112,7 @@ func TestUpdateGateConfigValidation(t *testing.T) {
 	})
 	t.Run("disabled config persists without targets", func(t *testing.T) {
 		repo := &mockRepo{}
-		uc := NewUsecase(repo, nil)
+		uc := NewUsecase(StoresFrom(repo), nil)
 		if _, err := uc.UpdateGateConfig(context.Background(), GateConfig{Enabled: false}); err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +120,7 @@ func TestUpdateGateConfigValidation(t *testing.T) {
 }
 
 func TestGetFailureGroupsValidation(t *testing.T) {
-	uc := NewUsecase(&mockRepo{}, nil)
+	uc := NewUsecase(StoresFrom(&mockRepo{}), nil)
 	if _, err := uc.GetFailureGroups(context.Background(), "  ", "", 0); err == nil {
 		t.Fatal("expected error for empty dataset_id, got nil")
 	}

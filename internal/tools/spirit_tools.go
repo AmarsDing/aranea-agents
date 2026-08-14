@@ -149,12 +149,35 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 			var steps []biztypes.OrchestrationStepRecord
 
-			// Phase 1: Plan
-			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, mode, deps)
-			steps = append(steps, planStep)
-			if err != nil {
-				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
-				return PlanAndExecuteOutput{Steps: steps}, err
+			// Phase 1: Plan — reuse a restored draft when RecoverAllInterrupted
+			// loaded one for this spirit session + user message (P1-10).
+			var taskPlan *biz.TaskPlan
+			var recoveredAlloc *biz.AllocationPlan
+			if rp, ra, ok := consumeRecoveredPlan(deps.orchestrator, spiritSessionID, taskPrompt); ok && rp != nil {
+				taskPlan = rp
+				recoveredAlloc = ra
+				now := time.Now().UTC()
+				steps = append(steps, biztypes.OrchestrationStepRecord{
+					StepName:   "plan",
+					Status:     "recovered",
+					StartedAt:  now,
+					FinishedAt: now,
+				})
+				deps.lg.Info("plan_and_execute: using recovered TaskPlan",
+					loggateway.StepID("spirit.plan_and_execute.plan_recovered"),
+					loggateway.Str("plan_id", taskPlan.ID),
+					loggateway.Str("spirit_session_id", spiritSessionID),
+					loggateway.Bool("allocation_restored", recoveredAlloc != nil),
+				)
+			} else {
+				var planStep biztypes.OrchestrationStepRecord
+				var err error
+				taskPlan, planStep, err = executePlanPhase(ctx, taskPrompt, spiritSessionID, mode, deps)
+				steps = append(steps, planStep)
+				if err != nil {
+					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
+					return PlanAndExecuteOutput{Steps: steps}, err
+				}
 			}
 
 			out := PlanAndExecuteOutput{
@@ -193,12 +216,26 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				return out, nil
 			}
 
-			// Phase 2: Allocate
-			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, explicitKeys, deps)
-			out.Steps = append(out.Steps, allocStep)
-			if allocErr != nil {
-				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
-				return out, allocErr
+			// Phase 2: Allocate — skip LLM/heuristic matching when Phase 2 was restored.
+			var allocPlan *biz.AllocationPlan
+			if recoveredAlloc != nil {
+				allocPlan = recoveredAlloc
+				now := time.Now().UTC()
+				out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
+					StepName:   "allocate",
+					Status:     "recovered",
+					StartedAt:  now,
+					FinishedAt: now,
+				})
+			} else {
+				var allocStep biztypes.OrchestrationStepRecord
+				var allocErr error
+				allocPlan, allocStep, allocErr = executeAllocatePhase(ctx, taskPlan, explicitKeys, deps)
+				out.Steps = append(out.Steps, allocStep)
+				if allocErr != nil {
+					publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "allocate", allocErr.Error())
+					return out, allocErr
+				}
 			}
 
 			// Fill agent keys from allocation into subtask summaries.
@@ -239,6 +276,19 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 		trpcfunction.WithName("plan_and_execute"),
 		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。简单任务直接回答，复杂任务自动组建团队。"),
 	)
+}
+
+// consumeRecoveredPlan returns a Phase 1/2 bundle restored by RecoverAllInterrupted
+// when the orchestrator implements RecoveredPlanConsumer. No-op on other impls.
+func consumeRecoveredPlan(orch biz.TaskOrchestratorPort, spiritSessionID, userMessage string) (*biz.TaskPlan, *biz.AllocationPlan, bool) {
+	if orch == nil {
+		return nil, nil, false
+	}
+	c, ok := orch.(biz.RecoveredPlanConsumer)
+	if !ok {
+		return nil, nil, false
+	}
+	return c.ConsumeRecoveredPlan(spiritSessionID, userMessage)
 }
 
 // executePlanPhase runs Phase 1 of plan_and_execute: task planning.

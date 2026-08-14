@@ -16,7 +16,7 @@ import (
 // The echo agent replies with the case input, so cases whose expected_output
 // equals their input score exact_match=1 and mismatched cases score 0.
 func gateFixture(repo *fakeEvalRepo) (*PublishGate, *captureBus) {
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	runner := NewRunner(uc, echoBridge(), loggateway.NewNoop())
 	bus := &captureBus{}
 	return NewPublishGate(uc, runner, bus, loggateway.NewNoop()), bus
@@ -283,7 +283,7 @@ func TestScanRunsExcludesRunsYoungerThanGateRun(t *testing.T) {
 
 func TestPublishGateUpdateConfigValidation(t *testing.T) {
 	repo := newFakeEvalRepo()
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	// Enabled gate requires agent + dataset.
 	_, err := uc.UpdateGateConfig(context.Background(), beval.GateConfig{Enabled: true})
 	if err == nil {

@@ -38,6 +38,40 @@ public sealed class CaptureService
 
     private const int MONITORINFOF_PRIMARY = 0x00000001;
 
+    /// <summary>截图区域（物理像素）</summary>
+    public readonly struct ScreenshotBounds
+    {
+        public int X { get; }
+        public int Y { get; }
+        public int W { get; }
+        public int H { get; }
+
+        public ScreenshotBounds(int x, int y, int w, int h)
+        {
+            X = x; Y = y; W = w; H = h;
+        }
+    }
+
+    private const int SM_CXSCREEN = 0;
+    private const int SM_CYSCREEN = 1;
+    private const int SM_XVIRTUALSCREEN = 76;
+    private const int SM_YVIRTUALSCREEN = 77;
+    private const int SM_CXVIRTUALSCREEN = 78;
+    private const int SM_CYVIRTUALSCREEN = 79;
+
+    /// <summary>
+    /// 解析截图区域：未指定 region 时使用虚拟桌面（含所有显示器）；指定时按物理像素裁剪。
+    /// virt* 由调用方注入（测试可固定），生产取 SM_*VIRTUALSCREEN。
+    /// </summary>
+    public static ScreenshotBounds ResolveScreenshotBounds(int? x, int? y, int? w, int? h, int virtX, int virtY, int virtW, int virtH)
+    {
+        if (!x.HasValue && !y.HasValue && !w.HasValue && !h.HasValue)
+        {
+            return new ScreenshotBounds(virtX, virtY, virtW, virtH);
+        }
+        return new ScreenshotBounds(x ?? virtX, y ?? virtY, w ?? virtW, h ?? virtH);
+    }
+
     /// <summary>主屏缩放因子（DPI/96）</summary>
     public static double PrimaryScaleFactor() => GetDpiForSystem() / 96.0;
 
@@ -102,21 +136,27 @@ public sealed class CaptureService
             Platform = "windows",
             Screen = new ScreenDto
             {
-                Width = GetSystemMetrics(0),  // SM_CXSCREEN
-                Height = GetSystemMetrics(1), // SM_CYSCREEN
+                Width = GetSystemMetrics(SM_CXSCREEN),
+                Height = GetSystemMetrics(SM_CYSCREEN),
                 ScaleFactor = PrimaryScaleFactor(),
             },
             Displays = EnumDisplays(),
         };
     }
 
-    /// <summary>截图（默认主屏全屏；region 指定时裁剪；zoom≠1 时缩放位图），返回 PNG base64</summary>
+    /// <summary>截图（默认虚拟桌面全屏；region 指定时裁剪；zoom≠1 时缩放位图），返回 PNG base64</summary>
     public ScreenshotResultDto Screenshot(int? x, int? y, int? w, int? h, double zoom)
     {
-        var sx = x ?? 0;
-        var sy = y ?? 0;
-        var sw = w ?? GetSystemMetrics(0);
-        var sh = h ?? GetSystemMetrics(1);
+        var bounds = ResolveScreenshotBounds(
+            x, y, w, h,
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN));
+        var sx = bounds.X;
+        var sy = bounds.Y;
+        var sw = bounds.W;
+        var sh = bounds.H;
         if (sw <= 0 || sh <= 0)
         {
             throw new CuaException(JsonRpc.InternalError, $"非法截图区域: {sw}x{sh}");

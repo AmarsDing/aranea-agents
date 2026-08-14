@@ -235,7 +235,7 @@
 | 多租户隔离 | 租户间知识库完全隔离（未实现） |
 | Extractor | 格式转换统一抽象：文本类（trpc reader 提取 → LLM 整理为 MD）+ 多模态（视觉 LLM 图片 → MD），产出物归一为 Markdown |
 | 跨 Collection 联邦搜索 | 多集合并行搜索 + 结果合并（Broadcast + Route 策略） |
-| Plan-Then-Retrieve | Agent 系统提示注入 Collection 摘要 |
+| Plan-Then-Retrieve | 首轮 BeforeModel 预检索段落（`## Retrieved Knowledge`）+ Collection 目录；工具循环不重复检索 |
 
 ---
 
@@ -850,7 +850,7 @@
 | SP4 | 多模态摄取管线 | 视频/音频/Office 入库可检索，时间戳回链原片 | G5 | 待立项 |
 | SP5 | 个人/团队双模权限 | 片段级权限；知识成熟度光谱（草稿→共享→精炼→规范）；super note 综合晋升 | G3 | 待立项 |
 | SP6 | AI 知识伙伴 | 写入即自动链接/标签建议；会话决策点主动唤回；摄入即综合（交叉引用 + 矛盾检测） | G6 | 待立项 |
-| **SP7（新）** | **知识-记忆同基底 + 写回飞轮** | agent 记忆与人笔记同图共检（agent vault 投影）；会话/团队执行自动沉淀团队知识（验证门 + provenance）；「谁懂这个」专家定位；知识健康度仪表盘 | G1+G2+G7+G8 | 待立项 |
+| **SP7（新）** | **知识-记忆同基底 + 写回飞轮** | agent 记忆与人笔记同图共检（agent vault 投影）；会话/团队执行自动沉淀团队知识（验证门 + provenance）；「谁懂这个」专家定位；知识健康度仪表盘 | G1+G2+G7+G8 | G1/G2/G7/G8 已落地（US-37~US-44）；SP5 成熟度光谱 / SP6 JITAI 仍未做 |
 
 ---
 
@@ -953,3 +953,234 @@
 | 49 | 「重新向量化」双入口可用：确认后受理通知篇数正确，文档向量重建完成后恢复语义检索（US-30） |
 | 50 | 词法库显示「启用语义检索」、语义库不显示；确认后全部文档进入重嵌入队列并升级为混合检索（US-31） |
 | 51 | 2 万节点/5 万边合成数据集双布局（力导向/星系盘）帧率基准录制并落档测试文档（✅ 已完成 2026-08-13，见 [perf-2026-08-12-graph3d-dual-layout.md](../testing/reports/perf-2026-08-12-graph3d-dual-layout.md)） |
+
+---
+
+## 子模块：Lazy GraphRAG + Retrieve-Then-Generate（2026-08-15）
+
+> 设计：[37-knowledge.design.md §V12.10](./37-knowledge.design.md#v1210-lazy-graphrag--retrieve-then-generate2026-08-15)；计划：[37-knowledge.development.md](./37-knowledge.development.md#子模块lazy-graphrag--retrieve-then-generate2026-08-15)。
+> 背景：3D 星河/双链/实体边只服务人看图谱，检索与 Agent 注入仍是扁平 chunk；所谓 Plan-Then-Retrieve 实际只注入库名目录。本子模块把**已有** `knowledge_links` 接到召回，并在首轮模型调用真正预检索。
+
+### US-32：查询时图扩展（Lazy GraphRAG）
+
+**作为** 用户/Agent，
+**我希望** 语义检索在命中文档后自动带上双链/实体一跳邻居的内容，
+**从而** 「A 和 B 是什么关系」这类多跳问题不必只靠偶然同 chunk。
+
+**验收标准**：
+- 混合检索种子文档沿 `knowledge_links`（explicit > entity > semantic）扩展最多 8 个邻居，每邻居取前 2 个 chunk，与种子 RRF/分数合并后截断 TopK。
+- 即时定位查询（路径/扩展名/引号短语）不扩展，避免污染精确命中。
+- 关联读取失败时降级为原始种子，不报错、不阻塞检索。
+- 不新建实体表、不改摄取主链路（旁路纪律与 §9.6 一致）。
+
+### US-33：对话首轮真正注入检索片段
+
+**作为** 用户，
+**我希望** 打开对话问知识库里的事实时，助手第一轮就能引用相关段落，
+**从而** 不必赌模型是否记得调用 `knowledge_search`。
+
+**验收标准**：
+- BeforeModel 钩子在最新非 system 消息为 user 时，对当前问题做一次限时（2s）预检索（top 4），将段落写入 `## Retrieved Knowledge`，并保留库目录供补充搜索。
+- 工具循环续跑（最新消息为 assistant/tool）跳过预检索，避免每轮重复检索。
+- 检索失败或无检索器时回退为仅库目录 cue（既有行为）。
+
+### 功能需求清单
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-LG-1 | 一跳图扩展 | AdaptiveRouter 检索后可选 GraphExpander；Search API / knowledge_search / knowledge_reflect / 联邦逐库路径自动获得 |
+| FR-LG-2 | 复杂查询自动 MultiQuery | 调用方未指定 rewrite_strategy 且复杂度=complex 时自动重写；简单/中等查询不加 LLM 往返 |
+| FR-LG-3 | Retrieve-Then-Generate | knowledge cue 从「库名目录」升级为「预检索段落 + 短目录」 |
+
+---
+
+## 子模块：编译期 Wiki 成链（2026-08-15）
+
+> 设计：[37-knowledge.design.md §V12.11](./37-knowledge.design.md#v1211-编译期-wiki-成链2026-08-15)；计划：[37-knowledge.development.md](./37-knowledge.development.md#子模块编译期-wiki-成链2026-08-15)。
+> 背景：查询期 Lazy GraphRAG 只能沿着已有 `knowledge_links` 走。Obsidian 核心把未链接提及当展示，图谱仍然稀疏；本子模块在**写入时**把同库标题的纯文本提及编译为 `[[wikilink]]`，让 explicit 边在索引期就长出来。
+
+### US-34：写入时把未链接提及编成双链
+
+**作为** 用户，
+**我希望** 上传或保存笔记时，正文里提到的其它笔记名自动变成 `[[双链]]`，
+**从而** 星河图、反链和检索一跳扩展不依赖我手工每处加括号。
+
+**验收标准**：
+- 摄取（含图片视觉提取后的 Markdown）与 Vault 编辑保存会扫描同库文档标题，将未链接提及包成 `[[Title]]`。
+- 跳过 YAML frontmatter、围栏/行内代码、已有 wikilink、Markdown 链接与裸 URL。
+- 英文整词匹配（最短 3 字符）；中文最短 2 字；同名歧义与指向自己的标题不链。
+- 更长标题优先于短标题（「通信协议」优于「协议」）。
+- 列出标题失败时保持原文，不阻断入库/保存。
+- 不新增 RPC（无确认弹窗）；幂等（已是 `[[Title]]` 的不再套一层）。
+
+### 功能需求清单
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-AL-1 | 纯函数成链 | `AutolinkWikiMentions` 可单测、无 IO |
+| FR-AL-2 | 摄取编译 | `IngestDocument` 在整理后、索引前成链；vault 内 `.md` 落盘与索引正文一致 |
+| FR-AL-3 | 保存编译 | `UpdateVaultDocumentContent` 写盘前成链，随后 `ApplyOne` 重建块索引 |
+
+---
+
+## 子模块：会话写回飞轮（2026-08-15）
+
+> 设计：[37-knowledge.design.md §V12.12](./37-knowledge.design.md#v1212-会话写回飞轮sp7-g22026-08-15)；计划：[37-knowledge.development.md](./37-knowledge.development.md#子模块会话写回飞轮2026-08-15)。
+> 背景：开源 PKM 无法把 Agent 会话变成团队知识。SP7 G2 用已有自动记忆提取，经更严验证门写入团队库日记，每条带 session/agent/fact provenance。
+
+### US-37：过门事实自动沉淀到团队库
+
+**作为** 团队成员，
+**我希望** 对话里被记住的高置信偏好/约束/决策自动出现在团队知识库，
+**从而** 不必手工把会话结论再贴进笔记，且能追溯是哪次会话写的。
+
+**验收标准**：
+- AutoMemory 成功写入 L3 后，仅 `preference/profile/goal/constraint/decision/relationship` 且置信度 ≥ 0.85、陈述 ≥ 8 字的事实进入写回。
+- 追加到团队库当日日记 `inbox/writeback-YYYY-MM-DD.md`（优先「团队知识收件箱」，否则复用已有 team 库；没有则懒创建词法团队库）。
+- 每条含 `fact_id` / `session_id` / `agent_id` / `confidence` / `source`；同一 `fact_id` 不重复追加。
+- 写回失败不阻断自动记忆主流程。
+- 不新增 RPC。
+
+### 功能需求清单
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-WB-1 | 验证门 | 比 L3 门（0.6）更严，推测/流水账不入库 |
+| FR-WB-2 | 日记 + provenance | UTC 日切分 Markdown，块级可检索 |
+| FR-WB-3 | 派生索引 | 成链 + RebuildBlockIndex + chunk/FTS 重放 |
+
+---
+
+## 子模块：成链回填、金标与 SP7 收口（2026-08-15）
+
+> 设计：[37-knowledge.design.md §V12.13](./37-knowledge.design.md#v1213-成链回填金标与-sp7-收口2026-08-15)；计划：[37-knowledge.development.md](./37-knowledge.development.md#子模块成链回填金标与-sp7-收口2026-08-15)。
+
+### US-38：存量出链回填（显式命令，不挂在重建上）
+
+**作为** 库管理员，
+**我希望** 用一条单独的命令把旧笔记里未加括号的标题提及编成双链，
+**从而** 存量库也能被一跳检索走到；日常「重建索引」只修 blocks/refs，不改文件。
+
+**验收标准**：
+- `POST /v1/knowledge/collections/{id}/autolink-backfill` 先 `BackfillOutgoingAutolinks` 再重建块索引；与重建共用同库互斥门。
+- `RebuildKnowledgeIndex` **不**调用回填（US-29 契约：不改源文本）。
+- 命令面板有确认文案，写明会改写 Markdown。
+- 外部编辑器 / watcher 路径不成链。
+
+### US-39：确认后编译本页双链
+
+**作为** 笔记作者，
+**我希望** 先看到本页会链上几处，再决定是否写入，
+**从而** 歧义或误伤标题不会被静默改掉（ingest/保存仍自动成链）。
+
+**验收标准**：
+- 预览与确认走 custom HTTP（非 Proto）：`GET .../autolink-preview`、`POST .../autolink`。
+- 命令面板与反链面板有入口；0 处替换时不写盘。
+
+### US-40：检索金标证明成链提升一跳召回
+
+**作为** 开发者，
+**我希望** 有一组中英查询能在 CI 里失败当「成链+一跳」回归，
+**从而** 重构 GraphExpander 时不会把邻文档事实丢回去。
+
+**验收标准**：
+- `go test ./internal/knowledge/ -run TestGoldRecall`：12 条查询在仅种子命中下不含邻文档事实，autolink 后一跳命中。
+- 不声称 50 条 BM25 对真实 PG 的回归，不声称 Agentic RAG。
+
+### US-41：Agent 记忆投影为只读笔记
+
+**作为** 团队成员，
+**我希望** 每个 Agent 的活动记忆能在团队库看到一篇 `agents/{id}.md`，
+**从而** 人和检索能读到同一份投影，而不是只在记忆中心。
+
+**验收标准**：
+- AutoMemory 之后覆盖写投影（不追加）；文首标明只读。
+- 独立 `AgentMemoryProjector`，不往 Knowledge `Usecase` 堆字段。
+- 失败不阻断记忆提取。
+
+### US-42：谁懂这个
+
+**作为** 团队成员，
+**我希望** 按写回 provenance 看到哪些 Agent/用户沉淀过该库事实，
+**从而** 找人请教不必翻会话记录。
+
+**验收标准**：
+- `GET /v1/knowledge/collections/{id}/experts` 聚合 `inbox/writeback-*` 与 `agents/*.md` 的 agent_id/user_id。
+- 命令面板展示前若干条。
+
+### US-43：知识健康度
+
+**作为** 库管理员，
+**我希望** 一眼看到孤立率、边密度、悬空链和写回日记是否还在更新，
+**从而** 知道图是不是空壳。
+
+**验收标准**：
+- `GET /v1/knowledge/collections/{id}/health` 来自 `ListCollectionGraph` + `ListDanglingLinks` + 写回路径扫描。
+- 读路径不写 `meta/health.md`。
+
+### US-44：低置信写回人工过门
+
+**作为** 团队成员，
+**我希望** 0.60–0.84 的白名单事实先进入待确认列表，我点头后再进当日日记，
+**从而** 自动沉淀保持高门，猜测仍可被我捞回来。
+
+**验收标准**：
+- pending 文件 `inbox/writeback-pending.md`；确认走 `POST .../writeback-pending/apply`（确认即门，不再套 0.85）。
+- 工作台按条勾选后提交 `fact_ids`；空列表不写盘。失败不阻断 AutoMemory。
+- 专家 / pending 默认打到写回落点（US-46），不是当前打开的个人库。
+
+### US-45：重建索引与成链回填解耦
+
+**作为** 库管理员，
+**我希望** 「重建索引」不再悄悄改我的笔记，
+**从而** 误点重建不会把全库标题提及包成双链。
+
+**验收标准**：
+- 同 US-38 解耦后的验收；重建 RPC 与回填 POST 分路。
+- 同库已有重建/回填在途时回 409。
+
+### US-46：专家与待确认写回指向写回落点
+
+**作为** 团队成员，
+**我希望** 「谁懂这个」和「审核待写回」查的是团队收件箱，而不是我正在看的个人库，
+**从而** 空列表时知道该去哪，而不是以为功能坏了。
+
+**验收标准**：
+- `GET /v1/knowledge/writeback-home` 只解析不创建：同名「团队知识收件箱」优先，否则第一个 team 库。
+- 当前库不是落点时提示来源，并提供切换。
+- 健康度仍统计当前打开的库；若写回在别处，附带提示。
+
+### US-47：生产词法路径中英金标
+
+**作为** 开发者，
+**我希望** 一组中英查询打到真实的 `SearchChunksBM25`（Postgres tsvector + trigram），
+**从而** 词法降级路径回归不只靠假 GraphExpander。
+
+**验收标准**：
+- `go test ./internal/data/ -run TestKnowledgeRepo_SearchChunksBM25_GoldBilingual`：12 条查询命中预期文档，负例不误中。
+- 需要 `aranea_test` Postgres；**不**声称 50 条、不声称混合检索 / Agentic RAG。
+- US-40 的一跳金标保持独立（不连 PG）。
+
+### US-48：待确认写回逐条勾选
+
+**作为** 团队成员，
+**我希望** 对待确认事实逐条勾选后再写入日记，
+**从而** 不必把一整批猜测一次性过门。
+
+**验收标准**：
+- `WritebackReviewDialog` 仅 props/emits；提交 `fact_ids` 由工作台调已有 apply API。
+- 默认全选；零选禁用提交。
+
+### 功能需求清单
+
+| # | 需求 | 说明 |
+|---|------|------|
+| FR-SP7-1 | 历史回填 | 显式回填命令成链；重建索引不改源文本 |
+| FR-SP7-2 | 确认成链 | custom HTTP + 工作台确认 |
+| FR-SP7-3 | 金标 | 一跳内嵌语料 + 生产 BM25 PG 金标（US-47） |
+| FR-SP7-4 | G1 投影 | 覆盖写 `agents/{id}.md` |
+| FR-SP7-5 | G7/G8 | 专家聚合 + 健康度只读；专家打写回落点 |
+| FR-SP7-6 | 待确认写回 | 0.60–0.84 白名单人工过门，逐条勾选 |
+| FR-SP7-7 | 写回落点 | `writeback-home` 只读解析，GET 不造库 |
+
+

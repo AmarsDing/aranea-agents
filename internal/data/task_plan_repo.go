@@ -194,6 +194,39 @@ func (r *taskPlanRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionI
 	return plans, nil
 }
 
+func (r *taskPlanRepo) ListByStatuses(ctx context.Context, statuses []biz.TaskPlanStatus) ([]*biz.TaskPlan, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(statuses))
+	args := make([]any, 0, len(statuses)+2)
+	for i, st := range statuses {
+		placeholders[i] = "?"
+		args = append(args, string(st))
+	}
+	wsClause, wsArgs := taskPlansWorkspaceFilter(ctx)
+	args = append(args, wsArgs...)
+	query := `SELECT id, spirit_session_id, trace_id, user_message, intent_artifact_json,
+			complexity_level, complexity_score, dimensions_json, sub_tasks_json, dag_json,
+			decompose_reason, strategy, strategy_reason, topology_hint, memory_hit_json,
+			status, workspace_id, created_at, updated_at
+		 FROM task_plans WHERE status IN (` + strings.Join(placeholders, ",") + `)` + wsClause + ` ORDER BY created_at DESC`
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(query), args...)
+	if err != nil {
+		return nil, entErrToBizErr(err, "TASK_PLAN")
+	}
+	defer rows.Close()
+	var plans []*biz.TaskPlan
+	for rows.Next() {
+		plan, err := scanTaskPlanFromRows(rows)
+		if err != nil {
+			return nil, entErrToBizErr(err, "TASK_PLAN")
+		}
+		plans = append(plans, plan)
+	}
+	return plans, nil
+}
+
 // taskPlansWorkspaceFilter returns a SQL fragment (prefixed with " AND") and
 // matching args for workspace visibility of task_plans (C-25).
 //   - system caller: no filtering

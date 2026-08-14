@@ -54,9 +54,12 @@ func parseModelRef(ctx context.Context, catalog *biz.LlmProviderModelUsecase, mo
 		}
 	}
 	api = modelName
+	if catalog == nil {
+		return "", api, apierror.Internal(apierror.DomainGraph, "graph: model catalog not configured")
+	}
 	rows, listErr := catalog.List(ctx)
 	if listErr != nil {
-		return "", api, nil
+		return "", "", listErr
 	}
 	for _, row := range rows {
 		if strings.EqualFold(strings.TrimSpace(row.Model), api) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
@@ -16,7 +17,10 @@ import (
 
 const (
 	knowledgeCueMaxCollections = 10
-	knowledgeCueMaxChars       = 1500
+	knowledgeCueMaxChars       = 1800
+	knowledgeCueChunkChars     = 280
+	knowledgeCueTopK           = 4
+	knowledgeCueSearchTimeout  = 2 * time.Second
 )
 
 func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
@@ -30,21 +34,18 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger())
+		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryKnowledgeCue, utf8.RuneCountInString(cue))
-		// P2 TTFT: append the per-turn dynamic cue at the END of the message
-		// list so the [system block + history + user] prefix stays cacheable.
 		sys := trpcmodel.NewSystemMessage(cue)
 		args.Request.Messages = append(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger) string {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message) string {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	collections, _, err := uc.ListCollections(ctx, "", knowledgeCueMaxCollections, 0)
@@ -53,49 +54,149 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 		return ""
 	}
 
+	filtered := filterCueCollections(collections, scopedIDs)
+	query := lastUserQuery(msgs)
+	var chunks []biz.KnowledgeChunk
+	if query != "" {
+		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
+	}
+	return formatKnowledgeCue(filtered, chunks)
+}
+
+func filterCueCollections(collections []biz.KnowledgeCollection, scopedIDs []string) []biz.KnowledgeCollection {
+	if len(scopedIDs) == 0 {
+		return collections
+	}
+	idSet := make(map[string]struct{}, len(scopedIDs))
+	for _, id := range scopedIDs {
+		idSet[id] = struct{}{}
+	}
 	var filtered []biz.KnowledgeCollection
-	if len(scopedIDs) > 0 {
-		idSet := make(map[string]struct{}, len(scopedIDs))
-		for _, id := range scopedIDs {
-			idSet[id] = struct{}{}
+	for _, col := range collections {
+		if _, ok := idSet[col.ID]; ok {
+			filtered = append(filtered, col)
 		}
-		for _, col := range collections {
-			if _, ok := idSet[col.ID]; ok {
-				filtered = append(filtered, col)
-			}
+	}
+	return filtered
+}
+
+// lastUserQuery 只在本轮第一次模型调用（最新非 system 消息是 user）时取查询。
+// 工具循环续跑时跳过，避免每轮重复检索拖慢 TTFT。
+func lastUserQuery(msgs []trpcmodel.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		role := msgs[i].Role
+		if role == trpcmodel.RoleSystem {
+			continue
 		}
-	} else {
-		filtered = collections
+		if role == trpcmodel.RoleUser {
+			return strings.TrimSpace(msgs[i].Content)
+		}
+		return ""
+	}
+	return ""
+}
+
+func retrieveCueChunks(ctx context.Context, query string, scoped []string, catalog []biz.KnowledgeCollection, lg loggateway.Logger) []biz.KnowledgeChunk {
+	q := biz.KnowledgeSearchQuery{Query: query, TopK: knowledgeCueTopK}
+	searchCtx, cancel := context.WithTimeout(ctx, knowledgeCueSearchTimeout)
+	defer cancel()
+
+	fr := knowledgetool.FederatedRetrieverFromContext(ctx)
+	if fr != nil && len(scoped) != 1 {
+		var chunks []biz.KnowledgeChunk
+		var err error
+		if len(scoped) == 0 {
+			chunks, err = fr.SearchAll(searchCtx, q, nil, "")
+		} else {
+			chunks, err = fr.Search(searchCtx, scoped, q, nil, "")
+		}
+		if err != nil {
+			lg.Warn("知识库预检索失败", loggateway.StepID("agent.knowledge.cue_retrieve_fail"), loggateway.Err(err))
+			return nil
+		}
+		return chunks
 	}
 
-	if len(filtered) == 0 {
+	if len(scoped) == 1 {
+		q.CollectionID = scoped[0]
+	} else if len(catalog) == 1 {
+		q.CollectionID = catalog[0].ID
+	}
+
+	if router := knowledgetool.AdaptiveRouterFromContext(ctx); router != nil && q.CollectionID != "" {
+		chunks, err := router.Search(searchCtx, q, nil, "")
+		if err != nil {
+			lg.Warn("知识库预检索失败", loggateway.StepID("agent.knowledge.cue_retrieve_fail"), loggateway.Err(err))
+			return nil
+		}
+		return chunks
+	}
+	if r := knowledgetool.RetrieverFromContext(ctx); r != nil && q.CollectionID != "" {
+		chunks, err := r.Search(searchCtx, q)
+		if err != nil {
+			lg.Warn("知识库预检索失败", loggateway.StepID("agent.knowledge.cue_retrieve_fail"), loggateway.Err(err))
+			return nil
+		}
+		return chunks
+	}
+	return nil
+}
+
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk) string {
+	if len(filtered) == 0 && len(chunks) == 0 {
 		return ""
 	}
 
 	var b strings.Builder
-	b.WriteString("## Available Knowledge Bases\n")
-	b.WriteString("The following knowledge bases are available for search. Use `knowledge_search` to search a specific collection, or `knowledge_reflect` to search across multiple collections and evaluate result quality.\n\n")
-
-	for i, col := range filtered {
-		if i >= knowledgeCueMaxCollections {
-			break
-		}
-		fmt.Fprintf(&b, "- **%s** (ID: `%s`)", col.Name, col.ID)
-		if col.Description != "" {
-			desc := col.Description
-			if len([]rune(desc)) > 120 {
-				desc = string([]rune(desc)[:120]) + "..."
+	if len(chunks) > 0 {
+		b.WriteString("## Retrieved Knowledge\n")
+		b.WriteString("The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge. If they are insufficient, call `knowledge_search` or `knowledge_reflect`.\n\n")
+		for i, ch := range chunks {
+			if i >= knowledgeCueTopK {
+				break
 			}
-			fmt.Fprintf(&b, ": %s", desc)
+			content := strings.TrimSpace(ch.Content)
+			if content == "" {
+				continue
+			}
+			if utf8.RuneCountInString(content) > knowledgeCueChunkChars {
+				content = string([]rune(content)[:knowledgeCueChunkChars]) + "..."
+			}
+			fmt.Fprintf(&b, "[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)
 		}
-		fmt.Fprintf(&b, " [%d docs, %d chunks]", col.DocumentCount, col.ChunkCount)
-		b.WriteByte('\n')
 	}
 
-	b.WriteString("\n**Search strategy tips:**\n")
-	b.WriteString("- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n")
-	b.WriteString("- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n")
-	b.WriteString("- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
+	if len(filtered) > 0 {
+		b.WriteString("## Available Knowledge Bases\n")
+		if len(chunks) == 0 {
+			b.WriteString("The following knowledge bases are available for search. Use `knowledge_search` to search a specific collection, or `knowledge_reflect` to search across multiple collections and evaluate result quality.\n\n")
+		} else {
+			b.WriteString("Additional collections you can search if the passages above are not enough:\n\n")
+		}
+
+		for i, col := range filtered {
+			if i >= knowledgeCueMaxCollections {
+				break
+			}
+			fmt.Fprintf(&b, "- **%s** (ID: `%s`)", col.Name, col.ID)
+			if col.Description != "" && len(chunks) == 0 {
+				desc := col.Description
+				if len([]rune(desc)) > 120 {
+					desc = string([]rune(desc)[:120]) + "..."
+				}
+				fmt.Fprintf(&b, ": %s", desc)
+			}
+			fmt.Fprintf(&b, " [%d docs, %d chunks]", col.DocumentCount, col.ChunkCount)
+			b.WriteByte('\n')
+		}
+
+		if len(chunks) == 0 {
+			b.WriteString("\n**Search strategy tips:**\n")
+			b.WriteString("- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n")
+			b.WriteString("- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n")
+			b.WriteString("- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
+		}
+	}
 
 	result := b.String()
 	if len([]rune(result)) > knowledgeCueMaxChars {

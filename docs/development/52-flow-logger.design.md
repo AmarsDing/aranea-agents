@@ -571,6 +571,10 @@ internal/cronrunner/jobs/
 | `knowledge.vault.sync` | ok / error | Vault 同步 |
 | `knowledge.entity.merge` | ok / error | 知识实体合并 |
 | `knowledge.block.promote` | info / ok / error | 知识块晋升 |
+| `knowledge.writeback` | info / warn | 会话知识写回（SP7 G2：过门事实沉淀团队库） |
+| `knowledge.writeback.pending` | info / warn | 待确认知识写回（US-44） |
+| `knowledge.memory.project` | info / warn | Agent 记忆投影到团队库（SP7 G1） |
+| `knowledge.autolink.backfill` | info / error | 历史文档成链回填（US-38/US-45 显式命令，不挂重建） |
 | `knowledge.rebuild_index` | info / ok / error | 知识块索引重建 |
 | `knowledge.reembed.start` | info / — | 文档重嵌入开始 |
 | `knowledge.reembed.done` | ok / error | 文档重嵌入完成 |

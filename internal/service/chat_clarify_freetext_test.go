@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -34,8 +35,14 @@ func (s *stubStepV2ReaderByID) ListStepsByTask(_ context.Context, _ string) ([]b
 	return nil, nil
 }
 
-func (s *stubStepV2ReaderByID) ListStepsBySession(_ context.Context, _ string) ([]biz.Step, error) {
-	return nil, nil
+func (s *stubStepV2ReaderByID) ListStepsBySession(_ context.Context, sessionID string) ([]biz.Step, error) {
+	out := make([]biz.Step, 0, len(s.steps))
+	for _, step := range s.steps {
+		if step.SessionID == sessionID {
+			out = append(out, step)
+		}
+	}
+	return out, nil
 }
 
 func (s *stubStepV2ReaderByID) ListStepsBySessionPaged(_ context.Context, _ string, _ biz.StepListOptions) ([]biz.Step, bool, error) {
@@ -107,14 +114,15 @@ func seedPendingClarifyStep(t *testing.T, sessionID string) (biz.Step, pendingCl
 		t.Fatalf("marshal envelope: %v", err)
 	}
 	step := biz.Step{
-		ID:        taskID + "-clarify",
-		TaskID:    taskID,
-		SessionID: sessionID,
-		Kind:      biz.StepKindClarify,
-		Status:    biz.StepStatusAwaitingInput,
-		Version:   1,
-		Content:   string(raw),
-		StartedAt: time.Now().UTC(),
+		ID:             taskID + "-clarify",
+		TaskID:         taskID,
+		SessionID:      sessionID,
+		Kind:           biz.StepKindClarify,
+		AuthorAgentKey: "agent-1",
+		Status:         biz.StepStatusAwaitingInput,
+		Version:        1,
+		Content:        string(raw),
+		StartedAt:      time.Now().UTC(),
 	}
 	pc := pendingClarification{
 		Input:     biz.TurnInput{SessionID: sessionID, Content: "帮我做个应用", AgentKey: "agent-1"},
@@ -250,7 +258,7 @@ func TestResolveResumeInput_PendingHit_ReturnsStoredInput(t *testing.T) {
 	_, pc := seedPendingClarifyStep(t, "sess-1")
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	got, _, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", nil)
+	got, _, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -269,7 +277,7 @@ func TestResolveResumeInput_PendingHit_ReturnsStoredArtifact(t *testing.T) {
 	pc.Artifact = art
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	_, gotArt, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", nil)
+	_, gotArt, err := orch.resolveResumeInput("sess-1", pc.TaskID, "", "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,12 +290,15 @@ func TestResolveResumeInput_PendingMiss_RestartPath_UsesFallbackArtifact(t *test
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
 	// 模拟服务重启：pending 丢失，意图产物从澄清信封恢复（fallback）。
 	fallback := &intent.Artifact{RefinedGoal: "做一个内部工具", IntentKind: "task"}
-	got, gotArt, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", fallback)
+	got, gotArt, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", "agent-1", fallback)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got.SessionID != "sess-1" || got.Content != "帮我做个应用" {
 		t.Errorf("rebuilt input = %+v", got)
+	}
+	if got.AgentKey != "agent-1" {
+		t.Errorf("rebuilt AgentKey = %q, want agent-1", got.AgentKey)
 	}
 	if gotArt != fallback {
 		t.Errorf("artifact = %p, want fallback artifact %p", gotArt, fallback)
@@ -299,7 +310,7 @@ func TestResolveResumeInput_PendingHitTaskMismatch_Error(t *testing.T) {
 	_, pc := seedPendingClarifyStep(t, "sess-1")
 	orch.pendingClarifications.Store("sess-1", pc)
 
-	if _, _, err := orch.resolveResumeInput("sess-1", "other-task", "", nil); err == nil {
+	if _, _, err := orch.resolveResumeInput("sess-1", "other-task", "", "", nil); err == nil {
 		t.Fatal("expected task mismatch error")
 	}
 }
@@ -307,18 +318,191 @@ func TestResolveResumeInput_PendingHitTaskMismatch_Error(t *testing.T) {
 func TestResolveResumeInput_PendingMiss_LazyRebuildFromOriginalInput(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
 	// 模拟服务重启：pending 丢失，信封含 original_input
-	got, _, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", nil)
+	got, _, err := orch.resolveResumeInput("sess-1", "any-task", "帮我做个应用", "agent-key", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got.SessionID != "sess-1" || got.Content != "帮我做个应用" {
 		t.Errorf("rebuilt input = %+v", got)
 	}
+	if got.AgentKey != "agent-key" {
+		t.Errorf("rebuilt AgentKey = %q, want agent-key", got.AgentKey)
+	}
 }
 
-func TestResolveResumeInput_PendingMissNoOriginalInput_NotFound(t *testing.T) {
+func TestResolveResumeInput_PendingMissNoOriginalInput_FailedPrecondition(t *testing.T) {
 	orch := newClarifyFreeTextTestOrch(&stubStepV2ReaderByID{}, &recordingStepV2Writer{}, &stubEventPublisher{}, &stubSessionStateTransitor{})
-	if _, _, err := orch.resolveResumeInput("sess-1", "any-task", "", nil); err == nil {
-		t.Fatal("expected NotFound error when no pending and no original input")
+	_, _, err := orch.resolveResumeInput("sess-1", "any-task", "", "", nil)
+	if err == nil {
+		t.Fatal("expected error when no pending and no original input")
+	}
+	if !apierror.IsCode(err, apierror.CodeFailedPrecondition) {
+		t.Errorf("error code = %v, want FAILED_PRECONDITION", err)
+	}
+	if !strings.Contains(err.Error(), "original_input") {
+		t.Errorf("error %q should mention original_input", err)
+	}
+}
+
+func TestResolveClarificationFreeText_RestartEmptyCache_RebuildsFromStep(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	stateMgr := &stubSessionStateTransitor{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, stateMgr)
+
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	art := &intent.Artifact{RefinedGoal: "做一个内部工具", IntentKind: "task"}
+	rawArt, err := json.Marshal(art)
+	if err != nil {
+		t.Fatalf("marshal artifact: %v", err)
+	}
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &env); err != nil {
+		t.Fatalf("unmarshal seed envelope: %v", err)
+	}
+	env.IntentArtifactJSON = string(rawArt)
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	step.Content = string(raw)
+	stepReader.steps[step.ID] = step
+	// 不写入 pendingClarifications：模拟重启 / 其他副本。
+
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), biz.TurnInput{
+		SessionID: "sess-1",
+		Content:   "做成内部工具即可",
+		AgentKey:  "incoming-agent",
+	})
+	if len(stepWriter.updated) != 1 {
+		t.Fatalf("expected 1 step update, got %d", len(stepWriter.updated))
+	}
+	if stepWriter.updated[0].Status != biz.StepStatusCompleted {
+		t.Errorf("step.Status = %q, want completed", stepWriter.updated[0].Status)
+	}
+	if gotArt == nil || gotArt.RefinedGoal != "做一个内部工具" {
+		t.Errorf("expected rebuilt intent artifact, got %+v", gotArt)
+	}
+	if !strings.Contains(got.Content, "做成内部工具即可") || !strings.Contains(got.Content, "帮我做个应用") {
+		t.Errorf("rewritten content missing context or original input: %q", got.Content)
+	}
+	if got.AgentKey != "agent-1" {
+		t.Errorf("rebuilt AgentKey = %q, want step.AuthorAgentKey agent-1", got.AgentKey)
+	}
+	if got.ParentTaskID != step.TaskID {
+		t.Errorf("ParentTaskID = %q, want %q", got.ParentTaskID, step.TaskID)
+	}
+	if len(stateMgr.statuses) != 1 || stateMgr.statuses[0] != sessstatus.SessionStatusRunning {
+		t.Errorf("session transitions = %v, want [running]", stateMgr.statuses)
+	}
+}
+
+func TestResolveClarificationFreeText_RestartEmptyCache_MissingOriginalInput_PassThrough(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	env.OriginalInput = ""
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	step.Content = string(raw)
+	stepReader.steps[step.ID] = step
+
+	input := biz.TurnInput{SessionID: "sess-1", Content: "新消息"}
+	got, gotArt := orch.resolveClarificationFreeText(context.Background(), input)
+	if got.Content != "新消息" {
+		t.Errorf("should pass through when original_input missing, got %q", got.Content)
+	}
+	if gotArt != nil {
+		t.Errorf("expected nil artifact, got %v", gotArt)
+	}
+	if len(stepWriter.updated) != 0 {
+		t.Errorf("no step update expected, got %d", len(stepWriter.updated))
+	}
+}
+
+func TestResolveClarificationFreeText_SessionNotAwaiting_SkipsRebuild(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	stepReader.steps[step.ID] = step
+	sess := biz.Session{Status: string(sessstatus.SessionStatusRunning)}
+
+	got, _ := orch.resolveClarificationFreeTextHint(context.Background(), biz.TurnInput{
+		SessionID: "sess-1",
+		Content:   "普通后续消息",
+	}, &sess)
+	if got.Content != "普通后续消息" {
+		t.Errorf("non-awaiting session should skip rebuild, got %q", got.Content)
+	}
+	if len(stepWriter.updated) != 0 {
+		t.Errorf("no step update expected, got %d", len(stepWriter.updated))
+	}
+}
+
+func TestSubmitClarification_RestartEmptyCache_SucceedsFromEnvelope(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	stepReader.steps[step.ID] = step
+
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	got, err := svc.submitClarification(context.Background(), step, []biz.ClarificationAnswer{
+		{Selected: []string{"Web"}},
+	})
+	if err != nil {
+		t.Fatalf("submitClarification: %v", err)
+	}
+	if got == "" {
+		t.Fatal("expected clarified context")
+	}
+	if len(stepWriter.updated) != 1 {
+		t.Fatalf("expected 1 step update, got %d", len(stepWriter.updated))
+	}
+	if stepWriter.updated[0].Status != biz.StepStatusCompleted {
+		t.Errorf("step.Status = %q, want completed", stepWriter.updated[0].Status)
+	}
+}
+
+func TestSubmitClarification_RestartEmptyCache_MissingOriginalInput_FailsBeforeComplete(t *testing.T) {
+	stepReader := &stubStepV2ReaderByID{steps: map[string]biz.Step{}}
+	stepWriter := &recordingStepV2Writer{}
+	orch := newClarifyFreeTextTestOrch(stepReader, stepWriter, &stubEventPublisher{}, &stubSessionStateTransitor{})
+	step, _ := seedPendingClarifyStep(t, "sess-1")
+	var env biz.ClarificationEnvelope
+	if err := json.Unmarshal([]byte(step.Content), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	env.OriginalInput = ""
+	raw, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	step.Content = string(raw)
+	stepReader.steps[step.ID] = step
+
+	svc := &ChatService{orch: orch, lg: loggateway.NewNoop()}
+	_, err = svc.submitClarification(context.Background(), step, nil)
+	if err == nil {
+		t.Fatal("expected FailedPrecondition when original_input missing")
+	}
+	if !apierror.IsCode(err, apierror.CodeFailedPrecondition) {
+		t.Errorf("error = %v, want FAILED_PRECONDITION", err)
+	}
+	if !strings.Contains(err.Error(), "original_input") {
+		t.Errorf("error %q should mention original_input", err)
+	}
+	if len(stepWriter.updated) != 0 {
+		t.Errorf("step must not complete when original_input missing, got %d updates", len(stepWriter.updated))
 	}
 }

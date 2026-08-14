@@ -60,8 +60,9 @@ func newDeduplicateMemoriesTool(deps Deps) trpctool.Tool {
 			facts = append(facts, factEntry{ID: id, Statement: stmt, UpdatedAt: updated})
 		}
 
-		// Identify duplicates using simplified string-based similarity.
-		// TODO(P1): Replace with embedding-based cosine similarity.
+		// Trigram Jaccard (stringSimilarity). Embedding cosine is not wired:
+		// ListFactRows JSON omits embedding_blob, and production
+		// memoryButlerTools() does not inject Deps.Embedder.
 		var toDelete []string
 		seen := make(map[string]bool)
 		for i := 0; i < len(facts); i++ {

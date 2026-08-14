@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -242,5 +243,67 @@ func TestAutoMemoryWorker_FeedbackPipelinesFacts(t *testing.T) {
 	}
 	if factWriter.upserts[0].FactKind != "preference" {
 		t.Fatalf("feedback fact_kind=%q want preference", factWriter.upserts[0].FactKind)
+	}
+}
+
+type capturingWriteBack struct {
+	calls int
+	got   biz.KnowledgeWriteBackInput
+	err   error
+}
+
+func (c *capturingWriteBack) WriteBackSessionFacts(_ context.Context, in biz.KnowledgeWriteBackInput) (biz.KnowledgeWriteBackResult, error) {
+	c.calls++
+	c.got = in
+	return biz.KnowledgeWriteBackResult{Appended: len(in.Facts)}, c.err
+}
+
+func TestAutoMemoryWorker_WriteBackAfterFacts(t *testing.T) {
+	writer := &fakeConsolidationWriter{}
+	factWriter := &fakePipelineFactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: factWriter,
+		LG:     loggateway.NewNoop(),
+	})
+	w := newPipelineTestWorker(t, writer, pipeline, &stubConsolidator{proposals: []biz.MemoryProposal{{
+		Layer:       biz.MemoryLayerL3,
+		Statement:   "用户偏好深色模式界面",
+		SubjectType: "preference",
+		Scope:       "user",
+		Confidence:  0.93,
+	}}})
+	cap := &capturingWriteBack{}
+	w.writeBack = cap
+	if err := w.extract(context.Background(), pipelineTestRequest()); err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if cap.calls != 1 {
+		t.Fatalf("writeback calls=%d want 1", cap.calls)
+	}
+	if cap.got.SessionID != "sess-pipe-1" || len(cap.got.Facts) == 0 {
+		t.Fatalf("writeback input = %+v", cap.got)
+	}
+	if cap.got.Facts[0].Statement != "用户偏好深色模式界面" {
+		t.Fatalf("statement = %q", cap.got.Facts[0].Statement)
+	}
+}
+
+func TestAutoMemoryWorker_WriteBackErrorDoesNotFailExtract(t *testing.T) {
+	writer := &fakeConsolidationWriter{}
+	factWriter := &fakePipelineFactWriter{}
+	pipeline := biz.NewFactWritePipeline(biz.FactWritePipelineDeps{
+		Writer: factWriter,
+		LG:     loggateway.NewNoop(),
+	})
+	w := newPipelineTestWorker(t, writer, pipeline, &stubConsolidator{proposals: []biz.MemoryProposal{{
+		Layer:       biz.MemoryLayerL3,
+		Statement:   "用户偏好深色模式界面",
+		SubjectType: "preference",
+		Scope:       "user",
+		Confidence:  0.93,
+	}}})
+	w.writeBack = &capturingWriteBack{err: errors.New("kb down")}
+	if err := w.extract(context.Background(), pipelineTestRequest()); err != nil {
+		t.Fatalf("extract should ignore writeback error, got %v", err)
 	}
 }

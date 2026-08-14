@@ -14,6 +14,8 @@ const (
 	PathVision GroundingPath = "vision"
 	// PathVLMDirect 视觉组件全部不可用时 VLM 纯坐标直判（最低精度降级路径）。
 	PathVLMDirect GroundingPath = "vlm_direct"
+	// PathGrounder a11y/SoM 未命中后，专用 GUI grounding 模型坐标命中（M3.2）。
+	PathGrounder GroundingPath = "grounder"
 )
 
 // ActionType 语义动作类型。
@@ -26,6 +28,7 @@ const (
 	ActionKey      ActionType = "key"
 	ActionWheel    ActionType = "wheel"
 	ActionDrag     ActionType = "drag"
+	ActionWait     ActionType = "wait"
 	ActionLaunch   ActionType = "launch"
 	ActionFocus    ActionType = "focus"
 )
@@ -59,6 +62,12 @@ type Session struct {
 	StepsUsed int           `json:"steps_used"`
 	CreatedAt time.Time     `json:"created_at"`
 	UpdatedAt time.Time     `json:"updated_at"`
+	// Goal 用户任务约束原文（M3.3 第一期不抽条，整段回灌）。
+	Goal string `json:"goal,omitempty"`
+	// MustReobserve 上一步写动作无可见效果，下一次禁止写动作（M3.3）。
+	MustReobserve bool `json:"must_reobserve,omitempty"`
+	// GroundFails 连续 grounding 失败次数（满 2 次透出 ask_user）。
+	GroundFails int `json:"ground_fails,omitempty"`
 }
 
 // Point 物理像素坐标。
@@ -143,20 +152,22 @@ const (
 
 // Step 一步动作记录（内存态 + 审计落库载荷）。
 type Step struct {
-	ID          int64          `json:"id"`
-	SessionID   string         `json:"session_id"`
-	AgentKey    string         `json:"agent_key"`
-	Index       int            `json:"index"`
-	Target      string         `json:"target"`
-	Path        GroundingPath  `json:"path"`
-	Action      ActionType     `json:"action"`
-	Params      map[string]any `json:"params,omitempty"`
-	Result      StepResult     `json:"result"`
-	Error       string         `json:"error,omitempty"`
-	DurationMs  int64          `json:"duration_ms"`
-	ConfirmedBy string         `json:"confirmed_by,omitempty"`
-	Danger      bool           `json:"danger"`
-	CreatedAt   time.Time      `json:"created_at"`
+	ID            int64          `json:"id"`
+	SessionID     string         `json:"session_id"`
+	AgentKey      string         `json:"agent_key"`
+	Index         int            `json:"index"`
+	Target        string         `json:"target"`
+	Path          GroundingPath  `json:"path"`
+	Action        ActionType     `json:"action"`
+	Params        map[string]any `json:"params,omitempty"`
+	Result        StepResult     `json:"result"`
+	Error         string         `json:"error,omitempty"`
+	DurationMs    int64          `json:"duration_ms"`
+	ConfirmedBy   string         `json:"confirmed_by,omitempty"`
+	Danger        bool           `json:"danger"`
+	Degraded      bool           `json:"degraded,omitempty"` // 视觉服务降级（vlm_direct）
+	ScreenshotRef string         `json:"screenshot_ref,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // AuditEntry 审计落库记录（= Step 持久化形态）。
@@ -168,6 +179,7 @@ type ObserveRequest struct {
 	WindowTitle       string
 	IncludeScreenshot bool
 	MaxElements       int
+	Goal              string // 可选，写入会话约束账本（仅空 Goal 时生效）
 }
 
 // ObserveResult 感知结果（LLM 可读摘要 + 原始元素）。
@@ -176,6 +188,13 @@ type ObserveResult struct {
 	Elements   []UIElement `json:"elements"`
 	Generation int         `json:"generation"`
 	Info       DeviceInfo  `json:"info"`
+	SessionID  string      `json:"session_id,omitempty"`
+	// InjectionSuspected 本次观察检出屏幕内容疑似注入（M77）。
+	// 命中后该 Agent 后续写动作（Act/Launch）无条件升级为高危（强制逐次人工确认）。
+	InjectionSuspected bool           `json:"injection_suspected"`
+	InjectionHits      []InjectionHit `json:"injection_hits,omitempty"`
+	// Constraints 会话任务约束（goal 原文回灌，M3.3）。
+	Constraints []string `json:"constraints,omitempty"`
 }
 
 // SubAction 批量动作的单步描述。
@@ -195,26 +214,32 @@ type ActRequest struct {
 	Actions     []SubAction    // 批量动作：非空时忽略 Target/Action/Args，按序 fail-fast 执行
 	DryRun      bool           // 干跑：只 grounding + 返回计划，不注入
 	ConfirmedBy string         // 确认门通过后的确认人标识（审计用）
+	Goal        string         // 可选任务约束原文（M3.3）
 }
 
 // ActResult 动作结果。
 type ActResult struct {
 	Step    Step          `json:"step"`
-	Plan    *DryRunPlan   `json:"plan,omitempty"`   // 干跑时的执行计划
+	Plan    *DryRunPlan   `json:"plan,omitempty"` // 干跑时的执行计划
 	Element *UIElement    `json:"element,omitempty"`
 	Verify  *ActionVerify `json:"verify,omitempty"` // 动作后验证（dry-run 无）
 	Batch   []ActResult   `json:"batch,omitempty"`  // 批量动作：按序每步结果（fail-fast 时含失败步）
+	// Constraints 会话约束回灌（M3.3）。
+	Constraints []string `json:"constraints,omitempty"`
+	// AskUser 连续 grounding 失败，应向用户澄清而非猜测（M3.3）。
+	AskUser    bool   `json:"ask_user,omitempty"`
+	Suggestion string `json:"suggestion,omitempty"`
 }
 
 // ActionVerify 动作后验证信号（S4 执行后闭环）：
 // settle 后重新快照，对比动作前基线（元素树内容哈希 + 前台窗口）。
 // Changed 仅在 HasBaseline=true 时有效；Hint 给出 LLM 可读的下一步提示。
 type ActionVerify struct {
-	HasBaseline      bool   `json:"has_baseline"`                 // 是否存在动作前基线（直行/坐标动作无）
-	Changed          bool   `json:"changed"`                      // 元素树内容是否变化
-	ForegroundBefore string `json:"foreground_before,omitempty"`  // 动作前前台窗口标题
-	ForegroundAfter  string `json:"foreground_after,omitempty"`   // 动作后前台窗口标题
-	Hint             string `json:"hint,omitempty"`               // no_observable_effect 等
+	HasBaseline      bool   `json:"has_baseline"`                // 是否存在动作前基线（直行/坐标动作无）
+	Changed          bool   `json:"changed"`                     // 元素树内容是否变化
+	ForegroundBefore string `json:"foreground_before,omitempty"` // 动作前前台窗口标题
+	ForegroundAfter  string `json:"foreground_after,omitempty"`  // 动作后前台窗口标题
+	Hint             string `json:"hint,omitempty"`              // no_observable_effect 等
 }
 
 // DryRunPlan 干跑产出的执行计划。

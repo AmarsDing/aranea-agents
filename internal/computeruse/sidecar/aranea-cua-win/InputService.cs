@@ -148,11 +148,59 @@ public sealed class InputService
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetCursorPos(int x, int y);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    private const uint GA_ROOT = 2;
+
+    /// <summary>
+    /// 坐标注入前校验：命中窗口须在前台，否则尝试置前；仍失败则 -32002。
+    /// </summary>
+    internal static void EnsureForegroundAt(int x, int y)
+    {
+        var hwnd = WindowFromPoint(new POINT { X = x, Y = y });
+        if (hwnd == IntPtr.Zero)
+        {
+            throw new CuaException(JsonRpc.NotInteractable, $"坐标 ({x},{y}) 未命中窗口");
+        }
+        var root = GetAncestor(hwnd, GA_ROOT);
+        if (root == IntPtr.Zero)
+        {
+            root = hwnd;
+        }
+        var fg = GetForegroundWindow();
+        if (fg == root)
+        {
+            return;
+        }
+        if (!SetForegroundWindow(root) || GetForegroundWindow() != root)
+        {
+            throw new CuaException(JsonRpc.NotInteractable, "坐标所在窗口未在前台，拒绝注入");
+        }
+    }
+
     // ---------- 公开方法 ----------
 
     /// <summary>坐标级点击（button: left/right/middle，clickCount 次连击，钳制 [1,10] 防超长阻塞）</summary>
     public object Click(int x, int y, string button, int clickCount)
     {
+        EnsureForegroundAt(x, y);
         MoveCursor(x, y);
         var (down, up) = button.ToLowerInvariant() switch
         {
@@ -204,6 +252,7 @@ public sealed class InputService
     /// <summary>滚轮（delta 正上负下，120 为一格）</summary>
     public object Wheel(int x, int y, int delta)
     {
+        EnsureForegroundAt(x, y);
         MoveCursor(x, y);
         SendMouse(MOUSEEVENTF_WHEEL, (uint)delta);
         return new { ok = true };
@@ -212,6 +261,7 @@ public sealed class InputService
     /// <summary>左键拖拽：平滑路径插值（smoothstep 缓动），总时长 durationMs</summary>
     public object Drag(int x1, int y1, int x2, int y2, int durationMs)
     {
+        EnsureForegroundAt(x1, y1);
         MoveCursor(x1, y1);
         Thread.Sleep(30);
         SendMouse(MOUSEEVENTF_LEFTDOWN, 0);

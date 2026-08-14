@@ -56,3 +56,46 @@ func TestToolConfirmGate_Decide_ComputerUseDangerDoesNotAffectOtherTools(t *test
 		t.Fatalf("decide = (%v,%q), want (false,%q)", d.needsConfirm, d.reason, confirmReasonGrantPersisted)
 	}
 }
+
+// 批量 actions[] 子步敏感词同样强制确认（持久授权不可豁免）。
+func TestToolConfirmGate_Decide_ComputerUseBatchDangerBypassesGrants(t *testing.T) {
+	t.Parallel()
+	g := newTestGate(map[string]confirmCatalogEntry{
+		"computer_use_act": {requiresConfirm: true},
+	}, func(context.Context, string, string) bool { return true })
+
+	d := g.decide(context.Background(), "sess-1", "agent-1", "computer_use_act",
+		[]byte(`{"actions":[{"target":"删除按钮","action":"invoke"}]}`))
+	if !d.needsConfirm || d.reason != confirmReasonPolicyDanger {
+		t.Fatalf("batch danger decide = (%v,%q), want (true,%q)", d.needsConfirm, d.reason, confirmReasonPolicyDanger)
+	}
+
+	d = g.decide(context.Background(), "sess-1", "agent-1", "computer_use_act",
+		[]byte(`{"actions":[{"target":"保存","action":"invoke"}]}`))
+	if d.needsConfirm || d.reason != confirmReasonGrantPersisted {
+		t.Fatalf("batch non-danger decide = (%v,%q), want (false,%q)", d.needsConfirm, d.reason, confirmReasonGrantPersisted)
+	}
+}
+
+// M77 B3：Observe 注入打标后，无敏感词的 act 仍强制逐次确认。
+func TestToolConfirmGate_Decide_InjectionSuspectedBypassesGrants(t *testing.T) {
+	t.Parallel()
+	g := newTestGate(map[string]confirmCatalogEntry{
+		"computer_use_act": {requiresConfirm: true},
+	}, func(context.Context, string, string) bool { return true })
+	g.agentKey = "notepad-agent"
+	g.injectionSuspected = func(key string) bool { return key == "notepad-agent" }
+
+	d := g.decide(context.Background(), "sess-1", "agent-uuid", "computer_use_act",
+		[]byte(`{"target":"保存菜单项","action":"invoke"}`))
+	if !d.needsConfirm || d.reason != confirmReasonPolicyDanger {
+		t.Fatalf("injection decide = (%v,%q), want (true,%q)", d.needsConfirm, d.reason, confirmReasonPolicyDanger)
+	}
+
+	g.injectionSuspected = func(string) bool { return false }
+	d = g.decide(context.Background(), "sess-1", "agent-uuid", "computer_use_act",
+		[]byte(`{"target":"保存菜单项","action":"invoke"}`))
+	if d.needsConfirm || d.reason != confirmReasonGrantPersisted {
+		t.Fatalf("clean injection decide = (%v,%q), want (false,%q)", d.needsConfirm, d.reason, confirmReasonGrantPersisted)
+	}
+}

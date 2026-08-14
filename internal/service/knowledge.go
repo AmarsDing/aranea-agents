@@ -92,6 +92,7 @@ type KnowledgeService struct {
 	linkIndex *bizknowledge.LinkIndex
 	// rebuildRuns SP1-H 块索引重建在途集合门（单进程部署 N-1；value 恒为 struct{}）。
 	rebuildRuns sync.Map
+	agentMem    *bizknowledge.AgentMemoryProjector
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。
@@ -112,6 +113,11 @@ func (s *KnowledgeService) SetVaultSyncController(c VaultSyncController) {
 // SetMonitorBus 注入流程日志总线（装配在 wire/app 层，同 SetVaultSyncController 模式）。
 func (s *KnowledgeService) SetMonitorBus(bus contract.MonitorBus) {
 	s.monitorBus = bus
+}
+
+// SetAgentMemoryProjector 接线 SP7 G1 投影器（可选；nil 时 ProjectAgentMemory no-op）。
+func (s *KnowledgeService) SetAgentMemoryProjector(p *bizknowledge.AgentMemoryProjector) {
+	s.agentMem = p
 }
 
 // knowledgeFlow 创建知识域流程日志发射器（无会话上下文；bus 为 nil 时仅进程日志）。
@@ -446,14 +452,20 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				organized = true
 			}
 		}
+		text = s.uc.MaybeAutolinkOutgoing(ctx, col.ID, "", req.GetSource(), text)
 	}
 
 	// G1-B3：上传到 vault 子目录——原始文件先落盘（文件系统为真相源），文档镜像
 	// 带 rel_path + content_hash（同步链视为已应用，不重复处理）。同名冲突
 	// CodeConflict；CreateDocument 失败补偿删除已落盘文件（防孤儿）。
 	vaultRel := ""
+	vaultBytes := raw
 	if dir := strings.TrimSpace(req.GetTargetDir()); dir != "" {
-		rel, uploadErr := s.uc.WriteVaultUpload(ctx, col.ID, dir, req.GetSource(), raw)
+		// Markdown 落盘与索引正文一致（含编译期成链），避免 watcher 用未成链原文覆盖镜像。
+		if !isImage && isMarkdownSource(req.GetSource(), req.GetMimeType()) && text != "" {
+			vaultBytes = []byte(text)
+		}
+		rel, uploadErr := s.uc.WriteVaultUpload(ctx, col.ID, dir, req.GetSource(), vaultBytes)
 		if uploadErr != nil {
 			return nil, uploadErr
 		}
@@ -470,7 +482,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		RelPath:      vaultRel,
 	}
 	if vaultRel != "" {
-		doc.ContentHash = biz.KnowledgeHashContent(string(raw))
+		doc.ContentHash = biz.KnowledgeHashContent(string(vaultBytes))
 	}
 	// Phase 9：原图留存血缘（asset_uri）；asset 文件名依赖 doc ID，故提前生成。
 	if isImage && s.assets != nil {
@@ -566,6 +578,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 					event.P("error", extractErr.Error()))
 				return
 			}
+			md = uc.MaybeAutolinkOutgoing(ingestCtx, col.ID, doc.ID, doc.Source, md)
 			if contentErr := uc.UpdateDocumentContent(ingestCtx, doc.ID, md, true); contentErr != nil {
 				s.lg.Warn("图片正文回写失败，继续向量化",
 					loggateway.StepID("knowledge.ingest.content_fail"),

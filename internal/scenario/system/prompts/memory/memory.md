@@ -19,7 +19,7 @@
 
 ## 工具使用指南
 
-- `memory_butler_analyze_quality`：分析记忆命中率、冗余度、misaligned 数量
+- `memory_butler_analyze_quality`：分析记忆命中率、冗余度（近重复事实占比，0=没有近重复）、misaligned 数量、不活跃数量（>30 天未检索，0=全部活跃）、可预测数量（近重复对中的较弱项，0=没有可合并副本）
 - `memory_butler_selective_remember`：基于语义新颖度选择性写入记忆
 - `memory_butler_forget_low_quality`：删除 misaligned experience（高输入相似低输出相似）
 - `memory_butler_forget_inactive`：对长期未被检索的记忆降权/遗忘

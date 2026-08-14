@@ -114,7 +114,7 @@
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` + `memory_shim_*` L0–L4 Store 实现） |
-| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
+| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status）；**2026-08-15**：`AutoMemoryWorker` 过门后 `KnowledgeWriteBack`（G2）+ pending 队列（US-44）+ `ProjectAgentMemory`（G1 只读投影，不改 L3 内核） |
 | **核心导出** | `memtrpc.NewMemoryService(...)`（L3FactReader/Writer + settingsLoader）、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`service.NewMemoryService()`（Admin API，含 `debugRecaller`/`factIndexCounter`）、`working_memory.ToolSet`/`Tools()`（6 个 L1 工具，含 P1-2 新增的 complete 任务结束触发）、`service.MemoryService.GetMemoryLayerOverview`/`GetUnifiedMemoryGraph`（记忆中心聚合端点） |
 | **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO）、`biz.L2EpisodeAdminReader`/`biz.L4RelationAdminReader`（记忆中心窄接口，走 `SetMemoryCenterReaders` 注入） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
@@ -137,6 +137,7 @@
 - L2 Consolidation：Episode 有 pending/consolidated 状态，`MemoryL2ConsolidateWorker` 负责 pending→consolidated 转换
 - L3 冲突检测：`DetectFactConflicts` 启发式否定词检测 + `IncrementConflictCount`，best-effort 日志
 - L3 PII 审核：`PIIReviewStore` 提供 list/approve/reject API
+- `memory_butler_analyze_quality` 的 `redundancy_score` / `inactive_count` / `predictable_count` 由 L3 fact 行实时计算（trigram Jaccard 或 overlap 近重复占比 / `last_used_at` 否则 `created_at` 超过 30 天 / 近重复对中的较弱项）；返回 0 表示算出来没有，不是占位。`ListFactRows` JSON 不含 `embedding_blob`，生产装配未注入 Embedder，`selective_remember`/`deduplicate` 仍用字符串相似度
 
 ---
 
@@ -197,7 +198,7 @@
 - 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
 - 修改 Activity / Monitor 事件形状时，同步前端 `realtime/`（ActivityEvent / MonitorEvent 消费路径）与 `features/chat/`；legacy Envelope 类型已删除（ADR-03）
 - 崩溃恢复三层机制：L1 `V2RecoveryRepo.FailOrphanedInFlight`（task→interrupted，其余→failed）、L2 `EscalateAllActiveToDurable`（关机批量升级 durable，SessionStatusGuard 调用）、L3 WS 上行 `resume_task` → `ResumeInterruptedTask`（CAS interrupted→running + 轨迹重跑）；新增终态事件必须走 `CompleteTaskTerminal`（版本以 DB 为准），详见 [1-chat.design.md](./1-chat.design.md) §B.10.16
-- 需求澄清门（Clarification Gate，§B.10.18）：Intent Pass 后 `chat_clarify_gate.go` 判定阻塞性歧义 → 发布 orphan clarify Step（awaiting_input，信封含 `original_input`）并挂起 turn（`awaiting_confirmation(reason=clarification)`）；提交端点 `SubmitClarification`（CAS 409）→ `resumeTurnWithClarification` 同 turn 续跑（`resolveResumeInput`：内存 pending 优先，缺失从信封 `original_input` 惰性重建）；自由回复等价路径由 `Execute` 统一入口 `resolveClarificationFreeText` 拦截（回写 `free_text` + 按推荐填充 + 输入重写）；开关 `clarification_enabled` 持久化于 `agent_runtime_settings`（迁移 20261108）；orphan Step 前端由 `TaskCard.vue` 渲染 `ClarifyBlock.vue`
+- 需求澄清门（Clarification Gate，§B.10.18）：Intent Pass 后 `chat_clarify_gate.go` 判定阻塞性歧义 → 发布 orphan clarify Step（awaiting_input，信封含 `original_input`）并挂起 turn（`awaiting_confirmation(reason=clarification)`）；提交端点 `SubmitClarification`（CAS 409）→ `resumeTurnWithClarification` 同 turn 续跑（`resolveResumeInput`：进程内 cache 优先，缺失从信封 `original_input` 惰性重建；缺字段 `FAILED_PRECONDITION`）；自由回复等价路径由 `Execute` → `runNativeAgentTurnBody` 调 `resolveClarificationFreeTextHint`（cache 或会话等待态 + 持久化 Step 重建）；开关 `clarification_enabled` 持久化于 `agent_runtime_settings`（迁移 20261108）；orphan Step 前端由 `TaskCard.vue` 渲染 `ClarifyBlock.vue`
 - 抗过度澄清（§B.10.18.7，2026-08-09）：全部问题含推荐默认且无高风险标记（`intent.Artifact.HasHighRiskFlag`）→ `autoResolveClarification` 假设式前进（completed 审计卡 resolution=auto_default + `ResolvedInput` 注入 + Artifact 剥离澄清残留，不挂起）；chat 路径 intent pass 经 `TurnDeps.MsgHistory`（`biz.SessionRecentMessageLister`）注入近 6 条历史（`intent/history.go`，单条 200 runes 截断）+ prompt 历史消歧规则；改澄清判定/历史注入时同步 `chat_clarify_gate_test.go` 与 `intent/history_test.go`、`clarify_test.go` 的 prompt 纪律守卫
 
 ---
@@ -266,7 +267,7 @@
 | **事件消费** | 无 |
 | **数据库** | 通过 biz GraphUsecase 访问（graph_executions/graph_tasks/graph_task_events） |
 | **前端对应** | GraphsPage、GraphEditorPage、GraphRunPage、GraphExecutionsPage |
-| **测试覆盖** | biz 层 47 个测试用例（R15-4）：ShouldCreateTaskForNode/ShouldCreateTeamGraphTaskNode/GraphTaskInputFromNode/BuildConfigFromGraphDefinition/compactNodesForVersion/ReadUserTemplateMeta/WriteUserTemplateMeta/upsertGraphStep/evictIfNeeded/ApplyFailurePolicy/ApplyCircuitBreakerPolicy/FinalizeGraphFailurePolicy/parallelBranchNodeIDs/normalizeFailureDefault；service 层和 adapter 层待补 |
+| **测试覆盖** | biz 层 47 个测试用例（R15-4）：ShouldCreateTaskForNode/ShouldCreateTeamGraphTaskNode/GraphTaskInputFromNode/BuildConfigFromGraphDefinition/compactNodesForVersion/ReadUserTemplateMeta/WriteUserTemplateMeta/upsertGraphStep/evictIfNeeded/ApplyFailurePolicy/ApplyCircuitBreakerPolicy/FinalizeGraphFailurePolicy/parallelBranchNodeIDs/normalizeFailureDefault。**P1-12（2026-08-15）**：adapter 覆盖 Factory.Validate 空图/缺失 Agent、LinkedGraphBuildConfigLoader、Catalog Model/Tool/Function/Agent resolver 错误路径（catalog.List 失败不再静默）；service 覆盖 ValidateGraph 编译失败映射、ExecuteGraph 启动与构建失败、ResumeGraph HITL、Cancel、SubmitTaskResult HITL 回写。未覆盖：BuildAndRun 真框架执行、CatalogAgentResolver 完整 Agent 构建、流式 event bridge 全量 |
 
 **⚠️ 开发注意**：
 - Graph 执行引擎同时被 **GraphService**（直接执行）和 **Team**（编译路径）消费
@@ -531,7 +532,7 @@
 |------|------|
 | **上游依赖** | `biz`（Knowledge 类型 + LLMCaller）、`provider`（Embedding/LLM 模型） |
 | **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
-| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex`；V4：`Usecase.ReembedDocuments/EnableCollectionSemantic`（B1 文档重嵌入 / B2 集合语义层单向启用，串行管线 `service/knowledge_reembed.go`，RPC 契约见 37-knowledge.design.md §V12.9-8） |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker`、`ExtractorRegistry`；SP1：`blockparse.Parse()`（`internal/knowledge/blockparse/`，goldmark AST + wikilink 扫描纯函数）、`biz/knowledge.LinkIndex`（进程内链接内存图，五索引 + 版本号 + GraphDelta）、`Usecase.PromoteBlocks/PromoteDocuments/RebuildCollectionBlockIndex`；V4：`Usecase.ReembedDocuments/EnableCollectionSemantic`；**2026-08-15**：`GraphExpander` + Retrieve-Then-Generate + `AutolinkWikiMentions` + `WriteBackSessionFacts`（SP7 G2）+ `BackfillOutgoingAutolinks`（显式 POST autolink-backfill，**不**挂 RebuildKnowledgeIndex）+ 确认成链 custom HTTP + `LookupWriteBackHome` / GET writeback-home + `AgentMemoryProjector`（G1，覆盖写 `agents/{id}.md`）+ `CollectionHealthSnapshot` / `ListCollectionExperts`（G8/G7，专家打写回落点）+ pending 写回过门（逐条 `fact_ids`） |
 | **共享类型** | `Chunk`、`RetrievalResult`；SP1：`KnowledgeBlock`、`KnowledgeBlockRefEdge`、`GraphDelta`、`BlockBacklink`/`DanglingLink`（service 契约） |
 | **事件生产** | `knowledge_ingest`；SP1：`knowledge.graph.delta`（SystemNotice，Informational，WS-only 不持久化）、`knowledge_rebuild_index`（进度） |
 | **事件消费** | 无 |
@@ -570,7 +571,7 @@
 | **共享类型** | `EvalDataset`、`EvalCase`、`EvalRun`、`EvalCaseResult`、`EvalGateConfig`、`EvalRunPreference` |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz EvalUsecase 访问（eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config/eval_run_preferences；workspace 隔离 + 级联删除，Phase 8 B4/Y11） |
+| **数据库** | 通过 biz EvalUsecase 访问；生产持久化端口是 `evaluation.Stores`（`DatasetStore`/`CaseStore`/`RunStore`/`RunQueryStore`/`ResultStore`/`GovernanceStore`，P1-11 ISP）。宽 `evaluation.Repo` 已 Deprecated，仅测试与 data 适配器编译期检查。表：eval_datasets/eval_cases/eval_runs/eval_case_results + eval_gate_config/eval_run_preferences；workspace 隔离 + 级联删除，Phase 8 B4/Y11 |
 | **前端对应** | EvaluationPage（`features/evaluation/` + `stores/evaluation/`） |
 
 ---
@@ -762,6 +763,7 @@
 | **事件消费** | 无 |
 | **数据库** | 无直接访问 |
 | **前端对应** | ChannelsPage（渠道配置影响路由） |
+| **测试覆盖** | **P1-12（2026-08-15）**：Router 注册/发送（命中、未命中、MessageSender 优先、文件不支持）；ResolveTarget 显式命中/未命中错误；NewLoggingSessionResolver 把 lookup 失败记日志并返回 ok=false（链语义，不 panic）；无 channel meta 为静默 false（Web Chat 产品语义）；MessageTool Call 未配置/无效 JSON/解析失败/发送失败。未覆盖：runtime/invocation ctx 填 target（依赖框架 Invocation） |
 
 ---
 
@@ -1018,11 +1020,11 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | sidecar `internal/computeruse/sidecar/aranea-cua-win`；VLM / OmniParser |
+| **上游依赖** | sidecar `internal/computeruse/sidecar/aranea-cua-win`；VLM / OmniParser；可选 `ARANEA_CUA_GROUNDER_URL` 专用 grounding |
 | **下游影响** | `agent` RuntimeTooling Bridges；Chat 确认门 |
-| **核心导出** | `internal/computeruse`（`gateway.go`、`client.go`、`vlm.go`）、`internal/biz/computeruse`（usecase + `session_state_machine.go`）、`internal/tools/computeruse`、`internal/service/computeruse.go` |
+| **核心导出** | `internal/computeruse`（`gateway.go`、`client.go`、`vlm.go`、`specialist_grounder.go`）、`internal/biz/computeruse`（usecase + `session_state_machine.go`）、`internal/tools/computeruse`、`internal/service/computeruse.go` |
 | **事件生产** | `computeruse.*` FlowLog；步骤可走 `monitor_event`（`computeruse.step`） |
-| **前端对应** | `web/src/features/computeruse/`（`CuStepStream.vue`） |
+| **前端对应** | `web/src/features/computeruse/`（`CuStepStream.vue` 聊天气泡 + 历史只读回放；监控页 Desktop 页） |
 
 ---
 
@@ -1301,7 +1303,7 @@
 | TaxonomyService | taxonomy/v1 | createTaxonomyService | — | — |
 | FlowLogService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
 | CodeExecutorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
-| ComputerUseService | computeruse/v1 | — | — | Chat + `features/computeruse/CuStepStream.vue` |
+| ComputerUseService | computeruse/v1 | — | — | Chat + `features/computeruse/CuStepStream.vue` + 监控 Desktop |
 | AgentBridgeService | agentbridge/v1 | — | — | Chat/Companion 确认卡 + 管理 API |
 | Voice（无独立 proto service） | `/v1/voice` WS | — | `stores/companion.ts` | CompanionPage |
 | OpenAICompatService | — | — | — | — |

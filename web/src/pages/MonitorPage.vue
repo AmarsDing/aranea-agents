@@ -37,6 +37,7 @@
             <q-tab name="events" icon="sensors" label="Events" />
             <q-tab name="traces" icon="account_tree" label="Traces" />
             <q-tab name="logs" icon="terminal" label="Logs" />
+            <q-tab name="desktop" icon="desktop_windows" label="Desktop" />
           </q-tabs>
         </MonitorGlassPanel>
       </div>
@@ -142,6 +143,9 @@
         <q-tab-panel name="logs" class="monitor-logs-panel">
           <LogStreamPanel :sub-tab="subTab" @update:sub-tab="subTab = $event" @clear-flow="confirmClearFlow" />
         </q-tab-panel>
+        <q-tab-panel name="desktop">
+          <MonitorDesktopPanel />
+        </q-tab-panel>
       </q-tab-panels>
     </div>
   </q-page>
@@ -158,6 +162,7 @@ import TraceList from '../components/monitor/TraceList.vue';
 import MonitorRunnerMetrics from '../components/monitor/MonitorRunnerMetrics.vue';
 import MonitorAlertRules from '../components/monitor/MonitorAlertRules.vue';
 import SelfCheckStatusPanel from '../components/monitor/SelfCheckStatusPanel.vue';
+import MonitorDesktopPanel from '../features/computeruse/MonitorDesktopPanel.vue';
 import { useMonitorAlertRules } from '../features/monitor/useMonitorAlertRules';
 import { useMonitorPage } from '../features/monitor/useMonitorPage';
 

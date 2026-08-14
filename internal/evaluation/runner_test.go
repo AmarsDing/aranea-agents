@@ -354,7 +354,7 @@ func TestRunnerPanicMarksRunFailed(t *testing.T) {
 	repo := newFakeEvalRepo()
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "q1", ExpectedOutput: "a1"}}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	bridge := NewFrameworkBridge(
 		func(string) (runner.Runner, error) { panic("agent factory boom") },
 		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
@@ -419,7 +419,7 @@ func TestRunnerFrameworkInsertErrorMarksRunFailed(t *testing.T) {
 	repo.insertErr = errors.New("pq: duplicate key value violates unique constraint")
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "q1", ExpectedOutput: "fine"}}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	bridge := NewFrameworkBridge(
 		func(string) (runner.Runner, error) {
 			return &contentSwitchRunner{reply: "fine"}, nil
@@ -446,7 +446,7 @@ func TestRunnerStartRequestCtxCancelledStillCompletes(t *testing.T) {
 	repo := newFakeEvalRepo()
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "hi", ExpectedOutput: "hi"}}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	r := NewRunner(uc, echoBridge(), loggateway.NewNoop())
 
 	if _, err := uc.CreateRun(context.Background(), beval.Run{ID: "r1", DatasetID: "ds1", AgentID: "a1", Status: "pending"}); err != nil {
@@ -474,7 +474,7 @@ func TestRunnerFrameworkCaseErrorMarksRunFailed(t *testing.T) {
 		{ID: "c1", DatasetID: "ds1", Input: "ok", ExpectedOutput: "fine"},
 		{ID: "c2", DatasetID: "ds1", Input: "bad", ExpectedOutput: "never"},
 	}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	bridge := NewFrameworkBridge(
 		func(string) (runner.Runner, error) {
 			return &contentSwitchRunner{reply: "fine", failOn: map[string]bool{"bad": true}}, nil
@@ -504,7 +504,7 @@ func TestRunnerFrameworkHappyPathCompletes(t *testing.T) {
 		{ID: "c1", DatasetID: "ds1", Input: "q1", ExpectedOutput: "fine"},
 		{ID: "c2", DatasetID: "ds1", Input: "q2", ExpectedOutput: "fine"},
 	}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	bridge := NewFrameworkBridge(
 		func(string) (runner.Runner, error) {
 			return &contentSwitchRunner{reply: "fine"}, nil

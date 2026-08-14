@@ -312,6 +312,11 @@ var ddlMigrations = []ddlMigration{
 	// knowledge_chunk_citations(chunk_id, turn_id) 引用去重账本，重叠窗口重扫幂等。
 	// 知识侧无 recalled/injected 计数（检索走工具调用而非 prompt 注入），只追踪 cited 段。
 	{Version: 20261215, Name: "knowledge_citation_counters", SQL: "sql/migrations/20261215_knowledge_citation_counters.sql"},
+	// 20261216 builtin_platform_tools_twinops_reseed（方案10 TwinOps 工具集）：
+	// 17 个 twin_*/gns3_* 种子在 20260610 等已应用的存量库中从未插入 →
+	// ops_* 岗位 effective keys 查无工具行。种子函数幂等
+	// （ON CONFLICT DO NOTHING + catalog/registry UPDATE），重跑安全。
+	{Version: 20261216, Name: "builtin_platform_tools_twinops_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

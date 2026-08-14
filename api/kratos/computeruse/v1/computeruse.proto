@@ -17,7 +17,7 @@ message ComputerUseStep {
   string agent_key = 3;
   int32 step_index = 4;
   string target = 5;
-  string path = 6;   // a11y|vision|vlm_direct
+  string path = 6;   // a11y|vision|vlm_direct|grounder
   string action = 7; // invoke|click|type|key|launch...
   string params_json = 8;
   string result = 9; // ok|retry|failed|cancelled|dry_run
@@ -26,6 +26,8 @@ message ComputerUseStep {
   string confirmed_by = 12;
   bool danger = 13;
   string created_at = 14;
+  string screenshot_ref = 15;
+  bool degraded = 16;
 }
 
 message KillComputerUseSessionRequest {

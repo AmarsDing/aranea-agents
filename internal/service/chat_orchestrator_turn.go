@@ -164,6 +164,13 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 			"session does not belong to the authenticated user")
 	}
 
+	// 澄清等待态自由回复：cache 命中或（重启/他副本）从信封重建。
+	// 放在 Sessions.Get 之后，用已加载的会话状态门闩，避免每个 turn 额外 ListSteps。
+	input, intentArt := o.resolveClarificationFreeTextHint(ctx, input, &sess)
+	if intentArt != nil {
+		ctx = intent.WithArtifact(ctx, intentArt)
+	}
+
 	releaseLane := rt.AcquireTurnLane(ctx, input, sess.OwnerType)
 	defer releaseLane()
 

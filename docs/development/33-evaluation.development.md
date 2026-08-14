@@ -16,8 +16,9 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 - `internal/service/evaluation_runner.go` — NewEvaluationRunner（Wire 装配）
 - `internal/service/evaluation_after_turn.go` — NewEvaluationAfterTurnTrigger
 - `internal/biz/evaluation.go` — 类型重导出（子包 `evaluation/` 的别名）
-- `internal/biz/evaluation/evaluation.go` — 领域模型 + EvalRepo 接口（19 方法）+ EvalUsecase（17 方法）
-- `internal/data/evaluation.go` — EvalRepo + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移）
+- `internal/biz/evaluation/evaluation.go` — 领域模型 + EvalUsecase（构造注入 `Stores`，端口字段未导出）
+- `internal/biz/evaluation/ports.go` — `Stores` + Dataset/Case/Run/RunQuery/Result/Governance 窄口；宽 `Repo` Deprecated
+- `internal/data/evaluation.go` — evalRepo（一身多口）+ EnsureEvalSchema（4 表 + 11 条 ALTER 迁移）
 - `internal/data/ent/schema/eval_*.go` — 4 个 Ent Schema（EvalDataset/EvalCase/EvalRun/EvalCaseResult）
 - `internal/evaluation/runner.go` — 异步调度
 - `internal/evaluation/runner_legacy.go` — Legacy 回退路径
@@ -78,7 +79,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 | AnnotateCaseResult | ✅ | PATCH annotation + Results 对话框（EVAL-02） |
 | 报告导出（客户端） | ✅ | `exportRunResults.ts` CSV/JSON |
 | HTTP+gRPC 注册 | ✅ | `http.go` / `grpc.go` |
-| Wire 注入 | ✅ | `wire_gen.go`：Repo → Usecase → Runner → Service → Registry |
+| Wire 注入 | ✅ | `wire_gen.go`：Stores → Usecase → Runner → Service → Registry |
 | Prometheus | ✅ | eval_runs_total / eval_case_duration_seconds |
 | 前端页面 | ✅ | EvaluationPage + 5 个子组件 + features/evaluation + Store |
 | AfterTurn 自动评估 | ✅ | `AfterTurnTrigger` + `evaluation_after_turn.go` + `config_json.evaluation` |

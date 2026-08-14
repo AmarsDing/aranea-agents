@@ -128,10 +128,32 @@ type MemoryHit struct {
 	AgentKeysUsed []string `json:"agent_keys_used"`
 }
 
+// RecoverableTaskPlanStatuses are non-terminal plan states that may be
+// reloaded after process interruption (P1-10). completed/failed are terminal
+// and must not be resumed as the active plan.
+var RecoverableTaskPlanStatuses = []TaskPlanStatus{
+	TaskPlanStatusDraft,
+	TaskPlanStatusApproved,
+	TaskPlanStatusConfirmed,
+	TaskPlanStatusExecuting,
+}
+
+// IsRecoverableTaskPlanStatus reports whether a plan may be restored after interruption.
+func IsRecoverableTaskPlanStatus(s TaskPlanStatus) bool {
+	switch s {
+	case TaskPlanStatusDraft, TaskPlanStatusApproved, TaskPlanStatusConfirmed, TaskPlanStatusExecuting:
+		return true
+	}
+	return false
+}
+
 // TaskPlanRepository is the repository interface for TaskPlan persistence
 type TaskPlanRepository interface {
 	Create(ctx context.Context, plan *TaskPlan) (*TaskPlan, error)
 	GetByID(ctx context.Context, id string) (*TaskPlan, error)
 	Update(ctx context.Context, plan *TaskPlan) (*TaskPlan, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]*TaskPlan, error)
+	// ListByStatuses returns plans whose status is in the given set, newest first.
+	// Used by startup recovery to reload interrupted Phase 1 drafts.
+	ListByStatuses(ctx context.Context, statuses []TaskPlanStatus) ([]*TaskPlan, error)
 }

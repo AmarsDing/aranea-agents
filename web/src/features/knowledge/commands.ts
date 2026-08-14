@@ -16,7 +16,12 @@ export type CommandId =
   | 'rebuild-index'
   | 'ingest-text'
   | 'promote'
-  | 'close-tab';
+  | 'close-tab'
+  | 'apply-autolink'
+  | 'backfill-autolink'
+  | 'knowledge-health'
+  | 'list-experts'
+  | 'review-writeback';
 
 export type CommandDef = {
   id: CommandId;
@@ -39,6 +44,11 @@ export const COMMAND_DEFS: readonly CommandDef[] = [
   { id: 'ingest-text', icon: 'content_paste', aliases: ['ingest', 'paste', 'ruku', 'zhantie'] },
   { id: 'promote', icon: 'upload', aliases: ['promote', 'upload', 'publish', 'fabu'] },
   { id: 'close-tab', icon: 'close', shortcut: 'Ctrl+W', aliases: ['close', 'guanbi'] },
+  { id: 'apply-autolink', icon: 'add_link', aliases: ['autolink', 'wikilink', 'chenglian', 'shuangliian'] },
+  { id: 'backfill-autolink', icon: 'link', aliases: ['backfill', 'huichong', 'piliang', 'chengliian'] },
+  { id: 'knowledge-health', icon: 'monitor_heart', aliases: ['health', 'jiankang', 'orphan'] },
+  { id: 'list-experts', icon: 'groups', aliases: ['expert', 'zhuanjia', 'who'] },
+  { id: 'review-writeback', icon: 'rate_review', aliases: ['writeback', 'pending', 'xiehui', 'queren'] },
 ];
 
 /** 命令项（标题由组件经 i18n 注入）。 */

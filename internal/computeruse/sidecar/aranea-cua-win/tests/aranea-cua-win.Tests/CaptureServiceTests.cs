@@ -107,4 +107,24 @@ public class CaptureServiceTests
     {
         Assert.Equal(1.25, CaptureService.PickScaleFactorForRegion(0, 0, 100, 100, new List<DisplayDto>(), 1.25));
     }
+
+    [Fact]
+    public void ResolveScreenshotBounds_NoRegion_UsesVirtualDesktop()
+    {
+        var b = CaptureService.ResolveScreenshotBounds(null, null, null, null, -1920, 0, 3840, 1080);
+        Assert.Equal(-1920, b.X);
+        Assert.Equal(0, b.Y);
+        Assert.Equal(3840, b.W);
+        Assert.Equal(1080, b.H);
+    }
+
+    [Fact]
+    public void ResolveScreenshotBounds_ExplicitRegion_KeepsPhysicalPixels()
+    {
+        var b = CaptureService.ResolveScreenshotBounds(10, 20, 100, 50, -1920, 0, 3840, 1080);
+        Assert.Equal(10, b.X);
+        Assert.Equal(20, b.Y);
+        Assert.Equal(100, b.W);
+        Assert.Equal(50, b.H);
+    }
 }

@@ -47,6 +47,9 @@ type AutoMemoryWorker struct {
 	caseExtractor biz.AgentCaseExtractor
 	caseReader    biz.AgentCaseReader
 	caseWriter    biz.AgentCaseWriter
+	writeBack     biz.KnowledgeWriteBack
+	reviewQueue   biz.KnowledgeWriteBackReview
+	memoryProj    biz.KnowledgeAgentMemoryProjector
 	lg            loggateway.Logger
 }
 
@@ -81,7 +84,13 @@ type AutoMemoryWorkerConfig struct {
 	CaseExtractor biz.AgentCaseExtractor
 	CaseReader    biz.AgentCaseReader
 	CaseWriter    biz.AgentCaseWriter
-	Logger        loggateway.Logger
+	// WriteBack 将过验证门的 L3 事实沉淀到团队知识库（SP7 G2；nil 跳过）。
+	WriteBack biz.KnowledgeWriteBack
+	// ReviewQueue 低置信白名单事实进入 pending（US-44；nil 跳过）。
+	ReviewQueue biz.KnowledgeWriteBackReview
+	// MemoryProjector L3 → agents/{id}.md 只读投影（SP7 G1；nil 跳过）。
+	MemoryProjector biz.KnowledgeAgentMemoryProjector
+	Logger          loggateway.Logger
 }
 
 // NewAutoMemoryWorker creates an AutoMemoryWorker. // WIRE: needs *conf.Runtime
@@ -116,6 +125,9 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 		caseExtractor: cfg.CaseExtractor,
 		caseReader:    cfg.CaseReader,
 		caseWriter:    cfg.CaseWriter,
+		writeBack:     cfg.WriteBack,
+		reviewQueue:   cfg.ReviewQueue,
+		memoryProj:    cfg.MemoryProjector,
 		lg:            cfg.Logger,
 	}, nil
 }
@@ -438,6 +450,10 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
+	w.maybeWriteBack(ctx, sess, candidates, writeRes)
+	w.maybeEnqueueReview(ctx, sess, candidates, writeRes)
+	w.maybeProjectMemory(ctx, sess)
+
 	var l4Written int
 	if memoryPolicy.WriteL4Graph && w.l4 != nil && agentID != "" {
 		l4Flow := w.flowEmitter(ctx, sid)
@@ -703,6 +719,139 @@ func previewText(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+func (w *AutoMemoryWorker) maybeWriteBack(ctx context.Context, sess biz.Session, candidates []biz.FactWriteCandidate, writeRes biz.FactWriteBatchResult) {
+	if w == nil || w.writeBack == nil {
+		return
+	}
+	if writeRes.Added+writeRes.Updated == 0 {
+		return
+	}
+	facts := writeBackFactsFromPipeline(candidates, writeRes.FactRows)
+	if _, err := w.writeBack.WriteBackSessionFacts(ctx, biz.KnowledgeWriteBackInput{
+		Workspace: sess.WorkspaceID,
+		SessionID: sess.ID,
+		AgentID:   sess.AgentID,
+		UserID:    sess.UserID,
+		Facts:     facts,
+	}); err != nil {
+		w.lg.With(loggateway.SessionID(sess.ID)).Warn("知识库写回飞轮失败（记忆主流程不受影响）",
+			loggateway.StepID("knowledge.writeback"),
+			loggateway.Err(err),
+		)
+	}
+}
+
+func (w *AutoMemoryWorker) maybeEnqueueReview(ctx context.Context, sess biz.Session, candidates []biz.FactWriteCandidate, writeRes biz.FactWriteBatchResult) {
+	if w == nil || w.reviewQueue == nil {
+		return
+	}
+	if writeRes.Added+writeRes.Updated == 0 {
+		return
+	}
+	facts := writeBackFactsFromPipeline(candidates, writeRes.FactRows)
+	if _, err := w.reviewQueue.EnqueueWriteBackReview(ctx, biz.KnowledgeWriteBackInput{
+		Workspace: sess.WorkspaceID,
+		SessionID: sess.ID,
+		AgentID:   sess.AgentID,
+		UserID:    sess.UserID,
+		Facts:     facts,
+	}); err != nil {
+		w.lg.With(loggateway.SessionID(sess.ID)).Warn("知识库待确认写回入队失败（记忆主流程不受影响）",
+			loggateway.StepID("knowledge.writeback.pending"),
+			loggateway.Err(err),
+		)
+	}
+}
+
+func (w *AutoMemoryWorker) maybeProjectMemory(ctx context.Context, sess biz.Session) {
+	if w == nil || w.memoryProj == nil {
+		return
+	}
+	if strings.TrimSpace(sess.AgentID) == "" {
+		return
+	}
+	if err := w.memoryProj.ProjectAgentMemory(ctx, sess.WorkspaceID, sess.AgentID); err != nil {
+		w.lg.With(loggateway.SessionID(sess.ID)).Warn("agent 记忆投影失败（记忆主流程不受影响）",
+			loggateway.StepID("knowledge.memory.project"),
+			loggateway.Err(err),
+		)
+	}
+}
+
+func writeBackFactsFromPipeline(candidates []biz.FactWriteCandidate, rows [][]byte) []biz.KnowledgeWriteBackFact {
+	fromRows := writeBackFactsFromRows(rows)
+	if len(fromRows) == 0 {
+		out := make([]biz.KnowledgeWriteBackFact, 0, len(candidates))
+		for _, c := range candidates {
+			out = append(out, biz.KnowledgeWriteBackFact{
+				Statement:  c.Statement,
+				FactKind:   c.FactKind,
+				Confidence: c.Confidence,
+				SourceKind: c.SourceKind,
+			})
+		}
+		return out
+	}
+	byStmt := make(map[string]biz.FactWriteCandidate, len(candidates))
+	for _, c := range candidates {
+		byStmt[strings.ToLower(strings.TrimSpace(c.Statement))] = c
+	}
+	for i := range fromRows {
+		c, ok := byStmt[strings.ToLower(strings.TrimSpace(fromRows[i].Statement))]
+		if !ok {
+			continue
+		}
+		if fromRows[i].FactKind == "" {
+			fromRows[i].FactKind = c.FactKind
+		}
+		if fromRows[i].Confidence <= 0 {
+			fromRows[i].Confidence = c.Confidence
+		}
+		if fromRows[i].SourceKind == "" {
+			fromRows[i].SourceKind = c.SourceKind
+		}
+	}
+	return fromRows
+}
+
+func writeBackFactsFromRows(rows [][]byte) []biz.KnowledgeWriteBackFact {
+	out := make([]biz.KnowledgeWriteBackFact, 0, len(rows))
+	for _, raw := range rows {
+		var m map[string]any
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		stmt, _ := m["statement"].(string)
+		if strings.TrimSpace(stmt) == "" {
+			continue
+		}
+		kind, _ := m["fact_kind"].(string)
+		id, _ := m["id"].(string)
+		src, _ := m["source_kind"].(string)
+		conf := jsonNumber(m["confidence"])
+		out = append(out, biz.KnowledgeWriteBackFact{
+			FactID:     id,
+			Statement:  stmt,
+			FactKind:   kind,
+			Confidence: conf,
+			SourceKind: src,
+		})
+	}
+	return out
+}
+
+func jsonNumber(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case json.Number:
+		f, _ := n.Float64()
+		return f
+	default:
+		return 0
+	}
 }
 
 // errString safely converts an error to its string representation.

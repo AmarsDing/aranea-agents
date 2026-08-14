@@ -367,6 +367,38 @@ func (w *RecoveryWorker) Run(ctx) {
 > - **safego.Go 启动**：`Run` 内部循环由 `safego.Go` 包裹（红线 #13），通过 `workers.go::goAfterReady` 在 ReadinessGate 通过后启动
 > - **Postgres CheckpointSaver**：`pkg/trpc-agent-go/graph/checkpoint/postgres/saver.go`，使用 `$N` 占位符 + `ON CONFLICT DO UPDATE`，`PutFull` 在单事务内删除+插入
 
+### 3.5.1 Phase 1/2 规划恢复（P1-10，2026-08-15）
+
+进程重启后 `SessionStatusGuard.OnStartup` → `TaskOrchestratorImpl.RecoverAllInterrupted` 原先只把 `OrchestrationHandle` 从 checkpoint 标回 running，**不装回**已持久化的 draft `TaskPlan` / `AllocationPlan`。当前 `plan_and_execute` 又不落库 handle（Phase 3 委托 PlanExecutor），长任务中断后下一次规划会重新跑 LLM 分解。
+
+**恢复路径**（不改变未中断的 `Plan()` 语义）：
+
+```
+启动
+  RecoverAllInterrupted (system workspace)
+    ├─ List interrupted OrchestrationHandle → Recover(checkpoint) → 按 handle.TaskPlanID 装回 plan
+    └─ ListByStatuses(draft/approved/confirmed/executing) 装回无 handle 的孤儿 draft
+  缓存 keyed by spirit_session_id
+续跑 plan_and_execute
+  ConsumeRecoveredPlan(session, user_message) 命中 → 跳过 TaskPlanner.Plan /（若有）Allocate
+  未命中 → 原路径 Plan()
+```
+
+**可恢复**：`task_plans` 行状态 ∈ {draft, approved, confirmed, executing}，且：
+- `direct`（或空 strategy）：允许无 SubTasks
+- 团队策略（parallel/dag/coordinator/single_agent）：必须已有 SubTasks（分解已完成）
+
+**明确不恢复（skip + 结构化日志 `reason=`，不假装 recovered）**：
+
+| reason | 范围 |
+|--------|------|
+| `incomplete_draft_no_subtasks` | 分解中途崩溃：draft 已落库但 SubTasks 为空，恢复需重跑 LLM，本能力不做 |
+| `task_plan_missing` / `no_task_plan_id` | handle 无对应 plan 行 |
+| `terminal_status` | completed/failed |
+| `allocation_get_failed` | Phase 2 行缺失：plan 仍恢复，Allocate 在续跑时重做（可能有 cold-start LLM） |
+
+**代码锚点**：`internal/agent/task_orchestrator_plan_recovery.go`、`RecoverAllInterrupted`、`biz.RecoveredPlanConsumer`、`internal/tools/spirit_tools.go` `consumeRecoveredPlan`
+
 ---
 
 ## 四、Layer 1：强制任务规划设计

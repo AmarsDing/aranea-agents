@@ -602,6 +602,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 - [x] 前端：`ClarifyBlock.vue` 分页卡片（上一页/下一页/完成，无跳过；单选/多选；推荐项高亮；每页「其他」输入；留空可提交；提交后只读摘要）；`TaskCard.vue` orphan step 注册渲染；hydration 恢复；i18n zh-CN/en-US
 - [x] TDD-data：Agent 设置 `clarification_enabled` Ent 持久化（schema 列 + DDL 迁移 20261108 + 双向映射 + 默认值 true）
 - [x] TDD-service：重启恢复——信封持久化 `original_input`，提交时 `resolveResumeInput` 内存 pending 优先、缺失则惰性重建续跑输入（4 例）；自由回复路径重启后 pending 缺失降级为新 turn（设计 B.10.18.5 已载明）
+- [x] **P1-9（2026-08-15）**：澄清态进程内 cache 不再是唯一真相。`SubmitClarification` / 自由回复在 cache 缺失时从信封+Step 重建（`AuthorAgentKey` 补齐 AgentKey）；缺 `original_input` 时 Submit 返回 `FAILED_PRECONDITION` 且不收口 step；自由回复透传。Map 提取为 `clarificationPendingCache`。测试：空 Map 提交成功、缺字段失败、自由回复重启重建（`chat_clarify_freetext_test.go`）
 - [x] 全量验证：`go build ./...` + `go test`（service 4.7s/biz 9.8s/agent 32.6s/data 21.0s）全过（2026-07-23 复跑）；前端 `pnpm lint` + `pnpm test`（699 例）+ `pnpm build` 全过
 - [x] 文档同步：本块状态标记、§6 任务清单、65 交叉参考 Chat 卡片；B.10.18.2/3/5 信封字段与自由回复/重启恢复实现语义（2026-07-23）
 

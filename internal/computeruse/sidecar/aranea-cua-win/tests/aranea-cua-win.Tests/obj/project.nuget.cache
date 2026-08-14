@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "zH7ODoTIb8GtVUuYyzBtgG0KDokc+fFOnVnPLX6pBY2inUiJmkiZXTY0uqD5QrcJI9Ja9ekgKxYwXskVVKQRKQ==",
+  "dgSpecHash": "iO7tCV8KjXDADI6kZvHZPSHTziWP+IDRAxiW3eeyRpZmOu6Ic/W9/yJ8bvzzKcJUHJCO+s9WP0Av++Guj+TdHw==",
   "success": true,
-  "projectFilePath": "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
+  "projectFilePath": "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Administrator\\.nuget\\packages\\flaui.core\\4.0.0\\flaui.core.4.0.0.nupkg.sha512",
     "C:\\Users\\Administrator\\.nuget\\packages\\flaui.uia3\\4.0.0\\flaui.uia3.4.0.0.nupkg.sha512",

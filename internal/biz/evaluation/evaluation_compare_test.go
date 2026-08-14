@@ -15,7 +15,7 @@ func TestCompareEvalRunsBaselineIsEarliestByCreatedAt(t *testing.T) {
 		{ID: "new", CreatedAt: "2026-08-07T10:00:00Z", ExactMatchScore: 0.5, LLMJudgeScore: 0.6},
 		{ID: "old", CreatedAt: "2026-08-06T10:00:00Z", ExactMatchScore: 0.8, LLMJudgeScore: 0.4},
 	}}
-	uc := NewUsecase(repo, loggateway.NewNoop())
+	uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 
 	out, err := uc.CompareEvalRuns(context.Background(), []string{"new", "old"})
 	if err != nil {
@@ -43,7 +43,7 @@ func TestCompareEvalRunsBaselineIsEarliestByCreatedAt(t *testing.T) {
 
 // Single-run input must still be rejected.
 func TestCompareEvalRunsRequiresTwoRuns(t *testing.T) {
-	uc := NewUsecase(&mockRepo{}, loggateway.NewNoop())
+	uc := NewUsecase(StoresFrom(&mockRepo{}), loggateway.NewNoop())
 	if _, err := uc.CompareEvalRuns(context.Background(), []string{"only"}); err == nil {
 		t.Fatal("expected error for fewer than two run ids")
 	}

@@ -36,6 +36,7 @@ func (s *ChannelService) WechatILinkLogin(ctx context.Context, req *v1.WechatILi
 		s.pollWechatILinkQRStatus(context.Background(), channelID, resp.QRCode)
 	})
 	return &v1.WechatILinkLoginResponse{
+		// 透传 iLink 原始 qrcode_img_content（扫码内容，非图片）；前端负责编码成二维码图
 		QrcodeDataUrl: resp.QRCodeImgContent,
 		QrcodeSession: resp.QRCode,
 		Status:        wechatilink.QRStatusWait,

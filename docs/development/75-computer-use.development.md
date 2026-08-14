@@ -104,7 +104,7 @@
 | # | 问题 | 修复 | 回归测试 |
 |---|------|------|---------|
 | S1 | CuStepStream 使用场景未约束，存在滥用风险 | TurnContainer.vue 加容器白名单注释：仅允许聊天气泡尾部内嵌，监控页等场景复用前须过 UX 评审 | 注释约束 |
-| S2 | 步骤流仅消费 WS 实时事件，页面刷新后不回放 | useCuStepStream.ts 加 TECH-DEBT 标注：REST 回补未实现，回补时须复用 `cuStepFromMonitorEvent` 字段映射口径（含 danger/confirmed_by） | 标注约束 |
+| S2 | 步骤流仅消费 WS 实时事件，页面刷新后不回放 | M3.4：`useCuStepStream` 挂载时 `ListComputerUseSteps` 回补，字段口径与 WS 共用 `cuStepFromAudit`/`cuStepFromMonitorEvent`（含 danger/confirmed_by），按 step_index 去重 | `useCuStepStream.spec.ts` REST+WS 去重 |
 | S3 | REST 重载路径丢 danger 标记（页面刷新后 confirm 卡高危徽标丢失） | `session.proto` StepV2 加 `danger=23`；`bizStepToProto` 映射；前端 `v2Api.ts` StepV2Dto/mapStep 映射（WS 路径此前已带） | `TestSessionV2Service_ListSteps_DangerMapping` + v2Api.spec.ts |
 
 ### Phase M2 — 对标市场最佳的能力增强（2026-08-13）✅
@@ -137,9 +137,43 @@ E2E 关键证据（2026-08-13 运行）：`act-type path=a11y verify.Changed=tru
 | F3 | 并发 Act 双计费后一者 transit 失败 → 预算泄漏 | `beginStep` 同锁原子完成「忙/终态检查 + StepsUsed++ + 状态转换」（替代 chargeBudget 两步式）；提取 `rejectBudgetStep` 顺带使 actOne ≤80 行 | `TestBeginStep_ConcurrentNoDoubleCharge` |
 | F4 | SoM 编号正则只取数字，"-1" 无匹配哨兵被提取为候选 1 误选 | `vlmNumberPattern` 允许负号 + `parseVLMNumber` 判负明确失败 | `TestVLMGrounderPick_NegativeSentinel` / `TestParseVLMNumber_Negative` |
 
-提示处置：①actOne 行数超标 → F3 顺带解决；②预算耗尽时被拒审计步 Index 撞号 → F3 顺带解决（Index=stepsUsed+1 单调不撞号，`TestAct_BudgetExceededRejectedStepIndex`）；③verifyAfterAction settle 不感知急停取消 → 接受（400ms 有界延迟，急停最多多等一拍，设计文档 §3.3 已注明）；④resolveVisionLLM 每次 List + 首项优先 → 接受（仅 a11y 未命中的视觉兜底路径触发、低频，优先级由 catalog 排序控制，设计文档 §3.2 已注明）；⑤迁移 20261208 对已存在行不更新 schema → 接受（实测部署库 `computer_use_act` 已含 actions[]；结构性注意已录入设计文档 §3.4——未来 computer_use_* schema 变更走 catalog-patch 迁移）。
+提示处置：①actOne 行数超标 → F3 顺带解决；②预算耗尽时被拒审计步 Index 撞号 → F3 顺带解决（Index=stepsUsed+1 单调不撞号，`TestAct_BudgetExceededRejectedStepIndex`）；③verifyAfterAction settle 不感知急停取消 → 接受（400ms 有界延迟，急停最多多等一拍，设计文档 §3.3 已注明）；④resolveVisionLLM 每次 List + 首项优先 → 接受（仅 a11y 未命中的视觉兜底路径触发、低频，优先级由 catalog 排序控制，设计文档 §3.2 已注明）；⑤迁移 20261208 对已存在行不更新 schema → M3 已用 `syncBuiltinComputerUseToolCatalogPatches` 收口。
 
 改动文件追加：`internal/biz/computeruse/usecase.go`（beginStep/rejectBudgetStep）、`internal/computeruse/vlm.go`（正则+判负）、`internal/biz/memory_worker.go`（FlowLogWriter.LogFlowWarn）、`internal/service/event_adapter.go`（LogFlowWarn 实现）、`internal/cronrunner/jobs/{memory_l1_archive_test,memory_canary_test}.go` + `internal/tools/clientbridge/bridge_test.go`（fakes 补 LogFlowWarn）。
+
+### Phase M3 — 动作面 / grounding 插件 / 会话护栏 / 步骤回补（2026-08-15）✅
+
+> 方案：`docs/reports/2026-08-15-research-computer-use-next.md`（方案 A）。定位不变：API/CLI 优先，GUI 补盲。M3.5 背景输入未做（需产品确认）。
+
+| # | 任务 | 验收 | 状态 |
+|---|------|------|------|
+| M3.0 | `test/gui-ops-eval/` runner + `competition/12-GUI运维取证与处置手册.md` | `go test ./test/gui-ops-eval/...` 绿；`--dry-run` 列 5 任务 | ✅ |
+| M3.1 | 暴露 `wheel`/`drag`/`wait`（`DevicePointer` + Usecase wait≤10s） | usecase/gateway/tools 单测绿；catalog-patch 刷存量 schema | ✅ |
+| M3.2 | 专用 grounding HTTP 插件（a11y→SoM→grounder→vlm_direct） | `ARANEA_CUA_GROUNDER_URL` 空则跳过；httptest 绿 | ✅ |
+| M3.3 | 约束账本（原始 goal）+ must_reobserve + 连续 2 次 grounding 失败 ask_user | usecase 单测绿；不做 LLM 抽取、不做 bBoN | ✅ |
+| M3.4 | CuStepStream 挂载 `ListComputerUseSteps` 回补，与 WS 按 step_index 去重 | `useCuStepStream.spec.ts` 绿 | ✅ |
+| M3.5 | 背景输入 | 本轮不做 | 📋 后置 |
+
+### Phase M4 — 审查闭环（确认门 / 会话语义 / sidecar / 前端回放，2026-08-15）✅
+
+> 来源：Computer Use 深度复审（B1–B3 + S1–S12）。不启动 Linux/iOS、bBoN、UI-TARS。种子 `computer_use_*` 默认 `enabled: false` 仍为按 Agent 启用。
+
+| # | 任务 | 验收 | 状态 |
+|---|------|------|------|
+| B1 | 确认门读取 Observe 注入打标（按 AgentKey） | 持久授权不能跳过注入后的写动作确认 | ✅ |
+| B2 | `computerUseDangerHit` 遍历 `actions[]` | 批量 `"删除按钮"` 强制确认 | ✅ |
+| B3 | 可恢复失败回 idle；预算/急停禁止自动重建 | grounding 失败同会话可续；预算后须 `session.start` | ✅ |
+| S1 | 禁区检查 fail-closed | `ListWindows` 失败 → `ErrBlockedProcess` | ✅ |
+| S2/S8 | 暴露 `action=focus` + sidecar 校验前台 | 工具 enum + `GetForegroundWindow` 失败 `-32002` | ✅ |
+| S4 | observe/screenshot/status 返回 `session_id` | 工具单测绿 | ✅ |
+| S5 | 验证无效果自动重试 ≤2 | 审计 `retry` 步 + 其后 `must_reobserve` | ✅ |
+| S3/S9/S12 | `screenshot_ref` 落盘 + 虚拟桌面截图 + `degraded` | AuditShotDir=`bin/cua/audit`；C# 单测 bounds | ✅ |
+| S10 | 视觉路径 `drag` | `executeAtPoint` to_x/to_y | ✅ |
+| S11 | 坐标注入校验前台窗口 | sidecar WindowFromPoint + SetForegroundWindow | ✅ |
+| FE | 路径徽标 i18n、历史只读回放、监控 Desktop 页 | TurnContainer completed 内嵌 readonly；GetComputerUseStatus 横幅 | ✅ |
+| DOC | 75 三件套 + 交叉参考 | A7 会话语义、focus、fail-closed、retry | ✅ |
+
+M1.5 B2「failed 解除映射并自动重建」已由本 Phase B3/A7 取代：仅 `SessionDone` 解除映射。
 
 ### Phase P2 — Linux sidecar（后续迭代）
 ### Phase P3 — iOS 模拟器（macOS 宿主 WDA + MCP 托管，后续迭代）

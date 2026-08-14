@@ -31,7 +31,7 @@ func judgedResult(id string, judgeScore float32, humanPass bool) JudgeAnnotatedR
 
 func TestGetJudgeDivergence(t *testing.T) {
 	t.Run("empty dataset id rejected", func(t *testing.T) {
-		uc := NewUsecase(&mockRepo{}, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(&mockRepo{}), loggateway.NewNoop())
 		if _, err := uc.GetJudgeDivergence(context.Background(), "  ", "", 0, 0); err == nil {
 			t.Fatal("expected error for blank dataset id")
 		}
@@ -39,7 +39,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 
 	t.Run("repo error propagates", func(t *testing.T) {
 		repo := &mockRepo{judgeAnnotatedErr: errors.New("db down")}
-		uc := NewUsecase(repo, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 		if _, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 0); err == nil {
 			t.Fatal("expected repo error to propagate")
 		}
@@ -53,7 +53,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 			{CaseResult: CaseResult{ID: "legacy", HumanPass: &humanPass, ScoresJSON: "{}"}},
 			judgedResult("judged", 0.9, true),
 		}}
-		uc := NewUsecase(repo, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -74,7 +74,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 			judgedResult("strict", 0.2, true),      // false_fail: judge fail, human pass
 			judgedResult("edge-exact", 0.5, true),  // score == threshold counts as pass → agree
 		}}
-		uc := NewUsecase(repo, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -116,7 +116,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 		repo := &mockRepo{judgeAnnotated: []JudgeAnnotatedResult{
 			judgedResult("mid", 0.6, false), // pass at 0.5, fail at 0.7
 		}}
-		uc := NewUsecase(repo, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0.7, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -136,7 +136,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 			judgedResult("d2", 0.8, false),
 			judgedResult("d3", 0.7, false),
 		}}
-		uc := NewUsecase(repo, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 2)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -150,7 +150,7 @@ func TestGetJudgeDivergence(t *testing.T) {
 	})
 
 	t.Run("no annotated rows yields zeroed summary", func(t *testing.T) {
-		uc := NewUsecase(&mockRepo{}, loggateway.NewNoop())
+		uc := NewUsecase(StoresFrom(&mockRepo{}), loggateway.NewNoop())
 		out, err := uc.GetJudgeDivergence(context.Background(), "ds-1", "", 0, 0)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

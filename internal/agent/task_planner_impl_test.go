@@ -33,6 +33,9 @@ func (r *stubTaskPlanRepo) Update(_ context.Context, p *biz.TaskPlan) (*biz.Task
 func (r *stubTaskPlanRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
 	return nil, nil
 }
+func (r *stubTaskPlanRepo) ListByStatuses(_ context.Context, _ []biz.TaskPlanStatus) ([]*biz.TaskPlan, error) {
+	return nil, nil
+}
 
 // captureNoticeBus captures published events for assertion.
 type captureNoticeBus struct {
@@ -608,6 +611,9 @@ func (r *recordingPlanRepo) Update(_ context.Context, p *biz.TaskPlan) (*biz.Tas
 	return p, nil
 }
 func (r *recordingPlanRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]*biz.TaskPlan, error) {
+	return nil, nil
+}
+func (r *recordingPlanRepo) ListByStatuses(_ context.Context, _ []biz.TaskPlanStatus) ([]*biz.TaskPlan, error) {
 	return nil, nil
 }
 

@@ -458,7 +458,7 @@ func (r *knowledgeRepo) UpdateCollectionSyncState(ctx context.Context, id, state
 
 // EnableCollectionSemantic 空语义层单向启用（B2）：守卫式 UPDATE，仅当集合
 // embedding_model 仍为空时绑定 model/dim；返回 bool=是否生效
-//（RowsAffected=0 → false：并发已绑定或集合不存在，service 层已先做存在性检查）。
+// （RowsAffected=0 → false：并发已绑定或集合不存在，service 层已先做存在性检查）。
 func (r *knowledgeRepo) EnableCollectionSemantic(ctx context.Context, id, model string, dim int) (bool, error) {
 	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE knowledge_collections SET embedding_model = $2, dim = $3, updated_at = NOW()
@@ -741,6 +741,38 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {
 	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID)
 	return err
+}
+
+// ListChunksByDocuments 按文档取前 limitPerDoc 个 chunk（chunk_index 升序）。
+// Lazy GraphRAG 邻居扩展用：不走向量排序，避免二次 embed。空输入返回 nil。
+func (r *knowledgeRepo) ListChunksByDocuments(ctx context.Context, collectionID string, docIDs []string, limitPerDoc int) ([]biz.KnowledgeChunk, error) {
+	if strings.TrimSpace(collectionID) == "" || len(docIDs) == 0 || limitPerDoc <= 0 {
+		return nil, nil
+	}
+	raw := `
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, 0::float4 AS score
+FROM (
+  SELECT id, doc_id, collection_id, content, metadata, chunk_index,
+         ROW_NUMBER() OVER (PARTITION BY doc_id ORDER BY chunk_index) AS rn
+  FROM knowledge_chunks
+  WHERE collection_id = $1 AND doc_id = ANY($2)
+) t
+WHERE rn <= $3
+ORDER BY doc_id, chunk_index`
+	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, collectionID, pq.Array(docIDs), limitPerDoc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []biz.KnowledgeChunk
+	for rows.Next() {
+		var ch biz.KnowledgeChunk
+		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
+			return nil, err
+		}
+		out = append(out, ch)
+	}
+	return out, rows.Err()
 }
 
 // MoveDocument moves a document (and its chunks) to another collection in one

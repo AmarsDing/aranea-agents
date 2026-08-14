@@ -170,6 +170,23 @@ func (g *Gateway) Key(ctx context.Context, combo string) error {
 	return g.call(ctx, "action.key", map[string]any{"combo": combo}, nil)
 }
 
+// Wheel 滚轮（action.wheel），delta 正上负下，120 为一格。
+func (g *Gateway) Wheel(ctx context.Context, p bizcomputeruse.Point, delta int) error {
+	return g.call(ctx, "action.wheel", map[string]any{"x": p.X, "y": p.Y, "delta": delta}, nil)
+}
+
+// Drag 拖拽（action.drag），物理像素 from/to。
+func (g *Gateway) Drag(ctx context.Context, from, to bizcomputeruse.Point, durationMs int) error {
+	if durationMs <= 0 {
+		durationMs = 300
+	}
+	return g.call(ctx, "action.drag", map[string]any{
+		"from":       map[string]int{"x": from.X, "y": from.Y},
+		"to":         map[string]int{"x": to.X, "y": to.Y},
+		"durationMs": durationMs,
+	}, nil)
+}
+
 // ---- DeviceController ----
 
 // FocusWindow 按标题正则聚焦窗口（window.focus）。

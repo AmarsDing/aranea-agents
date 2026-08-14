@@ -257,6 +257,10 @@ var stepTitleRegistry = map[string]string{
 	"knowledge.search":                     "知识库检索",
 	"knowledge.entity.merge":               "知识实体合并",
 	"knowledge.block.promote":              "知识块晋升",
+	"knowledge.autolink.backfill":          "历史文档成链回填",
+	"knowledge.writeback":                  "会话知识写回",
+	"knowledge.writeback.pending":          "待确认知识写回",
+	"knowledge.memory.project":             "Agent 记忆投影",
 	"knowledge.rebuild_index":              "知识块索引重建",
 	"knowledge.reembed.start":              "文档重嵌入开始",
 	"knowledge.reembed.done":               "文档重嵌入完成",
@@ -340,6 +344,7 @@ var stepTitleRegistry = map[string]string{
 	"computeruse.grounding.fallback": "元素定位降级视觉兜底",
 	"computeruse.budget.exceeded":    "桌面会话预算耗尽",
 	"computeruse.killswitch":         "桌面会话已急停",
+	"computeruse.injection.detected": "屏幕内容疑似注入",
 }
 
 func stepTitle(stepID string) string {

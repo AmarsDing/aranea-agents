@@ -239,7 +239,7 @@ func (u *Usecase) UpdateVaultDocumentContent(ctx context.Context, docID, content
 	if readErr != nil {
 		vd = &VaultDoc{}
 	}
-	vd.Body = content
+	vd.Body = u.MaybeAutolinkOutgoing(ctx, col.ID, doc.ID, "", content)
 	conflict, err := u.filer.WriteDocCAS(col.RootPath, doc.RelPath, vd, baseHash)
 	if err != nil {
 		return Document{}, false, err

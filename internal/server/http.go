@@ -173,6 +173,8 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 //   - /webhooks/{channel_key}: third-party webhook callbacks with varying path segments
 //   - /v1/artifacts/download: signed download with direct response writer access
 //   - /v1/knowledge/documents/{id}/asset: raw file streaming (G2-B6, Range/inline media)
+//   - /v1/knowledge/documents/{id}/autolink-preview|autolink: confirm-then-apply outgoing wikilinks
+//   - /v1/knowledge/collections/{id}/health|experts|writeback-pending: SP7 G7/G8 + pending gate
 //
 // All custom routes are explicitly documented here for auditability. New bypass routes
 // MUST be added to this centralized block with justification comments.
@@ -218,6 +220,41 @@ func registerCustomRoutes(
 		// 鉴权走标准 auth 过滤器（前端 fetch 带 JWT → blob/object URL 渲染）。
 		srv.Route("/").GET("/v1/knowledge/documents/{id}/asset", func(ctx kratoshttp.Context) error {
 			knowledgeSvc.ServeDocumentAsset(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		// US-39：出链成链预览/确认（custom JSON，避免 make api）。
+		srv.Route("/").GET("/v1/knowledge/documents/{id}/autolink-preview", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeAutolinkPreview(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").POST("/v1/knowledge/documents/{id}/autolink", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeAutolinkApply(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		// US-43 / US-42 / US-44：健康度、专家、待确认写回。
+		srv.Route("/").GET("/v1/knowledge/collections/{id}/health", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeCollectionHealth(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/collections/{id}/experts", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeCollectionExperts(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/collections/{id}/writeback-pending", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeWriteBackPending(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").POST("/v1/knowledge/collections/{id}/writeback-pending/apply", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeWriteBackPendingApply(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		// US-45：显式成链回填（会改写 Markdown）；US-46：写回落点只读解析。
+		srv.Route("/").POST("/v1/knowledge/collections/{id}/autolink-backfill", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeAutolinkBackfill(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").GET("/v1/knowledge/writeback-home", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeWriteBackHome(ctx.Response(), ctx.Request())
 			return nil
 		})
 	}

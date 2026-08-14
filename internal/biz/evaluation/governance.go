@@ -37,7 +37,7 @@ func (u *Usecase) GetFailureGroups(ctx context.Context, datasetID, agentID strin
 	if limit <= 0 {
 		limit = 20
 	}
-	groups, total, err := u.repo.ListFailureGroups(ctx, datasetID, agentID, limit)
+	groups, total, err := u.results.ListFailureGroups(ctx, datasetID, agentID, limit)
 	if err != nil {
 		return FailureGroupReport{}, err
 	}
@@ -76,7 +76,7 @@ func (u *Usecase) SubmitRunPreference(ctx context.Context, in RunPreference) (Ru
 	}
 	// Both runs must exist and belong to the dataset — a preference over
 	// foreign runs would corrupt per-dataset preference statistics.
-	runs, err := u.repo.GetRunsByIDs(ctx, []string{in.RunIDA, in.RunIDB})
+	runs, err := u.runQueries.GetRunsByIDs(ctx, []string{in.RunIDA, in.RunIDB})
 	if err != nil {
 		return RunPreference{}, err
 	}
@@ -94,7 +94,7 @@ func (u *Usecase) SubmitRunPreference(ctx context.Context, in RunPreference) (Ru
 	if strings.TrimSpace(in.CreatedBy) == "" {
 		in.CreatedBy = "system"
 	}
-	if err := u.repo.InsertRunPreference(ctx, in); err != nil {
+	if err := u.gov.InsertRunPreference(ctx, in); err != nil {
 		return RunPreference{}, err
 	}
 	return in, nil
@@ -109,7 +109,7 @@ func (u *Usecase) ListRunPreferences(ctx context.Context, datasetID string, limi
 	if limit <= 0 {
 		limit = 100
 	}
-	return u.repo.ListRunPreferences(ctx, datasetID, limit)
+	return u.gov.ListRunPreferences(ctx, datasetID, limit)
 }
 
 // ── P2-1: publish regression gate config ────────────────────────────────────
@@ -135,7 +135,7 @@ const (
 // GetGateConfig returns the singleton gate config (disabled zero value when
 // never configured).
 func (u *Usecase) GetGateConfig(ctx context.Context) (GateConfig, error) {
-	return u.repo.GetGateConfig(ctx)
+	return u.gov.GetGateConfig(ctx)
 }
 
 // UpdateGateConfig validates and persists the gate config.
@@ -151,10 +151,10 @@ func (u *Usecase) UpdateGateConfig(ctx context.Context, cfg GateConfig) (GateCon
 	if cfg.Enabled && (cfg.AgentID == "" || cfg.DatasetID == "") {
 		return GateConfig{}, apierror.BadRequest("EVAL", "agent_id and dataset_id are required when the gate is enabled")
 	}
-	if err := u.repo.UpsertGateConfig(ctx, cfg); err != nil {
+	if err := u.gov.UpsertGateConfig(ctx, cfg); err != nil {
 		return GateConfig{}, err
 	}
-	return u.repo.GetGateConfig(ctx)
+	return u.gov.GetGateConfig(ctx)
 }
 
 func clamp01(v float32) float32 {

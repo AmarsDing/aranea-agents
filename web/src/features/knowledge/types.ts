@@ -297,3 +297,53 @@ export type MergeEntitiesResult = {
   rewritten_links: number;
   merged_entities: number;
 };
+
+export type AutolinkPreview = {
+  doc_id: string;
+  replacements: number;
+  preview: string;
+  unchanged: boolean;
+};
+
+export type AutolinkApplyResult = {
+  doc_id: string;
+  replacements: number;
+};
+
+export type CollectionHealth = {
+  document_count: number;
+  edge_count: number;
+  explicit_edges: number;
+  isolated_count: number;
+  orphan_rate: number;
+  link_density: number;
+  dangling_count: number;
+  writeback_notes: number;
+  writeback_latest: string;
+};
+
+export type KnowledgeExpert = {
+  agent_id: string;
+  user_id: string;
+  fact_count: number;
+  last_kind: string;
+};
+
+export type PendingWriteBackItem = {
+  fact_id: string;
+  statement: string;
+  kind: string;
+  confidence: number;
+  agent_id: string;
+  user_id: string;
+  session_id: string;
+  source: string;
+};
+
+/** 工作区写回落点（US-46）：团队收件箱或第一个 team 库；found=false 表示尚未创建。 */
+export type WriteBackHome = {
+  found: boolean;
+  collection_id: string;
+  name: string;
+  vault_backend: string;
+};

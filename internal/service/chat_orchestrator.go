@@ -3,11 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	chatagent "aranea-agents/internal/agent"
-	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/agent/v2"
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
@@ -155,9 +153,10 @@ type ChatOrchestrator struct {
 	// immediately after each turn, bridging the async gap to Sleep-time consolidation.
 	immediateFactWriter *biz.ImmediateFactWriter
 
-	// pendingClarifications stores the original turn input for sessions waiting
-	// for clarification submission. Key: sessionID.
-	pendingClarifications sync.Map // map[sessionID]pendingClarification
+	// pendingClarifications is a process-local hot cache of in-flight
+	// clarification resume state. Source of truth is the persisted clarify
+	// Step envelope; cache miss (restart / other replica) rebuilds from it.
+	pendingClarifications clarificationPendingCache
 
 	// voiceDelegationGw 是 delegate_to_spirit 工具的 turn 提交网关（M74 V9）。
 	// ProvideChatService 启动期回填（Wire 环：ChatService → orch → gateway →
@@ -169,18 +168,6 @@ type ChatOrchestrator struct {
 	resumeAwaitFn func(ctx context.Context, sessionID, reply, runID string) error
 
 	sweepStop chan struct{}
-}
-
-// pendingClarification holds the state needed to resume a turn after the user
-// submits clarification answers.
-type pendingClarification struct {
-	Input     biz.TurnInput
-	StepID    string
-	TaskID    string
-	CreatedAt time.Time
-	// Artifact 是触发澄清门前的 Intent Pass 产物。续跑（卡片提交/自由回复）
-	// 时经 ctx 复用，避免为重写后的输入重跑 Intent Pass LLM（P0 性能优化）。
-	Artifact *intent.Artifact
 }
 
 // chatTurnLifecycleImpl combines sessionStateTransitor, turnRecorder, and
@@ -588,14 +575,11 @@ var (
 
 // Execute implements biz.TurnExecutor — the shared entry point for all turn
 // execution paths (Web, WS, Channel, Cron, A2A).
+//
+// 澄清等待态的自由回复拦截在 runNativeAgentTurnBody（Sessions.Get 之后）：
+// 内存 cache 命中走热路径；重启/其他副本 cache 缺失时用会话状态门闩 +
+// 持久化 clarify Step 信封重建，避免每个 turn 额外查库。
 func (o *ChatOrchestrator) Execute(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
-	// 澄清等待态自由回复等价路径：pending 存在时消息视为自由回答，
-	// 完成澄清 step 并重写输入续跑同一 turn；非等待态原样透传。
-	// 命中时返回澄清前的 Intent 产物并注入 ctx，续跑 turn 复用而不重跑 Intent Pass。
-	input, intentArt := o.resolveClarificationFreeText(ctx, input)
-	if intentArt != nil {
-		ctx = intent.WithArtifact(ctx, intentArt)
-	}
 	return o.RunNativeAgentTurnWithOutcome(ctx, input)
 }
 

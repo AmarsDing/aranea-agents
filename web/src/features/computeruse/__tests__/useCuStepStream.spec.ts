@@ -2,9 +2,10 @@
 // 75 M1.4 任务 4：computeruse.step MonitorEvent → CuStep 视图模型映射 + 去重排序。
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { defineComponent, ref, type Ref } from 'vue';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import {
   cuStepFromMonitorEvent,
+  cuStepFromAudit,
   upsertCuStep,
   cuSessionIdFromSteps,
   useCuStepStream,
@@ -56,9 +57,30 @@ describe('cuStepFromMonitorEvent', () => {
       result: 'ok',
       durationMs: 42,
       danger: false,
+      degraded: false,
+      screenshotRef: '',
       confirmedBy: 'user-1',
       error: '',
     });
+  });
+
+  it('maps degraded and screenshot_ref from metadata', () => {
+    const step = cuStepFromMonitorEvent(
+      mkEv({
+        metadata: {
+          step_index: 2,
+          target: '图标',
+          path: 'vlm_direct',
+          action: 'click',
+          result: 'ok',
+          duration_ms: 9,
+          danger: false,
+          degraded: true,
+          screenshot_ref: 'bin/cua/audit/s-2.png',
+        },
+      }),
+    );
+    expect(step).toMatchObject({ degraded: true, screenshotRef: 'bin/cua/audit/s-2.png', path: 'vlm_direct' });
   });
 
   it('returns null for non-computeruse types', () => {
@@ -88,6 +110,41 @@ describe('cuStepFromMonitorEvent', () => {
   });
 });
 
+describe('cuStepFromAudit', () => {
+  it('maps audit rows with the same field口径 as WS events', () => {
+    const step = cuStepFromAudit({
+      id: 9,
+      sessionId: 'cu-1',
+      agentKey: 'a',
+      stepIndex: 4,
+      target: '保存',
+      path: 'a11y',
+      action: 'invoke',
+      paramsJson: '{}',
+      result: 'ok',
+      error: '',
+      durationMs: 12,
+      confirmedBy: 'u1',
+      danger: true,
+      createdAt: '2026-08-15T00:00:00Z',
+    });
+    expect(step).toMatchObject({
+      stepIndex: 4,
+      target: '保存',
+      path: 'a11y',
+      action: 'invoke',
+      result: 'ok',
+      durationMs: 12,
+      danger: true,
+      degraded: false,
+      screenshotRef: '',
+      confirmedBy: 'u1',
+      error: '',
+      timestamp: '2026-08-15T00:00:00Z',
+    });
+  });
+});
+
 describe('upsertCuStep', () => {
   const s = (i: number): CuStep => ({
     stepIndex: i,
@@ -97,6 +154,8 @@ describe('upsertCuStep', () => {
     result: 'ok',
     durationMs: 1,
     danger: false,
+    degraded: false,
+    screenshotRef: '',
     confirmedBy: '',
     error: '',
     timestamp: '',
@@ -165,6 +224,7 @@ describe('useCuStepStream composable', () => {
   let captured: UseMonitorStreamOptions;
   let disconnectSpy: ReturnType<typeof vi.fn>;
   let killMock: ReturnType<typeof vi.fn>;
+  let listMock: ReturnType<typeof vi.fn>;
 
   function withSetup(sessionId: Ref<string>) {
     let result!: ReturnType<typeof useCuStepStream>;
@@ -183,6 +243,7 @@ describe('useCuStepStream composable', () => {
     vi.clearAllMocks();
     disconnectSpy = vi.fn();
     killMock = vi.fn().mockResolvedValue({});
+    listMock = vi.fn().mockResolvedValue({ items: [] });
     vi.mocked(createMonitorStream).mockImplementation((opts) => {
       captured = opts;
       return {
@@ -196,6 +257,7 @@ describe('useCuStepStream composable', () => {
     });
     vi.mocked(createComputerUseService).mockReturnValue({
       KillComputerUseSession: killMock,
+      ListComputerUseSteps: listMock,
     } as unknown as ReturnType<typeof createComputerUseService>);
   });
 
@@ -247,5 +309,61 @@ describe('useCuStepStream composable', () => {
     const { wrapper } = withSetup(ref('cu-sess-1'));
     wrapper.unmount();
     expect(disconnectSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays audit steps on mount and dedupes later WS events by step_index', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        {
+          stepIndex: 2,
+          target: 'rest-2',
+          path: 'a11y',
+          action: 'invoke',
+          result: 'ok',
+          durationMs: 5,
+          danger: true,
+          confirmedBy: 'u1',
+          error: '',
+          createdAt: '2026-08-15T00:00:02Z',
+        },
+        {
+          stepIndex: 1,
+          target: 'rest-1',
+          path: 'a11y',
+          action: 'click',
+          result: 'ok',
+          durationMs: 3,
+          danger: false,
+          confirmedBy: '',
+          error: '',
+          createdAt: '2026-08-15T00:00:01Z',
+        },
+      ],
+    });
+    const { result } = withSetup(ref('cu-sess-1'));
+    await flushPromises();
+    expect(listMock).toHaveBeenCalledWith({ id: 'cu-sess-1' });
+    expect(result.steps.value.map((s) => s.stepIndex)).toEqual([1, 2]);
+    expect(result.steps.value[1]).toMatchObject({ target: 'rest-2', danger: true, confirmedBy: 'u1' });
+
+    captured.onMonitorEvent?.(
+      mkEv({ metadata: { step_index: 2, target: 'ws-2', result: 'ok', danger: false } }),
+    );
+    expect(result.steps.value).toHaveLength(2);
+    expect(result.steps.value[1].target).toBe('ws-2');
+  });
+
+  it('skips REST replay when session id is empty and ignores replay errors', async () => {
+    const { result } = withSetup(ref('  '));
+    await flushPromises();
+    expect(listMock).not.toHaveBeenCalled();
+    expect(result.steps.value).toHaveLength(0);
+
+    listMock.mockRejectedValue(new Error('offline'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result: live } = withSetup(ref('cu-sess-1'));
+    await flushPromises();
+    expect(live.steps.value).toHaveLength(0);
+    warn.mockRestore();
   });
 });

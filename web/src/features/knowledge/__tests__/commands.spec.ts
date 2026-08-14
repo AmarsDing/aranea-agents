@@ -6,9 +6,9 @@ function items(): CommandItem[] {
 }
 
 describe('filterCommands（SP2-6 命令面板过滤）', () => {
-  it('空查询返回全部注册命令（10 条，SP2-8 新增 ingest-text）', () => {
-    expect(filterCommands(items(), '')).toHaveLength(10);
-    expect(filterCommands(items(), '   ')).toHaveLength(10);
+  it('空查询返回全部注册命令', () => {
+    expect(filterCommands(items(), '')).toHaveLength(COMMAND_DEFS.length);
+    expect(filterCommands(items(), '   ')).toHaveLength(COMMAND_DEFS.length);
   });
 
   it('子序列匹配：前缀命中排在散列命中前', () => {
@@ -35,6 +35,10 @@ describe('filterCommands 别名搜索（P2-6）', () => {
     expect(filterCommands(items(), 'baocun').map((c) => c.def.id)).toEqual(['save']);
   });
 
+  it('拼音别名命中（huichong → backfill-autolink）', () => {
+    expect(filterCommands(items(), 'huichong').map((c) => c.def.id)).toEqual(['backfill-autolink']);
+  });
+
   it('标题命中优先于别名散列命中', () => {
     const res = filterCommands(items(), 'new');
     expect(res.map((c) => c.def.id).slice(0, 2)).toEqual(['new-note', 'new-folder']);
@@ -46,13 +50,13 @@ describe('filterCommands MRU 置顶（P2-6）', () => {
     const res = filterCommands(items(), '', ['save', 'new-note']);
     expect(res.map((c) => c.def.id).slice(0, 2)).toEqual(['save', 'new-note']);
     expect(res[2].def.id).toBe('new-folder');
-    expect(res).toHaveLength(10);
+    expect(res).toHaveLength(COMMAND_DEFS.length);
   });
 
   it('MRU 含未知 id 时自动跳过', () => {
     const res = filterCommands(items(), '  ', ['ghost' as CommandId, 'save']);
     expect(res[0].def.id).toBe('save');
-    expect(res).toHaveLength(10);
+    expect(res).toHaveLength(COMMAND_DEFS.length);
   });
 
   it('键入查询后 MRU 不参与排序（相关性接管）', () => {

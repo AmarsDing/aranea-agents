@@ -2122,3 +2122,15 @@ message ListMemoryEpisodesResponse {
 - `prompts/skills/skills.md`：移除未实现的 `retire_skill`；工作流对齐实际 8 工具（analyze_skill_usage / recommend_skills / evolve_skill / optimize_skill / analyze_skill_health / analyze_tool_weights / analyze_orchestration / optimize_orchestration，装配于 `cli_admin_tools.go:225`）。
 - `recommend_skills` 已实现（pending proposals + 调用统计健康度），本期补单测。
 
+### F. memory_butler 质量分（`memory_butler_analyze_quality`）
+
+工具 JSON 字段名保持兼容。`hit_rate` / `miss_rate` / `misaligned_count` / `health_score` 仍来自 `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality`。以下三字段**不再恒为 0**，由 `ListFactRows` 返回的 L3 行在 `internal/tools/memory_butler/quality_metrics.go` 计算（上限 `defaultFactListLimit=500`）：
+
+| 字段 | 公式 | 0 的含义 |
+|------|------|----------|
+| `redundancy_score` | 与至少一条近重复（trigram Jaccard 或 overlap 系数 ≥ 0.8，或 `fingerprint` 相同）的 fact 数 / n | 没有近重复（算出来的 0） |
+| `inactive_count` | `last_used_at`（从未召回则 `created_at`）早于 30 天的条数；时间戳缺失视为不活跃 | 全部活跃 |
+| `predictable_count` | 每对近重复中的较弱项（更短 statement；同长则更早 `created_at`） | 没有可合并副本 |
+
+不引入新表、不改 L0–L4 存储语义。`ListFactRows` JSON 不含 `embedding_blob`，生产 `memoryButlerTools()` 未注入 `Deps.Embedder`，故本指标与 `selective_remember` / `deduplicate` 均复用既有 trigram 相似度，不接 embedding 管线。
+

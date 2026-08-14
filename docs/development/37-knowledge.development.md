@@ -248,9 +248,9 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 > **架构决策（2026-07-21）**：图片入库采用「先落文档 + 后台异步提取」而非同步提取——视觉 LLM 调用最长 60s，同步会阻塞 HTTP；失败置 `status=error`（NFR-12），与 indexing → indexed/error 状态流一致。新增 `UpdateDocumentContent` Repo/Usecase 接口用于提取完成后回写 `content_text`/`organized`。
 
-### Phase 10：GraphRAG 旁路（可选）— 暂缓
+### Phase 10：GraphRAG 旁路 — 🟡 Lazy 切片已落地（全量抽取仍暂缓）
 
-> 裁决（2026-07-20 用户确认）：Phase 3 可选增强；旁路非侵入，绝不嵌入摄取主链路。详见设计 §9.6 与 Roadmap 子模块 Phase 3。
+> 裁决（2026-07-20）：全量实体/关系抽取 GraphRAG 旁路非侵入、暂缓。**2026-08-15**：落地 Lazy GraphRAG（查询时用已有 `knowledge_links` 一跳扩展）+ Retrieve-Then-Generate + **编译期 Wiki 成链**（写入时把未链接提及编成 `[[wikilink]]`，为 explicit 边供粮）。全量 NER GraphRAG 仍见设计 §9.6。
 
 ### Phase 11：免选择知识库（US-14）— ✅ 已完成（2026-07-21）
 
@@ -367,8 +367,10 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 ### Phase 10 — ⏸ 可选（GraphRAG 旁路）
 
-- [ ] 图谱构建为异步旁路，摄取主链路无侵入（对照设计 §9.6 架构纪律）
-- [ ] 多跳/实体关系查询可由图遍历增强检索回答
+- [x] Lazy GraphRAG：查询时 `knowledge_links` 一跳扩展（2026-08-15）
+- [x] 编译期 Wiki 成链：写入时未链接提及 → `[[wikilink]]`（2026-08-15，US-34）
+- [ ] 图谱构建为异步旁路，摄取主链路无侵入（对照设计 §9.6 架构纪律；全量 NER 仍暂缓）
+- [ ] 多跳/实体关系查询可由图遍历增强检索回答（一跳已落地；多跳/社区摘要未做）
 
 ### Phase 11 — ✅ 免选择知识库（US-14）
 
@@ -553,7 +555,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 | L1 | **单次检索**：Agent 只能被动接收 topK chunks | 无法迭代精炼检索结果 | Agentic RAG (SoK 2026) | ✅ knowledge_reflect + Plan-Then-Retrieve 已解决 |
 | L2 | **无查询重写**：原始 query 直接做嵌入 | 复杂/模糊查询召回率低 | HyDE, Query Decomposition | ✅ 已解决 |
 | L3 | **纯向量检索**：缺少 BM25 稀疏检索 | 专业术语精确匹配差 | Hybrid Retrieval | ✅ 已解决 |
-| L4 | **无知识结构**：扁平 chunks，无层次/图谱 | 多跳推理无法支撑 | GraphRAG, CORPUS2SKILL | ❌ Phase 3 |
+| L4 | **无知识结构**：扁平 chunks，无层次/图谱 | 多跳推理无法支撑 | GraphRAG, CORPUS2SKILL | 🟡 2026-08-15 Lazy GraphRAG 一跳扩展已落地；全量实体抽取 GraphRAG 仍未做 |
 | L5 | **无自适应检索**：所有查询走同一管线 | 简单查询浪费资源，复杂查询检索不足 | Adaptive RAG | ✅ 已解决 |
 | L6 | **无检索质量评估**：检索结果直接返回 | 低质量结果无法自纠 | CRAG, Self-RAG | ✅ 已解决 |
 | L7 | **无跨 Collection 联邦搜索** | 多知识源协同检索受限 | Federated Retrieval | ✅ 已解决 |
@@ -575,7 +577,7 @@ Naive RAG (2023)    Advanced RAG (2024)    Agentic RAG (2025-2026)
                      已完成               已完成
 ```
 
-**当前 Aranea 知识库处于 Agentic RAG 阶段**（已具备查询重写、混合检索、自适应路由、检索评估、联邦搜索、Agent 自校验工具、Plan-Then-Retrieve），正向 GraphRAG 阶段演进（知识图谱构建待实现）。
+**当前 Aranea 知识库处于 Advanced RAG + 部分 Agentic 工具阶段**（查询重写、混合检索、自适应路由、检索评估、联邦搜索、`knowledge_reflect` 均已实现）。2026-08-15 起检索侧具备 **Lazy GraphRAG 一跳扩展**，Agent 侧 **Retrieve-Then-Generate**（首轮预检索段落注入，不再只注入库名目录）。全量实体抽取 GraphRAG 与 Skill Knowledge 仍未落地——文档此前将「库名目录 cue」标成 Plan-Then-Retrieve，属于过称，已纠正。
 
 ---
 
@@ -617,7 +619,7 @@ Knowledge 与 Memory、Skill 构成 Agent 认知三角：
 |--------|------|----------|
 | 2.1 多轮迭代检索工具（knowledge_reflect） | ✅ | `internal/tools/knowledge/tool.go` |
 | 2.2 跨 Collection 联邦搜索（Broadcast + Route） | ✅ | `internal/knowledge/federated_retriever.go` |
-| 2.3 Plan-Then-Retrieve（BeforeModel 钩子） | ✅ | `internal/agent/knowledge_inject.go` |
+| 2.3 Plan-Then-Retrieve（BeforeModel 钩子） | ✅ 2026-08-15 升级为真正预检索 | `internal/agent/knowledge_inject.go`（Retrieved Knowledge + 库目录） |
 
 **迭代检索流程**（已实现）：
 
@@ -1271,7 +1273,7 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | SP4 | 多模态摄取管线 | 文本代理路线（Whisper ASR + 关键帧 OCR + 场景描述，时间戳回链原片）；Office（docconv/excelize/pdfium 思路）；模态分库 + 查询路由（G5） | SP1 | 待立项 |
 | SP5 | 双模权限与成熟度 | 片段级权限（Collaborative Memory 模型）；成熟度状态机（草稿→共享→精炼→规范，AS-FSM-01 显式建模）；AI 去私人化 super note 综合（G3） | SP1 | 待立项 |
 | SP6 | AI 知识伙伴 | 写入即自动链接/标签建议（Notemd 式批量限流）；会话决策点主动唤回（复用 BeforeModel 钩子）；摄入即综合（交叉引用 + 矛盾检测）（G6） | SP1 | 待立项 |
-| **SP7（新）** | 知识-记忆同基底 + 写回飞轮 | 记忆 L3/L4 投影为 agent vault 块（G1）；会话/TeamRun → LLM 抽取 → 团队库（验证门 + provenance，G2）；专家定位聚合（G7）；知识健康度指标（G8） | SP1+SP5 | 待立项 |
+| **SP7（新）** | 知识-记忆同基底 + 写回飞轮 | 记忆 L3/L4 投影为 agent vault 块（G1）；会话/TeamRun → LLM 抽取 → 团队库（验证门 + provenance，G2）；专家定位聚合（G7）；知识健康度指标（G8） | SP1+SP5 | G1/G2/G7/G8 已落地（US-37~US-44）；SP5 成熟度未做 |
 
 ---
 
@@ -1378,6 +1380,59 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | C-T1 | 2 万节点/5 万边双布局（力导向/星系盘）性能基准录制 + 落档测试文档 | ✅ | [perf-2026-08-12-graph3d-dual-layout.md](../testing/reports/perf-2026-08-12-graph3d-dual-layout.md)；工具 `test/graph3d-perf/`（gen-dataset.ts / run-benchmark.mjs）；原始数据 `results-2026-08-13T0721.json` |
 
 > **G-3 状态说明**：G5-G 的 G-3（性能基准）已随 C-T1 落档于 2026-08-13 一并关闭（✅）——基准报告见 C-T1 行链接；验收 34 的性能基准部分同步关闭。
+
+---
+
+## 子模块：Lazy GraphRAG + Retrieve-Then-Generate（2026-08-15）
+
+> **状态**：✅ 已实施 | **需求**：US-32 / US-33 | **设计**：[37-knowledge.design.md §V12.10](./37-knowledge.design.md#v1210-lazy-graphrag--retrieve-then-generate2026-08-15)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| GraphExpander 一跳扩展（explicit/entity/semantic） | ✅ | `internal/knowledge/graph_expander.go` + `_test.go` |
+| ListChunksByDocuments（每文档前 N chunk） | ✅ | `internal/data/knowledge.go` |
+| AdaptiveRouter 接线 + 复杂查询自动 MultiQuery | ✅ | `internal/knowledge/adaptive_router.go` |
+| Wire：NewKnowledgeGraphExpander | ✅ | `internal/service/knowledge_advanced.go`、`cmd/admin/wire_gen.go` |
+| Retrieve-Then-Generate（首轮预检索注入） | ✅ | `internal/agent/knowledge_inject.go` + `_test.go` |
+
+## 子模块：编译期 Wiki 成链（2026-08-15）
+
+> **状态**：✅ 已实施 | **需求**：US-34 | **设计**：[37-knowledge.design.md §V12.11](./37-knowledge.design.md#v1211-编译期-wiki-成链2026-08-15)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| AutolinkWikiMentions 纯函数（保护区间/词边界/歧义/最长优先） | ✅ | `internal/biz/knowledge/autolink.go` + `_test.go` |
+| MaybeAutolinkOutgoing（ListDocuments 标题，失败降级） | ✅ | 同上 |
+| 摄取接线（整理后 + 视觉提取后；vault `.md` 落盘与正文一致） | ✅ | `internal/service/knowledge.go` `IngestDocument` |
+| Vault 保存接线（写盘前成链 → ApplyOne 重建块索引） | ✅ | `internal/biz/knowledge/vault_write.go` `UpdateVaultDocumentContent` |
+
+## 子模块：会话写回飞轮（2026-08-15）
+
+> **状态**：✅ 已实施 | **需求**：US-37 | **设计**：[37-knowledge.design.md §V12.12](./37-knowledge.design.md#v1212-会话写回飞轮sp7-g22026-08-15)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 验证门 + 日记 Markdown + provenance 纯函数 | ✅ | `internal/biz/knowledge/writeback.go` + `_test.go` |
+| 团队库当日日记追加 + 成链 + 块索引 | ✅ | `Usecase.WriteBackSessionFacts` |
+| chunk/FTS 重放 | ✅ | `internal/service/knowledge_writeback.go`（复用晋升 replay） |
+| AutoMemoryWorker 接线（失败不阻断记忆） | ✅ | `internal/cronrunner/jobs/auto_memory.go` `maybeWriteBack` |
+| Wire：KnowledgeService → AutoMemoryWorker | ✅ | `cmd/admin/wire.go` / `wire_gen.go` |
+
+## 子模块：成链回填、金标与 SP7 收口（2026-08-15）
+
+> **状态**：✅ 已实施 | **需求**：US-38~US-48 | **设计**：[37-knowledge.design.md §V12.13](./37-knowledge.design.md#v1213-成链回填金标与-sp7-收口2026-08-15)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 历史出链回填（显式命令，失败继续重建） | ✅ | `autolink_backfill.go`；`POST .../autolink-backfill`；`startCollectionIndexJob(..., true)` |
+| 重建索引不改 Markdown | ✅ | `RebuildKnowledgeIndex` → `startCollectionIndexJob(..., false)` |
+| 本页确认成链 custom HTTP + 工作台 | ✅ | `internal/service/knowledge_http.go`；`PanelBacklinks.vue` / 命令面板 |
+| 12 条中英金标（成链+一跳 vs 仅种子） | ✅ | `internal/knowledge/gold_recall_test.go`；`test/knowledge-gold/README.md` |
+| 生产 BM25 中英金标（需 PG） | ✅ | `internal/data/knowledge_gold_bm25_test.go` |
+| G1 Agent 记忆投影（独立 projector） | ✅ | `internal/biz/knowledge/memory_project.go`；AutoMemory `maybeProjectMemory` |
+| G7 专家 / G8 健康度 | ✅ | `health.go`；GET `/experts` `/health`；专家打 `writeback-home` |
+| 低置信 pending 逐条过门 | ✅ | `writeback_pending.go`；`WritebackReviewDialog.vue` |
+| 写回落点只读解析 | ✅ | `LookupWriteBackHome`；GET `/v1/knowledge/writeback-home` |
 
 ### 运行时验证结论（2026-08-13 协调员浏览器实测）
 

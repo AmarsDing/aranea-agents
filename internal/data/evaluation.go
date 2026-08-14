@@ -18,9 +18,20 @@ type evalRepo struct {
 	lg   loggateway.Logger
 }
 
-var _ bizevaluation.Repo = (*evalRepo)(nil)
+// One adapter implements every evaluation ISP port plus the deprecated Repo
+// composition (tests / compile-time check). Production injects Stores.
 
-func NewEvalRepo(data *Data, lg loggateway.Logger) biz.EvalRepo {
+var (
+	_ bizevaluation.Repo            = (*evalRepo)(nil)
+	_ bizevaluation.DatasetStore    = (*evalRepo)(nil)
+	_ bizevaluation.CaseStore       = (*evalRepo)(nil)
+	_ bizevaluation.RunStore        = (*evalRepo)(nil)
+	_ bizevaluation.RunQueryStore   = (*evalRepo)(nil)
+	_ bizevaluation.ResultStore     = (*evalRepo)(nil)
+	_ bizevaluation.GovernanceStore = (*evalRepo)(nil)
+)
+
+func NewEvalRepo(data *Data, lg loggateway.Logger) *evalRepo {
 	if data == nil || data.RWDB() == nil {
 		return nil
 	}

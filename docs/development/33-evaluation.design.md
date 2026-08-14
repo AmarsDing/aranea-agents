@@ -22,7 +22,9 @@ EvaluationService (Kratos HTTP/gRPC)
        │
 EvalUsecase (biz)          ← 数据集/运行 CRUD、用例上传、人工标注
        │
-EvalRepo (data) ─── SQLite (Raw SQL, EnsureEvalSchema @ NewData)
+EvalStores (data, ISP) ─── SQLite (Raw SQL, EnsureEvalSchema @ NewData)
+       │   DatasetStore / CaseStore / RunStore / RunQueryStore / ResultStore / GovernanceStore
+       │   （同一 evalRepo 一身多口；宽 Repo 已 Deprecated）
        │
 evaluation.Runner (async goroutine)
    ├── FrameworkBridge ── trpc AgentEvaluator (默认)
@@ -42,7 +44,8 @@ evaluation.Runner (async goroutine)
 | Service | `internal/service/evaluation_runner.go` | Wire：`NewEvaluationRunner` 装配 AgentRunner + LLMJudge + FrameworkBridge |
 | Service | `internal/service/evaluation_after_turn.go` | Wire：`NewEvaluationAfterTurnTrigger` 创建 AfterTurn 触发器 |
 | Biz | `internal/biz/evaluation.go` | 类型重导出（子包 `evaluation/` 的别名） |
-| Biz | `internal/biz/evaluation/evaluation.go` | 领域模型 + EvalRepo 接口（19 方法）+ EvalUsecase（17 方法） |
+| Biz | `internal/biz/evaluation/evaluation.go` | 领域模型 + EvalUsecase（构造注入 `Stores`，端口字段未导出） |
+| Biz | `internal/biz/evaluation/ports.go` | 持久化端口：`Stores` DTO + 6 个窄接口（ISP）；宽 `Repo` Deprecated |
 | Data | `internal/data/evaluation.go` | Raw SQL 持久化 + EnsureEvalSchema（4 表 + 11 条 ALTER 迁移） |
 | Runner | `internal/evaluation/runner.go` | 异步调度、Prometheus |
 | Legacy | `internal/evaluation/runner_legacy.go` | FrameworkBridge 不可用时的降级执行路径 |
@@ -133,18 +136,20 @@ evaluation.Runner (async goroutine)
 
 辅助类型：`CaseUpload`（用例上传行）、`Scores`（指标键→分数 map）、`LLMSetting`（Eval LLM 平台默认配置）。
 
-### 4.2 EvalRepo 接口
+### 4.2 持久化端口（ISP）
 
-```
-Dataset：CreateDataset / GetDataset / ListDatasets / DeleteDataset / UpdateDataset / UpdateDatasetCaseCount  (6)
-Case：InsertCases / ListCases  (2)
-Run：CreateRun / GetRun / UpdateRun / DeleteRun / ListRuns  (5)
-CaseResult：InsertCaseResult / ListCaseResults / GetCaseResult / UpdateCaseResultAnnotation  (4)
-Trend/Compare：ListTrendPoints / GetRunsByIDs  (2)
-Divergence：ListJudgeAnnotatedResults  (1)
-```
+生产路径（Wire / `Usecase`）注入 `Stores` DTO，**不**依赖宽 `Repo`。同一 `data.evalRepo` 实现全部窄口（一身多口）。`Repo` 保留为 Deprecated 嵌入组合，供测试 mock 与 `var _ Repo = (*evalRepo)(nil)` 编译期检查（对齐 Memory `SessionAdminStore` / `MemoryLayerPorts`）。
 
-合计 20 方法。
+| 接口 | 方法 | 数 |
+|------|------|----|
+| `DatasetStore` | CreateDataset / GetDataset / ListDatasets / DeleteDataset / UpdateDataset | 5 |
+| `CaseStore` | InsertCasesWithCountUpdate / ListCases | 2 |
+| `RunStore` | CreateRun / GetRun / UpdateRun / DeleteRun / ListRuns / FailStaleRuns | 6 |
+| `RunQueryStore` | ListTrendPoints / GetRunsByIDs | 2 |
+| `ResultStore` | InsertCaseResult / ListCaseResults / GetCaseResult / UpdateCaseResultAnnotation / ListJudgeAnnotatedResults / ListFailureGroups | 6 |
+| `GovernanceStore` | InsertRunPreference / ListRunPreferences / GetGateConfig / UpsertGateConfig | 4 |
+
+`RunStore` / `ResultStore` 各略超 ≤5（FailStale 属 run 生命周期；judge/failure 聚合属 case-result 表），均明显窄于原 25 方法上帝接口。
 
 ### 4.3 EvalUsecase
 

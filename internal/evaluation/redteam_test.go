@@ -80,7 +80,7 @@ func TestRedTeamDatasetEndToEnd(t *testing.T) {
 	}
 	repo := newFakeEvalRepo()
 	repo.datasets["ds-rt"] = beval.Dataset{ID: "ds-rt"}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
+	uc := beval.NewUsecase(beval.StoresFrom(repo), loggateway.NewNoop())
 	n, err := uc.UploadCases(context.Background(), "ds-rt", string(raw))
 	if err != nil {
 		t.Fatalf("preset dataset must import cleanly: %v", err)

@@ -32,7 +32,7 @@ func (ComputerUseAudit) Fields() []ent.Field {
 		field.String("agent_key").MaxLen(256),
 		field.Int("step_index"),
 		field.Text("target").Default(""),
-		field.String("path").MaxLen(16).Default("a11y"), // a11y|vision|vlm_direct
+		field.String("path").MaxLen(16).Default("a11y"), // a11y|vision|vlm_direct|grounder
 		field.String("action").MaxLen(32),
 		field.JSON("params", map[string]any{}).Optional(),
 		field.String("result").MaxLen(16).Default(""), // ok|retry|failed|cancelled|dry_run
@@ -40,7 +40,7 @@ func (ComputerUseAudit) Fields() []ent.Field {
 		field.Int64("duration_ms").Default(0),
 		field.String("confirmed_by").MaxLen(256).Default(""),
 		field.Bool("danger").Default(false),
-		field.String("screenshot_ref").MaxLen(512).Default(""), // 预留：截图存储引用
+		field.String("screenshot_ref").MaxLen(512).Default(""), // 审计截图文件路径（AuditShotDir）
 		field.Time("created_at"),
 	}
 }

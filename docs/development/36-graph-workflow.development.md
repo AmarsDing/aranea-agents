@@ -68,6 +68,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 | 前端类型与 API | ✅ | `types.ts` + `api.ts` + `useGraphsPage` + `useGraphEditorPage` + `useGraphRunPage` |
 | Ent Schema | ✅ | 8 张表（definition/execution/task/task_link/comment/log/run/event） |
 | Proto + Service | ✅ | 40 RPC 端点 + 42 个 service 方法 |
+| adapter/service 测试（P1-12） | ✅ | adapter：Factory.Validate 空图/缺失 Agent、LinkedGraph loader、resolver 错误路径；service：ValidateGraph 编译失败、ExecuteGraph 启动/构建失败、ResumeGraph HITL、Cancel、SubmitTaskResult HITL 回写。未覆盖真框架 BuildAndRun / 完整 Agent 构建 / 流式 event bridge 全量 |
 
 ### 2.2 差距清单（2026-06-17 校正）
 
@@ -407,7 +408,7 @@ Graph 工作流：基于 trpc-agent-go `graph` 包的确定性工作流引擎。
 
 ### 全局验收
 
-- [ ] `go test ./internal/graph/...` 通过
+- [x] `go test ./internal/graph/...` 通过（P1-12 补 adapter Validate/loader/resolver 测试；真框架 BuildAndRun 仍不在本轮范围）
 - [ ] `go test ./internal/biz/...` 通过（Graph + Task 相关）
 - [ ] 前端 `pnpm build` 无类型错误
 

@@ -51,6 +51,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | 优先级队列 | `internal/memory/trpc/auto_memory_queue.go` + `internal/biz/memory_queue_contract.go` |
 | L4 衰减/强化 | `internal/biz/memory_l4.go` + `internal/data/memory_l4.go`（RecordEntityReinforcement/ApplyBusinessConfidenceDecay/ArchiveLowConfidenceEntities）+ `internal/cronrunner/jobs/memory_l4_decay.go` + `internal/agent/l4_prompt.go` |
 | entity_reinforcements | `internal/data/sql/migrations/20260608_entity_reinforcements_schema.sql` + `internal/data/memory_l4.go`（reinforcement 代码内嵌于此） |
+| memory_butler 质量分 | `internal/tools/memory_butler/analyze_quality.go` + `quality_metrics.go` |
 
 ---
 
@@ -63,6 +64,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | L0 压缩优化（阶段一：工程补强） | ✅ |
 | L1 SQLite + Admin API + working_memory 工具 | ✅ |
 | L1 归档 Worker + episode 归档 hook | ✅ |
+| memory_butler 质量分（P1-8） | ✅ redundancy/inactive/predictable 由 L3 行计算，不再恒 0 |
 | L2 episodes + 事件视图 + 多策略 Recall | ✅ |
 | L2 Decay + Retention + Consolidate Worker | ✅ |
 | L3 facts SQLite + Admin | ✅ |

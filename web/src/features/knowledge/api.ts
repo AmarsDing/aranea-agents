@@ -32,6 +32,12 @@ import type {
   EnableSemanticResult,
   UpdateEmbedderConfigInput,
   VaultTreeNode,
+  AutolinkPreview,
+  AutolinkApplyResult,
+  CollectionHealth,
+  KnowledgeExpert,
+  PendingWriteBackItem,
+  WriteBackHome,
 } from './types';
 
 const svc = createKnowledgeService();
@@ -366,6 +372,119 @@ export async function listUnlinkedMentions(docId: string): Promise<UnlinkedMenti
   );
   const itemsRaw = res.items ?? res.Items;
   return Array.isArray(itemsRaw) ? itemsRaw.map(mapUnlinkedMention) : [];
+}
+
+export async function previewOutgoingAutolink(docId: string): Promise<AutolinkPreview> {
+  const r = asRecord(
+    (await kratosApi.get(`/v1/knowledge/documents/${encodeURIComponent(docId)}/autolink-preview`)).data,
+  );
+  return {
+    doc_id: pickStr(r, 'doc_id', 'docId'),
+    replacements: pickI32(r, 'replacements', 'replacements'),
+    preview: pickStr(r, 'preview', 'preview'),
+    unchanged: pickBool(r, 'unchanged', 'unchanged'),
+  };
+}
+
+export async function applyOutgoingAutolink(docId: string): Promise<AutolinkApplyResult> {
+  const r = asRecord(
+    (await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(docId)}/autolink`)).data,
+  );
+  return {
+    doc_id: pickStr(r, 'doc_id', 'docId'),
+    replacements: pickI32(r, 'replacements', 'replacements'),
+  };
+}
+
+export async function getCollectionHealth(collectionId: string): Promise<CollectionHealth> {
+  const r = asRecord(
+    (await kratosApi.get(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/health`)).data,
+  );
+  return {
+    document_count: pickI32(r, 'document_count', 'documentCount'),
+    edge_count: pickI32(r, 'edge_count', 'edgeCount'),
+    explicit_edges: pickI32(r, 'explicit_edges', 'explicitEdges'),
+    isolated_count: pickI32(r, 'isolated_count', 'isolatedCount'),
+    orphan_rate: pickNum(r, 'orphan_rate', 'orphanRate'),
+    link_density: pickNum(r, 'link_density', 'linkDensity'),
+    dangling_count: pickI32(r, 'dangling_count', 'danglingCount'),
+    writeback_notes: pickI32(r, 'writeback_notes', 'writebackNotes'),
+    writeback_latest: pickStr(r, 'writeback_latest', 'writebackLatest'),
+  };
+}
+
+export async function listCollectionExperts(collectionId: string): Promise<KnowledgeExpert[]> {
+  const res = asRecord(
+    (await kratosApi.get(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/experts`)).data,
+  );
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    return {
+      agent_id: pickStr(r, 'agent_id', 'agentId'),
+      user_id: pickStr(r, 'user_id', 'userId'),
+      fact_count: pickI32(r, 'fact_count', 'factCount'),
+      last_kind: pickStr(r, 'last_kind', 'lastKind'),
+    };
+  });
+}
+
+export async function listWriteBackPending(collectionId: string): Promise<PendingWriteBackItem[]> {
+  const res = asRecord(
+    (await kratosApi.get(`/v1/knowledge/collections/${encodeURIComponent(collectionId)}/writeback-pending`)).data,
+  );
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    return {
+      fact_id: pickStr(r, 'fact_id', 'factId'),
+      statement: pickStr(r, 'statement', 'statement'),
+      kind: pickStr(r, 'kind', 'kind'),
+      confidence: pickNum(r, 'confidence', 'confidence'),
+      agent_id: pickStr(r, 'agent_id', 'agentId'),
+      user_id: pickStr(r, 'user_id', 'userId'),
+      session_id: pickStr(r, 'session_id', 'sessionId'),
+      source: pickStr(r, 'source', 'source'),
+    };
+  });
+}
+
+export async function applyWriteBackPending(
+  collectionId: string,
+  factIds: string[] = [],
+): Promise<{ appended: number; doc_id: string }> {
+  const r = asRecord(
+    (
+      await kratosApi.post(
+        `/v1/knowledge/collections/${encodeURIComponent(collectionId)}/writeback-pending/apply`,
+        { fact_ids: factIds },
+      )
+    ).data,
+  );
+  return {
+    appended: pickI32(r, 'appended', 'appended'),
+    doc_id: pickStr(r, 'doc_id', 'docId'),
+  };
+}
+
+/** getWriteBackHome 工作区写回落点（US-46）：只解析不创建。 */
+export async function getWriteBackHome(): Promise<WriteBackHome> {
+  const r = asRecord((await kratosApi.get('/v1/knowledge/writeback-home')).data);
+  return {
+    found: pickBool(r, 'found', 'found'),
+    collection_id: pickStr(r, 'collection_id', 'collectionId'),
+    name: pickStr(r, 'name', 'name'),
+    vault_backend: pickStr(r, 'vault_backend', 'vaultBackend'),
+  };
+}
+
+/** backfillAutolinkIndex 显式回填存量出链并重建索引（US-45）；会改写 Markdown。 */
+export async function backfillAutolinkIndex(collectionId: string): Promise<void> {
+  await kratosApi.post(
+    `/v1/knowledge/collections/${encodeURIComponent(collectionId)}/autolink-backfill`,
+  );
 }
 
 /** recordLinkUse wikilink 落链上报（B4 #8）：补全选中目标后 upsert recency 行。

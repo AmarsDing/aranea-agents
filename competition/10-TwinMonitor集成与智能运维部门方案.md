@@ -1,6 +1,6 @@
 # Aranea × TwinMonitor 深度集成与「智能运维数字部门」方案
 
-> 日期：2026-08-14
+> 日期：2026-08-14（v1.1 修订：2026-08-15，覆盖性评审后工具集 12→17，见 §三文末评审记录）
 > 定位：比赛提交材料 —— 系统级集成方案 + 多 Agent 组织设计 + 端到端运维闭环实证
 > 关联：本方案落地 P1（故障处置闭环）并直接支撑评分维度 D1（场景价值 25%）、D2（多 Agent 协同 25%）、D3（Skill 工程 25%）、D4（工程落地与审计 20%）
 
@@ -79,9 +79,9 @@ flowchart LR
 | **A. API 主通道** | Aranea → TwinMonitor Gateway | REST + JWT | 告警/设备/线路/事件/处置记录查询；告警确认 | 服务账号 JWT（最小权限）、只读优先、写操作需审批 |
 | **B. 事件通道（已有）** | TwinMonitor → Aranea | HTTP + NATS JetStream | 告警触发图执行；执行状态回传 | NATS 账号隔离、webhook 签名校验 |
 | **C. 仿真执行通道** | Aranea → gns3_agent | HTTP（host:18081） | 设备健康探测、故障注入/恢复、控制台命令 | 命令白名单 + 全量审计 jsonl + 高危动作审批 |
-| **D. 只读审计通道** | Aranea → TwinMonitor PG/InfluxDB | SQL 只读账号 | 深度诊断取证、复盘报表、指标趋势 | PG 只读角色（SELECT-only）、禁写 DDL/DML |
+| **D. 只读审计通道（可选扩展）** | Aranea → TwinMonitor PG/InfluxDB | SQL 只读账号 | 深度诊断取证、复盘报表、指标趋势 | PG 只读角色（SELECT-only）、禁写 DDL/DML |
 
-> 设计原则：**API 优先、事件驱动、数据库只读兜底**。Agent 日常查询一律走 A 通道（有鉴权、有审计）；D 通道仅复盘/取证场景使用，账号层面锁死只读。
+> 设计原则：**API 优先、事件驱动**。Agent 全部 17 个工具均走 A/C 通道（REST，有鉴权、有审计）；D 通道为复盘/深度取证场景的可选扩展，当前版本未以工具形式开放，账号层面锁死只读。
 
 ### 2.3 TwinMonitor 数据资产 → Aranea 访问映射
 
@@ -89,10 +89,15 @@ flowchart LR
 |---------|------|----------------|-----------|
 | 告警事件 alarm_events | PG `twinmonitor_log` / monitoralarm API | 工具 `twin_alarm_query` / `twin_alarm_get`（A） | 诊断、值班长 |
 | 告警确认/状态流转 | monitoralarm API | 工具 `twin_alarm_ack`（A，写） | 诊断（审批后） |
+| 告警规则（触发条件/阈值） | monitoralarm API `ap-alarm-rules` | 工具 `twin_alarm_rule_get`（A，只读） | 诊断 |
 | 线路实时状态 | linemonitor API（ListLines 需 `status=-1`） | 工具 `twin_line_status`（A） | 诊断、验证 |
+| 线路主动探测 | linemonitor API `lines/{id}/probe-test` | 工具 `twin_line_probe`（A，写） | 验证 |
 | 线路事件 line_events | PG `twinmonitor_log` / linemonitor API | 工具 `twin_line_events`（A） | 诊断、复盘 |
-| 设备/资产 | monitor-devices API | 工具 `twin_device_get`（A） | 诊断 |
-| 设备指标 | InfluxDB `device_metrics` | 工具 `twin_device_metrics`（A 经 monitor-devices 聚合，或 D 直查） | 诊断、验证 |
+| 设备/资产搜索 | monitor-devices API（PagingRequest keyword） | 工具 `twin_device_search`（A） | 诊断、值班长 |
+| 设备/资产详情 | monitor-devices API | 工具 `twin_device_get`（A） | 诊断 |
+| 设备指标 | InfluxDB `device_metrics` | 工具 `twin_device_metrics`（A 经 monitorquery 聚合） | 诊断、验证 |
+| 采集层状态/失败记录 | collector-snmp-ssh API | 工具 `twin_collector_status`（A，只读） | 诊断 |
+| 巡检任务/记录 | opstools API（inspection） | 工具 `twin_inspection_query`（A，只读） | 验证、复盘 |
 | 处置策略与执行记录 | remediation API | 工具 `twin_remediation_status`（A） | 值班长、复盘 |
 | 仿真设备健康/控制台 | gns3_agent HTTP | 工具 `gns3_health_check` / `gns3_exec`（C） | 验证、执行 |
 | 故障注入/恢复 | gns3_agent HTTP | 工具 `gns3_fault_inject` / `gns3_fault_clear`（C，高危） | 执行（审批） |
@@ -116,11 +121,46 @@ flowchart LR
 | 7 | `twin_device_metrics` | 设备指标趋势（alive/时延/丢包） | device_id、window | 指标序列 | 低 | 诊断、验证 |
 | 8 | `twin_remediation_status` | 处置执行单状态查询 | execution_id | 状态/日志摘要 | 低 | 值班长、复盘 |
 | 9 | `gns3_health_check` | 仿真设备健康探测（healthz） | device | ok/detail | 低 | 验证 |
-| 10 | `gns3_exec` | 仿真设备控制台命令执行 | device、cmd | 命令输出 | 中 | 执行（白名单：ping/show/ip 只读类默认放行） |
+| 10 | `gns3_exec` | 仿真设备控制台命令执行 | device、cmd | 命令输出 | 中 | 执行、验证（白名单：ping/show/ip 只读类默认放行） |
 | 11 | `gns3_fault_inject` | 端口故障注入（演练控制面） | port | 结果 | **高** | 执行（**必须审批**） |
 | 12 | `gns3_fault_clear` | 端口故障恢复 | port | 结果 | **高** | 执行（**必须审批**） |
+| 13 | `twin_device_search` | 设备/资产关键字搜索（诊断入手第一步） | keyword/status/page | 设备摘要列表 | 低 | 诊断、值班长 |
+| 14 | `twin_alarm_rule_get` | 告警规则详情（触发条件/阈值/级别，诊断上下文） | rule_id | 规则全量字段 | 低 | 诊断 |
+| 15 | `twin_collector_status` | 采集层状态（在线/连续失败/失败记录），区分设备故障 vs 采集故障 | device_id | 采集状态+失败摘要 | 低 | 诊断 |
+| 16 | `twin_line_probe` | 主动触发一次线路探测（验证加速，不等探测周期） | line_id | 本次探测结果 | 中 | 验证 |
+| 17 | `twin_inspection_query` | 巡检任务/记录/统计查询（岗位名实对齐） | keyword/status/task_id | 巡检记录列表 | 低 | 验证、复盘 |
 
 **失败处理约定**（写入每本 Skill 手册）：目标不可达/5xx → 工具返回结构化 error 而非异常，Agent 须将其作为诊断证据记录；连续 2 次同类失败 → 停止重试并上报值班长。
+
+### 3.1 岗位工具白名单（effective tool keys，最小授权落地）
+
+> 落地方式：`tools` 表 17 行种子（category=twinops）+ 各 Agent `agent_runtime_settings.tools_enabled` 白名单；高危工具 `requires_confirmation=true` 触发 HITL 审批门禁。
+
+| 岗位 Agent | 授权工具（twinops 域） |
+|-----------|----------------------|
+| `ops_twin_lead` 值班长 | `twin_alarm_query`、`twin_device_search`、`twin_remediation_status` |
+| `ops_fault_diagnosis` 诊断 | `twin_alarm_query`、`twin_alarm_get`、`twin_alarm_ack`（审批）、`twin_alarm_rule_get`、`twin_line_status`、`twin_line_events`、`twin_device_get`、`twin_device_search`、`twin_device_metrics`、`twin_collector_status` |
+| `ops_change_execution` 执行 | `gns3_exec`、`gns3_fault_inject`（审批）、`gns3_fault_clear`（审批）、`twin_remediation_status` |
+| `ops_system_inspection` 验证 | `gns3_health_check`、`gns3_exec`、`twin_line_status`、`twin_line_probe`、`twin_device_metrics`、`twin_inspection_query` |
+| `ops_doc_generation` 复盘 | `twin_alarm_query`、`twin_line_events`、`twin_remediation_status`、`twin_inspection_query` |
+
+> 说明：① 值班长只持有态势感知类只读工具，符合「只汇总不代劳」职责；② `gns3_exec` 服务端命令白名单（ping/show/ip 查询/traceroute/arp/cat/echo/curl 只读类）由 gns3_agent 强制；③ 高危工具仅执行岗持有且必须人工审批，双保险。
+
+### 覆盖性评审记录（v1.1，2026-08-15）
+
+评审方法：将 TwinMonitor 17 个微服务的全部业务域逐一映射到「诊断→处置→验证→复盘」四环节，检查每个环节 Agent 是否拿得到所需数据。
+
+| 缺口 | 后果 | 处置 |
+|------|------|------|
+| GAP-A 设备无法按关键字搜索（只有按 id 查询） | 诊断第一步即卡壳 | 新增 `twin_device_search` |
+| GAP-B 无告警规则上下文 | 无法解释告警触发原因/阈值语义 | 新增 `twin_alarm_rule_get` |
+| GAP-C 无采集层状态 | 设备类告警无法区分「设备故障 vs 采集故障」，根因误判 | 新增 `twin_collector_status` |
+| GAP-D 验证只能等 30s 探测周期 | 闭环演示被拖慢 | 新增 `twin_line_probe` 主动探测 |
+| GAP-E 巡检岗位无巡检工具 | 岗位名实不符 | 新增 `twin_inspection_query` |
+
+**评审后明确不开放给 Agent 的能力**：① remediation 执行单写操作（approve/reject/retry/cancel/rollback/verify）——属人审操作域，Aranea 侧状态回传已走通道B webhook，Agent 持有将造成权责越界；② 告警规则 CRUD——只读即可满足诊断；③ 告警 escalate/recover/close——恢复由探测自动触发，升级/关闭是人工决策。
+
+**P2 扩展候选**（不阻塞闭环，后续按需启用）：`twin_notice_records`（通知发送记录）、`twin_analysis_insights`（analysis 服务 AI 预测/洞察）、`twin_topology_impact`（拓扑影响面）、`twin_report_generate`（原生报表）、`twin_config_backup`（变更前配置备份 SOP）。
 
 ---
 
@@ -130,11 +170,11 @@ flowchart LR
 
 | Skill | 手册 | 核心内容 | 调用条件 | 依赖工具 | 复用价值 |
 |-------|------|---------|---------|---------|---------|
-| `twin-alarm-ops` | 《TwinMonitor 告警运维手册》 | 告警生命周期、分级标准、根因分析套路（线路类/设备类/指标类）、确认与静默规约 | 收到告警处置任务时 | #1-3 | 任何监控告警场景通用 |
-| `twin-line-device-ops` | 《线路与设备运维手册》 | 线路状态机（outage/recovered）、设备画像解读、指标基线对比法 | 需要定位故障范围时 | #4-7 | ITOM 通用 |
+| `twin-alarm-ops` | 《TwinMonitor 告警运维手册》 | 告警生命周期、分级标准、根因分析套路（线路类/设备类/指标类）、确认与静默规约 | 收到告警处置任务时 | #1-3、#14 | 任何监控告警场景通用 |
+| `twin-line-device-ops` | 《线路与设备运维手册》 | 线路状态机（outage/recovered）、设备画像解读、指标基线对比法、采集层排障 | 需要定位故障范围时 | #4-7、#13、#15 | ITOM 通用 |
 | `twin-remediation-ops` | 《故障处置执行手册》 | 处置动作分级（只读/低风险/高危）、**审批门禁与回滚步骤**、执行记录登记 | 进入处置环节时 | #8、#10-12 | 变更管理通用 |
 | `gns3-sim-ops` | 《GNS3 仿真演练操作手册》 | 仿真拓扑、故障注入剧本、控制台命令白名单、审计规约 | 演练/验证环境操作时 | #9-12 | 演练体系通用 |
-| `ops-postmortem-ops` | 《运维复盘与经验沉淀手册》 | 复盘报告结构（时间线/根因/处置/改进项）、经验规则提取、知识库沉淀格式 | 闭环收尾时 | #1、#5、#8 | 复盘体系通用 |
+| `ops-postmortem-ops` | 《运维复盘与经验沉淀手册》 | 复盘报告结构（时间线/根因/处置/改进项）、经验规则提取、知识库沉淀格式 | 闭环收尾时 | #1、#5、#8、#17 | 复盘体系通用 |
 
 **Skill 与协同流程关系**：值班长分解任务时按 Skill 边界指派；专业 Agent 加载对应 Skill 后获得该领域的 SOP 与工具用法；复盘 Agent 将本次闭环的新经验**回写 Skill**（经验沉淀闭环，对应比赛要求 §8「经验沉淀为可复用能力」）。
 
@@ -250,7 +290,7 @@ flowchart TD
 | P3 | 学习曲线验证（复盘经验回写 → 二次故障处置提速/提质对比） | ⏳ 依赖 P2 |
 
 **P1.5 工作分解**：
-1. 12 个自定义工具实现与注册（`internal/tools/twinops/`）
+1. 17 个自定义工具实现与注册（`internal/tools/twinops/`）
 2. 工具授权（4 岗位）+ 高危工具审批配置
 3. 5 本 Skill 手册撰写与注册
 4. 部门组织搭建（岗位/值班长 Agent 配置、提示词含防呆条款）

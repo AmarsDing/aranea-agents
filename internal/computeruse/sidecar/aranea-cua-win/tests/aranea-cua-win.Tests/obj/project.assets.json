@@ -6286,11 +6286,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
+      "projectUniqueName": "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
       "projectName": "aranea-cua-win.Tests",
-      "projectPath": "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
+      "projectPath": "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\aranea-cua-win.Tests.csproj",
       "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
-      "outputPath": "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\obj\\",
+      "outputPath": "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\tests\\aranea-cua-win.Tests\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "D:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -6311,8 +6311,8 @@
         "net7.0-windows7.0": {
           "targetAlias": "net7.0-windows",
           "projectReferences": {
-            "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\aranea-cua-win.csproj": {
-              "projectPath": "F:\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\aranea-cua-win.csproj"
+            "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\aranea-cua-win.csproj": {
+              "projectPath": "F:\\myproject\\aranea-agents\\internal\\computeruse\\sidecar\\aranea-cua-win\\aranea-cua-win.csproj"
             }
           }
         }

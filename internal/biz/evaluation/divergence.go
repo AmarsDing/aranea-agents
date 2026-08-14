@@ -80,7 +80,7 @@ func (u *Usecase) GetJudgeDivergence(ctx context.Context, datasetID, agentID str
 	if limit <= 0 {
 		limit = judgeDivergenceDefaultLimit
 	}
-	rows, err := u.repo.ListJudgeAnnotatedResults(ctx, datasetID, agentID)
+	rows, err := u.results.ListJudgeAnnotatedResults(ctx, datasetID, agentID)
 	if err != nil {
 		return JudgeDivergence{}, err
 	}

@@ -31,11 +31,27 @@ func NewKnowledgeQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase,
 	return knowledge.NewQueryRewriter(llm, sys, catalog, lg)
 }
 
-func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *knowledge.QueryRewriter, lg loggateway.Logger) *knowledge.AdaptiveRouter {
+func NewKnowledgeGraphExpander(repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.GraphExpander {
+	if repo == nil {
+		return nil
+	}
+	links, _ := repo.(knowledge.NeighborLinkReader)
+	chunks, _ := repo.(knowledge.NeighborChunkLister)
+	if links == nil || chunks == nil {
+		lg.Info("图扩展未接线：repo 未同时实现 NeighborLinkReader/NeighborChunkLister",
+			loggateway.StepID("knowledge.graph_expander.init_skip"))
+		return nil
+	}
+	return knowledge.NewGraphExpander(links, chunks, lg)
+}
+
+func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *knowledge.QueryRewriter, expander *knowledge.GraphExpander, lg loggateway.Logger) *knowledge.AdaptiveRouter {
 	if hybrid == nil {
 		return nil
 	}
-	return knowledge.NewAdaptiveRouter(hybrid, rewriter, lg)
+	router := knowledge.NewAdaptiveRouter(hybrid, rewriter, lg)
+	router.SetGraphExpander(expander)
+	return router
 }
 
 func NewKnowledgeRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.RetrievalEvaluator {

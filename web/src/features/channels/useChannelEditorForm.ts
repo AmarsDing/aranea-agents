@@ -30,6 +30,7 @@ import {
 } from '../../domain/channel';
 import { isImPreviewFormKey } from './channelImPreviewDefaults';
 import { wechatILinkLogin, wechatILinkPoll } from './api';
+import { resolveWechatILinkQrcodeDataUrl } from './wechatILinkQrcode';
 import { useChannelsStore } from '../../stores/channels';
 import { useAgentModelValidation } from '../agents/useAgentModelValidation';
 import type {
@@ -635,7 +636,8 @@ export function useChannelEditorForm(
     wechatILink.qrcode = '';
     try {
       const res = await wechatILinkLogin(channelId);
-      wechatILink.qrcode = res.qrcode_data_url;
+      // 后端透传的是 iLink 原始 qrcode_img_content（扫码内容，非图片），需本地编码成二维码
+      wechatILink.qrcode = await resolveWechatILinkQrcodeDataUrl(res.qrcode_data_url);
       wechatILink.session = res.qrcode_session;
       wechatILinkDeadline = Date.now() + 3 * 60 * 1000;
       stopWechatILinkTimer();

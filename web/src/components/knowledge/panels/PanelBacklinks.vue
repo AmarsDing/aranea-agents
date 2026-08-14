@@ -41,6 +41,9 @@
       </div>
     </template>
     <div v-else class="kb-panel-empty">{{ t('knowledgePage.workbench.panels.noBacklinks') }}</div>
+    <button type="button" class="kb-panel-apply" @click="$emit('apply-autolink')">
+      {{ t('knowledgePage.workbench.panels.applyAutolink') }}
+    </button>
   </div>
 </template>
 
@@ -63,6 +66,7 @@ withDefaults(
 
 defineEmits<{
   'open-doc-id': [docId: string];
+  'apply-autolink': [];
 }>();
 
 const { t } = useI18n();
@@ -70,4 +74,19 @@ const { t } = useI18n();
 
 <style lang="sass" scoped>
 @use './panel-shared'
+
+.kb-panel-apply
+  margin-top: 8px
+  width: 100%
+  padding: 6px 8px
+  border: 1px solid var(--kb-glass-border)
+  border-radius: 8px
+  background: transparent
+  color: var(--kb-text-primary)
+  font-size: 12px
+  cursor: pointer
+
+  &:hover
+    color: var(--kb-accent-cyan)
+    background: var(--kb-glass-highlight)
 </style>

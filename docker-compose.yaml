@@ -58,6 +58,12 @@ services:
       # 与 TwinMonitor aiops ai_aranea_instances.api_token（AES 加密落库）成对；
       # 生产部署必须更换为随机值并同步轮换 TwinMonitor 侧凭据
       ARANEA_TWINOPENAPI_TOKEN: "twin_fdfee1b8c9443c5338a781bd9a4e73074916333b631dad51"
+      # TwinOps 工具集（internal/tools/twinops，方案10 §三）：经宿主机回环访问
+      # TwinMonitor Gateway 与 gns3_agent。TWIN_API_KEY 为 gateway 服务账号
+      # （aranea-ops-dept, id=1），轮换时同步更新本值。
+      TWIN_GATEWAY_URL: "http://host.docker.internal:8000"
+      TWIN_API_KEY: "twk_d2b2d33fb9372478f0256e182f71a1ea167a17b6cf4fee2705b9549f5dec4d83"
+      GNS3_AGENT_URL: "http://host.docker.internal:18081"
     depends_on:
       postgres:
         condition: service_healthy

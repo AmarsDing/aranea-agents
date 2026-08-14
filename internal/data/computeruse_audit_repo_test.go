@@ -70,6 +70,9 @@ func TestComputerUseAuditRepo_RecordAndList(t *testing.T) {
 	if !first.Danger || first.ConfirmedBy != "user-1" || first.DurationMs != 42 {
 		t.Fatalf("danger/confirmed_by/duration 回读错误: %+v", first)
 	}
+	if first.ScreenshotRef != "" {
+		t.Fatalf("empty screenshot_ref should round-trip empty, got %q", first.ScreenshotRef)
+	}
 	if got[1].Error != "元素不可用" || got[1].Result != bizcu.StepFailed {
 		t.Fatalf("error/result 回读错误: %+v", got[1])
 	}

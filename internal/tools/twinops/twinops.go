@@ -1,0 +1,611 @@
+// Package twinops implements the TwinMonitor x GNS3 custom toolset (方案文档
+// competition/10 §三，17 个工具)。业务层实现，不动 vendored trpc 框架。
+//
+// 数据源：
+//   - twin_* 工具 → TwinMonitor Gateway（默认 http://127.0.0.1:8000），
+//     认证走 X-API-Key（网关代签内部 JWT 转发上游微服务）。
+//   - gns3_* 工具 → gns3_agent（默认 http://127.0.0.1:18081），无认证（仅演练内网）。
+//
+// 配置经环境变量注入（Docker 容器内指向 host.docker.internal）：
+//
+//	TWIN_GATEWAY_URL  默认 http://127.0.0.1:8000
+//	TWIN_API_KEY      Gateway API Key（必填，未配置时 twin_* 调用返回结构化错误）
+//	GNS3_AGENT_URL    默认 http://127.0.0.1:18081
+//	TWINOPS_TIMEOUT_SEC 默认 15
+package twinops
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
+)
+
+// apiKeyHeader 与 twinmonitor gateway biz.APIKeyHeader 保持一致。
+const apiKeyHeader = "X-API-Key"
+
+// Config is the connection config for TwinMonitor Gateway and gns3_agent.
+type Config struct {
+	GatewayBaseURL string
+	APIKey         string
+	GNS3BaseURL    string
+	Timeout        time.Duration
+}
+
+// ConfigFromEnv loads Config from environment variables with local-dev defaults.
+func ConfigFromEnv() Config {
+	cfg := Config{
+		GatewayBaseURL: strings.TrimRight(strings.TrimSpace(os.Getenv("TWIN_GATEWAY_URL")), "/"),
+		APIKey:         strings.TrimSpace(os.Getenv("TWIN_API_KEY")),
+		GNS3BaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("GNS3_AGENT_URL")), "/"),
+		Timeout:        15 * time.Second,
+	}
+	if cfg.GatewayBaseURL == "" {
+		cfg.GatewayBaseURL = "http://127.0.0.1:8000"
+	}
+	if cfg.GNS3BaseURL == "" {
+		cfg.GNS3BaseURL = "http://127.0.0.1:18081"
+	}
+	if v := strings.TrimSpace(os.Getenv("TWINOPS_TIMEOUT_SEC")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Timeout = time.Duration(n) * time.Second
+		}
+	}
+	return cfg
+}
+
+// jsonResult 统一输出容器。框架 NewFunctionTool 会对输出类型反射生成 schema；
+// 若直接用 any，reflect.TypeOf(nil) 返回 nil 导致 panic（框架未防护，FW-R1 不
+// 改框架，业务侧用具体类型规避）。
+type jsonResult struct {
+	Result any `json:"result" jsonschema:"description=上游 API 返回的原始 JSON（对象或数组）；ok=false 表示调用失败，error 为原因"`
+}
+
+// ---------- HTTP helpers ----------
+
+// doRequest performs one HTTP call and returns a structured result. Upstream
+// failures (unreachable / non-2xx) are returned as structured error objects
+// (never Go errors) so the LLM records them as diagnostic evidence instead of
+// retrying blindly (方案文档「失败处理约定」).
+func (c Config) doRequest(ctx context.Context, gatewayAuth bool, method, rawURL string, query url.Values, body any) (jsonResult, error) {
+	if len(query) > 0 {
+		rawURL += "?" + query.Encode()
+	}
+	var reader io.Reader
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return jsonResult{}, fmt.Errorf("marshal request body: %w", err)
+		}
+		reader = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, reader)
+	if err != nil {
+		return jsonResult{}, fmt.Errorf("build request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if gatewayAuth {
+		if c.APIKey == "" {
+			return jsonResult{Result: map[string]any{
+				"ok":    false,
+				"error": "TWIN_API_KEY 未配置，无法调用 TwinMonitor Gateway（请在 Aranea 运行环境设置 TWIN_API_KEY）",
+			}}, nil
+		}
+		req.Header.Set(apiKeyHeader, c.APIKey)
+	}
+	client := &http.Client{Timeout: c.Timeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return jsonResult{Result: map[string]any{"ok": false, "error": "目标不可达: " + err.Error(), "url": redactURL(rawURL)}}, nil
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return jsonResult{Result: map[string]any{"ok": false, "error": "读取响应失败: " + err.Error()}}, nil
+	}
+	if resp.StatusCode >= 400 {
+		snippet := string(data)
+		if len(snippet) > 2000 {
+			snippet = snippet[:2000]
+		}
+		return jsonResult{Result: map[string]any{
+			"ok":         false,
+			"httpStatus": resp.StatusCode,
+			"error":      snippet,
+			"url":        redactURL(rawURL),
+		}}, nil
+	}
+	var parsed any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		text := string(data)
+		if len(text) > 8000 {
+			text = text[:8000]
+		}
+		return jsonResult{Result: map[string]any{"ok": true, "raw": text}}, nil
+	}
+	return jsonResult{Result: parsed}, nil
+}
+
+func redactURL(u string) string {
+	if len(u) > 300 {
+		return u[:300]
+	}
+	return u
+}
+
+func (c Config) gatewayGet(ctx context.Context, path string, query url.Values) (jsonResult, error) {
+	return c.doRequest(ctx, true, http.MethodGet, c.GatewayBaseURL+path, query, nil)
+}
+
+func (c Config) gatewayPost(ctx context.Context, path string, body any) (jsonResult, error) {
+	return c.doRequest(ctx, true, http.MethodPost, c.GatewayBaseURL+path, nil, body)
+}
+
+func (c Config) gns3Get(ctx context.Context, path string) (jsonResult, error) {
+	return c.doRequest(ctx, false, http.MethodGet, c.GNS3BaseURL+path, nil, nil)
+}
+
+func (c Config) gns3Post(ctx context.Context, path string, body any) (jsonResult, error) {
+	return c.doRequest(ctx, false, http.MethodPost, c.GNS3BaseURL+path, nil, body)
+}
+
+// setQ puts a query param when the value is non-zero.
+func setQ(q url.Values, key, val string) {
+	if strings.TrimSpace(val) != "" {
+		q.Set(key, val)
+	}
+}
+
+func setQI(q url.Values, key string, val int) {
+	if val > 0 {
+		q.Set(key, strconv.Itoa(val))
+	}
+}
+
+// ---------- 输入结构 ----------
+
+type alarmQueryInput struct {
+	AlarmLevel string `json:"alarm_level,omitempty" jsonschema:"description=告警级别过滤，如 critical/major/minor/warning"`
+	Status     string `json:"status,omitempty" jsonschema:"description=告警状态过滤，如 active/confirmed/recovered"`
+	Keyword    string `json:"keyword,omitempty" jsonschema:"description=模糊搜索 alarm_id/device_name/message"`
+	DeviceID   int    `json:"device_id,omitempty" jsonschema:"description=按设备 ID 过滤"`
+	RuleID     int    `json:"rule_id,omitempty" jsonschema:"description=按告警规则 ID 过滤"`
+	MetricKey  string `json:"metric_key,omitempty" jsonschema:"description=按指标 key 过滤，如 line_outage"`
+	StartTime  string `json:"start_time,omitempty" jsonschema:"description=时间窗起点 RFC3339，如 2026-08-14T00:00:00Z"`
+	EndTime    string `json:"end_time,omitempty" jsonschema:"description=时间窗终点 RFC3339"`
+	Page       int    `json:"page,omitempty" jsonschema:"description=页码，默认 1"`
+	PageSize   int    `json:"page_size,omitempty" jsonschema:"description=每页条数，默认 20，最大 100"`
+}
+
+type alarmIDInput struct {
+	AlarmID string `json:"alarm_id" jsonschema:"description=告警 ID，如 ALM-20260814-xxxxxx,required"`
+}
+
+type alarmAckInput struct {
+	AlarmID string `json:"alarm_id" jsonschema:"description=告警 ID,required"`
+	Comment string `json:"comment,omitempty" jsonschema:"description=确认备注（处理人/处理意见）"`
+}
+
+type lineStatusInput struct {
+	LineID   int `json:"line_id,omitempty" jsonschema:"description=线路 ID；不传则返回全部线路实时状态列表"`
+	Page     int `json:"page,omitempty" jsonschema:"description=页码（列表模式）"`
+	PageSize int `json:"page_size,omitempty" jsonschema:"description=每页条数（列表模式），默认 50"`
+}
+
+type lineEventsInput struct {
+	LineID    int    `json:"line_id,omitempty" jsonschema:"description=线路 ID 过滤"`
+	EventType string `json:"event_type,omitempty" jsonschema:"description=事件类型过滤，如 outage/recovered"`
+	Status    string `json:"status,omitempty" jsonschema:"description=事件状态过滤，如 active/recovered"`
+	Keyword   string `json:"keyword,omitempty" jsonschema:"description=关键字过滤"`
+	Page      int    `json:"page,omitempty" jsonschema:"description=页码"`
+	PageSize  int    `json:"page_size,omitempty" jsonschema:"description=每页条数，默认 20"`
+}
+
+type deviceIDInput struct {
+	DeviceID int `json:"device_id" jsonschema:"description=TwinMonitor 设备 ID,required"`
+}
+
+type deviceSearchInput struct {
+	Keyword  string `json:"keyword,omitempty" jsonschema:"description=按名称/IP/资产编号模糊搜索"`
+	Page     int    `json:"page,omitempty" jsonschema:"description=页码"`
+	PageSize int    `json:"page_size,omitempty" jsonschema:"description=每页条数，默认 20"`
+}
+
+type deviceMetricsInput struct {
+	DeviceID   int    `json:"device_id" jsonschema:"description=设备 ID,required"`
+	MetricKeys string `json:"metric_keys,omitempty" jsonschema:"description=指标 key 列表，逗号分隔，如 alive,latency,loss"`
+	StartTime  string `json:"start_time,omitempty" jsonschema:"description=时间窗起点 RFC3339"`
+	EndTime    string `json:"end_time,omitempty" jsonschema:"description=时间窗终点 RFC3339"`
+	Page       int    `json:"page,omitempty" jsonschema:"description=页码"`
+	PageSize   int    `json:"page_size,omitempty" jsonschema:"description=每页条数，默认 50"`
+}
+
+type remediationStatusInput struct {
+	ExecutionID int    `json:"execution_id,omitempty" jsonschema:"description=执行单 ID；不传则按条件列出执行单"`
+	Status      string `json:"status,omitempty" jsonschema:"description=执行单状态过滤（列表模式）"`
+	Page        int    `json:"page,omitempty" jsonschema:"description=页码（列表模式）"`
+	PageSize    int    `json:"page_size,omitempty" jsonschema:"description=每页条数（列表模式），默认 20"`
+}
+
+type alarmRuleInput struct {
+	RuleID   int `json:"rule_id,omitempty" jsonschema:"description=告警规则 ID；不传则列出全部规则"`
+	Page     int `json:"page,omitempty" jsonschema:"description=页码（列表模式）"`
+	PageSize int `json:"page_size,omitempty" jsonschema:"description=每页条数（列表模式），默认 20"`
+}
+
+type collectorStatusInput struct {
+	DeviceID int `json:"device_id" jsonschema:"description=设备 ID,required"`
+}
+
+type lineProbeInput struct {
+	LineID int `json:"line_id" jsonschema:"description=线路 ID,required"`
+}
+
+type inspectionQueryInput struct {
+	Keyword  string `json:"keyword,omitempty" jsonschema:"description=关键词（匹配资产名/IP/摘要）"`
+	Status   string `json:"status,omitempty" jsonschema:"description=按结果过滤：success/failed/partial"`
+	TaskID   int    `json:"task_id,omitempty" jsonschema:"description=按巡检任务 ID 过滤"`
+	Page     int    `json:"page,omitempty" jsonschema:"description=页码"`
+	PageSize int    `json:"page_size,omitempty" jsonschema:"description=每页条数，默认 20"`
+}
+
+type gns3HealthInput struct {
+	Device string `json:"device,omitempty" jsonschema:"description=设备名（如 sw1/pc1）；不传返回全部设备健康"`
+}
+
+type gns3ExecInput struct {
+	Device string `json:"device" jsonschema:"description=目标设备名（gns3_agent 已纳管的设备）,required"`
+	Cmd    string `json:"cmd" jsonschema:"description=控制台命令。只读白名单：ping/show/ip 查询类/traceroute/arp/cat/echo/curl/hostname/uptime/vtysh -c show；写操作一律拒绝,required"`
+}
+
+type gns3PortInput struct {
+	Port string `json:"port" jsonschema:"description=SW1 端口，enum=eth0,enum=eth1,enum=eth2,enum=eth3,required"`
+}
+
+// ---------- gns3_exec 命令白名单 ----------
+
+var execAllowPrefixes = []string{
+	"ping ", "ping\t", "show", "ip addr", "ip route", "ip link show", "ip neigh",
+	"ip -", "traceroute ", "tracepath ", "arp", "cat ", "echo ", "hostname",
+	"uptime", "curl ", "vtysh -c",
+}
+
+var execDenySubstrings = []string{
+	"link set", "addr add", "addr del", "route add", "route del", "route flush",
+	"write", "reload", "shutdown", "reboot", "conf t", "delete", "kill",
+	"iptables", " no ", ">", "|", ";", "&", "`", "$(",
+}
+
+func checkExecWhitelist(cmd string) error {
+	norm := strings.ToLower(strings.TrimSpace(cmd))
+	if norm == "" {
+		return fmt.Errorf("cmd 不能为空")
+	}
+	for _, deny := range execDenySubstrings {
+		if strings.Contains(norm, deny) {
+			return fmt.Errorf("命令被白名单拒绝（含禁止片段 %q）。本工具仅允许只读探测命令", deny)
+		}
+	}
+	for _, allow := range execAllowPrefixes {
+		if strings.HasPrefix(norm, allow) {
+			return nil
+		}
+	}
+	return fmt.Errorf("命令被白名单拒绝。允许前缀: %s", strings.Join(execAllowPrefixes, ", "))
+}
+
+// ---------- 工具构造函数 ----------
+
+func newAlarmQueryTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in alarmQueryInput) (jsonResult, error) {
+		q := url.Values{}
+		setQ(q, "alarmLevel", in.AlarmLevel)
+		setQ(q, "status", in.Status)
+		setQ(q, "keyword", in.Keyword)
+		setQI(q, "deviceId", in.DeviceID)
+		setQI(q, "ruleId", in.RuleID)
+		setQ(q, "metricKey", in.MetricKey)
+		setQ(q, "startTime", in.StartTime)
+		setQ(q, "endTime", in.EndTime)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/alarm/events", q)
+	},
+		trpcfunction.WithName("twin_alarm_query"),
+		trpcfunction.WithDescription("查询 TwinMonitor 告警事件列表（按级别/状态/关键字/设备/规则/时间窗过滤）。返回告警摘要列表与分页信息。"),
+	)
+}
+
+func newAlarmGetTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in alarmIDInput) (jsonResult, error) {
+		if strings.TrimSpace(in.AlarmID) == "" {
+			return jsonResult{}, fmt.Errorf("alarm_id 必填")
+		}
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/alarm/events/"+url.PathEscape(in.AlarmID), nil)
+	},
+		trpcfunction.WithName("twin_alarm_get"),
+		trpcfunction.WithDescription("获取单条告警事件详情（关联设备/线路、指标、消息、状态流转时间等全量字段）。"),
+	)
+}
+
+func newAlarmAckTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in alarmAckInput) (jsonResult, error) {
+		if strings.TrimSpace(in.AlarmID) == "" {
+			return jsonResult{}, fmt.Errorf("alarm_id 必填")
+		}
+		return cfg.gatewayPost(ctx, "/api/v1/monitor/alarm/events/"+url.PathEscape(in.AlarmID)+"/confirm",
+			map[string]any{"comment": in.Comment})
+	},
+		trpcfunction.WithName("twin_alarm_ack"),
+		trpcfunction.WithDescription("确认告警（标记处理中）。写操作，需先获得值班长/人工授权。"),
+	)
+}
+
+func newLineStatusTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in lineStatusInput) (jsonResult, error) {
+		if in.LineID > 0 {
+			return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/linemonitor/lines/%d/realtime", in.LineID), nil)
+		}
+		q := url.Values{}
+		q.Set("status", "-1") // linemonitor ListLines 默认只查禁用，必须显式 -1 查全部
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/linemonitor/lines", q)
+	},
+		trpcfunction.WithName("twin_line_status"),
+		trpcfunction.WithDescription("查询线路实时探测状态。传 line_id 返回该线路最新探测结果；不传返回全部线路状态列表。"),
+	)
+}
+
+func newLineEventsTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in lineEventsInput) (jsonResult, error) {
+		q := url.Values{}
+		setQI(q, "lineId", in.LineID)
+		setQ(q, "eventType", in.EventType)
+		setQ(q, "status", in.Status)
+		setQ(q, "keyword", in.Keyword)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/linemonitor/events", q)
+	},
+		trpcfunction.WithName("twin_line_events"),
+		trpcfunction.WithDescription("查询线路中断/恢复事件历史（outage/recovered），用于故障时间线取证。"),
+	)
+}
+
+func newDeviceSearchTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in deviceSearchInput) (jsonResult, error) {
+		q := url.Values{}
+		setQ(q, "keyword", in.Keyword)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-devices", q)
+	},
+		trpcfunction.WithName("twin_device_search"),
+		trpcfunction.WithDescription("按关键字搜索 TwinMonitor 监控设备/资产列表（名称/IP/资产编号），返回设备摘要与 device_id，是诊断入手第一步。"),
+	)
+}
+
+func newDeviceGetTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in deviceIDInput) (jsonResult, error) {
+		if in.DeviceID <= 0 {
+			return jsonResult{}, fmt.Errorf("device_id 必填且必须为正整数")
+		}
+		return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/monitor-devices/%d", in.DeviceID), nil)
+	},
+		trpcfunction.WithName("twin_device_get"),
+		trpcfunction.WithDescription("获取设备/资产详情画像（监控状态、采集间隔、系统信息等）。"),
+	)
+}
+
+func newDeviceMetricsTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in deviceMetricsInput) (jsonResult, error) {
+		if in.DeviceID <= 0 {
+			return jsonResult{}, fmt.Errorf("device_id 必填且必须为正整数")
+		}
+		q := url.Values{}
+		setQ(q, "metricKeys", in.MetricKeys)
+		setQ(q, "startTime", in.StartTime)
+		setQ(q, "endTime", in.EndTime)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/query/devices/%d/history", in.DeviceID), q)
+	},
+		trpcfunction.WithName("twin_device_metrics"),
+		trpcfunction.WithDescription("查询设备指标历史序列（在线状态/时延/丢包等），用于趋势判断与基线对比。"),
+	)
+}
+
+func newRemediationStatusTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in remediationStatusInput) (jsonResult, error) {
+		if in.ExecutionID > 0 {
+			return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/remediation/executions/%d", in.ExecutionID), nil)
+		}
+		q := url.Values{}
+		setQ(q, "status", in.Status)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/remediation/executions", q)
+	},
+		trpcfunction.WithName("twin_remediation_status"),
+		trpcfunction.WithDescription("查询故障处置执行单状态与日志摘要。传 execution_id 查单条详情，不传按状态列出。"),
+	)
+}
+
+func newAlarmRuleTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in alarmRuleInput) (jsonResult, error) {
+		if in.RuleID > 0 {
+			return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/alarm/ap-alarm-rules/%d", in.RuleID), nil)
+		}
+		q := url.Values{}
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/alarm/ap-alarm-rules", q)
+	},
+		trpcfunction.WithName("twin_alarm_rule_get"),
+		trpcfunction.WithDescription("查询告警规则详情（触发条件/阈值/级别/通知策略），用于解释告警为何触发。只读。"),
+	)
+}
+
+func newCollectorStatusTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in collectorStatusInput) (jsonResult, error) {
+		if in.DeviceID <= 0 {
+			return jsonResult{}, fmt.Errorf("device_id 必填且必须为正整数")
+		}
+		status, err := cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/collector/devices/%d/status", in.DeviceID), nil)
+		if err != nil {
+			return jsonResult{}, err
+		}
+		out := map[string]any{"deviceId": in.DeviceID, "collectorStatus": status.Result}
+		q := url.Values{}
+		q.Set("unresolvedOnly", "true")
+		failures, ferr := cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/collector/devices/%d/failures", in.DeviceID), q)
+		if ferr != nil {
+			return jsonResult{}, ferr
+		}
+		out["unresolvedFailures"] = failures.Result
+		return jsonResult{Result: out}, nil
+	},
+		trpcfunction.WithName("twin_collector_status"),
+		trpcfunction.WithDescription("查询设备采集层状态（在线/连续失败次数/最近变更原因）与未恢复采集失败记录，用于区分「设备故障」与「采集故障」。"),
+	)
+}
+
+func newLineProbeTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in lineProbeInput) (jsonResult, error) {
+		if in.LineID <= 0 {
+			return jsonResult{}, fmt.Errorf("line_id 必填且必须为正整数")
+		}
+		return cfg.gatewayPost(ctx, fmt.Sprintf("/api/v1/monitor/linemonitor/lines/%d/probe-test", in.LineID), map[string]any{})
+	},
+		trpcfunction.WithName("twin_line_probe"),
+		trpcfunction.WithDescription("主动触发一次线路探测（不等 30s 探测周期），返回本次探测结果。用于处置后快速验证。"),
+	)
+}
+
+func newInspectionQueryTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in inspectionQueryInput) (jsonResult, error) {
+		q := url.Values{}
+		setQ(q, "keyword", in.Keyword)
+		setQ(q, "status", in.Status)
+		setQI(q, "taskId", in.TaskID)
+		setQI(q, "page", in.Page)
+		setQI(q, "pageSize", in.PageSize)
+		return cfg.gatewayGet(ctx, "/api/v1/monitor/opstools/inspection/records", q)
+	},
+		trpcfunction.WithName("twin_inspection_query"),
+		trpcfunction.WithDescription("查询 TwinMonitor 巡检记录（按关键词/结果/任务过滤），用于验证环节核对与复盘取证。只读。"),
+	)
+}
+
+func newGNS3HealthTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in gns3HealthInput) (jsonResult, error) {
+		if strings.TrimSpace(in.Device) != "" {
+			return cfg.gns3Get(ctx, "/health/"+url.PathEscape(strings.TrimSpace(in.Device)))
+		}
+		return cfg.gns3Get(ctx, "/health")
+	},
+		trpcfunction.WithName("gns3_health_check"),
+		trpcfunction.WithDescription("探测 GNS3 仿真设备健康状态（HTTP 业务级健康检查）。传 device 查单台，不传返回全部设备。"),
+	)
+}
+
+func newGNS3ExecTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in gns3ExecInput) (jsonResult, error) {
+		if strings.TrimSpace(in.Device) == "" {
+			return jsonResult{}, fmt.Errorf("device 必填")
+		}
+		if err := checkExecWhitelist(in.Cmd); err != nil {
+			return jsonResult{}, err
+		}
+		return cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": in.Cmd})
+	},
+		trpcfunction.WithName("gns3_exec"),
+		trpcfunction.WithDescription("在 GNS3 仿真设备控制台执行只读命令（白名单：ping/show/ip 查询/traceroute/arp/cat/echo/curl 等；写操作一律拒绝）。"),
+	)
+}
+
+func newGNS3FaultInjectTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in gns3PortInput) (jsonResult, error) {
+		port, err := normalizePort(in.Port)
+		if err != nil {
+			return jsonResult{}, err
+		}
+		return cfg.gns3Post(ctx, "/fault/sw1-port", map[string]any{"port": port, "state": "down"})
+	},
+		trpcfunction.WithName("gns3_fault_inject"),
+		trpcfunction.WithDescription("【高危·必须审批】向 SW1 指定端口注入故障（端口 down），用于演练故障场景。生产环境严禁调用。"),
+	)
+}
+
+func newGNS3FaultClearTool(cfg Config) trpctool.CallableTool {
+	return trpcfunction.NewFunctionTool(func(ctx context.Context, in gns3PortInput) (jsonResult, error) {
+		port, err := normalizePort(in.Port)
+		if err != nil {
+			return jsonResult{}, err
+		}
+		return cfg.gns3Post(ctx, "/fault/sw1-port", map[string]any{"port": port, "state": "up"})
+	},
+		trpcfunction.WithName("gns3_fault_clear"),
+		trpcfunction.WithDescription("【高危·必须审批】恢复 SW1 指定端口（端口 up），清除已注入的故障。"),
+	)
+}
+
+func normalizePort(p string) (string, error) {
+	norm := strings.ToLower(strings.TrimSpace(p))
+	switch norm {
+	case "eth0", "eth1", "eth2", "eth3":
+		return norm, nil
+	}
+	return "", fmt.Errorf("port 仅支持 eth0/eth1/eth2/eth3（SW1 演练端口），收到 %q", p)
+}
+
+// NewToolset returns all 17 twinops tools.
+func NewToolset(cfg Config) []trpctool.Tool {
+	return []trpctool.Tool{
+		newAlarmQueryTool(cfg),
+		newAlarmGetTool(cfg),
+		newAlarmAckTool(cfg),
+		newLineStatusTool(cfg),
+		newLineEventsTool(cfg),
+		newDeviceGetTool(cfg),
+		newDeviceMetricsTool(cfg),
+		newRemediationStatusTool(cfg),
+		newGNS3HealthTool(cfg),
+		newGNS3ExecTool(cfg),
+		newGNS3FaultInjectTool(cfg),
+		newGNS3FaultClearTool(cfg),
+		newDeviceSearchTool(cfg),
+		newAlarmRuleTool(cfg),
+		newCollectorStatusTool(cfg),
+		newLineProbeTool(cfg),
+		newInspectionQueryTool(cfg),
+	}
+}
+
+// EnabledTools returns only the tools whose name (= platform tool key) is
+// enabled in the agent's effective key set — 白名单最小授权。
+func EnabledTools(eff map[string]bool, cfg Config) []trpctool.Tool {
+	if len(eff) == 0 {
+		return nil
+	}
+	var out []trpctool.Tool
+	for _, t := range NewToolset(cfg) {
+		if d := t.Declaration(); d != nil && eff[d.Name] {
+			out = append(out, t)
+		}
+	}
+	return out
+}

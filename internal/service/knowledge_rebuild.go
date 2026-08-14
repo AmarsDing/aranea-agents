@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -24,6 +25,7 @@ const rebuildProgressInterval = 200 * time.Millisecond
 // WS 频道广播（EP-KN-02 模式，event_type=knowledge_rebuild_index）；sync_state
 // 进入 rebuilding 期间检索走旧 chunks/FTS（降级可用），完成后恢复原态。
 // 幂等：中断/崩溃后重跑等价于从头执行（biz 层整文档删了重插语义）。
+// US-45：本 RPC **不**改写 vault Markdown；历史成链回填走独立 POST autolink-backfill。
 func (s *KnowledgeService) RebuildKnowledgeIndex(ctx context.Context, req *v1.RebuildKnowledgeIndexRequest) (*v1.RebuildKnowledgeIndexResponse, error) {
 	col, err := s.uc.GetCollection(ctx, req.GetId())
 	if err != nil {
@@ -32,23 +34,48 @@ func (s *KnowledgeService) RebuildKnowledgeIndex(ctx context.Context, req *v1.Re
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	// 冲突门：进程内在途集合门（崩溃残留的 sync_state=rebuilding 不阻塞——
-	// biz 层按 active 恢复语义处理）。
+	if err := s.startCollectionIndexJob(ctx, col, false); err != nil {
+		return nil, err
+	}
+	return &v1.RebuildKnowledgeIndexResponse{Status: bizknowledge.SyncStateRebuilding}, nil
+}
+
+// startCollectionIndexJob 同库互斥的后台索引任务。withBackfill=true 时先改写存量
+// 出链再重建块索引（US-38/US-45 显式回填命令）；false 时只重建派生索引（US-29）。
+func (s *KnowledgeService) startCollectionIndexJob(ctx context.Context, col bizknowledge.Collection, withBackfill bool) error {
 	if _, loaded := s.rebuildRuns.LoadOrStore(col.ID, struct{}{}); loaded {
-		return nil, apierror.Conflict("KNOWLEDGE", "block index rebuild already running for collection %s", col.ID)
+		return apierror.Conflict("KNOWLEDGE", "block index rebuild already running for collection %s", col.ID)
 	}
 
 	flow := s.knowledgeFlow(ctx)
 	flow.LogStart("knowledge.rebuild_index", "知识块索引重建",
-		event.P("collection_id", col.ID))
+		event.P("collection_id", col.ID),
+		event.P("with_backfill", withBackfill))
+	if withBackfill {
+		flow.LogStart("knowledge.autolink.backfill", "历史成链回填",
+			event.P("collection_id", col.ID))
+	}
 
-	// 后台重建需跨 workspace 取文档正文（biz 逐文档 GetDocument，带 workspace
-	// 过滤）：系统工作区旁路，避免非 default 集合重建时逐文档 NotFound。
 	bgCtx := workspace.WithSystemWorkspace(appctx.Ctx())
 	safego.Go(bgCtx, "knowledge.rebuild_index."+col.ID, func() {
 		defer s.rebuildRuns.Delete(col.ID)
 		s.publishKnowledgeRebuild(col.ID, "rebuilding", 0, 0, 0, "")
 		lastPub := time.Now()
+		if withBackfill {
+			if _, berr := s.uc.BackfillOutgoingAutolinks(bgCtx, col.ID, nil); berr != nil {
+				s.lg.Warn("历史成链回填失败，继续块索引重建",
+					loggateway.StepID("knowledge.autolink.backfill"),
+					loggateway.Str("collection_id", col.ID),
+					loggateway.Err(berr),
+				)
+				flow.LogError("knowledge.autolink.backfill", "历史成链回填失败",
+					event.P("collection_id", col.ID),
+					event.P("error", berr.Error()))
+			} else {
+				flow.LogDone("knowledge.autolink.backfill", "历史成链回填完成",
+					event.P("collection_id", col.ID))
+			}
+		}
 		res, err := s.uc.RebuildCollectionBlockIndex(bgCtx, col.ID, func(done, total, failed int) {
 			if time.Since(lastPub) < rebuildProgressInterval {
 				return
@@ -70,8 +97,7 @@ func (s *KnowledgeService) RebuildKnowledgeIndex(ctx context.Context, req *v1.Re
 			event.P("done", res.Done),
 			event.P("failed", res.Failed))
 	})
-
-	return &v1.RebuildKnowledgeIndexResponse{Status: bizknowledge.SyncStateRebuilding}, nil
+	return nil
 }
 
 // publishKnowledgeRebuild 广播重建进度/终态事件（EP-KN-02 模式：v2

@@ -29,6 +29,13 @@ type (
 	KnowledgeCollectionGraphEdge  = knowledge.CollectionGraphEdge
 	KnowledgeCollectionGraph      = knowledge.CollectionGraph
 	KnowledgeCollectionLinkReader = knowledge.CollectionLinkReader
+	// SP7 G2 写回飞轮：自动记忆过门事实 → 团队库日记。
+	KnowledgeWriteBack       = knowledge.SessionWriteBack
+	KnowledgeWriteBackInput  = knowledge.WriteBackInput
+	KnowledgeWriteBackFact   = knowledge.WriteBackFact
+	KnowledgeWriteBackResult = knowledge.WriteBackResult
+	KnowledgeWriteBackReview = knowledge.SessionWriteBackReview
+	KnowledgeAgentMemoryProjector = knowledge.AgentMemoryProjectPort
 )
 
 var (
@@ -46,9 +53,9 @@ var (
 	ErrKnowledgeEmbeddingEmpty         = knowledge.ErrEmbeddingEmpty
 	// ErrKnowledgeCollectionSemanticConflict 语义层已被并发请求绑定（B2 守卫式 UPDATE 未生效）。
 	ErrKnowledgeCollectionSemanticConflict = knowledge.ErrCollectionSemanticConflict
-	KnowledgeEmbedConfigured           = knowledge.EmbedConfigured
-	ApplyKnowledgeEmbedPatch           = knowledge.ApplyEmbedPatch
-	KnowledgeHashContent               = knowledge.HashContent
+	KnowledgeEmbedConfigured               = knowledge.EmbedConfigured
+	ApplyKnowledgeEmbedPatch               = knowledge.ApplyEmbedPatch
+	KnowledgeHashContent                   = knowledge.HashContent
 )
 
 // ProvideKnowledgeUsecase 是生产 Wire provider：在 NewUsecaseFromRepo 之上

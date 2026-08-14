@@ -1225,8 +1225,22 @@ func provideAutoMemoryWorker(
 	caseExtractor biz.AgentCaseExtractor,
 	caseReader biz.AgentCaseReader,
 	caseWriter biz.AgentCaseWriter,
+	writeBack biz.KnowledgeWriteBack,
+	uc *biz.KnowledgeUsecase,
+	d *data.Data,
 	lg loggateway.Logger,
 ) (*jobs.AutoMemoryWorker, error) {
+	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
+		ks.SetAgentMemoryProjector(bizknowledge.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
+	}
+	var review biz.KnowledgeWriteBackReview
+	if q, ok := writeBack.(biz.KnowledgeWriteBackReview); ok {
+		review = q
+	}
+	var proj biz.KnowledgeAgentMemoryProjector
+	if p, ok := writeBack.(biz.KnowledgeAgentMemoryProjector); ok {
+		proj = p
+	}
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
 		RuntimeConf:    runtimeConf,
 		Interval:       0,
@@ -1245,6 +1259,9 @@ func provideAutoMemoryWorker(
 		CaseExtractor:  caseExtractor,
 		CaseReader:     caseReader,
 		CaseWriter:     caseWriter,
+		WriteBack:      writeBack,
+		ReviewQueue:    review,
+		MemoryProjector: proj,
 		Logger:         lg,
 	})
 }
@@ -3220,6 +3237,7 @@ func provideTaskOrchestrator(
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
 	taskPlanRepo biz.TaskPlanRepository,
+	allocPlanRepo biz.AllocationPlanRepository,
 	matcher biz.AgentMatcherPort,
 	catalog *biz.LlmProviderModelUsecase,
 	agentUC *biz.AgentUsecase,
@@ -3255,7 +3273,7 @@ func provideTaskOrchestrator(
 			LG:           lg,
 		},
 	}
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, assembler, repo, taskPlanRepo, allocPlanRepo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, evolutionUC, eventBus, nl2graph, lg)
 }
 
 func provideDeptLeadManager(

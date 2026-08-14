@@ -48,6 +48,11 @@ type toolConfirmGate struct {
 	// persistedGrant queries the DB-backed "always allow" grant tier.
 	// A nil function disables the tier (treated as no grant).
 	persistedGrant func(ctx context.Context, agentID, toolKey string) bool
+	// agentKey is the runtime AgentKey used by computer-use sessions (not Agent.ID).
+	agentKey string
+	// injectionSuspected reports whether Observe marked this AgentKey as
+	// screen-injection-suspected (M77 B3). Nil disables the check.
+	injectionSuspected func(agentKey string) bool
 }
 
 // Confirmation decision reasons, recorded in logs for audit (Grok's
@@ -88,9 +93,10 @@ var defaultToolGrantStore = newToolGrantStore(time.Now)
 // other tools short-circuit as default_allow.
 func (g *toolConfirmGate) decide(ctx context.Context, sessionID, agentID, toolName string, args []byte) confirmDecision {
 	toolName = strings.TrimSpace(toolName)
-	// Computer-use danger-word floor (75 A5): a danger hit on act/launch
-	// forces per-invocation confirmation regardless of catalog or grants.
-	if computerUseDangerHit(toolName, args) {
+	// Computer-use danger floor (75 A5 / M77 B3): danger-word content or a
+	// session marked injection-suspected forces per-invocation confirmation.
+	// Grants never bypass it.
+	if g.computerUseForcedConfirm(toolName, args) {
 		return confirmDecision{needsConfirm: true, reason: confirmReasonPolicyDanger}
 	}
 	needsByCatalog := g.catalogCheck(toolName)
@@ -123,10 +129,10 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 			hasPlugin = true
 		}
 	}
-	if len(catalog) == 0 && !hasPlugin {
+	if len(catalog) == 0 && !hasPlugin && deps.ComputerUseUC == nil {
 		return nil
 	}
-	if hasPlugin && len(pluginCfg.ConfirmTools) == 0 && len(pluginCfg.ConfirmPatterns) == 0 && len(catalog) == 0 {
+	if hasPlugin && len(pluginCfg.ConfirmTools) == 0 && len(pluginCfg.ConfirmPatterns) == 0 && len(catalog) == 0 && deps.ComputerUseUC == nil {
 		return nil
 	}
 	gate := &toolConfirmGate{
@@ -135,9 +141,14 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		hasPlugin:     hasPlugin,
 		lg:            deps.Logger(),
 		sessionGrants: defaultToolGrantStore,
+		agentKey:      ag.AgentKey,
 	}
 	if deps.ToolUC != nil {
 		gate.persistedGrant = deps.ToolUC.HasToolGrant
+	}
+	if deps.ComputerUseUC != nil {
+		uc := deps.ComputerUseUC
+		gate.injectionSuspected = uc.InjectionSuspected
 	}
 	return gate
 }
@@ -271,6 +282,7 @@ var computerUseDangerTools = map[string]bool{
 // computerUseDangerHit reports whether a computer-use act/launch invocation
 // carries a danger-word target or payload text. Unparseable args fall
 // through to the normal chain (the tool itself will reject them).
+// Batch actions[] are scanned so a nested "删除" cannot bypass the floor.
 func computerUseDangerHit(toolName string, args []byte) bool {
 	if !computerUseDangerTools[toolName] || len(args) == 0 {
 		return false
@@ -280,7 +292,38 @@ func computerUseDangerHit(toolName string, args []byte) bool {
 		return false
 	}
 	target, _ := parsed["target"].(string)
-	return bizcu.Policy{}.IsDanger(target, parsed)
+	if (bizcu.Policy{}).IsDanger(target, parsed) {
+		return true
+	}
+	raw, ok := parsed["actions"]
+	if !ok {
+		return false
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range arr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		subTarget, _ := m["target"].(string)
+		if (bizcu.Policy{}).IsDanger(subTarget, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *toolConfirmGate) computerUseForcedConfirm(toolName string, args []byte) bool {
+	if computerUseDangerHit(toolName, args) {
+		return true
+	}
+	if g == nil || !computerUseDangerTools[toolName] || g.injectionSuspected == nil {
+		return false
+	}
+	return g.injectionSuspected(g.agentKey)
 }
 
 func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
@@ -288,7 +331,7 @@ func (g *toolConfirmGate) needsConfirm(toolName string, args []byte) bool {
 		return false
 	}
 	toolName = strings.TrimSpace(toolName)
-	if computerUseDangerHit(toolName, args) {
+	if g.computerUseForcedConfirm(toolName, args) {
 		return true
 	}
 	if g.catalogCheck(toolName) {

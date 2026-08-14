@@ -16,9 +16,8 @@
       <ConfirmBlock v-else-if="step.Kind === 'confirm'" :step="step" @confirm="(p) => $emit('confirm-step', p)" />
       <ErrorBlock v-else-if="step.Kind === 'error'" :step="step" />
     </template>
-    <!-- 75 M1.4（设计 §3.8）：运行中的 turn 含 computer_use 会话时，气泡尾部
-         内嵌实时步骤流 + 急停；历史 turn 不渲染（回放走监控页审计 API）。 -->
-    <CuStepStream v-if="liveCuSessionId" :session-id="liveCuSessionId" />
+    <!-- 75：含 computer_use 会话时内嵌步骤流。运行中可急停；历史 turn 只读回放。 -->
+    <CuStepStream v-if="cuSessionId" :session-id="cuSessionId" :readonly="!isLiveTurn" />
   </div>
 </template>
 
@@ -57,9 +56,7 @@ const visibleSteps = computed(() =>
   }),
 );
 
-// 仅运行中的 turn 内嵌步骤流：急停对活会话才有意义；历史 turn 的审计回放
-// 走监控页（ListComputerUseSteps），避免对死会话渲染可用急停按钮。
-const liveCuSessionId = computed(() =>
-  props.turn.Status === 'running' ? cuSessionIdFromSteps(visibleSteps.value) : '',
-);
+// 含 computer_use 会话即内嵌步骤流；仅运行中的 turn 显示急停。
+const cuSessionId = computed(() => cuSessionIdFromSteps(visibleSteps.value));
+const isLiveTurn = computed(() => props.turn.Status === 'running');
 </script>

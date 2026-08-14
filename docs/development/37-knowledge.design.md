@@ -2468,3 +2468,179 @@ proto: GET /v1/knowledge/documents/{doc_id}/unlinked-mentions
 - **WS 摄取进度**：`useKnowledgeIngestWs` 继续工作（上传队列收纳进左栏底部），事件消费不变
 - **后端**：初版零改动；**2026-08-11 增强轮 P2-7 新增 1 个只读 RPC** `ListUnlinkedMentions`（proto + biz 端口 + data 实现 + service 装配，见 §SP2-17），无 Schema/迁移变更
 - **测试**：纯函数（outline/frontmatter/wikilink resolve/命令过滤/pushMru）+ 状态机（tabs 开闭/脏标记/CAS 冲突/reorderTabs）单测；组件级 smoke（挂载不炸）；`pnpm lint + test + build` 全绿 + 浏览器运行时复验（验收 38）
+
+---
+
+## V12.10 Lazy GraphRAG + Retrieve-Then-Generate（2026-08-15）
+
+> 对应需求 US-32/US-33。Microsoft LazyGraphRAG 思路的工程落地：**不在入库期抽实体图谱**（§9.6 全量 GraphRAG 仍可选暂缓），查询期复用已物化的 `knowledge_links`。
+
+### 检索侧
+
+```
+AdaptiveRouter.Search
+  → (可选) 复杂查询自动 MultiQuery
+  → HybridRetriever（dense / BM25 / RRF）
+  → GraphExpander.Expand          ← 新增，nil 则跳过
+       seed docs (top 5)
+       → ListLinks 一跳邻居（explicit×3 > entity×2 > semantic×1，cap 8）
+       → ListChunksByDocuments（每文档 chunk_index 前 2 块）
+       → MergeSearchResults(seeds, neighbors×0.72, topK)
+```
+
+- `GraphExpander` 定义在 `internal/knowledge/graph_expander.go`（消费方接口 `NeighborLinkReader` / `NeighborChunkLister`）。
+- 生产实现：`data.knowledgeRepo.ListLinks` + 新增 `ListChunksByDocuments`（**不**扩 `ChunkRepo` 接口，避免所有 mock 连锁修改；Wire 对 `KnowledgeRepo` 动态断言，未实现则 expander=nil）。
+- 即时意图（`ClassifySearchIntent == instant`）与 `collection_id` 为空时不扩展（联邦已按库调用 Router）。
+- 扩展预算 800ms；失败 Warn 后返回种子。
+
+### Agent 注入侧
+
+`internal/agent/knowledge_inject.go` 不再只拼 Collection 目录：
+
+1. `lastUserQuery`：最新非 system 消息必须是 user，否则视为工具循环，跳过预检索。
+2. 2s 超时：优先 FederatedRetriever（全库/多库），否则 AdaptiveRouter/Retriever 单库。
+3. cue 结构：`## Retrieved Knowledge`（[n] 编号段落）+ 缩短的 `## Available Knowledge Bases`。
+
+前缀缓存契约不变：动态 cue 仍 append 在消息列表末尾。
+
+### 复杂查询自动重写
+
+`pickAutoRewriteStrategy`：仅 `QueryComplex && rewrite_strategy 未指定` → `multi_query`。HyDE/Decomposition 仍由 API 显式参数触发。
+
+### 不做什么（本轮边界）
+
+- 不新建 `knowledge_entities` / `knowledge_relations` 表，不跑入库期 NER。
+- 不改 Proto（Search 行为增强，契约字段不变）。
+- 不做社区摘要 / 全局 GraphRAG 2.0 四模式。
+- Skill Knowledge（Phase 4）与知识-记忆同基底（SP7）仍未实施。
+
+---
+
+## V12.11 编译期 Wiki 成链（2026-08-15）
+
+> 对应需求 US-34。综合方案见 [2026-08-15-research-knowledge-synthesis.md](../reports/2026-08-15-research-knowledge-synthesis.md)。
+> 四层架构中的**写路径**一层：Karpathy/llm-wiki 式 compile-time wiki + Obsidian 社区插件「Link Unlinked Mentions」规则，接到已有 `RebuildBlockIndex` / Lazy GraphRAG。
+
+```
+Write (ingest / vault save)
+  → AutolinkWikiMentions(content, titles)
+  → 落盘或 content_text
+  → RebuildBlockIndex → knowledge_links (explicit)
+Query
+  → Hybrid + GraphExpander 一跳（V12.10）
+Agent
+  → Retrieve-Then-Generate（V12.10）
+Write-back
+  → 会话写回飞轮（V12.12 / SP7 G2）
+```
+
+### 规则（对标 Obsidian 插件，不抄 AGPL 代码）
+
+| 规则 | 行为 |
+|------|------|
+| 标题来源 | `mentionNeedle(rel_path, source)`：basename 去扩展名 |
+| 最长优先 | 先匹配更长标题，占用区间后短标题不再切 |
+| 词边界 | ASCII 整词（`A-Za-z0-9_`）；CJK 子串允许 |
+| 最短长度 | CJK ≥2 rune；ASCII ≥3 rune（抑制 Go/AI） |
+| 歧义 | 同一 needle 对应多个文档 → 整针跳过 |
+| 自链 | 当前文档标题不包装 |
+| 保护区间 | YAML frontmatter、```/~~~ 围栏、行内 `` ` ``、`[[...]]`、`[text](url)`、`http(s)://` |
+| 大小写 | 匹配不敏感，包装用库内规范标题 |
+| 失败 | `ListDocuments` 错误 → 原文；不新增 Usecase 字段 |
+
+### 接线
+
+- 纯函数：`internal/biz/knowledge/autolink.go`
+- 摄取：`IngestDocument` 整理后调用 `Usecase.MaybeAutolinkOutgoing`；图片视觉提取后同样成链再回写
+- 保存：`UpdateVaultDocumentContent` 在 `WriteDocCAS` 之前成链
+- **不**在 vault watcher `ApplyOne` / `UpdateDocumentContent` 持久化入口成链，避免外部编辑器保存被静默改写、以及 PG 与文件分叉
+- 不改 Proto
+
+### 不做什么
+
+- 摄取/保存路径仍自动成链（无弹窗）；确认弹窗只服务「本页编译」与历史回填的显式动作（见 V12.13）
+- 不读 frontmatter aliases 入库（v1 只用文件名标题）
+- 历史回填不挂在 watcher 上（见 V12.13 US-38/US-45：显式 POST autolink-backfill，不挂 RebuildKnowledgeIndex）
+
+---
+
+## V12.12 会话写回飞轮（SP7 G2，2026-08-15）
+
+> 对应需求 US-37。G1/G7/G8 与确认过门见 V12.13。
+
+```
+AutoMemoryWorker.extract
+  → FactWritePipeline.Apply（L3 已有门 0.6）
+  → maybeWriteBack（失败只 Warn）
+       FilterWriteBackFacts（kind 白名单 ∩ confidence≥0.85 ∩ ≥8 rune）
+       → 团队库当日日记追加 provenance 块
+       → Autolink + RebuildBlockIndex
+       → KnowledgeService 重放 chunk/FTS
+```
+
+- 端口：`knowledge.SessionWriteBack`（biz 别名 `KnowledgeWriteBack`），生产实现 `KnowledgeService`。
+- 日记路径：`inbox/writeback-YYYY-MM-DD.md`。集合：同名「团队知识收件箱」→ 否则工作区第一个 team 库 → 否则 `CreateVault` 懒创建（词法、无 embedding）。
+- **不**在 watcher/外部编辑路径写回；**不**把 L2 episode 原文整段入库。
+
+### 不做什么
+
+- 不做 LLM 二次抽取 / 三元组表
+- 自动路径仍无弹窗（≥0.85 直接日记）；0.60–0.84 进 pending（V12.13 US-44）
+- G1 投影见 V12.13（覆盖写，不是往 Usecase 加字段）
+
+---
+
+## V12.13 成链回填、金标与 SP7 收口（2026-08-15）
+
+> 对应需求 US-38~US-48。不改 Proto（custom HTTP，与 document asset 同鉴权过滤器）。
+
+```
+RebuildKnowledgeIndex
+  → RebuildCollectionBlockIndex（allowBackfill=false，不改源）
+
+POST .../autolink-backfill
+  → BackfillOutgoingAutolinks（显式写路径成链）
+  → RebuildCollectionBlockIndex
+  （与重建共用 rebuildRuns 互斥门 + knowledge_rebuild_index 进度）
+
+工作台
+  → GET autolink-preview → 确认 → POST autolink
+  → GET writeback-home（只解析）→ experts / writeback-pending 打落点库
+  → WritebackReviewDialog 勾选 → POST writeback-pending/apply（fact_ids）
+  → GET health 仍打当前打开的库
+
+AutoMemoryWorker.extract
+  → maybeWriteBack（≥0.85）
+  → maybeEnqueueReview（0.60–0.84 白名单）
+  → maybeProjectMemory（覆盖 agents/{id}.md）
+```
+
+### 自定义路由（`internal/server/http.go`）
+
+| 方法 | 路径 | 权限 |
+|------|------|------|
+| GET | `/v1/knowledge/documents/{id}/autolink-preview` | 集合读 |
+| POST | `/v1/knowledge/documents/{id}/autolink` | 集合写 |
+| POST | `/v1/knowledge/collections/{id}/autolink-backfill` | 集合写；改 Markdown |
+| GET | `/v1/knowledge/writeback-home` | 工作区读；不创建集合 |
+| GET | `/v1/knowledge/collections/{id}/health` | 集合读 |
+| GET | `/v1/knowledge/collections/{id}/experts` | 集合读 |
+| GET | `/v1/knowledge/collections/{id}/writeback-pending` | 集合读 |
+| POST | `/v1/knowledge/collections/{id}/writeback-pending/apply` | 集合写；body `fact_ids` |
+
+### 结构约束
+
+- G1 用独立 `AgentMemoryProjector`（AS-COG-01），经 `KnowledgeService.SetAgentMemoryProjector` 接线。
+- 健康度只读聚合，GET 不写 vault 文件。
+- `LookupWriteBackHome` 与 `resolveWriteBackCollection` 共用扫描规则；后者仅在写路径懒创建。
+- 一跳金标在 `internal/knowledge/gold_recall_test.go`（假 GraphExpander，不连 PG）。
+- 词法金标在 `internal/data/knowledge_gold_bm25_test.go`（真实 `SearchChunksBM25`，需 `aranea_test`）。
+
+### 不做什么
+
+- 不上 PPR / 社区摘要 / 入库期 NER。
+- 不把 ListChunksByDocuments 加进 `ChunkRepo`。
+- 不做视频 RAG、时间知识图谱、成熟度 FSM（SP5）、JITAI 伙伴（SP6）。
+- 不做 50 条 BM25 愿望清单；US-47 是 12 条生产路径查询。
+
+

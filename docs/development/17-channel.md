@@ -205,7 +205,7 @@ Stream 模式使用 `client_id` + `client_secret`；当前 Webhook 模式使用 
 
 **扫码登录流程**（编辑弹窗「微信扫码登录」区块，仅已保存渠道可用）：
 
-1. 点「获取登录二维码」→ `WechatILinkLogin` RPC 返回二维码（data URL）并启动服务端后台轮询（3 分钟上限）
+1. 点「获取登录二维码」→ `WechatILinkLogin` RPC 返回 iLink 原始 `qrcode_img_content`（扫码内容，实为 liteapp URL，非图片）并启动服务端后台轮询（3 分钟上限）；前端用 `qrcode` 包把该内容编码成 SVG data URL 渲染二维码
 2. 微信扫码 + 手机确认 → 服务端写入 `bot_token` / `baseurl` / `ilink_user_id` 三个凭证并触发 runtime reload
 3. 前端每 2s 轮询 `WechatILinkPoll`（凭证已写入即返回 `confirmed`），3 分钟超时提示过期可重新获取
 

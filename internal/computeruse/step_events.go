@@ -34,15 +34,17 @@ func (p stepEventPublisher) PublishStep(ctx context.Context, step bizcu.Step) {
 	ev.Message = fmt.Sprintf("桌面动作 %s → %s（%s，%s，%dms）",
 		step.Action, step.Target, step.Path, step.Result, step.DurationMs)
 	ev.Metadata = map[string]any{
-		"agent_key":    step.AgentKey,
-		"step_index":   step.Index,
-		"target":       step.Target,
-		"path":         string(step.Path),
-		"action":       string(step.Action),
-		"result":       string(step.Result),
-		"duration_ms":  step.DurationMs,
-		"confirmed_by": step.ConfirmedBy,
-		"danger":       step.Danger,
+		"agent_key":      step.AgentKey,
+		"step_index":     step.Index,
+		"target":         step.Target,
+		"path":           string(step.Path),
+		"action":         string(step.Action),
+		"result":         string(step.Result),
+		"duration_ms":    step.DurationMs,
+		"confirmed_by":   step.ConfirmedBy,
+		"danger":         step.Danger,
+		"degraded":       step.Degraded,
+		"screenshot_ref": step.ScreenshotRef,
 	}
 	if step.Error != "" {
 		ev.Metadata["error"] = step.Error

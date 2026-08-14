@@ -14,7 +14,7 @@ import { useMonitorLogStreamPanel } from './useMonitorLogStreamPanel';
 import { useMonitorTraces } from './useMonitorTraces';
 import { useMonitorRunsLive } from './useMonitorRunsLive';
 
-const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs'] as const;
+const VALID_TABS = ['usage', 'alerts', 'audit', 'events', 'traces', 'logs', 'desktop'] as const;
 
 export function useMonitorPage() {
   const route = useRoute();

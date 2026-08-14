@@ -142,67 +142,29 @@ type RunComparison struct {
 	DeltaToolAccuracy  float32
 }
 
-// Repo is the persistence interface for evaluation operations.
-type Repo interface {
-	CreateDataset(ctx context.Context, d Dataset) (Dataset, error)
-	GetDataset(ctx context.Context, id string) (Dataset, error)
-	ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]Dataset, int, error)
-	DeleteDataset(ctx context.Context, id string) error
-	UpdateDataset(ctx context.Context, id, name, description string) (Dataset, error)
-
-	// InsertCasesWithCountUpdate inserts cases and bumps dataset.case_count in a
-	// single transaction. The two writes must stay atomic — a failure between
-	// them would leave case_count diverged from the actual row count in
-	// eval_cases (EVAL-06: the former separate InsertCases +
-	// UpdateDatasetCaseCount pair was removed; it had no production caller).
-	InsertCasesWithCountUpdate(ctx context.Context, datasetID string, cases []Case) error
-	ListCases(ctx context.Context, datasetID string) ([]Case, error)
-
-	CreateRun(ctx context.Context, r Run) (Run, error)
-	GetRun(ctx context.Context, id string) (Run, error)
-	UpdateRun(ctx context.Context, r Run) error
-	DeleteRun(ctx context.Context, id string) error
-	ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]Run, int, error)
-	// FailStaleRuns marks every non-terminal run created before cutoff as
-	// failed (crash/orphan recovery, Y10). Returns the swept row count.
-	FailStaleRuns(ctx context.Context, cutoff time.Time) (int, error)
-
-	InsertCaseResult(ctx context.Context, r CaseResult) error
-	ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]CaseResult, int, error)
-	GetCaseResult(ctx context.Context, runID, resultID string) (CaseResult, error)
-	UpdateCaseResultAnnotation(ctx context.Context, runID, resultID string, patch CaseResultAnnotation) (CaseResult, error)
-
-	ListTrendPoints(ctx context.Context, agentID, datasetID string, limit int) ([]TrendPoint, error)
-	GetRunsByIDs(ctx context.Context, ids []string) ([]Run, error)
-
-	// ListJudgeAnnotatedResults returns results with human_pass set (joined
-	// with run dataset/agent scope and case text) for judge calibration (P1-3).
-	ListJudgeAnnotatedResults(ctx context.Context, datasetID, agentID string) ([]JudgeAnnotatedResult, error)
-
-	// ListFailureGroups aggregates case-result failures by error_message for
-	// one dataset (P2-3, SQL-version failure clustering).
-	ListFailureGroups(ctx context.Context, datasetID, agentID string, limit int) ([]FailureGroup, int, error)
-
-	// InsertRunPreference / ListRunPreferences persist pairwise human
-	// preferences between two runs of one dataset (P3-3).
-	InsertRunPreference(ctx context.Context, p RunPreference) error
-	ListRunPreferences(ctx context.Context, datasetID string, limit int) ([]RunPreference, error)
-
-	// GetGateConfig / UpsertGateConfig read/write the publish-gate singleton
-	// (P2-1). GetGateConfig returns a disabled zero config when no row exists.
-	GetGateConfig(ctx context.Context) (GateConfig, error)
-	UpsertGateConfig(ctx context.Context, cfg GateConfig) error
-}
-
-// Usecase implements dataset/run management.
+// Usecase implements dataset/run management. Persistence is injected as
+// Stores (ISP); production must not depend on the deprecated Repo aggregate.
 type Usecase struct {
-	repo Repo
-	lg   loggateway.Logger
+	datasets   DatasetStore
+	cases      CaseStore
+	runs       RunStore
+	runQueries RunQueryStore
+	results    ResultStore
+	gov        GovernanceStore
+	lg         loggateway.Logger
 }
 
-// NewUsecase constructs an evaluation Usecase.
-func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
-	return &Usecase{repo: repo, lg: lg}
+// NewUsecase constructs an evaluation Usecase from independent store ports.
+func NewUsecase(s Stores, lg loggateway.Logger) *Usecase {
+	return &Usecase{
+		datasets:   s.Datasets,
+		cases:      s.Cases,
+		runs:       s.Runs,
+		runQueries: s.RunQueries,
+		results:    s.Results,
+		gov:        s.Governance,
+		lg:         lg,
+	}
 }
 
 var fallbackEvalID atomic.Uint64
@@ -228,7 +190,7 @@ func (u *Usecase) CreateDataset(ctx context.Context, in Dataset) (Dataset, error
 	if in.ID == "" {
 		in.ID = newEvalID()
 	}
-	return u.repo.CreateDataset(ctx, in)
+	return u.datasets.CreateDataset(ctx, in)
 }
 
 // GetDataset returns one dataset.
@@ -236,7 +198,7 @@ func (u *Usecase) GetDataset(ctx context.Context, id string) (Dataset, error) {
 	if strings.TrimSpace(id) == "" {
 		return Dataset{}, apierror.BadRequest("EVAL", "id is required")
 	}
-	return u.repo.GetDataset(ctx, id)
+	return u.datasets.GetDataset(ctx, id)
 }
 
 // ListDatasets returns datasets visible in the workspace.
@@ -244,7 +206,7 @@ func (u *Usecase) ListDatasets(ctx context.Context, workspace string, limit, off
 	if limit <= 0 {
 		limit = 20
 	}
-	return u.repo.ListDatasets(ctx, workspace, limit, offset)
+	return u.datasets.ListDatasets(ctx, workspace, limit, offset)
 }
 
 // DeleteDataset removes a dataset and its cases.
@@ -252,7 +214,7 @@ func (u *Usecase) DeleteDataset(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return apierror.BadRequest("EVAL", "id is required")
 	}
-	return u.repo.DeleteDataset(ctx, id)
+	return u.datasets.DeleteDataset(ctx, id)
 }
 
 // UpdateDataset updates dataset name and/or description.
@@ -265,7 +227,7 @@ func (u *Usecase) UpdateDataset(ctx context.Context, id, name, description strin
 	if name == "" {
 		return Dataset{}, apierror.BadRequest("EVAL", "name is required")
 	}
-	return u.repo.UpdateDataset(ctx, id, name, description)
+	return u.datasets.UpdateDataset(ctx, id, name, description)
 }
 
 // UploadCases parses casesJSON (array) and bulk-inserts into the dataset.
@@ -294,7 +256,7 @@ func (u *Usecase) UploadCases(ctx context.Context, datasetID, casesJSON string) 
 			MetadataJSON:   up.MetadataJSON,
 		})
 	}
-	if err := u.repo.InsertCasesWithCountUpdate(ctx, datasetID, cases); err != nil {
+	if err := u.cases.InsertCasesWithCountUpdate(ctx, datasetID, cases); err != nil {
 		return 0, err
 	}
 	return len(cases), nil
@@ -322,7 +284,7 @@ func (u *Usecase) CreateRun(ctx context.Context, in Run) (Run, error) {
 	if in.NumRuns <= 0 {
 		in.NumRuns = 1
 	}
-	return u.repo.CreateRun(ctx, in)
+	return u.runs.CreateRun(ctx, in)
 }
 
 // GetRun returns one run.
@@ -330,7 +292,7 @@ func (u *Usecase) GetRun(ctx context.Context, id string) (Run, error) {
 	if strings.TrimSpace(id) == "" {
 		return Run{}, apierror.BadRequest("EVAL", "id is required")
 	}
-	return u.repo.GetRun(ctx, id)
+	return u.runs.GetRun(ctx, id)
 }
 
 // ListRuns returns runs optionally filtered by dataset/agent.
@@ -338,12 +300,12 @@ func (u *Usecase) ListRuns(ctx context.Context, datasetID, agentID string, limit
 	if limit <= 0 {
 		limit = 20
 	}
-	return u.repo.ListRuns(ctx, datasetID, agentID, limit, offset)
+	return u.runs.ListRuns(ctx, datasetID, agentID, limit, offset)
 }
 
 // UpdateRun persists run progress/result changes.
 func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
-	return u.repo.UpdateRun(ctx, r)
+	return u.runs.UpdateRun(ctx, r)
 }
 
 // FailStaleRuns sweeps non-terminal runs older than olderThan into "failed"
@@ -351,7 +313,7 @@ func (u *Usecase) UpdateRun(ctx context.Context, r Run) error {
 // at that point is an orphan from a previous process, because this process
 // has not started any run yet (single-instance deployment).
 func (u *Usecase) FailStaleRuns(ctx context.Context, olderThan time.Duration) (int, error) {
-	return u.repo.FailStaleRuns(ctx, time.Now().Add(-olderThan))
+	return u.runs.FailStaleRuns(ctx, time.Now().Add(-olderThan))
 }
 
 // DeleteRun removes a run and its case results.
@@ -359,7 +321,7 @@ func (u *Usecase) DeleteRun(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return apierror.BadRequest("EVAL", "id is required")
 	}
-	return u.repo.DeleteRun(ctx, id)
+	return u.runs.DeleteRun(ctx, id)
 }
 
 // ListCaseResults returns per-case results for a run.
@@ -367,12 +329,12 @@ func (u *Usecase) ListCaseResults(ctx context.Context, runID string, limit, offs
 	if limit <= 0 {
 		limit = 50
 	}
-	return u.repo.ListCaseResults(ctx, runID, limit, offset)
+	return u.results.ListCaseResults(ctx, runID, limit, offset)
 }
 
 // InsertCaseResult persists one case result.
 func (u *Usecase) InsertCaseResult(ctx context.Context, r CaseResult) error {
-	return u.repo.InsertCaseResult(ctx, r)
+	return u.results.InsertCaseResult(ctx, r)
 }
 
 // AnnotateCaseResult updates human review fields for one case result.
@@ -383,12 +345,12 @@ func (u *Usecase) AnnotateCaseResult(ctx context.Context, runID, resultID string
 	if strings.TrimSpace(patch.AnnotatedBy) == "" {
 		patch.AnnotatedBy = "system"
 	}
-	return u.repo.UpdateCaseResultAnnotation(ctx, runID, resultID, patch)
+	return u.results.UpdateCaseResultAnnotation(ctx, runID, resultID, patch)
 }
 
 // ListCases returns all cases for a dataset.
 func (u *Usecase) ListCases(ctx context.Context, datasetID string) ([]Case, error) {
-	return u.repo.ListCases(ctx, datasetID)
+	return u.cases.ListCases(ctx, datasetID)
 }
 
 // GetAgentEvalTrend returns recent completed runs for trend charts.
@@ -400,7 +362,7 @@ func (u *Usecase) GetAgentEvalTrend(ctx context.Context, agentID, datasetID stri
 	if limit <= 0 {
 		limit = 30
 	}
-	return u.repo.ListTrendPoints(ctx, agentID, datasetID, limit)
+	return u.runQueries.ListTrendPoints(ctx, agentID, datasetID, limit)
 }
 
 // CompareEvalRuns loads runs by ID and computes metric deltas vs the first run (baseline).
@@ -408,7 +370,7 @@ func (u *Usecase) CompareEvalRuns(ctx context.Context, runIDs []string) ([]RunCo
 	if len(runIDs) < 2 {
 		return nil, apierror.BadRequest("EVAL", "at least two run_ids are required")
 	}
-	runs, err := u.repo.GetRunsByIDs(ctx, runIDs)
+	runs, err := u.runQueries.GetRunsByIDs(ctx, runIDs)
 	if err != nil {
 		return nil, err
 	}

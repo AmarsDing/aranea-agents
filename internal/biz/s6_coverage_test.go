@@ -377,13 +377,13 @@ func (m *memEvalRepo2) GetRunsByIDs(_ context.Context, ids []string) ([]biz.Eval
 	return out, nil
 }
 
-// Stub for evaluation.Repo.ListJudgeAnnotatedResults (judge calibration P1-3);
+// Stub for ResultStore.ListJudgeAnnotatedResults (judge calibration P1-3);
 // s6 coverage tests don't exercise the calibration path.
 func (m *memEvalRepo2) ListJudgeAnnotatedResults(_ context.Context, _, _ string) ([]evaluation.JudgeAnnotatedResult, error) {
 	return nil, nil
 }
 
-// Stubs for evaluation.Repo governance methods (P2-1/P2-3/P3-3); s6 coverage
+// Stubs for evaluation governance methods (P2-1/P2-3/P3-3); s6 coverage
 // tests don't exercise failure grouping, pairwise preference, or the gate.
 func (m *memEvalRepo2) ListFailureGroups(_ context.Context, _, _ string, _ int) ([]evaluation.FailureGroup, int, error) {
 	return nil, 0, nil
@@ -410,7 +410,7 @@ func (m *memEvalRepo2) FailStaleRuns(_ context.Context, _ time.Time) (int, error
 }
 
 func TestEvalUsecase_CreateDataset(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
+	uc := biz.NewEvalUsecase(biz.EvalStoresFrom(newMemEvalRepo2()), nil)
 	d, err := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +422,7 @@ func TestEvalUsecase_CreateDataset(t *testing.T) {
 
 func TestEvalUsecase_UploadCases(t *testing.T) {
 	repo := newMemEvalRepo2()
-	uc := biz.NewEvalUsecase(repo, nil)
+	uc := biz.NewEvalUsecase(biz.EvalStoresFrom(repo), nil)
 	d, _ := uc.CreateDataset(context.Background(), biz.EvalDataset{Name: "test"})
 	n, err := uc.UploadCases(context.Background(), d.ID, `[{"input":"q1","expected_output":"a1"},{"input":"q2","expected_output":"a2"}]`)
 	if err != nil {
@@ -434,7 +434,7 @@ func TestEvalUsecase_UploadCases(t *testing.T) {
 }
 
 func TestEvalUsecase_UploadCasesInvalidJSON(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
+	uc := biz.NewEvalUsecase(biz.EvalStoresFrom(newMemEvalRepo2()), nil)
 	_, err := uc.UploadCases(context.Background(), "some-id", "not-json")
 	if err == nil {
 		t.Error("expected error for invalid JSON")
@@ -442,7 +442,7 @@ func TestEvalUsecase_UploadCasesInvalidJSON(t *testing.T) {
 }
 
 func TestEvalUsecase_CreateRun(t *testing.T) {
-	uc := biz.NewEvalUsecase(newMemEvalRepo2(), nil)
+	uc := biz.NewEvalUsecase(biz.EvalStoresFrom(newMemEvalRepo2()), nil)
 	r, err := uc.CreateRun(context.Background(), biz.EvalRun{DatasetID: "ds1", AgentID: "ag1"})
 	if err != nil {
 		t.Fatal(err)

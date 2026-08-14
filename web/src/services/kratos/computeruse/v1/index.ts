@@ -18,6 +18,8 @@ export type ComputerUseStep = {
   confirmedBy: string | undefined;
   danger: boolean | undefined;
   createdAt: string | undefined;
+  screenshotRef: string | undefined;
+  degraded: boolean | undefined;
 };
 
 export type KillComputerUseSessionRequest = {

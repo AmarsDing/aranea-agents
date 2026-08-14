@@ -40,7 +40,10 @@ type OrchestrationModeReport struct {
 	DQScore             float64            `json:"dq_score"`
 }
 
-// MemoryQualityReport is the memory health analysis result.
+// MemoryQualityReport is the memory health analysis DTO shape (tool JSON
+// uses the same field names). redundancy_score / inactive_count /
+// predictable_count are computed from L3 fact rows in
+// memory_butler.computeQualityMetrics — a 0 is a real score, not a stub.
 type MemoryQualityReport struct {
 	HitRate          float64 `json:"hit_rate"`
 	MissRate         float64 `json:"miss_rate"`

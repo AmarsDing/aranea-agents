@@ -21,11 +21,20 @@ const (
 type AdaptiveRouter struct {
 	hybrid   *HybridRetriever
 	rewriter *QueryRewriter
+	expander *GraphExpander
 	lg       loggateway.Logger
 }
 
 func NewAdaptiveRouter(hybrid *HybridRetriever, rewriter *QueryRewriter, lg loggateway.Logger) *AdaptiveRouter {
 	return &AdaptiveRouter{hybrid: hybrid, rewriter: rewriter, lg: lg}
+}
+
+// SetGraphExpander 接线 Lazy GraphRAG 一跳扩展（可选；nil = 不扩展）。
+func (a *AdaptiveRouter) SetGraphExpander(expander *GraphExpander) {
+	if a == nil {
+		return
+	}
+	a.expander = expander
 }
 
 func (a *AdaptiveRouter) Hybrid() *HybridRetriever {
@@ -40,19 +49,56 @@ func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery,
 	if a.hybrid == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "adaptive_router: hybrid retriever not configured")
 	}
+
+	complexity := a.classify(q, rewriteResult)
 	var mode HybridSearchMode
 	if modeOverride != "" && modeOverride != HybridAuto {
 		mode = modeOverride
 	} else {
-		complexity := a.classify(q, rewriteResult)
 		mode = a.selectMode(complexity)
 	}
 
-	if rewriteResult != nil && len(rewriteResult.Queries) > 1 {
-		return a.searchMultiQuery(ctx, q, rewriteResult, mode)
+	used := RewriteNone
+	if rewriteResult != nil {
+		used = rewriteResult.Used
+	}
+	if auto := pickAutoRewriteStrategy(complexity, used); auto != RewriteNone && a.rewriter != nil {
+		rr, err := a.rewriter.Rewrite(ctx, q.Query, auto)
+		if err != nil {
+			a.lg.Warn("复杂查询自动重写失败，使用原查询",
+				loggateway.StepID("knowledge.adaptive.auto_rewrite_fail"),
+				loggateway.Err(err))
+		} else if rr != nil {
+			rewriteResult = rr
+		}
 	}
 
-	return a.hybrid.Search(ctx, q, mode)
+	var chunks []biz.KnowledgeChunk
+	var err error
+	if rewriteResult != nil && len(rewriteResult.Queries) > 1 {
+		chunks, err = a.searchMultiQuery(ctx, q, rewriteResult, mode)
+	} else {
+		chunks, err = a.hybrid.Search(ctx, q, mode)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if a.expander != nil {
+		chunks = a.expander.Expand(ctx, q, chunks)
+	}
+	return chunks, nil
+}
+
+// pickAutoRewriteStrategy 仅在调用方未指定策略且查询判定为复杂时启用 MultiQuery。
+// 简单/中等查询不加 LLM 往返，避免把 Advanced RAG 做成默认税。
+func pickAutoRewriteStrategy(complexity QueryComplexity, already RewriteStrategy) RewriteStrategy {
+	if already != RewriteNone {
+		return RewriteNone
+	}
+	if complexity == QueryComplex {
+		return RewriteMultiQuery
+	}
+	return RewriteNone
 }
 
 func (a *AdaptiveRouter) classify(q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult) QueryComplexity {

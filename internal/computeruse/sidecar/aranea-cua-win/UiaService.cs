@@ -141,6 +141,10 @@ public sealed class UiaService : IDisposable
             {
                 throw new CuaException(JsonRpc.NotInteractable, $"元素不支持 Invoke 模式: {refText}");
             }
+            if (!el.IsEnabled)
+            {
+                throw new CuaException(JsonRpc.NotInteractable, $"元素已禁用: {refText}");
+            }
             invoke.Invoke();
             return new { ok = true, via = "invoke" };
         }
@@ -338,6 +342,10 @@ public sealed class UiaService : IDisposable
                 BringWindowToTop(hwnd);
                 SetForegroundWindow(hwnd);
             }
+        }
+        if (GetForegroundWindow() != hwnd)
+        {
+            throw new CuaException(JsonRpc.NotInteractable, "窗口未能置于前台");
         }
         return new { ok = true, hwnd = hwnd.ToInt64() };
     }

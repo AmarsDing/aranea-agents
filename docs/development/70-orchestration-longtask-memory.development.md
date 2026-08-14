@@ -385,6 +385,34 @@
 
 **状态**：✅ 已完成（Wave 4）
 
+### 4.9 P1-10：任务中断后补规划恢复
+
+**任务**：`RecoverAllInterrupted` 装回已持久化的 Phase 1/2 规划，避免长任务中断后续跑从零 LLM 分解。
+
+**新增文件**：
+- `internal/agent/task_orchestrator_plan_recovery.go`
+- `internal/agent/task_orchestrator_plan_recovery_test.go`
+- `internal/tools/spirit_plan_recovery_test.go`
+
+**改动文件**：
+- `internal/agent/task_orchestrator_impl.go`（Recover 后 restorePlansForHandle；RecoverAllInterrupted 扫孤儿 draft）
+- `internal/biz/task_plan.go`（`ListByStatuses` + `RecoverableTaskPlanStatuses`）
+- `internal/biz/task_orchestrator.go`（`RecoveredPlanConsumer`）
+- `internal/data/task_plan_repo.go`（`ListByStatuses`）
+- `internal/tools/spirit_tools.go`（`consumeRecoveredPlan`：命中则跳过 Plan/Allocate）
+- `cmd/admin/wire.go` / `wire_gen.go`（注入 `AllocationPlanRepository`）
+- `docs/development/70-orchestration-longtask-memory.design.md` §3.5.1
+- `docs/development/1-chat.design.md` B.10.16
+
+**验收**：
+- ✅ 有 draft TaskPlan 的中断 handle，Recover 后 Peek 得到原 plan + alloc
+- ✅ 无 draft / 无 task_plan_id：Recover 不假装 plan 已恢复
+- ✅ 无 handle 的孤儿 draft 经 RecoverAllInterrupted 装回
+- ✅ 分解中途空 SubTasks draft 明确 skip
+- ✅ 未中断路径仍走 `TaskPlanner.Plan`
+
+**状态**：✅ 已完成（2026-08-15）
+
 ---
 
 ## 五、Phase 2：自主 Graph 编排 + Cursor 级并行 + 崩溃恢复

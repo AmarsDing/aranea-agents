@@ -1,13 +1,21 @@
-// Container: approved — Computer Use 步骤流容器；经 useCuStepStream 订阅 WS 事件并编排急停 API，模板仅展示。
 <template>
   <div class="cu-stream">
     <div class="cu-stream__header">
       <span class="cu-stream__title">{{ t('computeruse.stream.title') }}</span>
       <span v-if="sessionId" class="cu-stream__session">{{ sessionId }}</span>
-      <button v-if="killState !== 'killed'" class="cu-stream__kill" :disabled="killState === 'killing'" @click="onKill">
+      <button
+        v-if="!readonly && killState !== 'killed'"
+        class="cu-stream__kill"
+        :disabled="killState === 'killing'"
+        @click="onKill"
+      >
         {{ killState === 'killing' ? t('computeruse.stream.killing') : t('computeruse.stream.kill') }}
       </button>
-      <span v-else class="cu-stream__killed">{{ t('computeruse.stream.killed') }}</span>
+      <span v-else-if="killState === 'killed'" class="cu-stream__killed">{{ t('computeruse.stream.killed') }}</span>
+    </div>
+
+    <div v-if="sidecarDown" class="cu-stream__sidecar">
+      {{ t('computeruse.stream.sidecarDown') }}
     </div>
 
     <div v-if="steps.length === 0" class="cu-stream__empty">
@@ -18,7 +26,8 @@
       <div class="cu-step__head">
         <span class="cu-step__index">#{{ step.stepIndex }}</span>
         <span class="cu-step__target">{{ step.target || step.action }}</span>
-        <span class="cu-step__badge" :class="`cu-step__badge--${step.path}`">{{ step.path }}</span>
+        <span class="cu-step__badge" :class="`cu-step__badge--${step.path}`">{{ pathLabel(step.path) }}</span>
+        <span v-if="step.degraded" class="cu-step__degraded">{{ t('computeruse.stream.degraded') }}</span>
         <span v-if="step.danger" class="cu-step__danger">{{ t('computeruse.stream.danger') }}</span>
         <span class="cu-step__duration">{{ step.durationMs }}ms</span>
       </div>
@@ -28,23 +37,31 @@
           {{ t('computeruse.stream.confirmedBy') }}: {{ step.confirmedBy }}
         </span>
       </div>
+      <div v-if="step.screenshotRef" class="cu-step__shot">{{ step.screenshotRef }}</div>
       <div v-if="step.error" class="cu-step__error">{{ step.error }}</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { toRef } from 'vue';
+import { onMounted, ref, toRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useCuStepStream } from './useCuStepStream';
+import { createComputerUseService } from '../../services/index';
 
-const props = defineProps<{
-  /** computeruse 会话 ID（事件 session_id 过滤 + 急停目标）。 */
-  sessionId: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** computeruse 会话 ID（事件 session_id 过滤 + 急停目标）。 */
+    sessionId: string;
+    /** 历史回放 / 监控页：隐藏急停。 */
+    readonly?: boolean;
+  }>(),
+  { readonly: false },
+);
 
 const { t } = useI18n();
 const { steps, killState, kill } = useCuStepStream(toRef(props, 'sessionId'));
+const sidecarDown = ref(false);
 
 const RESULT_LABEL_KEYS: Record<string, string> = {
   ok: 'computeruse.stream.result.ok',
@@ -53,10 +70,21 @@ const RESULT_LABEL_KEYS: Record<string, string> = {
   cancelled: 'computeruse.stream.result.cancelled',
 };
 
-// 未登记的 result 原样展示（raw 值非中文，无 i18n 负担）。
+const PATH_LABEL_KEYS: Record<string, string> = {
+  a11y: 'computeruse.stream.path.a11y',
+  vision: 'computeruse.stream.path.vision',
+  vlm_direct: 'computeruse.stream.path.vlm_direct',
+  grounder: 'computeruse.stream.path.grounder',
+};
+
 function resultLabel(result: string): string {
   const key = RESULT_LABEL_KEYS[result];
   return key ? t(key) : result;
+}
+
+function pathLabel(path: string): string {
+  const key = PATH_LABEL_KEYS[path];
+  return key ? t(key) : path;
 }
 
 async function onKill() {
@@ -66,7 +94,17 @@ async function onKill() {
     // 失败时 killState 已回退为 active 允许重试；错误提示由调用方/全局拦截处理。
   }
 }
+
+onMounted(async () => {
+  try {
+    const st = await createComputerUseService().GetComputerUseStatus({});
+    sidecarDown.value = st.sidecar === 'down';
+  } catch {
+    sidecarDown.value = true;
+  }
+});
 </script>
+
 
 <style lang="sass" scoped>
 .cu-stream
@@ -123,6 +161,12 @@ async function onKill() {
     color: var(--color-text-tertiary)
     text-align: center
 
+  &__sidecar
+    padding: 8px 12px
+    font-size: 12px
+    color: var(--color-warning)
+    border-bottom: 1px solid var(--glass-border)
+
 .cu-step
   padding: 8px 12px
   border-bottom: 1px solid var(--glass-border)
@@ -170,9 +214,19 @@ async function onKill() {
     color: var(--color-primary)
 
     &--vision,
-    &--vlm_direct
+    &--vlm_direct,
+    &--grounder
       background: color-mix(in srgb, var(--color-accent) 15%, transparent)
       color: var(--color-accent)
+
+  &__degraded
+    font-size: 10px
+    font-weight: 600
+    padding: 0 5px
+    border-radius: 4px
+    flex-shrink: 0
+    background: color-mix(in srgb, var(--color-warning) 20%, transparent)
+    color: var(--color-warning)
 
   &__danger
     font-size: 10px
@@ -201,4 +255,12 @@ async function onKill() {
     font-size: 11px
     color: var(--color-danger)
     word-break: break-all
+
+  &__shot
+    margin-top: 3px
+    font-size: 11px
+    color: var(--color-text-tertiary)
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
 </style>

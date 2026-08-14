@@ -211,7 +211,7 @@ func TestCreateDataset(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.CreateDataset(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -285,7 +285,7 @@ func TestGetDataset(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.GetDataset(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -375,7 +375,7 @@ func TestUpdateDataset(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.UpdateDataset(context.Background(), tt.id, tt.updateName, tt.updateDesc)
 			if tt.wantErr {
 				if err == nil {
@@ -454,7 +454,7 @@ func TestDeleteDataset(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			err := uc.DeleteDataset(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -603,7 +603,7 @@ func TestCreateRun(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.CreateRun(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {

@@ -36,6 +36,7 @@
             :dangling="danglingHere"
             :mentions="mentions"
             @open-doc-id="(id: string) => $emit('open-doc-id', id)"
+            @apply-autolink="$emit('apply-autolink')"
           />
           <PanelOutlinks
             v-else-if="p.key === 'outlinks'"
@@ -105,6 +106,7 @@ defineEmits<{
   'open-doc-id': [docId: string];
   'expand-graph': [docId: string];
   'jump-outline': [offset: number];
+  'apply-autolink': [];
 }>();
 
 const { t } = useI18n();

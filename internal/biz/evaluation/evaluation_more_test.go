@@ -272,7 +272,7 @@ func TestListDatasets(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			datasets, total, err := uc.ListDatasets(context.Background(), tt.workspace, tt.limit, tt.offset)
 			if tt.wantErr {
 				if err == nil {
@@ -355,7 +355,7 @@ func TestGetRun(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.GetRun(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -486,7 +486,7 @@ func TestListRuns(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			runs, total, err := uc.ListRuns(context.Background(), tt.datasetID, tt.agentID, tt.limit, tt.offset)
 			if tt.wantErr {
 				if err == nil {
@@ -544,7 +544,7 @@ func TestUpdateRun(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			err := uc.UpdateRun(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -611,7 +611,7 @@ func TestDeleteRun(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			err := uc.DeleteRun(context.Background(), tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -735,7 +735,7 @@ func TestListCaseResults(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			results, total, err := uc.ListCaseResults(context.Background(), tt.runID, tt.limit, tt.offset)
 			if tt.wantErr {
 				if err == nil {
@@ -793,7 +793,7 @@ func TestInsertCaseResult(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			err := uc.InsertCaseResult(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -909,7 +909,7 @@ func TestAnnotateCaseResult(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			got, err := uc.AnnotateCaseResult(context.Background(), tt.runID, tt.resultID, tt.patch)
 			if tt.wantErr {
 				if err == nil {
@@ -1003,7 +1003,7 @@ func TestListCases(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			cases, err := uc.ListCases(context.Background(), tt.datasetID)
 			if tt.wantErr {
 				if err == nil {
@@ -1129,7 +1129,7 @@ func TestGetAgentEvalTrend(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo, loggateway.NewNoop())
+			uc := NewUsecase(StoresFrom(repo), loggateway.NewNoop())
 			points, err := uc.GetAgentEvalTrend(context.Background(), tt.agentID, tt.datasetID, tt.limit)
 			if tt.wantErr {
 				if err == nil {

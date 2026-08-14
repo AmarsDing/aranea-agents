@@ -41,6 +41,7 @@ func (r *ComputerUseAuditRepo) RecordStep(ctx context.Context, entry bizcu.Audit
 		SetDurationMs(entry.DurationMs).
 		SetConfirmedBy(entry.ConfirmedBy).
 		SetDanger(entry.Danger).
+		SetScreenshotRef(entry.ScreenshotRef).
 		SetCreatedAt(entry.CreatedAt).
 		Exec(ctx)
 	return entErrToBizErr(err, "computeruse_audit")
@@ -58,20 +59,22 @@ func (r *ComputerUseAuditRepo) ListSteps(ctx context.Context, sessionID string) 
 	out := make([]bizcu.AuditEntry, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, bizcu.AuditEntry{
-			ID:          int64(row.ID),
-			SessionID:   row.SessionID,
-			AgentKey:    row.AgentKey,
-			Index:       row.StepIndex,
-			Target:      row.Target,
-			Path:        bizcu.GroundingPath(row.Path),
-			Action:      bizcu.ActionType(row.Action),
-			Params:      row.Params,
-			Result:      bizcu.StepResult(row.Result),
-			Error:       row.Error,
-			DurationMs:  row.DurationMs,
-			ConfirmedBy: row.ConfirmedBy,
-			Danger:      row.Danger,
-			CreatedAt:   row.CreatedAt,
+			ID:            int64(row.ID),
+			SessionID:     row.SessionID,
+			AgentKey:      row.AgentKey,
+			Index:         row.StepIndex,
+			Target:        row.Target,
+			Path:          bizcu.GroundingPath(row.Path),
+			Action:        bizcu.ActionType(row.Action),
+			Params:        row.Params,
+			Result:        bizcu.StepResult(row.Result),
+			Error:         row.Error,
+			DurationMs:    row.DurationMs,
+			ConfirmedBy:   row.ConfirmedBy,
+			Danger:        row.Danger,
+			Degraded:      bizcu.GroundingPath(row.Path) == bizcu.PathVLMDirect,
+			ScreenshotRef: row.ScreenshotRef,
+			CreatedAt:     row.CreatedAt,
 		})
 	}
 	return out, nil

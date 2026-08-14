@@ -52,6 +52,17 @@ type TaskOrchestratorPort interface {
 	RecoverAllInterrupted(ctx context.Context) error
 }
 
+// RecoveredPlanConsumer is optionally implemented by TaskOrchestratorPort
+// to hand back Phase 1 (TaskPlan) / Phase 2 (AllocationPlan) rows restored
+// after process interruption. Consume is once-per-session: the next
+// plan_and_execute in that spirit session reuses the persisted plan instead
+// of calling the planner LLM again.
+//
+// Stability: evolving
+type RecoveredPlanConsumer interface {
+	ConsumeRecoveredPlan(spiritSessionID, userMessage string) (plan *TaskPlan, alloc *AllocationPlan, ok bool)
+}
+
 // OrchestrationHandle represents a running orchestration.
 type OrchestrationHandle struct {
 	ID                  string

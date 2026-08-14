@@ -64,21 +64,22 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	// When an agent calls the message tool without explicit channel/target,
 	// the resolver looks up the session's channel metadata to infer the target.
 	if deps.Turn.RT.Extensions.OutboundRouter != nil && deps.Turn.Sessions != nil {
-		outbound.RegisterSessionResolver(func(sessionID string) (outbound.DeliveryTarget, bool) {
-			ctx := context.Background()
-			session, err := deps.Turn.Sessions.Get(ctx, sessionID)
+		sessions := deps.Turn.Sessions
+		outbound.RegisterSessionResolver(outbound.NewLoggingSessionResolver(deps.Infra.LG, func(sessionID string) (outbound.DeliveryTarget, error) {
+			session, err := sessions.Get(context.Background(), sessionID)
 			if err != nil {
-				return outbound.DeliveryTarget{}, false
+				return outbound.DeliveryTarget{}, err
 			}
 			meta, ok := biz.ParseChannelSessionMeta(session.MetadataJSON)
 			if !ok {
-				return outbound.DeliveryTarget{}, false
+				// Not a channel session (e.g. Web Chat). Resolver-chain miss, not an error.
+				return outbound.DeliveryTarget{}, nil
 			}
 			return outbound.DeliveryTarget{
 				Channel: meta.ChannelID,
 				Target:  meta.PeerID,
-			}, true
-		})
+			}, nil
+		}))
 	}
 	// Start SubAgentService lifecycle + Mode B agent-card projection.
 	if deps.Turn.RT.Extensions.SubAgentService != nil {

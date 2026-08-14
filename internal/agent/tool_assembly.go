@@ -18,6 +18,7 @@ import (
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/internal/tools/twinops"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
@@ -121,6 +122,10 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	if len(deps.CustomTools) > 0 {
 		cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
 	}
+	// TwinOps 自定义工具集（方案10 §三，17 个 twin_*/gns3_* 工具）：
+	// 按 effective keys 白名单逐个挂载；连接配置来自环境变量
+	// （TWIN_GATEWAY_URL / TWIN_API_KEY / GNS3_AGENT_URL）。
+	cfg.CustomTools = append(cfg.CustomTools, twinops.EnabledTools(eff, twinops.ConfigFromEnv())...)
 
 	if kanbanpkg.Enabled() {
 		if deps.KanbanBridge != nil {
