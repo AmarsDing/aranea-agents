@@ -1720,6 +1720,12 @@ export default {
     policy: {
       registryMaintained: 'registry maintained',
     },
+    argsQuality: {
+      firstPassShort: 'First-pass {rate}',
+      firstPassLabel: 'First-pass rate',
+      firstPassTip:
+        'Args first-pass rate = 1 − (repaired {repaired} + invalid {invalid}) / {invoke} calls (90d window). A low value means the model often emits malformed args, costing an extra repair round-trip.',
+    },
     editor: {
       checkRequired: 'Required fields',
       requiredKey: 'Tool key is required',

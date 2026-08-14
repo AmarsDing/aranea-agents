@@ -62,17 +62,6 @@ func (r *ingressPeerSessionRepo) DeleteByChannelID(_ context.Context, channelID 
 	return n, nil
 }
 
-func (r *ingressPeerSessionRepo) DeleteBySessionID(_ context.Context, sessionID string) (int, error) {
-	n := 0
-	for k, row := range r.byKey {
-		if row.SessionID == sessionID {
-			delete(r.byKey, k)
-			n++
-		}
-	}
-	return n, nil
-}
-
 type ingressSessionRepo struct {
 	sessions map[string]biz.Session
 	created  int

@@ -232,6 +232,10 @@ type ToolRunQuery struct {
 	HasError  *bool
 	Limit     int
 	Offset    int
+	// WorkspaceID scopes results to a tenant (P2-B). empty = system caller
+	// (see all); non-empty = tenant caller (only rows whose owning session or
+	// agent belongs to the workspace; unattributed system rows stay hidden).
+	WorkspaceID string
 }
 
 type ToolRunResult struct {
@@ -277,6 +281,9 @@ type ToolAuditQuery struct {
 	To        string
 	Limit     int
 	Offset    int
+	// WorkspaceID scopes results to a tenant (P2-B). Same semantics as
+	// ToolRunQuery.WorkspaceID.
+	WorkspaceID string
 }
 
 type ToolAuditResult struct {
@@ -520,6 +527,9 @@ func (u *ToolUsecase) Update(ctx context.Context, id string, in ToolUpsertInput)
 	if err := assertToolMutable(existing, in); err != nil {
 		return Tool{}, err
 	}
+	// A4: same mask round-trip guard as UpdateToolConfig — clients editing
+	// other fields may echo back the redacted config_json verbatim.
+	in.ConfigJSON = MergeMaskedToolConfig(existing.ConfigJSON, in.ConfigJSON, existing.ConfigSchemaJSON)
 	t, err := u.repo.UpdateTool(ctx, id, in)
 	if err != nil {
 		return Tool{}, err
@@ -576,6 +586,9 @@ func (u *ToolUsecase) UpdateToolConfig(ctx context.Context, id string, configJSO
 	if err != nil {
 		return Tool{}, err
 	}
+	// A4: clients receive redacted configs (RedactToolConfigJSON); a masked
+	// value means "keep the stored secret", not a literal overwrite.
+	configJSON = MergeMaskedToolConfig(existing.ConfigJSON, configJSON, existing.ConfigSchemaJSON)
 	if err := validateToolConfigAgainstSchema(existing.Source, existing.ConfigSchemaJSON, configJSON); err != nil {
 		return Tool{}, err
 	}

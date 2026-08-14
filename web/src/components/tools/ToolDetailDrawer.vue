@@ -117,10 +117,9 @@
                   {{ formatToolArgsFirstPassRate(tool) }}
                 </div>
                 <div class="tool-detail-metrics__label">
-                  一次合法率
+                  {{ $t('toolsPage.argsQuality.firstPassLabel') }}
                   <q-tooltip>
-                    参数一次合法率 = 1 − (修复成功 {{ tool.repaired_count }} + 不可修复 {{ tool.invalid_count }}) / 调用
-                    {{ tool.invoke_count }}（90 天窗口）
+                    {{ $t('toolsPage.argsQuality.firstPassTip', { repaired: tool.repaired_count, invalid: tool.invalid_count, invoke: tool.invoke_count }) }}
                   </q-tooltip>
                 </div>
               </div>
@@ -211,14 +210,20 @@
                   <q-list v-if="recentRuns.length" separator dense class="rounded-borders">
                     <q-item v-for="r in recentRuns.slice(0, 5)" :key="r.id" class="app-registry-list-item">
                       <q-item-section avatar>
-                        <q-icon :name="runStatusIcon(r.status)" :color="runStatusColor(r.status)" size="sm" />
+                        <q-icon
+                          :name="toolInvocationStatusIcon(r.status)"
+                          :color="toolInvocationStatusColor(r.status)"
+                          size="sm"
+                        />
                       </q-item-section>
                       <q-item-section>
                         <q-item-label>{{ r.agent_display_name || r.agent_id }}</q-item-label>
-                        <q-item-label caption>{{ r.started_at }} · {{ r.duration_ms }}ms</q-item-label>
+                        <q-item-label caption
+                          >{{ formatInvocationWhen(r.started_at) }} · {{ formatInvocationDuration(r.duration_ms) }}</q-item-label
+                        >
                       </q-item-section>
                       <q-item-section side>
-                        <q-badge :color="runStatusColor(r.status)" :label="r.status" />
+                        <q-badge :color="toolInvocationStatusColor(r.status)" :label="toolInvocationStatusLabel(r.status)" />
                       </q-item-section>
                     </q-item>
                   </q-list>
@@ -522,8 +527,16 @@ import {
   toolProfileLabel,
   bindingReasonLabel,
   overrideModeLabel,
+  overrideModeShortLabel,
   formatToolArgsFirstPassRate,
   toolArgsFirstPassRateColor,
+  toolInvocationStatusIcon,
+  toolInvocationStatusColor,
+  toolInvocationStatusLabel,
+  formatInvocationWhen,
+  formatInvocationDuration,
+  formatToolSuccessRate,
+  toolSuccessRateColor,
 } from './toolUi';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
@@ -556,7 +569,6 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'update:open': [value: boolean];
   'update:activeTab': [value: string];
   'update:testArgsJson': [value: string];
   'update:testTimeoutSec': [value: number];
@@ -579,15 +591,8 @@ const policyChip = TOOL_POLICY_CHIP_COPY;
 
 const { t } = useI18n();
 
-const modeOptions = computed(() => [
-  { label: t('toolsPage.overrideMode.shortInherit'), value: 'inherit' },
-  { label: t('toolsPage.overrideMode.shortAllow'), value: 'allow' },
-  { label: t('toolsPage.overrideMode.shortDeny'), value: 'deny' },
-]);
-
 function modeLabel(mode: string): string {
-  const m = modeOptions.value.find((o) => o.value === mode);
-  return m ? m.label : mode;
+  return overrideModeShortLabel(mode);
 }
 
 // 覆盖行的启停由 mode 决定（enabled 列运行时不参与判定），图标按 mode 语义推导。
@@ -612,34 +617,9 @@ function agentNameById(id: string): string {
   return found ? found.label : id;
 }
 
-function runStatusIcon(status: string): string {
-  if (status === 'success') return 'check_circle';
-  if (status === 'error') return 'error';
-  if (status === 'blocked') return 'block';
-  return 'help';
-}
+const successRate = computed(() => (props.tool ? formatToolSuccessRate(props.tool) : '—'));
 
-function runStatusColor(status: string): string {
-  if (status === 'success') return 'positive';
-  if (status === 'error') return 'negative';
-  if (status === 'blocked') return 'warning';
-  return 'grey';
-}
-
-const successRate = computed(() => {
-  const t = props.tool;
-  if (!t || t.success_count + t.failure_count === 0) return '—';
-  return ((t.success_count / (t.success_count + t.failure_count)) * 100).toFixed(1) + '%';
-});
-
-const successRateClass = computed(() => {
-  const t = props.tool;
-  if (!t || t.success_count + t.failure_count === 0) return '';
-  const rate = t.success_count / (t.success_count + t.failure_count);
-  if (rate >= 0.95) return 'text-positive';
-  if (rate >= 0.8) return 'text-warning';
-  return 'text-negative';
-});
+const successRateClass = computed(() => (props.tool ? `text-${toolSuccessRateColor(props.tool)}` : ''));
 
 const prettyParamsSchema = computed(() => prettyJSON(props.tool?.parameters_schema_json || '{}'));
 const prettyResultSchema = computed(() => prettyJSON(props.tool?.result_schema_json || '{}'));
@@ -648,7 +628,7 @@ const hasResultSchema = computed(() => {
   return raw && raw.trim() !== '{}';
 });
 
-const agentBindingColumns = buildAgentBindingColumns();
+const agentBindingColumns = computed(() => buildAgentBindingColumns());
 
 /** 高价值行优先：可用或有显式覆盖的 Agent 进主表，其余按口径折叠分组。 */
 const priorityBindingRows = computed(() => {

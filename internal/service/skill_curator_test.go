@@ -123,16 +123,16 @@ func (s *stubUnifiedEvolutionStore) GetLatestByTarget(context.Context, string, s
 func (s *stubUnifiedEvolutionStore) GetLatestByTargetAndAction(context.Context, string, string, string) (*biz.UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (s *stubUnifiedEvolutionStore) ListByTarget(context.Context, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *stubUnifiedEvolutionStore) ListByTarget(context.Context, string, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (s *stubUnifiedEvolutionStore) CountByTarget(context.Context, string, string, string) (int, error) {
+func (s *stubUnifiedEvolutionStore) CountByTarget(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
-func (s *stubUnifiedEvolutionStore) ListByTargetAndAction(context.Context, string, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *stubUnifiedEvolutionStore) ListByTargetAndAction(context.Context, string, string, string, string, string, int, int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (s *stubUnifiedEvolutionStore) CountByTargetAndAction(context.Context, string, string, string, string) (int, error) {
+func (s *stubUnifiedEvolutionStore) CountByTargetAndAction(context.Context, string, string, string, string, string) (int, error) {
 	return 0, nil
 }
 func (s *stubUnifiedEvolutionStore) Create(context.Context, biz.UnifiedEvolutionSuggestion) error {

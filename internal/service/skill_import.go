@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/pkg/apierror"
+	authpkg "aranea-agents/pkg/auth"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -19,12 +20,28 @@ func (s *SkillService) importEngine() (*importer.Engine, error) {
 	return s.import_, nil
 }
 
+// assertImportAdmin 与 multipart 上传端点（skill_import_http.go）保持一致的
+// admin 门控：job 查询/应用/AI 炼化均要求管理员权限。
+func (s *SkillService) assertImportAdmin(ctx context.Context) error {
+	a, ok := authpkg.FromContext(ctx)
+	if !ok || a == nil {
+		return authpkg.ErrUnauthorized
+	}
+	if !a.HasAdminAccess() {
+		return authpkg.ErrForbidden
+	}
+	return nil
+}
+
 // ImportSkillZip is not bound to HTTP (multipart upload uses RegisterSkillImportMultipart).
 func (s *SkillService) ImportSkillZip(context.Context, *emptypb.Empty) (*v1.ImportSkillZipResponse, error) {
 	return nil, apierror.NotFound("SKILL_IMPORT", "use POST /v1/skills/import with multipart file field")
 }
 
 func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillImportJobRequest) (*v1.SkillImportJob, error) {
+	if err := s.assertImportAdmin(ctx); err != nil {
+		return nil, err
+	}
 	eng, err := s.importEngine()
 	if err != nil {
 		return nil, err
@@ -40,6 +57,9 @@ func (s *SkillService) GetSkillImportJob(ctx context.Context, req *v1.GetSkillIm
 }
 
 func (s *SkillService) ApplySkillImport(ctx context.Context, req *v1.ApplySkillImportRequest) (*v1.SkillImportApplyResult, error) {
+	if err := s.assertImportAdmin(ctx); err != nil {
+		return nil, err
+	}
 	eng, err := s.importEngine()
 	if err != nil {
 		return nil, err
@@ -55,6 +75,9 @@ func (s *SkillService) ApplySkillImport(ctx context.Context, req *v1.ApplySkillI
 }
 
 func (s *SkillService) RefineSkillImportConflict(ctx context.Context, req *v1.RefineSkillImportConflictRequest) (*v1.SkillRefineResult, error) {
+	if err := s.assertImportAdmin(ctx); err != nil {
+		return nil, err
+	}
 	eng, err := s.importEngine()
 	if err != nil {
 		return nil, err

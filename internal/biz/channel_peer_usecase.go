@@ -68,14 +68,6 @@ func (u *ChannelPeerUsecase) TryClaimInbound(ctx context.Context, channelID, pla
 	return TryClaimInbound(ctx, u.inboundReceipts, channelID, platform, messageKey, peerID, text)
 }
 
-// DeletePeerBindingsBySessionID removes peer bindings pointing at a deleted session.
-func (u *ChannelPeerUsecase) DeletePeerBindingsBySessionID(ctx context.Context, sessionID string) (int, error) {
-	if u == nil || u.peers == nil {
-		return 0, nil
-	}
-	return u.peers.DeleteBySessionID(ctx, sessionID)
-}
-
 // ResolvePeerSession returns the existing peer session or creates a new one.
 // This is a convenience method for the common get-or-create pattern in ingress.
 func (u *ChannelPeerUsecase) ResolvePeerSession(ctx context.Context, channelID, peerKey string, sessionID string) (ChannelPeerSession, error) {

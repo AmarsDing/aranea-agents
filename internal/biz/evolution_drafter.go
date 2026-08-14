@@ -86,7 +86,7 @@ func (d *EvolutionDrafter) DraftPending(ctx context.Context, agentID string) err
 	if d == nil || d.llm == nil || d.store == nil || d.agents == nil {
 		return nil
 	}
-	rows, err := d.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), "pending", draftListLimit, 0)
+	rows, err := d.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), "", "pending", draftListLimit, 0)
 	if err != nil {
 		d.lg.Warn("evolution drafter: list pending failed", loggateway.StepID("evolution.draft"), loggateway.Err(err))
 		return nil

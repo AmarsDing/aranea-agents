@@ -56,7 +56,7 @@ func (r *draftStoreRow) syncMeta() {
 	r.sug.Metadata = raw
 }
 
-func (s *draftStore) ListByTargetAndAction(_ context.Context, targetType, targetID, actionType, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *draftStore) ListByTargetAndAction(_ context.Context, targetType, targetID, actionType, _ string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	var out []biz.UnifiedEvolutionSuggestion
 	for _, r := range s.rows {
 		if r.sug.Status == status {

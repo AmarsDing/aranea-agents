@@ -8,6 +8,7 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	deliverabletools "aranea-agents/internal/tools/deliverable"
+	projectstatetools "aranea-agents/internal/tools/projectstate"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -49,6 +50,9 @@ func BuildTeamMemberAgents(
 		// pass structured output via graph state. MDC: a declared
 		// deliverable_contract is installed on set_deliverable.
 		memberDeps.CustomTools = append(memberDeps.CustomTools, deliverableToolsForDef(def)...)
+		// P2-4: enable_project_state 时给每个成员挂 update_project_state
+		// 工具（滚动维护结构化项目状态，读-改-写写回 graph state）。
+		memberDeps.CustomTools = append(memberDeps.CustomTools, projectStateToolsForDef(def)...)
 		// Per-member custom tools (cli_admin_* for __system_admin__, etc.) so
 		// agent-specific dep-backed tools are available inside teams just as
 		// they are on the direct chat path.
@@ -87,6 +91,15 @@ func deliverableToolsForDef(def Definition) []trpctool.Tool {
 		return nil
 	}
 	return deliverabletools.ToolsWithContract(def.DeliverableContract)
+}
+
+// projectStateToolsForDef resolves the P2-4 project-state tool set for member
+// agents: nil unless EnableProjectState=true.
+func projectStateToolsForDef(def Definition) []trpctool.Tool {
+	if !def.EnableProjectState {
+		return nil
+	}
+	return []trpctool.Tool{projectstatetools.NewUpdateProjectStateTool()}
 }
 
 // parallelDeliverableAdvisory returns the advisory warning for running a

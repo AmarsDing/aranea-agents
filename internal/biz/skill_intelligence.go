@@ -692,7 +692,7 @@ func (uc *SkillIntelligenceUsecase) ValidatePendingSuggestionsForSkill(ctx conte
 	}
 	// The orchestrator guarantees at most one pending suggestion per target,
 	// but list a small page defensively.
-	pending, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), skillID, "pending", 10, 0)
+	pending, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), skillID, "", "pending", 10, 0)
 	if err != nil {
 		return apierror.Wrap(err, apierror.CodeInternal, "SKILL_INTELLIGENCE")
 	}
@@ -851,7 +851,7 @@ func (uc *SkillIntelligenceUsecase) ListEvolutionSuggestions(ctx context.Context
 	if uc.unifiedStore == nil {
 		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	unifiedList, err := uc.unifiedStore.ListByTarget(ctx, "skill", skillID, string(status), limit, offset)
+	unifiedList, err := uc.unifiedStore.ListByTarget(ctx, "skill", skillID, evolutionCallerWorkspace(ctx), string(status), limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -867,7 +867,7 @@ func (uc *SkillIntelligenceUsecase) CountEvolutionSuggestions(ctx context.Contex
 	if uc.unifiedStore == nil {
 		return 0, apierror.Unavailable("SKILL_INTELLIGENCE", "suggestion reader not available")
 	}
-	return uc.unifiedStore.CountByTarget(ctx, "skill", skillID, string(status))
+	return uc.unifiedStore.CountByTarget(ctx, "skill", skillID, evolutionCallerWorkspace(ctx), string(status))
 }
 
 // ApproveSuggestion approves a pending evolution suggestion. The transition is

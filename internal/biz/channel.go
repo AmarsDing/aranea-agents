@@ -640,6 +640,11 @@ func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, re
 	if json.Unmarshal([]byte(defaultJSON(row.MetadataJSON)), &metadata) != nil {
 		metadata = map[string]any{}
 	}
+	if metadata == nil {
+		// metadata_json held the JSON literal "null": Unmarshal succeeds but
+		// leaves the map nil — writing to it would panic (CH-R4).
+		metadata = map[string]any{}
+	}
 	if result.OK {
 		metadata["last_error_code"] = ""
 		metadata["last_error_message"] = ""

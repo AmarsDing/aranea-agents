@@ -292,6 +292,11 @@ var ddlMigrations = []ddlMigration{
 	// 20261211 plugin_runs_workspace（N-B5）：plugin_runs 加 workspace_id 列 +
 	// 普通索引，支撑运行审计的租户可见性过滤（空串共享行全员可见，存量行为不变）。
 	{Version: 20261211, Name: "plugin_runs_workspace", SQL: "sql/migrations/20261211_plugin_runs_workspace.sql"},
+	// 20261212 unified_evolution_workspace（进化建议模块 P0-1a，IDOR 修复）：
+	// unified_evolution_suggestions 加 workspace_id 列 + 索引 + 从宿主表
+	// （skill/agents）backfill + RLS 策略（同 20261011 模板，ENABLE only）。
+	// 含 RLS 语句，Postgres-only，经 Func 守卫跳过其他方言。
+	{Version: 20261212, Name: "unified_evolution_workspace", Func: ddlUnifiedEvolutionWorkspace},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1193,6 +1198,18 @@ func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Clien
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261011_tenant_rls_phase1.sql", d, lg)
+}
+
+// ddlUnifiedEvolutionWorkspace adds workspace_id to unified_evolution_suggestions
+// (进化建议模块 P0-1a, IDOR 修复): column + index + backfill from host tables
+// (skill/agents) + RLS policy. Skipped on non-Postgres dialects.
+func ddlUnifiedEvolutionWorkspace(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("unified_evolution_workspace skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.unified_evolution_workspace"))
+		return nil
+	}
+	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261212_unified_evolution_workspace.sql", d, lg)
 }
 
 // ddlUsageEventsTraceIDIndex adds an expression index on

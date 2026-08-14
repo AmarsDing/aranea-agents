@@ -30,6 +30,9 @@ type ExecutionStatusReader interface {
 //  1. Queued jobs that exceeded the queue timeout → Timeout (prevents permanent stuck queue).
 //  2. AsyncQueued jobs whose watch goroutine was lost (process restart) → recovered by
 //     checking the actual async target (graph/cron) status and transitioning accordingly.
+//  3. Startup reconcile (once, before the first sweep): Accepted/Running jobs whose
+//     updated_at predates this process start belong to a dead process — their in-memory
+//     execution goroutine is gone and no watcher will ever finish them → Failed.
 //
 // This sweeper is the safety net for P0 issues #8 (Queued timeout) and #9 (AsyncQueued recovery).
 // It can be disabled via CHANNEL_TURN_JOB_SWEEPER_DISABLED env var.
@@ -40,6 +43,14 @@ type ChannelTurnJobSweeper struct {
 	graphExec     ExecutionStatusReader
 	cron          biz.CronTriggerGateway
 	lg            loggateway.Logger
+	// processStart is captured at construction (wire build, before the ready gate
+	// opens traffic). The startup reconcile only touches jobs with
+	// updated_at < processStart, so jobs created by the current process are never
+	// matched — this makes the reconcile safe even though Start runs after the
+	// ready gate.
+	// TODO(multi-instance): with more than one instance this must become
+	// claim/lease-based; a restarting instance would otherwise fail peers' jobs.
+	processStart time.Time
 }
 
 // NewChannelTurnJobSweeper creates a sweeper for stuck ChannelTurnJob recovery.
@@ -66,6 +77,7 @@ func NewChannelTurnJobSweeper(
 		graphExec:     graphExec,
 		cron:          cron,
 		lg:            lg,
+		processStart:  time.Now().UTC(),
 	}
 }
 
@@ -75,6 +87,7 @@ func (w *ChannelTurnJobSweeper) Start(ctx context.Context) {
 	}
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
+	w.sweepStartupInterrupted(ctx)
 	w.runOnce(ctx)
 	for {
 		select {
@@ -82,6 +95,50 @@ func (w *ChannelTurnJobSweeper) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			w.runOnce(ctx)
+		}
+	}
+}
+
+// sweepStartupInterrupted fails Accepted/Running jobs whose updated_at predates
+// this process start (startup reconcile 兜底). Their execution goroutine died
+// with the previous process, so without this pass they would stay non-terminal
+// forever — the periodic sweeper only scans Queued/AsyncQueued.
+//
+// The processStart cutoff makes this safe to run after the ready gate: jobs
+// created by the current process always have updated_at >= processStart
+// (the sweeper is constructed during wire build, before traffic is served).
+// Runs once per process; errors only degrade this pass, never block startup.
+func (w *ChannelTurnJobSweeper) sweepStartupInterrupted(ctx context.Context) {
+	cutoff := w.processStart.Format(time.RFC3339Nano)
+	for _, status := range []string{biz.ChannelTurnJobStatusAccepted, biz.ChannelTurnJobStatusRunning} {
+		jobs, err := w.jobs.ListStaleByStatus(ctx, status, cutoff, turnJobSweeperBatchLimit)
+		if err != nil {
+			w.lg.Warn("TurnJob sweeper: 启动对账扫描失败",
+				loggateway.StepID("channel.turn_job_sweeper.startup_scan_failed"),
+				loggateway.Str("status", status),
+				loggateway.Err(err),
+			)
+			continue
+		}
+		var failed int
+		for _, job := range jobs {
+			errMsg := "turn execution interrupted by process restart (startup reconcile)"
+			if err := w.jobs.UpdateStatus(ctx, job.ID, biz.ChannelTurnJobStatusFailed, errMsg, "", ""); err != nil {
+				w.lg.Warn("TurnJob sweeper: 启动对账转换失败",
+					loggateway.StepID("channel.turn_job_sweeper.startup_transition_failed"),
+					loggateway.Str("job_id", job.ID),
+					loggateway.Err(err),
+				)
+				continue
+			}
+			failed++
+		}
+		if failed > 0 {
+			w.lg.Info("TurnJob sweeper: 启动对账完成",
+				loggateway.StepID("channel.turn_job_sweeper.startup_done"),
+				loggateway.Str("status", status),
+				loggateway.Int("failed", failed),
+			)
 		}
 	}
 }

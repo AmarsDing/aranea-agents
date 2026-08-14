@@ -1,16 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
 import { useToolsStore } from './index';
+import { useAgentsCatalogStore } from '../agents/catalog';
 import {
   fetchToolAgentBindingSummary,
   type ToolAgentBindingSummary,
 } from '../../features/tools/toolAgentBindingSummary';
 import { toolToUpsertInput } from '../../features/tools/toolFormPatch';
-import { parseKratosApiError } from '../../utils/kratosError';
+import { i18n } from '../../i18n';
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
-import { listAgents } from '../../features/agents/api';
-import type { Agent } from '../../features/agents/types';
 
 export type ToolOverrideForm = {
   agent_id: string;
@@ -20,8 +18,8 @@ export type ToolOverrideForm = {
 };
 
 export const useToolDetailStore = defineStore('toolDetail', () => {
-  const $q = useQuasar();
   const toolsStore = useToolsStore();
+  const agentsCatalog = useAgentsCatalogStore();
 
   const open = ref(false);
   const tool = ref<Tool | null>(null);
@@ -165,22 +163,18 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     }
   }
 
-  async function runToolTest() {
+  /** 执行在线测试。失败抛错（UI 反馈由 Page 层编排，红线 #4）。 */
+  async function runToolTest(): Promise<ToolTestResult> {
     const t = tool.value;
     if (!t?.id) {
-      $q.notify({ type: 'warning', message: '工具缺少 ID，无法执行测试' });
-      return;
+      throw new Error(i18n.global.t('toolsPage.detail.testMissingId'));
     }
     testRunning.value = true;
     testResult.value = null;
     try {
       testResult.value = await toolsStore.runToolTest(t.id, testArgsJson.value, testTimeoutSec.value);
-      if (testResult.value.status === 'success') {
-        $q.notify({ type: 'positive', message: '工具测试成功' });
-      }
       await loadRecentRuns();
-    } catch (e) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(e).message || '工具测试失败' });
+      return testResult.value;
     } finally {
       testRunning.value = false;
     }
@@ -211,7 +205,7 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     if (agentOptions.value.length > 0) return;
     agentsLoading.value = true;
     try {
-      const agents: Agent[] = await listAgents({ limit: 200 });
+      const agents = await agentsCatalog.fetchAgents({ limit: 200 });
       agentOptions.value = agents.map((a) => ({
         label: a.display_name || a.agent_key || a.id,
         value: a.id,
@@ -223,14 +217,14 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     }
   }
 
+  /** 保存 Agent 覆盖。JSON 非法或 API 失败时抛出用户可读 Error（UI 反馈由 Page 层编排）。 */
   async function saveOverride() {
     const key = toolKey();
     if (!key) return;
     try {
       JSON.parse(overrideForm.value.config_override_json.trim() || '{}');
     } catch {
-      $q.notify({ type: 'negative', message: '配置覆盖 JSON 格式无效，请修正后再保存' });
-      return;
+      throw new Error(i18n.global.t('toolsPage.override.invalidJson'));
     }
     overrideSaving.value = true;
     try {
@@ -246,81 +240,59 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
       overrideEditorOpen.value = false;
       await loadOverrides();
       await loadAgentBindingSummary();
-    } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存覆盖失败' });
     } finally {
       overrideSaving.value = false;
     }
   }
 
-  function confirmRemoveOverride(o: ToolAgentOverride) {
+  /** 删除 Agent 覆盖（确认弹窗在 Page 层）。失败抛错。 */
+  async function removeOverride(o: ToolAgentOverride) {
     const key = toolKey();
     if (!key) return;
-    $q.dialog({
-      title: '删除覆盖',
-      message: `确认删除 Agent ${o.agent_id} 的覆盖？`,
-      cancel: true,
-      persistent: true,
-    }).onOk(async () => {
-      try {
-        await toolsStore.removeOverride(key, o.agent_id);
-        await loadOverrides();
-        await loadAgentBindingSummary();
-      } catch (err) {
-        $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '删除覆盖失败' });
-      }
-    });
+    await toolsStore.removeOverride(key, o.agent_id);
+    await loadOverrides();
+    await loadAgentBindingSummary();
   }
 
+  /** 保存配置 Schema。JSON 非法或 API 失败时抛出用户可读 Error。 */
   async function saveConfigSchema(schemaJson: string) {
     const t = tool.value;
     if (!t?.id) return;
     try {
       JSON.parse(schemaJson || '{}');
     } catch (err) {
-      $q.notify({
-        type: 'negative',
-        message: err instanceof Error ? `Schema JSON 无效：${err.message}` : 'Schema JSON 无效',
-      });
-      return;
+      const detail = err instanceof Error ? err.message : '';
+      throw new Error(i18n.global.t('toolsPage.detail.invalidSchemaJson', { detail }));
     }
     configSaving.value = true;
     try {
       const updated = await toolsStore.editTool(t.id, toolToUpsertInput(t, { config_schema_json: schemaJson }));
       tool.value = updated;
-      $q.notify({ type: 'positive', message: '配置 Schema 已保存' });
-    } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存 Schema 失败' });
     } finally {
       configSaving.value = false;
     }
   }
 
+  /** 保存当前配置。JSON 非法或 API 失败时抛出用户可读 Error。 */
   async function saveConfig() {
     const t = tool.value;
     if (!t?.id) return;
     try {
       JSON.parse(configJson.value || '{}');
     } catch (err) {
-      $q.notify({
-        type: 'negative',
-        message: err instanceof Error ? `配置 JSON 无效：${err.message}` : '配置 JSON 无效',
-      });
-      return;
+      const detail = err instanceof Error ? err.message : '';
+      throw new Error(i18n.global.t('toolsPage.detail.invalidConfigJson', { detail }));
     }
     configSaving.value = true;
     try {
       const updated = await toolsStore.editToolConfig(t.id, configJson.value);
       tool.value = updated;
       configJson.value = updated.config_json || configJson.value;
-      $q.notify({ type: 'positive', message: '配置已保存' });
       // 配置影响生效状态（如 web_research API Key → missing_api_key），
       // Agent Tab 已加载过则静默刷新，避免展示过期状态。
       if (agentsTabLoaded.value) {
         await loadAgentBindingSummary();
       }
-    } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存配置失败' });
     } finally {
       configSaving.value = false;
     }
@@ -363,6 +335,6 @@ export const useToolDetailStore = defineStore('toolDetail', () => {
     saveConfigSchema,
     openOverrideEditor,
     saveOverride,
-    confirmRemoveOverride,
+    removeOverride,
   };
 });

@@ -1722,6 +1722,12 @@ export default {
     policy: {
       registryMaintained: 'registry 维护',
     },
+    argsQuality: {
+      firstPassShort: '一次合法 {rate}',
+      firstPassLabel: '一次合法率',
+      firstPassTip:
+        '参数一次合法率 = 1 − (修复成功 {repaired} + 不可修复 {invalid}) / 调用 {invoke}（90 天窗口）。偏低说明模型常写错参数，多耗一轮修复交互。',
+    },
     editor: {
       checkRequired: '必填信息',
       requiredKey: '请填写工具标识（Key）',

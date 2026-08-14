@@ -142,14 +142,14 @@ func (r *siSugReader) GetByID(_ context.Context, id string) (*UnifiedEvolutionSu
 	}
 	return r.sug, nil
 }
-func (r *siSugReader) ListByTarget(_ context.Context, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (r *siSugReader) ListByTarget(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (r *siSugReader) CountByTarget(_ context.Context, _, _, _ string) (int, error) { return 0, nil }
-func (r *siSugReader) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (r *siSugReader) CountByTarget(_ context.Context, _, _, _, _ string) (int, error) { return 0, nil }
+func (r *siSugReader) ListByTargetAndAction(_ context.Context, _, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (r *siSugReader) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+func (r *siSugReader) CountByTargetAndAction(_ context.Context, _, _, _, _, _ string) (int, error) {
 	return 0, nil
 }
 

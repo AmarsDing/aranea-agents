@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
-import { useQuasar } from 'quasar';
 import {
   editorTabForJsonKey,
   firstInvalidToolJsonKey,
@@ -11,7 +10,6 @@ import {
 import { TOOL_CREATE_TEMPLATES } from '../../features/tools/toolEditorCopy';
 import type { Tool, ToolUpsertInput } from '../../features/tools/types';
 import { i18n } from '../../i18n';
-import { parseKratosApiError } from '../../utils/kratosError';
 import { useToolsStore } from './index';
 
 export function blankToolForm(): ToolUpsertInput {
@@ -37,7 +35,6 @@ export function blankToolForm(): ToolUpsertInput {
 }
 
 export const useToolEditorStore = defineStore('toolEditor', () => {
-  const $q = useQuasar();
   const toolsStore = useToolsStore();
 
   const open = ref(false);
@@ -50,21 +47,10 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
   const riskOptions = riskLevelOptions;
   const selectedTemplate = ref('blank');
 
-  const onSavedCallback = ref<(() => void | Promise<void>) | null>(null);
-  const onCreatedCallback = ref<((tool: Tool) => void | Promise<void>) | null>(null);
-
   const dirty = computed(() => {
     const keys = Object.keys(originalForm.value) as (keyof ToolUpsertInput)[];
     return keys.some((k) => form[k] !== originalForm.value[k]);
   });
-
-  function setCallbacks(opts: {
-    onSaved?: () => void | Promise<void>;
-    onCreated?: (tool: Tool) => void | Promise<void>;
-  }) {
-    if (opts.onSaved) onSavedCallback.value = opts.onSaved;
-    if (opts.onCreated) onCreatedCallback.value = opts.onCreated;
-  }
 
   function assignForm(input: ToolUpsertInput) {
     Object.assign(form, input);
@@ -131,9 +117,13 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
     return Object.keys(jsonErrors).length === 0;
   }
 
-  async function save() {
-    // 客户端必填校验：与后端 validateToolUpsert 口径一致，避免整表提交后才收到原始英文错误。
+  /**
+   * 保存（纯数据流，不含 UI 反馈——notify/dialog 由 Page 层编排，红线 #4）。
+   * 校验失败或 API 失败时抛出带用户可读信息的 Error；成功返回 { created }（编辑时 created 为 null）。
+   */
+  async function save(): Promise<{ created: Tool | null }> {
     const t = i18n.global.t;
+    // 客户端必填校验：与后端 validateToolUpsert 口径一致，避免整表提交后才收到原始英文错误。
     const missingMsg = !form.key.trim()
       ? t('toolsPage.editor.requiredKey')
       : !form.display_name.trim()
@@ -141,40 +131,26 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
         : '';
     if (missingMsg) {
       activeTab.value = 'basic';
-      $q.notify({ type: 'negative', message: missingMsg });
-      return;
+      throw new Error(missingMsg);
     }
     if (!validateJSONFields()) {
       const badKey = firstInvalidToolJsonKey(jsonErrors);
       if (badKey) {
         activeTab.value = editorTabForJsonKey(badKey);
-        $q.notify({ type: 'negative', message: `JSON 格式错误（${badKey}）` });
+        throw new Error(t('toolsPage.editor.invalidJsonField', { field: badKey }));
       }
-      return;
+      throw new Error(t('toolsPage.editor.invalidJson'));
     }
     saving.value = true;
     try {
       if (editingId.value) {
         await toolsStore.editTool(editingId.value, { ...form });
         open.value = false;
-        $q.notify({ type: 'positive', message: 'Tool 已保存' });
-        if (onSavedCallback.value) await onSavedCallback.value();
-      } else {
-        const created = await toolsStore.addTool({ ...form });
-        open.value = false;
-        if (onSavedCallback.value) await onSavedCallback.value();
-        $q.dialog({
-          title: 'Tool 已创建',
-          message: `「${created.display_name || created.key}」已注册。建议打开详情 → 在线测试，确认 Schema 与配置可用。`,
-          cancel: { label: '稍后', flat: true, noCaps: true },
-          ok: { label: '打开详情', noCaps: true, unelevated: true, class: 'app-registry-primary-btn' },
-          persistent: false,
-        }).onOk(async () => {
-          if (onCreatedCallback.value) await onCreatedCallback.value(created);
-        });
+        return { created: null };
       }
-    } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '保存 Tool 失败' });
+      const created = await toolsStore.addTool({ ...form });
+      open.value = false;
+      return { created };
     } finally {
       saving.value = false;
     }
@@ -187,10 +163,10 @@ export const useToolEditorStore = defineStore('toolEditor', () => {
     activeTab,
     jsonErrors,
     form,
+    originalForm,
     dirty,
     riskOptions,
     selectedTemplate,
-    setCallbacks,
     applyTemplate,
     openCreate,
     openEdit,

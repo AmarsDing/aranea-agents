@@ -409,3 +409,82 @@ func TestSweeper_GraphExecNil(t *testing.T) {
 		t.Fatalf("expected 0 updates (graphExec nil, job not max age), got %d", len(repo.updates))
 	}
 }
+
+// TestSweeper_StartupReconcile_InterruptedJobs verifies that Accepted/Running
+// jobs predating the process start are failed by the startup reconcile.
+func TestSweeper_StartupReconcile_InterruptedJobs(t *testing.T) {
+	accepted := staleJob("job-acc", biz.ChannelTurnJobStatusAccepted, "", "", 10*time.Minute)
+	running := staleJob("job-run", biz.ChannelTurnJobStatusRunning, "", "", 10*time.Minute)
+	repo := newSweeperTestRepo(accepted, running)
+	repo.listStaleFn = func(status, _ string) []biz.ChannelTurnJob {
+		switch status {
+		case biz.ChannelTurnJobStatusAccepted:
+			return []biz.ChannelTurnJob{accepted}
+		case biz.ChannelTurnJobStatusRunning:
+			return []biz.ChannelTurnJob{running}
+		default:
+			return nil
+		}
+	}
+
+	w := newSweeper(repo, nil, nil)
+	w.sweepStartupInterrupted(context.Background())
+
+	if len(repo.updates) != 2 {
+		t.Fatalf("expected 2 updates, got %d", len(repo.updates))
+	}
+	for _, upd := range repo.updates {
+		if upd.status != biz.ChannelTurnJobStatusFailed {
+			t.Errorf("expected job %s → failed, got %s", upd.id, upd.status)
+		}
+		if upd.errMsg == "" {
+			t.Errorf("expected non-empty error message for job %s", upd.id)
+		}
+	}
+}
+
+// TestSweeper_StartupReconcile_CutoffIsProcessStart verifies the reconcile
+// passes the construction-time processStart as the staleness cutoff, so jobs
+// created by the current process (updated_at >= processStart) are never matched.
+func TestSweeper_StartupReconcile_CutoffIsProcessStart(t *testing.T) {
+	repo := newSweeperTestRepo()
+	var cutoffs []string
+	repo.listStaleFn = func(_, beforeUpdatedAt string) []biz.ChannelTurnJob {
+		cutoffs = append(cutoffs, beforeUpdatedAt)
+		return nil
+	}
+
+	before := time.Now().UTC()
+	w := newSweeper(repo, nil, nil)
+	after := time.Now().UTC()
+	w.sweepStartupInterrupted(context.Background())
+
+	if len(cutoffs) != 2 { // accepted + running scans
+		t.Fatalf("expected 2 scans, got %d", len(cutoffs))
+	}
+	for _, raw := range cutoffs {
+		cutoff, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			t.Fatalf("cutoff %q not parseable: %v", raw, err)
+		}
+		if cutoff.Before(before) || cutoff.After(after) {
+			t.Errorf("cutoff %v outside processStart window [%v, %v]", cutoff, before, after)
+		}
+	}
+}
+
+// TestSweeper_StartupReconcile_NoStaleJobs verifies that with no interrupted
+// jobs the reconcile performs no writes.
+func TestSweeper_StartupReconcile_NoStaleJobs(t *testing.T) {
+	repo := newSweeperTestRepo()
+	repo.listStaleFn = func(_, _ string) []biz.ChannelTurnJob {
+		return nil
+	}
+
+	w := newSweeper(repo, nil, nil)
+	w.sweepStartupInterrupted(context.Background())
+
+	if len(repo.updates) != 0 {
+		t.Fatalf("expected 0 updates, got %d", len(repo.updates))
+	}
+}

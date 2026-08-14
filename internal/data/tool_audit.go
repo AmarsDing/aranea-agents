@@ -45,7 +45,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 	if err != nil {
 		r.data.lg.Error("tool invocation audit write failed", loggateway.StepID("data.tool.audit_write"), loggateway.Err(err))
 	}
-	return err
+	return entErrToBizErr(err, "TOOL")
 }
 
 func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAuditQuery) (biz.ToolAuditResult, error) {
@@ -83,10 +83,18 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 		where = append(where, "created_at <= ?")
 		args = append(args, q.To)
 	}
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		// A3: same tenant-attribution rule as SearchToolInvocations — owning
+		// session first, owning agent for session-less rows; unattributed
+		// system rows stay hidden from tenant callers (fail-closed).
+		where = append(where, `(EXISTS (SELECT 1 FROM sessions ws WHERE ws.id = tool_invocation_audit.session_id AND ws.workspace_id = ?)
+			OR (tool_invocation_audit.session_id = '' AND EXISTS (SELECT 1 FROM agents wa WHERE wa.id = tool_invocation_audit.agent_id AND wa.workspace_id = ?)))`)
+		args = append(args, ws, ws)
+	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tool_invocation_audit WHERE `+whereSQL), args, &total); err != nil {
-		return biz.ToolAuditResult{}, err
+		return biz.ToolAuditResult{}, entErrToBizErr(err, "TOOL")
 	}
 	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, q.Limit, q.Offset)
@@ -98,7 +106,7 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?`), listArgs...)
 	if err != nil {
-		return biz.ToolAuditResult{}, err
+		return biz.ToolAuditResult{}, entErrToBizErr(err, "TOOL")
 	}
 	defer rows.Close()
 	items := []biz.ToolInvocationAudit{}
@@ -108,12 +116,16 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 			&item.ID, &item.InvocationID, &item.ToolKey, &item.AgentID, &item.UserID, &item.SessionID,
 			&item.Action, &item.ResultSummary, &item.Status, &item.Source, &item.CreatedAt,
 		); err != nil {
-			return biz.ToolAuditResult{}, err
+			return biz.ToolAuditResult{}, entErrToBizErr(err, "TOOL")
 		}
 		items = append(items, item)
 	}
-	return biz.ToolAuditResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, rows.Err()
+	return biz.ToolAuditResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, entErrToBizErr(rows.Err(), "TOOL")
 }
+
+// toolAuditPurgeBatchSize bounds each DELETE round so retention sweeps over
+// large audit tables don't hold one long transaction/lock.
+const toolAuditPurgeBatchSize = 1000
 
 func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error) {
 	client := r.data.RW().Write(ctx)
@@ -124,9 +136,22 @@ func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRF
 	if cutoffRFC3339 == "" {
 		return 0, nil
 	}
-	res, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`DELETE FROM tool_invocation_audit WHERE created_at < ?`), cutoffRFC3339)
-	if err != nil {
-		return 0, err
+	var total int64
+	for {
+		res, err := client.ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(`
+			DELETE FROM tool_invocation_audit
+			WHERE id IN (SELECT id FROM tool_invocation_audit WHERE created_at < ? LIMIT ?)`),
+			cutoffRFC3339, toolAuditPurgeBatchSize)
+		if err != nil {
+			return total, entErrToBizErr(err, "TOOL")
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return total, entErrToBizErr(err, "TOOL")
+		}
+		total += n
+		if n < toolAuditPurgeBatchSize {
+			return total, nil
+		}
 	}
-	return res.RowsAffected()
 }

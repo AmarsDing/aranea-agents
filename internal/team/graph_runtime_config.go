@@ -94,6 +94,26 @@ func ensureDeliverableStateField(cfg biz.GraphBuildConfig) biz.GraphBuildConfig 
 	return cfg
 }
 
+// ensureProjectStateField injects the project_state StateField when
+// EnableProjectState=true (P2-4). MergeReducer：update_project_state 工具
+// 写回的是读-改-写后的完整 map，顶层 key 合并语义下等价于整值替换；
+// 同 superstep 并行写为 last-writer-wins（滚动变更是建议性的，可接受）。
+// Idempotent: skips injection if a field with the same name already exists.
+func ensureProjectStateField(cfg biz.GraphBuildConfig) biz.GraphBuildConfig {
+	for _, sf := range cfg.StateFields {
+		if sf.Name == biz.ProjectStateKey {
+			return cfg
+		}
+	}
+	cfg.StateFields = append(cfg.StateFields, biz.StateFieldDef{
+		Name:         biz.ProjectStateKey,
+		Type:         "map[string]any",
+		Reducer:      biz.ReducerMerge,
+		DefaultValue: map[string]any{},
+	})
+	return cfg
+}
+
 func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string, policy *biz.TeamFailurePolicy, parallelBranchIDs []string) biz.GraphBuildConfig {
 	cfg = biz.FilterVisualizationEdges(cfg)
 	cfg = biz.ApplyFailurePolicy(cfg, policy)
@@ -102,6 +122,9 @@ func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDef
 	cfg = applySwarmGraphConfig(cfg, def)
 	if def.EnableStateDeliverable {
 		cfg = ensureDeliverableStateField(cfg)
+	}
+	if def.EnableProjectState {
+		cfg = ensureProjectStateField(cfg)
 	}
 	return cfg
 }

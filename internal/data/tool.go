@@ -598,6 +598,15 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 			where = append(where, "ti.status NOT IN ('error', 'failed')")
 		}
 	}
+	if ws := strings.TrimSpace(q.WorkspaceID); ws != "" {
+		// A3: tenant scoping without a workspace_id column — attribute rows via
+		// the owning session (runtime runs) or the owning agent (session-less
+		// rows). Rows with neither attribution (e.g. system tool tests) stay
+		// hidden from tenant callers (fail-closed).
+		where = append(where, `(EXISTS (SELECT 1 FROM sessions ws WHERE ws.id = ti.session_id AND ws.workspace_id = ?)
+			OR (ti.session_id = '' AND EXISTS (SELECT 1 FROM agents wa WHERE wa.id = ti.agent_id AND wa.workspace_id = ?)))`)
+		args = append(args, ws, ws)
+	}
 	whereSQL := strings.Join(where, " AND ")
 	var total int
 	if err := entQueryRowScan(client, ctx, r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(1) FROM tool_invocations ti WHERE `+whereSQL), args, &total); err != nil {
@@ -901,10 +910,12 @@ func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID str
 		return biz.ToolInvocationParam{}, apierror.NotFound("TOOL", "tool not found")
 	}
 	var p biz.ToolInvocationParam
-	var redaction int
+	// B3: redaction_applied is a BOOLEAN column — scanning into int fails on
+	// Postgres ("converting driver.Value type bool to a int").
+	var redaction bool
 	if err := rows.Scan(&p.ID, &p.InvocationID, &p.ToolKey, &p.ParamsJSON, &redaction, &p.CreatedAt); err != nil {
 		return biz.ToolInvocationParam{}, entErrToBizErr(err, "TOOL")
 	}
-	p.RedactionApplied = redaction != 0
+	p.RedactionApplied = redaction
 	return p, nil
 }

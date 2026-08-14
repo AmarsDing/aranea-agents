@@ -16,6 +16,7 @@ import {
   listToolRunsForTool,
   listToolRuns,
   listToolInvocationAudits,
+  getToolInvocationParams,
   testTool,
 } from '../../features/tools/api';
 import type { ToolTestResult } from '../../features/tools/types';
@@ -27,6 +28,7 @@ import type {
   AgentEffectiveTools,
   ToolAgentOverride,
   ToolInvocation,
+  ToolInvocationParamDetail,
   ToolRunQuery,
   ToolAuditQuery,
   ToolInvocationAudit,
@@ -46,16 +48,21 @@ export const useToolsStore = defineStore('tools', () => {
   });
   const loading = ref(false);
 
+  // 请求序号守卫：快速连续触发（筛选 watch + 手动刷新叠加）时丢弃过期响应，避免旧数据覆盖新筛选结果。
+  let loadSeq = 0;
+
   async function loadTools(query?: ToolListQuery): Promise<ToolListResponse> {
+    const seq = ++loadSeq;
     loading.value = true;
     try {
       const result: ToolListResponse = await listTools(query);
+      if (seq !== loadSeq) return result;
       tools.value = result.items ?? [];
       total.value = result.total ?? tools.value.length;
       if (result.summary) summary.value = result.summary;
       return result;
     } finally {
-      loading.value = false;
+      if (seq === loadSeq) loading.value = false;
     }
   }
 
@@ -135,6 +142,10 @@ export const useToolsStore = defineStore('tools', () => {
     return listToolRuns(query);
   }
 
+  async function fetchInvocationParams(invocationId: string): Promise<ToolInvocationParamDetail> {
+    return getToolInvocationParams(invocationId);
+  }
+
   async function loadToolAudits(query: ToolAuditQuery = {}): Promise<PaginatedResponse<ToolInvocationAudit>> {
     return listToolInvocationAudits(query);
   }
@@ -164,6 +175,7 @@ export const useToolsStore = defineStore('tools', () => {
     removeOverride,
     fetchToolRuns,
     loadToolRuns,
+    fetchInvocationParams,
     loadToolAudits,
     runToolTest,
   };

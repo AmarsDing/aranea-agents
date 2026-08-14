@@ -53,7 +53,7 @@ func (m *mockUnifiedEvolutionStore) GetByID(_ context.Context, id string) (*Unif
 	return &row, nil
 }
 
-func (m *mockUnifiedEvolutionStore) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string, _ int, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (m *mockUnifiedEvolutionStore) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string, _ int, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	var out []UnifiedEvolutionSuggestion
 	for _, r := range m.rows {
 		if r.TargetType != EvolutionTargetType(targetType) {
@@ -74,8 +74,8 @@ func (m *mockUnifiedEvolutionStore) ListByTargetAndAction(_ context.Context, tar
 	return out, nil
 }
 
-func (m *mockUnifiedEvolutionStore) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
-	rows, err := m.ListByTargetAndAction(context.Background(), targetType, targetID, actionType, status, 0, 0)
+func (m *mockUnifiedEvolutionStore) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string) (int, error) {
+	rows, err := m.ListByTargetAndAction(context.Background(), targetType, targetID, actionType, "", status, 0, 0)
 	return len(rows), err
 }
 

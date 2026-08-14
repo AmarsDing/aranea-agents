@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS unified_evolution_suggestions (
   id TEXT PRIMARY KEY,
   target_type TEXT NOT NULL,
   target_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL DEFAULT '',
   action_type TEXT NOT NULL,
   trigger_source TEXT NOT NULL DEFAULT '',
   trigger_reason TEXT NOT NULL DEFAULT '',
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS unified_evolution_suggestions (
   applied_at TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_ues_workspace ON unified_evolution_suggestions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_ues_target ON unified_evolution_suggestions(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_ues_target_status ON unified_evolution_suggestions(target_type, target_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ues_pending_target ON unified_evolution_suggestions(target_type, target_id) WHERE status = 'pending';

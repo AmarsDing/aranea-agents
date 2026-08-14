@@ -8,9 +8,21 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+// evolutionCallerWorkspace 解析调用方 workspace 用于 List/Count 租户过滤：
+// 系统调用方（cron/admin，WithSystemWorkspace）返回 ""（不过滤）；
+// 其余返回 ctx 中的 workspace（未设置时回退 default）。
+// 与 session_search / agent_mcp_effective 的既有先例一致。
+func evolutionCallerWorkspace(ctx context.Context) string {
+	if workspace.IsSystem(ctx) {
+		return ""
+	}
+	return workspace.IDFromContext(ctx)
+}
 
 // EvolutionTargetType 进化目标类型
 type EvolutionTargetType string
@@ -35,6 +47,9 @@ type UnifiedEvolutionSuggestion struct {
 	ID            string
 	TargetType    EvolutionTargetType
 	TargetID      string
+	// WorkspaceID 归属租户；空串 = 共享/平台级（所有租户可见）。
+	// 写入侧由 data 层 Create 在为空时从宿主表（skill/agents）派生。
+	WorkspaceID   string
 	ActionType    EvolutionActionType
 	TriggerSource string // "pattern" / "health" / "agent_config" / "manual"
 	TriggerReason string
@@ -167,13 +182,18 @@ type UnifiedEvolutionCheckReader interface {
 // The AndAction variants disambiguate views that share a target_type — e.g.
 // L1 proposals (agent + create_skill) vs L3 agent suggestions (agent +
 // evolve_agent) after the A6 physical convergence.
+//
+// workspaceID 过滤语义（P0-1b 租户隔离）：非空时仅返回该租户自有行 +
+// workspace_id='' 的共享行；空串 = 不过滤（系统/后台任务专用，调用方必须
+// 确保不直接把结果暴露给租户请求）。usecase 层经 workspace.IDFromContext
+// 解析后传入。
 // Stability:evolving
 type UnifiedEvolutionQueryReader interface {
 	GetByID(ctx context.Context, id string) (*UnifiedEvolutionSuggestion, error)
-	ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
-	CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error)
-	ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
-	CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error)
+	ListByTarget(ctx context.Context, targetType string, targetID string, workspaceID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
+	CountByTarget(ctx context.Context, targetType string, targetID string, workspaceID string, status string) (int, error)
+	ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error)
+	CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string) (int, error)
 }
 
 // UnifiedEvolutionPatternReader provides the L1 pattern-hash dedup lookup

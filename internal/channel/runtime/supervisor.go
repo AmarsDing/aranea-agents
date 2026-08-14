@@ -18,7 +18,18 @@ const (
 	runtimeReconnectInitial = time.Second
 	runtimeReconnectMax     = 5 * time.Minute
 	runtimeLeaseRenewRetry  = 3
+	// runtimeStableRunThreshold is the minimum run duration that proves the
+	// connection was healthy; only runs lasting at least this long reset the
+	// reconnect backoff (CH-R1). Fast-fail loops (bad credentials, instant
+	// dial errors) keep exponential growth instead of hot-reconnecting.
+	runtimeStableRunThreshold = time.Minute
 )
+
+// shouldResetRunBackoff reports whether a connector run of the given duration
+// was stable enough to reset the reconnect backoff to its initial value.
+func shouldResetRunBackoff(runDur time.Duration) bool {
+	return runDur >= runtimeStableRunThreshold
+}
 
 func (m *Manager) runSupervised(
 	parentCtx context.Context,
@@ -69,7 +80,9 @@ func (m *Manager) runSupervised(
 			setChannelConnection(ch.ID, false)
 			return
 		}
+		runStart := time.Now()
 		runErr := starter(runCtx, ch, creds, m.credLookup, m.handler, m.lg)
+		runDur := time.Since(runStart)
 		setChannelConnection(ch.ID, false)
 		if runCtx.Err() != nil {
 			// 正常停止（Reload 替换 / 进程关停）。
@@ -97,9 +110,11 @@ func (m *Manager) runSupervised(
 			// 远端正常关闭（如 Telegram updates 通道关闭），稍后重连。
 			EmitConnectClose(runCtx, platform, ch.ID, "渠道连接已断开")
 		}
-		// Reset backoff after a successful run so that transient disconnects
-		// don't accumulate to the max backoff ceiling.
-		backoff = initialBackoff
+		// Reset backoff only after a provably stable run (CH-R1); fast-fail
+		// loops keep exponential growth to avoid hammering the platform API.
+		if shouldResetRunBackoff(runDur) {
+			backoff = initialBackoff
+		}
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "disconnect").Inc()
 		arametrics.ChannelRuntimeReconnectTotal.WithLabelValues(platform, mode, "attempt").Inc()
 

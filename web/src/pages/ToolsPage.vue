@@ -132,15 +132,15 @@
       @update:active-tab="detailStore.activeTab = $event"
       @update:test-args-json="detailStore.testArgsJson = $event"
       @update:test-timeout-sec="detailStore.testTimeoutSec = $event"
-      @run-test="detailStore.runToolTest()"
+      @run-test="onRunTest"
       @update:config-json="detailStore.configJson = $event"
-      @save-config="detailStore.saveConfig()"
-      @update:config-schema-json="detailStore.saveConfigSchema($event)"
+      @save-config="onSaveConfig"
+      @update:config-schema-json="onSaveConfigSchema($event)"
       @edit-override="detailStore.openOverrideEditor($event)"
-      @delete-override="detailStore.confirmRemoveOverride($event)"
+      @delete-override="onRemoveOverride($event)"
       @update:override-editor-open="detailStore.overrideEditorOpen = $event"
       @update:override-form="detailStore.overrideForm = $event"
-      @save-override="detailStore.saveOverride()"
+      @save-override="onSaveOverride"
       @retry-agent-bindings="detailStore.loadAgentBindingSummary()"
       @edit-tool="onEditTool"
       @remove-tool="removeTool"
@@ -150,13 +150,15 @@
       :open="editorStore.open"
       :editing-id="editorStore.editingId"
       :form="editorStore.form"
+      :original-form="editorStore.originalForm"
       :saving="editorStore.saving"
       :dirty="editorStore.dirty"
       :json-errors="editorStore.jsonErrors"
       :selected-template="editorStore.selectedTemplate"
       :active-section="editorStore.activeTab"
       @close="editorStore.closeEditor()"
-      @save="editorStore.save()"
+      @request-close="onEditorRequestClose"
+      @save="saveEditor"
       @apply-template="editorStore.applyTemplate($event)"
       @patch-form="onPatchForm"
       @update:active-section="editorStore.activeTab = $event"
@@ -207,5 +209,12 @@ const {
   batchRemove,
   onEditTool,
   onPatchForm,
+  onEditorRequestClose,
+  saveEditor,
+  onRunTest,
+  onSaveConfig,
+  onSaveConfigSchema,
+  onSaveOverride,
+  onRemoveOverride,
 } = useToolsPage();
 </script>

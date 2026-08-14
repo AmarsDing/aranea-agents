@@ -23,6 +23,9 @@
 //	AsyncQueued --> Failed : async_fail
 //	AsyncQueued --> Cancelled : async_cancel
 //	AsyncQueued --> Timeout : timeout
+//	AsyncQueued --> Completed : complete
+//	AsyncQueued --> Failed : fail
+//	AsyncQueued --> Cancelled : cancel
 //	Completed --> [*]
 //	Failed --> [*]
 //	Timeout --> [*]
@@ -100,6 +103,13 @@ var channelTurnJobTransitionRules = []shared.TransitionRule[ChannelTurnJobState,
 	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventAsyncFail, To: ChannelTurnJobStateFailed},
 	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventAsyncCancel, To: ChannelTurnJobStateCancelled},
 	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventTimeout, To: ChannelTurnJobStateTimeout},
+	// The in-process async watchers (completeAsyncTargetWatch / failAsyncTargetWatch)
+	// and CancelRunningForSession emit the plain complete/fail/cancel events for jobs
+	// still in async_queued; without these rules the transitions always failed and
+	// jobs were stuck in async_queued forever (CH-B1).
+	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventComplete, To: ChannelTurnJobStateCompleted},
+	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventFail, To: ChannelTurnJobStateFailed},
+	{From: ChannelTurnJobStateAsyncQueued, Event: ChannelTurnJobEventCancel, To: ChannelTurnJobStateCancelled},
 }
 
 // ── ChannelTurnJobStateMachine ────────────────────────────────────────────────

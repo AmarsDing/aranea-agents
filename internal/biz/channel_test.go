@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 
 	"aranea-agents/pkg/loggateway"
@@ -131,6 +132,36 @@ func TestChannelCredentialEncryptRoundTrip(t *testing.T) {
 	}
 	if plain != "app-secret-value" {
 		t.Fatalf("got %q", plain)
+	}
+}
+
+// updateTestMetadata must not panic when metadata_json holds the JSON literal
+// "null" (Unmarshal succeeds but leaves the map nil) — CH-R4.
+func TestUpdateTestMetadata_NullMetadataJSON(t *testing.T) {
+	repo := &channelRepoStub{
+		channels: []Channel{{
+			ID:           "ch-null-meta",
+			Key:          "demo",
+			Status:       ChannelStatusActive,
+			Enabled:      true,
+			MetadataJSON: "null",
+		}},
+	}
+	uc := NewChannelUsecase(repo, repo, repo, repo, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
+
+	result := ChannelTestResult{OK: false, Status: ChannelStatusError, Message: "boom"}
+	if _, err := uc.updateTestMetadata(context.Background(), repo.channels[0], result); err != nil {
+		t.Fatal(err)
+	}
+	got := repo.channels[0]
+	if got.MetadataJSON == "" || got.MetadataJSON == "null" {
+		t.Fatalf("metadata not rewritten: %q", got.MetadataJSON)
+	}
+	if !strings.Contains(got.MetadataJSON, "last_error_message") {
+		t.Fatalf("expected last_error_message in metadata: %q", got.MetadataJSON)
+	}
+	if got.Status != ChannelStatusError {
+		t.Fatalf("expected status error, got %q", got.Status)
 	}
 }
 

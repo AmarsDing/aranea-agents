@@ -59,6 +59,7 @@ var (
 	MergeToolConfigMaps                 = tool.MergeToolConfigMaps
 	MergeJSONMapInto                    = tool.MergeJSONMapInto
 	ToolRequiresConfirmation            = tool.ToolRequiresConfirmation
+	RedactToolConfigJSON                = tool.RedactToolConfigJSON
 )
 
 const (

@@ -82,7 +82,7 @@ func (uc *SelfImprovementObserveUsecase) ScanOnce(ctx context.Context) (int, err
 			return created, ctx.Err()
 		default:
 		}
-		batch, err := uc.suggestions.ListByTarget(ctx, string(EvolutionTargetPlatform), "", string(UnifiedEvolutionStatePending), siObserveBatchSize, offset)
+		batch, err := uc.suggestions.ListByTarget(ctx, string(EvolutionTargetPlatform), "", "", string(UnifiedEvolutionStatePending), siObserveBatchSize, offset)
 		if err != nil {
 			return created, err
 		}

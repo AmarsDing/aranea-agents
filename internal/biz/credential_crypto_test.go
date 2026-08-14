@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -30,6 +31,25 @@ func TestMergeConfigJSONForUpdate_PreservesEncryptedAPIKey(t *testing.T) {
 	}
 	if _, ok := m["api_key"]; ok {
 		t.Fatal("patch should not introduce plaintext api_key")
+	}
+}
+
+// decryptCredential must fail closed when no AES key is configured: returning
+// the ciphertext as "plaintext" lets secrets leak into platform auth flows and
+// produces confusing upstream errors (CH-R3).
+func TestDecryptCredential_FailsClosedWhenKeyMissing(t *testing.T) {
+	_ = os.Unsetenv(envCredentialKey)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
+	enc := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdefPADDING"))
+
+	plain, err := c.decryptCredential(context.Background(), enc)
+	if err == nil {
+		t.Fatalf("expected error when key missing, got ciphertext passthrough %q", plain)
+	}
+
+	ref := channelSecretRefPrefix + enc
+	if plain, err := c.DecryptChannelSecretRef(context.Background(), ref); err == nil {
+		t.Fatalf("DecryptChannelSecretRef: expected error when key missing, got %q", plain)
 	}
 }
 

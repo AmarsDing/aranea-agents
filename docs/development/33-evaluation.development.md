@@ -337,6 +337,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 
 > 评审范围：biz / data / service / internal/evaluation 全层复查（Phase 8 整改后的二次评审）。
 > 编号为评审报告原始编号（EVAL-xx），跳号项为评审阶段合并/判定为非问题项。
+> 验证：`go build ./cmd/... ./internal/... ./api/... ./pkg/...` ✅ · `go test ./internal/evaluation ./internal/biz/evaluation` ✅ · `go test ./internal/data -run TestEval`（PG 实库）✅ · `go vet ./internal/data` ✅
 
 ### 阻断（2 项）
 
@@ -351,7 +352,7 @@ Evaluation 评估：对 Agent 输出质量进行结构化评估，支持自动�
 |---|------|------|---------|
 | EVAL-03 | `ListFailureGroups` 治理查询缺 workspace 过滤（跨租户泄漏失败分组） | 补 `evalRunsWorkspaceFilter` | `internal/data/evaluation_governance.go` |
 | EVAL-04 | `UpdateEvalGate` 无鉴权：任意租户可改写平台全局发布门禁 | `assertSystemCaller`（system 主体或 admin） | `internal/service/evaluation.go` |
-| EVAL-05 | Legacy 执行路径为生产死代码（旧 runner/LLM judge 双轨残留） | 删除 `runner_legacy.go`、`llm_judge.go` 及 `metrics.go` 遗留计算 | `internal/evaluation/` |
+| EVAL-05 | Legacy 执行路径为生产死代码（旧 runner/LLM judge 双轨残留） | 删除 `runner_legacy.go`、`llm_judge.go` 及 `metrics.go` 遗留计算；测试适配：新增 `echoRunner`/`echoBridge` 替身（framework 路径等价 echo 语义），`TestRunnerLegacyCaseErrorMarksRunFailed` 语义已由 `TestRunnerFrameworkCaseErrorMarksRunFailed` 覆盖故删除 | `internal/evaluation/` |
 | EVAL-06 | Repo 死方法 `InsertCases`/`UpdateDatasetCaseCount`：无生产调用方，分离写法破坏 case_count 原子性 | 接口与实现删除，统一 `InsertCasesWithCountUpdate` | `internal/biz/evaluation/evaluation.go`、`internal/data/evaluation.go` |
 | EVAL-07 | `EnsureEvalSchema` ALTER 迁移循环全吞错误：非「列已存在」错误（权限/连接/语法）静默丢失，schema 静默不一致直至运行时查询失败 | 签名加 `Dialect` 参数；仅 `AlreadyExistsErr` 视为幂等成功，其余错误经 `entErrToBizErr` 上报阻断启动迁移 | `internal/data/evaluation.go`、`ddl_migration_registry.go` |
 | EVAL-08 | 手动 `RunEvaluation` 无 in-flight 去重：并发点击/重试产生重复 run | 创建前扫描近 20 条（`inFlightScanLimit`）pending/running → Conflict | `internal/service/evaluation.go` |

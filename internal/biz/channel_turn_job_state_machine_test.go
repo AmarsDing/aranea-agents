@@ -33,6 +33,11 @@ func TestChannelTurnJobStateMachine_ValidTransitions(t *testing.T) {
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncFail, ChannelTurnJobStatusFailed},
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncCancel, ChannelTurnJobStatusCancelled},
 		{ChannelTurnJobStatusAsyncQueued, JobEventTimeout, ChannelTurnJobStatusTimeout},
+		// async_queued terminal transitions used by the in-process async watchers
+		// (completeAsyncTargetWatch / failAsyncTargetWatch / CancelRunningForSession).
+		{ChannelTurnJobStatusAsyncQueued, JobEventComplete, ChannelTurnJobStatusCompleted},
+		{ChannelTurnJobStatusAsyncQueued, JobEventFail, ChannelTurnJobStatusFailed},
+		{ChannelTurnJobStatusAsyncQueued, JobEventCancel, ChannelTurnJobStatusCancelled},
 	}
 
 	for _, tc := range cases {
@@ -86,10 +91,9 @@ func TestChannelTurnJobStateMachine_InvalidTransitions(t *testing.T) {
 		{"queued→start", ChannelTurnJobStatusQueued, JobEventStart},
 		{"queued→async_queue", ChannelTurnJobStatusQueued, JobEventAsyncQueue},
 
-		// async_queued cannot start/dequeue/complete directly
+		// async_queued cannot start/dequeue/queue directly
 		{"async_queued→start", ChannelTurnJobStatusAsyncQueued, JobEventStart},
 		{"async_queued→dequeue", ChannelTurnJobStatusAsyncQueued, JobEventDequeue},
-		{"async_queued→complete", ChannelTurnJobStatusAsyncQueued, JobEventComplete},
 		{"async_queued→queue", ChannelTurnJobStatusAsyncQueued, JobEventQueue},
 	}
 
@@ -116,6 +120,7 @@ func TestChannelTurnJobStateMachine_CanTransition(t *testing.T) {
 		{ChannelTurnJobStatusRunning, JobEventCancel, true},
 		{ChannelTurnJobStatusQueued, JobEventCancel, true},
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncCancel, true},
+		{ChannelTurnJobStatusAsyncQueued, JobEventCancel, true},
 		// Terminal states cannot cancel
 		{ChannelTurnJobStatusCompleted, JobEventCancel, false},
 		{ChannelTurnJobStatusFailed, JobEventCancel, false},
@@ -127,6 +132,9 @@ func TestChannelTurnJobStateMachine_CanTransition(t *testing.T) {
 		{ChannelTurnJobStatusRunning, JobEventTimeout, true},
 		// Accepted cannot complete directly
 		{ChannelTurnJobStatusAccepted, JobEventComplete, false},
+		// AsyncQueued completes/fails directly (watcher path)
+		{ChannelTurnJobStatusAsyncQueued, JobEventComplete, true},
+		{ChannelTurnJobStatusAsyncQueued, JobEventFail, true},
 	}
 
 	for _, tc := range cases {
@@ -214,6 +222,34 @@ func TestChannelTurnJobStateMachine_FullLifecycle_Async(t *testing.T) {
 		{ChannelTurnJobStatusAccepted, JobEventAsyncQueue, ChannelTurnJobStatusAsyncQueued},
 		{ChannelTurnJobStatusAsyncQueued, JobEventAsyncStart, ChannelTurnJobStatusRunning},
 		{ChannelTurnJobStatusRunning, JobEventComplete, ChannelTurnJobStatusCompleted},
+	}
+
+	current := ChannelTurnJobStatusAccepted
+	for _, step := range steps {
+		got, err := TransitionChannelTurnJob(step.from, step.event)
+		if err != nil {
+			t.Fatalf("TransitionChannelTurnJob(%q, %q): unexpected error: %v", step.from, step.event, err)
+		}
+		if got != step.want {
+			t.Fatalf("TransitionChannelTurnJob(%q, %q) = %q, want %q", step.from, step.event, got, step.want)
+		}
+		current = got
+	}
+	if !IsChannelTurnJobTerminalStatus(current) {
+		t.Fatalf("expected terminal state, got %q", current)
+	}
+}
+
+// ── Full lifecycle: accepted → async_queued → completed (watcher direct path) ─
+
+func TestChannelTurnJobStateMachine_FullLifecycle_AsyncWatcherDirect(t *testing.T) {
+	steps := []struct {
+		from  string
+		event string
+		want  string
+	}{
+		{ChannelTurnJobStatusAccepted, JobEventAsyncQueue, ChannelTurnJobStatusAsyncQueued},
+		{ChannelTurnJobStatusAsyncQueued, JobEventComplete, ChannelTurnJobStatusCompleted},
 	}
 
 	current := ChannelTurnJobStatusAccepted

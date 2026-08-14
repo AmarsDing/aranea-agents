@@ -70,7 +70,10 @@ func (c *CredentialCrypto) decryptCredential(ctx context.Context, enc string) (s
 		return "", err
 	}
 	if len(key) != 32 {
-		return enc, nil
+		// Fail closed (CH-R3): never return the ciphertext as "plaintext" —
+		// it would be used as a credential against the platform and leak into
+		// upstream auth error logs.
+		return "", apierror.Internal("CREDENTIAL_KEY", credentialKeyRequiredMsg)
 	}
 	raw, err := base64.StdEncoding.DecodeString(enc)
 	if err != nil {

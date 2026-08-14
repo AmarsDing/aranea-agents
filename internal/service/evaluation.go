@@ -199,7 +199,7 @@ func (s *EvaluationService) RunEvaluation(ctx context.Context, req *v1.RunEvalua
 	// EVAL-08: one in-flight run per (dataset, agent). Each run fans out one
 	// inference (+ judge call) per case, so an unguarded double-click or a
 	// retry loop multiplies LLM cost for an identical result.
-	runs, err := s.uc.ListRuns(ctx, req.GetDatasetId(), req.GetAgentId(), inFlightScanLimit, 0)
+	runs, _, err := s.uc.ListRuns(ctx, req.GetDatasetId(), req.GetAgentId(), inFlightScanLimit, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -1015,6 +1015,7 @@ LIMIT 50;
 - 工具 schema 分量：tool_assembly 出口按 JSON 序列化长度计量（含工具数量）。
 - history 分量：调用前 messages 总量 − system − 各注入分量（减法得出，不重复遍历）。
 - **出口**：turn 结束发进程日志 `chat.context_budget`（Info，每轮一条，含各分量 est_tokens + 占比 + static_ratio + cache_hit_ratio）。只发进程日志不发流程日志，豁免 stepTitleRegistry 登记。
+- **落库（S2，2026-08-14）**：同一快照由 `mergeContextBudgetMetadata` 合并进 `usage_records.metadata_json` 的 `context_budget` 键（`est_tokens`/`est_total_input`/`tools_count`/`top_tools`），进程日志/Prometheus 是即时信号，落库后才能跨 turn 做 DB 侧 token 构成聚合分析。无台账挂载或台账为空时原样透传，不污染 metadata。
 
 产出形态示例：
 
@@ -1035,7 +1036,7 @@ LIMIT 50;
 | internal/agent/context_budget.go（新增） | ContextBudget 收集器 + ctx 挂载 |
 | internal/agent/*_inject.go（8 处） | 各 hook 出口一行计量调用 |
 | internal/agent/tool_assembly.go | schema 字节数计量 |
-| internal/service/chat_turn_metrics.go | 台账日志出口 |
+| internal/service/chat_turn_metrics.go | 台账日志出口 + 快照合并进 usage.metadata_json（S2） |
 | internal/agent/prompt_prefix_stability_test.go（新增） | 前缀字节级稳定回归测试 |
 
 ### 9.8 验证计划

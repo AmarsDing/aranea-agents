@@ -270,6 +270,38 @@ func (c *contentSwitchRunner) Close() error { return nil }
 
 var _ runner.Runner = (*contentSwitchRunner)(nil)
 
+// echoRunner is a framework runner that repeats the user message back —
+// the framework-path equivalent of the removed legacy echoAgent chatFn.
+type echoRunner struct{}
+
+func (e *echoRunner) Run(_ context.Context, _, _ string, message model.Message, _ ...agent.RunOption) (<-chan *event.Event, error) {
+	ch := make(chan *event.Event, 1)
+	ch <- &event.Event{
+		InvocationID: "inv-1",
+		Response: &model.Response{
+			Done: true,
+			Choices: []model.Choice{
+				{Message: model.Message{Role: model.RoleAssistant, Content: message.Content}},
+			},
+		},
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (e *echoRunner) Close() error { return nil }
+
+var _ runner.Runner = (*echoRunner)(nil)
+
+// echoBridge returns a FrameworkBridge whose agent echoes the case input, so
+// cases with expected_output == input score exact_match=1.
+func echoBridge() *FrameworkBridge {
+	return NewFrameworkBridge(
+		func(string) (runner.Runner, error) { return &echoRunner{}, nil },
+		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
+	)
+}
+
 // countingRunner wraps contentSwitchRunner and records inference call count.
 type countingRunner struct {
 	contentSwitchRunner
@@ -313,8 +345,6 @@ func TestFrameworkBridgeNumRunsOverridesDefault(t *testing.T) {
 		t.Fatalf("expected 3 inference calls for num_runs=3, got %d", got)
 	}
 }
-
-func echoAgent(_ context.Context, _, input string) (string, error) { return input, nil }
 
 func waitRunTerminal(t *testing.T, repo *fakeEvalRepo, runID string) beval.Run {
 	t.Helper()
@@ -366,7 +396,7 @@ func TestRunnerFrameworkInsertErrorMarksRunFailed(t *testing.T) {
 		},
 		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
 	)
-	r := NewRunner(uc, echoAgent, bridge, loggateway.NewNoop())
+	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
 	r.Start(context.Background(), biz.EvalRun{ID: "r5", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
@@ -387,7 +417,7 @@ func TestRunnerStartRequestCtxCancelledStillCompletes(t *testing.T) {
 	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
 	repo.cases["ds1"] = []beval.Case{{ID: "c1", DatasetID: "ds1", Input: "hi", ExpectedOutput: "hi"}}
 	uc := beval.NewUsecase(repo, loggateway.NewNoop())
-	r := NewRunner(uc, echoAgent, nil, loggateway.NewNoop())
+	r := NewRunner(uc, echoBridge(), loggateway.NewNoop())
 
 	if _, err := uc.CreateRun(context.Background(), beval.Run{ID: "r1", DatasetID: "ds1", AgentID: "a1", Status: "pending"}); err != nil {
 		t.Fatalf("create run: %v", err)
@@ -402,35 +432,6 @@ func TestRunnerStartRequestCtxCancelledStillCompletes(t *testing.T) {
 	}
 	if final.ExactMatchScore != 1 {
 		t.Fatalf("expected exact_match=1, got %v", final.ExactMatchScore)
-	}
-}
-
-// ISSUE-006 (legacy path): a case-level agent error must mark the run failed,
-// not completed.
-func TestRunnerLegacyCaseErrorMarksRunFailed(t *testing.T) {
-	repo := newFakeEvalRepo()
-	repo.datasets["ds1"] = beval.Dataset{ID: "ds1"}
-	repo.cases["ds1"] = []beval.Case{
-		{ID: "c1", DatasetID: "ds1", Input: "ok", ExpectedOutput: "ok"},
-		{ID: "c2", DatasetID: "ds1", Input: "boom", ExpectedOutput: "x"},
-	}
-	uc := beval.NewUsecase(repo, loggateway.NewNoop())
-	agentFn := func(_ context.Context, _, input string) (string, error) {
-		if input == "boom" {
-			return "", errors.New("agent exploded")
-		}
-		return input, nil
-	}
-	r := NewRunner(uc, agentFn, nil, loggateway.NewNoop())
-
-	r.Start(context.Background(), biz.EvalRun{ID: "r2", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
-
-	final := waitRunTerminal(t, repo, "r2")
-	if final.Status != "failed" {
-		t.Fatalf("expected failed when a case errors, got %q", final.Status)
-	}
-	if !strings.Contains(final.ErrorMessage, "agent exploded") {
-		t.Fatalf("expected error summary to include case error, got %q", final.ErrorMessage)
 	}
 }
 
@@ -450,7 +451,7 @@ func TestRunnerFrameworkCaseErrorMarksRunFailed(t *testing.T) {
 		},
 		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
 	)
-	r := NewRunner(uc, echoAgent, bridge, loggateway.NewNoop())
+	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
 	r.Start(context.Background(), biz.EvalRun{ID: "r3", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 
@@ -480,7 +481,7 @@ func TestRunnerFrameworkHappyPathCompletes(t *testing.T) {
 		},
 		nil, nil, nil, MultiRunConfig{}, loggateway.NewNoop(),
 	)
-	r := NewRunner(uc, echoAgent, bridge, loggateway.NewNoop())
+	r := NewRunner(uc, bridge, loggateway.NewNoop())
 
 	r.Start(context.Background(), biz.EvalRun{ID: "r4", DatasetID: "ds1", AgentID: "a1"}, "exact_match", 1, false)
 

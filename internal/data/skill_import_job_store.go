@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	dataent "aranea-agents/internal/data/ent"
@@ -162,4 +163,39 @@ func (s *SkillImportJobStore) UpdateCandidates(ctx context.Context, jobID string
 		return entErrToBizErr(err, apierror.DomainSkill)
 	}
 	return nil
+}
+
+// DeleteOldJobs removes terminal-state jobs older than olderThan (batched,
+// ≤100 per call) and returns the temp dirs of deleted rows so the caller can
+// clean up candidate files on disk.
+func (s *SkillImportJobStore) DeleteOldJobs(ctx context.Context, olderThan time.Duration) (int, []string, error) {
+	cutoff := time.Now().UTC().Add(-olderThan).Format(time.RFC3339)
+	rows, err := s.data.RW().Read(ctx).SkillImportJob.Query().
+		Where(
+			skillimportjob.StatusIn("completed", "applied", "failed"),
+			skillimportjob.CreatedAtLTE(cutoff),
+		).
+		Limit(100).
+		All(ctx)
+	if err != nil {
+		return 0, nil, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	if len(rows) == 0 {
+		return 0, nil, nil
+	}
+	ids := make([]string, 0, len(rows))
+	tempDirs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+		if row.TempDir != "" {
+			tempDirs = append(tempDirs, row.TempDir)
+		}
+	}
+	deleted, err := s.data.RW().Write(ctx).SkillImportJob.Delete().
+		Where(skillimportjob.IDIn(ids...)).
+		Exec(ctx)
+	if err != nil {
+		return 0, nil, entErrToBizErr(err, apierror.DomainSkill)
+	}
+	return deleted, tempDirs, nil
 }

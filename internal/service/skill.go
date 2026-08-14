@@ -269,6 +269,9 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 }
 
 func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFilesRequest) (*v1.ListSkillFilesResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
@@ -287,6 +290,9 @@ func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFile
 }
 
 func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileRequest) (*v1.SkillFileContent, error) {
+	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainSkill)
@@ -323,6 +329,9 @@ func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillF
 }
 
 func (s *SkillService) GetSkill(ctx context.Context, req *v1.GetSkillRequest) (*v1.GetSkillResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	sk, err := s.uc.Get(ctx, req.GetId())
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -516,6 +525,9 @@ func (s *SkillService) PreviewSkillRuntime(ctx context.Context, req *v1.PreviewS
 }
 
 func (s *SkillService) ListSkillRuns(ctx context.Context, req *v1.ListSkillRunsRequest) (*v1.ListSkillRunsResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+		return nil, err
+	}
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	q := biz.SkillRunQuery{
 		SkillID:   req.GetSkillId(),
@@ -539,6 +551,9 @@ func (s *SkillService) ListSkillRuns(ctx context.Context, req *v1.ListSkillRunsR
 }
 
 func (s *SkillService) GetSkillVersions(ctx context.Context, req *v1.GetSkillVersionsRequest) (*v1.GetSkillVersionsResponse, error) {
+	if err := s.assertSkillAccess(ctx, req.GetSkillId()); err != nil {
+		return nil, err
+	}
 	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	result, err := s.uc.ListVersions(ctx, biz.SkillVersionListQuery{
 		SkillID: req.GetSkillId(),
@@ -588,6 +603,9 @@ func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealt
 	skillID := strings.TrimSpace(req.GetSkillId())
 	if skillID == "" {
 		return nil, apierror.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
+	}
+	if err := s.assertSkillAccess(ctx, skillID); err != nil {
+		return nil, err
 	}
 	if s.healthUC == nil {
 		return nil, apierror.Unavailable("SKILL_INTELLIGENCE", "skill health usecase not available")

@@ -19,6 +19,10 @@ type LLMCallRequest struct {
 	// Images 是可选的多模态输入（原始图片字节）；非空时底层实现必须走
 	// 多模态消息（ContentParts），目标模型需具备视觉能力。
 	Images []LLMImage
+	// ThinkingEffort 是 P2-5 思考强度路由结果（off/low/medium/high/max，
+	// 由调用方按 ResolveThinkingEffort 算出）。空 = 不覆盖 provider 默认；
+	// "off" = 显式关闭 thinking（映射 ThinkingDisabled）。
+	ThinkingEffort string
 }
 
 // LLMImage 承载一张待发送给视觉模型的图片。

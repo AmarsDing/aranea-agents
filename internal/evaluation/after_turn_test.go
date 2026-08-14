@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestAfterTurnSamplePass(t *testing.T) {
-	tr := NewAfterTurnTrigger(nil, nil)
+	tr := NewAfterTurnTrigger(nil, nil, loggateway.NewNoop())
 
 	// Out-of-range rates always pass (backward-compatible default).
 	tr.randFn = func() float64 { return 0.99 }

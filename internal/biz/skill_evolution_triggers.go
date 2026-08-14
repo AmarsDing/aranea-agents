@@ -489,7 +489,7 @@ func (t *AgentConfigTrigger) Check(ctx context.Context, agentID string) ([]Unifi
 	pendingKeys := map[string]struct{}{}
 	if t.queryReader != nil {
 		pending, err := t.queryReader.ListByTargetAndAction(ctx,
-			string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve),
+			string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), "",
 			string(UnifiedEvolutionStatePending), 100, 0)
 		if err != nil {
 			t.lg.Warn("agent_config trigger: pending list failed, skip dedup", loggateway.Err(err))

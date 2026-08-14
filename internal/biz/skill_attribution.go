@@ -45,7 +45,7 @@ func (uc *SkillIntelligenceUsecase) AttributeLastEvolution(ctx context.Context, 
 	if uc.unifiedStore == nil || uc.aggregator == nil {
 		return nil
 	}
-	applied, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), skillID, "applied", 1, 0)
+	applied, err := uc.unifiedStore.ListByTarget(ctx, string(EvolutionTargetSkill), skillID, "", "applied", 1, 0)
 	if err != nil || len(applied) == 0 {
 		return nil
 	}

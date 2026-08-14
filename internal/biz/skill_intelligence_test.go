@@ -173,7 +173,7 @@ func (m *mockEvolutionStoreBridge) GetByID(_ context.Context, id string) (*Unifi
 	return nil, nil
 }
 
-func (m *mockEvolutionStoreBridge) ListByTarget(_ context.Context, targetType string, targetID string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (m *mockEvolutionStoreBridge) ListByTarget(_ context.Context, targetType string, targetID string, _ string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -194,12 +194,12 @@ func (m *mockEvolutionStoreBridge) ListByTarget(_ context.Context, targetType st
 	return out, nil
 }
 
-func (m *mockEvolutionStoreBridge) CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error) {
-	rows, err := m.ListByTarget(ctx, targetType, targetID, status, 0, 0)
+func (m *mockEvolutionStoreBridge) CountByTarget(ctx context.Context, targetType string, targetID string, _ string, status string) (int, error) {
+	rows, err := m.ListByTarget(ctx, targetType, targetID, "", status, 0, 0)
 	return len(rows), err
 }
 
-func (m *mockEvolutionStoreBridge) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (m *mockEvolutionStoreBridge) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -223,8 +223,8 @@ func (m *mockEvolutionStoreBridge) ListByTargetAndAction(_ context.Context, targ
 	return out, nil
 }
 
-func (m *mockEvolutionStoreBridge) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
-	rows, err := m.ListByTargetAndAction(ctx, targetType, targetID, actionType, status, 0, 0)
+func (m *mockEvolutionStoreBridge) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, _ string, status string) (int, error) {
+	rows, err := m.ListByTargetAndAction(ctx, targetType, targetID, actionType, "", status, 0, 0)
 	return len(rows), err
 }
 
@@ -1009,7 +1009,7 @@ func (s *recordingUnifiedStore) GetLatestByTargetAndAction(_ context.Context, _,
 func (s *recordingUnifiedStore) GetByID(_ context.Context, id string) (*UnifiedEvolutionSuggestion, error) {
 	return s.byID[id], nil
 }
-func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, _ string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	if s.listErr != nil {
 		return nil, s.listErr
 	}
@@ -1024,13 +1024,13 @@ func (s *recordingUnifiedStore) ListByTarget(_ context.Context, targetType, targ
 	}
 	return out, nil
 }
-func (s *recordingUnifiedStore) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
+func (s *recordingUnifiedStore) CountByTarget(_ context.Context, _, _, _, _ string) (int, error) {
 	return len(s.pending), nil
 }
-func (s *recordingUnifiedStore) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (s *recordingUnifiedStore) ListByTargetAndAction(_ context.Context, _, _, _, _, _ string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (s *recordingUnifiedStore) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+func (s *recordingUnifiedStore) CountByTargetAndAction(_ context.Context, _, _, _, _, _ string) (int, error) {
 	return 0, nil
 }
 func (s *recordingUnifiedStore) Create(_ context.Context, _ UnifiedEvolutionSuggestion) error {

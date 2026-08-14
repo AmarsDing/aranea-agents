@@ -32,7 +32,7 @@ func (r *siStubSuggestionReader) GetByID(_ context.Context, id string) (*Unified
 	}
 	return nil, apierror.NotFound("EVO", "suggestion not found")
 }
-func (r *siStubSuggestionReader) ListByTarget(_ context.Context, targetType, targetID, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
+func (r *siStubSuggestionReader) ListByTarget(_ context.Context, targetType, targetID, _ string, status string, _, _ int) ([]UnifiedEvolutionSuggestion, error) {
 	r.gotTargetType, r.gotTargetID, r.gotStatus = targetType, targetID, status
 	all := append([]UnifiedEvolutionSuggestion{}, r.pending...)
 	if r.created != nil {
@@ -46,13 +46,13 @@ func (r *siStubSuggestionReader) ListByTarget(_ context.Context, targetType, tar
 	}
 	return out, nil
 }
-func (r *siStubSuggestionReader) CountByTarget(context.Context, string, string, string) (int, error) {
+func (r *siStubSuggestionReader) CountByTarget(context.Context, string, string, string, string) (int, error) {
 	return 0, nil
 }
-func (r *siStubSuggestionReader) ListByTargetAndAction(context.Context, string, string, string, string, int, int) ([]UnifiedEvolutionSuggestion, error) {
+func (r *siStubSuggestionReader) ListByTargetAndAction(context.Context, string, string, string, string, string, int, int) ([]UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
-func (r *siStubSuggestionReader) CountByTargetAndAction(context.Context, string, string, string, string) (int, error) {
+func (r *siStubSuggestionReader) CountByTargetAndAction(context.Context, string, string, string, string, string) (int, error) {
 	return 0, nil
 }
 

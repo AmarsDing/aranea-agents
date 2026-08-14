@@ -31,6 +31,15 @@ const MaxZipBytes = 20 * 1024 * 1024
 // Files exceeding this limit are rejected to prevent unbounded memory use.
 const maxSkillFileBytes = 2 * 1024 * 1024
 
+// maxImportFiles caps the number of files extracted from a single ZIP, and
+// maxImportTotalBytes caps the total uncompressed size. Together with
+// maxSkillFileBytes these close the zip-bomb vector (high-ratio archives with
+// many small files that individually pass the per-file limit).
+const (
+	maxImportFiles      = 200
+	maxImportTotalBytes = 100 * 1024 * 1024
+)
+
 type SkillImportRepo interface {
 	CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error)
 	DeleteSkill(ctx context.Context, id string) error
@@ -65,6 +74,9 @@ type SkillImportJobStore interface {
 	// Returns true if the swap succeeded, false if the current status didn't match expectedStatus.
 	CompareAndSwapStatus(ctx context.Context, jobID string, expectedStatus string, newStatus string, message string) (bool, error)
 	UpdateCandidates(ctx context.Context, jobID string, candidates []biz.SkillImportCandidate, conflictGroups []biz.SkillConflictGroup) error
+	// DeleteOldJobs removes terminal-state jobs older than olderThan (batched)
+	// and returns the temp dirs of deleted rows so callers can clean up files.
+	DeleteOldJobs(ctx context.Context, olderThan time.Duration) (deleted int, tempDirs []string, err error)
 }
 
 type Engine struct {
@@ -148,7 +160,41 @@ func ProvideEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRep
 		return e
 	}
 	e.SetStore(store)
+	// 启动时清理过期 job 行与临时目录（同步执行，批量 ≤100 行，不阻塞启动）。
+	e.CleanupOldJobs(context.Background())
 	return e
+}
+
+// dbJobRetention is how long terminal-state import jobs (and their temp
+// candidate files) are kept for review before cleanup.
+const dbJobRetention = 24 * time.Hour
+
+// CleanupOldJobs removes terminal-state import jobs older than dbJobRetention
+// from the DB and deletes their temp candidate directories.
+func (e *Engine) CleanupOldJobs(ctx context.Context) {
+	if e.store == nil {
+		return
+	}
+	deleted, tempDirs, err := e.store.DeleteOldJobs(ctx, dbJobRetention)
+	if err != nil {
+		e.lg.Warn("skill import job cleanup failed",
+			loggateway.StepID("skill.import.cleanup"),
+			loggateway.Err(err))
+		return
+	}
+	for _, dir := range tempDirs {
+		if rmErr := os.RemoveAll(dir); rmErr != nil {
+			e.lg.Warn("skill import temp dir cleanup failed",
+				loggateway.StepID("skill.import.cleanup"),
+				loggateway.Str("temp_dir", dir),
+				loggateway.Err(rmErr))
+		}
+	}
+	if deleted > 0 {
+		e.lg.Info("cleaned up old skill import jobs",
+			loggateway.StepID("skill.import.cleanup"),
+			loggateway.Int("deleted", deleted))
+	}
 }
 
 func (e *Engine) resolveRoot(ctx context.Context) string {
@@ -503,6 +549,14 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 			// no body and no files, which would silently create broken skills.
 			for cid, cs := range job.candidates {
 				if strings.TrimSpace(cs.body) == "" && len(cs.files) == 0 {
+					// Roll back CAS: "applying" → "completed" so the job is not
+					// permanently stuck when temporary files are gone.
+					if rbErr := e.store.UpdateStatus(context.Background(), trimmed, "completed", "candidate content lost, rolled back"); rbErr != nil {
+						e.lg.Warn("ApplyImport: DB rollback after candidate validation failed",
+							loggateway.StepID("skill.import"),
+							loggateway.Str("job_id", trimmed),
+							loggateway.Err(rbErr))
+					}
 					return biz.SkillImportApplyResult{}, validationError(
 						fmt.Sprintf("candidate %s has no content (temporary files may have been lost after server restart)", cid))
 				}
@@ -992,6 +1046,8 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 		return validationError("invalid zip file")
 	}
 	filesByDir := map[string]map[string][]byte{}
+	fileCount := 0
+	var totalUncompressed int64
 	for _, file := range reader.File {
 		// TPM-P1-07: normalize separators and reject any path that would escape the
 		// skill root after Clean/Join. Reject absolute, traversal, and Windows-drive-prefixed paths.
@@ -1026,6 +1082,14 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 		}
 		if len(content) > maxSkillFileBytes {
 			return detailErr(ErrSkillFileTooLarge, "skill file too large: "+name)
+		}
+		fileCount++
+		if fileCount > maxImportFiles {
+			return detailErr(ErrTooManyFiles, fmt.Sprintf("zip contains more than %d files", maxImportFiles))
+		}
+		totalUncompressed += int64(len(content))
+		if totalUncompressed > maxImportTotalBytes {
+			return detailErr(ErrTotalSizeExceeded, fmt.Sprintf("zip uncompressed size exceeds %d bytes", maxImportTotalBytes))
 		}
 		dir, relativeName := skillZipGroupPath(name)
 		if _, ok := filesByDir[dir]; !ok {

@@ -46,6 +46,41 @@ func (s *ToolService) assertToolAccess(ctx context.Context, toolID string) error
 	return nil
 }
 
+// assertAgentAccess 校验 caller 是否可读取指定 agent 作用域下的工具数据
+// （覆盖项/授权列表）。共享 agent（workspace_id=""）对所有租户可读。
+func (s *ToolService) assertAgentAccess(ctx context.Context, agentID string) error {
+	return s.checkAgentAccess(ctx, agentID, false)
+}
+
+// assertAgentMutateAccess 校验 caller 是否可变更指定 agent 作用域下的工具数据。
+// 共享 agent 对租户只读（fail-closed）。
+func (s *ToolService) assertAgentMutateAccess(ctx context.Context, agentID string) error {
+	return s.checkAgentAccess(ctx, agentID, true)
+}
+
+func (s *ToolService) checkAgentAccess(ctx context.Context, agentID string, mutate bool) error {
+	if agentID == "" {
+		return nil
+	}
+	a, err := s.agents.Get(ctx, agentID)
+	if err != nil {
+		if apierror.IsCode(err, apierror.CodeNotFound) {
+			return apierror.NotFound(apierror.DomainAgent, "agent not found")
+		}
+		return err
+	}
+	callerWS := workspace.IDFromContext(ctx)
+	if mutate {
+		err = workspace.AssertWorkspaceMutate(callerWS, a.WorkspaceID)
+	} else {
+		err = workspace.AssertWorkspaceOrShared(callerWS, a.WorkspaceID)
+	}
+	if err != nil {
+		return apierror.NotFound(apierror.DomainAgent, "agent not found")
+	}
+	return nil
+}
+
 func bizToolToProto(t biz.Tool) *v1.Tool {
 	out := &v1.Tool{
 		Id:                   t.ID,
@@ -63,7 +98,9 @@ func bizToolToProto(t biz.Tool) *v1.Tool {
 		ParametersSchemaJson: t.ParametersSchemaJSON,
 		ResultSchemaJson:     t.ResultSchemaJSON,
 		ConfigSchemaJson:     t.ConfigSchemaJSON,
-		ConfigJson:           t.ConfigJSON,
+		// A4: never leak secrets — sensitive config values leave the process
+		// only in masked form; write paths treat the mask as "keep stored".
+		ConfigJson:           biz.RedactToolConfigJSON(t.ConfigJSON, t.ConfigSchemaJSON),
 		DefaultConfigJson:    t.DefaultConfigJSON,
 		MetadataJson:         t.MetadataJSON,
 		RuntimeStatus:        t.RuntimeStatus,
@@ -327,6 +364,10 @@ func runsQuery(req *v1.ListToolRunsRequest) biz.ToolRunQuery {
 
 func (s *ToolService) ListToolRuns(ctx context.Context, req *v1.ListToolRunsRequest) (*v1.ListToolRunsResponse, error) {
 	q := runsQuery(req)
+	// A3: tenant callers only see runs owned by their workspace.
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
+	}
 	result, err := s.uc.ListRuns(ctx, q)
 	if err != nil {
 		return nil, err
@@ -432,6 +473,9 @@ func (s *ToolService) GetToolAgentBindings(ctx context.Context, req *v1.GetToolA
 }
 
 func (s *ToolService) ListToolAgentOverridesByAgent(ctx context.Context, req *v1.ListToolAgentOverridesByAgentRequest) (*v1.ListToolAgentOverridesByAgentResponse, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	overrides, err := s.uc.ListToolAgentOverridesByAgent(ctx, req.GetAgentId())
 	if err != nil {
 		return nil, err
@@ -444,6 +488,9 @@ func (s *ToolService) ListToolAgentOverridesByAgent(ctx context.Context, req *v1
 }
 
 func (s *ToolService) UpsertToolAgentOverride(ctx context.Context, req *v1.UpsertToolAgentOverrideRequest) (*v1.ToolAgentOverride, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	in := biz.ToolAgentOverrideInput{
 		ToolKey:              req.GetToolId(),
 		AgentID:              req.GetAgentId(),
@@ -461,6 +508,9 @@ func (s *ToolService) UpsertToolAgentOverride(ctx context.Context, req *v1.Upser
 }
 
 func (s *ToolService) DeleteToolAgentOverride(ctx context.Context, req *v1.DeleteToolAgentOverrideRequest) (*emptypb.Empty, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	err := s.uc.DeleteToolAgentOverride(ctx, req.GetToolId(), req.GetAgentId())
 	if err != nil {
 		return nil, err
@@ -471,6 +521,9 @@ func (s *ToolService) DeleteToolAgentOverride(ctx context.Context, req *v1.Delet
 
 // ListToolGrants lists persisted "always allow" grants for an agent.
 func (s *ToolService) ListToolGrants(ctx context.Context, req *v1.ListToolGrantsRequest) (*v1.ListToolGrantsResponse, error) {
+	if err := s.assertAgentAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	grants, err := s.uc.ListToolGrants(ctx, req.GetAgentId())
 	if err != nil {
 		return nil, err
@@ -492,6 +545,9 @@ func (s *ToolService) ListToolGrants(ctx context.Context, req *v1.ListToolGrants
 // decision chain queries grants per decision, so revocation takes effect on
 // the next tool invocation without any build-cache invalidation.
 func (s *ToolService) DeleteToolGrant(ctx context.Context, req *v1.DeleteToolGrantRequest) (*emptypb.Empty, error) {
+	if err := s.assertAgentMutateAccess(ctx, req.GetAgentId()); err != nil {
+		return nil, err
+	}
 	if err := s.uc.RevokeToolGrant(ctx, req.GetAgentId(), req.GetToolKey()); err != nil {
 		return nil, err
 	}
@@ -532,6 +588,10 @@ func (s *ToolService) UpdateToolConfig(ctx context.Context, req *v1.UpdateToolCo
 }
 
 func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v1.TestToolResponse, error) {
+	// A1: TestTool executes the tool with its stored config — gate on access.
+	if err := s.assertToolAccess(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
 	res, err := s.uc.TestTool(ctx, req.GetId(), req.GetArgumentsJson(), int(req.GetTimeoutSec()))
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeNotFound) {
@@ -587,6 +647,10 @@ func (s *ToolService) ListToolInvocationAudits(ctx context.Context, req *v1.List
 		To:        req.GetTo(),
 		Limit:     limit,
 		Offset:    offset,
+	}
+	// A3: tenant callers only see audit rows owned by their workspace.
+	if !workspace.IsSystem(ctx) {
+		q.WorkspaceID = workspace.IDFromContext(ctx)
 	}
 	result, err := s.uc.ListInvocationAudits(ctx, q)
 	if err != nil {

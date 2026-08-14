@@ -12,12 +12,12 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// gateFixture wires a PublishGate over the fake repo + echo legacy runner.
+// gateFixture wires a PublishGate over the fake repo + echo framework bridge.
 // The echo agent replies with the case input, so cases whose expected_output
 // equals their input score exact_match=1 and mismatched cases score 0.
 func gateFixture(repo *fakeEvalRepo) (*PublishGate, *captureBus) {
 	uc := beval.NewUsecase(repo, loggateway.NewNoop())
-	runner := NewRunner(uc, echoAgent, nil, loggateway.NewNoop())
+	runner := NewRunner(uc, echoBridge(), loggateway.NewNoop())
 	bus := &captureBus{}
 	return NewPublishGate(uc, runner, bus, loggateway.NewNoop()), bus
 }

@@ -66,6 +66,11 @@ type Definition struct {
 	// keep their configured high-tier model; other members route to the cost
 	// tier via a run-level ModelSelector propagated to member invocations.
 	ModelCascade *ModelCascadeDef `json:"model_cascade,omitempty"`
+	// EnableProjectState 开启 P2-4 中期 project-state JSON：graph schema 注入
+	// project_state StateField（MergeReducer），成员获得 update_project_state
+	// 工具（滚动维护 活跃请求/最近变更/里程碑/决策摘要），memory inject 按
+	// 切片预算注入，替代长任务对话历史全量拼接。
+	EnableProjectState bool `json:"enable_project_state,omitempty"`
 }
 
 // ModelCascadeDef is the team-level model cascade (tiering) config.

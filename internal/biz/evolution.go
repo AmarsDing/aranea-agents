@@ -262,7 +262,7 @@ func (uc *EvolutionUsecase) GetEvolutionSuggestions(ctx context.Context, agentID
 	if err != nil {
 		return nil, err
 	}
-	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), status, 1000, 0)
+	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionEvolve), evolutionCallerWorkspace(ctx), status, 1000, 0)
 	if err != nil {
 		return nil, err
 	}

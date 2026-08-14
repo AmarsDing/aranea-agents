@@ -96,7 +96,7 @@ export function useSkillsPage() {
     metaBody.value = '';
     metaOpen.value = true;
     try {
-      const detail = await getSkill(skill.id);
+      const detail = await skillsStore.loadSkill(skill.id);
       metaTarget.value = detail.skill;
       metaBody.value = detail.bodyMarkdown || '';
     } catch (err) {

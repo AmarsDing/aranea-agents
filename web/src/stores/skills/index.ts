@@ -14,6 +14,8 @@ import {
   getSkillFilesystemHealth,
   getSkill,
   getSkillHealth,
+  listSkillFiles as listSkillFilesApi,
+  readSkillFile as readSkillFileApi,
   updateSkillFile as updateSkillFileApi,
   createSkill as createSkillApi,
   updateSkill as updateSkillApi,
@@ -34,6 +36,7 @@ import type {
   SkillImportApplyResult,
   SkillRefineResult,
   SkillFileContent,
+  SkillFile,
   SkillVersionDetail,
   SkillTagInfo,
   PaginatedResponse,
@@ -75,12 +78,14 @@ export const useSkillsStore = defineStore('skills', () => {
   async function duplicate(id: string) {
     const copy = await duplicateSkill(id);
     skills.value.push(copy);
+    total.value += 1;
     return copy;
   }
 
   async function remove(id: string) {
     await deleteSkill(id);
     skills.value = skills.value.filter((s) => s.id !== id);
+    total.value = Math.max(0, total.value - 1);
   }
 
   async function loadFilesystemHealth(): Promise<SkillFilesystemHealth> {
@@ -117,6 +122,14 @@ export const useSkillsStore = defineStore('skills', () => {
 
   async function updateSkillFile(id: string, path: string, content: string): Promise<SkillFileContent> {
     return updateSkillFileApi(id, path, content);
+  }
+
+  async function listSkillFiles(id: string): Promise<SkillFile[]> {
+    return listSkillFilesApi(id);
+  }
+
+  async function readSkillFile(id: string, path: string): Promise<SkillFileContent> {
+    return readSkillFileApi(id, path);
   }
 
   async function create(payload: {

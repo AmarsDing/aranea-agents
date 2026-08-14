@@ -23,6 +23,4 @@ type ChannelPeerSessionRepo interface {
 	UpdateSessionID(ctx context.Context, channelID, peerKey, sessionID string) (ChannelPeerSession, error)
 	// DeleteByChannelID removes all peer bindings for a channel (e.g. after routing change).
 	DeleteByChannelID(ctx context.Context, channelID string) (int, error)
-	// DeleteBySessionID removes peer bindings pointing at a deleted session (M55 CC-HOT-02).
-	DeleteBySessionID(ctx context.Context, sessionID string) (int, error)
 }

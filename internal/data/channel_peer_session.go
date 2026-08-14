@@ -133,18 +133,3 @@ func (r *channelPeerSessionRepo) DeleteByChannelID(ctx context.Context, channelI
 	}
 	return n, nil
 }
-
-func (r *channelPeerSessionRepo) DeleteBySessionID(ctx context.Context, sessionID string) (int, error) {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" {
-		return 0, nil
-	}
-	n, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Delete().
-		Where(platformchannelpeersession.SessionIDEQ(sessionID)).
-		Exec(ctx)
-	if err != nil {
-		r.data.lg.Warn("delete channel peer sessions by session failed", loggateway.StepID("data.channel_peer_session.delete_by_session"), loggateway.Err(err))
-		return 0, err
-	}
-	return n, nil
-}

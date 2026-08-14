@@ -4,18 +4,20 @@
       <div class="tool-editor-shell__head">
         <div class="tool-editor-shell__head-left">
           <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="saving" @click="tryClose">
-            <q-tooltip>返回</q-tooltip>
+            <q-tooltip>{{ t('toolsPage.editor.back') }}</q-tooltip>
           </q-btn>
           <div class="tool-editor-shell__breadcrumb">
             <span class="tool-editor-shell__breadcrumb-prefix">Tools</span>
             <q-icon name="chevron_right" size="xs" color="grey-6" />
-            <span class="tool-editor-shell__breadcrumb-current">{{ editingId ? '编辑' : '新建' }}</span>
+            <span class="tool-editor-shell__breadcrumb-current">{{
+              editingId ? t('toolsPage.editor.editTitle') : t('toolsPage.editor.createTitle')
+            }}</span>
           </div>
           <div v-if="editingId && form.display_name" class="tool-editor-shell__entity">{{ form.display_name }}</div>
         </div>
         <div class="tool-editor-shell__head-right">
           <q-btn flat dense round icon="help_outline" class="app-registry-icon-btn" @click="helpOpen = true">
-            <q-tooltip>编辑帮助</q-tooltip>
+            <q-tooltip>{{ t('toolsPage.editor.help') }}</q-tooltip>
           </q-btn>
         </div>
       </div>
@@ -56,7 +58,7 @@
           </div>
 
           <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
-            <div class="tool-editor-aside__nav-title">变更预览</div>
+            <div class="tool-editor-aside__nav-title">{{ t('toolsPage.editor.diffTitle') }}</div>
             <div class="tool-editor-aside__diff-list">
               <div
                 v-for="(line, i) in diffLines.slice(0, 6)"
@@ -404,12 +406,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
 import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
 import type { ToolUpsertInput } from '../../features/tools/types';
-import { toolEditorJsonKeys, validateToolJsonFields, riskLevelOptions, sourceSuggestions } from './toolUi';
+import { toolEditorJsonKeys, validateToolJsonFields, riskLevelOptions, sourceSuggestions, diffToolFormLines } from './toolUi';
 import ToolFieldHintInput from './editor/ToolFieldHintInput.vue';
 import ToolEditorHelpDrawer from './editor/ToolEditorHelpDrawer.vue';
 import ToolPolicyToggleList from './editor/ToolPolicyToggleList.vue';
@@ -420,6 +421,8 @@ const props = defineProps<{
   open: boolean;
   editingId: string;
   form: ToolUpsertInput;
+  /** 打开编辑器时的表单快照（store.originalForm），用于「变更预览」真差分。 */
+  originalForm: ToolUpsertInput;
   saving: boolean;
   dirty: boolean;
   jsonErrors: Record<string, string>;
@@ -431,12 +434,12 @@ const emit = defineEmits<{
   'update:open': [value: boolean];
   save: [];
   close: [];
+  'request-close': [];
   'apply-template': [id: string];
   'patch-form': [p: Record<string, unknown>];
   'update:activeSection': [value: string];
 }>();
 
-const $q = useQuasar();
 const { t } = useI18n();
 
 const helpOpen = ref(false);
@@ -489,9 +492,13 @@ const extraConfigKeys = computed(() => configExtraKeys(props.form.config_json, p
 
 const defaultDiffLines = computed(() => configDiffSummary(props.form.config_json, props.form.default_config_json));
 
+// 变更预览：当前表单 vs 打开时快照（真差分，与 dirty 判定同口径）。
 const diffLines = computed(() => {
   if (!props.editingId) return [];
-  return defaultDiffLines.value;
+  return diffToolFormLines(
+    props.form as unknown as Record<string, unknown>,
+    props.originalForm as unknown as Record<string, unknown>,
+  );
 });
 
 const validationChecks = computed(() => {
@@ -556,21 +563,10 @@ function onScroll() {
   }
 }
 
-function confirmDiscardAndClose() {
-  $q.dialog({
-    title: '未保存的更改',
-    message: '当前有未保存的更改，确定要关闭吗？',
-    cancel: { label: '继续编辑', flat: true, noCaps: true },
-    ok: { label: '放弃更改', noCaps: true, color: 'negative' },
-    persistent: true,
-  }).onOk(() => {
-    emit('close');
-  });
-}
-
 function tryClose() {
+  // 未保存确认弹窗上收 Page 层（红线 #4）：由父级决定放弃或继续编辑。
   if (props.dirty) {
-    confirmDiscardAndClose();
+    emit('request-close');
   } else {
     emit('close');
   }
@@ -578,11 +574,7 @@ function tryClose() {
 
 function onDialogUpdate(val: boolean) {
   if (!val) {
-    if (props.dirty) {
-      confirmDiscardAndClose();
-    } else {
-      emit('close');
-    }
+    tryClose();
   }
 }
 </script>

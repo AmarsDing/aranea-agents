@@ -15,6 +15,8 @@ var (
 	ErrUnsafePathEscapes       = errors.New("unsafe path: escapes base")
 	ErrUnsafePathDotDot        = errors.New("unsafe path: dotdot")
 	ErrSkillFileTooLarge       = errors.New("skill file too large")
+	ErrTooManyFiles            = errors.New("skill zip contains too many files")
+	ErrTotalSizeExceeded       = errors.New("skill zip uncompressed size exceeds limit")
 	ErrChatCompletionFailed    = errors.New("chat completion failed")
 	ErrEmptyChatResponse       = errors.New("empty chat completion response")
 	ErrAnthropicFailed         = errors.New("anthropic messages failed")

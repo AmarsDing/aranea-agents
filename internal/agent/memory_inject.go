@@ -248,6 +248,13 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 
 	// L2/L3/L4: recall-based cues (keyword-driven, changes every turn)
 	var recallParts []string
+	// P2-4 中期 project-state：team graph runtime 把结构化项目状态带进成员
+	// invocation（node-start RuntimeState 快照 / session 回退），按切片预算
+	// 注入，替代长任务对话历史全量拼接。块序：L1 之后、recall 之前——它是
+	// "当前正在发生什么"，优先于按关键词召回的历史记忆。未携带时返回 ""。
+	if slice := ProjectStateCueFromInvocation(inv, projectStateCueBudgetRunes); slice != "" {
+		recallParts = append(recallParts, slice)
+	}
 	// FR-M3: pinned preference/constraint block precedes recall blocks — no
 	// vector scoring, always injected when L3 injection is enabled.
 	if policy.InjectL3 && deps.MemoryPreferenceLister != nil {

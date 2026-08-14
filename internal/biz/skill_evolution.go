@@ -361,7 +361,7 @@ func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (Sk
 }
 
 func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string, limit int, offset int) ([]SkillProposal, error) {
-	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), status, limit, offset)
+	rows, err := uc.store.ListByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), evolutionCallerWorkspace(ctx), status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +375,7 @@ func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID stri
 // CountProposals returns the total number of proposals matching the filter,
 // for pagination metadata. Mirrors the ListProposals filter semantics.
 func (uc *SkillEvolutionUsecase) CountProposals(ctx context.Context, agentID string, status string) (int, error) {
-	return uc.store.CountByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), status)
+	return uc.store.CountByTargetAndAction(ctx, string(EvolutionTargetAgent), agentID, string(EvolutionActionCreate), evolutionCallerWorkspace(ctx), status)
 }
 
 func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal SkillProposal) (SkillProposal, error) {

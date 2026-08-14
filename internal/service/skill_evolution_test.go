@@ -153,19 +153,19 @@ func (s *stubProposalRepo) filter(targetType, targetID, actionType, status strin
 	return result
 }
 
-func (s *stubProposalRepo) ListByTarget(_ context.Context, targetType string, targetID string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *stubProposalRepo) ListByTarget(_ context.Context, targetType string, targetID string, _ string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return s.filter(targetType, targetID, "", status), nil
 }
 
-func (s *stubProposalRepo) CountByTarget(_ context.Context, targetType string, targetID string, status string) (int, error) {
+func (s *stubProposalRepo) CountByTarget(_ context.Context, targetType string, targetID string, _ string, status string) (int, error) {
 	return len(s.filter(targetType, targetID, "", status)), nil
 }
 
-func (s *stubProposalRepo) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *stubProposalRepo) ListByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return s.filter(targetType, targetID, actionType, status), nil
 }
 
-func (s *stubProposalRepo) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
+func (s *stubProposalRepo) CountByTargetAndAction(_ context.Context, targetType string, targetID string, actionType string, _ string, status string) (int, error) {
 	return len(s.filter(targetType, targetID, actionType, status)), nil
 }
 

@@ -21,7 +21,7 @@ type fakeUnifiedStore struct {
 	metaUpdateErr error
 }
 
-func (f *fakeUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error) {
+func (f *fakeUnifiedStore) ListByTarget(_ context.Context, targetType, targetID, _ string, status string, limit, offset int) ([]UnifiedEvolutionSuggestion, error) {
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
@@ -55,13 +55,13 @@ func (f *fakeUnifiedStore) GetLatestByTargetAndAction(context.Context, string, s
 func (f *fakeUnifiedStore) GetByID(context.Context, string) (*UnifiedEvolutionSuggestion, error) {
 	panic("unused")
 }
-func (f *fakeUnifiedStore) CountByTarget(context.Context, string, string, string) (int, error) {
+func (f *fakeUnifiedStore) CountByTarget(context.Context, string, string, string, string) (int, error) {
 	panic("unused")
 }
-func (f *fakeUnifiedStore) ListByTargetAndAction(context.Context, string, string, string, string, int, int) ([]UnifiedEvolutionSuggestion, error) {
+func (f *fakeUnifiedStore) ListByTargetAndAction(context.Context, string, string, string, string, string, int, int) ([]UnifiedEvolutionSuggestion, error) {
 	panic("unused")
 }
-func (f *fakeUnifiedStore) CountByTargetAndAction(context.Context, string, string, string, string) (int, error) {
+func (f *fakeUnifiedStore) CountByTargetAndAction(context.Context, string, string, string, string, string) (int, error) {
 	panic("unused")
 }
 func (f *fakeUnifiedStore) Create(context.Context, UnifiedEvolutionSuggestion) error { panic("unused") }

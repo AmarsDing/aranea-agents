@@ -107,10 +107,9 @@
           成功 {{ props.row.success_count }} · 失败 {{ props.row.failure_count + props.row.blocked_count }}
         </div>
         <div v-if="props.row.invoke_count > 0" class="text-caption" :class="`text-${toolArgsFirstPassRateColor(props.row)}`">
-          一次合法 {{ formatToolArgsFirstPassRate(props.row) }}
+          {{ $t('toolsPage.argsQuality.firstPassShort', { rate: formatToolArgsFirstPassRate(props.row) }) }}
           <q-tooltip>
-            参数一次合法率 = 1 − (修复成功 {{ props.row.repaired_count }} + 不可修复 {{ props.row.invalid_count }}) / 调用
-            {{ props.row.invoke_count }}（90 天窗口）。偏低说明模型常写错参数，多耗一轮修复交互。
+            {{ $t('toolsPage.argsQuality.firstPassTip', { repaired: props.row.repaired_count, invalid: props.row.invalid_count, invoke: props.row.invoke_count }) }}
           </q-tooltip>
         </div>
       </q-td>

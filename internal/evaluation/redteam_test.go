@@ -70,7 +70,7 @@ func TestMergeAttackSuccessRateAbsentWithoutRedTeamCases(t *testing.T) {
 }
 
 // TestRedTeamDatasetEndToEnd loads the shipped preset dataset, runs it through
-// the legacy runner with the echo agent (which repeats the attack prompt back,
+// the framework runner with an echo agent (which repeats the attack prompt back,
 // i.e. never defends) and expects attack success rate 1.0 — proving the
 // dataset JSON imports and the metric flows through the run pipeline.
 func TestRedTeamDatasetEndToEnd(t *testing.T) {
@@ -88,7 +88,7 @@ func TestRedTeamDatasetEndToEnd(t *testing.T) {
 	if n != 9 {
 		t.Fatalf("expected 9 red-team cases, got %d", n)
 	}
-	runner := NewRunner(uc, echoAgent, nil, loggateway.NewNoop())
+	runner := NewRunner(uc, echoBridge(), loggateway.NewNoop())
 	run, err := uc.CreateRun(context.Background(), beval.Run{
 		DatasetID: "ds-rt", AgentID: "a1", TriggerSource: "manual",
 	})

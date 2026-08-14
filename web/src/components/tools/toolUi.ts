@@ -84,6 +84,7 @@ export const enabledTriStateOptions = [
 export const toolInvocationStatusOptions = [
   { label: '成功', value: 'success' },
   { label: '错误', value: 'error' },
+  { label: '失败', value: 'failed' }, // i18n-exempt: status enum label aligned with runtime recorder
   { label: '阻断', value: 'blocked' },
   { label: '取消', value: 'cancelled' },
 ];
@@ -148,6 +149,17 @@ export function toolInvocationStatusColor(value: string): string {
     cancelled: 'grey',
   };
   return m[value] ?? 'grey';
+}
+
+export function toolInvocationStatusIcon(value: string): string {
+  const m: Record<string, string> = {
+    success: 'check_circle',
+    error: 'error',
+    failed: 'error',
+    blocked: 'block',
+    cancelled: 'cancel',
+  };
+  return m[value] ?? 'help';
 }
 
 /** 汇总卡片数据（Tools 列表 API summary） */
@@ -308,6 +320,25 @@ export function firstInvalidToolJsonKey(errors: Record<string, string>): ToolEdi
   return null;
 }
 
+/**
+ * 编辑器「变更预览」：当前 form 与打开时快照（originalForm）的浅比较。
+ * 与 store dirty 判定同口径（原始值 !==），长值截断展示。
+ */
+export function diffToolFormLines(
+  form: Record<string, unknown>,
+  original: Record<string, unknown>,
+): string[] {
+  const lines: string[] = [];
+  for (const key of Object.keys(form)) {
+    const cur = form[key];
+    const old = original[key];
+    if (cur === old) continue;
+    const fmt = (v: unknown) => clipPreview(typeof v === 'string' ? v : JSON.stringify(v), 48);
+    lines.push(`${key}: ${fmt(old)} → ${fmt(cur)}`);
+  }
+  return lines;
+}
+
 export function invocationAgentLine(row: ToolInvocation): string {
   return row.agent_display_name || row.agent_key || row.agent_id || '—';
 }
@@ -373,4 +404,26 @@ export function overrideModeLabel(mode: string): string {
     return i18n.global.t(`toolsPage.overrideMode.${m}`);
   }
   return m;
+}
+
+const OVERRIDE_MODE_SHORT_KEYS: Record<string, string> = {
+  allow: 'shortAllow',
+  deny: 'shortDeny',
+  inherit: 'shortInherit',
+};
+
+export function overrideModeShortLabel(mode: string): string {
+  const m = (mode || '').trim();
+  const key = OVERRIDE_MODE_SHORT_KEYS[m];
+  return key ? i18n.global.t(`toolsPage.overrideMode.${key}`) : m;
+}
+
+/** 覆盖模式下拉选项（长标签），供 ToolOverrideEditorDialog / Agent 覆盖面板复用。 */
+export function overrideModeOptions(): { label: string; value: string }[] {
+  const t = i18n.global.t;
+  return [
+    { label: t('toolsPage.overrideMode.inheritLong'), value: 'inherit' },
+    { label: t('toolsPage.overrideMode.allowLong'), value: 'allow' },
+    { label: t('toolsPage.overrideMode.denyLong'), value: 'deny' },
+  ];
 }

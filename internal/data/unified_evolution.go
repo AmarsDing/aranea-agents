@@ -38,12 +38,16 @@ func NewUnifiedEvolutionRepo(data *Data, lg loggateway.Logger) *UnifiedEvolution
 }
 
 func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.UnifiedEvolutionSuggestion) error {
+	workspaceID := suggestion.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = r.deriveWorkspaceID(ctx, string(suggestion.TargetType), suggestion.TargetID)
+	}
 	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO unified_evolution_suggestions
-		(id, target_type, target_id, action_type, trigger_source, trigger_reason,
+		(id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 		 status, priority, draft_body, draft_name, merge_target_id,
 		 lifecycle_status, sandbox_passed, sandbox_result, metadata,
 		 created_at, approved_by, applied_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 
 	var sandboxResultStr *string
 	if suggestion.SandboxResult != nil {
@@ -71,6 +75,7 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 		suggestion.ID,
 		string(suggestion.TargetType),
 		suggestion.TargetID,
+		workspaceID,
 		string(suggestion.ActionType),
 		suggestion.TriggerSource,
 		suggestion.TriggerReason,
@@ -93,6 +98,28 @@ func (r *UnifiedEvolutionRepo) Create(ctx context.Context, suggestion biz.Unifie
 	return nil
 }
 
+// deriveWorkspaceID 从宿主表派生建议的归属租户（P0-1b）：
+// skill 目标查 skill.workspace_id，agent 目标查 agents.workspace_id；
+// platform 目标 / 宿主不存在 / 查询失败一律降级为 ''（共享可见），
+// 与迁移 20261212 的 backfill 语义一致——派生失败不阻塞创建。
+func (r *UnifiedEvolutionRepo) deriveWorkspaceID(ctx context.Context, targetType, targetID string) string {
+	var table string
+	switch biz.EvolutionTargetType(targetType) {
+	case biz.EvolutionTargetSkill:
+		table = "skill"
+	case biz.EvolutionTargetAgent:
+		table = "agents"
+	default:
+		return ""
+	}
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT workspace_id FROM ` + table + ` WHERE id = ?`)
+	var ws string
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{targetID}, &ws); err != nil {
+		return ""
+	}
+	return ws
+}
+
 func (r *UnifiedEvolutionRepo) HasPendingForTarget(ctx context.Context, targetType string, targetID string) (bool, error) {
 	q := r.data.Dialect().RenumberPlaceholders(`SELECT COUNT(*) FROM unified_evolution_suggestions
 	      WHERE target_type = ? AND target_id = ? AND status = 'pending'`)
@@ -105,7 +132,7 @@ func (r *UnifiedEvolutionRepo) HasPendingForTarget(ctx context.Context, targetTy
 }
 
 func (r *UnifiedEvolutionRepo) GetLatestByTarget(ctx context.Context, targetType string, targetID string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
@@ -120,7 +147,7 @@ func (r *UnifiedEvolutionRepo) GetLatestByTarget(ctx context.Context, targetType
 }
 
 func (r *UnifiedEvolutionRepo) GetLatestByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
@@ -134,19 +161,19 @@ func (r *UnifiedEvolutionRepo) GetLatestByTargetAndAction(ctx context.Context, t
 	return s, nil
 }
 
-func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType string, targetID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
-	return r.listByTarget(ctx, targetType, targetID, "", status, limit, offset)
+func (r *UnifiedEvolutionRepo) ListByTarget(ctx context.Context, targetType string, targetID string, workspaceID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return r.listByTarget(ctx, targetType, targetID, "", workspaceID, status, limit, offset)
 }
 
-func (r *UnifiedEvolutionRepo) ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
-	return r.listByTarget(ctx, targetType, targetID, actionType, status, limit, offset)
+func (r *UnifiedEvolutionRepo) ListByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
+	return r.listByTarget(ctx, targetType, targetID, actionType, workspaceID, status, limit, offset)
 }
 
-func (r *UnifiedEvolutionRepo) listByTarget(ctx context.Context, targetType string, targetID string, actionType string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (r *UnifiedEvolutionRepo) listByTarget(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string, limit, offset int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := `SELECT id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
@@ -158,6 +185,12 @@ func (r *UnifiedEvolutionRepo) listByTarget(ctx context.Context, targetType stri
 	if targetID != "" {
 		q += ` AND target_id = ?`
 		args = append(args, targetID)
+	}
+	// 租户隔离（P0-1b）：非空 workspaceID 仅见自有 + 共享('')行；
+	// 空 = 不过滤（系统/后台任务）。
+	if workspaceID != "" {
+		q += ` AND (workspace_id = ? OR workspace_id = '')`
+		args = append(args, workspaceID)
 	}
 	if actionType != "" {
 		q += ` AND action_type = ?`
@@ -187,15 +220,15 @@ func (r *UnifiedEvolutionRepo) listByTarget(ctx context.Context, targetType stri
 	return result, nil
 }
 
-func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType string, targetID string, status string) (int, error) {
-	return r.countByTarget(ctx, targetType, targetID, "", status)
+func (r *UnifiedEvolutionRepo) CountByTarget(ctx context.Context, targetType string, targetID string, workspaceID string, status string) (int, error) {
+	return r.countByTarget(ctx, targetType, targetID, "", workspaceID, status)
 }
 
-func (r *UnifiedEvolutionRepo) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
-	return r.countByTarget(ctx, targetType, targetID, actionType, status)
+func (r *UnifiedEvolutionRepo) CountByTargetAndAction(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string) (int, error) {
+	return r.countByTarget(ctx, targetType, targetID, actionType, workspaceID, status)
 }
 
-func (r *UnifiedEvolutionRepo) countByTarget(ctx context.Context, targetType string, targetID string, actionType string, status string) (int, error) {
+func (r *UnifiedEvolutionRepo) countByTarget(ctx context.Context, targetType string, targetID string, actionType string, workspaceID string, status string) (int, error) {
 	q := `SELECT COUNT(*) FROM unified_evolution_suggestions
 	      WHERE target_type = ?`
 	args := []any{targetType}
@@ -203,6 +236,10 @@ func (r *UnifiedEvolutionRepo) countByTarget(ctx context.Context, targetType str
 	if targetID != "" {
 		q += ` AND target_id = ?`
 		args = append(args, targetID)
+	}
+	if workspaceID != "" {
+		q += ` AND (workspace_id = ? OR workspace_id = '')`
+		args = append(args, workspaceID)
 	}
 	if actionType != "" {
 		q += ` AND action_type = ?`
@@ -227,7 +264,7 @@ func (r *UnifiedEvolutionRepo) countByTarget(ctx context.Context, targetType str
 // Returns (nil, nil) when no row matches.
 func (r *UnifiedEvolutionRepo) GetLatestByPatternHash(ctx context.Context, agentID string, patternHash string) (*biz.UnifiedEvolutionSuggestion, error) {
 	hashExpr := r.data.Dialect().JSONExtractPath("metadata", biz.EvoMetaPatternHash)
-	q := `SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := `SELECT id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
@@ -244,7 +281,7 @@ func (r *UnifiedEvolutionRepo) GetLatestByPatternHash(ctx context.Context, agent
 }
 
 func (r *UnifiedEvolutionRepo) GetByID(ctx context.Context, id string) (*biz.UnifiedEvolutionSuggestion, error) {
-	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, action_type, trigger_source, trigger_reason,
+	q := r.data.Dialect().RenumberPlaceholders(`SELECT id, target_type, target_id, workspace_id, action_type, trigger_source, trigger_reason,
 	             status, priority, draft_body, draft_name, merge_target_id,
 	             lifecycle_status, sandbox_passed, sandbox_result, metadata,
 	             created_at, approved_by, applied_at
@@ -534,6 +571,7 @@ func scanUnifiedEvolutionRow(rows *sql.Rows) (*biz.UnifiedEvolutionSuggestion, e
 		&s.ID,
 		&s.TargetType,
 		&s.TargetID,
+		&s.WorkspaceID,
 		&s.ActionType,
 		&s.TriggerSource,
 		&s.TriggerReason,

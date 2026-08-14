@@ -1,6 +1,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 import {
   buildToolSummaryCards,
   categoryFilterOptions,
@@ -12,12 +13,13 @@ import { useToolDetailStore } from '../../stores/tools/toolDetail';
 import { useToolEditorStore } from '../../stores/tools/toolEditor';
 import { useToolToggle } from './useToolToggle';
 import { patchToolForm, toolToUpsertInput } from './toolFormPatch';
-import type { Tool } from './types';
+import type { Tool, ToolAgentOverride } from './types';
 import { useToolsStore } from '../../stores/tools';
 import { parseKratosApiError } from '../../utils/kratosError';
 
 export function useToolsPage() {
   const $q = useQuasar();
+  const { t } = useI18n();
   const toolsStore = useToolsStore();
   const detailStore = useToolDetailStore();
   const editorStore = useToolEditorStore();
@@ -56,21 +58,15 @@ export function useToolsPage() {
         page_size: pageSize.value,
       });
     } catch (err) {
-      error.value = err instanceof Error ? err.message : '加载 Tools 失败';
+      error.value = err instanceof Error ? err.message : t('toolsPage.list.loadFailed');
     }
   }
 
   const { busyId, toggleEnabled, removeTool } = useToolToggle(loadRows);
 
-  editorStore.setCallbacks({
-    onSaved: loadRows,
-    onCreated: async (tool: Tool) => {
-      const fetched = await toolsStore.fetchTool(tool.id || tool.key);
-      detailStore.openDetail(fetched);
-    },
-  });
-
   function resetFilters() {
+    // 合并 watch 后同一 tick 的多次赋值只触发一次 loadRows；
+    // 筛选本就处于默认值时不产生 watch 触发，列表维持现状（刷新请用刷新按钮）。
     search.value = '';
     category.value = '';
     source.value = '';
@@ -78,7 +74,6 @@ export function useToolsPage() {
     enabled.value = null;
     abnormal.value = false;
     page.value = 1;
-    void loadRows();
   }
 
   function openDetail(tool: Tool) {
@@ -99,8 +94,11 @@ export function useToolsPage() {
   async function updateRisk(tool: Tool, value: string) {
     if (value === 'critical' || value === 'high') {
       $q.dialog({
-        title: '风险级别变更',
-        message: `确定将「${tool.display_name || tool.key}」的风险级别设为「${value}」？这可能影响工具的调用策略。`,
+        title: t('toolsPage.list.riskChangeTitle'),
+        message: t('toolsPage.list.riskChangeMessage', {
+          name: tool.display_name || tool.key,
+          level: value,
+        }),
         cancel: true,
         persistent: true,
       }).onOk(() => doUpdateRisk(tool, value));
@@ -112,10 +110,13 @@ export function useToolsPage() {
   async function doUpdateRisk(tool: Tool, value: string) {
     try {
       await toolsStore.editTool(tool.id || tool.key, toolToUpsertInput(tool, { risk_level: value }));
-      $q.notify({ type: 'positive', message: '风险级别已更新' });
+      $q.notify({ type: 'positive', message: t('toolsPage.list.riskUpdated') });
       await loadRows();
     } catch (err) {
-      $q.notify({ type: 'negative', message: parseKratosApiError(err).message || '更新风险级别失败' });
+      $q.notify({
+        type: 'negative',
+        message: parseKratosApiError(err).message || t('toolsPage.list.riskUpdateFailed'),
+      });
     }
   }
 
@@ -124,17 +125,20 @@ export function useToolsPage() {
     if (targets.length === 0) return;
 
     if (value) {
-      const highRisk = targets.filter((t) => t.risk_level === 'high' || t.risk_level === 'critical');
+      const highRisk = targets.filter((tool) => tool.risk_level === 'high' || tool.risk_level === 'critical');
       if (highRisk.length > 0) {
         const names = highRisk
           .slice(0, 5)
-          .map((t) => t.display_name || t.key)
+          .map((tool) => tool.display_name || tool.key)
           .join('、');
-        const more = highRisk.length > 5 ? ` 等 ${highRisk.length} 个` : '';
         const confirmed = await new Promise<boolean>((resolve) => {
           $q.dialog({
-            title: '高风险工具确认',
-            message: `选中项包含高风险工具（${names}${more}）。启用可能带来安全风险，确认继续？`,
+            title: t('toolsPage.list.batchHighRiskTitle'),
+            message: t('toolsPage.list.batchHighRiskMessage', {
+              names,
+              count: highRisk.length,
+              extra: highRisk.length > 5 ? t('toolsPage.list.batchHighRiskMore', { count: highRisk.length }) : '',
+            }),
             cancel: true,
             persistent: true,
           })
@@ -163,30 +167,30 @@ export function useToolsPage() {
     if (failed > 0) {
       $q.notify({
         type: 'warning',
-        message: `批量${value ? '启用' : '停用'}完成：成功 ${ok}，失败 ${failed}`,
+        message: t(value ? 'toolsPage.list.batchEnablePartial' : 'toolsPage.list.batchDisablePartial', { ok, failed }),
       });
     } else {
       $q.notify({
         type: 'positive',
-        message: `已${value ? '启用' : '停用'} ${ok} 个 Tool`,
+        message: t(value ? 'toolsPage.list.batchEnableDone' : 'toolsPage.list.batchDisableDone', { count: ok }),
       });
     }
   }
 
   function batchRemove() {
-    const readonlyCount = selected.value.filter((t) => t.readonly).length;
-    const targets = selected.value.filter((t) => !t.readonly);
+    const readonlyCount = selected.value.filter((tool) => tool.readonly).length;
+    const targets = selected.value.filter((tool) => !tool.readonly);
     const count = targets.length;
     if (count === 0) {
-      $q.notify({ type: 'warning', message: '选中项均为内置/只读工具，不可删除' });
+      $q.notify({ type: 'warning', message: t('toolsPage.list.batchRemoveAllReadonly') });
       return;
     }
     $q.dialog({
-      title: '批量删除',
+      title: t('toolsPage.list.batchRemoveTitle'),
       message:
         readonlyCount > 0
-          ? `确认删除选中的 ${count} 个 Tool？（已排除 ${readonlyCount} 个内置/只读工具）`
-          : `确认删除选中的 ${count} 个 Tool？`,
+          ? t('toolsPage.list.batchRemoveMessageSkipReadonly', { count, readonly: readonlyCount })
+          : t('toolsPage.list.batchRemoveMessage', { count }),
       cancel: true,
       persistent: true,
     }).onOk(async () => {
@@ -203,9 +207,9 @@ export function useToolsPage() {
       selected.value = [];
       await loadRows();
       if (failed > 0) {
-        $q.notify({ type: 'warning', message: `批量删除完成：成功 ${ok}，失败 ${failed}` });
+        $q.notify({ type: 'warning', message: t('toolsPage.list.batchRemovePartial', { ok, failed }) });
       } else {
-        $q.notify({ type: 'positive', message: `已删除 ${ok} 个 Tool` });
+        $q.notify({ type: 'positive', message: t('toolsPage.list.batchRemoveDone', { count: ok }) });
       }
     });
   }
@@ -219,6 +223,114 @@ export function useToolsPage() {
     patchToolForm(editorStore.form, p);
   }
 
+  // ---- 编辑器 / 详情抽屉的 UI 反馈编排（store 保持纯数据流，红线 #4） ----
+
+  /** 编辑器请求关闭：有未保存更改时在 Page 层弹确认，确认后丢弃。 */
+  function onEditorRequestClose() {
+    $q.dialog({
+      title: t('toolsPage.editor.discardTitle'),
+      message: t('toolsPage.editor.discardMessage'),
+      cancel: { label: t('toolsPage.editor.discardCancel'), flat: true, noCaps: true },
+      ok: { label: t('toolsPage.editor.discardOk'), noCaps: true, color: 'negative' },
+      persistent: true,
+    }).onOk(() => {
+      editorStore.closeEditor();
+    });
+  }
+
+  async function saveEditor() {
+    try {
+      const { created } = await editorStore.save();
+      if (created) {
+        await loadRows();
+        $q.dialog({
+          title: t('toolsPage.editor.createdTitle'),
+          message: t('toolsPage.editor.createdMessage', { name: created.display_name || created.key }),
+          cancel: { label: t('toolsPage.editor.createdLater'), flat: true, noCaps: true },
+          ok: {
+            label: t('toolsPage.editor.createdOpenDetail'),
+            noCaps: true,
+            unelevated: true,
+            class: 'app-registry-primary-btn',
+          },
+          persistent: false,
+        }).onOk(async () => {
+          const fetched = await toolsStore.fetchTool(created.id || created.key);
+          detailStore.openDetail(fetched);
+        });
+      } else {
+        $q.notify({ type: 'positive', message: t('toolsPage.editor.saved') });
+        await loadRows();
+      }
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: parseKratosApiError(err).message || t('toolsPage.editor.saveFailed'),
+      });
+    }
+  }
+
+  async function onRunTest() {
+    try {
+      const result = await detailStore.runToolTest();
+      if (result.status === 'success') {
+        $q.notify({ type: 'positive', message: t('toolsPage.detail.testSuccess') });
+      }
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: parseKratosApiError(err).message || t('toolsPage.detail.testFailed'),
+      });
+    }
+  }
+
+  async function onSaveConfig() {
+    try {
+      await detailStore.saveConfig();
+      $q.notify({ type: 'positive', message: t('toolsPage.detail.configSaved') });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message });
+    }
+  }
+
+  async function onSaveConfigSchema(schemaJson: string) {
+    try {
+      await detailStore.saveConfigSchema(schemaJson);
+      $q.notify({ type: 'positive', message: t('toolsPage.detail.schemaSaved') });
+    } catch (err) {
+      $q.notify({ type: 'negative', message: parseKratosApiError(err).message });
+    }
+  }
+
+  async function onSaveOverride() {
+    try {
+      await detailStore.saveOverride();
+    } catch (err) {
+      $q.notify({
+        type: 'negative',
+        message: parseKratosApiError(err).message || t('toolsPage.override.saveFailed'),
+      });
+    }
+  }
+
+  function onRemoveOverride(o: ToolAgentOverride) {
+    $q.dialog({
+      title: t('toolsPage.override.removeTitle'),
+      message: t('toolsPage.override.removeMessage', { agent: o.agent_id }),
+      cancel: true,
+      persistent: true,
+    }).onOk(async () => {
+      try {
+        await detailStore.removeOverride(o);
+      } catch (err) {
+        $q.notify({
+          type: 'negative',
+          message: parseKratosApiError(err).message || t('toolsPage.override.removeFailed'),
+        });
+      }
+    });
+  }
+
   watch(
     () => editorStore.open,
     (isOpen) => {
@@ -230,11 +342,15 @@ export function useToolsPage() {
     },
   );
 
-  watch([search, category, source, riskLevel, enabled, abnormal], () => {
-    page.value = 1;
+  // 单 watch 合并筛选 + 分页：筛选变化先归一到第 1 页（page 变化复用同一 watch），避免双 watch 重复请求。
+  watch([search, category, source, riskLevel, enabled, abnormal, page, pageSize], (newVals, oldVals) => {
+    const filtersChanged = newVals.slice(0, 6).some((v, i) => v !== oldVals[i]);
+    if (filtersChanged && page.value !== 1) {
+      page.value = 1;
+      return;
+    }
     void loadRows();
   });
-  watch([page, pageSize], () => void loadRows());
   onMounted(loadRows);
 
   return {
@@ -276,5 +392,12 @@ export function useToolsPage() {
     batchRemove,
     onEditTool,
     onPatchForm,
+    onEditorRequestClose,
+    saveEditor,
+    onRunTest,
+    onSaveConfig,
+    onSaveConfigSchema,
+    onSaveOverride,
+    onRemoveOverride,
   };
 }

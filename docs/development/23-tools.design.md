@@ -72,6 +72,8 @@ message Tool {
   int32 failure_count = 24;
   int32 blocked_count = 25;
   int32 agent_override_count = 26;
+  int32 repaired_count = 34;          // 修复守卫：参数畸形但修复成功（90d 窗口聚合 metadata_json.args_repaired）
+  int32 invalid_count = 35;           // 修复守卫：参数畸形且不可修复（90d 窗口聚合 metadata_json.args_invalid）
   optional double avg_duration_ms = 27;
   string last_invoked_at = 28;
   string last_status = 29;              // "success"/"error"/"blocked"
@@ -1112,8 +1114,15 @@ func toolSelectSQL(d Dialect) string {
                    COUNT(1) AS invoke_count,
                    SUM(CASE WHEN started_at >= ? THEN 1 ELSE 0 END) AS invoke_count_24h,
                    SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
-                   SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS failure_count,
+                   -- 状态口径统一（S0，2026-08-14）：runtime recorder 写 'failed'，
+                   -- 遗留 a2a/testexec 路径写 'error'，failure_count 必须同时覆盖两者，
+                   -- 否则 runtime 失败从工具列表统计中消失。
+                   SUM(CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END) AS failure_count,
                    SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked_count,
+                   -- 参数质量（S1）：metadata_json 的 args_repaired/args_invalid 布尔标记，
+                   -- JSON 提取走 Dialect.JSONExtract（PG ->> 得 'true'，SQLite json_extract 得 1）。
+                   SUM(CASE WHEN <json_extract metadata_json.args_repaired> THEN 1 ELSE 0 END) AS repaired_count,
+                   SUM(CASE WHEN <json_extract metadata_json.args_invalid> THEN 1 ELSE 0 END) AS invalid_count,
                    AVG(duration_ms) AS avg_duration_ms
             FROM tool_invocations
             WHERE started_at >= ?          -- PERF-3：90d 统计窗口
@@ -2391,7 +2400,7 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
 | 确认 | requires_confirmation | 是否需要确认标记 |
 | 流式 | supports_streaming | 是否支持流式 |
 | 调用 | invoke_count + invoke_count_24h | 总调用 / 24h 调用 |
-| 成功率 | success_count / (success+failure+blocked) | 成功率百分比 |
+| 成功率 | success_count / (success+failure+blocked) | 成功率百分比；副行「一次合法率」= 1 − (repaired_count+invalid_count) / invoke_count（90d 窗口，<95% 标黄，tooltip 列明细） |
 | 平均耗时 | avg_duration_ms | 毫秒 |
 | 启用 | enabled | Toggle 开关（高风险启用需 confirm_intent） |
 | 操作 | id | 查看/编辑/删除/配置按钮 |

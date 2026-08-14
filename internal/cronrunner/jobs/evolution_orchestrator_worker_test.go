@@ -57,19 +57,19 @@ func (s *orchStubStore) GetByID(_ context.Context, _ string) (*biz.UnifiedEvolut
 	return nil, nil
 }
 
-func (s *orchStubStore) ListByTarget(_ context.Context, _, _, _ string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *orchStubStore) ListByTarget(_ context.Context, _, _, _, _ string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
 
-func (s *orchStubStore) CountByTarget(_ context.Context, _, _, _ string) (int, error) {
+func (s *orchStubStore) CountByTarget(_ context.Context, _, _, _, _ string) (int, error) {
 	return 0, nil
 }
 
-func (s *orchStubStore) ListByTargetAndAction(_ context.Context, _, _, _, _ string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
+func (s *orchStubStore) ListByTargetAndAction(_ context.Context, _, _, _, _, _ string, _, _ int) ([]biz.UnifiedEvolutionSuggestion, error) {
 	return nil, nil
 }
 
-func (s *orchStubStore) CountByTargetAndAction(_ context.Context, _, _, _, _ string) (int, error) {
+func (s *orchStubStore) CountByTargetAndAction(_ context.Context, _, _, _, _, _ string) (int, error) {
 	return 0, nil
 }
 

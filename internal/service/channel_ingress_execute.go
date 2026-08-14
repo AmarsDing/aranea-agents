@@ -88,7 +88,12 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 			jobContentPreview = contentPreview
 		}
 
-		h.markTurnJobByEvent(ctx, terminalEvent, errMsg, jobPreviewMsgID, jobContentPreview)
+		// CH-B2: the turn ctx may already be cancelled (turn timeout) exactly when
+		// the terminal state must be persisted; detach cancellation for the final
+		// status update / error reply / run-status publish.
+		persistCtx, persistCancel := turnTerminalPersistCtx(ctx)
+		defer persistCancel()
+		h.markTurnJobByEvent(persistCtx, terminalEvent, errMsg, jobPreviewMsgID, jobContentPreview)
 		terminalStatus, _ := biz.ChannelTurnJobStatusFromEvent(terminalEvent)
 		if jobID != "" && terminalStatus != "" {
 			arametrics.ChannelTurnJobTotal.WithLabelValues(chRow.ID, terminalStatus).Inc()
@@ -100,7 +105,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 			if terminalStatus == biz.ChannelTurnJobStatusQueued {
 				msg = "Channel Turn 已排队"
 			}
-			h.logTurnFlow(ctx, sessionID, step, msg, nil,
+			h.logTurnFlow(persistCtx, sessionID, step, msg, nil,
 				event.P("channel_id", chRow.ID), event.P("job_id", jobID), event.P("status", terminalStatus))
 			return
 		}
@@ -108,15 +113,15 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		if terminalStatus == biz.ChannelTurnJobStatusTimeout {
 			step = flowStepChannelTurnTimeout
 		}
-		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
+		h.logTurnFlow(persistCtx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
-		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr); replyErr != nil {
+		if replyErr := h.deliverTurnErrorReply(persistCtx, chRow, ev, platform, execErr); replyErr != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
 				loggateway.Err(replyErr),
 			)
 		}
-		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
+		h.publishChannelTurnRunStatus(persistCtx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
 
 	if handled, perr := h.rejectIfContextPressure(ctx, chRow, ev, platform, sessionID); handled {
@@ -189,6 +194,13 @@ func (h *ChannelIngress) attachChannelTurnContext(ctx context.Context, ltCfg biz
 		deadlines.FirstByteTimeout = time.Duration(ltCfg.FirstByteTimeoutSec) * time.Second
 	}
 	return WithChannelTurnDeadlines(ctx, deadlines), noop
+}
+
+// turnTerminalPersistCtx detaches cancellation from the (possibly timed-out) turn
+// context so terminal-state persistence and error replies still run (CH-B2).
+// A short deadline bounds the final DB writes / platform calls.
+func turnTerminalPersistCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 }
 
 func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, ltCfg biz.ChannelLongTaskConfig, sessionID string, turnInput biz.TurnInput) (string, string, bool, error) {

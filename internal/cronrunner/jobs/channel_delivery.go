@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -18,6 +19,11 @@ type ChannelDeliveryWorker struct {
 	worker   PendingDeliveryProcessor
 	lg       loggateway.Logger
 	flowLog  biz.FlowLogWriter
+	// running enforces single-flight: overlapping ticks must not process the
+	// same pending batch concurrently, otherwise duplicate IM sends occur
+	// (CH-R2). TODO(multi-instance): atomic claim (SKIP LOCKED) in the repo
+	// when the delivery worker runs on more than one instance.
+	running atomic.Bool
 }
 
 func NewChannelDeliveryWorker(interval time.Duration, worker PendingDeliveryProcessor, lg loggateway.Logger, flowLog biz.FlowLogWriter) *ChannelDeliveryWorker {
@@ -52,6 +58,10 @@ func (w *ChannelDeliveryWorker) runOnce(ctx context.Context) {
 }
 
 func (w *ChannelDeliveryWorker) processOnce(ctx context.Context) {
+	if !w.running.CompareAndSwap(false, true) {
+		return
+	}
+	defer w.running.Store(false)
 	if err := w.worker.ProcessPending(ctx, 50); err != nil {
 		w.lg.Warn("channel delivery failed",
 			loggateway.StepID("system.channel_delivery.failed"),

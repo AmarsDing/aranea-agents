@@ -1,93 +1,29 @@
 package biz
 
 // DefaultAgentRuntimeSettings returns built-in defaults for missing agent_runtime_settings rows.
+// Fields are grouped by domain (subagents / tools / memory L0–L4 / evolution / skills / context)
+// to keep the flat literal scannable; domains mirror AgentRuntimeSettings doc in agent_runtime_settings.go.
 func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 	return AgentRuntimeSettings{
-		SelfEvolve:                        true,
-		SubagentsEnabled:                  true,
-		SubagentsMaxConcurrency:           20,
-		SubagentsMaxGenerationDepth:       1,
-		SubagentsMaxChildrenPerAgent:      5,
-		SubagentsArchiveAfterMinutes:      60,
-		SubagentsMaxRetries:               2,
-		SubagentsStoredResultRunes:        4000,
-		SubagentsStoredSummaryRunes:       240,
-		ToolsEnabled:                      true,
-		ToolsProfile:                      "coding",
-		ToolsAllowJSON:                    "[]",
-		ToolsDenyJSON:                     DefaultToolsDenyFrameworkMemory,
-		ToolsConcurrentAllowJSON:          "[]",
-		MemoryEnabled:                     true,
-		MemoryMaxChunkLength:              1000,
-		MemoryMaxResults:                  6,
-		MemoryMinScore:                    0.35,
-		HeartbeatIntervalMinutes:          30,
-		EvolutionSelfEvolve:               true,
-		EvolutionSkillEvolve:              true,
-		EvolutionMetricsEnabled:           true,
-		EvolutionSuggestionsEnabled:       true,
-		GuardrailMaxChangePerPeriod:       0.1,
-		GuardrailMinDataPoints:            100,
-		GuardrailRollbackOnDeclinePercent: 20,
-		L0RecentWindowTurns:               12,
-		L0RecentWindowTokens:              0,
-		L0SummaryThreshold:                0.6,
-		L0SummaryKeepTurns:                4,
-		L0CompressMinGapSec:               600,
-		L0TruncateStrategy:                "summary",
-		L0InjectL1:                        true,
-		L0InjectL3:                        true,
-		// P0-3 (2026-08-08): L4 注入默认开。下游有 0.3 confidence 门控 +
-		// maxPaths 上限兜底；默认关导致 L4 图谱从未进入任何 prompt。
-		L0InjectL4:             true,
-		L0L3MaxChunks:          5,
-		L0L4MaxPaths:           3,
-		L0SnapshotMode:         "on_warning",
-		L0SnapshotEnabled:      true,
-		L1Enabled:              true,
-		L1BudgetTokens:         8192,
-		L1FieldMaxTokens:       2048,
-		L1HistoryKeepRevisions: 10,
-		L1HistoryEnabled:       false,
-		L1ArchiveOnIdleMinutes: 60,
-		L2EpisodeEnabled:       true,
-		L2EpisodeMinImportance: 0.3,
-		L2IndexEnabled:         true,
-		// FR-12/P2: L2 召回默认开（评审 V7：默认关 L2 召回是「层数多≠能力强」
-		// 根因之一；standard 档位 = profile 卡 + L2/L3 召回）。
-		L2RecallEnabled:    true,
-		L2RecallMax:        3,
-		L2RetentionDays:    90,
-		L2ArchiveAfterDays: 30,
-		L3Enabled:          true,
-		L3RecallTopK:       5,
-		// P0-4 (2026-08-08): 0.55 会误杀典型相关命中（加权 Total≈0.4-0.5）。
-		L3RecallMinScore:     0.35,
-		L3RecallScopesJSON:   `["agent","user","team","workspace"]`,
-		L3DecayIntervalHours: 24,
-		L3ArchiveThreshold:   0.2,
-		L3MaxPerRecallChars:  1500,
-		// FR-12/P2: 召回块 token 预算默认 standard 档（800）。
-		L3RecallBudgetTokens:        MemoryRecallBudgetStandard,
-		L4Enabled:                   true,
-		L4GraphInjectNeighbors:      true,
-		L4GraphMaxNeighbors:         6,
-		L4GraphMaxHops:              2,
-		L4IdentityInject:            true,
-		L4StrategyInject:            false,
-		EvoEnabled:                  false,
-		EvoAutoApply:                false,
-		EvoMinEpisodes:              20,
-		EvoMinNegativeFeedback:      3,
-		EvoThrottleHours:            24,
-		EvoProposalTTLDays:          14,
-		EvoPersonaMaxChars:          1500,
-		EvoSystemPromptMaxAppends:   5,
-		SkillRuntimeJSON:            "{}",
-		IntentPassEnabled:           true,
-		ClarificationEnabled:        true,
-		CodeExecutorType:            "local",
-		PlannerConfigJSON:           "{}",
+		// --- Subagents (evolution domain) ---
+		SelfEvolve:                   true,
+		SubagentsEnabled:             true,
+		SubagentsMaxConcurrency:      20,
+		SubagentsMaxGenerationDepth:  1,
+		SubagentsMaxChildrenPerAgent: 5,
+		SubagentsArchiveAfterMinutes: 60,
+		SubagentsMaxRetries:          2,
+		SubagentsStoredResultRunes:   4000,
+		SubagentsStoredSummaryRunes:  240,
+
+		// --- Tools: profile + allow/deny ---
+		ToolsEnabled:             true,
+		ToolsProfile:             "coding",
+		ToolsAllowJSON:           "[]",
+		ToolsDenyJSON:            DefaultToolsDenyFrameworkMemory,
+		ToolsConcurrentAllowJSON: "[]",
+
+		// --- Tools: retry / parallel / streaming ---
 		ToolsRetryEnabled:           false,
 		ToolsRetryMaxAttempts:       2,
 		ToolsRetryInitialIntervalMs: 500,
@@ -99,9 +35,98 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		// 和 10KB 结果预算保护。ConcurrentSafe 工具可安全并行且启用确定性
 		// 缓存；Exclusive 工具虽然也可能被框架并行调度，但装饰器的超时
 		// 和结果预算同样适用。详见 ADR: docs/reports/2026-06-15-review-adr-tool-parallel-execution.md
-		ToolsParallelEnabled:      true,
-		ToolsStreamingEnabled:     false,
-		L4DecayIntervalHours:      168,
+		ToolsParallelEnabled:  true,
+		ToolsStreamingEnabled: false,
+
+		// --- Memory: base + heartbeat ---
+		MemoryEnabled:            true,
+		MemoryMaxChunkLength:     1000,
+		MemoryMaxResults:         6,
+		MemoryMinScore:           0.35,
+		HeartbeatIntervalMinutes: 30,
+
+		// --- Memory L0 ---
+		L0RecentWindowTurns:  12,
+		L0RecentWindowTokens: 0,
+		L0SummaryThreshold:   0.6,
+		L0SummaryKeepTurns:   4,
+		L0CompressMinGapSec:  600,
+		L0TruncateStrategy:   "summary",
+		L0InjectL1:           true,
+		L0InjectL3:           true,
+		// P0-3 (2026-08-08): L4 注入默认开。下游有 0.3 confidence 门控 +
+		// maxPaths 上限兜底；默认关导致 L4 图谱从未进入任何 prompt。
+		L0InjectL4:        true,
+		L0L3MaxChunks:     5,
+		L0L4MaxPaths:      3,
+		L0SnapshotMode:    "on_warning",
+		L0SnapshotEnabled: true,
+
+		// --- Memory L1 ---
+		L1Enabled:              true,
+		L1BudgetTokens:         8192,
+		L1FieldMaxTokens:       2048,
+		L1HistoryKeepRevisions: 10,
+		L1HistoryEnabled:       false,
+		L1ArchiveOnIdleMinutes: 60,
+
+		// --- Memory L2 ---
+		L2EpisodeEnabled:       true,
+		L2EpisodeMinImportance: 0.3,
+		L2IndexEnabled:         true,
+		// FR-12/P2: L2 召回默认开（评审 V7：默认关 L2 召回是「层数多≠能力强」
+		// 根因之一；standard 档位 = profile 卡 + L2/L3 召回）。
+		L2RecallEnabled:    true,
+		L2RecallMax:        3,
+		L2RetentionDays:    90,
+		L2ArchiveAfterDays: 30,
+
+		// --- Memory L3 ---
+		L3Enabled:    true,
+		L3RecallTopK: 5,
+		// P0-4 (2026-08-08): 0.55 会误杀典型相关命中（加权 Total≈0.4-0.5）。
+		L3RecallMinScore:     0.35,
+		L3RecallScopesJSON:   `["agent","user","team","workspace"]`,
+		L3DecayIntervalHours: 24,
+		L3ArchiveThreshold:   0.2,
+		L3MaxPerRecallChars:  1500,
+		// FR-12/P2: 召回块 token 预算默认 standard 档（800）。
+		L3RecallBudgetTokens: MemoryRecallBudgetStandard,
+
+		// --- Memory L4 ---
+		L4Enabled:              true,
+		L4GraphInjectNeighbors: true,
+		L4GraphMaxNeighbors:    6,
+		L4GraphMaxHops:         2,
+		L4IdentityInject:       true,
+		L4StrategyInject:       false,
+		L4DecayIntervalHours:   168,
+
+		// --- Evolution: metrics / guardrail / evo loop ---
+		EvolutionSelfEvolve:               true,
+		EvolutionSkillEvolve:              true,
+		EvolutionMetricsEnabled:           true,
+		EvolutionSuggestionsEnabled:       true,
+		GuardrailMaxChangePerPeriod:       0.1,
+		GuardrailMinDataPoints:            100,
+		GuardrailRollbackOnDeclinePercent: 20,
+		EvoEnabled:                        false,
+		EvoAutoApply:                      false,
+		EvoMinEpisodes:                    20,
+		EvoMinNegativeFeedback:            3,
+		EvoThrottleHours:                  24,
+		EvoProposalTTLDays:                14,
+		EvoPersonaMaxChars:                1500,
+		EvoSystemPromptMaxAppends:         5,
+
+		// --- Skills ---
+		SkillRuntimeJSON:  "{}",
+		IntentPassEnabled: true,
+		CodeExecutorType:  "local",
+
+		// --- Context / compression ---
+		PlannerConfigJSON:         "{}",
+		ClarificationEnabled:      true,
 		VerificationTruncateChars: 2000,
 		CompressionBufferRatio:    DefaultCompressionBufferRatio,
 		SoftTriggerRatio:          DefaultSoftTriggerRatio,
