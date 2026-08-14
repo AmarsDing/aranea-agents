@@ -58,6 +58,9 @@ service UsageService {
   rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
     option (google.api.http) = { post: "/v1/usage/events/purge" body: "*" };
   }
+  rpc GetContextBudgetStats(UsageQuery) returns (GetContextBudgetStatsResponse) {
+    option (google.api.http) = { get: "/v1/usage/context-budget-stats" };
+  }
 }
 ```
 
@@ -1093,3 +1096,89 @@ LIMIT 50;
 2. **byte 预算只用于工具结果**（`SliceBytesRuneSafe`）：序列化体积控制，切点必须 rune 边界安全，禁止裸 byte slice。
 3. **token 口径只出现在终审闸门**：各注入环不各自估算 token（估算口径全库唯一，见 §9.6），避免多口径漂移。
 4. 新增截断环必须在本表登记阈值与口径（DOC-SYNC-8 同级要求）。
+
+## 十一、context_budget 跨 turn 聚合 API（2026-08-14，P2-1）
+
+> 背景：§9 的 context_budget 台账（S2）以 per-turn JSON 落在 `model_token_usage_events.metadata_json.context_budget`，但无法跨 turn 聚合观测。P2-1 补聚合只读 API。
+
+### 11.1 API 契约
+
+`GET /v1/usage/context-budget-stats`（`GetContextBudgetStats(UsageQuery)`，复用 UsageQuery 的 range/agent_id 等过滤）返回四视图：
+
+| 字段 | 内容 |
+|------|------|
+| `overall` | 全部命中 turn 的平均分类构成（`ContextBudgetComposition`：samples + 各 category 平均 est tokens + tools_count 均值） |
+| `agents[]` | per-agent 构成（agent_id/agent_key + composition） |
+| `trends[]` | per-day 构成（date_key + composition，按日升序） |
+| `top_tools[]` | per-tool schema 平均/最大 chars 与出现轮次（按平均降序取 Top-N） |
+
+### 11.2 分层与数据流
+
+```
+service UsageService.GetContextBudgetStats
+  → biz/usage.Usecase.ContextBudgetStats（rollup：整体/按 agent/按日三视图由 grains 聚合）
+  → data usageRepo.ContextBudgetGrains（PG JSONB 两查询）
+```
+
+- **两查询设计**：查询 A 按 (agent, day) 粒度取 `COUNT(*)` + `SUM(est_total_input)` + `SUM(tools_count)`；查询 B 用 `jsonb_each_text(context_budget->'categories')` 展开分类合计。最细粒度一次取回，三视图 biz 层 rollup（`contextBudgetAccumulator`），避免 N 次聚合往返。
+- **PG-only**：`jsonb_each_text` / `#>>` 无 SQLite 等价物（与 CacheHitRatioStats 的 `percentile_cont` 同一先例）。SQL 文本禁用 jsonb `?` 存在性算子（会被 `RenumberPlaceholders` 误改写），谓词用 `-> 'context_budget' IS NOT NULL`。
+- **接口**：`bizusage.ContextBudgetStatsRepo`（窄接口，`ContextBudgetGrains` + `ContextBudgetToolStats` 两方法），`usageRepo` 实现。
+
+## 十二、知识 chunk cited 回采（2026-08-14，P2-2）
+
+> 背景：FR-12.6 记忆侧三段计数（recalled/injected/cited）已闭环（70 模块）；知识侧 `knowledge_search`/`knowledge_reflect` 返回的 chunk 是否被助手回复真正引用，此前无回采追踪，命中率闭环缺最后一公里。知识侧检索是工具调用（模型自主决策），非 prompt 注入，故**只追踪 cited 段**（无 recalled/injected 计数）。
+
+### 12.1 架构（镜像记忆侧 cited 段）
+
+```
+knowledge_search / knowledge_reflect（internal/tools/knowledge/tool.go）
+  │  每次检索完成后发射 knowledge_recalled notice（kind=notice, steps_v2）
+  │  payload: {"chunks":[{"chunk_id","doc_id","score","line"}]}（≤10 chunks，line ≤120 runes）
+  │  best-effort：无 emitter / 发射失败均不破坏工具调用；一 turn 多次检索各发各的
+  ▼
+KnowledgeCitationBackfillWorker（internal/cronrunner/jobs，10m 轮询，窗口 1h，批 200）
+  │  KnowledgeCitationTraceReader（data 层）：
+  │    steps_v2 notice(notice_type=knowledge_recalled) ⋈ 该 turn 终态 reply
+  │    （kind=reply AND is_final，seq 最大）→ 批量解析 knowledge_chunks 全文
+  │  启发式（与记忆侧同一实现，chunkCited 委托 factCited）：
+  │    1. ID 引用 — 回复含 chunk_id 前 8 字符
+  │    2. k-gram 重叠 — 内容 8-rune 滑窗 ≥50% 命中回复（CJK 无分词容忍改写）
+  ▼
+KnowledgeChunkCitationRecorder（data 层，ExecInTx）：
+  INSERT knowledge_chunk_citations(chunk_id, turn_id) ON CONFLICT DO NOTHING
+  → 首次命中才 UPDATE knowledge_chunks SET cited_count = cited_count + 1
+  （去重账本保证重叠窗口重扫幂等）
+```
+
+### 12.2 数据模型（迁移 20261215）
+
+| 对象 | 定义 |
+|------|------|
+| `knowledge_chunks.cited_count` | `INT NOT NULL DEFAULT 0` — 被回复显式引用次数 |
+| `knowledge_chunk_citations` | `(chunk_id TEXT, turn_id TEXT, created_at TIMESTAMPTZ, PK(chunk_id, turn_id))` + `idx_..._turn` — 引用去重账本 |
+
+`EnsureKnowledgeSchema` 同步 fresh 形态（knowledge 表为 raw-SQL 管理，非 Ent）。
+
+### 12.3 端口与装配
+
+| 端口（biz/knowledge/citation.go） | 实现 | 消费方 |
+|------|------|--------|
+| `KnowledgeCitationTraceReader`（evolving） | `data.NewKnowledgeCitationTraceReader` | backfill worker |
+| `KnowledgeChunkCitationRecorder`（evolving） | `data.NewKnowledgeChunkCitationRecorder` | backfill worker |
+
+Wire：`provideKnowledgeCitationBackfillWorker`（`KNOWLEDGE_CITATION_BACKFILL_DISABLED` 可关停），workers.go `goAfterReady("knowledge_citation_backfill", ...)`。
+
+### 12.4 notice 过滤（双侧同步）
+
+`knowledge_recalled` 是机器 payload，不进用户可见流：
+- 后端：`biz/session/activity_message_adapter.go` `systemInternalNoticeTypes`
+- 前端：`web/src/features/chat/noticeFilter.ts` `SYSTEM_NOTICE_TYPES`
+
+### 12.5 与记忆侧的差异
+
+| 维度 | 记忆侧 | 知识侧 |
+|------|--------|--------|
+| 发射点 | before-model hook（每 turn 一次，ctx 标记去重） | 工具 execute（每次检索一次，一 turn 可多条） |
+| 计数器 | recalled/injected/cited 三段 | 仅 cited（工具调用即"召回"，无注入段） |
+| notice payload | `{"hits":[{layer,fact_id,line,...}]}` | `{"chunks":[{chunk_id,doc_id,score,line}]}` |
+| 启发式 | factCited（ID 引用 + 8-rune k-gram ≥50%） | chunkCited 委托 factCited，零逻辑重复 |

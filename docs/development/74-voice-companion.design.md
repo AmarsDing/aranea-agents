@@ -872,7 +872,7 @@ dormant **保持**事件总线订阅与 delegation watcher（仅延迟 ASR/TTS �
 
 getUserMedia 约束增量：`autoGainControl: true`（稳定输入电平，VAD/ASR 受益）+ `voiceIsolation: true`（Chrome 118+ ML 人声隔离，直接压制背景人声；WebView2 为 Chromium 内核可用）。
 
-- **兼容性**：未知约束按 WebIDL 静默忽略（仅 `exact` 高级约束才抛 OverconstrainedError），Safari/Firefox 零风险降级
+- **兼容性**：未知约束名按 WebIDL 静默忽略（Safari/Firefox 零风险降级）；但「识别约束名而平台能力无法满足」的 Chromium 构建（部分 Linux/旧 WebView2）对 required 约束抛 `OverconstrainedError`——经 `getMicStreamWithFallback` 去 `voiceIsolation` 降级重试一次（V11-S1 评审修复），抗干扰增强不致语音模式整体不可用
 - TS DOM lib 未含 `voiceIsolation` 字段，用扩展类型断言，不 cast any
 
 ### 17.3 L2 VAD 分级 onset（V11-T2，`vad.ts`）
@@ -941,7 +941,7 @@ full client request `request.corpus.context` 注入热词（SAUC bigmodel 官方
 
 | 风险 | 缓解 |
 |------|------|
-| voiceIsolation 浏览器不支持 | 未知约束 WebIDL 静默忽略；实测矩阵（Chrome/Edge/WebView2） |
+| voiceIsolation 浏览器不支持 | 未知约束名 WebIDL 静默忽略；识别但平台无法满足的 `OverconstrainedError` 经 `getMicStreamWithFallback` 降级重试（V11-S1）；实测矩阵（Chrome/Edge/WebView2） |
 | 450ms 确认窗拉长真实打断体感 | 参数化 `bargeInOnsetMs`，真机可调回 300ms；NFR2 已修订 |
 | 过滤误杀真实短指令 | 规则保守（F1 整句精确匹配/F2 单字/F3 双保险时长+字数）；全部丢弃记流程日志可回溯调表 |
 | 热词 boost 提高误识别倾向 | 词表 ≤30 词远低上限；命中后仍走既有拦截链，不误建 Turn |

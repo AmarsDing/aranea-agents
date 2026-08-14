@@ -116,7 +116,11 @@ type GraphRuntimeEvent struct {
 	// Retrying marks an intermediate node error emitted while the framework
 	// is retrying the node; consumers must NOT treat it as a terminal failure.
 	Retrying bool
-	RawEvent GraphRawEvent
+	// FinalState carries the terminal graph state on DomainEventGraphDone
+	// (decoded from the framework completion event StateDelta), enabling
+	// node-output extraction (node_responses / last_response) for run sinks.
+	FinalState map[string]any
+	RawEvent   GraphRawEvent
 }
 
 // GraphExecutionControl provides execution lifecycle methods for a graph runtime.

@@ -201,11 +201,12 @@ func synthesizeTurnNumbers(msgs []ChatMessage) {
 // must not leak into the plain message view as raw JSON system messages.
 // Keep in sync with the frontend set.
 var systemInternalNoticeTypes = map[string]struct{}{
-	"context_usage":   {},
-	"context_window":  {},
-	"metrics_updated": {},
-	"token_usage":     {},
-	"memory_recalled": {},
+	"context_usage":      {},
+	"context_window":     {},
+	"metrics_updated":    {},
+	"token_usage":        {},
+	"memory_recalled":    {},
+	"knowledge_recalled": {},
 }
 
 // activityToChatMessage converts a single Activity to ChatMessage.

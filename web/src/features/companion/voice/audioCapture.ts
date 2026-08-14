@@ -46,7 +46,8 @@ registerProcessor('pcm-forwarder', PcmForwarder);
 /**
  * V11-T1（设计 §17.2）：getUserMedia 采集约束。
  * voiceIsolation（Chrome 118+ ML 人声隔离，压制背景人声）与 autoGainControl
- * 为增量抗干扰约束；不支持的浏览器按 WebIDL 静默忽略未知基础约束，零风险降级。
+ * 为增量抗干扰约束；不识别约束名的浏览器按 WebIDL 静默忽略，识别但平台无法
+ * 满足的经 getMicStreamWithFallback 降级重试（V11-S1）。
  * TS DOM lib 未含 voiceIsolation 字段，故以扩展类型声明（不 cast any）。
  */
 interface CompanionAudioConstraints extends MediaTrackConstraints {
@@ -62,6 +63,29 @@ export function captureAudioConstraints(): MediaTrackConstraints {
     voiceIsolation: true,
   };
   return c;
+}
+
+/**
+ * V11-S1（评审修复）：申请麦克风流，voiceIsolation 硬约束失败时降级重试。
+ * 「不识别约束名」的浏览器按 WebIDL 静默忽略（零风险）；但「识别约束名而平台
+ * 能力无法满足」的 Chromium 构建（部分 Linux 构建/旧 WebView2）会抛
+ * OverconstrainedError——此时去掉 voiceIsolation 重试一次，抗干扰增强不得
+ * 导致语音模式整体不可用。其余错误（权限拒绝/无设备）原样上抛。
+ */
+export async function getMicStreamWithFallback(
+  constraints: MediaTrackConstraints,
+  getUserMedia: (audio: MediaTrackConstraints) => Promise<MediaStream>,
+): Promise<MediaStream> {
+  try {
+    return await getUserMedia(constraints);
+  } catch (err) {
+    const overconstrained = err instanceof DOMException && err.name === 'OverconstrainedError';
+    if (!overconstrained || !('voiceIsolation' in constraints)) throw err;
+    const degraded: CompanionAudioConstraints = { ...constraints };
+    delete degraded.voiceIsolation;
+    console.warn('[voice] voiceIsolation unsatisfiable (OverconstrainedError), retrying without it');
+    return getUserMedia(degraded);
+  }
 }
 
 export function createAudioCapture(options: AudioCaptureOptions): AudioCapture {
@@ -94,12 +118,10 @@ export function createAudioCapture(options: AudioCaptureOptions): AudioCapture {
   return {
     async start(): Promise<void> {
       if (ctx) return;
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...captureAudioConstraints(),
-          echoCancellation: options.echoCancellation ?? true,
-        },
-      });
+      stream = await getMicStreamWithFallback(
+        { ...captureAudioConstraints(), echoCancellation: options.echoCancellation ?? true },
+        (audio) => navigator.mediaDevices.getUserMedia({ audio }),
+      );
       ctx = new AudioContext();
       workletUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'application/javascript' }));
       await ctx.audioWorklet.addModule(workletUrl);

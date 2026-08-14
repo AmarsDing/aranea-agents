@@ -55,7 +55,7 @@ func (s *fakeGraphStore) addExisting(def *GraphDefinition) {
 }
 
 // TeamGraphAssetStore
-func (s *fakeGraphStore) CreateGraph(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+func (s *fakeGraphStore) CreateOwnedGraph(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	s.nextID++
 	if def.ID == "" {
 		def.ID = fmt.Sprintf("g-%d", s.nextID)
@@ -104,7 +104,7 @@ func (s *fakeGraphStore) ListUserTemplateDefinitionsByWorkspace(context.Context,
 
 // GraphWriter（syncGraphTeamID / Delete unbind 路径）
 func (s *fakeGraphStore) SaveDefinition(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
-	return s.CreateGraph(context.Background(), def)
+	return s.CreateOwnedGraph(context.Background(), def)
 }
 func (s *fakeGraphStore) UpdateDefinition(_ context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	s.byID[def.ID] = def

@@ -30,3 +30,10 @@ type GraphRunEventSink interface {
 	// OnRunCancelled fires when the run is cancelled by caller request.
 	OnRunCancelled(ctx context.Context, execID, graphID string)
 }
+
+// GraphRunEventSinkOutput 可选扩展接口：运行成功终态时携带最终输出与
+// 各节点输出（源自完成事件的终态 state：last_response / node_responses）。
+// usecase 在 OnRunCompleted 之前以类型断言方式调用，未实现的 sink 不受影响。
+type GraphRunEventSinkOutput interface {
+	OnRunOutput(ctx context.Context, execID, graphID, output string, nodeOutputs map[string]string)
+}

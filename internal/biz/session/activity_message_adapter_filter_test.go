@@ -13,7 +13,7 @@ import (
 // cost_guard, info) stay visible.
 func TestActivityToChatMessage_FiltersSystemInternalNotices(t *testing.T) {
 	now := time.Now()
-	internal := []string{"context_usage", "context_window", "metrics_updated", "token_usage", "memory_recalled"}
+	internal := []string{"context_usage", "context_window", "metrics_updated", "token_usage", "memory_recalled", "knowledge_recalled"}
 	for _, nt := range internal {
 		e := ActivityEntry{
 			ID:         "n-" + nt,

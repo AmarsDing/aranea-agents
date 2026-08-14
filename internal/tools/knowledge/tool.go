@@ -4,10 +4,12 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 
@@ -162,6 +164,10 @@ func NewSearchTool() trpctool.CallableTool {
 			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: %s", err.Error()))
 		}
 
+		// 29-token P2-2: cited 回采 — 每次检索调用发射 knowledge_recalled
+		// notice 携带返回 chunk 集合，供引用回填 worker 度量命中率闭环。
+		emitKnowledgeRecalledNotice(ctx, chunks)
+
 		out := searchOutput{Chunks: make([]chunkSummary, 0, len(chunks))}
 		for _, ch := range chunks {
 			out.Chunks = append(out.Chunks, chunkSummary{
@@ -202,6 +208,79 @@ func searchSingleCollection(ctx context.Context, q biz.KnowledgeSearchQuery) ([]
 		return ret.Search(ctx, q)
 	}
 	return nil, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: retriever not configured in context")
+}
+
+// ── knowledge_recalled transparency notice (29-token P2-2: cited 回采) ──────
+
+const (
+	// knowledgeRecalledMaxChunks caps the chunks carried by one notice payload.
+	knowledgeRecalledMaxChunks = 10
+	// knowledgeRecalledMaxLineRunes caps one chunk preview line inside the payload.
+	knowledgeRecalledMaxLineRunes = 120
+)
+
+// knowledgeRecalledChunk is one returned chunk inside the notice payload.
+// ChunkID is the citation-tracking key; Line is a short preview for potential
+// UI rendering (the citation trace reader resolves full content by ChunkID).
+type knowledgeRecalledChunk struct {
+	ChunkID string  `json:"chunk_id"`
+	DocID   string  `json:"doc_id,omitempty"`
+	Score   float32 `json:"score,omitempty"`
+	Line    string  `json:"line,omitempty"`
+}
+
+// knowledgeRecalledNoticePayload is the JSON content of a knowledge_recalled
+// notice. Mirrored by the data-layer citation trace reader
+// (internal/data/knowledge_citation.go).
+type knowledgeRecalledNoticePayload struct {
+	Chunks []knowledgeRecalledChunk `json:"chunks"`
+}
+
+// emitKnowledgeRecalledNotice emits one knowledge_recalled notice carrying the
+// chunks returned by this retrieval call (best-effort, Informational per
+// AS-EVT-01). No-op when there are no chunks or no ActivityEmitter in ctx
+// (e.g. standalone tool execution outside a chat/team turn). Emit failures
+// never break the tool call. Unlike the memory side there is no per-turn dedup
+// guard: each retrieval call is a distinct candidate set, and one turn may
+// legitimately carry multiple notices (the backfill reader handles that).
+func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk) {
+	if len(chunks) == 0 {
+		return
+	}
+	emitter := biz.ActivityEmitterFromContext(ctx)
+	if emitter == nil {
+		return
+	}
+	payload := knowledgeRecalledNoticePayload{Chunks: make([]knowledgeRecalledChunk, 0, len(chunks))}
+	for i, ch := range chunks {
+		if i >= knowledgeRecalledMaxChunks {
+			break
+		}
+		id := strings.TrimSpace(ch.ID)
+		if id == "" {
+			continue
+		}
+		line := strings.TrimSpace(ch.Content)
+		if r := []rune(line); len(r) > knowledgeRecalledMaxLineRunes {
+			line = string(r[:knowledgeRecalledMaxLineRunes]) + "…"
+		}
+		payload.Chunks = append(payload.Chunks, knowledgeRecalledChunk{
+			ChunkID: id,
+			DocID:   strings.TrimSpace(ch.DocID),
+			Score:   ch.Score,
+			Line:    line,
+		})
+	}
+	if len(payload.Chunks) == 0 {
+		return
+	}
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	// Emit failures are non-fatal: the notice is transparency/metrics-only and
+	// must never break a tool call (same contract as the memory side).
+	_ = emitter.EmitNotice(ctx, string(content), bizknowledge.KnowledgeRecalledNoticeType)
 }
 
 type reflectInput struct {
@@ -278,6 +357,9 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		if err != nil {
 			return reflectOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_reflect: %s", err.Error()))
 		}
+
+		// 29-token P2-2: 同 knowledge_search — 反射检索同样发射回采 notice。
+		emitKnowledgeRecalledNotice(ctx, chunks)
 
 		out := reflectOutput{
 			Sufficient: true,

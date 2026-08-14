@@ -154,7 +154,7 @@ func (u *TeamUsecase) materializeLegacyTeamGraph(ctx context.Context, team Team)
 
 	if err := u.execTeamGraphTx(ctx, func(txCtx context.Context) error {
 		asset := MaterializeTeamGraphDefinition(team, cfg, nil, source)
-		saved, err := u.graphAssets.CreateGraph(txCtx, asset)
+		saved, err := u.graphAssets.CreateOwnedGraph(txCtx, asset)
 		if err != nil {
 			return err
 		}

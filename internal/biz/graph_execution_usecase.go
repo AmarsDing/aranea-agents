@@ -643,6 +643,10 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	exec.execMu.Unlock()
 
 	if completed && uc.runEventSink != nil {
+		if outSink, ok := uc.runEventSink.(GraphRunEventSinkOutput); ok {
+			output, nodeOutputs := extractRunOutputs(persistSnap.CurrentState)
+			outSink.OnRunOutput(persistCtx, execID, graphID, output, nodeOutputs)
+		}
 		uc.runEventSink.OnRunCompleted(persistCtx, execID, graphID, time.Since(startedAt).Milliseconds())
 	}
 	if failMsg != "" && uc.runEventSink != nil {
@@ -667,10 +671,39 @@ func (uc *GraphExecutionUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntim
 	}
 }
 
+// extractRunOutputs 从终态 state 提取运行输出与各节点输出。
+// 键名对齐 trpc graph 框架：last_response / node_responses / output（图自定义字段）。
+func extractRunOutputs(state map[string]any) (string, map[string]string) {
+	if len(state) == 0 {
+		return "", nil
+	}
+	var nodeOutputs map[string]string
+	if nr, ok := state["node_responses"].(map[string]any); ok {
+		nodeOutputs = make(map[string]string, len(nr))
+		for nodeID, v := range nr {
+			if s, ok := v.(string); ok && s != "" {
+				nodeOutputs[nodeID] = s
+			}
+		}
+	}
+	output, _ := state["output"].(string)
+	if output == "" {
+		output, _ = state["last_response"].(string)
+	}
+	return output, nodeOutputs
+}
+
 // TECH-DEBT(COG): method_lines=91, limit=80 (AS-COG-01); the per-event-type
 // switch should be extracted into small handlers in a future iteration.
 func (uc *GraphExecutionUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, gen int64, e GraphRuntimeEvent) {
 	switch e.Type {
+	case DomainEventGraphDone:
+		// 终态 state 落库（current_state_json）：供节点输出提取与排查。
+		if len(e.FinalState) > 0 {
+			exec.execMu.Lock()
+			exec.CurrentState = deepCopyMap(e.FinalState)
+			exec.execMu.Unlock()
+		}
 	case DomainEventGraphNodeStart:
 		exec.execMu.Lock()
 		if ParseGraphExecutionState(exec.Status) != GraphExecFailed {

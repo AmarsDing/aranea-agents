@@ -23,12 +23,10 @@ import (
 // tool-mediated (the model decides to call), not prompt-injected, so only the
 // cited stage is tracked.
 
-// knowledgeCitationNoticeType is the NoticeType emitted by the knowledge tools.
-// Kept in sync with internal/tools/knowledge/tool.go.
-const knowledgeCitationNoticeType = "knowledge_recalled"
-
 // knowledgeCitationNoticePayload mirrors the knowledge_recalled notice payload
-// emitted by the knowledge tools after each search/reflect call.
+// emitted by the knowledge tools after each search/reflect call. The notice
+// type string itself is defined canonically as
+// bizknowledge.KnowledgeRecalledNoticeType.
 type knowledgeCitationNoticePayload struct {
 	Chunks []struct {
 		ChunkID string `json:"chunk_id"`
@@ -78,7 +76,7 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 		ORDER BY n.started_at DESC
 		LIMIT ?`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(q), knowledgeCitationNoticeType, since, limit)
+		r.data.Dialect().RenumberPlaceholders(q), bizknowledge.KnowledgeRecalledNoticeType, since, limit)
 	if err != nil {
 		return nil, entErrToBizErr(err, "KNOWLEDGE_CITATION")
 	}

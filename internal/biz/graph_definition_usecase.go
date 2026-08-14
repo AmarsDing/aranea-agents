@@ -45,6 +45,22 @@ func NewGraphDefinitionUsecase(repo GraphRepo, factory GraphDefinitionFactory, n
 }
 
 func (uc *GraphDefinitionUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+	// Y10：team_owned/team_source/team_id 是 Team 生命周期权威标记，公共
+	// 创建入口一律剥离——owned 关系只能经 Team 物化/迁移（CreateOwnedGraph）
+	// 或换绑/ORG-11b 回填建立，调用方不可自声明。
+	stripTeamGraphMarkers(def)
+	return uc.createGraph(ctx, def)
+}
+
+// CreateOwnedGraph persists a team-owned asset as part of the owner team's
+// materialize lifecycle（B4 物化新建 / 迁移回填），保留 team_owned/team_source/
+// team_id 标记。与 UpdateOwnedGraph / DeleteOwnedGraph 对称：调用方即 Team
+// 保存钩子，归属校验已在 Team 侧完成。
+func (uc *GraphDefinitionUsecase) CreateOwnedGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
+	return uc.createGraph(ctx, def)
+}
+
+func (uc *GraphDefinitionUsecase) createGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	if def.ID == "" {
 		def.ID = uuid.New().String()
 	}
@@ -63,6 +79,16 @@ func (uc *GraphDefinitionUsecase) CreateGraph(ctx context.Context, def *GraphDef
 	uc.defs[saved.ID] = saved
 	uc.mu.Unlock()
 	return saved, nil
+}
+
+// stripTeamGraphMarkers removes caller-supplied team ownership markers（Y10）：
+// 公共 CRUD 入口不可自声明 team_owned/team_source/team_id。
+func stripTeamGraphMarkers(def *GraphDefinition) {
+	def.TeamID = ""
+	if def.Metadata != nil {
+		delete(def.Metadata, GraphMetadataTeamOwnedKey)
+		delete(def.Metadata, GraphMetadataTeamSourceKey)
+	}
 }
 
 func (uc *GraphDefinitionUsecase) GetGraph(ctx context.Context, id string) (*GraphDefinition, error) {
@@ -96,22 +122,30 @@ func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDef
 	if err != nil {
 		return nil, err
 	}
-	// B6：team-owned 图的保存经 Team guard（活跃 Run 锁定 + 反向同步
-	// source/members）；guard 在事务内执行实际写库。owned 关系以 DB 现状
-	//（previous）为准——编辑器不感知服务端 team 标记。
-	if uc.guard() != nil && isTeamOwnedGraph(previous) && previous.TeamID != "" {
+	if isTeamOwnedGraph(previous) {
+		// owned 图：Team 标记以 DB 现状为准强制恢复（编辑器不感知服务端
+		// team 标记；owned 关系只能经 Team 保存钩子改变）。
 		preserveTeamGraphMarkers(def, previous)
-		var saved *GraphDefinition
-		err := uc.guard().OnTeamOwnedGraphSaved(ctx, def, func(txCtx context.Context) error {
-			var uerr error
-			saved, uerr = uc.updateGraph(txCtx, def, previous)
-			return uerr
-		})
-		if err != nil {
-			return nil, err
+		// B6：team-owned 图的保存经 Team guard（活跃 Run 锁定 + 反向同步
+		// source/members）；guard 在事务内执行实际写库。
+		if uc.guard() != nil && previous.TeamID != "" {
+			var saved *GraphDefinition
+			err := uc.guard().OnTeamOwnedGraphSaved(ctx, def, func(txCtx context.Context) error {
+				var uerr error
+				saved, uerr = uc.updateGraph(txCtx, def, previous)
+				return uerr
+			})
+			if err != nil {
+				return nil, err
+			}
+			return saved, nil
 		}
-		return saved, nil
+		return uc.updateGraph(ctx, def, previous)
 	}
+	// 非 owned 图（Y10）：剥离伪造的 owned/team_source 自声明；team_id 以
+	// DB 现状为准（ORG-11b external 链接回填经 Team 侧直写，不经本路径）。
+	stripTeamGraphMarkers(def)
+	def.TeamID = previous.TeamID
 	return uc.updateGraph(ctx, def, previous)
 }
 
@@ -146,9 +180,9 @@ func preserveTeamGraphMarkers(def, previous *GraphDefinition) {
 			}
 		}
 	}
-	if strings.TrimSpace(def.TeamID) == "" {
-		def.TeamID = previous.TeamID
-	}
+	// Y10：team_id 无条件以 DB 现状为准——条件恢复（仅空时回填）允许调用方
+	// 改绑他队，经 B6 guard 反向同步即构成跨 team 写。
+	def.TeamID = previous.TeamID
 }
 
 func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) error {

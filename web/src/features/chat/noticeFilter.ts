@@ -18,6 +18,10 @@ export const SYSTEM_NOTICE_TYPES: ReadonlySet<string> = new Set([
   // payload ({"hits":[...]}), rendered by MemoryRecallChips at the top of the
   // turn — never as a raw NoticeBlock.
   'memory_recalled',
+  // 29-token P2-2: knowledge retrieval transparency ({"chunks":[...]}), the
+  // knowledge-side counterpart of memory_recalled — machine payload for the
+  // citation backfill loop, never rendered as a raw NoticeBlock.
+  'knowledge_recalled',
 ]);
 
 /**

@@ -757,8 +757,8 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 | P1-2 | MCP 工具 schema 无治理：单工具 declaration 可数千 token，多 server 叠加无总量预算，直连注入失控 | mcp_schema_govern.go：单 declaration 软上限 2400 chars（截 description/剥 OutputSchema/schema 节点 description+enum 截断）；总量硬预算 16000 chars（≈4.6K token）；超预算自动降级 broker 模式（mcp_list_servers/mcp_list_tools/mcp_inspect_tools/mcp_call），无显式 broker 配置时生成 fallback；ToolSet 包装治理（governMCPToolIfNeeded）；toolset_assemble 集成 + brokerAdded 去重 | ✅ |
 | P1-3 | 截断口径各自为政：多处本地副本、byte/rune 混用，工具结果 byte 切 CJK 产出 U+FFFD 污染模型输入 | pkg/strutil 单一阈值链：TruncateRunesEllipsis（prompt 注入链字段/块级统一入口）+ SliceBytesRuneSafe（tail/head/middle 三模式 rune 边界安全）； decorator.go sliceForMode、case_prompt、l4_prompt、plugin/trpc、knowledge、data 各截断点全部改走 strutil，本地副本删除 | ✅ |
 | P1-4 | deferred 工具发现率不可观测：静态目录 cue 全量平铺，模型漏看无兜底；「搜索→激活→使用」漏斗无度量 | 语义预激活：catalog_rank.go 按当前用户 query 对 catalog 排序，Top-3 以「推荐区」提升进 cue（推荐区在目录分组前；无匹配时与静态版字节一致；cue 在消息尾部、前缀缓存之外，动态渲染零缓存成本）；tool_search 改共享同一打分器；≥3 runes 子串护栏防短虚词噪声（"me" 误中 "runtime"）。漏斗度量：`aranea_deferred_tool_search_total{has_results}`（发现）+ `aranea_deferred_tool_activation_total{tool,outcome}`（激活）+ `aranea_deferred_catalog_recommend_total{matched}`（预激活覆盖率），使用段复用 `aranea_tool_invocation_total{tool,status}` | ✅ |
-| P2-1 | context_budget 台账无法跨 turn 聚合观测 | 持久化 S2 已完成（§17 Q4 Histogram）；剩跨 turn 聚合 API | ⏳ |
-| P2-2 | 知识/记忆 cue 的 cited 引用无回采追踪，命中率闭环缺最后一公里 | cited 回采 + 引用追踪 | ⏳ |
+| P2-1 | context_budget 台账无法跨 turn 聚合观测 | 聚合只读 API：`GetContextBudgetStats`（GET /v1/usage/context-budget-stats）四视图（overall/agents/trends/top_tools）；data 层 PG JSONB 两查询取 (agent,day) 最细粒度 grains，biz 层 rollup 三视图；窄接口 `ContextBudgetStatsRepo` | ✅ |
+| P2-2 | 知识/记忆 cue 的 cited 引用无回采追踪，命中率闭环缺最后一公里 | cited 回采 + 引用追踪：知识侧 `knowledge_search`/`knowledge_reflect` 每次检索发射 `knowledge_recalled` notice（chunk 集合）→ `KnowledgeCitationBackfillWorker`（10m 轮询/1h 窗口）join 终态回复做 ID 引用 + 8-rune k-gram 启发式判定 → `(chunk,turn)` 去重账本首次命中 `cited_count`+1；记忆侧已于 70 模块完工 | ✅ |
 
 ### 18.2 验收
 
@@ -769,7 +769,8 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 5. ✅ P1-3：`pkg/strutil` 单测（rune 省略号/三模式 rune 边界切片/CJK 不碎）+ 各迁移点包测试全绿；knowledge 桩补齐 `EnableCollectionSemantic` 后 data/knowledge 构建恢复
 6. ✅ P1-4（TDD 先红后绿）：`catalog_rank_test.go` 9 例（排序/子词匹配/短词护栏/limit/确定性/推荐区渲染/无推荐=静态字节一致）+ `funnel_metrics_test.go` 2 例（search/activation counter delta）+ `tool_catalog_cue_test.go` 4 例（推荐注入/无匹配静态/nil 安全）全绿；deferred 存量 52 例无回归
 7. ✅ 全量构建 `go build ./cmd/... ./internal/... ./api/... ./pkg/...` exit 0；`go vet`（deferred/agent/metrics）exit 0；agent 8 包、tools 包全量测试 exit 0
-8. ⏳ P2-1/P2-2 待实施
+8. ✅ P2-1：`context_budget_test.go`（rollup/累加器）+ `usage_context_budget_mapper_test.go` 全绿；`make api` 重新生成 pb；全量构建 exit 0
+9. ✅ P2-2（知识侧 cited 回采）：`knowledge_citation_test.go` 3 例 PG 集成（去重账本幂等/候选 join/缺失 chunk 剔除）+ `knowledge_citation_backfill_test.go` 8 例（启发式/worker 容错/nil 安全）+ `tool_notice_test.go` 5 例（payload 形状/无 emitter no-op/上限截断）全绿；`make wire` 重生成；全量构建 + vet exit 0
 
 ### 18.3 改动文件（本迭代）
 
@@ -782,6 +783,8 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - `internal/tools/deferred/tool_search.go`（共享打分器+发现段 counter）、`tool_load.go`（激活段 counter）
 - `internal/agent/tool_catalog_cue.go`（动态推荐渲染+覆盖率 counter）+ `tool_catalog_cue_test.go`
 - `internal/metrics/vars.go`（DeferredToolSearchTotal / DeferredToolActivationTotal / DeferredCatalogRecommendTotal）
+- P2-1：`api/kratos/usage/v1/usage.proto`（GetContextBudgetStats + 4 message）、`internal/biz/usage/context_budget.go`（窄接口+rollup）+ `context_budget_test.go`、`internal/data/usage_context_budget.go`（PG JSONB 两查询）、`internal/service/usage.go` + `usage_mapper.go` + `usage_context_budget_mapper_test.go`、`web/src/services/kratos/usage/v1/index.ts`
+- P2-2：`internal/biz/knowledge/citation.go`（ChunkCitation/两端口/KnowledgeRecalledNoticeType）、`internal/data/sql/migrations/20261215_knowledge_citation_counters.sql`（cited_count + knowledge_chunk_citations 账本）+ 注册表 + `knowledge.go` EnsureKnowledgeSchema fresh 形态、`internal/data/knowledge_citation.go`（trace reader+recorder）+ `knowledge_citation_test.go`、`internal/cronrunner/jobs/knowledge_citation_backfill.go`（worker，chunkCited 委托 factCited）+ 测试、`internal/tools/knowledge/tool.go`（search/reflect 两处发射）+ `tool_notice_test.go`、`internal/biz/session/activity_message_adapter.go` + `web/src/features/chat/noticeFilter.ts`（notice 过滤双侧）、`cmd/admin/wire.go`/`wire_gen.go`/`workers.go`（装配+启动）
 
 ### 18.4 P1-4 已知限制与后续方向
 

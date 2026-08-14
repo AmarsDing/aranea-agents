@@ -23,6 +23,13 @@ type ChunkCitation struct {
 	TurnID  string
 }
 
+// KnowledgeRecalledNoticeType is the NoticeType of the transparency notice
+// emitted by knowledge_search / knowledge_reflect after each retrieval call,
+// carrying the returned chunk IDs (and display lines) as a JSON payload.
+// Canonical definition: emitted by internal/tools/knowledge, consumed by the
+// data-layer citation trace reader and the frontend notice filter.
+const KnowledgeRecalledNoticeType = "knowledge_recalled"
+
 // KnowledgeChunkCitationRecorder records citations into the dedup ledger and
 // increments cited_count for first-seen (chunk, turn) pairs only.
 // Stability:evolving

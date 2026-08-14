@@ -71,7 +71,7 @@ type migAssetStore struct {
 	created map[string]*biz.GraphDefinition
 }
 
-func (s *migAssetStore) CreateGraph(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
+func (s *migAssetStore) CreateOwnedGraph(_ context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
 	s.seq++
 	if def.ID == "" {
 		def.ID = fmt.Sprintf("g-mig-%d", s.seq)

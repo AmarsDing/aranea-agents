@@ -51,6 +51,8 @@ type twinRunSub struct {
 	// NodeStart 记录节点开始时间戳用于 duration_ms 计算。
 	NodeStart map[string]time.Time
 	StartedAt time.Time
+	// FinalOutput 运行级最终输出（OnRunOutput 暂存，run.completed 携带）。
+	FinalOutput string
 }
 
 type twinNodeMeta struct {
@@ -511,6 +513,13 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 		return
 	}
 	status := twinRunStatus(exec.GetStatus())
+	// 终态 state（current_state_json）提取节点输出/运行输出，
+	// 供 twinmonitor 兜底轮询补齐 output_summary（与 webhook 路径一致）。
+	nodeOutputs, _ := exec.CurrentState["node_responses"].(map[string]any)
+	runOutput, _ := exec.CurrentState["output"].(string)
+	if runOutput == "" {
+		runOutput, _ = exec.CurrentState["last_response"].(string)
+	}
 	nodes := make([]map[string]any, 0, len(exec.Steps))
 	sub := s.getSub(exec.ID)
 	for _, st := range exec.Steps {
@@ -529,6 +538,11 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 		if st.Error != "" {
 			n["error_message"] = st.Error
 		}
+		if v, ok := nodeOutputs[st.NodeID]; ok {
+			if text, ok := v.(string); ok && text != "" {
+				n["output_summary"] = text
+			}
+		}
 		nodes = append(nodes, n)
 	}
 	var durationMs int64
@@ -541,7 +555,7 @@ func (s *TwinOpenAPICompatService) handleGetRun(w http.ResponseWriter, r *http.R
 		"run_id":        exec.ID,
 		"graph_id":      exec.GraphID,
 		"status":        status,
-		"output":        "",
+		"output":        runOutput,
 		"error_message": exec.ErrorMessage,
 		"nodes":         nodes,
 		"model_used":    "",
@@ -731,12 +745,39 @@ func (s *TwinOpenAPICompatService) OnRunWaitingApproval(_ context.Context, execI
 	})
 }
 
-func (s *TwinOpenAPICompatService) OnRunCompleted(_ context.Context, execID, graphID string, durationMs int64) {
-	if s.getSub(execID) == nil {
+// OnRunOutput GraphRunEventSinkOutput 扩展实现：先逐节点同步投递
+// run.node_output（aiops 据此回写 ai_task_nodes.output_summary），
+// 并把运行级 output 暂存到订阅，供紧随其后的 run.completed 携带。
+// 同步投递保证事件顺序：node_output 先于 run.completed 到达。
+func (s *TwinOpenAPICompatService) OnRunOutput(_ context.Context, execID, graphID, output string, nodeOutputs map[string]string) {
+	sub := s.getSub(execID)
+	if sub == nil {
 		return
 	}
+	for nodeID, text := range nodeOutputs {
+		meta := sub.Nodes[nodeID]
+		s.postEvent(execID, "run.node_output", map[string]any{
+			"node_id":        nodeID,
+			"node_name":      meta.Name,
+			"node_type":      meta.Type,
+			"output_summary": text,
+		})
+	}
+	s.mu.Lock()
+	sub.FinalOutput = output
+	s.mu.Unlock()
+}
+
+func (s *TwinOpenAPICompatService) OnRunCompleted(_ context.Context, execID, graphID string, durationMs int64) {
+	sub := s.getSub(execID)
+	if sub == nil {
+		return
+	}
+	s.mu.Lock()
+	output := sub.FinalOutput
+	s.mu.Unlock()
 	s.postEvent(execID, "run.completed", map[string]any{
-		"output":      "",
+		"output":      output,
 		"duration_ms": durationMs,
 	})
 	s.unregisterSub(execID)

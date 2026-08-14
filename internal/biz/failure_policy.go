@@ -205,55 +205,117 @@ func ApplyParallelFailContinue(cfg GraphBuildConfig, policy *TeamFailurePolicy, 
 }
 
 func parallelBranchNodeIDs(cfg GraphBuildConfig, parallelBranchIDs []string) map[string]struct{} {
-	if len(parallelBranchIDs) >= 2 {
-		branches := make(map[string]struct{}, len(parallelBranchIDs))
-		for _, id := range parallelBranchIDs {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
+	finish := strings.TrimSpace(cfg.FinishPoint)
+	// join feeders（分支尾节点）：显式 branchIDs 优先，否则回退为 finish 的
+	// 直接前驱。feeder 数 < 2 不是并行拓扑，不标记。
+	feeders := cleanBranchIDs(parallelBranchIDs)
+	if len(feeders) < 2 {
+		if finish == "" {
+			return nil
+		}
+		feeders = feedersOfFinish(cfg, finish)
+		if len(feeders) < 2 {
+			return nil
+		}
+	}
+	// Y8：分支集合 = 既有启发式结果 ∪ 分支内部祖先节点。祖先扩展沿边反向
+	// 遍历：可同时到达 ≥2 个 feeder 的共享上游节点（fan-out 入口）排除——
+	// 它承载所有分支，失败必须中止全局。
+	branches := branchInternalNodes(cfg, feeders)
+	if len(parallelBranchIDs) < 2 && finish != "" {
+		// 无显式 branchIDs 时的既有启发式：feeder + fan-out 节点的非 finish
+		// 目标。与祖先扩展取并集，保持既有标记语义不回归。
+		for id := range feeders {
 			branches[id] = struct{}{}
 		}
-		if len(branches) >= 2 {
-			return branches
-		}
-	}
-	finish := strings.TrimSpace(cfg.FinishPoint)
-	if finish == "" {
-		return nil
-	}
-	feeders := map[string]struct{}{}
-	outCount := map[string]int{}
-	for _, e := range cfg.Edges {
-		if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
-			continue
-		}
-		outCount[e.From]++
-		if e.To == finish {
-			feeders[e.From] = struct{}{}
-		}
-	}
-	if len(feeders) < 2 {
-		return nil
-	}
-	branches := map[string]struct{}{}
-	for id := range feeders {
-		branches[id] = struct{}{}
-	}
-	for from, count := range outCount {
-		if count <= 1 {
-			continue
-		}
+		outCount := map[string]int{}
 		for _, e := range cfg.Edges {
 			if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
 				continue
 			}
-			if e.From == from && e.To != finish {
-				branches[e.To] = struct{}{}
+			outCount[e.From]++
+		}
+		for from, count := range outCount {
+			if count <= 1 {
+				continue
+			}
+			for _, e := range cfg.Edges {
+				if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
+					continue
+				}
+				if e.From == from && e.To != finish {
+					branches[e.To] = struct{}{}
+				}
 			}
 		}
 	}
+	if len(branches) == 0 {
+		return nil
+	}
 	return branches
+}
+
+func cleanBranchIDs(ids []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			out[id] = struct{}{}
+		}
+	}
+	return out
+}
+
+func feedersOfFinish(cfg GraphBuildConfig, finish string) map[string]struct{} {
+	feeders := map[string]struct{}{}
+	for _, e := range cfg.Edges {
+		if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
+			continue
+		}
+		if e.To == finish {
+			feeders[e.From] = struct{}{}
+		}
+	}
+	return feeders
+}
+
+// branchInternalNodes 返回「分支内部」节点集合：从各 join feeder 沿
+// 非 transfer 边反向遍历求祖先集，恰好属于 1 个 feeder 祖先集（含 feeder
+// 自身）的节点即分支专属节点。共享上游（≥2 个 feeder 的公共祖先）排除。
+func branchInternalNodes(cfg GraphBuildConfig, feeders map[string]struct{}) map[string]struct{} {
+	// 反向邻接表
+	rev := map[string][]string{}
+	for _, e := range cfg.Edges {
+		if strings.EqualFold(strings.TrimSpace(e.Kind), EdgeKindTransfer) {
+			continue
+		}
+		rev[e.To] = append(rev[e.To], e.From)
+	}
+	// 统计每个节点被多少个 feeder 的祖先集覆盖
+	cover := map[string]int{}
+	for feeder := range feeders {
+		seen := map[string]struct{}{feeder: {}}
+		stack := []string{feeder}
+		for len(stack) > 0 {
+			n := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			cover[n]++
+			for _, up := range rev[n] {
+				if _, ok := seen[up]; ok {
+					continue
+				}
+				seen[up] = struct{}{}
+				stack = append(stack, up)
+			}
+		}
+	}
+	out := map[string]struct{}{}
+	for id, n := range cover {
+		if n == 1 {
+			out[id] = struct{}{}
+		}
+	}
+	return out
 }
 
 // FilterVisualizationEdges removes edges marked visualization-only (Kind=transfer).

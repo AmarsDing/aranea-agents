@@ -1533,6 +1533,22 @@ func provideMemoryCitationBackfillWorker(d *data.Data, lg loggateway.Logger) *jo
 		lg)
 }
 
+// provideKnowledgeCitationBackfillWorker wires the knowledge-side citation
+// backfill worker (29-token P2-2). The worker scans recent knowledge_recalled
+// notices (chunks returned by knowledge_search / knowledge_reflect), detects
+// chunks explicitly referenced by the assistant reply, and increments
+// cited_count via the dedup ledger.
+// Disabled via KNOWLEDGE_CITATION_BACKFILL_DISABLED env var.
+func provideKnowledgeCitationBackfillWorker(d *data.Data, lg loggateway.Logger) *jobs.KnowledgeCitationBackfillWorker {
+	if d == nil || jobs.KnowledgeCitationBackfillDisabled() {
+		return nil
+	}
+	return jobs.NewKnowledgeCitationBackfillWorker(0,
+		data.NewKnowledgeCitationTraceReader(d),
+		data.NewKnowledgeChunkCitationRecorder(d),
+		lg)
+}
+
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
 // queue consumed by the Sleep-time Agent.
 const memorySleepTimeQueueSize = 100
@@ -2668,6 +2684,7 @@ type wireOut struct {
 	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
 	MemoryCanary                *jobs.MemoryCanaryWorker
 	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
+	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -2723,6 +2740,7 @@ func provideWireOut(
 	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
 	memoryCanary *jobs.MemoryCanaryWorker,
 	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
+	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -2765,6 +2783,7 @@ func provideWireOut(
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
+		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -3559,6 +3578,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryEbbinghausDecayWorker,
 		provideMemoryCanaryWorker,
 		provideMemoryCitationBackfillWorker,
+		provideKnowledgeCitationBackfillWorker,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,

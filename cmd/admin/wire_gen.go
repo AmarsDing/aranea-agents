@@ -655,6 +655,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEbbinghausDecayWorker := provideMemoryEbbinghausDecayWorker(dataData, agentUsecase, loggatewayLogger)
 	memoryCanaryWorker := provideMemoryCanaryWorker(dataData, memoryCanaryStatus, flowLogWriter, loggatewayLogger)
 	memoryCitationBackfillWorker := provideMemoryCitationBackfillWorker(dataData, loggatewayLogger)
+	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -706,7 +707,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -2112,6 +2113,19 @@ func provideMemoryCitationBackfillWorker(d *data.Data, lg loggateway.Logger) *jo
 	return jobs.NewMemoryCitationBackfillWorker(0, data.NewMemoryCitationTraceReader(d), data.NewL3FactCitationRecorder(d), lg)
 }
 
+// provideKnowledgeCitationBackfillWorker wires the knowledge-side citation
+// backfill worker (29-token P2-2). The worker scans recent knowledge_recalled
+// notices (chunks returned by knowledge_search / knowledge_reflect), detects
+// chunks explicitly referenced by the assistant reply, and increments
+// cited_count via the dedup ledger.
+// Disabled via KNOWLEDGE_CITATION_BACKFILL_DISABLED env var.
+func provideKnowledgeCitationBackfillWorker(d *data.Data, lg loggateway.Logger) *jobs.KnowledgeCitationBackfillWorker {
+	if d == nil || jobs.KnowledgeCitationBackfillDisabled() {
+		return nil
+	}
+	return jobs.NewKnowledgeCitationBackfillWorker(0, data.NewKnowledgeCitationTraceReader(d), data.NewKnowledgeChunkCitationRecorder(d), lg)
+}
+
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
 // queue consumed by the Sleep-time Agent.
 const memorySleepTimeQueueSize = 100
@@ -3175,6 +3189,7 @@ type wireOut struct {
 	MemoryEbbinghausDecay       *jobs.MemoryEbbinghausDecayWorker
 	MemoryCanary                *jobs.MemoryCanaryWorker
 	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
+	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3230,6 +3245,7 @@ func provideWireOut(
 	memoryEbbinghausDecay *jobs.MemoryEbbinghausDecayWorker,
 	memoryCanary *jobs.MemoryCanaryWorker,
 	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
+	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3272,6 +3288,7 @@ func provideWireOut(
 		MemoryEbbinghausDecay:       memoryEbbinghausDecay,
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
+		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,

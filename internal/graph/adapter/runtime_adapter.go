@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -440,10 +441,34 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 		// converge an execution to Completed (done-driven terminal check).
 		if e.Response != nil && e.Response.Done {
 			runtimeEvt.Type = biz.DomainEventGraphDone
+			runtimeEvt.FinalState = decodeFinalStateDelta(e.StateDelta)
 		}
 	}
 
 	return runtimeEvt
+}
+
+// decodeFinalStateDelta 反序列化完成事件 StateDelta 中的最终图状态
+// （serializeFinalState 按 key 写入 JSON bytes；跳过 "_" 前缀的元数据键）。
+func decodeFinalStateDelta(delta map[string][]byte) map[string]any {
+	if len(delta) == 0 {
+		return nil
+	}
+	state := make(map[string]any, len(delta))
+	for k, raw := range delta {
+		if k == "" || k[0] == '_' || len(raw) == 0 {
+			continue
+		}
+		var v any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			continue
+		}
+		state[k] = v
+	}
+	if len(state) == 0 {
+		return nil
+	}
+	return state
 }
 
 // sanitizeActivityControlCommand marks ControlCommand signals in activity meta
