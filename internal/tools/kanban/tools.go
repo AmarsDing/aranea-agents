@@ -101,6 +101,7 @@ func listFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 func completeFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 	var in struct {
 		TaskID   string `json:"task_id"`
+		AgentKey string `json:"agent_key"`
 		Summary  string `json:"summary"`
 		Result   string `json:"result"`
 		Output   string `json:"output"`
@@ -113,6 +114,12 @@ func completeFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 	if taskID == "" {
 		taskID = TaskIDFromEnv()
 	}
+	// agent_key 可选：缺省回退环境变量（与 kanban_heartbeat 同模式）。
+	// 提供后 biz 层启用 assignee CAS 守卫，防止误提交他人任务。
+	agentKey := strings.TrimSpace(in.AgentKey)
+	if agentKey == "" {
+		agentKey = lookupEnv("ARANEA_AGENT_KEY")
+	}
 	output := strings.TrimSpace(in.Output)
 	if output == "" {
 		output = strings.TrimSpace(in.Result)
@@ -124,7 +131,7 @@ func completeFn(ctx context.Context, b Bridge, args []byte) (any, error) {
 	if taskID == "" || summary == "" {
 		return nil, apierror.BadRequest(apierror.DomainKanban, "kanban_complete: task_id and summary/result required")
 	}
-	return b.Complete(ctx, taskID, summary, output, in.Metadata)
+	return b.Complete(ctx, taskID, agentKey, summary, output, in.Metadata)
 }
 
 func blockFn(ctx context.Context, b Bridge, args []byte) (any, error) {
@@ -284,11 +291,12 @@ var (
 	completeSchema = &trpctool.Schema{
 		Type: "object",
 		Properties: map[string]*trpctool.Schema{
-			"task_id":  {Type: strType, Description: "Task ID (defaults to ARANEA_TASK_ID env)"},
-			"summary":  {Type: strType, Description: "Completion summary"},
-			"result":   {Type: strType, Description: "Alias for output"},
-			"output":   {Type: strType, Description: "Structured output data"},
-			"metadata": {Type: strType, Description: "Optional metadata JSON"},
+			"task_id":   {Type: strType, Description: "Task ID (defaults to ARANEA_TASK_ID env)"},
+			"agent_key": {Type: strType, Description: "Submitter agent key (defaults to ARANEA_AGENT_KEY env); validated against task assignee"},
+			"summary":   {Type: strType, Description: "Completion summary"},
+			"result":    {Type: strType, Description: "Alias for output"},
+			"output":    {Type: strType, Description: "Structured output data"},
+			"metadata":  {Type: strType, Description: "Optional metadata JSON"},
 		},
 	}
 

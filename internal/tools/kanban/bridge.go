@@ -8,7 +8,9 @@ type BridgeReader interface {
 }
 
 type BridgeWriter interface {
-	Complete(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error)
+	// Complete 提交任务结果；agentKey 为提交者（空串表示无提交者上下文，
+	// biz 层将跳过 assignee 守卫），非空时强制校验其为任务认领者。
+	Complete(ctx context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error)
 	Block(ctx context.Context, taskID, reason, metadata string) (map[string]any, error)
 	Unblock(ctx context.Context, taskID, comment string) (map[string]any, error)
 	Heartbeat(ctx context.Context, taskID, agentKey, metadata string) (map[string]any, error)

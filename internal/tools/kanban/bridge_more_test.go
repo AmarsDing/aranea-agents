@@ -205,8 +205,8 @@ func TestTool_Call_completeFn(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("ARANEA_TASK_ID", tt.envTask)
 			b := &stubBridge{
-				completeFn: func(_ context.Context, taskID, summary, output, metadata string) (map[string]any, error) {
-					return map[string]any{"task_id": taskID, "status": "completed"}, nil
+				completeFn: func(_ context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error) {
+					return map[string]any{"task_id": taskID, "agent_key": agentKey, "status": "completed"}, nil
 				},
 			}
 			ts := NewToolset(b)

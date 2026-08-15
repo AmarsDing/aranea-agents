@@ -103,6 +103,24 @@ func (r *pathTaskRepo) UpdateTask(_ context.Context, task *biz.GraphTask) error 
 	r.tasks[task.TaskID] = task
 	return nil
 }
+
+// CompleteTaskWhereStatus 内存版原子提交：与 data 层 CAS 语义一致，供
+// SubmitTaskResult 测试路径使用（嵌入的 biz.TaskRepo 为 nil，未实现会 panic）。
+func (r *pathTaskRepo) CompleteTaskWhereStatus(_ context.Context, taskID string, submitter string, output string, summary string, metadata string, toStatus biz.GraphTaskStatus) (*biz.GraphTask, bool, error) {
+	t, ok := r.tasks[taskID]
+	if !ok || (t.Status != biz.GraphTaskStatusClaimed && t.Status != biz.GraphTaskStatusReviewRequired) {
+		return nil, false, nil
+	}
+	if submitter != "" && t.Assignee != submitter {
+		return nil, false, nil
+	}
+	t.Output = output
+	t.Summary = summary
+	t.Metadata = metadata
+	t.Status = toStatus
+	return t, true, nil
+}
+
 func (r *pathTaskRepo) SaveTaskEvent(context.Context, *biz.TaskEvent) error { return nil }
 
 func newPathGraphService(factory biz.GraphBuilderFactory, extra ...func(*pathGraphSetup)) *GraphService {

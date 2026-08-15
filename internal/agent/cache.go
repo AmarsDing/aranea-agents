@@ -36,9 +36,10 @@ type buildCacheEntry struct {
 	elem  *list.Element
 	a2ui  *planner.A2UIResult
 	dirty bool // if true, a background rebuild is in progress
-	// toolSets holds the ToolSets created during agent build. They are
-	// closed when the entry is evicted or the cache is shut down, preventing
-	// resource leaks (MCP sessions, stdio subprocesses, HTTP connections).
+	// toolSets holds the ToolSets created during agent build. When the entry
+	// is evicted or replaced they are retired to the graveyard and closed
+	// after a delay (see retireToolSets), preventing both resource leaks
+	// (MCP sessions, stdio subprocesses) and in-flight-call aborts.
 	toolSets []trpctool.ToolSet
 	// lastHitFlowAt throttles the cache_hit flow log: hits fire on every
 	// chat request, so the user-visible flow log is emitted at most once per
@@ -68,7 +69,38 @@ type BuildCache struct {
 
 	// singleflight coalesces concurrent cache-miss builds for the same key.
 	sfGroup singleflight.Group
+
+	// graveyard holds ToolSets retired from live entries (replaced or
+	// evicted). They are closed by the sweeper only after retireDelay,
+	// giving in-flight requests holding the retired agent time to finish
+	// their tool calls before the underlying MCP sessions / stdio
+	// subprocesses are torn down.
+	graveyard     []retiredToolSet
+	retireDelay   time.Duration
+	sweeperCancel context.CancelFunc
+	sweeperDone   chan struct{} // closed when the sweeper goroutine exits
+	closed        bool          // set by Close; retire/put become no-ops afterwards
 }
+
+// retiredToolSet is one graveyard entry: a group of ToolSets retired from the
+// same cache key, together with the retirement timestamp used by the sweeper.
+type retiredToolSet struct {
+	toolSets []trpctool.ToolSet
+	cacheKey string
+	retireAt time.Time
+}
+
+const (
+	// toolSetRetireDelay is how long retired ToolSets stay open before the
+	// sweeper actually closes them. It must comfortably exceed the longest
+	// expected in-flight tool call on a cached agent (LLM turns with tool
+	// use run minutes, not seconds).
+	toolSetRetireDelay = 10 * time.Minute
+	// toolSetSweepInterval is the sweeper's scan period in production; the
+	// effective interval is min(toolSetSweepInterval, retireDelay) so tests
+	// with a tiny injected retireDelay still observe timely sweeps.
+	toolSetSweepInterval = time.Minute
+)
 
 // cacheHitFlowLogInterval is the per-entry throttle window for the
 // system.agent.cache_hit flow log (see buildCacheEntry.lastHitFlowAt).
@@ -85,16 +117,18 @@ func newBuildCache(cap int) *BuildCache {
 		cap = buildCacheDefaultCap
 	}
 	return &BuildCache{
-		cap:     cap,
-		items:   make(map[string]*buildCacheEntry),
-		lruList: list.New(),
-		lg:      loggateway.NewNoop(),
+		cap:         cap,
+		items:       make(map[string]*buildCacheEntry),
+		lruList:     list.New(),
+		lg:          loggateway.NewNoop(),
+		retireDelay: toolSetRetireDelay,
 	}
 }
 
 // SetLogger injects a Logger into the cache. Should be called once during
 // Wire initialization (before any cache operations). The Logger is used by
-// closeToolSets to log ToolSet Close errors during eviction and shutdown.
+// closeToolSetsNow to log ToolSet Close errors during graveyard sweeps and
+// shutdown.
 func (c *BuildCache) SetLogger(lg loggateway.Logger) {
 	if lg == nil {
 		return
@@ -180,9 +214,17 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 	if ag == nil {
 		return // never cache a nil agent
 	}
+	if c.closed {
+		// Cache already shut down: do not cache (would leak the ToolSets,
+		// since no sweeper/Close will ever reclaim them). Close the incoming
+		// ToolSets immediately so the caller's resources are not leaked.
+		go closeToolSetsNow(c.lg, toolSets, key)
+		return
+	}
 	if e, ok := c.items[key]; ok {
-		// Close old ToolSets before replacing — the new agent brings its own.
-		c.closeToolSets(e.toolSets, key)
+		// Retire old ToolSets before replacing — the new agent brings its
+		// own. Retired sets are closed after a delay (see retireToolSets).
+		c.retireToolSets(e.toolSets, key)
 		c.lruList.MoveToFront(e.elem)
 		e.agent = ag
 		e.a2ui = a2uiResult
@@ -233,38 +275,143 @@ func (c *BuildCache) InvalidateAll() {
 // evict must be called with c.mu held.
 func (c *BuildCache) evict(key string) {
 	if e, ok := c.items[key]; ok {
-		c.closeToolSets(e.toolSets, key)
+		c.retireToolSets(e.toolSets, key)
 		c.lruList.Remove(e.elem)
 		delete(c.items, key)
 	}
 }
 
-// Close clears all entries. It is safe to call Close multiple times.
-// Returns nil; the error return satisfies io.Closer / lifecycle.Closer so
-// the cache can be registered with LifecycleManager (A3).
+// Close clears all entries and immediately closes every ToolSet, including
+// graveyard entries whose delay has not elapsed: process shutdown has no
+// in-flight requests left worth waiting for. Close blocks until the sweeper
+// goroutine has fully exited, guaranteeing no concurrent ToolSet.Close runs
+// after Close returns (no double-close). It is safe to call Close multiple
+// times; subsequent calls are no-ops. Returns nil; the error return satisfies
+// io.Closer / lifecycle.Closer so the cache can be registered with
+// LifecycleManager (A3).
 func (c *BuildCache) Close() error {
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	var all []retiredToolSet
 	for key, e := range c.items {
-		c.closeToolSets(e.toolSets, key)
+		all = append(all, retiredToolSet{toolSets: e.toolSets, cacheKey: key})
 	}
 	c.items = make(map[string]*buildCacheEntry)
 	c.lruList.Init()
+	all = append(all, c.graveyard...)
+	c.graveyard = nil
+	cancel := c.sweeperCancel
+	done := c.sweeperDone
+	c.sweeperCancel = nil
+	c.sweeperDone = nil
+	lg := c.lg
 	c.mu.Unlock()
+
+	// Stop the sweeper and wait for it to fully exit before closing, so no
+	// sweepGraveyard Close can race with the loop below (double-close).
+	if cancel != nil {
+		cancel()
+	}
+	if done != nil {
+		<-done
+	}
+	for _, r := range all {
+		closeToolSetsNow(lg, r.toolSets, r.cacheKey)
+	}
 	return nil
 }
 
-// closeToolSets closes each ToolSet in the slice, logging any errors.
-// It is best-effort: a Close error on one ToolSet does not prevent the
-// others from being closed. This function is called during cache eviction
-// and shutdown to prevent resource leaks (MCP sessions, stdio subprocesses).
-// Caller must hold c.mu.
-func (c *BuildCache) closeToolSets(toolSets []trpctool.ToolSet, cacheKey string) {
+// retireToolSets moves toolSets into the graveyard instead of closing them
+// immediately: in-flight requests may still hold the replaced/evicted agent
+// and be mid-call on its ToolSets (MCP sessions, stdio subprocesses); closing
+// under their feet aborts those calls. The sweeper closes entries only after
+// retireDelay, by which time in-flight requests have long finished. It also
+// lazily starts the sweeper on first use. Caller must hold c.mu.
+func (c *BuildCache) retireToolSets(toolSets []trpctool.ToolSet, cacheKey string) {
+	if len(toolSets) == 0 {
+		return
+	}
+	if c.closed {
+		// After Close the sweeper is gone; close immediately (async, caller
+		// holds mu) so ToolSets are not leaked. Shutdown has no in-flight
+		// requests left worth delaying for.
+		go closeToolSetsNow(c.lg, toolSets, cacheKey)
+		return
+	}
+	c.graveyard = append(c.graveyard, retiredToolSet{
+		toolSets: toolSets,
+		cacheKey: cacheKey,
+		retireAt: time.Now(),
+	})
+	c.ensureSweeperLocked()
+}
+
+// ensureSweeperLocked starts the graveyard sweeper goroutine once. Caller
+// must hold c.mu.
+func (c *BuildCache) ensureSweeperLocked() {
+	if c.sweeperCancel != nil {
+		return
+	}
+	interval := toolSetSweepInterval
+	if c.retireDelay > 0 && c.retireDelay < interval {
+		interval = c.retireDelay
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	c.sweeperCancel = cancel
+	c.sweeperDone = done
+	lg := c.lg
+	safego.Go(ctx, "agent.cache.toolset_sweeper", func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				c.sweepGraveyard(lg)
+			}
+		}
+	})
+}
+
+// sweepGraveyard closes graveyard entries whose retire delay has elapsed.
+// Close calls run outside c.mu: ToolSet.Close may perform IO (MCP session
+// teardown) and must not block cache operations.
+func (c *BuildCache) sweepGraveyard(lg loggateway.Logger) {
+	now := time.Now()
+	c.mu.Lock()
+	var due []retiredToolSet
+	remaining := make([]retiredToolSet, 0, len(c.graveyard))
+	for _, r := range c.graveyard {
+		if now.Sub(r.retireAt) >= c.retireDelay {
+			due = append(due, r)
+		} else {
+			remaining = append(remaining, r)
+		}
+	}
+	c.graveyard = remaining
+	c.mu.Unlock()
+	for _, r := range due {
+		closeToolSetsNow(lg, r.toolSets, r.cacheKey)
+	}
+}
+
+// closeToolSetsNow closes each ToolSet in the slice immediately, logging any
+// errors. It is best-effort: a Close error on one ToolSet does not prevent
+// the others from being closed.
+func closeToolSetsNow(lg loggateway.Logger, toolSets []trpctool.ToolSet, cacheKey string) {
 	for _, ts := range toolSets {
 		if ts == nil {
 			continue
 		}
 		if err := ts.Close(); err != nil {
-			c.lg.Warn("ToolSet Close 失败",
+			lg.Warn("ToolSet Close 失败",
 				loggateway.Domain("agent.cache"),
 				loggateway.Str("cache_key", cacheKey),
 				loggateway.Str("toolset", ts.Name()),

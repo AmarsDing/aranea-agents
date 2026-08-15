@@ -109,23 +109,6 @@ func (r *sessionRunRepo) Create(ctx context.Context, run biz.SessionRun) (string
 	return id, entErrToBizErr(err, "SESSION_RUN")
 }
 
-func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) error {
-	client := r.writeClient(ctx)
-	if client == nil {
-		return nil
-	}
-	now := biz.ChannelTurnJobNow()
-	_, err := client.SessionRun.UpdateOneID(strings.TrimSpace(id)).
-		SetPhase(biz.NormalizeSessionRunPhase(phase)).
-		SetPhaseChangedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		r.data.lg.Warn("update phase failed", loggateway.StepID("data.session_run.update_phase"), loggateway.Err(err))
-	}
-	return entErrToBizErr(err, "SESSION_RUN")
-}
-
 func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg string) error {
 	client := r.writeClient(ctx)
 	if client == nil {
@@ -427,7 +410,7 @@ func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, er
 // TransitionPhase performs a CAS (Compare-And-Swap) phase transition.
 // It only updates the row if the current phase matches fromPhase, preventing
 // TOCTOU races where a concurrent writer changes the phase between a Get and
-// an UpdatePhase call (N-04 fix).
+// a write (N-04 fix; replaces the former non-CAS UpdatePhase repo method).
 // Returns true if the transition succeeded (row was updated).
 func (r *sessionRunRepo) TransitionPhase(ctx context.Context, id, fromPhase, toPhase string) (bool, error) {
 	db := r.writeDB(ctx)

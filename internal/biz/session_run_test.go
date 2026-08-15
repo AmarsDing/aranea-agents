@@ -22,16 +22,6 @@ func (s *sessionRunRepoStub) Create(_ context.Context, run SessionRun) (string, 
 	return run.ID, nil
 }
 
-func (s *sessionRunRepoStub) UpdatePhase(_ context.Context, id, phase string) error {
-	run, ok := s.runs[id]
-	if !ok {
-		return nil
-	}
-	run.Phase = NormalizeSessionRunPhase(phase)
-	s.runs[id] = run
-	return nil
-}
-
 func (s *sessionRunRepoStub) UpdateCheckpointID(_ context.Context, id, checkpointID string) error {
 	run, ok := s.runs[id]
 	if !ok {
@@ -282,7 +272,6 @@ type sessionRunRepoStubErr struct {
 func (s *sessionRunRepoStubErr) Create(_ context.Context, _ SessionRun) (string, error) {
 	return "", s.err
 }
-func (s *sessionRunRepoStubErr) UpdatePhase(_ context.Context, _, _ string) error { return s.err }
 func (s *sessionRunRepoStubErr) UpdateCheckpointID(_ context.Context, _, _ string) error {
 	return s.err
 }

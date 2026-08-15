@@ -93,6 +93,16 @@ type TaskWriter interface {
 	SaveTask(ctx context.Context, task *GraphTask) error
 	UpdateTask(ctx context.Context, task *GraphTask) error
 	BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []string, status GraphTaskStatus) error
+	// ClaimTaskWhereStatus 原子认领：仅当任务 status ∈ fromStatuses 时置为 claimed 并
+	// 写入 assignee/claimed_at，返回最新任务。命中 0 行返回 (nil, false, nil)。
+	// 消除 read-check-write 认领竞态（并发认领只允许一个成功）。
+	ClaimTaskWhereStatus(ctx context.Context, taskID string, agentKey string, fromStatuses []GraphTaskStatus) (*GraphTask, bool, error)
+	// CompleteTaskWhereStatus 原子提交：仅当 status ∈ fromStatuses 时写入结果字段并迁移到
+	// toStatus；submitter 非空时附加 assignee=submitter 守卫（空串跳过，供无提交者上下文的
+	// 调用方使用）。命中 0 行返回 (nil, false, nil)。
+	CompleteTaskWhereStatus(ctx context.Context, taskID string, submitter string, output string, summary string, metadata string, toStatus GraphTaskStatus) (*GraphTask, bool, error)
+	// TransitionTaskStatusWhere 原子状态迁移（不改其他字段），用于 Review 等纯流转场景。
+	TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus) (*GraphTask, bool, error)
 }
 
 type TaskCommentStore interface {
@@ -280,23 +290,28 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 			return nil, apierror.Forbidden("TASK", "agent %s does not have required role %s", agentKey, task.RequiredRole)
 		}
 	}
-	now := time.Now()
-	task.Assignee = agentKey
-	task.Status = GraphTaskStatusClaimed
-	task.ClaimedAt = &now
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
+	// 原子认领：消除并发认领竞态（此前 read-check-write 允许双认领，后写覆盖前写）。
+	claimed, ok, err := uc.writer.ClaimTaskWhereStatus(ctx, taskID, agentKey, []GraphTaskStatus{GraphTaskStatusPending, GraphTaskStatusPendingAssignment})
+	if err != nil {
 		return nil, err
 	}
+	if !ok {
+		return nil, apierror.Conflict("TASK", "task %s was concurrently claimed or changed status", taskID)
+	}
+	now := time.Now()
 	uc.mu.Lock()
-	uc.heartbeats[taskID] = now
-	uc.leaseDeadline[taskID] = now.Add(5 * time.Minute)
+	uc.heartbeats[claimed.TaskID] = now
+	uc.leaseDeadline[claimed.TaskID] = now.Add(5 * time.Minute)
 	uc.mu.Unlock()
-	uc.recordTaskEvent(ctx, taskID, "task_claimed", task.NodeID, "claimed by "+agentKey)
-	uc.afterTaskMutation(ctx, task, nil)
-	return task, nil
+	uc.recordTaskEvent(ctx, claimed.TaskID, "task_claimed", claimed.NodeID, "claimed by "+agentKey)
+	uc.afterTaskMutation(ctx, claimed, nil)
+	return claimed, nil
 }
 
-func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, output string, summary string, metadata string) (*GraphTask, error) {
+// SubmitTaskResult 提交任务结果。submitter 为提交者 agentKey：非空时强制校验其为当前
+// assignee（CAS 守卫），防止非认领者覆盖结果；为空时跳过 assignee 校验（服务端 RPC 暂无
+// agent_key 字段，TODO(proto): SubmitTaskResultRequest 增加 agent_key 后接入）。
+func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, submitter string, output string, summary string, metadata string) (*GraphTask, error) {
 	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
@@ -304,24 +319,26 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 	if task.Status != GraphTaskStatusClaimed && task.Status != GraphTaskStatusReviewRequired {
 		return nil, apierror.BadRequest("TASK", "task %s cannot submit result in status %s", taskID, task.Status)
 	}
-	now := time.Now()
-	task.Output = output
-	task.Summary = summary
-	task.Metadata = metadata
-	task.CompletedAt = &now
+	if submitter != "" && task.Assignee != submitter {
+		return nil, apierror.Forbidden("TASK", "agent %s is not the assignee of task %s", submitter, taskID)
+	}
 
 	nodeDef := uc.findNodeDef(ctx, task)
+	toStatus := GraphTaskStatusComplete
 	if nodeDef != nil && nodeDef.ReviewerAgent != "" {
-		task.Status = GraphTaskStatusReviewRequired
-	} else {
-		task.Status = GraphTaskStatusComplete
+		toStatus = GraphTaskStatusReviewRequired
 	}
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
+	// 原子提交：状态与 assignee 守卫在 UPDATE WHERE 中原子判定，防止过期租约/并发变更写入。
+	updated, ok, err := uc.writer.CompleteTaskWhereStatus(ctx, taskID, submitter, output, summary, metadata, toStatus)
+	if err != nil {
 		return nil, err
 	}
-	uc.recordTaskEvent(ctx, taskID, "task_completed", task.NodeID, "task result submitted")
-	uc.afterTaskMutation(ctx, task, nil)
-	return task, nil
+	if !ok {
+		return nil, apierror.Conflict("TASK", "task %s state changed before submit (status/assignee mismatch)", taskID)
+	}
+	uc.recordTaskEvent(ctx, taskID, "task_completed", updated.NodeID, "task result submitted")
+	uc.afterTaskMutation(ctx, updated, nil)
+	return updated, nil
 }
 
 func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey string, metadata string) (bool, int32, error) {
@@ -335,19 +352,17 @@ func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey st
 	if task.Assignee != agentKey {
 		return false, 0, apierror.Forbidden("TASK", "agent %s is not the assignee of task %s", agentKey, taskID)
 	}
+	// 心跳即续约：无条件延长租约 5 分钟。租约超时的唯一目的是检测 agent
+	// 死亡——心跳持续即 agent 存活，不应超时。原 EnableLeaseExtension 条件
+	// 续约已被 CheckTimeouts 的心跳兜底（lastHB<2min 续 5min）架空，统一为
+	// 无条件续约消除两者矛盾；同时 findNodeDef（DB 查询）不再于锁内执行。
 	now := time.Now()
 	uc.mu.Lock()
 	uc.heartbeats[taskID] = now
-	var extension int32
-	nodeDef := uc.findNodeDef(ctx, task)
-	if nodeDef != nil && nodeDef.EnableLeaseExtension {
-		newDeadline := now.Add(5 * time.Minute)
-		uc.leaseDeadline[taskID] = newDeadline
-		extension = 300
-	}
+	uc.leaseDeadline[taskID] = now.Add(5 * time.Minute)
 	uc.mu.Unlock()
 	uc.recordTaskEvent(ctx, taskID, "heartbeat", task.NodeID, "heartbeat received")
-	return true, extension, nil
+	return true, 300, nil
 }
 
 func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason string, metadata string) (*GraphTask, error) {
@@ -453,14 +468,19 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 	if task.Status != GraphTaskStatusReviewRequired {
 		return nil, apierror.BadRequest("TASK", "task %s is not in review_required status", taskID)
 	}
+	toStatus := GraphTaskStatusClaimed
 	if approved {
-		task.Status = GraphTaskStatusComplete
-	} else {
-		task.Status = GraphTaskStatusClaimed
+		toStatus = GraphTaskStatusComplete
 	}
-	if err := uc.writer.UpdateTask(ctx, task); err != nil {
+	// 原子流转：防止 review 与超时清扫/并发提交竞态（非原子的 read-modify-write 会覆盖并发变更）。
+	updated, ok, err := uc.writer.TransitionTaskStatusWhere(ctx, taskID, []GraphTaskStatus{GraphTaskStatusReviewRequired}, toStatus)
+	if err != nil {
 		return nil, err
 	}
+	if !ok {
+		return nil, apierror.Conflict("TASK", "task %s left review_required before review completed", taskID)
+	}
+	task = updated
 	commentType := "approval"
 	if !approved {
 		commentType = "rejection"

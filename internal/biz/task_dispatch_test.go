@@ -39,6 +39,42 @@ func (s *stubTaskRepo) UpdateTask(context.Context, *GraphTask) error { return ni
 func (s *stubTaskRepo) BatchUpdateGraphTaskStatus(context.Context, []string, GraphTaskStatus) error {
 	return nil
 }
+func (s *stubTaskRepo) ClaimTaskWhereStatus(_ context.Context, taskID string, agentKey string, _ []GraphTaskStatus) (*GraphTask, bool, error) {
+	if t, ok := s.tasks[taskID]; ok && t.Status == GraphTaskStatusPending {
+		now := time.Now()
+		t.Assignee = agentKey
+		t.Status = GraphTaskStatusClaimed
+		t.ClaimedAt = &now
+		return t, true, nil
+	}
+	return nil, false, nil
+}
+func (s *stubTaskRepo) CompleteTaskWhereStatus(_ context.Context, taskID string, submitter string, output string, summary string, metadata string, toStatus GraphTaskStatus) (*GraphTask, bool, error) {
+	if t, ok := s.tasks[taskID]; ok && (t.Status == GraphTaskStatusClaimed || t.Status == GraphTaskStatusReviewRequired) {
+		if submitter != "" && t.Assignee != submitter {
+			return nil, false, nil
+		}
+		now := time.Now()
+		t.Output = output
+		t.Summary = summary
+		t.Metadata = metadata
+		t.CompletedAt = &now
+		t.Status = toStatus
+		return t, true, nil
+	}
+	return nil, false, nil
+}
+func (s *stubTaskRepo) TransitionTaskStatusWhere(_ context.Context, taskID string, fromStatuses []GraphTaskStatus, toStatus GraphTaskStatus) (*GraphTask, bool, error) {
+	if t, ok := s.tasks[taskID]; ok {
+		for _, from := range fromStatuses {
+			if t.Status == from {
+				t.Status = toStatus
+				return t, true, nil
+			}
+		}
+	}
+	return nil, false, nil
+}
 func (s *stubTaskRepo) SaveTaskComment(context.Context, *TaskComment) error { return nil }
 func (s *stubTaskRepo) ListTaskComments(context.Context, string) ([]*TaskComment, error) {
 	return nil, nil

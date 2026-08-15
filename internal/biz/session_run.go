@@ -64,7 +64,6 @@ type SessionRunReader interface {
 // Stability:stable
 type SessionRunWriter interface {
 	Create(ctx context.Context, run SessionRun) (string, error)
-	UpdatePhase(ctx context.Context, id, phase string) error
 	UpdateCheckpointID(ctx context.Context, id, checkpointID string) error
 	MarkTerminal(ctx context.Context, id, phase, errMsg string) error
 	// MarkTerminalWherePhase performs a CAS terminal transition: it only marks
@@ -148,10 +147,10 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 		return SessionRun{}, apierror.BadRequest(apierror.DomainSessionRun, "sessionID and turnID are required")
 	}
 	// 并发守卫：拒绝同一 Session 重复创建活跃 Run。
-	// TODO(debt): 这是 TOCTOU 检查，最终保障应通过 DB 部分唯一索引实现：
-	//   CREATE UNIQUE INDEX idx_session_runs_active ON session_runs(session_id)
-	//   WHERE finished_at = '' AND phase IN ('interactive', 'durable')
-	// 配合 entErrToBizErr 的 CodeConflict 翻译，可在 DB 层兜底。
+	// 双保险：除该前置检查外，DB 部分唯一索引 idx_session_runs_active_unique
+	//（见 migrations/20260724_invariant_constraints.sql，phase 非终态时
+	// session_id 唯一）在 DB 层兜底 TOCTOU 竞态，冲突经 entErrToBizErr
+	// 翻译为 CodeConflict 返回。
 	if existing, err := u.repo.GetActiveForSession(ctx, sessionID); err == nil && existing.ID != "" {
 		return SessionRun{}, apierror.Conflict(apierror.DomainSessionRun, "active run already exists for session")
 	} else if err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
@@ -180,16 +179,6 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 	}
 	run.ID = id
 	return run, nil
-}
-
-func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) error {
-	if u == nil || u.repo == nil {
-		return errSessionRunNotInit
-	}
-	if strings.TrimSpace(id) == "" {
-		return apierror.BadRequest(apierror.DomainSessionRun, "id is required")
-	}
-	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
 }
 
 // TransitionPhase performs a CAS phase transition validated by the state machine.

@@ -186,7 +186,12 @@ func (uc *ChatUsecase) InterruptAndSendMessage(ctx context.Context, sessionID, p
 	if err := uc.pending.SetPriority(sessionID, pendingEntryID, 1); err != nil {
 		return err
 	}
-	uc.runs.Cancel(sessionID, "user_interrupt")
+	if stopped, runID := uc.runs.Cancel(sessionID, "user_interrupt"); !stopped {
+		uc.lg.Warn("interrupt cancel found no active run; pending message stays queued",
+			loggateway.StepID("chat.interrupt_cancel"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("run_id", runID))
+	}
 	return nil
 }
 
@@ -471,6 +476,12 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 						continue
 					}
 					if now.Sub(entry.createdAt) > awaitChanMaxAge {
+						// 活跃 run 的 await channel 是合法在用（HITL 等待用户回复
+						// 可远超 maxAge），交给 SetRunStatus 终态时的事件驱动清理；
+						// GC 只回收 run 已不存在/已结束的泄漏条目。
+						if uc.runs.HasActive(sid) {
+							continue
+						}
 						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						close(entry.done)
 						delete(uc.awaitChans, sid)

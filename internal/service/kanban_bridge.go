@@ -45,8 +45,8 @@ func (b *KanbanToolBridge) List(ctx context.Context, executionID, status string,
 	return out, nil
 }
 
-func (b *KanbanToolBridge) Complete(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error) {
-	task, err := b.tasks.SubmitTaskResult(ctx, taskID, output, summary, metadata)
+func (b *KanbanToolBridge) Complete(ctx context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error) {
+	task, err := b.tasks.SubmitTaskResult(ctx, taskID, agentKey, output, summary, metadata)
 	if err != nil {
 		return nil, err
 	}

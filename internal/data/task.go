@@ -215,6 +215,103 @@ func (r *taskRepo) BatchUpdateGraphTaskStatus(ctx context.Context, taskIDs []str
 	return nil
 }
 
+// taskStatusStrings converts biz statuses to the string slice ent predicates need.
+func taskStatusStrings(statuses []biz.GraphTaskStatus) []string {
+	strs := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		if s != "" {
+			strs = append(strs, string(s))
+		}
+	}
+	return strs
+}
+
+// ClaimTaskWhereStatus atomically claims a task: only rows whose status is in
+// fromStatuses transition to claimed with assignee/claimed_at set. Zero rows
+// matched → (nil, false, nil) so the usecase can surface a Conflict instead of
+// silently overwriting a concurrent winner (DB-R5: errors via entErrToBizErr).
+func (r *taskRepo) ClaimTaskWhereStatus(ctx context.Context, taskID string, agentKey string, fromStatuses []biz.GraphTaskStatus) (*biz.GraphTask, bool, error) {
+	from := taskStatusStrings(fromStatuses)
+	if len(from) == 0 {
+		return nil, false, nil
+	}
+	client := r.data.RW().Write(ctx)
+	n, err := client.GraphTask.Update().
+		Where(graphtask.IDIn(taskID), graphtask.StatusIn(from...)).
+		SetStatus(string(biz.GraphTaskStatusClaimed)).
+		SetAssignee(agentKey).
+		SetClaimedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return nil, false, entErrToBizErr(err, "TASK")
+	}
+	if n == 0 {
+		return nil, false, nil
+	}
+	t, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	return t, true, nil
+}
+
+// CompleteTaskWhereStatus atomically submits a result: only rows in
+// claimed/review_required (and, when submitter is non-empty, assigned to that
+// submitter) are updated. Zero rows matched → (nil, false, nil).
+func (r *taskRepo) CompleteTaskWhereStatus(ctx context.Context, taskID string, submitter string, output string, summary string, metadata string, toStatus biz.GraphTaskStatus) (*biz.GraphTask, bool, error) {
+	client := r.data.RW().Write(ctx)
+	builder := client.GraphTask.Update().
+		Where(
+			graphtask.IDIn(taskID),
+			graphtask.StatusIn(string(biz.GraphTaskStatusClaimed), string(biz.GraphTaskStatusReviewRequired)),
+		).
+		SetStatus(string(toStatus)).
+		SetOutput(output).
+		SetSummary(summary).
+		SetMetadata(metadata).
+		SetCompletedAt(time.Now())
+	if submitter != "" {
+		builder = builder.Where(graphtask.AssigneeEQ(submitter))
+	}
+	n, err := builder.Save(ctx)
+	if err != nil {
+		return nil, false, entErrToBizErr(err, "TASK")
+	}
+	if n == 0 {
+		return nil, false, nil
+	}
+	t, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	return t, true, nil
+}
+
+// TransitionTaskStatusWhere atomically transitions status only (no field
+// writes), guarding on fromStatuses. Zero rows matched → (nil, false, nil).
+func (r *taskRepo) TransitionTaskStatusWhere(ctx context.Context, taskID string, fromStatuses []biz.GraphTaskStatus, toStatus biz.GraphTaskStatus) (*biz.GraphTask, bool, error) {
+	from := taskStatusStrings(fromStatuses)
+	if len(from) == 0 {
+		return nil, false, nil
+	}
+	client := r.data.RW().Write(ctx)
+	n, err := client.GraphTask.Update().
+		Where(graphtask.IDIn(taskID), graphtask.StatusIn(from...)).
+		SetStatus(string(toStatus)).
+		Save(ctx)
+	if err != nil {
+		return nil, false, entErrToBizErr(err, "TASK")
+	}
+	if n == 0 {
+		return nil, false, nil
+	}
+	t, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, false, err
+	}
+	return t, true, nil
+}
+
 func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment) error {
 	client := r.data.RW().Write(ctx)
 	_, err := client.GraphTaskComment.Create().

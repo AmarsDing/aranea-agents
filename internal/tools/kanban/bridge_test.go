@@ -8,7 +8,7 @@ import (
 type stubBridge struct {
 	showFn      func(ctx context.Context, taskID string) (map[string]any, error)
 	listFn      func(ctx context.Context, executionID, status string, limit int) ([]map[string]any, error)
-	completeFn  func(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error)
+	completeFn  func(ctx context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error)
 	blockFn     func(ctx context.Context, taskID, reason, metadata string) (map[string]any, error)
 	unblockFn   func(ctx context.Context, taskID, comment string) (map[string]any, error)
 	heartbeatFn func(ctx context.Context, taskID, agentKey, metadata string) (map[string]any, error)
@@ -25,8 +25,8 @@ func (s *stubBridge) List(ctx context.Context, executionID, status string, limit
 	return s.listFn(ctx, executionID, status, limit)
 }
 
-func (s *stubBridge) Complete(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error) {
-	return s.completeFn(ctx, taskID, summary, output, metadata)
+func (s *stubBridge) Complete(ctx context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error) {
+	return s.completeFn(ctx, taskID, agentKey, summary, output, metadata)
 }
 
 func (s *stubBridge) Block(ctx context.Context, taskID, reason, metadata string) (map[string]any, error) {
@@ -127,7 +127,10 @@ func TestBridgeWriter_interfaceMethods(t *testing.T) {
 
 	ctx := context.Background()
 	b := &stubBridge{
-		completeFn: func(_ context.Context, taskID, summary, output, metadata string) (map[string]any, error) {
+		completeFn: func(_ context.Context, taskID, agentKey, summary, output, metadata string) (map[string]any, error) {
+			if agentKey != "agent-1" {
+				t.Fatalf("expected agentKey agent-1, got %s", agentKey)
+			}
 			return map[string]any{"task_id": taskID, "status": "completed"}, nil
 		},
 		blockFn: func(_ context.Context, taskID, reason, metadata string) (map[string]any, error) {
@@ -143,7 +146,7 @@ func TestBridgeWriter_interfaceMethods(t *testing.T) {
 
 	var writer BridgeWriter = b
 
-	result, err := writer.Complete(ctx, "t1", "done", "", "")
+	result, err := writer.Complete(ctx, "t1", "agent-1", "done", "", "")
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}

@@ -355,6 +355,141 @@ func TestBuildCachePutClearsDirty(t *testing.T) {
 	}
 }
 
+// TestBuildCacheRetiredToolSetDelayedClose verifies the graveyard contract:
+// ToolSets retired via eviction or replacement are NOT closed immediately
+// (in-flight requests may still be mid-call on them); the sweeper closes
+// them only after the retire delay elapses. Close() closes them at once.
+func TestBuildCacheRetiredToolSetDelayedClose(t *testing.T) {
+	c := newTestCache(1)
+	c.retireDelay = 20 * time.Millisecond
+
+	ts := &fakeToolSet{name: "ts-old"}
+	// Evict via LRU overflow (cap=1).
+	c.put("a", makeAgent("a"), nil, []trpctool.ToolSet{ts})
+	c.put("b", makeAgent("b"), nil, nil)
+
+	if ts.closed.Load() {
+		t.Fatal("retired ToolSet must not be closed immediately after eviction")
+	}
+	c.mu.Lock()
+	inGraveyard := len(c.graveyard)
+	c.mu.Unlock()
+	if inGraveyard != 1 {
+		t.Fatalf("expected 1 graveyard entry after eviction, got %d", inGraveyard)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !ts.closed.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !ts.closed.Load() {
+		t.Fatal("sweeper must close the retired ToolSet after the delay elapses")
+	}
+	c.mu.Lock()
+	left := len(c.graveyard)
+	cancel := c.sweeperCancel
+	c.mu.Unlock()
+	if left != 0 {
+		t.Fatalf("expected empty graveyard after sweep, got %d entries", left)
+	}
+	if cancel == nil {
+		t.Fatal("sweeper should have been started by retireToolSets")
+	}
+	c.Close()
+}
+
+// TestBuildCacheCloseDrainsGraveyardImmediately verifies that Close() does
+// not wait out the retire delay: at process shutdown there are no in-flight
+// requests worth protecting, so graveyard entries are closed at once.
+func TestBuildCacheCloseDrainsGraveyardImmediately(t *testing.T) {
+	c := newTestCache(4)
+	c.retireDelay = time.Hour // long enough that the sweeper will never fire
+
+	tsOld := &fakeToolSet{name: "ts-replaced"}
+	c.put("k", makeAgent("v1"), nil, []trpctool.ToolSet{tsOld})
+	// Replace the entry → tsOld is retired to the graveyard.
+	c.put("k", makeAgent("v2"), nil, nil)
+
+	tsLive := &fakeToolSet{name: "ts-live"}
+	c.put("j", makeAgent("j"), nil, []trpctool.ToolSet{tsLive})
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !tsOld.closed.Load() {
+		t.Fatal("Close must close graveyard entries despite the pending delay")
+	}
+	if !tsLive.closed.Load() {
+		t.Fatal("Close must close live entry ToolSets")
+	}
+	c.mu.Lock()
+	stopped := c.sweeperCancel == nil
+	c.mu.Unlock()
+	if !stopped {
+		t.Fatal("Close must stop the sweeper")
+	}
+}
+
+// fakeToolSet is a minimal trpctool.ToolSet tracking Close calls.
+type fakeToolSet struct {
+	name   string
+	closed atomic.Bool
+}
+
+func (f *fakeToolSet) Tools(context.Context) []trpctool.Tool { return nil }
+func (f *fakeToolSet) Close() error                          { f.closed.Store(true); return nil }
+func (f *fakeToolSet) Name() string                          { return f.name }
+
+var _ trpctool.ToolSet = (*fakeToolSet)(nil)
+
+// TestBuildCacheCloseWaitsForSweeperNoDoubleClose verifies the two shutdown
+// defects fixed in review: (1) Close blocks until the sweeper goroutine has
+// fully exited, so a graveyard entry already being swept can never be closed
+// twice; (2) after Close, put/retire no longer resurrect a leaked sweeper and
+// instead close incoming ToolSets immediately.
+func TestBuildCacheCloseWaitsForSweeperNoDoubleClose(t *testing.T) {
+	c := newTestCache(4)
+	c.retireDelay = time.Hour
+
+	ts := &fakeToolSet{name: "ts"}
+	c.put("k", makeAgent("v"), nil, []trpctool.ToolSet{ts})
+	c.put("k", makeAgent("v2"), nil, nil) // retire ts → sweeper starts
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !ts.closed.Load() {
+		t.Fatal("Close must close retired ToolSet")
+	}
+
+	// Second Close is a no-op and must not panic or re-close.
+	if err := c.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+
+	// put after Close must close the incoming ToolSet immediately (no leak),
+	// and must NOT restart the sweeper.
+	ts2 := &fakeToolSet{name: "ts2"}
+	c.put("k", makeAgent("v3"), nil, []trpctool.ToolSet{ts2})
+	deadline := time.Now().Add(2 * time.Second)
+	for !ts2.closed.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !ts2.closed.Load() {
+		t.Fatal("put after Close must close incoming ToolSet immediately")
+	}
+	c.mu.Lock()
+	restarted := c.sweeperCancel != nil
+	got := c.items["k"]
+	c.mu.Unlock()
+	if restarted {
+		t.Fatal("put after Close must not restart the sweeper")
+	}
+	if got != nil {
+		t.Fatal("put after Close must not cache the entry")
+	}
+}
+
 // stubDeclTool is a minimal trpctool.Tool carrying only a declaration name.
 type stubDeclTool struct{ name string }
 

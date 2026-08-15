@@ -61,7 +61,9 @@ func (s *GraphService) SubmitTaskResult(ctx context.Context, req *graphv1.Submit
 	if _, err := s.assertTaskAccess(ctx, req.TaskId); err != nil { // N4: IDOR
 		return nil, err
 	}
-	task, err := s.taskUC.SubmitTaskResult(ctx, req.TaskId, req.Output, req.Summary, req.Metadata)
+	// submitter 留空：proto 暂无 agent_key 字段（TODO(proto): SubmitTaskResultRequest
+	// 增加 agent_key 后传入，启用 assignee CAS 守卫）。kanban 工具链路已传真实 agentKey。
+	task, err := s.taskUC.SubmitTaskResult(ctx, req.TaskId, "", req.Output, req.Summary, req.Metadata)
 	if err != nil {
 		return nil, err
 	}
