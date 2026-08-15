@@ -52,8 +52,10 @@ func (u *Usecase) SetMentionSearcher(searcher DocContentSearcher) {
 	u.mentionSearch = searcher
 }
 
-// ListUnlinkedMentions 未链接提及：目标文档名在库内其他文档的纯文本出现。
-// 输出按 Count 降序、SrcDocID 字典序；至多 mentionOutputLimit 条。
+// ListUnlinkedMentions 未链接提及：目标文档显示名在库内其他文档的纯文本出现。
+// 别名成链（P0）：needle 扩为 basename + title + aliases 多键（resolveIndex
+// 接线时）；未接线降级为 basename 单键。输出按 Count 降序、SrcDocID 字典序；
+// 至多 mentionOutputLimit 条。
 func (u *Usecase) ListUnlinkedMentions(ctx context.Context, docID string) ([]UnlinkedMention, error) {
 	docID = strings.TrimSpace(docID)
 	if docID == "" {
@@ -63,37 +65,45 @@ func (u *Usecase) ListUnlinkedMentions(ctx context.Context, docID string) ([]Unl
 	if err != nil {
 		return nil, err
 	}
-	needle := mentionNeedle(target.RelPath, target.Source)
-	// 单字符名匹配噪声过大（尤其单字中文笔记），直接降级为空。
-	if utf8.RuneCountInString(needle) < 2 || u.mentionSearch == nil {
+	needles := u.mentionNeedles(ctx, target)
+	if len(needles) == 0 || u.mentionSearch == nil {
 		return nil, nil
 	}
-	hits, err := u.mentionSearch.SearchDocContentMentions(ctx, target.CollectionID, needle, docID, mentionCandidateLimit)
-	if err != nil {
-		return nil, err
+	// 逐 needle 预筛并合并：同一源文档命中多个显示名时计数累加、片段取首个。
+	// （「协议」与「通信协议」重叠命中会重复计数——Count 是热度提示，非精确值。）
+	merged := make(map[string]*UnlinkedMention)
+	for _, needle := range needles {
+		hits, err := u.mentionSearch.SearchDocContentMentions(ctx, target.CollectionID, needle, docID, mentionCandidateLimit)
+		if err != nil {
+			return nil, err
+		}
+		lowerNeedle := strings.ToLower(needle)
+		for _, h := range hits {
+			plain := wikiLinkSpanRe.ReplaceAllString(h.Content, " ")
+			lower := strings.ToLower(plain)
+			count := strings.Count(lower, lowerNeedle)
+			if count == 0 {
+				continue // ILIKE 命中可能全部位于 [[...]] 内
+			}
+			m := merged[h.DocID]
+			if m == nil {
+				m = &UnlinkedMention{SrcDocID: h.DocID, SrcDocName: h.DocName}
+				merged[h.DocID] = m
+			}
+			m.Count += count
+			if m.Snippet == "" {
+				byteIdx := strings.Index(lower, lowerNeedle)
+				if byteIdx >= 0 && byteIdx <= len(plain) {
+					// ToLower 对本域字符集（CJK/ASCII）等长，byteIdx 可直接索引原文；
+					// 罕见 Unicode 扩展小写导致错位时退化为空片段（Count 仍准确）。
+					m.Snippet = mentionSnippet(plain, byteIdx, utf8.RuneCountInString(needle))
+				}
+			}
+		}
 	}
-	lowerNeedle := strings.ToLower(needle)
-	out := make([]UnlinkedMention, 0, len(hits))
-	for _, h := range hits {
-		plain := wikiLinkSpanRe.ReplaceAllString(h.Content, " ")
-		lower := strings.ToLower(plain)
-		count := strings.Count(lower, lowerNeedle)
-		if count == 0 {
-			continue // ILIKE 命中可能全部位于 [[...]] 内
-		}
-		byteIdx := strings.Index(lower, lowerNeedle)
-		snippet := ""
-		if byteIdx >= 0 && byteIdx <= len(plain) {
-			// ToLower 对本域字符集（CJK/ASCII）等长，byteIdx 可直接索引原文；
-			// 罕见 Unicode 扩展小写导致错位时退化为空片段（Count 仍准确）。
-			snippet = mentionSnippet(plain, byteIdx, utf8.RuneCountInString(needle))
-		}
-		out = append(out, UnlinkedMention{
-			SrcDocID:   h.DocID,
-			SrcDocName: h.DocName,
-			Count:      count,
-			Snippet:    snippet,
-		})
+	out := make([]UnlinkedMention, 0, len(merged))
+	for _, m := range merged {
+		out = append(out, *m)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
@@ -105,6 +115,44 @@ func (u *Usecase) ListUnlinkedMentions(ctx context.Context, docID string) ([]Unl
 		out = out[:mentionOutputLimit]
 	}
 	return out, nil
+}
+
+// mentionNeedles 目标文档的全部提及匹配键：basename + title + aliases
+// （去重、去空白、≥2 字符；单字符名匹配噪声过大直接丢弃）。
+// resolveIndex 未接线或候选查询失败时降级为 basename 单键。
+func (u *Usecase) mentionNeedles(ctx context.Context, target Document) []string {
+	var out []string
+	seen := make(map[string]struct{})
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if utf8.RuneCountInString(s) < 2 {
+			return
+		}
+		k := strings.ToLower(s)
+		if _, dup := seen[k]; dup {
+			return
+		}
+		seen[k] = struct{}{}
+		out = append(out, s)
+	}
+	add(mentionNeedle(target.RelPath, target.Source))
+	if u.resolveIndex == nil {
+		return out
+	}
+	cands, err := u.resolveIndex.ListResolveCandidates(ctx, []string{target.CollectionID})
+	if err != nil {
+		return out
+	}
+	for _, c := range cands {
+		if c.DocID != target.ID {
+			continue
+		}
+		add(c.Title)
+		for _, a := range c.Aliases {
+			add(a)
+		}
+	}
+	return out
 }
 
 // mentionNeedle 目标文档显示名：rel_path/source 取 basename，去扩展名。

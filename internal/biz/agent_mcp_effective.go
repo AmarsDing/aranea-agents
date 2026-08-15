@@ -14,6 +14,7 @@ const (
 	ToolKeyMCPBroker        = tool.ToolKeyMCPBroker
 	ToolKeyKnowledgeSearch  = tool.ToolKeyKnowledgeSearch
 	ToolKeyKnowledgeReflect = tool.ToolKeyKnowledgeReflect
+	ToolKeyKnowledgeWrite   = tool.ToolKeyKnowledgeWrite
 	ToolKeyWebResearch      = tool.ToolKeyWebResearch
 	ToolKeyKanban           = tool.ToolKeyKanban
 	ToolKeyCallAgent        = tool.ToolKeyCallAgent

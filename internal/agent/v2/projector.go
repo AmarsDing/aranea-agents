@@ -409,6 +409,26 @@ var _ biz.ActivityEmitter = (*ActivityProjector)(nil)
 // received a tool_result when the turn finalizes (OnStuckTools).
 const stuckToolErrorCode = "tool_timeout"
 
+// toolLimitMsgFragment 是 vendored 框架 functioncall 处理器在达到
+// MaxToolIterations 时发出的 flow_error 消息片段（"max tool iterations
+// (%d) exceeded"）。镜像 graph/adapter/agent_summary_fallback.go 的
+// isToolLimitTerminalEvent——两处判定同一框架事件，语义必须一致。
+const toolLimitMsgFragment = "max tool iterations"
+
+// toolLimitUndispatchedNote 是工具上限硬停时关闭未执行调用步骤的说明文案。
+const toolLimitUndispatchedNote = "达到工具调用次数上限，本次调用未实际执行"
+
+// isToolLimitTerminalEvent reports whether ev is the framework's
+// tool-iteration hard-stop event (flow_error, "max tool iterations …").
+func isToolLimitTerminalEvent(ev *trpcevent.Event) bool {
+	if ev == nil || ev.Response == nil || ev.Response.Error == nil {
+		return false
+	}
+	return ev.Response.Object == trpcmodel.ObjectTypeError &&
+		ev.Response.Error.Type == trpcmodel.ErrorTypeFlowError &&
+		strings.Contains(ev.Response.Error.Message, toolLimitMsgFragment)
+}
+
 // OnError marks the root Task as failed and creates an error Step carrying
 // the error message + classification. If no root task exists (error before
 // OnTurnStart), the error is logged but no event is emitted.
@@ -569,6 +589,66 @@ func (p *ActivityProjector) OnStuckTools(ctx context.Context) {
 		)
 		p.seq.Publish(ctx, biz.NewStepFailedEvent(*step))
 	}
+}
+
+// processToolLimitHardStop 处理工具迭代上限硬停事件（2026-08-15）：框架在
+// 达到 MaxToolIterations 时拒绝派发本批 tool_calls 并直接终止循环——这些
+// 调用永远不会产生 tool_result。它们不是「执行失败」：按失败投影会留下
+// 幻影故障证据（OnStuckTools 补标 tool_timeout + OnError 落 error step），
+// 被交付物质量门 J4（MemberExecutionEvidence）误判为成员执行失败，把已被
+// summaryFallbackAgent 兜底完成的团队打回修订。此处按真实语义投影：
+//  1. 关闭全部 tool_running steps 为 completed（Content 注明「未执行」）；
+//  2. 以 notice（非 error）记录终止原因，不 fail 根 Task——图节点侧的
+//     summaryFallbackAgent 会追加兜底总结事件，让 turn 正常完成。
+//
+// 序列保证：agent 循环是串行的（LLM 响应 → 派发工具 → 收结果 → 下一次
+// LLM 调用），硬停事件到达时该成员处于 tool_running 的步骤恰好就是被拒
+// 派发的本批调用；真实已派发但悬挂的工具不会走到这里（其循环不会推进到
+// 下一次 LLM 响应）。关闭按事件作者（ProcessEvent 已把 p.meta.AgentKey
+// 切换为终止事件所属成员）限定范围——graph 并行成员共享同一 projector，
+// 不得误关其他成员正在执行的工具步骤。
+func (p *ActivityProjector) processToolLimitHardStop(ctx context.Context, message string) {
+	now := time.Now()
+	authorKey := p.meta.AgentKey
+	p.mu.Lock()
+	var closed []*biz.Step
+	for id, step := range p.activeStep {
+		if step.Status != biz.StepStatusToolRunning {
+			continue
+		}
+		if step.AuthorAgentKey != authorKey {
+			continue
+		}
+		step.Status = biz.StepStatusCompleted
+		step.Content = toolLimitUndispatchedNote
+		step.CompletedAt = &now
+		step.Version++
+		closed = append(closed, step)
+		delete(p.activeStep, id)
+	}
+	if len(closed) > 0 {
+		closedIDs := make(map[string]struct{}, len(closed))
+		for _, s := range closed {
+			closedIDs[s.ID] = struct{}{}
+		}
+		// 清掉 toolCallID → stepID 映射：这些调用不会收到 tool_result，
+		// 残留映射会让迟到的同名结果事件查到已关闭步骤。
+		for callID, stepID := range p.toolCallSteps {
+			if _, ok := closedIDs[stepID]; ok {
+				delete(p.toolCallSteps, callID)
+			}
+		}
+	}
+	p.mu.Unlock()
+	for _, step := range closed {
+		p.lg.Info("工具上限硬停：关闭未执行的工具调用步骤",
+			loggateway.StepID("agent.v2.projector.tool_limit_close"),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("tool_name", step.ToolName),
+		)
+		p.seq.Publish(ctx, biz.NewStepCompletedEvent(*step))
+	}
+	_ = p.EmitNotice(ctx, message, "tool_iteration_limit")
 }
 
 // EmitSystemEvent emits a notice step for system-level notifications
@@ -1079,6 +1159,13 @@ func (p *ActivityProjector) ProcessEvent(ctx context.Context, ev *trpcevent.Even
 	// (failStep path), not short-circuited here. Other error events are
 	// routed to OnError which marks the root Task as failed.
 	if ev.Response.Error != nil && ev.Response.Object != trpcmodel.ObjectTypeToolResponse {
+		// 工具迭代上限硬停不是执行失败：框架拒绝派发本批调用并终止循环，
+		// 走专门投影路径（关闭未执行步骤 + notice），避免产生幻影失败证据
+		// （见 processToolLimitHardStop 注释）。
+		if isToolLimitTerminalEvent(ev) {
+			p.processToolLimitHardStop(ctx, ev.Response.Error.Message)
+			return
+		}
 		errType := ev.Response.Error.Type
 		if errType == "" {
 			errType = "run_error"

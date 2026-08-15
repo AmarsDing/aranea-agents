@@ -227,10 +227,10 @@
 |---|------|------|------|
 | V10-T1 | **Spike：sherpa-onnx WASM KWS 编译 + 模型验证**——emscripten docker 编译 `build-wasm-simd-kws.sh`；keywords.txt 增加「小媛」+ 叠词「小媛小媛」音素行；最小页面实测检出 | ⏳ | `wasm/kws` 产物（js/wasm/data）可加载；麦克风说「小媛」控制台检出回调触发 |
 | V10-T2 | **状态机 7 态扩展**（`session_state_machine.go`：+StateDormant +EvVoiceStartDormant/EvWake/EvSleepTimeout/EvExitWord + 转换表） | ✅ | TDD：合法/非法转换全表测试 RED→GREEN（`session_state_machine_test.go`） |
-| V10-T3 | **`wake_words.go`**：同音词表 `StripWakeWord`（句首剥离+叠词+标点容错）+ `MatchExitWord` 退出词匹配（复用归一化） | ⏳ | TDD：`wake_words_test.go`（剥离/叠词/非句首不剥/退出词/归一化）RED→GREEN |
-| V10-T4 | **session.go 唤醒/休眠主逻辑**：`Wake(source)` 懒启动 ASR + SleepTimer 60s（活动重置）+ 退出词拦截（先于 confirm）+ 自足 TTS 应答（「我在」/退出确认）+ WS `voice.wake` 路由 + 流程日志 3 step 发射 | ⏳ | TDD：session_test（Wake 懒启动/Timer 重置到期/拦截顺序/自足应答不占 Turn）；voice 包全绿 -race |
-| V10-T5 | **dormant 委派系统唤醒（G1）**：dormant 保持事件订阅与 delegation watcher；委派终态到达且 dormant → EvWake(system) → 自足播报 → SleepTimer 回 dormant | ⏳ | TDD：session_test 委派唤醒用例；-race 通过 |
-| V10-T6 | **前端 KWS 集成**：`voice/wakeWord.ts` 封装（资产入 `web/public/kws/`）+ 预滚 ring buffer + useVoiceSession dormant 门控/wake 帧 + store voiceState +dormant + HUD 微光映射 + KWS 失败自动降级唤醒 | ⏳ | `wakeWord.spec.ts` + `useVoiceSession.spec.ts` 新增用例；pnpm lint/test/build 全绿 |
+| V10-T3 | **`wake_words.go`**：同音词表 `StripWakeWord`（句首剥离+叠词+标点容错）+ `MatchExitWord` 退出词匹配（复用归一化） | ✅ | TDD：`wake_words_test.go`（剥离/叠词/非句首不剥/退出词/归一化）RED→GREEN |
+| V10-T4 | **session.go 唤醒/休眠主逻辑**：`Wake(source)` 懒启动 ASR + SleepTimer 60s（活动重置）+ 退出词拦截（先于 confirm）+ 自足 TTS 应答（「我在」/退出确认）+ WS `voice.wake` 路由 + 流程日志 3 step 发射 | ✅ | TDD：session_test（Wake 懒启动/Timer 重置到期/拦截顺序/自足应答不占 Turn）；voice 包全绿 -race |
+| V10-T5 | **dormant 委派系统唤醒（G1）**：dormant 保持事件订阅与 delegation watcher；委派终态到达且 dormant → EvWake(system) → 自足播报 → SleepTimer 回 dormant | ✅ | TDD：session_test 委派唤醒用例；-race 通过 |
+| V10-T6 | **前端 KWS 集成**：`voice/wakeWord.ts` 封装（资产入 `web/public/kws/`）+ 预滚 ring buffer + useVoiceSession dormant 门控/wake 帧 + store voiceState +dormant + HUD 微光映射 + KWS 失败自动降级唤醒 | ✅ | `wakeWord.spec.ts` + `useVoiceSession.spec.ts` 新增用例；pnpm lint/test/build 全绿 |
 | V10-T7 | **全链路真机验证**：进入即待命（抓包零上行）→「小媛」唤醒应答 → 连说指令执行 → 退出词休眠 → 60s 静默休眠 → 待命委派播报 | 📋 | 日志（voice.wake.detect/sleep.* 流程日志）+ UI 实测 |
 
 ### Phase V11：语音抗干扰 P0（需求 §2.13 / 设计 §17，2026-08-14 设计）

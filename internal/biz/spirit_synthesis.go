@@ -74,11 +74,20 @@ type TeamDeliverableDigest struct {
 	TaskName           string
 	Status             string
 	DeliverableSummary string
+	// Artifacts lists the team's payload entries as compact one-line
+	// descriptors (e.g. article《云计算十年》（markdown，8234字）), so the
+	// Spirit composing the final report knows long-form full texts exist and
+	// can fetch them via read_upstream_deliverable when needed.
+	Artifacts []string
 }
 
 // synthesisDigestMaxRunes caps each team's digest in the trigger so a
 // pathological summary cannot blow up the system-push message budget.
 const synthesisDigestMaxRunes = 500
+
+// synthesisDigestMaxArtifacts caps the artifact listing per team in the
+// trigger — a pointer-level line per payload, bounded like the summary.
+const synthesisDigestMaxArtifacts = 5
 
 // renderSynthesisDigests renders the「各团队交付物摘要」trigger section.
 // Returns "" when no digests exist (legacy behavior preserved).
@@ -87,7 +96,7 @@ func renderSynthesisDigests(digests []TeamDeliverableDigest) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("\n各团队交付物摘要（真实执行产出，无需翻查历史消息）：\n")
+	sb.WriteString("\n各团队交付物摘要（真实执行产出摘要与载荷清单；长文交付物全文可经 read_upstream_deliverable 按需获取）：\n")
 	for _, d := range digests {
 		summary := strings.TrimSpace(d.DeliverableSummary)
 		if summary == "" {
@@ -96,6 +105,13 @@ func renderSynthesisDigests(digests []TeamDeliverableDigest) string {
 			summary = TruncateRunes(summary, synthesisDigestMaxRunes) + "…"
 		}
 		sb.WriteString(fmt.Sprintf("- 团队「%s」（任务：%s，状态：%s）：%s\n", d.TeamName, d.TaskName, d.Status, summary))
+		for i, line := range d.Artifacts {
+			if i >= synthesisDigestMaxArtifacts {
+				sb.WriteString(fmt.Sprintf("  - 载荷：……另有 %d 项\n", len(d.Artifacts)-synthesisDigestMaxArtifacts))
+				break
+			}
+			sb.WriteString(fmt.Sprintf("  - 载荷：%s\n", TruncateRunes(line, 80)))
+		}
 	}
 	return sb.String()
 }

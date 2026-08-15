@@ -19,9 +19,11 @@ import (
 // applies the same heuristics as the memory side. Recording is idempotent via
 // the knowledge_chunk_citations dedup ledger (migration 20261215).
 //
-// Knowledge chunks have no recalled/injected counters: retrieval is
-// tool-mediated (the model decides to call), not prompt-injected, so only the
-// cited stage is tracked.
+// Knowledge chunks have no recalled/injected counters: only the cited stage is
+// tracked. Recall notices come from two paths (P1, 2026-08-15): knowledge_search /
+// knowledge_reflect tool calls, and the first-turn ## Retrieved Knowledge
+// pre-retrieval injection (internal/agent/knowledge_inject.go); the (chunk, turn)
+// dedup ledger absorbs any overlap between the two.
 
 // knowledgeCitationNoticePayload mirrors the knowledge_recalled notice payload
 // emitted by the knowledge tools after each search/reflect call. The notice

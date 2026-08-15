@@ -90,7 +90,7 @@ var spiritOrchestrationToolKeys = map[string]struct{}{
 
 // sessionBoundToolKeys need a live agent/session to execute even when globally enabled.
 var sessionBoundToolKeys = map[string]struct{}{
-	ToolKeyKnowledgeSearch: {}, ToolKeyKnowledgeReflect: {}, ToolKeyCallAgent: {},
+	ToolKeyKnowledgeSearch: {}, ToolKeyKnowledgeReflect: {}, ToolKeyKnowledgeWrite: {}, ToolKeyCallAgent: {},
 	"mcp_tool_set": {}, ToolKeyMCPBroker: {},
 	"memory_search": {}, "memory_get": {},
 	"skill_search": {}, "use_skill": {},

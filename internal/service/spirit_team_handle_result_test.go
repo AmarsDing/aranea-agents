@@ -205,6 +205,9 @@ func (s *stubSpiritTeamController) AutoArchiveCompletedTeams(_ context.Context, 
 func (s *stubSpiritTeamController) ReadUpstreamDeliverable(_ context.Context, _, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
 	return biz.UpstreamDeliverableContent{}, nil
 }
+func (s *stubSpiritTeamController) ReadUpstreamDeliverableKey(_ context.Context, _, _, _ string, _ int) (biz.UpstreamDeliverableContent, error) {
+	return biz.UpstreamDeliverableContent{}, nil
+}
 func (s *stubSpiritTeamController) MemberExecutionEvidence(_ context.Context, sessionID string) (bool, string) {
 	s.memberEvidenceCalls++
 	if s.memberEvidence == nil {

@@ -6393,3 +6393,76 @@ TaskCard
 | 后端 | `biz/tool_result_gate.go`：`UserInputHardLimitChars` + `CheckUserInput(ctx, sessionID, messageID, source, fullContent)`；source ∈ {`user_input`, `attachment_text`}（写入 blob.ToolName，与工具结果区分）；幂等（同 messageID 重复调用不重复落地） |
 | 硬上限执行点 | ① 团队/附件路径 `agent/attachments.go BuildUserMessageFromArtifacts`（闸前拒绝，`apierror.BadRequest CHAT_INPUT`）；② chat 主链路 `service/chat_orchestrator_turn_pipeline.go gateTurnUserInput`（2026-07-27 review 修复：原仅 50k 转存，API/WS 绕过前端时 >200k 会被静默转存，现已对齐拒绝）；计数口径 `utf8.RuneCountInString`（前端 JS `.length` 对 astral 字符更严格，方向安全） |
 | 测试 | `tool_result_gate_test.go`：阈值下原样 / 超阈值 blob+preview / source 透传 / 幂等；`attachments_test.go`：硬上限拒绝；`chat_orchestrator_turn_pipeline_test.go`：`gateTurnUserInput` 硬上限返回 `CodeBadRequest` |
+
+### B.10.25 交付物信封 v2：长文交付范式与按 key 取载荷（2026-08-15 已实施）
+
+> **需求**：① 交付物在接口/注入前缀被截断到 500 字符——根因是 `MaxSummaryLen=500` 的 `summary` 字段被同时当作「展示串」和「交付物本体」使用；② 长文交付场景（上游产出整篇文章，下游需根据文章**具体内容**二次创作/发表）要求「交代给对方的信息范式」固定格式与样例，且下游能确定性拿到全文而非依赖 LLM 自觉。
+
+#### B.10.25.1 交付范式（固定格式）
+
+**核心约定：`summary` 是指针，不是本体。** 本体放在 `structured_json` 的契约 topic 键下；`artifacts` 清单描述每个载荷，下游按清单决定内联读取还是工具取全文。
+
+summary 三段式（协议块 L1 重写后注入给每个 DAG 团队成员）：
+
+```
+【结论】≤2 句交付结论。
+【要点】3-5 条关键事实/数据。
+【载荷】逐行列出 structured_json 中的键：key（格式，字数）。
+（summary 整体超 500 字截断，截断时协议已告知下游可经工具取全文。）
+```
+
+文档类载荷 schema（长文场景固定约定）：`{"title": "...", "format": "markdown", "content": "<全文>"}`。
+
+样例（上游「撰稿团队」→ 下游「发表团队」）：
+
+```json
+{
+  "summary": "【结论】完成 3000 字产品发布文。【要点】① 主打 A 功能 ② 面向运维受众。【载荷】article（markdown，3120 字）",
+  "structured_json": "{\"article\": {\"title\": \"XX 产品发布\", \"format\": \"markdown\", \"content\": \"# XX 产品发布\\n……（3120 字全文）\"}}"
+}
+```
+
+下游注入前缀随之呈现三形态（`renderArtifactSections`）：
+
+| 形态 | 条件 | 前缀表现 |
+|------|------|----------|
+| legacy | 无 artifacts（旧交付物） | 仅 summary 文本，行为不变 |
+| 空载荷 | `size_chars == 0`（顶层空字符串载荷） | 如实标注「载荷内容为空（上游写入但无正文）」，**不给读取指令**（keyed 读取只会得到「内容为空」NotFound，避免死链指引） |
+| 小载荷内联 | 载荷 ≤ 2000 字（`InlineUpstreamPayloadMaxChars`）且未超内联预算 | 全文直接内联进前缀（`### 交付物 article（markdown，全文 N 字）`） |
+| 大载荷指针 | 载荷 > 2000 字，或内联预算耗尽 | 只给元信息 + 读取指令；**key 命中下游 InputContract → 「开始任务前必须先调用 read_upstream_deliverable(team_id, key) 获取全文」**（强制）；未命中 → 「需要全文时调用」（按需）；**载荷 > 50000 字（`DefaultUpstreamDeliverableMaxChars`）时指令自动附 `max_chars=载荷尺寸`（上限 200000）**，否则按默认预算调用会静默拿到截断内容 |
+
+内联预算（2026-08-15 评审加固，防多 topic 撑爆下游首轮输入）：
+
+| 预算 | 值 | 语义 |
+|------|-----|------|
+| `InlineUpstreamArtifactMaxCount` | 5 | 单上游团队至多内联 5 个载荷，超出降级指针 |
+| `InlineUpstreamPayloadTotalMaxChars` | 8000 | 单上游团队内联字符总量上限，耗尽后剩余小载荷降级指针 |
+
+#### B.10.25.2 数据模型与读取
+
+| 项 | 约定 |
+|------|------|
+| `DeliverableArtifact` | `{key, type, format, title, size_chars}`；`DeliverableRef.Artifacts []DeliverableArtifact`（`team_types.go`） |
+| artifacts 填充 | `buildDeliverableArtifacts`（`spirit_delivery.go`）：为**全部非保留 key**（含 string/标量）生成 artifact——doc-map 载荷按 `content` 计尺寸，string 按字符数，其余按 indented JSON 序列化计尺寸（`jsonValueRuneLen` 与内联渲染同口径，MarshalIndent）；仅 `aggregateTopicSummaries`（summary 聚合回退）跳过非 map 键以保持 legacy JSON dump 行为 |
+| 按 key 读取 | `SpiritDelivery.ReadUpstreamDeliverableKey(ctx, readerSessionID, teamID, key, maxChars)`：graph state 优先、信封回退；保留 key（`summary`/`cognition`/`ack_*`）拒绝；NotFound 三分支如实报错——①key 存在但内容为空：「载荷存在但无正文」+ keyless 引导；②key 不存在：列出可用 key + keyless 引导；③无任何内容源：keyless 引导；`SpiritTeamUsecase` 委托 + `SpiritTeamController` 接口同步 |
+| 工具 | `read_upstream_deliverable` 新增可选入参 `key`（`upstream_reader.go`）：带 key 走 `ReadUpstreamDeliverableKey` 单取载荷，不带 key 走全文；输出回显 `key`；`UpstreamDeliverableReader` 窄接口加方法（service 测试 stub 同步） |
+| 兜底链 | `agent_summary_fallback.go buildFallbackDeliverableDelta`：工具上限硬停时兜底总结同样写 `format`+`content`，保证长文不经正常路径也有本体 |
+| 综合报告 | `TeamDeliverableDigest.Artifacts []string` + `renderSynthesisDigests` 载荷行（每团队至多 `synthesisDigestMaxArtifacts` 行，逐行 80 字截断） |
+
+#### B.10.25.3 不变量
+
+- summary 永不承载本体：>500 字截断只是展示降级，本体完整性由 structured_json/artifacts + 工具读取保证
+- 契约命中即强制：下游 InputContract 声明的 key 未读全文不得开工（前缀指令 + Phase B 运行时契约校验双重把关）
+- 保留 key 命名空间：`summary`/`cognition`/`ack_` 前缀不可作为业务载荷 key（三处字面量镜像——tools/deliverable 私有常量 / biz / graph/adapter——由三包锚定测试钉住）
+- 内联有界：单载荷 ≤2000 字 + 单团队 ≤5 个载荷 + 内联总量 ≤8000 字，溢出一律指针化
+- 空载荷不指引：渲染侧如实标注，不把必败的 keyed 读取写进前缀
+- 写入顺序约定：summary 先写、topic 载荷后写（不带 topic 的 `set_deliverable` 会整体覆盖节点本地 RuntimeState 视图；图状态经 MergeReducer 顶层合并不受影响）
+- legacy 交付物（无 structured_json map）行为零变化
+
+#### B.10.25.4 测试
+
+- `spirit_team_deliverable_test.go`：artifacts 渲染三形态 / 契约命中强制指令 / `ReadUpstreamDeliverableKey`（文档载荷、未知 key 列可用、保留 key 拒绝、信封回退、空载荷如实报错、keyless 引导）/ 内联阈值 2000 恰边界（内联）与 2001（指针）/ 内联数量 cap 与总量预算溢出降级 / 空载荷不给读取指令
+- `upstream_reader_test.go`：key 路由（不触达全文路径）、key 透传 trim、输出回显、keyed 错误透传
+- `agent_summary_fallback_test.go`：兜底 content 写入 + 保留 summary key 跨包行为锚定（set_deliverable 必须拒绝以该 key 作 topic）
+- `tool_test.go` / `member_contract_bridge_test.go`：保留 key 值锚定
+- 回归：`internal/service` 41.5s / `internal/agent` 27.7s / `internal/tools/...` / `internal/graph/...` 全绿；`internal/biz` 仅 6 个既有 DB 环境用例失败（`aranea_test` 库密码认证失败，与本次改动无关）

@@ -59,8 +59,28 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	var chunks []biz.KnowledgeChunk
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
+		// 引用闭环补全（P1）：首轮预检索注入也发 knowledge_recalled——日常供粮
+		// 主路径由此进入 cited 回采。lastUserQuery 只在每轮用户消息首次模型调用
+		// 取查询，工具循环续跑天然不重复发；同 chunk 同 turn 由 citations 账本幂等。
+		knowledgetool.EmitKnowledgeRecalledNotice(ctx, cueRenderedChunks(chunks))
 	}
 	return formatKnowledgeCue(filtered, chunks)
+}
+
+// cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、
+// knowledgeCueTopK 截断），保证 notice 载荷与注入内容一致。
+func cueRenderedChunks(chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
+	out := make([]biz.KnowledgeChunk, 0, len(chunks))
+	for _, ch := range chunks {
+		if len(out) >= knowledgeCueTopK {
+			break
+		}
+		if strings.TrimSpace(ch.Content) == "" {
+			continue
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 func filterCueCollections(collections []biz.KnowledgeCollection, scopedIDs []string) []biz.KnowledgeCollection {
@@ -97,7 +117,8 @@ func lastUserQuery(msgs []trpcmodel.Message) string {
 }
 
 func retrieveCueChunks(ctx context.Context, query string, scoped []string, catalog []biz.KnowledgeCollection, lg loggateway.Logger) []biz.KnowledgeChunk {
-	q := biz.KnowledgeSearchQuery{Query: query, TopK: knowledgeCueTopK}
+	// 词条优先写回：日记流水（inbox/writeback-*）仅 provenance，不进默认预检索。
+	q := biz.KnowledgeSearchQuery{Query: query, TopK: knowledgeCueTopK, ExcludePathPrefixes: []string{biz.KnowledgeWriteBackInboxPrefix}}
 	searchCtx, cancel := context.WithTimeout(ctx, knowledgeCueSearchTimeout)
 	defer cancel()
 

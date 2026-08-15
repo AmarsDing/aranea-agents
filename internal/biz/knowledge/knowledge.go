@@ -106,6 +106,10 @@ type SearchQuery struct {
 	// PathPrefix 搜索范围过滤（G3-B7）：vault 相对目录前缀，仅命中文档
 	// rel_path 位于 "<prefix>/" 下的 chunks；空 = 全库。首尾斜杠容忍。
 	PathPrefix string
+	// ExcludePathPrefixes 检索排除（词条优先写回）：rel_path 以任一前缀开头
+	// 的文档不参与检索（字面前缀语义，非目录边界）。用于把写回日记流水
+	// （inbox/writeback-*，仅 provenance）挡在 Agent 默认检索外。
+	ExcludePathPrefixes []string
 }
 
 // Repo is the persistence interface for knowledge base operations.
@@ -260,6 +264,12 @@ type Usecase struct {
 	// linkUsage 为 wikilink 落链 recency 端口（B4 #8），经 SetLinkUsageRepo 接线；
 	// nil 时 RecordLinkUse/ListRecentLinkUses 降级 no-op（recency 非正确性依赖）。
 	linkUsage LinkUsageRepo
+	// writeBackReplay 为写回 chunk 重放钩子（2026-08-15），经 SetWriteBackReplay
+	// 接线（生产由 KnowledgeService 注入 replayPromotedDocChunks 同逻辑）；
+	// nil 时写回只落 documents 表不重建 chunks（降级——检索不可见，ReembedDocuments
+	// 手动自愈）。放 biz 层收口：knowledge_write 工具直调 Usecase（不经 service
+	// 包装），重放挂 service 层时该路径绕过，entries/* 永久 pending。
+	writeBackReplay WriteBackReplayFunc
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger

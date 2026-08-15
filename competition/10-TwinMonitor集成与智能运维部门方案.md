@@ -186,8 +186,8 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    SP[精灵助手 Spirit<br/>面向用户的总入口]
-    LEAD[运维值班长 ops_twin_lead<br/>部门领导：分解/委派/汇总/上报]
+    SP[精灵助手 Spirit<br/>总编排：plan_and_execute 分解<br/>AllocateExplicit 指派岗位 / synthesize_results 汇总]
+    LEAD[运维值班长 ops_twin_lead<br/>态势感知 / 高危审批把关 / 结果上报]
     subgraph DEPT[TwinMonitor 智能运维部]
         LEAD
         D1[告警诊断工程师<br/>ops_fault_diagnosis<br/>skill: twin-alarm-ops / twin-line-device-ops]
@@ -195,40 +195,44 @@ flowchart TD
         D3[效果验证工程师<br/>ops_system_inspection<br/>skill: gns3-sim-ops / twin-line-device-ops]
         D4[复盘报告工程师<br/>ops_doc_generation<br/>skill: ops-postmortem-ops]
     end
-    SP -->|用户诉求/告警任务| LEAD
-    LEAD -->|子任务+上下文| D1 -->|诊断报告| LEAD
-    LEAD -->|处置单| D2 -->|执行记录| LEAD
-    LEAD -->|验证单| D3 -->|验证结论| LEAD
-    LEAD -->|全过程材料| D4 -->|复盘报告+经验沉淀| LEAD
-    LEAD -->|闭环总结| SP
+    SP -->|子任务+上下文（显式指派）| D1 -->|诊断报告| SP
+    SP -->|处置单| D2 -->|执行记录| SP
+    SP -->|验证单| D3 -->|验证结论| SP
+    SP -->|全过程材料| D4 -->|复盘报告+经验沉淀| SP
+    D2 -.->|高危动作审批申请| LEAD
+    LEAD -->|态势结论/审批意见| SP
 ```
+
+> **编排职责归属（v1.2 修正）**：经框架机制实证（2026-08-15），Aranea 的任务分解/分配/汇总通道（`plan_and_execute` + AgentAllocator + `synthesize_results`）为**精灵助手专属**；dept_lead 的内置定位是资源协调与审批把关（memberfs 查成员交付、deptmail 跨部门信箱）。因此对话式协同由**精灵助手做总编排**，经 `AllocateExplicit(agent_keys=[...])` 显式指派岗位 Agent；值班长保持「态势感知 + 高危审批 + 上报」的最小职责，符合框架原生语义，零定制开发。
 
 ### 5.2 职责矩阵（RACI）
 
-| 环节 | 值班长 | 诊断 | 执行 | 验证 | 复盘 |
-|------|--------|------|------|------|------|
-| 任务分解与指派 | **R** | C | C | C | C |
-| 告警取证与根因 | A | **R** | I | I | I |
-| 处置执行（含审批申请） | A | C | **R** | I | I |
-| 高危动作审批 | **R**（人工升级） | I | C | I | I |
-| 修复效果复测 | A | I | C | **R** | I |
-| 复盘报告与经验沉淀 | A | C | C | C | **R** |
-| 向精灵助手汇报 | **R** | I | I | I | I |
+| 环节 | 精灵（总编排） | 值班长 | 诊断 | 执行 | 验证 | 复盘 |
+|------|--------------|--------|------|------|------|------|
+| 任务分解与指派 | **R** | C | C | C | C | C |
+| 告警取证与根因 | A | C | **R** | I | I | I |
+| 处置执行（含审批申请） | A | C | C | **R** | I | I |
+| 高危动作审批 | I | **R**（人工升级） | I | C | I | I |
+| 修复效果复测 | A | I | I | C | **R** | I |
+| 复盘报告与经验沉淀 | A | C | C | C | C | **R** |
+| 态势感知与上报 | C | **R** | I | I | I | I |
 
 ### 5.3 值班长的工作协议
 
-1. **接收**：来自精灵助手的用户诉求，或 remediation 自动派发的告警任务（含告警 ID、级别、来源、探测目标）。
-2. **分解**：按 SOP 拆为诊断 → 处置 → 验证 → 复盘子任务，**每个子任务附带上游完整产出**（避免信息衰减）。
-3. **委派**：按职责矩阵派给专职 Agent；高危动作（故障注入/恢复、生产变更）先挂起并申请人工审批。
-4. **汇总**：串联四环产出，形成闭环总结（根因/动作/验证结论/改进项）上报精灵助手。
-5. **只汇总不代劳**：值班长不直接执行诊断/处置操作，保持职责单一。
+1. **态势感知**：用 `twin_alarm_query`/`twin_device_search`/`twin_remediation_status` 掌握部门告警态势与处置进度，形成态势结论供精灵编排决策。
+2. **高危审批**：执行岗发起的高危动作（`gns3_fault_inject`/`gns3_fault_clear`）经 `requires_confirmation` HITL 门禁升级，值班长给审批意见；超权限升级人工。
+3. **质量把关**：审核本部门产出的交付物质量（memberfs 查阅成员交付文件）。
+4. **结果上报**：向精灵助手/用户输出态势与审批结论。
+5. **只把关不代劳**：值班长不直接执行诊断/处置操作，保持职责单一。
+
+> 任务分解→指派→汇总由精灵助手经 `plan_and_execute` + `synthesize_results` 完成（见 §5.1 修正说明）。
 
 ### 5.4 两种触发模式
 
 | 模式 | 入口 | 适用 |
 |------|------|------|
 | 事件驱动（无人值守） | TwinMonitor 告警 → remediation 策略（auto）→ aiops → Aranea 图执行 | 生产闭环演示主路径 |
-| 人机协同（值班模式） | 用户向精灵助手描述问题 → 精灵派给值班长 → 部门协同 | 演示互动、复杂疑难场景 |
+| 人机协同（值班模式） | 用户向精灵助手描述问题 → 精灵 `plan_and_execute` 分解并显式指派岗位 Agent → `synthesize_results` 汇总 | 演示互动、复杂疑难场景 |
 
 ---
 

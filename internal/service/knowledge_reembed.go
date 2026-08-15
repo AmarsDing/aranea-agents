@@ -26,11 +26,11 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	// 词法库（无 embedding_model）：重嵌入无语义层无意义。
-	if strings.TrimSpace(col.EmbeddingModel) == "" {
-		return nil, apierror.BadRequest("KNOWLEDGE", "collection has no semantic layer (embedding_model is empty)")
-	}
-	if s.embedder == nil {
+	// 词法库（无 embedding_model）：允许纯词法重建（embedder=nil，只分块/FTS
+	// 不产向量）——team 词法库写回词条 chunks 缺失时的自愈入口；此前一律拒绝
+	// 导致词法库 chunks 永不修复（2026-08-15 词条页 pending 事故）。
+	lexicalOnly := strings.TrimSpace(col.EmbeddingModel) == ""
+	if !lexicalOnly && s.embedder == nil {
 		return nil, apierror.BadRequest("KNOWLEDGE", "embedder not configured")
 	}
 
@@ -66,6 +66,9 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 		event.P("doc_count", len(docs)))
 
 	embedder := s.embedder
+	if lexicalOnly {
+		embedder = nil // 词法库纯分块/FTS 重建，不产向量
+	}
 	uc := s.uc
 	reembedCtx := appctx.Ctx()
 	safego.Go(reembedCtx, "knowledge-reembed", func() {

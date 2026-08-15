@@ -355,6 +355,26 @@ type DeliverableRef struct {
 	// DerivedFrom lists the upstream dag_node_ids this deliverable derives
 	// from (C4 provenance chain), filled from Team.DependsOn at write time.
 	DerivedFrom []string `json:"derived_from,omitempty"`
+	// Artifacts lists the payload entries of the deliverable map (non-reserved
+	// state keys) so downstream teams know what full-content artifacts exist
+	// and how to retrieve them: small payloads inline in the injection prefix,
+	// large ones via read_upstream_deliverable 按 key 单取. Optional envelope
+	// field — legacy readers ignore it.
+	Artifacts []DeliverableArtifact `json:"artifacts,omitempty"`
+}
+
+// DeliverableArtifact describes one payload entry of the deliverable map (a
+// non-reserved state key). Type/Format come from the team's inter-team
+// deliverable contract (matched by name == key) or from the payload's own
+// "format" field; Title/SizeChars are extracted from the payload itself
+// (document paradigm {"title","format","content"} → content rune count;
+// other shapes fall back to JSON serialization size).
+type DeliverableArtifact struct {
+	Key       string `json:"key"`
+	Type      string `json:"type,omitempty"`
+	Format    string `json:"format,omitempty"`
+	Title     string `json:"title,omitempty"`
+	SizeChars int    `json:"size_chars"`
 }
 
 // ParseDeliverableRefs parses Team.DeliverablesOutput into per-node refs.

@@ -156,6 +156,9 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 	if uc != nil {
 		s.linkIndex = bizknowledge.NewLinkIndex()
 		uc.SetLinkIndex(s.linkIndex, newKnowledgeGraphDeltaPublisher(eventBus))
+		// 写回飞轮 chunk 重放钩子（2026-08-15）：knowledge_write 工具直调 biz
+		// Usecase（不经 service 包装），重放必须在 biz 层收口才能覆盖该路径。
+		uc.SetWriteBackReplay(s.replayWriteBackChunks)
 	}
 	return s
 }

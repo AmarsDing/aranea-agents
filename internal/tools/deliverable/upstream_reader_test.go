@@ -22,6 +22,10 @@ type stubUpstreamReader struct {
 	gotTeamID          string
 	gotMaxChars        int
 	calls              int
+	keyOut             biz.UpstreamDeliverableContent
+	keyErr             error
+	gotKey             string
+	keyCalls           int
 }
 
 func (s *stubUpstreamReader) ReadUpstreamDeliverable(_ context.Context, readerSessionID, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error) {
@@ -30,6 +34,15 @@ func (s *stubUpstreamReader) ReadUpstreamDeliverable(_ context.Context, readerSe
 	s.gotTeamID = teamID
 	s.gotMaxChars = maxChars
 	return s.out, s.err
+}
+
+func (s *stubUpstreamReader) ReadUpstreamDeliverableKey(_ context.Context, readerSessionID, teamID, key string, maxChars int) (biz.UpstreamDeliverableContent, error) {
+	s.keyCalls++
+	s.gotReaderSessionID = readerSessionID
+	s.gotTeamID = teamID
+	s.gotKey = key
+	s.gotMaxChars = maxChars
+	return s.keyOut, s.keyErr
 }
 
 func TestReadUpstreamDeliverableTool_Declaration(t *testing.T) {
@@ -188,5 +201,56 @@ func TestReadUpstreamDeliverableTool_Call_NoInvocation_EmptyReaderSession(t *tes
 	}
 	if reader.gotReaderSessionID != "" {
 		t.Fatalf("no invocation → empty reader session id, got %q", reader.gotReaderSessionID)
+	}
+}
+
+// key 参数路由：带 key 时必须走按 key 单取载荷（长文场景下游只取契约文章），
+// 不触达全文读取路径；输出回显 key。
+func TestReadUpstreamDeliverableTool_Call_KeyRoutesToKeyedRead(t *testing.T) {
+	reader := &stubUpstreamReader{keyOut: biz.UpstreamDeliverableContent{
+		Content:   "# 深度文章全文\n……",
+		SizeChars: 9,
+		TeamID:    "t-up",
+		SessionID: "sess-t-up",
+	}}
+	tl := NewReadUpstreamDeliverableTool(reader, loggateway.NewNoop())
+
+	res, err := tl.Call(context.Background(), []byte(`{"team_id":"t-up","key":" article "}`))
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if reader.keyCalls != 1 || reader.calls != 0 {
+		t.Fatalf("keyed read expected exactly once (key=%d full=%d)", reader.keyCalls, reader.calls)
+	}
+	if reader.gotKey != "article" {
+		t.Fatalf("key should be forwarded trimmed, got %q", reader.gotKey)
+	}
+	if reader.gotMaxChars != biz.DefaultUpstreamDeliverableMaxChars {
+		t.Fatalf("unset max_chars should pass the default budget, got %d", reader.gotMaxChars)
+	}
+	out := res.(readUpstreamDeliverableOutput)
+	if out.Key != "article" || out.Content != reader.keyOut.Content {
+		t.Fatalf("output should echo key and keyed content: %+v", out)
+	}
+}
+
+// 无 key 时不触达按 key 读取路径（全文路径回归保护）。
+func TestReadUpstreamDeliverableTool_Call_NoKeySkipsKeyedRead(t *testing.T) {
+	reader := &stubUpstreamReader{}
+	tl := NewReadUpstreamDeliverableTool(reader, loggateway.NewNoop())
+	if _, err := tl.Call(context.Background(), []byte(`{"team_id":"t-up"}`)); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if reader.keyCalls != 0 {
+		t.Fatalf("keyed read must not run without key, got %d calls", reader.keyCalls)
+	}
+}
+
+// 按 key 读取的 biz 错误（未知 key / 保留 key 拒绝）必须透传给调用方。
+func TestReadUpstreamDeliverableTool_Call_KeyErrorPropagates(t *testing.T) {
+	reader := &stubUpstreamReader{keyErr: errors.New(`key "nope" 不存在于交付物载荷`)}
+	tl := NewReadUpstreamDeliverableTool(reader, loggateway.NewNoop())
+	if _, err := tl.Call(context.Background(), []byte(`{"team_id":"t-up","key":"nope"}`)); err == nil {
+		t.Fatal("keyed reader error should propagate")
 	}
 }

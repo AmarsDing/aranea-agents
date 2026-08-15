@@ -1769,3 +1769,28 @@ Chat 域落地 3 项 Grok Build 借鉴改进（P0×2 + P1×1）：
 新建：`internal/service/chat_runtime_tooling.go`、`internal/service/chat_runtime_tooling_test.go`
 
 修改：`internal/service/chat_orchestrator.go`、`chat_orch_agent_build.go`、`chat.go`、`a2a_endpoint.go`、`openai_compat.go`、`chat_orchestrator_turn_phases.go`、`chat_orchestrator_turn_pipeline.go`、`chat_orchestrator_turn_metrics.go`、`m71_tools.go`、`cmd/admin/wire.go`、`cmd/admin/wire_gen.go`、`docs/development/1-chat.design.md`、`1-chat.development.md`、`65-module-cross-reference-full.md`
+
+---
+
+## 交付物信封 v2：长文交付范式 + 按 key 取载荷（2026-08-15）
+
+> **范围**：根治交付物 500 字截断（`summary` 指针化：结论+要点+载荷清单，本体入 `structured_json` 契约键）；长文交付场景固定范式（文档载荷 `{"title","format","content"}`）；注入前缀三形态（legacy / ≤2000 字全内联 / 指针+契约命中强制读取指令）；`read_upstream_deliverable` 新增 `key` 入参单取载荷；兜底链与综合 digest 同步。
+> **设计**：[1-chat.design.md B.10.25](./1-chat.design.md)
+
+### 任务清单
+
+| # | 任务 | 状态 |
+|---|------|------|
+| L1 | 交付协议块重写：范式说明 + 双样例 + 500 字截断告知 | ✅ 2026-08-15 |
+| L2 | 信封升级：`DeliverableArtifact` + artifacts 填充 + summary 聚合回退（标量键跳过） | ✅ 2026-08-15 |
+| L3 | 注入前缀三形态（`renderArtifactSections`，`InlineUpstreamPayloadMaxChars=2000`） | ✅ 2026-08-15 |
+| L4 | 兜底 `buildFallbackDeliverableDelta` 写 format+content；综合 digest 载荷行 | ✅ 2026-08-15 |
+| L5 | `read_upstream_deliverable` 增加 `key` 参数（工具/窄接口/`SpiritTeamUsecase` 委托/`SpiritTeamController` 接口/service stub） | ✅ 2026-08-15 |
+| L6 | 全量回归 + 文档同步 | ✅ 2026-08-15 |
+| L7 | 综合评审修复（1 Major + 3 Minor + 1 Trivial）：内联数量/总量预算（`InlineUpstreamArtifactMaxCount=5`、`InlineUpstreamPayloadTotalMaxChars=8000`）溢出降级指针；空载荷如实标注不给死链读取指令；协议样例 2 调整写入顺序（summary 先写，避免不带 topic 的写入覆盖节点本地视图）；2000/2001 阈值边界测试；`summary`/`cognition` 保留 key 三包锚定测试（tools/biz 值钉住 + adapter 跨包行为钉住）；文档 B.10.25 表述修正（标量键也生成 artifact）与已实现行为补录（空载荷三分支报错、max_chars 附议） | ✅ 2026-08-15 |
+
+### 改动文件清单
+
+修改：`internal/biz/team_types.go`（DeliverableArtifact + DeliverableRef.Artifacts）、`internal/biz/spirit_delivery.go`（buildDeliverableArtifacts / aggregateTopicSummaries / renderArtifactSections 含内联预算与空载荷标注 / ReadUpstreamDeliverableKey 及 key 解析助手 / 协议样例 2 顺序）、`internal/biz/spirit_team_usecase.go`（InlineUpstreamPayloadMaxChars + InlineUpstreamArtifactMaxCount + InlineUpstreamPayloadTotalMaxChars、ReadUpstreamDeliverableKey 委托、SpiritTeamController 接口）、`internal/biz/spirit_synthesis.go`（digest 载荷行）、`internal/graph/adapter/agent_summary_fallback.go`（兜底 content）、`internal/tools/deliverable/upstream_reader.go`（key 入参 + 路由 + 声明）、测试五处（`spirit_team_deliverable_test.go` / `upstream_reader_test.go` / `agent_summary_fallback_test.go` + service stub / `tool_test.go` / `member_contract_bridge_test.go` 锚定）、`docs/development/1-chat.design.md`、`1-chat.development.md`
+
+回归：`internal/service` 41.5s / `internal/agent` 27.7s / `internal/tools/...` / `internal/graph/...` 全绿；`internal/biz` 仅 6 个既有 DB 环境用例失败（`aranea_test` 密码认证，与本改动无关）

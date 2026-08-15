@@ -96,6 +96,22 @@ func (t *SetDeliverableTool) CacheKeyDiscriminator() string {
 	return "contract:" + hex.EncodeToString(sum[:])[:16]
 }
 
+// DeliverableContractTopics exposes the topic names declared by the installed
+// member deliverable contract (nil when uncontracted). The graph-layer
+// tool-limit summary fallback (adapter.summaryFallbackAgent) reads this via
+// duck typing to file its synthesized deliverable under the contracted topic
+// instead of inventing one.
+func (t *SetDeliverableTool) DeliverableContractTopics() []string {
+	if t == nil || t.contract == nil {
+		return nil
+	}
+	out := make([]string, 0, len(t.contract.Entries))
+	for _, e := range t.contract.Entries {
+		out = append(out, e.Topic)
+	}
+	return out
+}
+
 type setDeliverableInput struct {
 	Data map[string]any `json:"data" jsonschema:"description=The deliverable content as a JSON object.,required"`
 	Note string         `json:"note" jsonschema:"description=Optional note describing this deliverable for downstream agents"`

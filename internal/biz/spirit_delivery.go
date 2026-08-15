@@ -225,6 +225,9 @@ func (d *SpiritDelivery) ListTeamDeliverableDigests(ctx context.Context, spiritS
 				if s := strings.TrimSpace(refs[k].Summary); s != "" {
 					summaries = append(summaries, s)
 				}
+				for _, art := range refs[k].Artifacts {
+					digest.Artifacts = append(digest.Artifacts, artifactDigestLine(art))
+				}
 			}
 			digest.DeliverableSummary = strings.Join(summaries, "\n")
 		}
@@ -423,15 +426,22 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 	}
 
 	// The envelope is 100% state-sourced: the reserved "summary" key becomes
-	// the summary; when absent the summary derives from the business keys'
-	// JSON (never from the reply). Non-reserved keys land in StructuredJSON.
+	// the summary; when absent the summary aggregates each topic payload's
+	// title/summary (long-article paradigm puts the body under contract
+	// topics), degrading to the business keys' JSON only when no readable
+	// text exists (never from the reply). Non-reserved keys land in
+	// StructuredJSON and are described in Artifacts.
 	summarySource, _ := stateDeliv[deliverableReservedKeySummary].(string)
 	summarySource = strings.TrimSpace(summarySource)
 	structuredJSON := marshalNonReservedStateKeys(stateDeliv)
 	if summarySource == "" {
+		summarySource = aggregateTopicSummaries(stateDeliv)
+	}
+	if summarySource == "" {
 		summarySource = structuredJSON
 	}
 	cognition := extractStateCognition(stateDeliv[deliverableReservedKeyCognition])
+	artifacts := buildDeliverableArtifacts(stateDeliv, t.Deliverables)
 
 	// MDC completion-time advisory: required contract topics that were never
 	// written (producer bypassed set_deliverable) surface as a Warn — the run
@@ -455,6 +465,7 @@ func (d *SpiritDelivery) WriteDeliverablesToSession(ctx context.Context, teamID 
 		StructuredJSON: structuredJSON,
 		Cognition:      cognition,
 		DerivedFrom:    t.DependsOn,
+		Artifacts:      artifacts,
 	}
 	refJSON, marshalErr := json.Marshal(ref)
 	if marshalErr != nil {
@@ -846,6 +857,7 @@ func (d *SpiritDelivery) InjectUpstreamDeliverables(ctx context.Context, downstr
 			ref.TeamID = upstream.ID
 		}
 		part := fmt.Sprintf("## 上游团队: %s\n%s%s", upstream.DisplayName, contractDeclarationLines(upstream.Deliverables), ref.Summary)
+		part += renderArtifactSections(ref, downstreamTeam)
 		if cog := renderCognitionLines(ref.Cognition); cog != "" {
 			part += "\n" + cog
 		}
@@ -864,6 +876,129 @@ func (d *SpiritDelivery) InjectUpstreamDeliverables(ctx context.Context, downstr
 		strings.Join(deliverableParts, "\n\n"))
 }
 
+// renderArtifactSections renders the upstream envelope's payload artifacts:
+// small payloads (≤ InlineUpstreamPayloadMaxChars) inline in full so the
+// downstream team consumes them with zero tool calls; larger payloads render
+// as a pointer plus a keyed read_upstream_deliverable instruction. Inline
+// rendering is bounded by InlineUpstreamArtifactMaxCount and
+// InlineUpstreamPayloadTotalMaxChars — once either budget is spent, remaining
+// payloads degrade to pointers so a multi-topic deliverable cannot bloat the
+// downstream first-turn input. Empty payloads (SizeChars == 0) render as an
+// honest note WITHOUT a retrieval instruction: a keyed read of them can only
+// return "内容为空". When the artifact key hits the downstream team's
+// InputContract, the retrieval instruction escalates from an optional hint to
+// a mandatory pre-task step — fetching the full text no longer depends on LLM
+// discretion.
+func renderArtifactSections(ref DeliverableRef, downstreamTeam Team) string {
+	if len(ref.Artifacts) == 0 {
+		return ""
+	}
+	inputNames := make(map[string]bool)
+	if contracts, err := ParseDeliverableContracts(downstreamTeam.InputContract); err == nil {
+		for _, c := range contracts {
+			if name := strings.TrimSpace(c.Name); name != "" {
+				inputNames[name] = true
+			}
+		}
+	}
+	// structured parses lazily on the first inline decision.
+	var structured map[string]any
+	structuredParsed := false
+	parseStructured := func() map[string]any {
+		if !structuredParsed {
+			structuredParsed = true
+			if ref.StructuredJSON != "" {
+				_ = json.Unmarshal([]byte(ref.StructuredJSON), &structured)
+			}
+		}
+		return structured
+	}
+
+	var sb strings.Builder
+	inlinedCount, inlinedChars := 0, 0
+	for _, art := range ref.Artifacts {
+		label := art.Key
+		if art.Title != "" {
+			label += "《" + art.Title + "》"
+		}
+		format := art.Format
+		if format == "" {
+			format = "text"
+		}
+		if art.SizeChars == 0 {
+			// 空载荷：keyed 读取只会得到「内容为空」的 NotFound，不给读取指令。
+			sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s）：载荷内容为空（上游写入但无正文）。", label, format))
+			continue
+		}
+		withinInlineBudget := inlinedCount < InlineUpstreamArtifactMaxCount &&
+			inlinedChars+art.SizeChars <= InlineUpstreamPayloadTotalMaxChars
+		if art.SizeChars <= InlineUpstreamPayloadMaxChars && withinInlineBudget {
+			content := extractArtifactContent(parseStructured(), art.Key)
+			if content == "" {
+				// Envelope lost the payload body (legacy writer) — degrade to
+				// a pointer rather than dropping the artifact silently.
+				sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s，共 %d 字）。需要全文时调用 read_upstream_deliverable(team_id=\"%s\", key=\"%s\") 获取。",
+					label, format, art.SizeChars, ref.TeamID, art.Key))
+				continue
+			}
+			inlinedCount++
+			inlinedChars += art.SizeChars
+			sb.WriteString(fmt.Sprintf("\n### 交付物 %s（%s，全文 %d 字）\n%s", label, format, art.SizeChars, content))
+			continue
+		}
+		// Payloads beyond the tool's default budget need an explicit max_chars —
+		// otherwise the instructed call silently returns truncated content.
+		call := fmt.Sprintf("read_upstream_deliverable(team_id=\"%s\", key=\"%s\")", ref.TeamID, art.Key)
+		if art.SizeChars > DefaultUpstreamDeliverableMaxChars {
+			budget := art.SizeChars
+			if budget > MaxUpstreamDeliverableChars {
+				budget = MaxUpstreamDeliverableChars
+			}
+			call = fmt.Sprintf("read_upstream_deliverable(team_id=\"%s\", key=\"%s\", max_chars=%d)", ref.TeamID, art.Key, budget)
+		}
+		sb.WriteString(fmt.Sprintf("\n- 交付物 %s（%s，共 %d 字，全文未内联）", label, format, art.SizeChars))
+		if inputNames[art.Key] {
+			sb.WriteString(fmt.Sprintf("\n  你的输入契约包含 %s：开始任务前必须先调用 %s 获取全文，再基于全文执行。",
+				art.Key, call))
+		} else {
+			sb.WriteString(fmt.Sprintf("\n  需要全文时调用 %s 获取。", call))
+		}
+	}
+	return sb.String()
+}
+
+// extractArtifactContent pulls one payload's body out of the envelope's
+// StructuredJSON: document-paradigm maps contribute their "content" field,
+// plain strings pass through, other shapes serialize as indented JSON.
+func extractArtifactContent(structured map[string]any, key string) string {
+	if structured == nil {
+		return ""
+	}
+	v, ok := structured[key]
+	if !ok {
+		return ""
+	}
+	switch payload := v.(type) {
+	case map[string]any:
+		if content, ok := payload["content"].(string); ok {
+			return strings.TrimSpace(content)
+		}
+		b, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	case string:
+		return strings.TrimSpace(payload)
+	default:
+		b, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
 // DeliverableProtocolSuffix renders the mandatory delivery-protocol block
 // appended to a DAG team's first-turn input (2026-07-25 Fix 2b). Without it a
 // team has no way of knowing that "reply text is not a deliverable": the
@@ -876,12 +1011,18 @@ func (d *SpiritDelivery) DeliverableProtocolSuffix(t Team) string {
 	}
 	var sb strings.Builder
 	sb.WriteString("\n--- 交付协议（强制） ---\n")
-	sb.WriteString("本团队是 DAG 编排节点。任务完成前必须调用 set_deliverable 提交结构化交付物（只在回复文本中给出内容不算产出）：\n")
-	sb.WriteString("- \"summary\"（保留 key，必填）：交付物摘要，供下游团队消费\n")
+	sb.WriteString("本团队是 DAG 编排节点。任务完成前必须调用 set_deliverable 提交结构化交付物（只在回复文本中给出内容不算产出）。交付范式：摘要是指针，载荷是数据。\n")
+	sb.WriteString("- \"summary\"（保留 key，必填）：交付物摘要，供下游团队与最终报告消费。固定写法：①一句话结论 ②3-5 条 \"- \" 要点 ③末行载荷清单（载荷：<topic>(<format>, <n>字)）。注意：摘要超过 500 字将被截断——正文严禁写进 summary，必须放入契约 topic 的 content 字段。\n")
 	if contracts := contractSubmissionLines(t.Deliverables); contracts != "" {
 		sb.WriteString("- 交付契约（逐项按指定 topic 提交，禁止自创 topic 名）：\n")
 		sb.WriteString(contracts)
 	}
+	sb.WriteString("- 文档型交付物（报告/文章/复盘等长文）载荷固定结构：{\"title\": \"标题\", \"format\": \"markdown\", \"content\": \"完整正文\", \"meta\": {...}}——content 承载全文，不会被截断。\n")
+	sb.WriteString("样例 1（短交付物，内容可全部写进摘要）：\n")
+	sb.WriteString("  set_deliverable(data={\"summary\": \"完成服务器巡检，整体健康。\\n- CPU/内存正常\\n- 磁盘使用率 85%，建议扩容\\n载荷：无（结论即全文）\"})\n")
+	sb.WriteString("样例 2（长文交付物，正文放契约 topic，摘要只写指针。注意顺序：先写摘要、后写 topic 载荷——不带 topic 的写入会整体覆盖本节点本地视图，topic 载荷写在最后可保住本地读回）：\n")
+	sb.WriteString("  set_deliverable(data={\"summary\": \"《云计算十年》已完成并复核。\\n- 观点：云原生进入平台工程阶段\\n- 数据：引用 12 组行业数据\\n载荷：article(markdown, 8234字)\"})\n")
+	sb.WriteString("  set_deliverable(topic=\"article\", data={\"title\": \"云计算十年\", \"format\": \"markdown\", \"content\": \"# 云计算十年\\n……（完整正文，8234 字）\"})\n")
 	sb.WriteString("未调用 set_deliverable 的 completed 将被判定为 failed，下游团队不会收到输入；信息不足时在 summary 中如实写明阻塞或待澄清事项，禁止虚构交付物。\n")
 	return sb.String()
 }
@@ -981,6 +1122,169 @@ func (d *SpiritDelivery) ReadUpstreamDeliverable(ctx context.Context, readerSess
 		TeamID:    teamID,
 		SessionID: full.SessionID,
 	}, nil
+}
+
+// ReadUpstreamDeliverableKey returns the full content of ONE payload key of
+// an upstream team's deliverable (document-paradigm payloads render as
+// title + content; other shapes as indented JSON). Same completion/contract
+// gates as ReadUpstreamDeliverable. The keyed read exists for the long-
+// article paradigm: downstream teams fetch exactly the contracted artifact
+// instead of the summary+everything concatenation.
+// Domain: Delivery — keyed full-text retrieval of an upstream deliverable payload.
+func (d *SpiritDelivery) ReadUpstreamDeliverableKey(ctx context.Context, readerSessionID, teamID, key string, maxChars int) (UpstreamDeliverableContent, error) {
+	teamID = strings.TrimSpace(teamID)
+	key = strings.TrimSpace(key)
+	if teamID == "" {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "team_id is required")
+	}
+	if key == "" {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "key is required")
+	}
+	if key == deliverableReservedKeySummary || key == deliverableReservedKeyCognition || strings.HasPrefix(key, deliverableAckKeyPrefix) {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "key %q 为保留 key：摘要已在注入前缀中，cognition/ack 不支持按 key 读取", key)
+	}
+	if maxChars <= 0 || maxChars > MaxUpstreamDeliverableChars {
+		maxChars = DefaultUpstreamDeliverableMaxChars
+	}
+	t, err := d.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+	if t.Status != TeamStatusCompleted {
+		return UpstreamDeliverableContent{}, apierror.BadRequest("SPIRIT", "upstream team %s has not completed yet (status=%s)", teamID, t.Status)
+	}
+	if err := d.validateUpstreamContract(ctx, readerSessionID, t); err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+	full, available, found, err := d.resolveDeliverableKeyContent(ctx, t, key)
+	if err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+	if full.Content == "" {
+		switch {
+		case found:
+			return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "deliverable key %q 内容为空（team %s）：载荷存在但无正文；或不带 key 调用 read_upstream_deliverable 查看交付物整体", key, teamID)
+		case len(available) > 0:
+			return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "deliverable key %q not found for team %s（可用 key：%s；或不带 key 调用 read_upstream_deliverable 读取交付物全文）", key, teamID, strings.Join(available, ", "))
+		default:
+			return UpstreamDeliverableContent{}, apierror.NotFound("SPIRIT", "no deliverable content found for team %s（可不带 key 调用 read_upstream_deliverable 读取交付物全文）", teamID)
+		}
+	}
+	if err := d.validateUpstreamContractSchema(ctx, readerSessionID, t, full.Content); err != nil {
+		return UpstreamDeliverableContent{}, err
+	}
+
+	sizeChars := utf8.RuneCountInString(full.Content)
+	content := full.Content
+	truncated := sizeChars > maxChars
+	if truncated {
+		content = TruncateRunes(content, maxChars) + fmt.Sprintf("\n...[已截断，全文共 %d 字符]", sizeChars)
+	}
+	d.lg.Info("上游交付物按 key 读取",
+		loggateway.StepID("spirit.read_upstream_deliverable_key"),
+		loggateway.Str("team_id", teamID),
+		loggateway.Str("key", key),
+		loggateway.Int("size_chars", sizeChars),
+		loggateway.Bool("truncated", truncated),
+	)
+	return UpstreamDeliverableContent{
+		Content:   content,
+		SizeChars: sizeChars,
+		Truncated: truncated,
+		TeamID:    teamID,
+		SessionID: full.SessionID,
+	}, nil
+}
+
+// resolveDeliverableKeyContent resolves one payload key with the same source
+// priority as resolveDeliverableFullContent: graph-state re-read first, then
+// the persisted envelope. available lists the readable payload keys when a
+// source was reachable but the key missing (LLM-actionable NotFound); found
+// reports the key existed in a reachable source (its rendered content may
+// still be empty — the caller reports that honestly instead of a misleading
+// "not found").
+func (d *SpiritDelivery) resolveDeliverableKeyContent(ctx context.Context, t Team, key string) (teamFullOutput, []string, bool, error) {
+	if t.DagNodeID != "" {
+		if out, available, found, ok := d.readGraphStateKeyContent(ctx, t, key); ok {
+			return out, available, found, nil
+		}
+		if out, available, found, ok := d.readEnvelopeKeyContent(t, key); ok {
+			return out, available, found, nil
+		}
+	}
+	return teamFullOutput{}, nil, false, nil
+}
+
+// readGraphStateKeyContent reads one payload key from the graph final state.
+// ok=false means the source is unreadable (caller degrades to the envelope);
+// ok=true with found=false means the key is absent — available then lists
+// the payload keys present.
+func (d *SpiritDelivery) readGraphStateKeyContent(ctx context.Context, t Team, key string) (teamFullOutput, []string, bool, bool) {
+	anchor, ok := d.stateDeliverableChannel(t)
+	if !ok {
+		return teamFullOutput{}, nil, false, false
+	}
+	teamSessionID, err := d.resolveTeamMainSessionID(ctx, t.ID)
+	if err != nil || teamSessionID == "" {
+		return teamFullOutput{}, nil, false, false
+	}
+	stateDeliv, err := d.graphDelivReader.ReadGraphDeliverable(ctx, anchor, ctxuser.TRPCUserKey(ctx), teamSessionID)
+	if err != nil || len(stateDeliv) == 0 {
+		return teamFullOutput{}, nil, false, false
+	}
+	v, exists := stateDeliv[key]
+	if !exists {
+		return teamFullOutput{}, payloadStateKeys(stateDeliv), false, true
+	}
+	return teamFullOutput{Content: renderPayloadContent(v), SessionID: teamSessionID}, nil, true, true
+}
+
+// readEnvelopeKeyContent reads one payload key from the persisted envelope's
+// StructuredJSON (same ok/found/available semantics as the graph-state variant).
+func (d *SpiritDelivery) readEnvelopeKeyContent(t Team, key string) (teamFullOutput, []string, bool, bool) {
+	ref, ok := d.readDeliverableRef(t)
+	if !ok || strings.TrimSpace(ref.StructuredJSON) == "" {
+		return teamFullOutput{}, nil, false, false
+	}
+	var structured map[string]any
+	if err := json.Unmarshal([]byte(ref.StructuredJSON), &structured); err != nil || len(structured) == 0 {
+		return teamFullOutput{}, nil, false, false
+	}
+	v, exists := structured[key]
+	if !exists {
+		keys := make([]string, 0, len(structured))
+		for k := range structured {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return teamFullOutput{}, keys, false, true
+	}
+	return teamFullOutput{Content: renderPayloadContent(v), SessionID: ref.TeamSessionID}, nil, true, true
+}
+
+// renderPayloadContent renders one payload value as standalone full text:
+// document-paradigm maps prepend 《title》 to their content, plain strings
+// pass through, other shapes serialize as indented JSON.
+func renderPayloadContent(v any) string {
+	switch payload := v.(type) {
+	case map[string]any:
+		content, _ := payload["content"].(string)
+		title, _ := payload["title"].(string)
+		content, title = strings.TrimSpace(content), strings.TrimSpace(title)
+		if content != "" {
+			if title != "" {
+				return "《" + title + "》\n\n" + content
+			}
+			return content
+		}
+	case string:
+		return strings.TrimSpace(payload)
+	}
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // resolveDeliverableFullContent returns the full deliverable content of a
@@ -1371,6 +1675,131 @@ func marshalNonReservedStateKeys(stateDeliv map[string]any) string {
 		return ""
 	}
 	return string(b)
+}
+
+// payloadStateKeys returns the non-reserved deliverable state keys (sorted
+// for deterministic output): the reserved summary/cognition keys and the
+// intra-team ack/ keys are excluded — everything else is a payload topic.
+func payloadStateKeys(stateDeliv map[string]any) []string {
+	keys := make([]string, 0, len(stateDeliv))
+	for k := range stateDeliv {
+		if k == deliverableReservedKeySummary || k == deliverableReservedKeyCognition {
+			continue
+		}
+		if strings.HasPrefix(k, deliverableAckKeyPrefix) {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// buildDeliverableArtifacts describes every payload key of the state
+// deliverable so downstream injection can decide inline vs pointer.
+// Contract entries (matched by name == key) supply type/format; document-
+// paradigm payloads {"title","format","content"} contribute title and a
+// content-based size; other shapes size by JSON serialization.
+func buildDeliverableArtifacts(stateDeliv map[string]any, deliverablesJSON string) []DeliverableArtifact {
+	keys := payloadStateKeys(stateDeliv)
+	if len(keys) == 0 {
+		return nil
+	}
+	contracts, _ := ParseDeliverableContracts(deliverablesJSON)
+	byName := make(map[string]DeliverableContract, len(contracts))
+	for _, c := range contracts {
+		byName[strings.TrimSpace(c.Name)] = c
+	}
+	out := make([]DeliverableArtifact, 0, len(keys))
+	for _, k := range keys {
+		art := DeliverableArtifact{Key: k}
+		if c, ok := byName[k]; ok {
+			art.Type = strings.TrimSpace(c.Type)
+			art.Format = strings.TrimSpace(c.Format)
+		}
+		switch v := stateDeliv[k].(type) {
+		case map[string]any:
+			if title, ok := v["title"].(string); ok {
+				art.Title = strings.TrimSpace(title)
+			}
+			if art.Format == "" {
+				if f, ok := v["format"].(string); ok {
+					art.Format = strings.TrimSpace(f)
+				}
+			}
+			if content, ok := v["content"].(string); ok && strings.TrimSpace(content) != "" {
+				art.SizeChars = utf8.RuneCountInString(content)
+			} else {
+				art.SizeChars = jsonValueRuneLen(v)
+			}
+		case string:
+			art.SizeChars = utf8.RuneCountInString(v)
+		default:
+			art.SizeChars = jsonValueRuneLen(v)
+		}
+		out = append(out, art)
+	}
+	return out
+}
+
+// aggregateTopicSummaries builds a readable summary from topic payloads when
+// the producer did not write a top-level "summary" key (the long-article
+// paradigm puts the body under contract topics). Only map-shaped topics
+// contribute (title/summary/note); flat scalar keys keep the legacy
+// structured-JSON fallback so no key context is lost. Returns "" when no
+// topic contributes human-readable text.
+func aggregateTopicSummaries(stateDeliv map[string]any) string {
+	keys := payloadStateKeys(stateDeliv)
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		v, ok := stateDeliv[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		title, _ := v["title"].(string)
+		summ, _ := v["summary"].(string)
+		if strings.TrimSpace(summ) == "" {
+			summ, _ = v["note"].(string)
+		}
+		title, summ = strings.TrimSpace(title), strings.TrimSpace(summ)
+		switch {
+		case title != "" && summ != "":
+			lines = append(lines, "《"+title+"》"+summ)
+		case title != "":
+			lines = append(lines, "《"+title+"》")
+		case summ != "":
+			lines = append(lines, summ)
+		}
+	}
+	// Cap the aggregate — the envelope truncates to MaxSummaryLen anyway, so
+	// this only bounds pathological multi-topic maps.
+	return TruncateRunes(strings.Join(lines, "\n"), MaxSummaryLen*4)
+}
+
+// jsonValueRuneLen sizes a non-string payload by its indented JSON
+// serialization — the same rendering extractArtifactContent/renderPayloadContent
+// inline or serve, so the inline-vs-pointer threshold
+// (InlineUpstreamPayloadMaxChars) measures exactly what gets injected.
+func jsonValueRuneLen(v any) int {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return 0
+	}
+	return utf8.RuneCountInString(string(b))
+}
+
+// artifactDigestLine renders one artifact as a compact pointer-level digest
+// line, e.g. article《云计算十年》（markdown，8234字）.
+func artifactDigestLine(art DeliverableArtifact) string {
+	label := art.Key
+	if art.Title != "" {
+		label += "《" + art.Title + "》"
+	}
+	format := art.Format
+	if format == "" {
+		format = "text"
+	}
+	return fmt.Sprintf("%s（%s，%d字）", label, format, art.SizeChars)
 }
 
 // deliverableAckKeyPrefix mirrors deliverabletools.AckKeyPrefix. biz cannot

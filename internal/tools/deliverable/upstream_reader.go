@@ -22,6 +22,11 @@ import (
 // can run the runtime contract check against its InputContract (Phase B).
 type UpstreamDeliverableReader interface {
 	ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (biz.UpstreamDeliverableContent, error)
+	// ReadUpstreamDeliverableKey fetches ONE payload entry by key (envelope v2
+	// artifacts): downstream teams with a long-form deliverable (e.g. an
+	// article to publish) read only the contracted payload instead of the
+	// whole concatenated deliverable.
+	ReadUpstreamDeliverableKey(ctx context.Context, readerSessionID, teamID, key string, maxChars int) (biz.UpstreamDeliverableContent, error)
 }
 
 // ReadUpstreamDeliverableTool lets a downstream team member retrieve the FULL
@@ -41,6 +46,7 @@ func NewReadUpstreamDeliverableTool(reader UpstreamDeliverableReader, lg loggate
 
 type readUpstreamDeliverableInput struct {
 	TeamID   string `json:"team_id" jsonschema:"description=上游团队ID（注入前缀中 read_upstream_deliverable 指引给出的 team_id）,required"`
+	Key      string `json:"key" jsonschema:"description=可选：只取某个载荷条目（注入前缀交付物清单中给出的 key，如长文场景的文章载荷）；不传则返回交付物全文"`
 	MaxChars int    `json:"max_chars" jsonschema:"description=返回内容的最大字符数，默认 50000，上限 200000"`
 }
 
@@ -50,6 +56,7 @@ type readUpstreamDeliverableOutput struct {
 	Truncated bool   `json:"truncated"`
 	TeamID    string `json:"team_id"`
 	SessionID string `json:"session_id"`
+	Key       string `json:"key,omitempty"`
 }
 
 // Declaration returns the tool metadata.
@@ -58,7 +65,9 @@ func (t *ReadUpstreamDeliverableTool) Declaration() *trpctool.Declaration {
 		Name: "read_upstream_deliverable",
 		Description: "读取上游团队交付物的完整内容。当上游交付物注入前缀中的摘要被截断" +
 			"（附有 read_upstream_deliverable 指引）且摘要不足以完成当前任务时，" +
-			"使用此工具按需获取全文。仅对已完成的上游团队有效。",
+			"使用此工具按需获取全文。传入 key 可只取交付物清单中的某个载荷条目" +
+			"（如长文场景契约要求的文章载荷）；不传 key 返回交付物全文。" +
+			"仅对已完成的上游团队有效。",
 		InputSchema: &trpctool.Schema{
 			Type:     "object",
 			Required: []string{"team_id"},
@@ -66,6 +75,10 @@ func (t *ReadUpstreamDeliverableTool) Declaration() *trpctool.Declaration {
 				"team_id": {
 					Type:        "string",
 					Description: "上游团队的唯一标识符（注入前缀指引中给出）。",
+				},
+				"key": {
+					Type:        "string",
+					Description: "可选：只取某个载荷条目（注入前缀交付物清单中给出的 key）。summary/cognition 为保留 key，不可读取。",
 				},
 				"max_chars": {
 					Type:        "integer",
@@ -83,6 +96,7 @@ func (t *ReadUpstreamDeliverableTool) Declaration() *trpctool.Declaration {
 				"truncated":  {Type: "boolean", Description: "内容是否被截断到 max_chars。"},
 				"team_id":    {Type: "string", Description: "上游团队 ID。"},
 				"session_id": {Type: "string", Description: "上游团队主会话 ID。"},
+				"key":        {Type: "string", Description: "本次读取的载荷 key（仅按 key 读取时返回）。"},
 			},
 		},
 	}
@@ -109,12 +123,20 @@ func (t *ReadUpstreamDeliverableTool) Call(ctx context.Context, jsonArgs []byte)
 		maxChars = biz.MaxUpstreamDeliverableChars
 	}
 
-	out, err := t.reader.ReadUpstreamDeliverable(ctx, readerSessionIDFromCtx(ctx), teamID, maxChars)
+	key := strings.TrimSpace(in.Key)
+	var out biz.UpstreamDeliverableContent
+	var err error
+	if key != "" {
+		out, err = t.reader.ReadUpstreamDeliverableKey(ctx, readerSessionIDFromCtx(ctx), teamID, key, maxChars)
+	} else {
+		out, err = t.reader.ReadUpstreamDeliverable(ctx, readerSessionIDFromCtx(ctx), teamID, maxChars)
+	}
 	if err != nil {
 		if t.lg != nil {
 			t.lg.Warn("读取上游交付物失败",
 				loggateway.StepID("tool.read_upstream_deliverable"),
 				loggateway.Str("team_id", teamID),
+				loggateway.Str("key", key),
 				loggateway.Err(err),
 			)
 		}
@@ -126,6 +148,7 @@ func (t *ReadUpstreamDeliverableTool) Call(ctx context.Context, jsonArgs []byte)
 		Truncated: out.Truncated,
 		TeamID:    out.TeamID,
 		SessionID: out.SessionID,
+		Key:       key,
 	}, nil
 }
 

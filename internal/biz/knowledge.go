@@ -56,6 +56,9 @@ var (
 	KnowledgeEmbedConfigured               = knowledge.EmbedConfigured
 	ApplyKnowledgeEmbedPatch               = knowledge.ApplyEmbedPatch
 	KnowledgeHashContent                   = knowledge.HashContent
+	// KnowledgeWriteBackInboxPrefix 写回日记流水 rel_path 前缀：Agent 默认检索
+	// 路径（预检索注入 / knowledge_search / knowledge_reflect）以此排除流水文档。
+	KnowledgeWriteBackInboxPrefix = knowledge.WriteBackInboxPrefix
 )
 
 // ProvideKnowledgeUsecase 是生产 Wire provider：在 NewUsecaseFromRepo 之上

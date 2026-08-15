@@ -844,17 +844,55 @@ func pathPrefixClause(prefix, collectionPH string, argIdx int) (clause string, a
 	if p == "" {
 		return "", nil
 	}
+	return fmt.Sprintf(`AND doc_id IN (SELECT id FROM knowledge_documents WHERE collection_id = %s AND rel_path LIKE $%d ESCAPE '\')`, collectionPH, argIdx), escapeLikePrefix(p) + "/%"
+}
+
+func escapeLikePrefix(p string) string {
 	var b strings.Builder
-	b.Grow(len(p) + 2)
+	b.Grow(len(p))
 	for _, r := range p {
 		if r == '%' || r == '_' || r == '\\' {
 			b.WriteByte('\\')
 		}
 		b.WriteRune(r)
 	}
-	b.WriteString("/%")
-	return fmt.Sprintf(`AND doc_id IN (SELECT id FROM knowledge_documents WHERE collection_id = %s AND rel_path LIKE $%d ESCAPE '\')`, collectionPH, argIdx), b.String()
+	return b.String()
 }
+
+// pathExcludeClause 检索排除子查询（词条优先写回）：rel_path 以任一前缀开头
+// 的文档不命中。字面前缀语义（不补目录边界），argIdx 为首个 LIKE 占位序号。
+func pathExcludeClause(prefixes []string, collectionPH string, argIdx int) (clause string, args []any) {
+	var likes []string
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		likes = append(likes, fmt.Sprintf(`rel_path LIKE $%d ESCAPE '\'`, argIdx+len(args)))
+		args = append(args, escapeLikePrefix(p)+"%")
+	}
+	if len(likes) == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf(`AND doc_id NOT IN (SELECT id FROM knowledge_documents WHERE collection_id = %s AND (%s))`,
+		collectionPH, strings.Join(likes, " OR ")), args
+}
+
+// recencyDecayLambda 检索轻时间衰减系数（P1，2026-08-15 评审修订），单位 s⁻¹。
+// 取 λ = -ln(0.9) / (180×86400) ≈ 6.774e-9：文档 180 天未更新 ≈ ×0.9，
+// 月尺度微调排序，不压倒语义分；5 年旧文 ≈ ×0.34。时间源用
+// knowledge_documents.updated_at（人改词条/写回正文才会拨动），不用
+// chunks.created_at——整页重插会把旧知识的时间戳刷成「刚才」。
+const recencyDecayLambda = 6.774e-9
+
+// recencyScoreSQL 把基础语义分包成「分 × exp(-λ·age)」表达式；JOIN 别名 d 固定
+// 指向 knowledge_documents。GREATEST 防时钟回拨产生负 age（反而加分）。
+func recencyScoreSQL(base string) string {
+	return fmt.Sprintf(`(%s) * EXP(-%g * GREATEST(EXTRACT(EPOCH FROM (now() - d.updated_at)), 0))`, base, recencyDecayLambda)
+}
+
+// recencyJoinSQL 是 recencyScoreSQL 配套的 JOIN 子句；主表别名固定 c。
+const recencyJoinSQL = `JOIN knowledge_documents d ON d.id = c.doc_id`
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
@@ -867,23 +905,29 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 		clauses += "\n  " + c
 		args = append(args, a)
 	}
+	if c, a := pathExcludeClause(q.ExcludePathPrefixes, "$2", len(args)+1); c != "" {
+		clauses += "\n  " + c
+		args = append(args, a...)
+	}
 	if q.FilterJSON != "" {
 		clauses += fmt.Sprintf("\n  AND metadata @> $%d::jsonb", len(args)+1)
 		args = append(args, json.RawMessage(q.FilterJSON))
 	}
 	if q.MinScore > 0 {
+		// MinScore 过滤保持作用在原始语义分上（衰减只重排，不抬高门槛）。
 		clauses += fmt.Sprintf("\n  AND (1 - (embedding <=> $1::vector)) >= $%d", len(args)+1)
 		args = append(args, q.MinScore)
 	}
 	raw := fmt.Sprintf(`
-SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
-       (1 - (embedding <=> $1::vector)) AS score
-FROM knowledge_chunks
-WHERE collection_id = $2
-  AND embedding IS NOT NULL
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM knowledge_chunks c
+%s
+WHERE c.collection_id = $2
+  AND c.embedding IS NOT NULL
   %s
-ORDER BY embedding <=> $1::vector
-LIMIT $3`, clauses)
+ORDER BY score DESC
+LIMIT $3`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), recencyJoinSQL, clauses)
 
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
@@ -909,6 +953,10 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 		extraClauses += "\n  " + c
 		extraArgs = append(extraArgs, a)
 	}
+	if c, a := pathExcludeClause(q.ExcludePathPrefixes, "$2", 3+len(extraArgs)); c != "" {
+		extraClauses += "\n  " + c
+		extraArgs = append(extraArgs, a...)
+	}
 	if q.FilterJSON != "" {
 		extraClauses += fmt.Sprintf("\n  AND metadata @> $%d::jsonb", 3+len(extraArgs))
 		extraArgs = append(extraArgs, json.RawMessage(q.FilterJSON))
@@ -932,14 +980,15 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 
 func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
-SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
-       ts_rank(to_tsvector('simple', content), plainto_tsquery('simple', $1)) AS score
-FROM knowledge_chunks
-WHERE collection_id = $2
-  AND to_tsvector('simple', content) @@ plainto_tsquery('simple', $1)
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM knowledge_chunks c
+%s
+WHERE c.collection_id = $2
+  AND to_tsvector('simple', c.content) @@ plainto_tsquery('simple', $1)
   %s
 ORDER BY score DESC
-LIMIT $%d`, extraClauses, 3+len(extraArgs))
+LIMIT $%d`, recencyScoreSQL(`ts_rank(to_tsvector('simple', c.content), plainto_tsquery('simple', $1))`), recencyJoinSQL, extraClauses, 3+len(extraArgs))
 
 	args := []any{q.Query, q.CollectionID}
 	args = append(args, extraArgs...)
@@ -958,14 +1007,15 @@ func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.Knowledge
 	// 分母含长文本全部 trigram，2-4 字查询相似度被稀释到 0.3 阈值以下永不命中。
 	// `%>` 是 `<%` 的交换操作符（doc %> query ≡ query <% doc），gin_trgm_ops 索引支持。
 	raw := fmt.Sprintf(`
-SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
-       word_similarity($1, content) AS score
-FROM knowledge_chunks
-WHERE collection_id = $2
-  AND content %%> $1
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM knowledge_chunks c
+%s
+WHERE c.collection_id = $2
+  AND c.content %%> $1
   %s
 ORDER BY score DESC
-LIMIT $%d`, extraClauses, 3+len(extraArgs))
+LIMIT $%d`, recencyScoreSQL(`word_similarity($1, c.content)`), recencyJoinSQL, extraClauses, 3+len(extraArgs))
 
 	args := []any{q.Query, q.CollectionID}
 	args = append(args, extraArgs...)

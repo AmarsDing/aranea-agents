@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/deferred"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/internal/tools/twinops"
@@ -79,6 +80,13 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		knowledgeReady := deps.KnowledgeUsecase != nil && !deps.KnowledgeUsecase.IsUnavailable() && deps.KnowledgeRetriever != nil
 		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch] && knowledgeReady
 		cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect] && knowledgeReady
+		// knowledge_write（P1）：只需 Usecase（写路径不依赖 Retriever）；
+		// 高置信直写词条页，低置信走既有 pending HITL 链，故不设确认门禁弹窗。
+		if eff[biz.ToolKeyKnowledgeWrite] && deps.KnowledgeUsecase != nil {
+			if t := knowledgetool.NewWriteTool(deps.KnowledgeUsecase); t != nil {
+				cfg.CustomTools = append(cfg.CustomTools, t)
+			}
+		}
 		// CallAgent requires the A2A invoker to be injected at runtime. When A2A
 		// is not configured (a2aEnabled=false), prune the flag to avoid registering
 		// a tool that always fails with "invoker not configured".

@@ -96,6 +96,9 @@ func FormatPendingAppendix(in WriteBackInput, facts []WriteBackFact) string {
 		}
 		fmt.Fprintf(&b, "- confidence: %.2f\n", f.Confidence)
 		fmt.Fprintf(&b, "- kind: %s\n", f.FactKind)
+		if len(f.Tags) > 0 {
+			fmt.Fprintf(&b, "- tags: %s\n", strings.Join(f.Tags, ", "))
+		}
 		src := strings.TrimSpace(f.SourceKind)
 		if src == "" {
 			src = "auto_memory"
@@ -107,7 +110,7 @@ func FormatPendingAppendix(in WriteBackInput, facts []WriteBackFact) string {
 
 func writeBackPendingHeader() string {
 	return "# 待确认写回\n\n" +
-		"置信度 0.60–0.84 的白名单事实。确认后进入当日沉淀日记；未确认不会自动入库。\n\n"
+		"置信度 0.60–0.84 的白名单事实。确认后按 tags 入词条页（无 tags 进当日沉淀日记）；未确认不会自动入库。\n\n"
 }
 
 // ParsePendingWriteBackItems 从 pending 日记解析条目（纯函数）。
@@ -159,6 +162,12 @@ func parsePendingPart(part string) PendingWriteBackItem {
 				}
 			case "kind":
 				item.Fact.FactKind = val
+			case "tags":
+				for _, t := range strings.Split(val, ",") {
+					if t = strings.TrimSpace(t); t != "" {
+						item.Fact.Tags = append(item.Fact.Tags, t)
+					}
+				}
 			case "source":
 				item.Fact.SourceKind = val
 			}
@@ -300,7 +309,7 @@ func (u *Usecase) ApplyPendingWriteBack(ctx context.Context, collectionID string
 	var last WriteBackResult
 	appended := 0
 	for _, it := range selected {
-		res, aerr := u.appendFactsToCollection(ctx, col, WriteBackInput{
+		res, aerr := u.writeBackFacts(ctx, col, WriteBackInput{
 			Workspace: col.Workspace,
 			SessionID: it.SessionID,
 			AgentID:   it.AgentID,

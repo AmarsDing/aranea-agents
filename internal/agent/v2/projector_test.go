@@ -11,6 +11,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+
+	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 // stubFlowMonitorBus captures MonitorEvents for flow-log assertions.
@@ -500,6 +503,152 @@ func TestOnStuckTools(t *testing.T) {
 	}
 	if failed.Step.ToolErrorCode != "tool_timeout" {
 		t.Errorf("expected toolErrorCode=tool_timeout, got %s", failed.Step.ToolErrorCode)
+	}
+}
+
+// toolLimitHardStopEvent 构造框架的工具迭代上限硬停事件（与 vendored
+// functioncall 处理器的 flow_error 消息一致）。
+func toolLimitHardStopEvent(author string) *trpcevent.Event {
+	return trpcevent.NewErrorEvent("inv-1", author,
+		trpcmodel.ErrorTypeFlowError, "max tool iterations (10) exceeded")
+}
+
+// 工具迭代上限硬停：被拒派发的调用步骤必须以 completed 关闭（注明未执行），
+// 只发 notice，不产生 error step / 不 fail Task——否则交付物质量门 J4 会把
+// 已兜底完成的成员误判为执行失败（2026-08-15 幻影失败证据修复）。
+func TestProcessToolLimitHardStop_ClosesUndispatchedStep(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	stepID := p.BeginStep(p.meta, biz.StepKindAction)
+	p.mu.Lock()
+	if step, ok := p.activeStep[stepID]; ok {
+		step.Status = biz.StepStatusToolRunning
+		step.ToolName = "set_deliverable"
+	}
+	p.mu.Unlock()
+	capture.events = nil
+
+	p.ProcessEvent(context.Background(), toolLimitHardStopEvent("agent-1"))
+
+	var sawStepCompleted, sawNotice bool
+	for _, ev := range capture.events {
+		switch e := ev.(type) {
+		case *biz.StepCompletedEvent:
+			if e.Step.ID == stepID {
+				sawStepCompleted = true
+				if e.Step.Status != biz.StepStatusCompleted {
+					t.Errorf("undispatched step status = %s, want completed", e.Step.Status)
+				}
+				if e.Step.Content != toolLimitUndispatchedNote {
+					t.Errorf("undispatched step content = %q, want %q", e.Step.Content, toolLimitUndispatchedNote)
+				}
+				if e.Step.ToolErrorCode == stuckToolErrorCode {
+					t.Error("undispatched step must not carry tool_timeout")
+				}
+			}
+			if e.Step.Kind == biz.StepKindNotice && e.Step.NoticeType == "tool_iteration_limit" {
+				sawNotice = true
+			}
+		case *biz.StepCreatedEvent:
+			if e.Step.Kind == biz.StepKindError {
+				t.Error("tool-limit hard stop must not create an error step")
+			}
+		case *biz.TaskFailedEvent:
+			t.Error("tool-limit hard stop must not fail the task")
+		case *biz.StepFailedEvent:
+			t.Error("tool-limit hard stop must not fail any step")
+		}
+	}
+	if !sawStepCompleted {
+		t.Error("undispatched tool step was not closed as completed")
+	}
+	if !sawNotice {
+		t.Error("expected a tool_iteration_limit notice step")
+	}
+}
+
+// 非工具上限的 flow_error 保持原语义：error step + Task failed。
+func TestProcessToolLimitHardStop_OtherFlowErrorStillFails(t *testing.T) {
+	p, capture := testProjector()
+	capture.events = nil
+
+	ev := trpcevent.NewErrorEvent("inv-1", "agent-1", trpcmodel.ErrorTypeFlowError, "some other flow failure")
+	p.ProcessEvent(context.Background(), ev)
+
+	var sawErrStep, sawTaskFailed bool
+	for _, e := range capture.events {
+		if se, ok := e.(*biz.StepCreatedEvent); ok && se.Step.Kind == biz.StepKindError {
+			sawErrStep = true
+		}
+		if _, ok := e.(*biz.TaskFailedEvent); ok {
+			sawTaskFailed = true
+		}
+	}
+	if !sawErrStep || !sawTaskFailed {
+		t.Errorf("non-limit flow_error must keep error step + task failed, got errStep=%v taskFailed=%v", sawErrStep, sawTaskFailed)
+	}
+}
+
+// graph 并行成员共享同一 projector：member-a 的硬停只能关闭自己的未执行
+// 步骤，不得误关 member-b 正在执行的工具步骤。
+func TestProcessToolLimitHardStop_ScopedToEventAuthor(t *testing.T) {
+	capture := &capturingSequencer{}
+	p := NewActivityProjector(capture, nil, nil)
+	meta := ProjectMeta{
+		TaskID: "task-1", TurnID: "turn-1", SessionID: "sess-1", SpiritSessionID: "spirit-1",
+		AgentKey:        "member-a",
+		MemberAgentKeys: map[string]struct{}{"member-a": {}, "member-b": {}},
+	}
+	p.OnTurnStart(context.Background(), meta)
+
+	// member-b 执行中的工具步骤（不得被 member-a 的硬停关闭）。
+	metaB := meta
+	metaB.AgentKey = "member-b"
+	stepB := p.BeginStep(metaB, biz.StepKindAction)
+	p.mu.Lock()
+	if step, ok := p.activeStep[stepB]; ok {
+		step.Status = biz.StepStatusToolRunning
+		step.ToolName = "twin_alarm_query"
+	}
+	p.mu.Unlock()
+
+	// member-a 被拒派发的调用步骤（应被关闭）。
+	stepA := p.BeginStep(meta, biz.StepKindAction)
+	p.mu.Lock()
+	if step, ok := p.activeStep[stepA]; ok {
+		step.Status = biz.StepStatusToolRunning
+		step.ToolName = "set_deliverable"
+	}
+	p.mu.Unlock()
+	capture.events = nil
+
+	p.ProcessEvent(context.Background(), toolLimitHardStopEvent("member-a"))
+
+	var closedA, closedB bool
+	for _, e := range capture.events {
+		ce, ok := e.(*biz.StepCompletedEvent)
+		if !ok {
+			continue
+		}
+		if ce.Step.ID == stepA {
+			closedA = true
+		}
+		if ce.Step.ID == stepB {
+			closedB = true
+		}
+	}
+	if !closedA {
+		t.Error("member-a undispatched step must be closed")
+	}
+	if closedB {
+		t.Error("member-b running step must NOT be closed by member-a hard stop")
+	}
+	p.mu.Lock()
+	_, bStillActive := p.activeStep[stepB]
+	p.mu.Unlock()
+	if !bStillActive {
+		t.Error("member-b step must remain active")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -344,6 +345,121 @@ func TestWriteDeliverablesToSession_CorruptCache_Rebuilds(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// 交付物信封 v2：artifacts 载荷清单 + summary 聚合回退
+// ---------------------------------------------------------------------------
+
+// 契约 topic 载荷（文档型）必须被描述为 artifact：key/type/format/title/size，
+// 供下游注入前缀决定内联还是指针化；保留 key 与 ack/ 不得出现在清单中。
+func TestWriteDeliverablesToSession_ArtifactsFilled(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	article := strings.Repeat("文", 800)
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary":     "《云计算十年》已完成。\n- 观点要点",
+		"article":     map[string]any{"title": "云计算十年", "format": "markdown", "content": article},
+		"ack/agent-m1": map[string]any{"member": "agent-m1"},
+		"cognition":   map[string]any{"decisions": []any{"d1"}},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	team := seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+	team.Deliverables = `[{"name":"article","type":"document","format":"markdown","description":"科技评论文章"}]`
+	teams.items["t1"] = team
+
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if len(ref.Artifacts) != 1 {
+		t.Fatalf("only the article payload may appear as artifact (ack/cognition excluded), got %+v", ref.Artifacts)
+	}
+	art := ref.Artifacts[0]
+	if art.Key != "article" || art.Type != "document" || art.Format != "markdown" {
+		t.Fatalf("artifact identity should merge the team contract, got %+v", art)
+	}
+	if art.Title != "云计算十年" {
+		t.Fatalf("artifact title should come from the payload, got %q", art.Title)
+	}
+	if art.SizeChars != len([]rune(article)) {
+		t.Fatalf("artifact size should count content runes %d, got %d", len([]rune(article)), art.SizeChars)
+	}
+	// 全文仍完整保留在 structured_json（不截断）。
+	var structured map[string]any
+	if err := json.Unmarshal([]byte(ref.StructuredJSON), &structured); err != nil {
+		t.Fatalf("structured_json should be valid JSON: %v", err)
+	}
+	payload, ok := structured["article"].(map[string]any)
+	if !ok || payload["content"] != article {
+		t.Fatalf("structured_json must carry the full article payload, got %q", ref.StructuredJSON)
+	}
+}
+
+// 顶层 summary 缺失时（长文按契约 topic 交付的典型形态），信封摘要必须聚合
+// 各 topic 的 title/summary 生成可读文本，而不是全量 JSON dump 截断。
+func TestWriteDeliverablesToSession_SummaryAggregatesTopicPayloads(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"article":  map[string]any{"title": "云计算十年", "format": "markdown", "content": strings.Repeat("正", 3000)},
+		"research": map[string]any{"summary": "调研发现：多云成为主流"},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if strings.HasPrefix(ref.Summary, "{") {
+		t.Fatalf("summary must not be a JSON dump, got %q", ref.Summary)
+	}
+	if !strings.Contains(ref.Summary, "云计算十年") || !strings.Contains(ref.Summary, "调研发现") {
+		t.Fatalf("summary should aggregate topic title/summary, got %q", ref.Summary)
+	}
+	if len(ref.Artifacts) != 2 {
+		t.Fatalf("both topics should appear as artifacts, got %+v", ref.Artifacts)
+	}
+}
+
+// 无契约、非文档形态的载荷也要有 artifact（size 兜底为 JSON 序列化长度），
+// 下游才能感知"有东西可取"。
+func TestWriteDeliverablesToSession_ArtifactFallbackForPlainPayload(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary":      "分析完成",
+		"report-text":  "纯文本成果",
+		"metric_table": map[string]any{"rows": []any{1, 2, 3}},
+	}}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+	if err := u.WriteDeliverablesToSession(context.Background(), "t1"); err != nil {
+		t.Fatalf("WriteDeliverablesToSession: %v", err)
+	}
+	ref := ParseDeliverableRefs(teams.items["t1"].DeliverablesOutput)["st_1"]
+	if len(ref.Artifacts) != 2 {
+		t.Fatalf("both payloads should appear as artifacts, got %+v", ref.Artifacts)
+	}
+	byKey := map[string]DeliverableArtifact{}
+	for _, a := range ref.Artifacts {
+		byKey[a.Key] = a
+	}
+	if byKey["report-text"].SizeChars != len([]rune("纯文本成果")) {
+		t.Fatalf("string payload size should count its runes, got %+v", byKey["report-text"])
+	}
+	if byKey["metric_table"].SizeChars <= 0 {
+		t.Fatalf("map payload without content should size by JSON, got %+v", byKey["metric_table"])
+	}
+}
+
 func TestWriteDeliverablesToSession_NoDagNode_NoOp(t *testing.T) {
 	teams := newDeliverableTeamRepo()
 	sessions := newDeliverableSessionAccessor()
@@ -477,6 +593,429 @@ func TestInjectUpstreamDeliverables_UntruncatedOrLegacy_NoGuidance(t *testing.T)
 	}
 	if !strings.Contains(prefix, "完整短摘要") || !strings.Contains(prefix, "旧格式摘要") {
 		t.Fatalf("both summaries should be present, got %q", prefix)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 注入前缀三形态：小载荷内联 / 大载荷指针 / 输入契约命中时的强制取全文指令
+// ---------------------------------------------------------------------------
+
+// seedArtifactEnvelope builds a P2 envelope carrying one document payload.
+func seedArtifactEnvelope(t *testing.T, teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, content string) {
+	t.Helper()
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "写作团队", "不应使用")
+	upstream.Deliverables = `[{"name":"article","type":"document","format":"markdown","description":"科技评论文章"}]`
+	structured, err := json.Marshal(map[string]any{
+		"article": map[string]any{"title": "云计算十年", "format": "markdown", "content": content},
+	})
+	if err != nil {
+		t.Fatalf("marshal structured: %v", err)
+	}
+	ref := DeliverableRef{
+		Summary:        "《云计算十年》已完成。\n- 观点要点",
+		TeamID:         "t-up",
+		TeamSessionID:  "sess-t-up",
+		SizeChars:      20,
+		StructuredJSON: string(structured),
+		Artifacts: []DeliverableArtifact{{
+			Key: "article", Type: "document", Format: "markdown",
+			Title: "云计算十年", SizeChars: len([]rune(content)),
+		}},
+	}
+	env, err := json.Marshal(map[string]DeliverableRef{"st_1": ref})
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	upstream.DeliverablesOutput = string(env)
+	teams.items["t-up"] = upstream
+}
+
+// 小载荷（≤ InlineUpstreamPayloadMaxChars）全文直接内联进前缀，下游零工具
+// 调用拿到全部内容。
+func TestInjectUpstreamDeliverables_SmallPayload_Inlined(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	article := strings.Repeat("正", 800)
+	seedArtifactEnvelope(t, teams, sessions, article)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"},
+		InputContract: `[{"name":"article","type":"document","format":"markdown"}]`}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, article) {
+		t.Fatalf("small payload must be inlined in full, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "《云计算十年》") {
+		t.Fatalf("inline section should carry the artifact title, got %q", prefix)
+	}
+	if strings.Contains(prefix, "read_upstream_deliverable") {
+		t.Fatalf("fully inlined payload needs no retrieval pointer, got %q", prefix)
+	}
+}
+
+// 大载荷（> InlineUpstreamPayloadMaxChars）不内联，只给指针；命中下游输入
+// 契约时取全文从"可选提示"升级为"任务前置指令"。
+func TestInjectUpstreamDeliverables_LargePayload_PointerWithImperative(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	article := strings.Repeat("长", 8000)
+	seedArtifactEnvelope(t, teams, sessions, article)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"},
+		InputContract: `[{"name":"article","type":"document","format":"markdown"}]`}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if strings.Contains(prefix, article) {
+		t.Fatalf("large payload must NOT be inlined, got prefix runes %d", len([]rune(prefix)))
+	}
+	if !strings.Contains(prefix, "8000") || !strings.Contains(prefix, "《云计算十年》") {
+		t.Fatalf("pointer line should carry size and title, got %q", prefix)
+	}
+	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up", key="article")`) {
+		t.Fatalf("pointer should give the keyed retrieval call, got %q", prefix)
+	}
+	if !strings.Contains(prefix, "必须先调用") {
+		t.Fatalf("input-contract hit should escalate to a mandatory instruction, got %q", prefix)
+	}
+}
+
+// 大载荷但未命中下游输入契约：软提示，不强制。
+func TestInjectUpstreamDeliverables_LargePayload_SoftHintWithoutContractHit(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	seedArtifactEnvelope(t, teams, sessions, strings.Repeat("长", 8000))
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up", key="article")`) {
+		t.Fatalf("pointer should still give the keyed retrieval call, got %q", prefix)
+	}
+	if strings.Contains(prefix, "必须先调用") {
+		t.Fatalf("no input-contract hit → soft hint only, got %q", prefix)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ReadUpstreamDeliverableKey：按 key 单取载荷（长文场景下游只取契约文章）
+// ---------------------------------------------------------------------------
+
+func seedKeyReadableTeam(t *testing.T, teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, steps *deliverableStepReader, article string) *graphDeliverableReaderStub {
+	t.Helper()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary": "《云计算十年》已完成。",
+		"article": map[string]any{"title": "云计算十年", "format": "markdown", "content": article},
+		"notes":   map[string]any{"rows": []any{1, 2}},
+	}}
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+	return reader
+}
+
+func TestReadUpstreamDeliverableKey_DocumentPayload(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	article := strings.Repeat("全", 8000)
+	reader := seedKeyReadableTeam(t, teams, sessions, steps, article)
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	out, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t1", "article", 0)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverableKey: %v", err)
+	}
+	if !strings.Contains(out.Content, article) {
+		t.Fatalf("keyed read must return the full article content, got %d runes", len([]rune(out.Content)))
+	}
+	if !strings.Contains(out.Content, "《云计算十年》") {
+		t.Fatalf("document payload should prepend the title, got %q", out.Content[:50])
+	}
+	if strings.Contains(out.Content, "notes") {
+		t.Fatalf("keyed read must not leak other payload keys, got %q", out.Content[:200])
+	}
+	if out.Truncated {
+		t.Fatalf("8000 runes < default budget must not truncate")
+	}
+}
+
+func TestReadUpstreamDeliverableKey_UnknownKey_ListsAvailable(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := seedKeyReadableTeam(t, teams, sessions, steps, "正文")
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	_, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t1", "nope", 0)
+	if err == nil {
+		t.Fatalf("unknown key must error")
+	}
+	if !strings.Contains(err.Error(), "article") || !strings.Contains(err.Error(), "notes") {
+		t.Fatalf("error should list available keys (LLM-actionable), got %v", err)
+	}
+}
+
+func TestReadUpstreamDeliverableKey_ReservedKeyRejected(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := seedKeyReadableTeam(t, teams, sessions, steps, "正文")
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	if _, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t1", "summary", 0); err == nil {
+		t.Fatalf("reserved key summary must be rejected")
+	}
+}
+
+// 图状态不可读时降级到信封 StructuredJSON 取 key。
+func TestReadUpstreamDeliverableKey_EnvelopeFallback(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	article := strings.Repeat("封", 3000)
+	seedArtifactEnvelope(t, teams, sessions, article)
+	// graph reader returns nil → envelope path
+	reader := &graphDeliverableReaderStub{data: nil}
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	out, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t-up", "article", 0)
+	if err != nil {
+		t.Fatalf("ReadUpstreamDeliverableKey: %v", err)
+	}
+	if !strings.Contains(out.Content, article) {
+		t.Fatalf("envelope fallback must return the full content, got %d runes", len([]rune(out.Content)))
+	}
+}
+
+// key 存在但载荷渲染为空（如空字符串载荷）：必须如实报「内容为空」，
+// 不得报误导性的 "no deliverable content found"。
+func TestReadUpstreamDeliverableKey_EmptyPayload_HonestError(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := &graphDeliverableReaderStub{data: map[string]any{
+		"summary": "交付完成。",
+		"draft":   "",
+	}}
+	seedStateDeliverableTeam(teams, sessions, steps,
+		`{"version":1,"mode":"sequential","enable_state_deliverable":true,"members":[{"agent_id":"agent-m1"}]}`, "")
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	_, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t1", "draft", 0)
+	if err == nil {
+		t.Fatalf("empty payload must error")
+	}
+	if !strings.Contains(err.Error(), "内容为空") {
+		t.Fatalf("error must state the payload exists but is empty, got %v", err)
+	}
+	if strings.Contains(err.Error(), "no deliverable content found") {
+		t.Fatalf("misleading message: key exists, got %v", err)
+	}
+}
+
+// key 不存在时错误文案给出恢复引导：可用 key 列表 + 可不带 key 读全文。
+func TestReadUpstreamDeliverableKey_UnknownKey_GuidesKeylessRead(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	steps := newDeliverableStepReader()
+	reader := seedKeyReadableTeam(t, teams, sessions, steps, "正文")
+	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
+
+	_, err := u.ReadUpstreamDeliverableKey(context.Background(), "", "t1", "nope", 0)
+	if err == nil {
+		t.Fatalf("unknown key must error")
+	}
+	if !strings.Contains(err.Error(), "不带 key") {
+		t.Fatalf("error should guide the keyless full read, got %v", err)
+	}
+}
+
+// 超大载荷（> DefaultUpstreamDeliverableMaxChars）的指针指令必须附带
+// max_chars 建议，否则 agent 按默认预算调用会拿到截断内容。
+func TestInjectUpstreamDeliverables_HugePayload_SuggestsMaxChars(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	article := strings.Repeat("巨", DefaultUpstreamDeliverableMaxChars+10000)
+	seedArtifactEnvelope(t, teams, sessions, article)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"},
+		InputContract: `[{"name":"article","type":"document","format":"markdown"}]`}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	want := fmt.Sprintf(`read_upstream_deliverable(team_id="t-up", key="article", max_chars=%d)`, DefaultUpstreamDeliverableMaxChars+10000)
+	if !strings.Contains(prefix, want) {
+		t.Fatalf("huge payload pointer should suggest max_chars, want %q in prefix", want)
+	}
+}
+
+// seedMultiArtifactEnvelope builds a P2 envelope carrying multiple document
+// payloads (artifacts ordered by sorted key for deterministic rendering).
+func seedMultiArtifactEnvelope(t *testing.T, teams *deliverableTeamRepo, sessions *deliverableSessionAccessor, payloads map[string]string) {
+	t.Helper()
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "写作团队", "不应使用")
+	keys := make([]string, 0, len(payloads))
+	for k := range payloads {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	structured := make(map[string]any, len(payloads))
+	arts := make([]DeliverableArtifact, 0, len(keys))
+	for _, k := range keys {
+		structured[k] = map[string]any{"title": "标题" + k, "format": "markdown", "content": payloads[k]}
+		arts = append(arts, DeliverableArtifact{Key: k, Format: "markdown", Title: "标题" + k, SizeChars: len([]rune(payloads[k]))})
+	}
+	raw, err := json.Marshal(structured)
+	if err != nil {
+		t.Fatalf("marshal structured: %v", err)
+	}
+	ref := DeliverableRef{
+		Summary: "多载荷交付。", TeamID: "t-up", TeamSessionID: "sess-t-up", SizeChars: 20,
+		StructuredJSON: string(raw), Artifacts: arts,
+	}
+	env, err := json.Marshal(map[string]DeliverableRef{"st_1": ref})
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	upstream.DeliverablesOutput = string(env)
+	teams.items["t-up"] = upstream
+}
+
+// 内联阈值边界钉住：SizeChars == InlineUpstreamPayloadMaxChars 必须内联
+//（`<=` 语义），+1 必须指针——防 off-by-one 回归。
+func TestInjectUpstreamDeliverables_InlineThresholdBoundary(t *testing.T) {
+	t.Run("exactly_at_threshold_inlined", func(t *testing.T) {
+		teams := newDeliverableTeamRepo()
+		sessions := newDeliverableSessionAccessor()
+		u := newDeliverableUsecase(teams, sessions)
+		article := strings.Repeat("界", InlineUpstreamPayloadMaxChars)
+		seedArtifactEnvelope(t, teams, sessions, article)
+
+		downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+		prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+		if !strings.Contains(prefix, article) {
+			t.Fatalf("payload at exactly %d chars must be inlined", InlineUpstreamPayloadMaxChars)
+		}
+	})
+	t.Run("one_over_threshold_pointer", func(t *testing.T) {
+		teams := newDeliverableTeamRepo()
+		sessions := newDeliverableSessionAccessor()
+		u := newDeliverableUsecase(teams, sessions)
+		article := strings.Repeat("界", InlineUpstreamPayloadMaxChars+1)
+		seedArtifactEnvelope(t, teams, sessions, article)
+
+		downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+		prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+		if strings.Contains(prefix, article) {
+			t.Fatalf("payload at threshold+1 must NOT be inlined")
+		}
+		if !strings.Contains(prefix, "全文未内联") {
+			t.Fatalf("threshold+1 payload should render as a pointer, got %q", prefix)
+		}
+	})
+}
+
+// 内联数量上限：超过 InlineUpstreamArtifactMaxCount 的小载荷降级为指针，
+// 防止多 topic 交付物把下游首轮输入撑爆（2026-08-15 评审修复 1）。
+func TestInjectUpstreamDeliverables_InlineCountCap(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	runes := []string{"一", "二", "三", "四", "五", "六", "七"}
+	payloads := make(map[string]string, InlineUpstreamArtifactMaxCount+2)
+	for i := 0; i < InlineUpstreamArtifactMaxCount+2; i++ {
+		payloads[fmt.Sprintf("k%02d", i)] = strings.Repeat(runes[i], 100)
+	}
+	seedMultiArtifactEnvelope(t, teams, sessions, payloads)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	for i := 0; i < InlineUpstreamArtifactMaxCount; i++ {
+		if !strings.Contains(prefix, payloads[fmt.Sprintf("k%02d", i)]) {
+			t.Fatalf("payload k%02d within the count cap must be inlined", i)
+		}
+	}
+	for i := InlineUpstreamArtifactMaxCount; i < InlineUpstreamArtifactMaxCount+2; i++ {
+		key := fmt.Sprintf("k%02d", i)
+		if strings.Contains(prefix, payloads[key]) {
+			t.Fatalf("payload %s beyond the count cap must degrade to a pointer", key)
+		}
+		if !strings.Contains(prefix, fmt.Sprintf(`read_upstream_deliverable(team_id="t-up", key="%s")`, key)) {
+			t.Fatalf("overflowed payload %s should render a keyed retrieval pointer", key)
+		}
+	}
+}
+
+// 内联总量预算：单团队内联字符累计超过 InlineUpstreamPayloadTotalMaxChars
+// 后，剩余小载荷降级为指针（数量未超 cap 也生效）。
+func TestInjectUpstreamDeliverables_InlineTotalBudget(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	runes := []string{"甲", "乙", "丙", "丁", "戊"}
+	per := InlineUpstreamPayloadTotalMaxChars / 4 // 4 个恰好装满预算，第 5 个溢出
+	payloads := make(map[string]string, 5)
+	for i := 0; i < 5; i++ {
+		payloads[fmt.Sprintf("k%02d", i)] = strings.Repeat(runes[i], per)
+	}
+	seedMultiArtifactEnvelope(t, teams, sessions, payloads)
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"}}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	for i := 0; i < 4; i++ {
+		if !strings.Contains(prefix, payloads[fmt.Sprintf("k%02d", i)]) {
+			t.Fatalf("payload k%02d within the total budget must be inlined", i)
+		}
+	}
+	if strings.Contains(prefix, payloads["k04"]) {
+		t.Fatalf("payload k04 exceeding the total inline budget must degrade to a pointer")
+	}
+	if !strings.Contains(prefix, `read_upstream_deliverable(team_id="t-up", key="k04")`) {
+		t.Fatalf("budget-overflowed payload should render a keyed retrieval pointer")
+	}
+}
+
+// 空载荷（SizeChars == 0）：如实标注「载荷内容为空」，绝不给 keyed 读取
+// 指令——该调用只会得到「内容为空」的 NotFound（2026-08-15 评审修复 3）。
+// 生产形态：state deliverable 顶层空字符串值（buildDeliverableArtifacts 的
+// string 分支得 SizeChars=0）；doc-map 空 content 按整个 map 的 JSON 计
+// 尺寸，不会落到此分支。
+func TestInjectUpstreamDeliverables_EmptyPayload_HonestNote(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+	upstream := seedCompletedTeam(teams, sessions, "t-up", "sp1", "st_1", "写作团队", "不应使用")
+	structured, err := json.Marshal(map[string]any{
+		"empty": "",
+		"solid": map[string]any{"title": "实体报告", "format": "markdown", "content": strings.Repeat("实", 100)},
+	})
+	if err != nil {
+		t.Fatalf("marshal structured: %v", err)
+	}
+	ref := DeliverableRef{
+		Summary: "含空载荷的交付。", TeamID: "t-up", TeamSessionID: "sess-t-up", SizeChars: 20,
+		StructuredJSON: string(structured),
+		Artifacts: []DeliverableArtifact{
+			{Key: "empty", SizeChars: 0},
+			{Key: "solid", Format: "markdown", Title: "实体报告", SizeChars: 100},
+		},
+	}
+	env, err := json.Marshal(map[string]DeliverableRef{"st_1": ref})
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	upstream.DeliverablesOutput = string(env)
+	teams.items["t-up"] = upstream
+
+	downstream := Team{SpiritSessionID: "sp1", DependsOn: []string{"st_1"},
+		InputContract: `[{"name":"empty","type":"document","format":"markdown"}]`}
+	prefix := u.InjectUpstreamDeliverables(context.Background(), downstream)
+	if !strings.Contains(prefix, "载荷内容为空") {
+		t.Fatalf("empty payload should be honestly noted, got %q", prefix)
+	}
+	if strings.Contains(prefix, `key="empty"`) {
+		t.Fatalf("empty payload must NOT get a retrieval instruction (dead-end call), got %q", prefix)
+	}
+	if !strings.Contains(prefix, strings.Repeat("实", 100)) {
+		t.Fatalf("non-empty sibling payload must still inline normally")
 	}
 }
 

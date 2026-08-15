@@ -26,6 +26,20 @@ func TestSetDeliverableTool_Declaration(t *testing.T) {
 	}
 }
 
+// 保留 key 值锚定（2026-08-15 评审修复 6）：summary/cognition 的保留 key
+// 在三个包各有字面量镜像（本包私有常量、biz.deliverableReservedKeySummary、
+// graph/adapter.deliverableReservedSummaryKey）。此处钉住本侧值；跨包一致
+// 性由 graph/adapter 的行为锚定测试（set_deliverable 必须拒绝以该 key 作
+// topic）与 biz 的值锚定测试共同保证——任何一侧漂移都会亮红。
+func TestReservedKeys_ValuesPinned(t *testing.T) {
+	if reservedKeySummary != "summary" {
+		t.Fatalf("reservedKeySummary drifted: %q", reservedKeySummary)
+	}
+	if reservedKeyCognition != "cognition" {
+		t.Fatalf("reservedKeyCognition drifted: %q", reservedKeyCognition)
+	}
+}
+
 func TestSetDeliverableTool_StateDelta(t *testing.T) {
 	tl := NewSetDeliverableTool()
 	// Simulate a Call result JSON

@@ -5,6 +5,19 @@ import (
 	"testing"
 )
 
+// 保留 key 值锚定（2026-08-15 评审修复 6）：summary/cognition 保留 key 在
+// 三个包各有字面量镜像（tools/deliverable 私有常量、本包、graph/adapter）。
+// biz 不能 import internal/tools（依赖方向），此处钉住本侧值；跨包一致性由
+// graph/adapter 的行为锚定测试与 tools 包的值锚定测试共同保证。
+func TestDeliverableReservedKeys_ValuesPinned(t *testing.T) {
+	if deliverableReservedKeySummary != "summary" {
+		t.Fatalf("deliverableReservedKeySummary drifted: %q", deliverableReservedKeySummary)
+	}
+	if deliverableReservedKeyCognition != "cognition" {
+		t.Fatalf("deliverableReservedKeyCognition drifted: %q", deliverableReservedKeyCognition)
+	}
+}
+
 // ack/ 前缀键是团队内确认信号，不得泄漏进团队间信封的 StructuredJSON。
 func TestMarshalNonReservedStateKeys_ExcludesAckKeys(t *testing.T) {
 	state := map[string]any{

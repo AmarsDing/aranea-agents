@@ -107,3 +107,65 @@ func TestKnowledgeCueHook_RetrievesPassages(t *testing.T) {
 		t.Fatalf("expected passage body, got %s", cue)
 	}
 }
+
+// P1（2026-08-15 评审修订）：首轮预检索注入也发 knowledge_recalled，
+// 日常供粮主路径进入 cited 回采闭环。
+func TestKnowledgeCueHook_EmitsKnowledgeRecalledNotice(t *testing.T) {
+	ag := biz.Agent{
+		ID:       "ag-1",
+		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true},
+	}
+	repo := cueSearchRepo{
+		fakeKnowledgeRepos: fakeKnowledgeRepos{
+			collections: []biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 1}},
+		},
+		chunks: []biz.KnowledgeChunk{
+			{ID: "k1", DocID: "d1", CollectionID: "c1", Content: "SLA 承诺 99.9%。", Score: 0.88},
+			{ID: "k2", DocID: "d2", CollectionID: "c1", Content: "   ", Score: 0.5}, // 空正文不渲染也不进 notice
+		},
+	}
+	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
+	deps := TRPCBuilderDeps{TRPCMemoryKnowledgeDeps: TRPCMemoryKnowledgeDeps{KnowledgeUsecase: uc}}
+	hook := newKnowledgeCueBeforeHook(ag, deps)
+
+	ret := knowledge.NewRetriever(cueEmbedder{}, repo, nil, loggateway.NewNoop())
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	ctx = knowledgetool.WithRetriever(ctx, ret)
+	ctx = knowledgetool.WithKnowledgeCollections(ctx, []string{"c1"})
+
+	runBeforeModelHook(t, hook, ctx)
+	if len(rec.calls) != 1 {
+		t.Fatalf("expected 1 knowledge_recalled notice, got %d", len(rec.calls))
+	}
+	if rec.calls[0].noticeType != "knowledge_recalled" {
+		t.Fatalf("noticeType = %q", rec.calls[0].noticeType)
+	}
+	if !strings.Contains(rec.calls[0].content, `"chunk_id":"k1"`) {
+		t.Fatalf("payload missing k1: %s", rec.calls[0].content)
+	}
+	if strings.Contains(rec.calls[0].content, `"chunk_id":"k2"`) {
+		t.Fatalf("empty-content chunk must not be noticed: %s", rec.calls[0].content)
+	}
+}
+
+// cueRenderedChunks：只保留实际渲染进 cue 的 chunks。
+func TestCueRenderedChunks_FiltersEmptyAndCapsTopK(t *testing.T) {
+	chunks := make([]biz.KnowledgeChunk, 0, 8)
+	for i := 0; i < 6; i++ {
+		chunks = append(chunks, biz.KnowledgeChunk{ID: string(rune('a' + i)), Content: "正文"})
+	}
+	chunks = append(chunks, biz.KnowledgeChunk{ID: "empty", Content: "  "})
+	got := cueRenderedChunks(chunks)
+	if len(got) != knowledgeCueTopK {
+		t.Fatalf("cap = %d, want %d", len(got), knowledgeCueTopK)
+	}
+	for _, ch := range got {
+		if ch.ID == "empty" {
+			t.Fatal("empty content must be filtered")
+		}
+	}
+	if got := cueRenderedChunks(nil); len(got) != 0 {
+		t.Fatalf("nil in = %v", got)
+	}
+}

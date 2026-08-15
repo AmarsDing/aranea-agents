@@ -7,81 +7,25 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-var _ bizknowledge.SessionWriteBack = (*KnowledgeService)(nil)
-var _ bizknowledge.SessionWriteBackReview = (*KnowledgeService)(nil)
-var _ bizknowledge.AgentMemoryProjectPort = (*KnowledgeService)(nil)
-
-// WriteBackSessionFacts 会话过门事实写入团队库日记，并重放 chunk/FTS（SP7 G2）。
-// 正文已落后 chunk 失败只 Warn，不回滚（与晋升 B-3 同哲学）。
+// WriteBackSessionFacts 透传 biz 写回（auto_memory worker 经 wire 以
+// biz.KnowledgeWriteBack 接口消费本方法）。chunk 重放在 biz 层 writeBackFacts
+// 尾部经 SetWriteBackReplay 钩子收口——直写（knowledge_write 工具）与本路径
+// 共用同一重放。此前重放挂在本包装方法内，knowledge_write 工具直调 biz
+// Usecase 绕过，entries/* 永久 pending（2026-08-15 事故）。
 func (s *KnowledgeService) WriteBackSessionFacts(ctx context.Context, in bizknowledge.WriteBackInput) (bizknowledge.WriteBackResult, error) {
-	if s == nil || s.uc == nil {
-		return bizknowledge.WriteBackResult{}, nil
-	}
-	res, err := s.uc.WriteBackSessionFacts(ctx, in)
-	if err != nil {
-		s.lg.Warn("写回飞轮落库失败",
-			loggateway.StepID("knowledge.writeback"),
-			loggateway.Str("session_id", in.SessionID),
-			loggateway.Err(err),
-		)
-		return bizknowledge.WriteBackResult{}, err
-	}
-	if res.Appended == 0 || res.DocID == "" {
-		return res, nil
-	}
-	col, err := s.uc.GetCollection(ctx, res.CollectionID)
-	if err != nil {
-		s.lg.Warn("写回飞轮读集合失败，跳过 chunk 重放",
-			loggateway.StepID("knowledge.writeback"),
-			loggateway.Str("collection_id", res.CollectionID),
-			loggateway.Err(err),
-		)
-		return res, nil
-	}
-	replayed, failed := s.replayPromotedDocChunks(ctx, col, []bizknowledge.PromoteTouchedDoc{{
-		DocID:   res.DocID,
-		Created: res.Created,
-	}})
+	return s.uc.WriteBackSessionFacts(ctx, in)
+}
+
+// replayWriteBackChunks 写回飞轮 chunk 重放钩子（注入 biz Usecase）。
+func (s *KnowledgeService) replayWriteBackChunks(ctx context.Context, col bizknowledge.Collection, touched []bizknowledge.PromoteTouchedDoc) error {
+	replayed, failed := s.replayPromotedDocChunks(ctx, col, touched)
 	if failed > 0 {
 		s.lg.Warn("写回飞轮 chunk 重放部分失败",
 			loggateway.StepID("knowledge.writeback"),
-			loggateway.Str("doc_id", res.DocID),
+			loggateway.Str("collection_id", col.ID),
 			loggateway.Int("replayed", replayed),
 			loggateway.Int("failed", failed),
 		)
 	}
-	return res, nil
-}
-
-// EnqueueWriteBackReview 低置信白名单事实进入 pending 日记（US-44）。
-func (s *KnowledgeService) EnqueueWriteBackReview(ctx context.Context, in bizknowledge.WriteBackInput) (bizknowledge.WriteBackResult, error) {
-	if s == nil || s.uc == nil {
-		return bizknowledge.WriteBackResult{}, nil
-	}
-	return s.uc.EnqueueWriteBackReview(ctx, in)
-}
-
-// ProjectAgentMemory 覆盖投影 L3 活动事实到 agents/{id}.md（SP7 G1）。
-func (s *KnowledgeService) ProjectAgentMemory(ctx context.Context, workspace, agentID string) error {
-	if s == nil || s.agentMem == nil {
-		return nil
-	}
-	res, err := s.agentMem.Project(ctx, workspace, agentID)
-	if err != nil {
-		s.lg.Warn("agent 记忆投影失败",
-			loggateway.StepID("knowledge.memory.project"),
-			loggateway.Str("agent_id", agentID),
-			loggateway.Err(err),
-		)
-		return err
-	}
-	if res.DocID == "" || res.CollectionID == "" {
-		return nil
-	}
-	col, err := s.uc.GetCollection(ctx, res.CollectionID)
-	if err != nil {
-		return nil
-	}
-	_, _ = s.replayPromotedDocChunks(ctx, col, []bizknowledge.PromoteTouchedDoc{{DocID: res.DocID}})
 	return nil
 }

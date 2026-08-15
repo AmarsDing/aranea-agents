@@ -79,6 +79,10 @@ type SpiritTeamController interface {
 	// when resolvable, the reader team's InputContract is validated against the
 	// upstream team's declared Deliverables before the read (Phase B).
 	ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (UpstreamDeliverableContent, error)
+	// ReadUpstreamDeliverableKey backs the key parameter of the
+	// read_upstream_deliverable tool (envelope v2): single-payload retrieval
+	// for long-form deliveries (e.g. an article the downstream must publish).
+	ReadUpstreamDeliverableKey(ctx context.Context, readerSessionID, teamID, key string, maxChars int) (UpstreamDeliverableContent, error)
 	// HasRealDeliverable backs the service-layer deliverable gate
 	// (2026-07-25 Fix 1): a completed-callback DAG team without a graph
 	// state deliverable is flipped to failed BEFORE any status transition,
@@ -294,6 +298,24 @@ const (
 
 	// MaxKeyFindingsCount is the maximum number of key findings extracted.
 	MaxKeyFindingsCount = 5
+
+	// InlineUpstreamPayloadMaxChars is the inline-vs-pointer threshold for
+	// upstream artifact payloads in the DAG injection prefix: payloads at or
+	// below this size are inlined in full (zero tool calls for the downstream
+	// team); larger payloads render as a pointer plus a keyed
+	// read_upstream_deliverable retrieval instruction.
+	InlineUpstreamPayloadMaxChars = 2000
+
+	// InlineUpstreamArtifactMaxCount caps how many payloads of ONE upstream
+	// team may render inline in the injection prefix; the rest degrade to
+	// pointers. Bounds the "payload count × per-payload size" product the
+	// per-payload threshold alone cannot (2026-08-15 review).
+	InlineUpstreamArtifactMaxCount = 5
+	// InlineUpstreamPayloadTotalMaxChars caps the combined inline size of one
+	// upstream team's payloads in the injection prefix; once the budget is
+	// spent, remaining small payloads degrade to pointers. Guards the
+	// downstream first-turn input against multi-topic prefix bloat.
+	InlineUpstreamPayloadTotalMaxChars = 8000
 
 	// DefaultUpstreamDeliverableMaxChars is the default full-text budget for
 	// ReadUpstreamDeliverable when maxChars is unset/invalid.
@@ -696,6 +718,16 @@ func (u *SpiritTeamUsecase) readDeliverableRef(t Team) (DeliverableRef, bool) {
 // Domain: Delivery — full-text retrieval of an upstream team's deliverable.
 func (u *SpiritTeamUsecase) ReadUpstreamDeliverable(ctx context.Context, readerSessionID, teamID string, maxChars int) (UpstreamDeliverableContent, error) {
 	return u.delivery.ReadUpstreamDeliverable(ctx, readerSessionID, teamID, maxChars)
+}
+
+// ReadUpstreamDeliverableKey returns ONE payload entry of a completed upstream
+// team's deliverable (envelope v2 artifacts). Backs the key parameter of the
+// read_upstream_deliverable tool: for long-form deliveries (e.g. an article
+// the downstream team must publish), the injection prefix instructs the agent
+// to fetch only the contracted payload key instead of the full concatenation.
+// Domain: Delivery — keyed payload retrieval of an upstream team's deliverable.
+func (u *SpiritTeamUsecase) ReadUpstreamDeliverableKey(ctx context.Context, readerSessionID, teamID, key string, maxChars int) (UpstreamDeliverableContent, error) {
+	return u.delivery.ReadUpstreamDeliverableKey(ctx, readerSessionID, teamID, key, maxChars)
 }
 
 // ---------------------------------------------------------------------------

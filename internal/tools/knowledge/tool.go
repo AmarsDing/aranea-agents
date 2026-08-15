@@ -124,12 +124,14 @@ func NewSearchTool() trpctool.CallableTool {
 		scoped := knowledgeCollectionsFromContext(ctx)
 
 		q := biz.KnowledgeSearchQuery{
-			Query:      in.Query,
-			TopK:       in.TopK,
-			MinScore:   in.MinScore,
-			FilterJSON: in.FilterJSON,
-			UseRerank:  in.UseRerank,
-		}
+		Query:      in.Query,
+		TopK:       in.TopK,
+		MinScore:   in.MinScore,
+		FilterJSON: in.FilterJSON,
+		UseRerank:  in.UseRerank,
+		// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
+		ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+	}
 
 		var chunks []biz.KnowledgeChunk
 		var err error
@@ -236,6 +238,13 @@ type knowledgeRecalledNoticePayload struct {
 	Chunks []knowledgeRecalledChunk `json:"chunks"`
 }
 
+// EmitKnowledgeRecalledNotice 供非工具路径复用同一 notice 载荷：首轮预检索
+// 注入（internal/agent/knowledge_inject.go）检索到 chunks 后调用，让日常供粮
+// 主路径同样进入 cited 回采闭环（P1，2026-08-15 评审修订）。
+func EmitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk) {
+	emitKnowledgeRecalledNotice(ctx, chunks)
+}
+
 // emitKnowledgeRecalledNotice emits one knowledge_recalled notice carrying the
 // chunks returned by this retrieval call (best-effort, Informational per
 // AS-EVT-01). No-op when there are no chunks or no ActivityEmitter in ctx
@@ -321,9 +330,11 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		}
 
 		q := biz.KnowledgeSearchQuery{
-			Query: in.Query,
-			TopK:  in.TopK,
-		}
+		Query: in.Query,
+		TopK:  in.TopK,
+		// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
+		ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+	}
 
 		var chunks []biz.KnowledgeChunk
 		var err error

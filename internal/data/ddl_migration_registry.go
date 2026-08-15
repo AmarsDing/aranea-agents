@@ -321,6 +321,11 @@ var ddlMigrations = []ddlMigration{
 	// 持久化到 system_settings 单例 JSON 列。重启后 Hydrate，避免冷却被
 	// 重置后立刻再 auto-apply。语句天然幂等（AlreadyExistsErr 跳过）。
 	{Version: 20261217, Name: "si_trigger_cooldown_multipliers", SQL: "sql/migrations/20261217_si_trigger_cooldown_multipliers.sql"},
+	// 20261218 builtin_platform_tools_knowledge_write_reseed（知识库评审 P1）：
+	// knowledge_write 种子在 20260610 已应用的存量库中不会插入（同 20261216
+	// twinops 的情形）→ effective keys 查无工具行，工具永不装配。种子函数幂等
+	// （ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
+	{Version: 20261218, Name: "builtin_platform_tools_knowledge_write_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

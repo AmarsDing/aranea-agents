@@ -20,9 +20,12 @@ var _ SessionWriteBackReview = (*Usecase)(nil)
 const (
 	// WriteBackCollectionName 专用团队收件箱；若工作区已有其它 team 库则复用先找到的。
 	WriteBackCollectionName = "团队知识收件箱"
-	writeBackMinConfidence  = 0.85
-	writeBackMinRunes       = 8
-	writeBackMaxFacts       = 8
+	// WriteBackInboxPrefix 写回日记流水的 rel_path 字面前缀（inbox/writeback-*.md）。
+	// 日记只做 provenance：Agent 默认检索路径以此前缀排除流水，词条内容不受影响。
+	WriteBackInboxPrefix   = "inbox/writeback-"
+	writeBackMinConfidence = 0.85
+	writeBackMinRunes      = 8
+	writeBackMaxFacts      = 8
 )
 
 // WriteBackFact 一条待归档事实（由 L3 写入结果投影，不含推测）。
@@ -32,6 +35,13 @@ type WriteBackFact struct {
 	FactKind   string
 	Confidence float64
 	SourceKind string
+	// Tags 是记忆侧 LLM 已抽取的主题标签（memory_facts.tags_json 投影）：
+	// 词条页定位主键——首选 tag 命中已有词条（basename/title/aliases）则 upsert，
+	// 未命中新建 entries/<slug>.md；无 tags 回退当日日记。
+	Tags []string
+	// EntryTitle 写回执行期回填：事实落进的词条页显示名（日记 provenance 指针）；
+	// 调用方传入时忽略，统一由写回路径赋值。
+	EntryTitle string
 }
 
 // WriteBackInput 一次会话写回批次。
@@ -49,6 +59,29 @@ type WriteBackResult struct {
 	DocID        string
 	Appended     int
 	Created      bool
+	// Landed fact_id → 落点词条页显示名；未落词条（无 tags 回退日记）的事实不在其中。
+	Landed map[string]string
+	// EntryDocs 本次实际改动的词条页文档（service 层据此重放 chunk/FTS）。
+	// 2026-08-15 修复：词条页此前不在结果里，service 只重放日记 DocID，
+	// 词条 chunks 永不重建——写入成功但检索不可见（entries/* 全部卡 pending）。
+	EntryDocs []PromoteTouchedDoc
+}
+
+// EntryOf 返回指定 fact_id 落点的词条页显示名（knowledge_write 工具回执用）；
+// 未落词条返回空。
+func (r WriteBackResult) EntryOf(factID string) string {
+	return r.Landed[factID]
+}
+
+// WriteBackReplayFunc 写回 chunk 重放钩子：touched 文档（日记 + 词条页）重建
+// chunks/FTS（词法库 embedder=nil 纯分块）。失败必须只返回 error 由调用方
+// Warn——写回本身已成功，重放属 best-effort 派生索引。
+type WriteBackReplayFunc func(ctx context.Context, col Collection, touched []PromoteTouchedDoc) error
+
+// SetWriteBackReplay 接线写回 chunk 重放钩子（生产 KnowledgeService 注入；
+// 装配同 SetBlockIndexRepos 模式）。
+func (u *Usecase) SetWriteBackReplay(fn WriteBackReplayFunc) {
+	u.writeBackReplay = fn
 }
 
 // SessionWriteBack 会话事实写回团队知识库（SP7 G2）。
@@ -125,6 +158,9 @@ func FormatWriteBackAppendix(in WriteBackInput, facts []WriteBackFact) string {
 		}
 		fmt.Fprintf(&b, "- confidence: %.2f\n", f.Confidence)
 		fmt.Fprintf(&b, "- kind: %s\n", kind)
+		if entry := strings.TrimSpace(f.EntryTitle); entry != "" {
+			fmt.Fprintf(&b, "- entry: [[%s]]\n", entry)
+		}
 		src := strings.TrimSpace(f.SourceKind)
 		if src == "" {
 			src = "auto_memory"
@@ -150,7 +186,8 @@ func writeBackDocHeader(day time.Time) string {
 		"由自动记忆验证门写入团队库。每条含不可变 provenance；未过门的推测不会出现在此。\n\n"
 }
 
-// WriteBackSessionFacts 把过门事实追加到团队库当日日记，并重建块索引。
+// WriteBackSessionFacts 词条优先写回：过门事实按 tags 匹配/新建词条页 upsert
+// （同一 fact_id 再写入时更新词条旧段），当日日记保留为 provenance 流水。
 // 无过门事实或无法解析团队库时返回零值结果（不报错）。
 func (u *Usecase) WriteBackSessionFacts(ctx context.Context, in WriteBackInput) (WriteBackResult, error) {
 	if err := u.requireRepo(); err != nil {
@@ -160,30 +197,53 @@ func (u *Usecase) WriteBackSessionFacts(ctx context.Context, in WriteBackInput) 
 	if len(facts) == 0 {
 		return WriteBackResult{}, nil
 	}
-	return u.appendFactsToDailyNote(ctx, in, facts)
-}
-
-// appendFactsToDailyNote 跳过验证门，按 provenance 去重后追加当日日记（确认过门走此路径）。
-func (u *Usecase) appendFactsToDailyNote(ctx context.Context, in WriteBackInput, facts []WriteBackFact) (WriteBackResult, error) {
-	if len(facts) == 0 {
-		return WriteBackResult{}, nil
-	}
 	col, err := u.resolveWriteBackCollection(ctx, in.Workspace)
 	if err != nil {
 		return WriteBackResult{}, err
 	}
-	now := time.Now()
-	rel := WriteBackRelPath(now)
-	return u.upsertMarkdownDoc(ctx, col, rel, writeBackDocHeader(now), FormatWriteBackAppendix(in, facts))
+	return u.writeBackFacts(ctx, col, in, facts)
 }
 
-func (u *Usecase) appendFactsToCollection(ctx context.Context, col Collection, in WriteBackInput, facts []WriteBackFact) (WriteBackResult, error) {
+// writeBackFacts 跳过验证门，词条 upsert + 日记 provenance 双写（确认过门走此路径）。
+func (u *Usecase) writeBackFacts(ctx context.Context, col Collection, in WriteBackInput, facts []WriteBackFact) (WriteBackResult, error) {
 	if len(facts) == 0 {
 		return WriteBackResult{CollectionID: col.ID}, nil
 	}
+	landed, entryDocs := u.upsertFactsToEntries(ctx, col, in, facts)
+	byFactID := make(map[string]string, len(landed))
+	for i, title := range landed {
+		facts[i].EntryTitle = title
+		if facts[i].FactID != "" {
+			byFactID[facts[i].FactID] = title
+		}
+	}
 	now := time.Now()
 	rel := WriteBackRelPath(now)
-	return u.upsertMarkdownDoc(ctx, col, rel, writeBackDocHeader(now), FormatWriteBackAppendix(in, facts))
+	res, err := u.upsertMarkdownDoc(ctx, col, rel, writeBackDocHeader(now), FormatWriteBackAppendix(in, facts))
+	res.Landed = byFactID
+	res.EntryDocs = entryDocs
+	if err != nil {
+		return res, err
+	}
+	// chunk 重放（2026-08-15 修复）：日记 + 全部词条页。钩子未接线时跳过
+	// （ReembedDocuments 可手动自愈）；失败仅 Warn——写回已成功，重放可重试。
+	if u.writeBackReplay != nil && (res.Appended > 0 || len(res.EntryDocs) > 0) {
+		touched := make([]PromoteTouchedDoc, 0, len(res.EntryDocs)+1)
+		if res.DocID != "" {
+			touched = append(touched, PromoteTouchedDoc{DocID: res.DocID, Created: res.Created})
+		}
+		touched = append(touched, res.EntryDocs...)
+		if len(touched) > 0 {
+			if rerr := u.writeBackReplay(ctx, col, touched); rerr != nil {
+				u.lg.Warn("写回飞轮 chunk 重放失败（写回已落库，ReembedDocuments 可自愈）",
+					loggateway.StepID("knowledge.writeback"),
+					loggateway.Str("collection_id", col.ID),
+					loggateway.Err(rerr),
+				)
+			}
+		}
+	}
+	return res, nil
 }
 
 // upsertMarkdownDoc 创建或追加 Markdown 文档；按 fact_id/陈述去重。

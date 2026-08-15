@@ -790,6 +790,7 @@ func writeBackFactsFromPipeline(candidates []biz.FactWriteCandidate, rows [][]by
 				FactKind:   c.FactKind,
 				Confidence: c.Confidence,
 				SourceKind: c.SourceKind,
+				Tags:       parseFactTagsJSON(c.TagsJSON),
 			})
 		}
 		return out
@@ -812,6 +813,9 @@ func writeBackFactsFromPipeline(candidates []biz.FactWriteCandidate, rows [][]by
 		if fromRows[i].SourceKind == "" {
 			fromRows[i].SourceKind = c.SourceKind
 		}
+		if len(fromRows[i].Tags) == 0 {
+			fromRows[i].Tags = parseFactTagsJSON(c.TagsJSON)
+		}
 	}
 	return fromRows
 }
@@ -831,13 +835,35 @@ func writeBackFactsFromRows(rows [][]byte) []biz.KnowledgeWriteBackFact {
 		id, _ := m["id"].(string)
 		src, _ := m["source_kind"].(string)
 		conf := jsonNumber(m["confidence"])
+		tagsJSON, _ := m["tags_json"].(string)
 		out = append(out, biz.KnowledgeWriteBackFact{
 			FactID:     id,
 			Statement:  stmt,
 			FactKind:   kind,
 			Confidence: conf,
 			SourceKind: src,
+			Tags:       parseFactTagsJSON(tagsJSON),
 		})
+	}
+	return out
+}
+
+// parseFactTagsJSON 解析 memory_facts.tags_json（JSON 数组字符串）为标签切片；
+// 非法输入降级为空（词条定位回退日记流水）。
+func parseFactTagsJSON(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return nil
+	}
+	out := tags[:0]
+	for _, t := range tags {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
 	}
 	return out
 }

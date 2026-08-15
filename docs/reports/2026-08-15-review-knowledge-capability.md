@@ -1,9 +1,10 @@
 # 评审报告：知识库深度评审 + 能力天花板调研（2026-08-15）
 
-> 日期：2026-08-15 | 类型：review | 状态：全部结论对照代码行号，关键断言经两轮独立验证
+> 日期：2026-08-15 | 类型：review | 状态：全部结论对照代码行号，关键断言经两轮独立验证；**P0 三刀已实施并通过测试**
 > 前序：[2026-08-15-review-knowledge-working-core.md](./2026-08-15-review-knowledge-working-core.md)（下称「前文」，其三刀结论本文逐条复核）
 > 方法：主评审直读代码取证 → 交叉验证 agent 独立复核 10 项关键断言（10/10 成立）→ 业界 2026 生产标准调研对照
 > 约束：所有建议不动 `pkg/trpc-agent-go`（FW-R1~R3），改动面全部在 `internal/`。
+> **2026-08-15 修订（用户评审反馈，已采纳）**：①「检索达业界 80% 线」降调为「架构到 L1 上沿，默认部署质量未实测达标」（rerank 默认关、金标 12 条非召回基线）；② **P0 时态不落 chunk**——chunk 是派生切片、整页重插会冲掉时态且与日记正文形成两套真理，作废落点改为**词条正文 upsert**；③ 实体轨 P1 默认**冻结**而非接线；④ recency 用 `knowledge_documents.updated_at`，禁用 `chunks.created_at`（整页重插会把旧知识洗成"刚才"）；⑤ 引用闭环只覆盖工具检索路径，首轮预检索不发 notice。详见 §7 修订后路线图。
 
 ---
 
@@ -11,10 +12,10 @@
 
 **前文的判断成立，且经代码复核后可再精确一档：现在是「检索链路高于业界平均、维护链路低于业界底线」的畸形体。**
 
-- **检索侧是强项**：混合检索（dense+BM25 RRF k=60）+ 复杂度自适应路由 + 可选 rerank + 一跳图扩展 + 五级降级链，已达到 2026 年业界「80% 生产负载够用」的标准线。
+- **检索侧架构到位、实测未达标**：混合检索（dense+BM25 RRF k=60）+ 复杂度自适应路由 + 可选 rerank + 一跳图扩展 + 五级降级链，**链路形状**是 2026 年业界主流形态；但生产默认 rerank 关闭（`KRATOS_KNOWLEDGE_RERANKER` 空=off，[reranker_factory.go](file:///f:/myproject/aranea-agents/internal/knowledge/reranker_factory.go#L17-L25)），金标仅 12 条查询、非召回评测基线，中文 BM25 部署侧命中未验证（代码侧 2026-08-10 有 word_similarity 根修，[knowledge.go](file:///f:/myproject/aranea-agents/internal/data/knowledge.go#L955-L968)，运行侧未回归确认）。准确口径：**架构到 L1 上沿，默认部署的检索质量没有被测到业界线上**。
 - **维护侧是短板**：知识域（knowledge_chunks/documents）连「作废」的 schema 字段都没有——不是没实现，是**数据模型层面就不支持**。而同仓库的 memory_facts（AutoMemory L3）早就有时态字段（valid_to/superseded_by）。同一套系统，记忆有时态、知识没有，这是最刺眼的一处不对称。
 - **关联侧是半成品**：entity/semantic 两种边的类型、三张实体治理表、归一化/别名 keeper 管线全部建好并通过测试，但**生产装配从未接线**（`SetEntityHook` 无调用者）。图上实际只有 explicit 一种边在跑。
-- **业界天花板**：2026 年生产标准是「写 / 召回 / 遗忘」三职俱全 + 时态事实（valid_at/invalid_at）+ 混合检索打底、图扩展按需。对照这个标准，当前位置在 **L1（可检索文档库）顶部，L2（会自我维护的知识库）门口**，差的就是前文说的三刀——复核后这三刀依然成立，只有优先级微调。
+- **业界天花板**：2026 年生产标准是「写 / 召回 / 遗忘」三职俱全 + 时态事实（valid_at/invalid_at）+ 混合检索打底、图扩展按需。对照这个标准，当前位置在 **L1（可检索文档库）顶部，L2（会自我维护的知识库）门口**。修订后的三刀：**词条优先写回 → 别名成链 → 替换语义走正文**（时态不落 chunk，详见 §7）。
 
 ---
 
@@ -83,7 +84,7 @@ flowchart LR
 
 1. **检索降级链是完整的五级矩阵**：embedder 未配 → BM25；collection 无语义层（前置判定，省一次 embed）→ BM25；embed 调用失败 → BM25；RRF 中 dense 失败 → sparse、sparse 失败 → dense；rerank 失败 → 原向量序。每层都有 step_id 日志。[retriever.go](file:///f:/myproject/aranea-agents/internal/knowledge/retriever.go#L93-L108), [hybrid_retriever.go](file:///f:/myproject/aranea-agents/internal/knowledge/hybrid_retriever.go#L80-L129)
 2. **AdaptiveRouter 按查询复杂度选路**：简单→dense，中/复杂→RRF，复杂→自动 MultiQuery 改写（失败降级原查询），即时定位查询（路径/扩展名/引号短语）跳过图扩展防污染。[adaptive_router.go](file:///f:/myproject/aranea-agents/internal/knowledge/adaptive_router.go#L92-L102), [graph_expander.go](file:///f:/myproject/aranea-agents/internal/knowledge/graph_expander.go#L62-L64)
-3. **引用闭环已跑通**：每次检索发射 `knowledge_recalled` notice → citation backfill worker → `knowledge_chunks.cited_count` / `knowledge_chunk_citations`，即「召回后被引用率」可度量。[tool.go](file:///f:/myproject/aranea-agents/internal/tools/knowledge/tool.go#L246-L284)
+3. **引用闭环已跑通，但只覆盖工具检索路径**：`knowledge_search`/`knowledge_reflect` 命中时发射 `knowledge_recalled` notice → citation backfill worker → `knowledge_chunks.cited_count` / `knowledge_chunk_citations`，即「召回后被引用率」可度量。[tool.go](file:///f:/myproject/aranea-agents/internal/tools/knowledge/tool.go#L246-L284)。**注意**：首轮 `## Retrieved Knowledge` 预检索注入不发 notice——日常供粮主路径目前不进 cited_count，闭环量的是工具调用，不是预检索。
 4. **健康度与专家定位**：health.go 提供文档/边/孤儿率/链接密度/dangling/写回日记数快照；ParseWriteBackExperts 从 provenance 聚合「哪个 agent/人在哪类事实上贡献多」。[health.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/health.go)
 5. **金标测试证明一跳有真实价值**：6 文档 12 查询，断言「纯混合种子不含答案、图扩展后 miss=0」——一跳扩展确实能把种子拿不到的邻文档事实捞回来（测试特意要求种子不含答案，防金标污染）。[gold_recall_test.go](file:///f:/myproject/aranea-agents/internal/knowledge/gold_recall_test.go)
 6. **实体治理管线质量不低**（只是没接线）：name_norm 归一化唯一约束、别名命中 keeper 合并、同批撞车 mentions 求和、孤儿实体事务内清理、R-3 高频实体噪声过滤。[knowledge_links.go](file:///f:/myproject/aranea-agents/internal/data/knowledge_links.go#L107-L165)
@@ -104,8 +105,8 @@ flowchart LR
 | 级 | 能力定义 | 业界 2026 参照 | 我们 |
 |----|----------|----------------|------|
 | **L0 文件柜** | 入库、切分、词法检索 | 任何向量库教程 | ✅ 超 |
-| **L1 可检索文档库** | 混合检索（BM25+dense+RRF）、rerank、降级链、按复杂度路由 | 业界共识：80% 生产负载 hybrid+rerank 即够用，不必上图 | ✅ **达标**（当前位置） |
-| **L2 会自我维护的知识库** | 时态事实（valid/superseded）、同义合并去重、词条化写回（Agent 可写指定条目）、别名成链、时间衰减排序、引用闭环 | Zep/Graphiti 时态边（valid_at/invalid_at）是 2026 生产标准；Mem0/Letta 的写时操作 API；Hindsight 四杠杆（importance/merge/decay/eviction） | ❌ **只做了 importance（过门）+ 引用闭环**；merge/decay/eviction/时态/写工具全缺 |
+| **L1 可检索文档库** | 混合检索（BM25+dense+RRF）、rerank、降级链、按复杂度路由 | 业界共识：80% 生产负载 hybrid+rerank 即够用，不必上图 | ⚠️ **架构达标、实测未达标**（当前位置）：rerank 默认关、无召回基线回归、中文 BM25 部署侧未验证 |
+| **L2 会自我维护的知识库** | 事实可更新/可替换、同义合并去重、词条化写回（Agent 可写指定条目）、别名成链、时间衰减排序、引用闭环 | Zep/Graphiti 时态边（valid_at/invalid_at）是 2026 生产标准；Mem0/Letta 的写时操作 API；Hindsight 四杠杆（importance/merge/decay/eviction）。**注意时态的落点因真相源而异**：记忆系统的行=事实，时态落在行上；本库真相源是 Markdown 词条，更新语义应落在词条正文（upsert 改正文、索引重建自然生效），而非 chunk 派生切片 | ❌ **只做了 importance（过门）+ 引用闭环（限工具路径）**；merge/decay/eviction/正文级更新/写工具全缺 |
 | **L3 会关联推理的知识库** | 实体解析、多跳图遍历、矛盾检测、社区摘要（全局问答） | GraphRAG 共识：向量+图混合，图只在「多跳失败 ≥30%」时值得建；实体解析是图质量前提 | ⚠️ **一半**：一跳扩展已上 Agent 路径；实体管线建成未接线；多跳/矛盾检测/社区摘要未做 |
 | **L4 自进化知识底座** | sleep-time consolidation（闲时整理记忆）、衰减/驱逐策略、检索评测基线常态化回归 | Letta sleep-time compute；Hindsight consolidation；Mem0/Letta 的 forget 职 | ❌ 未做（评测器有，基线回归未常态化） |
 
@@ -121,36 +122,54 @@ flowchart LR
 
 | 能力 | L2 要求 | 现状 | 差距 |
 |------|---------|------|------|
-| 时态事实 | 事实可作废、可替换，检索默认过滤失效 | schema 无字段 | 🔴 迁移级 |
-| Agent 主动写 | `knowledge_write` 类工具，写指定词条，带门禁 | 无写工具，AutoMemory 副作用写日记 | 🔴 工具+管线 |
-| 词条优先 | 高置信事实 upsert 进词条页，日记只当流水 | 只追加日记 | 🔴 写回路径 |
-| 合并去重 | 同义/同指事实合并（语义级） | fact_id/陈述子串 | 🟠 管线级 |
-| 时间衰减 | 排序含 recency 因子 | 无 | 🟠 检索级 |
-| 别名成链 | aliases/title 与 basename 同等参与提及匹配 | 只 basename（列已物化） | 🟢 小改 |
-| 实体边 | 入库期实体抽取 + 共现建边 | 管线建成未接线 | 🟢 接线 |
-| 引用闭环 | 召回→引用→度量 | ✅ 已跑通 | — |
-| 混合检索+降级 | hybrid+rerank+降级矩阵 | ✅ 已达业界线 | — |
+| 事实可更新/可替换 | 同一事实再写入时更新词条正文旧段；旧内容随索引重建自然失效 | ✅ 已实施（fact_id 整段替换；归一化陈述语义合并仍 P1） | — |
+| Agent 主动写 | `knowledge_write` 类工具，写指定词条，高置信直写、低置信 HITL | ✅ 已实施（高置信走 P0-1 词条 upsert 直写，0.6~0.85 进 pending 队列 HITL，不设弹窗门禁） | — |
+| 词条优先 | 高置信事实 upsert 进词条页，日记只当流水、默认不检索或降权 | ✅ 已实施（tags→词条 upsert，日记排除默认检索） | — |
+| 合并去重 | 同义/同指事实合并（语义级）；跨日换措辞不重复入库 | fact_id/陈述子串，且限单篇日记 body 内 | 🟠 管线级 |
+| 时间衰减 | 排序含 recency 因子，用 `documents.updated_at`（人改词条时间） | ✅ 已实施（dense/tsvector/trigram 三路 `分 × exp(-λ·age)`，λ≈6.774e-9 即 180 天 ×0.9；未用 `chunks.created_at`） | — |
+| 别名成链 | aliases/title 与 basename 同等参与提及匹配 | ✅ 已实施（多键匹配，歧义跳过） | — |
+| 实体边 | 入库期实体抽取 + 共现建边 | 管线建成未接线 | ⚪ P1 默认**冻结**（接线属 L3 成本，等 citation 失败分布够线再说） |
+| 引用闭环 | 召回→引用→度量，覆盖预检索+工具两条路径 | ✅ 已实施（首轮预检索注入也发 `knowledge_recalled`，载荷与实际渲染 chunks 一致；同 chunk 同 turn 账本幂等） | — |
+| 混合检索+降级 | hybrid+rerank+降级矩阵，默认部署实测达标 | 架构齐；rerank 默认关、无召回基线 | 🟠 部署/评测级 |
 | 一跳图扩展 | 物化边查询期扩展 | ✅ 已接 Agent | — |
 
 ---
 
-## 7. 路线图（复核前文三刀 + 分期，全部不碰框架）
+## 7. 路线图（2026-08-15 按用户评审修订：换顺序、换落点，全部不碰框架）
 
-**P0 — 前文三刀（复核后依然成立，顺序微调为：先 schema 后路径）**
+**P0 — 三刀（仍是三刀，顺序和落点已修订）——2026-08-15 已全部实施**
 
-1. **事实可替换（先动 schema）**。给知识域补时态字段（块级或 chunk 级 valid_from/valid_to/superseded_by）+ 迁移；同 `(kind, 归一化陈述或 fact_id)` 再写入时旧块置 superseded；检索 WHERE 默认过滤。memory_facts 的 bitemporal 实现（memory_shim_l3.go 的 InvalidateFact/SupersedeFact）就在同仓库，可直接对齐语义。没有这一刀，更新能力永远停在「改文件」。
-2. **词条优先于日记**。高置信写回默认 upsert 到按 kind/标题匹配的既有词条页（匹配键含文件名 + 已物化的 title/aliases），日记降级为纯 provenance 流水。没有这一刀，累计越久检索越脏。
-3. **别名参与成链**。autolink/mention 的 needle 从「basename 单键」扩为「basename + title + aliases 多键」（列和物化已就绪，只改匹配侧）。没有这一刀，关联网长不出来。
+1. **词条优先** ✅ 已实施：过门事实按 tags 匹配词条页（`entries/<slug>.md`，首选 tag 命中 basename/title/aliases 则 upsert，未命中新建页并把其余同义 tag 落 aliases 防重开新页）；无 tags 回退当日日记。日记保留为 provenance 流水并带 `- entry: [[词条]]` 指针，且**默认检索排除**——`SearchQuery.ExcludePathPrefixes` + `pathExcludeClause`（dense/BM25 双路）按 `inbox/writeback-` 字面前缀排除，预检索注入与 knowledge_search/knowledge_reflect 三处全部生效。[writeback_entry.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/writeback_entry.go)、[writeback.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/writeback.go#L166-L196)、[knowledge.go pathExcludeClause](file:///f:/myproject/aranea-agents/internal/data/knowledge.go)、[knowledge_inject.go](file:///f:/myproject/aranea-agents/internal/agent/knowledge_inject.go)
+2. **别名成链** ✅ 已实施：autolink 扩为 `AutolinkWikiMentionsMulti`（resolveIndex 接线时 basename+title+aliases 全键匹配、歧义键跳过、self 全键豁免，未接线降级 basename 单键）；mention 侧 `mentionNeedles` 同样多键合并计数。[autolink.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/autolink.go#L169-L259)、[mention.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/mention.go#L120-L156)
+3. **替换语义走正文** ✅ 已实施：同一 fact_id 再写入时 `replaceH2BlockContaining` 整段替换词条旧段（不追加、不重复），陈述已在则跳过；chunk 列未动。[writeback_entry.go upsertEntryDoc](file:///f:/myproject/aranea-agents/internal/biz/knowledge/writeback_entry.go#L200-L280)
 
-**P1 — L2 补完（三刀落地后立刻跟）**
+> 验证：新增 11 个单测全部通过（词条新建/别名命中/fact_id 替换/无 tag 回退/多键成链/歧义跳过/排除路径 dense+BM25 SQL），`internal/biz/knowledge`、`internal/data`、`internal/cronrunner`、`internal/agent`、`internal/tools/knowledge` 全量回归绿。归一化陈述（换措辞的同一事实）的语义级合并仍是 P1 管线活，不在本刀。
 
-4. `knowledge_write` 工具：Agent 主动写指定词条，走 HITL 确认门禁（复用现有 requires_confirmation 机制），写路径复用第 2 刀的 upsert。
-5. 检索排序加 recency 因子（chunks.created_at 已在表里，纯排序层改动，无需迁移）。
-6. 实体轨接线或冻结：给 vault_sync 装 SetEntityHook（LLM 抽实体 → ReplaceDocEntities → 共现建 entity 边）；若判断成本不值，则从 GraphExpander 权重注释中明示冻结，消除僵尸资产。
+> **为什么时态不落 chunk（关键架构判断）**：记忆系统（memory_facts）的行就是事实，时态落在行上成立；知识域的真相源是 Markdown，chunks 是派生切片——在 chunk 上加 valid_to/superseded_by 会出现「日记正文还写着旧句、检索却把 chunk 藏起来」的两套真理，且文档一保存 chunks 整页重插、chunk 级时态即被冲掉。作废落点必须在词条正文：旧句从正文消失，索引重建后自然不再被搜到。若未来确需「同页旧段可见、检索默认跳过」，用块锚/薄 overlay 表指向 doc_id+block，**不污染 knowledge_chunks 的 8 列派生模型**。禁止先做 chunk 级 bitemporal 大迁移（先迁 schema 再改写路径，容易做出一套从不触发的列）。
+
+**P1 — L2 补完——2026-08-15 已全部实施**
+
+4. **`knowledge_write` 工具** ✅ 已实施：Agent 主动写指定词条，高置信（≥0.85，显式写默认 0.95）走 P0-1 同一词条 upsert 直写；0.6~0.85 进 `inbox/writeback-pending.md` 既有 HITL 审核链（不设弹窗门禁）；<0.6 拒绝。身份安全：user/session 从 trpc invocation 解析，LLM 不能指定写到谁名下；fact_id 留空按归一化陈述派生（幂等重放同键）。注册走惯例四件套：biz key `ToolKeyKnowledgeWrite` → `builtin_tools_seed.go` seed（integration/medium/enabled）→ `sessionBoundToolKeys` → `tool_assembly.go` 按 effective tools 注入 CustomTools。[write_tool.go](file:///f:/myproject/aranea-agents/internal/tools/knowledge/write_tool.go)、[tool_assembly.go](file:///f:/myproject/aranea-agents/internal/agent/tool_assembly.go#L82-L89)、`WriteBackResult.Landed`/`EntryOf` 回执落点词条名
+5. **检索轻 recency** ✅ 已实施：dense/tsvector/trigram 三路排序包成 `分 × exp(-λ·age)`，`JOIN knowledge_documents` 取 `updated_at`（人改词条/写回正文才拨动）；λ = -ln(0.9)/(180×86400) ≈ 6.774e-9（180 天 ≈ ×0.9 月尺度微调，5 年 ≈ ×0.34），GREATEST 防时钟回拨负 age。未用 `chunks.created_at`。[knowledge.go recencyScoreSQL](file:///f:/myproject/aranea-agents/internal/data/knowledge.go)
+6. **预检索 notice** ✅ 已实施：`EmitKnowledgeRecalledNotice` 公开复用同一 notice 载荷，首轮预检索注入（knowledge_inject）检索到 chunks 后发射，`cueRenderedChunks` 保证载荷与实际渲染内容（非空正文 + TopK 截断）一致；lastUserQuery 只在每轮用户消息首次模型调用取查询，工具循环续跑天然不重复发。[knowledge_inject.go](file:///f:/myproject/aranea-agents/internal/agent/knowledge_inject.go)、[tool.go](file:///f:/myproject/aranea-agents/internal/tools/knowledge/tool.go)
+7. **实体轨冻结** ✅ 已实施：GraphExpander `linkTypePriority` 注释写死「entity/semantic 边生产无写入路径（SetEntityHook 全仓无生产调用者、semantic 无建边管线），knowledge_links 只有 explicit 一种边，entity×2/semantic×1 分支当前是死代码，保留仅为兼容未来接线」；解冻判据 = citation 失败分布证明多跳失败 ≥30% 再议。[graph_expander.go](file:///f:/myproject/aranea-agents/internal/knowledge/graph_expander.go)
+
+> P1 验证：新增 5 个写工具单测（nil/unavailable 跳过注册、派生 fact_id 归一化幂等、6 类验证拒绝、低置信进 pending、高置信直写词条+同 fact_id 幂等再写）+ recency 集成测试（3 年旧文 dense/tsvector/trigram 三路衰减排序与比值断言），`internal/biz/...`、`internal/tools/...`、`internal/agent/...`、`internal/data` 全量回归绿（data 层需 `ARANEA_TEST_PG_DSN` 指宿主 5432）。语义级合并去重（差距矩阵 🟠 行）仍是管线活，不在本批。
+
+> **端到端验证揪出并修复「写入成功但检索不可见」事故（2026-08-15 当日闭环）**：Web UI（spirit）调用 knowledge_write 写入「8810 端口」事实，工具回执/词条正文/确认门禁/审计全正常，但词条页 `status=pending`、`chunk_count=0`——**写入成功 ≠ 可检索**。根因三层：
+> 1. **词条页不在重放范围**：P0 词条 upsert 的文档不在 `WriteBackResult` 里，service 包装只对日记 DocID 重放 chunks → 修复：`WriteBackResult.EntryDocs` 收集词条 touched docs（`upsertEntryDoc` 返回 changed 标记，内容未变的 fact_id 幂等重写不算改动，避免无效 embedding 重放）。
+> 2. **重放挂错层**：chunk 重放原在 service 层 `KnowledgeService.WriteBackSessionFacts` 包装内，而 `knowledge_write` 工具直调 biz `Usecase.WriteBackSessionFacts`（auto_memory 经 wire 消费 service 包装所以未绕过）→ 修复：重放改为 biz 层 `SetWriteBackReplay` 钩子（KnowledgeService 构造时注入，同 SetBlockIndexRepos 装配模式），工具直调/cron/pending 审核应用三路共用；service 包装变薄透传。
+> 3. **`ReembedDocuments` 误拒词法库**：team 库是纯词法库（embedding_model 空，83 chunks 全部无向量），但 API 以「无语义层」拒绝——而 tsvector/trigram 检索同样依赖 chunks，词法库 chunks 缺失时唯一自愈路径被堵死 → 修复：放宽为词法库受理纯分块/FTS 重建（embedder=nil 不产向量），既有 `TestReembedDocuments_LexicalCollectionRejected` 反转为 Accepted。
+>
+> 处置：存量 12 篇（5 词条 + inbox/agents 若干）经放宽后的 reembed 全量 indexed；端到端复验写入「9001 端口」事实，词条 chunks 与正文同窗重建（时间差 5ms）且可检索命中。新增 5 个 biz 测试（touched 新建/既有/无变化、hook 收日记+词条、幂等跳过）+ reembed 词法用例，`internal/biz/...`、`internal/service/...`、`internal/agent/...`、`internal/tools/...`、`internal/cronrunner/...` 全量回归绿。[writeback.go hook](file:///f:/myproject/aranea-agents/internal/biz/knowledge/writeback.go)、[knowledge_writeback.go](file:///f:/myproject/aranea-agents/internal/service/knowledge_writeback.go)、[knowledge_reembed.go](file:///f:/myproject/aranea-agents/internal/service/knowledge_reembed.go)
+>
+> **教训（防再犯）**：写路径的新派生副作用必须挂在所有生产调用者都经过的层——判断依据是 grep 调用点而非「包装方法存在」；service 包装有重逻辑而工具直调 biz 是本仓既有形态，未来给写回链路加能力先查 `write_tool.go`/`auto_memory.go`/`wire_gen.go` 三处消费方。
 
 **P2 — L3 按需（先看检索失败分布再决定）**
 
-7. 多跳扩展 / 矛盾检测 / 社区摘要：按业界「多跳失败 ≥30% 才建图」的判据，先用 citation 闭环的召回数据度量失败分布，够线再建。
+8. 多跳扩展 / 矛盾检测 / 社区摘要：按业界「多跳失败 ≥30% 才建图」的判据，用补全后的 citation 闭环（含预检索）度量失败分布，够线再建。
+
+**不建议现在做**（2026-08-15 修订新增）：chunk 级 bitemporal 大迁移；生产接线 NER；把 rerank 说成已达标；用 `knowledge_write` 替代词条 upsert（没有词条页，写工具只会把日记写得更碎）。
 
 **明确不做**：插件、市场、主题、移动端、Canvas（沿用前文口径）；框架层（pkg/trpc-agent-go）任何改动。
 

@@ -168,6 +168,25 @@ func TestBuildSynthesisSummaryTrigger_AllCompleted_WithDigests(t *testing.T) {
 	}
 }
 
+// 载荷清单入综合触发器：长文交付物在 digest 中以"载荷"行列出（标题/格式/
+// 大小），Spirit 写最终报告时知道全文存在、去哪取；措辞不得抑制取数。
+func TestBuildSynthesisSummaryTrigger_DigestRendersArtifacts(t *testing.T) {
+	digests := []TeamDeliverableDigest{{
+		TeamName:           "写作团队",
+		TaskName:           "撰写科技评论",
+		Status:             "completed",
+		DeliverableSummary: "《云计算十年》已完成。",
+		Artifacts:          []string{"article《云计算十年》（markdown，8234字）"},
+	}}
+	out := BuildSynthesisSummaryTrigger(1, 1, 0, nil, digests)
+	if !strings.Contains(out, "载荷") || !strings.Contains(out, "article《云计算十年》（markdown，8234字）") {
+		t.Fatalf("digest should render the artifact listing, got:\n%s", out)
+	}
+	if strings.Contains(out, "无需翻查历史消息") {
+		t.Fatalf("header must not discourage full-text retrieval, got:\n%s", out)
+	}
+}
+
 // 存在失败团队 → 触发文本必须诚实：不得出现「所有团队已完成」，必须给出
 // 真实完成/失败数量、失败团队名称/原因/遗留疑问，并要求「未解决问题」小节
 // 与反虚构约束。

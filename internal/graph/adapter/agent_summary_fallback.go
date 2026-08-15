@@ -2,9 +2,11 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -148,7 +150,79 @@ func (a *summaryFallbackAgent) pump(ctx context.Context, inv *trpcagent.Invocati
 			Message: trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: summary},
 		}},
 	}
-	_ = trpcagent.EmitEvent(ctx, inv, out, trpcevent.NewResponseEvent(inv.InvocationID, inv.AgentName, resp))
+	// 交付物兜底（2026-08-15）：硬停后 set_deliverable 已不可能执行，DAG 团队
+	// 会被真实交付物闸门判失败。把总结内容合成为 deliverable StateDelta 挂在
+	// 总结事件上——与真实 set_deliverable 走完全相同的传播链路（agent 节点
+	// fallback delta → deliverableAwareOutputMapper → 图状态 MergeReducer）。
+	var opts []trpcevent.Option
+	if delta := a.buildFallbackDeliverableDelta(summary); delta != nil {
+		opts = append(opts, trpcevent.WithStateDelta(delta))
+		if a.lg != nil {
+			a.lg.Info("工具上限硬停兜底：已合成 deliverable 状态增量",
+				loggateway.StepID("graph.summary_fallback.deliverable"),
+				loggateway.Str("agent", inv.AgentName))
+		}
+	}
+	_ = trpcagent.EmitEvent(ctx, inv, out, trpcevent.NewResponseEvent(inv.InvocationID, inv.AgentName, resp, opts...))
+}
+
+// deliverableReservedSummaryKey 镜像 deliverable 包的保留 key "summary"
+// （该包常量为私有；此处用字面量避免 tools 层反向依赖）。
+const deliverableReservedSummaryKey = "summary"
+
+// buildFallbackDeliverableDelta 合成硬停 agent 未能写出的 deliverable 状态
+// 增量。形状：{"summary": <报告>}；当成员交付契约恰好声明一个 topic 时附加
+// {<topic>: {"summary": <报告>, "note": …}}。多 topic 契约不猜测归属（避免
+// 张冠李戴），只写 summary——契约 topic 缺失由完成时 advisory
+// （RequiredTopicsMissing）与质量门兜底，二者均为 fail-open。inner agent 无
+// set_deliverable 工具（deliverable 通道未开启）或总结为空时返回 nil。
+func (a *summaryFallbackAgent) buildFallbackDeliverableDelta(summary string) map[string][]byte {
+	topic, ok := fallbackDeliverableTopic(a.inner.Tools())
+	if !ok {
+		return nil
+	}
+	trimmed := strings.TrimSpace(summary)
+	if trimmed == "" {
+		return nil
+	}
+	m := map[string]any{deliverableReservedSummaryKey: trimmed}
+	if topic != "" {
+		// 文档载荷范式：content 承载全文（下游信封 artifacts 依此内联或
+		// 指针化），summary 供信封摘要聚合回退——兜底产出与正常产出同构。
+		m[topic] = map[string]any{
+			"summary": trimmed,
+			"format":  "markdown",
+			"content": trimmed,
+			"note":    "工具调用次数上限触发的兜底提交：内容基于已完成工具调用的最终总结，未经契约写入校验",
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	return map[string][]byte{biz.DeliverableStateKey: b}
+}
+
+// fallbackDeliverableTopic 在工具列表中查找 set_deliverable 并解析兜底交付物
+// 应归档的契约 topic。ok=false 表示工具不存在（deliverable 通道未开启，无需
+// 合成）；ok=true 且 topic="" 表示工具在但无契约或契约多 topic（不写 topic，
+// 只写保留 summary key）。
+func fallbackDeliverableTopic(tools []trpctool.Tool) (topic string, ok bool) {
+	for _, t := range tools {
+		if t == nil || t.Declaration() == nil || t.Declaration().Name != "set_deliverable" {
+			continue
+		}
+		ok = true
+		provider, has := t.(interface{ DeliverableContractTopics() []string })
+		if !has {
+			return "", true
+		}
+		if topics := provider.DeliverableContractTopics(); len(topics) == 1 {
+			return topics[0], true
+		}
+		return "", true
+	}
+	return "", false
 }
 
 // runSummaryCall issues ONE LLM call without tools so the agent run still ends

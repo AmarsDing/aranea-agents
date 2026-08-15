@@ -1073,6 +1073,30 @@ func TestDeliverableProtocolSuffix_ExplicitTopicInstruction(t *testing.T) {
 	}
 }
 
+// 交付协议范式化（长文交付场景）：summary 固定写法 + 500 字截断规则告知 +
+// 文档载荷固定结构 + 双样例。治"agent 把一句话或整篇正文写进 summary"。
+func TestDeliverableProtocolSuffix_ParadigmTemplateAndExamples(t *testing.T) {
+	u := NewSpiritTeamUsecase(nil, nil, nil, loggateway.NewNoop())
+	team := Team{
+		DagNodeID: "node-1",
+		Deliverables: DeliverableContractsToJSON([]DeliverableContract{
+			{Name: "article", Type: "document", Format: "markdown", Description: "科技评论文章"},
+		}),
+	}
+	suffix := u.DeliverableProtocolSuffix(team)
+	for _, want := range []string{
+		"500 字",                          // 截断规则必须告知生产方
+		"载荷：",                           // summary 固定写法的载荷清单行
+		`"content"`,                       // 文档载荷固定结构
+		"样例 1", "样例 2",                 // 短交付 + 长文交付双样例
+		`set_deliverable(topic="article"`, // 契约 topic 指引保持
+	} {
+		if !strings.Contains(suffix, want) {
+			t.Fatalf("suffix missing %q, got:\n%s", want, suffix)
+		}
+	}
+}
+
 // F7 (Phase 11): ListTeamDeliverableDigests collects per-terminal-team
 // deliverable summaries from DeliverableRefs envelopes (dual-mode tolerant
 // of legacy plain strings) so the synthesis trigger carries real outputs.

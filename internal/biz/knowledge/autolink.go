@@ -23,11 +23,35 @@ const (
 	autolinkDocListLimit  = 2000
 )
 
+// AutolinkTarget 一个可成链目标（P0 别名成链）：Canonical 是 wikilink 落点
+// （[[Canonical]]，取 rel_path basename），Keys 是参与提及匹配的全部显示名
+// （basename + title + aliases）。同一 Key 出现在多个目标即歧义，跳过成链。
+type AutolinkTarget struct {
+	Canonical string
+	Keys      []string
+}
+
 // AutolinkWikiMentions 把 content 中对 titles 的未链接提及包成 [[Title]]。
 // selfTitle 不被链接（避免文档链向自己）。歧义标题（多个文档同一 needle）跳过。
 // 返回新正文与替换次数；无变更时返回原文。
 func AutolinkWikiMentions(content, selfTitle string, titles []string) (string, int) {
-	if content == "" || len(titles) == 0 {
+	targets := make([]AutolinkTarget, 0, len(titles))
+	for _, t := range titles {
+		if t = strings.TrimSpace(t); t != "" {
+			targets = append(targets, AutolinkTarget{Canonical: t, Keys: []string{t}})
+		}
+	}
+	var self []string
+	if strings.TrimSpace(selfTitle) != "" {
+		self = []string{selfTitle}
+	}
+	return AutolinkWikiMentionsMulti(content, self, targets)
+}
+
+// AutolinkWikiMentionsMulti 多键成链：content 中命中目标任一 Key 的未链接提及
+// 包成 [[Canonical]]（别名提及链向正名）。selfKeys（自身全部显示名）不链。
+func AutolinkWikiMentionsMulti(content string, selfKeys []string, targets []AutolinkTarget) (string, int) {
+	if content == "" || len(targets) == 0 {
 		return content, 0
 	}
 	type cand struct {
@@ -35,45 +59,65 @@ func AutolinkWikiMentions(content, selfTitle string, titles []string) (string, i
 		title  string
 		ascii  bool
 	}
-	selfLower := strings.ToLower(strings.TrimSpace(selfTitle))
-	seen := map[string]int{}
-	titleFor := map[string]string{}
-	for _, t := range titles {
-		t = strings.TrimSpace(t)
-		if t == "" {
-			continue
-		}
-		n := utf8.RuneCountInString(t)
-		if n < autolinkMinRunes {
-			continue
-		}
-		ascii := isASCIITitle(t)
-		if ascii && n < autolinkASCIIMinRunes {
-			continue
-		}
-		key := strings.ToLower(t)
-		if selfLower != "" && key == selfLower {
-			continue
-		}
-		seen[key]++
-		if seen[key] == 1 {
-			titleFor[key] = t
+	selfSet := make(map[string]struct{}, len(selfKeys))
+	for _, s := range selfKeys {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
+			selfSet[s] = struct{}{}
 		}
 	}
-	cands := make([]cand, 0, len(seen))
-	for key, cnt := range seen {
-		if cnt > 1 {
-			continue // 歧义：两个文档同名，Obsidian 插件同样跳过
+	// key → 归属目标序号；跨目标同 key 即歧义（同目标内多键自然去重）。
+	keyTarget := make(map[string]int)
+	keyAmbiguous := make(map[string]bool)
+	keyRaw := make(map[string]string)
+	for ti, t := range targets {
+		canonical := strings.TrimSpace(t.Canonical)
+		if canonical == "" {
+			continue
 		}
-		t := titleFor[key]
-		cands = append(cands, cand{needle: key, title: t, ascii: isASCIITitle(t)})
+		seenInTarget := make(map[string]struct{}, len(t.Keys))
+		for _, k := range t.Keys {
+			k = strings.TrimSpace(k)
+			n := utf8.RuneCountInString(k)
+			if n < autolinkMinRunes {
+				continue
+			}
+			ascii := isASCIITitle(k)
+			if ascii && n < autolinkASCIIMinRunes {
+				continue
+			}
+			key := strings.ToLower(k)
+			if _, isSelf := selfSet[key]; isSelf {
+				continue
+			}
+			if _, dup := seenInTarget[key]; dup {
+				continue
+			}
+			seenInTarget[key] = struct{}{}
+			if prev, seen := keyTarget[key]; seen && prev != ti {
+				keyAmbiguous[key] = true
+				continue
+			}
+			keyTarget[key] = ti
+			if _, ok := keyRaw[key]; !ok {
+				keyRaw[key] = k
+			}
+		}
+	}
+	cands := make([]cand, 0, len(keyTarget))
+	for key, ti := range keyTarget {
+		if keyAmbiguous[key] {
+			continue
+		}
+		t := targets[ti]
+		cands = append(cands, cand{needle: key, title: strings.TrimSpace(t.Canonical), ascii: isASCIITitle(keyRaw[key])})
 	}
 	if len(cands) == 0 {
 		return content, 0
 	}
+	// 长 key 优先：防短 key 先占位遮蔽长 key（「协议」不抢「通信协议」的命中区间）。
 	sort.Slice(cands, func(i, j int) bool {
-		ri := utf8.RuneCountInString(cands[i].title)
-		rj := utf8.RuneCountInString(cands[j].title)
+		ri := utf8.RuneCountInString(cands[i].needle)
+		rj := utf8.RuneCountInString(cands[j].needle)
 		if ri != rj {
 			return ri > rj
 		}
@@ -122,13 +166,34 @@ func AutolinkWikiMentions(content, selfTitle string, titles []string) (string, i
 	return out, len(spans)
 }
 
-// AutolinkOutgoing 编译期成链：列出同库文档标题，把 content 中的未链接提及
-// 包成 wikilink，并返回替换次数。ListDocuments 失败或无标题时原样返回。
-// excludeDocID 对应文档的标题视为 self（不链向自己）；selfTitleHint 在文档
+// AutolinkOutgoing 编译期成链：把 content 中对同库文档的未链接提及包成 wikilink，
+// 并返回替换次数。别名成链（P0）：resolveIndex 接线时 needle 扩为
+// basename + title + aliases 多键；未接线降级为 basename 单键（旧行为）。
+// excludeDocID 对应文档的全部显示名视为 self（不链向自己）；selfTitleHint 在文档
 // 尚未入库时用 filename/source 充当 self。
 func (u *Usecase) AutolinkOutgoing(ctx context.Context, collectionID, excludeDocID, selfTitleHint, content string) (string, int) {
 	if u == nil || u.documents == nil || strings.TrimSpace(content) == "" || strings.TrimSpace(collectionID) == "" {
 		return content, 0
+	}
+	if u.resolveIndex != nil {
+		cands, err := u.resolveIndex.ListResolveCandidates(ctx, []string{collectionID})
+		if err != nil {
+			u.lg.Warn("自动成链列举解析候选失败，降级 basename 单键",
+				loggateway.StepID("knowledge.autolink.list_fail"),
+				loggateway.Str("collection_id", collectionID),
+				loggateway.Err(err),
+			)
+		} else {
+			out, n := autolinkFromCandidates(cands, excludeDocID, selfTitleHint, content)
+			if n > 0 {
+				u.lg.Info("自动成链已编译未链接提及",
+					loggateway.StepID("knowledge.autolink.applied"),
+					loggateway.Str("collection_id", collectionID),
+					loggateway.Int("replacements", n),
+				)
+			}
+			return out, n
+		}
 	}
 	docs, _, err := u.documents.ListDocuments(ctx, collectionID, autolinkDocListLimit, 0)
 	if err != nil {
@@ -162,6 +227,35 @@ func (u *Usecase) AutolinkOutgoing(ctx context.Context, collectionID, excludeDoc
 		)
 	}
 	return out, n
+}
+
+// autolinkFromCandidates 多键成链装配：候选文档的 basename 为 canonical，
+// basename/title/aliases 全键参与匹配；self 文档全键豁免。
+func autolinkFromCandidates(cands []ResolveDocCandidate, excludeDocID, selfTitleHint, content string) (string, int) {
+	selfKeys := []string{mentionNeedle("", selfTitleHint)}
+	targets := make([]AutolinkTarget, 0, len(cands))
+	for _, c := range cands {
+		canonical := mentionNeedle(c.RelPath, "")
+		if canonical == "" {
+			continue
+		}
+		keys := []string{canonical}
+		if t := strings.TrimSpace(c.Title); t != "" {
+			keys = append(keys, t)
+		}
+		for _, a := range c.Aliases {
+			if a = strings.TrimSpace(a); a != "" {
+				keys = append(keys, a)
+			}
+		}
+		if excludeDocID != "" && c.DocID == excludeDocID {
+			selfKeys = append(selfKeys, keys[1:]...)
+			selfKeys[0] = canonical // 以物化 basename 为准
+			continue
+		}
+		targets = append(targets, AutolinkTarget{Canonical: canonical, Keys: keys})
+	}
+	return AutolinkWikiMentionsMulti(content, selfKeys, targets)
 }
 
 // MaybeAutolinkOutgoing 写路径便捷封装：丢弃替换次数。

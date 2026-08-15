@@ -147,16 +147,31 @@ func seedReembedDocument(t *testing.T, repo *reembedRepo, id, colID, content, st
 
 // ── 测试用例 ─────────────────────────────────────────────────────────────────
 
-// 词法库（embedding_model 为空）无语义层，重嵌入无意义 → BAD_REQUEST。
-func TestReembedDocuments_LexicalCollectionRejected(t *testing.T) {
+// 词法库（embedding_model 为空）：受理纯词法重建（embedder=nil，只分块/FTS
+// 不产向量）——team 词法库写回词条 chunks 缺失时的自愈入口（2026-08-15 放宽，
+// 此前一律 BAD_REQUEST 导致词法库 chunks 永不修复）。
+func TestReembedDocuments_LexicalCollectionAccepted(t *testing.T) {
 	repo := newReembedRepo()
 	seedReembedCollection(t, repo, "c-lex", "ws-1", "")
+	seedReembedDocument(t, repo, "d-lex", "c-lex", "词法库词条正文：端口规划 8810。", "pending")
 	svc, _ := newReembedService(repo)
 
-	_, err := svc.ReembedDocuments(reembedTenantCtx(), &v1.ReembedDocumentsRequest{CollectionId: "c-lex"})
-	require.Error(t, err)
-	if !apierror.IsCode(err, apierror.CodeBadRequest) {
-		t.Fatalf("err = %v, want BAD_REQUEST", err)
+	resp, err := svc.ReembedDocuments(reembedTenantCtx(), &v1.ReembedDocumentsRequest{CollectionId: "c-lex"})
+	require.NoError(t, err)
+	if resp.GetAcceptedCount() != 1 {
+		t.Fatalf("accepted=%d, want 1", resp.GetAcceptedCount())
+	}
+	// 后台管线收敛：终态 indexed 且 chunks 已建；纯词法重建不产向量。
+	require.Eventually(t, func() bool {
+		d, getErr := repo.GetDocument(context.Background(), "d-lex")
+		return getErr == nil && d.Status == "indexed" && d.ChunkCount > 0
+	}, 3*time.Second, 10*time.Millisecond)
+	chunks := repo.insertedFor("d-lex")
+	if len(chunks) == 0 {
+		t.Fatal("InsertChunks 未捕获任何块")
+	}
+	if len(chunks[0].Embedding) != 0 {
+		t.Fatalf("lexical-only rebuild must not embed, got dim=%d", len(chunks[0].Embedding))
 	}
 }
 

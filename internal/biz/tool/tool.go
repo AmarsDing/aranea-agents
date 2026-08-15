@@ -16,6 +16,7 @@ const (
 	ToolKeyMCPBroker        = "mcp_broker"
 	ToolKeyKnowledgeSearch  = "knowledge_search"
 	ToolKeyKnowledgeReflect = "knowledge_reflect"
+	ToolKeyKnowledgeWrite   = "knowledge_write"
 	ToolKeyWebResearch      = "web_research"
 	ToolKeyKanban           = "kanban"
 	ToolKeyCallAgent        = "call_agent"

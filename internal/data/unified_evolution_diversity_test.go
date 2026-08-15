@@ -22,6 +22,7 @@ func setupUnifiedEvoRepo(t *testing.T) *UnifiedEvolutionRepo {
 		  id TEXT PRIMARY KEY,
 		  target_type TEXT NOT NULL,
 		  target_id TEXT NOT NULL,
+		  workspace_id TEXT NOT NULL DEFAULT '',
 		  action_type TEXT NOT NULL,
 		  trigger_source TEXT NOT NULL DEFAULT '',
 		  trigger_reason TEXT NOT NULL DEFAULT '',

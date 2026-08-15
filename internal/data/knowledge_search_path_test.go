@@ -159,6 +159,149 @@ func TestKnowledgeRepo_SearchChunksBM25_PathPrefix(t *testing.T) {
 	assertChunkIDs(t, got, "k4")
 }
 
+// ── P0 词条优先（2026-08-15 评审修订）：写回日记流水默认不进检索 ────────────
+// ExcludePathPrefixes 按 rel_path 字面前缀排除整篇文档的全部 chunks：
+// 词条页（entries/）照常可检索，inbox/writeback-* 流水只留 provenance。
+
+func seedExcludePathChunks(t *testing.T, repo *knowledgeRepo) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "c1", Name: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	docs := []struct {
+		id, relPath, chunkID, content string
+		emb                           []float32
+	}{
+		{"e1", "entries/灰度发布.md", "k1", "apple 灰度词条", []float32{1, 0, 0}},
+		{"w1", "inbox/writeback-2026-08-15.md", "k2", "apple 日记流水一", []float32{0.9, 0.1, 0}},
+		{"w2", "inbox/writeback-2026-08-14.md", "k3", "apple 日记流水二", []float32{0.8, 0.2, 0}},
+		{"n1", "notes/其他笔记.md", "k4", "apple 普通笔记", []float32{0.7, 0.3, 0}},
+	}
+	for _, d := range docs {
+		if _, err := repo.CreateDocument(ctx, biz.KnowledgeDocument{
+			ID: d.id, CollectionID: "c1", RelPath: d.relPath, Source: d.relPath, Status: "indexed",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.InsertChunks(ctx, []biz.KnowledgeChunk{{
+			ID: d.chunkID, DocID: d.id, CollectionID: "c1", Content: d.content, Embedding: d.emb,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestKnowledgeRepo_SearchChunks_ExcludePathPrefixes(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	seedExcludePathChunks(t, repo)
+	ctx := context.Background()
+	vec := []float32{1, 0, 0}
+	excl := []string{"inbox/writeback-"}
+
+	// dense：日记流水被排除，词条与普通笔记保留。
+	got, err := repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{
+		CollectionID: "c1", TopK: 10, ExcludePathPrefixes: excl,
+	}, vec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got, "k1", "k4")
+
+	// BM25 同语义。
+	got, err = repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{
+		CollectionID: "c1", Query: "apple", TopK: 10, ExcludePathPrefixes: excl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got, "k1", "k4")
+
+	// 空排除列表 = 全库（回归保护）。
+	got, err = repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 10}, vec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got, "k1", "k2", "k3", "k4")
+
+	// 与 PathPrefix 组合：entries 范围内再排除流水（流水本不在范围内，结果不变）。
+	got, err = repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{
+		CollectionID: "c1", TopK: 10, PathPrefix: "entries", ExcludePathPrefixes: excl,
+	}, vec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertChunkIDs(t, got, "k1")
+}
+
+// ── P1 recency 轻衰减（2026-08-15 评审修订）：score × exp(-λ·age)，
+// 时间源 = knowledge_documents.updated_at（不用 chunks.created_at） ──────────
+
+func TestKnowledgeRepo_SearchChunks_RecencyDecay(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	ctx := context.Background()
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "c1", Name: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	// 两个 chunk 内容/向量完全相同，只有所属文档的 updated_at 不同。
+	for _, d := range []struct{ id, relPath, chunkID string }{
+		{"d-fresh", "entries/新词条.md", "k-fresh"},
+		{"d-stale", "entries/旧词条.md", "k-stale"},
+	} {
+		if _, err := repo.CreateDocument(ctx, biz.KnowledgeDocument{
+			ID: d.id, CollectionID: "c1", RelPath: d.relPath, Source: d.relPath, Status: "indexed",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.InsertChunks(ctx, []biz.KnowledgeChunk{{
+			ID: d.chunkID, DocID: d.id, CollectionID: "c1", Content: "apple 值班制度", Embedding: []float32{1, 0, 0},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 旧文档 updated_at 拨回 3 年前（衰减后 ≈ ×0.52）。
+	if _, err := repo.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents SET updated_at = now() - interval '3 years' WHERE id = 'd-stale'`); err != nil {
+		t.Fatal(err)
+	}
+
+	// dense：同语义分下新文档排前，旧文档仍返回（轻衰减非过滤）。
+	got, err := repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 10}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d chunks, want 2", len(got))
+	}
+	if got[0].ID != "k-fresh" {
+		t.Fatalf("fresh doc must rank first: %+v", got)
+	}
+	var freshScore, staleScore float32
+	for _, ch := range got {
+		if ch.ID == "k-fresh" {
+			freshScore = ch.Score
+		} else {
+			staleScore = ch.Score
+		}
+	}
+	if staleScore >= freshScore {
+		t.Fatalf("decay not applied: fresh=%v stale=%v", freshScore, staleScore)
+	}
+	// 3 年 ≈ 0.52 倍，容差带 0.4~0.7 防时钟漂移。
+	if r := staleScore / freshScore; r < 0.4 || r > 0.7 {
+		t.Fatalf("decay ratio = %v, want ~0.52", r)
+	}
+
+	// BM25 同语义。
+	got, err = repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", Query: "值班制度", TopK: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "k-fresh" {
+		t.Fatalf("BM25 fresh must rank first: %+v", got)
+	}
+}
+
 // ── 2026-08-10 e2e 事故根修：中文短查询词法降级失效 ─────────────────────────
 // similarity(q, content) 的分母是双方 trigram 总数：中文 2-4 字短查询对长文档
 // 相似度被稀释到 0.3 阈值以下（实测 "斑马线"=0.064），`%` 永不命中，无语义层
