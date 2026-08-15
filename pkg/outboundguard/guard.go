@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,29 @@ const (
 	maxRedirects   = 10
 	defaultTimeout = 15 * time.Second
 )
+
+// allowHostsEnv is an escape hatch for legitimately private outbound targets
+// (e.g. host.docker.internal when a Docker-deployed aranea must reach a
+// host-side MCP server). Comma-separated, exact hostname match only — no
+// suffix/wildcard. Default empty = no behavior change.
+const allowHostsEnv = "ARANEA_OUTBOUND_ALLOW_HOSTS"
+
+// isExplicitlyAllowed reports whether host appears verbatim (case-insensitive)
+// in ARANEA_OUTBOUND_ALLOW_HOSTS. Exact match after trim/lower; a listed host
+// bypasses ALL subsequent block rules (localhost/.internal/private-IP), so
+// operators must only list hosts they fully control.
+func isExplicitlyAllowed(host string) bool {
+	raw := strings.TrimSpace(os.Getenv(allowHostsEnv))
+	if raw == "" {
+		return false
+	}
+	for _, h := range strings.Split(raw, ",") {
+		if strings.EqualFold(strings.TrimSpace(h), host) {
+			return true
+		}
+	}
+	return false
+}
 
 // ValidateURL checks that rawURL:
 //   - is a well-formed http/https URL
@@ -66,6 +90,9 @@ func ValidatePublicHost(host string) error {
 	host = strings.TrimSpace(strings.ToLower(host))
 	if host == "" {
 		return fmt.Errorf("outboundguard: host is required")
+	}
+	if isExplicitlyAllowed(host) {
+		return nil
 	}
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return fmt.Errorf("outboundguard: localhost is not allowed")
@@ -173,6 +200,9 @@ func (v *cachedValidator) validateHost(host string) error {
 	host = strings.TrimSpace(strings.ToLower(host))
 	if host == "" {
 		return fmt.Errorf("outboundguard: host is required")
+	}
+	if isExplicitlyAllowed(host) {
+		return nil
 	}
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return fmt.Errorf("outboundguard: localhost is not allowed")

@@ -55,6 +55,44 @@ func TestValidateURL_LocalhostSubdomain(t *testing.T) {
 	}
 }
 
+func TestValidateURL_ExplicitAllowHosts(t *testing.T) {
+	t.Setenv("ARANEA_OUTBOUND_ALLOW_HOSTS", " host.docker.internal , mcp-host.local ")
+	// 精确命中的主机放行（即便 *.internal / 私网解析）
+	if err := outboundguard.ValidateURL("http://host.docker.internal:8951/sse"); err != nil {
+		t.Errorf("ValidateURL(host.docker.internal) with allowlist = %v, want nil", err)
+	}
+	// 大小写不敏感
+	if err := outboundguard.ValidateURL("http://HOST.DOCKER.INTERNAL/"); err != nil {
+		t.Errorf("ValidateURL(HOST.DOCKER.INTERNAL) with allowlist = %v, want nil", err)
+	}
+	// 未列出的 *.internal 仍阻断（无后缀通配）
+	if err := outboundguard.ValidateURL("http://evil.docker.internal/"); err == nil {
+		t.Error("ValidateURL(evil.docker.internal) should be blocked (no wildcard)")
+	}
+	if err := outboundguard.ValidateURL("http://host.docker.internal.evil.com/"); err == nil {
+		t.Error("ValidateURL(host.docker.internal.evil.com) should be blocked")
+	}
+	// 字面量私网 IP 不受主机名清单影响
+	if err := outboundguard.ValidateURL("http://192.168.1.1/"); err == nil {
+		t.Error("ValidateURL(192.168.1.1) should still be blocked")
+	}
+	// 缓存校验器同口径
+	v := outboundguard.NewCachedValidator(0)
+	if err := v.ValidateURL("http://mcp-host.local:8951/sse"); err != nil {
+		t.Errorf("cachedValidator.ValidateURL(mcp-host.local) with allowlist = %v, want nil", err)
+	}
+	if err := v.ValidateURL("http://other.internal/"); err == nil {
+		t.Error("cachedValidator.ValidateURL(other.internal) should be blocked")
+	}
+}
+
+func TestValidateURL_AllowHostsDefaultOff(t *testing.T) {
+	// 环境变量缺省时行为不变：*.internal 依旧阻断
+	if err := outboundguard.ValidateURL("http://host.docker.internal:8951/sse"); err == nil {
+		t.Error("ValidateURL(host.docker.internal) without allowlist should be blocked")
+	}
+}
+
 func TestNewClient_BlocksRedirectToPrivate(t *testing.T) {
 	// Set up a server that redirects to a private address
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

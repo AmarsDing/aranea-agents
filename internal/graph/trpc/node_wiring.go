@@ -137,13 +137,17 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, cfg Grap
 		if err != nil {
 			return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q agent %q: %v", n.ID, ref, err))
 		}
+		// 节点 instruction 必须随 agent 节点送达（框架 AddAgentNode 不传递，
+		// 仅 LLM 节点使用 instruction）；包装注入到用户消息头部，保持系统
+		// 提示前缀稳定以命中 LLM/构建缓存。
+		sub = wrapAgentNodeInstruction(sub, n.Instruction)
 		extras := []trpcagent.Agent{sub}
 		if fb := strings.TrimSpace(n.FallbackAgent); fb != "" {
 			fallback, ferr := deps.Agents.ResolveAgent(ctx, fb)
 			if ferr != nil {
 				return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("graph: node %q fallback agent %q: %v", n.ID, fb, ferr))
 			}
-			extras = append(extras, fallback)
+			extras = append(extras, wrapAgentNodeInstruction(fallback, n.Instruction))
 		}
 		sg.AddAgentNode(n.ID, opts...)
 		return extras, nil

@@ -64,6 +64,10 @@ services:
       TWIN_GATEWAY_URL: "http://host.docker.internal:8000"
       TWIN_API_KEY: "twk_d2b2d33fb9372478f0256e182f71a1ea167a17b6cf4fee2705b9549f5dec4d83"
       GNS3_AGENT_URL: "http://host.docker.internal:18081"
+      # outboundguard 精确主机放行（AR-SSRF 例外）：容器→宿主机合法私网目标，
+      # 当前用于宿主机 Recordly MCP（host.docker.internal:8951）。精确匹配无通配，
+      # 新增主机须逐个登记并保持与 app 部署包一致
+      ARANEA_OUTBOUND_ALLOW_HOSTS: "host.docker.internal"
     depends_on:
       postgres:
         condition: service_healthy
