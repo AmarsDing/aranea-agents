@@ -79,6 +79,45 @@ func grantTestCtx(sessionID string, reply serviceawaitreply.ReplyFunc) context.C
 	return ctx
 }
 
+// TestToolConfirmGate_ConfirmationMapSkipsPersistedGrants verifies the
+// declaration-annotation tier: tools with a persisted (agentID, toolKey)
+// grant must NOT be annotated "requires confirmation", so unattended graph
+// runs don't see the annotation and stall waiting for approval. Tools
+// without a grant keep the annotation.
+func TestToolConfirmGate_ConfirmationMapSkipsPersistedGrants(t *testing.T) {
+	store := newFakeToolGrantStore()
+	if err := store.CreateToolGrant(context.Background(), biztool.ToolGrant{AgentID: "agent-1", ToolKey: "bash"}); err != nil {
+		t.Fatal(err)
+	}
+	gate := &toolConfirmGate{
+		catalog: map[string]confirmCatalogEntry{
+			"bash":       {requiresConfirm: true},
+			"shell_exec": {requiresConfirm: true},
+		},
+		sessionGrants: newToolGrantStore(time.Now),
+		agentID:       "agent-1",
+		persistedGrant: func(_ context.Context, agentID, toolKey string) bool {
+			has, _ := store.HasToolGrant(context.Background(), agentID, toolKey)
+			return has
+		},
+	}
+	m := gate.confirmationMap(context.Background())
+	if m["bash"] {
+		t.Fatal("bash has a persisted grant and must not be annotated")
+	}
+	if !m["shell_exec"] {
+		t.Fatal("shell_exec has no grant and must stay annotated")
+	}
+
+	// A different agent (no grants) sees both annotations.
+	gate2 := *gate
+	gate2.agentID = "agent-2"
+	m2 := gate2.confirmationMap(context.Background())
+	if !m2["bash"] || !m2["shell_exec"] {
+		t.Fatalf("agent-2 must see both annotations, got %v", m2)
+	}
+}
+
 func bashToolArgs(callID string) *trpctool.BeforeToolArgs {
 	return &trpctool.BeforeToolArgs{ToolName: "bash", ToolCallID: callID}
 }

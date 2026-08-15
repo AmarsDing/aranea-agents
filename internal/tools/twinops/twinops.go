@@ -385,16 +385,117 @@ func newLineEventsTool(cfg Config) trpctool.CallableTool {
 	)
 }
 
+// extractListItems 从网关分页响应中取 items；上游 ok=false 或结构不符时返回 false。
+func extractListItems(res jsonResult) ([]any, bool) {
+	m, ok := res.Result.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	if okFlag, exists := m["ok"].(bool); exists && !okFlag {
+		return nil, false
+	}
+	items, _ := m["items"].([]any)
+	return items, true
+}
+
+func jsonNumber(v any) float64 {
+	if f, ok := v.(float64); ok {
+		return f
+	}
+	return 0
+}
+
+// newDeviceSearchTool 搜索设备/资产。monitor-devices 从表无名称字段且网关
+// List 不支持 keyword，故拉取资产主表 + 设备从表本地拼接过滤（2026-08-15
+// P3 复盘：诊断岗 8 次搜索零贡献的根修）。
 func newDeviceSearchTool(cfg Config) trpctool.CallableTool {
 	return trpcfunction.NewFunctionTool(func(ctx context.Context, in deviceSearchInput) (jsonResult, error) {
-		q := url.Values{}
-		setQ(q, "keyword", in.Keyword)
-		setQI(q, "page", in.Page)
-		setQI(q, "pageSize", in.PageSize)
-		return cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-devices", q)
+		big := url.Values{}
+		big.Set("page", "1")
+		big.Set("pageSize", "500")
+		assetsRes, err := cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-assets", big)
+		if err != nil {
+			return assetsRes, err
+		}
+		assets, ok := extractListItems(assetsRes)
+		if !ok {
+			return assetsRes, nil // 上游结构化错误原样透传
+		}
+		devsRes, err := cfg.gatewayGet(ctx, "/api/v1/monitor/monitor-devices", big)
+		if err != nil {
+			return devsRes, err
+		}
+		devs, ok := extractListItems(devsRes)
+		if !ok {
+			return devsRes, nil
+		}
+		// assetId → 设备监控配置
+		type devInfo struct {
+			deviceID      float64
+			monitorStatus float64
+			internal      float64
+		}
+		devByAsset := make(map[float64]devInfo, len(devs))
+		for _, d := range devs {
+			dm, ok := d.(map[string]any)
+			if !ok {
+				continue
+			}
+			devByAsset[jsonNumber(dm["assetId"])] = devInfo{
+				deviceID:      jsonNumber(dm["id"]),
+				monitorStatus: jsonNumber(dm["monitorStatus"]),
+				internal:      jsonNumber(dm["internal"]),
+			}
+		}
+		kw := strings.ToLower(strings.TrimSpace(in.Keyword))
+		matched := make([]map[string]any, 0, len(assets))
+		for _, a := range assets {
+			am, ok := a.(map[string]any)
+			if !ok {
+				continue
+			}
+			haystack := strings.ToLower(fmt.Sprintf("%v %v %v %v",
+				am["assetCode"], am["name"], am["alias"], am["location"]))
+			if kw != "" && !strings.Contains(haystack, kw) {
+				continue
+			}
+			item := map[string]any{
+				"asset_id":   am["id"],
+				"asset_code": am["assetCode"],
+				"name":       am["name"],
+				"location":   am["location"],
+			}
+			if di, exists := devByAsset[jsonNumber(am["id"])]; exists {
+				item["device_id"] = di.deviceID
+				item["monitor_status"] = di.monitorStatus
+				item["collect_interval_sec"] = di.internal
+			}
+			matched = append(matched, item)
+		}
+		// 本地分页
+		page, pageSize := in.Page, in.PageSize
+		if page <= 0 {
+			page = 1
+		}
+		if pageSize <= 0 {
+			pageSize = 20
+		}
+		total := len(matched)
+		start := (page - 1) * pageSize
+		if start > total {
+			start = total
+		}
+		end := start + pageSize
+		if end > total {
+			end = total
+		}
+		return jsonResult{Result: map[string]any{
+			"ok": true, "total": total, "page": page, "page_size": pageSize,
+			"items": matched[start:end],
+		}}, nil
 	},
 		trpcfunction.WithName("twin_device_search"),
-		trpcfunction.WithDescription("按关键字搜索 TwinMonitor 监控设备/资产列表（名称/IP/资产编号），返回设备摘要与 device_id，是诊断入手第一步。"),
+		trpcfunction.WithDescription("按关键字搜索 TwinMonitor 监控设备/资产列表（名称/IP/资产编号），返回设备摘要（含名称、资产编号、device_id），是诊断入手第一步。"),
 	)
 }
 
@@ -403,10 +504,40 @@ func newDeviceGetTool(cfg Config) trpctool.CallableTool {
 		if in.DeviceID <= 0 {
 			return jsonResult{}, fmt.Errorf("device_id 必填且必须为正整数")
 		}
-		return cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/monitor-devices/%d", in.DeviceID), nil)
+		devRes, err := cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/monitor-devices/%d", in.DeviceID), nil)
+		if err != nil {
+			return devRes, err
+		}
+		dm, ok := devRes.Result.(map[string]any)
+		if !ok {
+			return devRes, nil
+		}
+		if okFlag, exists := dm["ok"].(bool); exists && !okFlag {
+			return devRes, nil
+		}
+		// 拼接资产主表名称/编号，避免匿名配置（与 search 同源根修）
+		assetID := int64(jsonNumber(dm["assetId"]))
+		if assetID <= 0 {
+			return devRes, nil
+		}
+		assetRes, err := cfg.gatewayGet(ctx, fmt.Sprintf("/api/v1/monitor/monitor-assets/%d", assetID), nil)
+		if err != nil {
+			return devRes, nil // 设备数据已可用，资产详情失败不阻塞
+		}
+		am, ok := assetRes.Result.(map[string]any)
+		if !ok {
+			return devRes, nil
+		}
+		if okFlag, exists := am["ok"].(bool); exists && !okFlag {
+			return devRes, nil
+		}
+		dm["asset_code"] = am["assetCode"]
+		dm["asset_name"] = am["name"]
+		dm["asset_location"] = am["location"]
+		return jsonResult{Result: dm}, nil
 	},
 		trpcfunction.WithName("twin_device_get"),
-		trpcfunction.WithDescription("获取设备/资产详情画像（监控状态、采集间隔、系统信息等）。"),
+		trpcfunction.WithDescription("获取设备/资产详情画像（名称、资产编号、监控状态、采集间隔、系统信息等）。"),
 	)
 }
 

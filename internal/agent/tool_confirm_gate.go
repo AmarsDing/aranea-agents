@@ -48,6 +48,9 @@ type toolConfirmGate struct {
 	// persistedGrant queries the DB-backed "always allow" grant tier.
 	// A nil function disables the tier (treated as no grant).
 	persistedGrant func(ctx context.Context, agentID, toolKey string) bool
+	// agentID scopes persisted-grant lookups (declaration annotation filter
+	// and execution gate share the same (agentID, toolKey) grant key).
+	agentID string
 	// agentKey is the runtime AgentKey used by computer-use sessions (not Agent.ID).
 	agentKey string
 	// injectionSuspected reports whether Observe marked this AgentKey as
@@ -141,6 +144,7 @@ func buildToolConfirmGate(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		hasPlugin:     hasPlugin,
 		lg:            deps.Logger(),
 		sessionGrants: defaultToolGrantStore,
+		agentID:       ag.ID,
 		agentKey:      ag.AgentKey,
 	}
 	if deps.ToolUC != nil {
@@ -354,7 +358,10 @@ func (g *toolConfirmGate) pluginAllowWithoutChannel(toolName string, args []byte
 }
 
 // confirmationMap returns tool keys to annotate on declarations (static keys only).
-func (g *toolConfirmGate) confirmationMap() map[string]bool {
+// 已获持久化预授权（tool_grants）的键不再标注「需人工确认」——与执行期
+// decide() 的 grant 放行保持一致，避免无人值守场景 LLM 见到确认标注后
+// 空等审批（2026-08-15 P3 复盘根修）。
+func (g *toolConfirmGate) confirmationMap(ctx context.Context) map[string]bool {
 	if g == nil {
 		return nil
 	}
@@ -369,6 +376,13 @@ func (g *toolConfirmGate) confirmationMap() map[string]bool {
 			key = strings.TrimSpace(key)
 			if key != "" {
 				out[key] = true
+			}
+		}
+	}
+	if g.persistedGrant != nil && g.agentID != "" {
+		for key := range out {
+			if g.persistedGrant(ctx, g.agentID, key) {
+				delete(out, key)
 			}
 		}
 	}

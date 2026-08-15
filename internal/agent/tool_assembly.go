@@ -134,6 +134,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	// 按 effective keys 白名单逐个挂载；连接配置来自环境变量
 	// （TWIN_GATEWAY_URL / TWIN_API_KEY / GNS3_AGENT_URL）。
 	cfg.CustomTools = append(cfg.CustomTools, twinops.EnabledTools(eff, twinops.ConfigFromEnv())...)
+	// OfficeCLI 办公文档工具集（officecli_read/write/render）：按 effective keys
+	// 白名单挂载；文件操作围栏到 Agent 工作区根，渲染产物落盘会话制品。
+	cfg.CustomTools = append(cfg.CustomTools, resolveOfficeCLITools(ctx, ag, deps, eff)...)
 
 	if kanbanpkg.Enabled() {
 		if deps.KanbanBridge != nil {
@@ -207,7 +210,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	lg.Info("工具构建完成", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("tool_count", toolCount))
 	phaseStart = time.Now()
 	if plan.gate != nil {
-		tooltrpc.ApplyConfirmationPolicy(ts, plan.gate.confirmationMap())
+		tooltrpc.ApplyConfirmationPolicy(ts, plan.gate.confirmationMap(ctx))
 	}
 	gateMs := time.Since(phaseStart).Milliseconds()
 	// P0-G3 + P0-D + P2-E + P2-02: 应用工具装饰器（执行超时 + 结果预算 + 确定性缓存 + 流式预算）。

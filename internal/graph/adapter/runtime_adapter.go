@@ -588,6 +588,10 @@ func (f *trpcGraphBuilderFactory) resolversFor(cfg biz.GraphBuildConfig) graphtr
 }
 
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, spiritSessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
+	// 参数化 critic_loop ref（critic_loop[@t][#maxIter]%nodeID）按 cfg 注册——
+	// 与 BuildTeamGraphRoot 对齐，否则独立图（graph_definitions）声明条件边时
+	// ResolveBuildConfig 报 cond_func_not_found（2026-08-15 故障闭环图复盘根修）。
+	EnsureCriticLoopCondFuncs(f.registry, cfg, f.lg)
 	resolvers := f.resolversFor(cfg)
 	// Use the NodeAgents variant so the GraphAgent can resolve FindSubAgent
 	// calls by node ID (e.g. "member-1") rather than by agent Info().Name
@@ -687,6 +691,8 @@ func validationResultToBiz(vr *graphtrpc.ValidationResult) *biz.GraphValidationR
 }
 
 func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphValidationResult, error) {
+	// 同 buildRuntime：先注册 cfg 中的参数化 critic_loop ref，校验器才能解析。
+	EnsureCriticLoopCondFuncs(f.registry, cfg, f.lg)
 	checker := graphtrpc.AgentExistenceChecker(f.agentChecker)
 	return validationResultToBiz(graphtrpc.ValidateGraph(ctx, &cfg, checker, f.registry)), nil
 }

@@ -326,6 +326,11 @@ var ddlMigrations = []ddlMigration{
 	// twinops 的情形）→ effective keys 查无工具行，工具永不装配。种子函数幂等
 	// （ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
 	{Version: 20261218, Name: "builtin_platform_tools_knowledge_write_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261219 builtin_platform_tools_officecli_reseed（OfficeCLI 办公工具集）：
+	// officecli_read/write/render 种子在 20260610 等已应用的存量库中不会插入
+	// （同 20261216 twinops 的情形）→ effective keys 查无工具行，工具永不装配。
+	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
+	{Version: 20261219, Name: "builtin_platform_tools_officecli_reseed", Func: ddlBuiltinPlatformTools},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

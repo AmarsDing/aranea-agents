@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    将 aranea.png 转换为 256x256 icon.png + 多尺寸 icon.ico。
+    将 aranea 图标转换为 512x512 icon.png + 多尺寸 icon.ico。
 
 .DESCRIPTION
     使用 ImageMagick (magick.exe) 将源 PNG 转换为：
-      - icon.png: 256x256 PNG，白色背景填充保持纵横比
+      - icon.png: 512x512 PNG，保留透明圆角（背景不填充）
       - icon.ico: 多尺寸 ICO（256/128/64/48/32/16），Windows 任务栏/桌面快捷方式友好
 
     优先使用 ImageMagick；若未安装则报错（fallback 见文末注释）。
 
 .PARAMETER Source
-    源 PNG 文件路径（默认：docs/image/aranea.png）
+    源 PNG 文件路径（默认：docs/image/icons/aranea_dark_512.png，由 docs/image/ 图标管线生成）
 
 .PARAMETER OutDir
     输出目录（默认：web/src-tauri/icons）
@@ -24,7 +24,7 @@
     但生成质量较低（详见 git 历史中早期版本）。
 #>
 param(
-    [string]$Source = "$PSScriptRoot\..\docs\image\aranea.png",
+    [string]$Source = "$PSScriptRoot\..\docs\image\icons\aranea_dark_512.png",
     [string]$OutDir = "$PSScriptRoot\..\web\src-tauri\icons"
 )
 
@@ -52,14 +52,14 @@ Write-Host "[convert-icon] Source: $Source" -ForegroundColor Cyan
 Write-Host "[convert-icon] OutDir: $OutDir" -ForegroundColor Cyan
 Write-Host "[convert-icon] Magick:  $magick" -ForegroundColor Cyan
 
-# ─── 1. 生成 256x256 icon.png（保持纵横比，白色背景填充）───────────
-& $magick $Source -resize 256x256 -background white -gravity center -extent 256x256 $png
+# ─── 1. 生成 512x512 icon.png（保持纵横比，透明背景保留圆角）──────
+& $magick $Source -resize 512x512 -background none -gravity center -extent 512x512 $png
 if ($LASTEXITCODE -ne 0) { throw "magick PNG conversion failed (exit $LASTEXITCODE)" }
 $pngSize = (Get-Item $png).Length
-Write-Host "  [OK] icon.png: 256x256 ($pngSize bytes)" -ForegroundColor Green
+Write-Host "  [OK] icon.png: 512x512 ($pngSize bytes)" -ForegroundColor Green
 
 # ─── 2. 生成多尺寸 icon.ico ──────────────────────────────────────
-& $magick $Source -resize 256x256 -background white -gravity center -extent 256x256 `
+& $magick $Source -resize 256x256 -background none -gravity center -extent 256x256 `
     -define icon:auto-resize=256,128,64,48,32,16 $ico
 if ($LASTEXITCODE -ne 0) { throw "magick ICO conversion failed (exit $LASTEXITCODE)" }
 $icoSize = (Get-Item $ico).Length
