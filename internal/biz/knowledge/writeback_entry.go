@@ -233,7 +233,9 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 		if block == "" {
 			continue
 		}
-		if id := strings.TrimSpace(f.FactID); id != "" {
+		// 有真实 fact_id 才走整段替换（同 ID 再写入更新旧段）；无 ID 仅靠陈述去重，
+		// 避免多条无 ID 事实共用占位键互相顶替（2026-08-15 修复）。
+		if id := strings.TrimSpace(f.FactID); id != "" && id != "stmt" {
 			marker := "fact_id: `" + id + "`"
 			if nb, ok := replaceH2BlockContaining(body, marker, block); ok {
 				// 替换语义走正文：同一 fact_id 再写入改旧段；内容未变（幂等重放）

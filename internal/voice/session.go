@@ -630,6 +630,12 @@ func (s *Session) stopSpeculationLocked() {
 func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
+		// 空终稿静默丢弃会导致「用户说了没反应」无从排查（2026-08-15 事故：
+		// 判停参数缺失时短句终稿丢失，无任何日志）。记 Warn 留痕。
+		s.lg.Warn("voice asr final empty, dropped",
+			loggateway.StepID("voice.asr.empty_final"),
+			loggateway.SessionID(s.sessionID),
+			loggateway.Int("duration_ms", ev.DurationMs))
 		return
 	}
 	// C2：终稿即语句边界，停止 partial 稳定追踪（投机槽由 resolve/取代/TTL 清理）。
@@ -680,8 +686,16 @@ func (s *Session) handleASRFinal(ev biz.ASREvent) {
 	}
 	s.mu.Lock()
 	if _, err := Transition(s.state, EvASRFinal); err != nil {
+		st := s.state
 		s.mu.Unlock()
-		return // 非 listening 态的残余 final（如 cancel 后），忽略
+		// 非 listening 态的残余 final（如 cancel 后）忽略，但记 Warn——
+		// 终稿到达时状态异常是「说了没反应」的另一隐形路径（2026-08-15）。
+		s.lg.Warn("voice asr final rejected by state, dropped",
+			loggateway.StepID("voice.asr.state_reject"),
+			loggateway.SessionID(s.sessionID),
+			loggateway.Str("state", string(st)),
+			loggateway.Int("text_len", utf8.RuneCountInString(text)))
+		return
 	}
 	s.state = StateThinking
 	s.pendingTurns++

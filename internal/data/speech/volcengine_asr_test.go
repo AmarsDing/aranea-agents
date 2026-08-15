@@ -119,6 +119,11 @@ func TestASROpenSendsFullClientRequest(t *testing.T) {
 	audio := body["audio"].(map[string]any)
 	require.Equal(t, "pcm", audio["format"])
 	require.Equal(t, float64(16000), audio["rate"])
+	// 判停参数（2026-08-15 延迟事故修复）：缺失时 SAUC 走默认语义分句 +
+	// force_to_speech_time 默认 10000ms 地板，短句终稿被拖 2.3s~15s。
+	req := body["request"].(map[string]any)
+	require.Equal(t, float64(800), req["end_window_size"])
+	require.Equal(t, float64(0), req["force_to_speech_time"])
 }
 
 // readRequestCorpusHotwords 从 full client request 帧提取 request.corpus.context

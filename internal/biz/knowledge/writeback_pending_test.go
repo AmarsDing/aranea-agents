@@ -116,3 +116,76 @@ func TestUsecase_EnqueueAndApplyPending(t *testing.T) {
 		t.Fatalf("pending leftover=%+v", left)
 	}
 }
+
+// 回归：无 fact_id 的低置信事实（auto_memory 降级路径）确认后不互相顶替/丢失。
+// 两条不同陈述都应落日记，且词条页各自独立。
+func TestUsecase_EnqueueAndApplyPending_NoFactID_NoOverwrite(t *testing.T) {
+	m := noOpMockRepo()
+	docs := map[string]Document{}
+	m.collListFn = func(_ context.Context, ws string, _, _ int) ([]Collection, int, error) {
+		return []Collection{{ID: "team-1", Name: WriteBackCollectionName, VaultBackend: VaultBackendTeam, Workspace: ws}}, 1, nil
+	}
+	m.collGetFn = func(_ context.Context, id string) (Collection, error) {
+		return Collection{ID: id, Name: WriteBackCollectionName, VaultBackend: VaultBackendTeam, Workspace: "ws-1"}, nil
+	}
+	m.docGetByRelFn = func(_ context.Context, _, rel string) (Document, error) {
+		for _, d := range docs {
+			if d.RelPath == rel {
+				return d, nil
+			}
+		}
+		return Document{}, apierror.NotFound("KNOWLEDGE", "missing")
+	}
+	m.docCreateFn = func(_ context.Context, d Document) (Document, error) {
+		d.ID = "id-" + d.RelPath
+		docs[d.ID] = d
+		return d, nil
+	}
+	m.docContentFn = func(_ context.Context, id, contentText string, _ bool) error {
+		d := docs[id]
+		d.ContentText = contentText
+		docs[id] = d
+		return nil
+	}
+	u := NewUsecaseFromRepo(m)
+
+	// 两条无 fact_id 的待确认事实（auto_memory 降级路径特征）。
+	in := WriteBackInput{
+		Workspace: "ws-1", SessionID: "s1", AgentID: "ag-1",
+		Facts: []WriteBackFact{
+			{Statement: "发布窗口固定在周四下午", FactKind: "decision", Confidence: 0.72},
+			{Statement: "值班改为每 12 小时轮换", FactKind: "constraint", Confidence: 0.70},
+		},
+	}
+	if _, err := u.EnqueueWriteBackReview(context.Background(), in); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	items, err := u.ListPendingWriteBack(context.Background(), "team-1")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("pending items = %d, want 2", len(items))
+	}
+	// 两条都无 fact_id：确认全部 → 都应落日记，不得顶替。
+	if _, err := u.ApplyPendingWriteBack(context.Background(), "team-1", nil); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	dayRel := WriteBackRelPath(time.Now())
+	var daily Document
+	for _, d := range docs {
+		if d.RelPath == dayRel {
+			daily = d
+		}
+	}
+	if !strings.Contains(daily.ContentText, "发布窗口固定在周四下午") {
+		t.Fatalf("first fact missing in diary: %q", daily.ContentText)
+	}
+	if !strings.Contains(daily.ContentText, "值班改为每 12 小时轮换") {
+		t.Fatalf("second fact missing in diary (overwritten by first?): %q", daily.ContentText)
+	}
+	left, _ := u.ListPendingWriteBack(context.Background(), "team-1")
+	if len(left) != 0 {
+		t.Fatalf("pending leftover=%+v", left)
+	}
+}

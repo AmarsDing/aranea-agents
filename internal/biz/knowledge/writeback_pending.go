@@ -136,13 +136,16 @@ func ParsePendingWriteBackItems(body string) []PendingWriteBackItem {
 func parsePendingPart(part string) PendingWriteBackItem {
 	var item PendingWriteBackItem
 	rest := part
+	headIsPlaceholder := false
 	if i := strings.Index(part, "\n"); i >= 0 {
 		head := strings.TrimSpace(strings.Trim(part[:i], "`"))
 		item.Fact.FactID = strings.Trim(head, "`")
+		headIsPlaceholder = item.Fact.FactID == "stmt" // FormatPendingAppendix 无 fact_id 时的占位符
 		rest = part[i+1:]
 	}
 	body := strings.TrimSpace(rest)
 	var stmtLines []string
+	sawFactIDField := false
 	for _, line := range strings.Split(body, "\n") {
 		trim := strings.TrimSpace(line)
 		if strings.HasPrefix(trim, "- ") {
@@ -150,6 +153,7 @@ func parsePendingPart(part string) PendingWriteBackItem {
 			switch key {
 			case "fact_id":
 				item.Fact.FactID = val
+				sawFactIDField = true
 			case "session_id":
 				item.SessionID = val
 			case "agent_id":
@@ -186,6 +190,11 @@ func parsePendingPart(part string) PendingWriteBackItem {
 		}
 	}
 	item.Fact.Statement = strings.TrimSpace(strings.Join(stmtLines, "\n"))
+	// head 占位符 "stmt" 且无真实 fact_id 字段行 → 视为无 fact_id，
+	// 避免后续 writeBackAlreadyPresent/replaceH2BlockContaining 用假键误顶替。
+	if headIsPlaceholder && !sawFactIDField {
+		item.Fact.FactID = ""
+	}
 	return item
 }
 

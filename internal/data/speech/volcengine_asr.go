@@ -175,6 +175,14 @@ func (s *volcASRSession) sendFullClientRequest(sc biz.ASRSessionConfig) error {
 		"enable_punc":     true,
 		"enable_itn":      true,
 		"show_utterances": true,
+		// 判停参数（真机事故 2026-08-15：未配置 → 走默认语义分句 +
+		// force_to_speech_time 默认 10000ms 地板，短句不满 10s 音频服务端
+		// 根本不判停，终稿/建 Turn 被拖 2.3s~15s 甚至丢失）。官方实时性配方
+		// （大模型流式识别 SDK 示例）：end_window_size=800 改纯静音判停——
+		// 静音满 800ms 即 definite（设计 §7.2 尾延迟 300-600ms 预期的前提）；
+		// force_to_speech_time=0 取消判停激活地板，短确认词（好/算了）也能判停。
+		"end_window_size":      800,
+		"force_to_speech_time": 0,
 	}
 	// V11-T4：SAUC bigmodel 热词直传，官方参数 request.corpus.context（JSON 字符串），
 	// 格式 {"hotwords":[{"word":"..."}]}。双向流式上限 100 token，默认表 ≤40 短词。
