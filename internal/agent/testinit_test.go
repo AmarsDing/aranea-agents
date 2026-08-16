@@ -20,5 +20,8 @@ func TestMain(m *testing.M) {
 		// HTTP/2 client read loops from the shared OAuth2 client may still be
 		// winding down when tests finish; they are not production leaks.
 		goleak.IgnoreAnyFunction("net/http.(*http2ClientConn).readLoop"),
+		// P0-1 补偿跟踪器的进程级清扫协程是设计内的长驻单例（agent 重建不丢
+		// pending 状态），随进程生命周期存在，非泄漏。
+		goleak.IgnoreAnyFunction("aranea-agents/internal/agent.(*compensationTracker).sweepLoop"),
 	)
 }

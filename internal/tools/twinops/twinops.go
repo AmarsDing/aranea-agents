@@ -846,6 +846,7 @@ func normalizePort(p string) (string, error) {
 
 // NewToolset returns all 17 twinops tools.
 func NewToolset(cfg Config) []trpctool.Tool {
+	registerCompensationPairs() // P0-1：补偿对声明（见 compensation.go）
 	return []trpctool.Tool{
 		newAlarmQueryTool(cfg),
 		newAlarmGetTool(cfg),

@@ -353,6 +353,11 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	if err != nil {
 		r.recordFailure(ctx, slug, source, t0, "upsert", err)
 		r.lg.Error("skill upsert failed", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Err(err))
+		// P1-3：DB 事务已回滚、线上版本未变——但失败本身必须成为治理事件
+		// （此前只有 flow log/错误日志，Events 页不可见）。dedup 窗口防止
+		// reconcile 每轮重试刷屏。
+		r.reportSync(ctx, "skill.filesystem.sync_failed", slug,
+			"Skill 同步入库失败（DB 事务已回滚，线上版本未变）: "+slug, "warn")
 		return
 	}
 	ver := ""

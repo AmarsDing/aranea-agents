@@ -37,6 +37,20 @@ var (
 		Help: "Number of agent build cache misses (LRU).",
 	})
 
+	// AgentCacheActiveRefs is the number of in-flight agent runs holding a
+	// generational reference on cached build artifacts (P0-4).
+	AgentCacheActiveRefs = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "aranea_agent_cache_active_refs",
+		Help: "In-flight agent runs holding generational references on the build cache.",
+	})
+
+	// AgentCacheRefcountLeaks counts graveyard entries force-closed by the
+	// retire-delay fallback while still referenced (release path anomaly).
+	AgentCacheRefcountLeaks = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aranea_agent_cache_refcount_leak_total",
+		Help: "Retired ToolSets force-closed with refs>0 (potential release leak).",
+	})
+
 	// EventBusPublished counts events published to the in-process event bus.
 	EventBusPublished = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_event_bus_published_total",

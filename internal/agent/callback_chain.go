@@ -156,6 +156,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 			return &trpctool.AfterToolResult{}, nil
 		}))
 		entries = append(entries, newToolResultCacheAfterHook(deps, catalog))
+		// P0-1 终态补偿跟踪：声明了逆工具的正向工具（如 gns3_fault_inject）调用
+		// 成功后记 pending，逆工具调用成功核销；超时未核销产出
+		// ops.compensation_pending 告警。进程级单例，agent 重建不丢状态。
+		entries = append(entries, compensationTrackerAfterHook(lg))
 		// Side-effect feedback: remind the LLM (via tool results) when files
 		// were modified without a subsequent test run. The BeforeAgent hook
 		// pre-creates a per-invocation ToolReminder so concurrent sessions

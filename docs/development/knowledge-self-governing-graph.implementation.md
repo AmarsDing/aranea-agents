@@ -39,6 +39,17 @@
 
 测试：新增 `immediate_fact_writer_test.go`（4 例：索引同步/ nil 降级/同步失败不阻断/写入失败跳过）+ `selective_remember_test.go`（5 例：精确重复/语义重复/新颖默认值/nil Embedder 降级/Embed 失败降级）+ 全量构建 `go build ./cmd/... ./internal/...` + `go build -tags wireinject` + `go vet` 全绿。回归：biz/knowledge（18 例）、knowledge（全量）、memory_butler（11 例）、service Knowledge（全量）、workspace（全量）均通过。
 
+### 深度检查补丁纪要（2026-08-16 第三轮）
+
+第三轮整体梳理（两个巡检代理线索 + 逐条亲验代码）——代理报告的 6 条线索亲验后 **5 条为误报**（附核实依据防再报），确认 1 盲区 + 2 语义项，全部修复：
+
+- **P2 dream 治理覆盖盲区（修复，选案 A 多库枚举）**：`CurateKnowledge` 单轮只治理解析出的单集合（CollectionID 空 → `LookupWriteBackHome` 默认写回落点），dream 调用不传 workspace/collection → 多团队库/多 workspace 场景非落点集合永不被自动治理（六类任务单集合，仅 relation_promote 全库）。修复：biz 新增 `CurateAllTeamKnowledge`——枚举 `ListCollections` 过滤 `VaultBackendTeam` 逐库 `CurateKnowledge`（指定 CollectionID 退化单库保工具语义；单库失败 Warn 降级其余库继续；无团队库返回同单库版 NotFound；relation_promote 全库口径第二库起自然空幂等）。dream_cycle Step 5.5 dry_run/正式两分支均改调多库入口，报告经 `aggregateCurateReports` 合并（pending 提案求和、任务名首现去重）。
+- **P3-1 moc 密度口径上偏（修复）**：`CountActiveEdgesWithin` 原按有向边计数（A→B/B→A 并存计 2），分母却是无向完全图 n(n-1)/2 → 密度上限 2.0、阈值 0.3 偏松。修复：SQL 改 `LEAST/GREATEST` 规范化按文档对 DISTINCT（反向并存/同对多类型计 1 对），密度口径上限 1.0，biz 接口注释同步。
+- **P3-2 hub 统计自环边未防御（修复）**：`ListHubClusters` entry_edges CTE 无自环过滤——M2 抽取若落自指边，UNION ALL 两端使一条自环计 2 度且邻居混入自身。修复：CTE 加 `l.doc_id <> l.target_doc_id`。
+- **误报排除（亲验依据，防重复上报）**：①workspace scope 蒸馏事实非死信——`UpsertFactRow` 落库即 `syncFactIndexBestEffort` 异步同步 L4 向量索引，L3 召回默认 scopes `["agent","user","team","workspace"]` 且 scope_id 与集合 workspace 同源（同经 LookupWriteBackHome）；②dream dry_run 传导正确（两分支分别传 `DryRun: true/false`）；③Hebbian 无震荡——复活语义 `valid_to=NULL`+残留权重+0.1 构成滞后环；④orphan 度含 co_activated 自洽——decay 关闭长期不用的共激活边，临时关联不永久豁免；⑤ListHotDocuments 不过滤 inbox 无碍——access_log 唯一写入方在检索召回后（inbox 已被检索层排除不产生 log），runDistillTask 另有 `entries/` 前缀二次过滤兜底。
+
+测试：biz `curate_test.go` 新增 4 例（多库枚举过滤/无团队库 NotFound/指定集合退化单库不查列表/未接线 Unavailable）+ data `knowledge_curate_test.go` 2 例改写（无向边对：反向并存 4→3、自环 seed 断言度数与邻居不受污染）。回归：全量编译 + biz/knowledge（22 例）+ memory_butler（11 例）+ data Knowledge PG 集成（9 例）全绿。
+
 ---
 
 ## M3 落地纪要（实施偏差记录）

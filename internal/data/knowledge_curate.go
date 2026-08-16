@@ -184,8 +184,9 @@ func (r *knowledgeRepo) ListContradictsEdges(ctx context.Context, collectionID s
 
 // ListHubClusters hub 簇候选：entries/* 中 active 边度数 >= minDegree 的词条
 // （度数降序，limit 截断），附带 1 跳 entries 邻居清单。只统计 entries 对
-// entries 的边（inbox 日记流水不参与概念簇）。边类型不限——co_activated 弱边
-// 已由 decay 任务周期裁剪，存活的统计边即「使用证明的关联」。
+// entries 的边（inbox 日记流水不参与概念簇）；自环边（M2 抽取可能的自指
+// 关系）排除——否则一条自环计 2 度且邻居混入自身。边类型不限——
+// co_activated 弱边已由 decay 任务周期裁剪，存活的统计边即「使用证明的关联」。
 func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string, minDegree, limit int) ([]bizknowledge.HubClusterStat, error) {
 	rows, err := r.data.PostgresRead().QueryContext(ctx,
 		`WITH entry_edges AS (
@@ -193,7 +194,7 @@ func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string
 		   FROM knowledge_links l
 		   JOIN knowledge_documents sd ON sd.id = l.doc_id AND sd.rel_path LIKE 'entries/%'
 		   JOIN knowledge_documents td ON td.id = l.target_doc_id AND td.rel_path LIKE 'entries/%'
-		   WHERE l.collection_id = $1 AND l.valid_to IS NULL
+		   WHERE l.collection_id = $1 AND l.valid_to IS NULL AND l.doc_id <> l.target_doc_id
 		 ),
 		 hubs AS (
 		   SELECT doc_id, COUNT(*) AS degree FROM (
@@ -241,17 +242,21 @@ func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string
 	return out, rows.Err()
 }
 
-// CountActiveEdgesWithin docIDs 集合内部的 active 有向边数（doc_id 与 target_doc_id
-// 均在集合内即计；A→B 与 B→A 若并存计两条——密度是阈值启发式，轻微上浮可接受）。
+// CountActiveEdgesWithin docIDs 集合内部的 active 无向边对数（doc_id 与 target_doc_id
+// 均在集合内；LEAST/GREATEST 规范化后按文档对去重——A→B 与 B→A 并存、同对多类型
+// 均计 1 对，簇密度 = 边对数 / (n(n-1)/2) 口径上限 1.0）。
 func (r *knowledgeRepo) CountActiveEdgesWithin(ctx context.Context, collectionID string, docIDs []string) (int, error) {
 	if len(docIDs) == 0 {
 		return 0, nil
 	}
 	var n int
 	if err := r.data.PostgresRead().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM knowledge_links
-		 WHERE collection_id = $1 AND valid_to IS NULL
-		   AND doc_id = ANY($2) AND target_doc_id = ANY($2)`,
+		`SELECT COUNT(*) FROM (
+		   SELECT DISTINCT LEAST(doc_id, target_doc_id) AS a, GREATEST(doc_id, target_doc_id) AS b
+		   FROM knowledge_links
+		   WHERE collection_id = $1 AND valid_to IS NULL
+		     AND doc_id = ANY($2) AND target_doc_id = ANY($2)
+		 ) pairs`,
 		collectionID, pq.Array(docIDs)).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count active edges within: %w", err)
 	}

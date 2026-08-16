@@ -395,7 +395,7 @@ func keysOfDocs(docs map[string]Document) []string {
 // applied 提案留痕；fingerprint 幂等键携带 docID。
 func TestCurateKnowledge_Distill(t *testing.T) {
 	docs := map[string]Document{
-		"d-hot":  {ID: "d-hot", RelPath: "entries/发布策略.md", Summary: "发布策略：灰度先行", SummaryHash: "abc123def456", Tags: []string{"发布"}},
+		"d-hot":   {ID: "d-hot", RelPath: "entries/发布策略.md", Summary: "发布策略：灰度先行", SummaryHash: "abc123def456", Tags: []string{"发布"}},
 		"d-diary": {ID: "d-diary", RelPath: "inbox/writeback-2026.md", Summary: "日记不进蒸馏"},
 		"d-nosum": {ID: "d-nosum", RelPath: "entries/无摘要.md"},
 	}
@@ -634,5 +634,78 @@ func TestCurateKnowledge_MOCDedup(t *testing.T) {
 	}
 	if rep.ProposalsPending != 0 || len(proposals.items) != 0 {
 		t.Fatalf("dedup must skip: rep=%+v proposals=%+v", rep, proposals.items)
+	}
+}
+
+// ── M4 补丁（第三轮）：CurateAllTeamKnowledge 多库枚举治理 ─────────────────
+// 契约：枚举全部团队库逐库治理（local vault 排除）；无团队库 NotFound；
+// 指定 CollectionID 退化单库且不查集合列表；curate 未接线报 Unavailable。
+
+func TestCurateAllTeamKnowledge_MultiCollection(t *testing.T) {
+	repo := noOpMockRepo()
+	repo.collListFn = func(context.Context, string, int, int) ([]Collection, int, error) {
+		return []Collection{
+			{ID: "team-1", VaultBackend: VaultBackendTeam},
+			{ID: "local-1", VaultBackend: VaultBackendLocal},
+			{ID: "team-2", VaultBackend: VaultBackendTeam},
+		}, 3, nil
+	}
+	curate := &stubCurateRepo{decayed: 2}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	reps, err := u.CurateAllTeamKnowledge(context.Background(), CurateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reps) != 2 {
+		t.Fatalf("reports = %+v, want 2 team collections", reps)
+	}
+	if reps[0].CollectionID != "team-1" || reps[1].CollectionID != "team-2" {
+		t.Fatalf("collection order = %q/%q", reps[0].CollectionID, reps[1].CollectionID)
+	}
+	for _, rep := range reps {
+		if rep.DecayedEdges != 2 {
+			t.Fatalf("per-collection decay not applied: %+v", rep)
+		}
+	}
+}
+
+func TestCurateAllTeamKnowledge_NoTeamCollection(t *testing.T) {
+	repo := noOpMockRepo()
+	repo.collListFn = func(context.Context, string, int, int) ([]Collection, int, error) {
+		return []Collection{{ID: "local-1", VaultBackend: VaultBackendLocal}}, 1, nil
+	}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(&stubCurateRepo{})
+
+	if _, err := u.CurateAllTeamKnowledge(context.Background(), CurateOptions{}); err == nil {
+		t.Fatal("no team collection must error NotFound")
+	}
+}
+
+func TestCurateAllTeamKnowledge_SpecifiedCollectionDegradesToSingle(t *testing.T) {
+	repo := noOpMockRepo()
+	repo.collListFn = func(context.Context, string, int, int) ([]Collection, int, error) {
+		t.Error("ListCollections must not be called when CollectionID specified")
+		return nil, 0, nil
+	}
+	curate := &stubCurateRepo{decayed: 1}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	reps, err := u.CurateAllTeamKnowledge(context.Background(), CurateOptions{CollectionID: "c-x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reps) != 1 || reps[0].CollectionID != "c-x" {
+		t.Fatalf("single degrade = %+v", reps)
+	}
+}
+
+func TestCurateAllTeamKnowledge_Unwired(t *testing.T) {
+	u := NewUsecase(nil, nil, nil)
+	if _, err := u.CurateAllTeamKnowledge(context.Background(), CurateOptions{}); err == nil {
+		t.Fatal("unwired curate repo must error")
 	}
 }

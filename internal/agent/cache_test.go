@@ -355,49 +355,6 @@ func TestBuildCachePutClearsDirty(t *testing.T) {
 	}
 }
 
-// TestBuildCacheRetiredToolSetDelayedClose verifies the graveyard contract:
-// ToolSets retired via eviction or replacement are NOT closed immediately
-// (in-flight requests may still be mid-call on them); the sweeper closes
-// them only after the retire delay elapses. Close() closes them at once.
-func TestBuildCacheRetiredToolSetDelayedClose(t *testing.T) {
-	c := newTestCache(1)
-	c.retireDelay = 20 * time.Millisecond
-
-	ts := &fakeToolSet{name: "ts-old"}
-	// Evict via LRU overflow (cap=1).
-	c.put("a", makeAgent("a"), nil, []trpctool.ToolSet{ts})
-	c.put("b", makeAgent("b"), nil, nil)
-
-	if ts.closed.Load() {
-		t.Fatal("retired ToolSet must not be closed immediately after eviction")
-	}
-	c.mu.Lock()
-	inGraveyard := len(c.graveyard)
-	c.mu.Unlock()
-	if inGraveyard != 1 {
-		t.Fatalf("expected 1 graveyard entry after eviction, got %d", inGraveyard)
-	}
-
-	deadline := time.Now().Add(5 * time.Second)
-	for !ts.closed.Load() && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if !ts.closed.Load() {
-		t.Fatal("sweeper must close the retired ToolSet after the delay elapses")
-	}
-	c.mu.Lock()
-	left := len(c.graveyard)
-	cancel := c.sweeperCancel
-	c.mu.Unlock()
-	if left != 0 {
-		t.Fatalf("expected empty graveyard after sweep, got %d entries", left)
-	}
-	if cancel == nil {
-		t.Fatal("sweeper should have been started by retireToolSets")
-	}
-	c.Close()
-}
-
 // TestBuildCacheCloseDrainsGraveyardImmediately verifies that Close() does
 // not wait out the retire delay: at process shutdown there are no in-flight
 // requests worth protecting, so graveyard entries are closed at once.

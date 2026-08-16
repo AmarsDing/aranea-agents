@@ -60,14 +60,16 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 			out := dreamCycleOutput{ActionsTaken: actions}
 			out.QualityBefore = qualityBefore
 			// M4：dry_run 下知识治理做只读预估（decay 走 COUNT，提案不落库）。
+			// 枚举全部团队库逐库预估（多库覆盖盲区修复），报告合并：提案数求和、任务名去重。
 			if deps.Knowledge != nil {
-				if rep, cerr := deps.Knowledge.CurateKnowledge(ctx, bizknowledge.CurateOptions{DryRun: true}); cerr != nil {
+				if reps, cerr := deps.Knowledge.CurateAllTeamKnowledge(ctx, bizknowledge.CurateOptions{DryRun: true}); cerr != nil {
 					deps.LG.Warn("dream_cycle: knowledge curate dry-run preview failed",
 						loggateway.StepID("memory_butler.dream.curate_preview"),
 						loggateway.Err(cerr))
 				} else {
-					out.KnowledgeProposals = rep.ProposalsPending
-					out.KnowledgeActions = rep.Actions
+					proposals, knowledgeActions := aggregateCurateReports(reps)
+					out.KnowledgeProposals = proposals
+					out.KnowledgeActions = knowledgeActions
 					out.ActionsTaken = append(out.ActionsTaken, "dry_run: would execute curate_knowledge")
 				}
 			}
@@ -149,18 +151,20 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 
 		// Step 5.5: curate knowledge entries (M4 自治理层)——低风险自动应用，
 		// 高风险仅产 pending 提案待人工二审；失败 Warn 降级，不中断梦境主流程。
+		// 枚举全部团队库逐库治理（多库覆盖盲区修复），报告合并：提案数求和、任务名去重。
 		knowledgeProposals := 0
 		var knowledgeActions []string
 		if deps.Knowledge != nil {
-			rep, cerr := deps.Knowledge.CurateKnowledge(ctx, bizknowledge.CurateOptions{DryRun: false})
+			reps, cerr := deps.Knowledge.CurateAllTeamKnowledge(ctx, bizknowledge.CurateOptions{DryRun: false})
 			if cerr != nil {
 				deps.LG.Warn("dream_cycle: curate_knowledge failed",
 					loggateway.StepID("memory_butler.dream.curate_knowledge"),
 					loggateway.Str("agent_id", input.AgentID),
 					loggateway.Err(cerr))
 			} else {
-				knowledgeProposals = rep.ProposalsPending
-				knowledgeActions = rep.Actions
+				proposals, acts := aggregateCurateReports(reps)
+				knowledgeProposals = proposals
+				knowledgeActions = acts
 				actions = append(actions, "curate_knowledge")
 			}
 		}
@@ -219,6 +223,22 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		function.WithName("memory_butler_dream_cycle"),
 		function.WithDescription("梦境循环：一次性执行记忆管家全部维护流程（遗忘低质量、遗忘不活跃、去重、整合情景），并对比前后健康评分。支持 dry_run 模式预览。"),
 	)
+}
+
+// aggregateCurateReports 合并多库治理报告：pending 提案数求和，治理任务名按首现去重。
+func aggregateCurateReports(reps []bizknowledge.CurateReport) (proposals int, actions []string) {
+	seen := make(map[string]struct{})
+	for _, rep := range reps {
+		proposals += rep.ProposalsPending
+		for _, a := range rep.Actions {
+			if _, ok := seen[a]; ok {
+				continue
+			}
+			seen[a] = struct{}{}
+			actions = append(actions, a)
+		}
+	}
+	return proposals, actions
 }
 
 // findLowQualityFactIDs returns fact IDs that are misaligned (high negative feedback rate).

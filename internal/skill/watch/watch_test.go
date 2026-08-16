@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -144,6 +145,7 @@ func TestMonitorSyncReporter_DeduplicatesWithinWindow(t *testing.T) {
 type stubSkillWriter struct {
 	markMissing []string
 	upserts     []string
+	upsertErr   error
 }
 
 func (s *stubSkillWriter) MarkFilesystemMissing(_ context.Context, slug string, _ bool) error {
@@ -153,7 +155,32 @@ func (s *stubSkillWriter) MarkFilesystemMissing(_ context.Context, slug string, 
 
 func (s *stubSkillWriter) UpsertSkillFromDisk(_ context.Context, input biz.SkillDiskSyncInput) (biz.Skill, biz.SkillDiskSyncOutcome, error) {
 	s.upserts = append(s.upserts, input.Slug)
+	if s.upsertErr != nil {
+		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, s.upsertErr
+	}
 	return biz.Skill{}, biz.SkillDiskSyncOutcome{}, nil
+}
+
+// stubSkillReader satisfies SkillReader; GetBySlug always misses (skill is new).
+type stubSkillReader struct{}
+
+func (stubSkillReader) GetBySlug(_ context.Context, _ string) (biz.Skill, error) {
+	return biz.Skill{}, errors.New("not found")
+}
+func (stubSkillReader) ListSimilaritySources(_ context.Context) ([]biz.SkillSimilaritySource, error) {
+	return nil, nil
+}
+func (stubSkillReader) ListRegisteredSlugs(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
+// stubSyncReporter records SyncReport submissions.
+type stubSyncReporter struct {
+	reports []SyncReport
+}
+
+func (s *stubSyncReporter) ReportFilesystemSync(_ context.Context, r SyncReport) {
+	s.reports = append(s.reports, r)
 }
 
 // S2: applyOverwrite crash residue is named ".<slug>.overwrite-backup" (dot
@@ -172,5 +199,79 @@ func TestScanAll_SkipsOverwriteBackupDir(t *testing.T) {
 	r.scanAll(context.Background(), root, biz.SkillInvocationSourceFilesystemScan)
 	if len(writer.markMissing) != 0 || len(writer.upserts) != 0 {
 		t.Fatalf("expected dot-prefixed backup dir to be skipped, got missing=%v upserts=%v", writer.markMissing, writer.upserts)
+	}
+}
+
+// P1-3 验收：reload 的 DB 入库失败必须产生 skill.filesystem.sync_failed 治理
+// 事件（DB 事务回滚保证线上版本不变；事件让失败在 Events 页可见）。
+func TestSyncSlug_UpsertFailure_ReportsSyncFailedEvent(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo-skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: \"Demo Skill\"\ndescription: \"A demo skill\"\n---\n# Demo\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writer := &stubSkillWriter{upsertErr: errors.New("db down")}
+	reporter := &stubSyncReporter{}
+	r := NewRunner(stubSkillReader{}, writer, nil, loggateway.NewNoop())
+	SetSyncReporter(r, reporter)
+
+	r.syncSlug(context.Background(), root, "demo-skill", biz.SkillInvocationSourceFilesystemWatch)
+
+	if len(writer.upserts) != 1 {
+		t.Fatalf("expected 1 upsert attempt, got %d", len(writer.upserts))
+	}
+	var found *SyncReport
+	for i := range reporter.reports {
+		if reporter.reports[i].EventKey == "skill.filesystem.sync_failed" {
+			found = &reporter.reports[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected skill.filesystem.sync_failed report, got %+v", reporter.reports)
+	}
+	if found.Slug != "demo-skill" || found.Severity != "warn" {
+		t.Fatalf("unexpected report: %+v", *found)
+	}
+	if found.SkipPersist {
+		t.Fatal("sync_failed must persist (governance signal), SkipPersist should be false")
+	}
+}
+
+// P1-3 对照：校验失败的损坏包不得触达 DB（upsert 零调用），线上版本天然
+// 保持旧版；且产生 skill.filesystem.rejected 治理事件。
+func TestSyncSlug_CorruptPackage_RejectedBeforeUpsert(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo-skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 缺 name/description → validation block。
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# no frontmatter\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writer := &stubSkillWriter{}
+	reporter := &stubSyncReporter{}
+	r := NewRunner(stubSkillReader{}, writer, nil, loggateway.NewNoop())
+	SetSyncReporter(r, reporter)
+
+	r.syncSlug(context.Background(), root, "demo-skill", biz.SkillInvocationSourceFilesystemWatch)
+
+	if len(writer.upserts) != 0 {
+		t.Fatalf("corrupt package must not reach upsert, got %d calls", len(writer.upserts))
+	}
+	var found bool
+	for _, rep := range reporter.reports {
+		if rep.EventKey == "skill.filesystem.rejected" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected skill.filesystem.rejected report, got %+v", reporter.reports)
 	}
 }

@@ -156,7 +156,8 @@ type KnowledgeCurateRepo interface {
 	ListContradictsEdges(ctx context.Context, collectionID string, limit int) ([]ContradictsEdgeStat, error)
 	// ListHubClusters hub 簇候选（entries/* 中 active 边度数 >= minDegree，按度数降序，limit 截断）。
 	ListHubClusters(ctx context.Context, collectionID string, minDegree, limit int) ([]HubClusterStat, error)
-	// CountActiveEdgesWithin docIDs 集合内部两端的 active 边数（无向：doc_id/target_doc_id 均在集合内）。
+	// CountActiveEdgesWithin docIDs 集合内部两端均在的 active 无向边对数
+	//（LEAST/GREATEST 去重：反向并存/同对多类型计 1 对，密度口径上限 1.0）。
 	CountActiveEdgesWithin(ctx context.Context, collectionID string, docIDs []string) (int, error)
 	// HasProposal 是否已存在同 dedup_key 且 status 在 statuses 内的提案（去重防风暴）。
 	HasProposal(ctx context.Context, collectionID, kind, dedupKey string, statuses []string) (bool, error)
@@ -369,6 +370,54 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 		loggateway.Int("proposals_pending", rep.ProposalsPending),
 	)
 	return rep, nil
+}
+
+// CurateAllTeamKnowledge 枚举 opts.Workspace 下全部团队库逐库治理（dream 周期入口；
+// workspace 空 = 跨租户全平台团队库）。opts.CollectionID 非空时退化单库
+// CurateKnowledge（knowledge_curate 工具指定集合语义不变）。
+// 单库失败 Warn 降级继续，其余库不受影响；无团队库返回与单库版一致的
+// NotFound；全部失败返回最后错误（调用方按既有 Warn 降级路径留痕）。
+// relation_promote 为全库口径，第二库起 ListPromotableRelations 自然为空（幂等）。
+func (u *Usecase) CurateAllTeamKnowledge(ctx context.Context, opts CurateOptions) ([]CurateReport, error) {
+	if u == nil || u.curate == nil {
+		return nil, apierror.Unavailable(apierror.DomainKnowledge, "knowledge curate repo not wired")
+	}
+	if strings.TrimSpace(opts.CollectionID) != "" {
+		rep, err := u.CurateKnowledge(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		return []CurateReport{rep}, nil
+	}
+	cols, _, err := u.collections.ListCollections(ctx, opts.Workspace, 1000, 0)
+	if err != nil {
+		return nil, err
+	}
+	var reports []CurateReport
+	var lastErr error
+	for _, col := range cols {
+		if col.VaultBackend != VaultBackendTeam {
+			continue
+		}
+		per := opts
+		per.CollectionID = col.ID
+		rep, cerr := u.CurateKnowledge(ctx, per)
+		if cerr != nil {
+			u.lg.Warn("治理：单库治理失败（跳过，其余库继续）",
+				loggateway.StepID("knowledge.curate"),
+				loggateway.Str("collection_id", col.ID), loggateway.Err(cerr))
+			lastErr = cerr
+			continue
+		}
+		reports = append(reports, rep)
+	}
+	if len(reports) == 0 {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, apierror.NotFound(apierror.DomainKnowledge, "no team knowledge collection to curate")
+	}
+	return reports, nil
 }
 
 // listProposalsDefaultLimit 二审列表默认上限。

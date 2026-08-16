@@ -11,6 +11,40 @@ import (
 	"aranea-agents/pkg/apierror"
 )
 
+// AtomicWriteFile 原子写文件（P1-3 事务式 reload 的文件层形态）：先写同目录
+// 临时文件，再 rename 覆盖目标——进程在写入中途崩溃时，读者只会看到旧内容或
+// 新内容，绝不会看到截断的半写文件（watcher 会把截断的 SKILL.md 当损坏包
+// 拒绝，造成误伤）。tmp 文件存在窗口为毫秒级，且校验/同步只消费 SKILL.md，
+// 即使被 watcher 恰好读入也不影响结果。
+func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	// rename 在同目录内是原子替换；残留 tmp（崩溃遗留）无害，下次写入
+	// 会新建独立 tmp 名，旧 tmp 由目录治理清理。
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
 type skillFilesystem struct {
 	resolveRootFn func(ctx context.Context) string
 }
@@ -56,7 +90,7 @@ func (f *skillFilesystem) CreateSkillDir(slug string, body string) (string, erro
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
+	if err := AtomicWriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
 		return "", err
 	}
 	return dir, nil

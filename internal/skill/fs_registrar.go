@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
@@ -32,7 +33,8 @@ func (r *FileSystemSkillRegistrar) RegisterSkill(ctx context.Context, agentID st
 		return apierror.Internal(apierror.DomainSkill, "create skill dir").WithCause(err)
 	}
 	skillPath := filepath.Join(skillDir, "SKILL.md")
-	if err := os.WriteFile(skillPath, []byte(skillMD), 0o644); err != nil {
+	// P1-3：原子写——注册中途崩溃不得留下截断的 SKILL.md。
+	if err := storage.AtomicWriteFile(skillPath, []byte(skillMD), 0o644); err != nil {
 		return apierror.Internal(apierror.DomainSkill, "write SKILL.md").WithCause(err)
 	}
 	r.lg.Info("skill registered",

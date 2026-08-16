@@ -370,6 +370,8 @@ func TestKnowledgeRepo_ListHubClusters(t *testing.T) {
 	seedCurateLink(t, repo, "h", "inbox-note", "co_activated", "", 1.0, false)
 	// closed 边：valid_to 置位，不计入。
 	seedCurateLink(t, repo, "h", "c2", "semantic", "related-to", 0.9, true)
+	// 自环边：不得计入度数（否则 h 度变 5）、不得混入邻居（否则邻居含 h 变 4 个）。
+	seedCurateLink(t, repo, "h", "h", "semantic", "self", 0.9, false)
 
 	hubs, err := repo.ListHubClusters(ctx, "c1", 2, 10)
 	if err != nil {
@@ -413,8 +415,9 @@ func TestKnowledgeRepo_ListHubClusters(t *testing.T) {
 	}
 }
 
-// CountActiveEdgesWithin 契约：两端均在集合内的 active 有向边计数；
-// A→B 与 B→A 并存计两条；closed 边不计；空集恒 0。
+// CountActiveEdgesWithin 契约：两端均在集合内的 active 无向边对计数
+// （LEAST/GREATEST 去重——A→B 与 B→A 并存、同对多类型均计 1 对，密度口径上限 1.0）；
+// closed 边不计；空集恒 0。
 func TestKnowledgeRepo_CountActiveEdgesWithin(t *testing.T) {
 	repo := setupCurateRepo(t)
 	ctx := context.Background()
@@ -425,7 +428,7 @@ func TestKnowledgeRepo_CountActiveEdgesWithin(t *testing.T) {
 	seedCurateLink(t, repo, "h", "a", "semantic", "depends-on", 0.9, false)
 	seedCurateLink(t, repo, "h", "b", "co_activated", "", 0.6, false)
 	seedCurateLink(t, repo, "a", "b", "semantic", "related-to", 0.8, false)
-	seedCurateLink(t, repo, "b", "h", "semantic", "related-to", 0.7, false) // 反向并存
+	seedCurateLink(t, repo, "b", "h", "semantic", "related-to", 0.7, false) // 反向并存：与 h→b 同对
 	seedCurateLink(t, repo, "h", "c2", "semantic", "related-to", 0.9, true) // closed 不计
 	seedCurateLink(t, repo, "d", "e", "semantic", "related-to", 0.8, false)
 
@@ -434,8 +437,8 @@ func TestKnowledgeRepo_CountActiveEdgesWithin(t *testing.T) {
 		docIDs []string
 		want   int
 	}{
-		{"tri+reverse", []string{"h", "a", "b"}, 4}, // h→a, h→b, a→b, b→h
-		{"pair", []string{"h", "a"}, 1},             // 仅 h→a（b→h 的 b 不在集）
+		{"tri+reverse", []string{"h", "a", "b"}, 3}, // 无向对 {h,a},{h,b},{a,b}（b→h 并入 {h,b}）
+		{"pair", []string{"h", "a"}, 1},             // 仅 {h,a}（b→h 的 b 不在集）
 		{"closed excluded", []string{"h", "c2"}, 0},
 		{"singleton", []string{"d", "e"}, 1},
 		{"empty", nil, 0},
