@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
@@ -278,5 +280,50 @@ func TestUpdateL1TaskBoard_InvalidBoardJSON(t *testing.T) {
 	}
 	if got := readL1TaskMetadata(t, db, "t1")["task_board"]; !strings.Contains(string(got), "旧") {
 		t.Fatalf("row must stay untouched on error: %s", got)
+	}
+}
+
+// 业务流程集成（真实 PG，跨 biz/data 两层）：
+// L1 任务启动（StartL1Task 初始化 metadata_json='{}'）→ 压缩产出的
+// task_state 段回写 → L1 prompt cue 读路径（ListL1TaskRows 首行）解析出
+// 与压缩产出完全一致的状态。（v4 双段拆段由 session 侧集成测试覆盖——
+// data 测试 import compress 会经 agent→session/trpc 形成测试 import 环。）
+func TestL1TaskBoardFlow_StartWritebackCueRead(t *testing.T) {
+	repo, _ := setupL1TaskBoardRepo(t)
+	ctx := context.Background()
+
+	// 1) 任务启动：metadata_json 初始为 '{}'。
+	if _, err := repo.StartL1Task(ctx, biz.L1TaskInsert{
+		SessionID: "sess-board", AgentID: "ag-board",
+		TaskKey: "vpn", TaskTitle: "vpn 故障处置",
+	}); err != nil {
+		t.Fatalf("StartL1Task: %v", err)
+	}
+
+	// 2) 压缩产出的 task_state 段（v4 契约键）回写。
+	stateJSON := `{"status":"取证完成","done":["确认告警","定位R2"],"next":"执行清除","blockers":["等待审批"]}`
+	ok, err := repo.UpdateL1TaskBoard(ctx, "sess-board", "ag-board", stateJSON)
+	if err != nil || !ok {
+		t.Fatalf("writeback ok=%v err=%v", ok, err)
+	}
+
+	// 3) cue 读路径：镜像 l1_prompt.go 取 taskRows[0] 的 metadata_json["task_board"]。
+	rows, err := repo.ListL1TaskRows(ctx, "sess-board", "ag-board", "", "")
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("cue rows n=%d err=%v", len(rows), err)
+	}
+	var task map[string]any
+	if err := json.Unmarshal(rows[0], &task); err != nil {
+		t.Fatal(err)
+	}
+	var meta struct {
+		Board biz.TaskState `json:"task_board"`
+	}
+	if err := json.Unmarshal([]byte(fmt.Sprint(task["metadata_json"])), &meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta.Board.Status != "取证完成" || meta.Board.Next != "执行清除" ||
+		len(meta.Board.Done) != 2 || len(meta.Board.Blockers) != 1 {
+		t.Fatalf("cue 读到的 board 与压缩产出不一致: %+v", meta.Board)
 	}
 }
