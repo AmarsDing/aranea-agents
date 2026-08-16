@@ -14,7 +14,7 @@ import (
 func TestKnowledgeService_CreateCollection_Vault(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil)
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, nil)
 	root := t.TempDir()
 
 	t.Run("root_path 必填", func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestKnowledgeService_CreateCollection_Vault(t *testing.T) {
 func TestKnowledgeService_CreateCollection_TeamBackend(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil)
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, nil)
 	sync := &stubVaultSync{}
 	svc.SetVaultSyncController(sync)
 

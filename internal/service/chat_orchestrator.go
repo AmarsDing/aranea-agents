@@ -350,6 +350,12 @@ type ChatInfraDeps struct {
 	// ImmediateFactWriter for <fact> tag extraction. When nil, immediate fact
 	// extraction is disabled (graceful degradation).
 	MemoryConsolidationWriter biz.MemoryConsolidationWriter
+	// FactIndexSync 即时事实写入后的 embedding 索引回采（P2-2，对齐 auto_memory
+	// 范式）。nil 时跳过即时同步，由 reconciler cron 最终一致兜底。
+	FactIndexSync biz.MemoryFactIndexSyncer
+	// SkillEmbedder 供 memory_butler selective_remember 语义判重（P2-3）等
+	// 场景使用（生产为 MultiProviderEmbedder）。nil 时相关工具降级字符串判重。
+	SkillEmbedder biz.SkillEmbedder
 	// MemoryConflictDetector arbitrates governable fact kinds for the
 	// memory_remember explicit-memory tool (FR-M4). Optional: nil disables
 	// conflict governance (writes still succeed).
@@ -462,7 +468,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		runs:                runs,
 		chatUC:              chatUC,
 		v2Seq:               v2Seq,
-		immediateFactWriter: biz.NewImmediateFactWriter(deps.Infra.MemoryConsolidationWriter, deps.Infra.LG),
+		immediateFactWriter: biz.NewImmediateFactWriter(deps.Infra.MemoryConsolidationWriter, deps.Infra.FactIndexSync, deps.Infra.LG),
 		turnLC: &chatTurnLifecycleImpl{
 			sessionStateTransitor: stateMgr,
 			turnRecorder:          metrics,

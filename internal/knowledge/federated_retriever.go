@@ -68,14 +68,15 @@ func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string,
 	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
 }
 
-// SearchAll 全库智能路由（US-14 检索免选择）：枚举全部 Collection → Route 策略
+// SearchAll 全库智能路由（US-14 检索免选择）：枚举 Collection → Route 策略
 // （名称/描述与 query 匹配度取 top N，阈值 0.3；无匹配自动降级 Broadcast）。
-// 系统无任何 Collection 时返回空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
-func (f *FederatedRetriever) SearchAll(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+// workspace 为租户过滤键（C-01）：""=system 见全部，非空=租户自有+共享集合。
+// 系统无任何可见 Collection 时返回空结果而非错误——LLM 可继续无知识回答，不阻塞会话。
+func (f *FederatedRetriever) SearchAll(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, workspace string) ([]biz.KnowledgeChunk, error) {
 	if f.meta == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "federated_retriever: collection meta not configured")
 	}
-	cols, _, err := f.meta.ListCollections(ctx, "", 1000, 0)
+	cols, _, err := f.meta.ListCollections(ctx, workspace, 1000, 0)
 	if err != nil {
 		return nil, apierror.Wrap(err, apierror.CodeInternal, apierror.DomainKnowledge)
 	}

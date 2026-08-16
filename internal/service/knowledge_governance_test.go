@@ -63,7 +63,7 @@ func newGovernanceService(t *testing.T, entities *stubGovEntityRepo, embedder in
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetLinkRepos(nil, entities)
-	return NewKnowledgeService(uc, embedder, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
+	return NewKnowledgeService(uc, embedder, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
 }
 
 // ── MergeKnowledgeEntities ──────────────────────────────────────────────────

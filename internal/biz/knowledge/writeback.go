@@ -84,6 +84,18 @@ func (u *Usecase) SetWriteBackReplay(fn WriteBackReplayFunc) {
 	u.writeBackReplay = fn
 }
 
+// WriteBackGraphFunc 写回图谱钩子：touched 词条页触发 M2 实体共现 + typed 关系
+// 抽取（均为 content_hash 幂等、best-effort）。团队库无 vault 同步循环，实体钩子
+// 唯一载体（vault applier）永不触发——写回路径必须自带图谱收口，否则 entries/*
+// 在图谱中恒为孤立节点。只传词条页：日记是 provenance（检索排除），抽边纯浪费。
+type WriteBackGraphFunc func(ctx context.Context, col Collection, entryDocs []PromoteTouchedDoc) error
+
+// SetWriteBackGraph 接线写回图谱钩子（生产 KnowledgeService 注入；同
+// SetWriteBackReplay 模式——knowledge_write 工具直调 Usecase，挂 biz 层收口）。
+func (u *Usecase) SetWriteBackGraph(fn WriteBackGraphFunc) {
+	u.writeBackGraph = fn
+}
+
 // SessionWriteBack 会话事实写回团队知识库（SP7 G2）。
 // Stability: evolving
 type SessionWriteBack interface {
@@ -241,6 +253,18 @@ func (u *Usecase) writeBackFacts(ctx context.Context, col Collection, in WriteBa
 					loggateway.Err(rerr),
 				)
 			}
+		}
+	}
+	// 图谱收口（2026-08-16）：词条页实体共现 + typed 关系抽取。必须在 chunk
+	// 重放之后（抽取器读正文/状态依赖重放落库）；失败仅 Warn——幂等闸保证
+	// 下次写回/热文档扫描自然重试。
+	if u.writeBackGraph != nil && len(res.EntryDocs) > 0 {
+		if gerr := u.writeBackGraph(ctx, col, res.EntryDocs); gerr != nil {
+			u.lg.Warn("写回飞轮图谱抽取失败（写回已落库，幂等闸保证后续重试）",
+				loggateway.StepID("knowledge.writeback"),
+				loggateway.Str("collection_id", col.ID),
+				loggateway.Err(gerr),
+			)
 		}
 	}
 	return res, nil

@@ -130,7 +130,7 @@ func newPromoteService(t *testing.T) (*KnowledgeService, *us14MemRepo, *promoteL
 		},
 	}, lineageW)
 	uc.SetBacklinkRepos(&stubBacklinkBlockReader{owner: map[string]string{"sb1": "sd1", "sb2": "sd1"}}, nil)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	return svc, repo, lineageW
 }
 

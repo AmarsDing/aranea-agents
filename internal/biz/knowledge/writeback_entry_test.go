@@ -388,6 +388,59 @@ func TestWriteBack_ReplayHookSkippedWhenNoChange(t *testing.T) {
 	}
 }
 
+// ── 写回图谱钩子（2026-08-16：团队库无 vault 同步循环，M2 抽取随写回收口触发）──
+
+// 接线后：钩子只收词条页（日记是 provenance，抽边纯浪费）；未接线不触发（降级安全）。
+func TestWriteBack_GraphHookReceivesEntriesOnly(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	var gotEntries []PromoteTouchedDoc
+	var gotCol Collection
+	f.u.SetWriteBackGraph(func(_ context.Context, col Collection, entryDocs []PromoteTouchedDoc) error {
+		gotCol = col
+		gotEntries = entryDocs
+		return nil
+	})
+	res, err := f.u.WriteBackSessionFacts(context.Background(), WriteBackInput{
+		SessionID: "sess-g1",
+		Facts:     []WriteBackFact{taggedFact("fid-g", "部署必须走灰度且保留回滚开关", "constraint", 0.95, "灰度发布")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotCol.ID != "team-1" {
+		t.Fatalf("hook collection = %q", gotCol.ID)
+	}
+	if len(gotEntries) != 1 || gotEntries[0].DocID != res.EntryDocs[0].DocID {
+		t.Fatalf("graph hook must receive entry docs only: %+v", gotEntries)
+	}
+}
+
+// 全量去重命中（无词条改动）→ 不触发图谱钩子（幂等闸之外的零成本短路）。
+func TestWriteBack_GraphHookSkippedWhenNoEntryChange(t *testing.T) {
+	f := newWriteBackEntryFixture()
+	calls := 0
+	f.u.SetWriteBackGraph(func(context.Context, Collection, []PromoteTouchedDoc) error {
+		calls++
+		return nil
+	})
+	in := WriteBackInput{
+		SessionID: "sess-g2",
+		Facts:     []WriteBackFact{taggedFact("fid-g2", "值班每 8 小时轮换", "constraint", 0.9, "值班制度")},
+	}
+	if _, err := f.u.WriteBackSessionFacts(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("first write must fire graph hook once, got %d", calls)
+	}
+	if _, err := f.u.WriteBackSessionFacts(context.Background(), in); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("idempotent rewrite must skip graph hook, got %d calls", calls)
+	}
+}
+
 // ── P0-2 别名成链：basename + title + aliases 多键 ──────────────────────────
 
 func TestAutolinkWikiMentionsMulti_AliasAndTitleKeys(t *testing.T) {

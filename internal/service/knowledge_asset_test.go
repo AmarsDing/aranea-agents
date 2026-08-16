@@ -22,7 +22,7 @@ func newAssetService(t *testing.T, assetRoot string) (*KnowledgeService, *us14Me
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetVaultFiler(biz.NewKnowledgeVaultFiler(nil))
-	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, knowledge.NewAssetStore(assetRoot), nil, nil, loggateway.NewNoop()), repo
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, knowledge.NewAssetStore(assetRoot), nil, nil, nil, loggateway.NewNoop()), repo
 }
 
 // vault 图片：从 collection root + rel_path 流式输出，inline 渲染。

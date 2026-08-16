@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -37,9 +38,19 @@ import (
 // 最终靠迭代上限强制收敛。周期检测作为 p=1 判定的补充网：只命中含 ≥2 种签名的
 // 异质循环，同质连调（p=1）仍归结果感知判定，不误伤「结果在变化」的合法轮询。
 //
-// 拦截不是静默拒绝：BeforeTool 返回 CustomResult 纠偏消息，模型可见、可转向。
-// 被拦调用不占工具真实执行，且后续相同调用会持续被拦（计数不清零），模型只能
-// 通过换参数/换工具/收尾输出推进——这正是期望行为。
+// 拦截不是静默拒绝：BeforeTool 返回普通 error，框架将其转为 RoleTool 的
+// error 消息回灌模型，agent 循环继续、节点不中断（2026-08-16 B1 根修：此前用
+// CustomResult 以「成功结果」形态返回纠偏文本，模型将其误读为取证失败/证据不足
+// 而顽固重发同参调用，16 次预算烧光仍未推进 fault_clear；error 形态与正常结果
+// 走不同处理路径，显著性更高）。被拦调用不进 AfterTool（框架提前 return），
+// 守卫计数不清零，后续相同调用持续被拦，模型只能通过换参数/换工具/收尾输出推进。
+//
+// 饱和升级（2026-08-16 B4 止损）：复验实证存在模型连 error 形态纠偏也无视、
+// 反复重发直至烧光预算的顽固样本。拦截按节点隔离键累计 blockedCount，达到
+// loopGuardSaturatedStopThreshold 次后升级为 StopError——框架（functioncall.go
+// executeToolCall）对 StopError 走 shouldIgnoreError=false 路径直接上抛，
+// 强制终止当前节点运行止损：节点以失败快速收尾（图谱重试/critic 收敛机制接管），
+// 优于让模型继续空转耗尽全部迭代预算后仍以失败告终。
 //
 // 已知边界：同一轮响应内并行发射的多个相同调用（parallel tool calls）在
 // BeforeTool 阶段计数尚未累积，可能同时放行；串行循环（观测到的唯一形态）
@@ -55,6 +66,10 @@ const (
 	loopGuardWindowCap       = 12   // 签名序列窗口长度上限（= 最大周期 4 × 最少重复 3）
 	loopGuardCycleMaxPeriod  = 4    // 轮换循环检测的最大周期（每次轮换的工具数）
 	loopGuardCycleMinRepeats = 3    // 轮换满 N 个完整周期才判定为循环
+	// 同一节点隔离键下拦截满此次数后升级 StopError 强制终止节点（B4 止损）。
+	// 取值权衡：2~3 次不足以区分「模型读不懂纠偏」与「模型顽固性重发」，
+	// 5 次给足纠偏机会又远小于 max_tool_iterations，止损收益明确。
+	loopGuardSaturatedStopThreshold = 5
 )
 
 // loopGuardMarker 是拦截消息的可识别前缀；AfterTool 见到携带该标记的结果
@@ -69,6 +84,7 @@ type loopGuardEntry struct {
 	lastFailed       bool   // 上一次调用是否失败（失败重试不累计、不拦截）
 	recentSigs       []string
 	recentTools      []string // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
+	blockedCount     int      // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
 	lastTouch        time.Time
 }
 
@@ -254,10 +270,10 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loggateway.StepID("agent.tool_loop_guard"),
 				loggateway.Str("tool", args.ToolName),
 				loggateway.Str("cycle", cycleDesc))
-			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——节点内轮询不会产生新信息。"+
-				"若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。",
+			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——本调用被系统拦截，工具未执行、也非执行失败，"+
+				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。",
 				loopGuardMarker, cycleDesc, loopGuardCycleMinRepeats)
-			return &trpctool.BeforeToolResult{Context: ctx, CustomResult: msg}, nil
+			return nil, errors.New(msg)
 		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
 			loggateway.StepID("agent.tool_loop_guard"),
@@ -267,11 +283,11 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 		if digest == "" {
 			digest = "（结果为空）"
 		}
-		msg := fmt.Sprintf("%s：禁止重发本调用——%s 已成功返回过，取证已完成。"+
-			"立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
-			"重发只消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用）。",
+		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。"+
+			"禁止重发本调用，立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
+			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用）。",
 			loopGuardMarker, args.ToolName, digest, e.sameCount)
-		return &trpctool.BeforeToolResult{Context: ctx, CustomResult: msg}, nil
+		return nil, errors.New(msg)
 	})
 }
 
@@ -280,11 +296,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		if args == nil {
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
-		// 被拦调用的结果是纠偏文本，不是真实工具输出，跳过状态更新——
-		// 计数不清零，后续相同调用继续被拦。
-		if s, ok := args.Result.(string); ok && strings.HasPrefix(s, loopGuardMarker) {
-			return &trpctool.AfterToolResult{Context: ctx}, nil
-		}
+		// 注：被拦调用以 error 形态返回、框架不执行 AfterTool，故这里只见真实执行结果。
 		key := loopGuardInvocationKey(ctx)
 		if key == "" {
 			return &trpctool.AfterToolResult{Context: ctx}, nil

@@ -55,6 +55,17 @@ func IsSystem(ctx context.Context) bool {
 	return ok && id == SystemWorkspaceID
 }
 
+// ReadableFilterID 推导「可读枚举」查询的租户过滤键（C-01 知识检索回填）：
+// system 调用方（cron/后台任务）返回 ""——repo 语义为空见全部；其余返回
+// 调用方 workspace（缺省 default），共享行（workspace=""）仍可见。
+// 用于集合枚举类入口（如知识库 ListCollections / SearchAll 全库路由）。
+func ReadableFilterID(ctx context.Context) string {
+	if IsSystem(ctx) {
+		return ""
+	}
+	return IDFromContext(ctx)
+}
+
 // AssertWorkspace 校验 caller workspace 是否拥有 resource workspace。
 // P1-1/P1-2: 用于 service 层 IDOR 防护（避免 service → server/middleware 反向依赖）。
 //

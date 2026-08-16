@@ -1,4 +1,4 @@
-package knowledge
+﻿package knowledge
 
 import (
 	"context"
@@ -142,7 +142,7 @@ func (s *stubAllRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery
 
 func TestSearchAll_NilMeta(t *testing.T) {
 	fr := &FederatedRetriever{}
-	_, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "x"}, nil, "")
+	_, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "x"}, nil, "", "")
 	if err == nil {
 		t.Fatal("expected error when meta is nil")
 	}
@@ -153,7 +153,7 @@ func TestSearchAll_NilMeta(t *testing.T) {
 
 func TestSearchAll_ZeroCollections_EmptyWithoutError(t *testing.T) {
 	fr := &FederatedRetriever{meta: &mockMetaFetcher{}}
-	chunks, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "x"}, nil, "")
+	chunks, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "x"}, nil, "", "")
 	if err != nil {
 		t.Fatalf("zero collections must not error, got %v", err)
 	}
@@ -171,7 +171,7 @@ func TestSearchAll_RoutesAcrossAllCollections(t *testing.T) {
 	ret := NewRetriever(stubAllEmbedder{}, repo, nil, loggateway.NewNoop())
 	fr := NewFederatedRetrieverWithMeta(nil, ret, meta, loggateway.NewNoop())
 
-	chunks, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "refund policy", TopK: 5}, nil, "")
+	chunks, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "refund policy", TopK: 5}, nil, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestSearchAll_NoRouteMatch_FallsBackToBroadcast(t *testing.T) {
 	fr := NewFederatedRetrieverWithMeta(nil, ret, meta, loggateway.NewNoop())
 
 	// 查询与任何 Collection 名称/描述无关 → Route 无匹配 → 降级全库广播。
-	_, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "zzz unrelated", TopK: 5}, nil, "")
+	_, err := fr.SearchAll(context.Background(), biz.KnowledgeSearchQuery{Query: "zzz unrelated", TopK: 5}, nil, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

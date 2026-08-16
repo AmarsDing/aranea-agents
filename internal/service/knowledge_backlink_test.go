@@ -60,7 +60,7 @@ func newBacklinkService(t *testing.T) (*KnowledgeService, *us14MemRepo) {
 		}
 	}
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	// 构造函数已接线空图；测试覆盖为预载图（构造函数外装载，模拟启动加载完成）。
 	idx := bizknowledge.NewLinkIndex()

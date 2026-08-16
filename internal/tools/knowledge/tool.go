@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
 	"aranea-agents/pkg/apierror"
@@ -88,6 +89,13 @@ func RetrievalEvaluatorFromContext(ctx context.Context) *knowledge.RetrievalEval
 	return ev
 }
 
+// retrievalWorkspace 推导全库枚举（SearchAll）的租户过滤键（C-01 回填）：
+// 委托 workspace.ReadableFilterID 统一实现。此前 SearchAll 恒传 ""，
+// 未绑定知识库的 agent 可枚举全部租户的集合。
+func retrievalWorkspace(ctx context.Context) string {
+	return workspace.ReadableFilterID(ctx)
+}
+
 // searchInput is the JSON schema for the knowledge_search tool.
 // US-14：collection_id 可选——留空时按 scoped（Agent 绑定）/全库智能路由，用户无需选库。
 type searchInput struct {
@@ -160,7 +168,7 @@ func NewSearchTool() trpctool.CallableTool {
 			if fr == nil {
 				return searchOutput{}, apierror.BadRequest(apierror.DomainKnowledge, "knowledge_search: federated retriever not configured for collection-free search")
 			}
-			chunks, err = fr.SearchAll(ctx, q, nil, "")
+			chunks, err = fr.SearchAll(ctx, q, nil, "", retrievalWorkspace(ctx))
 		}
 		if err != nil {
 			return searchOutput{}, apierror.Internal(apierror.DomainKnowledge, fmt.Sprintf("knowledge_search: %s", err.Error()))
@@ -342,7 +350,7 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		if fr := FederatedRetrieverFromContext(ctx); fr != nil {
 			if len(in.CollectionIDs) == 0 {
 				// US-14：无显式 ID 且无 scoped → 全库智能路由（零库返回空结果）。
-				chunks, err = fr.SearchAll(ctx, q, nil, "")
+			chunks, err = fr.SearchAll(ctx, q, nil, "", retrievalWorkspace(ctx))
 			} else {
 				chunks, err = fr.Search(ctx, in.CollectionIDs, q, nil, "")
 			}

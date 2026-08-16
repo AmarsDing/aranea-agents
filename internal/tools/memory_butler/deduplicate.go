@@ -60,9 +60,9 @@ func newDeduplicateMemoriesTool(deps Deps) trpctool.Tool {
 			facts = append(facts, factEntry{ID: id, Statement: stmt, UpdatedAt: updated})
 		}
 
-		// Trigram Jaccard (stringSimilarity). Embedding cosine is not wired:
-		// ListFactRows JSON omits embedding_blob, and production
-		// memoryButlerTools() does not inject Deps.Embedder.
+		// Trigram Jaccard (stringSimilarity)。本工具仍走词法判重；
+		// 语义判重已落地于 selective_remember（P2-3，Deps.Embedder 生产已接线），
+		// 此处批量两两比对若要向量判重需另算 O(n²) 余弦，暂保留词法实现。
 		var toDelete []string
 		seen := make(map[string]bool)
 		for i := 0; i < len(facts); i++ {

@@ -218,10 +218,8 @@ func uniqueSeedDocs(seeds []biz.KnowledgeChunk, max int) []string {
 }
 
 // linkTypePriority 邻居边类型权重（旧 1 跳路径排序分）。
-// 实体轨冻结（2026-08-15 评审修订 P1）：entity/semantic 边生产无写入路径
-// （SetEntityHook 全仓无生产调用者、semantic 无建边管线），knowledge_links 里
-// 只有 explicit 一种边——entity×2/semantic×1 分支当前是死代码，保留仅为兼容
-// 未来接线；解冻判据：citation 失败分布证明多跳失败够线（≥30%）再议，勿提前养。
+// entity/semantic 边由 M2.1 SetEntityHook 生产装配触发（vault_sync 索引成功后
+// 异步执行），当前已接线；若未来语义边管线补齐，semantic 分支自然生效。
 func linkTypePriority(linkType string) int {
 	switch linkType {
 	case bizknowledge.LinkTypeExplicit:

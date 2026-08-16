@@ -26,6 +26,18 @@
 - **风险3 拒绝不沉默**：conflict/orphan 去重 statuses 只查 pending → 已否决提案每轮 dream 重复骚扰。修复：去重状态集加 `rejected`（拒绝即沉默），`TestCurateKnowledge_ProposalDedup` 断言三类 kind 状态集语义（conflict/orphan=pending+rejected，stale=pending+applied）。
 - **风险5 cue 路径学习信号——调研排除**：cue 预检索（`knowledge_inject.go retrieveCueChunks`）与 knowledge 工具同走 FederatedRetriever→AdaptiveRouter 三件套；`AdaptiveRouter.Search` 末端统一挂 `applyBaseLevelBoost`（写 `knowledge_access_log`，生产唯一写入方）+ `triggerHebbian`（`StrengthenCoActivations` 同批召回两两 +0.1，异步）；生产装配 `NewKnowledgeAdaptiveRouter` 接线 `SetAccessLog(0.1)`/`SetCoActivation(0.1)`。强化（+0.1/批）与衰减（×0.9/轮，<0.05 关闭）闭环自洽；cue 高频召回正常记 access_log，不会误标 stale/orphan。**结论：已闭环，无需修复**（裸 `ret.Search` 兜底仅 router 为 nil 时触发，生产不可能）。
 
+### 深度检查补丁纪要（2026-08-16 第二轮）
+
+对知识库/记忆管家/L0–L4 业务逻辑做第二轮深度巡检，发现 2 缺陷 + 1 风险 + 1 过期注释，全部修复：
+
+- **P1-1+P2-1 写回收口实体/关系冷启动**：`writeback.go` 创建词条页后，新增 `writeBackGraphHook` 同步触发 `EntityPipeline.ProcessDoc`（M2.1 实体共现）+ `RelationExtractor.ExtractDoc`（M2.2 typed edges），新词条页即刻获得语义关联，不再等热文档阈值。生产装配 `provideKnowledgeWriteBackGraphHook` 注入 `NewKnowledgeService`。
+- **P1-2 知识检索 workspace 隔离回填（C-01）**：`knowledge_inject.go` cue 预检索、`knowledge_search` 工具、`KnowledgeService.Search` 三处全库枚举入口统一加 `workspace.ReadableFilterID(ctx)` 过滤——system 调用方见全部，其余按调用方 workspace 过滤（共享行仍可见），杜绝跨租户集合名/ID 泄露。
+- **P2-2 ImmediateFactWriter embedding 新鲜度**：`ImmediateFactWriter` 新增 `indexSync MemoryFactIndexSyncer` 字段，`writeFactsSync` 写入成功后逐行 `SyncFactIndexFromRow`（对齐 auto_memory 回采范式），即时事实 embedding 不再等 reconciler cron 兜底。`ChatInfraDeps` 同步加 `FactIndexSync`/`SkillEmbedder` 两字段。
+- **P2-3 selective_remember 置信度修正 + 语义去重**：①默认 confidence=0.8 / importance=0.7（此前零值导致召回侧阈值永久过滤）；②新增 `semanticDuplicate` 余弦判重（阈值 0.92，对齐 `FactWriteMergeScore`），Embedder 生产已接线 `MultiProviderEmbedder`，nil/失败降级字符串判重不阻断。
+- **P3-3 graph_expander 过期注释清理**：`linkTypePriority` 注释从「SetEntityHook 全仓无生产调用者/死代码」更新为「entity/semantic 边由 M2.1 SetEntityHook 生产装配触发，当前已接线」。
+
+测试：新增 `immediate_fact_writer_test.go`（4 例：索引同步/ nil 降级/同步失败不阻断/写入失败跳过）+ `selective_remember_test.go`（5 例：精确重复/语义重复/新颖默认值/nil Embedder 降级/Embed 失败降级）+ 全量构建 `go build ./cmd/... ./internal/...` + `go build -tags wireinject` + `go vet` 全绿。回归：biz/knowledge（18 例）、knowledge（全量）、memory_butler（11 例）、service Knowledge（全量）、workspace（全量）均通过。
+
 ---
 
 ## M3 落地纪要（实施偏差记录）

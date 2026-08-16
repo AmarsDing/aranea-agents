@@ -16,25 +16,19 @@ func newTestInvocationContext(invocationID string) context.Context {
 }
 
 // runLoopGuardTurn 模拟一次「Before → After」工具调用往返。
-func runLoopGuardTurn(t *testing.T, g *toolLoopGuard, ctx context.Context, tool, args string, result any, callErr error) *trpctool.BeforeToolResult {
+// 返回 nil 表示放行；返回非 nil error 表示被守卫拦截（B1：拦截以 error 形态
+// 返回，框架转为 RoleTool error 消息回灌模型，且不执行真实工具与 AfterTool）。
+func runLoopGuardTurn(t *testing.T, g *toolLoopGuard, ctx context.Context, tool, args string, result any, callErr error) error {
 	t.Helper()
 	before := g.beforeHook()
 	after := g.afterHook()
-	bRes, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: tool, Arguments: []byte(args)})
-	if err != nil {
-		t.Fatalf("before hook error: %v", err)
-	}
-	// 被拦截时框架跳过真实执行，AfterTool 收到的是纠偏文本。
-	if bRes.CustomResult != nil {
-		if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: tool, Arguments: []byte(args), Result: bRes.CustomResult}); err != nil {
-			t.Fatalf("after hook error: %v", err)
-		}
-		return bRes
+	if _, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: tool, Arguments: []byte(args)}); err != nil {
+		return err // 被拦截：框架跳过真实执行与 AfterTool，守卫状态不变
 	}
 	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: tool, Arguments: []byte(args), Result: result, Error: callErr}); err != nil {
 		t.Fatalf("after hook error: %v", err)
 	}
-	return bRes
+	return nil
 }
 
 func TestLoopGuardBlocksThirdIdenticalCall(t *testing.T) {
@@ -43,20 +37,23 @@ func TestLoopGuardBlocksThirdIdenticalCall(t *testing.T) {
 
 	// 第 1、2 次相同调用放行（取证 + 确认属合理模式）。
 	for i := 1; i <= 2; i++ {
-		res := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, "eth1 state DOWN", nil)
-		if res.CustomResult != nil {
-			t.Fatalf("call %d should pass, got blocked: %v", i, res.CustomResult)
+		if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, "eth1 state DOWN", nil); err != nil {
+			t.Fatalf("call %d should pass, got blocked: %v", i, err)
 		}
 	}
 	// 第 3 次起拦截并给出纠偏消息。
 	for i := 3; i <= 5; i++ {
-		res := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, "eth1 state DOWN", nil)
-		if res.CustomResult == nil {
+		err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, "eth1 state DOWN", nil)
+		if err == nil {
 			t.Fatalf("call %d should be blocked", i)
 		}
-		msg, _ := res.CustomResult.(string)
-		if !strings.HasPrefix(msg, loopGuardMarker) {
-			t.Fatalf("blocked result should carry loop guard marker, got %q", msg)
+		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+			t.Fatalf("blocked error should carry loop guard marker, got %q", err.Error())
+		}
+		// 防回归：拦截 error 严禁是 StopError——StopError 会被框架上抛、
+		// 中断整个节点运行（B1 只要「回灌模型的普通 error」形态）。
+		if _, ok := trpcagent.AsStopError(err); ok {
+			t.Fatal("block error must NOT be a StopError (would abort the node run)")
 		}
 	}
 }
@@ -73,8 +70,7 @@ func TestLoopGuardAllowsDifferentArgs(t *testing.T) {
 		`{"device":"sw1","cmd":"ip neigh"}`,
 	}
 	for i, c := range cmds {
-		res := runLoopGuardTurn(t, g, ctx, "gns3_exec", c, "ok", nil)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", c, "ok", nil); err != nil {
 			t.Fatalf("different-args call %d should pass, got blocked", i+1)
 		}
 	}
@@ -87,8 +83,7 @@ func TestLoopGuardResultChangeResets(t *testing.T) {
 	// 轮询场景：同参数但结果有变化 → 不算循环。
 	outputs := []string{"alarms: 0", "alarms: 1", "alarms: 2", "alarms: 3"}
 	for i, out := range outputs {
-		res := runLoopGuardTurn(t, g, ctx, "twin_alarm_list", `{"status":"firing"}`, out, nil)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, ctx, "twin_alarm_list", `{"status":"firing"}`, out, nil); err != nil {
 			t.Fatalf("polling call %d with fresh result should pass", i+1)
 		}
 	}
@@ -100,8 +95,7 @@ func TestLoopGuardFailureRetryAllowed(t *testing.T) {
 
 	// 失败重试不累计、不拦截（归熔断器治理）。
 	for i := 1; i <= 4; i++ {
-		res := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, nil, context.DeadlineExceeded)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, nil, context.DeadlineExceeded); err != nil {
 			t.Fatalf("failure retry %d should pass", i)
 		}
 	}
@@ -116,8 +110,7 @@ func TestLoopGuardIsolatedAcrossInvocations(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		runLoopGuardTurn(t, g, ctxA, "gns3_exec", `{"x":1}`, "same", nil)
 	}
-	res := runLoopGuardTurn(t, g, ctxB, "gns3_exec", `{"x":1}`, "same", nil)
-	if res.CustomResult != nil {
+	if err := runLoopGuardTurn(t, g, ctxB, "gns3_exec", `{"x":1}`, "same", nil); err != nil {
 		t.Fatal("different invocation should not inherit loop state")
 	}
 }
@@ -129,8 +122,7 @@ func TestLoopGuardArgsCanonicalization(t *testing.T) {
 	// 键序/空白差异应归一化为同一签名。
 	runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"a":1,"b":2}`, "r", nil)
 	runLoopGuardTurn(t, g, ctx, "gns3_exec", `{ "b":2, "a":1 }`, "r", nil)
-	res := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"a":1,"b":2}`, "r", nil)
-	if res.CustomResult == nil {
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"a":1,"b":2}`, "r", nil); err == nil {
 		t.Fatal("whitespace/key-order variant should be treated as identical call and blocked on 3rd")
 	}
 }
@@ -145,16 +137,20 @@ func TestLoopGuardBlockMessageCarriesResultDigest(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, real, nil)
 	}
-	res := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, real, nil)
-	if res.CustomResult == nil {
+	err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show"}`, real, nil)
+	if err == nil {
 		t.Fatal("3rd identical call should be blocked")
 	}
-	msg, _ := res.CustomResult.(string)
+	msg := err.Error()
 	if !strings.Contains(msg, "state DOWN qlen 1000") {
 		t.Fatalf("blocked message should replay last real result digest, got %q", msg)
 	}
 	if !strings.Contains(msg, "禁止重发") || !strings.Contains(msg, "取证已完成") {
 		t.Fatalf("blocked message should affirm evidence validity and direct next action, got %q", msg)
+	}
+	// B1：error 形态必须明示「非工具执行失败」，防模型把拦截误读为失败而重试。
+	if !strings.Contains(msg, "非执行失败") {
+		t.Fatalf("blocked message should state it is not a tool failure, got %q", msg)
 	}
 	if strings.Contains(msg, "\n") {
 		t.Fatalf("digest should be whitespace-flattened, got %q", msg)
@@ -175,19 +171,18 @@ func TestLoopGuardRotationCycleBlocked(t *testing.T) {
 	// 前 8 次（两轮 + 第三轮前两步）放行——结果每次都带新 ts，模拟轮询。
 	for i := 0; i < 8; i++ {
 		c := cycle[i%3]
-		res := runLoopGuardTurn(t, g, ctx, c.tool, c.args, map[string]any{"ts": i, "status": "ok"}, nil)
-		if res.CustomResult != nil {
-			t.Fatalf("call %d (%s) should pass, got blocked: %v", i+1, c.tool, res.CustomResult)
+		if err := runLoopGuardTurn(t, g, ctx, c.tool, c.args, map[string]any{"ts": i, "status": "ok"}, nil); err != nil {
+			t.Fatalf("call %d (%s) should pass, got blocked: %v", i+1, c.tool, err)
 		}
 	}
 	// 第 9 次（第三轮收尾）起拦截，消息应列出轮换模式。
-	res := runLoopGuardTurn(t, g, ctx, cycle[2].tool, cycle[2].args, map[string]any{"ts": 8, "status": "ok"}, nil)
-	if res.CustomResult == nil {
+	err := runLoopGuardTurn(t, g, ctx, cycle[2].tool, cycle[2].args, map[string]any{"ts": 8, "status": "ok"}, nil)
+	if err == nil {
 		t.Fatal("9th call completing 3rd rotation should be blocked")
 	}
-	msg, _ := res.CustomResult.(string)
+	msg := err.Error()
 	if !strings.HasPrefix(msg, loopGuardMarker) {
-		t.Fatalf("blocked result should carry loop guard marker, got %q", msg)
+		t.Fatalf("blocked error should carry loop guard marker, got %q", msg)
 	}
 	for _, want := range []string{"gns3_health_check", "twin_alarm_get", "gns3_exec", "输出结论"} {
 		if !strings.Contains(msg, want) {
@@ -195,14 +190,12 @@ func TestLoopGuardRotationCycleBlocked(t *testing.T) {
 		}
 	}
 	// 被拦调用不进窗口：模型固执重发同一步，持续被拦。
-	res = runLoopGuardTurn(t, g, ctx, cycle[2].tool, cycle[2].args, map[string]any{"ts": 9, "status": "ok"}, nil)
-	if res.CustomResult == nil {
+	if err := runLoopGuardTurn(t, g, ctx, cycle[2].tool, cycle[2].args, map[string]any{"ts": 9, "status": "ok"}, nil); err == nil {
 		t.Fatal("retrying the blocked call should stay blocked")
 	}
 	// 换参数破循环：递进式干活放行。
-	res = runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show eth2"}`, "eth2 UP", nil)
-	if res.CustomResult != nil {
-		t.Fatalf("call with different args should pass, got blocked: %v", res.CustomResult)
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", `{"device":"sw1","cmd":"ip link show eth2"}`, "eth2 UP", nil); err != nil {
+		t.Fatalf("call with different args should pass, got blocked: %v", err)
 	}
 }
 
@@ -216,17 +209,15 @@ func TestLoopGuardTwoToolCycleBlocked(t *testing.T) {
 		if i%2 == 1 {
 			tool, args = "tool_b", `{"y":2}`
 		}
-		res := runLoopGuardTurn(t, g, ctx, tool, args, map[string]any{"ts": i}, nil)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, ctx, tool, args, map[string]any{"ts": i}, nil); err != nil {
 			t.Fatalf("call %d should pass, got blocked", i+1)
 		}
 	}
-	res := runLoopGuardTurn(t, g, ctx, "tool_b", `{"y":2}`, map[string]any{"ts": 5}, nil)
-	if res.CustomResult == nil {
+	err := runLoopGuardTurn(t, g, ctx, "tool_b", `{"y":2}`, map[string]any{"ts": 5}, nil)
+	if err == nil {
 		t.Fatal("6th call completing 3rd AB cycle should be blocked")
 	}
-	msg, _ := res.CustomResult.(string)
-	if !strings.Contains(msg, "tool_a → tool_b") {
+	if msg := err.Error(); !strings.Contains(msg, "tool_a → tool_b") {
 		t.Fatalf("cycle block message should list the rotation, got %q", msg)
 	}
 }
@@ -238,9 +229,8 @@ func TestLoopGuardHomogeneousPollingNotBlockedByCycle(t *testing.T) {
 	ctx := newTestInvocationContext("inv-loop-10")
 
 	for i := 0; i < 8; i++ {
-		res := runLoopGuardTurn(t, g, ctx, "twin_alarm_list", `{"status":"firing"}`, map[string]any{"alarms": i}, nil)
-		if res.CustomResult != nil {
-			t.Fatalf("polling call %d with fresh result should pass, got blocked: %v", i+1, res.CustomResult)
+		if err := runLoopGuardTurn(t, g, ctx, "twin_alarm_list", `{"status":"firing"}`, map[string]any{"alarms": i}, nil); err != nil {
+			t.Fatalf("polling call %d with fresh result should pass, got blocked: %v", i+1, err)
 		}
 	}
 }
@@ -260,25 +250,21 @@ func TestLoopGuardCountsIsolatedAcrossNodes(t *testing.T) {
 
 	// diagnose 取证 2 次（打满自身额度）。
 	for i := 1; i <= 2; i++ {
-		res := runLoopGuardTurn(t, g, diagnose, "gns3_exec", args, "eth1 state DOWN", nil)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, diagnose, "gns3_exec", args, "eth1 state DOWN", nil); err != nil {
 			t.Fatalf("diagnose call %d should pass, got blocked", i)
 		}
 	}
 	// remediate 不受 diagnose 连坐：自身 2 次额度独立，前 2 次放行、第 3 次起拦截。
 	for i := 1; i <= 2; i++ {
-		res := runLoopGuardTurn(t, g, remediate, "gns3_exec", args, "eth1 state DOWN", nil)
-		if res.CustomResult != nil {
+		if err := runLoopGuardTurn(t, g, remediate, "gns3_exec", args, "eth1 state DOWN", nil); err != nil {
 			t.Fatalf("remediate call %d should pass (isolated from diagnose), got blocked", i)
 		}
 	}
-	res := runLoopGuardTurn(t, g, remediate, "gns3_exec", args, "eth1 state DOWN", nil)
-	if res.CustomResult == nil {
+	if err := runLoopGuardTurn(t, g, remediate, "gns3_exec", args, "eth1 state DOWN", nil); err == nil {
 		t.Fatal("remediate 3rd identical call should be blocked")
 	}
 	// diagnose 侧第 3 次同样被拦（自身计数未被 remediate 干扰）。
-	res = runLoopGuardTurn(t, g, diagnose, "gns3_exec", args, "eth1 state DOWN", nil)
-	if res.CustomResult == nil {
+	if err := runLoopGuardTurn(t, g, diagnose, "gns3_exec", args, "eth1 state DOWN", nil); err == nil {
 		t.Fatal("diagnose 3rd identical call should be blocked")
 	}
 }

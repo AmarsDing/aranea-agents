@@ -661,11 +661,41 @@ func newGNS3ExecTool(cfg Config) trpctool.CallableTool {
 		if err := checkExecWhitelist(in.Cmd); err != nil {
 			return jsonResult{}, err
 		}
-		return cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": in.Cmd})
+		res, err := cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": in.Cmd})
+		if err == nil {
+			embedPortDownHint(res.Result)
+		}
+		return res, err
 	},
 		trpcfunction.WithName("gns3_exec"),
 		trpcfunction.WithDescription("在 GNS3 仿真设备控制台执行只读命令（白名单：ping/show/ip 查询/traceroute/arp/cat/echo/curl 等；写操作一律拒绝）。"),
 	)
+}
+
+// embedPortDownHint 在 gns3_exec 成功结果含端口 DOWN 证据时内嵌行动指引
+// （2026-08-16 B2 根修：模型拿到「eth1 state DOWN」证据后仍顽固重发同参取证
+// 直至烧光预算；在证据现场直接写明「取证已完成、禁止重发、推进下一步」，
+// 把纠偏时机从「第 3 次被拦截」提前到「第 1 次拿到证据」）。
+// 文案不写死具体下一跳工具：diagnose（只读）与 remediate（变更）都会跑
+// ip link show，下一动作由各节点任务指令决定，防诱导只读节点越权调 fault_clear。
+func embedPortDownHint(result any) {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return
+	}
+	// gns3_agent 成功响应无 ok 键（{"device","cmd","output"}）；仅当 ok 键
+	// 存在且为 false（doRequest 的错误包装）时跳过。
+	if okFlag, exists := m["ok"].(bool); exists && !okFlag {
+		return
+	}
+	b, err := json.Marshal(m)
+	if err != nil || !strings.Contains(strings.ToLower(string(b)), "state down") {
+		return
+	}
+	if _, exists := m["next_action_hint"]; !exists {
+		m["next_action_hint"] = "检测到端口 state DOWN——取证已完成，禁止为「再确认」重发本命令" +
+			"（重复调用将被系统拦截并白白消耗调用预算）；立即按本节点任务指令推进到下一步动作。"
+	}
 }
 
 func newGNS3FaultInjectTool(cfg Config) trpctool.CallableTool {

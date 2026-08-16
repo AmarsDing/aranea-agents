@@ -426,7 +426,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector, mailboxWaker)
@@ -530,7 +530,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	markdownOrganizer := service.NewKnowledgeMarkdownOrganizer(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	extractorRegistry := service.NewKnowledgeExtractorRegistry(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	assetStore := service.NewKnowledgeAssetStore(loggatewayLogger)
-	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, loggatewayLogger)
+	entityPipeline := provideKnowledgeEntityPipeline(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
+	relationExtractor := provideKnowledgeRelationExtractor(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
+	writeBackGraphFunc := provideKnowledgeWriteBackGraphHook(entityPipeline, relationExtractor, loggatewayLogger)
+	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, writeBackGraphFunc, loggatewayLogger)
 	evaluationService := service.NewEvaluationService(evaluationUsecase, evaluationRunner)
 	redisClient := provideRedisClient(confData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
@@ -627,7 +630,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, monitorBus, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, dataData, extractorRegistry, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
@@ -671,7 +674,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryCanaryWorker := provideMemoryCanaryWorker(dataData, memoryCanaryStatus, flowLogWriter, loggatewayLogger)
 	memoryCitationBackfillWorker := provideMemoryCitationBackfillWorker(dataData, loggatewayLogger)
 	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
-	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
+	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, knowledgeUsecase, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -1441,6 +1444,8 @@ func provideChatServiceDeps(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	memberSessions biz.MemberSessionV2Repo,
 	memoryConsolidationWriter biz.MemoryConsolidationWriter,
+	memoryFactIndexSyncer biz.MemoryFactIndexSyncer,
+	skillEmbedder biz.SkillEmbedder,
 	memoryConflictDetector biz.MemoryConflictDetector,
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
@@ -1512,6 +1517,8 @@ func provideChatServiceDeps(
 			V2ProjectorFactory:        v2ProjectorFactory,
 			MemberSessions:            memberSessions,
 			MemoryConsolidationWriter: memoryConsolidationWriter,
+			FactIndexSync:             memoryFactIndexSyncer,
+			SkillEmbedder:             skillEmbedder,
 			MemoryConflictDetector:    memoryConflictDetector,
 			MemoryConflictStore:       memoryConflictStore,
 			VoiceDelegation:           voiceDelegation,
@@ -1811,22 +1818,42 @@ func provideArtifactSigner(lg loggateway.Logger) *artifact3.Signer {
 	return artifact3.NewSigner(lg)
 }
 
-// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
-// semantic relation worker: periodically scans hot documents (knowledge_access_log
-// hits >= threshold) per collection and runs the two-step LLM relation extractor
-// (entity list → triples → predicate normalization → typed semantic edges).
-// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
-// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
-// （本体与 wire.go 同源：本仓 wire_gen.go 含手工维护的 provider 副本，
-// 此前只同步了调用点未同步函数体导致编译断裂，2026-08-15 补齐。）
-func provideKnowledgeRelationExtractWorker(
+// provideKnowledgeEntityPipeline 装配 M2 实体共现轨（与 wire.go 同源手工副本）。
+// 供 vault 同步钩子与写回图谱钩子两处消费；KNOWLEDGE_ENTITY_PIPELINE_DISABLED
+// 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeEntityPipeline(
 	d *data.Data,
 	caller biz.LLMCaller,
 	sys *biz.SystemSettingUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	uc *biz.KnowledgeUsecase,
 	lg loggateway.Logger,
-) *jobs.KnowledgeRelationExtractWorker {
+) *knowledge.EntityPipeline {
+	if d == nil || caller == nil || uc == nil || knowledge.EntityPipelineDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	state, ok := repo.(knowledge2.RelationStateRepo)
+	if !ok {
+		return nil
+	}
+	return knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+}
+
+// provideKnowledgeRelationExtractor 装配 M2 typed 关系抽取器（与 wire.go 同源手工
+// 副本）。供热文档扫描 worker 与写回图谱钩子两处消费；
+// KNOWLEDGE_RELATION_EXTRACT_DISABLED 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeRelationExtractor(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *knowledge.RelationExtractor {
 	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
 		return nil
 	}
@@ -1837,8 +1864,7 @@ func provideKnowledgeRelationExtractWorker(
 	links, lok := repo.(knowledge2.SemanticLinkRepo)
 	vocab, vok := repo.(knowledge2.RelationVocabRepo)
 	state, sok := repo.(knowledge2.RelationStateRepo)
-	hot, hok := repo.(knowledge2.HotDocumentLister)
-	if !lok || !vok || !sok || !hok {
+	if !lok || !vok || !sok {
 		return nil
 	}
 	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
@@ -1846,7 +1872,77 @@ func provideKnowledgeRelationExtractWorker(
 	if !rok {
 		return nil
 	}
-	extractor := knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+	return knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+}
+
+// provideKnowledgeWriteBackGraphHook 装配写回图谱钩子（2026-08-16，与 wire.go
+// 同源手工副本）：团队库无 vault 同步循环，写回词条页实体/关系抽取随写回收口
+// 触发；双抽取器 content_hash 幂等、safego 不阻塞写回主路径。两器皆 nil 时不接线。
+func provideKnowledgeWriteBackGraphHook(
+	entity *knowledge.EntityPipeline,
+	relation *knowledge.RelationExtractor,
+	lg loggateway.Logger,
+) knowledge2.WriteBackGraphFunc {
+	if entity == nil && relation == nil {
+		return nil
+	}
+	return func(_ context.Context, col knowledge2.Collection, entryDocs []knowledge2.PromoteTouchedDoc) error {
+		for _, doc := range entryDocs {
+			docID := strings.TrimSpace(doc.DocID)
+			if docID == "" {
+				continue
+			}
+			safego.Go(appctx.Ctx(), "knowledge.writeback_graph", func() {
+				if entity != nil {
+					if _, err := entity.ProcessDoc(appctx.Ctx(), col.ID, docID); err != nil {
+						lg.Warn("writeback entity pipeline failed",
+							loggateway.Str("collection_id", col.ID),
+							loggateway.Str("doc_id", docID),
+							loggateway.Err(err),
+						)
+					}
+				}
+				if relation != nil {
+					if _, err := relation.ExtractDoc(appctx.Ctx(), docID); err != nil {
+						lg.Warn("writeback relation extract failed",
+							loggateway.Str("collection_id", col.ID),
+							loggateway.Str("doc_id", docID),
+							loggateway.Err(err),
+						)
+					}
+				}
+			})
+		}
+		return nil
+	}
+}
+
+// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
+// semantic relation worker: periodically scans hot documents (knowledge_access_log
+// hits >= threshold) per collection and runs the two-step LLM relation extractor
+// (entity list → triples → predicate normalization → typed semantic edges).
+// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
+// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
+// （本体与 wire.go 同源：本仓 wire_gen.go 含手工维护的 provider 副本，
+// 此前只同步了调用点未同步函数体导致编译断裂，2026-08-15 补齐。）
+// 抽取器本体经 provideKnowledgeRelationExtractor 共享装配（写回图谱钩子同源）。
+func provideKnowledgeRelationExtractWorker(
+	d *data.Data,
+	extractor *knowledge.RelationExtractor,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeRelationExtractWorker {
+	if d == nil || uc == nil || extractor == nil {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	hot, hok := repo.(knowledge2.HotDocumentLister)
+	if !hok {
+		return nil
+	}
 	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
 }
 
@@ -1988,39 +2084,31 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *knowledge2.VaultFiler {
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
 // M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
-// M2.1：SetEntityHook 接入实体共现轨（LLM 抽实体 → ReplaceDocEntities → 共现 →
-// entity 出链；按 docID+contentHash 幂等，safego 异步不阻塞索引主路径）。
+// M2.1：SetEntityHook 接入实体共现轨（按 docID+contentHash 幂等，safego 异步
+// 不阻塞索引主路径；nil 时跳过）。
 func provideVaultSyncSupervisor(
 	uc *biz.KnowledgeUsecase,
 	filer *knowledge2.VaultFiler,
 	embedder knowledge.Embedder,
-	caller biz.LLMCaller,
-	sys *biz.SystemSettingUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	d *data.Data,
+	entityPipeline *knowledge.EntityPipeline,
 	registry *knowledge.ExtractorRegistry,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
 	engine := knowledge2.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
-	if d != nil && caller != nil && !knowledge.EntityPipelineDisabled() {
-		if repo := data.NewKnowledgeRepoFromData(d); repo != nil {
-			if state, ok := repo.(knowledge2.RelationStateRepo); ok {
-				pipeline := knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
-				applier.SetEntityHook(func(collectionID, docID string) {
-					safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
-						if _, err := pipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
-							lg.Warn("entity pipeline failed",
-								loggateway.Str("collection_id", collectionID),
-								loggateway.Str("doc_id", docID),
-								loggateway.Err(err),
-							)
-						}
-					})
-				})
-			}
-		}
+	if entityPipeline != nil {
+		applier.SetEntityHook(func(collectionID, docID string) {
+			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
+				if _, err := entityPipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
+					lg.Warn("entity pipeline failed",
+						loggateway.Str("collection_id", collectionID),
+						loggateway.Str("doc_id", docID),
+						loggateway.Err(err),
+					)
+				}
+			})
+		})
 	}
 	uc.SetVaultApplier(applier)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)

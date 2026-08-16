@@ -270,6 +270,10 @@ type Usecase struct {
 	// 手动自愈）。放 biz 层收口：knowledge_write 工具直调 Usecase（不经 service
 	// 包装），重放挂 service 层时该路径绕过，entries/* 永久 pending。
 	writeBackReplay WriteBackReplayFunc
+	// writeBackGraph 为写回图谱钩子（2026-08-16），经 SetWriteBackGraph 接线；
+	// 对 touched 词条页触发 M2 实体共现 + typed 关系抽取。nil 时写回文档只有
+	// explicit 块链，图谱实体/语义轨缺席（降级，不阻断写回）。
+	writeBackGraph WriteBackGraphFunc
 	// factVersions/proposals 为 M3 演化时序持久化（supersedes 版本链 + 治理提案），
 	// 经 SetEvolutionRepos 接线；nil 时留痕跳过（写回主流程语义不变）。
 	factVersions FactVersionRepo

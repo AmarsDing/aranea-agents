@@ -833,6 +833,8 @@ func provideChatServiceDeps(
 	v2ProjectorFactory *v2.ProjectorFactory,
 	memberSessions biz.MemberSessionV2Repo,
 	memoryConsolidationWriter biz.MemoryConsolidationWriter,
+	memoryFactIndexSyncer biz.MemoryFactIndexSyncer,
+	skillEmbedder biz.SkillEmbedder,
 	memoryConflictDetector biz.MemoryConflictDetector,
 	memoryConflictStore biz.L3ConflictStore,
 	learningLoop *biz.LearningLoopUsecase,
@@ -910,6 +912,8 @@ func provideChatServiceDeps(
 			V2ProjectorFactory:        v2ProjectorFactory,
 			MemberSessions:            memberSessions,
 			MemoryConsolidationWriter: memoryConsolidationWriter,
+			FactIndexSync:             memoryFactIndexSyncer,
+			SkillEmbedder:             skillEmbedder,
 			MemoryConflictDetector:    memoryConflictDetector,
 			MemoryConflictStore:       memoryConflictStore,
 			VoiceDelegation:           voiceDelegation,
@@ -1342,44 +1346,136 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *bizknowledge.VaultFiler {
 	return bizknowledge.NewVaultFiler(lg)
 }
 
+// provideKnowledgeEntityPipeline 装配 M2 实体共现轨（LLM 抽实体 → ReplaceDocEntities
+// → 共现 → entity 出链；按 docID+contentHash 幂等）。供 vault 同步钩子与写回图谱
+// 钩子两处消费；KNOWLEDGE_ENTITY_PIPELINE_DISABLED 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeEntityPipeline(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *knowledge.EntityPipeline {
+	if d == nil || caller == nil || uc == nil || knowledge.EntityPipelineDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	state, ok := repo.(bizknowledge.RelationStateRepo)
+	if !ok {
+		return nil
+	}
+	return knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+}
+
+// provideKnowledgeRelationExtractor 装配 M2 typed 关系抽取器（实体清单 → 三元组
+// → 谓词归一 → typed 语义边；content_hash 幂等）。供热文档扫描 worker 与写回图谱
+// 钩子两处消费；KNOWLEDGE_RELATION_EXTRACT_DISABLED 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeRelationExtractor(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *knowledge.RelationExtractor {
+	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	links, lok := repo.(bizknowledge.SemanticLinkRepo)
+	vocab, vok := repo.(bizknowledge.RelationVocabRepo)
+	state, sok := repo.(bizknowledge.RelationStateRepo)
+	if !lok || !vok || !sok {
+		return nil
+	}
+	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
+	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
+	if !rok {
+		return nil
+	}
+	return knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+}
+
+// provideKnowledgeWriteBackGraphHook 装配写回图谱钩子（2026-08-16）：团队库
+// （VaultBackendTeam）无 vault 同步循环，实体钩子唯一载体永不触发，写回词条页
+// 在图谱中恒为孤立节点。钩子对 touched 词条页异步触发实体共现 + typed 关系抽取，
+// 双抽取器均 content_hash 幂等、safego 不阻塞写回主路径。两器皆 nil 时不接线。
+func provideKnowledgeWriteBackGraphHook(
+	entity *knowledge.EntityPipeline,
+	relation *knowledge.RelationExtractor,
+	lg loggateway.Logger,
+) bizknowledge.WriteBackGraphFunc {
+	if entity == nil && relation == nil {
+		return nil
+	}
+	return func(_ context.Context, col bizknowledge.Collection, entryDocs []bizknowledge.PromoteTouchedDoc) error {
+		for _, doc := range entryDocs {
+			docID := strings.TrimSpace(doc.DocID)
+			if docID == "" {
+				continue
+			}
+			safego.Go(appctx.Ctx(), "knowledge.writeback_graph", func() {
+				if entity != nil {
+					if _, err := entity.ProcessDoc(appctx.Ctx(), col.ID, docID); err != nil {
+						lg.Warn("writeback entity pipeline failed",
+							loggateway.Str("collection_id", col.ID),
+							loggateway.Str("doc_id", docID),
+							loggateway.Err(err),
+						)
+					}
+				}
+				if relation != nil {
+					if _, err := relation.ExtractDoc(appctx.Ctx(), docID); err != nil {
+						lg.Warn("writeback relation extract failed",
+							loggateway.Str("collection_id", col.ID),
+							loggateway.Str("doc_id", docID),
+							loggateway.Err(err),
+						)
+					}
+				}
+			})
+		}
+		return nil
+	}
+}
+
 // provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
 // vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
 // M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
-// M2.1：SetEntityHook 接入实体共现轨（LLM 抽实体 → ReplaceDocEntities → 共现 →
-// entity 出链；按 docID+contentHash 幂等，safego 异步不阻塞索引主路径）。
+// M2.1：SetEntityHook 接入实体共现轨（按 docID+contentHash 幂等，safego 异步
+// 不阻塞索引主路径；nil 时跳过）。
 func provideVaultSyncSupervisor(
 	uc *biz.KnowledgeUsecase,
 	filer *bizknowledge.VaultFiler,
 	embedder knowledge.Embedder,
-	caller biz.LLMCaller,
-	sys *biz.SystemSettingUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	d *data.Data,
+	entityPipeline *knowledge.EntityPipeline,
 	registry *knowledge.ExtractorRegistry,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
 	engine := bizknowledge.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
 	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
-	if d != nil && caller != nil && !knowledge.EntityPipelineDisabled() {
-		if repo := data.NewKnowledgeRepoFromData(d); repo != nil {
-			if state, ok := repo.(bizknowledge.RelationStateRepo); ok {
-				pipeline := knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
-				applier.SetEntityHook(func(collectionID, docID string) {
-					safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
-						if _, err := pipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
-							lg.Warn("entity pipeline failed",
-								loggateway.Str("collection_id", collectionID),
-								loggateway.Str("doc_id", docID),
-								loggateway.Err(err),
-							)
-						}
-					})
-				})
-			}
-		}
+	if entityPipeline != nil {
+		applier.SetEntityHook(func(collectionID, docID string) {
+			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
+				if _, err := entityPipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
+					lg.Warn("entity pipeline failed",
+						loggateway.Str("collection_id", collectionID),
+						loggateway.Str("doc_id", docID),
+						loggateway.Err(err),
+					)
+				}
+			})
+		})
 	}
 	uc.SetVaultApplier(applier)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
@@ -1632,34 +1728,24 @@ func provideKnowledgeCitationBackfillWorker(d *data.Data, lg loggateway.Logger) 
 // (entity list → triples → predicate normalization → typed semantic edges).
 // Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
 // Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
+// 抽取器本体经 provideKnowledgeRelationExtractor 共享装配（写回图谱钩子同源）。
 func provideKnowledgeRelationExtractWorker(
 	d *data.Data,
-	caller biz.LLMCaller,
-	sys *biz.SystemSettingUsecase,
-	catalog *biz.LlmProviderModelUsecase,
+	extractor *knowledge.RelationExtractor,
 	uc *biz.KnowledgeUsecase,
 	lg loggateway.Logger,
 ) *jobs.KnowledgeRelationExtractWorker {
-	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
+	if d == nil || uc == nil || extractor == nil {
 		return nil
 	}
 	repo := data.NewKnowledgeRepoFromData(d)
 	if repo == nil {
 		return nil
 	}
-	links, lok := repo.(bizknowledge.SemanticLinkRepo)
-	vocab, vok := repo.(bizknowledge.RelationVocabRepo)
-	state, sok := repo.(bizknowledge.RelationStateRepo)
 	hot, hok := repo.(bizknowledge.HotDocumentLister)
-	if !lok || !vok || !sok || !hok {
+	if !hok {
 		return nil
 	}
-	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
-	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
-	if !rok {
-		return nil
-	}
-	extractor := knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
 	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
 }
 
@@ -3707,6 +3793,9 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryCitationBackfillWorker,
 		provideKnowledgeCitationBackfillWorker,
 		provideKnowledgeRelationExtractWorker,
+		provideKnowledgeEntityPipeline,
+		provideKnowledgeRelationExtractor,
+		provideKnowledgeWriteBackGraphHook,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,

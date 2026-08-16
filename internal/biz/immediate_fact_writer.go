@@ -14,16 +14,22 @@ import (
 type ImmediateFactWriter struct {
 	lg         loggateway.Logger
 	factWriter MemoryConsolidationWriter
+	// indexSync 回采写入行的 embedding 索引（P2-2）：auto_memory 正常路径在
+	// UpsertFactsAndEpisodeBatch 后逐行 SyncFactIndexFromRow，即时事实此前丢弃
+	// 返回值 → embedding 恒 pending，向量召回要等 reconciler cron 兜底才可见。
+	// nil 时降级跳过（reconciler 仍是最终一致兜底）。
+	indexSync MemoryFactIndexSyncer
 }
 
 // NewImmediateFactWriter creates a new ImmediateFactWriter.
-func NewImmediateFactWriter(factWriter MemoryConsolidationWriter, lg loggateway.Logger) *ImmediateFactWriter {
+func NewImmediateFactWriter(factWriter MemoryConsolidationWriter, indexSync MemoryFactIndexSyncer, lg loggateway.Logger) *ImmediateFactWriter {
 	if factWriter == nil {
 		return nil
 	}
 	return &ImmediateFactWriter{
 		lg:         lg,
 		factWriter: factWriter,
+		indexSync:  indexSync,
 	}
 }
 
@@ -89,8 +95,22 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 	}
 
 	// Use existing consolidation writer with nil episode (facts only, no episode)
-	_, err := w.factWriter.UpsertFactsAndEpisodeBatch(ctx, factWrites, nil)
-	return err
+	res, err := w.factWriter.UpsertFactsAndEpisodeBatch(ctx, factWrites, nil)
+	if err != nil {
+		return err
+	}
+	// P2-2：写入成功后即同步 embedding 索引（best-effort，对齐 auto_memory
+	// 回采范式）；失败不阻断——reconciler cron 扫描 index_status=pending 兜底。
+	if w.indexSync != nil && res != nil {
+		for _, raw := range res.FactRows {
+			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
+				w.lg.Warn("即时事实索引同步失败",
+					loggateway.StepID("memory.immediate_fact_index"),
+					loggateway.Err(serr))
+			}
+		}
+	}
+	return nil
 }
 
 // mapFactTypeToKind maps XML fact type to memory_fact fact_kind.

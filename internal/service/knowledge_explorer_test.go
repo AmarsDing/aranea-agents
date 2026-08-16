@@ -40,7 +40,7 @@ func newExplorerService(t *testing.T, paths biz.KnowledgeDocumentPathReader, lin
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetExplorerRepos(paths, links)
-	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
 }
 
 // ── ListVaultTree ────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ func TestKnowledgeService_ListVaultTree(t *testing.T) {
 func TestKnowledgeService_ListVaultTree_Unconfigured(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo) // 不调 SetExplorerRepos
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	col, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"})
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func newVaultWriteService(t *testing.T) (*KnowledgeService, *us14MemRepo) {
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetVaultFiler(biz.NewKnowledgeVaultFiler(nil))
 	uc.SetVaultApplier(&stubVaultDocApplier{repo: repo})
-	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
 }
 
 func TestKnowledgeService_CreateVaultDir(t *testing.T) {
@@ -400,7 +400,7 @@ func TestKnowledgeService_ListDocumentLinks(t *testing.T) {
 func TestKnowledgeService_ListDocumentLinks_UnwiredDegrades(t *testing.T) {
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func newGraphService(t *testing.T, links biz.KnowledgeCollectionLinkReader) (*Kn
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetGraphRepo(links)
-	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()), repo
 }
 
 func TestKnowledgeService_ListCollectionGraph(t *testing.T) {

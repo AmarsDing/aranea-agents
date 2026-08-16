@@ -102,7 +102,7 @@ func newRebuildService(t *testing.T, idx bizknowledge.BlockIndexRepo, bus biz.Ev
 	}
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	uc.SetBlockIndexRepos(idx, nil)
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, bus, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, bus, nil, nil, loggateway.NewNoop())
 	return svc, repo
 }
 

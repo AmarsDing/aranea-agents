@@ -262,7 +262,7 @@ func TestIngestDocument_EmptyCollection_FallsIntoDefaultCollection(t *testing.T)
 	repo := newUS14MemRepo()
 	uc := biz.NewKnowledgeUsecase(repo, repo, repo)
 	emb := &us14EmbedderAdmin{model: "text-embedding-3-small", dim: 1536}
-	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	raw := base64.StdEncoding.EncodeToString([]byte("hello default collection"))
 	doc, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
@@ -305,7 +305,7 @@ func TestIngestDocument_EmptyCollection_ReusesExistingDefaultCollection(t *testi
 		t.Fatal(err)
 	}
 	emb := &us14EmbedderAdmin{model: "text-embedding-3-small", dim: 1536}
-	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	raw := base64.StdEncoding.EncodeToString([]byte("reuse me"))
 	doc, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
@@ -343,7 +343,7 @@ func TestIngestDocument_ExplicitCollection_Unchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	emb := &us14EmbedderAdmin{model: "text-embedding-3-small", dim: 1536}
-	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, emb, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	raw := base64.StdEncoding.EncodeToString([]byte("explicit collection"))
 	doc, err := svc.IngestDocument(context.Background(), &v1.IngestDocumentRequest{
@@ -381,7 +381,7 @@ func TestSearch_EmptyCollection_RoutesAcrossAllCollections(t *testing.T) {
 	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{
 		Retriever: retriever,
 		Federated: federated,
-	}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.Search(context.Background(), &v1.SearchRequest{
 		CollectionId: "",
@@ -404,7 +404,7 @@ func TestSearch_EmptyCollection_ZeroCollections_ReturnsEmpty(t *testing.T) {
 	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{
 		Retriever: retriever,
 		Federated: federated,
-	}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.Search(context.Background(), &v1.SearchRequest{Query: "anything"})
 	if err != nil {
@@ -430,7 +430,7 @@ func TestSearch_ExplicitCollection_Unchanged(t *testing.T) {
 	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{
 		Retriever: retriever,
 		Federated: federated,
-	}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	_, err := svc.Search(context.Background(), &v1.SearchRequest{
 		CollectionId: "col-x",
@@ -454,7 +454,7 @@ func TestSearch_PathPrefixPlumbed(t *testing.T) {
 	retriever := knowledge.NewRetriever(us14QueryEmbedder{}, repo, nil, loggateway.NewNoop())
 	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{
 		Retriever: retriever,
-	}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	if _, err := svc.Search(context.Background(), &v1.SearchRequest{
 		CollectionId: "col-x",
@@ -497,7 +497,7 @@ func TestMoveDocument_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	moved, err := svc.MoveDocument(context.Background(), &v1.MoveDocumentRequest{
 		Id:                 doc.ID,
 		TargetCollectionId: dst.ID,
@@ -535,7 +535,7 @@ func TestMoveDocument_DimMismatch_ReturnsConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	_, err = svc.MoveDocument(context.Background(), &v1.MoveDocumentRequest{
 		Id:                 doc.ID,
 		TargetCollectionId: dst.ID,

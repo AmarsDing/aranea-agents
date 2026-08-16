@@ -39,7 +39,7 @@ func linkUseServiceFixture(t *testing.T) (*KnowledgeService, *stubLinkUsageRepo)
 	usage := &stubLinkUsageRepo{}
 	uc := biz.NewKnowledgeUsecaseFromRepo(repo)
 	uc.SetLinkUsageRepo(usage)
-	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop()), usage
+	return NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop()), usage
 }
 
 func TestKnowledgeService_RecordLinkUse(t *testing.T) {

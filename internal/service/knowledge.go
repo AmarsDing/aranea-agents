@@ -130,7 +130,7 @@ func (s *KnowledgeService) knowledgeFlow(ctx context.Context) *event.TraceEmitte
 	})
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, extractors *knowledge.ExtractorRegistry, assets *knowledge.AssetStore, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, searchDeps KnowledgeSearchDeps, organizer *knowledge.MarkdownOrganizer, extractors *knowledge.ExtractorRegistry, assets *knowledge.AssetStore, eventBus biz.EventBus, systemSetting biz.SystemSettingRepo, writeBackGraph bizknowledge.WriteBackGraphFunc, lg loggateway.Logger) *KnowledgeService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -159,6 +159,9 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		// 写回飞轮 chunk 重放钩子（2026-08-15）：knowledge_write 工具直调 biz
 		// Usecase（不经 service 包装），重放必须在 biz 层收口才能覆盖该路径。
 		uc.SetWriteBackReplay(s.replayWriteBackChunks)
+		// 写回飞轮图谱钩子（2026-08-16）：团队库无 vault 同步循环，M2 实体/关系
+		// 抽取必须随写回收口触发；nil（未接线/环境关闭）时降级跳过。
+		uc.SetWriteBackGraph(writeBackGraph)
 	}
 	return s
 }
@@ -846,7 +849,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 			return nil, apierror.Unavailable("KNOWLEDGE", "federated retriever not configured for collection-free search")
 		}
 		modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
-		chunks, err = s.search.Federated.SearchAll(ctx, q, nil, modeOverride)
+		chunks, err = s.search.Federated.SearchAll(ctx, q, nil, modeOverride, workspace.ReadableFilterID(ctx))
 	} else if s.search.Router != nil {
 		var rewriteResult *knowledge.QueryRewriteResult
 		strategy := knowledge.ParseRewriteStrategy(req.GetRewriteStrategy())

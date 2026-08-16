@@ -38,7 +38,7 @@ func TestKnowledgeService_ListUnlinkedMentions(t *testing.T) {
 	uc.SetMentionSearcher(&stubMentionSearcher{hits: []bizknowledge.DocContentHit{
 		{DocID: "d2", DocName: "a.md", Content: "正文提到目标笔记，又见 [[目标笔记]] 与 目标笔记。"},
 	}})
-	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	svc := NewKnowledgeService(uc, nil, KnowledgeSearchDeps{}, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 
 	resp, err := svc.ListUnlinkedMentions(ctx, &v1.ListUnlinkedMentionsRequest{DocId: "d1"})
 	if err != nil {
