@@ -45,6 +45,25 @@ type HotDocumentLister interface {
 	ListHotDocuments(ctx context.Context, collectionID string, sinceDays, minHits, limit int) ([]string, error)
 }
 
+// DistilledFact 一条词条反向蒸馏产物（M4 distill 任务）：高频召回词条的摘要卡
+// 蒸馏成 L3 轻量事实，scope=(workspace, 集合所属工作区)，全工作区 agent 经
+// L3 召回 scopes（默认含 workspace）注入 L0。
+type DistilledFact struct {
+	ScopeType   string
+	ScopeID     string
+	Statement   string // 词条摘要卡正文
+	Fingerprint string // 幂等键（kdistill:<docID>）；冲突键 (scope_type, scope_id, fingerprint)
+	TagsJSON    string // 词条摘要卡标签（JSON 数组，可空）
+	SourceDocID string // 溯源：词条文档 ID
+	SourcePath  string // 溯源：词条 rel_path
+}
+
+// DistillFactWriter 蒸馏事实写入窄接口（M4）。生产适配 MemoryAdminUsecase.
+// UpsertFactRow（(scope_type, scope_id, fingerprint) 幂等 upsert）。
+type DistillFactWriter interface {
+	UpsertDistilledFact(ctx context.Context, in DistilledFact) error
+}
+
 // RelationState 关系/实体抽取幂等状态（按 content_hash 判重）。
 type RelationState struct {
 	DocID                string

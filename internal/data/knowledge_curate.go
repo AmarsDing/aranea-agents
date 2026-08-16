@@ -182,6 +182,82 @@ func (r *knowledgeRepo) ListContradictsEdges(ctx context.Context, collectionID s
 	return out, rows.Err()
 }
 
+// ListHubClusters hub 簇候选：entries/* 中 active 边度数 >= minDegree 的词条
+// （度数降序，limit 截断），附带 1 跳 entries 邻居清单。只统计 entries 对
+// entries 的边（inbox 日记流水不参与概念簇）。边类型不限——co_activated 弱边
+// 已由 decay 任务周期裁剪，存活的统计边即「使用证明的关联」。
+func (r *knowledgeRepo) ListHubClusters(ctx context.Context, collectionID string, minDegree, limit int) ([]bizknowledge.HubClusterStat, error) {
+	rows, err := r.data.PostgresRead().QueryContext(ctx,
+		`WITH entry_edges AS (
+		   SELECT l.doc_id, l.target_doc_id
+		   FROM knowledge_links l
+		   JOIN knowledge_documents sd ON sd.id = l.doc_id AND sd.rel_path LIKE 'entries/%'
+		   JOIN knowledge_documents td ON td.id = l.target_doc_id AND td.rel_path LIKE 'entries/%'
+		   WHERE l.collection_id = $1 AND l.valid_to IS NULL
+		 ),
+		 hubs AS (
+		   SELECT doc_id, COUNT(*) AS degree FROM (
+		     SELECT doc_id FROM entry_edges UNION ALL SELECT target_doc_id FROM entry_edges
+		   ) endpoints GROUP BY doc_id HAVING COUNT(*) >= $2
+		 )
+		 SELECT h.doc_id, d.rel_path, h.degree,
+		        COALESCE((
+		          SELECT jsonb_agg(jsonb_build_object('doc_id', x.nid, 'rel_path', x.rel_path))
+		          FROM (
+		            SELECT DISTINCT CASE WHEN e.doc_id = h.doc_id THEN e.target_doc_id ELSE e.doc_id END AS nid,
+		                   nd.rel_path
+		            FROM entry_edges e
+		            JOIN knowledge_documents nd ON nd.id = CASE WHEN e.doc_id = h.doc_id THEN e.target_doc_id ELSE e.doc_id END
+		            WHERE e.doc_id = h.doc_id OR e.target_doc_id = h.doc_id
+		          ) x
+		        ), '[]'::jsonb) AS neighbors
+		 FROM hubs h
+		 JOIN knowledge_documents d ON d.id = h.doc_id
+		 ORDER BY h.degree DESC, h.doc_id
+		 LIMIT $3`, collectionID, minDegree, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list hub clusters: %w", err)
+	}
+	defer rows.Close()
+	var out []bizknowledge.HubClusterStat
+	for rows.Next() {
+		var h bizknowledge.HubClusterStat
+		var raw []byte
+		if err := rows.Scan(&h.HubDocID, &h.HubRelPath, &h.Degree, &raw); err != nil {
+			return nil, err
+		}
+		var members []struct {
+			DocID   string `json:"doc_id"`
+			RelPath string `json:"rel_path"`
+		}
+		if err := json.Unmarshal(raw, &members); err != nil {
+			return nil, fmt.Errorf("list hub clusters: decode neighbors: %w", err)
+		}
+		for _, m := range members {
+			h.Neighbors = append(h.Neighbors, bizknowledge.HubMember{DocID: m.DocID, RelPath: m.RelPath})
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// CountActiveEdgesWithin docIDs 集合内部的 active 有向边数（doc_id 与 target_doc_id
+// 均在集合内即计；A→B 与 B→A 若并存计两条——密度是阈值启发式，轻微上浮可接受）。
+func (r *knowledgeRepo) CountActiveEdgesWithin(ctx context.Context, collectionID string, docIDs []string) (int, error) {
+	if len(docIDs) == 0 {
+		return 0, nil
+	}
+	var n int
+	if err := r.data.PostgresRead().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM knowledge_links
+		 WHERE collection_id = $1 AND valid_to IS NULL
+		   AND doc_id = ANY($2) AND target_doc_id = ANY($2)`,
+		collectionID, pq.Array(docIDs)).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count active edges within: %w", err)
+	}
+	return n, nil
+}
+
 // HasProposal 同 kind+dedup_key 且 status 在 statuses 内的提案是否已存在（周期去重）。
 func (r *knowledgeRepo) HasProposal(ctx context.Context, collectionID, kind, dedupKey string, statuses []string) (bool, error) {
 	if len(statuses) == 0 {

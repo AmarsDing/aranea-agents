@@ -18,6 +18,10 @@ const (
 	ProposalKindStale = "stale"
 	// ProposalKindOrphan 孤儿词条（M4，高风险人工二审）。
 	ProposalKindOrphan = "orphan"
+	// ProposalKindDistill 高频词条反向蒸馏 memory_fact（M4，低风险自动应用）。
+	ProposalKindDistill = "distill"
+	// ProposalKindMOCEmerge hub 簇蒸馏 MOC 词条（M4，高风险人工二审）。
+	ProposalKindMOCEmerge = "moc_emerge"
 	// ProposalRiskHigh 高风险：仅留提案待人工二审，不自动应用。
 	ProposalRiskHigh = "high"
 	// ProposalRiskLow 低风险：M4 治理周期可自动应用。

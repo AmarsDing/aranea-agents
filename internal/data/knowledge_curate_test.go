@@ -347,3 +347,106 @@ func TestKnowledgeRepo_ListGovernanceProposals(t *testing.T) {
 		t.Fatalf("resolved view = %+v, %v", got, err)
 	}
 }
+
+// ListHubClusters 契约：只统计 entries↔entries 的 active 边（inbox 流水与 closed 边排除）；
+// 度数 = 无向端点计数，>= minDegree 入选，按 degree DESC, doc_id 排序，limit 截断；
+// 邻居为 1 跳 DISTINCT entries 对端。
+func TestKnowledgeRepo_ListHubClusters(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"h", "a", "b", "c", "d", "e", "f", "c2"} {
+		seedCurateDoc(t, repo, id, "entries/"+id+".md")
+	}
+	seedCurateDoc(t, repo, "inbox-note", "inbox/writeback-x.md")
+
+	// 星型簇：h-a/h-b/h-c + a-b（h 度 3，a/b 度 2，c 度 1）；d-e 对照（各度 1）。
+	seedCurateLink(t, repo, "h", "a", "semantic", "depends-on", 0.9, false)
+	seedCurateLink(t, repo, "h", "b", "co_activated", "", 0.6, false)
+	seedCurateLink(t, repo, "h", "c", "semantic", "related-to", 0.7, false)
+	seedCurateLink(t, repo, "a", "b", "semantic", "related-to", 0.8, false)
+	seedCurateLink(t, repo, "d", "e", "semantic", "related-to", 0.8, false)
+	// inbox 流水边：两端非 entries/*，不得进入度数与邻居。
+	seedCurateLink(t, repo, "h", "inbox-note", "co_activated", "", 1.0, false)
+	// closed 边：valid_to 置位，不计入。
+	seedCurateLink(t, repo, "h", "c2", "semantic", "related-to", 0.9, true)
+
+	hubs, err := repo.ListHubClusters(ctx, "c1", 2, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hubs) != 3 {
+		t.Fatalf("hubs = %+v, want 3", hubs)
+	}
+	// 排序：degree DESC, doc_id → h(3), a(2), b(2)。
+	if hubs[0].HubDocID != "h" || hubs[0].Degree != 3 || hubs[0].HubRelPath != "entries/h.md" {
+		t.Fatalf("hubs[0] = %+v", hubs[0])
+	}
+	if hubs[1].HubDocID != "a" || hubs[1].Degree != 2 || hubs[2].HubDocID != "b" || hubs[2].Degree != 2 {
+		t.Fatalf("hubs[1..2] = %+v / %+v", hubs[1], hubs[2])
+	}
+	// h 的邻居：a/b/c 三个 entries 对端；inbox-note 与 closed 的 c2 不得混入。
+	neighbors := map[string]bool{}
+	for _, m := range hubs[0].Neighbors {
+		neighbors[m.DocID] = true
+	}
+	if len(hubs[0].Neighbors) != 3 || !neighbors["a"] || !neighbors["b"] || !neighbors["c"] {
+		t.Fatalf("h neighbors = %+v", hubs[0].Neighbors)
+	}
+	if neighbors["inbox-note"] || neighbors["c2"] {
+		t.Fatalf("inbox/closed leaked into neighbors: %+v", hubs[0].Neighbors)
+	}
+	// a 的邻居：h, b。
+	if len(hubs[1].Neighbors) != 2 {
+		t.Fatalf("a neighbors = %+v", hubs[1].Neighbors)
+	}
+
+	// minDegree=3：仅 h 入选。
+	top, err := repo.ListHubClusters(ctx, "c1", 3, 10)
+	if err != nil || len(top) != 1 || top[0].HubDocID != "h" {
+		t.Fatalf("minDegree=3 hubs = %+v, %v", top, err)
+	}
+	// limit=2 截断：[h, a]。
+	cut, err := repo.ListHubClusters(ctx, "c1", 2, 2)
+	if err != nil || len(cut) != 2 || cut[0].HubDocID != "h" || cut[1].HubDocID != "a" {
+		t.Fatalf("limit=2 hubs = %+v, %v", cut, err)
+	}
+}
+
+// CountActiveEdgesWithin 契约：两端均在集合内的 active 有向边计数；
+// A→B 与 B→A 并存计两条；closed 边不计；空集恒 0。
+func TestKnowledgeRepo_CountActiveEdgesWithin(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+
+	for _, id := range []string{"h", "a", "b", "c2", "d", "e"} {
+		seedCurateDoc(t, repo, id, "entries/"+id+".md")
+	}
+	seedCurateLink(t, repo, "h", "a", "semantic", "depends-on", 0.9, false)
+	seedCurateLink(t, repo, "h", "b", "co_activated", "", 0.6, false)
+	seedCurateLink(t, repo, "a", "b", "semantic", "related-to", 0.8, false)
+	seedCurateLink(t, repo, "b", "h", "semantic", "related-to", 0.7, false) // 反向并存
+	seedCurateLink(t, repo, "h", "c2", "semantic", "related-to", 0.9, true) // closed 不计
+	seedCurateLink(t, repo, "d", "e", "semantic", "related-to", 0.8, false)
+
+	cases := []struct {
+		name   string
+		docIDs []string
+		want   int
+	}{
+		{"tri+reverse", []string{"h", "a", "b"}, 4}, // h→a, h→b, a→b, b→h
+		{"pair", []string{"h", "a"}, 1},             // 仅 h→a（b→h 的 b 不在集）
+		{"closed excluded", []string{"h", "c2"}, 0},
+		{"singleton", []string{"d", "e"}, 1},
+		{"empty", nil, 0},
+	}
+	for _, tc := range cases {
+		got, err := repo.CountActiveEdgesWithin(ctx, "c1", tc.docIDs)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s: got %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}

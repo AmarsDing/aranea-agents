@@ -261,9 +261,29 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 			}
 		}
+		// B4 饱和止损（锁内完成计数与快照）：被拦调用不进 AfterTool，计数只能在
+		// 此累计。满阈值后升级 StopError 由框架上抛终止节点；未饱和走普通 error 纠偏。
+		var saturated bool
+		var blockedCount, consecutiveCount int
+		var lastDigest string
+		if loop || cycleDesc != "" {
+			e.blockedCount++
+			blockedCount = e.blockedCount
+			consecutiveCount = e.sameCount
+			lastDigest = e.lastResultDigest
+			saturated = e.blockedCount >= loopGuardSaturatedStopThreshold
+		}
 		g.mu.Unlock()
 		if !loop && cycleDesc == "" {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
+		}
+		if saturated {
+			g.lg.Warn("tool loop guard saturated, stopping node",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
+			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
+				"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
 		}
 		if cycleDesc != "" {
 			g.lg.Warn("tool loop guard blocked rotation cycle call",
@@ -271,22 +291,23 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loggateway.Str("tool", args.ToolName),
 				loggateway.Str("cycle", cycleDesc))
 			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——本调用被系统拦截，工具未执行、也非执行失败，"+
-				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。",
-				loopGuardMarker, cycleDesc, loopGuardCycleMinRepeats)
+				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, cycleDesc, loopGuardCycleMinRepeats, blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
 			loggateway.StepID("agent.tool_loop_guard"),
 			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("consecutive", e.sameCount))
-		digest := e.lastResultDigest
+			loggateway.Int("consecutive", consecutiveCount))
+		digest := lastDigest
 		if digest == "" {
 			digest = "（结果为空）"
 		}
 		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。"+
 			"禁止重发本调用，立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
-			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用）。",
-			loopGuardMarker, args.ToolName, digest, e.sameCount)
+			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用；本节点累计被拦 %d 次，满 %d 次将被强制终止）。",
+			loopGuardMarker, args.ToolName, digest, consecutiveCount, blockedCount, loopGuardSaturatedStopThreshold)
 		return nil, errors.New(msg)
 	})
 }

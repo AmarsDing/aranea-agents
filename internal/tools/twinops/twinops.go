@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -663,7 +664,7 @@ func newGNS3ExecTool(cfg Config) trpctool.CallableTool {
 		}
 		res, err := cfg.gns3Post(ctx, "/exec", map[string]any{"device": strings.TrimSpace(in.Device), "cmd": in.Cmd})
 		if err == nil {
-			embedPortDownHint(res.Result)
+			enrichExecResult(in.Cmd, res.Result)
 		}
 		return res, err
 	},
@@ -695,6 +696,116 @@ func embedPortDownHint(result any) {
 	if _, exists := m["next_action_hint"]; !exists {
 		m["next_action_hint"] = "检测到端口 state DOWN——取证已完成，禁止为「再确认」重发本命令" +
 			"（重复调用将被系统拦截并白白消耗调用预算）；立即按本节点任务指令推进到下一步动作。"
+	}
+}
+
+// 方案 A（2026-08-16 终验根修）：ip link show 结果结构化消歧。
+//
+// 实证根因：B3+B4 终验轮 remediate 两次拿到含「eth1 state DOWN」的结果仍顽固
+// 重发取证直至被 B4 终止——输出中 eth1/eth3 双 DOWN 并存，需靠 NO-CARRIER 标志
+// 在控制台噪声文本（提示符回显、单行压平）中判别故障口，flash 级模型判别失败
+// 触发「再确认」反射，全部文字纠偏（指令/hint/拦截回放）失效。
+// 根治：工具侧把 ip link show 输出解析为 ports 结构化数组（state/NO-CARRIER
+// 已判别好），hint 直接点名管理性 DOWN 端口——模型零解析负担，歧义在源头消除。
+// hint 仍不写死下一跳工具名（只读/变更节点共用本工具，下一动作归节点指令）。
+
+var (
+	// 端口段头：`3: eth1: <BROADCAST,MULTICAST>`。MAC（0c:37:...）与提示符
+	// （root@OpenWrt:~#）均不满足「数字: 字母开头名: <标志>」形态，不会误配。
+	linkShowHeaderRe = regexp.MustCompile(`(?:^|\s)(\d+):\s+([A-Za-z][\w@.\-]*):\s+<([^>]*)>`)
+	linkShowStateRe  = regexp.MustCompile(`\bstate\s+([A-Za-z]+)`)
+)
+
+func isLinkShowCmd(cmd string) bool {
+	return strings.HasPrefix(strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(cmd))), " "), "ip link")
+}
+
+// parseLinkShowPorts 把（可能被压平成单行的）ip link show 输出解析为端口数组。
+// 滚动回显中同一端口出现多次时以最后一次为准（最新状态），顺序按最后出现排。
+func parseLinkShowPorts(output string) []map[string]any {
+	idx := linkShowHeaderRe.FindAllStringSubmatchIndex(output, -1)
+	if len(idx) == 0 {
+		return nil
+	}
+	order := []string{}
+	byName := map[string]map[string]any{}
+	for i, loc := range idx {
+		name := output[loc[4]:loc[5]]
+		flags := output[loc[6]:loc[7]]
+		segEnd := len(output)
+		if i+1 < len(idx) {
+			segEnd = idx[i+1][0]
+		}
+		seg := output[loc[1]:segEnd]
+		state := ""
+		if sm := linkShowStateRe.FindStringSubmatch(seg); sm != nil {
+			state = strings.ToUpper(sm[1])
+		}
+		noCarrier := false
+		for _, f := range strings.Split(flags, ",") {
+			if strings.TrimSpace(f) == "NO-CARRIER" {
+				noCarrier = true
+				break
+			}
+		}
+		if _, seen := byName[name]; !seen {
+			order = append(order, name)
+		}
+		byName[name] = map[string]any{"name": name, "state": state, "no_carrier": noCarrier}
+	}
+	ports := make([]map[string]any, 0, len(order))
+	for _, name := range order {
+		ports = append(ports, byName[name])
+	}
+	return ports
+}
+
+// enrichExecResult 对 gns3_exec 成功结果做证据增强：ip link show 类命令附加
+// ports 结构化数组并把故障端口点名进 hint；其余命令回退通用 state DOWN 指引。
+func enrichExecResult(cmd string, result any) {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return
+	}
+	// gns3_agent 成功响应无 ok 键；仅当 ok 键存在且为 false 时跳过。
+	if okFlag, exists := m["ok"].(bool); exists && !okFlag {
+		return
+	}
+	output, _ := m["output"].(string)
+	if !isLinkShowCmd(cmd) || strings.TrimSpace(output) == "" {
+		embedPortDownHint(result)
+		return
+	}
+	ports := parseLinkShowPorts(output)
+	if len(ports) == 0 {
+		embedPortDownHint(result)
+		return
+	}
+	m["ports"] = ports
+	var adminDown, carrierDown []string
+	for _, p := range ports {
+		if p["state"] != "DOWN" {
+			continue
+		}
+		name, _ := p["name"].(string)
+		if nc, _ := p["no_carrier"].(bool); nc {
+			carrierDown = append(carrierDown, name)
+		} else {
+			adminDown = append(adminDown, name)
+		}
+	}
+	switch {
+	case len(adminDown) > 0:
+		hint := "实测管理性 DOWN 端口（故障端口，即修复目标）：" + strings.Join(adminDown, "、") + "。"
+		if len(carrierDown) > 0 {
+			hint += "端口 " + strings.Join(carrierDown, "、") + " 带 NO-CARRIER 属链路未接常态，禁止碰。"
+		}
+		hint += "端口判别已完成（见 ports 结构化数组），取证结束——禁止重发本命令" +
+			"（重复调用将被系统拦截并白白消耗调用预算），立即按本节点任务指令推进到下一步动作。"
+		m["next_action_hint"] = hint
+	case len(carrierDown) > 0:
+		m["next_action_hint"] = "DOWN 端口 " + strings.Join(carrierDown, "、") + " 均带 NO-CARRIER（链路未接常态），" +
+			"未发现管理性 DOWN 端口；若任务预期存在故障端口，按本节点任务指令处理，禁止为「再确认」重发本命令。"
 	}
 }
 

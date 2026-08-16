@@ -639,7 +639,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
 	writeBackArbiter := provideKnowledgeWriteBackArbiter(knowledgeUsecase, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger, writeBackArbiter)
+	knowledgeDistillWiring := provideKnowledgeDistillWiring(knowledgeUsecase, memoryAdminUsecase, dataData)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger, writeBackArbiter, knowledgeDistillWiring)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -1958,6 +1959,47 @@ func provideKnowledgeWriteBackArbiter(uc *biz.KnowledgeUsecase, caller biz.LLMCa
 	return arbiter
 }
 
+// knowledgeDistillWiring M4 distill 装配标记（与 wire.go 同源手工副本）。
+type knowledgeDistillWiring struct{}
+
+// knowledgeDistillFactWriter 适配 MemoryAdminUsecase → knowledge2.DistillFactWriter
+// （与 wire.go 同源手工副本）。
+type knowledgeDistillFactWriter struct {
+	admin *biz.MemoryAdminUsecase
+}
+
+func (w knowledgeDistillFactWriter) UpsertDistilledFact(ctx context.Context, in knowledge2.DistilledFact) error {
+	_, err := w.admin.UpsertFactRow(ctx, biz.FactUpsert{
+		ScopeType:      in.ScopeType,
+		ScopeID:        in.ScopeID,
+		Statement:      in.Statement,
+		Fingerprint:    in.Fingerprint,
+		TagsJSON:       in.TagsJSON,
+		FactKind:       "semantic",
+		SourceKind:     "knowledge_distill",
+		SourceExternal: in.SourcePath,
+		Status:         "active",
+	})
+	return err
+}
+
+// provideKnowledgeDistillWiring 装配 M4 distill 任务端口（与 wire.go 同源手工副本）。
+func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAdminUsecase, d *data.Data) *knowledgeDistillWiring {
+	if uc == nil || admin == nil || d == nil {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	hot, hok := repo.(knowledge2.HotDocumentLister)
+	if !hok {
+		return nil
+	}
+	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
+	return &knowledgeDistillWiring{}
+}
+
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 func provideAutoMemoryWorker(
 	runtimeConf *conf.Runtime,
@@ -1983,6 +2025,9 @@ func provideAutoMemoryWorker(
 	// writeBackArbiter 仅作依赖锚点（M3.2：构造时已完成 Set 回注，本函数不直接使用），
 	// 保证 wire 图到达 provideKnowledgeWriteBackArbiter。
 	writeBackArbiter *knowledge.WriteBackArbiter,
+	// distillWiring 仅作依赖锚点（M4 distill：构造时已完成 Set 回注，本函数不直接使用），
+	// 保证 wire 图到达 provideKnowledgeDistillWiring。
+	distillWiring *knowledgeDistillWiring,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(knowledge2.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))

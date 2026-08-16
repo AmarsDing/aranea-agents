@@ -284,6 +284,10 @@ type Usecase struct {
 	// curate 为 M4 自治理数据端口，经 SetCurateRepo 接线；
 	// nil 时 CurateKnowledge 显式报不可用。
 	curate KnowledgeCurateRepo
+	// hotDocs/distill 为 M4 distill 任务端口（高频词条反向蒸馏 memory_fact），
+	// 经 SetDistillRepos 接线；任一为 nil 时 distill 任务静默跳过（其余治理任务不受影响）。
+	hotDocs HotDocumentLister
+	distill DistillFactWriter
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger

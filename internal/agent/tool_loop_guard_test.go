@@ -50,11 +50,48 @@ func TestLoopGuardBlocksThirdIdenticalCall(t *testing.T) {
 		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
 			t.Fatalf("blocked error should carry loop guard marker, got %q", err.Error())
 		}
-		// 防回归：拦截 error 严禁是 StopError——StopError 会被框架上抛、
-		// 中断整个节点运行（B1 只要「回灌模型的普通 error」形态）。
+		// 防回归：未饱和的拦截 error 严禁是 StopError——StopError 会被框架上抛、
+		// 中断整个节点运行（B1/B4 语义：前 N-1 次普通 error 纠偏，满阈值才升级）。
 		if _, ok := trpcagent.AsStopError(err); ok {
-			t.Fatal("block error must NOT be a StopError (would abort the node run)")
+			t.Fatal("block error must NOT be a StopError before saturation")
 		}
+	}
+}
+
+// B4：同一节点隔离键下拦截满 loopGuardSaturatedStopThreshold 次后，
+// 守卫升级返回 StopError，由框架上抛强制终止节点运行止损（2026-08-16 复验
+// 实证：顽固模型连 error 纠偏也无视，反复重发烧光 16 次预算仍不推进）。
+func TestLoopGuardSaturatedEscalatesToStopError(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-saturated")
+	args := `{"device":"sw1","cmd":"ip link show"}`
+
+	// 2 次真实放行（打满取证额度）。
+	for i := 1; i <= 2; i++ {
+		if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", args, "eth1 state DOWN", nil); err != nil {
+			t.Fatalf("call %d should pass, got blocked: %v", i, err)
+		}
+	}
+	// 第 3 次起拦截：前 threshold-1 次为普通 error 纠偏。
+	for i := 1; i <= loopGuardSaturatedStopThreshold-1; i++ {
+		err := runLoopGuardTurn(t, g, ctx, "gns3_exec", args, "eth1 state DOWN", nil)
+		if err == nil {
+			t.Fatalf("blocked call %d should return error", i)
+		}
+		if _, ok := trpcagent.AsStopError(err); ok {
+			t.Fatalf("blocked call %d should be plain error before saturation, got StopError", i)
+		}
+		if !strings.Contains(err.Error(), "强制终止") {
+			t.Fatalf("plain block error should warn about upcoming forced termination, got %q", err.Error())
+		}
+	}
+	// 第 threshold 次拦截：升级 StopError。
+	err := runLoopGuardTurn(t, g, ctx, "gns3_exec", args, "eth1 state DOWN", nil)
+	if err == nil {
+		t.Fatal("saturated block should return StopError")
+	}
+	if _, ok := trpcagent.AsStopError(err); !ok {
+		t.Fatalf("saturated block should be StopError, got %v", err)
 	}
 }
 

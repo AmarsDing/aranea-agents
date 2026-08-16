@@ -1250,6 +1250,9 @@ func provideAutoMemoryWorker(
 	// writeBackArbiter 仅作依赖锚点（M3.2：构造时已完成 Set 回注，本函数不直接使用），
 	// 保证 wire 图到达 provideKnowledgeWriteBackArbiter。
 	writeBackArbiter *knowledge.WriteBackArbiter,
+	// distillWiring 仅作依赖锚点（M4 distill：构造时已完成 Set 回注，本函数不直接使用），
+	// 保证 wire 图到达 provideKnowledgeDistillWiring。
+	distillWiring *knowledgeDistillWiring,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(bizknowledge.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
@@ -1747,6 +1750,51 @@ func provideKnowledgeRelationExtractWorker(
 		return nil
 	}
 	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
+}
+
+// knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeDistillWiring struct{}
+
+// knowledgeDistillFactWriter 适配 MemoryAdminUsecase → bizknowledge.DistillFactWriter：
+// 蒸馏事实即 L3 semantic 事实，(scope_type, scope_id, fingerprint) 幂等 upsert。
+type knowledgeDistillFactWriter struct {
+	admin *biz.MemoryAdminUsecase
+}
+
+func (w knowledgeDistillFactWriter) UpsertDistilledFact(ctx context.Context, in bizknowledge.DistilledFact) error {
+	_, err := w.admin.UpsertFactRow(ctx, biz.FactUpsert{
+		ScopeType:      in.ScopeType,
+		ScopeID:        in.ScopeID,
+		Statement:      in.Statement,
+		Fingerprint:    in.Fingerprint,
+		TagsJSON:       in.TagsJSON,
+		FactKind:       "semantic",
+		SourceKind:     "knowledge_distill",
+		SourceExternal: in.SourcePath,
+		Status:         "active",
+	})
+	return err
+}
+
+// provideKnowledgeDistillWiring 装配 M4 distill 任务端口（高频词条摘要卡反向蒸馏
+// memory_fact）：构造后回注 KnowledgeUsecase（Set 副作用，与
+// provideKnowledgeWriteBackArbiter 同模式——Usecase 无法构造期持环依赖）。
+// hot 由 knowledgeRepo 断言 HotDocumentLister；writer 适配 MemoryAdminUsecase。
+// 任一缺席返回 nil（distill 任务静默跳过，其余治理任务不受影响）。
+func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAdminUsecase, d *data.Data) *knowledgeDistillWiring {
+	if uc == nil || admin == nil || d == nil {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	hot, hok := repo.(bizknowledge.HotDocumentLister)
+	if !hok {
+		return nil
+	}
+	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
+	return &knowledgeDistillWiring{}
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -3796,6 +3844,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,
+		provideKnowledgeDistillWiring,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
