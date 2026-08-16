@@ -375,8 +375,11 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 		MCPHash:      mcpHash,
 		CustomTools:  customToolNames(deps.CustomTools),
 	}
-	if ag.Settings != nil {
-		if b, err := json.Marshal(ag.Settings); err == nil {
+	if s := settingsFingerprintView(ag.Settings); s != nil {
+		// P1-2 + P0-2A：resolver 托管字段与 no_rebuild 桶字段已清零
+		// （settingsFingerprintView），其变更不改变指纹、不触发重建；
+		// 仅 full_rebuild 桶（构建产物确凿消费的字段）进指纹。
+		if b, err := json.Marshal(s); err == nil {
 			fp.SettingsJSON = string(b)
 		}
 	}

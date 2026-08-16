@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,12 +13,7 @@ import (
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
-	"aranea-agents/internal/tools/deferred"
-	kanbanpkg "aranea-agents/internal/tools/kanban"
-	knowledgetool "aranea-agents/internal/tools/knowledge"
-	"aranea-agents/internal/tools/memory"
 	tooltrpc "aranea-agents/internal/tools/trpc"
-	"aranea-agents/internal/tools/twinops"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/loggateway"
 
@@ -28,184 +22,62 @@ import (
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 )
 
-// buildToolsetsForAgent assembles runtime toolsets. The plan (enabled keys,
-// batch-loaded catalog snapshot, confirmation gate) is loaded once per build
-// by BuildTRPCLLMAgent and shared with the callback chain, eliminating the
-// previous 3×N+1 GetTool loops.
-func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, error) {
+// buildToolsetsForAgent assembles runtime toolsets (P0-2 阶段A 分片形态)。
+// The plan (enabled keys, batch-loaded catalog snapshot, confirmation gate) is
+// loaded once per build by BuildTRPCLLMAgent and shared with the callback
+// chain, eliminating the previous 3×N+1 GetTool loops.
+//
+// 流程：computeShardPlan（配置计算与单体路径同序等价，按装配组切片）→
+// acquireShardPlan（分片缓存命中即复用，未命中仅重建该分片）→
+// mergeShardProducts（治理/延迟/去重/消歧/别名横切处理对并集统一重放）→
+// 确认门+装饰器（每次构建重放，策略变更不触发分片重建）。
+//
+// 返回的 retireUnits 是分片引用占位符（shardHoldToolSet）：调用方将其作为
+// 缓存 entry 的 toolSets 持有，entry 换代/驱逐时经 graveyard 在在途 run
+// 排空后 Close = 释放分片引用。共享分片产物本体由 shardCache 拥有，永不进
+// entry/graveyard。
+func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, []trpctool.ToolSet, error) {
 	lg := deps.Logger()
 	eff := plan.eff
-	var cfg tooltrpc.ToolsetConfig
 
-	if ag.Settings != nil && ag.Settings.ToolsEnabled {
-		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
-
-		mcpServers, mcpErr := resolveMCPServers(ctx, deps, ag.ID, deps.Logger())
-		if mcpErr != nil {
-			lg.Warn("MCP 服务器解析失败，部分工具可能不可用",
-				loggateway.StepID("agent.tool_build"),
-				loggateway.Str("agent_id", ag.ID),
-				loggateway.Err(mcpErr))
-		}
-		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
-		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
-			cfg.MCPServers = mcpServers
-		}
-		if eff[biz.ToolKeyMCPBroker] {
-			if len(mcpServers) > 0 {
-				if brokerCfg := buildMCPBrokerFromServers(mcpServers, platformAllowAdHoc); brokerCfg != nil {
-					brokerCfg.HeaderInjector = mcpUserCredentialInjector(deps, mcpServers)
-					cfg.MCPBroker = brokerCfg
-				}
-			} else {
-				mcpBrokerCfg, err := resolveMCPBrokerConfig(ctx, deps, ag.ID)
-				if err == nil && mcpBrokerCfg != nil {
-					cfg.MCPBroker = mcpBrokerCfg
-				}
-			}
-		}
-		// P1-2: 直连模式挂载 server 但未显式启用 broker 时，预建一份备用
-		// broker 配置——装配层 schema 治理发现 declaration 总量超预算时
-		// 用它降级（schema 按需拉取），避免直接丢失全部 MCP 能力。
-		if len(cfg.MCPServers) > 0 && cfg.MCPBroker == nil {
-			if fallback := buildMCPBrokerFromServers(cfg.MCPServers, platformAllowAdHoc); fallback != nil {
-				fallback.HeaderInjector = mcpUserCredentialInjector(deps, cfg.MCPServers)
-				cfg.MCPBrokerFallback = fallback
-			}
-		}
-
-		// Knowledge tools require both the Usecase (for availability check) and
-		// the Retriever (for actual search). Without a Retriever, the tools would
-		// be registered but fail at runtime with "retriever not configured in context".
-		knowledgeReady := deps.KnowledgeUsecase != nil && !deps.KnowledgeUsecase.IsUnavailable() && deps.KnowledgeRetriever != nil
-		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch] && knowledgeReady
-		cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect] && knowledgeReady
-		// knowledge_write（P1）：只需 Usecase（写路径不依赖 Retriever）；
-		// 高置信直写词条页，低置信走既有 pending HITL 链，故不设确认门禁弹窗。
-		if eff[biz.ToolKeyKnowledgeWrite] && deps.KnowledgeUsecase != nil {
-			if t := knowledgetool.NewWriteTool(deps.KnowledgeUsecase); t != nil {
-				cfg.CustomTools = append(cfg.CustomTools, t)
-			}
-		}
-		// CallAgent requires the A2A invoker to be injected at runtime. When A2A
-		// is not configured (a2aEnabled=false), prune the flag to avoid registering
-		// a tool that always fails with "invoker not configured".
-		cfg.CallAgent = eff[biz.ToolKeyCallAgent] && deps.A2AEnabled
-		cfg.AwaitHook = deps.AwaitHook
-
-		// Media generation tools (generate_image / generate_video /
-		// image_to_video) resolve their provider from the media_providers
-		// catalog per capability and persist results as session artifacts.
-		// Missing provider config skips the tool with a warning.
-		if mediaTools := resolveMediaTools(ctx, eff, deps); len(mediaTools) > 0 {
-			cfg.CustomTools = append(cfg.CustomTools, mediaTools...)
-		}
-
-		if ag.Settings.ToolsDeferredJSON != "" {
-			// 手动配置优先：ToolsDeferredJSON 显式指定延迟工具列表（biz key 粒度），
-			// 需转换为 registry 名称供装配层匹配 ToolSet/工具。
-			var deferredKeys []string
-			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferredKeys); err == nil {
-				cfg.DeferredTools = deferred.RegistryNamesForBizKeys(deferredKeys)
-			}
-		} else {
-			// 自动两段式分离（WP-4）：基于 profile 把有效工具分为核心常驻集和延迟加载集。
-			// 核心工具直接注册到 tools block（schema 稳定），延迟工具放入 catalog
-			// 以静态目录 cue + tool_load 按需加载。
-			profile := strings.TrimSpace(ag.Settings.ToolsProfile)
-			effKeys := effKeysList(eff)
-			_, deferredKeys := deferred.SplitCoreResidentTools(effKeys, profile)
-			cfg.DeferredTools = deferred.RegistryNamesForBizKeys(deferredKeys)
-			if len(cfg.DeferredTools) > 0 {
-				lg.Info("两段式工具加载：自动分离核心/延迟",
-					loggateway.StepID("agent.tool_build"),
-					loggateway.Str("agent_id", ag.ID),
-					loggateway.Str("profile", profile),
-					loggateway.Int("total_tools", len(effKeys)),
-					loggateway.Int("deferred_tools", len(cfg.DeferredTools)))
-			}
-		}
-	}
-
-	if len(deps.CustomTools) > 0 {
-		cfg.CustomTools = append(cfg.CustomTools, deps.CustomTools...)
-	}
-	// TwinOps 自定义工具集（方案10 §三，17 个 twin_*/gns3_* 工具）：
-	// 按 effective keys 白名单逐个挂载；连接配置来自环境变量
-	// （TWIN_GATEWAY_URL / TWIN_API_KEY / GNS3_AGENT_URL）。
-	cfg.CustomTools = append(cfg.CustomTools, twinops.EnabledTools(eff, twinops.ConfigFromEnv())...)
-	// OfficeCLI 办公文档工具集（officecli_read/write/render）：按 effective keys
-	// 白名单挂载；文件操作围栏到 Agent 工作区根，渲染产物落盘会话制品。
-	cfg.CustomTools = append(cfg.CustomTools, resolveOfficeCLITools(ctx, ag, deps, eff)...)
-
-	if kanbanpkg.Enabled() {
-		if deps.KanbanBridge != nil {
-			cfg.Kanban = true
-			cfg.KanbanBridge = deps.KanbanBridge
-		} else {
-			lg.Warn("kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
-				loggateway.StepID("agent.tool_build"),
-				loggateway.Str("agent_id", ag.ID))
-		}
-	}
-
-	if deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
-		cfg.MemoryEnabled = true
-		if deps.MemoryService != nil {
-			cfg.MemoryTools = filterMemoryTools(deps.MemoryService.Tools())
-		}
-		// Auto-enable working_memory tools when L1 write/read ports are wired
-		if deps.HasWorkingMemory() {
-			cfg.WorkingMemory = true
-		}
-		// Register the compact tool when ManualCompressor is wired.
-		if deps.ManualCompressor != nil {
-			cfg.CustomTools = append(cfg.CustomTools, memory.NewCompactTool())
-		}
-	}
-
-	if deps.ToolResultGate != nil {
-		cfg.BlobReader = deps.ToolResultGate.BlobReader()
-	}
-
-	cfg.OutboundRouter = deps.OutboundRouter
-	cfg.SubAgentService = deps.SubAgentService
-	cfg.ClientBridgeSvc = deps.ClientBridge
-	cfg.ComputerUseUC = deps.ComputerUseUC
-	cfg.CodingBridgeSvc = deps.CodingBridgeSvc
-
-	lg.Info("工具构建：SubAgentService 检查",
-		loggateway.StepID("agent.subagent_check"),
-		loggateway.Bool("subagent_service_nil", deps.SubAgentService == nil))
-
-	if !tooltrpc.ToolsetConfigHasAny(cfg) {
-		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
-		return nil, nil
-	}
-	lg.Info("工具构建中", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Bool("filesystem", cfg.Filesystem), loggateway.Int("mcp_servers", len(cfg.MCPServers)))
-	// K6 子步骤计时：冷构建 tools 段实测 3-7s，拆 rt_config/prune/build/gate/decor 归因。
+	// 计划期：完整复刻单体路径的配置计算（runtime config/平台默认/prune/
+	// 工作区目录），随后切分为分片计划。
 	phaseStart := time.Now()
-	applyRuntimeToolConfigs(&cfg, eff, plan.catalog)
+	sp, err := computeShardPlan(ctx, ag, deps, plan)
+	if err != nil {
+		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
+		return nil, nil, err
+	}
 	rtCfgMs := time.Since(phaseStart).Milliseconds()
-	phaseStart = time.Now()
-	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
-	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
-	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
-		lg.Warn("已跳过未配置凭证的工具，避免构建失败",
-			loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("skipped_tools", fmt.Sprintf("%v", skipped)))
+	if sp == nil {
+		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
+		return nil, nil, nil
 	}
-	pruneMs := time.Since(phaseStart).Milliseconds()
+	lg.Info("工具构建中", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("shards", len(sp.specs)), loggateway.Int("mcp_servers", len(sp.mcpIdx)))
+
+	// 获取+合并。
 	phaseStart = time.Now()
-	if err := applyToolWorkspaceDirs(ctx, ag, deps, &cfg); err != nil {
+	prods, releases, err := acquireShardPlan(ctx, globalShardCache, sp)
+	if err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, err
+		return nil, nil, err
 	}
-	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.Logger())
-	if err != nil || ts == nil {
+	ts, err := mergeShardProducts(ctx, sp, prods, releases, lg)
+	if err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return ts, err
+		return nil, nil, err
 	}
 	buildMs := time.Since(phaseStart).Milliseconds()
+
+	// retire 单元：每个未释放的分片引用包装为占位符，随 entry 生命周期释放。
+	retireUnits := make([]trpctool.ToolSet, 0, len(sp.specs))
+	for i, spec := range sp.specs {
+		if releases[i] == nil {
+			continue // 治理降级已释放（直连 MCP 分片）
+		}
+		retireUnits = append(retireUnits, newShardHoldToolSet(spec.id, releases[i]))
+	}
+
 	toolCount := len(ts.Tools) + len(ts.ToolSets)
 	lg.Info("工具构建完成", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("tool_count", toolCount))
 	phaseStart = time.Now()
@@ -231,12 +103,13 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		loggateway.StepID("agent.tool_phases"),
 		loggateway.Str("agent_id", ag.ID),
 		loggateway.Int("eff_tools", len(eff)),
-		loggateway.Int64("rt_cfg_ms", rtCfgMs),
-		loggateway.Int64("prune_ms", pruneMs),
-		loggateway.Int64("build_ms", buildMs),
+		loggateway.Int64("rt_cfg_ms", rtCfgMs), // 分片形态：含计划期全部配置计算（prune 并入）
+		loggateway.Int64("prune_ms", 0),
+		loggateway.Int64("build_ms", buildMs), // 分片形态：获取（命中复用/未命中重建）+ 合并重放
 		loggateway.Int64("gate_ms", gateMs),
-		loggateway.Int64("decor_ms", decorMs))
-	return ts, nil
+		loggateway.Int64("decor_ms", decorMs),
+		loggateway.Int("shards", len(sp.specs)))
+	return ts, retireUnits, nil
 }
 
 // applyRuntimeToolConfigs merges each enabled tool's runtime config (catalog

@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -880,5 +881,21 @@ func EnabledTools(eff map[string]bool, cfg Config) []trpctool.Tool {
 			out = append(out, t)
 		}
 	}
+	return out
+}
+
+// EnabledKeys 返回 effective key 集合中启用的 twinops 工具名（排序，确定性）。
+// 供 P0-2 阶段A 分片指纹使用：无需为计算指纹构造带真实配置的工具实例。
+func EnabledKeys(eff map[string]bool) []string {
+	if len(eff) == 0 {
+		return nil
+	}
+	var out []string
+	for _, t := range NewToolset(Config{}) {
+		if d := t.Declaration(); d != nil && eff[d.Name] {
+			out = append(out, d.Name)
+		}
+	}
+	sort.Strings(out)
 	return out
 }

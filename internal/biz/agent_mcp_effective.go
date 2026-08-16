@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Tool key constants are now defined in the tool subpackage; re-exported here for backward compatibility.
@@ -226,4 +227,75 @@ func filterEnabledMCPServerRows(rows []MCPServer) []EffectiveMCPServer {
 		})
 	}
 	return out
+}
+
+// agentReferencesMCPServer reports whether an agent's effective tool policy
+// exposes the given MCP server key via mcp_tool_set / mcp_broker — the exact
+// inverse of FilterEffectiveMCPServers: deny wins; an empty mcp: allow list
+// means "all visible servers" and therefore references every server. Key
+// comparison is case-insensitive (same as FilterEffectiveMCPServers).
+func agentReferencesMCPServer(eff AgentEffectiveTools, serverKey string) bool {
+	key := strings.ToLower(strings.TrimSpace(serverKey))
+	if key == "" || !effectiveToolsAllowsMCPServers(eff) {
+		return false
+	}
+	pol := MCPPolicyFromAgentEffectiveTools(eff)
+	for _, d := range pol.DenyServerKeys {
+		if d == key {
+			return false
+		}
+	}
+	if len(pol.AllowServerKeys) == 0 {
+		return true
+	}
+	for _, a := range pol.AllowServerKeys {
+		if a == key {
+			return true
+		}
+	}
+	return false
+}
+
+// AgentIDsReferencingMCPServer returns the IDs of agents whose effective tool
+// policy references the given MCP server key. P0-3: the MCP health runner
+// calls this on the DOWN→UP recovery edge to invalidate stale cached builds.
+//
+// System-caller view: pages through ALL agents (cross-workspace). This is a
+// low-frequency path (server recovery edge only), so the per-agent effective
+// tools computation is acceptable. Approximation note: a tenant-private
+// server of workspace A may match a workspace-B agent with an empty mcp:
+// allow list; the false positive costs one extra rebuild and is safe.
+func (u *AgentUsecase) AgentIDsReferencingMCPServer(ctx context.Context, serverKey string) ([]string, error) {
+	if u == nil || u.reader == nil {
+		return nil, nil
+	}
+	key := strings.ToLower(strings.TrimSpace(serverKey))
+	if key == "" {
+		return nil, nil
+	}
+	const pageSize = 100
+	var out []string
+	for offset := 0; ; offset += pageSize {
+		page, err := u.reader.SearchAgents(ctx, AgentListQuery{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		for _, ag := range page.Items {
+			eff, err := u.GetEffectiveTools(ctx, ag.ID)
+			if err != nil {
+				// One broken agent must not sink the whole reverse lookup.
+				if u.lg != nil {
+					u.lg.Warn("MCP 恢复反查跳过异常 agent", loggateway.StepID("agent.mcp_reverse_lookup"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
+				}
+				continue
+			}
+			if agentReferencesMCPServer(eff, key) {
+				out = append(out, ag.ID)
+			}
+		}
+		if len(page.Items) < pageSize || offset+len(page.Items) >= page.Total {
+			break
+		}
+	}
+	return out, nil
 }

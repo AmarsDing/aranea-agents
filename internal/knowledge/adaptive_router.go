@@ -2,8 +2,6 @@ package knowledge
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"strings"
 	"unicode"
 
@@ -171,16 +169,7 @@ func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.Knowledg
 		}
 		sortChunksByScoreDesc(chunks)
 	}
-	sum := sha1.Sum([]byte(q.Query))
-	queryHash := hex.EncodeToString(sum[:8])
-	entries := make([]bizknowledge.AccessLogEntry, 0, len(docIDs))
-	for _, id := range docIDs {
-		entries = append(entries, bizknowledge.AccessLogEntry{
-			CollectionID: q.CollectionID,
-			DocID:        id,
-			QueryHash:    queryHash,
-		})
-	}
+	entries := accessEntriesFromChunks(q.CollectionID, q.Query, chunks)
 	if err := a.accessLog.LogAccess(ctx, entries); err != nil {
 		a.lg.Warn("检索命中日志写入失败",
 			loggateway.StepID("knowledge.access_boost.log_fail"),

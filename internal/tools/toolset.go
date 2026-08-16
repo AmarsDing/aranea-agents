@@ -564,7 +564,19 @@ type AssemblyConfig struct {
 	MCP           MCPConfig
 	Session       SessionConfig
 	Browser       *browser.PlaywrightMCPConfig
-	Lg            loggateway.Logger
+	// SkipMCPGovernance（P0-2 阶段A）：分片构建时跳过 assembleMCPTools 内的
+	// 截断+预算治理——治理是跨 server 总预算决策，分片（每 server 一片）无法
+	// 在片内复制，由合并期对直连 toolset 并集统一执行（见 agent 层
+	// mergeShardProducts）。false 时行为与现状完全一致。
+	SkipMCPGovernance bool
+	// SkipPostProcess（P0-2 阶段A）：分片构建时跳过相位 11+ 的横切处理
+	// （DedupFlatToolNames / ApplyDisambiguationHints；DeferredTools 由调用方
+	// 传 nil 天然跳过；ApplyRuntimeNameAliases 由 trpc.BuildToolsets 侧跳过）。
+	// 这些处理会改写/追加 out 切片元素——对跨构建共享的分片产物并发追加
+	// 是数据竞争，且别名追加会使共享产物单调膨胀。合并期对并集统一重放
+	// 一次，语义与现状单趟完全一致。false 时行为与现状完全一致。
+	SkipPostProcess bool
+	Lg              loggateway.Logger
 }
 
 type OpenAPISpecConfig struct {
@@ -677,11 +689,14 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 
 	// Phase 11: earlier-wins dedup over flat tools + cross-collision detection
 	// against cheap static toolsets (no MCP enumeration — see dedupFlatToolNames).
-	ac.dedupFlatToolNames()
+	// P0-2 阶段A：分片路径（SkipPostProcess）跳过，合并期对并集统一重放。
+	if !cfg.SkipPostProcess {
+		ac.dedupFlatToolNames()
 
-	ApplyDisambiguationHints(ac.out.Tools)
-	for _, ts := range ac.out.ToolSets {
-		ApplyDisambiguationHints(ts.Tools(ctx))
+		ApplyDisambiguationHints(ac.out.Tools)
+		for _, ts := range ac.out.ToolSets {
+			ApplyDisambiguationHints(ts.Tools(ctx))
+		}
 	}
 
 	// K1 出口摘要：toolset 数 + 工具 key 列表 + 耗时。仅枚举独立工具与
@@ -767,6 +782,13 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	}
 
 	return trpcmcp.NewMCPToolSet(connCfg, opts...), nil
+}
+
+// BuildMCPBrokerTools 导出 broker 工具构建，供 P0-2 阶段A 分片合并期在治理
+// 降级（直连 declaration 总量超预算且无 broker 分片）时现场构建 broker 工具，
+// 语义与装配期 assembleMCPTools 的降级分支一致。
+func BuildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
+	return buildMCPBrokerTools(cfg)
 }
 
 func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {

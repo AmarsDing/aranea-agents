@@ -42,6 +42,28 @@ type Deps struct {
 	// FlowBus emits user-visible flow logs (流程日志) for system.mcp.* health
 	// events; nil disables emission (tests / minimal setups).
 	FlowBus contract.MonitorBus
+	// OnServerRecovered, when non-nil, fires on the DOWN→UP recovery edge
+	// (prev lifecycle state error/auth_required/degraded → ok). Used by P0-3
+	// to invalidate cached agents whose MCP toolset went stale while the
+	// server was down. Invoked asynchronously; must be goroutine-safe.
+	// Unknown→ok (first probe after boot) is NOT a recovery edge.
+	OnServerRecovered func(ctx context.Context, srv biz.MCPServer)
+}
+
+// isRecoveryEdge reports the DOWN→UP transition: the server was previously in
+// a known-bad state and is now healthy. StateUnknown→StateOK is the first
+// probe after boot (agents built while the server was up never went stale),
+// so it is deliberately excluded.
+func isRecoveryEdge(prev, next lifecycle.State) bool {
+	if next != lifecycle.StateOK {
+		return false
+	}
+	switch prev {
+	case lifecycle.StateError, lifecycle.StateAuthRequired, lifecycle.StateDegraded:
+		return true
+	default:
+		return false
+	}
 }
 
 // AlertEmitter is the contract used by the health runner to emit alerts after
@@ -188,6 +210,16 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 			loggateway.Str("server_key", srv.Key),
 			loggateway.Str("old_status", string(prevState)),
 			loggateway.Str("new_status", string(newState)))
+		// P0-3：DOWN→UP 恢复边沿 → 让缓存中的 agent 重建，摘掉掉线期间
+		// 装配的陈旧 MCP toolset。异步执行，不阻塞探测循环；翻转只发生
+		// 一次（下一轮 prevState 已是 ok），无需额外防抖。
+		if isRecoveryEdge(prevState, newState) && r.deps.OnServerRecovered != nil {
+			cb := r.deps.OnServerRecovered
+			recovered := res.Server
+			safego.Go(ctx, "mcp.health.recovered."+srv.Key, func() {
+				cb(ctx, recovered)
+			})
+		}
 	} else if !result.OK && prevState == lifecycle.StateError {
 		r.lg.Warn("MCP 健康检查连续失败",
 			loggateway.StepID("mcp.health_consecutive_fail"),

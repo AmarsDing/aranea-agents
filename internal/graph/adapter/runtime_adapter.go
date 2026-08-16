@@ -18,19 +18,31 @@ import (
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
+	"aranea-agents/pkg/trpcscope"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
+	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
+	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 
 	"github.com/google/uuid"
 )
+
+// graphRunnerUserID 是图执行在框架 runner 会话三元组（app+user+session）
+// 中的 user 维度保留值。图执行没有真实用户，用保留 id 与聊天会话隔离。
+// session 维度用 execID：单次执行内的全部节点共享同一会话（工具/LLM 历史
+// 经 session 累积，模型不再全盲）；HITL Resume 走 BuildAndResume 携带同一
+// execID，恢复后继续沿用同一会话，历史不丢。
+const graphRunnerUserID = "graph"
 
 // TECH-DEBT(COG): file_lines=963, limit=500 (AS-COG-01); converter helpers
 // (checkpoint/template/visual) should move to a separate convert file in a
 // future iteration.
 type trpcGraphRuntime struct {
 	agent           *graphtrpc.GraphAgent
+	runner          trpcrunner.Runner
 	graph           *trpcgraph.Graph
 	lineageID       string
 	eventBus        biz.EventBus
@@ -125,28 +137,24 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
-	// Invocation 必须经 NewInvocation 构造（初始化 noticeMu/noticeChannels，
-	// 裸 &Invocation{} 会触发 "noticeMu is uninitialized" 且事件通知链断裂）。
-	// 用户输入必须走 invocation.Message——GraphAgent.createInitialState 只从
+	// 执行驱动改走框架 runner（根治模型全盲，2026-08-16）：runner 负责
+	// 会话解析/创建、事件持久化与历史装配——llmflow 从 invocation.Session
+	// 累积工具/LLM 历史。此前直调 agent.Run 时 invocation 无 session，
+	// 每次 LLM 请求都不含工具历史，模型对既有取证结果全盲。
+	// 用户输入必须走 message——GraphAgent.createInitialState 只从
 	// invocation.Message 派生 StateKeyUserInput（agent 节点用户消息来源），
 	// 放 initialState["input"] 里不会被消费，会导致 LLM 请求空 messages 秒回。
-	invOpts := []trpcagent.InvocationOptions{
-		trpcagent.WithInvocationRunOptions(trpcagent.RunOptions{
-			RuntimeState: runtimeState,
-		}),
-	}
+	msg := trpcmodel.Message{Role: trpcmodel.RoleUser}
 	if input, ok := initialState["input"].(string); ok && input != "" {
-		invOpts = append(invOpts, trpcagent.WithInvocationMessage(trpcmodel.Message{
-			Role:    trpcmodel.RoleUser,
-			Content: input,
-		}))
+		msg.Content = input
 	}
-	inv := trpcagent.NewInvocation(invOpts...)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	r.setRunCancel(cancel)
 
-	eventCh, err := r.agent.Run(runCtx, inv)
+	eventCh, err := r.runner.Run(runCtx, graphRunnerUserID, r.execID, msg,
+		trpcagent.WithRuntimeState(runtimeState),
+	)
 	if err != nil {
 		r.clearRunCancel()
 		r.lg.Error("graph runtime run failed",
@@ -185,6 +193,11 @@ func (r *trpcGraphRuntime) forwardEvents(eventCh <-chan *trpcevent.Event, out ch
 		// 计数 entry，防止 ManagedMap 无限增长。Resume 重新 Run 时会重新计数。
 		if r.replanner != nil {
 			r.replanner.ReleaseExecution(r.execID)
+		}
+		// runner 为 per-execution 组合资源：仅取消残余 run（session service
+		// 是共享注入的非 owned 资源，Close 不会关闭它）。
+		if r.runner != nil {
+			_ = r.runner.Close()
 		}
 		close(out)
 	}()
@@ -260,15 +273,16 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 		runtimeState[trpcgraph.StateKeyNodeCallbacks] = r.callbacks
 	}
 
-	// 同 Run：NewInvocation 构造以初始化 noticeMu/通知链（见 Run 注释）。
-	inv := trpcagent.NewInvocation(trpcagent.WithInvocationRunOptions(trpcagent.RunOptions{
-		RuntimeState: runtimeState,
-	}))
-
+	// 同 Run：改走框架 runner（会话/历史接线，见 Run 注释）。空 message
+	// 不会落库（runner.appendIncomingMessage 对无 payload 消息早退），
+	// resume 信号完全由 RuntimeState 的 checkpoint ref + ResumeChannel 承载。
 	runCtx, cancel := context.WithCancel(ctx)
 	r.setRunCancel(cancel)
 
-	eventCh, err := r.agent.Run(runCtx, inv)
+	eventCh, err := r.runner.Run(runCtx, graphRunnerUserID, r.execID,
+		trpcmodel.Message{Role: trpcmodel.RoleUser},
+		trpcagent.WithRuntimeState(runtimeState),
+	)
 	if err != nil {
 		r.clearRunCancel()
 		r.lg.Error("graph runtime resume failed",
@@ -530,6 +544,12 @@ type trpcGraphBuilderFactory struct {
 	// replanner handles node failure analysis and replan decisions (B3).
 	// May be nil when not configured; the OnNodeError callback is skipped.
 	replanner graph.RuntimeReplanner
+
+	// sessionService 注入给图执行 runner 使用（根治模型全盲，2026-08-16）。
+	// runner 负责会话创建、事件持久化、历史装配，使 llmflow 能读到累积的
+	// 工具/节点历史。为 nil 时 runner 退回到 inmemory 会话（不持久化），
+	// 仅用于单测等无完整依赖场景。
+	sessionService trpcsession.Service
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -543,17 +563,19 @@ func NewGraphBuilderFactory(
 	resolvers graphtrpc.GraphNodeResolverSet,
 	replanner graph.RuntimeReplanner,
 	lg loggateway.Logger,
+	sessionService trpcsession.Service,
 ) biz.GraphBuilderFactory {
 	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold, lg)
 	return &trpcGraphBuilderFactory{
-		registry:     registry,
-		saver:        saver,
-		eventBus:     eventBus,
-		monitorBus:   monitorBus,
-		agentChecker: agentChecker,
-		resolvers:    resolvers,
-		lg:           lg,
-		replanner:    replanner,
+		registry:       registry,
+		saver:          saver,
+		eventBus:       eventBus,
+		monitorBus:     monitorBus,
+		agentChecker:   agentChecker,
+		resolvers:      resolvers,
+		lg:             lg,
+		replanner:      replanner,
+		sessionService: sessionService,
 	}
 }
 
@@ -607,8 +629,22 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 	if err != nil {
 		return nil, err
 	}
+
+	// 为本次执行组合框架 runner：共享 sessionService，确保工具/LLM 历史
+	// 经 session 累积（根治模型全盲）。不注入 memory/artifact/ralph——
+	// 图执行是“工作流”而非“聊天”，不需要 runner 的 mid-run memory 等额外
+	// 能力。会话与聊天 runner 同 appName，靠保留 userID（"graph"）+ execID
+	// 三元组隔离。
+	var run trpcrunner.Runner
+	if f.sessionService != nil {
+		run = trpcrunner.NewRunner(trpcscope.DefaultAppName, graphAgent,
+			trpcrunner.WithSessionService(f.sessionService))
+	} else {
+		run = trpcrunner.NewRunner(trpcscope.DefaultAppName, graphAgent)
+	}
+
 	return &trpcGraphRuntime{
-		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
+		agent: graphAgent, runner: run, graph: g, lineageID: lineageID, eventBus: f.eventBus,
 		monitorBus: f.monitorBus,
 		sessionID:  sessionID, spiritSessionID: spiritSessionID, graphID: graphID, execID: execID, lg: f.lg,
 		bridge:    graphtrpc.NewEventBridge(f.eventBus, f.monitorBus, sessionID, spiritSessionID, graphID, execID, f.lg),

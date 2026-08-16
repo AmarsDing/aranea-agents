@@ -136,6 +136,13 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 		UserID:    rt.UserID,
 		Query:     strings.TrimSpace(keyword),
 		Limit:     int32(limit),
+		// P1-1（2026-08-16）：透传 L3 作用域/质量门/team 上下文，
+		// 与 standalone L3 路径（l3_prompt.go）口径一致。
+		TeamID:          rt.TeamID,
+		Workspace:       rt.Workspace,
+		Scopes:          policy.L3RecallScopes,
+		MinScoreQuery:   policy.L3MinScoreQuery,
+		MinScorePassive: policy.L3MinScorePassive,
 	})
 	if err != nil {
 		hits = nil

@@ -346,6 +346,11 @@ var ddlMigrations = []ddlMigration{
 	// knowledge_governance_proposal 治理提案（M3.2 矛盾仲裁高风险人工二审；M4 dream_cycle 复用）。
 	// 幂等 IF NOT EXISTS，重跑安全。
 	{Version: 20261222, Name: "knowledge_fact_version", SQL: "sql/migrations/20261222_knowledge_fact_version.sql"},
+	// 20261223 knowledge_stale_mark: 自治理知识图谱 M4 stale 标记落地（深度检查
+	// P1-c）——stale 治理任务原只在提案表留痕（status=applied），文档本身无标记，
+	// 检索侧无从消费 → 陈旧词条照常满分命中。documents.stale_at 可空列承载标记，
+	// 检索三路径统一降权 ×0.5（降权非排除），内容变更清 NULL 复活。
+	{Version: 20261223, Name: "knowledge_stale_mark", SQL: "sql/migrations/20261223_knowledge_stale_mark.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

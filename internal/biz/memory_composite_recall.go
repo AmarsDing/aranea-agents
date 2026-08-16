@@ -21,6 +21,14 @@ type CompositeRecallQuery struct {
 	UserID    string
 	Query     string
 	Limit     int32
+	// P1-1（2026-08-16）：layered 路径此前未透传 L3 作用域与质量门，
+	// 导致 team/user scope 事实与 L3RecallMinScore 在默认主路径上静默失效。
+	// 以下字段仅 layered 路径消费；legacy store 路径保持原行为。
+	TeamID         string
+	Workspace      string
+	Scopes         []string
+	MinScoreQuery  float64
+	MinScorePassive float64
 }
 
 // CompositeRecallHit is one ranked line for composite prompt injection.
@@ -263,9 +271,17 @@ func (uc *MemoryCompositeRecallUsecase) recallCompositeLayered(ctx context.Conte
 	// recalled_count bumps inside the scored store adapter).
 	l3Start := time.Now()
 	factRows, err := uc.l3.RecallFactsFused(ctx, L3FusedRecallQuery{
-		Runtime:        MemoryRuntimeContext{AgentID: agentID, UserID: strings.TrimSpace(q.UserID)},
+		Runtime: MemoryRuntimeContext{
+			AgentID:   agentID,
+			UserID:    strings.TrimSpace(q.UserID),
+			TeamID:    strings.TrimSpace(q.TeamID),
+			Workspace: strings.TrimSpace(q.Workspace),
+		},
+		Scopes:         q.Scopes,
 		Query:          query,
 		Limit:          limit,
+		MinScoreQuery:  q.MinScoreQuery,
+		MinScorePassive: q.MinScorePassive,
 		QueryEmbedding: qvec,
 		EmbedAttempted: embedAttempted,
 	})

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"aranea-agents/pkg/apierror"
 )
 
 // ── 自治理知识图谱 M4 自治理层（词条治理编排） ─────────────────────────────
@@ -27,6 +29,15 @@ type stubCurateRepo struct {
 	proposalViews   []GovernanceProposalView
 	// dedupStatuses 记录每次 HasProposal 调用的 kind→statuses（拒绝即沉默语义断言）。
 	dedupStatuses map[string][]string
+	// P1-b：conflict 处置调用记录。
+	closedConflictCollection string
+	closedConflictDoc        string
+	closedConflictTargets    []string
+	closeContradictsErr      error
+	// P1-c：stale_at 置位调用记录。
+	markStaleIDs  []string
+	markStaleErr  error
+	markStaleHits int
 }
 
 func (s *stubCurateRepo) DecayCoActivatedEdges(_ context.Context, _ string, _, _ float64, dryRun bool) (int, int, error) {
@@ -74,6 +85,31 @@ func (s *stubCurateRepo) HasProposal(_ context.Context, _, kind, _ string, statu
 func (s *stubCurateRepo) ResolveGovernanceProposal(_ context.Context, id int64, status string) error {
 	s.resolvedID, s.resolvedStatus = id, status
 	return nil
+}
+
+// P1-b：提案详情读取（处置前取 kind/payload/collection + pending 守卫）。
+func (s *stubCurateRepo) GetGovernanceProposal(_ context.Context, id int64) (GovernanceProposalView, error) {
+	for _, v := range s.proposalViews {
+		if v.ID == id {
+			return v, nil
+		}
+	}
+	return GovernanceProposalView{}, apierror.NotFound(apierror.DomainKnowledge, "proposal not found")
+}
+
+// P1-b：conflict 处置——关闭 active contradicts 边（记录调用参数供断言）。
+func (s *stubCurateRepo) CloseContradictsEdges(_ context.Context, collectionID, docID string, targetDocIDs []string) (int, error) {
+	s.closedConflictCollection = collectionID
+	s.closedConflictDoc = docID
+	s.closedConflictTargets = append([]string(nil), targetDocIDs...)
+	return len(targetDocIDs), s.closeContradictsErr
+}
+
+// P1-c：stale_at 置位（记录调用参数供断言）。
+func (s *stubCurateRepo) MarkStaleEntries(_ context.Context, docIDs []string) error {
+	s.markStaleHits++
+	s.markStaleIDs = append([]string(nil), docIDs...)
+	return s.markStaleErr
 }
 
 func (s *stubCurateRepo) ListGovernanceProposals(context.Context, string, string, int) ([]GovernanceProposalView, error) {
@@ -129,6 +165,10 @@ func TestCurateKnowledge_FullRound(t *testing.T) {
 	if rep.StaleMarked != 1 || rep.ProposalsPending != 2 {
 		t.Fatalf("stale=%d pending=%d, want 1/2", rep.StaleMarked, rep.ProposalsPending)
 	}
+	// P1-c：stale 标记落地文档字段（置位成功才落提案）。
+	if curate.markStaleHits != 1 || len(curate.markStaleIDs) != 1 || curate.markStaleIDs[0] != "d-stale" {
+		t.Fatalf("stale_at mark = hits %d ids %v, want 1/[d-stale]", curate.markStaleHits, curate.markStaleIDs)
+	}
 	// 提案落库：stale applied 低风险 + conflict/orphan pending 高风险。
 	if len(proposals.items) != 3 {
 		t.Fatalf("proposals = %+v, want 3", proposals.items)
@@ -181,6 +221,10 @@ func TestCurateKnowledge_DryRunWritesNothing(t *testing.T) {
 	if len(proposals.items) != 0 {
 		t.Fatalf("dry_run must not insert proposals: %+v", proposals.items)
 	}
+	// P1-c：dry_run 不置位 stale_at。
+	if curate.markStaleHits != 0 {
+		t.Fatalf("dry_run must not mark stale_at: hits %d", curate.markStaleHits)
+	}
 	// 预估清单仍透出（供报告）。
 	if len(rep.PromotedRelations) != 1 || len(rep.Proposals) != 2 {
 		t.Fatalf("dry-run preview lists = %+v", rep)
@@ -208,6 +252,10 @@ func TestCurateKnowledge_ProposalDedup(t *testing.T) {
 	if len(proposals.items) != 0 {
 		t.Fatalf("dedup must not insert: %+v", proposals.items)
 	}
+	// P1-c：全部被去重时不发起 stale_at 置位。
+	if curate.markStaleHits != 0 {
+		t.Fatalf("dedup-skipped stale must not mark stale_at: hits %d", curate.markStaleHits)
+	}
 	// 去重状态集语义：conflict/orphan 含 rejected（人工否决即沉默，防周期骚扰）；
 	// stale 含 pending+applied（applied 留痕即已标记，不重复）。
 	assertStatuses := func(kind string, want ...string) {
@@ -226,9 +274,41 @@ func TestCurateKnowledge_ProposalDedup(t *testing.T) {
 			}
 		}
 	}
-	assertStatuses(ProposalKindConflict, ProposalStatusPending, ProposalStatusRejected)
-	assertStatuses(ProposalKindOrphan, ProposalStatusPending, ProposalStatusRejected)
+	// 去重状态集语义：conflict/orphan 含 rejected（人工否决即沉默，防周期骚扰）；
+	// stale 含 pending+applied（applied 留痕即已标记，不重复）。
+	// P1-b（2026-08-16）：conflict/orphan 去重补 applied——resolve(applied) 现已
+	// 执行实际处置（orphan 删词条 / conflict 关 contradicts 边），applied 即终态，
+	// 不再周期性重提同一已处置事项（moc_emerge 三态全含同口径）。
+	assertStatuses(ProposalKindConflict, ProposalStatusPending, ProposalStatusRejected, ProposalStatusApplied)
+	assertStatuses(ProposalKindOrphan, ProposalStatusPending, ProposalStatusRejected, ProposalStatusApplied)
 	assertStatuses(ProposalKindStale, ProposalStatusPending, ProposalStatusApplied)
+}
+
+// P1-c：stale_at 置位失败 → 不落提案/不计数（无 applied 提案去重不拦截，
+// 下轮 dream 自然重试）；其余治理任务不受影响。
+func TestCurateKnowledge_StaleMarkFailureSkipsProposal(t *testing.T) {
+	curate := &stubCurateRepo{
+		stales:       []StaleEntryStat{{DocID: "d-stale", RelPath: "entries/旧.md"}},
+		orphans:      []OrphanEntryStat{{DocID: "d-orphan"}},
+		markStaleErr: errors.New("db down"),
+	}
+	proposals := &stubProposalRepo{}
+	u := newCurateUsecase(curate, proposals)
+
+	rep, err := u.CurateKnowledge(context.Background(), CurateOptions{CollectionID: "c1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if curate.markStaleHits != 1 {
+		t.Fatalf("mark must be attempted once, got %d", curate.markStaleHits)
+	}
+	if rep.StaleMarked != 0 {
+		t.Fatalf("mark failure must not count stale: %+v", rep)
+	}
+	// orphan 提案照常（stale 失败不波及其他任务）；stale 提案缺席。
+	if len(proposals.items) != 1 || proposals.items[0].Kind != ProposalKindOrphan {
+		t.Fatalf("proposals = %+v, want orphan only", proposals.items)
+	}
 }
 
 // 提案 repo 未接线 → 计数照报、不 panic（降级安全）。
@@ -280,9 +360,13 @@ func TestCurateKnowledge_ResolveHomePicksTeamCollection(t *testing.T) {
 	}
 }
 
-// 人工二审闭环：合法状态透传 repo；非法状态拒绝；未接线报错。
+// 人工二审闭环：rejected 无需处置直接透传 repo；applied 需提案存在且 pending
+// （P1-b 新语义）；非法状态拒绝；未接线报错。
 func TestResolveGovernanceProposal(t *testing.T) {
-	curate := &stubCurateRepo{}
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 42, CollectionID: "c1", Kind: ProposalKindMOCEmerge, Status: ProposalStatusPending,
+		Payload: map[string]any{"dedup_key": "moc:hub-x"},
+	}}}
 	u := newCurateUsecase(curate, nil)
 	if err := u.ResolveGovernanceProposal(context.Background(), 42, ProposalStatusApplied); err != nil {
 		t.Fatal(err)
@@ -290,12 +374,139 @@ func TestResolveGovernanceProposal(t *testing.T) {
 	if curate.resolvedID != 42 || curate.resolvedStatus != ProposalStatusApplied {
 		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
 	}
+	// rejected 不取提案、不做处置，直接落库。
+	if err := u.ResolveGovernanceProposal(context.Background(), 99, ProposalStatusRejected); err != nil {
+		t.Fatal(err)
+	}
+	if curate.resolvedID != 99 || curate.resolvedStatus != ProposalStatusRejected {
+		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
+	}
+	// applied 目标不存在 → 报错（不透传）。
+	if err := u.ResolveGovernanceProposal(context.Background(), 100, ProposalStatusApplied); err == nil {
+		t.Fatal("applied on missing proposal must error")
+	}
 	if err := u.ResolveGovernanceProposal(context.Background(), 42, "bogus"); err == nil {
 		t.Fatal("invalid status must error")
 	}
 	u2 := NewUsecase(nil, nil, nil)
 	if err := u2.ResolveGovernanceProposal(context.Background(), 1, ProposalStatusApplied); err == nil {
 		t.Fatal("unwired must error")
+	}
+}
+
+// ── P1-b：resolve(applied) 实际处置（2026-08-16 根治「applied 语义虚假 +
+// 已处置事项周期重提」）：orphan 删词条、conflict 关 contradicts 边，
+// 处置成功才落 applied；处置失败报错且提案停留 pending 可重审。
+
+// orphan applied → 删除孤儿词条（DeleteDocument 收 payload.doc_id）后落 applied；
+// 文档已不存在（并发已删）视为幂等成功。
+func TestResolveGovernanceProposal_OrphanAppliedDeletesDoc(t *testing.T) {
+	repo := noOpMockRepo()
+	var deleted []string
+	repo.docDeleteFn = func(_ context.Context, id string) error {
+		deleted = append(deleted, id)
+		return nil
+	}
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 7, CollectionID: "c1", Kind: ProposalKindOrphan, Status: ProposalStatusPending,
+		Payload: map[string]any{"dedup_key": "orphan:d-or", "doc_id": "d-or", "rel_path": "entries/孤岛.md"},
+	}}}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 7, ProposalStatusApplied); err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 1 || deleted[0] != "d-or" {
+		t.Fatalf("orphan disposal must delete payload doc, got %v", deleted)
+	}
+	if curate.resolvedID != 7 || curate.resolvedStatus != ProposalStatusApplied {
+		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
+	}
+}
+
+// conflict applied → 关闭 payload 指明的 contradicts 边（doc_id ↔ target_doc_id）后落 applied。
+func TestResolveGovernanceProposal_ConflictAppliedClosesEdges(t *testing.T) {
+	repo := noOpMockRepo()
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 9, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+		Payload: map[string]any{
+			"dedup_key": "conflict:d1→d2", "doc_id": "d1", "target_doc_id": "d2",
+			"context": "发布策略", "confidence": 0.9,
+		},
+	}}}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 9, ProposalStatusApplied); err != nil {
+		t.Fatal(err)
+	}
+	if curate.closedConflictCollection != "c1" || curate.closedConflictDoc != "d1" {
+		t.Fatalf("close edges target = %s/%s", curate.closedConflictCollection, curate.closedConflictDoc)
+	}
+	if len(curate.closedConflictTargets) != 1 || curate.closedConflictTargets[0] != "d2" {
+		t.Fatalf("close edge targets = %v", curate.closedConflictTargets)
+	}
+	if curate.resolvedID != 9 || curate.resolvedStatus != ProposalStatusApplied {
+		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
+	}
+}
+
+// 处置失败 → 返回错误且提案不落 applied（停留 pending 可重审）；repo resolve 不得调用。
+func TestResolveGovernanceProposal_DisposalFailureStaysPending(t *testing.T) {
+	repo := noOpMockRepo()
+	curate := &stubCurateRepo{
+		closeContradictsErr: errors.New("pg down"),
+		proposalViews: []GovernanceProposalView{{
+			ID: 11, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+			Payload: map[string]any{"dedup_key": "conflict:d1→d2", "doc_id": "d1", "target_doc_id": "d2"},
+		}},
+	}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 11, ProposalStatusApplied); err == nil {
+		t.Fatal("disposal failure must error")
+	}
+	if curate.resolvedID != 0 {
+		t.Fatalf("failed disposal must not resolve proposal, resolvedID = %d", curate.resolvedID)
+	}
+}
+
+// 非 pending 提案（已审）拒绝重复处置；rejected 不触发任何处置；
+// moc_emerge applied 无自动处置（人工建 MOC，设计如此）。
+func TestResolveGovernanceProposal_Guards(t *testing.T) {
+	repo := noOpMockRepo()
+	deleteCalls := 0
+	repo.docDeleteFn = func(_ context.Context, _ string) error { deleteCalls++; return nil }
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{
+		{ID: 21, CollectionID: "c1", Kind: ProposalKindOrphan, Status: ProposalStatusApplied,
+			Payload: map[string]any{"doc_id": "d-old"}},
+		{ID: 22, CollectionID: "c1", Kind: ProposalKindOrphan, Status: ProposalStatusPending,
+			Payload: map[string]any{"doc_id": "d-rej"}},
+		{ID: 23, CollectionID: "c1", Kind: ProposalKindMOCEmerge, Status: ProposalStatusPending,
+			Payload: map[string]any{"hub_doc_id": "d-hub"}},
+	}}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 21, ProposalStatusApplied); err == nil {
+		t.Fatal("non-pending proposal must error (no re-disposal)")
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("non-pending must not dispose, deletes = %d", deleteCalls)
+	}
+	if err := u.ResolveGovernanceProposal(context.Background(), 22, ProposalStatusRejected); err != nil {
+		t.Fatal(err)
+	}
+	if deleteCalls != 0 {
+		t.Fatalf("rejected must not dispose, deletes = %d", deleteCalls)
+	}
+	if err := u.ResolveGovernanceProposal(context.Background(), 23, ProposalStatusApplied); err != nil {
+		t.Fatal(err)
+	}
+	if deleteCalls != 0 || curate.closedConflictDoc != "" {
+		t.Fatal("moc_emerge applied must not auto-dispose")
 	}
 }
 

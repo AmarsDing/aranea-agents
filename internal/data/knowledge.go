@@ -279,6 +279,9 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_governance_proposal_status_idx
 			ON knowledge_governance_proposal (collection_id, status, risk)`,
+		// M4 stale 标记（fresh 形态；存量库由迁移 20261223 补列）：陈旧词条置位
+		// 检索降权 ×0.5，内容变更清 NULL 复活。
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS stale_at TIMESTAMPTZ`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -519,7 +522,7 @@ func (r *knowledgeRepo) UpdateDocumentSyncMeta(ctx context.Context, id string, m
 	}
 	_, err = r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_documents
-		 SET content_hash = $2, summary = $3, summary_hash = $4, tags = $5, doc_type = $6, updated_at = NOW()
+		 SET content_hash = $2, summary = $3, summary_hash = $4, tags = $5, doc_type = $6, stale_at = NULL, updated_at = NOW()
 		 WHERE id = $1`, id, meta.ContentHash, meta.Summary, meta.SummaryHash, tagsJSON, meta.DocType)
 	return err
 }
@@ -588,10 +591,11 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 }
 
 // UpdateDocumentContent 回写文档正文与整理标记（Phase 9 图片异步提取完成后调用）。
+// stale_at 清 NULL（P1-c）：内容变更即新鲜，陈旧降权复活。
 func (r *knowledgeRepo) UpdateDocumentContent(ctx context.Context, id, contentText string, organized bool) error {
 	_, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_documents
-		 SET content_text = $2, organized = $3, updated_at = NOW()
+		 SET content_text = $2, organized = $3, stale_at = NULL, updated_at = NOW()
 		 WHERE id = $1`, id, contentText, organized)
 	return err
 }
@@ -729,8 +733,10 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 	return out, rows.Err()
 }
 
-// DeleteDocument removes a document, lets the FK cascade drop its chunks, and
-// atomically adjusts the owning collection's cached counters (DAT-02 / REV-B).
+// DeleteDocument removes a document, lets the FK cascade drop its chunks
+// (links/doc_entities/relation_state/fact_version likewise cascade), explicitly
+// deletes the FK-less knowledge_access_log rows, and atomically adjusts the
+// owning collection's cached counters (DAT-02 / REV-B).
 //
 // Counter adjustment rules:
 //   - document_count is only decremented when the document was successfully
@@ -754,6 +760,10 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 			return nil
 		}
 		if err != nil {
+			return err
+		}
+		// access_log 无 FK（检索热度流水），显式清理防垃圾行残留。
+		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_access_log WHERE doc_id = $1`, id); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {
@@ -860,6 +870,12 @@ ORDER BY doc_id, chunk_index`
 // MoveDocument moves a document (and its chunks) to another collection in one
 // transaction, keeping both collections' cached counters in sync (US-14).
 //
+// 附表随迁（治理归属修复）：knowledge_links 仅迁源端（doc_id = 本文档）——
+// 边 collection_id 语义即「源文档集合」，target 端不动（跨集合边保留在源
+// 集合治理域）；access_log/doc_entities/relation_state/fact_version 按
+// doc_id 随迁。不迁则旧集合 decay/hub/distill 把已移走文档算入、新集合
+// 治理扫不到（治理黑洞）。
+//
 // Counter rules mirror DeleteDocument: document_count shifts only when the
 // document was successfully indexed (pending/indexing/error docs were never
 // counted); chunk_count shifts by the document's recorded chunk_count,
@@ -885,6 +901,32 @@ func (r *knowledgeRepo) MoveDocument(ctx context.Context, id, targetCollectionID
 		}
 		if _, err := tx.ExecContext(ctx,
 			`UPDATE knowledge_chunks SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		// 附表随迁：links 仅源端（边归属源文档集合），其余按 doc_id 随迁。
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_links SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_access_log SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_doc_entities SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_relation_state SET collection_id = $2 WHERE doc_id = $1`,
+			id, targetCollectionID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE knowledge_fact_version SET collection_id = $2 WHERE doc_id = $1`,
 			id, targetCollectionID); err != nil {
 			return err
 		}
@@ -967,10 +1009,12 @@ func pathExcludeClause(prefixes []string, collectionPH string, argIdx int) (clau
 // chunks.created_at——整页重插会把旧知识的时间戳刷成「刚才」。
 const recencyDecayLambda = 6.774e-9
 
-// recencyScoreSQL 把基础语义分包成「分 × exp(-λ·age)」表达式；JOIN 别名 d 固定
+// recencyScoreSQL 把基础语义分包成「分 × exp(-λ·age) × stale降权」表达式；JOIN 别名 d 固定
 // 指向 knowledge_documents。GREATEST 防时钟回拨产生负 age（反而加分）。
+// stale 降权（P1-c）：M4 stale 治理置位 d.stale_at 的陈旧词条 ×0.5——降权非排除，
+// 陈旧知识仍可命中但让位新鲜知识；内容变更清 NULL 复活。
 func recencyScoreSQL(base string) string {
-	return fmt.Sprintf(`(%s) * EXP(-%g * GREATEST(EXTRACT(EPOCH FROM (now() - d.updated_at)), 0))`, base, recencyDecayLambda)
+	return fmt.Sprintf(`(%s) * EXP(-%g * GREATEST(EXTRACT(EPOCH FROM (now() - d.updated_at)), 0)) * CASE WHEN d.stale_at IS NULL THEN 1.0 ELSE 0.5 END`, base, recencyDecayLambda)
 }
 
 // recencyJoinSQL 是 recencyScoreSQL 配套的 JOIN 子句；主表别名固定 c。

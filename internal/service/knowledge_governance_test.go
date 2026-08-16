@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz/knowledge"
 	internalknowledge "aranea-agents/internal/knowledge"
 	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -210,6 +211,16 @@ func (s *stubGovCurateRepo) ResolveGovernanceProposal(_ context.Context, id int6
 	return nil
 }
 
+// P1-b：applied 前置读取 kind/payload + pending 守卫。
+func (s *stubGovCurateRepo) GetGovernanceProposal(_ context.Context, id int64) (knowledge.GovernanceProposalView, error) {
+	for _, v := range s.views {
+		if v.ID == id {
+			return v, nil
+		}
+	}
+	return knowledge.GovernanceProposalView{}, apierror.NotFound(apierror.DomainKnowledge, "proposal not found")
+}
+
 func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
 	curate := &stubGovCurateRepo{views: []knowledge.GovernanceProposalView{
 		{ID: 7, CollectionID: "c1", Kind: knowledge.ProposalKindConflict, Risk: knowledge.ProposalRiskHigh,
@@ -270,7 +281,10 @@ func TestKnowledgeService_ListGovernanceProposals_CrossTenantDenied(t *testing.T
 }
 
 func TestKnowledgeService_ResolveGovernanceProposal(t *testing.T) {
-	curate := &stubGovCurateRepo{}
+	curate := &stubGovCurateRepo{views: []knowledge.GovernanceProposalView{{
+		ID: 42, CollectionID: "c1", Kind: knowledge.ProposalKindMOCEmerge,
+		Status: knowledge.ProposalStatusPending, Payload: map[string]any{"dedup_key": "moc:hub-x"},
+	}}}
 	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
 	svc.uc.SetCurateRepo(curate)
 

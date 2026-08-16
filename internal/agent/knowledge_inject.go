@@ -28,14 +28,15 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	if deps.KnowledgeUsecase == nil {
 		return nil
 	}
-	if ag.Settings == nil || !ag.Settings.ToolsEnabled {
-		return nil
-	}
+	// P2-1（2026-08-16）：知识预检索不再被 ToolsEnabled 门控——关工具的
+	// agent 仍可获得预检索命中的 chunks；仅"调用 knowledge_search 继续检索"
+	// 的引导文案依赖工具开关（见 buildKnowledgeCue/formatKnowledgeCue）。
+	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
 	return callbacks.NewBeforeModelHook(6, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages)
+		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -46,7 +47,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	})
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message) string {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled bool) string {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	// C-01 回填：目录枚举按调用方 workspace 过滤（system 见全部）——
@@ -58,7 +59,13 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	}
 
 	filtered := filterCueCollections(collections, scopedIDs)
+	// P1-2（2026-08-16）：检索查询与记忆召回同口径清洗（去客套前缀/多句
+	// 切分/120 字预算尾部优先），team 纯词法库（tsvector/trigram）下未清洗
+	// 的整句查询会显著拖低 FTS 命中率。
 	query := lastUserQuery(msgs)
+	if query != "" {
+		query = cleanRecallQuery(query)
+	}
 	var chunks []biz.KnowledgeChunk
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
@@ -67,7 +74,7 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 		// 取查询，工具循环续跑天然不重复发；同 chunk 同 turn 由 citations 账本幂等。
 		knowledgetool.EmitKnowledgeRecalledNotice(ctx, cueRenderedChunks(chunks))
 	}
-	return formatKnowledgeCue(filtered, chunks)
+	return formatKnowledgeCue(filtered, chunks, toolsEnabled)
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"time"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
@@ -130,7 +131,13 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		// Tool execution timeout: inject BeforeTool + AfterTool hooks that
 		// enforce a per-tool timeout via context.WithTimeout. This is the
 		// product-layer implementation since the framework lacks built-in timeout.
-		if timeoutHooks := toolExecutionTimeoutHooks(buildToolExecutionTimeout(ag.Settings), lg); len(timeoutHooks) > 0 {
+		// P1-2：timeout 每调用经 policyResolver 查询（策略变更零重建生效），
+		// resolver miss 回退构建期快照（ag.Settings.ToolsExecutionTimeoutSec）。
+		policyAgentID := ag.ID
+		buildTimeoutSec := ag.Settings.ToolsExecutionTimeoutSec
+		if timeoutHooks := toolExecutionTimeoutHooks(func() time.Duration {
+			return toolExecutionTimeoutFor(policyAgentID, buildTimeoutSec)
+		}, lg); len(timeoutHooks) > 0 {
 			entries = append(entries, timeoutHooks...)
 		}
 		entries = append(entries, newToolArgsRepairBeforeHook(lg))

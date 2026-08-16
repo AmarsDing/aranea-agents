@@ -2,6 +2,7 @@ package service
 
 import (
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 )
@@ -19,5 +20,11 @@ func NewKnowledgeRetriever(emb knowledge.QueryEmbedder, repo biz.KnowledgeRepo, 
 		)
 		rr = nil
 	}
-	return knowledge.NewRetriever(emb, repo, rr, lg)
+	ret := knowledge.NewRetriever(emb, repo, rr, lg)
+	// P2-c：access_log 记账下沉 Retriever——repo 实现 AccessLogRepo 时接线，
+	// 覆盖 Router 缺席/退化全路径（只记不加成；Router 在役路径由 Router 自记，互斥）。
+	if access, ok := repo.(bizknowledge.AccessLogRepo); ok {
+		ret.SetAccessLog(access)
+	}
+	return ret
 }

@@ -314,7 +314,12 @@ func (ac *assembleContext) assembleMCPTools() error {
 	}
 
 	brokerAdded := false
-	if len(mcpSets) > 0 {
+	if len(mcpSets) > 0 && ac.cfg.SkipMCPGovernance {
+		// P0-2 阶段A 分片路径：片内跳过治理（截断+总预算降级是跨 server
+		// 决策），原样提交直连 toolset；合并期由调用方对并集统一治理。
+		ac.out.ToolSets = append(ac.out.ToolSets, mcpSets...)
+		mcpSets = nil
+	} else if len(mcpSets) > 0 {
 		// P1-2 MCP schema 治理：截断 + 总预算；超预算降级 broker。
 		gov := GovernMCPServerToolSets(ac.ctx, mcpSets, ac.lg)
 		if gov.TruncatedCount > 0 {
@@ -474,23 +479,36 @@ func (ac *assembleContext) assembleBlobAndResultTools() error {
 	return nil
 }
 
-// assembleDeferredTools builds the deferred tool catalog and wraps deferred
-// tools with DeferredCallableTool. All tools are already fully assembled at
-// this point (WP-4 修复版：全量装配 + wrapDeferred)。
+// assembleDeferredTools delegates to FinalizeDeferredTools (exported for the
+// P0-2 阶段A shard merge path, which assembles shards without deferred
+// processing and finalizes once over the union).
+func (ac *assembleContext) assembleDeferredTools() error {
+	return FinalizeDeferredTools(ac.ctx, ac.out, ac.cfg.DeferredTools, ac.lg)
+}
+
+// FinalizeDeferredTools builds the deferred tool catalog and wraps deferred
+// tools with DeferredCallableTool. All tools must be fully assembled at this
+// point (WP-4 修复版：全量装配 + wrapDeferred)。
 //
 // 流程：
-//  1. 从 cfg.DeferredTools（registry 名称）构建延迟注册表名集合
+//  1. 从 deferredTools（registry 名称）构建延迟注册表名集合
 //  2. 扫描已装配的 ToolSets 和独立工具，匹配延迟注册表名
 //  3. 构建 catalog（name + description + category）供 tool_search/tool_load
 //  4. 注册工具引用到 manager（供 tool_load 返回完整 schema）
 //  5. 包装延迟 ToolSet（DeferredToolSet）和独立工具（DeferredCallableTool）
-func (ac *assembleContext) assembleDeferredTools() error {
-	if len(ac.cfg.DeferredTools) == 0 {
+//
+// 对 out 的就地修改仅为切片元素替换（包装器），被包装工具本身不被变异，
+// 因此可安全作用于分片缓存共享的产物并集。
+func FinalizeDeferredTools(ctx context.Context, out *AssembledToolsets, deferredTools []string, lg loggateway.Logger) error {
+	if len(deferredTools) == 0 || out == nil {
 		return nil
 	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 
-	deferredRegNames := make(map[string]bool, len(ac.cfg.DeferredTools))
-	for _, name := range ac.cfg.DeferredTools {
+	deferredRegNames := make(map[string]bool, len(deferredTools))
+	for _, name := range deferredTools {
 		deferredRegNames[name] = true
 	}
 
@@ -507,13 +525,13 @@ func (ac *assembleContext) assembleDeferredTools() error {
 	// catalog 使用运行时名（"{toolset}_{tool}"，与框架 NamedTool 前缀约定一致），
 	// 这是 LLM 在 tools block 中看到并调用的名字；BaseName 保留原始声明名，
 	// 供 DeferredCallableTool 激活门禁匹配。
-	for _, ts := range ac.out.ToolSets {
+	for _, ts := range out.ToolSets {
 		if ts == nil || !deferredRegNames[ts.Name()] {
 			continue
 		}
 		cat := findRegistryCategory(ts.Name())
 		tsName := ts.Name()
-		for _, t := range ts.Tools(ac.ctx) {
+		for _, t := range ts.Tools(ctx) {
 			if t == nil || t.Declaration() == nil {
 				continue
 			}
@@ -538,7 +556,7 @@ func (ac *assembleContext) assembleDeferredTools() error {
 	}
 
 	// 扫描独立工具：名称匹配延迟注册表名的工具（无 toolset 前缀）
-	for _, t := range ac.out.Tools {
+	for _, t := range out.Tools {
 		if t == nil || t.Declaration() == nil {
 			continue
 		}
@@ -568,30 +586,30 @@ func (ac *assembleContext) assembleDeferredTools() error {
 		manager.RegisterTool(name, t)
 	}
 	loadTool := deferred.NewToolLoadToolWithManager(manager)
-	ac.out.Tools = append(ac.out.Tools, searchTool, loadTool)
-	ac.out.DeferredManager = manager
+	out.Tools = append(out.Tools, searchTool, loadTool)
+	out.DeferredManager = manager
 
 	// 第二遍：包装延迟 ToolSets 和独立工具。
 	// DeferredToolSet 内部比较的是 inner.Tools() 返回的原始声明名，因此用 baseName。
-	for i, ts := range ac.out.ToolSets {
+	for i, ts := range out.ToolSets {
 		if ts == nil || !deferredRegNames[ts.Name()] {
 			continue
 		}
-		ac.out.ToolSets[i] = deferred.NewDeferredToolSet(ts, deferredBaseNames, ac.lg)
+		out.ToolSets[i] = deferred.NewDeferredToolSet(ts, deferredBaseNames, lg)
 	}
-	for i, t := range ac.out.Tools {
+	for i, t := range out.Tools {
 		if t == nil || t.Declaration() == nil {
 			continue
 		}
 		if deferredBaseNames[t.Declaration().Name] {
-			ac.out.Tools[i] = deferred.NewDeferredCallableTool(t, ac.lg)
+			out.Tools[i] = deferred.NewDeferredCallableTool(t, lg)
 		}
 	}
 
-	ac.lg.Info("两段式工具加载：延迟工具装配完成",
+	lg.Info("两段式工具加载：延迟工具装配完成",
 		loggateway.StepID("tool.assemble.deferred_done"),
 		loggateway.Int("deferred_count", len(catalog)),
-		loggateway.Int("deferred_toolsets", countDeferredToolSets(ac.out.ToolSets, deferredRegNames)),
+		loggateway.Int("deferred_toolsets", countDeferredToolSets(out.ToolSets, deferredRegNames)),
 	)
 	return nil
 }
@@ -606,7 +624,13 @@ func findRegistryCategory(name string) string {
 	return ""
 }
 
-// dedupFlatToolNames enforces earlier-wins over the flat tool list. Duplicate
+// dedupFlatToolNames delegates to DedupFlatToolNames (exported for the P0-2
+// 阶段A shard merge path, which dedups once over the cross-shard union).
+func (ac *assembleContext) dedupFlatToolNames() {
+	DedupFlatToolNames(ac.ctx, ac.out, ac.lg)
+}
+
+// DedupFlatToolNames enforces earlier-wins over the flat tool list. Duplicate
 // declaration names (e.g. two CustomTools injected by different layers) must
 // not reach the model twice — most LLM APIs reject duplicate tool names.
 // The first occurrence wins and later flat duplicates are dropped with a Warn.
@@ -615,20 +639,23 @@ func findRegistryCategory(name string) string {
 // only) for the cheap static toolsets in aliasExpandableToolSetNames; MCP and
 // other dynamic toolsets are not enumerated here because their Tools() call
 // may trigger a network roundtrip.
-func (ac *assembleContext) dedupFlatToolNames() {
-	if len(ac.out.Tools) == 0 {
+func DedupFlatToolNames(ctx context.Context, out *AssembledToolsets, lg loggateway.Logger) {
+	if out == nil || len(out.Tools) == 0 {
 		return
 	}
-	seen := make(map[string]struct{}, len(ac.out.Tools))
-	kept := make([]Tool, 0, len(ac.out.Tools))
-	for _, t := range ac.out.Tools {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	seen := make(map[string]struct{}, len(out.Tools))
+	kept := make([]Tool, 0, len(out.Tools))
+	for _, t := range out.Tools {
 		if t == nil || t.Declaration() == nil {
 			kept = append(kept, t)
 			continue
 		}
 		name := t.Declaration().Name
 		if _, dup := seen[name]; dup {
-			ac.lg.Warn("tools.assemble.duplicate_tool_name",
+			lg.Warn("tools.assemble.duplicate_tool_name",
 				loggateway.StepID("tool.assemble.duplicate_tool_name"),
 				loggateway.Str("tool", name),
 				loggateway.Str("resolution", "kept first occurrence, dropped later flat duplicate"))
@@ -637,19 +664,19 @@ func (ac *assembleContext) dedupFlatToolNames() {
 		seen[name] = struct{}{}
 		kept = append(kept, t)
 	}
-	ac.out.Tools = kept
+	out.Tools = kept
 
-	for _, ts := range ac.out.ToolSets {
+	for _, ts := range out.ToolSets {
 		if ts == nil || !aliasExpandableToolSetNames[ts.Name()] {
 			continue
 		}
-		for _, t := range ts.Tools(ac.ctx) {
+		for _, t := range ts.Tools(ctx) {
 			if t == nil || t.Declaration() == nil {
 				continue
 			}
 			name := t.Declaration().Name
 			if _, ok := seen[name]; ok {
-				ac.lg.Warn("tools.assemble.duplicate_tool_name",
+				lg.Warn("tools.assemble.duplicate_tool_name",
 					loggateway.StepID("tool.assemble.duplicate_tool_name"),
 					loggateway.Str("tool", name),
 					loggateway.Str("toolset", ts.Name()),

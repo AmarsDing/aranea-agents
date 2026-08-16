@@ -2661,14 +2661,18 @@ func (x *GetAgentEffectiveToolsRequest) GetAgentId() string {
 }
 
 type UpdateAgentToolPolicyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
-	ToolsEnabled  bool                   `protobuf:"varint,2,opt,name=tools_enabled,json=toolsEnabled,proto3" json:"tools_enabled,omitempty"`
-	Profile       string                 `protobuf:"bytes,3,opt,name=profile,proto3" json:"profile,omitempty"`
-	Allow         []string               `protobuf:"bytes,4,rep,name=allow,proto3" json:"allow,omitempty"`
-	Deny          []string               `protobuf:"bytes,5,rep,name=deny,proto3" json:"deny,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	AgentId      string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	ToolsEnabled bool                   `protobuf:"varint,2,opt,name=tools_enabled,json=toolsEnabled,proto3" json:"tools_enabled,omitempty"`
+	Profile      string                 `protobuf:"bytes,3,opt,name=profile,proto3" json:"profile,omitempty"`
+	Allow        []string               `protobuf:"bytes,4,rep,name=allow,proto3" json:"allow,omitempty"`
+	Deny         []string               `protobuf:"bytes,5,rep,name=deny,proto3" json:"deny,omitempty"`
+	// P1-2：可选策略字段。非 nil 时更新 agent_runtime_settings.tools_execution_timeout_sec
+	// （0 = 恢复服务端默认）。该字段由 policyResolver 运行时接管：仅它变化时不触发
+	// agent 重建，新调用立即生效；装配字段（enabled/profile/allow/deny）变化仍触发重建。
+	ExecutionTimeoutSec *int32 `protobuf:"varint,6,opt,name=execution_timeout_sec,json=executionTimeoutSec,proto3,oneof" json:"execution_timeout_sec,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *UpdateAgentToolPolicyRequest) Reset() {
@@ -2734,6 +2738,13 @@ func (x *UpdateAgentToolPolicyRequest) GetDeny() []string {
 		return x.Deny
 	}
 	return nil
+}
+
+func (x *UpdateAgentToolPolicyRequest) GetExecutionTimeoutSec() int32 {
+	if x != nil && x.ExecutionTimeoutSec != nil {
+		return *x.ExecutionTimeoutSec
+	}
+	return 0
 }
 
 type CreateAgentPromptFileRequest struct {
@@ -4470,13 +4481,15 @@ const file_kratos_agent_v1_agent_proto_rawDesc = "" +
 	"\x15ToggleFavoriteRequest\x12\x14\n" +
 	"\x02id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\x02id\"@\n" +
 	"\x1dGetAgentEffectiveToolsRequest\x12\x1f\n" +
-	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\"\xa8\x01\n" +
+	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\"\xfb\x01\n" +
 	"\x1cUpdateAgentToolPolicyRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12#\n" +
 	"\rtools_enabled\x18\x02 \x01(\bR\ftoolsEnabled\x12\x18\n" +
 	"\aprofile\x18\x03 \x01(\tR\aprofile\x12\x14\n" +
 	"\x05allow\x18\x04 \x03(\tR\x05allow\x12\x12\n" +
-	"\x04deny\x18\x05 \x03(\tR\x04deny\"\x8c\x01\n" +
+	"\x04deny\x18\x05 \x03(\tR\x04deny\x127\n" +
+	"\x15execution_timeout_sec\x18\x06 \x01(\x05H\x00R\x13executionTimeoutSec\x88\x01\x01B\x18\n" +
+	"\x16_execution_timeout_sec\"\x8c\x01\n" +
 	"\x1cCreateAgentPromptFileRequest\x12\x1f\n" +
 	"\bagent_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\aagentId\x12\x18\n" +
 	"\x04name\x18\x02 \x01(\tB\x04\xe2A\x01\x02R\x04name\x12\x12\n" +
@@ -4751,6 +4764,7 @@ func file_kratos_agent_v1_agent_proto_init() {
 		return
 	}
 	file_kratos_agent_v1_agent_proto_msgTypes[0].OneofWrappers = []any{}
+	file_kratos_agent_v1_agent_proto_msgTypes[19].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

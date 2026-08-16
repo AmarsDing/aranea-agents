@@ -302,6 +302,91 @@ func TestKnowledgeRepo_SearchChunks_RecencyDecay(t *testing.T) {
 	}
 }
 
+// ── P1-c stale 降权（2026-08-16）：M4 stale 治理置位 documents.stale_at 的
+// 陈旧词条检索分 ×0.5——降权非排除；内容变更清 NULL 复活 ─────────────────────
+
+func TestKnowledgeRepo_SearchChunks_StaleDemoted(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	ctx := context.Background()
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "c1", Name: "team"}); err != nil {
+		t.Fatal(err)
+	}
+	// 两文档内容/向量完全相同，唯一变量 = stale_at。
+	for _, d := range []struct{ id, relPath, chunkID string }{
+		{"d-normal", "entries/正常词条.md", "k-normal"},
+		{"d-stale", "entries/陈旧词条.md", "k-stale"},
+	} {
+		if _, err := repo.CreateDocument(ctx, biz.KnowledgeDocument{
+			ID: d.id, CollectionID: "c1", RelPath: d.relPath, Source: d.relPath, Status: "indexed",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := repo.InsertChunks(ctx, []biz.KnowledgeChunk{{
+			ID: d.chunkID, DocID: d.id, CollectionID: "c1", Content: "apple 值班制度", Embedding: []float32{1, 0, 0},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.MarkStaleEntries(ctx, []string{"d-stale"}); err != nil {
+		t.Fatal(err)
+	}
+
+	scoreOf := func(chunks []biz.KnowledgeChunk, id string) float32 {
+		for _, ch := range chunks {
+			if ch.ID == id {
+				return ch.Score
+			}
+		}
+		return -1
+	}
+
+	// dense：陈旧词条仍命中但降权 ≈ ×0.5。
+	got, err := repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 10}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "k-normal" {
+		t.Fatalf("normal doc must rank first: %+v", got)
+	}
+	normal, stale := scoreOf(got, "k-normal"), scoreOf(got, "k-stale")
+	if stale <= 0 {
+		t.Fatal("stale doc must still hit (demote not exclude)")
+	}
+	// recency 衰减对两文档近似同因子，比值收敛 0.5（容差带防时钟漂移）。
+	if r := stale / normal; r < 0.45 || r > 0.55 {
+		t.Fatalf("stale demote ratio = %v (normal %v stale %v), want ~0.5", r, normal, stale)
+	}
+
+	// BM25 同语义。
+	got, err = repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", Query: "值班制度", TopK: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "k-normal" {
+		t.Fatalf("BM25 normal must rank first: %+v", got)
+	}
+	normal, stale = scoreOf(got, "k-normal"), scoreOf(got, "k-stale")
+	if stale <= 0 {
+		t.Fatal("BM25 stale doc must still hit")
+	}
+	if r := stale / normal; r < 0.45 || r > 0.55 {
+		t.Fatalf("BM25 stale demote ratio = %v, want ~0.5", r)
+	}
+
+	// 复活：内容变更清 stale_at，降权解除。
+	if err := repo.UpdateDocumentContent(ctx, "d-stale", "apple 值班制度（修订版）", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err = repo.SearchChunks(ctx, biz.KnowledgeSearchQuery{CollectionID: "c1", TopK: 10}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	normal, stale = scoreOf(got, "k-normal"), scoreOf(got, "k-stale")
+	if r := stale / normal; r < 0.9 || r > 1.1 {
+		t.Fatalf("revived doc ratio = %v, want ~1.0", r)
+	}
+}
+
 // ── 2026-08-10 e2e 事故根修：中文短查询词法降级失效 ─────────────────────────
 // similarity(q, content) 的分母是双方 trigram 总数：中文 2-4 字短查询对长文档
 // 相似度被稀释到 0.3 阈值以下（实测 "斑马线"=0.064），`%` 永不命中，无语义层

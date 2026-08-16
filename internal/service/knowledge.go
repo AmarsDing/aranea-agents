@@ -93,6 +93,11 @@ type KnowledgeService struct {
 	// rebuildRuns SP1-H 块索引重建在途集合门（单进程部署 N-1；value 恒为 struct{}）。
 	rebuildRuns sync.Map
 	agentMem    *bizknowledge.AgentMemoryProjector
+	// writeBackGraph 写回/晋升图谱钩子（2026-08-16 装配）：构造参数透传，biz 写回
+	// 管线经 SetWriteBackGraph 收口（词条页实体共现 + typed 关系抽取）；service 晋升
+	// 管线（不经写回）在 chunk 重放后显式触发（P1-a：晋升文档图谱孤立节点根治）。
+	// nil（未接线/环境关闭）时两路均降级跳过。
+	writeBackGraph bizknowledge.WriteBackGraphFunc
 }
 
 // VaultSyncController vault 同步循环生命周期窄接口（P1-3 生产装配）。
@@ -146,9 +151,10 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		organizer:     organizer,
 		extractors:    extractors,
 		assets:        assets,
-		eventBus:      eventBus,
-		systemSetting: systemSetting,
-		lg:            lg,
+		eventBus:       eventBus,
+		systemSetting:  systemSetting,
+		writeBackGraph: writeBackGraph,
+		lg:             lg,
 	}
 	// SP1-D：统一链接内存图 + WS 增量事件出口（GraphDeltaPublisher 适配器）。
 	// uc 为共享实例，构造期接线（serve 前单线程）；启动全量加载由 app 层

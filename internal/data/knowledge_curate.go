@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/pkg/apierror"
 
 	"github.com/lib/pq"
 )
@@ -291,6 +292,70 @@ func (r *knowledgeRepo) ResolveGovernanceProposal(ctx context.Context, id int64,
 	}
 	if n, aerr := res.RowsAffected(); aerr == nil && n == 0 {
 		return fmt.Errorf("proposal %d not found or not pending", id)
+	}
+	return nil
+}
+
+// GetGovernanceProposal 单提案读取（P1-b：applied 处置前取 kind/payload + pending 守卫）。
+func (r *knowledgeRepo) GetGovernanceProposal(ctx context.Context, id int64) (bizknowledge.GovernanceProposalView, error) {
+	var v bizknowledge.GovernanceProposalView
+	var raw []byte
+	var resolvedAt sql.NullTime
+	err := r.data.PostgresRead().QueryRowContext(ctx,
+		`SELECT id, collection_id, kind, risk, status, payload, created_at, resolved_at
+		 FROM knowledge_governance_proposal WHERE id = $1`, id).
+		Scan(&v.ID, &v.CollectionID, &v.Kind, &v.Risk, &v.Status, &raw, &v.CreatedAt, &resolvedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return v, apierror.NotFound(apierror.DomainKnowledge, fmt.Sprintf("governance proposal %d not found", id))
+		}
+		return v, fmt.Errorf("get governance proposal: %w", err)
+	}
+	if resolvedAt.Valid {
+		v.ResolvedAt = resolvedAt.Time
+	}
+	if len(raw) > 0 {
+		if uerr := json.Unmarshal(raw, &v.Payload); uerr != nil {
+			return v, fmt.Errorf("get governance proposal: decode payload: %w", uerr)
+		}
+	}
+	return v, nil
+}
+
+// CloseContradictsEdges 关闭 docID ↔ targetDocIDs 间的 active contradicts 语义边
+// （双方向均关；valid_to 失效留痕不删除，与 decay 关边同口径）。
+func (r *knowledgeRepo) CloseContradictsEdges(ctx context.Context, collectionID, docID string, targetDocIDs []string) (int, error) {
+	if len(targetDocIDs) == 0 {
+		return 0, nil
+	}
+	res, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_links SET valid_to = NOW()
+		 WHERE collection_id = $1 AND link_type = 'semantic' AND relation = 'contradicts'
+		   AND valid_to IS NULL
+		   AND ((doc_id = $2 AND target_doc_id = ANY($3))
+		     OR (target_doc_id = $2 AND doc_id = ANY($3)))`,
+		collectionID, docID, pq.Array(targetDocIDs))
+	if err != nil {
+		return 0, fmt.Errorf("close contradicts edges: %w", err)
+	}
+	closed := 0
+	if n, aerr := res.RowsAffected(); aerr == nil {
+		closed = int(n)
+	}
+	return closed, nil
+}
+
+// MarkStaleEntries 置位 documents.stale_at（P1-c）。幂等：已置位行不动
+// （WHERE stale_at IS NULL），保留首判时间；空集 no-op。
+func (r *knowledgeRepo) MarkStaleEntries(ctx context.Context, docIDs []string) error {
+	if len(docIDs) == 0 {
+		return nil
+	}
+	_, err := r.data.Postgres().ExecContext(ctx,
+		`UPDATE knowledge_documents SET stale_at = NOW()
+		 WHERE id = ANY($1) AND stale_at IS NULL`, pq.Array(docIDs))
+	if err != nil {
+		return fmt.Errorf("mark stale entries: %w", err)
 	}
 	return nil
 }

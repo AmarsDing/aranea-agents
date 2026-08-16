@@ -171,3 +171,4 @@ docs/promo-videos/**/*.mp4
 docs/promo-videos/**/*.mp3
 # blender 渲染产物（不入库）
 /blender/
+/competition/

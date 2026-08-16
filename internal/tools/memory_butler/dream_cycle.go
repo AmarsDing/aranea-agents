@@ -27,7 +27,15 @@ const (
 
 type dreamCycleInput struct {
 	AgentID string `json:"agent_id" jsonschema:"description=Agent ID,required"`
-	DryRun  bool   `json:"dry_run" jsonschema:"description=仅预览不实际执行,default=true"`
+	// P2-b：*bool 三态落地「默认 dry_run」。框架 tag 解析器忽略 default= 键、
+	// 值类型 bool 省略参数时零值 false → 模型不传 dry_run 会真实删除记忆。
+	// 指针 nil（省略）即 true；仅显式传 false 才进入执行路径。
+	DryRun *bool `json:"dry_run" jsonschema:"description=仅预览不实际执行；缺省=true（安全预览），仅显式传 false 才真实删除记忆"`
+}
+
+// effectiveDryRun 解析三态 dry_run：nil（省略）→ true 安全预览。
+func (in dreamCycleInput) effectiveDryRun() bool {
+	return in.DryRun == nil || *in.DryRun
 }
 
 type dreamCycleOutput struct {
@@ -55,7 +63,7 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		}
 		qualityBefore := reportBefore.HealthScore
 
-		if input.DryRun {
+		if input.effectiveDryRun() {
 			actions := []string{"dry_run: would execute forget_low_quality, forget_inactive, deduplicate, consolidate"}
 			out := dreamCycleOutput{ActionsTaken: actions}
 			out.QualityBefore = qualityBefore

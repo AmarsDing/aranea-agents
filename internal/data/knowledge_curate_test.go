@@ -2,7 +2,9 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/data/testhelper"
@@ -216,6 +218,65 @@ func TestKnowledgeRepo_ListStaleEntries(t *testing.T) {
 	}
 	if got[0].ClosedRatio < 0.5 || got[0].LastAccessDays < 39 {
 		t.Fatalf("stale stat = %+v", got[0])
+	}
+}
+
+// P1-c：stale_at 置位幂等（保留首判时间）+ 内容变更复活（写回/vault 同步两入口）。
+func TestKnowledgeRepo_MarkStaleEntries(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+	raw := repo.data.Postgres()
+	seedCurateDoc(t, repo, "m1", "entries/甲.md")
+	seedCurateDoc(t, repo, "m2", "entries/乙.md")
+
+	staleAt := func(id string) *time.Time {
+		var v *time.Time
+		if err := raw.QueryRowContext(ctx,
+			`SELECT stale_at FROM knowledge_documents WHERE id = $1`, id).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+
+	// 空集 no-op。
+	if err := repo.MarkStaleEntries(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	// 置位 m1；m2 不动。
+	if err := repo.MarkStaleEntries(ctx, []string{"m1"}); err != nil {
+		t.Fatal(err)
+	}
+	first := staleAt("m1")
+	if first == nil {
+		t.Fatal("m1 stale_at must be set")
+	}
+	if staleAt("m2") != nil {
+		t.Fatal("m2 stale_at must stay NULL")
+	}
+	// 幂等：重复置位保留首判时间。
+	time.Sleep(20 * time.Millisecond)
+	if err := repo.MarkStaleEntries(ctx, []string{"m1", "m2"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := staleAt("m1"); got == nil || !got.Equal(*first) {
+		t.Fatalf("re-mark must keep first stale_at: first %v got %v", first, got)
+	}
+	if staleAt("m2") == nil {
+		t.Fatal("m2 must be marked by second batch")
+	}
+	// 写回入口（UpdateDocumentContent）复活。
+	if err := repo.UpdateDocumentContent(ctx, "m1", "新正文", true); err != nil {
+		t.Fatal(err)
+	}
+	if staleAt("m1") != nil {
+		t.Fatal("content update must clear stale_at")
+	}
+	// vault 同步入口（UpdateDocumentSyncMeta）复活。
+	if err := repo.UpdateDocumentSyncMeta(ctx, "m2", bizknowledge.DocumentSyncMeta{ContentHash: "h2"}); err != nil {
+		t.Fatal(err)
+	}
+	if staleAt("m2") != nil {
+		t.Fatal("sync meta update must clear stale_at")
 	}
 }
 
@@ -451,5 +512,133 @@ func TestKnowledgeRepo_CountActiveEdgesWithin(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("%s: got %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+// ── M4 补丁（第四轮）：MoveDocument 附表随迁 / DeleteDocument access_log 清理 ──
+// 契约：移动文档时 links 仅迁源端（doc_id=本文档；入边留源集合治理域），
+// access_log/doc_entities/relation_state/fact_version 随迁；两集合计数器同步。
+// 删除文档时无 FK 的 access_log 显式清除（其余附表 FK CASCADE）。
+
+func TestKnowledgeRepo_MoveDocument_AttachedTablesFollow(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+	raw := repo.data.Postgres()
+
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_collections (id, name, embedding_model) VALUES ('c2','c2','m')`); err != nil {
+		t.Fatal(err)
+	}
+	seedCurateDoc(t, repo, "d-move", "entries/move.md")
+	seedCurateDoc(t, repo, "d-stay", "entries/stay.md")
+	// d-move 已索引 2 chunks；c1 计数器对齐（document_count=1, chunk_count=2）。
+	if _, err := raw.ExecContext(ctx,
+		`UPDATE knowledge_documents SET status='indexed', chunk_count=2 WHERE id='d-move'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`UPDATE knowledge_collections SET document_count=1, chunk_count=2 WHERE id='c1'`); err != nil {
+		t.Fatal(err)
+	}
+	for i, cid := range []string{"ch-1", "ch-2"} {
+		if _, err := raw.ExecContext(ctx,
+			`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, chunk_index) VALUES ($1,'d-move','c1',$2,$3)`,
+			cid, "c-"+cid, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// links：源端出边（随迁 c2）+ 入边（target 端，留 c1）。
+	seedCurateLink(t, repo, "d-move", "d-stay", "semantic", "depends-on", 0.9, false)
+	seedCurateLink(t, repo, "d-stay", "d-move", "semantic", "related-to", 0.8, false)
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_access_log (collection_id, doc_id) VALUES ('c1','d-move')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_entities (collection_id, name, entity_type, name_norm) VALUES ('c1','Aranea','project','aranea')`); err != nil {
+		t.Fatal(err)
+	}
+	var entityID int64
+	if err := raw.QueryRowContext(ctx,
+		`SELECT id FROM knowledge_entities WHERE collection_id='c1' AND name_norm='aranea'`).Scan(&entityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_doc_entities (collection_id, doc_id, entity_id, mentions) VALUES ('c1','d-move',$1,2)`, entityID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_relation_state (doc_id, collection_id, content_hash) VALUES ('d-move','c1','h1')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_fact_version (collection_id, doc_id, fact_id, old_body) VALUES ('c1','d-move','f1','old')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repo.MoveDocument(ctx, "d-move", "c2"); err != nil {
+		t.Fatal(err)
+	}
+
+	assertCol := func(table, where, want string) {
+		t.Helper()
+		var got string
+		if err := raw.QueryRowContext(ctx,
+			fmt.Sprintf(`SELECT collection_id FROM %s WHERE %s`, table, where)).Scan(&got); err != nil {
+			t.Fatalf("%s %s: %v", table, where, err)
+		}
+		if got != want {
+			t.Fatalf("%s %s collection_id = %q, want %q", table, where, got, want)
+		}
+	}
+	assertCol("knowledge_documents", "id='d-move'", "c2")
+	assertCol("knowledge_links", "doc_id='d-move' AND target_doc_id='d-stay'", "c2") // 源端随迁
+	assertCol("knowledge_links", "doc_id='d-stay' AND target_doc_id='d-move'", "c1") // 入边留源集合
+	assertCol("knowledge_access_log", "doc_id='d-move'", "c2")
+	assertCol("knowledge_doc_entities", "doc_id='d-move'", "c2")
+	assertCol("knowledge_relation_state", "doc_id='d-move'", "c2")
+	assertCol("knowledge_fact_version", "doc_id='d-move'", "c2")
+	var n int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id='d-move' AND collection_id='c2'`).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("chunks in c2 = %d, %v, want 2", n, err)
+	}
+	var dc, cc int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT document_count, chunk_count FROM knowledge_collections WHERE id='c1'`).Scan(&dc, &cc); err != nil {
+		t.Fatal(err)
+	}
+	if dc != 0 || cc != 0 {
+		t.Fatalf("c1 counters = %d/%d, want 0/0", dc, cc)
+	}
+	if err := raw.QueryRowContext(ctx,
+		`SELECT document_count, chunk_count FROM knowledge_collections WHERE id='c2'`).Scan(&dc, &cc); err != nil {
+		t.Fatal(err)
+	}
+	if dc != 1 || cc != 2 {
+		t.Fatalf("c2 counters = %d/%d, want 1/2", dc, cc)
+	}
+}
+
+func TestKnowledgeRepo_DeleteDocument_AccessLogPurged(t *testing.T) {
+	repo := setupCurateRepo(t)
+	ctx := context.Background()
+	raw := repo.data.Postgres()
+
+	seedCurateDoc(t, repo, "d-del", "entries/del.md")
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO knowledge_access_log (collection_id, doc_id) VALUES ('c1','d-del')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteDocument(ctx, "d-del"); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM knowledge_access_log WHERE doc_id='d-del'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("access_log residue = %d, want 0", n)
 	}
 }

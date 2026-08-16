@@ -32,21 +32,22 @@ var mediaToolSpecs = []mediaToolSpec{
 	{key: toolKeyImageToVideo, capability: bizmedia.CapabilityImageToVideo, newTool: mediatools.NewImageToVideoTool},
 }
 
-// resolveMediaTools builds media generation tools for enabled effective keys.
-// Each tool resolves the first active provider supporting its capability from
-// the media_providers catalog and wraps it with the artifact persisting
-// decorator (PersistingProvider), so generated media is downloaded and stored
-// as a session artifact instead of expiring on the remote host.
-//
-// Resolution failures (no provider configured, unknown provider type) skip
-// the tool with a warning and never fail the agent build. When
-// deps.MediaProviders is nil the feature is unavailable and nil is returned.
-func resolveMediaTools(ctx context.Context, eff map[string]bool, deps TRPCBuilderDeps) []trpctool.Tool {
+// resolvedMediaTool 是一个媒体工具的构建输入快照（P0-2 阶段A 两阶段拆分）：
+// 计划期解析提供方配置（进分片指纹），构建期（分片缓存未命中时）才实例化工具。
+type resolvedMediaTool struct {
+	key string
+	cfg bizmedia.ProviderConfig
+}
+
+// resolveMediaToolConfigs 为启用的媒体工具解析提供方配置。
+// 解析失败（未配置可用提供方）跳过该工具并告警，永不失败 agent 构建。
+// deps.MediaProviders 为 nil 时特性不可用，返回 nil。
+func resolveMediaToolConfigs(ctx context.Context, eff map[string]bool, deps TRPCBuilderDeps) []resolvedMediaTool {
 	if deps.MediaProviders == nil || len(eff) == 0 {
 		return nil
 	}
 	lg := deps.Logger()
-	var out []trpctool.Tool
+	var out []resolvedMediaTool
 	for _, spec := range mediaToolSpecs {
 		if !eff[spec.key] {
 			continue
@@ -60,22 +61,46 @@ func resolveMediaTools(ctx context.Context, eff map[string]bool, deps TRPCBuilde
 				loggateway.Err(err))
 			continue
 		}
-		inner, err := mediaprovider.Get(cfg.ProviderType, mediaprovider.ProviderConfig{
-			Name:         cfg.Name,
-			ProviderType: cfg.ProviderType,
-			BaseURL:      cfg.BaseURL,
-			APIKey:       cfg.APIKey,
-			Extra:        cfg.Extra(),
+		out = append(out, resolvedMediaTool{key: spec.key, cfg: cfg})
+	}
+	return out
+}
+
+// build 实例化单个媒体工具（分片构建闭包内调用）：提供方客户端 + 制品持久化包装。
+// 提供方构造失败跳过（告警），与现状 resolveMediaTools 的降级语义一致。
+func (r resolvedMediaTool) build(deps TRPCBuilderDeps) trpctool.Tool {
+	lg := deps.Logger()
+	for _, spec := range mediaToolSpecs {
+		if spec.key != r.key {
+			continue
+		}
+		inner, err := mediaprovider.Get(r.cfg.ProviderType, mediaprovider.ProviderConfig{
+			Name:         r.cfg.Name,
+			ProviderType: r.cfg.ProviderType,
+			BaseURL:      r.cfg.BaseURL,
+			APIKey:       r.cfg.APIKey,
+			Extra:        r.cfg.Extra(),
 		})
 		if err != nil {
 			lg.Warn("媒体工具跳过：提供方构造失败",
 				loggateway.StepID("agent.tool_build"),
-				loggateway.Str("tool_key", spec.key),
-				loggateway.Str("provider_type", cfg.ProviderType),
+				loggateway.Str("tool_key", r.key),
+				loggateway.Str("provider_type", r.cfg.ProviderType),
 				loggateway.Err(err))
-			continue
+			return nil
 		}
-		out = append(out, spec.newTool(mediaprovider.NewPersistingProvider(inner, deps.ArtifactWriter, lg)))
+		return spec.newTool(mediaprovider.NewPersistingProvider(inner, deps.ArtifactWriter, lg))
+	}
+	return nil
+}
+
+// buildMediaTools 实例化全部已解析媒体工具（nil 结果已剔除）。
+func buildMediaTools(resolved []resolvedMediaTool, deps TRPCBuilderDeps) []trpctool.Tool {
+	var out []trpctool.Tool
+	for _, r := range resolved {
+		if t := r.build(deps); t != nil {
+			out = append(out, t)
+		}
 	}
 	return out
 }

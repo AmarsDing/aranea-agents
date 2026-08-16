@@ -14,7 +14,7 @@ import (
 func TestReproCriticLoopStandaloneRun(t *testing.T) {
 	reg := graphtrpc.NewRegistry()
 	reg.RegisterNodeFuncInstance("noop", graphtrpc.PassthroughNodeFunc("noop"))
-	f := NewGraphBuilderFactory(reg, nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, nil)
+	f := NewGraphBuilderFactory(reg, nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, nil, nil)
 	cfg := biz.GraphBuildConfig{
 		EntryPoint: "verify",
 		Nodes: []biz.NodeDef{
@@ -38,7 +38,7 @@ func TestReproCriticLoopStandaloneRun(t *testing.T) {
 // 防止后续有人误以为短名可用而再踩 2026-08-15 的坑。
 func TestReproCriticLoopLegacyShortRefRejected(t *testing.T) {
 	reg := graphtrpc.NewRegistry()
-	f := NewGraphBuilderFactory(reg, nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, nil)
+	f := NewGraphBuilderFactory(reg, nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, nil, nil)
 	cfg := biz.GraphBuildConfig{
 		EntryPoint: "verify",
 		Nodes:      []biz.NodeDef{{ID: "verify"}, {ID: "postmortem"}},

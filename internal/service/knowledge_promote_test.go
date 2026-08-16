@@ -282,6 +282,61 @@ func TestKnowledgeService_PromoteBlocks_Validation(t *testing.T) {
 
 // ── SP1-I：文档级晋升（doc_ids） ─────────────────────────────────────────────
 
+// TestKnowledgeService_PromoteBlocks_GraphHook 晋升收口图谱钩子（P1-a 根治）：
+// 晋升路径不经写回管线，M2 实体/关系抽取必须随晋升重放触发——目标库（team）
+// 无 vault 同步循环，不接线则晋升文档在图谱中恒为孤立节点。钩子收目标库 +
+// touched 目标文档；钩子失败不阻断晋升（幂等闸保证后续重试）。
+func TestKnowledgeService_PromoteBlocks_GraphHook(t *testing.T) {
+	svc, _, _ := newPromoteService(t)
+	var gotCol bizknowledge.Collection
+	var gotDocs []bizknowledge.PromoteTouchedDoc
+	calls := 0
+	svc.writeBackGraph = func(_ context.Context, col bizknowledge.Collection, docs []bizknowledge.PromoteTouchedDoc) error {
+		calls++
+		gotCol = col
+		gotDocs = docs
+		return nil
+	}
+	resp, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		BlockIds:           []string{"sb1", "sb2"},
+		TargetCollectionId: "tc1",
+	})
+	if err != nil {
+		t.Fatalf("PromoteBlocks: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("graph hook calls = %d, want 1", calls)
+	}
+	if gotCol.ID != "tc1" {
+		t.Errorf("hook collection = %q, want tc1", gotCol.ID)
+	}
+	wantDoc := resp.GetCreatedBlocks()[0].GetTargetDocId()
+	if len(gotDocs) != 1 || gotDocs[0].DocID != wantDoc {
+		t.Errorf("hook docs = %+v, want touched target doc %s", gotDocs, wantDoc)
+	}
+}
+
+// TestKnowledgeService_PromoteBlocks_GraphHookNilSafe 未接线（nil）时晋升正常
+// 完成且 chunk 重放不受影响（降级安全）。
+func TestKnowledgeService_PromoteBlocks_GraphHookNilSafe(t *testing.T) {
+	svc, repo, _ := newPromoteService(t)
+	svc.writeBackGraph = nil
+	resp, err := svc.PromoteBlocks(context.Background(), &v1.PromoteBlocksRequest{
+		BlockIds:           []string{"sb1"},
+		TargetCollectionId: "tc1",
+	})
+	if err != nil {
+		t.Fatalf("PromoteBlocks: %v", err)
+	}
+	doc, err := repo.GetDocument(context.Background(), resp.GetCreatedBlocks()[0].GetTargetDocId())
+	if err != nil {
+		t.Fatalf("目标文档应存在: %v", err)
+	}
+	if doc.Status != "indexed" {
+		t.Errorf("未接线时重放状态错误: status=%s", doc.Status)
+	}
+}
+
 // TestKnowledgeService_PromoteBlocks_DocIDs 文档级入口全链路：doc_ids 解析整
 // 文档块后走同一晋升管线（谱系 + cascade + 目标文档 chunk 重放）。
 func TestKnowledgeService_PromoteBlocks_DocIDs(t *testing.T) {

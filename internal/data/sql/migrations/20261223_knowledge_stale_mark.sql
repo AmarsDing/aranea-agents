@@ -1,0 +1,11 @@
+-- 20261223_knowledge_stale_mark: 自治理知识图谱 M4 stale 标记落地（深度检查 P1-c）。
+-- 幂等：IF NOT EXISTS；重复应用安全。
+-- 语义锚点：
+--   - stale_at：陈旧词条标记时间；NULL = 正常。M4 stale 治理任务（出向 semantic
+--     边关闭比例 ≥0.5 且长期未检索）自动置位，检索侧（向量/tsvector/trigram 三路径
+--     统一经 recencyScoreSQL）对 stale 文档降权 ×0.5——降权非排除，陈旧知识仍可
+--     命中但让位新鲜知识。内容变更（写回 UpdateDocumentContent / vault 同步
+--     UpdateDocumentSyncMeta）清 NULL 复活。
+--   - 可空无 DEFAULT 无回填：存量行天然 NULL=正常，规避 PG11+ 带 DEFAULT 的
+--     ADD COLUMN 直接填充存量行的回填陷阱。
+ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS stale_at TIMESTAMPTZ;

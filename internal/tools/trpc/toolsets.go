@@ -91,6 +91,12 @@ type ToolsetConfig struct {
 	// the flag is pruned so agents never see a tool with no backend (76-coding-agent-bridge).
 	CodingBridge    bool
 	CodingBridgeSvc codingbridge.BridgeService
+	// SkipMCPGovernance（P0-2 阶段A）：分片构建时跳过片内 MCP schema 治理，
+	// 由合并期对直连 toolset 并集统一执行。仅分片装配路径设置。
+	SkipMCPGovernance bool
+	// SkipPostProcess（P0-2 阶段A）：分片构建时跳过去重/消歧/别名横切处理，
+	// 由合并期对跨分片并集统一重放。仅分片装配路径设置。
+	SkipPostProcess bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -294,10 +300,15 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		},
 		Browser: cfg.Browser,
 		Lg:      lg,
+
+		SkipMCPGovernance: cfg.SkipMCPGovernance,
+		SkipPostProcess:   cfg.SkipPostProcess,
 	})
 	if err != nil {
 		return nil, err
 	}
-	tools.ApplyRuntimeNameAliases(ctx, assembled)
+	if !cfg.SkipPostProcess {
+		tools.ApplyRuntimeNameAliases(ctx, assembled)
+	}
 	return assembled, nil
 }

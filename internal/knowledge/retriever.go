@@ -3,8 +3,11 @@ package knowledge
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
@@ -36,6 +39,9 @@ type Retriever struct {
 	lg       loggateway.Logger
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
 	monitorBus contract.MonitorBus
+	// accessLog 检索命中日志（P2-c 下沉，可选；nil = 不记录）。只记录不加成——
+	// base-level 排序加成仍专属 AdaptiveRouter，本层不改排序语义。
+	accessLog bizknowledge.AccessLogRepo
 }
 
 // NewRetriever creates a Retriever bound to the given embedder, repo, and optional reranker.
@@ -51,6 +57,17 @@ func (r *Retriever) SetMonitorBus(bus contract.MonitorBus) {
 	r.monitorBus = bus
 }
 
+// SetAccessLog 接线检索命中日志（P2-c 下沉，装配层调用；nil = 不记录）。
+// 覆盖 Router 缺席/退化的全路径：service HTTP 直搜、联邦退化、cue 预检索退化、
+// 框架原生 knowledge_search 退化。Router 在役路径由 Router 自记（HybridRetriever
+// 直调 repo 不经本层），两路径互斥无双记。
+func (r *Retriever) SetAccessLog(repo bizknowledge.AccessLogRepo) {
+	if r == nil {
+		return
+	}
+	r.accessLog = repo
+}
+
 // HasReranker reports whether a reranker is configured globally.
 func (r *Retriever) HasReranker() bool {
 	return r != nil && r.reranker != nil
@@ -60,6 +77,9 @@ func (r *Retriever) HasReranker() bool {
 // 检索为热路径：流程日志只打 done/error 且 message 精简（不打 start、不写进程日志）。
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	chunks, err := r.search(ctx, q)
+	if err == nil {
+		r.logAccess(ctx, q, chunks)
+	}
 	if r != nil && r.monitorBus != nil {
 		topK := q.TopK
 		if topK <= 0 {
@@ -79,6 +99,58 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 		}
 	}
 	return chunks, err
+}
+
+// logAccess 记录本次命中（P2-c）。失败仅 Warn 不阻塞检索返回；chunks 空不记。
+func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) {
+	if r == nil || r.accessLog == nil || len(chunks) == 0 {
+		return
+	}
+	entries := accessEntriesFromChunks(q.CollectionID, q.Query, chunks)
+	if len(entries) == 0 {
+		return
+	}
+	if err := r.accessLog.LogAccess(ctx, entries); err != nil {
+		r.lg.Warn("检索命中日志写入失败",
+			loggateway.StepID("knowledge.retriever.access_log_fail"),
+			loggateway.Str("collection_id", q.CollectionID),
+			loggateway.Err(err))
+	}
+}
+
+// accessQueryHash 生成 access_log 的查询指纹（sha1 前 8 字节 hex）。
+// Retriever/Router 共用，保证同一查询两路径同指纹。
+func accessQueryHash(query string) string {
+	sum := sha1.Sum([]byte(query))
+	return hex.EncodeToString(sum[:8])
+}
+
+// accessEntriesFromChunks 按 doc 去重构建命中日志条目（同批同 doc 多 chunk 记一次）。
+func accessEntriesFromChunks(collectionID, query string, chunks []biz.KnowledgeChunk) []bizknowledge.AccessLogEntry {
+	docSet := make(map[string]struct{}, len(chunks))
+	docIDs := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		if ch.DocID == "" {
+			continue
+		}
+		if _, ok := docSet[ch.DocID]; !ok {
+			docSet[ch.DocID] = struct{}{}
+			docIDs = append(docIDs, ch.DocID)
+		}
+	}
+	if len(docIDs) == 0 {
+		return nil
+	}
+	queryHash := accessQueryHash(query)
+	entries := make([]bizknowledge.AccessLogEntry, 0, len(docIDs))
+	for _, id := range docIDs {
+		entries = append(entries, bizknowledge.AccessLogEntry{
+			CollectionID: collectionID,
+			DocID:        id,
+			QueryHash:    queryHash,
+		})
+	}
+	return entries
 }
 
 func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {

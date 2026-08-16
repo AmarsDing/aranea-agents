@@ -163,8 +163,16 @@ type KnowledgeCurateRepo interface {
 	HasProposal(ctx context.Context, collectionID, kind, dedupKey string, statuses []string) (bool, error)
 	// ListGovernanceProposals 治理提案列表（人工二审出口）；collectionID/status 空 = 不过滤。
 	ListGovernanceProposals(ctx context.Context, collectionID, status string, limit int) ([]GovernanceProposalView, error)
+	// GetGovernanceProposal 单提案读取（P1-b：applied 处置前取 kind/payload + pending 守卫）。
+	GetGovernanceProposal(ctx context.Context, id int64) (GovernanceProposalView, error)
 	// ResolveGovernanceProposal 人工二审闭环：pending → applied/rejected。
 	ResolveGovernanceProposal(ctx context.Context, id int64, status string) error
+	// CloseContradictsEdges 关闭 docID ↔ targetDocIDs 间的 active contradicts 语义边
+	// （P1-b：conflict 提案 applied 处置；双方向均关，失效不删除留痕可审计）。
+	CloseContradictsEdges(ctx context.Context, collectionID, docID string, targetDocIDs []string) (int, error)
+	// MarkStaleEntries 置位 documents.stale_at（P1-c：stale 标记落地文档字段，
+	// 检索侧降权消费；幂等——已置位行不动，保留首判时间）。
+	MarkStaleEntries(ctx context.Context, docIDs []string) error
 }
 
 // SetCurateRepo 接线 M4 治理数据端口（可选；nil 时 CurateKnowledge 显式报不可用）。
@@ -264,27 +272,53 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 	}
 
 	// ── stale：陈旧词条标记（低风险自动应用，applied 留痕即标记） ────────
+	// P1-c：标记落地 documents.stale_at（检索侧降权消费），提案行仍为审计留痕。
+	// 先置位后落提案——置位失败则不落提案/不计数，下轮 dream 自然重试（无 applied
+	// 提案去重不拦截）；dry_run 只探测不置位。
 	stales, err := u.curate.ListStaleEntries(ctx, colID, opts.StaleInactiveDays, curateProposalLimit)
 	if err != nil {
 		u.lg.Warn("治理：陈旧词条扫描失败", loggateway.StepID("knowledge.curate.stale"), loggateway.Err(err))
 	} else {
+		type staleHit struct {
+			stat  StaleEntryStat
+			dedup string
+		}
+		var hits []staleHit
 		for _, s := range stales {
 			dedup := "stale:" + s.DocID
 			if u.skipProposal(ctx, colID, ProposalKindStale, dedup, []string{ProposalStatusPending, ProposalStatusApplied}) {
 				continue
 			}
-			p := GovernanceProposal{
-				CollectionID: colID, Kind: ProposalKindStale, Risk: ProposalRiskLow, Status: ProposalStatusApplied,
-				Payload: map[string]any{
-					"dedup_key": dedup, "doc_id": s.DocID, "rel_path": s.RelPath,
-					"last_access_days": s.LastAccessDays, "closed_ratio": s.ClosedRatio,
-				},
+			hits = append(hits, staleHit{stat: s, dedup: dedup})
+		}
+		marked := opts.DryRun || len(hits) == 0 // dry_run/无候选：无需置位
+		if !marked {
+			ids := make([]string, 0, len(hits))
+			for _, h := range hits {
+				ids = append(ids, h.stat.DocID)
 			}
-			if !opts.DryRun {
-				u.recordCurateProposal(ctx, p)
+			if merr := u.curate.MarkStaleEntries(ctx, ids); merr != nil {
+				u.lg.Warn("治理：stale_at 置位失败（本轮不落提案，下轮重试）",
+					loggateway.StepID("knowledge.curate.stale"), loggateway.Err(merr))
+			} else {
+				marked = true
 			}
-			rep.StaleMarked++
-			rep.Proposals = append(rep.Proposals, CurateProposal{Kind: p.Kind, Risk: p.Risk, Status: ProposalStatusApplied, DedupKey: dedup})
+		}
+		if marked {
+			for _, h := range hits {
+				p := GovernanceProposal{
+					CollectionID: colID, Kind: ProposalKindStale, Risk: ProposalRiskLow, Status: ProposalStatusApplied,
+					Payload: map[string]any{
+						"dedup_key": h.dedup, "doc_id": h.stat.DocID, "rel_path": h.stat.RelPath,
+						"last_access_days": h.stat.LastAccessDays, "closed_ratio": h.stat.ClosedRatio,
+					},
+				}
+				if !opts.DryRun {
+					u.recordCurateProposal(ctx, p)
+				}
+				rep.StaleMarked++
+				rep.Proposals = append(rep.Proposals, CurateProposal{Kind: p.Kind, Risk: p.Risk, Status: ProposalStatusApplied, DedupKey: h.dedup})
+			}
 		}
 		if rep.StaleMarked > 0 {
 			rep.Actions = append(rep.Actions, "stale")
@@ -303,9 +337,10 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 	} else {
 		for _, c := range conflicts {
 			dedup := "conflict:" + c.DocID + "→" + c.TargetDocID
-			// 去重含 rejected：人工已否决的同矛盾不再重复提案（拒绝即沉默，
-			// 否则每轮 dream 重复骚扰二审人）。
-			if u.skipProposal(ctx, colID, ProposalKindConflict, dedup, []string{ProposalStatusPending, ProposalStatusRejected}) {
+			// 去重含 rejected+applied：人工已否决的同矛盾不再重复提案（拒绝即沉默，
+			// 否则每轮 dream 重复骚扰二审人）；applied 已实际处置（关边）即终态，
+			// 不再周期重提（P1-b，与 moc_emerge 三态全含同口径）。
+			if u.skipProposal(ctx, colID, ProposalKindConflict, dedup, []string{ProposalStatusPending, ProposalStatusRejected, ProposalStatusApplied}) {
 				continue
 			}
 			p := GovernanceProposal{
@@ -333,8 +368,9 @@ func (u *Usecase) CurateKnowledge(ctx context.Context, opts CurateOptions) (Cura
 	} else {
 		for _, o := range orphans {
 			dedup := "orphan:" + o.DocID
-			// 去重含 rejected：同 conflict 的拒绝即沉默语义。
-			if u.skipProposal(ctx, colID, ProposalKindOrphan, dedup, []string{ProposalStatusPending, ProposalStatusRejected}) {
+			// 去重含 rejected+applied：同 conflict 的拒绝即沉默语义；applied 已删词条
+			// 即终态（P1-b）。
+			if u.skipProposal(ctx, colID, ProposalKindOrphan, dedup, []string{ProposalStatusPending, ProposalStatusRejected, ProposalStatusApplied}) {
 				continue
 			}
 			p := GovernanceProposal{
@@ -444,6 +480,9 @@ func (u *Usecase) ListGovernanceProposals(ctx context.Context, collectionID, sta
 }
 
 // ResolveGovernanceProposal 人工二审闭环：pending → applied/rejected（其他状态非法）。
+// P1-b（2026-08-16）：applied 先执行实际处置（orphan 删词条 / conflict 关 contradicts
+// 边）再落终态——此前 applied 仅改状态无实效，已处置事项因数据未变被周期性重提。
+// 处置失败返回错误且提案停留 pending（可重审）；非 pending 提案拒绝重复处置。
 func (u *Usecase) ResolveGovernanceProposal(ctx context.Context, id int64, status string) error {
 	if u == nil || u.curate == nil {
 		return apierror.Unavailable(apierror.DomainKnowledge, "knowledge curate repo not wired")
@@ -451,7 +490,57 @@ func (u *Usecase) ResolveGovernanceProposal(ctx context.Context, id int64, statu
 	if status != ProposalStatusApplied && status != ProposalStatusRejected {
 		return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("invalid proposal status %q", status))
 	}
+	if status == ProposalStatusApplied {
+		view, err := u.curate.GetGovernanceProposal(ctx, id)
+		if err != nil {
+			return err
+		}
+		if view.Status != ProposalStatusPending {
+			return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("proposal %d not pending (status %s)", id, view.Status))
+		}
+		if err := u.applyGovernanceDisposal(ctx, view); err != nil {
+			return err
+		}
+	}
 	return u.curate.ResolveGovernanceProposal(ctx, id, status)
+}
+
+// applyGovernanceDisposal 按提案 kind 执行 applied 实际处置。payload 缺关键字段
+// 降级 no-op（历史提案/手工数据不阻断二审）；moc_emerge 无自动处置（人工建 MOC，
+// 设计如此——「MOC 是否参与默认检索」仍是设计开放问题）。
+func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernanceProposalView) error {
+	switch view.Kind {
+	case ProposalKindOrphan:
+		docID, _ := view.Payload["doc_id"].(string)
+		if strings.TrimSpace(docID) == "" {
+			return nil
+		}
+		// 文档已不存在（并发已删）视为幂等成功；其余错误上抛（提案停留 pending）。
+		if err := u.DeleteDocument(ctx, docID); err != nil && !apierror.IsCode(err, apierror.CodeNotFound) {
+			return fmt.Errorf("orphan disposal: delete document %s: %w", docID, err)
+		}
+		u.lg.Info("治理：orphan 提案 applied，孤儿词条已删除",
+			loggateway.StepID("knowledge.curate.orphan"),
+			loggateway.Str("doc_id", docID),
+			loggateway.Int64("proposal_id", view.ID),
+		)
+	case ProposalKindConflict:
+		docID, _ := view.Payload["doc_id"].(string)
+		targetID, _ := view.Payload["target_doc_id"].(string)
+		if strings.TrimSpace(docID) == "" || strings.TrimSpace(targetID) == "" {
+			return nil
+		}
+		if _, err := u.curate.CloseContradictsEdges(ctx, view.CollectionID, docID, []string{targetID}); err != nil {
+			return fmt.Errorf("conflict disposal: close contradicts %s↔%s: %w", docID, targetID, err)
+		}
+		u.lg.Info("治理：conflict 提案 applied，contradicts 边已关闭",
+			loggateway.StepID("knowledge.curate.conflict"),
+			loggateway.Str("doc_id", docID),
+			loggateway.Str("target_doc_id", targetID),
+			loggateway.Int64("proposal_id", view.ID),
+		)
+	}
+	return nil
 }
 
 // skipProposal 提案去重：同 kind+dedup_key 且处于指定状态的提案已存在时跳过（防周期风暴）。

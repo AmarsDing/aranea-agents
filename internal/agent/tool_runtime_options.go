@@ -85,19 +85,6 @@ func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {
 	}
 }
 
-// buildToolExecutionTimeout returns the per-tool execution timeout duration.
-// When AgentRuntimeSettings does not specify a value (zero or negative),
-// the default safety-net timeout is used. Returns 0 only when tools are disabled.
-func buildToolExecutionTimeout(s *biz.AgentRuntimeSettings) time.Duration {
-	if !s.ToolsEnabled {
-		return 0
-	}
-	if s.ToolsExecutionTimeoutSec > 0 {
-		return time.Duration(s.ToolsExecutionTimeoutSec) * time.Second
-	}
-	return defaultToolExecutionTimeout
-}
-
 // toolExecutionTimeoutHooks creates a BeforeTool + AfterTool callback pair that
 // enforces a per-tool execution timeout. The BeforeTool hook injects a
 // context.WithTimeout into the framework's callback pipeline; the AfterTool
@@ -105,27 +92,38 @@ func buildToolExecutionTimeout(s *biz.AgentRuntimeSettings) time.Duration {
 //
 // This is the product-layer implementation of tool execution timeout since the
 // framework does not provide a built-in timeout option.
-func toolExecutionTimeoutHooks(timeout time.Duration, lg loggateway.Logger) []trpccallbacks.Callback {
-	if timeout <= 0 {
+//
+// P1-2：timeout 由固定值改为每调用查询（timeoutFn，生产上即
+// toolExecutionTimeoutFor 的 resolver 查询闭包）——策略变更经 resolver Reload/Set
+// 后即对新调用生效，无需重建 agent。timeoutFn 出口已规范化（恒 >0）。
+func toolExecutionTimeoutHooks(timeoutFn func() time.Duration, lg loggateway.Logger) []trpccallbacks.Callback {
+	if timeoutFn == nil {
 		return nil
 	}
 	// pendingCancels stores cancel functions keyed by a unique per-invocation
 	// tool call ID. The BeforeTool hook writes, the AfterTool hook reads and deletes.
+	type pendingEntry struct {
+		cancel  context.CancelFunc
+		timeout time.Duration // 本次调用实际生效值（AfterTool 超时日志如实反映）
+	}
 	var pendingCancels sync.Map
 
 	before := trpccallbacks.NewBeforeToolHook(0, func(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
+		timeout := timeoutFn()
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 		// Use tool call ID as key; fall back to tool name if ID is empty.
 		key := toolCallCancelKey(args)
-		pendingCancels.Store(key, cancel)
+		pendingCancels.Store(key, pendingEntry{cancel: cancel, timeout: timeout})
 		return &trpctool.BeforeToolResult{Context: timeoutCtx}, nil
 	})
 
 	after := trpccallbacks.NewAfterToolHook(0, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 		key := toolCallCancelKeyFromAfter(args)
+		var applied time.Duration
 		if v, ok := pendingCancels.LoadAndDelete(key); ok {
-			cancel := v.(context.CancelFunc)
-			cancel()
+			entry := v.(pendingEntry)
+			entry.cancel()
+			applied = entry.timeout
 		}
 		// Log timeout detection for observability. Only report when the tool
 		// actually failed (or produced no result) AND the context expired.
@@ -137,7 +135,7 @@ func toolExecutionTimeoutHooks(timeout time.Duration, lg loggateway.Logger) []tr
 			lg.Warn("tool execution timed out",
 				loggateway.StepID("agent.tool_execution_timeout"),
 				loggateway.Str("tool_name", toolName),
-				loggateway.Str("timeout", timeout.String()),
+				loggateway.Str("timeout", applied.String()),
 			)
 		}
 		return &trpctool.AfterToolResult{}, nil

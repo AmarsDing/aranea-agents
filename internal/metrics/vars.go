@@ -37,6 +37,28 @@ var (
 		Help: "Number of agent build cache misses (LRU).",
 	})
 
+	// AgentBuildShardHits counts shard-level build cache hits (P0-2 阶段A).
+	// Label shard is the shard group (core/mcp/mcp_broker/knowledge/media/
+	// memory/twinops/officecli/custom) — never the full shard id, to keep
+	// cardinality bounded (mcp:<server_key> would be unbounded).
+	AgentBuildShardHits = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_agent_build_shard_hits_total",
+		Help: "Number of shard build cache hits by shard group.",
+	}, []string{"shard"})
+
+	// AgentBuildShardMisses counts shard-level build cache misses (P0-2 阶段A).
+	AgentBuildShardMisses = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_agent_build_shard_misses_total",
+		Help: "Number of shard build cache misses by shard group.",
+	}, []string{"shard"})
+
+	// AgentBuildShardBuildSeconds tracks per-shard build latency on cache miss.
+	AgentBuildShardBuildSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_agent_build_shard_build_seconds",
+		Help:    "Shard build latency on cache miss by shard group.",
+		Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10},
+	}, []string{"shard"})
+
 	// AgentCacheActiveRefs is the number of in-flight agent runs holding a
 	// generational reference on cached build artifacts (P0-4).
 	AgentCacheActiveRefs = promauto.NewGauge(prometheus.GaugeOpts{

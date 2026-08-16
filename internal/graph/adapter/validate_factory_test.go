@@ -11,7 +11,7 @@ import (
 
 func TestFactory_Validate_EmptyGraphIsCompileFailure(t *testing.T) {
 	t.Parallel()
-	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop())
+	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop(), nil)
 	result, err := factory.Validate(context.Background(), biz.GraphBuildConfig{})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)
@@ -36,7 +36,7 @@ func TestFactory_Validate_MissingAgentIsCompileFailure(t *testing.T) {
 	factory := NewGraphBuilderFactory(
 		graphtrpc.NewRegistry(), nil, nil, nil,
 		func(context.Context, string) bool { return false },
-		graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop(),
+		graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop(), nil,
 	)
 	result, err := factory.Validate(context.Background(), biz.GraphBuildConfig{
 		Nodes:       []biz.NodeDef{{ID: "n1", Type: biz.NodeTypeAgent, AgentName: "missing"}},
@@ -76,7 +76,7 @@ func TestValidateBizGraphBuildConfig_EmptyGraph(t *testing.T) {
 // running the validator, mirroring BuildTeamGraphRoot / buildRuntime.
 func TestFactory_Validate_ParameterizedCriticLoopRefAccepted(t *testing.T) {
 	t.Parallel()
-	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop())
+	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop(), nil)
 	ref := biz.CriticLoopCondFuncRefForNode(0, 2, "verify")
 	result, err := factory.Validate(context.Background(), biz.GraphBuildConfig{
 		Nodes: []biz.NodeDef{
@@ -111,7 +111,7 @@ func TestFactory_Validate_ParameterizedCriticLoopRefAccepted(t *testing.T) {
 
 func TestFactory_AgentExists_NilChecker(t *testing.T) {
 	t.Parallel()
-	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop())
+	factory := NewGraphBuilderFactory(graphtrpc.NewRegistry(), nil, nil, nil, nil, graphtrpc.GraphNodeResolverSet{}, nil, loggateway.NewNoop(), nil)
 	if factory.AgentExists(context.Background(), "any") {
 		t.Fatal("nil checker must report agent missing")
 	}

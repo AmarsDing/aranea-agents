@@ -50,6 +50,17 @@
 
 测试：biz `curate_test.go` 新增 4 例（多库枚举过滤/无团队库 NotFound/指定集合退化单库不查列表/未接线 Unavailable）+ data `knowledge_curate_test.go` 2 例改写（无向边对：反向并存 4→3、自环 seed 断言度数与邻居不受污染）。回归：全量编译 + biz/knowledge（22 例）+ memory_butler（11 例）+ data Knowledge PG 集成（9 例）全绿。
 
+### 深度检查补丁纪要（2026-08-16 第四轮）
+
+第四轮换角度审查（生命周期级联 / cron 编排与异步竞态 / L3 注入链实证），代理 9 条线索亲验后确认 1 缺陷 + 1 低风险，全部修复；另实证闭环第三轮遗留推断：
+
+- **P2 docMove 治理归属错乱（治理黑洞，修复）**：`MoveDocument` 事务原只更新 documents/chunks 的 collection_id + 两集合计数器，5 张附表滞留旧集合——links 滞留使 decay（按 links.collection_id 过滤）归属错乱、moc 簇归属错乱；access_log 滞留使 ListHotDocuments 旧集合蒸馏已移走文档、事实 scope 写错 workspace；doc_entities/relation_state/fact_version 同滞留。修复：事务内补 5 条 UPDATE——**links 仅迁源端**（`doc_id = 本文档`；边 collection_id 语义即「源文档集合」，入边 target 端不动，跨集合边保留在源集合治理域），access_log/doc_entities/relation_state/fact_version 按 doc_id 随迁。
+- **低风险 access_log 无 FK 残留（修复）**：`knowledge_access_log` 是唯一无 FK CASCADE 的附表，文档删除后 log 残留垃圾行（INNER JOIN 过滤无功能影响但长期累积）。修复：`DeleteDocument` 事务内显式 `DELETE FROM knowledge_access_log WHERE doc_id = $1`。
+- **L3 注入链实证闭环（第三轮推断确认）**：召回侧 `RecallL3Fused → L3ScopeTargets(rt.Workspace) → RecallL3Hits(scope_id=session.Workspace)`（memory_l3_fused_recall.go），写入侧 distill `ScopeID=homeCol.Workspace`——同 workspace 闭合；集合 workspace 空时 distill 跳过防御（curate.go）杜绝空 scope 死信。**distill 事实可召回，链路成立**。
+- **误报排除（亲验依据）**：①删除级联缺失——links/chunks/doc_entities/relation_state/fact_version 全部 FK `ON DELETE CASCADE`（knowledge.go 建表语句）；②cron 无单实例锁——lease 机制（cron.lease_skip）+ dead_letter/retry/panic recover；③异步 ctx 请求取消——syncFactIndexBestEffort 用 `context.WithoutCancel` detached + Safego recover + reconciler 兜底；④Hebbian 丢更新——`weight_f = knowledge_links.weight_f + EXCLUDED.weight_f` 原子 SQL；⑤reconciler vs distill 踩踏——同键幂等 upsert 无踩踏语义。
+
+测试：data `knowledge_curate_test.go` 新增 2 例（`TestKnowledgeRepo_MoveDocument_AttachedTablesFollow`：documents/chunks/links 源端/access_log/doc_entities/relation_state/fact_version 随迁 c2 + links 入边留 c1 + 两集合计数器 0/0→1/2；`TestKnowledgeRepo_DeleteDocument_AccessLogPurged`：log 清除 0 残留）。回归：data Knowledge PG 集成全量（11 例）全绿。
+
 ---
 
 ## M3 落地纪要（实施偏差记录）

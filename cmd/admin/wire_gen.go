@@ -76,9 +76,9 @@ import (
 	"aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
-	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 	"context"
 	"database/sql"
@@ -118,27 +118,27 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	adminService := service.NewAdminService(adminUsecase, loggatewayLogger)
 	repo := data.NewAvatarRepo(dataData)
 	channelIconRefresher := biz.NewChannelIconRefresher()
-	usecase := avatar.NewUsecase(repo, channelIconRefresher)
-	avatarService := service.NewAvatarService(usecase)
+	v := avatar.NewUsecase(repo, channelIconRefresher)
+	avatarService := service.NewAvatarService(v)
 	agentRepository := data.NewAgentRepo(dataData)
-	toolRepo := data.NewToolRepo(dataData)
+	v2 := data.NewToolRepo(dataData)
 	systemSettingRepo := data.NewSystemSettingRepo(dataData)
 	webResearchReadinessChecker := provideBizWebResearchReadinessChecker()
 	llmProviderModelRepo := data.NewLlmProviderModelRepo(dataData)
 	llmInspector := provideLLMInspector(loggatewayLogger)
 	credentialCrypto := provideCredentialCrypto(systemSettingRepo, loggatewayLogger)
-	usageRepo := data.NewUsageRepo(dataData)
-	modelStatsInjector := provideModelStatsInjector(usageRepo, loggatewayLogger)
+	v3 := data.NewUsageRepo(dataData)
+	modelStatsInjector := provideModelStatsInjector(v3, loggatewayLogger)
 	llmProviderModelUsecase := provideLlmProviderModelUsecaseWithDeps(llmProviderModelRepo, llmInspector, credentialCrypto, agentRepository, modelStatsInjector, loggatewayLogger)
-	agentUsecase := provideAgentUsecaseWithDeps(agentRepository, toolRepo, systemSettingRepo, webResearchReadinessChecker, llmProviderModelUsecase, loggatewayLogger)
+	agentUsecase := provideAgentUsecaseWithDeps(agentRepository, v2, systemSettingRepo, webResearchReadinessChecker, llmProviderModelUsecase, loggatewayLogger)
 	evolutionMetricsRepo := data.NewEvolutionMetricsRepo(dataData)
 	unifiedEvolutionRepo := data.NewUnifiedEvolutionRepo(dataData, loggatewayLogger)
 	evolutionUsecase := provideEvolutionUsecase(evolutionMetricsRepo, unifiedEvolutionRepo, agentRepository, dataData, loggatewayLogger)
-	auditRepo := data.NewMonitorAuditRepo(dataData)
-	eventRepo := data.NewMonitorEventRepo(dataData)
-	traceRepo := data.NewMonitorTraceRepo(dataData)
-	alertRepo := data.NewMonitorAlertRepo(dataData)
-	runnerCompletionRepo := data.NewMonitorRunnerCompletionRepo(dataData)
+	v4 := data.NewMonitorAuditRepo(dataData)
+	v5 := data.NewMonitorEventRepo(dataData)
+	v6 := data.NewMonitorTraceRepo(dataData)
+	v7 := data.NewMonitorAlertRepo(dataData)
+	v8 := data.NewMonitorRunnerCompletionRepo(dataData)
 	channelRepo := data.NewChannelRepo(dataData)
 	channelPeerSessionRepo := data.NewChannelPeerSessionRepo(dataData)
 	channelInboundReceiptRepo := data.NewChannelInboundReceiptRepo(dataData)
@@ -147,18 +147,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	channelUsecase := biz.ProvideChannelUsecase(channelRepo, channelRepo, channelRepo, channelRepo, channelPeerUsecase, agentRepository, teamRepo, credentialCrypto, dataData, loggatewayLogger)
 	infra := event.NewInfra(loggatewayLogger)
 	monitorBus := event.ProvideMonitorEventBus(infra)
-	alertNotifier := provideMonitorAlertNotifier(channelUsecase, monitorBus, loggatewayLogger)
-	skillRepo := data.NewSkillRepo(dataData)
+	v9 := provideMonitorAlertNotifier(channelUsecase, monitorBus, loggatewayLogger)
+	v10 := data.NewSkillRepo(dataData)
 	multiProviderEmbedder := service.NewKnowledgeEmbedder(confData, systemSettingRepo, loggatewayLogger)
 	skillDedupRepo := data.NewSkillDedupRepo(dataData, loggatewayLogger)
 	dedupEmbedder := biz.ProvideSkillEmbedder()
 	similarityWeights := biz.ProvideDefaultDedupWeights()
 	skillSimilarityEngine := biz.NewSkillSimilarityEngine(dedupEmbedder, similarityWeights, loggatewayLogger)
 	skillDedupUsecase := biz.NewSkillDedupUsecase(skillDedupRepo, skillSimilarityEngine, loggatewayLogger)
-	tagRepo := data.NewSkillTagRepo(dataData)
-	skillUsecase := provideSkillUsecase(skillRepo, multiProviderEmbedder, skillDedupUsecase, tagRepo, loggatewayLogger)
-	filesystemHealthReader := provideFilesystemHealthReader(skillUsecase)
-	spanReader := data.NewMonitorTraceSpanReader(dataData)
+	v11 := data.NewSkillTagRepo(dataData)
+	v12 := provideSkillUsecase(v10, multiProviderEmbedder, skillDedupUsecase, v11, loggatewayLogger)
+	v13 := provideFilesystemHealthReader(v12)
+	v14 := data.NewMonitorTraceSpanReader(dataData)
 	taskV2Repo := data.NewTaskV2Repo(dataData, loggatewayLogger)
 	turnV2Repo := data.NewTurnV2Repo(dataData, loggatewayLogger)
 	stepV2Repo := data.NewStepV2Repo(dataData, loggatewayLogger)
@@ -175,14 +175,14 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	eventDeadLetterRepo := data.NewEventDeadLetterRepo(dataData, loggatewayLogger)
 	sequencer := provideV2Sequencer(repoSet, v2Bus, eventDeliveryOutboxRepo, eventDeadLetterRepo, loggatewayLogger)
 	memoryCanaryStatus := biz.NewMemoryCanaryStatus()
-	alertMetricRegistry := alert.NewAlertMetricRegistry()
-	traceUsageRepo := data.NewMonitorTraceUsageRepo(dataData)
-	traceProjector := provideTraceProjector(traceRepo, traceUsageRepo, infra, loggatewayLogger)
-	flowFileAppender := provideFlowFileAppender(loggatewayLogger)
-	monitorUsecase := provideMonitorUsecase(auditRepo, eventRepo, traceRepo, alertRepo, runnerCompletionRepo, alertNotifier, filesystemHealthReader, spanReader, sequencer, memoryCanaryStatus, alertMetricRegistry, usageRepo, traceProjector, flowFileAppender, loggatewayLogger)
-	a2aRepo := data.NewA2ARepoFromData(dataData, loggatewayLogger)
+	v15 := alert.NewAlertMetricRegistry()
+	v16 := data.NewMonitorTraceUsageRepo(dataData)
+	v17 := provideTraceProjector(v6, v16, infra, loggatewayLogger)
+	v18 := provideFlowFileAppender(loggatewayLogger)
+	v19 := provideMonitorUsecase(v4, v5, v6, v7, v8, v9, v13, v14, sequencer, memoryCanaryStatus, v15, v3, v17, v18, loggatewayLogger)
+	v20 := data.NewA2ARepoFromData(dataData, loggatewayLogger)
 	agentLookup := biz.ProvideA2AAgentLookup(agentRepository)
-	a2aUsecase := a2a.NewUsecase(a2aRepo, a2aRepo, a2aRepo, a2aRepo, agentLookup)
+	v21 := a2a.NewUsecase(v20, v20, v20, v20, agentLookup)
 	mcpServerRepo := data.NewMCPServerRepo(dataData)
 	mcpServerUserCredentialRepo := data.NewMCPServerUserCredentialRepo(dataData)
 	mcpProber := provideMCPProber()
@@ -191,8 +191,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentMCPTooling := biz.NewAgentMCPTooling(agentUsecase, mcpServerUsecase)
 	sessionService := provideTRPCSessionService(dataData, llmProviderModelUsecase, loggatewayLogger)
 	artifactRepo := data.NewArtifactRepo(dataData)
-	artifactUsecase := artifact.NewUsecase(artifactRepo, loggatewayLogger)
-	artifactService := provideArtifactRuntimeService(artifactUsecase, loggatewayLogger)
+	v22 := artifact.NewUsecase(artifactRepo, loggatewayLogger)
+	artifactService := provideArtifactRuntimeService(v22, loggatewayLogger)
 	memoryRepo := data.NewMemoryRepo(dataData)
 	memoryEmbeddingAdapter := service.NewMemoryEmbeddingAdapter(multiProviderEmbedder)
 	memoryUsecase := biz.NewMemoryUsecase(memoryRepo, memoryEmbeddingAdapter)
@@ -208,34 +208,34 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
 	l4Reconsolidator := provideReconsolidationService(dataData, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
-	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo)
+	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, v22, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo)
 	promptFileAIEditor := providePromptFileAIEditor(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
 	agentTemplateRepo := data.NewAgentTemplateRepo(dataData)
 	agentTemplateUsecase := biz.NewAgentTemplateUsecase(agentTemplateRepo)
-	agentService := service.NewAgentService(agentUsecase, evolutionUsecase, monitorUsecase, a2aUsecase, promptFileAIEditor, agentTemplateUsecase, loggatewayLogger, monitorBus)
-	llmProviderModelService := service.NewLlmProviderModelService(llmProviderModelUsecase, monitorUsecase, loggatewayLogger)
+	agentService := service.NewAgentService(agentUsecase, evolutionUsecase, v19, v21, promptFileAIEditor, agentTemplateUsecase, loggatewayLogger, monitorBus)
+	llmProviderModelService := service.NewLlmProviderModelService(llmProviderModelUsecase, v19, loggatewayLogger)
 	hookRepo := data.NewHookRepo(dataData)
-	hookUsecase := hook.NewUsecase(hookRepo, loggatewayLogger)
+	v23 := hook.NewUsecase(hookRepo, loggatewayLogger)
 	deliveryRepo := data.NewHookDeliveryRepo(dataData)
-	deliveryUsecase := hook.NewDeliveryUsecase(deliveryRepo)
-	pluginRepo := data.NewPluginRepo(dataData)
-	runRepo := data.NewPluginRunRepo(dataData)
-	statsRecorder := providePluginStatsRecorder(pluginRepo, runRepo, agentRepository, runtime, loggatewayLogger)
-	costGuardUsageRepo := data.NewPluginCostGuardUsageRepo(dataData)
+	v24 := hook.NewDeliveryUsecase(deliveryRepo)
+	v25 := data.NewPluginRepo(dataData)
+	v26 := data.NewPluginRunRepo(dataData)
+	statsRecorder := providePluginStatsRecorder(v25, v26, agentRepository, runtime, loggatewayLogger)
+	v27 := data.NewPluginCostGuardUsageRepo(dataData)
 	settingRepo := biz.NewToolSettingRepo(systemSettingRepo)
 	toolTester := provideToolTester(loggatewayLogger)
 	toolWebResearchReadinessChecker := provideWebResearchReadinessChecker()
 	toolGrantRepo := data.NewToolGrantRepo(dataData)
-	toolUsecase := provideToolUsecaseWithDeps(toolRepo, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, loggatewayLogger)
-	plugintrpcRuntime := providePluginRuntime(statsRecorder, costGuardUsageRepo, toolUsecase, deliveryRepo, monitorBus, loggatewayLogger)
-	resolver := hook.NewResolver(hookUsecase, loggatewayLogger)
-	manager := providePluginManager(plugintrpcRuntime, resolver, agentRepository, loggatewayLogger)
-	hookService := service.NewHookService(hookUsecase, deliveryUsecase, manager, loggatewayLogger)
+	v28 := provideToolUsecaseWithDeps(v2, settingRepo, toolTester, toolWebResearchReadinessChecker, toolGrantRepo, loggatewayLogger)
+	plugintrpcRuntime := providePluginRuntime(statsRecorder, v27, v28, deliveryRepo, monitorBus, loggatewayLogger)
+	v29 := hook.NewResolver(v23, loggatewayLogger)
+	manager := providePluginManager(plugintrpcRuntime, v29, agentRepository, loggatewayLogger)
+	hookService := service.NewHookService(v23, v24, manager, loggatewayLogger)
 	cronRepo := data.NewCronRepo(dataData)
-	sessionMetricsWriter := data.NewSessionMetricsRepo(dataData)
-	sessionMetricsReader := data.NewSessionMetricsReader(dataData)
-	sessionMetricsCache := data.NewSessionMetricsCache(sessionMetricsReader, loggatewayLogger)
-	sessionRepo := data.NewSessionRepo(dataData, sessionMetricsWriter, sessionMetricsCache)
+	v30 := data.NewSessionMetricsRepo(dataData)
+	v31 := data.NewSessionMetricsReader(dataData)
+	sessionMetricsCache := data.NewSessionMetricsCache(v31, loggatewayLogger)
+	sessionRepo := data.NewSessionRepo(dataData, v30, sessionMetricsCache)
 	sessionAgentLookup := biz.NewSessionAgentLookup(agentRepository)
 	teamLookup := biz.NewSessionTeamLookup(teamRepo)
 	sessionTitleGenerator := provideSessionTitleGenerator(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
@@ -247,7 +247,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	activityLister := biz.NewSessionActivityLister(stepV2Repo, taskV2Repo)
 	flowLogWriter := service.ProvideFlowLogWriter(loggatewayLogger, monitorBus)
 	sessionFlowLogWriter := service.ProvideSessionFlowLogWriter(flowLogWriter)
-	sessionUsecase := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
+	v32 := session.NewSessionUsecase(sessionRepo, sessionAgentLookup, teamLookup, sessionTitleGenerator, sessionParticipantRepository, sessionStatusPublisher, sessionMetricsUsecase, sessionRuntimeWriter, activityLister, loggatewayLogger, sessionFlowLogWriter)
 	runRegistry := provideRunRegistry(loggatewayLogger)
 	pendingMessageQueue := providePendingMessageQueue(loggatewayLogger)
 	agentIDExistenceChecker := biz.ProvideAgentIDExistenceChecker(agentRepository)
@@ -263,13 +263,13 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	agentExistenceCheckerFunc := biz.ProvideAgentExistenceChecker(agentRepository)
-	repository := service.NewSkillDBRepository(skillUsecase, loggatewayLogger)
+	repository := service.NewSkillDBRepository(v12, loggatewayLogger)
 	factory := provideCodeExecutorFactory(loggatewayLogger)
-	knowledgeRepo := data.NewKnowledgeRepoFromData(dataData)
-	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
+	v33 := data.NewKnowledgeRepoFromData(dataData)
+	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, v33, loggatewayLogger)
 	vaultFiler := provideKnowledgeVaultFiler(loggatewayLogger)
 	blockIndexRepo := data.NewKnowledgeBlockRepoFromData(dataData)
-	knowledgeUsecase := biz.ProvideKnowledgeUsecase(knowledgeRepo, vaultFiler, blockIndexRepo, loggatewayLogger)
+	v34 := biz.ProvideKnowledgeUsecase(v33, vaultFiler, blockIndexRepo, loggatewayLogger)
 	deptTeamLister := biz.ProvideDeptTeamLister(teamRepo)
 	deptAgentPositionClearer := biz.ProvideDeptAgentPositionClearer(agentRepository)
 	positionPromptUsecase := biz.NewPositionPromptUsecase(organizationRepo, loggatewayLogger)
@@ -285,12 +285,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	}
 	circuitBreakerStateRepo := data.NewCircuitBreakerStateRepo(dataData)
 	nodeCircuitBreakerRegistry := biz.ProvideNodeCircuitBreakerRegistry(circuitBreakerStateRepo, loggatewayLogger)
-	bridge := service.ProvideClientToolBridge(auditRepo, flowLogWriter, loggatewayLogger)
-	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, nodeCircuitBreakerRegistry, bridge, loggatewayLogger)
+	bridge := service.ProvideClientToolBridge(v4, flowLogWriter, loggatewayLogger)
+	graphNodeResolverSet := provideGraphBuildDeps(llmProviderModelUsecase, v28, agentUsecase, agentRepository, systemSettingRepo, v12, persistenceSet, repository, factory, retriever, v34, manager, organizationUsecase, toolResultGate, router, subagentService, v21, nodeCircuitBreakerRegistry, bridge, loggatewayLogger)
 	runtimeReplanner := provideRuntimeReplanner(v2Bus, loggatewayLogger)
-	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger)
-	sessionRuntimeReader := data.NewSessionRuntimeReader(dataData)
-	compiledTeamRepo := data.NewCompiledTeamRepo(dataData, sessionRuntimeReader)
+	graphBuilderFactory := adapter.NewGraphBuilderFactory(registry, checkpointSaver, v2Bus, monitorBus, agentExistenceCheckerFunc, graphNodeResolverSet, runtimeReplanner, loggatewayLogger, sessionService)
+	v35 := data.NewSessionRuntimeReader(dataData)
+	compiledTeamRepo := data.NewCompiledTeamRepo(dataData, v35)
 	graphExecutionTelemetry := service.NewGraphExecutionTelemetry()
 	graphOrchestrationProjector := service.NewGraphOrchestrationProjector(v2Bus)
 	graphUsecase := service.ProvideGraphUsecase(graphRepo, graphRunRepo, graphBuilderFactory, compiledTeamRepo, teamRepo, graphExecutionTelemetry, graphOrchestrationProjector, loggatewayLogger)
@@ -302,7 +302,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	teamAgentIDResolver := provideTeamAgentIDResolver(agentRepository)
 	teamUsecaseOpts := provideTeamUsecaseOpts(teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, teamRepo, agentIDExistenceChecker, deptLeadManager, graphReader, graphWriter, teamCompiler, teamGraphAssetStore, dataData, teamLinkedGraphReader, teamAgentIDResolver, channelUsecase, loggatewayLogger)
 	teamUsecase := provideTeamUsecase(teamUsecaseOpts, graphUsecase)
-	usageUsecase := provideUsageUsecase(usageRepo, monitorUsecase, teamUsecase, sessionUsecase, v2Bus, loggatewayLogger)
+	v36 := provideUsageUsecase(v3, v19, teamUsecase, v32, v2Bus, loggatewayLogger)
 	providerReader := data.NewMediaProviderRepo(dataData)
 	sessionRuntime := session2.NewRuntime(sessionService, loggatewayLogger)
 	compressReadDeps := session2.ProvideCompressReadDepsAdapter(sessionRepo, activityLister)
@@ -317,16 +317,16 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionCompressor := session2.NewCompressor(compressorConfig)
 	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
 	skillHealthMetricsAdapter := service.NewSkillHealthMetricsAdapter(skillIntelligenceRepo)
-	sparseSearcher := data.NewKnowledgeSparseSearcherFromData(dataData)
-	hybridRetriever := service.NewKnowledgeHybridRetriever(retriever, sparseSearcher, loggatewayLogger)
+	v37 := data.NewKnowledgeSparseSearcherFromData(dataData)
+	hybridRetriever := service.NewKnowledgeHybridRetriever(retriever, v37, loggatewayLogger)
 	webResearchTester := service.ProvideWebResearchTester(loggatewayLogger)
-	systemSettingUsecase := provideSystemSettingUsecase(systemSettingRepo, usageRepo, webResearchTester, dataData)
+	systemSettingUsecase := provideSystemSettingUsecase(systemSettingRepo, v3, webResearchTester, dataData)
 	roundTrip := provideRefineLLMRoundTrip()
 	dynamicLLMCaller := agent.NewDynamicLLMCaller(systemSettingUsecase, llmProviderModelUsecase, roundTrip)
 	queryRewriter := service.NewKnowledgeQueryRewriter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	graphExpander := service.NewKnowledgeGraphExpander(knowledgeRepo, loggatewayLogger)
-	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, graphExpander, knowledgeRepo, loggatewayLogger)
-	federatedRetriever := service.NewKnowledgeFederatedRetriever(adaptiveRouter, retriever, knowledgeUsecase, loggatewayLogger)
+	graphExpander := service.NewKnowledgeGraphExpander(v33, loggatewayLogger)
+	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, graphExpander, v33, loggatewayLogger)
+	federatedRetriever := service.NewKnowledgeFederatedRetriever(adaptiveRouter, retriever, v34, loggatewayLogger)
 	retrievalEvaluator := service.NewKnowledgeRetrievalEvaluator(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	taskRepo := data.NewTaskRepo(dataData)
 	taskUsecase := biz.NewTaskUsecase(taskRepo, graphUsecase, agentRepository, loggatewayLogger)
@@ -340,9 +340,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	deptLeadMailboxRepo := data.NewDeptLeadMessageRepo(dataData)
 	mailboxWaker := service.NewMailboxWaker(sessionRepo, sessionRepo, loggatewayLogger)
 	deptMailboxUsecase := provideDeptMailboxUsecase(deptLeadMailboxRepo, agentRepository, organizationRepo, accessAuditor, mailboxWaker, loggatewayLogger)
-	messageReader := provideM71MessageReader(activityLister)
+	v38 := provideM71MessageReader(activityLister)
 	globalMessageSearcher := data.NewGlobalMessageSearchRepo(dataData)
-	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, messageReader, globalMessageSearcher, accessAuditor, loggatewayLogger)
+	sessionSearchUsecase := provideSessionSearchUsecase(agentRepository, sessionRepo, v38, globalMessageSearcher, accessAuditor, loggatewayLogger)
 	computerUseAuditRepo := data.NewComputerUseAuditRepo(dataData, loggatewayLogger)
 	computerUseUsecase := service.ProvideComputerUseUsecase(flowLogWriter, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, computerUseAuditRepo, monitorBus, loggatewayLogger)
 	agentRepo := data.NewCodingAgentRepo(dataData)
@@ -350,27 +350,27 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	agentbridgeTaskRepo := data.NewCodingTaskRepo(dataData)
 	sessionFactory := service.NewACPSessionFactory()
 	agentBridgeService := service.ProvideAgentBridgeService(agentRepo, projectRepo, agentbridgeTaskRepo, sessionFactory, v2Bus, infra, loggatewayLogger)
-	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
+	runtimeTooling := provideRuntimeTooling(plugintrpcRuntime, manager, repository, skillHealthMetricsAdapter, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v34, factory, kanbanToolBridge, recorderFactory, organizationUsecase, toolResultGate, router, subagentService, parallelToolExecutor, resourceAccessUsecase, deptMailboxUsecase, sessionSearchUsecase, bridge, computerUseUsecase, agentBridgeService)
 	observationReadWriter := data.NewObservationRepo(dataData)
 	patternReadWriter := data.NewPatternRepo(dataData)
 	proposalReadWriter := data.NewProposalRepo(dataData)
 	skillAutoCreator := provideSkillAutoCreator(dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
-	skillRegistrationPort := provideSkillRegistrationPort(skillUsecase)
+	skillRegistrationPort := provideSkillRegistrationPort(v12)
 	skillScoringUsecase := biz.NewSkillScoringUsecase(skillIntelligenceRepo, loggatewayLogger)
 	memoryAgentCaseRepo := data.NewMemoryAgentCaseStore(dataData)
-	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
+	memoryLLMExtractorConfig := provideMemoryLLMExtractorConfig(agentUsecase, v32, llmProviderModelUsecase, loggatewayLogger)
 	memoryLLMExtractor := service.NewMemoryLLMExtractor(memoryLLMExtractorConfig)
 	agentCaseSkillDistiller := service.NewAgentCaseSkillDistiller(memoryLLMExtractor)
 	selfImprovementSignalRepo := data.NewSelfImprovementSignalRepo(dataData)
 	testRunReader := provideSelfImprovementTestRunReader(selfImprovement)
 	orchestrationTraceReader := data.NewOrchestrationTraceReader(dataData)
 	siTriggerCooldownStore := data.NewSITriggerCooldownStore(dataData)
-	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, skillRepo, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, siTriggerCooldownStore, loggatewayLogger)
+	skillEvolutionOrchestrator := provideSkillEvolutionOrchestrator(unifiedEvolutionRepo, agentRepository, patternReadWriter, skillAutoCreator, skillRegistrationPort, skillIntelligenceRepo, skillScoringUsecase, evolutionMetricsRepo, v10, memoryAgentCaseRepo, agentCaseSkillDistiller, selfImprovement, selfImprovementSignalRepo, testRunReader, orchestrationTraceReader, siTriggerCooldownStore, loggatewayLogger)
 	learningLoopUsecase := provideLearningLoopUsecase(observationReadWriter, patternReadWriter, proposalReadWriter, agentRepository, skillEvolutionOrchestrator, loggatewayLogger)
-	turnDeps := provideTeamTurnDeps(sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
+	turnDeps := provideTeamTurnDeps(v32, agentRepository, agentUsecase, v2, v28, llmProviderModelUsecase, v12, systemSettingRepo, providerReader, persistenceSet, sessionCompressor, v2Bus, monitorBus, sequencer, learningLoopUsecase, loggatewayLogger)
 	projectorFactory := provideV2ProjectorFactory(sequencer, taskV2Repo, loggatewayLogger)
-	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, knowledgeUsecase, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, toolUsecase, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, a2aUsecase, sessionUsecase, skillUsecase, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, loggatewayLogger)
-	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, usageUsecase, monitorUsecase, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
+	runnerConfig := provideRunnerConfig(plugintrpcRuntime, manager, retriever, adaptiveRouter, federatedRetriever, retrievalEvaluator, v34, graphUsecase, graphBuilderFactory, taskUsecase, runRegistry, v28, agentRepository, organizationUsecase, toolResultGate, router, subagentService, kanbanToolBridge, computerUseUsecase, v21, v32, v12, agentUsecase, systemSettingRepo, projectorFactory, teamUsecase, runtimeReplanner, loggatewayLogger)
+	runner := team.NewRunner(teamRepo, teamRepo, teamRepo, teamUsecase, teamRepo, teamRepo, v36, v19, turnDeps, repository, factory, loggatewayLogger, runnerConfig)
 	teamRunnerWirePort := service.ProvideTeamRunnerWirePort(runner)
 	teamGraphSessionRepo := data.NewTeamGraphSessionRepo(dataData)
 	teamGraphRunCoordinator := team.ProvideTeamGraphRunCoordinator(graphUsecase, teamRepo, teamRepo, teamUsecase, v2Bus, sequencer, teamGraphSessionRepo, loggatewayLogger)
@@ -380,9 +380,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	spiritTransactor := data.NewSpiritTransactor(dataData)
 	orchestrationCacheRepo := data.NewOrchestrationCacheRepo(dataData)
 	orchestrationCache := biz.NewOrchestrationCache(loggatewayLogger, orchestrationCacheRepo)
-	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, skillUsecase, loggatewayLogger)
+	verificationGateExecutor := provideVerificationGateExecutor(deptLeadManager, dynamicLLMCaller, v12, loggatewayLogger)
 	spiritTeamRunStatsReader := data.NewSpiritTeamRunStatsReader(dataData, loggatewayLogger)
-	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, sessionUsecase, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, loggatewayLogger)
+	spiritTeamUsecase := provideSpiritTeamUsecase(teamUsecase, v32, agentUsecase, spiritTransactor, orchestrationCache, evolutionUsecase, verificationGateExecutor, deptLeadManager, stepV2Repo, spiritTeamRunStatsReader, sessionRuntime, loggatewayLogger)
 	taskPlanRepository := data.NewTaskPlanRepo(dataData, loggatewayLogger)
 	taskPlannerPort := provideTaskPlanner(taskPlanRepository, llmProviderModelUsecase, orchestrationCache, v2Bus, loggatewayLogger, systemSettingUsecase, sequencer, agentRepository)
 	allocationPlanRepository := data.NewAllocationPlanRepo(dataData, loggatewayLogger)
@@ -397,9 +397,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	sessionRunCheckpointRepo := data.NewSessionRunCheckpointRepo(dataData)
 	sessionRunUsecase := biz.NewSessionRunUsecase(sessionRunRepo, sessionRunCheckpointRepo, loggatewayLogger)
 	channelTurnJobDeps := provideChannelTurnJobDeps(channelTurnJobUsecase, sessionRunUsecase, channelUsecase)
-	sessionRunEscalationNotifier := provideChannelRunEscalationNotifier(channelUsecase, sessionUsecase, loggatewayLogger)
+	sessionRunEscalationNotifier := provideChannelRunEscalationNotifier(channelUsecase, v32, loggatewayLogger)
 	channelNotifierDeps := provideChannelNotifierDeps(sessionRunEscalationNotifier)
-	teamStarter := service.NewTeamStarter(sessionUsecase, teamOrchestrationDeps, v2Bus, sequencer, loggatewayLogger, taskV2Repo, teamStageV2Repo, teamRunV2Repo)
+	teamStarter := service.NewTeamStarter(v32, teamOrchestrationDeps, v2Bus, sequencer, loggatewayLogger, taskV2Repo, teamStageV2Repo, teamRunV2Repo)
 	spiritTeamAssembler := service.NewSpiritTeamAssembler(spiritTeamUsecase, orchestrationCache, v2Bus, sequencer, teamStarter, agentRepository, loggatewayLogger, teamStageV2Repo, teamStageV2Repo)
 	synthesisModelPort := service.NewSynthesisModelAdapter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	synthesisEngine := biz.NewSynthesisEngine(synthesisModelPort, loggatewayLogger)
@@ -412,11 +412,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	graphService := service.NewGraphService(graphUsecase, taskUsecase, graphExecutionTelemetry, graphOrchestrationProjector, graphTaskRuntime, monitorBus, loggatewayLogger)
 	orchestrationRepository := data.NewOrchestrationRepo(dataData, loggatewayLogger)
 	agentMatcherPort := agent.NewAgentMatcher(agentRepository, loggatewayLogger)
-	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, toolUsecase, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
+	taskOrchestratorPort := provideTaskOrchestrator(spiritTeamUsecase, spiritTeamAssembler, orchestrationRepository, taskPlanRepository, allocationPlanRepository, agentMatcherPort, llmProviderModelUsecase, agentUsecase, agentRepository, v28, systemSettingRepo, spiritSynthesisService, checkpointSaver, orchestrationCache, agentPerformanceRepository, evolutionUsecase, v2Bus, nl2GraphConverter, bridge, loggatewayLogger)
 	skillEvolutionUsecase := provideSkillEvolutionUsecase(unifiedEvolutionRepo, patternReadWriter, agentRepository, skillAutoCreator, skillRegistrationPort, skillEvolutionOrchestrator, loggatewayLogger)
 	skillInvocationStatsReader := data.NewSkillInvocationStatsRepo(dataData)
-	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, skillRepo, teamRepo, teamRepo, usageRepo, memoryAdminUsecase, sessionRepo, toolRepo, loggatewayLogger)
-	turnLifecycleUsecase := provideTurnLifecycleUsecase(sessionUsecase, loggatewayLogger)
+	experienceAnalyticsUsecase := biz.NewExperienceAnalyticsUsecase(evolutionMetricsRepo, v10, teamRepo, teamRepo, v3, memoryAdminUsecase, sessionRepo, v2, loggatewayLogger)
+	turnLifecycleUsecase := provideTurnLifecycleUsecase(v32, loggatewayLogger)
 	runHeartbeatEmitter := provideRunHeartbeatEmitter(v2Bus, loggatewayLogger)
 	deadLetterQueue := provideDeadLetterQueue(memoryJobDeadLetterRepo, loggatewayLogger)
 	runtimeProfileReadWriter := data.NewRuntimeProfileRepo(dataData)
@@ -426,7 +426,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryConflictDetector := provideMemoryConflictDetector(dataData, memoryUsecase)
 	l3ConflictStore := provideL3ConflictStore(dataData)
 	delegationRegistry := provideVoiceDelegationRegistry(loggatewayLogger)
-	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, usageUsecase, sessionUsecase, agentRepository, agentUsecase, toolRepo, toolUsecase, llmProviderModelUsecase, skillUsecase, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, a2aUsecase, artifactUsecase, mcpServerUsecase, monitorUsecase, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
+	chatOrchestratorDeps := provideChatServiceDeps(runRegistry, pendingMessageQueue, v36, v32, agentRepository, agentUsecase, v2, v28, llmProviderModelUsecase, v12, systemSettingRepo, providerReader, persistenceSet, sessionRuntime, sessionCompressor, v2Bus, monitorBus, runtimeTooling, teamOrchestrationDeps, channelTurnJobDeps, channelNotifierDeps, v21, v22, mcpServerUsecase, v19, spiritTeamAssembler, spiritSynthesisService, orchestrationCache, teamStarter, graphService, taskOrchestratorPort, skillEvolutionUsecase, evolutionUsecase, skillInvocationStatsReader, router, subagentService, experienceAnalyticsUsecase, turnLifecycleUsecase, stepV2Repo, stepV2Repo, taskV2Repo, runHeartbeatEmitter, deadLetterQueue, profileResolver, projectorFactory, memberSessionV2Repo, memoryConsolidationWriter, memoryFactIndexSyncer, multiProviderEmbedder, memoryConflictDetector, l3ConflictStore, learningLoopUsecase, delegationRegistry, loggatewayLogger)
 	realTeamOrchestrator := provideTeamOrchestrator(loggatewayLogger)
 	planExecutor := providePlanExecutor(planStepV2Repo, teamStageV2Repo, planBoardV2Repo, graphStageV2Repo, graphNodeV2Repo, realTeamOrchestrator, sequencer, taskPlanRepository, loggatewayLogger)
 	chatService := service.ProvideChatService(chatOrchestratorDeps, planExecutor, v2Bus, realTeamOrchestrator, agentRepository, graphOrchestrationProjector, mailboxWaker)
@@ -436,63 +436,63 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		cleanup()
 		return wireOut{}, nil, err
 	}
-	deps := provideCronRunnerDeps(cronRepo, sessionUsecase, teamRepo, agentRepository, v2Bus, monitorBus, chatService, modelRegistrySyncAgent)
+	deps := provideCronRunnerDeps(cronRepo, v32, teamRepo, agentRepository, v2Bus, monitorBus, chatService, modelRegistrySyncAgent)
 	cronrunnerRunner := provideCronRunner(deps, dataData, loggatewayLogger)
-	cronUsecase := cron.NewUsecase(cronRepo, cronrunnerRunner)
-	cronService := service.NewCronService(cronUsecase)
+	v39 := cron.NewUsecase(cronRepo, cronrunnerRunner)
+	cronService := service.NewCronService(v39)
 	scopeAgentLookup := biz.NewScopeAgentLookup(agentRepository)
-	pluginUsecase := plugin.NewUsecase(pluginRepo, runRepo, scopeAgentLookup)
-	pluginService := service.NewPluginServiceWithBootstrap(pluginUsecase, plugintrpcRuntime, loggatewayLogger, monitorBus)
-	mcpServerService := service.NewMCPServerService(mcpServerUsecase, monitorUsecase, loggatewayLogger, monitorBus)
+	v40 := plugin.NewUsecase(v25, v26, scopeAgentLookup)
+	pluginService := service.NewPluginServiceWithBootstrap(v40, plugintrpcRuntime, loggatewayLogger, monitorBus)
+	mcpServerService := service.NewMCPServerService(mcpServerUsecase, v19, loggatewayLogger, monitorBus)
 	skillHealthReader := data.NewSkillHealthRepo(dataData)
 	skillHealthUsecase := biz.NewSkillHealthUsecase(skillHealthReader, loggatewayLogger)
-	v := service.ProvideSkillResolveRootFn(systemSettingRepo)
-	skillFilesystem := storage.NewSkillFilesystem(v)
+	v41 := service.ProvideSkillResolveRootFn(systemSettingRepo)
+	v42 := storage.NewSkillFilesystem(v41)
 	llmLister := importer.ProvideLLMLister(llmProviderModelUsecase)
 	skillImportJobStore := data.NewSkillImportJobStore(dataData)
-	engine := importer.ProvideEngine(skillRepo, llmLister, systemSettingRepo, skillImportJobStore, monitorBus, loggatewayLogger)
-	evaluationStores := data.NewEvalStoresFromData(dataData)
-	evaluationUsecase := evaluation.NewUsecase(evaluationStores, loggatewayLogger)
-	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, evaluationUsecase, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
-	publishGate := service.ProvidePublishGate(evaluationUsecase, evaluationRunner, v2Bus, loggatewayLogger)
+	engine := importer.ProvideEngine(v10, llmLister, systemSettingRepo, skillImportJobStore, monitorBus, loggatewayLogger)
+	stores := data.NewEvalStoresFromData(dataData)
+	v43 := evaluation.NewUsecase(stores, loggatewayLogger)
+	evaluationRunner := service.ProvideEvaluationRunner(chatService, chatService, v43, llmProviderModelUsecase, systemSettingRepo, agentUsecase, v2Bus, loggatewayLogger)
+	publishGate := service.ProvidePublishGate(v43, evaluationRunner, v2Bus, loggatewayLogger)
 	skillServiceDeps := service.SkillServiceDeps{
-		UC:          skillUsecase,
+		UC:          v12,
 		AgentUC:     agentUsecase,
 		HealthUC:    skillHealthUsecase,
 		SkillHealth: skillHealthMetricsAdapter,
-		FS:          skillFilesystem,
+		FS:          v42,
 		Import:      engine,
 		Gate:        publishGate,
 		Lg:          loggatewayLogger,
 	}
 	skillService := service.NewSkillService(skillServiceDeps)
-	toolService := service.NewToolService(toolUsecase, agentUsecase, monitorUsecase)
+	toolService := service.NewToolService(v28, agentUsecase, v19)
 	sessionV2Service := service.NewSessionV2Service(taskV2Repo, turnV2Repo, stepV2Repo, teamStageV2Repo, teamRunV2Repo, memberSessionV2Repo, planBoardV2Repo, planStepV2Repo, graphStageV2Repo, graphNodeV2Repo)
-	serviceSessionService := service.NewSessionService(sessionUsecase, monitorUsecase, sessionRunUsecase, sessionCompressor, sessionCompressor, sessionMetricsReader, sessionV2Service, loggatewayLogger)
+	serviceSessionService := service.NewSessionService(v32, v19, sessionRunUsecase, sessionCompressor, sessionCompressor, v31, sessionV2Service, loggatewayLogger)
 	cronTriggerGateway := service.NewCronTriggerGatewayAdapter(cronService)
-	turnAdmissionUsecase := provideChannelIngressAdmission(usageUsecase, agentRepository, channelUsecase)
-	channelGateCards := provideChannelGateCards(v2Bus, sessionUsecase, channelUsecase, chatService, stepV2Repo, loggatewayLogger)
-	channelIngress := provideChannelIngress(channelUsecase, channelTurnJobUsecase, sessionUsecase, chatService, graphService, cronTriggerGateway, v2Bus, monitorBus, turnAdmissionUsecase, teamCompiler, channelGateCards, loggatewayLogger)
+	turnAdmissionUsecase := provideChannelIngressAdmission(v36, agentRepository, channelUsecase)
+	channelGateCards := provideChannelGateCards(v2Bus, v32, channelUsecase, chatService, stepV2Repo, loggatewayLogger)
+	channelIngress := provideChannelIngress(channelUsecase, channelTurnJobUsecase, v32, chatService, graphService, cronTriggerGateway, v2Bus, monitorBus, turnAdmissionUsecase, teamCompiler, channelGateCards, loggatewayLogger)
 	channelRuntimeLeaseRepo := data.NewChannelRuntimeLeaseRepo(dataData)
 	channelRuntime := provideChannelRuntime(channelUsecase, channelIngress, channelRuntimeLeaseRepo, router, loggatewayLogger)
-	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, monitorUsecase, loggatewayLogger)
-	usageService := service.NewUsageService(usageUsecase)
+	channelService := service.NewChannelService(channelUsecase, channelTurnJobUsecase, channelRuntime, v19, loggatewayLogger)
+	usageService := service.NewUsageService(v36)
 	processLogEnabledProvider := provideProcessLogEnabled(confServer)
 	flowlogRepo := data.NewFlowLogRepo(dataData)
-	flowlogUsecase := flowlog.NewUsecase(flowlogRepo)
-	flowLogService := service.NewFlowLogService(flowlogUsecase)
+	v44 := flowlog.NewUsecase(flowlogRepo)
+	flowLogService := service.NewFlowLogService(v44)
 	codeExecutorService := service.NewCodeExecutorService(factory, loggatewayLogger)
 	rootCauseEngine := heal.NewRootCauseEngine(loggatewayLogger)
-	diagBundleGenerator := provideDiagBundleGenerator(eventRepo, traceRepo, rootCauseEngine)
-	selfHealUsecase := provideSelfHealUsecase(diagBundleGenerator, loggatewayLogger)
-	healRecordRepo := data.NewHealRecordRepo(dataData)
-	selfHealObserver, err := provideSelfHealObserver(runtime, healRecordRepo, rootCauseEngine, alertNotifier, loggatewayLogger)
+	v45 := provideDiagBundleGenerator(v5, v6, rootCauseEngine)
+	v46 := provideSelfHealUsecase(v45, loggatewayLogger)
+	v47 := data.NewHealRecordRepo(dataData)
+	v48, err := provideSelfHealObserver(runtime, v47, rootCauseEngine, v9, loggatewayLogger)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
 	}
 	dbPinger := provideDBPinger(dataData)
-	alertEvalWorker := provideMonitorAlertEvalWorker(monitorUsecase)
+	v49 := provideMonitorAlertEvalWorker(v19)
 	eventBusHealthChecker := provideEventBusHealthChecker(infra)
 	runCanceller := provideRunCanceller(chatService)
 	chatSender := provideChatSender(chatService)
@@ -502,42 +502,42 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillCatalogPusher := provideSkillCatalogPusher(chatService)
 	wsServer := provideWSServer(confServer, infra, runCanceller, chatSender, wsTurnExecutor, runtime, loggatewayLogger, v2Bus, sessionAuthorizer, eventDeliveryOutboxRepo, taskResumer, skillCatalogPusher, bridge)
 	wsConnectionCounter := provideWSConnectionCounter(wsServer)
-	v2 := monitor.ProvideSelfCheckers(dbPinger, traceProjector, alertEvalWorker, eventBusHealthChecker, wsConnectionCounter, flowFileAppender, runnerCompletionRepo)
+	v50 := monitor.ProvideSelfCheckers(dbPinger, v17, v49, eventBusHealthChecker, wsConnectionCounter, v18, v8)
 	eventBusResubscriber := provideEventBusResubscriber()
-	v3 := monitor.ProvideSelfCheckRepairers(flowFileAppender, traceProjector, alertEvalWorker, eventBusResubscriber)
+	v51 := monitor.ProvideSelfCheckRepairers(v18, v17, v49, eventBusResubscriber)
 	selfCheckReportRepo := data.NewSelfCheckReportRepo(dataData)
 	monitorFlowLogWriter := service.ProvideMonitorFlowLogWriter(flowLogWriter)
-	selfCheckScheduler := provideSelfCheckScheduler(v2, v3, selfCheckReportRepo, alertMetricRegistry, loggatewayLogger, monitorFlowLogWriter)
-	monitorService := service.NewMonitorService(monitorUsecase, processLogEnabledProvider, flowLogService, codeExecutorService, diagBundleGenerator, selfHealUsecase, selfHealObserver, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
+	selfCheckScheduler := provideSelfCheckScheduler(v50, v51, selfCheckReportRepo, v15, loggatewayLogger, monitorFlowLogWriter)
+	monitorService := service.NewMonitorService(v19, processLogEnabledProvider, flowLogService, codeExecutorService, v45, v46, v48, selfCheckScheduler, selfCheckReportRepo, loggatewayLogger)
 	l4CascadeUsecase := provideL4CascadeUsecase(dataData, memoryFactIndexSyncer, loggatewayLogger)
 	memoryWorkerStats := biz.NewMemoryWorkerStats()
 	serviceMemoryService := provideMemoryService(persistenceSet, l4CascadeUsecase, systemSettingUsecase, memoryJobDeadLetterRepo, memoryJobQueue, memoryJobQueue, memoryWorkerStats, dataData, loggatewayLogger)
 	publicBaseURLInput := provideA2APublicBaseInput(confServer)
 	publicBaseURLStore := providePublicBaseURLStore(publicBaseURLInput, systemSettingRepo, loggatewayLogger)
 	a2AEndpointBuilder := service.NewA2AEndpointBuilder(chatService)
-	endpointRegistry := provideA2AEndpointRegistry(a2AEndpointBuilder, a2aUsecase, publicBaseURLStore, loggatewayLogger)
+	endpointRegistry := provideA2AEndpointRegistry(a2AEndpointBuilder, v21, publicBaseURLStore, loggatewayLogger)
 	a2APublicBaseReloader := provideA2APublicBaseReloader(publicBaseURLStore, endpointRegistry, publicBaseURLInput)
-	systemSettingService := service.NewSystemSettingService(systemSettingUsecase, a2APublicBaseReloader, credentialCrypto, multiProviderEmbedder, monitorUsecase, loggatewayLogger, monitorBus)
+	systemSettingService := service.NewSystemSettingService(systemSettingUsecase, a2APublicBaseReloader, credentialCrypto, multiProviderEmbedder, v19, loggatewayLogger, monitorBus)
 	modelRegistryUsecase := provideModelRegistryUsecase(systemSettingRepo, applyBackend, loggatewayLogger)
 	modelCatalogService := service.NewModelCatalogService(modelRegistryUsecase)
 	runRegistryPort := service.ProvideRunRegistryPort(runRegistry)
-	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, sessionUsecase, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer, monitorUsecase)
+	teamService := service.NewTeamService(teamUsecase, graphUsecase, agentUsecase, v32, runner, runRegistryPort, v2Bus, loggatewayLogger, spiritSynthesisService, teamStageV2Repo, stepV2Repo, stepV2Repo, teamRunV2Repo, memberSessionV2Repo, sequencer, v19)
 	signer := provideArtifactSigner(loggatewayLogger)
-	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(sessionUsecase)
-	sessionWorkspaceSearcher := service.ProvideSessionWorkspaceSearcher(sessionUsecase)
-	serviceArtifactService := service.NewArtifactService(artifactUsecase, signer, sessionWorkspaceLookup, sessionWorkspaceSearcher)
+	sessionWorkspaceLookup := service.ProvideSessionWorkspaceLookup(v32)
+	sessionWorkspaceSearcher := service.ProvideSessionWorkspaceSearcher(v32)
+	serviceArtifactService := service.NewArtifactService(v22, signer, sessionWorkspaceLookup, sessionWorkspaceSearcher)
 	knowledgeSearchDeps := service.ProvideKnowledgeSearchDeps(retriever, adaptiveRouter, retrievalEvaluator, federatedRetriever)
 	markdownOrganizer := service.NewKnowledgeMarkdownOrganizer(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	extractorRegistry := service.NewKnowledgeExtractorRegistry(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	assetStore := service.NewKnowledgeAssetStore(loggatewayLogger)
-	entityPipeline := provideKnowledgeEntityPipeline(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
-	relationExtractor := provideKnowledgeRelationExtractor(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
+	entityPipeline := provideKnowledgeEntityPipeline(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, v34, loggatewayLogger)
+	relationExtractor := provideKnowledgeRelationExtractor(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, v34, loggatewayLogger)
 	writeBackGraphFunc := provideKnowledgeWriteBackGraphHook(entityPipeline, relationExtractor, loggatewayLogger)
-	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, writeBackGraphFunc, loggatewayLogger)
-	evaluationService := service.NewEvaluationService(evaluationUsecase, evaluationRunner)
+	knowledgeService := service.NewKnowledgeService(v34, multiProviderEmbedder, knowledgeSearchDeps, markdownOrganizer, extractorRegistry, assetStore, v2Bus, systemSettingRepo, writeBackGraphFunc, loggatewayLogger)
+	evaluationService := service.NewEvaluationService(v43, evaluationRunner)
 	redisClient := provideRedisClient(confData, loggatewayLogger)
 	limiter := provideA2ALimiter(redisClient, loggatewayLogger)
-	a2AService := provideA2AService(a2aUsecase, chatService, agentRepository, endpointRegistry, publicBaseURLStore, limiter, loggatewayLogger)
+	a2AService := provideA2AService(v21, chatService, agentRepository, endpointRegistry, publicBaseURLStore, limiter, loggatewayLogger)
 	a2AFederationRepo := data.NewA2AFederationRepo(dataData, loggatewayLogger)
 	policyEngine, err := provideFederationPolicyEngine(a2AFederationRepo, loggatewayLogger)
 	if err != nil {
@@ -548,11 +548,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	federationGovernance := provideFederationGovernance(policyEngine, a2AFederationRepo, federationLimiterFactory, loggatewayLogger)
 	remoteAgentCardWriter := data.NewA2ARemoteAgentCardWriterFromData(dataData, loggatewayLogger)
 	remoteInvokeExecutor := provideFederationRemoteInvoker(loggatewayLogger)
-	federationUsecase := provideFederationUsecase(a2AFederationRepo, federationGovernance, a2aRepo, a2aRepo, remoteAgentCardWriter, remoteInvokeExecutor, loggatewayLogger, flowLogWriter)
+	federationUsecase := provideFederationUsecase(a2AFederationRepo, federationGovernance, v20, v20, remoteAgentCardWriter, remoteInvokeExecutor, loggatewayLogger, flowLogWriter)
 	federationService := provideFederationService(federationUsecase)
 	ecosystemRepo := data.NewEcosystemRepo(dataData)
-	ecosystemUsecase := ecosystem.NewUsecase(ecosystemRepo, loggatewayLogger)
-	ecosystemService := service.NewEcosystemService(ecosystemUsecase)
+	v52 := ecosystem.NewUsecase(ecosystemRepo, loggatewayLogger)
+	ecosystemService := service.NewEcosystemService(v52)
 	webhookReader := data.NewWebhookReader(dataData)
 	webhookWriter := data.NewWebhookWriter(dataData)
 	webhookUsecase := biz.NewWebhookUsecase(webhookReader, webhookWriter)
@@ -564,27 +564,27 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	skillEvolutionService := service.NewSkillEvolutionService(skillEvolutionUsecase, loggatewayLogger)
 	rootCauseAnalyzer := provideBizRootCauseAdapter(rootCauseEngine)
 	skillReportUsecase := biz.NewSkillReportUsecase(skillIntelligenceRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillScoringUsecase, rootCauseAnalyzer, loggatewayLogger)
-	skillDraftEvolver := provideLLMSkillEvolver(dynamicLLMCaller, systemSettingUsecase, skillRepo, loggatewayLogger)
-	skillReloader := provideSkillVersionReloader(skillRepo, skillRepo, loggatewayLogger)
+	skillDraftEvolver := provideLLMSkillEvolver(dynamicLLMCaller, systemSettingUsecase, v10, loggatewayLogger)
+	skillReloader := provideSkillVersionReloader(v10, v10, loggatewayLogger)
 	skillIntelligenceUsecase := provideSkillIntelligenceUsecase(skillScoringUsecase, skillReportUsecase, unifiedEvolutionRepo, skillIntelligenceRepo, skillIntelligenceRepo, skillEvolutionOrchestrator, skillDraftEvolver, skillReloader, loggatewayLogger)
 	skillIntelligenceService := service.NewSkillIntelligenceService(skillIntelligenceUsecase, loggatewayLogger)
 	skillMergeRepo := data.NewSkillMergeRepo(dataData, loggatewayLogger)
 	ruleBasedContentFuser := biz.NewRuleBasedContentFuser()
 	sandboxRunner := service.NewSandboxRunner(skillIntelligenceUsecase, factory, loggatewayLogger)
-	skillReplayRunner := provideSkillReplayRunner(evaluationUsecase, dynamicLLMCaller, systemSettingUsecase, skillRepo, loggatewayLogger)
-	skillTriggerGoldenRunner := provideSkillTriggerGoldenRunner(evaluationUsecase, skillRepo, loggatewayLogger)
-	skillGateVerifier := provideSkillGateVerifier(sandboxRunner, skillReplayRunner, skillTriggerGoldenRunner, skillRepo)
+	skillReplayRunner := provideSkillReplayRunner(v43, dynamicLLMCaller, systemSettingUsecase, v10, loggatewayLogger)
+	skillTriggerGoldenRunner := provideSkillTriggerGoldenRunner(v43, v10, loggatewayLogger)
+	skillGateVerifier := provideSkillGateVerifier(sandboxRunner, skillReplayRunner, skillTriggerGoldenRunner, v10)
 	skillMergeUsecase := provideSkillMergeUsecase(skillMergeRepo, skillMergeRepo, ruleBasedContentFuser, skillGateVerifier, skillDedupUsecase, loggatewayLogger)
 	skillDedupService := service.NewSkillDedupService(skillDedupUsecase, skillMergeUsecase, loggatewayLogger)
-	packRepoAdapter := data.NewPackRepoAdapter(agentRepository, teamRepo, teamRepo, organizationRepo, graphRepo, skillRepo)
+	packRepoAdapter := data.NewPackRepoAdapter(agentRepository, teamRepo, teamRepo, organizationRepo, graphRepo, v10)
 	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus, publishGate)
 	skillCuratorService := service.NewSkillCuratorService(skillIntelligenceUsecase, loggatewayLogger)
-	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, skillUsecase, loggatewayLogger)
+	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, v12, loggatewayLogger)
 	evolutionService := service.NewEvolutionService(unifiedEvolutionRepo, loggatewayLogger)
 	selfImprovementRunRepo := data.NewSelfImprovementRunRepo(dataData, loggatewayLogger)
 	repoSandboxRunner := provideRepoSandboxRunner(selfImprovement, loggatewayLogger)
 	siApplier := provideSIApplier(repoSandboxRunner, loggatewayLogger)
-	siApprovalSink := provideSIApprovalSink(eventRepo, loggatewayLogger)
+	siApprovalSink := provideSIApprovalSink(v5, loggatewayLogger)
 	siRiskRuleRepo := data.NewSIRiskRuleRepo(dataData)
 	siRiskRules := provideSIRiskRules(selfImprovement, siRiskRuleRepo, loggatewayLogger)
 	selfImprovementApplyUsecase, err := provideSelfImprovementApplyUsecase(selfImprovement, selfImprovementRunRepo, selfImprovementRunRepo, siApplier, siApprovalSink, siRiskRules, loggatewayLogger)
@@ -607,7 +607,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	aguiCompatService := service.NewAGUICompatService(chatService, sessionService, confServer, loggatewayLogger)
 	openAISessionCompatService := service.NewOpenAISessionCompatService(chatService, sessionService, confServer, loggatewayLogger)
 	a2AExtensionCompatService := service.NewA2AExtensionCompatService(chatService, sessionService, confServer, loggatewayLogger)
-	twinOpenAPICompatService := service.NewTwinOpenAPICompatService(agentUsecase, graphUsecase, memoryAdminUsecase, usageUsecase, monitorUsecase, llmProviderModelUsecase, loggatewayLogger)
+	twinOpenAPICompatService := service.NewTwinOpenAPICompatService(agentUsecase, graphUsecase, memoryAdminUsecase, v36, v19, llmProviderModelUsecase, loggatewayLogger)
 	runtimeProfileService := service.NewRuntimeProfileService(runtimeProfileUsecase)
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
@@ -616,38 +616,40 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
-	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService, artifactUsecase, delegationRegistry, stepV2Repo, multiProviderEmbedder)
+	voiceWSServer := provideVoiceWSServer(sessionAuthorizer, wsTurnExecutor, runCanceller, speechRegistry, speechConfigReader, v2Bus, infra, loggatewayLogger, chatService, v22, delegationRegistry, stepV2Repo, multiProviderEmbedder)
 	httpServer := server.NewHTTPServer(confServer, serviceRegistry, wsServer, voiceWSServer, dataData, loggatewayLogger)
 	feedbackMemoryEnqueuer := provideFeedbackMemoryEnqueuer(memoryJobQueue)
 	turnMemoryWorker := biz.NewTurnMemoryWorker(feedbackMemoryEnqueuer, sessionLogWriter)
-	eventBusSideConsumers := provideEventBusSideConsumers(infra, v2Bus, toolUsecase, webhookDispatcher, sessionUsecase, flowlogUsecase, monitorUsecase, turnMemoryWorker, traceProjector, flowFileAppender, usageUsecase, sessionLogWriter, flowLogWriter)
+	eventBusSideConsumers := provideEventBusSideConsumers(infra, v2Bus, v28, webhookDispatcher, v32, v44, v19, turnMemoryWorker, v17, v18, v36, sessionLogWriter, flowLogWriter)
 	memoryLegacyMigrator := data.NewMemoryLegacyMigratorAdapter(dataData, loggatewayLogger)
 	memoryDataMigrationWorker := provideMemoryDataMigrationWorker(memoryLegacyMigrator, loggatewayLogger)
 	v2RecoveryRepo := data.NewV2RecoveryRepo(dataData, loggatewayLogger)
-	sessionStatusGuard := service.NewSessionStatusGuard(sessionUsecase, teamUsecase, taskOrchestratorPort, v2Bus, v2RecoveryRepo, chatService, loggatewayLogger)
+	sessionStatusGuard := service.NewSessionStatusGuard(v32, teamUsecase, taskOrchestratorPort, v2Bus, v2RecoveryRepo, chatService, loggatewayLogger)
 	buildCache := provideGlobalBuildCache()
 	mcpToolSetPool := provideMCPToolSetPool()
-	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, monitorBus, loggatewayLogger)
+	shardCache := provideGlobalShardCache()
+	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
+	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
-	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, extractorRegistry, loggatewayLogger)
-	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
-	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
+	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, v28, agentUsecase, agentRepository, systemSettingRepo, v12, persistenceSet, repository, factory, retriever, v34, manager, organizationUsecase, toolResultGate, router, subagentService, v21, bridge, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(v34, vaultFiler, multiProviderEmbedder, entityPipeline, extractorRegistry, loggatewayLogger)
+	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, v32, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
+	watchRunner := provideSkillWatchRunner(v12, v12, systemSettingRepo, monitorBus, v19, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
 	episodeIndexSyncer := provideEpisodeIndexSync(memoryUsecase, dataData)
-	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
+	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, v32, llmProviderModelUsecase, loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
-	writeBackArbiter := provideKnowledgeWriteBackArbiter(knowledgeUsecase, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
-	knowledgeDistillWiring := provideKnowledgeDistillWiring(knowledgeUsecase, memoryAdminUsecase, dataData)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger, writeBackArbiter, knowledgeDistillWiring)
+	writeBackArbiter := provideKnowledgeWriteBackArbiter(v34, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
+	mainKnowledgeDistillWiring := provideKnowledgeDistillWiring(v34, memoryAdminUsecase, dataData)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, v32, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, v34, dataData, loggatewayLogger, writeBackArbiter, mainKnowledgeDistillWiring)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
 	}
-	healthDeps := provideMCPHealthRunnerDeps(mcpServerRepo, mcpServerUsecase, monitorBus, loggatewayLogger)
+	healthDeps := provideMCPHealthRunnerDeps(mcpServerRepo, mcpServerUsecase, agentUsecase, monitorBus, loggatewayLogger)
 	healthRunner := provideMCPHealthRunner(healthDeps, loggatewayLogger)
-	deps2 := provideA2AGatewayHealthRunnerDeps(a2aUsecase)
+	deps2 := provideA2AGatewayHealthRunnerDeps(v21)
 	runner2 := provideA2AGatewayHealthRunner(deps2, loggatewayLogger)
 	learningLoopScanner := provideLearningLoopScanner(learningLoopUsecase, loggatewayLogger)
 	providerHealthScanner := provideProviderHealthScanner(llmProviderModelUsecase, loggatewayLogger, flowLogWriter)
@@ -659,11 +661,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	backgroundjobRepo := data.NewBackgroundJobRepo(dataData)
 	backgroundjobRegistry := provideBackgroundJobRegistry()
 	backgroundJobWorker := provideBackgroundJobWorker(backgroundjobRepo, backgroundjobRegistry, loggatewayLogger)
-	toolAuditCleanup := provideToolAuditCleanup(toolUsecase, loggatewayLogger)
-	flowLogCleanup := provideFlowLogCleanup(flowlogUsecase, loggatewayLogger)
-	monitorEventsCleanup := provideMonitorEventsCleanup(eventRepo, loggatewayLogger)
-	autoHealTTLCleanup := provideAutoHealTTLCleanup(healRecordRepo, loggatewayLogger, flowLogWriter)
-	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(traceRepo, runnerCompletionRepo, traceUsageRepo, loggatewayLogger)
+	toolAuditCleanup := provideToolAuditCleanup(v28, loggatewayLogger)
+	flowLogCleanup := provideFlowLogCleanup(v44, loggatewayLogger)
+	monitorEventsCleanup := provideMonitorEventsCleanup(v5, loggatewayLogger)
+	autoHealTTLCleanup := provideAutoHealTTLCleanup(v47, loggatewayLogger, flowLogWriter)
+	monitorTraceBackfillWorker := provideMonitorTraceBackfillWorker(v6, v8, v16, loggatewayLogger)
 	memoryEpisodeDecayer := data.NewMemoryEpisodeDecayerAdapter(dataData)
 	memoryL2DecayWorker := provideMemoryL2DecayWorker(memoryEpisodeDecayer, agentUsecase, loggatewayLogger)
 	memoryL1ArchiveWorker := provideMemoryL1ArchiveWorker(memoryAdminDeps, agentUsecase, flowLogWriter, loggatewayLogger)
@@ -675,7 +677,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryCanaryWorker := provideMemoryCanaryWorker(dataData, memoryCanaryStatus, flowLogWriter, loggatewayLogger)
 	memoryCitationBackfillWorker := provideMemoryCitationBackfillWorker(dataData, loggatewayLogger)
 	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
-	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, knowledgeUsecase, loggatewayLogger)
+	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, v34, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -685,17 +687,17 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	selfCheckCleanup := provideSelfCheckCleanup(selfCheckReportRepo, loggatewayLogger)
 	selfCheckJob := provideSelfCheckJob(selfCheckScheduler, loggatewayLogger)
 	skillIntelligenceWorker := provideSkillIntelligenceWorker(skillIntelligenceUsecase, loggatewayLogger)
-	curatorWorker := provideCuratorWorker(skillIntelligenceUsecase, skillGateVerifier, skillRepo, loggatewayLogger)
+	curatorWorker := provideCuratorWorker(skillIntelligenceUsecase, skillGateVerifier, v10, loggatewayLogger)
 	evolutionDrafter := provideEvolutionDrafter(unifiedEvolutionRepo, agentRepository, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
-	evolutionOrchestratorWorker := provideEvolutionOrchestratorWorker(skillEvolutionOrchestrator, agentRepository, skillRepo, evolutionDrafter, loggatewayLogger)
+	evolutionOrchestratorWorker := provideEvolutionOrchestratorWorker(skillEvolutionOrchestrator, agentRepository, v10, evolutionDrafter, loggatewayLogger)
 	selfImprovementObserveUsecase := provideSelfImprovementObserveUsecase(skillEvolutionOrchestrator, unifiedEvolutionRepo, selfImprovementRunRepo, selfImprovementRunRepo, loggatewayLogger)
 	selfImproveObserveWorker := provideSelfImprovementObserveWorker(selfImprovement, selfImprovementObserveUsecase, loggatewayLogger)
 	siAnalystStage := provideSIAnalystStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
 	siPatcherStage := provideSIPatcherStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
 	siCriticStage := provideSICriticStage(selfImprovement, dynamicLLMCaller, systemSettingUsecase, loggatewayLogger)
-	siActivitySink := provideSIActivitySink(eventRepo, loggatewayLogger)
+	siActivitySink := provideSIActivitySink(v5, loggatewayLogger)
 	selfImprovementPipelineUsecase := provideSelfImprovementPipelineUsecase(selfImprovement, siAnalystStage, siPatcherStage, siCriticStage, repoSandboxRunner, unifiedEvolutionRepo, selfImprovementRunRepo, selfImprovementRunRepo, siActivitySink, siControlPlane, siRiskRules, loggatewayLogger)
-	siNotifier := provideSINotifier(eventRepo, loggatewayLogger)
+	siNotifier := provideSINotifier(v5, loggatewayLogger)
 	siGovernanceRouter := provideSIGovernanceRouter(selfImprovement, selfImprovementRunRepo, selfImprovementRunRepo, siNotifier, siApprovalSink, selfImprovementApplyUsecase, siRiskRules, loggatewayLogger)
 	selfImprovementDriveUsecase, err := provideSelfImprovementDriveUsecase(selfImprovement, selfImprovementRunRepo, selfImprovementRunRepo, selfImprovementPipelineUsecase, siGovernanceRouter, selfImprovementApplyUsecase, loggatewayLogger)
 	if err != nil {
@@ -719,15 +721,15 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	}
 	selfImproveOutcomeWorker := provideSelfImproveOutcomeWorker(selfImprovement, selfImprovementOutcomeUsecase, loggatewayLogger)
 	failurePatternSyncJob := provideFailurePatternSyncJob(rootCauseEngine, failurePatternReadWriter, failurePatternReadWriter, loggatewayLogger)
-	predictiveHealUsecase := providePredictiveHealUsecase(monitorUsecase, failurePatternReadWriter, healRecordRepo, llmProviderModelUsecase, mcpServerUsecase, loggatewayLogger)
+	predictiveHealUsecase := providePredictiveHealUsecase(v19, failurePatternReadWriter, v47, llmProviderModelUsecase, mcpServerUsecase, loggatewayLogger)
 	predictiveHealJob := providePredictiveHealJob(predictiveHealUsecase, loggatewayLogger)
-	patternMiningUsecase := providePatternMiningUsecase(healRecordRepo, failurePatternReadWriter, failurePatternReadWriter, loggatewayLogger)
+	patternMiningUsecase := providePatternMiningUsecase(v47, failurePatternReadWriter, failurePatternReadWriter, loggatewayLogger)
 	patternMiningJob := providePatternMiningJob(patternMiningUsecase, loggatewayLogger)
-	memoryEnhancedExtractorConfig := provideMemoryEnhancedExtractorConfig(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
+	memoryEnhancedExtractorConfig := provideMemoryEnhancedExtractorConfig(agentUsecase, v32, llmProviderModelUsecase, loggatewayLogger)
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, v49, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, v48, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -894,23 +896,43 @@ func provideGlobalBuildCache() *agent.BuildCache {
 	return agent.GetGlobalBuildCache()
 }
 
+// provideAgentPolicyResolver initializes the process-level tool-policy resolver
+// singleton (P1-2): injects the settings repo and performs the first snapshot
+// load. Runtime timeout policy changes then take effect without agent rebuilds.
+func provideAgentPolicyResolver(repo biz.AgentRepository, lg loggateway.Logger) *agent.PolicyResolver {
+	return agent.InitPolicyResolver(repo, lg)
+}
+
 // provideMCPToolSetPool exposes the process-level MCP ToolSet pool singleton
 // so it can be registered with the LifecycleManager for orderly shutdown.
 func provideMCPToolSetPool() *tools.MCPToolSetPool {
 	return tools.GetGlobalMCPToolSetPool()
 }
 
+// provideGlobalShardCache exposes the process-level shard build cache
+// singleton (P0-2 阶段A) so it can be registered with the LifecycleManager
+// for orderly shutdown.
+func provideGlobalShardCache() agent.ShardCache {
+	return agent.GetGlobalShardCache()
+}
+
 // provideLifecycleManager builds the process-level LifecycleManager and
 // registers the global build cache for LIFO shutdown (A3). Additional
 // process-level resources can be registered here as they are migrated to
-// the lifecycle abstraction.
-func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
+// the lifecycle abstraction. The policyResolver parameter is an init-time
+// dependency only (P1-2): the resolver is a pure in-memory snapshot with no
+// shutdown work, but it must be constructed (and first-loaded) at startup.
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
 	cache.SetMonitorBus(monitorBus)
 	mcpPool.SetLogger(lg)
+	shardCache.SetLogger(lg)
+	_ = policyResolver
 	mgr := lifecycle.NewLifecycleManager(lg)
 	mgr.Register("global-build-cache", cache)
 	mgr.Register("mcp-toolset-pool", mcpPool)
+
+	mgr.Register("global-shard-cache", shardCache)
 	return mgr
 }
 
@@ -1819,134 +1841,6 @@ func provideArtifactSigner(lg loggateway.Logger) *artifact3.Signer {
 	return artifact3.NewSigner(lg)
 }
 
-// provideKnowledgeEntityPipeline 装配 M2 实体共现轨（与 wire.go 同源手工副本）。
-// 供 vault 同步钩子与写回图谱钩子两处消费；KNOWLEDGE_ENTITY_PIPELINE_DISABLED
-// 置 1 或依赖缺失时返回 nil。
-func provideKnowledgeEntityPipeline(
-	d *data.Data,
-	caller biz.LLMCaller,
-	sys *biz.SystemSettingUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	uc *biz.KnowledgeUsecase,
-	lg loggateway.Logger,
-) *knowledge.EntityPipeline {
-	if d == nil || caller == nil || uc == nil || knowledge.EntityPipelineDisabled() {
-		return nil
-	}
-	repo := data.NewKnowledgeRepoFromData(d)
-	if repo == nil {
-		return nil
-	}
-	state, ok := repo.(knowledge2.RelationStateRepo)
-	if !ok {
-		return nil
-	}
-	return knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
-}
-
-// provideKnowledgeRelationExtractor 装配 M2 typed 关系抽取器（与 wire.go 同源手工
-// 副本）。供热文档扫描 worker 与写回图谱钩子两处消费；
-// KNOWLEDGE_RELATION_EXTRACT_DISABLED 置 1 或依赖缺失时返回 nil。
-func provideKnowledgeRelationExtractor(
-	d *data.Data,
-	caller biz.LLMCaller,
-	sys *biz.SystemSettingUsecase,
-	catalog *biz.LlmProviderModelUsecase,
-	uc *biz.KnowledgeUsecase,
-	lg loggateway.Logger,
-) *knowledge.RelationExtractor {
-	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
-		return nil
-	}
-	repo := data.NewKnowledgeRepoFromData(d)
-	if repo == nil {
-		return nil
-	}
-	links, lok := repo.(knowledge2.SemanticLinkRepo)
-	vocab, vok := repo.(knowledge2.RelationVocabRepo)
-	state, sok := repo.(knowledge2.RelationStateRepo)
-	if !lok || !vok || !sok {
-		return nil
-	}
-	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
-	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
-	if !rok {
-		return nil
-	}
-	return knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
-}
-
-// provideKnowledgeWriteBackGraphHook 装配写回图谱钩子（2026-08-16，与 wire.go
-// 同源手工副本）：团队库无 vault 同步循环，写回词条页实体/关系抽取随写回收口
-// 触发；双抽取器 content_hash 幂等、safego 不阻塞写回主路径。两器皆 nil 时不接线。
-func provideKnowledgeWriteBackGraphHook(
-	entity *knowledge.EntityPipeline,
-	relation *knowledge.RelationExtractor,
-	lg loggateway.Logger,
-) knowledge2.WriteBackGraphFunc {
-	if entity == nil && relation == nil {
-		return nil
-	}
-	return func(_ context.Context, col knowledge2.Collection, entryDocs []knowledge2.PromoteTouchedDoc) error {
-		for _, doc := range entryDocs {
-			docID := strings.TrimSpace(doc.DocID)
-			if docID == "" {
-				continue
-			}
-			safego.Go(appctx.Ctx(), "knowledge.writeback_graph", func() {
-				if entity != nil {
-					if _, err := entity.ProcessDoc(appctx.Ctx(), col.ID, docID); err != nil {
-						lg.Warn("writeback entity pipeline failed",
-							loggateway.Str("collection_id", col.ID),
-							loggateway.Str("doc_id", docID),
-							loggateway.Err(err),
-						)
-					}
-				}
-				if relation != nil {
-					if _, err := relation.ExtractDoc(appctx.Ctx(), docID); err != nil {
-						lg.Warn("writeback relation extract failed",
-							loggateway.Str("collection_id", col.ID),
-							loggateway.Str("doc_id", docID),
-							loggateway.Err(err),
-						)
-					}
-				}
-			})
-		}
-		return nil
-	}
-}
-
-// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
-// semantic relation worker: periodically scans hot documents (knowledge_access_log
-// hits >= threshold) per collection and runs the two-step LLM relation extractor
-// (entity list → triples → predicate normalization → typed semantic edges).
-// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
-// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
-// （本体与 wire.go 同源：本仓 wire_gen.go 含手工维护的 provider 副本，
-// 此前只同步了调用点未同步函数体导致编译断裂，2026-08-15 补齐。）
-// 抽取器本体经 provideKnowledgeRelationExtractor 共享装配（写回图谱钩子同源）。
-func provideKnowledgeRelationExtractWorker(
-	d *data.Data,
-	extractor *knowledge.RelationExtractor,
-	uc *biz.KnowledgeUsecase,
-	lg loggateway.Logger,
-) *jobs.KnowledgeRelationExtractWorker {
-	if d == nil || uc == nil || extractor == nil {
-		return nil
-	}
-	repo := data.NewKnowledgeRepoFromData(d)
-	if repo == nil {
-		return nil
-	}
-	hot, hok := repo.(knowledge2.HotDocumentLister)
-	if !hok {
-		return nil
-	}
-	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
-}
-
 // provideKnowledgeWriteBackArbiter 装配 M3.2 写回冲突仲裁器：构造后回注 KnowledgeUsecase
 // （Set 副作用，与 provideCuratorWorker 的 SetGate 同模式——Usecase 无法构造期持环依赖）。
 // KNOWLEDGE_WRITEBACK_ARBITER_DISABLED=1 时返回 nil（写回不仲裁，与 M3 前行为一致）。
@@ -1957,47 +1851,6 @@ func provideKnowledgeWriteBackArbiter(uc *biz.KnowledgeUsecase, caller biz.LLMCa
 	arbiter := knowledge.NewWriteBackArbiter(caller, sys, catalog, lg)
 	uc.SetWriteBackArbiter(arbiter)
 	return arbiter
-}
-
-// knowledgeDistillWiring M4 distill 装配标记（与 wire.go 同源手工副本）。
-type knowledgeDistillWiring struct{}
-
-// knowledgeDistillFactWriter 适配 MemoryAdminUsecase → knowledge2.DistillFactWriter
-// （与 wire.go 同源手工副本）。
-type knowledgeDistillFactWriter struct {
-	admin *biz.MemoryAdminUsecase
-}
-
-func (w knowledgeDistillFactWriter) UpsertDistilledFact(ctx context.Context, in knowledge2.DistilledFact) error {
-	_, err := w.admin.UpsertFactRow(ctx, biz.FactUpsert{
-		ScopeType:      in.ScopeType,
-		ScopeID:        in.ScopeID,
-		Statement:      in.Statement,
-		Fingerprint:    in.Fingerprint,
-		TagsJSON:       in.TagsJSON,
-		FactKind:       "semantic",
-		SourceKind:     "knowledge_distill",
-		SourceExternal: in.SourcePath,
-		Status:         "active",
-	})
-	return err
-}
-
-// provideKnowledgeDistillWiring 装配 M4 distill 任务端口（与 wire.go 同源手工副本）。
-func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAdminUsecase, d *data.Data) *knowledgeDistillWiring {
-	if uc == nil || admin == nil || d == nil {
-		return nil
-	}
-	repo := data.NewKnowledgeRepoFromData(d)
-	if repo == nil {
-		return nil
-	}
-	hot, hok := repo.(knowledge2.HotDocumentLister)
-	if !hok {
-		return nil
-	}
-	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
-	return &knowledgeDistillWiring{}
 }
 
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
@@ -2022,11 +1875,9 @@ func provideAutoMemoryWorker(
 	uc *biz.KnowledgeUsecase,
 	d *data.Data,
 	lg loggateway.Logger,
-	// writeBackArbiter 仅作依赖锚点（M3.2：构造时已完成 Set 回注，本函数不直接使用），
-	// 保证 wire 图到达 provideKnowledgeWriteBackArbiter。
+
 	writeBackArbiter *knowledge.WriteBackArbiter,
-	// distillWiring 仅作依赖锚点（M4 distill：构造时已完成 Set 回注，本函数不直接使用），
-	// 保证 wire 图到达 provideKnowledgeDistillWiring。
+
 	distillWiring *knowledgeDistillWiring,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
@@ -2124,6 +1975,98 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *knowledge2.VaultFiler {
 	return knowledge2.NewVaultFiler(lg)
 }
 
+// provideKnowledgeEntityPipeline 装配 M2 实体共现轨（LLM 抽实体 → ReplaceDocEntities
+// → 共现 → entity 出链；按 docID+contentHash 幂等）。供 vault 同步钩子与写回图谱
+// 钩子两处消费；KNOWLEDGE_ENTITY_PIPELINE_DISABLED 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeEntityPipeline(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *knowledge.EntityPipeline {
+	if d == nil || caller == nil || uc == nil || knowledge.EntityPipelineDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	state, ok := repo.(knowledge2.RelationStateRepo)
+	if !ok {
+		return nil
+	}
+	return knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+}
+
+// provideKnowledgeRelationExtractor 装配 M2 typed 关系抽取器（实体清单 → 三元组
+// → 谓词归一 → typed 语义边；content_hash 幂等）。供热文档扫描 worker 与写回图谱
+// 钩子两处消费；KNOWLEDGE_RELATION_EXTRACT_DISABLED 置 1 或依赖缺失时返回 nil。
+func provideKnowledgeRelationExtractor(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *knowledge.RelationExtractor {
+	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	links, lok := repo.(knowledge2.SemanticLinkRepo)
+	vocab, vok := repo.(knowledge2.RelationVocabRepo)
+	state, sok := repo.(knowledge2.RelationStateRepo)
+	if !lok || !vok || !sok {
+		return nil
+	}
+
+	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
+	if !rok {
+		return nil
+	}
+	return knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+}
+
+// provideKnowledgeWriteBackGraphHook 装配写回图谱钩子（2026-08-16）：团队库
+// （VaultBackendTeam）无 vault 同步循环，实体钩子唯一载体永不触发，写回词条页
+// 在图谱中恒为孤立节点。钩子对 touched 词条页异步触发实体共现 + typed 关系抽取，
+// 双抽取器均 content_hash 幂等、safego 不阻塞写回主路径。两器皆 nil 时不接线。
+func provideKnowledgeWriteBackGraphHook(
+	entity *knowledge.EntityPipeline,
+	relation *knowledge.RelationExtractor,
+	lg loggateway.Logger,
+) knowledge2.WriteBackGraphFunc {
+	if entity == nil && relation == nil {
+		return nil
+	}
+	return func(_ context.Context, col knowledge2.Collection, entryDocs []knowledge2.PromoteTouchedDoc) error {
+		for _, doc := range entryDocs {
+			docID := strings.TrimSpace(doc.DocID)
+			if docID == "" {
+				continue
+			}
+			safego.Go(appctx.Ctx(), "knowledge.writeback_graph", func() {
+				if entity != nil {
+					if _, err := entity.ProcessDoc(appctx.Ctx(), col.ID, docID); err != nil {
+						lg.Warn("writeback entity pipeline failed", loggateway.Str("collection_id", col.ID), loggateway.Str("doc_id", docID), loggateway.Err(err))
+					}
+				}
+				if relation != nil {
+					if _, err := relation.ExtractDoc(appctx.Ctx(), docID); err != nil {
+						lg.Warn("writeback relation extract failed", loggateway.Str("collection_id", col.ID), loggateway.Str("doc_id", docID), loggateway.Err(err))
+					}
+				}
+			})
+		}
+		return nil
+	}
+}
+
 // provideVaultSyncSupervisor 装配 vault 同步链（P1-3 生产装配，原遗漏导致新建
 // vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
@@ -2146,11 +2089,7 @@ func provideVaultSyncSupervisor(
 		applier.SetEntityHook(func(collectionID, docID string) {
 			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
 				if _, err := entityPipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
-					lg.Warn("entity pipeline failed",
-						loggateway.Str("collection_id", collectionID),
-						loggateway.Str("doc_id", docID),
-						loggateway.Err(err),
-					)
+					lg.Warn("entity pipeline failed", loggateway.Str("collection_id", collectionID), loggateway.Str("doc_id", docID), loggateway.Err(err))
 				}
 			})
 		})
@@ -2386,6 +2325,78 @@ func provideKnowledgeCitationBackfillWorker(d *data.Data, lg loggateway.Logger) 
 		return nil
 	}
 	return jobs.NewKnowledgeCitationBackfillWorker(0, data.NewKnowledgeCitationTraceReader(d), data.NewKnowledgeChunkCitationRecorder(d), lg)
+}
+
+// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
+// semantic relation worker: periodically scans hot documents (knowledge_access_log
+// hits >= threshold) per collection and runs the two-step LLM relation extractor
+// (entity list → triples → predicate normalization → typed semantic edges).
+// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
+// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
+// 抽取器本体经 provideKnowledgeRelationExtractor 共享装配（写回图谱钩子同源）。
+func provideKnowledgeRelationExtractWorker(
+	d *data.Data,
+	extractor *knowledge.RelationExtractor,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeRelationExtractWorker {
+	if d == nil || uc == nil || extractor == nil {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	hot, hok := repo.(knowledge2.HotDocumentLister)
+	if !hok {
+		return nil
+	}
+	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
+}
+
+// knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
+type knowledgeDistillWiring struct{}
+
+// knowledgeDistillFactWriter 适配 MemoryAdminUsecase → bizknowledge.DistillFactWriter：
+// 蒸馏事实即 L3 semantic 事实，(scope_type, scope_id, fingerprint) 幂等 upsert。
+type knowledgeDistillFactWriter struct {
+	admin *biz.MemoryAdminUsecase
+}
+
+func (w knowledgeDistillFactWriter) UpsertDistilledFact(ctx context.Context, in knowledge2.DistilledFact) error {
+	_, err := w.admin.UpsertFactRow(ctx, biz.FactUpsert{
+		ScopeType:      in.ScopeType,
+		ScopeID:        in.ScopeID,
+		Statement:      in.Statement,
+		Fingerprint:    in.Fingerprint,
+		TagsJSON:       in.TagsJSON,
+		FactKind:       "semantic",
+		SourceKind:     "knowledge_distill",
+		SourceExternal: in.SourcePath,
+		Status:         "active",
+	})
+	return err
+}
+
+// provideKnowledgeDistillWiring 装配 M4 distill 任务端口（高频词条摘要卡反向蒸馏
+// memory_fact）：构造后回注 KnowledgeUsecase（Set 副作用，与
+// provideKnowledgeWriteBackArbiter 同模式——Usecase 无法构造期持环依赖）。
+// hot 由 knowledgeRepo 断言 HotDocumentLister；writer 适配 MemoryAdminUsecase。
+// 任一缺席返回 nil（distill 任务静默跳过，其余治理任务不受影响）。
+func provideKnowledgeDistillWiring(uc *biz.KnowledgeUsecase, admin *biz.MemoryAdminUsecase, d *data.Data) *knowledgeDistillWiring {
+	if uc == nil || admin == nil || d == nil {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	hot, hok := repo.(knowledge2.HotDocumentLister)
+	if !hok {
+		return nil
+	}
+	uc.SetDistillRepos(hot, knowledgeDistillFactWriter{admin: admin})
+	return &knowledgeDistillWiring{}
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -2690,9 +2701,7 @@ func provideSkillEvolutionOrchestrator(
 	if cooldownStore != nil {
 		orch.AttachCooldownStore(cooldownStore)
 		if err := orch.HydrateTriggerCooldowns(context.Background()); err != nil {
-			lg.Warn("orchestrator: cooldown multipliers load failed, starting at 1x",
-				loggateway.StepID("evo_orchestrator.cooldown_hydrate"),
-				loggateway.Err(err))
+			lg.Warn("orchestrator: cooldown multipliers load failed, starting at 1x", loggateway.StepID("evo_orchestrator.cooldown_hydrate"), loggateway.Err(err))
 		}
 	}
 	orch.RegisterTrigger(biz.NewPatternTrigger(agents, patterns, creator, registrar, unifiedRepo, lg))
@@ -3350,11 +3359,27 @@ func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, lg log
 	return jobs.NewChannelDeliveryWorker(0, worker, lg, flowLog)
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, agentUC *biz.AgentUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
 	return health.Deps{
 		MCP:    mcpRepo,
 		UC:     mcpUC,
 		Alerts: alert2.NewPublisher(monitorBus, mcpUC, lg),
+
+		OnServerRecovered: func(ctx context.Context, srv biz.MCPServer) {
+			serverKey := strings.TrimSpace(srv.Key)
+			agentIDs, err := agentUC.AgentIDsReferencingMCPServer(ctx, serverKey)
+			if err != nil {
+				lg.Warn("MCP 恢复反查受影响 agent 失败", loggateway.StepID("mcp.health_recovered"), loggateway.Str("server_key", serverKey), loggateway.Err(err))
+				return
+			}
+			if len(agentIDs) == 0 {
+				return
+			}
+			for _, id2 := range agentIDs {
+				agent.InvalidateAgentCache(id2)
+			}
+			lg.Info("MCP 恢复已失效关联 agent 构建缓存", loggateway.StepID("mcp.health_recovered"), loggateway.Str("server_key", serverKey), loggateway.Int("invalidated_agents", len(agentIDs)))
+		},
 	}
 }
 

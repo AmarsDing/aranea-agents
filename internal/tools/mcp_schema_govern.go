@@ -45,6 +45,10 @@ const (
 	mcpSchemaTotalBudgetChars = 16000
 )
 
+// MCPSchemaTotalBudgetChars 导出直连 declaration 总量硬预算，供 P0-2 阶段A
+// 分片合并期在治理降级日志中报告（与装配期降级分支同一口径）。
+func MCPSchemaTotalBudgetChars() int { return mcpSchemaTotalBudgetChars }
+
 // MCPSchemaGovernanceReport 是 GovernMCPServerToolSets 的结果。
 type MCPSchemaGovernanceReport struct {
 	// ToolCount 是所有 server 的工具总数（治理前口径）。

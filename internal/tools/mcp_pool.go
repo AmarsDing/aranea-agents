@@ -124,6 +124,14 @@ func mcpPoolKey(cfg MCPServerConfig) (string, bool) {
 	return hex.EncodeToString(sum[:]), true
 }
 
+// MCPServerConfigShareable reports whether a server config's ToolSet product
+// may be shared across agent builds (P0-2 阶段A 分片缓存）。规则与池化红线
+// 一致（mcpPoolKey）：带 HeaderInjector 的配置按调用注入用户凭证，其会话
+// 跨 agent/跨用户共享会把首个建连用户的凭证泄漏给其他用户，绝不入缓存。
+func MCPServerConfigShareable(cfg MCPServerConfig) bool {
+	return cfg.HeaderInjector == nil
+}
+
 // Acquire returns a ToolSet for the given config. Poolable configs share the
 // underlying connection across acquisitions; non-poolable configs (credential
 // injection) build a fresh ToolSet per call. Init failures degrade to a

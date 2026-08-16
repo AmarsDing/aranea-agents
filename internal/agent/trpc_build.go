@@ -258,14 +258,13 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	// still cover custom/kanban/memory tools (previous behavior).
 	gate := buildToolConfirmGate(ctx, ag, deps, catalog.confirmCatalog(eff))
 	plan := &toolBuildPlan{eff: eff, catalog: catalog, gate: gate}
-	if ts, err := buildToolsetsForAgent(ctx, ag, deps, plan); err != nil {
+	if ts, retireUnits, err := buildToolsetsForAgent(ctx, ag, deps, plan); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
 	} else if ts != nil {
 		toolsMs = time.Since(toolsStart).Milliseconds()
 		if len(ts.ToolSets) > 0 {
 			opts = append(opts, trpcllmagent.WithToolSets(ts.ToolSets))
-			assembledToolSets = ts.ToolSets
 			// WithRefreshToolSetsOnRun is intentionally set to false (disabled).
 			// Previously this was true, causing 0.2-5s MCP Initialize+ListTools
 			// on every LLM call. Now MCP ToolSets are initialized once during
@@ -273,6 +272,10 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			// is invalidated (via MCPVersionHash change) and a fresh agent is
 			// built with the updated tool list.
 		}
+		// P0-2 阶段A：entry 持有的是分片引用占位符（retire 单元），而非共享
+		// 分片产物本体；entry 换代/驱逐时 graveyard Close 占位符 = 释放分片
+		// 引用，产物由 shardCache 在 refs==0 且 LRU 淘汰时关闭。
+		assembledToolSets = retireUnits
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
 		}

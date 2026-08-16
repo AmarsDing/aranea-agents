@@ -255,23 +255,45 @@ func provideGlobalBuildCache() *agent.BuildCache {
 	return agent.GetGlobalBuildCache()
 }
 
+// provideAgentPolicyResolver initializes the process-level tool-policy resolver
+// singleton (P1-2): injects the settings repo and performs the first snapshot
+// load. Runtime timeout policy changes then take effect without agent rebuilds.
+func provideAgentPolicyResolver(repo biz.AgentRepository, lg loggateway.Logger) *agent.PolicyResolver {
+	return agent.InitPolicyResolver(repo, lg)
+}
+
 // provideMCPToolSetPool exposes the process-level MCP ToolSet pool singleton
 // so it can be registered with the LifecycleManager for orderly shutdown.
 func provideMCPToolSetPool() *tools.MCPToolSetPool {
 	return tools.GetGlobalMCPToolSetPool()
 }
 
+// provideGlobalShardCache exposes the process-level shard build cache
+// singleton (P0-2 阶段A) so it can be registered with the LifecycleManager
+// for orderly shutdown.
+func provideGlobalShardCache() agent.ShardCache {
+	return agent.GetGlobalShardCache()
+}
+
 // provideLifecycleManager builds the process-level LifecycleManager and
 // registers the global build cache for LIFO shutdown (A3). Additional
 // process-level resources can be registered here as they are migrated to
-// the lifecycle abstraction.
-func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
+// the lifecycle abstraction. The policyResolver parameter is an init-time
+// dependency only (P1-2): the resolver is a pure in-memory snapshot with no
+// shutdown work, but it must be constructed (and first-loaded) at startup.
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
 	cache.SetMonitorBus(monitorBus)
 	mcpPool.SetLogger(lg)
+	shardCache.SetLogger(lg)
+	_ = policyResolver // init-time dependency: constructed + first-loaded at startup
 	mgr := lifecycle.NewLifecycleManager(lg)
 	mgr.Register("global-build-cache", cache)
 	mgr.Register("mcp-toolset-pool", mcpPool)
+	// P0-2 阶段A：shard cache 最后注册、LIFO 最先关闭。被引用分片仅标记
+	// closing，随后 build-cache 关闭经 graveyard 释放分片引用占位符，
+	// 分片在最后一次 release 时完成关闭（其内 MCP toolset 池引用随之释放）。
+	mgr.Register("global-shard-cache", shardCache)
 	return mgr
 }
 
@@ -2831,11 +2853,34 @@ func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, lg log
 	return jobs.NewChannelDeliveryWorker(0, worker, lg, flowLog)
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, agentUC *biz.AgentUsecase, monitorBus contract.MonitorBus, lg loggateway.Logger) health.Deps {
 	return health.Deps{
 		MCP:    mcpRepo,
 		UC:     mcpUC,
 		Alerts: alert.NewPublisher(monitorBus, mcpUC, lg),
+		// P0-3：DOWN→UP 恢复边沿 → 反查引用该 server 的 agent 并失效构建缓存，
+		// 下次请求重建时拿到恢复后的健康 toolset（掉线期间装配的旧 toolset 摘掉）。
+		OnServerRecovered: func(ctx context.Context, srv biz.MCPServer) {
+			serverKey := strings.TrimSpace(srv.Key)
+			agentIDs, err := agentUC.AgentIDsReferencingMCPServer(ctx, serverKey)
+			if err != nil {
+				lg.Warn("MCP 恢复反查受影响 agent 失败",
+					loggateway.StepID("mcp.health_recovered"),
+					loggateway.Str("server_key", serverKey),
+					loggateway.Err(err))
+				return
+			}
+			if len(agentIDs) == 0 {
+				return
+			}
+			for _, id := range agentIDs {
+				agent.InvalidateAgentCache(id)
+			}
+			lg.Info("MCP 恢复已失效关联 agent 构建缓存",
+				loggateway.StepID("mcp.health_recovered"),
+				loggateway.Str("server_key", serverKey),
+				loggateway.Int("invalidated_agents", len(agentIDs)))
+		},
 	}
 }
 
@@ -3654,8 +3699,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideSessionTitleGenerator,
 		provideRunRegistry,
 		provideGlobalBuildCache,
+		provideAgentPolicyResolver,
 		provideVoiceDelegationRegistry,
 		provideMCPToolSetPool,
+		provideGlobalShardCache,
 		provideLifecycleManager,
 		provideDeadLetterQueue,
 		provideRunHeartbeatEmitter,
@@ -4005,12 +4052,16 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		// Knowledge embedder bindings
 		wire.Bind(new(knowledge.QueryEmbedder), new(*knowledge.MultiProviderEmbedder)),
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
+		// biz.KnowledgeWriteBack = knowledge.SessionWriteBack 别名，生产实现为
+		// *service.KnowledgeService（provideAutoMemoryWorker 运行时断言同型）。
+		wire.Bind(new(biz.KnowledgeWriteBack), new(*service.KnowledgeService)),
 		// AH-04: memory L2/L3 reranker is a knowledge adapter, injected into data.NewData.
 		knowledge.NewMemoryReranker,
-		// Knowledge vault sync（P1-3 生产装配；M0 编译端口 + M2.1 entity 轨接线）
+		// Knowledge vault sync（P1-3 生产装配；M0 编译端口 + M2.1 entity 轨接线）。
+		// 注：service.NewKnowledgeExtractorRegistry 由 service.ProviderSet 提供，
+		// 此处不再重复列出（重复绑定会导致 wire gen 失败）。
 		provideVaultSyncSupervisor,
 		provideKnowledgeVaultFiler,
-		service.NewKnowledgeExtractorRegistry,
 		// DynamicLLMCaller dependency bindings
 		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
 		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),
