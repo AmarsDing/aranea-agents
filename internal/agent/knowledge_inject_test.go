@@ -32,6 +32,7 @@ func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {
 	got := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		true,
 	)
 	if !strings.Contains(got, "## Retrieved Knowledge") {
 		t.Fatalf("missing retrieved section: %s", got)
@@ -51,12 +52,40 @@ func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
 	got := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", Description: "手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
+		true,
 	)
 	if !strings.Contains(got, "Available Knowledge Bases") {
 		t.Fatalf("catalog cue missing: %s", got)
 	}
 	if strings.Contains(got, "Retrieved Knowledge") {
 		t.Fatal("empty chunks must not emit retrieved section")
+	}
+}
+
+// P2-1（2026-08-16）：关工具的 agent 仍可获得预检索命中的 chunks，
+// 但不渲染目录与工具引导文案；无命中 chunks 时整块不注入。
+func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
+	got := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
+		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		false,
+	)
+	if !strings.Contains(got, "## Retrieved Knowledge") || !strings.Contains(got, "SLA 承诺") {
+		t.Fatalf("tools-off must still render retrieved chunks: %s", got)
+	}
+	if strings.Contains(got, "Available Knowledge Bases") {
+		t.Fatalf("tools-off must not render catalog: %s", got)
+	}
+	if strings.Contains(got, "knowledge_search") {
+		t.Fatalf("tools-off must not mention search tools: %s", got)
+	}
+	// 无命中 chunks：tools-off 下目录单独存在只会误导，整块不注入。
+	if got := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 2}},
+		nil,
+		false,
+	); got != "" {
+		t.Fatalf("tools-off + no chunks must yield empty cue, got %q", got)
 	}
 }
 

@@ -136,22 +136,50 @@ func (r *MemoryCueResult) JoinCues() string {
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }
 
+// memoryCueTruncMarker 是统一预算截断的可见标记（P3-2：块级截断后追加）。
+const memoryCueTruncMarker = "…\n[memory cue truncated by prompt budget]"
+
 // JoinCuesWithBudget returns the combined cue text, truncated to the given
 // character budget (P2-04). budgetChars <= 0 means unlimited.
+//
+// P3-2（2026-08-16）块级截断：超预算时优先整块丢弃尾部块（recall → L1），
+// 避免半条事实/半段图谱进 prompt 产生误导；仅当首个块（profile 卡）自身
+// 就超预算时才退化为按 rune 硬切。
 func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
 	combined := r.JoinCues()
 	if budgetChars <= 0 || len([]rune(combined)) <= budgetChars {
 		return combined
 	}
-	// Truncate by runes to avoid splitting multi-byte characters, then append
-	// an ellipsis so the LLM knows the memory cue was budget-truncated.
+	reserve := len([]rune(memoryCueTruncMarker))
+	blocks := make([]string, 0, 3)
+	for _, blk := range []string{r.ProfileCue, r.L1Cue, r.RecallCue} {
+		if blk != "" {
+			blocks = append(blocks, blk)
+		}
+	}
+	kept := make([]string, 0, len(blocks))
+	used := 0
+	for _, blk := range blocks {
+		n := len([]rune(blk))
+		if len(kept) > 0 {
+			n += 2 // "\n\n" 分隔符
+		}
+		if used+n+reserve > budgetChars {
+			break
+		}
+		kept = append(kept, blk)
+		used += n
+	}
+	if len(kept) > 0 {
+		return strings.Join(kept, "\n\n") + "\n" + memoryCueTruncMarker
+	}
+	// 首个块就超预算：硬切（按 rune，避免劈开多字节字符）。
 	runes := []rune(combined)
-	// Reserve 3 chars for the ellipsis suffix.
-	cut := budgetChars - 3
+	cut := budgetChars - reserve
 	if cut < 0 {
 		cut = 0
 	}
-	return string(runes[:cut]) + "…\n[memory cue truncated by prompt budget]"
+	return string(runes[:cut]) + memoryCueTruncMarker
 }
 
 func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
@@ -176,7 +204,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		// E 预算表分解（P0-A，2026-08-11）：记忆 cue 构建在 LLM 关键路径上，
 		// 含多次 DB 读 + embedding，计时以便从 TTFT 黑盒中拆出本段耗时。
 		cueStart := time.Now()
-		result := buildRuntimeMemoryCue(ctx, deps, ag, args.Request.Messages)
+		result, fresh := buildRuntimeMemoryCue(ctx, deps, ag, args.Request.Messages)
 		cueElapsed := time.Since(cueStart)
 		sessionID := ""
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil && inv.Session != nil {
@@ -188,19 +216,27 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			loggateway.Duration(cueElapsed.Milliseconds()),
 			loggateway.Int("cue_chars", len([]rune(result.JoinCues()))),
 			loggateway.Int("recall_hits", len(result.RecallHits)),
+			loggateway.Bool("cache_hit", !fresh),
 			loggateway.Bool("empty", result.IsEmpty()))
 		if result.IsEmpty() {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// R4: surface the injected recall hits to the chat UI before mutating
-		// the request — the notice must reflect what this turn actually used.
-		ctx = emitMemoryRecalledNotice(ctx, result.RecallHits)
-		// FR-12.6: bump injected_count for the facts actually written into the
-		// prompt (async, once per turn — must never block the model call).
-		ctx = bumpFactInjectedCounts(ctx, deps, result.InjectedFactIDs)
-		// FR-10.5: trigger memory reconsolidation for the recalled L4 entities
-		// (async, once per turn — must never block the model call).
-		ctx = triggerL4Reconsolidation(ctx, deps, result.L4RecalledEntityIDs)
+		// P2-3（2026-08-16）：召回透明 notice / injected_count / L4 重巩固
+		// 只在 fresh 轮（本 turn 首次真实召回）触发。此前用 ctx.Value 标记
+		// 防重，但框架工具循环每轮以外层 ctx 重进 hook（llmflow.runOneStep），
+		// ctx 标记跨轮即失效——副作用每轮重复触发。缓存轮直接复用结果，
+		// 天然 once-per-turn。
+		if fresh {
+			// R4: surface the injected recall hits to the chat UI before mutating
+			// the request — the notice must reflect what this turn actually used.
+			ctx = emitMemoryRecalledNotice(ctx, result.RecallHits)
+			// FR-12.6: bump injected_count for the facts actually written into the
+			// prompt (async, once per turn — must never block the model call).
+			ctx = bumpFactInjectedCounts(ctx, deps, result.InjectedFactIDs)
+			// FR-10.5: trigger memory reconsolidation for the recalled L4 entities
+			// (async, once per turn — must never block the model call).
+			ctx = triggerL4Reconsolidation(ctx, deps, result.L4RecalledEntityIDs)
+		}
 		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
 		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
 		// P2 TTFT: append the per-turn dynamic cue at the END of the message
@@ -212,18 +248,60 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	})
 }
 
-func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message) *MemoryCueResult {
+// memoryCueTurnCacheStateKey 是 P2-3 per-turn 记忆 cue 缓存在 invocation
+// state 中的键。框架工具循环（llmflow.runOneStep）每轮以同一外层 ctx 重进
+// BeforeModel hook，ctx.Value 无法跨轮携带状态；invocation state 随整个
+// run 存活，是唯一不改框架的跨轮载体。
+const memoryCueTurnCacheStateKey = "aranea.memory_cue.turn_cache"
+
+// memoryCueTurnCache 缓存一个 turn 内昂贵且基本不变的召回结果（profile 卡、
+// project-state/pinned/composite/case/L4 融合块）。L1 工作记忆不缓存——
+// working_memory 工具可能在工具循环中修改它，每轮重建保持新鲜（2 次轻量
+// DB 读，远小于 embed+多路检索的开销）。
+type memoryCueTurnCache struct {
+	keyword            string
+	profileCue         string
+	recallCue          string
+	recallHits         []biz.CompositeRecallHit
+	injectedFactIDs    []string
+	l4RecalledEntityIDs []string
+}
+
+// buildRuntimeMemoryCue 返回 cue 结果与 fresh 标记：fresh=true 表示本轮做了
+// 真实召回（结果已写入 invocation 缓存），false 表示复用缓存。调用方据此
+// 把召回副作用（notice/计数/重巩固）限制为 once-per-turn。
+func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Agent, messages []trpcmodel.Message) (*MemoryCueResult, bool) {
 	policy := biz.ResolveMemoryRuntimePolicy(ag.Settings)
 	if !policy.MasterEnabled {
-		return &MemoryCueResult{}
+		return &MemoryCueResult{}, false
 	}
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil || inv.Session == nil {
-		return &MemoryCueResult{}
+		return &MemoryCueResult{}, false
 	}
 	rt := memoryRuntimeContext(inv, ag)
 	sessionID := strings.TrimSpace(inv.Session.ID)
 	keyword := RecallKeywordFromMessages(messages)
+
+	// P2-3 缓存命中：复用召回块，仅重建 L1。
+	if v, ok := inv.GetState(memoryCueTurnCacheStateKey); ok {
+		if c, ok := v.(*memoryCueTurnCache); ok && c != nil && c.keyword == keyword {
+			result := &MemoryCueResult{
+				ProfileCue:          c.profileCue,
+				RecallCue:           c.recallCue,
+				RecallHits:          c.recallHits,
+				InjectedFactIDs:     c.injectedFactIDs,
+				L4RecalledEntityIDs: c.l4RecalledEntityIDs,
+			}
+			if policy.InjectL1 {
+				if l1 := L1MemoryCue(ctx, deps.L1Reader, ag, policy, sessionID, deps.LG); l1 != nil {
+					result.L1Cue = l1.Cue
+					recordContextBudgetOnce(ctx, ContextBudgetCategoryMemoryL1, utf8.RuneCountInString(l1.Cue))
+				}
+			}
+			return result, false
+		}
+	}
 
 	result := &MemoryCueResult{}
 
@@ -305,7 +383,17 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 		result.RecallCue = strings.TrimSpace(strings.Join(recallParts, "\n\n"))
 	}
 
-	return result
+	// P2-3：写入 per-turn 缓存。工具循环后续轮次（同一 invocation、keyword
+	// 不变）命中缓存直接复用召回块，embed+多路检索每 turn 只做一次。
+	inv.SetState(memoryCueTurnCacheStateKey, &memoryCueTurnCache{
+		keyword:             keyword,
+		profileCue:          result.ProfileCue,
+		recallCue:           result.RecallCue,
+		recallHits:          result.RecallHits,
+		injectedFactIDs:     result.InjectedFactIDs,
+		l4RecalledEntityIDs: result.L4RecalledEntityIDs,
+	})
+	return result, true
 }
 
 func lastUserMessageText(messages []trpcmodel.Message) string {

@@ -64,6 +64,32 @@ func TestJoinCuesWithBudget_MultiByteSafe(t *testing.T) {
 	}
 }
 
+// P3-2（2026-08-16）块级截断：超预算时整块丢弃尾部块（recall → L1），
+// 保留块完整无缺，不留半句残文误导模型；仅首块自身超预算才退化为硬切
+// （硬切路径由 MultiByteSafe 覆盖）。
+func TestJoinCuesWithBudget_DropsTailBlocksWhole(t *testing.T) {
+	r := &MemoryCueResult{
+		ProfileCue: strings.Repeat("p", 20),
+		L1Cue:      strings.Repeat("l", 30),
+		RecallCue:  strings.Repeat("r", 100),
+	}
+	// 预算窗口：触发截断（< 总长 154）且保得住 profile+L1（≥ 52+marker 42）
+	// 但放不下 recall 块（52+2+100+42=196 超预算）。
+	got := r.JoinCuesWithBudget(120)
+	if strings.Contains(got, "rrr") {
+		t.Fatalf("tail recall block must be dropped whole, got %q", got)
+	}
+	if !strings.Contains(got, r.ProfileCue) || !strings.Contains(got, r.L1Cue) {
+		t.Fatalf("kept blocks must stay intact, got %q", got)
+	}
+	if !strings.Contains(got, "truncated by prompt budget") {
+		t.Fatalf("truncation marker missing, got %q", got)
+	}
+	if len([]rune(got)) > 120 {
+		t.Fatalf("output exceeds budget: %d > 120", len([]rune(got)))
+	}
+}
+
 // --- P2-04: L3 provenance tests ---
 
 func TestL3MemoryCue_ProvenanceIncludedByDefault(t *testing.T) {

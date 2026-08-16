@@ -56,6 +56,30 @@ func (noopConsolidationWriter) UpsertFactsAndEpisodeBatch(_ context.Context, _ [
 	return &biz.ConsolidationResult{}, nil
 }
 
+// P3-1（2026-08-16）：核心依赖（sessions/writer）缺失必须构造期 fail-fast——
+// 装配事故在启动期爆炸，而非运行时 Debug 日志 + return nil 静默丢记忆。
+func TestNewAutoMemoryWorker_RequiresCoreDeps(t *testing.T) {
+	q := memtrpc.NewMemoryJobQueue(&conf.Runtime{}, 4, 0, loggateway.NewNoop())
+	t.Cleanup(q.Close)
+	repo := fixedSessionRepo{sess: sessionsess.Session{ID: "s1"}}
+	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil, repo, loggateway.NewNoop(), nil)
+
+	base := AutoMemoryWorkerConfig{RuntimeConf: &conf.Runtime{}, Queue: q, Logger: loggateway.NewNoop()}
+	if _, err := NewAutoMemoryWorker(base); err == nil {
+		t.Fatal("nil sessions must fail construction")
+	}
+	withSessions := base
+	withSessions.Sessions = sessionsUC
+	if _, err := NewAutoMemoryWorker(withSessions); err == nil {
+		t.Fatal("nil writer must fail construction")
+	}
+	full := withSessions
+	full.Writer = noopConsolidationWriter{}
+	if _, err := NewAutoMemoryWorker(full); err != nil {
+		t.Fatalf("sessions+writer wired must construct, got %v", err)
+	}
+}
+
 // buildRetryExhaustedWorker creates an AutoMemoryWorker wired with sessions,
 // agents, and a failing consolidator so that retry exhaustion is triggered.
 func buildRetryExhaustedWorker(t *testing.T, rc *conf.Runtime, sink biz.MemoryDeadLetterSink) *AutoMemoryWorker {

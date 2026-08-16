@@ -173,15 +173,42 @@ func retrieveCueChunks(ctx context.Context, query string, scoped []string, catal
 	return nil
 }
 
-func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk) string {
+// formatKnowledgeCue 渲染知识 cue。toolsEnabled=false 时只渲染预检索命中的
+// chunks（不输出工具引导文案与目录——agent 无法调用检索工具，列出可搜库
+// 只会误导）；此时若无命中 chunks 则不注入。P3-2：整体预算按块/条目边界
+// 截断，不再在 chunk 正文中途硬切。
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled bool) string {
+	if !toolsEnabled {
+		// 无工具：仅"有实质命中"才值得注入。
+		if len(cueRenderedChunks(chunks)) == 0 {
+			return ""
+		}
+		filtered = nil
+	}
 	if len(filtered) == 0 && len(chunks) == 0 {
 		return ""
 	}
 
 	var b strings.Builder
+	used := 0
+	// writeBlock 仅在整段放得下时写入，保证截断发生在块/条目边界。
+	writeBlock := func(s string) bool {
+		n := utf8.RuneCountInString(s)
+		if used+n > knowledgeCueMaxChars {
+			return false
+		}
+		b.WriteString(s)
+		used += n
+		return true
+	}
+
 	if len(chunks) > 0 {
-		b.WriteString("## Retrieved Knowledge\n")
-		b.WriteString("The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge. If they are insufficient, call `knowledge_search` or `knowledge_reflect`.\n\n")
+		header := "## Retrieved Knowledge\n" +
+			"The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge."
+		if toolsEnabled {
+			header += " If they are insufficient, call `knowledge_search` or `knowledge_reflect`."
+		}
+		writeBlock(header + "\n\n")
 		for i, ch := range chunks {
 			if i >= knowledgeCueTopK {
 				break
@@ -193,45 +220,46 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			if utf8.RuneCountInString(content) > knowledgeCueChunkChars {
 				content = string([]rune(content)[:knowledgeCueChunkChars]) + "..."
 			}
-			fmt.Fprintf(&b, "[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)
+			if !writeBlock(fmt.Sprintf("[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)) {
+				break
+			}
 		}
 	}
 
 	if len(filtered) > 0 {
-		b.WriteString("## Available Knowledge Bases\n")
+		writeBlock("## Available Knowledge Bases\n")
 		if len(chunks) == 0 {
-			b.WriteString("The following knowledge bases are available for search. Use `knowledge_search` to search a specific collection, or `knowledge_reflect` to search across multiple collections and evaluate result quality.\n\n")
+			writeBlock("The following knowledge bases are available for search. Use `knowledge_search` to search a specific collection, or `knowledge_reflect` to search across multiple collections and evaluate result quality.\n\n")
 		} else {
-			b.WriteString("Additional collections you can search if the passages above are not enough:\n\n")
+			writeBlock("Additional collections you can search if the passages above are not enough:\n\n")
 		}
 
 		for i, col := range filtered {
 			if i >= knowledgeCueMaxCollections {
 				break
 			}
-			fmt.Fprintf(&b, "- **%s** (ID: `%s`)", col.Name, col.ID)
+			var line strings.Builder
+			fmt.Fprintf(&line, "- **%s** (ID: `%s`)", col.Name, col.ID)
 			if col.Description != "" && len(chunks) == 0 {
 				desc := col.Description
 				if len([]rune(desc)) > 120 {
 					desc = string([]rune(desc)[:120]) + "..."
 				}
-				fmt.Fprintf(&b, ": %s", desc)
+				fmt.Fprintf(&line, ": %s", desc)
 			}
-			fmt.Fprintf(&b, " [%d docs, %d chunks]", col.DocumentCount, col.ChunkCount)
-			b.WriteByte('\n')
+			fmt.Fprintf(&line, " [%d docs, %d chunks]\n", col.DocumentCount, col.ChunkCount)
+			if !writeBlock(line.String()) {
+				break
+			}
 		}
 
 		if len(chunks) == 0 {
-			b.WriteString("\n**Search strategy tips:**\n")
-			b.WriteString("- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n")
-			b.WriteString("- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n")
-			b.WriteString("- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
+			writeBlock("\n**Search strategy tips:**\n" +
+				"- For specific factual questions → `knowledge_search` (omit collection_id to auto-route across all bases)\n" +
+				"- For broad or multi-topic questions → `knowledge_reflect` (omit collection_ids to search all bases and evaluate quality)\n" +
+				"- If initial results are insufficient → `knowledge_reflect` will suggest supplementary queries\n")
 		}
 	}
 
-	result := b.String()
-	if len([]rune(result)) > knowledgeCueMaxChars {
-		result = string([]rune(result)[:knowledgeCueMaxChars]) + "..."
-	}
-	return result
+	return b.String()
 }

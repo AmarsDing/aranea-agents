@@ -37,6 +37,46 @@ func TestMemoryCueResult_JoinCues(t *testing.T) {
 	}
 }
 
+// P2-3（2026-08-16）：per-turn 召回缓存。同一 invocation 的工具循环续轮
+// （keyword 不变）复用首轮召回结果（fresh=false，embed+多路检索每 turn 只做
+// 一次，副作用由调用方按 fresh 门控为 once-per-turn）；keyword 变化或新
+// invocation 触发新一轮真实召回。
+func TestBuildRuntimeMemoryCue_TurnCacheReuse(t *testing.T) {
+	ag := biz.Agent{ID: "ag-1", Settings: &biz.AgentRuntimeSettings{MemoryEnabled: true}}
+	deps := TRPCBuilderDeps{}
+	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
+	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
+
+	msgs := []trpcmodel.Message{trpcmodel.NewUserMessage("数据库慢查询怎么排查")}
+	first, fresh := buildRuntimeMemoryCue(ctx, deps, ag, msgs)
+	if !fresh {
+		t.Fatal("first call in a turn must be a fresh recall")
+	}
+
+	// 工具循环续轮：尾部追加 assistant 消息，末条 user 消息不变 → keyword 不变。
+	loopMsgs := append(msgs, trpcmodel.Message{Role: trpcmodel.RoleAssistant, Content: "calling tool"})
+	second, fresh := buildRuntimeMemoryCue(ctx, deps, ag, loopMsgs)
+	if fresh {
+		t.Fatal("tool-loop re-entry with unchanged keyword must hit the turn cache")
+	}
+	if second.JoinCues() != first.JoinCues() {
+		t.Fatalf("cached turn must replay the same cue: %q vs %q", second.JoinCues(), first.JoinCues())
+	}
+
+	// keyword 变化（新 user 消息）→ 缓存失效，重新召回。
+	changed := append(loopMsgs, trpcmodel.NewUserMessage("换个话题"))
+	if _, fresh = buildRuntimeMemoryCue(ctx, deps, ag, changed); !fresh {
+		t.Fatal("keyword change must trigger a fresh recall")
+	}
+
+	// 新 invocation（新 turn）→ 缓存不跨 turn。
+	inv2 := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
+	ctx2 := trpcagent.NewInvocationContext(context.Background(), inv2)
+	if _, fresh = buildRuntimeMemoryCue(ctx2, deps, ag, msgs); !fresh {
+		t.Fatal("a new invocation has no turn cache and must recall fresh")
+	}
+}
+
 func TestIsMemoryInjectMessage(t *testing.T) {
 	msg := trpcmodel.NewSystemMessage(memoryInjectCueContent("test cue"))
 	if !isMemoryInjectMessage(msg) {

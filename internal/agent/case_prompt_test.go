@@ -112,7 +112,7 @@ func TestBuildRuntimeMemoryCue_IncludesCaseBlock(t *testing.T) {
 	}}
 	inv := &trpcagent.Invocation{Session: &trpcsession.Session{ID: "s1", UserID: "u1"}}
 	ctx := trpcagent.NewInvocationContext(context.Background(), inv)
-	result := buildRuntimeMemoryCue(ctx, deps, ag, nil)
+	result, _ := buildRuntimeMemoryCue(ctx, deps, ag, nil)
 	if result.IsEmpty() {
 		t.Fatal("case block must make the cue non-empty")
 	}

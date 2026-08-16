@@ -98,6 +98,15 @@ func NewAutoMemoryWorker(cfg AutoMemoryWorkerConfig) (*AutoMemoryWorker, error) 
 	if cfg.Queue == nil {
 		return nil, errors.New("jobs: auto memory queue is required")
 	}
+	// P3-1（2026-08-16）：sessions/writer 无默认实现，nil 意味着提取任务
+	// 永远静默跳过（原运行时分支只 Debug 日志 + return nil 假成功）。装配
+	// 事故必须在启动期爆炸，而非运行时无声丢记忆。
+	if cfg.Sessions == nil {
+		return nil, errors.New("jobs: auto memory sessions usecase is required")
+	}
+	if cfg.Writer == nil {
+		return nil, errors.New("jobs: auto memory consolidation writer is required")
+	}
 	interval := cfg.Interval
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -269,9 +278,12 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	if sid == "" {
 		return nil
 	}
+	// P3-1：构造器已保证 sessions/writer/consolidator 非 nil；此分支仅防御
+	// 未来绕过构造器的重构。返回 error 走既有 重试→死信 链路（可见、可重放），
+	// 不再 Debug 日志 + return nil 假成功。
 	if w.sessions == nil || w.writer == nil || w.consolidator == nil {
-		w.lg.Debug("自动记忆跳过：未注入 sessions/writer/consolidator", loggateway.Str("session_id", sid))
-		return nil
+		return fmt.Errorf("jobs: auto memory worker missing core deps (sessions=%v writer=%v consolidator=%v)",
+			w.sessions != nil, w.writer != nil, w.consolidator != nil)
 	}
 
 	sess, err := w.sessions.Get(ctx, sid)
@@ -371,7 +383,11 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	var writeRes biz.FactWriteBatchResult
 	if len(candidates) > 0 {
 		if w.factPipeline == nil {
-			w.lg.Debug("自动记忆跳过事实写入：未注入 fact pipeline", loggateway.Str("session_id", sid))
+			// P3-1：LLM 已产出的候选事实被丢弃——legacy 跳过语义保留，
+			// 但候选丢失必须在生产日志级别可见（原 Debug 等于无声）。
+			w.lg.Warn("自动记忆跳过事实写入：未注入 fact pipeline，候选事实已丢弃",
+				loggateway.Str("session_id", sid),
+				loggateway.Int("candidates_dropped", len(candidates)))
 		} else {
 			writeRes = w.factPipeline.Apply(ctx, candidates)
 		}
@@ -575,8 +591,17 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if sid == "" || msgID == "" || rating == "" {
 		return nil
 	}
-	if w.sessions == nil || w.factPipeline == nil || w.feedback == nil {
-		w.lg.Debug("反馈记忆跳过：未注入 sessions/factPipeline/feedback", loggateway.Str("session_id", sid))
+	// P3-1：sessions/feedback 由构造器保证非 nil；factPipeline 为可选项。
+	// 缺任一时反馈任务原路静默丢弃（Debug + return nil 假成功）——缺核心
+	// 依赖返回 error 走重试/死信；仅缺 pipeline 时 Warn 可见地跳过。
+	if w.sessions == nil || w.feedback == nil {
+		return fmt.Errorf("jobs: auto memory worker missing core deps (sessions=%v feedback=%v)",
+			w.sessions != nil, w.feedback != nil)
+	}
+	if w.factPipeline == nil {
+		w.lg.Warn("反馈记忆跳过：未注入 fact pipeline，反馈任务已丢弃",
+			loggateway.Str("session_id", sid),
+			loggateway.Str("message_id", msgID))
 		return nil
 	}
 	sess, err := w.sessions.Get(ctx, sid)
