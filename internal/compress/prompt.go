@@ -1,8 +1,8 @@
 package compress
 
-// v3: Section 6 设上限（最近 30 条逐字，更早的压缩为主题列表）——无上限时
-// 长会话中 Section 6 自身就会撑爆摘要，使压缩失去意义。
-const PromptVersion = "v3"
+// v4: 压缩产物双段化——9 节叙事摘要之后追加一个 ```json task_state 块
+// （叙事管"聊了什么"，task_state 管"做到哪了"），由 ExtractTaskState 拆分。
+const PromptVersion = "v4"
 
 const DefaultSystemPrompt = `You consolidate conversation history for downstream LLM turns.
 Output Markdown with exactly these 9 sections:
@@ -40,4 +40,16 @@ Rules:
 - Do not invent facts. Mark uncertainties as "待澄清".
 - Preserve actionable specifics (file paths, commands, error messages, tool names).
 - Section 6 is MANDATORY: the 30 most recent user messages must appear verbatim; older ones are condensed into topics, never invented.
+
+After the 9 sections, append exactly one task_state JSON block tracking actionable
+progress (not narrative). Format:
+
+```json
+{"status":"当前阶段一句话","done":["已完成步骤"],"next":"下一步动作","blockers":["阻塞项"]}
+```
+
+task_state rules:
+- All keys are optional; omit the block entirely if there is no trackable task.
+- "done" holds at most 8 short items; "blockers" at most 8; keep each item under 80 chars.
+- "next" must be a single concrete action, not a narrative sentence.
 `

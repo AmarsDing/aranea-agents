@@ -73,6 +73,14 @@ var (
 		Help: "Retired ToolSets force-closed with refs>0 (potential release leak).",
 	})
 
+	// AgentHotSwapTotal counts online hot-swap attempts by result
+	// (P0-2 阶段B): applied / no_sibling / plan_error / build_error /
+	// topology_changed / deferred_active / flat_changed / commit_conflict.
+	AgentHotSwapTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_agent_hot_swap_total",
+		Help: "Online agent hot-swap attempts by result label.",
+	}, []string{"result"})
+
 	// EventBusPublished counts events published to the in-process event bus.
 	EventBusPublished = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_event_bus_published_total",

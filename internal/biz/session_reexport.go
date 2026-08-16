@@ -27,6 +27,7 @@ type (
 	SessionTurnListResult   = session.SessionTurnListResult
 	SessionTurnUpdateFields = session.SessionTurnUpdateFields
 	SessionSummary          = session.SessionSummary
+	TaskState               = session.TaskState
 	StateDelta              = session.StateDelta
 	SessionRepo             = session.SessionRepo
 	SessionReader           = session.SessionReader

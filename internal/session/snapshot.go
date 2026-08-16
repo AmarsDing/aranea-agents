@@ -11,7 +11,8 @@ import (
 )
 
 // RewriteSnapshotWithCompression rebuilds runner snapshot events after rolling summary compaction.
-func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string, tail []biz.ChatMessage, assistantAuthor string) (string, error) {
+// taskState 非空时，在叙事摘要之前注入结构化任务状态块（先读状态，再读叙事）。
+func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string, tail []biz.ChatMessage, assistantAuthor string, taskState *biz.TaskState) (string, error) {
 	snapshotJSON = strings.TrimSpace(snapshotJSON)
 	if snapshotJSON == "" {
 		snapshotJSON = "{}"
@@ -26,7 +27,7 @@ func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string
 	summaryEvent := map[string]any{
 		"author":    "user",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"content":   "[Conversation summary — earlier turns compressed]\n\n" + strings.TrimSpace(mergedSummariesMarkdown),
+		"content":   buildSummaryEventContent(mergedSummariesMarkdown, taskState),
 		"role":      "system",
 	}
 	var tailEvents []any
@@ -58,6 +59,60 @@ func RewriteSnapshotWithCompression(snapshotJSON, mergedSummariesMarkdown string
 		return "", err
 	}
 	return string(out), nil
+}
+
+// buildSummaryEventContent 组装压缩摘要事件正文：结构化任务状态块在前，
+// 叙事摘要在后（先读状态，再读叙事）。
+func buildSummaryEventContent(mergedSummariesMarkdown string, taskState *biz.TaskState) string {
+	header := "[Conversation summary — earlier turns compressed]"
+	narrative := strings.TrimSpace(mergedSummariesMarkdown)
+	if taskState == nil {
+		return header + "\n\n" + narrative
+	}
+	var b strings.Builder
+	b.WriteString(header)
+	b.WriteString("\n\nTask progress (structured state):\n")
+	if s := strings.TrimSpace(taskState.Status); s != "" {
+		b.WriteString("Status: " + s + "\n")
+	}
+	if len(taskState.Done) > 0 {
+		b.WriteString("Progress:\n")
+		for _, it := range taskState.Done {
+			b.WriteString("- " + it + "\n")
+		}
+	}
+	if s := strings.TrimSpace(taskState.Next); s != "" {
+		b.WriteString("Next: " + s + "\n")
+	}
+	if len(taskState.Blockers) > 0 {
+		b.WriteString("Blockers:\n")
+		for _, it := range taskState.Blockers {
+			b.WriteString("- " + it + "\n")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString(narrative)
+	return b.String()
+}
+
+// latestTaskState 从滚动摘要行中挑最新的非空 TaskState（跳过空串与坏 JSON）。
+// rows 按时间升序；空对象（{}）不视为有效状态。
+func latestTaskState(rows []biz.SessionSummary) *biz.TaskState {
+	for i := len(rows) - 1; i >= 0; i-- {
+		raw := strings.TrimSpace(rows[i].TaskStateJSON)
+		if raw == "" {
+			continue
+		}
+		var st biz.TaskState
+		if json.Unmarshal([]byte(raw), &st) != nil {
+			continue
+		}
+		if st.Status == "" && st.Next == "" && len(st.Done) == 0 && len(st.Blockers) == 0 {
+			continue
+		}
+		return &st
+	}
+	return nil
 }
 
 func mergeSessionSummariesMarkdown(rows []biz.SessionSummary) string {

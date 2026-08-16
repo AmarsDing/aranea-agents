@@ -4,14 +4,14 @@
 // health probes, webhook targets) must be validated with ValidateURL or use NewClient
 // before making any network call.
 //
-// # KNOWN LIMITATION — DNS TOCTOU
+// # DNS TOCTOU Mitigation
 //
 // ValidateURL resolves DNS at call time, but the TCP connection is made later by the
 // HTTP client. An attacker controlling DNS (TTL=0) could switch the record to a private
-// IP between validation and connection (DNS rebinding). NewClient's CheckRedirect
-// re-validates every redirect hop, but the initial connection's DNS is only checked
-// once. For stronger protection the caller should use a custom net.Dialer that checks
-// the resolved IP at connect time (future work).
+// IP between validation and connection (DNS rebinding). NewClient mitigates this by
+// installing a custom DialContext that re-checks the resolved IP at connect time
+// (see ssrfDialer). CheckRedirect continues to validate every redirect hop, so both
+// the initial connection and all redirects are covered.
 package outboundguard
 
 import (
@@ -23,6 +23,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -246,16 +247,89 @@ func (v *cachedValidator) validateHost(host string) error {
 	return nil
 }
 
-// NewClient returns an *http.Client whose CheckRedirect validates every
-// redirect hop with the same SSRF rules, and whose Timeout defaults to 15 s.
-// Pass timeout ≤ 0 to use the default.
+// ssrfDialer returns a net.Dialer that rejects connections to private,
+// loopback, link-local, or metadata IP addresses at connect time.
+// This closes the DNS TOCTOU window left by ValidateURL: even if DNS
+// rebinding changes the record after validation, the TCP handshake will
+// still be blocked here.
+//
+// allowAddrs carries the pre-resolved IPs of hosts listed in
+// ARANEA_OUTBOUND_ALLOW_HOSTS so that explicitly-allowed targets are not
+// blocked at dial time (the hostname-level check is done by ValidateURL).
+func ssrfDialer(timeout time.Duration, allowAddrs []netip.Addr) *net.Dialer {
+	allowed := make(map[netip.Addr]struct{}, len(allowAddrs))
+	for _, a := range allowAddrs {
+		allowed[a] = struct{}{}
+	}
+	return &net.Dialer{
+		Timeout: timeout,
+		Control: func(network, address string, c syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return fmt.Errorf("outboundguard: invalid IP %q", host)
+			}
+			addr, ok := netip.AddrFromSlice(ip)
+			if !ok {
+				return fmt.Errorf("outboundguard: unrecognised IP %s", ip)
+			}
+			if _, ok := allowed[addr]; ok {
+				return nil
+			}
+			if isBlockedAddr(addr) {
+				return fmt.Errorf("outboundguard: blocked IP %s (private/loopback/link-local)", ip)
+			}
+			return nil
+		},
+	}
+}
+
+// resolveAllowedHosts parses ARANEA_OUTBOUND_ALLOW_HOSTS and resolves each
+// host to its current IP addresses. Errors are silently ignored — an
+// unresolvable allowed host simply won't get the dial-time bypass, but the
+// hostname-level check in ValidateURL still applies.
+func resolveAllowedHosts() []netip.Addr {
+	raw := strings.TrimSpace(os.Getenv(allowHostsEnv))
+	if raw == "" {
+		return nil
+	}
+	var out []netip.Addr
+	for _, h := range strings.Split(raw, ",") {
+		h = strings.TrimSpace(h)
+		if h == "" {
+			continue
+		}
+		ips, err := net.LookupIP(h)
+		if err != nil {
+			continue
+		}
+		for _, ip := range ips {
+			if addr, ok := netip.AddrFromSlice(ip); ok {
+				out = append(out, addr)
+			}
+		}
+	}
+	return out
+}
+
+// NewClient returns an *http.Client with SSRF protection on both the
+// initial connection and every redirect hop. The DialContext blocks
+// private/loopback/link-local IPs at connect time (TOCTOU fix), while
+// CheckRedirect validates redirect targets with the same host rules.
+// Timeout defaults to 15 s; pass ≤ 0 for default.
 func NewClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = ssrfDialer(timeout, resolveAllowedHosts()).DialContext
 	return &http.Client{
 		Timeout:       timeout,
 		CheckRedirect: checkRedirect,
+		Transport:     transport,
 	}
 }
 

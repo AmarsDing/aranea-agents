@@ -122,6 +122,10 @@ type WSServer struct {
 	maxSessionConns       int
 	maxGlobalMonitorConns int
 	lg                    loggateway.Logger
+	// allowNilSessionAuth, when true, permits sessionAuth == nil to skip
+	// ownership checks (test-only). Default false = fail-closed: a nil
+	// SessionAuthorizer in production rejects non-admin connections.
+	allowNilSessionAuth bool
 }
 
 // SetEventOutbox wires the durable critical-event outbox used for last_event_id replay.
@@ -146,6 +150,15 @@ func (s *WSServer) SetSkillCatalogPusher(p SkillCatalogPusher) {
 		return
 	}
 	s.catalogPusher = p
+}
+
+// SetAllowNilSessionAuth permits sessionAuth == nil to skip ownership checks.
+// This is a test-only escape hatch; production must never call it.
+func (s *WSServer) SetAllowNilSessionAuth(allow bool) {
+	if s == nil {
+		return
+	}
+	s.allowNilSessionAuth = allow
 }
 
 // NewWSServerFromInfra uses monitor bus for monitor events and the v2 EventBus
@@ -264,18 +277,29 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	// Non-global mode: verify session ownership — prevents users from
 	// subscribing to other users' sessions (IDOR protection). Admins
-	// bypass this check. Skipped when no SessionAuthorizer is wired
-	// (e.g., in unit tests without a session repo).
-	if !globalMode && !claims.HasAdminAccess() && s.sessionAuth != nil {
-		if err := s.sessionAuth.CheckOwnership(r.Context(), sessionID, userID); err != nil {
-			s.lg.Warn("WS session ownership denied",
-				loggateway.StepID("ws.ownership_denied"),
+	// bypass this check. A nil SessionAuthorizer is fail-closed unless
+	// explicitly allowed via SetAllowNilSessionAuth (test-only).
+	if !globalMode && !claims.HasAdminAccess() {
+		if s.sessionAuth == nil && !s.allowNilSessionAuth {
+			s.lg.Warn("WS session ownership check unavailable (sessionAuth nil), rejecting connection",
+				loggateway.StepID("ws.ownership_unavailable"),
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("user_id", userID),
-				loggateway.Err(err),
 			)
-			http.Error(w, "session ownership required", http.StatusForbidden)
+			http.Error(w, "session ownership check unavailable", http.StatusServiceUnavailable)
 			return
+		}
+		if s.sessionAuth != nil {
+			if err := s.sessionAuth.CheckOwnership(r.Context(), sessionID, userID); err != nil {
+				s.lg.Warn("WS session ownership denied",
+					loggateway.StepID("ws.ownership_denied"),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("user_id", userID),
+					loggateway.Err(err),
+				)
+				http.Error(w, "session ownership required", http.StatusForbidden)
+				return
+			}
 		}
 	}
 

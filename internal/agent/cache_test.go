@@ -606,7 +606,7 @@ func (b *stubMonitorBus) buildFlowPhases() []string {
 
 // withStubbedBuilder swaps the package-level agentBuildFn for the duration of
 // the test so BuildTRPCLLMAgentCached can run without real model/skill deps.
-func withStubbedBuilder(t *testing.T, fn func(context.Context, biz.Agent, TRPCBuilderDeps, loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error)) {
+func withStubbedBuilder(t *testing.T, fn func(context.Context, biz.Agent, TRPCBuilderDeps, loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, *faceMeta, error)) {
 	t.Helper()
 	orig := agentBuildFn
 	agentBuildFn = fn
@@ -620,8 +620,8 @@ func withStubbedBuilder(t *testing.T, fn func(context.Context, biz.Agent, TRPCBu
 func TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnMiss(t *testing.T) {
 	bus := &stubMonitorBus{}
 	globalBuildCache.SetMonitorBus(bus)
-	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
-		return makeAgent("flow-miss"), nil, nil
+	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, *faceMeta, error) {
+		return makeAgent("flow-miss"), nil, nil, nil
 	})
 
 	ag := biz.Agent{ID: "agent-flow-miss-test", AgentKey: "flow-miss-test"}
@@ -645,8 +645,8 @@ func TestBuildTRPCLLMAgentCached_EmitsBuildFlowOnFailure(t *testing.T) {
 	bus := &stubMonitorBus{}
 	globalBuildCache.SetMonitorBus(bus)
 	sentinel := errors.New("build boom")
-	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
-		return nil, nil, sentinel
+	withStubbedBuilder(t, func(_ context.Context, _ biz.Agent, _ TRPCBuilderDeps, _ loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, *faceMeta, error) {
+		return nil, nil, nil, sentinel
 	})
 
 	ag := biz.Agent{ID: "agent-flow-fail-test", AgentKey: "flow-fail-test"}

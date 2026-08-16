@@ -22,4 +22,5 @@ var RuntimeToolNameAliases = map[string]string{
 	"email":            "send_email",
 	"await_reply":      "await_user_reply",
 	"web_search":       "web_research",
+	"claude_code":      "claudecode",
 }

@@ -215,6 +215,17 @@ func lookupCatalogConfirm(catalog map[string]confirmCatalogEntry, toolName strin
 					}
 				}
 			}
+			// The toolset name itself may be an alias target whose catalog key
+			// is the policy source (e.g. runtime "claudecode_bash" → toolset
+			// "claudecode" ← catalog key "claude_code"). In this case the
+			// toolset's catalog entry applies to ALL its mounted sub-tools.
+			for aliasKey, canonical := range alias.RuntimeToolNameAliases {
+				if canonical == toolsetName {
+					if entry, ok := catalog[aliasKey]; ok {
+						return catalogConfirmMatch{requiresConfirm: entry.requiresConfirm, via: catalogMatchToolsetAlias, catalogKey: aliasKey}
+					}
+				}
+			}
 		}
 	}
 	// Try reverse alias lookup: check if toolName is a canonical runtime name

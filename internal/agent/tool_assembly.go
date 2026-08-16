@@ -35,8 +35,8 @@ import (
 // 返回的 retireUnits 是分片引用占位符（shardHoldToolSet）：调用方将其作为
 // 缓存 entry 的 toolSets 持有，entry 换代/驱逐时经 graveyard 在在途 run
 // 排空后 Close = 释放分片引用。共享分片产物本体由 shardCache 拥有，永不进
-// entry/graveyard。
-func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, []trpctool.ToolSet, error) {
+// entry/graveyard。第三返回值为分片计划（P0-2B 面元数据来源）。
+func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, plan *toolBuildPlan) (*tooltrpc.AssembledToolsets, []trpctool.ToolSet, *shardPlan, error) {
 	lg := deps.Logger()
 	eff := plan.eff
 
@@ -46,12 +46,12 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	sp, err := computeShardPlan(ctx, ag, deps, plan)
 	if err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	rtCfgMs := time.Since(phaseStart).Milliseconds()
 	if sp == nil {
 		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	lg.Info("工具构建中", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("shards", len(sp.specs)), loggateway.Int("mcp_servers", len(sp.mcpIdx)))
 
@@ -60,12 +60,12 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	prods, releases, err := acquireShardPlan(ctx, globalShardCache, sp)
 	if err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	ts, err := mergeShardProducts(ctx, sp, prods, releases, lg)
 	if err != nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	buildMs := time.Since(phaseStart).Milliseconds()
 
@@ -109,7 +109,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		loggateway.Int64("gate_ms", gateMs),
 		loggateway.Int64("decor_ms", decorMs),
 		loggateway.Int("shards", len(sp.specs)))
-	return ts, retireUnits, nil
+	return ts, retireUnits, sp, nil
 }
 
 // applyRuntimeToolConfigs merges each enabled tool's runtime config (catalog

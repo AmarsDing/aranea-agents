@@ -164,7 +164,8 @@ func (r *MemoryCueResult) JoinCuesWithBudget(budgetChars int) string {
 		if len(kept) > 0 {
 			n += 2 // "\n\n" 分隔符
 		}
-		if used+n+reserve > budgetChars {
+		// +1：输出形态是 join(kept)+"\n"+marker，marker 前的换行也占预算。
+		if used+n+reserve+1 > budgetChars {
 			break
 		}
 		kept = append(kept, blk)

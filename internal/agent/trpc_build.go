@@ -57,7 +57,7 @@ func generationConfigForAgent(ag biz.Agent) trpcmodel.GenerationConfig {
 }
 
 func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
-	a, _, err := buildTRPCLLMAgentWithToolSets(ctx, ag, deps, lg)
+	a, _, _, err := buildTRPCLLMAgentWithToolSets(ctx, ag, deps, lg)
 	return a, err
 }
 
@@ -65,9 +65,11 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 // ToolSets created during assembly. The caller (cache layer) uses these
 // ToolSets to close them when the agent is evicted, preventing resource
 // leaks (MCP sessions, stdio subprocesses, HTTP connections).
-func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, error) {
+// 第四返回值为 P0-2B 热替换元数据（faceMeta），随缓存 entry 持久化；
+// 无工具计划（sp==nil）时返回 nil face，该 entry 不参与换面。
+func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, []trpctool.ToolSet, *faceMeta, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
-		return nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
+		return nil, nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent_key required")
 	}
 	// Always use the Agent's own provider/model for the cached build.
 	// Per-request provider/model overrides are applied via RunOption
@@ -85,7 +87,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	if agentModelEmpty {
 		prov, mod = resolveBuildDefaultModel(ctx, deps, lg)
 		if prov == "" || mod == "" {
-			return nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
+			return nil, nil, nil, apierror.BadRequest(apierror.DomainAgent, "agent provider and model required (no system default available)")
 		}
 		lg.Info("Agent 无配置模型，使用系统默认模型构建",
 			loggateway.StepID("agent.build_default_model"),
@@ -126,7 +128,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		}
 		if err != nil {
 			lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	modelMs = time.Since(modelStart).Milliseconds()
@@ -137,7 +139,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		files, err = deps.Agents.ListAgentPromptFiles(ctx, ag.ID)
 		if err != nil {
 			lg.Error("Agent 构建失败：提示文件加载", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		promptMs = time.Since(promptStart).Milliseconds()
 	}
@@ -213,7 +215,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		repo, filter, exec, err := buildSkillDeps(ctx, ag, deps)
 		if err != nil {
 			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		skillRepoForBudget, skillFilterForBudget = repo, filter
 		skillMs = time.Since(skillStart).Milliseconds()
@@ -258,9 +260,10 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 	// still cover custom/kanban/memory tools (previous behavior).
 	gate := buildToolConfirmGate(ctx, ag, deps, catalog.confirmCatalog(eff))
 	plan := &toolBuildPlan{eff: eff, catalog: catalog, gate: gate}
-	if ts, retireUnits, err := buildToolsetsForAgent(ctx, ag, deps, plan); err != nil {
+	var face *faceMeta
+	if ts, retireUnits, sp, err := buildToolsetsForAgent(ctx, ag, deps, plan); err != nil {
 		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
-		return nil, nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
+		return nil, nil, nil, apierror.Internal(apierror.DomainAgent, "tool build failed").WithCause(err)
 	} else if ts != nil {
 		toolsMs = time.Since(toolsStart).Milliseconds()
 		if len(ts.ToolSets) > 0 {
@@ -276,6 +279,9 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		// 分片产物本体；entry 换代/驱逐时 graveyard Close 占位符 = 释放分片
 		// 引用，产物由 shardCache 在 refs==0 且 LRU 淘汰时关闭。
 		assembledToolSets = retireUnits
+		// P0-2B：面元数据随 entry 持久化，miss 路径凭此做热替换兄弟匹配
+		// 与四道门禁。指纹配方与 BuildTRPCLLMAgentCached 的 key 计算一致。
+		face = faceMetaFromPlan(computeBuildKeyFP(ag, deps, deps.ToolVersionHash, deps.SkillVersionHash, deps.MCPVersionHash), sp, ts)
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
 		}
@@ -353,7 +359,7 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		cb: cbMs, settings: settingsMs, finalize: finalizeMs, newAgent: newMs,
 	})
 
-	return a, assembledToolSets, nil
+	return a, assembledToolSets, face, nil
 }
 
 // buildPhaseDurations carries the K6 per-phase build timings (milliseconds).

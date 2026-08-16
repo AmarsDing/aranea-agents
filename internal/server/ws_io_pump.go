@@ -135,37 +135,46 @@ func (s *WSServer) readPump(wc *wsConn) {
 }
 
 // monitorEventPump forwards MonitorEvents from the MonitorBus channel to the
-// connection's priority queues.
+// connection's priority queues. The pump exits when either the channel is
+// closed (unsubscribe) or the connection context is cancelled (wc.close()).
 func (s *WSServer) monitorEventPump(wc *wsConn, monitorCh <-chan contract.MonitorEvent) {
 	cfg := s.wsConfig()
-	for ev := range monitorCh {
-		// Monitor events go to the "monitor" channel.
-		if !wc.hasChannel("monitor") {
-			continue
-		}
-		if ev.Type == contract.MonitorEventTypeLog && !wc.isLogEnabled() {
-			continue
-		}
-		msg := wsDownstream{
-			Direction:    "server_to_client",
-			Channel:      "monitor",
-			MonitorEvent: &ev,
-		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket MonitorEvent 序列化失败，跳过",
-				loggateway.StepID("ws.marshal_fail_monitor"),
-				loggateway.Err(err),
-				loggateway.Any("event_type", ev.Type))
-			continue
-		}
-		prio := wsMonitorEventPriority(ev.Type)
-		if ok := wc.queues.enqueue(cfg, prio, data); !ok {
-			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
-				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", ev.Type))
-			wc.closeSend()
+	for {
+		select {
+		case <-wc.connCtx.Done():
 			return
+		case ev, ok := <-monitorCh:
+			if !ok {
+				return
+			}
+			// Monitor events go to the "monitor" channel.
+			if !wc.hasChannel("monitor") {
+				continue
+			}
+			if ev.Type == contract.MonitorEventTypeLog && !wc.isLogEnabled() {
+				continue
+			}
+			msg := wsDownstream{
+				Direction:    "server_to_client",
+				Channel:      "monitor",
+				MonitorEvent: &ev,
+			}
+			data, err := json.Marshal(msg)
+			if err != nil {
+				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket MonitorEvent 序列化失败，跳过",
+					loggateway.StepID("ws.marshal_fail_monitor"),
+					loggateway.Err(err),
+					loggateway.Any("event_type", ev.Type))
+				continue
+			}
+			prio := wsMonitorEventPriority(ev.Type)
+			if ok := wc.queues.enqueue(cfg, prio, data); !ok {
+				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
+					loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", ev.Type))
+				wc.closeSend()
+				return
+			}
+			wc.wakeWriter()
 		}
-		wc.wakeWriter()
 	}
 }

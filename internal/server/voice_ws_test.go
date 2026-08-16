@@ -56,7 +56,7 @@ func newVoiceTestServer(asr *voiceTestASRSession) *VoiceWSServer {
 }
 
 func newVoiceTestServerWithProbe(asr *voiceTestASRSession, probe VoiceStatusProbe) *VoiceWSServer {
-	return NewVoiceWSServer(
+	srv := NewVoiceWSServer(
 		nil, // sessionAuth：bypass 下 admin 免 ownership
 		voiceTestExecutor{},
 		nil, // canceller 测试不需要（Cancel 路径在 voice 包单测覆盖）
@@ -73,12 +73,14 @@ func newVoiceTestServerWithProbe(asr *voiceTestASRSession, probe VoiceStatusProb
 		nil, // archiver：语音留档在 voice/service 包单测覆盖
 		probe,
 	)
+	srv.SetAllowNilSessionAuth(true)
+	return srv
 }
 
 // newVoiceTestServerWithTTSErr：TTS 工厂报错——唤醒应答降级 voice.error，
 // 状态机/广播路径不受影响（避免 nil provider 进 TTS scheduler）。
 func newVoiceTestServerWithTTSErr(asr *voiceTestASRSession) *VoiceWSServer {
-	return NewVoiceWSServer(
+	srv := NewVoiceWSServer(
 		nil,
 		voiceTestExecutor{},
 		nil,
@@ -95,6 +97,8 @@ func newVoiceTestServerWithTTSErr(asr *voiceTestASRSession) *VoiceWSServer {
 		nil,
 		nil,
 	)
+	srv.SetAllowNilSessionAuth(true)
+	return srv
 }
 
 func voiceDial(t *testing.T, srv *httptest.Server, sessionID string) *websocket.Conn {

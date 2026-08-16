@@ -68,6 +68,8 @@ func hasWebhookSigningHeader(r *http.Request) bool {
 		"X-DingTalk-Signature",            // DingTalk stream
 		"X-WxBizMsgCrypt",                 // WeWork (enterprise WeChat)
 		"X-WeChat-Signature",              // WeChat (some modes)
+		"X-Line-Signature",                // LINE Messaging API
+		"X-Mattermost-Signature",          // Mattermost outgoing webhook
 		"Authorization",                   // OneBot / generic bearer
 		"X-Signature",                     // generic
 		"X-Webhook-Signature",             // generic
@@ -77,11 +79,12 @@ func hasWebhookSigningHeader(r *http.Request) bool {
 			return true
 		}
 	}
-	// Platforms that sign via query params (WeChat, QQ official) don't send a
-	// header — let the handler validate the signature from the URL.
+	// Platforms that sign via query params (WeChat, QQ official, Mattermost
+	// token) don't send a header — let the handler validate the signature
+	// from the URL.
 	if r.URL != nil {
 		q := r.URL.Query()
-		if q.Get("signature") != "" || q.Get("sign") != "" || q.Get("msg_signature") != "" {
+		if q.Get("signature") != "" || q.Get("sign") != "" || q.Get("msg_signature") != "" || q.Get("token") != "" {
 			return true
 		}
 	}

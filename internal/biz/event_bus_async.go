@@ -74,9 +74,15 @@ func (w *asyncEventWorker[T]) Start(ctx context.Context, handle func(context.Con
 				if !ok {
 					return
 				}
-				handleCtx, cancel := context.WithTimeout(context.Background(), w.handleTimeout)
-				handle(handleCtx, ev)
-				cancel()
+				// Per-event goroutine with its own recover: a panicking handler
+				// must not kill the worker and leave remaining jobs stranded.
+				// safego.Go already recovers, but here we need the worker loop
+				// itself to survive, so we wrap each invocation explicitly.
+				safego.Go(ctx, w.name+".event", func() {
+					handleCtx, cancel := context.WithTimeout(context.Background(), w.handleTimeout)
+					defer cancel()
+					handle(handleCtx, ev)
+				})
 			}
 		}
 	})

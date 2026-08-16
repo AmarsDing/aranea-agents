@@ -29,3 +29,19 @@ func (s *KnowledgeService) replayWriteBackChunks(ctx context.Context, col bizkno
 	}
 	return nil
 }
+
+// replayAgentMemoryChunks agent 记忆投影 chunk 重放钩子（注入 AgentMemoryProjector）。
+// 投影覆盖写 agents/{id}.md 后，必须同步重建 chunks/FTS，否则检索结果漂移。
+func (s *KnowledgeService) replayAgentMemoryChunks(ctx context.Context, col bizknowledge.Collection, docID string) error {
+	replayed, failed := s.replayPromotedDocChunks(ctx, col, []bizknowledge.PromoteTouchedDoc{{DocID: docID}})
+	if failed > 0 {
+		s.lg.Warn("agent 记忆投影 chunk 重放失败",
+			loggateway.StepID("knowledge.memory.project"),
+			loggateway.Str("collection_id", col.ID),
+			loggateway.Str("doc_id", docID),
+			loggateway.Int("replayed", replayed),
+			loggateway.Int("failed", failed),
+		)
+	}
+	return nil
+}

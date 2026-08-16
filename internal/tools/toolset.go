@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/outboundguard"
 
 	"aranea-agents/pkg/apierror"
 
@@ -92,7 +93,9 @@ func Registry() []*ToolRegistration {
 				Category:    "web",
 				Tags:        []string{"web", "fetch", "http"},
 				Factory: func(ctx context.Context) (Tool, error) {
-					return trpchttpfetch.NewTool(), nil
+					return trpchttpfetch.NewTool(
+						trpchttpfetch.WithHTTPClient(outboundguard.NewClient(0)),
+					), nil
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",

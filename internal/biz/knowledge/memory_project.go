@@ -41,11 +41,17 @@ type AgentMemoryProjectResult struct {
 
 var _ AgentMemoryProjectPort = (*AgentMemoryProjector)(nil)
 
+// AgentMemoryReplayFunc 投影 chunk 重放钩子：投影落点 agents/{id}.md 重建
+// chunks/FTS（词法库 embedder=nil 纯分块）。失败必须只返回 error 由调用方
+// Warn——投影本身已成功，重放属 best-effort 派生索引。
+type AgentMemoryReplayFunc func(ctx context.Context, col Collection, docID string) error
+
 // AgentMemoryProjector 记忆 → agent vault 投影器。
 type AgentMemoryProjector struct {
-	uc    *Usecase
-	facts AgentFactLister
-	lg    loggateway.Logger
+	uc      *Usecase
+	facts   AgentFactLister
+	lg      loggateway.Logger
+	replayFn AgentMemoryReplayFunc
 }
 
 // NewAgentMemoryProjector 构造投影器。uc 或 facts 为 nil 时 Project 为 no-op。
@@ -54,6 +60,12 @@ func NewAgentMemoryProjector(uc *Usecase, facts AgentFactLister, lg loggateway.L
 		lg = loggateway.NewNoop()
 	}
 	return &AgentMemoryProjector{uc: uc, facts: facts, lg: lg}
+}
+
+// SetReplay 接线投影 chunk 重放钩子（生产 KnowledgeService 注入；同
+// SetWriteBackReplay 模式——AutoMemoryWorker 直调 Usecase，挂 biz 层收口）。
+func (p *AgentMemoryProjector) SetReplay(fn AgentMemoryReplayFunc) {
+	p.replayFn = fn
 }
 
 // ProjectAgentMemory 实现 AgentMemoryProjectPort。
@@ -113,6 +125,18 @@ func (p *AgentMemoryProjector) Project(ctx context.Context, workspace, agentID s
 			loggateway.Str("doc_id", doc.ID),
 			loggateway.Err(err),
 		)
+	}
+	// chunk 重放：投影正文已变更，chunks/FTS 必须同步重建，否则检索结果漂移。
+	// 挂在 biz 层收口（同 SetWriteBackReplay 模式），避免 AutoMemoryWorker 等
+	// 直调 Usecase 的调用方绕过。
+	if p.replayFn != nil {
+		if err := p.replayFn(ctx, col, doc.ID); err != nil {
+			p.lg.Warn("agent 记忆投影 chunk 重放失败（正文已落，重建索引可自愈）",
+				loggateway.StepID("knowledge.memory.project"),
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Err(err),
+			)
+		}
 	}
 	p.lg.Info("agent 记忆已投影到知识库",
 		loggateway.StepID("knowledge.memory.project"),

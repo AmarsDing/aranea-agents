@@ -49,6 +49,9 @@ type buildCacheEntry struct {
 	// chat request, so the user-visible flow log is emitted at most once per
 	// entry per cacheHitFlowLogInterval (process logs/metrics stay per-hit).
 	lastHitFlowAt time.Time
+	// face 是 P0-2B 热替换元数据（key 指纹 + 分片拓扑 + flat 名集）；
+	// nil 表示不可作为换面兄弟（测试 put 等无元数据路径）。
+	face *faceMeta
 }
 
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
@@ -117,6 +120,7 @@ var globalBuildCache = newBuildCache(buildCacheDefaultCap)
 
 // agentBuildFn is the agent builder invoked on cache misses. Package-level so
 // tests can substitute a lightweight stub; production wiring never overrides it.
+// 第三返回值为 P0-2B 热替换元数据（测试桩可返回 nil，该 entry 不参与换面）。
 var agentBuildFn = buildTRPCLLMAgentWithToolSets
 
 func newBuildCache(cap int) *BuildCache {
@@ -218,6 +222,12 @@ func (c *BuildCache) getA2UI(key string) *planner.A2UIResult {
 // Returns the new generation's handle（agent 字段为 runScopedAgent 包装产物）；
 // ag 为 nil 或缓存已关闭时返回 nil（调用方自行处置原始 agent）。
 func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2UIResult, toolSets []trpctool.ToolSet) *agentHandle {
+	return c.putWithFace(key, ag, a2uiResult, toolSets, nil)
+}
+
+// putWithFace 同 put，额外持久化 P0-2B 热替换元数据（nil 表示该 entry
+// 不参与在线换面）。
+func (c *BuildCache) putWithFace(key string, ag trpcagent.Agent, a2uiResult *planner.A2UIResult, toolSets []trpctool.ToolSet, face *faceMeta) *agentHandle {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if ag == nil {
@@ -242,6 +252,7 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 		e.dirty = false
 		e.toolSets = toolSets
 		e.handle = h
+		e.face = face
 		return h
 	}
 	for len(c.items) >= c.cap {
@@ -257,6 +268,7 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2U
 		a2ui:     a2uiResult,
 		toolSets: toolSets,
 		handle:   h,
+		face:     face,
 	}
 	entry.elem = c.lruList.PushFront(entry)
 	c.items[key] = entry
@@ -346,26 +358,24 @@ func GetGlobalBuildCache() *BuildCache {
 	return globalBuildCache
 }
 
-// BuildCacheKey produces a sha256 fingerprint that uniquely identifies an agent build
-// configuration. The key encodes agent ID + UpdatedAt (covers all DB-level changes)
-// + the build-effective dialog mode (planner selection only, see cacheKeyDialogMode)
-// but NOT Provider/Model, which are resolved per-request via RunOption
-// (agent.WithModel) instead of being baked into the cache key. This allows
-// different provider/model combinations to share the same cached agent,
-// dramatically improving cache hit rates.
-func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) string {
-	type fingerprint struct {
-		AgentID      string
-		AgentUpdated string
-		ConfigJSON   string
-		DialogMode   string
-		SettingsJSON string
-		ToolHash     string
-		SkillHash    string
-		MCPHash      string
-		CustomTools  []string
-	}
-	fp := fingerprint{
+// buildKeyFP 是构建缓存 key 的指纹字段集。P0-2B 热替换把它随 entry 持久
+// （faceMeta.fp），miss 时逐字段比对兄弟 entry：仅 MCPHash 可异，其余全等
+// 才允许在线换面（保证唯一变量是 MCP 配置）。
+type buildKeyFP struct {
+	AgentID      string
+	AgentUpdated string
+	ConfigJSON   string
+	DialogMode   string
+	SettingsJSON string
+	ToolHash     string
+	SkillHash    string
+	MCPHash      string
+	CustomTools  []string
+}
+
+// computeBuildKeyFP 计算指纹字段集。
+func computeBuildKeyFP(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) buildKeyFP {
+	fp := buildKeyFP{
 		AgentID:      ag.ID,
 		AgentUpdated: ag.UpdatedAt,
 		ConfigJSON:   strings.TrimSpace(ag.ConfigJSON),
@@ -383,9 +393,45 @@ func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpH
 			fp.SettingsJSON = string(b)
 		}
 	}
+	return fp
+}
+
+// key 将指纹规范化为缓存 key 字符串（agentID:sha256）。
+func (fp buildKeyFP) key() string {
 	raw, _ := json.Marshal(fp)
 	sum := sha256.Sum256(raw)
-	return fmt.Sprintf("%s:%x", ag.ID, sum)
+	return fmt.Sprintf("%s:%x", fp.AgentID, sum)
+}
+
+// mcpOnlyDelta 报告 other 相对 fp 的差异是否仅体现在 MCPHash 字段
+// （P0-2B 兄弟匹配门禁①）。CustomTools 为切片，需逐元素比对。
+func (fp buildKeyFP) mcpOnlyDelta(other buildKeyFP) bool {
+	if fp.AgentID != other.AgentID || fp.AgentUpdated != other.AgentUpdated ||
+		fp.ConfigJSON != other.ConfigJSON || fp.DialogMode != other.DialogMode ||
+		fp.SettingsJSON != other.SettingsJSON || fp.ToolHash != other.ToolHash ||
+		fp.SkillHash != other.SkillHash {
+		return false
+	}
+	if len(fp.CustomTools) != len(other.CustomTools) {
+		return false
+	}
+	for i := range fp.CustomTools {
+		if fp.CustomTools[i] != other.CustomTools[i] {
+			return false
+		}
+	}
+	return fp.MCPHash != other.MCPHash
+}
+
+// BuildCacheKey produces a sha256 fingerprint that uniquely identifies an agent build
+// configuration. The key encodes agent ID + UpdatedAt (covers all DB-level changes)
+// + the build-effective dialog mode (planner selection only, see cacheKeyDialogMode)
+// but NOT Provider/Model, which are resolved per-request via RunOption
+// (agent.WithModel) instead of being baked into the cache key. This allows
+// different provider/model combinations to share the same cached agent,
+// dramatically improving cache hit rates.
+func BuildCacheKey(ag biz.Agent, deps TRPCBuilderDeps, toolHash, skillHash, mcpHash string) string {
+	return computeBuildKeyFP(ag, deps, toolHash, skillHash, mcpHash).key()
 }
 
 // cacheKeyDialogMode reduces the dialog mode to its build-time effect on
@@ -506,13 +552,13 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 			safego.Go(context.Background(), "agent.cache.dirty_rebuild", func() {
 				globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 					buildCtx := context.WithoutCancel(ctx)
-					built, toolSets, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
+					built, toolSets, face, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
 				if buildErr != nil {
 					lg.Warn("Agent 后台重建失败", loggateway.StepID("agent.cache_rebuild_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(buildErr))
 					return nil, buildErr
 				}
 				// 后台重建只负责换代；返回值无人消费，put 内部完成旧代际退役。
-				globalBuildCache.put(key, built, nil, toolSets)
+				globalBuildCache.putWithFace(key, built, nil, toolSets, face)
 					lg.Info("Agent 后台重建完成", loggateway.StepID("agent.cache_rebuild_done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("cache_key", key))
 					return built, nil
 				})
@@ -540,6 +586,11 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	// abort the build shared by other callers.
 	v, err, _ := globalBuildCache.sfGroup.Do(key, func() (interface{}, error) {
 		buildCtx := context.WithoutCancel(ctx)
+		// P0-2B：miss 先尝试在线热替换——兄弟 entry（仅 MCPHash 异）原地换面，
+		// 命中则跳过整实例构建；不兼容返回 nil 回退全量构建（现状语义兜底）。
+		if swapped := globalBuildCache.tryHotSwap(buildCtx, key, ag, deps, lg); swapped != nil {
+			return swapped, nil
+		}
 		// K1: build start/done flow logs make the (potentially multi-second)
 		// cold build visible in the 流程日志 tab. One emitter instance pairs
 		// the start/done timing under step system.agent.build.
@@ -548,7 +599,7 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 			flow.LogStart("system.agent.build", "Agent 构建开始",
 				event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey))
 		}
-		built, toolSets, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
+		built, toolSets, face, buildErr := agentBuildFn(buildCtx, ag, deps, lg)
 		if buildErr != nil {
 			if flow != nil {
 				// K2: error path flow log carries the original error.
@@ -562,7 +613,7 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 				loggateway.Err(buildErr))
 			return nil, buildErr
 		}
-		if h := globalBuildCache.put(key, built, nil, toolSets); h != nil {
+		if h := globalBuildCache.putWithFace(key, built, nil, toolSets, face); h != nil {
 			// 返回代际句柄持有的包装 agent（Run 作用域引用计数，P0-4）；
 			// put 返回 nil 仅发生在缓存已关闭（进程退出中），退回原始构建产物。
 			built = h.agent

@@ -15,11 +15,13 @@ import (
 )
 
 func newTestWSServer(canceller RunCanceller, sender ChatSender) *WSServer {
-	return NewWSServerFromInfra(
+	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{MonitorEventBus: event.NewMonitorBus(loggateway.NewNoop())},
 		canceller, sender, nil, nil, loggateway.NewNoop(), nil, nil,
 	)
+	srv.SetAllowNilSessionAuth(true)
+	return srv
 }
 
 func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
@@ -209,6 +211,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 		v2Bus,
 		nil,
 	)
+	srv.SetAllowNilSessionAuth(true)
 	wc := &wsConn{
 		sessionID: "sess-user",
 		channels:  map[string]bool{"chat": true, "system": true},
@@ -267,6 +270,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 		v2Bus,
 		nil,
 	)
+	srv.SetAllowNilSessionAuth(true)
 	wc := &wsConn{
 		sessionID: "sess-turn",
 		channels:  map[string]bool{"chat": true, "system": true},
@@ -349,6 +353,7 @@ func TestWSUpstreamErrorPublishesSyntheticV2Failure(t *testing.T) {
 		v2Bus,
 		nil,
 	)
+	srv.SetAllowNilSessionAuth(true)
 	wc := &wsConn{
 		sessionID: "sess-syn",
 		channels:  map[string]bool{"chat": true, "system": true},

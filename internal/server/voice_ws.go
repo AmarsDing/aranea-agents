@@ -43,6 +43,10 @@ type VoiceWSServer struct {
 
 	mu    sync.Mutex
 	conns map[string]*voice.Session
+
+	// allowNilSessionAuth, when true, permits sessionAuth == nil to skip
+	// ownership checks (test-only). Default false = fail-closed.
+	allowNilSessionAuth bool
 }
 
 func NewVoiceWSServer(
@@ -73,6 +77,15 @@ func NewVoiceWSServer(
 		lg:          lg.With(loggateway.Domain("voice")),
 		conns:       map[string]*voice.Session{},
 	}
+}
+
+// SetAllowNilSessionAuth permits sessionAuth == nil to skip ownership checks.
+// Test-only escape hatch; production must never call it.
+func (s *VoiceWSServer) SetAllowNilSessionAuth(allow bool) {
+	if s == nil {
+		return
+	}
+	s.allowNilSessionAuth = allow
 }
 
 func (s *VoiceWSServer) RegisterOnKratos(srv *kratoshttp.Server) {
@@ -154,16 +167,27 @@ func (s *VoiceWSServer) handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := fmt.Sprintf("%d", claims.UserID)
-	// 会话归属校验（IDOR 防护，admin 豁免）——与 handleWS 同语义
-	if !claims.HasAdminAccess() && s.sessionAuth != nil {
-		if err := s.sessionAuth.CheckOwnership(r.Context(), sessionID, userID); err != nil {
-			s.lg.Warn("voice WS ownership denied",
-				loggateway.StepID("voice.ws.ownership_denied"),
+	// 会话归属校验（IDOR 防护，admin 豁免）——与 handleWS 同语义，
+	// nil SessionAuthorizer fail-closed（除非 SetAllowNilSessionAuth 显式允许）。
+	if !claims.HasAdminAccess() {
+		if s.sessionAuth == nil && !s.allowNilSessionAuth {
+			s.lg.Warn("voice WS session ownership check unavailable (sessionAuth nil), rejecting connection",
+				loggateway.StepID("voice.ws.ownership_unavailable"),
 				loggateway.Str("session_id", sessionID),
-				loggateway.Str("user_id", userID),
-				loggateway.Err(err))
-			http.Error(w, "session ownership required", http.StatusForbidden)
+				loggateway.Str("user_id", userID))
+			http.Error(w, "session ownership check unavailable", http.StatusServiceUnavailable)
 			return
+		}
+		if s.sessionAuth != nil {
+			if err := s.sessionAuth.CheckOwnership(r.Context(), sessionID, userID); err != nil {
+				s.lg.Warn("voice WS ownership denied",
+					loggateway.StepID("voice.ws.ownership_denied"),
+					loggateway.Str("session_id", sessionID),
+					loggateway.Str("user_id", userID),
+					loggateway.Err(err))
+				http.Error(w, "session ownership required", http.StatusForbidden)
+				return
+			}
 		}
 	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)

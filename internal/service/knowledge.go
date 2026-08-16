@@ -121,7 +121,11 @@ func (s *KnowledgeService) SetMonitorBus(bus contract.MonitorBus) {
 }
 
 // SetAgentMemoryProjector 接线 SP7 G1 投影器（可选；nil 时 ProjectAgentMemory no-op）。
+// 同时注入 chunk 重放钩子，确保投影写文档后 chunks/FTS 同步重建。
 func (s *KnowledgeService) SetAgentMemoryProjector(p *bizknowledge.AgentMemoryProjector) {
+	if p != nil {
+		p.SetReplay(s.replayAgentMemoryChunks)
+	}
 	s.agentMem = p
 }
 

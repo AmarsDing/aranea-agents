@@ -108,12 +108,16 @@ func L1MemoryCue(ctx context.Context, l1Reader biz.L1AdminReader, ag biz.Agent, 
 	var b strings.Builder
 	title := strings.TrimSpace(fmt.Sprint(task["task_title"]))
 	goal := strings.TrimSpace(fmt.Sprint(task["task_goal"]))
+	rowStatus := strings.TrimSpace(fmt.Sprint(task["status"]))
 	b.WriteString("## L1 working memory (current task)\n")
 	if title != "" && title != "<nil>" {
 		fmt.Fprintf(&b, "Task: %s\n", title)
 	}
 	if goal != "" && goal != "<nil>" && goal != title {
 		fmt.Fprintf(&b, "Goal: %s\n", goal)
+	}
+	if board := parseL1TaskBoard(task); board != nil {
+		board.appendTo(&b, rowStatus)
 	}
 	b.WriteString("Pinned fields:\n")
 	fieldValues := make([]string, 0, len(pinnedFields))
@@ -143,6 +147,7 @@ func fieldPinnedToPrompt(row map[string]any) bool {
 func formatL1TaskOnlyResult(task map[string]any) *L1CueResult {
 	title := strings.TrimSpace(fmt.Sprint(task["task_title"]))
 	goal := strings.TrimSpace(fmt.Sprint(task["task_goal"]))
+	rowStatus := strings.TrimSpace(fmt.Sprint(task["status"]))
 	if title == "" || title == "<nil>" {
 		return nil
 	}
@@ -152,7 +157,120 @@ func formatL1TaskOnlyResult(task map[string]any) *L1CueResult {
 	if goal != "" && goal != "<nil>" && goal != title {
 		fmt.Fprintf(&b, "Goal: %s\n", goal)
 	}
+	if board := parseL1TaskBoard(task); board != nil {
+		board.appendTo(&b, rowStatus)
+	}
 	return &L1CueResult{Cue: strings.TrimSpace(b.String())}
+}
+
+// l1TaskBoard 是跨会话长任务的结构化进度快照（任务状态表层），
+// 承载于 memory_l1_tasks.metadata_json["task_board"]：
+//
+//	{"status":"...","done":["..."],"next":"...","blockers":["..."]}
+//
+// 与 L1 pinned fields 的关系：pinned fields 记"关键事实"，board 记"做到哪了"。
+// 全部字段可选；全空视为不存在（不渲染）。
+type l1TaskBoard struct {
+	Status   string
+	Done     []string
+	Next     string
+	Blockers []string
+}
+
+const (
+	// 防御上限：metadata_json 被写爆时 board 注入不得撑爆 prompt。
+	l1TaskBoardMaxItems     = 8   // done/blockers 各自条目上限
+	l1TaskBoardMaxItemRunes = 160 // 单条目 rune 上限
+	l1TaskBoardMaxLineRunes = 200 // status/next 单行上限
+)
+
+// parseL1TaskBoard 从任务行 map（scanL1TaskRow 产物）解析 task_board。
+// metadata_json 缺失/非法/无 task_board 键/全空均返回 nil。
+func parseL1TaskBoard(task map[string]any) *l1TaskBoard {
+	raw := strings.TrimSpace(fmt.Sprint(task["metadata_json"]))
+	if raw == "" || raw == "<nil>" {
+		return nil
+	}
+	var meta struct {
+		Board json.RawMessage `json:"task_board"`
+	}
+	if json.Unmarshal([]byte(raw), &meta) != nil || len(meta.Board) == 0 {
+		return nil
+	}
+	var parsed struct {
+		Status   string   `json:"status"`
+		Done     []string `json:"done"`
+		Next     string   `json:"next"`
+		Blockers []string `json:"blockers"`
+	}
+	if json.Unmarshal(meta.Board, &parsed) != nil {
+		return nil
+	}
+	board := &l1TaskBoard{
+		Status:   truncateBoardRunes(parsed.Status, l1TaskBoardMaxLineRunes),
+		Next:     truncateBoardRunes(parsed.Next, l1TaskBoardMaxLineRunes),
+		Done:     cleanBoardList(parsed.Done),
+		Blockers: cleanBoardList(parsed.Blockers),
+	}
+	if board.empty() {
+		return nil
+	}
+	return board
+}
+
+func (b *l1TaskBoard) empty() bool {
+	return b.Status == "" && b.Next == "" && len(b.Done) == 0 && len(b.Blockers) == 0
+}
+
+// appendTo 将 board 渲染到 L1 cue（Task/Goal 之后、Pinned fields 之前）。
+// rowStatus 为任务行级状态：board 无 status 且行状态非常态（非 active）时回退展示。
+func (b *l1TaskBoard) appendTo(sb *strings.Builder, rowStatus string) {
+	status := b.Status
+	if status == "" && rowStatus != "" && rowStatus != "active" && rowStatus != "<nil>" {
+		status = rowStatus
+	}
+	if status != "" {
+		fmt.Fprintf(sb, "Status: %s\n", status)
+	}
+	if len(b.Done) > 0 {
+		sb.WriteString("Progress:\n")
+		for _, d := range b.Done {
+			fmt.Fprintf(sb, "- %s\n", d)
+		}
+	}
+	if b.Next != "" {
+		fmt.Fprintf(sb, "Next: %s\n", b.Next)
+	}
+	if len(b.Blockers) > 0 {
+		sb.WriteString("Blockers:\n")
+		for _, bl := range b.Blockers {
+			fmt.Fprintf(sb, "- %s\n", bl)
+		}
+	}
+}
+
+func cleanBoardList(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = truncateBoardRunes(s, l1TaskBoardMaxItemRunes)
+		if s == "" {
+			continue
+		}
+		out = append(out, s)
+		if len(out) >= l1TaskBoardMaxItems {
+			break
+		}
+	}
+	return out
+}
+
+func truncateBoardRunes(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) > maxRunes {
+		return string(r[:maxRunes]) + "…"
+	}
+	return s
 }
 
 func l1FieldValue(row map[string]any) string {
