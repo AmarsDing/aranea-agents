@@ -234,3 +234,21 @@ func TestKnowledgeAdapter_Search_MetadataJSONPreserved(t *testing.T) {
 		t.Errorf("expected metadata doc_id='doc-1', got %v", meta["doc_id"])
 	}
 }
+
+// 框架原生 knowledge_search 路径必须与项目自有检索路径同规：日记流水
+// （inbox/writeback-*，仅 provenance）默认排除，不进 Agent 上下文。
+func TestKnowledgeAdapter_Search_ExcludesWriteBackInbox(t *testing.T) {
+	var got biz.KnowledgeSearchQuery
+	searchFunc := func(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+		got = q
+		return nil, nil
+	}
+
+	adapter := NewKnowledgeAdapter(searchFunc, loggateway.NewNoop())
+	if _, err := adapter.Search(context.Background(), &knowledge.SearchRequest{Query: "q", MaxResults: 5}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got.ExcludePathPrefixes) != 1 || got.ExcludePathPrefixes[0] != biz.KnowledgeWriteBackInboxPrefix {
+		t.Fatalf("ExcludePathPrefixes = %v, want [%q]", got.ExcludePathPrefixes, biz.KnowledgeWriteBackInboxPrefix)
+	}
+}

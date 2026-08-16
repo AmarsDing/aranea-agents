@@ -290,7 +290,10 @@ func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []
 		Analytics:   o.expAnalytics(),
 		MemoryAdmin: o.td().Persist.Memory.AdminUsecase,
 		Agents:      o.td().ReadDeps.Agents,
-		LG:          o.lg(),
+		// M4 知识库词条治理：Usecase 未装配时为 nil，knowledge_curate 工具不挂载、
+		// dream_cycle 跳过 curate_knowledge 步骤（与记忆梦境主流程解耦降级）。
+		Knowledge: o.rt().Knowledge.Usecase,
+		LG:        o.lg(),
 	})
 }
 

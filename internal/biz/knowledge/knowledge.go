@@ -270,6 +270,16 @@ type Usecase struct {
 	// 手动自愈）。放 biz 层收口：knowledge_write 工具直调 Usecase（不经 service
 	// 包装），重放挂 service 层时该路径绕过，entries/* 永久 pending。
 	writeBackReplay WriteBackReplayFunc
+	// factVersions/proposals 为 M3 演化时序持久化（supersedes 版本链 + 治理提案），
+	// 经 SetEvolutionRepos 接线；nil 时留痕跳过（写回主流程语义不变）。
+	factVersions FactVersionRepo
+	proposals    GovernanceProposalRepo
+	// arbiter 为 M3.2 写回冲突仲裁器，经 SetWriteBackArbiter 接线；
+	// nil 时新事实一律追加（不仲裁，与 M3 前行为一致）。
+	arbiter WriteBackArbiter
+	// curate 为 M4 自治理数据端口，经 SetCurateRepo 接线；
+	// nil 时 CurateKnowledge 显式报不可用。
+	curate KnowledgeCurateRepo
 	// lg 为域日志器（SP1-H 起：回填等 best-effort 副作用的失败 Warn 出口）；
 	// 构造默认 Noop，生产经 SetLogger 接线。
 	lg loggateway.Logger

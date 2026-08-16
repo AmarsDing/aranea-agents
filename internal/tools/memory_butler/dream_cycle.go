@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/jsonutil"
 	"aranea-agents/pkg/loggateway"
 
@@ -36,6 +37,9 @@ type dreamCycleOutput struct {
 	DeletedCount   int      `json:"deleted_count"`
 	MergedCount    int      `json:"merged_count"`
 	DistilledCount int      `json:"distilled_count"`
+	// M4 知识库词条治理：本轮新产高风险 pending 提案数与执行的治理任务。
+	KnowledgeProposals int      `json:"knowledge_proposals"`
+	KnowledgeActions   []string `json:"knowledge_actions"`
 }
 
 func newDreamCycleTool(deps Deps) trpctool.Tool {
@@ -52,14 +56,22 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		qualityBefore := reportBefore.HealthScore
 
 		if input.DryRun {
-			return dreamCycleOutput{
-				QualityBefore:  qualityBefore,
-				QualityAfter:   0,
-				ActionsTaken:   []string{"dry_run: would execute forget_low_quality, forget_inactive, deduplicate, consolidate"},
-				DeletedCount:   0,
-				MergedCount:    0,
-				DistilledCount: 0,
-			}, nil
+			actions := []string{"dry_run: would execute forget_low_quality, forget_inactive, deduplicate, consolidate"}
+			out := dreamCycleOutput{ActionsTaken: actions}
+			out.QualityBefore = qualityBefore
+			// M4：dry_run 下知识治理做只读预估（decay 走 COUNT，提案不落库）。
+			if deps.Knowledge != nil {
+				if rep, cerr := deps.Knowledge.CurateKnowledge(ctx, bizknowledge.CurateOptions{DryRun: true}); cerr != nil {
+					deps.LG.Warn("dream_cycle: knowledge curate dry-run preview failed",
+						loggateway.StepID("memory_butler.dream.curate_preview"),
+						loggateway.Err(cerr))
+				} else {
+					out.KnowledgeProposals = rep.ProposalsPending
+					out.KnowledgeActions = rep.Actions
+					out.ActionsTaken = append(out.ActionsTaken, "dry_run: would execute curate_knowledge")
+				}
+			}
+			return out, nil
 		}
 
 		var actions []string
@@ -135,6 +147,24 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 			actions = append(actions, "consolidate_episodes")
 		}
 
+		// Step 5.5: curate knowledge entries (M4 自治理层)——低风险自动应用，
+		// 高风险仅产 pending 提案待人工二审；失败 Warn 降级，不中断梦境主流程。
+		knowledgeProposals := 0
+		var knowledgeActions []string
+		if deps.Knowledge != nil {
+			rep, cerr := deps.Knowledge.CurateKnowledge(ctx, bizknowledge.CurateOptions{DryRun: false})
+			if cerr != nil {
+				deps.LG.Warn("dream_cycle: curate_knowledge failed",
+					loggateway.StepID("memory_butler.dream.curate_knowledge"),
+					loggateway.Str("agent_id", input.AgentID),
+					loggateway.Err(cerr))
+			} else {
+				knowledgeProposals = rep.ProposalsPending
+				knowledgeActions = rep.Actions
+				actions = append(actions, "curate_knowledge")
+			}
+		}
+
 		// Step 6: Save dream snapshot with only actually deleted facts.
 		snapshot := biz.DreamSnapshot{
 			ExecutedAt:   time.Now().UTC().Format(time.RFC3339),
@@ -173,12 +203,14 @@ func newDreamCycleTool(deps Deps) trpctool.Tool {
 		qualityAfter := reportAfter.HealthScore
 
 		return dreamCycleOutput{
-			QualityBefore:  qualityBefore,
-			QualityAfter:   qualityAfter,
-			ActionsTaken:   actions,
-			DeletedCount:   totalDeleted,
-			MergedCount:    totalMerged,
-			DistilledCount: totalDistilled,
+			QualityBefore:      qualityBefore,
+			QualityAfter:       qualityAfter,
+			ActionsTaken:       actions,
+			DeletedCount:       totalDeleted,
+			MergedCount:        totalMerged,
+			DistilledCount:     totalDistilled,
+			KnowledgeProposals: knowledgeProposals,
+			KnowledgeActions:   knowledgeActions,
 		}, nil
 	}
 

@@ -37,6 +37,7 @@ const OperationKnowledgeServiceListDanglingLinks = "/kratos.knowledge.v1.Knowled
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
+const OperationKnowledgeServiceListGovernanceProposals = "/kratos.knowledge.v1.KnowledgeService/ListGovernanceProposals"
 const OperationKnowledgeServiceListRecentLinkUses = "/kratos.knowledge.v1.KnowledgeService/ListRecentLinkUses"
 const OperationKnowledgeServiceListUnlinkedMentions = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
 const OperationKnowledgeServiceListVaultTree = "/kratos.knowledge.v1.KnowledgeService/ListVaultTree"
@@ -47,6 +48,7 @@ const OperationKnowledgeServicePromoteBlocks = "/kratos.knowledge.v1.KnowledgeSe
 const OperationKnowledgeServiceRebuildKnowledgeIndex = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 const OperationKnowledgeServiceRecordLinkUse = "/kratos.knowledge.v1.KnowledgeService/RecordLinkUse"
 const OperationKnowledgeServiceReembedDocuments = "/kratos.knowledge.v1.KnowledgeService/ReembedDocuments"
+const OperationKnowledgeServiceResolveGovernanceProposal = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
 const OperationKnowledgeServiceSearch = "/kratos.knowledge.v1.KnowledgeService/Search"
 const OperationKnowledgeServiceUpdateDocumentContent = "/kratos.knowledge.v1.KnowledgeService/UpdateDocumentContent"
 const OperationKnowledgeServiceUpdateEmbedderConfig = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -91,6 +93,9 @@ type KnowledgeServiceHTTPServer interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(context.Context, *ListEntityMergeSuggestionsRequest) (*ListEntityMergeSuggestionsResponse, error)
+	// ListGovernanceProposals ListGovernanceProposals lists curation governance proposals (M4 自治理层
+	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+	ListGovernanceProposals(context.Context, *ListGovernanceProposalsRequest) (*ListGovernanceProposalsResponse, error)
 	// ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
 	// collection, most recent first (B4 #8); drives empty-query [[ completion
 	// ordering on the client.
@@ -127,6 +132,9 @@ type KnowledgeServiceHTTPServer interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(context.Context, *ReembedDocumentsRequest) (*ReembedDocumentsResponse, error)
+	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
+	// decision=applied approves the governance action, rejected dismisses it.
+	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
 	// Search Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -166,6 +174,8 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/collections/{id}/rebuild-index", _KnowledgeService_RebuildKnowledgeIndex0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/entity-merge-suggestions", _KnowledgeService_ListEntityMergeSuggestions0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/vaults/{collection_id}/entity-merges", _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/governance-proposals", _KnowledgeService_ListGovernanceProposals0_HTTP_Handler(srv))
+	r.POST("/v1/knowledge/governance-proposals/{id}:resolve", _KnowledgeService_ResolveGovernanceProposal0_HTTP_Handler(srv))
 	r.POST("/v1/knowledge/search", _KnowledgeService_Search0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/embedder-config", _KnowledgeService_GetEmbedderConfig0_HTTP_Handler(srv))
 	r.PUT("/v1/knowledge/embedder-config", _KnowledgeService_UpdateEmbedderConfig0_HTTP_Handler(srv))
@@ -811,6 +821,50 @@ func _KnowledgeService_MergeKnowledgeEntities0_HTTP_Handler(srv KnowledgeService
 	}
 }
 
+func _KnowledgeService_ListGovernanceProposals0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListGovernanceProposalsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListGovernanceProposals)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListGovernanceProposals(ctx, req.(*ListGovernanceProposalsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListGovernanceProposalsResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _KnowledgeService_ResolveGovernanceProposal0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ResolveGovernanceProposalRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceResolveGovernanceProposal)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ResolveGovernanceProposal(ctx, req.(*ResolveGovernanceProposalRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ResolveGovernanceProposalResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_Search0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in SearchRequest
@@ -914,6 +968,9 @@ type KnowledgeServiceHTTPClient interface {
 	// plus high-similarity embedding pairs when the embedder is configured.
 	// Computed in real time; no queue table.
 	ListEntityMergeSuggestions(ctx context.Context, req *ListEntityMergeSuggestionsRequest, opts ...http.CallOption) (rsp *ListEntityMergeSuggestionsResponse, err error)
+	// ListGovernanceProposals ListGovernanceProposals lists curation governance proposals (M4 自治理层
+	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+	ListGovernanceProposals(ctx context.Context, req *ListGovernanceProposalsRequest, opts ...http.CallOption) (rsp *ListGovernanceProposalsResponse, err error)
 	// ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
 	// collection, most recent first (B4 #8); drives empty-query [[ completion
 	// ordering on the client.
@@ -950,6 +1007,9 @@ type KnowledgeServiceHTTPClient interface {
 	// content_text (B1: heals UI-uploaded docs whose embeddings were nulled by
 	// reconcileEmbeddingDim; vault docs self-heal via vault_sync and are skipped).
 	ReembedDocuments(ctx context.Context, req *ReembedDocumentsRequest, opts ...http.CallOption) (rsp *ReembedDocumentsResponse, err error)
+	// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
+	// decision=applied approves the governance action, rejected dismisses it.
+	ResolveGovernanceProposal(ctx context.Context, req *ResolveGovernanceProposalRequest, opts ...http.CallOption) (rsp *ResolveGovernanceProposalResponse, err error)
 	// Search Search
 	Search(ctx context.Context, req *SearchRequest, opts ...http.CallOption) (rsp *SearchResponse, err error)
 	// UpdateDocumentContent UpdateDocumentContent saves editor body back to the vault file (G2-B5):
@@ -1210,6 +1270,21 @@ func (c *KnowledgeServiceHTTPClientImpl) ListEntityMergeSuggestions(ctx context.
 	return &out, nil
 }
 
+// ListGovernanceProposals ListGovernanceProposals lists curation governance proposals (M4 自治理层
+// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+func (c *KnowledgeServiceHTTPClientImpl) ListGovernanceProposals(ctx context.Context, in *ListGovernanceProposalsRequest, opts ...http.CallOption) (*ListGovernanceProposalsResponse, error) {
+	var out ListGovernanceProposalsResponse
+	pattern := "/v1/knowledge/governance-proposals"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListGovernanceProposals))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListRecentLinkUses ListRecentLinkUses returns recently used wikilink targets of one
 // collection, most recent first (B4 #8); drives empty-query [[ completion
 // ordering on the client.
@@ -1358,6 +1433,21 @@ func (c *KnowledgeServiceHTTPClientImpl) ReembedDocuments(ctx context.Context, i
 	pattern := "/v1/knowledge/collections/{collection_id}/documents:reembed"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceReembedDocuments))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ResolveGovernanceProposal ResolveGovernanceProposal closes one pending proposal (人工二审):
+// decision=applied approves the governance action, rejected dismisses it.
+func (c *KnowledgeServiceHTTPClientImpl) ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...http.CallOption) (*ResolveGovernanceProposalResponse, error) {
+	var out ResolveGovernanceProposalResponse
+	pattern := "/v1/knowledge/governance-proposals/{id}:resolve"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceResolveGovernanceProposal))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

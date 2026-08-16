@@ -331,6 +331,21 @@ var ddlMigrations = []ddlMigration{
 	// （同 20261216 twinops 的情形）→ effective keys 查无工具行，工具永不装配。
 	// 种子函数幂等（ON CONFLICT DO NOTHING + catalog UPDATE），重跑安全。
 	{Version: 20261219, Name: "builtin_platform_tools_officecli_reseed", Func: ddlBuiltinPlatformTools},
+	// 20261220 knowledge_links_bitemporal: 自治理知识图谱 M1 时序地基——
+	// links 加双时态列（valid_from/valid_to + recorded_at）、语义谓词 relation、
+	// 浮点权重 weight_f、置信度 confidence；新建 knowledge_access_log（base-level 激活分
+	// 与 Hebbian 共激活的检索命中日志）。幂等 IF NOT EXISTS。
+	{Version: 20261220, Name: "knowledge_links_bitemporal", SQL: "sql/migrations/20261220_knowledge_links_bitemporal.sql"},
+	// 20261221 knowledge_relation_vocab: 自治理知识图谱 M2 语义关系层地基——
+	// knowledge_relation_vocab 受控涌现谓词词表（core 硬编码 8 谓词 + candidate LLM 提议），
+	// knowledge_relation_state 抽取幂等状态（content_hash 一致跳过，控 LLM 成本）。
+	// 种子幂等 ON CONFLICT DO NOTHING，重跑安全。
+	{Version: 20261221, Name: "knowledge_relation_vocab", SQL: "sql/migrations/20261221_knowledge_relation_vocab.sql"},
+	// 20261222 knowledge_fact_version: 自治理知识图谱 M3 演化时序层地基——
+	// knowledge_fact_version supersedes 版本链旧段快照（演化可审计可回滚，不污染 links 表），
+	// knowledge_governance_proposal 治理提案（M3.2 矛盾仲裁高风险人工二审；M4 dream_cycle 复用）。
+	// 幂等 IF NOT EXISTS，重跑安全。
+	{Version: 20261222, Name: "knowledge_fact_version", SQL: "sql/migrations/20261222_knowledge_fact_version.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

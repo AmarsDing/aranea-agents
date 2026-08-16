@@ -62,6 +62,10 @@ func (a *KnowledgeAdapter) toBizQuery(req *knowledge.SearchRequest) biz.Knowledg
 		Query:    req.Query,
 		TopK:     req.MaxResults,
 		MinScore: float32(req.MinScore),
+		// 词条优先写回：日记流水（inbox/writeback-*）仅 provenance，不进 Agent 默认
+		// 检索——与 knowledge 工具/cue 预检索同规（此前框架原生 knowledge_search
+		// 路径漏排，流水会进 Agent 上下文）。
+		ExcludePathPrefixes: []string{biz.KnowledgeWriteBackInboxPrefix},
 	}
 
 	if q.TopK <= 0 {

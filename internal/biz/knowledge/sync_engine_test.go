@@ -32,6 +32,10 @@ func TestSyncScannerScanFiltersFiles(t *testing.T) {
 	writeVaultFile(t, root, ".aranea/trash/old.md", "回收站内容")
 	writeVaultFile(t, root, "image.png", "二进制")
 	writeVaultFile(t, root, "doc.txt", "非 md 文本")
+	writeVaultFile(t, root, "report.pdf", "pdf 字节")
+	writeVaultFile(t, root, "slides.pptx", "pptx 字节")
+	writeVaultFile(t, root, "archive.zip", "不可摄取")
+	writeVaultFile(t, root, "main.go", "package main")
 
 	snaps, err := newTestScanner().Scan(root, nil)
 	require.NoError(t, err)
@@ -40,8 +44,10 @@ func TestSyncScannerScanFiltersFiles(t *testing.T) {
 	for _, s := range snaps {
 		paths = append(paths, s.RelPath)
 	}
-	assert.ElementsMatch(t, []string{"财报/q2.md", "notes.md"}, paths,
-		"只跟踪 .md；忽略 .aranea/隐藏文件/非 md")
+	// M0：白名单扩为可摄取集合（文本直读 ∪ office/图片），忽略隐藏/回收站/不可摄取类型。
+	assert.ElementsMatch(t,
+		[]string{"财报/q2.md", "notes.md", "image.png", "doc.txt", "report.pdf", "slides.pptx"},
+		paths, "跟踪可摄取白名单；忽略 .aranea/隐藏文件/zip/go 源码")
 	for _, s := range snaps {
 		assert.NotEmpty(t, s.Hash)
 		assert.False(t, s.ModTime.IsZero())

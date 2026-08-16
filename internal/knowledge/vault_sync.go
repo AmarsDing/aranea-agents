@@ -3,6 +3,8 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -23,6 +25,14 @@ type VaultSyncApplier struct {
 	lg          loggateway.Logger
 	summaryHook func(root, relPath string)       // nil = 不触发摘要生成
 	entityHook  func(collectionID, docID string) // nil = 不触发实体抽取
+	compiler    BodyCompiler                     // nil = 二进制文件降级 error（M0）
+}
+
+// BodyCompiler 把需抽取的文件（office/图片）原始字节编译为 Markdown 正文（M0 摄取编译）。
+// 由 ExtractorRegistry 适配实现；文本直读文件不经过本端口（保留 frontmatter 解析）。
+// 返回：编译后 Markdown 正文 + 规范 MIME（统一 text/markdown）。
+type BodyCompiler interface {
+	Compile(ctx context.Context, relPath string, raw []byte) (body string, mimeType string, err error)
 }
 
 // NewVaultSyncApplier 构造。lg 为 nil 时使用 Noop。
@@ -48,6 +58,12 @@ func (a *VaultSyncApplier) SetSummaryHook(hook func(root, relPath string)) {
 // 同步/异步约定同 SetSummaryHook；extractor 内部按 docID+contentHash 幂等。
 func (a *VaultSyncApplier) SetEntityHook(hook func(collectionID, docID string)) {
 	a.entityHook = hook
+}
+
+// SetCompiler 注入二进制编译端口（M0 摄取编译）：office/图片经抽取器编译为 Markdown。
+// nil（默认）时二进制文件降级 status=error，不 panic；文本直读文件不经过本端口。
+func (a *VaultSyncApplier) SetCompiler(c BodyCompiler) {
+	a.compiler = c
 }
 
 // ApplyEvents 顺序应用一批变更事件。单事件失败不阻塞后续事件（记录日志），
@@ -120,22 +136,54 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		return nil
 	}
 
-	vdoc, err := a.filer.ReadDoc(vault.RootPath, ev.RelPath)
-	if err != nil {
-		return err
+	// M0 摄取编译：需抽取文件（office/图片）经编译端口得 Markdown；文本直读走 ReadDoc（保留 frontmatter）。
+	var body, mimeType string
+	var fm bizknowledge.DocFrontmatter
+	if bizknowledge.NeedsExtraction(ev.RelPath) {
+		raw, rerr := a.readRawBytes(vault.RootPath, ev.RelPath)
+		if rerr != nil {
+			return rerr
+		}
+		if a.compiler == nil {
+			// 无编译端口：建文档行标 error 降级（下轮重试），不 panic。
+			doc, cerr := a.upsertCompiledDoc(ctx, vault, ev, "", mimeTypeFor(ev.RelPath), notFound, existing)
+			if cerr != nil {
+				return cerr
+			}
+			err := apierror.Internal("knowledge", "no body compiler configured for %q", ev.RelPath)
+			a.markError(ctx, doc.ID, err)
+			return err
+		}
+		md, mt, cerr := a.compiler.Compile(ctx, ev.RelPath, raw)
+		if cerr != nil {
+			doc, derr := a.upsertCompiledDoc(ctx, vault, ev, "", mimeTypeFor(ev.RelPath), notFound, existing)
+			if derr != nil {
+				return derr
+			}
+			a.markError(ctx, doc.ID, cerr)
+			return cerr
+		}
+		body, mimeType = md, mt
+	} else {
+		vdoc, err := a.filer.ReadDoc(vault.RootPath, ev.RelPath)
+		if err != nil {
+			return err
+		}
+		body, mimeType = vdoc.Body, "text/markdown"
+		fm = vdoc.Frontmatter
 	}
-	fm := vdoc.Frontmatter
 
 	var doc bizknowledge.Document
+	var err error
 	if notFound {
 		// ContentHash 留空：索引成功后才经 UpdateDocumentSyncMeta 落库（失败可重试）。
 		doc, err = a.uc.CreateDocument(ctx, bizknowledge.Document{
 			CollectionID: vault.ID,
 			Source:       ev.RelPath,
-			MimeType:     "text/markdown",
+			MimeType:     mimeType,
 			SizeBytes:    ev.Snapshot.Size,
 			RelPath:      ev.RelPath,
-			ContentText:  vdoc.Body,
+			ContentText:  body,
 			Organized:    true,
 			Summary:      fm.Summary,
 			SummaryHash:  fm.SummaryHash,
@@ -147,14 +195,14 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		}
 	} else {
 		doc = existing
-		if err := a.uc.UpdateDocumentContent(ctx, doc.ID, vdoc.Body, true); err != nil {
+		if err := a.uc.UpdateDocumentContent(ctx, doc.ID, body, true); err != nil {
 			return err
 		}
 	}
 
 	// SP2 #9：熔断窗口内跳过 embed 尝试（故障期不打 API，词法索引照常）。
 	allowEmbed := bizknowledge.EmbedCircuitAllow(existing.EmbedFailCount, existing.EmbedLastTried, time.Now())
-	chunks, embedOutcome, err := a.buildChunks(ctx, vault, doc.ID, vdoc.Body, allowEmbed)
+	chunks, embedOutcome, err := a.buildChunks(ctx, vault, doc.ID, body, allowEmbed)
 	if err != nil {
 		a.markError(ctx, doc.ID, err)
 		return err
@@ -226,7 +274,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	)
 	// SP1-C 块级双链：解析 [[...]] 重建块/refs 索引并投影 explicit 文档轨
 	// （失败仅降级记日志，不回滚索引；未接线块端口时 no-op）。
-	if err := a.rebuildBlockIndex(ctx, vault, doc.ID, vdoc.Body); err != nil {
+	if err := a.rebuildBlockIndex(ctx, vault, doc.ID, body); err != nil {
 		a.lg.Warn("vault block index rebuild failed",
 			loggateway.Str("vault_id", vault.ID),
 			loggateway.Str("rel_path", ev.RelPath),
@@ -238,7 +286,7 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 		a.entityHook(vault.ID, doc.ID)
 	}
 	// P2-2：摘要卡过期 → 触发异步重生成（hook 为 nil 时跳过，摘要为可选增强）。
-	if a.summaryHook != nil && bizknowledge.SummaryStale(vdoc.Body, fm.SummaryHash) {
+	if a.summaryHook != nil && bizknowledge.SummaryStale(body, fm.SummaryHash) {
 		a.summaryHook(vault.RootPath, ev.RelPath)
 	}
 	return nil
@@ -360,6 +408,56 @@ func (a *VaultSyncApplier) markError(ctx context.Context, docID string, cause er
 			loggateway.Str("doc_id", docID),
 			loggateway.Err(err),
 		)
+	}
+}
+
+// readRawBytes 读 vault 内文件的原始字节（M0：供二进制编译，绕过 parseVaultDoc）。
+func (a *VaultSyncApplier) readRawBytes(root, relPath string) ([]byte, error) {
+	rel, err := bizknowledge.SanitizeRelPath(relPath)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+}
+
+// upsertCompiledDoc 编译失败路径：确保文档行存在（标 error 用），不建 chunks。
+// 幂等：已存在则复用；新建时 ContentText 为空、状态由调用方 markError 置 error。
+func (a *VaultSyncApplier) upsertCompiledDoc(ctx context.Context, vault bizknowledge.Collection, ev bizknowledge.ChangeEvent, body, mime string, notFound bool, existing bizknowledge.Document) (bizknowledge.Document, error) {
+	if !notFound {
+		return existing, nil
+	}
+	return a.uc.CreateDocument(ctx, bizknowledge.Document{
+		CollectionID: vault.ID,
+		Source:       ev.RelPath,
+		MimeType:     mime,
+		SizeBytes:    ev.Snapshot.Size,
+		RelPath:      ev.RelPath,
+		ContentText:  body,
+		Organized:    false,
+	})
+}
+
+// mimeTypeFor 按扩展名给出源文件 MIME（编译失败留痕用；成功时以编译器返回为准）。
+func mimeTypeFor(relPath string) string {
+	switch strings.ToLower(filepath.Ext(relPath)) {
+	case ".pdf":
+		return "application/pdf"
+	case ".doc":
+		return "application/msword"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "application/octet-stream"
 	}
 }
 

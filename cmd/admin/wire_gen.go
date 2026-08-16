@@ -78,6 +78,8 @@ import (
 	"aranea-agents/internal/voice"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
+	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/safego"
 	"context"
 	"database/sql"
 	"fmt"
@@ -323,7 +325,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	dynamicLLMCaller := agent.NewDynamicLLMCaller(systemSettingUsecase, llmProviderModelUsecase, roundTrip)
 	queryRewriter := service.NewKnowledgeQueryRewriter(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	graphExpander := service.NewKnowledgeGraphExpander(knowledgeRepo, loggatewayLogger)
-	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, graphExpander, loggatewayLogger)
+	adaptiveRouter := service.NewKnowledgeAdaptiveRouter(hybridRetriever, queryRewriter, graphExpander, knowledgeRepo, loggatewayLogger)
 	federatedRetriever := service.NewKnowledgeFederatedRetriever(adaptiveRouter, retriever, knowledgeUsecase, loggatewayLogger)
 	retrievalEvaluator := service.NewKnowledgeRetrievalEvaluator(dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
 	taskRepo := data.NewTaskRepo(dataData)
@@ -625,7 +627,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, monitorBus, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, dataData, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
@@ -633,7 +635,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	factWriteAdjudicator := provideFactWriteAdjudicator(agentUsecase, sessionUsecase, llmProviderModelUsecase, loggatewayLogger)
 	factWritePipeline := provideFactWritePipeline(dataData, memoryUsecase, factWriteAdjudicator, loggatewayLogger)
 	agentCaseLLMExtractor := service.NewAgentCaseLLMExtractor(memoryLLMExtractor)
-	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger)
+	writeBackArbiter := provideKnowledgeWriteBackArbiter(knowledgeUsecase, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, loggatewayLogger)
+	autoMemoryWorker, err := provideAutoMemoryWorker(runtime, sessionUsecase, agentUsecase, memoryConsolidationWriter, l4GraphWriter, memoryFactIndexSyncer, episodeIndexSyncer, memoryLLMExtractor, memoryJobQueue, memoryJobDeadLetterRepo, memoryWorkerStats, monitorBus, factWritePipeline, agentCaseLLMExtractor, memoryAgentCaseRepo, memoryAgentCaseRepo, knowledgeService, knowledgeUsecase, dataData, loggatewayLogger, writeBackArbiter)
 	if err != nil {
 		cleanup()
 		return wireOut{}, nil, err
@@ -668,6 +671,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryCanaryWorker := provideMemoryCanaryWorker(dataData, memoryCanaryStatus, flowLogWriter, loggatewayLogger)
 	memoryCitationBackfillWorker := provideMemoryCitationBackfillWorker(dataData, loggatewayLogger)
 	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
+	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, dynamicLLMCaller, systemSettingUsecase, llmProviderModelUsecase, knowledgeUsecase, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -719,7 +723,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -1807,6 +1811,57 @@ func provideArtifactSigner(lg loggateway.Logger) *artifact3.Signer {
 	return artifact3.NewSigner(lg)
 }
 
+// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
+// semantic relation worker: periodically scans hot documents (knowledge_access_log
+// hits >= threshold) per collection and runs the two-step LLM relation extractor
+// (entity list → triples → predicate normalization → typed semantic edges).
+// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
+// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
+// （本体与 wire.go 同源：本仓 wire_gen.go 含手工维护的 provider 副本，
+// 此前只同步了调用点未同步函数体导致编译断裂，2026-08-15 补齐。）
+func provideKnowledgeRelationExtractWorker(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeRelationExtractWorker {
+	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	links, lok := repo.(knowledge2.SemanticLinkRepo)
+	vocab, vok := repo.(knowledge2.RelationVocabRepo)
+	state, sok := repo.(knowledge2.RelationStateRepo)
+	hot, hok := repo.(knowledge2.HotDocumentLister)
+	if !lok || !vok || !sok || !hok {
+		return nil
+	}
+	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
+	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
+	if !rok {
+		return nil
+	}
+	extractor := knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
+}
+
+// provideKnowledgeWriteBackArbiter 装配 M3.2 写回冲突仲裁器：构造后回注 KnowledgeUsecase
+// （Set 副作用，与 provideCuratorWorker 的 SetGate 同模式——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_WRITEBACK_ARBITER_DISABLED=1 时返回 nil（写回不仲裁，与 M3 前行为一致）。
+func provideKnowledgeWriteBackArbiter(uc *biz.KnowledgeUsecase, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.WriteBackArbiter {
+	if uc == nil || caller == nil || knowledge.WriteBackArbiterDisabled() {
+		return nil
+	}
+	arbiter := knowledge.NewWriteBackArbiter(caller, sys, catalog, lg)
+	uc.SetWriteBackArbiter(arbiter)
+	return arbiter
+}
+
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 func provideAutoMemoryWorker(
 	runtimeConf *conf.Runtime,
@@ -1829,6 +1884,9 @@ func provideAutoMemoryWorker(
 	uc *biz.KnowledgeUsecase,
 	d *data.Data,
 	lg loggateway.Logger,
+	// writeBackArbiter 仅作依赖锚点（M3.2：构造时已完成 Set 回注，本函数不直接使用），
+	// 保证 wire 图到达 provideKnowledgeWriteBackArbiter。
+	writeBackArbiter *knowledge.WriteBackArbiter,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(knowledge2.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
@@ -1929,9 +1987,41 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *knowledge2.VaultFiler {
 // vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
-func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, filer *knowledge2.VaultFiler, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+// M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
+// M2.1：SetEntityHook 接入实体共现轨（LLM 抽实体 → ReplaceDocEntities → 共现 →
+// entity 出链；按 docID+contentHash 幂等，safego 异步不阻塞索引主路径）。
+func provideVaultSyncSupervisor(
+	uc *biz.KnowledgeUsecase,
+	filer *knowledge2.VaultFiler,
+	embedder knowledge.Embedder,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	d *data.Data,
+	registry *knowledge.ExtractorRegistry,
+	lg loggateway.Logger,
+) *knowledge.VaultSyncSupervisor {
 	engine := knowledge2.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
+	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
+	if d != nil && caller != nil && !knowledge.EntityPipelineDisabled() {
+		if repo := data.NewKnowledgeRepoFromData(d); repo != nil {
+			if state, ok := repo.(knowledge2.RelationStateRepo); ok {
+				pipeline := knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+				applier.SetEntityHook(func(collectionID, docID string) {
+					safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
+						if _, err := pipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
+							lg.Warn("entity pipeline failed",
+								loggateway.Str("collection_id", collectionID),
+								loggateway.Str("doc_id", docID),
+								loggateway.Err(err),
+							)
+						}
+					})
+				})
+			}
+		}
+	}
 	uc.SetVaultApplier(applier)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
 	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
@@ -3238,6 +3328,7 @@ type wireOut struct {
 	MemoryCanary                *jobs.MemoryCanaryWorker
 	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
 	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
+	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3294,6 +3385,7 @@ func provideWireOut(
 	memoryCanary *jobs.MemoryCanaryWorker,
 	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
 	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
+	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3337,6 +3429,7 @@ func provideWireOut(
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
 		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
+		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,

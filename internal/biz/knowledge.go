@@ -94,6 +94,17 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	if repo == nil {
 		return uc
 	}
+	// M3 演化时序：supersedes 版本链 + 治理提案（repo 断言失败保持未接线降级，
+	// 写回主流程语义与 M3 前一致）。
+	if versions, vok := repo.(knowledge.FactVersionRepo); vok {
+		if proposals, pok := repo.(knowledge.GovernanceProposalRepo); pok {
+			uc.SetEvolutionRepos(versions, proposals)
+		}
+	}
+	// M4 自治理：词条治理数据端口（断言失败时 CurateKnowledge 显式报不可用）。
+	if curate, cok := repo.(knowledge.KnowledgeCurateRepo); cok {
+		uc.SetCurateRepo(curate)
+	}
 	links, lok := repo.(knowledge.LinkRepo)
 	entities, eok := repo.(knowledge.EntityRepo)
 	if lok && eok {

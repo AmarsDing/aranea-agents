@@ -168,6 +168,33 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS aliases JSONB`,
 		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS weight INT NOT NULL DEFAULT 1`,
+		// --- 自治理知识图谱 M1 时序地基（fresh 形态；存量库由迁移 20261220 补列/升级索引） ---
+		// links 双时态（valid_from/valid_to + recorded_at）、语义谓词 relation、
+		// 浮点权重 weight_f（Hebbian）、置信度 confidence；access_log 承载检索命中
+		// （base-level 激活分 + Hebbian 共激活的数据源）。
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS relation TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS weight_f DOUBLE PRECISION NOT NULL DEFAULT 1.0`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION NOT NULL DEFAULT 1.0`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS valid_to TIMESTAMPTZ`,
+		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+		`DROP INDEX IF EXISTS knowledge_links_unique`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
+			ON knowledge_links (doc_id, target_doc_id, link_type, relation)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_links_valid_idx
+			ON knowledge_links USING GIST (tstzrange(valid_from, COALESCE(valid_to, 'infinity')))`,
+		`CREATE INDEX IF NOT EXISTS knowledge_links_active_idx
+			ON knowledge_links (collection_id, doc_id) WHERE valid_to IS NULL`,
+		`CREATE TABLE IF NOT EXISTS knowledge_access_log (
+			id BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			doc_id TEXT NOT NULL,
+			accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			query_hash TEXT,
+			session_id TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_access_log_doc_idx
+			ON knowledge_access_log (collection_id, doc_id, accessed_at DESC)`,
 		// --- 实体治理（G5-F B9/B12）：name_norm 承载唯一性（展示名 name 保留首见写法）；
 		// 存量库由迁移 20261129 回填/合并后建唯一索引，此处定义 fresh 库最终形态 ---
 		`CREATE TABLE IF NOT EXISTS knowledge_entities (
@@ -197,6 +224,61 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_doc_entities_collection_idx
 			ON knowledge_doc_entities(collection_id, entity_id)`,
+		// --- 自治理知识图谱 M2 语义关系层（fresh 形态；存量库由迁移 20261221 建表/播种） ---
+		// relation_vocab：受控涌现谓词词表（core 硬编码 / candidate LLM 提议 / promoted 治理提升）；
+		// relation_state：关系/实体抽取幂等状态（content_hash 一致即跳过，控 LLM 成本）。
+		`CREATE TABLE IF NOT EXISTS knowledge_relation_vocab (
+			relation    TEXT PRIMARY KEY,
+			tier        TEXT NOT NULL,
+			proposed_by TEXT,
+			use_count   INT NOT NULL DEFAULT 0,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`INSERT INTO knowledge_relation_vocab (relation, tier, proposed_by) VALUES
+			('is-a', 'core', 'system'),
+			('part-of', 'core', 'system'),
+			('depends-on', 'core', 'system'),
+			('causes', 'core', 'system'),
+			('applies-to', 'core', 'system'),
+			('contradicts', 'core', 'system'),
+			('supersedes', 'core', 'system'),
+			('evolves-from', 'core', 'system')
+		ON CONFLICT (relation) DO NOTHING`,
+		`CREATE TABLE IF NOT EXISTS knowledge_relation_state (
+			doc_id                 TEXT PRIMARY KEY REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+			collection_id          TEXT NOT NULL,
+			content_hash           TEXT NOT NULL DEFAULT '',
+			entities_extracted_at  TIMESTAMPTZ,
+			relations_extracted_at TIMESTAMPTZ
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_relation_state_collection_idx
+			ON knowledge_relation_state (collection_id)`,
+		// M3 演化时序层（与迁移 20261222 同形态）：supersedes 版本链 + 治理提案。
+		`CREATE TABLE IF NOT EXISTS knowledge_fact_version (
+			id            BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			doc_id        TEXT NOT NULL REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+			fact_id       TEXT,
+			old_body      TEXT NOT NULL,
+			new_body      TEXT,
+			superseded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_fact_version_doc_idx
+			ON knowledge_fact_version (doc_id, superseded_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_fact_version_collection_idx
+			ON knowledge_fact_version (collection_id, superseded_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS knowledge_governance_proposal (
+			id            BIGSERIAL PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			kind          TEXT NOT NULL,
+			payload       JSONB NOT NULL,
+			risk          TEXT NOT NULL,
+			status        TEXT NOT NULL DEFAULT 'pending',
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			resolved_at   TIMESTAMPTZ
+		)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_governance_proposal_status_idx
+			ON knowledge_governance_proposal (collection_id, status, risk)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {

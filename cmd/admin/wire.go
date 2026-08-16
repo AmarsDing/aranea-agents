@@ -77,6 +77,8 @@ import (
 	"aranea-agents/internal/voice"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
+	"aranea-agents/pkg/appctx"
+	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -1207,6 +1209,18 @@ func provideArtifactSigner(lg loggateway.Logger) *artifact.Signer {
 	return artifact.NewSigner(lg)
 }
 
+// provideKnowledgeWriteBackArbiter 装配 M3.2 写回冲突仲裁器：构造后回注 KnowledgeUsecase
+// （Set 副作用，与 provideCuratorWorker 的 SetGate 同模式——Usecase 无法构造期持环依赖）。
+// KNOWLEDGE_WRITEBACK_ARBITER_DISABLED=1 时返回 nil（写回不仲裁，与 M3 前行为一致）。
+func provideKnowledgeWriteBackArbiter(uc *biz.KnowledgeUsecase, caller biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *knowledge.WriteBackArbiter {
+	if uc == nil || caller == nil || knowledge.WriteBackArbiterDisabled() {
+		return nil
+	}
+	arbiter := knowledge.NewWriteBackArbiter(caller, sys, catalog, lg)
+	uc.SetWriteBackArbiter(arbiter)
+	return arbiter
+}
+
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
 func provideAutoMemoryWorker(
 	runtimeConf *conf.Runtime,
@@ -1229,6 +1243,9 @@ func provideAutoMemoryWorker(
 	uc *biz.KnowledgeUsecase,
 	d *data.Data,
 	lg loggateway.Logger,
+	// writeBackArbiter 仅作依赖锚点（M3.2：构造时已完成 Set 回注，本函数不直接使用），
+	// 保证 wire 图到达 provideKnowledgeWriteBackArbiter。
+	writeBackArbiter *knowledge.WriteBackArbiter,
 ) (*jobs.AutoMemoryWorker, error) {
 	if ks, ok := writeBack.(*service.KnowledgeService); ok && uc != nil {
 		ks.SetAgentMemoryProjector(bizknowledge.NewAgentMemoryProjector(uc, service.NewL3AgentFactLister(data.NewL3FactReaderForUser(d)), lg))
@@ -1329,9 +1346,41 @@ func provideKnowledgeVaultFiler(lg loggateway.Logger) *bizknowledge.VaultFiler {
 // vault 永不同步）：SyncEngine → VaultSyncApplier（共享 filer + 可选 embedder）→
 // VaultSyncRunner → Supervisor。embedder 未配置时 buildChunks 按无语义层降级。
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
-func provideVaultSyncSupervisor(uc *biz.KnowledgeUsecase, filer *bizknowledge.VaultFiler, embedder knowledge.Embedder, lg loggateway.Logger) *knowledge.VaultSyncSupervisor {
+// M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
+// M2.1：SetEntityHook 接入实体共现轨（LLM 抽实体 → ReplaceDocEntities → 共现 →
+// entity 出链；按 docID+contentHash 幂等，safego 异步不阻塞索引主路径）。
+func provideVaultSyncSupervisor(
+	uc *biz.KnowledgeUsecase,
+	filer *bizknowledge.VaultFiler,
+	embedder knowledge.Embedder,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	d *data.Data,
+	registry *knowledge.ExtractorRegistry,
+	lg loggateway.Logger,
+) *knowledge.VaultSyncSupervisor {
 	engine := bizknowledge.NewSyncEngine(lg)
 	applier := knowledge.NewVaultSyncApplier(uc, filer, embedder, lg)
+	applier.SetCompiler(knowledge.NewBodyCompiler(registry))
+	if d != nil && caller != nil && !knowledge.EntityPipelineDisabled() {
+		if repo := data.NewKnowledgeRepoFromData(d); repo != nil {
+			if state, ok := repo.(bizknowledge.RelationStateRepo); ok {
+				pipeline := knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+				applier.SetEntityHook(func(collectionID, docID string) {
+					safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
+						if _, err := pipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
+							lg.Warn("entity pipeline failed",
+								loggateway.Str("collection_id", collectionID),
+								loggateway.Str("doc_id", docID),
+								loggateway.Err(err),
+							)
+						}
+					})
+				})
+			}
+		}
+	}
 	uc.SetVaultApplier(applier)
 	runner := knowledge.NewVaultSyncRunner(engine, applier, uc, lg)
 	return knowledge.NewVaultSyncSupervisor(runner, uc, lg)
@@ -1575,6 +1624,43 @@ func provideKnowledgeCitationBackfillWorker(d *data.Data, lg loggateway.Logger) 
 		data.NewKnowledgeCitationTraceReader(d),
 		data.NewKnowledgeChunkCitationRecorder(d),
 		lg)
+}
+
+// provideKnowledgeRelationExtractWorker wires the self-governing graph M2
+// semantic relation worker: periodically scans hot documents (knowledge_access_log
+// hits >= threshold) per collection and runs the two-step LLM relation extractor
+// (entity list → triples → predicate normalization → typed semantic edges).
+// Cost gates: hot-doc threshold + content_hash idempotency + per-pass budget.
+// Disabled via KNOWLEDGE_RELATION_EXTRACT_DISABLED env var.
+func provideKnowledgeRelationExtractWorker(
+	d *data.Data,
+	caller biz.LLMCaller,
+	sys *biz.SystemSettingUsecase,
+	catalog *biz.LlmProviderModelUsecase,
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeRelationExtractWorker {
+	if d == nil || uc == nil || caller == nil || jobs.KnowledgeRelationExtractDisabled() {
+		return nil
+	}
+	repo := data.NewKnowledgeRepoFromData(d)
+	if repo == nil {
+		return nil
+	}
+	links, lok := repo.(bizknowledge.SemanticLinkRepo)
+	vocab, vok := repo.(bizknowledge.RelationVocabRepo)
+	state, sok := repo.(bizknowledge.RelationStateRepo)
+	hot, hok := repo.(bizknowledge.HotDocumentLister)
+	if !lok || !vok || !sok || !hok {
+		return nil
+	}
+	// 宾语实体 → 文档解析键（basename/title/aliases），与 autolink/mention 同源。
+	resolver, rok := data.NewKnowledgeBlockRepoFromData(d).(knowledge.RelationObjectResolver)
+	if !rok {
+		return nil
+	}
+	extractor := knowledge.NewRelationExtractor(caller, sys, catalog, uc, links, vocab, state, resolver, lg)
+	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
 }
 
 // memorySleepTimeQueueSize is the buffer size for the in-memory consolidation
@@ -2722,6 +2808,7 @@ type wireOut struct {
 	MemoryCanary                *jobs.MemoryCanaryWorker
 	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
 	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
+	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -2778,6 +2865,7 @@ func provideWireOut(
 	memoryCanary *jobs.MemoryCanaryWorker,
 	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
 	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
+	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -2821,6 +2909,7 @@ func provideWireOut(
 		MemoryCanary:                memoryCanary,
 		MemoryCitationBackfill:      memoryCitationBackfill,
 		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
+		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -3550,6 +3639,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		graphadapter.NewGraphBuilderFactory,
 		provideL4CascadeUsecase,
 		provideAutoMemoryWorker,
+		provideKnowledgeWriteBackArbiter,
 		provideL4GraphWriter,
 		provideSkillAutoCreator,
 		provideSkillRegistrationPort,
@@ -3616,6 +3706,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryCanaryWorker,
 		provideMemoryCitationBackfillWorker,
 		provideKnowledgeCitationBackfillWorker,
+		provideKnowledgeRelationExtractWorker,
 		provideMemorySleepTimeWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
@@ -3778,9 +3869,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		wire.Bind(new(knowledge.Embedder), new(*knowledge.MultiProviderEmbedder)),
 		// AH-04: memory L2/L3 reranker is a knowledge adapter, injected into data.NewData.
 		knowledge.NewMemoryReranker,
-		// Knowledge vault sync（P1-3 生产装配）
+		// Knowledge vault sync（P1-3 生产装配；M0 编译端口 + M2.1 entity 轨接线）
 		provideVaultSyncSupervisor,
 		provideKnowledgeVaultFiler,
+		service.NewKnowledgeExtractorRegistry,
 		// DynamicLLMCaller dependency bindings
 		wire.Bind(new(chatagent.LLMCredentialResolver), new(*biz.LlmProviderModelUsecase)),
 		wire.Bind(new(chatagent.LLMRefineConfigResolver), new(*biz.SystemSettingUsecase)),

@@ -14,7 +14,10 @@ type Deps struct {
 	MemoryAdmin *biz.MemoryAdminUsecase
 	Embedder    skill.SkillEmbedder
 	Agents      biz.AgentRuntimeSettingsRepo
-	LG          loggateway.Logger
+	// Knowledge 为 M4 知识库词条治理入口（可选；nil 时不挂载 knowledge_curate
+	// 工具，dream_cycle 跳过 curate_knowledge 步骤）。
+	Knowledge *biz.KnowledgeUsecase
+	LG        loggateway.Logger
 }
 
 // RegisterAll creates and returns all memory butler tools. It validates that
@@ -28,7 +31,7 @@ func RegisterAll(deps Deps) []trpctool.Tool {
 	if deps.LG == nil {
 		deps.LG = loggateway.NewNoop()
 	}
-	return []trpctool.Tool{
+	tools := []trpctool.Tool{
 		newAnalyzeMemoryQualityTool(deps),
 		newSelectiveRememberTool(deps),
 		newForgetLowQualityTool(deps),
@@ -37,4 +40,14 @@ func RegisterAll(deps Deps) []trpctool.Tool {
 		newConsolidateEpisodesTool(deps),
 		newDreamCycleTool(deps),
 	}
+	// M4 知识库词条治理：Knowledge 未接线时不挂载（与既有工具解耦，降级安全）。
+	// governance_proposals/governance_resolve 为提案人工二审出口（M4 补丁）。
+	if deps.Knowledge != nil {
+		tools = append(tools,
+			newKnowledgeCurateTool(deps),
+			newGovernanceProposalsTool(deps),
+			newGovernanceResolveTool(deps),
+		)
+	}
+	return tools
 }

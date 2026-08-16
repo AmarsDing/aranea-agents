@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
@@ -187,5 +188,115 @@ func TestKnowledgeService_ListEntityMergeSuggestions_CrossTenantDenied(t *testin
 	_, err := svc.ListEntityMergeSuggestions(ctx, &v1.ListEntityMergeSuggestionsRequest{CollectionId: "c1"})
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("cross-tenant suggestions must be NotFound, got %v", err)
+	}
+}
+
+// ── M4 治理提案人工二审 RPC ────────────────────────────────────────────────
+
+// stubGovCurateRepo 最小 KnowledgeCurateRepo（仅提案列表/解析两方法有实装）。
+type stubGovCurateRepo struct {
+	knowledge.KnowledgeCurateRepo // 嵌入 nil 接口，未覆盖方法不应被调到
+	views                         []knowledge.GovernanceProposalView
+	resolvedID                    int64
+	resolvedStatus                string
+}
+
+func (s *stubGovCurateRepo) ListGovernanceProposals(context.Context, string, string, int) ([]knowledge.GovernanceProposalView, error) {
+	return s.views, nil
+}
+
+func (s *stubGovCurateRepo) ResolveGovernanceProposal(_ context.Context, id int64, status string) error {
+	s.resolvedID, s.resolvedStatus = id, status
+	return nil
+}
+
+func TestKnowledgeService_ListGovernanceProposals(t *testing.T) {
+	curate := &stubGovCurateRepo{views: []knowledge.GovernanceProposalView{
+		{ID: 7, CollectionID: "c1", Kind: knowledge.ProposalKindConflict, Risk: knowledge.ProposalRiskHigh,
+			Status: knowledge.ProposalStatusPending, Payload: map[string]any{"dedup_key": "conflict:a→b"},
+			CreatedAt: time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)},
+		{ID: 3, CollectionID: "c1", Kind: knowledge.ProposalKindStale, Risk: knowledge.ProposalRiskLow,
+			Status: knowledge.ProposalStatusApplied, Payload: map[string]any{"dedup_key": "stale:d2"},
+			CreatedAt:  time.Date(2026, 8, 15, 1, 0, 0, 0, time.UTC),
+			ResolvedAt: time.Date(2026, 8, 15, 2, 0, 0, 0, time.UTC)},
+	}}
+	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc.uc.SetCurateRepo(curate)
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 指定 collection_id（走访问校验）+ 全量（空 collection_id）两路径。
+	for _, colID := range []string{"c1", ""} {
+		resp, err := svc.ListGovernanceProposals(context.Background(), &v1.ListGovernanceProposalsRequest{CollectionId: colID})
+		if err != nil {
+			t.Fatalf("ListGovernanceProposals(%q): %v", colID, err)
+		}
+		if len(resp.GetItems()) != 2 {
+			t.Fatalf("items = %+v, want 2", resp.GetItems())
+		}
+		pending := resp.GetItems()[0]
+		if pending.GetId() != 7 || pending.GetKind() != "conflict" || pending.GetRisk() != "high" ||
+			pending.GetStatus() != "pending" || pending.GetResolvedAt() != "" ||
+			!strings.Contains(pending.GetPayloadJson(), "conflict:a→b") {
+			t.Errorf("pending projection wrong: %+v", pending)
+		}
+		if resp.GetItems()[1].GetResolvedAt() == "" {
+			t.Errorf("resolved proposal must carry resolved_at: %+v", resp.GetItems()[1])
+		}
+	}
+}
+
+func TestKnowledgeService_ListGovernanceProposals_InvalidStatus(t *testing.T) {
+	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc.uc.SetCurateRepo(&stubGovCurateRepo{})
+	_, err := svc.ListGovernanceProposals(context.Background(), &v1.ListGovernanceProposalsRequest{Status: "bogus"})
+	if err == nil {
+		t.Fatal("invalid status must error (biz 层收口)")
+	}
+}
+
+func TestKnowledgeService_ListGovernanceProposals_CrossTenantDenied(t *testing.T) {
+	svc, repo := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc.uc.SetCurateRepo(&stubGovCurateRepo{})
+	if _, err := repo.CreateCollection(context.Background(), biz.KnowledgeCollection{ID: "c1", Name: "vault", Workspace: "ws-other"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := workspace.WithContext(context.Background(), "ws-mine")
+	_, err := svc.ListGovernanceProposals(ctx, &v1.ListGovernanceProposalsRequest{CollectionId: "c1"})
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("cross-tenant list must be NotFound, got %v", err)
+	}
+}
+
+func TestKnowledgeService_ResolveGovernanceProposal(t *testing.T) {
+	curate := &stubGovCurateRepo{}
+	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc.uc.SetCurateRepo(curate)
+
+	resp, err := svc.ResolveGovernanceProposal(context.Background(), &v1.ResolveGovernanceProposalRequest{Id: 42, Decision: "applied"})
+	if err != nil {
+		t.Fatalf("ResolveGovernanceProposal: %v", err)
+	}
+	if resp.GetId() != 42 || resp.GetStatus() != "applied" {
+		t.Errorf("response = %+v, want id=42 status=applied", resp)
+	}
+	if curate.resolvedID != 42 || curate.resolvedStatus != "applied" {
+		t.Errorf("repo got id=%d status=%s, want 42/applied", curate.resolvedID, curate.resolvedStatus)
+	}
+}
+
+func TestKnowledgeService_ResolveGovernanceProposal_Validation(t *testing.T) {
+	svc, _ := newGovernanceService(t, &stubGovEntityRepo{}, nil)
+	svc.uc.SetCurateRepo(&stubGovCurateRepo{})
+	for _, req := range []*v1.ResolveGovernanceProposalRequest{
+		{Id: 0, Decision: "applied"},
+		{Id: -1, Decision: "applied"},
+		{Id: 1, Decision: "bogus"},
+		{Id: 1, Decision: ""},
+	} {
+		if _, err := svc.ResolveGovernanceProposal(context.Background(), req); err == nil {
+			t.Errorf("%+v must be BadRequest", req)
+		}
 	}
 }

@@ -84,6 +84,10 @@ services:
       - ./docker/config:/app/conf:ro
       - ./docker/volumes/logs:/app/logs
       - ./docker/volumes/data:/app/data
+      # 技能文件根目录（ResolveRoot 默认 /root/.config/Aranea/skills）；
+      # 不挂载则容器内无任何技能文件，skill.fs.sync 报 filesystem missing、
+      # prompt section_skills=0（2026-08-16 fault-execution 缺失实证）。
+      - ./docker/volumes/skills:/root/.config/Aranea/skills
     networks:
       - araneanet
     restart: unless-stopped

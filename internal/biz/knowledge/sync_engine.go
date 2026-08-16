@@ -69,8 +69,9 @@ func defaultHashFile(path string) (string, error) {
 	return HashContent(string(data)), nil
 }
 
-// Scan 扫描 vault root，返回当前 .md 文件快照。
-// 忽略规则：任何以 `.` 开头的目录/文件（含 .aranea）、非 .md、超过 maxBytes。
+// Scan 扫描 vault root，返回可摄取文件的当前快照。
+// 忽略规则：任何以 `.` 开头的目录/文件（含 .aranea）、不在可摄取白名单（IsIngestibleExt）、超过 maxBytes。
+// M0：白名单由「仅 .md」扩为文本直读 ∪ 需抽取（office/图片），后者由 applier 编译为 Markdown。
 // prev 非空时：mtime+size 未变的文件复用旧 hash（mtime 预筛，避免全量重算）。
 func (e *SyncEngine) Scan(root string, prev []FileSnapshot) ([]FileSnapshot, error) {
 	prevByPath := make(map[string]FileSnapshot, len(prev))
@@ -89,7 +90,7 @@ func (e *SyncEngine) Scan(root string, prev []FileSnapshot) ([]FileSnapshot, err
 			}
 			return nil
 		}
-		if strings.HasPrefix(name, ".") || !strings.HasSuffix(strings.ToLower(name), ".md") {
+		if strings.HasPrefix(name, ".") || !IsIngestibleExt(name) {
 			return nil
 		}
 		info, err := d.Info()

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/knowledge"
 	"aranea-agents/pkg/loggateway"
 )
@@ -42,15 +43,34 @@ func NewKnowledgeGraphExpander(repo biz.KnowledgeRepo, lg loggateway.Logger) *kn
 			loggateway.StepID("knowledge.graph_expander.init_skip"))
 		return nil
 	}
-	return knowledge.NewGraphExpander(links, chunks, lg)
+	expander := knowledge.NewGraphExpander(links, chunks, lg)
+	// 自治理图谱 M1-4：repo 实现 ActiveLinkReader 时升级为 2 跳扩散激活。
+	if active, ok := repo.(bizknowledge.ActiveLinkReader); ok {
+		expander.SetActiveLinks(active)
+	}
+	return expander
 }
 
-func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *knowledge.QueryRewriter, expander *knowledge.GraphExpander, lg loggateway.Logger) *knowledge.AdaptiveRouter {
+func NewKnowledgeAdaptiveRouter(hybrid *knowledge.HybridRetriever, rewriter *knowledge.QueryRewriter, expander *knowledge.GraphExpander, repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.AdaptiveRouter {
 	if hybrid == nil {
 		return nil
 	}
 	router := knowledge.NewAdaptiveRouter(hybrid, rewriter, lg)
 	router.SetGraphExpander(expander)
+	// 自治理图谱 M1-2：repo 实现 AccessLogRepo 时接线命中日志 + base-level 加成。
+	if access, ok := repo.(bizknowledge.AccessLogRepo); ok {
+		router.SetAccessLog(access, 0.1)
+	} else {
+		lg.Info("检索命中日志未接线：repo 未实现 AccessLogRepo",
+			loggateway.StepID("knowledge.access_log.init_skip"))
+	}
+	// 自治理图谱 M1-3：repo 实现 CoActivationRepo 时接线 Hebbian 共激活边。
+	if coact, ok := repo.(bizknowledge.CoActivationRepo); ok {
+		router.SetCoActivation(coact, 0.1)
+	} else {
+		lg.Info("Hebbian 共激活未接线：repo 未实现 CoActivationRepo",
+			loggateway.StepID("knowledge.coactivation.init_skip"))
+	}
 	return router
 }
 

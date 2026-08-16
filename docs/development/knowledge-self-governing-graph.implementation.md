@@ -3,7 +3,56 @@
 > 对应设计：`knowledge-self-governing-graph.design.md`（评审稿）
 > 对应需求：`37-knowledge.md` · `memory/memory.md`
 > 状态：实施稿（2026-08-15）—— 每个环节细化到端口/装配点/DDL/测试，可直接拆任务开发
+> 进度：**M0 ✅ / M1 ✅ / M2 ✅ / M3 ✅ / M4 ✅（2026-08-16 完成，测试全绿）——五层全部落地**
 > 铁律：不引图数据库（PG 单库）；检索零 LLM；增量+失效不删除+版本化；受控涌现。
+
+---
+
+## M4 落地纪要（实施偏差记录）
+
+- **M4.1 提案表零 DDL**：`knowledge_governance_proposal` 随 M3 迁移 `20261222_knowledge_fact_version.sql` 已建，M4 直接复用；fresh 形态由 `TestEnsureKnowledgeSchema_M3EvolutionFreshShape` 守卫。提案 kind/risk/status 常量集中在 biz `evolution.go`。
+- **M4.2 数据端口 + biz 用例**：`KnowledgeCurateRepo` 窄接口（8 方法）定义在 biz [curate.go](file:///f:/myproject/aranea-agents/internal/biz/knowledge/curate.go)，data 层 `knowledge_curate.go` 实现；装配走 `NewKnowledgeUsecase` 内 repo 类型断言（`biz/knowledge.go`，与 M3 `SetEvolutionRepos` 同模式，断言失败 `CurateKnowledge` 显式报不可用）。`CurateKnowledge` 编排五类任务：低风险自动——decay（co_activated `weight_f *= 0.9`，跌破 0.05 置 `valid_to` 关闭留痕）、relation_promote（candidate `use_count≥3` → promoted，幂等）、stale（出向 semantic 边关闭比例 ≥0.5 且 30 天未检索，`status=applied` 留痕即标记）；高风险仅产 pending 提案——conflict（active contradicts 边）、orphan（度=0 且 30 天未检索）。**dedup_key 去重防周期风暴**（`stale:<doc>`/`conflict:<a>→<b>`/`orphan:<doc>`，探测失败保守放行不丢信号）；单任务失败 Warn 降级继续；每类提案单轮上限 50。dry_run：decay 走 COUNT 预估，promote/提案不落库。人工二审闭环 `ResolveGovernanceProposal`（pending→applied/rejected，其他状态非法）。
+- **M4.2 工具**：`memory_butler_knowledge_curate`（function 工具模式，非 CallableTool——与 butler 既有 7 工具一致）定义在 `internal/tools/memory_butler/knowledge_curate.go`；`RegisterAll` 内 `deps.Knowledge != nil` 才挂载，`cli_admin_tools.go` 经 `o.rt().Knowledge.Usecase` 注入，未装配时工具消失、dream 步骤跳过（解耦降级）。
+- **M4.3 dream_cycle 接入**：`dream_cycle.go` Step 5.5 在 L3 治理后调 `CurateKnowledge`——**dream 的 dry_run 传导**（dry_run 时知识治理走只读预估路径），非 dry_run 真治理；失败 Warn 不中断梦境主流程，产出计入 `KnowledgeProposals`/`KnowledgeActions`，actions 追加 `curate_knowledge`。
+- **范围裁剪（设计偏差）**：设计表 7 项任务中 `distill`（高频词条反向蒸馏 memory_fact）与 `moc_emerge`（hub 簇蒸馏 MOC 词条）本期未落地——前者依赖 L3 注入链、后者依赖图密度聚类，均留后续迭代；本期先闭环五类核心任务（自动 3 + 提案 2）。
+- 测试：`curate_test.go`（8 例：未接线/全产出轮/dry_run 零写入/提案去重/提案 repo 未接线降级/落点解析失败/落点选中团队库/单任务失败降级）+ `knowledge_curate_test.go`（PG 集成 6 例：衰减 dry-run 预估与实际关闭且 semantic 边不受波及/谓词提升幂等/孤儿扫描/陈旧扫描/contradicts 扫描/提案去重+Resolve 闭环）。PG 测试需 `ARANEA_TEST_PG_DSN`。
+
+### M4 补丁纪要（2026-08-16 深度检查修复）
+
+深度检查知识库/记忆管家/L0–L4 业务逻辑后发现 2 缺陷 + 1 风险已修，1 风险调研排除：
+
+- **缺陷1 提案死信（只写不读）**：pending 提案无出口，人工二审不可达。修复三层贯通——data `ListGovernanceProposals`（collection/status 过滤 + id DESC 分页）；biz `ListGovernanceProposals`/`ResolveGovernanceProposal`（status 白名单校验、limit 默认 50/上限 200）；出口两路：①记忆管家工具 `memory_butler_governance_proposals`/`memory_butler_governance_resolve`（与 butler 既有工具同 function 模式，`deps.Knowledge != nil` 才挂载共 10 工具；resolve 描述明确「仅用户明确指示时调用，禁自主批量二审」）；②HTTP API `GET /v1/knowledge/governance-proposals`、`POST /v1/knowledge/governance-proposals/{id}:resolve`（list 指定 collection 时校验读权限，空=平台管理视图；resolve 流程日志 step `knowledge.governance.resolve`）。
+- **缺陷2 框架原生检索漏排日记流水**：`knowledge_adapter.go toBizQuery` 补 `ExcludePathPrefixes=[inbox/writeback-]`，与 knowledge 工具/cue 预检索同规（此前框架原生 `knowledge_search` 路径流水会进 Agent 上下文）。
+- **风险3 拒绝不沉默**：conflict/orphan 去重 statuses 只查 pending → 已否决提案每轮 dream 重复骚扰。修复：去重状态集加 `rejected`（拒绝即沉默），`TestCurateKnowledge_ProposalDedup` 断言三类 kind 状态集语义（conflict/orphan=pending+rejected，stale=pending+applied）。
+- **风险5 cue 路径学习信号——调研排除**：cue 预检索（`knowledge_inject.go retrieveCueChunks`）与 knowledge 工具同走 FederatedRetriever→AdaptiveRouter 三件套；`AdaptiveRouter.Search` 末端统一挂 `applyBaseLevelBoost`（写 `knowledge_access_log`，生产唯一写入方）+ `triggerHebbian`（`StrengthenCoActivations` 同批召回两两 +0.1，异步）；生产装配 `NewKnowledgeAdaptiveRouter` 接线 `SetAccessLog(0.1)`/`SetCoActivation(0.1)`。强化（+0.1/批）与衰减（×0.9/轮，<0.05 关闭）闭环自洽；cue 高频召回正常记 access_log，不会误标 stale/orphan。**结论：已闭环，无需修复**（裸 `ret.Search` 兜底仅 router 为 nil 时触发，生产不可能）。
+
+---
+
+## M3 落地纪要（实施偏差记录）
+
+- **M3.1 supersedes 版本链（增量叠加，不改主流程）**：迁移 `20261222_knowledge_fact_version.sql` 建 `knowledge_fact_version`（旧段快照，fact_id 可空）+ `knowledge_governance_proposal`（治理提案，status 默认 pending）两表，fresh 形态同步 `EnsureKnowledgeSchema`。biz 端口 `FactVersionRepo`/`GovernanceProposalRepo` 定义在 `evolution.go`，经 `NewKnowledgeUsecase` 内 repo 类型断言接线（`SetEvolutionRepos`，断言失败保持未接线降级）。留痕点在 `upsertEntryDoc`：fact_id 整段替换生效（`nb != body`，幂等重放不留痕）时收集 `versions`，**正文持久化成功后**才 best-effort 落库（`recordFactVersion` 失败仅 Warn 不回滚）；`oldBody == newBody` 与空 oldBody 双保险跳过。
+- **M3.2 写入时冲突检测**：`internal/knowledge/writeback_arbiter.go` 实现 `WriteBackArbiter`（LLM 批量仲裁，单次调用、60s 超时、existing≤20/news≤10/段 300 符文截断控 prompt）。触发条件从严：仅存量页 + 有待追加事实 + 页内抽取到带 fact_id 段（`extractFactBlocks`）才仲裁；新建页不仲裁。裁决分两档置信度门槛——`supersedes ≥0.8` 走版本链顶替目标段（新事实不再追加）；`contradicts ≥0.7` 旧段不覆盖、新事实仍追加留痕 + 高风险提案（kind=conflict/risk=high，payload 含新旧 fact_id/陈述/理由）待人工二审。仲裁器未接线/LLM 失败/低置信一律降级原追加行为。生产装配 `provideKnowledgeWriteBackArbiter`（Set 回注 Usecase，与 curator SetGate 同模式），以 `provideAutoMemoryWorker` 末位锚点形参保证 wire 图到达；环境开关 `KNOWLEDGE_WRITEBACK_ARBITER_DISABLED=1`。**wire_gen.go 手工同步**：provider 定义 + 锚点形参两处补齐（wire.go 整文件 wireinject tag，普通构建不可见）。
+- 测试：`writeback_evolution_test.go`（9 例：版本链留痕/幂等跳过/未接线降级/supersedes 顶替+低置信追加/contradicts 提案+低置信跳过/仲裁失败降级/新建页不仲裁/未接线 Legacy 行为）+ `writeback_arbiter_test.go`（7 例：裁决解析/代码围栏容忍/空输入零 LLM/LLM 错误上抛/坏 JSON/未接线/候选截断）+ `knowledge_evolution_test.go`（PG 集成 4 例：fresh 形态/迁移幂等/版本链往返含 NULL fact_id/提案 JSONB 往返+默认 risk）。PG 测试需 `ARANEA_TEST_PG_DSN`。
+
+---
+
+## M2 落地纪要（实施偏差记录）
+
+- **M2.1 entity 轨复活**：新增 `internal/knowledge/entity_pipeline.go`——`EntityPipeline.ProcessDoc` 复用 M2.2 Step1 的 `llmExtractEntities`（重构为包级共享函数）→ `ReplaceDocEntities`（name_norm 归一化/别名路由）→ `FindEntityCooccurrences`（R-3 频次过滤 `entityMaxDocFreq=50`）→ `ReplaceEntityLinks`（context=共享实体名、weight=共享数、自环跳过）。幂等状态落 `knowledge_relation_state.entities_extracted_at`（与关系轨同表分列；`UpsertRelationState` 零值时间 `COALESCE` 不动既有列，双轨互不踩踏）。生产接线在 `provideVaultSyncSupervisor`：`SetEntityHook` + `safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", …)` 异步（不阻塞索引主路径），环境开关 `KNOWLEDGE_ENTITY_PIPELINE_DISABLED=1`。
+- **M0 欠账补清**：同一 provider 内 `applier.SetCompiler(knowledge.NewBodyCompiler(registry))`，registry 复用 `service.NewKnowledgeExtractorRegistry`（wire_gen 已有实例直接传参）；此前 `SetCompiler` 全仓无生产调用者，office/图片在 vault 同步链恒降级 error。
+- **M2.2 关系抽取**：`relation_extract.go` 两步 LLM（实体→三元组），谓词归一化核心闭集、词表外落 `vocab candidate`；宾语经 `docKeyIndex`（basename/title/aliases 多键、歧义跳过）解析为同库文档；confidence<0.7 边写入即关闭（`valid_to=now` 留痕）。后台 worker `KnowledgeRelationExtractWorker` 只对热文档（`knowledge_access_log` 命中 ≥ 阈值）抽取，按 `content_hash` 幂等。
+- **M2.3 DDL**：迁移 `20261221_knowledge_relation_vocab.sql`（vocab + relation_state 两表，预置 core 谓词 ON CONFLICT DO NOTHING）；fresh 形态同步 `EnsureKnowledgeSchema`。
+- 测试：`entity_pipeline_test.go`（6 例：写边/幂等跳过/变更重抽/空正文/LLM 失败/未接线）+ `relation_extract_test.go` + `knowledge_relation_test.go`（PG 集成）+ worker 单测。PG 测试需 `ARANEA_TEST_PG_DSN`。
+
+---
+
+## M1 落地纪要（实施偏差记录）
+
+- **M1.1 DDL**：迁移 `20261220_knowledge_links_bitemporal.sql`（SQL 文件式，非 Func 式）；`relation` 定 `NOT NULL DEFAULT ''`（表达式唯一索引会破坏既有 `ON CONFLICT` 列推断，弃用 COALESCE 方案）；`valid_from/recorded_at` 先加可空列回填 `created_at` 再 `SET NOT NULL`（PG11+ 带 DEFAULT 的 ADD COLUMN 直接填充存量行，`WHERE IS NULL` 回填永不命中）。fresh 形态同步进 `EnsureKnowledgeSchema`。
+- **M1.2 base-level**：端口 `bizknowledge.AccessLogRepo`（`access_log.go`）；注入点定在 `AdaptiveRouter.Search` 返回前（service 与 tools 两条生产检索路径的唯一收敛点）；先算历史加成再记本次命中（防循环自激）；β=0.1 wire 接线。
+- **M1.3 Hebbian**：端口 `bizknowledge.CoActivationRepo`；无向边规范化 `doc_id<target_doc_id` 单行，`ON CONFLICT weight_f += η` 且复活 `valid_to`；ghost 端点跳过防 FK 拖垮整批；router 内 `safego.Go` + `context.WithoutCancel` 异步。
+- **M1.4 扩散激活**：`GraphExpander.SetActiveLinks` 接线后走 2 跳 BFS（能量 ×0.5/跳，类型权 explicit1.0/semantic0.9/entity0.7/co_activated0.4，侧抑制 top-10），未接线保持旧 1 跳；`ListActiveLinks` 只读 `valid_to IS NULL`。
+- 测试：`knowledge_bitemporal_test.go` / `knowledge_access_log_test.go`（PG 集成）+ `access_boost_test.go` / `graph_expander_spread_test.go`（单测）。PG 测试需 `ARANEA_TEST_PG_DSN`（本机 `postgres://postgres:123456@127.0.0.1:5432/aranea_test`）。
 
 ---
 

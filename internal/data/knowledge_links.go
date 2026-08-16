@@ -18,7 +18,35 @@ var (
 	_ bizknowledge.LinkRepo             = (*knowledgeRepo)(nil)
 	_ bizknowledge.EntityRepo           = (*knowledgeRepo)(nil)
 	_ bizknowledge.CollectionLinkReader = (*knowledgeRepo)(nil)
+	_ bizknowledge.ActiveLinkReader     = (*knowledgeRepo)(nil)
 )
+
+// ListActiveLinks 批量读取 docIDs 一端触及的全部 active 边（valid_to IS NULL），
+// 扩散激活（M1-4）逐跳 BFS 数据源。读池访问（派生索引，无 read-your-writes 约束）。
+func (r *knowledgeRepo) ListActiveLinks(ctx context.Context, collectionID string, docIDs []string) ([]bizknowledge.ActiveLink, error) {
+	if len(docIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.data.PostgresRead().QueryContext(ctx,
+		`SELECT doc_id, target_doc_id, link_type, relation, weight_f
+		 FROM knowledge_links
+		 WHERE collection_id = $1 AND valid_to IS NULL
+		   AND (doc_id = ANY($2) OR target_doc_id = ANY($2))`,
+		collectionID, pq.Array(docIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []bizknowledge.ActiveLink
+	for rows.Next() {
+		var l bizknowledge.ActiveLink
+		if err := rows.Scan(&l.DocID, &l.TargetDocID, &l.LinkType, &l.Relation, &l.WeightF); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
 
 // ReplaceLinks 事务性替换某文档某类型的全部出链（删旧 + 插新；空切片 = 仅清理）。
 // 同 (doc,target,type) 由 knowledge_links_unique 唯一索引兜底；冲突时刷新
@@ -40,7 +68,7 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			if _, err := tx.ExecContext(ctx,
 				`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context, weight)
 				 VALUES ($1,$2,$3,$4,$5,$6)
-				 ON CONFLICT (doc_id, target_doc_id, link_type) DO UPDATE SET weight = EXCLUDED.weight, context = EXCLUDED.context`,
+				 ON CONFLICT (doc_id, target_doc_id, link_type, relation) DO UPDATE SET weight = EXCLUDED.weight, context = EXCLUDED.context`,
 				collectionID, docID, l.TargetDocID, linkType, l.Context, weight); err != nil {
 				return err
 			}

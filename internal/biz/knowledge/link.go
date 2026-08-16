@@ -14,7 +14,24 @@ const (
 	LinkTypeEntity = "entity"
 	// LinkTypeSemantic 向量近邻（P4b 语义层；无语义层降级不建）。
 	LinkTypeSemantic = "semantic"
+	// LinkTypeCoActivated Hebbian 共激活边（自治理图谱 M1-3）：同批召回两两强化，
+	// weight_f 承载浮点强度；弱信号，扩散激活中权重最低。
+	LinkTypeCoActivated = "co_activated"
 )
+
+// ActiveLink 当前有效边（valid_to IS NULL）的轻量投影（自治理图谱 M1-4 扩散激活用）。
+type ActiveLink struct {
+	DocID       string
+	TargetDocID string
+	LinkType    string
+	Relation    string // 语义谓词（M2 起填充；空 = 未定型）
+	WeightF     float64
+}
+
+// ActiveLinkReader 批量读取若干文档一端触及的全部 active 边（BFS 逐跳扩散数据源）。
+type ActiveLinkReader interface {
+	ListActiveLinks(ctx context.Context, collectionID string, docIDs []string) ([]ActiveLink, error)
+}
 
 // Link 一条文档间关联（派生索引：随文档增删级联，可全量重扫重建）。
 type Link struct {

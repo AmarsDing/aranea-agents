@@ -47,6 +47,8 @@ const (
 	KnowledgeService_RebuildKnowledgeIndex_FullMethodName      = "/kratos.knowledge.v1.KnowledgeService/RebuildKnowledgeIndex"
 	KnowledgeService_ListEntityMergeSuggestions_FullMethodName = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 	KnowledgeService_MergeKnowledgeEntities_FullMethodName     = "/kratos.knowledge.v1.KnowledgeService/MergeKnowledgeEntities"
+	KnowledgeService_ListGovernanceProposals_FullMethodName    = "/kratos.knowledge.v1.KnowledgeService/ListGovernanceProposals"
+	KnowledgeService_ResolveGovernanceProposal_FullMethodName  = "/kratos.knowledge.v1.KnowledgeService/ResolveGovernanceProposal"
 	KnowledgeService_Search_FullMethodName                     = "/kratos.knowledge.v1.KnowledgeService/Search"
 	KnowledgeService_GetEmbedderConfig_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/GetEmbedderConfig"
 	KnowledgeService_UpdateEmbedderConfig_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/UpdateEmbedderConfig"
@@ -134,6 +136,12 @@ type KnowledgeServiceClient interface {
 	// MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
 	// atomically; returns rewrite counts for inline UI feedback.
 	MergeKnowledgeEntities(ctx context.Context, in *MergeKnowledgeEntitiesRequest, opts ...grpc.CallOption) (*MergeKnowledgeEntitiesResponse, error)
+	// ListGovernanceProposals lists curation governance proposals (M4 自治理层
+	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+	ListGovernanceProposals(ctx context.Context, in *ListGovernanceProposalsRequest, opts ...grpc.CallOption) (*ListGovernanceProposalsResponse, error)
+	// ResolveGovernanceProposal closes one pending proposal (人工二审):
+	// decision=applied approves the governance action, rejected dismisses it.
+	ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...grpc.CallOption) (*ResolveGovernanceProposalResponse, error)
 	// Search
 	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 	GetEmbedderConfig(ctx context.Context, in *GetEmbedderConfigRequest, opts ...grpc.CallOption) (*EmbedderConfig, error)
@@ -418,6 +426,26 @@ func (c *knowledgeServiceClient) MergeKnowledgeEntities(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListGovernanceProposals(ctx context.Context, in *ListGovernanceProposalsRequest, opts ...grpc.CallOption) (*ListGovernanceProposalsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGovernanceProposalsResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListGovernanceProposals_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *knowledgeServiceClient) ResolveGovernanceProposal(ctx context.Context, in *ResolveGovernanceProposalRequest, opts ...grpc.CallOption) (*ResolveGovernanceProposalResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveGovernanceProposalResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ResolveGovernanceProposal_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SearchResponse)
@@ -530,6 +558,12 @@ type KnowledgeServiceServer interface {
 	// MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
 	// atomically; returns rewrite counts for inline UI feedback.
 	MergeKnowledgeEntities(context.Context, *MergeKnowledgeEntitiesRequest) (*MergeKnowledgeEntitiesResponse, error)
+	// ListGovernanceProposals lists curation governance proposals (M4 自治理层
+	// 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+	ListGovernanceProposals(context.Context, *ListGovernanceProposalsRequest) (*ListGovernanceProposalsResponse, error)
+	// ResolveGovernanceProposal closes one pending proposal (人工二审):
+	// decision=applied approves the governance action, rejected dismisses it.
+	ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error)
 	// Search
 	Search(context.Context, *SearchRequest) (*SearchResponse, error)
 	GetEmbedderConfig(context.Context, *GetEmbedderConfigRequest) (*EmbedderConfig, error)
@@ -624,6 +658,12 @@ func (UnimplementedKnowledgeServiceServer) ListEntityMergeSuggestions(context.Co
 }
 func (UnimplementedKnowledgeServiceServer) MergeKnowledgeEntities(context.Context, *MergeKnowledgeEntitiesRequest) (*MergeKnowledgeEntitiesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MergeKnowledgeEntities not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListGovernanceProposals(context.Context, *ListGovernanceProposalsRequest) (*ListGovernanceProposalsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListGovernanceProposals not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ResolveGovernanceProposal(context.Context, *ResolveGovernanceProposalRequest) (*ResolveGovernanceProposalResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveGovernanceProposal not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Search not implemented")
@@ -1141,6 +1181,42 @@ func _KnowledgeService_MergeKnowledgeEntities_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListGovernanceProposals_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGovernanceProposalsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListGovernanceProposals(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListGovernanceProposals_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListGovernanceProposals(ctx, req.(*ListGovernanceProposalsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KnowledgeService_ResolveGovernanceProposal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveGovernanceProposalRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ResolveGovernanceProposal(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ResolveGovernanceProposal_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ResolveGovernanceProposal(ctx, req.(*ResolveGovernanceProposalRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SearchRequest)
 	if err := dec(in); err != nil {
@@ -1309,6 +1385,14 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MergeKnowledgeEntities",
 			Handler:    _KnowledgeService_MergeKnowledgeEntities_Handler,
+		},
+		{
+			MethodName: "ListGovernanceProposals",
+			Handler:    _KnowledgeService_ListGovernanceProposals_Handler,
+		},
+		{
+			MethodName: "ResolveGovernanceProposal",
+			Handler:    _KnowledgeService_ResolveGovernanceProposal_Handler,
 		},
 		{
 			MethodName: "Search",

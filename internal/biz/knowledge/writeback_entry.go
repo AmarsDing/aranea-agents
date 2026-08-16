@@ -208,6 +208,11 @@ func yamlQuote(s string) string {
 // 否则尾部追加。写走后重建块索引（失败 Warn，正文已落可自愈）。返回 touched 文档
 // 与是否实际改动（全量去重命中时 changed=false，不触发 chunk 重放）。
 // tags 仅用于新建页 header；title 作为自动成链的 self 提示（防 H1 自链）。
+// M3 演化时序（增量叠加，不改主流程）：
+//   - M3.1：fact_id 整段替换生效时，旧段快照入 knowledge_fact_version（supersedes 版本链）；
+//   - M3.2：追加前经 arbiter 对同页既有段仲裁——supersedes 改走版本链替换目标段，
+//     contradicts 落高风险治理提案（旧段不覆盖，新事实仍追加留痕待人工二审）；
+//   - 版本/提案均在正文持久化成功后 best-effort 留痕（失败 Warn 不回滚）。
 func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title string, tags []string, in WriteBackInput, facts []WriteBackFact) (PromoteTouchedDoc, bool, error) {
 	doc, err := u.documents.GetDocumentByRelPath(ctx, col.ID, rel)
 	created := false
@@ -228,7 +233,14 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 	}
 	changed := false
 	appended := 0
-	for _, f := range facts {
+	var versions []FactVersion
+	var proposals []map[string]any
+	type appendCand struct {
+		idx   int
+		block string
+	}
+	var appends []appendCand
+	for i, f := range facts {
 		block := strings.TrimSpace(FormatWriteBackAppendix(in, []WriteBackFact{f}))
 		if block == "" {
 			continue
@@ -241,8 +253,14 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 				// 替换语义走正文：同一 fact_id 再写入改旧段；内容未变（幂等重放）
 				// 不算改动——避免无效 UPDATE 与下游 chunk/embedding 重放。
 				if nb != body {
+					oldBlock, _ := extractH2BlockContaining(body, marker)
 					body = nb
 					changed = true
+					// M3.1：supersedes 版本链留痕（旧段快照，演化轨迹不丢）。
+					versions = append(versions, FactVersion{
+						CollectionID: col.ID, DocID: doc.ID,
+						FactID: id, OldBody: oldBlock, NewBody: block,
+					})
 				}
 				continue
 			}
@@ -250,7 +268,59 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 		if writeBackAlreadyPresent(body, "", f.Statement) {
 			continue
 		}
-		body = strings.TrimRight(body, "\n") + "\n\n" + block + "\n"
+		appends = append(appends, appendCand{idx: i, block: block})
+	}
+	// M3.2：写入时冲突检测（仅对存量页 + 有待追加事实 + 页内有带 ID 事实段时仲裁；
+	// 仲裁器未接线/调用失败一律降级原追加行为，不阻断写回）。
+	if u.arbiter != nil && !created && len(appends) > 0 {
+		existing := extractFactBlocks(body)
+		if len(existing) > 0 {
+			news := make([]WriteBackFact, 0, len(appends))
+			for _, a := range appends {
+				news = append(news, facts[a.idx])
+			}
+			verdicts, aerr := u.arbiter.ArbitrateWriteBack(ctx, title, existing, news)
+			if aerr != nil {
+				u.lg.Warn("写回冲突仲裁失败（降级为直接追加）",
+					loggateway.StepID("knowledge.writeback.arbitrate"),
+					loggateway.Str("rel_path", rel),
+					loggateway.Err(aerr),
+				)
+			} else {
+				byIdx := make(map[int]WriteBackArbitration, len(verdicts))
+				for _, v := range verdicts {
+					if v.FactIndex >= 0 && v.FactIndex < len(appends) {
+						byIdx[v.FactIndex] = v
+					}
+				}
+				kept := appends[:0]
+				for j, a := range appends {
+					v, ok := byIdx[j]
+					if ok && v.Verdict == "supersedes" && v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" {
+						marker := "fact_id: `" + v.TargetFactID + "`"
+						if nb, ok2 := replaceH2BlockContaining(body, marker, a.block); ok2 && nb != body {
+							oldBlock, _ := extractH2BlockContaining(body, marker)
+							body = nb
+							changed = true
+							versions = append(versions, FactVersion{
+								CollectionID: col.ID, DocID: doc.ID,
+								FactID: v.TargetFactID, OldBody: oldBlock, NewBody: a.block,
+							})
+							continue // supersede 生效：顶替旧段，不再追加
+						}
+					}
+					if ok && v.Verdict == "contradicts" && v.Confidence >= arbitrateContradictMinConfidence {
+						// 旧段不覆盖：新事实仍追加留痕，矛盾交人工二审（高风险提案）。
+						u.recordConflictProposalLater(&proposals, doc.ID, rel, facts[a.idx], v)
+					}
+					kept = append(kept, a)
+				}
+				appends = kept
+			}
+		}
+	}
+	for _, a := range appends {
+		body = strings.TrimRight(body, "\n") + "\n\n" + a.block + "\n"
 		changed = true
 		appended++
 	}
@@ -276,6 +346,13 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 			return PromoteTouchedDoc{}, false, err
 		}
 	}
+	// M3 留痕：正文已落库，版本链/提案 best-effort 落库（失败仅 Warn）。
+	for _, v := range versions {
+		u.recordFactVersion(ctx, v.CollectionID, doc.ID, v.FactID, v.OldBody, v.NewBody)
+	}
+	for _, p := range proposals {
+		u.recordConflictProposal(ctx, col.ID, doc.ID, p)
+	}
 	if err := u.RebuildBlockIndex(ctx, col.ID, doc.ID, body); err != nil {
 		u.lg.Warn("词条页块索引重建失败（正文已落，重建可自愈）",
 			loggateway.StepID("knowledge.writeback.entry"),
@@ -293,24 +370,33 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 	return PromoteTouchedDoc{DocID: doc.ID, Created: created}, true, nil
 }
 
+// 仲裁置信度门槛：supersedes 会顶替旧段（写操作），门槛从严；
+// contradicts 仅留提案（不改正文语义），门槛放宽。
+const (
+	arbitrateSupersedeMinConfidence  = 0.8
+	arbitrateContradictMinConfidence = 0.7
+)
+
+// recordConflictProposalLater 队列一条矛盾提案载荷（正文持久化成功后统一落库）。
+func (u *Usecase) recordConflictProposalLater(proposals *[]map[string]any, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
+	*proposals = append(*proposals, map[string]any{
+		"doc_id":         docID,
+		"rel_path":       relPath,
+		"new_statement":  f.Statement,
+		"new_fact_id":    f.FactID,
+		"target_fact_id": v.TargetFactID,
+		"confidence":     v.Confidence,
+		"reason":         v.Reason,
+		"arbiter":        "llm",
+	})
+}
+
 // replaceH2BlockContaining 替换包含 marker 的 H2 小节整段（含小节标题行）为
 // newBlock；marker 不存在返回 false。小节边界："\n## " 或文档开头的 "## "。
 func replaceH2BlockContaining(body, marker, newBlock string) (string, bool) {
-	idx := strings.Index(body, marker)
-	if idx < 0 {
+	start, end, ok := h2BlockBounds(body, marker)
+	if !ok {
 		return body, false
-	}
-	start := strings.LastIndex(body[:idx], "\n## ")
-	if start < 0 {
-		if !strings.HasPrefix(body, "## ") {
-			return body, false // marker 位于前言区，非事实块
-		}
-	} else {
-		start++ // 越过 '\n' 指向 '#'
-	}
-	end := len(body)
-	if nxt := strings.Index(body[start+3:], "\n## "); nxt >= 0 {
-		end = start + 3 + nxt
 	}
 	prefix := strings.TrimRight(body[:start], "\n")
 	suffix := strings.TrimLeft(body[end:], "\n")
@@ -326,4 +412,88 @@ func replaceH2BlockContaining(body, marker, newBlock string) (string, bool) {
 	}
 	b.WriteString("\n")
 	return b.String(), true
+}
+
+// extractH2BlockContaining 取出包含 marker 的 H2 小节整段原文（M3.1 旧段快照用）。
+func extractH2BlockContaining(body, marker string) (string, bool) {
+	start, end, ok := h2BlockBounds(body, marker)
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(body[start:end]), true
+}
+
+// h2BlockBounds 定位包含 marker 的 H2 小节区间 [start, end)；marker 不存在或位于
+// 前言区（非事实块）返回 ok=false。
+func h2BlockBounds(body, marker string) (start, end int, ok bool) {
+	idx := strings.Index(body, marker)
+	if idx < 0 {
+		return 0, 0, false
+	}
+	start = strings.LastIndex(body[:idx], "\n## ")
+	if start < 0 {
+		if !strings.HasPrefix(body, "## ") {
+			return 0, 0, false // marker 位于前言区，非事实块
+		}
+	} else {
+		start++ // 越过 '\n' 指向 '#'
+	}
+	end = len(body)
+	if nxt := strings.Index(body[start+3:], "\n## "); nxt >= 0 {
+		end = start + 3 + nxt
+	}
+	return start, end, true
+}
+
+// factIDMarkerPrefix 事实段内 fact_id 标记前缀（FormatWriteBackAppendix 产出形态）。
+const factIDMarkerPrefix = "fact_id: `"
+
+// extractFactBlocks 枚举词条页内带 fact_id 标记的 H2 事实段（M3.2 仲裁候选）。
+// 无 ID 段不作候选（不可作 supersede 目标——顶替需定位键）。
+func extractFactBlocks(body string) []WriteBackFactBlock {
+	var out []WriteBackFactBlock
+	// 切段：文档开头 "## " 或 "\n## " 为界。
+	var spans []int
+	if strings.HasPrefix(body, "## ") {
+		spans = append(spans, 0)
+	}
+	off := 0
+	for {
+		i := strings.Index(body[off:], "\n## ")
+		if i < 0 {
+			break
+		}
+		spans = append(spans, off+i+1)
+		off += i + 1
+	}
+	for i, s := range spans {
+		end := len(body)
+		if i+1 < len(spans) {
+			end = spans[i+1]
+		}
+		block := strings.TrimSpace(body[s:end])
+		mi := strings.Index(block, factIDMarkerPrefix)
+		if mi < 0 {
+			continue
+		}
+		rest := block[mi+len(factIDMarkerPrefix):]
+		factID := rest
+		if ti := strings.Index(rest, "`"); ti >= 0 {
+			factID = rest[:ti]
+		}
+		factID = strings.TrimSpace(factID)
+		if factID == "" || factID == "stmt" {
+			continue // 占位键非真实 ID（与 upsert 主流程同纪律）
+		}
+		heading := block
+		if nl := strings.Index(block, "\n"); nl >= 0 {
+			heading = block[:nl]
+		}
+		out = append(out, WriteBackFactBlock{
+			Heading: strings.TrimSpace(strings.TrimPrefix(heading, "##")),
+			Body:    block,
+			FactID:  factID,
+		})
+	}
+	return out
 }

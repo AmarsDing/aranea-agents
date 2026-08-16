@@ -406,6 +406,41 @@ message ListDocumentsResponse {
   int32 total = 2;
 }
 
+// GovernanceProposal is one knowledge-curation governance proposal (M4 自治理层).
+// High-risk kinds (conflict/orphan) stay pending until a human resolves them
+// via ResolveGovernanceProposal; low-risk kinds (stale) are auto-applied.
+message GovernanceProposal {
+  int64  id = 1;
+  string collection_id = 2;
+  string kind = 3;            // conflict | orphan | stale | relation_promote
+  string risk = 4;            // high | low
+  string status = 5;          // pending | applied | rejected
+  string payload_json = 6;    // dedup_key + kind-specific fields (JSON object)
+  string created_at = 7;      // RFC3339
+  string resolved_at = 8;     // RFC3339; empty = 未审
+}
+
+message ListGovernanceProposalsRequest {
+  string collection_id = 1;   // empty = 不过滤
+  string status = 2;          // pending | applied | rejected; empty = 不过滤
+  int32 limit = 3;            // default 50, max 200
+}
+
+message ListGovernanceProposalsResponse {
+  repeated GovernanceProposal items = 1;
+}
+
+// ResolveGovernanceProposalRequest closes one pending proposal (人工二审).
+message ResolveGovernanceProposalRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  string decision = 2 [(google.api.field_behavior) = REQUIRED];  // applied | rejected
+}
+
+message ResolveGovernanceProposalResponse {
+  int64 id = 1;
+  string status = 2;  // 二审后状态：applied | rejected
+}
+
 message DeleteDocumentRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
@@ -723,6 +758,21 @@ service KnowledgeService {
   rpc MergeKnowledgeEntities(MergeKnowledgeEntitiesRequest) returns (MergeKnowledgeEntitiesResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/vaults/{collection_id}/entity-merges"
+      body: "*"
+    };
+  }
+  // ListGovernanceProposals lists curation governance proposals (M4 自治理层
+  // 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+  rpc ListGovernanceProposals(ListGovernanceProposalsRequest) returns (ListGovernanceProposalsResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/governance-proposals"
+    };
+  }
+  // ResolveGovernanceProposal closes one pending proposal (人工二审):
+  // decision=applied approves the governance action, rejected dismisses it.
+  rpc ResolveGovernanceProposal(ResolveGovernanceProposalRequest) returns (ResolveGovernanceProposalResponse) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/governance-proposals/{id}:resolve"
       body: "*"
     };
   }

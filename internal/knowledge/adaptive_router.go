@@ -2,12 +2,16 @@ package knowledge
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"strings"
 	"unicode"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 type QueryComplexity int
@@ -22,7 +26,13 @@ type AdaptiveRouter struct {
 	hybrid   *HybridRetriever
 	rewriter *QueryRewriter
 	expander *GraphExpander
-	lg       loggateway.Logger
+	// 自治理图谱 M1-2：检索命中日志 + base-level 激活分加成（可选；nil = 纯检索分）。
+	accessLog bizknowledge.AccessLogRepo
+	beta      float64
+	// 自治理图谱 M1-3：Hebbian 共激活边（可选；nil = 不写）。异步触发，不阻塞返回。
+	coact bizknowledge.CoActivationRepo
+	eta   float64
+	lg    loggateway.Logger
 }
 
 func NewAdaptiveRouter(hybrid *HybridRetriever, rewriter *QueryRewriter, lg loggateway.Logger) *AdaptiveRouter {
@@ -35,6 +45,26 @@ func (a *AdaptiveRouter) SetGraphExpander(expander *GraphExpander) {
 		return
 	}
 	a.expander = expander
+}
+
+// SetAccessLog 接线检索命中日志（自治理图谱 M1-2，可选；nil = 不加成不记录）。
+// beta 为 base-level 激活分加成系数（doc 默认 0.1）。最终分 = 检索分 + beta*baseLevel(doc)。
+func (a *AdaptiveRouter) SetAccessLog(repo bizknowledge.AccessLogRepo, beta float64) {
+	if a == nil {
+		return
+	}
+	a.accessLog = repo
+	a.beta = beta
+}
+
+// SetCoActivation 接线 Hebbian 共激活边（自治理图谱 M1-3，可选；nil = 不写）。
+// eta 为单次共激活强化步长（doc 默认 0.1）；周期衰减由 dream_cycle 负责（M4）。
+func (a *AdaptiveRouter) SetCoActivation(repo bizknowledge.CoActivationRepo, eta float64) {
+	if a == nil {
+		return
+	}
+	a.coact = repo
+	a.eta = eta
 }
 
 func (a *AdaptiveRouter) Hybrid() *HybridRetriever {
@@ -86,7 +116,78 @@ func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery,
 	if a.expander != nil {
 		chunks = a.expander.Expand(ctx, q, chunks)
 	}
+	if a.accessLog != nil && len(chunks) > 0 {
+		chunks = a.applyBaseLevelBoost(ctx, q, chunks)
+	}
+	if a.coact != nil && len(chunks) > 1 {
+		a.triggerHebbian(ctx, q, chunks)
+	}
 	return chunks, nil
+}
+
+// triggerHebbian 异步强化同批召回文档的共激活边（M1-3）。脱离请求 ctx：
+// 返回后请求取消不得中断写入（后台派生副作用，失败仅告警）。
+func (a *AdaptiveRouter) triggerHebbian(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) {
+	docSet := make(map[string]struct{}, len(chunks))
+	docIDs := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		if _, ok := docSet[ch.DocID]; !ok {
+			docSet[ch.DocID] = struct{}{}
+			docIDs = append(docIDs, ch.DocID)
+		}
+	}
+	bg := context.WithoutCancel(ctx)
+	collectionID := q.CollectionID
+	safego.Go(bg, "knowledge.hebbian", func() {
+		if err := a.coact.StrengthenCoActivations(bg, collectionID, docIDs, a.eta); err != nil {
+			a.lg.Warn("Hebbian 共激活边写入失败",
+				loggateway.StepID("knowledge.hebbian.fail"),
+				loggateway.Str("collection_id", collectionID),
+				loggateway.Err(err))
+		}
+	})
+}
+
+// applyBaseLevelBoost 用历史命中计算 base-level 激活分并加成到最终排序（M1-2）。
+// 顺序：先用历史加成排序，再记录本次命中——本次检索不得加成自身（防循环自激）。
+// 日志失败仅告警，不阻断检索返回。
+func (a *AdaptiveRouter) applyBaseLevelBoost(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
+	docSet := make(map[string]struct{}, len(chunks))
+	docIDs := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		if _, ok := docSet[ch.DocID]; !ok {
+			docSet[ch.DocID] = struct{}{}
+			docIDs = append(docIDs, ch.DocID)
+		}
+	}
+	if scores, err := a.accessLog.BaseLevelScores(ctx, q.CollectionID, docIDs); err != nil {
+		a.lg.Warn("base-level 激活分查询失败，跳过加成",
+			loggateway.StepID("knowledge.access_boost.score_fail"),
+			loggateway.Str("collection_id", q.CollectionID),
+			loggateway.Err(err))
+	} else if len(scores) > 0 {
+		for i := range chunks {
+			chunks[i].Score += float32(a.beta * scores[chunks[i].DocID])
+		}
+		sortChunksByScoreDesc(chunks)
+	}
+	sum := sha1.Sum([]byte(q.Query))
+	queryHash := hex.EncodeToString(sum[:8])
+	entries := make([]bizknowledge.AccessLogEntry, 0, len(docIDs))
+	for _, id := range docIDs {
+		entries = append(entries, bizknowledge.AccessLogEntry{
+			CollectionID: q.CollectionID,
+			DocID:        id,
+			QueryHash:    queryHash,
+		})
+	}
+	if err := a.accessLog.LogAccess(ctx, entries); err != nil {
+		a.lg.Warn("检索命中日志写入失败",
+			loggateway.StepID("knowledge.access_boost.log_fail"),
+			loggateway.Str("collection_id", q.CollectionID),
+			loggateway.Err(err))
+	}
+	return chunks
 }
 
 // pickAutoRewriteStrategy 仅在调用方未指定策略且查询判定为复杂时启用 MultiQuery。
