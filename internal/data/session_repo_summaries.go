@@ -23,10 +23,10 @@ func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionS
 	if row.CreatedAt == "" {
 		row.CreatedAt = nowRFC3339()
 	}
-	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO session_summaries (id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at)
-VALUES (?,?,?,?,?,?,?)`)
+	q := r.data.Dialect().RenumberPlaceholders(`INSERT INTO session_summaries (id, session_id, summary_markdown, task_state_json, from_turn, to_turn, token_estimate, created_at)
+VALUES (?,?,?,?,?,?,?,?)`)
 	_, err := r.data.RW().Write(ctx).ExecContext(ctx, q,
-		row.ID, row.SessionID, row.SummaryMarkdown, row.FromTurn, row.ToTurn, row.TokenEstimate, row.CreatedAt)
+		row.ID, row.SessionID, row.SummaryMarkdown, row.TaskStateJSON, row.FromTurn, row.ToTurn, row.TokenEstimate, row.CreatedAt)
 	return err
 }
 
@@ -63,7 +63,7 @@ func (r *sessionRepo) ListSessionSummaries(ctx context.Context, sessionID string
 		return nil, apierror.BadRequest("SESSION", "session id is required")
 	}
 	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
-		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
+		r.data.Dialect().RenumberPlaceholders(`SELECT id, session_id, summary_markdown, task_state_json, from_turn, to_turn, token_estimate, created_at
 FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`), sessionID)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`), sessionID
 	var out []biz.SessionSummary
 	for rows.Next() {
 		var s biz.SessionSummary
-		if err := rows.Scan(&s.ID, &s.SessionID, &s.SummaryMarkdown, &s.FromTurn, &s.ToTurn, &s.TokenEstimate, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.SessionID, &s.SummaryMarkdown, &s.TaskStateJSON, &s.FromTurn, &s.ToTurn, &s.TokenEstimate, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, s)

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -54,11 +55,32 @@ func (s *TaskState) Normalize() {
 
 // RenderBlock 渲染为 prompt 注入段落（含标题行）。
 func (s *TaskState) RenderBlock() string {
+	return s.RenderBlockAsOf(0)
+}
+
+// RenderBlockAsOf 渲染注入段落；asOfTurn > 0 时标题带时点标注
+// （"as of turn N"），让模型能识别状态的新鲜度——非 absorb 压缩路径
+// 注入的可能是上一次 LLM 压缩产出的状态，无时点标注会误导模型当作最新进度。
+func (s *TaskState) RenderBlockAsOf(asOfTurn int) string {
 	if s.Empty() {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Task progress (structured state)\n")
+	if asOfTurn > 0 {
+		fmt.Fprintf(&b, "## Task progress (structured state, as of turn %d)\n", asOfTurn)
+	} else {
+		b.WriteString("## Task progress (structured state)\n")
+	}
+	b.WriteString(s.RenderBody())
+	return strings.TrimSpace(b.String())
+}
+
+// RenderBody 渲染状态正文（Status/Progress/Next/Blockers 行，无标题）。
+func (s *TaskState) RenderBody() string {
+	if s.Empty() {
+		return ""
+	}
+	var b strings.Builder
 	if s.Status != "" {
 		b.WriteString("Status: " + s.Status + "\n")
 	}

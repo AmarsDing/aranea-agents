@@ -141,6 +141,7 @@ func (s *TwinOpenAPICompatService) routes() {
 	mux.HandleFunc("GET /api/v1/graphs", s.guard(s.handleListGraphs))
 	mux.HandleFunc("POST /api/v1/graphs", s.guard(s.handleCreateGraph))
 	mux.HandleFunc("GET /api/v1/graphs/{id}", s.guard(s.handleGetGraph))
+	mux.HandleFunc("PUT /api/v1/graphs/{id}", s.guard(s.handleUpdateGraph))
 	mux.HandleFunc("POST /api/v1/runs", s.guard(s.handleCreateRun))
 	mux.HandleFunc("GET /api/v1/runs/{id}", s.guard(s.handleGetRun))
 	mux.HandleFunc("POST /api/v1/runs/{id}/cancel", s.guard(s.handleCancelRun))
@@ -407,6 +408,39 @@ func (s *TwinOpenAPICompatService) handleCreateGraph(w http.ResponseWriter, r *h
 		return
 	}
 	writeTwinJSON(w, http.StatusOK, map[string]any{"id": created.ID})
+}
+
+// handleUpdateGraph 原位更新 Graph 定义（twin 种子漂移更新用；ID 不变，版本历史追加）。
+// 名称保护：ref=name 是 twin 侧种子同步的匹配键，改名会导致下次同步重复建图，故拒绝改名。
+func (s *TwinOpenAPICompatService) handleUpdateGraph(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	existing, err := s.graphs.GetGraph(r.Context(), id)
+	if err != nil || existing == nil {
+		writeTwinError(w, http.StatusNotFound, "graph not found")
+		return
+	}
+	body, err := readTwinBody(w, r, 4<<20)
+	if err != nil {
+		writeTwinError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var def biz.GraphDefinition
+	if err := json.Unmarshal(body, &def); err != nil {
+		writeTwinError(w, http.StatusBadRequest, "invalid graph json: "+err.Error())
+		return
+	}
+	if def.Name != "" && def.Name != existing.Name {
+		writeTwinError(w, http.StatusBadRequest, "graph name is immutable via this API (ref=name 同步口径)")
+		return
+	}
+	def.ID = id
+	def.Name = existing.Name
+	saved, err := s.graphs.UpdateGraph(r.Context(), &def)
+	if err != nil {
+		writeTwinError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeTwinJSON(w, http.StatusOK, twinGraphView(saved))
 }
 
 // ---------------------------------------------------------------------------

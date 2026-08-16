@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS session_summaries (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
   summary_markdown TEXT NOT NULL,
+  task_state_json TEXT NOT NULL DEFAULT '',
   from_turn INTEGER NOT NULL DEFAULT 0,
   to_turn INTEGER NOT NULL DEFAULT 0,
   token_estimate INTEGER NOT NULL DEFAULT 0,

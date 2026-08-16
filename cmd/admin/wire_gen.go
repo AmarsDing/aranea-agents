@@ -313,7 +313,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	compressor := service.ProvideCompressor(llmService, loggatewayLogger)
 	memoryFactReader := data.NewMemoryFactReader(dataData)
 	l1AdminReader := provideL1AdminReader(memoryAdminDeps)
-	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, loggatewayLogger)
+	l1TaskBoardWriter := provideL1TaskBoardWriter(memoryAdminDeps)
+	compressorConfig := session2.ProvideCompressorConfig(compressReadDeps, compressWriteDeps, sessionRepo, agentRepository, sessionRuntime, memoryResync, compressor, monitorBus, memoryFactReader, l1AdminReader, l1TaskBoardWriter, loggatewayLogger)
 	sessionCompressor := session2.NewCompressor(compressorConfig)
 	skillIntelligenceRepo := data.NewSkillIntelligenceRepo(dataData, loggatewayLogger)
 	skillHealthMetricsAdapter := service.NewSkillHealthMetricsAdapter(skillIntelligenceRepo)
@@ -1639,6 +1640,13 @@ func provideSessionMemoryResync(admin biz.MemoryAdminDeps) session2.MemoryResync
 }
 
 func provideL1AdminReader(admin biz.MemoryAdminDeps) biz.L1AdminReader {
+	if admin == nil {
+		return nil
+	}
+	return admin
+}
+
+func provideL1TaskBoardWriter(admin biz.MemoryAdminDeps) biz.L1TaskBoardWriter {
 	if admin == nil {
 		return nil
 	}

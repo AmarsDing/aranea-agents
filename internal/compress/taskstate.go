@@ -20,8 +20,9 @@ func ExtractTaskState(markdown string) (string, *biz.TaskState) {
 	if !strings.HasSuffix(in, "```") {
 		return markdown, nil
 	}
-	// 定位最后一个 ```json 开围栏。
-	openIdx := strings.LastIndex(in, "```json")
+	// 定位最后一个 ```json 开围栏（大小写不敏感：LLM 可能输出 ```JSON/```Json；
+	// 小写副本与原串仅差 ASCII 大小写，字节偏移一致）。
+	openIdx := strings.LastIndex(strings.ToLower(in), "```json")
 	if openIdx < 0 {
 		return markdown, nil
 	}

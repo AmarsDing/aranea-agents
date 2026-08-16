@@ -19,13 +19,13 @@ func TestRewriteSnapshotWithCompression_TaskStateRendered(t *testing.T) {
 		Next:     "执行清除",
 		Blockers: []string{"等待审批"},
 	}
-	raw, err := RewriteSnapshotWithCompression("{}", "## 1. User Intent\nfix vpn", tail, "agent", state)
+	raw, err := RewriteSnapshotWithCompression("{}", "## 1. User Intent\nfix vpn", tail, "agent", state, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustContain := []string{
 		"[Conversation summary",
-		"Task progress (structured state)",
+		"Task progress (structured state, as of turn 8)",
 		"Status: 取证完成",
 		"- 确认告警",
 		"Next: 执行清除",
@@ -38,13 +38,27 @@ func TestRewriteSnapshotWithCompression_TaskStateRendered(t *testing.T) {
 		}
 	}
 	// 顺序约束：结构化状态块在叙事摘要之前（先读状态，再读叙事）。
-	if strings.Index(raw, "Task progress (structured state)") > strings.Index(raw, "## 1. User Intent") {
+	if strings.Index(raw, "Task progress (structured state") > strings.Index(raw, "## 1. User Intent") {
 		t.Error("structured task state must precede narrative summary")
 	}
 }
 
+func TestRewriteSnapshotWithCompression_TaskStateNoTurnOmitsAnnotation(t *testing.T) {
+	state := &biz.TaskState{Status: "进行中"}
+	raw, err := RewriteSnapshotWithCompression("{}", "narrative", nil, "agent", state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "Task progress (structured state)") {
+		t.Errorf("asOfTurn=0 must render heading\n--- raw ---\n%s", raw)
+	}
+	if strings.Contains(raw, "as of turn") {
+		t.Errorf("asOfTurn=0 must not render turn annotation\n--- raw ---\n%s", raw)
+	}
+}
+
 func TestRewriteSnapshotWithCompression_NilTaskState_LegacyFormat(t *testing.T) {
-	raw, err := RewriteSnapshotWithCompression("{}", "narrative only", nil, "agent", nil)
+	raw, err := RewriteSnapshotWithCompression("{}", "narrative only", nil, "agent", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,35 +71,48 @@ func TestRewriteSnapshotWithCompression_NilTaskState_LegacyFormat(t *testing.T) 
 }
 
 func TestLatestTaskState(t *testing.T) {
-	mk := func(id, ts string) biz.SessionSummary {
-		return biz.SessionSummary{ID: id, SessionID: "s1", SummaryMarkdown: "m", TaskStateJSON: ts}
+	mk := func(id, ts string, toTurn int) biz.SessionSummary {
+		return biz.SessionSummary{ID: id, SessionID: "s1", SummaryMarkdown: "m", TaskStateJSON: ts, ToTurn: toTurn}
 	}
 	valid := `{"status":"s1","next":"n1"}`
 	valid2 := `{"status":"s2"}`
 
 	t.Run("empty rows", func(t *testing.T) {
-		if got := latestTaskState(nil); got != nil {
-			t.Fatalf("expected nil, got %+v", got)
+		if got, turn := latestTaskState(nil); got != nil || turn != 0 {
+			t.Fatalf("expected nil/0, got %+v/%d", got, turn)
 		}
 	})
-	t.Run("picks newest non-empty", func(t *testing.T) {
-		rows := []biz.SessionSummary{mk("a", valid), mk("b", ""), mk("c", valid2)}
-		got := latestTaskState(rows)
-		if got == nil || got.Status != "s2" {
-			t.Fatalf("expected newest state s2, got %+v", got)
+	t.Run("picks newest non-empty with its turn", func(t *testing.T) {
+		rows := []biz.SessionSummary{mk("a", valid, 5), mk("b", "", 7), mk("c", valid2, 9)}
+		got, turn := latestTaskState(rows)
+		if got == nil || got.Status != "s2" || turn != 9 {
+			t.Fatalf("expected newest state s2@9, got %+v@%d", got, turn)
 		}
 	})
 	t.Run("skips invalid json", func(t *testing.T) {
-		rows := []biz.SessionSummary{mk("a", valid), mk("b", "{oops")}
-		got := latestTaskState(rows)
-		if got == nil || got.Status != "s1" {
-			t.Fatalf("expected fallback to a, got %+v", got)
+		rows := []biz.SessionSummary{mk("a", valid, 5), mk("b", "{oops}", 8)}
+		got, turn := latestTaskState(rows)
+		if got == nil || got.Status != "s1" || turn != 5 {
+			t.Fatalf("expected fallback to a@5, got %+v@%d", got, turn)
 		}
 	})
 	t.Run("all empty returns nil", func(t *testing.T) {
-		rows := []biz.SessionSummary{mk("a", ""), mk("b", "{}")}
-		if got := latestTaskState(rows); got != nil {
-			t.Fatalf("expected nil, got %+v", got)
+		rows := []biz.SessionSummary{mk("a", "", 3), mk("b", "{}", 6)}
+		if got, turn := latestTaskState(rows); got != nil || turn != 0 {
+			t.Fatalf("expected nil/0, got %+v/%d", got, turn)
 		}
 	})
+}
+
+func TestMarshalTaskState(t *testing.T) {
+	if got := marshalTaskState(nil); got != "" {
+		t.Fatalf("nil state must marshal to empty, got %q", got)
+	}
+	if got := marshalTaskState(&biz.TaskState{}); got != "" {
+		t.Fatalf("empty state must marshal to empty, got %q", got)
+	}
+	got := marshalTaskState(&biz.TaskState{Status: "s", Done: []string{"d1"}})
+	if !strings.Contains(got, `"status":"s"`) || !strings.Contains(got, `"done":["d1"]`) {
+		t.Fatalf("unexpected marshal: %s", got)
+	}
 }

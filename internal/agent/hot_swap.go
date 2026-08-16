@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -26,12 +27,17 @@ import (
 // 换面机制：用框架 llmagent.SetToolSets 整面原子替换（并发安全，自动
 // refreshToolsLocked），而非 FR-2.5 字面的 Add/RemoveToolSet 按名 diff——
 // 原子性更好、无部分失败窗口，且不再需要 shard:<group> 命名契约。flat 工具
-// （option.Tools）框架无热替换 API，因此门禁④要求 flat 名集不变（MCP 配置
+// （option.Tools）框架无热替换 API，因此门禁③要求 flat 名集不变（MCP 配置
 // 变更不影响 flat 面；broker 降级切换等改 flat 面的场景回退全量构建）。
 //
-// deferred 硬边界（FW-R1）：DeferredToolManager/ToolFilter 在构建期固化进
-// llmagent options，框架无热替换 API，deferredTools 非空的 agent 一律回退
-// 全量构建（门禁③）。
+// deferred 热替换（方案B 视图间接层，2026-08-16 用户裁定，取代原「deferred
+// 硬边界」门禁）：DeferredToolManager 是稳定句柄，catalog/tools/names 收进
+// 不可变 deferredView 经 atomic.Pointer 持有；filter 闭包、tool_search/
+// tool_load 元工具、catalog cue hook 四件套全部绑定句柄、每次调用读当前
+// 视图。换面时旧句柄 SwapView(新 manager) 原子切目录——deferred 集合变化
+// （MCP 工具列表增删）亦可换面，新增延迟工具安装即被隐藏、移除名字不再
+// 拦截；session 激活状态按名字自然延续。两侧 manager 对称性（同空/同非空）
+// 由门禁③保证：catalog 非空 ⟺ flat 面含 tool_search/tool_load。
 //
 // 在途安全（FR-2.6）：热替换不换代——entry.handle 存活，旧分片 hold 组以
 // 存活 handle 进 graveyard，sweeper 在 refs==0（无在途 run）的下一周期或
@@ -47,10 +53,10 @@ type faceShardMeta struct {
 
 // faceMeta 是 entry 持久化的热替换元数据。
 type faceMeta struct {
-	fp        buildKeyFP      // 构建时的 key 指纹（MCPHash 为构建期旧值）
-	shards    []faceShardMeta // 与 plan.specs 同序
-	deferred  []string        // 计划期 deferredTools（registry 名）
-	flatNames []string        // 合并后 flat 工具名集（排序，去重）
+	fp          buildKeyFP                   // 构建时的 key 指纹（MCPHash 为构建期旧值）
+	shards      []faceShardMeta              // 与 plan.specs 同序
+	deferredMgr *deferred.DeferredToolManager // 延迟工具稳定句柄（无延迟目录时 nil）
+	flatNames   []string                     // 合并后 flat 工具名集（排序，去重）
 }
 
 // faceMetaFromPlan 从分片计划与合并产物提取面元数据。
@@ -61,9 +67,9 @@ func faceMetaFromPlan(fp buildKeyFP, sp *shardPlan, ts *tooltrpc.AssembledToolse
 		for i, spec := range sp.specs {
 			m.shards[i] = faceShardMeta{id: spec.id, group: spec.group, fp: spec.fp}
 		}
-		m.deferred = append([]string(nil), sp.deferredTools...)
 	}
 	if ts != nil {
+		m.deferredMgr = ts.DeferredManager
 		m.flatNames = flatToolNames(ts.Tools)
 	}
 	return m
@@ -102,9 +108,9 @@ func equalStringSlices(a, b []string) bool {
 	return true
 }
 
-// tryHotSwap 在 miss 路径尝试在线热替换。命中兄弟且四道门禁全过时执行
-// 原地换面并返回存活 agent（entry 已 re-key 到 newKey）；任何不适用情形
-// 返回 nil，调用方回退全量构建。
+// tryHotSwap 在 miss 路径尝试在线热替换。命中兄弟且三道门禁（拓扑/flat/
+// setter 可用）全过时执行原地换面并返回存活 agent（entry 已 re-key 到
+// newKey）；任何不适用情形返回 nil，调用方回退全量构建。
 //
 // 并发：仅由 singleflight 闭包调用（同 newKey 构建已去重）；items 读写经
 // c.mu；构建与换面动作在锁外，提交时再校验 entry 未被替换/驱逐/标脏。
@@ -167,14 +173,9 @@ func (c *BuildCache) tryHotSwap(ctx context.Context, newKey string, ag biz.Agent
 		}
 	}
 
-	// 门禁③：deferred 硬边界（框架无 ToolFilter/DeferredManager 热替换 API）。
-	if len(sp.deferredTools) > 0 || len(oldFace.deferred) > 0 {
-		releaseHolds(holds)
-		arametrics.AgentHotSwapTotal.WithLabelValues("deferred_active").Inc()
-		return nil
-	}
-
-	// 门禁④：flat 工具名集不变（flat 无热替换 API）。
+	// 门禁②：flat 工具名集不变（flat 无热替换 API）。同时保证 deferred
+	// 两侧对称：catalog 非空 ⟺ flat 面含 tool_search/tool_load，非空↔空
+	// 的不对称情形在此被拦（回退全量构建，由新构建安装/摘除四件套）。
 	newFlat := flatToolNames(ts.Tools)
 	if !equalStringSlices(newFlat, oldFace.flatNames) {
 		releaseHolds(holds)
@@ -182,11 +183,18 @@ func (c *BuildCache) tryHotSwap(ctx context.Context, newKey string, ag biz.Agent
 		return nil
 	}
 
-	// 换面 + 提交。先 SetToolSets（锁外）：此后的 Run 立即见新工具；
-	// 再锁内校验 entry 仍为同一代际（未被 put 换代/驱逐/标脏/缓存关闭）。
+	// 换面 + 提交。次序（fail-closed）：先 SwapView 切 deferred 目录（新
+	// 延迟工具尚未安装即已被 filter 隐藏，杜绝「已安装未隐藏」泄露窗口），
+	// 再 SetToolSets（锁外）：此后的 Run 立即见新工具；
+	// 最后锁内校验 entry 仍为同一代际（未被 put 换代/驱逐/标脏/缓存关闭）。
 	// sibling.agent 是 runScopedAgent 包装产物，其 SetToolSets 转发到内层
 	// *llmagent.LLMAgent（cache_refcount.go）；接口断言兜底非包装路径。
 	swapStart := time.Now()
+	viewSwapped := false
+	if oldFace.deferredMgr != nil && ts.DeferredManager != nil {
+		oldFace.deferredMgr.SwapView(ts.DeferredManager)
+		viewSwapped = true
+	}
 	setter, ok := sibling.agent.(interface{ SetToolSets([]trpctool.ToolSet) })
 	if !ok {
 		releaseHolds(holds)
@@ -198,8 +206,8 @@ func (c *BuildCache) tryHotSwap(ctx context.Context, newKey string, ag biz.Agent
 	c.mu.Lock()
 	if c.closed || c.items[siblingKey] != sibling || sibling.agent == nil {
 		c.mu.Unlock()
-		// entry 已被置换/驱逐：SetToolSets 作用于孤儿 agent（无害，无人
-		// 再服务）；新面引用关闭释放，回退全量构建。
+		// entry 已被置换/驱逐：SwapView/SetToolSets 作用于孤儿 agent（无
+		// 害，无人再服务）；新面引用关闭释放，回退全量构建。
 		releaseHolds(holds)
 		arametrics.AgentHotSwapTotal.WithLabelValues("commit_conflict").Inc()
 		return nil
@@ -207,10 +215,10 @@ func (c *BuildCache) tryHotSwap(ctx context.Context, newKey string, ag biz.Agent
 	oldHolds := sibling.toolSets
 	sibling.toolSets = holds
 	sibling.face = &faceMeta{
-		fp:        newFP,
-		shards:    shardMetasOf(sp),
-		deferred:  append([]string(nil), sp.deferredTools...),
-		flatNames: newFlat,
+		fp:          newFP,
+		shards:      shardMetasOf(sp),
+		deferredMgr: oldFace.deferredMgr, // 稳定句柄存活：视图已切，四件套持续生效
+		flatNames:   newFlat,
 	}
 	delete(c.items, siblingKey)
 	sibling.key = newKey
@@ -232,9 +240,10 @@ func (c *BuildCache) tryHotSwap(ctx context.Context, newKey string, ag biz.Agent
 		loggateway.Str("agent_id", ag.ID),
 		loggateway.Str("agent_key", ag.AgentKey),
 		loggateway.Int64("swap_ms", swapMs),
-		loggateway.Int("shards", len(sp.specs)))
+		loggateway.Int("shards", len(sp.specs)),
+		loggateway.Bool("deferred_view_swapped", viewSwapped))
 	c.emitCacheFlow(ctx, lg, "system.agent.hot_swap", "Agent 在线热替换完成（免整实例重建）",
-		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("swap_ms", swapMs))
+		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("swap_ms", swapMs), event.P("deferred_view_swapped", viewSwapped))
 	return sibling.agent
 }
 

@@ -11,8 +11,8 @@ import (
 )
 
 func TestPromptVersion(t *testing.T) {
-	if PromptVersion != "v3" {
-		t.Fatalf("got %q want %q", PromptVersion, "v3")
+	if PromptVersion != "v4" {
+		t.Fatalf("got %q want %q", PromptVersion, "v4")
 	}
 }
 

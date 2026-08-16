@@ -19,6 +19,9 @@ import (
 // P1-4 起每轮按当前用户 query 追加 Top-N「推荐区」（语义预激活），
 // 无匹配时输出与静态版字节一致。
 //
+// P0-2B 方案B：目录与静态 cue 每轮经 CatalogSnapshot 读当前视图（原子加载），
+// 热替换 SwapView 后下一轮即渲染新目录，hook 自身无需替换。
+//
 // 设计依据（29-token §14.4 WP-4 + P1-4）：
 //   - 静态目录区：长尾工具以「工具名 + 一句话描述」清单注入，按 key 排序
 //   - 动态推荐区：按 query 相关度排序 Top-N，提升模型发现率
@@ -30,17 +33,16 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 	if dm == nil {
 		return nil
 	}
-	catalog := dm.Catalog()
-	if len(catalog) == 0 {
-		return nil
-	}
-	staticCue := deferred.RenderCatalogCue(catalog)
-	if staticCue == "" {
+	if len(dm.CatalogNames()) == 0 {
 		return nil
 	}
 
 	return callbacks.NewBeforeModelHook(4, callbacks.LayerSemiStatic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		catalog, staticCue := dm.CatalogSnapshot()
+		if staticCue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		// P1-4 语义预激活：按当前用户 query 渲染 Top-N 推荐区。

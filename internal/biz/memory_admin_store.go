@@ -185,6 +185,18 @@ type L1TaskWriter interface {
 	ArchiveAndCreateEpisodeTx(ctx context.Context, sessionID, taskID string, episode L1ArchiveEpisodeInsert) ([]byte, error)
 }
 
+// L1TaskBoardWriter merges the structured task-progress snapshot (task_board)
+// into the active L1 task's metadata_json. The session compressor is the sole
+// production caller (v4 压缩契约双段化的单一生产点回写）。
+// Stability:evolving
+type L1TaskBoardWriter interface {
+	// UpdateL1TaskBoard merges boardJSON into metadata_json["task_board"] of the
+	// latest active/paused L1 task for (sessionID, agentID) — the same row the
+	// L1 prompt cue renders. Returns (false, nil) when no eligible task exists.
+	// boardJSON must be a valid JSON object; empty string clears nothing (skip).
+	UpdateL1TaskBoard(ctx context.Context, sessionID, agentID, boardJSON string) (bool, error)
+}
+
 // L1FieldWriter exposes L1 field write operations.
 // Stability:evolving
 type L1FieldWriter interface {
@@ -418,6 +430,7 @@ type MemoryAdminDeps interface {
 	L0AdminStore
 	L1AdminReader
 	L1TaskWriter
+	L1TaskBoardWriter
 	L1FieldWriter
 	L1IdleTaskReader
 	L1ExpiredFieldCleaner

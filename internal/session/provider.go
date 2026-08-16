@@ -37,20 +37,22 @@ func ProvideCompressorConfig(
 	monitorBus contract.MonitorBus,
 	memoryReader biz.MemoryFactReader,
 	l1Reader biz.L1AdminReader,
+	l1BoardWriter biz.L1TaskBoardWriter,
 	lg loggateway.Logger,
 ) CompressorConfig {
 	return CompressorConfig{
-		ReadDeps:     readDeps,
-		WriteDeps:    writeDeps,
-		TxDeps:       txDeps,
-		Agents:       agents,
-		Runtime:      runtime,
-		Memory:       memory,
-		Compress:     comp,
-		MonitorBus:   monitorBus,
-		MemoryReader: memoryReader,
-		L1Reader:     l1Reader,
-		Logger:       lg,
+		ReadDeps:      readDeps,
+		WriteDeps:     writeDeps,
+		TxDeps:        txDeps,
+		Agents:        agents,
+		Runtime:       runtime,
+		Memory:        memory,
+		Compress:      comp,
+		MonitorBus:    monitorBus,
+		MemoryReader:  memoryReader,
+		L1Reader:      l1Reader,
+		L1BoardWriter: l1BoardWriter,
+		Logger:        lg,
 	}
 }
 

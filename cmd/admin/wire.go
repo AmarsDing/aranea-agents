@@ -1039,6 +1039,13 @@ func provideL1AdminReader(admin biz.MemoryAdminDeps) biz.L1AdminReader {
 	return admin
 }
 
+func provideL1TaskBoardWriter(admin biz.MemoryAdminDeps) biz.L1TaskBoardWriter {
+	if admin == nil {
+		return nil
+	}
+	return admin
+}
+
 func provideGraphCheckpointSaver(d *data.Data, infra *event.Infra, lg loggateway.Logger) (*graphtrpc.CheckpointSaver, error) {
 	rawDB := providePrimaryRawDB(d)
 	pgDSN := d.PostgresDSN()
@@ -3809,6 +3816,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideReconsolidationService,
 		provideSessionMemoryResync,
 		provideL1AdminReader,
+		provideL1TaskBoardWriter,
 		provideEpisodeIndexSync,
 		providePluginStatsRecorder,
 		providePluginManager,

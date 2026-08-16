@@ -42,11 +42,10 @@ Rules:
 - Section 6 is MANDATORY: the 30 most recent user messages must appear verbatim; older ones are condensed into topics, never invented.
 
 After the 9 sections, append exactly one task_state JSON block tracking actionable
-progress (not narrative). Format:
+progress (not narrative): a fenced code block (three backticks + json) containing
+a single JSON object, as the LAST thing in your output:
 
-```json
-{"status":"当前阶段一句话","done":["已完成步骤"],"next":"下一步动作","blockers":["阻塞项"]}
-```
+    {"status":"当前阶段一句话","done":["已完成步骤"],"next":"下一步动作","blockers":["阻塞项"]}
 
 task_state rules:
 - All keys are optional; omit the block entirely if there is no trackable task.

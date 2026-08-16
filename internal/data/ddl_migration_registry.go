@@ -351,6 +351,9 @@ var ddlMigrations = []ddlMigration{
 	// 检索侧无从消费 → 陈旧词条照常满分命中。documents.stale_at 可空列承载标记，
 	// 检索三路径统一降权 ×0.5（降权非排除），内容变更清 NULL 复活。
 	{Version: 20261223, Name: "knowledge_stale_mark", SQL: "sql/migrations/20261223_knowledge_stale_mark.sql"},
+	// 20261224 session_summaries_task_state_json: v4 压缩契约——session_summaries
+	// 加 task_state_json 列，承载压缩 LLM 产出的结构化任务状态段（双段化）。
+	{Version: 20261224, Name: "session_summaries_task_state_json", SQL: "sql/migrations/20261224_session_summaries_task_state_json.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

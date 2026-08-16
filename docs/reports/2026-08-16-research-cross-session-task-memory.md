@@ -146,3 +146,31 @@ emergency truncation 直接丢消息；LLM summary 是自由文本。两者都�
 ## 六、结论
 
 视频观点在 Aranea 中的映射：**图执行/团队域 = 完整实现甚至超标**（checkpoint + 状态机 + TimeTravel + 交付物引用化）；**chat 域 = 方向正确（压缩级联 + 分层记忆）但停留在"摘要推断进度"阶段**。最有价值的借鉴是把"任务状态表"作为一等公民引入 chat 长任务（建议 1/3），把"证据按需检索"从团队交付物推广到工具结果（建议 2）。三者均为业务层增量，符合"基于 trpc 框架增强、不另起炉灶"的既定原则。
+
+---
+
+## 七、实施记录（2026-08-16，TDD）
+
+### Phase 1：TaskBoard 任务状态表注入 L1（建议 1 落地）✅
+
+- **载体**：`memory_l1_tasks.metadata_json["task_board"]`（不新增表），契约 `{"status","done":[],"next","blockers":[]}`，全字段可选、全空不渲染。
+- **装配**：[l1_prompt.go](../../../aranea-agents/internal/agent/l1_prompt.go) `parseL1TaskBoard` + 渲染段——L1 working memory cue 中 Status/Progress/Next/Blockers 与 pinned fields 并存（pinned 记"关键事实"，board 记"做到哪了"）。单条 200 runes、列表 8 条×80 runes 防御上限。
+- **测试**：`internal/agent/l1_taskboard_test.go`（渲染全要素、空 board 不渲染、坏 JSON 降级、截断护栏）。
+
+### Phase 2：压缩产物双段化（建议 3 落地，v4 压缩契约）✅
+
+- **prompt**：[prompt.go](../../../aranea-agents/internal/compress/prompt.go) `PromptVersion` v3→v4，9 节叙事之后指示输出末尾 ` ```json task_state ` 块。
+- **拆段**：[taskstate.go](../../../aranea-agents/internal/compress/taskstate.go) `ExtractTaskState`——仅认领末尾含任务键的 JSON 块（普通 JSON 代码块不误剥）；空对象 `{}` 剥块不产状态；复用 `biz.TaskState.Normalize/Empty`。
+- **持久化**：`session_summaries.task_state_json` 列（迁移 `20261224 session_summaries_task_state_json`，IF NOT EXISTS 幂等；新库 schema `memory_chain.sql` 同步）；`session_repo_summaries.go` 读写 SQL 同步。
+- **注入**：[snapshot.go](../../../aranea-agents/internal/session/snapshot.go) `RewriteSnapshotWithCompression` 加 `taskState` 参数——结构化状态块（`RenderBlock`）在叙事摘要**之前**注入（先读状态再读叙事）；`latestTaskState` 从滚动摘要行挑最新非空状态（跳坏 JSON/空对象）。压缩侧 `compressor.go`：L2 MemoryCompact 与 L3 LLM 两路径均经 `ExtractTaskState` 拆段后入库。
+- **测试**：`internal/compress/taskstate_test.go`（6 用例 + 截断护栏）、`internal/session/snapshot_taskstate_test.go`（渲染顺序约束、nil 状态旧格式、latestTaskState 4 用例）。
+
+### 验证
+
+- `go build ./cmd/... ./internal/...` 通过；`internal/compress` / `internal/session` / `internal/agent` / `internal/biz/session` 测试全绿；`TestMigrationVersionsGloballyUnique` 通过。
+- 存量 `TestPromptVersion` 从 v3 更新为 v4（版本哨兵跟进）。
+
+### 未实施（建议 2/4）
+
+- 建议 2（工具结果 artifact 化）：需先评估 decorator tail 截断命中率，列入观察项。
+- 建议 4（图节点历史隔离）：先用 L0 快照统计观测 history token 占比，超阈值再动手。

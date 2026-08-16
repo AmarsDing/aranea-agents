@@ -47,6 +47,13 @@ func TestExtractTaskState(t *testing.T) {
 			wantBlockers: []string{"等待审批"},
 		},
 		{
+			name:         "uppercase JSON fence recognized",
+			in:           narrative + "\n\n```JSON\n{\"status\":\"进行中\",\"next\":\"继续\"}\n```",
+			wantStripped: narrative,
+			wantStatus:   "进行中",
+			wantNext:     "继续",
+		},
+		{
 			name:          "no block",
 			in:            narrative,
 			wantNilState:  true,

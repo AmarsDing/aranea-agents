@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools/deferred"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/stretchr/testify/require"
@@ -82,7 +84,6 @@ func oldFaceOf(ag biz.Agent, deps TRPCBuilderDeps, mcpHash string, sp *shardPlan
 	return fp.key(), &faceMeta{
 		fp:        fp,
 		shards:    shardMetasOf(sp),
-		deferred:  append([]string(nil), sp.deferredTools...),
 		flatNames: append([]string(nil), flatNames...),
 	}
 }
@@ -211,19 +212,125 @@ func TestTryHotSwap_TopologyChanged(t *testing.T) {
 	})
 }
 
-func TestTryHotSwap_DeferredActive(t *testing.T) {
-	ag, deps, holds, sp, flatNames := newHotSwapFixture(t, "hs-deferred")
+// newHotSwapDeferredFixture 构造带延迟目录的基准面（ToolsDeferredJSON=["datetime"]：
+// datetime 为 flat 本地工具 → catalog 非空，flat 面含 tool_search/tool_load）。
+// 返回合并产物 ts，供断言旧 manager 视图切换后的 schema 来源。
+func newHotSwapDeferredFixture(t *testing.T, id string) (biz.Agent, TRPCBuilderDeps, []trpctool.ToolSet, *shardPlan, *tooltrpc.AssembledToolsets) {
+	t.Helper()
+	ag := biz.Agent{
+		ID:       id,
+		AgentKey: "hs-" + id,
+		Settings: &biz.AgentRuntimeSettings{ToolsEnabled: true, ToolsDeferredJSON: `["datetime"]`},
+	}
+	deps := TRPCBuilderDeps{
+		TRPCToolAssemblyDeps: TRPCToolAssemblyDeps{
+			CachedEffectiveTools: &biz.AgentEffectiveTools{
+				ToolsEnabled: true,
+				Items:        []biz.EffectiveAgentTool{{ToolKey: "datetime", Enabled: true}},
+			},
+		},
+	}
+	ctx := context.Background()
+	plan, err := loadToolBuildPlanForSwap(ctx, ag, deps)
+	require.NoError(t, err)
+	ts, holds, sp, err := buildToolsetsForAgent(ctx, ag, deps, plan)
+	require.NoError(t, err)
+	require.NotNil(t, sp)
+	require.NotNil(t, ts.DeferredManager, "deferred fixture 必须产出 manager")
+	require.Contains(t, ts.DeferredManager.CatalogNames(), "datetime")
+	require.ElementsMatch(t, []string{"datetime", "tool_load", "tool_search"}, flatToolNames(ts.Tools),
+		"deferred 面的 flat 名集 = 延迟工具 + 两个元工具（对称性前提）")
+	return ag, deps, holds, sp, ts
+}
+
+// TestTryHotSwap_DeferredViewSwapped 验证方案B核心：deferred 目录非空不再拦截
+// 热替换；旧 manager 稳定句柄经 SwapView 切到新视图，tool_load 的 schema 来源
+// 同步刷新为新构建产物。
+func TestTryHotSwap_DeferredViewSwapped(t *testing.T) {
+	ag, deps, holds, sp, ts := newHotSwapDeferredFixture(t, "hs-defswap")
 	c := newTestCache(8)
 	defer c.Close()
+
+	// 旧 manager：模拟 agent 存活面的四件套绑定句柄，注册旧构建产物引用
+	// （stub 声明无 Description，与真实 datetime 声明可区分）。
+	oldMgr := deferred.NewDeferredToolManager(ts.DeferredManager.Catalog())
+	oldMgr.RegisterTool("datetime", stubDeclTool{name: "datetime"})
+	require.Empty(t, oldMgr.GetToolDeclaration("datetime").Description, "换面前旧 manager 服务旧 stub 声明")
+
 	sibling := newHotSwapAgent("sib")
-	oldKey, oldFace := oldFaceOf(ag, deps, "OLD_MCP", sp, flatNames)
-	oldFace.deferred = []string{"some_deferred_tool"} // 框架无 ToolFilter 热替换 API
+	oldKey, oldFace := oldFaceOf(ag, deps, "OLD_MCP", sp, flatToolNames(ts.Tools))
+	oldFace.deferredMgr = oldMgr
 	c.putWithFace(oldKey, sibling, nil, holds, oldFace)
 
 	depsNew := deps
 	depsNew.MCPVersionHash = "NEW_MCP"
 	newKey := BuildCacheKey(ag, depsNew, "", "", depsNew.MCPVersionHash)
-	require.Nil(t, c.tryHotSwap(context.Background(), newKey, ag, depsNew, loggateway.NewNoop()))
+	got := c.tryHotSwap(context.Background(), newKey, ag, depsNew, loggateway.NewNoop())
+	require.NotNil(t, got, "方案B：deferred 非空不得再拦截热替换")
+	require.Equal(t, 1, sibling.swapCount())
+
+	decl := oldMgr.GetToolDeclaration("datetime")
+	require.NotNil(t, decl)
+	require.NotEmpty(t, decl.Description, "换面后旧句柄必须服务新构建产物的声明（视图已切）")
+
+	c.mu.Lock()
+	entry := c.items[newKey]
+	c.mu.Unlock()
+	require.NotNil(t, entry)
+	require.Same(t, oldMgr, entry.face.deferredMgr, "re-key 后面元数据必须保留同一稳定句柄")
+}
+
+// TestTryHotSwap_DeferredCatalogChanged 验证方案B相对目录等价方案的全场景能力：
+// 旧面 deferred 目录与新面不同（MCP 工具列表增删场景）时仍可换面——SwapView
+// 原子切换后旧句柄立即服务新目录。
+func TestTryHotSwap_DeferredCatalogChanged(t *testing.T) {
+	ag, deps, holds, sp, ts := newHotSwapDeferredFixture(t, "hs-defcat")
+	c := newTestCache(8)
+	defer c.Close()
+
+	// 旧 manager 携带与新面不同的目录（ghost_tool 已在新面消失）。
+	oldMgr := deferred.NewDeferredToolManager([]deferred.DeferredToolEntry{
+		{Name: "ghost_tool", BaseName: "ghost_tool", Description: "removed upstream"},
+	})
+	oldMgr.RegisterTool("ghost_tool", stubDeclTool{name: "ghost_tool"})
+
+	sibling := newHotSwapAgent("sib")
+	oldKey, oldFace := oldFaceOf(ag, deps, "OLD_MCP", sp, flatToolNames(ts.Tools))
+	oldFace.deferredMgr = oldMgr
+	c.putWithFace(oldKey, sibling, nil, holds, oldFace)
+
+	depsNew := deps
+	depsNew.MCPVersionHash = "NEW_MCP"
+	newKey := BuildCacheKey(ag, depsNew, "", "", depsNew.MCPVersionHash)
+	got := c.tryHotSwap(context.Background(), newKey, ag, depsNew, loggateway.NewNoop())
+	require.NotNil(t, got, "目录变化不得拦截热替换（方案B）")
+
+	require.Equal(t, []string{"datetime"}, oldMgr.CatalogNames(), "换面后旧句柄目录应原子切到新视图")
+	require.False(t, oldMgr.IsInCatalog("ghost_tool"), "已移除的工具名不得再拦截/可查")
+	require.NotNil(t, oldMgr.GetToolDeclaration("datetime"))
+}
+
+// TestTryHotSwap_DeferredAsymmetricFallsBack 验证对称性边界：旧面无延迟目录、
+// 新面有（或反向）时，flat 名集差异（tool_search/tool_load 有无）经 flat 门禁
+// 拦截，回退全量构建安装/摘除四件套。
+func TestTryHotSwap_DeferredAsymmetricFallsBack(t *testing.T) {
+	ag, deps, holds, sp, ts := newHotSwapDeferredFixture(t, "hs-defasym")
+	c := newTestCache(8)
+	defer c.Close()
+
+	sibling := newHotSwapAgent("sib")
+	oldKey, oldFace := oldFaceOf(ag, deps, "OLD_MCP", sp, flatToolNames(ts.Tools))
+	// 旧面构造为「无延迟目录」：无 manager，且 flat 面不含元工具（模拟旧构建
+	// 期 MCP 工具缺席 → catalog 空 → 未安装 tool_search/tool_load）。
+	oldFace.deferredMgr = nil
+	oldFace.flatNames = []string{"datetime"}
+	c.putWithFace(oldKey, sibling, nil, holds, oldFace)
+
+	depsNew := deps
+	depsNew.MCPVersionHash = "NEW_MCP"
+	newKey := BuildCacheKey(ag, depsNew, "", "", depsNew.MCPVersionHash)
+	require.Nil(t, c.tryHotSwap(context.Background(), newKey, ag, depsNew, loggateway.NewNoop()),
+		"deferred 非空↔空不对称必须回退全量构建")
 	require.Equal(t, 0, sibling.swapCount())
 }
 
@@ -403,6 +510,6 @@ func TestFaceMetaFromPlan_NilSafe(t *testing.T) {
 	m := faceMetaFromPlan(buildKeyFP{AgentID: "x"}, nil, nil)
 	require.NotNil(t, m)
 	require.Nil(t, m.shards)
-	require.Nil(t, m.deferred)
+	require.Nil(t, m.deferredMgr)
 	require.Nil(t, m.flatNames)
 }

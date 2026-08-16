@@ -63,7 +63,10 @@ type CompressorConfig struct {
 	MonitorBus   contract.MonitorBus
 	MemoryReader biz.MemoryFactReader
 	L1Reader     biz.L1AdminReader
-	Logger       loggateway.Logger
+	// L1BoardWriter 可选：非空时压缩产出的 TaskState 回写 L1 task_board，
+	// 使 L1 prompt cue 与快照注入渲染同一份进度（单一权威源）。
+	L1BoardWriter biz.L1TaskBoardWriter
+	Logger        loggateway.Logger
 }
 
 // compressLevel identifies which compression tier was used.
@@ -93,6 +96,9 @@ type compressOutcome struct {
 	markdown       string
 	absorbedPriors bool
 	fail           compressFailureKind
+	// taskState 是 v4 压缩契约的结构化任务状态段（叙事摘要之外的双段化产物），
+	// 由 compress.ExtractTaskState 从 LLM 产出末尾的 task_state 块拆出；nil = 无。
+	taskState *biz.TaskState
 	// cacheHit reports whether the LLM result came from the compression cache
 	// (no live LLM call). Surfaced in the compression notice metadata.
 	cacheHit bool
@@ -122,10 +128,11 @@ type Compressor struct {
 	Runtime      *Runtime
 	Compress     compress.Compressor
 	Memory       MemoryResync
-	monitorBus   contract.MonitorBus
-	memoryReader biz.MemoryFactReader
-	l1Reader     biz.L1AdminReader
-	lg           loggateway.Logger
+	monitorBus    contract.MonitorBus
+	memoryReader  biz.MemoryFactReader
+	l1Reader      biz.L1AdminReader
+	l1BoardWriter biz.L1TaskBoardWriter
+	lg            loggateway.Logger
 
 	flight   *compressFlightManager
 	buf      *compressBufferManager
@@ -278,17 +285,18 @@ func NewCompressor(cfg CompressorConfig) *Compressor {
 			contextUpdater: cfg.WriteDeps,
 			compressRepo:   cfg.TxDeps,
 		},
-		agents:       cfg.Agents,
-		Runtime:      cfg.Runtime,
-		Memory:       cfg.Memory,
-		Compress:     cfg.Compress,
-		monitorBus:   cfg.MonitorBus,
-		memoryReader: cfg.MemoryReader,
-		l1Reader:     cfg.L1Reader,
-		lg:           cfg.Logger,
-		flight:       newCompressFlightManager(),
-		buf:          newCompressBufferManager(),
-		suppress:     newCompressSuppressManager(),
+		agents:        cfg.Agents,
+		Runtime:       cfg.Runtime,
+		Memory:        cfg.Memory,
+		Compress:      cfg.Compress,
+		monitorBus:    cfg.MonitorBus,
+		memoryReader:  cfg.MemoryReader,
+		l1Reader:      cfg.L1Reader,
+		l1BoardWriter: cfg.L1BoardWriter,
+		lg:            cfg.Logger,
+		flight:        newCompressFlightManager(),
+		buf:           newCompressBufferManager(),
+		suppress:      newCompressSuppressManager(),
 	}
 	c.buf.startGC()
 	return c
@@ -689,19 +697,21 @@ func (c *Compressor) executeCompression(ctx context.Context, sess biz.Session, a
 		return false, nil
 	}
 
-	txMerged, txTail, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, tail, outcome, fromTurn, toTurn)
+	txMerged, txTail, txTaskState, txStateTurn, txErr := c.compressInTransaction(ctx, sessionID, ag, sess, tail, outcome, fromTurn, toTurn)
 	if txErr != nil {
 		return false, txErr
 	}
 
-	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail)
+	c.syncRuntimeSnapshot(ctx, sess, ag, sessionID, trpcUserID, txMerged, txTail, txTaskState, txStateTurn)
+	c.writebackL1TaskBoard(ctx, sess, ag, txTaskState)
 	c.postCompressionSync(ctx, sessionID, trpcUserID, ag, sess, fromTurn, toTurn, txMerged, txTail, outcome.cacheHit)
 
 	return true, nil
 }
 
 // compressInTransaction executes the database transaction for compression.
-func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, tail []biz.ChatMessage, outcome compressOutcome, fromTurn, toTurn int) (mergedSummary string, tailMsgs []biz.ChatMessage, err error) {
+// 返回合并后的叙事摘要、tail、本次解析出的任务状态及其时点轮次（供快照同步与 L1 回写复用）。
+func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string, ag biz.Agent, sess biz.Session, tail []biz.ChatMessage, outcome compressOutcome, fromTurn, toTurn int) (mergedSummary string, tailMsgs []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int, err error) {
 	err = c.deps.compressRepo.CompressSessionInTx(ctx, sessionID, func(txCtx context.Context) error {
 		priorRows, err := c.deps.summaryReader.ListSessionSummaries(txCtx, sessionID)
 		if err != nil {
@@ -726,6 +736,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 			ID:              uuid.NewString(),
 			SessionID:       sessionID,
 			SummaryMarkdown: outcome.markdown,
+			TaskStateJSON:   marshalTaskState(outcome.taskState),
 			FromTurn:        fromTurn,
 			ToTurn:          toTurn,
 			TokenEstimate:   roughTokenEstimate(outcome.markdown),
@@ -737,12 +748,15 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 
 		if absorb {
 			mergedSummary = outcome.markdown
+			taskState = outcome.taskState
+			stateAsOfTurn = toTurn
 		} else {
 			allRows, err := c.deps.summaryReader.ListSessionSummaries(txCtx, sessionID)
 			if err != nil {
 				return err
 			}
 			mergedSummary = mergeSessionSummariesMarkdown(allRows)
+			taskState, stateAsOfTurn = latestTaskState(allRows)
 		}
 
 		// tail 直接来自 loadCompressBody 的保留区（近期轮次原样保留）。
@@ -750,7 +764,7 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 
 		author := c.resolveAgentAuthor(txCtx, ag, sess.AgentID)
 
-		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, mergedSummary, tailMsgs, author)
+		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, mergedSummary, tailMsgs, author, taskState, stateAsOfTurn)
 		if err != nil {
 			return err
 		}
@@ -763,6 +777,10 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 			AgentWindow:          ag.ContextWindow,
 		})
 		est := estimateCompactedPromptTokens(mergedSummary, tailMsgs, calculateReservedSystem(ag))
+		if taskState != nil {
+			// 注入快照的结构化状态块也占 prompt 体积，计入水位估计。
+			est += roughTokenEstimate(taskState.RenderBlockAsOf(stateAsOfTurn))
+		}
 		if err := c.deps.contextUpdater.UpdateSessionContextAfterCompression(txCtx, sessionID, est, win); err != nil {
 			return err
 		}
@@ -776,16 +794,16 @@ func (c *Compressor) compressInTransaction(ctx context.Context, sessionID string
 
 		return nil
 	})
-	return mergedSummary, tailMsgs, err
+	return mergedSummary, tailMsgs, taskState, stateAsOfTurn, err
 }
 
 // syncRuntimeSnapshot pushes the compressed snapshot to the trpc-agent-go runtime.
-func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID, trpcUserID, txMerged string, txTail []biz.ChatMessage) {
+func (c *Compressor) syncRuntimeSnapshot(ctx context.Context, sess biz.Session, ag biz.Agent, sessionID, trpcUserID, txMerged string, txTail []biz.ChatMessage, taskState *biz.TaskState, stateAsOfTurn int) {
 	if c.Runtime == nil {
 		return
 	}
 	author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
-	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
+	raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author, taskState, stateAsOfTurn)
 	if snapErr == nil {
 		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil {
 			c.lg.Warn("trpc 快照同步失败",
@@ -851,7 +869,8 @@ func (c *Compressor) compressCascade(ctx context.Context, sess biz.Session, ag b
 				loggateway.StepID("session.compress"),
 				loggateway.SessionID(sessionID),
 				loggateway.Str("compress_level", string(compressLevelMemory)))
-			return compressOutcome{level: compressLevelMemory, markdown: memResult.summaryMarkdown}
+			narrative, ts := compress.ExtractTaskState(memResult.summaryMarkdown)
+			return compressOutcome{level: compressLevelMemory, markdown: narrative, taskState: ts}
 		}
 		// Level 2 failed: only escalate to LLM if at or above hard trigger threshold.
 		if usedTokens < hardTok {
@@ -1012,9 +1031,12 @@ func (c *Compressor) llmSummarize(ctx context.Context, sess biz.Session, ag biz.
 		loggateway.Str("prompt_ver", res.PromptVersion),
 		loggateway.Int("compress_chunks", len(chunks)),
 		loggateway.Str("truncate_strategy", strategy))
+	// v4 双段化：从最终叙事产出末尾拆出 task_state 结构化段（剥块后叙事入库）。
+	narrative, taskState := compress.ExtractTaskState(md)
 	return compressOutcome{
 		level:    compressLevelLLM,
-		markdown: md,
+		markdown: narrative,
+		taskState: taskState,
 		// 仅当 LLM 真实产出摘要时才算吸收（hybrid 兜底标记不含历史内容，删除旧行会丢数据）。
 		absorbedPriors: priorMerged != "" && llmSucceeded,
 		cacheHit:       cacheHit,

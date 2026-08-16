@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	"aranea-agents/internal/metrics"
 
@@ -44,29 +44,58 @@ type DeferredToolEntry struct {
 	Category    string
 }
 
-// DeferredToolManager 管理延迟工具的目录和 per-session 激活状态。
-//
-// 去 factory 化（WP-4 修复版）：
-//   - 不再持有 factory 函数，不再负责工具创建
-//   - catalog 仅包含静态元数据（name/description/category）
-//   - tools map 持有已装配的 DeferredCallableTool 引用，供 tool_load 查询完整 schema
-//   - 激活状态存储在 session state（temp:deferred:activated），per-session 隔离
-type DeferredToolManager struct {
-	mu            sync.RWMutex
+// deferredView 是延迟工具目录的不可变快照（P0-2B 方案B 热替换间接层）。
+// 构建期装配完整后发布；热替换时经 SwapView 整体原子替换，绑定同一
+// manager 句柄的 filter/tool_search/tool_load/catalog cue 四件套立即同刻
+// 看到新目录，而 agent 实例与框架 options 零改动（框架无这些部件的热替换
+// API，间接层在产品侧闭环，不碰 vendored 框架）。
+type deferredView struct {
 	catalog       []DeferredToolEntry
 	catalogIndex  map[string]int // name → index into catalog for O(1) lookup
 	tools         map[string]trpctool.Tool
 	categoryIndex map[string][]string
+	names         map[string]bool // 运行时名集合（ToolFilter 每次调用读取）
+	staticCue     string          // 预渲染静态目录 cue（catalog 为空时为 ""）
+}
+
+func newView(catalog []DeferredToolEntry) *deferredView {
+	v := &deferredView{
+		catalog:       catalog,
+		catalogIndex:  buildCatalogIndex(catalog),
+		tools:         make(map[string]trpctool.Tool),
+		categoryIndex: buildCategoryIndex(catalog),
+		names:         make(map[string]bool, len(catalog)),
+		staticCue:     RenderCatalogCue(catalog),
+	}
+	for _, entry := range catalog {
+		v.names[entry.Name] = true
+	}
+	return v
+}
+
+// DeferredToolManager 管理延迟工具的目录和 per-session 激活状态。
+//
+// 去 factory 化（WP-4 修复版）+ 视图间接层（P0-2B 方案B）：
+//   - 不再持有 factory 函数，不再负责工具创建
+//   - 本结构是**稳定句柄**：catalog/tools/names 等全部收进不可变 deferredView，
+//     经 atomic.Pointer 持有；读路径无锁（每次调用 Load 当前视图）
+//   - 激活状态存储在 session state（temp:deferred:activated），per-session 隔离，
+//     与视图解耦——热替换换视图后激活状态按名字自然延续
+type DeferredToolManager struct {
+	view atomic.Pointer[deferredView]
 }
 
 func NewDeferredToolManager(catalog []DeferredToolEntry) *DeferredToolManager {
-	m := &DeferredToolManager{
-		catalog:      catalog,
-		catalogIndex: buildCatalogIndex(catalog),
-		tools:        make(map[string]trpctool.Tool),
-	}
-	m.categoryIndex = buildCategoryIndex(catalog)
+	m := &DeferredToolManager{}
+	m.view.Store(newView(catalog))
 	return m
+}
+
+// SwapView 将本 manager 的当前视图原子替换为 src 的当前视图（两句柄此后共享
+// 同一不可变视图）。P0-2B 热替换专用：src 是新构建面的 manager（其 flat 元工具
+// 不安装、句柄随后被丢弃），本句柄是 agent 存活面四件套的绑定者。
+func (m *DeferredToolManager) SwapView(src *DeferredToolManager) {
+	m.view.Store(src.view.Load())
 }
 
 func buildCatalogIndex(catalog []DeferredToolEntry) map[string]int {
@@ -89,18 +118,17 @@ func buildCategoryIndex(catalog []DeferredToolEntry) map[string][]string {
 
 // RegisterTool 注册一个已装配的延迟工具引用。
 // 供 tool_load 在激活后返回完整 schema。
+//
+// 契约：仅允许装配期（manager 发布给并发读者之前）调用——视图发布后不可变，
+// 热替换对 tools 表的刷新经 SwapView 整体换视图完成。
 func (m *DeferredToolManager) RegisterTool(name string, t trpctool.Tool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.tools[name] = t
+	m.view.Load().tools[name] = t
 }
 
 // GetToolDeclaration 返回已注册工具的完整声明。
 // 供 tool_load 在激活成功后返回给模型。
 func (m *DeferredToolManager) GetToolDeclaration(name string) *trpctool.Declaration {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if t, ok := m.tools[name]; ok && t != nil {
+	if t, ok := m.view.Load().tools[name]; ok && t != nil {
 		return t.Declaration()
 	}
 	return nil
@@ -114,16 +142,12 @@ func (m *DeferredToolManager) GetToolDeclaration(name string) *trpctool.Declarat
 //   - 运行时名（如 file_save_file）：filter 在 NamedTool 层直接匹配
 //   - 基础名（如 save_file）：DeferredCallableTool.Call 激活门禁检查的名字
 func (m *DeferredToolManager) Activate(ctx context.Context, toolName string) (*trpctool.Declaration, error) {
-	m.mu.RLock()
-	idx, ok := m.catalogIndex[toolName]
-	var entry DeferredToolEntry
-	if ok {
-		entry = m.catalog[idx]
-	}
-	m.mu.RUnlock()
+	v := m.view.Load()
+	idx, ok := v.catalogIndex[toolName]
 	if !ok {
 		return nil, fmt.Errorf("deferred tool %q not found in catalog", toolName)
 	}
+	entry := v.catalog[idx]
 
 	// 写入 session state（运行时名 + 基础名，幂等）
 	if !writeActivatedSet(ctx, toolName) {
@@ -153,18 +177,15 @@ func (m *DeferredToolManager) IsActivated(ctx context.Context, toolName string) 
 
 // IsInCatalog 检查工具是否在延迟目录中。
 func (m *DeferredToolManager) IsInCatalog(toolName string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, ok := m.catalogIndex[toolName]
+	_, ok := m.view.Load().catalogIndex[toolName]
 	return ok
 }
 
 // CatalogNames 返回目录中所有工具名称。
 func (m *DeferredToolManager) CatalogNames() []string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	names := make([]string, len(m.catalog))
-	for i, entry := range m.catalog {
+	v := m.view.Load()
+	names := make([]string, len(v.catalog))
+	for i, entry := range v.catalog {
 		names[i] = entry.Name
 	}
 	return names
@@ -173,32 +194,27 @@ func (m *DeferredToolManager) CatalogNames() []string {
 // Catalog 返回目录条目的副本。
 // 供 catalog cue 渲染器生成静态工具目录。
 func (m *DeferredToolManager) Catalog() []DeferredToolEntry {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make([]DeferredToolEntry, len(m.catalog))
-	copy(out, m.catalog)
+	v := m.view.Load()
+	out := make([]DeferredToolEntry, len(v.catalog))
+	copy(out, v.catalog)
 	return out
 }
 
-// DeferredToolNames 返回延迟工具名称集合。
-func (m *DeferredToolManager) DeferredToolNames() map[string]bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	names := make(map[string]bool, len(m.catalog))
-	for _, entry := range m.catalog {
-		names[entry.Name] = true
-	}
-	return names
+// CatalogSnapshot 返回当前视图的目录与预渲染静态 cue（单次原子加载）。
+// catalog cue hook 每轮调用：热替换 SwapView 后下一轮即渲染新目录。
+// 返回的 catalog 是视图共享切片（视图不可变，调用方只读安全）。
+func (m *DeferredToolManager) CatalogSnapshot() ([]DeferredToolEntry, string) {
+	v := m.view.Load()
+	return v.catalog, v.staticCue
 }
 
 // CategoryIndex 返回分类索引。
 func (m *DeferredToolManager) CategoryIndex() map[string][]string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	result := make(map[string][]string, len(m.categoryIndex))
-	for k, v := range m.categoryIndex {
-		cp := make([]string, len(v))
-		copy(cp, v)
+	v := m.view.Load()
+	result := make(map[string][]string, len(v.categoryIndex))
+	for k, val := range v.categoryIndex {
+		cp := make([]string, len(val))
+		copy(cp, val)
 		result[k] = cp
 	}
 	return result
@@ -211,10 +227,12 @@ func (m *DeferredToolManager) CategoryIndex() map[string][]string {
 // 支持多层包装穿透：aliasTool/ToolDecorator/confirmationCallable 等
 // 包装器通过 InnerTool() 或 Original() 暴露内部工具时，
 // 递归解包直到找到延迟工具的规范名称。
+//
+// P0-2B 方案B：闭包绑定本稳定句柄、每次调用读取当前视图的 names——
+// 热替换 SwapView 后同一闭包立即按新目录隐藏/放行，框架侧零改动。
 func (m *DeferredToolManager) ToolFilter() trpctool.FilterFunc {
-	deferredNames := m.DeferredToolNames()
 	return func(ctx context.Context, t trpctool.Tool) bool {
-		name, isDeferred := resolveDeferredName(t, deferredNames)
+		name, isDeferred := resolveDeferredName(t, m.view.Load().names)
 		if !isDeferred {
 			return true
 		}
@@ -293,7 +311,7 @@ func (t *ToolSearchTool) execute(ctx context.Context, in toolSearchInput) (toolS
 		score  int
 	}
 	var scored []scoredResult
-	for _, entry := range t.manager.catalog {
+	for _, entry := range t.manager.view.Load().catalog {
 		// P1-4：与语义预激活共享同一打分逻辑，保证「搜索看到的」与
 		// 「推荐的」一致。
 		if score := scoreEntryAgainstQuery(entry, queryLower, tokens); score > 0 {

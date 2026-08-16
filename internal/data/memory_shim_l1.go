@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -20,6 +21,7 @@ type l1WorkingMemoryRepo struct {
 }
 
 var _ biz.L1TaskWriter = (*l1WorkingMemoryRepo)(nil)
+var _ biz.L1TaskBoardWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1FieldWriter = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1AdminReader = (*l1WorkingMemoryRepo)(nil)
 var _ biz.L1IdleTaskReader = (*l1WorkingMemoryRepo)(nil)
@@ -36,6 +38,26 @@ func newL1WorkingMemoryRepo(data *Data) *l1WorkingMemoryRepo {
 		return nil
 	}
 	return &l1WorkingMemoryRepo{data: data}
+}
+
+// NewL1TaskBoardWriterFromRawDB 以裸 DB 句柄装配 L1 task_board 回写器，
+// 供不经过完整 Data 装配的场景使用（如跨包集成测试，session 压缩器回写
+// 真实 PG 的端到端验证）；生产 wiring 仍走 MemoryAdminAdapter
+// （NewSessionAdminStoreAdapter）。主库仅支持 Postgres，故方言固定。
+func NewL1TaskBoardWriterFromRawDB(db *sql.DB, lg loggateway.Logger) biz.L1TaskBoardWriter {
+	if db == nil {
+		return nil
+	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return newL1WorkingMemoryRepo(&Data{
+		rawDB:   db,
+		readDB:  db,
+		rwDB:    NewReadWriteDB(db, db),
+		lg:      lg,
+		dialect: DialectPostgres,
+	})
 }
 
 // --- L1AdminReader ---
@@ -186,6 +208,73 @@ func (r *l1WorkingMemoryRepo) StartL1Task(ctx context.Context, in biz.L1TaskInse
 		return nil, entErrToBizErr(err, "MEMORY_L1")
 	}
 	return r.GetL1TaskRow(ctx, sessID, id)
+}
+
+// --- L1TaskBoardWriter ---
+
+// UpdateL1TaskBoard 把压缩产出的结构化任务状态合并进当前 L1 任务的
+// metadata_json["task_board"]（v4 压缩契约双段化的回写路径）。
+// 目标行与 L1 prompt cue 渲染的行完全一致：session+agent 下 status IN
+// ('active','paused') 中 updated_at 最新的一条（镜像 ListL1TaskRows）。
+// metadata_json 其他键保留；task_board 整体替换（最新状态为权威）。
+func (r *l1WorkingMemoryRepo) UpdateL1TaskBoard(ctx context.Context, sessionID, agentID, boardJSON string) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	agentID = strings.TrimSpace(agentID)
+	boardJSON = strings.TrimSpace(boardJSON)
+	if sessionID == "" || agentID == "" || boardJSON == "" {
+		return false, nil
+	}
+	var taskID, metaRaw string
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`SELECT id, metadata_json FROM memory_l1_tasks
+		 WHERE session_id = ? AND agent_id = ? AND status IN ('active','paused')
+		 ORDER BY updated_at DESC LIMIT 1`), sessionID, agentID)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L1")
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false, entErrToBizErr(rows.Err(), "MEMORY_L1")
+	}
+	if err := rows.Scan(&taskID, &metaRaw); err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L1")
+	}
+	merged, err := mergeTaskBoardMetadata(metaRaw, boardJSON)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L1")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, r.data.Dialect().RenumberPlaceholders(
+		`UPDATE memory_l1_tasks SET metadata_json = ?, updated_at = ? WHERE id = ?`), merged, now, taskID)
+	if err != nil {
+		return false, entErrToBizErr(err, "MEMORY_L1")
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return true, nil
+	}
+	return n > 0, nil
+}
+
+// mergeTaskBoardMetadata 把 task_board 键合并进 metadata_json（其他键不动）。
+// metadata_json 为空/非法时按 {} 起步；boardJSON 非法时报错。
+func mergeTaskBoardMetadata(metaRaw, boardJSON string) (string, error) {
+	meta := map[string]json.RawMessage{}
+	if raw := strings.TrimSpace(metaRaw); raw != "" && raw != "{}" {
+		if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+			meta = map[string]json.RawMessage{}
+		}
+	}
+	var board json.RawMessage
+	if err := json.Unmarshal([]byte(boardJSON), &board); err != nil {
+		return "", err
+	}
+	meta["task_board"] = board
+	out, err := json.Marshal(meta)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }
 
 func (r *l1WorkingMemoryRepo) EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error) {

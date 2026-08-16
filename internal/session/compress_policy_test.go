@@ -88,6 +88,8 @@ func TestRewriteSnapshotWithCompression_tailEvents(t *testing.T) {
 			{Role: "assistant", ContentMarkdown: "hi", CreatedAt: "2026-05-24T10:00:01Z"},
 		},
 		"my-agent",
+		nil,
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
