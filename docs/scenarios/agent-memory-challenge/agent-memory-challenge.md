@@ -77,7 +77,7 @@
 - **系统**：Aranea-Agents Memory（Aranea-Agents 平台的记忆子系统独立参评）
 - **核心能力**：L0–L4 五层记忆体系（上下文窗口 / 工作记忆 / 情景记忆 / 语义事实 / 图谱与进化）
 - **仓库**：https://github.com/AmarsDing/aranea-agents （public ✅ 已确认）
-- **固定版本**：tag `amc-2026.08`（commit `ab2468ad3`，含全新部署修复 + 仓库清理；Full 受理后冻结）
+- **固定版本**：重评版本 tag `amc-2026.08-r2`（commit `e252ff09e`，跨会话长任务记忆收尾 + 契约自测全绿；Full 受理后冻结）。首评版本 tag `amc-2026.08`（commit `ab2468ad3`）为历史快照，保留不删（平台冻结纪律）
 
 ---
 
@@ -90,7 +90,7 @@
 | 字段 | 填写内容 |
 |------|----------|
 | 系统名称 | Aranea-Agents Memory |
-| 系统版本 | `amc-2026.08`（git tag，指向 commit `ab2468ad3`；Full 受理后冻结） |
+| 系统版本 | `amc-2026.08-r2`（git tag，指向 commit `e252ff09e`；Full 受理后冻结；首评版本 `amc-2026.08` → `ab2468ad3`） |
 | 联系人 | 丁升 / dingsheng88888888@126.com / 13521757871 |
 | 机构或团队 | 个人开发者（Independent Developer） |
 | 拟参评类型 | 文本记忆（Textual Memory）+ 代码记忆（Coding Memory） |
@@ -110,7 +110,7 @@
 
 ### 3.3 提交说明（Submission Notes）
 
-1. **仓库**：https://github.com/AmarsDing/aranea-agents ，固定 tag `amc-2026.08`
+1. **仓库**：https://github.com/AmarsDing/aranea-agents ，固定 tag `amc-2026.08-r2`（首评 tag `amc-2026.08` 保留不删）
 2. **构建**：`docker compose -f docker-compose.eval.yml build`（根 Dockerfile，Go 1.23 多阶段构建，自动包含 `memoryeval` 评测二进制）
 3. **运行**：`docker compose -f docker-compose.eval.yml up -d`（app + pgvector 两服务）；评测端点 `http://<host>:8910`，健康检查 `GET /healthz`
 4. **Add/Search 封装**：`cmd/memoryeval/` 独立 HTTP 适配层（主程序零修改），契约细节见 [design.md §5](./agent-memory-challenge.design.md#5-addsearch-api-封装方案)
@@ -132,6 +132,34 @@
 | 方法改动 | 见 design.md §4（五层模型、混合评分召回、治理机制等全部改动清单） |
 | 运行步骤 | 见仓库 README 参赛章节（T3） |
 
+### 3.5 重评版本（r2）申请口径
+
+> 背景：首评（`amc-2026.08` / `ab2468ad3`，申请编号 `request_c2ed746fa6484454b1b9`）已放榜，综合 24.56（49/50），各维度远低于 SQLite-FTS 基线，疑似平台侧构建/集成故障（如无外网 Embedding 致召回为空），非算法差距。平台规则：一个 Key 当期仅一次 Full、Full 配额每 3 个月 1 次、受理后版本冻结；已提交仓库/tag/commit 不得删除替换，**新增 tag 属安全增量**。故以新增 tag `amc-2026.08-r2` 走「提交评测申请」表单申请新版本评测。
+
+**版本信息**
+
+| 字段 | 内容 |
+|------|------|
+| 系统版本 | `amc-2026.08-r2`（git tag → commit `e252ff09e`，已推送 origin） |
+| 相对首评增量 | 跨会话长任务记忆增强 + 稳定性优化（下表清单） |
+| 接口契约 | 与首评完全一致（Add/Search 适配层零行为变更，Smoke 7 项自测全绿） |
+| Docker 形态 | 不变（`docker-compose.eval.yml`，app + pgvector 双服务） |
+
+**r2 相对首评（ab2468ad3 → e252ff09e）改动清单**
+
+1. **跨会话长任务记忆**：TaskBoard 任务状态表注入 L1 工作记忆（`memory_l1_tasks.metadata_json["task_board"]` 契约：status/done/next/blockers 四要素，全空不渲染）
+2. **压缩契约 v4**：会话压缩摘要双段化——叙事段 + 结构化 `task_state` JSON 段（`ExtractTaskState` 拆段、`session_summaries.task_state_json` 持久化、快照注入时结构化状态先于叙事渲染、压缩产出回写 L1 task_board 闭环）
+3. **deferred 工具热替换**：不可变 `deferredView` 经 atomic.Pointer 整体换面（vendored 框架零改动）
+4. **稳定性/兼容性修复**：twin openapi 新增 `PUT /api/v1/graphs/{id}` 原位更新；工具别名与确认校验、SSRF 防护、事件与连接鉴权等修复（见 tag 附注与各 commit message）
+5. **验证**：`go build ./cmd/... ./internal/...` 通过；受影响包测试全绿（含 PG 集成）；`test/agent-memory-challenge/smoke.sh` 7 项全绿（healthz/401/400/双用户隔离/幂等重放/空 scope 返回 `[]`）
+
+**提交说明（申请表"提交说明"栏口径）**
+
+1. 本次为首评 `request_c2ed746fa6484454b1b9` 的**新版本评测申请**（同一系统、同一仓库、同一接口契约），参评版本从 `amc-2026.08`（`ab2468ad3`）更新至 `amc-2026.08-r2`（`e252ff09e`），首评版本 tag/commit 全部保留未动
+2. 首评结果（综合 24.56，A17.3/B17.6/C8.9/D18.5/E51.5/G29.0/H39.4）各维度远低于仓库内置关键词降级路径的本地自测表现，怀疑首评评测环境存在构建或集成故障（例如平台构建环境无外网 Embedding 且降级路径未被触发，导致召回为空）。**恳请随受理回执提供首评的错误摘要/构建日志**，以便核对是否为部署侧问题
+3. 运行说明与首评一致：`docker compose -f docker-compose.eval.yml build && up -d`，评测端点 `:8910`；Embedding API 可选（未配置时自动降级为关键词混合召回，契约保持可用）
+4. r2 版本内存域能力增量为「跨会话长任务记忆」（结构化任务状态注入工作记忆 + 压缩摘要双段化），对评测维度 B（多跳组合）/C（时序理解）/G（规则流程执行）有正向影响
+
 ---
 
 ## 4. 验收标准
@@ -139,7 +167,7 @@
 | # | 标准 | 验证方式 |
 |---|------|----------|
 | AC1 | 申请表全部字段可填写、无占位符遗留 | 提交前对照 §3 检查 |
-| AC2 | 仓库 public 可访问，tag `amc-2026.08` 指向固定 commit | 匿名窗口访问 + `git ls-remote` |
+| AC2 | 仓库 public 可访问，tag `amc-2026.08-r2` 指向固定 commit（首评 tag `amc-2026.08` 保留不删） | 匿名窗口访问 + `git ls-remote` |
 | AC3 | Docker 从干净环境按 README 一条命令构建成功 | T2 验证（新机器/清理缓存构建） |
 | AC4 | 容器启动后 Add/Search smoke 自测通过（本目录 test 脚本） | T5 自测脚本全绿 |
 | AC5 | 学术披露完整：引用与改动清单无遗漏 | 对照 design.md §3/§4 与代码依赖清单 |
