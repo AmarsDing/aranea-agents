@@ -1,0 +1,1 @@
+{"ok":false, "status":"error", "message":"transport 必须是 [stdio sse streamable]（收到 \"\"）", "detailsJson":"{}"}

@@ -1,0 +1,1 @@
+{"provider":"ollama", "baseUrl":"http://host.docker.internal:11434", "model":"bge-m3", "dim":1024, "configured":true, "hasApiKey":false}

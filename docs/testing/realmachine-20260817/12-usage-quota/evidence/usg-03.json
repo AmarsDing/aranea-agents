@@ -1,0 +1,1 @@
+{"items":[{"providerCode":"deepseek", "modelApiId":"deepseek-v4-flash", "modelDisplayName":"deepseek-v4-flash", "agentId":"", "agentKey":"", "callCount":375, "inputTokens":13290256, "outputTokens":653201, "totalTokens":13943457, "totalCostMicroUsd":"1460673", "avgLatencyMs":41495.085333333336, "avgTokensPerSecond":0, "successRate":0.9813333333333333}]}

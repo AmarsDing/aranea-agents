@@ -72,13 +72,22 @@ func ComputeSkillVersionHash(refs []biz.SkillEnabledRef) string {
 }
 
 // ComputeMCPVersionHash produces a content hash from a list of effective MCP servers.
+// The hash covers ID + ConfigJSON (decrypted effective config: URL/transport/timeout/
+// static headers all live inside it) and additionally folds ServerKey into the entry
+// id — server_key IS build-effective (MCP ToolSet name = server key, which prefixes
+// every tool runtime name) yet lives outside ConfigJSON, so a key rename must bump
+// the hash or cached builds would keep serving stale tool names.
+//
+// 契约（P0-2B 摘除 MCP CRUD 全量失效后的唯一惰性失效依据）：EffectiveMCPServer
+// 新增任何「构建期消费」的字段时，必须同步折入本哈希，否则该变更将静默不生效
+// （调用期注入的字段，如用户凭证 HeaderInjector，除外）。
 func ComputeMCPVersionHash(servers []biz.EffectiveMCPServer) string {
 	if len(servers) == 0 {
 		return ""
 	}
 	entries := make([]VersionHashEntry, len(servers))
 	for i, s := range servers {
-		entries[i] = VersionHashEntry{ID: s.ID, UpdatedAt: s.ConfigJSON}
+		entries[i] = VersionHashEntry{ID: s.ID + "|" + s.ServerKey, UpdatedAt: s.ConfigJSON}
 	}
 	return ComputeVersionHash(entries)
 }

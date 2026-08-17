@@ -1,0 +1,1 @@
+{"code":400, "reason":"AGENT_KEY_CONFLICT_BAD_REQUEST", "message":"agent_key already in use: [AGENT/CONFLICT] ent: constraint failed: pq: duplicate key value violates unique constraint \"agent_position_key_agent_variant\" (23505): ent: constraint failed: pq: duplicate key value violates unique constraint \"agent_position_key_agent_variant\" (23505)", "metadata":{}}

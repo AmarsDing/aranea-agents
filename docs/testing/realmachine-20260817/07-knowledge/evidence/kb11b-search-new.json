@@ -1,0 +1,1 @@
+{"chunks":[{"id":"b6aea2aa902d9b0fe92c-ch-0", "docId":"b6aea2aa902d9b0fe92c", "collectionId":"1c87a93675155d3164c8", "content":"# 告警处置手册\n\nGNS3 故障注入后必须调用 gns3_fault_clear 清除故障，再复核链路状态。", "embedding":[], "metadataJson":"{\"modality\": \"text\", \"extractor\": \"text\"}", "chunkIndex":0, "score":0.4}]}

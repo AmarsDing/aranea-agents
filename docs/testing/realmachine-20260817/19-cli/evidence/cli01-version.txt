@@ -1,0 +1,6 @@
+cli_version               dev
+commit                    none
+build_time                unknown
+backend_status            reachable
+backend_url               http://localhost:8810
+backend_version           unknown

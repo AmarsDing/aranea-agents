@@ -1,0 +1,185 @@
+{
+  "items": [
+    {
+      "agent_key": "__spirit__",
+      "created_at": "2026-06-06T12:12:43Z",
+      "display_name": "精灵助手",
+      "id": "agent___spirit__",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "__memory__",
+      "created_at": "2026-06-06T12:12:43Z",
+      "display_name": "记忆管家",
+      "id": "agent___memory__",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "__skills__",
+      "created_at": "2026-06-06T12:12:43Z",
+      "display_name": "技能管家",
+      "id": "agent___skills__",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "__system_admin__",
+      "created_at": "2026-06-06T12:12:43Z",
+      "display_name": "系统管家",
+      "id": "agent___system_admin__",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "__voice_butler__",
+      "created_at": "2026-08-10T19:27:27Z",
+      "display_name": "语音助手",
+      "id": "agent___voice_butler__",
+      "model": "gpt-4.1-mini",
+      "provider": "openrouter",
+      "status": "active"
+    },
+    {
+      "agent_key": "hotswap_probe",
+      "created_at": "2026-08-16T14:42:08Z",
+      "display_name": "HotSwap Probe",
+      "id": "da00bc78cb789d9315774176",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_change_execution",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "变更执行 Agent",
+      "id": "90fb01daa4c14a1580d8c828",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_system_inspection",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "系统巡检 Agent",
+      "id": "ba71aa004484fe6814a9b26a",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "media_video_producer",
+      "created_at": "2026-08-15T09:13:13Z",
+      "display_name": "录屏制片师",
+      "id": "65c20f9c29d02789cc93dd4d",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_fault_diagnosis",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "故障诊断 Agent",
+      "id": "71096314087d86e2caa20488",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_compliance_check",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "合规检查 Agent",
+      "id": "0c7f99f76ea317e8fc5aacbd",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_auto_inspection",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "自动巡检 Agent",
+      "id": "14ec6f9e7d9da00a09210ff8",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_log_analysis",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "日志分析 Agent",
+      "id": "350638c1279c15f92ee8be90",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_alarm_handler",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "告警处理 Agent",
+      "id": "8bcb599ba8da0970d2f5ed38",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_doc_generation",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "文档生成 Agent",
+      "id": "a31090a3bab084b83f397a30",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_database",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "数据库运维 Agent",
+      "id": "b642b0d388e44d7c92667f49",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_command_expert",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "命令生成专家",
+      "id": "b8f1bf824c96f32e833f4e6a",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_network_inspection",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "网络巡检专家",
+      "id": "e45353e2c3fbf04c173f34df",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "ops_server_command",
+      "created_at": "2026-07-28T16:50:37Z",
+      "display_name": "服务器命令执行 Agent",
+      "id": "e8e85b1c9845edfd92cc8a4c",
+      "model": "deepseek-v4-flash",
+      "provider": "deepseek",
+      "status": "active"
+    },
+    {
+      "agent_key": "__dept_lead_alert_response__",
+      "created_at": "2026-07-29T09:40:34Z",
+      "display_name": "部门主管-告警响应部",
+      "id": "agent___dept_lead_alert_response__",
+      "model": "gpt-4.1-mini",
+      "provider": "openrouter",
+      "status": "active"
+    }
+  ],
+  "total": 308
+}

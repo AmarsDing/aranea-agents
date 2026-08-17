@@ -1,0 +1,2 @@
+✓  消息已发送
+  session_id        6c0ec1f0-e4e2-4c7f-9ea0-17fa8da779d8

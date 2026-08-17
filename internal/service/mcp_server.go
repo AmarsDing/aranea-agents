@@ -281,7 +281,9 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 		event.P("server_key", out.Key),
 		event.P("server_name", out.Name),
 		event.P("url", redactMCPConfigURL(out.ConfigJSON)))
-	invalidateAllAgentBuildCaches()
+	// P0-2B：不再全量标脏。新增 server 只影响 effective 列表扩容的 agent，
+	// 其 MCPVersionHash 变化 → 下一请求新 key miss → 热替换/全量兜底惰性生效；
+	// 未引用该 server 的 agent 哈希不变、缓存照常命中，无需任何失效动作。
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbCreate, "mcp_server"),
 		Resource:   "mcp_server",
@@ -328,7 +330,9 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		event.P("server_key", out.Key),
 		event.P("server_name", out.Name),
 		event.P("url", redactMCPConfigURL(out.ConfigJSON)))
-	invalidateAllAgentBuildCaches()
+	// P0-2B：不再全量标脏。config_json/server_key/enabled 等全部构建有效字段
+	// 均已折入 MCPVersionHash（见 agent.ComputeMCPVersionHash 契约），变更经
+	// 新 key miss + 热替换惰性传播；纯元数据编辑（name/description）正确地不触发重建。
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbUpdate, "mcp_server"),
 		Resource:   "mcp_server",
@@ -357,7 +361,8 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 		event.P("server_key", srv.Key),
 		event.P("server_name", srv.Name),
 		event.P("url", serverURL))
-	invalidateAllAgentBuildCaches()
+	// P0-2B：不再全量标脏。删除使 server 从引用方 effective 列表消失 →
+	// MCPVersionHash 变化 → 下一请求新 key miss → 热替换/全量兜底惰性生效。
 	recordAudit(ctx, s.mon, biz.AdminAuditEntry{
 		Action:     biz.AuditAction(biz.AuditVerbDelete, "mcp_server"),
 		Resource:   "mcp_server",

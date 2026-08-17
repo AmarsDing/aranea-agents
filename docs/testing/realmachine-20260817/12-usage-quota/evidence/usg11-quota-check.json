@@ -1,0 +1,1 @@
+{"allowed":true, "quota":{"id":"89355a8e-2d95-4b68-9c6d-f92c48760021", "scopeType":"workspace", "scopeId":"default", "monthlyMicroUsd":"0", "periodStart":"2026-08-01", "periodEnd":"2026-08-31", "createdAt":"2026-08-16T23:30:06Z", "updatedAt":"2026-08-16T23:30:06Z"}, "spentMicroUsd":"0", "remainingMicroUsd":"0", "reason":"quota_disabled"}
