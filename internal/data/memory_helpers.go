@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -439,6 +440,10 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"source_session_id": sessID, "source_message_id": msgID, "source_external": ext,
 		"version": ver, "status": st, "superseded_by": sup,
 		"embedding_status": embSt, "embedding_model": embModel, "embedding_dim": embDim,
+		// embedding_blob 必须入 map：brute-force 召回路径（facts < 5000）在
+		// scoreFactRow 中从 JSON 取回该字段解码计算向量分；缺失会导致 vecScore
+		// 恒为 0，L3 事实总分被压低、过不了 minScore 门（2026-08-17 失忆事故根因）。
+		"embedding_blob":     embBlob,
 		"embedding_norm":     embNorm,
 		"pii_flag":           pii != 0,
 		"redacted_statement": redacted,
@@ -1070,14 +1075,19 @@ func scoreFactRow(row map[string]any, tokens []string, queryEmbedding []float32,
 	if vecOverrides != nil {
 		vecScore = vecOverrides[id]
 	} else if len(queryEmbedding) > 0 {
-		// JSON unmarshal produces string (not []byte) for binary columns,
-		// so we must handle both types.
+		// JSON marshal renders []byte as a base64 string (encoding/json
+		// contract), so the string branch must base64-decode first; falling
+		// back to raw bytes keeps compatibility with non-JSON producers.
 		var embBlob []byte
 		switch v := row["embedding_blob"].(type) {
 		case []byte:
 			embBlob = v
 		case string:
-			embBlob = []byte(v)
+			if decoded, err := base64.StdEncoding.DecodeString(v); err == nil {
+				embBlob = decoded
+			} else {
+				embBlob = []byte(v)
+			}
 		}
 		if embNorm, ok := row["embedding_norm"].(float64); ok && embNorm > 0 && len(embBlob) > 0 {
 			emb := decodeFloat32Blob(embBlob)

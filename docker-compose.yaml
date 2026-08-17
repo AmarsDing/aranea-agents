@@ -18,6 +18,16 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "123456"
       POSTGRES_DB: aranea
+    # G2 观测面（agent-eval-20260818）：慢查询归因依赖 pg_stat_statements；
+    # 首次启用后需执行一次 CREATE EXTENSION（见 docs/testing/agent-eval-20260818/00-master-plan.md §2）
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "log_min_duration_statement=200"
     volumes:
       # PG18+ 镜像数据路径改为 pg_ctlcluster 风格：挂载点须在 /var/lib/postgresql，
       # 实际数据落入其下 data/docker 子目录（docker-library/postgres#1259）
@@ -68,6 +78,10 @@ services:
       # 当前用于宿主机 Recordly MCP（host.docker.internal:8951）。精确匹配无通配，
       # 新增主机须逐个登记并保持与 app 部署包一致
       ARANEA_OUTBOUND_ALLOW_HOSTS: "host.docker.internal"
+      # G1 观测面（agent-eval-20260818）：pprof 独立端口，仅 araneanet 内网可达（不映射宿主机），
+      # 抓取：docker exec aranea-admin wget -qO- http://127.0.0.1:8813/debug/pprof/heap
+      # 缺省该环境变量即关闭（cmd/admin/pprof.go）；app 便携部署包不注入此变量。
+      ARANEA_PPROF_ADDR: ":8813"
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,6 +105,19 @@ services:
     networks:
       - araneanet
     restart: unless-stopped
+
+  # G3 压测执行器（agent-eval-20260818）：常驻容器，内网打 http://aranea-admin:8810，
+  # 消除宿主机 PowerShell Start-Job 进程开销导致的客户端口径失真（realmachine-20260817 PERF-02 教训）。
+  # 用法：docker compose --profile perf up -d k6 && docker exec aranea-k6 k6 run /scripts/baseline.js
+  k6:
+    image: grafana/k6:latest
+    container_name: aranea-k6
+    profiles: ["perf"]
+    entrypoint: ["tail", "-f", "/dev/null"]
+    volumes:
+      - ./test/agent-eval-20260818/k6:/scripts:ro
+    networks:
+      - araneanet
 
 networks:
   araneanet:

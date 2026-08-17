@@ -115,7 +115,9 @@ func (o *ChatOrchestrator) runClarificationGate(
 	// 不再挂起打扰用户。任一问题无推荐或命中高风险标记（touches_auth/
 	// migrations/sensitive_data/compliance/destructive/irreversible）时，
 	// 仍走下方挂起弹卡路径。
-	if !intentArt.HasHighRiskFlag() && biz.ClarificationAllRecommended(questions) {
+	// L3 守卫（BUG-MON-A，2026-08-17）：推荐答案全为取消/放弃类时，
+	// 自动代答等于静默否决用户请求——禁止假设式前进，强制挂起人工确认。
+	if !intentArt.HasHighRiskFlag() && biz.ClarificationAllRecommended(questions) && !biz.RecommendedLooksLikeCancellation(questions) {
 		return o.autoResolveClarification(ctx, sessionID, intentArt, ag, input, questions)
 	}
 

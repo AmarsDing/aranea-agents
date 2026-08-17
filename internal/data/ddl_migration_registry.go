@@ -354,6 +354,16 @@ var ddlMigrations = []ddlMigration{
 	// 20261224 session_summaries_task_state_json: v4 压缩契约——session_summaries
 	// 加 task_state_json 列，承载压缩 LLM 产出的结构化任务状态段（双段化）。
 	{Version: 20261224, Name: "session_summaries_task_state_json", SQL: "sql/migrations/20261224_session_summaries_task_state_json.sql"},
+	// 20261225 agents_position_variant_partial_unique: BUG-01（2026-08-17 真机 P1）——
+	// 原全量唯一索引把无岗位 agent（position_key=''）与软删墓碑行纳入唯一键，
+	// 无岗位创建必败、岗位删后无法重建。改部分唯一：仅约束「一岗一变体一在任」。
+	{Version: 20261225, Name: "agents_position_variant_partial_unique", Func: ddlAgentsPositionPartialUnique},
+	// 20261226 drop_retired_legacy_tables: BUG-02 F4 附带处置——activities/event_store
+	// 为已退役死表（fresh install 已 drop；存量库因旧二进制 Ent auto-migrate 复活残留，
+	// 现行代码无 Ent schema 无引用）。幂等 DROP IF EXISTS。
+	// 注意：sessions_v2 不在此列——实施复核（2026-08-17）确认其为 spirit 会话根实体
+	// （session_v2_repo.go 活跃读写、Ent schema 现存），属活跃表，严禁 drop。
+	{Version: 20261226, Name: "drop_retired_legacy_tables", Func: ddlDropRetiredLegacyTables},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1255,6 +1265,46 @@ func ddlTenantRLSPhase1(ctx context.Context, rawDB *sql.DB, entClient *ent.Clien
 		return nil
 	}
 	return executeSQLFileWithDialect(ctx, rawDB, "sql/migrations/20261011_tenant_rls_phase1.sql", d, lg)
+}
+
+// ddlAgentsPositionPartialUnique narrows agents(position_key, agent_variant) to a
+// partial unique index (BUG-01, 2026-08-17): rows with empty position_key and
+// soft-deleted rows no longer occupy a position slot; the design intent is only
+// "one active agent per (position, variant)". Postgres-only: SQLite 侧由 Ent
+// schema（entsql.IndexWhere 同谓词）建库时直接落成部分索引。
+// Idempotent: DROP IF EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS.
+func ddlAgentsPositionPartialUnique(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("agents_position_variant_partial_unique skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.agents_position_partial_unique"))
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `DROP INDEX IF EXISTS agent_position_key_agent_variant`); err != nil {
+		return fmt.Errorf("drop agents position/variant index: %w", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS agent_position_key_agent_variant ON agents (position_key, agent_variant) WHERE position_key <> '' AND deleted_at = ''`); err != nil {
+		return fmt.Errorf("create agents position/variant partial unique index: %w", err)
+	}
+	return nil
+}
+
+// ddlDropRetiredLegacyTables drops retired tables (activities / event_store)
+// that linger in存量库: fresh installs已不含这些表，但旧二进制经 Ent auto-migrate
+// 可将其复活（BUG-02 F4，2026-08-17）。现行代码无 Ent schema、级联/生产代码均无引用，
+// 数据为退役遗留。Idempotent: DROP TABLE IF EXISTS.
+// sessions_v2 刻意保留：spirit 会话根实体（session_v2_repo.go 活跃），非死表。
+func ddlDropRetiredLegacyTables(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("drop_retired_legacy_tables skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.drop_retired_legacy_tables"))
+		return nil
+	}
+	for _, table := range []string{"activities", "event_store"} {
+		if _, err := rawDB.ExecContext(ctx, `DROP TABLE IF EXISTS `+table+` CASCADE`); err != nil {
+			return fmt.Errorf("drop retired table %s: %w", table, err)
+		}
+	}
+	return nil
 }
 
 // ddlUnifiedEvolutionWorkspace adds workspace_id to unified_evolution_suggestions

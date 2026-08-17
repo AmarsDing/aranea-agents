@@ -48,6 +48,9 @@ func main() {
 	}
 	ctx := context.Background()
 	if err := execute(ctx, bi); err != nil {
+		// BUG-CLI-01：SilenceErrors=true 时 cobra 不回显错误，
+		// main 必须自行打印，否则非法命令静默退出。
+		fmt.Fprintln(os.Stderr, "aranea:", err.Error())
 		os.Exit(cli.ExitCodeOf(err))
 	}
 }

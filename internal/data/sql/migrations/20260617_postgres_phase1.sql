@@ -1,8 +1,11 @@
 -- Version 20260617: Postgres Phase 1 migration
--- Migrates WAL/EventStore/Checkpoint critical tables to Postgres-native schema.
+-- Migrates Checkpoint critical tables to Postgres-native schema.
 -- This file is executed ONLY on the Postgres connection (d.Postgres()),
--- NOT on the SQLite rawDB. SQLite retains its own event_wal schema
--- (see internal/event/wal_storage.go ensureSchema).
+-- NOT on the SQLite rawDB.
+--
+-- 2026-08-17 (BUG-02 F4 根治): event_wal / event_store 建表段已移除——
+-- 两表自 20260901 (Phase 1c-2) 起退役，但本脚本每次启动幂等重放将其复活，
+-- 形成「迁移 drop → 启动重建」循环。退役表严禁回本文件。
 --
 -- Postgres-specific differences from SQLite schema:
 --   - TIMESTAMPTZ instead of DATETIME/TEXT (timezone-aware timestamps)
@@ -13,35 +16,7 @@
 --
 -- Idempotent: all statements use IF NOT EXISTS / ON CONFLICT DO NOTHING.
 
--- 1. event_wal: Critical event Write-Ahead Log (WBPF)
---    Mirrors internal/event/postgres_wal_storage.go ensureSchema.
-CREATE TABLE IF NOT EXISTS event_wal (
-    id TEXT PRIMARY KEY,
-    envelope_json TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    published_at TIMESTAMPTZ,
-    published INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_event_wal_unpublished
-    ON event_wal(published, created_at);
-
--- 2. event_store: persisted Envelope snapshots for WS replay
---    Mirrors internal/data/ent/schema/eventstore.go schema.
-CREATE TABLE IF NOT EXISTS event_store (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    type TEXT NOT NULL,
-    author TEXT NOT NULL DEFAULT '',
-    channel TEXT NOT NULL DEFAULT '',
-    envelope_json TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_event_store_session_created
-    ON event_store(session_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_event_store_session_type
-    ON event_store(session_id, type);
-
--- 3. session_run_checkpoints: durable resume snapshots (CC-R-03 / CC-F-02)
+-- 1. session_run_checkpoints: durable resume snapshots (CC-R-03 / CC-F-02)
 --    Mirrors internal/data/ent/schema/session_run_checkpoint.go schema.
 CREATE TABLE IF NOT EXISTS session_run_checkpoints (
     id TEXT PRIMARY KEY,
@@ -87,18 +62,7 @@ DO $$ BEGIN
 END $$;
 
 --    INV-REF-02: event_store.session_id → sessions.id
-DELETE FROM event_store
-    WHERE session_id NOT IN (SELECT id FROM sessions);
-DO $$ BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'fk_event_store_session'
-    ) THEN
-        ALTER TABLE event_store
-            ADD CONSTRAINT fk_event_store_session
-            FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE;
-    END IF;
-END $$;
+--    REMOVED 2026-08-17 (BUG-02 F4): event_store 已退役（20260901），FK 段随表一并移除。
 
 --    INV-REF-03: session_run_checkpoints.session_id → sessions.id
 DELETE FROM session_run_checkpoints

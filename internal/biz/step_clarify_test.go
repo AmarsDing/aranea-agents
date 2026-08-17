@@ -5,6 +5,50 @@ import (
 	"testing"
 )
 
+func TestRecommendedLooksLikeCancellation(t *testing.T) {
+	tests := []struct {
+		name string
+		qs   []ClarificationQuestion
+		want bool
+	}{
+		{"empty questions", nil, false},
+		{"no recommended", []ClarificationQuestion{{Question: "q1"}}, false},
+		{"cancel recommended", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Cancel"}},
+		}, true},
+		{"取消 recommended", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"取消操作"}},
+		}, true},
+		{"abort recommended", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Abort"}},
+		}, true},
+		{"放弃 recommended", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"放弃"}},
+		}, true},
+		{"mixed cancel and proceed", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Cancel"}},
+			{Question: "q2", Recommended: []string{"Proceed"}},
+		}, false},
+		{"all cancel multi", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Cancel"}},
+			{Question: "q2", Recommended: []string{"No"}},
+		}, true},
+		{"normal recommended", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Web"}},
+		}, false},
+		{"multi-value one not cancel", []ClarificationQuestion{
+			{Question: "q1", Recommended: []string{"Cancel", "Confirm"}},
+		}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RecommendedLooksLikeCancellation(tt.qs); got != tt.want {
+				t.Errorf("RecommendedLooksLikeCancellation() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStepKindClarify_Constant(t *testing.T) {
 	if StepKindClarify != StepKind("clarify") {
 		t.Errorf("StepKindClarify = %q, want %q", StepKindClarify, "clarify")

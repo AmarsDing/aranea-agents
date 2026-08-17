@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "domain": "knowledge-rag",
+  "description": "域 C 知识库检索准确率基准：5 篇埋入文档 x 6 条 = 30 条。执行方式：5 篇 sample-doc-*.md 上传至 eval 专用 collection 并等待 indexed，然后逐条检索/提问，判定 top-5 chunk 是否命中出处文档（检索模式）或回答是否包含 expected_keywords（问答模式）。",
+  "collections": "eval-ops-kb",
+  "docs": ["sample-doc-inspection.md", "sample-doc-change.md", "sample-doc-emergency.md", "sample-doc-duty.md", "sample-doc-security.md"],
+  "cases": [
+    { "id": "kb-ins-01", "source_doc": "sample-doc-inspection.md", "question": "核心机房的巡检周期是多久一次，周几几点开始？", "expected_keywords": ["双周", "周三", "9:30"], "grading": "keywords_all" },
+    { "id": "kb-ins-02", "source_doc": "sample-doc-inspection.md", "question": "核心交换机 CPU 利用率超过多少需要记录并上报？", "expected_keywords": ["75%"], "grading": "keywords_all" },
+    { "id": "kb-ins-03", "source_doc": "sample-doc-inspection.md", "question": "端口收光功率低于多少 dBm 判定为光路劣化？", "expected_keywords": ["-12dBm"], "grading": "keywords_all" },
+    { "id": "kb-ins-04", "source_doc": "sample-doc-inspection.md", "question": "巡检工单的编号规则是什么？", "expected_keywords": ["INS-YYYYMMDD-NN"], "grading": "keywords_all" },
+    { "id": "kb-ins-05", "source_doc": "sample-doc-inspection.md", "question": "发现 P1 级巡检问题后多久内必须电话上报运维组长？", "expected_keywords": ["30 分钟"], "grading": "keywords_all" },
+    { "id": "kb-ins-06", "source_doc": "sample-doc-inspection.md", "question": "新员工独立执行核心机房巡检前需要满足什么条件？", "expected_keywords": ["低压电工证", "4 次"], "grading": "keywords_all" },
+
+    { "id": "kb-chg-01", "source_doc": "sample-doc-change.md", "question": "一级网络变更需要提前几个工作日提交方案？", "expected_keywords": ["5 个工作日"], "grading": "keywords_all" },
+    { "id": "kb-chg-02", "source_doc": "sample-doc-change.md", "question": "变更窗口固定在每周哪几天的什么时段？", "expected_keywords": ["周二", "周四", "20:00-22:00"], "grading": "keywords_all" },
+    { "id": "kb-chg-03", "source_doc": "sample-doc-change.md", "question": "紧急变更的工单编号前缀是什么？", "expected_keywords": ["EMG-"], "grading": "keywords_all" },
+    { "id": "kb-chg-04", "source_doc": "sample-doc-change.md", "question": "防火墙策略变更在测试策略组验证要观察多久无异常才能推生产？", "expected_keywords": ["15 分钟", "POLICY-TEST"], "grading": "keywords_all" },
+    { "id": "kb-chg-05", "source_doc": "sample-doc-change.md", "question": "变更失败的判定标准是什么？", "expected_keywords": ["30 分钟", "业务验证"], "grading": "keywords_any" },
+    { "id": "kb-chg-06", "source_doc": "sample-doc-change.md", "question": "部门变更成功率的月度考核目标是多少？", "expected_keywords": ["98.5%"], "grading": "keywords_all" },
+
+    { "id": "kb-emg-01", "source_doc": "sample-doc-emergency.md", "question": "P1 级故障的响应时限和恢复目标分别是什么？", "expected_keywords": ["5 分钟", "30 分钟"], "grading": "keywords_all" },
+    { "id": "kb-emg-02", "source_doc": "sample-doc-emergency.md", "question": "电信 CN2 专线中断时报障电话怎么打？", "expected_keywords": ["10000", "转 4"], "grading": "keywords_all" },
+    { "id": "kb-emg-03", "source_doc": "sample-doc-emergency.md", "question": "联通备用出口的带宽是多少，仅供什么业务使用？", "expected_keywords": ["500Mbps", "核心业务"], "grading": "keywords_all" },
+    { "id": "kb-emg-04", "source_doc": "sample-doc-emergency.md", "question": "SW-Core-01 的冷备交换机存放在哪里？", "expected_keywords": ["备件柜第二层"], "grading": "keywords_all" },
+    { "id": "kb-emg-05", "source_doc": "sample-doc-emergency.md", "question": "市电中断后 UPS 能支撑满载运行多长时间？", "expected_keywords": ["28 分钟"], "grading": "keywords_all" },
+    { "id": "kb-emg-06", "source_doc": "sample-doc-emergency.md", "question": "故障复盘报告的模板编号是什么？包含哪四部分？", "expected_keywords": ["TPL-POSTMORTEM-V3", "时间线", "根因"], "grading": "keywords_all" },
+
+    { "id": "kb-dty-01", "source_doc": "sample-doc-duty.md", "question": "夜班值班人员接电话后多久内必须到达机房？", "expected_keywords": ["40 分钟"], "grading": "keywords_all" },
+    { "id": "kb-dty-02", "source_doc": "sample-doc-duty.md", "question": "值班表每周几几点前发布，通过什么渠道？", "expected_keywords": ["周五", "17:00"], "grading": "keywords_all" },
+    { "id": "kb-dty-03", "source_doc": "sample-doc-duty.md", "question": "值班日志的编号规则是什么？", "expected_keywords": ["DUTY-YYYYMMDD-NN"], "grading": "keywords_all" },
+    { "id": "kb-dty-04", "source_doc": "sample-doc-duty.md", "question": "夜班补贴标准是每班次多少钱？法定节假日怎么算？", "expected_keywords": ["180 元", "3 倍"], "grading": "keywords_all" },
+    { "id": "kb-dty-05", "source_doc": "sample-doc-duty.md", "question": "接班人员超过多久未到岗需要上报值班经理？", "expected_keywords": ["30 分钟"], "grading": "keywords_all" },
+    { "id": "kb-dty-06", "source_doc": "sample-doc-duty.md", "question": "值班人员月度绩效低于多少分会被取消次月夜班资格？", "expected_keywords": ["90 分"], "grading": "keywords_all" },
+
+    { "id": "kb-sec-01", "source_doc": "sample-doc-security.md", "question": "网络设备统一认证用什么协议？主备服务器地址是多少？", "expected_keywords": ["TACACS+", "10.20.0.10", "10.20.0.11"], "grading": "keywords_all" },
+    { "id": "kb-sec-02", "source_doc": "sample-doc-security.md", "question": "特权账号密码的最低长度和轮换周期是多少？", "expected_keywords": ["16 位", "90 天"], "grading": "keywords_all" },
+    { "id": "kb-sec-03", "source_doc": "sample-doc-security.md", "question": "设备管理流量必须走哪个网段？允许哪些登录源？", "expected_keywords": ["10.99.0.0/24", "10.99.0.5"], "grading": "keywords_all" },
+    { "id": "kb-sec-04", "source_doc": "sample-doc-security.md", "question": "配置变更日志和登录审计日志分别保留多久？", "expected_keywords": ["180 天", "1 年"], "grading": "keywords_all" },
+    { "id": "kb-sec-05", "source_doc": "sample-doc-security.md", "question": "高危漏洞（CVSS 7.0 以上）要求在多久内完成评估？", "expected_keywords": ["72 小时"], "grading": "keywords_all" },
+    { "id": "kb-sec-06", "source_doc": "sample-doc-security.md", "question": "机房内违规拍照的处罚是什么？", "expected_keywords": ["5 分", "通报"], "grading": "keywords_all" }
+  ]
+}

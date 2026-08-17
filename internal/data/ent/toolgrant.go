@@ -23,7 +23,9 @@ type ToolGrant struct {
 	// GrantedBy holds the value of the "granted_by" field.
 	GrantedBy string `json:"granted_by,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
-	CreatedAt    string `json:"created_at,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	// ExpiresAt holds the value of the "expires_at" field.
+	ExpiresAt    string `json:"expires_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -32,7 +34,7 @@ func (*ToolGrant) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case toolgrant.FieldID, toolgrant.FieldAgentID, toolgrant.FieldToolKey, toolgrant.FieldGrantedBy, toolgrant.FieldCreatedAt:
+		case toolgrant.FieldID, toolgrant.FieldAgentID, toolgrant.FieldToolKey, toolgrant.FieldGrantedBy, toolgrant.FieldCreatedAt, toolgrant.FieldExpiresAt:
 			values[i] = new(sql.NullString)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -78,6 +80,12 @@ func (_m *ToolGrant) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.String
+			}
+		case toolgrant.FieldExpiresAt:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field expires_at", values[i])
+			} else if value.Valid {
+				_m.ExpiresAt = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -126,6 +134,9 @@ func (_m *ToolGrant) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt)
+	builder.WriteString(", ")
+	builder.WriteString("expires_at=")
+	builder.WriteString(_m.ExpiresAt)
 	builder.WriteByte(')')
 	return builder.String()
 }

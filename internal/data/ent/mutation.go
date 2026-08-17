@@ -111638,6 +111638,7 @@ type ToolGrantMutation struct {
 	tool_key      *string
 	granted_by    *string
 	created_at    *string
+	expires_at    *string
 	clearedFields map[string]struct{}
 	done          bool
 	oldValue      func(context.Context) (*ToolGrant, error)
@@ -111892,6 +111893,42 @@ func (m *ToolGrantMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (m *ToolGrantMutation) SetExpiresAt(s string) {
+	m.expires_at = &s
+}
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *ToolGrantMutation) ExpiresAt() (r string, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExpiresAt returns the old "expires_at" field's value of the ToolGrant entity.
+// If the ToolGrant object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ToolGrantMutation) OldExpiresAt(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+	}
+	return oldValue.ExpiresAt, nil
+}
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *ToolGrantMutation) ResetExpiresAt() {
+	m.expires_at = nil
+}
+
 // Where appends a list predicates to the ToolGrantMutation builder.
 func (m *ToolGrantMutation) Where(ps ...predicate.ToolGrant) {
 	m.predicates = append(m.predicates, ps...)
@@ -111926,7 +111963,7 @@ func (m *ToolGrantMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ToolGrantMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.agent_id != nil {
 		fields = append(fields, toolgrant.FieldAgentID)
 	}
@@ -111938,6 +111975,9 @@ func (m *ToolGrantMutation) Fields() []string {
 	}
 	if m.created_at != nil {
 		fields = append(fields, toolgrant.FieldCreatedAt)
+	}
+	if m.expires_at != nil {
+		fields = append(fields, toolgrant.FieldExpiresAt)
 	}
 	return fields
 }
@@ -111955,6 +111995,8 @@ func (m *ToolGrantMutation) Field(name string) (ent.Value, bool) {
 		return m.GrantedBy()
 	case toolgrant.FieldCreatedAt:
 		return m.CreatedAt()
+	case toolgrant.FieldExpiresAt:
+		return m.ExpiresAt()
 	}
 	return nil, false
 }
@@ -111972,6 +112014,8 @@ func (m *ToolGrantMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldGrantedBy(ctx)
 	case toolgrant.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case toolgrant.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown ToolGrant field %s", name)
 }
@@ -112008,6 +112052,13 @@ func (m *ToolGrantMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case toolgrant.FieldExpiresAt:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExpiresAt(v)
 		return nil
 	}
 	return fmt.Errorf("unknown ToolGrant field %s", name)
@@ -112069,6 +112120,9 @@ func (m *ToolGrantMutation) ResetField(name string) error {
 		return nil
 	case toolgrant.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case toolgrant.FieldExpiresAt:
+		m.ResetExpiresAt()
 		return nil
 	}
 	return fmt.Errorf("unknown ToolGrant field %s", name)

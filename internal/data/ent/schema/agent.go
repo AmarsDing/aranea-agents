@@ -23,7 +23,10 @@ func (Agent) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("deleted_at"),
 		index.Fields("deleted_at", "status"),
-		index.Fields("position_key", "agent_variant").Unique(),
+		// BUG-01 (2026-08-17): partial unique — 无岗位 agent（position_key=''）与软删行
+		// 不占用岗位槽位唯一键；设计意图仅约束「一岗一变体一在任」。
+		index.Fields("position_key", "agent_variant").Unique().
+			Annotations(entsql.IndexWhere("position_key <> '' AND deleted_at = ''")),
 		// P2-B: tenant isolation index — filter agents by workspace visibility.
 		index.Fields("workspace_id", "deleted_at"),
 	}

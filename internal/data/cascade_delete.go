@@ -108,21 +108,60 @@ func cascadeDeleteBySession(ctx context.Context, d *Data, sessionID string) erro
 			return err
 		}
 
-		// Hard-delete messages
-		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM messages WHERE session_id = ?`), sessionID); err != nil {
+		// Hard-delete v2 chat truth tables (turns/steps/tasks)
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM steps_v2 WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM tasks_v2 WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM turns_v2 WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+
+		// Hard-delete trpc framework session persistence (events/states/summaries/track_events)
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM trpc_session_events WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM trpc_session_states WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM trpc_session_summaries WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM trpc_session_track_events WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+
+		// Hard-delete session summaries + member sessions (v2) + event outbox + memory watermarks
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_summaries WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM member_sessions_v2 WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM event_delivery_outbox WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM memory_event_marks WHERE session_id = ?`), sessionID); err != nil {
+			return err
+		}
+
+		// NOTE: tool_invocation_audit / model_token_usage_events are intentionally
+		// retained (audit/billing outlive sessions — 2026-08-17 裁定).
+		// activities / event_store are retired tables (无 Ent schema、迁移 20261226 已
+		// drop) and must NOT be referenced here — 引用即 42P01 重蹈 BUG-02 F1。
 
 		// Hard-delete session_runs (created by DDL migration, not Ent schema)
 		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runs WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 
-		// Hard-delete session_runtime + session_metrics (1:1 with session)
-		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runtime WHERE id = ?`), sessionID); err != nil {
+		// Hard-delete session_runtime + session_metrics (1:1 with session, PK=session_id)
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_runtime WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
-		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_metrics WHERE id = ?`), sessionID); err != nil {
+		if _, err := execer.ExecContext(txCtx, d.Dialect().RenumberPlaceholders(`DELETE FROM session_metrics WHERE session_id = ?`), sessionID); err != nil {
 			return err
 		}
 

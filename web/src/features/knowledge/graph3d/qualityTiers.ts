@@ -25,9 +25,10 @@ export interface QualitySpec {
 }
 
 export const QUALITY_SPECS: readonly QualitySpec[] = [
-  { bloom: true, bloomScale: 0.5, maxPixelRatio: 2, labelCandidates: 200, label: 'HIGH' },
-  { bloom: true, bloomScale: 0.34, maxPixelRatio: 1.5, labelCandidates: 100, label: 'MID' },
-  { bloom: false, bloomScale: 0.25, maxPixelRatio: 1, labelCandidates: 40, label: 'LOW' },
+  // v3 可读性：标签候选 200/100/40 → 80/48/24（同屏标签减半，缓解密集区叠字）
+  { bloom: true, bloomScale: 0.5, maxPixelRatio: 2, labelCandidates: 80, label: 'HIGH' },
+  { bloom: true, bloomScale: 0.34, maxPixelRatio: 1.5, labelCandidates: 48, label: 'MID' },
+  { bloom: false, bloomScale: 0.25, maxPixelRatio: 1, labelCandidates: 24, label: 'LOW' },
 ] as const;
 
 /** 初始分级阈值（节点数）。 */

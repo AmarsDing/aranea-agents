@@ -3,10 +3,16 @@ package tool
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
+
+// DefaultToolGrantTTL is the default lifetime of a persisted "always allow"
+// grant (BUG-MON-B, ruled 2026-08-17): 72h covers one drill cycle without
+// crossing a week. After expiry the confirmation prompt re-arms (fail-closed).
+const DefaultToolGrantTTL = 72 * time.Hour
 
 // ToolGrant is a persisted "always allow" grant recorded when a user
 // approves a tool confirmation with the always scope. Presence of a grant
@@ -17,6 +23,10 @@ type ToolGrant struct {
 	ToolKey   string
 	GrantedBy string
 	CreatedAt string
+	// ExpiresAt is the RFC3339 UTC deadline ('' = never expires, reserved
+	// for a future explicit "permanent" option). Read paths treat rows with
+	// ExpiresAt <= now as absent.
+	ExpiresAt string
 }
 
 // ToolGrantReader reads persisted tool grants.
@@ -70,6 +80,8 @@ func (u *ToolUsecase) HasToolGrant(ctx context.Context, agentID, toolKey string)
 }
 
 // GrantTool persists an "always allow" grant for the (agentID, toolKey) pair.
+// The grant carries the default 72h TTL (DefaultToolGrantTTL); re-granting an
+// existing pair renews the window from now.
 func (u *ToolUsecase) GrantTool(ctx context.Context, agentID, toolKey, grantedBy string) error {
 	if u == nil || u.grants == nil {
 		return apierror.Internal("TOOL", "tool grant store unavailable")
@@ -83,6 +95,7 @@ func (u *ToolUsecase) GrantTool(ctx context.Context, agentID, toolKey, grantedBy
 		AgentID:   agentID,
 		ToolKey:   toolKey,
 		GrantedBy: strings.TrimSpace(grantedBy),
+		ExpiresAt: time.Now().UTC().Add(DefaultToolGrantTTL).Format(time.RFC3339),
 	})
 }
 

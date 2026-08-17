@@ -3,7 +3,8 @@
  *
  * - EffectComposer(RenderPass + UnrealBloomPass)，bloom 分辨率随画质档缩放（bloomScale）
  * - v2 收敛：strength 1.2→0.9 / radius 0.5→0.35 / threshold 0.28→0.55（只有高亮节点冒辉光）
- * - setBloomEnabled(false) 整 pass 禁用（LOW 档兜底）；setResolutionScale 运行期降档省 GPU
+ * - v3 可读性收敛：strength 0.9→0.55 / radius 0.35→0.30 / threshold 0.55→0.85
+ *   （标签色亮度≈0.8 原超阈值导致每行文字套白晕；提阈后仅 emph×1.6 高亮节点冒光）
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -18,7 +19,7 @@ export interface BloomOpts {
   resolutionScale?: number;
 }
 
-export const BLOOM_DEFAULTS = { strength: 0.9, radius: 0.35, threshold: 0.55, resolutionScale: 0.5 } as const;
+export const BLOOM_DEFAULTS = { strength: 0.55, radius: 0.3, threshold: 0.85, resolutionScale: 0.5 } as const;
 
 export class BloomPipeline {
   readonly composer: EffectComposer;

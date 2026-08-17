@@ -206,7 +206,7 @@ export class BackdropLayer {
       size: 12,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.06, // v3 可读性：0.1→0.06，减中心区烧白
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });

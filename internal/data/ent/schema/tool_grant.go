@@ -30,6 +30,12 @@ func (ToolGrant) Fields() []ent.Field {
 		// otherwise the session id) for audit.
 		field.String("granted_by").Default(""),
 		field.String("created_at"),
+		// expires_at is the RFC3339 UTC deadline of the grant; '' means
+		// never expires (reserved for a future explicit "permanent" option).
+		// Grants written via ToolUsecase.GrantTool get now+72h
+		// (BUG-MON-B, 2026-08-17): persisted "always allow" must have a
+		// determined time bound, read paths filter expired rows.
+		field.String("expires_at").Default(""),
 	}
 }
 

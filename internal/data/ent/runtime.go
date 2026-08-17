@@ -6476,6 +6476,10 @@ func init() {
 	toolgrantDescGrantedBy := toolgrantFields[3].Descriptor()
 	// toolgrant.DefaultGrantedBy holds the default value on creation for the granted_by field.
 	toolgrant.DefaultGrantedBy = toolgrantDescGrantedBy.Default.(string)
+	// toolgrantDescExpiresAt is the schema descriptor for expires_at field.
+	toolgrantDescExpiresAt := toolgrantFields[5].Descriptor()
+	// toolgrant.DefaultExpiresAt holds the default value on creation for the expires_at field.
+	toolgrant.DefaultExpiresAt = toolgrantDescExpiresAt.Default.(string)
 	// toolgrantDescID is the schema descriptor for id field.
 	toolgrantDescID := toolgrantFields[0].Descriptor()
 	// toolgrant.IDValidator is a validator for the "id" field. It is called by the builders before save.

@@ -693,7 +693,9 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphVisualization, error) {
 	g, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
-		return nil, apierror.Internal(apierror.DomainGraph, fmt.Sprintf("build state graph for visualization: %v", err))
+		// BUG-G1：builder 已返回类型化错误（如图不完整 → BadRequest），
+		// 用 %w 保留链 + apierror.Wrap 透传原错误码，不再一律压成 500。
+		return nil, apierror.Wrap(fmt.Errorf("build state graph for visualization: %w", err), apierror.CodeInternal, apierror.DomainGraph)
 	}
 	dot := g.DOT()
 	vg := graphtrpc.ParseDOTToVisualGraph(dot, cfg.Nodes, cfg.ConditionalEdges)

@@ -135,6 +135,8 @@ func main() {
 
 	installSignalHandler(stopBackgroundWorkers, out.App, logger)
 
+	startPprofServer(os.Getenv("ARANEA_PPROF_ADDR"), log.NewHelper(logger))
+
 	startBackgroundWorkers(cronCtx, backgroundWorkersConfigFromOutput(watchCtx, &out), logger, lg, waitDataReady)
 
 	if err := out.App.Run(); err != nil {

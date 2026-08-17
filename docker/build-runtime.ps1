@@ -71,7 +71,9 @@ try {
   New-Item -ItemType Directory -Force (Join-Path $repo 'bin\linux') | Out-Null
   $env:GOOS = 'linux'; $env:GOARCH = 'amd64'; $env:CGO_ENABLED = '0'
   Write-Host '交叉编译 admin (linux/amd64)...' -ForegroundColor Cyan
-  $rc = Invoke-Native go build -ldflags $ldflags -o .\bin\linux\ .\cmd\admin
+  # -tags pgvector：启用 PG 向量召回（2026-08-17 评测实证缺失导致记忆全量降级
+  # ErrMemoryUnavailable；根 Dockerfile 注释本就声明 pgvector tag 为预期能力）
+  $rc = Invoke-Native go build -tags pgvector -ldflags $ldflags -o .\bin\linux\ .\cmd\admin
   if ($rc -ne 0) { throw "go build 失败（$rc）" }
 } finally {
   Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue

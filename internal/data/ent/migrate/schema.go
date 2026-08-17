@@ -96,6 +96,9 @@ var (
 				Name:    "agent_position_key_agent_variant",
 				Unique:  true,
 				Columns: []*schema.Column{AgentsColumns[22], AgentsColumns[24]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "position_key <> '' AND deleted_at = ''",
+				},
 			},
 			{
 				Name:    "agent_workspace_id_deleted_at",
@@ -3573,6 +3576,7 @@ var (
 		{Name: "tool_key", Type: field.TypeString},
 		{Name: "granted_by", Type: field.TypeString, Default: ""},
 		{Name: "created_at", Type: field.TypeString},
+		{Name: "expires_at", Type: field.TypeString, Default: ""},
 	}
 	// ToolGrantsTable holds the schema information for the "tool_grants" table.
 	ToolGrantsTable = &schema.Table{

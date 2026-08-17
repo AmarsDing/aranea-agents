@@ -122,7 +122,7 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - success_criteria (array of strings): measurable checks (e.g. "tests pass").
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
-- risk_flags (array of strings): e.g. touches_auth, migrations, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
+- risk_flags (array of strings): e.g. touches_auth, migrations, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
@@ -134,11 +134,44 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - success_criteria (array of strings): measurable checks, or [].
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
-- risk_flags (array of strings): e.g. sensitive_data, compliance, or []. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
+- risk_flags (array of strings): e.g. sensitive_data, compliance, destructive, irreversible, or []. Include "destructive" when the request would destroy/overwrite data, inject faults, or perform irreversible operations. Include "needs_clarification" ONLY when a blocking ambiguity exists (proceeding without an answer would likely produce a wrong-direction or heavily-reworked result).
 - clarifications (array of objects, present only when risk_flags contains "needs_clarification", at most 5): blocking questions for the user. Each object: {"question": string, "mode": "single"|"multi", "options": array of strings (2-6), "recommended": array of strings (subset of options, your best default)}. Omit for minor style preferences — never ask when you can reasonably decide yourself.
 Requests to open an app or URL on the user's own machine (e.g. "打开微信", "open wechat", "打开浏览器访问 xxx") are handled by client tools executing on the user's device: the target environment is the user's local machine by default. This is NOT a blocking ambiguity — do not mark needs_clarification for such requests, and do not ask which environment/OS to run on.
 When a "Recent conversation" section precedes the user message, use it to resolve pronouns, ellipses and follow-up references (e.g. "它", "这个", "that one") BEFORE flagging ambiguity, and never ask about facts already established in the conversation. When a clarification is genuinely blocking, always provide your best default in "recommended" — the system may act on recommended defaults autonomously.
 Write all user-facing strings (refined_goal, ambiguities, clarifications questions and options) in the same language as the user's request.`
+
+// destructivePatterns 是确定性 destructive 打标的关键词列表（L2 兜底）。
+// LLM 可能漏标 destructive（BUG-MON-A，2026-08-17），此处用高置信模式强制补上。
+// 仅匹配明确的基础设施/数据破坏性操作，避免 "delete variable" 等误伤。
+var destructivePatterns = []string{
+	"fault_inject", "fault inject",
+	"故障注入", "注入故障",
+	"gns3_fault_inject",
+	"drop table", "truncate table",
+	"delete from ",
+	"删库", "删除数据库",
+	"格式化磁盘", "format disk",
+	"rm -rf",
+}
+
+// ForceDestructiveFlag checks the original user input against high-confidence
+// destructive patterns and force-adds the "destructive" risk flag when matched.
+// This is the L2 deterministic safety net behind the L1 prompt guidance.
+// No-op when art is nil or the flag is already present.
+func ForceDestructiveFlag(userText string, art *Artifact) {
+	if art == nil {
+		return
+	}
+	lower := strings.ToLower(userText)
+	for _, pat := range destructivePatterns {
+		if strings.Contains(lower, pat) {
+			if !art.HasRiskFlag("destructive") {
+				art.RiskFlags = append(art.RiskFlags, "destructive")
+			}
+			return
+		}
+	}
+}
 
 // PassEffective returns whether the intent pass should run (extra LLM call).
 // Per-agent default comes from agent_runtime_settings.intent_pass_enabled (default true for new agents, P1-1).
@@ -349,6 +382,8 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		res.Outcome = "skipped_parse"
 		return
 	}
+	// L2 确定性打标（BUG-MON-A）：LLM 漏标 destructive 时按原始输入强制补上。
+	ForceDestructiveFlag(userText, art)
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}

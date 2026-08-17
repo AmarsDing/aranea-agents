@@ -83,6 +83,20 @@ func (_u *ToolGrantUpdate) SetNillableCreatedAt(v *string) *ToolGrantUpdate {
 	return _u
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_u *ToolGrantUpdate) SetExpiresAt(v string) *ToolGrantUpdate {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *ToolGrantUpdate) SetNillableExpiresAt(v *string) *ToolGrantUpdate {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+	}
+	return _u
+}
+
 // Mutation returns the ToolGrantMutation object of the builder.
 func (_u *ToolGrantUpdate) Mutation() *ToolGrantMutation {
 	return _u.mutation
@@ -135,6 +149,9 @@ func (_u *ToolGrantUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(toolgrant.FieldCreatedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(toolgrant.FieldExpiresAt, field.TypeString, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -208,6 +225,20 @@ func (_u *ToolGrantUpdateOne) SetCreatedAt(v string) *ToolGrantUpdateOne {
 func (_u *ToolGrantUpdateOne) SetNillableCreatedAt(v *string) *ToolGrantUpdateOne {
 	if v != nil {
 		_u.SetCreatedAt(*v)
+	}
+	return _u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (_u *ToolGrantUpdateOne) SetExpiresAt(v string) *ToolGrantUpdateOne {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *ToolGrantUpdateOne) SetNillableExpiresAt(v *string) *ToolGrantUpdateOne {
+	if v != nil {
+		_u.SetExpiresAt(*v)
 	}
 	return _u
 }
@@ -294,6 +325,9 @@ func (_u *ToolGrantUpdateOne) sqlSave(ctx context.Context) (_node *ToolGrant, er
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(toolgrant.FieldCreatedAt, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(toolgrant.FieldExpiresAt, field.TypeString, value)
 	}
 	_node = &ToolGrant{config: _u.config}
 	_spec.Assign = _node.assignValues

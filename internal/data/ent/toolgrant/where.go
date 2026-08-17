@@ -83,6 +83,11 @@ func CreatedAt(v string) predicate.ToolGrant {
 	return predicate.ToolGrant(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
+func ExpiresAt(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldEQ(FieldExpiresAt, v))
+}
+
 // AgentIDEQ applies the EQ predicate on the "agent_id" field.
 func AgentIDEQ(v string) predicate.ToolGrant {
 	return predicate.ToolGrant(sql.FieldEQ(FieldAgentID, v))
@@ -341,6 +346,71 @@ func CreatedAtEqualFold(v string) predicate.ToolGrant {
 // CreatedAtContainsFold applies the ContainsFold predicate on the "created_at" field.
 func CreatedAtContainsFold(v string) predicate.ToolGrant {
 	return predicate.ToolGrant(sql.FieldContainsFold(FieldCreatedAt, v))
+}
+
+// ExpiresAtEQ applies the EQ predicate on the "expires_at" field.
+func ExpiresAtEQ(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldEQ(FieldExpiresAt, v))
+}
+
+// ExpiresAtNEQ applies the NEQ predicate on the "expires_at" field.
+func ExpiresAtNEQ(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldNEQ(FieldExpiresAt, v))
+}
+
+// ExpiresAtIn applies the In predicate on the "expires_at" field.
+func ExpiresAtIn(vs ...string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldIn(FieldExpiresAt, vs...))
+}
+
+// ExpiresAtNotIn applies the NotIn predicate on the "expires_at" field.
+func ExpiresAtNotIn(vs ...string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldNotIn(FieldExpiresAt, vs...))
+}
+
+// ExpiresAtGT applies the GT predicate on the "expires_at" field.
+func ExpiresAtGT(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldGT(FieldExpiresAt, v))
+}
+
+// ExpiresAtGTE applies the GTE predicate on the "expires_at" field.
+func ExpiresAtGTE(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldGTE(FieldExpiresAt, v))
+}
+
+// ExpiresAtLT applies the LT predicate on the "expires_at" field.
+func ExpiresAtLT(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldLT(FieldExpiresAt, v))
+}
+
+// ExpiresAtLTE applies the LTE predicate on the "expires_at" field.
+func ExpiresAtLTE(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldLTE(FieldExpiresAt, v))
+}
+
+// ExpiresAtContains applies the Contains predicate on the "expires_at" field.
+func ExpiresAtContains(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldContains(FieldExpiresAt, v))
+}
+
+// ExpiresAtHasPrefix applies the HasPrefix predicate on the "expires_at" field.
+func ExpiresAtHasPrefix(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldHasPrefix(FieldExpiresAt, v))
+}
+
+// ExpiresAtHasSuffix applies the HasSuffix predicate on the "expires_at" field.
+func ExpiresAtHasSuffix(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldHasSuffix(FieldExpiresAt, v))
+}
+
+// ExpiresAtEqualFold applies the EqualFold predicate on the "expires_at" field.
+func ExpiresAtEqualFold(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldEqualFold(FieldExpiresAt, v))
+}
+
+// ExpiresAtContainsFold applies the ContainsFold predicate on the "expires_at" field.
+func ExpiresAtContainsFold(v string) predicate.ToolGrant {
+	return predicate.ToolGrant(sql.FieldContainsFold(FieldExpiresAt, v))
 }
 
 // And groups predicates with the AND operator between them.

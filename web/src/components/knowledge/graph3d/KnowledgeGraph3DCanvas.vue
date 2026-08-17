@@ -88,8 +88,8 @@ const LAYOUT_SEED = 1337;
 /** 节点尺寸 = base + √degree·scale（沿用 G4 graphNodeVal 曲线）。 */
 const NODE_SIZE_BASE = 1.5;
 const NODE_SIZE_SCALE = 1.5;
-/** 标签度数阈值（候选池上限随画质档）。 */
-const LABEL_MIN_DEGREE = 4;
+/** 标签度数阈值（候选池上限随画质档；v3 可读性 4→6，只出更核心的 hub 标签）。 */
+const LABEL_MIN_DEGREE = 6;
 /** hover 拾取去抖：位移不足不重射线（防粒子相位重置）。 */
 const HOVER_REPICK_PX = 4;
 /** 相机远裁剪（需覆盖星云球半径 5000）。 */
@@ -306,7 +306,7 @@ function rebuildGraph(): void {
   labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: QUALITY_SPECS[tier].labelCandidates });
   labelLayer.setLabelsEnabled(props.showLabels);
   scene.add(labelLayer.group);
-  // 动态度数下限（G5-G）：小图（最大度数 < 基准 4）降档到最大度数，hub 标签适应视图后可见。
+  // 动态度数下限（G5-G）：小图（最大度数 < 基准 6）降档到最大度数，hub 标签适应视图后可见。
   let maxDeg = 0;
   for (let i = 0; i < m.count; i++) if (m.degree[i] > maxDeg) maxDeg = m.degree[i];
   labelVis.minDegree = effectiveMinDegree(maxDeg, LABEL_MIN_DEGREE);

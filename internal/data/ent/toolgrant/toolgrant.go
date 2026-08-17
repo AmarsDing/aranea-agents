@@ -19,6 +19,8 @@ const (
 	FieldGrantedBy = "granted_by"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldExpiresAt holds the string denoting the expires_at field in the database.
+	FieldExpiresAt = "expires_at"
 	// Table holds the table name of the toolgrant in the database.
 	Table = "tool_grants"
 )
@@ -30,6 +32,7 @@ var Columns = []string{
 	FieldToolKey,
 	FieldGrantedBy,
 	FieldCreatedAt,
+	FieldExpiresAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -45,6 +48,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultGrantedBy holds the default value on creation for the "granted_by" field.
 	DefaultGrantedBy string
+	// DefaultExpiresAt holds the default value on creation for the "expires_at" field.
+	DefaultExpiresAt string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -75,4 +80,9 @@ func ByGrantedBy(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByExpiresAt orders the results by the expires_at field.
+func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
 }

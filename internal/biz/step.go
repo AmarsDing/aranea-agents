@@ -110,6 +110,41 @@ func ClarificationAllRecommended(qs []ClarificationQuestion) bool {
 	return true
 }
 
+// cancellationPatterns 是取消/放弃类推荐答案的关键词（L3 守卫，BUG-MON-A）。
+// 假设式前进若自动代答为「取消」，等于静默拒绝用户请求——必须挂起等人工。
+var cancellationPatterns = []string{
+	"cancel", "取消", "abort", "放弃",
+	"no", "否", "don't", "不要",
+	"stop", "停止", "skip", "跳过",
+}
+
+// RecommendedLooksLikeCancellation 报告全部问题的推荐答案是否都是取消/放弃类。
+// 命中时假设式前进不得自动代答（防止静默否决破坏性操作）。
+func RecommendedLooksLikeCancellation(qs []ClarificationQuestion) bool {
+	if len(qs) == 0 {
+		return false
+	}
+	for _, q := range qs {
+		if len(q.Recommended) == 0 {
+			return false
+		}
+		for _, rec := range q.Recommended {
+			lower := strings.ToLower(strings.TrimSpace(rec))
+			isCancel := false
+			for _, pat := range cancellationPatterns {
+				if strings.Contains(lower, pat) {
+					isCancel = true
+					break
+				}
+			}
+			if !isCancel {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // ClarificationEnvelope 是 Step(kind=clarify).Content 的 JSON 信封。
 // 发布时 Answers 为 nil；用户提交后回写。
 type ClarificationEnvelope struct {

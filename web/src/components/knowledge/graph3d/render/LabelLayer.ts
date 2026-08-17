@@ -1,7 +1,7 @@
 /**
  * LabelLayer：G5 节点标签层（three-spritetext，设计 §V12.8-1 C-5）。
  *
- * - 候选池：按 degree 取 top-K（默认 200），Sprite 常驻复用
+ * - 候选池：按 degree 取 top-K（默认 80，与 HIGH 档一致），Sprite 常驻复用
  * - 双阈值可见性：相机距离 ≤ maxDistance 且 (degree ≥ minDegree 或 extraVisible 包含)
  * - 标签开关关时只显示 extraVisible（hover/选中节点）
  * - 位置：节点上方 y + nodeSize + 偏移
@@ -69,8 +69,9 @@ export class LabelLayer {
   constructor(opts: LabelLayerOpts) {
     const { names, degree } = opts;
     this.degree = degree;
-    const maxLabels = opts.maxLabels ?? 200;
-    const color = opts.color ?? '#9fdcff';
+    const maxLabels = opts.maxLabels ?? 80;
+    // v3 可读性：#9fdcff→#8fb9d9（原色亮度≈0.8 易冒辉光，压暗配合 bloom 提阈 0.85）
+    const color = opts.color ?? '#8fb9d9';
     const textHeight = opts.textHeight ?? 4;
 
     this.candidates = selectLabelCandidates(degree, maxLabels);

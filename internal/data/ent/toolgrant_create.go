@@ -54,6 +54,20 @@ func (_c *ToolGrantCreate) SetCreatedAt(v string) *ToolGrantCreate {
 	return _c
 }
 
+// SetExpiresAt sets the "expires_at" field.
+func (_c *ToolGrantCreate) SetExpiresAt(v string) *ToolGrantCreate {
+	_c.mutation.SetExpiresAt(v)
+	return _c
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_c *ToolGrantCreate) SetNillableExpiresAt(v *string) *ToolGrantCreate {
+	if v != nil {
+		_c.SetExpiresAt(*v)
+	}
+	return _c
+}
+
 // SetID sets the "id" field.
 func (_c *ToolGrantCreate) SetID(v string) *ToolGrantCreate {
 	_c.mutation.SetID(v)
@@ -99,6 +113,10 @@ func (_c *ToolGrantCreate) defaults() {
 		v := toolgrant.DefaultGrantedBy
 		_c.mutation.SetGrantedBy(v)
 	}
+	if _, ok := _c.mutation.ExpiresAt(); !ok {
+		v := toolgrant.DefaultExpiresAt
+		_c.mutation.SetExpiresAt(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -114,6 +132,9 @@ func (_c *ToolGrantCreate) check() error {
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "ToolGrant.created_at"`)}
+	}
+	if _, ok := _c.mutation.ExpiresAt(); !ok {
+		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "ToolGrant.expires_at"`)}
 	}
 	if v, ok := _c.mutation.ID(); ok {
 		if err := toolgrant.IDValidator(v); err != nil {
@@ -171,6 +192,10 @@ func (_c *ToolGrantCreate) createSpec() (*ToolGrant, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(toolgrant.FieldCreatedAt, field.TypeString, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.ExpiresAt(); ok {
+		_spec.SetField(toolgrant.FieldExpiresAt, field.TypeString, value)
+		_node.ExpiresAt = value
 	}
 	return _node, _spec
 }
@@ -269,6 +294,18 @@ func (u *ToolGrantUpsert) SetCreatedAt(v string) *ToolGrantUpsert {
 // UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
 func (u *ToolGrantUpsert) UpdateCreatedAt() *ToolGrantUpsert {
 	u.SetExcluded(toolgrant.FieldCreatedAt)
+	return u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ToolGrantUpsert) SetExpiresAt(v string) *ToolGrantUpsert {
+	u.Set(toolgrant.FieldExpiresAt, v)
+	return u
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ToolGrantUpsert) UpdateExpiresAt() *ToolGrantUpsert {
+	u.SetExcluded(toolgrant.FieldExpiresAt)
 	return u
 }
 
@@ -373,6 +410,20 @@ func (u *ToolGrantUpsertOne) SetCreatedAt(v string) *ToolGrantUpsertOne {
 func (u *ToolGrantUpsertOne) UpdateCreatedAt() *ToolGrantUpsertOne {
 	return u.Update(func(s *ToolGrantUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ToolGrantUpsertOne) SetExpiresAt(v string) *ToolGrantUpsertOne {
+	return u.Update(func(s *ToolGrantUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ToolGrantUpsertOne) UpdateExpiresAt() *ToolGrantUpsertOne {
+	return u.Update(func(s *ToolGrantUpsert) {
+		s.UpdateExpiresAt()
 	})
 }
 
@@ -644,6 +695,20 @@ func (u *ToolGrantUpsertBulk) SetCreatedAt(v string) *ToolGrantUpsertBulk {
 func (u *ToolGrantUpsertBulk) UpdateCreatedAt() *ToolGrantUpsertBulk {
 	return u.Update(func(s *ToolGrantUpsert) {
 		s.UpdateCreatedAt()
+	})
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (u *ToolGrantUpsertBulk) SetExpiresAt(v string) *ToolGrantUpsertBulk {
+	return u.Update(func(s *ToolGrantUpsert) {
+		s.SetExpiresAt(v)
+	})
+}
+
+// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
+func (u *ToolGrantUpsertBulk) UpdateExpiresAt() *ToolGrantUpsertBulk {
+	return u.Update(func(s *ToolGrantUpsert) {
+		s.UpdateExpiresAt()
 	})
 }
 

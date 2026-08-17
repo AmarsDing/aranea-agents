@@ -5,6 +5,45 @@ import (
 	"testing"
 )
 
+func TestForceDestructiveFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		userText string
+		art      *Artifact
+		wantFlag bool
+	}{
+		{"nil artifact", "inject fault", nil, false},
+		{"fault_inject keyword", "请对 sw1 执行 fault_inject", &Artifact{}, true},
+		{"gns3_fault_inject keyword", "调用 gns3_fault_inject 注入端口 down", &Artifact{}, true},
+		{"故障注入 keyword", "注入故障到交换机 eth1", &Artifact{}, true},
+		{"注入故障 keyword", "对 sw1 注入故障", &Artifact{}, true},
+		{"drop table keyword", "drop table users", &Artifact{}, true},
+		{"rm -rf keyword", "rm -rf /tmp/data", &Artifact{}, true},
+		{"normal request no flag", "帮我写一个 landing page", &Artifact{}, false},
+		{"delete variable no flag", "delete the unused variable", &Artifact{}, false},
+		{"already flagged no dup", "fault_inject sw1", &Artifact{RiskFlags: []string{"destructive"}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := 0
+			if tt.art != nil {
+				before = len(tt.art.RiskFlags)
+			}
+			ForceDestructiveFlag(tt.userText, tt.art)
+			if tt.art == nil {
+				return
+			}
+			got := tt.art.HasRiskFlag("destructive")
+			if got != tt.wantFlag {
+				t.Errorf("HasRiskFlag(destructive) = %v, want %v", got, tt.wantFlag)
+			}
+			if tt.name == "already flagged no dup" && len(tt.art.RiskFlags) != before {
+				t.Errorf("duplicate flag added: before=%d after=%d", before, len(tt.art.RiskFlags))
+			}
+		})
+	}
+}
+
 func TestParseArtifactJSON_WithClarifications(t *testing.T) {
 	text := `{"refined_goal":"build a landing page","intent_kind":"task","risk_flags":["needs_clarification"],"clarifications":[{"question":"目标平台？","mode":"single","options":["Web","iOS"],"recommended":["Web"]}]}`
 	art, _ := parseArtifactJSON(text)

@@ -283,6 +283,10 @@ export type ToolGrant = {
   toolKey: string | undefined;
   grantedBy: string | undefined;
   createdAt: string | undefined;
+  // expires_at is the RFC3339 UTC deadline of the grant ('' = never
+  // expires). Grants created via the always-scope approval carry the
+  // default 72h TTL (BUG-MON-B); frontend shows the remaining window.
+  expiresAt: string | undefined;
 };
 
 export type ListToolGrantsRequest = {

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -20,9 +22,19 @@ const (
 	logosDirName            = "logos"
 )
 
+// Store 模型目录文件存储。LoadDirectory 走 mtime+size 失效缓存（PERF-F1：
+// current.json 达 2.88MB，每请求全量读盘+反序列化导致 providers 接口 ~510ms）；
+// 缓存命中时返回共享只读对象——调用方不得修改返回值（读路径均为只读组装）。
 type Store struct {
 	root string
 	lg   loggateway.Logger
+
+	cacheMu   sync.RWMutex
+	cacheDir  Directory
+	cacheMeta Meta
+	cacheMod  time.Time
+	cacheSize int64
+	cacheOK   bool
 }
 
 func NewStore(rootDir string, lg loggateway.Logger) *Store {
@@ -161,14 +173,30 @@ func (s *Store) SavePolicy(p Policy) error {
 	return nil
 }
 
+// LoadDirectory 加载模型目录（mtime+size 失效缓存：os.Stat 每请求 µs 级，
+// 文件未变更直接命中缓存对象；SaveDirectory 成功后主动失效双保险）。
 func (s *Store) LoadDirectory() (Directory, Meta, error) {
-	var dir Directory
 	var meta Meta
+	st, err := os.Stat(s.CurrentPath())
+	if err != nil {
+		s.lg.Warn("Model registry stat catalog file failed", loggateway.StepID("model_registry.store.read_catalog_fail"), loggateway.Err(err))
+		return nil, meta, err
+	}
+
+	s.cacheMu.RLock()
+	if s.cacheOK && s.cacheMod.Equal(st.ModTime()) && s.cacheSize == st.Size() {
+		dir, m := s.cacheDir, s.cacheMeta
+		s.cacheMu.RUnlock()
+		return dir, m, nil
+	}
+	s.cacheMu.RUnlock()
+
 	b, err := os.ReadFile(s.CurrentPath())
 	if err != nil {
 		s.lg.Warn("Model registry read catalog file failed", loggateway.StepID("model_registry.store.read_catalog_fail"), loggateway.Err(err))
 		return nil, meta, err
 	}
+	var dir Directory
 	if err := json.Unmarshal(b, &dir); err != nil {
 		return nil, meta, fmt.Errorf("invalid catalog json: %w", err)
 	}
@@ -176,6 +204,12 @@ func (s *Store) LoadDirectory() (Directory, Meta, error) {
 		s.lg.Warn("Model registry meta file load failed, continuing with empty meta",
 			loggateway.StepID("model_registry.store.read_meta_fail"), loggateway.Err(err))
 	}
+
+	s.cacheMu.Lock()
+	s.cacheDir, s.cacheMeta = dir, meta
+	s.cacheMod, s.cacheSize = st.ModTime(), st.Size()
+	s.cacheOK = true
+	s.cacheMu.Unlock()
 	return dir, meta, nil
 }
 
@@ -220,6 +254,11 @@ func (s *Store) SaveDirectory(dir Directory, meta Meta) error {
 		s.lg.Warn("Model registry write meta file failed", loggateway.StepID("model_registry.store.write_meta_fail"), loggateway.Err(err))
 		return err
 	}
+	// 主动失效目录缓存（双保险：不依赖 stat 分辨率，自身写入即时可见）
+	s.cacheMu.Lock()
+	s.cacheOK = false
+	s.cacheDir, s.cacheMeta = nil, Meta{}
+	s.cacheMu.Unlock()
 	return nil
 }
 

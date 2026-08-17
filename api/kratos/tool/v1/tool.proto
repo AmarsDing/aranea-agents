@@ -267,6 +267,10 @@ message ToolGrant {
   string tool_key = 3;
   string granted_by = 4;
   string created_at = 5;
+  // expires_at is the RFC3339 UTC deadline of the grant ('' = never
+  // expires). Grants created via the always-scope approval carry the
+  // default 72h TTL (BUG-MON-B); frontend shows the remaining window.
+  string expires_at = 6;
 }
 
 message ListToolGrantsRequest {
