@@ -32,7 +32,8 @@ import (
 
 const (
 	// relationExtractTimeout 单次 LLM 调用超时（Step1/Step2 各自计时）。
-	relationExtractTimeout = 60 * time.Second
+	// deepseek 高峰期单请求 >60s 常见（2026-08-18 评测批量超时），放宽到 180s。
+	relationExtractTimeout = 180 * time.Second
 	// relationMaxEntities Step1 实体清单上限（控 Step2 prompt 规模）。
 	relationMaxEntities = 20
 	// relationMaxTriples Step2 三元组上限（控单文档边数）。
@@ -274,9 +275,13 @@ func llmExtractEntities(ctx context.Context, llm biz.LLMCaller, provider, model,
 	out := entities[:0]
 	for _, en := range entities {
 		en.Name = strings.TrimSpace(en.Name)
-		if en.Name != "" {
-			out = append(out, en)
+		if en.Name == "" {
+			continue
 		}
+		if bizknowledge.IsReservedEntryKey(en.Name) || bizknowledge.IsNoiseEntryKey(en.Name) {
+			continue // 保留键/噪声键不成实体（entry_key_guard：堵伪实体边源头）
+		}
+		out = append(out, en)
 		if len(out) >= relationMaxEntities {
 			break
 		}

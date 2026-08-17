@@ -131,7 +131,8 @@ func (u *Usecase) resolveEntryForFact(ctx context.Context, col Collection, f Wri
 	return writeBackEntryDir + "/" + slug + ".md", tags[0]
 }
 
-// normalizedEntryTags 清洗 tags：去空白、去重（大小写不敏感）、保持原序。
+// normalizedEntryTags 清洗 tags：去空白、去重（大小写不敏感）、保持原序；
+// 过滤保留键与噪声键（entry_key_guard）。
 func normalizedEntryTags(tags []string) []string {
 	out := make([]string, 0, len(tags))
 	seen := make(map[string]struct{}, len(tags))
@@ -139,6 +140,9 @@ func normalizedEntryTags(tags []string) []string {
 		t = strings.TrimSpace(t)
 		if t == "" || utf8.RuneCountInString(t) < 2 {
 			continue
+		}
+		if IsReservedEntryKey(t) || IsNoiseEntryKey(t) {
+			continue // 保留键/噪声键不成话题（entry_key_guard：堵垃圾词条源头）
 		}
 		k := strings.ToLower(t)
 		if _, dup := seen[k]; dup {

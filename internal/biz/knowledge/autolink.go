@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"aranea-agents/pkg/loggateway"
@@ -80,6 +81,9 @@ func AutolinkWikiMentionsMulti(content string, selfKeys []string, targets []Auto
 			n := utf8.RuneCountInString(k)
 			if n < autolinkMinRunes {
 				continue
+			}
+			if isAutolinkNoiseKey(k) {
+				continue // 纯数字/IP/版本号类 key 无字母与汉字，成链必污染数值字面量
 			}
 			ascii := isASCIITitle(k)
 			if ascii && n < autolinkASCIIMinRunes {
@@ -237,6 +241,9 @@ func autolinkFromCandidates(cands []ResolveDocCandidate, excludeDocID, selfTitle
 		if canonical == "" {
 			continue
 		}
+		if IsReservedEntryKey(canonical) || IsNoiseEntryKey(canonical) {
+			continue // 垃圾词条不成链（entry_key_guard 防御性兜底，清理前免污染正文）
+		}
 		keys := []string{canonical}
 		if t := strings.TrimSpace(c.Title); t != "" {
 			keys = append(keys, t)
@@ -265,6 +272,17 @@ func (u *Usecase) MaybeAutolinkOutgoing(ctx context.Context, collectionID, exclu
 func isASCIITitle(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// isAutolinkNoiseKey key 不含任何字母或汉字（纯数字/点分 IP/版本号/标点组合）
+// 时判定为噪声：这类 key 命中的一定是数值字面量而非词条提及，成链即污染正文。
+func isAutolinkNoiseKey(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
 			return false
 		}
 	}
@@ -374,6 +392,14 @@ func protectAutolinkMask(content string) []bool {
 			i++
 			continue
 		}
+		if atLineStart {
+			if end := provenanceFieldLineEnd(content, i); end > i {
+				markRange(mask, i, end)
+				i = end
+				atLineStart = true
+				continue
+			}
+		}
 		if atLineStart && i+2 < n && (content[i:i+3] == "```" || content[i:i+3] == "~~~") {
 			fence := content[i : i+3]
 			lineEnd := strings.IndexAny(content[i:], "\r\n")
@@ -451,6 +477,39 @@ func protectAutolinkMask(content string) []bool {
 		i++
 	}
 	return mask
+}
+
+// writebackProvenanceLabels 写回块 provenance 字段标签（FormatWriteBackAppendix 产出、
+// pending 评审与 fact_id 标记检索共用的结构化行）。这些行成链会破坏
+// "fact_id: `<id>`" 标记匹配与字段解析，必须整行豁免成链。
+var writebackProvenanceLabels = map[string]struct{}{
+	"fact_id": {}, "session_id": {}, "agent_id": {}, "user_id": {},
+	"confidence": {}, "kind": {}, "tags": {}, "source": {}, "source_id": {},
+	"entry": {},
+}
+
+// provenanceFieldLineEnd i 处于行首且形如 "- <label>:"（label 属写回字段集）时
+// 返回该行行尾（含换行）；否则返回 -1。label 仅 ASCII 字母/下划线，大小写不敏感。
+func provenanceFieldLineEnd(s string, i int) int {
+	if i+2 >= len(s) || s[i] != '-' || s[i+1] != ' ' {
+		return -1
+	}
+	j := i + 2
+	start := j
+	for j < len(s) && (s[j] == '_' || (s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z')) {
+		j++
+	}
+	if j == start || j >= len(s) || s[j] != ':' {
+		return -1
+	}
+	if _, ok := writebackProvenanceLabels[strings.ToLower(s[start:j])]; !ok {
+		return -1
+	}
+	nl := strings.IndexAny(s[j:], "\r\n")
+	if nl < 0 {
+		return len(s)
+	}
+	return consumeLineEnd(s, j+nl)
 }
 
 func hasHTTPScheme(s string, i int) bool {

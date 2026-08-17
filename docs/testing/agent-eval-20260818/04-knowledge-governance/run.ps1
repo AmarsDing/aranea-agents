@@ -21,7 +21,9 @@ $butlerId  = "agent___memory__"
 $collName  = "eval-gov-kb"
 
 function Db-Query { param([string]$Sql)
-    ((docker exec -i aranea-postgres psql -U postgres -d aranea -t -A -c $Sql) | Out-String).Trim()
+    # Out-String 会把多行输出拼成 CRLF：按行去 \r 再 join，否则多行结果拆分后
+    # 行尾残留 \r 混入 URL/SQL（2026-08-18 踩坑：DELETE id 带 %0D 幂等 200 但删不掉）。
+    ((docker exec -i aranea-postgres psql -U postgres -d aranea -t -A -c $Sql | ForEach-Object { $_.TrimEnd("`r") }) -join "`n").Trim()
 }
 function Chat-Say { param([string]$Key, [string]$Sid, [string]$Content, [string]$OutFile, [int]$TimeoutSec = 180)
     Api-Post "/v1/chat/messages" @{ session_id = $Sid; agent_key = $Key; content = $Content } -OutFile $OutFile -TimeoutSec $TimeoutSec
@@ -44,8 +46,8 @@ Db-Query "UPDATE knowledge_collections SET dim=1024 WHERE id='$collId';" | Out-N
 $dimRow = Db-Query "SELECT dim FROM knowledge_collections WHERE id='$collId';"
 Record $M "D-00b" "dim correct (BUG-C-01 workaround)" $(if ($dimRow -eq "1024") { "PASS" } else { "FAIL" }) "dim=$dimRow"
 
-# 上轮残留清理：inbox 评测词条 + 评测提案
-$staleEntry = Db-Query "SELECT id FROM knowledge_documents WHERE collection_id='$inboxId' AND rel_path LIKE 'entries/%评测%';"
+# 上轮残留清理：inbox 评测词条 + 评测提案（sw-eval-01 为 D15 别名 tag 可能落点，一并清理防跨轮污染）
+$staleEntry = Db-Query "SELECT id FROM knowledge_documents WHERE collection_id='$inboxId' AND (rel_path LIKE 'entries/%评测%' OR rel_path LIKE 'entries/sw-eval-01%');"
 if ($staleEntry) {
     foreach ($did in ($staleEntry -split "`n" | Where-Object { $_ -ne "" })) { Api-Delete -Path "/v1/knowledge/documents/$did" | Out-Null }
     Write-Host "[prep] cleaned inbox eval entries: $staleEntry"
@@ -175,12 +177,26 @@ Record $M "D10-prep-chat" "chat 建孤儿词条" $(if ($r.Code -eq "200") { "PAS
 Start-Sleep -Seconds 6
 $orphanDocId = Find-EvalEntry "评测-孤儿词条"
 
-# D08：冲突检测提案（P0，arbiter 对同页既有段仲裁；放最后使既有段已含 10.20.99.2）
+# D08：写入时仲裁（P0，arbiter 对同页既有段裁决；放最后使既有段已含 10.20.99.2）
+# 双路径断言（2026-08-18 修订）：同属性新值（10.20.99.2→10.20.88.1）语义上是更新，
+# arbiter 判 supersedes（整段替换+source_id 留痕+版本链）或 contradicts（pending 提案）
+# 均为正确裁决；断言「两条路径必居其一」，不再强预期 contradicts。
 $r = Chat-Say $agentKey $sid '请立即调用 knowledge_write 工具写入一条事实，参数：statement="评测-核心交换机SW-Eval-01的管理IP为10.20.88.1"，tags=["评测-核心交换机"]，fact_id="eval-sw-ip-alt"，confidence=0.95。只调用这一个工具。' (Join-Path $ev "d08-chat-conflict.json")
 Record $M "D08-chat" "chat 矛盾写入" $(if ($r.Code -eq "200") { "PASS" } else { "FAIL" }) "code=$($r.Code)" $r.Ms
 Start-Sleep -Seconds 12
 $confPropId = Db-Query "SELECT id FROM knowledge_governance_proposal WHERE collection_id='$inboxId' AND kind='conflict' AND status='pending' AND payload::text LIKE '%eval-sw-ip-alt%' ORDER BY id DESC LIMIT 1;"
-Record $M "D08" "冲突检测提案生成（P0）" $(if ($confPropId -match '^\d+$') { "PASS" } else { "FAIL" }) "proposalId=$confPropId"
+$d08Path = ""; $d08ok = $false
+if ($confPropId -match '^\d+$') {
+    $d08Path = "contradicts proposal=$confPropId"; $d08ok = $true
+} elseif ($entryInboxId) {
+    $b8 = Db-Query "SELECT content_text FROM knowledge_documents WHERE id='$entryInboxId';"
+    $hasAlt = $b8.Contains("10.20.88.1")
+    $hasLineage = $b8.Contains("source_id: ``eval-sw-ip-alt``")
+    $verAlt = Db-Query "SELECT COUNT(*) FROM knowledge_fact_version WHERE doc_id='$entryInboxId' AND fact_id='eval-sw-ip';"
+    if ($hasAlt -and $hasLineage -and [int]$verAlt -ge 1) { $d08Path = "supersedes (段替换+source_id留痕+版本链 rows=$verAlt)"; $d08ok = $true }
+    else { $d08Path = "neither: hasAlt=$hasAlt lineage=$hasLineage verRows=$verAlt" }
+}
+Record $M "D08" "写入时仲裁（supersedes 或 contradicts 提案）" $(if ($d08ok) { "PASS" } else { "FAIL" }) $d08Path
 
 # D05/D06：等 WriteBackGraphHook 异步抽取（entity + typed relation，双 LLM 管道）
 Write-Host "等待 60s 实体共现/typed 关系异步抽取..."
@@ -243,7 +259,8 @@ if ($orphanPropId -match '^\d+$') {
     Record $M "D11-a" "提案二审（orphan applied→删词条）" $(if ($propStatus -eq "applied" -and [int]$orphanGone -eq 0) { "PASS" } else { "FAIL" }) "code=$($rResolve.Code) status=$propStatus orphanDocLeft=$orphanGone" $rResolve.Ms
 } else { Record $M "D11-a" "提案二审（orphan）" FAIL "no pending orphan proposal" }
 
-# D11-b：conflict 提案（fact-level）→ keep_old（删除矛盾新段）
+# D11-b：conflict 提案（fact-level）→ keep_old（删除矛盾新段）；
+# D08 走 supersedes 路径时无提案可二审，改验版本链留痕完整性（INFO）。
 if ($confPropId -match '^\d+$') {
     $rResolve2 = Api-Post -Path "/v1/knowledge/governance-proposals/$confPropId`:resolve" -Body @{ decision = "keep_old" } -OutFile (Join-Path $ev "d11-resolve-conflict.json")
     Start-Sleep -Seconds 3
@@ -251,7 +268,10 @@ if ($confPropId -match '^\d+$') {
     $bodyAfter = if ($entryInboxId) { Db-Query "SELECT content_text FROM knowledge_documents WHERE id='$entryInboxId';" } else { "" }
     $altGone = -not $bodyAfter.Contains("10.20.88.1")
     Record $M "D11-b" "提案二审（conflict keep_old→删新段）" $(if (($propStatus2 -eq "applied" -or $propStatus2 -eq "rejected") -and $altGone) { "PASS" } else { "FAIL" }) "code=$($rResolve2.Code) status=$propStatus2 altIPgone=$altGone" $rResolve2.Ms
-} else { Record $M "D11-b" "提案二审（conflict）" FAIL "no pending conflict proposal" }
+} else {
+    $verKeep = if ($entryInboxId) { Db-Query "SELECT COUNT(*) FROM knowledge_fact_version WHERE doc_id='$entryInboxId' AND fact_id='eval-sw-ip';" } else { "0" }
+    Record $M "D11-b" "提案二审（supersedes 路径：版本链留痕核验）" $(if ([int]$verKeep -ge 1) { "PASS" } else { "FAIL" }) "no proposal (supersedes); fact_version rows=$verKeep"
+}
 
 # ============ 阶段 4：D20 治理后检索基准 ============
 $d20post = 0
@@ -265,11 +285,11 @@ Record $M "D20" "自治理不劣化检索" $(if ($d20post -ge $d20pre) { "PASS" 
 
 # ============ 阶段 5：清理 ============
 if (-not $SkipCleanup) {
-    $evalDocs = Db-Query "SELECT id FROM knowledge_documents WHERE collection_id='$inboxId' AND rel_path LIKE 'entries/%评测%';"
+    $evalDocs = Db-Query "SELECT id FROM knowledge_documents WHERE collection_id='$inboxId' AND (rel_path LIKE 'entries/%评测%' OR rel_path LIKE 'entries/sw-eval-01%');"
     foreach ($did in ($evalDocs -split "`n" | Where-Object { $_ -ne "" })) { Api-Delete -Path "/v1/knowledge/documents/$did" | Out-Null }
     # 残留评测提案（未 resolve 的）一律 rejected（拒绝即沉默，不再周期重提）
     $leftProps = Db-Query "SELECT id FROM knowledge_governance_proposal WHERE collection_id='$inboxId' AND status='pending' AND payload::text LIKE '%评测-%';"
-    foreach ($pid in ($leftProps -split "`n" | Where-Object { $_ -match '^\d+$' })) { Api-Post -Path "/v1/knowledge/governance-proposals/$pid`:resolve" -Body @{ decision = "rejected" } | Out-Null }
+    foreach ($propId in ($leftProps -split "`n" | Where-Object { $_ -match '^\d+$' })) { Api-Post -Path "/v1/knowledge/governance-proposals/$propId`:resolve" -Body @{ decision = "rejected" } | Out-Null }
     # DB 构造的 semantic 边随词条删除清理（若 DeleteDocument 不级联边则显式删）
     if ($staleDocId) { Db-Query "DELETE FROM knowledge_links WHERE collection_id='$inboxId' AND doc_id='$staleDocId' AND context LIKE 'eval-stale-%';" | Out-Null }
     Api-Delete -Path "/v1/knowledge/collections/$collId" | Out-Null

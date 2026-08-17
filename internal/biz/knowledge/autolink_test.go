@@ -13,6 +13,50 @@ func TestAutolinkWikiMentions_CJK(t *testing.T) {
 	}
 }
 
+func TestAutolinkWikiMentions_SkipNoiseKeys(t *testing.T) {
+	// 纯数字/IP/版本号类标题（无字母与汉字）不得成链，否则污染数值字面量。
+	for _, title := range []string{"10.20.99.1", "1020991", "1.2.3", "8080"} {
+		content := "管理口地址 10.20.99.1，端口 8080。"
+		got, n := AutolinkWikiMentions(content, "", []string{title})
+		if n != 0 || got != content {
+			t.Fatalf("noise key %q linked: got %q n=%d", title, got, n)
+		}
+	}
+	// 含字母的数字混合名仍可成链（如 ALM2026081500048）。
+	got, n := AutolinkWikiMentions("工单 ALM2026081500048 已闭环。", "", []string{"ALM2026081500048"})
+	if n != 1 || got != "工单 [[ALM2026081500048]] 已闭环。" {
+		t.Fatalf("alnum key got %q n=%d", got, n)
+	}
+}
+
+func TestAutolinkWikiMentions_ProtectWritebackProvenance(t *testing.T) {
+	// 写回块 provenance 字段行整行豁免：label 与值都不得成链，
+	// 否则 "fact_id: `<id>`" 标记检索与 pending 字段解析被破坏。
+	content := "## constraint\n\n陈述提及 目标笔记 一次。\n\n" +
+		"- fact_id: `fid-1`\n- session_id: `s-1`\n- confidence: 0.95\n- kind: constraint\n- source: auto_memory\n"
+	targets := []AutolinkTarget{
+		{Canonical: "fact-id", Keys: []string{"fact-id", "fact_id"}},
+		{Canonical: "confidence", Keys: []string{"confidence"}},
+		{Canonical: "constraint", Keys: []string{"constraint"}},
+		{Canonical: "source", Keys: []string{"source"}},
+		{Canonical: "目标笔记", Keys: []string{"目标笔记"}},
+	}
+	got, n := AutolinkWikiMentionsMulti(content, nil, targets)
+	if !strings.Contains(got, "- fact_id: `fid-1`") || strings.Contains(got, "[[fact-id]]") {
+		t.Fatalf("provenance fact_id line corrupted: %q", got)
+	}
+	if strings.Contains(got, "[[confidence]]") || strings.Contains(got, "[[source]]") {
+		t.Fatalf("provenance label linked: %q", got)
+	}
+	if !strings.Contains(got, "kind: constraint") {
+		t.Fatalf("kind value linked: %q", got)
+	}
+	if !strings.Contains(got, "陈述提及 [[目标笔记]] 一次") {
+		t.Fatalf("legit mention not linked: %q", got)
+	}
+	_ = n
+}
+
 func TestAutolinkWikiMentions_ASCIIWholeWord(t *testing.T) {
 	got, n := AutolinkWikiMentions("I love deep work and networking.", "", []string{"Deep Work"})
 	if n != 1 || got != "I love [[Deep Work]] and networking." {
