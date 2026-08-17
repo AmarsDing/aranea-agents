@@ -251,6 +251,16 @@ export type ListCollectionGraphResponse = {
   edges: CollectionGraphEdge[] | undefined;
 };
 
+// ListDocumentNeighborhoodRequest asks for the N-hop undirected neighborhood
+// subgraph around one document (SP2-8 右栏局部图). Server-side BFS over the
+// collection link graph avoids full-graph transfer for large vaults.
+export type ListDocumentNeighborhoodRequest = {
+  //
+  // Behaviors: REQUIRED
+  docId: string | undefined;
+  hops: number | undefined;
+};
+
 // BlockBacklink is one inbound reference edge to a block/document (SP1-E).
 // Block-granular: a document backlink list is the aggregate of its blocks' edges.
 export type BlockBacklink = {
@@ -445,6 +455,45 @@ export type ListDocumentsResponse = {
   total: number | undefined;
 };
 
+// GovernanceProposal is one knowledge-curation governance proposal (M4 自治理层).
+// High-risk kinds (conflict/orphan) stay pending until a human resolves them
+// via ResolveGovernanceProposal; low-risk kinds (stale) are auto-applied.
+export type GovernanceProposal = {
+  id: number | undefined;
+  collectionId: string | undefined;
+  kind: string | undefined;
+  risk: string | undefined;
+  status: string | undefined;
+  payloadJson: string | undefined;
+  createdAt: string | undefined;
+  resolvedAt: string | undefined;
+};
+
+export type ListGovernanceProposalsRequest = {
+  collectionId: string | undefined;
+  status: string | undefined;
+  limit: number | undefined;
+};
+
+export type ListGovernanceProposalsResponse = {
+  items: GovernanceProposal[] | undefined;
+};
+
+// ResolveGovernanceProposalRequest closes one pending proposal (人工二审).
+export type ResolveGovernanceProposalRequest = {
+  //
+  // Behaviors: REQUIRED
+  id: number | undefined;
+  //
+  // Behaviors: REQUIRED
+  decision: string | undefined;
+};
+
+export type ResolveGovernanceProposalResponse = {
+  id: number | undefined;
+  status: string | undefined;
+};
+
 export type DeleteDocumentRequest = {
   //
   // Behaviors: REQUIRED
@@ -623,6 +672,10 @@ export interface KnowledgeService {
   // nodes = documents (after path_prefix filter), edges = links (link_types filter;
   // endpoints outside scope/dangling dropped), degree = in-edge count per node.
   ListCollectionGraph(request: ListCollectionGraphRequest): Promise<ListCollectionGraphResponse>;
+  // ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+  // of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+  // but only the small vicinity is transferred (large-vault friendly).
+  ListDocumentNeighborhood(request: ListDocumentNeighborhoodRequest): Promise<ListCollectionGraphResponse>;
   // ListBlockBacklinks returns block-level inbound references (SP1-E): context
   // excerpt + source block/document per edge. Single block via block_id path;
   // aggregate all blocks of a document via the doc_id binding.
@@ -659,6 +712,12 @@ export interface KnowledgeService {
   // MergeKnowledgeEntities merges mergee entities into the keeper (G5-F B10)
   // atomically; returns rewrite counts for inline UI feedback.
   MergeKnowledgeEntities(request: MergeKnowledgeEntitiesRequest): Promise<MergeKnowledgeEntitiesResponse>;
+  // ListGovernanceProposals lists curation governance proposals (M4 自治理层
+  // 人工二审出口): high-risk conflict/orphan proposals wait here for human review.
+  ListGovernanceProposals(request: ListGovernanceProposalsRequest): Promise<ListGovernanceProposalsResponse>;
+  // ResolveGovernanceProposal closes one pending proposal (人工二审):
+  // decision=applied approves the governance action, rejected dismisses it.
+  ResolveGovernanceProposal(request: ResolveGovernanceProposalRequest): Promise<ResolveGovernanceProposalResponse>;
   // Search
   Search(request: SearchRequest): Promise<SearchResponse>;
   GetEmbedderConfig(request: GetEmbedderConfigRequest): Promise<EmbedderConfig>;
@@ -1054,6 +1113,29 @@ export function createKnowledgeServiceClient(
         method: "ListCollectionGraph",
       }) as Promise<ListCollectionGraphResponse>;
     },
+    ListDocumentNeighborhood(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.docId) {
+        throw new Error("missing required field request.doc_id");
+      }
+      const path = `v1/knowledge/documents/${request.docId}/neighborhood`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.hops) {
+        queryParams.push(`hops=${encodeURIComponent(request.hops.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListDocumentNeighborhood",
+      }) as Promise<ListCollectionGraphResponse>;
+    },
     ListBlockBacklinks(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       if (!request.blockId) {
         throw new Error("missing required field request.block_id");
@@ -1236,6 +1318,52 @@ export function createKnowledgeServiceClient(
         service: "KnowledgeService",
         method: "MergeKnowledgeEntities",
       }) as Promise<MergeKnowledgeEntitiesResponse>;
+    },
+    ListGovernanceProposals(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      const path = `v1/knowledge/governance-proposals`; // eslint-disable-line quotes
+      const body = null;
+      const queryParams: string[] = [];
+      if (request.collectionId) {
+        queryParams.push(`collectionId=${encodeURIComponent(request.collectionId.toString())}`)
+      }
+      if (request.status) {
+        queryParams.push(`status=${encodeURIComponent(request.status.toString())}`)
+      }
+      if (request.limit) {
+        queryParams.push(`limit=${encodeURIComponent(request.limit.toString())}`)
+      }
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "GET",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ListGovernanceProposals",
+      }) as Promise<ListGovernanceProposalsResponse>;
+    },
+    ResolveGovernanceProposal(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
+      if (!request.id) {
+        throw new Error("missing required field request.id");
+      }
+      const path = `v1/knowledge/governance-proposals/${request.id}:resolve`; // eslint-disable-line quotes
+      const body = JSON.stringify(request);
+      const queryParams: string[] = [];
+      let uri = path;
+      if (queryParams.length > 0) {
+        uri += `?${queryParams.join("&")}`
+      }
+      return handler({
+        path: uri,
+        method: "POST",
+        body,
+      }, {
+        service: "KnowledgeService",
+        method: "ResolveGovernanceProposal",
+      }) as Promise<ResolveGovernanceProposalResponse>;
     },
     Search(request) { // eslint-disable-line @typescript-eslint/no-unused-vars
       const path = `v1/knowledge/search`; // eslint-disable-line quotes

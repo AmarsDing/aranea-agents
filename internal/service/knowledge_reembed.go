@@ -92,7 +92,7 @@ func (s *KnowledgeService) ReembedDocuments(ctx context.Context, req *v1.Reembed
 // EnableCollectionSemantic B2：词法集合（embedding_model 为空）单向启用语义层——
 // 绑定当前全局 embedder 的 model/dim（守卫式 UPDATE，并发/重复调用 → Conflict，
 // 不可改绑/清空），随后全集合有正文文档进入 B1 同一串行重嵌入管线
-//（启用后全部 chunks 缺失，恰为 ListDocumentsPendingReembed 集合）。
+// （启用后全部 chunks 缺失，恰为 ListDocumentsPendingReembed 集合）。
 func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1.EnableCollectionSemanticRequest) (*v1.EnableCollectionSemanticResponse, error) {
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
@@ -122,9 +122,9 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 		return nil, err
 	}
 	resp := &v1.EnableCollectionSemanticResponse{
-		EnqueuedDocs:  int32(len(docs)),
+		EnqueuedDocs:   int32(len(docs)),
 		EmbeddingModel: model,
-		Dim:           int32(dim),
+		Dim:            int32(dim),
 	}
 	if len(docs) == 0 {
 		return resp, nil
@@ -159,10 +159,64 @@ func (s *KnowledgeService) EnableCollectionSemantic(ctx context.Context, req *v1
 	return resp, nil
 }
 
+// RepairPendingKnowledgeIndexes synchronously repairs a bounded batch of
+// database-backed documents whose source text is durable but chunks/embeddings
+// are missing. It is the worker-facing counterpart of the user-triggered RPC.
+func (s *KnowledgeService) RepairPendingKnowledgeIndexes(ctx context.Context, limit int) (repaired, failed int, err error) {
+	if s == nil || s.uc == nil {
+		return 0, 0, apierror.Unavailable(apierror.DomainKnowledge, "knowledge index repair is not configured")
+	}
+	if limit <= 0 {
+		return 0, 0, nil
+	}
+	cols, _, err := s.uc.ListCollections(ctx, "", 1000, 0)
+	if err != nil {
+		return 0, 0, err
+	}
+	flow := s.knowledgeFlow(ctx)
+	for _, col := range cols {
+		if repaired+failed >= limit {
+			break
+		}
+		docs, listErr := s.uc.ListDocumentsPendingReembed(ctx, col.ID)
+		if listErr != nil {
+			failed++
+			s.lg.Warn("索引修复列举待处理文档失败",
+				loggateway.StepID("knowledge.index_repair"),
+				loggateway.Str("collection_id", col.ID),
+				loggateway.Err(listErr))
+			continue
+		}
+		embedder := s.embedder
+		if strings.TrimSpace(col.EmbeddingModel) == "" {
+			embedder = nil
+		} else if embedder == nil {
+			failed += len(docs)
+			continue
+		}
+		for _, doc := range docs {
+			if repaired+failed >= limit {
+				break
+			}
+			if s.reembedOneDocument(ctx, s.uc, embedder, col, doc, 0, 0, flow) {
+				repaired++
+			} else {
+				failed++
+			}
+		}
+	}
+	return repaired, failed, nil
+}
+
 // reembedOneDocument 单文档串行管线：DeleteChunksByDocument → indexing+WS →
 // BuildIndexedChunks(content_text) → InsertChunks → indexed+WS。失败置 error 由调用方继续下一篇。
 // 不触发 RebuildBlockIndex（content_text 未变，块/边不变——与 IngestDocument 的 SP1-C 钩子区分）。
-func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) {
+func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, col biz.KnowledgeCollection, doc biz.KnowledgeDocument, chunkSize, chunkOverlap int32, flow *event.TraceEmitter) bool {
+	if _, loaded := s.reembedRuns.LoadOrStore(doc.ID, struct{}{}); loaded {
+		return false
+	}
+	defer s.reembedRuns.Delete(doc.ID)
+
 	// fail 置文档 error 终态 + WS 广播 + 流程/进程双轨错误日志（K2/K3），不回滚已删旧块
 	// （重嵌入幂等，下次调用或维度对账后可重试）。
 	fail := func(stage string, err error) {
@@ -174,9 +228,11 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 				loggateway.Str("original_error", err.Error()))
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
-		flow.LogError("knowledge.reembed.done", "文档重嵌入失败",
-			event.P("doc_id", doc.ID),
-			event.P("error", err.Error()))
+		if flow != nil {
+			flow.LogError("knowledge.reembed.done", "文档重嵌入失败",
+				event.P("doc_id", doc.ID),
+				event.P("error", err.Error()))
+		}
 		s.lg.Warn("knowledge reembed document failed",
 			loggateway.StepID("knowledge.reembed.doc_fail"),
 			loggateway.Str("doc_id", doc.ID),
@@ -186,7 +242,7 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 
 	if err := uc.DeleteChunksByDocument(ctx, doc.ID); err != nil {
 		fail("delete_chunks", err)
-		return
+		return false
 	}
 	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexing", "", 0); err != nil {
 		s.lg.Error("failed to update document status to indexing",
@@ -207,11 +263,11 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 	bizChunks, err := knowledge.BuildIndexedChunks(ctx, embedder, params, flow)
 	if err != nil {
 		fail("build_chunks", err)
-		return
+		return false
 	}
 	if err := uc.InsertChunks(ctx, bizChunks); err != nil {
 		fail("insert_chunks", err)
-		return
+		return false
 	}
 	if err := uc.UpdateDocumentStatus(ctx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
 		s.lg.Error("failed to update document status to indexed",
@@ -220,11 +276,12 @@ func (s *KnowledgeService) reembedOneDocument(ctx context.Context, uc *biz.Knowl
 			loggateway.Err(err))
 		// Document was likely deleted mid-reembed; broadcast error to avoid stale UI state.
 		s.publishKnowledgeIngest(col.ID, doc.ID, "error", "document deleted during reembed", 0)
-		return
+		return false
 	}
 	s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
 	s.lg.Info("knowledge reembed document done", // K7 每文档 done
 		loggateway.StepID("knowledge.reembed.doc_done"),
 		loggateway.Str("doc_id", doc.ID),
 		loggateway.Int("chunk_count", len(bizChunks)))
+	return true
 }

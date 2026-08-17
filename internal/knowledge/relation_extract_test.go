@@ -56,11 +56,11 @@ func (s *stubRelationDocReader) GetDocument(context.Context, string) (bizknowled
 }
 
 type stubSemanticLinks struct {
-	calls       int
-	collection  string
-	docID       string
-	links       []bizknowledge.SemanticLink
-	err         error
+	calls      int
+	collection string
+	docID      string
+	links      []bizknowledge.SemanticLink
+	err        error
 }
 
 func (s *stubSemanticLinks) ReplaceSemanticLinks(_ context.Context, collectionID, docID string, links []bizknowledge.SemanticLink) error {
@@ -125,7 +125,8 @@ func TestRelationExtractor_ExtractDoc_WritesTypedEdges(t *testing.T) {
 	}}
 	docs := &stubRelationDocReader{doc: bizknowledge.Document{
 		ID: "d1", CollectionID: "c1", RelPath: "entries/PostgreSQL 运维.md",
-		ContentText: "PostgreSQL 的流复制是高可用的基石。", ContentHash: "h1",
+		ContentText: "PostgreSQL 的流复制是高可用的基石。流复制是 PostgreSQL 的内建能力。高可用依赖流复制。PostgreSQL 使用流复制做备库同步。",
+		ContentHash: "h1",
 	}}
 	links := &stubSemanticLinks{}
 	vocab := &stubRelationVocab{}

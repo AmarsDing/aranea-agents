@@ -3,11 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref, nextTick } from 'vue';
 import type { CollectionGraph, EntityMergeSuggestion, KnowledgeCollection } from '../types';
 
+// A1 后图谱数据经 store 共享缓存（loadCollectionGraph），composable 不再直调 api.listCollectionGraph。
 const mockStore = {
   loadVaultTree: vi.fn(),
+  loadCollectionGraph: vi.fn(),
 };
 const mockApi = {
-  listCollectionGraph: vi.fn(),
   listEntityMergeSuggestions: vi.fn(),
   mergeKnowledgeEntities: vi.fn(),
 };
@@ -17,7 +18,6 @@ vi.mock('../../../stores/knowledge', () => ({
 }));
 
 vi.mock('../api', () => ({
-  listCollectionGraph: (...args: unknown[]) => mockApi.listCollectionGraph(...args),
   listEntityMergeSuggestions: (...args: unknown[]) => mockApi.listEntityMergeSuggestions(...args),
   mergeKnowledgeEntities: (...args: unknown[]) => mockApi.mergeKnowledgeEntities(...args),
 }));
@@ -67,14 +67,14 @@ function setup(cols: string[] = ['c1']) {
 /** watch 触发的 loadGraph 是 async，等两个 tick 让 Promise 链落地。 */
 async function settle() {
   await nextTick();
-  await vi.waitFor(() => expect(mockApi.listCollectionGraph).toHaveBeenCalled());
+  await vi.waitFor(() => expect(mockStore.loadCollectionGraph).toHaveBeenCalled());
   await nextTick();
 }
 
 describe('useKnowledgeGraph', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockApi.listCollectionGraph.mockResolvedValue(GRAPH);
+    mockStore.loadCollectionGraph.mockResolvedValue(GRAPH);
     mockApi.listEntityMergeSuggestions.mockResolvedValue(SUGGESTIONS);
     mockApi.mergeKnowledgeEntities.mockResolvedValue({ rewritten_mentions: 3, rewritten_links: 2, merged_entities: 1 });
     mockStore.loadVaultTree.mockResolvedValue([]);
@@ -84,7 +84,7 @@ describe('useKnowledgeGraph', () => {
     const { graph } = setup();
     await settle();
     expect(graph.collectionId.value).toBe('c1');
-    expect(mockApi.listCollectionGraph).toHaveBeenCalledWith('c1', [], '');
+    expect(mockStore.loadCollectionGraph).toHaveBeenCalledWith('c1', [], '', false);
     expect(graph.nodes.value).toHaveLength(2);
     expect(graph.generation.value).toBe(1);
   });
@@ -93,7 +93,7 @@ describe('useKnowledgeGraph', () => {
     const { graph } = setup([]);
     await nextTick();
     expect(graph.collectionId.value).toBe('');
-    expect(mockApi.listCollectionGraph).not.toHaveBeenCalled();
+    expect(mockStore.loadCollectionGraph).not.toHaveBeenCalled();
   });
 
   it('边类型 chips：全选/全不选传空数组，部分选传选中集', async () => {
@@ -103,13 +103,13 @@ describe('useKnowledgeGraph', () => {
     // 部分选：去掉 explicit → 传 ['entity', 'semantic']。
     graph.toggleLinkType('explicit');
     await vi.waitFor(() =>
-      expect(mockApi.listCollectionGraph).toHaveBeenLastCalledWith('c1', ['entity', 'semantic'], ''),
+      expect(mockStore.loadCollectionGraph).toHaveBeenLastCalledWith('c1', ['entity', 'semantic'], '', false),
     );
 
     // 全不选 = 全部（空数组）。
     graph.toggleLinkType('entity');
     graph.toggleLinkType('semantic');
-    await vi.waitFor(() => expect(mockApi.listCollectionGraph).toHaveBeenLastCalledWith('c1', [], ''));
+    await vi.waitFor(() => expect(mockStore.loadCollectionGraph).toHaveBeenLastCalledWith('c1', [], '', false));
   });
 
   it('目录前缀过滤：setPathPrefix 带前缀重新加载；切库重置范围与选中', async () => {
@@ -117,13 +117,13 @@ describe('useKnowledgeGraph', () => {
     await settle();
 
     graph.setPathPrefix('notes/');
-    await vi.waitFor(() => expect(mockApi.listCollectionGraph).toHaveBeenLastCalledWith('c1', [], 'notes/'));
+    await vi.waitFor(() => expect(mockStore.loadCollectionGraph).toHaveBeenLastCalledWith('c1', [], 'notes/', false));
     graph.selectNode('d1');
 
     // 切库：范围与选中复位，按新库重新加载。
     void collections; // collections 已就绪，直接切库。
     graph.selectCollection('c2');
-    await vi.waitFor(() => expect(mockApi.listCollectionGraph).toHaveBeenLastCalledWith('c2', [], ''));
+    await vi.waitFor(() => expect(mockStore.loadCollectionGraph).toHaveBeenLastCalledWith('c2', [], '', false));
     expect(graph.pathPrefix.value).toBe('');
     expect(graph.selectedNodeId.value).toBe('');
   });
@@ -143,7 +143,7 @@ describe('useKnowledgeGraph', () => {
   });
 
   it('加载失败：error 置位且节点清空', async () => {
-    mockApi.listCollectionGraph.mockRejectedValue(new Error('boom'));
+    mockStore.loadCollectionGraph.mockRejectedValue(new Error('boom'));
     const { graph } = setup();
     await vi.waitFor(() => expect(graph.error.value).toBe('boom'));
     expect(graph.nodes.value).toHaveLength(0);
@@ -197,12 +197,12 @@ describe('useKnowledgeGraph', () => {
     const { graph } = setup();
     await settle();
     await vi.waitFor(() => expect(graph.mergeSuggestions.value).toHaveLength(1));
-    const graphCalls = mockApi.listCollectionGraph.mock.calls.length;
+    const graphCalls = mockStore.loadCollectionGraph.mock.calls.length;
 
     await graph.mergeEntities(1, 2);
 
     expect(mockApi.mergeKnowledgeEntities).toHaveBeenCalledWith({ collectionId: 'c1', keeperId: 1, mergeeIds: [2] });
-    expect(mockApi.listCollectionGraph.mock.calls.length).toBe(graphCalls + 1);
+    expect(mockStore.loadCollectionGraph.mock.calls.length).toBe(graphCalls + 1);
     expect(mockApi.listEntityMergeSuggestions.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(graph.lastMergeResult.value).toEqual({ rewritten_mentions: 3, rewritten_links: 2, merged_entities: 1 });
     expect(graph.merging.value).toBe(false);

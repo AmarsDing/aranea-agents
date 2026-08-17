@@ -3,12 +3,41 @@ package data
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
 )
+
+func TestAnnCandidateLimit(t *testing.T) {
+	if got := annCandidateLimit(1); got != 20 {
+		t.Fatalf("annCandidateLimit(1) = %d, want 20", got)
+	}
+	if got := annCandidateLimit(10); got != 40 {
+		t.Fatalf("annCandidateLimit(10) = %d, want 40", got)
+	}
+	if got := annCandidateLimit(30); got != 80 {
+		t.Fatalf("annCandidateLimit(30) = %d, want 80", got)
+	}
+	if got := annCandidateLimit(0); got != 20 {
+		t.Fatalf("annCandidateLimit(0) = %d, want 20", got)
+	}
+}
+
+func TestDenseANNSearchSQL_OrdersByVectorDistance(t *testing.T) {
+	sql := denseANNSearchSQL("", 3, 4)
+	if !strings.Contains(sql, "ORDER BY embedding <=> $1::vector") {
+		t.Fatalf("inner ANN order missing:\n%s", sql)
+	}
+	if !strings.Contains(sql, "ORDER BY score DESC") {
+		t.Fatalf("outer recency order missing:\n%s", sql)
+	}
+	if !strings.Contains(sql, "LIMIT $3") || !strings.Contains(sql, "LIMIT $4") {
+		t.Fatalf("overfetch/topK placeholders missing:\n%s", sql)
+	}
+}
 
 // ── G3-B7：SearchQuery.PathPrefix 搜索范围过滤（data 层 SQL） ────────────────
 

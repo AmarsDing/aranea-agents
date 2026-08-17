@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 )
@@ -131,5 +132,32 @@ func TestToolUsecase_ListToolGrants(t *testing.T) {
 	}
 	if len(grants) != 2 {
 		t.Fatalf("expected 2 grants for agent-1, got %d", len(grants))
+	}
+}
+
+// BUG-MON-B: GrantTool must stamp the default 72h TTL so persisted
+// "always allow" grants have a determined time bound.
+func TestToolUsecase_GrantSetsDefaultTTL(t *testing.T) {
+	t.Parallel()
+	store := newFakeGrantStore()
+	u := NewToolUsecase(nil, nil, loggateway.NewNoop(), WithToolGrantStore(store))
+	ctx := context.Background()
+
+	// RFC3339 精度到秒（写侧 time.Now().UTC() 被子秒截断），容差 2s。
+	lo := time.Now().UTC().Add(DefaultToolGrantTTL).Add(-2 * time.Second)
+	if err := u.GrantTool(ctx, "agent-1", "bash", "user-1"); err != nil {
+		t.Fatalf("GrantTool: %v", err)
+	}
+	hi := time.Now().UTC().Add(DefaultToolGrantTTL).Add(2 * time.Second)
+	g, ok := store.grants["agent-1|bash"]
+	if !ok {
+		t.Fatal("grant not stored")
+	}
+	exp, err := time.Parse(time.RFC3339, g.ExpiresAt)
+	if err != nil {
+		t.Fatalf("ExpiresAt %q not RFC3339: %v", g.ExpiresAt, err)
+	}
+	if exp.Before(lo) || exp.After(hi) {
+		t.Fatalf("ExpiresAt %v outside [%v, %v]", exp, lo, hi)
 	}
 }

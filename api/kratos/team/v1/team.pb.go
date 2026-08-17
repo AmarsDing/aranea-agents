@@ -2363,8 +2363,11 @@ func (x *FailurePolicySpec) GetOnError() string {
 }
 
 type OrchestrationSpec struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	Version             int32                  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Version int32                  `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	// Legal values (six): sequential | parallel | coordinator | critic_loop | swarm | adaptive.
+	// swarm and adaptive share the Swarm runtime. Not a mode: graph/native (runtime_engine),
+	// preset/custom (graph source).
 	Mode                string                 `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
 	Members             []*OrchestrationMember `protobuf:"bytes,3,rep,name=members,proto3" json:"members,omitempty"`
 	Graph               *EmbeddedGraph         `protobuf:"bytes,4,opt,name=graph,proto3" json:"graph,omitempty"`

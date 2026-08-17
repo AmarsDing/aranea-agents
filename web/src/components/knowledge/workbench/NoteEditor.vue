@@ -28,6 +28,7 @@ import {
   wikiLinkCompletionSource,
   wikiLinkLabel,
 } from '../../../features/knowledge/wikilink';
+import { debounceTrailing } from '../../../features/knowledge/timing';
 
 const props = withDefaults(
   defineProps<{
@@ -59,6 +60,34 @@ const { t } = useI18n();
 const host = ref<HTMLElement | null>(null);
 
 let view: EditorView | null = null;
+
+// ---------- C6：写回 150ms 防抖（保存时 flush） ----------
+
+let pendingContent: string | null = null;
+
+/** 尾触发写回：连续输入只在停顿后同步一次父级，避免每 keystroke 触发下游响应式链路。 */
+const contentWriteback = debounceTrailing(() => {
+  if (pendingContent !== null) {
+    emit('update-content', pendingContent);
+    pendingContent = null;
+  }
+}, 150);
+
+function queueContentUpdate(content: string) {
+  pendingContent = content;
+  contentWriteback.call();
+}
+
+/** 保存前 flush：确保父级拿到最新文本，保存语义不受防抖影响。 */
+function flushContentUpdate() {
+  contentWriteback.flush();
+}
+
+onBeforeUnmount(() => {
+  // 卸载前若仍有挂起写回，立即 flush（组件销毁后 emit 无意义，但避免父级丢失最后一次输入）。
+  flushContentUpdate();
+  contentWriteback.cancel();
+});
 
 // ---------- Live Preview 行级装饰 ----------
 
@@ -370,6 +399,8 @@ function buildExtensions(): Extension[] {
         key: 'Mod-s',
         preventDefault: true,
         run: () => {
+          // C6：保存前 flush 挂起的写回，保证 CAS 保存读到最新文本。
+          flushContentUpdate();
           emit('save');
           return true;
         },
@@ -396,7 +427,7 @@ function buildExtensions(): Extension[] {
     livePreview,
     EditorView.lineWrapping,
     EditorView.updateListener.of((u: ViewUpdate) => {
-      if (u.docChanged) emit('update-content', u.state.doc.toString());
+      if (u.docChanged) queueContentUpdate(u.state.doc.toString());
     }),
   ];
   if (props.readOnly) {
@@ -426,7 +457,7 @@ function scrollToOffset(offset: number) {
   view.focus();
 }
 
-defineExpose({ scrollToOffset });
+defineExpose({ scrollToOffset, flushPendingContent: flushContentUpdate });
 </script>
 
 <style lang="sass" scoped>

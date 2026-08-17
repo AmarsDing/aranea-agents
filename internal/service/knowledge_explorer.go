@@ -5,6 +5,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -102,6 +103,33 @@ func (s *KnowledgeService) ListCollectionGraph(ctx context.Context, req *v1.List
 	if err != nil {
 		return nil, err
 	}
+	return toProtoCollectionGraph(g), nil
+}
+
+// ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph of one
+// document (SP2-8 右栏局部图)：服务端 BFS 裁剪，仅传输小邻域（大库免全图传输）。
+func (s *KnowledgeService) ListDocumentNeighborhood(ctx context.Context, req *v1.ListDocumentNeighborhoodRequest) (*v1.ListCollectionGraphResponse, error) {
+	doc, err := s.uc.GetDocument(ctx, req.GetDocId())
+	if err != nil {
+		return nil, err
+	}
+	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return nil, err
+	}
+	g, err := s.uc.ListDocumentNeighborhood(ctx, req.GetDocId(), int(req.GetHops()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoCollectionGraph(g), nil
+}
+
+// --- proto conversion helpers ---
+
+func toProtoCollectionGraph(g *bizknowledge.CollectionGraph) *v1.ListCollectionGraphResponse {
 	out := &v1.ListCollectionGraphResponse{
 		Nodes: make([]*v1.CollectionGraphNode, 0, len(g.Nodes)),
 		Edges: make([]*v1.CollectionGraphEdge, 0, len(g.Edges)),
@@ -122,10 +150,8 @@ func (s *KnowledgeService) ListCollectionGraph(ctx context.Context, req *v1.List
 			Type:   e.Type,
 		})
 	}
-	return out, nil
+	return out
 }
-
-// --- proto conversion helpers ---
 
 func toProtoVaultTreeNode(n biz.KnowledgeVaultTreeNode) *v1.VaultTreeNode {
 	return &v1.VaultTreeNode{

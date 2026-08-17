@@ -103,6 +103,14 @@
 .kb-workbench
   +kb-tokens
 
+  // ── C7 性能模式：降 blur（18px→6px）+ 真折射退回普通 blur；粒子/极光由模板 v-if 移除 ──
+  &.kb-workbench--perf
+    --kb-blur: 6px
+
+    .kb-glass-panel--refract
+      backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+      -webkit-backdrop-filter: blur(var(--kb-blur)) saturate(1.4)
+
   // （P0-1 同源化后移除全局变量改道：复用组件 KnowledgeVaultTree / KnowledgeUploadQueue
   //   直接消费全局 Tech Night 变量，与系统其余页面一致）
 

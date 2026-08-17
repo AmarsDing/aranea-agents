@@ -17,3 +17,12 @@
 | GRAPH-13 | time travel (step 0) | FAIL | 28ms | code=400 len=97 |
 | GRAPH-10C | state snapshot (by checkpoint_id) | PASS | 28ms | code=200 len=21851 |
 | GRAPH-13B | time travel (step 1) | PASS | 29ms | code=200 len=113 |
+| GRAPH-07 | Graph 执行列表 | PASS | 64ms | code=200 count=8 |
+| GRAPH-08 | 执行详情 | PASS | 45ms | code=200 status=completed |
+| GRAPH-09 | 检查点列表 | PASS | 40ms | code=200 len=12 |
+| GRAPH-10 | 状态快照 | PASS | 64ms | code=200 len=17 |
+| GRAPH-11 | 任务事件流 | PASS | 50ms | code=200 len=23481 |
+| GRAPH-04B | visualize 复核(正常图) | PASS | 691ms | code=200 len=1336 |
+| GRAPH-09B | checkpoint list (ckpt-enabled exec) | PASS | 1160ms | code=200 count=5 |
+| GRAPH-10B | state snapshot (latest) | PASS | 42ms | code=200 len=21851 |
+| GRAPH-13 | time travel (step 0) | PASS | 53ms | code=200 len=112 |

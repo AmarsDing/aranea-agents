@@ -6,15 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/workspace"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
@@ -180,7 +184,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_links ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
 		`DROP INDEX IF EXISTS knowledge_links_unique`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
-			ON knowledge_links (doc_id, target_doc_id, link_type, relation)`,
+			ON knowledge_links (doc_id, target_doc_id, link_type, relation)
+			WHERE valid_to IS NULL`,
 		`CREATE INDEX IF NOT EXISTS knowledge_links_valid_idx
 			ON knowledge_links USING GIST (tstzrange(valid_from, COALESCE(valid_to, 'infinity')))`,
 		`CREATE INDEX IF NOT EXISTS knowledge_links_active_idx
@@ -714,8 +719,19 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		  WHERE collection_id = $1
 		    AND content_text <> ''
 		    AND status <> 'indexing'
-		    AND (id IN (SELECT doc_id FROM knowledge_chunks WHERE embedding IS NULL)
-		         OR NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id))
+		    AND (
+		      NOT EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.doc_id = d.id)
+		      OR (
+		        EXISTS (
+		          SELECT 1 FROM knowledge_collections kc
+		          WHERE kc.id = d.collection_id AND kc.embedding_model <> ''
+		        )
+		        AND EXISTS (
+		          SELECT 1 FROM knowledge_chunks c
+		          WHERE c.doc_id = d.id AND c.embedding IS NULL
+		        )
+		      )
+		    )
 		  ORDER BY created_at ASC`
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, collectionID)
 	if err != nil {
@@ -1020,12 +1036,49 @@ func recencyScoreSQL(base string) string {
 // recencyJoinSQL 是 recencyScoreSQL 配套的 JOIN 子句；主表别名固定 c。
 const recencyJoinSQL = `JOIN knowledge_documents d ON d.id = c.doc_id`
 
+// annCandidateLimit 是 IVFFlat 内层窗口：先按向量距离取候选，再在窗口上算
+// recency/stale 重排。topK×4，下限 20、上限 80——既让索引可用，又给时间衰减留候选。
+func annCandidateLimit(topK int) int {
+	if topK <= 0 {
+		topK = 5
+	}
+	n := topK * 4
+	if n < 20 {
+		n = 20
+	}
+	if n > 80 {
+		n = 80
+	}
+	return n
+}
+
+// denseANNSearchSQL 内层 ORDER BY embedding <=> $1 走 IVFFlat；外层对候选集
+// 套 recency/stale 表达式再 LIMIT topK。clauses 作用于内层 knowledge_chunks
+// （无表别名），overfetchPH / topKPH 是 LIMIT 占位序号。
+func denseANNSearchSQL(clauses string, overfetchPH, topKPH int) string {
+	return fmt.Sprintf(`
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM (
+  SELECT id, doc_id, collection_id, content, metadata, chunk_index, embedding
+  FROM knowledge_chunks
+  WHERE collection_id = $2
+    AND embedding IS NOT NULL
+    %s
+  ORDER BY embedding <=> $1::vector
+  LIMIT $%d
+) c
+%s
+ORDER BY score DESC
+LIMIT $%d`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), clauses, overfetchPH, recencyJoinSQL, topKPH)
+}
+
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
 		return nil, fmt.Errorf("embedding is empty")
 	}
 	vec := pgvector.NewVector(queryEmbedding)
-	args := []any{vec, q.CollectionID, q.TopK}
+	args := []any{vec, q.CollectionID}
 	clauses := ""
 	if c, a := pathPrefixClause(q.PathPrefix, "$2", len(args)+1); c != "" {
 		clauses += "\n  " + c
@@ -1044,16 +1097,15 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 		clauses += fmt.Sprintf("\n  AND (1 - (embedding <=> $1::vector)) >= $%d", len(args)+1)
 		args = append(args, q.MinScore)
 	}
-	raw := fmt.Sprintf(`
-SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
-       %s AS score
-FROM knowledge_chunks c
-%s
-WHERE c.collection_id = $2
-  AND c.embedding IS NOT NULL
-  %s
-ORDER BY score DESC
-LIMIT $3`, recencyScoreSQL(`1 - (c.embedding <=> $1::vector)`), recencyJoinSQL, clauses)
+	overfetch := 0
+	if q.TopK > 0 {
+		overfetch = annCandidateLimit(q.TopK)
+	}
+	overfetchPH := len(args) + 1
+	args = append(args, overfetch)
+	topKPH := len(args) + 1
+	args = append(args, q.TopK)
+	raw := denseANNSearchSQL(clauses, overfetchPH, topKPH)
 
 	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
 	if err != nil {
@@ -1088,20 +1140,47 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 		extraArgs = append(extraArgs, json.RawMessage(q.FilterJSON))
 	}
 
-	trgmResults, trgmErr := r.searchChunksTrigram(ctx, q, extraClauses, extraArgs)
-	tsResults, tsErr := r.searchChunksTsvector(ctx, q, extraClauses, extraArgs)
+	searches := []func() ([]biz.KnowledgeChunk, error){
+		func() ([]biz.KnowledgeChunk, error) {
+			return r.searchChunksTsvector(ctx, q, extraClauses, extraArgs)
+		},
+		func() ([]biz.KnowledgeChunk, error) {
+			return r.searchChunksTrigram(ctx, q, extraClauses, extraArgs)
+		},
+	}
+	query := strings.TrimSpace(q.Query)
+	if query != "" && utf8.RuneCountInString(query) <= 4 {
+		searches = append(searches, func() ([]biz.KnowledgeChunk, error) {
+			return r.searchChunksSubstring(ctx, q, extraClauses, extraArgs)
+		})
+	}
 
-	if trgmErr != nil && tsErr != nil {
-		return nil, trgmErr
+	results := make([][]biz.KnowledgeChunk, len(searches))
+	errs := make([]error, len(searches))
+	var wg sync.WaitGroup
+	for i, search := range searches {
+		wg.Add(1)
+		i, search := i, search
+		safego.Go(ctx, "knowledge.search.lexical_branch", func() {
+			defer wg.Done()
+			results[i], errs[i] = search()
+		})
 	}
-	if trgmErr != nil {
-		return tsResults, nil
-	}
-	if tsErr != nil {
-		return trgmResults, nil
-	}
+	wg.Wait()
 
-	return mergeBM25Results(tsResults, trgmResults, q.TopK), nil
+	successful := results[:0]
+	var firstErr error
+	for i := range results {
+		if errs[i] == nil {
+			successful = append(successful, results[i])
+		} else if firstErr == nil {
+			firstErr = errs[i]
+		}
+	}
+	if len(successful) == 0 {
+		return nil, firstErr
+	}
+	return mergeBM25Rankings(successful, q.TopK), nil
 }
 
 func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
@@ -1154,22 +1233,58 @@ LIMIT $%d`, recencyScoreSQL(`word_similarity($1, c.content)`), recencyJoinSQL, e
 	return scanChunks(rows)
 }
 
-func mergeBM25Results(tsResults, trgmResults []biz.KnowledgeChunk, topK int) []biz.KnowledgeChunk {
-	seen := make(map[string]struct{}, len(tsResults)+len(trgmResults))
-	merged := make([]biz.KnowledgeChunk, 0, len(tsResults)+len(trgmResults))
-	for _, ch := range tsResults {
-		if _, ok := seen[ch.ID]; !ok {
-			seen[ch.ID] = struct{}{}
-			merged = append(merged, ch)
+func (r *knowledgeRepo) searchChunksSubstring(ctx context.Context, q biz.KnowledgeSearchQuery, extraClauses string, extraArgs []any) ([]biz.KnowledgeChunk, error) {
+	raw := fmt.Sprintf(`
+SELECT c.id, c.doc_id, c.collection_id, c.content, c.metadata::text, c.chunk_index,
+       %s AS score
+FROM knowledge_chunks c
+%s
+WHERE c.collection_id = $2
+  AND position(lower($1) in lower(c.content)) > 0
+  %s
+ORDER BY score DESC
+LIMIT $%d`, recencyScoreSQL(`1.0`), recencyJoinSQL, extraClauses, 3+len(extraArgs))
+
+	args := []any{q.Query, q.CollectionID}
+	args = append(args, extraArgs...)
+	args = append(args, q.TopK)
+	rows, err := r.data.Postgres().QueryContext(ctx, raw, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanChunks(rows)
+}
+
+func mergeBM25Rankings(rankings [][]biz.KnowledgeChunk, topK int) []biz.KnowledgeChunk {
+	const rrfK = 60
+	type scoredChunk struct {
+		chunk biz.KnowledgeChunk
+		score float64
+	}
+	byID := make(map[string]*scoredChunk)
+	for _, ranking := range rankings {
+		for rank, chunk := range ranking {
+			item := byID[chunk.ID]
+			if item == nil {
+				copy := chunk
+				item = &scoredChunk{chunk: copy}
+				byID[chunk.ID] = item
+			}
+			item.score += 1.0 / float64(rrfK+rank+1)
 		}
 	}
-	for _, ch := range trgmResults {
-		if _, ok := seen[ch.ID]; ok {
-			continue
-		}
-		seen[ch.ID] = struct{}{}
-		merged = append(merged, ch)
+	merged := make([]biz.KnowledgeChunk, 0, len(byID))
+	for _, item := range byID {
+		item.chunk.Score = float32(item.score)
+		merged = append(merged, item.chunk)
 	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		if merged[i].Score == merged[j].Score {
+			return merged[i].ID < merged[j].ID
+		}
+		return merged[i].Score > merged[j].Score
+	})
 	if topK > 0 && len(merged) > topK {
 		merged = merged[:topK]
 	}

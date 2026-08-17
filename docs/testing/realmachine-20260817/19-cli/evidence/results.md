@@ -53,3 +53,4 @@ commit                    non |
   session_id        6c0ec1f0-e4e2-4c7f-9ea0-17fa8da779d8 |
 | CLI-08 | invalid command exit!=0 with error | FAIL | 99ms | exit=3 |
 | CLI-09 | system info -o json | PASS | 115ms | exit=0 len=275 |
+| CLI-08 | 非法命令stderr非空(BUG-CLI-01 复测) | PASS | 99ms | exit=3 stderr=aranea: unknown command foobar |

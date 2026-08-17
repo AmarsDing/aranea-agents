@@ -844,9 +844,17 @@ func (uc *GraphExecutionUsecase) executionWithRuntime(ctx context.Context, execu
 }
 
 // TimeTravelGetState retrieves a state snapshot at a specific checkpoint.
+// ISSUE-G2: execution exists but has no checkpoint lineage → (nil, nil)
+// (200 空集) instead of ErrNotFound — "执行不存在"与"无检查点"两种状态可分。
 func (uc *GraphExecutionUsecase) TimeTravelGetState(ctx context.Context, executionID string, checkpointID string, namespace string) (*GraphCheckpointState, error) {
-	exec, err := uc.executionWithRuntime(ctx, executionID)
+	exec, err := uc.loadExecution(ctx, executionID)
 	if err != nil {
+		return nil, err
+	}
+	if exec.GraphID == "" || exec.LineageID == "" {
+		return nil, nil
+	}
+	if err := uc.ensureCheckpointRuntime(ctx, exec); err != nil {
 		return nil, err
 	}
 	return exec.runtime.TimeTravelGetState(ctx, exec.LineageID, checkpointID, namespace)
@@ -871,9 +879,17 @@ func (uc *GraphExecutionUsecase) TimeTravelEditState(ctx context.Context, execut
 }
 
 // ListCheckpoints lists checkpoints for an execution.
+// ISSUE-G2: execution exists but has no checkpoint lineage → 空集 (200
+// items: []) instead of ErrNotFound — "执行不存在"与"无检查点"两种状态可分。
 func (uc *GraphExecutionUsecase) ListCheckpoints(ctx context.Context, executionID string, namespace string, limit int) (GraphCheckpointList, error) {
-	exec, err := uc.executionWithRuntime(ctx, executionID)
+	exec, err := uc.loadExecution(ctx, executionID)
 	if err != nil {
+		return nil, err
+	}
+	if exec.GraphID == "" || exec.LineageID == "" {
+		return GraphCheckpointList{}, nil
+	}
+	if err := uc.ensureCheckpointRuntime(ctx, exec); err != nil {
 		return nil, err
 	}
 	return exec.runtime.ListCheckpoints(ctx, exec.LineageID, namespace, limit)

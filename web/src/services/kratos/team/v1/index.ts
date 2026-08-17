@@ -45,6 +45,9 @@ export type Team = {
 
 export type OrchestrationSpec = {
   version: number | undefined;
+  // Legal values (six): sequential | parallel | coordinator | critic_loop | swarm | adaptive.
+  // swarm and adaptive share the Swarm runtime. Not a mode: graph/native (runtime_engine),
+  // preset/custom (graph source).
   mode: string | undefined;
   members: OrchestrationMember[] | undefined;
   graph: EmbeddedGraph | undefined;

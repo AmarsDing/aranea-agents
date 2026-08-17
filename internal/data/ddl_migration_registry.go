@@ -364,6 +364,11 @@ var ddlMigrations = []ddlMigration{
 	// 注意：sessions_v2 不在此列——实施复核（2026-08-17）确认其为 spirit 会话根实体
 	// （session_v2_repo.go 活跃读写、Ent schema 现存），属活跃表，严禁 drop。
 	{Version: 20261226, Name: "drop_retired_legacy_tables", Func: ddlDropRetiredLegacyTables},
+	// 20261227 tool_grants_expires_at: BUG-MON-B（2026-08-17 真机 P3）——
+	// 持久化"始终允许"授权无 TTL（演练残留高危授权永存）。加 expires_at 列 +
+	// 存量行按 created_at+72h 回填（多数立即过期，读径惰性清理）；
+	// 新授权由 biz GrantTool 写 now+72h，读径过滤过期行。幂等可重跑。
+	{Version: 20261227, Name: "tool_grants_expires_at", Func: ddlToolGrantsExpiresAt},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1335,6 +1340,41 @@ func ddlUsageEventsTraceIDIndex(ctx context.Context, rawDB *sql.DB, _ *ent.Clien
 	stmt := `CREATE INDEX IF NOT EXISTS idx_model_token_usage_events_trace_id ON model_token_usage_events ((` + traceExpr + `))`
 	if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
 		return fmt.Errorf("usage events trace_id index: %w", err)
+	}
+	return nil
+}
+
+// ddlToolGrantsExpiresAt adds expires_at to tool_grants (BUG-MON-B, 2026-08-17):
+// persisted "always allow" grants previously had no TTL — residual high-risk
+// grants (shell_exec/hostexec/playwright 等) stayed effective forever.
+// Adds the column and backfills existing rows to created_at + 72h (most
+// expire immediately; read paths filter + lazily clean them). New grants
+// write now+72h via ToolUsecase.GrantTool. created_at is RFC3339 UTC text
+// (nowRFC3339 惯例); the regex guard skips malformed rows so the cast can
+// never abort startup. Postgres-only: SQLite 侧由 Ent schema 建列。
+// Idempotent: ADD COLUMN IF NOT EXISTS + value-guarded UPDATE.
+func ddlToolGrantsExpiresAt(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("tool_grants_expires_at skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.tool_grants_expires_at"))
+		return nil
+	}
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE tool_grants ADD COLUMN IF NOT EXISTS expires_at VARCHAR(64) NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("add tool_grants.expires_at: %w", err)
+	}
+	res, err := rawDB.ExecContext(ctx, `
+		UPDATE tool_grants
+		SET expires_at = to_char((created_at::timestamptz + interval '72 hours') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		WHERE expires_at = ''
+		  AND created_at ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}'
+	`)
+	if err != nil {
+		return fmt.Errorf("backfill tool_grants.expires_at: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		lg.Info("tool_grants expires_at backfilled",
+			loggateway.StepID("data.ddl_migration.tool_grants_expires_at"),
+			loggateway.Int("rows_updated", int(n)))
 	}
 	return nil
 }

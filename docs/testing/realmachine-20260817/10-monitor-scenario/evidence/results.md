@@ -40,3 +40,6 @@
 | MON-40 | health check recovered (direct) | FAIL | 166ms | code=400 len=133 |
 | MON-41 | alarm events direct query (twin gateway) | PASS | 0ms | code=200 total=74; no alarm in inject window -> coverage gap |
 | MON-42 | ground truth: port eth1 down/up via tool output | PASS | 0ms | kernel log: eth1 disabled -> Link Up 1000Mbps |
+| MON-B-01 | tool_grants expires_at 列+存量回填(created_at+72h) | PASS | 0ms | 4 rows backfilled, all expired by 2026-08-17 |
+| MON-B-02 | API 读径过滤过期授权 (GET /v1/agents/{id}/tool-grants) | PASS | 45ms | code=200 items=0 (4 expired rows filtered) |
+| MON-A-RT | 模糊注入请求澄清挂起(BUG-MON-A 复测) | PASS | 0ms | clarify step awaiting_input, 0 tool_invocations, 未 autoResolve 自动取消 |

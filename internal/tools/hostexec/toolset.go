@@ -108,6 +108,9 @@ func BuildHostexecToolSet(baseDir string, env map[string]string) (trpctool.ToolS
 	if baseDir != "" {
 		opts = append(opts, trpchostexec.WithBaseDir(baseDir))
 	}
+	if len(env) > 0 {
+		opts = append(opts, trpchostexec.WithBaseEnv(env))
+	}
 	ts, err := trpchostexec.NewToolSet(opts...)
 	if err != nil {
 		return nil, err

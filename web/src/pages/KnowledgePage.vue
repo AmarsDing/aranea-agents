@@ -9,6 +9,11 @@
         <q-btn flat color="white" label="重试" @click="loadCollections" />
       </template>
     </q-banner>
+    <!-- B5：文档列表超上限截断提示（树导航不受影响，图谱/搜索可能不完整） -->
+    <q-banner v-if="documentsTruncated" rounded class="app-banner-warning q-ma-sm flex-none">
+      当前库文档超过 {{ DOCUMENTS_PAGE_LIMIT }} 条上限，仅加载前 {{ DOCUMENTS_PAGE_LIMIT }}
+      条；目录树导航不受影响，图谱与搜索结果可能不完整。
+    </q-banner>
 
     <!-- SP2-8：深空液态玻璃工作台（薄壳页面唯一的常驻主体） -->
     <KnowledgeWorkbench
@@ -26,7 +31,9 @@
       :files="explorerFiles"
       :current-prefix="explorerPrefix"
       :panels-refresh-nonce="panelsRefreshNonce"
+      :performance-mode="performanceMode"
       @switch-vault="onSwitchVault"
+      @toggle-performance-mode="togglePerformanceMode"
       @select-node="selectExplorerTreeNode"
       @update:expanded-keys="(v: string[]) => (explorerExpandedKeys = v)"
       @lazy-load="onExplorerLazyLoad"
@@ -191,6 +198,10 @@ const {
   collections,
   selectedId,
   documents,
+  documentsTruncated,
+  DOCUMENTS_PAGE_LIMIT,
+  performanceMode,
+  togglePerformanceMode,
   error,
   unavailable,
   removedDocId,

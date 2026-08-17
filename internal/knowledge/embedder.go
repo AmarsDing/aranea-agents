@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"io"
 	"math"
@@ -16,6 +17,7 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/genai"
 )
 
@@ -71,7 +73,21 @@ type MultiProviderEmbedder struct {
 	lastPrewarmAt time.Time
 	// monitorBus 流程日志总线（装配层经 SetMonitorBus 注入；nil 时跳过流程日志）。
 	monitorBus contract.MonitorBus
+	// queryCache 仅缓存查询侧单条 embedding；配置变更立即清空。键为哈希，
+	// 避免在进程堆中额外保留查询明文。
+	queryCache  map[[sha256.Size]byte]queryEmbeddingCacheEntry
+	queryFlight singleflight.Group
 }
+
+type queryEmbeddingCacheEntry struct {
+	vector    []float32
+	expiresAt time.Time
+}
+
+const (
+	queryEmbeddingCacheTTL = 10 * time.Minute
+	queryEmbeddingCacheMax = 512
+)
 
 var _ Embedder = (*MultiProviderEmbedder)(nil)
 var _ EmbedderAdmin = (*MultiProviderEmbedder)(nil)
@@ -99,12 +115,13 @@ func NewMultiProviderEmbedder(provider, baseURL, apiKey, model string, dim int, 
 		baseURL = "http://localhost:8080"
 	}
 	return &MultiProviderEmbedder{
-		Provider: provider,
-		BaseURL:  strings.TrimRight(baseURL, "/"),
-		APIKey:   apiKey,
-		Model:    model,
-		dim:      dim,
-		lg:       lg,
+		Provider:   provider,
+		BaseURL:    strings.TrimRight(baseURL, "/"),
+		APIKey:     apiKey,
+		Model:      model,
+		dim:        dim,
+		lg:         lg,
+		queryCache: make(map[[sha256.Size]byte]queryEmbeddingCacheEntry),
 	}
 }
 
@@ -156,6 +173,7 @@ func (e *MultiProviderEmbedder) Update(provider, baseURL, apiKey, model string, 
 	if dim > 0 {
 		e.dim = dim
 	}
+	clear(e.queryCache)
 }
 
 func (e *MultiProviderEmbedder) snapshot() (provider, baseURL, apiKey, model string, dim int) {
@@ -218,14 +236,7 @@ func (e *MultiProviderEmbedder) EmbedSingle(ctx context.Context, text string) ([
 	if strings.TrimSpace(text) == "" {
 		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedder: text is empty")
 	}
-	vecs, err := e.Embed(ctx, []string{text})
-	if err != nil {
-		return nil, err
-	}
-	if len(vecs) == 0 || len(vecs[0]) == 0 {
-		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder: empty embedding")
-	}
-	return vecs[0], nil
+	return e.embedQueryCached(ctx, text, "")
 }
 
 // EmbedWithTaskType returns a single embedding with a task type hint (e.g. "RETRIEVAL_QUERY").
@@ -233,14 +244,61 @@ func (e *MultiProviderEmbedder) EmbedWithTaskType(ctx context.Context, text stri
 	if strings.TrimSpace(text) == "" {
 		return nil, apierror.BadRequest(apierror.DomainKnowledge, "embedder: text is empty")
 	}
-	vecs, err := e.EmbedBatchWithTaskType(ctx, []string{text}, taskType)
+	return e.embedQueryCached(ctx, text, taskType)
+}
+
+func (e *MultiProviderEmbedder) embedQueryCached(ctx context.Context, text, taskType string) ([]float32, error) {
+	provider, baseURL, _, model, dim := e.snapshot()
+	key := sha256.Sum256([]byte(provider + "\x00" + baseURL + "\x00" + model + "\x00" +
+		strconv.Itoa(dim) + "\x00" + taskType + "\x00" + strings.TrimSpace(text)))
+	now := time.Now()
+	e.mu.RLock()
+	cached, ok := e.queryCache[key]
+	e.mu.RUnlock()
+	if ok && now.Before(cached.expiresAt) {
+		return append([]float32(nil), cached.vector...), nil
+	}
+
+	value, err, _ := e.queryFlight.Do(string(key[:]), func() (any, error) {
+		now := time.Now()
+		e.mu.RLock()
+		cached, ok := e.queryCache[key]
+		e.mu.RUnlock()
+		if ok && now.Before(cached.expiresAt) {
+			return append([]float32(nil), cached.vector...), nil
+		}
+		vecs, err := e.embedBatchWithTaskType(ctx, []string{text}, taskType)
+		if err != nil {
+			return nil, err
+		}
+		if len(vecs) == 0 || len(vecs[0]) == 0 {
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder: empty embedding")
+		}
+		vector := append([]float32(nil), vecs[0]...)
+		e.mu.Lock()
+		if len(e.queryCache) >= queryEmbeddingCacheMax {
+			for cacheKey, entry := range e.queryCache {
+				if now.After(entry.expiresAt) {
+					delete(e.queryCache, cacheKey)
+				}
+			}
+			if len(e.queryCache) >= queryEmbeddingCacheMax {
+				for cacheKey := range e.queryCache {
+					delete(e.queryCache, cacheKey)
+					break
+				}
+			}
+		}
+		e.queryCache[key] = queryEmbeddingCacheEntry{
+			vector: vector, expiresAt: now.Add(queryEmbeddingCacheTTL),
+		}
+		e.mu.Unlock()
+		return append([]float32(nil), vector...), nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if len(vecs) == 0 || len(vecs[0]) == 0 {
-		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder: empty embedding")
-	}
-	return vecs[0], nil
+	return value.([]float32), nil
 }
 
 // Embed returns embeddings for a slice of texts using provider batch APIs when available.

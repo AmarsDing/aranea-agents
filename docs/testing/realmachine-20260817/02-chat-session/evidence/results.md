@@ -9,3 +9,4 @@
 | CHAT-09 | turns 列表 | PASS | 22ms | code=200 |
 | CHAT-10 | timeline | PASS | 24ms | code=200 |
 | CHAT-11 | 删除会话 | FAIL | 31ms | code=500 |
+| CHAT-11 | 删除会话(BUG-02 复测) | PASS | 111ms | code=200 cascade: steps_v2/turns_v2/trpc_session_events/tasks_v2/member_sessions_v2 全 0 残留; 残留会话 972daa64 已清理 |

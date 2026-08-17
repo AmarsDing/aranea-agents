@@ -87,3 +87,35 @@ func TestEmbedderPrewarm_FailureAllowsRetry(t *testing.T) {
 		t.Fatalf("expected 2 requests (failure + retry), got %d", got)
 	}
 }
+
+func TestEmbedderQueryCache_DeduplicatesRepeatedQuery(t *testing.T) {
+	srv, hits := embedderPrewarmServer(t, http.StatusOK)
+	e := NewMultiProviderEmbedder(ProviderOpenAI, srv.URL, "k", "m1", 3, loggateway.NewNoop())
+	for i := 0; i < 2; i++ {
+		got, err := e.EmbedWithTaskType(context.Background(), "same query", "RETRIEVAL_QUERY")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 3 {
+			t.Fatalf("embedding length = %d, want 3", len(got))
+		}
+	}
+	if got := atomic.LoadInt32(hits); got != 1 {
+		t.Fatalf("repeated query sent %d remote requests, want 1", got)
+	}
+}
+
+func TestEmbedderQueryCache_InvalidatesOnRuntimeConfigUpdate(t *testing.T) {
+	srv, hits := embedderPrewarmServer(t, http.StatusOK)
+	e := NewMultiProviderEmbedder(ProviderOpenAI, srv.URL, "k", "m1", 3, loggateway.NewNoop())
+	if _, err := e.EmbedWithTaskType(context.Background(), "same query", "RETRIEVAL_QUERY"); err != nil {
+		t.Fatal(err)
+	}
+	e.Update("", "", "", "m2", 3)
+	if _, err := e.EmbedWithTaskType(context.Background(), "same query", "RETRIEVAL_QUERY"); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(hits); got != 2 {
+		t.Fatalf("config update must invalidate query cache: requests=%d, want 2", got)
+	}
+}

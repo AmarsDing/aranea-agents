@@ -75,9 +75,9 @@ import (
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/voice"
+	"aranea-agents/pkg/appctx"
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
-	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2"
@@ -1295,27 +1295,27 @@ func provideAutoMemoryWorker(
 		proj = p
 	}
 	return jobs.NewAutoMemoryWorker(jobs.AutoMemoryWorkerConfig{
-		RuntimeConf:    runtimeConf,
-		Interval:       0,
-		Sessions:       sessions,
-		Agents:         agents,
-		Writer:         writer,
-		IndexSync:      factSync,
-		EpisodeSync:    episodeSync,
-		L4:             l4,
-		Consolidator:   biz.DefaultMemoryConsolidator(extractor),
-		Queue:          queue,
-		DeadLetterSink: deadLetterSink,
-		Stats:          workerStats,
-		MonitorBus:     monitorBus,
-		FactPipeline:   factPipeline,
-		CaseExtractor:  caseExtractor,
-		CaseReader:     caseReader,
-		CaseWriter:     caseWriter,
-		WriteBack:      writeBack,
-		ReviewQueue:    review,
+		RuntimeConf:     runtimeConf,
+		Interval:        0,
+		Sessions:        sessions,
+		Agents:          agents,
+		Writer:          writer,
+		IndexSync:       factSync,
+		EpisodeSync:     episodeSync,
+		L4:              l4,
+		Consolidator:    biz.DefaultMemoryConsolidator(extractor),
+		Queue:           queue,
+		DeadLetterSink:  deadLetterSink,
+		Stats:           workerStats,
+		MonitorBus:      monitorBus,
+		FactPipeline:    factPipeline,
+		CaseExtractor:   caseExtractor,
+		CaseReader:      caseReader,
+		CaseWriter:      caseWriter,
+		WriteBack:       writeBack,
+		ReviewQueue:     review,
 		MemoryProjector: proj,
-		Logger:         lg,
+		Logger:          lg,
 	})
 }
 
@@ -1779,6 +1779,13 @@ func provideKnowledgeRelationExtractWorker(
 		return nil
 	}
 	return jobs.NewKnowledgeRelationExtractWorker(0, uc, hot, extractor, lg)
+}
+
+func provideKnowledgeIndexRepairWorker(
+	svc *service.KnowledgeService,
+	lg loggateway.Logger,
+) *jobs.KnowledgeIndexRepairWorker {
+	return jobs.NewKnowledgeIndexRepairWorker(0, svc, lg)
 }
 
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
@@ -2995,6 +3002,7 @@ type wireOut struct {
 	MemoryCitationBackfill      *jobs.MemoryCitationBackfillWorker
 	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
+	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3052,6 +3060,7 @@ func provideWireOut(
 	memoryCitationBackfill *jobs.MemoryCitationBackfillWorker,
 	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
+	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3096,6 +3105,7 @@ func provideWireOut(
 		MemoryCitationBackfill:      memoryCitationBackfill,
 		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
+		KnowledgeIndexRepair:        knowledgeIndexRepair,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -3896,6 +3906,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryCitationBackfillWorker,
 		provideKnowledgeCitationBackfillWorker,
 		provideKnowledgeRelationExtractWorker,
+		provideKnowledgeIndexRepairWorker,
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,

@@ -25,3 +25,4 @@
 | AGT-07 | effective tools | PASS | 102ms | code=200 len=18701 |
 | AGT-09 | 删除 Agent | PASS | 38ms | code=200 |
 | AGT-10 | 删除后查询应为错误 | PASS | 20ms | code=404 |
+| AGT-03 | 创建无岗位Agent(BUG-01 复测) | PASS | 40ms | code=200; 连续 2 个无岗位 agent 均 200(原 23505); 索引已确认为部分唯一 |

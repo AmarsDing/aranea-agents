@@ -48,15 +48,36 @@ func (r *knowledgeRepo) ListActiveLinks(ctx context.Context, collectionID string
 	return out, rows.Err()
 }
 
-// ReplaceLinks 事务性替换某文档某类型的全部出链（删旧 + 插新；空切片 = 仅清理）。
-// 同 (doc,target,type) 由 knowledge_links_unique 唯一索引兜底；冲突时刷新
-// weight/context（SP1-C 块级投影聚合权重，N-3）。weight<=0 归一为 1。
+// ReplaceLinks 事务性替换某文档某类型的 active 出链。未变化边原位更新，
+// 消失边关闭 valid_to，新边插入新版本；历史行不物理删除。
 func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, linkType string, links []bizknowledge.Link) error {
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM knowledge_links WHERE doc_id = $1 AND link_type = $2`, docID, linkType); err != nil {
+		rows, err := tx.QueryContext(ctx,
+			`SELECT id, target_doc_id
+			 FROM knowledge_links
+			 WHERE doc_id = $1 AND link_type = $2 AND relation = '' AND valid_to IS NULL
+			 FOR UPDATE`,
+			docID, linkType)
+		if err != nil {
 			return err
 		}
+		active := make(map[string]int64)
+		for rows.Next() {
+			var id int64
+			var target string
+			if err := rows.Scan(&id, &target); err != nil {
+				rows.Close()
+				return err
+			}
+			active[target] = id
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
 		for _, l := range links {
 			if l.TargetDocID == "" || l.TargetDocID == docID {
 				continue
@@ -65,11 +86,36 @@ func (r *knowledgeRepo) ReplaceLinks(ctx context.Context, collectionID, docID, l
 			if weight <= 0 {
 				weight = 1
 			}
+			if id, ok := active[l.TargetDocID]; ok {
+				if _, err := tx.ExecContext(ctx,
+					`UPDATE knowledge_links
+					 SET collection_id = $2, context = $3, weight = $4,
+					     weight_f = $4::double precision, confidence = 1.0
+					 WHERE id = $1`,
+					id, collectionID, l.Context, weight); err != nil {
+					return err
+				}
+				delete(active, l.TargetDocID)
+				continue
+			}
 			if _, err := tx.ExecContext(ctx,
 				`INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, context, weight)
 				 VALUES ($1,$2,$3,$4,$5,$6)
-				 ON CONFLICT (doc_id, target_doc_id, link_type, relation) DO UPDATE SET weight = EXCLUDED.weight, context = EXCLUDED.context`,
+				 ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
+				 DO UPDATE SET weight = EXCLUDED.weight, context = EXCLUDED.context`,
 				collectionID, docID, l.TargetDocID, linkType, l.Context, weight); err != nil {
+				return err
+			}
+		}
+		if len(active) > 0 {
+			ids := make([]int64, 0, len(active))
+			for _, id := range active {
+				ids = append(ids, id)
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE knowledge_links SET valid_to = NOW()
+				 WHERE id = ANY($1) AND valid_to IS NULL`,
+				pq.Array(ids)); err != nil {
 				return err
 			}
 		}

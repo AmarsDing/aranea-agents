@@ -31,6 +31,7 @@ import {
   type DragFileRef,
   type DropTargetRef,
 } from './vaultTreeUi';
+import { debounceTrailing } from './timing';
 import type {
   BlockBacklink,
   DanglingLink,
@@ -474,7 +475,13 @@ export function useVaultExplorer(input: {
     }
   }
 
-  onScopeDispose(revokeAssetUrl);
+  /** 800ms 尾触发防抖：文档批量状态变化时收敛树刷新频率。 */
+  const debouncedRefreshTree = debounceTrailing(() => void refreshTree(), 800);
+
+  onScopeDispose(() => {
+    debouncedRefreshTree.cancel();
+    revokeAssetUrl();
+  });
 
   // ---------- G3-F1 拖拽移动（V12.5：HTML5 DnD，库内跨目录） ----------
 
@@ -666,11 +673,11 @@ export function useVaultExplorer(input: {
     { immediate: true },
   );
 
-  // 文档结构/状态变化（上传、入库完成、删除）→ 强制刷新树缓存。
+  // 文档结构/状态变化（上传、入库完成、删除）→ 防抖刷新树缓存。
   watch(
     () => documents.value.map((d) => `${d.id}:${d.status}:${d.updated_at}`).join(','),
     (sig, prev) => {
-      if (sig !== prev) void refreshTree();
+      if (sig !== prev) debouncedRefreshTree.call();
     },
   );
 

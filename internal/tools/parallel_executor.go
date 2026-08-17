@@ -154,12 +154,44 @@ func (e *ParallelToolExecutor) Execute(ctx context.Context, toolCalls []ToolCall
 	}
 
 	results := make([]ToolResult, 0, len(toolCalls))
+	resultByCallID := make(map[string]ToolResult, len(toolCalls))
 	for _, layer := range layers {
 		if ctx.Err() != nil {
 			return results, ctx.Err()
 		}
-		layerResults := e.executeLayer(ctx, layer)
+
+		layerResults := make([]ToolResult, len(layer))
+		runnable := make([]ToolCall, 0, len(layer))
+		runnableIndexes := make([]int, 0, len(layer))
+		for i, call := range layer {
+			failedDependencies := make([]string, 0, len(call.DependsOn))
+			for _, dependencyID := range call.DependsOn {
+				if dependencyResult, ok := resultByCallID[dependencyID]; ok &&
+					!dependencyResult.Success {
+					failedDependencies = append(failedDependencies, dependencyID)
+				}
+			}
+			if len(failedDependencies) > 0 {
+				layerResults[i] = ToolResult{
+					CallID: call.ID,
+					Name:   call.Name,
+					Error: "dependency failed: " +
+						strings.Join(failedDependencies, ", "),
+				}
+				continue
+			}
+			runnable = append(runnable, call)
+			runnableIndexes = append(runnableIndexes, i)
+		}
+
+		executedResults := e.executeLayer(ctx, runnable)
+		for i, result := range executedResults {
+			layerResults[runnableIndexes[i]] = result
+		}
 		results = append(results, layerResults...)
+		for i, call := range layer {
+			resultByCallID[call.ID] = layerResults[i]
+		}
 		// Re-check ctx after the layer: a cancellation during the layer
 		// should surface as an error even if all calls returned a result.
 		if ctx.Err() != nil {

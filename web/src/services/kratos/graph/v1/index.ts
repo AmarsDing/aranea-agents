@@ -287,8 +287,10 @@ export type TimeTravelGraphRequest = {
   //
   // Behaviors: REQUIRED
   executionId: string | undefined;
-  //
-  // Behaviors: REQUIRED
+  // step_index is intentionally NOT marked REQUIRED: proto3 scalar zero value
+  // is indistinguishable from unset, so protovalidate would reject the legal
+  // target step 0 (ISSUE-G3, 2026-08-17). The service layer validates
+  // step_index >= 0 (negative → 400) and < len(steps) (out of range → 404).
   stepIndex: number | undefined;
 };
 

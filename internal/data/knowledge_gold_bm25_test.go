@@ -60,6 +60,7 @@ func TestKnowledgeRepo_SearchChunksBM25_GoldBilingual(t *testing.T) {
 		{"备用通道", "net"},
 		{"declaring an incident", "play"},
 		{"Escalation Policy", "play"},
+		{"灰度", "sec"},
 		{"必须走灰度", "sec"},
 		{"回滚开关", "sec"},
 		{"值班制度", "ops"},
@@ -91,19 +92,6 @@ func TestKnowledgeRepo_SearchChunksBM25_GoldBilingual(t *testing.T) {
 		t.Errorf("negative query hit %d chunks", len(miss))
 	}
 
-	// 已知边界（对照 Obsidian 即时搜索）：2 字「灰度」在短句上可能 0 命中。
-	// 不作为失败；金标用「必须走灰度」。改善 ranker 后可把这条升成硬断言。
-	short, err := repo.SearchChunksBM25(ctx, biz.KnowledgeSearchQuery{
-		CollectionID: "gold-bm25", Query: "灰度", TopK: 5,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if chunkHasDoc(short, "sec") {
-		t.Log(`2-char query "灰度" hit sec; lexical ranker covers this now`)
-	} else {
-		t.Log(`2-char query "灰度" missed (known gap vs Obsidian instant search)`)
-	}
 }
 
 func chunkHasDoc(chunks []biz.KnowledgeChunk, docID string) bool {

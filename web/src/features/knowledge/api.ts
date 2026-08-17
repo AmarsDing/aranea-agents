@@ -589,6 +589,18 @@ export async function listCollectionGraph(
   };
 }
 
+/** listDocumentNeighborhood 文档 N 跳无向邻域子图（SP2-8 右栏局部图）：服务端 BFS 裁剪，
+ *  仅传输小邻域（大库免全图传输）；节点/边形状与全库图谱一致（degree 为全图口径）。 */
+export async function listDocumentNeighborhood(docId: string, hops = 2): Promise<CollectionGraph> {
+  const res = asRecord(await svc.ListDocumentNeighborhood({ docId, hops }));
+  const nodesRaw = res.nodes ?? res.Nodes;
+  const edgesRaw = res.edges ?? res.Edges;
+  return {
+    nodes: Array.isArray(nodesRaw) ? nodesRaw.map(mapGraphNode) : [],
+    edges: Array.isArray(edgesRaw) ? edgesRaw.map(mapGraphEdge) : [],
+  };
+}
+
 // ---------- 索引重建（SP2-6 命令面板） ----------
 
 /** rebuildKnowledgeIndex 触发块级派生索引（blocks/refs）流式重建；异步执行，立即返回受理结果。 */

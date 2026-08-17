@@ -3865,6 +3865,8 @@ export default {
       commandPalette: 'Command palette',
       openGraph: 'Graph',
       openSettings: 'Settings',
+      perfMode: 'Performance mode',
+      perfModeHint: 'Disable particles/aurora and reduce glass blur for smoother performance',
       filesTitle: 'Files',
       filesEmpty: 'No documents in this folder',
       emptyTitle: 'Open a note to start',

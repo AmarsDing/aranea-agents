@@ -9,7 +9,7 @@
  */
 import { computed, ref, watch, type Ref } from 'vue';
 import { useKnowledgeStore } from '../../stores/knowledge';
-import { listCollectionGraph, listEntityMergeSuggestions, mergeKnowledgeEntities } from './api';
+import { listEntityMergeSuggestions, mergeKnowledgeEntities } from './api';
 import {
   buildNeighborhoodGraph,
   buildRenderGraph,
@@ -59,7 +59,9 @@ export function useKnowledgeGraph(input: {
     return sel.length === 0 || sel.length === GRAPH_LINK_TYPES.length ? [] : sel;
   }
 
-  async function loadGraph() {
+  /** 全量加载经 store 共享缓存（无过滤时命中缓存零请求；右栏局部图走服务端邻域 RPC，不复用本缓存）。
+   *  force=true 强制回源（实体合并/图谱增量失效后）。 */
+  async function loadGraph(force = false) {
     if (!collectionId.value) {
       nodes.value = [];
       edges.value = [];
@@ -67,7 +69,7 @@ export function useKnowledgeGraph(input: {
     }
     loading.value = true;
     try {
-      const g = await listCollectionGraph(collectionId.value, effectiveLinkTypes(), pathPrefix.value);
+      const g = await knowledgeStore.loadCollectionGraph(collectionId.value, effectiveLinkTypes(), pathPrefix.value, force);
       nodes.value = g.nodes;
       edges.value = g.edges;
       error.value = '';
@@ -209,7 +211,7 @@ export function useKnowledgeGraph(input: {
         keeperId,
         mergeeIds: [mergeeId],
       });
-      await Promise.all([loadGraph(), loadMergeSuggestions()]);
+      await Promise.all([loadGraph(true), loadMergeSuggestions()]);
     } catch (e) {
       error.value = friendlyError(e) || 'merge failed';
     } finally {

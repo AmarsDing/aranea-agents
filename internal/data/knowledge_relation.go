@@ -25,15 +25,42 @@ var (
 	_ bizknowledge.EntityIDResolver  = (*knowledgeRepo)(nil)
 )
 
-// ReplaceSemanticLinks 事务性替换某文档的全部 semantic 出链（删旧 + 插新；空切片 = 仅清理）。
+// ReplaceSemanticLinks 事务性替换某文档的全部 active semantic 出链：
+// 未变化边原位刷新，消失/关闭边写 valid_to，新边插入新版本。
 // relation 参与唯一键（同对文档多谓词共存）；weight_f/confidence 承载抽取置信度；
 // Closed 边写入即关闭（valid_to=now，低置信留痕不进主图谱）。
 func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, docID string, links []bizknowledge.SemanticLink) error {
 	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM knowledge_links WHERE doc_id = $1 AND link_type = $2`, docID, bizknowledge.LinkTypeSemantic); err != nil {
+		type semanticKey struct {
+			target   string
+			relation string
+		}
+		rows, err := tx.QueryContext(ctx,
+			`SELECT id, target_doc_id, relation
+			 FROM knowledge_links
+			 WHERE doc_id = $1 AND link_type = $2 AND valid_to IS NULL
+			 FOR UPDATE`,
+			docID, bizknowledge.LinkTypeSemantic)
+		if err != nil {
 			return err
 		}
+		active := make(map[semanticKey]int64)
+		for rows.Next() {
+			var id int64
+			var key semanticKey
+			if err := rows.Scan(&id, &key.target, &key.relation); err != nil {
+				rows.Close()
+				return err
+			}
+			active[key] = id
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
 		for _, l := range links {
 			if l.TargetDocID == "" || l.TargetDocID == docID || strings.TrimSpace(l.Relation) == "" {
 				continue
@@ -42,15 +69,51 @@ func (r *knowledgeRepo) ReplaceSemanticLinks(ctx context.Context, collectionID, 
 			if confidence <= 0 {
 				confidence = 0.5
 			}
+			key := semanticKey{target: l.TargetDocID, relation: l.Relation}
+			if id, ok := active[key]; ok {
+				var updateErr error
+				if l.Closed {
+					_, updateErr = tx.ExecContext(ctx,
+						`UPDATE knowledge_links
+						 SET collection_id = $2, context = $3, weight_f = $4,
+						     confidence = $4, valid_to = NOW()
+						 WHERE id = $1`,
+						id, collectionID, l.Context, confidence)
+				} else {
+					_, updateErr = tx.ExecContext(ctx,
+						`UPDATE knowledge_links
+						 SET collection_id = $2, context = $3, weight_f = $4,
+						     confidence = $4
+						 WHERE id = $1`,
+						id, collectionID, l.Context, confidence)
+				}
+				if updateErr != nil {
+					return updateErr
+				}
+				delete(active, key)
+				continue
+			}
 			if _, err := tx.ExecContext(ctx,
 				`INSERT INTO knowledge_links
 					(collection_id, doc_id, target_doc_id, link_type, relation, context, weight, weight_f, confidence, valid_to)
 				 VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8, CASE WHEN $9 THEN NOW() ELSE NULL END)
-				 ON CONFLICT (doc_id, target_doc_id, link_type, relation)
+				 ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 				 DO UPDATE SET context = EXCLUDED.context, weight_f = EXCLUDED.weight_f,
 				               confidence = EXCLUDED.confidence, valid_to = EXCLUDED.valid_to`,
 				collectionID, docID, l.TargetDocID, bizknowledge.LinkTypeSemantic,
 				l.Relation, l.Context, confidence, confidence, l.Closed); err != nil {
+				return err
+			}
+		}
+		if len(active) > 0 {
+			ids := make([]int64, 0, len(active))
+			for _, id := range active {
+				ids = append(ids, id)
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE knowledge_links SET valid_to = NOW()
+				 WHERE id = ANY($1) AND valid_to IS NULL`,
+				pq.Array(ids)); err != nil {
 				return err
 			}
 		}

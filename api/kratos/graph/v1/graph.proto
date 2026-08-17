@@ -266,7 +266,11 @@ message ResumeGraphResponse {
 
 message TimeTravelGraphRequest {
   string execution_id = 1 [(google.api.field_behavior) = REQUIRED];
-  int32 step_index = 2 [(google.api.field_behavior) = REQUIRED];
+  // step_index is intentionally NOT marked REQUIRED: proto3 scalar zero value
+  // is indistinguishable from unset, so protovalidate would reject the legal
+  // target step 0 (ISSUE-G3, 2026-08-17). The service layer validates
+  // step_index >= 0 (negative → 400) and < len(steps) (out of range → 404).
+  int32 step_index = 2;
 }
 
 message TimeTravelGraphResponse {

@@ -2,10 +2,13 @@ package knowledge
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 const defaultRRF_K = 60
@@ -68,6 +71,8 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggatew
 }
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	totalStart := time.Now()
+	defer observeSearchStage(searchStageTotal, totalStart)
 	if h.dense == nil {
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: dense repo is nil")
 	}
@@ -104,7 +109,9 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	case HybridDense:
 		fallthrough
 	default:
-		vec, err := h.embedder.EmbedSingle(ctx, q.Query)
+		embedStart := time.Now()
+		vec, err := embedSearchQuery(ctx, h.embedder, q.Query)
+		observeSearchStage(searchStageEmbed, embedStart)
 		if err != nil {
 			// F5：embedder 不可用（未配置/服务不可达）时降级 BM25 词法检索。
 			if apierror.IsCode(err, apierror.CodeUnavailable) {
@@ -118,7 +125,9 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 		if h.reranker != nil && h.reranker.HasReranker() {
 			searchQ.TopK = rerankCandidateLimit(q, topK)
 		}
+		denseStart := time.Now()
 		chunks, err := h.dense.SearchChunks(ctx, searchQ, vec)
+		observeSearchStage(searchStageDense, denseStart)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +163,9 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 		return nil, apierror.Unavailable(apierror.DomainKnowledge, "hybrid_retriever: sparse searcher not configured")
 	}
 	q.TopK = topK
+	sparseStart := time.Now()
 	chunks, err := h.sparse.SearchChunksBM25(ctx, q)
+	observeSearchStage(searchStageSparse, sparseStart)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever sparse failed").WithCause(err)
 	}
@@ -162,7 +173,9 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 }
 
 func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
-	vec, err := h.embedder.EmbedSingle(ctx, q.Query)
+	embedStart := time.Now()
+	vec, err := embedSearchQuery(ctx, h.embedder, q.Query)
+	observeSearchStage(searchStageEmbed, embedStart)
 	if err != nil {
 		// F5：embedder 不可用时 RRF 降级为纯 BM25 词法检索。
 		if apierror.IsCode(err, apierror.CodeUnavailable) {
@@ -179,34 +192,68 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	if overfetch > 50 {
 		overfetch = 50
 	}
+	if h.reranker != nil && h.reranker.HasReranker() {
+		if rerankLimit := rerankCandidateLimit(q, topK); rerankLimit > overfetch {
+			overfetch = rerankLimit
+		}
+	}
 
 	denseQ := q
 	denseQ.TopK = overfetch
-	denseChunks, err := h.dense.SearchChunks(ctx, denseQ, vec)
-	if err != nil {
+	sparseQ := q
+	sparseQ.TopK = overfetch
+
+	var (
+		denseChunks  []biz.KnowledgeChunk
+		sparseChunks []biz.KnowledgeChunk
+		denseErr     error
+		sparseErr    error
+		wg           sync.WaitGroup
+	)
+	wg.Add(1)
+	safego.Go(ctx, "knowledge.search.rrf_dense", func() {
+		defer wg.Done()
+		start := time.Now()
+		denseChunks, denseErr = h.dense.SearchChunks(ctx, denseQ, vec)
+		observeSearchStage(searchStageDense, start)
+	})
+	if h.sparse != nil {
+		wg.Add(1)
+		safego.Go(ctx, "knowledge.search.rrf_sparse", func() {
+			defer wg.Done()
+			start := time.Now()
+			sparseChunks, sparseErr = h.sparse.SearchChunksBM25(ctx, sparseQ)
+			observeSearchStage(searchStageSparse, start)
+		})
+	}
+	wg.Wait()
+
+	if denseErr != nil {
 		h.lg.Warn("RRF 密集检索失败，回退稀疏",
 			loggateway.StepID("knowledge.hybrid.dense_fail"),
-			loggateway.Err(err),
+			loggateway.Err(denseErr),
 			loggateway.Str("collection_id", q.CollectionID))
-		return h.searchSparse(ctx, q, topK)
+		if h.sparse == nil || sparseErr != nil {
+			return nil, apierror.Internal(apierror.DomainKnowledge, "hybrid_retriever dense and sparse failed").WithCause(denseErr)
+		}
+		return trimChunks(sparseChunks, topK), nil
 	}
 
 	if h.sparse == nil {
 		return trimChunks(denseChunks, topK), nil
 	}
-
-	sparseQ := q
-	sparseQ.TopK = overfetch
-	sparseChunks, err := h.sparse.SearchChunksBM25(ctx, sparseQ)
-	if err != nil {
+	if sparseErr != nil {
 		h.lg.Warn("RRF 稀疏检索失败，回退密集",
 			loggateway.StepID("knowledge.hybrid.sparse_fail"),
-			loggateway.Err(err),
+			loggateway.Err(sparseErr),
 			loggateway.Str("collection_id", q.CollectionID))
 		return trimChunks(denseChunks, topK), nil
 	}
 
 	merged := rrfMerge(denseChunks, sparseChunks, h.rrfK)
+	if h.reranker != nil && h.reranker.HasReranker() && len(merged) > 0 {
+		return h.reranker.RerankChunks(ctx, q, merged, topK)
+	}
 	return trimChunks(merged, topK), nil
 }
 

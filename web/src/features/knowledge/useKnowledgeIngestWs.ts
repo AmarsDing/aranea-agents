@@ -2,16 +2,21 @@ import { onUnmounted, ref, watch } from 'vue';
 import { createV2EventStream } from '../../realtime/useV2EventStream';
 import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
 import type { SystemNoticeEventPayload, V2WsEnvelope } from '../chat/v2Types';
+import { debounceTrailing } from './timing';
 
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {
   const connected = ref(false);
   let stream: ReturnType<typeof createV2EventStream> | null = null;
 
+  /** 800ms 尾触发防抖：批量 ingest 高频 WS 事件收敛为单次文档/集合刷新。 */
+  const debouncedProgress = debounceTrailing(onProgress, 800);
+
   function disconnect() {
     stream?.disconnect();
     stream = null;
     connected.value = false;
+    debouncedProgress.cancel();
   }
 
   function connect() {
@@ -30,7 +35,7 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
       if (payload.NoticeType !== 'knowledge_ingest') return;
       const meta = payload.Meta ?? {};
       if (String(meta.collection_id ?? '') !== cid) return;
-      onProgress();
+      debouncedProgress.call();
     }
 
     stream = createV2EventStream({

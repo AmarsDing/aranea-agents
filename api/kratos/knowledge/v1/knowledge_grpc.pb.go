@@ -38,6 +38,7 @@ const (
 	KnowledgeService_CreateVaultDocument_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/CreateVaultDocument"
 	KnowledgeService_ListDocumentLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
 	KnowledgeService_ListCollectionGraph_FullMethodName        = "/kratos.knowledge.v1.KnowledgeService/ListCollectionGraph"
+	KnowledgeService_ListDocumentNeighborhood_FullMethodName   = "/kratos.knowledge.v1.KnowledgeService/ListDocumentNeighborhood"
 	KnowledgeService_ListBlockBacklinks_FullMethodName         = "/kratos.knowledge.v1.KnowledgeService/ListBlockBacklinks"
 	KnowledgeService_ListDanglingLinks_FullMethodName          = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 	KnowledgeService_ListUnlinkedMentions_FullMethodName       = "/kratos.knowledge.v1.KnowledgeService/ListUnlinkedMentions"
@@ -100,6 +101,10 @@ type KnowledgeServiceClient interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(ctx context.Context, in *ListCollectionGraphRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error)
+	// ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+	// of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+	// but only the small vicinity is transferred (large-vault friendly).
+	ListDocumentNeighborhood(ctx context.Context, in *ListDocumentNeighborhoodRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error)
 	// ListBlockBacklinks returns block-level inbound references (SP1-E): context
 	// excerpt + source block/document per edge. Single block via block_id path;
 	// aggregate all blocks of a document via the doc_id binding.
@@ -336,6 +341,16 @@ func (c *knowledgeServiceClient) ListCollectionGraph(ctx context.Context, in *Li
 	return out, nil
 }
 
+func (c *knowledgeServiceClient) ListDocumentNeighborhood(ctx context.Context, in *ListDocumentNeighborhoodRequest, opts ...grpc.CallOption) (*ListCollectionGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCollectionGraphResponse)
+	err := c.cc.Invoke(ctx, KnowledgeService_ListDocumentNeighborhood_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *knowledgeServiceClient) ListBlockBacklinks(ctx context.Context, in *ListBlockBacklinksRequest, opts ...grpc.CallOption) (*ListBlockBacklinksResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListBlockBacklinksResponse)
@@ -522,6 +537,10 @@ type KnowledgeServiceServer interface {
 	// nodes = documents (after path_prefix filter), edges = links (link_types filter;
 	// endpoints outside scope/dangling dropped), degree = in-edge count per node.
 	ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error)
+	// ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+	// of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+	// but only the small vicinity is transferred (large-vault friendly).
+	ListDocumentNeighborhood(context.Context, *ListDocumentNeighborhoodRequest) (*ListCollectionGraphResponse, error)
 	// ListBlockBacklinks returns block-level inbound references (SP1-E): context
 	// excerpt + source block/document per edge. Single block via block_id path;
 	// aggregate all blocks of a document via the doc_id binding.
@@ -631,6 +650,9 @@ func (UnimplementedKnowledgeServiceServer) ListDocumentLinks(context.Context, *L
 }
 func (UnimplementedKnowledgeServiceServer) ListCollectionGraph(context.Context, *ListCollectionGraphRequest) (*ListCollectionGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListCollectionGraph not implemented")
+}
+func (UnimplementedKnowledgeServiceServer) ListDocumentNeighborhood(context.Context, *ListDocumentNeighborhoodRequest) (*ListCollectionGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDocumentNeighborhood not implemented")
 }
 func (UnimplementedKnowledgeServiceServer) ListBlockBacklinks(context.Context, *ListBlockBacklinksRequest) (*ListBlockBacklinksResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBlockBacklinks not implemented")
@@ -1019,6 +1041,24 @@ func _KnowledgeService_ListCollectionGraph_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KnowledgeService_ListDocumentNeighborhood_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDocumentNeighborhoodRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KnowledgeServiceServer).ListDocumentNeighborhood(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KnowledgeService_ListDocumentNeighborhood_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KnowledgeServiceServer).ListDocumentNeighborhood(ctx, req.(*ListDocumentNeighborhoodRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KnowledgeService_ListBlockBacklinks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListBlockBacklinksRequest)
 	if err := dec(in); err != nil {
@@ -1349,6 +1389,10 @@ var KnowledgeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListCollectionGraph",
 			Handler:    _KnowledgeService_ListCollectionGraph_Handler,
+		},
+		{
+			MethodName: "ListDocumentNeighborhood",
+			Handler:    _KnowledgeService_ListDocumentNeighborhood_Handler,
 		},
 		{
 			MethodName: "ListBlockBacklinks",

@@ -20,3 +20,4 @@
 | PERF-05R | DB table counts (corrected) | PASS | 0ms | agents=312, sessions_v2=0, turns_v2=751, trpc_session_events=22024 |
 | PERF-06R | mixed concurrent reads corrected (3 eps x5) | PASS | 460ms | n=15 fail=0 mean=460ms max=552ms |
 | PERF-01R2 | baseline layer-overview?agent_id (corrected) | PASS | 53ms | aid=agent___spirit__ samples=85/36/39 |
+| PERF-F1 | model-catalog/providers mtime+size cache | PASS | 62ms | samples=[58,53,66,71,61] mean=62ms |

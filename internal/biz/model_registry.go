@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"aranea-agents/internal/modelregistry"
 	"aranea-agents/pkg/apierror"
@@ -18,6 +19,16 @@ type ModelRegistryRootResolver interface {
 type ModelRegistryStoreProvider struct {
 	roots ModelRegistryRootResolver
 	lg    loggateway.Logger
+
+	// PERF-F1 根治（2026-08-17 复测发现）：Store 实例按 root 缓存复用。
+	// 原实现每次 Store() 调用都 NewStore —— ListCatalogProviders 一次请求
+	// 触发 N+1 次 NewStore（N=provider 数），Store 内部 mtime+size 目录缓存
+	// 随实例销毁而失效，2.88MB 目录 JSON 每请求全量读盘+反序列化（~500ms）。
+	// 缓存命中时跳过 root resolver（避免 N+1 次 DB 查询）；root 变更需重启
+	// 或下一次 NewStore 时感知。
+	mu          sync.RWMutex
+	cachedRoot  string
+	cachedStore *modelregistry.Store
 }
 
 func NewModelRegistryStoreProvider(roots ModelRegistryRootResolver, lg loggateway.Logger) *ModelRegistryStoreProvider {
@@ -25,11 +36,25 @@ func NewModelRegistryStoreProvider(roots ModelRegistryRootResolver, lg loggatewa
 }
 
 func (p *ModelRegistryStoreProvider) Store(ctx context.Context) (*modelregistry.Store, error) {
+	p.mu.RLock()
+	if p.cachedStore != nil {
+		p.mu.RUnlock()
+		return p.cachedStore, nil
+	}
+	p.mu.RUnlock()
+
 	root, err := p.roots.GetRootDirectory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return modelregistry.NewStore(root, p.lg), nil
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cachedStore != nil && p.cachedRoot == root {
+		return p.cachedStore, nil
+	}
+	st := modelregistry.NewStore(root, p.lg)
+	p.cachedRoot, p.cachedStore = root, st
+	return st, nil
 }
 
 type ModelRegistryUsecase struct {

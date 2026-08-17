@@ -267,12 +267,18 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 	// Use step_index to locate the execution step directly. The biz-layer
 	// TimeTravelGetState signature accepts checkpointID/namespace (not stepIndex),
 	// so we resolve the step from the execution and use its OutputState.
+	// ISSUE-G3: step_index is no longer proto REQUIRED (proto3 zero-value trap
+	// rejected legal step 0); validate here instead — negative is a client
+	// error (400), out-of-range is a missing resource (404).
 	exec, err := s.assertExecutionAccess(ctx, req.ExecutionId)
 	if err != nil {
 		return nil, err
 	}
 	idx := int(req.StepIndex)
-	if idx < 0 || idx >= len(exec.Steps) {
+	if idx < 0 {
+		return nil, apierror.BadRequest("GRAPH", "step index must be >= 0")
+	}
+	if idx >= len(exec.Steps) {
 		return nil, apierror.NotFound("GRAPH", "step index out of range")
 	}
 	step := exec.Steps[idx]

@@ -48,6 +48,27 @@ func TestSelectMode(t *testing.T) {
 	}
 }
 
+func TestSelectModeForQuery_PreservesExactLexicalSignals(t *testing.T) {
+	router := &AdaptiveRouter{}
+	for _, query := range []string{
+		`"connection refused"`,
+		`docs/runbook.md`,
+		`ERR_AUTH_401`,
+		`INC-2026-0817`,
+	} {
+		got := router.selectModeForQuery(biz.KnowledgeSearchQuery{Query: query}, QuerySimple)
+		if got != HybridSparse {
+			t.Errorf("selectModeForQuery(%q) = %q, want sparse", query, got)
+		}
+	}
+	if got := router.selectModeForQuery(
+		biz.KnowledgeSearchQuery{Query: "什么是知识图谱"},
+		QuerySimple,
+	); got != HybridDense {
+		t.Errorf("natural-language query = %q, want dense", got)
+	}
+}
+
 func TestDecompositionBoostsComplexity(t *testing.T) {
 	router := &AdaptiveRouter{}
 	q := biz.KnowledgeSearchQuery{Query: "什么是Go"}

@@ -64,7 +64,7 @@
           :loading="activeTab.saving"
           :disable="!activeTab.dirty"
           class="kb-tabs__tool"
-          @click="$emit('save', activeTab.docId)"
+          @click="onSaveClick(activeTab.docId)"
         >
           <q-tooltip>Ctrl+S</q-tooltip>
         </q-btn>
@@ -200,7 +200,18 @@ function scrollToOffset(offset: number) {
   editorRef.value?.scrollToOffset(offset);
 }
 
-defineExpose({ scrollToOffset });
+/** C6：保存前 flush 编辑器挂起的防抖写回（工具栏/命令面板保存路径不走编辑器内 Mod-s）。 */
+function flushPendingContent() {
+  editorRef.value?.flushPendingContent();
+}
+
+/** 工具栏保存按钮：先 flush 再上报 save，保证父级 tab.content 为最新。 */
+function onSaveClick(docId: string) {
+  flushPendingContent();
+  emit('save', docId);
+}
+
+defineExpose({ scrollToOffset, flushPendingContent });
 </script>
 
 <style lang="sass" scoped>

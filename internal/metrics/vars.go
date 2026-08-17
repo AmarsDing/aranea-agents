@@ -389,6 +389,16 @@ var (
 		Name: "aranea_sequencer_dead_letter_replay_total",
 		Help: "Dead-letter replay outcomes from the durable event_dead_letter store.",
 	}, []string{"outcome"})
+
+	// KnowledgeSearchStageDuration tracks knowledge retrieval pipeline stages.
+	// stage ∈ {embed, dense, sparse, total}. Used to split remote embedding vs
+	// IVFFlat vs BM25 cost (OPT-2a). Keep aranea_knowledge_search_duration_seconds
+	// on the HTTP service for end-to-end latency.
+	KnowledgeSearchStageDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_knowledge_search_stage_duration_seconds",
+		Help:    "Duration of knowledge search pipeline stages (embed, dense, sparse, total).",
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	}, []string{"stage"})
 )
 
 // SafegoPanicHook returns a PanicHook function that increments the

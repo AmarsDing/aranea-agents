@@ -25,10 +25,11 @@ ALTER TABLE knowledge_links ALTER COLUMN valid_from SET NOT NULL;
 ALTER TABLE knowledge_links ALTER COLUMN recorded_at SET DEFAULT NOW();
 ALTER TABLE knowledge_links ALTER COLUMN recorded_at SET NOT NULL;
 
--- 唯一约束升级：同对文档同来源同谓词一行（relation 参与去重）。
+-- 唯一约束升级：只约束当前有效边；关闭行允许保留多个历史版本。
 DROP INDEX IF EXISTS knowledge_links_unique;
 CREATE UNIQUE INDEX IF NOT EXISTS knowledge_links_unique
-  ON knowledge_links (doc_id, target_doc_id, link_type, relation);
+  ON knowledge_links (doc_id, target_doc_id, link_type, relation)
+  WHERE valid_to IS NULL;
 
 -- 时态 as-of 查询索引（tstzrange + GiST）。
 CREATE INDEX IF NOT EXISTS knowledge_links_valid_idx

@@ -3882,6 +3882,8 @@ export default {
       commandPalette: '命令面板',
       openGraph: '图谱',
       openSettings: '设置',
+      perfMode: '性能模式',
+      perfModeHint: '关闭粒子/极光特效并降低玻璃模糊，低端设备更流畅',
       filesTitle: '文件',
       filesEmpty: '当前目录暂无文档',
       emptyTitle: '打开一篇笔记开始',

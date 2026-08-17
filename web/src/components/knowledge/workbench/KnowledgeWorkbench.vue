@@ -1,18 +1,22 @@
 <template>
-  <div class="kb-workbench">
+  <div class="kb-workbench" :class="{ 'kb-workbench--perf': performanceMode }">
     <!-- M1：液态玻璃 SVG 滤镜单例（kb-liquid-refract 光纹 / kb-liquid-bg 真折射），全 Workbench 共享 -->
     <LiquidGlassDefs />
-    <!-- 深空背景：粒子 + 极光光斑（不参与交互） -->
-    <ParticleField class="kb-workbench__particles" />
-    <div class="kb-workbench__aurora kb-workbench__aurora--cyan" />
-    <div class="kb-workbench__aurora kb-workbench__aurora--violet" />
-    <div class="kb-workbench__aurora kb-workbench__aurora--teal" />
+    <!-- 深空背景：粒子 + 极光光斑（不参与交互）；C7 性能模式下整体移除（停 rAF/动画/blur） -->
+    <template v-if="!performanceMode">
+      <ParticleField class="kb-workbench__particles" />
+      <div class="kb-workbench__aurora kb-workbench__aurora--cyan" />
+      <div class="kb-workbench__aurora kb-workbench__aurora--violet" />
+      <div class="kb-workbench__aurora kb-workbench__aurora--teal" />
+    </template>
 
     <div class="kb-workbench__frame">
       <WorkbenchTopBar
         :collections="collections"
         :current-vault-id="currentVaultId"
+        :performance-mode="performanceMode"
         @switch-vault="$emit('switch-vault', $event)"
+        @toggle-performance-mode="$emit('toggle-performance-mode')"
         @open-quick-switcher="openQuickSwitcher"
         @open-command-palette="openCommandPalette"
         @open-search="openSearch"
@@ -226,10 +230,13 @@ const props = defineProps<{
   currentPrefix: string;
   /** SP2-8：图谱增量刷新信号（+1 → 右栏五面板重拉，缓存已被页面失效） */
   panelsRefreshNonce?: number;
+  /** C7：性能模式（关粒子/极光，降 blur） */
+  performanceMode?: boolean;
 }>();
 
 const emit = defineEmits<{
   'switch-vault': [id: string];
+  'toggle-performance-mode': [];
   'select-node': [key: string];
   'update:expanded-keys': [keys: string[]];
   'lazy-load': [payload: VaultLazyLoadPayload];
@@ -816,6 +823,8 @@ async function createDocByName(target: string) {
 }
 
 async function onSave(docId: string) {
+  // C6：命令面板/快捷键等外部保存入口，先 flush 编辑器防抖写回再 CAS 保存。
+  tabsRef.value?.flushPendingContent();
   const ok = await props.workbench.saveTab(docId);
   if (!ok) {
     $q.notify({ type: 'warning', message: t('knowledgePage.workbench.conflictHint'), timeout: 6000 });
@@ -843,6 +852,7 @@ async function onSaveAndClose() {
   if (!id) return;
   confirmSaving.value = true;
   try {
+    tabsRef.value?.flushPendingContent();
     const ok = await props.workbench.saveTab(id);
     if (ok) {
       props.workbench.closeTab(id, { discard: true });

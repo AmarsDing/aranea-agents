@@ -3,11 +3,14 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 )
 
 // ── P2-c：access_log 记账下沉 Retriever ─────────────────────────────────────
@@ -36,12 +39,13 @@ func TestRetriever_AccessLog_RecordsHitsDedupByDoc(t *testing.T) {
 		t.Fatalf("chunks = %d, want 3", len(out))
 	}
 	// d1 两 chunk 只记一次 → 2 条。
-	if len(access.logged) != 2 {
-		t.Fatalf("logged = %d, want 2 (dedup by doc): %+v", len(access.logged), access.logged)
+	if !waitForAccessLog(access, 2) {
+		t.Fatalf("logged = %+v, want 2 entries (dedup by doc)", access.loggedEntries())
 	}
+	logged := access.loggedEntries()
 	wantHash := accessQueryHash("q")
 	seen := map[string]bool{}
-	for _, e := range access.logged {
+	for _, e := range logged {
 		seen[e.DocID] = true
 		if e.CollectionID != "col" {
 			t.Fatalf("collection = %q, want col", e.CollectionID)
@@ -75,8 +79,8 @@ func TestRetriever_AccessLog_EmptyHits_NoLog(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(access.logged) != 0 {
-		t.Fatalf("empty hits must not log, got %+v", access.logged)
+	if logged := access.loggedEntries(); len(logged) != 0 {
+		t.Fatalf("empty hits must not log, got %+v", logged)
 	}
 }
 
@@ -99,4 +103,62 @@ func TestRetriever_AccessLog_LogFailureDoesNotBlock(t *testing.T) {
 	if len(out) != 3 {
 		t.Fatalf("chunks = %d, want 3", len(out))
 	}
+}
+
+type blockingAccessLogRepo struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingAccessLogRepo) BaseLevelScores(context.Context, string, []string) (map[string]float64, error) {
+	return nil, nil
+}
+
+func (r *blockingAccessLogRepo) LogAccess(context.Context, []bizknowledge.AccessLogEntry) error {
+	r.once.Do(func() { close(r.started) })
+	<-r.release
+	return nil
+}
+
+func TestRetriever_AccessLog_DoesNotAddDatabaseLatency(t *testing.T) {
+	repo := &stubKnowledgeRepo{chunks: accessLogTestChunks}
+	access := &blockingAccessLogRepo{started: make(chan struct{}), release: make(chan struct{})}
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.NewNoop())
+	ret.SetAccessLog(access)
+
+	done := make(chan error, 1)
+	safego.Go(context.Background(), "test.knowledge.access_log_async", func() {
+		_, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
+			CollectionID: "col", Query: "q", TopK: 5,
+		})
+		done <- err
+	})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		close(access.release)
+		t.Fatal("search waited for access-log persistence")
+	}
+	select {
+	case <-access.started:
+	case <-time.After(time.Second):
+		close(access.release)
+		t.Fatal("access log was not scheduled")
+	}
+	close(access.release)
+}
+
+func waitForAccessLog(repo *stubAccessLogRepo, want int) bool {
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if len(repo.loggedEntries()) == want {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return false
 }

@@ -2,11 +2,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
+import { createPinia, setActivePinia } from 'pinia';
 import WorkbenchTopBar from '../workbench/WorkbenchTopBar.vue';
 import WorkbenchTabs from '../workbench/WorkbenchTabs.vue';
 import WorkbenchSidebar from '../workbench/WorkbenchSidebar.vue';
 import KnowledgeWorkbench from '../workbench/KnowledgeWorkbench.vue';
 import { createKnowledgeWorkbench, type WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
+import { useKnowledgeStore } from '../../../stores/knowledge';
 import type { KnowledgeCollection, VaultTreeNode } from '../../../features/knowledge/types';
 
 vi.mock('quasar', () => ({
@@ -149,6 +151,15 @@ describe('workbench skeleton', () => {
   });
 
   it('KnowledgeWorkbench opens file into tab via sidebar event', async () => {
+    // A3/B4 后右栏面板经 store 缓存取数：挂 Pinia 并桩掉异步加载，避免真实网络。
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useKnowledgeStore();
+    store.loadBlockBacklinks = vi.fn().mockResolvedValue([]);
+    store.loadDanglingLinks = vi.fn().mockResolvedValue([]);
+    store.loadDocumentLinks = vi.fn().mockResolvedValue([]);
+    store.loadDocumentNeighborhood = vi.fn().mockResolvedValue({ nodes: [], edges: [] });
+
     const wb = createKnowledgeWorkbench({
       getDocumentContent: vi.fn(async (id: string) => ({
         id,

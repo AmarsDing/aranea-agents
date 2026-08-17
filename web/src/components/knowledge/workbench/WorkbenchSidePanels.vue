@@ -68,6 +68,8 @@
 <script setup lang="ts">
 // 右栏五面板容器（SP2 §SP2-8）：统一拉取/解析，面板纯展示；折叠态持久化 localStorage。
 // Container: approved because 五面板共享同一 activeTab 数据源，收口拉取避免 5 处重复 fetch（FD3）。
+// 性能（2026-08-17）：反链/出链/悬空链走 store 缓存 + graph delta 失效链，切 tab 不重复拉取；
+// 局部图走 ListDocumentNeighborhood 服务端 BFS（小载荷），不再为右栏拉全库图谱。
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlassPanel from '../effects/GlassPanel.vue';
@@ -76,20 +78,15 @@ import PanelOutlinks from '../panels/PanelOutlinks.vue';
 import PanelOutline from '../panels/PanelOutline.vue';
 import PanelProperties from '../panels/PanelProperties.vue';
 import PanelLocalGraph from '../panels/PanelLocalGraph.vue';
-import {
-  listBlockBacklinks,
-  listCollectionGraph,
-  listDanglingLinks,
-  listDocumentLinks,
-  listUnlinkedMentions,
-} from '../../../features/knowledge/api';
+import { listUnlinkedMentions } from '../../../features/knowledge/api';
+import { useKnowledgeStore } from '../../../stores/knowledge';
 import { parseOutline, type OutlineItem } from '../../../features/knowledge/outline';
 import { parseFrontmatter, type Frontmatter } from '../../../features/knowledge/frontmatter';
-import { bfsNeighborhood } from '../../../features/knowledge/localGraphLayout';
 import type { WorkbenchTab } from '../../../features/knowledge/useKnowledgeWorkbench';
 import type {
   BlockBacklink,
-  CollectionGraph,
+  CollectionGraphEdge,
+  CollectionGraphNode,
   DanglingLink,
   KnowledgeLink,
   UnlinkedMention,
@@ -110,6 +107,7 @@ defineEmits<{
 }>();
 
 const { t } = useI18n();
+const knowledgeStore = useKnowledgeStore();
 
 const panelDefs = [
   { key: 'backlinks', icon: 'link' },
@@ -151,25 +149,22 @@ const backlinks = ref<BlockBacklink[]>([]);
 const dangling = ref<DanglingLink[]>([]);
 const outlinks = ref<KnowledgeLink[]>([]);
 const mentions = ref<UnlinkedMention[]>([]);
-const graph = ref<CollectionGraph>({ nodes: [], edges: [] });
 const hops = ref(2);
 
 let fetchSeq = 0;
 
 async function fetchAll(docId: string, collectionId: string) {
   const seq = ++fetchSeq;
-  const [bl, dl, ol, g, um] = await Promise.allSettled([
-    listBlockBacklinks(docId),
-    collectionId ? listDanglingLinks(collectionId) : Promise.resolve([]),
-    listDocumentLinks(docId),
-    collectionId ? listCollectionGraph(collectionId) : Promise.resolve({ nodes: [], edges: [] }),
+  const [bl, dl, ol, um] = await Promise.allSettled([
+    knowledgeStore.loadBlockBacklinks(docId),
+    collectionId ? knowledgeStore.loadDanglingLinks(collectionId) : Promise.resolve([]),
+    knowledgeStore.loadDocumentLinks(docId),
     listUnlinkedMentions(docId),
   ]);
   if (seq !== fetchSeq) return; // 竞态守卫：旧响应丢弃
   backlinks.value = bl.status === 'fulfilled' ? bl.value : [];
   dangling.value = dl.status === 'fulfilled' ? dl.value : [];
   outlinks.value = ol.status === 'fulfilled' ? ol.value : [];
-  graph.value = g.status === 'fulfilled' ? g.value : { nodes: [], edges: [] };
   mentions.value = um.status === 'fulfilled' ? um.value : [];
 }
 
@@ -182,7 +177,38 @@ watch(
       dangling.value = [];
       outlinks.value = [];
       mentions.value = [];
-      graph.value = { nodes: [], edges: [] };
+    }
+  },
+  { immediate: true },
+);
+
+// ---------- 局部图（B4：服务端 BFS 邻域 RPC；doc/hops/delta 失效任一变化即重拉） ----------
+const localNodes = ref<CollectionGraphNode[]>([]);
+const localEdges = ref<CollectionGraphEdge[]>([]);
+let graphSeq = 0;
+
+async function fetchNeighborhood(docId: string, h: number) {
+  const seq = ++graphSeq;
+  try {
+    const g = await knowledgeStore.loadDocumentNeighborhood(docId, h);
+    if (seq !== graphSeq) return; // 竞态守卫：旧响应丢弃
+    localNodes.value = g.nodes;
+    localEdges.value = g.edges;
+  } catch {
+    if (seq !== graphSeq) return;
+    localNodes.value = [];
+    localEdges.value = [];
+  }
+}
+
+watch(
+  () => [props.activeTab?.docId, hops.value, props.refreshNonce] as const,
+  ([docId, h]) => {
+    if (docId) void fetchNeighborhood(docId, h ?? 2);
+    else {
+      graphSeq++; // 使进行中的旧响应失效
+      localNodes.value = [];
+      localEdges.value = [];
     }
   },
   { immediate: true },
@@ -225,14 +251,6 @@ watch(
 
 const outlineItems = computed<OutlineItem[]>(() => parseOutline(debouncedContent.value));
 const frontmatter = computed<Frontmatter | null>(() => parseFrontmatter(debouncedContent.value));
-
-const localGraphData = computed(() =>
-  props.activeTab
-    ? bfsNeighborhood(graph.value.nodes, graph.value.edges, props.activeTab.docId, hops.value)
-    : { nodes: [], edges: [] },
-);
-const localNodes = computed(() => localGraphData.value.nodes);
-const localEdges = computed(() => localGraphData.value.edges);
 </script>
 
 <style lang="sass" scoped>

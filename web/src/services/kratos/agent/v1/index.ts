@@ -362,6 +362,10 @@ export type UpdateAgentToolPolicyRequest = {
   profile: string | undefined;
   allow: string[] | undefined;
   deny: string[] | undefined;
+  // P1-2：可选策略字段。非 nil 时更新 agent_runtime_settings.tools_execution_timeout_sec
+  // （0 = 恢复服务端默认）。该字段由 policyResolver 运行时接管：仅它变化时不触发
+  // agent 重建，新调用立即生效；装配字段（enabled/profile/allow/deny）变化仍触发重建。
+  executionTimeoutSec?: number;
 };
 
 export type CreateAgentPromptFileRequest = {

@@ -153,3 +153,110 @@ func TestUsecase_ListCollectionGraph_Errors(t *testing.T) {
 	_, err = u.ListCollectionGraph(context.Background(), "col-1", nil, "")
 	require.Error(t, err, "repo 错误透传")
 }
+
+// ── SP2-8：ListDocumentNeighborhood 文档 N 跳邻域子图（右栏局部图） ────────
+
+// neighborhoodDocs：root → h1a/h1b（出边）→ h2（h1a 出边）→ h3（3 跳）；
+// in1 → root（入边，无向 BFS 可达）；iso 为无连边孤立节点（任何跳数不可达）。
+func neighborhoodDocs() []Document {
+	return []Document{
+		{ID: "root", CollectionID: "col-1", Source: "root.md", RelPath: "root.md"},
+		{ID: "h1a", CollectionID: "col-1", Source: "h1a.md", RelPath: "h1a.md"},
+		{ID: "h1b", CollectionID: "col-1", Source: "h1b.md", RelPath: "h1b.md"},
+		{ID: "h2", CollectionID: "col-1", Source: "h2.md", RelPath: "h2.md"},
+		{ID: "in1", CollectionID: "col-1", Source: "in1.md", RelPath: "in1.md"},
+		{ID: "h3", CollectionID: "col-1", Source: "h3.md", RelPath: "h3.md"},
+		{ID: "iso", CollectionID: "col-1", Source: "iso.md", RelPath: "iso.md"},
+	}
+}
+
+func neighborhoodUsecase() (*Usecase, *stubCollectionLinkReader) {
+	docs := neighborhoodDocs()
+	mr := noOpMockRepo()
+	mr.docListFn = func(_ context.Context, _ string, _, _ int) ([]Document, int, error) {
+		return docs, len(docs), nil
+	}
+	byID := make(map[string]Document, len(docs))
+	for _, d := range docs {
+		byID[d.ID] = d
+	}
+	mr.docGetFn = func(_ context.Context, id string) (Document, error) {
+		d, ok := byID[id]
+		if !ok {
+			return Document{}, fmt.Errorf("document %q not found", id)
+		}
+		return d, nil
+	}
+	u := NewUsecaseFromRepo(mr)
+	lr := &stubCollectionLinkReader{links: []Link{
+		{DocID: "root", TargetDocID: "h1a", LinkType: LinkTypeExplicit},
+		{DocID: "root", TargetDocID: "h1b", LinkType: LinkTypeExplicit},
+		{DocID: "h1a", TargetDocID: "h2", LinkType: LinkTypeEntity},
+		{DocID: "in1", TargetDocID: "root", LinkType: LinkTypeExplicit}, // 入边：无向 BFS 应可达
+		{DocID: "h2", TargetDocID: "h3", LinkType: LinkTypeSemantic},
+	}}
+	u.SetGraphRepo(lr)
+	return u, lr
+}
+
+func nodeIDs(g *CollectionGraph) map[string]bool {
+	ids := make(map[string]bool, len(g.Nodes))
+	for _, n := range g.Nodes {
+		ids[n.DocID] = true
+	}
+	return ids
+}
+
+func TestUsecase_ListDocumentNeighborhood_Hops(t *testing.T) {
+	u, _ := neighborhoodUsecase()
+
+	// 1 跳：root + 出边邻居 h1a/h1b + 入边邻居 in1（无向）。
+	g, err := u.ListDocumentNeighborhood(context.Background(), "root", 1)
+	require.NoError(t, err)
+	ids := nodeIDs(g)
+	assert.Len(t, g.Nodes, 4)
+	for _, id := range []string{"root", "h1a", "h1b", "in1"} {
+		assert.True(t, ids[id], "1 跳应含 %s", id)
+	}
+	assert.False(t, ids["h2"], "1 跳不应含 2 跳节点")
+	// 边仅保留两端都在邻域内的：root-h1a / root-h1b / in1-root；h1a-h2 因 h2 出范围剔除。
+	assert.Len(t, g.Edges, 3)
+
+	// 2 跳（默认）：hops<=0 归一为默认 2，含 h2 不含 h3/iso。
+	g, err = u.ListDocumentNeighborhood(context.Background(), "root", 0)
+	require.NoError(t, err)
+	ids = nodeIDs(g)
+	assert.Len(t, g.Nodes, 5, "默认 2 跳：root + h1a/h1b/in1（1 跳）+ h2（2 跳）")
+	assert.True(t, ids["h2"])
+	assert.False(t, ids["h3"], "h3 距 root 3 跳，默认 2 跳不含")
+	assert.False(t, ids["iso"], "孤立节点不可达")
+	assert.Len(t, g.Edges, 4, "含 h1a-h2；h2-h3 因 h3 出范围剔除")
+
+	// 跳数上限：hops=99 截断到 5（全图可达子集 = 除 iso 外全部 6 节点）。
+	g, err = u.ListDocumentNeighborhood(context.Background(), "root", 99)
+	require.NoError(t, err)
+	ids = nodeIDs(g)
+	assert.Len(t, g.Nodes, 6)
+	assert.True(t, ids["h3"])
+	assert.False(t, ids["iso"])
+}
+
+func TestUsecase_ListDocumentNeighborhood_DegreeKept(t *testing.T) {
+	u, _ := neighborhoodUsecase()
+	g, err := u.ListDocumentNeighborhood(context.Background(), "root", 1)
+	require.NoError(t, err)
+	// Degree 保留全图口径：h1a 在全图有 root→h1a 与 h1a→h2 两条关联边。
+	for _, n := range g.Nodes {
+		if n.DocID == "h1a" {
+			assert.Equal(t, 2, n.Degree, "邻域节点 Degree 为全图口径（与原前端客户端 BFS 一致）")
+		}
+	}
+}
+
+func TestUsecase_ListDocumentNeighborhood_Errors(t *testing.T) {
+	u, _ := neighborhoodUsecase()
+	_, err := u.ListDocumentNeighborhood(context.Background(), "", 2)
+	require.Error(t, err, "空 docID")
+	_, err = u.ListDocumentNeighborhood(context.Background(), "ghost", 2)
+	require.Error(t, err, "文档不存在透传 repo 错误")
+}

@@ -1443,3 +1443,21 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 - **M5 缺陷修复（运行时验证发现，已修复并回归测试）**：
   1. GraphLegend 空 docType 组名称空白 → 补 i18n `graphLegendUntyped`（「未分类」）回退显示；
   2. 全部组隐藏后图例自身消失的「陷阱」状态（无恢复路径）→ GraphLegend 与空态覆盖层的 v-if 改键定**未过滤** legendNodes，图例在全隐藏时保留可点回恢复（`KnowledgeGraph3D.spec.ts` 2 用例回归固化）。
+
+## 子模块：长期供粮核心可靠性（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-49 | **设计**：[37-knowledge.design.md §V12.14](./37-knowledge.design.md#v1214-长期供粮核心可靠性2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| RRF dense/sparse 并行 + 融合后 rerank + 单路降级 | ✅ | `internal/knowledge/hybrid_retriever.go` |
+| 精确词分流、阶段延迟观测、查询 embedding 有界缓存 | ✅ | `adaptive_router.go`、`search_metrics.go`、`embedder.go` |
+| tsvector/trigram 并行 + 短中文 substring + 词法 RRF | ✅ | `internal/data/knowledge.go` |
+| 命中日志移出检索返回热路径 | ✅ | `internal/knowledge/retriever.go` |
+| 数据库上传后实体/关系图谱钩子 | ✅ | `internal/service/knowledge.go`、`knowledge_graph.go` |
+| relation evidence 原文校验 + links 历史保留 | ✅ | `internal/knowledge/relation_extract.go`、`internal/data/knowledge_links.go`、`knowledge_relation.go` |
+| 词条别名歧义禁止任意归并 | ✅ | `internal/biz/knowledge/writeback_entry.go` |
+| chunks/embedding 5 分钟自动修复 | ✅ | `internal/cronrunner/jobs/knowledge_index_repair.go`、`internal/service/knowledge_reembed.go` |
+| 词法库 NULL embedding 健康判定 | ✅ | `internal/data/knowledge.go` |
+
+本轮新增专项验收覆盖：RRF 并发/重排、异步 access log、query embedding 缓存失效、精确词路由、两字中文生产 BM25、别名歧义、上传图谱触发、词法/语义待修复判定、索引修复 worker。

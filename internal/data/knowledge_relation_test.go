@@ -141,19 +141,20 @@ func TestKnowledgeRepo_ReplaceSemanticLinks(t *testing.T) {
 	if relation != "depends-on" || conf != 0.9 {
 		t.Errorf("relation=%q confidence=%v, want depends-on/0.9", relation, conf)
 	}
-	// 替换语义：重写后旧边消失。
+	// 替换语义：旧边关闭留历史，新边成为唯一 active。
 	if err := repo.ReplaceSemanticLinks(ctx, "c1", "d1", []bizknowledge.SemanticLink{
 		{TargetDocID: "d3", Relation: "applies-to", Confidence: 0.8},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	var total int
+	var total, active int
 	if err := raw.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM knowledge_links WHERE doc_id='d1' AND link_type='semantic'`).Scan(&total); err != nil {
+		`SELECT COUNT(*), COUNT(*) FILTER (WHERE valid_to IS NULL)
+		 FROM knowledge_links WHERE doc_id='d1' AND link_type='semantic'`).Scan(&total, &active); err != nil {
 		t.Fatal(err)
 	}
-	if total != 1 {
-		t.Errorf("after replace total=%d, want 1 (old edges wiped)", total)
+	if total != 3 || active != 1 {
+		t.Errorf("after replace total=%d active=%d, want 3/1 (history preserved)", total, active)
 	}
 	// 同对文档多谓词共存（relation 参与唯一键）。
 	if err := repo.ReplaceSemanticLinks(ctx, "c1", "d2", []bizknowledge.SemanticLink{

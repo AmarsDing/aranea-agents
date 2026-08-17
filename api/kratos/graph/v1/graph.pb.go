@@ -2135,9 +2135,13 @@ func (x *ResumeGraphResponse) GetFinalState() *structpb.Struct {
 }
 
 type TimeTravelGraphRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	StepIndex     int32                  `protobuf:"varint,2,opt,name=step_index,json=stepIndex,proto3" json:"step_index,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	// step_index is intentionally NOT marked REQUIRED: proto3 scalar zero value
+	// is indistinguishable from unset, so protovalidate would reject the legal
+	// target step 0 (ISSUE-G3, 2026-08-17). The service layer validates
+	// step_index >= 0 (negative → 400) and < len(steps) (out of range → 404).
+	StepIndex     int32 `protobuf:"varint,2,opt,name=step_index,json=stepIndex,proto3" json:"step_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7019,11 +7023,11 @@ const file_kratos_graph_v1_graph_proto_rawDesc = "" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x128\n" +
 	"\vfinal_state\x18\x03 \x01(\v2\x17.google.protobuf.StructR\n" +
-	"finalState\"f\n" +
+	"finalState\"`\n" +
 	"\x16TimeTravelGraphRequest\x12'\n" +
-	"\fexecution_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\vexecutionId\x12#\n" +
+	"\fexecution_id\x18\x01 \x01(\tB\x04\xe2A\x01\x02R\vexecutionId\x12\x1d\n" +
 	"\n" +
-	"step_index\x18\x02 \x01(\x05B\x04\xe2A\x01\x02R\tstepIndex\"\xb4\x01\n" +
+	"step_index\x18\x02 \x01(\x05R\tstepIndex\"\xb4\x01\n" +
 	"\x17TimeTravelGraphResponse\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x1d\n" +
 	"\n" +

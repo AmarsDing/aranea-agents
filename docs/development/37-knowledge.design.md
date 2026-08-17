@@ -2647,4 +2647,39 @@ AutoMemoryWorker.extract
 - 不做视频 RAG、时间知识图谱、成熟度 FSM（SP5）、JITAI 伙伴（SP6）。
 - 不做 50 条 BM25 愿望清单；US-47 是 12 条生产路径查询。
 
+---
+
+## V12.14 长期供粮核心可靠性（2026-08-17）
+
+> 对应需求 US-49。目标是修复检索热路径和派生索引闭环，不引入新的知识真相源。
+
+### ADR-KN-20260817：正确性闭环优先于继续增加检索算法
+
+- **背景**：系统已有 dense/BM25/RRF/rerank/图扩展，但 RRF 串行且不重排，数据库上传不触发图谱，派生 chunks 失败后依赖人工修复。
+- **决策**：本轮先统一现有分支语义、并行独立召回并补自动修复工人；所有新后台动作保持有界、幂等、可降级。
+- **后果**：热路径延迟不再叠加 dense+sparse+access-log；上传与索引故障具备最终一致闭环。代价是进程内缓存非跨实例共享，短查询 substring 分支仍需在线数据验证成本。
+- **替代方案**：暂不引入外部缓存、独立搜索引擎或新图数据库；现阶段数据量与质量基线不足以证明额外基础设施收益。
+
+### 检索决策
+
+1. `HybridRetriever` 的 RRF 分支在 query embedding 完成后并行执行 dense / sparse；单路失败退化到另一条。
+2. RRF 先合并 overfetch 候选，再调用与 dense 路相同的可选 reranker，最后裁剪 topK。
+3. `AdaptiveRouter` 对路径、引号短语、错误码、带分隔符标识符和全大写术语选择 sparse；普通短问句仍选择 dense。
+4. `SearchChunksBM25` 并行执行 tsvector / trigram；≤4 字符查询增加 exact-substring 分支，三个排名用 RRF 融合，不再把 tsvector 列表无条件放在 trigram 前。
+5. `MultiProviderEmbedder` 对查询侧单条向量使用 10 分钟、512 项的进程内有界缓存和 singleflight；缓存键含 provider/baseURL/model/dim/task type 的哈希，运行时配置更新清空缓存。
+6. 检索命中日志通过 `safego` 异步持久化，保留 context values、去掉取消传播并设置 2 秒写超时。阶段直方图覆盖 embed/dense/sparse/total。
+
+### 摄取与自动修复
+
+- 数据库上传在 chunks 与块索引完成后调用统一图谱钩子，异步执行实体共现和 typed relation 抽取；钩子按 content hash 幂等。
+- typed relation 的 evidence 必须经归一化后能在当前正文中找到；找不到的三元组不登记谓词、不发布边。
+- `knowledge_links_unique` 改为仅约束 `valid_to IS NULL` 的 active 行。显式/entity/semantic 替换均原位刷新未变边、关闭消失边、插入新增版本，历史不再被 `DELETE` 抹除。
+- `KnowledgeIndexRepairWorker` 启动即执行、之后每 5 分钟扫描；每轮最多修复 20 篇，避免打爆 embedding provider。
+- 待修复判定区分词法库与语义库：无 chunks 始终待修复；仅语义库的 NULL embedding 待修复。词法库正常 NULL embedding 不进入循环。
+
+### 安全边界
+
+- 同一别名命中多个词条时禁止任取一个自动归并；事实回退 provenance 日记并记录结构化告警。
+- 本轮不声称解决全量事实断言的稳定 key、跨文档冲突真值或抽取置信度校准；这些需要独立金标，不能通过热路径优化替代。
+
 

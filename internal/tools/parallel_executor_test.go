@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -189,6 +190,61 @@ func TestParallelExecutor_HandlerErrorPropagatesAsFailedResult(t *testing.T) {
 	}
 	if !byID["ok1"].Success || !byID["ok2"].Success {
 		t.Error("expected 'ok1' and 'ok2' to succeed despite sibling failure")
+	}
+}
+
+func TestParallelExecutor_FailedDependencySkipsDownstream(t *testing.T) {
+	var called sync.Map
+	handler := func(ctx context.Context, call ToolCall) ToolResult {
+		called.Store(call.ID, true)
+		if call.ID == "root-fail" {
+			return ToolResult{
+				CallID: call.ID,
+				Name:   call.Name,
+				Error:  "boom",
+			}
+		}
+		return ToolResult{
+			CallID:  call.ID,
+			Name:    call.Name,
+			Success: true,
+			Output:  "ok",
+		}
+	}
+
+	exec := NewParallelToolExecutor(handler, loggateway.NewNoop())
+	calls := []ToolCall{
+		{ID: "root-fail", Name: "root"},
+		{ID: "independent", Name: "sibling"},
+		{ID: "child", Name: "child", DependsOn: []string{"root-fail"}},
+		{ID: "grandchild", Name: "grandchild", DependsOn: []string{"child"}},
+	}
+
+	results, err := exec.Execute(context.Background(), calls)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(results) != len(calls) {
+		t.Fatalf("expected %d results, got %d", len(calls), len(results))
+	}
+
+	byID := make(map[string]ToolResult, len(results))
+	for _, result := range results {
+		byID[result.CallID] = result
+	}
+	if !byID["independent"].Success {
+		t.Errorf("independent call should succeed: %+v", byID["independent"])
+	}
+	for _, id := range []string{"child", "grandchild"} {
+		if byID[id].Success {
+			t.Errorf("%s should be skipped after dependency failure", id)
+		}
+		if !strings.Contains(byID[id].Error, "dependency") {
+			t.Errorf("%s error = %q, want dependency failure", id, byID[id].Error)
+		}
+		if _, ok := called.Load(id); ok {
+			t.Errorf("handler must not execute skipped call %s", id)
+		}
 	}
 }
 

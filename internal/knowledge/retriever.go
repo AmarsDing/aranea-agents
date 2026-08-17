@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"time"
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
@@ -12,6 +13,7 @@ import (
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker"
 )
@@ -76,6 +78,8 @@ func (r *Retriever) HasReranker() bool {
 // Search embeds the query, retrieves candidates, optionally reranks, and returns top-k chunks.
 // 检索为热路径：流程日志只打 done/error 且 message 精简（不打 start、不写进程日志）。
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+	totalStart := time.Now()
+	defer observeSearchStage(searchStageTotal, totalStart)
 	chunks, err := r.search(ctx, q)
 	if err == nil {
 		r.logAccess(ctx, q, chunks)
@@ -101,7 +105,8 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	return chunks, err
 }
 
-// logAccess 记录本次命中（P2-c）。失败仅 Warn 不阻塞检索返回；chunks 空不记。
+// logAccess 异步记录本次命中（P2-c）。持久化延迟不进入检索热路径；
+// 使用 WithoutCancel 保留 workspace/trace values，同时设置短超时避免后台泄漏。
 func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, chunks []biz.KnowledgeChunk) {
 	if r == nil || r.accessLog == nil || len(chunks) == 0 {
 		return
@@ -110,12 +115,17 @@ func (r *Retriever) logAccess(ctx context.Context, q biz.KnowledgeSearchQuery, c
 	if len(entries) == 0 {
 		return
 	}
-	if err := r.accessLog.LogAccess(ctx, entries); err != nil {
-		r.lg.Warn("检索命中日志写入失败",
-			loggateway.StepID("knowledge.retriever.access_log_fail"),
-			loggateway.Str("collection_id", q.CollectionID),
-			loggateway.Err(err))
-	}
+	bg := context.WithoutCancel(ctx)
+	safego.Go(bg, "knowledge.retriever.access_log", func() {
+		writeCtx, cancel := context.WithTimeout(bg, 2*time.Second)
+		defer cancel()
+		if err := r.accessLog.LogAccess(writeCtx, entries); err != nil {
+			r.lg.Warn("检索命中日志写入失败",
+				loggateway.StepID("knowledge.retriever.access_log_fail"),
+				loggateway.Str("collection_id", q.CollectionID),
+				loggateway.Err(err))
+		}
+	})
 }
 
 // accessQueryHash 生成 access_log 的查询指纹（sha1 前 8 字节 hex）。
@@ -171,7 +181,9 @@ func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	if collectionLacksSemanticLayer(ctx, r.repo, q.CollectionID) {
 		return r.searchSparseFallback(ctx, q, topK, "collection has no semantic layer", nil)
 	}
+	embedStart := time.Now()
 	vec, err := r.embedQuery(ctx, q.Query)
+	observeSearchStage(searchStageEmbed, embedStart)
 	if err != nil {
 		if apierror.IsCode(err, apierror.CodeUnavailable) {
 			return r.searchSparseFallback(ctx, q, topK, "embed failed", err)
@@ -185,7 +197,9 @@ func (r *Retriever) search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 		searchQ.TopK = rerankCandidateLimit(q, topK)
 	}
 
+	denseStart := time.Now()
 	chunks, err := r.repo.SearchChunks(ctx, searchQ, vec)
+	observeSearchStage(searchStageDense, denseStart)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +228,9 @@ func (r *Retriever) searchSparseFallback(ctx context.Context, q biz.KnowledgeSea
 	r.lg.Warn("语义层不可用，降级 BM25 词法检索", fields...)
 
 	q.TopK = topK
+	sparseStart := time.Now()
 	chunks, err := ss.SearchChunksBM25(ctx, q)
+	observeSearchStage(searchStageSparse, sparseStart)
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainKnowledge, "retriever sparse fallback failed").WithCause(err)
 	}
@@ -251,10 +267,14 @@ func (r *Retriever) shouldRerank(q biz.KnowledgeSearchQuery) bool {
 }
 
 func (r *Retriever) embedQuery(ctx context.Context, query string) ([]float32, error) {
-	if te, ok := r.embedder.(TaskTypeEmbedder); ok {
+	return embedSearchQuery(ctx, r.embedder, query)
+}
+
+func embedSearchQuery(ctx context.Context, embedder QueryEmbedder, query string) ([]float32, error) {
+	if te, ok := embedder.(TaskTypeEmbedder); ok {
 		return te.EmbedWithTaskType(ctx, query, "RETRIEVAL_QUERY")
 	}
-	return r.embedder.EmbedSingle(ctx, query)
+	return embedder.EmbedSingle(ctx, query)
 }
 
 func rerankCandidateLimit(q biz.KnowledgeSearchQuery, topK int) int {

@@ -175,6 +175,11 @@ func (e *RelationExtractor) ExtractDoc(ctx context.Context, docID string) (Relat
 	}
 	links := make([]bizknowledge.SemanticLink, 0, len(triples))
 	for _, t := range triples {
+		// 关系必须能回指正文证据；LLM 自报 evidence 不在源文中时拒绝发布，
+		// 防止高 confidence 幻觉边进入扩散激活主图。
+		if !relationEvidenceSupported(body, t.Evidence) {
+			continue
+		}
 		relation := normalizePredicate(t.Predicate)
 		if relation == "" {
 			continue
@@ -368,6 +373,17 @@ func relationEdgeContext(subject, evidence string) string {
 		s += ev
 	}
 	return truncateRunes(s, relationContextMaxRunes)
+}
+
+func relationEvidenceSupported(body, evidence string) bool {
+	evidence = strings.TrimSpace(evidence)
+	if utf8.RuneCountInString(evidence) < 2 {
+		return false
+	}
+	normalize := func(s string) string {
+		return strings.Join(strings.Fields(strings.ToLower(s)), " ")
+	}
+	return strings.Contains(normalize(body), normalize(evidence))
 }
 
 // ── 宾语实体 → 文档解析 ───────────────────────────────────────────────────

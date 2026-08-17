@@ -1,1 +1,1 @@
-{"code":400, "reason":"VALIDATOR", "message":"missing required field: step_index", "metadata":{}}
+{"executionId":"e5bbbe96-3003-43d4-9a13-205af6993a40", "stepIndex":0, "stateSnapshot":null, "nodeId":"diagnose"}

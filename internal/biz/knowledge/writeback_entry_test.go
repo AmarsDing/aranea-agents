@@ -507,3 +507,18 @@ func TestMentionNeedles_MultiKey(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveEntryForFact_AmbiguousAliasFallsBackToReviewableJournal(t *testing.T) {
+	u := NewUsecaseFromRepo(noOpMockRepo())
+	u.resolveIndex = &stubResolveIndex{candidates: []ResolveDocCandidate{
+		{DocID: "d1", RelPath: "entries/apple-company.md", Title: "Apple Inc.", Aliases: []string{"Apple"}},
+		{DocID: "d2", RelPath: "entries/apple-fruit.md", Title: "Apple fruit", Aliases: []string{"Apple"}},
+	}}
+	rel, title := u.resolveEntryForFact(context.Background(), Collection{ID: "c1"}, WriteBackFact{
+		Statement: "Apple 发布了新产品",
+		Tags:      []string{"Apple"},
+	})
+	if rel != "" || title != "" {
+		t.Fatalf("ambiguous alias must not choose an arbitrary entry: rel=%q title=%q", rel, title)
+	}
+}

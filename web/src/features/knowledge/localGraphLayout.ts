@@ -1,42 +1,6 @@
-// localGraphLayout（SP2 §SP2-8）：局部图谱 BFS 邻域裁剪 + 轻量 2D 力导向布局（纯函数，≤200 节点）。
+// localGraphLayout（SP2 §SP2-8）：局部图谱轻量 2D 力导向布局（纯函数，≤200 节点）。
+// B4：邻域 BFS 裁剪已移至服务端 ListDocumentNeighborhood（大库免全图传输），前端不再保留 bfsNeighborhood。
 import type { CollectionGraphEdge, CollectionGraphNode } from './types';
-
-/** 以 rootId 为根 BFS 裁剪 N 跳邻域（无向遍历——反链/出链都要可达）。 */
-export function bfsNeighborhood(
-  nodes: CollectionGraphNode[],
-  edges: CollectionGraphEdge[],
-  rootId: string,
-  hops: number,
-): { nodes: CollectionGraphNode[]; edges: CollectionGraphEdge[] } {
-  if (!rootId || hops <= 0) return { nodes: [], edges: [] };
-  const adj = new Map<string, string[]>();
-  const addEdge = (a: string, b: string) => {
-    const list = adj.get(a);
-    if (list) list.push(b);
-    else adj.set(a, [b]);
-  };
-  for (const e of edges) {
-    addEdge(e.source, e.target);
-    addEdge(e.target, e.source);
-  }
-  const seen = new Set<string>([rootId]);
-  let frontier = [rootId];
-  for (let h = 0; h < hops && frontier.length; h++) {
-    const next: string[] = [];
-    for (const id of frontier) {
-      for (const nb of adj.get(id) ?? []) {
-        if (!seen.has(nb)) {
-          seen.add(nb);
-          next.push(nb);
-        }
-      }
-    }
-    frontier = next;
-  }
-  const ns = nodes.filter((n) => seen.has(n.doc_id));
-  const es = edges.filter((e) => seen.has(e.source) && seen.has(e.target));
-  return { nodes: ns, edges: es };
-}
 
 export type LayoutPoint = { x: number; y: number };
 

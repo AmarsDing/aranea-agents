@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -83,7 +84,7 @@ func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery,
 	if modeOverride != "" && modeOverride != HybridAuto {
 		mode = modeOverride
 	} else {
-		mode = a.selectMode(complexity)
+		mode = a.selectModeForQuery(q, complexity)
 	}
 
 	used := RewriteNone
@@ -258,6 +259,21 @@ func (a *AdaptiveRouter) selectMode(complexity QueryComplexity) HybridSearchMode
 	default:
 		return HybridDense
 	}
+}
+
+var (
+	exactIdentifierQueryRe = regexp.MustCompile(`(?i)^[a-z0-9]+(?:[-_.:][a-z0-9]+)+$`)
+	uppercaseTokenQueryRe  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{2,}$`)
+)
+
+func (a *AdaptiveRouter) selectModeForQuery(q biz.KnowledgeSearchQuery, complexity QueryComplexity) HybridSearchMode {
+	query := strings.TrimSpace(q.Query)
+	if ClassifySearchIntent(query) == IntentInstant ||
+		exactIdentifierQueryRe.MatchString(query) ||
+		uppercaseTokenQueryRe.MatchString(query) {
+		return HybridSparse
+	}
+	return a.selectMode(complexity)
 }
 
 func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {

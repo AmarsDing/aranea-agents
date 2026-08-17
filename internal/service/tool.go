@@ -536,6 +536,7 @@ func (s *ToolService) ListToolGrants(ctx context.Context, req *v1.ListToolGrants
 			ToolKey:   grants[i].ToolKey,
 			GrantedBy: grants[i].GrantedBy,
 			CreatedAt: grants[i].CreatedAt,
+			ExpiresAt: grants[i].ExpiresAt,
 		})
 	}
 	return &v1.ListToolGrantsResponse{Items: items}, nil

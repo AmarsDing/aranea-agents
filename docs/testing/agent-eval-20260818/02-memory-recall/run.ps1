@@ -17,16 +17,20 @@ $plantedTerms = @("张伟","李明","王芳","小赵","刘洋","CE6857","SW-Core
 $abstainWords = @("没有记录","不知道","没有告诉","无法确认","不清楚","不了解","没有提到","未曾","不记得","没有相关","无法得知","没有收到")
 
 # ---- B-00 探针 agent ----
-$r = Api-Get "/v1/agents/$agentKey"
-if ($r.Code -ne "200") {
-    $create = @{ agent_key = $agentKey; display_name = "评测-记忆探针"; provider = "deepseek"; model = "deepseek-v4-flash"; agent_description = "agent-eval-20260818 域B专用，测后清理"; dialog_mode = "default"; requirement_clarification_enabled = $false }
+# 注意：GET /v1/agents/{id} 只认 UUID，按 key 查需走列表端点过滤。
+$rList = Api-Get "/v1/agents?page_size=200"
+$existing = @($rList.Body.items) | Where-Object { $_.agentKey -eq $agentKey } | Select-Object -First 1
+if (-not $existing) {
+    # 注意：开关必须走 settings 子对象（CreateAgentRequest.settings），顶层字段会被静默忽略。
+    # clarification_enabled 不在 proto 中，需建后 DB 补丁（见 README 或评测记录）。
+    $create = @{ agent_key = $agentKey; display_name = "评测-记忆探针"; provider = "deepseek"; model = "deepseek-v4-flash"; agent_description = "agent-eval-20260818 域B专用，测后清理"; settings = @{ intent_pass_enabled = $false } }
     $r = Api-Post "/v1/agents" $create -OutFile (Join-Path $ev "b00-create-agent.json")
     Record $M "B-00" "创建 eval agent" ($(if ($r.Code -eq "200") { "PASS" } else { "FAIL" })) "code=$($r.Code)" $r.Ms
+    $agentId = $r.Body.id
 } else {
     Record $M "B-00" "eval agent 已存在复用" "PASS" "exists" 0
+    $agentId = $existing.id
 }
-$agentId = $r.Body.id
-if (-not $agentId) { $agentId = (Api-Get "/v1/agents/$agentKey").Body.id }
 
 # ---- B07 植入前 prompt 基线 ----
 $rPre = Api-Get "/v1/agents/$agentKey/system-prompt/preview" -OutFile (Join-Path $ev "b07-prompt-before.json")

@@ -235,6 +235,14 @@ message ListCollectionGraphResponse {
   repeated CollectionGraphEdge edges = 2;
 }
 
+// ListDocumentNeighborhoodRequest asks for the N-hop undirected neighborhood
+// subgraph around one document (SP2-8 右栏局部图). Server-side BFS over the
+// collection link graph avoids full-graph transfer for large vaults.
+message ListDocumentNeighborhoodRequest {
+  string doc_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 hops = 2;  // BFS depth (undirected); <=0 = default 2, capped at 5
+}
+
 // BlockBacklink is one inbound reference edge to a block/document (SP1-E).
 // Block-granular: a document backlink list is the aggregate of its blocks' edges.
 message BlockBacklink {
@@ -680,6 +688,14 @@ service KnowledgeService {
   rpc ListCollectionGraph(ListCollectionGraphRequest) returns (ListCollectionGraphResponse) {
     option (google.api.http) = {
       get: "/v1/knowledge/vaults/{collection_id}/graph"
+    };
+  }
+  // ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+  // of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+  // but only the small vicinity is transferred (large-vault friendly).
+  rpc ListDocumentNeighborhood(ListDocumentNeighborhoodRequest) returns (ListCollectionGraphResponse) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{doc_id}/neighborhood"
     };
   }
   // ListBlockBacklinks returns block-level inbound references (SP1-E): context

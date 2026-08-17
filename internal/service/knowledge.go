@@ -59,7 +59,7 @@ var (
 	knowledgeSearchDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "aranea_knowledge_search_duration_seconds",
 		Help:    "Duration of knowledge search requests.",
-		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5},
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
 )
 
@@ -92,6 +92,9 @@ type KnowledgeService struct {
 	linkIndex *bizknowledge.LinkIndex
 	// rebuildRuns SP1-H 块索引重建在途集合门（单进程部署 N-1；value 恒为 struct{}）。
 	rebuildRuns sync.Map
+	// reembedRuns 文档级重嵌入在途门；自动修复、人工重嵌入和语义层启用共用，
+	// 防止同一文档并发执行 delete-old/insert-new。
+	reembedRuns sync.Map
 	agentMem    *bizknowledge.AgentMemoryProjector
 	// writeBackGraph 写回/晋升图谱钩子（2026-08-16 装配）：构造参数透传，biz 写回
 	// 管线经 SetWriteBackGraph 收口（词条页实体共现 + typed 关系抽取）；service 晋升
@@ -148,13 +151,13 @@ func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder knowledge.Embedder, 
 		admin = a
 	}
 	s := &KnowledgeService{
-		uc:            uc,
-		embedder:      embedder,
-		embedderAdmin: admin,
-		search:        searchDeps,
-		organizer:     organizer,
-		extractors:    extractors,
-		assets:        assets,
+		uc:             uc,
+		embedder:       embedder,
+		embedderAdmin:  admin,
+		search:         searchDeps,
+		organizer:      organizer,
+		extractors:     extractors,
+		assets:         assets,
 		eventBus:       eventBus,
 		systemSetting:  systemSetting,
 		writeBackGraph: writeBackGraph,
@@ -666,6 +669,11 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				loggateway.Err(err),
 			)
 		}
+		// 数据库上传路径不经过 vault sync；摄取完成后显式触发实体共现与 typed
+		// 关系抽取，避免“可检索但图谱孤立”。钩子异步且 content_hash 幂等。
+		s.triggerKnowledgeGraph(ingestCtx, col, []bizknowledge.PromoteTouchedDoc{{
+			DocID: doc.ID, Created: true,
+		}})
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
 		flow.LogDone("knowledge.ingest.done", "知识摄取完成",
 			event.P("doc_id", doc.ID),

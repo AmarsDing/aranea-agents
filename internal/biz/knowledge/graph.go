@@ -110,3 +110,71 @@ func (u *Usecase) ListCollectionGraph(ctx context.Context, collectionID string, 
 	}
 	return g, nil
 }
+
+// ── SP2-8：文档邻域子图（右栏局部图数据源） ─────────────────────────────
+
+// 邻域 BFS 跳数：默认 2、上限 5（与右栏局部图 slider 范围一致）。
+const (
+	defaultNeighborhoodHops = 2
+	maxNeighborhoodHops     = 5
+)
+
+// ListDocumentNeighborhood 返回以 docID 为根的 N 跳无向邻域子图（SP2-8 右栏局部图）：
+// 复用全量图谱组装后服务端 BFS 裁剪，仅向客户端传输小邻域（大库免全图传输）；
+// 节点 Degree 保留全图口径（与此前前端客户端 BFS 的展示语义一致）。
+func (u *Usecase) ListDocumentNeighborhood(ctx context.Context, docID string, hops int) (*CollectionGraph, error) {
+	if err := u.requireRepo(); err != nil {
+		return nil, err
+	}
+	doc, err := u.GetDocument(ctx, docID)
+	if err != nil {
+		return nil, err
+	}
+	if hops <= 0 {
+		hops = defaultNeighborhoodHops
+	}
+	if hops > maxNeighborhoodHops {
+		hops = maxNeighborhoodHops
+	}
+	full, err := u.ListCollectionGraph(ctx, doc.CollectionID, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	return bfsNeighborhood(full, doc.ID, hops), nil
+}
+
+// bfsNeighborhood 以 rootID 为根无向 BFS 裁剪 N 跳邻域（反链/出链均可达）；
+// root 不在节点集时返回仅含可达边的空图（实际 root 恒在——由文档列表组装）。
+func bfsNeighborhood(g *CollectionGraph, rootID string, hops int) *CollectionGraph {
+	adj := make(map[string][]string, len(g.Edges)*2)
+	for _, e := range g.Edges {
+		adj[e.Source] = append(adj[e.Source], e.Target)
+		adj[e.Target] = append(adj[e.Target], e.Source)
+	}
+	seen := map[string]bool{rootID: true}
+	frontier := []string{rootID}
+	for h := 0; h < hops && len(frontier) > 0; h++ {
+		var next []string
+		for _, id := range frontier {
+			for _, nb := range adj[id] {
+				if !seen[nb] {
+					seen[nb] = true
+					next = append(next, nb)
+				}
+			}
+		}
+		frontier = next
+	}
+	out := &CollectionGraph{}
+	for _, n := range g.Nodes {
+		if seen[n.DocID] {
+			out.Nodes = append(out.Nodes, n)
+		}
+	}
+	for _, e := range g.Edges {
+		if seen[e.Source] && seen[e.Target] {
+			out.Edges = append(out.Edges, e)
+		}
+	}
+	return out
+}

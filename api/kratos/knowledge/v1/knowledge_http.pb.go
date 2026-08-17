@@ -35,6 +35,7 @@ const OperationKnowledgeServiceListCollectionGraph = "/kratos.knowledge.v1.Knowl
 const OperationKnowledgeServiceListCollections = "/kratos.knowledge.v1.KnowledgeService/ListCollections"
 const OperationKnowledgeServiceListDanglingLinks = "/kratos.knowledge.v1.KnowledgeService/ListDanglingLinks"
 const OperationKnowledgeServiceListDocumentLinks = "/kratos.knowledge.v1.KnowledgeService/ListDocumentLinks"
+const OperationKnowledgeServiceListDocumentNeighborhood = "/kratos.knowledge.v1.KnowledgeService/ListDocumentNeighborhood"
 const OperationKnowledgeServiceListDocuments = "/kratos.knowledge.v1.KnowledgeService/ListDocuments"
 const OperationKnowledgeServiceListEntityMergeSuggestions = "/kratos.knowledge.v1.KnowledgeService/ListEntityMergeSuggestions"
 const OperationKnowledgeServiceListGovernanceProposals = "/kratos.knowledge.v1.KnowledgeService/ListGovernanceProposals"
@@ -87,6 +88,10 @@ type KnowledgeServiceHTTPServer interface {
 	ListDanglingLinks(context.Context, *ListDanglingLinksRequest) (*ListDanglingLinksResponse, error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(context.Context, *ListDocumentLinksRequest) (*ListDocumentLinksResponse, error)
+	// ListDocumentNeighborhood ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+	// of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+	// but only the small vicinity is transferred (large-vault friendly).
+	ListDocumentNeighborhood(context.Context, *ListDocumentNeighborhoodRequest) (*ListCollectionGraphResponse, error)
 	ListDocuments(context.Context, *ListDocumentsRequest) (*ListDocumentsResponse, error)
 	// ListEntityMergeSuggestions ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
@@ -164,6 +169,7 @@ func RegisterKnowledgeServiceHTTPServer(s *http.Server, srv KnowledgeServiceHTTP
 	r.POST("/v1/knowledge/vaults/{collection_id}/docs", _KnowledgeService_CreateVaultDocument0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{id}/links", _KnowledgeService_ListDocumentLinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/vaults/{collection_id}/graph", _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv))
+	r.GET("/v1/knowledge/documents/{doc_id}/neighborhood", _KnowledgeService_ListDocumentNeighborhood0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/documents/{doc_id}/block-backlinks", _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/blocks/{block_id}/backlinks", _KnowledgeService_ListBlockBacklinks1_HTTP_Handler(srv))
 	r.GET("/v1/knowledge/collections/{id}/dangling-links", _KnowledgeService_ListDanglingLinks0_HTTP_Handler(srv))
@@ -592,6 +598,28 @@ func _KnowledgeService_ListCollectionGraph0_HTTP_Handler(srv KnowledgeServiceHTT
 	}
 }
 
+func _KnowledgeService_ListDocumentNeighborhood0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListDocumentNeighborhoodRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationKnowledgeServiceListDocumentNeighborhood)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListDocumentNeighborhood(ctx, req.(*ListDocumentNeighborhoodRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ListCollectionGraphResponse)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _KnowledgeService_ListBlockBacklinks0_HTTP_Handler(srv KnowledgeServiceHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in ListBlockBacklinksRequest
@@ -962,6 +990,10 @@ type KnowledgeServiceHTTPClient interface {
 	ListDanglingLinks(ctx context.Context, req *ListDanglingLinksRequest, opts ...http.CallOption) (rsp *ListDanglingLinksResponse, err error)
 	// ListDocumentLinks Document relations with source-type annotation (P3 关联区, R-3).
 	ListDocumentLinks(ctx context.Context, req *ListDocumentLinksRequest, opts ...http.CallOption) (rsp *ListDocumentLinksResponse, err error)
+	// ListDocumentNeighborhood ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+	// of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+	// but only the small vicinity is transferred (large-vault friendly).
+	ListDocumentNeighborhood(ctx context.Context, req *ListDocumentNeighborhoodRequest, opts ...http.CallOption) (rsp *ListCollectionGraphResponse, err error)
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *ListDocumentsResponse, err error)
 	// ListEntityMergeSuggestions ListEntityMergeSuggestions lists entity merge candidates (G5-F B11):
 	// normalization conflict groups (same name_norm, different display name)
@@ -1232,6 +1264,22 @@ func (c *KnowledgeServiceHTTPClientImpl) ListDocumentLinks(ctx context.Context, 
 	pattern := "/v1/knowledge/documents/{id}/links"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationKnowledgeServiceListDocumentLinks))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListDocumentNeighborhood ListDocumentNeighborhood returns the N-hop undirected neighborhood subgraph
+// of one document (SP2-8 右栏局部图): same node/edge shape as the full graph,
+// but only the small vicinity is transferred (large-vault friendly).
+func (c *KnowledgeServiceHTTPClientImpl) ListDocumentNeighborhood(ctx context.Context, in *ListDocumentNeighborhoodRequest, opts ...http.CallOption) (*ListCollectionGraphResponse, error) {
+	var out ListCollectionGraphResponse
+	pattern := "/v1/knowledge/documents/{doc_id}/neighborhood"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationKnowledgeServiceListDocumentNeighborhood))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

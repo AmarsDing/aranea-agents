@@ -20,11 +20,18 @@ const (
 	syncLogsFile            = "sync-logs.jsonl"
 	migrationCheckpointFile = "migration-checkpoint.json"
 	logosDirName            = "logos"
+	defaultLogoCacheTTL     = 30 * time.Second
 )
+
+// logoCacheTTL 是 logos/ 目录扫描结果的内存 TTL。列表热路径禁止对每个
+// provider 做 os.Stat（Docker Desktop 绑定卷上 188 次 Stat ≈ 400–750ms）。
+// 测试可把该值改为 0，迫使每次 HasProviderLogo 重新扫描。
+var logoCacheTTL = defaultLogoCacheTTL
 
 // Store 模型目录文件存储。LoadDirectory 走 mtime+size 失效缓存（PERF-F1：
 // current.json 达 2.88MB，每请求全量读盘+反序列化导致 providers 接口 ~510ms）；
 // 缓存命中时返回共享只读对象——调用方不得修改返回值（读路径均为只读组装）。
+// logo 存在性另走 cacheLogoIDs（OPT-1）：一次 ReadDir，HasProviderLogo 只查 map。
 type Store struct {
 	root string
 	lg   loggateway.Logger
@@ -35,6 +42,10 @@ type Store struct {
 	cacheMod  time.Time
 	cacheSize int64
 	cacheOK   bool
+
+	cacheLogoIDs map[string]struct{}
+	cacheLogosAt time.Time
+	cacheLogosOK bool
 }
 
 func NewStore(rootDir string, lg loggateway.Logger) *Store {
@@ -119,12 +130,67 @@ func (s *Store) ReadProviderLogo(providerID string) ([]byte, error) {
 }
 
 func (s *Store) HasProviderLogo(providerID string) bool {
-	path := s.ProviderLogoPath(providerID)
-	if path == "" {
+	id := safeProviderLogoID(providerID)
+	if id == "" {
 		return false
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	s.cacheMu.RLock()
+	if s.logoCacheFreshLocked() {
+		_, has := s.cacheLogoIDs[id]
+		s.cacheMu.RUnlock()
+		return has
+	}
+	s.cacheMu.RUnlock()
+	s.refreshLogoCache()
+	s.cacheMu.RLock()
+	_, has := s.cacheLogoIDs[id]
+	s.cacheMu.RUnlock()
+	return has
+}
+
+func (s *Store) logoCacheFreshLocked() bool {
+	return s.cacheLogosOK && time.Since(s.cacheLogosAt) < logoCacheTTL
+}
+
+func (s *Store) refreshLogoCache() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.logoCacheFreshLocked() {
+		return
+	}
+	s.scanLogosUnlocked()
+}
+
+func (s *Store) invalidateLogoCache() {
+	s.cacheMu.Lock()
+	s.cacheLogosOK = false
+	s.cacheLogoIDs = nil
+	s.cacheMu.Unlock()
+}
+
+func (s *Store) scanLogosUnlocked() {
+	ids := make(map[string]struct{})
+	entries, err := os.ReadDir(s.LogosDir())
+	if err == nil {
+		for _, ent := range entries {
+			if ent.IsDir() {
+				continue
+			}
+			name := ent.Name()
+			ext := filepath.Ext(name)
+			if !strings.EqualFold(ext, ".svg") {
+				continue
+			}
+			id := strings.TrimSuffix(name, ext)
+			if safeProviderLogoID(id) == "" {
+				continue
+			}
+			ids[id] = struct{}{}
+		}
+	}
+	s.cacheLogoIDs = ids
+	s.cacheLogosAt = time.Now()
+	s.cacheLogosOK = true
 }
 
 func (s *Store) LoadPolicy() (Policy, error) {

@@ -93,6 +93,9 @@ func SyncProviderLogos(ctx context.Context, store *Store, cat Directory, logosBa
 			}
 		}
 	}
+	if res.Removed > 0 {
+		store.invalidateLogoCache()
+	}
 	return res
 }
 
@@ -108,7 +111,11 @@ func fetchAndSaveLogo(ctx context.Context, base string, store *Store, providerID
 	if err := os.WriteFile(tmp, body, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, store.ProviderLogoPath(providerID))
+	if err := os.Rename(tmp, store.ProviderLogoPath(providerID)); err != nil {
+		return err
+	}
+	store.invalidateLogoCache()
+	return nil
 }
 
 func downloadLogoSVG(ctx context.Context, base, logoID string) ([]byte, error) {

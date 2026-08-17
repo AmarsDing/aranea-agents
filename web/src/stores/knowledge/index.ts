@@ -9,10 +9,12 @@ import {
   getCollection,
   ingestDocument,
   listBlockBacklinks,
+  listCollectionGraph,
   listCollections,
   listDanglingLinks,
   listDocuments,
   listDocumentLinks,
+  listDocumentNeighborhood,
   listVaultTree,
   moveDocument,
   moveDocumentToDir,
@@ -25,6 +27,7 @@ import {
 } from '../../features/knowledge/api';
 import type {
   BlockBacklink,
+  CollectionGraph,
   CreateCollectionInput,
   DanglingLink,
   IngestDocumentInput,
@@ -49,6 +52,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   // TECH-DEBT: no TTL or invalidation — long-running sessions may serve stale data.
   // Consider adding a per-key expiry or a "lastFetchedAt" timestamp.
   const documentsByCollection = ref<Record<string, KnowledgeDocument[]>>({});
+  /** 文档列表是否被 limit 截断（total > 已加载），键 collection_id；截断时前端即时搜索覆盖率不全。 */
+  const documentsTruncatedByCollection = ref<Record<string, boolean>>({});
   const loading = ref(false);
   const embedderConfig = ref<EmbedderConfig | null>(null);
   /** P3 资源管理器：文件夹直接子节点缓存，键 `${collectionId}|${prefix}`。 */
@@ -59,6 +64,29 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   const backlinksByDoc = ref<Record<string, BlockBacklink[]>>({});
   /** SP1-I：悬空链缓存，键 collection_id。 */
   const danglingByCollection = ref<Record<string, DanglingLink[]>>({});
+  /** 全库图谱共享缓存，键 collection_id（仅缓存无过滤全量图：linkTypes=[] + pathPrefix=''）。
+   *  全屏 3D 图谱专用；右栏局部图走 loadDocumentNeighborhood（服务端 BFS 小载荷）。 */
+  const graphsByCollection = ref<Record<string, CollectionGraph>>({});
+  /** SP2-8 右栏局部图：文档 N 跳邻域缓存，键 `${docId}|${hops}`（小载荷，按跳数分档）。 */
+  const neighborhoodsByKey = ref<Record<string, CollectionGraph>>({});
+
+  /** 加载库图谱：无过滤（全量）结果进共享缓存；带过滤条件的查询透传不污染缓存。 */
+  async function loadCollectionGraph(
+    collectionId: string,
+    linkTypes: string[] = [],
+    pathPrefix = '',
+    force = false,
+  ): Promise<CollectionGraph> {
+    const cacheable = linkTypes.length === 0 && pathPrefix === '';
+    if (!force && cacheable && graphsByCollection.value[collectionId]) {
+      return graphsByCollection.value[collectionId];
+    }
+    const g = await listCollectionGraph(collectionId, linkTypes, pathPrefix);
+    if (cacheable) {
+      graphsByCollection.value[collectionId] = g;
+    }
+    return g;
+  }
 
   function treeKey(collectionId: string, prefix: string): string {
     return `${collectionId}|${prefix}`;
@@ -114,7 +142,19 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return items;
   }
 
-  /** SP1-I：图谱增量（I-4）后失效相关缓存——反链（受影响文档）与悬空链（受影响集合）。 */
+  /** SP2-8：加载文档 N 跳邻域子图（服务端 BFS）；按 `${docId}|${hops}` 缓存。 */
+  async function loadDocumentNeighborhood(docId: string, hops = 2, force = false): Promise<CollectionGraph> {
+    const key = `${docId}|${hops}`;
+    if (!force && neighborhoodsByKey.value[key]) {
+      return neighborhoodsByKey.value[key];
+    }
+    const g = await listDocumentNeighborhood(docId, hops);
+    neighborhoodsByKey.value[key] = g;
+    return g;
+  }
+
+  /** SP1-I：图谱增量（I-4）后失效相关缓存——反链（受影响文档）与悬空链（受影响集合）。
+   *  同步失效对应集合的图谱缓存（ graphsByCollection ），避免全屏/右栏拉取到脏图。 */
   function invalidateLinkCaches(docIds: string[], collectionIds: string[]) {
     for (const id of docIds) {
       delete linksByDoc.value[id];
@@ -122,6 +162,11 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     }
     for (const id of collectionIds) {
       delete danglingByCollection.value[id];
+      delete graphsByCollection.value[id];
+    }
+    // 邻域子图随任一连边增量整体失效（小载荷重拉廉价，不追踪跨文档归属）。
+    if (docIds.length || collectionIds.length) {
+      neighborhoodsByKey.value = {};
     }
   }
 
@@ -149,6 +194,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     collections.value = collections.value.filter((c) => c.id !== id);
     delete documentsByCollection.value[id];
     delete danglingByCollection.value[id];
+    delete graphsByCollection.value[id];
+    neighborhoodsByKey.value = {};
     invalidateTree(id);
     collectionsTotal.value = Math.max(0, collectionsTotal.value - 1);
   }
@@ -165,6 +212,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
   ): Promise<ListDocumentsResult> {
     const result = await listDocuments(collectionId, params);
     documentsByCollection.value[collectionId] = result.items;
+    documentsTruncatedByCollection.value[collectionId] = result.total > result.items.length;
     return result;
   }
 
@@ -200,6 +248,8 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     }
     delete linksByDoc.value[id];
     delete backlinksByDoc.value[id];
+    // 文档删除改变所在集合连边拓扑：邻域缓存整体失效（小载荷重拉廉价）。
+    neighborhoodsByKey.value = {};
     invalidateTree(collectionId);
   }
 
@@ -265,18 +315,23 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     collections,
     collectionsTotal,
     documentsByCollection,
+    documentsTruncatedByCollection,
     loading,
     embedderConfig,
     treeChildren,
     linksByDoc,
     backlinksByDoc,
     danglingByCollection,
+    graphsByCollection,
+    neighborhoodsByKey,
     invalidateTree,
     invalidateLinkCaches,
     loadVaultTree,
     loadDocumentLinks,
     loadBlockBacklinks,
     loadDanglingLinks,
+    loadCollectionGraph,
+    loadDocumentNeighborhood,
     loadCollections,
     addCollection,
     removeCollection,

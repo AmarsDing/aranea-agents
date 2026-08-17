@@ -68,14 +68,7 @@ func (s *KnowledgeService) PromoteBlocks(ctx context.Context, req *v1.PromoteBlo
 	// 同步循环，实体共现/typed 关系抽取必须在此显式触发，否则晋升文档在图谱中
 	// 恒为孤立节点。必须在 chunk 重放之后（与写回同序）；失败仅 Warn——钩子
 	// content_hash 幂等，下次写回/热文档扫描自然重试。
-	if s.writeBackGraph != nil && len(res.TouchedTargetDocs) > 0 {
-		if gerr := s.writeBackGraph(ctx, target, res.TouchedTargetDocs); gerr != nil {
-			s.lg.Warn("晋升图谱抽取失败（晋升已落库，幂等闸保证后续重试）",
-				loggateway.StepID("knowledge.block.promote"),
-				loggateway.Str("collection_id", target.ID),
-				loggateway.Err(gerr))
-		}
-	}
+	s.triggerKnowledgeGraph(ctx, target, res.TouchedTargetDocs)
 	flow.LogDone("knowledge.block.promote", "知识块晋升完成",
 		event.P("target_collection_id", target.ID),
 		event.P("created_blocks", len(res.CreatedBlocks)),

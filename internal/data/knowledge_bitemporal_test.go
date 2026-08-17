@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
 	"aranea-agents/internal/data/testhelper"
 	"aranea-agents/pkg/loggateway"
@@ -48,6 +49,9 @@ func assertKnowledgeLinksBitemporalShape(t *testing.T, db interface {
 	if !strings.Contains(def, "relation") {
 		t.Errorf("knowledge_links_unique = %q, want relation in key", def)
 	}
+	if !strings.Contains(def, "valid_to IS NULL") {
+		t.Errorf("knowledge_links_unique = %q, want active-row partial uniqueness", def)
+	}
 	// access_log 表存在。
 	var reg *string
 	if err := db.QueryRowContext(ctx,
@@ -56,6 +60,46 @@ func assertKnowledgeLinksBitemporalShape(t *testing.T, db interface {
 	}
 	if reg == nil || *reg == "" {
 		t.Error("knowledge_access_log missing")
+	}
+}
+
+func TestKnowledgeRepo_ReplaceLinksPreservesHistory(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	ctx := context.Background()
+	if _, err := repo.CreateCollection(ctx, biz.KnowledgeCollection{ID: "bt-links", Name: "bt"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"src", "old", "new"} {
+		if _, err := repo.CreateDocument(ctx, biz.KnowledgeDocument{
+			ID: id, CollectionID: "bt-links", Source: id + ".md", Status: "indexed",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.ReplaceLinks(ctx, "bt-links", "src", bizknowledge.LinkTypeExplicit, []bizknowledge.Link{
+		{TargetDocID: "old", Context: "old link", Weight: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.ReplaceLinks(ctx, "bt-links", "src", bizknowledge.LinkTypeExplicit, []bizknowledge.Link{
+		{TargetDocID: "new", Context: "new link", Weight: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var oldClosed, newActive int
+	if err := repo.data.Postgres().QueryRowContext(ctx,
+		`SELECT count(*) FROM knowledge_links
+		 WHERE doc_id='src' AND target_doc_id='old' AND valid_to IS NOT NULL`).Scan(&oldClosed); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.data.Postgres().QueryRowContext(ctx,
+		`SELECT count(*) FROM knowledge_links
+		 WHERE doc_id='src' AND target_doc_id='new' AND valid_to IS NULL`).Scan(&newActive); err != nil {
+		t.Fatal(err)
+	}
+	if oldClosed != 1 || newActive != 1 {
+		t.Fatalf("oldClosed=%d newActive=%d, want 1/1", oldClosed, newActive)
 	}
 }
 
@@ -177,7 +221,7 @@ func TestMigration20261220_UpgradesLegacyLinks(t *testing.T) {
 	if validFrom.Sub(past) > time.Second || past.Sub(validFrom) > time.Second {
 		t.Errorf("valid_from = %v, want backfilled from created_at %v", validFrom, past)
 	}
-// 幂等重跑。
+	// 幂等重跑。
 	run()
 }
 

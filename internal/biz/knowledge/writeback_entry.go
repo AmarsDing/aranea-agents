@@ -91,19 +91,30 @@ func (u *Usecase) resolveEntryForFact(ctx context.Context, col Collection, f Wri
 				loggateway.Err(err),
 			)
 		} else {
-			keys := make(map[string]ResolveDocCandidate) // normKey → 词条候选
+			keys := make(map[string]map[string]ResolveDocCandidate) // normKey → docID → 词条候选
 			for _, c := range cands {
 				if !strings.HasPrefix(c.RelPath, writeBackEntryDir+"/") {
 					continue
 				}
 				for _, k := range entryCandidateKeys(c) {
-					if _, dup := keys[k]; !dup {
-						keys[k] = c
+					if keys[k] == nil {
+						keys[k] = make(map[string]ResolveDocCandidate)
 					}
+					keys[k][c.DocID] = c
 				}
 			}
 			for _, t := range tags {
-				if c, ok := keys[strings.ToLower(t)]; ok {
+				matches := keys[strings.ToLower(t)]
+				if len(matches) > 1 {
+					u.lg.Warn("词条别名存在歧义，跳过自动归并并回退日记",
+						loggateway.StepID("knowledge.writeback.entry_ambiguous"),
+						loggateway.Str("collection_id", col.ID),
+						loggateway.Str("tag", t),
+						loggateway.Int("candidate_count", len(matches)),
+					)
+					return "", ""
+				}
+				for _, c := range matches {
 					display := strings.TrimSpace(c.Title)
 					if display == "" {
 						display = mentionNeedle(c.RelPath, "")

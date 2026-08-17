@@ -24,6 +24,27 @@ export function useKnowledgePage() {
   const knowledgeStore = useKnowledgeStore();
   const selectedId = ref('');
   const docsLoading = ref(false);
+  /** P3-2 即时区前端索引上限（设计上限 10k 内存索引；树导航为主时 2000 足够覆盖常见 vault）。 */
+  const DOCUMENTS_PAGE_LIMIT = 2000;
+
+  // ---------- C7：性能模式（关粒子/极光/降 blur，localStorage 持久化） ----------
+  const PERF_STORAGE_KEY = 'aranea.knowledge.performanceMode';
+  const performanceMode = ref(false);
+  try {
+    performanceMode.value = localStorage.getItem(PERF_STORAGE_KEY) === '1';
+  } catch {
+    // 忽略存储异常（如隐私模式），保持默认关闭。
+  }
+  watch(performanceMode, (v) => {
+    try {
+      localStorage.setItem(PERF_STORAGE_KEY, v ? '1' : '0');
+    } catch {
+      // 忽略存储异常。
+    }
+  });
+  function togglePerformanceMode() {
+    performanceMode.value = !performanceMode.value;
+  }
   const error = ref('');
   const unavailable = ref('');
   const createOpen = ref(false);
@@ -45,6 +66,10 @@ export function useKnowledgePage() {
   const collections = computed(() => knowledgeStore.collections);
   const loading = computed(() => knowledgeStore.loading);
   const documents = computed(() => knowledgeStore.documentsByCollection[selectedId.value] ?? []);
+  /** B5：文档列表被 2000 上限截断（total > 已加载），树导航不受影响但图谱/搜索可能不完整。 */
+  const documentsTruncated = computed(
+    () => Boolean(selectedId.value) && Boolean(knowledgeStore.documentsTruncatedByCollection[selectedId.value]),
+  );
   const selectedCollection = computed(() => collections.value.find((c) => c.id === selectedId.value));
   const docSourceMap = computed(() => {
     const map: Record<string, string> = {};
@@ -102,7 +127,7 @@ export function useKnowledgePage() {
     docsLoading.value = true;
     try {
       // P3-2 即时区前端索引：上限放宽到 2000（设计上限 10k 内存索引；树导航为主时 2000 足够覆盖常见 vault）。
-      await knowledgeStore.loadDocuments(selectedId.value, { limit: 2000 });
+      await knowledgeStore.loadDocuments(selectedId.value, { limit: DOCUMENTS_PAGE_LIMIT });
     } catch (e) {
       $q.notify({ type: 'negative', message: friendlyError(e) || '加载文档失败' });
     } finally {
@@ -750,6 +775,10 @@ export function useKnowledgePage() {
     selectedCollection,
     documents,
     docSourceMap,
+    documentsTruncated,
+    DOCUMENTS_PAGE_LIMIT,
+    performanceMode,
+    togglePerformanceMode,
     friendlyError,
     loading,
     docsLoading,

@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,15 +15,24 @@ import (
 // finalScore = 检索分 + beta * baseLevel(docID)；返回后记录 access_log。
 
 type stubAccessLogRepo struct {
-	scores  map[string]float64
-	logged  []bizknowledge.AccessLogEntry
-	scoreQ  []string // 收到的 docIDs
+	mu       sync.Mutex
+	scores   map[string]float64
+	logged   []bizknowledge.AccessLogEntry
+	scoreQ   []string // 收到的 docIDs
 	scoreCol string
 }
 
 func (s *stubAccessLogRepo) LogAccess(_ context.Context, entries []bizknowledge.AccessLogEntry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.logged = append(s.logged, entries...)
 	return nil
+}
+
+func (s *stubAccessLogRepo) loggedEntries() []bizknowledge.AccessLogEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]bizknowledge.AccessLogEntry(nil), s.logged...)
 }
 
 func (s *stubAccessLogRepo) BaseLevelScores(_ context.Context, collectionID string, docIDs []string) (map[string]float64, error) {
