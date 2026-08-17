@@ -18,6 +18,7 @@ var bizKeyToRegistryName = map[string]string{
 	"replace_content":     "file",
 	"diff_edit":           "file",
 	"patch_file":          "file",
+	"read_lints":          "read_lints",
 
 	// shell
 	"shell_exec": "hostexec",

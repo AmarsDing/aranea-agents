@@ -38,4 +38,13 @@ func TestDocVisibilityClauses(t *testing.T) {
 	if !strings.Contains(chunk, "owner_user_id = $5") || len(chunkArgs) != 1 || chunkArgs[0] != "7" {
 		t.Fatalf("user chunk = %q %v", chunk, chunkArgs)
 	}
+
+	both, bothArgs := docBothEndpointsVisibleClause(ctx, "$1", 3)
+	if !strings.Contains(both, "doc_id IN") || !strings.Contains(both, "target_doc_id IN") ||
+		!strings.Contains(both, "owner_user_id = $3") || len(bothArgs) != 1 || bothArgs[0] != "7" {
+		t.Fatalf("both endpoints = %q %v", both, bothArgs)
+	}
+	if c, a := docBothEndpointsVisibleClause(sys, "$1", 3); c != "" || a != nil {
+		t.Fatalf("system both endpoints = %q %v", c, a)
+	}
 }

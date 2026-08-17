@@ -1252,6 +1252,8 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 > **2026-08-14 移除**：`check_progress` 已从种子表与运行时删除（DEAD-1，系统推送模式 `checkAllTeamsCompleted` → `SynthesizeResults` → `ExecuteTurn` 取代 LLM 轮询）；存量库由 `syncRemovedBuiltinToolPatches` 启动时幂等软删。
 
 > **注意**：`message` 与 `subagents_*`（spawn/list/get/cancel）种子条目已补齐（默认停用，`subagents_cancel` 需确认），分类为 `orchestration` / `session`。
+>
+> `gemini_web_fetch` 种子 schema 与 live `Declaration` 一致为必填 `prompt`（URL 写在提示词里）；旧字段 `url` 仍由 `argnorm` 映射。存量库由 `syncBuiltinWebToolCatalogPatches` 刷 schema。
 
 ---
 
@@ -1323,19 +1325,22 @@ service.ProviderSet → NewToolService
 ```
 Agent 构建请求
   → BuildTRPCLLMAgent(ctx, ag, deps)
-    → loadEffectiveToolKeys(ctx, deps, agentID)  // 计算生效工具
-    → loadToolBuildCatalog(ctx, agentID, eff, deps) // 批量预载目录快照（2 条 SQL：IN 批量 + overrides，替代 3×N+1）
-    → buildToolsetsForAgent(ctx, ag, deps, plan) // 装配工具集（plan 打包共享快照）
-      → tooltrpc.BuildToolsets(ctx, cfg, lg)      // 桥接层
-        → tools.Assemble(ctx, assemblyCfg)        // 核心装配
-      → tools.ApplyDecorators(ts, cfg)            // 装饰器：超时+预算+缓存
-    → llmagent.WithToolSets(ts.ToolSets)           // 注入 ToolSet
-    → llmagent.WithTools(ts.Tools)                 // 注入 Tool
-    → llmagent.WithToolFilter(filter)              // 注入过滤
-    → llmagent.WithToolCallbacks(callbacks)        // 注入回调
-    → llmagent.WithToolCallRetryPolicy(policy)     // 注入重试策略
-    → llmagent.WithEnableParallelTools(true)       // 注入并行执行（默认开启）
+    → loadEffectiveToolKeys / loadToolBuildCatalog
+    → buildToolsetsForAgent
+      → tools.Assemble                         // 装配（不再单独套 argnorm/filenorm 包装）
+      → tools.ApplyDefaultDecorators           // 唯一 Call 入口：归一化 + 锁 + 预算 + 缓存
+    → llmagent.WithToolSets / WithTools / WithToolCallbacks / WithToolCallRetryPolicy
+    → llmagent.WithEnableParallelTools(true)
+
+一次 Call：
+  BeforeTool（JSON 修复 / 系统字段剥离 / 确认门）
+    → ToolDecorator.Call
+         NormalizeInvocation（hostexec + file + web/search 别名）
+         → 路径锁 / family 锁
+         → inner（git 仓写文件才进 worktree；否则活树）
 ```
+
+批执行（Spirit）：`BatchExecuteAssembledTools` 走同一 `CallableTool.Call`，清除 `IsolationStrategy` 且不复制 Wire worktree。`ParallelToolExecutor` 的 worktree 只给**自己写文件的 raw handler**。
 
 ### 7.1.1 工具装饰器（ToolDecorator）
 
@@ -1350,7 +1355,7 @@ Agent 构建请求
 | P0-G3 | 每次工具调用执行超时 | **回调链** `ToolsExecutionTimeoutSec`（0→10min）；装饰器 `Timeout=0` 不另加 60s。`plan_and_execute` 仍覆盖为 3min | `toolExecutionTimeoutHooks` + `ToolDecorator.applyTimeout` |
 | P0-D | 工具结果大小预算 + 截断/卸载 | 10KB（`DefaultResultBudget`）；超限优先卸载信封 | `ToolDecorator.truncateResult` |
 | P0-D2 | AfterTool 字符串兜底截断 | 50k runes；**仅未装饰工具**；跳过信封/预算覆盖/已截断标记 | `NewOutputSizeLimiterHook`（priority 60） |
-| P2-E | 确定性缓存 | 仅网络 ConcurrentSafe（`web_fetch`/search），默认 TTL 60s；file 族不缓存 | `IsCacheable` + `ToolDecorator.lookupCache/storeCache` |
+| P2-E | 确定性缓存 | 仅网络 ConcurrentSafe（`web_fetch`/search），默认 TTL 60s、invocation 作用域；file 族不缓存。BeforeTool `ResultCache` 对 `IsCacheable`/写/file 跳过，避免双缓存 | `IsCacheable` + `CatalogResultCacheAllowed` + `ToolDecorator.lookupCache/storeCache` |
 | P1-C | 工具安全分类 | 运行时名映射到 Registry；未知默认 Exclusive | `ClassifyTool(name)` |
 | P1-C2 | Exclusive 进程内互斥 | hostexec 族共享一把锁；文件写按 `file_name` 分锁；`list_file`/`search_*` 对目录树共享覆盖锁（与子路径写互斥，不同目录仍并行）；`read_file` 同路径共享 | `fileLockRequests` + `filePathLockTable` + `ToolDecorator.Call` |
 
@@ -1364,10 +1369,10 @@ Agent 构建请求
 **已知限制**：
 
 - DeferredManager 延迟加载的工具不经过装饰器（超时仍由回调链 `ToolsExecutionTimeoutSec` 覆盖；字符串结果由 AfterTool limiter 兜底截断）
-- ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时、预算与 Exclusive 互斥仍生效，互斥表是进程级）
+- ToolSet 管理的工具由 `decoratedToolSet` 按声明名复用装饰器实例，网络 ConcurrentSafe 缓存可命中（file 族仍不缓存）
 - 缓存踩踏：并发首次调用相同参数可能多次执行 inner tool（P2 优先级可接受）
 - Exclusive 互斥是进程内、非可重入；嵌套调用同一 family 会自锁（当前 hostexec/file-write 无此路径）
-- Git worktree：工作区本身是 git 仓时，LLM 文件写经 `wrapFileToolSetWithWorktree` 在 worktree 提交后合并；worktree 内层对 `trpcfile` 调用前走 `filenorm.NormalizeFileArgs`（`path`/`content` 别名不可丢）。`provideParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT`/`WORKSPACE_ROOT` 为 git 仓时挂上 `WorktreeIsolator`。非 git 工作区写活树，靠分层路径锁隔离。`list_file`/`search_*` 无 `path` 时用 `file_pattern`/`glob` 收窄覆盖锁，避免整仓与所有写互斥。`executeOne` 在 isolator 自身 handler 为空时，把调用方 handler 放到 worktree 目录（ctx）里执行。
+- Git worktree：默认隔离是分层路径锁（agent 工作区通常不是 git）。仅当工作区已是 git 仓时，LLM 文件写经 `wrapFileToolSetWithWorktree` 提交合并。`ParallelToolExecutor` 的 worktree 只服务 raw handler（`IsolationStrategy=worktree`）；装配后的工具用 `BatchExecuteAssembledTools`，避免第二套 worktree。`executeOne` 在 isolator handler 为空时把调用方 handler 放到 worktree 目录（ctx）里执行。
 
 ### 7.1.2 工具结果卸载（Result Offloading）
 
@@ -1818,9 +1823,12 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | `internal/agent/tool_assembly.go` | `resolveToolWorkspaceRoot` + `applyToolWorkspaceDirs` |
 | `internal/tools/trpc/runtime_config.go` | `shell_exec` config 支持 `base_dir` / `shell_root` |
 | `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
+| `internal/tools.NormalizeInvocation` | **唯一参数归一化入口**（装饰器 Call 前、worktree 内层、锁/缓存所见均为归一后 JSON）。实现仍分 `hostexecnorm` / `filenorm` / `argnorm`。别名重写记 `AliasRewriteTotal` + Debug `tool.args.normalized` |
 | `internal/tools/hostexecnorm` | `cmd`/`cmd_line` → `command`；argv 数组与 `args`/`argv` 拼成字符串（含空格的数组元素加引号）；`working_dir`/`cwd`/`dir` → `workdir`；`timeout` → `timeout_sec` |
-| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file）；`query`/`pattern`/`glob` → `content_pattern`/`file_pattern`（search_content）；`start`/`limit` → `start_line`/`num_lines`（read_file）。worktree 内层写前再归一一次 |
-| `internal/tools/argnorm` | `web_fetch`：`url` → `urls[]`；搜索类：`q`/`search`/`keyword` → `query`；`gemini_web_fetch`：`url` → `prompt`。`Assemble` 出口包装独立工具与 ToolSet |
+| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file）；`query`/`pattern`/`glob` → `content_pattern`/`file_pattern`（search_content）；`start`/`limit` → `start_line`/`num_lines`（read_file） |
+| `internal/tools/argnorm` | `web_fetch`：`url` → `urls[]`；搜索类：`q`/`search`/`keyword` → `query`；`gemini_web_fetch`：`url` → `prompt` |
+| `internal/tools.BatchExecuteAssembledTools` | Spirit/批执行走已装饰 `Call`；清除 IsolationStrategy 且不复制 Wire worktree |
+| `internal/tools/testexec` / `graph/adapter` | Assemble 后 `ApplyDefaultDecorators`，与 LLM 同一 Call 路径 |
 | `internal/tools/testexec/config.go` | 在线测试 shell 时传入 workspace |
 
 #### 7.8.4 Shell 参数与确认
@@ -3002,7 +3010,8 @@ Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRo
 
 | 全局变量 | 保护方式 | 位置 |
 |----------|----------|------|
-| `defaultToolResultCache` | `ResultCache` 内部锁（包级私有单例，2026-08-14 取代已删除的 `cache.Global()`/`SetGlobal()`；测试经 `TRPCBuilderDeps.ResultCache` 注入隔离实例） | `internal/agent/tool_result_cache.go` |
+| `aliasRewriteTotal` | `atomic.Int64`（`AliasRewriteTotal`） | `internal/tools/normalize_invocation.go` |
+| `defaultToolResultCache` | `ResultCache` 内部锁（包级私有单例，2026-08-14 取代已删除的 `cache.Global()`/`SetGlobal()`；测试经 `TRPCBuilderDeps.ResultCache` 注入隔离实例）。`web_fetch` 等 `IsCacheable` 工具由装饰器缓存，回调 hook 经 `CatalogResultCacheAllowed` 跳过 | `internal/agent/tool_result_cache.go` |
 | `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
 | `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |
 | `filterCache` 计数器 | `atomic` | `internal/tools/skillruntime/filter.go` |

@@ -1541,10 +1541,12 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | 任务 | 状态 | 代码锚点 |
 |------|------|----------|
 | 对话知识 chips + 跳转文档 | ✅ | `web/src/features/chat/knowledgeRecall.ts`；`KnowledgeRecallChips.vue`；`activityV2Store` |
+| 回答 `[n]` 脚注对齐 chunk_id | ✅ | cue numbered notice；`linkKnowledgeCitations`；`ReplyBlock`；cited 回采认 `[n]` |
 | `grounded_only` cue + config_json overlay | ✅ | `internal/agent/knowledge_inject.go`；`internal/biz/agent_knowledge_config.go`；记忆 Tab toggle |
-| 团队库实体词条页 | ✅ | `internal/biz/knowledge/entity_wiki.go`；`EntityPipeline.SetWikiWriter` |
+| 团队库实体词条页 | ✅ | `internal/biz/knowledge/entity_wiki.go`；`EntityPipeline.SetWikiWriter`；写入后 `SetWriteBackReplay` |
 | 文档 collection/private ACL | ✅ | `document_visibility.go`；`knowledge_visibility.go`；`GET/POST .../visibility`；工作台文件菜单 |
+| 图一跳扩召回 ACL | ✅ | `ListChunksByDocuments` / `ListLinks` / `ListActiveLinks` 两端可见性 |
 
-验证：`go test ./internal/agent ./internal/biz ./internal/biz/knowledge ./internal/data ./internal/knowledge -count=1`（data 用 `GOMAXPROCS=1 -p 1`）；前端 `npx vitest run` 覆盖 knowledgeRecall / chips / api / WorkbenchSidebar / agentEvalAutoConfig。
+验证：`go test ./internal/agent -run 'FormatKnowledgeCue|KnowledgeCueHook' -count=1`；`go test ./internal/tools/knowledge ./internal/cronrunner/jobs -run 'EmitNumbered|NumberedBracket|EmitKnowledgeRecalled' -count=1`；前端 `npx vitest run` 覆盖 knowledgeRecall / KnowledgeRecallChips / StepBlocks / activityV2。
 
 本轮不做：插件生态、新检索算法、连接器、为 grounded 加 Ent/proto 列。

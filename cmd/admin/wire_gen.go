@@ -868,13 +868,11 @@ func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistr
 }
 
 // provideParallelToolExecutor builds the Wire-bound ParallelToolExecutor used
-// by BatchExecuteSpiritTools for batch tool call scenarios (e.g.,
-// multi_tool_use.parallel). The handler is nil at construction because tool
-// dispatch is agent/session-specific; callers supply the handler at call time
-// via BatchExecuteSpiritTools, which reuses this executor's concurrency
-// configuration and worktree isolator (attached when ARANEA_WORKSPACE_ROOT or
-// WORKSPACE_ROOT is a git repository). Returns nil when ARANEA_PARALLEL_AUTO
-// is disabled so callers transparently fall back to serial execution.
+// by BatchExecuteSpiritTools. IsolationStrategyWorktree on a ToolCall still
+// uses a git worktree when the env workspace is a git repo (raw handlers).
+// Assembled LLM tools must dispatch via BatchExecuteAssembledTools so they
+// do not inherit this isolator. Returns nil when ARANEA_PARALLEL_AUTO is
+// disabled so callers fall back to serial execution.
 func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecutor {
 	if !intent.AllowAutoParallel() {
 		return nil

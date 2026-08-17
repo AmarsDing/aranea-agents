@@ -91,14 +91,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	// ConcurrentSafe 网络工具启用确定性缓存；workspace file 族不缓存（写后读会脏）。
 	// 流式工具（StreamableCall）获得 5min 流式超时 + 1MB 流式字节预算（P2-02）。
 	phaseStart = time.Now()
-	tools.ApplyDecorators(ts, tools.ToolDecoratorConfig{
-		Timeout:       0,
-		ResultBudget:  tools.DefaultResultBudget,
-		EnableCache:   true,
-		Logger:        deps.Logger(),
-		StreamTimeout: tools.DefaultStreamTimeout,
-		StreamBudget:  tools.DefaultStreamBudget,
-	})
+	tools.ApplyDefaultDecorators(ts, deps.Logger())
 	decorMs := time.Since(phaseStart).Milliseconds()
 	lg.Info("工具构建子步骤耗时",
 		loggateway.StepID("agent.tool_phases"),

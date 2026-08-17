@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -144,6 +145,12 @@ func (w *KnowledgeCitationBackfillWorker) RunOnce(ctx context.Context) {
 // heuristics are identical to the memory side (ID reference + k-gram overlap),
 // so it delegates to factCited rather than duplicating the matching logic.
 func chunkCited(replyNorm string, chunk bizknowledge.CitationChunkRef) bool {
+	if chunk.N > 0 {
+		marker := "[" + strconv.Itoa(chunk.N) + "]"
+		if strings.Contains(replyNorm, marker) {
+			return true
+		}
+	}
 	return factCited(replyNorm, biz.CitationFactRef{FactID: chunk.ChunkID, Statement: chunk.Content})
 }
 

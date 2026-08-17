@@ -42,6 +42,8 @@ type KnowledgeChunkCitationRecorder interface {
 type CitationChunkRef struct {
 	ChunkID string
 	Content string
+	// N is the [n] index from a numbered pre-retrieval notice; 0 means unnumbered.
+	N int
 }
 
 // KnowledgeCitationCandidate bundles one recall notice's chunks and the

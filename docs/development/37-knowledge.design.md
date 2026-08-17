@@ -2784,17 +2784,19 @@ Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词�
 
 ### 可信回答（US-55）
 
-- 预检索命中以 `{chunks:[{chunk_id,doc_id,score,line}]}` 进入活动时间线；前端按 `chunk_id` 合并为 chips，有 `doc_id` 则路由 `/knowledge?doc=`。
+- 预检索命中以 `{chunks:[{n,chunk_id,doc_id,score,line}]}` 进入活动时间线；`n` 与 cue `[n]` 同序。前端按 `chunk_id` 合并为 chips，回答里的 `[n]` 渲染为脚注按钮，有 `doc_id` 则路由 `/knowledge?doc=`。工具路径 notice 不加 `n`。
 - `config_json.knowledge.grounded_only`：Create/Update Agent 与 `evaluation` 一并 overlay，禁止整表清空 `config_json`。
-- `formatKnowledgeCue(..., toolsEnabled, groundedOnly)`：
+- `formatKnowledgeCue(..., toolsEnabled, groundedOnly)` 返回实际写入的 cited chunks，供 numbered notice；空正文/空 ID 不占 `[n]`。
   - grounded + 无命中 + 关工具 → 硬拒答、禁止世界知识；
   - grounded + 无命中 + 开工具 → 只许 `knowledge_search`；
   - grounded + 有命中 → 只用段落，不足则说没有。
+- cited 回采：回复含 `[n]` 即记该 chunk（兼原 ID/k-gram 启发式）。
 
 ### 实体词条（US-56）
 
 - `EntityPipeline.SetWikiWriter` → `Usecase.EnsureEntityWikiPages`。
 - 仅 team vault；`entries/<slug>.md`；最多 8 实体；幂等追加来源 wikilink。
+- 写入成功后调用既有 `SetWriteBackReplay` 立刻重建 chunks/FTS（与写回词条同一钩子）；失败 Warn，索引自愈可补。
 - 失败 Warn（`knowledge.entity.wiki`），实体轨已提交不回滚。
 
 ### 文档可见性（US-57）
@@ -2803,6 +2805,7 @@ Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词�
 - 读：`DocumentVisibleTo`；system 全见；无 user 只见 collection；有 user 见 collection 或 owner。
 - 写：custom `GET/POST /v1/knowledge/documents/{id}/visibility`；标 private 时 `owner_user_id` = 当前用户。
 - `ListDocuments` / `ListDocumentPaths` / `SearchChunks` / `SearchChunksBM25` 加 ACL 子句。直取内容走 `requireDocumentRead`（不可见 = NotFound）。
+- 图扩展：`ListChunksByDocuments`、`ListLinks`、`ListActiveLinks` 两端可见性与检索一致，避免公开种子把私密邻居扩进 Agent。
 - 默认上传仍为 collection。不做飞书/SharePoint 连接器。
 
 

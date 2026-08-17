@@ -31,11 +31,12 @@ var fileWriteToolNames = map[string]struct{}{
 	"replace_content": {},
 }
 
-// IsolationStrategyForTool returns the isolation strategy for a tool name.
-// File-write tools (canonical name or UI alias such as write_file/edit_file)
-// are tagged IsolationStrategyWorktree; all other tools return "" (direct
-// execution). ToolCall construction sites use this as the single tagging
-// point so classification stays consistent (Phase C).
+// IsolationStrategyForTool classifies mutating file tools for Exclusive
+// locks and retry policy. It is NOT a signal that ParallelToolExecutor
+// should open a git worktree around LLM/assembled CallableTool.Call —
+// those tools already isolate via path locks (and wrapFileToolSetWithWorktree
+// when the workspace is a git repo). Only raw batch handlers that write
+// files themselves should set ToolCall.IsolationStrategy to this value.
 func IsolationStrategyForTool(toolName string) string {
 	name := strings.TrimSpace(toolName)
 	if canonical, ok := alias.RuntimeToolNameAliases[name]; ok {
@@ -49,9 +50,10 @@ func IsolationStrategyForTool(toolName string) string {
 
 // ToolCall represents a single tool invocation request for the parallel executor.
 // ID is the unique identifier used by DependsOn to express ordering constraints.
-// IsolationStrategy selects how the call is executed:
-//   - "" (empty): direct execution via the registered handler
-//   - "worktree": file operations isolated in a git worktree
+// IsolationStrategy selects how a *raw* batch handler is isolated:
+//   - "" (empty): direct execution via the registered handler — required when
+//     the handler is NewAssembledToolHandler (decorator already isolates)
+//   - "worktree": file operations isolated in a git worktree (raw writers only)
 //   - "transaction": DB operations wrapped in a transaction sandbox
 type ToolCall struct {
 	ID                string

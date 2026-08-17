@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
+import { setActivePinia, createPinia } from 'pinia';
 import ThinkingBlock from '../ThinkingBlock.vue';
 import ReplyBlock from '../ReplyBlock.vue';
 import zhCN from '../../../i18n/locales/zh-CN';
@@ -99,6 +100,10 @@ describe('ThinkingBlock 流式自动展开', () => {
 });
 
 describe('ReplyBlock v2', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
   it('accepts Step prop with content', () => {
     const wrapper = mount(ReplyBlock, {
       props: { step: mkStep({ Kind: 'reply', Content: 'Hello world', IsFinal: true }) },

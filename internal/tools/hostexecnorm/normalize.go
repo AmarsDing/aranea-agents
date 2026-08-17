@@ -30,6 +30,12 @@ func NormalizeExecArgs(jsonArgs []byte) []byte {
 	if copyNumberIfEmpty(m, "timeout_sec", "timeout", "timeout_seconds") {
 		changed = true
 	}
+	if copyNumberIfEmpty(m, "yield_time_ms", "block_until_ms", "yieldMs") {
+		changed = true
+	}
+	if copyStringIfEmpty(m, "notify_pattern", "notify_on_output") {
+		changed = true
+	}
 	if !changed {
 		return jsonArgs
 	}

@@ -11,7 +11,11 @@
       <span v-if="streaming" class="pulse-dot"></span>
     </div>
     <div class="reply-block__content">
-      <div v-segmented-markdown="parts" class="reply-block__markdown chat-message-prose"></div>
+      <div
+        v-segmented-markdown="parts"
+        class="reply-block__markdown chat-message-prose"
+        @click="onCiteClick"
+      ></div>
       <span v-if="streaming" class="cursor-blink"></span>
     </div>
   </div>
@@ -20,9 +24,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import type { Step } from '../../features/chat/v2Types';
 import { renderChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
 import { vSegmentedMarkdown } from '../../features/chat/vSegmentedMarkdown';
+import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
+import { knowledgeDocRoute, linkKnowledgeCitations } from '../../features/chat/knowledgeRecall';
+import type { ChatMarkdownParts } from '../../features/chat/chatMessageMarkdown';
 
 // Safe i18n wrapper — falls back to key/fallback when the i18n plugin isn't
 // installed (e.g., during unit tests without app.use(i18n)).
@@ -35,6 +43,37 @@ function useSafeI18n() {
 }
 
 const props = defineProps<{ step: Step }>();
+
+const store = useActivityQueries();
+const kbChunks = computed(() => store.getTurnKnowledgeChunks(props.step.TurnID));
+
+let router: ReturnType<typeof useRouter> | null = null;
+try {
+  router = useRouter();
+} catch {
+  router = null;
+}
+
+function citeParts(raw: ChatMarkdownParts): ChatMarkdownParts {
+  const chunks = kbChunks.value;
+  if (chunks.length === 0) return raw;
+  return {
+    ...raw,
+    frozenHtml: linkKnowledgeCitations(raw.frozenHtml, chunks),
+    tailHtml: linkKnowledgeCitations(raw.tailHtml, chunks),
+    frozenSegments: raw.frozenSegments.map((seg) => linkKnowledgeCitations(seg, chunks)),
+  };
+}
+
+function onCiteClick(ev: MouseEvent) {
+  const el = ev.target;
+  if (!(el instanceof Element)) return;
+  const btn = el.closest('.kb-cite');
+  if (!(btn instanceof HTMLElement)) return;
+  const docId = btn.getAttribute('data-doc-id');
+  if (!docId || !router) return;
+  void router.push(knowledgeDocRoute(docId));
+}
 
 // --- Bridge computeds: derive legacy fields from Step prop ---
 const content = computed(() => props.step.Content);
@@ -52,7 +91,9 @@ const label = computed(() =>
   isFinal.value ? t('chat.agentBlock.finalReply') : t('chat.agentBlock.intermediateReply'),
 );
 
-const parts = computed(() => renderChatMarkdownParts(messageId.value, content.value, streaming.value));
+const parts = computed(() =>
+  citeParts(renderChatMarkdownParts(messageId.value, content.value, streaming.value)),
+);
 </script>
 
 <style lang="sass" scoped>
@@ -99,6 +140,24 @@ const parts = computed(() => renderChatMarkdownParts(messageId.value, content.va
     font-size: 14px
     line-height: 1.7
     word-break: break-word
+
+    :deep(.kb-cite)
+      display: inline
+      padding: 0 2px
+      margin: 0 1px
+      border: 0
+      border-radius: 4px
+      font: inherit
+      font-size: 0.85em
+      font-weight: 700
+      line-height: 1
+      vertical-align: super
+      color: var(--color-accent)
+      background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+      cursor: pointer
+
+      &:hover
+        background: color-mix(in srgb, var(--color-accent) 22%, transparent)
 
 // 夜间助手气泡切换为标准玻璃 token（§6.14 要求夜 --glass-surface）
 body.body--dark .reply-block__content

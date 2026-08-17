@@ -262,6 +262,7 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	hasWorkspaceSearch := false
 	hasFragmentEdit := false
 	hasFileWrite := false
+	hasReadLints := false
 	for _, it := range eff.Items {
 		if it.Enabled {
 			keys = append(keys, it.ToolKey)
@@ -279,6 +280,8 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 				hasFragmentEdit = true
 			case "replace_content", "save_file":
 				hasFileWrite = true
+			case "read_lints":
+				hasReadLints = true
 			}
 		}
 	}
@@ -320,6 +323,9 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 			editStep = "replace_content for targeted edits; use save_file for new files or small full rewrites"
 		}
 		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → " + editStep + ". Avoid list_file at repo root without a narrowed path or keyword.\n")
+		if hasReadLints {
+			b.WriteString("- After save_file / diff_edit / replace_content / patch_file, call read_lints with the edited paths before guessing compile status or running tests.\n")
+		}
 	}
 	if level >= cueLevelFull {
 		b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")

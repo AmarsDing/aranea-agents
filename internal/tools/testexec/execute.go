@@ -80,6 +80,7 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 	if err != nil {
 		return failResult(started, err), nil
 	}
+	tools.ApplyDefaultDecorators(ts, lg)
 	names := catalogToolNames(key)
 	if key == "web_research" {
 		names = append([]string{"web_research"}, names...)

@@ -588,10 +588,11 @@ func spiritSessionIDFromCtx(ctx context.Context) string {
 // when available, falling back to serial execution when the executor is nil or
 // Execute returns an error (e.g., dependency cycle, context cancellation).
 //
-// The Wire-bound executor provides configuration (maxConcurrency, worktree
-// isolator, transaction sandbox); the caller-supplied handler dispatches each
-// call to the appropriate tool implementation. A fresh executor is constructed
-// with the handler so the Wire-bound singleton is never mutated.
+// The Wire-bound executor provides maxConcurrency. Worktree/transaction
+// isolators apply only when a ToolCall sets IsolationStrategy; assembled
+// tools must use BatchExecuteAssembledTools (or NewAssembledToolHandler with
+// IsolationStrategy empty) so file isolation stays inside CallableTool.Call
+// (path locks / optional git wrap).
 //
 // Use this helper for batch tool call scenarios such as multi_tool_use.parallel
 // patterns where multiple independent (or dependency-ordered) tool calls should
@@ -627,6 +628,41 @@ func BatchExecuteSpiritTools(
 		}
 	}
 	return executeToolCallsSerial(ctx, handler, calls, lg)
+}
+
+// BatchExecuteAssembledTools runs a batch through the same decorated
+// CallableTool.Call as the LLM path. IsolationStrategy is cleared and the
+// Wire worktree/transaction isolators are not copied, so assembled file tools
+// are not wrapped in a second git worktree.
+func BatchExecuteAssembledTools(
+	ctx context.Context,
+	exec *ParallelToolExecutor,
+	assembled *AssembledToolsets,
+	calls []ToolCall,
+	lg loggateway.Logger,
+) []ToolResult {
+	if len(calls) == 0 {
+		return nil
+	}
+	if assembled == nil {
+		return executeToolCallsSerial(ctx, nil, calls, lg)
+	}
+	handler := NewAssembledToolHandler(assembled.Tools, assembled.ToolSets)
+	cleaned := stripIsolationStrategy(calls)
+	var stripped *ParallelToolExecutor
+	if exec != nil {
+		stripped = NewParallelToolExecutor(nil, lg, WithMaxConcurrency(exec.maxConcurrency))
+	}
+	return BatchExecuteSpiritTools(ctx, stripped, handler, cleaned, lg)
+}
+
+func stripIsolationStrategy(calls []ToolCall) []ToolCall {
+	out := make([]ToolCall, len(calls))
+	for i, c := range calls {
+		c.IsolationStrategy = ""
+		out[i] = c
+	}
+	return out
 }
 
 // executeToolCallsSerial runs tool calls one by one, respecting ctx cancellation.

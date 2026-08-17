@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cache"
 	"aranea-agents/pkg/loggateway"
 
@@ -59,6 +60,9 @@ func newToolResultCacheBeforeHook(deps TRPCBuilderDeps, catalog *toolBuildCatalo
 		if !cachePolicyFromSnapshot(catalog, toolKey).Enabled {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
+		if !tools.CatalogResultCacheAllowed(toolKey) {
+			return &trpctool.BeforeToolResult{Context: ctx}, nil
+		}
 		if hit, ok := rc.Get(toolKey, args.Arguments); ok {
 			lg.Info("工具结果缓存命中", loggateway.StepID("agent.tool.cache_hit"), loggateway.Phase("done"), loggateway.Str("tool", toolKey))
 			return &trpctool.BeforeToolResult{Context: ctx, CustomResult: hit}, nil
@@ -79,6 +83,9 @@ func newToolResultCacheAfterHook(deps TRPCBuilderDeps, catalog *toolBuildCatalog
 		}
 		policy := cachePolicyFromSnapshot(catalog, toolKey)
 		if !policy.Enabled {
+			return &trpctool.AfterToolResult{Context: ctx}, nil
+		}
+		if !tools.CatalogResultCacheAllowed(toolKey) {
 			return &trpctool.AfterToolResult{Context: ctx}, nil
 		}
 		rc.Put(toolKey, args.Arguments, args.Result, policy.TTL)

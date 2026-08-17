@@ -33,6 +33,10 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"file"}}
 		applyFilesystemDir(&cfg, merged)
 		return cfg, true, nil
+	case "read_lints":
+		cfg := tools.AssemblyConfig{EnabledTools: []string{"read_lints"}}
+		applyFilesystemDir(&cfg, merged)
+		return cfg, true, nil
 	case "shell_exec":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"hostexec"}}
 		applyShellExecDir(&cfg, merged)

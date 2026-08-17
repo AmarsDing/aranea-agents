@@ -12,9 +12,10 @@ import (
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
 	documentpkg "aranea-agents/internal/tools/document"
-	"aranea-agents/internal/tools/filenorm"
 	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	memorytool "aranea-agents/internal/tools/memory"
+	"aranea-agents/internal/tools/readlints"
+	"aranea-agents/internal/tools/rgsearch"
 
 	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
@@ -107,7 +108,8 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 		if err != nil {
 			return apierror.Internal(apierror.DomainTool, "file toolset: "+err.Error())
 		}
-		ac.out.ToolSets = append(ac.out.ToolSets, wrapFileToolSetWithWorktree(filenorm.WrapToolSet(ts), ac.cfg.FilesystemDir, ac.lg))
+		ts = rgsearch.WrapToolSet(ts, ac.cfg.FilesystemDir, ac.lg)
+		ac.out.ToolSets = append(ac.out.ToolSets, wrapFileToolSetWithWorktree(ts, ac.cfg.FilesystemDir, ac.lg))
 	}
 
 	if ac.enabled["hostexec"] {
@@ -124,6 +126,10 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 
 	if ac.enabled["read_spreadsheet"] {
 		ac.out.Tools = append(ac.out.Tools, documentpkg.NewReadSpreadsheetTool(ac.cfg.FilesystemDir))
+	}
+
+	if ac.enabled["read_lints"] {
+		ac.out.Tools = append(ac.out.Tools, readlints.NewTool(ac.cfg.FilesystemDir, ac.lg))
 	}
 
 	return nil

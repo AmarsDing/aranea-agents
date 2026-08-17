@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/internal/workspace"
+	"aranea-agents/pkg/auth"
 )
 
 func seedCollectionLinks(t *testing.T, repo *knowledgeRepo) {
@@ -143,5 +145,64 @@ func TestKnowledgeRepo_ListChunksByDocuments(t *testing.T) {
 	got, err = repo.ListChunksByDocuments(ctx, "c1", nil, 2)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("empty docIDs = (%v, %v), want empty", got, err)
+	}
+}
+
+func TestKnowledgeRepo_GraphExpandHidesPrivateNeighbors(t *testing.T) {
+	repo := setupKnowledgeSearchRepo(t)
+	seedCollectionLinks(t, repo)
+	ctx := context.Background()
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(repo.InsertChunks(ctx, []bizknowledge.Chunk{
+		{ID: "k1", DocID: "d1", CollectionID: "c1", Content: "public seed", ChunkIndex: 0},
+		{ID: "k2", DocID: "d2", CollectionID: "c1", Content: "private neighbor", ChunkIndex: 0},
+	}))
+	must(repo.UpdateDocumentVisibility(ctx, "d2", "private", "7"))
+
+	other := auth.NewContext(ctx, &auth.Auth{UserID: 8})
+	chunks, err := repo.ListChunksByDocuments(other, "c1", []string{"d1", "d2"}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 1 || chunks[0].DocID != "d1" {
+		t.Fatalf("other user chunks = %+v, want only d1", chunks)
+	}
+	links, err := repo.ListLinks(other, "c1", "d1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range links {
+		if l.DocID == "d2" || l.TargetDocID == "d2" {
+			t.Fatalf("other user must not see link to private d2: %+v", l)
+		}
+	}
+	active, err := repo.ListActiveLinks(other, "c1", []string{"d1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range active {
+		if l.DocID == "d2" || l.TargetDocID == "d2" {
+			t.Fatalf("other user must not see active link to private d2: %+v", l)
+		}
+	}
+
+	owner := auth.NewContext(ctx, &auth.Auth{UserID: 7})
+	chunks, err = repo.ListChunksByDocuments(owner, "c1", []string{"d1", "d2"}, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 2 {
+		t.Fatalf("owner chunks = %+v, want d1+d2", chunks)
+	}
+
+	sys := workspace.WithSystemWorkspace(ctx)
+	chunks, err = repo.ListChunksByDocuments(sys, "c1", []string{"d1", "d2"}, 2)
+	if err != nil || len(chunks) != 2 {
+		t.Fatalf("system chunks = (%+v, %v), want 2", chunks, err)
 	}
 }

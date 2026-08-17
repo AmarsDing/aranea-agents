@@ -36,7 +36,7 @@ func TestEmitKnowledgeRecalledNotice_EmitsJSONPayload(t *testing.T) {
 		{ID: "k-1", Content: "向量检索第一段", Score: 0.91, DocID: "doc-1"},
 		{ID: "k-2", Content: "向量检索第二段", Score: 0.72, DocID: "doc-2"},
 	}
-	emitKnowledgeRecalledNotice(ctx, chunks)
+	emitKnowledgeRecalledNotice(ctx, chunks, false)
 	if len(rec.calls) != 1 {
 		t.Fatalf("expected 1 notice, got %d", len(rec.calls))
 	}
@@ -57,13 +57,13 @@ func TestEmitKnowledgeRecalledNotice_EmitsJSONPayload(t *testing.T) {
 
 func TestEmitKnowledgeRecalledNotice_NilEmitterNoPanic(t *testing.T) {
 	// 无 emitter（独立工具执行路径）必须静默 no-op。
-	emitKnowledgeRecalledNotice(context.Background(), []biz.KnowledgeChunk{{ID: "k-1", Content: "x"}})
+	emitKnowledgeRecalledNotice(context.Background(), []biz.KnowledgeChunk{{ID: "k-1", Content: "x"}}, false)
 }
 
 func TestEmitKnowledgeRecalledNotice_NoChunksSkips(t *testing.T) {
 	rec := &noticeRecorder{}
 	ctx := biz.WithActivityEmitter(context.Background(), rec)
-	emitKnowledgeRecalledNotice(ctx, nil)
+	emitKnowledgeRecalledNotice(ctx, nil, false)
 	if len(rec.calls) != 0 {
 		t.Fatalf("no chunks must not emit, got %d", len(rec.calls))
 	}
@@ -77,7 +77,7 @@ func TestEmitKnowledgeRecalledNotice_CapsAndSkipsBlankIDs(t *testing.T) {
 		chunks = append(chunks, biz.KnowledgeChunk{ID: strings.Repeat("k", 4) + string(rune('a'+i)), Content: "c"})
 	}
 	chunks = append(chunks, biz.KnowledgeChunk{ID: "  ", Content: "blank id"})
-	emitKnowledgeRecalledNotice(ctx, chunks)
+	emitKnowledgeRecalledNotice(ctx, chunks, false)
 	if len(rec.calls) != 1 {
 		t.Fatalf("expected 1 notice, got %d", len(rec.calls))
 	}
@@ -94,12 +94,32 @@ func TestEmitKnowledgeRecalledNotice_TruncatesLongLines(t *testing.T) {
 	rec := &noticeRecorder{}
 	ctx := biz.WithActivityEmitter(context.Background(), rec)
 	long := strings.Repeat("长", knowledgeRecalledMaxLineRunes+50)
-	emitKnowledgeRecalledNotice(ctx, []biz.KnowledgeChunk{{ID: "k-1", Content: long}})
+	emitKnowledgeRecalledNotice(ctx, []biz.KnowledgeChunk{{ID: "k-1", Content: long}}, false)
 	var payload knowledgeRecalledNoticePayload
 	if err := json.Unmarshal([]byte(rec.calls[0].content), &payload); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	if got := len([]rune(payload.Chunks[0].Line)); got > knowledgeRecalledMaxLineRunes+1 { // +1 for …
 		t.Fatalf("line runes = %d, want ≤ %d", got, knowledgeRecalledMaxLineRunes+1)
+	}
+}
+
+func TestEmitNumberedKnowledgeRecalledNotice_SetsSequentialN(t *testing.T) {
+	rec := &noticeRecorder{}
+	ctx := biz.WithActivityEmitter(context.Background(), rec)
+	EmitNumberedKnowledgeRecalledNotice(ctx, []biz.KnowledgeChunk{
+		{ID: "k-1", Content: "a", DocID: "d1"},
+		{ID: "  ", Content: "skip"},
+		{ID: "k-2", Content: "b", DocID: "d2"},
+	})
+	var payload knowledgeRecalledNoticePayload
+	if err := json.Unmarshal([]byte(rec.calls[0].content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Chunks) != 2 || payload.Chunks[0].N != 1 || payload.Chunks[1].N != 2 {
+		t.Fatalf("numbered payload = %+v", payload.Chunks)
+	}
+	if payload.Chunks[0].ChunkID != "k-1" || payload.Chunks[1].ChunkID != "k-2" {
+		t.Fatalf("chunk order = %+v", payload.Chunks)
 	}
 }

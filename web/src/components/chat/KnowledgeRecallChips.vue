@@ -22,7 +22,7 @@
         :disabled="!hit.doc_id"
         @click="onOpen(hit)"
       >
-        <span class="knowledge-recall-chips__idx">[{{ i + 1 }}]</span>
+        <span class="knowledge-recall-chips__idx">[{{ hit.n ?? i + 1 }}]</span>
         <span class="knowledge-recall-chips__line">{{ hit.line || hit.chunk_id }}</span>
         <span v-if="hit.score > 0" class="knowledge-recall-chips__score">{{ scoreLabel(hit.score) }}</span>
         <q-tooltip :delay="300" max-width="360px">
@@ -41,6 +41,7 @@ import { useRouter } from 'vue-router';
 import { useActivityQueries } from '../../features/chat/composables/useActivityQueries';
 import { useCollapseState } from '../../features/chat/composables/useCollapseState';
 import type { KnowledgeRecallChunk } from '../../features/chat/knowledgeRecall';
+import { knowledgeDocRoute } from '../../features/chat/knowledgeRecall';
 
 function useSafeI18n() {
   try {
@@ -73,7 +74,7 @@ function scoreLabel(score: number): string {
 
 function onOpen(hit: KnowledgeRecallChunk) {
   if (!hit.doc_id || !router) return;
-  void router.push({ path: '/knowledge', query: { doc: hit.doc_id } });
+  void router.push(knowledgeDocRoute(hit.doc_id));
 }
 </script>
 

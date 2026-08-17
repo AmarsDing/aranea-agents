@@ -29,7 +29,7 @@ func TestLastUserQuery_SkipsToolLoop(t *testing.T) {
 }
 
 func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {
-	got := formatKnowledgeCue(
+	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
 		true,
@@ -49,8 +49,31 @@ func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {
 	}
 }
 
+func TestFormatKnowledgeCue_CitationNumbersSkipEmpty(t *testing.T) {
+	got, cited := formatKnowledgeCue(
+		nil,
+		[]biz.KnowledgeChunk{
+			{ID: "skip", DocID: "d0", Content: "   ", Score: 0.9},
+			{ID: "k1", DocID: "d1", Content: "第一段", Score: 0.8},
+			{ID: "", DocID: "d2", Content: "无 ID 不进脚注", Score: 0.7},
+			{ID: "k2", DocID: "d3", Content: "第二段", Score: 0.6},
+		},
+		false,
+		false,
+	)
+	if !strings.Contains(got, "[1] (doc=d1") || !strings.Contains(got, "[2] (doc=d3") {
+		t.Fatalf("cue numbering: %s", got)
+	}
+	if strings.Contains(got, "[3]") || strings.Contains(got, "doc=d0") {
+		t.Fatalf("empty/no-id must not occupy [n]: %s", got)
+	}
+	if len(cited) != 2 || cited[0].ID != "k1" || cited[1].ID != "k2" {
+		t.Fatalf("cited = %+v, want k1 then k2", cited)
+	}
+}
+
 func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
-	got := formatKnowledgeCue(
+	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", Description: "手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
 		true,
@@ -67,7 +90,7 @@ func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
 // P2-1（2026-08-16）：关工具的 agent 仍可获得预检索命中的 chunks，
 // 但不渲染目录与工具引导文案；无命中 chunks 时整块不注入。
 func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
-	got := formatKnowledgeCue(
+	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
 		false,
@@ -83,7 +106,7 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 		t.Fatalf("tools-off must not mention search tools: %s", got)
 	}
 	// 无命中 chunks：tools-off 下目录单独存在只会误导，整块不注入。
-	if got := formatKnowledgeCue(
+	if got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
 		false,
@@ -94,7 +117,7 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 }
 
 func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
-	got := formatKnowledgeCue(
+	got, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
 		true,
@@ -106,7 +129,7 @@ func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
 	if strings.Contains(got, "Available Knowledge Bases") {
 		t.Fatalf("grounded must not list catalog: %s", got)
 	}
-	emptyTools := formatKnowledgeCue(
+	emptyTools, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
 		nil,
 		true,
@@ -118,7 +141,7 @@ func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
 	if !strings.Contains(emptyTools, "knowledge_search") {
 		t.Fatalf("grounded+tools empty may search KB: %s", emptyTools)
 	}
-	emptyNoTools := formatKnowledgeCue(
+	emptyNoTools, _ := formatKnowledgeCue(
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
 		nil,
 		false,
@@ -216,6 +239,9 @@ func TestKnowledgeCueHook_EmitsKnowledgeRecalledNotice(t *testing.T) {
 	if !strings.Contains(rec.calls[0].content, `"chunk_id":"k1"`) {
 		t.Fatalf("payload missing k1: %s", rec.calls[0].content)
 	}
+	if !strings.Contains(rec.calls[0].content, `"n":1`) {
+		t.Fatalf("pre-retrieval notice must number [1]: %s", rec.calls[0].content)
+	}
 	if strings.Contains(rec.calls[0].content, `"chunk_id":"k2"`) {
 		t.Fatalf("empty-content chunk must not be noticed: %s", rec.calls[0].content)
 	}
@@ -228,13 +254,14 @@ func TestCueRenderedChunks_FiltersEmptyAndCapsTopK(t *testing.T) {
 		chunks = append(chunks, biz.KnowledgeChunk{ID: string(rune('a' + i)), Content: "正文"})
 	}
 	chunks = append(chunks, biz.KnowledgeChunk{ID: "empty", Content: "  "})
+	chunks = append(chunks, biz.KnowledgeChunk{ID: "", Content: "no-id"})
 	got := cueRenderedChunks(chunks)
 	if len(got) != knowledgeCueTopK {
 		t.Fatalf("cap = %d, want %d", len(got), knowledgeCueTopK)
 	}
 	for _, ch := range got {
-		if ch.ID == "empty" {
-			t.Fatal("empty content must be filtered")
+		if ch.ID == "empty" || ch.ID == "" {
+			t.Fatal("empty content/id must be filtered")
 		}
 	}
 	if got := cueRenderedChunks(nil); len(got) != 0 {

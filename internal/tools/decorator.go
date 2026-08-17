@@ -282,6 +282,7 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 		return nil, fmt.Errorf("tool %q is not streamable", s.ToolDecorator.toolName())
 	}
 
+	jsonArgs = NormalizeInvocationWithLog(s.cfg.Logger, s.toolName(), jsonArgs)
 	unlock := lockExclusiveTool(s.toolName(), jsonArgs)
 
 	cfg := s.cfg
@@ -470,6 +471,7 @@ func (d *ToolDecorator) providesStateDelta() bool {
 // with identical arguments return the cached result without invoking
 // the inner tool.
 func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	jsonArgs = NormalizeInvocationWithLog(d.cfg.Logger, d.toolName(), jsonArgs)
 	unlock := lockExclusiveTool(d.toolName(), jsonArgs)
 	defer unlock()
 	// E2E-P1-09: only cache when invocation identity is present so results

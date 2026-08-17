@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/tools/filenorm"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -109,6 +108,7 @@ func (w *worktreeFileCallable) Call(ctx context.Context, jsonArgs []byte) (any, 
 	if decl := w.Declaration(); decl != nil {
 		name = decl.Name
 	}
+	jsonArgs = NormalizeInvocationWithLog(w.lg, name, jsonArgs)
 	var innerOut any
 	var innerErr error
 	res := w.iso.ExecuteWithHandler(ctx, ToolCall{
@@ -133,7 +133,7 @@ func (w *worktreeFileCallable) Call(ctx context.Context, jsonArgs []byte) (any, 
 		if target == nil {
 			return ToolResult{CallID: call.ID, Name: call.Name, Error: "tool missing in worktree toolset"}
 		}
-		innerOut, innerErr = target.Call(ctx, filenorm.NormalizeFileArgs(call.Name, call.Arguments))
+		innerOut, innerErr = target.Call(ctx, NormalizeInvocation(call.Name, call.Arguments))
 		if innerErr != nil {
 			return ToolResult{CallID: call.ID, Name: call.Name, Error: innerErr.Error()}
 		}

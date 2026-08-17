@@ -73,6 +73,7 @@ func callableFromBizTool(ctx context.Context, row biz.Tool, lg loggateway.Logger
 	if err != nil {
 		return nil, "", err
 	}
+	tools.ApplyDefaultDecorators(ts, lg)
 	names := catalogToolNames(row.Key)
 	for _, want := range names {
 		if t, ok := matchCallable(ts.Tools, want); ok {

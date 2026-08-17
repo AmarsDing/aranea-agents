@@ -20,7 +20,7 @@
 
 1. **P0-G3 执行超时**：普通工具不再由装饰器默认加 60s。`ToolDecoratorConfig.Timeout=0` 表示尊重外层截止；产品层 `toolExecutionTimeoutHooks` 按 `ToolsExecutionTimeoutSec`（0→10min）注入。`plan_and_execute` 仍由装饰器覆盖为 3min，避免子阶段预算之和撑破外层。
 2. **P0-D 结果预算**：工具结果超过 10KB（`DefaultResultBudget.MaxBytes`）时自动截断，防止单个工具结果撑爆 LLM 上下文窗口
-3. **P2-E 确定性缓存**：仅对**非工作区** ConcurrentSafe 工具（`web_fetch` / search 等）缓存相同参数结果，默认 TTL 60s。`read_file` 等 file 族不缓存。
+3. **P2-E 确定性缓存**：仅对**非工作区** ConcurrentSafe 工具（`web_fetch` / search 等）缓存相同参数结果，默认 TTL 60s、invocation 作用域。`read_file` 等 file 族不缓存。BeforeTool `ResultCache` 对装饰器已缓存的工具、写工具、file 族跳过（`CatalogResultCacheAllowed`），避免双缓存。
 4. **P1-C2 Exclusive 互斥**：`ToolDecorator.Call` 对 Exclusive 工具加进程级 family 锁。`exec_command`/`write_stdin`/`kill_session` 共享 `hostexec`；文件写工具按目标路径分锁（`file_write:<path>`，缺路径退回 `file_write`）；只读文件工具不锁。
 
 ### D3: 工具安全分类（P1-C）
@@ -42,7 +42,7 @@
 
 ### 负面影响
 
-- Exclusive 工具并行风险已由装饰器 family 锁缓解：hostexec 会话工具进程内串行；文件写按目标路径互斥（不同文件可并行）；`list_file`/`search_*` 对目录子树共享覆盖锁，与子路径写互斥（无 path 时用 glob/`file_pattern` 收窄，避免整仓互斥）。未知 Exclusive 按名称串行。工作区是 git 仓时，LLM 文件写走 worktree 提交合并（内层 filenorm）；否则写活树。`ParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT` 为 git 仓时挂 `WorktreeIsolator`。
+- Exclusive 工具并行风险已由装饰器 family 锁缓解：hostexec 会话工具进程内串行；文件写按目标路径互斥（不同文件可并行）；`list_file`/`search_*` 对目录子树共享覆盖锁，与子路径写互斥（无 path 时用 glob/`file_pattern` 收窄）。未知 Exclusive 按名称串行。默认隔离是路径锁；工作区是 git 仓时 LLM 文件写才走 worktree。批执行经 `BatchExecuteAssembledTools` 调用已装饰 `Call`，不再套第二套 worktree。
 - DeferredManager 工具不受装饰器互斥保护：`ApplyDecorators` 仅装饰构建时存在的工具。**缓解**：延迟工具的超时仍走回调链；互斥若需要可在 materialize 时套装饰器
 - 缓存内存占用：每个 ConcurrentSafe 工具的缓存无上限。**缓解**：当前工具集规模有限，未来可加 LRU 淘汰
 

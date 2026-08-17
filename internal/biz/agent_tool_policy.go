@@ -19,7 +19,7 @@ func jsonStringList(raw string, lg loggateway.Logger) []string {
 	return list
 }
 
-var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file"}
+var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file", "read_lints"}
 var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
@@ -222,7 +222,7 @@ func applyRegistryAdminDenials(catalog []Tool, deny map[string]bool) {
 var toolProfiles = map[string][]string{
 	"chat_only": {},
 	"read_only": {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
-	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime"},
+	"coding":    {"group:filesystem", "group:web", "group:skill", "group:session", "datetime", "shell_exec"},
 	"research":  {ToolKeyWebResearch, "web_fetch", "arxiv_search", "wikipedia_search", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "skill_search", "memory_search", "todo_write", "datetime"},
 	"full":      {"group:filesystem", "group:web", "group:skill", "group:memory", "group:media", "group:runtime", "group:messaging", "group:session", "group:integration", "group:subagent", "group:browser", "group:cli_admin", "datetime"},
 

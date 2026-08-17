@@ -57,6 +57,27 @@ func TestClassifyTool_RuntimeNamesInheritRegistrySafety(t *testing.T) {
 	}
 }
 
+func TestCatalogResultCacheAllowed(t *testing.T) {
+	// Decorator already caches these; callback cache must not double-store.
+	for _, name := range []string{"web_fetch", "duckduckgo_search", "httpfetch", "wikipedia_search"} {
+		if CatalogResultCacheAllowed(name) {
+			t.Errorf("CatalogResultCacheAllowed(%q) = true, want false (decorator owns cache)", name)
+		}
+	}
+	// Writes never catalog-cache even if metadata_json.cache_enabled is set.
+	for _, name := range []string{"save_file", "exec_command", "shell_exec", "plain"} {
+		if CatalogResultCacheAllowed(name) {
+			t.Errorf("CatalogResultCacheAllowed(%q) = true, want false (exclusive/unknown)", name)
+		}
+	}
+	// File reads are ConcurrentSafe but go stale after writes.
+	for _, name := range []string{"read_file", "list_file", "search_content"} {
+		if CatalogResultCacheAllowed(name) {
+			t.Errorf("CatalogResultCacheAllowed(%q) = true, want false (file family)", name)
+		}
+	}
+}
+
 // TestClassifyTool_KnownExclusive verifies that tools without
 // SupportsConcurrency are classified as Exclusive.
 func TestClassifyTool_KnownExclusive(t *testing.T) {

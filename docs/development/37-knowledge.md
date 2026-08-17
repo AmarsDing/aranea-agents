@@ -1258,6 +1258,7 @@
 
 **验收标准**：
 - 对话轮次展示知识召回 chips（按 `chunk_id` 合并），有 `doc_id` 的 chip 可跳到 `/knowledge?doc=`。
+- 预检索 cue 的 `[n]`、notice `chunks[].n`、chips 编号与回答中的 `[n]` 脚注同一套 `chunk_id`；点击脚注打开对应文档。工具续搜不加 `n`，避免抢走 `[1]`。
 - Agent 记忆设置可打开 `config_json.knowledge.grounded_only`（不新增 Ent 列、不改 agent proto）。
 - 打开后：无命中且关工具则硬拒答；无命中且开工具只允许 `knowledge_search`；有命中只用检索段落，禁止世界知识。
 
@@ -1270,6 +1271,7 @@
 **验收标准**：
 - 仅 `vault_backend=team` 写入；本地 vault 不改用户磁盘。
 - 每篇文档最多 8 个实体；已有词条幂等追加 `[[source]]`；失败 Warn，不回滚检索/实体轨。
+- 词条写入后立刻走 `SetWriteBackReplay` 重建 chunks/FTS，不必等索引自愈工人。
 - 矛盾仍走已有 contradicts 提案；词条不自动改人写的正文。
 
 ### US-57：文档可标为仅自己可见，检索与列表与可见集对齐
@@ -1281,6 +1283,7 @@
 **验收标准**：
 - `knowledge_documents.visibility` 为 `collection`（默认）或 `private`；`owner_user_id` 为标私密的用户。
 - 列表、vault 树、语义/BM25 检索按可见集过滤；系统工人不过滤。
+- 图一跳扩召回（`ListChunksByDocuments` / `ListLinks` / `ListActiveLinks`）两端都必须可见，公开笔记不能把私密邻居正文带进 Agent。
 - 直取正文/附件/删除/移动对不可见文档返回 NotFound。工作台文件菜单可切换可见性。本轮不做连接器。
 
 ### 功能需求清单
@@ -1300,7 +1303,7 @@
 | FR-SP7-11 | 治理提案工作台 | 命令面板审核 pending 提案；事实冲突 keep_old/keep_new 按钮 |
 | FR-SP7-12 | 问句混合路由 | 疑问句自动 RRF，精确词仍 sparse，不默认 MultiQuery |
 | FR-SP7-13 | 自治与入库自关联 | 治理 6h 实跑；vault 冷文档抽关系；索引期成链不改源 |
-| FR-SP7-14 | 可信回答 | 对话知识 chips + `grounded_only` 拒答 |
+| FR-SP7-14 | 可信回答 | 对话知识 chips + `[n]` 脚注 + `grounded_only` 拒答 |
 | FR-SP7-15 | 编译型实体词条 | 团队库实体 → `entries/<slug>.md` |
 | FR-SP7-16 | 文档可见性 | collection/private，检索与列表对齐 |
 

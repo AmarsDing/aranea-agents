@@ -141,7 +141,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `web_research` | Web 研究 | web | medium | 启用 | Tavily / SerpAPI 统一搜索；密钥见系统设置 → Web 研究 |
 | `duckduckgo_search` | DuckDuckGo 搜索 | web | medium | 停用 | Instant Answer（非通用网页搜索） |
 | `web_fetch` | Web 抓取 | web | medium | 启用 | 抓取 URL 并提取页面文本 |
-| `gemini_web_fetch` | Gemini 抓取 | web | medium | 启用 | 使用 Gemini 模型抓取并理解 URL 内容 |
+| `gemini_web_fetch` | Gemini 抓取 | web | medium | 启用 | 在 `prompt` 中写入 URL 与处理说明；兼容别名 `url` |
 | `google_search` | Google 搜索 | web | medium | 启用 | 使用 Google Custom Search API |
 | `arxiv_search` | ArXiv 搜索 | web | low | 启用 | 搜索 ArXiv 学术论文 |
 | `wikipedia_search` | Wikipedia 查询 | web | low | 启用 | 搜索和获取 Wikipedia 内容 |
@@ -666,7 +666,7 @@ Agent 系统提示已引导 `search_content → read_file → replace_content/sa
 | **范围** | 单次 Agent invocation 内，按绝对路径缓存文本内容与 mtime |
 | **写入时机** | `read_file` 成功后；`diff_edit` / `patch_file` / `save_file` 写盘后 |
 | **失效** | 磁盘 mtime 与缓存不一致；invocation 结束 |
-| **不替代** | 装饰器结果缓存不对 file 族生效（防写后读脏）；`metadata_json.cache_enabled` 只用于网络只读工具 |
+| **不替代** | 装饰器结果缓存不对 file 族生效（防写后读脏）；网络只读由装饰器 TTL 缓存，`metadata_json.cache_enabled` 不再对 `web_fetch` 等 `IsCacheable` 工具双写 |
 
 ### 3.4 与现有工具的分工
 

@@ -86,7 +86,7 @@ pairs AS (
 )
 INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, relation, weight_f)
 SELECT $1, src, dst, 'co_activated', '', $3 FROM pairs
-ON CONFLICT (doc_id, target_doc_id, link_type, relation)
+ON CONFLICT (doc_id, target_doc_id, link_type, relation) WHERE valid_to IS NULL
 DO UPDATE SET weight_f = knowledge_links.weight_f + EXCLUDED.weight_f, valid_to = NULL`,
 		collectionID, pq.Array(docIDs), eta)
 	if err != nil {

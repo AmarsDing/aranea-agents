@@ -5,8 +5,6 @@ import (
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
-
-	"aranea-agents/internal/tools/hostexecnorm"
 )
 
 type redactingToolSet struct {
@@ -115,9 +113,8 @@ func BuildHostexecToolSet(baseDir string, env map[string]string) (trpctool.ToolS
 	if err != nil {
 		return nil, err
 	}
-	normalized := hostexecnorm.WrapToolSet(ts)
-	if len(env) == 0 {
-		return normalized, nil
+	if len(env) > 0 {
+		ts = NewRedactingToolSet(ts, env)
 	}
-	return NewRedactingToolSet(normalized, env), nil
+	return WrapSessionEnhance(ts, baseDir, nil), nil
 }

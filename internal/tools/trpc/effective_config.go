@@ -15,6 +15,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 	cfg := ToolsetConfig{
 		Filesystem: has("read_file") || has("read_multiple_files") || has("save_file") ||
 			has("list_file") || has("search_file") || has("search_content") || has("replace_content") || has("diff_edit") || has("patch_file"),
+		ReadLints: has("read_lints"),
 		ShellExec:        has("shell_exec"),
 		WebFetch:         has("web_fetch"),
 		WebSearch:        has("duckduckgo_search"),
@@ -53,7 +54,7 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
 		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
-		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
+		cfg.ReadDocument || cfg.ReadSpreadsheet || cfg.ReadLints || cfg.WorkingMemory || cfg.Datetime || cfg.Message || cfg.BrowserEnabled || cfg.SubAgent ||
 		cfg.ClientBridge || cfg.ComputerUse || cfg.CodingBridge ||
 		len(cfg.AgentTools) > 0 || len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

@@ -35,6 +35,7 @@ var runtimeNameToRegistry = map[string]string{
 	"replace_content":     "file",
 	"diff_edit":           "file",
 	"patch_file":          "file",
+	"read_lints":          "read_lints",
 	"exec_command":        "hostexec",
 	"write_stdin":         "hostexec",
 	"kill_session":        "hostexec",
@@ -86,7 +87,26 @@ func IsCacheable(name string) bool {
 	if ClassifyTool(name) != SafetyConcurrentSafe {
 		return false
 	}
-	if registryNameFor(name) == "file" {
+	reg := registryNameFor(name)
+	if reg == "file" || reg == "read_lints" {
+		return false
+	}
+	return true
+}
+
+// CatalogResultCacheAllowed reports whether Before/AfterTool ResultCache
+// may store this tool. The decorator already caches IsCacheable network
+// tools (invocation-scoped TTL 60s); catalog cache_enabled must not
+// duplicate that. Writes and workspace files are never catalog-cached.
+func CatalogResultCacheAllowed(name string) bool {
+	if IsCacheable(name) {
+		return false
+	}
+	if ClassifyTool(name) != SafetyConcurrentSafe {
+		return false
+	}
+	reg := registryNameFor(name)
+	if reg == "file" || reg == "read_lints" {
 		return false
 	}
 	return true

@@ -24,11 +24,13 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 			col string
 			ddl string
 		}{
-			{"last_fired_at", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_at INTEGER`},
+			// 毫秒时间戳列必须 BIGINT：读径按 UnixMilli 解释，PG INTEGER（int4）
+			// 放不下 ms epoch（≈1.7e12）→ 写入 22003 越界（2026-08-17 真机事故）。
+			{"last_fired_at", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_at BIGINT`},
 			{"last_fired_value", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_value REAL NOT NULL DEFAULT 0`},
-			{"last_fired_window_start", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_window_start INTEGER`},
+			{"last_fired_window_start", `ALTER TABLE monitor_alert_rules ADD COLUMN last_fired_window_start BIGINT`},
 			{"firing_state", `ALTER TABLE monitor_alert_rules ADD COLUMN firing_state TEXT NOT NULL DEFAULT 'idle'`},
-			{"recovered_at", `ALTER TABLE monitor_alert_rules ADD COLUMN recovered_at INTEGER`},
+			{"recovered_at", `ALTER TABLE monitor_alert_rules ADD COLUMN recovered_at BIGINT`},
 		}
 		for _, a := range alters {
 			has, err := columnExistsWithDialect(ctx, db, "monitor_alert_rules", a.col, d)

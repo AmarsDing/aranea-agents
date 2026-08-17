@@ -374,6 +374,13 @@ var ddlMigrations = []ddlMigration{
 	// already true for new rows; this one-shot UPDATE enables existing
 	// agents that still carry the historical false. Idempotent: value-guarded.
 	{Version: 20261228, Name: "tools_retry_parallel_default_on", Func: ddlToolsRetryParallelDefaultOn},
+	// 20261229 monitor_alert_firing_ms_bigint（2026-08-17 真机 P2）：
+	// monitor_alert_rules 三个毫秒时间戳列（last_fired_at/last_fired_window_start/
+	// recovered_at）ensure DDL 误建为 INTEGER（int4 放不下 ms epoch ≈1.7e12），
+	// MarkAlertFiredPersistent 每次写入 22003 越界静默失败（Warn 级），告警状态机
+	// 永不持久化。存量库 ALTER TYPE BIGINT（列值恒 NULL——写入从未成功，转换无损）；
+	// fresh 库由 ensure DDL 直接建 BIGINT。SQLite INTEGER 为 64 位不受影响，跳过。
+	{Version: 20261229, Name: "monitor_alert_firing_ms_bigint", Func: ddlMonitorAlertFiringMsBigint},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1432,6 +1439,44 @@ func ddlToolsRetryParallelDefaultOn(ctx context.Context, rawDB *sql.DB, _ *ent.C
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit tools_retry_parallel_default_on migration: %w", err)
+	}
+	return nil
+}
+
+// ddlMonitorAlertFiringMsBigint widens the three millisecond-epoch columns on
+// monitor_alert_rules from INTEGER to BIGINT (2026-08-17 真机 P2). The read
+// path interprets them via time.UnixMilli, but PG int4 cannot hold ms epochs
+// (≈1.7e12), so every MarkAlertFiredPersistent write failed with 22003 and
+// the alert state machine was never persisted. Existing values are always
+// NULL (writes never succeeded), so the type change is lossless.
+// Postgres-only: SQLite INTEGER is 64-bit and unaffected.
+// Idempotent: information_schema type guard, ALTER only when still integer.
+func ddlMonitorAlertFiringMsBigint(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if !d.IsPostgres() || rawDB == nil {
+		lg.Info("monitor_alert_firing_ms_bigint skipped (non-postgres or nil db)",
+			loggateway.StepID("data.ddl_migration.monitor_alert_firing_ms_bigint"))
+		return nil
+	}
+	for _, col := range []string{"last_fired_at", "last_fired_window_start", "recovered_at"} {
+		var dataType string
+		err := rawDB.QueryRowContext(ctx, `
+			SELECT data_type FROM information_schema.columns
+			WHERE table_name = 'monitor_alert_rules' AND column_name = $1`, col).Scan(&dataType)
+		if err == sql.ErrNoRows {
+			continue // 列不存在：由 ensure DDL 以 BIGINT 形态补建
+		}
+		if err != nil {
+			return fmt.Errorf("check monitor_alert_rules.%s type: %w", col, err)
+		}
+		if dataType == "bigint" {
+			continue
+		}
+		if _, err := rawDB.ExecContext(ctx, `ALTER TABLE monitor_alert_rules ALTER COLUMN `+col+` TYPE BIGINT`); err != nil {
+			return fmt.Errorf("widen monitor_alert_rules.%s to bigint: %w", col, err)
+		}
+		lg.Info("monitor_alert_rules column widened to bigint",
+			loggateway.StepID("data.ddl_migration.monitor_alert_firing_ms_bigint"),
+			loggateway.Str("column", col))
 	}
 	return nil
 }

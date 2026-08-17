@@ -870,17 +870,23 @@ func (r *knowledgeRepo) ListChunksByDocuments(ctx context.Context, collectionID 
 	if strings.TrimSpace(collectionID) == "" || len(docIDs) == 0 || limitPerDoc <= 0 {
 		return nil, nil
 	}
-	raw := `
+	args := []any{collectionID, pq.Array(docIDs)}
+	acl, aclArgs := docChunkVisibilityClause(ctx, "$1", len(args)+1)
+	args = append(args, aclArgs...)
+	limitPH := len(args) + 1
+	args = append(args, limitPerDoc)
+	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index, 0::float4 AS score
 FROM (
   SELECT id, doc_id, collection_id, content, metadata, chunk_index,
          ROW_NUMBER() OVER (PARTITION BY doc_id ORDER BY chunk_index) AS rn
   FROM knowledge_chunks
   WHERE collection_id = $1 AND doc_id = ANY($2)
+  %s
 ) t
-WHERE rn <= $3
-ORDER BY doc_id, chunk_index`
-	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, collectionID, pq.Array(docIDs), limitPerDoc)
+WHERE rn <= $%d
+ORDER BY doc_id, chunk_index`, acl, limitPH)
+	rows, err := r.data.PostgresRead().QueryContext(ctx, raw, args...)
 	if err != nil {
 		return nil, err
 	}

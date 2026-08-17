@@ -79,6 +79,25 @@ func TestKnowledgeCitationBackfill_RecordsDetectedCitations(t *testing.T) {
 	}
 }
 
+func TestKnowledgeCitationBackfill_NumberedBracketCites(t *testing.T) {
+	reader := &fakeKnowledgeCitationTraceReader{candidates: []bizknowledge.KnowledgeCitationCandidate{
+		{
+			TurnID:    "turn-n",
+			ReplyText: "值班必须双人值守 [1]，不能单人。",
+			Chunks: []bizknowledge.CitationChunkRef{
+				{ChunkID: "k-short", Content: "xyz", N: 1},
+				{ChunkID: "k-other", Content: "abc", N: 2},
+			},
+		},
+	}}
+	recorder := &fakeKnowledgeChunkCitationRecorder{}
+	w := NewKnowledgeCitationBackfillWorker(0, reader, recorder, loggateway.NewNoop())
+	w.RunOnce(context.Background())
+	if len(recorder.recorded) != 1 || recorder.recorded[0].ChunkID != "k-short" {
+		t.Fatalf("recorded = %+v, want [1] → k-short", recorder.recorded)
+	}
+}
+
 func TestKnowledgeCitationBackfill_ReaderErrorIsGraceful(t *testing.T) {
 	reader := &fakeKnowledgeCitationTraceReader{err: errors.New("db down")}
 	recorder := &fakeKnowledgeChunkCitationRecorder{}

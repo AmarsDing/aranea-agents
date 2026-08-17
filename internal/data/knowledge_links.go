@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	bizknowledge "aranea-agents/internal/biz/knowledge"
@@ -27,12 +28,15 @@ func (r *knowledgeRepo) ListActiveLinks(ctx context.Context, collectionID string
 	if len(docIDs) == 0 {
 		return nil, nil
 	}
+	args := []any{collectionID, pq.Array(docIDs)}
+	acl, aclArgs := docBothEndpointsVisibleClause(ctx, "$1", len(args)+1)
+	args = append(args, aclArgs...)
 	rows, err := r.data.PostgresRead().QueryContext(ctx,
 		`SELECT doc_id, target_doc_id, link_type, relation, weight_f
 		 FROM knowledge_links
 		 WHERE collection_id = $1 AND valid_to IS NULL
-		   AND (doc_id = ANY($2) OR target_doc_id = ANY($2))`,
-		collectionID, pq.Array(docIDs))
+		   AND (doc_id = ANY($2) OR target_doc_id = ANY($2)) `+acl,
+		args...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +133,11 @@ func (r *knowledgeRepo) ListLinks(ctx context.Context, collectionID, docID, link
 		FROM knowledge_links
 		WHERE collection_id = $1 AND (doc_id = $2 OR target_doc_id = $2)`
 	args := []any{collectionID, docID}
+	acl, aclArgs := docBothEndpointsVisibleClause(ctx, "$1", len(args)+1)
+	q += " " + acl
+	args = append(args, aclArgs...)
 	if linkType != "" {
-		q += ` AND link_type = $3`
+		q += fmt.Sprintf(` AND link_type = $%d`, len(args)+1)
 		args = append(args, linkType)
 	}
 	q += ` ORDER BY id`

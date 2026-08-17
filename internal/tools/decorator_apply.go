@@ -2,6 +2,9 @@ package tools
 
 import (
 	"context"
+	"sync"
+
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -12,8 +15,8 @@ import (
 // retrieved via Tools(ctx).
 //
 // Non-callable tools (pure metadata) are passed through unchanged.
-// The decorator applies per-call timeout, result budget truncation, and
-// deterministic caching for ConcurrentSafe tools.
+// The decorator applies per-call timeout, result budget truncation,
+// argument normalization, and deterministic caching for ConcurrentSafe tools.
 //
 // Limitation (DeferredManager): This function only decorates tools that
 // are present in AssembledToolsets at decoration time. Tools that are
@@ -29,7 +32,6 @@ func ApplyDecorators(ts *AssembledToolsets, cfg ToolDecoratorConfig) {
 	if ts == nil {
 		return
 	}
-	// Decorate standalone tools in place.
 	for i, t := range ts.Tools {
 		if t == nil {
 			continue
@@ -38,30 +40,47 @@ func ApplyDecorators(ts *AssembledToolsets, cfg ToolDecoratorConfig) {
 			ts.Tools[i] = NewToolDecorator(ct, cfg)
 		}
 	}
-	// Wrap toolsets so their tools are decorated on retrieval.
 	for i, set := range ts.ToolSets {
 		if set == nil {
 			continue
 		}
-		ts.ToolSets[i] = &decoratedToolSet{inner: set, cfg: cfg}
+		ts.ToolSets[i] = newDecoratedToolSet(set, cfg)
 	}
 }
 
-// decoratedToolSet wraps a ToolSet so that tools returned by Tools(ctx)
-// are wrapped with ToolDecorator. This follows the same pattern as
-// confirmingToolSet in the trpc sub-package.
-//
-// Tools are decorated fresh on each Tools(ctx) call (consistent with
-// the framework's ToolSet contract). As a result, the deterministic
-// cache is effective for standalone Tools but not for ToolSet-managed
-// tools (each retrieval creates a new decorator instance). Timeout and
-// result budget apply to both.
-type decoratedToolSet struct {
-	inner trpctool.ToolSet
-	cfg   ToolDecoratorConfig
+// DefaultDecoratorConfig is the product-layer decorator used by LLM
+// assembly, catalog online test, and graph tool nodes so they share one
+// Call path (normalize + locks + budget).
+func DefaultDecoratorConfig(lg loggateway.Logger) ToolDecoratorConfig {
+	return ToolDecoratorConfig{
+		Timeout:       0,
+		ResultBudget:  DefaultResultBudget,
+		EnableCache:   true,
+		Logger:        lg,
+		StreamTimeout: DefaultStreamTimeout,
+		StreamBudget:  DefaultStreamBudget,
+	}
 }
 
-// Compile-time interface assertion.
+// ApplyDefaultDecorators applies DefaultDecoratorConfig.
+func ApplyDefaultDecorators(ts *AssembledToolsets, lg loggateway.Logger) {
+	ApplyDecorators(ts, DefaultDecoratorConfig(lg))
+}
+
+// decoratedToolSet wraps a ToolSet so that tools returned by Tools(ctx)
+// are wrapped with ToolDecorator. Decorator instances are reused across
+// Tools() calls so ConcurrentSafe ToolSet cache (TTL) actually hits.
+type decoratedToolSet struct {
+	inner      trpctool.ToolSet
+	cfg        ToolDecoratorConfig
+	mu         sync.Mutex
+	decorators map[string]trpctool.CallableTool
+}
+
+func newDecoratedToolSet(inner trpctool.ToolSet, cfg ToolDecoratorConfig) *decoratedToolSet {
+	return &decoratedToolSet{inner: inner, cfg: cfg}
+}
+
 var _ trpctool.ToolSet = (*decoratedToolSet)(nil)
 
 func (s *decoratedToolSet) Name() string {
@@ -86,16 +105,36 @@ func (s *decoratedToolSet) Tools(ctx context.Context) []trpctool.Tool {
 	if len(raw) == 0 {
 		return raw
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.decorators == nil {
+		s.decorators = make(map[string]trpctool.CallableTool, len(raw))
+	}
 	out := make([]trpctool.Tool, len(raw))
 	for i, t := range raw {
 		if t == nil {
 			continue
 		}
-		if ct, ok := t.(trpctool.CallableTool); ok {
-			out[i] = NewToolDecorator(ct, s.cfg)
-		} else {
+		ct, ok := t.(trpctool.CallableTool)
+		if !ok {
 			out[i] = t
+			continue
 		}
+		name := ""
+		if d := ct.Declaration(); d != nil {
+			name = d.Name
+		}
+		if name == "" {
+			out[i] = NewToolDecorator(ct, s.cfg)
+			continue
+		}
+		if existing, ok := s.decorators[name]; ok {
+			out[i] = existing
+			continue
+		}
+		dec := NewToolDecorator(ct, s.cfg)
+		s.decorators[name] = dec
+		out[i] = dec
 	}
 	return out
 }

@@ -70,23 +70,24 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 	var chunks []biz.KnowledgeChunk
 	if query != "" {
 		chunks = retrieveCueChunks(ctx, query, scopedIDs, filtered, lg)
-		// 引用闭环补全（P1）：首轮预检索注入也发 knowledge_recalled——日常供粮
-		// 主路径由此进入 cited 回采。lastUserQuery 只在每轮用户消息首次模型调用
-		// 取查询，工具循环续跑天然不重复发；同 chunk 同 turn 由 citations 账本幂等。
-		knowledgetool.EmitKnowledgeRecalledNotice(ctx, cueRenderedChunks(chunks))
 	}
-	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
+	cue, cited := formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
+	if len(cited) > 0 {
+		// 引用闭环：notice.n 与 cue [n] 同一顺序，前端脚注与 cited 回采共用。
+		knowledgetool.EmitNumberedKnowledgeRecalledNotice(ctx, cited)
+	}
+	return cue
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、
-// knowledgeCueTopK 截断），保证 notice 载荷与注入内容一致。
+// 非空 ID、knowledgeCueTopK 截断）。预算截断在 formatKnowledgeCue 内再裁一次。
 func cueRenderedChunks(chunks []biz.KnowledgeChunk) []biz.KnowledgeChunk {
 	out := make([]biz.KnowledgeChunk, 0, len(chunks))
 	for _, ch := range chunks {
 		if len(out) >= knowledgeCueTopK {
 			break
 		}
-		if strings.TrimSpace(ch.Content) == "" {
+		if strings.TrimSpace(ch.Content) == "" || strings.TrimSpace(ch.ID) == "" {
 			continue
 		}
 		out = append(out, ch)
@@ -178,16 +179,16 @@ func retrieveCueChunks(ctx context.Context, query string, scoped []string, catal
 // chunks（不输出工具引导文案与目录——agent 无法调用检索工具，列出可搜库
 // 只会误导）；此时若无命中 chunks 则不注入。groundedOnly 时禁止用世界知识，
 // 无命中也注入拒答指令。P3-2：整体预算按块/条目边界截断。
-func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly bool) string {
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly bool) (string, []biz.KnowledgeChunk) {
 	rendered := cueRenderedChunks(chunks)
 	if groundedOnly && len(rendered) == 0 && !toolsEnabled {
 		return "## Retrieved Knowledge\n" +
-			"The knowledge base has no passages for this question. You MUST say you do not have evidence in the knowledge base. Do not use world knowledge.\n"
+			"The knowledge base has no passages for this question. You MUST say you do not have evidence in the knowledge base. Do not use world knowledge.\n", nil
 	}
 	if !toolsEnabled {
 		// 无工具：仅"有实质命中"才值得注入。
 		if len(rendered) == 0 {
-			return ""
+			return "", nil
 		}
 		filtered = nil
 	}
@@ -196,11 +197,11 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		filtered = nil
 	}
 	if len(filtered) == 0 && len(chunks) == 0 && !groundedOnly {
-		return ""
+		return "", nil
 	}
 	if groundedOnly && len(rendered) == 0 && toolsEnabled {
 		return "## Retrieved Knowledge\n" +
-			"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n"
+			"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n", nil
 	}
 
 	var b strings.Builder
@@ -216,7 +217,8 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		return true
 	}
 
-	if len(chunks) > 0 {
+	var cited []biz.KnowledgeChunk
+	if len(rendered) > 0 {
 		header := "## Retrieved Knowledge\n" +
 			"The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge."
 		if groundedOnly {
@@ -228,20 +230,15 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 			header += " If they are insufficient, call `knowledge_search` or `knowledge_reflect`."
 		}
 		writeBlock(header + "\n\n")
-		for i, ch := range chunks {
-			if i >= knowledgeCueTopK {
-				break
-			}
+		for i, ch := range rendered {
 			content := strings.TrimSpace(ch.Content)
-			if content == "" {
-				continue
-			}
 			if utf8.RuneCountInString(content) > knowledgeCueChunkChars {
 				content = string([]rune(content)[:knowledgeCueChunkChars]) + "..."
 			}
 			if !writeBlock(fmt.Sprintf("[%d] (doc=%s score=%.2f)\n%s\n\n", i+1, ch.DocID, ch.Score, content)) {
 				break
 			}
+			cited = append(cited, ch)
 		}
 	}
 
@@ -280,5 +277,5 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 		}
 	}
 
-	return b.String()
+	return b.String(), cited
 }

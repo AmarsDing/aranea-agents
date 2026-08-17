@@ -84,3 +84,126 @@
 | ASK-mem-sh-08 | 提问(single_hop) | PASS | 3918ms | kw 1/1 |
 | ASK-mem-sh-09 | 提问(single_hop) | PASS | 9674ms | kw 2/2 |
 | ASK-mem-sh-10 | 提问(single_hop) | PASS | 4248ms | kw 1/1 |
+| ASK-mem-mh-01 | 提问(multi_hop) | FAIL | 180032ms | http 000 |
+| ASK-mem-mh-02 | 提问(multi_hop) | FAIL | 5961ms | kw 0/1 |
+| ASK-mem-mh-03 | 提问(multi_hop) | PASS | 4809ms | kw 2/2 |
+| ASK-mem-mh-04 | 提问(multi_hop) | PASS | 27491ms | kw 1/1 |
+| ASK-mem-mh-05 | 提问(multi_hop) | PASS | 4061ms | kw 1/1 |
+| ASK-mem-mh-06 | 提问(multi_hop) | FAIL | 16430ms | kw 0/1 |
+| ASK-mem-mh-07 | 提问(multi_hop) | FAIL | 10640ms | kw 0/3 |
+| ASK-mem-mh-08 | 提问(multi_hop) | FAIL | 1722ms | http 500 |
+| ASK-mem-mh-09 | 提问(multi_hop) | FAIL | 1326ms | http 500 |
+| ASK-mem-mh-10 | 提问(multi_hop) | FAIL | 1401ms | http 500 |
+| ASK-mem-tp-01 | 提问(temporal) | FAIL | 1701ms | http 500 |
+| ASK-mem-tp-02 | 提问(temporal) | FAIL | 1337ms | http 500 |
+| ASK-mem-tp-03 | 提问(temporal) | FAIL | 1571ms | http 500 |
+| ASK-mem-tp-04 | 提问(temporal) | FAIL | 1420ms | http 500 |
+| ASK-mem-tp-05 | 提问(temporal) | FAIL | 1269ms | http 500 |
+| ASK-mem-tp-06 | 提问(temporal) | FAIL | 1461ms | http 500 |
+| ASK-mem-tp-07 | 提问(temporal) | FAIL | 1525ms | http 500 |
+| ASK-mem-tp-08 | 提问(temporal) | FAIL | 1273ms | http 500 |
+| ASK-mem-tp-09 | 提问(temporal) | FAIL | 1549ms | http 500 |
+| ASK-mem-tp-10 | 提问(temporal) | FAIL | 2030ms | http 500 |
+| ASK-mem-up-01 | 提问(update) | FAIL | 1371ms | http 500 |
+| ASK-mem-up-02 | 提问(update) | FAIL | 1449ms | http 500 |
+| ASK-mem-up-03 | 提问(update) | FAIL | 1353ms | http 500 |
+| ASK-mem-up-04 | 提问(update) | FAIL | 1677ms | http 500 |
+| ASK-mem-up-05 | 提问(update) | FAIL | 1247ms | http 500 |
+| ASK-mem-up-06 | 提问(update) | FAIL | 1310ms | http 500 |
+| ASK-mem-up-07 | 提问(update) | FAIL | 1831ms | http 500 |
+| ASK-mem-up-08 | 提问(update) | FAIL | 1503ms | http 500 |
+| ASK-mem-up-09 | 提问(update) | FAIL | 1406ms | http 500 |
+| ASK-mem-up-10 | 提问(update) | FAIL | 1308ms | http 500 |
+| ASK-mem-ab-01 | 提问(abstention) | FAIL | 1507ms | http 500 |
+| ASK-mem-ab-02 | 提问(abstention) | FAIL | 1337ms | http 500 |
+| ASK-mem-ab-03 | 提问(abstention) | FAIL | 1426ms | http 500 |
+| ASK-mem-ab-04 | 提问(abstention) | FAIL | 1544ms | http 500 |
+| ASK-mem-ab-05 | 提问(abstention) | FAIL | 1450ms | http 500 |
+| ASK-mem-ab-06 | 提问(abstention) | FAIL | 1632ms | http 500 |
+| ASK-mem-ab-07 | 提问(abstention) | FAIL | 1433ms | http 500 |
+| ASK-mem-ab-08 | 提问(abstention) | FAIL | 2227ms | http 500 |
+| ASK-mem-ab-09 | 提问(abstention) | FAIL | 1421ms | http 500 |
+| ASK-mem-ab-10 | 提问(abstention) | FAIL | 1487ms | http 500 |
+| B07-post | prompt 植入后 | PASS | 168ms | len=6372 before=6372 |
+| B-00 | eval agent 已存在复用 | PASS | 0ms | exists |
+| B07-pre | prompt 基线 | PASS | 172ms | len=6308 |
+| PLANT-1 | 植入 mem-sh-01 | PASS | 6971ms | code=200 |
+| PLANT-2 | 植入 mem-sh-02 | PASS | 21661ms | code=200 |
+| PLANT-3 | 植入 mem-sh-03 | PASS | 7836ms | code=200 |
+| PLANT-4 | 植入 mem-sh-04 | PASS | 53918ms | code=200 |
+| PLANT-5 | 植入 mem-sh-05 | PASS | 18667ms | code=200 |
+| PLANT-6 | 植入 mem-sh-06 | PASS | 11832ms | code=200 |
+| PLANT-7 | 植入 mem-sh-07 | PASS | 11346ms | code=200 |
+| PLANT-8 | 植入 mem-sh-08 | PASS | 8476ms | code=200 |
+| PLANT-9 | 植入 mem-sh-09 | PASS | 11190ms | code=200 |
+| PLANT-10 | 植入 mem-sh-10 | PASS | 8269ms | code=200 |
+| PLANT-11 | 植入 mem-mh-01 | PASS | 29970ms | code=200 |
+| PLANT-12 | 植入 mem-mh-01 | PASS | 9520ms | code=200 |
+| PLANT-13 | 植入 mem-mh-02 | PASS | 10473ms | code=200 |
+| PLANT-14 | 植入 mem-mh-02 | PASS | 9656ms | code=200 |
+| PLANT-15 | 植入 mem-mh-03 | PASS | 10366ms | code=200 |
+| PLANT-16 | 植入 mem-mh-03 | PASS | 8596ms | code=200 |
+| PLANT-17 | 植入 mem-mh-04 | PASS | 36524ms | code=200 |
+| PLANT-18 | 植入 mem-mh-04 | PASS | 8244ms | code=200 |
+| PLANT-19 | 植入 mem-mh-05 | PASS | 10769ms | code=200 |
+| PLANT-20 | 植入 mem-mh-05 | PASS | 10463ms | code=200 |
+| PLANT-21 | 植入 mem-mh-06 | PASS | 12851ms | code=200 |
+| PLANT-22 | 植入 mem-mh-06 | PASS | 10743ms | code=200 |
+| PLANT-23 | 植入 mem-mh-07 | PASS | 10422ms | code=200 |
+| PLANT-24 | 植入 mem-mh-07 | PASS | 12039ms | code=200 |
+| PLANT-25 | 植入 mem-mh-08 | PASS | 11672ms | code=200 |
+| PLANT-26 | 植入 mem-mh-08 | PASS | 6887ms | code=200 |
+| PLANT-27 | 植入 mem-mh-09 | PASS | 11065ms | code=200 |
+| PLANT-28 | 植入 mem-mh-09 | PASS | 4559ms | code=200 |
+| PLANT-29 | 植入 mem-mh-10 | PASS | 11975ms | code=200 |
+| PLANT-30 | 植入 mem-mh-10 | PASS | 11020ms | code=200 |
+| PLANT-31 | 植入 mem-tp-01 | PASS | 11480ms | code=200 |
+| PLANT-32 | 植入 mem-tp-02 | PASS | 15107ms | code=200 |
+| PLANT-33 | 植入 mem-tp-03 | PASS | 8137ms | code=200 |
+| PLANT-34 | 植入 mem-tp-04 | PASS | 12480ms | code=200 |
+| PLANT-35 | 植入 mem-tp-05 | PASS | 8687ms | code=200 |
+| PLANT-36 | 植入 mem-tp-06 | PASS | 12577ms | code=200 |
+| PLANT-37 | 植入 mem-tp-07 | PASS | 9585ms | code=200 |
+| PLANT-38 | 植入 mem-tp-08 | PASS | 17303ms | code=200 |
+| PLANT-39 | 植入 mem-tp-09 | PASS | 8180ms | code=200 |
+| PLANT-40 | 植入 mem-tp-10 | PASS | 9918ms | code=200 |
+| PLANT-41 | 植入 mem-up-01 | PASS | 7464ms | code=200 |
+| PLANT-42 | 植入 mem-up-01 | PASS | 7531ms | code=200 |
+| PLANT-43 | 植入 mem-up-02 | PASS | 10673ms | code=200 |
+| PLANT-44 | 植入 mem-up-02 | PASS | 8482ms | code=200 |
+| PLANT-45 | 植入 mem-up-03 | PASS | 9108ms | code=200 |
+| PLANT-46 | 植入 mem-up-03 | PASS | 7803ms | code=200 |
+| PLANT-47 | 植入 mem-up-04 | PASS | 8301ms | code=200 |
+| PLANT-48 | 植入 mem-up-04 | PASS | 14997ms | code=200 |
+| PLANT-49 | 植入 mem-up-05 | PASS | 10303ms | code=200 |
+| PLANT-50 | 植入 mem-up-05 | PASS | 5399ms | code=200 |
+| PLANT-51 | 植入 mem-up-06 | PASS | 12812ms | code=200 |
+| PLANT-52 | 植入 mem-up-06 | PASS | 5405ms | code=200 |
+| PLANT-53 | 植入 mem-up-07 | PASS | 7426ms | code=200 |
+| PLANT-54 | 植入 mem-up-07 | FAIL | 27ms | code=000 |
+| PLANT-55 | 植入 mem-up-08 | FAIL | 25ms | code=000 |
+| PLANT-56 | 植入 mem-up-08 | FAIL | 23ms | code=000 |
+| PLANT-57 | 植入 mem-up-09 | FAIL | 24ms | code=000 |
+| PLANT-58 | 植入 mem-up-09 | FAIL | 24ms | code=000 |
+| PLANT-59 | 植入 mem-up-10 | FAIL | 27ms | code=000 |
+| PLANT-60 | 植入 mem-up-10 | FAIL | 25ms | code=000 |
+| A01-facts | 植入事实落库抽查 | PASS | 27ms | 命中植入词 11/25 |
+| B02-mem-sh-01 | 召回段 | PASS | 33ms | recall_debug |
+| B02-mem-sh-02 | 召回段 | PASS | 32ms | recall_debug |
+| B02-mem-sh-03 | 召回段 | PASS | 32ms | recall_debug |
+| B02-mem-sh-04 | 召回段 | PASS | 47ms | recall_debug |
+| B02-mem-sh-05 | 召回段 | PASS | 32ms | recall_debug |
+| B02-mem-sh-06 | 召回段 | PASS | 30ms | recall_debug |
+| B02-mem-sh-07 | 召回段 | PASS | 33ms | recall_debug |
+| B02-mem-sh-08 | 召回段 | PASS | 32ms | recall_debug |
+| B02-mem-sh-09 | 召回段 | PASS | 31ms | recall_debug |
+| B02-mem-sh-10 | 召回段 | PASS | 31ms | recall_debug |
+| ASK-mem-sh-01 | 提问(single_hop) | PASS | 4695ms | kw 2/2 |
+| ASK-mem-sh-02 | 提问(single_hop) | PASS | 41532ms | kw 2/2 |
+| ASK-mem-sh-03 | 提问(single_hop) | PASS | 6827ms | kw 1/1 |
+| ASK-mem-sh-04 | ask(single_hop) | FAIL | 88060ms | kw 0/1 |
+| ASK-mem-sh-05 | ask(single_hop) | PASS | 7802ms | kw 1/1 |
+| ASK-mem-sh-06 | ask(single_hop) | PASS | 7580ms | kw 1/1 |
+| ASK-mem-sh-07 | ask(single_hop) | PASS | 6879ms | kw 1/1 |
+| ASK-mem-sh-08 | ask(single_hop) | PASS | 7365ms | kw 1/1 |
+| ASK-mem-sh-09 | ask(single_hop) | PASS | 9302ms | kw 2/2 |

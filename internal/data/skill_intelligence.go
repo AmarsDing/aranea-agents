@@ -263,7 +263,7 @@ func (r *SkillIntelligenceRepo) GetHealthMetrics(ctx context.Context, skillID st
 	tokenUsageTotal := d.JSONExtractNumeric("token_usage", "total")
 	aggQuery := d.RenumberPlaceholders(`SELECT
   COUNT(*) as invocation_count,
-  SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END) as success_count,
+  COALESCE(SUM(CASE WHEN outcome = 'success' OR (outcome = '' AND (status = 'completed' OR status = 'success')) THEN 1 ELSE 0 END), 0) as success_count,
   AVG(CASE WHEN duration_ms > 0 THEN duration_ms END) as avg_duration_ms,
   COALESCE(AVG(CASE WHEN token_usage IS NOT NULL THEN ` + tokenUsageTotal + ` END), 0) as avg_token_usage
 FROM skill_invocation

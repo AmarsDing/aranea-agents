@@ -32,6 +32,7 @@ import (
 type knowledgeCitationNoticePayload struct {
 	Chunks []struct {
 		ChunkID string `json:"chunk_id"`
+		N       int    `json:"n,omitempty"`
 	} `json:"chunks"`
 }
 
@@ -84,10 +85,14 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 	}
 	defer rows.Close()
 
+	type rawChunk struct {
+		id string
+		n  int
+	}
 	type rawCandidate struct {
-		turnID   string
-		chunkIDs []string
-		reply    string
+		turnID string
+		chunks []rawChunk
+		reply  string
 	}
 	var raws []rawCandidate
 	for rows.Next() {
@@ -104,7 +109,7 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 			continue
 		}
 		seen := make(map[string]struct{}, len(payload.Chunks))
-		var chunkIDs []string
+		var chunks []rawChunk
 		for _, c := range payload.Chunks {
 			id := strings.TrimSpace(c.ChunkID)
 			if id == "" {
@@ -114,12 +119,16 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 				continue
 			}
 			seen[id] = struct{}{}
-			chunkIDs = append(chunkIDs, id)
+			n := c.N
+			if n < 0 {
+				n = 0
+			}
+			chunks = append(chunks, rawChunk{id: id, n: n})
 		}
-		if len(chunkIDs) == 0 {
+		if len(chunks) == 0 {
 			continue
 		}
-		raws = append(raws, rawCandidate{turnID: strings.TrimSpace(turnID), chunkIDs: chunkIDs, reply: reply})
+		raws = append(raws, rawCandidate{turnID: strings.TrimSpace(turnID), chunks: chunks, reply: reply})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, entErrToBizErr(err, "KNOWLEDGE_CITATION")
@@ -132,8 +141,8 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 	// assemble candidates (chunks that no longer exist are dropped).
 	idSet := make(map[string]struct{})
 	for _, rc := range raws {
-		for _, id := range rc.chunkIDs {
-			idSet[id] = struct{}{}
+		for _, ch := range rc.chunks {
+			idSet[ch.id] = struct{}{}
 		}
 	}
 	allIDs := make([]string, 0, len(idSet))
@@ -150,12 +159,12 @@ func (r *knowledgeCitationTraceRepo) ListKnowledgeCitationCandidates(ctx context
 			continue
 		}
 		cand := bizknowledge.KnowledgeCitationCandidate{TurnID: rc.turnID, ReplyText: rc.reply}
-		for _, id := range rc.chunkIDs {
-			content := strings.TrimSpace(contents[id])
+		for _, ch := range rc.chunks {
+			content := strings.TrimSpace(contents[ch.id])
 			if content == "" {
 				continue
 			}
-			cand.Chunks = append(cand.Chunks, bizknowledge.CitationChunkRef{ChunkID: id, Content: content})
+			cand.Chunks = append(cand.Chunks, bizknowledge.CitationChunkRef{ChunkID: ch.id, Content: content, N: ch.n})
 		}
 		if len(cand.Chunks) == 0 {
 			continue

@@ -13,16 +13,40 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// fileMutatingToolNames are tools whose execution modifies workspace files.
-// Reminders fire when such edits are not followed by a test/command run
-// containing "test" (the tool side-effect feedback loop from Grok Build).
+// fileMutatingExactNames are runtime/catalog names that modify workspace
+// files. save_file does not contain "write"/"edit", so substring matching
+// alone would miss the primary write tool.
+var fileMutatingExactNames = []string{
+	"save_file", "diff_edit", "patch_file", "replace_content", "write_file", "edit_file",
+}
+
+// fileMutatingToolNames are substring markers for other write/edit tools.
 var fileMutatingToolNames = []string{"write", "edit", "patch", "delete", "create", "rename", "move"}
 
 // commandToolNames are tools that execute shell commands; a command
 // containing "test" counts as a verification run that clears reminders.
 var commandToolNames = []string{"exec_command", "shell_exec", "bash", "run_command", "run_test"}
 
+func toolBaseName(name string) string {
+	l := strings.ToLower(strings.TrimSpace(name))
+	for _, exact := range fileMutatingExactNames {
+		if l == exact || strings.HasSuffix(l, "_"+exact) {
+			return exact
+		}
+	}
+	if l == "read_lints" || strings.HasSuffix(l, "_read_lints") {
+		return "read_lints"
+	}
+	return l
+}
+
 func isFileMutatingTool(name string) bool {
+	base := toolBaseName(name)
+	for _, exact := range fileMutatingExactNames {
+		if base == exact {
+			return true
+		}
+	}
 	l := strings.ToLower(name)
 	for _, p := range fileMutatingToolNames {
 		if strings.Contains(l, p) {
@@ -30,6 +54,10 @@ func isFileMutatingTool(name string) bool {
 		}
 	}
 	return false
+}
+
+func isLintTool(name string) bool {
+	return toolBaseName(name) == "read_lints"
 }
 
 func isCommandTool(name string) bool {
@@ -69,10 +97,15 @@ func (r *ToolReminder) OnToolExecuted(name string, params map[string]string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	switch {
+	case isLintTool(name):
+		r.unverified = nil
 	case isFileMutatingTool(name):
 		path := params["path"]
 		if path == "" {
 			path = params["file"]
+		}
+		if path == "" {
+			path = params["file_name"]
 		}
 		if path == "" {
 			path = name // fall back to tool name when no path param exists
@@ -93,7 +126,7 @@ func (r *ToolReminder) Collect() []string {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"Files modified without running tests: %s. Consider running tests to verify the changes.",
+		"Files modified without verification: %s. Call read_lints on those paths, then run tests.",
 		strings.Join(r.unverified, ", "),
 	)}
 }
@@ -151,7 +184,7 @@ func newToolReminderAfterHook() callbacks.Callback {
 		}
 		// Do not nag on the verification run itself or on read-only tools when
 		// the reminder would drown a small result; append to substantial results.
-		if isCommandTool(args.ToolName) {
+		if isCommandTool(args.ToolName) || isLintTool(args.ToolName) {
 			return &trpctool.AfterToolResult{}, nil
 		}
 		note := "\n\n[reminder] " + strings.Join(reminders, " ")

@@ -132,14 +132,14 @@ func NewSearchTool() trpctool.CallableTool {
 		scoped := knowledgeCollectionsFromContext(ctx)
 
 		q := biz.KnowledgeSearchQuery{
-		Query:      in.Query,
-		TopK:       in.TopK,
-		MinScore:   in.MinScore,
-		FilterJSON: in.FilterJSON,
-		UseRerank:  in.UseRerank,
-		// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
-		ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
-	}
+			Query:      in.Query,
+			TopK:       in.TopK,
+			MinScore:   in.MinScore,
+			FilterJSON: in.FilterJSON,
+			UseRerank:  in.UseRerank,
+			// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
+			ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+		}
 
 		var chunks []biz.KnowledgeChunk
 		var err error
@@ -176,7 +176,7 @@ func NewSearchTool() trpctool.CallableTool {
 
 		// 29-token P2-2: cited 回采 — 每次检索调用发射 knowledge_recalled
 		// notice 携带返回 chunk 集合，供引用回填 worker 度量命中率闭环。
-		emitKnowledgeRecalledNotice(ctx, chunks)
+		emitKnowledgeRecalledNotice(ctx, chunks, false)
 
 		out := searchOutput{Chunks: make([]chunkSummary, 0, len(chunks))}
 		for _, ch := range chunks {
@@ -237,6 +237,9 @@ type knowledgeRecalledChunk struct {
 	DocID   string  `json:"doc_id,omitempty"`
 	Score   float32 `json:"score,omitempty"`
 	Line    string  `json:"line,omitempty"`
+	// N is the [n] citation index shown in ## Retrieved Knowledge.
+	// Omitted on tool-path notices so later retrievals do not steal [1].
+	N int `json:"n,omitempty"`
 }
 
 // knowledgeRecalledNoticePayload is the JSON content of a knowledge_recalled
@@ -250,7 +253,13 @@ type knowledgeRecalledNoticePayload struct {
 // 注入（internal/agent/knowledge_inject.go）检索到 chunks 后调用，让日常供粮
 // 主路径同样进入 cited 回采闭环（P1，2026-08-15 评审修订）。
 func EmitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk) {
-	emitKnowledgeRecalledNotice(ctx, chunks)
+	emitKnowledgeRecalledNotice(ctx, chunks, false)
+}
+
+// EmitNumberedKnowledgeRecalledNotice 与 cue 的 [n] 对齐：payload.n = 1..k。
+// 仅预检索注入使用；工具检索不加 n，避免第二次召回把 [1] 抢走。
+func EmitNumberedKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk) {
+	emitKnowledgeRecalledNotice(ctx, chunks, true)
 }
 
 // emitKnowledgeRecalledNotice emits one knowledge_recalled notice carrying the
@@ -260,7 +269,7 @@ func EmitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChun
 // never break the tool call. Unlike the memory side there is no per-turn dedup
 // guard: each retrieval call is a distinct candidate set, and one turn may
 // legitimately carry multiple notices (the backfill reader handles that).
-func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk) {
+func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChunk, numbered bool) {
 	if len(chunks) == 0 {
 		return
 	}
@@ -269,6 +278,7 @@ func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChun
 		return
 	}
 	payload := knowledgeRecalledNoticePayload{Chunks: make([]knowledgeRecalledChunk, 0, len(chunks))}
+	n := 0
 	for i, ch := range chunks {
 		if i >= knowledgeRecalledMaxChunks {
 			break
@@ -281,12 +291,17 @@ func emitKnowledgeRecalledNotice(ctx context.Context, chunks []biz.KnowledgeChun
 		if r := []rune(line); len(r) > knowledgeRecalledMaxLineRunes {
 			line = string(r[:knowledgeRecalledMaxLineRunes]) + "…"
 		}
-		payload.Chunks = append(payload.Chunks, knowledgeRecalledChunk{
+		item := knowledgeRecalledChunk{
 			ChunkID: id,
 			DocID:   strings.TrimSpace(ch.DocID),
 			Score:   ch.Score,
 			Line:    line,
-		})
+		}
+		if numbered {
+			n++
+			item.N = n
+		}
+		payload.Chunks = append(payload.Chunks, item)
 	}
 	if len(payload.Chunks) == 0 {
 		return
@@ -338,11 +353,11 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		}
 
 		q := biz.KnowledgeSearchQuery{
-		Query: in.Query,
-		TopK:  in.TopK,
-		// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
-		ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
-	}
+			Query: in.Query,
+			TopK:  in.TopK,
+			// 词条优先写回：日记流水仅 provenance，不进工具默认检索。
+			ExcludePathPrefixes: []string{bizknowledge.WriteBackInboxPrefix},
+		}
 
 		var chunks []biz.KnowledgeChunk
 		var err error
@@ -350,7 +365,7 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		if fr := FederatedRetrieverFromContext(ctx); fr != nil {
 			if len(in.CollectionIDs) == 0 {
 				// US-14：无显式 ID 且无 scoped → 全库智能路由（零库返回空结果）。
-			chunks, err = fr.SearchAll(ctx, q, nil, "", retrievalWorkspace(ctx))
+				chunks, err = fr.SearchAll(ctx, q, nil, "", retrievalWorkspace(ctx))
 			} else {
 				chunks, err = fr.Search(ctx, in.CollectionIDs, q, nil, "")
 			}
@@ -378,7 +393,7 @@ func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 		}
 
 		// 29-token P2-2: 同 knowledge_search — 反射检索同样发射回采 notice。
-		emitKnowledgeRecalledNotice(ctx, chunks)
+		emitKnowledgeRecalledNotice(ctx, chunks, false)
 
 		out := reflectOutput{
 			Sufficient: true,

@@ -14,6 +14,9 @@ import (
 // MetadataJSON/ConfigJSON），禁止在每次工具调用时跑 GetTool 聚合查询
 // （此前每次调用 2 个 hook 各一次 ~49ms 聚合 SQL）。快照语义安全：
 // 工具 CRUD 会 invalidateAllAgentBuildCaches，策略变更随重建生效。
+//
+// 装饰器已缓存 IsCacheable 网络工具（web_fetch 等），回调 ResultCache
+// 不得再写一份。写工具与 file 族即使 cache_enabled 也不进回调缓存。
 func TestToolResultCacheHooks_PolicyFromSnapshot(t *testing.T) {
 	fk := &fakeToolLookup{}
 	deps := TRPCBuilderDeps{}
@@ -23,6 +26,7 @@ func TestToolResultCacheHooks_PolicyFromSnapshot(t *testing.T) {
 	catalog := &toolBuildCatalog{
 		entries: map[string]biztool.ToolCatalogEntry{
 			"web_fetch": {Key: "web_fetch", MetadataJSON: `{"cache_enabled":true,"cache_ttl_sec":60}`},
+			"save_file": {Key: "save_file", MetadataJSON: `{"cache_enabled":true,"cache_ttl_sec":60}`},
 			"plain":     {Key: "plain"},
 		},
 		overrides: map[string]biztool.ToolAgentOverride{},
@@ -33,25 +37,29 @@ func TestToolResultCacheHooks_PolicyFromSnapshot(t *testing.T) {
 	ctx := context.Background()
 	args := []byte(`{"url":"https://example.com"}`)
 
-	// 首次未命中 → 无 CustomResult。
 	res, err := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "web_fetch", Arguments: args})
 	if err != nil || res == nil || res.CustomResult != nil {
 		t.Fatalf("first call must miss, got %+v err=%v", res, err)
 	}
-	// after hook 按快照策略写入缓存。
 	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: "web_fetch", Arguments: args, Result: "PAGE"}); err != nil {
 		t.Fatal(err)
 	}
-	// 二次命中。
 	res, err = before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "web_fetch", Arguments: args})
-	if err != nil || res == nil || res.CustomResult != "PAGE" {
-		t.Fatalf("second call must hit with cached PAGE, got %+v err=%v", res, err)
+	if err != nil || res == nil || res.CustomResult != nil {
+		t.Fatalf("web_fetch must not use callback cache (decorator owns it), got %+v err=%v", res, err)
 	}
 	if fk.getToolCalls != 0 {
 		t.Fatalf("GetTool called %d times; policy must come from the build snapshot", fk.getToolCalls)
 	}
 
-	// 策略未启用缓存的工具：不写不读。
+	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: "save_file", Arguments: args, Result: "W"}); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "save_file", Arguments: args})
+	if res == nil || res.CustomResult != nil {
+		t.Fatalf("save_file must not be cached, got %+v", res)
+	}
+
 	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: "plain", Arguments: args, Result: "X"}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +68,6 @@ func TestToolResultCacheHooks_PolicyFromSnapshot(t *testing.T) {
 		t.Fatalf("plain must not be cached, got %+v", res)
 	}
 
-	// 快照外的工具（框架内建/无目录行）：不缓存、不查库。
 	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{ToolName: "ghost", Arguments: args, Result: "X"}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,15 +103,17 @@ func TestToolResultCacheHooks_NilCatalog(t *testing.T) {
 	}
 }
 
-// 未注入 ResultCache 时回退到包级默认实例（等价历史 cache.Global 单例），
-// 保证 prod 无 Wire 注入路径行为不变。
+// 未注入 ResultCache 时回退到包级默认实例（等价历史 cache.Global 单例）。
 func TestToolResultCacheHooks_DefaultCacheFallback(t *testing.T) {
 	deps := TRPCBuilderDeps{} // ResultCache 未注入
+	if deps.resultCache() != defaultToolResultCache {
+		t.Fatal("nil ResultCache must use the process-wide default instance")
+	}
 	catalog := &toolBuildCatalog{
 		entries: map[string]biztool.ToolCatalogEntry{
 			"web_fetch": {Key: "web_fetch", ConfigJSON: `{"cache_enabled":true,"cache_ttl_sec":60}`},
-	},
-	overrides: map[string]biztool.ToolAgentOverride{},
+		},
+		overrides: map[string]biztool.ToolAgentOverride{},
 	}
 	before := newToolResultCacheBeforeHook(deps, catalog)
 	after := newToolResultCacheAfterHook(deps, catalog)
@@ -115,7 +124,7 @@ func TestToolResultCacheHooks_DefaultCacheFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, _ := before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{ToolName: "web_fetch", Arguments: args})
-	if res == nil || res.CustomResult != "D" {
-		t.Fatalf("default cache fallback must store/hit, got %+v", res)
+	if res == nil || res.CustomResult != nil {
+		t.Fatalf("web_fetch must not populate callback cache, got %+v", res)
 	}
 }

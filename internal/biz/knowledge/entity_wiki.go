@@ -38,6 +38,7 @@ func (u *Usecase) EnsureEntityWikiPages(ctx context.Context, collectionID, sourc
 		sourceRel = strings.TrimSpace(src.Source)
 	}
 	written := 0
+	var touched []PromoteTouchedDoc
 	for _, en := range entities {
 		if written >= entityWikiMaxPages {
 			break
@@ -51,7 +52,7 @@ func (u *Usecase) EnsureEntityWikiPages(ctx context.Context, collectionID, sourc
 		if strings.TrimSpace(src.RelPath) == rel {
 			continue
 		}
-		ok, err := u.ensureOneEntityWiki(ctx, col, rel, name, en.EntityType, sourceRel)
+		doc, ok, err := u.ensureOneEntityWiki(ctx, col, rel, name, en.EntityType, sourceRel)
 		if err != nil {
 			u.lg.Warn("实体词条页写入失败（检索不受影响）",
 				loggateway.StepID("knowledge.entity.wiki"),
@@ -62,18 +63,36 @@ func (u *Usecase) EnsureEntityWikiPages(ctx context.Context, collectionID, sourc
 		}
 		if ok {
 			written++
+			if strings.TrimSpace(doc.ID) != "" {
+				touched = append(touched, PromoteTouchedDoc{DocID: doc.ID, Created: strings.TrimSpace(doc.Status) == "pending"})
+			}
 		}
 	}
+	u.replayEntityWikiChunks(ctx, col, touched)
 	return nil
 }
 
-func (u *Usecase) ensureOneEntityWiki(ctx context.Context, col Collection, rel, title, entityType, sourceRel string) (bool, error) {
+func (u *Usecase) replayEntityWikiChunks(ctx context.Context, col Collection, touched []PromoteTouchedDoc) {
+	if u == nil || u.writeBackReplay == nil || len(touched) == 0 {
+		return
+	}
+	if err := u.writeBackReplay(ctx, col, touched); err != nil {
+		u.lg.Warn("实体词条页 chunk 重放失败（正文已落，索引自愈可补）",
+			loggateway.StepID("knowledge.entity.wiki"),
+			loggateway.Str("collection_id", col.ID),
+			loggateway.Int("touched", len(touched)),
+			loggateway.Err(err),
+		)
+	}
+}
+
+func (u *Usecase) ensureOneEntityWiki(ctx context.Context, col Collection, rel, title, entityType, sourceRel string) (Document, bool, error) {
 	doc, err := u.documents.GetDocumentByRelPath(ctx, col.ID, rel)
 	created := false
 	body := ""
 	if err != nil {
 		if !apierror.IsCode(err, apierror.CodeNotFound) {
-			return false, err
+			return Document{}, false, err
 		}
 		created = true
 	} else {
@@ -81,7 +100,7 @@ func (u *Usecase) ensureOneEntityWiki(ctx context.Context, col Collection, rel, 
 	}
 	next, changed := ensureEntityWikiBody(body, title, entityType, sourceRel)
 	if !changed {
-		return false, nil
+		return doc, false, nil
 	}
 	if created {
 		doc, err = u.CreateDocument(ctx, Document{
@@ -94,10 +113,12 @@ func (u *Usecase) ensureOneEntityWiki(ctx context.Context, col Collection, rel, 
 			Status:       "pending",
 		})
 		if err != nil {
-			return false, err
+			return Document{}, false, err
 		}
 	} else if err := u.documents.UpdateDocumentContent(ctx, doc.ID, next, true); err != nil {
-		return false, err
+		return Document{}, false, err
+	} else {
+		doc.ContentText = next
 	}
 	if err := u.RebuildBlockIndex(ctx, col.ID, doc.ID, next); err != nil {
 		u.lg.Warn("实体词条页块索引重建失败（正文已落）",
@@ -106,7 +127,7 @@ func (u *Usecase) ensureOneEntityWiki(ctx context.Context, col Collection, rel, 
 			loggateway.Err(err),
 		)
 	}
-	return true, nil
+	return doc, true, nil
 }
 
 func entityWikiWikilink(sourceRel string) string {

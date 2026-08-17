@@ -68,6 +68,7 @@ type ToolsetConfig struct {
 	BlobReader        biz.ToolResultBlobReader
 	ReadDocument      bool
 	ReadSpreadsheet   bool
+	ReadLints         bool
 	WorkingMemory     bool
 	Datetime          bool
 	Message           bool
@@ -169,6 +170,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ReadSpreadsheet {
 		enabled = append(enabled, "read_spreadsheet")
+	}
+	if cfg.ReadLints {
+		enabled = append(enabled, "read_lints")
 	}
 	if cfg.WorkingMemory {
 		enabled = append(enabled, "working_memory")

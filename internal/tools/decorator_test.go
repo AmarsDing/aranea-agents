@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -60,6 +61,28 @@ func TestToolDecorator_ExposesOriginal(t *testing.T) {
 	}
 	if originator.Original() != trpctool.Tool(inner) {
 		t.Fatalf("Original() = %T, want inner tool %T", originator.Original(), inner)
+	}
+}
+
+func TestToolDecorator_NormalizesFilePathAlias(t *testing.T) {
+	var got []byte
+	inner := &decoratorMockTool{
+		name: "save_file",
+		call: func(_ context.Context, jsonArgs []byte) (any, error) {
+			got = append([]byte(nil), jsonArgs...)
+			return "ok", nil
+		},
+	}
+	d := NewToolDecorator(inner, ToolDecoratorConfig{Logger: loggateway.NewNoop()})
+	if _, err := d.Call(context.Background(), []byte(`{"path":"a.go","content":"hi","overwrite":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(got, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["file_name"] != "a.go" || m["contents"] != "hi" {
+		t.Fatalf("inner args = %s", got)
 	}
 }
 
@@ -604,6 +627,10 @@ func TestApplyDecorators_ToolSetWrapping(t *testing.T) {
 	}
 	if _, ok := tools[0].(*ToolDecorator); !ok {
 		t.Errorf("expected tool to be *ToolDecorator, got %T", tools[0])
+	}
+	again := wrapped.Tools(context.Background())
+	if tools[0] != again[0] {
+		t.Fatal("decoratedToolSet must reuse decorator instances so ToolSet cache can hit")
 	}
 }
 

@@ -68,8 +68,8 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Tool 并行 | ✅ 已实现 | WithEnableParallelTools（默认开启）+ ToolDecorator（Exclusive 互斥 + 预算/缓存；超时由回调链） |
 | **工具超时单一来源** | ✅ 已实现 | 装饰器 Timeout=0；`ToolsExecutionTimeoutSec`（默认 10min）经 callback 生效 |
 | **Exclusive 进程内互斥** | ✅ 已实现 | hostexec 族串行；文件写按路径互斥；`read_file` 同路径共享；`list_file`/`search_*` 覆盖子树与写互斥（单表+条件变量，无父子锁序死锁）；`StreamableCall` 持锁至流结束 |
-| **参数别名归一** | ✅ 已实现 | `hostexecnorm`：cmd/cwd/timeout（含字符串数字）+ command 数组/`args`；`filenorm`：path/content/old/new/search_content/行号；worktree 写前再归一；`argnorm`：web_fetch `url`→`urls`、搜索 `q`→`query` |
-| **分层文件锁 + worktree** | ✅ 已实现 | list/search 覆盖子树与写互斥；空 path 时用 glob/`file_pattern` 收窄覆盖范围；git 工作区 LLM 写走 worktree 合并（内层走 filenorm）；Wire 并行执行器按环境根挂 isolator |
+| **参数别名归一** | ✅ 已实现 | `NormalizeInvocation` 单一入口（装饰器 Call 前）；实现：`hostexecnorm` / `filenorm` / `argnorm`。别名重写 `AliasRewriteTotal` + Debug `tool.args.normalized`。catalog 在线测试与 graph 工具节点 `ApplyDefaultDecorators` |
+| **分层文件锁 + worktree** | ✅ 已实现 | 默认路径锁；git 仓 LLM 写才 worktree。批执行用 `BatchExecuteAssembledTools` 走同一 Call，不套第二套 worktree |
 | **结果大小一层主裁** | ✅ 已实现 | 装饰器预算/卸载为主；AfterTool limiter 仅兜底未装饰字符串，跳过信封与预算覆盖 |
 | Memory Tools | ✅ 已实现 | memorytool.DefaultTools() (5 个标准工具) |
 | Knowledge Search | ✅ 已实现 | knowledgepkg.NewSearchTool() + WithRetriever |
@@ -110,7 +110,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 3 | **P3** | 自定义工具在线测试 | ✅ `TestTool` RPC + 工具详情「在线测试」 |
 | 4 | **P3** | 工具调用审计日志 | ✅ `tool_invocation_audit` + `ListToolInvocationAudits` + 前端 `/tools/audits` + 90 天 cron |
 | 5 | **P3** | BeforeTool Callback | ✅ `tool_args_guard` 系统字段剥离；权限/动态注入可后续扩展 |
-| 6 | **P4** | Tool Cache | ✅ `internal/tools/cache` + Before/AfterTool hooks；`metadata_json.cache_enabled` / `cache_ttl_sec` |
+| 6 | **P4** | Tool Cache | ✅ 装饰器 `IsCacheable` 为网络 ConcurrentSafe 主缓存；BeforeTool `ResultCache` 经 `CatalogResultCacheAllowed` 跳过装饰器已缓存/写/file，避免双缓存 |
 | 7 | **P2** | MCP 工程化 | ✅ 认证/重连/ Broker 自动发现；生产 `AllowAdHocHTTP` 需 `ARANEA_MCP_ALLOW_ADHOC_HTTP` |
 | 8 | **P2** | Proto `tool_id` 语义统一 | ✅ `ResolveToolKey` + `ListRunsForTool`；Override Upsert 写入 `tool_id` |
 | 9 | **P3** | `runtime_status` / `runtime_kind` 填充 | ✅ `EnrichToolRuntimeFields`（Biz 层计算，List/Get 返回） |
