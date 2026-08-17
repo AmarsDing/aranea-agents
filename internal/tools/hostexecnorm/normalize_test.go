@@ -77,3 +77,50 @@ func TestNormalizeExecArgs_PreservesCommandOverCmd(t *testing.T) {
 		t.Fatal("expected unchanged when command already present")
 	}
 }
+
+func TestNormalizeExecArgs_CommandArray(t *testing.T) {
+	out := NormalizeExecArgs([]byte(`{"command":["ls","-la"]}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["command"] != "ls -la" {
+		t.Fatalf("command = %v", m["command"])
+	}
+}
+
+func TestNormalizeExecArgs_CommandPlusArgs(t *testing.T) {
+	out := NormalizeExecArgs([]byte(`{"command":"git","args":["status","-sb"]}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["command"] != "git status -sb" {
+		t.Fatalf("command = %v", m["command"])
+	}
+	if _, ok := m["args"]; ok {
+		t.Fatal("args should be removed after flattening")
+	}
+}
+
+func TestNormalizeExecArgs_CmdArrayAlias(t *testing.T) {
+	out := NormalizeExecArgs([]byte(`{"cmd":["dir"]}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["command"] != "dir" {
+		t.Fatalf("command = %v", m["command"])
+	}
+}
+
+func TestNormalizeExecArgs_CommandArrayQuotesSpaces(t *testing.T) {
+	out := NormalizeExecArgs([]byte(`{"command":["echo","hello world"]}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["command"] != `echo "hello world"` {
+		t.Fatalf("command = %v", m["command"])
+	}
+}

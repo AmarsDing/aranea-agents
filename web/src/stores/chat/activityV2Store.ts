@@ -33,6 +33,12 @@ import {
   parseMemoryRecallHits,
   type MemoryRecallHit,
 } from '../../features/chat/memoryRecall';
+import {
+  KNOWLEDGE_RECALLED_NOTICE_TYPE,
+  parseKnowledgeRecallChunks,
+  mergeKnowledgeRecallChunks,
+  type KnowledgeRecallChunk,
+} from '../../features/chat/knowledgeRecall';
 
 // P2-07: record sub-resource fetch failures during history hydration.
 export interface HydrationError {
@@ -62,6 +68,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   // Populated in upsertStep; the raw notice step stays in `steps` (inspector
   // visibility) but is hidden from the chat stream via noticeFilter.
   const recallHitsByTurn = ref(new Map<string, MemoryRecallHit[]>());
+  const knowledgeChunksByTurn = ref(new Map<string, KnowledgeRecallChunk[]>());
 
   // P2-07: track sub-resource fetch failures so the UI can distinguish
   // "no data" from "failed to load" and show a partial/stale indicator.
@@ -168,6 +175,13 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       const hits = parseMemoryRecallHits(s.Content);
       if (hits.length > 0) {
         recallHitsByTurn.value.set(s.TurnID, hits);
+      }
+    }
+    if (s.Kind === 'notice' && s.NoticeType === KNOWLEDGE_RECALLED_NOTICE_TYPE && s.TurnID) {
+      const incoming = parseKnowledgeRecallChunks(s.Content);
+      if (incoming.length > 0) {
+        const prev = knowledgeChunksByTurn.value.get(s.TurnID) ?? [];
+        knowledgeChunksByTurn.value.set(s.TurnID, mergeKnowledgeRecallChunks(prev, incoming));
       }
     }
   }
@@ -346,6 +360,10 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
   /** R4: recall hits injected for a turn (empty array when none). */
   function getTurnRecallHits(turnId: string): MemoryRecallHit[] {
     return recallHitsByTurn.value.get(turnId) ?? [];
+  }
+
+  function getTurnKnowledgeChunks(turnId: string): KnowledgeRecallChunk[] {
+    return knowledgeChunksByTurn.value.get(turnId) ?? [];
   }
 
   /** Orphan steps owned directly by a task (TurnID empty), e.g. clarification
@@ -544,6 +562,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
       if (t.SpiritSessionID === spiritSessionId) {
         turns.value.delete(id);
         recallHitsByTurn.value.delete(id);
+        knowledgeChunksByTurn.value.delete(id);
       }
     }
     for (const [id, s] of steps.value) {
@@ -589,6 +608,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     graphStages.value.clear();
     graphNodes.value.clear();
     recallHitsByTurn.value.clear();
+    knowledgeChunksByTurn.value.clear();
     loadedMemberStepSessions.value.clear();
     hydratedTaskIds.value.clear();
     taskHydration.value.clear();
@@ -752,6 +772,7 @@ export const useChatActivityStore = defineStore('chatActivityV2', () => {
     getTaskTurns,
     getTurnSteps,
     getTurnRecallHits,
+    getTurnKnowledgeChunks,
     getTaskOrphanSteps,
     getTaskFinalReply,
     getTaskTeamStages,

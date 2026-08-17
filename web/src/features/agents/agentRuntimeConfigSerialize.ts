@@ -136,6 +136,9 @@ export function buildAgentConfigJson(config: AgentRuntimeConfigForm, files: Prom
       num_runs: config.evaluation.num_runs,
       min_interval_sec: config.evaluation.min_interval_sec,
     },
+    knowledge: {
+      grounded_only: config.knowledge.grounded_only,
+    },
     evolution: config.evolution,
     evolution_guardrails: config.evolution_guardrails,
     skillRuntime: config.skillRuntime,

@@ -22,10 +22,18 @@ func TestFileLockRequests_WriteAndList(t *testing.T) {
 	}
 }
 
-func TestFileLockRequests_SearchCoversRoot(t *testing.T) {
-	reqs := fileLockRequests("search_content", []byte(`{}`))
-	if len(reqs) != 1 || reqs[0].path != "." || !reqs[0].cover {
-		t.Fatalf("empty search should cover workspace root, got %+v", reqs)
+func TestFileLockRequests_SearchGlobNarrowsCover(t *testing.T) {
+	reqs := fileLockRequests("search_content", []byte(`{"file_pattern":"src/*.go","query":"TODO"}`))
+	if len(reqs) != 1 || reqs[0].path != "src" || !reqs[0].cover {
+		t.Fatalf("search_content glob cover = %+v", reqs)
+	}
+	globAlias := fileLockRequests("search_content", []byte(`{"glob":"pkg/*.md"}`))
+	if len(globAlias) != 1 || globAlias[0].path != "pkg" {
+		t.Fatalf("search_content glob alias cover = %+v", globAlias)
+	}
+	searchFile := fileLockRequests("search_file", []byte(`{"pattern":"internal/*.go"}`))
+	if len(searchFile) != 1 || searchFile[0].path != "internal" {
+		t.Fatalf("search_file pattern cover = %+v", searchFile)
 	}
 }
 

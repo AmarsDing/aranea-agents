@@ -94,4 +94,14 @@ describe('WorkbenchSidebar 重嵌入入口（B1）', () => {
     await item.trigger('click');
     expect(w.emitted('file-action')).toBeUndefined();
   });
+
+  it('文件行菜单含仅自己可见 / 库内可见并发射 file-action', async () => {
+    const w = mountSidebar(semanticVault);
+    await w.find('[data-test="file-private"]').trigger('click');
+    await w.find('[data-test="file-collection"]').trigger('click');
+    expect(w.emitted('file-action')).toEqual([
+      ['private', fileNode],
+      ['collection', fileNode],
+    ]);
+  });
 });

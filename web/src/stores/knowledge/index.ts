@@ -24,6 +24,7 @@ import {
   searchKnowledge,
   getEmbedderConfig,
   updateEmbedderConfig,
+  updateDocumentVisibility,
 } from '../../features/knowledge/api';
 import type {
   BlockBacklink,
@@ -287,6 +288,20 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     return doc;
   }
 
+  async function setDocumentVisibility(
+    id: string,
+    visibility: 'collection' | 'private',
+  ): Promise<{ id: string; visibility: string; owner_user_id: string }> {
+    const got = await updateDocumentVisibility(id, visibility);
+    for (const list of Object.values(documentsByCollection.value)) {
+      const i = list.findIndex((d) => d.id === id);
+      if (i >= 0) {
+        list[i] = { ...list[i], visibility: got.visibility, owner_user_id: got.owner_user_id };
+      }
+    }
+    return got;
+  }
+
   async function search(query: SearchKnowledgeQuery): Promise<KnowledgeChunk[]> {
     return searchKnowledge(query);
   }
@@ -345,6 +360,7 @@ export const useKnowledgeStore = defineStore('knowledge', () => {
     enableCollectionSemantic,
     moveDoc,
     moveDocToDir,
+    setDocumentVisibility,
     promoteDocs,
     search,
     loadEmbedderConfig,

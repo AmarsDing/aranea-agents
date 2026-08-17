@@ -133,12 +133,48 @@ func fileLockRequests(name string, jsonArgs []byte) []fileLockReq {
 		}
 		return nil
 	case "list_file", "search_file", "search_content":
-		return []fileLockReq{{path: fileDirTargetPath(jsonArgs), cover: true}}
+		return []fileLockReq{{path: fileDirOrGlobCoverPath(name, jsonArgs), cover: true}}
 	case "read_multiple_files":
 		return readMultipleLockReqs(jsonArgs)
 	default:
 		return nil
 	}
+}
+
+func fileDirOrGlobCoverPath(name string, jsonArgs []byte) string {
+	if p := fileDirTargetPath(jsonArgs); p != "." {
+		return p
+	}
+	keys := []string{"file_pattern", "glob", "include"}
+	if canonicalRuntimeName(name) == "search_file" {
+		keys = append([]string{"pattern"}, keys...)
+	}
+	if g := firstStringArg(jsonArgs, keys...); g != "" {
+		return globCoverPath(g)
+	}
+	return "."
+}
+
+func firstStringArg(jsonArgs []byte, keys ...string) string {
+	if len(jsonArgs) == 0 {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(jsonArgs, &payload); err != nil {
+		return ""
+	}
+	for _, key := range keys {
+		s, ok := payload[key].(string)
+		if !ok {
+			continue
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		return s
+	}
+	return ""
 }
 
 func fileDirTargetPath(jsonArgs []byte) string {

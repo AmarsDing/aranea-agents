@@ -156,6 +156,10 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int, lg ...logga
 		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS embed_last_tried TIMESTAMPTZ`,
 		`CREATE INDEX IF NOT EXISTS knowledge_documents_embed_degraded_idx
 			ON knowledge_documents (collection_id, embed_last_tried) WHERE embed_fail_count > 0`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'collection'`,
+		`ALTER TABLE knowledge_documents ADD COLUMN IF NOT EXISTS owner_user_id TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS knowledge_documents_visibility_idx
+			ON knowledge_documents (collection_id, visibility, owner_user_id)`,
 		// --- 29-token P2-2 cited 引用计数（fresh 形态；存量库由迁移 20261215 补列/建表） ---
 		`ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS cited_count INT NOT NULL DEFAULT 0`,
 		`CREATE TABLE IF NOT EXISTS knowledge_chunk_citations (
@@ -452,7 +456,8 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 	          rel_path, content_hash, summary, summary_hash, tags, doc_type,
 	          embed_fail_count, embed_last_tried,
 	          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-	          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
+	          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+	          COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')`
 	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status,
 		d.ContentText, d.Organized, d.AssetURI,
 		d.RelPath, d.ContentHash, d.Summary, d.SummaryHash, tagsJSON, d.DocType, now)
@@ -466,7 +471,8 @@ func (r *knowledgeRepo) GetDocumentByRelPath(ctx context.Context, collectionID, 
 		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
 		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.collection_id = $1 AND d.rel_path = $2`
@@ -570,7 +576,8 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		         d.rel_path, d.content_hash, d.summary, d.summary_hash, d.tags, d.doc_type,
 		         d.embed_fail_count, d.embed_last_tried,
 		         to_char(d.created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		         to_char(d.updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         COALESCE(NULLIF(d.visibility,''),'collection'), COALESCE(d.owner_user_id,'')
 		  FROM knowledge_documents d
 		  JOIN knowledge_collections c ON c.id = d.collection_id
 		  WHERE d.id = $1`
@@ -628,7 +635,8 @@ func (r *knowledgeRepo) ListEmbedDegradedDocuments(ctx context.Context, collecti
 		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
 		         embed_fail_count, embed_last_tried,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')
 		  FROM knowledge_documents
 		  WHERE collection_id = $1 AND embed_fail_count > 0
 		  ORDER BY embed_last_tried ASC NULLS FIRST
@@ -676,19 +684,23 @@ func (r *knowledgeRepo) UpdateChunkEmbeddings(ctx context.Context, docID string,
 }
 
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]biz.KnowledgeDocument, int, error) {
+	countACL, countACLArgs := docRowVisibilityClause(ctx, 2)
+	countSQL := `SELECT COUNT(*) FROM knowledge_documents WHERE (collection_id = $1 OR $1 = '') ` + countACL
+	countArgs := append([]any{collectionID}, countACLArgs...)
 	var total int
-	if err := r.data.Postgres().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''`, collectionID).Scan(&total); err != nil {
+	if err := r.data.Postgres().QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	listACL, listACLArgs := docRowVisibilityClause(ctx, 4)
 	q := `SELECT id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 		         organized, asset_uri,
 		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-		  FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''
+		  FROM knowledge_documents WHERE (collection_id = $1 OR $1 = '') ` + listACL + `
 		  ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	rows, err := r.data.Postgres().QueryContext(ctx, q, collectionID, limit, offset)
+	args := append([]any{collectionID, limit, offset}, listACLArgs...)
+	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -714,7 +726,8 @@ func (r *knowledgeRepo) ListDocumentsPendingReembed(ctx context.Context, collect
 		         rel_path, content_hash, summary, summary_hash, tags, doc_type,
 		         embed_fail_count, embed_last_tried,
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
-		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+		         COALESCE(NULLIF(visibility,''),'collection'), COALESCE(owner_user_id,'')
 		  FROM knowledge_documents d
 		  WHERE collection_id = $1
 		    AND content_text <> ''
@@ -1097,6 +1110,10 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 		clauses += fmt.Sprintf("\n  AND (1 - (embedding <=> $1::vector)) >= $%d", len(args)+1)
 		args = append(args, q.MinScore)
 	}
+	if c, a := docChunkVisibilityClause(ctx, "$2", len(args)+1); c != "" {
+		clauses += "\n  " + c
+		args = append(args, a...)
+	}
 	overfetch := 0
 	if q.TopK > 0 {
 		overfetch = annCandidateLimit(q.TopK)
@@ -1140,6 +1157,10 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 	if q.FilterJSON != "" {
 		extraClauses += fmt.Sprintf("\n  AND metadata @> $%d::jsonb", 3+len(extraArgs))
 		extraArgs = append(extraArgs, json.RawMessage(q.FilterJSON))
+	}
+	if c, a := docChunkVisibilityClause(ctx, "$2", 3+len(extraArgs)); c != "" {
+		extraClauses += "\n  " + c
+		extraArgs = append(extraArgs, a...)
 	}
 
 	var searches []func() ([]biz.KnowledgeChunk, error)
@@ -1336,7 +1357,7 @@ func scanDocument(row scannable) (biz.KnowledgeDocument, error) {
 		&d.ChunkCount, &d.Status, &d.ErrorMessage, &d.ContentText, &d.Organized, &d.AssetURI,
 		&d.RelPath, &d.ContentHash, &d.Summary, &d.SummaryHash, &tagsRaw, &d.DocType,
 		&d.EmbedFailCount, &embedLastTried,
-		&d.CreatedAt, &d.UpdatedAt)
+		&d.CreatedAt, &d.UpdatedAt, &d.Visibility, &d.OwnerUserID)
 	if err != nil {
 		return d, err
 	}

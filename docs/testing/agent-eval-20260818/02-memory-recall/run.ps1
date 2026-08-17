@@ -17,8 +17,8 @@ $plantedTerms = @("张伟","李明","王芳","小赵","刘洋","CE6857","SW-Core
 $abstainWords = @("没有记录","不知道","没有告诉","无法确认","不清楚","不了解","没有提到","未曾","不记得","没有相关","无法得知","没有收到")
 
 # ---- B-00 探针 agent ----
-# 注意：GET /v1/agents/{id} 只认 UUID，按 key 查需走列表端点过滤。
-$rList = Api-Get "/v1/agents?page_size=200"
+# 注意：GET /v1/agents/{id} 只认 UUID，按 key 查需走列表端点过滤；列表分页参数是 limit/offset（page_size 会被静默忽略，默认仅 24 条）。
+$rList = Api-Get "/v1/agents?limit=500"
 $existing = @($rList.Body.items) | Where-Object { $_.agentKey -eq $agentKey } | Select-Object -First 1
 if (-not $existing) {
     # 注意：开关必须走 settings 子对象（CreateAgentRequest.settings），顶层字段会被静默忽略。
@@ -32,8 +32,8 @@ if (-not $existing) {
     $agentId = $existing.id
 }
 
-# ---- B07 植入前 prompt 基线 ----
-$rPre = Api-Get "/v1/agents/$agentKey/system-prompt/preview" -OutFile (Join-Path $ev "b07-prompt-before.json")
+# ---- B07 植入前 prompt 基线（preview 端点只认 agent UUID，不认 agent_key）----
+$rPre = Api-Get "/v1/agents/$agentId/system-prompt/preview" -OutFile (Join-Path $ev "b07-prompt-before.json")
 Record $M "B07-pre" "prompt 基线" ($(if ($rPre.Code -eq "200") { "PASS" } else { "FAIL" })) "len=$($rPre.Raw.Length)" $rPre.Ms
 
 # ---- 植入阶段 ----
@@ -50,7 +50,7 @@ if (-not $SkipPlant) {
             $seq++
             $pr = Api-Post "/v1/chat/messages" @{ session_id = $plantSid; agent_key = $agentKey; content = $pm } -OutFile (Join-Path $ev "$($c.id)-plant-$seq.json") -TimeoutSec 180
             $plantMs += $pr.Ms
-            $hasReply = ($null -ne $pr.Body.agent_message)
+            $hasReply = ($null -ne $pr.Body.agentMessage)
             Record $M "PLANT-$seq" "植入 $($c.id)" ($(if ($pr.Code -eq "200" -and $hasReply) { "PASS" } else { "FAIL" })) "code=$($pr.Code)" $pr.Ms
         }
     }
@@ -103,7 +103,7 @@ foreach ($c in $cases) {
 }
 
 # ---- B07 植入后 prompt ----
-$rPost = Api-Get "/v1/agents/$agentKey/system-prompt/preview" -OutFile (Join-Path $ev "b07-prompt-after.json")
+$rPost = Api-Get "/v1/agents/$agentId/system-prompt/preview" -OutFile (Join-Path $ev "b07-prompt-after.json")
 Record $M "B07-post" "prompt 植入后" ($(if ($rPost.Code -eq "200") { "PASS" } else { "FAIL" })) "len=$($rPost.Raw.Length) before=$($rPre.Raw.Length)" $rPost.Ms
 
 # ---- 汇总 result.md ----

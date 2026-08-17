@@ -231,6 +231,14 @@ func registerCustomRoutes(
 			knowledgeSvc.ServeAutolinkApply(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
 			return nil
 		})
+		srv.Route("/").GET("/v1/knowledge/documents/{id}/visibility", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeDocumentVisibility(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
+		srv.Route("/").POST("/v1/knowledge/documents/{id}/visibility", func(ctx kratoshttp.Context) error {
+			knowledgeSvc.ServeDocumentVisibility(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))
+			return nil
+		})
 		// US-43 / US-42 / US-44：健康度、专家、待确认写回。
 		srv.Route("/").GET("/v1/knowledge/collections/{id}/health", func(ctx kratoshttp.Context) error {
 			knowledgeSvc.ServeCollectionHealth(ctx.Response(), ctx.Request(), ctx.Vars().Get("id"))

@@ -42,6 +42,9 @@ export type KnowledgeDocument = {
   tags: string[];
   /** report | manual | note | faq | ... */
   doc_type: string;
+  /** collection (default) | private */
+  visibility?: string;
+  owner_user_id?: string;
 };
 
 /** VaultTreeNode 是 vault 文件夹懒加载列表的一项（P3 资源管理器）。 */

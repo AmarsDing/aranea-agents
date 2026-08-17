@@ -54,6 +54,35 @@ func TestWrapFileToolSetWithWorktree_WritesAndMerges(t *testing.T) {
 	}
 }
 
+func TestWrapFileToolSetWithWorktree_NormalizesPathAlias(t *testing.T) {
+	repoRoot, cleanup := initTempGitRepo(t)
+	defer cleanup()
+	ts, err := trpcfile.NewToolSet(trpcfile.WithBaseDir(repoRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ts.Close()
+	wrapped := wrapFileToolSetWithWorktree(ts, repoRoot, loggateway.NewNoop())
+	var save trpctool.CallableTool
+	for _, tool := range wrapped.Tools(context.Background()) {
+		ct, ok := tool.(trpctool.CallableTool)
+		if !ok || ct.Declaration() == nil || ct.Declaration().Name != "save_file" {
+			continue
+		}
+		save = ct
+		break
+	}
+	if save == nil {
+		t.Fatal("save_file not found")
+	}
+	if _, err := save.Call(context.Background(), []byte(`{"path":"from-alias.txt","content":"alias-ok","overwrite":true}`)); err != nil {
+		t.Fatalf("save_file alias: %v", err)
+	}
+	if !fileExistsInRepo(t, repoRoot, "from-alias.txt") {
+		t.Fatal("expected path/content aliases to write from-alias.txt via worktree")
+	}
+}
+
 func TestLookupGitRoot_Empty(t *testing.T) {
 	if got := LookupGitRoot(""); got != "" {
 		t.Fatalf("empty dir: %q", got)

@@ -46,9 +46,11 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `api/kratos/system_setting/v1/system_setting.proto` — `KnowledgeEmbedSettings`
 - `internal/service/knowledge_retriever.go` — Retriever Wire
 - `internal/tools/knowledge/tool.go` — knowledge_search + knowledge_reflect 工具
-- `internal/agent/knowledge_inject.go` — Plan-Then-Retrieve BeforeModel 钩子
-- `internal/agent/tool_assembly.go` — KnowledgeSearch/KnowledgeReflect 装配
-- `web/src/features/knowledge/api.ts` — 前端 API
+- `internal/agent/knowledge_inject.go` — Plan-Then-Retrieve BeforeModel 钩子；`grounded_only` 拒答 cue（US-55）
+- `internal/biz/agent_knowledge_config.go` — `config_json.knowledge.grounded_only`
+- `internal/biz/knowledge/entity_wiki.go` — 团队库实体词条页 `entries/<slug>.md`（US-56）
+- `internal/biz/knowledge/document_visibility.go` — 文档 collection/private 可见性（US-57）
+- `internal/data/knowledge_visibility.go` — 列表/检索 ACL 子句
 - `web/src/features/knowledge/governance.ts` — 治理提案决策路由（US-52）
 - `web/src/components/knowledge/GovernanceReviewDialog.vue` — 治理提案审核对话框
 - `web/src/stores/knowledge/index.ts` — 前端 Store
@@ -1531,3 +1533,18 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | 索引期成链不改源 | ✅ | `rebuildBlockIndex` → `compileOutgoingMentions` |
 
 验证：`go test ./internal/cronrunner/jobs ./internal/biz/knowledge ./internal/knowledge -count=1` 通过。
+
+## 子模块：可信回答、实体词条与文档可见性（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-55 / US-56 / US-57 | **设计**：[37-knowledge.design.md §V12.20](./37-knowledge.design.md#v1220-可信回答实体词条与文档可见性2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 对话知识 chips + 跳转文档 | ✅ | `web/src/features/chat/knowledgeRecall.ts`；`KnowledgeRecallChips.vue`；`activityV2Store` |
+| `grounded_only` cue + config_json overlay | ✅ | `internal/agent/knowledge_inject.go`；`internal/biz/agent_knowledge_config.go`；记忆 Tab toggle |
+| 团队库实体词条页 | ✅ | `internal/biz/knowledge/entity_wiki.go`；`EntityPipeline.SetWikiWriter` |
+| 文档 collection/private ACL | ✅ | `document_visibility.go`；`knowledge_visibility.go`；`GET/POST .../visibility`；工作台文件菜单 |
+
+验证：`go test ./internal/agent ./internal/biz ./internal/biz/knowledge ./internal/data ./internal/knowledge -count=1`（data 用 `GOMAXPROCS=1 -p 1`）；前端 `npx vitest run` 覆盖 knowledgeRecall / chips / api / WorkbenchSidebar / agentEvalAutoConfig。
+
+本轮不做：插件生态、新检索算法、连接器、为 grounded 加 Ent/proto 列。

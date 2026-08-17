@@ -2778,4 +2778,31 @@ Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词�
 - `RebuildBlockIndex` 先 `compileOutgoingMentions` 再 parse/投影 explicit 边；不写文件、不写 `content_text`。US-45「重建不改源」仍成立。
 - 把提及写进 Markdown 仍只有 `ApplyOutgoingAutolinks` / `autolink-backfill`。
 
+## V12.20 可信回答、实体词条与文档可见性（2026-08-17）
+
+> 对应需求 US-55 / US-56 / US-57。不对齐 NotebookLM 插件生态或 Glean 连接器，只补三块产品缺口：回答可核对、团队库会长词条、共享库能藏草稿。
+
+### 可信回答（US-55）
+
+- 预检索命中以 `{chunks:[{chunk_id,doc_id,score,line}]}` 进入活动时间线；前端按 `chunk_id` 合并为 chips，有 `doc_id` 则路由 `/knowledge?doc=`。
+- `config_json.knowledge.grounded_only`：Create/Update Agent 与 `evaluation` 一并 overlay，禁止整表清空 `config_json`。
+- `formatKnowledgeCue(..., toolsEnabled, groundedOnly)`：
+  - grounded + 无命中 + 关工具 → 硬拒答、禁止世界知识；
+  - grounded + 无命中 + 开工具 → 只许 `knowledge_search`；
+  - grounded + 有命中 → 只用段落，不足则说没有。
+
+### 实体词条（US-56）
+
+- `EntityPipeline.SetWikiWriter` → `Usecase.EnsureEntityWikiPages`。
+- 仅 team vault；`entries/<slug>.md`；最多 8 实体；幂等追加来源 wikilink。
+- 失败 Warn（`knowledge.entity.wiki`），实体轨已提交不回滚。
+
+### 文档可见性（US-57）
+
+- 列：`visibility TEXT DEFAULT 'collection'`、`owner_user_id TEXT DEFAULT ''`；索引 `(collection_id, visibility, owner_user_id)`。
+- 读：`DocumentVisibleTo`；system 全见；无 user 只见 collection；有 user 见 collection 或 owner。
+- 写：custom `GET/POST /v1/knowledge/documents/{id}/visibility`；标 private 时 `owner_user_id` = 当前用户。
+- `ListDocuments` / `ListDocumentPaths` / `SearchChunks` / `SearchChunksBM25` 加 ACL 子句。直取内容走 `requireDocumentRead`（不可见 = NotFound）。
+- 默认上传仍为 collection。不做飞书/SharePoint 连接器。
+
 

@@ -209,3 +209,48 @@ func TestEntityPipeline_ProcessDoc_NotWired(t *testing.T) {
 		t.Fatal("unwired pipeline must error, not panic")
 	}
 }
+
+type stubWikiWriter struct {
+	calls int
+	cid   string
+	doc   string
+	ents  []bizknowledge.DocEntity
+	err   error
+}
+
+func (s *stubWikiWriter) EnsureEntityWikiPages(_ context.Context, collectionID, sourceDocID string, entities []bizknowledge.DocEntity) error {
+	s.calls++
+	s.cid = collectionID
+	s.doc = sourceDocID
+	s.ents = append([]bizknowledge.DocEntity(nil), entities...)
+	return s.err
+}
+
+func TestEntityPipeline_ProcessDoc_CallsWikiWriter(t *testing.T) {
+	llm := &stubRelationLLM{responses: []string{`[{"name":"PostgreSQL","type":"tech"}]`}}
+	docs := &stubRelationDocReader{doc: bizknowledge.Document{
+		ID: "d1", CollectionID: "c1", RelPath: "notes/a.md",
+		ContentText: "PostgreSQL", ContentHash: "h1",
+	}}
+	p := newEntityPipeline(llm, docs, &stubEntityTrack{entityIDs: []int64{1}}, &stubRelationStateRepo{})
+	wiki := &stubWikiWriter{}
+	p.SetWikiWriter(wiki)
+	if _, err := p.ProcessDoc(context.Background(), "c1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if wiki.calls != 1 || wiki.cid != "c1" || wiki.doc != "d1" || len(wiki.ents) != 1 || wiki.ents[0].Name != "PostgreSQL" {
+		t.Fatalf("wiki writer not called: %+v ents=%+v", wiki, wiki.ents)
+	}
+}
+
+func TestEntityPipeline_ProcessDoc_WikiErrorDoesNotFail(t *testing.T) {
+	llm := &stubRelationLLM{responses: []string{`[{"name":"PostgreSQL","type":"tech"}]`}}
+	docs := &stubRelationDocReader{doc: bizknowledge.Document{
+		ID: "d1", CollectionID: "c1", ContentText: "PostgreSQL", ContentHash: "h1",
+	}}
+	p := newEntityPipeline(llm, docs, &stubEntityTrack{entityIDs: []int64{1}}, &stubRelationStateRepo{})
+	p.SetWikiWriter(&stubWikiWriter{err: errors.New("disk full")})
+	if _, err := p.ProcessDoc(context.Background(), "c1", "d1"); err != nil {
+		t.Fatalf("wiki failure must not roll back entity track: %v", err)
+	}
+}

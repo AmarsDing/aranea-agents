@@ -8,6 +8,7 @@
          渲染在 steps 之前——召回发生在 BeforeModel（turn 最开始），UI 顺序必须与
          实际执行顺序一致：召回 → 思考 → 行动 → 回复。 -->
     <MemoryRecallChips :turn-id="turn.ID" />
+    <KnowledgeRecallChips :turn-id="turn.ID" />
     <template v-for="step in visibleSteps" :key="step.ID">
       <ThinkingBlock v-if="step.Kind === 'thinking'" :step="step" />
       <ActionBlock v-else-if="step.Kind === 'action'" :step="step" />
@@ -35,6 +36,7 @@ import NoticeBlock from '../NoticeBlock.vue';
 import ConfirmBlock from '../ConfirmBlock.vue';
 import ErrorBlock from '../ErrorBlock.vue';
 import MemoryRecallChips from '../MemoryRecallChips.vue';
+import KnowledgeRecallChips from '../KnowledgeRecallChips.vue';
 import CuStepStream from '../../../features/computeruse/CuStepStream.vue';
 
 const props = defineProps<{ turn: Turn }>();

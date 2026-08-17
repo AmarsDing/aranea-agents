@@ -358,6 +358,14 @@ export function useKnowledgePage() {
     }
   }
 
+  async function setDocumentVisibility(doc: Pick<KnowledgeDocument, 'id'>, visibility: 'collection' | 'private') {
+    try {
+      await knowledgeStore.setDocumentVisibility(doc.id, visibility);
+    } catch (e) {
+      $q.notify({ type: 'negative', message: friendlyError(e) || t('knowledgePage.workbench.filePrivate') });
+    }
+  }
+
   // ---------- 拖拽批量上传队列 ----------
 
   const uploadTasks = ref<KnowledgeUploadTask[]>([]);
@@ -805,6 +813,7 @@ export function useKnowledgePage() {
     confirmDeleteDocument,
     confirmReembed,
     downloadDocument,
+    setDocumentVisibility,
     uploadTasks,
     enqueueUploadFiles,
     removeUploadTask,

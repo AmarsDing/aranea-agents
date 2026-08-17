@@ -14,6 +14,18 @@
 
     <memory-heartbeat-section v-model:config="config" :memory-layers-disabled="memoryLayersDisabled" />
 
+    <section class="settings-section">
+      <div class="section-heading">
+        <div class="section-heading__main">
+          <div class="section-title">
+            <span class="section-title__text">{{ $t('agentSettings.knowledgeGroundedTitle') }}</span>
+          </div>
+          <p class="settings-section__hint">{{ $t('agentSettings.knowledgeGroundedHint') }}</p>
+        </div>
+        <q-toggle v-model="config.knowledge.grounded_only" :label="$t('agentSettings.knowledgeGroundedEnable')" />
+      </div>
+    </section>
+
     <memory-level-section
       v-model:config="config"
       :truncate-strategy-options="truncateStrategyOptions"

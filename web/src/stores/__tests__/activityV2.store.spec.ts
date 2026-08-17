@@ -46,6 +46,34 @@ function makeTask(over: Partial<Task> = {}): Task {
   };
 }
 
+function makeNoticeStep(over: Partial<Step> = {}): Step {
+  return {
+    ID: 'n1',
+    TurnID: 'turn-1',
+    TaskID: 'task-1',
+    SessionID: 'sess-1',
+    SpiritSessionID: 'spirit-1',
+    Kind: 'notice',
+    AuthorAgentKey: 'a1',
+    Seq: 1,
+    Version: 1,
+    Content: '',
+    Reasoning: '',
+    ToolName: '',
+    ToolCallID: '',
+    ToolArgs: null,
+    ToolResult: null,
+    ToolDurationMs: 0,
+    ToolErrorCode: '',
+    NoticeType: 'memory_recalled',
+    Status: 'completed',
+    IsFinal: false,
+    StartedAt: '',
+    CompletedAt: null,
+    ...over,
+  };
+}
+
 describe('useChatActivityStore', () => {
   beforeEach(() => setActivePinia(createPinia()));
 
@@ -425,34 +453,6 @@ describe('useChatActivityStore', () => {
 
   // ── R4: memory_recalled recall transparency indexing ──────────────────
 
-  function makeNoticeStep(over: Partial<Step> = {}): Step {
-    return {
-      ID: 'n1',
-      TurnID: 'turn-1',
-      TaskID: 'task-1',
-      SessionID: 'sess-1',
-      SpiritSessionID: 'spirit-1',
-      Kind: 'notice',
-      AuthorAgentKey: 'a1',
-      Seq: 1,
-      Version: 1,
-      Content: '',
-      Reasoning: '',
-      ToolName: '',
-      ToolCallID: '',
-      ToolArgs: null,
-      ToolResult: null,
-      ToolDurationMs: 0,
-      ToolErrorCode: '',
-      NoticeType: 'memory_recalled',
-      Status: 'completed',
-      IsFinal: false,
-      StartedAt: '',
-      CompletedAt: null,
-      ...over,
-    };
-  }
-
   const recallPayload = JSON.stringify({
     hits: [
       { layer: 'L3', line: '用户偏好 XX 餐厅', score: 0.91, fact_id: 'f-1' },
@@ -511,6 +511,41 @@ describe('useChatActivityStore', () => {
     s.upsertStep(makeNoticeStep({ Content: recallPayload }));
     s.clearAll();
     expect(s.getTurnRecallHits('turn-1')).toEqual([]);
+  });
+});
+
+describe('knowledge_recalled notice indexing', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  const kbPayload = JSON.stringify({
+    chunks: [
+      { chunk_id: 'k1', doc_id: 'd1', score: 0.91, line: 'SLA 承诺 99.9%' },
+      { chunk_id: 'k2', doc_id: 'd2', score: 0.4, line: '值班电话' },
+    ],
+  });
+
+  it('indexes knowledge_recalled chunks by turn and merges later notices', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ NoticeType: 'knowledge_recalled', Content: kbPayload }));
+    expect(s.getTurnKnowledgeChunks('turn-1')).toHaveLength(2);
+    s.upsertStep(
+      makeNoticeStep({
+        ID: 'n-kb-2',
+        NoticeType: 'knowledge_recalled',
+        Content: JSON.stringify({ chunks: [{ chunk_id: 'k1', line: 'dup' }, { chunk_id: 'k3', line: 'more' }] }),
+      }),
+    );
+    const chunks = s.getTurnKnowledgeChunks('turn-1');
+    expect(chunks.map((c) => c.chunk_id)).toEqual(['k1', 'k2', 'k3']);
+  });
+
+  it('clearAll clears knowledge chunks', () => {
+    const s = useChatActivityStore();
+    s.upsertStep(makeNoticeStep({ NoticeType: 'knowledge_recalled', Content: kbPayload }));
+    s.clearAll();
+    expect(s.getTurnKnowledgeChunks('turn-1')).toEqual([]);
   });
 });
 

@@ -39,6 +39,9 @@ func (s *KnowledgeService) knowledgeDocCollection(ctx context.Context, docID str
 	if err != nil {
 		return bizknowledge.Document{}, bizknowledge.Collection{}, err
 	}
+	if err := s.assertDocumentReadable(ctx, doc); err != nil {
+		return bizknowledge.Document{}, bizknowledge.Collection{}, err
+	}
 	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
 	if err != nil {
 		return bizknowledge.Document{}, bizknowledge.Collection{}, err
@@ -272,4 +275,47 @@ func (s *KnowledgeService) ServeAutolinkBackfill(w http.ResponseWriter, r *http.
 		return
 	}
 	writeKnowledgeJSON(w, http.StatusOK, map[string]any{"status": bizknowledge.SyncStateRebuilding})
+}
+
+// ServeDocumentVisibility GET/POST /v1/knowledge/documents/{id}/visibility
+func (s *KnowledgeService) ServeDocumentVisibility(w http.ResponseWriter, r *http.Request, docID string) {
+	ctx := r.Context()
+	doc, col, err := s.knowledgeDocCollection(ctx, docID)
+	if err != nil {
+		writeKnowledgeJSONError(w, err)
+		return
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		writeKnowledgeJSONError(w, err)
+		return
+	}
+	if r.Method == http.MethodGet {
+		writeKnowledgeJSON(w, http.StatusOK, map[string]any{
+			"id":            doc.ID,
+			"visibility":    doc.Visibility,
+			"owner_user_id": doc.OwnerUserID,
+		})
+		return
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		writeKnowledgeJSONError(w, err)
+		return
+	}
+	var body struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeKnowledgeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad request"})
+		return
+	}
+	updated, err := s.uc.UpdateDocumentVisibility(ctx, docID, body.Visibility)
+	if err != nil {
+		writeKnowledgeJSONError(w, err)
+		return
+	}
+	writeKnowledgeJSON(w, http.StatusOK, map[string]any{
+		"id":            updated.ID,
+		"visibility":    updated.Visibility,
+		"owner_user_id": updated.OwnerUserID,
+	})
 }

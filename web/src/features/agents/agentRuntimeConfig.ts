@@ -136,6 +136,9 @@ export function defaultAgentRuntimeConfig() {
       num_runs: 1,
       min_interval_sec: 300,
     },
+    knowledge: {
+      grounded_only: false,
+    },
     evolution: {
       self_evolve: true,
       skill_evolve: true,

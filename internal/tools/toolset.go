@@ -16,6 +16,7 @@ import (
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
+	"aranea-agents/internal/tools/argnorm"
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/internal/tools/mcpobserve"
@@ -733,7 +734,20 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		loggateway.Duration(time.Since(started).Milliseconds()),
 	)
 
+	wrapAssembledArgNorm(ac.out)
 	return ac.out, nil
+}
+
+func wrapAssembledArgNorm(out *AssembledToolsets) {
+	if out == nil {
+		return
+	}
+	for i, t := range out.Tools {
+		out.Tools[i] = argnorm.WrapTool(t)
+	}
+	for i, ts := range out.ToolSets {
+		out.ToolSets[i] = argnorm.WrapToolSet(ts)
+	}
 }
 
 // DefaultMCPServerTimeoutSec is applied when config_json.timeout_sec is unset.

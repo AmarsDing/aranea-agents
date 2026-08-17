@@ -17,10 +17,12 @@ var (
 
 // ListDocumentPaths 返回 vault 全部文档的轻量路径行（不含正文/向量，树聚合在 biz 内存完成）。
 func (r *knowledgeRepo) ListDocumentPaths(ctx context.Context, collectionID string) ([]bizknowledge.DocumentPath, error) {
-	rows, err := r.data.Postgres().QueryContext(ctx,
-		`SELECT id, rel_path, source, summary, tags, doc_type, status, size_bytes,
+	acl, aclArgs := docRowVisibilityClause(ctx, 2)
+	q := `SELECT id, rel_path, source, summary, tags, doc_type, status, size_bytes,
 		        to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'), error_message
-		 FROM knowledge_documents WHERE collection_id = $1`, collectionID)
+		 FROM knowledge_documents WHERE collection_id = $1 ` + acl
+	args := append([]any{collectionID}, aclArgs...)
+	rows, err := r.data.Postgres().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

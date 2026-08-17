@@ -138,5 +138,8 @@ func ProvideKnowledgeUsecase(repo KnowledgeRepo, filer *knowledge.VaultFiler, bl
 	if lu, luk := repo.(knowledge.LinkUsageRepo); luk {
 		uc.SetLinkUsageRepo(lu)
 	}
+	if acl, aok := repo.(knowledge.DocumentACLStore); aok {
+		uc.SetDocumentACLStore(acl)
+	}
 	return uc
 }

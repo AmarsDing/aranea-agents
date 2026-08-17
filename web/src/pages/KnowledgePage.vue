@@ -174,6 +174,7 @@
 // SP2-8：薄壳页面——持有 composable（页面级状态）+ 装配 KnowledgeWorkbench / 全屏图谱 / 设置浮层 / 既有对话框。
 // 旧 Tab 管理后台（浏览/图谱/设置三页签）已退役，职责分别由工作台、全屏覆盖图谱、设置浮层吸收。
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useQuasar } from 'quasar';
 import { useI18n } from 'vue-i18n';
 import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
@@ -222,6 +223,7 @@ const {
   confirmDeleteDocument,
   confirmReembed,
   downloadDocument,
+  setDocumentVisibility,
   uploadTasks,
   removeUploadTask,
   clearFinishedUploadTasks,
@@ -270,6 +272,26 @@ const { t } = useI18n();
 // ---------- SP2-8：工作台状态机（tabs/脏标记/CAS 保存） ----------
 
 const workbench = createKnowledgeWorkbench();
+const route = useRoute();
+
+watch(
+  () => route.query.doc,
+  (id) => {
+    if (typeof id !== 'string' || !id.trim()) return;
+    const found = documents.value.find((d) => d.id === id);
+    const doc =
+      found ??
+      ({
+        id,
+        source: id,
+        rel_path: '',
+        collection_id: selectedId.value,
+        mime_type: 'text/markdown',
+      } as KnowledgeDocument);
+    void workbench.openDoc(doc);
+  },
+  { immediate: true },
+);
 
 // FR-SP2-2：文档删除广播 → 关闭对应 tab（无确认，数据已删）。
 watch(removedDocId, (id) => {
@@ -294,6 +316,7 @@ function onFileAction(action: string, node: VaultTreeNode) {
   else if (action === 'download') void downloadDocument(doc);
   else if (action === 'reembed') confirmReembed([node.doc_id]);
   else if (action === 'delete') confirmDeleteDocument(doc);
+  else if (action === 'private' || action === 'collection') void setDocumentVisibility(doc, action);
 }
 
 // ---------- G5 深空知识图谱（全屏覆盖模式） ----------

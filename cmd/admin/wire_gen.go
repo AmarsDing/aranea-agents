@@ -2020,7 +2020,9 @@ func provideKnowledgeEntityPipeline(
 	if !ok {
 		return nil
 	}
-	return knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+	p := knowledge.NewEntityPipeline(caller, sys, catalog, uc, uc, state, lg)
+	p.SetWikiWriter(uc)
+	return p
 }
 
 // provideKnowledgeRelationExtractor 装配 M2 typed 关系抽取器（实体清单 → 三元组

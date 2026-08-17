@@ -32,11 +32,12 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	// agent 仍可获得预检索命中的 chunks；仅"调用 knowledge_search 继续检索"
 	// 的引导文案依赖工具开关（见 buildKnowledgeCue/formatKnowledgeCue）。
 	toolsEnabled := ag.Settings != nil && ag.Settings.ToolsEnabled
+	groundedOnly := biz.ParseAgentKnowledgeConfig(ag.ConfigJSON).GroundedOnly
 	return callbacks.NewBeforeModelHook(6, callbacks.LayerDynamic, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled)
+		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger(), args.Request.Messages, toolsEnabled, groundedOnly)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -47,7 +48,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	})
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled bool) string {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger, msgs []trpcmodel.Message, toolsEnabled, groundedOnly bool) string {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	// C-01 回填：目录枚举按调用方 workspace 过滤（system 见全部）——
@@ -74,7 +75,7 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggate
 		// 取查询，工具循环续跑天然不重复发；同 chunk 同 turn 由 citations 账本幂等。
 		knowledgetool.EmitKnowledgeRecalledNotice(ctx, cueRenderedChunks(chunks))
 	}
-	return formatKnowledgeCue(filtered, chunks, toolsEnabled)
+	return formatKnowledgeCue(filtered, chunks, toolsEnabled, groundedOnly)
 }
 
 // cueRenderedChunks 过滤出 formatKnowledgeCue 实际渲染的 chunks（非空正文、
@@ -175,18 +176,31 @@ func retrieveCueChunks(ctx context.Context, query string, scoped []string, catal
 
 // formatKnowledgeCue 渲染知识 cue。toolsEnabled=false 时只渲染预检索命中的
 // chunks（不输出工具引导文案与目录——agent 无法调用检索工具，列出可搜库
-// 只会误导）；此时若无命中 chunks 则不注入。P3-2：整体预算按块/条目边界
-// 截断，不再在 chunk 正文中途硬切。
-func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled bool) string {
+// 只会误导）；此时若无命中 chunks 则不注入。groundedOnly 时禁止用世界知识，
+// 无命中也注入拒答指令。P3-2：整体预算按块/条目边界截断。
+func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.KnowledgeChunk, toolsEnabled, groundedOnly bool) string {
+	rendered := cueRenderedChunks(chunks)
+	if groundedOnly && len(rendered) == 0 && !toolsEnabled {
+		return "## Retrieved Knowledge\n" +
+			"The knowledge base has no passages for this question. You MUST say you do not have evidence in the knowledge base. Do not use world knowledge.\n"
+	}
 	if !toolsEnabled {
 		// 无工具：仅"有实质命中"才值得注入。
-		if len(cueRenderedChunks(chunks)) == 0 {
+		if len(rendered) == 0 {
 			return ""
 		}
 		filtered = nil
 	}
-	if len(filtered) == 0 && len(chunks) == 0 {
+	if groundedOnly {
+		// Grounded：目录与「不够就用常识」会诱导世界知识，一律不列。
+		filtered = nil
+	}
+	if len(filtered) == 0 && len(chunks) == 0 && !groundedOnly {
 		return ""
+	}
+	if groundedOnly && len(rendered) == 0 && toolsEnabled {
+		return "## Retrieved Knowledge\n" +
+			"Pre-retrieval found no passages. You may call `knowledge_search` or `knowledge_reflect`. If those also return nothing, say the knowledge base has no evidence. Do not use world knowledge.\n"
 	}
 
 	var b strings.Builder
@@ -205,7 +219,12 @@ func formatKnowledgeCue(filtered []biz.KnowledgeCollection, chunks []biz.Knowled
 	if len(chunks) > 0 {
 		header := "## Retrieved Knowledge\n" +
 			"The following passages were retrieved for the current user question. Cite them by [n] when using this knowledge."
-		if toolsEnabled {
+		if groundedOnly {
+			header += " Use ONLY these passages. If they do not answer the question, say the knowledge base has no evidence. Do not use world knowledge."
+			if toolsEnabled {
+				header += " You may call `knowledge_search` or `knowledge_reflect` for more passages from the knowledge base, then refuse if still insufficient."
+			}
+		} else if toolsEnabled {
 			header += " If they are insufficient, call `knowledge_search` or `knowledge_reflect`."
 		}
 		writeBlock(header + "\n\n")

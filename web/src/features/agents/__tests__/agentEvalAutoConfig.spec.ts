@@ -75,3 +75,19 @@ describe('agent eval auto config (config_json.evaluation)', () => {
     expect(config.evaluation.dataset_id).toBe('');
   });
 });
+
+describe('agent knowledge grounded_only (config_json.knowledge)', () => {
+  it('defaults to off and serializes into config_json', () => {
+    const config = defaultAgentRuntimeConfig();
+    expect(config.knowledge.grounded_only).toBe(false);
+    config.knowledge.grounded_only = true;
+    const raw = JSON.parse(buildAgentConfigJson(config, [])) as Record<string, unknown>;
+    expect(raw.knowledge).toEqual({ grounded_only: true });
+  });
+
+  it('hydrates from config_json', () => {
+    const config = defaultAgentRuntimeConfig();
+    hydrateRuntimeFromConfigJson(config, JSON.stringify({ knowledge: { grounded_only: true } }));
+    expect(config.knowledge.grounded_only).toBe(true);
+  });
+});

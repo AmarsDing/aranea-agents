@@ -297,17 +297,8 @@ func (s *KnowledgeService) ServeDocumentAsset(w http.ResponseWriter, r *http.Req
 	}
 	// C-01：租户门禁（NotFound 防泄漏）。doc → collection 已在 biz 内取过，
 	// 此处为访问校验再取一次（廉价，与 GetCollection 其他调用点一致）。
-	doc, err := s.uc.GetDocument(r.Context(), id)
+	_, _, err = s.requireDocumentRead(r.Context(), id)
 	if err != nil {
-		writeAssetError(w, err)
-		return
-	}
-	col, err := s.uc.GetCollection(r.Context(), doc.CollectionID)
-	if err != nil {
-		writeAssetError(w, err)
-		return
-	}
-	if err := s.assertCollectionAccess(r.Context(), col); err != nil {
 		writeAssetError(w, err)
 		return
 	}
@@ -385,6 +376,31 @@ func (s *KnowledgeService) assertCollectionAccess(ctx context.Context, c biz.Kno
 // Shared collections (workspace="") are read-only for tenants (fail-closed).
 func (s *KnowledgeService) assertCollectionMutateAccess(ctx context.Context, c biz.KnowledgeCollection) error {
 	return s.checkCollectionAccess(ctx, c, true)
+}
+
+func (s *KnowledgeService) assertDocumentReadable(ctx context.Context, doc biz.KnowledgeDocument) error {
+	if bizknowledge.DocumentVisibleTo(ctx, doc) {
+		return nil
+	}
+	return apierror.NotFound("KNOWLEDGE", "document not found")
+}
+
+func (s *KnowledgeService) requireDocumentRead(ctx context.Context, id string) (biz.KnowledgeDocument, biz.KnowledgeCollection, error) {
+	doc, err := s.uc.GetDocument(ctx, id)
+	if err != nil {
+		return biz.KnowledgeDocument{}, biz.KnowledgeCollection{}, err
+	}
+	if err := s.assertDocumentReadable(ctx, doc); err != nil {
+		return biz.KnowledgeDocument{}, biz.KnowledgeCollection{}, err
+	}
+	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+	if err != nil {
+		return biz.KnowledgeDocument{}, biz.KnowledgeCollection{}, err
+	}
+	if err := s.assertCollectionAccess(ctx, col); err != nil {
+		return biz.KnowledgeDocument{}, biz.KnowledgeCollection{}, err
+	}
+	return doc, col, nil
 }
 
 func (s *KnowledgeService) checkCollectionAccess(ctx context.Context, c biz.KnowledgeCollection, mutate bool) error {
@@ -706,18 +722,14 @@ func (s *KnowledgeService) ListDocuments(ctx context.Context, req *v1.ListDocume
 
 // DeleteDocument removes a document and its chunks.
 func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDocumentRequest) (*emptypb.Empty, error) {
-	doc, err := s.uc.GetDocument(ctx, req.GetId())
-	if err != nil {
-		return nil, err
-	}
-	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
+	doc, col, err := s.requireDocumentRead(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
 	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
-	if err := s.uc.DeleteDocument(ctx, req.GetId()); err != nil {
+	if err := s.uc.DeleteDocument(ctx, doc.ID); err != nil {
 		s.lg.Error("删除知识文档失败",
 			loggateway.StepID("knowledge.document.delete_fail"),
 			loggateway.Str("doc_id", req.GetId()),
@@ -730,7 +742,7 @@ func (s *KnowledgeService) DeleteDocument(ctx context.Context, req *v1.DeleteDoc
 
 // GetDocumentContent returns the full extracted/organized text of one document (preview).
 func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDocumentContentRequest) (*v1.DocumentContent, error) {
-	doc, err := s.uc.GetDocument(ctx, req.GetId())
+	doc, _, err := s.requireDocumentRead(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -753,6 +765,13 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 // UpdateDocumentContent 编辑保存（G2-B5）：body 写回 vault 文件（frontmatter 保留），
 // CAS 冲突留双份并置 conflict=true，写后立即重索引。
 func (s *KnowledgeService) UpdateDocumentContent(ctx context.Context, req *v1.UpdateDocumentContentRequest) (*v1.UpdateDocumentContentResponse, error) {
+	_, col, err := s.requireDocumentRead(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
+	}
 	doc, conflict, err := s.uc.UpdateVaultDocumentContent(ctx, req.GetId(), req.GetContent(), req.GetBaseHash())
 	if err != nil {
 		s.lg.Warn("保存知识文档失败",
@@ -773,6 +792,13 @@ func (s *KnowledgeService) UpdateDocumentContent(ctx context.Context, req *v1.Up
 
 // MoveDocument moves a document (with its chunks) to another collection (US-14 整理归档).
 func (s *KnowledgeService) MoveDocument(ctx context.Context, req *v1.MoveDocumentRequest) (*v1.KnowledgeDocument, error) {
+	_, col, err := s.requireDocumentRead(ctx, req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
+		return nil, err
+	}
 	doc, err := s.uc.MoveDocument(ctx, req.GetId(), req.GetTargetCollectionId())
 	if err != nil {
 		s.lg.Error("移动知识文档失败",
@@ -790,16 +816,11 @@ func (s *KnowledgeService) MoveDocument(ctx context.Context, req *v1.MoveDocumen
 // （身份/chunks 保留，内容未变不重索引）+ 入链重建。同名冲突默认 CodeConflict
 // （前端弹 覆盖/改名/取消），conflict_policy=overwrite|rename 时按策略执行。
 func (s *KnowledgeService) MoveDocumentToDir(ctx context.Context, req *v1.MoveDocumentToDirRequest) (*v1.KnowledgeDocument, error) {
-	// C-01：租户门禁（NotFound 防泄漏）——先取 doc → collection 校验再移动。
-	doc, err := s.uc.GetDocument(ctx, req.GetId())
+	_, col, err := s.requireDocumentRead(ctx, req.GetId())
 	if err != nil {
 		return nil, err
 	}
-	col, err := s.uc.GetCollection(ctx, doc.CollectionID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.assertCollectionAccess(ctx, col); err != nil {
+	if err := s.assertCollectionMutateAccess(ctx, col); err != nil {
 		return nil, err
 	}
 	moved, err := s.uc.MoveVaultDocumentToDir(ctx, req.GetId(), req.GetTargetDir(), req.GetConflictPolicy())

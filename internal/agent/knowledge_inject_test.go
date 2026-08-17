@@ -33,6 +33,7 @@ func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
 		true,
+		false,
 	)
 	if !strings.Contains(got, "## Retrieved Knowledge") {
 		t.Fatalf("missing retrieved section: %s", got)
@@ -53,6 +54,7 @@ func TestFormatKnowledgeCue_CatalogOnly(t *testing.T) {
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", Description: "手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
 		true,
+		false,
 	)
 	if !strings.Contains(got, "Available Knowledge Bases") {
 		t.Fatalf("catalog cue missing: %s", got)
@@ -69,6 +71,7 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
 		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
 		false,
+		false,
 	)
 	if !strings.Contains(got, "## Retrieved Knowledge") || !strings.Contains(got, "SLA 承诺") {
 		t.Fatalf("tools-off must still render retrieved chunks: %s", got)
@@ -84,8 +87,48 @@ func TestFormatKnowledgeCue_ToolsDisabled(t *testing.T) {
 		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 1, ChunkCount: 2}},
 		nil,
 		false,
+		false,
 	); got != "" {
 		t.Fatalf("tools-off + no chunks must yield empty cue, got %q", got)
+	}
+}
+
+func TestFormatKnowledgeCue_GroundedOnly(t *testing.T) {
+	got := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册", DocumentCount: 3, ChunkCount: 12}},
+		[]biz.KnowledgeChunk{{ID: "k1", DocID: "d1", Content: "SLA 承诺 99.9% 可用性。", Score: 0.91}},
+		true,
+		true,
+	)
+	if !strings.Contains(got, "Use ONLY these passages") {
+		t.Fatalf("grounded hits must forbid world knowledge: %s", got)
+	}
+	if strings.Contains(got, "Available Knowledge Bases") {
+		t.Fatalf("grounded must not list catalog: %s", got)
+	}
+	emptyTools := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
+		nil,
+		true,
+		true,
+	)
+	if !strings.Contains(emptyTools, "Do not use world knowledge") {
+		t.Fatalf("grounded empty must refuse: %s", emptyTools)
+	}
+	if !strings.Contains(emptyTools, "knowledge_search") {
+		t.Fatalf("grounded+tools empty may search KB: %s", emptyTools)
+	}
+	emptyNoTools := formatKnowledgeCue(
+		[]biz.KnowledgeCollection{{ID: "c1", Name: "产品手册"}},
+		nil,
+		false,
+		true,
+	)
+	if !strings.Contains(emptyNoTools, "MUST say you do not have evidence") {
+		t.Fatalf("grounded tools-off empty must hard-refuse: %s", emptyNoTools)
+	}
+	if strings.Contains(emptyNoTools, "knowledge_search") {
+		t.Fatalf("grounded tools-off must not mention tools: %s", emptyNoTools)
 	}
 }
 

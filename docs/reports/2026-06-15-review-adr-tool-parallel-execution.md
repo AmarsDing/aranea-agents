@@ -42,7 +42,7 @@
 
 ### 负面影响
 
-- Exclusive 工具并行风险已由装饰器 family 锁缓解：hostexec 会话工具进程内串行；文件写按目标路径互斥（不同文件可并行）；`list_file`/`search_*` 对目录子树共享覆盖锁，与子路径写互斥。未知 Exclusive 按名称串行。工作区是 git 仓时，LLM 文件写走 worktree 提交合并；否则写活树。`ParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT` 为 git 仓时挂 `WorktreeIsolator`。
+- Exclusive 工具并行风险已由装饰器 family 锁缓解：hostexec 会话工具进程内串行；文件写按目标路径互斥（不同文件可并行）；`list_file`/`search_*` 对目录子树共享覆盖锁，与子路径写互斥（无 path 时用 glob/`file_pattern` 收窄，避免整仓互斥）。未知 Exclusive 按名称串行。工作区是 git 仓时，LLM 文件写走 worktree 提交合并（内层 filenorm）；否则写活树。`ParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT` 为 git 仓时挂 `WorktreeIsolator`。
 - DeferredManager 工具不受装饰器互斥保护：`ApplyDecorators` 仅装饰构建时存在的工具。**缓解**：延迟工具的超时仍走回调链；互斥若需要可在 materialize 时套装饰器
 - 缓存内存占用：每个 ConcurrentSafe 工具的缓存无上限。**缓解**：当前工具集规模有限，未来可加 LRU 淘汰
 

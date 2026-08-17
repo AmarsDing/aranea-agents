@@ -2,6 +2,7 @@ package filenorm
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 )
 
@@ -28,6 +29,14 @@ func NormalizeFileArgs(toolName string, jsonArgs []byte) []byte {
 				changed = true
 			}
 		}
+		if name == "read_file" {
+			if copyNumberIfEmpty(m, "start_line", "start", "offset", "from_line") {
+				changed = true
+			}
+			if copyNumberIfEmpty(m, "num_lines", "limit", "count", "n", "max_lines") {
+				changed = true
+			}
+		}
 		if name == "replace_content" {
 			if copyStringIfEmpty(m, "old_string", "old", "from") {
 				changed = true
@@ -45,6 +54,16 @@ func NormalizeFileArgs(toolName string, jsonArgs []byte) []byte {
 			changed = true
 		}
 		if copyStringIfEmpty(m, "pattern", "glob") {
+			changed = true
+		}
+	case "search_content":
+		if copyStringIfEmpty(m, "path", "dir", "directory", "folder") {
+			changed = true
+		}
+		if copyStringIfEmpty(m, "file_pattern", "glob", "file_glob", "include") {
+			changed = true
+		}
+		if copyStringIfEmpty(m, "content_pattern", "query", "search", "text", "content", "keyword", "regex", "pattern") {
 			changed = true
 		}
 	default:
@@ -76,6 +95,45 @@ func copyStringIfEmpty(m map[string]any, dest string, srcs ...string) bool {
 		return true
 	}
 	return false
+}
+
+func copyNumberIfEmpty(m map[string]any, dest string, srcs ...string) bool {
+	if !missing(m, dest) {
+		return false
+	}
+	for _, src := range srcs {
+		if src == dest {
+			continue
+		}
+		v, ok := m[src]
+		if !ok || v == nil {
+			continue
+		}
+		switch n := v.(type) {
+		case float64, float32, int, int32, int64, json.Number:
+			m[dest] = v
+			delete(m, src)
+			return true
+		case string:
+			s := strings.TrimSpace(n)
+			if s == "" {
+				continue
+			}
+			parsed, err := strconv.ParseFloat(s, 64)
+			if err != nil {
+				continue
+			}
+			m[dest] = parsed
+			delete(m, src)
+			return true
+		}
+	}
+	return false
+}
+
+func missing(m map[string]any, key string) bool {
+	v, ok := m[key]
+	return !ok || v == nil
 }
 
 func missingString(m map[string]any, key string) bool {

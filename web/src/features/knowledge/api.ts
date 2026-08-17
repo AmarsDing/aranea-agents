@@ -90,6 +90,8 @@ function mapDocument(raw: unknown): KnowledgeDocument {
     summary: pickStr(r, 'summary', 'summary'),
     tags: pickStrList(r, 'tags', 'tags'),
     doc_type: pickStr(r, 'doc_type', 'docType'),
+    visibility: pickStr(r, 'visibility', 'visibility') || 'collection',
+    owner_user_id: pickStr(r, 'owner_user_id', 'ownerUserId'),
   };
 }
 
@@ -504,6 +506,24 @@ export async function getWriteBackHome(): Promise<WriteBackHome> {
     collection_id: pickStr(r, 'collection_id', 'collectionId'),
     name: pickStr(r, 'name', 'name'),
     vault_backend: pickStr(r, 'vault_backend', 'vaultBackend'),
+  };
+}
+
+export async function updateDocumentVisibility(
+  id: string,
+  visibility: 'collection' | 'private',
+): Promise<{ id: string; visibility: string; owner_user_id: string }> {
+  const r = asRecord(
+    (
+      await kratosApi.post(`/v1/knowledge/documents/${encodeURIComponent(id)}/visibility`, {
+        visibility,
+      })
+    ).data,
+  );
+  return {
+    id: pickStr(r, 'id', 'id'),
+    visibility: pickStr(r, 'visibility', 'visibility') || 'collection',
+    owner_user_id: pickStr(r, 'owner_user_id', 'ownerUserId'),
   };
 }
 

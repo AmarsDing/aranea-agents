@@ -1,4 +1,4 @@
-﻿﻿# Aranea 指令驱动评测公共库（agent-eval-20260818）
+﻿# Aranea 指令驱动评测公共库（agent-eval-20260818）
 # 与 realmachine-20260817/_lib.ps1 同口径，TestRoot 指向本评测目录
 $script:BaseUrl = "http://127.0.0.1:8810"
 $script:TokenFile = "f:\myproject\aranea-agents\docker\.test-token.txt"
@@ -24,7 +24,9 @@ function Api-Call {
     param([string]$Method = "GET", [Parameter(Mandatory)][string]$Path, $Body = $null, [string]$OutFile = $null, [int]$TimeoutSec = 60)
     $tok = Get-Token
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $curlArgLine = @("-s", "-o", "-", "-w", "`n%{http_code}", "-m", "$TimeoutSec", "-X", $Method, "-H", "Authorization: Bearer $tok", "-H", "Content-Type: application/json")
+    $respFile = [IO.Path]::GetTempFileName()
+    # 响应体落临时文件按字节读回 UTF-8，避免 curl 经控制台代码页捕获导致中文 mojibake/JSON 解析失败。
+    $curlArgLine = @("-s", "-o", "$respFile", "-w", "%{http_code}", "-m", "$TimeoutSec", "-X", $Method, "-H", "Authorization: Bearer $tok", "-H", "Content-Type: application/json")
     $tmp = $null
     if ($null -ne $Body) {
         $bf = $Body
@@ -35,12 +37,11 @@ function Api-Call {
         [IO.File]::WriteAllText($tmp, $bf, [Text.UTF8Encoding]::new($false))
         $curlArgLine += @("--data-binary", "@$tmp")
     }
-    $out = & curl.exe @curlArgLine "$($script:BaseUrl)$Path" 2>$null
+    $code = (& curl.exe @curlArgLine "$($script:BaseUrl)$Path" 2>$null | Out-String).Trim()
     $sw.Stop()
     if ($tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
-    $lines = $out -split "`n"
-    $code = $lines[-1].Trim()
-    $bodyText = ($lines[0..($lines.Count - 2)] -join "`n")
+    $bodyText = [IO.File]::ReadAllText($respFile, [Text.UTF8Encoding]::new($false))
+    Remove-Item $respFile -Force -ErrorAction SilentlyContinue
     if ($OutFile) { [IO.File]::WriteAllText($OutFile, $bodyText, [Text.UTF8Encoding]::new($false)) }
     $parsed = $null
     try { $parsed = $bodyText | ConvertFrom-Json } catch {}

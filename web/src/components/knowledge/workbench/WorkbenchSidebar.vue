@@ -102,6 +102,22 @@
                   <q-item-section>{{ t('knowledgePage.reembedDocument') }}</q-item-section>
                   <q-tooltip v-if="!currentHasSemantic">{{ t('knowledgePage.reembedNoSemantic') }}</q-tooltip>
                 </q-item>
+                <q-item
+                  clickable
+                  data-test="file-private"
+                  @click="$emit('file-action', 'private', f)"
+                >
+                  <q-item-section avatar><q-icon name="lock" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.workbench.filePrivate') }}</q-item-section>
+                </q-item>
+                <q-item
+                  clickable
+                  data-test="file-collection"
+                  @click="$emit('file-action', 'collection', f)"
+                >
+                  <q-item-section avatar><q-icon name="folder_shared" size="18px" /></q-item-section>
+                  <q-item-section>{{ t('knowledgePage.workbench.fileCollectionVisible') }}</q-item-section>
+                </q-item>
                 <q-separator />
                 <q-item clickable class="kb-sidebar__menu-danger" @click="$emit('file-action', 'delete', f)">
                   <q-item-section avatar><q-icon name="delete_outline" size="18px" /></q-item-section>

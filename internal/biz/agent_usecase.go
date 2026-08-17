@@ -288,11 +288,9 @@ func (u *AgentUsecase) create(ctx context.Context, in Agent, skipProviderValidat
 		files[i].AgentID = in.ID
 	}
 	files = withFileDefaults(files)
-	// DEV-10 FIXED: ConfigJSON is now a read-only projection of Settings + Files.
-	// It is no longer written to the database; hydrate generates it on-demand
-	// for read paths. The in.ConfigJSON field is intentionally left empty so
-	// the data layer stores no stale snapshot.
-	in.ConfigJSON = ""
+	// DEV-10: settings/files are the source of truth. Persist only overlay
+	// keys that hydrate still merges (evaluation, knowledge.grounded_only).
+	in.ConfigJSON = extractConfigJSONKeys(in.ConfigJSON, "evaluation", "knowledge")
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = string(AgentStatusActive)
@@ -368,8 +366,11 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	merged.Settings = &settings
 	merged.Files = files
 	HydrateAgentKind(&merged)
-	// DEV-10 FIXED: ConfigJSON is no longer written; cleared before persisting.
-	merged.ConfigJSON = ""
+	overlay := extractConfigJSONKeys(patch.ConfigJSON, "evaluation", "knowledge")
+	if overlay == "{}" {
+		overlay = extractConfigJSONKeys(current.ConfigJSON, "evaluation", "knowledge")
+	}
+	merged.ConfigJSON = overlay
 	if err := u.tx.ExecInTx(ctx, func(txCtx context.Context) error {
 		if _, err := u.writer.UpdateAgent(txCtx, merged); err != nil {
 			return err

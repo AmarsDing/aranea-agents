@@ -56,6 +56,19 @@ type EntityPipeline struct {
 	track   EntityTrackWriter
 	state   bizknowledge.RelationStateRepo
 	lg      loggateway.Logger
+	wiki    EntityWikiWriter
+}
+
+// EntityWikiWriter 团队库实体词条页写口（生产：*bizknowledge.Usecase）。
+type EntityWikiWriter interface {
+	EnsureEntityWikiPages(ctx context.Context, collectionID, sourceDocID string, entities []bizknowledge.DocEntity) error
+}
+
+// SetWikiWriter 注入实体词条页写回；nil 时 ProcessDoc 跳过词条生长。
+func (p *EntityPipeline) SetWikiWriter(w EntityWikiWriter) {
+	if p != nil {
+		p.wiki = w
+	}
 }
 
 // NewEntityPipeline 构造实体轨管线；lg 为 nil 时降级 Noop。
@@ -179,6 +192,15 @@ func (p *EntityPipeline) ProcessDoc(ctx context.Context, collectionID, docID str
 		EntitiesExtractedAt: time.Now(),
 	}); err != nil {
 		return stats, fmt.Errorf("upsert relation state %s: %w", docID, err)
+	}
+	if p.wiki != nil && len(docEntities) > 0 {
+		if err := p.wiki.EnsureEntityWikiPages(ctx, collectionID, docID, docEntities); err != nil {
+			p.lg.Warn("实体词条页生长失败（实体轨已提交）",
+				loggateway.StepID("knowledge.entity.wiki"),
+				loggateway.Str("doc_id", docID),
+				loggateway.Err(err),
+			)
+		}
 	}
 	return stats, nil
 }

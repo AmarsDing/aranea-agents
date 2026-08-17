@@ -6,10 +6,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mockGet = vi.fn();
+const mockPost = vi.fn();
 const mockListGov = vi.fn();
 const mockResolveGov = vi.fn();
 vi.mock('../../../services/axiosHandler', () => ({
-  kratosApi: { get: (...args: unknown[]) => mockGet(...args) },
+  kratosApi: {
+    get: (...args: unknown[]) => mockGet(...args),
+    post: (...args: unknown[]) => mockPost(...args),
+  },
 }));
 vi.mock('../../../services', () => ({
   createKnowledgeService: () => ({
@@ -18,7 +22,7 @@ vi.mock('../../../services', () => ({
   }),
 }));
 
-import { listBlockBacklinks, listGovernanceProposals, listUnlinkedMentions, resolveGovernanceProposal } from '../api';
+import { listBlockBacklinks, listGovernanceProposals, listUnlinkedMentions, resolveGovernanceProposal, updateDocumentVisibility } from '../api';
 
 describe('listBlockBacklinks（SP1-I：doc_id 附加绑定直连）', () => {
   beforeEach(() => {
@@ -130,5 +134,23 @@ describe('governance proposals（US-52）', () => {
     mockResolveGov.mockResolvedValue({ id: 12, status: 'applied' });
     await expect(resolveGovernanceProposal(12, 'keep_new')).resolves.toEqual({ id: 12, status: 'applied' });
     expect(mockResolveGov).toHaveBeenCalledWith({ id: 12, decision: 'keep_new' });
+  });
+});
+
+describe('updateDocumentVisibility', () => {
+  beforeEach(() => {
+    mockPost.mockReset();
+  });
+
+  it('POST documents/{id}/visibility 并映射字段', async () => {
+    mockPost.mockResolvedValue({
+      data: { id: 'd1', visibility: 'private', owner_user_id: '7' },
+    });
+    const out = await updateDocumentVisibility('doc/特殊 id', 'private');
+    expect(mockPost).toHaveBeenCalledWith(
+      '/v1/knowledge/documents/doc%2F%E7%89%B9%E6%AE%8A%20id/visibility',
+      { visibility: 'private' },
+    );
+    expect(out).toEqual({ id: 'd1', visibility: 'private', owner_user_id: '7' });
   });
 });

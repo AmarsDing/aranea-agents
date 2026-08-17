@@ -60,6 +60,9 @@ export function useActivityQueries() {
     getTurnRecallHits(turnId: string): MemoryRecallHit[] {
       return store.getTurnRecallHits(turnId);
     },
+    getTurnKnowledgeChunks(turnId: string) {
+      return store.getTurnKnowledgeChunks(turnId);
+    },
     getTurnTeamStages(turnId: string): TeamStage[] {
       return store.getTurnTeamStages(turnId);
     },

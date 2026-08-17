@@ -46,6 +46,11 @@ const (
 	VaultBackendTeam = "team"
 )
 
+const (
+	DocVisibilityCollection = "collection"
+	DocVisibilityPrivate    = "private"
+)
+
 // Document is one source document ingested into a collection.
 type Document struct {
 	ID           string
@@ -80,6 +85,10 @@ type Document struct {
 	EmbedLastTried time.Time
 	CreatedAt      string
 	UpdatedAt      string
+	// Visibility is collection (default, everyone with collection access) or private (owner only).
+	Visibility string
+	// OwnerUserID is the authenticated user id that marked the document private.
+	OwnerUserID string
 }
 
 // Chunk is one indexed text chunk with its embedding.
@@ -274,6 +283,7 @@ type Usecase struct {
 	// 对 touched 词条页触发 M2 实体共现 + typed 关系抽取。nil 时写回文档只有
 	// explicit 块链，图谱实体/语义轨缺席（降级，不阻断写回）。
 	writeBackGraph WriteBackGraphFunc
+	docACL         DocumentACLStore
 	// factVersions/proposals 为 M3 演化时序持久化（supersedes 版本链 + 治理提案），
 	// 经 SetEvolutionRepos 接线；nil 时留痕跳过（写回主流程语义不变）。
 	factVersions FactVersionRepo

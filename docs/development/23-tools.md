@@ -103,7 +103,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge、spirit、browser(MCP 桥接) 等 |
 | `workspace_exec` | 依赖 CodeExecutor 工作区，与 file/shell 根目录 **可能不同**；不替代日常 `shell_exec` |
 
-**验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录；配置环境变量在命令中可读取，敏感值在返回前脱敏。
+**验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录；配置环境变量在命令中可读取，敏感值在返回前脱敏。模型用 `path`/`cmd`/`url`/`q` 等常见字段调用时，工具仍按 schema 执行。
 
 > 工作区解析链、装配改动、工具×目录矩阵等技术设计见 [23-tools.design.md §7.8](./23-tools.design.md#78-工具工作区统一phase-5)。
 
@@ -371,7 +371,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 并行开关 | 是否允许并行工具调用 |
 | 流式开关 | 是否启用流式工具 |
 | 执行超时 | 单次工具调用上限；0 表示默认 10 分钟。该设置是普通工具的唯一截止来源 |
-| 重试策略 | 默认开启。仅对 ConcurrentSafe 只读工具重试瞬时网络/EOF、被 `%v` 包装的超时，以及结果内 HTTP 429/5xx（如 web_fetch）；hostexec 与文件写不重试。已有 Agent 行不迁移；新建默认与 Ent/前端表单对齐 |
+| 重试策略 | 默认开启。仅对 ConcurrentSafe 只读工具重试瞬时网络/EOF、被 `%v` 包装的超时，以及结果内 HTTP 429/5xx（如 web_fetch）；hostexec 与文件写不重试。新建默认与 Ent/前端表单对齐；存量 false 由 DDL 20261228 翻 true |
 
 > 字段名与数据模型见设计文档 §3.1 与 §6.1。
 

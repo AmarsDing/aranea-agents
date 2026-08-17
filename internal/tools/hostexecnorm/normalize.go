@@ -9,7 +9,7 @@ import (
 // NormalizeExecArgs maps common LLM/catalog aliases onto the hostexec schema
 // so exec_command does not fail with "command required" or ignore cwd.
 //
-//	command     ← cmd, cmd_line, cmdline
+//	command     ← cmd, cmd_line, cmdline; argv arrays and optional args/argv
 //	workdir     ← working_dir, cwd, dir, directory, working_directory
 //	timeout_sec ← timeout, timeout_seconds
 func NormalizeExecArgs(jsonArgs []byte) []byte {
@@ -18,6 +18,9 @@ func NormalizeExecArgs(jsonArgs []byte) []byte {
 		return jsonArgs
 	}
 	changed := false
+	if coerceCommand(m) {
+		changed = true
+	}
 	if copyStringIfEmpty(m, "command", "cmd", "cmd_line", "cmdline") {
 		changed = true
 	}
@@ -35,6 +38,102 @@ func NormalizeExecArgs(jsonArgs []byte) []byte {
 		return jsonArgs
 	}
 	return out
+}
+
+// coerceCommand turns argv-style payloads into the hostexec string schema.
+// Models often send `"command": ["ls","-la"]` or `"command":"git","args":["status"]`,
+// which json.Unmarshal cannot store in `Command string`.
+func coerceCommand(m map[string]any) bool {
+	prefix := flattenCommandValue(m["command"])
+	fromAlias := false
+	if prefix == "" {
+		for _, src := range []string{"cmd", "cmd_line", "cmdline"} {
+			if s := flattenCommandValue(m[src]); s != "" {
+				prefix = s
+				fromAlias = true
+				delete(m, src)
+				break
+			}
+		}
+	}
+	extra := flattenCommandValue(m["args"])
+	if extra == "" {
+		extra = flattenCommandValue(m["argv"])
+	}
+	if extra != "" {
+		delete(m, "args")
+		delete(m, "argv")
+	}
+	joined := prefix
+	if extra != "" {
+		if joined != "" {
+			joined = joined + " " + extra
+		} else {
+			joined = extra
+		}
+	}
+	if joined == "" {
+		return false
+	}
+	if orig, ok := m["command"].(string); ok && orig == joined && !fromAlias && extra == "" {
+		return false
+	}
+	m["command"] = joined
+	return true
+}
+
+func flattenCommandValue(v any) string {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case []any:
+		parts := make([]string, 0, len(x))
+		for _, item := range x {
+			s := stringifyCmdPart(item)
+			if s == "" {
+				continue
+			}
+			parts = append(parts, quoteCmdPart(s))
+		}
+		return strings.Join(parts, " ")
+	case []string:
+		parts := make([]string, 0, len(x))
+		for _, item := range x {
+			s := strings.TrimSpace(item)
+			if s == "" {
+				continue
+			}
+			parts = append(parts, quoteCmdPart(s))
+		}
+		return strings.Join(parts, " ")
+	default:
+		return ""
+	}
+}
+
+func stringifyCmdPart(v any) string {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case float64:
+		if x == float64(int64(x)) {
+			return strconv.FormatInt(int64(x), 10)
+		}
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case json.Number:
+		return x.String()
+	case bool:
+		return strconv.FormatBool(x)
+	default:
+		return ""
+	}
+}
+
+func quoteCmdPart(s string) string {
+	if !strings.ContainsAny(s, " \t\"'") {
+		return s
+	}
+	return strconv.Quote(s)
 }
 
 func copyStringIfEmpty(m map[string]any, dest string, srcs ...string) bool {

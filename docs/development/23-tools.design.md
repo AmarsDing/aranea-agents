@@ -1367,7 +1367,7 @@ Agent 构建请求
 - ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时、预算与 Exclusive 互斥仍生效，互斥表是进程级）
 - 缓存踩踏：并发首次调用相同参数可能多次执行 inner tool（P2 优先级可接受）
 - Exclusive 互斥是进程内、非可重入；嵌套调用同一 family 会自锁（当前 hostexec/file-write 无此路径）
-- Git worktree：工作区本身是 git 仓时，LLM 文件写经 `wrapFileToolSetWithWorktree` 在 worktree 提交后合并；`provideParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT`/`WORKSPACE_ROOT` 为 git 仓时挂上 `WorktreeIsolator`。非 git 工作区写活树，靠分层路径锁隔离。`executeOne` 在 isolator 自身 handler 为空时，把调用方 handler 放到 worktree 目录（ctx）里执行。
+- Git worktree：工作区本身是 git 仓时，LLM 文件写经 `wrapFileToolSetWithWorktree` 在 worktree 提交后合并；worktree 内层对 `trpcfile` 调用前走 `filenorm.NormalizeFileArgs`（`path`/`content` 别名不可丢）。`provideParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT`/`WORKSPACE_ROOT` 为 git 仓时挂上 `WorktreeIsolator`。非 git 工作区写活树，靠分层路径锁隔离。`list_file`/`search_*` 无 `path` 时用 `file_pattern`/`glob` 收窄覆盖锁，避免整仓与所有写互斥。`executeOne` 在 isolator 自身 handler 为空时，把调用方 handler 放到 worktree 目录（ctx）里执行。
 
 ### 7.1.2 工具结果卸载（Result Offloading）
 
@@ -1752,8 +1752,9 @@ internal/tools/
 │   └── toolset_prune.go             — 工具集裁剪
 ├── cache/                           — 工具结果缓存（LRU 驱逐 + TTL）
 ├── custom/                          — 自定义工具实现
-├── hostexecnorm/                    — 主机执行参数归一化（cmd/cwd/working_dir/timeout → schema）
-├── filenorm/                        — 文件工具参数归一化（path/content → file_name/contents）
+├── hostexecnorm/                    — 主机执行参数归一化（cmd/cwd/working_dir/timeout → schema；command 数组与 args）
+├── filenorm/                        — 文件工具参数归一化（path/content/search_content/行号 → schema）
+├── argnorm/                         — 独立工具参数归一化（web_fetch url→urls；搜索 q→query）
 ├── kanban/                          — 看板工具集（Bridge 拆分为 Reader/Writer/Lifecycle）
 ├── knowledge/                       — Knowledge 搜索工具
 ├── mcpobserve/                      — MCP 运行时可观测性
@@ -1817,8 +1818,9 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | `internal/agent/tool_assembly.go` | `resolveToolWorkspaceRoot` + `applyToolWorkspaceDirs` |
 | `internal/tools/trpc/runtime_config.go` | `shell_exec` config 支持 `base_dir` / `shell_root` |
 | `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
-| `internal/tools/hostexecnorm` | `cmd`/`cmd_line` → `command`；`working_dir`/`cwd`/`dir` → `workdir`；`timeout` → `timeout_sec` |
-| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file） |
+| `internal/tools/hostexecnorm` | `cmd`/`cmd_line` → `command`；argv 数组与 `args`/`argv` 拼成字符串（含空格的数组元素加引号）；`working_dir`/`cwd`/`dir` → `workdir`；`timeout` → `timeout_sec` |
+| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file）；`query`/`pattern`/`glob` → `content_pattern`/`file_pattern`（search_content）；`start`/`limit` → `start_line`/`num_lines`（read_file）。worktree 内层写前再归一一次 |
+| `internal/tools/argnorm` | `web_fetch`：`url` → `urls[]`；搜索类：`q`/`search`/`keyword` → `query`；`gemini_web_fetch`：`url` → `prompt`。`Assemble` 出口包装独立工具与 ToolSet |
 | `internal/tools/testexec/config.go` | 在线测试 shell 时传入 workspace |
 
 #### 7.8.4 Shell 参数与确认
@@ -1826,7 +1828,7 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 项 | 设计 |
 |----|------|
 | 调用参数 | `command`（必填）、`workdir`（可选，相对 `workspace_root`） |
-| 兼容 | `hostexecnorm` 将 `cmd`/`cwd`/`working_dir`/`timeout` 映射为 `command`/`workdir`/`timeout_sec` |
+| 兼容 | `hostexecnorm` 将 `cmd`/`cwd`/`working_dir`/`timeout` 映射为 `command`/`workdir`/`timeout_sec`；`command` 可为字符串数组，并可与 `args` 拼接 |
 | 环境变量 | `ShellExec.Env` 作为 base env 注入命令；单次调用 `env` 可覆盖同名值 |
 | 结果脱敏 | 配置环境变量中的敏感名称/值在结构化结果返回前替换为 redaction marker |
 | 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias） |

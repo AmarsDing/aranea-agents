@@ -83,10 +83,48 @@ func TestNormalizeFileArgs_SearchFileGlobAlias(t *testing.T) {
 	}
 }
 
-func TestNormalizeFileArgs_UnknownToolPassthrough(t *testing.T) {
-	in := []byte(`{"path":"a.go"}`)
-	if string(NormalizeFileArgs("web_fetch", in)) != string(in) {
-		t.Fatal("unknown tools must not be rewritten")
+func TestNormalizeFileArgs_SearchContentAliases(t *testing.T) {
+	out := NormalizeFileArgs("search_content", []byte(`{"dir":"src","glob":"*.go","query":"TODO"}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["path"] != "src" {
+		t.Fatalf("path = %v", m["path"])
+	}
+	if m["file_pattern"] != "*.go" {
+		t.Fatalf("file_pattern = %v", m["file_pattern"])
+	}
+	if m["content_pattern"] != "TODO" {
+		t.Fatalf("content_pattern = %v", m["content_pattern"])
+	}
+}
+
+func TestNormalizeFileArgs_SearchContentPatternAsContent(t *testing.T) {
+	out := NormalizeFileArgs("search_content", []byte(`{"pattern":"func main"}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["content_pattern"] != "func main" {
+		t.Fatalf("content_pattern = %v", m["content_pattern"])
+	}
+}
+
+func TestNormalizeFileArgs_ReadFileLineAliases(t *testing.T) {
+	out := NormalizeFileArgs("read_file", []byte(`{"path":"a.go","start":10,"limit":20}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["file_name"] != "a.go" {
+		t.Fatalf("file_name = %v", m["file_name"])
+	}
+	if m["start_line"] != float64(10) {
+		t.Fatalf("start_line = %v", m["start_line"])
+	}
+	if m["num_lines"] != float64(20) {
+		t.Fatalf("num_lines = %v", m["num_lines"])
 	}
 }
 

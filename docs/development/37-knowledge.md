@@ -1246,6 +1246,43 @@
 - Vault 同步索引成功后触发 typed 关系抽取（与实体钩子同生命周期、content_hash 幂等），冷文档不再只靠热度工人。
 - `RebuildBlockIndex` 把未链接提及编译成 wikilink 再物化 explicit 边；不回写源文件或 `content_text`。歧义键仍跳过。显式「编译本页 / 回填」仍是改 Markdown 的唯一写路径。
 
+## 子模块：可信回答、实体词条与文档可见性（2026-08-17）
+
+> 设计：[37-knowledge.design.md §V12.20](./37-knowledge.design.md#v1220-可信回答实体词条与文档可见性2026-08-17)；计划：[37-knowledge.development.md](./37-knowledge.development.md#子模块可信回答实体词条与文档可见性2026-08-17)。
+
+### US-55：对话里能看见知识来源，并可强制只根据知识库作答
+
+**作为** 用知识库辅助值班问答的运维人员，
+**我希望** 每轮回答旁能看到命中的知识段落，并在需要时打开「仅根据知识库作答」，
+**从而** 能核对出处，且知识库没有依据时模型明确说没有，而不是用世界知识补全。
+
+**验收标准**：
+- 对话轮次展示知识召回 chips（按 `chunk_id` 合并），有 `doc_id` 的 chip 可跳到 `/knowledge?doc=`。
+- Agent 记忆设置可打开 `config_json.knowledge.grounded_only`（不新增 Ent 列、不改 agent proto）。
+- 打开后：无命中且关工具则硬拒答；无命中且开工具只允许 `knowledge_search`；有命中只用检索段落，禁止世界知识。
+
+### US-56：团队库入库后实体会生长成词条页
+
+**作为** 维护团队知识库的专家，
+**我希望** 文档抽到的实体自动出现在 `entries/<slug>.md` 短页并链回来源，
+**从而** 知识库会像 wiki 一样长出可浏览的实体页，而不是只有检索碎片。
+
+**验收标准**：
+- 仅 `vault_backend=team` 写入；本地 vault 不改用户磁盘。
+- 每篇文档最多 8 个实体；已有词条幂等追加 `[[source]]`；失败 Warn，不回滚检索/实体轨。
+- 矛盾仍走已有 contradicts 提案；词条不自动改人写的正文。
+
+### US-57：文档可标为仅自己可见，检索与列表与可见集对齐
+
+**作为** 与同事共用团队库的成员，
+**我希望** 把草稿标成仅自己可见，别人的检索和文件列表看不到它，
+**从而** 能共享库、不必把未就绪材料暴露给全库检索。
+
+**验收标准**：
+- `knowledge_documents.visibility` 为 `collection`（默认）或 `private`；`owner_user_id` 为标私密的用户。
+- 列表、vault 树、语义/BM25 检索按可见集过滤；系统工人不过滤。
+- 直取正文/附件/删除/移动对不可见文档返回 NotFound。工作台文件菜单可切换可见性。本轮不做连接器。
+
 ### 功能需求清单
 
 | # | 需求 | 说明 |
@@ -1263,5 +1300,8 @@
 | FR-SP7-11 | 治理提案工作台 | 命令面板审核 pending 提案；事实冲突 keep_old/keep_new 按钮 |
 | FR-SP7-12 | 问句混合路由 | 疑问句自动 RRF，精确词仍 sparse，不默认 MultiQuery |
 | FR-SP7-13 | 自治与入库自关联 | 治理 6h 实跑；vault 冷文档抽关系；索引期成链不改源 |
+| FR-SP7-14 | 可信回答 | 对话知识 chips + `grounded_only` 拒答 |
+| FR-SP7-15 | 编译型实体词条 | 团队库实体 → `entries/<slug>.md` |
+| FR-SP7-16 | 文档可见性 | collection/private，检索与列表对齐 |
 
 

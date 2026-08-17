@@ -566,6 +566,9 @@ export default {
       layerL3: 'Semantic memory',
       layerL4: 'Persistent memory',
     },
+    knowledgeRecall: {
+      title: '{n} knowledge passages',
+    },
     agentBlock: {
       receiveTask: 'Receive task',
       timeout: 'Timeout',
@@ -3497,6 +3500,10 @@ export default {
     evalAutoMinInterval: 'Min interval (seconds)',
     evalAutoMinIntervalHint: 'Minimum interval between two auto evaluations. 0 means no limit.',
     evalAutoNoDatasetWarning: 'Auto evaluation is enabled but no dataset is selected; evaluations will not run.',
+    knowledgeGroundedTitle: 'Answer from knowledge base only',
+    knowledgeGroundedHint:
+      'When on, the model may only use retrieved knowledge passages. If evidence is missing it must say so, without filling gaps from world knowledge.',
+    knowledgeGroundedEnable: 'Refuse when the knowledge base has no evidence',
     evolution: {
       detailTitle: 'Evolution Suggestion Detail',
       detailContent: 'Content',
@@ -3915,6 +3922,8 @@ export default {
       writebackHomeSwitch: 'Switch to that vault',
       fileMove: 'Move to…',
       fileDownload: 'Download original',
+      filePrivate: 'Visible only to me',
+      fileCollectionVisible: 'Visible in this vault',
       fileDelete: 'Delete',
       fileMenuAria: 'File actions menu',
       switcher: {

@@ -580,6 +580,9 @@ export default {
       layerL3: '语义记忆',
       layerL4: '持久记忆',
     },
+    knowledgeRecall: {
+      title: '已引用 {n} 条知识',
+    },
     agentBlock: {
       receiveTask: '接收任务',
       timeout: '超时',
@@ -3523,6 +3526,9 @@ export default {
     evalAutoMinInterval: '最小间隔（秒）',
     evalAutoMinIntervalHint: '两次自动评估之间的最小间隔，0 表示不限制。',
     evalAutoNoDatasetWarning: '已启用自动评估但未选择数据集，评估不会执行。',
+    knowledgeGroundedTitle: '仅根据知识库作答',
+    knowledgeGroundedHint: '打开后，模型只使用检索到的知识库段落；没有依据时明确说没有，不用世界知识补全。',
+    knowledgeGroundedEnable: '禁止用常识补全',
     evolution: {
       detailTitle: '进化建议详情',
       detailContent: '建议内容',
@@ -3932,6 +3938,8 @@ export default {
       writebackHomeSwitch: '切换到该库',
       fileMove: '移动到…',
       fileDownload: '下载原文',
+      filePrivate: '仅自己可见',
+      fileCollectionVisible: '库内可见',
       fileDelete: '删除',
       fileMenuAria: '文件操作菜单',
       switcher: {
