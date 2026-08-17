@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
@@ -910,15 +911,57 @@ func tokenizeQuery(q string) []string {
 		return nil
 	}
 	parts := strings.FieldsFunc(q, func(r rune) bool {
-		return r == ' ' || r == ',' || r == '.' || r == '!' || r == '?'
+		return r == ' ' || r == ',' || r == '.' || r == '!' || r == '?' ||
+			r == '\t' || r == '\n' || r == '\r' ||
+			r == '，' || r == '。' || r == '！' || r == '？' || r == '；' ||
+			r == '：' || r == '、' || r == '（' || r == '）' || r == '“' || r == '”'
 	})
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
-		if len(p) >= 2 {
-			out = append(out, p)
+		if p == "" {
+			continue
+		}
+		out = appendKeywordTokens(out, p)
+	}
+	return out
+}
+
+// appendKeywordTokens emits keyword tokens for one punctuation-free part.
+// 连续 CJK 片段发重叠 bigram（单字发 unigram），避免整段中文成为一个不可拆的
+// 巨型 token 导致 keywordOverlapScore 恒 0；非 CJK 片段保持整词（len>=2 字节）。
+func appendKeywordTokens(out []string, part string) []string {
+	runes := []rune(part)
+	asciiStart := 0
+	flushASCII := func(end int) {
+		if end > asciiStart {
+			if w := string(runes[asciiStart:end]); len(w) >= 2 {
+				out = append(out, w)
+			}
 		}
 	}
+	i := 0
+	for i < len(runes) {
+		if !unicode.Is(unicode.Han, runes[i]) {
+			i++
+			continue
+		}
+		flushASCII(i)
+		j := i
+		for j < len(runes) && unicode.Is(unicode.Han, runes[j]) {
+			j++
+		}
+		if j-i == 1 {
+			out = append(out, string(runes[i:j]))
+		} else {
+			for k := i; k+1 < j; k++ {
+				out = append(out, string(runes[k:k+2]))
+			}
+		}
+		i = j
+		asciiStart = j
+	}
+	flushASCII(len(runes))
 	return out
 }
 

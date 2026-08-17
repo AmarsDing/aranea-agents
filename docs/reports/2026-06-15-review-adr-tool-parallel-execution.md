@@ -18,9 +18,10 @@
 
 在 `internal/tools/decorator.go` 中实现 `ToolDecorator`，包装所有 `CallableTool`，提供三层保护：
 
-1. **P0-G3 执行超时**：每次工具调用默认 60s 超时（`DefaultToolTimeout`），防止慢工具阻塞整个并行批次
+1. **P0-G3 执行超时**：普通工具不再由装饰器默认加 60s。`ToolDecoratorConfig.Timeout=0` 表示尊重外层截止；产品层 `toolExecutionTimeoutHooks` 按 `ToolsExecutionTimeoutSec`（0→10min）注入。`plan_and_execute` 仍由装饰器覆盖为 3min，避免子阶段预算之和撑破外层。
 2. **P0-D 结果预算**：工具结果超过 10KB（`DefaultResultBudget.MaxBytes`）时自动截断，防止单个工具结果撑爆 LLM 上下文窗口
-3. **P2-E 确定性缓存**：`ConcurrentSafe` 工具（如 `file`、`read_document`）的相同参数调用结果被缓存，减少重复计算
+3. **P2-E 确定性缓存**：仅对**非工作区** ConcurrentSafe 工具（`web_fetch` / search 等）缓存相同参数结果，默认 TTL 60s。`read_file` 等 file 族不缓存。
+4. **P1-C2 Exclusive 互斥**：`ToolDecorator.Call` 对 Exclusive 工具加进程级 family 锁。`exec_command`/`write_stdin`/`kill_session` 共享 `hostexec`；文件写工具按目标路径分锁（`file_write:<path>`，缺路径退回 `file_write`）；只读文件工具不锁。
 
 ### D3: 工具安全分类（P1-C）
 
@@ -35,14 +36,14 @@
 ### 正面影响
 
 - 工具执行吞吐提升：多个独立工具可同时执行，减少端到端延迟
-- 执行安全兜底：即使 Exclusive 工具被并行调度，60s 超时和 10KB 预算仍生效
-- 缓存减少重复计算：ConcurrentSafe 工具的相同调用直接返回缓存结果
+- 执行安全兜底：Exclusive 工具被并行调度时由 family 锁串行；普通工具超时由 Agent `ToolsExecutionTimeoutSec` 生效，不再被装饰器 60s 覆盖
+- 缓存减少重复计算：网络 ConcurrentSafe 工具的相同调用直接返回缓存结果；file 族不走装饰器缓存（会话内文件缓存由 file 工具自己按 mtime 管理）
 - 框架解耦：装饰器在项目层实现，框架升级零风险
 
 ### 负面影响
 
-- Exclusive 工具并行风险仍存在：装饰器不阻止并行调度，仅提供超时/预算保护。如果 Exclusive 工具（如 `hostexec`）被同时调用，仍可能产生资源竞争。**缓解**：`Registry.SupportsConcurrency=false` 的工具在分类时标记为 Exclusive，未来可在装饰器层加互斥锁（当前未实现，因框架的并行调度策略不暴露给项目层控制）
-- DeferredManager 工具不受保护：`ApplyDecorators` 仅装饰构建时存在的工具，延迟加载的工具不经过装饰器。**缓解**：延迟工具通常是 MCP/agent 工具，框架 runner 层已有自己的治理
+- Exclusive 工具并行风险已由装饰器 family 锁缓解：hostexec 会话工具进程内串行；文件写按目标路径互斥（不同文件可并行）；`list_file`/`search_*` 对目录子树共享覆盖锁，与子路径写互斥。未知 Exclusive 按名称串行。工作区是 git 仓时，LLM 文件写走 worktree 提交合并；否则写活树。`ParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT` 为 git 仓时挂 `WorktreeIsolator`。
+- DeferredManager 工具不受装饰器互斥保护：`ApplyDecorators` 仅装饰构建时存在的工具。**缓解**：延迟工具的超时仍走回调链；互斥若需要可在 materialize 时套装饰器
 - 缓存内存占用：每个 ConcurrentSafe 工具的缓存无上限。**缓解**：当前工具集规模有限，未来可加 LRU 淘汰
 
 ## 替代方案
@@ -62,7 +63,7 @@
 
 ### A3: 在装饰器层为 Exclusive 工具加全局互斥锁
 
-- **方案**：`ToolDecorator` 对 Exclusive 工具加进程级互斥锁，确保串行执行
-- **优点**：完全消除 Exclusive 工具并行风险
-- **缺点**：过度工程化；当前 Exclusive 工具（hostexec 等）已有自己的并发控制；全局锁可能成为瓶颈
-- **未选原因**：YAGNI——当前无证据表明 Exclusive 工具并行导致了实际问题，可未来按需添加
+- **方案**：`ToolDecorator` 对 Exclusive 工具加进程级 family 互斥锁，确保同族串行执行
+- **优点**：完全消除 hostexec / 文件写在框架并行下的资源竞争
+- **缺点**：同 family 吞吐量下降；锁非可重入
+- **状态**：已实施（2026-08-17）。锁按 family 而非全局一把：`hostexec`、文件写/读/`list_file`/`search_*` 走分层路径表（单 mutex + cond，无父子锁序死锁）；其余 Exclusive 按 Registry 名。`StreamableCall` 持锁至流结束。

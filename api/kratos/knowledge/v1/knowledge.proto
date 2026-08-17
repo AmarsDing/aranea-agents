@@ -441,7 +441,7 @@ message ListGovernanceProposalsResponse {
 // ResolveGovernanceProposalRequest closes one pending proposal (人工二审).
 message ResolveGovernanceProposalRequest {
   int64 id = 1 [(google.api.field_behavior) = REQUIRED];
-  string decision = 2 [(google.api.field_behavior) = REQUIRED];  // applied | rejected
+  string decision = 2 [(google.api.field_behavior) = REQUIRED];  // applied | rejected | keep_old | keep_new
 }
 
 message ResolveGovernanceProposalResponse {
@@ -785,7 +785,8 @@ service KnowledgeService {
     };
   }
   // ResolveGovernanceProposal closes one pending proposal (人工二审):
-  // decision=applied approves the governance action, rejected dismisses it.
+  // decision=applied approves the action; rejected dismisses it;
+  // keep_old/keep_new resolve fact-level conflicts by choosing which section to keep.
   rpc ResolveGovernanceProposal(ResolveGovernanceProposalRequest) returns (ResolveGovernanceProposalResponse) {
     option (google.api.http) = {
       post: "/v1/knowledge/governance-proposals/{id}:resolve"

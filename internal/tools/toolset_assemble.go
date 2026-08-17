@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
 	documentpkg "aranea-agents/internal/tools/document"
+	"aranea-agents/internal/tools/filenorm"
 	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	memorytool "aranea-agents/internal/tools/memory"
 
@@ -106,7 +107,7 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 		if err != nil {
 			return apierror.Internal(apierror.DomainTool, "file toolset: "+err.Error())
 		}
-		ac.out.ToolSets = append(ac.out.ToolSets, ts)
+		ac.out.ToolSets = append(ac.out.ToolSets, wrapFileToolSetWithWorktree(filenorm.WrapToolSet(ts), ac.cfg.FilesystemDir, ac.lg))
 	}
 
 	if ac.enabled["hostexec"] {

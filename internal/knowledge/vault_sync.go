@@ -24,8 +24,9 @@ type VaultSyncApplier struct {
 	embedder    Embedder // nil = 无语义层（R-4）
 	lg          loggateway.Logger
 	summaryHook func(root, relPath string)       // nil = 不触发摘要生成
-	entityHook  func(collectionID, docID string) // nil = 不触发实体抽取
-	compiler    BodyCompiler                     // nil = 二进制文件降级 error（M0）
+	entityHook   func(collectionID, docID string) // nil = 不触发实体抽取
+	relationHook func(collectionID, docID string) // nil = 不触发 typed 关系抽取
+	compiler     BodyCompiler                     // nil = 二进制文件降级 error（M0）
 }
 
 // BodyCompiler 把需抽取的文件（office/图片）原始字节编译为 Markdown 正文（M0 摄取编译）。
@@ -58,6 +59,12 @@ func (a *VaultSyncApplier) SetSummaryHook(hook func(root, relPath string)) {
 // 同步/异步约定同 SetSummaryHook；extractor 内部按 docID+contentHash 幂等。
 func (a *VaultSyncApplier) SetEntityHook(hook func(collectionID, docID string)) {
 	a.entityHook = hook
+}
+
+// SetRelationHook 注入 typed 关系抽取触发器：索引成功后调用（与实体钩子同生命周期）。
+// 冷文档不再等热度工人；抽取器内部 content_hash 幂等。
+func (a *VaultSyncApplier) SetRelationHook(hook func(collectionID, docID string)) {
+	a.relationHook = hook
 }
 
 // SetCompiler 注入二进制编译端口（M0 摄取编译）：office/图片经抽取器编译为 Markdown。
@@ -284,6 +291,10 @@ func (a *VaultSyncApplier) upsertDoc(ctx context.Context, vault bizknowledge.Col
 	// P2-4 entity 轨：触发实体共现抽取（hook 为 nil 时跳过，实体为可选增强）。
 	if a.entityHook != nil {
 		a.entityHook(vault.ID, doc.ID)
+	}
+	// typed 关系：与上传/写回图谱钩子同口径，不要求文档先成为热文档。
+	if a.relationHook != nil {
+		a.relationHook(vault.ID, doc.ID)
 	}
 	// P2-2：摘要卡过期 → 触发异步重生成（hook 为 nil 时跳过，摘要为可选增强）。
 	if a.summaryHook != nil && bizknowledge.SummaryStale(body, fm.SummaryHash) {

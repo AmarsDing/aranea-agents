@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/pkg/loggateway"
@@ -18,14 +19,13 @@ const (
 // NewOutputSizeLimiterHook creates an AfterToolCallbackStructured that
 // truncates tool result strings exceeding maxChars (measured in UTF-8 runes).
 // When the result is a string that exceeds the limit, it is truncated and a
-// marker is appended indicating the limit and original byte size.
+// marker is appended indicating the limit and original rune size.
 //
-// Non-string results and results within the limit are passed through unchanged.
-// Tool execution errors are also passed through unchanged.
-//
-// This is a simpler alternative to ToolResultGate — no blob persistence, just
-// in-place truncation. Suitable for framework contribution where the full
-// result is not needed after the LLM processes it.
+// This is a fallback for tools that skip ToolDecorator (deferred / MCP).
+// Decorator-governed results are left alone: truncation/offload envelopes,
+// tools with a builtin ResultBudget override, and strings already carrying
+// the limiter marker. Non-string results, in-budget strings, and execution
+// errors also pass through unchanged.
 func NewOutputSizeLimiterHook(maxChars int, lg loggateway.Logger) trpctool.AfterToolCallbackStructured {
 	if maxChars <= 0 {
 		maxChars = 50000
@@ -36,6 +36,9 @@ func NewOutputSizeLimiterHook(maxChars int, lg loggateway.Logger) trpctool.After
 	return func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 		if args == nil || args.Error != nil {
 			// Pass through errors unchanged
+			return &trpctool.AfterToolResult{}, nil
+		}
+		if outputLimiterShouldSkip(args.ToolName, args.Result) {
 			return &trpctool.AfterToolResult{}, nil
 		}
 
@@ -67,6 +70,38 @@ func NewOutputSizeLimiterHook(maxChars int, lg loggateway.Logger) trpctool.After
 			CustomResult: newResult,
 		}, nil
 	}
+}
+
+// isSizeGovernedResult reports whether result is a decorator truncation or
+// offload envelope. Those maps already encode the size contract for the LLM.
+func isSizeGovernedResult(result any) bool {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return false
+	}
+	if truncated, _ := m["truncated"].(bool); truncated {
+		return true
+	}
+	if offloaded, _ := m["offloaded"].(bool); offloaded {
+		return true
+	}
+	return false
+}
+
+// outputLimiterShouldSkip reports whether the AfterTool limiter must not
+// rewrite this result. Decorator is the primary size governor; this hook
+// only caps undecorated string payloads.
+func outputLimiterShouldSkip(toolName string, result any) bool {
+	if isSizeGovernedResult(result) {
+		return true
+	}
+	if budgetOverrideForTool(toolName) != nil {
+		return true
+	}
+	if s, ok := result.(string); ok && strings.Contains(s, "[output truncated:") {
+		return true
+	}
+	return false
 }
 
 // truncateRunes truncates s to at most maxChars runes, preserving valid UTF-8.

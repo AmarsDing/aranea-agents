@@ -156,13 +156,15 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("ralph_loop_verify_work_dir").Default(""),
 		field.String("output_schema_json").Default(""),
 		field.String("model_selector").Default("default"),
-		field.Bool("tools_retry_enabled").Default(false),
+		// Default true matches DefaultAgentRuntimeSettings. Existing false
+		// rows are flipped true by ddl migration 20261228.
+		field.Bool("tools_retry_enabled").Default(true),
 		field.Int("tools_retry_max_attempts").Default(2),
 		field.Int("tools_retry_initial_interval_ms").Default(500),
 		field.Float("tools_retry_backoff_factor").Default(2.0),
 		field.Int("tools_retry_max_interval_ms").Default(5000),
 		field.Bool("tools_retry_jitter").Default(true),
-		field.Bool("tools_parallel_enabled").Default(false),
+		field.Bool("tools_parallel_enabled").Default(true),
 		field.Bool("tools_streaming_enabled").Default(false),
 		field.Bool("tools_circuit_breaker_enabled").Default(false),
 		field.String("tools_circuit_breaker_overrides_json").Default(""),

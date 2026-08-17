@@ -1,6 +1,7 @@
 package data
 
 import (
+	"strings"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -66,5 +67,40 @@ func TestBruteForceDecisionLogic(t *testing.T) {
 					tt.factCount, len(tt.queryEmbedding), got, tt.wantBruteForce)
 			}
 		})
+	}
+}
+
+// tokenizeQuery 中文必须产出 bigram，否则整段中文成为一个巨型 token，
+// keywordOverlapScore 恒 0（混合打分白丢 0.25 权重）。
+func TestTokenizeQuery_CJKBigrams(t *testing.T) {
+	tokens := tokenizeQuery("网络运维组组长是谁？")
+	joined := strings.Join(tokens, "|")
+	for _, want := range []string{"网络", "运维", "组长", "是谁"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("tokens %v missing bigram %q", tokens, want)
+		}
+	}
+	// 不应再出现整段未拆的巨型 token
+	for _, tok := range tokens {
+		if len([]rune(tok)) > 2 && strings.ContainsRune(tok, '运') {
+			t.Errorf("unsplit CJK blob token: %q", tok)
+		}
+	}
+}
+
+// 英文/数字整词行为保持不变。
+func TestTokenizeQuery_ASCIIUnchanged(t *testing.T) {
+	tokens := tokenizeQuery("elk-01 部署 deadline")
+	got := strings.Join(tokens, ",")
+	if !strings.Contains(got, "elk-01") || !strings.Contains(got, "deadline") {
+		t.Fatalf("ascii tokens wrong: %v", tokens)
+	}
+}
+
+// 中文查询对中文事实的关键词重叠分必须 > 0。
+func TestKeywordOverlapScore_Chinese(t *testing.T) {
+	score := keywordOverlapScore(tokenizeQuery("网络运维组组长是谁？"), "张伟是网络运维组的组长")
+	if score <= 0 {
+		t.Fatalf("chinese kwScore = %v, want > 0", score)
 	}
 }

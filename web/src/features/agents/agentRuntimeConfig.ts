@@ -40,14 +40,14 @@ export function defaultAgentRuntimeConfig() {
       deny: [] as string[],
       concurrent_allow: [] as string[],
       retry: {
-        enabled: false,
+        enabled: true,
         max_attempts: 2,
         initial_interval_ms: 500,
         backoff_factor: 2.0,
         max_interval_ms: 5000,
         jitter: true,
       },
-      parallel_enabled: false,
+      parallel_enabled: true,
       streaming_enabled: false,
     },
     memory: {

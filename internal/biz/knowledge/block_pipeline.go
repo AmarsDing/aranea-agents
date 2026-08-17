@@ -22,6 +22,7 @@ func (u *Usecase) SetBlockIndexRepos(blocks BlockIndexRepo, idx ResolveIndex) {
 // 成功后调用。失败返回 error 供调用方降级记日志（不回滚主流程，最终一致）。
 // 写路径语义：Resolver 检出 heading-path 引用命中的未锚块后执行惰性锚点回填
 // （SP1-H/F-SP1-10，best-effort 副作用，不影响本重建的返回）。
+// 索引期会把未链接提及编译成 wikilink 再解析（歧义跳过），不回写源文/content_text。
 func (u *Usecase) RebuildBlockIndex(ctx context.Context, collectionID, docID, body string) error {
 	return u.rebuildBlockIndex(ctx, collectionID, docID, body, nil, true)
 }
@@ -42,6 +43,10 @@ func (u *Usecase) ListDocsMissingBlockIndex(ctx context.Context, collectionID st
 func (u *Usecase) rebuildBlockIndex(ctx context.Context, collectionID, docID, body string, visible []string, allowBackfill bool) error {
 	if u == nil || u.blockIndex == nil {
 		return nil
+	}
+	// 索引期成链：未链接提及 → [[wikilink]] 仅用于块/边物化，不改调用方传入的源文。
+	if compiled, n := u.compileOutgoingMentions(ctx, collectionID, docID, "", body); n > 0 {
+		body = compiled
 	}
 	meta := blockparse.ParseDocMeta([]byte(body))
 	rows, refRows, _ := blockparse.Parse(docID, []byte(body)) // err 恒 nil（容错解析契约）

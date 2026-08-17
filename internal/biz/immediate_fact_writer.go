@@ -78,9 +78,14 @@ func (w *ImmediateFactWriter) writeFactsSync(ctx context.Context, sessionID, age
 		// Map confidence string to float
 		confidence := mapConfidenceToFloat(f.Confidence)
 
+		// 按 fact_kind 归属召回作用域：identity/preference 属用户（跨会话），
+		// 其余属 agent。严禁写 session scope——L3ScopeTargets 无 session case，
+		// session 事实是任何会话都召不回的死数据（R1 根因）。
+		scopeType, scopeID := mapFactKindToScope(factKind, agentID, userID)
+
 		factWrites = append(factWrites, MemoryFactWrite{
-			ScopeType:       "session",
-			ScopeID:         sessionID,
+			ScopeType:       scopeType,
+			ScopeID:         scopeID,
 			UserID:          userID,
 			AgentID:         agentID,
 			Statement:       f.Content,
@@ -127,6 +132,20 @@ func mapFactTypeToKind(factType string) string {
 	default:
 		return "general"
 	}
+}
+
+// mapFactKindToScope maps fact_kind to the owning recall scope.
+// user_identity/user_preference belong to the user (aligned with the remember
+// tool, cross-session visible); everything else is an agent asset. Falls back
+// to agent scope when userID is empty so facts stay recallable.
+func mapFactKindToScope(factKind, agentID, userID string) (scopeType, scopeID string) {
+	switch factKind {
+	case "user_identity", "user_preference":
+		if id := strings.TrimSpace(userID); id != "" {
+			return "user", id
+		}
+	}
+	return "agent", strings.TrimSpace(agentID)
 }
 
 // mapConfidenceToFloat maps confidence string to float value.

@@ -98,11 +98,12 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 工作区含义 | 绝对路径目录；file 工具路径均相对或受限于此根 |
 | file 工具 | 严格限制在工作区内 |
 | `shell_exec` | 默认 cwd = 工作区根；调用参数 `workdir` 可指定子目录或（在 OS 权限内）绝对路径 |
+| Shell 环境 | Agent 配置的环境变量必须注入每个命令；敏感值不得出现在工具结果中 |
 | `claude_code` | 未单独配置时与工作区根相同 |
 | 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge、spirit、browser(MCP 桥接) 等 |
 | `workspace_exec` | 依赖 CodeExecutor 工作区，与 file/shell 根目录 **可能不同**；不替代日常 `shell_exec` |
 
-**验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录。
+**验收**：同一 turn 内 `save_file` 写入的文件，紧随其后的 `exec_command` 可在工作区内访问；shell 不再落在 Server 进程当前目录；配置环境变量在命令中可读取，敏感值在返回前脱敏。
 
 > 工作区解析链、装配改动、工具×目录矩阵等技术设计见 [23-tools.design.md §7.8](./23-tools.design.md#78-工具工作区统一phase-5)。
 
@@ -369,7 +370,8 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 并发许可 | 允许并发执行的工具 key |
 | 并行开关 | 是否允许并行工具调用 |
 | 流式开关 | 是否启用流式工具 |
-| 重试策略 | 是否启用重试、最大次数、初始间隔、退避因子、最大间隔、抖动 |
+| 执行超时 | 单次工具调用上限；0 表示默认 10 分钟。该设置是普通工具的唯一截止来源 |
+| 重试策略 | 默认开启。仅对 ConcurrentSafe 只读工具重试瞬时网络/EOF、被 `%v` 包装的超时，以及结果内 HTTP 429/5xx（如 web_fetch）；hostexec 与文件写不重试。已有 Agent 行不迁移；新建默认与 Ent/前端表单对齐 |
 
 > 字段名与数据模型见设计文档 §3.1 与 §6.1。
 
@@ -664,7 +666,7 @@ Agent 系统提示已引导 `search_content → read_file → replace_content/sa
 | **范围** | 单次 Agent invocation 内，按绝对路径缓存文本内容与 mtime |
 | **写入时机** | `read_file` 成功后；`diff_edit` / `patch_file` / `save_file` 写盘后 |
 | **失效** | 磁盘 mtime 与缓存不一致；invocation 结束 |
-| **不替代** | Tool 结果缓存（`metadata_json.cache_enabled`，只读幂等工具） |
+| **不替代** | 装饰器结果缓存不对 file 族生效（防写后读脏）；`metadata_json.cache_enabled` 只用于网络只读工具 |
 
 ### 3.4 与现有工具的分工
 

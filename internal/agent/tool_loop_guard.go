@@ -52,24 +52,29 @@ import (
 // 强制终止当前节点运行止损：节点以失败快速收尾（图谱重试/critic 收敛机制接管），
 // 优于让模型继续空转耗尽全部迭代预算后仍以失败告终。
 //
-// 已知边界：同一轮响应内并行发射的多个相同调用（parallel tool calls）在
-// BeforeTool 阶段计数尚未累积，可能同时放行；串行循环（观测到的唯一形态）
-// 不受影响。
+// 并行窗口：同一轮响应内相同签名的多次 BeforeTool 在 AfterTool 记账之前
+// 会同时到达。entry.inflight 只放行第一次，其余立即拦截（普通 error，
+// 不计入 blockedCount / 饱和止损），避免首轮扇出直接 StopError。
 const (
-	loopGuardBlockThreshold  = 2 // 连续相同（签名+结果）成功调用达到此次数后，下一次起拦截
-	loopGuardMaxEntries      = 512
-	loopGuardEntryTTL        = 30 * time.Minute
-	loopGuardResultCap       = 4096 // 结果哈希只取前 N 字节序列化文本，防超大结果拖慢
-	loopGuardDigestCap       = 1500 // 拦截消息回放的上次真实结果摘要上限：必须覆盖取证关键证据
+	loopGuardBlockThreshold = 2 // 连续相同（签名+结果）成功调用达到此次数后，下一次起拦截
+	loopGuardMaxEntries     = 512
+	loopGuardEntryTTL       = 30 * time.Minute
+	loopGuardResultCap      = 4096 // 结果哈希只取前 N 字节序列化文本，防超大结果拖慢
+	loopGuardDigestCap      = 1500 // 拦截消息回放的上次真实结果摘要上限：必须覆盖取证关键证据
 	// （2026-08-16 复验实证：200 截断使 ip link show 的 eth1 state DOWN 落在摘要之外，
 	// 模型看不到证据判定「取证未完成」而顽固重发同参调用直至烧光预算）。
-	loopGuardWindowCap       = 12   // 签名序列窗口长度上限（= 最大周期 4 × 最少重复 3）
-	loopGuardCycleMaxPeriod  = 4    // 轮换循环检测的最大周期（每次轮换的工具数）
-	loopGuardCycleMinRepeats = 3    // 轮换满 N 个完整周期才判定为循环
+	loopGuardWindowCap       = 12 // 签名序列窗口长度上限（= 最大周期 4 × 最少重复 3）
+	loopGuardCycleMaxPeriod  = 4  // 轮换循环检测的最大周期（每次轮换的工具数）
+	loopGuardCycleMinRepeats = 3  // 轮换满 N 个完整周期才判定为循环
 	// 同一节点隔离键下拦截满此次数后升级 StopError 强制终止节点（B4 止损）。
 	// 取值权衡：2~3 次不足以区分「模型读不懂纠偏」与「模型顽固性重发」，
 	// 5 次给足纠偏机会又远小于 max_tool_iterations，止损收益明确。
 	loopGuardSaturatedStopThreshold = 5
+	// If AfterTool never runs (panic / skipped callback), inflight would
+	// otherwise block the same signature for the rest of the invocation.
+	// Must exceed the default tool execution timeout (10 min) so a still-
+	// running call is not treated as leaked.
+	loopGuardInflightStale = 15 * time.Minute
 )
 
 // loopGuardMarker 是拦截消息的可识别前缀；AfterTool 见到携带该标记的结果
@@ -83,9 +88,76 @@ type loopGuardEntry struct {
 	sameCount        int    // 连续「签名+结果均相同」的成功调用次数
 	lastFailed       bool   // 上一次调用是否失败（失败重试不累计、不拦截）
 	recentSigs       []string
-	recentTools      []string // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
-	blockedCount     int      // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
+	recentTools      []string                // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
+	blockedCount     int                     // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
+	inflight         map[string]inflightSlot // 签名 → 当前正在执行（已放行、尚未 AfterTool）
 	lastTouch        time.Time
+}
+
+type inflightSlot struct {
+	count int
+	since time.Time
+}
+
+type loopGuardBlockKind int
+
+const (
+	loopGuardBlockNone loopGuardBlockKind = iota
+	loopGuardBlockParallel
+	loopGuardBlockLoop
+	loopGuardBlockCycle
+)
+
+type loopGuardVerdict struct {
+	kind             loopGuardBlockKind
+	cycleDesc        string
+	saturated        bool
+	blockedCount     int
+	consecutiveCount int
+	lastDigest       string
+}
+
+func (e *loopGuardEntry) inflightCount(sig string, now time.Time) int {
+	if e.inflight == nil {
+		return 0
+	}
+	slot, ok := e.inflight[sig]
+	if !ok {
+		return 0
+	}
+	if now.Sub(slot.since) > loopGuardInflightStale {
+		delete(e.inflight, sig)
+		return 0
+	}
+	return slot.count
+}
+
+func (e *loopGuardEntry) beginInflight(sig string, now time.Time) {
+	if e.inflight == nil {
+		e.inflight = map[string]inflightSlot{}
+	}
+	slot := e.inflight[sig]
+	if slot.count == 0 {
+		slot.since = now
+	}
+	slot.count++
+	e.inflight[sig] = slot
+}
+
+func (e *loopGuardEntry) endInflight(sig string) {
+	if e.inflight == nil {
+		return
+	}
+	slot, ok := e.inflight[sig]
+	if !ok {
+		return
+	}
+	if slot.count <= 1 {
+		delete(e.inflight, sig)
+		return
+	}
+	slot.count--
+	e.inflight[sig] = slot
 }
 
 // appendCallLocked 将一次真实（未被拦截的）调用追加进签名窗口，超额丢弃最旧。
@@ -239,6 +311,41 @@ func (g *toolLoopGuard) entryLocked(key string, now time.Time) *loopGuardEntry {
 	return e
 }
 
+func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName string, now time.Time) loopGuardVerdict {
+	if e.inflightCount(sig, now) > 0 {
+		return loopGuardVerdict{kind: loopGuardBlockParallel}
+	}
+	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopGuardBlockThreshold
+	var cycleDesc string
+	if !loop && len(e.recentSigs)+1 >= 2*loopGuardCycleMinRepeats {
+		// 试追加当前签名，检测末尾是否构成固定轮换循环（如 A→B→C 满 3 轮）。
+		trialSigs := append(append([]string(nil), e.recentSigs...), sig)
+		if p := loopGuardCyclePeriod(trialSigs, loopGuardCycleMinRepeats); p >= 2 {
+			trialTools := append(append([]string(nil), e.recentTools...), toolName)
+			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
+		}
+	}
+	if !loop && cycleDesc == "" {
+		e.beginInflight(sig, now)
+		return loopGuardVerdict{kind: loopGuardBlockNone}
+	}
+	// B4 饱和止损：被拦调用不进 AfterTool，计数只能在此累计。
+	e.blockedCount++
+	v := loopGuardVerdict{
+		blockedCount:     e.blockedCount,
+		consecutiveCount: e.sameCount,
+		lastDigest:       e.lastResultDigest,
+		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
+	}
+	if cycleDesc != "" {
+		v.kind = loopGuardBlockCycle
+		v.cycleDesc = cycleDesc
+		return v
+	}
+	v.kind = loopGuardBlockLoop
+	return v
+}
+
 func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 	return callbacks.NewBeforeToolHook(4, func(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 		if args == nil {
@@ -249,35 +356,24 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		sig := loopGuardSignature(args.ToolName, args.Arguments)
+		now := time.Now()
 		g.mu.Lock()
-		e := g.entryLocked(key, time.Now())
-		loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopGuardBlockThreshold
-		var cycleDesc string
-		if !loop && len(e.recentSigs)+1 >= 2*loopGuardCycleMinRepeats {
-			// 试追加当前签名，检测末尾是否构成固定轮换循环（如 A→B→C 满 3 轮）。
-			trialSigs := append(append([]string(nil), e.recentSigs...), sig)
-			if p := loopGuardCyclePeriod(trialSigs, loopGuardCycleMinRepeats); p >= 2 {
-				trialTools := append(append([]string(nil), e.recentTools...), args.ToolName)
-				cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
-			}
-		}
-		// B4 饱和止损（锁内完成计数与快照）：被拦调用不进 AfterTool，计数只能在
-		// 此累计。满阈值后升级 StopError 由框架上抛终止节点；未饱和走普通 error 纠偏。
-		var saturated bool
-		var blockedCount, consecutiveCount int
-		var lastDigest string
-		if loop || cycleDesc != "" {
-			e.blockedCount++
-			blockedCount = e.blockedCount
-			consecutiveCount = e.sameCount
-			lastDigest = e.lastResultDigest
-			saturated = e.blockedCount >= loopGuardSaturatedStopThreshold
-		}
+		e := g.entryLocked(key, now)
+		v := g.verdictBeforeLocked(e, sig, args.ToolName, now)
 		g.mu.Unlock()
-		if !loop && cycleDesc == "" {
+		switch v.kind {
+		case loopGuardBlockNone:
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
+		case loopGuardBlockParallel:
+			g.lg.Warn("tool loop guard blocked parallel duplicate call",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName))
+			msg := fmt.Sprintf("%s：同一轮并行发出了重复的 %s 调用，仅执行第一次。工具未执行、也非执行失败。"+
+				"禁止在同一响应中重复发射相同工具与相同参数；请等待第一次结果后再决定下一步。",
+				loopGuardMarker, args.ToolName)
+			return nil, errors.New(msg)
 		}
-		if saturated {
+		if v.saturated {
 			g.lg.Warn("tool loop guard saturated, stopping node",
 				loggateway.StepID("agent.tool_loop_guard"),
 				loggateway.Str("tool", args.ToolName),
@@ -285,29 +381,29 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
 				"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
 		}
-		if cycleDesc != "" {
+		if v.kind == loopGuardBlockCycle {
 			g.lg.Warn("tool loop guard blocked rotation cycle call",
 				loggateway.StepID("agent.tool_loop_guard"),
 				loggateway.Str("tool", args.ToolName),
-				loggateway.Str("cycle", cycleDesc))
+				loggateway.Str("cycle", v.cycleDesc))
 			msg := fmt.Sprintf("%s：检测到固定调用循环（%s），已重复满 %d 轮——本调用被系统拦截，工具未执行、也非执行失败，"+
 				"节点内轮询不会产生新信息。若在等待外部状态变化，状态复验由图谱重试机制承担，禁止继续该循环；请立即基于现有证据输出结论/裁决。"+
 				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
-				loopGuardMarker, cycleDesc, loopGuardCycleMinRepeats, blockedCount, loopGuardSaturatedStopThreshold)
+				loopGuardMarker, v.cycleDesc, loopGuardCycleMinRepeats, v.blockedCount, loopGuardSaturatedStopThreshold)
 			return nil, errors.New(msg)
 		}
 		g.lg.Warn("tool loop guard blocked identical repeat call",
 			loggateway.StepID("agent.tool_loop_guard"),
 			loggateway.Str("tool", args.ToolName),
-			loggateway.Int("consecutive", consecutiveCount))
-		digest := lastDigest
+			loggateway.Int("consecutive", v.consecutiveCount))
+		digest := v.lastDigest
 		if digest == "" {
 			digest = "（结果为空）"
 		}
 		msg := fmt.Sprintf("%s：本调用被系统拦截，工具未执行、也非执行失败——%s 此前已成功返回，取证已完成。"+
 			"禁止重发本调用，立即按任务指令推进到下一动作（发起下一步指定的工具调用；全部步骤完成则直接输出最终结论）。"+
 			"重发只会反复触发本拦截并消耗你的调用预算，不会产生任何新信息。完整取证结果回放：「%s」（你已连续 %d 次以相同参数调用；本节点累计被拦 %d 次，满 %d 次将被强制终止）。",
-			loopGuardMarker, args.ToolName, digest, consecutiveCount, blockedCount, loopGuardSaturatedStopThreshold)
+			loopGuardMarker, args.ToolName, digest, v.consecutiveCount, v.blockedCount, loopGuardSaturatedStopThreshold)
 		return nil, errors.New(msg)
 	})
 }
@@ -326,6 +422,7 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		e := g.entryLocked(key, time.Now())
+		e.endInflight(sig)
 		if args.Error != nil {
 			// 失败重试归熔断器治理：不累计重复计数，也不触发拦截。
 			// 但调用本身仍进签名窗口——失败不打破轮换循环的模式判定。

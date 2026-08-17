@@ -535,15 +535,17 @@
 - worktree 隔离文件操作
 - 事务保护 DB 操作
 - 5 文件并行延迟 < 串行 40%
+- 前序工具失败时不执行依赖项，独立分支继续执行
 
 **状态**：✅ 已完成（Wave 4）
 
 **实现摘要**：
 - `DependencyAnalyzer` 基于 `DependsOn` 字段构建 DAG，支持拓扑分层（`TopologicalLayers`）、环检测（Kahn 算法）、缺失依赖/重复 ID 校验
-- `ParallelToolExecutor` 按拓扑层级串行、层内并行执行；通过 `safego.Go` 启动 goroutine（红线 #13），信号量限流 `maxConcurrency`，预分配 results slice 避免共享 slice 并发写（红线 #21），每层后检查 `ctx.Err()` 支持取消（红线 #23）
+- `ParallelToolExecutor` 按拓扑层级串行、层内并行执行；通过 `safego.Go` 启动 goroutine（红线 #13），信号量限流 `maxConcurrency`，预分配 results slice 避免共享 slice 并发写（红线 #21），每层后检查 `ctx.Err()` 支持取消（红线 #23）；每层执行前传播前序失败，跳过依赖项但保留独立分支
 - `WorktreeIsolator` 用 `os/exec` 调用系统 `git` 命令（避免新增 go-git 依赖），成功 fast-forward 合并回主分支，失败删除 worktree；分支名净化避免非法字符
 - `TransactionSandbox` 通过 `TxProvider` 接口（由 data 层实现注入，避免 tools→data 反向依赖）包装 `ExecInTx`，handler 失败自动回滚
-- 32 个单元测试全部通过（含 `-race`），并行度测试验证 5 个 80ms 调用总耗时 < 160ms（串行 40%）
+- 全套单元测试通过（含 `-race`），并行度测试验证 5 个 80ms 调用总耗时 < 160ms（串行 40%）
+- 依赖失败专项测试 `TestParallelExecutor_FailedDependencySkipsDownstream` 验证下游 handler 调用次数为 0、独立调用成功
 - **审查修复（aranea-review）**：`worktree_isolator.go` 中 `_ = i.runGit(...)` 吞错误（红线 #22）改为 `i.lg.Warn()` 日志记录，涉及 `mergeWorktree` 和 `removeWorktree` 两处
 
 ### 5.5 P2-5：Team 并行组装优化

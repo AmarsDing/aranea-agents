@@ -82,7 +82,11 @@ func (r *VaultSyncRunner) SetMonitorBus(bus contract.MonitorBus) {
 }
 
 // SyncOnce 对单个 vault 执行一轮同步；返回首个错误（已回写 sync_state）。
+// sync_state=disabled 的 vault 跳过本轮（保留状态不回写），用于停用不可达 vault 的轮询。
 func (r *VaultSyncRunner) SyncOnce(ctx context.Context, vault bizknowledge.Collection) error {
+	if vault.SyncState == "disabled" {
+		return nil
+	}
 	prev, err := r.loadPrev(ctx, vault)
 	if err != nil {
 		r.markState(ctx, vault.ID, "error", time.Time{})
@@ -204,6 +208,11 @@ func (r *VaultSyncRunner) RunVault(ctx context.Context, vault bizknowledge.Colle
 }
 
 func (r *VaultSyncRunner) syncOnceLog(ctx context.Context, vault bizknowledge.Collection, trigger string) {
+	// 每轮重新读取最新 sync_state（支持运行时 disabled 即时生效，无需重启）。
+	cur, err := r.uc.GetCollection(ctx, vault.ID)
+	if err == nil && cur.SyncState == "disabled" {
+		return
+	}
 	if err := r.SyncOnce(ctx, vault); err != nil {
 		r.lg.Warn("vault sync failed",
 			loggateway.Str("vault_id", vault.ID),

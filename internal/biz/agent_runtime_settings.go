@@ -146,6 +146,9 @@ type AgentRuntimeSettings struct {
 	// ModelSelector controls dynamic model selection: "default" | "auto".
 	ModelSelector string
 	// ToolsRetryEnabled enables automatic retry for transient tool call failures.
+	// Default true: SelectiveRetryOn retries ConcurrentSafe reads on EOF/network
+	// timeout, wrapped search errors, and result-level HTTP 429/5xx (web_fetch);
+	// hostexec and file writes never retry. Existing DB rows are not migrated.
 	ToolsRetryEnabled bool
 	// ToolsRetryMaxAttempts is the total number of attempts including the first try.
 	ToolsRetryMaxAttempts int

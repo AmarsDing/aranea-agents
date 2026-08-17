@@ -309,13 +309,14 @@ func (u *Usecase) upsertEntryDoc(ctx context.Context, col Collection, rel, title
 					v, ok := byIdx[j]
 					if ok && v.Verdict == "supersedes" && v.Confidence >= arbitrateSupersedeMinConfidence && v.TargetFactID != "" {
 						marker := "fact_id: `" + v.TargetFactID + "`"
-						if nb, ok2 := replaceH2BlockContaining(body, marker, a.block); ok2 && nb != body {
+						lineageBlock := preserveSupersededFactID(a.block, facts[a.idx].FactID, v.TargetFactID)
+						if nb, ok2 := replaceH2BlockContaining(body, marker, lineageBlock); ok2 && nb != body {
 							oldBlock, _ := extractH2BlockContaining(body, marker)
 							body = nb
 							changed = true
 							versions = append(versions, FactVersion{
 								CollectionID: col.ID, DocID: doc.ID,
-								FactID: v.TargetFactID, OldBody: oldBlock, NewBody: a.block,
+								FactID: v.TargetFactID, OldBody: oldBlock, NewBody: lineageBlock,
 							})
 							continue // supersede 生效：顶替旧段，不再追加
 						}
@@ -388,9 +389,29 @@ const (
 	arbitrateContradictMinConfidence = 0.7
 )
 
+// preserveSupersededFactID keeps the original fact_id as the stable lineage
+// identity. The incoming extraction id remains provenance only; changing it
+// must not break later updates of the same assertion.
+func preserveSupersededFactID(block, incomingFactID, targetFactID string) string {
+	incomingFactID = strings.TrimSpace(incomingFactID)
+	targetFactID = strings.TrimSpace(targetFactID)
+	if incomingFactID == "" || targetFactID == "" || incomingFactID == targetFactID {
+		return block
+	}
+	incomingMarker := "fact_id: `" + incomingFactID + "`"
+	targetMarker := "fact_id: `" + targetFactID + "`\n- source_id: `" + incomingFactID + "`"
+	return strings.Replace(block, incomingMarker, targetMarker, 1)
+}
+
 // recordConflictProposalLater 队列一条矛盾提案载荷（正文持久化成功后统一落库）。
 func (u *Usecase) recordConflictProposalLater(proposals *[]map[string]any, docID, relPath string, f WriteBackFact, v WriteBackArbitration) {
+	newFactKey := strings.TrimSpace(f.FactID)
+	if newFactKey == "" {
+		newFactKey = HashContent(strings.TrimSpace(f.Statement))
+	}
+	dedupKey := "conflict:fact:" + docID + ":" + strings.TrimSpace(v.TargetFactID) + ":" + newFactKey
 	*proposals = append(*proposals, map[string]any{
+		"dedup_key":      dedupKey,
 		"doc_id":         docID,
 		"rel_path":       relPath,
 		"new_statement":  f.Statement,
@@ -432,6 +453,26 @@ func extractH2BlockContaining(body, marker string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(body[start:end]), true
+}
+
+// removeH2BlockContaining 删除包含 marker 的 H2 小节；marker 不存在返回 false。
+func removeH2BlockContaining(body, marker string) (string, bool) {
+	start, end, ok := h2BlockBounds(body, marker)
+	if !ok {
+		return body, false
+	}
+	prefix := strings.TrimRight(body[:start], "\n")
+	suffix := strings.TrimLeft(body[end:], "\n")
+	if prefix == "" {
+		if suffix == "" {
+			return "", true
+		}
+		return suffix + "\n", true
+	}
+	if suffix == "" {
+		return prefix + "\n", true
+	}
+	return prefix + "\n\n" + suffix + "\n", true
 }
 
 // h2BlockBounds 定位包含 marker 的 H2 小节区间 [start, end)；marker 不存在或位于

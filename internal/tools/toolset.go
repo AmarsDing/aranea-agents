@@ -97,9 +97,10 @@ func Registry() []*ToolRegistration {
 						trpchttpfetch.WithHTTPClient(outboundguard.NewClient(0)),
 					), nil
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
-				Group:            "web_search",
+				EnabledByDefault:    false,
+				RiskLevel:           "medium",
+				SupportsConcurrency: true,
+				Group:               "web_search",
 				Examples: []ToolUseExample{
 					{UserQuery: "fetch the content of this URL", ToolName: "httpfetch", Explanation: "direct HTTP page retrieval, not a search engine"},
 				},
@@ -110,10 +111,11 @@ func Registry() []*ToolRegistration {
 				Category:    "web",
 				Tags:        []string{"web", "fetch", "gemini"},
 				// Placeholder: actual assembly happens in assembleSearchTools().
-				Factory:            placeholderToolFactory,
-				AssembledElsewhere: true,
-				EnabledByDefault:   false,
-				RiskLevel:          "medium",
+				Factory:             placeholderToolFactory,
+				AssembledElsewhere:  true,
+				EnabledByDefault:    false,
+				RiskLevel:           "medium",
+				SupportsConcurrency: true,
 			},
 			{
 				Name:        "duckduckgo",
@@ -123,9 +125,10 @@ func Registry() []*ToolRegistration {
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpcduckduckgo.NewTool(), nil
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
-				Group:            "web_search",
+				EnabledByDefault:    false,
+				RiskLevel:           "medium",
+				SupportsConcurrency: true,
+				Group:               "web_search",
 				Examples: []ToolUseExample{
 					{UserQuery: "search the web for recent news about AI", ToolName: "duckduckgo", Explanation: "general web search via DuckDuckGo"},
 					{UserQuery: "find information about Go programming language", ToolName: "duckduckgo", Explanation: "broad web search query"},
@@ -137,11 +140,12 @@ func Registry() []*ToolRegistration {
 				Category:    "search",
 				Tags:        []string{"search", "web", "google"},
 				// Placeholder: actual assembly happens in assembleSearchTools().
-				ToolSetFactory:     placeholderToolSetFactory,
-				AssembledElsewhere: true,
-				EnabledByDefault:   false,
-				RiskLevel:          "medium",
-				Group:              "web_search",
+				ToolSetFactory:      placeholderToolSetFactory,
+				AssembledElsewhere:  true,
+				EnabledByDefault:    false,
+				RiskLevel:           "medium",
+				SupportsConcurrency: true,
+				Group:               "web_search",
 				Examples: []ToolUseExample{
 					{UserQuery: "search Google for latest research papers on transformers", ToolName: "google_search", Explanation: "Google Custom Search with API key"},
 				},
@@ -154,8 +158,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcarxivsearch.NewToolSet()
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "low",
+				EnabledByDefault:    false,
+				RiskLevel:           "low",
+				SupportsConcurrency: true,
 			},
 			{
 				Name:        "wikipedia",
@@ -165,8 +170,9 @@ func Registry() []*ToolRegistration {
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcwikipedia.NewToolSet()
 				},
-				EnabledByDefault: false,
-				RiskLevel:        "low",
+				EnabledByDefault:    false,
+				RiskLevel:           "low",
+				SupportsConcurrency: true,
 			},
 			{
 				Name:        "email",

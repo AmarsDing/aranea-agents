@@ -33,6 +33,10 @@ const (
 	ProposalStatusPending  = "pending"
 	ProposalStatusApplied  = "applied"
 	ProposalStatusRejected = "rejected"
+	// ProposalDecisionKeepOld 事实段冲突：保留旧段、删除新段，终态仍落 applied。
+	ProposalDecisionKeepOld = "keep_old"
+	// ProposalDecisionKeepNew 事实段冲突：保留新段、删除旧段，并继承旧 fact_id 作为 lineage。
+	ProposalDecisionKeepNew = "keep_new"
 )
 
 // FactVersion 一条 supersedes 版本链记录（旧段快照）。
@@ -56,13 +60,17 @@ type GovernanceProposal struct {
 	Risk         string         // low / high
 	Payload      map[string]any // 证据载荷（doc_id/旧段/新段/理由等），JSONB 落库
 	// Status 空 = pending（人工二审）；M4 低风险自动应用置 applied（留痕即生效）。
-	Status       string
+	Status string
 }
 
 // GovernanceProposalRepo 提案持久化窄接口（M3.2 起）。低风险提案 M4 自动应用；
 // 高风险仅 pending，人工二审后置 applied/rejected。
 type GovernanceProposalRepo interface {
 	InsertProposal(ctx context.Context, p GovernanceProposal) error
+}
+
+type governanceProposalDeduper interface {
+	HasProposal(ctx context.Context, collectionID, kind, dedupKey string, statuses []string) (bool, error)
 }
 
 // WriteBackFactBlock 词条页内一个既有事实段（H2 小节）的轻量投影（仲裁候选）。
@@ -124,6 +132,23 @@ func (u *Usecase) recordFactVersion(ctx context.Context, collectionID, docID, fa
 func (u *Usecase) recordConflictProposal(ctx context.Context, collectionID, docID string, payload map[string]any) {
 	if u == nil || u.proposals == nil {
 		return
+	}
+	if dedupKey, _ := payload["dedup_key"].(string); dedupKey != "" {
+		if deduper, ok := u.proposals.(governanceProposalDeduper); ok {
+			exists, err := deduper.HasProposal(ctx, collectionID, ProposalKindConflict, dedupKey, []string{
+				ProposalStatusPending, ProposalStatusApplied, ProposalStatusRejected,
+			})
+			if err != nil {
+				u.lg.Warn("矛盾治理提案去重探测失败（放行）",
+					loggateway.StepID("knowledge.evolution.proposal"),
+					loggateway.Str("doc_id", docID),
+					loggateway.Str("dedup_key", dedupKey),
+					loggateway.Err(err),
+				)
+			} else if exists {
+				return
+			}
+		}
 	}
 	if err := u.proposals.InsertProposal(ctx, GovernanceProposal{
 		CollectionID: collectionID,

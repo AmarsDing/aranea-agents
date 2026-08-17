@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
@@ -137,9 +138,9 @@ func (s *KnowledgeService) ResolveGovernanceProposal(ctx context.Context, req *v
 	if req.GetId() <= 0 {
 		return nil, apierror.BadRequest("KNOWLEDGE", "id is required")
 	}
-	decision := req.GetDecision()
-	if decision != "applied" && decision != "rejected" {
-		return nil, apierror.BadRequest("KNOWLEDGE", "decision must be applied or rejected")
+	decision := strings.ToLower(strings.TrimSpace(req.GetDecision()))
+	if decision != "applied" && decision != "rejected" && decision != "keep_old" && decision != "keep_new" {
+		return nil, apierror.BadRequest("KNOWLEDGE", "decision must be applied, rejected, keep_old, or keep_new")
 	}
 
 	flow := s.knowledgeFlow(ctx)
@@ -153,8 +154,13 @@ func (s *KnowledgeService) ResolveGovernanceProposal(ctx context.Context, req *v
 			event.P("error", err.Error()))
 		return nil, err
 	}
+	persist := decision
+	if decision == "keep_old" || decision == "keep_new" {
+		persist = "applied"
+	}
 	flow.LogDone("knowledge.governance.resolve", "治理提案二审完成",
 		event.P("proposal_id", req.GetId()),
-		event.P("decision", decision))
-	return &v1.ResolveGovernanceProposalResponse{Id: req.GetId(), Status: decision}, nil
+		event.P("decision", decision),
+		event.P("status", persist))
+	return &v1.ResolveGovernanceProposalResponse{Id: req.GetId(), Status: persist}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -351,5 +352,44 @@ func TestEstimateChunkBytes(t *testing.T) {
 				t.Errorf("estimateChunkBytes(%v) = %d, want %d", tt.content, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStreamableCall_ExclusiveSerializesUntilDrain(t *testing.T) {
+	inner := &slowStreamTool{
+		name:         "exec_command",
+		chunkContent: "x",
+		interval:     25 * time.Millisecond,
+		chunkCount:   2,
+	}
+	d := NewToolDecorator(inner, ToolDecoratorConfig{
+		StreamTimeout: 5 * time.Second,
+		StreamBudget:  DefaultStreamBudget,
+		Logger:        loggateway.NewNoop(),
+	})
+	st := d.(trpctool.StreamableTool)
+
+	start := time.Now()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			reader, err := st.StreamableCall(context.Background(), []byte(`{"command":"echo"}`))
+			if err != nil {
+				t.Errorf("StreamableCall: %v", err)
+				return
+			}
+			defer reader.Close()
+			if _, err := drainStream(reader); err != nil {
+				t.Errorf("drain: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	elapsed := time.Since(start)
+	// One stream ≈ 50ms; serialized pair should exceed a single stream.
+	if elapsed < 70*time.Millisecond {
+		t.Errorf("exclusive streams finished in %v, expected serialization", elapsed)
 	}
 }

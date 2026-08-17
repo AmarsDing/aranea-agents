@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -61,11 +62,82 @@ func NewWorktreeIsolator(repoRoot string, handler WorktreeHandler, lg loggateway
 	}, nil
 }
 
+type worktreeDirCtxKey struct{}
+
+// WithWorktreeDir records the isolated worktree path on ctx so a ToolHandler
+// that writes relative to the workspace can redirect into the worktree.
+func WithWorktreeDir(ctx context.Context, dir string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, worktreeDirCtxKey{}, dir)
+}
+
+// WorktreeDirFromContext returns the worktree directory attached by
+// ParallelToolExecutor when a call is routed through WorktreeIsolator.
+func WorktreeDirFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	dir, ok := ctx.Value(worktreeDirCtxKey{}).(string)
+	dir = strings.TrimSpace(dir)
+	return dir, ok && dir != ""
+}
+
+// WorkspaceRootFromEnv is the process-level workspace hint used when Wire
+// constructs the shared ParallelToolExecutor. Empty means no isolator.
+func WorkspaceRootFromEnv() string {
+	for _, key := range []string{"ARANEA_WORKSPACE_ROOT", "WORKSPACE_ROOT"} {
+		if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+var gitRootCache sync.Map // dir -> git toplevel or ""
+
+// LookupGitRoot returns the git toplevel for dir, or empty when dir is not
+// inside a work tree. The negative result is cached so non-git agent
+// workspaces do not pay rev-parse on every file write.
+func LookupGitRoot(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	if v, ok := gitRootCache.Load(dir); ok {
+		return v.(string)
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		gitRootCache.Store(dir, "")
+		return ""
+	}
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	root := ""
+	if err == nil {
+		root = strings.TrimSpace(string(out))
+	}
+	gitRootCache.Store(dir, root)
+	return root
+}
+
 // Execute runs the tool call inside a fresh worktree. The worktree is created
 // from the current HEAD, the handler is invoked with the worktree path, and
 // the result determines whether the branch is merged (success) or discarded
 // (failure).
 func (i *WorktreeIsolator) Execute(ctx context.Context, call ToolCall) ToolResult {
+	if i == nil {
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: false, Error: "worktree isolator not initialized"}
+	}
+	return i.ExecuteWithHandler(ctx, call, i.handler)
+}
+
+// ExecuteWithHandler is Execute with an override handler. A nil override uses
+// the isolator's constructor handler. When both are nil the call is treated
+// as a successful no-op (worktree lifecycle tests).
+func (i *WorktreeIsolator) ExecuteWithHandler(ctx context.Context, call ToolCall, handler WorktreeHandler) ToolResult {
 	if i == nil {
 		return ToolResult{CallID: call.ID, Name: call.Name, Success: false, Error: "worktree isolator not initialized"}
 	}
@@ -88,7 +160,10 @@ func (i *WorktreeIsolator) Execute(ctx context.Context, call ToolCall) ToolResul
 		i.removeWorktree(cleanupCtx, worktreePath, branchName)
 	}()
 
-	execResult := i.invokeHandler(ctx, worktreePath, call)
+	if handler == nil {
+		handler = i.handler
+	}
+	execResult := i.invokeHandler(ctx, worktreePath, call, handler)
 	if !execResult.Success {
 		result.Error = execResult.Error
 		result.Output = execResult.Output
@@ -97,6 +172,13 @@ func (i *WorktreeIsolator) Execute(ctx context.Context, call ToolCall) ToolResul
 			loggateway.StepID("worktree.execute"),
 			loggateway.Str("call_id", call.ID),
 			loggateway.Str("branch", branchName))
+		return result
+	}
+
+	if err := i.commitWorktree(ctx, worktreePath, call); err != nil {
+		result.Error = "commit worktree: " + err.Error()
+		result.Output = execResult.Output
+		result.DurationMS = time.Since(start).Milliseconds()
 		return result
 	}
 
@@ -115,8 +197,8 @@ func (i *WorktreeIsolator) Execute(ctx context.Context, call ToolCall) ToolResul
 
 // invokeHandler calls the registered handler with the worktree directory, or
 // returns a default success result when no handler is configured.
-func (i *WorktreeIsolator) invokeHandler(ctx context.Context, worktreeDir string, call ToolCall) ToolResult {
-	if i.handler == nil {
+func (i *WorktreeIsolator) invokeHandler(ctx context.Context, worktreeDir string, call ToolCall, handler WorktreeHandler) ToolResult {
+	if handler == nil {
 		return ToolResult{
 			CallID:  call.ID,
 			Name:    call.Name,
@@ -124,7 +206,29 @@ func (i *WorktreeIsolator) invokeHandler(ctx context.Context, worktreeDir string
 			Output:  "worktree isolated",
 		}
 	}
-	return i.handler(ctx, worktreeDir, call)
+	return handler(ctx, worktreeDir, call)
+}
+
+// commitWorktree stages and commits handler writes that did not already
+// create a commit. No-op when the index is clean so handlers that commit
+// themselves keep working.
+func (i *WorktreeIsolator) commitWorktree(ctx context.Context, worktreeDir string, call ToolCall) error {
+	if err := i.runGitDir(ctx, worktreeDir, "add", "-A"); err != nil {
+		return err
+	}
+	diff := exec.CommandContext(ctx, i.gitPath, "diff", "--cached", "--quiet")
+	diff.Dir = worktreeDir
+	if err := diff.Run(); err == nil {
+		return nil
+	}
+	msg := "aranea tool " + strings.TrimSpace(call.Name)
+	if id := strings.TrimSpace(call.ID); id != "" {
+		msg += " " + id
+	}
+	return i.runGitDir(ctx, worktreeDir,
+		"-c", "user.email=aranea-tools@localhost",
+		"-c", "user.name=aranea-tools",
+		"commit", "--no-gpg-sign", "-m", msg)
 }
 
 // createWorktree runs `git worktree add` to create an isolated working tree
@@ -206,8 +310,12 @@ func (i *WorktreeIsolator) removeWorktree(ctx context.Context, worktreePath, bra
 
 // runGit executes a git command in repoRoot and returns its error.
 func (i *WorktreeIsolator) runGit(ctx context.Context, args ...string) error {
+	return i.runGitDir(ctx, i.repoRoot, args...)
+}
+
+func (i *WorktreeIsolator) runGitDir(ctx context.Context, dir string, args ...string) error {
 	cmd := exec.CommandContext(ctx, i.gitPath, args...)
-	cmd.Dir = i.repoRoot
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return apierror.Wrap(err, apierror.CodeInternal, apierror.DomainTool).

@@ -634,7 +634,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
-	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, extractorRegistry, loggatewayLogger)
+	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
 	app := newApp(logger, loggatewayLogger, pipeline, arg, grpcServer, httpServer, wsServer, eventBusSideConsumers, infra, memoryDataMigrationWorker, agentUsecase, teamUsecase, organizationUsecase, dataData, sessionStatusGuard, orchestrationCache, sessionUsecase, chatService, spiritTeamUsecase, teamStarter, lifecycleManager, wsv2Subscriber, trpcBuilderDeps, knowledgeService, vaultSyncSupervisor, multiProviderEmbedder, channelGateCards, agentBridgeService)
 	watchRunner := provideSkillWatchRunner(skillUsecase, skillUsecase, systemSettingRepo, monitorBus, monitorUsecase, loggatewayLogger)
 	l4GraphWriter := provideL4GraphWriter(dataData, l4CascadeUsecase, loggatewayLogger)
@@ -681,6 +681,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	knowledgeCitationBackfillWorker := provideKnowledgeCitationBackfillWorker(dataData, loggatewayLogger)
 	knowledgeRelationExtractWorker := provideKnowledgeRelationExtractWorker(dataData, relationExtractor, knowledgeUsecase, loggatewayLogger)
 	knowledgeIndexRepairWorker := provideKnowledgeIndexRepairWorker(knowledgeService, loggatewayLogger)
+	knowledgeCurateWorker := provideKnowledgeCurateWorker(knowledgeUsecase, loggatewayLogger)
 	memorySleepTimeWorker := provideMemorySleepTimeWorker(memoryService, agentUsecase, llmProviderModelUsecase, sessionRepo, memoryJobDeadLetterRepo, factWritePipeline, dataData, loggatewayLogger)
 	memoryEpisodeBackfillReader := data.NewMemoryEpisodeBackfillReaderAdapter(dataData)
 	memoryEpisodeBackfillWorker := provideMemoryEpisodeBackfillWorker(memoryEpisodeBackfillReader, episodeIndexSyncer, systemSettingRepo, memoryWorkerStats, loggatewayLogger)
@@ -732,7 +733,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryEnhancedExtractor := service.NewMemoryEnhancedExtractor(memoryEnhancedExtractorConfig)
 	pathBL4Writer := providePathBL4Writer(dataData)
 	pathBExtractor := providePathBExtractor(memoryEnhancedExtractor, pathBL4Writer, memoryAdminUsecase, dataData, loggatewayLogger)
-	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
+	mainWireOut := provideWireOut(app, dataData, cronrunnerRunner, watchRunner, autoMemoryWorker, healthRunner, runner2, learningLoopScanner, providerHealthScanner, channelHealthScanner, jobsChannelDeliveryWorker, sessionRunDurableWorker, recoveryWorker, backgroundJobWorker, channelRuntime, plugintrpcRuntime, toolAuditCleanup, flowLogCleanup, monitorEventsCleanup, autoHealTTLCleanup, alertEvalWorker, monitorTraceBackfillWorker, memoryL2DecayWorker, memoryL1ArchiveWorker, channelTurnJobSweeper, memoryL3DecayWorker, memoryL4DecayWorker, memoryEbbinghausDecayWorker, memoryCanaryWorker, memoryCitationBackfillWorker, knowledgeCitationBackfillWorker, knowledgeRelationExtractWorker, knowledgeIndexRepairWorker, knowledgeCurateWorker, memorySleepTimeWorker, memoryEpisodeBackfillWorker, memoryDataMigrationWorker, memoryFactIndexReconciler, memoryDeadLetterReplayer, modelRegistrySyncAgent, selfCheckScheduler, selfHealObserver, infra, selfCheckCleanup, selfCheckJob, cronRepo, skillIntelligenceUsecase, skillIntelligenceWorker, curatorWorker, evolutionOrchestratorWorker, selfImproveObserveWorker, selfImproveDriveWorker, selfImproveWatchdogWorker, selfImproveOutcomeWorker, failurePatternSyncJob, predictiveHealUsecase, predictiveHealJob, patternMiningUsecase, patternMiningJob, pathBExtractor, wsv2Subscriber)
 	return mainWireOut, func() {
 		cleanup()
 	}, nil
@@ -871,13 +872,25 @@ func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistr
 // multi_tool_use.parallel). The handler is nil at construction because tool
 // dispatch is agent/session-specific; callers supply the handler at call time
 // via BatchExecuteSpiritTools, which reuses this executor's concurrency
-// configuration. Returns nil when ARANEA_PARALLEL_AUTO is disabled so callers
-// transparently fall back to serial execution.
+// configuration and worktree isolator (attached when ARANEA_WORKSPACE_ROOT or
+// WORKSPACE_ROOT is a git repository). Returns nil when ARANEA_PARALLEL_AUTO
+// is disabled so callers transparently fall back to serial execution.
 func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecutor {
 	if !intent.AllowAutoParallel() {
 		return nil
 	}
-	return tools.NewParallelToolExecutor(nil, lg)
+	var opts []tools.ExecutorOption
+	if root := tools.LookupGitRoot(tools.WorkspaceRootFromEnv()); root != "" {
+		iso, err := tools.NewWorktreeIsolator(root, nil, lg)
+		if err != nil {
+			lg.Warn("parallel tool worktree isolator skipped",
+				loggateway.StepID("tool.parallel.worktree"),
+				loggateway.Err(err))
+		} else {
+			opts = append(opts, tools.WithWorktreeIsolator(iso))
+		}
+	}
+	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
 func provideToolUsecaseWithDeps(repo tool.ToolRepo, sys tool.SettingRepo, tester tool.ToolTester, checker tool.WebResearchReadinessChecker, grants tool.ToolGrantStore, lg loggateway.Logger) *tool.ToolUsecase {
@@ -2083,12 +2096,14 @@ func provideKnowledgeWriteBackGraphHook(
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
 // M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
 // M2.1：SetEntityHook 接入实体共现轨（按 docID+contentHash 幂等，safego 异步
-// 不阻塞索引主路径；nil 时跳过）。
+// 不阻塞索引主路径；nil 时跳过）。M2.2：SetRelationHook 接入 typed 关系抽取
+// （冷文档与上传路径同钩子，不再只等热度工人）。
 func provideVaultSyncSupervisor(
 	uc *biz.KnowledgeUsecase,
 	filer *knowledge2.VaultFiler,
 	embedder knowledge.Embedder,
 	entityPipeline *knowledge.EntityPipeline,
+	relationExtractor *knowledge.RelationExtractor,
 	registry *knowledge.ExtractorRegistry,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
@@ -2100,6 +2115,15 @@ func provideVaultSyncSupervisor(
 			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
 				if _, err := entityPipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
 					lg.Warn("entity pipeline failed", loggateway.Str("collection_id", collectionID), loggateway.Str("doc_id", docID), loggateway.Err(err))
+				}
+			})
+		})
+	}
+	if relationExtractor != nil {
+		applier.SetRelationHook(func(collectionID, docID string) {
+			safego.Go(appctx.Ctx(), "knowledge.relation_extract", func() {
+				if _, err := relationExtractor.ExtractDoc(appctx.Ctx(), docID); err != nil {
+					lg.Warn("vault relation extract failed", loggateway.Str("collection_id", collectionID), loggateway.Str("doc_id", docID), loggateway.Err(err))
 				}
 			})
 		})
@@ -2369,6 +2393,16 @@ func provideKnowledgeIndexRepairWorker(
 	lg loggateway.Logger,
 ) *jobs.KnowledgeIndexRepairWorker {
 	return jobs.NewKnowledgeIndexRepairWorker(0, svc, lg)
+}
+
+func provideKnowledgeCurateWorker(
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeCurateWorker {
+	if uc == nil || jobs.KnowledgeCurateDisabled() {
+		return nil
+	}
+	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
@@ -3505,6 +3539,7 @@ type wireOut struct {
 	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
+	KnowledgeCurate             *jobs.KnowledgeCurateWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3563,6 +3598,7 @@ func provideWireOut(
 	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
+	knowledgeCurate *jobs.KnowledgeCurateWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3608,6 +3644,7 @@ func provideWireOut(
 		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
+		KnowledgeCurate:             knowledgeCurate,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,

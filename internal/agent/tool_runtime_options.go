@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/pkg/loggateway"
 
@@ -81,7 +82,7 @@ func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy {
 		BackoffFactor:   backoff,
 		MaxInterval:     time.Duration(maxMs) * time.Millisecond,
 		Jitter:          s.ToolsRetryJitter,
-		RetryOn:         trpctool.DefaultRetryOn,
+		RetryOn:         tools.SelectiveRetryOn,
 	}
 }
 

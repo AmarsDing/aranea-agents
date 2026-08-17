@@ -160,30 +160,10 @@ func (e *ParallelToolExecutor) Execute(ctx context.Context, toolCalls []ToolCall
 			return results, ctx.Err()
 		}
 
-		layerResults := make([]ToolResult, len(layer))
-		runnable := make([]ToolCall, 0, len(layer))
-		runnableIndexes := make([]int, 0, len(layer))
-		for i, call := range layer {
-			failedDependencies := make([]string, 0, len(call.DependsOn))
-			for _, dependencyID := range call.DependsOn {
-				if dependencyResult, ok := resultByCallID[dependencyID]; ok &&
-					!dependencyResult.Success {
-					failedDependencies = append(failedDependencies, dependencyID)
-				}
-			}
-			if len(failedDependencies) > 0 {
-				layerResults[i] = ToolResult{
-					CallID: call.ID,
-					Name:   call.Name,
-					Error: "dependency failed: " +
-						strings.Join(failedDependencies, ", "),
-				}
-				continue
-			}
-			runnable = append(runnable, call)
-			runnableIndexes = append(runnableIndexes, i)
-		}
-
+		layerResults, runnable, runnableIndexes := prepareLayer(
+			layer,
+			resultByCallID,
+		)
 		executedResults := e.executeLayer(ctx, runnable)
 		for i, result := range executedResults {
 			layerResults[runnableIndexes[i]] = result
@@ -199,6 +179,43 @@ func (e *ParallelToolExecutor) Execute(ctx context.Context, toolCalls []ToolCall
 		}
 	}
 	return results, nil
+}
+
+func prepareLayer(
+	layer []ToolCall,
+	resultByCallID map[string]ToolResult,
+) ([]ToolResult, []ToolCall, []int) {
+	layerResults := make([]ToolResult, len(layer))
+	runnable := make([]ToolCall, 0, len(layer))
+	runnableIndexes := make([]int, 0, len(layer))
+	for i, call := range layer {
+		failedDependencies := failedDependencyIDs(call, resultByCallID)
+		if len(failedDependencies) > 0 {
+			layerResults[i] = ToolResult{
+				CallID: call.ID,
+				Name:   call.Name,
+				Error: "dependency failed: " +
+					strings.Join(failedDependencies, ", "),
+			}
+			continue
+		}
+		runnable = append(runnable, call)
+		runnableIndexes = append(runnableIndexes, i)
+	}
+	return layerResults, runnable, runnableIndexes
+}
+
+func failedDependencyIDs(
+	call ToolCall,
+	resultByCallID map[string]ToolResult,
+) []string {
+	failed := make([]string, 0, len(call.DependsOn))
+	for _, dependencyID := range call.DependsOn {
+		if result, ok := resultByCallID[dependencyID]; ok && !result.Success {
+			failed = append(failed, dependencyID)
+		}
+	}
+	return failed
 }
 
 // executeLayer runs all calls in a single layer concurrently. Results are
@@ -244,7 +261,13 @@ func (e *ParallelToolExecutor) executeOne(ctx context.Context, call ToolCall) To
 	switch call.IsolationStrategy {
 	case IsolationStrategyWorktree:
 		if e.worktreeIso != nil {
-			result = e.worktreeIso.Execute(ctx, call)
+			handler := e.worktreeIso.handler
+			if handler == nil && e.handler != nil {
+				handler = func(ctx context.Context, worktreeDir string, call ToolCall) ToolResult {
+					return e.handler(WithWorktreeDir(ctx, worktreeDir), call)
+				}
+			}
+			result = e.worktreeIso.ExecuteWithHandler(ctx, call, handler)
 		} else {
 			result = e.executeDirect(ctx, call)
 		}

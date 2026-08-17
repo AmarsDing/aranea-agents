@@ -1,4 +1,4 @@
-﻿# 域 B 记忆召回评测（指令驱动，真实 LLM）
+﻿﻿# 域 B 记忆召回评测（指令驱动，真实 LLM）
 # 用法：powershell -ExecutionPolicy Bypass -File run.ps1 [-Pilot] [-SkipPlant]
 param([switch]$Pilot, [switch]$SkipPlant)
 . (Join-Path (Split-Path $PSScriptRoot -Parent) "_lib.ps1")

@@ -24,17 +24,17 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		ToolsConcurrentAllowJSON: "[]",
 
 		// --- Tools: retry / parallel / streaming ---
-		ToolsRetryEnabled:           false,
+		ToolsRetryEnabled:           true,
 		ToolsRetryMaxAttempts:       2,
 		ToolsRetryInitialIntervalMs: 500,
 		ToolsRetryBackoffFactor:     2.0,
 		ToolsRetryMaxIntervalMs:     5000,
 		ToolsRetryJitter:            true,
 		// P2-B1: 默认开启并行工具执行。安全性由项目层 ToolDecorator
-		// (internal/tools/decorator.go) 保证：每次工具调用都经过 60s 超时
-		// 和 10KB 结果预算保护。ConcurrentSafe 工具可安全并行且启用确定性
-		// 缓存；Exclusive 工具虽然也可能被框架并行调度，但装饰器的超时
-		// 和结果预算同样适用。详见 ADR: docs/reports/2026-06-15-review-adr-tool-parallel-execution.md
+		// (internal/tools/decorator.go) 保证：超时走 ToolsExecutionTimeoutSec；
+		// 结果预算 10KB；Exclusive 按 family / 目标文件互斥。ConcurrentSafe
+		// 工具可并行且启用确定性缓存。详见 ADR:
+		// docs/reports/2026-06-15-review-adr-tool-parallel-execution.md
 		ToolsParallelEnabled:  true,
 		ToolsStreamingEnabled: false,
 

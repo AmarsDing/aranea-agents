@@ -1,0 +1,58 @@
+id|category|result|note
+mem-sh-01|single_hop|PASS|kw 2/2
+mem-sh-02|single_hop|PASS|kw 2/2
+mem-sh-03|single_hop|PASS|kw 1/1
+mem-sh-04|single_hop|FAIL|kw 0/1
+mem-sh-05|single_hop|PASS|kw 1/1
+mem-sh-06|single_hop|FAIL|kw 0/1
+mem-sh-07|single_hop|PASS|kw 1/1
+mem-sh-08|single_hop|PASS|kw 1/1
+mem-sh-09|single_hop|PASS|kw 2/2
+mem-sh-10|single_hop|PASS|kw 1/1
+mem-mh-01|multi_hop|PASS|kw 1/1
+mem-mh-02|multi_hop|FAIL|kw 0/1
+mem-mh-03|multi_hop|PASS|kw 2/2
+mem-mh-04|multi_hop|FAIL|kw 0/1
+mem-mh-05|multi_hop|PASS|kw 1/1
+mem-mh-06|multi_hop|FAIL|kw 0/1
+mem-mh-07|multi_hop|FAIL|kw 0/3
+mem-mh-08|multi_hop|FAIL|kw 0/2
+mem-mh-09|multi_hop|PASS|kw 1/1
+mem-mh-10|multi_hop|PASS|kw 1/1
+mem-tp-01|temporal|FAIL|kw 1/2
+mem-tp-02|temporal|FAIL|kw 0/1
+mem-tp-03|temporal|FAIL|kw 0/1
+mem-tp-04|temporal|FAIL|kw 0/1
+mem-tp-05|temporal|PASS|kw 3/3
+mem-tp-06|temporal|FAIL|kw 0/1
+mem-tp-07|temporal|FAIL|kw 0/2
+mem-tp-08|temporal|PASS|kw 2/2
+mem-tp-09|temporal|FAIL|kw 1/2
+mem-tp-10|temporal|PASS|kw 2/2
+mem-up-01|update|PASS|kw 1/1
+mem-up-02|update|FAIL|kw 0/1
+mem-up-03|update|PASS|kw 1/1
+mem-up-04|update|PASS|kw 1/1
+mem-up-05|update|PASS|kw 1/1
+mem-up-06|update|FAIL|kw 0/1
+mem-up-07|update|PASS|kw 1/1
+mem-up-08|update|PASS|kw 1/1
+mem-up-09|update|PASS|kw 1/1
+mem-up-10|update|PASS|kw 2/2
+mem-ab-01|abstention|PASS|
+mem-ab-02|abstention|FAIL|no-refusal
+mem-ab-03|abstention|REVIEW|mentions:张伟
+mem-ab-04|abstention|FAIL|empty/http
+mem-ab-05|abstention|REVIEW|mentions:张伟
+mem-ab-06|abstention|PASS|
+mem-ab-07|abstention|FAIL|no-refusal
+mem-ab-08|abstention|PASS|
+mem-ab-09|abstention|FAIL|no-refusal
+mem-ab-10|abstention|FAIL|no-refusal
+
+=== corrected summary (regrade.ps1, content_markdown only) ===
+abstention: PASS=3 FAIL=5 REVIEW=2 acc=38%
+multi_hop: PASS=5 FAIL=5 REVIEW=0 acc=50%
+single_hop: PASS=8 FAIL=2 REVIEW=0 acc=80%
+temporal: PASS=3 FAIL=7 REVIEW=0 acc=30%
+update: PASS=8 FAIL=2 REVIEW=0 acc=80%

@@ -6,14 +6,19 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mockGet = vi.fn();
+const mockListGov = vi.fn();
+const mockResolveGov = vi.fn();
 vi.mock('../../../services/axiosHandler', () => ({
   kratosApi: { get: (...args: unknown[]) => mockGet(...args) },
 }));
 vi.mock('../../../services', () => ({
-  createKnowledgeService: () => ({}),
+  createKnowledgeService: () => ({
+    ListGovernanceProposals: (...args: unknown[]) => mockListGov(...args),
+    ResolveGovernanceProposal: (...args: unknown[]) => mockResolveGov(...args),
+  }),
 }));
 
-import { listBlockBacklinks, listUnlinkedMentions } from '../api';
+import { listBlockBacklinks, listGovernanceProposals, listUnlinkedMentions, resolveGovernanceProposal } from '../api';
 
 describe('listBlockBacklinks（SP1-I：doc_id 附加绑定直连）', () => {
   beforeEach(() => {
@@ -83,5 +88,47 @@ describe('listUnlinkedMentions（P2-7：doc_id 直连）', () => {
   it('响应缺 items 时返回空数组', async () => {
     mockGet.mockResolvedValue({ data: {} });
     await expect(listUnlinkedMentions('d1')).resolves.toEqual([]);
+  });
+});
+
+describe('governance proposals（US-52）', () => {
+  beforeEach(() => {
+    mockListGov.mockReset();
+    mockResolveGov.mockReset();
+  });
+
+  it('listGovernanceProposals 映射 snake/camel 字段', async () => {
+    mockListGov.mockResolvedValue({
+      items: [
+        {
+          id: '12',
+          collectionId: 'c1',
+          kind: 'conflict',
+          risk: 'high',
+          status: 'pending',
+          payloadJson: '{"target_fact_id":"fid-old","new_fact_id":"fid-new"}',
+          createdAt: '2026-08-17T12:00:00Z',
+        },
+      ],
+    });
+    const out = await listGovernanceProposals('c1');
+    expect(mockListGov).toHaveBeenCalledWith({ collectionId: 'c1', status: 'pending', limit: 50 });
+    expect(out).toEqual([
+      {
+        id: 12,
+        collection_id: 'c1',
+        kind: 'conflict',
+        risk: 'high',
+        status: 'pending',
+        payload_json: '{"target_fact_id":"fid-old","new_fact_id":"fid-new"}',
+        created_at: '2026-08-17T12:00:00Z',
+      },
+    ]);
+  });
+
+  it('resolveGovernanceProposal 传 keep_new', async () => {
+    mockResolveGov.mockResolvedValue({ id: 12, status: 'applied' });
+    await expect(resolveGovernanceProposal(12, 'keep_new')).resolves.toEqual({ id: 12, status: 'applied' });
+    expect(mockResolveGov).toHaveBeenCalledWith({ id: 12, decision: 'keep_new' });
   });
 });

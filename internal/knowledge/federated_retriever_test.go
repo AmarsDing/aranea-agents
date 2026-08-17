@@ -1,7 +1,8 @@
-﻿package knowledge
+package knowledge
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"aranea-agents/internal/biz"
@@ -127,6 +128,7 @@ func (stubAllEmbedder) EmbedSingle(_ context.Context, _ string) ([]float32, erro
 // 与 GetCollection（无语义层判定）。
 type stubAllRepo struct {
 	biz.KnowledgeRepo
+	mu                  sync.Mutex
 	searchedCollections []string
 }
 
@@ -136,8 +138,16 @@ func (s *stubAllRepo) GetCollection(context.Context, string) (biz.KnowledgeColle
 }
 
 func (s *stubAllRepo) SearchChunks(_ context.Context, q biz.KnowledgeSearchQuery, _ []float32) ([]biz.KnowledgeChunk, error) {
+	s.mu.Lock()
 	s.searchedCollections = append(s.searchedCollections, q.CollectionID)
+	s.mu.Unlock()
 	return []biz.KnowledgeChunk{{ID: "ch-" + q.CollectionID, CollectionID: q.CollectionID, Content: "hit", Score: 0.9}}, nil
+}
+
+func (s *stubAllRepo) searchedSnapshot() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.searchedCollections...)
 }
 
 func TestSearchAll_NilMeta(t *testing.T) {
@@ -179,8 +189,9 @@ func TestSearchAll_RoutesAcrossAllCollections(t *testing.T) {
 		t.Fatal("expected chunks from routed collections")
 	}
 	// Route 策略应只命中名称匹配的 col-refund（阈值 0.3），而非全库广播。
-	if len(repo.searchedCollections) != 1 || repo.searchedCollections[0] != "col-refund" {
-		t.Errorf("expected route to [col-refund], searched %v", repo.searchedCollections)
+	searched := repo.searchedSnapshot()
+	if len(searched) != 1 || searched[0] != "col-refund" {
+		t.Errorf("expected route to [col-refund], searched %v", searched)
 	}
 }
 
@@ -198,7 +209,8 @@ func TestSearchAll_NoRouteMatch_FallsBackToBroadcast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repo.searchedCollections) != 2 {
-		t.Errorf("expected broadcast to both collections, searched %v", repo.searchedCollections)
+	searched := repo.searchedSnapshot()
+	if len(searched) != 2 {
+		t.Errorf("expected broadcast to both collections, searched %v", searched)
 	}
 }

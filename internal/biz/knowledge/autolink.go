@@ -172,6 +172,20 @@ func AutolinkWikiMentionsMulti(content string, selfKeys []string, targets []Auto
 // excludeDocID 对应文档的全部显示名视为 self（不链向自己）；selfTitleHint 在文档
 // 尚未入库时用 filename/source 充当 self。
 func (u *Usecase) AutolinkOutgoing(ctx context.Context, collectionID, excludeDocID, selfTitleHint, content string) (string, int) {
+	out, n := u.compileOutgoingMentions(ctx, collectionID, excludeDocID, selfTitleHint, content)
+	if n > 0 {
+		u.lg.Info("自动成链已编译未链接提及",
+			loggateway.StepID("knowledge.autolink.applied"),
+			loggateway.Str("collection_id", collectionID),
+			loggateway.Int("replacements", n),
+		)
+	}
+	return out, n
+}
+
+// compileOutgoingMentions 把未链接提及编译成 wikilink，不写源、不打 Info。
+// 索引重建与写路径共用；全量重建不得刷 Info。
+func (u *Usecase) compileOutgoingMentions(ctx context.Context, collectionID, excludeDocID, selfTitleHint, content string) (string, int) {
 	if u == nil || u.documents == nil || strings.TrimSpace(content) == "" || strings.TrimSpace(collectionID) == "" {
 		return content, 0
 	}
@@ -184,15 +198,7 @@ func (u *Usecase) AutolinkOutgoing(ctx context.Context, collectionID, excludeDoc
 				loggateway.Err(err),
 			)
 		} else {
-			out, n := autolinkFromCandidates(cands, excludeDocID, selfTitleHint, content)
-			if n > 0 {
-				u.lg.Info("自动成链已编译未链接提及",
-					loggateway.StepID("knowledge.autolink.applied"),
-					loggateway.Str("collection_id", collectionID),
-					loggateway.Int("replacements", n),
-				)
-			}
-			return out, n
+			return autolinkFromCandidates(cands, excludeDocID, selfTitleHint, content)
 		}
 	}
 	docs, _, err := u.documents.ListDocuments(ctx, collectionID, autolinkDocListLimit, 0)
@@ -218,15 +224,7 @@ func (u *Usecase) AutolinkOutgoing(ctx context.Context, collectionID, excludeDoc
 			titles = append(titles, n)
 		}
 	}
-	out, n := AutolinkWikiMentions(content, selfTitle, titles)
-	if n > 0 {
-		u.lg.Info("自动成链已编译未链接提及",
-			loggateway.StepID("knowledge.autolink.applied"),
-			loggateway.Str("collection_id", collectionID),
-			loggateway.Int("replacements", n),
-		)
-	}
-	return out, n
+	return AutolinkWikiMentions(content, selfTitle, titles)
 }
 
 // autolinkFromCandidates 多键成链装配：候选文档的 basename 为 canonical，

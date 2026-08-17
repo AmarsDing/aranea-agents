@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"aranea-agents/pkg/apierror"
@@ -449,6 +450,124 @@ func TestResolveGovernanceProposal_ConflictAppliedClosesEdges(t *testing.T) {
 	}
 	if curate.resolvedID != 9 || curate.resolvedStatus != ProposalStatusApplied {
 		t.Fatalf("resolved = %d/%s", curate.resolvedID, curate.resolvedStatus)
+	}
+}
+
+func TestResolveGovernanceProposal_FactConflictCannotSilentlyApply(t *testing.T) {
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 10, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+		Payload: map[string]any{
+			"dedup_key": "conflict:fact:d1:fid-old:fid-new",
+			"doc_id":    "d1", "target_fact_id": "fid-old", "new_fact_id": "fid-new",
+		},
+	}}}
+	u := NewUsecaseFromRepo(noOpMockRepo())
+	u.SetCurateRepo(curate)
+
+	err := u.ResolveGovernanceProposal(context.Background(), 10, ProposalStatusApplied)
+	if err == nil || !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("fact-level conflict must require an explicit resolution action, got %v", err)
+	}
+	if curate.resolvedID != 0 {
+		t.Fatalf("unsupported fact conflict must stay pending, resolvedID = %d", curate.resolvedID)
+	}
+}
+
+func TestResolveGovernanceProposal_KeepOldRemovesNewFact(t *testing.T) {
+	body := "# 灰度发布\n\n## constraint\n\n生产环境禁止自动发布。\n\n- fact_id: `fid-old`\n\n## decision\n\n生产环境允许自动发布\n\n- fact_id: `fid-new`\n"
+	repo := noOpMockRepo()
+	var updated string
+	repo.docGetFn = func(_ context.Context, id string) (Document, error) {
+		return Document{ID: id, CollectionID: "c1", ContentText: body}, nil
+	}
+	repo.docContentFn = func(_ context.Context, _ string, contentText string, _ bool) error {
+		updated = contentText
+		return nil
+	}
+	versions := &stubFactVersionRepo{}
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 10, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+		Payload: map[string]any{
+			"dedup_key": "conflict:fact:d1:fid-old:fid-new",
+			"doc_id":    "d1", "target_fact_id": "fid-old", "new_fact_id": "fid-new",
+		},
+	}}}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+	u.SetEvolutionRepos(versions, nil)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 10, ProposalDecisionKeepOld); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(updated, "允许自动发布") || strings.Contains(updated, "fid-new") {
+		t.Fatalf("keep_old must drop the new section: %q", updated)
+	}
+	if !strings.Contains(updated, "禁止自动发布") || !strings.Contains(updated, "fid-old") {
+		t.Fatalf("keep_old must retain the old section: %q", updated)
+	}
+	if curate.resolvedStatus != ProposalStatusApplied {
+		t.Fatalf("keep_old must persist applied, got %s", curate.resolvedStatus)
+	}
+	if len(versions.items) != 1 || versions.items[0].FactID != "fid-old" {
+		t.Fatalf("keep_old must record version chain: %+v", versions.items)
+	}
+}
+
+func TestResolveGovernanceProposal_KeepNewPreservesLineage(t *testing.T) {
+	body := "# 灰度发布\n\n## constraint\n\n生产环境禁止自动发布。\n\n- fact_id: `fid-old`\n\n## decision\n\n生产环境允许自动发布\n\n- fact_id: `fid-new`\n"
+	repo := noOpMockRepo()
+	var updated string
+	repo.docGetFn = func(_ context.Context, id string) (Document, error) {
+		return Document{ID: id, CollectionID: "c1", ContentText: body}, nil
+	}
+	repo.docContentFn = func(_ context.Context, _ string, contentText string, _ bool) error {
+		updated = contentText
+		return nil
+	}
+	versions := &stubFactVersionRepo{}
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 11, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+		Payload: map[string]any{
+			"doc_id": "d1", "target_fact_id": "fid-old", "new_fact_id": "fid-new",
+		},
+	}}}
+	u := NewUsecaseFromRepo(repo)
+	u.SetCurateRepo(curate)
+	u.SetEvolutionRepos(versions, nil)
+
+	if err := u.ResolveGovernanceProposal(context.Background(), 11, ProposalDecisionKeepNew); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(updated, "禁止自动发布") {
+		t.Fatalf("keep_new must drop the old section: %q", updated)
+	}
+	if !strings.Contains(updated, "允许自动发布") {
+		t.Fatalf("keep_new must retain the new statement: %q", updated)
+	}
+	if !strings.Contains(updated, "fact_id: `fid-old`") {
+		t.Fatalf("keep_new must keep the old fact_id as lineage: %q", updated)
+	}
+	if !strings.Contains(updated, "source_id: `fid-new`") {
+		t.Fatalf("keep_new must keep incoming provenance: %q", updated)
+	}
+	if curate.resolvedStatus != ProposalStatusApplied {
+		t.Fatalf("keep_new must persist applied, got %s", curate.resolvedStatus)
+	}
+}
+
+func TestResolveGovernanceProposal_KeepOldOnDocConflictRejected(t *testing.T) {
+	curate := &stubCurateRepo{proposalViews: []GovernanceProposalView{{
+		ID: 12, CollectionID: "c1", Kind: ProposalKindConflict, Status: ProposalStatusPending,
+		Payload: map[string]any{"doc_id": "d1", "target_doc_id": "d2"},
+	}}}
+	u := NewUsecaseFromRepo(noOpMockRepo())
+	u.SetCurateRepo(curate)
+	err := u.ResolveGovernanceProposal(context.Background(), 12, ProposalDecisionKeepOld)
+	if err == nil || !apierror.IsCode(err, apierror.CodeBadRequest) {
+		t.Fatalf("document-level conflict must not accept keep_old, got %v", err)
+	}
+	if curate.resolvedID != 0 {
+		t.Fatalf("invalid keep_old must stay pending, resolvedID = %d", curate.resolvedID)
 	}
 }
 

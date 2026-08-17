@@ -1124,6 +1124,8 @@ func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQ
 	return out, rows.Err()
 }
 
+// SearchChunksBM25 词法召回：原查询的 tsvector + trigram（短针另加 substring），
+// 并对中文问句抽取内容针后 RRF 融合。Agent 完整问句不得依赖 embedding 才能命中。
 func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	extraClauses := ""
 	var extraArgs []any
@@ -1140,19 +1142,28 @@ func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSea
 		extraArgs = append(extraArgs, json.RawMessage(q.FilterJSON))
 	}
 
-	searches := []func() ([]biz.KnowledgeChunk, error){
-		func() ([]biz.KnowledgeChunk, error) {
-			return r.searchChunksTsvector(ctx, q, extraClauses, extraArgs)
-		},
-		func() ([]biz.KnowledgeChunk, error) {
-			return r.searchChunksTrigram(ctx, q, extraClauses, extraArgs)
-		},
-	}
-	query := strings.TrimSpace(q.Query)
-	if query != "" && utf8.RuneCountInString(query) <= 4 {
+	var searches []func() ([]biz.KnowledgeChunk, error)
+	for i, query := range bizknowledge.LexicalSearchQueries(q.Query) {
+		query := query
+		one := q
+		one.Query = query
 		searches = append(searches, func() ([]biz.KnowledgeChunk, error) {
-			return r.searchChunksSubstring(ctx, q, extraClauses, extraArgs)
+			return r.searchChunksTsvector(ctx, one, extraClauses, extraArgs)
 		})
+		searches = append(searches, func() ([]biz.KnowledgeChunk, error) {
+			return r.searchChunksTrigram(ctx, one, extraClauses, extraArgs)
+		})
+		// 原查询维持 ≤4 字 substring，避免 5–8 字关键词被多文档同分打乱；
+		// 问句内容针放宽到 8 字，才能命中「核心机房」「巡检周期」这类短语。
+		subLimit := 4
+		if i > 0 {
+			subLimit = 8
+		}
+		if utf8.RuneCountInString(query) <= subLimit {
+			searches = append(searches, func() ([]biz.KnowledgeChunk, error) {
+				return r.searchChunksSubstring(ctx, one, extraClauses, extraArgs)
+			})
+		}
 	}
 
 	results := make([][]biz.KnowledgeChunk, len(searches))

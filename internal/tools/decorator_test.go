@@ -190,7 +190,7 @@ func TestToolDecorator_Cache(t *testing.T) {
 	var callCount int32
 	var mu sync.Mutex
 	tool := &decoratorMockTool{
-		name: "file", // ConcurrentSafe per registry
+		name: "web_fetch", // ConcurrentSafe + cacheable (network, not workspace)
 		call: func(ctx context.Context, args []byte) (any, error) {
 			mu.Lock()
 			callCount++
@@ -236,13 +236,49 @@ func TestToolDecorator_Cache(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestToolDecorator_CacheExpires(t *testing.T) {
+	var callCount int32
+	var mu sync.Mutex
+	tool := &decoratorMockTool{
+		name: "web_fetch",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return "fresh", nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		EnableCache: true,
+		CacheTTL:    10 * time.Millisecond,
+		Logger:      loggateway.NewNoop(),
+	})
+	args := []byte(`{"urls":["https://example"]}`)
+	ctx := invocationCtx("agent-a", "user-1", "sess-1")
+	if _, err := d.Call(ctx, args); err != nil {
+		t.Fatalf("call1: %v", err)
+	}
+	if _, err := d.Call(ctx, args); err != nil {
+		t.Fatalf("call2 (hit): %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if _, err := d.Call(ctx, args); err != nil {
+		t.Fatalf("call3 (expired): %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 2 {
+		t.Errorf("expected 2 inner calls after TTL expiry, got %d", callCount)
+	}
+}
+
 // TestToolDecorator_CacheIsolatedBySession verifies E2E-P1-09: identical
 // args from different sessions do not share cached tool results.
 func TestToolDecorator_CacheIsolatedBySession(t *testing.T) {
 	var callCount int32
 	var mu sync.Mutex
 	tool := &decoratorMockTool{
-		name: "file",
+		name: "web_fetch",
 		call: func(ctx context.Context, args []byte) (any, error) {
 			mu.Lock()
 			callCount++
@@ -277,7 +313,7 @@ func TestToolDecorator_CacheIsolatedByWorkspace(t *testing.T) {
 	var callCount int32
 	var mu sync.Mutex
 	tool := &decoratorMockTool{
-		name: "file",
+		name: "web_fetch",
 		call: func(ctx context.Context, args []byte) (any, error) {
 			mu.Lock()
 			callCount++
@@ -317,7 +353,7 @@ func TestToolDecorator_CacheDisabledWithoutInvocation(t *testing.T) {
 	var callCount int32
 	var mu sync.Mutex
 	tool := &decoratorMockTool{
-		name: "file",
+		name: "web_fetch",
 		call: func(ctx context.Context, args []byte) (any, error) {
 			mu.Lock()
 			callCount++
@@ -372,6 +408,37 @@ func TestToolDecorator_NoCacheForExclusiveTool(t *testing.T) {
 	mu.Unlock()
 }
 
+func TestToolDecorator_NoCacheForReadFile(t *testing.T) {
+	var callCount int32
+	var mu sync.Mutex
+	tool := &decoratorMockTool{
+		name: "read_file",
+		call: func(ctx context.Context, args []byte) (any, error) {
+			mu.Lock()
+			callCount++
+			mu.Unlock()
+			return "contents", nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{
+		EnableCache: true,
+		Logger:      loggateway.NewNoop(),
+	})
+	args := []byte(`{"file_name":"a.go"}`)
+	ctx := invocationCtx("agent-a", "user-1", "sess-1")
+	if _, err := d.Call(ctx, args); err != nil {
+		t.Fatalf("call1: %v", err)
+	}
+	if _, err := d.Call(ctx, args); err != nil {
+		t.Fatalf("call2: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if callCount != 2 {
+		t.Errorf("read_file must not be cached (stale after save_file), got %d inner calls", callCount)
+	}
+}
+
 // TestToolDecorator_ErrorPassthrough verifies that inner tool errors are
 // returned unchanged and not cached.
 func TestToolDecorator_ErrorPassthrough(t *testing.T) {
@@ -397,6 +464,44 @@ func TestToolDecorator_ErrorPassthrough(t *testing.T) {
 	}
 }
 
+func TestToolDecorator_FlagsTransientWebFetchResult(t *testing.T) {
+	tool := &decoratorMockTool{
+		name: "web_fetch",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return map[string]any{
+				"results": []any{
+					map[string]any{"status_code": 503, "error": "HTTP status 503"},
+				},
+			}, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{Logger: loggateway.NewNoop()})
+	result, err := d.Call(context.Background(), []byte(`{"urls":["https://example"]}`))
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if _, ok := result.(retryFlaggedResult); !ok {
+		t.Fatalf("expected retryFlaggedResult so the retry runner sees ResultError, got %T", result)
+	}
+}
+
+func TestToolDecorator_DoesNotFlagWebFetch404(t *testing.T) {
+	tool := &decoratorMockTool{
+		name: "web_fetch",
+		call: func(_ context.Context, _ []byte) (any, error) {
+			return map[string]any{"status_code": 404, "error": "HTTP status 404"}, nil
+		},
+	}
+	d := NewToolDecorator(tool, ToolDecoratorConfig{Logger: loggateway.NewNoop()})
+	result, err := d.Call(context.Background(), []byte(`{"urls":["https://example"]}`))
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if _, ok := result.(retryFlaggedResult); ok {
+		t.Fatal("HTTP 404 must not be flagged as retryable")
+	}
+}
+
 // TestToolDecorator_SatisfiesCallableTool verifies at compile time that
 // ToolDecorator implements the CallableTool interface.
 func TestToolDecorator_SatisfiesCallableTool(t *testing.T) {
@@ -404,7 +509,8 @@ func TestToolDecorator_SatisfiesCallableTool(t *testing.T) {
 }
 
 // TestToolDecorator_DefaultTimeout verifies that a zero Timeout in config
-// defaults to DefaultToolTimeout (60s).
+// stays zero so the caller/callback-chain deadline is the single source
+// of truth. Explicit DefaultToolTimeout still applies when requested.
 func TestToolDecorator_DefaultTimeout(t *testing.T) {
 	tool := &decoratorMockTool{
 		name: "test_tool",
@@ -414,14 +520,26 @@ func TestToolDecorator_DefaultTimeout(t *testing.T) {
 	}
 	d := NewToolDecorator(tool, ToolDecoratorConfig{
 		Logger: loggateway.NewNoop(),
-		// Timeout intentionally zero — should default to 60s.
+		// Timeout intentionally zero — decorator must not impose 60s.
 	})
 	td, ok := d.(*ToolDecorator)
 	if !ok {
 		t.Fatalf("expected *ToolDecorator for non-streamable tool, got %T", d)
 	}
-	if td.cfg.Timeout != DefaultToolTimeout {
-		t.Errorf("expected default timeout %v, got %v", DefaultToolTimeout, td.cfg.Timeout)
+	if td.cfg.Timeout != 0 {
+		t.Errorf("expected timeout 0 (defer to caller), got %v", td.cfg.Timeout)
+	}
+
+	explicit := NewToolDecorator(tool, ToolDecoratorConfig{
+		Timeout: DefaultToolTimeout,
+		Logger:  loggateway.NewNoop(),
+	})
+	et, ok := explicit.(*ToolDecorator)
+	if !ok {
+		t.Fatalf("expected *ToolDecorator, got %T", explicit)
+	}
+	if et.cfg.Timeout != DefaultToolTimeout {
+		t.Errorf("explicit timeout = %v, want %v", et.cfg.Timeout, DefaultToolTimeout)
 	}
 }
 
@@ -596,7 +714,7 @@ func TestToolDecorator_ConcurrentCacheAccess(t *testing.T) {
 	var innerCallCount int32
 	var mu sync.Mutex
 	tool := &decoratorMockTool{
-		name: "file", // ConcurrentSafe per registry
+		name: "web_fetch", // ConcurrentSafe + cacheable
 		call: func(ctx context.Context, args []byte) (any, error) {
 			mu.Lock()
 			innerCallCount++

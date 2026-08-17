@@ -136,6 +136,28 @@ func TestWorktreeIsolator_CreatesAndMergesOnSuccess(t *testing.T) {
 	}
 }
 
+func TestWorktreeIsolator_AutoCommitsUncommittedWrites(t *testing.T) {
+	repoRoot, cleanup := initTempGitRepo(t)
+	defer cleanup()
+	handler := func(_ context.Context, worktreeDir string, call ToolCall) ToolResult {
+		if err := os.WriteFile(filepath.Join(worktreeDir, "auto.txt"), []byte("n"), 0o644); err != nil {
+			return ToolResult{CallID: call.ID, Name: call.Name, Error: err.Error()}
+		}
+		return ToolResult{CallID: call.ID, Name: call.Name, Success: true}
+	}
+	iso, err := NewWorktreeIsolator(repoRoot, handler, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("NewWorktreeIsolator: %v", err)
+	}
+	result := iso.Execute(context.Background(), ToolCall{ID: "auto-1", Name: "save_file"})
+	if !result.Success {
+		t.Fatalf("Execute failed: %s", result.Error)
+	}
+	if !fileExistsInRepo(t, repoRoot, "auto.txt") {
+		t.Fatal("expected auto.txt after isolator auto-commit + merge")
+	}
+}
+
 // TestWorktreeIsolator_RemovesWorktreeOnFailure verifies that when the handler
 // returns a failed result, the worktree is discarded and the base branch is
 // unchanged (no merge).

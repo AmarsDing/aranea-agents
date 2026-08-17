@@ -20,7 +20,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `api/kratos/knowledge/v1/knowledge.proto` — Knowledge CRUD + Search RPC（含 `rewrite_strategy` + `hybrid_search`）
 - `internal/biz/knowledge.go` — 类型别名转发（KnowledgeRepo = knowledge.Repo 等 + ApplyKnowledgeEmbedPatch 等）
 - `internal/biz/knowledge/knowledge.go` — 领域模型 + Repo/Usecase 接口（子接口拆分）+ EmbedSetting patch 合并
-- `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25 双路）
+- `internal/data/knowledge.go` — KnowledgeRepo（PostgreSQL + pgvector + BM25 双路；问句内容针 RRF）
+- `internal/biz/knowledge/lexical_query.go` — 中文问句压缩与内容针抽取（US-51）
 - `internal/service/knowledge.go` — KnowledgeService（KnowledgeSearchDeps 聚合）
 - `internal/service/knowledge_advanced.go` — Advanced RAG Wire 工厂（6 个 Provider）
 - `internal/knowledge/chunker.go` — 文档分块（char/token）
@@ -48,6 +49,8 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 - `internal/agent/knowledge_inject.go` — Plan-Then-Retrieve BeforeModel 钩子
 - `internal/agent/tool_assembly.go` — KnowledgeSearch/KnowledgeReflect 装配
 - `web/src/features/knowledge/api.ts` — 前端 API
+- `web/src/features/knowledge/governance.ts` — 治理提案决策路由（US-52）
+- `web/src/components/knowledge/GovernanceReviewDialog.vue` — 治理提案审核对话框
 - `web/src/stores/knowledge/index.ts` — 前端 Store
 - `web/src/features/knowledge/useKnowledgeIngestWs.ts` — 入库 WS 进度
 
@@ -1461,3 +1464,70 @@ SP1-H（重建/回填，依赖 B/C，可与 D~G 并行）
 | 词法库 NULL embedding 健康判定 | ✅ | `internal/data/knowledge.go` |
 
 本轮新增专项验收覆盖：RRF 并发/重排、异步 access log、query embedding 缓存失效、精确词路由、两字中文生产 BM25、别名歧义、上传图谱触发、词法/语义待修复判定、索引修复 worker。
+
+## 子模块：质量门禁与事实演化连续性（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-50 | **设计**：[37-knowledge.design.md §V12.15](./37-knowledge.design.md#v1215-质量门禁与事实演化连续性2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 标准 IR 指标（Recall/HitRate/MRR/nDCG/Abstention） | ✅ | `internal/knowledge/retrieval_metrics.go` + `_test.go` |
+| 5 篇语料词法门禁（关键词 Hit@5=1.00，标识符 Hit@5=1.00） | ✅ | `internal/data/knowledge_retrieval_baseline_test.go`；DSN `postgres://postgres:123456@127.0.0.1:5432/aranea_test`；自然语言问法硬门见下一节 |
+| 30×10 改写鲁棒性金标（≥300）+ 标识符/拒答切片 | ✅ | `internal/knowledge/retrieval_gold.go` + `_test.go` |
+| knowledge 全包 Race 回归 | ✅ | `federated_retriever_test.go`、`vault_sync_test.go`、`vault_sync_runner_test.go` |
+| supersedes 保留稳定 fact lineage，incoming ID 仅留 provenance | ✅ | `internal/biz/knowledge/writeback_entry.go`、`writeback_evolution_test.go` |
+| 事实冲突 dedup，拒绝事实级伪 applied | ✅ | `internal/biz/knowledge/evolution.go`、`curate.go` 及对应测试 |
+| 事实冲突 keep_old / keep_new 显式处置 | ✅ | `curate.go` `applyFactConflictResolution`；HTTP 与 `memory_butler_governance_resolve` |
+
+后续开放项：300+ 彼此独立的人工标注信息需求（改写集不等于新事实）；hybrid/router/graph 分 profile 基线。
+
+## 子模块：自然语言问句词法规范化（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-51 | **设计**：[37-knowledge.design.md §V12.16](./37-knowledge.design.md#v1216-自然语言问句词法规范化2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 问句压缩 + 内容针抽取（无 LLM） | ✅ | `internal/biz/knowledge/lexical_query.go`；金标 30 问每条至少一针能在出处文档找到子串 |
+| 生产 BM25 接入针检索 RRF | ✅ | `internal/data/knowledge.go` `SearchChunksBM25` |
+| NL HitRate@5 硬门 ≥ 0.90 | ✅ | `internal/data/knowledge_retrieval_baseline_test.go`；实测 Hit@5=1.00、Hit@1=0.967、MRR=0.983（`aranea_test` / `postgres:123456`） |
+| 关键词/标识符/短中文不回归 | ✅ | 关键词 Hit@5=1.00；标识符 Hit@5=1.00；`TestKnowledgeRepo_SearchChunksBM25_GoldBilingual` / `ChineseShortQuery` 通过 |
+
+本轮不做：新检索算法、embedding 依赖、300 条独立新事实。
+
+## 子模块：治理提案工作台（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-52 | **设计**：[37-knowledge.design.md §V12.17](./37-knowledge.design.md#v1217-治理提案工作台2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 决策路由纯函数（事实冲突禁止裸 applied） | ✅ | `web/src/features/knowledge/governance.ts` + `__tests__/governance.spec.ts` |
+| List/Resolve API 封装 | ✅ | `web/src/features/knowledge/api.ts`；`api.spec.ts` |
+| 命令面板 + 审核对话框 | ✅ | `commands.ts` `review-governance`；`GovernanceReviewDialog.vue`；`KnowledgeWorkbench.vue` |
+| 事实冲突 keep_old / keep_new / 驳回 | ✅ | 对话框按 payload `target_fact_id` 分支；孤儿 applied 文案为删除 |
+
+验证：`npx vitest run src/features/knowledge/__tests__/governance.spec.ts src/features/knowledge/__tests__/commands.spec.ts src/features/knowledge/__tests__/api.spec.ts`（25 例通过）。
+
+## 子模块：问句自动混合检索（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-53 | **设计**：[37-knowledge.design.md §V12.18](./37-knowledge.design.md#v1218-问句自动混合检索2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 问句/长中文自动 RRF | ✅ | `adaptive_router.go` `selectModeForQuery`；`LooksLikeNaturalLanguageQuery` |
+| 精确词仍 sparse、短关键词仍 dense | ✅ | `adaptive_router_test.go` |
+| 不默认 MultiQuery | ✅ | classify 仍为 Simple；仅 mode 改为 RRF |
+
+验证：`go test ./internal/knowledge ./internal/biz/knowledge -run TestSelectMode\|TestLexical -count=1` 通过。
+
+## 子模块：治理定时实跑与入库自关联（2026-08-17）
+
+> **状态**：✅ 本轮实施完成 | **需求**：US-54 | **设计**：[37-knowledge.design.md §V12.19](./37-knowledge.design.md#v1219-治理定时实跑与入库自关联2026-08-17)
+
+| 任务 | 状态 | 代码锚点 |
+|------|------|----------|
+| 团队库治理 cron（DryRun=false） | ✅ | `internal/cronrunner/jobs/knowledge_curate.go`；`cmd/admin/workers.go` 6h |
+| 高风险仍 pending | ✅ | 复用 `CurateKnowledge`；工人不调用 Resolve |
+| Vault 同步抽 typed 关系 | ✅ | `VaultSyncApplier.SetRelationHook`；`provideVaultSyncSupervisor` |
+| 索引期成链不改源 | ✅ | `rebuildBlockIndex` → `compileOutgoingMentions` |
+
+验证：`go test ./internal/cronrunner/jobs ./internal/biz/knowledge ./internal/knowledge -count=1` 通过。

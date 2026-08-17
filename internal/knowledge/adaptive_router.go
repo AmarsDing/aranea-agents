@@ -273,6 +273,11 @@ func (a *AdaptiveRouter) selectModeForQuery(q biz.KnowledgeSearchQuery, complexi
 		uppercaseTokenQueryRe.MatchString(query) {
 		return HybridSparse
 	}
+	// 问句与长中文陈述走 RRF：dense  alone 会绕开 SearchChunksBM25 的内容针。
+	// 精确词/路径仍走 sparse。不因此把 classify 抬到 Complex，避免默认 LLM MultiQuery。
+	if ClassifySearchIntent(query) == IntentSemantic || bizknowledge.LooksLikeNaturalLanguageQuery(query) {
+		return HybridRRF
+	}
 	return a.selectMode(complexity)
 }
 

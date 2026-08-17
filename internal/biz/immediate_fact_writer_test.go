@@ -10,11 +10,13 @@ import (
 )
 
 type fakeConsolidationWriter struct {
-	res *ConsolidationResult
-	err error
+	res    *ConsolidationResult
+	err    error
+	writes []MemoryFactWrite
 }
 
-func (f *fakeConsolidationWriter) UpsertFactsAndEpisodeBatch(_ context.Context, _ []MemoryFactWrite, _ *EpisodeWrite) (*ConsolidationResult, error) {
+func (f *fakeConsolidationWriter) UpsertFactsAndEpisodeBatch(_ context.Context, writes []MemoryFactWrite, _ *EpisodeWrite) (*ConsolidationResult, error) {
+	f.writes = append(f.writes, writes...)
 	return f.res, f.err
 }
 
@@ -98,5 +100,50 @@ func TestImmediateFactWriter_WriteFailureSkipsIndexSync(t *testing.T) {
 	}
 	if got := syncer.syncedCount(); got != 0 {
 		t.Fatalf("index sync must not run on write failure, got %d calls", got)
+	}
+}
+
+// R1：即时事实严禁 session scope（L3ScopeTargets 无 session case，写入即死数据）。
+// identity/preference → user scope；instruction/domain/general → agent scope。
+func TestImmediateFactWriter_ScopeByFactKind(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "user-1", "msg-1", []FactMark{
+		{Type: "identity", Confidence: "high", Content: "用户叫张三"},
+		{Type: "preference", Confidence: "high", Content: "用户偏好咖啡"},
+		{Type: "instruction", Confidence: "high", Content: "回复要简洁"},
+		{Type: "domain_knowledge", Confidence: "medium", Content: "机房空调 24 度"},
+		{Type: "unknown_type", Confidence: "low", Content: "杂项"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	want := []struct{ scopeType, scopeID string }{
+		{"user", "user-1"},
+		{"user", "user-1"},
+		{"agent", "agent-1"},
+		{"agent", "agent-1"},
+		{"agent", "agent-1"},
+	}
+	if len(fw.writes) != len(want) {
+		t.Fatalf("writes = %d, want %d", len(fw.writes), len(want))
+	}
+	for i, wnt := range want {
+		if fw.writes[i].ScopeType != wnt.scopeType || fw.writes[i].ScopeID != wnt.scopeID {
+			t.Errorf("write[%d] scope = %s/%s, want %s/%s", i, fw.writes[i].ScopeType, fw.writes[i].ScopeID, wnt.scopeType, wnt.scopeID)
+		}
+	}
+}
+
+// userID 为空时 identity/preference 安全降级到 agent scope，保证可召回。
+func TestImmediateFactWriter_UserScopeFallsBackToAgent(t *testing.T) {
+	fw := &fakeConsolidationWriter{res: &ConsolidationResult{}}
+	w := NewImmediateFactWriter(fw, nil, loggateway.NewNoop())
+	if err := w.writeFactsSync(context.Background(), "sess-1", "agent-1", "", "msg-1", []FactMark{
+		{Type: "identity", Confidence: "high", Content: "用户叫张三"},
+	}); err != nil {
+		t.Fatalf("writeFactsSync: %v", err)
+	}
+	if len(fw.writes) != 1 || fw.writes[0].ScopeType != "agent" || fw.writes[0].ScopeID != "agent-1" {
+		t.Fatalf("empty userID must fall back to agent scope, got %+v", fw.writes)
 	}
 }

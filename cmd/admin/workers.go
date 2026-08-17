@@ -67,6 +67,7 @@ type backgroundWorkersConfig struct {
 	KnowledgeCitationBackfill   BackgroundStarter
 	KnowledgeRelationExtract    BackgroundStarter
 	KnowledgeIndexRepair        BackgroundStarter
+	KnowledgeCurate             BackgroundStarter
 	MemorySleepTime             BackgroundStarter
 	MemoryEpisodeBackfill       BackgroundStarter
 	MemoryFactIndexReconciler   BackgroundStarter
@@ -124,6 +125,7 @@ func backgroundWorkersConfigFromOutput(watchCtx context.Context, out *wireOut) *
 		KnowledgeCitationBackfill:   out.KnowledgeCitationBackfill,
 		KnowledgeRelationExtract:    out.KnowledgeRelationExtract,
 		KnowledgeIndexRepair:        out.KnowledgeIndexRepair,
+		KnowledgeCurate:             out.KnowledgeCurate,
 		MemorySleepTime:             out.MemorySleepTime,
 		MemoryEpisodeBackfill:       out.MemoryEpisodeBackfill,
 		MemoryFactIndexReconciler:   out.MemoryFactIndexReconciler,
@@ -385,6 +387,11 @@ func startBackgroundWorkers(
 	if cfg.KnowledgeIndexRepair != nil {
 		goAfterReady("knowledge_index_repair", func() { cfg.KnowledgeIndexRepair.Start(ctx) })
 		logger.Log(log.LevelInfo, "msg", "knowledge index repair worker scheduled", "interval", "5m")
+	}
+
+	if cfg.KnowledgeCurate != nil {
+		goAfterReady("knowledge_curate", func() { cfg.KnowledgeCurate.Start(ctx) })
+		logger.Log(log.LevelInfo, "msg", "knowledge curate worker scheduled", "interval", "6h")
 	}
 
 	if cfg.MemorySleepTime != nil {

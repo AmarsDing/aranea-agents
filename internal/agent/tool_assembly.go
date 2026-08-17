@@ -85,13 +85,14 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		tooltrpc.ApplyConfirmationPolicy(ts, plan.gate.confirmationMap(ctx))
 	}
 	gateMs := time.Since(phaseStart).Milliseconds()
-	// P0-G3 + P0-D + P2-E + P2-02: 应用工具装饰器（执行超时 + 结果预算 + 确定性缓存 + 流式预算）。
-	// 装饰器包装所有 CallableTool，为每次调用提供 60s 默认超时、10KB 结果截断，
-	// 并对 ConcurrentSafe 工具（如 file、read_document）启用确定性缓存。
+	// P0-G3 + P0-D + P2-E + P2-02: 应用工具装饰器（per-tool 超时覆盖 + 结果预算 + 确定性缓存 + 流式预算）。
+	// 普通工具 Timeout=0，截止时间由回调链 ToolsExecutionTimeoutSec（默认 10min）提供；
+	// plan_and_execute 等仍由装饰器 per-tool override 覆盖。10KB 结果截断仍生效。
+	// ConcurrentSafe 网络工具启用确定性缓存；workspace file 族不缓存（写后读会脏）。
 	// 流式工具（StreamableCall）获得 5min 流式超时 + 1MB 流式字节预算（P2-02）。
 	phaseStart = time.Now()
 	tools.ApplyDecorators(ts, tools.ToolDecoratorConfig{
-		Timeout:       tools.DefaultToolTimeout,
+		Timeout:       0,
 		ResultBudget:  tools.DefaultResultBudget,
 		EnableCache:   true,
 		Logger:        deps.Logger(),

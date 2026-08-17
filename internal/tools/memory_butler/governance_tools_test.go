@@ -33,6 +33,17 @@ func (s *stubGovernanceCurateRepo) ResolveGovernanceProposal(_ context.Context, 
 	return nil
 }
 
+func (s *stubGovernanceCurateRepo) GetGovernanceProposal(_ context.Context, id int64) (bizknowledge.GovernanceProposalView, error) {
+	for _, v := range s.views {
+		if v.ID == id {
+			return v, nil
+		}
+	}
+	return bizknowledge.GovernanceProposalView{
+		ID: id, Status: bizknowledge.ProposalStatusPending, Kind: bizknowledge.ProposalKindMOCEmerge,
+	}, nil
+}
+
 func wiredGovernanceDeps(repo bizknowledge.KnowledgeCurateRepo) Deps {
 	u := bizknowledge.NewUsecase(nil, nil, nil)
 	u.SetCurateRepo(repo)
@@ -111,6 +122,13 @@ func TestGovernanceResolve_Resolve(t *testing.T) {
 	}
 	if stub.resolvedID != 42 || stub.resolvedStatus != bizknowledge.ProposalStatusRejected {
 		t.Fatalf("stub = %d/%s", stub.resolvedID, stub.resolvedStatus)
+	}
+}
+
+func TestGovernanceResolve_KeepOldRejectedForNonConflict(t *testing.T) {
+	tl := newGovernanceResolveTool(wiredGovernanceDeps(&stubGovernanceCurateRepo{})).(trpctool.CallableTool)
+	if _, err := tl.Call(context.Background(), []byte(`{"proposal_id":1,"decision":"keep_old"}`)); err == nil {
+		t.Fatal("keep_old on a non-conflict proposal must error")
 	}
 }
 

@@ -2682,4 +2682,100 @@ AutoMemoryWorker.extract
 - 同一别名命中多个词条时禁止任取一个自动归并；事实回退 provenance 日记并记录结构化告警。
 - 本轮不声称解决全量事实断言的稳定 key、跨文档冲突真值或抽取置信度校准；这些需要独立金标，不能通过热路径优化替代。
 
+---
+
+## V12.15 质量门禁与事实演化连续性（2026-08-17）
+
+> 对应需求 US-50。本轮不增加新的检索算法，而是把真实问法、标准指标和事实冲突安全边界固化为可回归契约。
+
+### 检索评测
+
+- `internal/knowledge/retrieval_metrics.go` 提供纯函数文档级评测：结果先按 `doc_id` 保序去重，再计算 Recall@K、HitRate@K、MRR、nDCG@K 和 Abstention Accuracy。
+- 排名指标只统计有相关文档的 case；`abstain=true` 的 case 只进入拒答准确率，避免负例把 Recall 分母污染。
+- `internal/data/knowledge_retrieval_baseline_test.go` 复用同一语料。词法发布门禁打每条金标的最长 `expected_keywords`（HitRate@5 ≥ 0.90）和标识符切片（HitRate@5 ≥ 0.80）；把全部关键词 AND 拼接会误杀短中文+数字组合。自然语言问法的词法硬门见 §V12.16。
+- `internal/knowledge/retrieval_gold.go` 将 30 条问法扩展为 10 种检索前缀改写（≥300 条）+ 语料内标识符查询 + 拒答切片。改写集检验问法扰动下的词法稳定性，不是 300 条独立标注的新信息需求。
+- 30 条是首个可执行真实问法基线；独立信息需求的下一步仍是按章节/同义改写人工扩容，并分语言、精确标识符、时态和拒答切片报告。
+
+### 事实演化
+
+1. 同 `fact_id` 的确定性更新语义不变。
+2. 仲裁器高置信判定 `supersedes` 时，目标段原 `fact_id` 保留为 lineage identity；新提取 ID 写入 `source_id`，不接管演化身份。
+3. `knowledge_fact_version.fact_id` 继续记录该 lineage identity，旧段和新段均保存。
+4. 事实级 conflict 的 `dedup_key` 为 `conflict:fact:{doc}:{targetFact}:{incomingFactOrHash}`；pending/applied/rejected 都参与抑制，防止同一冲突反复打扰。
+5. 事实级 conflict 禁止裸 `applied`。`keep_old` 删除新 H2 段；`keep_new` 删除旧段、保留新陈述，并把 `fact_id` 收敛到旧 lineage（新 ID 记 `source_id`）。两种决定落库终态均为 `applied`。文档级 conflict 仍关闭双向 active `contradicts` 边后 applied。
+6. HTTP `ResolveGovernanceProposal.decision` 与记忆管家 `memory_butler_governance_resolve` 接受 `applied | rejected | keep_old | keep_new`。
+
+### 并发验证
+
+- 联邦广播测试 repo 的搜索记录使用互斥锁和快照访问器。
+- Vault sync 测试 repo 的 chunk 读取返回锁内副本，后台 runner 断言通过锁内计数访问器轮询。
+- 生产联邦结果槽位和 Vault 单库 runner 未发现对应竞态；不因测试夹具问题修改生产并发模型。
+
+## V12.16 自然语言问句词法规范化（2026-08-17）
+
+> 对应需求 US-51。不引入新检索算法、不调用 LLM。目标是让 Agent 的完整中文问句在纯 BM25 路径上可召回。
+
+### 根因
+
+PostgreSQL `simple` 配置下，无空格的中文问句会被 `plainto_tsquery` 当成极少几个大 lexeme 做 AND；问句套话（是什么/多久/请问）并不出现在正文，整句 `word_similarity` 也达不到 `%>` 阈值。短关键词能命中，完整问法 HitRate@5 实测为 0。
+
+### 设计
+
+1. `biz/knowledge.LexicalSearchQueries` 判断问句（问号、套话、≥8 个汉字）后，去掉套话与标点，按助词切开，抽取 3–8 字 CJK 针和 ASCII 标识符，最多 7 条变体。
+2. `SearchChunksBM25` 对每个变体并行跑 tsvector + trigram；原查询维持 ≤4 字 substring，内容针放宽到 ≤8 字 substring；各路 RRF 融合。
+3. 短关键词、工单号、设备名不走针扩展，避免 n-gram 稀释排序。
+4. 30 条自然语言问法升为 BM25 硬门：HitRate@5 ≥ 0.90。拒答切片仍不得误中。
+
+### 非目标
+
+不把 300 条前缀改写当成 300 条独立事实；不上新 embedding 模型。工作台 keep_old/keep_new 见 §V12.17。
+
+## V12.17 治理提案工作台（2026-08-17）
+
+> 对应需求 US-52。后端 `keep_old`/`keep_new` 已通；本轮只补工作台二审入口，不改处置语义。
+
+### 交互
+
+- 命令面板「审核治理提案」（`review-governance`）。
+- 默认拉当前库 `status=pending`；若为空则回退写回收件箱，并显示「结果来自某库」横幅。
+- 事实段 conflict（payload 含 `target_fact_id`）：按钮仅为保留旧陈述 / 采用新陈述 / 驳回。
+- 文档级 conflict：关闭矛盾关联（`applied`）/ 驳回。
+- 孤儿词条：删除孤儿词条（`applied`，会删文档）/ 驳回。文案必须写明删除。
+
+### 分层
+
+- `features/knowledge/governance.ts` 纯函数决定按钮集。
+- `features/knowledge/api.ts` 封装 List/Resolve。
+- `GovernanceReviewDialog.vue` 仅 props/emits；`KnowledgeWorkbench` 调 API。
+
+## V12.18 问句自动混合检索（2026-08-17）
+
+> 对应需求 US-53。US-51 修好了 `SearchChunksBM25` 问句针，但 AdaptiveRouter 把带问号的中文问句判成 QuerySimple → dense-only，生产预检索用不上词法针。
+
+### 路由
+
+1. 路径 / 引号短语 / 工单号 / 全大写错误码 → `sparse`
+2. 搜索意图 semantic，或 `LooksLikeNaturalLanguageQuery`（问号、套话、≥8 汉字）→ `rrf`
+3. 其余仍按复杂度：simple=`dense`，moderate/complex=`rrf`
+4. 问句不抬 classify，避免默认 LLM MultiQuery
+
+Agent 预检索与 HTTP Search 的 auto 模式都走 AdaptiveRouter，因此词法库与语义库上的完整问句都会带上 BM25 针。
+
+## V12.19 治理定时实跑与入库自关联（2026-08-17）
+
+> 对应需求 US-54。体检结论：治理只挂在 `dream_cycle` 且默认 dry_run；vault 冷文档不抽 typed 关系；未链接提及要人点「编译双链」。本轮把低风险治理和入库关联收成后台闭环，高风险仍人工二审。
+
+### 治理工人
+
+- `KnowledgeCurateWorker`：`CurateAllTeamKnowledge(DryRun=false)`，默认 6h，启动时跑一轮。
+- 低风险实写：Hebbian decay、谓词 promote、stale 标记、distill。
+- 高风险只产 pending：contradicts、orphan、moc_emerge。工作台 `keep_old`/`keep_new` 语义不变。
+- 无团队库 `NOT_FOUND` 静默；`KNOWLEDGE_CURATE_DISABLED=1` 不装配。
+
+### 入库图谱
+
+- Vault `SetRelationHook` 与 `SetEntityHook` 同点触发 `ExtractDoc`（幂等）。热度工人仍扫热文档作补网。
+- `RebuildBlockIndex` 先 `compileOutgoingMentions` 再 parse/投影 explicit 边；不写文件、不写 `content_text`。US-45「重建不改源」仍成立。
+- 把提及写进 Markdown 仍只有 `ApplyOutgoingAutolinks` / `autolink-backfill`。
+
 

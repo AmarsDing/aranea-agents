@@ -1347,10 +1347,12 @@ Agent 构建请求
 
 | 方案 | 能力 | 默认值 | 实现位置 |
 |------|------|--------|----------|
-| P0-G3 | 每次工具调用执行超时 | 60s（`DefaultToolTimeout`） | `ToolDecorator.applyTimeout` |
-| P0-D | 工具结果大小预算 + 截断 | 10KB（`DefaultResultBudget`） | `ToolDecorator.truncateResult` |
-| P2-E | ConcurrentSafe 工具确定性缓存 | 按工具名判定（`IsCacheable`） | `ToolDecorator.lookupCache/storeCache` |
-| P1-C | 工具安全分类 | 未知默认 Exclusive | `ClassifyTool(name)` |
+| P0-G3 | 每次工具调用执行超时 | **回调链** `ToolsExecutionTimeoutSec`（0→10min）；装饰器 `Timeout=0` 不另加 60s。`plan_and_execute` 仍覆盖为 3min | `toolExecutionTimeoutHooks` + `ToolDecorator.applyTimeout` |
+| P0-D | 工具结果大小预算 + 截断/卸载 | 10KB（`DefaultResultBudget`）；超限优先卸载信封 | `ToolDecorator.truncateResult` |
+| P0-D2 | AfterTool 字符串兜底截断 | 50k runes；**仅未装饰工具**；跳过信封/预算覆盖/已截断标记 | `NewOutputSizeLimiterHook`（priority 60） |
+| P2-E | 确定性缓存 | 仅网络 ConcurrentSafe（`web_fetch`/search），默认 TTL 60s；file 族不缓存 | `IsCacheable` + `ToolDecorator.lookupCache/storeCache` |
+| P1-C | 工具安全分类 | 运行时名映射到 Registry；未知默认 Exclusive | `ClassifyTool(name)` |
+| P1-C2 | Exclusive 进程内互斥 | hostexec 族共享一把锁；文件写按 `file_name` 分锁；`list_file`/`search_*` 对目录树共享覆盖锁（与子路径写互斥，不同目录仍并行）；`read_file` 同路径共享 | `fileLockRequests` + `filePathLockTable` + `ToolDecorator.Call` |
 
 **接口设计**：
 
@@ -1361,9 +1363,11 @@ Agent 构建请求
 
 **已知限制**：
 
-- DeferredManager 延迟加载的工具不经过装饰器（框架 runner 层有自己的治理）
-- ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时和预算仍生效）
+- DeferredManager 延迟加载的工具不经过装饰器（超时仍由回调链 `ToolsExecutionTimeoutSec` 覆盖；字符串结果由 AfterTool limiter 兜底截断）
+- ToolSet 管理的工具每次 `Tools(ctx)` 创建新装饰器实例，缓存不生效（超时、预算与 Exclusive 互斥仍生效，互斥表是进程级）
 - 缓存踩踏：并发首次调用相同参数可能多次执行 inner tool（P2 优先级可接受）
+- Exclusive 互斥是进程内、非可重入；嵌套调用同一 family 会自锁（当前 hostexec/file-write 无此路径）
+- Git worktree：工作区本身是 git 仓时，LLM 文件写经 `wrapFileToolSetWithWorktree` 在 worktree 提交后合并；`provideParallelToolExecutor` 在 `ARANEA_WORKSPACE_ROOT`/`WORKSPACE_ROOT` 为 git 仓时挂上 `WorktreeIsolator`。非 git 工作区写活树，靠分层路径锁隔离。`executeOne` 在 isolator 自身 handler 为空时，把调用方 handler 放到 worktree 目录（ctx）里执行。
 
 ### 7.1.2 工具结果卸载（Result Offloading）
 
@@ -1402,6 +1406,18 @@ Agent 构建请求
 - **可观测性**：卸载记 Info 日志（tool/original_size/ref）；回退记 Warn 日志。
 
 **后续迭代（P1，未实施）**：Anthropic `clear_tool_uses` 式过期 tool response 清理（oldest-first 占位符化，保留最近 N 个），位于框架 messages 构建层，需评估 KV-cache 失效权衡，独立迭代。
+
+### 7.1.3 结果大小治理优先级
+
+三层各管各的，禁止二次裁切：
+
+| 层 | 时机 | 对象 | 行为 |
+|----|------|------|------|
+| **主裁** `ToolDecorator.truncateResult` | 工具 `Call` 返回后 | 已装饰工具 | JSON 超 `ResultBudget` → 卸载信封或截断信封（`map`） |
+| **兜底** `NewOutputSizeLimiterHook` | AfterTool priority 60 | **未装饰**字符串结果（Deferred / 部分 MCP） | 超 50k runes 就地截断并追加 `[output truncated:]` |
+| **入库** `ToolResultGate` | BeforeModel | 即将进模型的 user/tool content | 超限持久化 blob，与上两层独立 |
+
+兜底层跳过：`truncated`/`offloaded` 信封、`builtinResultBudgetOverrides` 命中的工具（如 `browser_snapshot`、`read_upstream_deliverable`）、已含 `[output truncated:` 的字符串。
 
 ### 7.2 工具注册表
 
@@ -1708,7 +1724,7 @@ func buildToolFilter(s *biz.AgentRuntimeSettings) trpctool.FilterFunc
 func buildToolRetryPolicy(s *biz.AgentRuntimeSettings) *trpctool.RetryPolicy
 ```
 
-从 `AgentRuntimeSettings` 读取重试配置（MaxAttempts、InitialInterval、BackoffFactor、MaxInterval、Jitter），注入到 `llmagent.WithToolCallRetryPolicy`。
+从 `AgentRuntimeSettings` 读取重试配置（MaxAttempts、InitialInterval、BackoffFactor、MaxInterval、Jitter），注入到 `llmagent.WithToolCallRetryPolicy`。默认 `ToolsRetryEnabled=true`；`RetryOn` 为产品层 `tools.SelectiveRetryOn`（`DefaultRetryOn` ∪ 结果级/包装瞬态失败，再 ∩ `IsRetryableTool`）：ConcurrentSafe 可重试瞬时网络/EOF、duckduckgo 等 `%v` 包装超时、以及 `web_fetch` 结果内 HTTP 429/5xx（装饰器 `FlagTransientResult` 实现 `RetryResultError`，避免框架把 `(result, nil)` 当成功）。hostexec 与文件写永不重试。Ent `tools_retry_enabled` / `tools_parallel_enabled` 与前端表单新建默认均为 true；存量 false 行由 DDL `20261228` 一次性翻成 true。
 
 ### 7.6 Memory 工具注入
 
@@ -1736,7 +1752,8 @@ internal/tools/
 │   └── toolset_prune.go             — 工具集裁剪
 ├── cache/                           — 工具结果缓存（LRU 驱逐 + TTL）
 ├── custom/                          — 自定义工具实现
-├── hostexecnorm/                    — 主机执行工具参数归一化（working_dir → workdir）
+├── hostexecnorm/                    — 主机执行参数归一化（cmd/cwd/working_dir/timeout → schema）
+├── filenorm/                        — 文件工具参数归一化（path/content → file_name/contents）
 ├── kanban/                          — 看板工具集（Bridge 拆分为 Reader/Writer/Lifecycle）
 ├── knowledge/                       — Knowledge 搜索工具
 ├── mcpobserve/                      — MCP 运行时可观测性
@@ -1794,12 +1811,14 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 
 | 文件 | 改动 |
 |------|------|
-| `internal/tools/toolset.go` | `AssemblyConfig.ShellExec.Dir` → `hostexec.NewToolSet(WithBaseDir(ShellExecDir))` |
+| `internal/tools/toolset.go` | `AssemblyConfig.ShellExec.Dir/Env` → hostexec 包装层 |
+| `internal/tools/hostexec/toolset.go` | `Dir` 通过 `WithBaseDir` 设默认 cwd；`Env` 通过 `WithBaseEnv` 注入每个子进程，并由返回值包装层脱敏 |
 | `internal/tools/trpc/toolsets.go` | `ToolsetConfig.ShellExecDir` / `ShellExecEnv`；Build 时写入 `AssemblyConfig` |
 | `internal/agent/tool_assembly.go` | `resolveToolWorkspaceRoot` + `applyToolWorkspaceDirs` |
 | `internal/tools/trpc/runtime_config.go` | `shell_exec` config 支持 `base_dir` / `shell_root` |
 | `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
-| `internal/tools/hostexecnorm` | `working_dir` → `workdir` 兼容映射 |
+| `internal/tools/hostexecnorm` | `cmd`/`cmd_line` → `command`；`working_dir`/`cwd`/`dir` → `workdir`；`timeout` → `timeout_sec` |
+| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file） |
 | `internal/tools/testexec/config.go` | 在线测试 shell 时传入 workspace |
 
 #### 7.8.4 Shell 参数与确认
@@ -1807,7 +1826,9 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | 项 | 设计 |
 |----|------|
 | 调用参数 | `command`（必填）、`workdir`（可选，相对 `workspace_root`） |
-| 兼容 | `hostexecnorm` 将 `working_dir` 映射为 `workdir` |
+| 兼容 | `hostexecnorm` 将 `cmd`/`cwd`/`working_dir`/`timeout` 映射为 `command`/`workdir`/`timeout_sec` |
+| 环境变量 | `ShellExec.Env` 作为 base env 注入命令；单次调用 `env` 可覆盖同名值 |
+| 结果脱敏 | 配置环境变量中的敏感名称/值在结构化结果返回前替换为 redaction marker |
 | 确认门控 | `tool_confirm_gate` 同时匹配 `shell_exec` 与 `exec_command`（runtime alias） |
 | Prompt | `RuntimeCapabilityCue` 表述默认 cwd=工作区 |
 

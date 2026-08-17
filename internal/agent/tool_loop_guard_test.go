@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -303,5 +305,121 @@ func TestLoopGuardCountsIsolatedAcrossNodes(t *testing.T) {
 	// diagnose 侧第 3 次同样被拦（自身计数未被 remediate 干扰）。
 	if err := runLoopGuardTurn(t, g, diagnose, "gns3_exec", args, "eth1 state DOWN", nil); err == nil {
 		t.Fatal("diagnose 3rd identical call should be blocked")
+	}
+}
+
+// 同一轮 LLM 响应并行发射多个相同调用时，BeforeTool 尚未见到 AfterTool 计数。
+// in-flight 窗口只放行第一次，其余立即拦截；不计入饱和止损（避免首轮扇出直接 StopError）。
+func TestLoopGuardBlocksParallelDuplicateInSameBatch(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-parallel")
+	before := g.beforeHook()
+	after := g.afterHook()
+	argsJSON := `{"device":"sw1","cmd":"ip link show"}`
+	beforeArgs := &trpctool.BeforeToolArgs{ToolName: "gns3_exec", Arguments: []byte(argsJSON)}
+
+	const n = 4
+	errs := make([]error, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = before.HandleBeforeTool(ctx, beforeArgs)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	allowed, blocked := 0, 0
+	for _, err := range errs {
+		if err == nil {
+			allowed++
+			continue
+		}
+		blocked++
+		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+			t.Fatalf("parallel block should carry loop guard marker, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "并行") {
+			t.Fatalf("parallel block should mention parallel duplicate, got %q", err.Error())
+		}
+		if _, ok := trpcagent.AsStopError(err); ok {
+			t.Fatal("first-batch parallel duplicates must not escalate to StopError")
+		}
+	}
+	if allowed != 1 {
+		t.Fatalf("exactly one parallel duplicate should run, got allowed=%d blocked=%d", allowed, blocked)
+	}
+	if blocked != n-1 {
+		t.Fatalf("remaining parallel duplicates should be blocked, got allowed=%d blocked=%d", allowed, blocked)
+	}
+
+	if _, err := after.HandleAfterTool(ctx, &trpctool.AfterToolArgs{
+		ToolName: "gns3_exec", Arguments: []byte(argsJSON), Result: "eth1 state DOWN",
+	}); err != nil {
+		t.Fatalf("after hook error: %v", err)
+	}
+	// in-flight 释放后，串行第二次成功调用仍放行（取证+确认额度）。
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", argsJSON, "eth1 state DOWN", nil); err != nil {
+		t.Fatalf("serial 2nd success after parallel winner should pass, got %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", argsJSON, "eth1 state DOWN", nil); err == nil {
+		t.Fatal("serial 3rd identical call should be blocked")
+	}
+}
+
+func TestLoopGuardAllowsParallelDifferentArgs(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-loop-parallel-diff")
+	before := g.beforeHook()
+	calls := []string{`{"cmd":"a"}`, `{"cmd":"b"}`, `{"cmd":"c"}`}
+	start := make(chan struct{})
+	errs := make([]error, len(calls))
+	var wg sync.WaitGroup
+	wg.Add(len(calls))
+	for i, args := range calls {
+		go func(i int, args string) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = before.HandleBeforeTool(ctx, &trpctool.BeforeToolArgs{
+				ToolName: "gns3_exec", Arguments: []byte(args),
+			})
+		}(i, args)
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("different-args parallel call %d should pass, got %v", i+1, err)
+		}
+	}
+}
+
+func TestLoopGuardReleasesStaleInflight(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-stale-inflight")
+	before := g.beforeHook()
+	args := &trpctool.BeforeToolArgs{ToolName: "web_fetch", Arguments: []byte(`{"urls":["https://x"]}`)}
+
+	if _, err := before.HandleBeforeTool(ctx, args); err != nil {
+		t.Fatalf("first call should run: %v", err)
+	}
+	if _, err := before.HandleBeforeTool(ctx, args); err == nil {
+		t.Fatal("second call should block as in-flight parallel duplicate")
+	}
+
+	g.mu.Lock()
+	e := g.entries[loopGuardInvocationKey(ctx)]
+	sig := loopGuardSignature(args.ToolName, args.Arguments)
+	slot := e.inflight[sig]
+	slot.since = time.Now().Add(-loopGuardInflightStale - time.Second)
+	e.inflight[sig] = slot
+	g.mu.Unlock()
+
+	if _, err := before.HandleBeforeTool(ctx, args); err != nil {
+		t.Fatalf("stale inflight should be treated as released, got %v", err)
 	}
 }

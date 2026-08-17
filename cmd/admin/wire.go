@@ -227,13 +227,25 @@ func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRegistr
 // multi_tool_use.parallel). The handler is nil at construction because tool
 // dispatch is agent/session-specific; callers supply the handler at call time
 // via BatchExecuteSpiritTools, which reuses this executor's concurrency
-// configuration. Returns nil when ARANEA_PARALLEL_AUTO is disabled so callers
-// transparently fall back to serial execution.
+// configuration and worktree isolator (attached when ARANEA_WORKSPACE_ROOT or
+// WORKSPACE_ROOT is a git repository). Returns nil when ARANEA_PARALLEL_AUTO
+// is disabled so callers transparently fall back to serial execution.
 func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecutor {
 	if !intent.AllowAutoParallel() {
 		return nil
 	}
-	return tools.NewParallelToolExecutor(nil, lg)
+	var opts []tools.ExecutorOption
+	if root := tools.LookupGitRoot(tools.WorkspaceRootFromEnv()); root != "" {
+		iso, err := tools.NewWorktreeIsolator(root, nil, lg)
+		if err != nil {
+			lg.Warn("parallel tool worktree isolator skipped",
+				loggateway.StepID("tool.parallel.worktree"),
+				loggateway.Err(err))
+		} else {
+			opts = append(opts, tools.WithWorktreeIsolator(iso))
+		}
+	}
+	return tools.NewParallelToolExecutor(nil, lg, opts...)
 }
 
 func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, grants biztool.ToolGrantStore, lg loggateway.Logger) *biztool.ToolUsecase {
@@ -1484,12 +1496,14 @@ func provideKnowledgeWriteBackGraphHook(
 // 同时把 applier 回注 usecase（G1-B2：树内新建文档立即索引，不等 45s 轮询）。
 // M0：SetCompiler 接入模态路由抽取器（office/图片 → Markdown；nil 时二进制降级 error）。
 // M2.1：SetEntityHook 接入实体共现轨（按 docID+contentHash 幂等，safego 异步
-// 不阻塞索引主路径；nil 时跳过）。
+// 不阻塞索引主路径；nil 时跳过）。M2.2：SetRelationHook 接入 typed 关系抽取
+// （冷文档与上传路径同钩子，不再只等热度工人）。
 func provideVaultSyncSupervisor(
 	uc *biz.KnowledgeUsecase,
 	filer *bizknowledge.VaultFiler,
 	embedder knowledge.Embedder,
 	entityPipeline *knowledge.EntityPipeline,
+	relationExtractor *knowledge.RelationExtractor,
 	registry *knowledge.ExtractorRegistry,
 	lg loggateway.Logger,
 ) *knowledge.VaultSyncSupervisor {
@@ -1501,6 +1515,19 @@ func provideVaultSyncSupervisor(
 			safego.Go(appctx.Ctx(), "knowledge.entity_pipeline", func() {
 				if _, err := entityPipeline.ProcessDoc(appctx.Ctx(), collectionID, docID); err != nil {
 					lg.Warn("entity pipeline failed",
+						loggateway.Str("collection_id", collectionID),
+						loggateway.Str("doc_id", docID),
+						loggateway.Err(err),
+					)
+				}
+			})
+		})
+	}
+	if relationExtractor != nil {
+		applier.SetRelationHook(func(collectionID, docID string) {
+			safego.Go(appctx.Ctx(), "knowledge.relation_extract", func() {
+				if _, err := relationExtractor.ExtractDoc(appctx.Ctx(), docID); err != nil {
+					lg.Warn("vault relation extract failed",
 						loggateway.Str("collection_id", collectionID),
 						loggateway.Str("doc_id", docID),
 						loggateway.Err(err),
@@ -1786,6 +1813,16 @@ func provideKnowledgeIndexRepairWorker(
 	lg loggateway.Logger,
 ) *jobs.KnowledgeIndexRepairWorker {
 	return jobs.NewKnowledgeIndexRepairWorker(0, svc, lg)
+}
+
+func provideKnowledgeCurateWorker(
+	uc *biz.KnowledgeUsecase,
+	lg loggateway.Logger,
+) *jobs.KnowledgeCurateWorker {
+	if uc == nil || jobs.KnowledgeCurateDisabled() {
+		return nil
+	}
+	return jobs.NewKnowledgeCurateWorker(0, uc, lg)
 }
 
 // knowledgeDistillWiring M4 distill 装配标记（wire 锚点：仅表示 Set 回注已完成）。
@@ -3003,6 +3040,7 @@ type wireOut struct {
 	KnowledgeCitationBackfill   *jobs.KnowledgeCitationBackfillWorker
 	KnowledgeRelationExtract    *jobs.KnowledgeRelationExtractWorker
 	KnowledgeIndexRepair        *jobs.KnowledgeIndexRepairWorker
+	KnowledgeCurate             *jobs.KnowledgeCurateWorker
 	MemorySleepTime             *jobs.MemorySleepTimeWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
@@ -3061,6 +3099,7 @@ func provideWireOut(
 	knowledgeCitationBackfill *jobs.KnowledgeCitationBackfillWorker,
 	knowledgeRelationExtract *jobs.KnowledgeRelationExtractWorker,
 	knowledgeIndexRepair *jobs.KnowledgeIndexRepairWorker,
+	knowledgeCurate *jobs.KnowledgeCurateWorker,
 	memorySleepTime *jobs.MemorySleepTimeWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
@@ -3106,6 +3145,7 @@ func provideWireOut(
 		KnowledgeCitationBackfill:   knowledgeCitationBackfill,
 		KnowledgeRelationExtract:    knowledgeRelationExtract,
 		KnowledgeIndexRepair:        knowledgeIndexRepair,
+		KnowledgeCurate:             knowledgeCurate,
 		MemorySleepTime:             memorySleepTime,
 		MemoryEpisodeBackfill:       memoryEpisodeBackfill,
 		MemoryDataMigration:         memoryDataMigration,
@@ -3907,6 +3947,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideKnowledgeCitationBackfillWorker,
 		provideKnowledgeRelationExtractWorker,
 		provideKnowledgeIndexRepairWorker,
+		provideKnowledgeCurateWorker,
 		provideKnowledgeEntityPipeline,
 		provideKnowledgeRelationExtractor,
 		provideKnowledgeWriteBackGraphHook,

@@ -369,6 +369,11 @@ var ddlMigrations = []ddlMigration{
 	// 存量行按 created_at+72h 回填（多数立即过期，读径惰性清理）；
 	// 新授权由 biz GrantTool 写 now+72h，读径过滤过期行。幂等可重跑。
 	{Version: 20261227, Name: "tool_grants_expires_at", Func: ddlToolGrantsExpiresAt},
+	// 20261228 tools_retry_parallel_default_on: product default flipped to
+	// true (selective retry + LLM parallel tools). Ent/frontend defaults
+	// already true for new rows; this one-shot UPDATE enables existing
+	// agents that still carry the historical false. Idempotent: value-guarded.
+	{Version: 20261228, Name: "tools_retry_parallel_default_on", Func: ddlToolsRetryParallelDefaultOn},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.
@@ -1375,6 +1380,58 @@ func ddlToolGrantsExpiresAt(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d
 		lg.Info("tool_grants expires_at backfilled",
 			loggateway.StepID("data.ddl_migration.tool_grants_expires_at"),
 			loggateway.Int("rows_updated", int(n)))
+	}
+	return nil
+}
+
+// ddlToolsRetryParallelDefaultOn flips historical false defaults for
+// tools_retry_enabled / tools_parallel_enabled so existing agents pick up
+// selective retry and parallel tool calls. Operators who want them off can
+// disable per agent in settings after this one-shot backfill.
+// Idempotent: only FALSE rows are updated. TRUE/FALSE literals (see
+// ddlIntentPassDefaultOnMigration).
+func ddlToolsRetryParallelDefaultOn(ctx context.Context, rawDB *sql.DB, _ *ent.Client, d Dialect, lg loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	exists, err := d.TableExists(ctx, rawDB, "agent_runtime_settings")
+	if err != nil {
+		return fmt.Errorf("tools_retry_parallel_default_on: check table: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tools_retry_parallel_default_on tx: %w", err)
+	}
+	defer tx.Rollback()
+	resRetry, err := tx.ExecContext(ctx, `
+		UPDATE agent_runtime_settings
+		SET tools_retry_enabled = TRUE
+		WHERE tools_retry_enabled = FALSE
+	`)
+	if err != nil {
+		return fmt.Errorf("migrate tools_retry_enabled default on: %w", err)
+	}
+	resPar, err := tx.ExecContext(ctx, `
+		UPDATE agent_runtime_settings
+		SET tools_parallel_enabled = TRUE
+		WHERE tools_parallel_enabled = FALSE
+	`)
+	if err != nil {
+		return fmt.Errorf("migrate tools_parallel_enabled default on: %w", err)
+	}
+	nRetry, _ := resRetry.RowsAffected()
+	nPar, _ := resPar.RowsAffected()
+	if nRetry > 0 || nPar > 0 {
+		lg.Info("tools_retry_parallel_default_on migration applied",
+			loggateway.StepID("data.migration.tools_retry_parallel_default_on"),
+			loggateway.Int("retry_rows", int(nRetry)),
+			loggateway.Int("parallel_rows", int(nPar)))
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tools_retry_parallel_default_on migration: %w", err)
 	}
 	return nil
 }

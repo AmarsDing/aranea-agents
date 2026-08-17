@@ -136,6 +136,16 @@
       @switch-home="onSwitchPendingHome"
     />
 
+    <GovernanceReviewDialog
+      v-model:open="govOpen"
+      :items="govItems"
+      :home-name="govHome.name"
+      :home-is-current="!govHome.redirected"
+      :loading-id="govLoadingId"
+      @resolve="onResolveGovernance"
+      @switch-home="onSwitchGovHome"
+    />
+
     <!-- 脏关闭确认（SP2-8：kb-portal——q-dialog teleport 到 body 后重挂深空令牌） -->
     <q-dialog :model-value="!!confirmCloseTab" content-class="kb-portal" @update:model-value="onCancelClose">
       <GlassPanel strong :title="t('knowledgePage.workbench.closeConfirmTitle')" class="kb-workbench__confirm">
@@ -183,6 +193,7 @@ import QuickSwitcher from './QuickSwitcher.vue';
 import CommandPalette from './CommandPalette.vue';
 import SearchPanel, { type SearchItem } from './SearchPanel.vue';
 import WritebackReviewDialog from '../WritebackReviewDialog.vue';
+import GovernanceReviewDialog from '../GovernanceReviewDialog.vue';
 import {
   applyOutgoingAutolink,
   applyWriteBackPending,
@@ -192,11 +203,13 @@ import {
   getCollectionHealth,
   getWriteBackHome,
   listCollectionExperts,
+  listGovernanceProposals,
   listRecentLinkUses,
   listWriteBackPending,
   previewOutgoingAutolink,
   recordLinkUse,
   rebuildKnowledgeIndex,
+  resolveGovernanceProposal,
   searchKnowledge,
 } from '../../../features/knowledge/api';
 import { COMMAND_DEFS, pushMru, type CommandId, type CommandItem } from '../../../features/knowledge/commands';
@@ -206,11 +219,13 @@ import type { KnowledgeWorkbench as Workbench } from '../../../features/knowledg
 import type { DragFileRef } from '../../../features/knowledge/vaultTreeUi';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../../features/knowledge/useVaultExplorer';
 import type {
+  GovernanceProposalItem,
   KnowledgeCollection,
   KnowledgeDocument,
   PendingWriteBackItem,
   VaultTreeNode,
 } from '../../../features/knowledge/types';
+import type { GovernanceDecision } from '../../../features/knowledge/governance';
 
 const props = defineProps<{
   workbench: Workbench;
@@ -645,6 +660,60 @@ async function onApplyPending(factIds: string[]) {
   }
 }
 
+const govOpen = ref(false);
+const govItems = ref<GovernanceProposalItem[]>([]);
+const govHome = ref<WriteBackTarget>({ id: '', name: '', redirected: false });
+const govLoadingId = ref<number | undefined>(undefined);
+
+async function loadGovernanceItems(collectionId: string): Promise<GovernanceProposalItem[]> {
+  return listGovernanceProposals(collectionId, 'pending');
+}
+
+async function reviewGovernance() {
+  if (!props.currentVaultId) return;
+  try {
+    let items = await loadGovernanceItems(props.currentVaultId);
+    let home: WriteBackTarget = { id: props.currentVaultId, name: '', redirected: false };
+    if (!items.length) {
+      const inbox = await getWriteBackHome().catch(() => null);
+      if (inbox?.found && inbox.collection_id && inbox.collection_id !== props.currentVaultId) {
+        items = await loadGovernanceItems(inbox.collection_id);
+        if (items.length) {
+          home = { id: inbox.collection_id, name: inbox.name, redirected: true };
+        }
+      }
+    }
+    if (!items.length) {
+      $q.notify({ type: 'info', message: t('knowledgePage.workbench.govEmpty') });
+      return;
+    }
+    govHome.value = home;
+    govItems.value = items;
+    govOpen.value = true;
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  }
+}
+
+function onSwitchGovHome() {
+  if (govHome.value.id) emit('switch-vault', govHome.value.id);
+}
+
+async function onResolveGovernance(payload: { id: number; decision: GovernanceDecision }) {
+  govLoadingId.value = payload.id;
+  try {
+    await resolveGovernanceProposal(payload.id, payload.decision);
+    govItems.value = govItems.value.filter((it) => it.id !== payload.id);
+    $q.notify({ type: 'positive', message: t('knowledgePage.workbench.govDone') });
+    if (!govItems.value.length) govOpen.value = false;
+    emit('refresh-tree');
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
+  } finally {
+    govLoadingId.value = undefined;
+  }
+}
+
 function confirmBackfillAutolink() {
   if (!props.currentVaultId) return;
   $q.dialog({
@@ -710,6 +779,9 @@ async function runCommand(id: CommandId) {
       break;
     case 'review-writeback':
       void reviewWriteBackPending();
+      break;
+    case 'review-governance':
+      void reviewGovernance();
       break;
     case 'close-tab':
       if (active) props.workbench.closeTab(active.docId);

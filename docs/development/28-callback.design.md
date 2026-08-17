@@ -119,8 +119,14 @@ DeepSeek prompt caching 从 token 0 开始匹配：system-message 前缀内任�
 | 组件 | 说明 |
 |------|------|
 | `buildCallbackChainOptions` | 按链内容注入 `WithAgent/Model/ToolCallbacks` |
-| `productCallbackChain` | 指标遥测 + 工具链（guard/cache/timing/confirm/recorder/circuit-breaker 等） |
+| `productCallbackChain` | 指标遥测 + 工具链（loop-guard/cache/timing/confirm/recorder/circuit-breaker/output-limiter 等） |
 | `productCallbackChainWithRegistry` | 返回 Chain + CircuitBreakerRegistry |
+
+**工具循环守卫**（`internal/agent/tool_loop_guard.go`，2026-08-16 / 并行窗口 2026-08-17）：
+
+- 串行：同签名+同成功结果连续 2 次放行，第 3 次起拦截（error 回灌模型）；节点内拦截满 5 次升级 `StopError`。
+- 并行：同一轮相同签名只放行第一次（`inflight`）；其余立即拦截。并行拦截**不计入**饱和次数，避免首轮扇出直接终止节点。
+- 隔离键：`InvocationID|AgentName`，图谱节点互不连坐。
 
 ### 4.3 PluginManager
 
@@ -259,7 +265,7 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | `internal/agent/callbacks/*.go` | Chain 类型与适配 |
 | `internal/agent/callback_chain.go` | 链装配入口 |
 | `internal/agent/product_chain_builtins.go` | 产品固定链（指标等） |
-| `internal/agent/tool_*.go` | 工具确认、缓存、计时、记录、熔断、命令安全 |
+| `internal/agent/tool_*.go` | 工具确认、缓存、计时、记录、熔断、命令安全、循环守卫、结果兜底截断 |
 | `internal/plugin/trpc/manager.go` | 聚合 Hook + Plugin（含编排边界注释） |
 | `internal/plugin/trpc/hook_*.go` | Hook 动作执行（callbacks/modify/notify/audit/events/resilience/retry_worker） |
 | `internal/plugin/trpc/orchestration_policy.go` | 编排策略（统一 Runner） |

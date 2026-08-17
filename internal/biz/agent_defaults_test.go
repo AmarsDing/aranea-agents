@@ -106,3 +106,17 @@ func TestDefaultAgentRuntimeSettings_ToolsDenyFrameworkMemory(t *testing.T) {
 		t.Errorf("expected 5 denied tools, got %d", len(list))
 	}
 }
+
+func TestDefaultAgentRuntimeSettings_ToolsRetryEnabled(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if !s.ToolsRetryEnabled {
+		t.Error("ToolsRetryEnabled should default to true (selective retry for ConcurrentSafe tools)")
+	}
+}
+
+func TestDefaultAgentRuntimeSettings_ToolsParallelEnabled(t *testing.T) {
+	s := DefaultAgentRuntimeSettings()
+	if !s.ToolsParallelEnabled {
+		t.Error("ToolsParallelEnabled should default to true")
+	}
+}

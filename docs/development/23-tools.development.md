@@ -64,8 +64,13 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Tool 参数 Schema | ✅ 已实现 | `parameters_json` / `result_schema_json` / `config_schema_json` |
 | Tool Callbacks | ✅ 已实现 | AfterTool 记录 ToolInvocation |
 | Tool Filter | ✅ 已实现 | ExcludeToolNamesFilter (deny 列表) |
-| Tool Retry | ✅ 已实现 | RetryPolicy (可配置 maxAttempts/backoff/jitter) |
-| Tool 并行 | ✅ 已实现 | WithEnableParallelTools（默认开启）+ ToolDecorator 保护（超时/预算/缓存） |
+| Tool Retry | ✅ 已实现 | 默认开启；`SelectiveRetryOn`：ConcurrentSafe 瞬时网络/EOF + 结果级 HTTP 429/5xx + `%v` 包装超时；Exclusive/写文件不重试。Ent/前端新建默认 true；存量 false 由 DDL 20261228 翻 true |
+| Tool 并行 | ✅ 已实现 | WithEnableParallelTools（默认开启）+ ToolDecorator（Exclusive 互斥 + 预算/缓存；超时由回调链） |
+| **工具超时单一来源** | ✅ 已实现 | 装饰器 Timeout=0；`ToolsExecutionTimeoutSec`（默认 10min）经 callback 生效 |
+| **Exclusive 进程内互斥** | ✅ 已实现 | hostexec 族串行；文件写按路径互斥；`read_file` 同路径共享；`list_file`/`search_*` 覆盖子树与写互斥（单表+条件变量，无父子锁序死锁）；`StreamableCall` 持锁至流结束 |
+| **参数别名归一** | ✅ 已实现 | `hostexecnorm`：cmd/cwd/timeout（含字符串数字）；`filenorm`：path/content/old/new → schema 字段 |
+| **分层文件锁 + worktree** | ✅ 已实现 | list/search 覆盖子树与写互斥；git 工作区 LLM 写走 worktree 合并；Wire 并行执行器按环境根挂 isolator |
+| **结果大小一层主裁** | ✅ 已实现 | 装饰器预算/卸载为主；AfterTool limiter 仅兜底未装饰字符串，跳过信封与预算覆盖 |
 | Memory Tools | ✅ 已实现 | memorytool.DefaultTools() (5 个标准工具) |
 | Knowledge Search | ✅ 已实现 | knowledgepkg.NewSearchTool() + WithRetriever |
 | MCP ToolSet | ✅ 已实现 | trpcmcp.NewMCPToolSet (stdio/sse/streamable_http) |
@@ -79,6 +84,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | TRPC 需确认 | ✅ 已实现 | `ApplyConfirmationPolicy` + BeforeTool `blocked` |
 | 调用统计闭环 | ✅ 已实现 | `duration_ms` + `p95_duration_ms` + Prometheus + 列表 SQL 聚合 |
 | **工作区统一（file+shell）** | ✅ 已实现 | `applyToolWorkspaceDirs` + `ShellExecDir` + hostexec `WithBaseDir` |
+| **shell 环境注入与脱敏** | ✅ 已实现 | hostexec `WithBaseEnv` + redacting ToolSet |
 | **shell 参数 schema** | ✅ 已实现 | seed `workdir`；`hostexecnorm` 兼容 `working_dir` |
 | **confirm 覆盖 exec_command** | ✅ 已实现 | `runtimeConfirmAliases`：`exec_command` ↔ `shell_exec` |
 | **workspace_exec 装配** | ✅ 已修复 | registry 不独立挂载 nil executor；仅 CodeExecutor 路径 |
@@ -278,6 +284,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | TW-5-08 | 更新 `RuntimeCapabilityCue` | `internal/agent/prompt.go` | 口径与实现一致 | ✅ |
 | TW-5-09 | TestTool shell 传 workspace | `internal/tools/testexec/config.go` | 在线测试可跑 | ✅ |
 | TW-5-10 | `claude_code` 默认 `workspace_root` | `internal/agent/tool_assembly.go`, `internal/tools/trpc/runtime_config.go` | 未配 claude_code_dir 时回退 | ✅ |
+| TW-5-13 | `ShellExecEnv` 注入 hostexec base env 并保持结果脱敏 | `internal/tools/hostexec/toolset.go` | `TestBuildHostexecToolSetInjectsAndRedactsEnvironment` | ✅ |
 
 **Phase 5.2（P2，可选同迭代）**：
 
@@ -291,6 +298,7 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] 设置 `ARANEA_WORKSPACE_ROOT` 为测试项目根（单元测试 + 装配路径）
 - [x] 启用 `shell_exec` + Agent profile 允许 runtime
 - [x] `exec_command` 在 workspace 内执行（`TestAssemble_hostexecUsesShellExecDir`）
+- [x] `ShellExecEnv` 在命令中可读取，敏感值不出现在工具结果
 - [x] file 与 shell 共用 `resolveToolWorkspaceRoot`
 - [x] 拒绝 tool_confirm → `blocked`（`exec_command` 别名覆盖）
 - [x] 无需 App 壳；Web 联调即可验证

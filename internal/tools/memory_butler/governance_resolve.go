@@ -19,7 +19,7 @@ import (
 
 type governanceResolveInput struct {
 	ProposalID int64  `json:"proposal_id" jsonschema:"description=提案ID（从 governance_proposals 列表获取）,required"`
-	Decision   string `json:"decision" jsonschema:"description=二审决定：applied=批准执行 / rejected=拒绝,required,enum=applied,enum=rejected"`
+	Decision   string `json:"decision" jsonschema:"description=二审决定：applied=批准执行 / rejected=拒绝 / keep_old=事实冲突保留旧段 / keep_new=事实冲突保留新段并继承旧 fact_id,required"`
 }
 
 type governanceResolveOutput struct {
@@ -37,9 +37,11 @@ func newGovernanceResolveTool(deps Deps) trpctool.Tool {
 			return governanceResolveOutput{}, fmt.Errorf("proposal_id must be positive, got %d", input.ProposalID)
 		}
 		decision := strings.ToLower(strings.TrimSpace(input.Decision))
-		if decision != bizknowledge.ProposalStatusApplied && decision != bizknowledge.ProposalStatusRejected {
-			return governanceResolveOutput{}, fmt.Errorf("decision must be %q or %q, got %q",
-				bizknowledge.ProposalStatusApplied, bizknowledge.ProposalStatusRejected, input.Decision)
+		if decision != bizknowledge.ProposalStatusApplied &&
+			decision != bizknowledge.ProposalStatusRejected &&
+			decision != bizknowledge.ProposalDecisionKeepOld &&
+			decision != bizknowledge.ProposalDecisionKeepNew {
+			return governanceResolveOutput{}, fmt.Errorf("decision must be applied, rejected, keep_old, or keep_new, got %q", input.Decision)
 		}
 		if err := deps.Knowledge.ResolveGovernanceProposal(ctx, input.ProposalID, decision); err != nil {
 			return governanceResolveOutput{}, err
@@ -54,6 +56,6 @@ func newGovernanceResolveTool(deps Deps) trpctool.Tool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("memory_butler_governance_resolve"),
-		function.WithDescription("人工二审知识库治理提案：applied=批准执行，rejected=拒绝。仅在用户明确指示时调用，禁止未经用户确认自主批量二审。"),
+		function.WithDescription("人工二审知识库治理提案：applied=批准执行，rejected=拒绝，keep_old=事实冲突保留旧段，keep_new=保留新段并继承旧 fact_id。仅在用户明确指示时调用，禁止未经用户确认自主批量二审。"),
 	)
 }

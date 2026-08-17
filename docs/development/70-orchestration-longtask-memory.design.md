@@ -976,6 +976,7 @@ func (e *ParallelToolExecutor) executeLayer(ctx, calls []ToolCall) []ToolResult 
 > - **信号量限流**：新增 `semaphore` 字段（`chan struct{}`，容量 `maxConcurrency`），在 goroutine 启动前 acquire、退出时 release，防止突发 layer 耗尽 goroutine
 > - **预分配 results 切片**：`results := make([]ToolResult, len(calls))` 按索引写入，避免 `append` 竞态（无需 `sync.Mutex` 保护）
 > - **ctx 取消传播**：`safego.Go` 内部检查 `ctx.Err()`，ctx 取消时未启动的 goroutine 跳过执行
+> - **依赖失败传播**：每层执行前读取前序 `ToolResult`；任一 `DependsOn` 失败时生成失败结果并跳过 handler，失败继续向后续层传播；同层及其他分支的独立调用不受影响
 > - **WorktreeIsolator 错误日志化**：审查修复（红线 #22）—— `mergeWorktree`/`removeWorktree` 中的 `runGit` 错误不再用 `_ =` 吞掉，改为 `lg.Warn` 记录（best-effort 清理，不阻断主流程）
 
 ### 8.2 WorktreeIsolator
@@ -1005,6 +1006,8 @@ func (i *WorktreeIsolator) Execute(ctx, call ToolCall) ToolResult {
 ```
 
 > 打标点落地（2026-07-23，Graph Engineering 评审 Phase C）：`ToolCall.IsolationStrategy` 的统一分类点为 `tools.IsolationStrategyForTool(toolName)`——先经 `alias.RuntimeToolNameAliases` 归一化 UI 别名（`write_file→save_file`、`edit_file→diff_edit`），再匹配文件写工具集 `{save_file, diff_edit, patch_file, replace_content}` → `IsolationStrategyWorktree`；只读文件工具（`read_file`/`list_file`/`search_*`）与无关工具返回 `""` 直接执行。ToolCall 构造点统一经此函数打标，分类保持一致。E2E 验证 `TestBatchExecuteSpiritTools_ParallelWorktreeFileOps`：两个并发 `save_file` 各自在独立 worktree 提交不同文件，双双合并回主仓（首个 ff、次个 --no-ff）且 HEAD 前进。
+>
+> LLM 框架并行路径（`WithEnableParallelTools`）不走 `ParallelToolExecutor`：非 git 工作区文件工具写入工作区原目录，隔离方式是分层路径锁（写按 `file_name`、`list_file`/`search_*` 覆盖子树）。工作区是 git 仓时，`wrapFileToolSetWithWorktree` 把写操作放到 worktree 提交后合并。
 
 ### 8.3 TransactionSandbox
 

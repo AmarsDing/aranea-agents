@@ -340,6 +340,16 @@ export type PendingWriteBackItem = {
   source: string;
 };
 
+export type GovernanceProposalItem = {
+  id: number;
+  collection_id: string;
+  kind: string;
+  risk: string;
+  status: string;
+  payload_json: string;
+  created_at: string;
+};
+
 /** 工作区写回落点（US-46）：团队收件箱或第一个 team 库；found=false 表示尚未创建。 */
 export type WriteBackHome = {
   found: boolean;

@@ -313,4 +313,9 @@ func TestKnowledgeService_ResolveGovernanceProposal_Validation(t *testing.T) {
 			t.Errorf("%+v must be BadRequest", req)
 		}
 	}
+	if _, err := svc.ResolveGovernanceProposal(context.Background(), &v1.ResolveGovernanceProposalRequest{
+		Id: 1, Decision: "keep_old",
+	}); err == nil {
+		t.Fatal("keep_old on a non-conflict stub proposal must fail in biz, not be ignored")
+	}
 }

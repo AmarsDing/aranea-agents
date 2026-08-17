@@ -46,7 +46,7 @@ func TestPlanAndExecuteTimeout_CoversSubPhaseBudgets(t *testing.T) {
 }
 
 // TestToolDecorator_PerToolTimeoutOverride 端到端验证：名为 plan_and_execute
-// 的工具装饰后获得扩展截止预算；普通工具仍为默认 60s。
+// 的工具装饰后获得扩展截止预算；普通工具 Timeout=0 时不另加 60s，并尊重外层截止。
 func TestToolDecorator_PerToolTimeoutOverride(t *testing.T) {
 	t.Parallel()
 	mkTool := func(name string) trpctool.CallableTool {
@@ -68,8 +68,20 @@ func TestToolDecorator_PerToolTimeoutOverride(t *testing.T) {
 		t.Fatalf("call failed: %v", err)
 	}
 	plainBudget := got2.(time.Duration)
-	if plainBudget < DefaultToolTimeout-time.Second || plainBudget > DefaultToolTimeout {
-		t.Fatalf("read_file budget = %v, want ~%v", plainBudget, DefaultToolTimeout)
+	if plainBudget != 0 {
+		t.Fatalf("read_file budget = %v, want 0 (defer to caller deadline)", plainBudget)
+	}
+
+	outer := 10 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), outer)
+	defer cancel()
+	got3, err := plain.Call(ctx, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("call with outer deadline failed: %v", err)
+	}
+	honored := got3.(time.Duration)
+	if honored < outer-time.Second || honored > outer {
+		t.Fatalf("read_file honored outer budget = %v, want ~%v", honored, outer)
 	}
 }
 

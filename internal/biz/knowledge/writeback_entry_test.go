@@ -67,6 +67,23 @@ func TestReplaceH2BlockContaining(t *testing.T) {
 	}
 }
 
+func TestRemoveH2BlockContaining(t *testing.T) {
+	body := "# 词条\n\n## preference\n\n旧陈述。\n\n- fact_id: `fid-old`\n\n## decision\n\n新陈述。\n\n- fact_id: `fid-new`\n"
+	got, ok := removeH2BlockContaining(body, "fact_id: `fid-new`")
+	if !ok {
+		t.Fatal("want removed")
+	}
+	if strings.Contains(got, "新陈述。") || strings.Contains(got, "fid-new") {
+		t.Fatalf("new section still present: %q", got)
+	}
+	if !strings.Contains(got, "旧陈述。") || !strings.Contains(got, "fid-old") {
+		t.Fatalf("old section was removed: %q", got)
+	}
+	if _, ok = removeH2BlockContaining(body, "fact_id: `missing`"); ok {
+		t.Fatal("missing marker must return false")
+	}
+}
+
 // writeBackEntryFixture 装配词条写回测试环境：内存文档/集合存根 + 内存解析索引。
 type writeBackEntryFixture struct {
 	repo        *mockRepo

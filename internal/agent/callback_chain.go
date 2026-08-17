@@ -181,9 +181,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		if ag.Settings.ToolsCommandSafetyEnabled {
 			entries = append(entries, newCommandSafetyBeforeHook(lg))
 		}
-		// Output size limiter: truncate oversized tool results to prevent
-		// context window overflow. Runs after the tool recorder (priority 50)
-		// so the original size is logged before truncation.
+		// Output size limiter: fallback truncation for undecorated string
+		// results. Decorator envelopes / budget-override tools are skipped.
+		// Runs after the tool recorder (priority 50) so original size is logged.
 		entries = append(entries, newOutputSizeLimiterAfterHook(lg))
 	}
 

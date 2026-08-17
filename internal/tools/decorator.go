@@ -23,8 +23,9 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// DefaultToolTimeout is the default per-call timeout applied by ToolDecorator
-// when ToolDecoratorConfig.Timeout is zero.
+// DefaultToolTimeout is the named 60s decorator timeout for callers that
+// explicitly want an inner deadline. Timeout=0 does not use this value;
+// it defers to the caller/callback-chain deadline (ToolsExecutionTimeoutSec).
 const DefaultToolTimeout = 60 * time.Second
 
 // 2026-08-06 P0-3 工具预算治理（20:45 会话 plan_and_execute budget exhaustion
@@ -46,8 +47,9 @@ const (
 )
 
 // builtinTimeoutOverrides maps tool-name suffixes to per-tool execution
-// timeouts, overriding DefaultToolTimeout. Suffix-based matching (consistent
-// with budgetOverrideForTool) so ToolSet prefixes are handled transparently.
+// timeouts. Suffix-based matching (consistent with budgetOverrideForTool)
+// so ToolSet prefixes are handled transparently. These overrides still
+// apply when ToolDecoratorConfig.Timeout is 0.
 var builtinTimeoutOverrides = map[string]time.Duration{
 	"plan_and_execute": PlanAndExecuteTimeout,
 }
@@ -144,10 +146,13 @@ const truncationEnvelopeOverhead = 200
 
 // ToolDecoratorConfig configures the ToolDecorator behavior.
 type ToolDecoratorConfig struct {
-	Timeout      time.Duration // 0 = use DefaultToolTimeout
+	Timeout      time.Duration // 0 = no decorator timeout; honor caller deadline
 	ResultBudget *ResultBudget // nil = no truncation
-	EnableCache  bool          // cache ConcurrentSafe tools
-	Logger       loggateway.Logger
+	EnableCache  bool          // cache ConcurrentSafe tools that IsCacheable (not workspace files)
+	// CacheTTL is how long a cached network result stays valid.
+	// 0 = DefaultCacheTTL (60s). Negative disables expiry.
+	CacheTTL time.Duration
+	Logger   loggateway.Logger
 	// StreamTimeout is the maximum duration for a streaming tool call.
 	// 0 = use DefaultStreamTimeout. A negative value disables the timeout
 	// (not recommended for production).
@@ -173,14 +178,23 @@ type ToolDecoratorConfig struct {
 type ToolDecorator struct {
 	inner   trpctool.CallableTool
 	cfg     ToolDecoratorConfig
-	cache   map[string]any
+	cache   map[string]cacheEntry
 	cacheMu sync.RWMutex
 }
 
+type cacheEntry struct {
+	value any
+	at    time.Time
+}
+
 // decoratorCacheMaxEntries is the per-tool cache limit. 256 is generous for
-// typical read-only tools (e.g. read_file with different paths) while
-// preventing unbounded growth.
+// typical cacheable network tools while preventing unbounded growth.
 const decoratorCacheMaxEntries = 256
+
+// DefaultCacheTTL is how long a cached ConcurrentSafe network result is
+// reused. Long enough to collapse identical calls in one turn; short
+// enough that a later turn does not treat a stale page as current.
+const DefaultCacheTTL = 60 * time.Second
 
 // NewToolDecorator wraps a CallableTool with the given config.
 // When EnableCache is true, a cache map is allocated only for
@@ -200,22 +214,20 @@ func NewToolDecorator(inner trpctool.CallableTool, cfg ToolDecoratorConfig) trpc
 	if inner == nil {
 		return nil
 	}
-	if cfg.Timeout == 0 {
-		cfg.Timeout = DefaultToolTimeout
-	}
 	if cfg.Logger == nil {
 		cfg.Logger = loggateway.NewNoop()
 	}
 	d := &ToolDecorator{inner: inner, cfg: cfg}
 	// 2026-08-06 P0-3：per-tool 超时覆盖（如 plan_and_execute 的多子阶段
-	// 预算）。覆盖在默认值落定之后、显式 cfg.Timeout 之上——按工具语义
-	// 修正预算是覆盖点的设计意图。
+	// 预算）。覆盖在显式 cfg.Timeout 之上——按工具语义修正预算。
+	// Timeout=0 不再回落到 DefaultToolTimeout，以便 Agent
+	// ToolsExecutionTimeoutSec（回调链）成为普通工具的单一截止来源。
 	if override := timeoutOverrideForTool(d.toolName()); override > 0 {
 		d.cfg.Timeout = override
 	}
 	if cfg.EnableCache {
 		if name := d.toolName(); IsCacheable(name) {
-			d.cache = make(map[string]any)
+			d.cache = make(map[string]cacheEntry)
 		}
 	}
 	// If the inner tool supports streaming, wrap with streamableToolDecorator
@@ -270,6 +282,8 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 		return nil, fmt.Errorf("tool %q is not streamable", s.ToolDecorator.toolName())
 	}
 
+	unlock := lockExclusiveTool(s.toolName(), jsonArgs)
+
 	cfg := s.cfg
 	timeout := cfg.StreamTimeout
 	if timeout == 0 {
@@ -295,10 +309,12 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 	innerReader, err := st.StreamableCall(streamCtx, jsonArgs)
 	if err != nil {
 		cancel()
+		unlock()
 		return nil, err
 	}
 	if innerReader == nil {
 		cancel()
+		unlock()
 		return nil, fmt.Errorf("streamable tool %q returned nil reader", s.toolName())
 	}
 
@@ -312,6 +328,7 @@ func (s *streamableToolDecorator) StreamableCall(ctx context.Context, jsonArgs [
 	}
 
 	safego.Go(streamCtx, "tools.stream_proxy", func() {
+		defer unlock()
 		defer cancel()
 		defer innerReader.Close()
 		defer writer.Close()
@@ -453,6 +470,8 @@ func (d *ToolDecorator) providesStateDelta() bool {
 // with identical arguments return the cached result without invoking
 // the inner tool.
 func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	unlock := lockExclusiveTool(d.toolName(), jsonArgs)
+	defer unlock()
 	// E2E-P1-09: only cache when invocation identity is present so results
 	// never leak across user/session/agent scopes on a shared Agent cache.
 	scope, scoped := cacheScopeFromCtx(ctx)
@@ -468,6 +487,11 @@ func (d *ToolDecorator) Call(ctx context.Context, jsonArgs []byte) (any, error) 
 		return nil, err
 	}
 	result = d.truncateResult(ctx, jsonArgs, result)
+	result = FlagTransientResult(d.toolName(), result)
+	if _, flagged := result.(retryFlaggedResult); flagged {
+		// Do not cache transient failures; the retry runner must re-invoke.
+		return result, nil
+	}
 	if d.cache != nil && scoped {
 		d.storeCache(scope, jsonArgs, result)
 	}
@@ -715,10 +739,19 @@ func (d *ToolDecorator) cacheKey(scope string, jsonArgs []byte) string {
 }
 
 func (d *ToolDecorator) lookupCache(scope string, jsonArgs []byte) (any, bool) {
-	d.cacheMu.RLock()
-	defer d.cacheMu.RUnlock()
-	v, ok := d.cache[d.cacheKey(scope, jsonArgs)]
-	return v, ok
+	key := d.cacheKey(scope, jsonArgs)
+	ttl := d.cacheTTL()
+	d.cacheMu.Lock()
+	defer d.cacheMu.Unlock()
+	e, ok := d.cache[key]
+	if !ok {
+		return nil, false
+	}
+	if ttl > 0 && time.Since(e.at) > ttl {
+		delete(d.cache, key)
+		return nil, false
+	}
+	return e.value, true
 }
 
 func (d *ToolDecorator) storeCache(scope string, jsonArgs []byte, result any) {
@@ -727,10 +760,17 @@ func (d *ToolDecorator) storeCache(scope string, jsonArgs []byte, result any) {
 	if len(d.cache) >= decoratorCacheMaxEntries {
 		// Bounded eviction: clear the cache when the limit is reached.
 		// This is crude (no LRU) but prevents unbounded memory growth.
-		// Read-only tools rarely hit 256 unique argument combinations in
-		// a single session; when they do, older entries are unlikely to
-		// be reused.
-		d.cache = make(map[string]any)
+		d.cache = make(map[string]cacheEntry)
 	}
-	d.cache[d.cacheKey(scope, jsonArgs)] = result
+	d.cache[d.cacheKey(scope, jsonArgs)] = cacheEntry{value: result, at: time.Now()}
+}
+
+func (d *ToolDecorator) cacheTTL() time.Duration {
+	if d.cfg.CacheTTL < 0 {
+		return 0
+	}
+	if d.cfg.CacheTTL == 0 {
+		return DefaultCacheTTL
+	}
+	return d.cfg.CacheTTL
 }

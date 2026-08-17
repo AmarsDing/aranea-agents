@@ -123,3 +123,38 @@ func TestMaybeAutolinkOutgoing(t *testing.T) {
 		t.Fatal("list error should degrade")
 	}
 }
+
+func TestRebuildBlockIndex_CompilesMentionsWithoutRewritingSource(t *testing.T) {
+	f := newBackfillFixture()
+	f.collections["c1"] = Collection{ID: "c1", Workspace: "w"}
+	f.docs["d-t"] = Document{ID: "d-t", CollectionID: "c1", RelPath: "notes/目标笔记.md", ContentText: "目标正文"}
+	srcBody := "这篇提到目标笔记一次。"
+	f.docs["d-s"] = Document{ID: "d-s", CollectionID: "c1", RelPath: "notes/src.md", ContentText: srcBody}
+	f.candidatesFn = func() []ResolveDocCandidate {
+		return []ResolveDocCandidate{
+			{DocID: "d-t", CollectionID: "c1", RelPath: "notes/目标笔记.md"},
+			{DocID: "d-s", CollectionID: "c1", RelPath: "notes/src.md"},
+		}
+	}
+	links := &stubLinkRepo{}
+	f.u.SetLinkRepos(links, nil)
+	if err := f.u.RebuildBlockIndex(context.Background(), "c1", "d-s", srcBody); err != nil {
+		t.Fatalf("RebuildBlockIndex: %v", err)
+	}
+	if f.docs["d-s"].ContentText != srcBody {
+		t.Fatalf("source rewritten: %q", f.docs["d-s"].ContentText)
+	}
+	if len(f.contentUpdates) != 0 {
+		t.Fatalf("content updates: %v", f.contentUpdates)
+	}
+	found := false
+	for _, l := range links.links {
+		if l.DocID == "d-s" && l.TargetDocID == "d-t" && l.LinkType == LinkTypeExplicit {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected explicit mention link, got %+v", links.links)
+	}
+}

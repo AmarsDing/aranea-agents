@@ -23,11 +23,22 @@ func (s *stubFactVersionRepo) InsertFactVersion(_ context.Context, v FactVersion
 	return nil
 }
 
-type stubProposalRepo struct{ items []GovernanceProposal }
+type stubProposalRepo struct {
+	items         []GovernanceProposal
+	hasProposal   bool
+	dedupKey      string
+	dedupStatuses []string
+}
 
 func (s *stubProposalRepo) InsertProposal(_ context.Context, p GovernanceProposal) error {
 	s.items = append(s.items, p)
 	return nil
+}
+
+func (s *stubProposalRepo) HasProposal(_ context.Context, _, _, dedupKey string, statuses []string) (bool, error) {
+	s.dedupKey = dedupKey
+	s.dedupStatuses = append([]string(nil), statuses...)
+	return s.hasProposal, nil
 }
 
 type stubWriteBackArbiter struct {
@@ -168,8 +179,11 @@ func TestWriteBack_ArbiterSupersedesReplacesTarget(t *testing.T) {
 	if !strings.Contains(entry.ContentText, "20% 起步") || strings.Contains(entry.ContentText, "5% 起步") {
 		t.Fatalf("target section not superseded: %q", entry.ContentText)
 	}
-	if !strings.Contains(entry.ContentText, "fact_id: `fid-new`") || strings.Contains(entry.ContentText, "fact_id: `fid-old`") {
-		t.Fatalf("fact_id marker not swapped: %q", entry.ContentText)
+	if !strings.Contains(entry.ContentText, "fact_id: `fid-old`") {
+		t.Fatalf("stable fact lineage marker was lost: %q", entry.ContentText)
+	}
+	if !strings.Contains(entry.ContentText, "source_id: `fid-new`") {
+		t.Fatalf("incoming fact provenance was lost: %q", entry.ContentText)
 	}
 	if len(versions.items) != 1 || versions.items[0].FactID != "fid-old" {
 		t.Fatalf("supersede must record version chain: %+v", versions.items)
@@ -243,8 +257,32 @@ func TestWriteBack_ArbiterContradictsRecordsProposal(t *testing.T) {
 	if p.Payload["target_fact_id"] != "fid-old" || p.Payload["new_fact_id"] != "fid-new" {
 		t.Fatalf("proposal payload = %+v", p.Payload)
 	}
+	if p.Payload["dedup_key"] != "conflict:fact:doc-entry:fid-old:fid-new" {
+		t.Fatalf("proposal dedup_key = %v", p.Payload["dedup_key"])
+	}
 	if p.Payload["new_statement"] != "生产环境允许自动发布" {
 		t.Fatalf("proposal payload statement = %+v", p.Payload)
+	}
+}
+
+func TestRecordConflictProposal_SkipsExistingFactConflict(t *testing.T) {
+	repo := &stubProposalRepo{hasProposal: true}
+	u := NewUsecase(nil, nil, nil)
+	u.SetEvolutionRepos(nil, repo)
+	payload := map[string]any{
+		"dedup_key": "conflict:fact:d1:old:new",
+	}
+
+	u.recordConflictProposal(context.Background(), "c1", "d1", payload)
+
+	if len(repo.items) != 0 {
+		t.Fatalf("duplicate conflict proposal inserted: %+v", repo.items)
+	}
+	if repo.dedupKey != payload["dedup_key"] {
+		t.Fatalf("dedup key = %q", repo.dedupKey)
+	}
+	if len(repo.dedupStatuses) != 3 || repo.dedupStatuses[2] != ProposalStatusRejected {
+		t.Fatalf("dedup statuses = %v", repo.dedupStatuses)
 	}
 }
 

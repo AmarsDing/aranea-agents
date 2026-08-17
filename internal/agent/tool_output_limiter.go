@@ -7,10 +7,9 @@ import (
 )
 
 const (
-	// defaultToolOutputSizeLimit is the default maximum character count for
-	// tool results. Results exceeding this limit are truncated with a marker.
-	// This prevents oversized tool outputs from overflowing the LLM context
-	// window while preserving the most relevant content.
+	// defaultToolOutputSizeLimit is the fallback AfterTool cap for
+	// undecorated string results (deferred / MCP). Decorator-governed
+	// tools keep their own ResultBudget / offload envelope and are skipped.
 	defaultToolOutputSizeLimit = 50000
 )
 

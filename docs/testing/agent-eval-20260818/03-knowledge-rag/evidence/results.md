@@ -1,0 +1,87 @@
+﻿| C-00 | create collection | PASS | 39ms | id=ed4240e4b188749cbf85 embed=bge-m3 |
+| C-02-sample-doc-inspection.md | ingest doc | PASS | 33ms | docId=95fd38a2dd64400bdb8f chunks= |
+| C-02-sample-doc-change.md | ingest doc | PASS | 24ms | docId=5a1f5e4042e7933f817f chunks= |
+| C-03 | index wait | FAIL | 0ms | error: sample-doc-change.md:; sample-doc-inspection.md: |
+| C-03 | index wait | FAIL | 0ms | indexed=2/2 chunks= |
+| kb-ins-01 | search top5 | FAIL | 151ms | chunks=0 topScore=n/a |
+| kb-ins-02 | search top5 | FAIL | 147ms | chunks=0 topScore=n/a |
+| kb-ins-03 | search top5 | FAIL | 137ms | chunks=0 topScore=n/a |
+| kb-ins-04 | search top5 | FAIL | 147ms | chunks=0 topScore=n/a |
+| kb-ins-05 | search top5 | FAIL | 135ms | chunks=0 topScore=n/a |
+| kb-ins-06 | search top5 | FAIL | 134ms | chunks=0 topScore=n/a |
+| kb-chg-01 | search top5 | FAIL | 138ms | chunks=0 topScore=n/a |
+| kb-chg-02 | search top5 | FAIL | 140ms | chunks=0 topScore=n/a |
+| kb-chg-03 | search top5 | FAIL | 134ms | chunks=0 topScore=n/a |
+| kb-chg-04 | search top5 | FAIL | 138ms | chunks=0 topScore=n/a |
+| kb-chg-05 | search top5 | FAIL | 140ms | chunks=0 topScore=n/a |
+| kb-chg-06 | search top5 | FAIL | 134ms | chunks=0 topScore=n/a |
+| C-12-dense | hybrid comparison | INFO | 0ms | hit=0/12 avgMs=23 |
+| C-12-sparse | hybrid comparison | INFO | 0ms | hit=0/12 avgMs=26 |
+| C-12-rrf | hybrid comparison | INFO | 0ms | hit=0/12 avgMs=27 |
+| C-15 | cross-collection isolation | FAIL | 28ms | code=404 chunks=1 |
+| C-17 | cascade delete | FAIL | 0ms | delCode=200 docsLeft=1 |
+| C-00 | create collection | PASS | 31ms | id=2dd3904ca23257bfd150 embed=bge-m3 |
+| C-00b | dim correct (BUG-C-01 workaround) | PASS | 0ms | dim=1024 |
+| C-02-sample-doc-inspection.md | ingest doc | PASS | 23ms | docId=7fddfc16bc5c3b08835f chunks=0 |
+| C-02-sample-doc-change.md | ingest doc | PASS | 24ms | docId=bf3076832480f46490a3 chunks=0 |
+| C-03 | index wait | PASS | 0ms | indexed=2/2 chunks=11 |
+| kb-ins-01 | search top5 | PASS | 1536ms | chunks=5 topScore=0.77853394 |
+| kb-ins-02 | search top5 | PASS | 1224ms | chunks=5 topScore=0.47691047 |
+| kb-ins-03 | search top5 | PASS | 1822ms | chunks=5 topScore=0.5626186 |
+| kb-ins-04 | search top5 | PASS | 1881ms | chunks=5 topScore=1.2484515 |
+| kb-ins-05 | search top5 | PASS | 1432ms | chunks=5 topScore=0.61553985 |
+| kb-ins-06 | search top5 | PASS | 1784ms | chunks=5 topScore=0.6378542 |
+| kb-chg-01 | search top5 | PASS | 1524ms | chunks=5 topScore=1.3702519 |
+| kb-chg-02 | search top5 | PASS | 1496ms | chunks=5 topScore=1.3826234 |
+| kb-chg-03 | search top5 | PASS | 1026ms | chunks=5 topScore=1.2996731 |
+| kb-chg-04 | search top5 | PASS | 1414ms | chunks=5 topScore=0.69077605 |
+| kb-chg-05 | search top5 | PASS | 1276ms | chunks=5 topScore=1.4370348 |
+| kb-chg-06 | search top5 | PASS | 1211ms | chunks=5 topScore=1.4460182 |
+| C-12-dense | hybrid comparison | INFO | 0ms | hit=12/12 avgMs=1317 |
+| C-12-sparse | hybrid comparison | INFO | 0ms | hit=4/12 avgMs=728 |
+| C-12-rrf | hybrid comparison | INFO | 0ms | hit=12/12 avgMs=1637 |
+| C-15 | cross-collection isolation | PASS | 20ms | code=404 chunks=1 leak=False |
+| C-17 | cascade delete | PASS | 0ms | delCode=200 afterCode=404 docsLeft=0 |
+| C-00 | create collection | PASS | 32ms | id=f1d1228a5e03bca917db embed=bge-m3 |
+| C-00b | dim correct (BUG-C-01 workaround) | PASS | 0ms | dim=1024 |
+| C-02-sample-doc-inspection.md | ingest doc | PASS | 25ms | docId=7c0b8b48e31addbb0f66 chunks=0 |
+| C-02-sample-doc-change.md | ingest doc | PASS | 25ms | docId=65c3ebd6c3471381344f chunks=0 |
+| C-02-sample-doc-emergency.md | ingest doc | PASS | 29ms | docId=bde1164d33b9cde62ccd chunks=0 |
+| C-02-sample-doc-duty.md | ingest doc | PASS | 25ms | docId=0288a008e470d5f8c773 chunks=0 |
+| C-02-sample-doc-security.md | ingest doc | PASS | 27ms | docId=276d0969e69d616ced2d chunks=0 |
+| C-03 | index wait | PASS | 0ms | indexed=5/5 chunks=29 |
+| kb-ins-01 | search top5 | PASS | 2222ms | chunks=5 topScore=0.77853394 |
+| kb-ins-02 | search top5 | PASS | 1392ms | chunks=5 topScore=0.47691047 |
+| kb-ins-03 | search top5 | PASS | 1456ms | chunks=5 topScore=0.5626186 |
+| kb-ins-04 | search top5 | PASS | 1405ms | chunks=5 topScore=1.2484515 |
+| kb-ins-05 | search top5 | PASS | 1481ms | chunks=5 topScore=0.61553985 |
+| kb-ins-06 | search top5 | PASS | 1890ms | chunks=5 topScore=0.6378542 |
+| kb-chg-01 | search top5 | PASS | 1173ms | chunks=5 topScore=1.2613496 |
+| kb-chg-02 | search top5 | PASS | 1534ms | chunks=5 topScore=1.3001323 |
+| kb-chg-03 | search top5 | PASS | 1259ms | chunks=5 topScore=1.2328582 |
+| kb-chg-04 | search top5 | PASS | 1483ms | chunks=5 topScore=0.67820716 |
+| kb-chg-05 | search top5 | PASS | 1454ms | chunks=5 topScore=1.3902361 |
+| kb-chg-06 | search top5 | PASS | 1250ms | chunks=5 topScore=1.4062618 |
+| kb-emg-01 | search top5 | PASS | 1655ms | chunks=5 topScore=0.6815516 |
+| kb-emg-02 | search top5 | PASS | 1503ms | chunks=5 topScore=1.2787786 |
+| kb-emg-03 | search top5 | PASS | 2492ms | chunks=5 topScore=1.2387369 |
+| kb-emg-04 | search top5 | PASS | 1476ms | chunks=5 topScore=0.7195112 |
+| kb-emg-05 | search top5 | PASS | 1597ms | chunks=5 topScore=0.7101069 |
+| kb-emg-06 | search top5 | PASS | 1569ms | chunks=5 topScore=0.7167306 |
+| kb-dty-01 | search top5 | PASS | 1729ms | chunks=5 topScore=1.3247197 |
+| kb-dty-02 | search top5 | PASS | 1819ms | chunks=5 topScore=1.2963014 |
+| kb-dty-03 | search top5 | PASS | 1722ms | chunks=5 topScore=1.2846146 |
+| kb-dty-04 | search top5 | PASS | 1697ms | chunks=5 topScore=0.6922034 |
+| kb-dty-05 | search top5 | PASS | 1494ms | chunks=5 topScore=1.3754529 |
+| kb-dty-06 | search top5 | PASS | 1442ms | chunks=5 topScore=0.6964633 |
+| kb-sec-01 | search top5 | PASS | 1763ms | chunks=5 topScore=0.7172989 |
+| kb-sec-02 | search top5 | PASS | 1278ms | chunks=5 topScore=0.7228272 |
+| kb-sec-03 | search top5 | PASS | 1754ms | chunks=5 topScore=0.7279074 |
+| kb-sec-04 | search top5 | PASS | 1497ms | chunks=5 topScore=0.73240954 |
+| kb-sec-05 | search top5 | PASS | 2021ms | chunks=5 topScore=0.738033 |
+| kb-sec-06 | search top5 | PASS | 1554ms | chunks=5 topScore=1.3349209 |
+| C-12-dense | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=1468 |
+| C-12-sparse | hybrid comparison | INFO | 0ms | hit=12/30 avgMs=643 |
+| C-12-rrf | hybrid comparison | INFO | 0ms | hit=30/30 avgMs=1444 |
+| C-15 | cross-collection isolation | PASS | 21ms | code=404 chunks=1 leak=False |
+| C-17 | cascade delete | PASS | 0ms | delCode=200 afterCode=404 docsLeft=0 |

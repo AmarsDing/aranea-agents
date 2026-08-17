@@ -21,7 +21,8 @@ export type CommandId =
   | 'backfill-autolink'
   | 'knowledge-health'
   | 'list-experts'
-  | 'review-writeback';
+  | 'review-writeback'
+  | 'review-governance';
 
 export type CommandDef = {
   id: CommandId;
@@ -49,6 +50,7 @@ export const COMMAND_DEFS: readonly CommandDef[] = [
   { id: 'knowledge-health', icon: 'monitor_heart', aliases: ['health', 'jiankang', 'orphan'] },
   { id: 'list-experts', icon: 'groups', aliases: ['expert', 'zhuanjia', 'who'] },
   { id: 'review-writeback', icon: 'rate_review', aliases: ['writeback', 'pending', 'xiehui', 'queren'] },
+  { id: 'review-governance', icon: 'gavel', aliases: ['conflict', 'governance', 'keep', 'chongtu', 'zhili'] },
 ];
 
 /** 命令项（标题由组件经 i18n 注入）。 */

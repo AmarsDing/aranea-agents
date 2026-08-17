@@ -191,6 +191,83 @@ func TestNewOutputSizeLimiterHook_UTF8Truncation(t *testing.T) {
 	}
 }
 
+func TestNewOutputSizeLimiterHook_SkipsDecoratorTruncationEnvelope(t *testing.T) {
+	hook := NewOutputSizeLimiterHook(10, loggateway.NewNoop())
+	args := &trpctool.AfterToolArgs{
+		ToolCallID: "call_1",
+		ToolName:   "exec_command",
+		Result: map[string]any{
+			"truncated":     true,
+			"original_size": 80_000,
+			"mode":          "tail",
+			"content":       strings.Repeat("x", 200),
+		},
+	}
+	result, err := hook(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.CustomResult != nil {
+		t.Errorf("decorator truncation envelope must not be rewritten, got %v", result.CustomResult)
+	}
+}
+
+func TestNewOutputSizeLimiterHook_SkipsDecoratorOffloadEnvelope(t *testing.T) {
+	hook := NewOutputSizeLimiterHook(10, loggateway.NewNoop())
+	args := &trpctool.AfterToolArgs{
+		ToolCallID: "call_1",
+		ToolName:   "web_fetch",
+		Result: map[string]any{
+			"offloaded":     true,
+			"ref":           "artifact://tool_results/web_fetch/abcd.json@1",
+			"original_size": 120_000,
+			"preview_head":  strings.Repeat("h", 200),
+			"preview_tail":  strings.Repeat("t", 80),
+		},
+	}
+	result, err := hook(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.CustomResult != nil {
+		t.Errorf("decorator offload envelope must not be rewritten, got %v", result.CustomResult)
+	}
+}
+
+func TestNewOutputSizeLimiterHook_SkipsBudgetOverrideToolString(t *testing.T) {
+	hook := NewOutputSizeLimiterHook(50, loggateway.NewNoop())
+	long := strings.Repeat("s", 200)
+	args := &trpctool.AfterToolArgs{
+		ToolCallID: "call_1",
+		ToolName:   "browser_snapshot",
+		Result:     long,
+	}
+	result, err := hook(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.CustomResult != nil {
+		t.Errorf("budget-override tools are decorator-governed; limiter must pass through, got %v", result.CustomResult)
+	}
+}
+
+func TestNewOutputSizeLimiterHook_SkipsAlreadyTruncatedString(t *testing.T) {
+	hook := NewOutputSizeLimiterHook(20, loggateway.NewNoop())
+	already := strings.Repeat("z", 40) + fmt.Sprintf(defaultTruncationMarker, 20, 80)
+	args := &trpctool.AfterToolArgs{
+		ToolCallID: "call_1",
+		ToolName:   "deferred_tool",
+		Result:     already,
+	}
+	result, err := hook(context.Background(), args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.CustomResult != nil {
+		t.Errorf("already-truncated string must not be cut again, got %v", result.CustomResult)
+	}
+}
+
 func TestTruncateRunes(t *testing.T) {
 	tests := []struct {
 		input    string

@@ -479,18 +479,18 @@ func (u *Usecase) ListGovernanceProposals(ctx context.Context, collectionID, sta
 	return u.curate.ListGovernanceProposals(ctx, collectionID, status, limit)
 }
 
-// ResolveGovernanceProposal 人工二审闭环：pending → applied/rejected（其他状态非法）。
-// P1-b（2026-08-16）：applied 先执行实际处置（orphan 删词条 / conflict 关 contradicts
-// 边）再落终态——此前 applied 仅改状态无实效，已处置事项因数据未变被周期性重提。
+// ResolveGovernanceProposal 人工二审闭环。decision 允许 applied / rejected /
+// keep_old / keep_new。keep_* 仅对事实段 conflict 生效，落库终态仍为 applied。
 // 处置失败返回错误且提案停留 pending（可重审）；非 pending 提案拒绝重复处置。
 func (u *Usecase) ResolveGovernanceProposal(ctx context.Context, id int64, status string) error {
 	if u == nil || u.curate == nil {
 		return apierror.Unavailable(apierror.DomainKnowledge, "knowledge curate repo not wired")
 	}
-	if status != ProposalStatusApplied && status != ProposalStatusRejected {
+	decision := normalizeProposalDecision(status)
+	if decision == "" {
 		return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("invalid proposal status %q", status))
 	}
-	if status == ProposalStatusApplied {
+	if decision != ProposalStatusRejected {
 		view, err := u.curate.GetGovernanceProposal(ctx, id)
 		if err != nil {
 			return err
@@ -498,17 +498,36 @@ func (u *Usecase) ResolveGovernanceProposal(ctx context.Context, id int64, statu
 		if view.Status != ProposalStatusPending {
 			return apierror.BadRequest(apierror.DomainKnowledge, fmt.Sprintf("proposal %d not pending (status %s)", id, view.Status))
 		}
-		if err := u.applyGovernanceDisposal(ctx, view); err != nil {
+		if err := u.applyGovernanceDisposal(ctx, view, decision); err != nil {
 			return err
 		}
 	}
-	return u.curate.ResolveGovernanceProposal(ctx, id, status)
+	persist := decision
+	if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
+		persist = ProposalStatusApplied
+	}
+	return u.curate.ResolveGovernanceProposal(ctx, id, persist)
 }
 
-// applyGovernanceDisposal 按提案 kind 执行 applied 实际处置。payload 缺关键字段
-// 降级 no-op（历史提案/手工数据不阻断二审）；moc_emerge 无自动处置（人工建 MOC，
-// 设计如此——「MOC 是否参与默认检索」仍是设计开放问题）。
-func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernanceProposalView) error {
+func normalizeProposalDecision(decision string) string {
+	switch strings.ToLower(strings.TrimSpace(decision)) {
+	case ProposalStatusApplied, ProposalStatusRejected, ProposalDecisionKeepOld, ProposalDecisionKeepNew:
+		return strings.ToLower(strings.TrimSpace(decision))
+	default:
+		return ""
+	}
+}
+
+// applyGovernanceDisposal 按提案 kind 执行 applied 实际处置。历史提案缺关键字段
+// 降级 no-op；可识别的事实段冲突必须显式选择保留版本，禁止伪 applied。
+// moc_emerge 无自动处置（人工建 MOC，设计如此）。
+func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernanceProposalView, decision string) error {
+	if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
+		if view.Kind != ProposalKindConflict {
+			return apierror.BadRequest(apierror.DomainKnowledge,
+				"keep_old/keep_new only apply to conflict proposals")
+		}
+	}
 	switch view.Kind {
 	case ProposalKindOrphan:
 		docID, _ := view.Payload["doc_id"].(string)
@@ -527,6 +546,18 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 	case ProposalKindConflict:
 		docID, _ := view.Payload["doc_id"].(string)
 		targetID, _ := view.Payload["target_doc_id"].(string)
+		targetFactID, _ := view.Payload["target_fact_id"].(string)
+		if decision == ProposalDecisionKeepOld || decision == ProposalDecisionKeepNew {
+			if strings.TrimSpace(targetFactID) == "" {
+				return apierror.BadRequest(apierror.DomainKnowledge,
+					"keep_old/keep_new only apply to fact-level conflict proposals")
+			}
+			return u.applyFactConflictResolution(ctx, view, decision)
+		}
+		if strings.TrimSpace(targetID) == "" && strings.TrimSpace(targetFactID) != "" {
+			return apierror.BadRequest(apierror.DomainKnowledge,
+				"fact-level conflict requires an explicit keep-old or keep-new resolution")
+		}
 		if strings.TrimSpace(docID) == "" || strings.TrimSpace(targetID) == "" {
 			return nil
 		}
@@ -540,6 +571,78 @@ func (u *Usecase) applyGovernanceDisposal(ctx context.Context, view GovernancePr
 			loggateway.Int64("proposal_id", view.ID),
 		)
 	}
+	return nil
+}
+
+// applyFactConflictResolution 执行词条页内事实段冲突的 keep_old / keep_new。
+// keep_old 删除新段；keep_new 删除旧段并把新段 fact_id 收敛到旧 lineage。
+func (u *Usecase) applyFactConflictResolution(ctx context.Context, view GovernanceProposalView, decision string) error {
+	if u.documents == nil {
+		return apierror.Unavailable(apierror.DomainKnowledge, "knowledge document repo not wired")
+	}
+	docID, _ := view.Payload["doc_id"].(string)
+	targetFactID, _ := view.Payload["target_fact_id"].(string)
+	newFactID, _ := view.Payload["new_fact_id"].(string)
+	docID = strings.TrimSpace(docID)
+	targetFactID = strings.TrimSpace(targetFactID)
+	newFactID = strings.TrimSpace(newFactID)
+	if docID == "" || targetFactID == "" {
+		return apierror.BadRequest(apierror.DomainKnowledge, "fact-level conflict payload missing doc_id or target_fact_id")
+	}
+	doc, err := u.documents.GetDocument(ctx, docID)
+	if err != nil {
+		return err
+	}
+	body := doc.ContentText
+	oldMarker := "fact_id: `" + targetFactID + "`"
+	discardMarker := oldMarker
+	if decision == ProposalDecisionKeepOld {
+		if newFactID == "" {
+			return apierror.BadRequest(apierror.DomainKnowledge, "keep_old requires new_fact_id to locate the incoming section")
+		}
+		discardMarker = "fact_id: `" + newFactID + "`"
+	}
+	discarded, found := extractH2BlockContaining(body, discardMarker)
+	if !found {
+		return apierror.NotFound(apierror.DomainKnowledge, fmt.Sprintf("conflict section %s not found in document %s", discardMarker, docID))
+	}
+	body, ok := removeH2BlockContaining(body, discardMarker)
+	if !ok {
+		return apierror.NotFound(apierror.DomainKnowledge, fmt.Sprintf("conflict section %s not found in document %s", discardMarker, docID))
+	}
+	if decision == ProposalDecisionKeepNew && newFactID != "" && newFactID != targetFactID {
+		newMarker := "fact_id: `" + newFactID + "`"
+		if newBlock, ok2 := extractH2BlockContaining(body, newMarker); ok2 {
+			lined := preserveSupersededFactID(newBlock, newFactID, targetFactID)
+			if nb, replaced := replaceH2BlockContaining(body, newMarker, lined); replaced {
+				body = nb
+			}
+		}
+	}
+	if err := u.documents.UpdateDocumentContent(ctx, doc.ID, body, true); err != nil {
+		return err
+	}
+	kept, _ := extractH2BlockContaining(body, oldMarker)
+	if kept == "" {
+		if newFactID != "" {
+			kept, _ = extractH2BlockContaining(body, "fact_id: `"+newFactID+"`")
+		}
+	}
+	u.recordFactVersion(ctx, view.CollectionID, doc.ID, targetFactID, discarded, kept)
+	if err := u.RebuildBlockIndex(ctx, view.CollectionID, doc.ID, body); err != nil {
+		u.lg.Warn("事实冲突处置后块索引重建失败（正文已更新，重建可自愈）",
+			loggateway.StepID("knowledge.curate.conflict"),
+			loggateway.Str("doc_id", doc.ID),
+			loggateway.Err(err),
+		)
+	}
+	u.lg.Info("治理：事实段冲突已按人工选择处置",
+		loggateway.StepID("knowledge.curate.conflict"),
+		loggateway.Str("doc_id", doc.ID),
+		loggateway.Str("decision", decision),
+		loggateway.Str("target_fact_id", targetFactID),
+		loggateway.Int64("proposal_id", view.ID),
+	)
 	return nil
 }
 

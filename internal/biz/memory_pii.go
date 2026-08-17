@@ -34,8 +34,8 @@ func ParsePIIPolicy(s string) PIIPolicy {
 
 var (
 	piiEmailRe      = regexp.MustCompile(`(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b`)
-	piiPhoneRe      = regexp.MustCompile(`(?:\+(?:86|1|44|81|82|91|49|33|61|7)\s?)?(?:\(\d{2,4}\)\s?\d{3,4}[\s-]?\d{3,4}|\d{2,4}[\s-]\d{3,4}[\s-]\d{3,4})\b`) // Require country code prefix or structured format
-	piiCNMobileRe   = regexp.MustCompile(`\b1[3-9]\d{9}\b`)                                                                                                   // Bare Chinese mobile: 11 digits, 1[3-9] prefix; \b blocks partial matches inside longer digit runs
+	piiPhoneRe      = regexp.MustCompile(`\+(?:86|1|44|81|82|91|49|33|61|7)[\s-]?\(?\d{2,4}\)?[\s-]?\d{3,4}[\s-]?\d{3,4}\b|\(\d{2,4}\)\s?\d{3,4}[\s-]?\d{3,4}\b`) // Require explicit +CC prefix or parenthesized area code; bare CN fixed-line (0571-8899-1234) is operational contact info, not personal PII (R2)
+	piiCNMobileRe   = regexp.MustCompile(`\b1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}\b`)                                                                                        // CN mobile: 11 digits, 1[3-9] prefix, optional dash/space separators; \b blocks partial matches inside longer digit runs
 	piiIDCardRe     = regexp.MustCompile(`\b\d{17}[\dXx]\b`)
 	piiCreditRe     = regexp.MustCompile(`\b(?:[345]\d[ -]*?(?:\d[ -]*?){11,17}\d|\d[ -]*?(?:\d[ -]*?){13,18}\d)\b`) // 14-19 digits with optional spaces/dashes; leading 3/4/5 pattern first to reduce false positives
 	piiBankAcctRe   = regexp.MustCompile(`\b62\d{14,17}\b`)                                                          // UnionPay only: 62 prefix + 14-17 more digits (total 16-19)

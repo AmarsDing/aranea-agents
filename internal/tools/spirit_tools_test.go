@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -273,7 +274,10 @@ func TestBatchExecuteSpiritTools_InheritsWorktreeIsolator(t *testing.T) {
 	exec := NewParallelToolExecutor(nil, loggateway.NewNoop(),
 		WithMaxConcurrency(2), WithWorktreeIsolator(iso))
 
-	directHandler := func(_ context.Context, call ToolCall) ToolResult {
+	directHandler := func(ctx context.Context, call ToolCall) ToolResult {
+		if dir, ok := WorktreeDirFromContext(ctx); ok {
+			return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "worktree:" + dir}
+		}
 		return ToolResult{CallID: call.ID, Name: call.Name, Success: true, Output: "direct"}
 	}
 	calls := []ToolCall{
@@ -288,11 +292,10 @@ func TestBatchExecuteSpiritTools_InheritsWorktreeIsolator(t *testing.T) {
 	for _, r := range results {
 		byID[r.CallID] = r
 	}
-	// An isolator with nil handler returns the "worktree isolated" marker; if
-	// the isolator were dropped by BatchExecuteSpiritTools, the call would
-	// fall through to the direct handler ("direct").
-	if got := byID["w1"]; !got.Success || got.Output != "worktree isolated" {
-		t.Fatalf("worktree-tagged call should run inside the isolator, got %+v", got)
+	// Isolator handler is nil, so executeOne runs the call-time handler inside
+	// the worktree (dir on ctx). Untagged calls stay on the live handler.
+	if got := byID["w1"]; !got.Success || !strings.HasPrefix(got.Output, "worktree:") {
+		t.Fatalf("worktree-tagged call should run handler inside the worktree, got %+v", got)
 	}
 	if got := byID["d1"]; !got.Success || got.Output != "direct" {
 		t.Fatalf("untagged call should run via the direct handler, got %+v", got)

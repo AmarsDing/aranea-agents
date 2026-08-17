@@ -62,10 +62,24 @@ func TestSelectModeForQuery_PreservesExactLexicalSignals(t *testing.T) {
 		}
 	}
 	if got := router.selectModeForQuery(
-		biz.KnowledgeSearchQuery{Query: "什么是知识图谱"},
+		biz.KnowledgeSearchQuery{Query: "低压电工证"},
 		QuerySimple,
 	); got != HybridDense {
-		t.Errorf("natural-language query = %q, want dense", got)
+		t.Errorf("short keyword query = %q, want dense", got)
+	}
+}
+
+func TestSelectModeForQuery_QuestionsUseRRF(t *testing.T) {
+	router := &AdaptiveRouter{}
+	for _, query := range []string{
+		"什么是知识图谱",
+		"核心机房的巡检周期是多久一次，周几几点开始？",
+		"What is the inspection interval?",
+	} {
+		got := router.selectModeForQuery(biz.KnowledgeSearchQuery{Query: query}, QuerySimple)
+		if got != HybridRRF {
+			t.Errorf("selectModeForQuery(%q) = %q, want rrf", query, got)
+		}
 	}
 }
 

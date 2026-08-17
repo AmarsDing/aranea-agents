@@ -32,7 +32,8 @@ Callback：全链路回调钩子，覆盖 Agent/Model/Tool 与 OnEvent。`intern
 |----|------|------|
 | Chain 抽象 + 适配器 | ✅ | `callbacks.go`、`adapter.go`、单测 |
 | Agent/Model/Tool Chain 挂载 | ✅ | `buildCallbackChainOptions` → `With*Callbacks` |
-| 产品工具链 | ✅ | guard/cache/timing/confirm/recorder/circuit-breaker/command-safety |
+| 产品工具链 | ✅ | guard/cache/timing/confirm/recorder/circuit-breaker/command-safety/output-limiter |
+| **工具循环守卫** | ✅ | 串行同参拦截 + 并行 in-flight 去重；饱和 StopError（并行拦截不计入饱和） |
 | PluginManager | ✅ | `manager.go`：`MergeChain`、`RunnerPluginsForAgent`、`OnEvent` |
 | Hook → Chain | ✅ | `hook/hook.go`（Resolver）+ `hook.go`（re-export）+ `HookCallbacks` + `wrapResilientHooks` |
 | Runner 内置 Plugin | ✅ | `registry.go`（`BuiltinPluginDefs` 9 项）+ `runtime.go` 生命周期；scope 过滤 |

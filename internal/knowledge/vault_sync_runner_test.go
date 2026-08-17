@@ -168,9 +168,9 @@ func TestVaultSyncRunner_RunVault_TickCapturesChange(t *testing.T) {
 	go func() { done <- r.RunVault(ctx, vault) }()
 
 	// 等首轮完成后修改文件，等下一轮 tick 捕获。
-	waitFor(t, 2*time.Second, func() bool { return len(repo.documents) == 1 })
+	waitFor(t, 2*time.Second, func() bool { return repo.testDocumentCount() == 1 })
 	writeVaultFile(t, root, "b.md", "# B\n\nnew file")
-	waitFor(t, 2*time.Second, func() bool { return len(repo.documents) == 2 })
+	waitFor(t, 2*time.Second, func() bool { return repo.testDocumentCount() == 2 })
 
 	cancel()
 	select {
@@ -205,10 +205,10 @@ func TestVaultSyncRunner_RunVault_WatcherHint_EarlyScan(t *testing.T) {
 	go func() { done <- r.RunVault(ctx, vault) }()
 
 	// 等首轮完成（RunVault 启动时立即扫一轮），再加文件 + ping。
-	waitFor(t, 2*time.Second, func() bool { return len(repo.documents) == 1 })
+	waitFor(t, 2*time.Second, func() bool { return repo.testDocumentCount() == 1 })
 	writeVaultFile(t, root, "b.md", "# B\n\nwatcher-triggered")
 	w.ping()
-	waitFor(t, 2*time.Second, func() bool { return len(repo.documents) == 2 })
+	waitFor(t, 2*time.Second, func() bool { return repo.testDocumentCount() == 2 })
 
 	cancel()
 	select {

@@ -417,14 +417,67 @@ func (e *MultiProviderEmbedder) embedOpenAIBatch(ctx context.Context, baseURL, a
 
 func (e *MultiProviderEmbedder) embedOllamaBatch(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {
 	out := make([][]float32, 0, len(texts))
-	for _, text := range texts {
-		vec, err := e.embedOllamaWith(ctx, baseURL, model, text)
+	for start := 0; start < len(texts); start += defaultEmbedBatchSize {
+		end := start + defaultEmbedBatchSize
+		if end > len(texts) {
+			end = len(texts)
+		}
+		vecs, err := e.embedOllamaBatchChunk(ctx, baseURL, model, texts[start:end])
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, vec)
+		out = append(out, vecs...)
 	}
 	return out, nil
+}
+
+// embedOllamaBatchChunk 走 /api/embed 批量端点（Ollama ≥0.3）；旧版本无此端点
+// 时降级逐条 /api/embeddings。逐条路径 273 实体实测 35.7s（130ms/条），
+// 批量后降至 9 次调用 ≈1s（2026-08-17 entity-merge-suggestions 超时根治）。
+func (e *MultiProviderEmbedder) embedOllamaBatchChunk(ctx context.Context, baseURL, model string, texts []string) ([][]float32, error) {
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+	type req struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}
+	type resp struct {
+		Embeddings [][]float32 `json:"embeddings"`
+	}
+	body, err := jsonPOST(ctx, embedHTTPClient, baseURL+"/api/embed", "", req{
+		Model: model,
+		Input: texts,
+	})
+	if err != nil {
+		// 旧版 Ollama（<0.3）无 /api/embed：404 时回退逐条 legacy 端点。
+		if strings.Contains(err.Error(), "http 404") {
+			out := make([][]float32, 0, len(texts))
+			for _, text := range texts {
+				vec, lerr := e.embedOllamaWith(ctx, baseURL, model, text)
+				if lerr != nil {
+					return nil, lerr
+				}
+				out = append(out, vec)
+			}
+			return out, nil
+		}
+		return nil, err
+	}
+	var r resp
+	if err := json.Unmarshal(body, &r); err != nil {
+		e.lg.Warn("解析 ollama embed 批量响应失败", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder ollama batch parse failed").WithCause(err)
+	}
+	if len(r.Embeddings) != len(texts) {
+		return nil, apierror.Internal(apierror.DomainKnowledge, "embedder ollama batch: expected %d embeddings, got %d", len(texts), len(r.Embeddings))
+	}
+	for i, vec := range r.Embeddings {
+		if len(vec) == 0 {
+			return nil, apierror.Internal(apierror.DomainKnowledge, "embedder ollama batch: empty embedding at %d", i)
+		}
+	}
+	return r.Embeddings, nil
 }
 
 func (e *MultiProviderEmbedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {

@@ -304,7 +304,15 @@ func (m *vaultSyncMemRepo) UpdateChunkEmbeddings(_ context.Context, docID string
 	return nil
 }
 func (m *vaultSyncMemRepo) SearchChunks(_ context.Context, _ bizknowledge.SearchQuery, _ []float32) ([]bizknowledge.Chunk, error) {
-	return m.chunks, nil
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]bizknowledge.Chunk(nil), m.chunks...), nil
+}
+
+func (m *vaultSyncMemRepo) testDocumentCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.documents)
 }
 
 // ── LinkRepo / EntityRepo（P2-4 双轨关联，内存实现） ─────────────────────────
@@ -1101,6 +1109,81 @@ func TestVaultSyncApplier_ExplicitLinkBuilt(t *testing.T) {
 	}
 	if len(backlinks) != 1 {
 		t.Errorf("target must see 1 backlink, got %d", len(backlinks))
+	}
+}
+
+func TestVaultSyncApplier_RelationHookTriggeredOnIndex(t *testing.T) {
+	root := t.TempDir()
+	writeVaultFile(t, root, "a.md", "# 笔记\n\n正文。\n")
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+	var hooked []string
+	applier.SetRelationHook(func(collectionID, docID string) {
+		hooked = append(hooked, collectionID+"/"+docID)
+	})
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		createdEvent("a.md", "# 笔记\n\n正文。\n"),
+	}); err != nil {
+		t.Fatalf("apply created: %v", err)
+	}
+	if len(hooked) != 1 {
+		t.Fatalf("relation hook calls=%d, want 1", len(hooked))
+	}
+	var docID string
+	for _, d := range repo.documents {
+		docID = d.ID
+	}
+	if hooked[0] != vault.ID+"/"+docID {
+		t.Fatalf("hooked=%v want %s/%s", hooked, vault.ID, docID)
+	}
+}
+
+func TestVaultSyncApplier_UnlinkedMentionBuildsExplicitLink(t *testing.T) {
+	root := t.TempDir()
+	targetBody := "# 目标文档\n\n被提及。\n"
+	srcBody := "见 target 文档。\n"
+	writeVaultFile(t, root, "target.md", targetBody)
+	writeVaultFile(t, root, "src.md", srcBody)
+
+	repo := newVaultSyncMemRepo()
+	vault := bizknowledge.Collection{ID: "col1", RootPath: root}
+	repo.collections[vault.ID] = vault
+
+	applier := newTestApplier(repo, nil)
+	if err := applier.ApplyEvents(context.Background(), vault, []bizknowledge.ChangeEvent{
+		createdEvent("target.md", targetBody),
+		createdEvent("src.md", srcBody),
+	}); err != nil {
+		t.Fatalf("apply created: %v", err)
+	}
+
+	gotSrc, err := os.ReadFile(filepath.Join(root, "src.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gotSrc), "[[") {
+		t.Fatalf("vault source rewritten: %q", gotSrc)
+	}
+
+	var srcID, targetID string
+	for _, d := range repo.documents {
+		switch d.RelPath {
+		case "src.md":
+			srcID = d.ID
+		case "target.md":
+			targetID = d.ID
+		}
+	}
+	links, err := repo.ListLinks(context.Background(), vault.ID, srcID, bizknowledge.LinkTypeExplicit)
+	if err != nil {
+		t.Fatalf("list links: %v", err)
+	}
+	if len(links) != 1 || links[0].TargetDocID != targetID {
+		t.Fatalf("expected mention→explicit link to target, got %+v", links)
 	}
 }
 

@@ -62,7 +62,7 @@ package tools
 //	     - RetryOn(ctx, *RetryInfo) (bool, error): custom retry decision
 //	   tool.DefaultRetryOn: retries on EOF, unexpected EOF, network timeout/temporary errors
 //	   Agent integration: llmagent.WithToolCallRetryPolicy(policy)
-//	   Project integration: buildToolRetryPolicy() → WithToolCallRetryPolicy
+//	   Project integration: buildToolRetryPolicy() → SelectiveRetryOn → WithToolCallRetryPolicy
 //
 //	4. Merge — Result aggregation for streaming and multi-tool outputs
 //	   tool.Merge[T](ts []T) T: generic merge function

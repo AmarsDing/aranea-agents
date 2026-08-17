@@ -38,6 +38,7 @@ import type {
   KnowledgeExpert,
   PendingWriteBackItem,
   WriteBackHome,
+  GovernanceProposalItem,
 } from './types';
 
 const svc = createKnowledgeService();
@@ -467,6 +468,32 @@ export async function applyWriteBackPending(
     appended: pickI32(r, 'appended', 'appended'),
     doc_id: pickStr(r, 'doc_id', 'docId'),
   };
+}
+
+export async function listGovernanceProposals(
+  collectionId: string,
+  status = 'pending',
+): Promise<GovernanceProposalItem[]> {
+  const res = asRecord(await svc.ListGovernanceProposals({ collectionId, status, limit: 50 }));
+  const itemsRaw = res.items ?? res.Items;
+  if (!Array.isArray(itemsRaw)) return [];
+  return itemsRaw.map((raw) => {
+    const r = asRecord(raw);
+    return {
+      id: pickI64(r, 'id', 'id'),
+      collection_id: pickStr(r, 'collection_id', 'collectionId'),
+      kind: pickStr(r, 'kind', 'kind'),
+      risk: pickStr(r, 'risk', 'risk'),
+      status: pickStr(r, 'status', 'status'),
+      payload_json: pickStr(r, 'payload_json', 'payloadJson'),
+      created_at: pickStr(r, 'created_at', 'createdAt'),
+    };
+  });
+}
+
+export async function resolveGovernanceProposal(id: number, decision: string): Promise<{ id: number; status: string }> {
+  const r = asRecord(await svc.ResolveGovernanceProposal({ id, decision }));
+  return { id: pickI64(r, 'id', 'id'), status: pickStr(r, 'status', 'status') };
 }
 
 /** getWriteBackHome 工作区写回落点（US-46）：只解析不创建。 */

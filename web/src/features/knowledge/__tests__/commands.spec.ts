@@ -35,8 +35,8 @@ describe('filterCommands 别名搜索（P2-6）', () => {
     expect(filterCommands(items(), 'baocun').map((c) => c.def.id)).toEqual(['save']);
   });
 
-  it('拼音别名命中（huichong → backfill-autolink）', () => {
-    expect(filterCommands(items(), 'huichong').map((c) => c.def.id)).toEqual(['backfill-autolink']);
+  it('拼音别名命中（chongtu → review-governance）', () => {
+    expect(filterCommands(items(), 'chongtu').map((c) => c.def.id)).toEqual(['review-governance']);
   });
 
   it('标题命中优先于别名散列命中', () => {
