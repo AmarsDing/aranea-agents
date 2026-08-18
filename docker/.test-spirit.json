@@ -1,1 +1,0 @@
-{"session_id":"77900f83-a223-495a-8e22-9bd7ba3747ed","content":"TwinMonitor 有一条 critical 告警 ALM2026081400013：GNS3-PC1-HEALTH 线路中断（探测 503）。请用 plan_and_execute 分解任务，并在分解时用 agent_keys 显式指派故障诊断岗 ops_fault_diagnosis 执行根因诊断子任务（让它用 twin_ 系列工具取证：告警详情、线路状态、线路事件、设备指标），拿到交付后用 synthesize_results 汇总根因与影响面结论给我。"}

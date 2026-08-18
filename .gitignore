@@ -120,6 +120,15 @@ test/.gocache*
 /.trae
 
 
+# 冒烟/调试临时产物（勿提交）
+**/cookies.txt
+**/.cookies.txt
+docker/.test-*
+docker/.*.json
+/cmd/admin/data/
+/cmd/reset_admin_pw/*.json
+web/eslint-out.txt
+
 # 安装包构建产物（release.yml 运行时生成，勿提交）
 # build/ 目录同时存放需要入库的构建脚本（*.ps1）与 NSIS 脚本（installer/），
 # 仅忽略运行时产物：deps（下载的 PG/Redis）、staging*（组装中间态）、release（安装包输出）

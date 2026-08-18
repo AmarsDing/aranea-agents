@@ -1,7 +1,0 @@
-=== room export ===
-built room (46 objects)
-exported ROOM_ENV.fbx
-exported ROOM_ENV.glb
-manifest room_manifest.json
-rendered preview_room.png
-=== DONE ===
