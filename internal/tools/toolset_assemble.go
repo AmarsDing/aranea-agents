@@ -11,7 +11,9 @@ import (
 	"aranea-agents/internal/tools/codingbridge"
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
+	"aranea-agents/internal/tools/deletefile"
 	documentpkg "aranea-agents/internal/tools/document"
+	"aranea-agents/internal/tools/editstamp"
 	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	memorytool "aranea-agents/internal/tools/memory"
 	"aranea-agents/internal/tools/readlints"
@@ -97,7 +99,7 @@ func (ac *assembleContext) assembleFromRegistry() error {
 	return nil
 }
 
-// assembleBuiltinToolsets creates file, hostexec, read_document, read_spreadsheet tools.
+// assembleBuiltinToolsets creates file (ripgrep wrap), hostexec, read_document, read_spreadsheet, read_lints.
 func (ac *assembleContext) assembleBuiltinToolsets() error {
 	if ac.enabled["file"] {
 		var opts []trpcfile.Option
@@ -109,6 +111,7 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 			return apierror.Internal(apierror.DomainTool, "file toolset: "+err.Error())
 		}
 		ts = rgsearch.WrapToolSet(ts, ac.cfg.FilesystemDir, ac.lg)
+		ts = editstamp.WrapToolSet(ts, ac.cfg.FilesystemDir)
 		ac.out.ToolSets = append(ac.out.ToolSets, wrapFileToolSetWithWorktree(ts, ac.cfg.FilesystemDir, ac.lg))
 	}
 
@@ -130,6 +133,10 @@ func (ac *assembleContext) assembleBuiltinToolsets() error {
 
 	if ac.enabled["read_lints"] {
 		ac.out.Tools = append(ac.out.Tools, readlints.NewTool(ac.cfg.FilesystemDir, ac.lg))
+	}
+
+	if ac.enabled["delete_file"] {
+		ac.out.Tools = append(ac.out.Tools, deletefile.NewTool(ac.cfg.FilesystemDir, ac.lg))
 	}
 
 	return nil
@@ -442,7 +449,8 @@ func (ac *assembleContext) assembleSubagentTools() {
 // navigation SSRF guard. The guard validates URLs in browser_navigate calls
 // against PlaywrightMCPConfig.Navigation before forwarding to the MCP server.
 // When EnabledSubGroups is configured, a FilteringToolSet wraps the guarded
-// set so only tools in the allowed sub-groups are exposed.
+// set so only tools in the allowed sub-groups are exposed. WrapSession then
+// serializes calls and stamps next_tool=browser_snapshot after mutating actions.
 func (ac *assembleContext) assembleBrowserToolset() error {
 	if !ac.enabled["browser"] || ac.cfg.Browser == nil {
 		return nil
@@ -469,6 +477,7 @@ func (ac *assembleContext) assembleBrowserToolset() error {
 	if len(bcfg.EnabledSubGroups) > 0 {
 		guarded = browser.NewFilteringToolSet(guarded, bcfg.EnabledSubGroups)
 	}
+	guarded = browser.WrapSession(guarded)
 	ac.out.ToolSets = append(ac.out.ToolSets, guarded)
 	return nil
 }

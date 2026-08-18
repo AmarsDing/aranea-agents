@@ -2171,6 +2171,7 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 				}
 			}
 		}
+		ps.Mode = biz.SpiritTeamModeForStep(string(plan.Strategy), len(ps.AgentKeys))
 		planSteps = append(planSteps, ps)
 	}
 	// 派生 GraphStage ID（确定性，基于 PlanBoard ID）。
@@ -2250,12 +2251,14 @@ func (impl *taskPlannerImpl) PublishV2Board(ctx context.Context, plan *biz.TaskP
 // mapV1StrategyToV2 将 v1 biz.OrchestrationStrategy 映射为 v2 biz.PlanStrategy。
 func mapV1StrategyToV2(s biz.OrchestrationStrategy) biz.PlanStrategy {
 	switch s {
-	case biz.StrategyDirect:
+	case biz.StrategyDirect, biz.StrategySingleAgent:
 		return biz.PlanStrategySequential
 	case biz.StrategyParallel:
 		return biz.PlanStrategyParallel
 	case biz.StrategyDAG:
 		return biz.PlanStrategyDAG
+	case biz.StrategyCoordinator:
+		return biz.PlanStrategyCoordinator
 	default:
 		return biz.PlanStrategySequential
 	}

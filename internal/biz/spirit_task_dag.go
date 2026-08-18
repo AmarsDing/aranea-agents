@@ -18,14 +18,20 @@ func InferTopologyFromTeam(team Team, lg loggateway.Logger) TopologyType {
 	if team.Topology != "" {
 		return TopologyType(team.Topology)
 	}
-	if len(team.DependsOn) > 0 {
-		return TopologySequential
-	}
+	hasDeps := len(team.DependsOn) > 0
+	parallel := false
 	if team.ParallelConfigJSON != "" {
 		cfg := ParseParallelConfig(team.ParallelConfigJSON, lg)
-		if cfg.MaxConcurrentTeams > 1 {
-			return TopologyParallel
-		}
+		parallel = cfg.MaxConcurrentTeams > 1
 	}
-	return TopologyCoordinator
+	switch {
+	case hasDeps && parallel:
+		return TopologyHybrid
+	case hasDeps:
+		return TopologySequential
+	case parallel:
+		return TopologyParallel
+	default:
+		return TopologyCoordinator
+	}
 }

@@ -752,3 +752,49 @@ catalog/策略层：
 - `internal/tools/toolset.go` — `placeholderToolSetFactory`/`placeholderToolFactory` 接入全部 11 处 AssembledElsewhere 占位注册项（file/hostexec/google_search/message/claudecode/browser/deliverable/client + geminifetch/workspace_exec/read_tool_result），消除"helper 已定义未接线"的死代码状态；各条目占位原因注释保留在字段上方
 - `internal/tools/decorator.go` — streamableToolDecorator 流代理 goroutine 由裸 `go func()` 改 `safego.Go(streamCtx, "tools.stream_proxy", ...)`（红线 #13：panic recovery）
 - 验证：独立 GOCACHE 下 `go build ./internal/tools` ✅ / `go vet`（tools/agent/biz/tool/data）✅ / `go test ./internal/tools/ -count=1` 全量 ✅ / biz/tool、deferred、deliverable、cache、trpc、agent(Tool)、data(Tool,PG) ✅
+
+### Round 7（2026-08-18 Cursor 对齐：搜索 / 诊断 / 终端）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| `search_content` 走 ripgrep | ✅ | `internal/tools/rgsearch`：`rg --json`，无匹配 exit 1 当成功；无 rg 回退 Go 扫盘；结果 cap 50 文件 / 20 行 / 200 命中 |
+| `read_lints` | ✅ | `internal/tools/readlints`：`go vet`；catalog/filesystem 组；结果不缓存 |
+| reminder 覆盖 `save_file` | ✅ | `tool_reminder.go` 精确名 + `file_name`；`read_lints` 清 reminder |
+| shell 输出文件 / 流式 / 正则唤醒 | ✅ | `hostexec.WrapSessionEnhance`：`.aranea/shell/<session>.log`、`StreamableCall`、`notify_pattern`/`block_until_ms` |
+| coding 默认可用 `shell_exec` | ✅ | profile 含 `shell_exec`；catalog 仍 `enabled=false`（opt-in-only），需确认 |
+
+- `internal/tools/rgsearch/` — file ToolSet wrap，装配于 `assembleBuiltinToolsets`（worktree wrap 之前）
+- `internal/tools/readlints/` — FunctionTool；`ToolsetConfig.ReadLints` → Assemble
+- `internal/tools/hostexec/session_wrap.go` — 红acted 之后 wrap
+- `internal/tools/hostexecnorm` — `block_until_ms` → `yield_time_ms`，`notify_on_output` → `notify_pattern`
+- `internal/biz/agent_tool_policy.go` — coding + filesystem 组
+- `internal/agent/tool_reminder.go` / `prompt.go`
+
+### Round 8（2026-08-18 Cursor 对齐：Grep 细节 / 终端元数据 / 浏览器会话 / 子代理 kind）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| Grep 上下文 / type / 分页 | ✅ | `rgsearch` 传 `-A/-B/-C`、`--type`、`-U`；解析 `type:context`；`head_limit`/`offset`；`filenorm` 别名 |
+| 终端 running_for / hung / stdin await | ✅ | `hostexec` session meta；`write_stdin` 支持 `notify_pattern`/`block_until_ms` |
+| 浏览器串行 + snapshot 提示 | ✅ | `browser.WrapSession`：互斥锁；mutating 结果 `next_tool=browser_snapshot` |
+| 子代理 kind + 阻塞 get | ✅ | `kind=explore\|verify\|general`；`subagents_get.block_until_ms`；`running_for_ms` |
+
+- `internal/tools/rgsearch/`、`internal/tools/filenorm`
+- `internal/tools/hostexec/session_wrap.go`、`session_meta.go`
+- `internal/tools/browser/session_wrap.go`（装配于 `assembleBrowserToolset`）
+- `internal/tools/subagent/kind.go`、`service.go`
+- `internal/agent/prompt.go` 运行时 cue
+
+### Round 9（2026-08-18 Cursor 对齐：诊断深度 / delete_file / 终端 pid）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 空 path `read_lints` 走近期编辑 | ✅ | `internal/tools/editstamp`：写成功记 `.aranea/edited-paths.txt`（最多 32）；省略 path 时 lint 这些文件 |
+| Go / Python / JS 诊断 | ✅ | Go `go vet`；Python `py_compile`（无解释器则跳过）；JS `node --check` |
+| `delete_file` | ✅ | `internal/tools/deletefile`：工作区单文件；拒绝目录 / `.git` / 符号链接 / 区外；coding profile + filesystem 组 |
+| 终端 `pid` | ✅ | hostexec `execResult.PID` / poll `PID`；`exec_command` 与 `write_stdin` 结果带 `pid` |
+
+- `internal/tools/editstamp/`、`internal/tools/readlints/`、`internal/tools/deletefile/`
+- `pkg/trpc-agent-go/tool/hostexec` — running 结果暴露 pid（产品 wrap 透传）
+- `internal/agent/prompt.go` — 省略 path + `delete_file` cue
+

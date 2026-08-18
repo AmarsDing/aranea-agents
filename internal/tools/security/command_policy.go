@@ -44,6 +44,7 @@ var DefaultProtectedTools = map[string]bool{
 	"read_file":           true,
 	"read_multiple_files": true,
 	"save_file":           true,
+	"delete_file":         true,
 	"list_file":           true,
 	"search_file":         true,
 	"search_content":      true,

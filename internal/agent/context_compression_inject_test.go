@@ -21,7 +21,7 @@ func convBudgetFor(msgs []trpcmodel.Message, keepLastN int) int {
 	_, conv, _ := splitPromptZones(msgs)
 	total := 0
 	for _, m := range msgs {
-		if m.Role == trpcmodel.RoleSystem {
+		if isPromptFixedMessage(m) {
 			total += estTokensFromChars(messageCharLen(m))
 		}
 	}
@@ -111,6 +111,48 @@ func TestPartitionByTokenBudget_KeepsHeadAndTailSystem(t *testing.T) {
 		if m.Role == trpcmodel.RoleSystem {
 			t.Fatalf("evicted must not contain system messages, got %q", m.Content)
 		}
+	}
+}
+
+func TestPartitionByTokenBudget_KeepsTrailingUserCues(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		{Role: trpcmodel.RoleSystem, Content: "identity"},
+		{Role: trpcmodel.RoleUser, Content: "hello"},
+		{Role: trpcmodel.RoleAssistant, Content: "hi"},
+		{Role: trpcmodel.RoleUser, Content: "how are you"},
+		asDynamicCue("memory cue"),
+		asDynamicCue("knowledge cue"),
+	}
+	keep, evicted := partitionMessagesByTokenBudget(msgs, convBudgetFor(msgs, 1))
+	cueCount := 0
+	for _, m := range keep {
+		if isDynamicCueMessage(m) {
+			cueCount++
+		}
+	}
+	if cueCount != 2 {
+		t.Fatalf("expected 2 trailing user cues kept, got %d", cueCount)
+	}
+	for _, m := range evicted {
+		if isDynamicCueMessage(m) {
+			t.Fatalf("evicted must not contain dynamic cues, got %q", m.Content)
+		}
+	}
+}
+
+func TestSplitPromptZones_TrailingUserCues(t *testing.T) {
+	msgs := []trpcmodel.Message{
+		trpcmodel.NewSystemMessage("sys"),
+		trpcmodel.NewUserMessage("hello"),
+		trpcmodel.NewAssistantMessage("hi"),
+		asDynamicCue("memory cue"),
+	}
+	head, conv, tail := splitPromptZones(msgs)
+	if len(head) != 1 || len(conv) != 2 || len(tail) != 1 {
+		t.Fatalf("head=%d conv=%d tail=%d", len(head), len(conv), len(tail))
+	}
+	if !isDynamicCueMessage(tail[0]) {
+		t.Fatal("tail must be the user-role dynamic cue")
 	}
 }
 

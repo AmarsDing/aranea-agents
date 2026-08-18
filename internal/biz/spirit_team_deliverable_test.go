@@ -357,10 +357,10 @@ func TestWriteDeliverablesToSession_ArtifactsFilled(t *testing.T) {
 	steps := newDeliverableStepReader()
 	article := strings.Repeat("文", 800)
 	reader := &graphDeliverableReaderStub{data: map[string]any{
-		"summary":     "《云计算十年》已完成。\n- 观点要点",
-		"article":     map[string]any{"title": "云计算十年", "format": "markdown", "content": article},
+		"summary":      "《云计算十年》已完成。\n- 观点要点",
+		"article":      map[string]any{"title": "云计算十年", "format": "markdown", "content": article},
 		"ack/agent-m1": map[string]any{"member": "agent-m1"},
-		"cognition":   map[string]any{"decisions": []any{"d1"}},
+		"cognition":    map[string]any{"decisions": []any{"d1"}},
 	}}
 	u := newDeliverableUsecaseWithGraphReader(teams, sessions, steps, reader)
 
@@ -880,7 +880,7 @@ func seedMultiArtifactEnvelope(t *testing.T, teams *deliverableTeamRepo, session
 }
 
 // 内联阈值边界钉住：SizeChars == InlineUpstreamPayloadMaxChars 必须内联
-//（`<=` 语义），+1 必须指针——防 off-by-one 回归。
+// （`<=` 语义），+1 必须指针——防 off-by-one 回归。
 func TestInjectUpstreamDeliverables_InlineThresholdBoundary(t *testing.T) {
 	t.Run("exactly_at_threshold_inlined", func(t *testing.T) {
 		teams := newDeliverableTeamRepo()
@@ -1313,6 +1313,27 @@ func TestScheduleDependentTeams_FailActionUnchanged(t *testing.T) {
 	actions := u.ScheduleDependentTeams(context.Background(), "sp1", failed)
 	if len(actions) != 1 || actions[0].Action != "fail" {
 		t.Fatalf("expected 1 fail action, got %+v", actions)
+	}
+}
+
+func TestScheduleDependentTeams_MissingUpstream_Fails(t *testing.T) {
+	teams := newDeliverableTeamRepo()
+	sessions := newDeliverableSessionAccessor()
+	u := newDeliverableUsecase(teams, sessions)
+
+	upstream := Team{ID: "t-up", SpiritSessionID: "sp1", DagNodeID: "st_1", DisplayName: "上游", Status: TeamStatusCompleted}
+	teams.items["t-up"] = upstream
+	teams.items["t-down"] = Team{
+		ID: "t-down", SpiritSessionID: "sp1", DagNodeID: "st_3", DisplayName: "下游",
+		Status: TeamStatusPending, DependsOn: []string{"st_1", "st_2"},
+	}
+
+	actions := u.ScheduleDependentTeams(context.Background(), "sp1", upstream)
+	if len(actions) != 1 || actions[0].Action != "fail" {
+		t.Fatalf("expected fail for missing upstream, got %+v", actions)
+	}
+	if actions[0].Reason != "missing upstream team" {
+		t.Fatalf("reason=%q", actions[0].Reason)
 	}
 }
 

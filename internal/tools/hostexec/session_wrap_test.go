@@ -2,11 +2,11 @@ package hostexec
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -36,6 +36,9 @@ func TestWrapSessionEnhance_WritesOutputFileAndNotify(t *testing.T) {
 	if m["notified"] != true {
 		t.Fatalf("notified=%v", m["notified"])
 	}
+	if _, ok := m["running_for_ms"]; !ok {
+		t.Fatal("missing running_for_ms")
+	}
 	path, _ := m["output_file"].(string)
 	if path == "" {
 		t.Fatal("missing output_file")
@@ -57,6 +60,30 @@ func TestWrapSessionEnhance_DeclarationHasNotify(t *testing.T) {
 	d := ts.Tools(context.Background())[0].Declaration()
 	if d.InputSchema == nil || d.InputSchema.Properties["notify_pattern"] == nil {
 		t.Fatalf("schema=%+v", d.InputSchema)
+	}
+}
+
+func TestWrapSessionEnhance_StreamableCall(t *testing.T) {
+	dir := t.TempDir()
+	exec := &stubExec{
+		result: map[string]any{"status": "exited", "session_id": "sess-stream", "output": "hello stream\n"},
+	}
+	ts := WrapSessionEnhance(&stubSet{tools: []trpctool.Tool{exec}}, dir, loggateway.NewNoop())
+	st, ok := ts.Tools(context.Background())[0].(trpctool.StreamableTool)
+	if !ok {
+		t.Fatal("exec_command must be StreamableTool")
+	}
+	reader, err := st.StreamableCall(context.Background(), []byte(`{"command":"echo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk, cerr := reader.Recv()
+	if cerr != nil {
+		t.Fatalf("recv: %v", cerr)
+	}
+	text, _ := chunk.Content.(string)
+	if !strings.Contains(text, "hello stream") {
+		t.Fatalf("chunk=%v", chunk.Content)
 	}
 }
 
@@ -102,9 +129,54 @@ func (s *stubStdin) Call(context.Context, []byte) (any, error) {
 	return out, nil
 }
 
-func TestPersistJSONRoundtrip(t *testing.T) {
-	raw, _ := json.Marshal(map[string]any{"a": 1})
-	if len(raw) == 0 {
-		t.Fatal("marshal")
+func TestSessionMetaStore_Hung(t *testing.T) {
+	s := newSessionMetaStore()
+	t0 := time.Unix(1_700_000_000, 0)
+	_, hung := s.observe("s1", "boot", "running", t0, time.Second)
+	if hung {
+		t.Fatal("fresh session must not be hung")
+	}
+	_, hung = s.observe("s1", "boot", "running", t0.Add(2*time.Second), time.Second)
+	if !hung {
+		t.Fatal("unchanged output past threshold must be hung")
+	}
+	ms, hung := s.observe("s1", "boot\nmore", "running", t0.Add(3*time.Second), time.Second)
+	if hung {
+		t.Fatal("new output clears hung")
+	}
+	if ms < 3000 {
+		t.Fatalf("running_for_ms=%d", ms)
+	}
+}
+
+func TestWrapSessionEnhance_WriteStdinNotify(t *testing.T) {
+	dir := t.TempDir()
+	exec := &stubExec{
+		result: map[string]any{"status": "running", "session_id": "sess-2", "output": "boot\n"},
+	}
+	stdin := &stubStdin{outputs: []map[string]any{
+		{"status": "running", "output": "boot\n", "session_id": "sess-2"},
+		{"status": "running", "output": "boot\nready\n", "session_id": "sess-2"},
+	}}
+	ts := WrapSessionEnhance(&stubSet{tools: []trpctool.Tool{exec, stdin}}, dir, loggateway.NewNoop())
+	var wt trpctool.CallableTool
+	for _, t0 := range ts.Tools(context.Background()) {
+		if t0.Declaration().Name == "write_stdin" {
+			wt = t0.(trpctool.CallableTool)
+		}
+	}
+	if wt == nil {
+		t.Fatal("missing write_stdin")
+	}
+	if wt.Declaration().InputSchema == nil || wt.Declaration().InputSchema.Properties["notify_pattern"] == nil {
+		t.Fatal("write_stdin schema missing notify_pattern")
+	}
+	out, err := wt.Call(context.Background(), []byte(`{"session_id":"sess-2","chars":"","notify_pattern":"ready","block_until_ms":2000}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := out.(map[string]any)
+	if m["notified"] != true {
+		t.Fatalf("notified=%v", m["notified"])
 	}
 }

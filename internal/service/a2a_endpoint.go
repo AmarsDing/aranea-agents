@@ -89,7 +89,11 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 			MemoryL3Recall:         s.orch.td().Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  s.orch.td().Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: s.orch.td().Persist.Memory.PreferenceLister,
-			MemoryReconsolidator:   s.orch.td().Persist.Memory.Reconsolidator,
+			// FR-12.6/FR-12.7（2026-08-18）：与 wire_gen provideTRPCBuilderDeps 对齐，
+			// 补接 injected_count 计数器与常驻档案卡读口（此前漏接，计数永不落库）。
+			MemoryFactInjectCounter: s.orch.td().Persist.Memory.FactInjectCounter,
+			MemoryProfileCardReader: s.orch.td().Persist.Memory.ProfileCardReader,
+			MemoryReconsolidator:    s.orch.td().Persist.Memory.Reconsolidator,
 			AgentCaseRecaller:      s.orch.td().Persist.Memory.AgentCaseRecaller,
 			KnowledgeRetriever:     s.orch.rt().Knowledge.Retriever,
 		},

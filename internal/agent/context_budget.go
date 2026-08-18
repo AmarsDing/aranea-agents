@@ -240,9 +240,9 @@ func skillOverviewBlockChars(ctx context.Context, repo trpcskill.Repository, fil
 }
 
 // newContextBudgetHistoryBeforeHook meters the history component (N3): the
-// non-system messages in the final request — session history plus the current
-// user input. System messages (static prefix + injected cues) are excluded;
-// they are accounted for by their own categories. Per-request dedupe via
+// non-system, non-cue messages in the final request — session history plus
+// the current user input. System messages and trailing dynamic cues are
+// excluded; they are accounted for by their own categories. Per-request dedupe via
 // recordContextBudgetOnce keeps tool-loop re-entries from re-counting: on
 // re-entry the list has grown by tool call/result messages, which are turn
 // noise, not the per-request baseline.
@@ -257,7 +257,7 @@ func newContextBudgetHistoryBeforeHook() *callbacks.BeforeModelHookFunc {
 		}
 		totalChars := 0
 		for _, msg := range args.Request.Messages {
-			if msg.Role == trpcmodel.RoleSystem {
+			if isPromptFixedMessage(msg) {
 				continue
 			}
 			totalChars += utf8.RuneCountInString(msg.Content)

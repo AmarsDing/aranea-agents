@@ -21,9 +21,12 @@ const (
 )
 
 // pinnedPreferenceKinds are the fact kinds eligible for pinned injection.
-var pinnedPreferenceKinds = []string{"preference", "constraint"}
+// G 维 P1（2026-08-18）：除 consolidation 分类法（preference/constraint）外，
+// 覆盖 immediate self-marking 分类法（user_preference/agent_instruction）——
+// 规则类事实与偏好同通道 100% 钉住，不再依赖相似度召回门控。
+var pinnedPreferenceKinds = []string{"preference", "constraint", "user_preference", "agent_instruction"}
 
-// PinnedPreferenceCue renders the always-on preference/constraint block
+// PinnedPreferenceCue renders the always-on preference/constraint/rule block
 // (FR-M3). Returns "" when the lister is nil, errors, or yields no usable
 // rows — pinned injection is best-effort and must never break a turn.
 func PinnedPreferenceCue(ctx context.Context, lister biz.MemoryPreferenceLister, agentID, userID string) string {
@@ -45,6 +48,9 @@ func PinnedPreferenceCueWithIDs(ctx context.Context, lister biz.MemoryPreference
 	}
 	var b strings.Builder
 	b.WriteString("## 用户偏好与工作要求（始终生效）\n")
+	// P2a（2026-08-18）：钉住块合规引导——规则类条目每次作答必须遵守，
+	// 不得因与当前问题相关性低而跳过；输出前逐条核对。
+	b.WriteString("以下为长期生效的偏好与工作规则：每次作答前逐条核对并全部遵守，不得因与当前问题相关性低而忽略。\n")
 	written := 0
 	var factIDs []string
 	for _, raw := range rows {
@@ -63,8 +69,11 @@ func PinnedPreferenceCueWithIDs(ctx context.Context, lister biz.MemoryPreference
 		stmt = strutil.TruncateRunesEllipsis(stmt, pinnedPreferenceItemMaxRunes)
 		kind, _ := m["fact_kind"].(string)
 		prefix := "PREFERENCE"
-		if kind == "constraint" {
+		switch kind {
+		case "constraint":
 			prefix = "CONSTRAINT"
+		case "agent_instruction":
+			prefix = "RULE"
 		}
 		fmt.Fprintf(&b, "- [%s] %s\n", prefix, stmt)
 		if id, _ := m["id"].(string); strings.TrimSpace(id) != "" {

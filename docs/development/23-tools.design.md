@@ -1240,7 +1240,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 
 **种子表覆盖范围**（节选）：
 - `datetime`、`web_research`、`duckduckgo_search`、`web_fetch`、`gemini_web_fetch`、`google_search`、`arxiv_search`、`wikipedia_search`
-- `read_file`、`read_multiple_files`、`save_file`、`list_file`、`search_file`、`search_content`、`replace_content`、`diff_edit`、`patch_file`
+- `read_file`、`read_multiple_files`、`save_file`、`list_file`、`search_file`、`search_content`、`read_lints`、`delete_file`、`replace_content`、`diff_edit`、`patch_file`
 - `skill_search`、`use_skill`、`memory_search`、`memory_get`
 - `read_image`、`read_document`、`read_spreadsheet`、`create_image`、`tts`
 - `shell_exec`、`send_email`、`todo_write`、`await_user_reply`、`kanban`、`claude_code`、`workspace_exec`
@@ -1553,6 +1553,8 @@ type AssembledToolsets struct {
 | `browser` | browser | ToolSet | critical | ❌ | — | — | Playwright MCP 桥接 |
 | `read_document` | media | — | medium | ✅ | — | — | 文档读取 |
 | `read_spreadsheet` | media | — | medium | ✅ | — | — | 表格读取 |
+| `read_lints` | filesystem | Tool | low | ✅ | — | — | 改后诊断：空 path 读 `.aranea/edited-paths.txt`；Go `go vet` / Python `py_compile` / JS `node --check`；结果不缓存 |
+| `delete_file` | filesystem | Tool | medium | ✅ | — | — | 工作区单文件删除；拒绝目录 / `.git` / 符号链接 / 工作区外；Exclusive，不重试 |
 | `read_tool_result` | system | Tool | low | ✅ | ✅ | — | 延迟工具结果读取 |
 | `working_memory` | memory | ToolSet | low | ✅ | — | — | `internal/tools/working_memory` |
 | `deliverable` | team | ToolSet | low | ❌ | — | — | `deliverabletools.ToolSet`（set/get_deliverable 跨 Agent 交付） |
@@ -1620,6 +1622,8 @@ type ToolsetConfig struct {
     BlobReader       biz.ToolResultBlobReader
     ReadDocument     bool
     ReadSpreadsheet  bool
+    ReadLints        bool
+    DeleteFile       bool
     WorkingMemory    bool
     Datetime         bool
     OutboundRouter   *outbound.Router
@@ -1675,7 +1679,7 @@ AgentRuntimeSettings
 var toolGroupsFilesystem = []string{
     "read_file", "read_multiple_files", "save_file", "list_file",
     "search_file", "search_content", "replace_content",
-    "diff_edit", "patch_file",  // Phase 4 新增
+    "diff_edit", "patch_file", "read_lints", "delete_file",
 }
 var toolGroupsWeb       = []string{"duckduckgo_search", "web_fetch", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory    = []string{"memory_search", "memory_get"}
@@ -1802,8 +1806,10 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 
 | 注册名 | Catalog / 运行时 | 需要工作区？ | 现状 |
 |--------|------------------|-------------|------|
-| `file` | `read_file` … `patch_file` | ✅ 严格 | `FilesystemDir` = `workspace_root` ✅ |
-| `hostexec` | `shell_exec` → `exec_command` | ✅ 默认 cwd | `ShellExecDir` = `workspace_root` ✅ |
+| `file` | `read_file` … `patch_file`；`search_content` 优先 ripgrep（`-A/-B/-C`/`type`/分页） | ✅ 严格 | `FilesystemDir` = `workspace_root` ✅ |
+| `read_lints` | `read_lints` | ✅ 严格 | 与 file 共用 `FilesystemDir`；空 path → editstamp |
+| `delete_file` | `delete_file` | ✅ 严格 | 与 file 共用 `FilesystemDir`；`document.ValidatePath` |
+| `hostexec` | `shell_exec` → `exec_command` | ✅ 默认 cwd | `ShellExecDir` = `workspace_root`；会话输出 `.aranea/shell/`；`pid` / `running_for_ms` / `hung`；`write_stdin` 可 await |
 | `claudecode` | `claude_code` | ✅ 可选独立 | 默认 `workspace_root`；可 Override ✅ |
 | `workspace_exec` | `workspace_exec` | ✅ CodeExecutor | 仅 `WithCodeExecutor` 路径 ✅ |
 | Skill `CodeExecutor` | Skill 脚本执行 | ✅ Skill 根 | `buildSkillDeps` 独立 `rootDir`；与 agent workspace 可不同 |
@@ -1825,7 +1831,7 @@ Tool / Override config: filesystem_dir | base_dir | working_dir | root_dir
 | `internal/data/builtin_tools_seed.go` | `shell_exec` 参数改为 `workdir`（与 hostexec 一致） |
 | `internal/tools.NormalizeInvocation` | **唯一参数归一化入口**（装饰器 Call 前、worktree 内层、锁/缓存所见均为归一后 JSON）。实现仍分 `hostexecnorm` / `filenorm` / `argnorm`。别名重写记 `AliasRewriteTotal` + Debug `tool.args.normalized` |
 | `internal/tools/hostexecnorm` | `cmd`/`cmd_line` → `command`；argv 数组与 `args`/`argv` 拼成字符串（含空格的数组元素加引号）；`working_dir`/`cwd`/`dir` → `workdir`；`timeout` → `timeout_sec` |
-| `internal/tools/filenorm` | `path`/`file` → `file_name`；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file）；`query`/`pattern`/`glob` → `content_pattern`/`file_pattern`（search_content）；`start`/`limit` → `start_line`/`num_lines`（read_file） |
+| `internal/tools/filenorm` | `path`/`file` → `file_name`（含 `delete_file`）；`content`/`body` → `contents`（save_file）；`old`/`new` → `old_string`/`new_string`（replace_content）；`dir` → `path`（list_file）；`glob` → `pattern`（search_file）；`query`/`pattern`/`glob` → `content_pattern`/`file_pattern`（search_content）；`-A`/`-B`/`-C`/`type`/`multiline`/`head_limit`/`offset`（search_content）；`start`/`limit` → `start_line`/`num_lines`（read_file） |
 | `internal/tools/argnorm` | `web_fetch`：`url` → `urls[]`；搜索类：`q`/`search`/`keyword` → `query`；`gemini_web_fetch`：`url` → `prompt` |
 | `internal/tools.BatchExecuteAssembledTools` | Spirit/批执行走已装饰 `Call`；清除 IsolationStrategy 且不复制 Wire worktree |
 | `internal/tools/testexec` / `graph/adapter` | Assemble 后 `ApplyDefaultDecorators`，与 LLM 同一 Call 路径 |
@@ -1918,7 +1924,7 @@ AssemblyConfig.Session.SubAgentService
   → 追加到 AssembledToolsets.Tools
 ```
 
-**4 个子代理工具**：`subagents_spawn`、`subagents_list`、`subagents_get`、`subagents_cancel`。
+**4 个子代理工具**：`subagents_spawn`、`subagents_list`、`subagents_get`、`subagents_cancel`。`subagents_spawn` 接受 `kind`/`subagent_type`（explore|verify|general）以注入不同系统提示；`subagents_get` 接受 `block_until_ms` 等到终态；列表/获取结果带 `running_for_ms`。
 
 ### 7.11 Runtime Alias 与 Policy Alias
 

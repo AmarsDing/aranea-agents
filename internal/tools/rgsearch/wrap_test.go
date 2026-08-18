@@ -35,6 +35,47 @@ func TestParseRipgrepJSON(t *testing.T) {
 	}
 }
 
+func TestParseRipgrepJSON_ContextLines(t *testing.T) {
+	stdout := `{"type":"context","data":{"path":{"text":"a.go"},"lines":{"text":"before\n"},"line_number":2}}
+{"type":"match","data":{"path":{"text":"a.go"},"lines":{"text":"hello TODO\n"},"line_number":3}}
+{"type":"context","data":{"path":{"text":"a.go"},"lines":{"text":"after\n"},"line_number":4}}
+`
+	files, trunc := parseRipgrepJSON(stdout, "", "")
+	if trunc {
+		t.Fatal("small result must not truncate")
+	}
+	if len(files) != 1 || len(files[0].Matches) != 3 {
+		t.Fatalf("%+v", files)
+	}
+	if files[0].Matches[0].Kind != "context" || files[0].Matches[1].Kind != "match" {
+		t.Fatalf("kinds = %+v", files[0].Matches)
+	}
+}
+
+func TestPaginateFileMatches(t *testing.T) {
+	in := []*fileMatch{{
+		FilePath: "a.go",
+		Matches: []*lineMatch{
+			{LineNumber: 1, LineContent: "c0", Kind: "context"},
+			{LineNumber: 2, LineContent: "m0", Kind: "match"},
+			{LineNumber: 3, LineContent: "c1", Kind: "context"},
+			{LineNumber: 4, LineContent: "m1", Kind: "match"},
+			{LineNumber: 5, LineContent: "c2", Kind: "context"},
+			{LineNumber: 6, LineContent: "m2", Kind: "match"},
+		},
+	}}
+	out, trunc := paginateFileMatches(in, 1, 1)
+	if !trunc {
+		t.Fatal("expected truncated")
+	}
+	if len(out) != 1 || len(out[0].Matches) != 3 {
+		t.Fatalf("%+v", out[0].Matches)
+	}
+	if out[0].Matches[0].LineContent != "c1" || out[0].Matches[1].LineContent != "m1" || out[0].Matches[2].LineContent != "c2" {
+		t.Fatalf("kept = %+v", out[0].Matches)
+	}
+}
+
 func TestCapFileMatches(t *testing.T) {
 	in := make([]*fileMatch, 0, 60)
 	for i := 0; i < 60; i++ {
@@ -109,6 +150,35 @@ func TestSearchContentVirtualRefUsesInner(t *testing.T) {
 	}
 	if inner.calls != 1 {
 		t.Fatal("expected inner")
+	}
+}
+
+func TestSearchContentRipgrepContextFlags(t *testing.T) {
+	inner := &stubSearch{result: map[string]any{"file_matches": []any{}}}
+	run := func(ctx context.Context, dir string, args []string) (string, error) {
+		if !contains(args, "-A") || !contains(args, "-B") || !contains(args, "--type") || !contains(args, "-U") {
+			t.Fatalf("args=%v", args)
+		}
+		return `{"type":"match","data":{"path":{"text":"a.go"},"lines":{"text":"TODO"},"line_number":1}}`, nil
+	}
+	ts := wrapToolSet(&stubSet{tools: []trpctool.Tool{inner}}, t.TempDir(), loggateway.NewNoop(), run)
+	ct := ts.Tools(context.Background())[0].(trpctool.CallableTool)
+	d := ct.Declaration()
+	if d.InputSchema == nil || d.InputSchema.Properties["after"] == nil || d.InputSchema.Properties["head_limit"] == nil {
+		t.Fatalf("schema=%+v", d.InputSchema)
+	}
+	_, err := ct.Call(context.Background(), []byte(`{"content_pattern":"TODO","file_pattern":"*.go","after":2,"before":1,"type":"go","multiline":true,"head_limit":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSanitizeRGType(t *testing.T) {
+	if got := sanitizeRGType("go"); got != "go" {
+		t.Fatalf("got %q", got)
+	}
+	if got := sanitizeRGType("go; rm -rf"); got != "" {
+		t.Fatalf("rejected type leaked: %q", got)
 	}
 }
 

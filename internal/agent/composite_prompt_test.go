@@ -258,6 +258,10 @@ func TestPinnedPreferenceCue_FormatsBlock(t *testing.T) {
 	if !strings.Contains(cue, "用户偏好与工作要求") {
 		t.Fatalf("missing header: %s", cue)
 	}
+	// P2a: compliance guidance line must accompany the header.
+	if !strings.Contains(cue, "逐条核对") {
+		t.Fatalf("missing compliance guidance: %s", cue)
+	}
 	if !strings.Contains(cue, "- [PREFERENCE] User prefers dark mode") {
 		t.Fatalf("missing preference line: %s", cue)
 	}
@@ -266,11 +270,38 @@ func TestPinnedPreferenceCue_FormatsBlock(t *testing.T) {
 	}
 }
 
+// TestPinnedPreferenceCue_RendersSelfMarkingKinds verifies G 维 P1: facts from
+// the immediate self-marking taxonomy (user_preference / agent_instruction)
+// enter the pinned block — agent_instruction renders with the [RULE] prefix,
+// user_preference keeps [PREFERENCE].
+func TestPinnedPreferenceCue_RendersSelfMarkingKinds(t *testing.T) {
+	stub := &preferenceListerStub{rows: [][]byte{
+		pinnedRow("f1", "user_preference", "回答必须使用中文"),
+		pinnedRow("f2", "agent_instruction", "每次回答末尾必须附尾注"),
+	}}
+	cue, ids := PinnedPreferenceCueWithIDs(context.Background(), stub, "agent-1", "user-1")
+	if !strings.Contains(cue, "- [PREFERENCE] 回答必须使用中文") {
+		t.Fatalf("missing user_preference line: %s", cue)
+	}
+	if !strings.Contains(cue, "- [RULE] 每次回答末尾必须附尾注") {
+		t.Fatalf("missing agent_instruction RULE line: %s", cue)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 pinned fact IDs, got %v", ids)
+	}
+}
+
 func TestPinnedPreferenceCue_QueriesGovernedKindsWithCap(t *testing.T) {
 	stub := &preferenceListerStub{}
 	_ = PinnedPreferenceCue(context.Background(), stub, "agent-1", "user-1")
-	if len(stub.kinds) != 2 || stub.kinds[0] != "preference" || stub.kinds[1] != "constraint" {
-		t.Fatalf("kinds = %v, want [preference constraint]", stub.kinds)
+	want := []string{"preference", "constraint", "user_preference", "agent_instruction"}
+	if len(stub.kinds) != len(want) {
+		t.Fatalf("kinds = %v, want %v", stub.kinds, want)
+	}
+	for i, k := range want {
+		if stub.kinds[i] != k {
+			t.Fatalf("kinds = %v, want %v", stub.kinds, want)
+		}
 	}
 	if stub.limit != pinnedPreferenceMax {
 		t.Fatalf("limit = %d, want %d", stub.limit, pinnedPreferenceMax)

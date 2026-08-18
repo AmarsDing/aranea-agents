@@ -31,13 +31,15 @@ type stubAgentReader struct {
 	agents []biz.Agent
 	err    error
 
-	mu    sync.Mutex
-	calls int
+	mu        sync.Mutex
+	calls     int
+	lastQuery biz.AgentListQuery
 }
 
-func (s *stubAgentReader) SearchAgents(_ context.Context, _ biz.AgentListQuery) (biz.AgentListResult, error) {
+func (s *stubAgentReader) SearchAgents(_ context.Context, q biz.AgentListQuery) (biz.AgentListResult, error) {
 	s.mu.Lock()
 	s.calls++
+	s.lastQuery = q
 	s.mu.Unlock()
 	if s.err != nil {
 		return biz.AgentListResult{}, s.err
@@ -70,6 +72,12 @@ func (s *stubAgentReader) Calls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.calls
+}
+
+func (s *stubAgentReader) LastQuery() biz.AgentListQuery {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastQuery
 }
 
 // nopLogger returns a no-op loggateway.Logger so the tests can drive the
@@ -418,6 +426,28 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestAgentMatcher_SkipsInactiveAndArchived(t *testing.T) {
+	stub := &stubAgentReader{agents: []biz.Agent{
+		{AgentKey: "inactive-fit", DisplayName: "Inactive", Roles: []string{"translation"}, Status: string(biz.AgentStatusInactive)},
+		{AgentKey: "archived-fit", DisplayName: "Archived", Roles: []string{"translation"}, Status: string(biz.AgentStatusArchived)},
+		{AgentKey: "active-other", DisplayName: "Active", Roles: []string{"music"}, Status: string(biz.AgentStatusActive)},
+	}}
+	m := NewAgentMatcher(stub, nopLogger())
+	got, err := m.MatchAgent(context.Background(), "translate", []string{"translation"})
+	if err != nil {
+		t.Fatalf("MatchAgent: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected fallback to an assignable agent")
+	}
+	if got.AgentKey != "active-other" {
+		t.Fatalf("inactive/archived must not be assigned, got %s", got.AgentKey)
+	}
+	if stub.LastQuery().Status != string(biz.AgentStatusActive) {
+		t.Fatalf("SearchAgents status=%q want active", stub.LastQuery().Status)
+	}
 }
 
 func contains(haystack []string, needle string) bool {

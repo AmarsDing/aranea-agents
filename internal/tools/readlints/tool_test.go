@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"aranea-agents/internal/tools/editstamp"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -53,7 +54,81 @@ func TestReadLintsEmptyPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(out)
-	if !strings.Contains(string(raw), "no paths") {
+	if !strings.Contains(string(raw), "no recent edits") {
+		t.Fatalf("%s", raw)
+	}
+}
+
+func TestReadLintsEmptyUsesStamp(t *testing.T) {
+	base := t.TempDir()
+	pkg := filepath.Join(base, "pkg")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f := filepath.Join(pkg, "a.go")
+	if err := os.WriteFile(f, []byte("package pkg\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	editstamp.Record(base, "pkg/a.go")
+	tool := newTool(base, loggateway.NewNoop(), func(_ context.Context, dir, name string, args []string) (string, string, error) {
+		if name != "go" {
+			t.Fatalf("unexpected %s", name)
+		}
+		return "", "", nil
+	})
+	ct := tool.(trpctool.CallableTool)
+	out, err := ct.Call(context.Background(), []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(out)
+	if !strings.Contains(string(raw), "recently edited") && !strings.Contains(string(raw), "no diagnostics") {
+		t.Fatalf("%s", raw)
+	}
+}
+
+func TestReadLintsPython(t *testing.T) {
+	base := t.TempDir()
+	f := filepath.Join(base, "bad.py")
+	if err := os.WriteFile(f, []byte("x =\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := newTool(base, loggateway.NewNoop(), func(_ context.Context, dir, name string, args []string) (string, string, error) {
+		if name == "go" {
+			return "", "", nil
+		}
+		return "", "  File \"bad.py\", line 1\n    x =\nSyntaxError: invalid syntax", errPython
+	})
+	ct := tool.(trpctool.CallableTool)
+	out, err := ct.Call(context.Background(), []byte(`{"path":"bad.py"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(out)
+	if !strings.Contains(string(raw), "SyntaxError") {
+		t.Fatalf("%s", raw)
+	}
+}
+
+func TestReadLintsJavaScript(t *testing.T) {
+	base := t.TempDir()
+	f := filepath.Join(base, "bad.js")
+	if err := os.WriteFile(f, []byte("const x =\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := newTool(base, loggateway.NewNoop(), func(_ context.Context, dir, name string, args []string) (string, string, error) {
+		if name == "go" {
+			return "", "", nil
+		}
+		return "", "bad.js:1\nSyntaxError: Unexpected end of input", errPython
+	})
+	ct := tool.(trpctool.CallableTool)
+	out, err := ct.Call(context.Background(), []byte(`{"path":"bad.js"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(out)
+	if !strings.Contains(string(raw), "SyntaxError") {
 		t.Fatalf("%s", raw)
 	}
 }
@@ -84,3 +159,9 @@ func TestReadLintsUsesVetRunner(t *testing.T) {
 		t.Fatalf("%s", raw)
 	}
 }
+
+type pythonExitError struct{}
+
+func (pythonExitError) Error() string { return "exit 1" }
+
+var errPython = pythonExitError{}

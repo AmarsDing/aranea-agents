@@ -129,7 +129,7 @@ service AgentService {
 | 消息 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|------|
 | `ListAgentsRequest` | `keyword` | string | ❌ | 搜索关键字（命中 display_name/agent_key/provider/model/agent_description） |
-| | `status` | string | ❌ | 状态筛选（active/inactive/deleted） |
+| | `status` | string | ❌ | 状态筛选（active/inactive/archived；软删靠 `deleted_at`，不进列表） |
 | | `provider` | string | ❌ | Provider 筛选 |
 | | `org_node_id` | string | ❌ | 业务分类职位节点 id 筛选 |
 | | `created_by` | string | ❌ | 空 = 全部；`mine` = 当前用户；否则用户 id |
@@ -361,7 +361,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
     now := nowRFC3339()
     _, err := r.data.RW().Write(ctx).Agent.UpdateOneID(id).
         SetDeletedAt(now).
-        SetStatus("deleted").
+        SetStatus("archived").
         SetUpdatedAt(now).
         Save(ctx)
     return err
@@ -681,7 +681,7 @@ defineEmits<{
 |-------------|-----------|------|
 | `active` | positive (绿) | 活跃 |
 | `inactive` | grey (灰) | 停用 |
-| `deleted` | 不展示 | 已软删 |
+| `archived` | 默认不展示 | 用户归档，或软删后的目录 FSM 状态（列表仍过滤 `deleted_at`） |
 
 ### 7.7 上下文窗口格式化
 
@@ -813,7 +813,7 @@ function isAgentEvolving(agent: Agent): boolean {
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `keyword` | string | `""` | 命中 display_name/agent_key/provider/model/agent_description |
-| `status` | string | `""` | active/inactive/deleted |
+| `status` | string | `""` | active/inactive/archived |
 | `provider` | string | `""` | |
 | `org_node_id` | string | `""` | 业务分类职位节点 id |
 | `created_by` | string | `""` | 空 = 全部；`mine` = 当前用户；否则用户 id |

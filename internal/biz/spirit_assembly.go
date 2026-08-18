@@ -48,7 +48,9 @@ func (a *SpiritAssembly) AssembleTeam(ctx context.Context, params SpiritTeamPara
 	// A team is reusable when:
 	//   - Same spirit_session_id + same task_description (case-insensitive)
 	//     OR same dag_node_id (when non-empty, for DAG-based orchestration)
-	//   - Status is pending or running (not terminal)
+	//   - Status is pending or running (not terminal). Running hits are
+	//     reused so a duplicate Orchestrate cannot mint a second team; the
+	//     caller must not StartTeamTurn again (see RealTeamOrchestrator).
 	//   - Not deleted
 	// This prevents duplicate team/agent creation when the same task is
 	// re-executed (e.g. user retries, orchestrator re-runs), which was causing
@@ -228,8 +230,8 @@ func (a *SpiritAssembly) AssembleTeam(ctx context.Context, params SpiritTeamPara
 		return SpiritTeamResult{}, err
 	}
 
-	// Register team timeout callback if configured.
-	a.orch.registerTeamTimeout(ctx, cfg, result.Team.ID)
+	// Team timeout is registered at StartTeamTurn (activation), not assembly.
+	// Registering here would fail pending DAG dependents whose upstream is still running.
 
 	// Submit borrow requests for cross-department members (DL-09).
 	// These are processed outside the transaction to avoid long-held locks.
@@ -560,7 +562,10 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 	for i, key := range agentKeys {
 		role := RoleWorker
 		enabled := true
-		if i == 0 && mode == TeamModeCoordinator {
+		if mode == TeamModeCoordinator && i == 0 {
+			role = RoleSynthesizer
+		}
+		if mode == TeamModeParallel && i == len(agentKeys)-1 && len(agentKeys) > 1 {
 			role = RoleSynthesizer
 		}
 		members = append(members, member{
@@ -584,6 +589,9 @@ func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggatewa
 		"members":            members,
 		"max_concurrency":    maxConcurrency,
 		"timeout_seconds":    SpiritTeamDefaultTimeout,
+	}
+	if mode == TeamModeParallel && len(agentKeys) > 1 {
+		def["synthesizer_agent_id"] = strings.TrimSpace(agentKeys[len(agentKeys)-1])
 	}
 	// C1/C3: multi-member teams get the deliverable state channel so members
 	// can pass structured output via set_deliverable/get_deliverable tools.

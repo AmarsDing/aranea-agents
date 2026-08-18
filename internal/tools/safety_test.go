@@ -26,7 +26,7 @@ func TestClassifyTool_KnownConcurrentSafe(t *testing.T) {
 }
 
 func TestClassifyTool_RuntimeNamesInheritRegistrySafety(t *testing.T) {
-	concurrent := []string{"read_file", "list_file", "search_content", "read_multiple_files", "web_fetch", "duckduckgo_search"}
+	concurrent := []string{"read_file", "list_file", "search_content", "read_multiple_files", "web_fetch", "duckduckgo_search", "read_lints"}
 	for _, name := range concurrent {
 		if got := ClassifyTool(name); got != SafetyConcurrentSafe {
 			t.Errorf("ClassifyTool(%q) = %v, want SafetyConcurrentSafe", name, got)
@@ -41,7 +41,7 @@ func TestClassifyTool_RuntimeNamesInheritRegistrySafety(t *testing.T) {
 			t.Errorf("IsCacheable(%q) = true, want false", name)
 		}
 	}
-	writes := []string{"save_file", "diff_edit", "patch_file", "replace_content", "write_file"}
+	writes := []string{"save_file", "diff_edit", "patch_file", "replace_content", "write_file", "delete_file"}
 	for _, name := range writes {
 		if got := ClassifyTool(name); got != SafetyExclusive {
 			t.Errorf("ClassifyTool(%q) = %v, want SafetyExclusive (file write)", name, got)
@@ -50,7 +50,7 @@ func TestClassifyTool_RuntimeNamesInheritRegistrySafety(t *testing.T) {
 			t.Errorf("IsCacheable(%q) = true, want false", name)
 		}
 	}
-	for _, name := range []string{"read_file", "list_file", "search_content", "read_multiple_files"} {
+	for _, name := range []string{"read_file", "list_file", "search_content", "read_multiple_files", "read_lints"} {
 		if IsCacheable(name) {
 			t.Errorf("IsCacheable(%q) = true, want false (workspace file tools are not cached)", name)
 		}
@@ -75,6 +75,9 @@ func TestCatalogResultCacheAllowed(t *testing.T) {
 		if CatalogResultCacheAllowed(name) {
 			t.Errorf("CatalogResultCacheAllowed(%q) = true, want false (file family)", name)
 		}
+	}
+	if CatalogResultCacheAllowed("read_lints") {
+		t.Error("CatalogResultCacheAllowed(read_lints) = true, want false (diagnostics go stale)")
 	}
 }
 

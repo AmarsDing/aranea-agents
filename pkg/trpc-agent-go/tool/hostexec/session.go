@@ -206,6 +206,14 @@ type processPoll struct {
 	Offset     int
 	NextOffset int
 	ExitCode   *int
+	PID        int
+}
+
+func (s *session) pid() int {
+	if s == nil || s.cmd == nil || s.cmd.Process == nil {
+		return 0
+	}
+	return s.cmd.Process.Pid
 }
 
 func (s *session) poll(limit *int) processPoll {
@@ -240,6 +248,9 @@ func (s *session) poll(limit *int) processPoll {
 		Output:     out,
 		Offset:     start,
 		NextOffset: end,
+	}
+	if s.cmd != nil && s.cmd.Process != nil {
+		res.PID = s.cmd.Process.Pid
 	}
 	if s.finished.IsZero() {
 		return res

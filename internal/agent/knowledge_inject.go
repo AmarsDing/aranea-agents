@@ -42,8 +42,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryKnowledgeCue, utf8.RuneCountInString(cue))
-		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append(args.Request.Messages, sys)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -112,15 +111,15 @@ func filterCueCollections(collections []biz.KnowledgeCollection, scopedIDs []str
 	return filtered
 }
 
-// lastUserQuery 只在本轮第一次模型调用（最新非 system 消息是 user）时取查询。
-// 工具循环续跑时跳过，避免每轮重复检索拖慢 TTFT。
+// lastUserQuery 只在本轮第一次模型调用（最新非 system / 非动态 cue 消息是
+// user）时取查询。工具循环续跑时跳过，避免每轮重复检索拖慢 TTFT。尾部
+// user-role 动态 cue 必须跳过，否则会把 cue 正文当成检索词。
 func lastUserQuery(msgs []trpcmodel.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		role := msgs[i].Role
-		if role == trpcmodel.RoleSystem {
+		if isPromptFixedMessage(msgs[i]) {
 			continue
 		}
-		if role == trpcmodel.RoleUser {
+		if msgs[i].Role == trpcmodel.RoleUser {
 			return strings.TrimSpace(msgs[i].Content)
 		}
 		return ""

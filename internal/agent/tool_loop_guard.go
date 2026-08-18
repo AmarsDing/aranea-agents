@@ -28,9 +28,17 @@ import (
 // 判定语义（区分「死循环」与「持续干活」）：
 //   - 同工具 + 相同参数签名 + 上次成功 + 结果内容一致，连续 >=3 次 → 无效空转，拦截；
 //   - 多工具固定轮换（如 A→B→C 满 3 轮，周期 p∈[2,4]）→ 节点内轮询空转，拦截；
+//   - 检索类工具连续空结果（换词重试 ≥2 次仍空）→ 库中确无资料，本节点内禁调该工具；
 //   - 同工具不同参数（递进式调研/干活）→ 放行；
 //   - 同参数但上次失败（重试）→ 放行（失败治理归熔断器）；
 //   - 同参数但结果有变化（轮询拿到新数据）→ 放行并重置计数。
+//
+// 空结果熔断的实证（2026-08-18 域 B 评测 sh-04/ab-04 超时事故）：team KB 纯词法库
+// 无语义层，knowledge_search 降级 BM25 返回空；模型将空结果误读为「查询方式不对」
+// 而无限换词重试——每次新参数生成新签名绕过 p=1 判定，且不重复固定模式使轮换检测
+// 同样失效，单 turn 烧到 157+ 次模型调用 / 260K+ tokens 直至客户端超时。空结果对
+// 检索类工具是合法终态（库中确实无资料），连续空即构成「换词亦无新信息」的确定性
+// 证据，故按工具维度（无视参数差异）熔断，拦截消息引导模型直接作答/声明未收录。
 //
 // 轮换循环的实证（2026-08-16 复验）：verify 节点以 health_check→alarm_get→exec
 // 三工具轮换约 10 轮 ≈30 次调用——交替调用使 lastSig 比较恒失效、结果内嵌时间戳
@@ -70,6 +78,10 @@ const (
 	// 取值权衡：2~3 次不足以区分「模型读不懂纠偏」与「模型顽固性重发」，
 	// 5 次给足纠偏机会又远小于 max_tool_iterations，止损收益明确。
 	loopGuardSaturatedStopThreshold = 5
+	// 检索类工具连续空结果达到此次数后，本节点内禁止再调该工具（换词亦无新信息）。
+	// 取值与 blockThreshold 对齐：首次空属正常未命中，第二次换词仍空即构成
+	// 「库中确无资料」的足够证据，第三次起拦截。
+	loopGuardEmptyStreakThreshold = 2
 	// If AfterTool never runs (panic / skipped callback), inflight would
 	// otherwise block the same signature for the rest of the invocation.
 	// Must exceed the default tool execution timeout (10 min) so a still-
@@ -89,6 +101,7 @@ type loopGuardEntry struct {
 	lastFailed       bool   // 上一次调用是否失败（失败重试不累计、不拦截）
 	recentSigs       []string
 	recentTools      []string                // 与 recentSigs 对齐的工具名，仅供轮换拦截消息可读性
+	emptyStreak      map[string]int          // 检索类工具名 → 连续空结果次数（无视参数差异；非空即清零）
 	blockedCount     int                     // 本节点隔离键下累计被拦截次数（B4：满阈值升级 StopError）
 	inflight         map[string]inflightSlot // 签名 → 当前正在执行（已放行、尚未 AfterTool）
 	lastTouch        time.Time
@@ -106,7 +119,34 @@ const (
 	loopGuardBlockParallel
 	loopGuardBlockLoop
 	loopGuardBlockCycle
+	loopGuardBlockEmpty
 )
+
+// loopGuardEmptyResultTools 登记纳入「空结果熔断」的检索类工具及其空判定谓词。
+// 空结果是这些工具的合法终态（库中确无资料），模型换词重试不会产生新信息；
+// 判定谓词按各工具的结果结构识别「空」，非空结果即清零该工具的连续空计数。
+var loopGuardEmptyResultTools = map[string]func(result any) bool{
+	"knowledge_search": loopGuardIsEmptySearchResult,
+}
+
+// loopGuardIsEmptySearchResult 判定 knowledge_search 结果为空：
+// 序列化形态 {"chunks":[...]}，空 = chunks 缺失或长度 0。
+func loopGuardIsEmptySearchResult(result any) bool {
+	if result == nil {
+		return false
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return false
+	}
+	var probe struct {
+		Chunks []json.RawMessage `json:"chunks"`
+	}
+	if err := json.Unmarshal(b, &probe); err != nil {
+		return false
+	}
+	return len(probe.Chunks) == 0
+}
 
 type loopGuardVerdict struct {
 	kind             loopGuardBlockKind
@@ -114,6 +154,7 @@ type loopGuardVerdict struct {
 	saturated        bool
 	blockedCount     int
 	consecutiveCount int
+	emptyStreak      int
 	lastDigest       string
 }
 
@@ -315,6 +356,9 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	if e.inflightCount(sig, now) > 0 {
 		return loopGuardVerdict{kind: loopGuardBlockParallel}
 	}
+	// 空结果熔断优先于签名/轮换判定：库中确无资料时，任何参数的再调用都无意义，
+	// 拦截消息也比通用重复文案更具行动指引（直接作答/声明未收录）。
+	emptyBlocked := e.emptyStreak[toolName] >= loopGuardEmptyStreakThreshold
 	loop := e.lastSig == sig && !e.lastFailed && e.sameCount >= loopGuardBlockThreshold
 	var cycleDesc string
 	if !loop && len(e.recentSigs)+1 >= 2*loopGuardCycleMinRepeats {
@@ -325,7 +369,7 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 			cycleDesc = strings.Join(trialTools[len(trialTools)-p:], " → ")
 		}
 	}
-	if !loop && cycleDesc == "" {
+	if !emptyBlocked && !loop && cycleDesc == "" {
 		e.beginInflight(sig, now)
 		return loopGuardVerdict{kind: loopGuardBlockNone}
 	}
@@ -334,8 +378,13 @@ func (g *toolLoopGuard) verdictBeforeLocked(e *loopGuardEntry, sig, toolName str
 	v := loopGuardVerdict{
 		blockedCount:     e.blockedCount,
 		consecutiveCount: e.sameCount,
+		emptyStreak:      e.emptyStreak[toolName],
 		lastDigest:       e.lastResultDigest,
 		saturated:        e.blockedCount >= loopGuardSaturatedStopThreshold,
+	}
+	if emptyBlocked {
+		v.kind = loopGuardBlockEmpty
+		return v
 	}
 	if cycleDesc != "" {
 		v.kind = loopGuardBlockCycle
@@ -380,6 +429,18 @@ func (g *toolLoopGuard) beforeHook() callbacks.BeforeToolHook {
 				loggateway.Int("blocked", loopGuardSaturatedStopThreshold))
 			return nil, trpcagent.NewStopError(fmt.Sprintf("%s：本节点已连续 %d 次触发系统拦截仍重发被拦调用，"+
 				"节点被强制终止以防止调用预算耗尽。已取得的取证结论与本次终止原因将随节点结果上报。", loopGuardMarker, loopGuardSaturatedStopThreshold))
+		}
+		if v.kind == loopGuardBlockEmpty {
+			g.lg.Warn("tool loop guard blocked empty-result retry",
+				loggateway.StepID("agent.tool_loop_guard"),
+				loggateway.Str("tool", args.ToolName),
+				loggateway.Int("empty_streak", v.emptyStreak))
+			msg := fmt.Sprintf("%s：%s 已连续 %d 次（含换用不同关键词）返回空结果——知识库中确实没有相关资料。"+
+				"本调用被系统拦截，工具未执行、也非执行失败；继续换词重试不会产生任何新信息，只会消耗你的调用预算。"+
+				"请立即停止调用本工具，直接基于已有信息作答；若问题依赖该资料，在回答中明确说明「知识库未收录相关内容」。"+
+				"（本节点累计被拦 %d 次，满 %d 次将被强制终止）",
+				loopGuardMarker, args.ToolName, v.emptyStreak, v.blockedCount, loopGuardSaturatedStopThreshold)
+			return nil, errors.New(msg)
 		}
 		if v.kind == loopGuardBlockCycle {
 			g.lg.Warn("tool loop guard blocked rotation cycle call",
@@ -443,6 +504,18 @@ func (g *toolLoopGuard) afterHook() callbacks.AfterToolHook {
 		e.lastResultKey = rk
 		e.lastResultDigest = loopGuardResultDigest(args.Result)
 		e.lastFailed = false
+		// 空结果熔断记账（无视参数差异）：检索类工具连续空则累计，一旦拿到
+		// 非空结果立即清零——熔断针对的是「库中确无资料仍换词重试」的空转。
+		if isEmpty, ok := loopGuardEmptyResultTools[args.ToolName]; ok {
+			if isEmpty(args.Result) {
+				if e.emptyStreak == nil {
+					e.emptyStreak = map[string]int{}
+				}
+				e.emptyStreak[args.ToolName]++
+			} else {
+				delete(e.emptyStreak, args.ToolName)
+			}
+		}
 		e.appendCallLocked(sig, args.ToolName)
 		return &trpctool.AfterToolResult{Context: ctx}, nil
 	})

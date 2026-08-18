@@ -174,6 +174,7 @@ type stubMemberEvidence struct {
 }
 
 func (s *stubSpiritTeamController) CancelTimeoutTimer(_ string) { s.cancelTimeoutCalls++ }
+func (s *stubSpiritTeamController) RegisterTeamTimeout(_ context.Context, _ biz.Team) {}
 func (s *stubSpiritTeamController) RecordTeamCompletion(_ context.Context, _ biz.Team, _ int64) (float64, biz.TopologyType) {
 	s.recordCompletionCalls++
 	return 0, ""
@@ -726,6 +727,30 @@ func TestHandleTeamTurnResult_CompletedWithRealDeliverable_StaysCompleted(t *tes
 	}
 	if controller.scheduleDependentsCalls != 1 {
 		t.Errorf("ScheduleDependentTeams called %d times, want 1 (activate downstream)", controller.scheduleDependentsCalls)
+	}
+}
+
+// dagRun 活跃时 reverse-sync 依赖调度必须跳过，否则与 PlanExecutor
+// checkDownstream 双重激活下游团队。
+func TestHandleTeamTurnResult_DagRunActive_SkipsReverseSchedule(t *testing.T) {
+	team := biz.Team{
+		ID: "team-dag-gate", DisplayName: "DAG 团队", SpiritSessionID: "spirit-dag",
+		AutoCreated: true, Status: biz.TeamStatusRunning, DagNodeID: "st_1",
+	}
+	controller := &stubSpiritTeamController{hasRealDeliverable: true}
+	eventBus := &capturingEventBus{}
+	s := newDeliverableGateStarter(team, controller, eventBus)
+	pe := NewPlanExecutor(nil, nil, nil, loggateway.NewNoop())
+	pe.running.Store("pb_test", &boardRunLease{sessionID: "spirit-dag", cancel: func() {}})
+	s.SetPlanExecutor(pe)
+
+	s.HandleTeamTurnResult(context.Background(), team.SpiritSessionID, team.ID, biz.TeamStatusCompleted, "", "")
+
+	if controller.recordCompletionCalls != 1 {
+		t.Errorf("RecordTeamCompletion called %d times, want 1", controller.recordCompletionCalls)
+	}
+	if controller.scheduleDependentsCalls != 0 {
+		t.Errorf("ScheduleDependentTeams called %d times, want 0 while dagRun is active", controller.scheduleDependentsCalls)
 	}
 	var completedFound bool
 	for _, ev := range eventBus.snapshot() {

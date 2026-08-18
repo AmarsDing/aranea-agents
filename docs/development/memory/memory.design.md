@@ -2103,11 +2103,14 @@ message ListMemoryEpisodesResponse {
 
 ```
 ## 用户偏好与工作要求（始终生效）
+以下为长期生效的偏好与工作规则：每次作答前逐条核对并全部遵守，不得因与当前问题相关性低而忽略。
 - [PREFERENCE] ...
 - [CONSTRAINT] ...
+- [RULE] ...
 ```
 
 - **装配**：与 `CompositeMemoryCue` 同处拼接，置于召回块之前；常量 `pinnedMax=10`、单条 ≤200 字符（rune 截断）。
+- **钉住 kinds（2026-08-18 G 维 P1 扩展）**：`{"preference","constraint","user_preference","agent_instruction"}`——前两者来自 consolidation 分类法，后两者来自 immediate self-marking 分类法（`immediate_fact_writer.go`），规则类事实（`agent_instruction`→`[RULE]` 前缀）与偏好同通道 100% 钉住，不再依赖相似度召回门控。
 - **兼容**：存量 `fact_kind='fact'` 不进常驻块，渐进生效。
 
 ### D. memory_remember 显式记忆工具（FR-M4）

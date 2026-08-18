@@ -144,11 +144,12 @@ func (r *RuntimeReplannerImpl) OnNodeFailure(
 	// 唯一入口。无 emitter 的 ctx（后台路径）跳过，不阻塞决策。
 	if em := event.TraceEmitterFromContext(ctx); em != nil {
 		em.LogDone("graph.replan.decided",
-			fmt.Sprintf("节点 %s 失败后图已重规划（%s）", failedNode, action.Type),
+			fmt.Sprintf("节点 %s 失败后决定动作 %s", failedNode, action.Type),
 			event.P("replan_type", string(action.Type)),
 			event.P("failed_node", failedNode),
 			event.P("severity", analysis.Severity),
-			event.P("execution_id", exec.ID))
+			event.P("execution_id", exec.ID),
+			event.P("topology_rewritten", replanRewritesTopology(action.Type)))
 	}
 
 	r.lg.Info("runtime replanner: replan action decided",
@@ -210,7 +211,7 @@ func (r *RuntimeReplannerImpl) buildAction(
 	case failureSeverityAgentIncapable:
 		return r.buildInsertFallbackAction(exec, failedNode, analysis), nil
 	case failureSeveritySubtaskInvalid:
-		return r.buildRebuildSubgraphAction(exec, failedNode, analysis), nil
+		return r.buildRebuildSubgraphAction(failedNode), nil
 	case failureSeverityRouteBlocked:
 		return &ReplanAction{Type: ReplanReroute}, nil
 	default:
@@ -246,32 +247,19 @@ func (r *RuntimeReplannerImpl) buildInsertFallbackAction(
 	}
 }
 
-// buildRebuildSubgraphAction replaces the failed node with a small sequential
-// subgraph (split→process→merge). The failed node is added to SkipNodes so
-// the executor does not re-execute it.
-func (r *RuntimeReplannerImpl) buildRebuildSubgraphAction(
-	_ *biz.GraphExecution,
-	failedNode string,
-	analysis FailureAnalysis,
-) *ReplanAction {
-	splitID := failedNode + "_split"
-	processID := failedNode + "_process"
-	mergeID := failedNode + "_merge"
-	nodes := []biz.NodeDef{
-		{ID: splitID, Type: biz.NodeTypeFunction, Description: "Split input for " + failedNode, FuncRef: "function.split"},
-		{ID: processID, Type: biz.NodeTypeAgent, Description: "Rebuilt processing for " + failedNode + ": " + analysis.Reason, FuncRef: agentInvokeFuncRef},
-		{ID: mergeID, Type: biz.NodeTypeFunction, Description: "Merge output for " + failedNode, FuncRef: "function.merge"},
-	}
-	edges := []biz.EdgeDef{
-		{From: splitID, To: processID, Kind: biz.EdgeKindFlow},
-		{From: processID, To: mergeID, Kind: biz.EdgeKindFlow},
-	}
+// buildRebuildSubgraphAction records a fail-closed decision. The Graph
+// executor cannot insert nodes at runtime; generating NewNodes here made
+// logs claim a topology rewrite that never happened.
+func (r *RuntimeReplannerImpl) buildRebuildSubgraphAction(failedNode string) *ReplanAction {
 	return &ReplanAction{
 		Type:      ReplanRebuildSubgraph,
-		NewNodes:  nodes,
-		NewEdges:  edges,
 		SkipNodes: []string{failedNode},
 	}
+}
+
+func replanRewritesTopology(_ ReplanType) bool {
+	// Framework GraphExecutor cannot add nodes/edges at runtime.
+	return false
 }
 
 // publishReplanEvent publishes a graph_replanned system.notice so the frontend
@@ -291,16 +279,17 @@ func (r *RuntimeReplannerImpl) publishReplanEvent(
 		sessionID = exec.SessionID
 	}
 	r.eventBus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, "replanned", "", map[string]any{
-		"execution_id":   exec.ID,
-		"graph_id":       exec.GraphID,
-		"failed_node":    failedNode,
-		"replan_type":    string(action.Type),
-		"severity":       analysis.Severity,
-		"reason":         analysis.Reason,
-		"new_node_count": len(action.NewNodes),
-		"skip_nodes":     action.SkipNodes,
-		"author":         "runtime-replanner",
-		"activity_kind":  string(biz.ActivityKindGraphStage),
+		"execution_id":       exec.ID,
+		"graph_id":           exec.GraphID,
+		"failed_node":        failedNode,
+		"replan_type":        string(action.Type),
+		"severity":           analysis.Severity,
+		"reason":             analysis.Reason,
+		"new_node_count":     len(action.NewNodes),
+		"skip_nodes":         action.SkipNodes,
+		"topology_rewritten": replanRewritesTopology(action.Type),
+		"author":             "runtime-replanner",
+		"activity_kind":      string(biz.ActivityKindGraphStage),
 	}))
 }
 

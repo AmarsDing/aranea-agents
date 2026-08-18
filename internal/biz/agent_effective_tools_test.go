@@ -142,6 +142,45 @@ func TestEffectiveToolState_fullProfileDenyOverridesOptIn(t *testing.T) {
 	}
 }
 
+func TestBuildAgentEffectiveTools_codingIncludesShellExec(t *testing.T) {
+	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "coding"}
+	cat := []Tool{
+		{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true},
+		{Key: "shell_exec", DisplayName: "Shell 命令", Category: "runtime", Source: "builtin", Enabled: false, RequiresConfirmation: true, RiskLevel: "critical"},
+		{Key: "read_lints", DisplayName: "读取诊断", Category: "filesystem", Source: "builtin", Enabled: true, Readonly: true},
+		{Key: "delete_file", DisplayName: "删除文件", Category: "filesystem", Source: "builtin", Enabled: true},
+	}
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
+	got := map[string]bool{}
+	for _, it := range eff.Items {
+		if it.Enabled {
+			got[it.ToolKey] = true
+		}
+	}
+	if !got["shell_exec"] {
+		t.Fatalf("coding profile must enable shell_exec (catalog opt-in); items=%v", got)
+	}
+	if !got["read_lints"] {
+		t.Fatalf("coding profile must enable read_lints; items=%v", got)
+	}
+	if !got["delete_file"] {
+		t.Fatalf("coding profile must enable delete_file; items=%v", got)
+	}
+}
+
+func TestProfileAllowSet_codingIncludesShellExec(t *testing.T) {
+	allowed := profileAllowSet("coding", nil)
+	if !allowed["shell_exec"] {
+		t.Fatalf("coding allow set must include shell_exec; got %v", allowed)
+	}
+	if !allowed["read_lints"] {
+		t.Fatalf("coding allow set must include read_lints; got %v", allowed)
+	}
+	if !allowed["delete_file"] {
+		t.Fatalf("coding allow set must include delete_file; got %v", allowed)
+	}
+}
+
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}

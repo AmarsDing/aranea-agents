@@ -1244,3 +1244,18 @@ func TestAppendClosedLoopPostmortem_Skip(t *testing.T) {
 		}
 	})
 }
+
+func TestMapV1StrategyToV2(t *testing.T) {
+	cases := map[biz.OrchestrationStrategy]biz.PlanStrategy{
+		biz.StrategyDirect:      biz.PlanStrategySequential,
+		biz.StrategySingleAgent: biz.PlanStrategySequential,
+		biz.StrategyParallel:    biz.PlanStrategyParallel,
+		biz.StrategyDAG:         biz.PlanStrategyDAG,
+		biz.StrategyCoordinator: biz.PlanStrategyCoordinator,
+	}
+	for in, want := range cases {
+		if got := mapV1StrategyToV2(in); got != want {
+			t.Fatalf("%s → %s want %s", in, got, want)
+		}
+	}
+}

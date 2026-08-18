@@ -334,8 +334,8 @@ func TestSkillGuidanceFullProfileHook_MemoizesGuidancePerInvocation(t *testing.T
 	}
 	last1 := args1.Request.Messages[len(args1.Request.Messages)-1]
 	last2 := args2.Request.Messages[len(args2.Request.Messages)-1]
-	if last1.Role != trpcmodel.RoleSystem || !strings.Contains(last1.Content, "Available Skills") {
-		t.Fatalf("first call tail = role %s content %.40q, want injected guidance cue", last1.Role, last1.Content)
+	if last1.Role != trpcmodel.RoleUser || !isDynamicCueMessage(last1) || !strings.Contains(last1.Content, "Available Skills") {
+		t.Fatalf("first call tail = role %s tool %q content %.40q, want injected guidance cue", last1.Role, last1.ToolName, last1.Content)
 	}
 	if last1.Content != last2.Content {
 		t.Error("injected cue differs between model calls; memoized cue must be byte-identical")

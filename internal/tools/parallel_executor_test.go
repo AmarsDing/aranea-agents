@@ -408,6 +408,7 @@ func TestIsolationStrategyForTool(t *testing.T) {
 		{"diff_edit", IsolationStrategyWorktree},
 		{"patch_file", IsolationStrategyWorktree},
 		{"replace_content", IsolationStrategyWorktree},
+		{"delete_file", IsolationStrategyWorktree},
 		// UI aliases must resolve to the same strategy.
 		{"write_file", IsolationStrategyWorktree},
 		{"edit_file", IsolationStrategyWorktree},

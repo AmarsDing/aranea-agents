@@ -17,7 +17,7 @@ import (
 // files. save_file does not contain "write"/"edit", so substring matching
 // alone would miss the primary write tool.
 var fileMutatingExactNames = []string{
-	"save_file", "diff_edit", "patch_file", "replace_content", "write_file", "edit_file",
+	"save_file", "diff_edit", "patch_file", "replace_content", "write_file", "edit_file", "delete_file",
 }
 
 // fileMutatingToolNames are substring markers for other write/edit tools.

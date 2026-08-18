@@ -10,9 +10,13 @@ import (
 )
 
 // ReorderAgents persists a manual ordering of agents.
-// TECH-DEBT: data 层为 stub（不持久化），前端拖拽排序刷新后丢失（P3，见 docs/development/3-agent-list.development.md LIST-07）。
-func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error {
-	return u.position.ReorderAgents(ctx, ids)
+// Manual order is not stored (no sort_order column). Returning success would
+// make the list UI look like the drag stuck; fail closed instead.
+func (u *AgentUsecase) ReorderAgents(_ context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return apierror.FailedPrecondition("AGENT", "manual agent order is not persisted; list order is is_default → kind → updated_at")
 }
 
 // UpsertByKey 按 agent_key 幂等创建或更新 Agent。
@@ -196,6 +200,15 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	out.Icon = firstNonEmpty(patch.Icon, current.Icon)
 	out.AgentDescription = firstNonEmpty(patch.AgentDescription, current.AgentDescription)
 	out.PositionID = firstNonEmpty(patch.PositionID, current.PositionID)
+	out.PositionKey = firstNonEmpty(patch.PositionKey, current.PositionKey)
+	out.AgentVariant = firstNonEmpty(patch.AgentVariant, current.AgentVariant)
+	out.VariantDescription = firstNonEmpty(patch.VariantDescription, current.VariantDescription)
+	out.MissionStatement = firstNonEmpty(patch.MissionStatement, current.MissionStatement)
+	out.DomainPath = firstNonEmpty(patch.DomainPath, current.DomainPath)
+	out.MetadataJSON = firstNonEmpty(patch.MetadataJSON, current.MetadataJSON)
+	if len(patch.Roles) > 0 {
+		out.Roles = patch.Roles
+	}
 	out.SystemPromptMode = firstNonEmpty(patch.SystemPromptMode, current.SystemPromptMode)
 	if patch.ContextWindow != 0 {
 		out.ContextWindow = patch.ContextWindow

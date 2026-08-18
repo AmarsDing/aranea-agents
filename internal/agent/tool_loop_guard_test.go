@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -421,5 +422,128 @@ func TestLoopGuardReleasesStaleInflight(t *testing.T) {
 
 	if _, err := before.HandleBeforeTool(ctx, args); err != nil {
 		t.Fatalf("stale inflight should be treated as released, got %v", err)
+	}
+}
+
+// 空结果熔断（2026-08-18 域 B 评测 sh-04/ab-04 超时事故根修）：
+// knowledge_search 换词重试使每次签名全新，签名/轮换判定均被绕过；
+// 连续空结果 ≥2 次后按工具维度（无视参数差异）熔断，引导模型直接作答。
+func TestLoopGuardBlocksEmptyResultRetryAcrossDifferentQueries(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-empty-1")
+	emptyResult := map[string]any{"chunks": []any{}}
+
+	// 第 1、2 次换词空结果放行（正常未命中 + 一次换词确认）。
+	for i, q := range []string{"边界防火墙管理IP", "FW-Edge-02 IP", "firewall mgmt address"} {
+		args := `{"query":"` + q + `"}`
+		err := runLoopGuardTurn(t, g, ctx, "knowledge_search", args, emptyResult, nil)
+		if i < 2 {
+			if err != nil {
+				t.Fatalf("empty call %d should pass, got blocked: %v", i+1, err)
+			}
+			continue
+		}
+		// 第 3 次（连续空达阈值后）拦截——即便参数从未重复。
+		if err == nil {
+			t.Fatal("3rd consecutive empty knowledge_search should be blocked")
+		}
+		if !strings.HasPrefix(err.Error(), loopGuardMarker) {
+			t.Fatalf("empty block should carry loop guard marker, got %q", err.Error())
+		}
+		if !strings.Contains(err.Error(), "空结果") || !strings.Contains(err.Error(), "知识库") {
+			t.Fatalf("empty block should explain knowledge base has no data, got %q", err.Error())
+		}
+		if _, ok := trpcagent.AsStopError(err); ok {
+			t.Fatal("empty block must NOT be a StopError before saturation")
+		}
+	}
+}
+
+// 非空结果立即清零连续空计数：先空后命中再空，streak 重新起算，不误伤。
+func TestLoopGuardEmptyStreakResetsOnNonEmptyResult(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-empty-2")
+	emptyResult := map[string]any{"chunks": []any{}}
+	hitResult := map[string]any{"chunks": []any{map[string]any{"id": "c1", "content": "命中"}}}
+
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"a"}`, emptyResult, nil); err != nil {
+		t.Fatalf("1st empty should pass: %v", err)
+	}
+	// 命中一次（不同 query）：streak 清零。
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"b"}`, hitResult, nil); err != nil {
+		t.Fatalf("non-empty should pass: %v", err)
+	}
+	// 再连续 2 次空：仍放行（重新起算），第 3 次才拦。
+	for i, q := range []string{"c", "d"} {
+		if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"`+q+`"}`, emptyResult, nil); err != nil {
+			t.Fatalf("empty after reset call %d should pass: %v", i+1, err)
+		}
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"e"}`, emptyResult, nil); err == nil {
+		t.Fatal("3rd consecutive empty after reset should be blocked")
+	}
+}
+
+// 失败调用不累计空 streak（失败治理归熔断器），也不触发空熔断。
+func TestLoopGuardEmptyStreakIgnoresFailures(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-empty-3")
+	emptyResult := map[string]any{"chunks": []any{}}
+
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"a"}`, emptyResult, nil); err != nil {
+		t.Fatalf("1st empty should pass: %v", err)
+	}
+	// 中间夹一次失败：不计入、也不打断（失败结果不是「库中无资料」的证据）。
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"b"}`, nil, errors.New("timeout")); err != nil {
+		t.Fatalf("failed call should pass: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"c"}`, emptyResult, nil); err != nil {
+		t.Fatalf("2nd empty should pass: %v", err)
+	}
+	if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"d"}`, emptyResult, nil); err == nil {
+		t.Fatal("3rd consecutive empty (failures excluded) should be blocked")
+	}
+}
+
+// 未登记工具不受空熔断约束：gns3_exec 返回空串属合法输出，不熔断。
+func TestLoopGuardEmptyFuseOnlyAppliesToRegisteredTools(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-empty-4")
+
+	for i := 1; i <= 4; i++ {
+		args := `{"device":"sw1","cmd":"cmd-` + strings.Repeat("x", i) + `"}`
+		if err := runLoopGuardTurn(t, g, ctx, "gns3_exec", args, "", nil); err != nil {
+			t.Fatalf("unregistered tool empty-ish call %d should pass: %v", i, err)
+		}
+	}
+}
+
+// 空熔断拦截计入 blockedCount：顽固重发满阈值后同样升级 StopError 止损。
+func TestLoopGuardEmptyBlockSaturatesToStopError(t *testing.T) {
+	g := newToolLoopGuard(nil)
+	ctx := newTestInvocationContext("inv-empty-5")
+	emptyResult := map[string]any{"chunks": []any{}}
+
+	for i, q := range []string{"a", "b"} {
+		if err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"`+q+`"}`, emptyResult, nil); err != nil {
+			t.Fatalf("empty call %d should pass: %v", i+1, err)
+		}
+	}
+	// 第 3 次起拦截：前 threshold-1 次普通 error。
+	for i := 1; i <= loopGuardSaturatedStopThreshold-1; i++ {
+		err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"retry"}`, emptyResult, nil)
+		if err == nil {
+			t.Fatalf("blocked empty call %d should return error", i)
+		}
+		if _, ok := trpcagent.AsStopError(err); ok {
+			t.Fatalf("blocked empty call %d should be plain error before saturation", i)
+		}
+	}
+	err := runLoopGuardTurn(t, g, ctx, "knowledge_search", `{"query":"retry"}`, emptyResult, nil)
+	if err == nil {
+		t.Fatal("saturated empty block should return StopError")
+	}
+	if _, ok := trpcagent.AsStopError(err); !ok {
+		t.Fatalf("saturated empty block should be StopError, got %v", err)
 	}
 }

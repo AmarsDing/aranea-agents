@@ -348,7 +348,7 @@ func Registry() []*ToolRegistration {
 			},
 			{
 				Name:                "read_lints",
-				Description:         "Read compiler/linter diagnostics for edited workspace files (go vet).",
+				Description:         "Read compiler/linter diagnostics for edited workspace files (go vet, py_compile, node --check).",
 				Category:            "filesystem",
 				Tags:                []string{"lint", "diagnostics", "vet"},
 				Factory:             placeholderToolFactory,
@@ -356,6 +356,16 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
 				SupportsConcurrency: true,
+			},
+			{
+				Name:               "delete_file",
+				Description:        "Delete one file inside the workspace. Refuses directories and paths outside the workspace.",
+				Category:           "filesystem",
+				Tags:               []string{"filesystem", "delete", "write"},
+				Factory:            placeholderToolFactory,
+				AssembledElsewhere: true,
+				EnabledByDefault:   true,
+				RiskLevel:          "medium",
 			},
 			{
 				Name:                "read_spreadsheet",

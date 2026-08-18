@@ -947,5 +947,5 @@ Agent 设置中新增独立 `记忆` Tab，避免把所有记忆配置塞进基�
 
 - [x] 会话中提取的偏好类记忆以 `fact_kind=preference`、`scope_type=user` 落库（此前统一为 fact/agent）。（自动化验证：`auto_memory_classification_test.go` / `auto_memory_conflict_test.go`）
 - [x] 用户修改偏好（先"用 A 工具"后"别用 A 工具"）后，旧值 `status='superseded'` 且不再出现在召回与常驻注入中。（自动化验证：`auto_memory_conflict_test.go` 判决-写后 supersede 链路；`memory_shim_l3_pinned_test.go` superseded 行被过滤）
-- [x] 新会话首轮 prompt 中包含「用户偏好与工作要求」常驻块（Prompt Preview 可见），且只含 active 的 preference/constraint。（自动化验证：`composite_prompt_test.go` 7 个 PinnedPreferenceCue 用例；Prompt Preview 运行时目视建议下次真实对话抽验）
+- [x] 新会话首轮 prompt 中包含「用户偏好与工作要求」常驻块（Prompt Preview 可见），且只含 active 的 preference/constraint/user_preference/agent_instruction（2026-08-18 G 维 P1 扩展钉住 kinds，agent_instruction 以 `[RULE]` 前缀呈现，块头附合规引导）。（自动化验证：`composite_prompt_test.go` 8 个 PinnedPreferenceCue 用例；Prompt Preview 运行时目视建议下次真实对话抽验）
 - [x] 用户说"记住：xxx"后无需结束会话，即可在 `memory_facts` 查到 `source_kind='explicit'` 的记录。（自动化验证：`remember_test.go` 写入字段断言）

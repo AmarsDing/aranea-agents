@@ -26,6 +26,12 @@ func TestLastUserQuery_SkipsToolLoop(t *testing.T) {
 	}); got != "" {
 		t.Fatalf("tool-loop continuation must skip, got %q", got)
 	}
+	if got := lastUserQuery([]trpcmodel.Message{
+		trpcmodel.NewUserMessage("什么是 SLA"),
+		asDynamicCue("Available Knowledge Bases"),
+	}); got != "什么是 SLA" {
+		t.Fatalf("trailing dynamic cue must not become the query, got %q", got)
+	}
 }
 
 func TestFormatKnowledgeCue_RetrievedPassages(t *testing.T) {

@@ -80,6 +80,7 @@ type Run struct {
 	ParentSessionID string     `json:"parent_session_id,omitempty"`
 	ChildSessionID  string     `json:"child_session_id,omitempty"`
 	Task            string     `json:"task,omitempty"`
+	Kind            string     `json:"kind,omitempty"`
 	Status          Status     `json:"status,omitempty"`
 	Summary         string     `json:"summary,omitempty"`
 	Result          string     `json:"result,omitempty"`

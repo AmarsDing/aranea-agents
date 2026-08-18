@@ -5,11 +5,13 @@ package agent
 // DeepSeek prompt caching matches tokens from position 0: any per-turn change
 // inside the cached prefix invalidates the whole block. Two-tier contract:
 //   - session-stable cues (static runtime cue) append AFTER the existing
-//     system block (insertAfterLastSystem) — never prepend;
+//     system block (insertAfterLastSystem) — never prepend. Production bakes
+//     this cue into WithInstruction so the live request has one system message;
+//     the hook no-ops when the marker is already present.
 //   - per-turn dynamic cues (dynamic runtime cue, memory cue, knowledge cue,
 //     skill guidance, reply reminder, intent context) append at the END of the
-//     message list, so the [system block + history + user] prefix stays
-//     monotonically growing and cacheable. Skill guidance moved to the tail
+//     message list as role=user sentinels, so they stay out of DeepSeek's
+//     system-prefix cache. Skill guidance moved to the tail
 //     tier (N1 fix): routed slugs are resolved per turn, so inserting them
 //     after the system block invalidated the entire history prefix on every
 //     skill-routing change. Dynamic runtime cue moved to the tail tier
@@ -80,8 +82,9 @@ func assertCueAfterBase(t *testing.T, msgs []trpcmodel.Message, marker string) {
 
 // assertCueAtEnd pins the dynamic-cue contract: base system prompt stays at
 // index 0, the user message keeps its position, and the injected cue is a
-// system message at the END of the list (after the user message), so the
-// [system + history + user] prefix stays monotonically cacheable.
+// user-role sentinel at the END of the list (after the user message), so the
+// [system + history + user] prefix stays monotonically cacheable and the cue
+// stays out of DeepSeek's system prefix.
 func assertCueAtEnd(t *testing.T, msgs []trpcmodel.Message, marker string) {
 	t.Helper()
 	if len(msgs) != 3 {
@@ -90,12 +93,12 @@ func assertCueAtEnd(t *testing.T, msgs []trpcmodel.Message, marker string) {
 	if msgs[0].Role != trpcmodel.RoleSystem || msgs[0].Content != prefixTestBaseSystem {
 		t.Fatalf("base system prompt must remain at index 0, got role=%s content=%.40q", msgs[0].Role, msgs[0].Content)
 	}
-	if msgs[1].Role != trpcmodel.RoleUser {
-		t.Fatalf("user message must keep its position at index 1, got role=%s", msgs[1].Role)
+	if msgs[1].Role != trpcmodel.RoleUser || isDynamicCueMessage(msgs[1]) {
+		t.Fatalf("real user message must keep its position at index 1, got role=%s tool=%q", msgs[1].Role, msgs[1].ToolName)
 	}
 	last := msgs[len(msgs)-1]
-	if last.Role != trpcmodel.RoleSystem {
-		t.Fatalf("injected cue must be a system message at the end, got role=%s", last.Role)
+	if !isDynamicCueMessage(last) {
+		t.Fatalf("injected cue must be a user-role dynamic cue at the end, got role=%s tool=%q", last.Role, last.ToolName)
 	}
 	if !strings.Contains(last.Content, marker) {
 		t.Fatalf("injected cue at the end must contain %q, got %.60q", marker, last.Content)
@@ -186,6 +189,26 @@ func TestStaticRuntimeCueHook_InsertsAfterExistingSystem(t *testing.T) {
 	hook := newStaticRuntimeCueBeforeHook(ag, TRPCBuilderDeps{})
 	msgs := runBeforeModelHook(t, hook, context.Background())
 	assertCueAfterBase(t, msgs, "Runtime capability policy")
+}
+
+func TestStaticRuntimeCueHook_SkipsWhenAlreadyInInstruction(t *testing.T) {
+	ag := biz.Agent{
+		ID:               "ag-1",
+		SystemPromptMode: "complete",
+		Settings:         &biz.AgentRuntimeSettings{ToolsEnabled: true},
+	}
+	hook := newStaticRuntimeCueBeforeHook(ag, TRPCBuilderDeps{})
+	baked := prefixTestBaseSystem + "\n\n## Runtime capability policy (system)\n- Tools: enabled"
+	msgs := runBeforeModelHookOn(t, hook, []trpcmodel.Message{
+		trpcmodel.NewSystemMessage(baked),
+		trpcmodel.NewUserMessage("你好"),
+	})
+	if len(msgs) != 2 {
+		t.Fatalf("baked instruction must not grow a second system cue, got %d messages", len(msgs))
+	}
+	if msgs[0].Content != baked {
+		t.Fatalf("instruction must stay byte-identical, got %.60q", msgs[0].Content)
+	}
 }
 
 func TestDynamicRuntimeCueHook_AppendsCueAtEnd(t *testing.T) {
@@ -302,15 +325,15 @@ func TestIntentReorderHook_MovesIntentToEnd(t *testing.T) {
 	if out[1].Role != trpcmodel.RoleUser {
 		t.Fatalf("user message must move up to index 1, got role=%s", out[1].Role)
 	}
-	if out[2].Role != trpcmodel.RoleSystem || out[2].Content != intentMsg.Content {
-		t.Fatalf("intent context must land intact at the end, got role=%s content=%.40q", out[2].Role, out[2].Content)
+	if out[2].Role != trpcmodel.RoleUser || !isDynamicCueMessage(out[2]) || out[2].Content != intentMsg.Content {
+		t.Fatalf("intent context must land intact at the end as a user-role cue, got role=%s tool=%q content=%.40q", out[2].Role, out[2].ToolName, out[2].Content)
 	}
 }
 
 func TestIntentReorderHook_LandsAfterOtherDynamicCues(t *testing.T) {
 	hook := newIntentReorderBeforeHook()
 	intentMsg := intent.SystemContextMessage(&intent.Artifact{RefinedGoal: "查天气"})
-	memoryCue := trpcmodel.NewSystemMessage(memoryInjectCueContent("用户偏好：中餐"))
+	memoryCue := asDynamicCue(memoryInjectCueContent("用户偏好：中餐"))
 	// Chain order: memory cue hook (priority 5) appends first, then the intent
 	// reorder hook (priority 100) moves intent behind it.
 	msgs := []trpcmodel.Message{
@@ -329,8 +352,8 @@ func TestIntentReorderHook_LandsAfterOtherDynamicCues(t *testing.T) {
 	if out[2].Content != memoryCue.Content {
 		t.Fatalf("memory cue must keep its position at index 2, got %.40q", out[2].Content)
 	}
-	if out[3].Content != intentMsg.Content {
-		t.Fatalf("intent context must land at the very end, got %.40q", out[3].Content)
+	if out[3].Content != intentMsg.Content || !isDynamicCueMessage(out[3]) {
+		t.Fatalf("intent context must land at the very end as a user-role cue, got role=%s content=%.40q", out[3].Role, out[3].Content)
 	}
 }
 
@@ -355,7 +378,7 @@ func TestIntentReorderHook_AlreadyAtEndIsNoop(t *testing.T) {
 		intentMsg,
 	}
 	out := runBeforeModelHookOn(t, hook, msgs)
-	if len(out) != 3 || out[0].Content != prefixTestBaseSystem || out[1].Role != trpcmodel.RoleUser || out[2].Content != intentMsg.Content {
-		t.Fatalf("already-at-end intent must stay put, got %v", out)
+	if len(out) != 3 || out[0].Content != prefixTestBaseSystem || out[1].Role != trpcmodel.RoleUser || out[2].Content != intentMsg.Content || !isDynamicCueMessage(out[2]) {
+		t.Fatalf("already-at-end intent must stay put as a user-role cue, got %v", out)
 	}
 }

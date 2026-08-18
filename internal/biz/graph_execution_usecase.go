@@ -564,17 +564,20 @@ func (uc *GraphExecutionUsecase) MarkTeamGraphInterrupt(ctx context.Context, exe
 	}
 	nodeID = strings.TrimSpace(nodeID)
 	lineageID = strings.TrimSpace(lineageID)
-	exec.interruptMu.Lock()
-	exec.interrupted = true
-	exec.InterruptNode = nodeID
-	exec.interruptMu.Unlock()
 	var persistSnap *GraphExecution
 	exec.execMu.Lock()
-	uc.applyExecTransition(exec, GraphExecEventInterrupt)
+	if transErr := uc.applyExecTransition(exec, GraphExecEventInterrupt); transErr != nil {
+		exec.execMu.Unlock()
+		return transErr
+	}
 	exec.CurrentNode = nodeID
 	if lineageID != "" {
 		exec.LineageID = lineageID
 	}
+	exec.interruptMu.Lock()
+	exec.interrupted = true
+	exec.InterruptNode = nodeID
+	exec.interruptMu.Unlock()
 	persistSnap = exec.SnapshotForPersist()
 	exec.execMu.Unlock()
 	if uc.runRepo == nil {

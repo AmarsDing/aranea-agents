@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/tools/document"
+	"aranea-agents/internal/tools/editstamp"
 	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -67,7 +68,7 @@ func newTool(baseDir string, lg loggateway.Logger, run Runner) trpctool.Tool {
 	return trpcfunction.NewFunctionTool(
 		t.execute,
 		trpcfunction.WithName(toolName),
-		trpcfunction.WithDescription("Read compiler/linter diagnostics for workspace files after edits. Pass paths of files you changed. Currently runs go vet on Go packages. Use this instead of guessing whether a change compiles."),
+		trpcfunction.WithDescription("Read compiler/linter diagnostics for workspace files after edits. Omit path to lint files you just saved. Go uses go vet; Python uses py_compile; JS uses node --check. Use this instead of guessing whether a change compiles."),
 	)
 }
 
@@ -83,13 +84,19 @@ func (l *linter) execute(ctx context.Context, in input) (output, error) {
 		paths = append(paths, in.Path)
 	}
 	paths = append(paths, in.Paths...)
+	usedStamp := false
 	if len(paths) == 0 {
-		return output{Diagnostics: []diagnostic{}, Message: "no paths provided; pass path or paths of files you edited"}, nil
+		paths = editstamp.List(l.baseDir)
+		usedStamp = len(paths) > 0
+	}
+	if len(paths) == 0 {
+		return output{Diagnostics: []diagnostic{}, Message: "no paths provided and no recent edits; pass path or paths of files you edited"}, nil
 	}
 	if len(paths) > maxPaths {
 		paths = paths[:maxPaths]
 	}
 	absPaths := make([]string, 0, len(paths))
+	relPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -104,11 +111,15 @@ func (l *linter) execute(ctx context.Context, in input) (output, error) {
 			return output{}, err
 		}
 		absPaths = append(absPaths, abs)
+		rel := p
+		if l.baseDir != "" {
+			if r, err := filepath.Rel(l.baseDir, abs); err == nil {
+				rel = filepath.ToSlash(r)
+			}
+		}
+		relPaths = append(relPaths, rel)
 	}
 	pkgs := goPackages(l.baseDir, absPaths)
-	if len(pkgs) == 0 {
-		return output{Diagnostics: []diagnostic{}, Message: "no Go packages in the given paths; other languages are not linted yet"}, nil
-	}
 	var diags []diagnostic
 	for _, pkg := range pkgs {
 		more, err := l.vetPackage(ctx, pkg)
@@ -128,9 +139,21 @@ func (l *linter) execute(ctx context.Context, in input) (output, error) {
 			break
 		}
 	}
+	if len(diags) < maxDiagnostics {
+		more := l.lintNonGo(ctx, absPaths, relPaths)
+		diags = append(diags, more...)
+		if len(diags) > maxDiagnostics {
+			diags = diags[:maxDiagnostics]
+		}
+	}
 	msg := "no diagnostics"
 	if len(diags) > 0 {
 		msg = "found issues; fix these before continuing"
+	} else if len(pkgs) == 0 && !hasLintableNonGo(relPaths) {
+		msg = "no supported sources in the given paths (Go / Python / JavaScript)"
+	}
+	if usedStamp && msg == "no diagnostics" {
+		msg = "no diagnostics (linted recently edited files)"
 	}
 	return output{Diagnostics: diags, Packages: pkgs, Message: msg}, nil
 }

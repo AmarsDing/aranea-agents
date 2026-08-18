@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/apierror"
@@ -205,12 +207,29 @@ func (m *memSpiritSessionRepo) SearchSessions(_ context.Context, q SessionSearch
 		if q.TeamID != "" && s.TeamID != q.TeamID {
 			continue
 		}
+		if q.AgentID != "" && s.AgentID != q.AgentID {
+			continue
+		}
+		if q.Status != "" && s.Status != q.Status {
+			continue
+		}
+		if q.RootOnly && s.ParentSessionID != "" {
+			continue
+		}
 		items = append(items, s)
+	}
+	total := len(items)
+	if q.Offset > 0 {
+		if q.Offset >= len(items) {
+			items = nil
+		} else {
+			items = items[q.Offset:]
+		}
 	}
 	if q.Limit > 0 && len(items) > q.Limit {
 		items = items[:q.Limit]
 	}
-	return SessionListResult{Items: items, Total: len(items)}, nil
+	return SessionListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
 func (m *memSpiritSessionRepo) GetSessionByID(_ context.Context, id string) (Session, error) {
 	s, ok := m.items[id]
@@ -999,6 +1018,50 @@ func TestBuildSpiritTeamDefinitionJSON_Deliverables_GenerateMemberContract(t *te
 	}
 }
 
+func TestSpiritTeamModeForStep(t *testing.T) {
+	if got := SpiritTeamModeForStep(string(StrategyParallel), 1); got != TeamModeSequential {
+		t.Fatalf("single agent parallel → sequential, got %q", got)
+	}
+	if got := SpiritTeamModeForStep(string(StrategyParallel), 3); got != TeamModeParallel {
+		t.Fatalf("parallel → parallel, got %q", got)
+	}
+	if got := SpiritTeamModeForStep(string(StrategyCoordinator), 3); got != TeamModeCoordinator {
+		t.Fatalf("coordinator → coordinator, got %q", got)
+	}
+	if got := SpiritTeamModeForStep(string(StrategyDAG), 3); got != TeamModeCoordinator {
+		t.Fatalf("inter-team dag stays coordinator intra-team, got %q", got)
+	}
+	if got := SpiritTeamModeForStep("", 2); got != TeamModeCoordinator {
+		t.Fatalf("empty strategy multi-agent → coordinator, got %q", got)
+	}
+}
+
+func TestBuildSpiritTeamDefinitionJSON_Parallel_LastMemberSynthesizer(t *testing.T) {
+	defJSON := buildSpiritTeamDefinitionJSON("parallel", []string{"w1", "w2", "synth"}, loggateway.NewNoop(), false, nil, nil)
+	var def map[string]any
+	if err := json.Unmarshal([]byte(defJSON), &def); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if def["mode"] != "parallel" {
+		t.Fatalf("mode=%v", def["mode"])
+	}
+	if def["synthesizer_agent_id"] != "synth" {
+		t.Fatalf("synthesizer_agent_id=%v", def["synthesizer_agent_id"])
+	}
+	members, _ := def["members"].([]any)
+	if len(members) != 3 {
+		t.Fatalf("members=%d", len(members))
+	}
+	last, _ := members[2].(map[string]any)
+	if last["role"] != RoleSynthesizer {
+		t.Fatalf("last role=%v want synthesizer", last["role"])
+	}
+	first, _ := members[0].(map[string]any)
+	if first["role"] != RoleWorker {
+		t.Fatalf("first role=%v want worker", first["role"])
+	}
+}
+
 func TestBuildSpiritTeamDefinitionJSON_NoDeliverables_NoMemberContract(t *testing.T) {
 	defJSON := buildSpiritTeamDefinitionJSON("coordinator", []string{"agent-a", "agent-b"}, loggateway.NewNoop(), false, nil, nil)
 
@@ -1085,10 +1148,10 @@ func TestDeliverableProtocolSuffix_ParadigmTemplateAndExamples(t *testing.T) {
 	}
 	suffix := u.DeliverableProtocolSuffix(team)
 	for _, want := range []string{
-		"500 字",                          // 截断规则必须告知生产方
-		"载荷：",                           // summary 固定写法的载荷清单行
-		`"content"`,                       // 文档载荷固定结构
-		"样例 1", "样例 2",                 // 短交付 + 长文交付双样例
+		"500 字",        // 截断规则必须告知生产方
+		"载荷：",          // summary 固定写法的载荷清单行
+		`"content"`,    // 文档载荷固定结构
+		"样例 1", "样例 2", // 短交付 + 长文交付双样例
 		`set_deliverable(topic="article"`, // 契约 topic 指引保持
 	} {
 		if !strings.Contains(suffix, want) {
@@ -1296,5 +1359,172 @@ func TestResolveAgentKeyToIDMap_ResolvedKeys(t *testing.T) {
 	}
 	if len(out) != 2 {
 		t.Errorf("duplicate/blank keys should be deduped, got %v", out)
+	}
+}
+
+func TestInferTopologyFromTeam(t *testing.T) {
+	lg := loggateway.NewNoop()
+	if got := InferTopologyFromTeam(Team{Topology: string(TopologyParallel)}, lg); got != TopologyParallel {
+		t.Errorf("explicit topology: got %s", got)
+	}
+	if got := InferTopologyFromTeam(Team{DependsOn: []string{"a"}, ParallelConfigJSON: `{"parallel_config":{"max_concurrent_teams":4}}`}, lg); got != TopologyHybrid {
+		t.Errorf("deps+parallel: got %s want hybrid", got)
+	}
+	if got := InferTopologyFromTeam(Team{DependsOn: []string{"a"}}, lg); got != TopologySequential {
+		t.Errorf("deps only: got %s want sequential", got)
+	}
+	if got := InferTopologyFromTeam(Team{ParallelConfigJSON: `{"parallel_config":{"max_concurrent_teams":3}}`}, lg); got != TopologyParallel {
+		t.Errorf("parallel only: got %s want parallel", got)
+	}
+	if got := InferTopologyFromTeam(Team{}, lg); got != TopologyCoordinator {
+		t.Errorf("default: got %s want coordinator", got)
+	}
+}
+
+func TestHandleTeamRejection_IllegalTransition_ReturnsError(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	teamRepo.items["t1"] = Team{ID: "t1", Status: TeamStatusCompleted, DisplayName: "done"}
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, Lg: loggateway.NewNoop()})
+	uc := NewSpiritTeamUsecase(teamUC, nil, nil, loggateway.NewNoop())
+	_, err := uc.HandleTeamRejection(context.Background(), "t1", ReworkTracker{MaxRetries: 3}, "quality")
+	if err == nil {
+		t.Fatal("expected error when completed team cannot rework to pending")
+	}
+}
+
+type keyedSpiritAgentResolver struct {
+	id  string
+	key string
+}
+
+func (m *keyedSpiritAgentResolver) List(_ context.Context, q AgentListQuery) (AgentListResult, error) {
+	if q.Keyword != "" && q.Keyword != m.key {
+		return AgentListResult{}, nil
+	}
+	return AgentListResult{Items: []Agent{{ID: m.id, AgentKey: m.key}}, Total: 1}, nil
+}
+
+type recordingAllDoneNotifier struct {
+	ids []string
+}
+
+func (n *recordingAllDoneNotifier) NotifyAllTeamsCompleted(_ context.Context, spiritSessionID string) {
+	n.ids = append(n.ids, spiritSessionID)
+}
+
+func TestPollTeamCompletions_FiltersBySpiritAgent(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.items["sp-run"] = Session{
+		ID: "sp-run", AgentID: "agent_spirit", Status: string(session.SessionStatusRunning),
+	}
+	sessionRepo.items["chat-run"] = Session{
+		ID: "chat-run", AgentID: "agent_chat", Status: string(session.SessionStatusRunning),
+	}
+	teamRepo.items["t-sp"] = Team{ID: "t-sp", SpiritSessionID: "sp-run", Status: TeamStatusCompleted}
+	teamRepo.items["t-chat"] = Team{ID: "t-chat", SpiritSessionID: "chat-run", Status: TeamStatusCompleted}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &keyedSpiritAgentResolver{id: "agent_spirit", key: SpiritAgentKey}, loggateway.NewNoop())
+	n := &recordingAllDoneNotifier{}
+	uc.SetAllTeamsCompletedNotifier(n)
+	uc.orchestration.pollTeamCompletions(context.Background())
+	if len(n.ids) != 1 || n.ids[0] != "sp-run" {
+		t.Fatalf("notified %v, want [sp-run] (chat sessions must not be scanned)", n.ids)
+	}
+}
+
+func TestPollTeamCompletions_NoSpiritAgent_SkipsScan(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.items["sp-run"] = Session{
+		ID: "sp-run", AgentID: "agent_spirit", Status: string(session.SessionStatusRunning),
+	}
+	teamRepo.items["t-sp"] = Team{ID: "t-sp", SpiritSessionID: "sp-run", Status: TeamStatusCompleted}
+
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &keyedSpiritAgentResolver{id: "agent_spirit", key: "not-spirit"}, loggateway.NewNoop())
+	n := &recordingAllDoneNotifier{}
+	uc.SetAllTeamsCompletedNotifier(n)
+	uc.orchestration.pollTeamCompletions(context.Background())
+	if len(n.ids) != 0 {
+		t.Fatalf("notified %v, want none when spirit agent cannot be resolved", n.ids)
+	}
+}
+
+func TestAssembleTeam_DoesNotRegisterTimeout(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	sessionRepo := newMemSpiritSessionRepo()
+	sessionRepo.seedSpirit("spirit-1")
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, StepRepo: teamRepo, DeadLetter: teamRepo, Lg: loggateway.NewNoop()})
+	sessionUC := NewSessionUsecase(sessionRepo, &memSpiritAgentLookup{}, NewSessionTeamLookup(teamRepo), nil, nil, nil, nil, nil, nil, loggateway.NewNoop(), nil)
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, &memSpiritAgentResolver{}, loggateway.NewNoop(), WithSpiritTransactor(&memSpiritTransactor{}))
+
+	result, err := uc.AssembleTeam(context.Background(), SpiritTeamParams{
+		SpiritSessionID: "spirit-1",
+		TaskDescription: "pending timeout must not start at assemble",
+		AgentKeys:       []string{"agent-1"},
+		Mode:            "coordinator",
+		AutoStart:       false,
+	})
+	if err != nil {
+		t.Fatalf("AssembleTeam: %v", err)
+	}
+	if _, loaded := uc.orchestration.timeouts.timers.Load(result.Team.ID); loaded {
+		t.Fatal("team timeout must be registered at StartTeamTurn, not AssembleTeam")
+	}
+}
+
+type recordingTimeoutHandler struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (h *recordingTimeoutHandler) HandleTeamTimeout(_ context.Context, _, teamID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.calls = append(h.calls, teamID)
+}
+
+func TestRegisterTeamTimeout_Pending_SkipsFail(t *testing.T) {
+	teamRepo := newMemSpiritTeamRepo()
+	teamRepo.items["t-pending"] = Team{
+		ID: "t-pending", Status: TeamStatusPending, SpiritSessionID: "spirit-1",
+	}
+	teamUC := NewTeamUsecase(TeamUsecaseOpts{Reader: teamRepo, Writer: teamRepo, RunReader: teamRepo, RunWriter: teamRepo, Lg: loggateway.NewNoop()})
+	orch := &SpiritOrchestration{
+		teamUC:   teamUC,
+		timeouts: &teamTimeoutRegistry{},
+		lg:       loggateway.NewNoop(),
+	}
+	handler := &recordingTimeoutHandler{}
+	orch.SetTimeoutHandler(handler)
+	orch.registerTeamTimeout(context.Background(), ParallelConfig{
+		TeamTimeoutSeconds:         1,
+		TimeoutHandlerDBTimeoutSec: 5,
+	}, "t-pending")
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, loaded := orch.timeouts.timers.Load("t-pending"); !loaded {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	got, err := teamUC.Get(context.Background(), "t-pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != TeamStatusPending {
+		t.Fatalf("pending team status=%q, timeout must not fail it", got.Status)
+	}
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.calls) != 0 {
+		t.Fatalf("timeout handler called for pending team: %v", handler.calls)
 	}
 }

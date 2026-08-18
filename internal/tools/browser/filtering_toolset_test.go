@@ -67,6 +67,9 @@ func TestClassifyBrowserTool_Interact(t *testing.T) {
 		"browser_hover",
 		"browser_select_option",
 		"browser_fill",
+		"browser_fill_form",
+		"browser_mouse_click_xy",
+		"browser_drag",
 		"bw_browser_click",
 	}
 	for _, name := range tests {
@@ -82,6 +85,7 @@ func TestClassifyBrowserTool_Observe(t *testing.T) {
 		"browser_take_screenshot",
 		"browser_screenshot",
 		"browser_get_text",
+		"browser_wait_for",
 		"bw_browser_snapshot",
 	}
 	for _, name := range tests {

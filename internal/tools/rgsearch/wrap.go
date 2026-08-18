@@ -93,7 +93,27 @@ func (t *searchContentTool) Declaration() *trpctool.Declaration {
 	if t.inner == nil {
 		return nil
 	}
-	return t.inner.Declaration()
+	d := t.inner.Declaration()
+	if d == nil {
+		return nil
+	}
+	cp := *d
+	schema := &trpctool.Schema{Type: "object", Properties: map[string]*trpctool.Schema{}}
+	if d.InputSchema != nil {
+		cloned := *d.InputSchema
+		props := map[string]*trpctool.Schema{}
+		for k, v := range d.InputSchema.Properties {
+			props[k] = v
+		}
+		cloned.Properties = props
+		schema = &cloned
+	}
+	addSearchContentSchema(schema)
+	cp.InputSchema = schema
+	if cp.Description != "" && !strings.Contains(cp.Description, "head_limit") {
+		cp.Description += " Optional: after/before/context line windows, type (rg --type), multiline, head_limit/offset pagination."
+	}
+	return &cp
 }
 
 func (t *searchContentTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
@@ -150,23 +170,7 @@ func (s *fileToolSetWrap) searchRipgrep(ctx context.Context, req searchRequest) 
 	if s.baseDir != "" && !filepath.IsAbs(searchRoot) {
 		absRoot = filepath.Join(s.baseDir, searchRoot)
 	}
-	args := []string{
-		"--json",
-		"--max-count", "20",
-		"--max-filesize", "2M",
-	}
-	if !req.ContentCaseSensitive {
-		args = append(args, "-i")
-	}
-	glob := strings.TrimSpace(req.FilePattern)
-	if glob != "" && glob != "*" {
-		if req.FileCaseSensitive {
-			args = append(args, "--glob", glob)
-		} else {
-			args = append(args, "--iglob", glob)
-		}
-	}
-	args = append(args, "--", req.ContentPattern, ".")
+	args := append(s.ripgrepArgs(req), "--", req.ContentPattern, ".")
 	dir := absRoot
 	if st, err := os.Stat(absRoot); err != nil || !st.IsDir() {
 		dir = s.baseDir
@@ -183,7 +187,90 @@ func (s *fileToolSetWrap) searchRipgrep(ctx context.Context, req searchRequest) 
 		return nil, false, "", false
 	}
 	files, truncated := parseRipgrepJSON(stdout, dir, "")
-	return files, truncated, "ripgrep", true
+	paged, pageTrunc := paginateFileMatches(files, req.Offset, req.HeadLimit)
+	return paged, truncated || pageTrunc, "ripgrep", true
+}
+
+func (s *fileToolSetWrap) ripgrepArgs(req searchRequest) []string {
+	args := []string{
+		"--json",
+		"--max-count", "20",
+		"--max-filesize", "2M",
+	}
+	if !req.ContentCaseSensitive {
+		args = append(args, "-i")
+	}
+	if ctx := clampContext(req.Context); ctx > 0 {
+		args = append(args, "-C", strconv.Itoa(ctx))
+	} else {
+		if n := clampContext(req.After); n > 0 {
+			args = append(args, "-A", strconv.Itoa(n))
+		}
+		if n := clampContext(req.Before); n > 0 {
+			args = append(args, "-B", strconv.Itoa(n))
+		}
+	}
+	if req.Multiline {
+		args = append(args, "-U", "--multiline-dotall")
+	}
+	if typ := sanitizeRGType(req.Type); typ != "" {
+		args = append(args, "--type", typ)
+	}
+	glob := strings.TrimSpace(req.FilePattern)
+	if glob != "" && glob != "*" {
+		if req.FileCaseSensitive {
+			args = append(args, "--glob", glob)
+		} else {
+			args = append(args, "--iglob", glob)
+		}
+	}
+	return args
+}
+
+func addSearchContentSchema(schema *trpctool.Schema) {
+	if schema == nil {
+		return
+	}
+	if schema.Properties == nil {
+		schema.Properties = map[string]*trpctool.Schema{}
+	}
+	put := func(name, typ, desc string) {
+		if _, ok := schema.Properties[name]; ok {
+			return
+		}
+		schema.Properties[name] = &trpctool.Schema{Type: typ, Description: desc}
+	}
+	put("after", "integer", "Lines after each match (rg -A). Alias: -A. Max 10.")
+	put("before", "integer", "Lines before each match (rg -B). Alias: -B. Max 10.")
+	put("context", "integer", "Lines before and after each match (rg -C). Alias: -C. Max 10.")
+	put("type", "string", "ripgrep --type name (e.g. go, py, rust). Alphanumeric only.")
+	put("multiline", "boolean", "Enable ripgrep multiline mode (-U --multiline-dotall).")
+	put("head_limit", "integer", "Keep at most this many match lines after offset (pagination).")
+	put("offset", "integer", "Skip this many match lines before applying head_limit.")
+}
+
+func clampContext(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	if n > 10 {
+		return 10
+	}
+	return n
+}
+
+func sanitizeRGType(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" || len(s) > 32 {
+		return ""
+	}
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '+' || r == '-' {
+			continue
+		}
+		return ""
+	}
+	return s
 }
 
 func execRipgrep(ctx context.Context, dir string, args []string) (string, error) {

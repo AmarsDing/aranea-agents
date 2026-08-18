@@ -105,6 +105,11 @@ func analyzePromptRequest(messages []trpcmodel.Message) promptComposeReport {
 		case trpcmodel.RoleUser:
 			report.UserMsgs++
 			report.UserChars += ch
+			if isDynamicCueMessage(m) {
+				for k, v := range classifySystemSections(m.Content) {
+					report.Sections[k] += v
+				}
+			}
 		case trpcmodel.RoleAssistant:
 			report.AssistantMsgs++
 			report.AssistantChars += ch

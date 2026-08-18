@@ -56,7 +56,9 @@ func IdentityDescriptionForAgent(ag biz.Agent, files []biz.AgentPromptFile) stri
 
 func skillOptionsForPromptMode(mode string) (trpcllmagent.SkillToolProfile, bool) {
 	if SkillsUseFullProfile(mode) {
-		return trpcllmagent.SkillToolProfileFull, true
+		// Directory hints in the overview mutate system[0] with machine
+		// paths; loaded bodies go to tool results instead.
+		return trpcllmagent.SkillToolProfileFull, false
 	}
 	return trpcllmagent.SkillToolProfileKnowledgeOnly, false
 }

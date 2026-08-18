@@ -35,7 +35,7 @@ func newIntentReorderBeforeHook() callbacks.Callback {
 		// Fast path: no intent context anywhere — no allocation, no copy.
 		hasIntent := false
 		for i := range msgs {
-			if msgs[i].Role == trpcmodel.RoleSystem && intent.IsIntentContextContent(msgs[i].Content) {
+			if intent.IsIntentContextContent(msgs[i].Content) {
 				hasIntent = true
 				break
 			}
@@ -44,12 +44,13 @@ func newIntentReorderBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 		// Stable partition: non-intent messages keep their relative order,
-		// intent messages (normally exactly one) append at the tail.
+		// intent messages (normally exactly one) append at the tail as a
+		// user-role dynamic cue so they stay out of DeepSeek's system prefix.
 		body := make([]trpcmodel.Message, 0, len(msgs))
 		var tail []trpcmodel.Message
 		for _, m := range msgs {
-			if m.Role == trpcmodel.RoleSystem && intent.IsIntentContextContent(m.Content) {
-				tail = append(tail, m)
+			if intent.IsIntentContextContent(m.Content) {
+				tail = append(tail, asDynamicCue(m.Content))
 				continue
 			}
 			body = append(body, m)

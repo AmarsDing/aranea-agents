@@ -78,7 +78,7 @@ func TestSkillOptionsForPromptMode(t *testing.T) {
 		t.Fatalf("task: profile=%v hints=%v", profile, hints)
 	}
 	profile, hints = skillOptionsForPromptMode("complete")
-	if profile != trpcllmagent.SkillToolProfileFull || !hints {
+	if profile != trpcllmagent.SkillToolProfileFull || hints {
 		t.Fatalf("complete: profile=%v hints=%v", profile, hints)
 	}
 }

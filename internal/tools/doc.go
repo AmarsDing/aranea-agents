@@ -123,6 +123,7 @@ package tools
 //	  browser          — Browser automation tool via Playwright MCP (browser)
 //	  read_document    — Read a document (PDF, DOCX, text) (media)
 //	  read_spreadsheet — Read tabular files (XLSX, CSV) (media)
+//	  read_lints       — Compiler/linter diagnostics after edits (filesystem)
 //	  read_tool_result — Retrieve persisted tool result by blob_id (system)
 //	  working_memory   — Working memory tools for task-scoped fields (memory)
 //	  deliverable      — Cross-agent deliverable handoff tools (team)

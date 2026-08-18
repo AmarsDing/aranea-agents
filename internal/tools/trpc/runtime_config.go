@@ -159,7 +159,7 @@ func configInt(m map[string]any, keys ...string) (int, bool) {
 
 func isFilesystemToolKey(key string) bool {
 	switch key {
-	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file", "read_lints":
+	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file", "read_lints", "delete_file":
 		return true
 	default:
 		return false

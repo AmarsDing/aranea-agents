@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/shared"
@@ -14,8 +15,11 @@ import (
 )
 
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
-	if a.AgentKey == "" || a.DisplayName == "" || a.Provider == "" || a.Model == "" {
+	if a.AgentKey == "" || a.DisplayName == "" {
 		return biz.Agent{}, apierror.BadRequest("AGENT", "missing required fields")
+	}
+	if (strings.TrimSpace(a.Provider) == "") != (strings.TrimSpace(a.Model) == "") {
+		return biz.Agent{}, apierror.BadRequest("AGENT", "provider and model must both be set or both be empty")
 	}
 	if a.ID == "" {
 		a.ID = generateCatalogID()
@@ -131,9 +135,11 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		now := nowRFC3339()
+		// Tombstone is deleted_at. Status stays inside the catalog FSM
+		// (active/inactive/archived); "deleted" is not a valid AgentStatus.
 		if _, err := r.data.RW().Write(txCtx).Agent.UpdateOneID(id).
 			SetDeletedAt(now).
-			SetStatus("deleted").
+			SetStatus(string(biz.AgentStatusArchived)).
 			SetUpdatedAt(now).
 			Save(txCtx); err != nil {
 			return entErrToBizErr(err, "AGENT")

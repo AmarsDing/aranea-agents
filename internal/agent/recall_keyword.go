@@ -12,9 +12,6 @@ const intentContextHeader = "Derived intent (align your plan and tools to this J
 // RecallKeywordFromMessages prefers Intent Pass search_hints, then last user text.
 func RecallKeywordFromMessages(messages []trpcmodel.Message) string {
 	for _, m := range messages {
-		if m.Role != trpcmodel.RoleSystem {
-			continue
-		}
 		if kw := searchHintsFromIntentContent(m.Content); kw != "" {
 			return kw
 		}

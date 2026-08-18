@@ -88,6 +88,39 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 	}
 }
 
+func TestMarkTeamGraphInterrupt_IllegalTransition_DoesNotPersist(t *testing.T) {
+	repo := &memGraphRunRepo{runs: map[string]*GraphExecution{}}
+	uc := NewGraphUsecase(GraphUsecaseDeps{RunRepo: repo, Lg: loggateway.NewNoop()})
+	ct := NewCompiledTeam(GraphBuildConfig{
+		Nodes:      []NodeDef{{ID: "review-1", Type: "review"}},
+		EntryPoint: "review-1", FinishPoint: "review-1",
+	}, nil, nil, nil)
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-done", "sess-1", "sess-1", "team-1", "run-1", "g-1", ct); err != nil {
+		t.Fatal(err)
+	}
+	exec, err := uc.GetExecution(context.Background(), "exec-done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec.execMu.Lock()
+	exec.Status = string(GraphExecCompleted)
+	exec.execMu.Unlock()
+
+	if err := uc.MarkTeamGraphInterrupt(context.Background(), "exec-done", "review-1", "lineage-x"); err == nil {
+		t.Fatal("expected illegal interrupt from completed to fail")
+	}
+	got, err := uc.GetExecution(context.Background(), "exec-done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != string(GraphExecCompleted) {
+		t.Fatalf("status=%q, want completed", got.Status)
+	}
+	if got.IsInterrupted() || got.GetInterruptNode() != "" || got.LineageID == "lineage-x" {
+		t.Fatalf("illegal interrupt must not persist flags interrupted=%v node=%q lineage=%q", got.IsInterrupted(), got.GetInterruptNode(), got.LineageID)
+	}
+}
+
 // F-B：team 路径绕过 trpcGraphRuntime.Run，无 consumeRuntimeEvents 消费者，
 // graph_executions 行不会随运行结束收敛。RecordTeamGraphNodeEnd 增量落 steps_json，
 // FinalizeTeamGraphExecution 在 team run 终态时收敛 status/finished_at。

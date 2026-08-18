@@ -263,6 +263,9 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 	hasFragmentEdit := false
 	hasFileWrite := false
 	hasReadLints := false
+	hasSubagents := false
+	hasBrowser := false
+	hasShell := false
 	for _, it := range eff.Items {
 		if it.Enabled {
 			keys = append(keys, it.ToolKey)
@@ -278,10 +281,16 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 				hasWorkspaceSearch = true
 			case "diff_edit", "patch_file":
 				hasFragmentEdit = true
-			case "replace_content", "save_file":
+			case "replace_content", "save_file", "delete_file":
 				hasFileWrite = true
 			case "read_lints":
 				hasReadLints = true
+			case "subagents_spawn":
+				hasSubagents = true
+			case "browser":
+				hasBrowser = true
+			case "shell_exec":
+				hasShell = true
 			}
 		}
 	}
@@ -322,10 +331,19 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 		} else if hasFileWrite {
 			editStep = "replace_content for targeted edits; use save_file for new files or small full rewrites"
 		}
-		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; preferred order: search_content → read_file (use start_line/end_line for large files) → " + editStep + ". Avoid list_file at repo root without a narrowed path or keyword.\n")
-		if hasReadLints {
-			b.WriteString("- After save_file / diff_edit / replace_content / patch_file, call read_lints with the edited paths before guessing compile status or running tests.\n")
-		}
+		b.WriteString("- search_content: use to locate symbols or string literals across the workspace before listing directories; optional after/before/context, type, head_limit/offset. Preferred order: search_content → read_file (use start_line/end_line for large files) → " + editStep + ". Avoid list_file at repo root without a narrowed path or keyword.\n")
+	}
+	if hasReadLints && level >= cueLevelFull && !skipToolCue {
+		b.WriteString("- After save_file / diff_edit / replace_content / patch_file / delete_file, call read_lints (omit path to lint recently edited files) before guessing compile status or running tests.\n")
+	}
+	if hasShell && level >= cueLevelFull && !skipToolCue {
+		b.WriteString("- exec_command: long jobs return session_id, output_file, running_for_ms; hung=true means output stalled. write_stdin can wait with notify_pattern / block_until_ms.\n")
+	}
+	if hasBrowser && level >= cueLevelStandard && !skipToolCue {
+		b.WriteString("- Browser: after navigate/click/type, call browser_snapshot before the next interaction (mutating tools stamp next_tool). Do not parallelize browser tools.\n")
+	}
+	if hasSubagents && level >= cueLevelStandard && !skipToolCue {
+		b.WriteString("- subagents_spawn: set kind=explore for codebase search (avoid writes) or kind=verify for tests/builds. subagents_get accepts block_until_ms to wait for completion.\n")
 	}
 	if level >= cueLevelFull {
 		b.WriteString("- Execution planning: state 3-7 verifiable steps before substantive edits; prefer tests or builds on affected packages when tools allow; if intent_artifact appears in session metadata, align steps with refined_goal and use search_hints for search_content queries.\n")
@@ -353,8 +371,10 @@ func DynamicRuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) stri
 // cue. Verbosity scales with system_prompt_mode (complete > task > minimized > none).
 //
 // Use this wrapper in test/preview contexts that need the combined output.
-// Production code injects Static and Dynamic separately per LLM call via
-// BeforeModel (see runtime_cue_inject.go).
+// Production bakes the static portion into WithInstruction (trpc_build.go).
+// The dynamic portion is injected per LLM call as a trailing user-role cue
+// (runtime_cue_inject.go). Use this wrapper in test/preview contexts that
+// need the combined output.
 func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	static := StaticRuntimeCapabilityCue(ctx, d, ag)
 	dynamic := DynamicRuntimeCapabilityCue(ctx, d, ag)

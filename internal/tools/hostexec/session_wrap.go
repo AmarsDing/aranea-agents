@@ -17,16 +17,19 @@ import (
 )
 
 const (
-	maxLogBytes      = 1 << 20
-	maxStreamRunes   = 4000
-	notifyPollEvery  = 200 * time.Millisecond
+	maxLogBytes       = 1 << 20
+	maxStreamRunes    = 4000
+	notifyPollEvery   = 200 * time.Millisecond
 	defaultNotifyWait = 30 * time.Second
 )
 
 type sessionToolSet struct {
-	inner   trpctool.ToolSet
-	baseDir string
-	lg      loggateway.Logger
+	inner     trpctool.ToolSet
+	baseDir   string
+	lg        loggateway.Logger
+	clock     func() time.Time
+	hungAfter time.Duration
+	meta      *sessionMetaStore
 }
 
 // WrapSessionEnhance adds output files, regex notify, and StreamableCall polling
@@ -39,7 +42,14 @@ func WrapSessionEnhance(inner trpctool.ToolSet, baseDir string, lg loggateway.Lo
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &sessionToolSet{inner: inner, baseDir: baseDir, lg: lg}
+	return &sessionToolSet{
+		inner:     inner,
+		baseDir:   baseDir,
+		lg:        lg,
+		clock:     time.Now,
+		hungAfter: defaultHungAfter,
+		meta:      newSessionMetaStore(),
+	}
 }
 
 func (s *sessionToolSet) Name() string {
@@ -84,8 +94,14 @@ func (s *sessionToolSet) Tools(ctx context.Context) []trpctool.Tool {
 	wrapped := &execEnhance{inner: exec, stdin: stdin, set: s}
 	for i, t := range out {
 		ct, ok := t.(trpctool.CallableTool)
-		if ok && toolName(ct) == "exec_command" {
+		if !ok {
+			continue
+		}
+		switch toolName(ct) {
+		case "exec_command":
 			out[i] = wrapped
+		case "write_stdin":
+			out[i] = &stdinEnhance{inner: ct, set: s}
 		}
 	}
 	return out
@@ -126,7 +142,7 @@ func (e *execEnhance) Declaration() *trpctool.Declaration {
 	schema.Properties = props
 	cp.InputSchema = &schema
 	if cp.Description != "" && !strings.Contains(cp.Description, "output_file") {
-		cp.Description += " Long-running commands return session_id plus output_file under .aranea/shell/. Use notify_pattern to wait until output matches a regex. write_stdin polls the same session."
+		cp.Description += " Long-running commands return session_id, pid, and output_file under .aranea/shell/. Use notify_pattern to wait until output matches a regex. write_stdin polls the same session."
 	}
 	return &cp
 }
@@ -142,7 +158,7 @@ func (e *execEnhance) Call(ctx context.Context, jsonArgs []byte) (any, error) {
 	output, _ := m["output"].(string)
 	status, _ := m["status"].(string)
 	if pattern != "" && e.stdin != nil && sid != "" {
-		matched, acc, waitErr := e.waitPattern(ctx, sid, output, pattern, wait)
+		matched, acc, waitErr := waitSessionPattern(ctx, e.stdin, sid, output, pattern, wait)
 		output = acc
 		m["output"] = output
 		m["notified"] = matched
@@ -220,7 +236,10 @@ func (e *execEnhance) StreamableCall(ctx context.Context, jsonArgs []byte) (*trp
 	return stream.Reader, nil
 }
 
-func (e *execEnhance) waitPattern(ctx context.Context, sessionID, initial, pattern string, wait time.Duration) (bool, string, error) {
+func waitSessionPattern(ctx context.Context, stdin trpctool.CallableTool, sessionID, initial, pattern string, wait time.Duration) (bool, string, error) {
+	if stdin == nil {
+		return false, initial, nil
+	}
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return false, initial, nil
@@ -241,7 +260,7 @@ func (e *execEnhance) waitPattern(ctx context.Context, sessionID, initial, patte
 			return false, acc, ctx.Err()
 		case <-timer.C:
 		}
-		poll, perr := e.stdin.Call(ctx, mustJSON(map[string]any{
+		poll, perr := stdin.Call(ctx, mustJSON(map[string]any{
 			"session_id":    sessionID,
 			"chars":         "",
 			"yield_time_ms": 0,
@@ -269,6 +288,82 @@ func (e *execEnhance) waitPattern(ctx context.Context, sessionID, initial, patte
 }
 
 func (e *execEnhance) persist(result any, sessionID string) any {
+	return persistSession(e.set, result, sessionID)
+}
+
+type stdinEnhance struct {
+	inner trpctool.CallableTool
+	set   *sessionToolSet
+}
+
+func (s *stdinEnhance) Declaration() *trpctool.Declaration {
+	if s.inner == nil {
+		return nil
+	}
+	d := s.inner.Declaration()
+	if d == nil {
+		return d
+	}
+	cp := *d
+	schema := &trpctool.Schema{Type: "object", Properties: map[string]*trpctool.Schema{}}
+	if d.InputSchema != nil {
+		cloned := *d.InputSchema
+		props := map[string]*trpctool.Schema{}
+		for k, v := range d.InputSchema.Properties {
+			props[k] = v
+		}
+		cloned.Properties = props
+		schema = &cloned
+	}
+	if schema.Properties == nil {
+		schema.Properties = map[string]*trpctool.Schema{}
+	}
+	if _, ok := schema.Properties["notify_pattern"]; !ok {
+		schema.Properties["notify_pattern"] = &trpctool.Schema{
+			Type:        "string",
+			Description: "Regex to wait for in session output before returning. Alias: notify_on_output.",
+		}
+	}
+	if _, ok := schema.Properties["block_until_ms"]; !ok {
+		schema.Properties["block_until_ms"] = &trpctool.Schema{
+			Type:        "integer",
+			Description: "Wait this many milliseconds (and poll the session) before returning.",
+		}
+	}
+	cp.InputSchema = schema
+	if cp.Description != "" && !strings.Contains(cp.Description, "notify_pattern") {
+		cp.Description += " Poll a running session. Optional notify_pattern / block_until_ms wait for output; results include pid, running_for_ms and hung."
+	}
+	return &cp
+}
+
+func (s *stdinEnhance) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+	if s.inner == nil {
+		return nil, nil
+	}
+	pattern, wait := extractNotify(jsonArgs)
+	out, err := s.inner.Call(ctx, jsonArgs)
+	m := asMap(out)
+	sid, _ := m["session_id"].(string)
+	output, _ := m["output"].(string)
+	status, _ := m["status"].(string)
+	if err == nil && pattern != "" && sid != "" {
+		matched, acc, waitErr := waitSessionPattern(ctx, s.inner, sid, output, pattern, wait)
+		output = acc
+		m["output"] = output
+		m["notified"] = matched
+		if status == "" {
+			status = "running"
+		}
+		m["status"] = status
+		if waitErr != nil && ctx.Err() != nil {
+			return persistSession(s.set, m, sid), waitErr
+		}
+	}
+	return persistSession(s.set, m, sid), err
+}
+
+func persistSession(set *sessionToolSet, result any, sessionID string) any {
 	m := asMap(result)
 	if m == nil {
 		return result
@@ -282,9 +377,12 @@ func (e *execEnhance) persist(result any, sessionID string) any {
 	if sessionID == "" && output == "" {
 		return m
 	}
-	path, err := writeShellLog(e.set.baseDir, sessionID, output)
+	if set == nil {
+		return m
+	}
+	path, err := writeShellLog(set.baseDir, sessionID, output)
 	if err != nil {
-		e.set.lg.Debug("shell output file skipped",
+		set.lg.Debug("shell output file skipped",
 			loggateway.StepID("tool.shell.output_file"),
 			loggateway.Err(err))
 		return m
@@ -292,7 +390,25 @@ func (e *execEnhance) persist(result any, sessionID string) any {
 	if path != "" {
 		m["output_file"] = path
 	}
+	annotateSessionMeta(set, m, sessionID)
 	return m
+}
+
+func annotateSessionMeta(set *sessionToolSet, m map[string]any, sessionID string) {
+	if set == nil || m == nil || sessionID == "" {
+		return
+	}
+	now := time.Now()
+	if set.clock != nil {
+		now = set.clock()
+	}
+	output, _ := m["output"].(string)
+	status, _ := m["status"].(string)
+	runningFor, hung := set.meta.observe(sessionID, output, status, now, set.hungAfter)
+	m["running_for_ms"] = runningFor
+	if hung {
+		m["hung"] = true
+	}
 }
 
 func writeShellLog(baseDir, sessionID, output string) (string, error) {

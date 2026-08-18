@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -59,6 +60,63 @@ func newParallelOrchestrator(assembler tools.SpiritTeamAssemblerPort) *TaskOrche
 	return &TaskOrchestratorImpl{
 		assembler: assembler,
 		lg:        loggateway.NewNoop(),
+	}
+}
+
+type stubOrchRepo struct {
+	created *biz.OrchestrationHandle
+}
+
+func (s *stubOrchRepo) Create(_ context.Context, h *biz.OrchestrationHandle) (*biz.OrchestrationHandle, error) {
+	s.created = h
+	return h, nil
+}
+func (s *stubOrchRepo) GetByID(context.Context, string) (*biz.OrchestrationHandle, error) {
+	return nil, nil
+}
+func (s *stubOrchRepo) Update(context.Context, *biz.OrchestrationHandle) (*biz.OrchestrationHandle, error) {
+	return nil, nil
+}
+func (s *stubOrchRepo) ListBySpiritSessionID(context.Context, string) ([]*biz.OrchestrationHandle, error) {
+	return nil, nil
+}
+func (s *stubOrchRepo) ListByStatus(context.Context, biz.OrchestrationStatus) ([]*biz.OrchestrationHandle, error) {
+	return nil, nil
+}
+
+func TestOrchestrate_RetiredTeamStrategies(t *testing.T) {
+	o := &TaskOrchestratorImpl{lg: loggateway.NewNoop()}
+	plan := &biz.TaskPlan{ID: "tp1", SpiritSessionID: "sp1"}
+	alloc := &biz.AllocationPlan{ID: "ap1"}
+	retired := []biz.OrchestrationStrategy{
+		biz.StrategySingleAgent, biz.StrategyParallel, biz.StrategyDAG, biz.StrategyCoordinator,
+	}
+	for _, s := range retired {
+		plan.Strategy = s
+		_, err := o.Orchestrate(context.Background(), plan, alloc)
+		if err == nil {
+			t.Fatalf("strategy %s: expected retired error", s)
+		}
+		if !apierror.IsCode(err, apierror.CodeFailedPrecondition) {
+			t.Fatalf("strategy %s: want FAILED_PRECONDITION, got %v", s, err)
+		}
+	}
+}
+
+func TestOrchestrate_DirectStillPersistsHandle(t *testing.T) {
+	repo := &stubOrchRepo{}
+	o := &TaskOrchestratorImpl{lg: loggateway.NewNoop(), repo: repo}
+	handle, err := o.Orchestrate(context.Background(), &biz.TaskPlan{
+		ID: "tp-direct", SpiritSessionID: "sp1", Strategy: biz.StrategyDirect,
+	}, &biz.AllocationPlan{ID: "ap1"})
+	if err != nil {
+		t.Fatalf("direct: %v", err)
+	}
+	if handle == nil || repo.created == nil {
+		t.Fatal("direct must persist a handle")
+	}
+	if handle.Status != biz.OrchestrationStatusCompleted {
+		t.Fatalf("status=%q want completed", handle.Status)
 	}
 }
 

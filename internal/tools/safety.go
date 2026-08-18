@@ -36,6 +36,7 @@ var runtimeNameToRegistry = map[string]string{
 	"diff_edit":           "file",
 	"patch_file":          "file",
 	"read_lints":          "read_lints",
+	"delete_file":         "delete_file",
 	"exec_command":        "hostexec",
 	"write_stdin":         "hostexec",
 	"kill_session":        "hostexec",

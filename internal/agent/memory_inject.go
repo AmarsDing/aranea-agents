@@ -43,8 +43,7 @@ func ProactiveHitsFromContext(ctx context.Context) []biz.CompositeRecallHit {
 // isMemoryInjectMessage reports whether msg was injected by the
 // MemoryInject before-model hook (identified by the hidden marker prefix).
 func isMemoryInjectMessage(msg trpcmodel.Message) bool {
-	return msg.Role == trpcmodel.RoleSystem &&
-		strings.HasPrefix(msg.Content, memoryInjectMarker)
+	return strings.HasPrefix(msg.Content, memoryInjectMarker)
 }
 
 // memoryInjectCueContent wraps a cue string with the identification marker.
@@ -217,6 +216,7 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 			loggateway.Duration(cueElapsed.Milliseconds()),
 			loggateway.Int("cue_chars", len([]rune(result.JoinCues()))),
 			loggateway.Int("recall_hits", len(result.RecallHits)),
+			loggateway.Int("injected_facts", len(result.InjectedFactIDs)),
 			loggateway.Bool("cache_hit", !fresh),
 			loggateway.Bool("empty", result.IsEmpty()))
 		if result.IsEmpty() {
@@ -240,11 +240,10 @@ func newMemoryInjectBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		}
 		// P2-04: apply unified prompt budget across L1+L2+L3+L4 cues.
 		cue := result.JoinCuesWithBudget(policy.MemoryPromptTotalBudgetChars)
-		// P2 TTFT: append the per-turn dynamic cue at the END of the message
-		// list so the [system block + history + user] prefix stays
-		// monotonically growing and cacheable (never insert mid-list).
-		sys := trpcmodel.NewSystemMessage(memoryInjectCueContent(cue))
-		args.Request.Messages = append(args.Request.Messages, sys)
+		// P2 TTFT + DeepSeek system-prefix: append as a user-role cue at the
+		// END so the [system block + history + user] prefix stays cacheable
+		// and the cue does not enter the provider's system prefix.
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, memoryInjectCueContent(cue))
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -260,11 +259,11 @@ const memoryCueTurnCacheStateKey = "aranea.memory_cue.turn_cache"
 // working_memory 工具可能在工具循环中修改它，每轮重建保持新鲜（2 次轻量
 // DB 读，远小于 embed+多路检索的开销）。
 type memoryCueTurnCache struct {
-	keyword            string
-	profileCue         string
-	recallCue          string
-	recallHits         []biz.CompositeRecallHit
-	injectedFactIDs    []string
+	keyword             string
+	profileCue          string
+	recallCue           string
+	recallHits          []biz.CompositeRecallHit
+	injectedFactIDs     []string
 	l4RecalledEntityIDs []string
 }
 
@@ -399,7 +398,7 @@ func buildRuntimeMemoryCue(ctx context.Context, deps TRPCBuilderDeps, ag biz.Age
 
 func lastUserMessageText(messages []trpcmodel.Message) string {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role != trpcmodel.RoleUser {
+		if messages[i].Role != trpcmodel.RoleUser || isDynamicCueMessage(messages[i]) {
 			continue
 		}
 		if t := strings.TrimSpace(messages[i].Content); t != "" {

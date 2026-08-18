@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 
 	"aranea-agents/internal/agent/callbacks"
@@ -36,8 +37,13 @@ func newStaticRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryStaticPrefix, utf8.RuneCountInString(cue))
-		// Prefix stabilization: append after the existing system block so the
-		// session-stable prefix stays intact for prompt caching (never prepend).
+		// Production bakes this cue into WithInstruction. Skip a second system
+		// message when the instruction already carries it so DeepSeek sees one
+		// contiguous system prefix. Tests that use a fake base system still
+		// insert after the existing system block.
+		if staticRuntimeCueAlreadyPresent(args.Request.Messages) {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
 		sys := trpcmodel.NewSystemMessage(cue)
 		args.Request.Messages = insertAfterLastSystem(args.Request.Messages, sys)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -70,12 +76,10 @@ func newDynamicRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callback
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryOtherDynamic, utf8.RuneCountInString(cue))
-		// Prefix stabilization (WP-1): the cue content changes when MCP tools
-		// reconnect or tool config flips mid-session, so it must append at the
-		// END of the message list (never insertAfterLastSystem) — otherwise the
-		// whole [system + history] prefix is invalidated on every change.
-		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append(args.Request.Messages, sys)
+		// Prefix stabilization (WP-1): content changes when MCP tools reconnect
+		// or tool config flips mid-session. Append as a user-role cue at the
+		// END so it stays out of DeepSeek's system prefix.
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -96,4 +100,13 @@ func customToolKeysFromDeps(deps TRPCBuilderDeps) []string {
 		return nil
 	}
 	return keys
+}
+
+func staticRuntimeCueAlreadyPresent(msgs []trpcmodel.Message) bool {
+	for _, m := range msgs {
+		if m.Role == trpcmodel.RoleSystem && strings.Contains(m.Content, "## Runtime capability policy") {
+			return true
+		}
+	}
+	return false
 }

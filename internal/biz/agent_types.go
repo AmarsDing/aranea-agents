@@ -41,6 +41,16 @@ func IsSystemAgentKey(key string) bool {
 	return false
 }
 
+// IsCatalogAgentAssignable reports whether a catalog agent may be selected
+// for matching, allocation, or team assembly. Inactive/archived/system
+// agents stay in the directory but must not be assigned work.
+func IsCatalogAgentAssignable(a Agent) bool {
+	if IsSystemAgentKey(a.AgentKey) {
+		return false
+	}
+	return NormalizeAgentStatus(a.Status) == AgentStatusActive
+}
+
 // AgentStatus enumerates the valid lifecycle statuses for a catalog agent.
 // Using typed constants instead of free-form strings prevents invalid status values.
 type AgentStatus string

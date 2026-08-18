@@ -78,7 +78,7 @@ func TestBuildRuntimeMemoryCue_TurnCacheReuse(t *testing.T) {
 }
 
 func TestIsMemoryInjectMessage(t *testing.T) {
-	msg := trpcmodel.NewSystemMessage(memoryInjectCueContent("test cue"))
+	msg := asDynamicCue(memoryInjectCueContent("test cue"))
 	if !isMemoryInjectMessage(msg) {
 		t.Error("message with marker should be identified")
 	}

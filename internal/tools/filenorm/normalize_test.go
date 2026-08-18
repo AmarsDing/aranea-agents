@@ -128,6 +128,46 @@ func TestNormalizeFileArgs_ReadFileLineAliases(t *testing.T) {
 	}
 }
 
+func TestNormalizeFileArgs_SearchContentGrepDetails(t *testing.T) {
+	out := NormalizeFileArgs("search_content", []byte(`{"query":"TODO","-A":2,"-B":1,"file_type":"go","-U":true,"limit":5,"skip":1}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["content_pattern"] != "TODO" {
+		t.Fatalf("content_pattern = %v", m["content_pattern"])
+	}
+	if m["after"] != float64(2) {
+		t.Fatalf("after = %v", m["after"])
+	}
+	if m["before"] != float64(1) {
+		t.Fatalf("before = %v", m["before"])
+	}
+	if m["type"] != "go" {
+		t.Fatalf("type = %v", m["type"])
+	}
+	if m["multiline"] != true {
+		t.Fatalf("multiline = %v", m["multiline"])
+	}
+	if m["head_limit"] != float64(5) {
+		t.Fatalf("head_limit = %v", m["head_limit"])
+	}
+	if m["offset"] != float64(1) {
+		t.Fatalf("offset = %v", m["offset"])
+	}
+}
+
+func TestNormalizeFileArgs_DeleteFilePathAlias(t *testing.T) {
+	out := NormalizeFileArgs("delete_file", []byte(`{"path":"tmp/notes.txt"}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["file_name"] != "tmp/notes.txt" {
+		t.Fatalf("file_name = %v", m["file_name"])
+	}
+}
+
 func TestNormalizeFileArgs_InvalidJSON(t *testing.T) {
 	in := []byte(`not json`)
 	if string(NormalizeFileArgs("read_file", in)) != string(in) {

@@ -20,11 +20,19 @@ type searchRequest struct {
 	FileCaseSensitive    bool   `json:"file_case_sensitive"`
 	ContentPattern       string `json:"content_pattern"`
 	ContentCaseSensitive bool   `json:"content_case_sensitive"`
+	After                int    `json:"after"`
+	Before               int    `json:"before"`
+	Context              int    `json:"context"`
+	Type                 string `json:"type"`
+	Multiline            bool   `json:"multiline"`
+	HeadLimit            int    `json:"head_limit"`
+	Offset               int    `json:"offset"`
 }
 
 type lineMatch struct {
 	LineNumber  int    `json:"line_number"`
 	LineContent string `json:"line_content"`
+	Kind        string `json:"kind,omitempty"`
 }
 
 type fileMatch struct {
@@ -70,7 +78,8 @@ func parseRipgrepJSON(stdout, baseDir, relRoot string) (files []*fileMatch, trun
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
 			continue
 		}
-		if !strings.EqualFold(ev.Type, "match") {
+		kind := lineKind(ev.Type)
+		if kind == "" {
 			continue
 		}
 		path := strings.TrimSpace(ev.Data.Path.Text)
@@ -88,9 +97,12 @@ func parseRipgrepJSON(stdout, baseDir, relRoot string) (files []*fileMatch, trun
 			byPath[path] = fm
 			order = append(order, path)
 		}
-		if len(fm.Matches) >= maxPerFile || total >= maxMatchesTotal {
-			truncated = true
-			continue
+		if kind == "match" {
+			if countMatchLines(fm.Matches) >= maxPerFile || total >= maxMatchesTotal {
+				truncated = true
+				continue
+			}
+			total++
 		}
 		content := strings.TrimRight(ev.Data.Lines.Text, "\r\n")
 		content = clipRunes(content, maxLineRunes)
@@ -98,14 +110,105 @@ func parseRipgrepJSON(stdout, baseDir, relRoot string) (files []*fileMatch, trun
 		if n <= 0 {
 			n = 1
 		}
-		fm.Matches = append(fm.Matches, &lineMatch{LineNumber: n, LineContent: content})
-		total++
+		fm.Matches = append(fm.Matches, &lineMatch{LineNumber: n, LineContent: content, Kind: kind})
 	}
 	out := make([]*fileMatch, 0, len(order))
 	for _, p := range order {
 		fm := byPath[p]
-		fm.Message = "Found " + strconv.Itoa(len(fm.Matches)) + " matches in file '" + p + "'"
+		fm.Message = "Found " + strconv.Itoa(countMatchLines(fm.Matches)) + " matches in file '" + p + "'"
 		out = append(out, fm)
+	}
+	return out, truncated
+}
+
+func lineKind(evType string) string {
+	switch strings.ToLower(strings.TrimSpace(evType)) {
+	case "match":
+		return "match"
+	case "context":
+		return "context"
+	default:
+		return ""
+	}
+}
+
+func isMatchLine(lm *lineMatch) bool {
+	if lm == nil {
+		return false
+	}
+	return lm.Kind == "" || lm.Kind == "match"
+}
+
+func countMatchLines(in []*lineMatch) int {
+	n := 0
+	for _, lm := range in {
+		if isMatchLine(lm) {
+			n++
+		}
+	}
+	return n
+}
+
+func paginateFileMatches(files []*fileMatch, offset, headLimit int) ([]*fileMatch, bool) {
+	if offset < 0 {
+		offset = 0
+	}
+	limitMatches := headLimit
+	if limitMatches <= 0 {
+		if offset <= 0 {
+			return files, false
+		}
+		limitMatches = maxMatchesTotal
+	}
+	matchSeen := 0
+	truncated := false
+	out := make([]*fileMatch, 0, len(files))
+	for _, fm := range files {
+		if fm == nil {
+			continue
+		}
+		kept := make([]*lineMatch, 0, len(fm.Matches))
+		pending := []*lineMatch{}
+		lastKept := false
+		for _, lm := range fm.Matches {
+			if lm == nil {
+				continue
+			}
+			if !isMatchLine(lm) {
+				if lastKept {
+					kept = append(kept, lm)
+				} else if matchSeen >= offset {
+					pending = append(pending, lm)
+				}
+				continue
+			}
+			matchSeen++
+			if matchSeen <= offset {
+				pending = nil
+				lastKept = false
+				continue
+			}
+			if matchSeen-offset > limitMatches {
+				truncated = true
+				pending = nil
+				lastKept = false
+				continue
+			}
+			kept = append(kept, pending...)
+			pending = nil
+			kept = append(kept, lm)
+			lastKept = true
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		cp := *fm
+		cp.Matches = kept
+		cp.Message = "Found " + strconv.Itoa(countMatchLines(kept)) + " matches in file '" + cp.FilePath + "'"
+		out = append(out, &cp)
+	}
+	if matchSeen > offset+limitMatches {
+		truncated = true
 	}
 	return out, truncated
 }
@@ -140,8 +243,8 @@ func capFileMatches(in []*fileMatch) (out []*fileMatch, truncated bool) {
 				m.LineContent = clipRunes(m.LineContent, maxLineRunes)
 			}
 		}
-		total += len(cp.Matches)
-		cp.Message = "Found " + strconv.Itoa(len(cp.Matches)) + " matches in file '" + cp.FilePath + "'"
+		total += countMatchLines(cp.Matches)
+		cp.Message = "Found " + strconv.Itoa(countMatchLines(cp.Matches)) + " matches in file '" + cp.FilePath + "'"
 		out = append(out, &cp)
 	}
 	return out, truncated

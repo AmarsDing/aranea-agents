@@ -164,7 +164,23 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		}
 	}
 	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode, catResp)
-	// RuntimeCapabilityCue is injected per LLM call via BeforeModel (runtime_cue_inject.go).
+	// Session-stable runtime cue is baked into the single instruction system
+	// message so DeepSeek's system-prefix cache is one contiguous block.
+	// The BeforeModel static-cue hook no-ops when this marker is already present.
+	promptDeps := Deps{
+		Agents:                 deps.Agents,
+		AgentUC:                deps.AgentUC,
+		SessionMemoryAvailable: deps.HasMemory,
+		LG:                     lg,
+		CustomToolKeys:         customToolKeysFromDeps(deps),
+	}
+	if staticCue := StaticRuntimeCapabilityCue(ctx, promptDeps, ag); staticCue != "" {
+		if sys != "" {
+			sys += "\n\n" + staticCue
+		} else {
+			sys = staticCue
+		}
+	}
 	opts := []trpcllmagent.Option{
 		trpcllmagent.WithModel(m),
 	}
@@ -230,16 +246,15 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 		}
 		skillProfile, dirHints := skillOptionsForPromptMode(ag.SystemPromptMode)
 		if ag.Settings != nil && biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
-			// Progressive mode: enable tool result mode and directory hints.
-			// skillProfile is preserved as-is from skillOptionsForPromptMode:
-			//   - "complete" mode → Full profile (includes skill_run)
-			//   - other modes → KnowledgeOnly profile (skill_load/list_docs/select_docs only)
+			// Progressive mode keeps directory hints for skill_run path
+			// resolution; skill bodies still go to tool results (below).
 			dirHints = true
-			opts = append(opts,
-				trpcllmagent.WithSkillsLoadedContentInToolResults(true),
-			)
 		}
 		opts = append(opts,
+			// Always keep loaded skill bodies out of system[0]. Merging them
+			// into the instruction mutates DeepSeek's cacheable prefix on
+			// every skill_load / auto-attach.
+			trpcllmagent.WithSkillsLoadedContentInToolResults(true),
 			trpcllmagent.WithSkillToolProfile(skillProfile),
 			trpcllmagent.WithSkillsDirectoryHints(dirHints),
 		)

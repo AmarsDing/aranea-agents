@@ -162,7 +162,12 @@ func (d *chatAgentBuildDirector) BuildTRPCDeps(ctx context.Context, p AgentBuild
 			MemoryL3Recall:         d.td.Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  d.td.Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: d.td.Persist.Memory.PreferenceLister,
-			MemoryReconsolidator:   d.td.Persist.Memory.Reconsolidator,
+			// FR-12.6/FR-12.7（2026-08-18 G-PIN 排障根治）：本手工装配点此前漏接
+			// Counter/ProfileCardReader —— 钉住块正常注入但 injected_count 永不落库、
+			// 常驻档案卡从不进 prompt。须与 wire_gen provideTRPCBuilderDeps 字段对齐。
+			MemoryFactInjectCounter: d.td.Persist.Memory.FactInjectCounter,
+			MemoryProfileCardReader: d.td.Persist.Memory.ProfileCardReader,
+			MemoryReconsolidator:    d.td.Persist.Memory.Reconsolidator,
 			AgentCaseRecaller:      d.td.Persist.Memory.AgentCaseRecaller,
 			KnowledgeRetriever:     d.rt.Knowledge.Retriever,
 			KnowledgeUsecase:       d.rt.Knowledge.Usecase,

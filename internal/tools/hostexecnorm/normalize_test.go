@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestNormalizeExecArgs_BlockUntilAndNotifyAliases(t *testing.T) {
+	t.Parallel()
+	out := NormalizeExecArgs([]byte(`{"command":"sleep 1","block_until_ms":1500,"notify_on_output":"READY"}`))
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["yield_time_ms"] != float64(1500) {
+		t.Fatalf("yield_time_ms = %v", m["yield_time_ms"])
+	}
+	if m["notify_pattern"] != "READY" {
+		t.Fatalf("notify_pattern = %v", m["notify_pattern"])
+	}
+}
+
 func TestNormalizeExecArgs_workingDirAlias(t *testing.T) {
 	t.Parallel()
 	out := NormalizeExecArgs([]byte(`{"command":"pwd","working_dir":"sub"}`))

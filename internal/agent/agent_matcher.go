@@ -22,7 +22,7 @@ func NewAgentMatcher(agents biz.AgentReader, lg loggateway.Logger) biz.AgentMatc
 }
 
 func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capabilities []string) (*biz.AgentMatch, error) {
-	result, err := m.agents.SearchAgents(ctx, biz.AgentListQuery{Limit: 200})
+	result, err := m.agents.SearchAgents(ctx, biz.AgentListQuery{Status: string(biz.AgentStatusActive), Limit: 200})
 	if err != nil {
 		return nil, apierror.Internal(apierror.DomainAgent, "search agents").WithCause(err)
 	}
@@ -35,7 +35,7 @@ func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capa
 
 	for i := range result.Items {
 		ag := &result.Items[i]
-		if ag.AgentKey == biz.SpiritAgentKey {
+		if !biz.IsCatalogAgentAssignable(*ag) {
 			continue
 		}
 		capScore := JaccardCapability(capabilities, ag.Roles)
@@ -65,22 +65,22 @@ func (m *agentMatcherImpl) MatchAgent(ctx context.Context, taskDesc string, capa
 		return bestMatch, nil
 	}
 
-	// Fallback: return the first non-Spirit agent.
-	// Full LLM-based matching will be implemented in Phase 2 (T2.1).
+	// Fallback: first assignable catalog agent.
 	for i := range result.Items {
 		ag := &result.Items[i]
-		if ag.AgentKey != biz.SpiritAgentKey {
-			m.lg.Info("Agent 匹配降级为首个可用 Agent",
-				loggateway.StepID("agent.match"),
-				loggateway.Str("fallback_agent", ag.AgentKey),
-			)
-			return &biz.AgentMatch{
-				AgentKey:    ag.AgentKey,
-				DisplayName: ag.DisplayName,
-				Score:       0.1,
-				MatchReason: "Fallback: no exact match, using first available agent",
-			}, nil
+		if !biz.IsCatalogAgentAssignable(*ag) {
+			continue
 		}
+		m.lg.Info("Agent 匹配降级为首个可用 Agent",
+			loggateway.StepID("agent.match"),
+			loggateway.Str("fallback_agent", ag.AgentKey),
+		)
+		return &biz.AgentMatch{
+			AgentKey:    ag.AgentKey,
+			DisplayName: ag.DisplayName,
+			Score:       0.1,
+			MatchReason: "Fallback: no exact match, using first available agent",
+		}, nil
 	}
 
 	m.lg.Warn("无可用 Agent 匹配",

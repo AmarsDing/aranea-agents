@@ -1230,6 +1230,9 @@ func (r *dagRun) dispatchStep(ctx context.Context, step *biz.PlanStep) {
 	step.StartedAt = now
 	step.Version++
 	runningStep := *step
+	if strings.TrimSpace(runningStep.Mode) == "" {
+		runningStep.Mode = biz.SpiritTeamModeForStep(string(r.board.Strategy), len(runningStep.AgentKeys))
+	}
 	r.mu.Unlock()
 	// 2. Persist + publish PlanStepStarted.
 	if _, err := r.pe.repos.UpsertPlanStep(ctx, runningStep); err != nil {

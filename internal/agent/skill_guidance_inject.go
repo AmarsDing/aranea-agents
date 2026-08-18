@@ -103,10 +103,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(cue))
-		// Prefix stabilization: append at the tail so [system + history + user]
-		// stays a monotonically growing, cacheable prefix.
-		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append(args.Request.Messages, sys)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
@@ -193,9 +190,9 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		if result == nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		// Inject routed slugs as a compact system message. The framework's
-		// injectOverview will append the full skill list (names+descriptions)
-		// to the system message; this prefix highlights routed skills so the
+		// Inject routed slugs as a compact trailing cue. The framework's
+		// injectOverview still lists all skills (names+descriptions) on the
+		// system message; this tail cue highlights routed skills so the
 		// LLM can prioritize loading them via skill_load.
 		var b strings.Builder
 		b.WriteString("## Routed Skills\n\n")
@@ -206,8 +203,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		// 上下文预算台账（29-token §9.6）：仅计量，不改注入逻辑。
 		recordContextBudgetOnce(ctx, ContextBudgetCategorySkillGuidance, utf8.RuneCountInString(b.String()))
-		sys := trpcmodel.NewSystemMessage(b.String())
-		args.Request.Messages = append(args.Request.Messages, sys)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, b.String())
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

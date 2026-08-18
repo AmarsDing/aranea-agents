@@ -63,39 +63,40 @@
 ### 3.1 System Message 注入顺序（前缀稳定化）
 
 > 落地 2026-08-11（P1）；P2 深化（per-turn 动态 cue 末尾追加 + intent 搬移）同日落地。
+> 2026-08-18：DeepSeek 把**全部** `role=system` 当作可缓存前缀。尾部 `NewSystemMessage` 动态 cue 仍会截断 history 前缀（真机 cached 锁在 ~6k）。动态 cue 改为 **user 角色 + `ToolName=aranea.dynamic_cue` 哨兵** 追加在列表末尾（哨兵阻止 consecutive-message merger 把 cue 拼进真实 user 消息；转换层不对 role=user 下发 ToolName）。静态 runtime cue 烘焙进 `WithInstruction`，生产路径只留一条 system。
 
 DeepSeek prompt caching 从 token 0 开始匹配：system-message 前缀内任何 per-turn 变化会使整个缓存块失效。两档契约：
 
-1. **会话级稳定 cue**（static/semi-static）：**禁止 prepend 到 position 0**，必须使用 `insertAfterLastSystem` 追加到已有 system 块之后；
-2. **per-turn 动态 cue**（P2 深化）：仅「插在 system 块后」不够——history 每轮增长时动态 cue 的位置随之前的位置关系仍会把可缓存前缀截断在 cue 处，长会话命中率随轮次衰减。因此动态 cue 一律 **append 到消息列表末尾**（user/history 之后），使 `[system 块 + history + user]` 成为单调增长的可缓存前缀，只有尾部动态段每轮重算。
+1. **会话级稳定 cue**：烘焙进单条 instruction（`trpc_build.go`）；BeforeModel 钩子仅在 instruction 尚未包含 `## Runtime capability policy` 时 `insertAfterLastSystem`（测试假 base / 兜底）。**禁止 prepend 到 position 0**。
+2. **per-turn 动态 cue**：一律 **append 到消息列表末尾**，且 **role=user**（不是 system），使 `[system 块 + history + user]` 成为单调增长的可缓存前缀，只有尾部动态段每轮重算，且不进入 provider 的 system 前缀。
 
 **三层前缀设计**（按 Hook Layer 排序保证注入顺序）：
 
-| 层 | Hook Layer | 内容 | 注入位置 |
-|----|-----------|------|---------|
-| Static | LayerStatic | 会话级稳定（不随 turn 变化）：基础 system prompt、静态运行时能力 cue | `insertAfterLastSystem` |
-| Semi-Static | LayerSemiStatic | 任务/turn 级变化：动态运行时 cue、skill guidance | `insertAfterLastSystem` |
-| Dynamic | LayerDynamic | 每 turn 变化：memory cue（含 recall 结果）、knowledge cue、reply reminder、intent context | **消息列表末尾 append** |
+| 层 | Hook Layer | 内容 | 注入位置 / 角色 |
+|----|-----------|------|----------------|
+| Static | LayerStatic | 会话级稳定：基础 system prompt、静态运行时能力 cue | 烘焙进 instruction；钩子仅兜底 `insertAfterLastSystem` |
+| Semi-Static | LayerSemiStatic | 任务/turn 级变化：动态运行时 cue、skill guidance、tool catalog | **末尾 append，role=user 哨兵** |
+| Dynamic | LayerDynamic | 每 turn 变化：memory cue（含 recall 结果）、knowledge cue、reply reminder、intent context | **末尾 append，role=user 哨兵** |
 
-**最终消息结构**：`[base system, static cue, semi-static cue..., history..., user, dynamic cue...（末尾）]`
+**最终消息结构**：`[base system（含烘焙静态 cue）, history..., user, dynamic user-cue...（末尾）]`
 
 **已实现注入点**：
 
 | 文件 | 钩子 | Layer | 位置 |
 |------|------|-------|------|
-| `runtime_cue_inject.go` | 静态运行时 cue | Static | insertAfterLastSystem |
-| `runtime_cue_inject.go` | 动态运行时 cue | SemiStatic | insertAfterLastSystem |
-| `skill_guidance_inject.go` | 完整 skill 指引 | SemiStatic | insertAfterLastSystem |
-| `skill_guidance_inject.go` | 渐进式 skill 指引 | SemiStatic | insertAfterLastSystem |
-| `memory_inject.go` | 记忆注入（recall + profile card） | Dynamic | **末尾 append** |
-| `memory_inject.go` | 压缩后记忆重建 | Dynamic | 原位替换；无既有 cue 时**末尾 append** |
-| `knowledge_inject.go` | 知识库 cue | Dynamic | **末尾 append** |
-| `reply_reminder_inject.go` | 回复提醒 | Dynamic | **末尾 append** |
-| `intent_reorder_inject.go` | intent context 搬移 | Dynamic（priority 100） | 稳定分区搬移到**末尾** |
+| `trpc_build.go` | 静态运行时 cue 烘焙 | Static | `WithInstruction` 拼接 |
+| `runtime_cue_inject.go` | 静态运行时 cue（兜底） | Static | instruction 已含 marker 则 noop，否则 insertAfterLastSystem |
+| `runtime_cue_inject.go` | 动态运行时 cue | SemiStatic | **末尾 append（user 哨兵）** |
+| `skill_guidance_inject.go` | 完整 / 渐进 skill 指引 | Dynamic | **末尾 append（user 哨兵）** |
+| `tool_catalog_cue.go` | 延迟工具目录 | SemiStatic | **末尾 append（user 哨兵）** |
+| `memory_inject.go` | 记忆注入（recall + profile card） | Dynamic | **末尾 append（user 哨兵）** |
+| `knowledge_inject.go` | 知识库 cue | Dynamic | **末尾 append（user 哨兵）** |
+| `reply_reminder_inject.go` | 回复提醒 | Dynamic | **末尾 append（user 哨兵）** |
+| `intent_reorder_inject.go` | intent context 搬移 | Dynamic（priority 100） | 稳定分区搬移到**末尾并转为 user 哨兵** |
 
-**intent 搬移钩子**（P2）：框架 content processor 把 `RunOptions.InjectedContextMessages`（intent JSON）追加在 system 块之后、session history 之前，注入点无法控制位置；`newIntentReorderBeforeHook` 以 LayerDynamic + priority 100（晚于所有消息改写钩子）把 intent 系统消息稳定分区搬移到末尾。每次模型调用（含工具循环重入）请求都重新构建，搬移幂等不累积；无 intent 时快速路径零分配。
+**intent 搬移钩子**（P2）：框架 content processor 把 `RunOptions.InjectedContextMessages`（intent JSON）追加在 system 块之后、session history 之前，注入点无法控制位置；`newIntentReorderBeforeHook` 以 LayerDynamic + priority 100（晚于所有消息改写钩子）把 intent 消息稳定分区搬移到末尾并转为 user 哨兵。每次模型调用（含工具循环重入）请求都重新构建，搬移幂等不累积；无 intent 时快速路径零分配。
 
-**测试契约**：`prompt_prefix_position_test.go`——会话级稳定 cue 用 `assertCueAfterBase` pin 住（base system index 0、cue 其后、user 跟随）；per-turn 动态 cue 用 `assertCueAtEnd` pin 住（base system index 0、user 保持原位、动态 cue 在末尾）；intent 搬移 4 个测试（移至末尾/落在其他动态 cue 之后/无 intent 不动/已在末尾幂等）。
+**测试契约**：`prompt_prefix_position_test.go`——会话级稳定 cue 用 `assertCueAfterBase` pin 住（base system index 0、cue 其后、user 跟随）；per-turn 动态 cue 用 `assertCueAtEnd` pin 住（base system index 0、真实 user 保持原位、动态 cue 为末尾 user 哨兵）；intent 搬移 4 个测试（移至末尾/落在其他动态 cue 之后/无 intent 不动/已在末尾幂等）。`prompt_prefix_stability_test.go` 断言静态区字节级相等，且 head 之后不再出现 `role=system`。
 
 ---
 

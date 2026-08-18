@@ -160,6 +160,14 @@
 3. 运行说明与首评一致：`docker compose -f docker-compose.eval.yml build && up -d`，评测端点 `:8910`；Embedding API 可选（未配置时自动降级为关键词混合召回，契约保持可用）
 4. r2 版本内存域能力增量为「跨会话长任务记忆」（结构化任务状态注入工作记忆 + 压缩摘要双段化），对评测维度 B（多跳组合）/C（时序理解）/G（规则流程执行）有正向影响
 
+**申请提交记录（2026-08-18）**
+
+- **通道**：网站首页「Submit Evaluation Request」表单（学术榜 + Submit GitHub code for platform deployment）。表单以模态框提供，`/evaluation` 路由重定向不影响使用
+- **结果**：✅ 提交成功。首次 POST `/evaluation-access-requests` 遇平台 503（GitHub repository verification temporarily unavailable），重试后 200 受理
+- **新申请编号**：`request_2770d1aa0f8d483799f1`（status=pending，track=academic，route=maintainer_wrapped，version=amc-2026.08-r2，created_at 2026-08-17T17:58:33Z）
+- **Notes 口径**：与上文「提交说明」一致，并引用首评编号 `request_c2ed746fa6484454b1b9`、请求首评错误摘要/构建日志
+- **备用通道**：邮件申请草稿（`D:\temp\amc-reply-email.txt`，回复首评回执邮件）保留未发，如网站申请长时间无反馈再走邮件通道
+
 ---
 
 ## 4. 验收标准

@@ -29,6 +29,8 @@ func TestToolsetConfigFromEffectiveKeys_allMappings(t *testing.T) {
 		field    string
 		expected bool
 	}{
+		{"read_lints", "ReadLints", true},
+		{"delete_file", "DeleteFile", true},
 		{"shell_exec", "ShellExec", true},
 		{"web_fetch", "WebFetch", true},
 		{"duckduckgo_search", "WebSearch", true},
@@ -80,6 +82,7 @@ func TestToolsetConfigHasAny(t *testing.T) {
 		cfg    ToolsetConfig
 		expect bool
 	}{
+		{"readlints", ToolsetConfig{ReadLints: true}, true},
 		{"empty", ToolsetConfig{}, false},
 		{"filesystem", ToolsetConfig{Filesystem: true}, true},
 		{"shell", ToolsetConfig{ShellExec: true}, true},
@@ -132,6 +135,10 @@ func checkField(t *testing.T, cfg ToolsetConfig, field string, expected bool) {
 
 func fieldByName(cfg ToolsetConfig, name string) bool {
 	switch name {
+	case "ReadLints":
+		return cfg.ReadLints
+	case "DeleteFile":
+		return cfg.DeleteFile
 	case "ShellExec":
 		return cfg.ShellExec
 	case "WebFetch":

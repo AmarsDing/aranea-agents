@@ -46,6 +46,34 @@ func TestToolReminder_MultipleEdits(t *testing.T) {
 	}
 }
 
+func TestToolReminder_SaveFileArmsReminder(t *testing.T) {
+	r := NewToolReminder()
+	r.OnToolExecuted("save_file", map[string]string{"file_name": "internal/foo.go"})
+	reminders := r.Collect()
+	if len(reminders) == 0 {
+		t.Fatal("expected reminder after save_file")
+	}
+	if !strings.Contains(reminders[0], "internal/foo.go") {
+		t.Fatalf("expected file_name in reminder, got %q", reminders[0])
+	}
+	if !strings.Contains(reminders[0], "read_lints") {
+		t.Fatalf("expected read_lints hint, got %q", reminders[0])
+	}
+	r.OnToolExecuted("file_save_file", map[string]string{"file_name": "bar.go"})
+	if got := r.Collect(); len(got) == 0 || !strings.Contains(got[0], "bar.go") {
+		t.Fatalf("mounted name file_save_file must arm reminder, got %v", got)
+	}
+}
+
+func TestToolReminder_ReadLintsClears(t *testing.T) {
+	r := NewToolReminder()
+	r.OnToolExecuted("save_file", map[string]string{"file_name": "a.go"})
+	r.OnToolExecuted("read_lints", map[string]string{"path": "a.go"})
+	if got := r.Collect(); len(got) != 0 {
+		t.Fatalf("read_lints should clear reminder, got %v", got)
+	}
+}
+
 func TestToolReminder_NonFileToolsIgnored(t *testing.T) {
 	r := NewToolReminder()
 	r.OnToolExecuted("read_file", map[string]string{"path": "/foo.go"})

@@ -69,6 +69,7 @@ type ToolsetConfig struct {
 	ReadDocument      bool
 	ReadSpreadsheet   bool
 	ReadLints         bool
+	DeleteFile        bool
 	WorkingMemory     bool
 	Datetime          bool
 	Message           bool
@@ -173,6 +174,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ReadLints {
 		enabled = append(enabled, "read_lints")
+	}
+	if cfg.DeleteFile {
+		enabled = append(enabled, "delete_file")
 	}
 	if cfg.WorkingMemory {
 		enabled = append(enabled, "working_memory")

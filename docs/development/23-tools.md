@@ -1,6 +1,6 @@
 # Tools 工具管理 — 产品需求
 
-> **版本**：5.1 | **状态**：核心已实现；片段编辑 catalog 已就绪、运行时工具待补；工作区统一已实现
+> **版本**：5.2 | **状态**：核心已实现；片段编辑、改后诊断、工作区删除、shell pid 已落地
 > **设计**：[23-tools.design.md](./23-tools.design.md) · **开发计划**：[23-tools.development.md](./23-tools.development.md)
 
 ---
@@ -26,6 +26,8 @@
 | 工具在线测试 | 已实现 | TestTool RPC + 工具详情「在线测试」 |
 | 工具调用审计日志 | 已实现 | 审计表 + ListToolInvocationAudits API；前端审计页已实现 |
 | 片段级文件编辑 | 已实现 | `diff_edit` / `patch_file` catalog 种子 + 运行时工具均已实现，种子启用 |
+| 工作区文件删除 | 已实现 | `delete_file`：仅删工作区内文件，拒绝目录 / `.git` / 工作区外 / 符号链接 |
+| 改后诊断 | 已实现 | `read_lints`：空 path 检查本轮刚改过的文件；Go `go vet`、Python `py_compile`、JS `node --check` |
 | 工具工作区统一 | 已实现 | file / shell / claude_code 共用 `workspace_root`；详见设计文档 §7.8 |
 
 > 进度详情与任务状态见 [23-tools.development.md](./23-tools.development.md)。
@@ -99,6 +101,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | file 工具 | 严格限制在工作区内 |
 | `shell_exec` | 默认 cwd = 工作区根；调用参数 `workdir` 可指定子目录或（在 OS 权限内）绝对路径 |
 | Shell 环境 | Agent 配置的环境变量必须注入每个命令；敏感值不得出现在工具结果中 |
+| Shell 会话输出 | 写入工作区 `.aranea/shell/<session_id>.log`（最多 1MB）；`notify_pattern` 等到输出匹配再返回；`exec_command` 实现 `StreamableCall`；后台会话返回 `pid` |
 | `claude_code` | 未单独配置时与工作区根相同 |
 | 不需工作区的工具 | web 搜索/抓取、email、todo、MCP、memory、knowledge、spirit、browser(MCP 桥接) 等 |
 | `workspace_exec` | 依赖 CodeExecutor 工作区，与 file/shell 根目录 **可能不同**；不替代日常 `shell_exec` |
@@ -116,7 +119,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 分类 | 示例 | 风险 |
 |------|------|------|
 | `system` | `datetime`、`todo_write` | 低风险 |
-| `filesystem` | `read_file`、`save_file`、`list_file`、`replace_content`、`search_content`、`diff_edit`、`patch_file` | 读低风险，写中高风险 |
+| `filesystem` | `read_file`、`save_file`、`list_file`、`replace_content`、`search_content`、`diff_edit`、`patch_file`、`read_lints`、`delete_file` | 读低风险，写中高风险 |
 | `web` | `web_research`、`web_fetch`、`duckduckgo_search`、`gemini_web_fetch`、`google_search`、`arxiv_search`、`wikipedia_search` | 中风险 |
 | `search` | 同 web 分类搜索工具 | 低中风险 |
 | `memory` | `memory_search`、`memory_get`、`working_memory.*` | 低中风险 |
@@ -148,9 +151,11 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `read_file` | 读取文件 | filesystem | low | 启用 | 读取工作区文件内容 |
 | `read_multiple_files` | 批量读取文件 | filesystem | low | 启用 | 一次读取多个文件 |
 | `save_file` | 保存文件 | filesystem | medium | 启用 | 创建或覆盖工作区文件 |
+| `delete_file` | 删除文件 | filesystem | medium | 启用 | 删除工作区内一个文件；拒绝目录、`.git`、工作区外路径。优先于 shell `rm`。`coding` profile 默认可用 |
 | `list_file` | 文件列表 | filesystem | low | 启用 | 列出工作区目录内容 |
 | `search_file` | 文件搜索 | filesystem | low | 启用 | 按文件名模式搜索 |
-| `search_content` | 内容搜索 | filesystem | low | 启用 | 在工作区内搜索文本内容 |
+| `search_content` | 内容搜索 | filesystem | low | 启用 | 工作区文本搜索；优先 ripgrep；`after`/`before`/`context`、`type`、`multiline`、`head_limit`/`offset` |
+| `read_lints` | 读取诊断 | filesystem | low | 启用 | 改完文件后读取编译/静态检查。省略 path 时检查本轮刚保存的文件。Go：`go vet`；Python：`py_compile`；JS：`node --check` |
 | `replace_content` | 替换内容 | filesystem | medium | 启用 | 按精确匹配替换文件中的文本 |
 | `diff_edit` | 片段编辑 | filesystem | medium | 启用 | 多片段 SEARCH/REPLACE，原子提交 |
 | `patch_file` | 应用补丁 | filesystem | medium | 启用 | unified diff / 结构化 hunk |
@@ -163,7 +168,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `read_spreadsheet` | 表格读取 | media | medium | 启用 | 读取 XLSX、CSV 等表格文件 |
 | `create_image` | 图片生成 | media | medium | 停用 | 根据文本提示生成图片 |
 | `tts` | 文本转语音 | media | medium | 停用 | 将文本转换成语音文件 |
-| `shell_exec` | Shell 命令 | runtime | critical | 停用 | 本机 shell；默认 cwd 与工作区根一致；需确认 |
+| `shell_exec` | Shell 命令 | runtime | critical | 停用* | 本机 shell；`coding` profile 默认允许（仍需确认）。长任务写 `.aranea/shell/<session>.log`，返回 `pid` / `running_for_ms` / `hung`；`write_stdin` 可用 `notify_pattern` / `block_until_ms` |
 | `send_email` | 邮件发送 | messaging | high | 停用 | 发送电子邮件，需确认 |
 | `todo_write` | 待办管理 | system | low | 启用 | 管理待办事项列表 |
 | `await_user_reply` | 等待回复 | session | low | 启用 | 暂停执行并等待用户回复 |
@@ -174,7 +179,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | `working_memory_write` | 工作记忆写入 | memory | low | 启用 | 向当前任务写入或更新字段 |
 | `working_memory_patch` | 工作记忆批量补丁 | memory | low | 启用 | 一次写入多个字段 |
 | `working_memory_delete` | 工作记忆删除 | memory | low | 启用 | 删除当前任务下的一个字段 |
-| `browser` | 浏览器自动化 | browser | critical | 停用 | Playwright MCP 桥接；需确认 |
+| `browser` | 浏览器自动化 | browser | critical | 停用 | Playwright MCP 桥接；需确认。导航/点击后应 `browser_snapshot`（mutating 结果带 `next_tool`）；同会话串行 |
 | `model_registry_sync` | 模型目录同步 | system | medium | 停用 | 同步模型注册表信息 |
 | `read_tool_result` | 读取工具结果 | system | low | 启用 | 读取延迟工具的执行结果（deferred 通道） |
 | `kanban` | Kanban 任务板 | integration | medium | 启用 | Graph 任务看板工具集 |
@@ -381,7 +386,7 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 |---------|-----------|
 | `chat_only` | 无工具 |
 | `read_only` | `datetime`、`read_file`、`read_multiple_files`、`list_file`、`search_file`、`search_content`、`todo_write` |
-| `coding` | `group:filesystem`、`group:web`、`group:skill`、`group:session`、`datetime` |
+| `coding` | `group:filesystem`、`group:web`、`group:skill`、`group:session`、`datetime`、`shell_exec` |
 | `research` | 搜索 + 文件读取 + skill + memory + `datetime` |
 | `full` | 全部工具组 |
 | `minimal` | 无工具（最简模式） |
@@ -717,6 +722,9 @@ search_content（定位）
 - `read_file` 响应含 `mtime_ms`，供编辑工具乐观锁
 - catalog、Effective Tools、testexec 映射、Activity 中文标签齐全
 - `replace_content` / `save_file` 保持可用，无破坏性变更
+- `delete_file` 可删除工作区内普通文件；拒绝目录、工作区外路径、`.git`
+- `read_lints` 省略 path 时检查 `.aranea/edited-paths.txt` 中的近期编辑；Go 文件能报出 `go vet` 问题；本机有 Python 时 `.py` 语法错误可诊断
+- 后台 `exec_command`（`yield_time_ms` > 0）返回 `pid > 0`；`write_stdin` 轮询同一会话可带同一 `pid`
 
 ### 5.2 性能（量化）
 

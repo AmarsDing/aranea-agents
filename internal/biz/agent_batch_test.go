@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/apierror"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -111,5 +112,62 @@ func TestBatchUpdateAgents_Status(t *testing.T) {
 	}
 	if repo.agents["a1"].Status != "inactive" {
 		t.Fatalf("status=%q", repo.agents["a1"].Status)
+	}
+}
+
+func TestReorderAgents_NotPersisted(t *testing.T) {
+	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1"}}}
+	uc := NewAgentUsecase(AgentUsecaseDeps{Reader: repo, Writer: repo, Settings: repo, Files: repo, Position: repo, Tx: repo, Lg: loggateway.NewNoop()})
+	if err := uc.ReorderAgents(context.Background(), nil); err != nil {
+		t.Fatalf("empty ids should no-op: %v", err)
+	}
+	err := uc.ReorderAgents(context.Background(), []string{"a1"})
+	if err == nil || !apierror.IsCode(err, apierror.CodeFailedPrecondition) {
+		t.Fatalf("want FAILED_PRECONDITION, got %v", err)
+	}
+}
+
+func TestMergeAgentCatalog_PreservesTaxonomyAndMission(t *testing.T) {
+	current := Agent{
+		ID:               "a1",
+		AgentKey:         "k1",
+		DisplayName:      "Old",
+		PositionKey:      "ops/sre",
+		AgentVariant:     "general",
+		MissionStatement: "keep the lights on",
+		DomainPath:       "运维/SRE",
+		MetadataJSON:     `{"skip_category_responsibility":true}`,
+		Roles:            []string{"worker"},
+	}
+	got := mergeAgentCatalog(current, Agent{DisplayName: "New Name"})
+	if got.DisplayName != "New Name" {
+		t.Fatalf("display=%q", got.DisplayName)
+	}
+	if got.AgentKey != "k1" {
+		t.Fatalf("immutable AgentKey mutated: %q", got.AgentKey)
+	}
+	if got.PositionKey != "ops/sre" || got.AgentVariant != "general" {
+		t.Fatalf("taxonomy dropped: key=%q variant=%q", got.PositionKey, got.AgentVariant)
+	}
+	if got.MissionStatement != "keep the lights on" || got.DomainPath != "运维/SRE" {
+		t.Fatalf("mission dropped: statement=%q path=%q", got.MissionStatement, got.DomainPath)
+	}
+	if got.MetadataJSON != current.MetadataJSON {
+		t.Fatalf("metadata dropped: %q", got.MetadataJSON)
+	}
+	if len(got.Roles) != 1 || got.Roles[0] != "worker" {
+		t.Fatalf("roles dropped: %v", got.Roles)
+	}
+
+	patched := mergeAgentCatalog(current, Agent{
+		PositionKey:      "eng/backend",
+		MissionStatement: "ship code",
+		Roles:            []string{"coordinator"},
+	})
+	if patched.PositionKey != "eng/backend" || patched.MissionStatement != "ship code" {
+		t.Fatalf("explicit patch not applied: %+v", patched)
+	}
+	if len(patched.Roles) != 1 || patched.Roles[0] != "coordinator" {
+		t.Fatalf("roles=%v", patched.Roles)
 	}
 }

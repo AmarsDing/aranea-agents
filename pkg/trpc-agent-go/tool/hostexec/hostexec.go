@@ -250,6 +250,10 @@ func (t *execCommandTool) Declaration() *tool.Declaration {
 					Description: "Session id for running " +
 						"commands.",
 				},
+				"pid": {
+					Type:        "integer",
+					Description: "OS process id while the command is running.",
+				},
 			},
 		},
 	}
@@ -513,6 +517,10 @@ func pollOutputSchema(desc string) *tool.Schema {
 				Type:        "integer",
 				Description: "Process exit code when exited.",
 			},
+			"pid": {
+				Type:        "integer",
+				Description: "OS process id while the command is running.",
+			},
 		},
 	}
 }
@@ -527,6 +535,9 @@ func mapExecResult(res execResult) map[string]any {
 	}
 	if res.SessionID != "" {
 		out["session_id"] = res.SessionID
+	}
+	if res.PID > 0 {
+		out["pid"] = res.PID
 	}
 	return out
 }
@@ -544,6 +555,9 @@ func mapPollResult(
 	}
 	if poll.ExitCode != nil {
 		out["exit_code"] = *poll.ExitCode
+	}
+	if poll.PID > 0 {
+		out["pid"] = poll.PID
 	}
 	return out
 }

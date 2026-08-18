@@ -68,9 +68,9 @@ const truncationTargetFactor = 0.9
 //  1. History truncation (token-budget口径, P0-D): evict the oldest
 //     conversation messages until the estimate fits threshold×targetFactor
 //     of the window (reserving the marker's own tokens up front). System
-//     messages are never evicted by this stage.
+//     messages and trailing dynamic cues are never evicted by this stage.
 //  2. Degradation chain (P0-C): if the estimate is still over target
-//     (oversized dynamic tail cues), drop trailing system cue messages
+//     (oversized dynamic tail cues), drop trailing cue messages
 //     largest-first until the estimate fits or no droppable cue remains.
 //  3. Re-verify: the post-gate estimate is recomputed; if it still exceeds
 //     the target with nothing left to evict/drop (oversized static head),
@@ -213,14 +213,14 @@ func hardTriggerRatioForAgent(ag biz.Agent) float64 {
 //     instructions, session-stable cues)
 //   - conv: everything between head and tail (user/assistant/tool history,
 //     plus any system message sandwiched mid-conversation)
-//   - tail: the trailing run of system messages (dynamic per-turn cues
-//     appended after the last user message)
+//   - tail: the trailing run of dynamic cues (user-role sentinels and any
+//     leftover system messages appended after the last user message)
 //
 // An all-system list is treated as entirely head (nothing evictable).
 func splitPromptZones(messages []trpcmodel.Message) (head, conv, tail []trpcmodel.Message) {
 	firstConv, lastConv := -1, -1
 	for i, m := range messages {
-		if m.Role != trpcmodel.RoleSystem {
+		if !isPromptFixedMessage(m) {
 			if firstConv < 0 {
 				firstConv = i
 			}
@@ -239,9 +239,10 @@ func splitPromptZones(messages []trpcmodel.Message) (head, conv, tail []trpcmode
 //     estimated tokens fit the budget after the fixed system cost
 //   - evictedMsgs: the oldest conversation messages that did not fit
 //
-// System messages (head static block AND dynamic tail cues) are never
-// evicted by this function — their cost is subtracted from the budget up
-// front; runaway tail cues are the degradation chain's job. Eviction walks
+// System messages and trailing dynamic cues (head static block AND
+// dynamic tail cues) are never evicted by this function — their cost is
+// subtracted from the budget up front; runaway tail cues are the
+// degradation chain's job. Eviction walks
 // conversation messages newest→oldest and stops at the first message that
 // would exceed the remaining budget, then snaps the boundary so no
 // tool-call / tool-result pair is split (pairs move to the keep side).
@@ -252,7 +253,7 @@ func partitionMessagesByTokenBudget(messages []trpcmodel.Message, budgetTokens i
 	fixed := 0
 	var convIdx []int
 	for i, m := range messages {
-		if m.Role == trpcmodel.RoleSystem {
+		if isPromptFixedMessage(m) {
 			fixed += estTokensFromChars(messageCharLen(m))
 		} else {
 			convIdx = append(convIdx, i)

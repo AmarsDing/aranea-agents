@@ -215,7 +215,11 @@ func (r *Runner) buildTeamBuilderDeps(ctx context.Context, sess biz.Session, run
 			MemoryL3Recall:         r.td.Persist.Memory.L3Recall,
 			MemoryCompositeRecall:  r.td.Persist.Memory.CompositeRecall,
 			MemoryPreferenceLister: r.td.Persist.Memory.PreferenceLister,
-			MemoryReconsolidator:   r.td.Persist.Memory.Reconsolidator,
+			// FR-12.6/FR-12.7（2026-08-18）：与 wire_gen provideTRPCBuilderDeps 对齐，
+			// 补接 injected_count 计数器与常驻档案卡读口（此前漏接，计数永不落库）。
+			MemoryFactInjectCounter: r.td.Persist.Memory.FactInjectCounter,
+			MemoryProfileCardReader: r.td.Persist.Memory.ProfileCardReader,
+			MemoryReconsolidator:    r.td.Persist.Memory.Reconsolidator,
 			AgentCaseRecaller:      r.td.Persist.Memory.AgentCaseRecaller,
 			KnowledgeRetriever:     r.cfg.Knowledge.Retriever,
 			KnowledgeUsecase:       r.cfg.KnowledgeUsecase,

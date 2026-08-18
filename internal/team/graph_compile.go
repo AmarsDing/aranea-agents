@@ -132,6 +132,9 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	if len(agentIDs) == 0 {
 		return nil
 	}
+	if normalizeCompileMode(mode) == "parallel" && len(agentIDs) > 1 {
+		return parallelFanOutEdges(agentIDs)
+	}
 
 	out := make([]embeddedGraphEdge, 0, len(agentIDs)+2)
 	out = append(out, embeddedGraphEdge{Source: "start", Target: agentIDs[0]})
@@ -163,6 +166,20 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	out = append(out, modeEdges...)
 
 	out = append(out, embeddedGraphEdge{Source: agentIDs[len(agentIDs)-1], Target: "end"})
+	return out
+}
+
+// parallelFanOutEdges wires start → every worker → synthesizer → end.
+// The previous template used ids[0] as a serial prefix, so only the first
+// member ran before the rest — not all-workers-then-join.
+func parallelFanOutEdges(agentIDs []string) []embeddedGraphEdge {
+	finish := agentIDs[len(agentIDs)-1]
+	out := make([]embeddedGraphEdge, 0, (len(agentIDs)-1)*2+1)
+	for _, id := range agentIDs[:len(agentIDs)-1] {
+		out = append(out, embeddedGraphEdge{Source: "start", Target: id, Label: "flow"})
+		out = append(out, embeddedGraphEdge{Source: id, Target: finish, Label: "flow"})
+	}
+	out = append(out, embeddedGraphEdge{Source: finish, Target: "end", Label: "flow"})
 	return out
 }
 
@@ -246,7 +263,7 @@ func CompileToCompiledTeam(
 				}
 				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, failurePolicyToBiz(def.FailurePolicy), nil)
 				validateFunctionNodes(ctx, cfg, functionResolver, lg)
-				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
+				return biz.NewCompiledTeam(cfg, taskMetaFromGraphConfig(cfg), buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
 			}
 		}
 	}
@@ -296,15 +313,47 @@ func buildRoleManifest(cfg biz.GraphBuildConfig) map[string]biz.RoleInfo {
 		if agentName == "" {
 			continue
 		}
+		role := strings.TrimSpace(node.RequiredRole)
+		if role == "" {
+			role = biz.RoleWorker
+		}
+		display := strings.TrimSpace(node.Description)
+		if display == "" {
+			display = agentName
+		}
 		roleManifest[node.ID] = biz.RoleInfo{
 			AgentID:      agentName,
 			AgentKey:     agentName,
-			DisplayName:  agentName,
-			Role:         node.Type,
+			DisplayName:  display,
+			Role:         role,
 			Capabilities: []string{},
 		}
 	}
 	return roleManifest
+}
+
+// taskMetaFromGraphConfig rebuilds HITL task metadata for linked-graph compiles
+// (the asset path previously passed nil TaskMeta). Only task/review nodes
+// create Team Graph kanban rows; agent/LLM/tool stay inline.
+func taskMetaFromGraphConfig(cfg biz.GraphBuildConfig) map[string]biz.NodeTaskMeta {
+	taskMeta := make(map[string]biz.NodeTaskMeta)
+	for i := range cfg.Nodes {
+		n := cfg.Nodes[i]
+		if !biz.ShouldCreateTeamGraphTaskNode(&n) {
+			continue
+		}
+		taskMeta[n.ID] = biz.NodeTaskMeta{
+			RequiredRole:             n.RequiredRole,
+			AssignmentMode:           n.AssignmentMode,
+			AssignmentStrategy:       n.AssignmentStrategy,
+			ReviewerAgent:            n.ReviewerAgent,
+			ReviewRules:              n.ReviewRules,
+			TimeoutSeconds:           n.TimeoutSeconds,
+			HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
+			EnableLeaseExtension:     n.EnableLeaseExtension,
+		}
+	}
+	return taskMeta
 }
 
 func CompileTemplateID(mode string) string {

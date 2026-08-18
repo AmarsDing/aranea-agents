@@ -64,6 +64,7 @@ type execResult struct {
 	Output    string
 	ExitCode  *int
 	SessionID string
+	PID       int
 }
 
 func newManager() *manager {
@@ -126,6 +127,7 @@ func (m *manager) exec(
 			Status:    programStatusRunning,
 			SessionID: sess.id,
 			Output:    sess.pollTail(defaultLogTail),
+			PID:       sess.pid(),
 		}, nil
 	}
 
@@ -165,6 +167,7 @@ func (m *manager) exec(
 			Status:    programStatusRunning,
 			SessionID: sess.id,
 			Output:    sess.pollTail(defaultLogTail),
+			PID:       sess.pid(),
 		}, nil
 	}
 }

@@ -1005,7 +1005,7 @@ LIMIT 50;
 - 方法：
   1. 固定 agent fixture，走真实 callback 链连续构建同 session 相邻两轮的完整 request messages；
   2. 断言**静态区前 N 条消息字节级相等**（N = system 主体 + 静态 cue 边界），变动即失败并 diff 定位到具体 hook；
-  3. 断言动态 cue（memory/knowledge/intent）只出现在尾部 append 区。
+  3. 断言动态 cue（memory/knowledge/intent）只出现在尾部 append 区，且为 `role=user` 哨兵（不得再以 `role=system` 进入 DeepSeek system 前缀）。
 - 依据：cached_tokens 是结果，字节级前缀相等是原因；离线测试不受 provider 波动影响。
 - 另保留一个集成档（`*_integration_test.go`，无真实 provider 时 skip）验证端到端 cached_tokens。
 

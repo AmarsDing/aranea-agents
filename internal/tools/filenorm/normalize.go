@@ -20,7 +20,7 @@ func NormalizeFileArgs(toolName string, jsonArgs []byte) []byte {
 	}
 	changed := false
 	switch name {
-	case "read_file", "save_file", "replace_content", "diff_edit", "patch_file":
+	case "read_file", "save_file", "replace_content", "diff_edit", "patch_file", "delete_file":
 		if copyStringIfEmpty(m, "file_name", "path", "file", "filename", "filepath", "file_path") {
 			changed = true
 		}
@@ -64,6 +64,27 @@ func NormalizeFileArgs(toolName string, jsonArgs []byte) []byte {
 			changed = true
 		}
 		if copyStringIfEmpty(m, "content_pattern", "query", "search", "text", "content", "keyword", "regex", "pattern") {
+			changed = true
+		}
+		if copyNumberIfEmpty(m, "after", "-A", "A", "after_context") {
+			changed = true
+		}
+		if copyNumberIfEmpty(m, "before", "-B", "B", "before_context") {
+			changed = true
+		}
+		if copyNumberIfEmpty(m, "context", "-C", "C", "context_lines") {
+			changed = true
+		}
+		if copyStringIfEmpty(m, "type", "file_type", "rg_type") {
+			changed = true
+		}
+		if copyBoolIfEmpty(m, "multiline", "-U", "multiline_dotall") {
+			changed = true
+		}
+		if copyNumberIfEmpty(m, "head_limit", "limit", "max_matches") {
+			changed = true
+		}
+		if copyNumberIfEmpty(m, "offset", "skip") {
 			changed = true
 		}
 	default:
@@ -124,6 +145,36 @@ func copyNumberIfEmpty(m map[string]any, dest string, srcs ...string) bool {
 				continue
 			}
 			m[dest] = parsed
+			delete(m, src)
+			return true
+		}
+	}
+	return false
+}
+
+func copyBoolIfEmpty(m map[string]any, dest string, srcs ...string) bool {
+	if !missing(m, dest) {
+		return false
+	}
+	for _, src := range srcs {
+		if src == dest {
+			continue
+		}
+		v, ok := m[src]
+		if !ok || v == nil {
+			continue
+		}
+		switch b := v.(type) {
+		case bool:
+			m[dest] = b
+			delete(m, src)
+			return true
+		case string:
+			s := strings.TrimSpace(strings.ToLower(b))
+			if s != "true" && s != "false" && s != "1" && s != "0" {
+				continue
+			}
+			m[dest] = s == "true" || s == "1"
 			delete(m, src)
 			return true
 		}

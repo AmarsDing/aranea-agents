@@ -11,8 +11,10 @@ package agent
 //     be byte-for-byte equal between turn N and turn N+1, even when the
 //     dynamic inputs (user query, intent context) change every turn.
 //  2. Dynamic zone tail-only: memory cue / knowledge cue / reply reminder /
-//     intent context system messages must all live in the trailing append
-//     region — never inserted between the static zone and the history.
+//     intent context messages must all live in the trailing append region as
+//     user-role sentinels — never inserted between the static zone and the
+//     history, and never as extra system messages (DeepSeek prefixes all
+//     role=system).
 //
 // A third test proves the comparator itself is sensitive (not a tautology).
 
@@ -200,12 +202,17 @@ func TestPromptPrefixStability_DynamicCuesOnlyInTail(t *testing.T) {
 		t.Fatalf("head system block too small (%d messages); static zone missing", headEnd)
 	}
 
-	// Once a system message appears at or after headEnd, only system messages
-	// may follow — i.e. dynamic cues form one contiguous trailing block and
-	// never interleave with history.
-	tailStart := -1
+	// After the head, no extra system messages may appear — DeepSeek treats
+	// every role=system as prefix. Dynamic cues are user-role sentinels in
+	// one contiguous trailing block.
 	for i := headEnd; i < len(turn2); i++ {
 		if turn2[i].Role == trpcmodel.RoleSystem {
+			t.Fatalf("system message at index %d after the static head; dynamic cues must not be role=system", i)
+		}
+	}
+	tailStart := -1
+	for i := headEnd; i < len(turn2); i++ {
+		if isDynamicCueMessage(turn2[i]) {
 			tailStart = i
 			break
 		}
@@ -214,8 +221,8 @@ func TestPromptPrefixStability_DynamicCuesOnlyInTail(t *testing.T) {
 		t.Fatal("no dynamic cue found in the tail; fixture must produce memory/knowledge/reminder/intent cues")
 	}
 	for i := tailStart; i < len(turn2); i++ {
-		if turn2[i].Role != trpcmodel.RoleSystem {
-			t.Fatalf("non-system message (role=%s) at index %d inside the dynamic tail; dynamic cues must be tail-only", turn2[i].Role, i)
+		if !isDynamicCueMessage(turn2[i]) {
+			t.Fatalf("non-cue message (role=%s tool=%q) at index %d inside the dynamic tail", turn2[i].Role, turn2[i].ToolName, i)
 		}
 	}
 

@@ -115,6 +115,30 @@ func TestCompileToGraphBuildConfig_parallel(t *testing.T) {
 			{AgentID: "synth", Role: "synthesizer", SortOrder: 3},
 		},
 	}
+	spec := generateGraphSpecFromMode(context.Background(), def, "parallel", loggateway.NewNoop())
+	if spec == nil {
+		t.Fatal("spec nil")
+	}
+	fromStart := map[string]bool{}
+	serialPrefix := false
+	for _, e := range spec.Edges {
+		if e.Source == "start" {
+			fromStart[e.Target] = true
+		}
+		if e.Source == "member-1" && e.Target == "member-2" {
+			serialPrefix = true
+		}
+	}
+	if !fromStart["member-1"] || !fromStart["member-2"] {
+		t.Fatalf("start must fan out to both workers, got %v", fromStart)
+	}
+	if fromStart["member-3"] {
+		t.Fatal("start should not skip workers to synthesizer")
+	}
+	if serialPrefix {
+		t.Fatal("parallel must not use first worker as serial prefix")
+	}
+
 	cfg, _, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
@@ -122,8 +146,17 @@ func TestCompileToGraphBuildConfig_parallel(t *testing.T) {
 	if cfg.FinishPoint != "member-3" {
 		t.Fatalf("finish=%q want member-3", cfg.FinishPoint)
 	}
-	if len(cfg.Edges) < 2 {
-		t.Fatalf("expected fan-out/join edges, got %d", len(cfg.Edges))
+	join := map[string]bool{}
+	for _, e := range cfg.Edges {
+		if e.To == "member-3" {
+			join[e.From] = true
+		}
+		if e.From == "member-1" && e.To == "member-2" {
+			t.Fatal("compiled edges must not serialize workers")
+		}
+	}
+	if !join["member-1"] || !join["member-2"] {
+		t.Fatalf("both workers must join synthesizer, got %v", join)
 	}
 	if CompileTemplateID(def.Mode) != "parallel_review" {
 		t.Fatalf("template=%q", CompileTemplateID(def.Mode))
@@ -353,5 +386,57 @@ func TestDefinitionGraphSpecJSON_embeddedPathEmpty(t *testing.T) {
 func TestDefinitionGraphSpecJSON_noMembers(t *testing.T) {
 	if out := DefinitionGraphSpecJSON(context.Background(), Definition{Mode: "sequential"}, `{"mode":"sequential"}`, loggateway.NewNoop()); out != "" {
 		t.Fatalf("no members must not emit spec, got %q", out)
+	}
+}
+
+func TestBuildRoleManifest_UsesRequiredRoleNotNodeType(t *testing.T) {
+	got := buildRoleManifest(biz.GraphBuildConfig{
+		Nodes: []biz.NodeDef{
+			{ID: "n1", Type: "agent", AgentName: "key-a", Description: "Alpha", RequiredRole: biz.RoleCoordinator},
+			{ID: "n2", Type: "agent", AgentName: "key-b"},
+			{ID: "join", Type: "join"},
+		},
+	})
+	if got["n1"].Role != biz.RoleCoordinator || got["n1"].DisplayName != "Alpha" {
+		t.Fatalf("n1=%+v", got["n1"])
+	}
+	if got["n2"].Role != biz.RoleWorker || got["n2"].DisplayName != "key-b" {
+		t.Fatalf("n2=%+v", got["n2"])
+	}
+	if _, ok := got["join"]; ok {
+		t.Fatal("join node must not appear in role manifest")
+	}
+}
+
+func TestCompileToCompiledTeam_LinkedGraph_RebuildsTaskMeta(t *testing.T) {
+	loader := stubGraphLoader{configs: map[string]biz.GraphBuildConfig{
+		"g-linked": {
+			Nodes: []biz.NodeDef{
+				{ID: "agent-1", Type: "agent", AgentName: "worker-1", Description: "Worker A", RequiredRole: biz.RoleWorker},
+				{ID: "task-1", Type: "task", AgentName: "reviewer-agent", Description: "Human review", RequiredRole: biz.RoleCritic, AssignmentMode: "dynamic"},
+			},
+			EntryPoint:  "agent-1",
+			FinishPoint: "task-1",
+		},
+	}}
+	def := Definition{Mode: "sequential", Members: []MemberDef{{AgentID: "a1", Role: "worker", SortOrder: 1}}}
+	raw := `{"linked_graph_id":"g-linked","mode":"sequential","members":[{"agent_id":"a1","sort_order":1}]}`
+	ct, err := CompileToCompiledTeam(context.Background(), def, raw, nil, loader, loggateway.NewNoop(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, ok := ct.TaskMeta["task-1"]
+	if !ok || meta.RequiredRole != biz.RoleCritic || meta.AssignmentMode != "dynamic" {
+		t.Fatalf("taskMeta=%+v", ct.TaskMeta)
+	}
+	if _, ok := ct.TaskMeta["agent-1"]; ok {
+		t.Fatal("agent nodes must not get team-graph task meta")
+	}
+	role := ct.RoleManifest["agent-1"]
+	if role.Role != biz.RoleWorker || role.DisplayName != "Worker A" {
+		t.Fatalf("agent role=%+v", role)
+	}
+	if ct.RoleManifest["task-1"].Role != biz.RoleCritic {
+		t.Fatalf("task role=%+v", ct.RoleManifest["task-1"])
 	}
 }

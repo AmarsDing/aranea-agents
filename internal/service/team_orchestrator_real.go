@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"aranea-agents/internal/agent"
@@ -90,20 +91,23 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 		loggateway.Any("agent_keys", agentKeys))
 	// 构建 SpiritTeamParams。AutoStart=false：手动启动 team_run，
 	// 确保 channel 在 StartTeamTurn 之前存入 pending map。
-	// 2026-07-04 问题 4 修复：使用 coordinator 模式（默认）让第一个成员
-	// 自动成为 synthesizer，避免 parallel 模式因缺少 synthesizer 被拒。
-	// 参考：internal/biz/team_usecase.go:189 (parallel 模式必须显式指定 synthesizer)
+	// Intra-team Mode comes from PlanStep (planner strategy + member count).
+	// Parallel JSON sets last member as synthesizer in buildSpiritTeamDefinitionJSON.
 	//
 	// P0-①: 透传 DAG 依赖（step.DependsOn）到团队记录，下游调度与前端 DAG
 	// 渲染依赖此字段。形式契约（Deliverables/InputContract）由 P1 planner
 	// schema 扩展填充。
+	mode := strings.TrimSpace(step.Mode)
+	if mode == "" {
+		mode = biz.SpiritTeamModeForStep("", len(agentKeys))
+	}
 	params := biz.SpiritTeamParams{
 		SpiritSessionID: spiritSessionID,
 		TaskDescription: taskDesc,
 		AgentKeys:       agentKeys,
 		DagNodeID:       step.ID,
 		DependsOn:       step.DependsOn,
-		Mode:            biz.TeamModeCoordinator,
+		Mode:            mode,
 		AutoStart:       false,
 		// P1 形式契约（B.10.15.2）：PlanStep → Team 落库，
 		// 供 dagRun advisory 契约验证与下游注入读取。
@@ -118,33 +122,49 @@ func (o *RealTeamOrchestrator) Orchestrate(ctx context.Context, step biz.PlanSte
 			loggateway.Err(err))
 		return nil, err
 	}
+	alreadyRunning := team.Status == biz.TeamStatusRunning
 	// 创建 channel 并存入 pending map（必须在 StartTeamTurn 之前）。
 	ch := make(chan biz.TeamCompleteEvent, 1)
-	o.pending.Store(team.ID, pendingTeamCompletion{ch: ch, stepID: step.ID})
-	o.lg.Info("team_run 已创建，等待完成",
-		loggateway.Str("team_id", team.ID),
-		loggateway.Str("step_id", step.ID),
-		loggateway.Str("session_id", teamSession.ID))
-	// 手动启动 team_run（AutoStart=false 时 AssembleTeam 不会自动启动）。
-	// P0-③a: 首轮输入 = 上游交付物前缀 + 任务描述。上游团队在 RecordTeamCompletion
-	// 时已把交付物落库（deliverables_output_json），此处由 biz 层组装前缀；
-	// 存储的 team.TaskDescription 保持纯净，前缀只注入 Turn 输入。
-	// 2026-07-25 Fix 2b: 统一走 BuildTeamTurnInput（前缀 + 描述 + 交付协议后缀）。
-	turnContent := o.assembler.BuildTeamTurnInput(ctx, team)
-	if o.starter != nil && teamSession.ID != "" && turnContent != "" {
-		safego.Go(ctx, "team_orchestrator.start_turn."+team.ID, func() {
-			startCtx := context.WithoutCancel(ctx)
-			if startErr := o.starter.StartTeamTurn(startCtx, teamSession.ID, turnContent); startErr != nil {
-				o.lg.Warn("StartTeamTurn 失败",
-					loggateway.Str("team_id", team.ID),
-					loggateway.Err(startErr))
-				// 失败时发送失败事件到 channel，避免 dispatchStep 永久阻塞。
-				o.NotifyTeamCompletion(team.ID, "", false, startErr.Error())
-			}
-		})
+	if existing, loaded := o.pending.LoadOrStore(team.ID, pendingTeamCompletion{ch: ch, stepID: step.ID}); loaded {
+		// 同 team 已有等待者（重复 Orchestrate / 复用 running 团队）：
+		// 不要覆盖原 channel，否则先派发的 dispatchStep 会永久阻塞。
+		if pc, ok := existing.(pendingTeamCompletion); ok && pc.ch != nil {
+			ch = pc.ch
+		}
+		o.lg.Info("team_run 已在等待完成，跳过重复启动",
+			loggateway.Str("team_id", team.ID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Bool("already_running", alreadyRunning))
+	} else if alreadyRunning {
+		o.lg.Info("复用已在执行的团队，跳过 StartTeamTurn",
+			loggateway.Str("team_id", team.ID),
+			loggateway.Str("step_id", step.ID))
 	} else {
-		// 没有 starter 或 session，直接失败。
-		o.NotifyTeamCompletion(team.ID, "", false, "starter or session missing")
+		o.lg.Info("team_run 已创建，等待完成",
+			loggateway.Str("team_id", team.ID),
+			loggateway.Str("step_id", step.ID),
+			loggateway.Str("session_id", teamSession.ID))
+		// 手动启动 team_run（AutoStart=false 时 AssembleTeam 不会自动启动）。
+		// P0-③a: 首轮输入 = 上游交付物前缀 + 任务描述。上游团队在 RecordTeamCompletion
+		// 时已把交付物落库（deliverables_output_json），此处由 biz 层组装前缀；
+		// 存储的 team.TaskDescription 保持纯净，前缀只注入 Turn 输入。
+		// 2026-07-25 Fix 2b: 统一走 BuildTeamTurnInput（前缀 + 描述 + 交付协议后缀）。
+		turnContent := o.assembler.BuildTeamTurnInput(ctx, team)
+		if o.starter != nil && teamSession.ID != "" && turnContent != "" {
+			safego.Go(ctx, "team_orchestrator.start_turn."+team.ID, func() {
+				startCtx := context.WithoutCancel(ctx)
+				if startErr := o.starter.StartTeamTurn(startCtx, teamSession.ID, turnContent); startErr != nil {
+					o.lg.Warn("StartTeamTurn 失败",
+						loggateway.Str("team_id", team.ID),
+						loggateway.Err(startErr))
+					// 失败时发送失败事件到 channel，避免 dispatchStep 永久阻塞。
+					o.NotifyTeamCompletion(team.ID, "", false, startErr.Error())
+				}
+			})
+		} else {
+			// 没有 starter 或 session，直接失败。
+			o.NotifyTeamCompletion(team.ID, "", false, "starter or session missing")
+		}
 	}
 	// 2026-07-04 问题 4 修复：返回 team + memberSessions + TeamStageID 让
 	// dispatchStep 能更新同一 TeamStage 记录（与 publishSpiritTeamAssembled

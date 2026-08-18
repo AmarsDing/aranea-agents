@@ -10,6 +10,8 @@ const (
 	SpiritRecentMessageCount = 10 // Recent messages to fetch for spirit context
 	SpiritRecentRunCount     = 10 // Recent runs to fetch for spirit context
 	SpiritCancelSessionLimit = 10 // Sessions to search when canceling a team
+	SpiritPollerPageSize     = 100 // Completion-poller page size (spirit sessions only)
+	SpiritPollerMaxPages     = 10  // Completion-poller pagination cap (≤1000 sessions)
 )
 
 // ── Session ─────────────────────────────────────────────

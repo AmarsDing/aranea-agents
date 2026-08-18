@@ -62,6 +62,9 @@ const (
 	argTask           = "task"
 	argID             = "id"
 	argTimeoutSeconds = "timeout_seconds"
+	argKind           = "kind"
+	argSubagentType   = "subagent_type"
+	argBlockUntilMS   = "block_until_ms"
 
 	schemaTypeObject  = "object"
 	schemaTypeString  = "string"
@@ -81,6 +84,8 @@ type SpawnRequest struct {
 	ParentSessionID string
 	Task            string
 	TimeoutSeconds  int
+	// Kind selects the injected system prompt: explore | verify | general.
+	Kind string
 	// ResultRunes is the max rune count for stored subagent results.
 	// When <= 0, defaultStoredResultRunes (4000) is used.
 	ResultRunes int
@@ -445,6 +450,7 @@ func (s *Service) newRunRecord(req SpawnRequest) *runRecord {
 			ID:              uuid.NewString(),
 			ParentSessionID: strings.TrimSpace(req.ParentSessionID),
 			Task:            strings.TrimSpace(req.Task),
+			Kind:            normalizeKind(req.Kind),
 			Status:          trpcsubagent.StatusQueued,
 			CreatedAt:       now,
 			UpdatedAt:       now,
@@ -488,6 +494,59 @@ func (s *Service) GetForUser(userID string, runID string) (*trpcsubagent.Run, er
 	}
 	view := record.publicView()
 	return &view, nil
+}
+
+const subagentWaitPoll = 200 * time.Millisecond
+
+// WaitForUser polls GetForUser until the run is terminal or wait elapses.
+func (s *Service) WaitForUser(ctx context.Context, userID, runID string, wait time.Duration) (*trpcsubagent.Run, error) {
+	run, err := s.GetForUser(userID, runID)
+	if err != nil || run == nil || wait <= 0 || run.Status.IsTerminal() {
+		return run, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	deadline := time.Now().Add(wait)
+	ticker := time.NewTicker(subagentWaitPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return run, ctx.Err()
+		case <-ticker.C:
+			run, err = s.GetForUser(userID, runID)
+			if err != nil || run == nil || run.Status.IsTerminal() {
+				return run, err
+			}
+			if !time.Now().Before(deadline) {
+				return run, nil
+			}
+		}
+	}
+}
+
+func enrichRunView(run trpcsubagent.Run, now time.Time) map[string]any {
+	b, err := json.Marshal(run)
+	if err != nil {
+		return map[string]any{"id": run.ID, "status": run.Status, "kind": run.Kind}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]any{"id": run.ID, "status": run.Status, "kind": run.Kind}
+	}
+	start := run.CreatedAt
+	if run.StartedAt != nil && !run.StartedAt.IsZero() {
+		start = *run.StartedAt
+	}
+	if !start.IsZero() && (run.Status == trpcsubagent.StatusQueued || run.Status == trpcsubagent.StatusRunning) {
+		ms := now.Sub(start).Milliseconds()
+		if ms < 0 {
+			ms = 0
+		}
+		m["running_for_ms"] = ms
+	}
+	return m
 }
 
 func (s *Service) CancelForUser(userID string, runID string) (*trpcsubagent.Run, bool, error) {
@@ -575,7 +634,7 @@ func (s *Service) runChild(
 		trpcagent.WithRequestID(started.requestID),
 		trpcagent.WithRuntimeState(runtimeState),
 		trpcagent.WithInjectedContextMessages([]trpcmodel.Message{
-			trpcmodel.NewSystemMessage(subagentRunPrompt),
+			trpcmodel.NewSystemMessage(kindSystemPrompt(record.Kind)),
 		}),
 	}
 
@@ -884,6 +943,13 @@ func (r *runRecord) clone() *runRecord {
 	return &out
 }
 
+func svcNow(s *Service) time.Time {
+	if s == nil || s.clock == nil {
+		return time.Now()
+	}
+	return s.clock()
+}
+
 func (r *runRecord) publicView() trpcsubagent.Run {
 	if r == nil {
 		return trpcsubagent.Run{}
@@ -1081,6 +1147,13 @@ type cancelTool struct {
 type spawnInput struct {
 	Task           string `json:"task"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
+	Kind           string `json:"kind"`
+	SubagentType   string `json:"subagent_type"`
+}
+
+type getInput struct {
+	ID           string `json:"id"`
+	BlockUntilMS int    `json:"block_until_ms"`
 }
 
 type runIDInput struct {
@@ -1088,7 +1161,7 @@ type runIDInput struct {
 }
 
 type listResult struct {
-	Runs []trpcsubagent.Run `json:"runs,omitempty"`
+	Runs []map[string]any `json:"runs,omitempty"`
 }
 
 func newSpawnTool(svc *Service) *spawnTool {
@@ -1120,13 +1193,14 @@ func (t *spawnTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name: toolSubagentsSpawn,
 		Description: fmt.Sprintf("Spawn one background subagent for the current "+
-			"session. Use this for long-running work, parallelizable "+
-			"work, or independent verification. It returns "+
+			"session. Use kind=explore for codebase search (avoid writes) or "+
+			"kind=verify for tests/builds. Use this for long-running work, "+
+			"parallelizable work, or independent verification. It returns "+
 			"immediately with a run id. At most %d subagent runs may be "+
 			"active concurrently; when the limit is reached the call fails "+
 			"with a 429 — do NOT retry immediately; track the active runs "+
-			"with subagents_get and wait for their completion notifications "+
-			"before spawning more.", limit),
+			"with subagents_get (optional block_until_ms) and wait for their "+
+			"completion notifications before spawning more.", limit),
 		InputSchema: &trpctool.Schema{
 			Type:     schemaTypeObject,
 			Required: []string{argTask},
@@ -1138,6 +1212,14 @@ func (t *spawnTool) Declaration() *trpctool.Declaration {
 				argTimeoutSeconds: {
 					Type:        schemaTypeInteger,
 					Description: "Optional timeout in seconds for the delegated run.",
+				},
+				argKind: {
+					Type:        schemaTypeString,
+					Description: "Subagent kind: explore (search/read, avoid writes), verify (tests/builds), or general. Alias: subagent_type.",
+				},
+				argSubagentType: {
+					Type:        schemaTypeString,
+					Description: "Alias for kind.",
 				},
 			},
 		},
@@ -1180,13 +1262,14 @@ func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 		ParentSessionID: sess.ID,
 		Task:            in.Task,
 		TimeoutSeconds:  in.TimeoutSeconds,
+		Kind:            firstNonEmpty(in.Kind, in.SubagentType),
 		ResultRunes:     resultRunes,
 		SummaryRunes:    summaryRunes,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return run, nil
+	return enrichRunView(run, svcNow(t.svc)), nil
 }
 
 func (t *listTool) Declaration() *trpctool.Declaration {
@@ -1220,21 +1303,25 @@ func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listResult{
-		Runs: t.svc.ListForUser(
-			userID,
-			trpcsubagent.ListFilter{
-				ParentSessionID: sess.ID,
-			},
-		),
-	}, nil
+	now := svcNow(t.svc)
+	raw := t.svc.ListForUser(
+		userID,
+		trpcsubagent.ListFilter{
+			ParentSessionID: sess.ID,
+		},
+	)
+	views := make([]map[string]any, 0, len(raw))
+	for _, r := range raw {
+		views = append(views, enrichRunView(r, now))
+	}
+	return listResult{Runs: views}, nil
 }
 
 func (t *getTool) Declaration() *trpctool.Declaration {
 	return &trpctool.Declaration{
 		Name: toolSubagentsGet,
 		Description: "Get the latest status and result for one " +
-			"background subagent run.",
+			"background subagent run. Optional block_until_ms waits until the run is terminal.",
 		InputSchema: &trpctool.Schema{
 			Type:     schemaTypeObject,
 			Required: []string{argID},
@@ -1242,6 +1329,10 @@ func (t *getTool) Declaration() *trpctool.Declaration {
 				argID: {
 					Type:        schemaTypeString,
 					Description: "Subagent run id returned by spawn.",
+				},
+				argBlockUntilMS: {
+					Type:        schemaTypeInteger,
+					Description: "Wait this many milliseconds for a terminal status before returning.",
 				},
 			},
 		},
@@ -1252,11 +1343,34 @@ func (t *getTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
 		return nil, apierror.Internal(apierror.DomainSubagent, "service unavailable")
 	}
-	runID, userID, err := decodeRunIDArgs(ctx, args, t.svc.lg)
+	var in getInput
+	if err := json.Unmarshal(args, &in); err != nil {
+		t.svc.lg.Warn("failed to unmarshal get arguments",
+			loggateway.StepID("tool.subagent.get"),
+			loggateway.Err(err),
+		)
+		return nil, apierror.BadRequest(apierror.DomainSubagent, "invalid arguments: "+err.Error())
+	}
+	userID, _, err := currentContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return t.svc.GetForUser(userID, runID)
+	runID := strings.TrimSpace(in.ID)
+	if runID == "" {
+		return nil, apierror.BadRequest(apierror.DomainSubagent, "empty run id")
+	}
+	wait := time.Duration(0)
+	if in.BlockUntilMS > 0 {
+		wait = time.Duration(in.BlockUntilMS) * time.Millisecond
+	}
+	run, err := t.svc.WaitForUser(ctx, userID, runID, wait)
+	if err != nil {
+		return nil, err
+	}
+	if run == nil {
+		return nil, trpcsubagent.ErrRunNotFound
+	}
+	return enrichRunView(*run, svcNow(t.svc)), nil
 }
 
 func (t *cancelTool) Declaration() *trpctool.Declaration {

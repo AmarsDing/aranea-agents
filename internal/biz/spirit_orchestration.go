@@ -124,34 +124,63 @@ func (o *SpiritOrchestration) StartBackgroundPolling(ctx context.Context, interv
 // (HandleTeamTurnResult → checkAllTeamsCompleted). The polling itself does
 // not generate frontend-visible activity events.
 func (o *SpiritOrchestration) pollTeamCompletions(ctx context.Context) {
-	sessions, err := o.sessionUC.Search(ctx, SessionSearchQuery{
-		Status: string(session.SessionStatusRunning),
-		Limit:  100,
-	})
-	if err != nil {
-		o.lg.Warn("spirit poller: failed to search running sessions",
-			loggateway.StepID("spirit.poller.search_err"),
-			loggateway.Err(err),
+	spiritAgentID := o.resolveSpiritAgentID(ctx)
+	if spiritAgentID == "" {
+		o.lg.Warn("spirit poller: spirit agent not found, skip scan",
+			loggateway.StepID("spirit.poller.no_spirit_agent"),
 		)
 		return
 	}
-	for _, sess := range sessions.Items {
-		if sess.ID == "" {
-			continue
+	for page := 0; page < SpiritPollerMaxPages; page++ {
+		sessions, err := o.sessionUC.Search(ctx, SessionSearchQuery{
+			Status:   string(session.SessionStatusRunning),
+			AgentID:  spiritAgentID,
+			RootOnly: true,
+			Limit:    SpiritPollerPageSize,
+			Offset:   page * SpiritPollerPageSize,
+		})
+		if err != nil {
+			o.lg.Warn("spirit poller: failed to search running sessions",
+				loggateway.StepID("spirit.poller.search_err"),
+				loggateway.Err(err),
+			)
+			return
 		}
-		result := o.CheckAllTeamsCompleted(ctx, sess.ID)
-		if !result.AllDone {
-			continue
+		for _, sess := range sessions.Items {
+			if sess.ID == "" {
+				continue
+			}
+			result := o.CheckAllTeamsCompleted(ctx, sess.ID)
+			if !result.AllDone {
+				continue
+			}
+			o.lg.Info("spirit poller: all teams completed for session",
+				loggateway.StepID("spirit.poller.all_done"),
+				loggateway.Str("spirit_session_id", sess.ID),
+				loggateway.Int("total_teams", result.TotalTeams),
+			)
+			if o.completionNotifier != nil {
+				o.completionNotifier.NotifyAllTeamsCompleted(ctx, sess.ID)
+			}
 		}
-		o.lg.Info("spirit poller: all teams completed for session",
-			loggateway.StepID("spirit.poller.all_done"),
-			loggateway.Str("spirit_session_id", sess.ID),
-			loggateway.Int("total_teams", result.TotalTeams),
-		)
-		if o.completionNotifier != nil {
-			o.completionNotifier.NotifyAllTeamsCompleted(ctx, sess.ID)
+		if len(sessions.Items) < SpiritPollerPageSize {
+			return
 		}
 	}
+}
+
+// resolveSpiritAgentID returns the catalog ID of the built-in spirit agent.
+// Empty string means the poller must not scan (fail-closed: never iterate
+// every running chat session).
+func (o *SpiritOrchestration) resolveSpiritAgentID(ctx context.Context) string {
+	if o.agentUC == nil {
+		return ""
+	}
+	agents, err := o.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: SpiritAgentQueryLimit})
+	if err != nil || len(agents.Items) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(agents.Items[0].ID)
 }
 
 // Domain: Orchestration — timeout registration for team execution.
@@ -159,6 +188,8 @@ func (o *SpiritOrchestration) registerTeamTimeout(ctx context.Context, cfg Paral
 	if cfg.TeamTimeoutSeconds <= 0 {
 		return
 	}
+	// Replace any previous timer so StartTeamTurn retries don't leak AfterFuncs.
+	o.timeouts.cancel(teamID)
 	// Use WithoutCancel to preserve trace/log context while detaching from request lifecycle.
 	bgCtx := context.WithoutCancel(ctx)
 	timer := time.AfterFunc(cfg.TeamTimeout(), func() {
@@ -175,6 +206,13 @@ func (o *SpiritOrchestration) registerTeamTimeout(ctx context.Context, cfg Paral
 				return
 			}
 			if team.Status == TeamStatusCompleted || team.Status == TeamStatusFailed || team.Status == TeamStatusCancelled {
+				return
+			}
+			if team.Status == TeamStatusPending {
+				o.lg.Info("团队仍待激活，忽略超时",
+					loggateway.StepID("spirit.team.timeout_skip_pending"),
+					loggateway.Str("team_id", teamID),
+				)
 				return
 			}
 			o.lg.Warn("团队执行超时",
@@ -368,6 +406,16 @@ func (o *SpiritOrchestration) CancelTimeoutTimer(teamID string) {
 	o.timeouts.cancel(teamID)
 }
 
+// RegisterTeamTimeout starts the AfterFunc clock for a team that has just
+// begun executing. No-op when TeamTimeoutSeconds <= 0.
+func (o *SpiritOrchestration) RegisterTeamTimeout(ctx context.Context, team Team) {
+	if strings.TrimSpace(team.ID) == "" {
+		return
+	}
+	cfg := o.resolveParallelConfig(ctx, team.SpiritSessionID)
+	o.registerTeamTimeout(ctx, cfg, team.ID)
+}
+
 // Stop cancels all pending timeout timers and the background polling goroutine.
 // Call during application shutdown to prevent callbacks from firing after the
 // server has stopped.
@@ -539,30 +587,39 @@ func (o *SpiritOrchestration) ScheduleDependentTeams(ctx context.Context, spirit
 		}
 		allDepsMet := true
 		anyDepFailed := false
+		missingUpstream := false
 		for _, depID := range t.DependsOn {
 			found := false
 			for j := range allTeams {
-				if allTeams[j].DagNodeID == depID {
-					if allTeams[j].Status == TeamStatusCompleted {
-						found = true
-					} else if allTeams[j].Status == TeamStatusFailed || allTeams[j].Status == TeamStatusCancelled {
-						anyDepFailed = true
-					}
-					break
+				if allTeams[j].DagNodeID != depID {
+					continue
 				}
-			}
-			if !found && !anyDepFailed {
-				allDepsMet = false
+				found = true
+				switch allTeams[j].Status {
+				case TeamStatusCompleted:
+				case TeamStatusFailed, TeamStatusCancelled:
+					anyDepFailed = true
+				default:
+					allDepsMet = false
+				}
 				break
+			}
+			if !found {
+				missingUpstream = true
+				anyDepFailed = true
 			}
 		}
 		if anyDepFailed {
+			reason := "前置依赖团队执行失败"
+			if missingUpstream {
+				reason = "missing upstream team"
+			}
 			actions = append(actions, DependentTeamAction{
 				TeamID:    t.ID,
 				TeamName:  t.DisplayName,
 				DagNodeID: t.DagNodeID,
 				Action:    "fail",
-				Reason:    "前置依赖团队执行失败",
+				Reason:    reason,
 			})
 			continue
 		}
@@ -669,17 +726,18 @@ func (o *SpiritOrchestration) CheckAllTeamsCompleted(ctx context.Context, spirit
 // XC-05: Escalation on Max Retries
 // ---------------------------------------------------------------------------
 
-// EscalateToSpirit escalates a team that has exceeded max retries to the
-// Spirit assistant. This creates a system message in the Spirit session
-// notifying the user that human intervention may be needed.
-// Domain: Orchestration — escalation to Spirit assistant on max retries.
+// EscalateToSpirit marks a team that has exceeded max retries as failed so
+// DAG cascade and synthesis can observe the terminal failure. It does not
+// inject a Spirit-session message (no turn gateway in this layer); callers
+// that need user-visible escalation must publish via TeamStarter / EventBus.
+// Domain: Orchestration — fail-closed on max retries.
 func (o *SpiritOrchestration) EscalateToSpirit(ctx context.Context, teamID string, tracker ReworkTracker) error {
 	t, err := o.teamUC.Get(ctx, teamID)
 	if err != nil {
 		return err
 	}
 
-	o.lg.Warn("团队达到最大重试次数，升级到 Spirit 助手",
+	o.lg.Warn("团队达到最大重试次数，升级为失败",
 		loggateway.StepID("spirit.escalate"),
 		loggateway.Str("team_id", teamID),
 		loggateway.Str("team_name", t.DisplayName),
@@ -687,7 +745,6 @@ func (o *SpiritOrchestration) EscalateToSpirit(ctx context.Context, teamID strin
 		loggateway.Str("last_reason", tracker.LastReason),
 	)
 
-	// Transition team to failed status with escalation reason
 	_, err = o.teamUC.TransitionStatus(ctx, teamID, TeamStatusFailed)
 	if err != nil {
 		return apierror.Wrap(err, apierror.CodeInternal, "SPIRIT")
@@ -696,14 +753,10 @@ func (o *SpiritOrchestration) EscalateToSpirit(ctx context.Context, teamID strin
 	return nil
 }
 
-// HandleTeamRejection handles a team rejection by a verification gate.
-// If the team can retry, it marks the team for rework and transitions
-// its status back to pending for re-execution; otherwise it escalates
-// to the Spirit assistant.
-// Domain: Orchestration — handle verification gate rejection with retry/escalation logic.
-// Note: The Running → Pending transition (TeamEventRework) was added in B-02 fix
-// to support the rework flow. Before the fix, this transition was illegal and
-// would silently fail.
+// HandleTeamRejection is a leftover rework helper (Running→Pending).
+// Production PlanExecutor fail-closes verification/deliverable rejects and
+// uses EvaluateDeliverableQuality + revision enqueue instead. Do not call
+// this while a dagRun is active — Pending team + failed PlanStep diverge.
 func (o *SpiritOrchestration) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
 	tracker.LastReason = reason
 
@@ -725,6 +778,7 @@ func (o *SpiritOrchestration) HandleTeamRejection(ctx context.Context, teamID st
 			loggateway.Str("team_id", teamID),
 			loggateway.Err(transitionErr),
 		)
+		return nil, transitionErr
 	}
 
 	o.lg.Info("团队被拒绝，准备重试",

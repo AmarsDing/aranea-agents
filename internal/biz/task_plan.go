@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -156,4 +157,21 @@ type TaskPlanRepository interface {
 	// ListByStatuses returns plans whose status is in the given set, newest first.
 	// Used by startup recovery to reload interrupted Phase 1 drafts.
 	ListByStatuses(ctx context.Context, statuses []TaskPlanStatus) ([]*TaskPlan, error)
+}
+
+// SpiritTeamModeForStep maps planner/board strategy + member count to the
+// intra-team Graph mode. Inter-team DAG stays on PlanExecutor; this only
+// chooses how one step's members are wired (sequential / parallel / coordinator).
+func SpiritTeamModeForStep(strategy string, agentCount int) string {
+	if agentCount <= 1 {
+		return TeamModeSequential
+	}
+	switch strings.ToLower(strings.TrimSpace(strategy)) {
+	case "parallel":
+		return TeamModeParallel
+	case "coordinator":
+		return TeamModeCoordinator
+	default:
+		return TeamModeCoordinator
+	}
 }

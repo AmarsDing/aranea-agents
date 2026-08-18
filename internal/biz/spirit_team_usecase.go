@@ -68,6 +68,11 @@ type SpiritGraphDeliverableReader interface {
 // dependency scheduling, and completion checks).
 type SpiritTeamController interface {
 	CancelTimeoutTimer(teamID string)
+	// RegisterTeamTimeout starts the team-level AfterFunc clock. Must be
+	// called when the team actually starts running (StartTeamTurn), not at
+	// AssembleTeam — pending DAG dependents must not time out while waiting
+	// on upstream teams.
+	RegisterTeamTimeout(ctx context.Context, team Team)
 	RecordTeamCompletion(ctx context.Context, team Team, durationMs int64) (dqScore float64, topology TopologyType)
 	ScheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam Team) []DependentTeamAction
 	CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult
@@ -459,6 +464,10 @@ func (u *SpiritTeamUsecase) CancelTimeoutTimer(teamID string) {
 	u.orchestration.CancelTimeoutTimer(teamID)
 }
 
+func (u *SpiritTeamUsecase) RegisterTeamTimeout(ctx context.Context, team Team) {
+	u.orchestration.RegisterTeamTimeout(ctx, team)
+}
+
 // Stop cancels all pending timeout timers and the background polling goroutine.
 // Call during application shutdown to prevent callbacks from firing after the
 // server has stopped.
@@ -733,22 +742,14 @@ func (u *SpiritTeamUsecase) ReadUpstreamDeliverableKey(ctx context.Context, read
 // ---------------------------------------------------------------------------
 // XC-05: Escalation on Max Retries
 // ---------------------------------------------------------------------------
-// EscalateToSpirit escalates a team that has exceeded max retries to the
-// Spirit assistant. This creates a system message in the Spirit session
-// notifying the user that human intervention may be needed.
-// Domain: Orchestration — escalation to Spirit assistant on max retries.
+// EscalateToSpirit marks a max-retry team failed (fail-closed). It does not
+// inject a Spirit-session message; see SpiritOrchestration.EscalateToSpirit.
 func (u *SpiritTeamUsecase) EscalateToSpirit(ctx context.Context, teamID string, tracker ReworkTracker) error {
 	return u.orchestration.EscalateToSpirit(ctx, teamID, tracker)
 }
 
-// HandleTeamRejection handles a team rejection by a verification gate.
-// If the team can retry, it marks the team for rework and transitions
-// its status back to pending for re-execution; otherwise it escalates
-// to the Spirit assistant.
-// Domain: Orchestration — handle verification gate rejection with retry/escalation logic.
-// Note: The Running → Pending transition (TeamEventRework) was added in B-02 fix
-// to support the rework flow. Before the fix, this transition was illegal and
-// would silently fail.
+// HandleTeamRejection is leftover (Running→Pending). Production dagRun must
+// not call this — use EvaluateDeliverableQuality + revision enqueue.
 func (u *SpiritTeamUsecase) HandleTeamRejection(ctx context.Context, teamID string, tracker ReworkTracker, reason string) (*ReworkTracker, error) {
 	return u.orchestration.HandleTeamRejection(ctx, teamID, tracker, reason)
 }

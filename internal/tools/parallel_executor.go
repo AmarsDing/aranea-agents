@@ -29,6 +29,7 @@ var fileWriteToolNames = map[string]struct{}{
 	"diff_edit":       {},
 	"patch_file":      {},
 	"replace_content": {},
+	"delete_file":     {},
 }
 
 // IsolationStrategyForTool classifies mutating file tools for Exclusive

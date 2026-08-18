@@ -404,7 +404,7 @@ func l0SnapshotMetadataJSON(callIndex int, invocationID string) string {
 
 func memorySectionStats(messages []trpcmodel.Message, markers ...string) (bulletCount, tokenEst int) {
 	for _, m := range messages {
-		if m.Role != trpcmodel.RoleSystem {
+		if m.Role != trpcmodel.RoleSystem && !isDynamicCueMessage(m) {
 			continue
 		}
 		text := strings.TrimSpace(m.Content)
@@ -538,13 +538,10 @@ func buildL0SegmentsSummaryJSON(messages []trpcmodel.Message) string {
 
 func l0SegmentSection(content, role string) string {
 	switch role {
-	case string(trpcmodel.RoleUser):
-		return "user.input"
 	case string(trpcmodel.RoleAssistant):
 		return "history"
 	case string(trpcmodel.RoleTool):
 		return "tool.result"
-	default:
 	}
 	switch {
 	case strings.HasPrefix(content, "You are "):
@@ -561,10 +558,12 @@ func l0SegmentSection(content, role string) string {
 		return "memory.l4"
 	case strings.Contains(content, "Session summary"), strings.Contains(content, "session summary"):
 		return "summary"
-	case strings.Contains(content, "Available skills:"):
+	case strings.Contains(content, "Available skills:"), strings.Contains(content, "## Available Skills"), strings.Contains(content, "## Routed Skills"):
 		return "system.skill"
 	case strings.Contains(content, "## Runtime capability policy"):
 		return "system.runtime"
+	case role == string(trpcmodel.RoleUser):
+		return "user.input"
 	default:
 		return "system.other"
 	}

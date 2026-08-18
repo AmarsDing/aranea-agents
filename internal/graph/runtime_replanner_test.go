@@ -142,11 +142,9 @@ func TestRuntimeReplanner_SubtaskInvalid_RebuildSubgraph(t *testing.T) {
 	if action.Type != ReplanRebuildSubgraph {
 		t.Errorf("Type=%q want %q", action.Type, ReplanRebuildSubgraph)
 	}
-	// rebuild_subgraph should produce new nodes
-	if len(action.NewNodes) == 0 {
-		t.Error("expected at least one new node for rebuilt subgraph")
+	if len(action.NewNodes) != 0 || len(action.NewEdges) != 0 {
+		t.Fatalf("rebuild must not invent topology the executor cannot apply: nodes=%d edges=%d", len(action.NewNodes), len(action.NewEdges))
 	}
-	// rebuild_subgraph should skip the failed node
 	if len(action.SkipNodes) == 0 {
 		t.Error("expected SkipNodes to contain the failed node")
 	}

@@ -25,7 +25,7 @@ func TestSplitCoreResidentTools_SpiritProfile(t *testing.T) {
 	})
 	// 长尾应进 deferred
 	assertContainsAll(t, def, []string{
-		 "web_fetch", "read_file", "save_file",
+		"web_fetch", "read_file", "save_file",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
 		"computer_use_launch", "computer_use_session",
 		"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel",
@@ -39,6 +39,7 @@ func TestSplitCoreResidentTools_CodingProfile(t *testing.T) {
 	enabled := []string{
 		"read_file", "read_multiple_files", "save_file", "list_file",
 		"search_file", "search_content", "replace_content", "diff_edit", "patch_file",
+		"read_lints", "delete_file",
 		"web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search",
 		"arxiv_search", "wikipedia_search",
 		"skill_search", "use_skill",
@@ -50,14 +51,15 @@ func TestSplitCoreResidentTools_CodingProfile(t *testing.T) {
 	assertContainsAll(t, core, []string{
 		"read_file", "save_file", "list_file", "search_file", "search_content",
 		"todo_write", "datetime",
-		"replace_content", "diff_edit", "patch_file",
+		"replace_content", "diff_edit", "patch_file", "read_lints", "delete_file",
+		"shell_exec",
 	})
 	assertContainsAll(t, def, []string{
 		"web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search",
 		"arxiv_search", "wikipedia_search",
 		"skill_search", "use_skill",
 		"await_user_reply",
-		"shell_exec", "claude_code",
+		"claude_code",
 		"read_multiple_files",
 	})
 	assertNoOverlap(t, core, def)

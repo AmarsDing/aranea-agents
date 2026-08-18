@@ -254,6 +254,10 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		// 不覆盖终态；turn 启动主流程继续。
 	}
 
+	if s.team.SpiritUC != nil && teamID != "" {
+		s.team.SpiritUC.RegisterTeamTimeout(ctx, team)
+	}
+
 	input := biz.TurnInput{
 		SessionID: sessionID,
 		Content:   content,
@@ -720,6 +724,18 @@ func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, d
 }
 
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
+	// PlanExecutor is the forward DAG owner (lazy AssembleTeam per step).
+	// Reverse-sync ScheduleDependentTeams must not activate/fail teams while
+	// a dagRun is in flight — that double-starts downstream teams (reuse of
+	// pending records + StartTeamTurn) and races PlanExecutor.checkDownstream.
+	if s.planExecutor != nil && s.planExecutor.HasActiveRunForSession(spiritSessionID) {
+		s.lg.Info("dagRun 活跃中，跳过 reverse-sync 依赖调度（由 PlanExecutor 负责）",
+			loggateway.StepID("spirit.schedule_deps.skip_dag_run"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Str("completed_team_id", completedTeam.ID),
+		)
+		return
+	}
 	actions := s.team.SpiritUC.ScheduleDependentTeams(ctx, spiritSessionID, completedTeam)
 	for _, action := range actions {
 		if action.Action == "fail" {

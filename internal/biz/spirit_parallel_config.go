@@ -11,8 +11,8 @@ type ParallelConfig struct {
 	MaxConcurrentTeams int `json:"max_concurrent_teams"`
 	MaxTeamConcurrency int `json:"max_team_concurrency"`
 	// TeamTimeoutSeconds is the maximum duration a team is allowed to run
-	// before being timed out. Implemented via registerTeamTimeout in
-	// SpiritTeamUsecase (time.AfterFunc + sync.Map).
+	// after StartTeamTurn. The AfterFunc is registered at activation, not
+	// AssembleTeam, so pending DAG dependents do not time out while waiting.
 	TeamTimeoutSeconds int `json:"team_timeout_seconds"`
 	AutoArchiveSeconds int `json:"auto_archive_seconds"`
 	MaxSessionDepth    int `json:"max_session_depth"`

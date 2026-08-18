@@ -57,9 +57,7 @@ func newToolCatalogCueBeforeHook(deps TRPCBuilderDeps) callbacks.Callback {
 		metrics.DeferredCatalogRecommendTotal.WithLabelValues(strconv.FormatBool(matched)).Inc()
 		// 上下文预算台账（29-token §9.6）：目录 cue 计量。
 		recordContextBudgetOnce(ctx, ContextBudgetCategoryToolsSchema, utf8.RuneCountInString(cue))
-		// 追加到消息末尾（非系统 prompt），保持前缀缓存稳定。
-		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append(args.Request.Messages, sys)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, cue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

@@ -122,7 +122,7 @@ func dedupeFileLockReqs(reqs []fileLockReq) []fileLockReq {
 
 func fileLockRequests(name string, jsonArgs []byte) []fileLockReq {
 	switch canonicalRuntimeName(name) {
-	case "save_file", "diff_edit", "patch_file", "replace_content":
+	case "save_file", "diff_edit", "patch_file", "replace_content", "delete_file":
 		if p := fileWriteTargetPath(jsonArgs); p != "" {
 			return []fileLockReq{{path: p, exclusive: true}}
 		}

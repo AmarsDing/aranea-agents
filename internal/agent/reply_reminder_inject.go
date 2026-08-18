@@ -70,10 +70,7 @@ func newReplyReminderBeforeHook() callbacks.Callback {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
 
-		// P2 TTFT: append at the END of the message list so the cacheable
-		// prefix stays intact across tool-loop model calls.
-		sys := trpcmodel.NewSystemMessage(replyReminderCue)
-		args.Request.Messages = append(args.Request.Messages, sys)
+		args.Request.Messages = appendDynamicCue(args.Request.Messages, replyReminderCue)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }

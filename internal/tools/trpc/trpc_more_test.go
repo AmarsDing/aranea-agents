@@ -25,6 +25,8 @@ func TestIsFilesystemToolKey(t *testing.T) {
 		{"replace_content", true},
 		{"diff_edit", true},
 		{"patch_file", true},
+		{"read_lints", true},
+		{"delete_file", true},
 		{"shell_exec", false},
 		{"web_fetch", false},
 		{"", false},

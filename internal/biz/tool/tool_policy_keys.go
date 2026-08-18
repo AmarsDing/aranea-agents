@@ -12,6 +12,8 @@ var toolPolicyKeyAliases = map[string]string{
 	"web_search":       ToolKeyWebResearch,
 	"write_file":       "save_file",
 	"edit_file":        "diff_edit",
+	"delete":           "delete_file",
+	"rm_file":          "delete_file",
 	"list_files":       "list_file",
 	"workspace_search": "search_content",
 	"gemini_fetch":     "gemini_web_fetch",

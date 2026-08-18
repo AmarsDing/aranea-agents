@@ -30,7 +30,7 @@ func TestIsRetryableTool(t *testing.T) {
 	}
 	notRetryable := []string{
 		"", "exec_command", "write_stdin", "save_file", "diff_edit",
-		"write_file", "send_email", "unknown_mutating_tool",
+		"write_file", "delete_file", "send_email", "unknown_mutating_tool",
 	}
 	for _, name := range notRetryable {
 		if IsRetryableTool(name) {
@@ -64,7 +64,7 @@ func TestSelectiveRetryOn_RetriesTransientRead(t *testing.T) {
 }
 
 func TestSelectiveRetryOn_DoesNotRetryExclusiveOrWrites(t *testing.T) {
-	cases := []string{"exec_command", "save_file", "send_email"}
+	cases := []string{"exec_command", "save_file", "delete_file", "send_email"}
 	for _, name := range cases {
 		retry, err := SelectiveRetryOn(context.Background(), &trpctool.RetryInfo{
 			ToolName: name,

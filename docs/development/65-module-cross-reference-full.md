@@ -729,7 +729,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 
 **⚠️ 开发注意**：
 - progressive 模式下 `newProgressiveSkillGuidanceHook` 替代原有 `newSkillGuidanceBeforeHook`，返回 nil（不注入 guidance），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文
-- progressive 模式自动启用 `WithSkillsLoadedContentInToolResults(true)`，避免 loaded body 再次注入 system prompt
+- 所有 skill 加载路径默认启用 `WithSkillsLoadedContentInToolResults(true)`，避免 loaded body 写入 system[0] 击穿 DeepSeek 前缀缓存；complete 模式 overview 关闭 directory hints（progressive 仍开，供 skill_run 解析路径）
 - `injectOverview` 已简化为单一线性流程：写 protocol（如有）→ header → roots → skill lines → capability+tooling guidance（如无 protocol），不再有双分支
 - `writeSkillOverviewLines` helper method 统一处理 skill 行渲染，包括 `[routed]` 标记
 - `ResolveFlags` 降级时通过 `log.Warnf` 记录警告（而非静默降级）
@@ -752,7 +752,7 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 |------|------|
 | **上游依赖** | `biz`（TeamStarterPort 端口、TaskDAG、SynthesisEngine）、`team`（Team 运行） |
 | **下游影响** | `service/spirit_synthesis`（SpiritSynthesisService 调用 SpiritTeamUsecase facade） |
-| **核心导出** | `SpiritTeamUsecase`（facade）、`SpiritAssembly` / `SpiritOrchestration` / `SpiritDelivery`（DEV-09）、`SynthesisEngine`（template/prompt/hybrid 三策略）、`TaskDAG`（依赖验证/环检测/拓扑排序） |
+| **核心导出** | `SpiritTeamUsecase`（facade）、`SpiritAssembly` / `SpiritOrchestration` / `SpiritDelivery`（DEV-09）、`SynthesisEngine`（template/prompt/hybrid 三策略）、`InferTopologyFromTeam`（DQ 缓存拓扑标签；跨团队 DAG 由 `PlanExecutor` 持有，本文件不再导出 `TaskDAG`/`DAGNode`） |
 | **实现接口** | `biz.TeamStarterPort`（Wire 绑定到 TeamStarter）；`biz.SpiritTeamController` 仍由 `*SpiritTeamUsecase` 满足 |
 | **共享类型** | `SpiritTeamConfig`、`SynthesisResult`、`TaskDAG`、`DAGNode` |
 | **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed` |
@@ -765,6 +765,11 @@ biz 层跨模块 port 在 godoc 中标注稳定性。格式与架构审查报告
 - 修改 `TeamStarterPort` 接口时，需同步更新 `service/team.go` 的 `TeamStarter` 实现
 - Spirit 进度经 **v2_event**（`system.notice` / team 相关 kind）到达前端 `useSpiritTeamStore`（`web/src/stores/spirit/index.ts`）与 orchestration store；禁止再走 `activity_event`
 - **DEV-09（2026-08-14 P0-5a）**：`SpiritTeamUsecase` 为薄 facade（3 字段），实现在 Assembly / Orchestration / Delivery；依赖单向 Assembly→Orchestration→Delivery；超时 `sync.Map` 已提取为 `teamTimeoutRegistry`。Wire 仍 `NewSpiritTeamUsecase`。Chat RuntimeTooling 不在本拆分范围
+- **DAG 调度所有权（2026-08-18）**：`PlanExecutor` 是 Spirit DAG 的前向调度者（lazy `AssembleTeam`）。`TeamStarter.scheduleDependentTeams` 在 `HasActiveRunForSession` 为真时必须跳过 reverse-sync，避免与 `checkDownstream` 双重激活。完成轮询只扫 `__spirit__` 根会话（`AgentID` + `RootOnly`），禁止扫全部 running session
+- **团队超时（2026-08-18）**：`registerTeamTimeout` 在 `StartTeamTurn`（进入 Running）注册，不在 `AssembleTeam`。超时回调忽略 `pending`，避免上游未完成时下游待激活团队被误杀
+- **死路径 Orchestrate（2026-08-18）**：`TaskOrchestratorImpl.Orchestrate` 对 single_agent/parallel/dag/coordinator 返回 `FAILED_PRECONDITION`（生产走 `PlanExecutor`）。`direct` 仍写 completed handle。`orchestrateDAG` 等 helper 仅供存量单测，禁止新调用方建团
+- **缺上游 fail-closed（2026-08-18）**：`ScheduleDependentTeams` 找不到 `DependsOn` 对应团队行时 fail 下游（reason=`missing upstream team`），禁止把缺行当成「尚未完成」而永久 pending
+- **队内 Mode（2026-08-18）**：`SpiritTeamModeForStep` + `PlanStep.Mode`（内存字段）驱动 `RealTeamOrchestrator`；parallel 定义 JSON 末成员为 synthesizer。跨团队 DAG 仍只在 PlanExecutor
 - **任务执行总结（B.10.17，2026-07-24 重构）**：全部团队终态后 `TeamStarter.checkAllTeamsCompleted` 经 `turnGateway.ExecuteTurn` 向精灵会话注入 `synthesisSummaryTrigger`（system-push，四节结构 prompt 契约），精灵以普通 reply step 输出 Markdown 总结（天然持久化，刷新可恢复）；存在 cancelled 团队时跳过；`synthesisTriggered` CAS 防重；注入失败时发布兜底 notice「所有团队已完成」。初版 ExecutionReportCard 报告卡片链路（信封/publisher/组件/i18n）已全量移除
 
 ---

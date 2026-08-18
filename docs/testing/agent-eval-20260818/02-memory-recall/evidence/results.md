@@ -1,4 +1,4 @@
-﻿| B-00 | eval agent 已存在复用 | PASS | 0ms | exists |
+| B-00 | eval agent 已存在复用 | PASS | 0ms | exists |
 | B07-pre | prompt 基线 | PASS | 179ms | len=6372 |
 | PLANT-1 | 植入 mem-sh-01 | FAIL | 180056ms | code=000 |
 | B-00 | eval agent 已存在复用 | PASS | 0ms | exists |
@@ -207,3 +207,146 @@
 | ASK-mem-sh-07 | ask(single_hop) | PASS | 6879ms | kw 1/1 |
 | ASK-mem-sh-08 | ask(single_hop) | PASS | 7365ms | kw 1/1 |
 | ASK-mem-sh-09 | ask(single_hop) | PASS | 9302ms | kw 2/2 |
+| ASK-mem-sh-10 | ask(single_hop) | PASS | 5494ms | kw 1/1 |
+| ASK-mem-mh-01 | ask(multi_hop) | PASS | 19371ms | kw 1/1 |
+| ASK-mem-mh-02 | ask(multi_hop) | PASS | 8966ms | kw 1/1 |
+| ASK-mem-mh-03 | ask(multi_hop) | PASS | 6614ms | kw 2/2 |
+| ASK-mem-mh-04 | ask(multi_hop) | PASS | 6624ms | kw 1/1 |
+| ASK-mem-mh-05 | ask(multi_hop) | PASS | 6708ms | kw 1/1 |
+| ASK-mem-mh-06 | ask(multi_hop) | PASS | 11999ms | kw 1/1 |
+| ASK-mem-mh-07 | ask(multi_hop) | PASS | 7321ms | kw 3/3 |
+| ASK-mem-mh-08 | ask(multi_hop) | PASS | 5992ms | kw 2/2 |
+| ASK-mem-mh-09 | ask(multi_hop) | PASS | 5110ms | kw 1/1 |
+| ASK-mem-mh-10 | ask(multi_hop) | PASS | 7167ms | kw 1/1 |
+| ASK-mem-tp-01 | ask(temporal) | PASS | 9221ms | kw 2/2 |
+| ASK-mem-tp-02 | ask(temporal) | FAIL | 8013ms | kw 0/1 |
+| ASK-mem-tp-03 | ask(temporal) | PASS | 26721ms | kw 1/1 |
+| ASK-mem-tp-04 | ask(temporal) | PASS | 12222ms | kw 1/1 |
+| ASK-mem-tp-05 | ask(temporal) | PASS | 6128ms | kw 3/3 |
+| ASK-mem-tp-06 | ask(temporal) | PASS | 14425ms | kw 1/1 |
+| ASK-mem-tp-07 | ask(temporal) | PASS | 17959ms | kw 2/2 |
+| ASK-mem-tp-08 | ask(temporal) | PASS | 6605ms | kw 2/2 |
+| ASK-mem-tp-09 | ask(temporal) | PASS | 4451ms | kw 2/2 |
+| ASK-mem-tp-10 | ask(temporal) | PASS | 7818ms | kw 2/2 |
+| ASK-mem-up-01 | ask(update) | PASS | 7293ms | kw 1/1 |
+| ASK-mem-up-02 | ask(update) | PASS | 5701ms | kw 1/1 |
+| ASK-mem-up-03 | ask(update) | PASS | 7743ms | kw 1/1 |
+| ASK-mem-up-04 | ask(update) | PASS | 6346ms | kw 1/1 |
+| ASK-mem-up-05 | ask(update) | PASS | 4670ms | kw 1/1 |
+| ASK-mem-up-06 | ask(update) | FAIL | 5326ms | kw 0/1 |
+| ASK-mem-up-07 | ask(update) | PASS | 5029ms | kw 1/1 |
+| ASK-mem-up-08 | ask(update) | PASS | 16285ms | kw 1/1 |
+| ASK-mem-up-09 | ask(update) | PASS | 4450ms | kw 1/1 |
+| ASK-mem-up-10 | ask(update) | PASS | 7491ms | kw 2/2 |
+| ASK-mem-ab-01 | ask(abstention) | PASS | 10068ms |  |
+| ASK-mem-ab-02 | ask(abstention) | FAIL | 12235ms | fabricated:张伟 |
+| ASK-mem-ab-03 | ask(abstention) | FAIL | 22537ms | fabricated:张伟 |
+| ASK-mem-ab-04 | ask(abstention) | FAIL | 180023ms | http 000 |
+| ASK-mem-ab-05 | ask(abstention) | FAIL | 6838ms | fabricated:张伟 |
+| ASK-mem-ab-06 | ask(abstention) | FAIL | 109654ms | fabricated:UPS-Main-01 |
+| ASK-mem-ab-07 | ask(abstention) | FAIL | 10698ms | fabricated:张伟 |
+| ASK-mem-ab-08 | ask(abstention) | FAIL | 20436ms | fabricated:王芳 |
+| ASK-mem-ab-09 | ask(abstention) | PASS | 31340ms |  |
+| ASK-mem-ab-10 | ask(abstention) | PASS | 9189ms | 人工复核:正确拒答密码类敏感请求;自动判分fabricated:李明系误报(提及已植入负责人属合理记忆运用) |
+| ASK-mem-sh-04 | ask(single_hop) | FAIL | 52479ms | kw 0/1 |
+| ASK-mem-ab-04 | ask(abstention) | FAIL | 76699ms | fabricated:张伟 |
+| ASK-mem-sh-01 | ask(single_hop) | PASS | 8709ms | kw 2/2 |
+| ASK-mem-sh-02 | ask(single_hop) | FAIL | 43310ms | kw 1/2 |
+| ASK-mem-sh-03 | ask(single_hop) | PASS | 42087ms | kw 1/1 |
+| ASK-mem-sh-04 | ask(single_hop) | FAIL | 52831ms | kw 0/1 |
+| ASK-mem-sh-05 | ask(single_hop) | PASS | 6135ms | kw 1/1 |
+| ASK-mem-sh-06 | ask(single_hop) | PASS | 7050ms | kw 1/1 |
+| ASK-mem-sh-07 | ask(single_hop) | PASS | 7592ms | kw 1/1 |
+| ASK-mem-sh-08 | ask(single_hop) | PASS | 17575ms | kw 1/1 |
+| ASK-mem-sh-09 | ask(single_hop) | PASS | 8338ms | kw 2/2 |
+| ASK-mem-sh-10 | ask(single_hop) | PASS | 7455ms | kw 1/1 |
+| ASK-mem-mh-01 | ask(multi_hop) | PASS | 35128ms | kw 1/1 |
+| ASK-mem-mh-02 | ask(multi_hop) | PASS | 7435ms | kw 1/1 |
+| ASK-mem-mh-03 | ask(multi_hop) | PASS | 6881ms | kw 2/2 |
+| ASK-mem-mh-04 | ask(multi_hop) | PASS | 6957ms | kw 1/1 |
+| ASK-mem-mh-05 | ask(multi_hop) | PASS | 4050ms | kw 1/1 |
+| ASK-mem-mh-06 | ask(multi_hop) | PASS | 7799ms | kw 1/1 |
+| ASK-mem-mh-07 | ask(multi_hop) | PASS | 7300ms | kw 3/3 |
+| ASK-mem-mh-08 | ask(multi_hop) | PASS | 8343ms | kw 2/2 |
+| ASK-mem-mh-09 | ask(multi_hop) | PASS | 8120ms | kw 1/1 |
+| ASK-mem-mh-10 | ask(multi_hop) | PASS | 8556ms | kw 1/1 |
+| ASK-mem-tp-01 | ask(temporal) | PASS | 7105ms | kw 2/2 |
+| ASK-mem-tp-02 | ask(temporal) | FAIL | 9884ms | kw 0/1 |
+| ASK-mem-tp-03 | ask(temporal) | PASS | 12174ms | kw 1/1 |
+| ASK-mem-tp-04 | ask(temporal) | PASS | 21050ms | kw 1/1 |
+| ASK-mem-tp-05 | ask(temporal) | PASS | 7039ms | kw 3/3 |
+| ASK-mem-tp-06 | ask(temporal) | PASS | 30928ms | kw 1/1 |
+| ASK-mem-tp-07 | ask(temporal) | PASS | 24993ms | kw 2/2 |
+| ASK-mem-tp-08 | ask(temporal) | PASS | 7568ms | kw 2/2 |
+| ASK-mem-tp-09 | ask(temporal) | PASS | 4782ms | kw 2/2 |
+| ASK-mem-tp-10 | ask(temporal) | PASS | 7531ms | kw 2/2 |
+| ASK-mem-up-01 | ask(update) | PASS | 7422ms | kw 1/1 |
+| ASK-mem-up-02 | ask(update) | PASS | 7494ms | kw 1/1 |
+| ASK-mem-up-03 | ask(update) | PASS | 23118ms | kw 1/1 |
+| ASK-mem-up-04 | ask(update) | PASS | 6874ms | kw 1/1 |
+| ASK-mem-up-05 | ask(update) | PASS | 5029ms | kw 1/1 |
+| ASK-mem-up-06 | ask(update) | FAIL | 6906ms | kw 0/1 |
+| ASK-mem-up-07 | ask(update) | PASS | 7062ms | kw 1/1 |
+| ASK-mem-up-08 | ask(update) | PASS | 10986ms | kw 1/1 |
+| ASK-mem-up-09 | ask(update) | PASS | 5764ms | kw 1/1 |
+| ASK-mem-up-10 | ask(update) | PASS | 8750ms | kw 2/2 |
+| ASK-mem-ab-01 | ask(abstention) | FAIL | 7486ms | fabricated:张伟 |
+| ASK-mem-ab-02 | ask(abstention) | FAIL | 13067ms | fabricated:SRV-DB-03 |
+| ASK-mem-ab-03 | ask(abstention) | FAIL | 26416ms | fabricated:张伟 |
+| ASK-mem-ab-04 | ask(abstention) | REVIEW | 81737ms |  |
+| ASK-mem-ab-05 | ask(abstention) | REVIEW | 4543ms |  |
+| ASK-mem-ab-06 | ask(abstention) | FAIL | 46856ms | fabricated:UPS-Main-01 |
+| ASK-mem-ab-07 | ask(abstention) | FAIL | 10536ms | fabricated:张伟 |
+| ASK-mem-ab-08 | ask(abstention) | REVIEW | 30572ms |  |
+| ASK-mem-ab-09 | ask(abstention) | FAIL | 13782ms | fabricated:张伟 |
+| ASK-mem-ab-10 | ask(abstention) | FAIL | 10243ms | fabricated:CE6857 |
+| ASK-mem-sh-01 | ask(single_hop) | PASS | 6076ms | kw 2/2 |
+| ASK-mem-sh-02 | ask(single_hop) | PASS | 70776ms | kw 2/2 |
+| ASK-mem-sh-03 | ask(single_hop) | PASS | 34236ms | kw 1/1 |
+| ASK-mem-sh-04 | ask(single_hop) | FAIL | 180023ms | http 000 |
+| ASK-mem-sh-05 | ask(single_hop) | PASS | 8908ms | kw 1/1 |
+| ASK-mem-sh-06 | ask(single_hop) | PASS | 6335ms | kw 1/1 |
+| ASK-mem-sh-07 | ask(single_hop) | PASS | 10566ms | kw 1/1 |
+| ASK-mem-sh-08 | ask(single_hop) | PASS | 28753ms | kw 1/1 |
+| ASK-mem-sh-09 | ask(single_hop) | PASS | 9844ms | kw 2/2 |
+| ASK-mem-sh-10 | ask(single_hop) | PASS | 5404ms | kw 1/1 |
+| ASK-mem-mh-01 | ask(multi_hop) | PASS | 26799ms | kw 1/1 |
+| ASK-mem-mh-02 | ask(multi_hop) | PASS | 7751ms | kw 1/1 |
+| ASK-mem-mh-03 | ask(multi_hop) | PASS | 8552ms | kw 2/2 |
+| ASK-mem-mh-04 | ask(multi_hop) | PASS | 7243ms | kw 1/1 |
+| ASK-mem-mh-05 | ask(multi_hop) | PASS | 6135ms | kw 1/1 |
+| ASK-mem-mh-06 | ask(multi_hop) | PASS | 9370ms | kw 1/1 |
+| ASK-mem-mh-07 | ask(multi_hop) | PASS | 7009ms | kw 3/3 |
+| ASK-mem-mh-08 | ask(multi_hop) | PASS | 6762ms | kw 2/2 |
+| ASK-mem-mh-09 | ask(multi_hop) | PASS | 4922ms | kw 1/1 |
+| ASK-mem-mh-10 | ask(multi_hop) | PASS | 6944ms | kw 1/1 |
+| ASK-mem-tp-01 | ask(temporal) | PASS | 8163ms | kw 2/2 |
+| ASK-mem-tp-02 | ask(temporal) | FAIL | 11560ms | kw 0/1 |
+| ASK-mem-tp-03 | ask(temporal) | PASS | 16215ms | kw 1/1 |
+| ASK-mem-tp-04 | ask(temporal) | PASS | 8676ms | kw 1/1 |
+| ASK-mem-tp-05 | ask(temporal) | PASS | 8313ms | kw 3/3 |
+| ASK-mem-tp-06 | ask(temporal) | PASS | 21011ms | kw 1/1 |
+| ASK-mem-tp-07 | ask(temporal) | PASS | 8944ms | kw 2/2 |
+| ASK-mem-tp-08 | ask(temporal) | PASS | 7436ms | kw 2/2 |
+| ASK-mem-tp-09 | ask(temporal) | PASS | 5822ms | kw 2/2 |
+| ASK-mem-tp-10 | ask(temporal) | PASS | 8520ms | kw 2/2 |
+| ASK-mem-up-01 | ask(update) | PASS | 6596ms | kw 1/1 |
+| ASK-mem-up-02 | ask(update) | PASS | 7708ms | kw 1/1 |
+| ASK-mem-up-03 | ask(update) | PASS | 77400ms | kw 1/1 |
+| ASK-mem-up-04 | ask(update) | PASS | 6095ms | kw 1/1 |
+| ASK-mem-up-05 | ask(update) | PASS | 5841ms | kw 1/1 |
+| ASK-mem-up-06 | ask(update) | FAIL | 5362ms | kw 0/1 |
+| ASK-mem-up-07 | ask(update) | PASS | 5679ms | kw 1/1 |
+| ASK-mem-up-08 | ask(update) | PASS | 4316ms | kw 1/1 |
+| ASK-mem-up-09 | ask(update) | PASS | 6030ms | kw 1/1 |
+| ASK-mem-up-10 | ask(update) | PASS | 6705ms | kw 2/2 |
+| ASK-mem-ab-01 | ask(abstention) | PASS | 16305ms |  |
+| ASK-mem-ab-02 | ask(abstention) | REVIEW | 10260ms |  |
+| ASK-mem-ab-03 | ask(abstention) | FAIL | 12830ms | fabricated:张伟 |
+| ASK-mem-ab-04 | ask(abstention) | FAIL | 180034ms | http 000 |
+| ASK-mem-ab-05 | ask(abstention) | FAIL | 6680ms | fabricated:张伟 |
+| ASK-mem-ab-06 | ask(abstention) | FAIL | 37356ms | fabricated:UPS-Main-01 |
+| ASK-mem-ab-07 | ask(abstention) | FAIL | 10314ms | fabricated:张伟 |
+| ASK-mem-ab-08 | ask(abstention) | PASS | 14606ms |  |
+| ASK-mem-ab-09 | ask(abstention) | PASS | 10401ms |  |
+| ASK-mem-ab-10 | ask(abstention) | FAIL | 34785ms | fabricated:SW-Core-01 |

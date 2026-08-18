@@ -23,7 +23,7 @@ var coreResidentToolsByProfile = map[string][]string{
 	"coding": {
 		// 文件操作（最高频）
 		"read_file", "save_file", "list_file", "search_file", "search_content",
-		"replace_content", "diff_edit", "patch_file", "read_lints",
+		"replace_content", "diff_edit", "patch_file", "read_lints", "delete_file",
 		"shell_exec",
 		// 基础工具
 		"todo_write", "datetime",

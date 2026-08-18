@@ -76,12 +76,15 @@ func classifyBrowserTool(name string) string {
 		strings.HasPrefix(base, "browser_press") ||
 		strings.HasPrefix(base, "browser_hover") ||
 		strings.HasPrefix(base, "browser_select") ||
-		strings.HasPrefix(base, "browser_fill"):
+		strings.HasPrefix(base, "browser_fill") ||
+		strings.HasPrefix(base, "browser_mouse") ||
+		strings.HasPrefix(base, "browser_drag"):
 		return SubGroupInteract
 	case strings.HasPrefix(base, "browser_snapshot") ||
 		strings.HasPrefix(base, "browser_take_screenshot") ||
 		strings.HasPrefix(base, "browser_screenshot") ||
-		strings.HasPrefix(base, "browser_get_text"):
+		strings.HasPrefix(base, "browser_get_text") ||
+		strings.HasPrefix(base, "browser_wait_for"):
 		return SubGroupObserve
 	case strings.HasPrefix(base, "browser_tab"):
 		return SubGroupTabs

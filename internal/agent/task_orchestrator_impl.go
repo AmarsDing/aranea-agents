@@ -123,7 +123,16 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 		loggateway.Str("spirit_session_id", taskPlan.SpiritSessionID),
 	)
 
-	// Create OrchestrationHandle with status "pending".
+	switch taskPlan.Strategy {
+	case biz.StrategyDirect:
+		// Direct answers need no team. Keep handle bookkeeping for Cancel/Recover.
+	case biz.StrategySingleAgent, biz.StrategyParallel, biz.StrategyDAG, biz.StrategyCoordinator:
+		return nil, apierror.FailedPrecondition(apierror.DomainSpirit,
+			"TaskOrchestrator.Orchestrate is retired; plan_and_execute creates teams via PlanExecutor")
+	default:
+		return nil, apierror.BadRequest(apierror.DomainSpirit, "unknown orchestration strategy: %s", taskPlan.Strategy)
+	}
+
 	handle = &biz.OrchestrationHandle{
 		ID:              "orch_" + uuid.NewString()[:12],
 		TaskPlanID:      taskPlan.ID,
@@ -133,74 +142,14 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 		Strategy:        taskPlan.Strategy,
 		Status:          biz.OrchestrationStatusPending,
 	}
-
-	// Save initial checkpoint for the orchestration lineage.
 	o.saveInitialCheckpoint(ctx, handle)
-
-	// Execute based on strategy.
-	switch taskPlan.Strategy {
-	case biz.StrategyDirect:
-		// No orchestration needed, Spirit answers directly.
-		// AS-FSM-01: validate state transition before assignment.
-		if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted); tErr != nil {
-			return nil, tErr
-		}
-		o.lg.Info("TaskOrchestrator: direct strategy, no orchestration needed",
-			loggateway.StepID(biz.SpiritStepOrchestratorStrategy),
-			loggateway.Str("orchestration_id", handle.ID),
-		)
-
-	case biz.StrategySingleAgent:
-		// Agent-as-Tool path.
-		if err := o.orchestrateSingleAgent(ctx, taskPlan, allocPlan, handle); err != nil {
-			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
-				_ = o.persistHandle(ctx, handle)
-			}
-			return nil, err
-		}
-
-	case biz.StrategyParallel:
-		// Parallel team path.
-		if err := o.orchestrateTeam(ctx, taskPlan, allocPlan, handle, "parallel"); err != nil {
-			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
-				_ = o.persistHandle(ctx, handle)
-			}
-			return nil, err
-		}
-
-	case biz.StrategyDAG:
-		// DAG → Graph compilation path.
-		if err := o.orchestrateDAG(ctx, taskPlan, allocPlan, handle); err != nil {
-			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
-				_ = o.persistHandle(ctx, handle)
-			}
-			return nil, err
-		}
-
-	case biz.StrategyCoordinator:
-		// Coordinator team path.
-		if err := o.orchestrateTeam(ctx, taskPlan, allocPlan, handle, "coordinator"); err != nil {
-			if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusFailed); tErr == nil {
-				_ = o.persistHandle(ctx, handle)
-			}
-			return nil, err
-		}
-
-	default:
-		return nil, apierror.BadRequest(apierror.DomainSpirit, "unknown orchestration strategy: %s", taskPlan.Strategy)
+	if tErr := o.transitionOrchestrationStatus(ctx, handle, biz.OrchestrationStatusCompleted); tErr != nil {
+		return nil, tErr
 	}
 
-	// Save a step checkpoint after orchestration setup completes.
-	o.saveStepCheckpoint(ctx, handle, "orchestrate_setup")
-
 	// AS-EVT-01 (Important): persist the handle BEFORE publishing the event.
-	// If persistence fails, the event must not be published — otherwise
-	// consumers would receive a started event for an orchestration that
-	// does not exist in the store, breaking Recover/CheckProgress.
 	persisted, err := o.repo.Create(ctx, handle)
 	if err != nil {
-		// Red line #22: do not swallow the error. Return it so the caller
-		// can decide how to handle the persistence failure.
 		o.lg.Warn("TaskOrchestrator: failed to persist orchestration handle",
 			loggateway.StepID(biz.SpiritStepOrchestratorStrategy),
 			loggateway.Str("orchestration_id", handle.ID),
@@ -209,10 +158,7 @@ func (o *TaskOrchestratorImpl) Orchestrate(ctx context.Context, taskPlan *biz.Ta
 		return nil, apierror.Internal(apierror.DomainSpirit, "persist orchestration handle").WithCause(err)
 	}
 	handle = persisted
-
-	// Publish spirit_orchestration_started event after successful persistence.
 	o.publishOrchestrationStarted(ctx, handle, taskPlan)
-
 	return handle, nil
 }
 

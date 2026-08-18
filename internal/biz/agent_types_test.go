@@ -30,3 +30,18 @@ func TestSkipCategoryResponsibility(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCatalogAgentAssignable(t *testing.T) {
+	if biz.IsCatalogAgentAssignable(biz.Agent{AgentKey: "worker", Status: "active"}) != true {
+		t.Fatal("active catalog agent should be assignable")
+	}
+	if biz.IsCatalogAgentAssignable(biz.Agent{AgentKey: "worker", Status: "inactive"}) {
+		t.Fatal("inactive must not be assignable")
+	}
+	if biz.IsCatalogAgentAssignable(biz.Agent{AgentKey: "worker", Status: "archived"}) {
+		t.Fatal("archived must not be assignable")
+	}
+	if biz.IsCatalogAgentAssignable(biz.Agent{AgentKey: biz.SpiritAgentKey, Status: "active"}) {
+		t.Fatal("system spirit key must not be assignable")
+	}
+}
