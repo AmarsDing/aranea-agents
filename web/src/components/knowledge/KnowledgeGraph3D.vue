@@ -31,6 +31,7 @@
         @background-click="$emit('select-node', '')"
         @node-dblclick="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
         @focus-change="(id: string) => (focusedDocId = id)"
+        @focus-group="$emit('focus-group', $event)"
       />
       <!-- M4：聚焦节点信息卡（真折射玻璃浮层，画布右侧） -->
       <FocusCard
@@ -445,6 +446,8 @@ const emit = defineEmits<{
   'reembed-node': [docId: string];
   /** M5：图例点击切换 doc_type 组隐藏（状态由页面持有）。 */
   'toggle-group': [docType: string];
+  /** 缺口4：点击超点 → 组聚焦（过滤节点列表 + 相机飞组）。 */
+  'focus-group': [groupName: string];
 }>();
 
 const { t } = useI18n();

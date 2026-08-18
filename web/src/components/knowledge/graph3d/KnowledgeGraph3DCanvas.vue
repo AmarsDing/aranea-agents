@@ -45,7 +45,7 @@ import { EdgeLayer } from './render/EdgeLayer';
 import { ParticleLayer } from './render/ParticleLayer';
 import { BackdropLayer } from './render/BackdropLayer';
 import { BloomPipeline } from './render/BloomPipeline';
-import { effectiveMinDegree, LabelLayer, type LabelVisibility } from './render/LabelLayer';
+import { effectiveMinDegree, LabelLayer, type GroupLabelEntry, type LabelVisibility } from './render/LabelLayer';
 import { Picker } from './render/Picker';
 import { PositionTexture } from './render/PositionTexture';
 import { ReticleLayer } from './render/ReticleLayer';
@@ -80,6 +80,8 @@ const emit = defineEmits<{
   'node-dblclick': [payload: { docId: string; relPath: string }];
   /** M4：聚焦锁定变化（''=解除）。 */
   'focus-change': [docId: string];
+  /** 缺口4：点击超点 → 过滤面板+相机飞组。 */
+  'focus-group': [groupName: string];
 }>();
 
 const { t } = useI18n();
@@ -100,6 +102,10 @@ const CAMERA_FAR = 20000;
 /** LOD 语义缩放距离阈值（相机到目标点）。 */
 const LOD_FAR_DIST = 300;
 const LOD_MID_DIST = 150;
+/** MID 档 hub 节点数（度数 top-K，与超点叠加显示）。 */
+const MID_HUB_COUNT = 20;
+/** 缺口2：FAR 档隐藏 EdgeLayer（消除毛发噪声）。 */
+const LOD_FAR_HIDE_EDGES = true;
 /** LOD 级别：0=FAR（只超点） 1=MID（超点+hub） 2=NEAR（全节点）。 */
 type LodLevel = 0 | 1 | 2;
 
@@ -164,6 +170,12 @@ let lodLevel: LodLevel = 2;
 let lastLodSample = 0;
 /** 相机到目标点距离缓存（避免每帧重复计算）。 */
 let lastCamDist = 400;
+/** MID 档 hub 节点索引（按 degree 排序 top-K）。 */
+let hubIndices = new Set<number>();
+/** 当前是否处于 MID 模式（控制 nodeLayer 的可见性掩码）。 */
+let midModeActive = false;
+/** 组标签条目（与 LabelLayer.groupLabels 同引用，handleTick 直接改坐标）。 */
+let groupLabelEntries: GroupLabelEntry[] = [];
 
 // ---- M3 创世绽放（genesis reveal，非响应式） ----
 /** 创世进度：0=收拢于核心，1=完全显现（默认 1 无动画；LOW 档恒 1）。 */
@@ -270,11 +282,23 @@ function applyLodVisibility(): void {
   if (!nodeLayer || !aggregateLayer) return;
   const showNodes = lodLevel === 2;
   const showAgg = lodLevel < 2;
-  nodeLayer.points.visible = showNodes;
+  const showEdges = !LOD_FAR_HIDE_EDGES || lodLevel > 0;
+  nodeLayer.points.visible = showNodes || (lodLevel === 1 && hubIndices.size > 0);
   aggregateLayer.points.visible = showAgg && aggregateGroups.length > 0;
-  // 标签层：FAR 时隐藏节点标签（超点标签由 LabelLayer 的 groupLabels 通道处理，暂用现有机制）
+  if (edgeLayer) edgeLayer.object.visible = showEdges;
+  // MID 模式：nodeLayer 只显示 hub 节点（其余隐藏）
+  if (lodLevel === 1 && hubIndices.size > 0) {
+    midModeActive = true;
+    nodeLayer.setNodeVisibility(hubIndices);
+  } else if (midModeActive) {
+    midModeActive = false;
+    nodeLayer.setNodeVisibility(null);
+    // 恢复高亮语义
+    applyHighlight();
+  }
+  // 标签层：FAR/MID 时隐藏候选标签（组标签由 updateGroupLabels 驱动），NEAR 恢复
   if (labelLayer) {
-    labelVis.maxDistance = lodLevel === 0 ? 0 : lodLevel === 1 ? LOD_MID_DIST : 600;
+    labelVis.maxDistance = lodLevel === 2 ? 600 : 0;
   }
   requestRender();
 }
@@ -285,6 +309,9 @@ function applyLodVisibility(): void {
   camDist: camera && controls ? camera.position.distanceTo(controls.target) : -1,
   nodeVisible: nodeLayer?.points.visible ?? null,
   aggVisible: aggregateLayer?.points.visible ?? null,
+  edgeVisible: edgeLayer?.object.visible ?? null,
+  hubCount: hubIndices.size,
+  midModeActive,
   aggGroups: aggregateGroups.map((g) => ({ name: g.name, size: g.size, members: g.members.length })),
 });
 
@@ -433,6 +460,13 @@ function rebuildGraph(): void {
   aggregateLayer.setColors(aggColors);
   scene.add(aggregateLayer.points);
 
+  // 缺口3：MID 档 hub 节点（按 degree 排序 top-K）
+  hubIndices = new Set(
+    Array.from({ length: m.count }, (_, i) => i)
+      .sort((a, b) => m.degree[b] - m.degree[a])
+      .slice(0, MID_HUB_COUNT),
+  );
+
   // 边层（M2：按布局选细分段数/曲率；颜色与位置纹理接线在 rebuildEdges 内）
   rebuildEdges();
 
@@ -444,6 +478,20 @@ function rebuildGraph(): void {
   labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: QUALITY_SPECS[tier].labelCandidates });
   labelLayer.setLabelsEnabled(props.showLabels);
   scene.add(labelLayer.group);
+  // 缺口1：组标签（超点组名+成员数，FAR/MID 常驻）
+  groupLabelEntries = aggregateGroups.map((g) => {
+    const hex = ((g.color[0] * 255) << 16) | ((g.color[1] * 255) << 8) | (g.color[2] * 255);
+    const borderColor = `#${hex.toString(16).padStart(6, '0')}`;
+    return {
+      text: `${g.name} · ${g.members.length}`,
+      x: g.centroid.x,
+      y: g.centroid.y,
+      z: g.centroid.z,
+      borderColor,
+      size: g.size,
+    };
+  });
+  labelLayer.setGroupLabels(groupLabelEntries);
   // 动态度数下限（G5-G）：小图（最大度数 < 基准 6）降档到最大度数，hub 标签适应视图后可见。
   let maxDeg = 0;
   for (let i = 0; i < m.count; i++) if (m.degree[i] > maxDeg) maxDeg = m.degree[i];
@@ -542,6 +590,14 @@ function handleTick(positions: Float32Array): void {
   posTex?.update(positions);
   // 聚合层质心跟随物理（每 tick 重算，零拷贝直读）
   aggregateLayer?.updateCentroids(positions);
+  // 组标签位置跟随超点质心（FAR/MID 时可见）
+  for (let i = 0; i < aggregateGroups.length && i < groupLabelEntries.length; i++) {
+    const g = aggregateGroups[i];
+    const l = groupLabelEntries[i];
+    l.x = g.centroid.x;
+    l.y = g.centroid.y;
+    l.z = g.centroid.z;
+  }
   requestRender();
 }
 
@@ -569,7 +625,13 @@ function applyHighlight(): void {
   const focused = interaction.focused;
   if (focused !== null) {
     const { nodes, edges } = nHop(model.edges, model.edgeCount, focused, interaction.focusHops);
-    nodeLayer.setHighlight(nodes);
+    if (midModeActive) {
+      // MID 模式：只高亮 hub 中的聚焦邻居
+      const intersect = new Set([...nodes].filter((i) => hubIndices.has(i)));
+      nodeLayer.setHighlight(intersect.size > 0 ? intersect : null);
+    } else {
+      nodeLayer.setHighlight(nodes);
+    }
     edgeLayer.setHighlight(edges);
     particleLayer.setSource(null, []);
     if (reticle) {
@@ -585,12 +647,22 @@ function applyHighlight(): void {
   }
   const active = interaction.active;
   if (active === null) {
-    nodeLayer.setHighlight(null);
+    if (midModeActive) {
+      // MID 模式：无高亮时恢复 hub 可见性
+      nodeLayer.setNodeVisibility(hubIndices);
+    } else {
+      nodeLayer.setHighlight(null);
+    }
     edgeLayer.setHighlight(null);
     particleLayer.setSource(null, []);
   } else {
     const { nodes, edges } = oneHop(model.edges, model.edgeCount, active);
-    nodeLayer.setHighlight(nodes);
+    if (midModeActive) {
+      const intersect = new Set([...nodes].filter((i) => hubIndices.has(i)));
+      nodeLayer.setHighlight(intersect.size > 0 ? intersect : null);
+    } else {
+      nodeLayer.setHighlight(nodes);
+    }
     edgeLayer.setHighlight(edges);
     if (interaction.hover !== null) {
       const neighbors = [...nodes].filter((i) => i !== interaction.hover);
@@ -629,6 +701,34 @@ function pickAt(): number | null {
     model.count,
     containerEl.value?.clientHeight ?? 1,
   );
+}
+
+/** 超点拾取：射线-质心距离（FAR/MID 模式专用）。 */
+function pickAggregateGroup(): number | null {
+  if (!picker || !aggregateLayer || aggregateGroups.length === 0) return null;
+  raycaster.setFromCamera(ndc, camera!);
+  const o = raycaster.ray.origin;
+  const d = raycaster.ray.direction;
+  const worldPerPixel = (2 * Math.tan((camera!.fov * Math.PI) / 360)) / Math.max(containerEl.value?.clientHeight ?? 1, 1);
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < aggregateGroups.length; i++) {
+    const g = aggregateGroups[i];
+    const c = g.centroid;
+    tmpV1.set(c.x, c.y, c.z);
+    // 射线到点距离
+    tmpV2.copy(tmpV1).sub(o);
+    const t = tmpV2.dot(d);
+    if (t < 0) continue;
+    tmpV2.copy(d).multiplyScalar(t).add(o);
+    const dist = tmpV2.distanceTo(tmpV1);
+    const threshold = Math.max(g.size * 1.5, worldPerPixel * t * 8);
+    if (dist < threshold && t < bestDist) {
+      bestDist = t;
+      best = i;
+    }
+  }
+  return best >= 0 ? best : null;
 }
 
 /** hover 拾取（RAF 内合并调用）：去抖防粒子相位重置。 */
@@ -723,6 +823,23 @@ function onPointerUp(ev: PointerEvent): void {
   const dy = ev.clientY - drag.startY;
   if (wasCandidate || isClickMovement(dx, dy)) {
     eventToNdc(ev);
+    // FAR/MID 模式：优先检测超点点击（缺口4）
+    if (lodLevel < 2 && aggregateLayer && aggregateGroups.length > 0) {
+      const hitGroup = pickAggregateGroup();
+      if (hitGroup !== null) {
+        const g = aggregateGroups[hitGroup];
+        emit('focus-group', g.name);
+        // 相机飞到组质心
+        const centroid = g.centroid;
+        const dist = g.size * 3 + 60;
+        tmpV1.copy(camera!.position).sub(controls!.target);
+        if (tmpV1.lengthSq() < 1e-6) tmpV1.set(0, 0, 1);
+        tmpV1.normalize().multiplyScalar(dist);
+        const toPos = centroid.clone().add(tmpV1);
+        flyTo(toPos, centroid.clone(), 600);
+        return;
+      }
+    }
     const idx = pickAt();
     if (idx !== null) {
       interaction.setSelected(idx);
@@ -897,6 +1014,8 @@ function frame(now: number): void {
   // lazy-render：needsRender || 活跃动画源 才过 GPU
   if (needsRender && bloom && camera && engine) {
     labelLayer?.update(engine.positions, camera, labelVis);
+    // 组标签（FAR/MID 可见，NEAR 隐藏）
+    labelLayer?.updateGroupLabels(lodLevel < 2, camera, labelVis);
     bloom.render();
     needsRender = false;
   }

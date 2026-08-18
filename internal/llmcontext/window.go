@@ -13,19 +13,27 @@ type ResolveInput struct {
 	AgentWindow             int
 }
 
-// ResolveWindow picks context window tokens for the active model call.
-// Priority: provider model config → session default → agent default → fallback.
+// ResolveWindow picks the effective context window tokens for the active model
+// call. All inputs are treated as candidate ceilings: the provider catalog value
+// states the vendor-claimed maximum, while session/agent values are local
+// operational caps. The smallest positive value wins, so a local cap always
+// constrains an inflated catalog value (a 1M-token catalog entry would otherwise
+// push compression trigger thresholds to ~700K and sessions would never
+// compact). Falls back to DefaultWindowTokens when no input is set.
 func ResolveWindow(in ResolveInput) int {
-	if w := contextWindowFromConfigJSON(in.ProviderModelConfigJSON); w > 0 {
-		return w
+	win := 0
+	consider := func(v int) {
+		if v > 0 && (win <= 0 || v < win) {
+			win = v
+		}
 	}
-	if in.SessionDefaultWindow > 0 {
-		return in.SessionDefaultWindow
+	consider(contextWindowFromConfigJSON(in.ProviderModelConfigJSON))
+	consider(in.SessionDefaultWindow)
+	consider(in.AgentWindow)
+	if win <= 0 {
+		return DefaultWindowTokens
 	}
-	if in.AgentWindow > 0 {
-		return in.AgentWindow
-	}
-	return DefaultWindowTokens
+	return win
 }
 
 func contextWindowFromConfigJSON(raw string) int {

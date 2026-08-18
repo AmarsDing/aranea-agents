@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/unicode"
 
 	"aranea-agents/pkg/apierror"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -413,6 +415,41 @@ func TestVaultFilerReadDocWithHash(t *testing.T) {
 	assert.Equal(t, raw, doc.Body)
 	assert.Equal(t, HashContent(raw), hash)
 }
+
+// ReadDoc 编码规范化：UTF-16/GBK/NUL 文件不炸 PG（22021）与 protobuf string。
+func TestVaultFilerReadDocNormalizesEncoding(t *testing.T) {
+	root := t.TempDir()
+	f := newTestFiler()
+
+	// UTF-16LE BOM（Windows 记事本常见）：ASCII 字符夹 0x00，PG text 直接拒绝。
+	enc16 := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder()
+	b16, err := enc16.Bytes([]byte("# 标题"))
+	require.NoError(t, err)
+	utf16le := append([]byte{0xFF, 0xFE}, b16...)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "u16.md"), utf16le, 0o644))
+	doc, hash, err := f.ReadDocWithHash(root, "u16.md")
+	require.NoError(t, err)
+	assert.Equal(t, "# 标题", doc.Body)
+	assert.Equal(t, HashContent(string(utf16le)), hash, "hash 仍按原始字节（CAS 口径一致）")
+
+	// GBK 中文（无 BOM 非法 UTF-8 的 Windows 中文笔记典型编码）。
+	gbk, err := simplifiedchinese.GBK.NewEncoder().Bytes([]byte("# 标题\n"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "gbk.md"), gbk, 0o644))
+	doc, _, err = f.ReadDocWithHash(root, "gbk.md")
+	require.NoError(t, err)
+	assert.Equal(t, "# 标题\n", doc.Body)
+
+	// 内嵌 NUL 字节（0x00 以字节字面量构造，避免源文件含裸 NUL）：剔除后可入 PG text 列。
+	// 注意文件名避开 Windows 保留设备名（nul.* 会写到空设备）。
+	nul := append([]byte("a"), 0x00)
+	nul = append(nul, []byte("b\n")...)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "nulbyte.md"), nul, 0o644))
+	doc, _, err = f.ReadDocWithHash(root, "nulbyte.md")
+	require.NoError(t, err)
+	assert.Equal(t, "ab\n", doc.Body)
+}
+
 
 func TestVaultFilerWriteDocCASNoConflict(t *testing.T) {
 	root := t.TempDir()

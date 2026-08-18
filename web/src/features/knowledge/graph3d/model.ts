@@ -137,17 +137,21 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** 确定性播种：球内体采样（体积均匀），半径 cbrt(N)*20+1。 */
-export function seedPositions(model: GraphModel, seed: number): void {
-  const rand = mulberry32(seed);
-  const radius = Math.cbrt(model.count) * 20 + 1;
-  for (let i = 0; i < model.count; i++) {
-    const u = rand() * 2 - 1;
-    const theta = rand() * Math.PI * 2;
-    const r = radius * Math.cbrt(rand());
-    const s = Math.sqrt(1 - u * u);
-    model.positions[i * 3] = r * s * Math.cos(theta);
-    model.positions[i * 3 + 1] = r * s * Math.sin(theta);
-    model.positions[i * 3 + 2] = r * u;
+/** 黄金角 ≈ 2.39996 rad（斐波那契球面分布用）。 */
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+/** 确定性播种：斐波那契球面分布（节点在球壳上有序均匀排列，像地球仪）。
+ *  半径 cbrt(N)*20+1，力导向从此球壳演化，最终形成立体知识球。 */
+export function seedPositions(model: GraphModel, _seed: number): void {
+  const n = model.count;
+  const radius = Math.cbrt(n) * 20 + 1;
+  for (let i = 0; i < n; i++) {
+    // y 在 [-1, 1] 均匀分布，避免两极聚集
+    const y = 1 - (i / (n - 1 || 1)) * 2;
+    const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = GOLDEN_ANGLE * i;
+    model.positions[i * 3] = radius * radiusAtY * Math.cos(theta);
+    model.positions[i * 3 + 1] = radius * y;
+    model.positions[i * 3 + 2] = radius * radiusAtY * Math.sin(theta);
   }
 }

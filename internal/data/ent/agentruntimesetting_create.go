@@ -1268,6 +1268,20 @@ func (_c *AgentRuntimeSettingCreate) SetNillableClarificationEnabled(v *bool) *A
 	return _c
 }
 
+// SetReplyReminderEnabled sets the "reply_reminder_enabled" field.
+func (_c *AgentRuntimeSettingCreate) SetReplyReminderEnabled(v bool) *AgentRuntimeSettingCreate {
+	_c.mutation.SetReplyReminderEnabled(v)
+	return _c
+}
+
+// SetNillableReplyReminderEnabled sets the "reply_reminder_enabled" field if the given value is not nil.
+func (_c *AgentRuntimeSettingCreate) SetNillableReplyReminderEnabled(v *bool) *AgentRuntimeSettingCreate {
+	if v != nil {
+		_c.SetReplyReminderEnabled(*v)
+	}
+	return _c
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_c *AgentRuntimeSettingCreate) SetChannelID(v string) *AgentRuntimeSettingCreate {
 	_c.mutation.SetChannelID(v)
@@ -2435,6 +2449,10 @@ func (_c *AgentRuntimeSettingCreate) defaults() {
 		v := agentruntimesetting.DefaultClarificationEnabled
 		_c.mutation.SetClarificationEnabled(v)
 	}
+	if _, ok := _c.mutation.ReplyReminderEnabled(); !ok {
+		v := agentruntimesetting.DefaultReplyReminderEnabled
+		_c.mutation.SetReplyReminderEnabled(v)
+	}
 	if _, ok := _c.mutation.ChannelID(); !ok {
 		v := agentruntimesetting.DefaultChannelID
 		_c.mutation.SetChannelID(v)
@@ -2925,6 +2943,9 @@ func (_c *AgentRuntimeSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.ClarificationEnabled(); !ok {
 		return &ValidationError{Name: "clarification_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.clarification_enabled"`)}
+	}
+	if _, ok := _c.mutation.ReplyReminderEnabled(); !ok {
+		return &ValidationError{Name: "reply_reminder_enabled", err: errors.New(`ent: missing required field "AgentRuntimeSetting.reply_reminder_enabled"`)}
 	}
 	if _, ok := _c.mutation.ChannelID(); !ok {
 		return &ValidationError{Name: "channel_id", err: errors.New(`ent: missing required field "AgentRuntimeSetting.channel_id"`)}
@@ -3487,6 +3508,10 @@ func (_c *AgentRuntimeSettingCreate) createSpec() (*AgentRuntimeSetting, *sqlgra
 	if value, ok := _c.mutation.ClarificationEnabled(); ok {
 		_spec.SetField(agentruntimesetting.FieldClarificationEnabled, field.TypeBool, value)
 		_node.ClarificationEnabled = value
+	}
+	if value, ok := _c.mutation.ReplyReminderEnabled(); ok {
+		_spec.SetField(agentruntimesetting.FieldReplyReminderEnabled, field.TypeBool, value)
+		_node.ReplyReminderEnabled = value
 	}
 	if value, ok := _c.mutation.ChannelID(); ok {
 		_spec.SetField(agentruntimesetting.FieldChannelID, field.TypeString, value)
@@ -5089,6 +5114,18 @@ func (u *AgentRuntimeSettingUpsert) SetClarificationEnabled(v bool) *AgentRuntim
 // UpdateClarificationEnabled sets the "clarification_enabled" field to the value that was provided on create.
 func (u *AgentRuntimeSettingUpsert) UpdateClarificationEnabled() *AgentRuntimeSettingUpsert {
 	u.SetExcluded(agentruntimesetting.FieldClarificationEnabled)
+	return u
+}
+
+// SetReplyReminderEnabled sets the "reply_reminder_enabled" field.
+func (u *AgentRuntimeSettingUpsert) SetReplyReminderEnabled(v bool) *AgentRuntimeSettingUpsert {
+	u.Set(agentruntimesetting.FieldReplyReminderEnabled, v)
+	return u
+}
+
+// UpdateReplyReminderEnabled sets the "reply_reminder_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsert) UpdateReplyReminderEnabled() *AgentRuntimeSettingUpsert {
+	u.SetExcluded(agentruntimesetting.FieldReplyReminderEnabled)
 	return u
 }
 
@@ -7447,6 +7484,20 @@ func (u *AgentRuntimeSettingUpsertOne) SetClarificationEnabled(v bool) *AgentRun
 func (u *AgentRuntimeSettingUpsertOne) UpdateClarificationEnabled() *AgentRuntimeSettingUpsertOne {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateClarificationEnabled()
+	})
+}
+
+// SetReplyReminderEnabled sets the "reply_reminder_enabled" field.
+func (u *AgentRuntimeSettingUpsertOne) SetReplyReminderEnabled(v bool) *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetReplyReminderEnabled(v)
+	})
+}
+
+// UpdateReplyReminderEnabled sets the "reply_reminder_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertOne) UpdateReplyReminderEnabled() *AgentRuntimeSettingUpsertOne {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateReplyReminderEnabled()
 	})
 }
 
@@ -10098,6 +10149,20 @@ func (u *AgentRuntimeSettingUpsertBulk) SetClarificationEnabled(v bool) *AgentRu
 func (u *AgentRuntimeSettingUpsertBulk) UpdateClarificationEnabled() *AgentRuntimeSettingUpsertBulk {
 	return u.Update(func(s *AgentRuntimeSettingUpsert) {
 		s.UpdateClarificationEnabled()
+	})
+}
+
+// SetReplyReminderEnabled sets the "reply_reminder_enabled" field.
+func (u *AgentRuntimeSettingUpsertBulk) SetReplyReminderEnabled(v bool) *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.SetReplyReminderEnabled(v)
+	})
+}
+
+// UpdateReplyReminderEnabled sets the "reply_reminder_enabled" field to the value that was provided on create.
+func (u *AgentRuntimeSettingUpsertBulk) UpdateReplyReminderEnabled() *AgentRuntimeSettingUpsertBulk {
+	return u.Update(func(s *AgentRuntimeSettingUpsert) {
+		s.UpdateReplyReminderEnabled()
 	})
 }
 

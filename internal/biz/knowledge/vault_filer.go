@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -11,7 +12,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"gopkg.in/yaml.v3"
 
 	"aranea-agents/pkg/apierror"
@@ -232,7 +236,40 @@ func (f *VaultFiler) ReadDocWithHash(root, relPath string) (*VaultDoc, string, e
 	if err != nil {
 		return nil, "", apierror.Internal("knowledge", "vault: read %s", rel).WithCause(err)
 	}
-	return parseVaultDoc(string(data)), HashContent(string(data)), nil
+	// hash 保持对原始字节计算（WriteDocCAS 以同样口径比对）；正文规范化后入模型。
+	return parseVaultDoc(normalizeVaultText(data)), HashContent(string(data)), nil
+}
+
+// normalizeVaultText 把 vault 文本文件原始字节规范化为可安全入库/序列化的 UTF-8：
+//  1. UTF-16 BOM（FF FE / FE FF）→ 解码为 UTF-8；
+//  2. 非法 UTF-8（典型：Windows GBK 中文笔记）→ 按 GBK 解码，解码失败回退 U+FFFD 替换；
+//  3. 剔除 NUL 字节（PG text 列拒绝 0x00，protobuf string 亦不允非法序列）。
+func normalizeVaultText(data []byte) string {
+	if len(data) >= 2 {
+		var order binary.ByteOrder
+		switch {
+		case data[0] == 0xFF && data[1] == 0xFE:
+			order = binary.LittleEndian
+		case data[0] == 0xFE && data[1] == 0xFF:
+			order = binary.BigEndian
+		}
+		if order != nil {
+			u16 := make([]uint16, 0, len(data)/2)
+			for i := 2; i+1 < len(data); i += 2 {
+				u16 = append(u16, order.Uint16(data[i:i+2]))
+			}
+			return strings.ReplaceAll(string(utf16.Decode(u16)), "\x00", "")
+		}
+	}
+	s := string(data)
+	if !utf8.ValidString(s) {
+		if decoded, err := simplifiedchinese.GBK.NewDecoder().String(s); err == nil {
+			s = decoded
+		} else {
+			s = strings.ToValidUTF8(s, "�")
+		}
+	}
+	return strings.ReplaceAll(s, "\x00", "")
 }
 
 // WriteDocCAS 写入前重读目标文件比对 expectedHash（R-1：写入前重读 hash，冲突留双份）。

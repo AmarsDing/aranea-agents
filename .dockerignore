@@ -13,3 +13,13 @@ build/staging
 docs
 competition
 docker/volumes
+# 大体积依赖/构建产物（构建上下文 >16GB 元凶）
+blender
+web/src-tauri/target
+**/venv
+**/__pycache__
+**/logs
+**/*.log
+**/*.glb
+**/*.exe
+**/*.jsonl

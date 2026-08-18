@@ -107,6 +107,34 @@ function applyScale(sprite: SpriteText, k: number): void {
 /** 焦点标签种类（hover 青 / selected 紫，与 ReticleLayer 配色同源）。 */
 export type FocusLabelKind = 'hover' | 'selected';
 
+/** 组标签条目（超点组名+成员数，FAR/MID 常驻）。 */
+export interface GroupLabelEntry {
+  /** 标签文本（如 "agents · 5"）。 */
+  text: string;
+  /** 世界坐标（超点质心）。 */
+  x: number;
+  y: number;
+  z: number;
+  /** 组色（标签边框色，与组同源）。 */
+  borderColor: string;
+  /** 超点半径（世界单位，标签放在超点上方）。 */
+  size: number;
+}
+
+/** 组标签 sprite 工厂：中等醒目度（介于候选与焦点之间），屏幕恒尺寸。 */
+function makeGroupSprite(borderColor: string): SpriteText {
+  const s = new SpriteText(' ', 3.8, '#d8ecff');
+  s.backgroundColor = 'rgba(5, 8, 16, 0.72)';
+  s.borderColor = borderColor;
+  s.borderWidth = 0.25;
+  s.borderRadius = 1.0;
+  s.padding = 0.9;
+  s.fontWeight = '600';
+  s.visible = false;
+  s.renderOrder = 3; // 与候选标签同层
+  return s;
+}
+
 /** 焦点 sprite 工厂：粗体亮字 + 深色底牌 + 描边，任何距离一眼可读。
  *  UX 优化：字高 6.5→4.2、底牌 padding 同步收敛（近景 ~76px 盒偏大 → ~45px 内）。 */
 function makeFocusSprite(color: string, borderColor: string): SpriteText {
@@ -162,6 +190,9 @@ export class LabelLayer {
   /** 焦点标签（hover/selected 各一）：独立于候选池，任何节点都能出名称。 */
   private readonly focusSprites: Record<FocusLabelKind, SpriteText>;
   private readonly focusIndex: Record<FocusLabelKind, number | null> = { hover: null, selected: null };
+  /** 组标签 sprites（与 groupLabels 一一对应，FAR/MID 常驻）。 */
+  private readonly groupSprites: SpriteText[] = [];
+  private groupLabels: GroupLabelEntry[] = [];
 
   constructor(opts: LabelLayerOpts) {
     const { names, degree } = opts;
@@ -198,6 +229,29 @@ export class LabelLayer {
   /** 标签总开关：关时只显示 extraVisible。 */
   setLabelsEnabled(on: boolean): void {
     this.labelsEnabled = on;
+  }
+
+  /** 组标签（超点）：rebuild 时重建 sprites 池，FAR/MID 每帧 updateGroupLabels 驱动显隐。 */
+  setGroupLabels(labels: GroupLabelEntry[]): void {
+    this.groupLabels = labels;
+    // 按需扩容 sprite 池（只增不缩，复用 GPU 纹理）
+    while (this.groupSprites.length < labels.length) {
+      const s = makeGroupSprite('#9fdcff');
+      this.groupSprites.push(s);
+      this.group.add(s);
+    }
+    for (let i = 0; i < this.groupSprites.length; i++) {
+      if (i < labels.length) {
+        const l = labels[i];
+        const s = this.groupSprites[i];
+        s.text = l.text;
+        s.borderColor = l.borderColor;
+        s.userData.baseScale = { x: s.scale.x, y: s.scale.y };
+        s.userData.k = 1;
+      } else {
+        this.groupSprites[i].visible = false;
+      }
+    }
   }
 
   /** 焦点标签：index=null 隐藏；同名同 index 重复设置不重绘 canvas（交互事件驱动，低频）。 */
@@ -274,6 +328,30 @@ export class LabelLayer {
     this.updateFocusSprite(this.focusSprites.selected, this.focusIndex.selected, positions, camera, vis);
   }
 
+  /** 组标签定位：屏幕恒尺寸 + 质心上方偏移（FAR/MID 调用，NEAR 隐藏）。 */
+  updateGroupLabels(visible: boolean, camera: THREE.Camera, vis: LabelVisibility): void {
+    const n = Math.min(this.groupLabels.length, this.groupSprites.length);
+    if (!visible || !this.labelsEnabled) {
+      for (let i = 0; i < n; i++) this.groupSprites[i].visible = false;
+      return;
+    }
+    const persp = camera as THREE.PerspectiveCamera;
+    const tanHalf = Math.tan(((persp.fov || 60) * Math.PI) / 360);
+    const viewportPx = vis.viewportPx ?? 800;
+    for (let i = 0; i < n; i++) {
+      const l = this.groupLabels[i];
+      const s = this.groupSprites[i];
+      this.tmp.set(l.x, l.y, l.z);
+      const dist = this.tmp.distanceTo(camera.position);
+      const base = (s.userData.baseScale as { x: number; y: number } | undefined) ?? { x: 1, y: 1 };
+      const k = scaleForPixels(dist, tanHalf, viewportPx, 14, base.y);
+      applyScale(s, k);
+      const r = Math.min(l.size, LABEL_ANCHOR_R_CAP);
+      s.position.set(l.x, l.y + (r + FOCUS_LABEL_Y_OFFSET) * k, l.z);
+      s.visible = true;
+    }
+  }
+
   /** 焦点标签定位：像素目标恒尺寸（按相机距离精确换算，任何距离屏幕字高恒定）。 */
   private updateFocusSprite(
     sprite: SpriteText,
@@ -303,12 +381,19 @@ export class LabelLayer {
   }
 
   dispose(): void {
-    for (const s of [...this.sprites, this.focusSprites.hover, this.focusSprites.selected]) {
+    for (const s of [
+      ...this.sprites,
+      this.focusSprites.hover,
+      this.focusSprites.selected,
+      ...this.groupSprites,
+    ]) {
       // SpriteText 无公开 dispose()：手动释放 canvas 纹理与材质（GC 路径）。
       s.material.map?.dispose();
       s.material.dispose();
       this.group.remove(s);
     }
     this.sprites.length = 0;
+    this.groupSprites.length = 0;
+    this.groupLabels = [];
   }
 }

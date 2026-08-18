@@ -73,10 +73,16 @@ func TestContextWindowFromConfigJSON_Invalid(t *testing.T) {
 }
 
 func TestResolveWindow_SessionDefault(t *testing.T) {
+	// Both local caps set → smallest wins (agent 32K caps session default 64K).
 	win := ResolveWindow(ResolveInput{
 		SessionDefaultWindow: 64000,
 		AgentWindow:          32000,
 	})
+	if win != 32000 {
+		t.Fatalf("got %d want 32000", win)
+	}
+	// Session default alone → used as-is.
+	win = ResolveWindow(ResolveInput{SessionDefaultWindow: 64000})
 	if win != 64000 {
 		t.Fatalf("got %d want 64000", win)
 	}

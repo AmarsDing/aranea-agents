@@ -189,6 +189,8 @@ const (
 	FieldIntentPassEnabled = "intent_pass_enabled"
 	// FieldClarificationEnabled holds the string denoting the clarification_enabled field in the database.
 	FieldClarificationEnabled = "clarification_enabled"
+	// FieldReplyReminderEnabled holds the string denoting the reply_reminder_enabled field in the database.
+	FieldReplyReminderEnabled = "reply_reminder_enabled"
 	// FieldChannelID holds the string denoting the channel_id field in the database.
 	FieldChannelID = "channel_id"
 	// FieldChatID holds the string denoting the chat_id field in the database.
@@ -395,6 +397,7 @@ var Columns = []string{
 	FieldSkillRuntimeJSON,
 	FieldIntentPassEnabled,
 	FieldClarificationEnabled,
+	FieldReplyReminderEnabled,
 	FieldChannelID,
 	FieldChatID,
 	FieldWorkspace,
@@ -641,6 +644,8 @@ var (
 	DefaultIntentPassEnabled bool
 	// DefaultClarificationEnabled holds the default value on creation for the "clarification_enabled" field.
 	DefaultClarificationEnabled bool
+	// DefaultReplyReminderEnabled holds the default value on creation for the "reply_reminder_enabled" field.
+	DefaultReplyReminderEnabled bool
 	// DefaultChannelID holds the default value on creation for the "channel_id" field.
 	DefaultChannelID string
 	// DefaultChatID holds the default value on creation for the "chat_id" field.
@@ -1206,6 +1211,11 @@ func ByIntentPassEnabled(opts ...sql.OrderTermOption) OrderOption {
 // ByClarificationEnabled orders the results by the clarification_enabled field.
 func ByClarificationEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldClarificationEnabled, opts...).ToFunc()
+}
+
+// ByReplyReminderEnabled orders the results by the reply_reminder_enabled field.
+func ByReplyReminderEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReplyReminderEnabled, opts...).ToFunc()
 }
 
 // ByChannelID orders the results by the channel_id field.

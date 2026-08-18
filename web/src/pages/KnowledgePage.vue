@@ -110,6 +110,7 @@
       @merge-entities="(p: { keeperId: number; mergeeId: number }) => graph.mergeEntities(p.keeperId, p.mergeeId)"
       @reembed-node="(docId: string) => confirmReembed([docId])"
       @toggle-group="onGraphToggleGroup"
+      @focus-group="onGraphFocusGroup"
     />
 
     <!-- 设置浮层（SP2-8）：Embedder 配置；kb-portal 在 body 重挂深空令牌 -->
@@ -375,6 +376,23 @@ function onGraphToggleGroup(docType: string) {
   const i = graphHiddenGroups.value.indexOf(docType);
   if (i >= 0) graphHiddenGroups.value.splice(i, 1);
   else graphHiddenGroups.value.push(docType);
+}
+
+/** 缺口4：点击超点 → 组聚焦（过滤节点列表只显示该组 + 相机飞组）。
+ *  通过图例的 toggle-group 机制实现：隐藏所有其他组，只保留目标组可见。 */
+function onGraphFocusGroup(groupName: string) {
+  // 如果当前只显示该组（其他全隐藏），则恢复全显（再点一次取消聚焦）
+  const allGroups = new Set(graphViewGraph.value.nodes.map((n) => n.doc_type || ''));
+  const others = [...allGroups].filter((g) => g !== groupName);
+  const isFocused =
+    graphHiddenGroups.value.length === others.length && others.every((g) => graphHiddenGroups.value.includes(g));
+  if (isFocused) {
+    // 取消聚焦：恢复全显
+    graphHiddenGroups.value = [];
+  } else {
+    // 聚焦：隐藏其他组
+    graphHiddenGroups.value = others;
+  }
 }
 
 // 渲染视图派生（viewGraph = 孤立裁剪 + 邻域裁剪；computed 解构后模板自动解包）。

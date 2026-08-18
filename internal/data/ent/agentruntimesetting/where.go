@@ -508,6 +508,11 @@ func ClarificationEnabled(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldClarificationEnabled, v))
 }
 
+// ReplyReminderEnabled applies equality check predicate on the "reply_reminder_enabled" field. It's identical to ReplyReminderEnabledEQ.
+func ReplyReminderEnabled(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldReplyReminderEnabled, v))
+}
+
 // ChannelID applies equality check predicate on the "channel_id" field. It's identical to ChannelIDEQ.
 func ChannelID(v string) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldChannelID, v))
@@ -3981,6 +3986,16 @@ func ClarificationEnabledEQ(v bool) predicate.AgentRuntimeSetting {
 // ClarificationEnabledNEQ applies the NEQ predicate on the "clarification_enabled" field.
 func ClarificationEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
 	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldClarificationEnabled, v))
+}
+
+// ReplyReminderEnabledEQ applies the EQ predicate on the "reply_reminder_enabled" field.
+func ReplyReminderEnabledEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldEQ(FieldReplyReminderEnabled, v))
+}
+
+// ReplyReminderEnabledNEQ applies the NEQ predicate on the "reply_reminder_enabled" field.
+func ReplyReminderEnabledNEQ(v bool) predicate.AgentRuntimeSetting {
+	return predicate.AgentRuntimeSetting(sql.FieldNEQ(FieldReplyReminderEnabled, v))
 }
 
 // ChannelIDEQ applies the EQ predicate on the "channel_id" field.

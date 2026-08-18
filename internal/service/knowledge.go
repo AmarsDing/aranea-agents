@@ -753,7 +753,9 @@ func (s *KnowledgeService) GetDocumentContent(ctx context.Context, req *v1.GetDo
 	}
 	// G2-B5：vault 文档附带编辑器数据源（body 原文 + 文件 hash）。文件刚被外部
 	// 删除等读失败场景降级为空（预览仍可用），编辑保存时 CAS 会判冲突。
-	if doc.RelPath != "" {
+	// 仅文本类 vault 文档返回 raw_content；图片/视频/音频等二进制文件跳过，
+	// 避免 protobuf string 字段因非法 UTF-8 序列化失败。
+	if doc.RelPath != "" && isTextVaultDocument(doc) {
 		if raw, hash, rawErr := s.uc.GetVaultDocumentRaw(ctx, doc.ID); rawErr == nil {
 			resp.RawContent = raw
 			resp.BaseHash = hash
@@ -1045,6 +1047,30 @@ func isMarkdownSource(source, mimeType string) bool {
 		return true
 	}
 	return false
+}
+
+// isTextVaultDocument 判定文档是否为纯文本类型（编辑器可预览）。
+// 图片/视频/音频/二进制文件返回 false，避免 raw_content 含非法 UTF-8。
+func isTextVaultDocument(doc biz.KnowledgeDocument) bool {
+	if strings.HasPrefix(doc.MimeType, "text/") ||
+		doc.MimeType == "application/json" ||
+		doc.MimeType == "application/xml" {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(doc.Source)) {
+	case ".md", ".markdown", ".txt", ".csv", ".json", ".xml", ".html", ".htm":
+		return true
+	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg":
+		return false
+	case ".mp4", ".avi", ".mov", ".mkv", ".webm":
+		return false
+	case ".mp3", ".wav", ".aac", ".flac", ".ogg":
+		return false
+	case ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx":
+		return false
+	}
+	// 未知扩展名：无 MIME 类型时按文本处理（兜底安全）。
+	return doc.MimeType == ""
 }
 
 func toProtoDocument(d biz.KnowledgeDocument) *v1.KnowledgeDocument {

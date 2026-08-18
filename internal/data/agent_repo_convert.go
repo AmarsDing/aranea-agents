@@ -74,6 +74,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	s.EnableTokenTailoring = e.EnableTokenTailoring
 	s.TokenTailoringStrategy = e.TokenTailoringStrategy
 	s.TokenTailoringSafetyMargin = e.TokenTailoringSafetyMargin
+	s.ReplyReminderEnabled = e.ReplyReminderEnabled
 	return *s
 }
 
@@ -357,6 +358,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetDreamSnapshotJSON(v.DreamSnapshotJSON).
 		SetIntentPassEnabled(v.IntentPassEnabled).
 		SetClarificationEnabled(v.ClarificationEnabled).
+		SetReplyReminderEnabled(v.ReplyReminderEnabled).
 		SetChannelID(v.ChannelID).
 		SetChatID(v.ChatID).
 		SetWorkspace(v.Workspace).

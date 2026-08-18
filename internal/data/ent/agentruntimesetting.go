@@ -194,6 +194,8 @@ type AgentRuntimeSetting struct {
 	IntentPassEnabled bool `json:"intent_pass_enabled,omitempty"`
 	// ClarificationEnabled holds the value of the "clarification_enabled" field.
 	ClarificationEnabled bool `json:"clarification_enabled,omitempty"`
+	// ReplyReminderEnabled holds the value of the "reply_reminder_enabled" field.
+	ReplyReminderEnabled bool `json:"reply_reminder_enabled,omitempty"`
 	// ChannelID holds the value of the "channel_id" field.
 	ChannelID string `json:"channel_id,omitempty"`
 	// ChatID holds the value of the "chat_id" field.
@@ -312,7 +314,7 @@ func (*AgentRuntimeSetting) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case agentruntimesetting.FieldSelfEvolve, agentruntimesetting.FieldSubagentsEnabled, agentruntimesetting.FieldToolsEnabled, agentruntimesetting.FieldMemoryEnabled, agentruntimesetting.FieldHeartbeatEnabled, agentruntimesetting.FieldEvolutionSelfEvolve, agentruntimesetting.FieldEvolutionSkillEvolve, agentruntimesetting.FieldEvolutionMetricsEnabled, agentruntimesetting.FieldEvolutionSuggestionsEnabled, agentruntimesetting.FieldL0InjectL1, agentruntimesetting.FieldL0InjectL3, agentruntimesetting.FieldL0InjectL4, agentruntimesetting.FieldL0SnapshotEnabled, agentruntimesetting.FieldL1Enabled, agentruntimesetting.FieldL1HistoryEnabled, agentruntimesetting.FieldL2EpisodeEnabled, agentruntimesetting.FieldL2IndexEnabled, agentruntimesetting.FieldL2RecallEnabled, agentruntimesetting.FieldL3Enabled, agentruntimesetting.FieldL4Enabled, agentruntimesetting.FieldL4GraphInjectNeighbors, agentruntimesetting.FieldL4IdentityInject, agentruntimesetting.FieldL4StrategyInject, agentruntimesetting.FieldEvoEnabled, agentruntimesetting.FieldEvoAutoApply, agentruntimesetting.FieldIntentPassEnabled, agentruntimesetting.FieldClarificationEnabled, agentruntimesetting.FieldContextCompactionEnabled, agentruntimesetting.FieldMemoryCompactEnabled, agentruntimesetting.FieldToolResultGateEnabled, agentruntimesetting.FieldCompressLlmCacheEnabled, agentruntimesetting.FieldEnableTokenTailoring, agentruntimesetting.FieldCompressionBufferAdaptive, agentruntimesetting.FieldSessionSummaryEnabled, agentruntimesetting.FieldToolsRetryEnabled, agentruntimesetting.FieldToolsRetryJitter, agentruntimesetting.FieldToolsParallelEnabled, agentruntimesetting.FieldToolsStreamingEnabled, agentruntimesetting.FieldToolsCircuitBreakerEnabled, agentruntimesetting.FieldToolsCommandSafetyEnabled:
+		case agentruntimesetting.FieldSelfEvolve, agentruntimesetting.FieldSubagentsEnabled, agentruntimesetting.FieldToolsEnabled, agentruntimesetting.FieldMemoryEnabled, agentruntimesetting.FieldHeartbeatEnabled, agentruntimesetting.FieldEvolutionSelfEvolve, agentruntimesetting.FieldEvolutionSkillEvolve, agentruntimesetting.FieldEvolutionMetricsEnabled, agentruntimesetting.FieldEvolutionSuggestionsEnabled, agentruntimesetting.FieldL0InjectL1, agentruntimesetting.FieldL0InjectL3, agentruntimesetting.FieldL0InjectL4, agentruntimesetting.FieldL0SnapshotEnabled, agentruntimesetting.FieldL1Enabled, agentruntimesetting.FieldL1HistoryEnabled, agentruntimesetting.FieldL2EpisodeEnabled, agentruntimesetting.FieldL2IndexEnabled, agentruntimesetting.FieldL2RecallEnabled, agentruntimesetting.FieldL3Enabled, agentruntimesetting.FieldL4Enabled, agentruntimesetting.FieldL4GraphInjectNeighbors, agentruntimesetting.FieldL4IdentityInject, agentruntimesetting.FieldL4StrategyInject, agentruntimesetting.FieldEvoEnabled, agentruntimesetting.FieldEvoAutoApply, agentruntimesetting.FieldIntentPassEnabled, agentruntimesetting.FieldClarificationEnabled, agentruntimesetting.FieldReplyReminderEnabled, agentruntimesetting.FieldContextCompactionEnabled, agentruntimesetting.FieldMemoryCompactEnabled, agentruntimesetting.FieldToolResultGateEnabled, agentruntimesetting.FieldCompressLlmCacheEnabled, agentruntimesetting.FieldEnableTokenTailoring, agentruntimesetting.FieldCompressionBufferAdaptive, agentruntimesetting.FieldSessionSummaryEnabled, agentruntimesetting.FieldToolsRetryEnabled, agentruntimesetting.FieldToolsRetryJitter, agentruntimesetting.FieldToolsParallelEnabled, agentruntimesetting.FieldToolsStreamingEnabled, agentruntimesetting.FieldToolsCircuitBreakerEnabled, agentruntimesetting.FieldToolsCommandSafetyEnabled:
 			values[i] = new(sql.NullBool)
 		case agentruntimesetting.FieldMemoryMinScore, agentruntimesetting.FieldGuardrailMaxChangePerPeriod, agentruntimesetting.FieldL0SummaryThreshold, agentruntimesetting.FieldL2EpisodeMinImportance, agentruntimesetting.FieldL3RecallMinScore, agentruntimesetting.FieldL3ArchiveThreshold, agentruntimesetting.FieldTokenTailoringSafetyMargin, agentruntimesetting.FieldCompressionBufferRatio, agentruntimesetting.FieldSoftTriggerRatio, agentruntimesetting.FieldHardTriggerRatio, agentruntimesetting.FieldToolsRetryBackoffFactor:
 			values[i] = new(sql.NullFloat64)
@@ -874,6 +876,12 @@ func (_m *AgentRuntimeSetting) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field clarification_enabled", values[i])
 			} else if value.Valid {
 				_m.ClarificationEnabled = value.Bool
+			}
+		case agentruntimesetting.FieldReplyReminderEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field reply_reminder_enabled", values[i])
+			} else if value.Valid {
+				_m.ReplyReminderEnabled = value.Bool
 			}
 		case agentruntimesetting.FieldChannelID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -1507,6 +1515,9 @@ func (_m *AgentRuntimeSetting) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("clarification_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClarificationEnabled))
+	builder.WriteString(", ")
+	builder.WriteString("reply_reminder_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReplyReminderEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("channel_id=")
 	builder.WriteString(_m.ChannelID)

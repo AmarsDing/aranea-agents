@@ -163,6 +163,21 @@ export class NodeLayer {
     return this.highlighted;
   }
 
+  /** 逐节点可见性（LOD 过滤用）：null 全可见。 */
+  setNodeVisibility(indices: Set<number> | null): void {
+    const attr = this.geometry.getAttribute('aEmph') as THREE.BufferAttribute;
+    if (indices === null) {
+      // 恢复高亮语义（由 setHighlight 驱动）
+      this.setHighlight(this.highlighted);
+      return;
+    }
+    const arr = attr.array as Float32Array;
+    for (let i = 0; i < this.count; i++) {
+      arr[i] = indices.has(i) ? EMPH_NORMAL : 0;
+    }
+    attr.needsUpdate = true;
+  }
+
   nodeSize(i: number): number {
     return this.sizes[i];
   }
