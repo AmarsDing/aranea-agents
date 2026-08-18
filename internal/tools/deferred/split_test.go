@@ -17,16 +17,17 @@ func TestSplitCoreResidentTools_SpiritProfile(t *testing.T) {
 	}
 	core, def := SplitCoreResidentTools(enabled, "spirit")
 
-	// Spirit 核心集：编排入口 + 收口 + 基础工具（构图走 deferred）
 	assertContainsAll(t, core, []string{
-		"plan_and_execute", "synthesize_results", "get_team_deliverable",
-		"cancel_orchestration",
-		"datetime", "memory_search",
+		"plan_and_execute", "datetime", "memory_search",
 	})
-	// 长尾应进 deferred
+	assertNotContainsAny(t, core, []string{
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
+		"build_orchestration_graph",
+	})
 	assertContainsAll(t, def, []string{
 		"web_fetch", "read_file", "save_file",
 		"build_orchestration_graph",
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
 		"computer_use_launch", "computer_use_session",
 		"subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel",
@@ -76,6 +77,33 @@ func TestSplitCoreResidentTools_ChatOnlyProfile(t *testing.T) {
 	assertContainsAll(t, def, []string{"todo_write", "memory_search"})
 	assertNoOverlap(t, core, def)
 	assertUnionEquals(t, core, def, enabled)
+}
+
+func TestMergeSideChannelDeferred_SpiritHidesMemoryWritesNotSearch(t *testing.T) {
+	_, def := SplitCoreResidentTools([]string{
+		"plan_and_execute", "datetime", "memory_search", "shell_exec",
+	}, "spirit")
+	merged := MergeSideChannelDeferred(def, "spirit")
+
+	assertContainsAll(t, merged, []string{
+		"shell_exec",
+		"memory_add", "memory_update", "memory_delete", "memory_load",
+		"read_upstream_deliverable",
+		"working_memory_write", "working_memory_read", "working_memory_list",
+		"working_memory_patch", "working_memory_delete", "working_memory_complete",
+		"search_messages", "list_agent_sessions", "read_session_history",
+	})
+	assertNotContainsAny(t, merged, []string{
+		"memory_search", "memory_remember", "plan_and_execute", "datetime",
+	})
+}
+
+func TestMergeSideChannelDeferred_SkipsKeysAlreadyInCore(t *testing.T) {
+	merged := MergeSideChannelDeferred(nil, "spirit")
+	assertContainsAll(t, merged, []string{
+		"memory_add", "read_upstream_deliverable", "working_memory_write",
+	})
+	assertNotContainsAny(t, merged, []string{"memory_search", "memory_remember"})
 }
 
 func TestSplitCoreResidentTools_EmptyEnabled(t *testing.T) {
@@ -139,6 +167,19 @@ func assertContainsAll(t *testing.T, set []string, expected []string) {
 	for _, e := range expected {
 		if !m[e] {
 			t.Errorf("expected %q in set %v", e, set)
+		}
+	}
+}
+
+func assertNotContainsAny(t *testing.T, set []string, forbidden []string) {
+	t.Helper()
+	m := make(map[string]bool, len(set))
+	for _, s := range set {
+		m[s] = true
+	}
+	for _, e := range forbidden {
+		if m[e] {
+			t.Errorf("did not expect %q in set %v", e, set)
 		}
 	}
 }

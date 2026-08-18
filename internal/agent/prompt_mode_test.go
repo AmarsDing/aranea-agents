@@ -92,9 +92,21 @@ func TestSkillOptionsForAgent_SpiritDropsExecSuite(t *testing.T) {
 	if profile != trpcllmagent.SkillToolProfileKnowledgeOnly || hints {
 		t.Fatalf("spirit+complete must be knowledge_only, got profile=%v hints=%v", profile, hints)
 	}
+	allowed := allowedSkillToolsForAgent(ag)
+	if len(allowed) != 1 || allowed[0] != trpcllmagent.SkillToolLoad {
+		t.Fatalf("spirit must allow only skill_load, got %v", allowed)
+	}
+	ag.Settings.ToolsProfile = "chat_only"
+	allowed = allowedSkillToolsForAgent(ag)
+	if len(allowed) != 1 || allowed[0] != trpcllmagent.SkillToolLoad {
+		t.Fatalf("chat_only must allow only skill_load, got %v", allowed)
+	}
 	ag.Settings.ToolsProfile = "coding"
 	profile, _ = skillOptionsForAgent(ag)
 	if profile != trpcllmagent.SkillToolProfileFull {
 		t.Fatalf("coding+complete must keep full skill suite, got %v", profile)
+	}
+	if allowedSkillToolsForAgent(ag) != nil {
+		t.Fatalf("coding must keep profile default skill tools, got %v", allowedSkillToolsForAgent(ag))
 	}
 }

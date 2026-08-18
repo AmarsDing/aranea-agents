@@ -20,6 +20,8 @@ export interface QualitySpec {
   maxPixelRatio: number;
   /** 标签候选池上限（degree top-K）。 */
   labelCandidates: number;
+  /** V13 甜甜圈节点形态（LOW 档回退柔光点保帧率）。 */
+  donut: boolean;
   /** HUD 指示短名。 */
   label: 'HIGH' | 'MID' | 'LOW';
 }
@@ -27,9 +29,9 @@ export interface QualitySpec {
 export const QUALITY_SPECS: readonly QualitySpec[] = [
   // v3 可读性：标签候选 200/100/40 → 80/48/24；UX 再优化 → 20/14/8（标签已改屏幕恒尺寸，
   // 只留最核心 hub 常驻；hover/选中走焦点标签通道，任何节点命名可达）
-  { bloom: true, bloomScale: 0.5, maxPixelRatio: 2, labelCandidates: 20, label: 'HIGH' },
-  { bloom: true, bloomScale: 0.34, maxPixelRatio: 1.5, labelCandidates: 14, label: 'MID' },
-  { bloom: false, bloomScale: 0.25, maxPixelRatio: 1, labelCandidates: 8, label: 'LOW' },
+  { bloom: true, bloomScale: 0.5, maxPixelRatio: 2, labelCandidates: 20, donut: true, label: 'HIGH' },
+  { bloom: true, bloomScale: 0.34, maxPixelRatio: 1.5, labelCandidates: 14, donut: true, label: 'MID' },
+  { bloom: false, bloomScale: 0.25, maxPixelRatio: 1, labelCandidates: 8, donut: false, label: 'LOW' },
 ] as const;
 
 /** 初始分级阈值（节点数）。 */

@@ -67,12 +67,14 @@ const EDGE_FRAGMENT = `
   uniform float uHoverAlpha;
   uniform float uRestDim;
   uniform float uHoverBoost;
+  uniform vec3 uHiColor;
   varying vec3 vColor;
   varying float vHi;
   varying float vT;
   void main() {
     float alpha = mix(uRestAlpha, uHoverAlpha, vHi);
-    vec3 col = vColor * mix(uRestDim, uHoverBoost, vHi);
+    // V13：高亮链路统一亮青（与 rest 色脱钩——统一暗青灰的常态边也能亮青聚焦）
+    vec3 col = mix(vColor * uRestDim, uHiColor * uHoverBoost, vHi);
     if (vHi > 0.5) {
       // 流动光脉冲：沿边跑动的数据流（hover 专属科幻感）；UX 收敛加色防白幕
       float pulse = 0.5 + 0.5 * sin(uTime * 7.0 - vT * 16.0);
@@ -147,6 +149,7 @@ export class EdgeLayer {
         uHoverAlpha: { value: EDGE_HOVER_ALPHA },
         uRestDim: { value: EDGE_REST_DIM },
         uHoverBoost: { value: EDGE_HOVER_BOOST },
+        uHiColor: { value: new THREE.Color('#39e6ff') },
       },
       vertexShader: EDGE_VERTEX,
       fragmentShader: EDGE_FRAGMENT,
@@ -178,6 +181,27 @@ export class EdgeLayer {
   /** Phase 2：边捆绑强度（0=直线，0.3=轻度捆绑成束；与 curvature 互斥，bundling 优先）。 */
   setBundling(v: number): void {
     this.material.uniforms.uBundling.value = v;
+  }
+
+  /** V13：边颜色热切换（着色模式 unified/typed，不重建层）。colors = 每边 RGB（edgeCount×3）。 */
+  setColors(colors: Float32Array): void {
+    if (colors.length !== this.edgeCount * 3) {
+      throw new Error(`EdgeLayer.setColors: 期望 ${this.edgeCount * 3}，实得 ${colors.length}`);
+    }
+    const attr = this.geometry.getAttribute('aColor') as THREE.BufferAttribute;
+    const arr = attr.array as Float32Array;
+    for (let e = 0; e < this.edgeCount; e++) {
+      const r = colors[e * 3];
+      const g = colors[e * 3 + 1];
+      const b = colors[e * 3 + 2];
+      for (let v = 0; v < this.verticesPerEdge; v++) {
+        const base = (e * this.verticesPerEdge + v) * 3;
+        arr[base] = r;
+        arr[base + 1] = g;
+        arr[base + 2] = b;
+      }
+    }
+    attr.needsUpdate = true;
   }
 
   /** hover 关联边 aHi=1，其余回 0；null 全 0。 */

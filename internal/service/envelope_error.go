@@ -35,8 +35,14 @@ func turnErrorHint(code TurnErrorCode) string {
 		return "移除不支持的附件，或切换到支持视觉/多模态的模型"
 	case TurnErrLLMCallFailed:
 		return "可切换模型或稍后重试；持续失败请查看 Monitor 用量事件"
-	case TurnErrTurnTimeout, TurnErrFirstByteTimeout:
+	case TurnErrTurnTimeout:
 		return "缩短提问或切换响应更快的模型"
+	case TurnErrFirstByteTimeout:
+		return "供应商无响应时请稍后重试或切换模型；网络波动会自动重连"
+	case TurnErrProviderBilling:
+		return "请在供应商控制台充值后重新发送"
+	case TurnErrProviderAuth:
+		return "检查供应商 API Key 是否有效，或更换模型"
 	case TurnErrEmptyReply:
 		return "调整提问方式或关闭过于严格的工具限制"
 	case TurnErrAgentForbidden:

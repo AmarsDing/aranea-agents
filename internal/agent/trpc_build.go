@@ -258,6 +258,9 @@ func buildTRPCLLMAgentWithToolSets(ctx context.Context, ag biz.Agent, deps TRPCB
 			trpcllmagent.WithSkillToolProfile(skillProfile),
 			trpcllmagent.WithSkillsDirectoryHints(dirHints),
 		)
+		if allowed := allowedSkillToolsForAgent(ag); len(allowed) > 0 {
+			opts = append(opts, trpcllmagent.WithAllowedSkillTools(allowed...))
+		}
 	}
 
 	var assembledToolSets []trpctool.ToolSet

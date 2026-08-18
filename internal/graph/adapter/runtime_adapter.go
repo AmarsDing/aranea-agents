@@ -154,6 +154,10 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 
 	eventCh, err := r.runner.Run(runCtx, graphRunnerUserID, r.execID, msg,
 		trpcagent.WithRuntimeState(runtimeState),
+		// 框架 v1.11 修复管线：参数 JSON 修复 + 文本工具调用提取
+		// （gns3 等复杂参数工具收益最大）。
+		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
+		trpcagent.WithToolCallTextRepairEnabled(true),
 	)
 	if err != nil {
 		r.clearRunCancel()
@@ -282,6 +286,9 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 	eventCh, err := r.runner.Run(runCtx, graphRunnerUserID, r.execID,
 		trpcmodel.Message{Role: trpcmodel.RoleUser},
 		trpcagent.WithRuntimeState(runtimeState),
+		// 同 Run：框架 v1.11 修复管线。
+		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
+		trpcagent.WithToolCallTextRepairEnabled(true),
 	)
 	if err != nil {
 		r.clearRunCancel()

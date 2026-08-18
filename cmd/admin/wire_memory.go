@@ -19,6 +19,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -289,6 +290,7 @@ func providePersistenceSet(
 	reconsolidator biz.L4Reconsolidator,
 	lg loggateway.Logger,
 	deadLetterRepo *data.MemoryJobDeadLetterRepo,
+	evolutionSvc trpcevolution.Service,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
 	if d != nil {
@@ -316,5 +318,5 @@ func providePersistenceSet(
 	if d != nil {
 		rollback = sessiontrpc.NewRunnerRollbackStore(d.RWDB(), d.Dialect(), lg)
 	}
-	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback}
+	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback, Evolution: evolutionSvc}
 }

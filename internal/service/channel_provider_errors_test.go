@@ -36,6 +36,24 @@ func TestClassifyChannelTurnError_turnTimeout(t *testing.T) {
 	}
 }
 
+func TestClassifyChannelTurnError_billing(t *testing.T) {
+	got := classifyChannelTurnError(TurnError(TurnErrProviderBilling, "Insufficient Balance"))
+	if got != biz.ChannelTurnErrBilling {
+		t.Errorf("got %q, want billing", got)
+	}
+	got = classifyChannelTurnError(errors.New("Error: Insufficient Balance"))
+	if got != biz.ChannelTurnErrBilling {
+		t.Errorf("string billing got %q, want billing", got)
+	}
+}
+
+func TestClassifyChannelTurnError_auth(t *testing.T) {
+	got := classifyChannelTurnError(TurnError(TurnErrProviderAuth, "invalid api key"))
+	if got != biz.ChannelTurnErrAuth {
+		t.Errorf("got %q, want auth", got)
+	}
+}
+
 func TestClassifyChannelTurnError_firstByteTimeout(t *testing.T) {
 	got := classifyChannelTurnError(TurnError(TurnErrFirstByteTimeout, "30s"))
 	if got != biz.ChannelTurnErrTimeout {

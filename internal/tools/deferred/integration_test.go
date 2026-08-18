@@ -265,6 +265,58 @@ func TestToolFilter_HidesHostexecAliasByBaseName(t *testing.T) {
 	}
 }
 
+func TestToolFilter_HidesMemoryAddUntilActivated(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "memory_add", BaseName: "memory_add", Description: "Add a memory"},
+	}
+	manager := NewDeferredToolManager(catalog)
+	filter := manager.ToolFilter()
+
+	inner := trpcfunction.NewFunctionTool(
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+		trpcfunction.WithName("memory_add"),
+		trpcfunction.WithDescription("Add a memory"),
+	)
+	wrapped := NewDeferredCallableTool(inner, loggateway.NewNoop())
+	manager.RegisterTool("memory_add", wrapped)
+
+	ctx := withTestInvocation(context.Background())
+	if filter(ctx, wrapped) {
+		t.Fatal("memory_add must stay hidden until tool_load")
+	}
+	writeActivatedSet(ctx, "memory_add")
+	if !filter(ctx, wrapped) {
+		t.Fatal("memory_add should pass after activation")
+	}
+}
+
+func TestToolFilter_HidesWorkingMemoryWriteByBaseName(t *testing.T) {
+	catalog := []DeferredToolEntry{
+		{Name: "working_memory_write", BaseName: "write", Description: "Write a working-memory field"},
+	}
+	manager := NewDeferredToolManager(catalog)
+	filter := manager.ToolFilter()
+
+	inner := trpcfunction.NewFunctionTool(
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+		trpcfunction.WithName("write"),
+		trpcfunction.WithDescription("Write a working-memory field"),
+	)
+	deferred := NewDeferredCallableTool(inner, loggateway.NewNoop())
+	manager.RegisterTool("working_memory_write", deferred)
+	named := &fakeInnerWrapper{inner: deferred, name: "working_memory_write"}
+
+	ctx := withTestInvocation(context.Background())
+	if filter(ctx, named) {
+		t.Fatal("working_memory_write must stay hidden until tool_load")
+	}
+	writeActivatedSet(ctx, "working_memory_write")
+	writeActivatedSet(ctx, "write")
+	if !filter(ctx, named) {
+		t.Fatal("working_memory_write should pass after activating the catalog name")
+	}
+}
+
 func TestToolFilter_PerSessionIsolation(t *testing.T) {
 	catalog := buildTestCatalog()
 	manager := newTestManager(catalog)

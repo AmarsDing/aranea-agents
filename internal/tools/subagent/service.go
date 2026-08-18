@@ -636,6 +636,10 @@ func (s *Service) runChild(
 		trpcagent.WithInjectedContextMessages([]trpcmodel.Message{
 			trpcmodel.NewSystemMessage(kindSystemPrompt(record.Kind)),
 		}),
+		// 框架 v1.11 修复管线：参数 JSON 修复 + 文本工具调用提取（与
+		// chat 主路径对齐）。
+		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
+		trpcagent.WithToolCallTextRepairEnabled(true),
 	}
 
 	evts, err := s.runner.Run(

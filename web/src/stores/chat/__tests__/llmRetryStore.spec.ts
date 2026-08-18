@@ -17,6 +17,7 @@ describe('useLlmRetryStore', () => {
     store.noteRetry('s1', { attempt: 2, max_retries: -1, delay_ms: 2000, error: 'connection reset' });
     const state = store.retryFor('s1');
     expect(state).not.toBeNull();
+    expect(state?.kind).toBe('retry');
     expect(state?.attempt).toBe(2);
     expect(state?.maxRetries).toBe(-1);
     expect(state?.delayMs).toBe(2000);
@@ -75,5 +76,25 @@ describe('useLlmRetryStore', () => {
     store.clearAll();
     expect(store.retryFor('s1')).toBeNull();
     expect(store.retryFor('s2')).toBeNull();
+  });
+
+  it('noteAlert stores durable billing/stall/auth kinds', () => {
+    const store = useLlmRetryStore();
+    store.noteAlert('s1', 'billing', { error: 'Insufficient Balance', message: '请充值' });
+    expect(store.retryFor('s1')?.kind).toBe('billing');
+    expect(store.retryFor('s1')?.error).toBe('Insufficient Balance');
+  });
+
+  it('clearTransient keeps billing/stall/auth and drops retry', () => {
+    const store = useLlmRetryStore();
+    store.noteRetry('s1', { attempt: 1, delay_ms: 1000, error: 'reset' });
+    store.noteAlert('s2', 'billing', { error: '欠费' });
+    store.noteAlert('s3', 'stall', { error: 'first byte timeout' });
+    store.clearTransient('s1');
+    store.clearTransient('s2');
+    store.clearTransient('s3');
+    expect(store.retryFor('s1')).toBeNull();
+    expect(store.retryFor('s2')?.kind).toBe('billing');
+    expect(store.retryFor('s3')?.kind).toBe('stall');
   });
 });

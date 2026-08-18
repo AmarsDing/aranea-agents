@@ -267,6 +267,7 @@ Chat 是用户与 Agent/Team 交互的核心入口，负责 HTTP/WS 发起对话
 | 20 | 执行卡片持久化 + catalog 名 + Team 标识 + 流式修复 | P1 | ✅ |
 | 21 | **T1.1** 移除 24h hard deadline + Team/pending/resumeAwait 路径统一 WithCancel（No-Timeout 原则） | P0 | ✅ Sprint 1 |
 | 22 | **T1.2** LLM 无限重试 + llm_retry 事件 + RetryCallback 回调模式 | P0 | ✅ Sprint 1 |
+| 22b | **T1.2.1** 供应商故障分类（欠费/鉴权/静默）+ 首包 select 可打断 + 持久横幅 | P0 | ✅ 2026-08-19 |
 | 23 | **T1.3** processPendingQueue 迭代式循环（替代 goroutine 递归）+ inPendingLoop 标志 | P0 | ✅ Sprint 1 |
 | 24 | **T1.4** PendingMessageQueue snapshot 持久化（进程重启恢复） | P0 | ✅ Sprint 1 |
 | 25 | **ADR-02 D1** ActivityEventSequencer 并行异步持久化 | P0 | ✅ Phase 10 |

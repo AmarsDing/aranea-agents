@@ -53,7 +53,7 @@ export function useChatV2EventHandlers(deps: {
     // (metrics refresh, spirit store updates, run-status application) that the
     // store cannot provide.
     if (envelope.kind === 'system.notice') {
-      handleV2SystemNotice(envelope.payload as SystemNoticeEventPayload);
+      handleV2SystemNotice(envelope.payload as SystemNoticeEventPayload, envelope.session_id);
       return;
     }
     if (envelope.kind === 'system.run_status') {
@@ -86,16 +86,20 @@ export function useChatV2EventHandlers(deps: {
     // again, a new turn starting, or a terminal step/turn/task event) means
     // the retry loop ended — clear the transient "reconnecting" state.
     switch (envelope.kind) {
-      case 'step.streaming':
-      case 'step.completed':
-      case 'step.failed':
-      case 'turn.started':
-      case 'turn.completed':
-      case 'turn.failed':
-      case 'task.completed':
-      case 'task.failed': {
+      case 'turn.started': {
         const sid = String(envelope.session_id ?? '').trim() || deps.selectedSessionId();
         if (sid) llmRetryStore.clear(sid);
+        break;
+      }
+      case 'step.streaming':
+      case 'step.completed':
+      case 'turn.completed':
+      case 'task.completed':
+      case 'step.failed':
+      case 'turn.failed':
+      case 'task.failed': {
+        const sid = String(envelope.session_id ?? '').trim() || deps.selectedSessionId();
+        if (sid) llmRetryStore.clearTransient(sid);
         break;
       }
     }
@@ -151,8 +155,8 @@ export function useChatV2EventHandlers(deps: {
   /**
    * Route v2 system.notice events to side-effects without AF conversion.
    */
-  function handleV2SystemNotice(payload: SystemNoticeEventPayload) {
-    const sid = deps.selectedSessionId();
+  function handleV2SystemNotice(payload: SystemNoticeEventPayload, sessionId?: string) {
+    const sid = String(sessionId ?? '').trim() || deps.selectedSessionId();
     if (!sid) return;
     const noticeType = String(payload.NoticeType ?? '').trim();
     if (!noticeType) return;
@@ -177,6 +181,15 @@ export function useChatV2EventHandlers(deps: {
     // as a dedicated banner (not an activity node) and cleared on stream resume.
     if (noticeType === 'llm_retry') {
       llmRetryStore.noteRetry(sid, meta);
+    }
+    if (noticeType === 'llm_billing') {
+      llmRetryStore.noteAlert(sid, 'billing', meta);
+    }
+    if (noticeType === 'llm_auth') {
+      llmRetryStore.noteAlert(sid, 'auth', meta);
+    }
+    if (noticeType === 'llm_stall') {
+      llmRetryStore.noteAlert(sid, 'stall', meta);
     }
     spiritStore.handleSystemNotice(noticeType, meta);
     deps.contextualLoading.onSpiritNoticeType(noticeType);
@@ -209,7 +222,7 @@ export function useChatV2EventHandlers(deps: {
       runStatus === SESSION_RUN_STATUS.CANCELLED ||
       runStatus === SESSION_RUN_STATUS.IDLE
     ) {
-      llmRetryStore.clear(sid);
+      llmRetryStore.clearTransient(sid);
       // 2026-08-06: pre-orchestration phases (routing/…/starting) set the
       // loading line on every turn; direct-answer turns have no
       // orchestration.completed event, so terminal run status is the only

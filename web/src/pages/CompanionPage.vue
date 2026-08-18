@@ -50,10 +50,13 @@
         </q-banner>
         <LlmRetryBanner
           v-if="llmRetry"
+          :kind="llmRetry.kind"
           :attempt="llmRetry.attempt"
           :max-retries="llmRetry.maxRetries"
           :delay-ms="llmRetry.delayMs"
           :error="llmRetry.error"
+          :message="llmRetry.message"
+          @dismiss="dismissLlmAlert"
         />
         <ChatMessagePanel
           v-model="workspace.composer.inputText"
@@ -291,6 +294,10 @@ const llmRetry = computed(() => {
   const sid = workspace.session.selectedSessionForUi?.id;
   return sid ? llmRetryStore.retryFor(sid) : null;
 });
+function dismissLlmAlert() {
+  const sid = workspace.session.selectedSessionForUi?.id;
+  if (sid) llmRetryStore.clear(sid);
+}
 
 // The workspace's fileRef is bound by ChatPage on desktop; the companion page
 // hosts its own hidden input. Only one route page is mounted at a time.

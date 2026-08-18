@@ -9,6 +9,8 @@ const (
 	ChannelTurnErrTimeout         ChannelTurnErrorKind = "timeout"
 	ChannelTurnErrRateLimit       ChannelTurnErrorKind = "rate_limit"
 	ChannelTurnErrContextOverflow ChannelTurnErrorKind = "context_overflow"
+	ChannelTurnErrBilling         ChannelTurnErrorKind = "billing"
+	ChannelTurnErrAuth            ChannelTurnErrorKind = "auth"
 	ChannelTurnErrGeneric         ChannelTurnErrorKind = "generic"
 )
 
@@ -19,6 +21,8 @@ const (
 	ChannelTurnErrorSyncCapMsg         = "任务执行较慢，建议使用 /background 转入后台继续。"
 	ChannelTurnErrorGenericMsg         = "任务执行失败，请稍后重试。"
 	ChannelTurnErrorBusyMsg            = "上一条仍在处理中，请稍候再试。"
+	ChannelTurnErrorBillingMsg         = "模型账户余额不足，请充值后再试。"
+	ChannelTurnErrorAuthMsg            = "模型鉴权失败，请检查供应商密钥配置。"
 	ChannelTurnEmptyReplyMsg           = "助手未返回内容，请稍后重试。"
 )
 
@@ -33,6 +37,10 @@ func FormatChannelTurnErrorMessage(kind ChannelTurnErrorKind) string {
 		return ChannelTurnErrorRateLimitMsg
 	case ChannelTurnErrContextOverflow:
 		return ChannelTurnErrorContextOverflowMsg
+	case ChannelTurnErrBilling:
+		return ChannelTurnErrorBillingMsg
+	case ChannelTurnErrAuth:
+		return ChannelTurnErrorAuthMsg
 	case ChannelTurnErrNone:
 		return ""
 	default:

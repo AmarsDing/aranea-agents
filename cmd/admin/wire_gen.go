@@ -66,6 +66,7 @@ import (
 	session2 "aranea-agents/internal/session"
 	session4 "aranea-agents/internal/session/trpc"
 	skill2 "aranea-agents/internal/skill"
+	evolution2 "aranea-agents/internal/skill/evolution"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/watch"
@@ -92,6 +93,7 @@ import (
 	"strings"
 	"time"
 	artifact2 "trpc.group/trpc-go/trpc-agent-go/artifact"
+	"trpc.group/trpc-go/trpc-agent-go/evolution"
 	graph2 "trpc.group/trpc-go/trpc-agent-go/graph"
 	memory2 "trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -209,7 +211,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	memoryAdminUsecase := provideMemoryAdminUsecase(memoryAdminDeps, memoryUsecase, memoryFactIndexSyncer, dataData, loggatewayLogger)
 	l4Reconsolidator := provideReconsolidationService(dataData, loggatewayLogger)
 	memoryJobDeadLetterRepo := data.NewMemoryJobDeadLetterRepo(dataData)
-	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo)
+	repository := service.NewSkillDBRepository(skillUsecase, loggatewayLogger)
+	evolutionService := provideEvolutionService(llmProviderModelUsecase, repository, loggatewayLogger)
+	persistenceSet := providePersistenceSet(dataData, agentMCPTooling, sessionService, artifactService, artifactUsecase, memoryService, memoryJobQueue, memoryPolicyEngine, memoryL2Recaller, memoryL3Recaller, memoryCompositeRecaller, memoryAdminUsecase, l4Reconsolidator, loggatewayLogger, memoryJobDeadLetterRepo, evolutionService)
 	promptFileAIEditor := providePromptFileAIEditor(llmProviderModelUsecase, persistenceSet, loggatewayLogger)
 	agentTemplateRepo := data.NewAgentTemplateRepo(dataData)
 	agentTemplateUsecase := biz.NewAgentTemplateUsecase(agentTemplateRepo)
@@ -264,7 +268,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 		return wireOut{}, nil, err
 	}
 	agentExistenceCheckerFunc := biz.ProvideAgentExistenceChecker(agentRepository)
-	repository := service.NewSkillDBRepository(skillUsecase, loggatewayLogger)
 	factory := provideCodeExecutorFactory(loggatewayLogger)
 	knowledgeRepo := data.NewKnowledgeRepoFromData(dataData)
 	retriever := service.NewKnowledgeRetriever(multiProviderEmbedder, knowledgeRepo, loggatewayLogger)
@@ -582,7 +585,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	packService := service.NewPackService(packRepoAdapter, loggatewayLogger, monitorBus, publishGate)
 	skillCuratorService := service.NewSkillCuratorService(skillIntelligenceUsecase, loggatewayLogger)
 	skillEvolutionSuggestionService := service.NewSkillEvolutionSuggestionService(skillIntelligenceUsecase, skillCuratorService, sandboxRunner, skillUsecase, loggatewayLogger)
-	evolutionService := service.NewEvolutionService(unifiedEvolutionRepo, loggatewayLogger)
+	serviceEvolutionService := service.NewEvolutionService(unifiedEvolutionRepo, loggatewayLogger)
 	selfImprovementRunRepo := data.NewSelfImprovementRunRepo(dataData, loggatewayLogger)
 	repoSandboxRunner := provideRepoSandboxRunner(selfImprovement, loggatewayLogger)
 	siApplier := provideSIApplier(repoSandboxRunner, loggatewayLogger)
@@ -614,7 +617,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	learningLoopService := service.NewLearningLoopService(learningLoopUsecase)
 	computerUseService := service.NewComputerUseService(computerUseUsecase)
 	agentBridgeAPI := service.NewAgentBridgeAPI(agentBridgeService)
-	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, evolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
+	serviceRegistry := server.NewServiceRegistry(adminService, avatarService, agentService, llmProviderModelService, hookService, cronService, pluginService, mcpServerService, skillService, toolService, serviceSessionService, sessionV2Service, channelService, usageService, monitorService, serviceMemoryService, systemSettingService, modelCatalogService, teamService, chatService, graphService, serviceArtifactService, knowledgeService, evaluationService, a2AService, endpointRegistry, federationService, ecosystemService, gatewayService, channelIngress, aiRefineService, taxonomyService, organizationService, skillEvolutionService, skillIntelligenceService, skillDedupService, packService, skillEvolutionSuggestionService, serviceEvolutionService, selfImprovementService, ecosystemPresetService, aguiCompatService, openAISessionCompatService, a2AExtensionCompatService, twinOpenAPICompatService, runtimeProfileService, learningLoopService, computerUseService, agentBridgeAPI)
 	grpcServer := server.NewGRPCServer(confServer, serviceRegistry, loggatewayLogger)
 	speechRegistry := provideSpeechRegistry()
 	speechConfigReader := provideSpeechConfigReader(systemSettingRepo, loggatewayLogger)
@@ -631,7 +634,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, runtime *conf.Runtime
 	mcpToolSetPool := provideMCPToolSetPool()
 	shardCache := provideGlobalShardCache()
 	policyResolver := provideAgentPolicyResolver(agentRepository, loggatewayLogger)
-	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, loggatewayLogger)
+	lifecycleManager := provideLifecycleManager(buildCache, mcpToolSetPool, shardCache, policyResolver, monitorBus, evolutionService, loggatewayLogger)
 	wsv2Subscriber := provideWSV2Subscriber(v2Bus, wsServer, loggatewayLogger)
 	trpcBuilderDeps := provideTRPCBuilderDeps(llmProviderModelUsecase, toolUsecase, agentUsecase, agentRepository, systemSettingRepo, skillUsecase, persistenceSet, repository, factory, retriever, knowledgeUsecase, manager, organizationUsecase, toolResultGate, router, subagentService, a2aUsecase, bridge, loggatewayLogger)
 	vaultSyncSupervisor := provideVaultSyncSupervisor(knowledgeUsecase, vaultFiler, multiProviderEmbedder, entityPipeline, relationExtractor, extractorRegistry, loggatewayLogger)
@@ -881,9 +884,7 @@ func provideParallelToolExecutor(lg loggateway.Logger) *tools.ParallelToolExecut
 	if root := tools.LookupGitRoot(tools.WorkspaceRootFromEnv()); root != "" {
 		iso, err := tools.NewWorktreeIsolator(root, nil, lg)
 		if err != nil {
-			lg.Warn("parallel tool worktree isolator skipped",
-				loggateway.StepID("tool.parallel.worktree"),
-				loggateway.Err(err))
+			lg.Warn("parallel tool worktree isolator skipped", loggateway.StepID("tool.parallel.worktree"), loggateway.Err(err))
 		} else {
 			opts = append(opts, tools.WithWorktreeIsolator(iso))
 		}
@@ -936,7 +937,7 @@ func provideGlobalShardCache() agent.ShardCache {
 // the lifecycle abstraction. The policyResolver parameter is an init-time
 // dependency only (P1-2): the resolver is a pure in-memory snapshot with no
 // shutdown work, but it must be constructed (and first-loaded) at startup.
-func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, lg loggateway.Logger) *lifecycle.LifecycleManager {
+func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetPool, shardCache agent.ShardCache, policyResolver *agent.PolicyResolver, monitorBus contract.MonitorBus, evolutionSvc evolution.Service, lg loggateway.Logger) *lifecycle.LifecycleManager {
 	cache.SetLogger(lg)
 	cache.SetMonitorBus(monitorBus)
 	mcpPool.SetLogger(lg)
@@ -947,6 +948,8 @@ func provideLifecycleManager(cache *agent.BuildCache, mcpPool *tools.MCPToolSetP
 	mgr.Register("mcp-toolset-pool", mcpPool)
 
 	mgr.Register("global-shard-cache", shardCache)
+	// 框架 v1.11 技能演化 worker：进程退出时优雅停止（nil 时 Register 跳过）。
+	mgr.Register("skill-evolution-service", evolutionSvc)
 	return mgr
 }
 
@@ -1643,6 +1646,22 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
 	})
+}
+
+// provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
+// 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
+// runner 侧自动跳过演化学习。
+func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo skill.Repository, lg loggateway.Logger) evolution.Service {
+	svc := evolution2.NewService(evolution2.Config{
+		Catalog: catalog,
+		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		Repo:    repo,
+		Lg:      lg,
+	})
+	if svc == nil {
+		return nil
+	}
+	return svc
 }
 
 func provideSessionMemoryResync(admin biz.MemoryAdminDeps) session2.MemoryResync {

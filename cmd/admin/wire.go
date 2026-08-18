@@ -66,6 +66,7 @@ import (
 	araneasession "aranea-agents/internal/session"
 	sessiontrpc "aranea-agents/internal/session/trpc"
 	"aranea-agents/internal/skill"
+	skillevolution "aranea-agents/internal/skill/evolution"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
@@ -85,6 +86,7 @@ import (
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -1033,6 +1035,22 @@ func provideTRPCSessionService(d *data.Data, catalog *biz.LlmProviderModelUsecas
 		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
 		Lg:      lg,
 	})
+}
+
+// provideEvolutionService 装配框架 v1.11 技能演化 service（hold-all 模式，
+// 详见 internal/skill/evolution 包注释）。模型目录/技能 repo 缺失时返回 nil，
+// runner 侧自动跳过演化学习。
+func provideEvolutionService(catalog *biz.LlmProviderModelUsecase, repo trpcskill.Repository, lg loggateway.Logger) trpcevolution.Service {
+	svc := skillevolution.NewService(skillevolution.Config{
+		Catalog: catalog,
+		RT:      &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}},
+		Repo:    repo,
+		Lg:      lg,
+	})
+	if svc == nil {
+		return nil
+	}
+	return svc
 }
 
 func provideSessionMemoryResync(admin biz.MemoryAdminDeps) araneasession.MemoryResync {
@@ -3780,6 +3798,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.Runtime, *conf.SelfImprovement, *co
 		provideMemoryCompositeRecall,
 		provideMemoryTRPCService,
 		provideLinkEvolutionService,
+		provideEvolutionService,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
 		provideMCPMetadataEditor,

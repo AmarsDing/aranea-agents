@@ -33,13 +33,16 @@ export interface ForceParams {
   discFlatten: number;
   /** M2 星系盘：螺旋切向力强度（0=关闭）。XZ 平面绕 Y 轴，径向包络中心弱边缘饱和。 */
   spiralSwirl: number;
+  /** V13-B：tier 径向分层力强度（0=关闭）。按 tierTargetRadius 把节点拉向目标半径壳层。 */
+  stratify: number;
 }
 
 export const FORCE_DEFAULTS: ForceParams = {
   repulsion: 30,
-  linkStrength: 0.05,
-  linkDistance: 30,
-  gravity: 0.011,
+  // V13-A3 主簇紧凑化：弹簧更强/理想距更短/向心更强（原 0.05/30/0.011 hairball 偏散）
+  linkStrength: 0.07,
+  linkDistance: 24,
+  gravity: 0.015,
   damping: 0.9,
   theta: 0.8,
   groupCohesion: 0.08,
@@ -47,6 +50,8 @@ export const FORCE_DEFAULTS: ForceParams = {
   coreGravity: 0,
   discFlatten: 0,
   spiralSwirl: 0,
+  // V13-B：默认开（仅在注入 tierTargetRadius 时生效，否则零作用）
+  stratify: 0.02,
 };
 
 /** M2 星系盘布局预设（布局切换 = setParams(GALAXY_FORCE_PARAMS) + reheat）。 */
@@ -56,6 +61,7 @@ export const GALAXY_FORCE_PARAMS: Partial<ForceParams> = {
   spiralSwirl: 0.02,
   gravity: 0.004, // 默认向心减弱（核心引力接管）
   groupSeparation: 60, // 簇间更紧凑（盘内悬臂簇）
+  stratify: 0, // 盘内由 coreGravity/压扁/旋臂接管，径向分层关闭
 };
 
 const ALPHA_DECAY = 0.0228;
@@ -69,6 +75,10 @@ export interface ForceEngineOpts {
   groupId?: Uint16Array;
   /** per-node 斥力倍率（分层 charge；缺省全 1）。 */
   chargeScale?: Float32Array;
+  /** V13-B：per-node 目标半径壳层（stratify>0 时生效；<0 = 该节点不分层，如孤立/末梢）。 */
+  tierTargetRadius?: Float32Array;
+  /** V13-A1：初始即钉住的节点（孤立节点先冻在播种球壳上，收敛后统一停泊环）。 */
+  pinnedInit?: Uint8Array;
 }
 
 export class ForceEngine {
@@ -85,6 +95,7 @@ export class ForceEngine {
   private scratch = new Float32Array(3);
   private tree: Octree;
   private chargeScale: Float32Array | null;
+  private tierTargetRadius: Float32Array | null;
 
   private groupId: Uint16Array;
   private numGroups: number;
@@ -103,6 +114,8 @@ export class ForceEngine {
     this.pinned = new Uint8Array(opts.count);
     this.tree = new Octree(opts.count);
     this.chargeScale = opts.chargeScale ?? null;
+    this.tierTargetRadius = opts.tierTargetRadius ?? null;
+    if (opts.pinnedInit) this.pinned.set(opts.pinnedInit);
 
     this.groupId = opts.groupId ?? new Uint16Array(opts.count);
     let maxG = 0;
@@ -140,6 +153,17 @@ export class ForceEngine {
 
   unpin(i: number): void {
     this.pinned[i] = 0;
+  }
+
+  /** V13-A1 停泊：钉住并写坐标，但不 reheat（收敛后调用不重启物理，由调用方补一次位置广播）。 */
+  park(i: number, x: number, y: number, z: number): void {
+    this.pinned[i] = 1;
+    this.pos[i * 3] = x;
+    this.pos[i * 3 + 1] = y;
+    this.pos[i * 3 + 2] = z;
+    this.vel[i * 3] = 0;
+    this.vel[i * 3 + 1] = 0;
+    this.vel[i * 3 + 2] = 0;
   }
 
   reheat(): void {
@@ -244,8 +268,9 @@ export class ForceEngine {
     }
 
     // 3) 向心力 + 星系盘三力 + 显式 Euler 积分（maxStep 位移钳制防 hub 发散）
-    const { coreGravity, discFlatten, spiralSwirl } = this.params;
+    const { coreGravity, discFlatten, spiralSwirl, stratify } = this.params;
     const galaxyMode = coreGravity > 0 || discFlatten > 0 || spiralSwirl > 0;
+    const ttr = stratify > 0 ? this.tierTargetRadius : null;
     const maxStep = linkDistance;
     const maxStep2 = maxStep * maxStep;
     for (let i = 0; i < this.count; i++) {
@@ -256,6 +281,18 @@ export class ForceEngine {
       f[ix] -= this.pos[ix] * gravity;
       f[iy] -= this.pos[iy] * gravity;
       f[iz] -= this.pos[iz] * gravity;
+
+      // V13-B：tier 径向分层——沿径向拉向目标壳层半径（ultra 核/super 中环/regular 外环）
+      if (ttr && ttr[i] >= 0) {
+        const px = this.pos[ix];
+        const py = this.pos[iy];
+        const pz = this.pos[iz];
+        const r = Math.sqrt(px * px + py * py + pz * pz) || 1e-3;
+        const k = ((ttr[i] - r) * stratify) / r;
+        f[ix] += px * k;
+        f[iy] += py * k;
+        f[iz] += pz * k;
+      }
 
       if (galaxyMode) {
         const px = this.pos[ix];

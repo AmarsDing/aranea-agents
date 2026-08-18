@@ -79,6 +79,20 @@ func TestClassifyRetry_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestClassifyRetry_PaymentRequired(t *testing.T) {
+	decision := ClassifyRetry(&http.Response{StatusCode: 402, Header: make(http.Header)}, nil)
+	if decision.Type != RetryFatal {
+		t.Errorf("expected RetryFatal for 402, got %v", decision.Type)
+	}
+}
+
+func TestClassifyRetry_InsufficientBalance(t *testing.T) {
+	decision := ClassifyRetry(nil, errors.New("Error: Insufficient Balance"))
+	if decision.Type != RetryFatal {
+		t.Errorf("expected RetryFatal for insufficient balance, got %v", decision.Type)
+	}
+}
+
 func TestClassifyRetry_ContentFilter(t *testing.T) {
 	err := errors.New("content_filter: output blocked by safety system")
 	decision := ClassifyRetry(nil, err)

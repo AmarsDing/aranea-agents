@@ -4,6 +4,8 @@
  * - 1 节点 = 1 顶点：顶点着色器 gl_VertexID → texelFetch 位置纹理（替代 InstancedMesh
  *   每 tick 矩阵重组 + 640KB 上传）；静态属性 aColor/aSize，动态属性 aEmph
  * - 柔光点（Obsidian 签名光点）：core+halo 径向衰减，普通混合（弃加法混合——重叠不烧白）
+ * - V13 甜甜圈（uDonut=1，默认）：外环+内芯+收敛晕 SDF 三件套，环色/芯色双通道；
+ *   LOW 画质档 uDonut=0 回退柔光点
  * - 亮度收敛：rest 增益压在 bloom 阈值下，高亮 ×1.6 才冒辉光
  * - 高亮语义：一跳邻居 emph=1.6，其余压暗 0.15（向深空底淡出），null 全恢复 1.0
  */
@@ -52,6 +54,7 @@ const NODE_VERTEX = `
   }`;
 
 const NODE_FRAGMENT = `
+  uniform float uDonut;
   varying vec3 vColor;
   varying float vEmph;
   varying float vFade;
@@ -59,11 +62,20 @@ const NODE_FRAGMENT = `
     vec2 uv = gl_PointCoord * 2.0 - 1.0;
     float d2 = dot(uv, uv);
     if (d2 > 1.0) discard;
-    float core = smoothstep(0.10, 0.0, d2);    // 亮核（半径 ~32%，收紧防粘连）
-    float halo = 1.0 - smoothstep(0.0, 1.0, d2); // 外晕
-    // UX 收敛：halo 平方衰减 + 权重 0.3→0.2——密集区数百节点 halo 法线混合叠加成白雾淹没标签
-    float a = (core * 0.9 + halo * halo * 0.2) * vFade * min(vEmph, 1.0);
-    vec3 col = vColor * (0.72 + 0.4 * core) * vEmph;
+    // V12.8 柔光点：core+halo 径向衰减（LOW 档降级形态）
+    float core = smoothstep(0.10, 0.0, d2);
+    float halo = 1.0 - smoothstep(0.0, 1.0, d2);
+    float aLegacy = core * 0.9 + halo * halo * 0.2;
+    vec3 cLegacy = vColor * (0.72 + 0.4 * core);
+    // V13 甜甜圈（视频同款）：外环(半径 0.66) + 内芯(半径 ~0.34) + 收敛晕
+    float d = sqrt(d2);
+    float ring = smoothstep(0.16, 0.04, abs(d - 0.66));
+    float disc = smoothstep(0.34, 0.10, d);
+    float glow = 1.0 - smoothstep(0.5, 1.0, d);
+    float aDonut = ring * 0.85 + disc * 0.5 + glow * glow * 0.12;
+    vec3 cDonut = vColor * (0.7 + 0.55 * ring + 0.4 * disc);
+    float a = mix(aLegacy, aDonut, uDonut) * vFade * min(vEmph, 1.0);
+    vec3 col = mix(cLegacy, cDonut, uDonut) * vEmph;
     gl_FragColor = vec4(col, a);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -94,6 +106,7 @@ export class NodeLayer {
         uTexW: { value: 1 },
         uPointScale: { value: 540 },
         uRevealT: { value: 1 },
+        uDonut: { value: 1 },
       },
       vertexShader: NODE_VERTEX,
       fragmentShader: NODE_FRAGMENT,
@@ -122,6 +135,11 @@ export class NodeLayer {
   /** M3 创世绽放：0=收拢于核心，1=完全显现（默认 1 无动画）。 */
   setRevealT(t: number): void {
     this.material.uniforms.uRevealT.value = t;
+  }
+
+  /** V13 甜甜圈开关：true=环+芯+辉光（默认），false=柔光点（LOW 画质档降级）。 */
+  setDonut(on: boolean): void {
+    this.material.uniforms.uDonut.value = on ? 1 : 0;
   }
 
   /** 基础色（3N RGB float，palette 注入）。 */

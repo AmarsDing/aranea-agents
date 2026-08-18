@@ -75,6 +75,9 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 	)
 	runnerDeps.AwaitUserReplyRouting = spec.AwaitUserReplyRouting
 	runnerDeps.RalphLoop = spec.RalphLoop
+	// 框架 v1.11 技能演化（hold-all）：session 结束触发演化学习，产出全部
+	// 挂起待人工审批，零自动发布。
+	runnerDeps.EvolutionService = m.factory.Persist.Evolution
 	// P0-03 fix: set AppName to the real agent ID so framework memory tools
 	// and product proactive recall share the same scope.
 	runnerDeps.AppName = strings.TrimSpace(spec.AppName)

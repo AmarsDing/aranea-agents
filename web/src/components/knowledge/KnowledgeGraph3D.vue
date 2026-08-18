@@ -27,11 +27,13 @@
         :auto-rotate="autoRotate"
         :show-labels="showLabels"
         :layout="layout"
+        :color-mode="colorMode"
         @node-click="$emit('select-node', $event)"
         @background-click="$emit('select-node', '')"
         @node-dblclick="(p: { docId: string; relPath: string }) => $emit('open-in-explorer', p)"
         @focus-change="(id: string) => (focusedDocId = id)"
         @focus-group="$emit('focus-group', $event)"
+        @hover-change="(id: string) => (hoveredDocId = id)"
       />
       <!-- M4：聚焦节点信息卡（真折射玻璃浮层，画布右侧） -->
       <FocusCard
@@ -52,89 +54,82 @@
         @lens-enter="(d: string) => canvasRef?.setLens(d)"
         @lens-leave="canvasRef?.setLens(null)"
       />
-      <!-- 画布工具条（右上浮动）：适应视图 + 图例 + HUD 开关 + 返回全局 -->
-      <div v-if="nodes.length && !error" class="knowledge-graph__toolbar">
+      <!-- D5：左上 SYS 状态灯（SYNCING 琥珀闪烁 / ONLINE 青 / OFFLINE 红） -->
+      <div class="knowledge-graph__sys">
+        <span class="knowledge-graph__sys-label">{{ t('knowledgePage.graphSysStatus') }}</span>
+        <span class="knowledge-graph__sys-dot" :class="`knowledge-graph__sys-dot--${sysState}`" />
+        <span class="knowledge-graph__sys-value" :class="`knowledge-graph__sys-value--${sysState}`">{{
+          sysLabel
+        }}</span>
+        <!-- 邻域模式：返回全局（原右上工具条迁入） -->
         <button
           v-if="neighborhoodHops > 0"
-          class="kg-hud__switch kg-hud__switch--accent"
+          class="kg-hud__switch kg-hud__switch--accent knowledge-graph__sys-back"
           @click="$emit('reset-global-view')"
         >
           {{ t('knowledgePage.graphBackToGlobal') }}
         </button>
-        <button
-          class="kg-hud__switch"
-          :class="{ 'kg-hud__switch--on': autoRotate }"
-          @click="$emit('update:auto-rotate', !autoRotate)"
-        >
-          {{ t('knowledgePage.graphAutoRotate') }}
-          <span class="kg-hud__bracket">[ {{ autoRotate ? 'ON' : 'OFF' }} ]</span>
-        </button>
-        <button
-          class="kg-hud__switch"
-          :class="{ 'kg-hud__switch--on': showLabels }"
-          @click="$emit('update:show-labels', !showLabels)"
-        >
-          {{ t('knowledgePage.graphShowLabels') }}
-          <span class="kg-hud__bracket">[ {{ showLabels ? 'ON' : 'OFF' }} ]</span>
-        </button>
-        <button
-          type="button"
-          class="kg-hud__switch"
-          :class="{ 'kg-hud__switch--on': layout === 'galaxy' }"
-          @click="toggleLayout"
-        >
-          <q-icon name="blur_circular" size="13px" />
-          <span>{{
-            layout === 'galaxy' ? t('knowledgePage.graphLayoutGalaxy') : t('knowledgePage.graphLayoutForce')
-          }}</span>
-        </button>
-        <q-btn
+      </div>
+      <!-- D5：顶部居中括号大标题 + 副标（点击=库切换下拉） -->
+      <div class="knowledge-graph__title">
+        <div class="knowledge-graph__title-main">[ {{ t('knowledgePage.graphTitle') }} ]</div>
+        <q-btn-dropdown
           flat
           dense
-          round
-          size="sm"
-          icon="fit_screen"
-          :aria-label="t('knowledgePage.graphFitView')"
-          @click="fitView"
+          no-caps
+          class="knowledge-graph__title-sub"
+          :label="t('knowledgePage.graphSubtitle', { name: currentCollectionName })"
         >
-          <q-tooltip>{{ t('knowledgePage.graphFitView') }}</q-tooltip>
-        </q-btn>
-        <!-- SP2-8：全屏覆盖退出（ESC 等价） -->
-        <q-btn
-          v-if="fullscreen"
-          flat
-          dense
-          round
-          size="sm"
-          icon="close"
-          :aria-label="t('knowledgePage.graphExitFullscreen')"
-          @click="$emit('update:fullscreen', false)"
-        >
-          <q-tooltip>{{ t('knowledgePage.graphExitFullscreen') }} (Esc)</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round size="sm" icon="palette" :aria-label="t('knowledgePage.graphLegendTitle')">
-          <q-tooltip>{{ t('knowledgePage.graphLegendTitle') }}</q-tooltip>
-          <q-menu anchor="top right" self="top right" class="knowledge-graph__legend">
-            <div class="knowledge-graph__legend-section">
-              <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendNodes') }}</div>
-              <div v-for="item in nodeLegend" :key="item.type" class="knowledge-graph__legend-row">
-                <span class="knowledge-graph__chip-dot" :style="{ background: item.color, color: item.color }" />
-                <span class="ellipsis">{{ item.type }}</span>
-                <span class="knowledge-graph__legend-count">{{ item.count }}</span>
-              </div>
-            </div>
-            <div class="knowledge-graph__legend-section">
-              <div class="knowledge-graph__legend-title">{{ t('knowledgePage.graphLegendEdges') }}</div>
-              <div v-for="lt in graphLinkTypes" :key="lt" class="knowledge-graph__legend-row">
-                <span
-                  class="knowledge-graph__chip-dot"
-                  :style="{ background: graphLinkColor(lt), color: graphLinkColor(lt) }"
-                />
-                <span>{{ t(`knowledgePage.linkType${lt.charAt(0).toUpperCase() + lt.slice(1)}`) }}</span>
-              </div>
-            </div>
-          </q-menu>
-        </q-btn>
+          <q-list dense class="knowledge-graph__title-menu">
+            <q-item
+              v-for="opt in collectionOptions"
+              :key="opt.value"
+              v-close-popup
+              clickable
+              @click="$emit('select-collection', opt.value)"
+            >
+              <q-item-section>
+                <q-item-label class="row items-center no-wrap q-gutter-xs">
+                  <span class="ellipsis">{{ opt.label }}</span>
+                  <span v-if="opt.backend === 'team'" class="knowledge-graph__team-badge">
+                    {{ t('knowledgePage.vaultTeamBadge') }}
+                  </span>
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-btn-dropdown>
+      </div>
+      <!-- D5：左中竖排图标胶囊（替代原右上横排文字工具条） -->
+      <hud-toolbar
+        v-if="nodes.length && !error"
+        class="knowledge-graph__hud-toolbar"
+        :layout="layout"
+        :color-mode="colorMode"
+        :auto-rotate="autoRotate"
+        :show-labels="showLabels"
+        :fullscreen="!!fullscreen"
+        :node-legend="nodeLegend"
+        :link-types="graphLinkTypes"
+        @fit="fitView"
+        @toggle-layout="toggleLayout"
+        @toggle-color-mode="toggleColorMode"
+        @toggle-auto-rotate="$emit('update:auto-rotate', !autoRotate)"
+        @toggle-labels="$emit('update:show-labels', !showLabels)"
+        @toggle-fullscreen="$emit('update:fullscreen', !fullscreen)"
+      />
+      <!-- D5：左下按键提示（随 hover/聚焦上下文变化） -->
+      <div v-if="nodes.length && !error" class="knowledge-graph__hints">
+        <span class="knowledge-graph__hint">{{ t('knowledgePage.graphHintRotate') }}</span>
+        <span class="knowledge-graph__hint">{{ t('knowledgePage.graphHintPan') }}</span>
+        <span class="knowledge-graph__hint">{{ t('knowledgePage.graphHintZoom') }}</span>
+        <template v-if="hoveredDocId && !focusedDocId">
+          <span class="knowledge-graph__hint knowledge-graph__hint--ctx">{{ t('knowledgePage.graphHintFocus') }}</span>
+          <span class="knowledge-graph__hint knowledge-graph__hint--ctx">{{ t('knowledgePage.graphHintOpen') }}</span>
+        </template>
+        <span v-if="focusedDocId" class="knowledge-graph__hint knowledge-graph__hint--ctx">
+          {{ t('knowledgePage.graphHintExitFocus') }}
+        </span>
       </div>
       <div class="knowledge-graph__stats">
         {{ t('knowledgePage.graphStats', { nodes: totalNodes, edges: totalEdges }) }}
@@ -361,8 +356,14 @@ import { useI18n } from 'vue-i18n';
 import KnowledgeGraphCanvas from './graph3d/KnowledgeGraph3DCanvas.vue';
 import FocusCard from './graph3d/FocusCard.vue';
 import GraphLegend, { type LegendGroup } from './graph3d/GraphLegend.vue';
+import HudToolbar from './graph3d/HudToolbar.vue';
 import KnowledgeScopePicker from './KnowledgeScopePicker.vue';
 import { graphDocTypeColor, graphLinkColor, GRAPH_LINK_TYPES } from '../../features/knowledge/graphUi';
+import {
+  COLOR_MODE_STORAGE_KEY,
+  resolveColorMode,
+  type GraphColorMode,
+} from '../../features/knowledge/graph3d/structurePalette';
 import type { VaultLazyLoadPayload, VaultQTreeNode } from '../../features/knowledge/useVaultExplorer';
 import type {
   CollectionGraphEdge,
@@ -545,6 +546,49 @@ function toggleLayout() {
   layout.value = layout.value === 'galaxy' ? 'force' : 'galaxy';
 }
 
+// ---------- D5：HUD 状态（SYS 状态灯 / 着色模式 / hover 按键提示） ----------
+
+/** 节点着色模式 A/B（structure=结构层级默认 / group=doc_type 分类），localStorage 持久化。 */
+const colorMode = ref<GraphColorMode>(
+  resolveColorMode(typeof localStorage !== 'undefined' ? localStorage.getItem(COLOR_MODE_STORAGE_KEY) : null),
+);
+
+watch(colorMode, (v) => {
+  try {
+    localStorage.setItem(COLOR_MODE_STORAGE_KEY, v);
+  } catch {
+    /* 隐私模式忽略 */
+  }
+});
+
+function toggleColorMode() {
+  colorMode.value = colorMode.value === 'structure' ? 'group' : 'structure';
+}
+
+/** hover 节点 docId（Canvas hover-change 驱动，''=离开）；按键提示上下文用。 */
+const hoveredDocId = ref('');
+
+/** SYS 状态灯：加载中 syncing / 错误 offline / 就绪 online。 */
+const sysState = computed<'syncing' | 'offline' | 'online'>(() => {
+  if (props.loading) return 'syncing';
+  if (props.error) return 'offline';
+  return 'online';
+});
+
+const sysLabel = computed(() =>
+  sysState.value === 'syncing'
+    ? t('knowledgePage.graphSysSyncing')
+    : sysState.value === 'offline'
+      ? t('knowledgePage.graphSysOffline')
+      : t('knowledgePage.graphSysOnline'),
+);
+
+/** 副标库名（顶部标题区下拉当前值）。 */
+const currentCollectionName = computed(() => {
+  const c = props.collections.find((x) => x.id === props.collectionId);
+  return c?.name || props.collectionId || '—';
+});
+
 /** M5 图例组统计：未过滤视图节点按 doc_type 聚合计数（取色与画布 palette 同源，排序稳定）。 */
 const legendGroups = computed<LegendGroup[]>(() => {
   const counts = new Map<string, number>();
@@ -621,9 +665,11 @@ const nodeLegend = computed(() => {
     }
   }
 
+  // D5：统计行移到画布下缘居中。
   &__stats {
     position: absolute;
-    left: 16px;
+    left: 50%;
+    transform: translateX(-50%);
     bottom: 12px;
     z-index: 4;
     font-size: 11px;
@@ -631,62 +677,139 @@ const nodeLegend = computed(() => {
     background: var(--interaction-surface-hover);
     border-radius: 6px;
     padding: 2px 8px;
+    white-space: nowrap;
   }
 
-  // 画布工具条：右上浮动玻璃片，不遮挡节点主区域。
-  &__toolbar {
+  // D5：左上 SYS 状态灯
+  &__sys {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 12px;
+    left: 14px;
     z-index: 4;
-    display: flex;
-    gap: 2px;
-    padding: 2px 4px;
-    border-radius: 8px;
-    background: var(--interaction-surface-hover);
-    backdrop-filter: blur(6px);
-  }
-
-  &__legend {
-    min-width: 180px;
-    max-width: 240px;
-    padding: 10px 12px;
-  }
-
-  // M5 图例面板：GraphLegend 默认 left:16/bottom:16，抬高避开左下统计行。
-  &__legend-panel {
-    bottom: 44px;
-    max-width: 240px;
-  }
-
-  &__legend-section + &__legend-section {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--color-border-soft);
-  }
-
-  &__legend-title {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    color: var(--color-text-secondary);
-    margin-bottom: 6px;
-  }
-
-  &__legend-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
-    padding: 2px 0;
-    min-width: 0;
+    font-size: 11px;
+    letter-spacing: 0.1em;
   }
 
-  &__legend-count {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--color-text-tertiary);
-    font-variant-numeric: tabular-nums;
+  &__sys-label {
+    color: var(--color-text-secondary);
+  }
+
+  &__sys-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+
+    &--online {
+      background: #35e0d0;
+      box-shadow: 0 0 8px #35e0d0;
+    }
+
+    &--syncing {
+      background: #f5c542;
+      box-shadow: 0 0 8px #f5c542;
+      animation: kg-sys-blink 0.9s ease-in-out infinite;
+    }
+
+    &--offline {
+      background: #ff6b81;
+      box-shadow: 0 0 8px #ff6b81;
+    }
+  }
+
+  &__sys-value {
+    font-weight: 600;
+
+    &--online {
+      color: #35e0d0;
+    }
+
+    &--syncing {
+      color: #f5c542;
+    }
+
+    &--offline {
+      color: #ff6b81;
+    }
+  }
+
+  &__sys-back {
+    margin-left: 8px;
+  }
+
+  // D5：顶部居中括号大标题 + 副标
+  &__title {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  &__title-main {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    white-space: nowrap;
+  }
+
+  &__title-sub {
+    pointer-events: auto;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+
+    :deep(.q-btn__content) {
+      letter-spacing: 0.18em;
+    }
+  }
+
+  &__title-menu {
+    min-width: 180px;
+    max-width: 260px;
+  }
+
+  // D5：左中竖排图标胶囊（HudToolbar）
+  &__hud-toolbar {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 4;
+  }
+
+  // D5：左下按键提示 chips
+  &__hints {
+    position: absolute;
+    left: 14px;
+    bottom: 12px;
+    z-index: 4;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 46%;
+  }
+
+  &__hint {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border-soft);
+    color: var(--color-text-secondary);
+    background: var(--interaction-surface-hover);
+    white-space: nowrap;
+  }
+
+  // M5 图例面板：GraphLegend 默认 left:16/bottom:16，抬高避开左下按键提示行。
+  &__legend-panel {
+    bottom: 44px;
+    max-width: 240px;
   }
 
   &__console-body {
@@ -880,13 +1003,40 @@ const nodeLegend = computed(() => {
     color: var(--kg-text-dim);
   }
 
-  .knowledge-graph__toolbar {
-    background: rgba(5, 8, 16, 0.72);
-    border: 1px solid var(--kg-edge);
-    align-items: center;
+  // D5：SYS 状态灯 / 括号标题 / 按键提示 深空皮肤
+  .knowledge-graph__sys-label {
+    color: var(--kg-text-dim);
+    text-shadow: 0 0 6px #00d4ff33;
+  }
 
-    :deep(.q-btn) {
+  .knowledge-graph__title-main {
+    color: var(--kg-cyan);
+    text-shadow: 0 0 12px #00d4ff66;
+  }
+
+  .knowledge-graph__title-sub {
+    color: var(--kg-text-dim);
+
+    :deep(.q-btn__content) {
+      color: var(--kg-text-dim);
+    }
+  }
+
+  .knowledge-graph__title-menu {
+    background: var(--kg-panel);
+    border: 1px solid var(--kg-edge);
+    box-shadow: 0 0 15px #00d4ff22;
+    color: var(--kg-text);
+  }
+
+  .knowledge-graph__hint {
+    background: rgba(5, 8, 16, 0.72);
+    border-color: var(--kg-edge);
+    color: var(--kg-text-dim);
+
+    &--ctx {
       color: var(--kg-cyan);
+      border-color: var(--kg-cyan);
     }
   }
 
@@ -901,8 +1051,7 @@ const nodeLegend = computed(() => {
   .knowledge-graph__nodes-empty,
   .knowledge-graph__selected-empty,
   .knowledge-graph__selected-path,
-  .knowledge-graph__selected-degree,
-  .knowledge-graph__legend-count {
+  .knowledge-graph__selected-degree {
     color: var(--kg-text-dim);
   }
 
@@ -910,20 +1059,8 @@ const nodeLegend = computed(() => {
     border-top-color: var(--kg-edge);
   }
 
-  .knowledge-graph__selected-name,
-  .knowledge-graph__legend-title {
+  .knowledge-graph__selected-name {
     color: var(--kg-text);
-  }
-
-  .knowledge-graph__legend {
-    background: var(--kg-panel);
-    border: 1px solid var(--kg-edge);
-    box-shadow: 0 0 15px #00d4ff22;
-    color: var(--kg-text);
-  }
-
-  .knowledge-graph__legend-section + .knowledge-graph__legend-section {
-    border-top-color: var(--kg-edge);
   }
 
   // 图例发光色块（currentColor = 色板色，见模板 style 绑定）
@@ -1057,6 +1194,23 @@ const nodeLegend = computed(() => {
       border-color: var(--kg-cyan);
       box-shadow: 0 0 8px #00d4ff66;
     }
+  }
+}
+
+// D5：SYS SYNCING 琥珀闪烁（reduced-motion 用户降级为常亮）
+@keyframes kg-sys-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .knowledge-graph__sys-dot--syncing {
+    animation: none;
   }
 }
 

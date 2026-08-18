@@ -78,6 +78,8 @@ g.onmessage = (e: MessageEvent<InMessage>): void => {
         params: { ...FORCE_DEFAULTS, ...m.params },
         groupId: m.groupId,
         chargeScale: m.chargeScale,
+        tierTargetRadius: m.tierTargetRadius,
+        pinnedInit: m.pinnedInit,
       });
       startLoop();
       break;
@@ -95,6 +97,17 @@ g.onmessage = (e: MessageEvent<InMessage>): void => {
     }
     case 'unpin': {
       engine?.unpin(m.i);
+      break;
+    }
+    case 'park': {
+      if (engine) {
+        for (let k = 0; k < m.indices.length; k++) {
+          engine.park(m.indices[k], m.positions[k * 3], m.positions[k * 3 + 1], m.positions[k * 3 + 2]);
+        }
+        // 停泊不 reheat（loop 不重启）；补一次位置广播让主线程拿到环上最终坐标
+        const { msg, transfer } = buildTickMessage(engine);
+        post(msg, transfer);
+      }
       break;
     }
     case 'reheat': {

@@ -101,3 +101,34 @@ describe('EdgeLayer（M2 曲线）', () => {
     layer.dispose();
   });
 });
+
+describe('EdgeLayer（V13 统一着色/亮青高亮）', () => {
+  const edges = new Int32Array([0, 1, 1, 2]); // 2 边
+  const colors = new Float32Array([1, 0, 0, 0, 1, 0]);
+
+  it('setColors 重铺 aColor（边着色模式热切换，不重建层）', () => {
+    const layer = new EdgeLayer(edges, colors);
+    const attr = layer.object.geometry.getAttribute('aColor') as THREE.BufferAttribute;
+    expect(attr.array[0]).toBe(1);
+    layer.setColors(new Float32Array([0, 0, 1, 0, 0, 1]));
+    // 每边 segments=1 × 2 顶点，双端同色
+    expect(attr.array[0]).toBe(0);
+    expect(attr.array[2]).toBe(1);
+    expect(attr.array[5]).toBe(1);
+    layer.dispose();
+  });
+
+  it('setColors 长度不符抛错（防错位静默）', () => {
+    const layer = new EdgeLayer(edges, colors);
+    expect(() => layer.setColors(new Float32Array(3))).toThrow();
+    layer.dispose();
+  });
+
+  it('uHiColor 默认亮青 #39e6ff（聚焦链路统一高亮色，与 rest 色脱钩）', () => {
+    const layer = new EdgeLayer(edges, colors);
+    const mat = layer.object.material as THREE.ShaderMaterial;
+    const c = mat.uniforms.uHiColor.value as THREE.Color;
+    expect(c.getHexString()).toBe('39e6ff');
+    layer.dispose();
+  });
+});

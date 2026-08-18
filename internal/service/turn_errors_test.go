@@ -73,7 +73,6 @@ func TestTurnError_internalServerCode(t *testing.T) {
 		{"llm_call_failed", TurnErrLLMCallFailed},
 		{"turn_timeout", TurnErrTurnTimeout},
 		{"empty_reply", TurnErrEmptyReply},
-		{"first_byte_timeout", TurnErrFirstByteTimeout},
 		{"stream_preview_failed", TurnErrStreamPreviewFailed},
 	}
 	for _, tt := range tests {
@@ -85,6 +84,29 @@ func TestTurnError_internalServerCode(t *testing.T) {
 			}
 			if ae.Code != apierror.CodeInternal {
 				t.Errorf("Code = %v, want INTERNAL for internal server error", ae.Code)
+			}
+		})
+	}
+}
+
+func TestTurnError_clientVisibleProviderFailures(t *testing.T) {
+	tests := []struct {
+		code     TurnErrorCode
+		wantCode apierror.Code
+	}{
+		{TurnErrFirstByteTimeout, apierror.CodeUnavailable},
+		{TurnErrProviderBilling, apierror.CodeFailedPrecondition},
+		{TurnErrProviderAuth, apierror.CodeFailedPrecondition},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.code), func(t *testing.T) {
+			err := TurnError(tt.code, "")
+			ae, ok := apierror.From(err)
+			if !ok {
+				t.Fatal("expected apierror")
+			}
+			if ae.Code != tt.wantCode {
+				t.Errorf("Code = %v, want %v", ae.Code, tt.wantCode)
 			}
 		})
 	}

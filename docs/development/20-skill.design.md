@@ -904,7 +904,7 @@ Data 侧关键实现：
 2. 优先 `SkillDBRepo`（`DBRepositoryAdapter`）；否则 `FSRepositoryAdapter`
 3. `skillruntime.NewAgentVisibilityFilter(ag.Settings)` — **Layer A-only**（P9/F1，2026-08-13）：构造时一次性解析 `skill_runtime_json` 为内存集合，overview 注入仅按 allowed/denied 过滤，**不再按 turn query 走 Layer B**——保证框架 `Available skills:` overview 块在会话内字节稳定（prompt 缓存前缀命中前提）；Layer B 动态路由结果改由 guidance hook 以尾部 system message 注入（见 §7.6）
 4. `CodeExecutor`（local / docker，`CODE_EXECUTOR_BACKEND`；产出物经 `artifact_executor.go`）
-5. `WithSkills` + `WithSkillFilter` + `WithSkillToolProfile(skillOptionsForAgent)`：`complete` 默认 Full；`tools_profile=spirit|chat_only` 强制 KnowledgeOnly（去掉 `skill_exec`/`skill_run`/stdin+poll 常驻 schema）
+5. `WithSkills` + `WithSkillFilter` + `WithSkillToolProfile(skillOptionsForAgent)`：`complete` 默认 Full；`tools_profile=spirit|chat_only` 强制 KnowledgeOnly 且 `WithAllowedSkillTools(skill_load)`（去掉 `skill_exec`/`skill_run`/stdin+poll 以及 `skill_select_docs`/`skill_list_docs` 常驻 schema）
 
 Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_team_trpc.go` → `skillruntime.RunOptionWithTurnQuery`
 

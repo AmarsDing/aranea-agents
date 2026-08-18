@@ -1180,11 +1180,14 @@ type ToolCallSnapshot struct {
 17. setRunStatus(completed)
 ```
 
-> **llm_retry 前端展示（2026-07-25）**：`llm_retry` system.notice 不进 Activity 树（瞬态、无法挂载到 task），走副作用路由：
-> - `useChatWorkspace.handleV2SystemNotice` 收到 `llm_retry` → `stores/chat/llmRetryStore.noteRetry(sid, meta)`（按 sessionId 记录 attempt/maxRetries/delayMs/error）
-> - `LlmRetryBanner`（`components/chat/LlmRetryBanner.vue`）挂在 ChatPage 主区顶部，玻璃材质 + 警告色左边条 + 呼吸图标，i18n 文案（`chat.llmRetryTitle/Detail/DetailLimited/Hint`）
-> - 清除时机：`step.streaming`（重连成功、token 恢复）、`turn.started`（新轮次）、step/turn/task 终止事件、run_status 终态（completed/failed/cancelled/idle）
-> - 后端配套：per-attempt 超时（`attemptTimeoutError`）判定为可重试瞬时故障，调用方取消/deadline 仍立即失败（见 9-provider.design.md §7.6）
+> **llm_retry / llm_billing / llm_stall 前端展示（2026-08-19）**：供应商故障走副作用路由，不进 Activity 树：
+> - 网络/429：`llm_retry` → `llmRetryStore.noteRetry` → `LlmRetryBanner` 重连横幅（spinner，流恢复后 `clearTransient`）
+> - 欠费/余额不足：`llm_billing` → `noteAlert('billing')` 错误横幅（无 spinner，可关闭）；`turn.failed` **不**清除
+> - 鉴权失败：`llm_auth` → `noteAlert('auth')`
+> - 首包静默：流消费 `select` 在 30s 内无有意义 chunk 则 `AbortOnStall` 取消 LLM HTTP，发布 `llm_stall`；`runner_completion` 不算首包
+> - 清除时机：`turn.started` 全清；`step.streaming` / 成功终态 / `turn.failed` 只清 retry/rate_limit
+> - 后端：`provider.ClassifyFailure`（402 / Insufficient Balance / 欠费）；`ClassifyRetry` 对欠费 `RetryFatal`，避免无限重连
+> - 渠道 IM：`ChannelTurnErrBilling` / `ChannelTurnErrAuth` 直接回复欠费/鉴权文案
 
 ### 8.8 WS 连接与取消
 

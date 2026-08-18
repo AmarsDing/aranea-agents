@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -156,7 +157,17 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result Eve
 		}
 	}()
 	evIdx := 0
-	for ev := range events {
+	for {
+		ev, ok := c.nextEvent(events)
+		if c.result.FirstByteTimedOut {
+			return c.result
+		}
+		if !ok {
+			c.lg.With(loggateway.StepID("stream.consume_done")).Info("stream consume: channel closed",
+				loggateway.Any("ev_count", evIdx))
+			c.finalize()
+			return c.result
+		}
 		evIdx++
 		if !c.canceled && c.turnCtx.Err() != nil {
 			c.canceled = true
@@ -200,14 +211,6 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result Eve
 				loggateway.Any("chunk_count", c.chunkEvents))
 		}
 		c.markFirstByte(ev)
-		if c.firstByteCtx.Err() != nil && !c.received {
-			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout, draining important events",
-				loggateway.Any("ev_count", evIdx))
-			// Do NOT return immediately — drain Important events (ToolResult, Error, RunnerCompletion)
-			// just like the turnCtx cancel path, to prevent resource leaks and
-			// ensure the frontend receives terminal signals.
-			c.canceled = true
-		}
 		if !c.handleEvent(ev) {
 			// Y1: 早退（doom-loop）必须后台排干 events channel——trpc runner
 			// 生产者 goroutine 仍在写入，不排干会在 buffer 满后永久阻塞泄漏
@@ -231,10 +234,56 @@ func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) (result Eve
 			return c.result
 		}
 	}
-	c.lg.With(loggateway.StepID("stream.consume_done")).Info("stream consume: channel closed",
-		loggateway.Any("ev_count", evIdx))
+}
+
+// nextEvent waits for the next stream event. Before the first meaningful
+// model byte it also selects on firstByteCtx so a silent provider can be
+// aborted instead of blocking on a muted channel until the HTTP timeout.
+func (c *turnStreamConsumer) nextEvent(events <-chan *trpcevent.Event) (*trpcevent.Event, bool) {
+	if c.received || c.firstByteCtx == nil {
+		ev, ok := <-events
+		return ev, ok
+	}
+	select {
+	case ev, ok := <-events:
+		return ev, ok
+	case <-c.firstByteCtx.Done():
+		if c.shouldAbortForStall() {
+			c.abortForStall(events)
+			return nil, false
+		}
+		ev, ok := <-events
+		return ev, ok
+	}
+}
+
+func (c *turnStreamConsumer) shouldAbortForStall() bool {
+	if c.received || c.firstByteCtx == nil {
+		return false
+	}
+	if !errors.Is(c.firstByteCtx.Err(), context.DeadlineExceeded) {
+		return false
+	}
+	// Parent deadline (turnCtx) firing makes the child timer DeadlineExceeded
+	// as well; that is a caller timeout, not the first-byte stall guard.
+	if errors.Is(c.turnCtx.Err(), context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+func (c *turnStreamConsumer) abortForStall(events <-chan *trpcevent.Event) {
+	c.result.FirstByteTimedOut = true
+	c.result.HasError = true
+	c.result.LastError = ErrFirstByteTimeout.Error()
+	c.canceled = true
+	c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: first-byte stall, aborting LLM request",
+		loggateway.Any("elapsed_ms", time.Since(c.consumeStart).Milliseconds()))
+	if c.opts != nil && c.opts.AbortOnStall != nil {
+		c.opts.AbortOnStall()
+	}
+	c.drainEventsAsync(events)
 	c.finalize()
-	return c.result
 }
 
 func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
@@ -274,11 +323,14 @@ func (c *turnStreamConsumer) markFirstByte(ev *trpcevent.Event) {
 }
 
 func countsAsFirstByte(ev *trpcevent.Event) bool {
-	if ev.IsRunnerCompletion() {
-		return true
-	}
 	if ev.Response != nil && ev.Response.Error != nil {
 		return true
+	}
+	// RunnerCompletion after a silent hang is a cancellation artifact, not a
+	// model first byte. Treating it as TTFT hid ErrFirstByteTimeout and made
+	// the turn look like an empty_reply.
+	if ev.IsRunnerCompletion() {
+		return false
 	}
 	if ev.Response == nil {
 		return false

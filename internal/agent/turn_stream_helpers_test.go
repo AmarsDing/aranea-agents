@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -109,16 +110,44 @@ func TestEstimateTokensIfMissing_emptyInputReturnsZeroPrompt(t *testing.T) {
 	}
 }
 
-// TestConsumeWithFirstByteGuard_NoHardFailure verifies that the first-byte timeout
-// no longer returns ErrFirstByteTimeout. Instead it emits a patient notice and
-// keeps consuming the stream, so a slow model can still produce a reply.
-func TestConsumeWithFirstByteGuard_NoHardFailure(t *testing.T) {
-	opts := &StreamConsumeOptions{}
+// TestConsumeWithFirstByteGuard_SilentStallHardFails verifies that a muted
+// events channel wakes on the first-byte deadline, aborts the run, and
+// returns ErrFirstByteTimeout instead of waiting for the HTTP timeout.
+func TestConsumeWithFirstByteGuard_SilentStallHardFails(t *testing.T) {
+	events := make(chan *trpcevent.Event)
+	defer close(events)
 
+	aborted := make(chan struct{})
+	opts := &StreamConsumeOptions{
+		AbortOnStall: func() { close(aborted) },
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	result, err := ConsumeWithFirstByteGuard(ctx, 40*time.Millisecond, events, ProjectMeta{
+		SessionID: "sess-1",
+		RequestID: "req-1",
+		AgentID:   "agent-1",
+	}, opts, loggateway.NewNoop())
+
+	if !errors.Is(err, ErrFirstByteTimeout) {
+		t.Fatalf("err = %v, want ErrFirstByteTimeout", err)
+	}
+	if !result.FirstByteTimedOut {
+		t.Fatal("expected FirstByteTimedOut")
+	}
+	select {
+	case <-aborted:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("AbortOnStall was not called")
+	}
+}
+
+func TestConsumeWithFirstByteGuard_LateChunkAfterDeadlineDoesNotCount(t *testing.T) {
 	events := make(chan *trpcevent.Event)
 	go func() {
-		// Model responds after the 30 ms first-byte deadline.
-		time.Sleep(60 * time.Millisecond)
+		time.Sleep(80 * time.Millisecond)
 		events <- &trpcevent.Event{
 			Response: &trpcmodel.Response{
 				Object: trpcmodel.ObjectTypeChatCompletionChunk,
@@ -133,20 +162,66 @@ func TestConsumeWithFirstByteGuard_NoHardFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	result, err := ConsumeWithFirstByteGuard(ctx, 30*time.Millisecond, events, ProjectMeta{
+	_, err := ConsumeWithFirstByteGuard(ctx, 20*time.Millisecond, events, ProjectMeta{
 		SessionID: "sess-1",
 		RequestID: "req-1",
 		AgentID:   "agent-1",
-	}, opts, loggateway.NewNoop())
+	}, &StreamConsumeOptions{}, loggateway.NewNoop())
+	if !errors.Is(err, ErrFirstByteTimeout) {
+		t.Fatalf("late chunk after deadline should still timeout, got %v", err)
+	}
+}
 
+func TestConsumeWithFirstByteGuard_FirstTokenSucceeds(t *testing.T) {
+	events := make(chan *trpcevent.Event, 1)
+	events <- &trpcevent.Event{
+		Response: &trpcmodel.Response{
+			Object: trpcmodel.ObjectTypeChatCompletionChunk,
+			Choices: []trpcmodel.Choice{
+				{Delta: trpcmodel.Message{Content: "hello"}},
+			},
+		},
+	}
+	close(events)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	result, err := ConsumeWithFirstByteGuard(ctx, 200*time.Millisecond, events, ProjectMeta{
+		SessionID: "sess-1",
+		RequestID: "req-1",
+		AgentID:   "agent-1",
+	}, &StreamConsumeOptions{}, loggateway.NewNoop())
 	if err != nil {
-		t.Fatalf("expected no hard error on first-byte timeout, got %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := result.Reply.String(); got != "hello" {
 		t.Errorf("reply = %q, want hello", got)
 	}
+}
 
-	// TODO: the patient first-byte timeout notice is not yet emitted by the
-	// stream consumer; this test currently only verifies the no-hard-failure
-	// contract and reply capture.
+func TestCountsAsFirstByte_IgnoresRunnerCompletion(t *testing.T) {
+	ev := &trpcevent.Event{
+		Response: &trpcmodel.Response{
+			Object: trpcmodel.ObjectTypeRunnerCompletion,
+			Done:   true,
+		},
+	}
+	if !ev.IsRunnerCompletion() {
+		t.Fatal("fixture is not a runner completion")
+	}
+	if countsAsFirstByte(ev) {
+		t.Fatal("runner_completion must not count as first byte")
+	}
+}
+
+func TestCountsAsFirstByte_ResponseErrorCounts(t *testing.T) {
+	ev := &trpcevent.Event{
+		Response: &trpcmodel.Response{
+			Error: &trpcmodel.ResponseError{Message: "Insufficient Balance"},
+		},
+	}
+	if !countsAsFirstByte(ev) {
+		t.Fatal("provider error events must count as first byte so billing can surface immediately")
+	}
 }

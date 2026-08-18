@@ -1073,6 +1073,13 @@ http.DefaultTransport (或 rt.HTTP.Transport)
 > - 调用方主动取消/调用方 deadline（裸 `context.Canceled` / `context.DeadlineExceeded`）仍判定 `RetryFatal`，不重试
 > - 判别顺序：`attemptTimeoutError` 必须先于 `context.Canceled/DeadlineExceeded` 检查（其 Unwrap 链含 `DeadlineExceeded`）
 > - 前端配套：`llm_retry` notice → `stores/chat/llmRetryStore` → `LlmRetryBanner` 重连横幅；流恢复（`step.streaming`/`turn.started`）或终态时清除
+>
+> **供应商故障分类（2026-08-19）**：
+> - `ClassifyFailure` / `ClassifyHTTPFailure`：billing（402、Insufficient Balance、欠费/余额不足）、auth、stall（first byte timeout）、rate_limit、overflow、content_filter
+> - `ClassifyRetry`：欠费字符串与 HTTP 402 为 `RetryFatal`，禁止无限重连；401 仍 `RetryWithClientRebuild`，但 body 含欠费标记时上层按 billing 抛横幅
+> - 首包静默：`stream_consumer` 在未收到有意义 chunk 前 `select` events 与 firstByteCtx；到期调用 `AbortOnStall` 取消 LLM HTTP（否则 60min 任务超时会让 Guard 永远睡在 `range events` 上）
+> - `runner_completion` 不算 TTFT 首包；客户端取消后的 completion 不再把空回复伪装成“已收到首包”
+> - 前端：`llm_billing` / `llm_auth` / `llm_stall` 持久横幅；`turn.failed` 只 `clearTransient`，避免欠费提示闪一下消失
 
 ---
 

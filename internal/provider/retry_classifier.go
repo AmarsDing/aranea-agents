@@ -123,6 +123,9 @@ func classifyError(err error) RetryDecision {
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
+	case matchAny(msg, billingMarkers):
+		// 欠费/余额不足会原样重试到无限，必须 fatal 并交给上层抛横幅。
+		return RetryDecision{Type: RetryFatal, BackoffStrategy: "exponential"}
 	case matchAny(msg, contextOverflowMarkers):
 		return RetryDecision{Type: RetryFatal, BackoffStrategy: "exponential"}
 	case matchAny(msg, contentFilterMarkers):
@@ -146,6 +149,9 @@ func classifyStatus(code int) RetryDecision {
 	switch {
 	case code == http.StatusTooManyRequests:
 		return RetryDecision{Type: RetryWithBackoff, IsRateLimited: true, BackoffStrategy: "retry_after"}
+	case code == http.StatusPaymentRequired:
+		// 402 Payment Required: provider billing; retrying the same key is pointless.
+		return RetryDecision{Type: RetryFatal, BackoffStrategy: "exponential"}
 	case code == http.StatusUnauthorized || code == http.StatusForbidden:
 		// Credentials may be stale; an upper layer rebuilds the client.
 		return RetryDecision{Type: RetryWithClientRebuild, BackoffStrategy: "exponential"}

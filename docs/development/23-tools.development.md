@@ -811,3 +811,52 @@ catalog/策略层：
 - `internal/tools/runtime_alias.go`
 - 测试：`split_test.go`、`registry_map_test.go`、`integration_test.go`、`runtime_alias_test.go`
 
+### Round 11（2026-08-18 spirit 闲聊 schema：记忆写工具 / 上游交付物 deferred）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 侧通道并入 deferred | ✅ | `MergeSideChannelDeferred`：`memory_add`/`update`/`delete`/`load` + `read_upstream_deliverable` |
+| 扁平工具映射到自身 | ✅ | `registry_map.go`；不映射 `memory_search` / `memory_remember` |
+| shard_plan 自动分离后合并 | ✅ | `resolveDeferredToolNames` |
+
+- `internal/tools/deferred/split.go`、`registry_map.go`
+- `internal/agent/shard_plan.go`
+- 测试：`split_test.go`、`registry_map_test.go`、`integration_test.go`
+
+### Round 12（2026-08-18 spirit 闲聊 schema：working_memory ToolSet deferred）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 侧通道并入 `working_memory_*` | ✅ | `MergeSideChannelDeferred`；registry 名 `working_memory` |
+| ToolFilter 按 NamedTool + BaseName 隐藏 | ✅ | `working_memory_write` / 声明名 `write` |
+
+- `internal/tools/deferred/split.go`
+- 测试：`split_test.go`、`registry_map_test.go`、`integration_test.go`
+
+### Round 13（2026-08-19 审查：核心集白名单 + 编排收口 deferred + catalog cue 压缩）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| 核心集改为白名单合并 | ✅ | `MergeNonCoreMappedDeferred` 遍历已映射 − 核心；不再手写侧通道名单 |
+| spirit 常驻收窄 | ✅ | 只留 `plan_and_execute` / `datetime` / `memory_search` / `memory_remember` |
+| 收口工具映射到自身 | ✅ | `synthesize_results` / `get_team_deliverable` / `cancel_orchestration` |
+| catalog cue 首句压缩 | ✅ | `compactCatalogDesc` ≤80 字 |
+
+- `internal/tools/deferred/split.go`、`registry_map.go`、`catalog_cue.go`
+- `internal/agent/shard_plan.go`
+- 测试：`split_test.go`、`registry_map_test.go`、`catalog_cue_test.go`
+
+### Round 14（2026-08-19 审查续：框架 skill 泄漏 + 指令与 tools 块对齐）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| spirit 只常驻 `skill_load` | ✅ | `allowedSkillToolsForAgent` → `WithAllowedSkillTools`；`skill_select_docs` 不再进 Request.Tools |
+| M71 会话考古 deferred | ✅ | `search_messages` / `list_agent_sessions` / `read_session_history` 映射到自身 |
+| CAPABILITIES 对齐常驻集 | ✅ | 不再把 `exec_command` / 收口工具写成「核心」；按需 `tool_load` |
+
+- `internal/agent/prompt_mode.go`、`trpc_build.go`
+- `internal/tools/deferred/registry_map.go`
+- `internal/scenario/system/prompts/CAPABILITIES.md`、`DECISION.md`、`orchestrator.md`
+- 测试：`prompt_mode_test.go`、`split_test.go`、`registry_map_test.go`
+
+

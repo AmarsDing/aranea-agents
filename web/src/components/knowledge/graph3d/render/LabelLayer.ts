@@ -12,10 +12,13 @@
  */
 import * as THREE from 'three';
 import SpriteText from 'three-spritetext';
+import { TIER_LABEL_WEIGHT } from '../../../../features/knowledge/graph3d/tiering';
 
 export interface LabelLayerOpts {
   names: string[];
   degree: Uint16Array;
+  /** V13 结构层级（候选池加权：ultra/super 常显优先）。 */
+  tiers?: Uint8Array;
   /** 候选池上限（按 degree 降序取 top-K）。 */
   maxLabels?: number;
   /** 标签文字颜色。 */
@@ -150,10 +153,13 @@ function makeFocusSprite(color: string, borderColor: string): SpriteText {
   return s;
 }
 
-/** 候选池：按 degree 降序取 top-K（纯函数，可单测）。 */
-export function selectLabelCandidates(degree: Uint16Array, maxLabels: number): number[] {
+/** 候选池：按 degree 降序取 top-K（纯函数，可单测）。
+ *  V13：可选 tiers 层级加权（score = degree × TIER_LABEL_WEIGHT[tier]），
+ *  常显标签优先给结构高层（ultra/super），末梢不再挤占候选位。 */
+export function selectLabelCandidates(degree: Uint16Array, maxLabels: number, tiers?: Uint8Array): number[] {
+  const scoreOf = (i: number): number => (tiers ? degree[i] * (TIER_LABEL_WEIGHT[tiers[i]] ?? 1) : degree[i]);
   return Array.from({ length: degree.length }, (_, i) => i)
-    .sort((a, b) => degree[b] - degree[a])
+    .sort((a, b) => scoreOf(b) - scoreOf(a))
     .slice(0, maxLabels);
 }
 
@@ -205,7 +211,7 @@ export class LabelLayer {
     const textHeight = opts.textHeight ?? 3.2;
     this.baseTextHeight = textHeight;
 
-    this.candidates = selectLabelCandidates(degree, maxLabels);
+    this.candidates = selectLabelCandidates(degree, maxLabels, opts.tiers);
 
     for (const i of this.candidates) {
       const sprite = new SpriteText(names[i], textHeight, color);

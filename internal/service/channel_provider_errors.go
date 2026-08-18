@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/provider"
 )
 
 // classifyChannelTurnError maps provider/runtime failures to IM-safe taxonomy (CH-BOR-09).
@@ -17,6 +18,19 @@ func classifyChannelTurnError(err error) biz.ChannelTurnErrorKind {
 	}
 	switch TurnErrorCodeFromErr(err) {
 	case TurnErrTurnTimeout, TurnErrFirstByteTimeout:
+		return biz.ChannelTurnErrTimeout
+	case TurnErrProviderBilling:
+		return biz.ChannelTurnErrBilling
+	case TurnErrProviderAuth:
+		return biz.ChannelTurnErrAuth
+	}
+	fail := provider.ClassifyFailure(err.Error(), err)
+	switch fail.Kind {
+	case provider.FailureBilling:
+		return biz.ChannelTurnErrBilling
+	case provider.FailureAuth:
+		return biz.ChannelTurnErrAuth
+	case provider.FailureStall:
 		return biz.ChannelTurnErrTimeout
 	}
 	if turnErrorIsTimeout(err) {

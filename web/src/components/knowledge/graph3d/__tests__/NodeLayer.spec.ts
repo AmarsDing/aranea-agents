@@ -105,3 +105,20 @@ describe('NodeLayer（M3 reveal）', () => {
     layer.dispose();
   });
 });
+
+describe('NodeLayer（V13 甜甜圈）', () => {
+  it('uDonut 默认 1（环+芯+辉光三件套）', () => {
+    const layer = new NodeLayer(4);
+    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(1);
+    layer.dispose();
+  });
+
+  it('setDonut(false) 回退柔光点（LOW 画质档降级）', () => {
+    const layer = new NodeLayer(4);
+    layer.setDonut(false);
+    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(0);
+    layer.setDonut(true);
+    expect((layer.points.material as { uniforms: { uDonut: { value: number } } }).uniforms.uDonut.value).toBe(1);
+    layer.dispose();
+  });
+});

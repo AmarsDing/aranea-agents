@@ -55,6 +55,11 @@ type EventStreamResult struct {
 	LastError string
 	// HasContent is true when at least one message with non-empty text was received.
 	HasContent bool
+	// FirstByteTimedOut is true when the first-byte guard fired because the
+	// provider produced no meaningful stream event before the deadline.
+	// Distinct from a user cancel: AbortOnStall may cancel the run context
+	// afterwards, so callers must not treat parentCtx.Err() alone as "user abort".
+	FirstByteTimedOut bool
 	// DoomLoopDetected is true when the stream consumer aborted the turn after
 	// detecting repetitive LLM output (doom loop). Callers should treat the
 	// reply as truncated and may retry with different sampling parameters.
@@ -88,6 +93,10 @@ func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory 
 
 type StreamConsumeOptions struct {
 	V2Projector *v2.ActivityProjector // v2 phase: projects runtime events into v2 events (Step/Task/Turn)
+	// AbortOnStall cancels the LLM HTTP request when the first-byte deadline
+	// fires with no meaningful event. Without this, the 60-minute task HTTP
+	// timeout keeps the stream channel silent and the guard cannot wake.
+	AbortOnStall context.CancelFunc
 }
 
 func ConsumeEventStream(

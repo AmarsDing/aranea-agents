@@ -27,6 +27,18 @@ describe('selectLabelCandidates', () => {
     const degree = new Uint16Array([2, 8]);
     expect(selectLabelCandidates(degree, 200)).toEqual([1, 0]);
   });
+
+  it('V13 层级加权：低度 ultra 常显优先于高度 regular（结构层级标签 LOD）', () => {
+    // 节点 0：degree 2 但 ultra（权重 4 → 8）；节点 1：degree 6 regular（权重 1 → 6）
+    const degree = new Uint16Array([2, 6]);
+    const tiers = new Uint8Array([2, 0]); // TIER_ULTRANODE / TIER_REGULAR
+    expect(selectLabelCandidates(degree, 1, tiers)[0]).toBe(0);
+  });
+
+  it('V13 层级加权：不传 tiers 时保持 degree 语义（向后兼容）', () => {
+    const degree = new Uint16Array([2, 6]);
+    expect(selectLabelCandidates(degree, 1)[0]).toBe(1);
+  });
 });
 
 describe('shouldShowLabel', () => {

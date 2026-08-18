@@ -20,7 +20,22 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildGraphModel, seedPositions, type GraphModel } from '../../../features/knowledge/graph3d/model';
 import { GraphEngine } from '../../../features/knowledge/graph3d/engine';
 import { classifyTiers, TIER_SIZE_MULT, tierChargeScales } from '../../../features/knowledge/graph3d/tiering';
+import {
+  buildPinnedInit,
+  buildTierTargetRadii,
+  clusterStatsP90,
+  estimateOuterRadius,
+  isolatedIndices,
+  PARK_RING_FACTOR,
+  parkingRingPositions,
+} from '../../../features/knowledge/graph3d/parking';
 import { buildGroupPalette, hexToRgbFloat } from '../../../features/knowledge/graph3d/palette';
+import {
+  buildEdgeColorBuffer,
+  buildNodeColorBuffer,
+  type EdgeColorMode,
+  type GraphColorMode,
+} from '../../../features/knowledge/graph3d/structurePalette';
 import { easeInOutQuad } from '../../../features/knowledge/graph3d/particleMath';
 import {
   GraphInteraction,
@@ -29,7 +44,6 @@ import {
   oneHop,
   wheelZoomFactor,
 } from '../../../features/knowledge/graph3d/interaction';
-import { graphLinkColor } from '../../../features/knowledge/graphUi';
 import {
   GOVERN_DOWN_FPS,
   GOVERN_UP_FPS,
@@ -67,10 +81,21 @@ const props = withDefaults(
     showLabels?: boolean;
     /** M2：布局模式（力导向/星系盘）。 */
     layout?: 'force' | 'galaxy';
+    /** V13：节点着色模式（structure 结构层级 / group doc_type 分组）。 */
+    colorMode?: GraphColorMode;
+    /** V13：边着色模式（unified 统一暗青 / typed 按边类型）。 */
+    edgeColorMode?: EdgeColorMode;
     /** Phase 2：返回全局时跳过物理收敛（直接基于当前位置智能重置相机）。 */
     skipReheatOnReset?: boolean;
   }>(),
-  { autoRotate: false, showLabels: true, layout: 'force', skipReheatOnReset: true },
+  {
+    autoRotate: false,
+    showLabels: true,
+    layout: 'force',
+    colorMode: 'structure',
+    edgeColorMode: 'unified',
+    skipReheatOnReset: true,
+  },
 );
 
 const emit = defineEmits<{
@@ -82,6 +107,8 @@ const emit = defineEmits<{
   'focus-change': [docId: string];
   /** 缺口4：点击超点 → 过滤面板+相机飞组。 */
   'focus-group': [groupName: string];
+  /** D5：hover 节点变化（''=离开），供 HUD 按键提示随上下文切换。 */
+  'hover-change': [docId: string];
 }>();
 
 const { t } = useI18n();
@@ -99,9 +126,14 @@ const LABEL_MIN_DEGREE = 10;
 const HOVER_REPICK_PX = 4;
 /** 相机远裁剪（需覆盖星云球半径 5000）。 */
 const CAMERA_FAR = 20000;
-/** LOD 语义缩放距离阈值（相机到目标点）。 */
+/** LOD 语义缩放距离阈值（相机到目标点）——默认值；zoomToFit 后按适应距离动态重定。 */
 const LOD_FAR_DIST = 300;
 const LOD_MID_DIST = 150;
+/** V13-A2：适应视野边距（原 1.06 偏远，收紧让主簇充满画面）。 */
+const FIT_MARGIN = 1.03;
+/** V13-A2：LOD 阈值按适应距离比例（fit 后落 NEAR；拉远 1.35× 进 MID，2.2× 进 FAR）。 */
+const LOD_MID_FIT_RATIO = 1.35;
+const LOD_FAR_FIT_RATIO = 2.2;
 /** MID 档 hub 节点数（度数 top-K，与超点叠加显示）。 */
 const MID_HUB_COUNT = 20;
 /** 缺口2：FAR 档隐藏 EdgeLayer（消除毛发噪声）。 */
@@ -132,6 +164,13 @@ let picker: Picker | null = null;
 const particleLayer = new ParticleLayer();
 let engine: GraphEngine | null = null;
 let model: GraphModel | null = null;
+/** V13 热重着色缓存：rebuild 时留存，着色模式切换不重建图。 */
+let graphTiers: Uint8Array | null = null;
+let groupPaletteHex: string[] = [];
+/** V13-A1：孤立节点索引（degree=0；rebuild 时重算，settled 后统一停泊环）。 */
+let isolatedSet: Uint32Array = new Uint32Array(0);
+/** V13-A2：fit/主簇统计排除掩码（孤立节点不参与 p90，防远点撑大视野）。 */
+let fitExcludeMask: Uint8Array | null = null;
 const interaction = new GraphInteraction();
 /** M2：当前布局模式（决定边层细分/曲率 + 物理三力预设；初始取 prop 支持刷新后恢复星系盘）。 */
 let currentLayout: 'force' | 'galaxy' = props.layout;
@@ -166,6 +205,9 @@ let pendingFit = true;
 // ---- LOD 语义缩放状态 ----
 /** 当前 LOD 级别（初始 NEAR，rebuild 后按距离重定）。 */
 let lodLevel: LodLevel = 2;
+/** V13-A2：LOD 动态阈值（zoomToFit/smartResetView 按适应距离重定；缺省常量）。 */
+let lodFarDist = LOD_FAR_DIST;
+let lodMidDist = LOD_MID_DIST;
 /** 上次 LOD 采样时间（100ms 节流）。 */
 let lastLodSample = 0;
 /** 相机到目标点距离缓存（避免每帧重复计算）。 */
@@ -231,35 +273,21 @@ function countOverlap(a: string[], b: string[]): number {
 /** Phase 2 智能重置：邻域→全局时，不重启物理，相机直接飞到当前质心+p90 视角。 */
 function smartResetView(): void {
   if (!engine || !model || !camera || !controls) return;
-  const p = engine.positions;
-  const n = model.count;
-  // 质心
-  let cx = 0, cy = 0, cz = 0;
-  for (let i = 0; i < n; i++) {
-    cx += p[i * 3];
-    cy += p[i * 3 + 1];
-    cz += p[i * 3 + 2];
-  }
-  cx /= n; cy /= n; cz /= n;
-  // p90 半径
-  const dists = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const dx = p[i * 3] - cx, dy = p[i * 3 + 1] - cy, dz = p[i * 3 + 2] - cz;
-    dists[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
-  dists.sort();
-  const radius = Math.max(dists[Math.min(n - 1, Math.floor(n * 0.9))], 20);
-  const center = new THREE.Vector3(cx, cy, cz);
+  // V13-A2：排除孤立/停泊节点，主簇充满画面
+  const stats = clusterStatsP90(engine.positions, model.count, fitExcludeMask);
+  const center = new THREE.Vector3(stats.cx, stats.cy, stats.cz);
   const fov = (camera.fov * Math.PI) / 180;
-  const distV = radius / Math.tan(fov / 2);
+  const distV = stats.radius / Math.tan(fov / 2);
   const distH = distV / Math.max(camera.aspect, 0.01);
-  const dist = Math.max(distV, distH) * 1.06;
+  const dist = Math.max(distV, distH) * FIT_MARGIN;
   // 沿当前视角方向拉远到全局
   tmpV1.copy(camera.position).sub(controls.target);
   if (tmpV1.lengthSq() < 1e-6) tmpV1.set(0, 0, 1);
   tmpV1.normalize().multiplyScalar(dist);
   const toPos = center.clone().add(tmpV1);
-  labelVis.maxDistance = dist + radius;
+  labelVis.maxDistance = dist + stats.radius;
+  lodMidDist = dist * LOD_MID_FIT_RATIO;
+  lodFarDist = dist * LOD_FAR_FIT_RATIO;
   flyTo(toPos, center, 600);
   // 物理引擎继续运行（不 reheat），节点位置保持现状
 }
@@ -271,7 +299,7 @@ function sampleLod(now: number): void {
   const dist = camera.position.distanceTo(controls.target);
   if (Math.abs(dist - lastCamDist) < 5) return; // 距离变化 <5 不重判
   lastCamDist = dist;
-  const next: LodLevel = dist > LOD_FAR_DIST ? 0 : dist > LOD_MID_DIST ? 1 : 2;
+  const next: LodLevel = dist > lodFarDist ? 0 : dist > lodMidDist ? 1 : 2;
   if (next === lodLevel) return;
   lodLevel = next;
   applyLodVisibility();
@@ -304,16 +332,37 @@ function applyLodVisibility(): void {
 }
 
 /** 运行时调试快照（验证 LOD/聚合层状态用，只读）。 */
-(window as unknown as { __kg3dDebug?: () => object }).__kg3dDebug = () => ({
-  lodLevel,
-  camDist: camera && controls ? camera.position.distanceTo(controls.target) : -1,
-  nodeVisible: nodeLayer?.points.visible ?? null,
-  aggVisible: aggregateLayer?.points.visible ?? null,
-  edgeVisible: edgeLayer?.object.visible ?? null,
-  hubCount: hubIndices.size,
-  midModeActive,
-  aggGroups: aggregateGroups.map((g) => ({ name: g.name, size: g.size, members: g.members.length })),
-});
+(window as unknown as { __kg3dDebug?: () => object }).__kg3dDebug = () => {
+  // V13-A1 验证：孤立节点径向分布（停泊后应集中在环带窄区间 [min≈1.5·p90, max=min+环数·16]）
+  let isoR: { min: number; max: number; mean: number } | null = null;
+  if (engine && model && isolatedSet.length > 0) {
+    const p = engine.positions;
+    let mn = Infinity;
+    let mx = 0;
+    let sum = 0;
+    for (const i of isolatedSet) {
+      const r = Math.hypot(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+      if (r < mn) mn = r;
+      if (r > mx) mx = r;
+      sum += r;
+    }
+    isoR = { min: +mn.toFixed(2), max: +mx.toFixed(2), mean: +(sum / isolatedSet.length).toFixed(2) };
+  }
+  return {
+    lodLevel,
+    camDist: camera && controls ? camera.position.distanceTo(controls.target) : -1,
+    lodMidDist,
+    lodFarDist,
+    isolated: isolatedSet.length,
+    isolatedRadii: isoR,
+    nodeVisible: nodeLayer?.points.visible ?? null,
+    aggVisible: aggregateLayer?.points.visible ?? null,
+    edgeVisible: edgeLayer?.object.visible ?? null,
+    hubCount: hubIndices.size,
+    midModeActive,
+    aggGroups: aggregateGroups.map((g) => ({ name: g.name, size: g.size, members: g.members.length })),
+  };
+};
 
 // ---------------------------------------------------------------- 场景装配
 
@@ -381,6 +430,7 @@ function applyQuality(next: QualityTier): void {
   }
   bloom?.setBloomEnabled(spec.bloom);
   bloom?.setResolutionScale(spec.bloomScale);
+  nodeLayer?.setDonut(spec.donut); // V13：LOW 档回退柔光点
   nodeLayer?.setPointScale(pointScale());
   aggregateLayer?.setPointScale(pointScale());
   reticle?.setPointScale(pointScale());
@@ -394,9 +444,11 @@ function rebuildGraph(): void {
   if (!scene || !camera) return;
   // 智能切换检测：有存量 model、节点数接近、skipReheatOnReset 开启
   const prevModel = model;
-  const prevEngine = engine;
   if (prevModel && props.skipReheatOnReset && engine) {
-    const overlap = countOverlap(prevModel.docIds, props.nodes.map((n) => n.doc_id));
+    const overlap = countOverlap(
+      prevModel.docIds,
+      props.nodes.map((n) => n.doc_id),
+    );
     if (overlap > prevModel.count * 0.8 && props.nodes.length > prevModel.count * 0.8) {
       // 子集/超集切换：不重建物理，只更新相机到全局
       smartResetView();
@@ -420,6 +472,10 @@ function rebuildGraph(): void {
   applyQuality(tierCeiling);
 
   const tiers = classifyTiers(m.degree, m.edges);
+  graphTiers = tiers; // V13 热重着色缓存
+  // V13-A1：孤立节点（degree=0）——init 冻结在播种球壳上，收敛后统一停泊环
+  isolatedSet = isolatedIndices(m.degree);
+  fitExcludeMask = buildPinnedInit(m.degree);
   const sizeMult = new Float32Array(m.count);
   for (let i = 0; i < m.count; i++) sizeMult[i] = TIER_SIZE_MULT[tiers[i]];
 
@@ -427,18 +483,21 @@ function rebuildGraph(): void {
   posTex = new PositionTexture(m.count);
   posTex.update(m.positions);
 
-  // 节点基础色（palette 分组色 → aColor 静态属性）
-  const palette = buildGroupPalette(m.groups).map((hex) => hexToRgbFloat(hex));
-  const nodeColors = new Float32Array(m.count * 3);
-  for (let i = 0; i < m.count; i++) {
-    const [r, g, b] = palette[m.groupId[i]] ?? [0.5, 0.5, 0.5];
-    nodeColors[i * 3] = r;
-    nodeColors[i * 3 + 1] = g;
-    nodeColors[i * 3 + 2] = b;
-  }
+  // 节点基础色（V13：structure=结构层级色 / group=doc_type 调色板 → aColor 静态属性）
+  groupPaletteHex = buildGroupPalette(m.groups);
+  const nodeColors = buildNodeColorBuffer(
+    m.count,
+    m.groupId,
+    m.groups,
+    tiers,
+    m.degree,
+    props.colorMode,
+    groupPaletteHex,
+  );
   nodeLayer = new NodeLayer(m.count);
   nodeLayer.setPositionTexture(posTex.texture, posTex.width);
   nodeLayer.setPointScale(pointScale());
+  nodeLayer.setDonut(QUALITY_SPECS[tier].donut);
   nodeLayer.setColors(nodeColors);
   nodeLayer.setSizes(m.degree, NODE_SIZE_BASE, NODE_SIZE_SCALE, sizeMult);
   scene.add(nodeLayer.points);
@@ -451,7 +510,7 @@ function rebuildGraph(): void {
   for (let i = 0; i < aggregateGroups.length; i++) {
     const g = aggregateGroups[i];
     const groupIdx = m.groups.indexOf(g.name);
-    const [r, gg, b] = palette[groupIdx] ?? [0.5, 0.5, 0.5];
+    const [r, gg, b] = hexToRgbFloat(groupPaletteHex[groupIdx] ?? '#808080');
     aggColors[i * 3] = r;
     aggColors[i * 3 + 1] = gg;
     aggColors[i * 3 + 2] = b;
@@ -475,7 +534,12 @@ function rebuildGraph(): void {
   reticle.setPointScale(pointScale());
   scene.add(reticle.object);
 
-  labelLayer = new LabelLayer({ names: m.names, degree: m.degree, maxLabels: QUALITY_SPECS[tier].labelCandidates });
+  labelLayer = new LabelLayer({
+    names: m.names,
+    degree: m.degree,
+    tiers,
+    maxLabels: QUALITY_SPECS[tier].labelCandidates,
+  });
   labelLayer.setLabelsEnabled(props.showLabels);
   scene.add(labelLayer.group);
   // 缺口1：组标签（超点组名+成员数，FAR/MID 常驻）
@@ -508,7 +572,13 @@ function rebuildGraph(): void {
   engine = new GraphEngine(
     m,
     { onTick: handleTick, onSettled: handleSettled },
-    { chargeScale: tierChargeScales(tiers) },
+    {
+      chargeScale: tierChargeScales(tiers),
+      // V13-B：tier 径向分层（ultra 核 / super 中环 / regular 外环；孤立/末梢 -1 不分层）
+      tierTargetRadius: buildTierTargetRadii(tiers, m.degree, estimateOuterRadius(m.count)),
+      // V13-A1：孤立节点 init 即冻结（收敛后 handleSettled 统一停泊环）
+      pinnedInit: fitExcludeMask ?? undefined,
+    },
   );
   pendingFit = true;
   engine.start();
@@ -536,14 +606,8 @@ function rebuildEdges(): void {
     edgeLayer.dispose();
   }
   const m = model;
-  // 边基础色（边类型色，层内乘 rest/hover 系数）
-  const edgeColors = new Float32Array(m.edgeCount * 3);
-  for (let e = 0; e < m.edgeCount; e++) {
-    const [r, g, b] = hexToRgbFloat(graphLinkColor(m.edgeTypes[e]));
-    edgeColors[e * 3] = r;
-    edgeColors[e * 3 + 1] = g;
-    edgeColors[e * 3 + 2] = b;
-  }
+  // 边基础色（V13：unified=统一暗青 / typed=边类型色，层内乘 rest/hover 系数）
+  const edgeColors = buildEdgeColorBuffer(m.edgeTypes, props.edgeColorMode);
   edgeLayer = new EdgeLayer(m.edges, edgeColors, currentLayout === 'galaxy' ? 8 : 6);
   edgeLayer.setCurvature(currentLayout === 'galaxy' ? 0.18 : 0);
   // Phase 2 边捆绑：力导向时轻度捆绑（0.15），星系盘时关闭（curvature 已提供弧线）
@@ -581,6 +645,11 @@ function disposeGraph(): void {
   drag.active = false;
   drag.index = -1;
   lodLevel = 2;
+  // V13：清空孤立节点/排除掩码（防跨代际残留）
+  isolatedSet = new Uint32Array(0);
+  fitExcludeMask = null;
+  lodFarDist = LOD_FAR_DIST;
+  lodMidDist = LOD_MID_DIST;
 }
 
 // ---------------------------------------------------------------- 物理回调
@@ -608,6 +677,11 @@ function handleSettled(): void {
     for (let i = 1; i < model.count; i++) if (model.degree[i] > model.degree[hub]) hub = i;
     const p = engine?.positions ?? model.positions;
     backdrop.setHazeAnchor(p[hub * 3], p[hub * 3 + 1], p[hub * 3 + 2]);
+  }
+  // V13-A1：收敛后孤立节点统一停泊到规则圆环（半径=主簇 p90×1.5；不 reheat，Worker 自补位置广播）
+  if (model && engine && isolatedSet.length > 0) {
+    const stats = clusterStatsP90(engine.positions, model.count, fitExcludeMask);
+    engine.park(isolatedSet, parkingRingPositions(isolatedSet.length, stats.radius * PARK_RING_FACTOR));
   }
   if (pendingFit) {
     pendingFit = false;
@@ -709,7 +783,8 @@ function pickAggregateGroup(): number | null {
   raycaster.setFromCamera(ndc, camera!);
   const o = raycaster.ray.origin;
   const d = raycaster.ray.direction;
-  const worldPerPixel = (2 * Math.tan((camera!.fov * Math.PI) / 360)) / Math.max(containerEl.value?.clientHeight ?? 1, 1);
+  const worldPerPixel =
+    (2 * Math.tan((camera!.fov * Math.PI) / 360)) / Math.max(containerEl.value?.clientHeight ?? 1, 1);
   let best = -1;
   let bestDist = Infinity;
   for (let i = 0; i < aggregateGroups.length; i++) {
@@ -735,7 +810,10 @@ function pickAggregateGroup(): number | null {
 function doHoverPick(): void {
   if (!model) return;
   const idx = pickAt();
-  if (interaction.setHover(idx)) applyHighlight();
+  if (interaction.setHover(idx)) {
+    applyHighlight();
+    emit('hover-change', idx !== null ? model.docIds[idx] : '');
+  }
   const el = containerEl.value;
   if (el) el.style.cursor = idx !== null ? 'pointer' : '';
 }
@@ -913,45 +991,26 @@ function stepTween(now: number): void {
 
 /** 适应视图：鲁棒居中充满（工具条/收敛后调用）。
  *  UX 优化：包围盒中心+1.15 边距 → 质心 + p90 距离分位半径 + 1.06 边距。
- *  离群稀疏节点不再把主簇挤偏、缩没（原实现主簇常被顶到角落且显小）。 */
+ *  V13-A2：主簇统计排除孤立/停泊节点（fitExcludeMask）+ 边距收紧 FIT_MARGIN(1.03)，
+ *  冻结在球壳/停泊环的远点不再撑大 p90 → 适应视野贴近主簇，无需手动拉近。 */
 function zoomToFit(ms = 600): void {
   if (!camera || !controls || !engine || !model || model.count === 0) return;
-  const p = engine.positions;
-  const n = model.count;
-  // 质心（均值抗离群点优于包围盒中心）
-  let cx = 0;
-  let cy = 0;
-  let cz = 0;
-  for (let i = 0; i < n; i++) {
-    cx += p[i * 3];
-    cy += p[i * 3 + 1];
-    cz += p[i * 3 + 2];
-  }
-  cx /= n;
-  cy /= n;
-  cz /= n;
-  // p90 距离分位半径：主簇充满屏幕；极远离群点可能出画，滚轮拉远可见
-  const dists = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const dx = p[i * 3] - cx;
-    const dy = p[i * 3 + 1] - cy;
-    const dz = p[i * 3 + 2] - cz;
-    dists[i] = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
-  dists.sort();
-  const radius = Math.max(dists[Math.min(n - 1, Math.floor(n * 0.9))], 20);
-  const center = new THREE.Vector3(cx, cy, cz);
+  const stats = clusterStatsP90(engine.positions, model.count, fitExcludeMask);
+  const center = new THREE.Vector3(stats.cx, stats.cy, stats.cz);
   const fov = (camera.fov * Math.PI) / 180;
-  const distV = radius / Math.tan(fov / 2);
+  const distV = stats.radius / Math.tan(fov / 2);
   const distH = distV / Math.max(camera.aspect, 0.01);
-  const dist = Math.max(distV, distH) * 1.06;
+  const dist = Math.max(distV, distH) * FIT_MARGIN;
   tmpV1.copy(camera.position).sub(controls.target);
   if (tmpV1.lengthSq() < 1e-6) tmpV1.set(0, 0, 1);
   tmpV1.normalize();
   const toPos = center.clone().add(tmpV1.multiplyScalar(dist));
   // 标签距离阈值（G5-G 修复）：fitDist + 半径 → 适应视图时全图候选标签可达（由度数下限控量），
   // 拉远后按距离渐进隐藏（原 ×0.85 在适应视图即全隐藏）。
-  labelVis.maxDistance = dist + radius;
+  labelVis.maxDistance = dist + stats.radius;
+  // V13-A2：LOD 阈值随适应距离重定（fit 后落 NEAR；固定阈值在紧凑布局下会误判 MID/FAR）
+  lodMidDist = dist * LOD_MID_FIT_RATIO;
+  lodFarDist = dist * LOD_FAR_FIT_RATIO;
   flyTo(toPos, center, ms);
 }
 
@@ -1172,6 +1231,27 @@ watch(
     currentLayout = v;
     rebuildEdges();
     engine?.setLayout(v);
+    requestRender();
+  },
+);
+
+// V13：着色模式热切换——只重铺 aColor，不重建图/物理
+watch(
+  () => props.colorMode,
+  (v) => {
+    if (!model || !nodeLayer || !graphTiers) return;
+    nodeLayer.setColors(
+      buildNodeColorBuffer(model.count, model.groupId, model.groups, graphTiers, model.degree, v, groupPaletteHex),
+    );
+    requestRender();
+  },
+);
+
+watch(
+  () => props.edgeColorMode,
+  (v) => {
+    if (!model || !edgeLayer) return;
+    edgeLayer.setColors(buildEdgeColorBuffer(model.edgeTypes, v));
     requestRender();
   },
 );

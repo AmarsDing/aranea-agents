@@ -592,7 +592,7 @@ Team RunTurn 结束 → agent.ConsumeEventStream（MemberUsage 按 agent_key）
 - **静态目录 cue**：延迟工具以「工具名 + 一句话描述」清单注入（`RenderCatalogCue`，internal/tools/deferred/catalog_cue.go），按 category → name 双层排序、无动态状态，经 BeforeModel hook（internal/agent/tool_catalog_cue.go）**append 到消息末尾尾部区**（遵守 P-1 缓存不可侵犯），并计入 `ContextBudgetCategoryToolsSchema` 台账。
 - **tool_load 元工具**（internal/tools/deferred/tool_load.go）：模型按需激活延迟工具——校验在 catalog 内 → `manager.Activate` 惰性解析真实工具 → `Discover` 标记，返回成功消息 + 工具描述；重复激活/未知工具/空名均返回结构化失败（不 panic、不污染消息流）。
 - **集成路径**：`buildToolsetsForAgent`（tool_assembly.go）——`ToolsDeferredJSON` 手动配置优先；否则自动分离（`SplitCoreResidentTools` + `RegistryNamesForBizKeys` biz key → registry 名映射，registry_map.go）。`AssembleToolsets`（toolset_assemble.go）把延迟工具注册进 catalog 并挂 `tool_search`/`tool_load` 两个元工具；`toolset.go` 从 enabled 集中删除延迟项，防止 builtin/search/claudecode 装配器重复注册。
-- **spirit 闲聊（2026-08-18）**：核心集不含 `build_orchestration_graph`；`computer_use_*` 与构图 CustomTool 映射到自身；ToolFilter names 含 BaseName，堵住 `shell`/`shell_exec` 别名漏 schema。
+- **spirit 闲聊（2026-08-19）**：核心集白名单 = `plan_and_execute` / `datetime` / `memory_search` / `memory_remember`。`MergeNonCoreMappedDeferred` 把已映射且非核心的工具（含侧通道 MemoryTools / working_memory / 收口 CustomTool / M71 会话考古）并进 deferred。目录 cue 压缩为首句。spirit/chat_only 只注册 `skill_load`。`CAPABILITIES.md` 与 Request.Tools 对齐，避免把已 deferred 的工具写成核心。
 - Tool RAG 检索结果只影响「目录 cue 中标注哪些为推荐」，不改变 tools 块内容——规避 M1 矛盾。
 - 验收基准沿用：tools_schema_tokens -80%、工具选择金标集准确率 ≥90%（待生产回归观测）。
 

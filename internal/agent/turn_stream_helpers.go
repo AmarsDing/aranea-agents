@@ -58,7 +58,7 @@ func ConsumeWithFirstByteGuard(
 	defer cancel()
 	received := false
 	result := ConsumeEventStreamWithFirstByte(firstByteCtx, parentCtx, events, meta, &received, opts, lg)
-	if !received && parentCtx.Err() == nil {
+	if result.FirstByteTimedOut || (!received && parentCtx.Err() == nil) {
 		return result, fmt.Errorf("%w after %s", ErrFirstByteTimeout, firstByteTimeout)
 	}
 	return result, nil

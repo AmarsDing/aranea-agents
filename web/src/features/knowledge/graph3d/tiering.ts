@@ -17,6 +17,8 @@ export const ULTRANODE_MIN_SUPER_LINKS = 4;
 
 /** 尺寸倍率（tier 索引）。 */
 export const TIER_SIZE_MULT: readonly number[] = [1.0, 1.5, 2.5];
+/** V13 标签候选层级权重（tier 索引）：常显标签优先给结构高层（ultra 4×/super 2×/regular 1×）。 */
+export const TIER_LABEL_WEIGHT: readonly number[] = [1, 2, 4];
 /** 分层 charge（jarvis-ui 原值，-120/-200/-350）→ 相对 regular 的斥力倍率。 */
 export const TIER_CHARGE: readonly number[] = [-120, -200, -350];
 export const TIER_CHARGE_SCALE: readonly number[] = TIER_CHARGE.map((c) => c / TIER_CHARGE[TIER_REGULAR]);

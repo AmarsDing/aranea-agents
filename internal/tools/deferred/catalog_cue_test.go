@@ -119,8 +119,23 @@ func TestRenderCatalogCue_ContainsInstructions(t *testing.T) {
 	}
 	cue := RenderCatalogCue(catalog)
 
-	// 应包含使用说明
 	if !strings.Contains(cue, "tool_load") {
 		t.Error("cue missing tool_load instruction")
+	}
+}
+
+func TestRenderCatalogCue_CompactsLongDescription(t *testing.T) {
+	long := strings.Repeat("工具说明很长", 30) + "。后面的句子不应出现。"
+	cue := RenderCatalogCue([]DeferredToolEntry{
+		{Name: "memory_add", Description: long, Category: "memory"},
+	})
+	if strings.Contains(cue, "后面的句子不应出现") {
+		t.Fatal("catalog cue must drop sentences after the first")
+	}
+	if strings.Contains(cue, long) {
+		t.Fatal("catalog cue must not keep the raw long description")
+	}
+	if !strings.Contains(cue, "memory_add") {
+		t.Fatal("catalog cue missing tool name")
 	}
 }

@@ -625,13 +625,14 @@ go test ./internal/tools/skillruntime/... ./internal/tools/skillrouter/... -coun
 
 ## 精灵档不常驻 Skill 执行套件（2026-08-18）
 
-> **范围**：`tools_profile=spirit|chat_only` 时 `skillOptionsForAgent` 强制 `SkillToolProfileKnowledgeOnly`，complete 模式提示词文件不变，只去掉 `skill_exec`/`skill_run`/stdin+poll 常驻 schema。
+> **范围**：`tools_profile=spirit|chat_only` 时 `skillOptionsForAgent` 强制 `SkillToolProfileKnowledgeOnly`，并用 `WithAllowedSkillTools(skill_load)` 去掉 `skill_select_docs`/`skill_list_docs` 常驻 schema。complete 模式提示词文件仍在，只收窄工具块。
 > **设计**：[20-skill.design.md §7.1](./20-skill.design.md)
 
 | # | 任务 | 状态 |
 |---|------|------|
 | S1 | `skillOptionsForAgent` 覆盖 spirit/chat_only；`trpc_build.go` 改走该入口 | ✅ 2026-08-18 |
 | S2 | 单测 `TestSkillOptionsForAgent_SpiritDropsExecSuite` | ✅ 2026-08-18 |
+| S3 | spirit/chat_only `WithAllowedSkillTools(skill_load)` | ✅ 2026-08-19 |
 
 改动：`internal/agent/prompt_mode.go`、`prompt_mode_test.go`、`trpc_build.go`
 

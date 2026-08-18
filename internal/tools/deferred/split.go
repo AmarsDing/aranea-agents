@@ -14,12 +14,11 @@ import (
 //   - 长尾集 = 低频、特定场景、可容忍一次 tool_load 调用的工具
 var coreResidentToolsByProfile = map[string][]string{
 	"spirit": {
-		// 编排骨架（闲聊也常驻：计划入口 + 收口）。DAG 构图 schema 很大，
-		// 走 deferred + tool_load，不进 Request.Tools。
-		"plan_and_execute", "synthesize_results", "get_team_deliverable",
-		"cancel_orchestration",
-		// 基础工具
-		"datetime", "memory_search",
+		// 闲聊会话内稳定常驻：编排入口 + 时钟 + 记忆读/写（T2 remember）。
+		// 收口/交付/取消走 deferred——未开团队时不占 Request.Tools；
+		// 开团队后 tool_load 一次即可，不破坏前缀缓存（tools 块仍按 profile 稳定）。
+		"plan_and_execute",
+		"datetime", "memory_search", "memory_remember",
 	},
 	"coding": {
 		// 文件操作（最高频）
@@ -96,6 +95,43 @@ func SplitCoreResidentTools(enabledTools []string, profile string) (core []strin
 	sort.Strings(core)
 	sort.Strings(deferred)
 	return core, deferred
+}
+
+// MergeNonCoreMappedDeferred 把「已映射且不在 profile 核心集」的业务键并进延迟名单。
+//
+// WP-4 核心集是常驻白名单。MemoryTools / working_memory ToolSet / 扁平 CustomTool
+// 绕过 catalog `eff`，只按 enabled 做 Split 会漏。遍历 bizKeyToRegistryName
+// 而不是手写侧通道名单，避免每加一种装配路径就漏一层。
+// FinalizeDeferredTools 只包装实际装配到的 ToolSet/工具，名单里多出来的名字是空操作。
+func MergeNonCoreMappedDeferred(deferredKeys []string, profile string) []string {
+	coreSet := CoreResidentToolsForProfile(profile)
+	coreMap := make(map[string]bool, len(coreSet))
+	for _, k := range coreSet {
+		coreMap[k] = true
+	}
+	seen := make(map[string]bool, len(deferredKeys)+len(bizKeyToRegistryName))
+	out := make([]string, 0, len(deferredKeys)+len(bizKeyToRegistryName))
+	for _, k := range deferredKeys {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	for k := range bizKeyToRegistryName {
+		if coreMap[k] || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// MergeSideChannelDeferred 是 MergeNonCoreMappedDeferred 的兼容名。
+func MergeSideChannelDeferred(deferredKeys []string, profile string) []string {
+	return MergeNonCoreMappedDeferred(deferredKeys, profile)
 }
 
 // CoreResidentToolsForProfile 返回指定 profile 的核心常驻工具键列表。

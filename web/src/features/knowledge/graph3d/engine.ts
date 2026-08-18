@@ -33,6 +33,10 @@ export interface GraphEngineDeps {
   /** 覆盖默认力参数（测试/调参）。 */
   params?: Partial<ForceParams>;
   chargeScale?: Float32Array;
+  /** V13-B：per-node 目标半径壳层（stratify>0 时生效）。 */
+  tierTargetRadius?: Float32Array;
+  /** V13-A1：初始即钉住的节点（孤立节点先冻在播种球壳上）。 */
+  pinnedInit?: Uint8Array;
 }
 
 export class GraphEngine {
@@ -89,12 +93,16 @@ export class GraphEngine {
       const edges = this.model.edges.slice();
       const groupId = this.model.groupId.slice();
       const chargeScale = this.deps.chargeScale ? this.deps.chargeScale.slice() : undefined;
+      const tierTargetRadius = this.deps.tierTargetRadius ? this.deps.tierTargetRadius.slice() : undefined;
+      const pinnedInit = this.deps.pinnedInit ? this.deps.pinnedInit.slice() : undefined;
       const transfer: Transferable[] = [
         positions.buffer as ArrayBuffer,
         edges.buffer as ArrayBuffer,
         groupId.buffer as ArrayBuffer,
       ];
       if (chargeScale) transfer.push(chargeScale.buffer as ArrayBuffer);
+      if (tierTargetRadius) transfer.push(tierTargetRadius.buffer as ArrayBuffer);
+      if (pinnedInit) transfer.push(pinnedInit.buffer as ArrayBuffer);
       const init: InMessage = {
         type: 'init',
         count: this.model.count,
@@ -103,6 +111,8 @@ export class GraphEngine {
         params: { ...FORCE_DEFAULTS, ...this.deps.params },
         groupId,
         chargeScale,
+        tierTargetRadius,
+        pinnedInit,
       };
       try {
         w.postMessage(init, transfer);
@@ -160,6 +170,24 @@ export class GraphEngine {
     }
   }
 
+  /**
+   * V13-A1 批量停泊：把孤立节点钉到停泊环坐标。
+   * 不 reheat（物理不重启）；Worker 收信后自补一次 tick 广播，兜底路径此处同步广播。
+   * 应在 settled 后调用（停泊环基于收敛后的主簇尺寸计算）。
+   */
+  park(indices: Uint32Array, positions: Float32Array): void {
+    if (indices.length === 0) return;
+    if (this.worker) {
+      this.worker.postMessage({ type: 'park', indices, positions });
+    } else if (this.fallback) {
+      for (let k = 0; k < indices.length; k++) {
+        this.fallback.park(indices[k], positions[k * 3], positions[k * 3 + 1], positions[k * 3 + 2]);
+      }
+      this.currentPositions = this.fallback.positions;
+      this.callbacks.onTick?.(this.currentPositions, this.fallback.alpha);
+    }
+  }
+
   reheat(): void {
     this._settled = false;
     if (this.worker) {
@@ -192,6 +220,8 @@ export class GraphEngine {
       params: { ...FORCE_DEFAULTS, ...this.deps.params },
       groupId: this.model.groupId,
       chargeScale: this.deps.chargeScale,
+      tierTargetRadius: this.deps.tierTargetRadius,
+      pinnedInit: this.deps.pinnedInit,
     });
     this.currentPositions = this.fallback.positions;
     this.scheduleRaf();

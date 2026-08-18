@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/internal/outbound"
+	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
@@ -274,6 +275,8 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 		firstByteTimeout = custom
 	}
 	runCtx := o.prepareRunContext(ctx, input, ag, deps)
+	runCtx, abortRun := context.WithCancel(runCtx)
+	defer abortRun()
 
 	// N-21/N-03: Pre-configure the v2 ActivityProjector and inject it into
 	// runCtx so that plugins (cost_guard, model_router) and hooks
@@ -317,9 +320,9 @@ func (o *ChatOrchestrator) invokeTurnLLMAndStream(
 	}
 
 	// Stream consumption
-	result, streamErr := o.consumeTurnStream(runCtx, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
+	result, streamErr := o.consumeTurnStream(runCtx, abortRun, sess, ag, admit, emitter, traceBridge, events, firstByteTimeout, turnProjector, time.Now(), content, input.ParentTaskID, input.Synthesis)
 	if streamErr != nil {
-		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), streamErr
+		return o.handleStreamError(ctx, ag, admit, emitter, userMsg, streamErr, firstByteTimeout, turnStart), wrapLLMFailure(streamErr, firstByteTimeout)
 	}
 
 	return o.assembleTurnResult(ctx, sessionID, admit, result, userMsg, userMsgPersisted, sessionRunID, emitter, ag, turnStart)
@@ -438,6 +441,11 @@ func (o *ChatOrchestrator) invokeLLMCall(
 				loggateway.Err(serr))
 		}
 		te := TurnError(TurnErrLLMCallFailed, err.Error())
+		fail := provider.ClassifyFailure(err.Error(), err)
+		o.publishLLMFailureNotice(ctx, sessionID, fail, err.Error())
+		if fail.Kind == provider.FailureBilling || fail.Kind == provider.FailureAuth {
+			te = TurnError(turnCodeFromFailure(fail), err.Error())
+		}
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return nil, te
 	}
@@ -504,6 +512,11 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 		skillruntime.RunOptionWithTurnQuery(content),
 		// 批次 B：按 agent policy 安装概览预算渲染器（显式 0 = 不安装）。
 		skillruntime.RunOptionWithOverviewBudget(skillRuntime),
+		// 框架 v1.11 修复管线：参数 JSON 修复（response 阶段，自建
+		// tool_args_repair_guard 降为兜底）+ 文本工具调用提取（模型把
+		// 工具调用写成 <tool_call> 文本时挽回整轮）。
+		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
+		trpcagent.WithToolCallTextRepairEnabled(true),
 	})
 	if input.EntryConfig.AllowStream {
 		runOpts = append(runOpts, trpcagent.WithStream(true))
@@ -601,6 +614,7 @@ func (o *ChatOrchestrator) buildTurnRunOptions(
 // Stability:internal
 func (o *ChatOrchestrator) consumeTurnStream(
 	runCtx context.Context,
+	abortRun context.CancelFunc,
 	sess biz.Session,
 	ag biz.Agent,
 	admit turnAdmissionResult,
@@ -633,6 +647,10 @@ func (o *ChatOrchestrator) consumeTurnStream(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(v2Projector)
+	if streamOpts == nil {
+		streamOpts = &chatagent.StreamConsumeOptions{}
+	}
+	streamOpts.AbortOnStall = abortRun
 	o.lg().With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
@@ -671,7 +689,9 @@ func (o *ChatOrchestrator) handleStreamError(
 	sessionID := strings.TrimSpace(userMsg.SessionID)
 	runID := admit.runID
 	if errors.Is(streamErr, chatagent.ErrFirstByteTimeout) {
-		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
+		fail := provider.ClassifyFailure(streamErr.Error(), streamErr)
+		o.publishLLMFailureNotice(ctx, sessionID, fail, streamErr.Error())
+		emitter.LogCritical("chat.first_byte_timeout", "首字节超时，供应商无响应", event.P("timeout", firstByteTimeout.String()))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
 		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", "first byte timeout"); serr != nil {
 			o.lg().Warn("set run status failed on first byte timeout",
@@ -682,6 +702,8 @@ func (o *ChatOrchestrator) handleStreamError(
 		}
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 	} else {
+		fail := provider.ClassifyFailure(streamErr.Error(), streamErr)
+		o.publishLLMFailureNotice(ctx, sessionID, fail, streamErr.Error())
 		if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", streamErr.Error()); serr != nil {
 			o.lg().Warn("set run status failed on stream error",
 				loggateway.StepID("chat.turn.stream_fail"),
@@ -714,7 +736,8 @@ func (o *ChatOrchestrator) handleEmptyReply(
 	sessionID string,
 ) error {
 	runID := admit.runID
-	emitter.LogCritical("chat.turn.empty_reply", "未收到助手回复", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent))
+	fail := provider.ClassifyFailure(result.LastError, nil)
+	emitter.LogCritical("chat.turn.empty_reply", "未收到助手回复", event.P("has_error", result.HasError), event.P("last_error", result.LastError), event.P("has_content", result.HasContent), event.P("failure_kind", string(fail.Kind)))
 	detail := ""
 	if result.HasError {
 		detail = result.LastError
@@ -724,6 +747,7 @@ func (o *ChatOrchestrator) handleEmptyReply(
 	if detail == "" {
 		detail = "empty reply"
 	}
+	o.publishLLMFailureNotice(ctx, sessionID, fail, detail)
 	markTurnError(turnStatus, turnErr, turnErrMsg, errors.New(detail))
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
 	if serr := o.runStatus().SetRunStatus(ctx, sessionID, runID, "failed", detail); serr != nil {
@@ -734,7 +758,11 @@ func (o *ChatOrchestrator) handleEmptyReply(
 			loggateway.Err(serr))
 	}
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-	te := TurnError(TurnErrEmptyReply, detail)
+	code := TurnErrEmptyReply
+	if fail.Kind == provider.FailureBilling || fail.Kind == provider.FailureAuth || fail.Kind == provider.FailureStall {
+		code = turnCodeFromFailure(fail)
+	}
+	te := TurnError(code, detail)
 	o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 	return te
 }

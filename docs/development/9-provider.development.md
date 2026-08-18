@@ -31,6 +31,8 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | `internal/provider/roundtrip.go` | HTTP Transport 注入 |
 | `internal/provider/rate_limit_transport.go` | 速率限制 Transport（令牌桶） |
 | `internal/provider/retry_transport.go` | 重试 Transport（指数退避） |
+| `internal/provider/retry_classifier.go` | 重试判定（欠费/402 为 RetryFatal） |
+| `internal/provider/failure.go` | 用户可见故障分类（billing/auth/stall） |
 | `internal/provider/circuit_breaker_transport.go` | 熔断 Transport |
 | `internal/provider/metrics_model.go` | 模型指标装饰（WrapModelWithMetrics） |
 | `internal/provider/stream_delta.go` | 流式 Delta 合并 |
@@ -299,6 +301,7 @@ Provider 管理：基于 trpc-agent-go `model` 体系的多厂商 LLM Provider �
 | 45 | 重试 + 熔断 Transport（retry_transport.go + circuit_breaker_transport.go） | P2 | — | ✅ |
 | 46 | 前端 providerRuntimeOverlay 架构（shell + overlay） | P2 | — | ✅ |
 | 47 | 前端 ProviderWizardStep1-4 组件拆分 | P2 | — | ✅ |
+| 48 | 供应商故障分类 ClassifyFailure + 402/欠费 RetryFatal | P0 | — | ✅ 2026-08-19 |
 
 ---
 

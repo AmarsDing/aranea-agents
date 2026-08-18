@@ -187,14 +187,28 @@ describe('M2 星系盘三力', () => {
   });
 
   it('discFlatten>0：Y 坐标绝对值收敛（压向 XZ 盘面）', () => {
-    const e = makeGalaxyEngine({ discFlatten: 0.12, repulsion: 0, linkStrength: 0, gravity: 0, groupCohesion: 0, groupSeparation: 0 });
+    const e = makeGalaxyEngine({
+      discFlatten: 0.12,
+      repulsion: 0,
+      linkStrength: 0,
+      gravity: 0,
+      groupCohesion: 0,
+      groupSeparation: 0,
+    });
     const before = Math.abs(e.positions[1]); // 节点0 的 y=8
     for (let t = 0; t < 40; t++) e.tick();
     expect(Math.abs(e.positions[1])).toBeLessThan(before);
   });
 
   it('spiralSwirl>0：产生 XZ 平面切向速度（角度位置变化）', () => {
-    const e = makeGalaxyEngine({ spiralSwirl: 0.05, repulsion: 0, linkStrength: 0, gravity: 0, groupCohesion: 0, groupSeparation: 0 });
+    const e = makeGalaxyEngine({
+      spiralSwirl: 0.05,
+      repulsion: 0,
+      linkStrength: 0,
+      gravity: 0,
+      groupCohesion: 0,
+      groupSeparation: 0,
+    });
     const angleBefore = Math.atan2(e.positions[2], e.positions[0]); // 节点0 (10,8,0) → atan2(0,10)=0
     for (let t = 0; t < 10; t++) e.tick();
     const angleAfter = Math.atan2(e.positions[2], e.positions[0]);
@@ -202,11 +216,27 @@ describe('M2 星系盘三力', () => {
   });
 
   it('coreGravity>0：径向距离收缩快于纯线性 gravity', () => {
-    const lin = makeGalaxyEngine({ gravity: 0.011, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
-    const core = makeGalaxyEngine({ gravity: 0, coreGravity: 0.08, repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 });
+    const lin = makeGalaxyEngine({
+      gravity: 0.011,
+      repulsion: 0,
+      linkStrength: 0,
+      groupCohesion: 0,
+      groupSeparation: 0,
+    });
+    const core = makeGalaxyEngine({
+      gravity: 0,
+      coreGravity: 0.08,
+      repulsion: 0,
+      linkStrength: 0,
+      groupCohesion: 0,
+      groupSeparation: 0,
+    });
     const r0 = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
     // 注：两者均为欠阻尼振荡，30 tick 正处 core 过冲反弹相位；60 tick 后 core 振幅衰减、稳定优于线性
-    for (let t = 0; t < 60; t++) { lin.tick(); core.tick(); }
+    for (let t = 0; t < 60; t++) {
+      lin.tick();
+      core.tick();
+    }
     const rLin = Math.hypot(lin.positions[0], lin.positions[1], lin.positions[2]);
     const rCore = Math.hypot(core.positions[0], core.positions[1], core.positions[2]);
     expect(rCore).toBeLessThan(rLin);
@@ -218,5 +248,84 @@ describe('M2 星系盘三力', () => {
     expect(GALAXY_FORCE_PARAMS.discFlatten).toBeGreaterThan(0);
     expect(GALAXY_FORCE_PARAMS.spiralSwirl).toBeGreaterThan(0);
     expect(GALAXY_FORCE_PARAMS.gravity).toBeLessThan(FORCE_DEFAULTS.gravity);
+  });
+});
+
+describe('V13-B stratify 径向分层', () => {
+  /** 单节点、零其他力，只留 stratify。 */
+  function mkStratifyEngine(r: number, ttr: number, stratify = 0.05): ForceEngine {
+    return new ForceEngine({
+      count: 1,
+      edges: new Int32Array(0),
+      positions: Float32Array.from([r, 0, 0]),
+      params: mkParams({ repulsion: 0, linkStrength: 0, gravity: 0, groupCohesion: 0, groupSeparation: 0, stratify }),
+      tierTargetRadius: Float32Array.from([ttr]),
+    });
+  }
+
+  it('壳层外节点被径向拉向目标半径（r 收缩）', () => {
+    const e = mkStratifyEngine(200, 100);
+    e.tick();
+    expect(e.positions[0]).toBeLessThan(200);
+    expect(e.positions[0]).toBeGreaterThan(100); // 单步不过冲
+  });
+
+  it('壳层内节点被径向推向目标半径（r 扩张）', () => {
+    const e = mkStratifyEngine(10, 100);
+    e.tick();
+    expect(e.positions[0]).toBeGreaterThan(10);
+  });
+
+  it('ttr<0 的节点不分层（位置不变）', () => {
+    const e = mkStratifyEngine(200, -1);
+    e.tick();
+    expect(e.positions[0]).toBe(200);
+  });
+
+  it('未注入 tierTargetRadius 时 stratify 零作用（回归默认路径）', () => {
+    const e = new ForceEngine({
+      count: 1,
+      edges: new Int32Array(0),
+      positions: Float32Array.from([200, 0, 0]),
+      params: mkParams({
+        repulsion: 0,
+        linkStrength: 0,
+        gravity: 0,
+        groupCohesion: 0,
+        groupSeparation: 0,
+        stratify: 0.05,
+      }),
+    });
+    e.tick();
+    expect(e.positions[0]).toBe(200);
+  });
+
+  it('GALAXY_FORCE_PARAMS 关闭 stratify（盘内三力接管）', () => {
+    expect(GALAXY_FORCE_PARAMS.stratify).toBe(0);
+  });
+});
+
+describe('V13-A1 pinnedInit / park', () => {
+  it('pinnedInit 节点 init 即冻结（向心力下不动），其余正常', () => {
+    const e = new ForceEngine({
+      count: 2,
+      edges: new Int32Array(0),
+      positions: Float32Array.from([500, 0, 0, 600, 0, 0]),
+      params: mkParams({ repulsion: 0, linkStrength: 0, groupCohesion: 0, groupSeparation: 0 }),
+      pinnedInit: Uint8Array.from([1, 0]),
+    });
+    e.tick();
+    expect(e.positions[0]).toBe(500); // 冻结
+    expect(e.positions[3]).toBeLessThan(600); // 正常受向心力
+  });
+
+  it('park 钉住并写坐标但不 reheat（alpha 不变），后续 tick 不再动', () => {
+    const e = mkEngine(2, [], [0, 0, 0, 10, 0, 0]);
+    e.alpha = 0.01;
+    e.park(1, 42, 43, 44);
+    expect(e.alpha).toBe(0.01); // 关键：park 不 reheat（对照 pin 会回 1）
+    expect([e.positions[3], e.positions[4], e.positions[5]]).toEqual([42, 43, 44]);
+    e.tick();
+    expect([e.positions[3], e.positions[4], e.positions[5]]).toEqual([42, 43, 44]); // 停泊点跳过积分
   });
 });

@@ -14,6 +14,8 @@ const (
 	TurnErrTurnTimeout           TurnErrorCode = "TURN_TIMEOUT"
 	TurnErrEmptyReply            TurnErrorCode = "EMPTY_REPLY"
 	TurnErrFirstByteTimeout      TurnErrorCode = "FIRST_BYTE_TIMEOUT"
+	TurnErrProviderBilling       TurnErrorCode = "PROVIDER_BILLING"
+	TurnErrProviderAuth          TurnErrorCode = "PROVIDER_AUTH"
 	TurnErrAgentForbidden        TurnErrorCode = "AGENT_FORBIDDEN"
 	TurnErrStreamPreviewFailed   TurnErrorCode = "STREAM_PREVIEW_FAILED"
 )
@@ -25,7 +27,9 @@ var turnErrorMessages = map[TurnErrorCode]string{
 	TurnErrLLMCallFailed:         "模型调用失败，请稍后重试或切换模型",
 	TurnErrTurnTimeout:           "响应超时，请稍后重试",
 	TurnErrEmptyReply:            "智能体未产生响应，请调整提问后重试",
-	TurnErrFirstByteTimeout:      "模型响应过慢，请稍后重试或切换模型",
+	TurnErrFirstByteTimeout:      "供应商长时间无响应，已中止本轮",
+	TurnErrProviderBilling:       "模型账户欠费或余额不足，请充值后再试",
+	TurnErrProviderAuth:          "模型鉴权失败，请检查供应商密钥配置",
 	TurnErrAgentForbidden:        "无权访问该智能体",
 	TurnErrStreamPreviewFailed:   "流式回复预览更新失败",
 }
@@ -43,6 +47,10 @@ func TurnError(code TurnErrorCode, detail string) error {
 		ae = apierror.Forbidden(apierror.DomainChatAgent, msg)
 	case TurnErrAttachmentFailed, TurnErrAttachmentUnsupported:
 		ae = apierror.BadRequest(apierror.DomainChatAgent, msg)
+	case TurnErrProviderBilling, TurnErrProviderAuth:
+		ae = apierror.FailedPrecondition(apierror.DomainChatAgent, msg)
+	case TurnErrFirstByteTimeout:
+		ae = apierror.Unavailable(apierror.DomainChatAgent, msg)
 	default:
 		ae = apierror.Internal(apierror.DomainChatAgent, msg)
 	}

@@ -31,6 +31,10 @@ func teamTurnBaseRunOptions(teamID, turnQuery string) []trpcagent.RunOption {
 	return []trpcagent.RunOption{
 		skillruntime.RunOptionWithTurnQuery(turnQuery),
 		trpcagent.MergeRuntimeState(map[string]any{"team_id": teamID}),
+		// 框架 v1.11 修复管线：参数 JSON 修复 + 文本工具调用提取（与
+		// chat 主路径 buildTurnRunOptions 对齐）。
+		trpcagent.WithToolCallArgumentsJSONRepairEnabled(true),
+		trpcagent.WithToolCallTextRepairEnabled(true),
 	}
 }
 
@@ -203,6 +207,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if runCancel != nil {
 		defer runCancel()
 	}
+	runCtx, abortRun := context.WithCancel(runCtx)
+	defer abortRun()
 	if teamEmitter != nil {
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}
@@ -220,7 +226,11 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	projectMeta := r.buildTeamProjectMeta(ctx, sess, run, teamRow, def, ar, memberKeys, ti.content, traceID)
 	streamOpts := r.newStreamConsumeOptions()
-	if streamOpts != nil && streamOpts.V2Projector != nil {
+	if streamOpts == nil {
+		streamOpts = &agent.StreamConsumeOptions{}
+	}
+	streamOpts.AbortOnStall = abortRun
+	if streamOpts.V2Projector != nil {
 		v2Meta := agent.V2ProjectMetaFromV1(projectMeta)
 		streamOpts.V2Projector.Configure(v2Meta)
 		runCtx = biz.WithActivityEmitter(runCtx, streamOpts.V2Projector)
@@ -335,6 +345,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if streamErr != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		logTeamRunError(teamEmitter, "team.run.execute", streamErr.Error(), mode)
+		rt.PublishLLMFailureNotice(r.td.Pipeline.EventBus, r.lg, ctx, deriveSpiritSessionID(sess), streamErr)
 		r.finishRunErr(ctx, &run, t0, streamErr.Error())
 		return userMsg, biz.ChatMessage{}, streamErr
 	}

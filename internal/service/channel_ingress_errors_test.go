@@ -21,6 +21,8 @@ func TestFormatChannelTurnErrorMessage(t *testing.T) {
 		{"deadline_exceeded", context.DeadlineExceeded, biz.ChannelTurnErrorSyncCapMsg},
 		{"turn_timeout_code", TurnError(TurnErrTurnTimeout, "5m"), biz.ChannelTurnErrorSyncCapMsg},
 		{"first_byte_timeout_code", TurnError(TurnErrFirstByteTimeout, "30s"), biz.ChannelTurnErrorSyncCapMsg},
+		{"billing_code", TurnError(TurnErrProviderBilling, "Insufficient Balance"), biz.ChannelTurnErrorBillingMsg},
+		{"auth_code", TurnError(TurnErrProviderAuth, "invalid api key"), biz.ChannelTurnErrorAuthMsg},
 		{"timeout_string", errors.New("connection timeout after 30s"), biz.ChannelTurnErrorGenericMsg},
 		{"rate_limit_string", errors.New("rate limit exceeded"), biz.ChannelTurnErrorRateLimitMsg},
 		{"too_many_requests_string", errors.New("429 Too Many Requests"), biz.ChannelTurnErrorRateLimitMsg},

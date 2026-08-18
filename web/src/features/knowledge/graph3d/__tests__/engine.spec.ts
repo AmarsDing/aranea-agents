@@ -105,6 +105,34 @@ describe('GraphEngine Worker 路径', () => {
     e.stop();
     expect(w.terminated).toBe(true);
   });
+
+  it('V13：init 携带 tierTargetRadius/pinnedInit（slice 后 transfer，deps 原 buffer 不 detach）', () => {
+    const w = new FakeWorker();
+    const ttr = Float32Array.from([-1, 50, -1]);
+    const pinned = Uint8Array.from([1, 0, 0]);
+    const e = new GraphEngine(mkModel(), {}, { workerFactory: () => w, tierTargetRadius: ttr, pinnedInit: pinned });
+    e.start();
+    const init = w.posted[0].msg as Extract<InMessage, { type: 'init' }>;
+    expect(Array.from(init.tierTargetRadius!)).toEqual([-1, 50, -1]);
+    expect(Array.from(init.pinnedInit!)).toEqual([1, 0, 0]);
+    expect(ttr.byteLength).toBe(12); // slice 语义：原 buffer 完好
+    expect(pinned.byteLength).toBe(3);
+    e.stop();
+  });
+
+  it('V13-A1 park 转发为协议消息（批量索引+扁平坐标）；空批次不发信', () => {
+    const w = new FakeWorker();
+    const e = new GraphEngine(mkModel(), {}, { workerFactory: () => w });
+    e.start();
+    e.park(Uint32Array.from([0, 2]), Float32Array.from([1, 0, 0, 0, 0, 1]));
+    const msg = w.posted[1].msg as Extract<InMessage, { type: 'park' }>;
+    expect(msg.type).toBe('park');
+    expect(Array.from(msg.indices)).toEqual([0, 2]);
+    expect(Array.from(msg.positions)).toEqual([1, 0, 0, 0, 0, 1]);
+    e.park(new Uint32Array(0), new Float32Array(0));
+    expect(w.posted).toHaveLength(2); // 空批次不再发信（仍只有 init+park）
+    e.stop();
+  });
 });
 
 describe('GraphEngine 主线程兜底', () => {
@@ -189,6 +217,30 @@ describe('GraphEngine 主线程兜底', () => {
     expect(e.positions[1]).toBe(6);
     expect(e.positions[2]).toBe(7);
     e.setParams({ repulsion: 25 });
+    e.stop();
+  });
+
+  it('V13-A1 兜底路径 park：钉住孤立节点 + 广播一次位置 + 不 reheat（保持 settled）', () => {
+    const onTick = vi.fn();
+    const e = new GraphEngine(
+      mkModel(), // 节点 c（index 2）孤立
+      { onTick },
+      {
+        workerFactory: () => {
+          throw new Error('no worker');
+        },
+      },
+    );
+    e.start();
+    for (let t = 0; t < 400; t++) e.stepFrame(t * 16);
+    expect(e.settled).toBe(true);
+    onTick.mockClear();
+    e.park(Uint32Array.from([2]), Float32Array.from([99, 0, 0]));
+    expect(e.settled).toBe(true); // park 不唤醒物理
+    expect(onTick).toHaveBeenCalledTimes(1); // 兜底路径同步广播一次
+    expect(e.positions[6]).toBe(99);
+    expect(e.positions[7]).toBe(0);
+    expect(e.positions[8]).toBe(0);
     e.stop();
   });
 });

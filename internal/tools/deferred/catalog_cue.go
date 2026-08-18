@@ -11,16 +11,11 @@ import (
 // 输出格式（按类别分组，类别和工具均按字典序排序，保证确定性）：
 //
 //	## Available Tools Catalog
-//	
-//	You have additional tools available that are not currently loaded in your tool set.
-//	To use any of these tools, call tool_load with the exact tool name.
-//	
+//
+//	Call **tool_load** with the exact tool name to activate a listed tool.
+//
 //	### <category>
-//	- <tool_name>: <description>
-//	### <category2>
-//	- <tool_name2>: <description2>
-//	
-//	  ...
+//	- <tool_name>: <first sentence, ≤80 runes>
 //
 // 设计约束（29-token §14.4 WP-4）：
 //   - 只包含工具名 + 一句话描述，不含 schema/参数/示例
@@ -57,21 +52,43 @@ func RenderCatalogCue(catalog []DeferredToolEntry) string {
 
 	var b strings.Builder
 	b.WriteString("## Available Tools Catalog\n\n")
-	b.WriteString("You have additional tools available that are not currently loaded in your tool set. ")
-	b.WriteString("To use any of these tools, call **tool_load** with the exact tool name. ")
-	b.WriteString("The tool will be immediately activated and available for use.\n\n")
+	b.WriteString("Call **tool_load** with the exact tool name to activate a listed tool.\n\n")
 
 	for _, cat := range categories {
 		b.WriteString(fmt.Sprintf("### %s\n", cat))
 		for _, entry := range byCategory[cat] {
-			desc := strings.TrimSpace(entry.Description)
+			desc := compactCatalogDesc(entry.Description)
 			if desc == "" {
-				desc = "(no description)"
+				b.WriteString(fmt.Sprintf("- %s\n", entry.Name))
+			} else {
+				b.WriteString(fmt.Sprintf("- %s: %s\n", entry.Name, desc))
 			}
-			b.WriteString(fmt.Sprintf("- %s: %s\n", entry.Name, desc))
 		}
 		b.WriteString("\n")
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+const catalogDescMaxRunes = 80
+
+// compactCatalogDesc keeps the catalog cue to a short first sentence so
+// deferring more tools does not grow tail tokens as fast as the schema saved.
+func compactCatalogDesc(desc string) string {
+	desc = strings.TrimSpace(desc)
+	if desc == "" {
+		return ""
+	}
+	cut := len(desc)
+	for _, sep := range []string{"。", "；", ". ", "; "} {
+		if i := strings.Index(desc, sep); i > 0 && i < cut {
+			cut = i
+		}
+	}
+	desc = strings.TrimSpace(desc[:cut])
+	runes := []rune(desc)
+	if len(runes) > catalogDescMaxRunes {
+		return string(runes[:catalogDescMaxRunes-1]) + "…"
+	}
+	return desc
 }

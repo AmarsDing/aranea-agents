@@ -44,6 +44,9 @@ func NewDynamicSummarizer(cfg SummarizerConfig) trpcsummary.SessionSummarizer {
 		return trpcsummary.NewSummarizer(m,
 			trpcsummary.WithName("aranea-session-summary"),
 			trpcsummary.WithContextThreshold(),
+			// 框架 v1.11 缓存安全 fork：摘要请求复用主会话 KV cache 前缀
+			// （runner 自动注入父请求，框架深拷贝防污染），降低摘要延迟与成本。
+			trpcsummary.WithCacheSafeForking(true),
 		), nil
 	})
 }

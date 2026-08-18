@@ -108,42 +108,42 @@ func shardFingerprint(group string, v any) string {
 type coreShardFP struct {
 	AgentID string // 保守：工作区目录按 agent 解析，core 放弃跨 agent 共享
 
-	Filesystem    bool
-	FilesystemDir string
-	ShellExec     bool
-	ShellExecDir  string
-	ShellExecEnv  map[string]string
-	WebFetch      bool
-	WebSearch     bool
-	WebResearch   bool
+	Filesystem     bool
+	FilesystemDir  string
+	ShellExec      bool
+	ShellExecDir   string
+	ShellExecEnv   map[string]string
+	WebFetch       bool
+	WebSearch      bool
+	WebResearch    bool
 	WebResearchCfg webresearchpkg.Config
-	GeminiFetch   bool
-	GeminiModel   string
-	GoogleSearch  bool
-	GoogleAPIKey  string
-	GoogleCX      string
-	ArxivSearch   bool
-	Wikipedia     bool
-	Email         bool
-	Todo          bool
-	AwaitReply    bool
-	HasAwaitHook  bool
-	ClaudeCode    bool
-	ClaudeCodeDir string
+	GeminiFetch    bool
+	GeminiModel    string
+	GoogleSearch   bool
+	GoogleAPIKey   string
+	GoogleCX       string
+	ArxivSearch    bool
+	Wikipedia      bool
+	Email          bool
+	Todo           bool
+	AwaitReply     bool
+	HasAwaitHook   bool
+	ClaudeCode     bool
+	ClaudeCodeDir  string
 	// OpenAPISpecs / AgentTools 当前构建路径恒空；保留投影防未来接线漂移
 	// （一旦接线，值变化自动反映进指纹）。
-	OpenAPISpecs []tooltrpc.OpenAPISpecConfig
-	NumAgentTools int
-	WorkspaceExec bool
-	CallAgent     bool
-	Kanban        bool
-	HasKanbanBridge bool
-	ReadDocument    bool
-	ReadSpreadsheet bool
-	Datetime        bool
-	Message         bool
-	HasOutboundRouter bool
-	SubAgent          bool
+	OpenAPISpecs       []tooltrpc.OpenAPISpecConfig
+	NumAgentTools      int
+	WorkspaceExec      bool
+	CallAgent          bool
+	Kanban             bool
+	HasKanbanBridge    bool
+	ReadDocument       bool
+	ReadSpreadsheet    bool
+	Datetime           bool
+	Message            bool
+	HasOutboundRouter  bool
+	SubAgent           bool
 	HasSubAgentService bool
 	ClientBridge       bool
 	HasClientBridgeSvc bool
@@ -369,38 +369,38 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 		fp := shardFingerprint(shardGroupCore, coreShardFP{
 			AgentID: ag.ID,
 
-			Filesystem:    coreCfg.Filesystem,
-			FilesystemDir: coreCfg.FilesystemDir,
-			ShellExec:     coreCfg.ShellExec,
-			ShellExecDir:  coreCfg.ShellExecDir,
-			ShellExecEnv:  coreCfg.ShellExecEnv,
-			WebFetch:      coreCfg.WebFetch,
-			WebSearch:     coreCfg.WebSearch,
-			WebResearch:   coreCfg.WebResearch,
-			WebResearchCfg: coreCfg.WebResearchCfg,
-			GeminiFetch:   coreCfg.GeminiFetch,
-			GeminiModel:   coreCfg.GeminiModel,
-			GoogleSearch:  coreCfg.GoogleSearch,
-			GoogleAPIKey:  coreCfg.GoogleAPIKey,
-			GoogleCX:      coreCfg.GoogleCX,
-			ArxivSearch:   coreCfg.ArxivSearch,
-			Wikipedia:     coreCfg.Wikipedia,
-			Email:         coreCfg.Email,
-			Todo:          coreCfg.Todo,
-			AwaitReply:    coreCfg.AwaitReply,
-			HasAwaitHook:  coreCfg.AwaitHook != nil,
-			ClaudeCode:    coreCfg.ClaudeCode,
-			ClaudeCodeDir: coreCfg.ClaudeCodeDir,
-			OpenAPISpecs:  coreCfg.OpenAPISpecs,
-			NumAgentTools: len(coreCfg.AgentTools),
-			WorkspaceExec: coreCfg.WorkspaceExec,
-			CallAgent:     coreCfg.CallAgent,
-			Kanban:        coreCfg.Kanban,
-			HasKanbanBridge: coreCfg.KanbanBridge != nil,
-			ReadDocument:    coreCfg.ReadDocument,
-			ReadSpreadsheet: coreCfg.ReadSpreadsheet,
-			Datetime:        coreCfg.Datetime,
-			Message:         coreCfg.Message,
+			Filesystem:         coreCfg.Filesystem,
+			FilesystemDir:      coreCfg.FilesystemDir,
+			ShellExec:          coreCfg.ShellExec,
+			ShellExecDir:       coreCfg.ShellExecDir,
+			ShellExecEnv:       coreCfg.ShellExecEnv,
+			WebFetch:           coreCfg.WebFetch,
+			WebSearch:          coreCfg.WebSearch,
+			WebResearch:        coreCfg.WebResearch,
+			WebResearchCfg:     coreCfg.WebResearchCfg,
+			GeminiFetch:        coreCfg.GeminiFetch,
+			GeminiModel:        coreCfg.GeminiModel,
+			GoogleSearch:       coreCfg.GoogleSearch,
+			GoogleAPIKey:       coreCfg.GoogleAPIKey,
+			GoogleCX:           coreCfg.GoogleCX,
+			ArxivSearch:        coreCfg.ArxivSearch,
+			Wikipedia:          coreCfg.Wikipedia,
+			Email:              coreCfg.Email,
+			Todo:               coreCfg.Todo,
+			AwaitReply:         coreCfg.AwaitReply,
+			HasAwaitHook:       coreCfg.AwaitHook != nil,
+			ClaudeCode:         coreCfg.ClaudeCode,
+			ClaudeCodeDir:      coreCfg.ClaudeCodeDir,
+			OpenAPISpecs:       coreCfg.OpenAPISpecs,
+			NumAgentTools:      len(coreCfg.AgentTools),
+			WorkspaceExec:      coreCfg.WorkspaceExec,
+			CallAgent:          coreCfg.CallAgent,
+			Kanban:             coreCfg.Kanban,
+			HasKanbanBridge:    coreCfg.KanbanBridge != nil,
+			ReadDocument:       coreCfg.ReadDocument,
+			ReadSpreadsheet:    coreCfg.ReadSpreadsheet,
+			Datetime:           coreCfg.Datetime,
+			Message:            coreCfg.Message,
 			HasOutboundRouter:  coreCfg.OutboundRouter != nil,
 			SubAgent:           coreCfg.SubAgent,
 			HasSubAgentService: coreCfg.SubAgentService != nil,
@@ -508,10 +508,10 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 	// knowledge。
 	if cfg.KnowledgeSearch || cfg.KnowledgeReflect || knowledgeWriteEnabled {
 		fp := shardFingerprint(shardGroupKnowledge, struct {
-			Search bool
+			Search  bool
 			Reflect bool
-			Write  bool
-			Ready  bool
+			Write   bool
+			Ready   bool
 		}{cfg.KnowledgeSearch, cfg.KnowledgeReflect, knowledgeWriteEnabled, knowledgeReady})
 		uc := deps.KnowledgeUsecase
 		buildCfg := tooltrpc.ToolsetConfig{
@@ -543,7 +543,7 @@ func computeShardPlan(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, p
 			fpItems = append(fpItems, r.cfg)
 		}
 		fp := shardFingerprint(shardGroupMedia, struct {
-			Providers        []bizmedia.ProviderConfig
+			Providers         []bizmedia.ProviderConfig
 			HasArtifactWriter bool
 		}{fpItems, deps.ArtifactWriter != nil})
 		mediaDeps := deps
@@ -697,9 +697,12 @@ func resolveDeferredToolNames(ag biz.Agent, eff map[string]bool, lg loggateway.L
 		return nil
 	}
 	// 自动两段式分离（WP-4）：基于 profile 把有效工具分为核心常驻集和延迟加载集。
+	// MemoryTools / working_memory / 扁平 CustomTool 不在 eff 里，
+	// MergeNonCoreMappedDeferred 按「已映射 − 核心集」并入，避免侧通道漏常驻。
 	profile := strings.TrimSpace(ag.Settings.ToolsProfile)
 	effKeys := effKeysList(eff)
 	_, deferredKeys := deferred.SplitCoreResidentTools(effKeys, profile)
+	deferredKeys = deferred.MergeNonCoreMappedDeferred(deferredKeys, profile)
 	out := deferred.RegistryNamesForBizKeys(deferredKeys)
 	if len(out) > 0 {
 		lg.Info("两段式工具加载：自动分离核心/延迟",

@@ -48,7 +48,7 @@ func TestRegistryNamesForBizKeys_Sorted(t *testing.T) {
 }
 
 func TestRegistryNamesForBizKeys_SkipsUnmapped(t *testing.T) {
-	keys := []string{"memory_search", "plan_and_execute", "synthesize_results", "custom_tool"}
+	keys := []string{"memory_search", "plan_and_execute", "memory_remember", "custom_tool"}
 	names := RegistryNamesForBizKeys(keys)
 	if len(names) != 0 {
 		t.Errorf("expected empty for unmapped keys, got %v", names)
@@ -71,6 +71,7 @@ func TestSpiritDeferredRegistryIncludesShellComputerUseAndGraph(t *testing.T) {
 		"computer_use_observe", "computer_use_screenshot", "computer_use_act",
 		"computer_use_launch", "computer_use_session",
 		"build_orchestration_graph",
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"subagents_spawn",
 	})
 	for _, n := range names {
@@ -85,14 +86,42 @@ func TestRegistryNamesForBizKeys_IdentityMappedCustomTools(t *testing.T) {
 		"computer_use_act", "computer_use_observe", "computer_use_screenshot",
 		"computer_use_launch", "computer_use_session",
 		"build_orchestration_graph",
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"shell_exec",
+		"memory_add", "memory_update", "memory_delete", "memory_load",
+		"read_upstream_deliverable",
+		"search_messages", "list_agent_sessions", "read_session_history",
 	}
 	names := RegistryNamesForBizKeys(keys)
 	assertContainsAll(t, names, []string{
 		"computer_use_act", "computer_use_observe", "computer_use_screenshot",
 		"computer_use_launch", "computer_use_session",
 		"build_orchestration_graph",
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
 		"hostexec",
+		"memory_add", "memory_update", "memory_delete", "memory_load",
+		"read_upstream_deliverable",
+		"search_messages", "list_agent_sessions", "read_session_history",
+	})
+}
+
+func TestSpiritDeferredRegistryIncludesMemoryWritesAndUpstream(t *testing.T) {
+	enabled := []string{
+		"plan_and_execute", "datetime", "memory_search", "shell_exec",
+	}
+	_, def := SplitCoreResidentTools(enabled, "spirit")
+	names := RegistryNamesForBizKeys(MergeNonCoreMappedDeferred(def, "spirit"))
+	assertContainsAll(t, names, []string{
+		"hostexec",
+		"memory_add", "memory_update", "memory_delete", "memory_load",
+		"read_upstream_deliverable",
+		"working_memory",
+		"synthesize_results", "get_team_deliverable", "cancel_orchestration",
+		"build_orchestration_graph",
+		"search_messages", "list_agent_sessions", "read_session_history",
+	})
+	assertNotContainsAny(t, names, []string{
+		"memory_search", "memory_remember", "plan_and_execute", "datetime",
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -16,6 +17,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
+	trpcevolution "trpc.group/trpc-go/trpc-agent-go/evolution"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
@@ -47,6 +49,9 @@ type PersistenceSet struct {
 	Artifact       trpcartifact.Service       // optional; wired from biz.ArtifactUsecase adapter
 	ArtifactUC     *biz.ArtifactUsecase       // optional; attachment ref resolution for turns
 	RunnerRollback RunnerSessionRollbackStore // optional framework-session rollback boundary store
+	// Evolution 是框架 v1.11 技能演化 service（hold-all 模式，见
+	// internal/skill/evolution）。可选：nil 时 runner 不触发演化学习。
+	Evolution trpcevolution.Service
 }
 
 // EventPipeline wraps the event buses used for projecting runtime events
@@ -130,6 +135,7 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		}
 		msg := fmt.Sprintf("LLM 调用失败，正在重试（第 %d 次，上限 %s），%v 后重试", attempt, maxLabel, delay)
 		meta := map[string]any{
+			"kind":        "retry",
 			"attempt":     attempt,
 			"max_retries": maxRetries,
 			"delay_ms":    delay.Milliseconds(),
@@ -152,6 +158,56 @@ func (d TurnDeps) RoundTripForSession(sessionID string) *provider.RoundTrip {
 		}
 	}
 	return rt
+}
+
+// PublishLLMFailureNotice emits a system.notice (llm_billing / llm_auth /
+// llm_stall) so the chat banner can show a durable provider failure instead
+// of a reconnect spinner. No-op when the failure is not user-actionable.
+func PublishLLMFailureNotice(bus biz.EventBus, lg loggateway.Logger, ctx context.Context, sessionID string, err error) {
+	if bus == nil || err == nil {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	fail := provider.ClassifyFailure("", err)
+	if fail.Notice == "" {
+		return
+	}
+	PublishLLMFailure(bus, lg, ctx, sessionID, fail, err.Error())
+}
+
+// PublishLLMFailure publishes a classified provider failure as system.notice.
+func PublishLLMFailure(bus biz.EventBus, lg loggateway.Logger, ctx context.Context, sessionID string, fail provider.Failure, detail string) {
+	if bus == nil || fail.Notice == "" {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	msg := fail.Message
+	if msg == "" {
+		msg = detail
+	}
+	meta := map[string]any{
+		"kind":      string(fail.Kind),
+		"error":     detail,
+		"message":   msg,
+		"agent_key": "provider",
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bus.Publish(ctx, biz.NewSystemNoticeEvent(sessionID, fail.Notice, msg, meta))
+	if lg != nil {
+		lg.Warn("LLM 故障已通知前端",
+			loggateway.StepID("chat.llm_failure_notice"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("kind", string(fail.Kind)),
+			loggateway.Str("notice", fail.Notice))
+	}
 }
 
 // NewRunnerManagerFromPersist builds a RunnerManager from a wired PersistenceSet.

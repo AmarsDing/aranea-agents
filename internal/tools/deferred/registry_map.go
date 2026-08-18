@@ -34,6 +34,24 @@ var bizKeyToRegistryName = map[string]string{
 
 	// spirit CustomTool：构图 schema ~1.7k tok，闲聊不常驻。
 	"build_orchestration_graph": "build_orchestration_graph",
+	"synthesize_results":        "synthesize_results",
+	"get_team_deliverable":      "get_team_deliverable",
+	"cancel_orchestration":      "cancel_orchestration",
+
+	// 框架记忆写/载入 + 上游交付物全文：装配走 MemoryTools/CustomTools，
+	// 不在 catalog eff 里。映射到自身才能被 FinalizeDeferredTools 包装。
+	// memory_search / memory_remember 故意不映射，保持常驻。
+	"memory_add":                "memory_add",
+	"memory_update":             "memory_update",
+	"memory_delete":             "memory_delete",
+	"memory_load":               "memory_load",
+	"read_upstream_deliverable": "read_upstream_deliverable",
+
+	// M71 会话考古：仅 spirit 装配为扁平 CustomTool。闲聊走 memory_search /
+	// memory_remember，考古工具按需 tool_load。
+	"search_messages":      "search_messages",
+	"list_agent_sessions":  "list_agent_sessions",
+	"read_session_history": "read_session_history",
 
 	// web
 	"web_fetch":         "httpfetch",
@@ -93,8 +111,13 @@ var bizKeyToRegistryName = map[string]string{
 
 // RegistryNamesForBizKeys 将业务工具键列表转换为 Registry 名称列表（去重、排序）。
 // 只返回可以被 deferred 的 Registry 名称（即在 bizKeyToRegistryName 中有映射的）。
-// 未映射的 CustomTools（如 memory_search、plan_and_execute）被跳过，保持常驻。
-// computer_use_* / build_orchestration_graph 映射到自身（扁平 CustomTool）。
+// 未映射的 CustomTools（如 memory_search、memory_remember、plan_and_execute）被跳过，保持常驻。
+// 扁平 CustomTool 映射到自身：computer_use_* / build_orchestration_graph /
+// synthesize_results / get_team_deliverable / cancel_orchestration /
+// memory_add|update|delete|load / read_upstream_deliverable /
+// search_messages / list_agent_sessions / read_session_history。
+// skill_load / skill_select_docs 由 llmagent 在装配之后注入，不能靠本表包装；
+// spirit 用 WithAllowedSkillTools(skill_load) 去掉文档辅助工具。
 func RegistryNamesForBizKeys(bizKeys []string) []string {
 	set := make(map[string]bool, len(bizKeys))
 	for _, key := range bizKeys {

@@ -1,6 +1,6 @@
 ## Graph 编排决策规则
 
-当任务需要 4+ Agent 并行执行时，使用 `build_orchestration_graph` 构建 Graph DAG：
+当任务需要 4+ Agent 并行执行时，先 `tool_load` 再调用 `build_orchestration_graph` 构建 Graph DAG：
 
 ### 何时使用 Graph 编排
 
@@ -17,7 +17,7 @@
 2. 识别 Agent 间的依赖关系（哪些可以并行，哪些必须顺序）
 3. 调用 `build_orchestration_graph(task_description, agents, mode)` 构建 Graph
 4. 系统后台会自动监控执行进度，完成后会主动通知，无需手动查询
-5. 所有节点完成后，使用 `synthesize_results` 合成结果
+5. 所有节点完成后，先 `tool_load` 再调用 `synthesize_results` 合成结果
 
 ### Agent 分配原则
 
