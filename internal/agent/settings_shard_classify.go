@@ -182,6 +182,7 @@ var settingsFieldClassification = map[string]settingsFieldClass{
 	"DreamSnapshotJSON":         classNoRebuild, // dream cycle 子系统
 	"VerificationTruncateChars": classNoRebuild, // team 验证门 prompt 组装（非 agent 构建路径）
 	"ClarificationEnabled":      classNoRebuild, // chat_clarify_gate 每轮 DB 加载判定
+	"ReplyReminderEnabled":      classFullRebuild, // callback_chain 中注册 reply-reminder hooks（BUILD 产物）
 	"CreatedAt":                 classNoRebuild, // 元数据，不变
 	"UpdatedAt":                 classNoRebuild, // 元数据；settings 行任何更新都会 bump，进指纹则白收窄
 }

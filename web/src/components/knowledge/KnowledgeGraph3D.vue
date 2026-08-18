@@ -691,7 +691,10 @@ const nodeLegend = computed(() => {
     flex-direction: column;
     gap: 12px;
     height: 100%;
-    max-height: 560px;
+    // UX：不再限死 560px——全屏模式下跟stage 拉满视口高，内容超出时整板滚动兜底；
+    // 旧值 560 会把 --grow 节点列表压成细条、选中卡溢出盖住列表（点不中列表项）。
+    max-height: 100%;
+    overflow-y: auto;
   }
 
   &__section {
@@ -739,7 +742,8 @@ const nodeLegend = computed(() => {
 
   &__node-list {
     flex: 1;
-    min-height: 0;
+    // UX 保底 ~3 行：容器空间不足时宁可整板滚动，也不把列表挤成细条（原来点不中列表项）。
+    min-height: 96px;
     max-height: 220px;
     overflow-y: auto;
   }

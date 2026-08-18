@@ -3,7 +3,19 @@
  * + 动态度数下限（G5-G 小图标签修复）。
  */
 import { describe, expect, it } from 'vitest';
-import { effectiveMinDegree, selectLabelCandidates, shouldShowLabel } from '../render/LabelLayer';
+import {
+  effectiveMinDegree,
+  filterOverlappingLabels,
+  scaleForPixels,
+  selectLabelCandidates,
+  shouldShowLabel,
+  type NdcRect,
+} from '../render/LabelLayer';
+
+/** 造 NDC 矩形（中心+半宽半高）。 */
+function rect(cx: number, cy: number, hw: number, hh: number): NdcRect {
+  return { x0: cx - hw, y0: cy - hh, x1: cx + hw, y1: cy + hh };
+}
 
 describe('selectLabelCandidates', () => {
   it('按 degree 降序取 top-K', () => {
@@ -39,6 +51,75 @@ describe('shouldShowLabel', () => {
     // maxDistance = fitDist + radius（G5-G 修复）；用户拉远或 hover 远侧节点时距离必超阈值
     expect(shouldShowLabel(1000, 600, 0, 4, true, true)).toBe(true);
     expect(shouldShowLabel(1000, 600, 0, 4, true, false)).toBe(true);
+  });
+});
+
+describe('scaleForPixels（UX：像素目标真恒尺寸，近景不爆炸）', () => {
+  const TAN_HALF = Math.tan((60 * Math.PI) / 360); // fov 60
+  const VH = 849;
+  const BASE = 3.2;
+  const TARGET = 12.5;
+
+  /** 由 k 反推屏幕像素字高：base·k·(vh/2)/(dist·tanHalf)。 */
+  function screenPx(dist: number): number {
+    const k = scaleForPixels(dist, TAN_HALF, VH, TARGET, BASE);
+    return (BASE * k * (VH / 2)) / (dist * TAN_HALF);
+  }
+
+  it('屏幕字高跨距离严格恒定（近/中/远全量程 = targetPx）', () => {
+    for (const dist of [5, 30, 100, 300, 800, 2000]) {
+      expect(screenPx(dist)).toBeCloseTo(TARGET, 1);
+    }
+  });
+
+  it('近景不再 1/dist 爆炸：dist=2 时仍是 targetPx（旧 min 钳制方案实测 60~90px）', () => {
+    expect(screenPx(2)).toBeCloseTo(TARGET, 1);
+    expect(screenPx(2)).toBeLessThan(20);
+  });
+
+  it('k 随 dist 单调递增（世界尺寸近小远大），且钳制在 [0.002, 16]', () => {
+    const kNear = scaleForPixels(0.001, TAN_HALF, VH, TARGET, BASE);
+    const kFar = scaleForPixels(1e6, TAN_HALF, VH, TARGET, BASE);
+    expect(kNear).toBeGreaterThanOrEqual(0.002);
+    expect(kFar).toBeLessThanOrEqual(16);
+    expect(scaleForPixels(100, TAN_HALF, VH, TARGET, BASE)).toBeLessThan(
+      scaleForPixels(300, TAN_HALF, VH, TARGET, BASE),
+    );
+  });
+
+  it('viewportPx 减半（小窗）时 k 翻倍补偿，屏幕字高不变', () => {
+    const kFull = scaleForPixels(200, TAN_HALF, VH, TARGET, BASE);
+    const kHalf = scaleForPixels(200, TAN_HALF, VH / 2, TARGET, BASE);
+    expect(kHalf / kFull).toBeCloseTo(2, 5);
+  });
+});
+
+describe('filterOverlappingLabels（UX：屏幕空间防重叠，近景核心防叠字 soup）', () => {
+  it('不重叠全部保留（输入顺序=度数降序）', () => {
+    const keep = filterOverlappingLabels(
+      [rect(-0.8, 0.8, 0.1, 0.05), rect(0, 0, 0.1, 0.05), rect(0.8, -0.8, 0.1, 0.05)],
+      12,
+    );
+    expect(keep).toEqual([true, true, true]);
+  });
+
+  it('重叠时保留高度数（先来），隐藏后来者', () => {
+    const keep = filterOverlappingLabels(
+      [rect(0, 0, 0.2, 0.1), rect(0.05, 0.05, 0.2, 0.1), rect(0.9, 0.9, 0.05, 0.05)],
+      12,
+    );
+    expect(keep).toEqual([true, false, true]);
+  });
+
+  it('超同屏上限截断；null（不可见项）跳过', () => {
+    const rects = [rect(-0.9, 0.9, 0.05, 0.03), null, rect(0, 0.9, 0.05, 0.03), rect(0.9, 0.9, 0.05, 0.03)];
+    expect(filterOverlappingLabels(rects, 2)).toEqual([true, false, true, false]);
+  });
+
+  it('贴边余量：间距小于 margin 视为重叠', () => {
+    // 两矩形 x 间距 0.02 < 2×margin(0.015) → 隐藏后者
+    const keep = filterOverlappingLabels([rect(0, 0, 0.1, 0.05), rect(0.21, 0, 0.1, 0.05)], 12);
+    expect(keep).toEqual([true, false]);
   });
 });
 

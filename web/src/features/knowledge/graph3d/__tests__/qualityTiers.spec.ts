@@ -38,19 +38,19 @@ describe('initialTier', () => {
 });
 
 describe('QUALITY_SPECS 契约', () => {
-  it('HIGH：bloom 开 + pixelRatio≤2 + 80 标签候选', () => {
+  it('HIGH：bloom 开 + pixelRatio≤2 + 20 标签候选（UX 收敛核心 hub 防叠字）', () => {
     const s = QUALITY_SPECS[QUALITY_HIGH];
     expect(s.bloom).toBe(true);
     expect(s.maxPixelRatio).toBe(2);
-    expect(s.labelCandidates).toBe(80);
+    expect(s.labelCandidates).toBe(20);
     expect(s.label).toBe('HIGH');
   });
 
-  it('LOW：bloom 关 + pixelRatio=1 + 24 标签候选', () => {
+  it('LOW：bloom 关 + pixelRatio=1 + 8 标签候选', () => {
     const s = QUALITY_SPECS[QUALITY_LOW];
     expect(s.bloom).toBe(false);
     expect(s.maxPixelRatio).toBe(1);
-    expect(s.labelCandidates).toBe(24);
+    expect(s.labelCandidates).toBe(8);
     expect(s.label).toBe('LOW');
   });
 });

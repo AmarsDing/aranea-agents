@@ -72,6 +72,8 @@ func L2MemoryCue(ctx context.Context, l2 biz.MemoryL2Recaller, ag biz.Agent, pol
 		} else {
 			line = fmt.Sprintf("- %s", title)
 		}
+		// 全文 outcome_summary（markdown 表格）压成 gist，防长摘要吃掉预算。
+		line = capL2GistLine(line)
 		if !packer.allow(line) {
 			continue
 		}

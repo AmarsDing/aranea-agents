@@ -34,6 +34,61 @@ func TestCompositeMemoryCue_FormatsFusedBlock(t *testing.T) {
 	}
 }
 
+// L2 episode 全文 summary 必须压成 gist（2026-08-18 域 B up-03 缺陷根修）：
+// 3 条 markdown 长摘要会把 800-token 共享预算吃到仅剩 2 条 L3 容量，
+// 答案承载的 L3 变体被挤出注入块。压 gist 后 L3 事实应完整进入注入块。
+func TestCompositeMemoryCue_L2GistCapFreesBudgetForL3(t *testing.T) {
+	policy := biz.ResolveMemoryRuntimePolicy(&biz.AgentRuntimeSettings{
+		MemoryEnabled: true, L2RecallEnabled: true, L3Enabled: true, L0InjectL3: true,
+	})
+	// 复刻 up-03 证据形态：L2 长摘要（markdown 表格 ~400 chars）+ L3 短事实。
+	longSummary := "核心交换机的登录密码是什么？: **结论：无法提供**\n\n| 渠道 | 说明 |\n|---|---|\n" +
+		strings.Repeat("| 密码保险箱 | 统一托管在密码管理系统中，按设备名检索申请授权，全程审计留痕 ", 8) +
+		"L2尾部标记ENDMARKER"
+	l3Answer := "为节能，机房空调温度由 22℃ 上调至 24℃"
+	l3Threshold := "动环温度告警阈值为超过 28℃ 触发告警，空调设定基线为 24℃"
+	l3Other1 := "数据库服务器 SRV-DB-03 原运行 MySQL 5.7，后迁移至 PostgreSQL 16"
+	l3Other2 := "2026 年 7 月出口带宽扩容至 2 Gbps"
+
+	cue, kept := CompositeMemoryCueWithHits(context.Background(), compositeRecallStub{hits: []biz.CompositeRecallHit{
+		{Layer: "L2", Line: longSummary, Score: 0.9},
+		{Layer: "L3", Line: l3Threshold, Score: 0.8},
+		{Layer: "L3", Line: l3Answer, Score: 0.7},
+		{Layer: "L3", Line: l3Other1, Score: 0.6},
+		{Layer: "L3", Line: l3Other2, Score: 0.5},
+	}}, biz.Agent{ID: "a1"}, policy, biz.MemoryRuntimeContext{}, "sess", "机房空调", 0, nil)
+
+	// L2 行已被压到 gist 预算内（尾部内容截断，且带省略号）。
+	if strings.Contains(cue, "ENDMARKER") {
+		t.Fatalf("L2 line should be truncated to gist, got full summary in cue")
+	}
+	// 全部 4 条 L3 事实都应进入注入块（压 gist 前仅剩 ~2 条容量）。
+	for _, want := range []string{l3Answer, l3Threshold, l3Other1, l3Other2} {
+		if !strings.Contains(cue, want) {
+			t.Fatalf("L3 fact starved out of cue: %q\ncue=%s", want, cue)
+		}
+	}
+	if len(kept) != 5 {
+		t.Fatalf("expected 5 kept hits (1 L2 gist + 4 L3), got %d", len(kept))
+	}
+}
+
+// L3 短陈述不受 L2 gist 截断影响：只有 Layer=L2 的行才压 gist。
+func TestCapL2GistLineOnlyAffectsLongLines(t *testing.T) {
+	short := "Prefers Go"
+	if got := capL2GistLine(short); got != short {
+		t.Fatalf("short line must pass through, got %q", got)
+	}
+	long := strings.Repeat("长", recallL2GistMaxRunes+10)
+	got := capL2GistLine(long)
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("truncated line should carry ellipsis, got %q", got)
+	}
+	if len([]rune(got)) != recallL2GistMaxRunes+1 { // +1 为省略号
+		t.Fatalf("truncated line should be %d runes + ellipsis, got %d", recallL2GistMaxRunes, len([]rune(got)))
+	}
+}
+
 // TestCompositeMemoryCue_MergesProactiveHits verifies that proactive recall
 // hits are merged with RecallComposite results, deduplicated by line, and
 // ranked by score (P3-11).

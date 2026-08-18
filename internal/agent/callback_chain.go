@@ -115,7 +115,11 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	// Problem 6: inject a reply reminder after each tool call so the LLM
 	// outputs a brief "已完成 + 下一步" reply before calling the next tool.
 	// BeforeModel hook reads state set by the AfterTool hook.
-	entries = append(entries, newReplyReminderBeforeHook())
+	// S2 (2026-08-18): gated by ReplyReminderEnabled — evaluation/single-tool
+	// agents can disable it to skip the extra LLM summary call (~3.5s).
+	if ag.Settings != nil && ag.Settings.ReplyReminderEnabled {
+		entries = append(entries, newReplyReminderBeforeHook())
+	}
 	// P2 TTFT: the framework content processor appends intent context right
 	// after the system block (before session history), which invalidates the
 	// prompt-cache prefix every turn. This hook (priority 100, runs after all
@@ -157,7 +161,10 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 		entries = append(entries, newSkillLoadCaptureAfterHook())
 		// Problem 6: set reply-reminder state after each tool call so the
 		// BeforeModel hook can inject a reminder system message.
-		entries = append(entries, newReplyReminderAfterHook())
+		// S2 (2026-08-18): gated by ReplyReminderEnabled.
+		if ag.Settings != nil && ag.Settings.ReplyReminderEnabled {
+			entries = append(entries, newReplyReminderAfterHook())
+		}
 		entries = append(entries, callbacks.NewToolRecorderCallback(50, func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 			recordToolInvocationAfter(ctx, args, ag, deps)
 			return &trpctool.AfterToolResult{}, nil

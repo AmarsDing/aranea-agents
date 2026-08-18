@@ -54,6 +54,8 @@ describe('ReticleLayer', () => {
     expect(uniforms(l).uTexW.value).toBe(2);
     l.setTime(1.25);
     expect(uniforms(l).uTime.value).toBe(1.25);
+    l.setPointScale(321); // 屏幕像素钳制换算系数（UX：近景瞄准具防满屏）
+    expect(uniforms(l).uPointScale.value).toBe(321);
     tex.dispose();
     l.dispose();
   });

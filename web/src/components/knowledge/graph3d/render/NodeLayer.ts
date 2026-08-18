@@ -13,6 +13,17 @@ import * as THREE from 'three';
 export const EMPH_DIM = 0.15;
 export const EMPH_NORMAL = 1.0;
 export const EMPH_HI = 1.6;
+/** UX 亮度预算：高亮集规模超此阈值时 emph 按 √(预算/规模) 衰减（下限 EMPH_HI_FLOOR）。
+ *  大 hub 一跳覆盖数百节点时，全部 ×1.6 冲过 bloom 阈值叠成白幕；
+ *  衰减后高亮仅微亮于常态，聚焦对比由 dim 0.15 反衬承担。 */
+export const EMPH_HI_BUDGET = 40;
+export const EMPH_HI_FLOOR = 1.05;
+
+/** 高亮 emph 规模自适应（纯函数，可单测）。 */
+export function emphForCount(count: number): number {
+  if (count <= EMPH_HI_BUDGET) return EMPH_HI;
+  return Math.max(EMPH_HI_FLOOR, EMPH_HI * Math.sqrt(EMPH_HI_BUDGET / count));
+}
 
 const NODE_VERTEX = `
   uniform sampler2D uPosTex;
@@ -31,7 +42,8 @@ const NODE_VERTEX = `
     vec4 mv = modelViewMatrix * vec4(wp, 1.0);
     gl_Position = projectionMatrix * mv;
     float px = aSize * uPointScale / max(-mv.z, 1.0);
-    gl_PointSize = clamp(px, 1.6, 56.0);
+    // UX 优化：上限 56→40（收敛满屏光斑，密集区不再糊成一片）
+    gl_PointSize = clamp(px, 1.6, 40.0);
     gl_PointSize *= (0.2 + 0.8 * uRevealT); // M3 创世绽放：收拢 → 全尺寸
     vFade = clamp(px / 2.2, 0.35, 1.0); // 亚像素淡出防抖
     vFade *= uRevealT; // M3 创世绽放：透明 → 全显现
@@ -47,9 +59,10 @@ const NODE_FRAGMENT = `
     vec2 uv = gl_PointCoord * 2.0 - 1.0;
     float d2 = dot(uv, uv);
     if (d2 > 1.0) discard;
-    float core = smoothstep(0.16, 0.0, d2);      // 亮核（半径 40%）
+    float core = smoothstep(0.10, 0.0, d2);    // 亮核（半径 ~32%，收紧防粘连）
     float halo = 1.0 - smoothstep(0.0, 1.0, d2); // 外晕
-    float a = (core * 0.9 + halo * 0.3) * vFade * min(vEmph, 1.0);
+    // UX 收敛：halo 平方衰减 + 权重 0.3→0.2——密集区数百节点 halo 法线混合叠加成白雾淹没标签
+    float a = (core * 0.9 + halo * halo * 0.2) * vFade * min(vEmph, 1.0);
     vec3 col = vColor * (0.72 + 0.4 * core) * vEmph;
     gl_FragColor = vec4(col, a);
     #include <tonemapping_fragment>

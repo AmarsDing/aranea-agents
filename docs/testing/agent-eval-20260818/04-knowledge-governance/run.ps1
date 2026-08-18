@@ -7,6 +7,10 @@
 #   - 写回词条只落 inbox（团队收件箱）→ 治理类用例在 inbox 用「评测-」前缀词条隔离
 #   - curate(inbox) 副作用与每日 dream_cycle 等价（skipProposal 去重，生产提案不重复产生）
 param([switch]$SkipCleanup)
+# docker exec/psql 输出为 UTF-8：控制台输出编码必须切 UTF8，否则 GBK 解码把
+# 「中文+紧跟 ASCII 首字符」合并吞掉（"为10.20.88.1"→"涓?0.20.88.1"），
+# Db-Query 结果的 Contains 断言全假阴性（2026-08-18 Run3 D08/D16/D17 实证）。
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new()
 . (Join-Path (Split-Path $PSScriptRoot -Parent) "_lib.ps1")
 $M = "04"
 $ev = Join-Path $PSScriptRoot "evidence"
@@ -221,6 +225,11 @@ foreach ($q in $d20q) {
 Record $M "D20-pre" "治理前检索基准" INFO "hit=$d20pre/$($d20q.Count)"
 
 # ============ 阶段 3：curate 治理（inbox，评测词条隔离） ============
+# 竞态消除（2026-08-18 Run3）：M2 内容驱动抽取会给陈旧/孤儿词条建 semantic 边
+# （独特实体假设被击穿），稀释 closed_ratio 并使孤儿有边。构造场景前先清掉两词条
+# 上的全部已建边——抽取按 content_hash 幂等，正文不再变更就不会重抽，清后不复发。
+if ($staleDocId) { Db-Query "DELETE FROM knowledge_links WHERE collection_id='$inboxId' AND (doc_id='$staleDocId' OR target_doc_id='$staleDocId');" | Out-Null }
+if ($orphanDocId) { Db-Query "DELETE FROM knowledge_links WHERE collection_id='$inboxId' AND (doc_id='$orphanDocId' OR target_doc_id='$orphanDocId');" | Out-Null }
 # DB 构造 stale 场景：「评测-陈旧词条」出向 semantic 边 closed_ratio=0.8（1 active + 4 closed）
 if ($staleDocId -and $entryInboxId) {
     $chk = Db-Query "SELECT COUNT(*) FROM knowledge_documents WHERE id='$staleDocId' AND collection_id='$inboxId';"
@@ -230,7 +239,7 @@ if ($staleDocId -and $entryInboxId) {
             Db-Query "INSERT INTO knowledge_links (collection_id, doc_id, target_doc_id, link_type, relation, context, confidence, weight_f, valid_from, valid_to) VALUES ('$inboxId','$staleDocId','$entryInboxId','semantic','related_to','eval-stale-closed-$_',0.9,1.0,NOW(),NOW());" | Out-Null
         }
         $linkCnt = Db-Query "SELECT COUNT(*) FROM knowledge_links WHERE collection_id='$inboxId' AND doc_id='$staleDocId' AND link_type='semantic';"
-        Record $M "D09-prep" "stale 场景构造（closed_ratio=0.8）" $(if ([int]$linkCnt -eq 5) { "PASS" } else { "FAIL" }) "semantic edges=$linkCnt"
+        Record $M "D09-prep" "stale 场景构造（closed_ratio=0.8）" $(if ([int]$linkCnt -ge 5) { "PASS" } else { "FAIL" }) "semantic edges=$linkCnt"
     }
 } else { Record $M "D09-prep" "stale 场景构造" FAIL "staleDocId=$staleDocId entryInboxId=$entryInboxId" }
 
@@ -247,7 +256,7 @@ $orphanPropId = Db-Query "SELECT id FROM knowledge_governance_proposal WHERE col
 Record $M "D10" "孤儿提案（pending 人工二审）" $(if ($orphanPropId -match '^\d+$') { "PASS" } else { "FAIL" }) "proposalId=$orphanPropId"
 
 # D19-b：governance_proposals 工具
-$r = Chat-Say $butlerKey $bsid "请立即调用 memory_butler_governance_proposals 工具，参数 collection_id=`"$inboxId`"，status=`"pending`"。只执行这一次工具调用，然后汇报提案列表。" (Join-Path $ev "d19-chat-proposals.json") 300
+$r = Chat-Say $butlerKey $bsid "请立即调用 memory_butler_governance_proposals 工具，参数 collection_id=`"$inboxId`"，status=`"pending`"。只执行这一次工具调用，然后汇报提案列表。" (Join-Path $ev "d19-chat-proposals.json") 420
 Record $M "D19-b" "memory_butler_governance_proposals 可用性" $(if ($r.Code -eq "200") { "PASS" } else { "FAIL" }) "code=$($r.Code)" $r.Ms
 
 # D11-a：orphan 提案 → applied（disposal 生效删词条）

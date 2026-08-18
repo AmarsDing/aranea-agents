@@ -212,6 +212,10 @@ type AgentRuntimeSettings struct {
 	// detects blocking ambiguities, the turn pauses and asks the user for
 	// clarification before proceeding. Default true for new agents.
 	ClarificationEnabled bool
+	// ReplyReminderEnabled enables the "已完成+下一步" reply reminder injected
+	// after each tool call (Problem 6 方案B). Default true; set false for
+	// evaluation/single-tool agents to skip the extra LLM summary call.
+	ReplyReminderEnabled bool
 	CreatedAt            string
 	UpdatedAt            string
 }

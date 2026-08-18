@@ -381,6 +381,11 @@ var ddlMigrations = []ddlMigration{
 	// 永不持久化。存量库 ALTER TYPE BIGINT（列值恒 NULL——写入从未成功，转换无损）；
 	// fresh 库由 ensure DDL 直接建 BIGINT。SQLite INTEGER 为 64 位不受影响，跳过。
 	{Version: 20261229, Name: "monitor_alert_firing_ms_bigint", Func: ddlMonitorAlertFiringMsBigint},
+
+	// agent_runtime_settings.reply_reminder_enabled：代码层（biz.AgentRuntimeSettings +
+	// ent schema）已有该字段，但存量库缺列 → 查询组装 settings 时列不存在直接报错/
+	// 开关恒 false，reply_reminder 无法按 agent 关闭。补列，默认 1 保持旧行为。
+	{Version: 20261230, Name: "agent_runtime_reply_reminder", SQL: "sql/migrations/20261230_agent_runtime_reply_reminder.sql"},
 }
 
 // RunDDLMigrationsExternal runs DDL migrations with the given dialect.

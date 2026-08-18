@@ -116,6 +116,10 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		// Clarification gate: when intent pass detects blocking ambiguity, ask the user
 		// paginated clarification questions before planning (P-CLARIFY, B.10.18). Default ON.
 		field.Bool("clarification_enabled").Default(true),
+		// Reply reminder ("已完成/下一步" reminder injected after each tool call).
+		// Default ON preserves legacy behavior; evaluation/single-tool agents set
+		// false to skip the extra LLM summary call.
+		field.Bool("reply_reminder_enabled").Default(true),
 		field.String("channel_id").Default(""),
 		field.String("chat_id").Default(""),
 		field.String("workspace").Default(""),

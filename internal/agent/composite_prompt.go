@@ -178,6 +178,11 @@ func CompositeMemoryCueWithHits(ctx context.Context, composite biz.MemoryComposi
 		if line == "" {
 			continue
 		}
+		// L2 episode 行先压成 gist：全文 summary 会吃掉共享预算、挤出 L3
+		// 事实（up-03 缺陷根修）；L3 短陈述不受影响。
+		if strings.EqualFold(strings.TrimSpace(hit.Layer), "L2") {
+			line = capL2GistLine(line)
+		}
 		if policy.InjectL3 && policy.L3MaxPerRecallChars > 0 && len([]rune(line)) > policy.L3MaxPerRecallChars {
 			line = string([]rune(line)[:policy.L3MaxPerRecallChars]) + "…"
 		}

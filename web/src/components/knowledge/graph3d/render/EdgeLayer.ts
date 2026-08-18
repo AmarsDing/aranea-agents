@@ -10,16 +10,19 @@
 import * as THREE from 'three';
 
 /** rest 透明度 / 高亮透明度。 */
-export const EDGE_REST_ALPHA = 0.16;
-export const EDGE_HOVER_ALPHA = 0.9;
+// UX 可读性：0.16→0.11（5121 边法线混合叠加成亮网淹没标签；hover 提亮通道不受影响）
+export const EDGE_REST_ALPHA = 0.11;
+// UX 聚焦：0.9→0.35（聚焦邻域 2 跳数百条高亮边法线混合叠穿 bloom 阈值成白幕；hover 单边仍 3× 于 rest 对比度）
+export const EDGE_HOVER_ALPHA = 0.35;
 /** rest 亮度系数 / 高亮亮度系数。 */
-export const EDGE_REST_DIM = 0.55;
-export const EDGE_HOVER_BOOST = 1.2;
+export const EDGE_REST_DIM = 0.45;
+export const EDGE_HOVER_BOOST = 1.05;
 
 const EDGE_VERTEX = `
   uniform sampler2D uPosTex;
   uniform float uTexW;
   uniform float uCurvature;
+  uniform float uBundling;
   attribute float aNodeA;
   attribute float aNodeB;
   attribute float aT;
@@ -34,7 +37,16 @@ const EDGE_VERTEX = `
     vec3 pa = texelFetch(uPosTex, ivec2(ia % int(uTexW), ia / int(uTexW)), 0).xyz;
     vec3 pb = texelFetch(uPosTex, ivec2(ib % int(uTexW), ib / int(uTexW)), 0).xyz;
     vec3 wp = mix(pa, pb, aT);
-    if (uCurvature > 0.0001) {
+    if (uBundling > 0.0001) {
+      // 边捆绑：同向边捆成束（控制点向源-目标中点收缩，形成"花束"效果）
+      vec3 mid = (pa + pb) * 0.5;
+      vec3 dir = pb - pa;
+      vec3 normal = normalize(vec3(-dir.z, 0.0, dir.x) + vec3(1e-4));
+      // 捆绑强度：0=直线，1=完全弯曲到垂直法线
+      vec3 ctrl = mid + normal * uBundling * length(dir) * 0.5;
+      float t = aT;
+      wp = mix(mix(pa, ctrl, t), mix(ctrl, pb, t), t);
+    } else if (uCurvature > 0.0001) {
       // 二次贝塞尔：控制点 = 中点 + XZ 平面法向偏移（弧线沿盘面弯曲）
       vec3 mid = (pa + pb) * 0.5;
       vec3 dir = pb - pa;
@@ -62,10 +74,10 @@ const EDGE_FRAGMENT = `
     float alpha = mix(uRestAlpha, uHoverAlpha, vHi);
     vec3 col = vColor * mix(uRestDim, uHoverBoost, vHi);
     if (vHi > 0.5) {
-      // 流动光脉冲：沿边跑动的数据流（hover 专属科幻感）
+      // 流动光脉冲：沿边跑动的数据流（hover 专属科幻感）；UX 收敛加色防白幕
       float pulse = 0.5 + 0.5 * sin(uTime * 7.0 - vT * 16.0);
       alpha *= 0.7 + 0.45 * pulse;
-      col += vec3(0.22, 0.3, 0.34) * pulse;
+      col += vec3(0.10, 0.14, 0.16) * pulse;
     }
     gl_FragColor = vec4(col, alpha);
     #include <tonemapping_fragment>
@@ -130,6 +142,7 @@ export class EdgeLayer {
         uTexW: { value: 1 },
         uTime: { value: 0 },
         uCurvature: { value: 0 },
+        uBundling: { value: 0 },
         uRestAlpha: { value: EDGE_REST_ALPHA },
         uHoverAlpha: { value: EDGE_HOVER_ALPHA },
         uRestDim: { value: EDGE_REST_DIM },
@@ -160,6 +173,11 @@ export class EdgeLayer {
   /** M2：弧线弯曲系数（0=直线，力导向；>0 星系盘）。 */
   setCurvature(v: number): void {
     this.material.uniforms.uCurvature.value = v;
+  }
+
+  /** Phase 2：边捆绑强度（0=直线，0.3=轻度捆绑成束；与 curvature 互斥，bundling 优先）。 */
+  setBundling(v: number): void {
+    this.material.uniforms.uBundling.value = v;
   }
 
   /** hover 关联边 aHi=1，其余回 0；null 全 0。 */

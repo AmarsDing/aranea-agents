@@ -103,6 +103,58 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 	}
 }
 
+// S3-fix verification: final (non-partial) aggregated response carries the
+// FULL reasoning/content — it must replace, not append to, the accumulated deltas.
+func TestConsumeEventStream_finalResponseReplacesReasoning(t *testing.T) {
+	events := make(chan *trpcevent.Event, 4)
+	go func() {
+		defer close(events)
+		events <- chatChunkEvent("", "think-a", true)
+		events <- chatChunkEvent("", "think-b", true)
+		// Final aggregated response carries the complete reasoning.
+		events <- finalChatCompletionEvent("", "think-athink-b")
+		events <- runnerCompletionEvent()
+	}()
+
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
+	if got := result.Reasoning.String(); got != "think-athink-b" {
+		t.Fatalf("reasoning = %q, want %q", got, "think-athink-b")
+	}
+}
+
+func TestConsumeEventStream_finalResponseReplacesText(t *testing.T) {
+	events := make(chan *trpcevent.Event, 4)
+	go func() {
+		defer close(events)
+		events <- chatChunkEvent("hello", "", true)
+		events <- chatChunkEvent(" world", "", true)
+		// Final aggregated response carries the complete content.
+		events <- finalChatCompletionEvent("hello world", "")
+		events <- runnerCompletionEvent()
+	}()
+
+	result := ConsumeEventStream(context.Background(), events, ProjectMeta{SessionID: "s1"}, nil, loggateway.NewNoop())
+	if got := result.Reply.String(); got != "hello world" {
+		t.Fatalf("reply = %q, want %q", got, "hello world")
+	}
+}
+
+func finalChatCompletionEvent(text, reasoning string) *trpcevent.Event {
+	return &trpcevent.Event{
+		Author: "agent",
+		Response: &trpcmodel.Response{
+			Object:    trpcmodel.ObjectTypeChatCompletionChunk,
+			IsPartial: false,
+			Choices: []trpcmodel.Choice{{
+				Message: trpcmodel.Message{
+					Content:          text,
+					ReasoningContent: reasoning,
+				},
+			}},
+		},
+	}
+}
+
 func chatChunkEvent(text, reasoning string, partial bool) *trpcevent.Event {
 	return &trpcevent.Event{
 		Author: "agent",

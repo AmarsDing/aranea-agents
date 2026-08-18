@@ -442,11 +442,25 @@ func accumulateChoiceStream(result *EventStreamResult, choice trpcmodel.Choice, 
 	}
 	text, reasoning := ChoiceStreamContent(choice, partial)
 	if text != "" {
-		_ = provider.VisibleStreamingDelta(&result.Reply, text)
+		if partial {
+			_ = provider.VisibleStreamingDelta(&result.Reply, text)
+		} else {
+			// Non-partial (final aggregated) events carry the full message, not a
+			// delta. Appending it to the already-accumulated deltas would
+			// duplicate the text — reset and replace instead (aligned with
+			// llmcompat.go final-response semantics).
+			result.Reply.Reset()
+			result.Reply.WriteString(text)
+		}
 		result.HasContent = true
 	}
 	if reasoning != "" {
-		_ = provider.VisibleStreamingDelta(&result.Reasoning, reasoning)
+		if partial {
+			_ = provider.VisibleStreamingDelta(&result.Reasoning, reasoning)
+		} else {
+			result.Reasoning.Reset()
+			result.Reasoning.WriteString(reasoning)
+		}
 		result.HasContent = true
 	}
 }

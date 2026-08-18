@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   graphLinkColor,
   graphDocTypeColor,
+  graphNodeGroupKey,
   graphNodeVal,
   buildRenderGraph,
   sortedGraphNodes,
@@ -45,6 +46,24 @@ describe('graphDocTypeColor', () => {
   it('同类型稳定同色（大小写不敏感）', () => {
     expect(graphDocTypeColor('note')).toBe(graphDocTypeColor('note'));
     expect(graphDocTypeColor('Note')).toBe(graphDocTypeColor('note'));
+  });
+});
+
+describe('graphNodeGroupKey（UX：doc_type 空回退顶级目录分组）', () => {
+  it('doc_type 非空优先（去空白）', () => {
+    expect(graphNodeGroupKey('note', 'entries/a.md')).toBe('note');
+    expect(graphNodeGroupKey('  report ', 'diary/b.md')).toBe('report');
+  });
+
+  it('doc_type 空 → rel_path 顶级目录', () => {
+    expect(graphNodeGroupKey('', 'entries/机房.md')).toBe('entries');
+    expect(graphNodeGroupKey('  ', 'diary/2026-08-18.md')).toBe('diary');
+    expect(graphNodeGroupKey('', 'inbox/writeback/a.md')).toBe('inbox');
+  });
+
+  it('doc_type 空且根目录文件 → 空（未分类灰）', () => {
+    expect(graphNodeGroupKey('', 'README.md')).toBe('');
+    expect(graphNodeGroupKey('', '')).toBe('');
   });
 });
 

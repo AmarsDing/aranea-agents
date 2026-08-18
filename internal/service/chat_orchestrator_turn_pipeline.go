@@ -275,7 +275,7 @@ func (p *turnPhases) persistTurn(
 	}
 
 	// Build and persist assistant message
-	assistantMsg, err := p.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, reasoningAsDisplay, promptTok, completionTok, turnStatus, turnErr, turnErrMsg)
+	assistantMsg, err := p.buildAndPersistAssistantMessage(*ctx, ag, admit, execResult, emitter, displayMarkdown, reasoningAsDisplay, promptTok, completionTok, turnStatus, turnErr, turnErrMsg, turnStart)
 	if err != nil {
 		return turnPersistResult{}, err
 	}

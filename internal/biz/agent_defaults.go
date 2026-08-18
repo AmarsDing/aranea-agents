@@ -127,6 +127,7 @@ func DefaultAgentRuntimeSettings() AgentRuntimeSettings {
 		// --- Context / compression ---
 		PlannerConfigJSON:         "{}",
 		ClarificationEnabled:      true,
+		ReplyReminderEnabled:      true,
 		VerificationTruncateChars: 2000,
 		CompressionBufferRatio:    DefaultCompressionBufferRatio,
 		SoftTriggerRatio:          DefaultSoftTriggerRatio,

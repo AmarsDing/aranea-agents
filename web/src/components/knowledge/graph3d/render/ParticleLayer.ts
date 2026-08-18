@@ -52,6 +52,14 @@ export class ParticleLayer {
       depthWrite: false,
       sizeAttenuation: true,
     });
+    // UX 优化：粒子屏幕像素上限——粒子贴近相机时 sizeAttenuation 会把 point sprite
+    // 放大到数百 px（满屏光斑/横带），在 points 顶点模板注入 clamp（同 NodeLayer 40px 思路）
+    this.material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <logdepthbuf_vertex>',
+        'gl_PointSize = min(gl_PointSize, 26.0);\n#include <logdepthbuf_vertex>',
+      );
+    };
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.frustumCulled = false;
     this.points.renderOrder = 2;

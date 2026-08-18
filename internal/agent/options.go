@@ -53,6 +53,9 @@ func UserOptionsJSON(agent biz.Agent, dialogMode, provider, model string, ctxRat
 			"icon":         agent.Icon,
 		},
 		"send_meta": map[string]any{
+			// context_pct = session history ratio BEFORE this turn is sent.
+			// It does NOT include the current turn's input tokens, so a new
+			// session shows 0 even when the first prompt is large.
 			"context_pct": mathRoundCtxRatio(ctxRatio),
 		},
 	}

@@ -42,10 +42,11 @@ func prefixStabilityFixture() (biz.Agent, TRPCBuilderDeps) {
 		ID:               "ag-prefix",
 		SystemPromptMode: "complete",
 		Settings: &biz.AgentRuntimeSettings{
-			ToolsEnabled:  true,
-			MemoryEnabled: true,
-			L3Enabled:     true,
-			L0InjectL3:    true,
+			ToolsEnabled:         true,
+			MemoryEnabled:        true,
+			L3Enabled:            true,
+			L0InjectL3:           true,
+			ReplyReminderEnabled: true,
 		},
 	}
 	repo := fakeKnowledgeRepos{

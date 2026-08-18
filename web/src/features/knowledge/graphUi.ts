@@ -40,6 +40,18 @@ const DOC_TYPE_PALETTE = [
 
 const DOC_TYPE_FALLBACK = '#8a93a6';
 
+/** 分组键归一（UX：doc_type 空时回退 rel_path 顶级目录）。
+ *  团队收件箱等库 doc_type 全空 → 调色板退化为单色「未分类」、图例无信息量；
+ *  按顶级目录（entries/diary/inbox…）分组恢复颜色维度，图例/过滤/搜索一处归一全链路一致。
+ *  根目录文件无目录可归 → 保持空（未分类灰）。 */
+export function graphNodeGroupKey(docType: string, relPath: string): string {
+  const t = docType.trim();
+  if (t) return t;
+  const p = relPath.trim();
+  const slash = p.indexOf('/');
+  return slash > 0 ? p.slice(0, slash) : '';
+}
+
 /** 节点配色：doc_type 稳定哈希 → 调色板；空类型灰。 */
 export function graphDocTypeColor(docType: string): string {
   const key = docType.trim().toLowerCase();

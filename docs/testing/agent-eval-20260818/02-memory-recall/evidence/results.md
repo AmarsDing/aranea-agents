@@ -350,3 +350,9 @@
 | ASK-mem-ab-08 | ask(abstention) | PASS | 14606ms |  |
 | ASK-mem-ab-09 | ask(abstention) | PASS | 10401ms |  |
 | ASK-mem-ab-10 | ask(abstention) | FAIL | 34785ms | fabricated:SW-Core-01 |
+| ASK-mem-sh-04 | ask(single_hop) | FAIL | 24ms | http 401 |
+| ASK-mem-up-03 | ask(update) | FAIL | 23ms | http 401 |
+| ASK-mem-ab-04 | ask(abstention) | FAIL | 20ms | http 401 |
+| ASK-mem-sh-04 | ask(single_hop) | PASS | 127139ms | kw 1/1 |
+| ASK-mem-up-03 | ask(update) | PASS | 28271ms | kw 1/1 |
+| ASK-mem-ab-04 | ask(abstention) | PASS | 60123ms |  |

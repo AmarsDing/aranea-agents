@@ -9,9 +9,10 @@
  */
 import * as THREE from 'three';
 
-/** 环/六边形相对节点半径的放大倍数（四边形半尺寸 = 节点半径 × 倍率）。 */
-export const RETICLE_HOVER_SCALE = 2.1;
-export const RETICLE_SEL_SCALE = 2.6;
+/** 环/六边形相对节点半径的放大倍数（四边形半尺寸 = 节点半径 × 倍率）。
+ *  UX 优化：2.1/2.6 → 1.5/1.8（环贴合节点轮廓，原值在 hub 节点上大得夸张、喧宾夺主）。 */
+export const RETICLE_HOVER_SCALE = 1.5;
+export const RETICLE_SEL_SCALE = 1.8;
 
 const RETICLE_VERTEX = `
   uniform sampler2D uPosTex;
@@ -20,6 +21,7 @@ const RETICLE_VERTEX = `
   uniform int uSelIndex;
   uniform float uHoverSize;
   uniform float uSelSize;
+  uniform float uPointScale;
   attribute vec2 aCorner;
   attribute float aKind;
   varying vec2 vUv;
@@ -33,6 +35,11 @@ const RETICLE_VERTEX = `
     int safe = max(idx, 0);
     vec3 wp = texelFetch(uPosTex, ivec2(safe % int(uTexW), safe / int(uTexW)), 0).xyz;
     vec4 mv = modelViewMatrix * vec4(wp, 1.0);
+    // UX 优化：瞄准具屏幕半径钳制（节点 gl_PointSize 有 40px 上限，世界空间尺寸的
+    // 瞄准具在近景会放大到满屏）；上限取节点屏幕半径 × 环倍率量级
+    float maxPx = isHover ? 30.0 : 40.0;
+    float worldPerPx = max(-mv.z, 1.0) / uPointScale;
+    size = min(size, maxPx * worldPerPx);
     mv.xy += aCorner * size; // 视空间 billboard
     gl_Position = projectionMatrix * mv;
     vUv = aCorner;
@@ -89,10 +96,7 @@ export class ReticleLayer {
     this.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(8 * 3), 3));
     this.geometry.setAttribute(
       'aCorner',
-      new THREE.BufferAttribute(
-        new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1]),
-        2,
-      ),
+      new THREE.BufferAttribute(new Float32Array([-1, -1, 1, -1, 1, 1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1]), 2),
     );
     this.geometry.setAttribute('aKind', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 0, 1, 1, 1, 1]), 1));
     this.geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
@@ -108,6 +112,8 @@ export class ReticleLayer {
         uTime: { value: 0 },
         uHoverColor: { value: new THREE.Color(0x54e6ff) },
         uSelColor: { value: new THREE.Color(0xa855f7) },
+        // 屏幕像素钳制换算系数（同 NodeLayer：drawingBufferHeight·0.5/tan(fov/2)），Canvas 注入
+        uPointScale: { value: 540 },
       },
       vertexShader: RETICLE_VERTEX,
       fragmentShader: RETICLE_FRAGMENT,
@@ -142,6 +148,11 @@ export class ReticleLayer {
   /** 呼吸/旋转时钟（仅活跃期推进）。 */
   setTime(t: number): void {
     this.material.uniforms.uTime.value = t;
+  }
+
+  /** 像素缩放系数（Canvas 在创建/画质档/resize 时注入，与 NodeLayer 同源）。 */
+  setPointScale(scale: number): void {
+    this.material.uniforms.uPointScale.value = scale;
   }
 
   /** 任一瞄准具可见（lazy-render 保持渲染循环的判定条件之一）。 */

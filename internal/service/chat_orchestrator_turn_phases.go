@@ -753,6 +753,7 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 	turnStatus *string,
 	turnErr *error,
 	turnErrMsg *string,
+	turnStart time.Time,
 ) (biz.ChatMessage, error) {
 	sessionID := strings.TrimSpace(execResult.userMsg.SessionID)
 	runID := admit.runID
@@ -804,6 +805,7 @@ func (o *ChatOrchestrator) buildAndPersistAssistantMessage(
 		TokenIn:          promptTok,
 		TokenOut:         completionTok,
 		AttachmentsCount: assistantAttN,
+		LatencyMS:        int(time.Since(turnStart).Milliseconds()),
 	}
 	// Phase 1c-3: messages 表已删除。assistant 消息由 ActivityProjector.OnAssistantMessage
 	// 持久化为 Reply Activity，用户消息状态由 OnTurnEnd 终结为 completed。
